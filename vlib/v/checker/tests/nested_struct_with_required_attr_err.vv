@@ -1,6 +1,7 @@
 struct Foo {
 	bar Bar
 }
+
 struct Bar {
 	egg Egg
 }

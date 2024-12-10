@@ -1,0 +1,14 @@
+vlib/v/checker/tests/nil_compare_err.vv:3:6: error: cannot compare with `nil` because `[]int` is not a pointer
+    1 | a := [12, 34, 56]
+    2 | 
+    3 | if a != unsafe { nil } {
+      |      ~~
+    4 |     println(a)
+    5 | }
+vlib/v/checker/tests/nil_compare_err.vv:7:7: error: cannot use `>` with `nil`
+    5 | }
+    6 | 
+    7 | if 23 > unsafe { nil } {
+      |       ^
+    8 |     println('hey')
+    9 | }

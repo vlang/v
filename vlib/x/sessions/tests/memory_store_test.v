@@ -10,7 +10,7 @@ pub struct User {
 
 const default_user = User{
 	name: 'john'
-	age: 99
+	age:  99
 }
 
 fn test_store_set() {

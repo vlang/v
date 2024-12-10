@@ -53,13 +53,13 @@ fn frame(mut app App) {
 	}
 
 	help_text := flag.to_doc[DocTest](
-		version: '1.0'
+		version:     '1.0'
 		description: 'Hello! This should show an *animated* example application description.
 We are at frame ${app.frame}.
 Press ESCAPE or Ctrl+C to exit'
-		footer: '
+		footer:      '
 Press ESCAPE or Ctrl+C to exit'
-		fields: {
+		fields:      {
 			'level':                                    'Level of lorem ipsum\nand more\nmany many many more.\nNotice how user newlines/format is kept since\ninput lines are all less or within\nthe default layout.description_padding\nand max width'
 			'example':                                  'Looong example text without newlines or anything else and lorem ipsum and more and many many many more. Should be auto fitted'
 			'multi':                                    'This flag can be repeated'
@@ -82,11 +82,11 @@ type FrameFn = fn (voidptr)
 fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
-		user_data: app
-		event_fn: EventFn(event)
-		frame_fn: FrameFn(frame)
+		user_data:   app
+		event_fn:    EventFn(event)
+		frame_fn:    FrameFn(frame)
 		hide_cursor: true
-		frame_rate: 60
+		frame_rate:  60
 	)
 	app.tui.run()!
 }

@@ -37,15 +37,15 @@ fn main() {
 
 fn rain(mut app App) {
 	app.ctx = gg.new_context(
-		bg_color: gx.rgb(0, 0, 0)
-		width: app.screen_size.width
-		height: app.screen_size.height
-		user_data: app
+		bg_color:     gx.rgb(0, 0, 0)
+		width:        app.screen_size.width
+		height:       app.screen_size.height
+		user_data:    app
 		window_title: 'Digital Rain'
-		init_fn: fn (mut app App) {
+		init_fn:      fn (mut app App) {
 			gg.toggle_fullscreen()
 		}
-		event_fn: fn (event &gg.Event, mut app App) {
+		event_fn:     fn (event &gg.Event, mut app App) {
 			vprintln('event.typ: ${event.typ} | event.char_code: ${event.char_code}')
 			if event.typ == .resized {
 				app.should_calc = true
@@ -63,7 +63,7 @@ fn rain(mut app App) {
 				app.delay = if new_delay > 0 { new_delay } else { 0 }
 			}
 		}
-		frame_fn: frame
+		frame_fn:     frame
 	)
 	app.ctx.run()
 }
@@ -99,9 +99,9 @@ fn vprintln(msg string) {
 fn calc_sizes(mut app App) {
 	app.screen_size = gg.window_size()
 	app.ctx.set_text_cfg(gx.TextCfg{
-		size: font_size
+		size:  font_size
 		color: gx.green
-		mono: true
+		mono:  true
 	})
 	// figure out how big character is in pixels
 	// Pad it or it looks too squashed
@@ -139,14 +139,14 @@ fn draw_rain_column(rc RainColumn, app App) {
 			}
 			at_head := i == rc.head - 1
 			cfg := gx.TextCfg{
-				size: font_size
+				size:  font_size
 				color: gg.Color{
 					r: if at_head { u8(255) } else { 0 }
 					g: 255
 					b: if at_head { u8(255) } else { 0 }
 					a: alpha
 				}
-				mono: true
+				mono:  true
 			}
 			if i < rc.drops.len {
 				app.ctx.draw_text(x, y, rc.drops[i].ascii_str(), cfg)
@@ -163,8 +163,8 @@ fn draw_rain_column(rc RainColumn, app App) {
 fn random_rain_column(max_col int, max_height int) RainColumn {
 	min_len := 6
 	mut rc := RainColumn{
-		col: rand.int_in_range(0, max_col) or { 0 }
-		len: rand.int_in_range(min_len, max_height / 4 * 3) or { min_len }
+		col:   rand.int_in_range(0, max_col) or { 0 }
+		len:   rand.int_in_range(min_len, max_height / 4 * 3) or { min_len }
 		drops: []u8{cap: max_height}
 	}
 	for _ in 0 .. max_height {

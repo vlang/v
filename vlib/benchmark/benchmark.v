@@ -2,6 +2,7 @@ module benchmark
 
 import time
 import term
+import arrays
 
 pub const b_ok = term.ok_message('OK  ')
 pub const b_fail = term.fail_message('FAIL')
@@ -24,13 +25,14 @@ pub mut:
 	bok             string
 	bfail           string
 	measured_steps  []string
+	step_data       map[string][]f64
 }
 
 // new_benchmark returns a `Benchmark` instance on the stack.
 pub fn new_benchmark() Benchmark {
 	return Benchmark{
 		bench_timer: time.new_stopwatch()
-		verbose: true
+		verbose:     true
 	}
 }
 
@@ -38,8 +40,8 @@ pub fn new_benchmark() Benchmark {
 pub fn new_benchmark_no_cstep() Benchmark {
 	return Benchmark{
 		bench_timer: time.new_stopwatch()
-		verbose: true
-		no_cstep: true
+		verbose:     true
+		no_cstep:    true
 	}
 }
 
@@ -48,7 +50,7 @@ pub fn new_benchmark_no_cstep() Benchmark {
 pub fn new_benchmark_pointer() &Benchmark {
 	return &Benchmark{
 		bench_timer: time.new_stopwatch()
-		verbose: true
+		verbose:     true
 	}
 }
 
@@ -131,7 +133,7 @@ pub fn start() Benchmark {
 pub fn (mut b Benchmark) measure(label string) i64 {
 	b.ok()
 	res := b.step_timer.elapsed().microseconds()
-	println(b.step_message_with_label(benchmark.b_spent, 'in ${label}'))
+	println(b.step_message_with_label(b_spent, 'in ${label}'))
 	b.step()
 	return res
 }
@@ -144,7 +146,8 @@ pub fn (mut b Benchmark) measure(label string) i64 {
 pub fn (mut b Benchmark) record_measure(label string) i64 {
 	b.ok()
 	res := b.step_timer.elapsed().microseconds()
-	b.measured_steps << b.step_message_with_label(benchmark.b_spent, 'in ${label}')
+	b.measured_steps << b.step_message_with_label(b_spent, 'in ${label}')
+	b.step_data[label] << res
 	b.step()
 	return res
 }
@@ -209,17 +212,17 @@ pub fn (b &Benchmark) step_message(msg string, opts MessageOptions) string {
 
 // step_message_ok returns a string describing the current step with an standard "OK" label.
 pub fn (b &Benchmark) step_message_ok(msg string, opts MessageOptions) string {
-	return b.step_message_with_label(benchmark.b_ok, msg, opts)
+	return b.step_message_with_label(b_ok, msg, opts)
 }
 
 // step_message_fail returns a string describing the current step with an standard "FAIL" label.
 pub fn (b &Benchmark) step_message_fail(msg string, opts MessageOptions) string {
-	return b.step_message_with_label(benchmark.b_fail, msg, opts)
+	return b.step_message_with_label(b_fail, msg, opts)
 }
 
 // step_message_skip returns a string describing the current step with an standard "SKIP" label.
 pub fn (b &Benchmark) step_message_skip(msg string, opts MessageOptions) string {
-	return b.step_message_with_label(benchmark.b_skip, msg, opts)
+	return b.step_message_with_label(b_skip, msg, opts)
 }
 
 // total_message returns a string with total summary of the benchmark run.
@@ -244,6 +247,12 @@ pub fn (b &Benchmark) total_message(msg string) string {
 		}
 	}
 	tmsg += '${b.ntotal} total. ${term.colorize(term.bold, 'Elapsed time:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.'
+	if msg in b.step_data && b.step_data[msg].len > 1 {
+		min := arrays.min(b.step_data[msg]) or { 0 } / 1000.0
+		max := arrays.max(b.step_data[msg]) or { 0 } / 1000.0
+		avg := (arrays.sum(b.step_data[msg]) or { 0 } / b.step_data[msg].len) / 1000.0
+		tmsg += ' Min: ${min:.3f} ms. Max: ${max:.3f} ms. Avg: ${avg:.3f} ms'
+	}
 	return tmsg
 }
 

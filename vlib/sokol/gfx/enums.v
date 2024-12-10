@@ -14,13 +14,13 @@ pub enum Backend {
 // PixelFormat is C.sg_pixel_format
 pub enum PixelFormat as u32 {
 	_default // value 0 reserved for default-init
-	@none
-	//
+	none
+
 	r8
 	r8sn
 	r8ui
 	r8si
-	//
+
 	r16
 	r16sn
 	r16ui
@@ -30,7 +30,7 @@ pub enum PixelFormat as u32 {
 	rg8sn
 	rg8ui
 	rg8si
-	//
+
 	r32ui
 	r32si
 	r32f
@@ -48,7 +48,7 @@ pub enum PixelFormat as u32 {
 	rgb10a2
 	rg11b10f
 	rgb9e5
-	//
+
 	rg32ui
 	rg32si
 	rg32f
@@ -57,16 +57,14 @@ pub enum PixelFormat as u32 {
 	rgba16ui
 	rgba16si
 	rgba16f
-	//
+
 	rgba32ui
 	rgba32si
 	rgba32f
-	//
-	//
-	//
+
 	depth
 	depth_stencil
-	//
+
 	bc1_rgba
 	bc2_rgba
 	bc3_rgba
@@ -94,7 +92,7 @@ pub enum PixelFormat as u32 {
 	eac_rg11sn
 	astc_4x4_rgba
 	astc_4x4_srgba
-	//
+
 	_num
 	_force_u32 = 0x7FFFFFFF
 }
@@ -128,7 +126,7 @@ pub enum BufferType as u32 {
 
 pub enum IndexType as u32 {
 	_default // value 0 reserved for default-init
-	@none
+	none
 	uint16
 	uint32
 	_num
@@ -195,7 +193,7 @@ pub enum PrimitiveType as u32 {
 
 pub enum Filter as u32 {
 	_default // value 0 reserved for default-init
-	@none
+	none
 	nearest
 	linear
 	_num
@@ -269,7 +267,7 @@ pub enum UniformType as u32 {
 
 pub enum CullMode as u32 {
 	_default // value 0 reserved for default-init
-	@none
+	none
 	front
 	back
 	_num
@@ -345,7 +343,7 @@ pub enum BlendOp as u32 {
 
 pub enum ColorMask as u32 {
 	_default   = 0    // value 0 reserved for default-init
-	@none      = 0x10 // special value for 'all channels disabled
+	none       = 0x10 // special value for 'all channels disabled
 	r          = 1
 	g          = 2
 	rg         = 3
@@ -384,5 +382,5 @@ pub enum UniformLayout as u32 {
 	uniformlayout_native // default: layout depends on currently active backend
 	uniformlayout_std140 // std140: memory layout according to std140
 	_num
-	_force_u32 = 0x7FFFFFFF
+	_force_u32            = 0x7FFFFFFF
 }

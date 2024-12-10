@@ -1,0 +1,19 @@
+vdownload 0.0.1
+-----------------------------------------------
+Usage: vdownload [options] URL1 URL2 ...
+
+Description: Download files from http/https servers, given their URLs.
+
+The arguments should be at least 1 in number.
+
+Options:
+  -h, --help                Show this help screen.
+  -t, --target-folder <string>
+                            The target folder, where the file will be stored. It will be created, if it does not exist. Default is current folder.
+  -1, --sha1                Show the SHA1 hash of the downloaded file.
+  -2, --sha256              Show the SHA256 hash of the downloaded file.
+  -c, --continue            Continue on download failures. If you download 5 URLs, and several of them fail, continue without error. False by default.
+  -r, --retries <int>       Number of retries, when an URL fails to download.
+  -d, --delay <float>       Delay in seconds, after each retry.
+  -R, --run                 Run, after the script/program is completely downloaded.
+  -D, --delete-after-run    Delete the downloaded script/program, after it has been run.

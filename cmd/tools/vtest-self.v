@@ -30,7 +30,6 @@ const essential_list = [
 	//
 	'vlib/builtin/int_test.v',
 	'vlib/builtin/array_test.v',
-	'vlib/builtin/array_sorted_test.v',
 	'vlib/builtin/float_test.v',
 	'vlib/builtin/byte_test.v',
 	'vlib/builtin/rune_test.v',
@@ -53,7 +52,7 @@ const essential_list = [
 	'vlib/encoding/utf8/encoding_utf8_test.v',
 	'vlib/encoding/utf8/utf8_util_test.v',
 	'vlib/flag/flag_test.v',
-	'vlib/json/json_decode_test.v',
+	'vlib/json/tests/json_decode_test.v',
 	'vlib/math/math_test.v',
 	'vlib/net/tcp_test.v',
 	'vlib/net/http/http_test.v',
@@ -165,8 +164,11 @@ const skip_with_fsanitize_memory = [
 	'vlib/orm/orm_references_test.v',
 	'vlib/orm/orm_option_array_test.v',
 	'vlib/orm/orm_option_time_test.v',
+	'vlib/orm/orm_order_by_custom_field_test.v',
+	'vlib/orm/orm_serial_attribute_test.v',
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
+	'vlib/db/sqlite/sqlite_comptime_field_test.v',
 	'vlib/db/sqlite/parent_child_test.v',
 	'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
 	'vlib/v/tests/orm_enum_test.v',
@@ -176,8 +178,10 @@ const skip_with_fsanitize_memory = [
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
 	'vlib/v/tests/orm_table_name_test.v',
+	'vlib/v/tests/orm_array_field_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	'vlib/v/tests/orm_create_several_tables_test.v',
+	'vlib/v/tests/orm_update_test.v',
 	'vlib/vweb/tests/vweb_test.v',
 	'vlib/vweb/csrf/csrf_test.v',
 	'vlib/net/http/request_test.v',
@@ -186,7 +190,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/websocket/websocket_test.v',
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
-	'vlib/v/tests/fn_literal_type_test.v',
+	'vlib/v/tests/fns/fn_literal_type_test.v',
 	'vlib/x/sessions/tests/db_store_test.v',
 ]
 const skip_with_fsanitize_address = [
@@ -201,6 +205,7 @@ const skip_with_fsanitize_address = [
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	'vlib/v/tests/orm_create_several_tables_test.v',
+	'vlib/v/tests/orm_update_test.v',
 ]
 const skip_with_fsanitize_undefined = [
 	'do_not_remove',
@@ -212,6 +217,7 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	'vlib/v/tests/orm_create_several_tables_test.v',
+	'vlib/v/tests/orm_update_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 ]
 const skip_with_werror = [
@@ -230,14 +236,17 @@ const skip_on_musl = [
 	'vlib/gg/draw_fns_api_test.v',
 	'vlib/v/tests/skip_unused/gg_code.vv',
 	'vlib/v/tests/c_struct_with_reserved_field_name_test.v',
+	'vlib/arrays/parallel/parallel_test.v',
 ]
 const skip_on_ubuntu_musl = [
 	'do_not_remove',
+	'vlib/arrays/parallel/parallel_test.v',
 	//'vlib/v/gen/js/jsgen_test.v',
 	'vlib/net/http/cookie_test.v',
 	'vlib/net/http/status_test.v',
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
+	'vlib/db/sqlite/sqlite_comptime_field_test.v',
 	'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
 	'vlib/db/sqlite/parent_child_test.v',
 	'vlib/orm/orm_test.v',
@@ -257,14 +266,18 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_references_test.v',
 	'vlib/orm/orm_option_array_test.v',
 	'vlib/orm/orm_option_time_test.v',
+	'vlib/orm/orm_order_by_custom_field_test.v',
+	'vlib/orm/orm_serial_attribute_test.v',
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_struct_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_joined_tables_select_test.v',
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
 	'vlib/v/tests/orm_table_name_test.v',
+	'vlib/v/tests/orm_array_field_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	'vlib/v/tests/orm_create_several_tables_test.v',
+	'vlib/v/tests/orm_update_test.v',
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/clipboard/clipboard_test.v',
 	'vlib/vweb/tests/vweb_test.v',
@@ -278,7 +291,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/builtin/js/array_test.js.v',
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
-	'vlib/v/tests/fn_literal_type_test.v',
+	'vlib/v/tests/fns/fn_literal_type_test.v',
 	'vlib/x/sessions/tests/db_store_test.v',
 	'vlib/x/vweb/tests/vweb_test.v',
 	'vlib/x/vweb/tests/vweb_app_test.v',
@@ -292,10 +305,10 @@ const skip_on_non_linux = [
 ]
 const skip_on_windows_msvc = [
 	'do_not_remove',
-	'vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
-	'vlib/v/tests/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
-	'vlib/v/tests/sumtype_as_cast_1_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
-	'vlib/v/tests/sumtype_as_cast_2_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
+	'vlib/v/tests/consts/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
+	'vlib/v/tests/consts/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
+	'vlib/v/tests/sumtypes/sumtype_as_cast_1_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
+	'vlib/v/tests/sumtypes/sumtype_as_cast_2_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // TODO
 ]
 const skip_on_windows = [
@@ -315,7 +328,7 @@ const skip_on_windows = [
 	'vlib/sync/many_times_test.v',
 	'vlib/sync/once_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
-	'vlib/v/tests/fn_literal_type_test.v',
+	'vlib/v/tests/fns/fn_literal_type_test.v',
 ]
 const skip_on_non_windows = [
 	'do_not_remove',
@@ -335,7 +348,7 @@ const skip_on_arm64 = [
 const skip_on_non_amd64_or_arm64 = [
 	'do_not_remove',
 	// closures aren't implemented yet:
-	'vlib/v/tests/closure_test.v',
+	'vlib/v/tests/fns/closure_test.v',
 	// native aren't implemented:
 	'vlib/v/gen/native/tests/native_test.v',
 	'vlib/context/cancel_test.v',
@@ -444,10 +457,8 @@ fn main() {
 		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
 		tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
 	}
-	$if windows {
-		if cfg.github_job == 'tcc' {
-			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
-		}
+	$if windows && tinyc {
+		tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 	}
 	if !cfg.run_slow_sanitize
 		&& ((cfg.sanitize_undefined || cfg.sanitize_memory || cfg.sanitize_address)

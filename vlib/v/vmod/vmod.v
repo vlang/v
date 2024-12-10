@@ -8,7 +8,7 @@ const mod_file_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
 const private_file_cacher = new_mod_file_cacher()
 
 pub fn get_cache() &ModFileCacher {
-	return vmod.private_file_cacher
+	return private_file_cacher
 }
 
 // This file provides a caching mechanism for seeking quickly whether a
@@ -110,12 +110,12 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 			// TODO: actually read the v.mod file and parse its contents to see
 			// if its source folder is different
 			res := ModFileAndFolder{
-				vmod_file: os.join_path(cfolder, 'v.mod')
+				vmod_file:   os.join_path(cfolder, 'v.mod')
 				vmod_folder: cfolder
 			}
 			return folders_so_far, res
 		}
-		if mcache.check_for_stop(cfolder, files) {
+		if mcache.check_for_stop(files) {
 			break
 		}
 		cfolder = os.dir(cfolder)
@@ -124,7 +124,7 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 	}
 	mcache.mark_folders_as_vmod_free(folders_so_far)
 	return [mfolder], ModFileAndFolder{
-		vmod_file: ''
+		vmod_file:   ''
 		vmod_folder: mfolder
 	}
 }
@@ -143,8 +143,8 @@ fn (mut mcache ModFileCacher) mark_folders_as_vmod_free(folders_so_far []string)
 	}
 }
 
-fn (mcache &ModFileCacher) check_for_stop(cfolder string, files []string) bool {
-	for i in vmod.mod_file_stop_paths {
+fn (mcache &ModFileCacher) check_for_stop(files []string) bool {
+	for i in mod_file_stop_paths {
 		if i in files {
 			return true
 		}

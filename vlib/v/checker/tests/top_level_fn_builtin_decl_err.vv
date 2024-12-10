@@ -1,4 +1,3 @@
-
 @[inline]
 fn char(ch byte) fn (string) !(byte, string) {
 	return fn [ch] (input string) !(byte, string) {

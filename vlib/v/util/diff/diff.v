@@ -72,7 +72,7 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 	tool, cmd := opts.find_tool()!
 	mut args := opts.args
 	if args == '' {
-		args = if defaults := diff.known_diff_tool_defaults[tool] { defaults } else { '' }
+		args = if defaults := known_diff_tool_defaults[tool] { defaults } else { '' }
 		if opts.tool == .diff {
 			// Ensure that the diff command supports the color option.
 			// E.g., some BSD installations or macOS diff (based on FreeBSD diff)
@@ -133,7 +133,7 @@ fn (opts CompareOptions) find_tool() !(DiffTool, string) {
 // are used. Using a public constant will also allow for external checking of available tools.
 fn find_working_diff_tools() []DiffTool {
 	mut tools := []DiffTool{}
-	for tool in diff.known_diff_tool_defaults.keys() {
+	for tool in known_diff_tool_defaults.keys() {
 		cmd := tool.cmd()
 		os.find_abs_path_of_executable(cmd) or { continue }
 		if tool == .delta {
@@ -162,9 +162,6 @@ fn run_tool(cmd string, dbg_location string) string {
 	return res.output.trim_right('\r\n')
 }
 
-// find_working_diff_command returns the first available command from a list of known diff cli tools.
-@[deprecated_after: '2024-06-30']
-@[deprecated]
 pub fn find_working_diff_command() !string {
 	env_difftool := os.getenv('VDIFF_TOOL')
 	env_diffopts := os.getenv('VDIFF_OPTIONS')
@@ -194,8 +191,6 @@ pub fn find_working_diff_command() !string {
 }
 
 // color_compare_files returns a colored diff between two files.
-@[deprecated: 'use `compare_files` instead']
-@[deprecated_after: '2024-06-30']
 pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
 	tool := diff_cmd.all_before(' ')
 	os.find_abs_path_of_executable(tool) or { return 'comparison command: `${tool}` not found' }
@@ -203,18 +198,16 @@ pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
 	if tool == 'diff' {
 		// Ensure that the diff command supports the color option.
 		// E.g., some BSD installations do not include `diffutils` as a core package alongside `diff`.
-		res := os.execute('${diff_cmd} --color=always ${diff.default_diff_args} ${p1} ${p2}')
+		res := os.execute('${diff_cmd} --color=always ${default_diff_args} ${p1} ${p2}')
 		if !res.output.starts_with('diff: unrecognized option') {
 			return res.output.trim_right('\r\n')
 		}
 	}
-	cmd := '${diff_cmd} ${diff.default_diff_args} ${p1} ${p2}'
+	cmd := '${diff_cmd} ${default_diff_args} ${p1} ${p2}'
 	return os.execute(cmd).output.trim_right('\r\n')
 }
 
 // color_compare_strings returns a colored diff between two strings.
-@[deprecated: 'use `compare_text` instead']
-@[deprecated_after: '2024-06-30']
 pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected string, found string) string {
 	tmp_dir := os.join_path_single(os.vtmp_dir(), unique_prefix)
 	os.mkdir(tmp_dir) or {}

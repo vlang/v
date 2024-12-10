@@ -18,3 +18,5 @@ vlib/v/checker/tests/ambiguous_function_call.vv:7:7: error: expected 0 arguments
       |          ~~~~
     8 | }
     9 |
+Details: have (int)
+         want ()

@@ -43,7 +43,9 @@ fn mutate_bar(mut bar Bar) int {
 }
 
 fn main() {
-	mut bar := Bar{y: 0}
+	mut bar := Bar{
+		y: 0
+	}
 	mutate_foobar1(mut bar)
 	mutate_foobar2(mut bar)
 }

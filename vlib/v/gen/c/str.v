@@ -8,12 +8,10 @@ import v.util
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw))
 	if node.language == .c {
-		g.write('"')
-		g.write(escaped_val)
+		g.write2('"', escaped_val)
 		g.write('"')
 	} else {
-		g.write('_SLIT("')
-		g.write(escaped_val)
+		g.write2('_SLIT("', escaped_val)
 		g.write('")')
 	}
 }
@@ -29,8 +27,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		escaped_val := cescape_nonascii(util.smart_quote(val, false))
 		g.write('strings__Builder_write_string(&')
 		g.expr(call_expr.left)
-		g.write(', _SLIT("')
-		g.write(escaped_val)
+		g.write2(', _SLIT("', escaped_val)
 		g.writeln('"));')
 		if i >= node.exprs.len {
 			break
@@ -43,8 +40,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		g.expr(call_expr.left)
 		g.write(', ')
 		typ := node.expr_types[i]
-		g.write(g.typ(typ))
-		g.write('_str(')
+		g.write2(g.styp(typ), '_str(')
 		sym := g.table.sym(typ)
 		if sym.kind != .function {
 			g.expr(node.exprs[i])
@@ -68,6 +64,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	if is_shared {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
+	// original is_ptr for the typ (aliased type could overwrite it)
+	is_ptr := typ.is_ptr()
 	mut sym := g.table.sym(typ)
 	// when type is non-option alias and doesn't has `str()`, print the aliased value
 	if mut sym.info is ast.Alias && !sym.has_method('str') && !etype.has_flag(.option) {
@@ -91,7 +89,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else if typ == ast.bool_type {
 		g.expr(expr)
 		g.write(' ? _SLIT("true") : _SLIT("false")')
-	} else if sym.kind == .none_ || typ == ast.void_type.set_flag(.option) {
+	} else if sym.kind == .none || typ == ast.void_type.set_flag(.option) {
 		if expr is ast.CallExpr {
 			stmt_str := g.go_before_last_stmt()
 			g.expr(expr)
@@ -99,7 +97,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write(stmt_str)
 		}
 		g.write('_SLIT("<none>")')
-	} else if sym.kind == .enum_ {
+	} else if sym.kind == .enum {
 		if expr !is ast.EnumVal {
 			str_fn_name := g.get_str_fn(typ)
 			g.write('${str_fn_name}(')
@@ -114,18 +112,18 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('")')
 		}
 	} else if sym_has_str_method
-		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
+		|| sym.kind in [.array, .array_fixed, .map, .struct, .multi_return, .sum_type, .interface] {
 		unwrap_option := expr is ast.Ident && expr.or_expr.kind == .propagate_option
 		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
-		is_ptr := exp_typ.is_ptr()
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(exp_typ)
-		temp_var_needed := expr is ast.CallExpr && expr.return_type.is_ptr()
+		temp_var_needed := expr is ast.CallExpr
+			&& (expr.return_type.is_ptr() || g.table.sym(expr.return_type).is_c_struct())
 		mut tmp_var := ''
 		if temp_var_needed {
 			tmp_var = g.new_tmp_var()
-			ret_typ := g.typ(exp_typ)
+			ret_typ := g.styp(exp_typ)
 			line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
 			g.write('${ret_typ} ${tmp_var} = ')
@@ -143,8 +141,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				} else {
 					g.expr(expr)
 				}
-				g.write('.data')
-				g.write(') ? _SLIT("Option(&nil)") : ')
+				g.write('.data) ? _SLIT("Option(&nil)") : ')
 			} else {
 				inside_interface_deref_old := g.inside_interface_deref
 				g.inside_interface_deref = false
@@ -159,11 +156,10 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write(') ? _SLIT("nil") : ')
 			}
 		}
-		g.write(str_fn_name)
-		g.write('(')
+		g.write2(str_fn_name, '(')
 		if str_method_expects_ptr && !is_ptr {
 			if is_dump_expr || (g.pref.ccompiler_type != .tinyc && expr is ast.CallExpr) {
-				g.write('ADDR(${g.typ(typ)}, ')
+				g.write('ADDR(${g.styp(typ)}, ')
 				defer {
 					g.write(')')
 				}
@@ -171,19 +167,19 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('&')
 			}
 		} else if is_ptr && typ.has_flag(.option) {
-			g.write('*(${g.typ(typ)}*)&')
+			g.write('*(${g.styp(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
 			if sym.is_c_struct() {
 				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 			} else {
-				g.write('*'.repeat(typ.nr_muls()))
+				g.write('*'.repeat(etype.nr_muls()))
 			}
 		} else if sym.is_c_struct() {
 			g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
-				s := g.typ(expr.typ)
+				s := g.styp(expr.typ)
 				if !expr.has_index {
 					g.write('(${s})')
 				}
@@ -207,12 +203,26 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('}}}))')
 		}
 	} else {
-		is_ptr := typ.is_ptr()
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
 		if sym.kind != .function {
-			if str_method_expects_ptr && !is_ptr {
+			unwrap_option := expr is ast.Ident && expr.or_expr.kind == .propagate_option
+			exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
+			temp_var_needed := expr is ast.CallExpr
+				&& (expr.return_type.is_ptr() || g.table.sym(expr.return_type).is_c_struct())
+			mut tmp_var := ''
+			if temp_var_needed {
+				tmp_var = g.new_tmp_var()
+				ret_typ := g.styp(exp_typ)
+				line := g.go_before_last_stmt().trim_space()
+				g.empty_line = true
+				g.write('${ret_typ} ${tmp_var} = ')
+				g.expr(expr)
+				g.writeln(';')
+				g.write(line)
+			}
+			if str_method_expects_ptr && !is_ptr && !typ.has_flag(.option) {
 				g.write('&')
 			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 				g.write('*')
@@ -221,7 +231,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 					g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 				}
 			}
-			g.expr_with_cast(expr, typ, typ)
+			if temp_var_needed {
+				g.write(tmp_var)
+			} else {
+				g.expr_with_cast(expr, typ, typ)
+			}
 		} else if typ.has_flag(.option) {
 			// only Option fn receive argument
 			g.expr_with_cast(expr, typ, typ)

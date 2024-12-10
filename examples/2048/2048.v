@@ -1,7 +1,7 @@
 import gg
 import gx
 import math
-import os
+import os.asset
 import rand
 import time
 
@@ -18,7 +18,7 @@ mut:
 	state       GameState  = .play
 	tile_format TileFormat = .normal
 	moves       int
-	//
+
 	is_ai_mode bool
 	ai_fpm     u64 = 8
 }
@@ -48,12 +48,12 @@ struct Theme {
 
 const themes = [
 	&Theme{
-		bg_color: gx.rgb(250, 248, 239)
-		padding_color: gx.rgb(143, 130, 119)
-		victory_color: gx.rgb(100, 160, 100)
+		bg_color:        gx.rgb(250, 248, 239)
+		padding_color:   gx.rgb(143, 130, 119)
+		victory_color:   gx.rgb(100, 160, 100)
 		game_over_color: gx.rgb(190, 50, 50)
-		text_color: gx.black
-		tile_colors: [
+		text_color:      gx.black
+		tile_colors:     [
 			gx.rgb(205, 193, 180), // Empty / 0 tile
 			gx.rgb(238, 228, 218), // 2
 			gx.rgb(237, 224, 200), // 4
@@ -69,12 +69,12 @@ const themes = [
 		]
 	},
 	&Theme{
-		bg_color: gx.rgb(55, 55, 55)
-		padding_color: gx.rgb(68, 60, 59)
-		victory_color: gx.rgb(100, 160, 100)
+		bg_color:        gx.rgb(55, 55, 55)
+		padding_color:   gx.rgb(68, 60, 59)
+		victory_color:   gx.rgb(100, 160, 100)
 		game_over_color: gx.rgb(190, 50, 50)
-		text_color: gx.white
-		tile_colors: [
+		text_color:      gx.white
+		tile_colors:     [
 			gx.rgb(123, 115, 108),
 			gx.rgb(142, 136, 130),
 			gx.rgb(142, 134, 120),
@@ -90,12 +90,12 @@ const themes = [
 		]
 	},
 	&Theme{
-		bg_color: gx.rgb(38, 38, 66)
-		padding_color: gx.rgb(58, 50, 74)
-		victory_color: gx.rgb(100, 160, 100)
+		bg_color:        gx.rgb(38, 38, 66)
+		padding_color:   gx.rgb(58, 50, 74)
+		victory_color:   gx.rgb(100, 160, 100)
 		game_over_color: gx.rgb(190, 50, 50)
-		text_color: gx.white
-		tile_colors: [
+		text_color:      gx.white
+		tile_colors:     [
 			gx.rgb(92, 86, 140),
 			gx.rgb(106, 99, 169),
 			gx.rgb(106, 97, 156),
@@ -162,8 +162,8 @@ enum TileFormat {
 	log
 	exponent
 	shifts
-	none_
-	end_ // To know when to wrap around
+	none
+	end // To know when to wrap around
 }
 
 enum GameState {
@@ -489,56 +489,56 @@ fn (app &App) label_format(kind LabelKind) gx.TextCfg {
 	match kind {
 		.keys {
 			return gx.TextCfg{
-				color: gx.Color{150, 150, 255, 200}
-				align: .center
+				color:          gx.Color{150, 150, 255, 200}
+				align:          .center
 				vertical_align: .bottom
-				size: app.ui.font_size / 4
+				size:           app.ui.font_size / 4
 			}
 		}
 		.points {
 			return gx.TextCfg{
 				color: if app.state in [.over, .victory] { gx.white } else { app.theme.text_color }
 				align: .left
-				size: app.ui.font_size / 2
+				size:  app.ui.font_size / 2
 			}
 		}
 		.moves {
 			return gx.TextCfg{
 				color: if app.state in [.over, .victory] { gx.white } else { app.theme.text_color }
 				align: .right
-				size: app.ui.font_size / 2
+				size:  app.ui.font_size / 2
 			}
 		}
 		.tile {
 			return gx.TextCfg{
-				color: app.theme.text_color
-				align: .center
+				color:          app.theme.text_color
+				align:          .center
 				vertical_align: .middle
-				size: app.ui.font_size
+				size:           app.ui.font_size
 			}
 		}
 		.victory {
 			return gx.TextCfg{
-				color: app.theme.victory_color
-				align: .center
+				color:          app.theme.victory_color
+				align:          .center
 				vertical_align: .middle
-				size: app.ui.font_size * 2
+				size:           app.ui.font_size * 2
 			}
 		}
 		.game_over {
 			return gx.TextCfg{
-				color: app.theme.game_over_color
-				align: .center
+				color:          app.theme.game_over_color
+				align:          .center
 				vertical_align: .middle
-				size: app.ui.font_size * 2
+				size:           app.ui.font_size * 2
 			}
 		}
 		.score_end {
 			return gx.TextCfg{
-				color: gx.white
-				align: .center
+				color:          gx.white
+				align:          .center
 				vertical_align: .middle
-				size: app.ui.font_size * 3 / 4
+				size:           app.ui.font_size * 3 / 4
 			}
 		}
 	}
@@ -597,7 +597,7 @@ fn (app &App) draw() {
 		app.gg.draw_text(ww / 2, (m * 6 / 10) + ypad, msg, gx.TextCfg{
 			...f
 			color: gx.white
-			size: f.size * 3 / 4
+			size:  f.size * 3 / 4
 		})
 	}
 	if app.state == .victory {
@@ -660,7 +660,7 @@ fn (app &App) draw_tiles() {
 						app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
 							'${tidx}', gx.TextCfg{
 							...fmt
-							size: fs2
+							size:  fs2
 							align: gx.HorizontalAlign.left
 						})
 					}
@@ -671,8 +671,8 @@ fn (app &App) draw_tiles() {
 							size: fs2
 						})
 					}
-					.none_ {} // Don't draw any text here, colors only
-					.end_ {} // Should never get here
+					.none {} // Don't draw any text here, colors only
+					.end {} // Should never get here
 				}
 			}
 		}
@@ -767,7 +767,7 @@ fn (mut app App) next_theme() {
 @[inline]
 fn (mut app App) next_tile_format() {
 	app.tile_format = unsafe { TileFormat(int(app.tile_format) + 1) }
-	if app.tile_format == .end_ {
+	if app.tile_format == .end {
 		app.tile_format = .normal
 	}
 }
@@ -827,7 +827,7 @@ fn on_event(e &gg.Event, mut app App) {
 			if e.num_touches > 0 {
 				t := e.touches[0]
 				app.touch.start = Touch{
-					pos: Pos{
+					pos:  Pos{
 						x: int(t.pos_x / app.ui.dpi_scale)
 						y: int(t.pos_y / app.ui.dpi_scale)
 					}
@@ -839,7 +839,7 @@ fn on_event(e &gg.Event, mut app App) {
 			if e.num_touches > 0 {
 				t := e.touches[0]
 				app.touch.end = Touch{
-					pos: Pos{
+					pos:  Pos{
 						x: int(t.pos_x / app.ui.dpi_scale)
 						y: int(t.pos_y / app.ui.dpi_scale)
 					}
@@ -850,7 +850,7 @@ fn on_event(e &gg.Event, mut app App) {
 		}
 		.mouse_down {
 			app.touch.start = Touch{
-				pos: Pos{
+				pos:  Pos{
 					x: int(e.mouse_x / app.ui.dpi_scale)
 					y: int(e.mouse_y / app.ui.dpi_scale)
 				}
@@ -859,7 +859,7 @@ fn on_event(e &gg.Event, mut app App) {
 		}
 		.mouse_up {
 			app.touch.end = Touch{
-				pos: Pos{
+				pos:  Pos{
 					x: int(e.mouse_x / app.ui.dpi_scale)
 					y: int(e.mouse_y / app.ui.dpi_scale)
 				}
@@ -882,6 +882,10 @@ fn frame(mut app App) {
 	if app.gg.frame % 120 == 0 {
 		// do GC once per 2 seconds
 		// eprintln('> gc_memory_use: ${gc_memory_use()}')
+		if gc_is_enabled() {
+			// Avoid assert error when built with `-cg` on some systems
+			gc_disable()
+		}
 		gc_enable()
 		gc_collect()
 		gc_disable()
@@ -895,21 +899,17 @@ fn init(mut app App) {
 fn main() {
 	mut app := &App{}
 	app.new_game()
-	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	$if android {
-		font_path = 'fonts/RobotoMono-Regular.ttf'
-	}
 	app.gg = gg.new_context(
-		bg_color: app.theme.bg_color
-		width: default_window_width
-		height: default_window_height
+		bg_color:     app.theme.bg_color
+		width:        default_window_width
+		height:       default_window_height
 		sample_count: 2 // higher quality curves
 		window_title: 'V 2048'
-		frame_fn: frame
-		event_fn: on_event
-		init_fn: init
-		user_data: app
-		font_path: font_path
+		frame_fn:     frame
+		event_fn:     on_event
+		init_fn:      init
+		user_data:    app
+		font_path:    asset.get_path('../assets', 'fonts/RobotoMono-Regular.ttf')
 	)
 	app.gg.run()
 }

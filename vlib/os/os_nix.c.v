@@ -125,8 +125,8 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 	}
 	for file in files {
 		mut fpath := file
-		f := if file.contains(os.path_separator) {
-			pathwalk := file.split(os.path_separator)
+		f := if file.contains(path_separator) {
+			pathwalk := file.split(path_separator)
 			pathwalk[pathwalk.len - 1]
 		} else {
 			fpath = if dir == '.' { file } else { '${dir}/${file}' }
@@ -160,7 +160,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 			if is_dir(fpath) {
 				subdirs << fpath
 				if next_pattern == pattern && next_pattern != '' {
-					matches << '${fpath}${os.path_separator}'
+					matches << '${fpath}${path_separator}'
 				}
 			} else {
 				matches << fpath
@@ -171,8 +171,8 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 }
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
-	steps := pattern.split(os.path_separator)
-	cwd := if pattern.starts_with(os.path_separator) { os.path_separator } else { '.' }
+	steps := pattern.split(path_separator)
+	cwd := if pattern.starts_with(path_separator) { path_separator } else { '.' }
 	mut subdirs := [cwd]
 	for i := 0; i < steps.len; i++ {
 		step := steps[i]
@@ -180,7 +180,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 		if step == '' {
 			continue
 		}
-		if is_dir('${cwd}${os.path_separator}${step}') {
+		if is_dir('${cwd}${path_separator}${step}') {
 			dd := if cwd == '/' {
 				step
 			} else {
@@ -295,6 +295,7 @@ fn init_os_args(argc int, argv &&u8) []string {
 //     }
 //   }
 // ```
+@[manualfree]
 pub fn ls(path string) ![]string {
 	if path == '' {
 		return error('ls() expects a folder, not an empty string')
@@ -347,7 +348,7 @@ pub fn execute(cmd string) Result {
 	if isnil(f) {
 		return Result{
 			exit_code: -1
-			output: 'exec("${cmd}") failed'
+			output:    'exec("${cmd}") failed'
 		}
 	}
 	fd := fileno(f)
@@ -370,7 +371,7 @@ pub fn execute(cmd string) Result {
 	exit_code := vpclose(f)
 	return Result{
 		exit_code: exit_code
-		output: soutput
+		output:    soutput
 	}
 }
 

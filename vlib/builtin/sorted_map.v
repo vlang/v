@@ -38,8 +38,8 @@ mut:
 fn new_sorted_map(n int, value_bytes int) SortedMap { // TODO: Remove `n`
 	return SortedMap{
 		value_bytes: value_bytes
-		root: new_node()
-		len: 0
+		root:        new_node()
+		len:         0
 	}
 }
 
@@ -59,7 +59,7 @@ fn new_sorted_map_init(n int, value_bytes int, keys &string, values voidptr) Sor
 fn new_node() &mapnode {
 	return &mapnode{
 		children: unsafe { nil }
-		len: 0
+		len:      0
 	}
 }
 

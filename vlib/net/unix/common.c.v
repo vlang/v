@@ -29,7 +29,7 @@ pub fn shutdown(handle int, config net.ShutdownConfig) int {
 }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
-fn @select(handle int, test Select, timeout time.Duration) !bool {
+fn select(handle int, test Select, timeout time.Duration) !bool {
 	set := C.fd_set{}
 
 	C.FD_ZERO(&set)
@@ -39,7 +39,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 	microseconds := time.Duration(timeout - (seconds * time.second)).microseconds()
 
 	mut tt := C.timeval{
-		tv_sec: u64(seconds)
+		tv_sec:  u64(seconds)
 		tv_usec: u64(microseconds)
 	}
 
@@ -47,19 +47,19 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 
 	// infinite timeout is signaled by passing null as the timeout to
 	// select
-	if timeout == unix.infinite_timeout {
+	if timeout == infinite_timeout {
 		timeval_timeout = &C.timeval(unsafe { nil })
 	}
 
 	match test {
 		.read {
-			net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
+			net.socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
 		}
 		.write {
-			net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
+			net.socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
 		}
 		.except {
-			net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
+			net.socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
 		}
 	}
 
@@ -72,7 +72,7 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	infinite := deadline.unix() == 0
 	for infinite || time.now() <= deadline {
 		timeout := if infinite { net.infinite_timeout } else { deadline - time.now() }
-		ready := @select(handle, test, timeout) or {
+		ready := select(handle, test, timeout) or {
 			if err.code() == 4 {
 				// Spurious wakeup from signal, keep waiting
 				continue

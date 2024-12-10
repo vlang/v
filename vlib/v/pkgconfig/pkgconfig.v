@@ -3,6 +3,8 @@ module pkgconfig
 import semver
 import os
 
+const version = '0.3.4'
+
 const default_paths = [
 	'/usr/local/lib/x86_64-linux-gnu/pkgconfig',
 	'/usr/local/lib64/pkgconfig',
@@ -14,11 +16,13 @@ const default_paths = [
 	'/usr/lib/pkgconfig',
 	'/usr/share/pkgconfig',
 	'/opt/homebrew/lib/pkgconfig', // Brew on macOS
+	'/opt/homebrew/share/pkgconfig', // Brew on macOS. Needed for fish.pc, eigen3.pc, applewmproto.pc, fontsproto.pc, xextproto.pc, SPIRV-Headers.pc etc; seems like a legacy folder.
+	'/opt/homebrew/Library/Homebrew/os/mac/pkgconfig/11', // Brew on macOS. Needed for zlib.pc, libcurl.pc, expat.pc and a few others; all the rest are symlinked in /opt/homebrew/lib/pkgconfig .
 	'/usr/local/libdata/pkgconfig', // FreeBSD
 	'/usr/libdata/pkgconfig', // FreeBSD
 	'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
+	'/data/data/com.termux/files/usr/lib/pkgconfig', // Termux
 ]
-const version = '0.3.3'
 
 pub struct Options {
 pub:
@@ -31,6 +35,7 @@ pub:
 
 pub struct PkgConfig {
 pub mut:
+	file_path        string
 	options          Options
 	name             string
 	modname          string
@@ -92,6 +97,7 @@ fn (mut pc PkgConfig) setvar(line string) {
 }
 
 fn (mut pc PkgConfig) parse(file string) bool {
+	pc.file_path = file
 	data := os.read_file(file) or { return false }
 	if pc.options.debug {
 		eprintln(data)
@@ -105,7 +111,8 @@ fn (mut pc PkgConfig) parse(file string) bool {
 			}
 		}
 	} else {
-		for line in lines {
+		for oline in lines {
+			line := oline.trim_space()
 			if line.starts_with('#') {
 				continue
 			}
@@ -159,7 +166,7 @@ fn (mut pc PkgConfig) resolve(pkgname string) !string {
 }
 
 pub fn atleast(v string) bool {
-	v0 := semver.from(pkgconfig.version) or { return false }
+	v0 := semver.from(version) or { return false }
 	v1 := semver.from(v) or { return false }
 	return v0 > v1
 }
@@ -204,7 +211,7 @@ fn (mut pc PkgConfig) load_require(dep string) ! {
 	}
 	pc.loaded << dep
 	mut pcdep := PkgConfig{
-		paths: pc.paths
+		paths:  pc.paths
 		loaded: pc.loaded
 	}
 	depfile := pcdep.resolve(dep) or {
@@ -250,7 +257,7 @@ fn (mut pc PkgConfig) load_paths() {
 		}
 	} else {
 		if pc.options.use_default_paths {
-			for path in pkgconfig.default_paths {
+			for path in default_paths {
 				pc.add_path(path)
 			}
 		}

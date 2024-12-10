@@ -45,9 +45,9 @@ pub enum Kind {
 @[inline]
 pub fn (tok &Token) pos() Pos {
 	return Pos{
-		len: tok.len
+		len:     tok.len
 		line_nr: tok.line_nr - 1
-		pos: tok.pos
-		col: tok.col - 1
+		pos:     tok.pos
+		col:     tok.col - 1
 	}
 }

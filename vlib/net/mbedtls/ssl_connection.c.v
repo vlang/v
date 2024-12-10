@@ -8,26 +8,102 @@ const ctr_drbg = C.mbedtls_ctr_drbg_context{}
 
 const entropy = C.mbedtls_entropy_context{}
 
+const mbedtls_client_read_timeout_ms = $d('mbedtls_client_read_timeout_ms', 550)
+const mbedtls_server_read_timeout_ms = $d('mbedtls_server_read_timeout_ms', 41_000)
+
 fn init() {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
 	unsafe { // Unsafe is needed for taking an address of const
-		C.mbedtls_ctr_drbg_init(&mbedtls.ctr_drbg)
-		C.mbedtls_entropy_init(&mbedtls.entropy)
-		ret := C.mbedtls_ctr_drbg_seed(&mbedtls.ctr_drbg, C.mbedtls_entropy_func, &mbedtls.entropy,
-			0, 0)
+		C.mbedtls_ctr_drbg_init(&ctr_drbg)
+		C.mbedtls_entropy_init(&entropy)
+		ret := C.mbedtls_ctr_drbg_seed(&ctr_drbg, C.mbedtls_entropy_func, &entropy, 0,
+			0)
 		if ret != 0 {
-			C.mbedtls_ctr_drbg_free(&mbedtls.ctr_drbg)
+			C.mbedtls_ctr_drbg_free(&ctr_drbg)
 			panic('Failed to seed ssl context: ${ret}')
 		}
+		// C.mbedtls_debug_set_threshold(5)
 	}
 }
 
-struct SSLCerts {
+// SSLCerts represents a pair of CA and client certificates + key
+pub struct SSLCerts {
+pub mut:
 	cacert      C.mbedtls_x509_crt
 	client_cert C.mbedtls_x509_crt
 	client_key  C.mbedtls_pk_context
+}
+
+// new_sslcerts initializes and returns a pair of SSL certificates and key
+pub fn new_sslcerts() &SSLCerts {
+	mut certs := SSLCerts{}
+	C.mbedtls_x509_crt_init(&certs.cacert)
+	C.mbedtls_x509_crt_init(&certs.client_cert)
+	C.mbedtls_pk_init(&certs.client_key)
+	return &certs
+}
+
+// new_sslcerts_in_memory creates a pair of SSL certificates, given their contents (not paths).
+pub fn new_sslcerts_in_memory(verify string, cert string, cert_key string) !&SSLCerts {
+	mut certs := new_sslcerts()
+	if verify != '' {
+		ret := C.mbedtls_x509_crt_parse(&certs.cacert, verify.str, verify.len + 1)
+		if ret != 0 {
+			return error_with_code('mbedtls_x509_crt_parse error', ret)
+		}
+	}
+	if cert != '' {
+		ret := C.mbedtls_x509_crt_parse(&certs.client_cert, cert.str, cert.len + 1)
+		if ret != 0 {
+			return error_with_code('mbedtls_x509_crt_parse error', ret)
+		}
+	}
+	if cert_key != '' {
+		unsafe {
+			ret := C.mbedtls_pk_parse_key(&certs.client_key, cert_key.str, cert_key.len + 1,
+				0, 0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+			if ret != 0 {
+				return error_with_code('v error', ret)
+			}
+		}
+	}
+	return certs
+}
+
+// new_sslcerts_from_file creates a new pair of SSL certificates, given their paths on the filesystem.
+pub fn new_sslcerts_from_file(verify string, cert string, cert_key string) !&SSLCerts {
+	mut certs := new_sslcerts()
+	if verify != '' {
+		ret := C.mbedtls_x509_crt_parse_file(&certs.cacert, &char(verify.str))
+		if ret != 0 {
+			return error_with_code('mbedtls_x509_crt_parse error', ret)
+		}
+	}
+	if cert != '' {
+		ret := C.mbedtls_x509_crt_parse_file(&certs.client_cert, &char(cert.str))
+		if ret != 0 {
+			return error_with_code('mbedtls_x509_crt_parse error', ret)
+		}
+	}
+	if cert_key != '' {
+		unsafe {
+			ret := C.mbedtls_pk_parse_keyfile(&certs.client_key, &char(cert_key.str),
+				0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+			if ret != 0 {
+				return error_with_code('v error', ret)
+			}
+		}
+	}
+	return certs
+}
+
+// cleanup frees the SSL certificates
+pub fn (mut c SSLCerts) cleanup() {
+	C.mbedtls_x509_crt_free(&c.cacert)
+	C.mbedtls_x509_crt_free(&c.client_cert)
+	C.mbedtls_pk_free(&c.client_key)
 }
 
 // SSLConn is the current connection
@@ -42,6 +118,7 @@ pub mut:
 	handle    int
 	duration  time.Duration
 	opened    bool
+	ip        string
 
 	owns_socket bool
 }
@@ -63,7 +140,7 @@ mut:
 // create a new SSLListener binding to `saddr`
 pub fn new_ssl_listener(saddr string, config SSLConnectConfig) !&SSLListener {
 	mut listener := &SSLListener{
-		saddr: saddr
+		saddr:  saddr
 		config: config
 	}
 	listener.init()!
@@ -77,9 +154,7 @@ pub fn (mut l SSLListener) shutdown() ! {
 		eprintln(@METHOD)
 	}
 	if unsafe { l.certs != nil } {
-		C.mbedtls_x509_crt_free(&l.certs.cacert)
-		C.mbedtls_x509_crt_free(&l.certs.client_cert)
-		C.mbedtls_pk_free(&l.certs.client_key)
+		l.certs.cleanup()
 	}
 	C.mbedtls_ssl_free(&l.ssl)
 	C.mbedtls_ssl_config_free(&l.conf)
@@ -104,39 +179,27 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_net_init(&l.server_fd)
 	C.mbedtls_ssl_init(&l.ssl)
 	C.mbedtls_ssl_config_init(&l.conf)
+	$if trace_mbedtls_timeouts ? {
+		dump(mbedtls_server_read_timeout_ms)
+	}
+	C.mbedtls_ssl_conf_read_timeout(&l.conf, mbedtls_server_read_timeout_ms)
 	l.certs = &SSLCerts{}
 	C.mbedtls_x509_crt_init(&l.certs.client_cert)
 	C.mbedtls_pk_init(&l.certs.client_key)
 
 	unsafe {
-		C.mbedtls_ssl_conf_rng(&l.conf, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+		C.mbedtls_ssl_conf_rng(&l.conf, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 	}
 
 	mut ret := 0
 
 	if l.config.in_memory_verification {
-		if l.config.verify != '' {
-			ret = C.mbedtls_x509_crt_parse(&l.certs.cacert, l.config.verify.str,
-				l.config.verify.len + 1)
-		}
-		if l.config.cert != '' {
-			ret = C.mbedtls_x509_crt_parse(&l.certs.client_cert, l.config.cert.str,
-				l.config.cert.len + 1)
-		}
-		if l.config.cert_key != '' {
-			unsafe {
-				ret = C.mbedtls_pk_parse_key(&l.certs.client_key, l.config.cert_key.str,
-					l.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
-			}
+		l.certs = new_sslcerts_in_memory(l.config.verify, l.config.cert, l.config.cert_key) or {
+			return error('Cert failure')
 		}
 	} else {
-		if l.config.verify != '' {
-			ret = C.mbedtls_x509_crt_parse_file(&l.certs.cacert, &char(l.config.verify.str))
-		}
-		ret = C.mbedtls_x509_crt_parse_file(&l.certs.client_cert, &char(l.config.cert.str))
-		unsafe {
-			ret = C.mbedtls_pk_parse_keyfile(&l.certs.client_key, &char(l.config.cert_key.str),
-				0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+		l.certs = new_sslcerts_from_file(l.config.verify, l.config.cert, l.config.cert_key) or {
+			return error('Cert failure')
 		}
 	}
 
@@ -174,6 +237,25 @@ fn (mut l SSLListener) init() ! {
 	if ret != 0 {
 		return error_with_code("can't setup ssl", ret)
 	}
+
+	if get_cert_callback := l.config.get_certificate {
+		l.init_sni(get_cert_callback)
+	}
+}
+
+// setup SNI callback
+fn (mut l SSLListener) init_sni(get_cert_callback fn (mut SSLListener, string) !&SSLCerts) {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
+	C.mbedtls_ssl_conf_sni(&l.conf, fn [get_cert_callback, mut l] (p_info voidptr, ssl &C.mbedtls_ssl_context, name &char, lng int) int {
+		host := unsafe { name.vstring_literal_with_len(lng) }
+		if certs := get_cert_callback(mut l, host) {
+			return C.mbedtls_ssl_set_hs_own_cert(ssl, &certs.client_cert, &certs.client_key)
+		} else {
+			return -1
+		}
+	}, &l.conf)
 }
 
 // accepts a new connection and returns a SSLConn of the connected client
@@ -183,14 +265,18 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 		opened: true
 	}
 
-	// TODO: save the client's IP address somewhere (maybe add a field to SSLConn ?)
-	mut ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, unsafe { nil }, 0,
-		unsafe { nil })
+	ip := [16]u8{}
+	iplen := usize(0)
+
+	mut ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, &ip, 16, &iplen)
 	if ret != 0 {
 		return error_with_code("can't accept connection", ret)
 	}
 	conn.handle = conn.server_fd.fd
 	conn.owns_socket = true
+	if iplen == 4 {
+		conn.ip = '${ip[0]}.${ip[1]}.${ip[2]}.${ip[3]}'
+	}
 
 	C.mbedtls_ssl_init(&conn.ssl)
 	C.mbedtls_ssl_config_init(&conn.conf)
@@ -206,6 +292,11 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	ret = C.mbedtls_ssl_handshake(&conn.ssl)
 	for ret != 0 {
 		if ret != C.MBEDTLS_ERR_SSL_WANT_READ && ret != C.MBEDTLS_ERR_SSL_WANT_WRITE {
+			conn.shutdown() or {
+				$if trace_ssl ? {
+					eprintln('${@METHOD} shutdown ---> res: ${err}')
+				}
+			}
 			return error_with_code('SSL handshake failed', ret)
 		}
 		ret = C.mbedtls_ssl_handshake(&conn.ssl)
@@ -223,6 +314,8 @@ pub:
 	validate bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
 
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
+
+	get_certificate ?fn (mut SSLListener, string) !&SSLCerts
 }
 
 // new_ssl_conn returns a new SSLConn with the given config.
@@ -278,16 +371,19 @@ fn (mut s SSLConn) init() ! {
 	C.mbedtls_net_init(&s.server_fd)
 	C.mbedtls_ssl_init(&s.ssl)
 	C.mbedtls_ssl_config_init(&s.conf)
-
 	mut ret := 0
 	ret = C.mbedtls_ssl_config_defaults(&s.conf, C.MBEDTLS_SSL_IS_CLIENT, C.MBEDTLS_SSL_TRANSPORT_STREAM,
 		C.MBEDTLS_SSL_PRESET_DEFAULT)
 	if ret != 0 {
 		return error_with_code('Failed to set SSL configuration', ret)
 	}
+	$if trace_mbedtls_timeouts ? {
+		dump(mbedtls_client_read_timeout_ms)
+	}
+	C.mbedtls_ssl_conf_read_timeout(&s.conf, mbedtls_client_read_timeout_ms)
 
 	unsafe {
-		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 	}
 
 	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' {
@@ -309,7 +405,7 @@ fn (mut s SSLConn) init() ! {
 		if s.config.cert_key != '' {
 			unsafe {
 				ret = C.mbedtls_pk_parse_key(&s.certs.client_key, s.config.cert_key.str,
-					s.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+					s.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 			}
 		}
 	} else {
@@ -322,7 +418,7 @@ fn (mut s SSLConn) init() ! {
 		if s.config.cert_key != '' {
 			unsafe {
 				ret = C.mbedtls_pk_parse_keyfile(&s.certs.client_key, &char(s.config.cert_key.str),
-					0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+					0, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 			}
 		}
 	}
@@ -544,7 +640,7 @@ pub fn (mut s SSLConn) write_string(str string) !int {
 }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
-fn @select(handle int, test Select, timeout time.Duration) !bool {
+fn select(handle int, test Select, timeout time.Duration) !bool {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')
 	}
@@ -559,7 +655,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 		microseconds := (remaining_time % 1000) * 1000
 
 		tt := C.timeval{
-			tv_sec: u64(seconds)
+			tv_sec:  u64(seconds)
 			tv_usec: u64(microseconds)
 		}
 		timeval_timeout := if timeout < 0 {
@@ -571,13 +667,13 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 		mut res := -1
 		match test {
 			.read {
-				res = net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
+				res = net.socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
 			}
 			.write {
-				res = net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
+				res = net.socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
 			}
 			.except {
-				res = net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
+				res = net.socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
 			}
 		}
 		if res < 0 {
@@ -603,7 +699,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 
 // wait_for wraps the common wait code
 fn wait_for(handle int, what Select, timeout time.Duration) ! {
-	ready := @select(handle, what, timeout)!
+	ready := select(handle, what, timeout)!
 	if ready {
 		return
 	}

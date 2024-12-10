@@ -4,11 +4,11 @@
 module debug
 
 import os
-import math
 import readline
 import strings
 import term
 
+@[markused]
 __global g_debugger = Debugger{}
 
 // Debugger holds the V debug information for REPL
@@ -156,8 +156,8 @@ fn (mut d Debugger) parse_input(input string, is_ctrl bool) (string, string) {
 fn (mut d Debugger) print_context_lines(path string, line int, lines int) ! {
 	file_content := os.read_file(path)!
 	chunks := file_content.split('\n')
-	offset := math.max(line - lines, 1)
-	for n, s in chunks[offset - 1..math.min(chunks.len, line + lines)] {
+	offset := int_max(line - lines, 1)
+	for n, s in chunks[offset - 1..int_min(chunks.len, line + lines)] {
 		ind := if n + offset == line { '>' } else { ' ' }
 		flush_println('${n + offset:04}${ind} ${s}')
 	}

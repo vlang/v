@@ -167,18 +167,18 @@ fn (mut a App) draw_menu() {
 	y025 := int(f32(a.height) * 0.25)
 	y075 := int(f32(a.height) * 0.75)
 	cy := int(f32(a.height) * 0.5)
-	//
+
 	a.tui.set_color(white)
 	a.tui.bold()
 	a.tui.draw_text(cx - 2, y025, 'VONG')
 	a.tui.reset()
 	a.tui.draw_text(cx - 13, y025 + 1, '(A game of Pong written in V)')
-	//
+
 	a.tui.set_color(white)
 	a.tui.bold()
 	a.tui.draw_text(cx - 3, cy + 1, 'START')
 	a.tui.reset()
-	//
+
 	a.tui.draw_text(cx - 9, y075 + 1, 'Press SPACE to start')
 	a.tui.reset()
 	a.tui.draw_text(cx - 5, y075 + 3, 'ESC to Quit')
@@ -491,15 +491,15 @@ type CleanupFn = fn (voidptr)
 fn main() {
 	mut app := &App{}
 	app.tui = ui.init(
-		user_data: app
-		init_fn: InitFn(init)
-		frame_fn: FrameFn(frame)
-		cleanup_fn: CleanupFn(cleanup)
-		event_fn: EventFn(event)
-		fail_fn: fail
+		user_data:      app
+		init_fn:        InitFn(init)
+		frame_fn:       FrameFn(frame)
+		cleanup_fn:     CleanupFn(cleanup)
+		event_fn:       EventFn(event)
+		fail_fn:        fail
 		capture_events: true
-		hide_cursor: true
-		frame_rate: 60
+		hide_cursor:    true
+		frame_rate:     60
 	)
 	app.tui.run()!
 }

@@ -1,5 +1,6 @@
 import os
 
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 const vexe = os.getenv('VEXE')

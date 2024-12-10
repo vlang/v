@@ -109,6 +109,10 @@ fn (mut c Arm64) sub_sp(v i32) {
 }
 
 pub fn (mut c Arm64) fn_decl(node ast.FnDecl) {
+	if node.attrs.contains('flag_enum_fn') {
+		// TODO: remove, when the native backend can process all flagged enum generated functions
+		return
+	}
 	c.g.gen_arm64_helloworld()
 	/*
 	0x100003f6c      ff8300d1       sub sp, sp, 0x20           ; [00] -r-x section size 52 named 0.__TEXT.__text

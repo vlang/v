@@ -3,10 +3,10 @@ module json2
 import time
 
 const fixed_time = time.new(
-	year: 2022
-	month: 3
-	day: 11
-	hour: 13
+	year:   2022
+	month:  3
+	day:    11
+	hour:   13
 	minute: 54
 	second: 25
 )
@@ -82,7 +82,7 @@ fn test_types() {
 
 	count_test(StructType[time.Time]{})
 
-	count_test(StructType[time.Time]{ val: json2.fixed_time })
+	count_test(StructType[time.Time]{ val: fixed_time })
 
 	count_test(StructType[StructType[int]]{
 		val: StructType[int]{

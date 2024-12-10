@@ -152,3 +152,5 @@ vlib/v/tests/*.js
 # ignore .NET7.0 Assembly Files
 bench/vectors/bin
 bench/vectors/obj
+
+autofuzz.log

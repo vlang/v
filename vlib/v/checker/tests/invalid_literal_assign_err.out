@@ -47,12 +47,25 @@ vlib/v/checker/tests/invalid_literal_assign_err.vv:10:2: error: non-name literal
       |     ~~~~
    11 |     3 + 5 = 3 & 4
    12 |     (3 + 3.5) = 4 + 6.4
+vlib/v/checker/tests/invalid_literal_assign_err.vv:11:4: error: cannot use infix expression on the left side of `=`
+    9 |     Foo{} = Foo{}
+   10 |     true = false
+   11 |     3 + 5 = 3 & 4
+      |       ^
+   12 |     (3 + 3.5) = 4 + 6.4
+   13 | }
 vlib/v/checker/tests/invalid_literal_assign_err.vv:11:2: error: non-name literal value `3 + 5` on left side of `=`
     9 |     Foo{} = Foo{}
    10 |     true = false
    11 |     3 + 5 = 3 & 4
       |     ~~~~~
    12 |     (3 + 3.5) = 4 + 6.4
+   13 | }
+vlib/v/checker/tests/invalid_literal_assign_err.vv:12:5: error: cannot use infix expression on the left side of `=`
+   10 |     true = false
+   11 |     3 + 5 = 3 & 4
+   12 |     (3 + 3.5) = 4 + 6.4
+      |        ^
    13 | }
 vlib/v/checker/tests/invalid_literal_assign_err.vv:12:3: error: non-name literal value `3 + 3.5` on left side of `=`
    10 |     true = false

@@ -44,7 +44,7 @@ pub fn new_scalar() Scalar {
 // add sets s = x + y mod l, and returns s.
 pub fn (mut s Scalar) add(x Scalar, y Scalar) Scalar {
 	// s = 1 * x + y mod l
-	sc_mul_add(mut s.s, edwards25519.sc_one.s, x.s, y.s)
+	sc_mul_add(mut s.s, sc_one.s, x.s, y.s)
 	return s
 }
 
@@ -57,21 +57,21 @@ pub fn (mut s Scalar) multiply_add(x Scalar, y Scalar, z Scalar) Scalar {
 // subtract sets s = x - y mod l, and returns s.
 pub fn (mut s Scalar) subtract(x Scalar, y Scalar) Scalar {
 	// s = -1 * y + x mod l
-	sc_mul_add(mut s.s, edwards25519.sc_minus_one.s, y.s, x.s)
+	sc_mul_add(mut s.s, sc_minus_one.s, y.s, x.s)
 	return s
 }
 
 // negate sets s = -x mod l, and returns s.
 pub fn (mut s Scalar) negate(x Scalar) Scalar {
 	// s = -1 * x + 0 mod l
-	sc_mul_add(mut s.s, edwards25519.sc_minus_one.s, x.s, edwards25519.sc_zero.s)
+	sc_mul_add(mut s.s, sc_minus_one.s, x.s, sc_zero.s)
 	return s
 }
 
 // multiply sets s = x * y mod l, and returns s.
 pub fn (mut s Scalar) multiply(x Scalar, y Scalar) Scalar {
 	// s = x * y + 0 mod l
-	sc_mul_add(mut s.s, x.s, y.s, edwards25519.sc_zero.s)
+	sc_mul_add(mut s.s, x.s, y.s, sc_zero.s)
 	return s
 }
 
@@ -121,10 +121,10 @@ pub fn (mut s Scalar) set_canonical_bytes(x []u8) !Scalar {
 // is_reduced returns whether the given scalar is reduced modulo l.
 fn is_reduced(s Scalar) bool {
 	for i := s.s.len - 1; i >= 0; i-- {
-		if s.s[i] > edwards25519.sc_minus_one.s[i] {
+		if s.s[i] > sc_minus_one.s[i] {
 			return false
 		}
-		if s.s[i] < edwards25519.sc_minus_one.s[i] {
+		if s.s[i] < sc_minus_one.s[i] {
 			return true
 		}
 		/*
@@ -1096,7 +1096,7 @@ fn generate_scalar(size int) !Scalar {
 	}
 	return reflect.ValueOf(s)
 	*/
-	mut s := edwards25519.sc_zero
+	mut s := sc_zero
 	diceroll := rand.intn(100) or { 0 }
 	match true {
 		/*
@@ -1104,10 +1104,10 @@ fn generate_scalar(size int) !Scalar {
 			case diceroll == 1:
 		*/
 		diceroll == 0 || diceroll == 1 {
-			s = edwards25519.sc_one
+			s = sc_one
 		}
 		diceroll == 2 {
-			s = edwards25519.sc_minus_one
+			s = sc_minus_one
 		}
 		diceroll < 5 {
 			// rand.Read(s.s[:16]) // read random bytes and fill buf
@@ -1164,7 +1164,7 @@ type NotZeroScalar = Scalar
 
 fn generate_notzero_scalar(size int) !NotZeroScalar {
 	mut s := Scalar{}
-	for s == edwards25519.sc_zero {
+	for s == sc_zero {
 		s = generate_scalar(size)!
 	}
 	return NotZeroScalar(s)

@@ -1,5 +1,5 @@
 fn main() {
-    a := 10
-    `b`
-    println(a)
+	a := 10
+	`b`
+	println(a)
 }

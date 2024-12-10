@@ -29,7 +29,7 @@ pub struct C.MYSQL_FIELD {
 	flags            u32 // Bit-flags that describe the field
 	decimals         u32 // Number of decimals in field
 	charsetnr        u32 // Character set
-	@type            int // Type of field. See enums.v for types
+	type             int // Type of field. See enums.v for types
 }
 
 // C.mysql_init allocates or initializes a MYSQL object suitable for `mysql_real_connect()`.

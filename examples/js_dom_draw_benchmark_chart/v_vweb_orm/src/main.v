@@ -17,9 +17,9 @@ mut:
 }
 
 struct Response {
-	insert  []int
-	@select []int
-	update  []int
+	insert []int
+	select []int
+	update []int
 }
 
 fn main() {
@@ -53,7 +53,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 	} or { panic(err) }
 
 	task_model := Task{
-		title: 'a'
+		title:  'a'
 		status: 'done'
 	}
 
@@ -94,7 +94,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 
 	response := Response{
 		insert: insert_stopwatchs
-		@select: select_stopwatchs
+		select: select_stopwatchs
 		update: update_stopwatchs
 	}
 	return app.json(response)
@@ -104,7 +104,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 pub fn (mut app App) sqlite_file(count int) vweb.Result {
 	response := Response{
 		insert: []
-		@select: []
+		select: []
 		update: []
 	}
 	return app.json(response)
@@ -114,7 +114,7 @@ pub fn (mut app App) sqlite_file(count int) vweb.Result {
 pub fn (mut app App) postgres(count int) vweb.Result {
 	response := Response{
 		insert: []
-		@select: []
+		select: []
 		update: []
 	}
 	return app.json(response)
@@ -124,7 +124,7 @@ pub fn (mut app App) postgres(count int) vweb.Result {
 pub fn (mut app App) mysql(count int) vweb.Result {
 	response := Response{
 		insert: []
-		@select: []
+		select: []
 		update: []
 	}
 	return app.json(response)

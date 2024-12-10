@@ -43,7 +43,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			deref := expected.deref()
 			// deref := expected.set_nr_muls(0)
 			got_sym := c.table.sym(got)
-			if deref.is_number() && (got_sym.is_number() || got_sym.kind == .enum_) {
+			if deref.is_number() && (got_sym.is_number() || got_sym.kind == .enum) {
 				return true
 			}
 		}
@@ -71,7 +71,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			}
 		}
 
-		if got_sym.kind == .enum_ {
+		if got_sym.kind == .enum {
 			// Allow ints as enums
 			if expected_sym.is_number() {
 				return true
@@ -100,7 +100,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 				return true
 			}
 		}
-		if expected_sym.kind == .enum_ && got_sym.is_number() {
+		if expected_sym.kind == .enum && got_sym.is_number() {
 			// Allow enums as numbers
 			return true
 		}
@@ -162,6 +162,8 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	if expected.has_option_or_result() {
 		sym := c.table.sym(got)
+		// Allow error() for Option and Result types
+		// `none` for Option only
 		if ((sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type])
 			&& expected.has_flag(.option))
 			|| ((sym.idx == ast.error_type_idx || got == ast.error_type)
@@ -192,7 +194,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	return true
 }
 
-fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param ast.Param, arg ast.CallArg) bool {
+fn (c &Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param ast.Param, arg ast.CallArg) bool {
 	param_nr_muls := if param.is_mut && !expected.is_ptr() { 1 } else { expected.nr_muls() }
 	if got.is_ptr() && got.nr_muls() > 1 && got.nr_muls() != param_nr_muls {
 		if arg.expr is ast.PrefixExpr && arg.expr.op == .amp {
@@ -208,16 +210,25 @@ fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param a
 	return true
 }
 
-fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ! {
-	if got == 0 {
+fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ! {
+	if got_ == 0 {
 		return error('unexpected 0 type')
 	}
-	mut expected := expected_
+	if got_ == expected_ {
+		return
+	}
+	mut expected := c.table.unaliased_type(expected_)
+	is_aliased := expected != expected_
+	is_exp_sumtype := c.table.type_kind(expected_) == .sum_type
+	got := c.table.unaliased_type(got_)
 	// variadic
-	if expected.has_flag(.variadic) {
+	if expected_.has_flag(.variadic) {
 		exp_type_sym := c.table.sym(expected_)
 		exp_info := exp_type_sym.info as ast.Array
 		expected = exp_info.elem_type
+	}
+	if expected == got {
+		return
 	}
 	if language == .c {
 		// allow number types to be used interchangeably
@@ -234,41 +245,47 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		exp_sym := c.table.sym(expected)
 		// unknown C types are set to int, allow int to be used for types like `&C.FILE`
 		// eg. `C.fflush(C.stderr)` - error: cannot use `int` as `&C.FILE` in argument 1 to `C.fflush`
-		if expected.is_ptr() && exp_sym.language == .c && exp_sym.kind in [.placeholder, .struct_]
+		if expected.is_ptr() && exp_sym.language == .c && exp_sym.kind in [.placeholder, .struct]
 			&& got == ast.int_type_idx {
 			return
 		}
 	} else {
+		// passing &expr where no-pointer is expected
+		if expected != ast.voidptr_type && !expected.is_ptr() && got.is_ptr()
+			&& arg.expr.is_reference() {
+			got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
+			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
+		}
 		if expected.has_flag(.option) {
 			got_is_ptr := got.is_ptr()
 				|| (arg.expr is ast.Ident && (arg.expr as ast.Ident).is_mut())
 				|| arg.expr is ast.None
 			if (expected.is_ptr() && !got_is_ptr) || (!expected.is_ptr() && got.is_ptr()) {
-				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+				got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
 				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 			}
 		}
 
 		// `fn foo(mut p &Expr); mut expr := Expr{}; foo(mut expr)`
 		if arg.is_mut && expected.nr_muls() > 1 && !got.is_ptr() {
-			got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+			got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
 			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 		}
 
-		exp_sym_idx := c.table.sym(expected).idx
-		got_sym_idx := c.table.sym(got).idx
+		exp_sym_idx := expected.idx()
+		got_sym_idx := got.idx()
 
 		if expected.is_ptr() && got.is_ptr() && exp_sym_idx != got_sym_idx
 			&& exp_sym_idx in [ast.u8_type_idx, ast.byteptr_type_idx]
 			&& got_sym_idx !in [ast.u8_type_idx, ast.byteptr_type_idx] {
-			got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+			got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
 			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 		}
 
 		if !expected.has_flag(.option) && got.has_flag(.option)
 			&& (!(arg.expr is ast.Ident || arg.expr is ast.ComptimeSelector)
 			|| (arg.expr is ast.Ident && c.comptime.get_ct_type_var(arg.expr) != .field_var)) {
-			got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+			got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
 			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`, it must be unwrapped first')
 		}
 	}
@@ -302,16 +319,20 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			return
 		}
 	}
-
-	if c.check_types(got, expected) {
+	exp_type := if !is_aliased || expected_.has_flag(.variadic) {
+		expected
+	} else {
+		expected_
+	}
+	if c.check_types(if is_exp_sumtype { got_ } else { got }, exp_type) {
 		if language == .v && idx_got == ast.voidptr_type_idx {
 			if expected.is_int_valptr() || expected.is_int() || expected.is_ptr() {
 				return
 			}
 			exp_sym := c.table.final_sym(expected)
 			if exp_sym.language == .v
-				&& exp_sym.kind !in [.voidptr, .charptr, .byteptr, .function, .placeholder, .array_fixed, .sum_type, .struct_] {
-				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+				&& exp_sym.kind !in [.voidptr, .charptr, .byteptr, .function, .placeholder, .array_fixed, .sum_type, .struct] {
+				got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 			}
 		}
@@ -323,7 +344,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 	} else {
 		got_typ_sym := c.table.sym(c.unwrap_generic(got))
 		expected_typ_sym := c.table.sym(c.unwrap_generic(expected))
-		if expected_typ_sym.kind == .interface_ && c.type_implements(got, expected, token.Pos{}) {
+		if expected_typ_sym.kind == .interface && c.type_implements(got, expected, token.Pos{}) {
 			return
 		}
 
@@ -337,7 +358,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 				|| !c.check_same_module(got, expected)
 				|| (!got.is_ptr() && !expected.is_ptr()
 				&& got_typ_sym.name != expected_typ_sym.name) {
-				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+				got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 			}
 			return
@@ -345,17 +366,20 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		if got == ast.void_type {
 			return error('`${arg.expr}` (no value) used as value')
 		}
-		got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+		if expected == ast.voidptr_type && got_typ_sym.kind == .array_fixed {
+			return
+		}
+		got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 		return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 	}
 
 	if got != ast.void_type {
-		got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+		got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 		return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 	}
 }
 
-fn (c Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, string) {
+fn (c &Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, string) {
 	got_typ_str := c.table.type_to_str(got.clear_flag(.variadic))
 	expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
 	return got_typ_str, expected_typ_str
@@ -364,7 +388,7 @@ fn (c Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, str
 // helper method to check if the type is of the same module.
 // FIXME(vincenzopalazzo) This is a work around to the issue
 // explained in the https://github.com/vlang/v/pull/13718#issuecomment-1074517800
-fn (c Checker) check_same_module(got ast.Type, expected ast.Type) bool {
+fn (c &Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 	clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic)).all_before('<')
 	clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
 	if clean_got_typ == clean_expected_typ {
@@ -377,6 +401,9 @@ fn (c Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 }
 
 fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
+	if got == expected {
+		return true
+	}
 	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
 	if unalias_got.idx() == unalias_expected.idx() {
 		// this is returning true even if one type is a ptr
@@ -430,7 +457,7 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	// struct
-	if exp_sym.kind == .struct_ && got_sym.kind == .struct_ {
+	if exp_sym.kind == .struct && got_sym.kind == .struct {
 		if c.table.type_to_str(expected) == c.table.type_to_str(got) {
 			return true
 		}
@@ -452,6 +479,21 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	// allow `return 0` in a function with `?f32` return type
 	if got == ast.float_literal_type && expected_nonflagged.is_float() {
 		return true
+	}
+	// decode and check array to aliased array type
+	if got_sym.kind == .array && exp_sym.info is ast.Array {
+		exp_elem_sym := c.table.sym(exp_sym.info.elem_type)
+		if exp_elem_sym.info is ast.Alias {
+			parent_elem_sym := c.table.sym(exp_elem_sym.info.parent_type)
+			if parent_elem_sym.info is ast.Array {
+				array_info := parent_elem_sym.array_info()
+				elem_type := c.table.find_or_register_array_with_dims(array_info.elem_type,
+					array_info.nr_dims + exp_sym.info.nr_dims)
+				if c.table.type_to_str(got) == c.table.type_to_str(ast.idx_to_type(elem_type)) {
+					return true
+				}
+			}
+		}
 	}
 	return false
 }
@@ -575,7 +617,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 			// part of the quotient of E1/2^E2. If E1 has a signed type and
 			// a negative value, the resulting value is implementation-defined (ID).
 			left_sym_final := c.table.final_sym(left_type)
-			left_type_final := ast.Type(left_sym_final.idx)
+			left_type_final := ast.idx_to_type(left_sym_final.idx)
 			if !(c.is_generated || c.inside_unsafe || c.file.is_translated || c.pref.translated) {
 				if node.op == .left_shift && left_type_final.is_signed() {
 					c.note('shifting a value from a signed type `${left_sym_final.name}` can change the sign',
@@ -698,8 +740,16 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 	} else if idx_lo >= ast.i8_type_idx
 		&& (idx_hi <= ast.isize_type_idx || idx_hi == ast.rune_type_idx) { // both signed
 		return if idx_lo == ast.i64_type_idx { type_lo } else { type_hi }
-	} else if idx_hi - idx_lo < (ast.u8_type_idx - ast.i8_type_idx) {
-		return type_lo // conversion unsigned -> signed if signed type is larger
+	} else if idx_hi == ast.u8_type_idx && idx_lo > ast.i8_type_idx {
+		return type_lo // conversion unsigned u8 -> signed if signed type is larger
+	} else if idx_hi == ast.u16_type_idx && idx_lo > ast.i16_type_idx {
+		return type_lo // conversion unsigned u16 -> signed if signed type is larger
+	} else if idx_hi == ast.u32_type_idx && idx_lo > ast.int_type_idx {
+		return type_lo // conversion unsigned u32 -> signed if signed type is larger
+	} else if idx_hi == ast.u64_type_idx && idx_lo >= ast.i64_type_idx {
+		return type_lo // conversion unsigned u64 -> signed if signed type is larger
+	} else if idx_hi == ast.usize_type_idx && idx_lo >= ast.isize_type_idx {
+		return type_lo // conversion unsigned usize -> signed if signed type is larger
 	} else if c.pref.translated {
 		return type_hi
 	} else {
@@ -907,7 +957,7 @@ fn (g Checker) get_generic_array_fixed_element_type(array ast.ArrayFixed) ast.Ty
 	return typ
 }
 
-fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
+fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
 	mut arg_inferred := []int{}
 	for gi, gt_name in func.generic_names {
@@ -970,7 +1020,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					func_.name = ''
 					idx := c.table.find_or_register_fn_type(func_, true, false)
 					typ = ast.new_type(idx).derive(arg.typ)
-				} else if c.comptime.comptime_for_field_var != '' && sym.kind in [.struct_, .any]
+				} else if c.comptime.comptime_for_field_var != '' && sym.kind in [.struct, .any]
 					&& arg.expr is ast.ComptimeSelector {
 					comptime_typ := c.comptime.get_comptime_selector_type(arg.expr, ast.void_type)
 					if comptime_typ != ast.void_type {
@@ -1069,9 +1119,18 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 							if param_sym.info.func.return_type.nr_muls() > 0 && typ.nr_muls() > 0 {
 								typ = typ.set_nr_muls(0)
 							}
+							// resolve lambda with generic return type
+							if arg.expr is ast.LambdaExpr && typ.has_flag(.generic) {
+								typ = c.comptime.unwrap_generic_expr(arg.expr.expr, typ)
+								if typ.has_flag(.generic) {
+									lambda_ret_gt_name := c.table.type_to_str(typ)
+									idx := func.generic_names.index(lambda_ret_gt_name)
+									typ = node.concrete_types[idx]
+								}
+							}
 						}
 					}
-				} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
+				} else if arg_sym.kind in [.struct, .interface, .sum_type] {
 					mut generic_types := []ast.Type{}
 					mut concrete_types := []ast.Type{}
 					match arg_sym.info {
@@ -1154,7 +1213,7 @@ fn (mut c Checker) is_contains_any_kind_of_pointer(typ ast.Type, mut checked_typ
 			return c.is_contains_any_kind_of_pointer(sym.info.parent_type, mut checked_types)
 		}
 		ast.Struct {
-			if sym.kind == .struct_ && sym.language == .v {
+			if sym.kind == .struct && sym.language == .v {
 				fields := c.table.struct_fields(sym)
 				for field in fields {
 					ret := c.is_contains_any_kind_of_pointer(field.typ, mut checked_types)

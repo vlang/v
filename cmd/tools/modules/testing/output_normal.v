@@ -48,14 +48,14 @@ pub fn (r NormalReporter) progress(index int, message string) {
 // in progress mode, the last line will be rewritten many times, and does not end with \n
 // the \n will be printed just once when some progress has been made.
 pub fn (r NormalReporter) update_last_line(index int, message string) {
-	print('\r${testing.empty}\r${message}')
+	print('\r${empty}\r${message}')
 	flush_stdout()
 }
 
 pub fn (r NormalReporter) update_last_line_and_move_to_next(index int, message string) {
 	// the last \n is needed, so SKIP/FAIL messages
 	// will not get overwritten by the OK ones
-	eprint('\r${testing.empty}\r${message}\n')
+	eprint('\r${empty}\r${message}\n')
 }
 
 pub fn (r NormalReporter) message(index int, message string) {
@@ -63,7 +63,7 @@ pub fn (r NormalReporter) message(index int, message string) {
 }
 
 pub fn (r NormalReporter) divider() {
-	eprintln(term.h_divider('-'))
+	h_divider()
 }
 
 //
@@ -78,6 +78,6 @@ pub fn (r NormalReporter) worker_threads_finish(mut ts TestSession) {
 
 pub fn (r NormalReporter) list_of_failed_commands(failed_cmds []string) {
 	for i, cmd in failed_cmds {
-		eprintln(term.failed('Failed command ${i + 1}:') + '    ${cmd}')
+		eprintln(term.failed('To reproduce just failure ${i + 1} run:') + '    ${cmd}')
 	}
 }

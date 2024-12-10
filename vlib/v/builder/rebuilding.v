@@ -8,6 +8,7 @@ import strings
 import v.util
 import v.pref
 import v.vcache
+import runtime
 
 pub fn (mut b Builder) rebuild_modules() {
 	if !b.pref.use_cache || b.pref.build_mode == .build_module {
@@ -34,7 +35,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 	mut new_hashes := map[string]string{}
 	mut old_hashes := map[string]string{}
 	mut sb_new_hashes := strings.new_builder(1024)
-	//
+
 	mut cm := vcache.new_cache_manager(all_files)
 	sold_hashes := cm.load('.hashes', 'all_files') or { ' ' }
 	// eprintln(sold_hashes)
@@ -359,7 +360,8 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		//
 		vlines_per_second := int(1_000_000.0 * f64(all_v_source_lines) / f64(compilation_time_micros))
 		svlines_per_second := util.bold(vlines_per_second.str())
-		println('compilation took: ${scompilation_time_ms} ms, compilation speed: ${svlines_per_second} vlines/s')
+		used_cgen_threads := if b.pref.no_parallel { 1 } else { runtime.nr_jobs() }
+		println('compilation took: ${scompilation_time_ms} ms, compilation speed: ${svlines_per_second} vlines/s, cgen threads: ${used_cgen_threads}')
 	}
 }
 

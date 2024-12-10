@@ -42,7 +42,7 @@ mut:
 pub fn new_surrounder(expected_length int) Surrounder {
 	return Surrounder{
 		befores: []string{cap: expected_length}
-		afters: []string{cap: expected_length}
+		afters:  []string{cap: expected_length}
 	}
 }
 

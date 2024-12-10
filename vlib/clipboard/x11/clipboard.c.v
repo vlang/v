@@ -89,7 +89,7 @@ mut:
 @[typedef]
 pub struct C.XSelectionEvent {
 mut:
-	@type     int
+	type      int
 	display   &C.Display = unsafe { nil } // Display the event was read from
 	requestor Window
 	selection Atom
@@ -114,7 +114,7 @@ mut:
 @[typedef]
 union C.XEvent {
 mut:
-	@type             int
+	type              int
 	xdestroywindow    C.XDestroyWindowEvent
 	xselectionclear   C.XSelectionClearEvent
 	xselectionrequest C.XSelectionRequestEvent
@@ -186,14 +186,14 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 		println('ERROR: No X Server running. Clipboard cannot be used.')
 		return &Clipboard{
 			display: unsafe { nil }
-			mutex: sync.new_mutex()
+			mutex:   sync.new_mutex()
 		}
 	}
 
 	mut cb := &Clipboard{
 		display: display
-		window: create_xwindow(display)
-		mutex: sync.new_mutex()
+		window:  create_xwindow(display)
+		mutex:   sync.new_mutex()
 	}
 	cb.intern_atoms()
 	cb.selection = cb.get_atom(selection)
@@ -215,7 +215,7 @@ pub fn (mut cb Clipboard) free() {
 }
 
 pub fn (mut cb Clipboard) clear() {
-	cb.mutex.@lock()
+	cb.mutex.lock()
 	C.XSetSelectionOwner(cb.display, cb.selection, Window(0), C.CurrentTime)
 	C.XFlush(cb.display)
 	cb.is_owner = false
@@ -237,7 +237,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	if cb.window == Window(0) {
 		return false
 	}
-	cb.mutex.@lock()
+	cb.mutex.lock()
 	cb.text = text
 	cb.is_owner = true
 	cb.take_ownership()
@@ -281,7 +281,7 @@ fn (mut cb Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
 		C.XChangeProperty(xse.display, xse.requestor, xse.property, cb.get_atom(.xa_atom),
 			32, C.PropModeReplace, targets.data, targets.len)
 	} else if cb.is_supported_target(xse.target) && cb.is_owner && cb.text != '' {
-		cb.mutex.@lock()
+		cb.mutex.lock()
 		C.XChangeProperty(xse.display, xse.requestor, xse.property, xse.target, 8, C.PropModeReplace,
 			cb.text.str, cb.text.len)
 		cb.mutex.unlock()
@@ -298,11 +298,11 @@ fn (mut cb Clipboard) start_listener() {
 	for {
 		time.sleep(1 * time.millisecond)
 		C.XNextEvent(cb.display, &event)
-		if unsafe { event.@type == 0 } {
+		if unsafe { event.type == 0 } {
 			println('error')
 			continue
 		}
-		match unsafe { event.@type } {
+		match unsafe { event.type } {
 			C.DestroyNotify {
 				if unsafe { event.xdestroywindow.window == cb.window } {
 					// we are done
@@ -313,7 +313,7 @@ fn (mut cb Clipboard) start_listener() {
 				if unsafe { event.xselectionclear.window == cb.window } && unsafe {
 					event.xselectionclear.selection == cb.selection
 				} {
-					cb.mutex.@lock()
+					cb.mutex.lock()
 					cb.is_owner = false
 					cb.text = ''
 					cb.mutex.unlock()
@@ -327,13 +327,13 @@ fn (mut cb Clipboard) start_listener() {
 					xsre = unsafe { &event.xselectionrequest }
 
 					mut xse := C.XSelectionEvent{
-						@type: C.SelectionNotify // 31
-						display: xsre.display
+						type:      C.SelectionNotify // 31
+						display:   xsre.display
 						requestor: xsre.requestor
 						selection: xsre.selection
-						time: xsre.time
-						target: xsre.target
-						property: xsre.property
+						time:      xsre.time
+						target:    xsre.target
+						property:  xsre.property
 					}
 					if !cb.transmit_selection(&xse) {
 						xse.property = Atom(0)
@@ -358,7 +358,7 @@ fn (mut cb Clipboard) start_listener() {
 					} else if unsafe { event.xselection.target == to_be_requested } {
 						sent_request = false
 						to_be_requested = Atom(0)
-						cb.mutex.@lock()
+						cb.mutex.lock()
 						prop := unsafe {
 							read_property(event.xselection.display, event.xselection.requestor,
 								event.xselection.property)
@@ -390,7 +390,7 @@ fn (mut cb Clipboard) start_listener() {
 fn (mut cb Clipboard) intern_atoms() {
 	cb.atoms << Atom(4) // XA_ATOM
 	cb.atoms << Atom(31) // XA_STRING
-	for i, name in x11.atom_names {
+	for i, name in atom_names {
 		only_if_exists := if i == int(AtomType.utf8_string) { 1 } else { 0 }
 		cb.atoms << C.XInternAtom(cb.display, &char(name.str), only_if_exists)
 		if i == int(AtomType.utf8_string) && cb.atoms[i] == Atom(0) {

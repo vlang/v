@@ -1,5 +1,3 @@
-// vtest flaky: true
-// vtest retry: 4
 import sync
 
 fn one() int {
@@ -136,7 +134,9 @@ fn test_global_shared() {
 	sem.post()
 	t.wait()
 	eprintln('> a: ${a} | b: ${b}')
-	assert (a == 13.75 && b == -35.125) || (a == -35.125 && b == 13.75)
+	c1 := dump(a == 13.75 && b == -35.125)
+	c2 := dump(a == -35.125 && b == 13.75)
+	assert c1 || c2
 }
 
 fn test_global_shared_map() {
@@ -155,7 +155,7 @@ fn switch2() u64 {
 	mut cnt := u64(0)
 	for {
 		cnt++
-		mtx.@lock()
+		mtx.lock()
 		f1, f2 = f2, f1
 		if f1 == 17.0 || f2 == 17.0 {
 			mtx.unlock()
@@ -170,18 +170,18 @@ fn test_global_mutex() {
 	assert f1 == 34.0625
 	t := spawn switch2()
 	for _ in 0 .. 25000 {
-		mtx.@lock()
+		mtx.lock()
 		f1, f2 = f2, f1
 		mtx.unlock()
 	}
-	mtx.@lock()
+	mtx.lock()
 	if f1 == 0.0 {
 		f1 = 17.0
 	} else {
 		f2 = 17.0
 	}
 	mtx.unlock()
-	mtx.@rlock()
+	mtx.rlock()
 	assert (f1 == 17.0 && f2 == 34.0625) || (f1 == 34.0625 && f2 == 17.0)
 	mtx.runlock()
 	n := t.wait()

@@ -20,9 +20,9 @@ fn path_to_entity(path string, uri_path string) Entity {
 	fname := os.file_name(path)
 	return Entity{
 		FileInfo: pinfo
-		path: path
+		path:     path
 		mod_time: time.unix(pinfo.mtime)
-		url: '${uri_base}/${fname}'
-		fname: fname
+		url:      '${uri_base}/${fname}'
+		fname:    fname
 	}
 }

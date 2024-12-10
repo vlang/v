@@ -104,7 +104,7 @@ fn C.ioctlsocket(s int, cmd int, argp &u32) int
 
 fn C.fcntl(fd int, cmd int, arg ...voidptr) int
 
-fn C.@select(ndfs int, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) int
+fn C.select(ndfs int, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) int
 
 fn C.FD_ZERO(fdset &C.fd_set)
 

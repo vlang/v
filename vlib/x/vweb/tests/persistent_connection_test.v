@@ -6,7 +6,7 @@ import time
 import x.vweb
 
 const exit_after = time.second * 10
-const port = 13009
+const port = 23009
 const localserver = 'localhost:${port}'
 const tcp_r_timeout = 2 * time.second
 const tcp_w_timeout = 2 * time.second
@@ -85,7 +85,7 @@ fn test_support_http_1() {
 	// send the Connection: close header. If that header is present the connection
 	// needs to be closed and a `Connection: close` header needs to be send back
 	mut x := http.fetch(http.FetchConfig{
-		url: 'http://${localserver}/'
+		url:    'http://${localserver}/'
 		header: http.new_header_from_map({
 			.connection: 'close'
 		})

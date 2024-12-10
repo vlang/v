@@ -6,7 +6,7 @@ module parser
 import v.ast
 import v.token
 
-fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
+fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 	was_inside_if_expr := p.inside_if_expr
 	was_inside_ct_if_expr := p.inside_ct_if_expr
 	defer {
@@ -14,7 +14,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		p.inside_ct_if_expr = was_inside_ct_if_expr
 	}
 	p.inside_if_expr = true
-	is_expr := p.prev_tok.kind == .key_return
+	is_expr_ := p.prev_tok.kind == .key_return || is_expr
 	mut pos := p.tok.pos()
 	if is_comptime {
 		p.inside_ct_if_expr = true
@@ -50,19 +50,19 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				// only declare `err` if previous branch was an `if` guard
 				if prev_guard {
 					p.scope.register(ast.Var{
-						name: 'err'
-						typ: ast.error_type
-						pos: p.tok.pos()
-						is_used: true
+						name:         'err'
+						typ:          ast.error_type
+						pos:          p.tok.pos()
+						is_used:      true
 						is_stack_obj: true
 					})
 				}
 				branches << ast.IfBranch{
-					stmts: p.parse_block_no_scope(false)
-					pos: start_pos.extend(end_pos)
+					stmts:    p.parse_block_no_scope(false)
+					pos:      start_pos.extend(end_pos)
 					body_pos: body_pos.extend(p.tok.pos())
 					comments: comments
-					scope: p.scope
+					scope:    p.scope
 				}
 				p.close_scope()
 				comments = []
@@ -128,10 +128,10 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			}
 			for var in vars {
 				p.scope.register(ast.Var{
-					name: var.name
+					name:   var.name
 					is_mut: var.is_mut
-					expr: cond
-					pos: var.pos
+					expr:   cond
+					pos:    var.pos
 				})
 			}
 			prev_guard = true
@@ -163,15 +163,20 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		body_pos := p.tok.pos()
 		p.inside_if = false
 		p.inside_comptime_if = false
+		if p.opened_scopes > p.max_opened_scopes {
+			p.should_abort = true
+			p.error('too many nested conditionals, scopes: ${p.opened_scopes}')
+			return ast.IfExpr{}
+		}
 		p.open_scope()
 		stmts := p.parse_block_no_scope(false)
 		branches << ast.IfBranch{
-			cond: cond
-			stmts: stmts
-			pos: start_pos.extend(end_pos)
+			cond:     cond
+			stmts:    stmts
+			pos:      start_pos.extend(end_pos)
 			body_pos: body_pos.extend(p.prev_tok.pos())
 			comments: comments
-			scope: p.scope
+			scope:    p.scope
 		}
 		p.close_scope()
 		if is_guard {
@@ -196,12 +201,12 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		pos.last_line = comments.last().pos.last_line
 	}
 	return ast.IfExpr{
-		is_comptime: is_comptime
-		branches: branches
+		is_comptime:   is_comptime
+		branches:      branches
 		post_comments: comments
-		pos: pos
-		has_else: has_else
-		is_expr: is_expr
+		pos:           pos
+		has_else:      has_else
+		is_expr:       is_expr_
 	}
 }
 
@@ -229,21 +234,23 @@ fn (mut p Parser) is_match_sumtype_type() bool {
 	is_option := p.tok.kind == .question
 	name_tok := if is_option { p.peek_tok } else { p.tok }
 	next_tok_kind := if is_option { p.peek_token(2).kind } else { p.peek_tok.kind }
-	next_next_tok := if is_option { p.peek_token(3) } else { p.peek_token(2) }
-
+	next_next_idx := if is_option { 3 } else { 2 }
+	next_next_tok := p.peek_token(next_next_idx)
 	return name_tok.kind == .name && !(name_tok.lit == 'C' && next_tok_kind == .dot)
 		&& (((ast.builtin_type_names_matcher.matches(name_tok.lit) || name_tok.lit[0].is_capital())
-		&& next_tok_kind != .lpar) || (next_tok_kind == .dot && next_next_tok.lit.len > 0
-		&& next_next_tok.lit[0].is_capital()))
+		&& next_tok_kind != .lpar && !(next_tok_kind == .dot && next_next_tok.kind == .name
+		&& p.peek_token(next_next_idx + 1).kind == .lpar)) || (next_tok_kind == .dot
+		&& next_next_tok.lit.len > 0 && next_next_tok.lit[0].is_capital()))
 }
 
 fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.pos()
+	old_inside_match := p.inside_match
 	p.inside_match = true
 	p.check(.key_match)
 	mut is_sum_type := false
 	cond := p.expr(0)
-	p.inside_match = false
+	p.inside_match = old_inside_match
 	no_lcbr := p.tok.kind != .lcbr
 	if !no_lcbr {
 		p.check(.lcbr)
@@ -311,11 +318,11 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					expr2 := p.expr(0)
 					p.inside_match_case = false
 					exprs << ast.RangeExpr{
-						low: expr
-						high: expr2
-						has_low: true
+						low:      expr
+						high:     expr2
+						has_low:  true
 						has_high: true
-						pos: range_pos.extend(p.prev_tok.pos())
+						pos:      range_pos.extend(p.prev_tok.pos())
 					}
 				} else {
 					exprs << expr
@@ -348,14 +355,14 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		branch_pos := branch_first_pos.extend_with_last_line(p.tok.pos(), p.tok.line_nr)
 		post_comments := p.eat_comments()
 		branches << ast.MatchBranch{
-			exprs: exprs
-			ecmnts: ecmnts
-			stmts: stmts
-			pos: pos
-			branch_pos: branch_pos
-			is_else: is_else
+			exprs:         exprs
+			ecmnts:        ecmnts
+			stmts:         stmts
+			pos:           pos
+			branch_pos:    branch_pos
+			is_else:       is_else
 			post_comments: post_comments
-			scope: branch_scope
+			scope:         branch_scope
 		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break
@@ -364,9 +371,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_last_pos := p.tok.pos()
 	mut pos := token.Pos{
 		line_nr: match_first_pos.line_nr
-		pos: match_first_pos.pos
-		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
-		col: match_first_pos.col
+		pos:     match_first_pos.pos
+		len:     match_last_pos.pos - match_first_pos.pos + match_last_pos.len
+		col:     match_first_pos.col
 	}
 	if p.tok.kind == .rcbr {
 		p.check(.rcbr)
@@ -374,11 +381,11 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	// return ast.StructInit{}
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.MatchExpr{
-		branches: branches
-		cond: cond
+		branches:    branches
+		cond:        cond
 		is_sum_type: is_sum_type
-		pos: pos
-		comments: comments
+		pos:         pos
+		comments:    comments
 	}
 }
 
@@ -424,7 +431,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			}
 			p.inside_match = true
 			p.inside_select = true
-			exprs := p.expr_list()
+			exprs := p.expr_list(true)
 			if exprs.len != 1 {
 				p.error('only one expression allowed as `select` key')
 				return ast.SelectExpr{}
@@ -433,10 +440,10 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 				stmt = p.partial_assign_stmt(exprs)
 			} else {
 				stmt = ast.ExprStmt{
-					expr: exprs[0]
-					pos: exprs[0].pos()
+					expr:     exprs[0]
+					pos:      exprs[0].pos()
 					comments: [comment]
-					is_expr: true
+					is_expr:  true
 				}
 			}
 			p.inside_match = false
@@ -509,9 +516,9 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		p.inside_match_body = false
 		mut pos := token.Pos{
 			line_nr: branch_first_pos.line_nr
-			pos: branch_first_pos.pos
-			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
-			col: branch_first_pos.col
+			pos:     branch_first_pos.pos
+			len:     branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
+			col:     branch_first_pos.col
 		}
 		post_comments := p.eat_comments()
 		pos.update_last_line(p.prev_tok.line_nr)
@@ -519,12 +526,12 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			pos.last_line = post_comments.last().pos.last_line
 		}
 		branches << ast.SelectBranch{
-			stmt: stmt
-			stmts: stmts
-			pos: pos
-			comment: comment
-			is_else: is_else
-			is_timeout: is_timeout
+			stmt:          stmt
+			stmts:         stmts
+			pos:           pos
+			comment:       comment
+			is_else:       is_else
+			is_timeout:    is_timeout
 			post_comments: post_comments
 		}
 		if p.tok.kind == .rcbr || ((is_else || is_timeout) && no_lcbr) {
@@ -534,17 +541,17 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 	match_last_pos := p.tok.pos()
 	pos := token.Pos{
 		line_nr: match_first_pos.line_nr
-		pos: match_first_pos.pos
-		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
-		col: match_first_pos.col
+		pos:     match_first_pos.pos
+		len:     match_last_pos.pos - match_first_pos.pos + match_last_pos.len
+		col:     match_first_pos.col
 	}
 	if p.tok.kind == .rcbr {
 		p.check(.rcbr)
 	}
 	p.register_auto_import('sync')
 	return ast.SelectExpr{
-		branches: branches
-		pos: pos.extend_with_last_line(p.prev_tok.pos(), p.prev_tok.line_nr)
+		branches:      branches
+		pos:           pos.extend_with_last_line(p.prev_tok.pos(), p.prev_tok.line_nr)
 		has_exception: has_else || has_timeout
 	}
 }

@@ -24,17 +24,17 @@ pub fn (p Pos) line_str() string {
 pub fn (pos Pos) extend(end Pos) Pos {
 	return Pos{
 		...pos
-		len: end.pos - pos.pos + end.len
+		len:       end.pos - pos.pos + end.len
 		last_line: end.last_line
 	}
 }
 
 pub fn (pos Pos) extend_with_last_line(end Pos, last_line int) Pos {
 	return Pos{
-		len: end.pos - pos.pos + end.len
-		line_nr: pos.line_nr
-		pos: pos.pos
-		col: pos.col
+		len:       end.pos - pos.pos + end.len
+		line_nr:   pos.line_nr
+		pos:       pos.pos
+		col:       pos.col
 		last_line: last_line - 1
 	}
 }
@@ -46,10 +46,10 @@ pub fn (mut pos Pos) update_last_line(last_line int) {
 @[inline]
 pub fn (tok &Token) pos() Pos {
 	return Pos{
-		len: tok.len
-		line_nr: tok.line_nr - 1
-		pos: tok.pos
+		len:       tok.len
+		line_nr:   tok.line_nr - 1
+		pos:       tok.pos
 		last_line: tok.line_nr - 1
-		col: tok.col - 1
+		col:       tok.col - 1
 	}
 }

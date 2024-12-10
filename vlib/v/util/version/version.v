@@ -2,7 +2,7 @@ module version
 
 import os
 
-pub const v_version = '0.4.7'
+pub const v_version = '0.4.8'
 
 pub fn full_hash() string {
 	build_hash := vhash()
@@ -16,9 +16,9 @@ pub fn full_hash() string {
 // full_v_version() returns the full version of the V compiler
 pub fn full_v_version(is_verbose bool) string {
 	if is_verbose {
-		return 'V ${version.v_version} ${full_hash()}'
+		return 'V ${v_version} ${full_hash()}'
 	}
-	return 'V ${version.v_version} ${@VCURRENTHASH}'
+	return 'V ${v_version} ${@VCURRENTHASH}'
 }
 
 // githash tries to find the current git commit hash for the specified

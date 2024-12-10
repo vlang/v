@@ -21,71 +21,71 @@ const sample_doc = '
 
 const xml_elements = [
 	XMLNode{
-		name: 'c'
+		name:       'c'
 		attributes: {
 			'id': 'c1'
 		}
 	},
 	XMLNode{
-		name: 'c'
+		name:       'c'
 		attributes: {
 			'id': 'c2'
 		}
-		children: [
+		children:   [
 			'Sample Text',
 		]
 	},
 	XMLNode{
-		name: 'empty'
+		name:       'empty'
 		attributes: {}
 	},
 	XMLNode{
-		name: 'c'
+		name:       'c'
 		attributes: {
 			'id': 'c3'
 		}
 	},
 	XMLNode{
-		name: 'abc'
+		name:       'abc'
 		attributes: {
 			'id': 'c4'
 		}
 	},
 	XMLNode{
-		name: 'xyz'
+		name:       'xyz'
 		attributes: {
 			'id': 'c5'
 		}
 	},
 	XMLNode{
-		name: 'c'
+		name:       'c'
 		attributes: {
 			'id': 'c6'
 		}
 	},
 	XMLNode{
-		name: 'cx'
+		name:       'cx'
 		attributes: {
 			'id': 'c7'
 		}
 	},
 	XMLNode{
-		name: 'cd'
+		name:       'cd'
 		attributes: {
 			'id': 'c8'
 		}
 	},
 	XMLNode{
-		name: 'child'
+		name:       'child'
 		attributes: {
 			'id': 'c9'
 		}
-		children: [
+		children:   [
 			'More Sample Text',
 		]
 	},
 	XMLNode{
-		name: 'cz'
+		name:       'cz'
 		attributes: {
 			'id': 'c10'
 		}
@@ -94,7 +94,7 @@ const xml_elements = [
 
 fn test_single_element_parsing() ! {
 	mut reader := FullBufferReader{
-		contents: xml.sample_doc.bytes()
+		contents: sample_doc.bytes()
 	}
 	// Skip the "<root>" tag
 	mut skip := []u8{len: 6}
@@ -105,7 +105,7 @@ fn test_single_element_parsing() ! {
 
 	mut count := 0
 
-	for count < xml.xml_elements.len {
+	for count < xml_elements.len {
 		match ch {
 			`<` {
 				next_ch := next_char(mut reader, mut local_buf)!
@@ -113,7 +113,7 @@ fn test_single_element_parsing() ! {
 					`/` {}
 					else {
 						parsed_element := parse_single_node(next_ch, mut reader)!
-						assert xml.xml_elements[count] == parsed_element
+						assert xml_elements[count] == parsed_element
 						count++
 					}
 				}

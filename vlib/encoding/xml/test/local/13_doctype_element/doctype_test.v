@@ -9,55 +9,55 @@ fn test_valid_parsing() {
 	expected := xml.XMLDocument{
 		doctype: xml.DocumentType{
 			name: 'note'
-			dtd: xml.DocumentTypeDefinition{
+			dtd:  xml.DocumentTypeDefinition{
 				name: ''
 				list: [
 					xml.DTDElement{
-						name: 'note'
+						name:       'note'
 						definition: ['to', 'from', 'heading', 'body']
 					},
 					xml.DTDElement{
-						name: 'to'
+						name:       'to'
 						definition: ['#PCDATA']
 					},
 					xml.DTDElement{
-						name: 'from'
+						name:       'from'
 						definition: ['#PCDATA']
 					},
 					xml.DTDElement{
-						name: 'heading'
+						name:       'heading'
 						definition: ['#PCDATA']
 					},
 					xml.DTDElement{
-						name: 'body'
+						name:       'body'
 						definition: ['#PCDATA']
 					},
 				]
 			}
 		}
-		root: xml.XMLNode{
-			name: 'note'
+		root:    xml.XMLNode{
+			name:     'note'
 			children: [
 				xml.XMLNode{
-					name: 'to'
+					name:     'to'
 					children: [
 						'Tove',
 					]
 				},
 				xml.XMLNode{
-					name: 'from'
+					name:     'from'
 					children: [
 						'Jani',
 					]
 				},
 				xml.XMLNode{
-					name: 'heading'
+					name:     'heading'
 					children: [
 						'Reminder',
 					]
 				},
 				xml.XMLNode{
-					name: 'body'
+					name:     'body'
 					children: [
 						"Don't forget me this weekend!",
 					]

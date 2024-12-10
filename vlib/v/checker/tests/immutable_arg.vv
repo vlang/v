@@ -9,6 +9,8 @@ fn f(mut x St) {
 }
 
 fn main() {
-	a := St{e: 2}
+	a := St{
+		e: 2
+	}
 	f(mut a)
 }

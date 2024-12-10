@@ -24,21 +24,21 @@ const width = 50
 
 fn main() {
 	mut game := &Game{
-		dx: 2
-		dy: 2
-		height: window_height
-		width: window_width
+		dx:      2
+		dy:      2
+		height:  window_height
+		width:   window_width
 		draw_fn: 0
 	}
 	game.gg = gg.new_context(
-		width: window_width
-		height: window_height
-		font_size: 20
-		user_data: game
-		window_title: 'Hot code reloading demo'
+		width:         window_width
+		height:        window_height
+		font_size:     20
+		user_data:     game
+		window_title:  'Hot code reloading demo'
 		create_window: true
-		frame_fn: frame
-		bg_color: gx.white
+		frame_fn:      frame
+		bg_color:      gx.white
 	)
 	// window.onkeydown(key_down)
 	println('Starting the game loop...')

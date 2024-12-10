@@ -190,12 +190,12 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	sign_set := sign == 1
 
 	mut bf := strconv.BF_param{
-		pad_ch: pad_ch // padding char
-		len0: len0_set // default len for whole the number or string
-		len1: len1_set // number of decimal digits, if needed
-		positive: true // mandatory: the sign of the number passed
-		sign_flag: sign_set // flag for print sign as prefix in padding
-		align: .left // alignment of the string
+		pad_ch:       pad_ch     // padding char
+		len0:         len0_set   // default len for whole the number or string
+		len1:         len1_set   // number of decimal digits, if needed
+		positive:     true       // mandatory: the sign of the number passed
+		sign_flag:    sign_set   // flag for print sign as prefix in padding
+		align:        .left      // alignment of the string
 		rm_tail_zero: tail_zeros // false // remove the tail zeros from floats
 	}
 
@@ -512,6 +512,9 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 						f.free()
 						return
 					}
+					// NOTE: For 'g' and 'G' bf.len1 is the maximum number of significant digits.
+					// Not like 'e' or 'E', which is the number of digits after the decimal point.
+					bf.len1--
 					mut f := strconv.format_es(data.d.d_f32, bf)
 					if upper_case {
 						tmp := f
@@ -582,6 +585,9 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 						f.free()
 						return
 					}
+					// NOTE: For 'g' and 'G' bf.len1 is the maximum number of significant digits
+					// Not like 'e' or 'E', which is the number of digits after the decimal point.
+					bf.len1--
 					mut f := strconv.format_es(data.d.d_f64, bf)
 					if upper_case {
 						tmp := f
@@ -595,7 +601,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 			.si_e32 {
 				$if !nofloat ? {
 					// println("HERE: e32")
-					bf.len1 = 6
 					if use_default_str {
 						mut f := data.d.d_f32.str()
 						if upper_case {
@@ -623,7 +628,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 			.si_e64 {
 				$if !nofloat ? {
 					// println("HERE: e64")
-					bf.len1 = 6
 					if use_default_str {
 						mut f := data.d.d_f64.str()
 						if upper_case {

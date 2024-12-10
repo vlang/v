@@ -11,6 +11,7 @@ import time
 import v.pref
 import v.vmod
 import v.util.recompilation
+import v.util.vflags
 import runtime
 
 // math.bits is needed by strconv.ftoa
@@ -39,15 +40,29 @@ const const_tabs = [
 pub const nr_jobs = runtime.nr_jobs()
 
 pub fn module_is_builtin(mod string) bool {
-	return mod in util.builtin_module_parts
+	return mod in builtin_module_parts
 }
 
 @[direct_array_access]
 pub fn tabs(n int) string {
-	return if n >= 0 && n < util.const_tabs.len { util.const_tabs[n] } else { '\t'.repeat(n) }
+	return if n >= 0 && n < const_tabs.len { const_tabs[n] } else { '\t'.repeat(n) }
 }
 
-//
+pub const stable_build_time = get_build_time()
+// get_build_time returns the current build time, while taking into account SOURCE_DATE_EPOCH
+// to support transparent reproducible builds. See also https://reproducible-builds.org/docs/source-date-epoch/
+// When SOURCE_DATE_EPOCH is not set, it will return the current UTC time.
+pub fn get_build_time() time.Time {
+	sde := os.getenv('SOURCE_DATE_EPOCH')
+	if sde == '' {
+		return time.utc()
+	}
+	return time.unix_nanosecond(sde.i64(), 0)
+}
+
+// set_vroot_folder sets the VCHILD env variable to 'true', and VEXE to the location of the V executable
+// It is called very early by launch_tool/3, so that those env variables can be available by all tools,
+// like `v doc`, `v fmt` etc, so they can use them to find how they were started.
 pub fn set_vroot_folder(vroot_path string) {
 	// Preparation for the compiler module:
 	// VEXE env variable is needed so that compiler.vexe_path() can return it
@@ -61,6 +76,8 @@ pub fn set_vroot_folder(vroot_path string) {
 	os.setenv('VCHILD', 'true', true)
 }
 
+// resolve_vmodroot replaces all occurences of `@VMODROOT` in `str`, with an absolute path,
+// formed by resolving, where the nearest `v.mod` is, given the folder `dir`.
 pub fn resolve_vmodroot(str string, dir string) !string {
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(dir)
@@ -120,14 +137,14 @@ const d_sig = "\$d('"
 // resolve_d_value replaces all occurrences of `$d('ident','value')`
 // in `str` with either the default `'value'` param or a compile value passed via `-d ident=value`.
 pub fn resolve_d_value(compile_values map[string]string, str string) !string {
-	at := str.index(util.d_sig) or {
-		return error('no "${util.d_sig}' + '...\')" could be found in "${str}".')
+	at := str.index(d_sig) or {
+		return error('no "${d_sig}' + '...\')" could be found in "${str}".')
 	}
-	mut all_parsed := util.d_sig
+	mut all_parsed := d_sig
 	mut ch := u8(`.`)
 	mut d_ident := ''
 	mut i := 0
-	for i = at + util.d_sig.len; i < str.len && ch != `'`; i++ {
+	for i = at + d_sig.len; i < str.len && ch != `'`; i++ {
 		ch = u8(str[i])
 		all_parsed += ch.ascii_str()
 		if ch.is_letter() || ch.is_digit() || ch == `_` {
@@ -149,10 +166,19 @@ pub fn resolve_d_value(compile_values map[string]string, str string) !string {
 	// Next we parse out the default string value
 
 	// advance past the `,` and the opening `'` in second argument, or ... eat whatever is there
-	all_parsed += u8(str[i]).ascii_str()
-	i++
-	all_parsed += u8(str[i]).ascii_str()
-	i++
+	for i < str.len {
+		ch = str[i]
+		if ch in [` `, `,`] {
+			i++
+			all_parsed += u8(ch).ascii_str()
+			continue
+		}
+		if ch == `'` {
+			i++
+			all_parsed += u8(ch).ascii_str()
+		}
+		break
+	}
 	// Rinse, repeat for the expected default value string
 	ch = u8(`.`)
 	mut d_default_value := ''
@@ -174,7 +200,7 @@ pub fn resolve_d_value(compile_values map[string]string, str string) !string {
 	d_value := compile_values[d_ident] or { d_default_value }
 	// if more `$d()` calls remains, resolve those as well:
 	rep := str.replace_once(all_parsed + ')', d_value)
-	if rep.contains(util.d_sig) {
+	if rep.contains(d_sig) {
 		return resolve_d_value(compile_values, rep)
 	}
 	return rep
@@ -230,9 +256,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		println('launch_tool should_compile: ${should_compile}')
 	}
 	if should_compile {
-		emodules := util.external_module_dependencies_for_tool[tool_name]
+		emodules := external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
-			check_module_is_installed(emodule, is_verbose) or { panic(err) }
+			check_module_is_installed(emodule, is_verbose, false) or { panic(err) }
 		}
 		mut compilation_command := '${os.quoted_path(vexe)} '
 		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
@@ -269,6 +295,29 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 				if tool_compilation.exit_code == 0 {
 					break
 				} else {
+					if tool_name == 'vup' {
+						eprintln('Cannot recompile the new version of `vup`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
+						if os.exists(tool_exe) {
+							// Compilation failed, but we still have an already existing old `vup.exe`, that *probably* works.
+							// It is better to pretend the compilation succeeded, and try the old executable, then let it fail
+							// on its own, if it can not work too (it will produce a nicer diagnostic message), than to fail here
+							// right away, just because the new source is too breaking, for the older V frontend process,
+							// that is currently running :-|
+							eprintln('Trying an already existing old version of the `vup` tool instead...')
+							break
+						} else {
+							// No pre-existing `vup.exe` ... No choice but to show a message to the user :-( .
+							// Note: running `make` here from within the old V frontend process, is not reliable, since it can fail
+							// on windows and probably other systems, because the currently running executable is locked.
+							// `vup.exe` has logic to workaround that, and duplicating it here, is hard to debug/diagnose.
+							eprintln('Failed compilation of the `vup` tool, using the new V source code.')
+							eprintln('The new source code, is likely to be unsupported, by your existing older V executable.')
+							eprintln('Try running `make` or `make.bat` manually.')
+							eprintln('If that fails, clone V from source in a new folder, and run `make` or `make.bat` manually again there.')
+							l.release()
+							exit(1)
+						}
+					}
 					if i == tool_recompile_retry_max_count - 1 {
 						eprintln('cannot compile `${tool_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
 						l.release()
@@ -393,11 +442,7 @@ pub fn quote_path(s string) string {
 }
 
 pub fn args_quote_paths(args []string) string {
-	mut res := []string{}
-	for a in args {
-		res << quote_path(a)
-	}
-	return res.join(' ')
+	return args.map(quote_path(it)).join(' ')
 }
 
 pub fn path_of_executable(path string) string {
@@ -462,29 +507,12 @@ pub fn replace_op(s string) string {
 	}
 }
 
+// join_env_vflags_and_os_args returns all the arguments (the ones from the env variable VFLAGS too), passed on the command line.
 pub fn join_env_vflags_and_os_args() []string {
-	vosargs := os.getenv('VOSARGS')
-	if vosargs != '' {
-		return non_empty(vosargs.split(' '))
-	}
-	mut args := []string{}
-	vflags := os.getenv('VFLAGS')
-	if vflags != '' {
-		args << os.args[0]
-		args << vflags.split(' ')
-		if os.args.len > 1 {
-			args << os.args[1..]
-		}
-		return non_empty(args)
-	}
-	return os.args
+	return vflags.join_env_vflags_and_os_args()
 }
 
-fn non_empty(arg []string) []string {
-	return arg.filter(it != '')
-}
-
-pub fn check_module_is_installed(modulename string, is_verbose bool) !bool {
+pub fn check_module_is_installed(modulename string, is_verbose bool, need_update bool) !bool {
 	mpath := os.join_path_single(os.vmodules_dir(), modulename)
 	mod_v_file := os.join_path_single(mpath, 'v.mod')
 	murl := 'https://github.com/vlang/${modulename}'
@@ -493,35 +521,34 @@ pub fn check_module_is_installed(modulename string, is_verbose bool) !bool {
 		eprintln('check_module_is_installed: mod_v_file: ${mod_v_file}')
 		eprintln('check_module_is_installed: murl: ${murl}')
 	}
+	vexe := pref.vexe_path()
 	if os.exists(mod_v_file) {
-		vexe := pref.vexe_path()
-		update_cmd := "${os.quoted_path(vexe)} update '${modulename}'"
-		if is_verbose {
-			eprintln('check_module_is_installed: updating with ${update_cmd} ...')
-		}
-		update_res := os.execute(update_cmd)
-		if update_res.exit_code < 0 {
-			return error('can not start ${update_cmd}, error: ${update_res.output}')
-		}
-		if update_res.exit_code != 0 {
-			eprintln('Warning: `${modulename}` exists, but is not updated.
+		if need_update {
+			update_cmd := "${os.quoted_path(vexe)} update '${modulename}'"
+			if is_verbose {
+				eprintln('check_module_is_installed: updating with ${update_cmd} ...')
+			}
+			update_res := os.execute(update_cmd)
+			if update_res.exit_code < 0 {
+				return error('can not start ${update_cmd}, error: ${update_res.output}')
+			}
+			if update_res.exit_code != 0 {
+				eprintln('Warning: `${modulename}` exists, but is not updated.
 V will continue, since updates can fail due to temporary network problems,
 and the existing module `${modulename}` may still work.')
-			if is_verbose {
-				eprintln('Details:')
-				eprintln(update_res.output)
+				if is_verbose {
+					eprintln('Details:')
+					eprintln(update_res.output)
+				}
+				eprintln('-'.repeat(50))
 			}
-			eprintln('-'.repeat(50))
 		}
 		return true
 	}
 	if is_verbose {
 		eprintln('check_module_is_installed: cloning from ${murl} ...')
 	}
-	cloning_res := os.execute('git clone ${os.quoted_path(murl)} ${os.quoted_path(mpath)}')
-	if cloning_res.exit_code < 0 {
-		return error_with_code('git is not installed, error: ${cloning_res.output}', cloning_res.exit_code)
-	}
+	cloning_res := os.execute('${os.quoted_path(vexe)} retry -- git clone ${os.quoted_path(murl)} ${os.quoted_path(mpath)}')
 	if cloning_res.exit_code != 0 {
 		return error_with_code('cloning failed, details: ${cloning_res.output}', cloning_res.exit_code)
 	}
@@ -535,12 +562,12 @@ and the existing module `${modulename}` may still work.')
 }
 
 pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
-	for tool_name, tool_modules in util.external_module_dependencies_for_tool {
+	for tool_name, tool_modules in external_module_dependencies_for_tool {
 		if is_verbose {
 			eprintln('Installing modules for tool: ${tool_name} ...')
 		}
 		for emodule in tool_modules {
-			check_module_is_installed(emodule, is_verbose) or { panic(err) }
+			check_module_is_installed(emodule, is_verbose, false) or { panic(err) }
 		}
 	}
 }
@@ -566,9 +593,9 @@ const map_prefix = 'map[string]'
 pub fn no_cur_mod(typename string, cur_mod string) string {
 	mut res := typename
 	mod_prefix := cur_mod + '.'
-	has_map_prefix := res.starts_with(util.map_prefix)
+	has_map_prefix := res.starts_with(map_prefix)
 	if has_map_prefix {
-		res = res.replace_once(util.map_prefix, '')
+		res = res.replace_once(map_prefix, '')
 	}
 	no_symbols := res.trim_left('&[]')
 	should_shorten := no_symbols.starts_with(mod_prefix)
@@ -576,7 +603,7 @@ pub fn no_cur_mod(typename string, cur_mod string) string {
 		res = res.replace_once(mod_prefix, '')
 	}
 	if has_map_prefix {
-		res = util.map_prefix + res
+		res = map_prefix + res
 	}
 	return res
 }
@@ -611,8 +638,7 @@ pub fn get_vtmp_folder() string {
 }
 
 pub fn should_bundle_module(mod string) bool {
-	return mod in util.bundle_modules
-		|| (mod.contains('.') && mod.all_before('.') in util.bundle_modules)
+	return mod in bundle_modules || (mod.contains('.') && mod.all_before('.') in bundle_modules)
 }
 
 // find_all_v_files - given a list of files/folders, finds all .v/.vsh files

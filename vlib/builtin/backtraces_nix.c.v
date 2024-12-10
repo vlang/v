@@ -19,6 +19,7 @@ pub fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 
 // the functions below are not called outside this file,
 // so there is no need to have their twins in builtin_windows.v
+@[direct_array_access]
 fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 	$if no_backtrace ? {
 		return false
@@ -37,6 +38,7 @@ fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 }
 
 fn C.tcc_backtrace(fmt &char) int
+@[direct_array_access]
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	$if android {
 		eprintln('On Android no backtrace is available.')

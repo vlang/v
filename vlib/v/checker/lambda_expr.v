@@ -3,7 +3,6 @@ module checker
 import v.ast
 
 pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) ast.Type {
-	// defer { eprintln('> line: ${@LINE} | exp_typ: $exp_typ | node: ${voidptr(node)} | node.typ: ${node.typ}') }
 	if node.is_checked {
 		return node.typ
 	}
@@ -28,17 +27,15 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 		for idx, mut x in node.params {
 			eparam := exp_sym.info.func.params[idx]
 			eparam_type := eparam.typ
-			eparam_auto_deref := eparam.typ.is_ptr()
 			c.lambda_expr_fix_type_of_param(mut node, mut x, eparam_type)
 			if eparam_type.has_flag(.generic) {
 				generic_types[eparam_type] = true
 			}
 			params << ast.Param{
-				pos: x.pos
-				name: x.name
-				typ: eparam_type
+				pos:      x.pos
+				name:     x.name
+				typ:      eparam_type
 				type_pos: x.pos
-				is_auto_rec: eparam_auto_deref
 			}
 		}
 
@@ -58,31 +55,32 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 				}
 			}
 		}
-		// dump(generic_types)
-		// dump(generic_names)
 
 		mut stmts := []ast.Stmt{}
 		mut has_return := false
 		if return_type.clear_option_and_result() == ast.void_type {
 			stmts << ast.ExprStmt{
-				pos: node.pos
-				expr: node.expr
+				pos:     node.pos
+				expr:    node.expr
 				is_expr: false
-				typ: return_type
+				typ:     return_type
+			}
+			if mut node.expr is ast.CallExpr && node.expr.is_return_used {
+				node.expr.is_return_used = false
 			}
 		} else {
 			stmts << ast.Return{
-				pos: node.pos
+				pos:   node.pos
 				exprs: [node.expr]
 			}
 			has_return = true
 		}
 
 		mut func := ast.Fn{
-			params: params
+			params:      params
 			is_variadic: is_variadic
 			return_type: return_type
-			is_method: false
+			is_method:   false
 		}
 		name := c.table.get_anon_fn_name(c.file.unique_prefix, func, node.pos.pos)
 		func.name = name
@@ -90,24 +88,24 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 		typ := ast.new_type(idx)
 		node.func = &ast.AnonFn{
 			decl: ast.FnDecl{
-				name: name
-				short_name: ''
-				mod: c.file.mod.name
-				stmts: stmts
-				has_return: has_return
-				return_type: return_type
+				name:            name
+				short_name:      ''
+				mod:             c.file.mod.name
+				stmts:           stmts
+				has_return:      has_return
+				return_type:     return_type
 				return_type_pos: return_type_pos
-				params: params
-				is_variadic: is_variadic
-				is_method: false
-				is_anon: true
-				no_body: false
-				pos: node.pos.extend(node.pos_end)
-				file: c.file.path
-				scope: node.scope.parent
-				generic_names: generic_names
+				params:          params
+				is_variadic:     is_variadic
+				is_method:       false
+				is_anon:         true
+				no_body:         false
+				pos:             node.pos.extend(node.pos_end)
+				file:            c.file.path
+				scope:           node.scope.parent
+				generic_names:   generic_names
 			}
-			typ: typ
+			typ:  typ
 		}
 		if node.func.decl.generic_names.len > 0 {
 			c.table.register_fn_generic_types(node.func.decl.fkey())
@@ -121,12 +119,13 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 }
 
 pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mut pident ast.Ident, ptype ast.Type) {
-	if mut v := node.scope.find(pident.name) {
-		if mut v is ast.Var {
-			v.is_arg = true
-			v.typ = ptype
-			v.is_auto_deref = ptype.is_ptr()
-			v.expr = ast.empty_expr
+	if mut v := node.scope.find_var(pident.name) {
+		v.is_arg = true
+		v.typ = ptype
+		v.is_auto_deref = ptype.is_ptr()
+		v.expr = ast.empty_expr
+		if ptype.has_flag(.generic) {
+			v.ct_type_var = .generic_param
 		}
 	}
 	if pident.kind != .blank_ident {
@@ -136,18 +135,15 @@ pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mu
 }
 
 pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_type ast.Type, mut expr ast.LambdaExpr) {
-	is_auto_rec := param_type.is_ptr()
 	mut expected_fn := ast.Fn{
-		params: [
+		params:      [
 			ast.Param{
 				name: 'zza'
-				typ: param_type
-				is_auto_rec: is_auto_rec
+				typ:  param_type
 			},
 			ast.Param{
 				name: 'zzb'
-				typ: param_type
-				is_auto_rec: is_auto_rec
+				typ:  param_type
 			},
 		]
 		return_type: return_type
@@ -158,15 +154,22 @@ pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_t
 }
 
 pub fn (mut c Checker) support_lambda_expr_one_param(param_type ast.Type, return_type ast.Type, mut expr ast.LambdaExpr) {
-	mut expected_fn := ast.Fn{
-		params: [
+	expected_fn := ast.Fn{
+		params:      [
 			ast.Param{
 				name: 'xx'
-				typ: param_type
-				is_auto_rec: param_type.is_ptr()
+				typ:  if c.table.final_sym(param_type).kind == .function {
+					ast.voidptr_type
+				} else {
+					param_type
+				}
 			},
 		]
-		return_type: return_type
+		return_type: if c.table.final_sym(return_type).kind == .function {
+			ast.voidptr_type
+		} else {
+			return_type
+		}
 	}
 	cb_type := c.table.find_or_register_fn_type(expected_fn, true, false)
 	expected_fn_type := ast.new_type(cb_type)

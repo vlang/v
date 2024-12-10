@@ -75,10 +75,10 @@ fn satan(x f64) f64 {
 	if x <= 0.66 {
 		return xatan(x)
 	}
-	if x > math.tan3pio8 {
-		return pi / 2.0 - xatan(1.0 / x) + f64(math.morebits)
+	if x > tan3pio8 {
+		return pi / 2.0 - xatan(1.0 / x) + f64(morebits)
 	}
-	return pi / 4 + xatan((x - 1.0) / (x + 1.0)) + 0.5 * f64(math.morebits)
+	return pi / 4 + xatan((x - 1.0) / (x + 1.0)) + 0.5 * f64(morebits)
 }
 
 // atan returns the arctangent, in radians, of x.
@@ -208,7 +208,7 @@ pub fn acos(x f64) f64 {
 		return f64(2.0) * asin(sqrt(0.5 - 0.5 * x))
 	}
 	mut z := pi / f64(4.0) - asin(x)
-	z = z + math.morebits
+	z = z + morebits
 	z = z + pi / f64(4.0)
 	return z
 }

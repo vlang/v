@@ -65,10 +65,10 @@ fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 
 	// select and handle sockets if any
 	tv := C.timeval{
-		tv_sec: u64(max_wait_in_sec)
+		tv_sec:  u64(max_wait_in_sec)
 		tv_usec: 0
 	}
-	r := C.@select(maxfd + 1, &readfds, &writefds, &errorfds, &tv)
+	r := C.select(maxfd + 1, &readfds, &writefds, &errorfds, &tv)
 	if r == -1 {
 		// timeout
 		return -1
@@ -83,18 +83,13 @@ fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 				if C.FD_ISSET(target.fd, &writefds) != 0 {
 					read_events |= picoev_write
 				}
-
 				if read_events != 0 {
-					$if trace_fd ? {
-						eprintln('do callback ${target.fd}')
-					}
-
+					trace_fd('do callback ${target.fd}')
 					// do callback!
 					unsafe { target.cb(target.fd, read_events, &pv) }
 				}
 			}
 		}
 	}
-
 	return 0
 }

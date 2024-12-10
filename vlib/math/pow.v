@@ -21,10 +21,10 @@ pub fn powf(a f32, b f32) f32 {
 // pow10(n) = +inf for n > 308
 pub fn pow10(n int) f64 {
 	if 0 <= n && n <= 308 {
-		return math.pow10postab32[u32(n) / 32] * math.pow10tab[u32(n) % 32]
+		return pow10postab32[u32(n) / 32] * pow10tab[u32(n) % 32]
 	}
 	if -323 <= n && n <= 0 {
-		return math.pow10negtab32[u32(-n) / 32] / math.pow10tab[u32(-n) % 32]
+		return pow10negtab32[u32(-n) / 32] / pow10tab[u32(-n) % 32]
 	}
 	// n < -323 || 308 < n
 	if n > 0 {

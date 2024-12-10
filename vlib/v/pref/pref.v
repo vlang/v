@@ -45,6 +45,14 @@ pub enum ColorOutput {
 	never
 }
 
+// Subsystem is needed for modeling passing an explicit `/subsystem:windows` or `/subsystem:console` on Windows.
+// By default it is `auto`. It has no effect on platforms != windows.
+pub enum Subsystem {
+	auto
+	console
+	windows
+}
+
 pub enum Backend {
 	c               // The (default) C backend
 	golang          // Go backend
@@ -118,6 +126,7 @@ pub mut:
 	is_callstack       bool     // turn on callstack registers on each call when v.debug is imported
 	is_trace           bool     // turn on possibility to trace fn call where v.debug is imported
 	is_coverage        bool     // turn on code coverage stats
+	is_check_return    bool     // -check-return, will make V produce notices about *all* call expressions with unused results. NOTE: experimental!
 	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
@@ -125,8 +134,9 @@ pub mut:
 	profile_no_inline  bool     // when true, @[inline] functions would not be profiled
 	profile_fns        []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
 	translated         bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
-	obfuscate          bool     // `v -obf program.v`, renames functions to "f_XXX"
-	hide_auto_str      bool     // `v -hide-auto-str program.v`, doesn't generate str() with struct data
+	translated_go      bool = true // Are we running V code translated from Go? Allow err shadowing
+	obfuscate          bool // `v -obf program.v`, renames functions to "f_XXX"
+	hide_auto_str      bool // `v -hide-auto-str program.v`, doesn't generate str() with struct data
 	// Note: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	sanitize               bool // use Clang's new "-fsanitize" option
@@ -137,6 +147,7 @@ pub mut:
 	show_c_output          bool   // -show-c-output, print all cc output even if the code was compiled correctly
 	show_callgraph         bool   // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
 	show_depgraph          bool   // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
+	show_unused_params     bool   // NOTE: temporary until making it a default.
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
 	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
 	dump_files             string // `-dump-files files.txt` - let V store all V or .template file paths, that were used by the compiled program in `files.txt`, one path per line.
@@ -185,22 +196,21 @@ pub mut:
 	path             string // Path to file/folder to compile
 	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
 	linfo            LineInfo
-	//
+
 	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
 	exclude  []string // glob patterns for excluding .v files from the list of .v files that otherwise would have been used for a compilation, example: `-exclude @vlib/math/*.c.v`
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
-	//
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string          // just ['vfmt']
 	compile_defines_all []string          // contains both: ['vfmt','another']
 	compile_values      map[string]string // the map will contain for `-d key=value`: compile_values['key'] = 'value', and for `-d ident`, it will be: compile_values['ident'] = 'true'
-	//
+
 	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list []string // a list of generated function names, whose source should be shown, for debugging
-	//
+
 	print_v_files       bool // when true, just print the list of all parsed .v files then stop.
 	print_watched_files bool // when true, just print the list of all parsed .v files + all the compiled $tmpl files, then stop. Used by `v watch run webserver.v`
-	//
+
 	skip_running     bool // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
 	skip_warnings    bool // like C's "-w", forces warnings to be ignored.
 	skip_notes       bool // force notices to be ignored/not shown.
@@ -211,14 +221,14 @@ pub mut:
 	reuse_tmpc       bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
 	no_rsp           bool // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
 	no_std           bool // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
-	//
+
 	no_parallel       bool // do not use threads when compiling; slower, but more portable and sometimes less buggy
 	parallel_cc       bool // whether to split the resulting .c file into many .c files + a common .h file, that are then compiled in parallel, then linked together.
 	only_check_syntax bool // when true, just parse the files, then stop, before running checker
 	check_only        bool // same as only_check_syntax, but also runs the checker
 	experimental      bool // enable experimental features
 	skip_unused       bool // skip generating C code for functions, that are not used
-	//
+
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successful builds.
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
@@ -240,6 +250,8 @@ pub mut:
 	// use_64_int bool
 	// forwards compatibility settings:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
+	//
+	subsystem Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
 }
 
 pub struct LineInfo {
@@ -286,14 +298,14 @@ fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_nam
 		panic('Failed to create temporary file ${tmp_v_file_path}')
 	}
 	run_options := cmdline.options_before(args, [option_name]).join(' ')
-	command_options := cmdline.options_after(args, [option_name])[1..].join(' ')
+	command_options := cmdline.options_after(args, [option_name])#[1..].join(' ')
 	vexe := vexe_path()
 	tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
-	//
+
 	res.vrun_elog('tmp_cmd: ${tmp_cmd}')
 	tmp_result := os.system(tmp_cmd)
 	res.vrun_elog('exit code: ${tmp_result}')
-	//
+
 	if output_option != '' {
 		res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
 		os.rm(tmp_exe_file_path) or {}
@@ -324,6 +336,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.use_cache = true
 		res.skip_unused = true
 	} */
+	mut no_skip_unused := false
 
 	mut command, mut command_idx := '', 0
 	for i := 0; i < args.len; i++ {
@@ -427,6 +440,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-nofloat' {
 				res.nofloat = true
 				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
+				res.compile_defines << 'nofloat'
 			}
 			'-fast-math' {
 				res.fast_math = true
@@ -434,6 +448,19 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-e' {
 				res.is_eval_argument = true
 				res.eval_argument = cmdline.option(args[i..], '-e', '')
+				i++
+			}
+			'-subsystem' {
+				subsystem := cmdline.option(args[i..], '-subsystem', '')
+				res.subsystem = Subsystem.from(subsystem) or {
+					mut valid := []string{}
+					$for x in Subsystem.values {
+						valid << x.name
+					}
+					eprintln('invalid subsystem: ${subsystem}')
+					eprintln('valid values are: ${valid}')
+					exit(1)
+				}
 				i++
 			}
 			'-gc' {
@@ -577,6 +604,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.skip_unused = true
 			}
 			'-no-skip-unused' {
+				no_skip_unused = true
 				res.skip_unused = false
 			}
 			'-compress' {
@@ -659,6 +687,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-translated' {
 				res.translated = true
 				res.gc_mode = .no_gc // no gc in c2v'ed code, at least for now
+			}
+			'-translated-go' {
+				println('got -translated-go')
+				res.translated_go = true
 			}
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
@@ -922,6 +954,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.parse_line_info(res.line_info)
 				i++
 			}
+			'-check-unused-fn-args' {
+				res.show_unused_params = true
+			}
+			'-check-return' {
+				res.is_check_return = true
+			}
 			'-use-coroutines' {
 				res.use_coroutines = true
 				$if macos || linux {
@@ -1102,6 +1140,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	res.build_options = m.keys()
 	// eprintln('>> res.build_options: $res.build_options')
 	res.fill_with_defaults()
+	if res.backend == .c {
+		res.skip_unused = res.build_mode != .build_module
+		if no_skip_unused {
+			res.skip_unused = false
+		}
+	}
+
 	return res, command
 }
 
@@ -1160,7 +1205,7 @@ pub fn cc_from_string(s string) CompilerType {
 	if s == '' {
 		return .gcc
 	}
-	cc := os.file_name(s).to_lower()
+	cc := os.file_name(s).to_lower_ascii()
 	return match true {
 		cc.contains('tcc') || cc.contains('tinyc') { .tinyc }
 		cc.contains('gcc') { .gcc }
@@ -1197,16 +1242,15 @@ fn (mut prefs Preferences) parse_define(define string) {
 	prefs.compile_values[dname] = dvalue
 	prefs.compile_defines_all << dname
 	match dvalue {
-		'0' {}
-		'1' {
+		'' {}
+		else {
 			prefs.compile_defines << dname
 		}
-		else {}
 	}
 }
 
 pub fn supported_test_runners_list() string {
-	return pref.supported_test_runners.map('`${it}`').join(', ')
+	return supported_test_runners.map('`${it}`').join(', ')
 }
 
 pub fn (pref &Preferences) should_trace_fn_name(fname string) bool {

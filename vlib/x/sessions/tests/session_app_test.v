@@ -1,7 +1,7 @@
 import net.http
 import time
 import x.sessions
-import x.vweb
+import veb
 import x.sessions.vweb2_middleware
 
 const port = 13010
@@ -18,18 +18,18 @@ pub mut:
 }
 
 const default_user = User{
-	name: 'casper'
-	age: 21
+	name:     'casper'
+	age:      21
 	verified: false
 }
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 	sessions.CurrentSession[User]
 }
 
 pub struct App {
-	vweb.Middleware[Context]
+	veb.Middleware[Context]
 pub mut:
 	sessions &sessions.Sessions[User]
 	started  chan bool
@@ -39,11 +39,11 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
-pub fn (app &App) session_data(mut ctx Context) vweb.Result {
+pub fn (app &App) session_data(mut ctx Context) veb.Result {
 	return ctx.text(ctx.session_data.str())
 }
 
-pub fn (app &App) protected(mut ctx Context) vweb.Result {
+pub fn (app &App) protected(mut ctx Context) veb.Result {
 	if user := ctx.session_data {
 		return ctx.json(user)
 	} else {
@@ -52,12 +52,12 @@ pub fn (app &App) protected(mut ctx Context) vweb.Result {
 	}
 }
 
-pub fn (mut app App) save_session(mut ctx Context) vweb.Result {
+pub fn (mut app App) save_session(mut ctx Context) veb.Result {
 	app.sessions.save(mut ctx, default_user) or { return ctx.server_error(err.msg()) }
 	return ctx.ok('')
 }
 
-pub fn (mut app App) update_session(mut ctx Context) vweb.Result {
+pub fn (mut app App) update_session(mut ctx Context) veb.Result {
 	if mut user := ctx.session_data {
 		user.age++
 		app.sessions.save(mut ctx, user) or { return ctx.server_error(err.msg()) }
@@ -72,7 +72,7 @@ pub fn (mut app App) update_session(mut ctx Context) vweb.Result {
 	return ctx.ok('')
 }
 
-pub fn (mut app App) destroy_session(mut ctx Context) vweb.Result {
+pub fn (mut app App) destroy_session(mut ctx Context) veb.Result {
 	app.sessions.destroy(mut ctx) or { return ctx.server_error(err.msg()) }
 	// sessions module should also update the context
 	assert ctx.session_data == none
@@ -89,18 +89,18 @@ fn testsuite_begin() {
 
 	mut app := &App{
 		sessions: &sessions.Sessions[User]{
-			store: sessions.MemoryStore[User]{}
-			secret: 'secret'.bytes()
+			store:          sessions.MemoryStore[User]{}
+			secret:         'secret'.bytes()
 			cookie_options: sessions.CookieOptions{
 				cookie_name: cookie_name
 			}
-			max_age: max_age
+			max_age:        max_age
 		}
 	}
 
 	app.use(vweb2_middleware.create[User, Context](mut app.sessions))
 
-	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2)
+	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2)
 	// app startup time
 	_ := <-app.started
 }
@@ -169,8 +169,8 @@ fn get_session_id() !string {
 
 fn make_request_with_session_id(method http.Method, path string, sid string) !http.Response {
 	return http.fetch(http.FetchConfig{
-		url: '${localserver}${path}'
-		method: method
+		url:     '${localserver}${path}'
+		method:  method
 		cookies: {
 			cookie_name: sid
 		}

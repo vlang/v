@@ -71,7 +71,7 @@ mut:
 	template_caches shared []TemplateCache = []TemplateCache{}
 	// counter for each individual TemplateCache created/updated
 	id_counter       int                = 1
-	ch_cache_handler chan TemplateCache = chan TemplateCache{cap: dtm.cache_handler_channel_cap}
+	ch_cache_handler chan TemplateCache = chan TemplateCache{cap: cache_handler_channel_cap}
 	// 'id_to_handlered' field is used exclusively by the cache handler to update or delete specific 'TemplateCache' in the cache database.
 	id_to_handlered     int
 	close_cache_handler bool
@@ -79,7 +79,7 @@ mut:
 	compress_html       bool = true
 	active_cache_server bool = true
 	// Initialisation of max data size in memory storage
-	max_size_data_in_memory int = dtm.max_size_data_in_memory
+	max_size_data_in_memory int = max_size_data_in_memory
 	// This array is designed to store a control process that checks whether cached data is currently in use while simultaneously handling expiration.
 	// This allows for the harmonious management of both aspects and facilitates the necessary actions.
 	nbr_of_remaining_template_request shared []RemainingTemplateRequest = []RemainingTemplateRequest{}
@@ -161,7 +161,7 @@ struct HtmlFileInfo {
 pub struct TemplateCacheParams {
 pub:
 	placeholders           &map[string]DtmMultiTypeMap = &map[string]DtmMultiTypeMap{}
-	cache_delay_expiration i64                         = dtm.cache_delay_expiration_by_default
+	cache_delay_expiration i64                         = cache_delay_expiration_by_default
 }
 
 // DynamicTemplateManagerInitialisationParams is used with 'initialize' function. (See below at initialize section)
@@ -171,7 +171,7 @@ pub:
 	def_cache_path       string
 	compress_html        bool = true
 	active_cache_server  bool = true
-	max_size_data_in_mem int  = dtm.max_size_data_in_memory
+	max_size_data_in_mem int  = max_size_data_in_memory
 	test_cache_dir       string
 	test_template_dir    string
 }
@@ -230,7 +230,7 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 			}
 			// If it is impossible to use a cache directory, the cache system is deactivated, and the user is warned."
 			if !active_cache_handler {
-				eprintln('${dtm.message_signature_warn} The cache storage directory does not exist or has a problem and it was also not possible to use a folder suitable for temporary storage. Therefore, the cache system will be disabled. It is recommended to address the aforementioned issues to utilize the cache system.')
+				eprintln('${message_signature_warn} The cache storage directory does not exist or has a problem and it was also not possible to use a folder suitable for temporary storage. Therefore, the cache system will be disabled. It is recommended to address the aforementioned issues to utilize the cache system.')
 			} else {
 				cache_temporary_bool = true
 			}
@@ -239,29 +239,29 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 	// Control if 'templates' folder exist in the root project
 	if !os.exists(dir_html_path) && !os.is_dir(dir_html_path) {
 		system_ready = false
-		eprintln('${dtm.message_signature_error} The templates directory at the project root does not exist. Please create a "templates" directory at the root of your project with appropriate read permissions. This is a mandatory step for using the Dynamic Template Manager (DTM). Current path attempted for create the templates folder: "${dir_html_path}"')
+		eprintln('${message_signature_error} The templates directory at the project root does not exist. Please create a "templates" directory at the root of your project with appropriate read permissions. This is a mandatory step for using the Dynamic Template Manager (DTM). Current path attempted for create the templates folder: "${dir_html_path}"')
 	}
 	// Validates the 'max_size_data_in_mem' setting in 'dtm_init_params'. If it's within the valid range, it's applied; otherwise, default value is used.
-	if dtm_init_params.max_size_data_in_mem <= dtm.max_size_data_in_memory
+	if dtm_init_params.max_size_data_in_mem <= max_size_data_in_memory
 		&& dtm_init_params.max_size_data_in_mem >= 0 {
 		max_size_memory = dtm_init_params.max_size_data_in_mem
 	} else {
-		max_size_memory = dtm.max_size_data_in_memory
+		max_size_memory = max_size_data_in_memory
 		mut type_error := 'exceeds'
 		if dtm_init_params.max_size_data_in_mem < 0 {
 			type_error = 'is invalid for define'
 		}
-		eprintln('${dtm.message_signature_info} The value "${dtm_init_params.max_size_data_in_mem}KB" ${type_error} the memory storage limit. It will not be considered, and the limit will be set to ${dtm.max_size_data_in_memory}KB.')
+		eprintln('${message_signature_info} The value "${dtm_init_params.max_size_data_in_mem}KB" ${type_error} the memory storage limit. It will not be considered, and the limit will be set to ${max_size_data_in_memory}KB.')
 	}
 
 	mut dtmi := &DynamicTemplateManager{
-		template_cache_folder: dir_path
-		template_folder: dir_html_path
-		max_size_data_in_memory: max_size_memory
-		compress_html: dtm_init_params.compress_html
-		active_cache_server: active_cache_handler
-		c_time: get_current_unix_micro_timestamp()
-		dtm_init_is_ok: system_ready
+		template_cache_folder:             dir_path
+		template_folder:                   dir_html_path
+		max_size_data_in_memory:           max_size_memory
+		compress_html:                     dtm_init_params.compress_html
+		active_cache_server:               active_cache_handler
+		c_time:                            get_current_unix_micro_timestamp()
+		dtm_init_is_ok:                    system_ready
 		cache_folder_is_temporary_storage: cache_temporary_bool
 	}
 	if system_ready {
@@ -270,9 +270,9 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 			dtmi.threads_handler << spawn dtmi.cache_handler()
 			dtmi.threads_handler << spawn dtmi.handle_dtm_clock()
 		}
-		println('${dtm.message_signature} Dynamic Template Manager activated')
+		println('${message_signature} Dynamic Template Manager activated')
 	} else {
-		eprintln('${dtm.message_signature_error} Unable to use the Dynamic Template Manager, please refer to the above errors and correct them.')
+		eprintln('${message_signature_error} Unable to use the Dynamic Template Manager, please refer to the above errors and correct them.')
 	}
 
 	return dtmi
@@ -301,7 +301,7 @@ pub fn (mut tm DynamicTemplateManager) expand(tmpl_path string, tmpl_var Templat
 	if tm.dtm_init_is_ok {
 		file_path, tmpl_name, current_content_checksum, tmpl_type := tm.check_tmpl_and_placeholders_size(tmpl_path,
 			tmpl_var.placeholders) or { return err.msg() }
-		converted_cache_delay_expiration := i64(tmpl_var.cache_delay_expiration) * dtm.convert_seconds
+		converted_cache_delay_expiration := i64(tmpl_var.cache_delay_expiration) * convert_seconds
 		// If cache exist, return necessary fields else, 'is_cache_exist' return false.
 		is_cache_exist, id, path, mut last_template_mod, gen_at, cache_del_exp, content_checksum := tm.return_cache_info_isexistent(file_path)
 		mut html := ''
@@ -349,8 +349,8 @@ pub fn (mut tm DynamicTemplateManager) expand(tmpl_path string, tmpl_var Templat
 		return html
 	} else {
 		tm.stop_cache_handler()
-		eprintln('${dtm.message_signature_error} The initialization phase of DTM has failed. Therefore, you cannot use it. Please address the errors and then restart the dtm server.')
-		return dtm.internat_server_error
+		eprintln('${message_signature_error} The initialization phase of DTM has failed. Therefore, you cannot use it. Please address the errors and then restart the dtm server.')
+		return internat_server_error
 	}
 }
 
@@ -391,16 +391,16 @@ fn check_and_clear_cache_files(c_folder string) ! {
 	file_p := os.join_path(c_folder, 'test.tmp')
 	// Create a text file for test permission access
 	mut f := os.create(file_p) or {
-		return error('${dtm.message_signature_error} Files are not writable. Test fail, DTM initialization failed : ${err.msg()}')
+		return error('${message_signature_error} Files are not writable. Test fail, DTM initialization failed : ${err.msg()}')
 	}
 	f.close()
 	// Read the previous text file for test permission access
 	os.read_file(file_p) or {
-		return error('${dtm.message_signature_error} Files are not readable. Test fail, DTM initialization failed : ${err.msg()}')
+		return error('${message_signature_error} Files are not readable. Test fail, DTM initialization failed : ${err.msg()}')
 	}
 	// List all files in the cache folder
 	files_list := os.ls(c_folder) or {
-		return error('${dtm.message_signature_error} While listing the cache directorie files, DTM initialization failed : ${err.msg()}')
+		return error('${message_signature_error} While listing the cache directorie files, DTM initialization failed : ${err.msg()}')
 	}
 	// Delete one by one "*.cache" or "*.tmp" files in the previous file list
 	for file in files_list {
@@ -408,7 +408,7 @@ fn check_and_clear_cache_files(c_folder string) ! {
 		file_extension := os.file_ext(file_path).to_lower()
 		if file_extension in ['.tmp', '.cache'] {
 			os.rm(file_path) or {
-				eprintln('${dtm.message_signature_error} While deleting the cache file: ${file_path}. DTM initialization failed : ${err.msg()}')
+				eprintln('${message_signature_error} While deleting the cache file: ${file_path}. DTM initialization failed : ${err.msg()}')
 				return
 			}
 		}
@@ -453,8 +453,8 @@ fn (mut tm DynamicTemplateManager) check_tmpl_and_placeholders_size(f_path strin
 			// Performs a basic check of the file extension.
 			ext := os.file_ext(html_file)
 			if ext != '.html' && ext != '.txt' {
-				eprintln('${dtm.message_signature_error} ${html_file}, is not a valid template file like .html or .txt')
-				return error(dtm.internat_server_error)
+				eprintln('${message_signature_error} ${html_file}, is not a valid template file like .html or .txt')
+				return error(internat_server_error)
 			}
 			if ext == '.txt' {
 				define_file_type = TemplateType.text
@@ -462,13 +462,13 @@ fn (mut tm DynamicTemplateManager) check_tmpl_and_placeholders_size(f_path strin
 			lock tm.html_file_info {
 				tm.html_file_info[f_path] = HtmlFileInfo{
 					file_full_path: html_file
-					file_name: file_name
-					file_type: define_file_type
+					file_name:      file_name
+					file_type:      define_file_type
 				}
 			}
 		} else {
-			eprintln("${dtm.message_signature_error} Template : '${html_file}' not found. Ensure all templates are located in the template directory.")
-			return error(dtm.internat_server_error)
+			eprintln("${message_signature_error} Template : '${html_file}' not found. Ensure all templates are located in the template directory.")
+			return error(internat_server_error)
 		}
 	}
 
@@ -479,23 +479,23 @@ fn (mut tm DynamicTemplateManager) check_tmpl_and_placeholders_size(f_path strin
 		mut combined_str := ''
 		// Control placeholder key and value sizes
 		for key, value in tmpl_var {
-			if key.len > dtm.max_placeholders_key_size {
-				eprintln('${dtm.message_signature_error} Length of placeholder key "${key}" exceeds the maximum allowed size for template content in file: ${html_file}. Max allowed size: ${dtm.max_placeholders_key_size} characters.')
-				return error(dtm.internat_server_error)
+			if key.len > max_placeholders_key_size {
+				eprintln('${message_signature_error} Length of placeholder key "${key}" exceeds the maximum allowed size for template content in file: ${html_file}. Max allowed size: ${max_placeholders_key_size} characters.')
+				return error(internat_server_error)
 			}
 			match value {
 				string {
-					if value.len > dtm.max_placeholders_value_size {
-						eprintln('${dtm.message_signature_error} Length of placeholder value for key "${key}" exceeds the maximum allowed size for template content in file: ${html_file}. Max allowed size: ${dtm.max_placeholders_value_size} characters.')
-						return error(dtm.internat_server_error)
+					if value.len > max_placeholders_value_size {
+						eprintln('${message_signature_error} Length of placeholder value for key "${key}" exceeds the maximum allowed size for template content in file: ${html_file}. Max allowed size: ${max_placeholders_value_size} characters.')
+						return error(internat_server_error)
 					}
 					combined_str += value
 				}
 				else {
 					casted_value := value.str()
-					if casted_value.len > dtm.max_placeholders_value_size {
-						eprintln('${dtm.message_signature_error} Length of placeholder value for key "${key}" exceeds the maximum allowed size for template content in file: ${html_file}. Max allowed size: ${dtm.max_placeholders_value_size} characters.')
-						return error(dtm.internat_server_error)
+					if casted_value.len > max_placeholders_value_size {
+						eprintln('${message_signature_error} Length of placeholder value for key "${key}" exceeds the maximum allowed size for template content in file: ${html_file}. Max allowed size: ${max_placeholders_value_size} characters.')
+						return error(internat_server_error)
 					}
 
 					combined_str += casted_value
@@ -528,23 +528,23 @@ fn (mut tm DynamicTemplateManager) create_template_cache_and_display(tcs CacheRe
 	// Control if cache delay expiration is correctly set. See the function itself for more details.
 	check_if_cache_delay_iscorrect(cache_delay_expiration, tmpl_name) or {
 		eprintln(err)
-		return dtm.internat_server_error
+		return internat_server_error
 	}
 	// Parses the template and stores the rendered output in the variable. See the function itself for more details.
 	mut html := tm.parse_tmpl_file(file_path, tmpl_name, placeholders, tm.compress_html,
 		tmpl_type)
 	// If caching is enabled and the template content is valid, this section creates a temporary cache file, which is then used by the cache manager.
 	// If successfully temporary is created, a cache creation/update notification is sent through its dedicated channel to the cache manager
-	if cache_delay_expiration != -1 && html != dtm.internat_server_error && tm.active_cache_server {
+	if cache_delay_expiration != -1 && html != internat_server_error && tm.active_cache_server {
 		op_success, tmp_name := tm.create_temp_cache(html, file_path, unique_time)
 		if op_success {
 			tm.ch_cache_handler <- TemplateCache{
-				id: tm.id_counter
+				id:   tm.id_counter
 				name: tmpl_name
 				// 'path' field contains the full path, name and file extension of targeted HTML template.
-				path: file_path
+				path:             file_path
 				content_checksum: current_content_checksum
-				tmp_name_file: tmp_name
+				tmp_name_file:    tmp_name
 				// Last modified timestamp of HTML template
 				last_template_mod: last_template_mod
 				// Unix current local timestamp of cache generation request converted to UTC
@@ -590,11 +590,11 @@ fn (tm DynamicTemplateManager) create_temp_cache(html &string, f_path string, ts
 	// Converts the HTML content into a byte array
 	html_bytes := html.bytes()
 	mut f := os.create(cache_path) or {
-		eprintln('${dtm.message_signature_error} Cannot create temporary cache file : ${err.msg()}')
+		eprintln('${message_signature_error} Cannot create temporary cache file : ${err.msg()}')
 		return false, ''
 	}
 	f.write(html_bytes) or {
-		eprintln('${dtm.message_signature_error} Cannot write in temporary cache file : ${err.msg()}')
+		eprintln('${message_signature_error} Cannot write in temporary cache file : ${err.msg()}')
 		f.close()
 		return false, ''
 	}
@@ -620,8 +620,8 @@ fn (mut tm DynamicTemplateManager) get_cache(name string, path string, placehold
 					}
 					.disk {
 						r_b_html := os.read_bytes(value.cache_full_path_name) or {
-							eprintln('${dtm.message_signature_error} Get_cache() cannot read template cache file ${value.name} : ${err.msg()} ')
-							return dtm.internat_server_error
+							eprintln('${message_signature_error} Get_cache() cannot read template cache file ${value.name} : ${err.msg()} ')
+							return internat_server_error
 						}
 						html = r_b_html.bytestr()
 					}
@@ -710,7 +710,7 @@ fn (mut tm DynamicTemplateManager) remaining_template_request(b bool, v int) {
 					if r_request.nbr_of_remaining_request <= 0
 						&& r_request.need_to_send_delete_request {
 						tm.ch_cache_handler <- TemplateCache{
-							id: r_request.id
+							id:            r_request.id
 							cache_request: .delete
 						}
 					}
@@ -751,7 +751,7 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 			mut tc := <-tm.ch_cache_handler {
 				// Close handler if asked.
 				if tm.close_cache_handler {
-					eprintln('${dtm.message_signature_info} Cache manager has been successfully stopped. Please consider restarting the application if needed.')
+					eprintln('${message_signature_info} Cache manager has been successfully stopped. Please consider restarting the application if needed.')
 					break
 				}
 				f_path_tmp := os.join_path(tm.template_cache_folder, tc.tmp_name_file)
@@ -771,7 +771,7 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 							tc.cache_storage_mode = .disk
 						}
 						file_data := os.read_bytes(f_path_tmp) or {
-							eprintln('${dtm.message_signature_error} Cache Handler : Failed to read tmp file, cache server will be stopped, you need to fix and restart application: ${err.msg()}')
+							eprintln('${message_signature_error} Cache Handler : Failed to read tmp file, cache server will be stopped, you need to fix and restart application: ${err.msg()}')
 							break
 						}
 
@@ -783,7 +783,7 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 								// If the cache is stored in memory, the temporary file is destroyed.
 								tc.html_data = file_data
 								os.rm(f_path_tmp) or {
-									eprintln('${dtm.message_signature_error} Cache Handler : While deleting the tmp cache file: "${f_path_tmp}", cache server will be stopped, you need to fix and restart application: ${err.msg()}')
+									eprintln('${message_signature_error} Cache Handler : While deleting the tmp cache file: "${f_path_tmp}", cache server will be stopped, you need to fix and restart application: ${err.msg()}')
 									break
 								}
 							}
@@ -792,7 +792,7 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 								tc.cache_full_path_name = os.join_path(tm.template_cache_folder,
 									'${tc.name}_${tc.checksum}.cache')
 								os.mv(f_path_tmp, tc.cache_full_path_name) or {
-									eprintln('${dtm.message_signature_error} Cache Handler : Failed to rename tmp file, cache server will be stopped, you need to fix and restart application: ${err.msg()}')
+									eprintln('${message_signature_error} Cache Handler : Failed to rename tmp file, cache server will be stopped, you need to fix and restart application: ${err.msg()}')
 									break
 								}
 							}
@@ -838,7 +838,7 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 					}
 				} else if tc.cache_request != .delete {
 					os.rm(f_path_tmp) or {
-						eprintln('${dtm.message_signature_warn} Cache Handler : Cannot deleting the unused tmp cache file: "${f_path_tmp}" : ${err.msg()}')
+						eprintln('${message_signature_warn} Cache Handler : Cannot deleting the unused tmp cache file: "${f_path_tmp}" : ${err.msg()}')
 					}
 				}
 			}
@@ -911,7 +911,7 @@ fn (mut tm DynamicTemplateManager) chandler_clear_specific_cache(id int) (int, b
 				.disk {
 					file_path := os.join_path(tm.template_cache_folder, '${value.name}_${value.checksum}.cache')
 					os.rm(file_path) or {
-						eprintln('${dtm.message_signature_error} While deleting the specific cache file: ${file_path}, cache server will be stopped, you need to fix and restart application: : ${err.msg()}')
+						eprintln('${message_signature_error} While deleting the specific cache file: ${file_path}, cache server will be stopped, you need to fix and restart application: : ${err.msg()}')
 						break
 					}
 				}
@@ -1002,12 +1002,12 @@ fn (mut tm DynamicTemplateManager) parse_tmpl_file(file_path string, tmpl_name s
 	mut tmpl_ := compile_template_file(file_path, tmpl_name, placeholders)
 
 	// Performs a light compression of the HTML output by removing usless spaces, newlines, and tabs if user selected this option.
-	if is_compressed && tmpl_type == TemplateType.html && tmpl_ != dtm.internat_server_error {
+	if is_compressed && tmpl_type == TemplateType.html && tmpl_ != internat_server_error {
 		tmpl_ = tmpl_.replace_each(['\n', '', '\t', '', '  ', ' '])
 		mut r := regex.regex_opt(r'>(\s+)<') or {
 			tm.stop_cache_handler()
-			eprintln('${dtm.message_signature_error} with regular expression for HTML light compression in parse_tmpl_file() function. Please check the syntax of the regex pattern : ${err.msg()}')
-			return dtm.internat_server_error
+			eprintln('${message_signature_error} with regular expression for HTML light compression in parse_tmpl_file() function. Please check the syntax of the regex pattern : ${err.msg()}')
+			return internat_server_error
 		}
 		tmpl_ = r.replace(tmpl_, '><')
 		for tmpl_.contains('  ') {
@@ -1027,9 +1027,9 @@ fn (mut tm DynamicTemplateManager) parse_tmpl_file(file_path string, tmpl_name s
 // - A parameter of -1 for no caching, meaning the template is processed every time without being stored in the cache."
 //
 fn check_if_cache_delay_iscorrect(cde i64, tmpl_name string) ! {
-	if (cde != 0 && cde != -1 && cde < dtm.converted_cache_delay_expiration_at_min)
-		|| (cde != 0 && cde != -1 && cde > dtm.converted_cache_delay_expiration_at_max) {
-		return error("${dtm.message_signature_error} The cache timeout for template '${tmpl_name}' cannot be set to a value less than '${dtm.cache_delay_expiration_at_min}' seconds and more than '${dtm.cache_delay_expiration_at_max}' seconds. Exception for the value '0' which means no cache expiration, and the value '-1' which means html generation without caching.")
+	if (cde != 0 && cde != -1 && cde < converted_cache_delay_expiration_at_min)
+		|| (cde != 0 && cde != -1 && cde > converted_cache_delay_expiration_at_max) {
+		return error("${message_signature_error} The cache timeout for template '${tmpl_name}' cannot be set to a value less than '${cache_delay_expiration_at_min}' seconds and more than '${cache_delay_expiration_at_max}' seconds. Exception for the value '0' which means no cache expiration, and the value '-1' which means html generation without caching.")
 	}
 }
 
@@ -1078,24 +1078,24 @@ fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
 	mut need_to_close := false
 	defer {
 		tm.ch_stop_dtm_clock.close()
-		eprintln('${dtm.message_signature_info} DTM clock handler has been successfully stopped.')
+		eprintln('${message_signature_info} DTM clock handler has been successfully stopped.')
 	}
 
 	for {
 		// Calculate the remaining time until the next update.
-		current_time := get_current_unix_micro_timestamp() / dtm.convert_seconds
-		mut time_since_last_update := int(current_time - (tm.c_time / dtm.convert_seconds))
-		mut minimum_wait_time_until_next_update := dtm.update_duration
+		current_time := get_current_unix_micro_timestamp() / convert_seconds
+		mut time_since_last_update := int(current_time - (tm.c_time / convert_seconds))
+		mut minimum_wait_time_until_next_update := update_duration
 
 		// Update DTM clock if update interval exceeded otherwise, set next check based on time since last update
-		if time_since_last_update >= dtm.update_duration {
-			tm.c_time = current_time * dtm.convert_seconds
+		if time_since_last_update >= update_duration {
+			tm.c_time = current_time * convert_seconds
 		} else {
 			if time_since_last_update < 0 {
 				time_since_last_update = 0
 			}
-			minimum_wait_time_until_next_update = (dtm.update_duration - time_since_last_update) +
-				dtm.update_duration
+			minimum_wait_time_until_next_update = (update_duration - time_since_last_update) +
+				update_duration
 		}
 
 		// Wait until the next update interval or until a stop signal is received.
@@ -1115,7 +1115,7 @@ fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
 			break
 		}
 		// Reset wait time for next cycle.
-		minimum_wait_time_until_next_update = dtm.update_duration
+		minimum_wait_time_until_next_update = update_duration
 	}
 }
 

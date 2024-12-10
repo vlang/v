@@ -31,5 +31,5 @@ vlib/v/checker/tests/chan_mut.vv:14:8: error: cannot push non-reference `St` on 
    13 |     mut y := St{}
    14 |     ch <- y
       |           ^
-   15 |     mut z := &St{n: 7}
-   16 |     // this works
+   15 |     mut z := &St{
+   16 |         n: 7

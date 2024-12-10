@@ -6,12 +6,12 @@ import os.cmdline
 
 // Symbol type to search
 enum Symbol {
-	@fn
+	fn
 	method
-	@struct
-	@interface
-	@enum
-	@const
+	struct
+	interface
+	enum
+	const
 	var
 	regexp
 }
@@ -19,7 +19,7 @@ enum Symbol {
 // Visibility of the symbols to search
 enum Visibility {
 	all
-	@pub
+	pub
 	pri
 }
 
@@ -35,18 +35,18 @@ const verbose = '-v' in cmdline.only_options(_args)
 const header = '-h' in cmdline.only_options(_args)
 const format = '-f' in cmdline.only_options(_args)
 const symbols = {
-	'fn':        Symbol.@fn
+	'fn':        Symbol.fn
 	'method':    .method
-	'struct':    .@struct
-	'interface': .@interface
-	'enum':      .@enum
-	'const':     .@const
+	'struct':    .struct
+	'interface': .interface
+	'enum':      .enum
+	'const':     .const
 	'var':       .var
 	'regexp':    .regexp
 }
 const visibilities = {
 	'all': Visibility.all
-	'pub': .@pub
+	'pub': .pub
 	'pri': .pri
 }
 const mutabilities = {
@@ -127,16 +127,21 @@ fn collect_v_files(path string, recursive bool) ![]string {
 	}
 	mut all_files := []string{}
 	mut entries := os.ls(path)!
-	mut local_path_separator := os.path_separator
-	if path.ends_with(os.path_separator) {
-		local_path_separator = ''
-	}
 	for entry in entries {
-		file := path + local_path_separator + entry
-		if os.is_dir(file) && !os.is_link(file) && recursive {
-			all_files << collect_v_files(file, recursive)!
-		} else if os.exists(file) && (file.ends_with('.v') || file.ends_with('.vsh')) {
+		if entry == '.git' {
+			continue
+		}
+		if entry == 'tests' {
+			continue
+		}
+		file := os.join_path_single(path, entry)
+		if os.file_ext(entry) in ['.v', '.vsh'] {
 			all_files << file
+			continue
+		}
+		if recursive && os.is_dir(file) && !os.is_link(file) {
+			all_files << collect_v_files(file, recursive)!
+			continue
 		}
 	}
 	return all_files

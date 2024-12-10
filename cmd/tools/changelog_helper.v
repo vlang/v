@@ -2,6 +2,8 @@ module main
 
 import os
 
+const delete_skipped = true
+
 const git_log_cmd = 'git log -n 500 --pretty=format:"%s" --simplify-merges'
 
 enum Category {
@@ -162,8 +164,15 @@ fn (mut app App) process_line(text string) ! {
 	if text.contains('checker:') {
 		category = .checker
 	} else if is_examples(text) {
-		// Always skip examples and typos fixes
 		category = .examples
+		// println("Skipping line (example) $text")
+		// return
+	} else if is_skip(text) {
+		// Always skip cleanups, typos etc
+		println('Skipping line (cleanup/typo)\n${text}\n')
+		if delete_skipped {
+			delete_processed_line_from_log(text)!
+		}
 		return
 	} else if is_os_support(text) {
 		category = .os_support
@@ -195,9 +204,11 @@ fn (mut app App) process_line(text string) ! {
 		// Always skip docs
 		delete_processed_line_from_log(text)!
 		return
-	}
-	//
-	else {
+	} else {
+		println('Skipping line (unknown category)\n${text}\n')
+		// if delete_skipped {
+		// delete_processed_line_from_log(text)!
+		//}
 		return
 	}
 	println('process_line: cat=${category} "${text}"')
@@ -209,7 +220,7 @@ fn (mut app App) process_line(text string) ! {
 	// exit(0)
 	//}
 	if (semicolon_pos < 15
-		&& prefix in ['checker', 'cgen', 'parser', 'v.parser', 'ast', 'jsgen', 'v.gen.js', 'fmt', 'vfmt', 'tools'])
+		&& prefix in ['checker', 'cgen', 'parser', 'v.parser', 'ast', 'jsgen', 'v.gen.js', 'fmt', 'vfmt', 'tools', 'examples'])
 		|| (semicolon_pos < 30 && prefix.contains(', ')) {
 		s = '- ' + text[semicolon_pos + 2..].capitalize()
 	}
@@ -387,6 +398,9 @@ const stdlib_strings = [
 	'log:',
 	'flag:',
 	'regex:',
+	'tmpl:',
+	'hash:',
+	'stbi:',
 ]
 
 fn is_stdlib(text string) bool {
@@ -407,6 +421,7 @@ fn is_orm(text string) bool {
 
 const cgen_strings = [
 	'cgen:',
+	'cgen,',
 	'v.gen.c:',
 ]
 
@@ -449,6 +464,8 @@ fn is_improvements(text string) bool {
 
 const examples_strings = [
 	'example',
+]
+const skip_strings = [
 	'tests',
 	'readme:',
 	'.md:',
@@ -462,10 +479,14 @@ fn is_examples(text string) bool {
 	return is_xxx(text, examples_strings)
 }
 
+fn is_skip(text string) bool {
+	return is_xxx(text, skip_strings)
+}
+
 const tools_strings = [
 	'tools:',
 	'vpm:',
-	'ci',
+	'ci:',
 	'github:',
 	'gitignore',
 	'benchmark',

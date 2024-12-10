@@ -174,6 +174,39 @@ pub fn (t Time) format_rfc3339() string {
 	return buf.bytestr()
 }
 
+// format_rfc3339_micro returns a date string in "YYYY-MM-DDTHH:mm:ss.123456Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+@[manualfree]
+pub fn (t Time) format_rfc3339_micro() string {
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	t_ := time_with_unix(t)
+	if t_.is_local {
+		utc_time := t_.local_to_utc()
+		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
+		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
+		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
+		int_to_byte_array_no_pad(utc_time.hour, mut buf, 13)
+		int_to_byte_array_no_pad(utc_time.minute, mut buf, 16)
+		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
+		int_to_byte_array_no_pad(utc_time.nanosecond / 1000, mut buf, 26)
+	} else {
+		int_to_byte_array_no_pad(t_.year, mut buf, 4)
+		int_to_byte_array_no_pad(t_.month, mut buf, 7)
+		int_to_byte_array_no_pad(t_.day, mut buf, 10)
+		int_to_byte_array_no_pad(t_.hour, mut buf, 13)
+		int_to_byte_array_no_pad(t_.minute, mut buf, 16)
+		int_to_byte_array_no_pad(t_.second, mut buf, 19)
+		int_to_byte_array_no_pad(t_.nanosecond / 1000, mut buf, 26)
+	}
+
+	return buf.bytestr()
+}
+
 // format_rfc3339_nano returns a date string in "YYYY-MM-DDTHH:mm:ss.123456789Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 @[manualfree]
 pub fn (t Time) format_rfc3339_nano() string {
@@ -287,37 +320,37 @@ const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 
 // custom_format returns a date with custom format
 //
-// |                  | Token | Output                                 |
-// |-----------------:|:------|:---------------------------------------|
-// |        **Month** | M     | 1 2 ... 11 12                          |
+// | Category         | Token | Output                                 |
+// |:-----------------|:------|:---------------------------------------|
+// |          Era     | N     | BC AD                                  |
+// |                  | NN    | Before Christ, Anno Domini             |
+// |         Year     | YY    | 70 71 ... 29 30                        |
+// |                  | YYYY  | 1970 1971 ... 2029 2030                |
+// |      Quarter     | Q     | 1 2 3 4                                |
+// |                  | QQ    | 01 02 03 04                            |
+// |                  | Qo    | 1st 2nd 3rd 4th                        |
+// |        Month     | M     | 1 2 ... 11 12                          |
 // |                  | Mo    | 1st 2nd ... 11th 12th                  |
 // |                  | MM    | 01 02 ... 11 12                        |
 // |                  | MMM   | Jan Feb ... Nov Dec                    |
 // |                  | MMMM  | January February ... November December |
-// |      **Quarter** | Q     | 1 2 3 4                                |
-// |                  | QQ    | 01 02 03 04                            |
-// |                  | Qo    | 1st 2nd 3rd 4th                        |
-// | **Day of Month** | D     | 1 2 ... 30 31                          |
+// | Week of Year     | w     | 1 2 ... 52 53                          |
+// |                  | wo    | 1st 2nd ... 52nd 53rd                  |
+// |                  | ww    | 01 02 ... 52 53                        |
+// | Day of Month     | D     | 1 2 ... 30 31                          |
 // |                  | Do    | 1st 2nd ... 30th 31st                  |
 // |                  | DD    | 01 02 ... 30 31                        |
-// |  **Day of Year** | DDD   | 1 2 ... 364 365                        |
+// |  Day of Year     | DDD   | 1 2 ... 364 365                        |
 // |                  | DDDo  | 1st 2nd ... 364th 365th                |
 // |                  | DDDD  | 001 002 ... 364 365                    |
-// |  **Day of Week** | d     | 0 1 ... 5 6 (Sun-Sat)                  |
+// |  Day of Week     | d     | 0 1 ... 5 6 (Sun-Sat)                  |
 // |                  | c     | 1 2 ... 6 7 (Mon-Sun)                  |
 // |                  | dd    | Su Mo ... Fr Sa                        |
 // |                  | ddd   | Sun Mon ... Fri Sat                    |
 // |                  | dddd  | Sunday Monday ... Friday Saturday      |
-// | **Week of Year** | w     | 1 2 ... 52 53                          |
-// |                  | wo    | 1st 2nd ... 52nd 53rd                  |
-// |                  | ww    | 01 02 ... 52 53                        |
-// |         **Year** | YY    | 70 71 ... 29 30                        |
-// |                  | YYYY  | 1970 1971 ... 2029 2030                |
-// |          **Era** | N     | BC AD                                  |
-// |                  | NN    | Before Christ, Anno Domini             |
-// |        **AM/PM** | A     | AM PM                                  |
+// |        AM/PM     | A     | AM PM                                  |
 // |                  | a     | am pm                                  |
-// |         **Hour** | H     | 0 1 ... 22 23                          |
+// |         Hour     | H     | 0 1 ... 22 23                          |
 // |                  | HH    | 00 01 ... 22 23                        |
 // |                  | h     | 1 2 ... 11 12                          |
 // |                  | hh    | 01 02 ... 11 12                        |
@@ -325,11 +358,11 @@ const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 // |                  | ii    | 00 01 ... 11 12 01 ... 11              |
 // |                  | k     | 1 2 ... 23 24                          |
 // |                  | kk    | 01 02 ... 23 24                        |
-// |       **Minute** | m     | 0 1 ... 58 59                          |
+// |       Minute     | m     | 0 1 ... 58 59                          |
 // |                  | mm    | 00 01 ... 58 59                        |
-// |       **Second** | s     | 0 1 ... 58 59                          |
+// |       Second     | s     | 0 1 ... 58 59                          |
 // |                  | ss    | 00 01 ... 58 59                        |
-// |       **Offset** | Z     | -7 -6 ... +5 +6                        |
+// |       Offset     | Z     | -7 -6 ... +5 +6                        |
 // |                  | ZZ    | -0700 -0600 ... +0500 +0600            |
 // |                  | ZZZ   | -07:00 -06:00 ... +05:00 +06:00        |
 //
@@ -344,9 +377,9 @@ pub fn (t Time) custom_format(s string) string {
 			if i > s.len - j {
 				continue
 			}
-			if j == 1 || (j == 2 && s[i..i + j] in time.tokens_2)
-				|| (j == 3 && s[i..i + j] in time.tokens_3)
-				|| (j == 4 && s[i..i + j] in time.tokens_4) {
+			if j == 1 || (j == 2 && s[i..i + j] in tokens_2)
+				|| (j == 3 && s[i..i + j] in tokens_3)
+				|| (j == 4 && s[i..i + j] in tokens_4) {
 				tokens << s[i..i + j]
 				i += (j - 1)
 				break
@@ -393,7 +426,7 @@ pub fn (t Time) custom_format(s string) string {
 					int(is_leap_year(t.year))))
 			}
 			'd' {
-				sb.write_string(t.day_of_week().str())
+				sb.write_string('${t.day_of_week() % 7}')
 			}
 			'dd' {
 				sb.write_string(long_days[t.day_of_week() - 1][0..2])
@@ -472,7 +505,7 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(ordinal_suffix((t.month % 4) + 1))
 			}
 			'c' {
-				sb.write_string('${t.day_of_week() + 1}')
+				sb.write_string('${t.day_of_week()}')
 			}
 			'N' {
 				// TODO: integrate BC

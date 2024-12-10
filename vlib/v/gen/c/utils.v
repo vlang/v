@@ -7,18 +7,16 @@ import v.ast
 
 fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		// NOTE: `resolve_generic_to_concrete` should not mutate the table.
+		// NOTE: `convert_generic_type` should not mutate the table.
 		//
 		// It mutates if the generic type is for example `[]T` and the concrete
 		// type is an array type that has not been registered yet.
 		//
 		// This should have already happened in the checker, since it also calls
-		// `resolve_generic_to_concrete`. `g.table` is made non-mut to make sure
+		// `convert_generic_type`. `g.table` is made non-mut to make sure
 		// no one else can accidentally mutates the table.
 		if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
-			if t_typ := g.table.resolve_generic_to_concrete(typ, g.cur_fn.generic_names,
-				g.cur_concrete_types)
-			{
+			if t_typ := g.table.convert_generic_type(typ, g.cur_fn.generic_names, g.cur_concrete_types) {
 				return t_typ
 			}
 		} else if g.inside_struct_init {
@@ -27,29 +25,23 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 				if sym.info is ast.Struct {
 					if sym.info.generic_types.len > 0 {
 						generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-						if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
-							sym.info.concrete_types)
-						{
+						if t_typ := g.table.convert_generic_type(typ, generic_names, sym.info.concrete_types) {
 							return t_typ
 						}
 					}
 				}
 			}
-		} else if typ.has_flag(.generic) && g.table.sym(typ).kind == .struct_ {
-			// resolve selector `a.foo` where `a` is struct[T] on non generic function	
+		} else if g.table.sym(typ).kind == .struct {
+			// resolve selector `a.foo` where `a` is struct[T] on non generic function
 			sym := g.table.sym(typ)
 			if sym.info is ast.Struct {
 				if sym.info.generic_types.len > 0 {
 					generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-					if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
-						sym.info.concrete_types)
-					{
+					if t_typ := g.table.convert_generic_type(typ, generic_names, sym.info.concrete_types) {
 						return t_typ
 					}
 
-					if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
-						g.cur_concrete_types)
-					{
+					if t_typ := g.table.convert_generic_type(typ, generic_names, g.cur_concrete_types) {
 						return t_typ
 					}
 				}
@@ -77,23 +69,23 @@ fn (mut g Gen) unwrap(typ ast.Type) Type {
 	no_generic_sym := g.table.sym(no_generic)
 	if no_generic_sym.kind != .alias {
 		return Type{
-			typ: no_generic
-			sym: no_generic_sym
-			unaliased: no_generic
+			typ:           no_generic
+			sym:           no_generic_sym
+			unaliased:     no_generic
 			unaliased_sym: no_generic_sym
 		}
 	}
 	return Type{
-		typ: no_generic
-		sym: no_generic_sym
-		unaliased: no_generic_sym.parent_idx
-		unaliased_sym: g.table.sym(no_generic_sym.parent_idx)
+		typ:           no_generic
+		sym:           no_generic_sym
+		unaliased:     no_generic_sym.parent_idx
+		unaliased_sym: g.table.sym(ast.idx_to_type(no_generic_sym.parent_idx))
 	}
 }
 
 // generate function variable definition, e.g. `void (*var_name) (int, string)`
 fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_name string) string {
-	ret_styp := g.typ(return_type)
+	ret_styp := g.styp(return_type)
 	mut sig := '${ret_styp} (*${c_name(var_name)}) ('
 	for j, arg_typ in arg_types {
 		arg_sym := g.table.sym(arg_typ)
@@ -102,7 +94,7 @@ fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_
 			arg_sig := g.fn_var_signature(func.return_type, func.params.map(it.typ), '')
 			sig += arg_sig
 		} else {
-			arg_styp := g.typ(arg_typ)
+			arg_styp := g.styp(arg_typ)
 			sig += arg_styp
 		}
 		if j < arg_types.len - 1 {
@@ -115,14 +107,14 @@ fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_
 
 // generate anon fn cname, e.g. `anon_fn_void_int_string`, `anon_fn_void_int_ptr_string`
 fn (mut g Gen) anon_fn_cname(return_type ast.Type, arg_types []ast.Type) string {
-	ret_styp := g.typ(return_type).replace('*', '_ptr')
+	ret_styp := g.styp(return_type).replace('*', '_ptr')
 	mut sig := 'anon_fn_${ret_styp}_'
 	for j, arg_typ in arg_types {
 		arg_sym := g.table.sym(arg_typ)
 		if arg_sym.info is ast.FnType {
 			sig += g.anon_fn_cname(arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ))
 		} else {
-			sig += g.typ(arg_typ).replace('*', '_ptr')
+			sig += g.styp(arg_typ).replace('*', '_ptr')
 		}
 		if j < arg_types.len - 1 {
 			sig += '_'
@@ -151,5 +143,27 @@ fn (mut g Gen) dot_or_ptr(val_type ast.Type) string {
 		'->'
 	} else {
 		'.'
+	}
+}
+
+fn (mut g Gen) unwrap_option_type(typ ast.Type, name string, is_auto_heap bool) {
+	styp := g.base_type(typ)
+	if is_auto_heap {
+		g.write('(*(${styp}*)${name}->data)')
+	} else {
+		type_sym := g.table.sym(typ)
+		if type_sym.kind == .alias {
+			// Alias to Option type
+			parent_typ := (type_sym.info as ast.Alias).parent_type
+			if parent_typ.has_flag(.option) {
+				g.write('*((${g.base_type(parent_typ)}*)')
+			}
+			g.write('(*(${styp}*)${name}.data)')
+			if parent_typ.has_flag(.option) {
+				g.write('.data)')
+			}
+		} else {
+			g.write('(*(${styp}*)${name}.data)')
+		}
 	}
 }

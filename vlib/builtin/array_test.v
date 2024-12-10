@@ -191,6 +191,24 @@ fn test_prepend_many() {
 	assert a == [5, 6, 1, 2, 3, 4]
 }
 
+type Strings = []string
+
+fn test_aliases_of_array_insert() {
+	mut strs := Strings(['hi'])
+	strs.insert(0, '22')
+	assert strs == ['22', 'hi']
+	strs.insert(1, ['11'])
+	assert strs == ['22', '11', 'hi']
+}
+
+fn test_aliases_of_array_prepend() {
+	mut strs := Strings(['hi'])
+	strs.prepend('22')
+	assert strs == ['22', 'hi']
+	strs.prepend(['44', '33'])
+	assert strs == ['44', '33', '22', 'hi']
+}
+
 fn test_strings() {
 	a := ['a', 'b', 'c']
 	assert a.str() == "['a', 'b', 'c']"
@@ -741,10 +759,10 @@ fn test_eq() {
 	assert [5, 6, 7] != [6, 7]
 	assert [`a`, `b`] == [`a`, `b`]
 	assert [User{
-		age: 22
+		age:  22
 		name: 'bob'
 	}] == [User{
-		age: 22
+		age:  22
 		name: 'bob'
 	}]
 	assert [{
@@ -1279,7 +1297,7 @@ fn test_push_arr_string_free() {
 	lines << s
 	// make sure the data in the array is valid after freeing the string
 	unsafe { s.free() }
-	//
+
 	println(lines)
 	assert lines.len == 2
 	assert lines[0] == 'hi'
@@ -1383,7 +1401,7 @@ fn test_struct_array_of_multi_type_in() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv:   {
 			'aaa': '111'
 		}
 	}
@@ -1391,14 +1409,14 @@ fn test_struct_array_of_multi_type_in() {
 		Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: {
+			kv:   {
 				'aaa': '111'
 			}
 		},
 		Person{
 			name: 'bob'
 			nums: [2]
-			kv: {
+			kv:   {
 				'bbb': '222'
 			}
 		},
@@ -1411,7 +1429,7 @@ fn test_struct_array_of_multi_type_index() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv:   {
 			'aaa': '111'
 		}
 	}
@@ -1419,14 +1437,14 @@ fn test_struct_array_of_multi_type_index() {
 		Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: {
+			kv:   {
 				'aaa': '111'
 			}
 		},
 		Person{
 			name: 'bob'
 			nums: [2]
-			kv: {
+			kv:   {
 				'bbb': '222'
 			}
 		},
@@ -1510,7 +1528,7 @@ struct Numbers {
 fn test_array_of_multi_filter() {
 	arr := [1, 2, 3, 4, 5]
 	nums := Numbers{
-		odds: arr.filter(it % 2 == 1)
+		odds:  arr.filter(it % 2 == 1)
 		evens: arr.filter(it % 2 == 0)
 	}
 	println(nums)
@@ -1521,7 +1539,7 @@ fn test_array_of_multi_filter() {
 fn test_array_of_multi_map() {
 	arr := [1, 3, 5]
 	nums := Numbers{
-		odds: arr.map(it + 2)
+		odds:  arr.map(it + 2)
 		evens: arr.map(it * 2)
 	}
 	println(nums)
@@ -1637,4 +1655,125 @@ fn test_reset() {
 		assert e.str == unsafe { nil }
 		assert e.len == 0
 	}
+}
+
+fn test_index_of_ints() {
+	ia := [1, 2, 3]
+	ii := ia.index(2)
+	dump(ii)
+	assert ii == 1
+}
+
+fn test_index_of_strings() {
+	sa := ['a', 'b', 'c']
+	si := sa.index('b')
+	dump(si)
+	assert si == 1
+}
+
+fn test_index_of_voidptrs() {
+	pa := [voidptr(123), voidptr(45), voidptr(99)]
+	pi := pa.index(voidptr(45))
+	dump(pi)
+	assert pi == 1
+}
+
+fn a() {}
+
+fn b() {}
+
+fn c() {}
+
+fn test_index_of_fns() {
+	fa := [a, b, c]
+	fi := fa.index(b)
+	dump(fi)
+	assert fi == 1
+}
+
+fn test_sorted_immutable_original_should_not_change() {
+	a := ['hi', '1', '5', '3']
+	b := a.sorted()
+	assert a == ['hi', '1', '5', '3']
+	assert b == ['1', '3', '5', 'hi']
+}
+
+fn test_sorted_mutable_original_should_not_change() {
+	mut a := ['hi', '1', '5', '3']
+	b := a.sorted()
+	assert a == ['hi', '1', '5', '3']
+	assert b == ['1', '3', '5', 'hi']
+}
+
+fn test_sorted_reversed() {
+	aa := ['hi', '1', '5', '3']
+	bb := aa.sorted(a > b)
+	assert aa == ['hi', '1', '5', '3']
+	assert bb == ['hi', '5', '3', '1']
+}
+
+fn test_sorted_by_len() {
+	a := ['hi', 'abc', 'a', 'zzzzz']
+	c := a.sorted(a.len < b.len)
+	assert c == ['a', 'hi', 'abc', 'zzzzz']
+}
+
+fn test_sorted_can_be_called_on_an_array_literals() {
+	b := [5, 1, 9].sorted()
+	assert b == [1, 5, 9]
+	assert [5.0, 1.2, 9.4].sorted() == [1.2, 5.0, 9.4]
+	assert ['a', '00', 'z', 'dd', 'xyz'].sorted(a > b) == ['z', 'xyz', 'dd', 'a', '00']
+	assert ['a', '00', 'zzzzz', 'dddd', 'xyz'].sorted(a.len > b.len) == ['zzzzz', 'dddd', 'xyz',
+		'00', 'a']
+	assert ['a', '00', 'zzzzz', 'dddd', 'xyz'].sorted(a.len < b.len) == ['a', '00', 'xyz', 'dddd',
+		'zzzzz']
+}
+
+fn iarr() []int {
+	return [5, 1, 9, 1, 2]
+}
+
+fn test_sorted_can_be_called_on_the_result_of_a_fn() {
+	assert iarr().sorted() == [1, 1, 2, 5, 9]
+	assert iarr().sorted(a > b) == [9, 5, 2, 1, 1]
+}
+
+fn test_sorting_2d_arrays() {
+	assert [[1, 2], [3, 4, 5], [2]].sorted(a.len > b.len) == [
+		[3, 4, 5],
+		[1, 2],
+		[2],
+	]
+	assert [[1, 2], [3, 4, 5], [2]].sorted(a.len < b.len) == [
+		[2],
+		[1, 2],
+		[3, 4, 5],
+	]
+	assert unsafe { [[1, 2], [3, 4, 5], [2]].sorted(a[0] > b[0]) } == [
+		[3, 4, 5],
+		[2],
+		[1, 2],
+	]
+	// assert [[1, 2], [3, 4, 5], [2]].sorted( a.reduce(sum) > b.reduce(sum) ) == ... // TODO
+}
+
+fn test_sorting_3d_arrays() {
+	assert [[][]int{}, [[2, 22], [2]], [[3, 33], [3333], [33, 34, 35]],
+		[[444]]].sorted(a.len > b.len) == [[[3, 33], [3333], [33, 34, 35]],
+		[[2, 22], [2]], [[444]], [][]int{}]
+}
+
+fn test_sorted_with_compare() {
+	aa := ['hi', '1', '5', '3']
+	bb := aa.sorted_with_compare(fn (a &string, b &string) int {
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
+		return 0
+	})
+	assert aa == ['hi', '1', '5', '3'], 'aa should stay unmodified'
+	assert bb == ['1', '3', '5', 'hi'], 'bb should be sorted, according to the custom comparison callback fn'
 }

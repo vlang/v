@@ -4,6 +4,7 @@
 module native
 
 import v.ast
+import v.util
 
 fn C.strtol(str &char, endptr &&char, base i32) i32
 
@@ -33,7 +34,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					}
 					jump_addr := g.code_gen.jmp(0)
 					g.labels.patches << LabelPatch{
-						id: label
+						id:  label
 						pos: jump_addr
 					}
 					g.println('; jump to ${label}: ${node.kind}')
@@ -86,7 +87,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			}
 		}
-		ast.Module {}
+		ast.Module {
+			g.is_builtin_mod = util.module_is_builtin(node.name)
+		}
 		ast.Return {
 			g.code_gen.return_stmt(node)
 		}
@@ -97,7 +100,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.gen_assert(node)
 		}
 		ast.GlobalDecl {
-			if !g.pref.experimental {
+			if !g.is_builtin_mod && !g.pref.experimental {
 				g.warning('globals are not supported yet', node.pos)
 			}
 		}
@@ -157,14 +160,14 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 	}
 	end_label := g.labels.new_label()
 	g.labels.patches << LabelPatch{
-		id: end_label
+		id:  end_label
 		pos: jump_addr
 	}
 	g.println('; jump to label ${end_label}')
 	g.labels.branches << BranchLabel{
-		name: node.label
+		name:  node.label
 		start: start_label
-		end: end_label
+		end:   end_label
 	}
 	g.stmts(node.stmts)
 	g.labels.addrs[start_label] = g.pos()
@@ -193,9 +196,9 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		g.println('; label ${start_label}')
 		end_label := g.labels.new_label()
 		g.labels.branches << BranchLabel{
-			name: node.label
+			name:  node.label
 			start: start_label
-			end: end_label
+			end:   end_label
 		}
 		g.stmts(node.stmts)
 		g.labels.branches.pop()
@@ -257,14 +260,14 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	}
 	end_label := g.labels.new_label()
 	g.labels.patches << LabelPatch{
-		id: end_label
+		id:  end_label
 		pos: jump_addr
 	}
 	g.println('; jump to label ${end_label}')
 	g.labels.branches << BranchLabel{
-		name: node.label
+		name:  node.label
 		start: start_label
-		end: end_label
+		end:   end_label
 	}
 	g.stmts(node.stmts)
 	g.labels.branches.pop()
@@ -294,14 +297,14 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 
 		end_label := g.labels.new_label()
 		g.labels.patches << LabelPatch{
-			id: end_label
+			id:  end_label
 			pos: jump_addr
 		}
 		g.println('; jump to label ${end_label}')
 		g.labels.branches << BranchLabel{
-			name: node.label
+			name:  node.label
 			start: start_label
-			end: end_label
+			end:   end_label
 		}
 		g.stmts(node.stmts) // writes the actual body of the loop
 		g.labels.addrs[start_label] = g.pos()
@@ -316,7 +319,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 	} else if node.kind == .array_fixed {
 	} else if node.kind == .map {
 	} else if node.kind == .string {
-	} else if node.kind == .struct_ {
+	} else if node.kind == .struct {
 	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
 	} else if it.kind == .map {
 		*/
@@ -331,7 +334,7 @@ fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
 	label := g.labels.new_label()
 	cjmp_addr = g.condition(ane, true)
 	g.labels.patches << LabelPatch{
-		id: label
+		id:  label
 		pos: cjmp_addr
 	}
 	g.println('; jump to label ${label}')

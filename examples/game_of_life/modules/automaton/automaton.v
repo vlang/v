@@ -70,7 +70,7 @@ fn new_automaton(ftext string) Automaton {
 		}
 	}
 	return Automaton{
-		field: field
+		field:     field
 		new_field: new_field
 	}
 }

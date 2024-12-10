@@ -1,0 +1,11 @@
+fn f() !int {
+	return 42
+}
+
+a := {
+	2:   f() // first value
+	3:   f() // second value
+	f(): 1
+}
+
+println(a)

@@ -107,6 +107,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					if expr.obj.smartcasts.len > 0 {
 						typ = c.unwrap_generic(expr.obj.smartcasts.last())
 					}
+					if expr.obj.ct_type_var != .no_comptime {
+						typ = c.comptime.get_type_or_default(expr, typ)
+					}
 				}
 			}
 			got_types << typ
@@ -164,21 +167,20 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			mut expr_ := node.exprs[0]
 			got_type := c.expr(mut expr_)
 			got_type_sym := c.table.sym(got_type)
-			if got_type_sym.kind == .struct_
-				&& c.type_implements(got_type, ast.error_type, node.pos) {
+			if got_type_sym.kind == .struct && c.type_implements(got_type, ast.error_type, node.pos) {
 				node.exprs[0] = ast.CastExpr{
-					expr: node.exprs[0]
-					typname: 'IError'
-					typ: ast.error_type
+					expr:      node.exprs[0]
+					typname:   'IError'
+					typ:       ast.error_type
 					expr_type: got_type
-					pos: node.pos
+					pos:       node.pos
 				}
 				node.types[0] = ast.error_type
 				return
 			}
 		}
 		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
-		midx := imax(0, imin(expected_types.len, expr_idxs.len - 1))
+		midx := int_max(0, int_min(expected_types.len, expr_idxs.len - 1))
 		mismatch_pos := node.exprs[expr_idxs[midx]].pos()
 		c.error('expected ${expected_types.len} ${arg}, but got ${got_types.len}', mismatch_pos)
 		return
@@ -226,9 +228,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 				}
 			} else {
-				if exp_type_sym.kind == .interface_ {
+				if exp_type_sym.kind == .interface {
 					if c.type_implements(got_type, exp_type, node.pos) {
-						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface_
+						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface
 							&& !c.inside_unsafe {
 							c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], true)
 						}
@@ -244,14 +246,14 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 				}
 				// `fn foo() !int { return Err{} }`
-				if got_type_sym.kind == .struct_
+				if expected_fn_return_type_has_result && got_type_sym.kind == .struct
 					&& c.type_implements(got_type, ast.error_type, node.pos) {
 					node.exprs[expr_idxs[i]] = ast.CastExpr{
-						expr: node.exprs[expr_idxs[i]]
-						typname: 'IError'
-						typ: ast.error_type
+						expr:      node.exprs[expr_idxs[i]]
+						typname:   'IError'
+						typ:       ast.error_type
 						expr_type: got_type
-						pos: node.pos
+						pos:       node.pos
 					}
 					node.types[expr_idxs[i]] = ast.error_type
 					continue
@@ -260,6 +262,10 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					'${c.table.type_to_str(got_type)}'
 				} else {
 					got_type_sym.name
+				}
+				// ignore generic lambda return in this phase
+				if c.inside_lambda && exp_type.has_flag(.generic) {
+					continue
 				}
 				c.error('cannot use `${got_type_name}` as ${c.error_type_name(exp_type)} in return argument',
 					pos)
@@ -289,6 +295,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			mut r_expr := &node.exprs[expr_idxs[i]]
 			if mut r_expr is ast.Ident {
 				c.fail_if_stack_struct_action_outside_unsafe(mut r_expr, 'returned')
+			} else if mut r_expr is ast.PrefixExpr && r_expr.op == .amp {
+				// &var
+				if mut r_expr.right is ast.Ident {
+					c.fail_if_stack_struct_action_outside_unsafe(mut r_expr.right, 'returned')
+				}
 			}
 		}
 	}
@@ -364,8 +375,9 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 	if uses_return_stmt(node.stmts) {
 		c.error('[noreturn] functions cannot use return statements', node.pos)
 	}
+	mut pos := node.pos
+	mut is_valid_end_of_noreturn_fn := false
 	if node.stmts.len != 0 {
-		mut is_valid_end_of_noreturn_fn := false
 		last_stmt := node.stmts.last()
 		match last_stmt {
 			ast.ExprStmt {
@@ -388,10 +400,12 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 			else {}
 		}
 		if !is_valid_end_of_noreturn_fn {
-			c.error('@[noreturn] functions should end with a call to another @[noreturn] function, or with an infinite `for {}` loop',
-				last_stmt.pos)
-			return
+			pos = last_stmt.pos
 		}
+	}
+	if !is_valid_end_of_noreturn_fn {
+		c.error('@[noreturn] functions should end with a call to another @[noreturn] function, or with an infinite `for {}` loop',
+			pos)
 	}
 }
 
@@ -466,12 +480,4 @@ fn is_noreturn_callexpr(expr ast.Expr) bool {
 		return expr.is_noreturn
 	}
 	return false
-}
-
-fn imin(a int, b int) int {
-	return if a < b { a } else { b }
-}
-
-fn imax(a int, b int) int {
-	return if a < b { b } else { a }
 }

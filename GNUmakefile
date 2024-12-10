@@ -99,8 +99,8 @@ endif
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
 	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32
-	v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
-	v2.exe -o $(VEXE) $(VFLAGS) cmd/v
+	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
+	./v2.exe -o $(VEXE) $(VFLAGS) cmd/v
 	$(RM) v1.exe
 	$(RM) v2.exe
 else
@@ -118,6 +118,7 @@ endif
 	@$(VEXE) run cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
 	@$(VEXE) -version
+	@$(VEXE) run .github/problem-matchers/register_all.vsh
 
 clean:
 	rm -rf $(TMPTCC)
@@ -144,7 +145,10 @@ fresh_vc:
 ifndef local
 latest_tcc: $(TMPTCC)/.git/config
 	cd $(TMPTCC) && $(GITCLEANPULL)
+ifneq (,$(wildcard ./tcc.exe))
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
+endif
+
 else
 latest_tcc:
 	@echo "Using local tcc"
@@ -161,7 +165,6 @@ ifneq (,$(findstring thirdparty-$(TCCOS)-$(TCCARCH), $(shell git ls-remote --hea
 else
 	@echo 'Pre-built TCC not available for thirdparty-$(TCCOS)-$(TCCARCH) at $(TCCREPO), will use the system compiler: $(CC)'
 	$(GITFASTCLONE) --branch thirdparty-unknown-unknown $(TCCREPO) $(TMPTCC)
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 endif
 else
 	@echo "Using local tccbin"

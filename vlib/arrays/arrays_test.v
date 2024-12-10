@@ -436,7 +436,7 @@ fn test_map_of_indexes() {
 	assert arrays.map_of_indexes([1, 2, 3, 999]) == {1: [0], 2: [1], 3: [2], 999: [3]}
 	assert arrays.map_of_indexes([999, 1, 2, 3]) == {1: [1], 2: [2], 3: [3], 999: [0]}
 	assert arrays.map_of_indexes([1, 2, 3, 4, 4, 2, 1, 4, 4, 999]) == {1: [0, 6], 2: [1, 5], 3: [2], 4: [3, 4, 7, 8], 999: [9]}
-	//
+
 	assert arrays.map_of_indexes([]string{}) == {}
 	assert arrays.map_of_indexes(['abc']) == {'abc': [0]}
 	assert arrays.map_of_indexes(['abc', 'abc']) == {'abc': [0, 1]}
@@ -451,7 +451,7 @@ fn test_map_of_counts() {
 	assert map_of_counts([1, 2, 3, 999]) == {1: 1, 2: 1, 3: 1, 999: 1}
 	assert map_of_counts([999, 1, 2, 3]) == {1: 1, 2: 1, 3: 1, 999: 1}
 	assert map_of_counts([1, 2, 3, 4, 4, 2, 1, 4, 4, 999]) == {1: 2, 2: 2, 3: 1, 4: 4, 999: 1}
-	//
+
 	assert map_of_counts([]string{}) == {}
 	assert map_of_counts(['abc']) == {'abc': 1}
 	assert map_of_counts(['abc', 'abc']) == {'abc': 2}
@@ -475,13 +475,13 @@ fn test_find_first() {
 	})? == 3, 'find element couldnt find the right element'
 
 	// find struct
-	find_by_name := find_first(arrays.test_structs, fn (arr FindTest) bool {
+	find_by_name := find_first(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'one'
 	})?
 	assert find_by_name == FindTest{'one', 1}
 
 	// not found
-	if _ := find_first(arrays.test_structs, fn (arr FindTest) bool {
+	if _ := find_first(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'nothing'
 	})
 	{
@@ -499,13 +499,13 @@ fn test_find_last() {
 	})? == 3, 'find element couldnt find the right element'
 
 	// find struct
-	find_by_name := find_last(arrays.test_structs, fn (arr FindTest) bool {
+	find_by_name := find_last(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'one'
 	})?
 	assert find_by_name == FindTest{'one', 4}
 
 	// not found
-	if _ := find_last(arrays.test_structs, fn (arr FindTest) bool {
+	if _ := find_last(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'nothing'
 	})
 	{
@@ -516,10 +516,10 @@ fn test_find_last() {
 }
 
 fn test_join_to_string() {
-	assert join_to_string[FindTest](arrays.test_structs, ':', fn (it FindTest) string {
+	assert join_to_string[FindTest](test_structs, ':', fn (it FindTest) string {
 		return it.name
 	}) == 'one:two:three:one'
-	assert join_to_string[FindTest](arrays.test_structs, '', fn (it FindTest) string {
+	assert join_to_string[FindTest](test_structs, '', fn (it FindTest) string {
 		return it.name
 	}) == 'onetwothreeone'
 	assert join_to_string[int]([]int{}, ':', fn (it int) string {
@@ -550,7 +550,7 @@ fn test_each() {
 	for x in a {
 		control_sum += x
 	}
-	//
+
 	each(a, fn (x int) {
 		println(x)
 	})
@@ -573,7 +573,7 @@ fn test_each_indexed() {
 	for idx, x in a {
 		control_sum += f(idx, x)
 	}
-	//
+
 	each_indexed(a, fn (idx int, x int) {
 		println('idx: ${idx}, x: ${x}')
 	})

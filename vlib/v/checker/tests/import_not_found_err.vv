@@ -1,4 +1,5 @@
 import notexist
+
 fn main() {
 	println(notexist.name)
 }

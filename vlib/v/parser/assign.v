@@ -9,7 +9,7 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	exprs := p.expr_list()
+	exprs := p.expr_list(true)
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
@@ -18,16 +18,12 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 	return p.partial_assign_stmt(exprs)
 }
 
-const max_expr_level = 100
-
 fn (mut p Parser) check_undefined_variables(names []string, val ast.Expr) ! {
 	p.expr_level++
 	defer {
 		p.expr_level--
 	}
-	if p.expr_level > parser.max_expr_level {
-		return error('expr level > ${parser.max_expr_level}')
-	}
+	p.check_expr_level()!
 	match val {
 		ast.Ident {
 			for name in names {
@@ -190,7 +186,10 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 	mut pos := p.tok.pos()
 	p.next()
 	mut right := []ast.Expr{cap: left.len}
-	right = p.expr_list()
+	old_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = true
+	right = p.expr_list(true)
+	p.inside_assign_rhs = old_assign_rhs
 	end_comments := p.eat_comments(same_line: true)
 	mut has_cross_var := false
 	mut is_static := false
@@ -201,7 +200,9 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 			ast.Ident {
 				if op == .decl_assign {
 					if p.scope.known_var(lx.name) {
-						return p.error_with_pos('redefinition of `${lx.name}`', lx.pos)
+						if !(p.pref.translated_go && lx.name in ['err', 'ok']) {
+							return p.error_with_pos('redefinition of `${lx.name}`', lx.pos)
+						}
 					}
 					mut share := unsafe { ast.ShareType(0) }
 					if mut lx.info is ast.IdentVar {
@@ -219,11 +220,11 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 						}
 					}
 					mut v := ast.Var{
-						name: lx.name
-						expr: if left.len == right.len { right[i] } else { ast.empty_expr }
-						share: share
-						is_mut: lx.is_mut || p.inside_for
-						pos: lx.pos
+						name:         lx.name
+						expr:         if left.len == right.len { right[i] } else { ast.empty_expr }
+						share:        share
+						is_mut:       lx.is_mut || p.inside_for
+						pos:          lx.pos
 						is_stack_obj: p.inside_for
 					}
 					if p.prev_tok.kind == .string {
@@ -296,15 +297,15 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 	pos.update_last_line(p.prev_tok.line_nr)
 	p.expr_mod = ''
 	return ast.AssignStmt{
-		op: op
-		left: left
-		right: right
-		end_comments: end_comments
-		pos: pos
+		op:            op
+		left:          left
+		right:         right
+		end_comments:  end_comments
+		pos:           pos
 		has_cross_var: has_cross_var
-		is_simple: p.inside_for && p.tok.kind == .lcbr
-		is_static: is_static
-		is_volatile: is_volatile
-		attr: attr
+		is_simple:     p.inside_for && p.tok.kind == .lcbr
+		is_static:     is_static
+		is_volatile:   is_volatile
+		attr:          attr
 	}
 }

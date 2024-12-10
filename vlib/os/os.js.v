@@ -137,7 +137,7 @@ pub fn execute(cmd string) Result {
 
 	return Result{
 		exit_code: exit_code
-		output: stdout
+		output:    stdout
 	}
 }
 

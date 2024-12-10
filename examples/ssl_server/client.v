@@ -4,8 +4,8 @@ import net.mbedtls
 
 fn main() {
 	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{
-		verify: os.resource_abs_path('cert/ca.crt')
-		cert: os.resource_abs_path('cert/client.crt')
+		verify:   os.resource_abs_path('cert/ca.crt')
+		cert:     os.resource_abs_path('cert/client.crt')
 		cert_key: os.resource_abs_path('cert/client.key')
 		validate: true
 	})!

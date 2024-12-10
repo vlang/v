@@ -1,0 +1,6 @@
+vlib/v/checker/tests/generics_fn_return_generic_closure_err.vv:2:9: error: cannot use `fn (f64) []f64` as type `fn ([]f64) []f64` in return argument
+    1 | fn vectorize[T](op fn (T) T) fn ([]T) []T {
+    2 |     return fn [op] [T](values T) []T {
+      |            ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    3 |         mut result := []T{}
+    4 |         return result

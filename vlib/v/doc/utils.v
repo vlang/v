@@ -20,12 +20,12 @@ pub fn merge_comments(comments []ast.Comment) string {
 pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
 	text := ast_node.text // TODO: .trim_left('\x01') // BUG why are this byte here in the first place?
 	return DocComment{
-		text: text
+		text:     text
 		is_multi: ast_node.is_multi
-		pos: token.Pos{
+		pos:      token.Pos{
 			line_nr: ast_node.pos.line_nr
-			col: 0 // ast_node.pos.pos - ast_node.text.len
-			len: text.len
+			col:     0 // ast_node.pos.pos - ast_node.text.len
+			len:     text.len
 		}
 	}
 }
@@ -102,9 +102,9 @@ pub fn merge_doc_comments(comments []DocComment) string {
 				continue
 			}
 			// Use own paragraph for "highlight" comments.
-			ll := l.to_lower()
+			ll := l.to_lower_ascii()
 			mut continue_line_loop := false
-			for key in doc.highlight_keys {
+			for key in highlight_keys {
 				if ll.starts_with(key) {
 					comment += '\n\n${key.title()}${l[key.len..]}'
 					// Workaround for compiling with `v -cstrict -cc gcc vlib/v/doc/doc_test.v`
@@ -117,7 +117,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 				continue
 			}
 			line_no_spaces := l.replace(' ', '')
-			for ch in doc.horizontal_rule_chars {
+			for ch in horizontal_rule_chars {
 				if line_no_spaces.starts_with(ch.repeat(3))
 					&& line_no_spaces.count(ch) == line_no_spaces.len {
 					comment += '\n' + l + '\n'

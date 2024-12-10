@@ -19,6 +19,8 @@ vlib/v/checker/tests/generics_fn_arguments_count_err.vv:15:45: error: expected 2
       |                                                ~~~~~~~
    16 |     println(ret2)
    17 |
+Details: have (int literal, int literal, string)
+         want (A, B)
 vlib/v/checker/tests/generics_fn_arguments_count_err.vv:19:22: error: expected 2 generic parameters, got 1
    17 | 
    18 |     foo := Foo{}
@@ -40,29 +42,31 @@ vlib/v/checker/tests/generics_fn_arguments_count_err.vv:22:49: error: expected 2
       |                                                    ~~~~~~~
    23 |     println(ret4)
    24 | }
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:2:11: error: no known default format for type `A`
+Details: have (int literal, int literal, string)
+         want (A, B)
+vlib/v/checker/tests/generics_fn_arguments_count_err.vv:2:12: error: no known default format for type `A`
     1 | fn get_name[A, B](a A, b B) string {
-    2 |     return '$a, $b'
-      |              ^
+    2 |     return '${a}, ${b}'
+      |               ^
     3 | }
     4 |
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:2:15: error: no known default format for type `B`
+vlib/v/checker/tests/generics_fn_arguments_count_err.vv:2:18: error: no known default format for type `B`
     1 | fn get_name[A, B](a A, b B) string {
-    2 |     return '$a, $b'
-      |                  ^
+    2 |     return '${a}, ${b}'
+      |                     ^
     3 | }
     4 |
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:8:11: error: no known default format for type `A`
+vlib/v/checker/tests/generics_fn_arguments_count_err.vv:8:12: error: no known default format for type `A`
     6 | 
     7 | fn (f Foo) get_name[A, B](a A, b B) string {
-    8 |     return '$a, $b'
-      |              ^
+    8 |     return '${a}, ${b}'
+      |               ^
     9 | }
    10 |
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:8:15: error: no known default format for type `B`
+vlib/v/checker/tests/generics_fn_arguments_count_err.vv:8:18: error: no known default format for type `B`
     6 | 
     7 | fn (f Foo) get_name[A, B](a A, b B) string {
-    8 |     return '$a, $b'
-      |                  ^
+    8 |     return '${a}, ${b}'
+      |                     ^
     9 | }
    10 |

@@ -187,7 +187,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			label := g.labels.new_label()
 			cjmp_addr := g.condition(expr, false)
 			g.labels.patches << LabelPatch{
-				id: label
+				id:  label
 				pos: cjmp_addr
 			}
 			g.println('; jump to label ${label}')
@@ -195,7 +195,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			if has_endif {
 				jump_addr := g.code_gen.jmp(0)
 				g.labels.patches << LabelPatch{
-					id: endif_label
+					id:  endif_label
 					pos: jump_addr
 				}
 				g.println('; jump to label ${int(endif_label)}')
@@ -235,6 +235,9 @@ fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 		}
 		if i > 0 {
 			fn_str += ', '
+		}
+		if arg.typ.has_flag(.option) {
+			fn_str += '?'
 		}
 		fn_str += util.strip_main_name(g.table.get_type_name(arg.typ))
 	}
@@ -366,9 +369,9 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 			}
 		}
 		ast.OffsetOf {
-			styp := g.typ(expr.struct_type)
+			styp := g.styp(expr.struct_type)
 			field_name := expr.field
-			if styp.kind == .struct_ {
+			if styp.kind == .struct {
 				off := g.get_field_offset(expr.struct_type, field_name)
 				if newline {
 					g.code_gen.gen_print('${off}\n', fd)

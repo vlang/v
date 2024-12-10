@@ -136,6 +136,29 @@ struct AddTest {
 
 // vfmt off
 const add_test_data = [
+	AddTest{ 0,  0, 0},
+	AddTest{ 1, -1, 0 },
+	AddTest{ -1, 1, 0 },
+	AddTest{ 0,  2, 2},
+	AddTest{ 2, 0, 2 },
+	AddTest{ 0, -2, -2},
+	AddTest{ -2, 0, -2 },
+	AddTest{ 2, -2, 0 },
+	AddTest{ -2, 2, 0 },
+	AddTest{ -1, 200, 199},
+	AddTest{ 200, -1, 199},
+	AddTest{ -2, 100, 98},
+	AddTest{ 100, -2, 98},
+	AddTest{ -100, -2, -102},
+	AddTest{ -2, -100, -102},
+	//
+	AddTest{ 1, 200, 201},
+	AddTest{ -200, -1, -201},
+	AddTest{ 2, 100, 102},
+	AddTest{ -100, -2, -102},
+	AddTest{ 100, -2, 98},
+	AddTest{ 2, -100, -98},
+	//
 	AddTest{ 2, 3, 5 },
 	AddTest{ 1024, 1024, 2048 },
 	AddTest{ 1024, 1024, 2048 },
@@ -155,6 +178,24 @@ struct SubTest {
 
 // vfmt off
 const sub_test_data = [
+	SubTest{ 0, 0, 0 },
+	SubTest{ 0, -1, 1 },
+	SubTest{ -1, 0, -1 },
+	SubTest{ 1, 1, 0},
+	SubTest{ 1, -1, 2},
+	SubTest{ 2, -1, 3},
+	SubTest{ -1, 2, -3},
+	SubTest{ -100, 100, -200},
+	SubTest{ 100, -100, 200},
+	SubTest{ -100, -100, 0},
+	//
+	SubTest{ 1, 200, -199},
+	SubTest{ -200, -1, -199},
+	SubTest{ 2, 100, -98},
+	SubTest{ -100, -2, -98},
+	SubTest{ 100, -2, 102},
+	SubTest{ 2, -100, 102},	
+	//
 	SubTest{ 2, 3, -1 },
 	SubTest{ 3, 2, 1 },
 	SubTest{ 1024, 1024, 0 },
@@ -177,8 +218,13 @@ struct MulTest {
 // vfmt off
 const mul_test_data = [
 	MulTest{ 2, 3, 6 },
+	MulTest{ -2, 0, 0}, 
+	MulTest{  2, 0, 0}, 
+	MulTest{ 0, -2, 0}, 
+	MulTest{ 0, -2, 0}, 
 	MulTest{ -869, 789, -685641 },
-	MulTest{ -869, 789, -685641 },
+	MulTest{ 869, -789, -685641 },
+	MulTest{ -869, -789, 685641 },
 	MulTest{
 		'58347508324752098346789015701837509173586123875823769823749056132786590812379812508163208610983759827349812730',
 		'14213098571932561236783245987342583245873465877179284713298718093758173895718957198751983759745983467856287759872365123980571298307512352359812753907',
@@ -229,6 +275,8 @@ struct DivTest {
 
 // vfmt off
 const div_test_data = [
+	DivTest{0, 1, 0},
+	DivTest{0, -1, 0},
 	DivTest{1234, 10, 123},
 	DivTest{-1234, 10, -123},
 	DivTest{1234, -10, -123},
@@ -545,13 +593,13 @@ fn test_is_odd() {
 
 fn test_addition() {
 	for t in add_test_data {
-		assert t.augend.parse() + t.addend.parse() == t.sum.parse()
+		assert t.augend.parse() + t.addend.parse() == t.sum.parse(), 't.augend: ${t.augend}  + t.addend: ${t.addend}'
 	}
 }
 
 fn test_subtraction() {
 	for t in sub_test_data {
-		assert t.minuend.parse() - t.subtrahend.parse() == t.difference.parse()
+		assert t.minuend.parse() - t.subtrahend.parse() == t.difference.parse(), 't.minuend: ${t.minuend}  - t.subtrahend: ${t.subtrahend}'
 	}
 }
 

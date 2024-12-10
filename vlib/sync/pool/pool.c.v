@@ -22,7 +22,7 @@ mut:
 
 pub type ThreadCB = fn (mut p PoolProcessor, idx int, task_id int) voidptr
 
-fn empty_cb(mut p PoolProcessor, idx int, task_id int) voidptr {
+fn empty_cb(mut _p PoolProcessor, _idx int, _task_id int) voidptr {
 	unsafe {
 		return nil
 	}
@@ -51,13 +51,13 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 		panic('You need to pass a valid callback to new_pool_processor.')
 	}
 	mut pool := PoolProcessor{
-		items: []
-		results: []
-		shared_context: unsafe { nil }
+		items:           []
+		results:         []
+		shared_context:  unsafe { nil }
 		thread_contexts: []
-		njobs: context.maxjobs
-		ntask: 0
-		thread_cb: voidptr(context.callback)
+		njobs:           context.maxjobs
+		ntask:           0
+		thread_cb:       voidptr(context.callback)
 	}
 	pool.waitgroup.init()
 	return &pool

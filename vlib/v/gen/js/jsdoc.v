@@ -48,7 +48,7 @@ fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) {
 	for i, field in fields {
 		// Marked as optional: structs have default default values,
 		// so all struct members don't have to be initialized.
-		d.write('${field.name}?: ${d.gen.typ(field.typ)}')
+		d.write('${field.name}?: ${d.gen.styp(field.typ)}')
 		if i < fields.len - 1 {
 			d.write(', ')
 		}
@@ -58,7 +58,7 @@ fn (mut d JsDoc) gen_fac_fn(fields []ast.StructField) {
 }
 
 fn (mut d JsDoc) gen_fn(it ast.FnDecl) {
-	type_name := d.gen.typ(it.return_type)
+	type_name := d.gen.styp(it.return_type)
 	d.writeln('/**')
 	d.writeln(' * @function')
 	if it.is_deprecated {
@@ -68,7 +68,7 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) {
 		if (it.is_method || it.receiver.typ == 0) && i == 0 {
 			continue
 		}
-		arg_type_name := d.gen.typ(arg.typ)
+		arg_type_name := d.gen.styp(arg.typ)
 		is_varg := i == it.params.len - 1 && it.is_variadic
 		name := d.gen.js_name(arg.name)
 		if is_varg {

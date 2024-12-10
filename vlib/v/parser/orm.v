@@ -30,6 +30,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	mut is_count := false
 	if is_insert {
 		inserted_var = p.check_name()
+		p.scope.mark_var_as_used(inserted_var)
 		into := p.check_name()
 		if into != 'into' {
 			p.error('expecting `into`')
@@ -111,25 +112,25 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	p.inside_match = tmp_inside_match
 
 	return ast.SqlExpr{
-		is_count: is_count
-		is_insert: is_insert
-		typ: typ.set_flag(.result)
-		or_expr: or_expr
-		db_expr: db_expr
-		where_expr: where_expr
-		has_where: has_where
-		has_limit: has_limit
-		limit_expr: limit_expr
-		has_offset: has_offset
-		offset_expr: offset_expr
-		has_order: has_order
-		order_expr: order_expr
-		has_desc: has_desc
-		is_array: if is_count { false } else { true }
+		is_count:     is_count
+		is_insert:    is_insert
+		typ:          typ.set_flag(.result)
+		or_expr:      or_expr
+		db_expr:      db_expr
+		where_expr:   where_expr
+		has_where:    has_where
+		has_limit:    has_limit
+		limit_expr:   limit_expr
+		has_offset:   has_offset
+		offset_expr:  offset_expr
+		has_order:    has_order
+		order_expr:   order_expr
+		has_desc:     has_desc
+		is_array:     if is_count { false } else { true }
 		is_generated: false
 		inserted_var: inserted_var
-		pos: pos.extend(p.prev_tok.pos())
-		table_expr: ast.TypeNode{
+		pos:          pos.extend(p.prev_tok.pos())
+		table_expr:   ast.TypeNode{
 			typ: table_type
 			pos: table_pos
 		}
@@ -171,9 +172,9 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
-		pos: pos.extend(p.prev_tok.pos())
+		pos:     pos.extend(p.prev_tok.pos())
 		db_expr: db_expr
-		lines: lines
+		lines:   lines
 		or_expr: or_expr
 	}
 }
@@ -193,12 +194,13 @@ fn (mut p Parser) parse_sql_or_block() ast.OrExpr {
 
 	return ast.OrExpr{
 		stmts: stmts
-		kind: kind
-		pos: pos
+		kind:  kind
+		pos:   pos
 	}
 }
 
 fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
+	pre_comments := p.eat_comments()
 	mut n := p.check_name() // insert
 	pos := p.tok.pos()
 	mut kind := ast.SqlStmtKind.insert
@@ -215,15 +217,18 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		}
 		typ := p.parse_type()
 		typ_pos := p.tok.pos()
+		end_comments := p.eat_comments()
 		return ast.SqlStmtLine{
-			kind: kind
-			pos: pos.extend(p.prev_tok.pos())
-			table_expr: ast.TypeNode{
+			kind:         kind
+			pos:          pos.extend(p.prev_tok.pos())
+			table_expr:   ast.TypeNode{
 				typ: typ
 				pos: typ_pos
 			}
-			scope: p.scope
+			scope:        p.scope
 			is_generated: false
+			pre_comments: pre_comments
+			end_comments: end_comments
 		}
 	} else if n == 'drop' {
 		kind = .drop
@@ -234,19 +239,22 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		}
 		typ := p.parse_type()
 		typ_pos := p.tok.pos()
+		end_comments := p.eat_comments()
 		return ast.SqlStmtLine{
-			kind: kind
-			pos: pos.extend(p.prev_tok.pos())
-			table_expr: ast.TypeNode{
+			kind:         kind
+			pos:          pos.extend(p.prev_tok.pos())
+			table_expr:   ast.TypeNode{
 				typ: typ
 				pos: typ_pos
 			}
 			is_generated: false
-			scope: p.scope
+			scope:        p.scope
+			pre_comments: pre_comments
+			end_comments: end_comments
 		}
 	}
 	mut inserted_var := ''
-	mut table_type := ast.Type(0)
+	mut table_type := ast.no_type
 	if kind != .delete {
 		if kind == .update {
 			table_type = p.parse_type()
@@ -313,19 +321,22 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			return ast.SqlStmtLine{}
 		}
 	}
+	end_comments := p.eat_comments()
 	return ast.SqlStmtLine{
-		table_expr: ast.TypeNode{
+		table_expr:      ast.TypeNode{
 			typ: table_type
 			pos: table_pos
 		}
-		object_var: inserted_var
-		pos: pos
+		object_var:      inserted_var
+		pos:             pos
 		updated_columns: updated_columns
-		update_exprs: update_exprs
-		kind: kind
-		where_expr: where_expr
-		is_generated: false
-		scope: p.scope
+		update_exprs:    update_exprs
+		kind:            kind
+		where_expr:      where_expr
+		is_generated:    false
+		scope:           p.scope
+		pre_comments:    pre_comments
+		end_comments:    end_comments
 	}
 }
 

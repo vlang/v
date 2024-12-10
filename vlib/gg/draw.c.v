@@ -533,8 +533,8 @@ const small_circle_segments = [0, 2, 4, 6, 6, 8, 8, 13, 10, 18, 12, 12, 10, 13, 
 fn radius_to_segments(r f32) int {
 	if r < 30 {
 		ir := int(math.ceil(r))
-		if ir > 0 && ir < gg.small_circle_segments.len {
-			return gg.small_circle_segments[ir]
+		if ir > 0 && ir < small_circle_segments.len {
+			return small_circle_segments[ir]
 		}
 		return ir
 	}

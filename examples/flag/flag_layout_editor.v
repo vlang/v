@@ -209,11 +209,11 @@ Editing property: ${app.edit}, value: ${value}')
 	help_text := flag.to_doc[DocTest](
 		description: 'Simple DocLayout editor.
 Press ESCAPE or Ctrl+C to exit and print layout code'
-		footer: '
+		footer:      '
 Press ESCAPE or Ctrl+C to exit and print layout code'
-		fields: unsafe { field_docs }
-		layout: app.layout
-		options: app.options
+		fields:      unsafe { field_docs }
+		layout:      app.layout
+		options:     app.options
 	) or { '' }
 
 	app.tui.draw_text(0, 5, '${help_text}')
@@ -233,11 +233,11 @@ fn main() {
 		println('${app.options}')
 	}) or {}
 	app.tui = tui.init(
-		user_data: app
-		event_fn: EventFn(event)
-		frame_fn: FrameFn(frame)
+		user_data:   app
+		event_fn:    EventFn(event)
+		frame_fn:    FrameFn(frame)
 		hide_cursor: true
-		frame_rate: 60
+		frame_rate:  60
 	)
 	app.tui.run()!
 }

@@ -55,7 +55,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 			.boolean {
 				lit = term.bright_magenta(tok.lit)
 			}
-			.none_ {
+			.none {
 				lit = term.red(tok.lit)
 			}
 			.prefix {
@@ -83,7 +83,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 						&& (next_tok.kind != .lpar || prev.kind !in [.key_fn, .rpar]) {
 						tok_typ = .builtin
 					} else if
-						(next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma, .comment, .lt, .lsbr]
+						(next_tok.kind in [.lcbr, .rpar, .eof, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma, .comment, .lt, .lsbr]
 						&& next_tok.lit !in highlight_builtin_types)
 						&& (prev.kind in [.name, .amp, .lcbr, .rsbr, .key_type, .assign, .dot, .not, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface, .comment, .ellipsis, .comma]
 						&& prev.lit !in highlight_builtin_types)
@@ -133,7 +133,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 					tok_typ = .punctuation
 				}
 				.key_none {
-					tok_typ = .none_
+					tok_typ = .none
 				}
 				else {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {

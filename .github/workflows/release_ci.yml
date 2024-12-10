@@ -65,6 +65,7 @@ jobs:
           ./v -skip-unused -prod -cc msvc cmd/tools/vup.v
           ./v -skip-unused -prod -cc msvc cmd/tools/vdoctor.v
           del *.exe
+          del *.tmp.obj
           move cmd/vprod.exe v.exe
       - name: Prepare artifact
         shell: bash
@@ -81,7 +82,7 @@ jobs:
           find . -type d -name ".git" -exec rm -rf {} +
           rm -rf vc/
           rm -rf v_old
-          rm -rf vlib/v/tests/bench/gcboehm/*.svg
+          rm -rf vlib/v/tests/bench/gcboehm/*.svg.xz
       - name: Create ZIP archive
         shell: bash
         run: |

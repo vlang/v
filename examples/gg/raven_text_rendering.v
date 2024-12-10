@@ -2,7 +2,7 @@ module main
 
 import gg
 import gx
-import os
+import os.asset
 import math
 
 const win_width = 600
@@ -62,19 +62,16 @@ mut:
 
 fn main() {
 	mut app := &App{}
-	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	$if android {
-		font_path = 'fonts/RobotoMono-Regular.ttf'
-	}
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'Raven text'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: frame
-		font_path: font_path // window_user_ptr: ctx
+		window_title:  'Raven text'
+		user_data:     app
+		bg_color:      bg_color
+		frame_fn:      frame
+		font_path:     asset.get_path('../assets', 'fonts/RobotoMono-Regular.ttf')
+		// window_user_ptr: ctx
 		// native_rendering: true
 	)
 	app.gg.run()

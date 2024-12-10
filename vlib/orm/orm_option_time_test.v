@@ -30,7 +30,7 @@ fn test_main() {
 		create table Child
 	}!
 	foo := Foo{
-		name: 'abc'
+		name:       'abc'
 		created_at: time.now()
 		// updated_at defaults to none
 		// deleted_at defaults to none

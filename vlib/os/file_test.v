@@ -334,7 +334,7 @@ fn test_seek() {
 
 	// println('> ${sizeof(Point)} ${sizeof(byte)} ${sizeof(Color)} ${sizeof(Permissions)}')
 	f = os.open_file(tfile, 'r')!
-	//
+
 	f.seek(i64(sizeof(Point)), .start)!
 	assert f.tell()! == sizeof(Point)
 	b := f.read_raw[u8]()!
@@ -343,7 +343,7 @@ fn test_seek() {
 	f.seek(i64(sizeof(Color)), .current)!
 	x := f.read_raw[Permissions]()!
 	assert x == another_permission
-	//
+
 	f.close()
 }
 
@@ -411,7 +411,7 @@ fn test_open_file_wb_ab() {
 	wfile.write_string('hello')!
 	wfile.close()
 	assert os.read_file('text.txt')! == 'hello'
-	//
+
 	mut afile := os.open_file('text.txt', 'ab', 0o666)!
 	afile.write_string('hello')!
 	afile.close()
@@ -424,12 +424,12 @@ fn test_open_append() {
 	f1.write_string('abc\n')!
 	f1.close()
 	assert os.read_lines(tfile)! == ['abc']
-	//
+
 	mut f2 := os.open_append(tfile)!
 	f2.write_string('abc\n')!
 	f2.close()
 	assert os.read_lines(tfile)! == ['abc', 'abc']
-	//
+
 	mut f3 := os.open_append(tfile)!
 	f3.write_string('def\n')!
 	f3.close()
@@ -509,8 +509,6 @@ fn test_write_lines() {
 	os.write_lines(wline2_file, lines)!
 	c1 := os.read_file(wline1_file)!
 	c2 := os.read_file(wline2_file)!
-	// dump(c1.bytes().hex())
-	// dump(c2.bytes().hex())
 	assert c1 == c2
 	assert c1.split_into_lines() == some_lines_content.split_into_lines()
 }

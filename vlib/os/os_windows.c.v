@@ -265,10 +265,10 @@ const max_error_code = 15841
 fn ptr_win_get_error_msg(code u32) voidptr {
 	mut buf := unsafe { nil }
 	// Check for code overflow
-	if code > u32(os.max_error_code) {
+	if code > u32(max_error_code) {
 		return buf
 	}
-	C.FormatMessageW(os.format_message_allocate_buffer | os.format_message_from_system | os.format_message_ignore_inserts,
+	C.FormatMessageW(format_message_allocate_buffer | format_message_from_system | format_message_ignore_inserts,
 		0, code, 0, voidptr(&buf), 0, 0)
 	return buf
 }
@@ -292,7 +292,7 @@ pub fn execute(cmd string) Result {
 	if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 		return Result{
 			exit_code: -1
-			output: ';, &&, || and \\n are not allowed in shell commands'
+			output:    ';, &&, || and \\n are not allowed in shell commands'
 		}
 	}
 	return unsafe { raw_execute(cmd) }
@@ -316,7 +316,7 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreatePipe): ${error_msg}'
+			output:    'exec failed (CreatePipe): ${error_msg}'
 		}
 	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT,
@@ -326,20 +326,20 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (SetHandleInformation): ${error_msg}'
+			output:    'exec failed (SetHandleInformation): ${error_msg}'
 		}
 	}
 	proc_info := ProcessInformation{}
 	start_info := StartupInfo{
 		lp_reserved2: unsafe { nil }
-		lp_reserved: unsafe { nil }
-		lp_desktop: unsafe { nil }
-		lp_title: unsafe { nil }
-		cb: sizeof(StartupInfo)
-		h_std_input: child_stdin
+		lp_reserved:  unsafe { nil }
+		lp_desktop:   unsafe { nil }
+		lp_title:     unsafe { nil }
+		cb:           sizeof(StartupInfo)
+		h_std_input:  child_stdin
 		h_std_output: child_stdout_write
-		h_std_error: child_stdout_write
-		dw_flags: u32(C.STARTF_USESTDHANDLES)
+		h_std_error:  child_stdout_write
+		dw_flags:     u32(C.STARTF_USESTDHANDLES)
 	}
 
 	mut pcmd := cmd
@@ -360,7 +360,7 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${cmd}'
+			output:    'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${cmd}'
 		}
 	}
 	C.CloseHandle(child_stdin)
@@ -387,7 +387,7 @@ pub fn raw_execute(cmd string) Result {
 	C.CloseHandle(proc_info.h_process)
 	C.CloseHandle(proc_info.h_thread)
 	return Result{
-		output: soutput
+		output:    soutput
 		exit_code: int(exit_code)
 	}
 }
@@ -482,11 +482,11 @@ pub fn uname() Uname {
 	version_info := execute('cmd /d/c ver').output
 	version_n := (version_info.split(' '))[3].replace(']', '').trim_space()
 	return Uname{
-		sysname: 'Windows_NT' // as of 2022-12, WinOS has only two possible kernels ~ 'Windows_NT' or 'Windows_9x'
+		sysname:  'Windows_NT' // as of 2022-12, WinOS has only two possible kernels ~ 'Windows_NT' or 'Windows_9x'
 		nodename: nodename
-		machine: machine.trim_space()
-		release: (version_n.split('.'))[0..2].join('.').trim_space() // Major.minor-only == "primary"/release version
-		version: (version_n.split('.'))[2].trim_space()
+		machine:  machine.trim_space()
+		release:  (version_n.split('.'))[0..2].join('.').trim_space() // Major.minor-only == "primary"/release version
+		version:  (version_n.split('.'))[2].trim_space()
 	}
 }
 

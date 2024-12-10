@@ -50,7 +50,7 @@ pub fn from_rune(r rune) Character {
 pub fn length_in_characters(p voidptr) int {
 	mut len := 0
 	pc := &Character(p)
-	for unsafe { pc[len] != wchar.zero } {
+	for unsafe { pc[len] != zero } {
 		len++
 	}
 	return len
@@ -114,7 +114,7 @@ pub fn from_string(s string) &Character {
 		for i, r in srunes {
 			result[i] = from_rune(r)
 		}
-		result[srunes.len] = wchar.zero
+		result[srunes.len] = zero
 		return result
 	}
 }

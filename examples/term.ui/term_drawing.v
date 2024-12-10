@@ -116,11 +116,11 @@ type FrameFn = fn (voidptr)
 fn main() {
 	mut app := &App{}
 	app.ui = ui.init(
-		user_data: app
-		frame_fn: FrameFn(frame)
-		event_fn: EventFn(event)
-		frame_rate: frame_rate
-		hide_cursor: true
+		user_data:    app
+		frame_fn:     FrameFn(frame)
+		event_fn:     EventFn(event)
+		frame_rate:   frame_rate
+		hide_cursor:  true
 		window_title: 'V terminal pixelart drawing app'
 	)
 	app.mouse_pos.x = 40
@@ -196,8 +196,8 @@ fn event(event &ui.Event, mut app App) {
 					nevent := ui.Event{
 						...oevent
 						button: ui.MouseButton.left
-						x: app.mouse_pos.x
-						y: app.mouse_pos.y
+						x:      app.mouse_pos.x
+						y:      app.mouse_pos.y
 					}
 					app.paint(nevent)
 				}
@@ -206,8 +206,8 @@ fn event(event &ui.Event, mut app App) {
 					nevent := ui.Event{
 						...oevent
 						button: ui.MouseButton.right
-						x: app.mouse_pos.x
-						y: app.mouse_pos.y
+						x:      app.mouse_pos.x
+						y:      app.mouse_pos.y
 					}
 					app.paint(nevent)
 				}
@@ -216,8 +216,8 @@ fn event(event &ui.Event, mut app App) {
 					nevent := ui.Event{
 						...oevent
 						button: .left
-						x: app.mouse_pos.x
-						y: app.mouse_pos.y
+						x:      app.mouse_pos.x
+						y:      app.mouse_pos.y
 					}
 					app.paint(nevent)
 				}
@@ -226,8 +226,8 @@ fn event(event &ui.Event, mut app App) {
 					nevent := ui.Event{
 						...oevent
 						button: .middle
-						x: app.mouse_pos.x
-						y: app.mouse_pos.y
+						x:      app.mouse_pos.x
+						y:      app.mouse_pos.y
 					}
 					app.paint(nevent)
 				}

@@ -48,9 +48,9 @@ pub mut:
 pub fn gen(files []&ast.File, mut table ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
 	mut g := Gen{
 		table: table
-		pref: pref_
+		pref:  pref_
 		// is_debug: is_debug
-		out: strings.new_builder(1000)
+		out:         strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
 	for file in files {
@@ -387,10 +387,10 @@ pub fn (mut f Gen) node_str(node ast.Node) string {
 //=== General Stmt-related methods and helpers ===//
 
 pub fn (mut f Gen) stmts(stmts []ast.Stmt) {
-	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt }
+	mut prev_stmt := ast.empty_stmt
 	f.indent++
-	for stmt in stmts {
-		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
+	for i, stmt in stmts {
+		if i > 0 && f.should_insert_newline_before_node(stmt, prev_stmt) {
 			f.out.writeln('')
 		}
 		f.stmt(stmt)
@@ -666,13 +666,13 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 				.array { f.write('\$array') }
 				.array_dynamic { f.write('\$array_dynamic') }
 				.array_fixed { f.write('\$array_fixed') }
-				.struct_ { f.write('\$struct') }
+				.struct { f.write('\$struct') }
 				.iface { f.write('\$interface') }
-				.map_ { f.write('\$map') }
+				.map { f.write('\$map') }
 				.int { f.write('\$int') }
 				.float { f.write('\$float') }
 				.sum_type { f.write('\$sumtype') }
-				.enum_ { f.write('\$enum') }
+				.enum { f.write('\$enum') }
 				.alias { f.write('\$alias') }
 				.function { f.write('\$function') }
 				.option { f.write('\$option') }
@@ -1419,7 +1419,7 @@ pub fn (mut f Gen) call_expr(node ast.CallExpr) {
 	// for arg in node.args {}
 	mut is_method_newline := false
 	if node.is_method {
-		if node.name in ['map', 'filter', 'all', 'any'] {
+		if node.name in ['map', 'filter', 'all', 'any', 'count'] {
 			f.in_lambda_depth++
 			defer {
 				f.in_lambda_depth--
@@ -2229,13 +2229,13 @@ pub fn (mut f Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
 		f.write('`${node.val}`')
 	} else {
-		unescaped_val := node.val.replace('${golang.bs}${golang.bs}', '\x01').replace_each([
-			"${golang.bs}'",
+		unescaped_val := node.val.replace('${bs}${bs}', '\x01').replace_each([
+			"${bs}'",
 			"'",
-			'${golang.bs}"',
+			'${bs}"',
 			'"',
 		])
-		s := unescaped_val.replace_each(['\x01', '${golang.bs}${golang.bs}', '"', '${golang.bs}"'])
+		s := unescaped_val.replace_each(['\x01', '${bs}${bs}', '"', '${bs}"'])
 		f.write('"${s}"')
 	}
 }
@@ -2247,7 +2247,7 @@ pub fn (mut f Gen) string_inter_literal(node ast.StringInterLiteral) {
 	//	work too different for the various exprs that are interpolated
 	f.write(quote)
 	for i, val in node.vals {
-		f.write(val.replace("${golang.bs}'", "'"))
+		f.write(val.replace("${bs}'", "'"))
 		if i >= node.exprs.len {
 			break
 		}

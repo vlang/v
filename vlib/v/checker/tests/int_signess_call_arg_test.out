@@ -1,5 +1,5 @@
 vlib/v/checker/tests/int_signess_call_arg_test.vv:5:8: error: cannot use `int` as `u64` in argument 1 to `ztest`
-    3 | fn test_main(){
+    3 | fn test_main() {
     4 |     a := -1
     5 |     ztest(a)
       |           ^

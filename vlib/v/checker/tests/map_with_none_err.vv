@@ -4,12 +4,12 @@ fn main() {
 	}
 
 	mut b := {
-		'foo': 1,
+		'foo': 1
 		'bar': none
 	}
 
 	mut c := {
-		'foo': ?int(none),
+		'foo': ?int(none)
 		'bar': none
 	}
 }

@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module veb
 
 import io
@@ -8,10 +11,6 @@ import os
 import time
 import strings
 import picoev
-
-// max read and write limits in bytes
-const max_read = 8096
-const max_write = 8096 * 2
 
 // A type which doesn't get filtered inside templates
 pub type RawHtml = string
@@ -25,150 +24,6 @@ pub struct Result {}
 pub fn no_result() Result {
 	return Result{}
 }
-
-pub const methods_with_form = [http.Method.post, .put, .patch]
-
-pub const headers_close = http.new_custom_header_from_map({
-	'Server': 'veb'
-}) or { panic('should never fail') }
-
-pub const http_302 = http.new_response(
-	status: .found
-	body: '302 Found'
-	header: headers_close
-)
-
-pub const http_400 = http.new_response(
-	status: .bad_request
-	body: '400 Bad Request'
-	header: http.new_header(
-		key: .content_type
-		value: 'text/plain'
-	).join(headers_close)
-)
-
-pub const http_404 = http.new_response(
-	status: .not_found
-	body: '404 Not Found'
-	header: http.new_header(
-		key: .content_type
-		value: 'text/plain'
-	).join(headers_close)
-)
-
-pub const http_408 = http.new_response(
-	status: .request_timeout
-	body: '408 Request Timeout'
-	header: http.new_header(
-		key: .content_type
-		value: 'text/plain'
-	).join(headers_close)
-)
-
-pub const http_413 = http.new_response(
-	status: .request_entity_too_large
-	body: '413 Request entity is too large'
-	header: http.new_header(
-		key: .content_type
-		value: 'text/plain'
-	).join(headers_close)
-)
-
-pub const http_500 = http.new_response(
-	status: .internal_server_error
-	body: '500 Internal Server Error'
-	header: http.new_header(
-		key: .content_type
-		value: 'text/plain'
-	).join(headers_close)
-)
-
-pub const mime_types = {
-	'.aac':    'audio/aac'
-	'.abw':    'application/x-abiword'
-	'.arc':    'application/x-freearc'
-	'.avi':    'video/x-msvideo'
-	'.azw':    'application/vnd.amazon.ebook'
-	'.bin':    'application/octet-stream'
-	'.bmp':    'image/bmp'
-	'.bz':     'application/x-bzip'
-	'.bz2':    'application/x-bzip2'
-	'.cda':    'application/x-cdf'
-	'.csh':    'application/x-csh'
-	'.css':    'text/css'
-	'.csv':    'text/csv'
-	'.doc':    'application/msword'
-	'.docx':   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-	'.eot':    'application/vnd.ms-fontobject'
-	'.epub':   'application/epub+zip'
-	'.gz':     'application/gzip'
-	'.gif':    'image/gif'
-	'.htm':    'text/html'
-	'.html':   'text/html'
-	'.ico':    'image/vnd.microsoft.icon'
-	'.ics':    'text/calendar'
-	'.jar':    'application/java-archive'
-	'.jpeg':   'image/jpeg'
-	'.jpg':    'image/jpeg'
-	'.js':     'text/javascript'
-	'.json':   'application/json'
-	'.jsonld': 'application/ld+json'
-	'.mid':    'audio/midi audio/x-midi'
-	'.midi':   'audio/midi audio/x-midi'
-	'.mjs':    'text/javascript'
-	'.mp3':    'audio/mpeg'
-	'.mp4':    'video/mp4'
-	'.mpeg':   'video/mpeg'
-	'.mpkg':   'application/vnd.apple.installer+xml'
-	'.odp':    'application/vnd.oasis.opendocument.presentation'
-	'.ods':    'application/vnd.oasis.opendocument.spreadsheet'
-	'.odt':    'application/vnd.oasis.opendocument.text'
-	'.oga':    'audio/ogg'
-	'.ogv':    'video/ogg'
-	'.ogx':    'application/ogg'
-	'.opus':   'audio/opus'
-	'.otf':    'font/otf'
-	'.png':    'image/png'
-	'.pdf':    'application/pdf'
-	'.php':    'application/x-httpd-php'
-	'.ppt':    'application/vnd.ms-powerpoint'
-	'.pptx':   'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-	'.rar':    'application/vnd.rar'
-	'.rtf':    'application/rtf'
-	'.sh':     'application/x-sh'
-	'.svg':    'image/svg+xml'
-	'.swf':    'application/x-shockwave-flash'
-	'.tar':    'application/x-tar'
-	'.tif':    'image/tiff'
-	'.tiff':   'image/tiff'
-	'.ts':     'video/mp2t'
-	'.ttf':    'font/ttf'
-	'.txt':    'text/plain'
-	'.vsd':    'application/vnd.visio'
-	'.wasm':   'application/wasm'
-	'.wav':    'audio/wav'
-	'.weba':   'audio/webm'
-	'.webm':   'video/webm'
-	'.webp':   'image/webp'
-	'.woff':   'font/woff'
-	'.woff2':  'font/woff2'
-	'.xhtml':  'application/xhtml+xml'
-	'.xls':    'application/vnd.ms-excel'
-	'.xlsx':   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-	'.xml':    'application/xml'
-	'.xul':    'application/vnd.mozilla.xul+xml'
-	'.zip':    'application/zip'
-	'.3gp':    'video/3gpp'
-	'.3g2':    'video/3gpp2'
-	'.7z':     'application/x-7z-compressed'
-	'.m3u8':   'application/vnd.apple.mpegurl'
-	'.vsh':    'text/x-vlang'
-	'.v':      'text/x-vlang'
-}
-
-pub const max_http_post_size = 1024 * 1024
-
-pub const default_port = 8080
 
 struct Route {
 	methods []http.Method
@@ -191,8 +46,8 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 
 			mut route := Route{
 				methods: http_methods
-				path: route_path
-				host: host
+				path:    route_path
+				host:    host
 			}
 
 			$if A is MiddlewareApp {
@@ -304,29 +159,31 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 	flush_stdout()
 
 	mut pico_context := &RequestParams{
-		global_app: unsafe { global_app }
-		controllers: controllers_sorted
-		routes: &routes
+		global_app:         unsafe { global_app }
+		controllers:        controllers_sorted
+		routes:             &routes
 		timeout_in_seconds: params.timeout_in_seconds
 	}
 
 	pico_context.idx = []int{len: picoev.max_fds}
 	// reserve space for read and write buffers
-	pico_context.buf = unsafe { malloc_noscan(picoev.max_fds * veb.max_read + 1) }
+	pico_context.buf = unsafe { malloc_noscan(picoev.max_fds * max_read + 1) }
 	defer {
-		unsafe { free(pico_context.buf) }
+		unsafe {
+			free(pico_context.buf)
+		}
 	}
 	pico_context.incomplete_requests = []http.Request{len: picoev.max_fds}
 	pico_context.file_responses = []FileResponse{len: picoev.max_fds}
 	pico_context.string_responses = []StringResponse{len: picoev.max_fds}
 
 	mut pico := picoev.new(
-		port: params.port
-		raw_cb: ev_callback[A, X]
-		user_data: pico_context
+		port:         params.port
+		raw_cb:       ev_callback[A, X]
+		user_data:    pico_context
 		timeout_secs: params.timeout_in_seconds
-		family: params.family
-		host: params.host
+		family:       params.family
+		host:         params.host
 	)!
 
 	$if A is BeforeAcceptApp {
@@ -369,6 +226,7 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 		$if trace_picoev_callback ? {
 			eprintln('> read event on file descriptor ${fd}')
 		}
+		// println('ev_callback fd=${fd} params.routes=${params.routes.len}')
 		handle_read[A, X](mut pv, mut params, fd)
 	} else {
 		// should never happen
@@ -378,12 +236,12 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 
 fn handle_timeout(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	mut conn := &net.TcpConn{
-		sock: net.tcp_socket_from_handle_raw(fd)
-		handle: fd
+		sock:        net.tcp_socket_from_handle_raw(fd)
+		handle:      fd
 		is_blocking: false
 	}
 
-	fast_send_resp(mut conn, veb.http_408) or {}
+	fast_send_resp(mut conn, http_408) or {}
 	pv.close_conn(fd)
 
 	params.request_done(fd)
@@ -398,8 +256,8 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		bytes_written := sendfile(fd, params.file_responses[fd].file.fd, bytes_to_write)
 		params.file_responses[fd].pos += bytes_written
 	} $else {
-		if bytes_to_write > veb.max_write {
-			bytes_to_write = veb.max_write
+		if bytes_to_write > max_write {
+			bytes_to_write = max_write
 		}
 
 		data := unsafe { malloc(bytes_to_write) }
@@ -408,9 +266,10 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		}
 
 		mut conn := &net.TcpConn{
-			sock: net.tcp_socket_from_handle_raw(fd)
-			handle: fd
-			is_blocking: false
+			sock:          net.tcp_socket_from_handle_raw(fd)
+			handle:        fd
+			is_blocking:   false
+			write_timeout: params.timeout_in_seconds * time.second
 		}
 
 		params.file_responses[fd].file.read_into_ptr(data, bytes_to_write) or {
@@ -439,13 +298,13 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	mut bytes_to_write := int(params.string_responses[fd].str.len - params.string_responses[fd].pos)
 
-	if bytes_to_write > veb.max_write {
-		bytes_to_write = veb.max_write
+	if bytes_to_write > max_write {
+		bytes_to_write = max_write
 	}
 
 	mut conn := &net.TcpConn{
-		sock: net.tcp_socket_from_handle_raw(fd)
-		handle: fd
+		sock:        net.tcp_socket_from_handle_raw(fd)
+		handle:      fd
 		is_blocking: false
 	}
 
@@ -469,18 +328,19 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 
 // handle_read reads data from the connection and if the request is complete
 // it calls `handle_route` and closes the connection.
-// If the request is not complete it stores the incomplete request in `params`
+// If the request is not complete, it stores the incomplete request in `params`
 // and the connection stays open until it is ready to read again
 @[direct_array_access; manualfree]
 fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
+	// println('handle_read() fd=${fd} params.routes=${params.routes}')
 	mut conn := &net.TcpConn{
-		sock: net.tcp_socket_from_handle_raw(fd)
-		handle: fd
+		sock:        net.tcp_socket_from_handle_raw(fd)
+		handle:      fd
 		is_blocking: false
 	}
 
 	// cap the max_read to 8KB
-	mut reader := io.new_buffered_reader(reader: conn, cap: veb.max_read)
+	mut reader := io.new_buffered_reader(reader: conn, cap: max_read)
 	defer {
 		unsafe {
 			reader.free()
@@ -509,11 +369,11 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			params.incomplete_requests[fd] = http.Request{}
 			return
 		}
-		if reader.total_read >= veb.max_read {
+		if reader.total_read >= max_read {
 			// throw an error when the request header is larger than 8KB
 			// same limit that apache handles
 			eprintln('[veb] error parsing request: too large')
-			fast_send_resp(mut conn, veb.http_413) or {}
+			fast_send_resp(mut conn, http_413) or {}
 
 			pv.close_conn(fd)
 			params.incomplete_requests[fd] = http.Request{}
@@ -524,16 +384,16 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	// check if the request has a body
 	content_length := req.header.get(.content_length) or { '0' }
 	if content_length.int() > 0 {
-		mut max_bytes_to_read := veb.max_read - reader.total_read
+		mut max_bytes_to_read := max_read - reader.total_read
 		mut bytes_to_read := content_length.int() - params.idx[fd]
 		// cap the bytes to read to 8KB for the body, including the request headers if any
-		if bytes_to_read > veb.max_read - reader.total_read {
-			bytes_to_read = veb.max_read - reader.total_read
+		if bytes_to_read > max_read - reader.total_read {
+			bytes_to_read = max_read - reader.total_read
 		}
 
 		mut buf_ptr := params.buf
 		unsafe {
-			buf_ptr += fd * veb.max_read // pointer magic
+			buf_ptr += fd * max_read // pointer magic
 		}
 		// convert to []u8 for BufferedReader
 		mut buf := unsafe { buf_ptr.vbytes(max_bytes_to_read) }
@@ -552,11 +412,11 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		if (n == 0 && params.idx[fd] != 0) || params.idx[fd] + n > content_length.int() {
 			fast_send_resp(mut conn, http.new_response(
 				status: .bad_request
-				body: 'Mismatch of body length and Content-Length header'
+				body:   'Mismatch of body length and Content-Length header'
 				header: http.new_header(
-					key: .content_type
+					key:   .content_type
 					value: 'text/plain'
-				).join(veb.headers_close)
+				).join(headers_close)
 			)) or {}
 
 			pv.close_conn(fd)
@@ -601,7 +461,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 				// small optimization: if the response is small write it immediately
 				// the socket is most likely able to write all the data without blocking.
 				// See Context.send_file for why we use max_read instead of max_write.
-				if completed_context.res.body.len < veb.max_read {
+				if completed_context.res.body.len < max_read {
 					fast_send_resp(mut conn, completed_context.res) or {}
 					handle_complete_request(completed_context.client_wants_to_close, mut
 						pv, fd)
@@ -614,7 +474,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 					if res == -1 {
 						// should not happen
 						params.string_responses[fd].done()
-						fast_send_resp(mut conn, veb.http_500) or {}
+						fast_send_resp(mut conn, http_500) or {}
 						handle_complete_request(completed_context.client_wants_to_close, mut
 							pv, fd)
 						return
@@ -626,13 +486,13 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			.file {
 				// save file information
 				length := completed_context.res.header.get(.content_length) or {
-					fast_send_resp(mut conn, veb.http_500) or {}
+					fast_send_resp(mut conn, http_500) or {}
 					return
 				}
 				params.file_responses[fd].total = length.i64()
 				params.file_responses[fd].file = os.open(completed_context.return_file) or {
 					// Context checks if the file is valid, so this should never happen
-					fast_send_resp(mut conn, veb.http_500) or {}
+					fast_send_resp(mut conn, http_500) or {}
 					params.file_responses[fd].done()
 					pv.close_conn(fd)
 					return
@@ -643,7 +503,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 				// picoev error
 				if res == -1 {
 					// should not happen
-					fast_send_resp(mut conn, veb.http_500) or {}
+					fast_send_resp(mut conn, http_500) or {}
 					params.file_responses[fd].done()
 					pv.close_conn(fd)
 					return
@@ -667,6 +527,7 @@ fn handle_complete_request(should_close bool, mut pv picoev.Picoev, fd int) {
 }
 
 fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestParams) ?&Context {
+	// println('handle_request() params.routes=${params.routes}')
 	mut global_app := unsafe { &A(params.global_app) }
 
 	// TODO: change this variable to include the total wait time over each network cycle
@@ -689,7 +550,7 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 	form, files := parse_form_from_request(req) or {
 		// Bad request
 		eprintln('[veb] error parsing form: ${err.msg()}')
-		conn.write(veb.http_400.bytes()) or {}
+		conn.write(http_400.bytes()) or {}
 		return none
 	}
 
@@ -699,12 +560,12 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 
 	// Create Context with request data
 	mut ctx := &Context{
-		req: req
+		req:            req
 		page_gen_start: page_gen_start
-		conn: conn
-		query: query
-		form: form
-		files: files
+		conn:           conn
+		query:          query
+		form:           form
+		files:          files
 	}
 
 	if connection_header := req.header.get(.connection) {
@@ -738,6 +599,7 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 }
 
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
+	// println('\n\nhandle_route() url=${url} routes=${routes}')
 	mut route := Route{}
 	mut middleware_has_sent_response := false
 	mut not_found := false
@@ -855,13 +717,16 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 								args << data[param.name]
 							}
 
+							// println('m1')
 							app.$method(mut user_context, args)
 						} else {
+							// println('m2')
 							app.$method(mut user_context)
 						}
 						return
 					}
 
+					// println('route_words=${route_words} method=${method}')
 					if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
 						$if A is MiddlewareApp {
 							if validate_middleware[X](mut user_context, route.middlewares) == false {
@@ -884,8 +749,10 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 								args << data[param.name]
 							}
 
+							// println('m3')
 							app.$method(mut user_context, args)
 						} else {
+							// println('m4')
 							app.$method(mut user_context)
 						}
 						return
@@ -903,6 +770,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 						if method_args.len + 1 != method.args.len {
 							eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
 						}
+						// println('m5')
 						app.$method(mut user_context, method_args)
 						return
 					}
@@ -917,6 +785,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
+	// println('route_matches(url_words:${url_words} route_words:${route_words}')
 	// URL path should be at least as long as the route path
 	// except for the catchall route (`/:path...`)
 	if route_words.len == 1 && route_words[0].starts_with(':') && route_words[0].ends_with('...') {
@@ -980,8 +849,8 @@ fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string
 	static_file := app.static_files[asked_path] or { return false }
 
 	// StaticHandler ensures that the mime type exists on either the App or in veb
-	ext := os.file_ext(static_file)
-	mut mime_type := app.static_mime_types[ext] or { veb.mime_types[ext] }
+	ext := os.file_ext(static_file).to_lower()
+	mut mime_type := app.static_mime_types[ext] or { mime_types[ext] }
 
 	static_host := app.static_hosts[asked_path] or { '' }
 	if static_file == '' || mime_type == '' {

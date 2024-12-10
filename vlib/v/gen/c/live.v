@@ -43,12 +43,12 @@ fn (mut g Gen) generate_hotcode_reloader_code() {
 			for so_fn in g.hotcode_fn_names {
 				load_code << 'impl_live_${so_fn} = dlsym(live_lib, "impl_live_${so_fn}");'
 			}
-			phd = c.posix_hotcode_definitions_1
+			phd = posix_hotcode_definitions_1
 		} else {
 			for so_fn in g.hotcode_fn_names {
 				load_code << 'impl_live_${so_fn} = (void *)GetProcAddress(live_lib, "impl_live_${so_fn}");  '
 			}
-			phd = c.windows_hotcode_definitions_1
+			phd = windows_hotcode_definitions_1
 		}
 		g.hotcode_definitions.writeln(phd.replace('@LOAD_FNS@', load_code.join('\n')))
 	}
@@ -72,8 +72,7 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	}
 	g.writeln('')
 	// We are in live code reload mode, so start the .so loader in the background
-	g.writeln('\t// live code initialization section:')
-	g.writeln('\t{')
+	g.writeln2('\t// live code initialization section:', '\t{')
 	g.writeln('\t\t// initialization of live function pointers')
 	for fname in g.hotcode_fn_names {
 		g.writeln('\t\timpl_live_${fname} = 0;')
@@ -84,7 +83,7 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	ccompiler := '-cc ${ccpath}'
 	so_debug_flag := if g.pref.is_debug { '-cg' } else { '' }
 	vopts := '${ccompiler} ${so_debug_flag} -sharedlive -shared'
-	//
+
 	g.writeln('\t\t// start background reloading thread')
 	if g.pref.os == .windows {
 		g.writeln('\t\tlive_fn_mutex = CreateMutexA(0, 0, 0);')

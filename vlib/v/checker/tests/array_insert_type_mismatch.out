@@ -41,7 +41,7 @@ vlib/v/checker/tests/array_insert_type_mismatch.vv:8:14: error: cannot insert `[
     9 |     println(a)
    10 |
 vlib/v/checker/tests/array_insert_type_mismatch.vv:12:14: error: cannot insert `[][][]int` to `[][]int`
-   10 |
+   10 | 
    11 |     mut b := [[1, 2, 3]]
    12 |     b.insert(0, [[[2]]])
       |                 ~~~~~~~

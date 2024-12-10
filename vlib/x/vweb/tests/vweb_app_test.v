@@ -2,7 +2,7 @@ import x.vweb
 import time
 import db.sqlite
 
-const port = 13004
+const port = 23004
 
 pub struct Context {
 	vweb.Context
@@ -50,7 +50,7 @@ pub fn (mut app App) new_article(mut ctx Context) vweb.Result {
 	}
 	article := Article{
 		title: title
-		text: text
+		text:  text
 	}
 	println('posting article')
 	println(article)
@@ -85,7 +85,7 @@ struct ApiSuccessResponse[T] {
 fn (mut app App) json_success[T](mut ctx Context, result T) {
 	response := ApiSuccessResponse[T]{
 		success: true
-		result: result
+		result:  result
 	}
 
 	ctx.json(response)
@@ -95,7 +95,7 @@ fn (mut app App) json_success[T](mut ctx Context, result T) {
 fn (mut app App) some_helper[T](result T) ApiSuccessResponse[T] {
 	response := ApiSuccessResponse[T]{
 		success: true
-		result: result
+		result:  result
 	}
 	return response
 }

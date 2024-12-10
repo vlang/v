@@ -33,10 +33,10 @@ pub fn serve(params StaticServeParams) {
 	mut nparams := params
 	nparams.folder = os.norm_path(os.real_path(params.folder))
 	mut server := &http.Server{
-		handler: StaticHttpHandler{
+		handler:    StaticHttpHandler{
 			params: nparams
 		}
-		addr: params.on
+		addr:       params.on
 		worker_num: params.workers
 	}
 	if params.shutdown_after != time.infinite {
@@ -78,11 +78,11 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 	}
 	if !os.exists(requested_file_path) {
 		res.set_status(.not_found)
-		res.body = file.no_such_file_doc
+		res.body = no_such_file_doc
 		res.header.add(.content_type, 'text/html; charset=utf-8')
 		return res
 	}
-	//
+
 	mut body := ''
 	mut content_type := 'text/html; charset=utf-8'
 	if os.is_dir(requested_file_path) {
@@ -98,7 +98,7 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 		} else {
 			body = os.read_file(ipath) or {
 				res.set_status(.not_found)
-				file.no_such_file_doc
+				no_such_file_doc
 			}
 		}
 	} else {

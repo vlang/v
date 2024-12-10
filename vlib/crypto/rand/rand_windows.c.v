@@ -15,8 +15,8 @@ const bcrypt_use_system_preferred_rng = 0x00000002
 pub fn read(bytes_needed int) ![]u8 {
 	mut buffer := []u8{len: bytes_needed}
 	// use bcrypt_use_system_preferred_rng because we passed null as algo
-	status := C.BCryptGenRandom(0, buffer.data, bytes_needed, rand.bcrypt_use_system_preferred_rng)
-	if status != rand.status_success {
+	status := C.BCryptGenRandom(0, buffer.data, bytes_needed, bcrypt_use_system_preferred_rng)
+	if status != status_success {
 		return &ReadError{}
 	}
 	return buffer

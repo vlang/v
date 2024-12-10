@@ -50,10 +50,10 @@ pub mut:
 	proc_info    ProcessInformation
 	command_line [65536]u8
 	child_stdin  &u32 = unsafe { nil }
-	//
+
 	child_stdout_read  &u32 = unsafe { nil }
 	child_stdout_write &u32 = unsafe { nil }
-	//
+
 	child_stderr_read  &u32 = unsafe { nil }
 	child_stderr_write &u32 = unsafe { nil }
 }
@@ -69,19 +69,19 @@ fn (mut p Process) win_spawn_process() int {
 	}
 	p.filename = abs_path(p.filename) // expand the path to an absolute one, in case we later change the working folder
 	mut wdata := &WProcess{
-		child_stdin: unsafe { nil }
-		child_stdout_read: unsafe { nil }
+		child_stdin:        unsafe { nil }
+		child_stdout_read:  unsafe { nil }
 		child_stdout_write: unsafe { nil }
-		child_stderr_read: unsafe { nil }
+		child_stderr_read:  unsafe { nil }
 		child_stderr_write: unsafe { nil }
 	}
 	p.wdata = voidptr(wdata)
 	mut start_info := StartupInfo{
 		lp_reserved2: unsafe { nil }
-		lp_reserved: unsafe { nil }
-		lp_desktop: unsafe { nil }
-		lp_title: unsafe { nil }
-		cb: sizeof(StartupInfo)
+		lp_reserved:  unsafe { nil }
+		lp_desktop:   unsafe { nil }
+		lp_title:     unsafe { nil }
+		cb:           sizeof(StartupInfo)
 	}
 	if p.use_stdio_ctl {
 		mut sa := SecurityAttributes{}
@@ -197,11 +197,11 @@ fn (mut p Process) win_is_alive() bool {
 
 ///////////////
 
-fn (mut p Process) win_write_string(idx int, s string) {
+fn (mut p Process) win_write_string(idx int, _s string) {
 	panic('Process.write_string ${idx} is not implemented yet')
 }
 
-fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
+fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {
 	mut wdata := unsafe { &WProcess(p.wdata) }
 	if unsafe { wdata == 0 } {
 		return '', 0

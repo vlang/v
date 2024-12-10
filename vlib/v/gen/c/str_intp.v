@@ -37,7 +37,7 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 			return `s`
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
-			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .interface_, .none_]
+			|| sym.kind in [.enum, .array, .array_fixed, .struct, .map, .multi_return, .sum_type, .interface, .none]
 			|| ftyp.has_option_or_result() || sym.has_method('str') {
 			return `s`
 		} else {
@@ -53,11 +53,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	if node.exprs[i].is_auto_deref_var() {
 		typ = typ.deref()
 	}
-	sym := g.table.sym(typ)
-
-	if sym.kind == .alias {
-		typ = (sym.info as ast.Alias).parent_type
-	}
+	typ = g.table.final_type(typ)
 	mut remove_tail_zeros := false
 	fspec := fmts[i]
 	mut fmt_type := StrIntpType.si_no_str
@@ -156,7 +152,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	}
 	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i], remove_tail_zeros,
 		node.pluss[i], u8(pad_ch), base, upper_case)
-	//
+
 	return res, fmt_type.str()
 }
 
@@ -165,7 +161,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	fmt := fmts[i]
 	typ := g.unwrap_generic(node.expr_types[i])
 	typ_sym := g.table.sym(typ)
-	if typ == ast.string_type && g.comptime.comptime_for_method.len == 0 {
+	if typ == ast.string_type && g.comptime.comptime_for_method == unsafe { nil } {
 		if g.inside_vweb_tmpl {
 			g.write('${g.vweb_filter_fn_name}(')
 			if expr.is_auto_deref_var() && fmt != `p` {
@@ -179,19 +175,20 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			}
 			g.expr(expr)
 		}
-	} else if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {
+	} else if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method('str') {
 		rec_type_name := util.no_dots(g.cc_type(typ, false))
 		g.write('${c_name(rec_type_name)}_name_table[')
 		g.expr(expr)
 		dot := if typ.is_ptr() { '->' } else { '.' }
 		g.write('${dot}_typ]._method_str(')
 		g.expr(expr)
-		g.write('${dot}_object')
-		g.write(')')
+		g.write2('${dot}_object', ')')
 	} else if fmt == `s` || typ.has_flag(.variadic) {
 		mut exp_typ := typ
 		if expr is ast.Ident {
-			if expr.obj is ast.Var {
+			if g.comptime.get_ct_type_var(expr) == .smartcast {
+				exp_typ = g.comptime.get_type(expr)
+			} else if expr.obj is ast.Var {
 				if expr.obj.smartcasts.len > 0 {
 					exp_typ = g.unwrap_generic(expr.obj.smartcasts.last())
 					cast_sym := g.table.sym(exp_typ)
@@ -244,7 +241,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
 		if g.comptime.is_comptime_var(expr) {
-			ctyp := g.comptime.get_comptime_var_type(expr)
+			ctyp := g.comptime.get_type(expr)
 			if ctyp != ast.void_type {
 				node_.expr_types[i] = ctyp
 				if node_.fmts[i] == `_` {
@@ -259,17 +256,14 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		}
 	}
-	g.write(' str_intp(')
-	g.write(node.vals.len.str())
-	g.write(', ')
-	g.write('_MOV((StrIntpData[]){')
+	g.write2('str_intp(', node.vals.len.str())
+	g.write(', _MOV((StrIntpData[]){')
 	for i, val in node.vals {
 		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
 		escaped_val = escaped_val.replace('\0', '\\0')
 
 		if escaped_val.len > 0 {
-			g.write('{_SLIT("')
-			g.write(escaped_val)
+			g.write2('{_SLIT("', escaped_val)
 			g.write('"), ')
 		} else {
 			g.write('{_SLIT0, ')
@@ -282,10 +276,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 
 		ft_u64, ft_str := g.str_format(node, i, fmts)
-		g.write('0x')
-		g.write(ft_u64.hex())
-		g.write(', {.d_')
-		g.write(ft_str)
+		g.write2('0x', ft_u64.hex())
+		g.write2(', {.d_', ft_str)
 		g.write(' = ')
 
 		// for pointers we need a void* cast

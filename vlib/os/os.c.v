@@ -89,10 +89,10 @@ const buf_size = 4096
 // but to read the file in `buf_size` chunks.
 @[manualfree]
 fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
-	buf := [os.buf_size]u8{}
-	mut sb := strings.new_builder(os.buf_size)
+	buf := [buf_size]u8{}
+	mut sb := strings.new_builder(buf_size)
 	for {
-		mut read_bytes := fread(&buf[0], 1, os.buf_size, fp) or {
+		mut read_bytes := fread(&buf[0], 1, buf_size, fp) or {
 			if err is Eof {
 				break
 			}
@@ -169,7 +169,7 @@ pub fn truncate(path string, len u64) ! {
 	}
 }
 
-// file_size returns the size of the file located in `path`.
+// file_size returns the size in bytes, of the file located in `path`.
 // If an error occurs it returns 0.
 // Note that use of this on symbolic links on Windows returns always 0.
 pub fn file_size(path string) u64 {
@@ -573,9 +573,9 @@ pub fn get_raw_stdin() []u8 {
 			}
 			return array{
 				element_size: 1
-				data: voidptr(buf)
-				len: offset
-				cap: offset
+				data:         voidptr(buf)
+				len:          offset
+				cap:          offset
 			}
 		}
 	} $else {
@@ -584,9 +584,9 @@ pub fn get_raw_stdin() []u8 {
 		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
 		return array{
 			element_size: 1
-			data: voidptr(buf)
-			len: if nr_chars < 0 { 0 } else { nr_chars }
-			cap: int(max)
+			data:         voidptr(buf)
+			len:          if nr_chars < 0 { 0 } else { nr_chars }
+			cap:          int(max)
 		}
 	}
 }
@@ -616,9 +616,9 @@ pub fn read_file_array[T](path string) []T {
 	return unsafe {
 		array{
 			element_size: tsize
-			data: buf
-			len: int(nread)
-			cap: int(len)
+			data:         buf
+			len:          int(nread)
+			cap:          int(len)
 		}
 	}
 }
@@ -692,7 +692,7 @@ pub fn executable() string {
 		mib := [C.CTL_KERN, C.KERN_PROC_ARGS, pid, C.KERN_PROC_ARGV]!
 		if unsafe { C.sysctl(&mib[0], mib.len, C.NULL, &bufsize, C.NULL, 0) } == 0 {
 			if bufsize > max_path_buffer_size {
-				pbuf = unsafe { &&u8(malloc(bufsize)) }
+				pbuf = unsafe { &&u8(malloc(int(bufsize))) }
 				defer {
 					unsafe { free(pbuf) }
 				}
@@ -1016,6 +1016,7 @@ pub fn write_file_array(path string, buffer array) ! {
 	f.close()
 }
 
+@[manualfree]
 pub fn glob(patterns ...string) ![]string {
 	mut matches := []string{}
 	for pattern in patterns {
@@ -1025,6 +1026,8 @@ pub fn glob(patterns ...string) ![]string {
 	return matches
 }
 
+// last_error returns a V error, formed by the last libc error (from GetLastError() on windows and from `errno` on !windows)
+@[manualfree]
 pub fn last_error() IError {
 	$if windows {
 		code := int(C.GetLastError())
@@ -1044,15 +1047,15 @@ pub const error_code_not_set = int(0x7EFEFEFE)
 pub struct SystemError {
 pub:
 	msg  string
-	code int = os.error_code_not_set
+	code int = error_code_not_set
 }
 
 // Return a POSIX error:
 // Code defaults to last error (from C.errno)
 // Message defaults to POSIX error message for the error code
-@[inline]
+@[inline; manualfree]
 pub fn error_posix(e SystemError) IError {
-	code := if e.code == os.error_code_not_set { C.errno } else { e.code }
+	code := if e.code == error_code_not_set { C.errno } else { e.code }
 	message := if e.msg == '' { posix_get_error_msg(code) } else { e.msg }
 	return error_with_code(message, code)
 }
@@ -1060,10 +1063,10 @@ pub fn error_posix(e SystemError) IError {
 // Return a Win32 API error:
 // Code defaults to last error (calling C.GetLastError())
 // Message defaults to Win 32 API error message for the error code
-@[inline]
+@[inline; manualfree]
 pub fn error_win32(e SystemError) IError {
 	$if windows {
-		code := if e.code == os.error_code_not_set { int(C.GetLastError()) } else { e.code }
+		code := if e.code == error_code_not_set { int(C.GetLastError()) } else { e.code }
 		message := if e.msg == '' { get_error_msg(code) } else { e.msg }
 		return error_with_code(message, code)
 	} $else {

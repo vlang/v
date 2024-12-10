@@ -6,7 +6,7 @@ pub mut:
 }
 
 fn write_10000(mut co Counter, mut mx sync.Mutex) {
-	mx.@lock()
+	mx.lock()
 	co.i = 10000
 	mx.unlock()
 }
@@ -14,7 +14,7 @@ fn write_10000(mut co Counter, mut mx sync.Mutex) {
 fn test_mutex() {
 	mut co := &Counter{10086}
 	mut mx := sync.new_mutex()
-	mx.@lock()
+	mx.lock()
 	co.i = 888
 	th := spawn write_10000(mut co, mut mx)
 	mx.unlock() // after mx unlock, thread write_10000 can continue
@@ -31,7 +31,7 @@ fn test_try_lock_mutex() {
 		}
 	}
 	mut mx := sync.new_mutex()
-	mx.@lock()
+	mx.lock()
 	try_fail := mx.try_lock()
 	assert try_fail == false
 	mx.unlock()

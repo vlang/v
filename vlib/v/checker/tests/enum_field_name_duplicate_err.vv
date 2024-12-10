@@ -1,10 +1,10 @@
 enum Color {
-    green
-    yellow
-    blue
+	green
+	yellow
+	blue
 	green
 }
 
-fn main(){
+fn main() {
 	println('hello')
 }

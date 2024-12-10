@@ -1,7 +1,9 @@
 module main
 
 struct Db {}
+
 struct User {}
+
 struct Post {}
 
 fn main() {

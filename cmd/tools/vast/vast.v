@@ -124,11 +124,11 @@ fn json(file string) string {
 	pref_.fill_with_defaults()
 	pref_.enable_globals = true
 	pref_.is_fmt = true
-	//
+
 	mut t := Tree{
-		root: new_object()
+		root:  new_object()
 		table: ast.new_table()
-		pref: pref_
+		pref:  pref_
 	}
 	// parse file with comment
 	ast_file := parser.parse_file(file, mut t.table, .parse_comments, t.pref)
@@ -546,9 +546,12 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('FnDecl'))
 	obj.add_terse('name', t.string_node(node.name))
+	obj.add_terse('short_name', t.string_node(node.short_name))
 	obj.add_terse('mod', t.string_node(node.mod))
 	obj.add_terse('is_deprecated', t.bool_node(node.is_deprecated))
 	obj.add_terse('is_pub', t.bool_node(node.is_pub))
+	obj.add_terse('is_c_variadic', t.bool_node(node.is_c_variadic))
+	obj.add_terse('is_c_extern', t.bool_node(node.is_c_extern))
 	obj.add_terse('is_variadic', t.bool_node(node.is_variadic))
 	obj.add('is_anon', t.bool_node(node.is_anon))
 	obj.add_terse('is_noreturn', t.bool_node(node.is_noreturn))
@@ -559,17 +562,23 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add_terse('is_exported', t.bool_node(node.is_exported))
 	obj.add('is_keep_alive', t.bool_node(node.is_keep_alive))
 	obj.add_terse('is_unsafe', t.bool_node(node.is_unsafe))
+	obj.add_terse('is_markused', t.bool_node(node.is_markused))
+	obj.add_terse('is_file_translated', t.bool_node(node.is_file_translated))
 	obj.add_terse('receiver', t.struct_field(node.receiver))
 	obj.add('receiver_pos', t.pos(node.receiver_pos))
 	obj.add_terse('is_method', t.bool_node(node.is_method))
+	obj.add_terse('is_static_type_method', t.bool_node(node.is_static_type_method))
 	obj.add('method_type_pos', t.pos(node.method_type_pos))
 	obj.add('method_idx', t.number_node(node.method_idx))
 	obj.add_terse('rec_mut', t.bool_node(node.rec_mut))
+	obj.add_terse('has_prev_newline', t.bool_node(node.has_prev_newline))
+	obj.add_terse('has_break_line', t.bool_node(node.has_break_line))
 	obj.add('rec_share', t.enum_node(node.rec_share))
 	obj.add_terse('language', t.enum_node(node.language))
 	obj.add('file_mode', t.enum_node(node.file_mode))
 	obj.add('no_body', t.bool_node(node.no_body))
 	obj.add('is_builtin', t.bool_node(node.is_builtin))
+	obj.add('file', t.string_node(node.file))
 	obj.add('is_direct_arr', t.bool_node(node.is_direct_arr))
 	obj.add('ctdefine_idx', t.number_node(node.ctdefine_idx))
 	obj.add('pos', t.pos(node.pos))
@@ -626,6 +635,8 @@ fn (t Tree) struct_decl(node ast.StructDecl) &Node {
 	obj.add_terse('attrs', t.array_node_attr(node.attrs))
 	obj.add('end_comments', t.array_node_comment(node.end_comments))
 	obj.add_terse('embeds', t.array_node_embed(node.embeds))
+	obj.add('is_implements', t.bool_node(node.is_implements))
+	obj.add_terse('implements_types', t.array_node_type_expr(node.implements_types))
 	return obj
 }
 
@@ -647,7 +658,9 @@ fn (t Tree) struct_field(node ast.StructField) &Node {
 	obj.add_terse('is_volatile', t.bool_node(node.is_volatile))
 	obj.add_terse('is_deprecated', t.bool_node(node.is_deprecated))
 	obj.add_terse('attrs', t.array_node_attr(node.attrs))
+	obj.add('pre_comments', t.array_node_comment(node.pre_comments))
 	obj.add('comments', t.array_node_comment(node.comments))
+	obj.add('next_comments', t.array_node_comment(node.next_comments))
 	obj.add('pos', t.pos(node.pos))
 	obj.add_terse('i', t.number_node(node.i))
 	return obj
@@ -683,6 +696,7 @@ fn (t Tree) enum_field(node ast.EnumField) &Node {
 	obj.add_terse('has_expr', t.bool_node(node.has_expr))
 	obj.add_terse('expr', t.expr(node.expr))
 	obj.add('pos', t.pos(node.pos))
+	obj.add('pre_comments', t.array_node_comment(node.pre_comments))
 	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add('next_comments', t.array_node_comment(node.next_comments))
 	return obj
@@ -849,7 +863,6 @@ fn (t Tree) arg(node ast.Param) &Node {
 	obj.add_terse('is_mut', t.bool_node(node.is_mut))
 	obj.add_terse('is_shared', t.bool_node(node.is_shared))
 	obj.add_terse('is_atomic', t.bool_node(node.is_atomic))
-	obj.add_terse('is_auto_rec', t.bool_node(node.is_auto_rec))
 	obj.add_terse('on_newline', t.bool_node(node.on_newline))
 	obj.add('pos', t.pos(node.pos))
 	obj.add('type_pos', t.pos(node.type_pos))
@@ -1015,7 +1028,8 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	obj.add_terse('method_name', t.string_node(node.method_name))
 	obj.add_terse('left', t.expr(node.left))
 	obj.add_terse('is_vweb', t.bool_node(node.is_vweb))
-	obj.add_terse('vweb_tmpl', t.string_node(node.vweb_tmpl.path))
+	obj.add_terse('is_veb', t.bool_node(node.is_veb))
+	obj.add_terse('veb_tmpl', t.string_node(node.veb_tmpl.path))
 	obj.add_terse('args_var', t.string_node(node.args_var))
 	obj.add_terse('has_parens', t.bool_node(node.has_parens))
 	obj.add_terse('is_embed', t.bool_node(node.is_embed))
@@ -1545,6 +1559,8 @@ fn (t Tree) call_expr(node ast.CallExpr) &Node {
 	obj.add('is_keep_alive', t.bool_node(node.is_keep_alive))
 	obj.add_terse('is_noreturn', t.bool_node(node.is_noreturn))
 	obj.add_terse('is_ctor_new', t.bool_node(node.is_ctor_new))
+	obj.add_terse('is_return_used', t.bool_node(node.is_return_used))
+	obj.add_terse('is_static_method', t.bool_node(node.is_static_method))
 	obj.add('should_be_skipped', t.bool_node(node.should_be_skipped))
 	obj.add_terse('free_receiver', t.bool_node(node.free_receiver))
 	obj.add('scope', t.number_node(int(node.scope)))
@@ -1611,7 +1627,8 @@ fn (t Tree) struct_init_field(node ast.StructInitField) &Node {
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('expected_type', t.type_node(node.expected_type))
 	obj.add_terse('parent_type', t.type_node(node.parent_type))
-	obj.add('comments', t.array_node_comment(node.comments))
+	obj.add('pre_comments', t.array_node_comment(node.pre_comments))
+	obj.add('end_comments', t.array_node_comment(node.end_comments))
 	obj.add('next_comments', t.array_node_comment(node.next_comments))
 	obj.add('pos', t.pos(node.pos))
 	obj.add('name_pos', t.pos(node.name_pos))
@@ -1809,6 +1826,8 @@ fn (t Tree) sql_stmt_line(node ast.SqlStmtLine) &Node {
 	obj.add_terse('updated_columns', t.array_node_string(node.updated_columns))
 	obj.add_terse('update_exprs', t.array_node_expr(node.update_exprs))
 	obj.add('pos', t.pos(node.pos))
+	obj.add('pre_comments', t.array_node_comment(node.pre_comments))
+	obj.add('end_comments', t.array_node_comment(node.end_comments))
 
 	sub_struct_map := new_object()
 	for key, val in node.sub_structs {

@@ -29,14 +29,16 @@ fn (video Video) extract_frames() string {
 		return 'Failed to extract frames: os.execute() cmd output'
 	}
 	// do something else
-	return ''
+	return '1234'
 }
 
 fn main() {
 	mut video := Video{
-		path: '/path/to/some/mp4'
+		path:    '/path/to/some/mp4'
 		tmp_dir: '/tmp'
 	}
 	video.extract_frames_thread = spawn video.extract_frames()
+	println(video.extract_frames_thread.wait())
 	println(video)
+	flush_stdout()
 }

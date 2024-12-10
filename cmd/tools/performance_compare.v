@@ -25,9 +25,9 @@ mut:
 
 fn new_context() Context {
 	return Context{
-		cwd: os.getwd()
+		cwd:          os.getwd()
 		commit_after: 'master'
-		warmups: 4
+		warmups:      4
 	}
 }
 
@@ -80,12 +80,12 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 		cc = 'cc'
 	}
 	mut vgit_context := vgit.VGitContext{
-		cc: cc
-		commit_v: commit
-		path_v: cdir
-		path_vc: c.vc
-		workdir: c.vgo.workdir
-		v_repo_url: c.vgo.v_repo_url
+		cc:          cc
+		commit_v:    commit
+		path_v:      cdir
+		path_vc:     c.vc
+		workdir:     c.vgo.workdir
+		v_repo_url:  c.vgo.v_repo_url
 		vc_repo_url: c.vgo.vc_repo_url
 	}
 	vgit_context.compile_oldv_if_needed()

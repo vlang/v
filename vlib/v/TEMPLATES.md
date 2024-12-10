@@ -116,7 +116,7 @@ You can also write (and all other for condition syntaxes that are allowed in V):
 
 The include directive is for including other html files (which will be processed as well)
 and consists of two parts, the `@include` tag and a following `'<path>'` string.
-The path parameter is relative to the `/templates` directory in the corresponding project.
+The path parameter is relative to the template file being called.
 
 ### Example for the folder structure of a project using templates:
 
@@ -137,6 +137,7 @@ Project root
 
 > Note that there shouldn't be a file suffix,
 > it is automatically appended and only allows `html` files.
+
 
 ## js
 

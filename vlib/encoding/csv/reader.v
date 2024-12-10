@@ -61,9 +61,9 @@ pub:
 // optionally, a custom delimiter.
 pub fn new_reader(data string, config ReaderConfig) &Reader {
 	return &Reader{
-		data: data
+		data:      data
 		delimiter: config.delimiter
-		comment: config.comment
+		comment:   config.comment
 	}
 }
 
@@ -91,7 +91,7 @@ pub fn (mut r Reader) read() ![]string {
 // }
 fn (mut r Reader) read_line() !string {
 	// last record
-	if r.row_pos == r.data.len {
+	if r.row_pos >= r.data.len {
 		return &EndOfFileError{}
 	}
 	le := if r.is_mac_pre_osx_le { '\r' } else { '\n' }
@@ -108,7 +108,7 @@ fn (mut r Reader) read_line() !string {
 			}
 		} else {
 			// No line ending on file
-			i = r.data.len - 1
+			i = r.data.len
 		}
 	}
 	mut line := r.data[r.row_pos..i]

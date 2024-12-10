@@ -21,7 +21,7 @@ fn (mut p Preferences) expand_lookup_paths() {
 	}
 	p.vlib = os.join_path(p.vroot, 'vlib')
 	p.vmodules_paths = os.vmodules_paths()
-	//
+
 	if p.lookup_path.len == 0 {
 		p.lookup_path = ['@vlib', '@vmodules']
 	}
@@ -53,10 +53,38 @@ fn (mut p Preferences) expand_exclude_paths() {
 	p.exclude = res
 }
 
-pub fn (mut p Preferences) fill_with_defaults() {
+fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
+	if p.os == .wasm32_emscripten {
+		// TODO: remove after `$if wasm32_emscripten {` works
+		p.parse_define('emscripten')
+	}
+	host_os := if p.backend == .wasm { OS.wasi } else { get_host_os() }
+	if p.os == ._auto {
+		p.os = host_os
+		p.build_options << '-os ${host_os}'
+	}
+
+	if !p.output_cross_c {
+		if p.os != host_os {
+			// TODO: generalise this not only for macos->linux, after considering the consequences for vab/Android:
+			if host_os == .macos && p.os == .linux {
+				// Cross compilation from macos -> linux; assume AMD64 as the target architecture for now
+				if p.arch == ._auto {
+					p.arch = .amd64
+					p.build_options << '-arch amd64'
+				}
+				p.parse_define('use_bundled_libgc')
+			}
+		}
+	}
 	if p.arch == ._auto {
 		p.arch = get_host_arch()
+		p.build_options << '-arch ${p.arch}'
 	}
+}
+
+pub fn (mut p Preferences) fill_with_defaults() {
+	p.setup_os_and_arch_when_not_explicitly_set()
 	p.expand_lookup_paths()
 	p.expand_exclude_paths()
 	rpath := os.real_path(p.path)
@@ -110,6 +138,11 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	rpath_name := os.file_name(rpath)
 	p.building_v = !p.is_repl && (rpath_name == 'v' || rpath_name == 'vfmt.v')
+	if p.os == .linux {
+		$if !linux {
+			p.parse_define('cross_compile')
+		}
+	}
 	if p.output_cross_c {
 		// avoid linking any GC related code, since the target may not have an usable GC system
 		p.gc_mode = .no_gc
@@ -135,15 +168,6 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.is_debug {
 		p.parse_define('debug')
 	}
-	if p.os == .wasm32_emscripten {
-		// TODO: remove after `$if wasm32_emscripten {` works
-		p.parse_define('emscripten')
-	}
-	if p.os == ._auto {
-		// No OS specified? Use current system
-		p.os = if p.backend != .wasm { get_host_os() } else { .wasi }
-	}
-	//
 	p.try_to_use_tcc_by_default()
 	if p.ccompiler == '' {
 		p.default_c_compiler()

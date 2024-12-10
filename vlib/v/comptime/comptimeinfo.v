@@ -28,20 +28,37 @@ pub fn (mut ct ComptimeInfo) get_comptime_selector_key_type(val ast.ComptimeSele
 	return ''
 }
 
+// is_comptime_expr checks if the node is related to a comptime expr
+@[inline]
+pub fn (mut ct ComptimeInfo) is_comptime_expr(node ast.Expr) bool {
+	return (node is ast.Ident && ct.get_ct_type_var(node) != .no_comptime)
+		|| (node is ast.IndexExpr && ct.is_comptime_expr(node.left))
+		|| node is ast.ComptimeSelector
+}
+
 // is_comptime_var checks if the node is related to a comptime variable
 @[inline]
 pub fn (mut ct ComptimeInfo) is_comptime_var(node ast.Expr) bool {
 	return ct.get_ct_type_var(node) != .no_comptime
 }
 
+// is_comptime_variant_var checks if the node is related to a comptime variant variable
+@[inline]
+pub fn (mut ct ComptimeInfo) is_comptime_variant_var(node ast.Ident) bool {
+	return node.name == ct.comptime_for_variant_var
+}
+
 // get_ct_type_var gets the comptime type of the variable (.generic_param, .key_var, etc)
 @[inline]
 pub fn (mut ct ComptimeInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
-	return if node is ast.Ident && node.obj is ast.Var {
-		(node.obj as ast.Var).ct_type_var
-	} else {
-		.no_comptime
+	if node is ast.Ident {
+		if node.obj is ast.Var {
+			return node.obj.ct_type_var
+		}
+	} else if node is ast.IndexExpr {
+		return ct.get_ct_type_var(node.left)
 	}
+	return .no_comptime
 }
 
 @[inline]
@@ -50,9 +67,43 @@ pub fn (mut ct ComptimeInfo) is_generic_param_var(node ast.Expr) bool {
 		&& (node.obj as ast.Var).ct_type_var == .generic_param
 }
 
-// get_comptime_var_type retrieves the actual type from a comptime related ast node
+// get_expr_type_or_default computes the ast node type regarding its or_expr if its comptime var otherwise default_typ is returned
+pub fn (mut ct ComptimeInfo) get_expr_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
+	if !ct.is_comptime_expr(node) {
+		return default_typ
+	}
+	ctyp := ct.get_type(node)
+	match node {
+		ast.Ident {
+			// returns the unwrapped type of the var
+			if ctyp.has_flag(.option) && node.or_expr.kind != .absent {
+				return ctyp.clear_flag(.option)
+			}
+		}
+		else {}
+	}
+	return if ctyp != ast.void_type { ctyp } else { default_typ }
+}
+
+// get_type_or_default retries the comptime value if the AST node is related to comptime otherwise default_typ is returned
+pub fn (mut ct ComptimeInfo) get_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
+	match node {
+		ast.Ident {
+			if ct.is_comptime_var(node) {
+				ctyp := ct.get_type(node)
+				return if ctyp != ast.void_type { ctyp } else { default_typ }
+			}
+		}
+		else {
+			return default_typ
+		}
+	}
+	return default_typ
+}
+
+// get_type retrieves the actual type from a comptime related ast node
 @[inline]
-pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
+pub fn (mut ct ComptimeInfo) get_type(node ast.Expr) ast.Type {
 	if node is ast.Ident {
 		if node.obj is ast.Var {
 			return match node.obj.ct_type_var {
@@ -95,7 +146,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 	} else if node is ast.SelectorExpr && ct.is_comptime_selector_type(node) {
 		return ct.get_type_from_comptime_var(node.expr as ast.Ident)
 	} else if node is ast.ComptimeCall {
-		method_name := ct.comptime_for_method
+		method_name := ct.comptime_for_method.name
 		left_sym := ct.table.sym(ct.resolver.unwrap_generic(node.left_type))
 		f := left_sym.find_method(method_name) or {
 			ct.error('could not find method `${method_name}` on compile-time resolution',
@@ -103,6 +154,10 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 			return ast.void_type
 		}
 		return f.return_type
+	} else if node is ast.IndexExpr && ct.is_comptime_var(node.left) {
+		nltype := ct.get_type(node.left)
+		nltype_unwrapped := ct.resolver.unwrap_generic(nltype)
+		return ct.table.value_type(nltype_unwrapped)
 	}
 	return ast.void_type
 }
@@ -113,6 +168,9 @@ pub fn (mut ct ComptimeInfo) get_type_from_comptime_var(var ast.Ident) ast.Type 
 	return match var.name {
 		ct.comptime_for_variant_var {
 			ct.type_map['${ct.comptime_for_variant_var}.typ']
+		}
+		ct.comptime_for_method_param_var {
+			ct.type_map['${ct.comptime_for_method_param_var}.typ']
 		}
 		else {
 			// field_var.typ from $for field
@@ -152,7 +210,7 @@ pub fn (mut ct ComptimeInfo) is_comptime_selector_field_name(node ast.SelectorEx
 pub fn (mut ct ComptimeInfo) is_comptime_selector_type(node ast.SelectorExpr) bool {
 	if ct.inside_comptime_for && node.expr is ast.Ident {
 		return
-			node.expr.name in [ct.comptime_for_enum_var, ct.comptime_for_variant_var, ct.comptime_for_field_var]
+			node.expr.name in [ct.comptime_for_enum_var, ct.comptime_for_variant_var, ct.comptime_for_field_var, ct.comptime_for_method_param_var]
 			&& node.field_name == 'typ'
 	}
 	return false
@@ -192,9 +250,9 @@ pub fn (mut ct ComptimeInfo) get_comptime_selector_bool_field(field_name string)
 		'is_array' { return field_sym.kind in [.array, .array_fixed] }
 		'is_map' { return field_sym.kind == .map }
 		'is_chan' { return field_sym.kind == .chan }
-		'is_struct' { return field_sym.kind == .struct_ }
+		'is_struct' { return field_sym.kind == .struct }
 		'is_alias' { return field_sym.kind == .alias }
-		'is_enum' { return field_sym.kind == .enum_ }
+		'is_enum' { return field_sym.kind == .enum }
 		else { return false }
 	}
 }
@@ -205,7 +263,7 @@ pub fn (mut ct ComptimeInfo) is_comptime_type(x ast.Type, y ast.ComptimeType) bo
 		.unknown {
 			return false
 		}
-		.map_ {
+		.map {
 			return x_kind == .map
 		}
 		.string {
@@ -218,11 +276,11 @@ pub fn (mut ct ComptimeInfo) is_comptime_type(x ast.Type, y ast.ComptimeType) bo
 		.float {
 			return x_kind in [.f32, .f64, .float_literal]
 		}
-		.struct_ {
-			return x_kind == .struct_
+		.struct {
+			return x_kind == .struct
 		}
 		.iface {
-			return x_kind == .interface_
+			return x_kind == .interface
 		}
 		.array {
 			return x_kind in [.array, .array_fixed]
@@ -236,8 +294,8 @@ pub fn (mut ct ComptimeInfo) is_comptime_type(x ast.Type, y ast.ComptimeType) bo
 		.sum_type {
 			return x_kind == .sum_type
 		}
-		.enum_ {
-			return x_kind == .enum_
+		.enum {
+			return x_kind == .enum
 		}
 		.alias {
 			return x_kind == .alias
@@ -251,7 +309,7 @@ pub fn (mut ct ComptimeInfo) is_comptime_type(x ast.Type, y ast.ComptimeType) bo
 	}
 }
 
-// comptime_get_kind_var identifies the comptime variable kind (i.e. if it is about .values, .fields, .methods  etc)
+// comptime_get_kind_var identifies the comptime variable kind (i.e. if it is about .values, .fields, .methods, .args etc)
 fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKind {
 	if ct.inside_comptime_for {
 		return none
@@ -273,8 +331,44 @@ fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKi
 		ct.comptime_for_attr_var {
 			return .attributes
 		}
+		ct.comptime_for_method_param_var {
+			return .params
+		}
 		else {
 			return none
+		}
+	}
+}
+
+pub fn (mut ct ComptimeInfo) unwrap_generic_expr(expr ast.Expr, default_typ ast.Type) ast.Type {
+	match expr {
+		ast.StringLiteral, ast.StringInterLiteral {
+			return ast.string_type
+		}
+		ast.ParExpr {
+			return ct.unwrap_generic_expr(expr.expr, default_typ)
+		}
+		ast.CastExpr {
+			return expr.typ
+		}
+		ast.InfixExpr {
+			if ct.is_comptime_var(expr.left) {
+				return ct.resolver.unwrap_generic(ct.get_type(expr.left))
+			}
+			if ct.is_comptime_var(expr.right) {
+				return ct.resolver.unwrap_generic(ct.get_type(expr.right))
+			}
+			return default_typ
+		}
+		ast.Ident {
+			return if ct.is_comptime_var(expr) {
+				ct.resolver.unwrap_generic(ct.get_type(expr))
+			} else {
+				default_typ
+			}
+		}
+		else {
+			return default_typ
 		}
 	}
 }
@@ -294,6 +388,8 @@ pub mut:
 	resolver IResolverType = DummyResolver{}
 	// symbol table resolver
 	table &ast.Table = unsafe { nil }
+	// loop id for loop distinction
+	comptime_loop_id int
 	// $for
 	inside_comptime_for bool
 	type_map            map[string]ast.Type
@@ -309,6 +405,8 @@ pub mut:
 	comptime_for_attr_var string
 	// .methods
 	comptime_for_method_var      string
-	comptime_for_method          string
+	comptime_for_method          &ast.Fn = unsafe { nil }
 	comptime_for_method_ret_type ast.Type
+	// .args
+	comptime_for_method_param_var string
 }

@@ -16,16 +16,16 @@ fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	pos := p.tok.pos()
 	p.check(.dollar)
 	name := p.check_name()
-	if name !in parser.comptime_types {
-		p.error('unsupported compile-time type `${name}`: only ${parser.comptime_types} are supported')
+	if name !in comptime_types {
+		p.error('unsupported compile-time type `${name}`: only ${comptime_types} are supported')
 	}
 	mut kind := ast.ComptimeTypeKind.unknown
 	kind = match name {
 		'map' {
-			.map_
+			.map
 		}
 		'struct' {
-			.struct_
+			.struct
 		}
 		'interface' {
 			.iface
@@ -52,7 +52,7 @@ fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 			.array_dynamic
 		}
 		'enum' {
-			.enum_
+			.enum
 		}
 		'sumtype' {
 			.sum_type
@@ -69,7 +69,7 @@ fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	}
 	return ast.ComptimeType{
 		kind: kind
-		pos: pos
+		pos:  pos
 	}
 }
 
@@ -90,13 +90,13 @@ fn (mut p Parser) hash() ast.HashStmt {
 		msg = ''
 	}
 	return ast.HashStmt{
-		mod: p.mod
+		mod:         p.mod
 		source_file: p.file_path
-		val: val
-		kind: kind
-		main: main_str
-		msg: msg
-		pos: pos
+		val:         val
+		kind:        kind
+		main:        main_str
+		msg:         msg
+		pos:         pos
 	}
 }
 
@@ -132,7 +132,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		p.check(.dot)
 	}
 	method_name := p.check_name()
-	if method_name !in parser.supported_comptime_calls {
+	if method_name !in supported_comptime_calls {
 		p.error(error_msg)
 		return err_node
 	}
@@ -145,13 +145,13 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		p.check(.string)
 		p.check(.rpar)
 		return ast.ComptimeCall{
-			scope: unsafe { nil }
-			method_name: method_name
-			args_var: s
-			is_env: method_name == 'env'
+			scope:        unsafe { nil }
+			method_name:  method_name
+			args_var:     s
+			is_env:       method_name == 'env'
 			is_pkgconfig: method_name == 'pkgconfig'
-			env_pos: start_pos
-			pos: start_pos.extend(p.prev_tok.pos())
+			env_pos:      start_pos
+			pos:          start_pos.extend(p.prev_tok.pos())
 		}
 	} else if method_name == 'res' {
 		mut has_args := false
@@ -164,16 +164,16 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		p.check(.rpar)
 		if has_args {
 			return ast.ComptimeCall{
-				scope: unsafe { nil }
+				scope:       unsafe { nil }
 				method_name: method_name
-				args_var: type_index
-				pos: start_pos.extend(p.prev_tok.pos())
+				args_var:    type_index
+				pos:         start_pos.extend(p.prev_tok.pos())
 			}
 		}
 		return ast.ComptimeCall{
-			scope: unsafe { nil }
+			scope:       unsafe { nil }
 			method_name: method_name
-			pos: start_pos.extend(p.prev_tok.pos())
+			pos:         start_pos.extend(p.prev_tok.pos())
 		}
 	} else if method_name == 'd' {
 		const_string := p.tok.lit
@@ -184,17 +184,17 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		args := [
 			ast.CallArg{
 				expr: arg_expr
-				pos: p.tok.pos()
+				pos:  p.tok.pos()
 			},
 		]
 		p.check(.rpar)
 		return ast.ComptimeCall{
-			scope: unsafe { nil }
+			scope:            unsafe { nil }
 			is_compile_value: true
-			method_name: method_name
-			args_var: const_string
-			args: args
-			pos: start_pos.extend(p.prev_tok.pos())
+			method_name:      method_name
+			args_var:         const_string
+			args:             args
+			pos:              start_pos.extend(p.prev_tok.pos())
 		}
 	}
 	has_string_arg := p.tok.kind == .string
@@ -239,13 +239,13 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			p.register_auto_import('v.preludes.embed_file.zlib')
 		}
 		return ast.ComptimeCall{
-			scope: unsafe { nil }
-			is_embed: true
+			scope:      unsafe { nil }
+			is_embed:   true
 			embed_file: ast.EmbeddedFile{
 				compression_type: embed_compression_type
 			}
-			args: [arg]
-			pos: start_pos.extend(p.prev_tok.pos())
+			args:       [arg]
+			pos:        start_pos.extend(p.prev_tok.pos())
 		}
 	}
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
@@ -279,17 +279,17 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		if !os.exists(path) {
 			if p.pref.is_fmt {
 				return ast.ComptimeCall{
-					scope: unsafe { nil }
-					is_vweb: true
-					is_veb: is_veb
+					scope:       unsafe { nil }
+					is_vweb:     true
+					is_veb:      is_veb
 					method_name: method_name
-					args_var: literal_string_param
-					args: [arg]
-					pos: start_pos.extend(p.prev_tok.pos())
+					args_var:    literal_string_param
+					args:        [arg]
+					pos:         start_pos.extend(p.prev_tok.pos())
 				}
 			}
 			if is_html {
-				p.error_with_pos('vweb HTML template "${tmpl_path}" not found', arg_pos)
+				p.error_with_pos('veb HTML template "${tmpl_path}" not found', arg_pos)
 			} else {
 				p.error_with_pos('template file "${tmpl_path}" not found', arg_pos)
 			}
@@ -321,14 +321,14 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	mut file := parse_comptime(tmpl_path, v_code, mut p.table, p.pref, mut p.scope)
 	file.path = tmpl_path
 	return ast.ComptimeCall{
-		scope: unsafe { nil }
-		is_vweb: true
-		is_veb: is_veb
-		vweb_tmpl: file
+		scope:       unsafe { nil }
+		is_vweb:     true
+		is_veb:      is_veb
+		veb_tmpl:    file
 		method_name: method_name
-		args_var: literal_string_param
-		args: [arg]
-		pos: start_pos.extend(p.prev_tok.pos())
+		args_var:    literal_string_param
+		args:        [arg]
+		pos:         start_pos.extend(p.prev_tok.pos())
 	}
 }
 
@@ -352,7 +352,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		typ = p.parse_any_type(lang, false, true, false)
 	} else {
 		expr = p.ident(lang)
-		p.mark_var_as_used((expr as ast.Ident).name)
+		p.scope.mark_var_as_used((expr as ast.Ident).name)
 	}
 	typ_pos = typ_pos.extend(p.prev_tok.pos())
 	p.check(.dot)
@@ -363,47 +363,55 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		p.close_scope()
 	}
 	match for_val {
+		'params' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ:  p.table.find_type('MethodParam')
+				pos:  var_pos
+			})
+			kind = .params
+		}
 		'methods' {
 			p.scope.register(ast.Var{
 				name: val_var
-				typ: p.table.find_type_idx('FunctionData')
-				pos: var_pos
+				typ:  p.table.find_type('FunctionData')
+				pos:  var_pos
 			})
 		}
 		'values' {
 			p.scope.register(ast.Var{
 				name: val_var
-				typ: p.table.find_type_idx('EnumData')
-				pos: var_pos
+				typ:  p.table.find_type('EnumData')
+				pos:  var_pos
 			})
 			kind = .values
 		}
 		'fields' {
 			p.scope.register(ast.Var{
 				name: val_var
-				typ: p.table.find_type_idx('FieldData')
-				pos: var_pos
+				typ:  p.table.find_type('FieldData')
+				pos:  var_pos
 			})
 			kind = .fields
 		}
 		'variants' {
 			p.scope.register(ast.Var{
 				name: val_var
-				typ: p.table.find_type_idx('VariantData')
-				pos: var_pos
+				typ:  p.table.find_type('VariantData')
+				pos:  var_pos
 			})
 			kind = .variants
 		}
 		'attributes' {
 			p.scope.register(ast.Var{
 				name: val_var
-				typ: p.table.find_type_idx('VAttribute')
-				pos: var_pos
+				typ:  p.table.find_type('VAttribute')
+				pos:  var_pos
 			})
 			kind = .attributes
 		}
 		else {
-			p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields`, `values`, `variants` or `attributes`',
+			p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields`, `values`, `variants`, `attributes` or `params`',
 				p.prev_tok.pos())
 			return ast.ComptimeFor{}
 		}
@@ -412,12 +420,12 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	stmts := p.parse_block()
 	return ast.ComptimeFor{
 		val_var: val_var
-		stmts: stmts
-		kind: kind
-		typ: typ
-		expr: expr
+		stmts:   stmts
+		kind:    kind
+		typ:     typ
+		expr:    expr
 		typ_pos: typ_pos
-		pos: spos.extend(p.tok.pos())
+		pos:     spos.extend(p.tok.pos())
 	}
 }
 
@@ -442,11 +450,14 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@VMODROOT' { token.AtKind.vmodroot_path }
 		'@VMODHASH' { token.AtKind.vmod_hash }
 		'@VROOT' { token.AtKind.vroot_path } // deprecated, use @VEXEROOT or @VMODROOT
+		'@BUILD_DATE' { token.AtKind.build_date }
+		'@BUILD_TIME' { token.AtKind.build_time }
+		'@BUILD_TIMESTAMP' { token.AtKind.build_timestamp }
 		else { token.AtKind.unknown }
 	}
 	expr := ast.AtExpr{
 		name: name
-		pos: p.tok.pos()
+		pos:  p.tok.pos()
 		kind: kind
 	}
 	p.next()
@@ -459,7 +470,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	if p.peek_tok.kind == .lpar {
 		method_pos := p.tok.pos()
 		method_name := p.check_name()
-		p.mark_var_as_used(method_name)
+		p.scope.mark_var_as_used(method_name)
 		// `app.$action()` (`action` is a string)
 		p.check(.lpar)
 		args := p.call_args()
@@ -473,17 +484,17 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			or_stmts, or_pos = p.or_block(.with_err_var)
 		}
 		return ast.ComptimeCall{
-			left: left
+			left:        left
 			method_name: method_name
-			method_pos: method_pos
-			scope: p.scope
-			args_var: ''
-			args: args
-			pos: start_pos.extend(p.prev_tok.pos())
-			or_block: ast.OrExpr{
+			method_pos:  method_pos
+			scope:       p.scope
+			args_var:    ''
+			args:        args
+			pos:         start_pos.extend(p.prev_tok.pos())
+			or_block:    ast.OrExpr{
 				stmts: or_stmts
-				kind: or_kind
-				pos: or_pos
+				kind:  or_kind
+				pos:   or_pos
 			}
 		}
 	}
@@ -500,8 +511,8 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	}
 	return ast.ComptimeSelector{
 		has_parens: has_parens
-		left: left
+		left:       left
 		field_expr: expr
-		pos: start_pos.extend(p.prev_tok.pos())
+		pos:        start_pos.extend(p.prev_tok.pos())
 	}
 }

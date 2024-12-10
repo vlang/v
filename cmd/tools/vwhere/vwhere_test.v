@@ -8,15 +8,15 @@ fn test_create_finder() {
 	mut fdr := Finder{}
 
 	fdr.configure_from_arguments(['some'])
-	assert fdr.symbol == .@fn
+	assert fdr.symbol == .fn
 	assert fdr.name == 'some'
 	assert fdr.visib == .all
 	assert fdr.mutab == .any
 
 	fdr.configure_from_arguments(['fn', 'some', '-vis', 'pub'])
-	assert fdr.symbol == .@fn
+	assert fdr.symbol == .fn
 	assert fdr.name == 'some'
-	assert fdr.visib == .@pub
+	assert fdr.visib == .pub
 
 	fdr.configure_from_arguments(['method', 'Some.some', '-vis', 'pri'])
 	assert fdr.symbol == .method
@@ -25,23 +25,23 @@ fn test_create_finder() {
 	assert fdr.visib == .pri
 
 	fdr.configure_from_arguments(['struct', 'Some', '-mod', 'foo'])
-	assert fdr.symbol == .@struct
+	assert fdr.symbol == .struct
 	assert fdr.name == 'Some'
 	assert fdr.modul == 'foo'
 
 	fdr.configure_from_arguments(['interface', 'Some', '-mod', 'foo', '-dir', 'bar'])
-	assert fdr.symbol == .@interface
+	assert fdr.symbol == .interface
 	assert fdr.name == 'Some'
 	assert fdr.modul == 'foo'
 	assert fdr.dirs == ['bar']
 
 	fdr.configure_from_arguments(['enum', 'Some', '-dir', 'bar', '-dir', 'baz'])
-	assert fdr.symbol == .@enum
+	assert fdr.symbol == .enum
 	assert fdr.name == 'Some'
 	assert fdr.dirs == ['bar', 'baz']
 
 	fdr.configure_from_arguments(['const', 'some'])
-	assert fdr.symbol == .@const
+	assert fdr.symbol == .const
 	assert fdr.name == 'some'
 
 	fdr.configure_from_arguments(['var', 'some', '-mut', 'yes'])
@@ -181,6 +181,30 @@ fn test_find_pub_const_with_mod() {
 			path: os.join_path(test_dir, 'nested_mod', 'nested_file.v')
 			line: 4
 			text: 'pub const b = 60'
+		},
+	]
+}
+
+fn test_find_in_dir_recursive() {
+	args := ['const', 'common', '-dir', test_dir]
+	mut fdr := Finder{}
+	fdr.configure_from_arguments(args)
+	fdr.search_for_matches()
+	// the order of matches is not guaranteed.
+	// sorting by line number makes the result more deterministic.
+	fdr.matches.sort(a.line < b.line)
+	dump(fdr.matches)
+
+	assert fdr.matches == [
+		Match{
+			path: os.join_path_single(test_dir, 'file_common.v')
+			line: 3
+			text: "const common = 'abcdef'"
+		},
+		Match{
+			path: os.join_path_single(test_dir, 'nested_mod/nested_file.v')
+			line: 6
+			text: 'pub const common = 42'
 		},
 	]
 }

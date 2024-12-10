@@ -1,3 +1,4 @@
+Failed to extract frames: os.execute() cmd output
 Video{
     path: '/path/to/some/mp4'
     tmp_dir: '/tmp'

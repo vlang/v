@@ -21,7 +21,7 @@ const veb_livereload_server_start = time.ticks().str()
 // timestamp/ticks corresponding to when the veb server process was started
 @[if veb_livereload ?]
 fn (mut ctx Context) handle_veb_livereload_current() {
-	ctx.send_response_to_client('text/plain', veb.veb_livereload_server_start)
+	ctx.send_response_to_client('text/plain', veb_livereload_server_start)
 }
 
 // handle_veb_livereload_script serves a small dynamically generated .js file,
@@ -42,7 +42,7 @@ function veb_livereload_checker_fn(started_at) {
 			}
 		});
 }
-const veb_livereload_checker = setInterval(veb_livereload_checker_fn, ${ctx.livereload_poll_interval_ms}, "${veb.veb_livereload_server_start}");
+const veb_livereload_checker = setInterval(veb_livereload_checker_fn, ${ctx.livereload_poll_interval_ms}, "${veb_livereload_server_start}");
 '
 	ctx.send_response_to_client('text/javascript', res)
 }

@@ -55,12 +55,14 @@ pub fn (o &OrderedDepMap) get(name string) []string {
 	return res
 }
 
+@[direct_array_access]
 pub fn (mut o OrderedDepMap) delete(name string) {
 	if name !in o.data {
 		panic('delete: no such key: ${name}')
 	}
 	for i, _ in o.keys {
-		if o.keys[i] == name {
+		item := o.keys[i]
+		if item.len == name.len && item == name {
 			o.keys.delete(i)
 			break
 		}
@@ -86,7 +88,7 @@ pub fn (o &OrderedDepMap) size() int {
 pub fn new_dep_graph() &DepGraph {
 	return &DepGraph{
 		acyclic: true
-		nodes: []DepGraphNode{cap: 1024}
+		nodes:   []DepGraphNode{cap: 1024}
 	}
 }
 
@@ -101,9 +103,9 @@ pub fn (mut graph DepGraph) add(mod string, deps []string) {
 
 pub fn (mut graph DepGraph) add_with_value(mod string, deps []string, value i64) {
 	new_node := DepGraphNode{
-		name: mod
+		name:  mod
 		value: value
-		deps: deps.clone()
+		deps:  deps.clone()
 	}
 	graph.nodes << new_node
 	graph.values[mod] = value

@@ -23,7 +23,6 @@ fn simple_for_test() {
 		println('loop5')
 		i--
 	}
-
 }
 
 fn break_continue_test() {

@@ -40,6 +40,7 @@ pub fn new_scope(parent &Scope, start_pos int) &Scope {
 }
 */
 
+@[inline]
 fn (s &Scope) dont_lookup_parent() bool {
 	return s.parent == unsafe { nil } || s.detached_from_parent
 }
@@ -157,14 +158,14 @@ pub fn (mut s Scope) register_struct_field(name string, field ScopeStructField) 
 }
 
 pub fn (mut s Scope) register(obj ScopeObject) {
-	if obj.name == '_' || obj.name in s.objects {
-		return
+	if !(obj.name == '_' || obj.name in s.objects) {
+		s.objects[obj.name] = obj
 	}
-	s.objects[obj.name] = obj
 }
 
 // returns the innermost scope containing pos
 // pub fn (s &Scope) innermost(pos int) ?&Scope {
+@[direct_array_access]
 pub fn (s &Scope) innermost(pos int) &Scope {
 	if s.contains(pos) {
 		// binary search
@@ -225,6 +226,17 @@ pub fn (s &Scope) has_inherited_vars() bool {
 	return false
 }
 
+pub fn (s &Scope) is_inherited_var(var_name string) bool {
+	for _, obj in s.objects {
+		if obj is Var {
+			if obj.is_inherited && obj.name == var_name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 pub fn (sc &Scope) show(depth int, max_depth int) string {
 	mut out := ''
 	mut indent := ''
@@ -248,6 +260,17 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 		}
 	}
 	return out
+}
+
+pub fn (mut sc Scope) mark_var_as_used(varname string) bool {
+	mut obj := sc.find(varname) or { return false }
+	if mut obj is Var {
+		obj.is_used = true
+		return true
+	} else if obj is GlobalField {
+		return true
+	}
+	return false
 }
 
 pub fn (sc &Scope) str() string {

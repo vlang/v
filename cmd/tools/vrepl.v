@@ -22,7 +22,7 @@ mut:
 	is_pin       bool   // does the repl 'pin' entered source code
 	folder       string // the folder in which the repl will write its temporary source files
 	last_output  string // the last repl output
-	//
+
 	modules         []string          // all the import modules
 	alias           map[string]string // all the alias used in the import
 	includes        []string          // all the #include statements
@@ -67,31 +67,31 @@ const possible_statement_patterns = [
 ]
 
 enum FnType {
-	@none
+	none
 	void
 	fn_type
 }
 
 enum DeclType {
-	include_   // #include ...
-	const_     // const ...
-	type_      // type ...
-	enum_      // enum ...
-	fn_        // fn ...
-	struct_    // struct ...
-	interface_ // interface ...
-	stmt_      // statement
+	include   // #include ...
+	const     // const ...
+	type      // type ...
+	enum      // enum ...
+	fn        // fn ...
+	struct    // struct ...
+	interface // interface ...
+	stmt      // statement
 }
 
 fn new_repl(folder string) Repl {
 	vstartup_source := os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
 	os.mkdir_all(folder) or {}
 	return Repl{
-		readline: readline.Readline{
+		readline:       readline.Readline{
 			skip_empty: true
 		}
-		folder: folder
-		modules: ['os', 'time', 'math']
+		folder:         folder
+		modules:        ['os', 'time', 'math']
 		vstartup_lines: vstartup_source
 		// Test file used to check if a function as a void return or a value return.
 		eval_func_lines: vstartup_source
@@ -183,7 +183,7 @@ fn (r &Repl) function_call(line string) (bool, FnType) {
 	if line.contains(':=') {
 		// an assignment to a variable:
 		// `z := abc()`
-		return false, FnType.@none
+		return false, FnType.none
 	}
 
 	// Check if it is a Vlib call
@@ -192,7 +192,7 @@ fn (r &Repl) function_call(line string) (bool, FnType) {
 		fntype := r.check_fn_type_kind(line)
 		return true, fntype
 	}
-	return false, FnType.@none
+	return false, FnType.none
 }
 
 // TODO(vincenzopalazzo) Remove this fancy check and add a regex
@@ -249,35 +249,35 @@ fn (r &Repl) insert_source_code(typ DeclType, lines []string) string {
 		all_lines << r.vstartup_lines.filter(!it.starts_with('print'))
 	}
 	all_lines << r.includes
-	if typ == .include_ {
+	if typ == .include {
 		all_lines << lines
 	}
 	all_lines << r.types
-	if typ == .type_ {
+	if typ == .type {
 		all_lines << lines
 	}
 	all_lines << r.enums
-	if typ == .enum_ {
+	if typ == .enum {
 		all_lines << lines
 	}
 	all_lines << r.consts
-	if typ == .const_ {
+	if typ == .const {
 		all_lines << lines
 	}
 	all_lines << r.structs
-	if typ == .struct_ {
+	if typ == .struct {
 		all_lines << lines
 	}
 	all_lines << r.interfaces
-	if typ == .interface_ {
+	if typ == .interface {
 		all_lines << lines
 	}
 	all_lines << r.functions
-	if typ == .fn_ {
+	if typ == .fn {
 		all_lines << lines
 	}
 	all_lines << r.lines
-	if typ == .stmt_ {
+	if typ == .stmt {
 		all_lines << lines
 	}
 	return all_lines.join('\n')
@@ -596,30 +596,30 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				}
 			} else if r.line.len == 0 {
 				if was_func {
-					temp_source_code = r.insert_source_code(DeclType.fn_, r.temp_lines)
+					temp_source_code = r.insert_source_code(DeclType.fn, r.temp_lines)
 				} else if was_struct {
-					temp_source_code = r.insert_source_code(DeclType.struct_, r.temp_lines)
+					temp_source_code = r.insert_source_code(DeclType.struct, r.temp_lines)
 				} else if was_enum {
-					temp_source_code = r.insert_source_code(DeclType.enum_, r.temp_lines)
+					temp_source_code = r.insert_source_code(DeclType.enum, r.temp_lines)
 				} else if was_interface {
-					temp_source_code = r.insert_source_code(DeclType.interface_, r.temp_lines)
+					temp_source_code = r.insert_source_code(DeclType.interface, r.temp_lines)
 				} else {
-					temp_source_code = r.insert_source_code(DeclType.stmt_, r.temp_lines)
+					temp_source_code = r.insert_source_code(DeclType.stmt, r.temp_lines)
 				}
 			} else if starts_with_include {
-				temp_source_code = r.insert_source_code(DeclType.include_, [r.line])
+				temp_source_code = r.insert_source_code(DeclType.include, [r.line])
 			} else if starts_with_fn {
-				temp_source_code = r.insert_source_code(DeclType.fn_, [r.line])
+				temp_source_code = r.insert_source_code(DeclType.fn, [r.line])
 			} else if starts_with_const {
-				temp_source_code = r.insert_source_code(DeclType.const_, [r.line])
+				temp_source_code = r.insert_source_code(DeclType.const, [r.line])
 			} else if starts_with_enum {
-				temp_source_code = r.insert_source_code(DeclType.enum_, [r.line])
+				temp_source_code = r.insert_source_code(DeclType.enum, [r.line])
 			} else if starts_with_struct {
-				temp_source_code = r.insert_source_code(DeclType.struct_, [r.line])
+				temp_source_code = r.insert_source_code(DeclType.struct, [r.line])
 			} else if starts_with_interface {
-				temp_source_code = r.insert_source_code(DeclType.interface_, [r.line])
+				temp_source_code = r.insert_source_code(DeclType.interface, [r.line])
 			} else if starts_with_type {
-				temp_source_code = r.insert_source_code(DeclType.type_, [r.line])
+				temp_source_code = r.insert_source_code(DeclType.type, [r.line])
 			} else {
 				temp_source_code = r.current_source_code(true, false) + '\n${r.line}\n'
 			}

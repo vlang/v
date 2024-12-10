@@ -34,7 +34,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		name = g.generic_fn_name(expr.concrete_types, name)
 	} else if expr.is_fn_var && expr.fn_var_type.has_flag(.generic) {
 		fn_var_type := g.unwrap_generic(expr.fn_var_type)
-		name = g.typ(fn_var_type)
+		name = g.styp(fn_var_type)
 	}
 
 	if expr.is_method {
@@ -95,12 +95,16 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	} else {
 		name
 	}
-	if !(expr.is_method && (g.table.sym(expr.receiver_type).kind == .interface_
-		|| (g.table.sym(expr.receiver_type).kind == .struct_ && expr.is_field))) {
+	if !(expr.is_method && (g.table.sym(expr.receiver_type).kind == .interface
+		|| (g.table.sym(expr.receiver_type).kind == .struct && expr.is_field))) {
 		g.writeln('${arg_tmp_var}${dot}fn = ${fn_name};')
 	}
 	if expr.is_method {
 		g.write('${arg_tmp_var}${dot}arg0 = ')
+		if expr.left is ast.Ident && expr.left.obj.typ.is_ptr()
+			&& !node.call_expr.receiver_type.is_ptr() {
+			g.write('*')
+		}
 		g.expr(expr.left)
 		g.writeln(';')
 	}
@@ -109,7 +113,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		g.expr(arg.expr)
 		g.writeln(';')
 	}
-	s_ret_typ := g.typ(node.call_expr.return_type)
+	s_ret_typ := g.styp(node.call_expr.return_type)
 	if g.pref.os == .windows && node.call_expr.return_type != ast.void_type {
 		g.writeln('${arg_tmp_var}->ret_ptr = (void *) _v_malloc(sizeof(${s_ret_typ}));')
 	}
@@ -125,7 +129,8 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			gohandle_name = '__v_thread'
 		}
 	} else {
-		ret_styp := g.typ(g.unwrap_generic(node.call_expr.return_type)).replace('*', '_ptr')
+		ret_styp := g.styp(g.unwrap_generic(node.call_expr.return_type)).replace('*',
+			'_ptr')
 		gohandle_name = '__v_thread_${ret_styp}'
 	}
 	if is_spawn {
@@ -141,8 +146,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			if node.is_expr && node.call_expr.return_type != ast.void_type {
 				g.writeln('${gohandle_name} thread_${tmp} = {')
 				g.writeln('\t.ret_ptr = ${arg_tmp_var}->ret_ptr,')
-				g.writeln('\t.handle = thread_handle_${tmp}')
-				g.writeln('};')
+				g.writeln2('\t.handle = thread_handle_${tmp}', '};')
 			}
 			if !node.is_expr {
 				g.writeln('CloseHandle(thread_${tmp});')
@@ -183,6 +187,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 		}
 		if should_register {
+			g.waiter_fn_definitions.writeln('${s_ret_typ} ${waiter_fn_name}(${gohandle_name} thread);')
 			g.gowrappers.writeln('\n${s_ret_typ} ${waiter_fn_name}(${gohandle_name} thread) {')
 			mut c_ret_ptr_ptr := 'NULL'
 			if node.call_expr.return_type != ast.void_type {
@@ -239,21 +244,21 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				rec_sym := g.table.sym(g.unwrap_generic(node.call_expr.receiver_type))
 				if f := rec_sym.find_method_with_generic_parent(node.call_expr.name) {
 					mut muttable := unsafe { &ast.Table(g.table) }
-					return_type := muttable.resolve_generic_to_concrete(f.return_type,
-						f.generic_names, node.call_expr.concrete_types) or { f.return_type }
+					return_type := muttable.convert_generic_type(f.return_type, f.generic_names,
+						node.call_expr.concrete_types) or { f.return_type }
 					mut arg_types := f.params.map(it.typ)
-					arg_types = arg_types.map(muttable.resolve_generic_to_concrete(it,
-						f.generic_names, node.call_expr.concrete_types) or { it })
+					arg_types = arg_types.map(muttable.convert_generic_type(it, f.generic_names,
+						node.call_expr.concrete_types) or { it })
 					fn_var = g.fn_var_signature(return_type, arg_types, 'fn')
 				}
 			} else {
 				if f := g.table.find_fn(node.call_expr.name) {
-					mut muttable := unsafe { &ast.Table(g.table) }
-					return_type := muttable.resolve_generic_to_concrete(f.return_type,
-						f.generic_names, node.call_expr.concrete_types) or { f.return_type }
+					concrete_types := node.call_expr.concrete_types.map(g.unwrap_generic(it))
+					return_type := g.table.convert_generic_type(f.return_type, f.generic_names,
+						concrete_types) or { f.return_type }
 					mut arg_types := f.params.map(it.typ)
-					arg_types = arg_types.map(muttable.resolve_generic_to_concrete(it,
-						f.generic_names, node.call_expr.concrete_types) or { it })
+					arg_types = arg_types.map(g.table.convert_generic_type(it, f.generic_names,
+						concrete_types) or { it })
 					for i, typ in arg_types {
 						mut typ_sym := g.table.sym(typ)
 						for {
@@ -275,7 +280,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			g.type_definitions.writeln('\t${fn_var};')
 		}
 		if expr.is_method {
-			styp := g.typ(expr.receiver_type)
+			styp := g.styp(expr.receiver_type)
 			g.type_definitions.writeln('\t${styp} arg0;')
 		}
 		need_return_ptr := g.pref.os == .windows && node.call_expr.return_type != ast.void_type
@@ -286,7 +291,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 					'arg${i + 1}')
 				g.type_definitions.writeln('\t' + sig + ';')
 			} else {
-				styp := g.typ(arg.typ)
+				styp := g.styp(arg.typ)
 				g.type_definitions.writeln('\t${styp} arg${i + 1};')
 			}
 		}
@@ -310,27 +315,25 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		if expr.is_method {
 			unwrapped_rec_type := g.unwrap_generic(expr.receiver_type)
 			typ_sym := g.table.sym(unwrapped_rec_type)
-			if typ_sym.kind == .interface_
+			if typ_sym.kind == .interface
 				&& (typ_sym.info as ast.Interface).defines_method(expr.name) {
 				rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 				receiver_type_name := util.no_dots(rec_cc_type)
-				g.gowrappers.write_string('${c_name(receiver_type_name)}_name_table[')
-				g.gowrappers.write_string('arg->arg0')
+				g.gowrappers.write_string2('${c_name(receiver_type_name)}_name_table[',
+					'arg->arg0')
 				idot := if expr.left_type.is_ptr() { '->' } else { '.' }
 				mname := c_name(expr.name)
-				g.gowrappers.write_string('${idot}_typ]._method_${mname}(')
-				g.gowrappers.write_string('arg->arg0')
+				g.gowrappers.write_string2('${idot}_typ]._method_${mname}(', 'arg->arg0')
 				g.gowrappers.write_string('${idot}_object')
-			} else if typ_sym.kind == .struct_ && expr.is_field {
+			} else if typ_sym.kind == .struct && expr.is_field {
 				g.gowrappers.write_string('arg->arg0')
 				idot := if expr.left_type.is_ptr() { '->' } else { '.' }
 				mname := c_name(expr.name)
 				g.gowrappers.write_string('${idot}${mname}(')
 			} else {
-				g.gowrappers.write_string('arg->fn(')
-				g.gowrappers.write_string('arg->arg0')
+				g.gowrappers.write_string2('arg->fn(', 'arg->arg0')
 			}
-			if expr.args.len > 0 && (typ_sym.kind != .struct_ || !expr.is_field) {
+			if expr.args.len > 0 && (typ_sym.kind != .struct || !expr.is_field) {
 				g.gowrappers.write_string(', ')
 			}
 		} else {
@@ -339,8 +342,8 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		if expr.args.len > 0 {
 			mut has_cast := false
 			for i in 0 .. expr.args.len {
-				if g.table.sym(expr.expected_arg_types[i]).kind == .interface_
-					&& g.table.sym(expr.args[i].typ).kind != .interface_ {
+				if g.table.sym(expr.expected_arg_types[i]).kind == .interface
+					&& g.table.sym(expr.args[i].typ).kind != .interface {
 					has_cast = true
 					break
 				}
@@ -399,8 +402,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	}
 	if node.is_expr {
 		g.empty_line = false
-		g.write(line)
-		g.write(handle)
+		g.write2(line, handle)
 	}
 }
 

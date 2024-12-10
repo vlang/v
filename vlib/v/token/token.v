@@ -76,12 +76,12 @@ pub enum Kind {
 	lsbr                        // [
 	nilsbr                      // #[
 	rsbr                        // ]
-	eq                          // ==
-	ne                          // !=
-	gt                          // >
-	lt                          // <
-	ge                          // >=
-	le                          // <=
+	eq // ==
+	ne // !=
+	gt // >
+	lt // <
+	ge // >=
+	le // <=
 	comment
 	nl
 	dot      // .
@@ -138,6 +138,7 @@ pub enum Kind {
 	key_volatile
 	key_unsafe
 	key_spawn
+	key_implements
 	keyword_end
 	_end_
 }
@@ -184,6 +185,9 @@ pub enum AtKind {
 	vexeroot_path
 	file_path_line_nr
 	location
+	build_date
+	build_time
+	build_timestamp
 }
 
 pub const assign_tokens = [Kind.assign, .decl_assign, .plus_assign, .minus_assign, .mult_assign,
@@ -192,7 +196,7 @@ pub const assign_tokens = [Kind.assign, .decl_assign, .plus_assign, .minus_assig
 
 pub const valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
 	'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE', '@VMODHASH',
-	'@FILE_LINE', '@LOCATION']
+	'@FILE_LINE', '@LOCATION', '@BUILD_DATE', '@BUILD_TIME', '@BUILD_TIMESTAMP']
 
 pub const token_str = build_token_str()
 
@@ -205,10 +209,10 @@ pub const scanner_matcher = new_keywords_matcher_trie[Kind](keywords)
 fn build_keys() map[string]Kind {
 	mut res := map[string]Kind{}
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
-		key := token.token_str[t]
+		key := token_str[t]
 
 		// Exclude custom ORM operators from V keyword list
-		if key in token.orm_custom_operators {
+		if key in orm_custom_operators {
 			continue
 		}
 
@@ -338,6 +342,7 @@ fn build_token_str() []string {
 	s[Kind.key_offsetof] = '__offsetof'
 	s[Kind.key_is] = 'is'
 	s[Kind.key_spawn] = 'spawn'
+	s[Kind.key_implements] = 'implements'
 	// The following kinds are not for tokens returned by the V scanner.
 	// They are used just for organisation/ease of checking:
 	s[Kind.keyword_beg] = 'keyword_beg'
@@ -355,7 +360,7 @@ fn build_token_str() []string {
 
 @[inline]
 pub fn is_key(key string) bool {
-	return int(token.keywords[key]) > 0
+	return int(keywords[key]) > 0
 }
 
 @[inline]
@@ -366,17 +371,17 @@ pub fn is_decl(t Kind) bool {
 
 @[inline]
 pub fn (t Kind) is_assign() bool {
-	return t in token.assign_tokens
+	return t in assign_tokens
 }
 
 // note: used for some code generation, so no quoting
 @[inline]
 pub fn (t Kind) str() string {
 	idx := int(t)
-	if idx < 0 || token.token_str.len <= idx {
+	if idx < 0 || token_str.len <= idx {
 		return 'unknown'
 	}
-	return token.token_str[idx]
+	return token_str[idx]
 }
 
 @[inline]
@@ -489,13 +494,13 @@ const precedences = build_precedences()
 // precedence returns a tokens precedence if defined, otherwise 0
 @[direct_array_access; inline]
 pub fn (tok Token) precedence() int {
-	return int(token.precedences[tok.kind])
+	return int(precedences[tok.kind])
 }
 
 // precedence returns the precedence of the given token `kind` if defined, otherwise 0
 @[direct_array_access; inline]
 pub fn (kind Kind) precedence() int {
-	return int(token.precedences[kind])
+	return int(precedences[kind])
 }
 
 // is_scalar returns true if the token is a scalar
@@ -659,6 +664,7 @@ pub fn kind_to_string(k Kind) string {
 		.key_volatile { 'key_volatile' }
 		.key_unsafe { 'key_unsafe' }
 		.key_spawn { 'key_spawn' }
+		.key_implements { 'key_implements' }
 		.keyword_end { 'keyword_end' }
 		._end_ { '_end_' }
 		.key_nil { 'key_nil' }
@@ -784,6 +790,7 @@ pub fn kind_from_string(s string) !Kind {
 		'key_volatile' { .key_volatile }
 		'key_unsafe' { .key_unsafe }
 		'key_spawn' { .key_spawn }
+		'key_implements' { .key_implements }
 		'keyword_end' { .keyword_end }
 		'_end_' { ._end_ }
 		else { error('unknown') }

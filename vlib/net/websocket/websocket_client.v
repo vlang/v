@@ -92,18 +92,18 @@ pub:
 pub fn new_client(address string, opt ClientOpt) !&Client {
 	uri := parse_uri(address)!
 	return &Client{
-		conn: unsafe { nil }
-		is_server: false
-		ssl_conn: ssl.new_ssl_conn()!
-		is_ssl: address.starts_with('wss')
-		logger: opt.logger
-		uri: uri
-		client_state: ClientState{
+		conn:          unsafe { nil }
+		is_server:     false
+		ssl_conn:      ssl.new_ssl_conn()!
+		is_ssl:        address.starts_with('wss')
+		logger:        opt.logger
+		uri:           uri
+		client_state:  ClientState{
 			state: .closed
 		}
-		id: rand.uuid_v4()
-		header: http.new_header()
-		read_timeout: opt.read_timeout
+		id:            rand.uuid_v4()
+		header:        http.new_header()
+		read_timeout:  opt.read_timeout
 		write_timeout: opt.write_timeout
 	}
 }
@@ -133,12 +133,15 @@ pub fn (mut ws Client) listen() ! {
 	}
 	for ws.get_state() == .open {
 		msg := ws.read_next_message() or {
-			if ws.get_state() in [.closed, .closing] {
+			if err.code() == net.error_eintr { // Check for EINTR and retry
+				continue
+			} else if ws.get_state() in [.closed, .closing] {
 				return
+			} else {
+				ws.debug_log('failed to read next message: ${err}')
+				ws.send_error_event('failed to read next message: ${err}')
+				return err
 			}
-			ws.debug_log('failed to read next message: ${err}')
-			ws.send_error_event('failed to read next message: ${err}')
-			return err
 		}
 		if ws.get_state() in [.closed, .closing] {
 			return
@@ -368,7 +371,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []u
 	header_len := if ws.is_server { 2 } else { 6 }
 	frame_len := header_len + payload.len
 	mut control_frame := []u8{len: frame_len}
-	mut masking_key := if !ws.is_server { create_masking_key() } else { websocket.empty_bytearr }
+	mut masking_key := if !ws.is_server { create_masking_key() } else { empty_bytearr }
 	defer {
 		unsafe {
 			control_frame.free()
@@ -437,10 +440,10 @@ fn parse_uri(url string) !&Uri {
 	}
 	querystring := if v.len > 1 { '?' + v[1] } else { '' }
 	return &Uri{
-		url: url
-		hostname: u.hostname()
-		port: port
-		resource: v[0]
+		url:         url
+		hostname:    u.hostname()
+		port:        port
+		resource:    v[0]
 		querystring: querystring
 	}
 }
@@ -453,14 +456,14 @@ pub fn (mut ws Client) set_state(state State) {
 }
 
 // get_state return the current state of the websocket connection
-pub fn (ws Client) get_state() State {
+pub fn (ws &Client) get_state() State {
 	return rlock ws.client_state {
 		ws.client_state.state
 	}
 }
 
 // assert_not_connected returns error if the connection is not connected
-fn (ws Client) assert_not_connected() ! {
+fn (ws &Client) assert_not_connected() ! {
 	match ws.get_state() {
 		.connecting { return error('connect: websocket is connecting') }
 		.open { return error('connect: websocket already open') }

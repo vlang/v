@@ -15,8 +15,8 @@ pub const default_height = 600
 @[params]
 pub struct GridSettings {
 pub:
-	width  int = sim.default_width
-	height int = sim.default_height
+	width  int = default_width
+	height int = default_height
 }
 
 pub fn new_grid_settings(settings GridSettings) GridSettings {
@@ -70,8 +70,8 @@ pub fn run(params SimParams, settings RunnerSettings) {
 
 			state.satisfy_rope_constraint(params)
 			request := &SimRequest{
-				id: index
-				state: state
+				id:     index
+				state:  state
 				params: params
 			}
 			settings.on_request(request) or {

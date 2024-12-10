@@ -9,6 +9,7 @@ import v.util
 import v.token
 
 const maximum_inline_sum_type_variants = 3
+const generic_type_level_cutoff_limit = 10 // it is very rarely deeper than 4
 
 fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Type {
 	p.check(expecting)
@@ -148,7 +149,7 @@ fn (mut p Parser) parse_map_type() ast.Type {
 	key_sym := p.table.sym(key_type)
 	is_alias := key_sym.kind == .alias
 	key_type_supported := key_type in [ast.string_type_idx, ast.voidptr_type_idx]
-		|| key_sym.kind in [.enum_, .placeholder, .any]
+		|| key_sym.kind in [.enum, .placeholder, .any]
 		|| ((key_type.is_int() || key_type.is_float() || is_alias) && !key_type.is_ptr())
 	if !key_type_supported {
 		if is_alias {
@@ -175,7 +176,7 @@ fn (mut p Parser) parse_map_type() ast.Type {
 		return 0
 	}
 	if value_type.idx() == ast.void_type_idx {
-		p.error_with_pos('map value type cannot be void', p.tok.pos())
+		p.error_with_pos('map value type is missing: use `map[KeyType]ValueType`', p.tok.pos())
 		return 0
 	}
 	idx := p.table.find_or_register_map(key_type, value_type)
@@ -334,19 +335,19 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 	}
 
 	generic_names := p.types_to_names(generic_types, fn_type_pos, 'generic_types') or {
-		return ast.Type(0)
+		return ast.no_type
 	}
 
 	func := ast.Fn{
-		name: name
-		params: params
-		is_variadic: is_variadic
-		is_c_variadic: is_c_variadic
-		return_type: return_type
+		name:            name
+		params:          params
+		is_variadic:     is_variadic
+		is_c_variadic:   is_c_variadic
+		return_type:     return_type
 		return_type_pos: return_type_pos
-		generic_names: generic_names
-		is_method: false
-		attrs: p.attrs
+		generic_names:   generic_names
+		is_method:       false
+		attrs:           p.attrs
 	}
 	if has_generic && generic_types.len == 0 && name != '' {
 		p.error_with_pos('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
@@ -408,50 +409,9 @@ fn (mut p Parser) parse_language() ast.Language {
 // parse_inline_sum_type parses the type and registers it in case the type is an anonymous sum type.
 // It also takes care of inline sum types where parse_type only parses a standalone type.
 fn (mut p Parser) parse_inline_sum_type() ast.Type {
-	if !p.pref.is_fmt {
-		p.warn(
-			'inline sum types have been deprecated and will be removed on January 1, 2023 due ' +
-			'to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead')
-	}
-	variants := p.parse_sum_type_variants()
-	if variants.len > 1 {
-		if variants.len > parser.maximum_inline_sum_type_variants {
-			pos := variants[0].pos.extend(variants.last().pos)
-			p.warn_with_pos('an inline sum type expects a maximum of ${parser.maximum_inline_sum_type_variants} types (${variants.len} were given)',
-				pos)
-		}
-		mut variant_names := []string{}
-		for variant in variants {
-			if variant.typ == 0 {
-				p.error_with_pos('unknown type for variant: ${variant}', variant.pos)
-				return ast.Type(0)
-			}
-			variant_names << p.table.sym(variant.typ).name
-		}
-		variant_names.sort()
-		// deterministic name
-		name := '_v_anon_sum_type_${variant_names.join('_')}'
-		variant_types := variants.map(it.typ)
-		prepend_mod_name := p.prepend_mod(name)
-		mut idx := p.table.find_type_idx(prepend_mod_name)
-		if idx > 0 {
-			return ast.new_type(idx)
-		}
-		idx = p.table.register_sym(ast.TypeSymbol{
-			kind: .sum_type
-			name: prepend_mod_name
-			cname: util.no_dots(prepend_mod_name)
-			mod: p.mod
-			info: ast.SumType{
-				is_anon: true
-				variants: variant_types
-			}
-		})
-		return ast.new_type(idx)
-	} else if variants.len == 1 {
-		return variants[0].typ
-	}
-	return ast.Type(0)
+	p.error('inline sum types have been deprecated and will be removed on January 1, 2023 due ' +
+		'to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead')
+	return ast.void_type
 }
 
 // parse_sum_type_variants parses several types separated with a pipe and returns them as a list with at least one node.
@@ -471,8 +431,8 @@ fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 		type_end_pos := prev_tok.pos()
 		type_pos := type_start_pos.extend(type_end_pos)
 		types << ast.TypeNode{
-			typ: typ
-			pos: type_pos
+			typ:          typ
+			pos:          type_pos
 			end_comments: end_comments
 		}
 
@@ -587,9 +547,6 @@ fn (mut p Parser) parse_type() ast.Type {
 			if !typ.has_flag(.generic) && sym.info.generic_types.len > 0 {
 				p.error_with_pos('missing concrete type on generic type', option_pos.extend(p.prev_tok.pos()))
 			}
-		}
-		if is_option && sym.info is ast.SumType && sym.info.is_anon {
-			p.error_with_pos('an inline sum type cannot be an Option', option_pos.extend(p.prev_tok.pos()))
 		}
 
 		if is_option && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {
@@ -713,7 +670,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 			if name == 'thread' {
 				return p.parse_thread_type()
 			}
-			mut ret := ast.Type(0)
+			mut ret := ast.no_type
 			if name == '' {
 				// This means the developer is using some wrong syntax like `x: int` instead of `x int`
 				p.error('expecting type declaration')
@@ -781,8 +738,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 						if name.len == 1 && name[0].is_capital() {
 							return p.parse_generic_type(name)
 						}
-						if p.tok.kind in [.lt, .lsbr]
-							&& p.tok.pos - p.prev_tok.pos == p.prev_tok.len {
+						if p.tok.kind in [.lt, .lsbr] && p.tok.is_next_to(p.prev_tok) {
 							return p.parse_generic_inst_type(name)
 						}
 						return p.find_type_or_add_placeholder(name, language)
@@ -797,16 +753,16 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 
 fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Language) ast.Type {
 	// struct / enum / placeholder
-	mut idx := p.table.find_type_idx(name)
+	mut idx := p.table.find_type_idx_fn_scoped(name, p.cur_fn_scope)
 	if idx > 0 {
 		mut typ := ast.new_type(idx)
 		sym := p.table.sym(typ)
 		match sym.info {
 			ast.Struct, ast.Interface, ast.SumType {
-				if p.struct_init_generic_types.len > 0 && sym.info.generic_types.len > 0
-					&& p.struct_init_generic_types != sym.info.generic_types {
-					generic_names := p.types_to_names(p.struct_init_generic_types, p.tok.pos(),
-						'struct_init_generic_types') or { return ast.Type(0) }
+				if p.init_generic_types.len > 0 && sym.info.generic_types.len > 0
+					&& p.init_generic_types != sym.info.generic_types {
+					generic_names := p.types_to_names(p.init_generic_types, p.tok.pos(),
+						'struct_init_generic_types') or { return ast.no_type }
 					// NOTE:
 					// Used here for the wraparound `< >` characters, is not a reserved character in generic syntax,
 					// is used as the `generic names` part of the qualified type name,
@@ -833,12 +789,55 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 					} else {
 						idx = p.table.register_sym(ast.TypeSymbol{
 							...sym
-							name: sym_name
-							rname: sym.name
-							generic_types: p.struct_init_generic_types.clone()
+							name:          sym_name
+							rname:         sym.name
+							parent_idx:    sym.idx
+							generic_types: p.init_generic_types.clone()
 						})
 					}
 					typ = ast.new_type(idx)
+				}
+			}
+			ast.FnType {
+				if p.init_generic_types.len > 0 && sym.info.func.generic_names.len > 0 {
+					generic_names := p.types_to_names(p.init_generic_types, p.tok.pos(),
+						'struct_init_generic_types') or { return ast.no_type }
+					if generic_names != sym.info.func.generic_names {
+						mut sym_name := sym.name + '<'
+						for i, gt in generic_names {
+							sym_name += gt
+							if i != generic_names.len - 1 {
+								sym_name += ','
+							}
+						}
+						sym_name += '>'
+						existing_idx := p.table.type_idxs[sym_name]
+						if existing_idx > 0 {
+							idx = existing_idx
+						} else {
+							mut func := sym.info.func
+							func.name = sym_name
+							func.generic_names = generic_names.clone()
+							if func.return_type.has_flag(.generic) {
+								if to_generic_typ := p.table.convert_generic_type(func.return_type,
+									sym.info.func.generic_names, p.init_generic_types)
+								{
+									func.return_type = to_generic_typ
+								}
+							}
+							for i in 0 .. func.params.len {
+								if func.params[i].typ.has_flag(.generic) {
+									if to_generic_typ := p.table.convert_generic_type(func.params[i].typ,
+										sym.info.func.generic_names, p.init_generic_types)
+									{
+										func.params[i].typ = to_generic_typ
+									}
+								}
+							}
+							idx = p.table.find_or_register_fn_type(func, false, false)
+						}
+						typ = ast.new_type(idx)
+					}
 				}
 			}
 			else {}
@@ -856,16 +855,24 @@ fn (mut p Parser) parse_generic_type(name string) ast.Type {
 		return ast.new_type(idx).set_flag(.generic)
 	}
 	idx = p.table.register_sym(ast.TypeSymbol{
-		name: name
-		cname: util.no_dots(name)
-		mod: p.mod
-		kind: .any
+		name:   name
+		cname:  util.no_dots(name)
+		mod:    p.mod
+		kind:   .any
 		is_pub: true
 	})
 	return ast.new_type(idx).set_flag(.generic)
 }
 
 fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
+	p.generic_type_level++
+	defer {
+		p.generic_type_level--
+	}
+	if p.generic_type_level > generic_type_level_cutoff_limit {
+		p.error('too many levels of Parser.parse_generic_inst_type() calls: ${p.generic_type_level}, probably due to too many layers embedded generic type')
+		return ast.void_type
+	}
 	mut bs_name := name
 	mut bs_cname := name
 	start_pos := p.tok.pos()
@@ -881,6 +888,9 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		type_pos = type_pos.extend(p.prev_tok.pos())
 		if gt.has_flag(.generic) {
 			is_instance = false
+		}
+		if gt == 0 {
+			return ast.void_type
 		}
 		gts := p.table.sym(gt)
 		if gts.kind == .multi_return {
@@ -900,7 +910,7 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		bs_cname += '_'
 	}
 	if !is_instance {
-		p.struct_init_generic_types = concrete_types
+		p.init_generic_types = concrete_types
 	}
 	concrete_types_pos := start_pos.extend(p.tok.pos())
 	p.next()
@@ -950,12 +960,12 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		}
 
 		idx := p.table.register_sym(ast.TypeSymbol{
-			kind: .generic_inst
-			name: bs_name
+			kind:  .generic_inst
+			name:  bs_name
 			cname: util.no_dots(bs_cname)
-			mod: p.mod
-			info: ast.GenericInst{
-				parent_idx: parent_idx
+			mod:   p.mod
+			info:  ast.GenericInst{
+				parent_idx:     parent_idx
 				concrete_types: concrete_types
 			}
 		})

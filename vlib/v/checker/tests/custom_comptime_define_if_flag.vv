@@ -2,7 +2,7 @@
 // Otherwise they will not be present *at all* in the generated code.
 @[if mydebug ?]
 fn edebug(message string) {
-	println('message: $message')
+	println('message: ${message}')
 }
 
 fn main() {

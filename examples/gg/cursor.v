@@ -6,10 +6,10 @@ import sokol.sapp
 
 fn main() {
 	mut ctx := gg.new_context(
-		bg_color: gx.white
+		bg_color:     gx.white
 		window_title: 'Cursor'
-		frame_fn: frame
-		init_fn: init
+		frame_fn:     frame
+		init_fn:      init
 	)
 	ctx.run()
 }

@@ -1,6 +1,8 @@
 fn main() {
-	kvs := {'foo':'bar'}
+	kvs := {
+		'foo': 'bar'
+	}
 	for k in kvs {
-		println('$k')
+		println('${k}')
 	}
 }

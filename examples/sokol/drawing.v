@@ -12,12 +12,12 @@ fn main() {
 	}
 	title := 'Sokol Drawing Template'
 	desc := sapp.Desc{
-		width: 640
-		height: 480
-		user_data: state
-		init_userdata_cb: init
+		width:             640
+		height:            480
+		user_data:         state
+		init_userdata_cb:  init
 		frame_userdata_cb: frame
-		window_title: title.str
+		window_title:      title.str
 		html5_canvas_name: title.str
 	}
 	sapp.run(&desc)

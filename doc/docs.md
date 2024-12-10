@@ -1,6 +1,8 @@
 # V Documentation
 
 (See https://modules.vlang.io/ for documentation of V's standard library)
+(See also https://docs.vlang.io/introduction.html, which has the same information as this document,
+but split in separate pages for each section, for easier reading on mobile devices)
 
 ## Introduction
 
@@ -21,13 +23,14 @@ Anything you can do in other languages, you can do in V.
 
 The best way to get the latest and greatest V, is to install it from source.
 It is easy, and it takes only a few seconds:
-
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 make
-# HINT: Using Windows?: run make.bat in the cmd.exe shell
 ```
+
+Note: If you are on windows, outside of WSL, run `make.bat` instead of `make`, in a CMD shell.
+Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
 
 For more details, see the
 [Installing V](https://github.com/vlang/v/blob/master/README.md#installing-v-from-source)
@@ -84,9 +87,12 @@ by using any of the following commands in a terminal:
 
 * [Module imports](#module-imports)
     * [Selective imports](#selective-imports)
+    * [Module hierarchy](#module-hierarchy)
     * [Module import aliasing](#module-import-aliasing)
 * [Statements & expressions](#statements--expressions)
     * [If](#if)
+        * [`If` expressions](#if-expressions)
+        * [`If` unwrapping](#if-unwrapping)
     * [Match](#match)
     * [In operator](#in-operator)
     * [For loop](#for-loop)
@@ -216,6 +222,7 @@ by using any of the following commands in a terminal:
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
+    * [Other online resources](#other-online-resources)
 
 </td></tr>
 </table>
@@ -628,6 +635,10 @@ println(country[0]) // Output: 78
 println(country[0].ascii_str()) // Output: N
 ```
 
+If you want the code point from a specific `string` index or other more advanced 
+utf8 processing and conversions, refer to the
+[vlib/encoding.utf8](https://modules.vlang.io/encoding.utf8.html) module.
+
 Both single and double quotes can be used to denote strings. For consistency, `vfmt` converts double
 quotes to single quotes unless the string contains a single quote character.
 
@@ -683,7 +694,9 @@ To use a format specifier, follow this pattern:
   > doesn't need `+` to right-align since that's the default.
 - width: may be an integer value describing the minimum width of total field to output.
 - precision: an integer value preceded by a `.` will guarantee that many digits after the decimal
-  point, if the input variable is a float. Ignored if variable is an integer.
+  point without any insignificant trailing zeros. If displaying insignificant zero's is desired,
+  append a `f` specifier to the precision value (see examples below). Applies only to float
+  variables and is ignored for integer variables.
 - type: `f` and `F` specify the input is a float and should be rendered as such, `e` and `E` specify
   the input is a float and should be rendered as an exponent (partially broken), `g` and `G` specify
   the input is a float--the renderer will use floating point notation for small values and exponent
@@ -775,7 +788,7 @@ and related modules [strings](https://modules.vlang.io/strings.html),
 
 ### Runes
 
-A `rune` represents a single Unicode character and is an alias for `u32`.
+A `rune` represents a single UTF-32 encoded Unicode character and is an alias for `u32`.
 To denote them, use <code>`</code> (backticks) :
 
 ```v
@@ -1565,6 +1578,54 @@ println('Name: ${name}')
 current_os := user_os()
 println('Your OS is ${current_os}.')
 ```
+### Module hierarchy
+
+> [!NOTE]
+> This section is valid when .v files are not in the project's root directory.
+
+Modules names in .v files, must match the name of their directory.
+ 
+A .v file `./abc/source.v` must start with `module abc`. All .v files in this directory 
+belong to the same module `abc`. They should also start with `module abc`.
+
+If you have `abc/def/`, and .v files in both folders, you can `import abc`, but you will have 
+to `import abc.def` too, to get to the symbols in the subfolder. It is independent.
+
+In `module name` statement, name never repeats directory's hierarchy, but only its directory.
+So in `abc/def/source.v` the first line will be `module def`, and not `module abc.def`.
+
+`import module_name` statements must respect file hierarchy, you cannot `import def`, only
+`abc.def`
+
+Refering to a module symbol such as a function or const, only needs module name as prefix:
+
+```v ignore
+module def
+
+// func is a dummy example function.
+pub fn func() {
+	println('func')
+}
+```
+
+can be called like this:
+
+```v ignore
+module main
+
+import def
+
+fn main() {
+	def.func()
+}
+```
+
+A function, located in `abc/def/source.v`, is called with `def.func()`, not `abc.def.func()`
+
+This always implies a *single prefix*, whatever sub-module depth. This behavior flattens 
+modules/sub-modules hierarchy. Should you have two modules with the same name in different
+directories, then you should use Module import aliasing (see below).
+
 
 ### Module import aliasing
 
@@ -1600,9 +1661,9 @@ fn (mut t MyTime) century() int {
 
 fn main() {
 	mut my_time := MyTime{
-		year: 2020
+		year:  2020
 		month: 12
-		day: 25
+		day:   25
 	}
 	println(time.new(my_time).utc_string())
 	println('Century: ${my_time.century()}')
@@ -1629,8 +1690,13 @@ if a < b {
 Unlike other C-like languages,
 there are no parentheses surrounding the condition and the braces are always required.
 
-`if` can be used as an expression:
+#### `If` expressions
+Unlike C, V does not have a ternary operator, that would allow you to do: `x = c ? 1 : 2` .
+Instead, it has a bit more verbose, but also clearer to read, ability to use `if` as an
+expression. The direct translation in V of the ternary construct above, assuming `c` is a
+boolean condition, would be: `x = if c { 1 } else { 2 }`.
 
+Here is another example:
 ```v
 num := 777
 s := if num % 2 == 0 { 'even' } else { 'odd' }
@@ -1638,6 +1704,21 @@ println(s)
 // "odd"
 ```
 
+You can use multiple statements in each of the branches of an `if` expression, followed by a final
+value, that will become the value of the entire `if` expression, when it takes that branch:
+```v
+n := arguments().len
+x := if n > 2 {
+	dump(arguments())
+	42
+} else {
+	println('something else')
+	100
+}
+dump(x)
+```
+
+#### `If` unwrapping
 Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
 of an expression to a variable when that expression is not none nor an error.
 
@@ -1864,6 +1945,23 @@ typ := match c {
 }
 println(typ)
 // 'lowercase'
+```
+
+A match statement also can match the variant types of a `sumtype`. Note that
+in that case, the match is exhaustive, since all variant types are mentioned 
+explicitly, so there is no need for an `else{}` branch.
+
+```v nofmt
+struct Dog {}
+struct Cat {}
+struct Veasel {}
+type Animal = Dog | Cat | Veasel
+a := Animal(Veasel{})
+match a {
+	Dog { println('Bay') }
+	Cat { println('Meow') }
+	Veasel { println('Vrrrrr-eeee') } // see: https://www.youtube.com/watch?v=qTJEDyj2N0Q
+}
 ```
 
 You can also use ranges as `match` patterns. If the value falls within the range
@@ -2436,7 +2534,7 @@ fn register(u User) User {
 
 mut user := User{
 	name: 'abc'
-	age: 23
+	age:  23
 }
 user = register(user)
 println(user)
@@ -2464,9 +2562,9 @@ struct Button {
 
 fn new_button(c ButtonConfig) &Button {
 	return &Button{
-		width: c.width
+		width:  c.width
 		height: c.height
-		text: c.text
+		text:   c.text
 	}
 }
 
@@ -2535,7 +2633,7 @@ struct Book {
 book := Book{
 	author: struct {
 		name: 'Samantha Black'
-		age: 24
+		age:  24
 	}
 }
 assert book.author.name == 'Samantha Black'
@@ -2666,7 +2764,7 @@ the struct `Size`, which allows you to do:
 
 ```v oksyntax
 mut button := Button{
-	title: 'Click me'
+	title:  'Click me'
 	height: 2
 }
 
@@ -2701,7 +2799,7 @@ You can also initialize an embedded struct:
 ```v oksyntax
 mut button := Button{
 	Size: Size{
-		width: 3
+		width:  3
 		height: 2
 	}
 }
@@ -2711,7 +2809,7 @@ or assign values:
 
 ```v oksyntax
 button.Size = Size{
-	width: 4
+	width:  4
 	height: 5
 }
 ```
@@ -3087,7 +3185,7 @@ module mymodule
 pub const golden_ratio = 1.61803
 
 fn calc() {
-	println(mymodule.golden_ratio)
+	println(golden_ratio)
 }
 ```
 
@@ -3158,7 +3256,7 @@ println([1, 2, 3]) // "[1, 2, 3]"
 println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 ```
 
-See also [Array methods](#array-methods).
+See also [String interpolation](#string-interpolation).
 
 <a id='custom-print-of-types'></a>
 
@@ -3359,18 +3457,17 @@ The enum type can be any integer type, but can be omitted, if it is `int`: `enum
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
 
-Enum fields cannot re-use reserved keywords. However, reserved keywords may be escaped
-with an @.
+Enum fields can re-use reserved keywords:
 
 ```v
 enum Color {
-	@none
+	none
 	red
 	green
 	blue
 }
 
-color := Color.@none
+color := Color.none
 println(color)
 ```
 
@@ -3573,7 +3670,6 @@ fn main() {
 #### Implement an interface
 
 A type implements an interface by implementing its methods and fields.
-There is no explicit declaration of intent, no "implements" keyword.
 
 An interface can have a `mut:` section. Implementing types will need
 to have a `mut` receiver, for methods declared in the `mut:` section
@@ -3618,6 +3714,30 @@ fn fn1(s Foo) {
 // fn fn2(s Bar) { // does not match
 //      println(s.write('Foo'))
 // }
+```
+
+There is an **optional** `implements` keyword for explicit declaration
+of intent, which applies to `struct` declarations.
+
+```v
+struct PathError implements IError {
+	Error
+	path string
+}
+
+fn (err PathError) msg() string {
+	return 'Failed to open path: ${err.path}'
+}
+
+fn try_open(path string) ! {
+	return PathError{
+		path: path
+	}
+}
+
+fn main() {
+	try_open('/tmp') or { panic(err) }
+}
 ```
 
 #### Casting an interface
@@ -3723,7 +3843,7 @@ struct Dog {}
 fn main() {
 	cat := Cat{}
 	assert dump(cat.speak()) == 'meow!'
-	//
+
 	a := Adoptable(cat)
 	assert dump(a.speak()) == 'adopt me!' // call Adoptable's `speak`
 	if a is Cat {
@@ -3732,7 +3852,7 @@ fn main() {
 		// Cat `speak`, NOT the Adoptable `speak`:
 		dump(a.speak()) // meow!
 	}
-	//
+
 	b := Adoptable(Dog{})
 	assert dump(b.speak()) == 'adopt me!' // call Adoptable's `speak`
 	// if b is Dog {
@@ -4010,6 +4130,20 @@ to the `error()` function.
 user := repo.find_user_by_id(7) or {
 	println(err) // "User 7 not found"
 	return
+}
+```
+
+#### Options/results when returning multiple values
+
+Only one `Option` or `Result` is allowed to be returned from a function. It is
+possible to return multiple values and still signal an error.
+
+```v
+fn multi_return(v int) !(int, int) {
+	if v < 0 {
+		return error('must be positive')
+	}
+	return v, v * v
 }
 ```
 
@@ -4588,7 +4722,7 @@ struct User {
 
 mut data := map[string]int{}
 user := &User{
-	name: 'Pierre'
+	name:  'Pierre'
 	score: 1024
 }
 
@@ -4812,7 +4946,7 @@ Just as the compiler frees C data types with C's `free()`, it will statically in
 Autofree can be enabled with an `-autofree` flag.
 
 For developers willing to have more low level control, autofree can be disabled with
-`-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
+`-manualfree`, or by adding a `[manualfree]` on each function that wants to manage its
 memory manually. (See [attributes](#attributes)).
 
 > [!NOTE]
@@ -4924,7 +5058,7 @@ Here `a` is stored on the stack since its address never leaves the function `f()
 However a reference to `b` is part of `e` which is returned. Also a reference to
 `c` is returned. For this reason `b` and `c` will be heap allocated.
 
-Things become less obvious when a reference to an object is passed as function argument:
+Things become less obvious when a reference to an object is passed as a function argument:
 
 ```v
 struct MyStruct {
@@ -5136,7 +5270,7 @@ import db.sqlite
 // sets a custom table name. Default is struct name (case-sensitive)
 @[table: 'customers']
 struct Customer {
-	id        int @[primary; sql: serial] // a field named `id` of integer type must be the first field
+	id        int @[primary; serial] // a field named `id` of integer type must be the first field
 	name      string
 	nr_orders int
 	country   ?string
@@ -5157,8 +5291,8 @@ sql db {
 
 // insert a new customer:
 new_customer := Customer{
-	name: 'Bob'
-	country: 'uk'
+	name:      'Bob'
+	country:   'uk'
 	nr_orders: 10
 }
 sql db {
@@ -5166,8 +5300,8 @@ sql db {
 }!
 
 us_customer := Customer{
-	name: 'Martin'
-	country: 'us'
+	name:      'Martin'
+	country:   'us'
 	nr_orders: 5
 }
 sql db {
@@ -5175,8 +5309,8 @@ sql db {
 }!
 
 none_country_customer := Customer{
-	name: 'Dennis'
-	country: none
+	name:      'Dennis'
+	country:   none
 	nr_orders: 2
 }
 sql db {
@@ -5315,10 +5449,11 @@ V has good support for profiling your programs: `v -profile profile.txt run file
 That will produce a profile.txt file, which you can then analyze.
 
 The generated profile.txt file will have lines with 4 columns:
-a) how many times a function was called
-b) how much time in total a function took (in ms)
-c) how much time on average, a call to a function took (in ns)
-d) the name of the v function
+
+1. How many times a function was called.
+2. How much time in total a function took (in ms).
+3. How much time on average, a call to a function took (in ns).
+4. The name of the v function.
 
 You can sort on column 3 (average time per function) using:
 `sort -n -k3 profile.txt|tail`
@@ -5570,6 +5705,40 @@ fn main() {
 }
 ```
 
+```v
+// @[_allow_multiple_values] allows an enum to have multiple duplicate values.
+// Use it carefully, only when you really need it.
+
+@[_allow_multiple_values]
+enum ButtonStyle {
+	primary   = 1
+	secondary = 2
+	success   = 3
+
+	blurple = 1
+	grey    = 2
+	gray    = 2
+	green   = 3
+}
+
+fn main() {
+	assert int(ButtonStyle.primary) == 1
+	assert int(ButtonStyle.blurple) == 1
+
+	assert int(ButtonStyle.secondary) == 2
+	assert int(ButtonStyle.gray) == 2
+	assert int(ButtonStyle.grey) == 2
+
+	assert int(ButtonStyle.success) == 3
+	assert int(ButtonStyle.green) == 3
+
+	assert ButtonStyle.primary == ButtonStyle.blurple
+	assert ButtonStyle.secondary == ButtonStyle.grey
+	assert ButtonStyle.secondary == ButtonStyle.gray
+	assert ButtonStyle.success == ButtonStyle.green
+}
+```
+
 Struct field deprecations:
 
 ```v oksyntax
@@ -5585,6 +5754,23 @@ pub mut:
 ```
 
 Function/method deprecations:
+
+Functions are deprecated before they are finally removed to give users time to migrate their code. 
+Adding a date is preferable in most cases. An immediate change, without a deprecation date, may be 
+used for functions that are found to be conceptually broken and obsoleted by much better 
+functionality. Other than that setting a date is advisable to grant users a grace period. 
+
+Deprecated functions cause warnings, which cause errors if built with `-prod`. To avoid immediate 
+CI breakage, it is advisable to set a future date, ahead of the date when the code is merged. This 
+gives people who actively developed V projects, the chance to see the deprecation notice at least 
+once and fix the uses. Setting a date in the next 30 days, assumes they would have compiled their 
+projects manually at least once, within that time. For small changes, this should be plenty time. 
+For complex changes, this time may need to be longer. 
+
+Different V projects and maintainers may reasonably choose different deprecation policies. 
+Depending on the type and impact of the change, you may want to consult with them first, before 
+deprecating a function.
+
 
 ```v
 // Calling this function will result in a deprecation warning
@@ -5710,7 +5896,19 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 @[callconv: 'fastcall']
 type FastFn = fn (int) bool
 
-// Windows only:
+// Calls to the following function, will have to use its return value somehow.
+// Ignoring it, will emit warnings.
+@[must_use]
+fn f() int {
+	return 42
+}
+
+fn g() {
+	// just calling `f()` here, will produce a warning
+	println(f()) // this is fine, because the return value was used as an argument
+}
+
+// Windows only (and obsolete; instead of it, use `-subsystem windows` when compiling)
 // Without this attribute all graphical apps will have the following behavior on Windows:
 // If run from a console or terminal; keep the terminal open so all (e)println statements can be viewed.
 // If run from e.g. Explorer, by double-click; app is opened, but no terminal is opened, and no
@@ -5789,8 +5987,19 @@ that are substituted at compile time:
   next to the nearest v.mod file (as a string).
 - `@VMODROOT` => will be substituted with the *folder*,
   where the nearest v.mod file is (as a string).
+- `@BUILD_DATE` => replaced with the build date, for example '2024-09-13' .
+- `@BUILD_TIME` => replaced with the build time, for example '12:32:07' .
+- `@BUILD_TIMESTAMP` => replaced with the build timestamp, for example '1726219885' .
+Note: `@BUILD_DATE`, `@BUILD_TIME`, `@BUILD_TIMESTAMP` represent times in the UTC timezone.
+By default, they are based on the current time of the compilation/build. They can be overriden
+by setting the environment variable `SOURCE_DATE_EPOCH`. That is also useful while making
+releases, since you can use the equivalent of this in your build system/script:
+`export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) ;` , and then use `@BUILD_DATE` etc.,
+inside your program, when you for example print your version information to users.
+See also https://reproducible-builds.org/docs/source-date-epoch/ .
 
-That allows you to do the following example, useful while debugging/logging/tracing your code:
+The compile time pseudo variables allow you to do the following
+example, which is useful while debugging/logging/tracing your code:
 
 ```v
 eprintln(@LOCATION)
@@ -5807,6 +6016,13 @@ eprintln('${vm.name} ${vm.version}\n ${vm.description}')
 A program that prints its own source code (a quine):
 ```v
 print($embed_file(@FILE).to_string())
+```
+
+A program that prints the time when it was built:
+```v
+import time
+
+println('This program, was compiled at ${time.unix(@BUILD_TIMESTAMP.i64()).format_ss_milli()} .')
 ```
 
 > [!NOTE]
@@ -5949,6 +6165,30 @@ fn main() {
 // Output:
 // test returns int: 123
 // test2 returns string: foo
+```
+
+#### <h4 id="comptime-method-params">.params</h4>
+
+You can retrieve information about struct method params.
+
+```v
+struct Test {
+}
+
+fn (t Test) foo(arg1 int, arg2 string) {
+}
+
+fn main() {
+	$for m in Test.methods {
+		$for param in m.params {
+			println('${typeof(param.typ).name}: ${param.name}')
+		}
+	}
+}
+
+// Output:
+// int: arg1
+// string: arg2
 ```
 
 See [`examples/compiletime/reflection.v`](/examples/compiletime/reflection.v)
@@ -6253,28 +6493,29 @@ If a file has an environment-specific suffix, it will only be compiled for that 
   and `file_default.c.v` will be ignored.
 
 Here is a more complete example:
-main.v:
+
+`main.v`:
 
 ```v ignore
 module main
 fn main() { println(message) }
 ```
 
-main_default.c.v:
+`main_default.c.v`:
 
 ```v ignore
 module main
 const message = 'Hello world'
 ```
 
-main_linux.c.v:
+`main_linux.c.v`:
 
 ```v ignore
 module main
 const message = 'Hello linux'
 ```
 
-main_windows.c.v:
+`main_windows.c.v`:
 
 ```v ignore
 module main
@@ -6283,10 +6524,10 @@ const message = 'Hello windows'
 
 With the example above:
 
-- when you compile for windows, you will get 'Hello windows'
-- when you compile for linux, you will get 'Hello linux'
+- when you compile for Windows, you will get `Hello windows`
+- when you compile for Linux, you will get `Hello linux`
 - when you compile for any other platform, you will get the
-  non specific 'Hello world' message.
+  non specific `Hello world` message.
 
 - `_d_customflag.v` => will be used *only* if you pass `-d customflag` to V.
   That corresponds to `$if customflag ? {}`, but for a whole file, not just a
@@ -6568,16 +6809,16 @@ struct Node {
 }
 
 // Reference fields must be initialized unless an initial value is declared.
-// Zero (0) is OK but use with caution, it's a nil pointer.
+// Nil is OK but use with caution, it's a nil pointer.
 foo := Node{
-	a: 0
+	a: unsafe { nil }
 }
 bar := Node{
 	a: &foo
 }
 baz := Node{
-	a: 0
-	b: 0
+	a: unsafe { nil }
+	b: unsafe { nil }
 }
 qux := Node{
 	a: &foo
@@ -6686,22 +6927,23 @@ performance, memory usage, or size.
 
 | Tuning Operation         | Benefits                        | Drawbacks                                         |
 |--------------------------|---------------------------------|---------------------------------------------------|
-| `[inline]`               | Performance                     | Increased executable size                         |
-| `[direct_array_access]`  | Performance                     | Safety risks                                      |
-| `[packed]`               | Memory usage                    | Potential performance loss                        |
-| `[minify]`               | Performance, Memory usage       | May break binary serialization/reflection         |
+| `@[inline]`              | Performance                     | Increased executable size                         |
+| `@[direct_array_access]` | Performance                     | Safety risks                                      |
+| `@[packed]`              | Memory usage                    | Potential performance loss                        |
+| `@[minify]`              | Performance, Memory usage       | May break binary serialization/reflection         |
 | `_likely_/_unlikely_`    | Performance                     | Risk of negative performance impact               |
 | `-skip-unused`           | Performance, Compile time, Size | Potential instability                             |
 | `-fast-math`             | Performance                     | Risk of incorrect mathematical operations results |
 | `-d no_segfault_handler` | Compile time, Size              | Loss of segfault trace                            |
 | `-cflags -march=native`  | Performance                     | Risk of reduced CPU compatibility                 |
+| `-compress`              | Size                            | Harder to debug, extra dependency `upx`           |
 | `PGO`                    | Performance, Size               | Usage complexity                                  |
 
 ### Tuning operations details
 
-#### `[inline]`
+#### `@[inline]`
 
-You can tag functions with `[inline]`, so the C compiler will try to inline them, which in some
+You can tag functions with `@[inline]`, so the C compiler will try to inline them, which in some
 cases, may be beneficial for performance, but may impact the size of your executable.
 
 **When to Use**
@@ -6713,9 +6955,9 @@ cases, may be beneficial for performance, but may impact the size of your execut
 - Large functions, as it might cause code bloat and actually decrease performance.
 - Large functions in `if` expressions - may have negative impact on instructions cache.
 
-#### `[direct_array_access]`
+#### `@[direct_array_access]`
 
-In functions tagged with `[direct_array_access]` the compiler will translate array operations
+In functions tagged with `@[direct_array_access]` the compiler will translate array operations
 directly into C array operations - omitting bounds checking. This may save a lot of time in a
 function that iterates over an array but at the cost of making the function unsafe - unless the
 boundaries will be checked by the user.
@@ -6729,10 +6971,10 @@ sure that the access index will be valid.
 
 - Everywhere else.
 
-#### `[packed]`
+#### `@[packed]`
 
 The `@[packed]` attribute can be applied to a structure to create an unaligned memory layout,
-which decreases the overall memory footprint of the structure. Using the `[packed]` attribute
+which decreases the overall memory footprint of the structure. Using the `@[packed]` attribute
 may negatively impact performance or even be prohibited on certain CPU architectures.
 
 **When to Use**
@@ -6744,7 +6986,7 @@ may negatively impact performance or even be prohibited on certain CPU architect
 - On CPU architectures that do not support unaligned memory access or when high-speed memory access
 is needed.
 
-#### `[aligned]`
+#### `@[aligned]`
 
 The `@[aligned]` attribute can be applied to a structure or union to specify a minimum alignment
 (in bytes) for variables of that type. Using the `@[aligned]` attribute you can only *increase*
@@ -6783,10 +7025,10 @@ is CPU specific, and the compiler already usually will choose a good default for
 
 See also ["What Every Programmer Should Know About Memory", by Ulrich Drepper](https://people.freebsd.org/~lstewart/articles/cpumemory.pdf) .
 
-#### `[minify]`
+#### `@[minify]`
 
-The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields in
-a way that minimizes internal gaps while maintaining alignment. Using the `[minify]` attribute may
+The `@[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields in
+a way that minimizes internal gaps while maintaining alignment. Using the `@[minify]` attribute may
 cause issues with binary serialization or reflection. Be mindful of these potential side effects
 when using this attribute.
 
@@ -6880,6 +7122,28 @@ with identical hardware.
 **When to Avoid**
 
 - When distributing the software to users with potentially older CPUs.
+
+#### `-compress`
+
+This flag executes `upx` to compress the resultant executable, reducing its size by around 50%-70%.
+The executable will be uncompressed at runtime, so it will take a bit more time to start.
+It will also take extra RAM initially, as the compressed version of the app will be loaded into
+memory, and then expanded to another chunk of memory.
+Debugging such an application can be a bit harder, if you do not account for it.
+Some antivirus programs also use heuristics, that trigger more often for compressed applications.
+
+**When to Use**
+
+- For really tiny environments, where the size of the executable on the file system,
+or when deploying is important (docker containers, rescue disks etc).
+
+**When to Avoid**
+
+- When you need to debug the application
+- When the app's startup time is extremely important (where 1-2ms can be meaningful for you)
+- When you can not afford to allocate more memory during application startup
+- When you are deploying an app to users with antivirus software that could misidentify your
+app as malicious, just because it decompresses its code at runtime.
 
 #### PGO (Profile-Guided Optimization)
 
@@ -7066,7 +7330,9 @@ to race conditions. There are several approaches to deal with these:
 
 ## Cross compilation
 
-To cross compile your project simply run
+Cross compilation is supported for Windows, Linux and FreeBSD.
+
+To cross compile your project simply run:
 
 ```shell
 v -os windows .
@@ -7078,8 +7344,14 @@ or
 v -os linux .
 ```
 
+or
+
+```shell
+v -os freebsd .
+```
+
 > [!NOTE]
-> Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
+> Cross-compiling a Windows binary on a Linux machine requires the GNU C compiler for
 > MinGW-w64 (targeting Win64) to first be installed.
 
 For Ubuntu/Debian based distributions:
@@ -7328,7 +7600,7 @@ fn main() {
 	nr_users := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
 	println('There are ${nr_users} users in the database.')
-	//
+
 	error_msg := &char(0)
 	query_all_users := 'select * from users'
 	rc := C.sqlite3_exec(db, &char(query_all_users.str), my_callback, voidptr(7), &error_msg)
@@ -7805,7 +8077,7 @@ instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 ## Appendix I: Keywords
 
-V has 44 reserved keywords (3 are literals):
+V has 45 reserved keywords (3 are literals):
 
 ```v ignore
 as
@@ -7824,6 +8096,7 @@ for
 go
 goto
 if
+implements
 import
 in
 interface
@@ -7896,3 +8169,39 @@ Assignment Operators
 >>=  <<=  >>>=
 &&= ||=
 ```
+
+## Other online resources
+
+### [V contributing guide](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
+
+V would be much less, than what it is today, without the help of all
+its contributors. If you like and want to help the V project succeed,
+please read that document, choose a task, and dive in!
+
+### [V language documentation](https://docs.vlang.io/introduction.html)
+The site has the same information as this document, but split to pages,
+for easier reading on mobile devices. Updated automatically on each
+commit to the main repository.
+
+### [V standard module documentation](https://modules.vlang.io/)
+The site has the documentation of all the modules in V's standard
+library (vlib). Updated automatically on each commit to the main
+repository.
+
+### [V online playground](https://play.vlang.io/)
+The site allows you to enter and edit small V programs, then compile
+and run them. Updated automatically on each commit to the main
+repository. Use it, to test your ideas, when you do not have access
+to a computer or an Android phone, where V has been already installed.
+
+### [Awesome V](https://github.com/vlang/awesome-v)
+When you make a cool new project or a library, you can submit it to that
+list too. You can also use the list, for ideas about new projects to do
+with V.
+
+### [The V language Discord](https://discord.gg/vlang)
+This is the place to be, to discuss the V language, learn about latest
+developments, quickly get help with issues, witness/participate in
+~~epic flame wars~~ constructive criticism exchanges and design decisions.
+Join it, and learn more about languages, games, editors, people, Klingons,
+Conway's law and the universe.

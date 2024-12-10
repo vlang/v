@@ -34,7 +34,7 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 		if node.embed_file.compression_type == 'none' {
 			node.embed_file.bytes = file_bytes
 		} else {
-			cache_dir := os.join_path(os.vmodules_dir(), 'cache', 'embed_file')
+			cache_dir := os.join_path(os.vmodules_dir(), '.cache', 'embed_file')
 			cache_key := rand.ulid()
 			// cache_key := md5.hexhash(node.embed_file.apath)
 			if !os.exists(cache_dir) {

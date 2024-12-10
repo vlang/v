@@ -7,29 +7,33 @@ import v.parser
 import v.errors
 import v.scanner
 import term
+import file_lists
 
-const skip_tests = os.getenv_opt('SKIP_TESTS') or { '' }.bool()
+const skip_tests = os.getenv('SKIP_TESTS').bool()
+const fuzzer_mode = os.getenv('VFUZZER').bool()
 const comments_mode = scanner.CommentsMode.from(os.getenv('SCANNER_MODE')) or {
 	scanner.CommentsMode.parse_comments
 }
 
 fn main() {
-	dump(comments_mode)
-	files := os.args#[1..]
-	if files.len > 0 && files[0].starts_with('@') {
-		lst_path := files[0].all_after('@')
-		listed_files := os.read_file(lst_path)!.split('\n')
-		process_files(listed_files)!
-		return
+	if !fuzzer_mode {
+		dump(comments_mode)
 	}
-	process_files(files)!
+	all_files := file_lists.expand_files(os.args#[1..])!
+	process_files(all_files)!
 }
 
 fn hline() {
+	if fuzzer_mode {
+		return
+	}
 	println('----------------------------------------------------------------------------------------------------------------------------------------------------------')
 }
 
 fn theader() {
+	if fuzzer_mode {
+		return
+	}
 	println('        Time     Tokens      Bytes      Lines   Bytes/Token     Errors   FMT.len')
 }
 
@@ -71,7 +75,9 @@ fn process_files(files []string) ! {
 		total_lines += ast_file.nr_lines
 		total_errors += p.errors.len
 		total_fmt_len += formatted_content.len
-		println('${f_us:10}us ${p.scanner.all_tokens.len:10} ${p.scanner.text.len:10} ${ast_file.nr_lines:10} ${(f64(p.scanner.text.len) / p.scanner.all_tokens.len):13.3} ${p.errors.len:10}  ${formatted_content.len:8}   ${f}')
+		if !fuzzer_mode {
+			println('${f_us:10}us ${p.scanner.all_tokens.len:10} ${p.scanner.text.len:10} ${ast_file.nr_lines:10} ${(f64(p.scanner.text.len) / p.scanner.all_tokens.len):13.3} ${p.errors.len:10}  ${formatted_content.len:8}   ${f}')
+		}
 	}
 	hline()
 	theader()
@@ -83,14 +89,14 @@ fn process_files(files []string) ! {
 
 fn new_parser(path string, comments_mode scanner.CommentsMode, table &ast.Table, pref_ &pref.Preferences) &parser.Parser {
 	mut p := &parser.Parser{
-		scanner: scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
-		table: table
-		pref: pref_
-		scope: &ast.Scope{
+		scanner:  scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
+		table:    table
+		pref:     pref_
+		scope:    &ast.Scope{
 			start_pos: 0
-			parent: table.global_scope
+			parent:    table.global_scope
 		}
-		errors: []errors.Error{}
+		errors:   []errors.Error{}
 		warnings: []errors.Warning{}
 	}
 	p.set_path(path)

@@ -138,53 +138,53 @@ fn new(x unsigned.Uint128, y unsigned.Uint128) unsigned.Uint256 {
 fn test_leading_zeros() {
 	tcs := [
 		LeadingZeros{
-			l: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xf000000000000000))
-			r: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x8000000000000000))
+			l:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xf000000000000000))
+			r:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x8000000000000000))
 			zeros: 65
 		},
 		LeadingZeros{
-			l: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xf000000000000000))
-			r: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xc000000000000000))
+			l:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xf000000000000000))
+			r:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xc000000000000000))
 			zeros: 66
 		},
 		LeadingZeros{
-			l: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xf000000000000000))
-			r: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xe000000000000000))
+			l:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xf000000000000000))
+			r:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xe000000000000000))
 			zeros: 67
 		},
 		LeadingZeros{
-			l: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xffff000000000000))
-			r: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xff00000000000000))
+			l:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xffff000000000000))
+			r:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0xff00000000000000))
 			zeros: 72
 		},
 		LeadingZeros{
-			l: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x000000000000ffff))
-			r: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x000000000000ff00))
+			l:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x000000000000ffff))
+			r:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x000000000000ff00))
 			zeros: 120
 		},
 		LeadingZeros{
-			l: new(unsigned.uint128_from_64(0xf000000000000000), unsigned.uint128_from_64(0x01))
-			r: new(unsigned.uint128_from_64(0x4000000000000000), unsigned.uint128_from_64(0x00))
+			l:     new(unsigned.uint128_from_64(0xf000000000000000), unsigned.uint128_from_64(0x01))
+			r:     new(unsigned.uint128_from_64(0x4000000000000000), unsigned.uint128_from_64(0x00))
 			zeros: 127
 		},
 		LeadingZeros{
-			l: new(unsigned.uint128_from_64(0xf000000000000000), unsigned.uint128_from_64(0x00))
-			r: new(unsigned.uint128_from_64(0x4000000000000000), unsigned.uint128_from_64(0x00))
+			l:     new(unsigned.uint128_from_64(0xf000000000000000), unsigned.uint128_from_64(0x00))
+			r:     new(unsigned.uint128_from_64(0x4000000000000000), unsigned.uint128_from_64(0x00))
 			zeros: 192
 		},
 		LeadingZeros{
-			l: new(unsigned.uint128_from_64(0xf000000000000000), unsigned.uint128_from_64(0x00))
-			r: new(unsigned.uint128_from_64(0x8000000000000000), unsigned.uint128_from_64(0x00))
+			l:     new(unsigned.uint128_from_64(0xf000000000000000), unsigned.uint128_from_64(0x00))
+			r:     new(unsigned.uint128_from_64(0x8000000000000000), unsigned.uint128_from_64(0x00))
 			zeros: 193
 		},
 		LeadingZeros{
-			l: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x00))
-			r: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x00))
+			l:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x00))
+			r:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x00))
 			zeros: 256
 		},
 		LeadingZeros{
-			l: new(unsigned.uint128_from_64(0x01), unsigned.uint128_from_64(0x00))
-			r: new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x00))
+			l:     new(unsigned.uint128_from_64(0x01), unsigned.uint128_from_64(0x00))
+			r:     new(unsigned.uint128_from_64(0x00), unsigned.uint128_from_64(0x00))
 			zeros: 255
 		},
 	]

@@ -1,4 +1,5 @@
 fn blabla() {}
+
 fn main() {
 	print(blabla())
 	println(blabla())

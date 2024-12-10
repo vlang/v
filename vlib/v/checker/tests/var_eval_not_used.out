@@ -1,6 +1,6 @@
-vlib/v/checker/tests/var_eval_not_used.vv:6:2: error: `c` evaluated but not used 
-    4 | 
-    5 | fn main() {
-    6 |     c
+vlib/v/checker/tests/var_eval_not_used.vv:4:2: error: `c` evaluated but not used
+    2 | 
+    3 | fn main() {
+    4 |     c
       |     ^
-    7 | }
+    5 | }

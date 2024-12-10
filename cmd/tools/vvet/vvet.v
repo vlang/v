@@ -9,6 +9,7 @@ import v.parser
 import v.ast
 import v.help
 import term
+import arrays
 
 struct Vet {
 mut:
@@ -39,11 +40,12 @@ fn main() {
 	vet_options := cmdline.options_after(os.args, ['vet'])
 	mut vt := Vet{
 		opt: Options{
-			is_werror: '-W' in vet_options
-			is_verbose: '-verbose' in vet_options || '-v' in vet_options
-			show_warnings: '-hide-warnings' !in vet_options && '-w' !in vet_options
-			use_color: '-color' in vet_options || (term_colors && '-nocolor' !in vet_options)
+			is_werror:           '-W' in vet_options
+			is_verbose:          '-verbose' in vet_options || '-v' in vet_options
+			show_warnings:       '-hide-warnings' !in vet_options && '-w' !in vet_options
 			doc_private_fns_too: '-p' in vet_options
+			use_color:           '-color' in vet_options
+				|| (term_colors && '-nocolor' !in vet_options)
 		}
 	}
 	mut paths := cmdline.only_non_options(vet_options)
@@ -93,7 +95,8 @@ fn main() {
 		eprintln(vt.e2string(err))
 	}
 	if vfmt_err_count > 0 {
-		eprintln('Note: You can run `v fmt -w file.v` to fix these errors automatically')
+		filtered_out := arrays.distinct(vt.errors.map(it.file_path))
+		eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
 	}
 	if vt.errors.len > 0 {
 		exit(1)

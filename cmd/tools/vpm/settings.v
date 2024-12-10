@@ -39,21 +39,22 @@ fn init_settings() VpmSettings {
 	}
 	if !is_ci && !is_dbg {
 		// Log by default:
-		os.mkdir_all(os.join_path(vmodules_path, 'cache'), mode: 0o700) or { panic(err) }
-		logger.set_output_path(os.join_path(vmodules_path, 'cache', 'vpm.log'))
+		cache_path := os.join_path(vmodules_path, '.cache')
+		os.mkdir_all(cache_path, mode: 0o700) or { panic(err) }
+		logger.set_output_path(os.join_path(cache_path, 'vpm.log'))
 	}
 
 	return VpmSettings{
-		is_help: '-h' in opts || '--help' in opts || 'help' in cmds
-		is_once: '--once' in opts
-		is_verbose: '-v' in opts || '--verbose' in opts
-		is_force: '-f' in opts || '--force' in opts
-		server_urls: cmdline.options(args, '--server-urls')
-		vcs: if '--hg' in opts { .hg } else { .git }
-		vmodules_path: vmodules_path
-		tmp_path: os.join_path(os.vtmp_dir(), 'vpm_modules')
+		is_help:               '-h' in opts || '--help' in opts || 'help' in cmds
+		is_once:               '--once' in opts
+		is_verbose:            '-v' in opts || '--verbose' in opts
+		is_force:              '-f' in opts || '--force' in opts
+		server_urls:           cmdline.options(args, '--server-urls')
+		vcs:                   if '--hg' in opts { .hg } else { .git }
+		vmodules_path:         vmodules_path
+		tmp_path:              os.join_path(os.vtmp_dir(), 'vpm_modules')
 		no_dl_count_increment: is_ci || is_no_inc
-		fail_on_prompt: os.getenv('VPM_FAIL_ON_PROMPT') != ''
-		logger: logger
+		fail_on_prompt:        os.getenv('VPM_FAIL_ON_PROMPT') != ''
+		logger:                logger
 	}
 }

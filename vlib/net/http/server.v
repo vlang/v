@@ -29,8 +29,8 @@ pub struct Server {
 mut:
 	state ServerStatus = .closed
 pub mut:
-	addr               string        = ':${http.default_server_port}'
-	port               int           = http.default_server_port @[deprecated: 'use addr']
+	addr               string        = ':${default_server_port}'
+	port               int           = default_server_port @[deprecated: 'use addr']
 	handler            Handler       = DebugHandler{}
 	read_timeout       time.Duration = 30 * time.second
 	write_timeout      time.Duration = 30 * time.second
@@ -38,11 +38,11 @@ pub mut:
 	pool_channel_slots int           = 1024
 	worker_num         int           = runtime.nr_jobs()
 	listener           net.TcpListener
-	//
+
 	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.
 	on_stopped fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .stopped state.
 	on_closed  fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .closed state.
-	//
+
 	show_startup_message bool = true // set to false, to remove the default `Listening on ...` message.
 }
 
@@ -55,7 +55,7 @@ pub fn (mut s Server) listen_and_serve() {
 
 	// remove when s.port is removed
 	addr := s.addr.split(':')
-	if addr.len > 1 && s.port != http.default_server_port {
+	if addr.len > 1 && s.port != default_server_port {
 		s.addr = '${addr[0]}:${s.port}'
 	}
 
@@ -174,8 +174,8 @@ pub mut:
 
 fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler) thread {
 	mut w := &HandlerWorker{
-		id: wid
-		ch: ch
+		id:      wid
+		ch:      ch
 		handler: handler
 	}
 	return spawn w.process_requests()
@@ -234,7 +234,7 @@ fn (d DebugHandler) handle(req Request) Response {
 		eprintln('[${time.now()}] ${req.method} ${req.url} - 200')
 	}
 	mut r := Response{
-		body: req.data
+		body:   req.data
 		header: req.header
 	}
 	r.set_status(.ok)

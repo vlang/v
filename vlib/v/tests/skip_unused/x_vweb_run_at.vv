@@ -1,10 +1,10 @@
-import x.vweb
+import veb
 import time
 
 pub struct App {}
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 }
 
 fn main() {
@@ -15,10 +15,10 @@ fn main() {
 	}()
 	time.sleep(10 * time.second)
 	mut app := &App{}
-	vweb.run_at[App, Context](mut app, port: 38090)!
+	veb.run_at[App, Context](mut app, port: 38090)!
 }
 
 @['/']
-pub fn (app &App) index(mut ctx Context) vweb.Result {
+pub fn (app &App) index(mut ctx Context) veb.Result {
 	return ctx.text('Hello World')
 }

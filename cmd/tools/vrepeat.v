@@ -3,8 +3,21 @@ module main
 import os
 import flag
 import time
-import term
 import math
+import term
+
+const tred = term.red
+const tbold = term.bold
+const tgray = term.gray
+const tcyan = term.cyan
+const tgreen = term.green
+const tbcyan = term.bright_cyan
+const tbblue = term.bright_blue
+const tdivider = term.h_divider
+
+fn c(cfn fn (string) string, s string) string {
+	return term.colorize(cfn, s)
+}
 
 const max_fail_percent = 100 * 1000
 const max_time = 60 * 1000 // ms
@@ -37,6 +50,8 @@ mut:
 struct Context {
 mut:
 	run_count               int
+	repeats_count           int
+	current_run             int
 	series                  int
 	warmup                  int
 	show_help               bool
@@ -54,13 +69,14 @@ mut:
 	nmins                   int  // number of minimums to discard
 	nmaxs                   int  // number of maximums to discard
 	ignore_failed           bool // ignore commands that exit with != 0 exit code
+	no_vexe_setenv          bool // do not change the VEXE variable
 }
 
 fn new_aints(ovals []i64, extreme_mins int, extreme_maxs int) Aints {
 	mut res := Aints{
 		values: ovals // remember the original values
-		nmins: extreme_mins
-		nmaxs: extreme_maxs
+		nmins:  extreme_mins
+		nmaxs:  extreme_maxs
 	}
 	// discard the extremes, if needed:
 	mut vals := []i64{}
@@ -92,7 +108,7 @@ fn new_aints(ovals []i64, extreme_mins int, extreme_maxs int) Aints {
 	if vals.len > 0 {
 		res.average = sum / f64(vals.len)
 	}
-	//
+
 	mut devsum := f64(0.0)
 	for i in vals {
 		x := f64(i) - res.average
@@ -104,15 +120,15 @@ fn new_aints(ovals []i64, extreme_mins int, extreme_maxs int) Aints {
 }
 
 fn bold(s string) string {
-	return term.colorize(term.green, term.colorize(term.bold, s))
+	return c(tgreen, c(tbold, s))
 }
 
 fn (a Aints) str() string {
 	avg := bold('${a.average / 1000:5.1f}ms')
-	tdev := term.colorize(term.red, '${a.stddev / 1000:5.1f}ms')
+	tdev := c(tred, '${a.stddev / 1000:5.1f}ms')
 	baseline := '${avg} ± σ: ${tdev},'
-	tmin := term.colorize(term.bright_cyan, '${f64(a.imin) / 1000:5.1f}ms')
-	tmax := term.colorize(term.bright_blue, '${f64(a.imax) / 1000:5.1f}ms')
+	tmin := c(tbcyan, '${f64(a.imin) / 1000:5.1f}ms')
+	tmax := c(tbblue, '${f64(a.imax) / 1000:5.1f}ms')
 	return '${baseline:-46s} ${tmin}…${tmax}'
 }
 
@@ -135,7 +151,7 @@ fn (mut context Context) expand_all_commands(commands []string) []string {
 			for paramv in paramlist {
 				mut new_substituted_commands := []string{}
 				for cscmd in substituted_commands {
-					scmd := cscmd.replace(paramk, paramv)
+					scmd := cscmd.replace('{${paramk}}', paramv)
 					new_substituted_commands << scmd
 				}
 				for sc in new_substituted_commands {
@@ -166,7 +182,7 @@ fn (mut context Context) run() {
 			mut duration := i64(0)
 			mut oldres := ''
 			series_label := '${icmd + 1}/${context.commands.len}, ${si + 1}/${context.series}'
-			line_prefix := '${context.cgoback}Command: ${term.colorize(term.gray, cmd)}, ${series_label:9}'
+			line_prefix := '${context.cgoback}Command: ${c(tgray, cmd)}, ${series_label:9}'
 			if context.series != 1 || context.commands.len != 1 {
 				flushed_print(line_prefix)
 			}
@@ -198,7 +214,8 @@ fn (mut context Context) run() {
 				sum += duration
 				runs++
 				avg = (f64(sum) / f64(i + 1))
-				flushed_print('${line_prefix}, current average: ${avg / 1000:9.3f}ms, run ${i + 1:4}/${context.run_count:-4} took ${f64(duration) / 1000:6} ms')
+				cavg := '${avg / 1000:9.3f}ms'
+				flushed_print('${line_prefix}, current average: ${c(tgreen, cavg)}, run ${i + 1:4}/${context.run_count:-4} took ${f64(duration) / 1000:6} ms')
 				if context.show_output {
 					flushed_print(' | result: ${oldres:s}')
 				}
@@ -283,15 +300,19 @@ fn compare_by_average(a &CmdResult, b &CmdResult) int {
 }
 
 fn (mut context Context) show_diff_summary() {
+	if context.results.len == 0 {
+		eprintln('no results')
+		exit(5)
+	}
 	base := context.results[0].atiming.average
 	context.results.sort_with_compare(compare_by_average)
 	mut first_cmd_percentage := f64(100.0)
 	mut first_marker := ''
 	if context.results.len == 1 {
-		context.show_summary_title('${context.results[0].atiming}, ${context.series} series, ${context.run_count} runs for ${term.colorize(term.green,
-			context.results[0].cmd):-57s}')
+		gcmd := c(tgreen, context.results[0].cmd)
+		context.show_summary_title('${context.results[0].atiming}, ${context.series} series, ${context.run_count} runs for ${gcmd:-57s}')
 	} else {
-		context.show_summary_title('Summary after ${context.series} series x ${context.run_count} runs (%s are relative to first command, or `base`).')
+		context.show_summary_title('Summary after ${context.series} series x ${context.run_count} runs (%s are relative to first command, or `base`)')
 		for i, r in context.results {
 			first_marker = ' '
 			cpercent := (r.atiming.average / base) * 100 - 100
@@ -305,14 +326,10 @@ fn (mut context Context) show_diff_summary() {
 			}
 			mut tcomparison := 'base        '
 			if r.atiming.average != base {
-				if r.atiming.average < base {
-					tcomparison = '${base / r.atiming.average:4.2f}x faster'
-				} else {
-					tcomparison = '${r.atiming.average / base:4.2f}x slower'
-				}
+				tcomparison = readable_comparison(r.atiming.average, base, cpercent)
 			}
-			println(' ${first_marker}${(i + 1):3} ${comparison:7} ${tcomparison:5} ${r.atiming} `${term.colorize(term.green,
-				r.cmd)}`')
+			gcmd := c(tgreen, r.cmd)
+			println(' ${first_marker}${(i + 1):3} ${comparison:7} ${tcomparison:5} ${r.atiming} `${gcmd}`')
 		}
 	}
 	$if debugcontext ? {
@@ -334,6 +351,22 @@ fn (mut context Context) show_diff_summary() {
 	}
 }
 
+fn readable_comparison(tcurrent f64, tbase f64, cpercent f64) string {
+	is_same := math.abs(cpercent) <= 0.15
+	mut label := '~same~'
+	if tcurrent < tbase {
+		if !is_same {
+			label = c(tgreen, 'faster')
+		}
+		return '${tbase / tcurrent:4.2f}x ${label}'
+	} else {
+		if !is_same {
+			label = c(tcyan, 'slower')
+		}
+		return '${tcurrent / tbase:4.2f}x ${label}'
+	}
+}
+
 fn (mut context Context) show_summary_title(line string) {
 	mut msg := [line]
 	if context.nmins > 0 {
@@ -342,35 +375,40 @@ fn (mut context Context) show_summary_title(line string) {
 	if context.nmaxs > 0 {
 		msg << 'discard maxs: ${context.nmaxs:2}'
 	}
+	if context.repeats_count > 1 {
+		msg << 'repeat: ${context.current_run:2}'
+	}
 	println(msg.join(', '))
 }
 
 fn (mut context Context) parse_options() ! {
 	mut fp := flag.new_flag_parser(os.args#[1..])
 	fp.application(os.file_name(os.executable()))
-	fp.version('0.0.2')
+	fp.version('0.0.3')
 	fp.description('Repeat command(s) and collect statistics.\nNote: quote each command (argument), when it contains spaces.')
 	fp.arguments_description('CMD1 CMD2 ...')
 	fp.skip_executable()
 	fp.limit_free_args_to_at_least(1)!
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.run_count = fp.int('runs', `r`, 10, 'Run count. Default: 10')
+	context.repeats_count = fp.int('repeats', `R`, 1, 'Repeats count (it repeats everything, including reporting). Default: 1')
 	context.warmup = fp.int('warmup', `w`, 2, 'Warmup run count. These are done *at the start* of each series, and the timings are ignored. Default: 2')
 	context.series = fp.int('series', `s`, 1, 'Series count. `-s 2 -r 4 a b` => aaaabbbbaaaabbbb, while `-s 3 -r 2 a b` => aabbaabbaabb. Default: 1')
 	context.ignore_failed = fp.bool('ignore', `e`, false, 'Ignore failed commands (returning a non 0 exit code).')
+	context.no_vexe_setenv = fp.bool('no_vexe_reset', `N`, false, 'Do not reset the VEXE env variable at the start. \n                            By default, VEXE will be set to "", to allow for measuring different V executables. Use this option to override it')
 	context.use_newline = fp.bool('newline', `n`, false, 'Use \\n, do not overwrite the last line. Produces more output, but easier to diagnose.')
 	context.show_output = fp.bool('output', `O`, false, 'Show command stdout/stderr in the progress indicator for each command. Note: slower, for verbose commands.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.fail_on_maxtime = fp.int('max_time', `m`, max_time, 'Fail with exit code 2, when first cmd takes above M milliseconds (regression). Default: ${max_time}')
 	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent, 'Fail with exit code 3, when first cmd is X% slower than the rest (regression). Default: ${max_fail_percent}')
-	context.cmd_template = fp.string('template', `t`, '{T}', 'Command template. {T} will be substituted with the current command. Default: {T}')
-	cmd_params := fp.string_multi('parameter', `p`, 'A parameter substitution list. `{p}=val1,val2,val2` means that {p} in the template, will be substituted with each of val1, val2, val3.')
+	context.cmd_template = fp.string('template', `t`, '{T}', 'Command template. {T} will be substituted with the current command. Default: {T}. \n                            Here is an example, that will produce and run 24 permutations = (3 for opt) x (2 for source) x (4 = v names):\n                               v repeat -p opt=-check-syntax,-check,"-o x.c" -p source=examples/hello_world.v,examples/hanoi.v --template "./{T} {opt} {source}" vold vnew vold_prod vnew_prod')
+	cmd_params := fp.string_multi('parameter', `p`, 'A parameter substitution list. `pp=val1,val2,val2` means that {pp} in the template, will be substituted with *each* of val1, val2, val3.')
 	context.nmins = fp.int('nmins', `i`, 0, 'Ignore the BOTTOM X results (minimum execution time). Makes the results more robust to performance flukes. Default: 0')
 	context.nmaxs = fp.int('nmaxs', `a`, 0, 'Ignore the TOP X results (maximum execution time). Makes the results more robust to performance flukes. Default: 0')
 	for p in cmd_params {
-		parts := p.split(':')
+		parts := p.split('=')
 		if parts.len > 1 {
-			context.cmd_params[parts[0]] = parts[1].split(',')
+			context.cmd_params[parts[0].trim('{}')] = parts[1].split(',')
 		}
 	}
 	if context.show_help {
@@ -382,25 +420,46 @@ fn (mut context Context) parse_options() ! {
 		exit(1)
 	}
 	context.commands = context.expand_all_commands(commands)
-	context.results = []CmdResult{len: context.commands.len, cap: 20, init: CmdResult{
-		outputs: []string{cap: 500}
-		timings: []i64{cap: 500}
-	}}
+	context.reset_results()
+	if context.nmins >= context.run_count {
+		context.error_no_run_counts_to_report('${context.run_count - 1} bottom results with `-i ${context.nmins}`')
+	} else if context.nmaxs >= context.run_count {
+		context.error_no_run_counts_to_report('${context.run_count - 1} top results with `-a ${context.nmaxs}`')
+	} else if context.nmaxs + context.nmins >= context.run_count {
+		context.error_no_run_counts_to_report('${context.nmaxs + context.nmins - 1} results with `-i ${context.nmins}` and `-a ${context.nmaxs}`')
+	}
 	if context.use_newline {
 		context.cline = '\n'
 		context.cgoback = '\n'
 	} else {
-		context.cline = '\r' + term.h_divider('') + '\r'
+		context.cline = '\r' + tdivider('') + '\r'
 		context.cgoback = '\r'
 	}
 }
 
+fn (mut context Context) error_no_run_counts_to_report(detail string) {
+	eprintln('${bold('Warning:')} discarding more than ${detail}, with only `-r ${context.run_count}` runs, will leave you with no results to report at all.')
+}
+
+fn (mut context Context) reset_results() {
+	context.results = []CmdResult{len: context.commands.len, cap: 20, init: CmdResult{
+		outputs: []string{cap: 500}
+		timings: []i64{cap: 500}
+	}}
+}
+
 fn main() {
-	// Make sure that we can measure various V executables
-	// without influencing them, by presetting VEXE
-	os.setenv('VEXE', '', true)
 	mut context := Context{}
 	context.parse_options()!
-	context.run()
-	context.show_diff_summary()
+	if !context.no_vexe_setenv {
+		// Make sure that we can measure various V executables
+		// without influencing them, by presetting VEXE
+		os.setenv('VEXE', '', true)
+	}
+	for i := 1; i <= context.repeats_count; i++ {
+		context.current_run = i
+		context.reset_results()
+		context.run()
+		context.show_diff_summary()
+	}
 }

@@ -33,7 +33,8 @@ pub struct Channel {
 	ringbuf   &u8 = unsafe { nil } // queue for buffered channels
 	statusbuf &u8 = unsafe { nil } // flags to synchronize write/read in ringbuf
 	objsize   u32
-mut: // atomic
+mut:
+	// atomic
 	writesem           Semaphore // to wake thread that wanted to write, but buffer was full
 	readsem            Semaphore // to wake thread that wanted to read, but buffer was empty
 	writesem_im        Semaphore
@@ -71,14 +72,14 @@ fn new_channel_st(n u32, st u32) &Channel {
 	rbuf := if n > 0 { unsafe { malloc(int(n * st)) } } else { &u8(0) }
 	sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(0) }
 	mut ch := Channel{
-		objsize: st
-		cap: n
-		write_free: n
-		read_avail: 0
-		ringbuf: rbuf
-		statusbuf: sbuf
+		objsize:          st
+		cap:              n
+		write_free:       n
+		read_avail:       0
+		ringbuf:          rbuf
+		statusbuf:        sbuf
 		write_subscriber: unsafe { nil }
-		read_subscriber: unsafe { nil }
+		read_subscriber:  unsafe { nil }
 	}
 	ch.writesem.init(wsem)
 	ch.readsem.init(rsem)
@@ -94,14 +95,14 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 		rbuf := if n > 0 { unsafe { malloc_noscan(int(n * st)) } } else { &u8(0) }
 		sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(0) }
 		mut ch := Channel{
-			objsize: st
-			cap: n
-			write_free: n
-			read_avail: 0
-			ringbuf: rbuf
-			statusbuf: sbuf
+			objsize:          st
+			cap:              n
+			write_free:       n
+			read_avail:       0
+			ringbuf:          rbuf
+			statusbuf:        sbuf
 			write_subscriber: unsafe { nil }
-			read_subscriber: unsafe { nil }
+			read_subscriber:  unsafe { nil }
 		}
 		ch.writesem.init(wsem)
 		ch.readsem.init(rsem)
@@ -178,7 +179,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 	if C.atomic_load_u16(&ch.closed) != 0 {
 		return .closed
 	}
-	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { sync.spinloops, sync.spinloops_sem }
+	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	for {
 		mut got_sem := false
@@ -366,7 +367,7 @@ pub fn (mut ch Channel) try_pop(dest voidptr) ChanState {
 }
 
 fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
-	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { sync.spinloops, sync.spinloops_sem }
+	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {

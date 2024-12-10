@@ -141,7 +141,7 @@ jobs:
       # - name: Test v binaries
       #   run: v -N -W build-vbinaries
       # - name: Test v->js
-      #   run: v -o hi.js examples/hello_v_js.v && node hi.js
+      #   run: v -o hi.js examples/js_hello_world.v && node hi.js
       # - name: Build Vorum
       #   run: v retry -- git clone --depth 1 https://github.com/vlang/vorum && cd vorum && v . && cd ..
       - name: Freestanding
@@ -176,7 +176,7 @@ jobs:
       - name: Build blog tutorial with -autofree
         run: v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build option_test.c.v with -autofree
-        run: v -autofree vlib/v/tests/option_test.c.v
+        run: v -autofree vlib/v/tests/options/option_test.c.v
       - name: V self compilation with -parallel-cc
         run: |
           v -o v2 -parallel-cc cmd/v
@@ -244,15 +244,7 @@ jobs:
       - name: Valgrind
         run: valgrind --error-exitcode=1 v -o v.c cmd/v
       - name: Run sanitizers
-        run: |
-          v -o v2 cmd/v -cflags -fsanitize=memory
-          v -o v3 cmd/v -cflags -fsanitize=thread
-          v -o v4 cmd/v -cflags -fsanitize=undefined
-          v -o v5 cmd/v -cflags -fsanitize=address,pointer-compare,pointer-subtract
-          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
-          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
-          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v4 -o v.c cmd/v
-          ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v5 -o v.c cmd/v
+        run: .github/workflows/run_sanitizers.sh
       - name: v self compilation
         run: v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: v self compilation with -usecache
@@ -344,7 +336,7 @@ jobs:
   #   # - name: Test v binaries
   #   #   run: v -N -W build-vbinaries
   #   # - name: Test v->js
-  #   #   run: v -o hi.js examples/hello_v_js.v && node hi.js
+  #   #   run: v -o hi.js examples/js_hello_world.v && node hi.js
   #   - name: quick debug
   #     run: v -stats vlib/strconv/format_test.v
   #   - name: Self tests

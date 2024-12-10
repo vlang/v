@@ -28,9 +28,9 @@ const unescape_quote_seq = ['&#34;', '"', '&#39;', "'"]
 // support through `string` is robust enough to deal with these cases.
 pub fn escape(input string, config EscapeConfig) string {
 	return if config.quote {
-		input.replace_each(html.escape_seq).replace_each(html.escape_quote_seq)
+		input.replace_each(escape_seq).replace_each(escape_quote_seq)
 	} else {
-		input.replace_each(html.escape_seq)
+		input.replace_each(escape_seq)
 	}
 }
 
@@ -41,9 +41,9 @@ pub fn unescape(input string, config UnescapeConfig) string {
 	return if config.all {
 		unescape_all(input)
 	} else if config.quote {
-		input.replace_each(html.unescape_seq).replace_each(html.unescape_quote_seq)
+		input.replace_each(unescape_seq).replace_each(unescape_quote_seq)
 	} else {
-		input.replace_each(html.unescape_seq)
+		input.replace_each(unescape_seq)
 	}
 }
 

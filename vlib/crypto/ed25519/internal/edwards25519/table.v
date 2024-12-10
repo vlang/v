@@ -94,7 +94,7 @@ fn (mut v ProjLookupTable) select_into(mut dest ProjectiveCached, x i8) {
 	for j := 1; j <= 8; j++ {
 		// Set dest = j*Q if |x| = j
 		cond := subtle.constant_time_byte_eq(xabs, u8(j))
-		dest.selected(&v.points[j - 1], dest, cond)
+		dest.selected(v.points[j - 1], dest, cond)
 	}
 	// Now dest = |x|*Q, conditionally negate to get x*Q
 	dest.cond_neg(int(xmask & 1))

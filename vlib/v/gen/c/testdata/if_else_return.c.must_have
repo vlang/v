@@ -1,0 +1,9 @@
+VV_LOCAL_SYMBOL _result_string main__empty(string s) {
+_result_string _t2; /* if prepend */
+if ((s).len != 0) {
+_result_ok(&(string[]) { s }, (_result*)(&_t2), sizeof(string));
+} else {
+return (_result_string){ .is_error=true, .err=_v_error(_SLIT("empty")), .data={EMPTY_STRUCT_INITIALIZATION} };
+}
+return _t1;
+}

@@ -149,7 +149,7 @@ pub fn (mut g Gen) gen_pe_header() {
 		0, // symbol table
 		0, // number of symbols
 		0,
-		native.pe_opt_hdr_size, // 40 // size of optional header
+		pe_opt_hdr_size, // 40 // size of optional header
 		i32(PeCharacteristics.executable_image),
 	]
 
@@ -166,7 +166,7 @@ pub fn (mut g Gen) gen_pe_header() {
 			0x16: '; mSizeOfOptionalHeader'
 			0x18: '; mCharacteristics'
 		}
-		assert native.pe_coff_hdr_size == pe_header.len * 2
+		assert pe_coff_hdr_size == pe_header.len * 2
 	}
 
 	g.pe_coff_hdr_pos = g.pos()
@@ -182,7 +182,7 @@ pub fn (mut g Gen) gen_pe_header() {
 
 	// optional here comes here
 	p_opthdr := g.pos() // should be 0x98
-	if p_opthdr != native.optdr_location {
+	if p_opthdr != optdr_location {
 		g.n_error('Invalid optdr location ${p_opthdr} != 0x98')
 	}
 
@@ -234,22 +234,22 @@ struct Pe32PlusOptionalHeader {
 
 fn (mut g Gen) get_pe32_plus_optional_header() Pe32PlusOptionalHeader {
 	return Pe32PlusOptionalHeader{
-		magic: .pe32plus
-		major_linker_version: native.pe_major_linker_version
-		minor_linker_version: native.pe_minor_linker_version
-		image_base: native.image_base
-		section_alignment: native.pe_section_align
-		file_alignment: native.pe_file_align
-		major_os_version: native.pe_major_os_version
-		minor_os_version: native.pe_minor_os_version
-		major_subsystem_version: native.pe_major_subsystem_version
-		minor_subsystem_version: native.pe_minor_subsystem_version
-		size_of_headers: native.pe_header_size
-		subsystem: .windows_cui
-		size_of_stack_reserve: native.pe_stack_size
-		size_of_stack_commit: native.pe_stack_size
-		size_of_heap_reserve: native.pe_heap_size
-		number_of_rva_and_sizes: native.pe_num_data_dirs
+		magic:                   .pe32plus
+		major_linker_version:    pe_major_linker_version
+		minor_linker_version:    pe_minor_linker_version
+		image_base:              image_base
+		section_alignment:       pe_section_align
+		file_alignment:          pe_file_align
+		major_os_version:        pe_major_os_version
+		minor_os_version:        pe_minor_os_version
+		major_subsystem_version: pe_major_subsystem_version
+		minor_subsystem_version: pe_minor_subsystem_version
+		size_of_headers:         pe_header_size
+		subsystem:               .windows_cui
+		size_of_stack_reserve:   pe_stack_size
+		size_of_stack_commit:    pe_stack_size
+		size_of_heap_reserve:    pe_heap_size
+		number_of_rva_and_sizes: pe_num_data_dirs
 	}
 }
 
@@ -372,8 +372,8 @@ struct PeDataDir {
 
 struct PeDataDirs {
 mut:
-	debugnames [native.pe_num_data_dirs]string
-	dirs       [native.pe_num_data_dirs]PeDataDir
+	debugnames [pe_num_data_dirs]string
+	dirs       [pe_num_data_dirs]PeDataDir
 	base_addr  i64
 }
 
@@ -399,20 +399,20 @@ const pe_data_dir_names = [
 const pe_default_data_dirs = [
 	PeDataDir{},
 	PeDataDir{
-		rva: 0x1000
+		rva:  0x1000
 		size: 0x2000
 	},
 	// remaining filled in implicitly
 ]
 
 fn get_pe_data_dirs() PeDataDirs {
-	assert native.pe_data_dir_names.len == native.pe_num_data_dirs
-	assert native.pe_default_data_dirs.len <= native.pe_num_data_dirs
+	assert pe_data_dir_names.len == pe_num_data_dirs
+	assert pe_default_data_dirs.len <= pe_num_data_dirs
 
 	mut dd := PeDataDirs{}
-	for i in 0 .. native.pe_num_data_dirs {
-		dd.dirs[i] = native.pe_default_data_dirs[i] or { PeDataDir{} }
-		dd.debugnames[i] = native.pe_data_dir_names[i]
+	for i in 0 .. pe_num_data_dirs {
+		dd.dirs[i] = pe_default_data_dirs[i] or { PeDataDir{} }
+		dd.debugnames[i] = pe_data_dir_names[i]
 	}
 	return dd
 }
@@ -477,14 +477,14 @@ fn (mut s PeSection) set_size_of_raw_data(mut g Gen, size i32) {
 }
 
 fn (mut s PeSection) set_virtual_address(mut g Gen, addr i32) {
-	aligned := (addr + native.pe_section_align - 1) & ~(native.pe_section_align - 1)
+	aligned := (addr + pe_section_align - 1) & ~(pe_section_align - 1)
 
 	s.header.virtual_address = aligned
 	g.write32_at(s.header_pos + pe_section_header_offsetof(.virtual_address), aligned)
 }
 
 fn (mut s PeSection) set_virtual_size(mut g Gen, size i32) {
-	aligned := (size + native.pe_section_align - 1) & ~(native.pe_section_align - 1)
+	aligned := (size + pe_section_align - 1) & ~(pe_section_align - 1)
 
 	s.header.virtual_size = aligned
 	g.write32_at(s.header_pos + pe_section_header_offsetof(.virtual_size), aligned)
@@ -492,7 +492,7 @@ fn (mut s PeSection) set_virtual_size(mut g Gen, size i32) {
 
 fn (mut g Gen) create_pe_section(name string, header PeSectionHeader) PeSection {
 	return PeSection{
-		name: name
+		name:   name
 		header: header
 	}
 }
@@ -580,10 +580,10 @@ fn (mut g Gen) gen_pe_idt(idt &PeImportDirectoryTable, dll_name string) {
 	fields := [idt.import_lookup_table_rva, idt.time_date_stamp, idt.forwarder_chain, idt.name_rva,
 		idt.import_address_table_rva]
 
-	assert fields.len == native.pe_idt_field_description.len
+	assert fields.len == pe_idt_field_description.len
 	for i, field in fields {
 		g.write32(field)
-		g.println('; ' + native.pe_idt_field_description[i])
+		g.println('; ' + pe_idt_field_description[i])
 	}
 	g.println('^^^ Import Directory Table (${dll_name})')
 }
@@ -602,7 +602,7 @@ fn (mut g Gen) gen_pe_idata() {
 	}
 	mut idata_section := &mut g.pe_sections[idata_section_index]
 
-	g.align_to(native.pe_file_align)
+	g.align_to(pe_file_align)
 	g.println('; padding to 0x${g.pos().hex()}')
 
 	idata_pos := g.pos()
@@ -709,17 +709,17 @@ pub fn (mut g Gen) generate_pe_header() {
 	g.pe_sections = [
 		g.create_pe_section('.idata',
 			virtual_address: 0x1000
-			characteristics: native.pe_scn_cnt_initialized_data | native.pe_scn_mem_read | native.pe_scn_mem_write
+			characteristics: pe_scn_cnt_initialized_data | pe_scn_mem_read | pe_scn_mem_write
 		),
 		g.create_pe_section('.text',
-			characteristics: native.pe_scn_cnt_initialized_data | native.pe_scn_cnt_code | native.pe_scn_mem_execute | native.pe_scn_mem_read
+			characteristics: pe_scn_cnt_initialized_data | pe_scn_cnt_code | pe_scn_mem_execute | pe_scn_mem_read
 		),
 	]
 
 	g.gen_pe_sections()
 	g.gen_pe_idata()
 
-	g.align_to(native.pe_file_align)
+	g.align_to(pe_file_align)
 	g.println('')
 	g.println('^^^ padding to addr 0x${g.pos().hex()}')
 
@@ -779,7 +779,7 @@ fn (mut g Gen) patch_pe_code_size() {
 fn (mut g Gen) patch_pe_image_size() {
 	last_section := g.pe_sections.last()
 	image_size := (last_section.header.virtual_address + last_section.header.virtual_size +
-		native.pe_section_align - 1) & ~(native.pe_section_align - 1)
+		pe_section_align - 1) & ~(pe_section_align - 1)
 	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof(.size_of_image),
 		image_size)
 }
@@ -787,7 +787,7 @@ fn (mut g Gen) patch_pe_image_size() {
 pub fn (mut g Gen) generate_pe_footer() {
 	g.sym_string_table()
 
-	g.align_to(native.pe_file_align)
+	g.align_to(pe_file_align)
 	g.file_size_pos = g.pos()
 
 	if g.pe_opt_hdr_pos == 0 {

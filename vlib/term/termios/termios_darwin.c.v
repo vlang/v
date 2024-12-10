@@ -25,7 +25,7 @@ mut:
 	c_oflag  TcFlag
 	c_cflag  TcFlag
 	c_lflag  TcFlag
-	c_cc     [termios.cclen]Cc
+	c_cc     [cclen]Cc
 	c_ispeed Speed
 	c_ospeed Speed
 }
@@ -56,7 +56,7 @@ pub mut:
 	c_oflag  TcFlag
 	c_cflag  TcFlag
 	c_lflag  TcFlag
-	c_cc     [termios.cclen]Cc
+	c_cc     [cclen]Cc
 	c_ispeed Speed
 	c_ospeed Speed
 }
@@ -94,5 +94,5 @@ pub fn set_state(fd int, new_state Termios) int {
 // disable_echo disables echoing characters as they are typed,
 // when that Termios state is later set with termios.set_state(fd,t)
 pub fn (mut t Termios) disable_echo() {
-	t.c_lflag &= invert(C.ECHO)
+	t.c_lflag &= invert(usize(C.ECHO))
 }

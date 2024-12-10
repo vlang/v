@@ -1,3 +1,279 @@
+## V 0.4.8
+*28 Sep 2024*
+
+#### Improvements in the language
+- A new `implements` keyword for explicit interface implementation
+- Allow multi return as fn argument (#21991)
+- Define a default sumtype value (based on the first variant type) (#22039)
+- Remove the obsolete .code and .msg fields of IError (#22066)
+- Fix generic lambda type binding and resolution (#22083)
+- Comptime support for traversing the method parameters with `$for param in method.params {` (#22229)
+- Show missing variants in the sum type error
+- A much better and detailed unmatched fn arg error
+- Add support for `@BUILD_DATE`, `@BUILD_TIME` and `@BUILD_TIMESTAMP`, all using v.util.get_build_time(), and overridable through SOURCE_DATE_EPOCH (#22213)
+
+#### Breaking changes
+- Deprecate `x.vweb` and `vweb` in favor of `veb`, a faster, easier, and more stable framework.
+
+#### Checker improvements/fixes
+- Disallow static fn call when receiver type is unknown  (#21970)
+- Fix sumtype checking for voidptr variant (#21955)
+- Check comptime veb.html('index.html') (#21961)
+- Check if a parent generic struct has concrete types or not  (#21962)
+- Add support for static methods in `@FN` and `@METHOD`  (#21990)
+- Add a deprecation warning for `const ()` groups (an error after 2025-01-01) (#22019)
+- Improve `-d trace_checker` and error diagnostic information on compiler panics
+- Add error when initializing sumtype with struct as first type (#22067)
+- Add infix checks for nil  (#22045)
+- Fix map generic fn arg passing (#22071)
+- Disallow using a preexisting const name in a for loop, as either a key or value ident (#22108)
+- Fix generic lambda type binding resolution (fix #22109) (#22115)
+- Fix array alias (#22175)
+- Restrict multiple union fields initialised at once with a nicer checker error, instead of producing an enigmatic error at cgen time (#22196)
+- Fix compilation of vlib/v/slow_tests/assembly/asm_test.amd64.v (regression after dfc0c91)
+- Add missing check for ref passing to non-ref (#22194)
+- Check struct implements non interface type (fix #22200) (#22218)
+- Suggest using the `@[_allow_multiple_values]` attribute, when declaring enums that have duplicate values (#22224)
+- Check for duplicate interface names in the `implements` parts of struct declarations (#22230)
+- Fix missing struct field type checking for type mismatch (ref vs non-ref in `mt sync.Mutex = sync.new_mutex()`) (fix #18088) (#21949)
+- Fix fntype var marked as auto heap (#22290)
+- Check array.delete() argument mismatch (#22307)
+- Add missing check for duplicated items on in expr (fix #22305) (#22308)
+- Disallow infix expr on left side of assign  (#22322)
+- Fix array fixed return type for interface methods (#22320)
+- Check arguments mismatch of array.sorted_with_compare() (fix #22327) (#22328)
+- Add an error for returning an `any` value in pure V code (prevents invalid cgen) (fix #12623) (#22334)
+- Cleanup the checking of array method calls (#22338)
+- Fix voidptr type checking  (#21923)
+
+#### Parser improvements
+- Fix lots of parser panics, discovered through fuzzing with radamsa
+- Improve the error for keyword `lock`, used as a variable name (#21937)
+- Improve the error message position for invalid array attr keys (#21944)
+- Fix const field str() (#21998)
+- Update `@include` in templates, to work with relative paths & prevent recursive calls (#21943)
+- Check fn call args without comma between them (related #22021) (#22075)
+- parser,scanner,ast: make the scanner and parser more robust, by implementing more limits (preventing panics, discovered by fuzzing)
+- Protect against too deep recursion in Expr.pos() calls
+- Check too many layers embedded generic type (fix #22089) (#22091)
+- Cache ident lookups for consts in ast Expr str (#22101)
+- Improve Type and TypeFlag related operations (#22107)
+- Fix parsing map value inside or expr (fix #12164) (#22180)
+- Fix const field str() (#22192)
+- Fix `.${var}` used in a template, compiled by `$tmpl()` (fix #22231) (#22270)
+- Check enum method duplicated (fix #20924) (#22294)
+
+#### Compiler internals
+- scanner: guard against scanner panic, discovered by fuzzing in PR#22016
+- v.builder: show the thirdparty object compilation commands too, when using `-showcc` (when the cache is empty)
+- builder: allow for `v -dump-defines - -check cmd/v`, which is faster, because it can skip code generation
+- Reduce allocations for the most common cases (#22142)
+- transformer: add support for instrumenting the V compiler with `-d trace_transformer`
+
+#### Standard library
+- encoding.base58: fix notice for slice creation (#21935)
+- gg: reset ctx.mouse_d? and ctx.scroll_? at the end of each frame (fix #21945) (#21946)
+- builtin: v_segmentation_fault_handler signal_number i32
+- builtin: fix 'aaaa'.split('aa') (fix #21936) (#21951)
+- builtin: panic on trying to grow arrays with capacity bigger than 2^31, instead of overflowing a.cap (partial fix for #21918) (#21947)
+- gg: add a note that Context.new_streaming_image has to be called after Sokol's setup
+- gg: add more documentation comments for gg.Config (the parameters of gg.start and gg.new_context)
+- regex: fix regex.split() (fix #16876) (#21953)
+- json: increase test cases before enabling sumtype decode in all json libraries (#21958)
+- gg: change the type of gg.DrawImageConfig.rotate from `int` to `f32`
+- gg: deprecate gg.DrawImageConfig.rotate, in favor of gg.DrawImageConfig.rotation, improve the documentation comments (#21963)
+- x.crypto.chacha20: make Cipher struct public (fix #21967) (#21968)
+- tmpl: fix an extra newline in @for; builtin: some i64 fixes
+- gg: add an optional size: parameter to the .draw_pixels and .draw_pixel methods (defaults to 1.0)
+- sokol: update to match upstream at c0e0563 (#21971)
+- Add support for `Any` in `decode_struct`, `encode_struct` and `to_any` (#21972)
+- crypto.cipher: make Stream.xor_key_stream implementers require a mutable receiver (#21974)
+- sokol.audio: fix `./v -cc clang-18 -gc none simple_bytebeat.v` (the audio depends on threads)
+- time: `d`,`c`,`dd`,`ddd`,`dddd` pattern support for parse_format() (#22003)
+- flag: add optional value description to string parameters (#22024)
+- flag: add custom value descriptions for bool, int, and float flags too (#22032)
+- flag: fix assigning to `@[tail]` field when no fields has been matched yet in `flag.parse[T]()` (#22043)
+- crypto: add a crypto.pbkdf2 module (#22047)
+- hash: add more methods to the hash.Hash interface, to match the ones in Go (#22001)
+- arrays: simplify arrays.sum and arrays.reduce (#22076)
+- x.json2: support @[skip] as well (#22077)
+- builtin,thirdparty: fix compilation of libgc with `-cc msvc -gc boehm` (thanks to @Ekopalypse)
+- stbi: change Image.data from voidptr to &u8, to reduce casts (#21977)
+- time: update parse_format comment description in parse.c.v (#22104)
+- vlib: add an `arrays.parallel` module, containing `parallel.run/3` and `parallel.amap/3` implementations (#22090)
+- builtin: support `-d builtin_print_use_fprintf`, make the C fn declarations stricter (#22137)
+- builtin: fix map.clear() not resetting map's metas and keys blocks (fix #22139) (#22140)
+- builtin: fix incomplete m.clear(), allowing the map to have a duplicated entry for its first key (fix #22143) (#22144)
+- builtin: fix m.clear() having different observable behavior to `m = {}`, after multiple iterations of setting keys and clearing (fix #22145) (#22146)
+- builtin: fix bug in .clear() caused by sizeof(u32) being 4, not 2 (fix #22148)
+- flag: add support for parsing `flag.FlagParser` style flags in `to_struct[T]` (#22152)
+- flag: fix parse_bool_value() (#22160)
+- flag: correct bool logic, add test (#22162)
+- flag: fix parsing `flag.FlagParser` style short flags in `to_struct[T]` (#22172)
+- gg: change the type of PenConfig.thickness to f32
+- builtin: remove remaining references to v_calloc in function comments (#22179)
+- builtin: remove string interpolation from panic/1, to be able to use tools like cbmc in more cases (#22182)
+- flag: add a relaxed parsing mode, that turn flag match errors into `no_match` entries instead (#22191)
+- encoding.binary: add `u16`/`u32`/`u64` -> `[]u8` conversion functions  (#22193)
+- crypto.sha1, crypto.sha256, crypto.sha3, crypto.sha512: improve performance for non prod builds, by tagging the block_generic functions with `@[direct_array_access]`
+- builtin: fix string.trim() (fix #13021) (#22205)
+- crypto.bcrypt: reduce runtime cost for running bcrypt_test.v, by reducing the iteration count
+- crypto.scrypt: add a new `scrypt` module to vlib/crypto (#22216)
+- sync.stdatomic: add OpenSUSE paths for libatomic
+- crypto.scrypt: add missing comment of source for test vector (#22222)
+- json: allow passing an anon struct as a decode type (#22228)
+- flag: fix parse_bool_value() with different order short args (fix #22176) (#22242)
+- builtin: drop C in int.v (#22245)
+- strconv: fix format_fl()/format_es() (fix #13210) (#22244)
+- json: fix decoding of structs with embeds (#22264)
+- crypto.rand: add support for convenient generation of a random big integer in the interval `[0, n)` (#22266)
+- json: fix json encode/decode with embed support (#22277)
+- io: add a BufferedWriter and supporting methods (#22265)
+- vlib: add a go like `x.benchmark` module, that estimates automatically how many iterations are needed, to get a statistically significant result (#22215)
+- math: document q_rsqrt
+- io: make buffered_writer_test.v more robust
+- builtin: enable GC lib on rv64 build (#22319)
+- json: support null sum types in decode()
+- crypto: ecdsa module (on top of openssl)
+- bench: crypto/ecdsa.v
+- math.big: fix `a + b` and `a - b`, when the signs are different, add more test cases (#22330)
+
+#### Web
+- Check for using comptime $veb.html()/$vweb.html(), without importing veb or vweb (#21957)
+- net: add net.Dialer and net.Connection interfaces, abstracting the different types of connections, already supported by the V network stack (#21657)
+- net.mbedtls: support Server Name Indication (SNI) (#22012)
+- veb: extract constants into consts.v (#22132)
+- vweb: mark vweb as deprecated in its README, recommending using veb instead (#22131)
+- veb: fix `vweb_livereload` reference to `veb_livereload` (#22171)
+- veb: fix a few minor errors in the README.md (#22177)
+- net.mbedtls: store the client ip (for ipv4), shutdown on handshake failure, in .accept() (#22184)
+- veb: implicit context
+- veb: make implicit context work with custom user types
+- net.websocket: use retrying on EINTR in Client.listen() (#22279)
+- net: allow ipv6 address with brackets (fix #22313) (#22316)
+
+#### Database drivers
+- db.sqlite: add instructions for installing SQLite's amalgamation or development package, if it is missing
+
+#### C backend
+- Fix struct ref field with no ref structinit (#21932)
+- Define a flexible vint_t type (32 bit int on 32 bit systems, 64 bit otherwise)
+- Fix generic sumtype with repeated concrete type (#21948)
+- Fix array.map with closure var fn (#22002)
+- Fix generation of closures from methods on aliases (#22004)
+- Reduce indentation level for generated defer statements
+- Fix selector with interface var (#22006)
+- Fix free method generation for option struct (#22060)
+- Fix fixed array with default init (#22059)
+- Fix for loop with array fixed returned from fn (#22069)
+- Fix free method for option fields (#22070)
+- Fix auto free method for option map (fix #22081) (#22094)
+- Return early from autofree related functions, when -autofree is not used
+- Fix shared object method call (fix #22121) (#22125)
+- Fix array fixed initialization from map indexing (fix #22133) (#22149)
+- Fix generic options with reserved ident (#22164)
+- Fix struct field with default optional value (fix #11119) (#22167)
+- Fix array of fns index call with embeded array index (fix #17381) (#22198)
+- Fix match with mut cond variable (#22207)
+- Fix code generated for indexexpr with complex assigning (#22203)
+- Fix interface type generation for generic struct (fix #22186) (#22189)
+- Fix wrong type of vint_t and const riscv64 (#22251)
+- Fix code for C ident when ptr is expected (#22259)
+- Fix C name mangling with inherited closure vars (fix #22262) (#22263)
+- Fix codegen for alias to charptr passed as ptr (fix #9679) (#22271)
+- Fix codegen for option fntype used in a match (fix #22278) (#22280)
+- Fix option cast from fntype (fix #22283, #22284) (#22285)
+- Fix codegen for method call on rangeexpr (fix #12610) (#22291)
+- Fix operation overload for type aliases of fixed arrays (fix #22297) (#22304)
+- Fix codegen for assign from unsafeexpr resulting fixed array (fix #22301) (#22309)
+- Fix variadic arg var passed to another call which expects variadic (fix #22315) (#22317)
+- Fix aliases of array insert(...)/prepend(...) (fix #22323) (#22324)
+- Fix codegen for interface method call which returns a fixed array (fix #22326) (#22331)
+- Add `asm` to c_reserved, fixes compilation of `struct Abc { @asm int }` (#22340)
+- Fix interface method call after smartcast (fix #17056) (#22335)
+- Fix codegen for address of range (fix #18528) (#22336)
+
+#### vfmt
+- Allow align threshold to be parametrized in calls to add_new_info (#21942)
+- Fix and simplify align of struct fields (#21995)
+- Fix alignment of enumeration types (#21999)
+- Fix enum fields with one empty line (#22007)
+- Fix fmt of enum fields with empty line (#22015)
+- Fix alignment of struct init fields (#22025)
+- Keep empty newlines in between interface fields/methods (#22040)
+- Fix interface fields or methods with empty newlines (#22046)
+- Fix enum/struct_decl/struct_init fields with empty newlines (#22051)
+- Fix interface fields/methods alignment (#22055)
+- Remove the prefixed module name of const names, that are in the same module (related #22183) (#22185)
+- Fix import selective with interface implements (fix formatting part of #22200) (#22209)
+- Add a test for fn with c binding type args (#22212)
+- Fix formating a file in an oscillating manner (fix #22223, fix #22026) (#22232)
+
+#### Tools
+- Implement a `-repeats/-R N` option to `v repeat`, to eliminate another need for platform dependent scripting
+- ci: add hub_docker_ci.yml, for building docker images (triggered manually for now) (#22302)
+- ci: use `docker compose` instead of `docker-compose` (see https://github.com/orgs/community/discussions/116610) (#21992)
+- vrepl: suppress the welcome message, if VQUIET is set (#21941)
+- Make `v where` ignore .git/ folders (they contain binary files); let `-dir .` work recursively, so that `-dir vlib` works
+- Sort the match results in the vwhere test, to make it less flaky (#22033)
+- Add an amalgamate tool and description of usage (#22034)
+- Add a few missing v command entries and their flags in `v complete` (#22041)
+- Colorise the output of cmd/tools/show_ancient_deprecations.v, reduce false positives (#22048)
+- docs: clarify the .precision specification section for string interpolation of floats (#22061)
+- docs: add a copy code function (top/right copy icon) on doc examples (#22114)
+- Allow passing parameters to fuzz_v_parser_with_radamsa.sh, so that it could be run in several processes from the same folder
+- Use separate .autofuzz.log files too for the separate invocations of fuzz_v_parser_with_radamsa.sh
+- Extract .github/workflows/run_sanitizers.sh to ease local testing with different options
+- parser,ast: protect against more overflows/panics, by forcing early returns on deeply nested expressions and scopes (#22098)
+- Improve the output of `v repeat command`, by coloring the `faster/slower` label
+- Add diagnostic in `v repeat` for invalid combinations of -r, -i and -a flags
+- Fix `v doc` truncating code blocks, that lack a specific language (fix #22017)
+- v.util: add get_build_time/0, supporting https://reproducible-builds.org/docs/source-date-epoch/
+- Fix `v doc` not converting `<s>` in plain code blocks into encoded html entities in its .html output
+- ci: run `npx prettier --write **.yml`; ensure it is run on all .yml files, not just the ones in the .github/workflows/ folder
+- docs: add implements keyword for explicit interface implementations (#22214)
+- Make fast_job.v more robust (setup a custom PATH) and informative on fast.v failures (compile it with -g)
+- Make fast.v and fast_job.v more self sufficient
+- ci: add cache and trigger for pushes, in the Hub docker action (#22314)
+
+#### Operating System support
+- docs: streamline the installation instructions and notes for Windows and Ubuntu
+- v.builder: fix errors in cstrict mode on OpenBSD with clang (#22154)
+- thirdparty: fix compilation of programs using miniz.h on macos
+- crypto.rand: fix compilation on macos with `-cc tcc -no-retry-compilation -gc none`
+- thirdparty: fix compilation of thirdparty/mbedtls with tcc on macos m1
+- v.pkgconfig: fix parser, when `includedir=` lines, had trailing spaces (fix `-d use_openssl` for openssl 3.3.2 installed through brew on macos)
+- builtin: fix compilation with tcc on OpenBSD using libgc (#22234)
+- docs: add FreeBSD in cross compilation section (#22249)
+- v.builder: enable LTO for clang on OpenBSD (#22247)
+- thirdparty: fix compilation of programs using miniz.h on OpenBSD (#22254)
+- net: fix compilation on windows (use casts to int for net.error_eintr etc)
+- net: use explicit int casts for net.error_eintr etc in the unix implementation too for consistency with the windows one
+
+#### Examples
+- Remove drag_n_drop.v from the list of examples, that are checked for visual differences with vgret, since it now uses the default gg font
+- docs: add more C interop notes and examples (#21965)
+- cleanup obsolete unsafe{} usages in examples/sokol/sounds
+- cleanup & fix the sound produced by melody.v
+- add a simplified bytebeat player to show how to use sokol.audio, and that does not depend on gg
+- make `rotating_textured_quad.v` compile and run on Android (#21987)
+- veb: change example description, to avoid repetitive wording (ease debugging of issue#22017)
+- eval: fix `./v interpret examples/hanoi.v`
+- add examples/ttf_font/draw_static_text.v, to make it easier to test x.ttf with different fonts, and texts
+- make draw_static_text.v show the font name too, for easier comparisons
+- prevent cliping of long font names in draw_static_text.v
+- docs: add an example on how to use Options/Results, when returning multiple values from a function (#22099)
+- add examples/gg/draw_unicode_text_with_gg.v, for easy comparison of how different fonts and unicode texts will look, when rendered by gg
+- add examples/veb/websocket, to show how to use http connection upgrade to a websocket, from a `veb` route (#22128)
+- migrate vweb examples to veb
+- fix type in veb_example.v
+- add `gc_is_enabled()` check to `2048` to prevent crash in Android emulator (#22274)
+- make `gg/rectangles.v` Android friendly (#22275)
+- make `gg/stars.v` run on android (#22276)
+- examples,os: add an os.asset module, use it to simplify code in examples/, by removing `$if android {` checks (#22281)
+- add a consistent background to flappylearning, shown when the height of the view is very high (on Android)
+
+
 ## V 0.4.7
 *26 Jul 2024*
 

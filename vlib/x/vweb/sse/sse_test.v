@@ -4,7 +4,7 @@ import x.vweb.sse
 import time
 import net.http
 
-const port = 13008
+const port = 23008
 const localserver = 'http://127.0.0.1:${port}'
 const exit_after = time.second * 10
 

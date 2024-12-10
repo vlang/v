@@ -498,6 +498,9 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 #define _SLIT0 (string){.str=(byteptr)(""), .len=0, .is_lit=1}
 #define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
 #define _SLEN(s, n) ((string){.str=(byteptr)("" s), .len=n, .is_lit=1})
+// optimized way to compare literal strings
+#define _SLIT_EQ(sptr, slen, lit) (slen == sizeof("" lit)-1 && !vmemcmp(sptr, "" lit, slen))
+#define _SLIT_NE(sptr, slen, lit) (slen != sizeof("" lit)-1 || vmemcmp(sptr, "" lit, slen))
 
 // take the address of an rvalue
 #define ADDR(type, expr) (&((type[]){expr}[0]))
@@ -528,7 +531,6 @@ void _vcleanup(void);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 
 void v_free(voidptr ptr);
-//voidptr memdup(voidptr src, isize sz);
 
 #if INTPTR_MAX == INT32_MAX
 	#define TARGET_IS_32BIT 1
@@ -649,7 +651,7 @@ static void* g_live_info = NULL;
 
 const c_builtin_types = '
 //================================== builtin types ================================*/
-#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
+#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64)
 typedef int64_t vint_t;
 #else
 typedef int32_t vint_t;

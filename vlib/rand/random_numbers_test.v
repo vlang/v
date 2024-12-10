@@ -71,6 +71,15 @@ fn test_rand_intn() {
 	}
 }
 
+fn test_rand_i32n() {
+	max := i32(2525642)
+	for _ in 0 .. rnd_count {
+		value := rand.i32n(max) or { panic("Couldn't obtain i32") }
+		assert value >= 0
+		assert value < max
+	}
+}
+
 fn test_rand_i64n() {
 	max := i64(3246727724653636)
 	for _ in 0 .. rnd_count {
@@ -85,6 +94,16 @@ fn test_rand_int_in_range() {
 	max := 23054962
 	for _ in 0 .. rnd_count {
 		value := rand.int_in_range(min, max) or { panic("Couldn't obtain int in range") }
+		assert value >= min
+		assert value < max
+	}
+}
+
+fn test_rand_i32_in_range() {
+	min := i32(-4252)
+	max := i32(23054962)
+	for _ in 0 .. rnd_count {
+		value := rand.i32_in_range(min, max) or { panic("Couldn't obtain i32 in range") }
 		assert value >= min
 		assert value < max
 	}
@@ -324,7 +343,9 @@ fn test_rand_ascii() {
 fn ensure_same_output(mut rng rand.PRNG) {
 	for _ in 0 .. 100 {
 		assert rand.int() == rng.int()
+		assert rand.i32() == rng.i32()
 		assert rand.intn(45) or { 0 } == rng.intn(45) or { 0 }
+		assert rand.i32n(45) or { 0 } == rng.i32n(45) or { 0 }
 		assert rand.u64() == rng.u64()
 		assert rand.f64() == rng.f64()
 		assert rand.u32n(25) or { 0 } == rng.u32n(25) or { 0 }

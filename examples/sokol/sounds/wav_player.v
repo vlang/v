@@ -54,9 +54,9 @@ fn audio_player_callback(mut buffer &f32, num_frames int, num_channels int, mut 
 
 fn (mut p Player) init() {
 	audio.setup(
-		num_channels: 2
+		num_channels:       2
 		stream_userdata_cb: audio_player_callback
-		user_data: p
+		user_data:          p
 	)
 }
 

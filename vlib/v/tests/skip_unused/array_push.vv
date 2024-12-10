@@ -1,0 +1,11 @@
+module main
+
+struct GameObject {
+mut:
+	children []&GameObject
+}
+
+fn main() {
+	mut v1 := &GameObject{}
+	v1.children << v1
+}

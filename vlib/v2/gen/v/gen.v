@@ -34,8 +34,8 @@ fn build_tabs(tabs_len int) []string {
 pub fn new_gen(prefs &pref.Preferences) &Gen {
 	unsafe {
 		return &Gen{
-			pref: prefs
-			out: strings.new_builder(1000)
+			pref:   prefs
+			out:    strings.new_builder(1000)
 			indent: -1
 		}
 	}
@@ -107,19 +107,16 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.ConstDecl {
-			if stmt.is_public {
-				g.write('pub ')
-			}
-			g.writeln('const (')
-			g.indent++
 			for field in stmt.fields {
+				if stmt.is_public {
+					g.write('pub ')
+				}
+				g.writeln('const ')
 				g.write(field.name)
 				g.write(' = ')
 				g.expr(field.value)
 				g.writeln('')
 			}
-			g.indent--
-			g.writeln(')')
 		}
 		ast.ComptimeStmt {
 			g.write('$')
@@ -991,7 +988,7 @@ fn (mut g Gen) generic_list(exprs []ast.Expr) {
 @[inline]
 fn (mut g Gen) write(str string) {
 	if g.on_newline {
-		g.out.write_string(v.tabs[g.indent])
+		g.out.write_string(tabs[g.indent])
 	}
 	g.out.write_string(str)
 	g.on_newline = false
@@ -1000,7 +997,7 @@ fn (mut g Gen) write(str string) {
 @[inline]
 fn (mut g Gen) writeln(str string) {
 	if g.on_newline {
-		g.out.write_string(v.tabs[g.indent])
+		g.out.write_string(tabs[g.indent])
 	}
 	g.out.writeln(str)
 	g.on_newline = true

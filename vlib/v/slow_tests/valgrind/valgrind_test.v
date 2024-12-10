@@ -3,6 +3,7 @@ import term
 import benchmark
 import v.util.vtest
 
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 fn bold(s string) string {
@@ -66,11 +67,11 @@ fn test_all() {
 	dir := os.join_path(vroot, valgrind_test_path)
 	mut files := os.ls(dir) or { panic(err) }
 	files.sort()
-	//
+
 	wrkdir := os.join_path(os.vtmp_dir(), 'valgrind_tests')
 	os.mkdir_all(wrkdir) or { panic(err) }
 	os.chdir(wrkdir) or {}
-	//
+
 	only_ordinary_v_files := files.filter(it.ends_with('.v') && !it.ends_with('_test.v'))
 	tests := vtest.filter_vtest_only(only_ordinary_v_files, basepath: valgrind_test_path)
 	bench.set_total_expected_steps(tests.len)

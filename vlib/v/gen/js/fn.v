@@ -231,7 +231,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 				generic_names := sym.info.generic_types.map(g.table.sym(it).name)
 				// see comment at top of vlib/v/gen/c/utils.v
 				mut muttable := unsafe { &ast.Table(g.table) }
-				if utyp := muttable.resolve_generic_to_concrete(node.receiver_type, generic_names,
+				if utyp := muttable.convert_generic_type(node.receiver_type, generic_names,
 					sym.info.concrete_types)
 				{
 					unwrapped_rec_type = utyp
@@ -250,7 +250,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		typ_sym = g.table.sym(unwrapped_rec_type)
 	}
 
-	if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method(node.name) {
+	if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method(node.name) {
 		g.expr(it.left)
 		g.gen_deref_ptr(it.left_type)
 		g.write('.${it.name}(')
@@ -407,7 +407,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	mut name := g.js_name(it.name)
 
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
-	if name in js.builtin_functions {
+	if name in builtin_functions {
 		name = 'builtin__${name}'
 	}
 	print_method := name
@@ -501,7 +501,7 @@ enum FnGenType {
 fn (g &JsGen) fn_gen_type(it &ast.FnDecl) FnGenType {
 	if it.is_method && g.table.sym(it.params[0].typ).kind == .alias {
 		return .alias_method
-	} else if it.is_method && g.table.sym(it.params[0].typ).kind == .interface_ {
+	} else if it.is_method && g.table.sym(it.params[0].typ).kind == .interface {
 		return .iface_method
 	} else if it.is_method || it.no_body {
 		return .struct_method
@@ -514,7 +514,7 @@ fn (mut g JsGen) is_used_by_main(node ast.FnDecl) bool {
 	mut is_used_by_main := true
 	if g.pref.skip_unused {
 		fkey := node.fkey()
-		is_used_by_main = g.table.used_fns[fkey]
+		is_used_by_main = g.table.used_features.used_fns[fkey]
 		$if trace_skip_unused_fns ? {
 			println('> is_used_by_main: ${is_used_by_main} | node.name: ${node.name} | fkey: ${fkey} | node.is_method: ${node.is_method}')
 		}
@@ -581,7 +581,7 @@ fn (mut g JsGen) generic_fn_name(types []ast.Type, before string) string {
 
 	mut name := before + '_T'
 	for typ in types {
-		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.typ(typ.set_nr_muls(0))
+		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.styp(typ.set_nr_muls(0))
 	}
 	return name
 }
@@ -624,14 +624,14 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	name = g.js_name(name)
 
 	name = g.generic_fn_name(g.cur_concrete_types, name)
-	if name in js.builtin_functions {
+	if name in builtin_functions {
 		name = 'builtin__${name}'
 	}
 	if it.is_pub && !it.is_method {
 		g.push_pub_var(name)
 	}
 	if it.language == .js && it.is_method {
-		g.writeln('${g.typ(it.receiver.typ)}.prototype.${it.name} = ')
+		g.writeln('${g.styp(it.receiver.typ)}.prototype.${it.name} = ')
 	}
 
 	mut has_go := fn_has_go(it) || it.has_await
@@ -661,7 +661,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		if c in [`+`, `-`, `*`, `/`] {
 			name = util.replace_op(name)
 		}
-		// type_name := g.typ(it.return_type)
+		// type_name := g.styp(it.return_type)
 		// generate jsdoc for the function
 		g.doc.gen_fn(it)
 		if has_go && !g.pref.output_es5 {
@@ -686,7 +686,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 			g.writeln('${arg_name} = new array(new array_buffer({arr: ${arg_name},len: new int(${arg_name}.length),index_start: new int(0)}));')
 		} else {
 			asym := g.table.sym(arg.typ)
-			if asym.kind != .interface_ && asym.language != .js {
+			if asym.kind != .interface && asym.language != .js {
 				if arg.typ.is_ptr() || arg.is_mut {
 					g.writeln('${arg_name} = new \$ref(${arg_name})')
 				}
@@ -802,7 +802,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 	name = g.js_name(name)
 
 	name = g.generic_fn_name(g.table.cur_concrete_types, name)
-	if name in js.builtin_functions {
+	if name in builtin_functions {
 		name = 'builtin__${name}'
 	}
 	if it.is_pub && !it.is_method {
@@ -826,7 +826,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 		} else {
 			asym := g.table.sym(arg.typ)
 
-			if arg.typ.is_ptr() || (arg.is_mut && asym.kind != .interface_ && asym.language != .js) {
+			if arg.typ.is_ptr() || (arg.is_mut && asym.kind != .interface && asym.language != .js) {
 				g.writeln('${arg_name} = new \$ref(${arg_name})')
 			}
 		}

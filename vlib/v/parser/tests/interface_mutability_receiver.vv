@@ -1,5 +1,5 @@
 // fixes https://github.com/vlang/v/issues/1081 and https://github.com/vlang/v/issues/7338, code by https://github.com/nedpals
-//   copied from https://github.com/vlang/v/issues/7338 
+//   copied from https://github.com/vlang/v/issues/7338
 struct Doggo {
 pub mut:
 	name string

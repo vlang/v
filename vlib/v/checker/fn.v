@@ -1,8 +1,12 @@
 module checker
 
+import strings
 import v.ast
 import v.util
 import v.token
+import os
+
+const print_everything_fns = ['println', 'print', 'eprintln', 'eprint', 'panic']
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	$if trace_post_process_generic_fns_types ? {
@@ -10,15 +14,20 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			eprintln('>>> post processing node.name: ${node.name:-30} | ${node.generic_names} <=> ${c.table.cur_concrete_types}')
 		}
 	}
-	// record the vweb route methods (public non-generic methods):
+	if node.language in [.c, .js] && node.generic_names.len > 0 {
+		lang := if node.language == .c { 'C' } else { 'JS' }
+		c.error('${lang} functions cannot be declared as generic', node.pos)
+	}
+	// record the veb route methods (public non-generic methods):
 	if node.generic_names.len > 0 && node.is_pub {
-		typ_vweb_result := c.table.find_type_idx('vweb.Result')
+		typ_vweb_result := c.table.find_type('veb.Result')
 		if node.return_type == typ_vweb_result {
 			rec_sym := c.table.sym(node.receiver.typ)
-			if rec_sym.kind == .struct_ {
+			if rec_sym.kind == .struct {
 				if _ := c.table.find_field_with_embeds(rec_sym, 'Context') {
-					// there is no point in the message here, for methods that are not public; since they will not be available as routes anyway
-					c.note('generic method routes of vweb will be skipped', node.pos)
+					// there is no point in the message here, for methods
+					// that are not public; since they will not be available as routes anyway
+					c.note('generic method routes of veb will be skipped', node.pos)
 				}
 			}
 		}
@@ -30,8 +39,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// This is done so that all generic function calls can
 		// have a chance to populate c.table.fn_generic_types with
 		// the correct concrete types.
-		c.file.generic_fns << node
-		c.need_recheck_generic_fns = true
+		fkey := node.fkey()
+		if !c.generic_fns[fkey] {
+			c.need_recheck_generic_fns = true
+			c.generic_fns[fkey] = true
+			c.file.generic_fns << node
+		}
 		return
 	}
 	node.ninstances++
@@ -105,6 +118,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
+	if node.return_type == ast.no_type {
+		c.error('invalid return type in fn `${node.name}`', node.pos)
+		return
+	}
 	c.fn_return_type = node.return_type
 	return_type_unaliased := c.table.unaliased_type(node.return_type)
 	if node.return_type.has_flag(.option) && return_type_unaliased.has_flag(.result) {
@@ -116,6 +133,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			node.return_type_pos)
 	}
 	if node.return_type != ast.void_type {
+		if node.language == .v && node.return_type.clear_option_and_result() == ast.any_type {
+			c.error('cannot use type `any` here', node.return_type_pos)
+		}
 		if ct_attr_idx := node.attrs.find_comptime_define() {
 			sexpr := node.attrs[ct_attr_idx].ct_expr.str()
 			c.error('only functions that do NOT return values can have `[if ${sexpr}]` tags',
@@ -127,6 +147,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				if gs.info.is_generic && !node.return_type.has_flag(.generic) {
 					c.error('return generic struct `${gs.name}` in fn declaration must specify the generic type names, e.g. ${gs.name}[T]',
 						node.return_type_pos)
+				}
+			}
+			if gs.kind == .struct && c.needs_unwrap_generic_type(node.return_type) {
+				// resolve generic Array[T], Map[T] generics, avoid recursive generic resolving type
+				if c.ensure_generic_type_specify_type_names(node.return_type, node.return_type_pos,
+					false, false)
+				{
+					c.table.unwrap_generic_type_ex(node.return_type, c.table.cur_fn.generic_names,
+						c.table.cur_concrete_types, true)
 				}
 			}
 		}
@@ -172,6 +201,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	if node.is_method {
+		if node.receiver.name in c.global_names {
+			c.error('cannot use global variable name `${node.receiver.name}` as receiver',
+				node.receiver_pos)
+		}
 		if node.receiver.typ.has_flag(.option) {
 			c.error('option types cannot have methods', node.receiver_pos)
 		}
@@ -240,9 +273,17 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					param.pos)
 			}
 			if param.typ.has_flag(.result) {
-				c.error('Result type argument is not supported currently', param.type_pos)
+				c.error('result type arguments are not supported', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
+			// resolve unresolved fixed array size e.g. [mod.const]array_type
+			if arg_typ_sym.info is ast.ArrayFixed
+				&& c.array_fixed_has_unresolved_size(arg_typ_sym.info) {
+				mut size_expr := unsafe { arg_typ_sym.info.size_expr }
+				param.typ = c.eval_array_fixed_sizes(mut size_expr, 0, arg_typ_sym.info.elem_type)
+				mut v := node.scope.find_var(param.name) or { continue }
+				v.typ = param.typ
+			}
 			if arg_typ_sym.info is ast.Struct {
 				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
 					mut v := node.scope.find_var(param.name) or { continue }
@@ -312,7 +353,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				&& node.name.after_char(`.`) in reserved_type_names {
 				c.error('top level declaration cannot shadow builtin type', node.pos)
 			}
-			if _ := node.name.index('__static__') {
+			if node.is_static_type_method {
 				if sym := c.table.find_sym(node.name.all_before('__static__')) {
 					if sym.kind == .placeholder {
 						c.error('unknown type `${sym.name}`', node.static_type_pos)
@@ -321,7 +362,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	if node.return_type != ast.Type(0) {
+	if node.return_type != ast.no_type {
 		if !c.ensure_type_exists(node.return_type, node.return_type_pos) {
 			return
 		}
@@ -347,8 +388,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				if param_sym.kind == .string && receiver_sym.kind == .string {
 					// bypass check for strings
 					// TODO: there must be a better way to handle that
-				} else if param_sym.kind !in [.struct_, .alias]
-					|| receiver_sym.kind !in [.struct_, .alias] {
+				} else if param_sym.kind !in [.struct, .alias]
+					|| receiver_sym.kind !in [.struct, .alias] {
 					c.error('operator methods are only allowed for struct and type alias',
 						node.pos)
 				} else {
@@ -431,6 +472,52 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.fn_scope = node.scope
+	// Register implicit context var
+	typ_veb_result := c.table.get_veb_result_type_idx() // c.table.find_type('veb.Result')
+	if node.return_type == typ_veb_result {
+		// Find a custom user Context type first
+		mut ctx_idx := c.table.find_type('main.Context')
+		if ctx_idx < 1 {
+			// If it doesn't exist, use veb.Context
+			ctx_idx = c.table.find_type('veb.Context')
+		}
+		typ_veb_context := ctx_idx.set_nr_muls(1)
+		// No Context type param? Add it
+		if !node.params.any(c.has_veb_context(it.typ)) && node.params.len >= 1 {
+			params := node.params.clone()
+			ctx_param := ast.Param{
+				name:   'ctx'
+				typ:    typ_veb_context
+				is_mut: true
+			}
+			node.params = [node.params[0], ctx_param]
+			node.params << params[1..]
+			// println('new params ${node.name}')
+			// println(node.params)
+			// We've added ctx to the FnDecl node.
+			// Now update the existing method, already registered in Table.
+			mut rec_sym := c.table.sym(node.receiver.typ)
+			if mut m := c.table.find_method(rec_sym, node.name) {
+				p := m.params.clone()
+				m.params = [m.params[0], ctx_param]
+				m.params << p[1..]
+				rec_sym.update_method(m)
+			}
+		}
+		// sym := c.table.sym(typ_veb_context)
+		// println('reging ${typ_veb_context} ${sym}')
+		// println(c.fn_scope)
+		// println(node.params)
+		// Finally add ctx to the scope
+		c.fn_scope.register(ast.Var{
+			name:         'ctx'
+			typ:          typ_veb_context
+			pos:          node.pos
+			is_used:      true
+			is_mut:       true
+			is_stack_obj: false // true
+		})
+	}
 	c.stmts(mut node.stmts)
 	node_has_top_return := has_top_return(node.stmts)
 	node.has_return = c.returns || node_has_top_return
@@ -480,12 +567,29 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
+	if node.is_expand_simple_interpolation {
+		match true {
+			!node.is_method {
+				c.error('@[expand_simple_interpolation] is supported only on methods',
+					node.pos)
+			}
+			node.params.len != 2 {
+				c.error('methods tagged with @[expand_simple_interpolation], should have exactly 1 argument',
+					node.pos)
+			}
+			!node.params[1].typ.is_string() {
+				c.error('methods tagged with @[expand_simple_interpolation], should accept a single string',
+					node.pos)
+			}
+			else {}
+		}
+	}
 }
 
 // check_same_type_ignoring_pointers util function to check if the Types are the same, including all
 // corner cases.
 // FIXME: if the optimization is done after the checker, we can safely remove this util function
-fn (c Checker) check_same_type_ignoring_pointers(type_a ast.Type, type_b ast.Type) bool {
+fn (c &Checker) check_same_type_ignoring_pointers(type_a ast.Type, type_b ast.Type) bool {
 	// FIXME: if possible pass the ast.Node and check the property `is_auto_rec`
 	if type_a != type_b {
 		// before failing we must be sure that the parser didn't optimize the function
@@ -500,6 +604,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	keep_fn := c.table.cur_fn
 	keep_inside_anon := c.inside_anon_fn
 	keep_anon_fn := c.cur_anon_fn
+	c.table.used_features.anon_fn = true
 	defer {
 		c.table.cur_fn = keep_fn
 		c.inside_anon_fn = keep_inside_anon
@@ -524,6 +629,22 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		if var.is_mut && !parent_var.is_mut {
 			c.error('original `${parent_var.name}` is immutable, declare it with `mut` to make it mutable',
 				var.pos)
+		}
+		if parent_var.typ != ast.no_type {
+			parent_var_sym := c.table.final_sym(parent_var.typ)
+			if parent_var_sym.info is ast.FnType {
+				ret_typ := c.unwrap_generic(parent_var_sym.info.func.return_type)
+				if ret_typ.has_flag(.generic) {
+					generic_names := c.table.generic_type_names(ret_typ)
+					curr_list := c.table.cur_fn.generic_names.join(', ')
+					for name in generic_names {
+						if name !in c.table.cur_fn.generic_names {
+							c.error('Add the generic type `${name}` to the anon fn generic list type, that is currently `[${curr_list}]`',
+								var.pos)
+						}
+					}
+				}
+			}
 		}
 		if parent_var.expr is ast.IfGuardExpr {
 			sym := c.table.sym(parent_var.expr.expr_type)
@@ -571,7 +692,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	mut continue_check := true
 	// Now call `method_call` or `fn_call` for specific checks.
 	typ := if node.is_method {
-		c.method_call(mut node)
+		c.method_call(mut node, mut continue_check)
 	} else {
 		c.fn_call(mut node, mut continue_check)
 	}
@@ -598,6 +719,9 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 				// Only expressions like `str + 'b'` need to be freed.
 				continue
 			}
+			if arg.expr is ast.CallExpr && arg.expr.name in ['json.encode', 'json.encode_pretty'] {
+				continue
+			}
 			node.args[i].is_tmp_autofree = true
 		}
 		// TODO: copy pasta from above
@@ -606,9 +730,44 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			node.free_receiver = true
 		}
 	}
+	if node.nr_ret_values == -1 && node.return_type != 0 {
+		if node.return_type == ast.void_type {
+			node.nr_ret_values = 0
+		} else {
+			ret_sym := c.table.sym(node.return_type)
+			if ret_sym.info is ast.MultiReturn {
+				node.nr_ret_values = ret_sym.info.types.len
+			} else {
+				node.nr_ret_values = 1
+			}
+		}
+	}
+	old_expected_or_type := c.expected_or_type
 	c.expected_or_type = node.return_type.clear_flag(.result)
 	c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
-	c.expected_or_type = ast.void_type
+
+	if node.or_block.kind == .block {
+		old_inside_or_block_value := c.inside_or_block_value
+		c.inside_or_block_value = true
+		c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
+		c.inside_or_block_value = old_inside_or_block_value
+	} else if node.or_block.kind == .propagate_option || node.or_block.kind == .propagate_result {
+		if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'strings' {
+			c.table.used_features.option_or_result = true
+		}
+	}
+	c.expected_or_type = old_expected_or_type
+	if c.pref.skip_unused && !c.is_builtin_mod && c.mod == 'main' {
+		if node.is_method {
+			type_str := c.table.type_to_str(node.left_type)
+			if c.table.sym(node.left_type).is_builtin()
+				&& type_str !in c.table.used_features.used_modules {
+				c.table.used_features.used_modules[type_str] = true
+			}
+		} else if node.name.contains('.') {
+			c.table.used_features.used_modules[node.name.all_before('.')] = true
+		}
+	}
 
 	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main
 		&& !c.table.cur_fn.is_test {
@@ -625,14 +784,15 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 				node.or_block.pos)
 		}
 	}
-
 	return typ
 }
 
-fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.Fn) {
+fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func &ast.Fn) {
 	c.inside_interface_deref = true
 	c.expected_type = ast.string_type
-	node.args[0].typ = c.expr(mut node.args[0].expr)
+	if !(node.language != .js && node.args[0].expr is ast.CallExpr) {
+		node.args[0].typ = c.expr(mut node.args[0].expr)
+	}
 	arg := node.args[0]
 	c.check_expr_option_or_result_call(arg.expr, arg.typ)
 	if arg.typ.is_void() {
@@ -700,12 +860,15 @@ fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
 }
 
 fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
+	is_va_arg := node.name == 'C.va_arg'
+	is_json_decode := node.name == 'json.decode'
 	mut fn_name := node.name
-	if index := node.name.index('__static__') {
+	if node.is_static_method {
 		// resolve static call T.name()
-		if index > 0 && c.table.cur_fn != unsafe { nil } {
-			fn_name = c.table.resolve_generic_static_type_name(fn_name, c.table.cur_fn.generic_names,
-				c.table.cur_concrete_types)
+		if c.table.cur_fn != unsafe { nil } {
+			node.left_type, fn_name = c.table.convert_generic_static_type_name(fn_name,
+				c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+			c.table.used_features.comptime_calls[fn_name] = true
 		}
 	}
 	if fn_name == 'main' {
@@ -777,14 +940,20 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	} else if node.args.len > 0 && node.args[0].typ.has_flag(.shared_f) && fn_name == 'json.encode' {
 		c.error('json.encode cannot handle shared data', node.pos)
 		return ast.void_type
-	} else if node.args.len > 0 && fn_name == 'json.decode' {
+	} else if node.args.len > 0 && (is_va_arg || is_json_decode) {
 		if node.args.len != 2 {
-			c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
-				node.pos)
+			if is_json_decode {
+				c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
+					node.pos)
+			} else {
+				c.error('C.va_arg expects 2 arguments, a type and va_list (e.g `C.va_arg(int, va)`)',
+					node.pos)
+			}
 			return ast.void_type
 		}
-		expr := node.args[0].expr
-		if expr is ast.TypeNode {
+		mut expr := node.args[0].expr
+		if mut expr is ast.TypeNode {
+			expr.typ = c.expr(mut expr)
 			mut unwrapped_typ := c.unwrap_generic(expr.typ)
 			if c.needs_unwrap_generic_type(expr.typ) {
 				unwrapped_typ = c.table.unwrap_generic_type(expr.typ, c.table.cur_fn.generic_names,
@@ -796,27 +965,26 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if sym.info is ast.Alias {
 					kind = c.table.sym(sym.info.parent_type).kind
 				}
-				if kind !in [.struct_, .sum_type, .map, .array] {
-					c.error('json.decode: expected sum type, struct, map or array, found ${kind}',
+				if is_json_decode && kind !in [.struct, .sum_type, .map, .array] {
+					c.error('${fn_name}: expected sum type, struct, map or array, found ${kind}',
 						expr.pos)
 				}
 			} else {
-				c.error('json.decode: unknown type `${sym.name}`', node.pos)
+				c.error('${fn_name}: unknown type `${sym.name}`', node.pos)
 			}
 		} else {
 			typ := expr.type_name()
-			c.error('json.decode: first argument needs to be a type, got `${typ}`', node.pos)
+			c.error('${fn_name}: first argument needs to be a type, got `${typ}`', node.pos)
 			return ast.void_type
 		}
 		c.expected_type = ast.string_type
 		node.args[1].typ = c.expr(mut node.args[1].expr)
-		if node.args[1].typ != ast.string_type {
+		if is_json_decode && node.args[1].typ != ast.string_type {
 			c.error('json.decode: second argument needs to be a string', node.pos)
 		}
 		typ := expr as ast.TypeNode
-		ret_type := typ.typ.set_flag(.result)
-		node.return_type = ret_type
-		return ret_type
+		node.return_type = if is_json_decode { typ.typ.set_flag(.result) } else { typ.typ }
+		return node.return_type
 	} else if fn_name == '__addr' {
 		if !c.inside_unsafe {
 			c.error('`__addr` must be called from an unsafe block', node.pos)
@@ -834,13 +1002,18 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	mut func := ast.Fn{}
 	mut found := false
 	mut found_in_args := false
+	defer {
+		if found {
+			c.check_must_use_call_result(node, func, 'function')
+		}
+	}
 	// anon fn direct call
 	if node.left is ast.AnonFn {
 		// it was set to anon for checker errors, clear for gen
 		node.name = ''
 		c.expr(mut node.left)
 		left := node.left as ast.AnonFn
-		if left.typ != ast.Type(0) {
+		if left.typ != ast.no_type {
 			anon_fn_sym := c.table.sym(left.typ)
 			func = (anon_fn_sym.info as ast.FnType).func
 			found = true
@@ -914,10 +1087,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			unsafe { c.table.fns[fn_name].usages++ }
 		}
 	}
-	// already imported symbol (static Foo.new() in another module)
-	if !found && fn_name.len > 0 && fn_name[0].is_capital() {
+
+	// static method resolution
+	if !found && node.is_static_method {
 		if index := fn_name.index('__static__') {
 			owner_name := fn_name#[..index]
+			// already imported symbol (static Foo.new() in another module)
 			for import_sym in c.file.imports.filter(it.syms.any(it.name == owner_name)) {
 				qualified_name := '${import_sym.mod}.${fn_name}'
 				if f := c.table.find_fn(qualified_name) {
@@ -928,55 +1103,80 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					break
 				}
 			}
-		}
-	}
-	// Enum.from_string, `mod.Enum.from_string('item')`, `Enum.from_string('item')`
-	if !found && fn_name.ends_with('__static__from_string') {
-		enum_name := fn_name.all_before('__static__')
-		mut full_enum_name := if !enum_name.contains('.') {
-			c.mod + '.' + enum_name
-		} else {
-			enum_name
-		}
-		mut idx := c.table.type_idxs[full_enum_name]
-		if idx > 0 {
-			// is from another mod.
-			if enum_name.contains('.') {
-				if !c.check_type_and_visibility(full_enum_name, idx, .enum_, node.pos) {
-					return ast.void_type
+			if !found {
+				// aliased static method on current mod
+				full_type_name := if !fn_name.contains('.') {
+					c.mod + '.' + owner_name
+				} else {
+					owner_name
+				}
+				typ := c.table.find_type(full_type_name)
+				if typ != 0 {
+					final_sym := c.table.final_sym(typ)
+					// try to find the unaliased static method name
+					orig_name := final_sym.name + fn_name#[index..]
+					if f := c.table.find_fn(orig_name) {
+						found = true
+						func = f
+						unsafe { c.table.fns[orig_name].usages++ }
+						node.name = orig_name
+						node.left_type = typ
+					}
 				}
 			}
-		} else if !enum_name.contains('.') {
-			// find from another mods.
-			for import_sym in c.file.imports {
-				full_enum_name = '${import_sym.mod}.${enum_name}'
-				idx = c.table.type_idxs[full_enum_name]
-				if idx < 1 {
-					continue
-				}
-				if !c.check_type_and_visibility(full_enum_name, idx, .enum_, node.pos) {
-					return ast.void_type
-				}
-				break
+		}
+		// Enum.from_string, `mod.Enum.from_string('item')`, `Enum.from_string('item')`
+		if !found && fn_name.ends_with('__static__from_string') {
+			enum_name := fn_name.all_before('__static__')
+			mut full_enum_name := if !enum_name.contains('.') {
+				c.mod + '.' + enum_name
+			} else {
+				enum_name
 			}
-		}
-		if idx == 0 {
-			c.error('unknown enum `${enum_name}`', node.pos)
-			return ast.void_type
-		}
+			mut idx := c.table.type_idxs[full_enum_name]
+			if idx > 0 {
+				// is from another mod.
+				if enum_name.contains('.') {
+					if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
+						return ast.void_type
+					}
+				} else {
+					if !c.check_type_sym_kind(full_enum_name, idx, .enum, node.pos) {
+						return ast.void_type
+					}
+				}
+			} else if !enum_name.contains('.') {
+				// find from another mods.
+				for import_sym in c.file.imports {
+					full_enum_name = '${import_sym.mod}.${enum_name}'
+					idx = c.table.type_idxs[full_enum_name]
+					if idx < 1 {
+						continue
+					}
+					if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
+						return ast.void_type
+					}
+					break
+				}
+			}
+			if idx == 0 {
+				c.error('unknown enum `${enum_name}`', node.pos)
+				return ast.void_type
+			}
 
-		ret_typ := ast.Type(idx).set_flag(.option)
-		if node.args.len != 1 {
-			c.error('expected 1 argument, but got ${node.args.len}', node.pos)
-		} else {
-			node.args[0].typ = c.expr(mut node.args[0].expr)
-			if node.args[0].typ != ast.string_type {
-				styp := c.table.type_to_str(node.args[0].typ)
-				c.error('expected `string` argument, but got `${styp}`', node.pos)
+			ret_typ := ast.idx_to_type(idx).set_flag(.option)
+			if node.args.len != 1 {
+				c.error('expected 1 argument, but got ${node.args.len}', node.pos)
+			} else {
+				node.args[0].typ = c.expr(mut node.args[0].expr)
+				if node.args[0].typ != ast.string_type {
+					styp := c.table.type_to_str(node.args[0].typ)
+					c.error('expected `string` argument, but got `${styp}`', node.pos)
+				}
 			}
+			node.return_type = ret_typ
+			return ret_typ
 		}
-		node.return_type = ret_typ
-		return ret_typ
 	}
 	mut is_native_builtin := false
 	if !found && c.pref.backend == .native {
@@ -1005,7 +1205,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	if is_native_builtin {
-		if node.args.len > 0 && fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] {
+		if node.args.len > 0 && fn_name in print_everything_fns {
 			c.builtin_args(mut node, fn_name, func)
 			return func.return_type
 		}
@@ -1027,7 +1227,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					} else {
 						if obj.typ == 0 {
 							if mut obj.expr is ast.IfGuardExpr {
-								typ = c.expr(mut obj.expr.expr)
+								typ = c.expr(mut obj.expr.expr).clear_option_and_result()
 							} else {
 								typ = c.expr(mut obj.expr)
 							}
@@ -1042,6 +1242,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 
+		// XTODO document
 		if typ != 0 {
 			generic_vts := c.table.final_sym(typ)
 			if generic_vts.info is ast.FnType {
@@ -1111,11 +1312,50 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				return ast.void_type
 			}
 		}
+		name := node.get_name()
+		if c.pref.experimental && name.starts_with('C.') {
+			println('unknown function ${name}, ' +
+				'searching for the C definition in one of the #includes')
+			mut includes := []string{cap: 5}
+			for stmt in c.file.stmts {
+				if stmt is ast.HashStmt {
+					if stmt.kind == 'include' {
+						includes << '#include ${stmt.main}'
+					}
+				}
+			}
+			mut tmp_c_file_with_includes := os.create('tmp.c') or { panic(err) }
+			tmp_c_file_with_includes.write_string(includes.join('\n')) or { panic(err) }
+			tmp_c_file_with_includes.close()
+
+			os.execute('v translate fndef ${name[2..]} tmp.c')
+			x := os.read_file('__cdefs_autogen.v') or {
+				for mut arg in node.args {
+					c.expr(mut arg.expr)
+				}
+				return ast.void_type
+			}
+			if x.contains('fn ${name}') {
+				println(
+					'function definition for ${name} has been generated in __cdefs_autogen.v. ' +
+					'Please re-run the compilation with `v .` or `v run .`')
+				os.rm('tmp.c') or {}
+				exit(0)
+			} else {
+				println('Failed to generate function definition. Please report it via github.com/vlang/v/issues')
+			}
+			os.rm('tmp.c') or {}
+		}
+		for mut arg in node.args {
+			c.expr(mut arg.expr)
+		}
 		c.error('unknown function: ${node.get_name()}', node.pos)
 		return ast.void_type
 	}
+
 	node.is_file_translated = func.is_file_translated
 	node.is_noreturn = func.is_noreturn
+	node.is_expand_simple_interpolation = func.is_expand_simple_interpolation
 	node.is_ctor_new = func.is_ctor_new
 	if !found_in_args {
 		if node.scope.known_var(fn_name) {
@@ -1160,13 +1400,34 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		&& func.ctdefine_idx != ast.invalid_type_idx {
 		node.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut func.attrs[func.ctdefine_idx])
 	}
+
 	// dont check number of args for JS functions since arguments are not required
 	if node.language != .js {
+		for i, mut call_arg in node.args {
+			if call_arg.expr is ast.CallExpr {
+				node.args[i].typ = c.expr(mut call_arg.expr)
+			} else if mut call_arg.expr is ast.LambdaExpr {
+				if node.concrete_types.len > 0 {
+					call_arg.expr.call_ctx = unsafe { node }
+				}
+			}
+		}
 		c.check_expected_arg_count(mut node, func) or { return func.return_type }
 	}
 	// println / eprintln / panic can print anything
-	if node.args.len > 0 && fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] {
+	if node.args.len > 0 && fn_name in print_everything_fns {
 		c.builtin_args(mut node, fn_name, func)
+		if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'math.bits'
+			&& node.args[0].expr !is ast.StringLiteral {
+			if !c.table.sym(c.unwrap_generic(node.args[0].typ)).has_method('str') {
+				c.table.used_features.auto_str = true
+			} else {
+				c.table.used_features.print_types[node.args[0].typ.idx()] = true
+			}
+			if node.args[0].typ.is_ptr() {
+				c.table.used_features.auto_str_ptr = true
+			}
+		}
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`
@@ -1203,6 +1464,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		has_decompose = call_arg.expr is ast.ArrayDecompose
+		already_checked := node.language != .js && call_arg.expr is ast.CallExpr
 		if func.is_variadic && i >= func.params.len - 1 {
 			param_sym := c.table.sym(param.typ)
 			mut expected_type := param.typ
@@ -1210,10 +1472,14 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				expected_type = param_sym.info.elem_type
 				c.expected_type = expected_type
 			}
-			typ := c.expr(mut call_arg.expr)
+			typ := if already_checked && mut call_arg.expr is ast.CallExpr {
+				node.args[i].typ
+			} else {
+				c.expr(mut call_arg.expr)
+			}
 			if i == node.args.len - 1 {
 				if c.table.sym(typ).kind == .array && call_arg.expr !is ast.ArrayDecompose
-					&& c.table.sym(expected_type).kind !in [.sum_type, .interface_]
+					&& c.table.sym(expected_type).kind !in [.sum_type, .interface]
 					&& !param.typ.has_flag(.generic) && expected_type != typ {
 					styp := c.table.type_to_str(typ)
 					elem_styp := c.table.type_to_str(expected_type)
@@ -1233,15 +1499,18 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 
 		e_sym := c.table.sym(c.expected_type)
-		if call_arg.expr is ast.MapInit && e_sym.kind == .struct_ {
+		if call_arg.expr is ast.MapInit && e_sym.kind == .struct {
 			c.error('cannot initialize a struct with a map', call_arg.pos)
 			continue
 		} else if call_arg.expr is ast.StructInit && e_sym.kind == .map {
 			c.error('cannot initialize a map with a struct', call_arg.pos)
 			continue
 		}
-
-		mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
+		mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, if already_checked {
+			node.args[i].typ
+		} else {
+			c.expr(mut call_arg.expr)
+		})
 		if call_arg.expr is ast.StructInit {
 			arg_typ = c.expr(mut call_arg.expr)
 		}
@@ -1254,7 +1523,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		arg_typ_sym := c.table.sym(arg_typ)
-		if arg_typ_sym.kind == .none_ && param.typ.has_flag(.generic) {
+		if arg_typ_sym.kind == .none && param.typ.has_flag(.generic) {
 			c.error('cannot use `none` as generic argument', call_arg.pos)
 		}
 		param_typ_sym := c.table.sym(param.typ)
@@ -1320,15 +1589,15 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			|| final_param_sym.idx == ast.voidptr_type_idx
 			|| param.typ == ast.nil_type || final_param_sym.idx == ast.nil_type_idx)
 			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v
-			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' && !c.pref.translated
-			&& !c.file.is_translated {
+			&& !call_arg.expr.is_lvalue() && !c.pref.translated && !c.file.is_translated
+			&& func.name !in ['json.encode', 'json.encode_pretty'] {
 			c.error('expression cannot be passed as `voidptr`', call_arg.expr.pos())
 		}
 		// Handle expected interface
-		if final_param_sym.kind == .interface_ {
+		if final_param_sym.kind == .interface {
 			if c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos()) {
 				if !arg_typ.is_any_kind_of_pointer() && !c.inside_unsafe
-					&& arg_typ_sym.kind != .interface_ {
+					&& arg_typ_sym.kind != .interface {
 					c.mark_as_referenced(mut &call_arg.expr, true)
 				}
 			}
@@ -1365,6 +1634,23 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					&& param_elem_type == arg_elem_type {
 					continue
 				}
+			} else if arg_typ_sym.info is ast.MultiReturn {
+				arg_typs := arg_typ_sym.info.types
+				out: for n in 0 .. arg_typ_sym.info.types.len {
+					curr_arg := arg_typs[n]
+					multi_param := if func.is_variadic && i >= func.params.len - 1 {
+						func.params.last()
+					} else {
+						func.params[n + i]
+					}
+					c.check_expected_call_arg(curr_arg, c.unwrap_generic(multi_param.typ),
+						node.language, call_arg) or {
+						c.error('${err.msg()} in argument ${i + n + 1} to `${fn_name}` from ${c.table.type_to_str(arg_typ)}',
+							call_arg.pos)
+						continue out
+					}
+				}
+				continue
 			}
 			if c.pref.translated || c.file.is_translated {
 				// in case of variadic make sure to use array elem type for checks
@@ -1376,10 +1662,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				}
 				// TODO: duplicated logic in check_types() (check_types.v)
 				// Allow enums to be used as ints and vice versa in translated code
-				if param_type.idx() in ast.integer_type_idxs && arg_typ_sym.kind == .enum_ {
+				if param_type.idx() in ast.integer_type_idxs && arg_typ_sym.kind == .enum {
 					continue
 				}
-				if arg_typ.idx() in ast.integer_type_idxs && param_typ_sym.kind == .enum_ {
+				if arg_typ.idx() in ast.integer_type_idxs && param_typ_sym.kind == .enum {
 					continue
 				}
 
@@ -1452,7 +1738,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			*/
 			c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
 		}
-		if final_param_sym.kind == .struct_ && arg_typ !in [ast.voidptr_type, ast.nil_type]
+		if final_param_sym.kind == .struct && arg_typ !in [ast.voidptr_type, ast.nil_type]
 			&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
 			c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
@@ -1479,19 +1765,33 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			} else {
 				func.params[i]
 			}
-			c.expected_type = param.typ
-			typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
+			if param.typ.has_flag(.generic) {
+				if unwrap_typ := c.table.convert_generic_type(param.typ, func.generic_names,
+					concrete_types)
+				{
+					c.expected_type = unwrap_typ
+				}
+			} else {
+				c.expected_type = param.typ
+			}
+			already_checked := node.language != .js && call_arg.expr is ast.CallExpr
+			typ := c.check_expr_option_or_result_call(call_arg.expr, if already_checked
+				&& mut call_arg.expr is ast.CallExpr {
+				call_arg.expr.return_type
+			} else {
+				c.expr(mut call_arg.expr)
+			})
 
 			if param.typ.has_flag(.generic) && func.generic_names.len == node.concrete_types.len {
-				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
+				if unwrap_typ := c.table.convert_generic_type(param.typ, func.generic_names,
 					concrete_types)
 				{
 					utyp := c.unwrap_generic(typ)
 					unwrap_sym := c.table.sym(unwrap_typ)
-					if unwrap_sym.kind == .interface_ {
+					if unwrap_sym.kind == .interface {
 						if c.type_implements(utyp, unwrap_typ, call_arg.expr.pos()) {
 							if !utyp.is_any_kind_of_pointer() && !c.inside_unsafe
-								&& c.table.sym(utyp).kind != .interface_ {
+								&& c.table.sym(utyp).kind != .interface {
 								c.mark_as_referenced(mut &call_arg.expr, true)
 							}
 						}
@@ -1499,6 +1799,19 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					}
 					c.check_expected_call_arg(utyp, unwrap_typ, node.language, call_arg) or {
 						if c.comptime.type_map.len > 0 {
+							continue
+						}
+						if mut call_arg.expr is ast.LambdaExpr {
+							// Calling fn is generic and lambda arg also is generic
+							if node.concrete_types.len > 0 && call_arg.expr.func != unsafe { nil }
+								&& call_arg.expr.func.decl.generic_names.len > 0 {
+								call_arg.expr.call_ctx = unsafe { node }
+								if c.table.register_fn_concrete_types(call_arg.expr.func.decl.fkey(),
+									node.concrete_types)
+								{
+									call_arg.expr.func.decl.ninstances++
+								}
+							}
 							continue
 						}
 						c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
@@ -1521,9 +1834,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 	if node.concrete_types.len > 0 && func.return_type != 0 && c.table.cur_fn != unsafe { nil }
 		&& c.table.cur_fn.generic_names.len == 0 {
-		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
-			concrete_types)
-		{
+		if typ := c.table.convert_generic_type(func.return_type, func.generic_names, concrete_types) {
 			node.return_type = typ
 			c.register_trace_call(node, func)
 			return typ
@@ -1533,62 +1844,45 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.error('a non generic function called like a generic one', node.concrete_list_pos)
 	}
 
-	if func.generic_names.len > 0 {
-		if has_generic || node.concrete_types.any(it.has_flag(.generic)) {
-			if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
-				node.concrete_types)
-			{
-				if typ.has_flag(.generic) {
-					node.return_type = typ
-				}
-			}
-			c.register_trace_call(node, func)
-			return node.return_type
-		} else {
-			if node.concrete_types.len > 0 && !node.concrete_types.any(it.has_flag(.generic)) {
-				if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
-					node.concrete_types)
-				{
-					node.return_type = typ
-					c.register_trace_call(node, func)
-					return typ
-				}
-			}
-			if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
-				concrete_types)
-			{
-				if typ.has_flag(.generic) {
-					node.return_type = typ
-				}
-				c.register_trace_call(node, func)
-				return typ
-			}
-		}
+	// resolve generic fn return type
+	if func.generic_names.len > 0 && node.return_type != ast.void_type {
+		ret_type := c.resolve_fn_return_type(func, node)
+		c.register_trace_call(node, func)
+		node.return_type = ret_type
+		return ret_type
 	}
 	c.register_trace_call(node, func)
 	return func.return_type
 }
 
 // register_trace_call registers the wrapper funcs for calling funcs for callstack feature
-fn (mut c Checker) register_trace_call(node ast.CallExpr, func ast.Fn) {
-	is_traceable := (c.pref.is_callstack || c.pref.is_trace) && c.table.cur_fn != unsafe { nil }
-		&& node.language == .v && c.file.imports.any(it.mod == 'v.debug')
-		&& node.name !in ['v.debug.callstack', 'v.debug.add_after_call', 'v.debug.add_before_call', 'v.debug.remove_after_call', 'v.debug.remove_before_call']
-	if is_traceable {
-		hash_fn, fn_name := c.table.get_trace_fn_name(c.table.cur_fn, node)
-		calling_fn := if func.is_method {
-			'${c.table.type_to_str(c.unwrap_generic(node.left_type))}_${fn_name}'
-		} else {
-			fn_name
+fn (mut c Checker) register_trace_call(node &ast.CallExpr, func &ast.Fn) {
+	if !(c.pref.is_callstack || c.pref.is_trace) || c.table.cur_fn == unsafe { nil }
+		|| node.language != .v {
+		return
+	}
+	if node.name in ['v.debug.callstack', 'v.debug.add_after_call', 'v.debug.add_before_call',
+		'v.debug.remove_after_call', 'v.debug.remove_before_call'] {
+		return
+	}
+	if !c.file.imports.any(it.mod == 'v.debug') {
+		return
+	}
+	hash_fn, fn_name := c.table.get_trace_fn_name(c.table.cur_fn, node)
+	calling_fn := if func.is_method {
+		'${c.table.type_to_str(c.unwrap_generic(node.left_type))}_${fn_name}'
+	} else {
+		fn_name
+	}
+	c.table.cur_fn.trace_fns[hash_fn] = ast.FnTrace{
+		name:        calling_fn
+		file:        c.file.path
+		line:        node.pos.line_nr + 1
+		return_type: node.return_type
+		func:        &ast.Fn{
+			...func
 		}
-		c.table.cur_fn.trace_fns[hash_fn] = ast.FnTrace{
-			name: calling_fn
-			file: c.file.path
-			line: node.pos.line_nr + 1
-			return_type: node.return_type
-			func: &func
-			is_fn_var: node.is_fn_var
-		}
+		is_fn_var:   node.is_fn_var
 	}
 }
 
@@ -1608,6 +1902,9 @@ fn (mut c Checker) is_generic_expr(node ast.Expr) bool {
 			if node.args.any(c.comptime.is_generic_param_var(it.expr)) {
 				return true
 			}
+			if node.is_static_method && node.left_type.has_flag(.generic) {
+				return true
+			}
 			// fn[T]() or generic_var.fn[T]()
 			node.concrete_types.any(it.has_flag(.generic))
 		}
@@ -1621,7 +1918,7 @@ fn (mut c Checker) is_generic_expr(node ast.Expr) bool {
 	}
 }
 
-fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
+fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
 		|| c.comptime.comptime_for_field_var != ''
@@ -1642,35 +1939,33 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 			if call_arg.expr is ast.Ident {
 				if call_arg.expr.obj is ast.Var {
 					if call_arg.expr.obj.ct_type_var !in [.generic_var, .generic_param, .no_comptime] {
-						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
+						mut ctyp := c.comptime.get_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.sym(ctyp)
+							param_sym := c.table.final_sym(param_typ)
 							if arg_sym.info is ast.Array && param_typ.has_flag(.generic)
-								&& c.table.final_sym(param_typ).kind == .array {
+								&& param_sym.kind == .array {
 								ctyp = arg_sym.info.elem_type
 							} else if arg_sym.info is ast.Map && param_typ.has_flag(.generic)
-								&& c.table.final_sym(param_typ).kind == .map {
-								map_info := c.table.final_sym(param_typ).info as ast.Map
-								key_is_generic := map_info.key_type.has_flag(.generic)
-								if key_is_generic {
+								&& param_sym.info is ast.Map {
+								if param_sym.info.key_type.has_flag(.generic) {
 									ctyp = c.unwrap_generic(arg_sym.info.key_type)
-								}
-								if map_info.value_type.has_flag(.generic) {
-									if key_is_generic {
+									if param_sym.info.value_type.has_flag(.generic) {
 										comptime_args[k] = ctyp
 										k++
+										ctyp = c.unwrap_generic(arg_sym.info.key_type)
 									}
-									ctyp = c.unwrap_generic(arg_sym.info.key_type)
+								} else if param_sym.info.value_type.has_flag(.generic) {
+									ctyp = c.unwrap_generic(arg_sym.info.value_type)
 								}
 							}
 							comptime_args[k] = ctyp
 						}
 					} else if call_arg.expr.obj.ct_type_var == .generic_param {
-						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
+						mut ctyp := c.comptime.get_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.final_sym(call_arg.typ)
 							param_typ_sym := c.table.sym(param_typ)
-
 							if param_typ.has_flag(.variadic) {
 								ctyp = ast.mktyp(ctyp)
 								comptime_args[k] = ctyp
@@ -1678,7 +1973,7 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 								&& param_typ_sym.kind == .array {
 								ctyp = c.get_generic_array_element_type(arg_sym.info)
 								comptime_args[k] = ctyp
-							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
+							} else if arg_sym.kind in [.struct, .interface, .sum_type] {
 								mut generic_types := []ast.Type{}
 								match arg_sym.info {
 									ast.Struct, ast.Interface, ast.SumType {
@@ -1703,11 +1998,19 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 								cparam_type_sym := c.table.sym(c.unwrap_generic(ctyp))
 								if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
 									comptime_args[k] = cparam_type_sym.info.elem_type
-								} else if param_typ_sym.kind == .map
+								} else if param_typ_sym.info is ast.Map
 									&& cparam_type_sym.info is ast.Map {
-									comptime_args[k] = cparam_type_sym.info.key_type
-									comptime_args[k + 1] = cparam_type_sym.info.value_type
-									k++
+									key_is_generic := param_typ_sym.info.key_type.has_flag(.generic)
+									if key_is_generic {
+										comptime_args[k] = cparam_type_sym.info.key_type
+									}
+									if param_typ_sym.info.value_type.has_flag(.generic) {
+										k2 := if key_is_generic { k + 1 } else { k }
+										comptime_args[k2] = cparam_type_sym.info.value_type
+										if key_is_generic {
+											k++
+										}
+									}
 								} else {
 									if node_.args[i].expr.is_auto_deref_var() {
 										ctyp = ctyp.deref()
@@ -1721,18 +2024,27 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 								comptime_args[k] = ctyp
 							}
 						}
+					} else if call_arg.expr.obj.ct_type_var == .generic_var {
+						mut ctyp := c.comptime.get_type(call_arg.expr)
+						if node_.args[i].expr.is_auto_deref_var() {
+							ctyp = ctyp.deref()
+						}
+						if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
+							ctyp = ctyp.set_nr_muls(0)
+						}
+						comptime_args[k] = ctyp
 					}
 				}
 			} else if call_arg.expr is ast.PrefixExpr {
 				if call_arg.expr.right is ast.ComptimeSelector {
-					comptime_args[k] = c.comptime.get_comptime_var_type(call_arg.expr.right)
+					comptime_args[k] = c.comptime.get_type(call_arg.expr.right)
 					comptime_args[k] = comptime_args[k].deref()
 					if comptime_args[k].nr_muls() > 0 && param_typ.nr_muls() > 0 {
 						comptime_args[k] = comptime_args[k].set_nr_muls(0)
 					}
 				}
 			} else if call_arg.expr is ast.ComptimeSelector {
-				ct_value := c.comptime.get_comptime_var_type(call_arg.expr)
+				ct_value := c.comptime.get_type(call_arg.expr)
 				param_typ_sym := c.table.sym(param_typ)
 				if ct_value != ast.void_type {
 					arg_sym := c.table.final_sym(call_arg.typ)
@@ -1757,14 +2069,14 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 					}
 				}
 			} else if call_arg.expr is ast.ComptimeCall {
-				comptime_args[k] = c.comptime.get_comptime_var_type(call_arg.expr)
+				comptime_args[k] = c.comptime.get_type(call_arg.expr)
 			}
 		}
 	}
 	return comptime_args
 }
 
-fn (mut c Checker) resolve_fn_generic_args(func ast.Fn, mut node ast.CallExpr) []ast.Type {
+fn (mut c Checker) resolve_fn_generic_args(func &ast.Fn, mut node ast.CallExpr) []ast.Type {
 	mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 
 	// dynamic values from comptime and generic parameters
@@ -1815,6 +2127,20 @@ fn (mut c Checker) cast_to_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast
 	return typ
 }
 
+// checks if a symbol kind is an expected kind
+fn (mut c Checker) check_type_sym_kind(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
+	mut sym := c.table.sym_by_idx(type_idx)
+	if sym.kind == .alias {
+		parent_type := (sym.info as ast.Alias).parent_type
+		sym = c.table.sym(parent_type)
+	}
+	if sym.kind != expected_kind {
+		c.error('expected ${expected_kind}, but `${name}` is ${sym.kind}', pos)
+		return false
+	}
+	return true
+}
+
 // checks if a type from another module is as expected and visible(`is_pub`)
 fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
 	mut sym := c.table.sym_by_idx(type_idx)
@@ -1833,7 +2159,7 @@ fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected
 	return true
 }
 
-fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
+fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	// `(if true { 'foo.bar' } else { 'foo.bar.baz' }).all_after('foo.')`
 	mut left_expr := node.left
 	for mut left_expr is ast.ParExpr {
@@ -1849,8 +2175,18 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	}
 	left_type := c.expr(mut node.left)
 	if left_type == ast.void_type {
-		c.error('cannot call a method using an invalid expression', node.pos)
+		// c.error('cannot call a method using an invalid expression', node.pos)
+		continue_check = false
 		return ast.void_type
+	}
+	if c.pref.skip_unused {
+		if !left_type.has_flag(.generic) && mut left_expr is ast.Ident {
+			if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
+				c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+			}
+		} else if left_type.has_flag(.generic) {
+			c.table.used_features.comptime_calls['${int(c.unwrap_generic(left_type))}.${node.name}'] = true
+		}
 	}
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
@@ -1868,12 +2204,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	final_left_sym := c.table.final_sym(unwrapped_left_type)
 
 	method_name := node.name
-	mut unknown_method_msg := if field := c.table.find_field(left_sym, method_name) {
-		'unknown method `${field.name}` did you mean to access the field with the same name instead?'
-	} else {
-		name := left_sym.symbol_name_except_generic().replace_each(['<', '[', '>', ']'])
-		'unknown method or field: `${name}.${method_name}`'
-	}
 	if left_type.has_flag(.option) && method_name != 'str' {
 		c.error('Option type cannot be called directly', node.left.pos())
 		return ast.void_type
@@ -1881,7 +2211,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		c.error('Result type cannot be called directly', node.left.pos())
 		return ast.void_type
 	}
-	if left_sym.kind in [.sum_type, .interface_] {
+	if left_sym.kind in [.sum_type, .interface] {
 		if method_name == 'type_name' {
 			return ast.string_type
 		}
@@ -1893,46 +2223,16 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		// No need to print this error, since this means that the variable is unknown,
 		// and there already was an error before.
 		// c.error('`void` type has no methods', node.left.pos())
+		continue_check = false
 		return ast.void_type
 	}
-	if final_left_sym.kind == .array {
-		if array_builtin_methods_chk.matches(method_name) && (left_sym.kind == .array
-			|| (left_sym.kind == .alias && !left_sym.has_method(method_name))) {
-			return c.array_builtin_method_call(mut node, left_type)
-		} else if method_name in ['insert', 'prepend'] {
-			if method_name == 'insert' {
-				if node.args.len != 2 {
-					c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
-						node.pos)
-					return ast.void_type
-				} else {
-					arg_type := c.expr(mut node.args[0].expr)
-					if arg_type !in [ast.int_type, ast.int_literal_type] {
-						c.error('the first argument of `array.insert()` should be integer',
-							node.args[0].expr.pos())
-						return ast.void_type
-					}
-				}
-			} else {
-				if node.args.len != 1 {
-					c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
-						node.pos)
-					return ast.void_type
-				}
-			}
-			info := final_left_sym.info as ast.Array
-			mut arg_expr := if method_name == 'insert' {
-				node.args[1].expr
-			} else {
-				node.args[0].expr
-			}
-			arg_type := c.expr(mut arg_expr)
-			arg_sym := c.table.sym(arg_type)
-			if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
-				c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`',
-					arg_expr.pos())
-			}
-		}
+	if final_left_sym.kind == .array && array_builtin_methods_chk.matches(method_name)
+		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
+		return c.array_builtin_method_call(mut node, left_type)
+	} else if final_left_sym.kind == .array_fixed
+		&& fixed_array_builtin_methods_chk.matches(method_name) && !(left_sym.kind == .alias
+		&& left_sym.has_method(method_name)) {
+		return c.fixed_array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .map
 		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] && !(left_sym.kind == .alias
 		&& left_sym.has_method(method_name)) {
@@ -1956,43 +2256,30 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		node.return_type = left_sym.info.return_type
 		return left_sym.info.return_type
-	} else if final_left_sym.info is ast.ArrayFixed && method_name == 'wait' {
-		elem_sym := c.table.sym(final_left_sym.info.elem_type)
-		if elem_sym.kind == .thread {
-			if node.args.len != 0 {
-				c.error('`.wait()` does not have any arguments', node.args[0].pos)
-			}
-			thread_ret_type := c.unwrap_generic(elem_sym.thread_info().return_type)
-			if thread_ret_type.has_flag(.option) {
-				c.error('`.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.',
-					node.pos)
-			} else if thread_ret_type.has_flag(.result) {
-				c.error('`.wait()` cannot be called for an array when thread functions return results. Iterate over the arrays elements instead and handle each returned result with `or`.',
-					node.pos)
-			}
-			node.return_type = c.table.find_or_register_array(thread_ret_type)
-			return node.return_type
-		} else {
-			c.error('`${left_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
-				node.left.pos())
-		}
 	} else if left_sym.kind == .char && left_type.nr_muls() == 0 && method_name == 'str' {
 		c.error('calling `.str()` on type `char` is not allowed, use its address or cast it to an integer instead',
 			node.left.pos().extend(node.pos))
 		return ast.void_type
 	}
+
+	mut unknown_method_msg := ''
 	mut method := ast.Fn{}
 	mut has_method := false
 	mut is_method_from_embed := false
+	defer {
+		if has_method && node.is_method {
+			c.check_must_use_call_result(node, method, 'method')
+		}
+	}
 	if m := c.table.find_method(left_sym, method_name) {
 		method = m
 		has_method = true
-		if left_sym.kind == .interface_ && m.from_embedded_type != 0 {
+		if left_sym.kind == .interface && m.from_embedded_type != 0 {
 			is_method_from_embed = true
 			node.from_embed_types = [m.from_embedded_type]
 		}
 	} else {
-		if final_left_sym.kind in [.struct_, .sum_type, .interface_, .array] {
+		if final_left_sym.kind in [.struct, .sum_type, .interface, .array] {
 			mut parent_type := ast.void_type
 			match final_left_sym.info {
 				ast.Struct, ast.SumType, ast.Interface {
@@ -2000,7 +2287,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 				ast.Array {
 					typ := c.table.unaliased_type(final_left_sym.info.elem_type)
-					parent_type = ast.Type(c.table.find_or_register_array(typ))
+					parent_type = ast.idx_to_type(c.table.find_or_register_array(typ))
 				}
 				else {}
 			}
@@ -2010,7 +2297,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					method = m
 					has_method = true
 					is_generic = true
-					if left_sym.kind == .interface_ && m.from_embedded_type != 0 {
+					if left_sym.kind == .interface && m.from_embedded_type != 0 {
 						is_method_from_embed = true
 						node.from_embed_types = [m.from_embedded_type]
 					}
@@ -2021,8 +2308,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			has_method = true
 			mut embed_types := []ast.Type{}
 			method, embed_types = c.table.find_method_from_embeds(final_left_sym, method_name) or {
-				if err.msg() != '' {
-					c.error(err.msg(), node.pos)
+				emsg := err.str()
+				if emsg != '' {
+					c.error(emsg, node.pos)
 				}
 				has_method = false
 				ast.Fn{}, []ast.Type{}
@@ -2030,6 +2318,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			if embed_types.len != 0 {
 				is_method_from_embed = true
 				node.from_embed_types = embed_types
+				if c.pref.skip_unused && node.left_type.has_flag(.generic) {
+					c.table.used_features.comptime_calls['${int(method.receiver_type)}.${method.name}'] = true
+				}
 			}
 		}
 		if final_left_sym.kind == .aggregate {
@@ -2041,7 +2332,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	if !has_method {
 		// TODO: str methods
 		if method_name == 'str' {
-			if left_sym.kind == .interface_ {
+			if left_sym.kind == .interface {
 				iname := left_sym.name
 				c.error('interface `${iname}` does not have a .str() method. Use typeof() instead',
 					node.pos)
@@ -2052,6 +2343,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				c.error('.str() method calls should have no arguments', node.pos)
 			}
 			c.fail_if_unreadable(node.left, left_type, 'receiver')
+			if !c.is_builtin_mod {
+				c.table.used_features.auto_str = true
+			}
 			return ast.string_type
 		} else if method_name == 'free' {
 			if !c.is_builtin_mod && !c.inside_unsafe && !method.is_unsafe {
@@ -2091,7 +2385,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					}
 					// registers if the arg must be passed by ref to disable auto deref args
 					arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
-					if c.table.sym(param.typ).kind == .interface_ {
+					if c.table.sym(param.typ).kind == .interface {
 						// cannot hide interface expected type to make possible to pass its interface type automatically
 						earg_types << if targ.idx() != param.typ.idx() { param.typ } else { targ }
 					} else {
@@ -2148,7 +2442,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				return info.func.return_type
 			}
 		}
-		if left_sym.kind in [.struct_, .aggregate, .interface_, .sum_type] {
+		if left_sym.kind in [.struct, .aggregate, .interface, .sum_type] {
 			if c.smartcast_mut_pos != token.Pos{} {
 				c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 					c.smartcast_mut_pos)
@@ -2160,6 +2454,15 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if left_type != ast.void_type {
 			suggestion := util.new_suggestion(method_name, left_sym.methods.map(it.name))
+			if unknown_method_msg == '' {
+				if field := c.table.find_field(left_sym, method_name) {
+					unknown_method_msg = 'unknown method `${field.name}` did you mean to access the field with the same name instead?'
+				} else {
+					sname := left_sym.symbol_name_except_generic()
+					name := sname.replace_each(['<', '[', '>', ']'])
+					unknown_method_msg = 'unknown method or field: `${name}.${method_name}`'
+				}
+			}
 			c.error(suggestion.say(unknown_method_msg), node.pos)
 		}
 		return ast.void_type
@@ -2209,6 +2512,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		c.need_recheck_generic_fns = true
 	}
 	node.is_noreturn = method.is_noreturn
+	node.is_expand_simple_interpolation = method.is_expand_simple_interpolation
 	node.is_ctor_new = method.is_ctor_new
 	node.return_type = method.return_type
 	if method.return_type.has_flag(.generic) {
@@ -2253,7 +2557,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		node.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut method.attrs[method.ctdefine_idx])
 	}
 	c.check_expected_arg_count(mut node, method) or { return method.return_type }
-	mut exp_arg_typ := ast.Type(0) // type of 1st arg for special builtin methods
+	mut exp_arg_typ := ast.no_type // type of 1st arg for special builtin methods
 	mut param_is_mut := false
 	mut no_type_promotion := false
 	if left_sym.info is ast.Chan {
@@ -2267,7 +2571,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	}
 
 	for i, mut arg in node.args {
-		if i > 0 || exp_arg_typ == ast.Type(0) {
+		if i > 0 || exp_arg_typ == ast.no_type {
 			exp_arg_typ = if method.is_variadic && i >= method.params.len - 1 {
 				method.params.last().typ
 			} else {
@@ -2345,7 +2649,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			typ := c.expr(mut arg.expr)
 			if i == node.args.len - 1 {
 				if c.table.sym(typ).kind == .array && arg.expr !is ast.ArrayDecompose
-					&& c.table.sym(expected_type).kind !in [.sum_type, .interface_]
+					&& c.table.sym(expected_type).kind !in [.sum_type, .interface]
 					&& !param.typ.has_flag(.generic) && expected_type != typ {
 					styp := c.table.type_to_str(typ)
 					elem_styp := c.table.type_to_str(expected_type)
@@ -2407,7 +2711,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			} else {
 				concrete_types
 			}
-			if exp_utyp := c.table.resolve_generic_to_concrete(exp_arg_typ, method.generic_names,
+			if exp_utyp := c.table.convert_generic_type(exp_arg_typ, method.generic_names,
 				method_concrete_types)
 			{
 				exp_arg_typ = exp_utyp
@@ -2418,7 +2722,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0 {
 					got_arg_typ = c.unwrap_generic(got_arg_typ)
 				} else {
-					if got_utyp := c.table.resolve_generic_to_concrete(got_arg_typ, method.generic_names,
+					if got_utyp := c.table.convert_generic_type(got_arg_typ, method.generic_names,
 						method_concrete_types)
 					{
 						got_arg_typ = got_utyp
@@ -2428,33 +2732,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 			}
 		}
-		if left_sym.info is ast.Array && method_name in ['sort_with_compare', 'sorted_with_compare'] {
-			elem_typ := left_sym.info.elem_type
-			arg_sym := c.table.sym(arg.typ)
-			if arg_sym.kind == .function {
-				func_info := arg_sym.info as ast.FnType
-				if func_info.func.params.len == 2 {
-					if func_info.func.params[0].typ.nr_muls() != elem_typ.nr_muls() + 1 {
-						arg_typ_str := c.table.type_to_str(func_info.func.params[0].typ)
-						expected_typ_str := c.table.type_to_str(elem_typ.ref())
-						c.error('${method_name} callback function parameter `${func_info.func.params[0].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
-							func_info.func.params[0].type_pos)
-					}
-					if func_info.func.params[1].typ.nr_muls() != elem_typ.nr_muls() + 1 {
-						arg_typ_str := c.table.type_to_str(func_info.func.params[1].typ)
-						expected_typ_str := c.table.type_to_str(elem_typ.ref())
-						c.error('${method_name} callback function parameter `${func_info.func.params[1].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
-							func_info.func.params[1].type_pos)
-					}
-				}
-			}
-		}
 		// Handle expected interface
-		if final_arg_sym.kind == .interface_ {
+		if final_arg_sym.kind == .interface {
 			if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.pos()) {
 				if !got_arg_typ.is_any_kind_of_pointer() && !c.inside_unsafe {
 					got_arg_typ_sym := c.table.sym(got_arg_typ)
-					if got_arg_typ_sym.kind != .interface_ {
+					if got_arg_typ_sym.kind != .interface {
 						c.mark_as_referenced(mut &arg.expr, true)
 					}
 				}
@@ -2468,7 +2751,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			continue
 		}
-		if final_arg_sym.kind == .none_ && param.typ.has_flag(.generic) {
+		if final_arg_sym.kind == .none && param.typ.has_flag(.generic) {
 			c.error('cannot use `none` as generic argument', arg.pos)
 		}
 		if param.typ.is_ptr() && !arg.typ.is_any_kind_of_pointer() && arg.expr.is_literal()
@@ -2499,7 +2782,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				arg.pos)
 		}
 		param_typ_sym := c.table.sym(exp_arg_typ)
-		if param_typ_sym.kind == .struct_ && got_arg_typ !in [ast.voidptr_type, ast.nil_type]
+		if param_typ_sym.kind == .struct && got_arg_typ !in [ast.voidptr_type, ast.nil_type]
 			&& !c.check_multiple_ptr_match(got_arg_typ, param.typ, param, arg) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(got_arg_typ, param.typ)
 			c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${method_name}`',
@@ -2531,7 +2814,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else {
 		method.params[0].typ
 	}
-	if left_sym.kind == .interface_ && is_method_from_embed && method.return_type.has_flag(.generic)
+	if left_sym.kind == .interface && is_method_from_embed && method.return_type.has_flag(.generic)
 		&& method.generic_names.len == 0 {
 		method.generic_names = c.table.get_generic_names((rec_sym.info as ast.Interface).generic_types)
 	}
@@ -2545,6 +2828,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		c.resolve_fn_generic_args(method, mut node)
 	}
 
+	if node.concrete_types.len > 0 && method.generic_names.len == 0 {
+		c.error('a non generic function called like a generic one', node.concrete_list_pos)
+	}
 	// resolve return generics struct to concrete type
 	if method.generic_names.len > 0 && method.return_type.has_flag(.generic)
 		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
@@ -2553,21 +2839,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else {
 		node.return_type = method.return_type
 	}
-
-	if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic))
-		&& method.return_type.has_flag(.generic) && method.generic_names.len > 0
-		&& method.generic_names.len == node.concrete_types.len {
-		if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
-			concrete_types)
-		{
-			node.return_type = typ
-		} else {
-			node.return_type = c.table.unwrap_generic_type(method.return_type, method.generic_names,
-				concrete_types)
-		}
-	}
-	if node.concrete_types.len > 0 && method.generic_names.len == 0 {
-		c.error('a non generic function called like a generic one', node.concrete_list_pos)
+	// resolve generic fn return type
+	if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
+		ret_type := c.resolve_fn_return_type(method, node)
+		c.register_trace_call(node, method)
+		node.return_type = ret_type
+		return ret_type
 	}
 	if method.generic_names.len > 0 {
 		if !left_type.has_flag(.generic) {
@@ -2643,6 +2920,7 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 	}
 }
 
+@[direct_array_access]
 fn (mut c Checker) set_node_expected_arg_types(mut node ast.CallExpr, func &ast.Fn) {
 	if node.expected_arg_types.len == 0 {
 		start_idx := if func.is_method { 1 } else { 0 }
@@ -2662,7 +2940,7 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		fkey := node.fkey()
 		all_generic_fns[fkey]++
 		if all_generic_fns[fkey] > generic_fn_cutoff_limit_per_fn {
-			c.error('generic function visited more than ${generic_fn_cutoff_limit_per_fn} times',
+			c.error('${fkey} generic function visited more than ${generic_fn_cutoff_limit_per_fn} times',
 				node.pos)
 			return error('fkey: ${fkey}')
 		}
@@ -2673,7 +2951,8 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
-			if node.name in ['x.vweb.run', 'x.vweb.run_at', 'vweb.run', 'vweb.run_at'] {
+			if node.name in ['veb.run', 'veb.run_at', 'x.vweb.run', 'x.vweb.run_at', 'vweb.run',
+				'vweb.run_at'] {
 				for ct in concrete_types {
 					if ct !in c.vweb_gen_types {
 						c.vweb_gen_types << ct
@@ -2691,7 +2970,7 @@ fn (mut c Checker) post_process_generic_fns() ! {
 }
 
 fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! {
-	nr_args := node.args.len
+	mut nr_args := node.args.len
 	nr_params := if node.is_method && f.params.len > 0 { f.params.len - 1 } else { f.params.len }
 	mut min_required_params := f.params.len
 	if node.is_method {
@@ -2699,11 +2978,38 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	}
 	if f.is_variadic {
 		min_required_params--
+		if c.pref.skip_unused && !c.is_builtin_mod {
+			c.table.used_features.arr_init = true
+		}
 	} else {
 		has_decompose := node.args.any(it.expr is ast.ArrayDecompose)
 		if has_decompose {
 			// if call(...args) is present
 			min_required_params = nr_args - 1
+		}
+	}
+	// check if multi-return is used as unique argument to the function
+	if node.args.len == 1 && mut node.args[0].expr is ast.CallExpr {
+		is_multi := node.args[0].expr.nr_ret_values > 1
+		if is_multi && node.name !in print_everything_fns {
+			// it is a multi-return argument
+			nr_args = node.args[0].expr.nr_ret_values
+			if nr_args != nr_params {
+				unexpected_args_pos := node.args[0].pos.extend(node.args.last().pos)
+				// TODO use this here as well
+				/*
+				c.fn_call_error_have_want(
+					nr_params: min_required_params
+					nr_args:   nr_args
+					params:    f.params
+					args:      node.args
+					pos:       node.pos
+				)
+				*/
+				c.error('expected ${min_required_params} arguments, but got ${nr_args} from multi-return ${c.table.type_to_str(node.args[0].expr.return_type)}',
+					unexpected_args_pos)
+				return error('')
+			}
 		}
 	}
 	if min_required_params < 0 {
@@ -2730,26 +3036,89 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 			/*
 			first_typ := f.params[0].typ
 			first_sym := c.table.sym(first_typ)
-			if first_sym.info is ast.Struct {
-				if c.fileis('a.v') {
-					if first_sym.name == 'VContext' && f.params[0].name == 'ctx' { // TODO use int comparison for perf
-						// c.error('got ctx ${first_sym.name}', node.pos)
-						return
-					}
+			*/
+			if last_sym.info is ast.Struct {
+				if last_sym.name == 'main.Context' && f.params.last().name == 'ctx' { // TODO use int comparison for perf
+					// c.error('got ctx ${first_sym.name}', node.pos)
+					return
 				}
 			}
-			*/
 		}
-		c.error('expected ${min_required_params} arguments, but got ${nr_args}', node.pos)
+		c.fn_call_error_have_want(
+			nr_params: min_required_params
+			nr_args:   nr_args
+			params:    f.params
+			args:      node.args
+			pos:       node.pos
+		)
 		return error('')
 	} else if !f.is_variadic && nr_args > nr_params {
 		unexpected_args_pos := node.args[min_required_params].pos.extend(node.args.last().pos)
-		c.error('expected ${min_required_params} arguments, but got ${nr_args}', unexpected_args_pos)
+		// c.error('3expected ${min_required_params} arguments, but got ${nr_args}', unexpected_args_pos)
+		c.fn_call_error_have_want(
+			nr_params: min_required_params
+			nr_args:   nr_args
+			params:    f.params
+			args:      node.args
+			pos:       unexpected_args_pos
+		)
 		return error('')
 	}
 }
 
-fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast.CallExpr) {
+@[params]
+struct HaveWantParams {
+	nr_params int
+	nr_args   int
+	args      []ast.CallArg
+	params    []ast.Param
+	pos       token.Pos
+}
+
+fn (mut c Checker) fn_call_error_have_want(p HaveWantParams) {
+	mut sb := strings.new_builder(20)
+	sb.write_string('have (')
+	// Fetch arg types, they are always 0 at this point
+	// Duplicate logic, but we don't care, since this is an error, so no perf cost
+	mut arg_types := []ast.Type{len: p.args.len}
+	for i, arg in p.args {
+		mut e := arg.expr
+		arg_types[i] = c.expr(mut e)
+	}
+	// Args provided by the user
+	for i, _ in p.args {
+		if arg_types[i] == 0 { // arg.typ == 0 {
+			// Arguments can have an unknown (invalid) type
+			// This should never happen.
+			sb.write_string('?')
+		} else {
+			sb.write_string(c.table.type_to_str(arg_types[i])) // arg.typ
+		}
+		if i < p.args.len - 1 {
+			sb.write_string(', ')
+		}
+	}
+	sb.write_string(')')
+	c.add_error_detail(sb.str())
+	// Actual parameters we expect
+	sb.write_string('         want (')
+	for i, param in p.params {
+		if i == 0 && p.nr_params == p.params.len - 1 {
+			// Skip receiver
+			continue
+		}
+		sb.write_string(c.table.type_to_str(param.typ))
+		if i < p.params.len - 1 {
+			sb.write_string(', ')
+		}
+	}
+	sb.write_string(')')
+	c.add_error_detail(sb.str())
+	args_plural := if p.nr_params == 1 { 'argument' } else { 'arguments' }
+	c.error('expected ${p.nr_params} ${args_plural}, but got ${p.nr_args}', p.pos)
+}
+
+fn (mut c Checker) check_predicate_param(is_map bool, elem_typ ast.Type, node ast.CallExpr) {
 	if node.args.len != 1 {
 		c.error('expected 1 argument, but got ${node.args.len}', node.pos)
 		// Finish early so that it doesn't fail later
@@ -2902,7 +3271,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 			} else {
 				c.table.find_or_register_array(info.value_type)
 			}
-			ret_type = ast.Type(typ)
+			ret_type = ast.idx_to_type(typ)
 			if info.key_type.has_flag(.generic) && method_name == 'keys' {
 				ret_type = ret_type.set_flag(.generic)
 			}
@@ -2958,7 +3327,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.table.sym(unaliased_left_type).info as ast.Array
 	}
 	elem_typ = array_info.elem_type
-	if method_name in ['filter', 'map', 'any', 'all'] {
+	if method_name in ['filter', 'map', 'any', 'all', 'count'] {
 		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
 			if node.args[0].expr.params.len != 1 {
 				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
@@ -2978,11 +3347,99 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			// position of `it` doesn't matter
 			scope_register_it(mut node.scope, node.pos, elem_typ)
 		}
-	} else if node.args.len == 1 && method_name == 'sorted_with_compare' {
-		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
-			c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
+	} else if method_name in ['insert', 'prepend'] {
+		if method_name == 'insert' {
+			if node.args.len != 2 {
+				c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
+					node.pos)
+				return ast.void_type
+			} else {
+				arg_type := c.expr(mut node.args[0].expr)
+				if arg_type !in [ast.int_type, ast.int_literal_type] {
+					c.error('the first argument of `array.insert()` should be integer',
+						node.args[0].expr.pos())
+					return ast.void_type
+				}
+			}
+			c.table.used_features.arr_insert = true
+		} else {
+			c.table.used_features.arr_prepend = true
+			if node.args.len != 1 {
+				c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
+					node.pos)
+				return ast.void_type
+			}
 		}
-	} else if method_name == 'sort' || method_name == 'sorted' {
+		c.check_for_mut_receiver(mut node.left)
+		info := left_sym.info as ast.Array
+		val_arg_n := if method_name == 'insert' { 1 } else { 0 }
+		node.receiver_type = ast.array_type.ref()
+		node.return_type = ast.void_type
+
+		if method := c.table.find_method(left_sym, method_name) {
+			for i, mut arg in node.args {
+				node.args[i].typ = c.expr(mut arg.expr)
+				if i == val_arg_n {
+					arg_sym := c.table.sym(node.args[i].typ)
+					if !c.check_types(node.args[i].typ, info.elem_type)
+						&& !c.check_types(left_type, node.args[i].typ) {
+						c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`',
+							arg.expr.pos())
+						continue
+					}
+				}
+				c.check_expected_call_arg(arg.typ, method.params[i + 1].typ, node.language,
+					arg) or {
+					c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
+						node.args[i].pos)
+				}
+			}
+		}
+	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
+		if node.args.len != 1 {
+			c.error('`.${method_name}()` expected 1 argument, but got ${node.args.len}',
+				node.pos)
+		} else {
+			if mut node.args[0].expr is ast.LambdaExpr {
+				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
+			}
+			arg_type := c.expr(mut node.args[0].expr)
+			arg_sym := c.table.sym(arg_type)
+			if arg_sym.kind == .function {
+				func_info := arg_sym.info as ast.FnType
+				if func_info.func.params.len == 2 {
+					if func_info.func.params[0].typ.nr_muls() != elem_typ.nr_muls() + 1 {
+						arg_typ_str := c.table.type_to_str(func_info.func.params[0].typ)
+						expected_typ_str := c.table.type_to_str(elem_typ.ref())
+						c.error('${method_name} callback function parameter `${func_info.func.params[0].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+							func_info.func.params[0].type_pos)
+					}
+					if func_info.func.params[1].typ.nr_muls() != elem_typ.nr_muls() + 1 {
+						arg_typ_str := c.table.type_to_str(func_info.func.params[1].typ)
+						expected_typ_str := c.table.type_to_str(elem_typ.ref())
+						c.error('${method_name} callback function parameter `${func_info.func.params[1].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+							func_info.func.params[1].type_pos)
+					}
+				}
+			}
+			node.args[0].typ = arg_type
+			if method := c.table.find_method(left_sym, method_name) {
+				c.check_expected_call_arg(arg_type, method.params[1].typ, node.language,
+					node.args[0]) or {
+					c.error('${err.msg()} in argument 1 to `${left_sym.name}.${method_name}`',
+						node.args[0].pos)
+				}
+			}
+			if method_name == 'sort_with_compare' {
+				c.check_for_mut_receiver(mut node.left)
+				node.return_type = ast.void_type
+				node.receiver_type = node.left_type.ref()
+			} else {
+				node.return_type = node.left_type
+				node.receiver_type = node.left_type
+			}
+		}
+	} else if method_name in ['sort', 'sorted'] {
 		if method_name == 'sort' {
 			if node.left is ast.CallExpr {
 				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
@@ -2999,6 +3456,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			if mut node.args[0].expr is ast.LambdaExpr {
 				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.bool_type, mut node.args[0].expr)
 			} else if node.args[0].expr is ast.InfixExpr {
+				c.check_sort_external_variable_access(node.args[0].expr)
 				if node.args[0].expr.op !in [.gt, .lt] {
 					c.error('`.${method_name}()` can only use `<` or `>` comparison',
 						node.pos)
@@ -3011,9 +3469,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				} else if left_name == right_name {
 					c.error('`.${method_name}()` cannot use same argument', node.pos)
 				}
-				if node.args[0].expr.left !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr]
-					|| node.args[0].expr.right !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
-					c.error('`.${method_name}()` can only use ident, index or selector as argument, \ne.g. `arr.${method_name}(a < b)`, `arr.${method_name}(a.id < b.id)`, `arr.${method_name}(a[0] < b[0])`',
+				if node.args[0].expr.left !in [ast.CallExpr, ast.Ident, ast.SelectorExpr, ast.IndexExpr]
+					|| node.args[0].expr.right !in [ast.CallExpr, ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
+					c.error('`.${method_name}()` can only use ident, index, selector or call as argument, \ne.g. `arr.${method_name}(a < b)`, `arr.${method_name}(a.id < b.id)`, `arr.${method_name}(a[0] < b[0])`',
 						node.pos)
 				}
 			} else {
@@ -3054,7 +3512,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	if method_name == 'map' {
 		// eprintln('>>>>>>> map node.args[0].expr: ${node.args[0].expr}, left_type: ${left_type} | elem_typ: ${elem_typ} | arg_type: ${arg_type}')
 		// check fn
-		c.check_map_and_filter(true, elem_typ, node)
+		c.check_predicate_param(true, elem_typ, node)
 		arg_sym := c.table.sym(arg_type)
 		ret_type := match arg_sym.info {
 			ast.FnType {
@@ -3083,10 +3541,13 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		} else if node.left.is_auto_deref_var() {
 			node.return_type = node.return_type.deref()
 		}
-		c.check_map_and_filter(false, elem_typ, node)
+		c.check_predicate_param(false, elem_typ, node)
 	} else if method_name in ['any', 'all'] {
-		c.check_map_and_filter(false, elem_typ, node)
+		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.bool_type
+	} else if method_name == 'count' {
+		c.check_predicate_param(false, elem_typ, node)
+		node.return_type = ast.int_type
 	} else if method_name == 'clone' {
 		if node.args.len != 0 {
 			c.error('`.clone()` does not have any arguments', node.args[0].pos)
@@ -3094,18 +3555,20 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.ensure_same_array_return_type(mut node, left_type)
 	} else if method_name == 'sorted' {
 		c.ensure_same_array_return_type(mut node, left_type)
-	} else if method_name == 'sorted_with_compare' {
-		c.ensure_same_array_return_type(mut node, left_type)
+	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
+		if method_name == 'sorted_with_compare' {
+			c.ensure_same_array_return_type(mut node, left_type)
+		}
 		// Inject a (voidptr) cast for the callback argument, to pass -cstrict, otherwise:
 		// error: incompatible function pointer types passing
 		//                            'int (string *, string *)'  (aka 'int (struct string *, struct string *)')
 		//       to parameter of type 'int (*)(voidptr, voidptr)' (aka 'int (*)(void *, void *)')
 		node.args[0].expr = ast.CastExpr{
-			expr: node.args[0].expr
-			typ: ast.voidptr_type
-			typname: 'voidptr'
+			expr:      node.args[0].expr
+			typ:       ast.voidptr_type
+			typname:   'voidptr'
 			expr_type: c.expr(mut node.args[0].expr)
-			pos: node.pos
+			pos:       node.pos
 		}
 	} else if method_name == 'sort' {
 		node.return_type = ast.void_type
@@ -3137,6 +3600,17 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		node.return_type = ast.int_type
 	} else if method_name in ['first', 'last', 'pop'] {
+		if c.pref.skip_unused && !c.is_builtin_mod {
+			if method_name == 'first' {
+				c.table.used_features.arr_first = true
+			}
+			if method_name == 'last' {
+				c.table.used_features.arr_last = true
+			}
+			if method_name == 'pop' {
+				c.table.used_features.arr_pop = true
+			}
+		}
 		if node.args.len != 0 {
 			c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
 		}
@@ -3148,12 +3622,298 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.receiver_type = node.left_type
 		}
 	} else if method_name == 'delete' {
+		if c.pref.skip_unused && !c.is_builtin_mod {
+			c.table.used_features.arr_delete = true
+		}
 		c.check_for_mut_receiver(mut node.left)
 		unwrapped_left_sym := c.table.sym(unwrapped_left_type)
 		if method := c.table.find_method(unwrapped_left_sym, method_name) {
 			node.receiver_type = method.receiver_type
 		}
+		if node.args.len != 1 {
+			c.error('`.delete()` expected 1 argument, but got ${node.args.len}', node.pos)
+		} else {
+			arg_typ := c.expr(mut node.args[0].expr)
+			c.check_expected_call_arg(arg_typ, ast.int_type, node.language, node.args[0]) or {
+				c.error('${err.msg()} in argument 1 to `.delete()`', node.args[0].pos)
+			}
+		}
 		node.return_type = ast.void_type
+	} else if method_name == 'delete_many' {
+		if node.args.len != 2 {
+			c.error('`.delete_many()` expected 2 arguments, but got ${node.args.len}',
+				node.pos)
+		} else {
+			for i, mut arg in node.args {
+				arg_typ := c.expr(mut arg.expr)
+				c.check_expected_call_arg(arg_typ, ast.int_type, node.language, arg) or {
+					c.error('${err.msg()} in argument ${i + 1} to `.delete_many()`', arg.pos)
+				}
+			}
+		}
+		node.return_type = ast.void_type
+	} else if method_name == 'reverse' {
+		c.table.used_features.arr_reverse = true
+	}
+	return node.return_type
+}
+
+fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type) ast.Type {
+	left_sym := c.table.final_sym(left_type)
+	method_name := node.name
+	unwrapped_left_type := c.unwrap_generic(left_type)
+	unaliased_left_type := c.table.unaliased_type(unwrapped_left_type)
+	array_info := if left_sym.info is ast.ArrayFixed {
+		left_sym.info as ast.ArrayFixed
+	} else {
+		c.table.sym(unaliased_left_type).info as ast.ArrayFixed
+	}
+	elem_typ := array_info.elem_type
+	if method_name == 'index' {
+		if node.args.len != 1 {
+			c.error('`.index()` expected 1 argument, but got ${node.args.len}', node.pos)
+			return ast.int_type
+		} else if !left_sym.has_method('index') {
+			arg_typ := c.expr(mut node.args[0].expr)
+			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+				c.error('${err.msg()} in argument 1 to `.index()`', node.args[0].pos)
+				return ast.int_type
+			}
+		}
+		for i, mut arg in node.args {
+			node.args[i].typ = c.expr(mut arg.expr)
+		}
+		node.return_type = ast.int_type
+	} else if method_name == 'contains' {
+		if node.args.len != 1 {
+			c.error('`.contains()` expected 1 argument, but got ${node.args.len}', node.pos)
+			return ast.bool_type
+		} else if !left_sym.has_method('contains') {
+			arg_typ := c.expr(mut node.args[0].expr)
+			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+				c.error('${err.msg()} in argument 1 to `.contains()`', node.args[0].pos)
+				return ast.bool_type
+			}
+		}
+		for i, mut arg in node.args {
+			node.args[i].typ = c.expr(mut arg.expr)
+		}
+		node.return_type = ast.bool_type
+	} else if method_name in ['any', 'all'] {
+		if node.args.len != 1 {
+			c.error('`.${method_name}` expected 1 argument, but got ${node.args.len}',
+				node.pos)
+			return ast.bool_type
+		}
+		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
+			if node.args[0].expr.params.len != 1 {
+				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
+					node.args[0].expr.pos)
+				return ast.bool_type
+			}
+			c.support_lambda_expr_one_param(elem_typ, ast.bool_type, mut node.args[0].expr)
+		} else {
+			// position of `it` doesn't matter
+			scope_register_it(mut node.scope, node.pos, elem_typ)
+		}
+		c.expr(mut node.args[0].expr)
+		c.check_predicate_param(false, elem_typ, node)
+		node.return_type = ast.bool_type
+	} else if method_name == 'count' {
+		if node.args.len != 1 {
+			c.error('`.${method_name}` expected 1 argument, but got ${node.args.len}',
+				node.pos)
+			return ast.bool_type
+		}
+		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
+			if node.args[0].expr.params.len != 1 {
+				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
+					node.args[0].expr.pos)
+				return ast.bool_type
+			}
+			c.support_lambda_expr_one_param(elem_typ, ast.bool_type, mut node.args[0].expr)
+		} else {
+			// position of `it` doesn't matter
+			scope_register_it(mut node.scope, node.pos, elem_typ)
+		}
+		c.expr(mut node.args[0].expr)
+		c.check_predicate_param(false, elem_typ, node)
+		node.return_type = ast.int_type
+	} else if method_name == 'wait' {
+		elem_sym := c.table.sym(elem_typ)
+		if elem_sym.kind == .thread {
+			if node.args.len != 0 {
+				c.error('`.wait()` does not have any arguments', node.args[0].pos)
+			}
+			thread_ret_type := c.unwrap_generic(elem_sym.thread_info().return_type)
+			if thread_ret_type.has_flag(.option) {
+				c.error('`.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.',
+					node.pos)
+			} else if thread_ret_type.has_flag(.result) {
+				c.error('`.wait()` cannot be called for an array when thread functions return results. Iterate over the arrays elements instead and handle each returned result with `or`.',
+					node.pos)
+			}
+			node.return_type = c.table.find_or_register_array(thread_ret_type)
+		} else {
+			c.error('`${left_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
+				node.left.pos())
+		}
+	} else if method_name == 'map' {
+		if node.args.len != 1 {
+			c.error('`.${method_name}` expected 1 argument, but got ${node.args.len}',
+				node.pos)
+			return ast.void_type
+		}
+		if mut node.args[0].expr is ast.LambdaExpr {
+			if node.args[0].expr.params.len != 1 {
+				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
+					node.args[0].expr.pos)
+				return ast.void_type
+			}
+			c.lambda_expr_fix_type_of_param(mut node.args[0].expr, mut node.args[0].expr.params[0],
+				elem_typ)
+			le_type := c.expr(mut node.args[0].expr.expr)
+			c.support_lambda_expr_one_param(elem_typ, le_type, mut node.args[0].expr)
+		} else {
+			// position of `it` doesn't matter
+			scope_register_it(mut node.scope, node.pos, elem_typ)
+		}
+
+		c.check_predicate_param(true, elem_typ, node)
+		arg_type := c.check_expr_option_or_result_call(node.args[0].expr, c.expr(mut node.args[0].expr))
+		arg_sym := c.table.sym(arg_type)
+		ret_type := match arg_sym.info {
+			ast.FnType {
+				if node.args[0].expr is ast.SelectorExpr {
+					arg_type
+				} else {
+					arg_sym.info.func.return_type
+				}
+			}
+			else {
+				arg_type
+			}
+		}
+		node.return_type = c.table.find_or_register_array_fixed(c.unwrap_generic(ret_type),
+			array_info.size, array_info.size_expr, false)
+		if node.return_type.has_flag(.shared_f) {
+			node.return_type = node.return_type.clear_flag(.shared_f).deref()
+		}
+		ret_sym := c.table.sym(ret_type)
+		if ret_sym.kind == .multi_return {
+			c.error('returning multiple values is not supported in .map() calls', node.pos)
+		}
+	} else if method_name in ['sort', 'sorted'] {
+		if method_name == 'sort' {
+			if node.left is ast.CallExpr {
+				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
+					node.pos)
+			}
+			c.check_for_mut_receiver(mut node.left)
+		}
+		// position of `a` and `b` doesn't matter, they're the same
+		scope_register_a_b(mut node.scope, node.pos, elem_typ)
+
+		if node.args.len > 1 {
+			c.error('expected 0 or 1 argument, but got ${node.args.len}', node.pos)
+		} else if node.args.len == 1 {
+			if mut node.args[0].expr is ast.LambdaExpr {
+				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.bool_type, mut node.args[0].expr)
+			} else if node.args[0].expr is ast.InfixExpr {
+				c.check_sort_external_variable_access(node.args[0].expr)
+				if node.args[0].expr.op !in [.gt, .lt] {
+					c.error('`.${method_name}()` can only use `<` or `>` comparison',
+						node.pos)
+				}
+				left_name := '${node.args[0].expr.left}'[0]
+				right_name := '${node.args[0].expr.right}'[0]
+				if left_name !in [`a`, `b`] || right_name !in [`a`, `b`] {
+					c.error('`.${method_name}()` can only use `a` or `b` as argument, e.g. `arr.${method_name}(a < b)`',
+						node.pos)
+				} else if left_name == right_name {
+					c.error('`.${method_name}()` cannot use same argument', node.pos)
+				}
+				if node.args[0].expr.left !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr]
+					|| node.args[0].expr.right !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
+					c.error('`.${method_name}()` can only use ident, index or selector as argument, \ne.g. `arr.${method_name}(a < b)`, `arr.${method_name}(a.id < b.id)`, `arr.${method_name}(a[0] < b[0])`',
+						node.pos)
+				}
+			} else {
+				c.error(
+					'`.${method_name}()` requires a `<` or `>` comparison as the first and only argument' +
+					'\ne.g. `users.${method_name}(a.id < b.id)`', node.pos)
+			}
+		} else if !(c.table.sym(elem_typ).has_method('<')
+			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.ref(), ast.string_type, ast.string_type.ref(), ast.i8_type, ast.i16_type, ast.i64_type, ast.u8_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type]) {
+			c.error('custom sorting condition must be supplied for type `${c.table.type_to_str(elem_typ)}`',
+				node.pos)
+		}
+		for mut arg in node.args {
+			c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
+		}
+		if method_name == 'sort' {
+			node.return_type = ast.void_type
+		} else {
+			node.return_type = node.left_type
+		}
+	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
+		if node.args.len != 1 {
+			c.error('`.${method_name}()` expected 1 argument, but got ${node.args.len}',
+				node.pos)
+		} else {
+			if mut node.args[0].expr is ast.LambdaExpr {
+				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
+			}
+			arg_type := c.expr(mut node.args[0].expr)
+			arg_sym := c.table.sym(arg_type)
+			if arg_sym.kind == .function {
+				func_info := arg_sym.info as ast.FnType
+				if func_info.func.params.len == 2 {
+					if func_info.func.params[0].typ.nr_muls() != elem_typ.nr_muls() + 1 {
+						arg_typ_str := c.table.type_to_str(func_info.func.params[0].typ)
+						expected_typ_str := c.table.type_to_str(elem_typ.ref())
+						c.error('${method_name} callback function parameter `${func_info.func.params[0].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+							func_info.func.params[0].type_pos)
+					}
+					if func_info.func.params[1].typ.nr_muls() != elem_typ.nr_muls() + 1 {
+						arg_typ_str := c.table.type_to_str(func_info.func.params[1].typ)
+						expected_typ_str := c.table.type_to_str(elem_typ.ref())
+						c.error('${method_name} callback function parameter `${func_info.func.params[1].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+							func_info.func.params[1].type_pos)
+					}
+				}
+			}
+			node.args[0].typ = arg_type
+			if method := c.table.find_method(left_sym, method_name) {
+				c.check_expected_call_arg(arg_type, method.params[1].typ, node.language,
+					node.args[0]) or {
+					c.error('${err.msg()} in argument 1 to `${left_sym.name}.${method_name}`',
+						node.args[0].pos)
+				}
+			}
+			for mut arg in node.args {
+				c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
+			}
+			if method_name == 'sort_with_compare' {
+				c.check_for_mut_receiver(mut node.left)
+				node.return_type = ast.void_type
+				node.receiver_type = node.left_type.ref()
+			} else {
+				node.return_type = node.left_type
+				node.receiver_type = node.left_type
+			}
+		}
+	} else if method_name in ['reverse', 'reverse_in_place'] {
+		if node.args.len != 0 {
+			c.error('`.${method_name}` does not have any arguments', node.args[0].pos)
+		} else {
+			if method_name == 'reverse' {
+				node.return_type = node.left_type
+			} else {
+				c.check_for_mut_receiver(mut node.left)
+				node.return_type = ast.void_type
+			}
+		}
 	}
 	return node.return_type
 }
@@ -3177,9 +3937,133 @@ fn scope_register_a_b(mut s ast.Scope, pos token.Pos, typ ast.Type) {
 
 fn scope_register_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name string) {
 	s.register(ast.Var{
-		name: name
-		pos: pos
-		typ: typ
+		name:    name
+		pos:     pos
+		typ:     typ
 		is_used: true
 	})
+}
+
+// resolve_fn_return_type resolves the generic return type of fn with its related CallExpr
+fn (mut c Checker) resolve_fn_return_type(func &ast.Fn, node ast.CallExpr) ast.Type {
+	mut ret_type := func.return_type
+	if node.is_method {
+		// resolve possible generic types
+		concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+		// generic method being called from a non-generic func
+		if func.generic_names.len > 0 && func.return_type.has_flag(.generic)
+			&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
+			ret_type = c.table.unwrap_generic_type(func.return_type, func.generic_names,
+				concrete_types)
+		}
+		// generic method called without generic type to be resolved on call
+		if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic))
+			&& func.return_type.has_flag(.generic) && func.generic_names.len > 0
+			&& func.generic_names.len == node.concrete_types.len {
+			if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+				concrete_types)
+			{
+				return typ
+			} else {
+				return c.table.unwrap_generic_type(func.return_type, func.generic_names,
+					concrete_types)
+			}
+		}
+	} else {
+		concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+		// generic func called from non-generic func
+		if node.concrete_types.len > 0 && func.return_type != 0 && c.table.cur_fn != unsafe { nil }
+			&& c.table.cur_fn.generic_names.len == 0 {
+			if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+				concrete_types)
+			{
+				return typ
+			}
+			return ret_type
+		}
+		if func.generic_names.len > 0 {
+			has_generic := node.raw_concrete_types.any(it.has_flag(.generic))
+			has_any_generic := node.concrete_types.any(it.has_flag(.generic))
+			// fn call with any generic type to be resolved on call (e.g. foo[T]())
+			if has_generic || has_any_generic {
+				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+					node.concrete_types)
+				{
+					if typ.has_flag(.generic) {
+						return typ
+					}
+				}
+			} else {
+				// fn call with all generic types already resolved to its concrete ones (e.g. foo[int]())
+				if node.concrete_types.len > 0 && !has_any_generic {
+					if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+						node.concrete_types)
+					{
+						return typ
+					}
+				}
+				// use fresh resolved concrete_types list
+				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+					concrete_types)
+				{
+					return typ
+				}
+			}
+		}
+	}
+	return ret_type
+}
+
+// resolve_return_type resolves the generic return type of CallExpr
+fn (mut c Checker) resolve_return_type(node ast.CallExpr) ast.Type {
+	if node.is_method {
+		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
+		if method := c.table.find_method(left_sym, node.name) {
+			return c.resolve_fn_return_type(method, node)
+		}
+	} else if node.is_static_method {
+		if c.table.cur_fn != unsafe { nil } {
+			_, name := c.table.convert_generic_static_type_name(node.name, c.table.cur_fn.generic_names,
+				c.table.cur_concrete_types)
+			if func := c.table.find_fn(name) {
+				return c.resolve_fn_return_type(func, node)
+			}
+		}
+	} else {
+		if func := c.table.find_fn(node.name) {
+			return c.resolve_fn_return_type(func, node)
+		}
+	}
+	return node.return_type
+}
+
+fn (mut c Checker) check_must_use_call_result(node &ast.CallExpr, f &ast.Fn, label string) {
+	if node.is_return_used {
+		return
+	}
+	if f.return_type == ast.void_type {
+		return
+	}
+	if f.is_must_use {
+		c.warn('return value must be used, ${label} `${f.name}` was tagged with `@[must_use]`',
+			node.pos)
+		return
+	}
+	if c.pref.is_check_return {
+		c.note('return value must be used', node.pos)
+	}
+}
+
+fn (mut c Checker) has_veb_context(typ ast.Type) bool {
+	sym := c.table.sym(typ)
+	if sym.name == 'veb.Context' {
+		return true
+	} else if sym.info is ast.Struct {
+		for embed in sym.info.embeds {
+			if c.table.sym(embed).name == 'veb.Context' {
+				return true
+			}
+		}
+	}
+	return false
 }

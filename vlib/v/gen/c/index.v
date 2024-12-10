@@ -23,7 +23,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				tmp_opt := g.new_tmp_var()
 				cur_line := g.go_before_last_stmt()
 				g.out.write_string(util.tabs(g.indent))
-				opt_elem_type := g.typ(ast.u8_type.set_flag(.option))
+				opt_elem_type := g.styp(ast.u8_type.set_flag(.option))
 				g.write('${opt_elem_type} ${tmp_opt} = string_at_with_check(')
 				g.expr(node.left)
 				g.write(', ')
@@ -75,7 +75,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 				tmp_opt = g.new_tmp_var()
 				cur_line = g.go_before_last_stmt()
 				g.out.write_string(util.tabs(g.indent))
-				opt_elem_type := g.typ(ast.string_type.set_flag(.result))
+				opt_elem_type := g.styp(ast.string_type.set_flag(.result))
 				g.write('${opt_elem_type} ${tmp_opt} = string_substr_with_check(')
 			} else {
 				g.write('string_substr(')
@@ -104,7 +104,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 			g.write('array_slice(')
 		}
 		g.write('new_array_from_c_array${noscan}(')
-		ctype := g.typ(sym.info.elem_type)
+		ctype := g.styp(sym.info.elem_type)
 		g.write('${sym.info.size}, ${sym.info.size}, sizeof(${ctype}), ')
 		if node.left_type.is_ptr() {
 			g.write('*')
@@ -112,13 +112,12 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		if node.left is ast.ArrayInit {
 			var := g.new_tmp_var()
 			line := g.go_before_last_stmt().trim_space()
-			styp := g.typ(node.left_type)
+			styp := g.styp(node.left_type)
 			g.empty_line = true
 			g.write('${styp} ${var} = ')
 			g.expr(node.left)
 			g.writeln(';')
-			g.write(line)
-			g.write(' ${var})')
+			g.write2(line, ' ${var})')
 		} else {
 			g.expr(node.left)
 			g.write(')')
@@ -160,7 +159,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	elem_type_str := if elem_sym.kind == .function {
 		'voidptr'
 	} else {
-		g.typ(info.elem_type)
+		g.styp(info.elem_type)
 	}
 	// `vals[i].field = x` is an exception and requires `array_get`:
 	// `(*(Val*)array_get(vals, i)).field = x;`
@@ -175,6 +174,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.write('*')
 			}
 		} else {
+			g.cur_indexexpr << node.pos.pos
 			g.is_arraymap_set = true // special handling of assign_op and closing with '})'
 			g.write('array_set(')
 			if !left_is_ptr || node.left_type.has_flag(.shared_f) {
@@ -234,6 +234,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 	} else {
 		is_direct_array_access := g.is_direct_array_access || node.is_direct
+		is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
 		// do not clone inside `opt_ok(opt_ok(&(string[]) {..})` before returns
 		needs_clone := info.elem_type == ast.string_type_idx && g.is_autofree && !(g.inside_return
 			&& g.fn_decl != unsafe { nil } && g.fn_decl.return_type.has_flag(.option))
@@ -255,9 +256,9 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			}
 		} else {
 			if needs_clone {
-				g.write('/*2*/string_clone(')
+				g.write('string_clone(')
 			}
-			if g.is_fn_index_call {
+			if is_fn_index_call {
 				if elem_sym.info is ast.FnType {
 					g.write('((')
 					g.write_fn_ptr_decl(&elem_sym.info, '')
@@ -297,13 +298,13 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('data)[')
 			g.expr(node.index)
 			g.write(']')
-			if g.is_fn_index_call {
+			if is_fn_index_call {
 				g.write(')')
 			}
 		} else {
 			g.write(', ')
 			g.expr(node.index)
-			if g.is_fn_index_call {
+			if is_fn_index_call {
 				g.write(')))')
 			} else {
 				g.write('))')
@@ -314,7 +315,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 		if gen_or {
 			g.writeln(';')
-			opt_elem_type := g.typ(elem_type.set_flag(.option))
+			opt_elem_type := g.styp(elem_type.set_flag(.option))
 			g.writeln('${opt_elem_type} ${tmp_opt} = {0};')
 			g.writeln('if (${tmp_opt_ptr}) {')
 			g.writeln('\t*((${elem_type_str}*)&${tmp_opt}.data) = *((${elem_type_str}*)${tmp_opt_ptr});')
@@ -337,11 +338,20 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 
 	if node.left is ast.ArrayInit {
 		past := g.past_tmp_var_new()
-		styp := g.typ(node.left_type)
+		styp := g.styp(node.left_type)
 		g.write('${styp} ${past.tmp_var} = ')
 		g.expr(node.left)
 		g.writeln(';')
 		g.past_tmp_var_done(past)
+	} else if node.left is ast.IndexExpr && node.left.is_setter {
+		past := g.past_tmp_var_new()
+		styp := g.styp(node.left_type)
+		g.write('${styp}* ${past.tmp_var} = &')
+		g.expr(node.left)
+		g.writeln(';')
+		g.write('(*')
+		g.past_tmp_var_done(past)
+		g.write(')')
 	} else {
 		if is_fn_index_call {
 			g.write('(*')
@@ -373,21 +383,22 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	gen_or := node.or_expr.kind != .absent || node.is_option
 	left_is_ptr := node.left_type.is_ptr()
 	info := sym.info as ast.Map
-	key_type_str := g.typ(info.key_type)
+	key_type_str := g.styp(info.key_type)
 	val_type := info.value_type
 	val_sym := g.table.sym(val_type)
 	val_type_str := if val_sym.kind == .function {
 		'voidptr'
 	} else {
 		if g.inside_return {
-			g.typ(val_type)
+			g.styp(val_type)
 		} else {
-			g.typ(val_type.clear_flag(.result))
+			g.styp(val_type.clear_flag(.result))
 		}
 	}
-	get_and_set_types := val_sym.kind in [.struct_, .map, .array]
+	get_and_set_types := val_sym.kind in [.struct, .map, .array, .array_fixed]
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
 		if g.assign_op == .assign || info.value_type == ast.string_type {
+			g.cur_indexexpr << node.pos.pos
 			g.is_arraymap_set = true
 			g.write('map_set(')
 		} else {
@@ -425,9 +436,9 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			zero := g.type_default(info.value_type)
 			g.write('${zero} })))')
 		}
-	} else if g.inside_map_postfix || g.inside_map_infix || g.inside_map_index
-		|| g.inside_array_index
-		|| (g.is_assign_lhs && !g.is_arraymap_set && get_and_set_types) {
+	} else if !gen_or && (g.inside_map_postfix || g.inside_map_infix
+		|| g.inside_map_index || g.inside_array_index || (g.is_assign_lhs && !g.is_arraymap_set
+		&& get_and_set_types)) {
 		zero := g.type_default(info.value_type)
 		if node.is_setter {
 			g.write('(*(${val_type_str}*)map_get_and_set((map*)')
@@ -501,12 +512,12 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 		if gen_or {
 			g.writeln(';')
-			opt_val_type := g.typ(val_type.set_flag(.option))
+			opt_val_type := g.styp(val_type.set_flag(.option))
 			g.writeln('${opt_val_type} ${tmp_opt} = {0};')
 			g.writeln('if (${tmp_opt_ptr}) {')
 			g.writeln('\t*((${val_type_str}*)&${tmp_opt}.data) = *((${val_type_str}*)${tmp_opt_ptr});')
 			g.writeln('} else {')
-			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = _v_error(_SLIT("array index out of range"));')
+			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = _v_error(_SLIT("map key does not exist"));')
 			g.writeln('}')
 			if !node.is_option {
 				g.or_block(tmp_opt, node.or_expr, val_type)

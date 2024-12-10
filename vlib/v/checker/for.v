@@ -44,6 +44,14 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('invalid use of reserved type `${node.val_var}` as value name', node.pos)
 		}
 	}
+	if _ := c.file.global_scope.find_const('${c.mod}.${node.key_var}') {
+		c.error('duplicate of a const name `${c.mod}.${node.key_var}`', node.kv_pos)
+	}
+
+	if _ := c.file.global_scope.find_const('${c.mod}.${node.val_var}') {
+		c.error('duplicate of a const name `${c.mod}.${node.val_var}`', node.vv_pos)
+	}
+
 	if node.is_range {
 		typ_idx := typ.idx()
 		high_type := c.expr(mut node.high)
@@ -72,7 +80,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		mut is_comptime := false
 		if (node.cond is ast.Ident && c.comptime.is_comptime_var(node.cond))
 			|| node.cond is ast.ComptimeSelector {
-			ctyp := c.comptime.get_comptime_var_type(node.cond)
+			ctyp := c.comptime.get_type(node.cond)
 			if ctyp != ast.void_type {
 				is_comptime = true
 				typ = ctyp
@@ -106,7 +114,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('string type is immutable, it cannot be changed', node.pos)
 			return
 		}
-		if sym.kind == .struct_ {
+		if sym.kind == .struct {
 			// iterators
 			next_fn := sym.find_method_with_generic_parent('next') or {
 				c.error('a struct must have a `next()` method to be an iterator', node.cond.pos())
@@ -181,6 +189,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				c.error(
 					'declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
 					'use `_` if you do not need the variable', node.pos)
+			}
+			if !c.is_builtin_mod && c.mod != 'strings' {
+				c.table.used_features.used_maps++
 			}
 			if node.key_var.len > 0 {
 				key_type := match sym.kind {
@@ -279,9 +290,9 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	if mut node.cond is ast.InfixExpr {
 		if node.cond.op == .key_is {
 			if node.cond.right is ast.TypeNode && node.cond.left in [ast.Ident, ast.SelectorExpr] {
-				if c.table.type_kind(node.cond.left_type) in [.sum_type, .interface_] {
+				if c.table.type_kind(node.cond.left_type) in [.sum_type, .interface] {
 					c.smartcast(mut node.cond.left, node.cond.left_type, node.cond.right_type, mut
-						node.scope, false)
+						node.scope, false, false)
 				}
 			}
 		}

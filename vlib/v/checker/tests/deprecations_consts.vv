@@ -1,3 +1,4 @@
-import math
-
-_ = math.max_i8
+import deprecated_consts
+fn main() {
+	dump(deprecated_consts.a_deprecated_const)
+}

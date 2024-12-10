@@ -29,7 +29,7 @@ pub struct PenConfig {
 pub:
 	color     gx.Color
 	line_type PenLineType = .solid
-	thickness int         = 1
+	thickness f32         = 1
 }
 
 pub struct Size {

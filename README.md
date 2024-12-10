@@ -43,7 +43,7 @@
 - Easy cross-compilation
 - REPL
 - [Built-in ORM](https://github.com/vlang/v/blob/master/doc/docs.md#orm)
-- [Built-in web framework](https://github.com/vlang/v/blob/master/vlib/vweb/README.md)
+- [Built-in web framework](https://github.com/vlang/v/blob/master/vlib/veb/README.md)
 - C and JavaScript backends
 - Great for writing low-level software ([Vinix OS](https://github.com/vlang/vinix))
 
@@ -75,27 +75,28 @@ language, very similar to the way it is right now.
 Usually, installing V is quite simple if you have an environment that already has a
 functional `git` installation.
 
-To get started, simply try to execute the following in your terminal/shell:
+Note: On Windows, run `make.bat` instead of `make` in CMD, or `./make.bat` in PowerShell.
+Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
 
+To get started, execute the following in your terminal/shell:
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 make
-# HINT: Using Windows? run make.bat in a cmd shell, or ./make.bat in PowerShell
 ```
 
-That should be it and you should find your V executable at `[path to V repo]/v`.
+That should be it, and you should find your V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
-(As in the hint above, on Windows `make` means running `make.bat`.)
+(Like the note above says, on Windows, use `make.bat`, instead of `make`.)
 
-Now you can try `./v run examples/hello_world.v` (or `v run examples/hello_world.v` in cmd shell).
+Now try running `./v run examples/hello_world.v` (or `v run examples/hello_world.v` in cmd shell).
 
-- *Trouble? Please see the note above and link to
+- *Trouble? Please see the notes above, and link to
   [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
   for help.*
 
-V is constantly being updated. To update V, simply run:
+Note: V is being constantly updated. To update V to its latest version, simply run:
 
 ```bash
 v up
@@ -167,7 +168,7 @@ shell/editor after that, so that it can pick up the new PATH variable.
 ```bash
 # xbps-install -Su base-devel
 # xbps-install libatomic-devel
-$ git clone https://github.com/vlang/v
+$ git clone --depth=1 https://github.com/vlang/v
 $ cd v
 $ make
 ```
@@ -176,10 +177,9 @@ $ make
 
 ### Docker
 
-<details><summary>Expand Docker instructions</summary>
 
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 docker build -t vlang .
 docker run --rm -it vlang:latest
@@ -188,7 +188,7 @@ docker run --rm -it vlang:latest
 ### Docker with Alpine/musl
 
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 docker build -t vlang_alpine - < Dockerfile.alpine
 alias with_alpine='docker run -u 1000:1000 --rm -it -v .:/src -w /src vlang_alpine:latest'
@@ -210,7 +210,6 @@ You should see something like this:
 -rwxr-xr-x 1 root root  16612 May 27 17:07 examples/hello_world
 -rwxr-xr-x 1 root root 335308 May 27 17:07 examples/http_server
 ```
-</details>
 
 ### Termux/Android
 
@@ -220,7 +219,7 @@ Linux/macos:
 
 ```bash
 pkg install clang libexecinfo libgc libgc-static make git
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 make
 ```
@@ -320,7 +319,7 @@ https://github.com/vlang/ui
 <!---
 ## JavaScript backend
 
-[examples/hello_v_js.v](examples/hello_v_js.v):
+[examples/js_hello_world.v](examples/js_hello_world.v):
 
 ```v
 fn main() {
@@ -331,7 +330,7 @@ fn main() {
 ```
 
 ```bash
-v -o hi.js examples/hello_v_js.v && node hi.js
+v -o hi.js examples/js_hello_world.v && node hi.js
 Hello from V.js
 Hello from V.js
 Hello from V.js

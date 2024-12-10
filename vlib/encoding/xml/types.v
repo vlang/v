@@ -69,7 +69,7 @@ pub:
 	encoding string       = 'UTF-8'
 	doctype  DocumentType = DocumentType{
 		name: ''
-		dtd: ''
+		dtd:  ''
 	}
 	comments []XMLComment
 }

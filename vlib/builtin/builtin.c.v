@@ -62,13 +62,17 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	$if freestanding {
 		bare_panic(s)
 	} $else {
+		// vfmt off
+		// Note: be carefull to not allocate here, avoid string interpolation
 		eprintln('================ V panic ================')
-		eprintln('   module: ${mod}')
-		eprintln(' function: ${fn_name}()')
-		eprintln('  message: ${s}')
-		eprintln('     file: ${file}:${line_no}')
-		eprintln('   v hash: ${@VCURRENTHASH}')
+		eprint('   module: '); eprintln(mod)
+		eprint(' function: '); eprint(fn_name); eprintln('()')
+		eprint('  message: '); eprintln(s)
+		eprint('     file: '); eprint(file); eprint(':');
+		C.fprintf(C.stderr, c'%d\n', line_no)		
+		eprint('   v hash: '); eprintln(@VCURRENTHASH)
 		eprintln('=========================================')
+		// vfmt on
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {
@@ -116,12 +120,14 @@ pub fn panic_result_not_set(s string) {
 // It also shows a backtrace on most platforms.
 @[noreturn]
 pub fn panic(s string) {
+	// Note: be careful to not use string interpolation here:
 	$if freestanding {
 		bare_panic(s)
 	} $else {
 		eprint('V panic: ')
 		eprintln(s)
-		eprintln('v hash: ${@VCURRENTHASH}')
+		eprint('v hash: ')
+		eprintln(@VCURRENTHASH)
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {
@@ -155,13 +161,13 @@ pub fn panic(s string) {
 pub fn c_error_number_str(errnum int) string {
 	mut err_msg := ''
 	$if freestanding {
-		err_msg = 'error ${errnum}'
+		err_msg = 'error ' + errnum.str()
 	} $else {
 		$if !vinix {
 			c_msg := C.strerror(errnum)
 			err_msg = string{
-				str: &u8(c_msg)
-				len: unsafe { C.strlen(c_msg) }
+				str:    &u8(c_msg)
+				len:    unsafe { C.strlen(c_msg) }
 				is_lit: 1
 			}
 		}
@@ -179,6 +185,10 @@ pub fn panic_error_number(basestr string, errnum int) {
 pub fn eprintln(s string) {
 	if s.str == 0 {
 		eprintln('eprintln(NIL)')
+		return
+	}
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
 		return
 	}
 	$if freestanding {
@@ -203,6 +213,10 @@ pub fn eprintln(s string) {
 pub fn eprint(s string) {
 	if s.str == 0 {
 		eprint('eprint(NIL)')
+		return
+	}
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 		return
 	}
 	$if freestanding {
@@ -267,6 +281,10 @@ pub fn unbuffer_stdout() {
 // print prints a message to stdout. Note that unlike `eprint`, stdout is not automatically flushed.
 @[manualfree]
 pub fn print(s string) {
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
+		return
+	}
 	$if android && !termux {
 		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
 	} $else $if ios {
@@ -287,6 +305,10 @@ pub fn println(s string) {
 		return
 	}
 	$if noprintln ? {
+		return
+	}
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
 		return
 	}
 	$if android && !termux {
@@ -355,6 +377,32 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	}
 }
 
+// v_memory_panic will be true, *only* when a call to malloc/realloc/vcalloc etc could not succeed.
+// In that situation, functions that are registered with at_exit(), should be able to limit their
+// activity accordingly, by checking this flag.
+// The V compiler itself for example registers a function with at_exit(), for showing timers.
+// Without a way to distinguish, that we are in a memory panic, that would just display a second panic,
+// which would be less clear to the user.
+__global v_memory_panic = false
+
+@[noreturn]
+fn _memory_panic(fname string, size isize) {
+	v_memory_panic = true
+	// Note: do not use string interpolation here at all, since string interpolation itself allocates
+	eprint(fname)
+	eprint('(')
+	$if freestanding || vinix {
+		eprint('size') // TODO: use something more informative here
+	} $else {
+		C.fprintf(C.stderr, c'%ld', size)
+	}
+	if size < 0 {
+		eprint(' < 0')
+	}
+	eprintln(')')
+	panic('memory allocation failure')
+}
+
 __global total_m = i64(0)
 // malloc dynamically allocates a `n` bytes block of memory on the heap.
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
@@ -368,7 +416,7 @@ pub fn malloc(n isize) &u8 {
 	}
 	vplayground_mlimit(n)
 	if n < 0 {
-		panic('malloc(${n} < 0)')
+		_memory_panic(@FN, n)
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -385,7 +433,7 @@ pub fn malloc(n isize) &u8 {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc(${n}) failed')
+		_memory_panic(@FN, n)
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
@@ -404,7 +452,7 @@ pub fn malloc_noscan(n isize) &u8 {
 	}
 	vplayground_mlimit(n)
 	if n < 0 {
-		panic('malloc_noscan(${n} < 0)')
+		_memory_panic(@FN, n)
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -425,7 +473,7 @@ pub fn malloc_noscan(n isize) &u8 {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc_noscan(${n}) failed')
+		_memory_panic(@FN, n)
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
@@ -456,8 +504,9 @@ pub fn malloc_uncollectable(n isize) &u8 {
 	}
 	vplayground_mlimit(n)
 	if n < 0 {
-		panic('malloc_uncollectable(${n} < 0)')
+		_memory_panic(@FN, n)
 	}
+
 	mut res := &u8(0)
 	$if prealloc {
 		return unsafe { prealloc_malloc(n) }
@@ -471,7 +520,7 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc_uncollectable(${n}) failed')
+		_memory_panic(@FN, n)
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
@@ -483,7 +532,7 @@ pub fn malloc_uncollectable(n isize) &u8 {
 
 // v_realloc resizes the memory block `b` with `n` bytes.
 // The `b byteptr` must be a pointer to an existing memory block
-// previously allocated with `malloc`, `v_calloc` or `vcalloc`.
+// previously allocated with `malloc` or `vcalloc`.
 // Please, see also realloc_data, and use it instead if possible.
 @[unsafe]
 pub fn v_realloc(b &u8, n isize) &u8 {
@@ -503,14 +552,14 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 		new_ptr = unsafe { C.realloc(b, n) }
 	}
 	if new_ptr == 0 {
-		panic('realloc(${n}) failed')
+		_memory_panic(@FN, n)
 	}
 	return new_ptr
 }
 
 // realloc_data resizes the memory block pointed by `old_data` to `new_size`
 // bytes. `old_data` must be a pointer to an existing memory block, previously
-// allocated with `malloc`, `v_calloc` or `vcalloc`, of size `old_data`.
+// allocated with `malloc` or `vcalloc`, of size `old_data`.
 // realloc_data returns a pointer to the new location of the block.
 // Note: if you know the old data size, it is preferable to call `realloc_data`,
 // instead of `v_realloc`, at least during development, because `realloc_data`
@@ -549,21 +598,21 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 		nptr = unsafe { C.realloc(old_data, new_size) }
 	}
 	if nptr == 0 {
-		panic('realloc_data(${old_data}, ${old_size}, ${new_size}) failed')
+		_memory_panic(@FN, isize(new_size))
 	}
 	return nptr
 }
 
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
-// Unlike `v_calloc` vcalloc checks for negative values given in `n`.
+// vcalloc checks for negative values given in `n`.
 pub fn vcalloc(n isize) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc %6d total %10d\n', n, total_m)
 	}
 	if n < 0 {
-		panic('calloc(${n} < 0)')
+		_memory_panic(@FN, n)
 	} else if n == 0 {
 		return &u8(0)
 	}
@@ -588,7 +637,7 @@ pub fn vcalloc_noscan(n isize) &u8 {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
 		if n < 0 {
-			panic('calloc_noscan(${n} < 0)')
+			_memory_panic(@FN, n)
 		}
 		return $if gcboehm_opt ? {
 			unsafe { &u8(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }

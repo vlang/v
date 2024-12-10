@@ -131,7 +131,7 @@ fn test_poly1305_with_smoked_messages_are_working_normally() ! {
 // This is a test case from RFC 8439 vector test data.
 // There are 12 cases provided.
 fn test_poly1305_core_rfc_vector_tests() ! {
-	for i, c in poly1305.rfc_test_cases {
+	for i, c in rfc_test_cases {
 		mut key := hex.decode(c.key) or { panic(err.msg()) }
 		msg := hex.decode(c.msg) or { panic(err.msg()) }
 		expected_tag := hex.decode(c.tag) or { panic(err.msg()) }
@@ -158,7 +158,7 @@ fn test_poly1305_core_rfc_vector_tests() ! {
 }
 
 fn test_poly1305_function_based_core_functionality() ! {
-	for i, c in poly1305.rfc_test_cases {
+	for i, c in rfc_test_cases {
 		mut key := hex.decode(c.key) or { panic(err.msg()) }
 		mut msg := hex.decode(c.msg) or { panic(err.msg()) }
 
@@ -178,7 +178,7 @@ fn test_poly1305_function_based_core_functionality() ! {
 
 // its comes from golang poly1305 vector test, except minus with changed internal state test
 fn test_poly1305_smoked_data_vectors() ! {
-	for i, c in poly1305.testdata {
+	for i, c in testdata {
 		mut key := hex.decode(c.key)!
 		mut msg := hex.decode(c.msg)!
 		expected_tag := hex.decode(c.tag)!
@@ -704,27 +704,27 @@ const testdata = [
 	// deserialized from the state correctly.
 	// THis test disabled, because of its different internal state representation.
 	TestCase{
-		key: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		key:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
 		state: '0000000000000007fffffffffffffffffffffffffffffff5' // 2(2¹³⁰ - 5) - 1
-		msg: ''
-		tag: 'f9ffffffffffffffffffffffffffffff'
+		msg:   ''
+		tag:   'f9ffffffffffffffffffffffffffffff'
 	},
 	TestCase{
-		key: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		key:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
 		state: '000000000000000700000000000000000000000000000000' // 2¹³⁰
-		msg: ''
-		tag: '04000000000000000000000000000000'
+		msg:   ''
+		tag:   '04000000000000000000000000000000'
 	},
 	TestCase{
-		key: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		key:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
 		state: '0000000000000007fffffffffffffffffffffffffffffff5' // 2(2¹³⁰ - 5) - 1
-		msg: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
-		tag: '1b000e5e5dfe8f5c4da11dd17b7654e7'
+		msg:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		tag:   '1b000e5e5dfe8f5c4da11dd17b7654e7'
 	},
 	TestCase{
-		key: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		key:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
 		state: '000000000000000700000000000000000000000000000001' // 2¹³⁰
-		msg: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
-		tag: '380859a4a5860b0e0967edfd711d37de'
+		msg:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		tag:   '380859a4a5860b0e0967edfd711d37de'
 	},
 ]

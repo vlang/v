@@ -26,9 +26,9 @@ pub fn new_ofb(b Block, iv []u8) Ofb {
 		panic('cipher.new_ofb: IV length must be equal block size')
 	}
 	mut x := Ofb{
-		b: b
-		out: []u8{len: b.block_size}
-		next: []u8{len: b.block_size}
+		b:        b
+		out:      []u8{len: b.block_size}
+		next:     []u8{len: b.block_size}
 		out_used: block_size
 	}
 	copy(mut x.next, iv)

@@ -5,7 +5,7 @@ import net.http
 import time
 import os
 
-const port = 13002
+const port = 23002
 
 const localserver = 'http://127.0.0.1:${port}'
 
@@ -73,7 +73,7 @@ fn test_large_request_header() {
 	str := buf.bytestr()
 	// make 1 header longer than vwebs max read limit
 	mut x := http.fetch(http.FetchConfig{
-		url: localserver
+		url:    localserver
 		header: http.new_custom_header_from_map({
 			'X-Overflow-Header': str
 		})!
@@ -86,11 +86,11 @@ fn test_bigger_content_length() {
 	data := '123456789'
 	mut x := http.fetch(http.FetchConfig{
 		method: .post
-		url: '${localserver}/post_request'
+		url:    '${localserver}/post_request'
 		header: http.new_header_from_map({
 			.content_length: '10'
 		})
-		data: data
+		data:   data
 	})!
 
 	// Content-length is larger than the data sent, so the request should timeout
@@ -101,11 +101,11 @@ fn test_smaller_content_length() {
 	data := '123456789'
 	mut x := http.fetch(http.FetchConfig{
 		method: .post
-		url: '${localserver}/post_request'
+		url:    '${localserver}/post_request'
 		header: http.new_header_from_map({
 			.content_length: '5'
 		})
-		data: data
+		data:   data
 	})!
 
 	assert x.status() == .bad_request

@@ -58,7 +58,7 @@ fn executable_fallback() string {
 		other_separator := if path_separator == '/' { '\\' } else { '/' }
 		rexepath := exepath.replace(other_separator, path_separator)
 		if rexepath.contains(path_separator) {
-			exepath = join_path_single(os.wd_at_startup, exepath)
+			exepath = join_path_single(wd_at_startup, exepath)
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
 			foundpath := find_abs_path_of_executable(exepath) or { '' }
@@ -371,25 +371,14 @@ pub fn get_lines() []string {
 // get_lines_joined returns a string of the values read from stdin.
 // reading is stopped when an empty line is read.
 pub fn get_lines_joined() string {
-	mut line := ''
-	mut inputstr := ''
-	for {
-		line = get_line()
-		if line.len <= 0 {
-			break
-		}
-		line = line.trim_space()
-		inputstr += line
-	}
-	return inputstr
+	return get_lines().join('')
 }
 
-// get_raw_lines_joined reads *all* input lines from stdin.
-// It returns them as one large string. Note: unlike os.get_lines_joined,
-// empty lines (that contain only `\r\n` or `\n`), will be present in
-// the output.
+// get_raw_lines reads *all* input lines from stdin, as an array of strings.
+// Note: unlike os.get_lines, empty lines (that contain only `\r\n` or `\n`),
+// will be present in the output.
 // Reading is stopped, only on EOF of stdin.
-pub fn get_raw_lines_joined() string {
+pub fn get_raw_lines() []string {
 	mut line := ''
 	mut lines := []string{}
 	for {
@@ -399,8 +388,39 @@ pub fn get_raw_lines_joined() string {
 		}
 		lines << line
 	}
-	res := lines.join('')
-	return res
+	return lines
+}
+
+// get_raw_lines_joined reads *all* input lines from stdin.
+// It returns them as one large string. Note: unlike os.get_lines_joined,
+// empty lines (that contain only `\r\n` or `\n`), will be present in
+// the output.
+// Reading is stopped, only on EOF of stdin.
+pub fn get_raw_lines_joined() string {
+	return get_raw_lines().join('')
+}
+
+// get_trimmed_lines reads *all* input lines from stdin, as an array of strings.
+// The ending new line characters \r and \n, are removed from each line.
+// Note: unlike os.get_lines, empty lines will be present in the output as empty strings ''.
+// Reading is stopped, only on EOF of stdin.
+pub fn get_trimmed_lines() []string {
+	mut lines := []string{}
+	for {
+		mut line := get_raw_line()
+		if line.len <= 0 {
+			break
+		}
+		mut end := line.len
+		if end > 0 && line[end - 1] == `\n` {
+			end--
+		}
+		if end > 0 && line[end - 1] == `\r` {
+			end--
+		}
+		lines << line#[..end]
+	}
+	return lines
 }
 
 // user_os returns the current user's operating system name.
@@ -800,34 +820,80 @@ fn create_folder_when_it_does_not_exist(path string) {
 	if is_dir(path) || is_link(path) {
 		return
 	}
-	mkdir_all(path, mode: 0o700) or {
-		if is_dir(path) || is_link(path) {
-			// A race had been won, and the `path` folder had been created,
-			// by another concurrent V executable, since the folder now exists,
-			// but it did not right before ... we will just use it too.
-			return
+	mut error_msg := ''
+	for _ in 0 .. 10 {
+		mkdir_all(path, mode: 0o700) or {
+			if is_dir(path) || is_link(path) {
+				// A race had been won, and the `path` folder had been created, by another concurrent V program.
+				// We are fine with that, since the folder now exists, even though this process did not create it.
+				// We can just use it too  ¯\_(ツ)_/¯ .
+				return
+			}
+			error_msg = err.msg()
+			sleep_ms(1) // wait a bit, before a retry, to let the other process finish its folder creation
+			continue
 		}
-		panic(err)
+		break
 	}
+	if is_dir(path) || is_link(path) {
+		return
+	}
+	// There was something wrong, that could not be solved, by just retrying
+	// There is no choice, but to report it back :-\
+	panic(error_msg)
 }
 
-// cache_dir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
-pub fn cache_dir() string {
-	// See: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
-	// There is a single base directory relative to which user-specific non-essential
-	// (cached) data should be written. This directory is defined by the environment
-	// variable $XDG_CACHE_HOME.
-	// $XDG_CACHE_HOME defines the base directory relative to which user specific
-	// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
-	// or empty, a default equal to $HOME/.cache should be used.
-	xdg_cache_home := getenv('XDG_CACHE_HOME')
-	cdir := if xdg_cache_home.len > 0 {
-		xdg_cache_home
+fn xdg_home_folder(ename string, lpath string) string {
+	xdg_folder := getenv(ename)
+	dir := if xdg_folder != '' {
+		xdg_folder
 	} else {
-		join_path_single(home_dir(), '.cache')
+		join_path_single(home_dir(), lpath)
 	}
-	create_folder_when_it_does_not_exist(cdir)
-	return cdir
+	create_folder_when_it_does_not_exist(dir)
+	return dir
+}
+
+// cache_dir returns the path to a *writable* user-specific folder, suitable for writing non-essential data.
+// See: https://specifications.freedesktop.org/basedir-spec/latest/ .
+// There is a single base directory relative to which user-specific non-essential
+// (cached) data should be written. This directory is defined by the environment
+// variable $XDG_CACHE_HOME.
+// $XDG_CACHE_HOME defines the base directory relative to which user specific
+// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
+// or empty, a default equal to $HOME/.cache should be used.
+pub fn cache_dir() string {
+	return xdg_home_folder('XDG_CACHE_HOME', '.cache')
+}
+
+// data_dir returns the path to a *writable* user-specific folder, suitable for writing application data.
+// See: https://specifications.freedesktop.org/basedir-spec/latest/ .
+// There is a single base directory relative to which user-specific data files should be written.
+// This directory is defined by the environment variable $XDG_DATA_HOME.
+// If $XDG_DATA_HOME is either not set or empty, a default equal to $HOME/.local/share should be used.
+pub fn data_dir() string {
+	return xdg_home_folder('XDG_DATA_HOME', '.local/share')
+}
+
+// state_dir returns a *writable* folder user-specific folder, suitable for storing state data,
+// that should persist between (application) restarts, but that is not important or portable
+// enough to the user that it should be stored in os.data_dir() .
+// See: https://specifications.freedesktop.org/basedir-spec/latest/ .
+// $XDG_STATE_HOME defines the base directory relative to which user-specific state files should be stored.
+// If $XDG_STATE_HOME is either not set or empty, a default equal to $HOME/.local/state should be used.
+// It may contain:
+// * actions history (logs, history, recently used files, …)
+// * current state of the application that can be reused on a restart (view, layout, open files, undo history, …)
+pub fn state_dir() string {
+	return xdg_home_folder('XDG_STATE_HOME', '.local/state')
+}
+
+// local_bin_dir returns `$HOME/.local/bin`, which is *guaranteed* to be in the PATH of the current user, for
+// distributions, following the XDG spec from https://specifications.freedesktop.org/basedir-spec/latest/ :
+// > User-specific executable files may be stored in $HOME/.local/bin .
+// > Distributions should ensure this directory shows up in the UNIX $PATH environment variable, at an appropriate place.
+pub fn local_bin_dir() string {
+	return xdg_home_folder('LOCAL_BIN_DIR', '.local/bin') // provides a way to test by setting an env variable
 }
 
 // temp_dir returns the path to a folder, that is suitable for storing temporary files.

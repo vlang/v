@@ -174,24 +174,24 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 	}
 	pos := first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
 	return ast.ArrayInit{
-		is_fixed: is_fixed
-		has_val: has_val
-		mod: p.mod
-		elem_type: elem_type
-		typ: array_type
-		alias_type: alias_array_type
-		exprs: exprs
-		ecmnts: ecmnts
-		pre_cmnts: pre_cmnts
-		pos: pos
+		is_fixed:      is_fixed
+		has_val:       has_val
+		mod:           p.mod
+		elem_type:     elem_type
+		typ:           array_type
+		alias_type:    alias_array_type
+		exprs:         exprs
+		ecmnts:        ecmnts
+		pre_cmnts:     pre_cmnts
+		pos:           pos
 		elem_type_pos: elem_type_pos
-		has_len: has_len
-		len_expr: len_expr
-		has_cap: has_cap
-		has_init: has_init
-		has_index: has_index
-		cap_expr: cap_expr
-		init_expr: init_expr
+		has_len:       has_len
+		len_expr:      len_expr
+		has_cap:       has_cap
+		has_init:      has_init
+		has_index:     has_index
+		cap_expr:      cap_expr
+		init_expr:     init_expr
 	}
 }
 
@@ -239,31 +239,31 @@ fn (mut p Parser) map_init() ast.MapInit {
 		comments << p.eat_comments()
 	}
 	return ast.MapInit{
-		keys: keys
-		vals: vals
-		pos: first_pos.extend_with_last_line(p.tok.pos(), p.tok.line_nr)
-		comments: comments
-		pre_cmnts: pre_cmnts
-		has_update_expr: has_update_expr
-		update_expr: update_expr
-		update_expr_pos: update_expr_pos
+		keys:                 keys
+		vals:                 vals
+		pos:                  first_pos.extend_with_last_line(p.tok.pos(), p.tok.line_nr)
+		comments:             comments
+		pre_cmnts:            pre_cmnts
+		has_update_expr:      has_update_expr
+		update_expr:          update_expr
+		update_expr_pos:      update_expr_pos
 		update_expr_comments: update_expr_comments
 	}
 }
 
 fn (mut p Parser) scope_register_index() {
 	p.scope.objects['index'] = ast.Var{ // override index variable if it already exist, else create index variable
-		name: 'index'
-		pos: p.tok.pos()
-		typ: ast.int_type
-		is_mut: false
+		name:    'index'
+		pos:     p.tok.pos()
+		typ:     ast.int_type
+		is_mut:  false
 		is_used: false
 	}
 	p.scope.objects['it'] = ast.Var{ // it is now deprecated, will be removed in future stable release
-		name: 'it'
-		pos: p.tok.pos()
-		typ: ast.int_type
-		is_mut: false
+		name:    'it'
+		pos:     p.tok.pos()
+		typ:     ast.int_type
+		is_mut:  false
 		is_used: false
 	}
 }

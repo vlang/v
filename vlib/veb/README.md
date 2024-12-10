@@ -14,7 +14,7 @@ features.
 
 ## Quick Start
 
-Run your veb app with a live reload via `v -d vweb_livereload watch run .`
+Run your veb app with a live reload via `v -d veb_livereload watch run .`
 
 Now modifying any file in your web app (whether it's a .v file with the backend logic
 or a compiled .html template file) will result in an instant refresh of your app
@@ -165,7 +165,7 @@ After it is defined in the attribute, you have to add it as a function parameter
 
 ```v ignore
 // V will pass the parameter 'user' as a string
-          vvvv
+           vvvv
 @['/hello/:user']                             vvvv
 pub fn (app &App) hello_user(mut ctx Context, user string) veb.Result {
 	return ctx.text('Hello ${user}')
@@ -393,7 +393,7 @@ have to add your MIME type to `.static_mime_types` yourself.
 
 **Example:**
 
-Let's say you have the following file structure:
+Given the following file structure:
 
 ```
 .
@@ -499,7 +499,7 @@ fn main() {
 	mut app := &App{}
 
 	// register middleware for all routes
-	app.use(handler: only_cookie_route)
+	app.use(handler: check_cookie_policy)
 
 	// Pass the App and context type and start the web server on port 8080
 	veb.run[App, Context](mut app, 8080)

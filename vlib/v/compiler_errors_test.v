@@ -8,6 +8,7 @@ import benchmark
 
 const skip_files = [
 	'non_existing.vv', // minimize commit diff churn, do not remove
+	'vlib/v/checker/tests/unused_param.vv',
 ]
 
 const skip_on_cstrict = [
@@ -19,6 +20,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
 	'vlib/v/checker/tests/vweb_routing_checks.vv',
 	'vlib/v/checker/tests/orm_op_with_option_and_none.vv',
+	'vlib/v/checker/tests/orm_unused_var.vv',
 	'vlib/v/tests/skip_unused/gg_code.vv',
 ]
 
@@ -28,6 +30,7 @@ const skip_on_ci_musl = [
 
 const vexe = os.getenv('VEXE')
 
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 const show_cmd = os.getenv('VTEST_SHOW_CMD') != ''
@@ -87,7 +90,7 @@ fn test_all() {
 	global_run_dir := '${checker_dir}/globals_run'
 	run_dir := '${checker_dir}/run'
 	skip_unused_dir := 'vlib/v/tests/skip_unused'
-	//
+
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option'))
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
@@ -99,7 +102,7 @@ fn test_all() {
 	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir,
 		false)
 	mut tasks := Tasks{
-		vexe: vexe
+		vexe:  vexe
 		label: 'all tests'
 	}
 	tasks.add('', parser_dir, '', '.out', parser_tests, false)
@@ -115,12 +118,12 @@ fn test_all() {
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
 		false)
 	tasks.run()
-	//
+
 	if os.user_os() == 'linux' {
 		mut skip_unused_tasks := Tasks{
-			vexe: vexe
+			vexe:          vexe
 			parallel_jobs: 1
-			label: '-skip-unused tests'
+			label:         '-skip-unused tests'
 		}
 		skip_unused_tasks.add('', skip_unused_dir, 'run', '.run.out', skip_unused_dir_tests,
 			false)
@@ -128,15 +131,15 @@ fn test_all() {
 			'.skip_unused.run.out', skip_unused_dir_tests, false)
 		skip_unused_tasks.run()
 	}
-	//
+
 	if github_job == 'ubuntu-tcc' {
 		// This is done with tcc only, because the error output is compiler specific.
 		// Note: the tasks should be run serially, since they depend on
 		// setting and using environment variables.
 		mut cte_tasks := Tasks{
-			vexe: vexe
+			vexe:          vexe
 			parallel_jobs: 1
-			label: 'comptime env tests'
+			label:         'comptime env tests'
 		}
 		cte_dir := '${checker_dir}/comptime_env'
 		files := get_tests_in_dir(cte_dir, false)
@@ -148,9 +151,9 @@ fn test_all() {
 		cte_tasks.run()
 	}
 	mut ct_tasks := Tasks{
-		vexe: vexe
+		vexe:          vexe
 		parallel_jobs: 1
-		label: 'comptime define tests'
+		label:         'comptime define tests'
 	}
 	ct_tasks.add_checked_run('-d mysymbol run', '.mysymbol.run.out', [
 		'custom_comptime_define_error.vv',
@@ -193,14 +196,14 @@ fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, vop
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		tasks.all << TaskDescription{
-			evars: evars
-			vexe: if custom_vexe != '' { custom_vexe } else { tasks.vexe }
-			dir: dir
-			voptions: voptions
+			evars:            evars
+			vexe:             if custom_vexe != '' { custom_vexe } else { tasks.vexe }
+			dir:              dir
+			voptions:         voptions
 			result_extension: result_extension
-			path: path
-			is_module: is_module
-			max_ntries: max_ntries
+			path:             path
+			is_module:        is_module
+			max_ntries:       max_ntries
 		}
 	}
 }
@@ -419,8 +422,8 @@ fn diff_content(expected string, found string) {
 		println('expected bytes:\n${chunka(expected.bytes(), 25)}')
 		println('   found bytes:\n${chunka(found.bytes(), 25)}')
 		println('============')
-		println('  expected hex:\n${chunks(expected.bytes().hex(), 80)}')
-		println('     found hex:\n${chunks(found.bytes().hex(), 80)}')
+		println('  expected hex:\n${chunks(expected.hex(), 80)}')
+		println('     found hex:\n${chunks(found.hex(), 80)}')
 	}
 	println('============\n')
 }

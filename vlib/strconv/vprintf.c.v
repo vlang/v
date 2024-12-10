@@ -293,12 +293,12 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					}
 				}
 				tmp := format_dec_old(d1,
-					pad_ch: pad_ch
-					len0: len0
-					len1: 0
-					positive: positive
+					pad_ch:    pad_ch
+					len0:      len0
+					len1:      0
+					positive:  positive
 					sign_flag: sign
-					align: align
+					align:     align
 				)
 				res.write_string(tmp)
 				unsafe { tmp.free() }
@@ -344,12 +344,12 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				}
 
 				tmp := format_dec_old(d1,
-					pad_ch: pad_ch
-					len0: len0
-					len1: 0
-					positive: positive
+					pad_ch:    pad_ch
+					len0:      len0
+					len1:      0
+					positive:  positive
 					sign_flag: sign
-					align: align
+					align:     align
 				)
 				res.write_string(tmp)
 				unsafe { tmp.free() }
@@ -403,12 +403,12 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				}
 
 				tmp := format_str(s,
-					pad_ch: pad_ch
-					len0: len0
-					len1: 0
-					positive: true
+					pad_ch:    pad_ch
+					len0:      len0
+					len1:      0
+					positive:  true
 					sign_flag: false
-					align: align
+					align:     align
 				)
 				res.write_string(tmp)
 				unsafe { tmp.free() }
@@ -427,12 +427,12 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					positive := x >= f64(0.0)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
 					s := format_fl_old(f64(x),
-						pad_ch: pad_ch
-						len0: len0
-						len1: len1
-						positive: positive
+						pad_ch:    pad_ch
+						len0:      len0
+						len1:      len1
+						positive:  positive
 						sign_flag: sign
-						align: align
+						align:     align
 					)
 					if ch == `F` {
 						tmp := s.to_upper()
@@ -454,12 +454,12 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					positive := x >= f64(0.0)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
 					s := format_es_old(f64(x),
-						pad_ch: pad_ch
-						len0: len0
-						len1: len1
-						positive: positive
+						pad_ch:    pad_ch
+						len0:      len0
+						len1:      len1
+						positive:  positive
 						sign_flag: sign
-						align: align
+						align:     align
 					)
 					if ch == `E` {
 						tmp := s.to_upper()
@@ -486,12 +486,12 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 						len1 = if len1 >= 0 { len1 + 1 } else { def_len1 }
 						tmp := s
 						s = format_fl_old(x,
-							pad_ch: pad_ch
-							len0: len0
-							len1: len1
-							positive: positive
-							sign_flag: sign
-							align: align
+							pad_ch:       pad_ch
+							len0:         len0
+							len1:         len1
+							positive:     positive
+							sign_flag:    sign
+							align:        align
 							rm_tail_zero: true
 						)
 						unsafe { tmp.free() }
@@ -499,12 +499,12 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 						len1 = if len1 >= 0 { len1 + 1 } else { def_len1 }
 						tmp := s
 						s = format_es_old(x,
-							pad_ch: pad_ch
-							len0: len0
-							len1: len1
-							positive: positive
-							sign_flag: sign
-							align: align
+							pad_ch:       pad_ch
+							len0:         len0
+							len1:         len1
+							positive:     positive
+							sign_flag:    sign
+							align:        align
 							rm_tail_zero: true
 						)
 						unsafe { tmp.free() }
@@ -529,12 +529,12 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				s1 := unsafe { *(&string(pt[p_index])) }
 				pad_ch = ` `
 				tmp := format_str(s1,
-					pad_ch: pad_ch
-					len0: len0
-					len1: 0
-					positive: true
+					pad_ch:    pad_ch
+					len0:      len0
+					len1:      0
+					positive:  true
 					sign_flag: false
-					align: align
+					align:     align
 				)
 				res.write_string(tmp)
 				unsafe { tmp.free() }

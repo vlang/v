@@ -11,7 +11,12 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	defer {
 		util.timing_measure_cumulative(@METHOD)
 	}
-	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node.name)
+	if node.language in [.c, .js] && node.generic_types.len > 0 {
+		lang := if node.language == .c { 'C' } else { 'JS' }
+		c.error('${lang} structs cannot be declared as generic', node.pos)
+	}
+	node_name := if node.scoped_name != '' { node.scoped_name } else { node.name }
+	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node_name)
 	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
 		for mut symfield in struct_sym.info.fields {
@@ -28,11 +33,11 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			embed_sym := c.table.sym(embed.typ)
 			if embed_sym.info is ast.Alias {
 				parent_sym := c.table.sym(embed_sym.info.parent_type)
-				if parent_sym.kind != .struct_ {
+				if parent_sym.kind != .struct {
 					c.error('`${embed_sym.name}` (alias of `${parent_sym.name}`) is not a struct',
 						embed.pos)
 				}
-			} else if embed_sym.kind != .struct_ {
+			} else if embed_sym.kind != .struct {
 				c.error('`${embed_sym.name}` is not a struct', embed.pos)
 			} else if (embed_sym.info as ast.Struct).is_heap && !embed.typ.is_ptr() {
 				struct_sym.info.is_heap = true
@@ -158,7 +163,11 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if !c.ensure_type_exists(field.typ, field.type_pos) {
 				continue
 			}
-			if !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos) {
+			if !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos, c.table.final_sym(field.typ).kind in [
+				.array,
+				.array_fixed,
+				.map,
+			], field.typ.has_flag(.generic)) {
 				continue
 			}
 			if field.typ.has_flag(.generic) {
@@ -168,8 +177,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
 			sym := c.table.sym(field.typ)
+			field_name, field_name_len := field.name, field.name.len
 			for j in 0 .. i {
-				if field.name == node.fields[j].name {
+				if field_name_len == node.fields[j].name.len && field_name == node.fields[j].name {
 					c.error('field name `${field.name}` duplicate', field.pos)
 				}
 			}
@@ -182,7 +192,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 			}
 			match sym.kind {
-				.struct_ {
+				.struct {
 					info := sym.info as ast.Struct
 					if info.is_heap && !field.typ.is_ptr() {
 						struct_sym.info.is_heap = true
@@ -197,7 +207,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				.multi_return {
 					c.error('cannot use multi return as field type', field.type_pos)
 				}
-				.none_ {
+				.none {
 					c.error('cannot use `none` as field type', field.type_pos)
 				}
 				.map {
@@ -230,12 +240,12 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						}
 					}
 				}
-				interface_implemented := sym.kind == .interface_
+				interface_implemented := sym.kind == .interface
 					&& c.type_implements(field.default_expr_typ, field.typ, field.pos)
 				c.check_expected(field.default_expr_typ, field.typ) or {
-					if sym.kind == .interface_ && interface_implemented {
+					if sym.kind == .interface && interface_implemented {
 						if !c.inside_unsafe && !field.default_expr_typ.is_any_kind_of_pointer() {
-							if c.table.sym(field.default_expr_typ).kind != .interface_ {
+							if c.table.sym(field.default_expr_typ).kind != .interface {
 								c.mark_as_referenced(mut &node.fields[i].default_expr,
 									true)
 							}
@@ -326,6 +336,41 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		if node.generic_types.len == 0 && has_generic_types {
 			c.error('generic struct `${node.name}` declaration must specify the generic type names, e.g. ${node.name}[T]',
 				node.pos)
+		}
+	}
+	// Handle `implements` if it's present
+	if node.is_implements {
+		// XTODO2
+		// cgen error if I use `println(sym)` without handling the option with `or{}`
+		struct_type := c.table.find_type(node.name) // or { panic(err) }
+		mut names_used := []string{}
+		for t in node.implements_types {
+			t_sym := c.table.sym(t.typ)
+			if t_sym.info is ast.Interface {
+				if t_sym.info.is_generic {
+					itype_name := c.table.type_to_str(t.typ)
+					if !itype_name.contains('[') {
+						c.error('missing generic type on ${t_sym.name}', t.pos)
+					}
+					if itype_name.contains('<') {
+						struct_generic_letters := node.generic_types.map(c.table.type_to_str(it))
+						unknown_letters := itype_name.all_after('<').all_before('>').split(',').filter(it !in struct_generic_letters)
+						if unknown_letters.len > 0 {
+							c.error('unknown generic type ${unknown_letters.first()}',
+								t.pos)
+						}
+					}
+				}
+				variant_name := c.table.type_to_str(t.typ)
+				if variant_name in names_used {
+					c.error('struct type ${node.name} cannot implement interface `${t_sym.name} more than once`',
+						t.pos)
+				}
+				names_used << variant_name
+			} else {
+				c.error('`${t_sym.name}` is not an interface type', t.pos)
+			}
+			c.type_implements(struct_type, t.typ, node.pos)
 		}
 	}
 }
@@ -452,6 +497,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				c.cur_struct_concrete_types = old_cur_struct_concrete_types
 			}
 		}
+		if struct_sym.info.is_union && node.init_fields.len > 1 {
+			c.error('union `${struct_sym.name}` can have only one field initialised',
+				node.pos)
+		}
 	} else if struct_sym.info is ast.Alias {
 		parent_sym := c.table.sym(struct_sym.info.parent_type)
 		// e.g. ´x := MyMapAlias{}´, should be a cast to alias type ´x := MyMapAlias(map[...]...)´
@@ -467,27 +516,25 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	}
 	// register generic struct type when current fn is generic fn
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0 {
-		c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+		c.table.unwrap_generic_type_ex(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types,
+			true)
 	}
 	if !is_field_zero_struct_init {
 		c.ensure_type_exists(node.typ, node.pos)
 	}
 	type_sym := c.table.sym(node.typ)
-	if !c.inside_unsafe && type_sym.kind == .sum_type {
-		c.note('direct sum type init (`x := SumType{}`) will be removed soon', node.pos)
-	}
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
 		&& c.table.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index_u8(`.`)
 		first_letter := type_sym.name[pos + 1]
-		if !first_letter.is_capital() && (type_sym.kind != .struct_
-			|| !(type_sym.info is ast.Struct && type_sym.info.is_anon))
+		if !first_letter.is_capital()
+			&& (type_sym.kind != .struct || !(type_sym.info is ast.Struct && type_sym.info.is_anon))
 			&& type_sym.kind != .placeholder {
 			c.error('cannot initialize builtin type `${type_sym.name}`', node.pos)
 		}
-		if type_sym.kind == .enum_ && !c.pref.translated && !c.file.is_translated {
+		if type_sym.kind == .enum && !c.pref.translated && !c.file.is_translated {
 			c.error('cannot initialize enums', node.pos)
 		}
 	}
@@ -496,7 +543,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		c.error('cast to sum type using `${type_sym.name}(${sexpr})` not `${type_sym.name}{${sexpr}}`',
 			node.pos)
 	}
-	if type_sym.kind == .interface_ && type_sym.language != .js {
+	if type_sym.kind == .interface && type_sym.language != .js {
 		c.error('cannot instantiate interface `${type_sym.name}`', node.pos)
 	}
 	if type_sym.info is ast.Alias {
@@ -567,7 +614,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			}
 		}
 		// string & array are also structs but .kind of string/array
-		.struct_, .string, .array, .alias {
+		.struct, .string, .array, .alias {
 			mut info := ast.Struct{}
 			if type_sym.kind == .alias {
 				info_t := type_sym.info as ast.Alias
@@ -577,7 +624,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					return ast.void_type
 				}
 				match sym.kind {
-					.struct_ {
+					.struct {
 						info = sym.info as ast.Struct
 					}
 					.array, .array_fixed {
@@ -636,8 +683,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						continue
 					}
 				}
-				mut got_type := ast.Type(0)
-				mut exp_type := ast.Type(0)
+				mut got_type := ast.no_type
+				mut exp_type := ast.no_type
 				inited_fields << field_name
 				exp_type = field_info.typ
 				exp_type_sym := c.table.sym(exp_type)
@@ -661,10 +708,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					c.check_expr_option_or_result_call(init_field.expr, init_field.typ)
 				}
 				if exp_type.has_flag(.option) && got_type.is_ptr() && !(exp_type.is_ptr()
-					&& exp_type_sym.kind == .struct_) {
+					&& exp_type_sym.kind == .struct) {
 					c.error('cannot assign a pointer to option struct field', init_field.pos)
 				}
-				if exp_type_sym.kind == .voidptr && got_type_sym.kind == .struct_
+				if exp_type_sym.kind == .voidptr && got_type_sym.kind == .struct
 					&& !got_type.is_ptr() {
 					c.error('allocate `${got_type_sym.name}` on the heap for use in other functions',
 						init_field.pos)
@@ -687,21 +734,29 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							init_field.expr.pos())
 						c.note('an implicit clone of the slice was done here', init_field.expr.pos())
 						mut right := ast.CallExpr{
-							name: 'clone'
-							left: init_field.expr
-							left_type: got_type
-							is_method: true
-							receiver_type: got_type.ref()
-							return_type: got_type
-							scope: c.fn_scope
+							name:           'clone'
+							left:           init_field.expr
+							left_type:      got_type
+							is_method:      true
+							receiver_type:  got_type.ref()
+							return_type:    got_type
+							scope:          c.fn_scope
+							is_return_used: true
 						}
 						got_type = c.expr(mut right)
 						node.init_fields[i].expr = right
 					}
+					// disallow `mut a: b`, when b is const array
+					if field_info.is_mut
+						&& (init_field.expr is ast.Ident && init_field.expr.obj is ast.ConstField)
+						&& !c.inside_unsafe {
+						c.error('cannot assign a const array to mut struct field, call `clone` method (or use `unsafe`)',
+							init_field.expr.pos())
+					}
 				}
-				if exp_type_sym.kind == .interface_ {
+				if exp_type_sym.kind == .interface {
 					if c.type_implements(got_type, exp_type, init_field.pos) {
-						if !c.inside_unsafe && got_type_sym.kind != .interface_
+						if !c.inside_unsafe && got_type_sym.kind != .interface
 							&& !got_type.is_any_kind_of_pointer() {
 							c.mark_as_referenced(mut &init_field.expr, true)
 						}
@@ -724,7 +779,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						&& !got_type.is_any_kind_of_pointer() && !exp_type.has_flag(.option)
 						&& !(init_field.expr is ast.UnsafeExpr && init_field.expr.expr.str() == '0') {
 						if init_field.expr.str() == '0' {
-							c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
+							c.error('assigning `0` to a reference field is only allowed in `unsafe` blocks',
 								init_field.pos)
 						} else {
 							c.error('reference field must be initialized with reference',
@@ -747,7 +802,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					c.fail_if_stack_struct_action_outside_unsafe(mut init_field.expr,
 						'assigned')
 				}
-				if field_info.typ in ast.unsigned_integer_type_idxs
+				if c.table.unaliased_type(exp_type) in ast.unsigned_integer_type_idxs
 					&& mut init_field.expr is ast.IntegerLiteral
 					&& (init_field.expr as ast.IntegerLiteral).val[0] == `-` {
 					c.error('cannot assign negative value to unsigned integer type', init_field.expr.pos)
@@ -760,156 +815,32 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 
 				// all the fields of initialized embedded struct are ignored, they are considered initialized
 				sym := c.table.sym(init_field.typ)
-				if init_field.name != '' && init_field.name[0].is_capital() && sym.kind == .struct_
-					&& sym.language == .v {
+				if init_field.is_embed && sym.kind == .struct && sym.language == .v {
 					struct_fields := c.table.struct_fields(sym)
 					for struct_field in struct_fields {
 						inited_fields << struct_field.name
 					}
 				}
 				expected_type_sym := c.table.final_sym(init_field.expected_type)
-				if expected_type_sym.kind in [.string, .array, .map, .array_fixed, .chan, .struct_]
+				if expected_type_sym.kind in [.string, .array, .map, .array_fixed, .chan, .struct]
 					&& init_field.expr.is_nil() && !init_field.expected_type.is_ptr()
 					&& mut init_field.expr is ast.UnsafeExpr {
 					c.error('cannot assign `nil` to struct field `${init_field.name}` with type `${expected_type_sym.name}`',
 						init_field.expr.pos.extend(init_field.expr.expr.pos()))
 				}
 			}
-			// Check uninitialized refs/sum types
-			// The variable `fields` contains two parts, the first part is the same as info.fields,
-			// and the second part is all fields embedded in the structure
-			// If the return value data composition form in `c.table.struct_fields()` is modified,
-			// need to modify here accordingly.
-			mut fields := c.table.struct_fields(type_sym)
-			mut checked_types := []ast.Type{}
-
-			for i, mut field in fields {
-				if field.name in inited_fields {
-					if c.mod != type_sym.mod {
-						if !field.is_pub {
-							parts := type_sym.name.split('.')
-							for init_field in node.init_fields {
-								if field.name == init_field.name {
-									mod_type := if parts.len > 1 {
-										parts#[-2..].join('.')
-									} else {
-										parts.last()
-									}
-									c.error('cannot access private field `${field.name}` on `${mod_type}`',
-										init_field.pos)
-									break
-								}
-							}
-						}
-						if field.is_deprecated {
-							for init_field in node.init_fields {
-								if field.name == init_field.name {
-									c.deprecate('field', field.name, field.attrs, init_field.pos)
-									break
-								}
-							}
-						}
-					}
-					continue
-				}
-				sym := c.table.sym(field.typ)
-				if field.name != '' && field.name[0].is_capital() && sym.info is ast.Struct {
-					// struct embeds
-					continue
-				}
-				if field.has_default_expr {
-					if i < info.fields.len && field.default_expr_typ == 0 {
-						if mut field.default_expr is ast.StructInit {
-							idx := c.table.find_type_idx(field.default_expr.typ_str)
-							if idx != 0 {
-								info.fields[i].default_expr_typ = ast.new_type(idx)
-							}
-						} else if field.default_expr.is_nil() {
-							if field.typ.is_any_kind_of_pointer() {
-								info.fields[i].default_expr_typ = field.typ
-							}
-						} else if field.default_expr is ast.Ident
-							&& field.default_expr.info is ast.IdentFn {
-							c.expr(mut field.default_expr)
-						} else {
-							if const_field := c.table.global_scope.find_const('${field.default_expr}') {
-								info.fields[i].default_expr_typ = const_field.typ
-							} else if type_sym.info is ast.Struct && type_sym.info.is_anon {
-								c.expected_type = field.typ
-								field.default_expr_typ = c.expr(mut field.default_expr)
-								info.fields[i].default_expr_typ = field.default_expr_typ
-							}
-						}
-					}
-					continue
-				}
-				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f)
-					&& !field.typ.has_flag(.option) && !node.has_update_expr && !c.pref.translated
-					&& !c.file.is_translated {
-					c.error('reference field `${type_sym.name}.${field.name}` must be initialized',
-						node.pos)
-					continue
-				}
-				if !field.typ.has_flag(.option) {
-					if sym.kind == .struct_ {
-						c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.${field.name}',
-							node.pos)
-					} else if sym.kind == .alias {
-						parent_sym := c.table.sym((sym.info as ast.Alias).parent_type)
-						if parent_sym.kind == .struct_ {
-							c.check_ref_fields_initialized(parent_sym, mut checked_types,
-								'${type_sym.name}.${field.name}', node.pos)
-						}
-					}
-				}
-				// Do not allow empty uninitialized interfaces
-				if sym.kind == .interface_ && !node.has_update_expr && !field.typ.has_flag(.option)
-					&& sym.language != .js && !field.attrs.contains('noinit') {
-					// TODO: should be an error instead, but first `ui` needs updating.
-					c.note('interface field `${type_sym.name}.${field.name}` must be initialized',
-						node.pos)
-				}
-				// Do not allow empty uninitialized sum types
-				/*
-				sym := c.table.sym(field.typ)
-				if sym.kind == .sum_type {
-					c.warn('sum type field `${type_sym.name}.$field.name` must be initialized',
-						node.pos)
-				}
-				*/
-				// Check for `@[required]` struct attr
-				if !node.no_keys && !node.has_update_expr && field.attrs.contains('required')
-					&& node.init_fields.all(it.name != field.name) {
-					c.error('field `${type_sym.name}.${field.name}` must be initialized',
-						node.pos)
-				}
-				if !node.has_update_expr && !field.has_default_expr && !field.typ.is_ptr()
-					&& !field.typ.has_flag(.option) {
-					field_final_sym := c.table.final_sym(field.typ)
-					if field_final_sym.kind == .struct_ {
-						mut zero_struct_init := ast.StructInit{
-							pos: node.pos
-							typ: field.typ
-						}
-						if field.is_part_of_union {
-							if field.name in inited_fields {
-								// fields that are part of an union, should only be checked, when they are explicitly initialised
-								c.struct_init(mut zero_struct_init, true, mut inited_fields)
-							}
-						} else {
-							c.struct_init(mut zero_struct_init, true, mut inited_fields)
-						}
-					}
-				}
-			}
-			for embed in info.embeds {
-				mut zero_struct_init := ast.StructInit{
-					pos: node.pos
-					typ: embed
-				}
-				c.struct_init(mut zero_struct_init, true, mut inited_fields)
-			}
+			c.check_uninitialized_struct_fields_and_embeds(node, type_sym, mut info, mut
+				inited_fields)
 			// println('>> checked_types.len: $checked_types.len | checked_types: $checked_types | type_sym: $type_sym.name ')
+		}
+		.sum_type {
+			first_typ := (type_sym.info as ast.SumType).variants[0]
+			first_sym := c.table.final_sym(first_typ)
+			if first_sym.kind == .struct {
+				mut info := first_sym.info as ast.Struct
+				c.check_uninitialized_struct_fields_and_embeds(node, first_sym, mut info, mut
+					inited_fields)
+			}
 		}
 		else {}
 	}
@@ -919,7 +850,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		expr_sym := c.table.final_sym(c.unwrap_generic(update_type))
 		if node.update_expr is ast.ComptimeSelector {
 			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)
-		} else if expr_sym.kind != .struct_ {
+		} else if expr_sym.kind != .struct {
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
 		} else if update_type != node.typ {
@@ -953,7 +884,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						continue
 					}
 					param_sym := c.table.sym(param.typ)
-					if param_sym.kind in [.struct_, .interface_, .sum_type] {
+					if param_sym.kind in [.struct, .interface, .sum_type] {
 						c.table.unwrap_generic_type(param.typ, generic_names, struct_sym.info.concrete_types)
 					}
 				}
@@ -961,6 +892,163 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		}
 	}
 	return node.typ
+}
+
+// Check uninitialized refs/sum types
+// The variable `fields` contains two parts, the first part is the same as info.fields,
+// and the second part is all fields embedded in the structure
+// If the return value data composition form in `c.table.struct_fields()` is modified,
+// need to modify here accordingly.
+fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructInit, type_sym ast.TypeSymbol, mut info ast.Struct, mut inited_fields []string) {
+	mut fields := c.table.struct_fields(type_sym)
+	mut checked_types := []ast.Type{}
+
+	for i, mut field in fields {
+		if field.name in inited_fields {
+			if c.mod != type_sym.mod {
+				if !field.is_pub {
+					parts := type_sym.name.split('.')
+					for init_field in node.init_fields {
+						if field.name == init_field.name {
+							mod_type := if parts.len > 1 {
+								parts#[-2..].join('.')
+							} else {
+								parts.last()
+							}
+							if !c.inside_unsafe {
+								c.error('cannot access private field `${field.name}` on `${mod_type}`',
+									init_field.pos)
+
+								break
+							}
+						}
+					}
+				}
+				if field.is_deprecated {
+					for init_field in node.init_fields {
+						if field.name == init_field.name {
+							c.deprecate('field', field.name, field.attrs, init_field.pos)
+							break
+						}
+					}
+				}
+			}
+			continue
+		}
+		sym := c.table.sym(field.typ)
+		if field.is_embed && sym.info is ast.Struct {
+			// struct embeds
+			continue
+		}
+		if field.has_default_expr {
+			if i < info.fields.len && field.default_expr_typ == 0 {
+				if mut field.default_expr is ast.StructInit {
+					idx := c.table.find_type(field.default_expr.typ_str)
+					if idx != 0 {
+						info.fields[i].default_expr_typ = ast.new_type(int(idx))
+					}
+				} else if field.default_expr.is_nil() {
+					if field.typ.is_any_kind_of_pointer() {
+						info.fields[i].default_expr_typ = field.typ
+					}
+				} else if field.default_expr is ast.Ident && field.default_expr.info is ast.IdentFn {
+					c.expr(mut field.default_expr)
+				} else {
+					if const_field := c.table.global_scope.find_const('${field.default_expr}') {
+						info.fields[i].default_expr_typ = const_field.typ
+					} else if type_sym.info is ast.Struct && type_sym.info.is_anon {
+						c.expected_type = field.typ
+						field.default_expr_typ = c.expr(mut field.default_expr)
+						info.fields[i].default_expr_typ = field.default_expr_typ
+					}
+				}
+			}
+			continue
+		}
+		field_is_option := field.typ.has_flag(.option)
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field_is_option
+			&& !node.has_update_expr && !c.pref.translated && !c.file.is_translated {
+			c.error('reference field `${type_sym.name}.${field.name}` must be initialized',
+				node.pos)
+			continue
+		}
+		if !field_is_option {
+			if sym.kind == .struct {
+				c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.${field.name}',
+					node.pos)
+			} else if sym.kind == .alias {
+				parent_sym := c.table.sym((sym.info as ast.Alias).parent_type)
+				if parent_sym.kind == .struct {
+					c.check_ref_fields_initialized(parent_sym, mut checked_types, '${type_sym.name}.${field.name}',
+						node.pos)
+				}
+			}
+		}
+		// Do not allow empty uninitialized interfaces
+		if sym.kind == .interface && !node.has_update_expr && !field_is_option
+			&& sym.language != .js && !field.attrs.contains('noinit') {
+			// TODO: should be an error instead, but first `ui` needs updating.
+			c.note('interface field `${type_sym.name}.${field.name}` must be initialized',
+				node.pos)
+		}
+		// Do not allow empty uninitialized sum types
+		/*
+		sym := c.table.sym(field.typ)
+		if sym.kind == .sum_type {
+			c.warn('sum type field `${type_sym.name}.$field.name` must be initialized',
+				node.pos)
+		}
+		*/
+		// Check for `@[required]` struct attr
+		if !node.no_keys && !node.has_update_expr && field.attrs.contains('required')
+			&& node.init_fields.all(it.name != field.name) {
+			c.error('field `${type_sym.name}.${field.name}` must be initialized', node.pos)
+		}
+		if !node.has_update_expr && !field.has_default_expr && !field.typ.is_ptr()
+			&& !field_is_option {
+			field_final_sym := c.table.final_sym(field.typ)
+			if field_final_sym.kind == .struct {
+				mut zero_struct_init := ast.StructInit{
+					pos: node.pos
+					typ: field.typ
+				}
+				if field.is_part_of_union {
+					if field.name in inited_fields {
+						// fields that are part of an union, should only be checked, when they are explicitly initialised
+						c.struct_init(mut zero_struct_init, true, mut inited_fields)
+					}
+				} else {
+					c.struct_init(mut zero_struct_init, true, mut inited_fields)
+				}
+			}
+		}
+	}
+
+	for embed in info.embeds {
+		embed_sym := c.table.sym(embed)
+		if embed_sym.info is ast.Struct {
+			if embed_sym.info.is_union {
+				mut embed_union_fields := c.table.struct_fields(embed_sym)
+				mut found := false
+				for init_field in inited_fields {
+					for union_field in embed_union_fields {
+						if init_field == union_field.name && found {
+							c.error('embed union `${embed_sym.name}` can have only one field initialised',
+								node.pos)
+						}
+						if init_field == union_field.name {
+							found = true
+						}
+					}
+				}
+			}
+		}
+		mut zero_struct_init := ast.StructInit{
+			pos: node.pos
+			typ: embed
+		}
+		c.struct_init(mut zero_struct_init, true, mut inited_fields)
+	}
 }
 
 // Recursively check whether the struct type field is initialized
@@ -984,7 +1072,7 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 			if sym.language == .c {
 				continue
 			}
-			if field.name != '' && field.name[0].is_capital() && sym.language == .v {
+			if field.is_embed && sym.language == .v {
 				// an embedded struct field
 				continue
 			}
@@ -993,7 +1081,7 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 				pos)
 		} else if sym.info is ast.Alias {
 			psym := c.table.sym(sym.info.parent_type)
-			if psym.kind == .struct_ {
+			if psym.kind == .struct {
 				checked_types << field.typ
 				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',
 					pos)
@@ -1027,7 +1115,7 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 			if sym.language == .c {
 				continue
 			}
-			if field.name != '' && field.name[0].is_capital() && sym.language == .v {
+			if field.is_embed && sym.language == .v {
 				// an embedded struct field
 				continue
 			}
@@ -1036,7 +1124,7 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 				pos)
 		} else if sym.info is ast.Alias {
 			psym := c.table.sym(sym.info.parent_type)
-			if psym.kind == .struct_ {
+			if psym.kind == .struct {
 				checked_types << field.typ
 				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',
 					pos)

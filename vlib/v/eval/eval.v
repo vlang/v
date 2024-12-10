@@ -11,7 +11,7 @@ import v.builder
 pub fn new_eval(table &ast.Table, pref_ &pref.Preferences) Eval {
 	return Eval{
 		table: table
-		pref: pref_
+		pref:  pref_
 	}
 }
 
@@ -66,7 +66,7 @@ pub mut:
 	return_values          []Object
 	cur_mod                string
 	cur_file               string
-	//
+
 	trace_file_paths     []string
 	trace_function_names []string
 	back_trace           []EvalTrace
@@ -97,7 +97,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 		e.back_trace.pop()
 	}
 	is_main := func.name == 'main.main'
-	//
+
 	mut args := _args.clone()
 	if !is_main && func.params.len != args.len && !func.is_variadic {
 		e.error('mismatched parameter length for ${func.name}: got `${args.len}`, expected `${func.params.len}`')
@@ -135,7 +135,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 			for i, arg in args__ {
 				var_name := (func.params[i]).name
 				e.local_vars[var_name] = Var{
-					val: arg
+					val:       arg
 					scope_idx: e.scope_idx
 				}
 			}
@@ -144,7 +144,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 			print(e.back_trace)
 			println(func.receiver.typ.set_nr_muls(0))
 			e.local_vars[func.receiver.name] = Var{
-				val: args[0]
+				val:       args[0]
 				scope_idx: e.scope_idx
 			}
 		}
@@ -276,20 +276,21 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 	}
 }
 
-fn (e Eval) error(msg string) {
+@[noreturn]
+fn (e &Eval) error(msg string) {
 	eprintln('> V interpreter backtrace:')
 	e.print_backtrace()
 	util.verror('interpreter', msg)
 }
 
-fn (e Eval) panic(s string) {
+fn (e &Eval) panic(s string) {
 	eprintln('V panic: ${s}')
 	eprintln('V hash: ${@VCURRENTHASH}')
 	e.print_backtrace()
 	exit(1)
 }
 
-fn (e Eval) print_backtrace() {
+fn (e &Eval) print_backtrace() {
 	for i := e.back_trace.len - 1; i >= 0; i-- {
 		t := e.back_trace[i]
 		file_path := if path := e.trace_file_paths[t.file_idx] {

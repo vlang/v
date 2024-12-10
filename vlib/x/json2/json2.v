@@ -260,12 +260,16 @@ pub fn map_from[T](t T) map[string]Any {
 			value := t.$(field.name)
 
 			$if field.is_array {
-				mut arr := []Any{}
-				for variable in value {
-					arr << Any(variable)
+				mut top_arr := unsafe { []Any{len: t.$(field.name).len} }
+				for idx, variable in value {
+					$if variable is $array {
+						top_arr[idx] = flatten_array(variable)
+					} $else {
+						top_arr[idx] = variable
+					}
 				}
-				m[field.name] = arr
-				arr.clear()
+				m[field.name] = top_arr
+				top_arr.clear()
 			} $else $if field.is_struct {
 				m[field.name] = map_from(value)
 			} $else $if field.is_map {
@@ -275,33 +279,33 @@ pub fn map_from[T](t T) map[string]Any {
 			} $else $if field.is_option {
 				// TODO
 			} $else {
-				// TODO: improve memory usage when convert
+				// TODO: simplify check of type & improve memory usage when convert
 				$if field.typ is string {
-					m[field.name] = value.str()
+					m[field.name] = value
 				} $else $if field.typ is bool {
-					m[field.name] = t.$(field.name).str().bool()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is i8 {
-					m[field.name] = t.$(field.name).str().i8()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is i16 {
-					m[field.name] = t.$(field.name).str().i16()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is i32 {
-					m[field.name] = t.$(field.name).str().i32()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is int {
-					m[field.name] = t.$(field.name).str().int()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is i64 {
-					m[field.name] = t.$(field.name).str().i64()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is f32 {
-					m[field.name] = t.$(field.name).str().f32()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is f64 {
-					m[field.name] = t.$(field.name).str().f64()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is u8 {
-					m[field.name] = t.$(field.name).str().u8()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is u16 {
-					m[field.name] = t.$(field.name).str().u16()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is u32 {
-					m[field.name] = t.$(field.name).str().u32()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is u64 {
-					m[field.name] = t.$(field.name).str().u64()
+					m[field.name] = t.$(field.name)
 				} $else {
 					// return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
 				}
@@ -309,4 +313,22 @@ pub fn map_from[T](t T) map[string]Any {
 		}
 	}
 	return m
+}
+
+// flatten_array convert a array of values to array of Any
+@[inline]
+fn flatten_array[T](t []T) []Any {
+	$if t !is $array {
+		return Any(t)
+	} $else {
+		mut arr := []Any{}
+		for variable in t {
+			$if variable is $array {
+				arr << flatten_array(variable)
+			} $else {
+				arr << Any(variable)
+			}
+		}
+		return arr
+	}
 }

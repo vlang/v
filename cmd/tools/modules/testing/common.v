@@ -13,6 +13,8 @@ import runtime
 import rand
 import strings
 
+pub const max_header_len = get_max_header_len()
+
 pub const host_os = pref.get_host_os()
 
 pub const github_job = os.getenv('GITHUB_JOB')
@@ -45,7 +47,8 @@ pub const is_go_present = os.execute('go version').exit_code == 0
 pub const all_processes = get_all_processes()
 
 pub const header_bytes_to_search_for_module_main = 500
-pub const separator = '-'.repeat(100)
+
+pub const separator = '-'.repeat(max_header_len) + '\n'
 
 pub const max_compilation_retries = get_max_compilation_retries()
 
@@ -93,7 +96,7 @@ pub mut:
 	failed_cmds   shared []string
 	reporter      Reporter = Reporter(NormalReporter{})
 	hash          string // used as part of the name of the temporary directory created for tests, to ease cleanup
-	//
+
 	exec_mode ActionMode = .compile // .compile_and_run only for `v test`
 }
 
@@ -117,22 +120,22 @@ mut:
 
 fn (mut ts TestSession) append_message(kind MessageKind, msg string, mtc MessageThreadContext) {
 	ts.nmessages <- LogMessage{
-		file: mtc.file
+		file:    mtc.file
 		flow_id: mtc.flow_id
 		message: msg
-		kind: kind
-		when: time.now()
+		kind:    kind
+		when:    time.now()
 	}
 }
 
 fn (mut ts TestSession) append_message_with_duration(kind MessageKind, msg string, d time.Duration, mtc MessageThreadContext) {
 	ts.nmessages <- LogMessage{
-		file: mtc.file
+		file:    mtc.file
 		flow_id: mtc.flow_id
 		message: msg
-		kind: kind
-		when: time.now()
-		took: d
+		kind:    kind
+		when:    time.now()
+		took:    d
 	}
 }
 
@@ -225,8 +228,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		skip_files << 'examples/coroutines/simple_coroutines.v'
 		skip_files << 'examples/coroutines/coroutines_bench.v'
 		$if msvc {
-			skip_files << 'vlib/v/tests/const_comptime_eval_before_vinit_test.v' // _constructor used
-			skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
+			skip_files << 'vlib/v/tests/consts/const_comptime_eval_before_vinit_test.v' // _constructor used
 		}
 		$if solaris {
 			skip_files << 'examples/pico/pico.v'
@@ -247,6 +249,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
 			skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
 			skip_files << 'vlib/v/tests/websocket_logger_interface_should_compile_test.v' // requires OpenSSL
+			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
 			$if tinyc {
 				skip_files << 'examples/database/orm.v' // try fix it
 			}
@@ -258,13 +261,13 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/pendulum-simulation/parallel.v'
 			skip_files << 'examples/pendulum-simulation/parallel_with_iw.v'
 			skip_files << 'examples/pendulum-simulation/sequential.v'
-			if testing.github_job == 'tcc' {
+			if github_job == 'tcc' {
 				// TODO: fix these by adding declarations for the missing functions in the prebuilt tcc
 				skip_files << 'vlib/net/mbedtls/mbedtls_compiles_test.v'
 				skip_files << 'vlib/net/ssl/ssl_compiles_test.v'
 			}
 		}
-		if testing.runner_os != 'Linux' || testing.github_job != 'tcc' {
+		if runner_os != 'Linux' || github_job != 'tcc' {
 			if !os.exists('/usr/local/include/wkhtmltox/pdf.h') {
 				skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 			}
@@ -275,16 +278,19 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		$if !macos {
 			skip_files << 'examples/macos_tray/tray.v'
 		}
-		if testing.github_job == 'ubuntu-docker-musl' {
+		if github_job == 'ubuntu-docker-musl' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
+			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v'
 			skip_files << 'vlib/x/ttf/ttf_test.v'
+			skip_files << 'vlib/encoding/iconv/iconv_test.v' // needs libiconv to be installed
 		}
-		if testing.github_job == 'tests-sanitize-memory-clang' {
+		if github_job == 'tests-sanitize-memory-clang' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
+			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v'
 			// Fails compilation with: `/usr/bin/ld: /lib/x86_64-linux-gnu/libpthread.so.0: error adding symbols: DSO missing from command line`
 			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}
-		if testing.github_job != 'misc-tooling' {
+		if github_job != 'misc-tooling' {
 			// These examples need .h files that are produced from the supplied .glsl files,
 			// using by the shader compiler tools in https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
 			skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.v'
@@ -310,16 +316,16 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		os.setenv('VCOLORS', 'always', true)
 	}
 	mut ts := TestSession{
-		vexe: vexe
-		vroot: vroot
-		skip_files: skip_files
-		fail_fast: testing.fail_fast
-		show_stats: '-stats' in vargs.split(' ')
-		show_asserts: '-show-asserts' in vargs.split(' ')
-		vargs: vargs
-		vtmp_dir: new_vtmp_dir
-		hash: hash
-		silent_mode: _vargs.contains('-silent')
+		vexe:          vexe
+		vroot:         vroot
+		skip_files:    skip_files
+		fail_fast:     fail_fast
+		show_stats:    '-stats' in vargs.split(' ')
+		show_asserts:  '-show-asserts' in vargs.split(' ')
+		vargs:         vargs
+		vtmp_dir:      new_vtmp_dir
+		hash:          hash
+		silent_mode:   _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
 	}
 	ts.handle_test_runner_option()
@@ -368,7 +374,7 @@ pub fn (mut ts TestSession) test() {
 	if current_wd == os.wd_at_startup && current_wd == ts.vroot {
 		ts.root_relative = true
 	}
-	//
+
 	ts.init()
 	mut remaining_files := []string{}
 	for dot_relative_file in ts.files {
@@ -396,14 +402,14 @@ pub fn (mut ts TestSession) test() {
 		// Special case for android_outside_termux because of its
 		// underscores
 		if file.ends_with('_android_outside_termux_test.v') {
-			if !testing.host_os.is_target_of('android_outside_termux') {
+			if !host_os.is_target_of('android_outside_termux') {
 				remaining_files << dot_relative_file
 				ts.skip_files << file
 				continue
 			}
 		}
 		os_target := file.all_before_last('_test.v').all_after_last('_')
-		if !testing.host_os.is_target_of(os_target) {
+		if !host_os.is_target_of(os_target) {
 			remaining_files << dot_relative_file
 			ts.skip_files << file
 			continue
@@ -427,7 +433,7 @@ pub fn (mut ts TestSession) test() {
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
 	// all the testing happens here:
 	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
-	//
+
 	ts.benchmark.stop()
 	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: '-1' }) // send the sentinel
 	printing_thread.wait()
@@ -493,7 +499,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	file := os.real_path(relative_file)
 	mtc := MessageThreadContext{
-		file: file
+		file:    file
 		flow_id: thread_id.str()
 	}
 	normalised_relative_file := relative_file.replace('\\', '/')
@@ -525,6 +531,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	} else {
 		fname_without_extension
 	}
+	reproduce_options := cmd_options.clone()
 	generated_binary_fpath := os.join_path_single(test_folder_path, generated_binary_fname)
 	if produces_file_output {
 		if ts.rm_binaries {
@@ -542,6 +549,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		skip_running = ''
 	}
+	reproduce_cmd := '${os.quoted_path(ts.vexe)} ${reproduce_options.join(' ')} ${os.quoted_path(file)}'
 	cmd := '${os.quoted_path(ts.vexe)} ${skip_running} ${cmd_options.join(' ')} ${os.quoted_path(file)}'
 	run_cmd := if run_js {
 		'node ${os.quoted_path(generated_binary_fpath)}'
@@ -553,7 +561,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if !ts.build_tools && abs_path in ts.skip_files {
 		ts.benchmark.skip()
 		tls_bench.skip()
-		if !testing.hide_skips {
+		if !hide_skips {
 			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip,
 				normalised_relative_file, 0,
 				preparation: 1 * time.microsecond
@@ -582,8 +590,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			details := get_test_details(file)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
-				ts.append_message(.info, '  [stats]        retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
-					mtc)
+				if !details.hide_retries {
+					ts.append_message(.info, '  [stats]        retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
+						mtc)
+				}
 				os.setenv('VTEST_RETRY', '${retry}', true)
 
 				ts.append_message(.cmd_begin, cmd, mtc)
@@ -597,9 +607,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						goto test_passed_system
 					}
 				}
-				time.sleep(testing.fail_retry_delay_ms)
+				time.sleep(fail_retry_delay_ms)
 			}
-			if details.flaky && !testing.fail_flaky {
+			if details.flaky && !fail_flaky {
 				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\ncmd: ${cmd}',
 					mtc)
 				unsafe {
@@ -612,18 +622,18 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
 		}
 	} else {
-		if testing.show_start {
+		if show_start {
 			ts.append_message(.info, '                 starting ${relative_file} ...',
 				mtc)
 		}
 		ts.append_message(.compile_begin, cmd, mtc)
 		compile_d_cmd := time.new_stopwatch()
 		mut compile_r := os.Result{}
-		for cretry in 0 .. testing.max_compilation_retries {
+		for cretry in 0 .. max_compilation_retries {
 			compile_r = os.execute(cmd)
 			compile_cmd_duration = compile_d_cmd.elapsed()
 			// eprintln('>>>> cretry: $cretry | compile_r.exit_code: $compile_r.exit_code | compile_cmd_duration: ${compile_cmd_duration:8} | file: $normalised_relative_file')
@@ -642,7 +652,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
 		}
 		tls_bench.step_restart()
@@ -670,13 +680,17 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				// retry running at least 1 more time, to avoid CI false positives as much as possible
 				details.retry++
 			}
-			failure_output.write_string(testing.separator)
-			failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+			if details.retry != 0 {
+				failure_output.write_string(separator)
+				failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+			}
 			failure_output.writeln(trimmed_output)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry = 1; retry <= details.retry; retry++ {
-				ts.append_message(.info, '                 retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
-					mtc)
+				if !details.hide_retries {
+					ts.append_message(.info, '                 retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
+						mtc)
+				}
 				os.setenv('VTEST_RETRY', '${retry}', true)
 
 				ts.append_message(.cmd_begin, run_cmd, mtc)
@@ -691,13 +705,17 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 					}
 				}
 				trimmed_output = r.output.trim_space()
-				failure_output.write_string(testing.separator)
+				failure_output.write_string(separator)
 				failure_output.writeln(' retry: ${retry} ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
 				failure_output.writeln(trimmed_output)
-				time.sleep(testing.fail_retry_delay_ms)
+				time.sleep(fail_retry_delay_ms)
 			}
 			full_failure_output := failure_output.str().trim_space()
-			if details.flaky && !testing.fail_flaky {
+			if details.flaky && !fail_flaky {
+				ts.append_message(.info, '>>> flaky failures so far:', mtc)
+				for line in full_failure_output.split_into_lines() {
+					ts.append_message(.info, '>>>>>> ${line}', mtc)
+				}
 				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\n    comp_cmd: ${cmd}\n     run_cmd: ${run_cmd}',
 					mtc)
 				unsafe {
@@ -706,13 +724,12 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			ts.benchmark.fail()
 			tls_bench.fail()
-			cmd_duration = d_cmd.elapsed() - (testing.fail_retry_delay_ms * details.retry)
+			cmd_duration = d_cmd.elapsed() - (fail_retry_delay_ms * details.retry)
 			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
-				'${normalised_relative_file}\n         retry: ${retry}\n      comp_cmd: ${cmd}\n       run_cmd: ${run_cmd}\nfailure code: ${r.exit_code}; foutput.len: ${full_failure_output.len}; failure output:\n${full_failure_output}',
-				cmd_duration,
+				'${normalised_relative_file}\n${full_failure_output}', cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
 		}
 	}
@@ -720,7 +737,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	test_passed_execute:
 	ts.benchmark.ok()
 	tls_bench.ok()
-	if !testing.hide_oks {
+	if !hide_oks {
 		ts.append_message_with_duration(.ok, tls_bench.step_message_with_label_and_duration(benchmark.b_ok,
 			normalised_relative_file, cmd_duration,
 			preparation: compile_cmd_duration
@@ -764,13 +781,15 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 		$if windows {
 			// skip process/command examples on windows. TODO: remove the need for this, fix os.Command
 			if fnormalised.ends_with('examples/process/command.v') {
+				skipped << fnormalised.replace(nparent_dir + '/', '')
 				continue
 			}
 		}
 		c := os.read_file(fnormalised) or { panic(err) }
-		start := c#[0..testing.header_bytes_to_search_for_module_main]
+		start := c#[0..header_bytes_to_search_for_module_main]
 		if start.contains('module ') && !start.contains('module main') {
 			skipped << fnormalised.replace(nparent_dir + '/', '')
+			continue next_file
 		}
 		for skip_prefix in oskipped {
 			skip_folder := skip_prefix + '/'
@@ -832,14 +851,18 @@ pub fn building_any_v_binaries_failed() bool {
 			continue
 		}
 		bmark.ok()
-		if !testing.hide_oks {
+		if !hide_oks {
 			eprintln(bmark.step_message_ok('command: ${cmd}'))
 		}
 	}
 	bmark.stop()
-	eprintln(term.h_divider('-'))
+	h_divider()
 	eprintln(bmark.total_message('building v binaries'))
 	return failed
+}
+
+pub fn h_divider() {
+	eprintln(term.h_divider('-')#[..max_header_len])
 }
 
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
@@ -856,6 +879,8 @@ pub struct TestDetails {
 pub mut:
 	retry int
 	flaky bool // when flaky tests fail, the whole run is still considered successful, unless VTEST_FAIL_FLAKY is 1
+	//
+	hide_retries bool // when true, all retry tries are silent; used by `vlib/v/tests/retry_test.v`
 }
 
 pub fn get_test_details(file string) TestDetails {
@@ -868,12 +893,15 @@ pub fn get_test_details(file string) TestDetails {
 		if line.starts_with('// vtest flaky:') {
 			res.flaky = line.all_after(':').trim_space().bool()
 		}
+		if line.starts_with('// vtest hide_retries') {
+			res.hide_retries = true
+		}
 	}
 	return res
 }
 
 pub fn find_started_process(pname string) !string {
-	for line in testing.all_processes {
+	for line in all_processes {
 		if line.contains(pname) {
 			return line
 		}
@@ -881,15 +909,28 @@ pub fn find_started_process(pname string) !string {
 	return error('could not find process matching ${pname}')
 }
 
+fn limited_header(msg string) string {
+	return term.header_left(msg, '-')#[..max_header_len]
+}
+
 pub fn eheader(msg string) {
-	eprintln(term.header_left(msg, '-'))
+	eprintln(limited_header(msg))
 }
 
 pub fn header(msg string) {
-	println(term.header_left(msg, '-'))
+	println(limited_header(msg))
 	flush_stdout()
 }
 
 fn random_sleep_ms(min_ms int, random_add_ms int) {
-	time.sleep((100 + rand.intn(100) or { 0 }) * time.millisecond)
+	time.sleep((50 + rand.intn(50) or { 0 }) * time.millisecond)
+}
+
+fn get_max_header_len() int {
+	maximum := 140
+	cols, _ := term.get_terminal_size()
+	if cols > maximum {
+		return maximum
+	}
+	return cols
 }

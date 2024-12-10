@@ -31,18 +31,18 @@ fn test_large_gtk_file() ! {
 	for elm in actual.get_elements_by_tag('constructor') {
 		if 'c:identifier' in elm.attributes && elm.attributes['c:identifier'] == 'gtk_window_new' {
 			assert elm == xml.XMLNode{
-				name: 'constructor'
+				name:       'constructor'
 				attributes: {
 					'name':         'new'
 					'c:identifier': 'gtk_window_new'
 				}
-				children: [
+				children:   [
 					xml.XMLNodeContents(xml.XMLNode{
-						name: 'doc'
+						name:       'doc'
 						attributes: {
 							'xml:space': 'preserve'
 						}
-						children: [
+						children:   [
 							xml.XMLNodeContents('Creates a new `GtkWindow`.
 
 To get an undecorated window (no window borders), use
@@ -58,25 +58,25 @@ To delete a `GtkWindow`, call [method@Gtk.Window.destroy].'),
 						]
 					}),
 					xml.XMLNodeContents(xml.XMLNode{
-						name: 'return-value'
+						name:       'return-value'
 						attributes: {
 							'transfer-ownership': 'none'
 						}
-						children: [
+						children:   [
 							xml.XMLNodeContents(xml.XMLNode{
-								name: 'doc'
+								name:       'doc'
 								attributes: {
 									'xml:space': 'preserve'
 								}
-								children: [xml.XMLNodeContents('a new `GtkWindow`.')]
+								children:   [xml.XMLNodeContents('a new `GtkWindow`.')]
 							}),
 							xml.XMLNodeContents(xml.XMLNode{
-								name: 'type'
+								name:       'type'
 								attributes: {
 									'name':   'Widget'
 									'c:type': 'GtkWidget*'
 								}
-								children: []
+								children:   []
 							}),
 						]
 					}),

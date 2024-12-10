@@ -9,67 +9,6 @@ fn format_message(msg string, line int, column int) string {
 	return '[x.json2] ${msg} (${line}:${column})'
 }
 
-pub struct DecodeError {
-	line    int
-	column  int
-	message string
-}
-
-// code returns the error code of DecodeError
-pub fn (err DecodeError) code() int {
-	return 3
-}
-
-// msg returns the message of the DecodeError
-pub fn (err DecodeError) msg() string {
-	return format_message(err.message, err.line, err.column)
-}
-
-pub struct InvalidTokenError {
-	DecodeError
-	token    Token
-	expected TokenKind
-}
-
-// code returns the error code of the InvalidTokenError
-pub fn (err InvalidTokenError) code() int {
-	return 2
-}
-
-// msg returns the message of the InvalidTokenError
-pub fn (err InvalidTokenError) msg() string {
-	footer_text := if err.expected != .none_ { ', expecting `${err.expected}`' } else { '' }
-	return format_message('invalid token `${err.token.kind}`${footer_text}', err.token.line,
-		err.token.full_col())
-}
-
-pub struct UnknownTokenError {
-	DecodeError
-	token Token
-	kind  ValueKind = .unknown
-}
-
-// code returns the error code of the UnknownTokenError
-pub fn (err UnknownTokenError) code() int {
-	return 1
-}
-
-// msg returns the error message of the UnknownTokenError
-pub fn (err UnknownTokenError) msg() string {
-	return format_message("unknown token '${err.token.lit}' when decoding ${err.kind}.",
-		err.token.line, err.token.full_col())
-}
-
-struct Parser {
-pub mut:
-	scanner      &Scanner = unsafe { nil }
-	prev_tok     Token
-	tok          Token
-	next_tok     Token
-	n_level      int
-	convert_type bool = true
-}
-
 fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.next_tok
@@ -80,8 +19,8 @@ fn (mut p Parser) next_with_err() ! {
 	p.next()
 	if p.tok.kind == .error {
 		return DecodeError{
-			line: p.tok.line
-			column: p.tok.full_col()
+			line:    p.tok.line
+			column:  p.tok.full_col()
 			message: p.tok.lit.bytestr()
 		}
 	}
@@ -112,35 +51,20 @@ fn skip_bom(file_content string) string {
 fn new_parser(srce string, convert_type bool) Parser {
 	src := skip_bom(srce)
 	return Parser{
-		scanner: &Scanner{
+		scanner:      &Scanner{
 			text: src.bytes()
 		}
 		convert_type: convert_type
 	}
 }
 
-// Decodes a JSON string into an `Any` type. Returns an option.
-pub fn raw_decode(src string) !Any {
-	mut p := new_parser(src, true)
-	return p.decode()
-}
-
-// Same with `raw_decode`, but skips the type conversion for certain types when decoding a certain value.
-pub fn fast_raw_decode(src string) !Any {
-	mut p := new_parser(src, false)
-	return p.decode()
-}
-
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode[T](src string) !T {
+	$if T is Any {
+		return raw_decode(src)!
+	}
 	res := raw_decode(src)!.as_map()
 	return decode_struct[T](T{}, res)
-}
-
-// decode_array is a generic function that decodes a JSON string into the array target type.
-pub fn decode_array[T](src string) ![]T {
-	res := raw_decode(src)!.as_map()
-	return decode_struct_array(T{}, res)
 }
 
 // decode_struct_array is a generic function that decodes a JSON map into array struct T.
@@ -165,6 +89,9 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 			mut json_name := field.name
 
 			for attr in field.attrs {
+				if attr.contains('skip') {
+					skip_field = true
+				}
 				if attr.contains('json: ') {
 					json_name = attr.replace('json: ', '')
 					if json_name == '-' {
@@ -275,42 +202,7 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 					}
 				} $else $if field.is_array {
 					arr := res[field.name]! as []Any
-					// vfmt off
-					match field.typ {
-						[]bool  { typ.$(field.name) = arr.map(it.bool()) }
-						[]?bool { typ.$(field.name) = arr.map(?bool(it.bool())) }
-						[]f32   { typ.$(field.name) = arr.map(it.f32()) }
-						[]?f32  { typ.$(field.name) = arr.map(?f32(it.f32())) }
-						[]f64   { typ.$(field.name) = arr.map(it.f64()) }
-						[]?f64  { typ.$(field.name) = arr.map(?f64(it.f64())) }
-						[]i8    { typ.$(field.name) = arr.map(it.i8()) }
-						[]?i8   { typ.$(field.name) = arr.map(?i8(it.i8())) }
-						[]i16   { typ.$(field.name) = arr.map(it.i16()) }
-						[]?i16  { typ.$(field.name) = arr.map(?i16(it.i16())) }
-						[]i32   { typ.$(field.name) = arr.map(it.i32()) }
-						[]?i32  { typ.$(field.name) = arr.map(?i32(it.i32())) }
-						[]i64   { typ.$(field.name) = arr.map(it.i64()) }
-						[]?i64  { typ.$(field.name) = arr.map(?i64(it.i64())) }
-						[]int   { typ.$(field.name) = arr.map(it.int()) }
-						[]?int  { typ.$(field.name) = arr.map(?int(it.int())) }
-						[]string  { typ.$(field.name) = arr.map(it.str()) }
-						[]?string { typ.$(field.name) = arr.map(?string(it.str())) }
-						// NOTE: Using `!` on `to_time()` inside the array method causes a builder error - 2024/04/01.
-						[]time.Time { typ.$(field.name) = arr.map(it.to_time() or { time.Time{} }) }
-						[]?time.Time { typ.$(field.name) = arr.map(?time.Time(it.to_time() or { time.Time{} })) }
-						[]Any { typ.$(field.name) = arr }
-						[]?Any { typ.$(field.name) = arr.map(?Any(it)) }
-						[]u8   { typ.$(field.name) = arr.map(it.u64()) }
-						[]?u8  { typ.$(field.name) = arr.map(?u8(it.u64())) }
-						[]u16  { typ.$(field.name) = arr.map(it.u64()) }
-						[]?u16 { typ.$(field.name) = arr.map(?u16(it.u64())) }
-						[]u32  { typ.$(field.name) = arr.map(it.u64()) }
-						[]?u32 { typ.$(field.name) = arr.map(?u32(it.u64())) }
-						[]u64  { typ.$(field.name) = arr.map(it.u64()) }
-						[]?u64 { typ.$(field.name) = arr.map(?u64(it.u64())) }
-						else {}
-					}
-					// vfmt on
+					decode_array_item(mut typ.$(field.name), arr)
 				} $else $if field.is_struct {
 					typ.$(field.name) = decode_struct(typ.$(field.name), res[field.name]!.as_map())!
 				} $else $if field.is_alias {
@@ -340,6 +232,70 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 		return error("The type `${T.name}` can't be decoded.")
 	}
 	return typ
+}
+
+fn decode_array_item[T](mut field T, arr []Any) {
+	// vfmt off
+	match typeof[T]().idx {
+		typeof[[]bool]().idx  { field = arr.map(it.bool()) }
+		typeof[[]?bool]().idx { field = arr.map(?bool(it.bool())) }
+		typeof[[]f32]().idx   { field = arr.map(it.f32()) }
+		typeof[[]?f32]().idx  { field = arr.map(?f32(it.f32())) }
+		typeof[[]f64]().idx   { field = arr.map(it.f64()) }
+		typeof[[]?f64]().idx  { field = arr.map(?f64(it.f64())) }
+		typeof[[]i8]().idx    { field = arr.map(it.i8()) }
+		typeof[[]?i8]().idx   { field = arr.map(?i8(it.i8())) }
+		typeof[[]i16]().idx   { field = arr.map(it.i16()) }
+		typeof[[]?i16]().idx  { field = arr.map(?i16(it.i16())) }
+		typeof[[]i32]().idx   { field = arr.map(it.i32()) }
+		typeof[[]?i32]().idx  { field = arr.map(?i32(it.i32())) }
+		typeof[[]i64]().idx   { field = arr.map(it.i64()) }
+		typeof[[]?i64]().idx  { field = arr.map(?i64(it.i64())) }
+		typeof[[]int]().idx   { field = arr.map(it.int()) }
+		typeof[[]?int]().idx  { field = arr.map(?int(it.int())) }
+		typeof[[]string]().idx  { field = arr.map(it.str()) }
+		typeof[[]?string]().idx { field = arr.map(?string(it.str())) }
+		// NOTE: Using `!` on `to_time()` inside the array method causes a builder error - 2024/04/01.
+		typeof[[]time.Time]().idx { field = arr.map(it.to_time() or { time.Time{} }) }
+		typeof[[]?time.Time]().idx { field = arr.map(?time.Time(it.to_time() or { time.Time{} })) }
+		typeof[[]Any]().idx { field = arr.clone() }
+		typeof[[]?Any]().idx { field = arr.map(?Any(it)) }
+		typeof[[]u8]().idx   { field = arr.map(it.u64()) }
+		typeof[[]?u8]().idx  { field = arr.map(?u8(it.u64())) }
+		typeof[[]u16]().idx  { field = arr.map(it.u64()) }
+		typeof[[]?u16]().idx { field = arr.map(?u16(it.u64())) }
+		typeof[[]u32]().idx  { field = arr.map(it.u64()) }
+		typeof[[]?u32]().idx { field = arr.map(?u32(it.u64())) }
+		typeof[[]u64]().idx  { field = arr.map(it.u64()) }
+		typeof[[]?u64]().idx { field = arr.map(?u64(it.u64())) }
+		else {
+			$if T is [][]f32 { field << arr.map(it.as_map().values().map(it.f32())) }
+			$else $if T is [][]?f32 { field << arr.map(it.as_map().values().map(?f32(it.f32()))) }
+			$else $if T is [][]f64  { field << arr.map(it.as_map().values().map(it.f64())) }
+			$else $if T is [][]?f64 { field << arr.map(it.as_map().values().map(?f64(it.f64()))) }
+			$else $if T is [][]i8   { field << arr.map(it.as_map().values().map(it.i8())) }
+			$else $if T is [][]?i8  { field << arr.map(it.as_map().values().map(?i8(it.i8()))) }
+			$else $if T is [][]i16  { field << arr.map(it.as_map().values().map(it.i16())) }
+			$else $if T is [][]?i16 { field << arr.map(it.as_map().values().map(?i16(it.i16()))) }
+			$else $if T is [][]i32  { field << arr.map(it.as_map().values().map(it.i32())) }
+			$else $if T is [][]?i32 { field << arr.map(it.as_map().values().map(?i32(it.i32()))) }
+			$else $if T is [][]i64  { field << arr.map(it.as_map().values().map(it.i64())) }
+			$else $if T is [][]?i64 { field << arr.map(it.as_map().values().map(?i64(it.i64()))) }
+			$else $if T is [][]u8   { field << arr.map(it.as_map().values().map(it.u8())) }
+			$else $if T is [][]?u8  { field << arr.map(it.as_map().values().map(?u8(it.u8()))) }
+			$else $if T is [][]u16  { field << arr.map(it.as_map().values().map(it.u16())) }
+			$else $if T is [][]?u16 { field << arr.map(it.as_map().values().map(?u16(it.u16()))) }
+			$else $if T is [][]u32  { field << arr.map(it.as_map().values().map(it.u32())) }
+			$else $if T is [][]?u32 { field << arr.map(it.as_map().values().map(?u32(it.u32()))) }
+			$else $if T is [][]u64  { field << arr.map(it.as_map().values().map(it.u64())) }
+			$else $if T is [][]?u64 { field << arr.map(it.as_map().values().map(?u64(it.u64()))) }
+			$else $if T is [][]bool { field << arr.map(it.as_map().values().map(it.bool())) }
+			$else $if T is [][]?bool  { field << arr.map(it.as_map().values().map(?bool(it.bool()))) }
+			$else $if T is [][]string  { field << arr.map(it.as_map().values().map(it.string())) }
+			$else $if T is [][]?string { field << arr.map(it.as_map().values().map(?string(it.string()))) }
+		}
+	}
+	// vfmt on
 }
 
 fn decode_map[K, V](_ map[K]V, res map[string]Any) !map[K]V {
@@ -381,19 +337,6 @@ fn decode_map[K, V](_ map[K]V, res map[string]Any) !map[K]V {
 	return ret
 }
 
-// decode - decodes provided JSON
-pub fn (mut p Parser) decode() !Any {
-	p.next()
-	p.next_with_err()!
-	fi := p.decode_value()!
-	if p.tok.kind != .eof {
-		return InvalidTokenError{
-			token: p.tok
-		}
-	}
-	return fi
-}
-
 fn (mut p Parser) decode_value() !Any {
 	if p.n_level + 1 == 500 {
 		return DecodeError{
@@ -409,7 +352,7 @@ fn (mut p Parser) decode_value() !Any {
 		.lcbr {
 			return p.decode_object()
 		}
-		.int_, .float {
+		.int, .float {
 			tl := p.tok.lit.bytestr()
 			kind := p.tok.kind
 			p.next_with_err()!
@@ -423,7 +366,7 @@ fn (mut p Parser) decode_value() !Any {
 			}
 			return Any(tl)
 		}
-		.bool_ {
+		.bool {
 			lit := p.tok.lit.bytestr()
 			p.next_with_err()!
 			if p.convert_type {
@@ -438,7 +381,7 @@ fn (mut p Parser) decode_value() !Any {
 			}
 			return Any('null')
 		}
-		.str_ {
+		.str {
 			str := p.tok.lit.bytestr()
 			p.next_with_err()!
 			return Any(str)
@@ -473,7 +416,7 @@ fn (mut p Parser) decode_array() !Any {
 		} else if p.tok.kind != .rsbr {
 			return UnknownTokenError{
 				token: p.tok
-				kind: .array
+				kind:  .array
 			}
 		}
 	}
@@ -482,6 +425,7 @@ fn (mut p Parser) decode_array() !Any {
 	return Any(items)
 }
 
+@[deprecated_after: '2025-03-18']
 fn (mut p Parser) decode_object() !Any {
 	mut fields := map[string]Any{}
 	p.next_with_err()!
@@ -489,10 +433,10 @@ fn (mut p Parser) decode_object() !Any {
 	// `}`
 	for p.tok.kind != .rcbr {
 		// step 1 -> key
-		if p.tok.kind != .str_ {
+		if p.tok.kind != .str {
 			return InvalidTokenError{
-				token: p.tok
-				expected: .str_
+				token:    p.tok
+				expected: .str
 			}
 		}
 
@@ -501,7 +445,7 @@ fn (mut p Parser) decode_object() !Any {
 		// step 2 -> colon separator
 		if p.tok.kind != .colon {
 			return InvalidTokenError{
-				token: p.tok
+				token:    p.tok
 				expected: .colon
 			}
 		}
@@ -511,7 +455,7 @@ fn (mut p Parser) decode_object() !Any {
 		fields[cur_key] = p.decode_value()!
 		if p.tok.kind !in [.comma, .rcbr] {
 			return InvalidTokenError{
-				token: p.tok
+				token:    p.tok
 				expected: .comma
 			}
 		} else if p.tok.kind == .comma {

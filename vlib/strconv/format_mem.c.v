@@ -34,7 +34,7 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 	}
 }
 
-const max_size_f64_char = 32 // the f64 max representation is -36,028,797,018,963,968e1023, 21 chars, 32 is faster for the memory manger
+const max_size_f64_char = 512 // the f64 max representation is -36,028,797,018,963,968e1023, 21 chars, but alignment padding requires more
 
 // digit pairs in reverse order
 const digit_pairs = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
@@ -105,12 +105,12 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 			d_i = (n - (n1 * 100)) << 1
 			n = n1
 			unsafe {
-				buf[i] = strconv.digit_pairs.str[d_i]
+				buf[i] = digit_pairs.str[d_i]
 			}
 			i--
 			d_i++
 			unsafe {
-				buf[i] = strconv.digit_pairs.str[d_i]
+				buf[i] = digit_pairs.str[d_i]
 			}
 			i--
 		}
@@ -328,8 +328,8 @@ pub fn format_fl(f f64, p BF_param) string {
 			tmp.free()
 		}
 
-		mut buf := [strconv.max_size_f64_char]u8{} // write temp float buffer in stack
-		mut out := [strconv.max_size_f64_char]u8{} // out buffer
+		mut buf := [max_size_f64_char]u8{} // write temp float buffer in stack
+		mut out := [max_size_f64_char]u8{} // out buffer
 		mut buf_i := 0 // index temporary string
 		mut out_i := 0 // index output string
 
@@ -399,8 +399,8 @@ pub fn format_es(f f64, p BF_param) string {
 			tmp.free()
 		}
 
-		mut buf := [strconv.max_size_f64_char]u8{} // write temp float buffer in stack
-		mut out := [strconv.max_size_f64_char]u8{} // out buffer
+		mut buf := [max_size_f64_char]u8{} // write temp float buffer in stack
+		mut out := [max_size_f64_char]u8{} // out buffer
 		mut buf_i := 0 // index temporary string
 		mut out_i := 0 // index output string
 
@@ -491,13 +491,17 @@ pub fn remove_tail_zeros(s string) string {
 		if i_s < s.len && s[i_s] == `.` {
 			mut i_s1 := i_s + 1
 			mut sum := 0
+			mut i_s2 := i_s1 // last non-zero index after `.`
 			for i_s1 < s.len && s[i_s1] >= `0` && s[i_s1] <= `9` {
 				sum += s[i_s1] - u8(`0`)
+				if s[i_s1] != `0` {
+					i_s2 = i_s1
+				}
 				i_s1++
 			}
 			// decimal part must be copied
 			if sum > 0 {
-				for c_i in i_s .. i_s1 {
+				for c_i in i_s .. i_s2 + 1 {
 					buf[i_d] = s[c_i]
 					i_d++
 				}

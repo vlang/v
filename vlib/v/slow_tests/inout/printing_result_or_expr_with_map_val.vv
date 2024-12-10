@@ -1,0 +1,28 @@
+struct MyError {
+	msg  string
+	code int
+}
+
+fn (my MyError) msg() string {
+	return my.msg
+}
+
+fn (my MyError) code() int {
+	return my.code
+}
+
+type MapString = map[string]string | int
+
+fn f() !MapString {
+	return MyError{
+		msg: 'String Error'
+	}
+}
+
+fn main() {
+	println(f() or {
+		{
+			'abc': err.msg()
+		}
+	})
+}

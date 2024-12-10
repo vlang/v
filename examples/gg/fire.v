@@ -63,14 +63,14 @@ fn main() {
 	app.buf << []int{len: width, init: 36} // white fire base
 
 	app.gg = gg.new_context(
-		event_fn: event
-		frame_fn: frame
-		init_fn: retile
+		event_fn:     event
+		frame_fn:     frame
+		init_fn:      retile
 		window_title: 'Fire Animation'
-		user_data: app
-		bg_color: palette[0]
-		width: win_width
-		height: win_height
+		user_data:    app
+		bg_color:     palette[0]
+		width:        win_width
+		height:       win_height
 	)
 	app.gg.run()
 }

@@ -1,0 +1,8 @@
+VV_LOCAL_SYMBOL string main__get_two(void) {
+char* s = main__return_text_two();
+return cstring_to_vstring(s);
+}
+VV_LOCAL_SYMBOL string main__get_one(void) {
+main__ALcharptr s = main__return_text_one();
+return cstring_to_vstring(s);
+}

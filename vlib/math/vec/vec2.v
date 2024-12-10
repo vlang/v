@@ -266,7 +266,7 @@ pub fn (v Vec2[T]) eq(u Vec2[T]) bool {
 
 // eq_epsilon returns a bool indicating if the two vectors are equal within the module `vec_epsilon` const.
 pub fn (v Vec2[T]) eq_epsilon(u Vec2[T]) bool {
-	return v.eq_approx[T, f32](u, vec.vec_epsilon)
+	return v.eq_approx[T, f32](u, vec_epsilon)
 }
 
 // eq_approx returns whether these vectors are approximately equal within `tolerance`.

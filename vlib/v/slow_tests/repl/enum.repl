@@ -1,18 +1,7 @@
-mut age := 20
-enum Info {
-young
-old
-}
-fn get_info(age int) Info {
-if age < 25 {
-return .young
-} else {
-return .old
-}
-}
-get_info(age)
-age = 45
-get_info(age)
+enum Info { young old }
+fn get_info(age int) Info { if age < 25 { return .young } else { return .old } }
+mut age := 20; println(get_info(age)); age = 45; println(get_info(age))
 ===output===
 young
 old
+

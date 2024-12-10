@@ -42,58 +42,58 @@ fn test_mysql_orm() {
 		return
 	}
 	mut db := mysql.connect(
-		host: '127.0.0.1'
-		port: 3306
+		host:     '127.0.0.1'
+		port:     3306
 		username: 'root'
 		password: ''
-		dbname: 'mysql'
+		dbname:   'mysql'
 	)!
 	defer {
 		db.close()
 	}
 	db.create('Test', [
 		orm.TableField{
-			name: 'id'
-			typ: typeof[int]().idx
+			name:  'id'
+			typ:   typeof[int]().idx
 			attrs: [
 				VAttribute{
 					name: 'primary'
 				},
 				VAttribute{
-					name: 'sql'
+					name:    'sql'
 					has_arg: true
-					kind: .plain
-					arg: 'serial'
+					kind:    .plain
+					arg:     'serial'
 				},
 			]
 		},
 		orm.TableField{
-			name: 'name'
-			typ: typeof[string]().idx
+			name:  'name'
+			typ:   typeof[string]().idx
 			attrs: []
 		},
 		orm.TableField{
 			name: 'age'
-			typ: typeof[int]().idx
+			typ:  typeof[int]().idx
 		},
 	]) or { panic(err) }
 
 	db.insert('Test', orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
+		data:   [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
 	}) or { panic(err) }
 
-	res := db.@select(orm.SelectConfig{
-		table: 'Test'
+	res := db.select(orm.SelectConfig{
+		table:     'Test'
 		has_where: true
-		fields: ['id', 'name', 'age']
-		types: [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
+		fields:    ['id', 'name', 'age']
+		types:     [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.Primitive('Louis'), i64(101)]
-		types: [typeof[string]().idx, typeof[i64]().idx]
+		data:   [orm.Primitive('Louis'), i64(101)]
+		types:  [typeof[string]().idx, typeof[i64]().idx]
 		is_and: [true, true]
-		kinds: [.eq, .eq]
+		kinds:  [.eq, .eq]
 	}) or { panic(err) }
 
 	id := res[0][0]
@@ -179,7 +179,7 @@ fn test_mysql_orm() {
 	}
 
 	model := TestTimeType{
-		username: 'hitalo'
+		username:   'hitalo'
 		created_at: today
 		updated_at: today.str()
 		deleted_at: today

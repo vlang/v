@@ -14,7 +14,7 @@ pub fn start_in_background(http_port int, timeout time.Duration) ! {
 	linfo('>> ${@FN}, http_port: ${http_port}, timeout: ${timeout}')
 	assert http_port > 0
 	assert timeout > 0
-	//
+
 	spawn fn (timeout time.Duration) {
 		time.sleep(timeout)
 		linfo('>> webserver: pid: ${os.getpid()}, exiting cleanly after ${timeout.milliseconds()}ms ...')
@@ -24,7 +24,7 @@ pub fn start_in_background(http_port int, timeout time.Duration) ! {
 		max_ping: 50
 	}
 	app := &App{
-		port: http_port
+		port:          http_port
 		global_config: config
 	}
 	linfo('>> webserver: pid: ${os.getpid()}, started on http://localhost:${app.port}/ , with maximum runtime of ${timeout.milliseconds()} ms.')
@@ -75,7 +75,7 @@ pub fn (mut app App) html_page() vweb.Result {
 @['/:user/settings']
 pub fn (mut app App) settings(username string) vweb.Result {
 	linfo('>>>>> ${@LOCATION}, username: ${username}')
-	if username !in vweb_test_server.known_users {
+	if username !in known_users {
 		return app.not_found()
 	}
 	return app.html('username: ${username}')
@@ -84,7 +84,7 @@ pub fn (mut app App) settings(username string) vweb.Result {
 @['/:user/:repo/settings']
 pub fn (mut app App) user_repo_settings(username string, repository string) vweb.Result {
 	linfo('>>>>> ${@LOCATION}, username: ${username}, repository: ${repository}')
-	if username !in vweb_test_server.known_users {
+	if username !in known_users {
 		return app.not_found()
 	}
 	return app.html('username: ${username} | repository: ${repository}')

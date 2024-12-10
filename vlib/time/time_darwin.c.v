@@ -35,12 +35,12 @@ fn init_time_base() C.mach_timebase_info_data_t {
 
 fn sys_mono_now_darwin() u64 {
 	tm := C.mach_absolute_time()
-	if time.time_base.denom == 0 {
+	if time_base.denom == 0 {
 		unsafe {
-			C.mach_timebase_info(&time.time_base)
+			C.mach_timebase_info(&time_base)
 		}
 	}
-	return (tm - time.start_time) * time.time_base.numer / time.time_base.denom
+	return (tm - start_time) * time_base.numer / time_base.denom
 }
 
 // Note: vpc_now_darwin is used by `v -profile` .
@@ -48,12 +48,12 @@ fn sys_mono_now_darwin() u64 {
 @[inline]
 fn vpc_now_darwin() u64 {
 	tm := C.mach_absolute_time()
-	if time.time_base.denom == 0 {
+	if time_base.denom == 0 {
 		unsafe {
-			C.mach_timebase_info(&time.time_base)
+			C.mach_timebase_info(&time_base)
 		}
 	}
-	return (tm - time.start_time) * time.time_base.numer / time.time_base.denom
+	return (tm - start_time) * time_base.numer / time_base.denom
 }
 
 // darwin_now returns a better precision current time for macos

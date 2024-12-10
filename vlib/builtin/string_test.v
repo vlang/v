@@ -30,6 +30,14 @@ fn test_len_utf8() {
 	assert 'Λέξη'.len_utf8() == 4
 }
 
+fn test_is_pure_ascii() {
+	assert 'Vlang'.is_pure_ascii()
+	assert !'María'.is_pure_ascii()
+	assert !'姓名'.is_pure_ascii()
+	assert !'Слово'.is_pure_ascii()
+	assert !'Λέξη'.is_pure_ascii()
+}
+
 fn test_ends_with() {
 	a := 'browser.v'
 	assert a.ends_with('.v')
@@ -921,6 +929,7 @@ fn test_trim() {
 	assert 'banana'.trim('bna') == ''
 	assert 'abc'.trim('ac') == 'b'
 	assert 'aaabccc'.trim('ac') == 'b'
+	assert 'あいうえお'.trim('あい') == 'うえお'
 }
 
 fn test_trim_indexes() {
@@ -942,6 +951,7 @@ fn test_trim_left() {
 	s = 'banana'
 	assert s.trim_left('ba') == 'nana'
 	assert s.trim_left('ban') == ''
+	assert 'あいうえお'.trim_left('あい') == 'うえお'
 }
 
 fn test_trim_right() {
@@ -953,6 +963,7 @@ fn test_trim_right() {
 	s = 'banana'
 	assert s.trim_right('na') == 'b'
 	assert s.trim_right('ban') == ''
+	assert 'あいうえお'.trim_right('うえお') == 'あい'
 }
 
 fn test_all_before() {
@@ -1044,6 +1055,33 @@ fn test_lower() {
 	assert !s.is_lower()
 }
 
+fn test_lower_ascii() {
+	mut s := 'A'
+	assert !s.is_lower()
+	assert s.to_lower_ascii() == 'a'
+	assert s.to_lower_ascii().len == 1
+	s = 'HELLO'
+	assert !s.is_lower()
+	assert s.to_lower_ascii() == 'hello'
+	assert s.to_lower_ascii().len == 5
+	s = 'Aloha'
+	assert !s.is_lower()
+	assert s.to_lower_ascii() == 'aloha'
+	s = 'Have A nice Day!'
+	assert !s.is_lower()
+	assert s.to_lower_ascii() == 'have a nice day!'
+	s = 'hi'
+	assert s.is_lower()
+	assert s.to_lower_ascii() == 'hi'
+	assert 'aloha!'[0] == `a`
+	assert 'aloha!'[5] == `!`
+	s = '123'
+	assert !s.is_lower()
+	assert s.to_lower_ascii() == '123'
+	s = ''
+	assert !s.is_lower()
+}
+
 fn test_upper() {
 	mut s := 'a'
 	assert !s.is_upper()
@@ -1067,6 +1105,39 @@ fn test_upper() {
 	assert s.to_upper() == '123'
 	s = ''
 	assert !s.is_upper()
+}
+
+fn test_upper_ascii() {
+	mut s := 'a'
+	assert !s.is_upper()
+	assert s.to_upper_ascii() == 'A'
+	assert s.to_upper_ascii().len == 1
+	s = 'hello'
+	assert !s.is_upper()
+	assert s.to_upper_ascii() == 'HELLO'
+	assert s.to_upper_ascii().len == 5
+	s = 'Aloha'
+	assert !s.is_upper()
+	assert s.to_upper_ascii() == 'ALOHA'
+	s = 'have a nice day!'
+	assert !s.is_upper()
+	assert s.to_upper_ascii() == 'HAVE A NICE DAY!'
+	s = 'HI'
+	assert s.is_upper()
+	assert s.to_upper_ascii() == 'HI'
+	s = '123'
+	assert !s.is_upper()
+	assert s.to_upper_ascii() == '123'
+	s = ''
+	assert !s.is_upper()
+}
+
+fn test_runes_to_upper() {
+	assert 'água'.to_upper() == 'ÁGUA'
+}
+
+fn test_runes_to_lower() {
+	assert 'ÁGUA'.to_lower() == 'água'
 }
 
 fn test_capitalize() {
@@ -1506,12 +1577,11 @@ fn test_index_u8() {
 	assert 'abcabca'.index_u8(`a`) == 0
 	assert 'abcabca'.index_u8(`b`) == 1
 	assert 'abcabca'.index_u8(`c`) == 2
-	//
+
 	assert 'abc'.index_u8(`d`) == -1
 	assert 'abc'.index_u8(`A`) == -1
 	assert 'abc'.index_u8(`B`) == -1
 	assert 'abc'.index_u8(`C`) == -1
-	//
 }
 
 fn test_last_index() {
@@ -1567,4 +1637,20 @@ fn test_snake_to_camel() {
 	assert 'ab_cd_efg'.snake_to_camel() == 'AbCdEfg'
 	assert '_abcd'.snake_to_camel() == 'Abcd'
 	assert '_abcd_'.snake_to_camel() == 'Abcd'
+}
+
+fn test_string_wrap() {
+	assert 'Hello World'.wrap(width: 10) == 'Hello\nWorld'
+	assert 'Hello World'.wrap(width: 10, end: '<linea-break>') == 'Hello<linea-break>World'
+	assert 'The V programming language'.wrap(width: 20, end: '|') == 'The V programming|language'
+	assert 'Hello, my name is Carl and I am a delivery'.wrap(width: 20) == 'Hello, my name is\nCarl and I am a\ndelivery'
+}
+
+fn test_hex() {
+	assert 'Hello World!'.hex() == '48656c6c6f20576f726c6421'
+	assert 'VLANG'.hex() == '564c414e47'
+	assert 'VLANG'.hex() == 'VLANG'.bytes().hex()
+	for c in u8(0) .. 255 {
+		assert c.ascii_str().hex() == [c].hex()
+	}
 }

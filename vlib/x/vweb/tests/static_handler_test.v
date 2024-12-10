@@ -3,7 +3,7 @@ import net.http
 import os
 import time
 
-const port = 13003
+const port = 23003
 
 const localserver = 'http://127.0.0.1:${port}'
 
@@ -118,4 +118,11 @@ fn test_custom_folder_mount() {
 
 	assert x.status() == .ok
 	assert x.body == 'root'
+}
+
+fn test_upper_case_mime_type() {
+	x := http.get('${localserver}/upper_case.TXT')!
+
+	assert x.status() == .ok
+	assert x.body == 'body'
 }

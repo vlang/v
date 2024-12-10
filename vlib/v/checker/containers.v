@@ -13,6 +13,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	}
 	// `x := []string{}` (the type was set in the parser)
 	if node.typ != ast.void_type {
+		if !c.is_builtin_mod && c.mod !in ['builtin', 'strings', 'strconv', 'math.bits'] {
+			c.table.used_features.arr_init = true
+		}
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
 
@@ -59,6 +62,11 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				ast.Alias {
 					if elem_sym.name == 'byte' {
 						c.warn('byte is deprecated, use u8 instead', node.elem_type_pos)
+					}
+				}
+				ast.Map {
+					if c.pref.skip_unused && !c.is_builtin_mod {
+						c.table.used_features.arr_map = true
 					}
 				}
 				else {}
@@ -119,8 +127,12 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	// `a = []`
 	if node.exprs.len == 0 {
 		// `a := fn_returning_opt_array() or { [] }`
-		if c.expected_type == ast.void_type && c.expected_or_type != ast.void_type {
-			c.expected_type = c.expected_or_type
+		if c.expected_type == ast.void_type {
+			if c.expected_or_type != ast.void_type {
+				c.expected_type = c.expected_or_type
+			} else if c.expected_expr_type != ast.void_type {
+				c.expected_type = c.expected_expr_type
+			}
 		}
 		mut type_sym := c.table.sym(c.expected_type)
 		if type_sym.kind != .array || type_sym.array_info().elem_type == ast.void_type {
@@ -139,6 +151,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	}
 	// `[1,2,3]`
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
+		if !c.is_builtin_mod && c.mod !in ['builtin', 'strings', 'strconv', 'math.bits'] {
+			c.table.used_features.arr_init = true
+		}
 		mut expected_value_type := ast.void_type
 		mut expecting_interface_array := false
 		mut expecting_sumtype_array := false
@@ -146,7 +161,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		if c.expected_type != 0 {
 			expected_value_type = c.table.value_type(c.expected_type)
 			expected_value_sym := c.table.sym(expected_value_type)
-			if expected_value_sym.kind == .interface_ {
+			if expected_value_sym.kind == .interface {
 				// array of interfaces? (`[dog, cat]`) Save the interface type (`Animal`)
 				expecting_interface_array = true
 			} else if expected_value_sym.kind == .sum_type {
@@ -154,7 +169,22 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		for i, mut expr in node.exprs {
-			typ := c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+			mut typ := ast.void_type
+			if expr is ast.ArrayInit {
+				old_expected_type := c.expected_type
+				c.expected_type = c.table.value_type(c.expected_type)
+				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+				c.expected_type = old_expected_type
+			} else {
+				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+			}
+			if expr is ast.CallExpr {
+				ret_sym := c.table.sym(typ)
+				if ret_sym.kind == .array_fixed {
+					typ = c.cast_fixed_array_ret(typ, ret_sym)
+				}
+				node.has_callexpr = true
+			}
 			if typ == ast.void_type {
 				c.error('invalid void array element type', expr.pos())
 			}
@@ -168,7 +198,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 				if !typ.is_any_kind_of_pointer() && !c.inside_unsafe {
 					typ_sym := c.table.sym(typ)
-					if typ_sym.kind != .interface_ {
+					if typ_sym.kind != .interface {
 						c.mark_as_referenced(mut &expr, true)
 					}
 				}
@@ -207,7 +237,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 			}
 			if expr !is ast.TypeNode {
-				if c.table.type_kind(elem_type) == .interface_ {
+				if c.table.type_kind(elem_type) == .interface {
 					if c.type_implements(typ, elem_type, expr.pos()) {
 						continue
 					}
@@ -432,16 +462,21 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			node.key_type = info.key_type
 			node.value_type = info.value_type
 			return node.typ
-		} else {
-			if sym.kind == .struct_ {
-				c.error('`{}` can not be used for initialising empty structs any more. Use `${c.table.type_to_str(c.expected_type)}{}` instead.',
-					node.pos)
+		} else if sym.info is ast.Struct {
+			msg := if sym.info.is_anon {
+				'`{}` cannot be used to initialize anonymous structs. Use `struct{}` instead.'
 			} else {
-				c.error('invalid empty map initialisation syntax, use e.g. map[string]int{} instead',
-					node.pos)
+				'`{}` can not be used for initialising empty structs any more. Use `${c.table.type_to_str(c.expected_type)}{}` instead.'
 			}
-			return ast.void_type
+			c.error(msg, node.pos)
+			if sym.info.is_anon {
+				return c.expected_type
+			}
+		} else {
+			c.error('invalid empty map initialisation syntax, use e.g. map[string]int{} instead',
+				node.pos)
 		}
+		return ast.void_type
 	}
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
@@ -451,7 +486,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				c.error('cannot use Result type as map value type', node.pos)
 			}
 			val_sym := c.table.sym(info.value_type)
-			if val_sym.kind == .struct_ {
+			if val_sym.kind == .struct {
 				val_info := val_sym.info as ast.Struct
 				if val_info.generic_types.len > 0 && val_info.concrete_types.len == 0
 					&& !info.value_type.has_flag(.generic) {
@@ -461,6 +496,12 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 					} else {
 						c.error('generic struct `${val_sym.name}` must specify type parameter, e.g. ${val_sym.name}[T]',
 							node.pos)
+					}
+				}
+			} else if val_sym.info is ast.FnType {
+				for param in val_sym.info.func.params {
+					if param.typ.has_flag(.result) {
+						c.error('result type arguments are not supported', node.pos)
 					}
 				}
 			}
@@ -473,6 +514,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	}
 
 	if (node.keys.len > 0 && node.vals.len > 0) || node.has_update_expr {
+		c.table.used_features.map_update = true
 		mut map_type := ast.void_type
 		use_expected_type := c.expected_type != ast.void_type && !c.inside_const
 			&& c.table.sym(c.expected_type).kind == .map && !(c.inside_fn_arg
@@ -517,6 +559,8 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			if node.keys.len == 1 && map_val_type == ast.none_type {
 				c.error('map value cannot be only `none`', node.vals[0].pos())
 			}
+			c.check_expr_option_or_result_call(key_, map_key_type)
+			c.check_expr_option_or_result_call(val_, map_val_type)
 		}
 		map_key_type = c.unwrap_generic(map_key_type)
 		map_val_type = c.unwrap_generic(map_val_type)
@@ -526,7 +570,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		node.value_type = map_val_type
 
 		map_value_sym := c.table.sym(map_val_type)
-		expecting_interface_map := map_value_sym.kind == .interface_
+		expecting_interface_map := map_value_sym.kind == .interface
 		mut same_key_type := true
 		for i, mut key in node.keys {
 			if i == 0 && map_type == ast.void_type {
@@ -539,6 +583,8 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			val_type := c.expr(mut val)
 			node.val_types << val_type
 			val_type_sym := c.table.sym(val_type)
+			c.check_expr_option_or_result_call(key, key_type)
+			c.check_expr_option_or_result_call(val, val_type)
 			if !c.check_types(key_type, map_key_type)
 				|| (i == 0 && key_type.is_number() && map_key_type.is_number()
 				&& map_key_type != ast.mktyp(key_type)) {
@@ -550,14 +596,14 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				if val_type == map_val_type {
 					continue
 				}
-				if val_type_sym.kind == .struct_
+				if val_type_sym.kind == .struct
 					&& c.type_implements(val_type, map_val_type, val.pos()) {
 					node.vals[i] = ast.CastExpr{
-						expr: val
-						typname: c.table.get_type_name(map_val_type)
-						typ: map_val_type
+						expr:      val
+						typname:   c.table.get_type_name(map_val_type)
+						typ:       map_val_type
 						expr_type: val_type
-						pos: val.pos()
+						pos:       val.pos()
 					}
 					continue
 				} else {
@@ -666,16 +712,16 @@ fn (mut c Checker) check_elements_initialized(typ ast.Type) ! {
 	}
 	if typ.is_any_kind_of_pointer() {
 		if !c.pref.translated && !c.file.is_translated {
-			return checker.err_ref_uninitialized
+			return err_ref_uninitialized
 		} else {
 			return
 		}
 	}
 	sym := c.table.sym(typ)
-	if sym.kind == .interface_ {
-		return checker.err_interface_uninitialized
+	if sym.kind == .interface {
+		return err_interface_uninitialized
 	} else if sym.kind == .sum_type {
-		return checker.err_sumtype_uninitialized
+		return err_sumtype_uninitialized
 	}
 
 	match sym.info {

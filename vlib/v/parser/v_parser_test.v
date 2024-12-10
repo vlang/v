@@ -41,7 +41,7 @@ fn test_eval() {
 	vpref := &pref.Preferences{}
 	mut scope := &ast.Scope{
 		start_pos: 0
-		parent: 0
+		parent: unsafe { nil }
 	}
 	mut stmts := []ast.Stmt{}
 	for input in inputs {
@@ -103,8 +103,8 @@ fn test_one() {
 		e << parse_stmt(line, mut table, mut scope)
 	}
 	mut program := &ast.File{
-		stmts: e
-		scope: scope
+		stmts:        e
+		scope:        scope
 		global_scope: scope
 	}
 	mut checker_ := checker.new_checker(table, vpref)
@@ -147,8 +147,8 @@ fn test_parse_expr() {
 		e << parse_stmt(s, mut table, mut scope)
 	}
 	mut program := &ast.File{
-		stmts: e
-		scope: scope
+		stmts:        e
+		scope:        scope
 		global_scope: scope
 	}
 	chk.check(mut program)
@@ -291,8 +291,8 @@ fn parse(output_mode pref.OutputMode) ! {
 	mut files := []string{}
 	//	mode_files := os.walk_ext(os.join_path(vroot, 'vlib/v/parser/testdata/${output_mode}'), '.vv')
 	//	files << mode_files
-	scan_v(mut files, os.join_path(parser.vroot, 'vlib'))!
-	scan_v(mut files, os.join_path(parser.vroot, 'cmd'))!
+	scan_v(mut files, os.join_path(vroot, 'vlib'))!
+	scan_v(mut files, os.join_path(vroot, 'cmd'))!
 	mut pref_ := pref.new_preferences()
 	pref_.output_mode = output_mode
 	for idx, f in files {

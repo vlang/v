@@ -8,7 +8,6 @@ import strings
 import v.ast
 import v.ast.walker
 import v.util
-import v.mathutil as mu
 import v.token
 import v.errors
 import v.pref
@@ -74,6 +73,7 @@ mut:
 	pe_dll_relocations map[string]i64
 
 	requires_linking bool
+	is_builtin_mod   bool // true for .v files inside `builtin`
 }
 
 interface CodeGen {
@@ -271,8 +271,8 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 			offset := g.get_var_offset(obj.name)
 			return LocalVar{
 				offset: offset
-				typ: obj.typ
-				name: obj.name
+				typ:    obj.typ
+				name:   obj.name
 			}
 		}
 		else {
@@ -302,7 +302,7 @@ fn get_backend(arch pref.Arch, target_os pref.OS) !CodeGen {
 		}
 		.amd64 {
 			return Amd64{
-				fn_arg_registers: amd64_get_call_regs(target_os)
+				fn_arg_registers:     amd64_get_call_regs(target_os)
 				fn_arg_sse_registers: amd64_get_call_sseregs(target_os)
 			}
 		}
@@ -328,18 +328,18 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 		out_name
 	}
 	mut g := &Gen{
-		table: table
+		table:                table
 		sect_header_name_pos: 0
-		out_name: exe_name
-		pref: pref_
-		files: files
+		out_name:             exe_name
+		pref:                 pref_
+		files:                files
 		// TODO: workaround, needs to support recursive init
 		code_gen: get_backend(pref_.arch, pref_.os) or {
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
-		structs: []Struct{len: table.type_symbols.len}
-		eval: eval.new_eval(table, pref_)
+		structs:  []Struct{len: table.type_symbols.len}
+		eval:     eval.new_eval(table, pref_)
 	}
 
 	g.code_gen.g = g
@@ -368,16 +368,16 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 // used in macho_test.v
 pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 	mut g := Gen{
-		pref: p
+		pref:     p
 		out_name: out_name
-		table: ast.new_table()
+		table:    ast.new_table()
 		code_gen: Amd64{}
 	}
 	g.code_gen.g = &mut g
 	return &mut g
 }
 
-pub fn (mut g Gen) typ(a i32) &ast.TypeSymbol {
+pub fn (mut g Gen) styp(a ast.Type) &ast.TypeSymbol {
 	return g.table.type_symbols[a]
 }
 
@@ -662,7 +662,11 @@ fn (mut g Gen) align_to(align i32) {
 }
 
 fn (g &Gen) abs_to_rel_addr(addr i64) i32 {
-	return i32(mu.abs(addr - g.buf.len)) - 1
+	return i32(abs(addr - g.buf.len)) - 1
+}
+
+fn abs(a i64) i64 {
+	return if a > 0 { a } else { -a }
 }
 
 fn (mut g Gen) try_var_offset(var_name string) i32 {
@@ -820,7 +824,7 @@ fn (mut g Gen) is_fp_type(typ ast.Type) bool {
 
 fn (mut g Gen) get_sizeof_ident(ident ast.Ident) i32 {
 	typ := match ident.obj {
-		ast.AsmRegister { ast.i64_type_idx }
+		ast.AsmRegister { ast.i64_type }
 		ast.ConstField { ident.obj.typ }
 		ast.GlobalField { ident.obj.typ }
 		ast.Var { ident.obj.typ }
@@ -992,7 +996,7 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	mut used := true
 	if g.pref.skip_unused {
 		fkey := node.fkey()
-		used = g.table.used_fns[fkey]
+		used = g.table.used_features.used_fns[fkey]
 	}
 	return used
 }
@@ -1035,6 +1039,11 @@ fn (mut g Gen) delay_fn_call(name string) {
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	if node.attrs.contains('flag_enum_fn') {
+		// TODO: remove, when the native backend can process all flagged enum generated functions
+		return
+	}
+
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
 	} else {
@@ -1091,10 +1100,10 @@ fn (mut g Gen) println(comment string) {
 		sb.write_string(hexstr)
 	}
 	g.debug_pos = i32(g.buf.len)
-	//
+
 	colored := sb.str()
 	plain := term.strip_ansi(colored)
-	padding := ' '.repeat(mu.max(1, 40 - plain.len))
+	padding := ' '.repeat(int_max(1, 40 - plain.len))
 	final := '${colored}${padding}${comment}'
 	println(final)
 }
@@ -1114,9 +1123,9 @@ pub fn (mut g Gen) warning(s string, pos token.Pos) {
 	} else {
 		g.warnings << errors.Warning{
 			file_path: g.current_file.path
-			pos: pos
-			reporter: .gen
-			message: s
+			pos:       pos
+			reporter:  .gen
+			message:   s
 		}
 	}
 }
@@ -1132,9 +1141,9 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 	} else {
 		g.errors << errors.Error{
 			file_path: g.current_file.path
-			pos: pos
-			reporter: .gen
-			message: s
+			pos:       pos
+			reporter:  .gen
+			message:   s
 		}
 	}
 }
@@ -1146,7 +1155,7 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 	// construct a struct variable contains the return value
 	var := LocalVar{
 		offset: g.allocate_by_type('', typ)
-		typ: typ
+		typ:    typ
 	}
 
 	g.code_gen.zero_fill(size, var)
@@ -1158,7 +1167,7 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 		// TODO: expr not on rax
 		g.code_gen.mov_reg_to_var(var, main_reg,
 			offset: offset
-			typ: ts.mr_info().types[i]
+			typ:    ts.mr_info().types[i]
 		)
 	}
 	// store the multi return struct value
@@ -1219,9 +1228,9 @@ pub fn escape_string(s string) string {
 	mut out := []u8{cap: s.len}
 
 	for c in s {
-		if c in native.escape_codes {
-			out << native.escape_char
-			out << native.escape_codes[c]
+		if c in escape_codes {
+			out << escape_char
+			out << escape_codes[c]
 		} else {
 			out << c
 		}

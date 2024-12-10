@@ -61,7 +61,6 @@ fn cross_assign_of_struct_test() { // from cross_assign_test.v
 	assert x.b == 1
 }
 
-
 fn main() {
 	fn_multi_return_test()
 	cross_assign_of_struct_test()

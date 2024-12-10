@@ -3,8 +3,8 @@ module mysql
 import orm
 import time
 
-// @select is used internally by V's ORM for processing `SELECT ` queries.
-pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
+// select is used internally by V's ORM for processing `SELECT ` queries.
+pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
 	mut result := [][]orm.Primitive{}
 	mut stmt := db.init_stmt(query)
@@ -26,7 +26,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 	// Allocate memory for each column.
 	for i in 0 .. num_fields {
 		field := unsafe { fields[i] }
-		match unsafe { FieldType(field.@type) } {
+		match unsafe { FieldType(field.type) } {
 			.type_tiny {
 				data_pointers << unsafe { malloc(1) }
 			}
@@ -48,7 +48,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 				data_pointers << &u8(0)
 			}
 			else {
-				return error('\'${unsafe { FieldType(field.@type) }}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
+				return error('\'${unsafe { FieldType(field.type) }}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
 			}
 		}
 	}
@@ -68,7 +68,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 
 	for i, mut mysql_bind in stmt.res {
 		field := unsafe { fields[i] }
-		field_type := unsafe { FieldType(field.@type) }
+		field_type := unsafe { FieldType(field.type) }
 		field_types << field_type
 
 		match types[i] {
@@ -87,7 +87,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 					}
 					.type_string, .type_blob {}
 					else {
-						return error('Unknown type ${field.@type}')
+						return error('Unknown type ${field.type}')
 					}
 				}
 			}
@@ -133,9 +133,9 @@ pub fn (db DB) insert(table string, data orm.QueryData) ! {
 
 	converted_primitive_data := orm.QueryData{
 		fields: data.fields
-		data: converted_primitive_array
-		types: []
-		kinds: []
+		data:   converted_primitive_array
+		types:  []
+		kinds:  []
 		is_and: []
 	}
 

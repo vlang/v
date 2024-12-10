@@ -119,9 +119,9 @@ fn multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	} else {
 		operand_b.len
 	}
-	if max_len >= big.toom3_multiplication_limit {
+	if max_len >= toom3_multiplication_limit {
 		toom3_multiply_digit_array(operand_a, operand_b, mut storage)
-	} else if max_len >= big.karatsuba_multiplication_limit {
+	} else if max_len >= karatsuba_multiplication_limit {
 		karatsuba_multiply_digit_array(operand_a, operand_b, mut storage)
 	} else {
 		simple_multiply_digit_array(operand_a, operand_b, mut storage)
@@ -249,7 +249,7 @@ const newton_division_limit = 10_000
 
 @[inline]
 fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
-	if operand_a.len >= big.newton_division_limit {
+	if operand_a.len >= newton_division_limit {
 		newton_divide_array_by_array(operand_a, operand_b, mut quotient, mut remainder)
 	} else {
 		binary_divide_array_by_array(operand_a, operand_b, mut quotient, mut remainder)

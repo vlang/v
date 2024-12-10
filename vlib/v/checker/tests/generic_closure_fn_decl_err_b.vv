@@ -10,7 +10,9 @@ fn foo[T](my_plugin T) {
 	println(T.name) // MyPlugin
 	println(typeof(my_plugin).name) // MyPlugin
 
-	fn[my_plugin](){ my_plugin.on_update() }()
+	fn [my_plugin] () {
+		my_plugin.on_update()
+	}()
 }
 
 fn main() {

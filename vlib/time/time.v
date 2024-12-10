@@ -46,8 +46,6 @@ pub:
 	second     int
 	nanosecond int
 	is_local   bool // used to make time.now().local().local() == time.now().local()
-	//
-	microsecond int @[deprecated: 'use t.nanosecond / 1000 instead'; deprecated_after: '2023-08-05']
 }
 
 // FormatDelimiter contains different time formats.
@@ -101,7 +99,7 @@ pub fn (t Time) smonth() string {
 		return '---'
 	}
 	i := t.month - 1
-	return time.months_string[i * 3..(i + 1) * 3]
+	return months_string[i * 3..(i + 1) * 3]
 }
 
 // unix returns the UNIX time with second resolution.
@@ -215,37 +213,37 @@ pub fn (t Time) relative() string {
 	} else {
 		suffix = ' ago'
 	}
-	if secs < time.seconds_per_minute / 2 {
+	if secs < seconds_per_minute / 2 {
 		return 'now'
 	}
-	if secs < time.seconds_per_hour {
-		m := secs / time.seconds_per_minute
+	if secs < seconds_per_hour {
+		m := secs / seconds_per_minute
 		if m == 1 {
 			return '${prefix}1 minute${suffix}'
 		}
 		return '${prefix}${m} minutes${suffix}'
 	}
-	if secs < time.seconds_per_hour * 24 {
-		h := secs / time.seconds_per_hour
+	if secs < seconds_per_hour * 24 {
+		h := secs / seconds_per_hour
 		if h == 1 {
 			return '${prefix}1 hour${suffix}'
 		}
 		return '${prefix}${h} hours${suffix}'
 	}
-	if secs < time.seconds_per_hour * 24 * 7 {
-		d := secs / time.seconds_per_hour / 24
+	if secs < seconds_per_hour * 24 * 7 {
+		d := secs / seconds_per_hour / 24
 		if d == 1 {
 			return '${prefix}1 day${suffix}'
 		}
 		return '${prefix}${d} days${suffix}'
 	}
-	if secs < time.seconds_per_hour * 24 * time.days_in_year {
+	if secs < seconds_per_hour * 24 * days_in_year {
 		if prefix == 'in ' {
 			return 'on ${t.md()}'
 		}
 		return 'last ${t.md()}'
 	}
-	y := secs / time.seconds_per_hour / 24 / time.days_in_year
+	y := secs / seconds_per_hour / 24 / days_in_year
 	if y == 1 {
 		return '${prefix}1 year${suffix}'
 	}
@@ -277,31 +275,31 @@ pub fn (t Time) relative_short() string {
 	} else {
 		suffix = ' ago'
 	}
-	if secs < time.seconds_per_minute / 2 {
+	if secs < seconds_per_minute / 2 {
 		return 'now'
 	}
-	if secs < time.seconds_per_hour {
-		m := secs / time.seconds_per_minute
+	if secs < seconds_per_hour {
+		m := secs / seconds_per_minute
 		if m == 1 {
 			return '${prefix}1m${suffix}'
 		}
 		return '${prefix}${m}m${suffix}'
 	}
-	if secs < time.seconds_per_hour * 24 {
-		h := secs / time.seconds_per_hour
+	if secs < seconds_per_hour * 24 {
+		h := secs / seconds_per_hour
 		if h == 1 {
 			return '${prefix}1h${suffix}'
 		}
 		return '${prefix}${h}h${suffix}'
 	}
-	if secs < time.seconds_per_hour * 24 * time.days_in_year {
-		d := secs / time.seconds_per_hour / 24
+	if secs < seconds_per_hour * 24 * days_in_year {
+		d := secs / seconds_per_hour / 24
 		if d == 1 {
 			return '${prefix}1d${suffix}'
 		}
 		return '${prefix}${d}d${suffix}'
 	}
-	y := secs / time.seconds_per_hour / 24 / time.days_in_year
+	y := secs / seconds_per_hour / 24 / days_in_year
 	if y == 1 {
 		return '${prefix}1y${suffix}'
 	}
@@ -329,7 +327,7 @@ pub fn (t Time) day_of_week() int {
 // year_day returns the current day of the year as an integer.
 // See also #Time.custom_format .
 pub fn (t Time) year_day() int {
-	yday := t.day + time.days_before[t.month - 1]
+	yday := t.day + days_before[t.month - 1]
 	if is_leap_year(t.year) && t.month > 2 {
 		return yday + 1
 	}
@@ -339,13 +337,13 @@ pub fn (t Time) year_day() int {
 // weekday_str returns the current day as a string 3 letter abbreviation.
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
-	return time.long_days[i][0..3]
+	return long_days[i][0..3]
 }
 
 // long_weekday_str returns the current day as a string.
 pub fn (t Time) long_weekday_str() string {
 	i := t.day_of_week() - 1
-	return time.long_days[i]
+	return long_days[i]
 }
 
 // is_leap_year checks if a given a year is a leap year.
@@ -359,7 +357,7 @@ pub fn days_in_month(month int, year int) !int {
 		return error('Invalid month: ${month}')
 	}
 	extra := if month == 2 && is_leap_year(year) { 1 } else { 0 }
-	res := time.month_days[month - 1] + extra
+	res := month_days[month - 1] + extra
 	return res
 }
 

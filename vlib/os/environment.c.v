@@ -45,15 +45,18 @@ pub fn getenv_opt(key string) ?string {
 // os.setenv sets the value of an environment variable with `name` to `value`.
 pub fn setenv(name string, value string, overwrite bool) int {
 	$if windows {
-		format := '${name}=${value}'
+		format := '${name}=${value}'.to_wide()
+		defer {
+			unsafe { free(voidptr(format)) }
+		}
 		if overwrite {
 			unsafe {
-				return C._putenv(&char(format.str))
+				return C._wputenv(format)
 			}
 		} else {
 			if getenv(name).len == 0 {
 				unsafe {
-					return C._putenv(&char(format.str))
+					return C._wputenv(format)
 				}
 			}
 		}
@@ -68,8 +71,11 @@ pub fn setenv(name string, value string, overwrite bool) int {
 // os.unsetenv clears an environment variable with `name`.
 pub fn unsetenv(name string) int {
 	$if windows {
-		format := '${name}='
-		return C._putenv(&char(format.str))
+		format := '${name}='.to_wide()
+		defer {
+			unsafe { free(voidptr(format)) }
+		}
+		return C._wputenv(format)
 	} $else {
 		return C.unsetenv(&char(name.str))
 	}

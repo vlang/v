@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module main
 
-import os
+import os.asset
 import rand
 import time
 import gx
@@ -25,12 +25,12 @@ const limit_thickness = 3
 
 const text_cfg = gx.TextCfg{
 	align: .left
-	size: text_size
+	size:  text_size
 	color: gx.rgb(0, 0, 0)
 }
 const over_cfg = gx.TextCfg{
 	align: .left
-	size: text_size
+	size:  text_size
 	color: gx.white
 }
 
@@ -157,20 +157,17 @@ fn frame(mut game Game) {
 
 fn main() {
 	mut game := &Game{}
-	mut fpath := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	$if android {
-		fpath = 'fonts/RobotoMono-Regular.ttf'
-	}
 	game.gg = gg.new_context(
-		bg_color: gx.white
-		width: win_width
-		height: win_height
+		bg_color:      gx.white
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'V Tetris'
-		user_data: game
-		frame_fn: frame
-		event_fn: on_event
-		font_path: fpath // wait_events: true
+		window_title:  'V Tetris'
+		user_data:     game
+		frame_fn:      frame
+		event_fn:      on_event
+		font_path:     asset.get_path('../assets', 'fonts/RobotoMono-Regular.ttf')
+		// wait_events: true
 	)
 	game.init_game()
 	game.gg.run() // Run the render loop in the main thread

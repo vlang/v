@@ -85,7 +85,7 @@ fn find_windows_kit_root_by_reg(target_arch string) !WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
-		rc := C.RegOpenKeyEx(builder.hkey_local_machine, path.to_wide(), 0, builder.key_query_value | builder.key_wow64_32key | builder.key_enumerate_sub_keys,
+		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key | key_enumerate_sub_keys,
 			voidptr(&root_key))
 
 		if rc != 0 {
@@ -119,10 +119,10 @@ fn new_windows_kit(kit_root string, target_arch string) !WindowsKit {
 	kit_lib_highest := kit_lib + '\\${highest_path}'
 	kit_include_highest := kit_lib_highest.replace('Lib', 'Include')
 	return WindowsKit{
-		um_lib_path: kit_lib_highest + '\\um\\${target_arch}'
-		ucrt_lib_path: kit_lib_highest + '\\ucrt\\${target_arch}'
-		um_include_path: kit_include_highest + '\\um'
-		ucrt_include_path: kit_include_highest + '\\ucrt'
+		um_lib_path:         kit_lib_highest + '\\um\\${target_arch}'
+		ucrt_lib_path:       kit_lib_highest + '\\ucrt\\${target_arch}'
+		um_include_path:     kit_include_highest + '\\um'
+		ucrt_include_path:   kit_include_highest + '\\ucrt'
 		shared_include_path: kit_include_highest + '\\shared'
 	}
 }
@@ -179,8 +179,8 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) !VsI
 			p := '${res_output}\\VC\\Tools\\MSVC\\${v}\\bin\\Host${host_arch}\\${target_arch}'
 			// println('$lib_path $include_path')
 			return VsInstallation{
-				exe_path: p
-				lib_path: lib_path
+				exe_path:     p
+				lib_path:     lib_path
 				include_path: include_path
 			}
 		}
@@ -207,8 +207,8 @@ fn find_vs_by_env(host_arch string, target_arch string) !VsInstallation {
 	include_path := '${vc_tools_dir}include'
 
 	return VsInstallation{
-		exe_path: bin_dir
-		lib_path: lib_path
+		exe_path:     bin_dir
+		lib_path:     lib_path
 		include_path: include_path
 	}
 }
@@ -228,23 +228,23 @@ fn find_msvc(m64_target bool) !MsvcResult {
 			return error('Unable to find visual studio')
 		}
 		return MsvcResult{
-			full_cl_exe_path: os.real_path(vs.exe_path + os.path_separator + 'cl.exe')
-			exe_path: vs.exe_path
-			um_lib_path: wk.um_lib_path
-			ucrt_lib_path: wk.ucrt_lib_path
-			vs_lib_path: vs.lib_path
-			um_include_path: wk.um_include_path
-			ucrt_include_path: wk.ucrt_include_path
-			vs_include_path: vs.include_path
+			full_cl_exe_path:    os.real_path(vs.exe_path + os.path_separator + 'cl.exe')
+			exe_path:            vs.exe_path
+			um_lib_path:         wk.um_lib_path
+			ucrt_lib_path:       wk.ucrt_lib_path
+			vs_lib_path:         vs.lib_path
+			um_include_path:     wk.um_include_path
+			ucrt_include_path:   wk.ucrt_include_path
+			vs_include_path:     vs.include_path
 			shared_include_path: wk.shared_include_path
-			valid: true
+			valid:               true
 		}
 	} $else {
 		// This hack allows to at least see the generated .c file with `-os windows -cc msvc -o x.c`
 		// Please do not remove it, unless you also check that the above continues to work.
 		return MsvcResult{
 			full_cl_exe_path: '/usr/bin/true'
-			valid: true
+			valid:            true
 		}
 	}
 }
@@ -254,24 +254,22 @@ pub fn (mut v Builder) cc_msvc() {
 	if r.valid == false {
 		verror('cannot find MSVC on this OS')
 	}
-	out_name_obj := os.real_path(v.out_name_c + '.obj')
 	out_name_pdb := os.real_path(v.out_name_c + '.pdb')
 	out_name_cmd_line := os.real_path(v.out_name_c + '.rsp')
 	mut a := []string{}
-	//
+
 	env_cflags := os.getenv('CFLAGS')
 	mut all_cflags := '${env_cflags} ${v.pref.cflags}'
 	if all_cflags != ' ' {
 		a << all_cflags
 	}
-	//
+
 	// Default arguments
 	// `-w` no warnings
 	// `/we4013` 2 unicode defines, see https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4013?redirectedfrom=MSDN&view=msvc-170
 	// `/volatile:ms` enables atomic volatile (gcc _Atomic)
-	// `/Fo` sets the object file name - needed so we can clean up after ourselves properly
 	// `/F 16777216` changes the stack size to 16MB, see https://docs.microsoft.com/en-us/cpp/build/reference/f-set-stack-size?view=msvc-170
-	a << ['-w', '/we4013', '/volatile:ms', '/Fo"${out_name_obj}"', '/F 16777216']
+	a << ['-w', '/we4013', '/volatile:ms', '/F 16777216']
 	if v.pref.is_prod {
 		a << '/O2'
 	}
@@ -339,7 +337,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// Libs are passed to cl.exe which passes them to the linker
 	a << real_libs.join(' ')
 	a << '/link'
-	a << '/NOLOGO'
+	a << '/nologo' // NOTE: /NOLOGO is explicitly not recognised!
 	a << '/OUT:"${v.pref.out_name}"'
 	a << r.library_paths()
 	if !all_cflags.contains('/DEBUG') {
@@ -356,8 +354,11 @@ pub fn (mut v Builder) cc_msvc() {
 	if env_ldflags != '' {
 		a << env_ldflags
 	}
+	if v.pref.ldflags != '' {
+		a << v.pref.ldflags.trim_space()
+	}
 	v.dump_c_options(a)
-	args := a.join(' ')
+	args := '\xEF\xBB\xBF' + a.join(' ')
 	// write args to a file so that we dont smash createprocess
 	os.write_file(out_name_cmd_line, args) or {
 		verror('Unable to write response file to "${out_name_cmd_line}"')
@@ -383,11 +384,9 @@ pub fn (mut v Builder) cc_msvc() {
 	}
 	// println(res)
 	// println('C OUTPUT:')
-	// Always remove the object file - it is completely unnecessary
-	os.rm(out_name_obj) or {}
 }
 
-fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, moduleflags []cflag.CFlag) {
+fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string, moduleflags []cflag.CFlag) {
 	msvc := v.cached_msvc
 	if msvc.valid == false {
 		verror('cannot find MSVC on this OS')
@@ -402,20 +401,24 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	}
 	println('${obj_path} not found, building it (with msvc)...')
 	flush_stdout()
-	cfile := '${path_without_o_postfix}.c'
+	cfile := if os.exists('${path_without_o_postfix}.c') {
+		'${path_without_o_postfix}.c'
+	} else {
+		'${path_without_o_postfix}.cpp'
+	}
 	flags := msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')
-	//
+
 	mut oargs := []string{}
 	env_cflags := os.getenv('CFLAGS')
 	mut all_cflags := '${env_cflags} ${v.pref.cflags}'
 	if all_cflags != ' ' {
 		oargs << all_cflags
 	}
-	oargs << '/NOLOGO'
+	oargs << '/nologo' // NOTE: /NOLOGO is explicitly not recognised!
 	oargs << '/volatile:ms'
-	//
+
 	if v.pref.is_prod {
 		oargs << '/O2'
 		oargs << '/MD'
@@ -447,7 +450,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	// Instead of failing, just retry several times in this case.
 	mut res := os.Result{}
 	mut i := 0
-	for i = 0; i < builder.thirdparty_obj_build_max_retries; i++ {
+	for i = 0; i < thirdparty_obj_build_max_retries; i++ {
 		res = os.execute(cmd)
 		if res.exit_code == 0 {
 			break
@@ -456,15 +459,15 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 			break
 		}
 		eprintln('---------------------------------------------------------------------')
-		eprintln('   msvc: failed to build a thirdparty object, try: ${i}/${builder.thirdparty_obj_build_max_retries}')
+		eprintln('   msvc: failed to build a thirdparty object, try: ${i}/${thirdparty_obj_build_max_retries}')
 		eprintln('    cmd: ${cmd}')
 		eprintln(' output:')
 		eprintln(res.output)
 		eprintln('---------------------------------------------------------------------')
-		time.sleep(builder.thirdparty_obj_build_retry_delay)
+		time.sleep(thirdparty_obj_build_retry_delay)
 	}
 	if res.exit_code != 0 {
-		verror('msvc: failed to build a thirdparty object after ${i}/${builder.thirdparty_obj_build_max_retries} retries, cmd: ${cmd}')
+		verror('msvc: failed to build a thirdparty object after ${i}/${thirdparty_obj_build_max_retries} retries, cmd: ${cmd}')
 	}
 	println(res.output)
 	flush_stdout()
@@ -528,10 +531,10 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		lpaths << '/LIBPATH:"${os.real_path(l)}"'
 	}
 	return MsvcStringFlags{
-		real_libs: real_libs
-		inc_paths: inc_paths
-		lib_paths: lpaths
-		defines: defines
+		real_libs:   real_libs
+		inc_paths:   inc_paths
+		lib_paths:   lpaths
+		defines:     defines
 		other_flags: other_flags
 	}
 }

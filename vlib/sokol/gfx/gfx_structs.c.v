@@ -139,7 +139,7 @@ pub fn (mut b Bindings) set_frag_image(index int, img Image) {
 
 pub fn (b &Bindings) update_vert_buffer(index int, data voidptr, element_size int, element_count int) {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	C.sg_update_buffer(b.vertex_buffers[index], &range)
@@ -147,7 +147,7 @@ pub fn (b &Bindings) update_vert_buffer(index int, data voidptr, element_size in
 
 pub fn (b &Bindings) append_vert_buffer(index int, data voidptr, element_size int, element_count int) int {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	return C.sg_append_buffer(b.vertex_buffers[index], &range)
@@ -155,7 +155,7 @@ pub fn (b &Bindings) append_vert_buffer(index int, data voidptr, element_size in
 
 pub fn (b &Bindings) update_index_buffer(data voidptr, element_size int, element_count int) {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	C.sg_update_buffer(b.index_buffer, &range)
@@ -163,7 +163,7 @@ pub fn (b &Bindings) update_index_buffer(data voidptr, element_size int, element
 
 pub fn (b &Bindings) append_index_buffer(data voidptr, element_size int, element_count int) int {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	return C.sg_append_buffer(b.index_buffer, &range)
@@ -220,17 +220,17 @@ pub fn (mut desc C.sg_shader_desc) set_frag_uniform_block_size(block_index int, 
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, @type UniformType,
+pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, typ UniformType,
 	array_count int) &ShaderDesc {
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
-	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
+	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].type = typ
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, @type UniformType,
+pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, typ UniformType,
 	array_count int) &ShaderDesc {
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
-	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
+	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].type = typ
 	return desc
 }
 
@@ -280,7 +280,7 @@ pub type ShaderUniformBlockDesc = C.sg_shader_uniform_block_desc
 pub struct C.sg_shader_uniform_desc {
 pub mut:
 	name        &char
-	@type       UniformType
+	type        UniformType
 	array_count int
 }
 
@@ -532,7 +532,7 @@ pub type FrameStatsWGPU = C.sg_frame_stats_wgpu
 @[typedef]
 pub struct C.sg_frame_stats {
 	frame_index u32 // current frame counter, starts at 0
-	//
+
 	num_passes             u32
 	num_apply_viewport     u32
 	num_apply_scissor_rect u32
@@ -543,12 +543,12 @@ pub struct C.sg_frame_stats {
 	num_update_buffer      u32
 	num_append_buffer      u32
 	num_update_image       u32
-	//
+
 	size_apply_uniforms u32
 	size_update_buffer  u32
 	size_append_buffer  u32
 	size_update_image   u32
-	//
+
 	gl    FrameStatsGL
 	d3d11 FrameStatsD3D11
 	metal FrameStatsMetal
@@ -636,7 +636,7 @@ pub type Pass = C.sg_pass
 pub struct C.sg_buffer_desc {
 pub mut:
 	size  usize
-	@type BufferType
+	type  BufferType
 	usage Usage
 	data  Range
 	label &char
@@ -682,7 +682,7 @@ pub fn (mut b Buffer) free() {
 
 pub struct C.sg_image_desc {
 pub mut:
-	@type         ImageType
+	type          ImageType
 	render_target bool
 	width         int
 	height        int
@@ -769,7 +769,7 @@ pub const sg_max_mipmaps = 16
 
 pub struct C.sg_image_data {
 pub mut:
-	subimage [gfx.sg_cubeface_num][gfx.sg_max_mipmaps]Range
+	subimage [sg_cubeface_num][sg_max_mipmaps]Range
 }
 
 pub type ImageData = C.sg_image_data

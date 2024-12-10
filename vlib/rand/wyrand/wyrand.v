@@ -86,9 +86,9 @@ pub fn (mut rng WyRandRNG) u32() u32 {
 pub fn (mut rng WyRandRNG) u64() u64 {
 	unsafe {
 		mut seed1 := rng.state
-		seed1 += wyrand.wyp0
+		seed1 += wyp0
 		rng.state = seed1
-		return hash.wymum(seed1 ^ wyrand.wyp1, seed1)
+		return hash.wymum(seed1 ^ wyp1, seed1)
 	}
 	return 0
 }

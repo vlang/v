@@ -16,7 +16,7 @@ fn (mut a App) println(s string) {
 
 fn (mut a App) collect_info() {
 	a.line('V full version', version.full_v_version(true))
-	//
+
 	mut os_kind := os.user_os()
 	mut arch_details := []string{}
 	arch_details << '${runtime.nr_cpus()} cpus'
@@ -51,10 +51,10 @@ fn (mut a App) collect_info() {
 	if os_kind == 'windows' {
 		arch_details << a.cmd(
 			command: 'wmic cpu get name /format:table'
-			line: 1
+			line:    1
 		)
 	}
-	//
+
 	mut os_details := ''
 	wsl_check := a.cmd(command: 'cat /proc/sys/kernel/osrelease')
 	if os_kind == 'linux' {
@@ -87,7 +87,7 @@ fn (mut a App) collect_info() {
 	} else if os_kind == 'windows' {
 		wmic_info := a.cmd(
 			command: 'wmic os get * /format:value'
-			line: -1
+			line:    -1
 		)
 		p := a.parse(wmic_info, '=')
 		caption, build_number, os_arch := p['caption'], p['buildnumber'], p['osarchitecture']
@@ -122,8 +122,8 @@ fn (mut a App) collect_info() {
 	a.line('Git vroot status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
 	a.println('')
-	//
 	a.line('CC version', a.cmd(command: 'cc --version'))
+	a.line('emcc version', a.cmd(command: 'emcc --version'))
 	a.report_tcc_version('thirdparty/tcc')
 }
 
@@ -134,7 +134,7 @@ struct CmdConfig {
 
 fn (mut a App) cmd(c CmdConfig) string {
 	x := os.execute(c.command)
-	if x.exit_code < 0 {
+	if x.exit_code < 0 || x.exit_code == 127 {
 		return 'N/A'
 	}
 	if x.exit_code == 0 {

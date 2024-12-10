@@ -58,6 +58,10 @@
   }
 # define AO_HAVE_nop_full
 
+#elif defined(AO_THREAD_SANITIZER) && !defined(AO_USE_ATOMIC_THREAD_FENCE)
+  /* Workaround a compiler warning (reported by gcc-11, at least)   */
+  /* that atomic_thread_fence is unsupported with thread sanitizer. */
+
 #else
   AO_INLINE void
   AO_nop_read(void)
@@ -82,7 +86,7 @@
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
   }
 # define AO_HAVE_nop_full
-#endif /* !AO_UNIPROCESSOR */
+#endif /* !AO_UNIPROCESSOR && !AO_THREAD_SANITIZER */
 
 #include "generic-small.h"
 
@@ -95,28 +99,32 @@
   AO_INLINE AO_TS_VAL_t
   AO_test_and_set(volatile AO_TS_t *addr)
   {
-    return (AO_TS_VAL_t)__atomic_test_and_set(addr, __ATOMIC_RELAXED);
+    return (AO_TS_VAL_t)(__atomic_test_and_set(addr, __ATOMIC_RELAXED)
+                         ? AO_TS_SET : AO_TS_CLEAR);
   }
 # define AO_HAVE_test_and_set
 
   AO_INLINE AO_TS_VAL_t
   AO_test_and_set_acquire(volatile AO_TS_t *addr)
   {
-    return (AO_TS_VAL_t)__atomic_test_and_set(addr, __ATOMIC_ACQUIRE);
+    return (AO_TS_VAL_t)(__atomic_test_and_set(addr, __ATOMIC_ACQUIRE)
+                         ? AO_TS_SET : AO_TS_CLEAR);
   }
 # define AO_HAVE_test_and_set_acquire
 
   AO_INLINE AO_TS_VAL_t
   AO_test_and_set_release(volatile AO_TS_t *addr)
   {
-    return (AO_TS_VAL_t)__atomic_test_and_set(addr, __ATOMIC_RELEASE);
+    return (AO_TS_VAL_t)(__atomic_test_and_set(addr, __ATOMIC_RELEASE)
+                         ? AO_TS_SET : AO_TS_CLEAR);
   }
 # define AO_HAVE_test_and_set_release
 
   AO_INLINE AO_TS_VAL_t
   AO_test_and_set_full(volatile AO_TS_t *addr)
   {
-    return (AO_TS_VAL_t)__atomic_test_and_set(addr, __ATOMIC_SEQ_CST);
+    return (AO_TS_VAL_t)(__atomic_test_and_set(addr, __ATOMIC_SEQ_CST)
+                         ? AO_TS_SET : AO_TS_CLEAR);
   }
 # define AO_HAVE_test_and_set_full
 #endif /* !AO_PREFER_GENERALIZED */

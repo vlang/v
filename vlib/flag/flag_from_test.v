@@ -17,7 +17,7 @@ mut:
 fn test_using() {
 	mut config := Config{
 		mix_hard: false
-		amount: 8
+		amount:   8
 	}
 
 	config, _ = flag.using[Config](config, some_args_1)!

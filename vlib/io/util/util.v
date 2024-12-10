@@ -24,7 +24,7 @@ pub fn temp_file(tfo TempFileOptions) !(os.File, string) {
 	}
 	d = d.trim_right(os.path_separator)
 	prefix, suffix := prefix_and_suffix(tfo.pattern) or { return error(@FN + ' ${err.msg()}') }
-	for retry := 0; retry < util.retries; retry++ {
+	for retry := 0; retry < retries; retry++ {
 		path := os.join_path(d, prefix + random_number() + suffix)
 		mut mode := 'rw+'
 		$if windows {
@@ -36,7 +36,7 @@ pub fn temp_file(tfo TempFileOptions) !(os.File, string) {
 		}
 	}
 	return error(@FN +
-		' could not create temporary file in "${d}". Retry limit (${util.retries}) exhausted. Please ensure write permissions.')
+		' could not create temporary file in "${d}". Retry limit (${retries}) exhausted. Please ensure write permissions.')
 }
 
 @[params]
@@ -59,7 +59,7 @@ pub fn temp_dir(tdo TempFileOptions) !string {
 	os.ensure_folder_is_writable(d) or { return error_for_temporary_folder(@FN, d) }
 	d = d.trim_right(os.path_separator)
 	prefix, suffix := prefix_and_suffix(tdo.pattern) or { return error(@FN + ' ${err.msg()}') }
-	for retry := 0; retry < util.retries; retry++ {
+	for retry := 0; retry < retries; retry++ {
 		path := os.join_path(d, prefix + random_number() + suffix)
 		os.mkdir_all(path) or { continue }
 		if os.is_dir(path) && os.exists(path) {
@@ -67,7 +67,7 @@ pub fn temp_dir(tdo TempFileOptions) !string {
 			return path
 		}
 	}
-	return error('${@FN} could not create temporary directory "${d}". Retry limit (${util.retries}) exhausted.')
+	return error('${@FN} could not create temporary directory "${d}". Retry limit (${retries}) exhausted.')
 }
 
 // * Utility functions

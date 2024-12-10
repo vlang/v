@@ -599,27 +599,34 @@ pub fn (b []u8) byterune() !rune {
 
 // repeat returns a new string with `count` number of copies of the byte it was called on.
 pub fn (b u8) repeat(count int) string {
-	if count < 0 {
-		panic('byte.repeat: count is negative: ${count}')
-	} else if count == 0 {
+	if count <= 0 {
 		return ''
 	} else if count == 1 {
 		return b.ascii_str()
 	}
-	mut ret := unsafe { malloc_noscan(count + 1) }
-	for i in 0 .. count {
-		unsafe {
-			ret[i] = b
-		}
-	}
-	new_len := count
+	mut bytes := unsafe { malloc_noscan(count + 1) }
 	unsafe {
-		ret[new_len] = 0
+		vmemset(bytes, b, count)
+		bytes[count] = `0`
 	}
-	return unsafe { ret.vstring_with_len(new_len) }
+	return unsafe { bytes.vstring_with_len(count) }
 }
 
 // for atomic ints, internal
 fn _Atomic__int_str(x int) string {
 	return x.str()
+}
+
+// int_min returns the smallest `int` of input `a` and `b`.
+// Example: assert int_min(2,3) == 2
+@[inline]
+pub fn int_min(a int, b int) int {
+	return if a < b { a } else { b }
+}
+
+// int_max returns the largest `int` of input `a` and `b`.
+// Example: assert int_max(2,3) == 3
+@[inline]
+pub fn int_max(a int, b int) int {
+	return if a > b { a } else { b }
 }

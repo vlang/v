@@ -12,10 +12,10 @@ pub const fionbio = C.FIONBIO
 pub const msg_nosignal = 0
 pub const msg_dontwait = 0
 
-pub const error_ewouldblock = WsaError.wsaewouldblock
-pub const error_einprogress = WsaError.wsaeinprogress
-pub const error_eagain = WsaError.wsaewouldblock // on windows, is also wsaewouldblock
-pub const error_eintr = WsaError.wsaeintr
+pub const error_ewouldblock = int(WsaError.wsaewouldblock)
+pub const error_einprogress = int(WsaError.wsaeinprogress)
+pub const error_eagain = int(WsaError.wsaewouldblock) // on windows, is also wsaewouldblock
+pub const error_eintr = int(WsaError.wsaeintr)
 
 const wsa_v22 = 0x202
 
@@ -230,7 +230,7 @@ fn init() {
 	mut wsadata := C.WSAData{
 		lpVendorInfo: 0
 	}
-	res := C.WSAStartup(net.wsa_v22, &wsadata)
+	res := C.WSAStartup(wsa_v22, &wsadata)
 	if res != 0 {
 		panic('socket: WSAStartup failed')
 	}

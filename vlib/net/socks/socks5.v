@@ -26,10 +26,10 @@ pub fn socks5_dial(proxy_url string, host string, username string, password stri
 // socks5_ssl_dial create new instance of &ssl.SSLConn
 pub fn socks5_ssl_dial(proxy_url string, host string, username string, password string) !&ssl.SSLConn {
 	mut ssl_conn := ssl.new_ssl_conn(
-		verify: ''
-		cert: ''
-		cert_key: ''
-		validate: false
+		verify:                 ''
+		cert:                   ''
+		cert_key:               ''
+		validate:               false
 		in_memory_verification: false
 	)!
 	mut con := socks5_dial(proxy_url, host, username, password)!
@@ -52,10 +52,10 @@ pub:
 // net.default_tcp_dialer or ssl.create_ssl_dialer.
 pub fn new_socks5_dialer(base net.Dialer, proxy_address string, username string, password string) net.Dialer {
 	return &SOCKS5Dialer{
-		dialer: base
+		dialer:        base
 		proxy_address: proxy_address
-		username: username
-		password: password
+		username:      username
+		password:      password
 	}
 }
 
@@ -66,18 +66,18 @@ pub fn (sd SOCKS5Dialer) dial(address string) !net.Connection {
 }
 
 fn handshake(mut con net.Connection, host string, username string, password string) !net.Connection {
-	mut v := [socks.socks_version5, 1]
+	mut v := [socks_version5, 1]
 	if username.len > 0 {
-		v << socks.auth_user_password
+		v << auth_user_password
 	} else {
-		v << socks.no_auth
+		v << no_auth
 	}
 
 	con.write(v)!
 	mut bf := []u8{len: 2}
 	con.read(mut bf)!
 
-	if bf[0] != socks.socks_version5 {
+	if bf[0] != socks_version5 {
 		con.close()!
 		return error('unexpected protocol version ${bf[0]}')
 	}
@@ -108,7 +108,7 @@ fn handshake(mut con net.Connection, host string, username string, password stri
 		}
 	}
 	v.clear()
-	v = [socks.socks_version5, 1, 0]
+	v = [socks_version5, 1, 0]
 
 	mut port := host.all_after_last(':').u64()
 	if port == 0 {
@@ -117,7 +117,7 @@ fn handshake(mut con net.Connection, host string, username string, password stri
 	address := host.all_before_last(':')
 
 	if address.contains_only('.1234567890') { // ipv4
-		v << socks.addr_type_ipv4
+		v << addr_type_ipv4
 		v << parse_ipv4(address)!
 	} else if address.contains_only(':1234567890abcdf') {
 		// v << addr_type_ipv6
@@ -127,7 +127,7 @@ fn handshake(mut con net.Connection, host string, username string, password stri
 		if address.len > 255 {
 			return error('${address} is too long')
 		} else {
-			v << socks.addr_type_fqdn
+			v << addr_type_fqdn
 			v << u8(address.len)
 			v << address.bytes()
 		}

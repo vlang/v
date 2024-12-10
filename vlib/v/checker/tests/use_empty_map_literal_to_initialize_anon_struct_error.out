@@ -1,0 +1,7 @@
+vlib/v/checker/tests/use_empty_map_literal_to_initialize_anon_struct_error.vv:9:22: error: `{}` cannot be used to initialize anonymous structs. Use `struct{}` instead.
+    7 | 
+    8 | fn main() {
+    9 |     s := AStructName{5, {}}
+      |                         ~~
+   10 |     println(s)
+   11 | }

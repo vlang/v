@@ -58,6 +58,6 @@ pub fn new(poly int) &Crc32 {
 
 // sum calculates the CRC-32 checksum of `b` by using the IEEE polynomial.
 pub fn sum(b []u8) u32 {
-	c := new(int(crc32.ieee))
+	c := new(int(ieee))
 	return c.sum32(b)
 }

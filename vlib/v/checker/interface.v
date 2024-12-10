@@ -12,6 +12,9 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 	is_js := node.language == .js
 	if mut decl_sym.info is ast.Interface {
 		mut has_generic_types := false
+		if c.pref.skip_unused && decl_sym.mod == 'main' {
+			c.table.used_features.interfaces = true
+		}
 		if node.embeds.len > 0 {
 			all_embeds := c.expand_iface_embeds(node, 0, node.embeds)
 			// eprintln('> node.name: $node.name | node.embeds.len: $node.embeds.len | all_embeds: $all_embeds.len')
@@ -35,7 +38,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				if embed.typ.has_flag(.generic) {
 					has_generic_types = true
 				}
-				if isym.kind != .interface_ {
+				if isym.kind != .interface {
 					c.error('interface `${node.name}` tries to embed `${isym.name}`, but `${isym.name}` is not an interface, but `${isym.kind}`',
 						embed.pos)
 					continue
@@ -141,6 +144,16 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 						}
 					}
 				}
+			} else if !method.return_type.has_option_or_result() {
+				ret_sym := c.table.sym(method.return_type)
+				if ret_sym.info is ast.ArrayFixed && !ret_sym.info.is_fn_ret {
+					c.cast_to_fixed_array_ret(method.return_type, ret_sym)
+				} else if ret_sym.info is ast.Alias {
+					parent_sym := c.table.sym(ret_sym.info.parent_type)
+					if parent_sym.info is ast.ArrayFixed && !parent_sym.info.is_fn_ret {
+						c.cast_to_fixed_array_ret(ret_sym.info.parent_type, parent_sym)
+					}
+				}
 			}
 			for j, param in method.params {
 				if j == 0 && is_js {
@@ -223,7 +236,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 	}
 }
 
-fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Type, pos token.Pos) ast.Type {
+fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Type, pos token.Pos) ast.Type {
 	utyp := c.unwrap_generic(typ)
 	typ_sym := c.table.sym(utyp)
 	mut inter_sym := c.table.sym(interface_type)

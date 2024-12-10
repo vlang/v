@@ -3,5 +3,5 @@ vlib/v/checker/tests/fn_return_fn_type_mismatch_err.vv:22:9: error: cannot use `
    21 |     // create closure that has nonmatching signature due to first arg. Compiler should reject it
    22 |     return fn (n &WrongType, a i64, b u64) int {
       |            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   23 |         println('bad signature param0=$n')
+   23 |         println('bad signature param0=${n}')
    24 |         return 0

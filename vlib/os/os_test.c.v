@@ -872,7 +872,7 @@ fn test_execute() {
 		os.rm(print0script) or {}
 	}
 	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(print0script)}')
-	hexresult := result.output.bytes().hex()
+	hexresult := result.output.hex()
 	// println('exit_code: $result.exit_code')
 	// println('output: |$result.output|')
 	// println('output.len: $result.output.len')
@@ -983,7 +983,7 @@ fn move_across_partitions_using_function(f fn (src string, dst string, opts os.M
 	os.mkdir_all(mfolder)!
 	os.mkdir_all(cfolder)!
 	os.mkdir_all(cdeepfolder)!
-	//
+
 	original_path := os.join_path(pfolder, 'original.txt')
 	target_path := os.join_path(cdeepfolder, 'target.txt')
 	os.write_file(original_path, 'text')!

@@ -118,8 +118,8 @@ pub fn open_file(path string, mode string, options ...int) !File {
 		}
 	}
 	return File{
-		cfile: cfile
-		fd: fd
+		cfile:     cfile
+		fd:        fd
 		is_opened: true
 	}
 }
@@ -143,8 +143,8 @@ pub fn open(path string) !File {
 	cfile := vfopen(path, 'rb')!
 	fd := fileno(cfile)
 	return File{
-		cfile: cfile
-		fd: fd
+		cfile:     cfile
+		fd:        fd
 		is_opened: true
 	}
 }
@@ -177,8 +177,8 @@ pub fn create(path string) !File {
 	cfile := vfopen(path, 'wb')!
 	fd := fileno(cfile)
 	return File{
-		cfile: cfile
-		fd: fd
+		cfile:     cfile
+		fd:        fd
 		is_opened: true
 	}
 }
@@ -186,8 +186,8 @@ pub fn create(path string) !File {
 // stdin - return an os.File for stdin
 pub fn stdin() File {
 	return File{
-		fd: 0
-		cfile: C.stdin
+		fd:        0
+		cfile:     C.stdin
 		is_opened: true
 	}
 }
@@ -195,8 +195,8 @@ pub fn stdin() File {
 // stdout - return an os.File for stdout
 pub fn stdout() File {
 	return File{
-		fd: 1
-		cfile: C.stdout
+		fd:        1
+		cfile:     C.stdout
 		is_opened: true
 	}
 }
@@ -204,8 +204,8 @@ pub fn stdout() File {
 // stderr - return an os.File for stderr
 pub fn stderr() File {
 	return File{
-		fd: 2
-		cfile: C.stderr
+		fd:        2
+		cfile:     C.stderr
 		is_opened: true
 	}
 }
@@ -246,7 +246,7 @@ pub fn (f &File) read(mut buf []u8) !int {
 		if C.ferror(unsafe { &C.FILE(f.cfile) }) != 0 {
 			return NotExpected{
 				cause: 'unexpected error from fread'
-				code: -1
+				code:  -1
 			}
 		}
 	}
@@ -345,6 +345,7 @@ pub fn (mut f File) write_ptr(data voidptr, size int) int {
 
 // write_full_buffer writes a whole buffer of data to the file, starting from the
 // address in `buffer`, no matter how many tries/partial writes it would take.
+// The size in bytes, of the `buffer`, should be passed in `buffer_len`.
 @[unsafe]
 pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ! {
 	if buffer_len <= usize(0) {
@@ -421,7 +422,7 @@ fn fread(ptr voidptr, item_size int, items int, stream &C.FILE) !int {
 	return nbytes
 }
 
-// read_bytes reads bytes from the beginning of the file.
+// read_bytes reads `size` bytes from the beginning of the file.
 // Utility method, same as .read_bytes_at(size, 0).
 pub fn (f &File) read_bytes(size int) []u8 {
 	return f.read_bytes_at(size, 0)
@@ -543,7 +544,7 @@ pub fn (f &File) read_from(pos u64, mut buf []u8) !int {
 	return error('Could not read file')
 }
 
-// read_into_ptr reads at most max_size bytes from the file and writes it into ptr.
+// read_into_ptr reads at most `max_size` bytes from the file and writes it into ptr.
 // Returns the amount of bytes read or an error.
 pub fn (f &File) read_into_ptr(ptr &u8, max_size int) !int {
 	return fread(ptr, 1, max_size, f.cfile)
@@ -711,7 +712,7 @@ pub fn (mut f File) write_struct[T](t &T) ! {
 	}
 }
 
-// write_struct_at writes a single struct of type `T` at position specified in file
+// write_struct_at writes a single struct of type `T` at file byte offset `pos`.
 pub fn (mut f File) write_struct_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -767,7 +768,7 @@ pub fn (mut f File) write_raw[T](t &T) ! {
 	}
 }
 
-// write_raw_at writes a single instance of type `T` starting at file byte offset `pos`
+// write_raw_at writes a single instance of type `T` starting at file byte offset `pos`.
 pub fn (mut f File) write_raw_at[T](t &T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()

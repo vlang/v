@@ -14,7 +14,7 @@ fn interp_test(expression string, expected string) ! {
 	defer {
 		os.rmdir_all(tmpdir) or {}
 	}
-	//
+
 	tmpfile := os.join_path(tmpdir, 'input.v')
 	outfile := os.join_path(tmpdir, 'output.txt')
 	os.write_file(tmpfile, interpreter_wrap(expression))!

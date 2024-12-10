@@ -27,7 +27,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if node.expr is ast.Ident {
 			// var
 			if node.expr.info is ast.IdentVar && node.expr.language == .v {
-				name = g.typ(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f,
+				name = g.styp(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f,
 					.result))).replace('*', '')
 			}
 		}
@@ -39,15 +39,19 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				if node.expr.field_expr.expr.name == g.comptime.comptime_for_field_var
 					&& node.expr.field_expr.field_name == 'name' {
 					field, _ := g.comptime.get_comptime_selector_var_type(node.expr)
-					name = g.typ(g.unwrap_generic(field.typ.clear_flags(.shared_f, .result)))
+					name = g.styp(g.unwrap_generic(field.typ.clear_flags(.shared_f, .result)))
 					expr_type = field.typ
 				}
 			}
 		}
-	} else if node.expr is ast.Ident && g.comptime.inside_comptime_for
-		&& g.comptime.is_comptime_var(node.expr) {
-		expr_type = g.comptime.get_comptime_var_type(node.expr)
-		name = g.typ(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
+	} else if node.expr is ast.Ident && g.comptime.is_comptime_var(node.expr) {
+		expr_type = g.comptime.get_type(node.expr)
+		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
+			'')
+	} else if node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
+		&& g.comptime.is_comptime_var(node.expr.expr) {
+		expr_type = g.comptime_selector_type(node.expr)
+		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
 			'')
 	}
 
@@ -70,7 +74,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else if node.expr is ast.ArrayInit {
 		if node.expr.is_fixed {
-			s := g.typ(node.expr.typ)
+			s := g.styp(node.expr.typ)
 			if !node.expr.has_index {
 				g.write('(${s})')
 			}
@@ -95,31 +99,37 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_fns := strings.new_builder(100)
 	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
-		dump_sym := g.table.sym(dump_type)
+		dump_sym := g.table.sym(ast.idx_to_type(dump_type))
 		// eprintln('>>> dump_type: $dump_type | cname: $cname | dump_sym: $dump_sym.name')
 		mut name := cname
 		if dump_sym.language == .c {
 			name = name[3..]
 		}
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
-		typ := ast.Type(dump_type)
+		typ := ast.idx_to_type(dump_type)
 		is_ptr := typ.is_ptr()
-		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
+		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, typ)
 		to_string_fn_name := g.get_str_fn(typ.clear_flags(.shared_f, .result))
+		is_option := typ.has_option_or_result()
 		mut ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
 		mut str_dumparg_type := ''
 		mut str_dumparg_ret_type := ''
-		if dump_sym.kind == .none_ {
+		if dump_sym.kind == .none {
 			str_dumparg_type = 'IError' + ptr_asterisk
+		} else if dump_sym.kind == .function {
+			if is_option {
+				ptr_asterisk = ptr_asterisk.replace('*', '_ptr')
+			}
+			str_dumparg_type += g.styp(typ).replace('*', '') + ptr_asterisk
 		} else {
-			if typ.has_flag(.option) {
+			if is_option {
 				str_dumparg_type += '_option_'
 				ptr_asterisk = ptr_asterisk.replace('*', '_ptr')
 			}
-			str_dumparg_type += g.cc_type(dump_type, true) + ptr_asterisk
+			str_dumparg_type += g.cc_type(typ, true) + ptr_asterisk
 		}
 		mut is_fixed_arr_ret := false
-		if dump_sym.kind == .function {
+		if dump_sym.kind == .function && !is_option {
 			fninfo := dump_sym.info as ast.FnType
 			str_dumparg_type = 'DumpFNType_${name}'
 			tdef_pos := g.out.len
@@ -128,7 +138,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef ${str_tdef};'] = true
 			str_dumparg_ret_type = str_dumparg_type
-		} else if !typ.has_option_or_result() && dump_sym.is_array_fixed() {
+		} else if !is_option && dump_sym.is_array_fixed() {
 			match dump_sym.kind {
 				.array_fixed {
 					if (dump_sym.info as ast.ArrayFixed).is_fn_ret {
@@ -172,9 +182,9 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		mut surrounder := util.new_surrounder(3)
 		surrounder.add('\tstring sline = int_str(line);', '\tstring_free(&sline);')
-		if dump_sym.kind == .function {
+		if dump_sym.kind == .function && !is_option {
 			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tstring_free(&value);')
-		} else if dump_sym.kind == .none_ {
+		} else if dump_sym.kind == .none {
 			surrounder.add('\tstring value = _SLIT("none");', '\tstring_free(&value);')
 		} else if is_ptr {
 			if typ.has_flag(.option) {
@@ -182,7 +192,7 @@ fn (mut g Gen) dump_expr_definitions() {
 					'\tstring_free(&value);')
 			} else {
 				prefix := if dump_sym.is_c_struct() {
-					c_struct_ptr(dump_sym, dump_type, str_method_expects_ptr)
+					c_struct_ptr(dump_sym, typ, str_method_expects_ptr)
 				} else {
 					deref
 				}
@@ -191,7 +201,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			}
 		} else {
 			prefix := if dump_sym.is_c_struct() {
-				c_struct_ptr(dump_sym, dump_type, str_method_expects_ptr)
+				c_struct_ptr(dump_sym, typ, str_method_expects_ptr)
 			} else {
 				deref
 			}
@@ -233,7 +243,7 @@ fn (mut g Gen) dump_expr_definitions() {
 				'{0}'
 			}
 			if typ.is_ptr() {
-				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = HEAP(${g.typ(typ.set_nr_muls(0))}, ${init_str});')
+				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = HEAP(${g.styp(typ.set_nr_muls(0))}, ${init_str});')
 				dump_fns.writeln('\tmemcpy(${tmp_var}->ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
 			} else {
 				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = ${init_str};')

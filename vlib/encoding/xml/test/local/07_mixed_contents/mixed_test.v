@@ -6,21 +6,21 @@ fn test_valid_parsing() ! {
 
 	expected := xml.XMLDocument{
 		root: xml.XMLNode{
-			name: 'letter'
+			name:     'letter'
 			children: [
 				'Dear Mr.',
 				xml.XMLNode{
-					name: 'name'
+					name:     'name'
 					children: ['John Smith']
 				},
 				'.\n  Your order',
 				xml.XMLNode{
-					name: 'orderid'
+					name:     'orderid'
 					children: ['1032']
 				},
 				'will be shipped on',
 				xml.XMLNode{
-					name: 'shipdate'
+					name:     'shipdate'
 					children: ['2001-07-13']
 				},
 				'.',

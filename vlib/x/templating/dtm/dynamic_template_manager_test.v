@@ -9,14 +9,14 @@ const temp_html_n = 'temp'
 const vtmp_dir = os.vtmp_dir()
 
 fn testsuite_begin() {
-	temp_folder := os.join_path(dtm.vtmp_dir, dtm.temp_dtm_dir)
+	temp_folder := os.join_path(vtmp_dir, temp_dtm_dir)
 	os.mkdir_all(temp_folder)!
 
-	templates_path := os.join_path(temp_folder, dtm.temp_templates_dir)
+	templates_path := os.join_path(temp_folder, temp_templates_dir)
 
 	os.mkdir_all(templates_path)!
 
-	temp_html_file := os.join_path(templates_path, dtm.temp_html_fp)
+	temp_html_file := os.join_path(templates_path, temp_html_fp)
 
 	html_content := '
     <!DOCTYPE html>
@@ -41,24 +41,24 @@ fn test_initialize_dtm() {
 
 fn test_create_template_cache_and_display() {
 	mut dtmi := init_dtm(false, 0)
-	temp_html_file := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
+	temp_html_file := os.join_path(dtmi.template_folder, temp_html_fp)
 	html_last_mod := os.file_last_mod_unix(temp_html_file)
 	c_time := get_current_unix_micro_timestamp()
 	cache_delay_exp := i64(500) * i64(1000000)
 	placeholder := map[string]DtmMultiTypeMap{}
 	content_checksum := ''
 	html := dtmi.create_template_cache_and_display(.new, html_last_mod, c_time, temp_html_file,
-		dtm.temp_html_n, cache_delay_exp, &placeholder, content_checksum, TemplateType.html)
+		temp_html_n, cache_delay_exp, &placeholder, content_checksum, TemplateType.html)
 
 	assert html.len > 10
 }
 
 fn test_return_cache_info_isexistent() {
 	mut dtmi := init_dtm(false, 0)
-	path_template := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
+	path_template := os.join_path(dtmi.template_folder, temp_html_fp)
 	lock dtmi.template_caches {
 		dtmi.template_caches << TemplateCache{
-			id: 1
+			id:   1
 			path: path_template
 		}
 	}
@@ -72,22 +72,22 @@ fn test_return_cache_info_isexistent() {
 	lock dtmi.template_caches {
 		dtmi.template_caches[0].id_redirection = 2
 		dtmi.template_caches << TemplateCache{
-			id: 2
-			path: path_template
+			id:             2
+			path:           path_template
 			id_redirection: 3
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 3
-			path: path_template
+			id:             3
+			path:           path_template
 			id_redirection: 4
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 4
-			path: path_template
+			id:             4
+			path:           path_template
 			id_redirection: 5
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 5
+			id:   5
 			path: path_template
 		}
 	}
@@ -137,7 +137,7 @@ fn test_remaining_template_request() {
 
 fn test_check_tmpl_and_placeholders_size() {
 	mut dtmi := init_dtm(false, 0)
-	temp_html_file := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
+	temp_html_file := os.join_path(dtmi.template_folder, temp_html_fp)
 	placeholders := map[string]DtmMultiTypeMap{}
 
 	path, filename, content_checksum, tmpl_type := dtmi.check_tmpl_and_placeholders_size(temp_html_file,
@@ -156,53 +156,53 @@ fn test_check_tmpl_and_placeholders_size() {
 
 fn test_chandler_prevent_cache_duplicate_request() {
 	dtmi := init_dtm(false, 0)
-	temp_html_file := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
+	temp_html_file := os.join_path(dtmi.template_folder, temp_html_fp)
 
 	lock dtmi.template_caches {
 		dtmi.template_caches << TemplateCache{
-			id: 1
-			path: temp_html_file
+			id:            1
+			path:          temp_html_file
 			cache_request: .new
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 2
-			path: temp_html_file
-			cache_request: .update
+			id:                2
+			path:              temp_html_file
+			cache_request:     .update
 			last_template_mod: i64(1)
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 3
-			path: temp_html_file
-			cache_request: .exp_update
+			id:                3
+			path:              temp_html_file
+			cache_request:     .exp_update
 			last_template_mod: i64(1)
-			generate_at: i64(100)
+			generate_at:       i64(100)
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 4
+			id:            4
 			cache_request: .delete
 		}
 	}
 	new_cache := TemplateCache{
-		id: 5
-		path: temp_html_file
+		id:            5
+		path:          temp_html_file
 		cache_request: .new
 	}
 	update_cache := TemplateCache{
-		id: 6
-		path: temp_html_file
-		cache_request: .update
+		id:                6
+		path:              temp_html_file
+		cache_request:     .update
 		last_template_mod: i64(1)
 	}
 	exp_update_cache := TemplateCache{
-		id: 7
-		path: temp_html_file
-		cache_request: .exp_update
-		last_template_mod: i64(1)
-		generate_at: i64(10)
+		id:                     7
+		path:                   temp_html_file
+		cache_request:          .exp_update
+		last_template_mod:      i64(1)
+		generate_at:            i64(10)
 		cache_delay_expiration: i64(10)
 	}
 	delete_cache := TemplateCache{
-		id: 4
+		id:            4
 		cache_request: .delete
 	}
 	mut is_duplicate := dtmi.chandler_prevent_cache_duplicate_request(&new_cache)
@@ -226,18 +226,18 @@ fn test_chandler_remaining_cache_template_used() {
 	mut dtmi := init_dtm(false, 0)
 	lock dtmi.nbr_of_remaining_template_request {
 		dtmi.nbr_of_remaining_template_request << RemainingTemplateRequest{
-			id: 1
+			id:                       1
 			nbr_of_remaining_request: 0
 		}
 		dtmi.nbr_of_remaining_template_request << RemainingTemplateRequest{
-			id: 2
+			id:                       2
 			nbr_of_remaining_request: 1
-			need_to_delete: true
+			need_to_delete:           true
 		}
 		dtmi.nbr_of_remaining_template_request << RemainingTemplateRequest{
-			id: 3
+			id:                       3
 			nbr_of_remaining_request: 0
-			need_to_delete: true
+			need_to_delete:           true
 		}
 	}
 	mut can_delete := dtmi.chandler_remaining_cache_template_used(CacheRequest.update,
@@ -253,23 +253,23 @@ fn test_chandler_remaining_cache_template_used() {
 
 fn test_parse_tmpl_file() {
 	mut dtmi := init_dtm(false, 0)
-	temp_folder := os.join_path(dtm.vtmp_dir, dtm.temp_dtm_dir)
-	templates_path := os.join_path(temp_folder, dtm.temp_templates_dir)
-	temp_html_file := os.join_path(templates_path, dtm.temp_html_fp)
+	temp_folder := os.join_path(vtmp_dir, temp_dtm_dir)
+	templates_path := os.join_path(temp_folder, temp_templates_dir)
+	temp_html_file := os.join_path(templates_path, temp_html_fp)
 
 	mut placeholders := map[string]DtmMultiTypeMap{}
 
 	is_compressed := true
-	html := dtmi.parse_tmpl_file(temp_html_file, dtm.temp_html_n, &placeholders, is_compressed,
+	html := dtmi.parse_tmpl_file(temp_html_file, temp_html_n, &placeholders, is_compressed,
 		TemplateType.html)
 
 	assert html.len > 0
 }
 
 fn test_check_if_cache_delay_iscorrect() {
-	check_if_cache_delay_iscorrect(i64(300 * 1000000), dtm.temp_html_n) or { assert false }
+	check_if_cache_delay_iscorrect(i64(300 * 1000000), temp_html_n) or { assert false }
 
-	check_if_cache_delay_iscorrect(i64(-100), dtm.temp_html_n) or { assert true }
+	check_if_cache_delay_iscorrect(i64(-100), temp_html_n) or { assert true }
 }
 
 fn test_cache_request_route() {
@@ -315,20 +315,20 @@ fn test_cache_request_route() {
 }
 
 fn testsuite_end() {
-	temp_folder := os.join_path(dtm.vtmp_dir, dtm.temp_dtm_dir)
+	temp_folder := os.join_path(vtmp_dir, temp_dtm_dir)
 	os.rmdir_all(temp_folder) or {}
 }
 
 // Utilities function :
 
 fn init_dtm(b bool, m int) &DynamicTemplateManager {
-	temp_folder := os.join_path(dtm.vtmp_dir, dtm.temp_dtm_dir)
-	templates_path := os.join_path(temp_folder, dtm.temp_templates_dir)
+	temp_folder := os.join_path(vtmp_dir, temp_dtm_dir)
+	templates_path := os.join_path(temp_folder, temp_templates_dir)
 
 	init_params := DynamicTemplateManagerInitialisationParams{
-		active_cache_server: b
+		active_cache_server:  b
 		max_size_data_in_mem: m
-		test_template_dir: templates_path
+		test_template_dir:    templates_path
 	}
 
 	dtm := initialize(init_params)

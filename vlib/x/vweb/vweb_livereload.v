@@ -21,7 +21,7 @@ const vweb_livereload_server_start = time.ticks().str()
 // timestamp/ticks corresponding to when the vweb server process was started
 @[if vweb_livereload ?]
 fn (mut ctx Context) handle_vweb_livereload_current() {
-	ctx.send_response_to_client('text/plain', vweb.vweb_livereload_server_start)
+	ctx.send_response_to_client('text/plain', vweb_livereload_server_start)
 }
 
 // handle_vweb_livereload_script serves a small dynamically generated .js file,
@@ -42,7 +42,7 @@ function vweb_livereload_checker_fn(started_at) {
             }
         });
 }
-const vweb_livereload_checker = setInterval(vweb_livereload_checker_fn, ${ctx.livereload_poll_interval_ms}, "${vweb.vweb_livereload_server_start}");
+const vweb_livereload_checker = setInterval(vweb_livereload_checker_fn, ${ctx.livereload_poll_interval_ms}, "${vweb_livereload_server_start}");
 '
 	ctx.send_response_to_client('text/javascript', res)
 }

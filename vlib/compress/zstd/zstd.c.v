@@ -431,10 +431,10 @@ pub:
 // extra decompression parameters can be set by `params`
 // Example: decompressed := zstd.decompress(b)!
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
-	dst_capacity := C.ZSTD_getFrameContentSize(data.data, zstd.zstd_frame_header_size_max)
-	if dst_capacity == zstd.zstd_content_size_unknown {
+	dst_capacity := C.ZSTD_getFrameContentSize(data.data, zstd_frame_header_size_max)
+	if dst_capacity == zstd_content_size_unknown {
 		return error('The size cannot be determined, try use streaming mode to decompress data?')
-	} else if dst_capacity == zstd.zstd_content_size_error {
+	} else if dst_capacity == zstd_content_size_error {
 		return error('An error occurred (e.g. invalid magic number, srcSize too small)')
 	} else if dst_capacity == 0 {
 		return error('The frame is valid but empty')
@@ -543,7 +543,7 @@ pub fn store_array[T](fname string, array []T, params CompressParams) ! {
 		fout.close()
 	}
 
-	mut buf_out := []u8{len: zstd.buf_out_size}
+	mut buf_out := []u8{len: buf_out_size}
 	mut input := &ZSTD_inBuffer{}
 	mut output := &ZSTD_outBuffer{}
 	mut remaining := usize(1)
@@ -554,22 +554,22 @@ pub fn store_array[T](fname string, array []T, params CompressParams) ! {
 	input.size = 8
 	input.pos = 0
 	output.dst = buf_out.data
-	output.size = zstd.buf_out_size
+	output.size = buf_out_size
 	output.pos = 0
 	remaining = cctx.compress_stream2(output, input, .zstd_e_flush)
 	check_zstd(remaining)!
 	fout.write(buf_out[..output.pos])!
 	// then, write the array.data to file
 	input.src = array.data
-	input.size = usize(array.len * sizeof(T))
+	input.size = usize(array.len * int(sizeof(T)))
 	input.pos = 0
 	output.dst = buf_out.data
-	output.size = zstd.buf_out_size
+	output.size = buf_out_size
 	output.pos = 0
 	remaining = 1
 	for remaining != 0 {
 		output.dst = buf_out.data
-		output.size = zstd.buf_out_size
+		output.size = buf_out_size
 		output.pos = 0
 		remaining = cctx.compress_stream2(output, input, .zstd_e_end)
 		check_zstd(remaining)!
@@ -587,7 +587,7 @@ pub fn load_array[T](fname string, params DecompressParams) ![]T {
 		fin.close()
 	}
 
-	mut buf_in := []u8{len: zstd.buf_in_size}
+	mut buf_in := []u8{len: buf_in_size}
 	mut len_buf := []u8{len: 8}
 	mut input := &ZSTD_inBuffer{}
 	mut output := &ZSTD_outBuffer{}

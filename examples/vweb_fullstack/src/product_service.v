@@ -10,7 +10,7 @@ fn (mut app App) service_add_product(product_name string, user_id int) ! {
 	}
 
 	product_model := Product{
-		name: product_name
+		name:    product_name
 		user_id: user_id
 	}
 

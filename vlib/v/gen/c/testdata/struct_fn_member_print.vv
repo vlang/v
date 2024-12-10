@@ -3,16 +3,16 @@ module main
 type Function = fn (int)
 
 struct MyStruct {
-        func Function @[required]
+	func Function @[required]
 }
 
 fn implementation(size int) {
-        println('size is ${size}')
+	println('size is ${size}')
 }
 
 fn main() {
-        m := MyStruct{
-                func: implementation
-        }
-        println('${m}')
+	m := MyStruct{
+		func: implementation
+	}
+	println('${m}')
 }

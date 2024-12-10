@@ -5,6 +5,7 @@ import v.slow_tests.repl.runner
 import benchmark
 import sync.pool
 
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 fn test_the_v_compiler_can_be_invoked() {
@@ -43,7 +44,7 @@ fn test_all_v_repl_files() {
 	}
 	mut session := &Session{
 		options: runner.new_options()
-		bmark: benchmark.new_benchmark()
+		bmark:   benchmark.new_benchmark()
 	}
 	// warmup, and ensure that the vrepl is compiled in single threaded mode if it does not exist
 	runner.run_repl_file(os.cache_dir(), session.options.vexec, 'vlib/v/slow_tests/repl/nothing.repl') or {

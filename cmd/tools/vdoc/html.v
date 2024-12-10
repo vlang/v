@@ -39,7 +39,7 @@ enum HighlightTokenTyp {
 	partial_string
 	closing_string
 	symbol
-	none_
+	none
 	module_
 	prefix
 }
@@ -56,7 +56,7 @@ struct SearchResult {
 	link        string
 }
 
-fn (vd VDoc) render_search_index(out Output) {
+fn (vd &VDoc) render_search_index(out Output) {
 	mut js_search_index := strings.new_builder(200)
 	mut js_search_data := strings.new_builder(200)
 	js_search_index.write_string('var searchModuleIndex = [\n')
@@ -96,7 +96,7 @@ fn (mut vd VDoc) render_static_html(out Output) {
 	}
 }
 
-fn (vd VDoc) get_resource(name string, out Output) string {
+fn (vd &VDoc) get_resource(name string, out Output) string {
 	cfg := vd.cfg
 	path := os.join_path(cfg.theme_dir, name)
 	mut res := os.read_file(path) or { panic('vdoc: could not read ${path}') }
@@ -134,7 +134,7 @@ fn (mut vd VDoc) collect_search_index(out Output) {
 		}
 		vd.search_module_data << SearchModuleResult{
 			description: trim_doc_node_description(mod, comments)
-			link: vd.get_file_name(mod, out)
+			link:        vd.get_file_name(mod, out)
 		}
 		for _, dn in doc.contents {
 			vd.create_search_results(mod, dn, out)
@@ -155,17 +155,21 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	dn_description := trim_doc_node_description(dn.name, comments)
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
-		prefix: if dn.parent_name != '' { '${dn.kind} (${dn.parent_name})' } else { '${dn.kind} ' }
+		prefix:      if dn.parent_name != '' {
+			'${dn.kind} (${dn.parent_name})'
+		} else {
+			'${dn.kind} '
+		}
 		description: dn_description
-		badge: mod
-		link: vd.get_file_name(mod, out) + '#' + get_node_id(dn)
+		badge:       mod
+		link:        vd.get_file_name(mod, out) + '#' + get_node_id(dn)
 	}
 	for child in dn.children {
 		vd.create_search_results(mod, child, out)
 	}
 }
 
-fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) {
+fn (vd &VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) {
 	cfg := vd.cfg
 	base_dir := os.dir(os.real_path(cfg.input_path))
 	file_path_name := if cfg.is_multi {
@@ -188,7 +192,7 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 	}
 }
 
-fn (vd VDoc) gen_html(d doc.Doc) string {
+fn (vd &VDoc) gen_html(d doc.Doc) string {
 	cfg := vd.cfg
 	mut symbols_toc := strings.new_builder(200)
 	mut modules_toc := strings.new_builder(200)
@@ -512,7 +516,8 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 			table: tb
 		}
 	}
-	md_content := markdown.render(dn.merge_comments_without_examples(), mut renderer) or { '' }
+	only_comments_text := dn.merge_comments_without_examples()
+	md_content := markdown.render(only_comments_text, mut renderer) or { '' }
 	highlighted_code := html_highlight(dn.content, tb)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
@@ -611,7 +616,16 @@ fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name st
 
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
-		return html_highlight(text, f.table)
+		if f.language == '' {
+			return html.escape(text)
+		}
+		output := html_highlight(text, f.table)
+		// Reset the language, so that it will not persist between blocks,
+		// and will not be accidentally re-used for the next block, that may be lacking ```language :
+		unsafe {
+			f.language = ''
+		}
+		return output
 	}
 	return text
 }

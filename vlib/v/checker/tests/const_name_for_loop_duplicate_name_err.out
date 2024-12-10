@@ -1,0 +1,14 @@
+vlib/v/checker/tests/const_name_for_loop_duplicate_name_err.vv:5:6: error: duplicate of a const name `item`
+    3 | 
+    4 | fn main() {
+    5 |     for item, i in ['abc', 'def'] {
+      |         ~~~~
+    6 |         println(item)
+    7 |         println(i)
+vlib/v/checker/tests/const_name_for_loop_duplicate_name_err.vv:5:12: error: duplicate of a const name `i`
+    3 | 
+    4 | fn main() {
+    5 |     for item, i in ['abc', 'def'] {
+      |               ^
+    6 |         println(item)
+    7 |         println(i)

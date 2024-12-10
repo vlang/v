@@ -82,7 +82,7 @@ pub fn read_cookies(h Header, filter string) []&Cookie {
 			}
 			val = parse_cookie_value(val, true) or { continue }
 			cookies << &Cookie{
-				name: name
+				name:  name
 				value: val
 			}
 		}
@@ -128,8 +128,7 @@ pub fn (c &Cookie) str() string {
 		}
 	}
 	if c.expires.year > 1600 {
-		e := c.expires
-		time_str := '${e.weekday_str()}, ${e.day.str()} ${e.smonth()} ${e.year} ${e.hhmmss()} GMT'
+		time_str := c.expires.http_header_string()
 		b.write_string('; expires=')
 		b.write_string(time_str)
 	}
@@ -324,9 +323,9 @@ fn parse_cookie(line string) !Cookie {
 	}
 	value := parse_cookie_value(raw_value, true) or { return error('malformed cookie') }
 	mut c := Cookie{
-		name: name
+		name:  name
 		value: value
-		raw: line
+		raw:   line
 	}
 	for i, _ in parts {
 		parts[i] = parts[i].trim_space()

@@ -4,6 +4,8 @@
 module json2
 
 import time
+import math
+import strconv
 
 // Encoder encodes the an `Any` type into JSON representation.
 // It provides parameters in order to change the end result.
@@ -15,7 +17,7 @@ pub:
 }
 
 // byte array versions of the most common tokens/chars to avoid reallocations
-const null_in_bytes = 'null'
+const null_in_string = 'null'
 
 const true_in_string = 'true'
 
@@ -98,7 +100,7 @@ fn encode_array[T](val []T) string {
 // encode_pretty ...
 pub fn encode_pretty[T](typed_data T) string {
 	encoded := encode(typed_data)
-	raw_decoded := raw_decode(encoded) or { 0 }
+	raw_decoded := decode[Any](encoded) or { 0 }
 	return raw_decoded.prettify_json_str()
 }
 
@@ -117,13 +119,13 @@ fn (e &Encoder) encode_newline(level int, mut buf []u8) ! {
 }
 
 fn (e &Encoder) encode_map[T](value T, level int, mut buf []u8) ! {
-	buf << json2.curly_open_rune
+	buf << curly_open_rune
 	mut idx := 0
 	for k, v in value {
 		e.encode_newline(level, mut buf)!
 		// e.encode_string(k.str(), mut buf)!
 		e.encode_string(k, mut buf)!
-		buf << json2.colon_rune
+		buf << colon_rune
 		if e.newline != 0 {
 			buf << ` `
 		}
@@ -140,13 +142,13 @@ fn (e &Encoder) encode_map[T](value T, level int, mut buf []u8) ! {
 		}
 
 		if idx < value.len - 1 {
-			buf << json2.comma_rune
+			buf << comma_rune
 		}
 		idx++
 	}
-	// e.encode_newline(level, mut buf)!
+
 	e.encode_newline(level - 1, mut buf)!
-	buf << json2.curly_close_rune
+	buf << curly_close_rune
 }
 
 fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
@@ -167,9 +169,9 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 		// TODO
 	} $else $if T is time.Time {
 		str_value := val.format_rfc3339()
-		buf << json2.quote_rune
+		buf << quote_rune
 		unsafe { buf.push_many(str_value.str, str_value.len) }
-		buf << json2.quote_rune
+		buf << quote_rune
 	} $else $if T is $map {
 		e.encode_map(val, level, mut buf)!
 	} $else $if T is $array {
@@ -178,28 +180,34 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 		str_value := val.json_str()
 		unsafe { buf.push_many(str_value.str, str_value.len) }
 	} $else $if T is Null {
-		unsafe { buf.push_many(json2.null_in_bytes.str, json2.null_in_bytes.len) }
+		unsafe { buf.push_many(null_in_string.str, null_in_string.len) }
 	} $else $if T is $struct {
 		e.encode_struct(val, level, mut buf)!
 	} $else $if T is $enum {
 		str_int := int(val).str()
 		unsafe { buf.push_many(str_int.str, str_int.len) }
-	} $else $if T is $int || T is $float || T is bool {
+	} $else $if T is $int || T is bool {
 		str_int := val.str()
 		unsafe { buf.push_many(str_int.str, str_int.len) }
+	} $else $if T is $float {
+		str_float := encode_number(val)
+		unsafe { buf.push_many(str_float.str, str_float.len) }
 	} $else {
 		return error('cannot encode value with ${typeof(val).name} type')
 	}
 }
 
 fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
-	buf << json2.curly_open_rune
+	buf << curly_open_rune
 	mut i := 0
 	mut fields_len := 0
 
 	$for field in U.fields {
 		mut @continue := false
 		for attr in field.attrs {
+			if attr.contains('skip') {
+				@continue = true
+			}
 			if attr.contains('json: ') {
 				if attr.replace('json: ', '') == '-' {
 					@continue = true
@@ -227,6 +235,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 		mut json_name := ''
 
 		for attr in field.attrs {
+			if attr.contains('skip') {
+				ignore_field = true
+			}
 			if attr.contains('json: ') {
 				json_name = attr.replace('json: ', '')
 				if json_name == '-' {
@@ -246,7 +257,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 					} else {
 						e.encode_string(field.name, mut buf)!
 					}
-					buf << json2.colon_rune
+					buf << colon_rune
 
 					if e.newline != 0 {
 						buf << ` `
@@ -264,7 +275,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 					} else {
 						e.encode_string(field.name, mut buf)!
 					}
-					buf << json2.colon_rune
+					buf << colon_rune
 
 					if e.newline != 0 {
 						buf << ` `
@@ -290,17 +301,20 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 					e.encode_string(val.$(field.name).str(), mut buf)!
 				} $else $if field.typ is time.Time {
 					str_value := val.$(field.name).format_rfc3339()
-					buf << json2.quote_rune
+					buf << quote_rune
 					unsafe { buf.push_many(str_value.str, str_value.len) }
-					buf << json2.quote_rune
+					buf << quote_rune
 				} $else $if field.typ is bool {
 					if value {
-						unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
+						unsafe { buf.push_many(true_in_string.str, true_in_string.len) }
 					} else {
-						unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
+						unsafe { buf.push_many(false_in_string.str, false_in_string.len) }
 					}
-				} $else $if field.typ in [$float, $int] {
+				} $else $if field.typ is $int {
 					str_value := val.$(field.name).str()
+					unsafe { buf.push_many(str_value.str, str_value.len) }
+				} $else $if field.typ is $float {
+					str_value := encode_number(val.$(field.name))
 					unsafe { buf.push_many(str_value.str, str_value.len) }
 				} $else $if field.is_array {
 					// TODO: replace for `field.typ is $array`
@@ -334,12 +348,15 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 						e.encode_string(parsed_time.format_rfc3339(), mut buf)!
 					} $else $if field.unaliased_typ is bool {
 						if val.$(field.name) {
-							unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
+							unsafe { buf.push_many(true_in_string.str, true_in_string.len) }
 						} else {
-							unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
+							unsafe { buf.push_many(false_in_string.str, false_in_string.len) }
 						}
-					} $else $if field.unaliased_typ in [$float, $int] {
+					} $else $if field.unaliased_typ is $int {
 						str_value := val.$(field.name).str()
+						unsafe { buf.push_many(str_value.str, str_value.len) }
+					} $else $if field.unaliased_typ is $float {
+						str_value := encode_number(val)
 						unsafe { buf.push_many(str_value.str, str_value.len) }
 					} $else $if field.unaliased_typ is $array {
 						// TODO
@@ -360,7 +377,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 
 		if i < fields_len - 1 && !ignore_field {
 			if !is_nil {
-				buf << json2.comma_rune
+				buf << comma_rune
 			}
 		}
 		if !ignore_field {
@@ -368,13 +385,13 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 		}
 	}
 	e.encode_newline(level - 1, mut buf)!
-	buf << json2.curly_close_rune
+	buf << curly_close_rune
 	// b.measure('encode_struct')
 }
 
 fn (e &Encoder) encode_array[U](val []U, level int, mut buf []u8) ! {
 	if val.len == 0 {
-		unsafe { buf.push_many(&json2.empty_array[0], json2.empty_array.len) }
+		unsafe { buf.push_many(&empty_array[0], empty_array.len) }
 		return
 	}
 	buf << `[`
@@ -396,7 +413,7 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut buf []u8) ! {
 			return error('type ${typeof(val).name} cannot be array encoded')
 		}
 		if i < val.len - 1 {
-			buf << json2.comma_rune
+			buf << comma_rune
 		}
 	}
 
@@ -437,7 +454,7 @@ pub fn (f Any) prettify_json_str() string {
 		unsafe { buf.free() }
 	}
 	mut enc := Encoder{
-		newline: `\n`
+		newline:              `\n`
 		newline_spaces_count: 2
 	}
 	enc.encode_value(f, mut buf) or {}
@@ -449,17 +466,17 @@ pub fn (f Any) prettify_json_str() string {
 @[direct_array_access]
 fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 	if s == '' {
-		empty := [u8(json2.quote_rune), json2.quote_rune]!
+		empty := [u8(quote_rune), quote_rune]!
 		unsafe { buf.push_many(&empty[0], 2) }
 		return
 	}
 	mut last_no_buffer_expansible_char_position_candidate := 0
-	buf << json2.quote_rune
+	buf << quote_rune
 
 	if !e.escape_unicode {
 		unsafe {
 			buf.push_many(s.str, s.len)
-			buf << json2.quote_rune
+			buf << quote_rune
 		}
 		return
 	}
@@ -471,8 +488,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 
 		current_value_cause_buffer_expansion :=
 			(current_utf8_len == 1 && ((current_byte < 32 || current_byte > 127)
-			|| current_byte in json2.ascii_especial_characters))
-			|| current_utf8_len == 3
+			|| current_byte in ascii_especial_characters)) || current_utf8_len == 3
 
 		if !current_value_cause_buffer_expansion {
 			// while it is not the last one
@@ -515,21 +531,21 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 			if current_byte < 32 {
 				// ASCII Control Characters
 				unsafe {
-					buf.push_many(json2.ascii_control_characters[current_byte].str, json2.ascii_control_characters[current_byte].len)
+					buf.push_many(ascii_control_characters[current_byte].str, ascii_control_characters[current_byte].len)
 				}
 				last_no_buffer_expansible_char_position_candidate = idx + 1
 			} else if current_byte >= 32 && current_byte < 128 {
 				// ASCII especial characters
 				if current_byte == `\\` {
-					unsafe { buf.push_many(&json2.back_slash[0], json2.back_slash.len) }
+					unsafe { buf.push_many(&back_slash[0], back_slash.len) }
 					last_no_buffer_expansible_char_position_candidate = idx + 1
 					continue
 				} else if current_byte == `"` {
-					unsafe { buf.push_many(&json2.quote[0], json2.quote.len) }
+					unsafe { buf.push_many(&quote[0], quote.len) }
 					last_no_buffer_expansible_char_position_candidate = idx + 1
 					continue
 				} else if current_byte == `/` {
-					unsafe { buf.push_many(&json2.slash[0], json2.slash.len) }
+					unsafe { buf.push_many(&slash[0], slash.len) }
 					last_no_buffer_expansible_char_position_candidate = idx + 1
 					continue
 				}
@@ -557,7 +573,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 				codepoint = u32((codepoint << 6) | (b & 0x3F))
 			}
 			// runes like: ✔, ひらがな ...
-			unsafe { buf.push_many(&json2.null_unicode[0], json2.null_unicode.len) }
+			unsafe { buf.push_many(&null_unicode[0], null_unicode.len) }
 			buf[buf.len - 1] = hex_digit(codepoint & 0xF)
 			buf[buf.len - 2] = hex_digit((codepoint >> 4) & 0xF)
 			buf[buf.len - 3] = hex_digit((codepoint >> 8) & 0xF)
@@ -567,12 +583,25 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 		}
 	}
 
-	buf << json2.quote_rune
+	buf << quote_rune
 }
 
-fn hex_digit(n int) u8 {
+fn hex_digit(n u32) u8 {
 	if n < 10 {
 		return `0` + n
 	}
 	return `a` + (n - 10)
+}
+
+fn encode_number(value f64) string {
+	if math.is_nan(value) || math.is_inf(value, 0) {
+		return 'null'
+	} else if value == f64(int(value)) {
+		return int(value).str()
+	} else {
+		// TODO:cjson Try 15 decimal places of precision to avoid nonsignificant nonzero digits
+		// If not, print with 17 decimal places of precision
+		// strconv.f64_to_str_l try max 18 digits instead.
+		return strconv.f64_to_str_l(value)
+	}
 }

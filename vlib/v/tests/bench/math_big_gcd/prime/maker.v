@@ -74,7 +74,7 @@ pub fn usage() string {
 // reads the Map[string] []string from disk
 // and returns the parsed content
 fn read_toml_file() map[string][]string {
-	fp := os.join_path(@VROOT, prime.toml_path)
+	fp := os.join_path(@VROOT, toml_path)
 
 	tm_doc := toml.parse_file(fp) or {
 		err_msg := 'expected ${fp}'
@@ -145,7 +145,7 @@ pub fn random_set(cfg PrimeCfg) ![]PrimeSet {
 		cfg.r.split('.'),
 		cfg.a.split('.'),
 		cfg.b.split('.'),
-	].map(random_list(it.map(it.trim_space().to_lower())))
+	].map(random_list(it.map(it.trim_space().to_lower_ascii())))
 
 	// test for empty lists
 	//

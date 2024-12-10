@@ -2,6 +2,7 @@ module builtin
 
 import strings
 
+const cp_acp = 0
 const cp_utf8 = 65001
 
 // to_wide returns a pointer to an UTF-16 version of the string receiver.
@@ -91,4 +92,28 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 		res := sb.str()
 		return res
 	}
+}
+
+// wide_to_ansi create an ANSI string, given a windows
+// style string, encoded in UTF-16.
+// It use CP_ACP, which is ANSI code page identifier, as dest encoding.
+// NOTE: It return a vstring(encoded in UTF-8) []u8 under Linux.
+pub fn wide_to_ansi(_wstr &u16) []u8 {
+	$if windows {
+		num_bytes := C.WideCharToMultiByte(cp_acp, 0, _wstr, -1, 0, 0, 0, 0)
+		if num_bytes != 0 {
+			mut str_to := []u8{len: num_bytes}
+			C.WideCharToMultiByte(cp_acp, 0, _wstr, -1, &char(str_to.data), str_to.len,
+				0, 0)
+			return str_to
+		} else {
+			return []u8{}
+		}
+	} $else {
+		s := unsafe { string_from_wide(_wstr) }
+		mut str_to := []u8{len: s.len + 1}
+		unsafe { vmemcpy(str_to.data, s.str, s.len) }
+		return str_to
+	}
+	return []u8{} // TODO: remove this, bug?
 }

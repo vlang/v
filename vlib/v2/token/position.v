@@ -46,7 +46,7 @@ pub fn FileSet.new() &FileSet {
 // TODO:
 pub fn (mut fs FileSet) add_file(filename string, base_ int, size int) &File {
 	//	eprintln('>>> add_file fs: ${voidptr(fs)} | filename: $filename | base_: $base_ | size: $size')
-	fs.mu.@lock()
+	fs.mu.lock()
 	defer {
 		fs.mu.unlock()
 	}
@@ -109,7 +109,7 @@ fn search_files(files []&File, x int) int {
 
 pub fn (mut fs FileSet) file(pos Pos) &File {
 	//	eprintln('>>>>>>>>> file fs: ${voidptr(fs)} | pos: $pos')
-	fs.mu.@lock()
+	fs.mu.lock()
 	defer {
 		fs.mu.unlock()
 	}
@@ -174,9 +174,9 @@ pub fn (f &File) position(pos Pos) Position {
 	line, column := f.find_line_and_column(offset)
 	return Position{
 		filename: f.name
-		offset: offset
-		line: line
-		column: column
+		offset:   offset
+		line:     line
+		column:   column
 	}
 }
 

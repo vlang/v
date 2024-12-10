@@ -85,7 +85,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		}
 		all_v_files << os.join_path(dir, file)
 	}
-	//
+
 	mut defaults := []string{}
 	mut fnames_no_postfixes := map[string][]string{}
 	for file in all_v_files {
@@ -148,6 +148,8 @@ fn fname_without_platform_postfix(file string) string {
 		'_',
 		'native.v',
 		'_',
+		'wasm32_emscripten.c.v',
+		'_',
 	])
 	return res
 }
@@ -183,18 +185,18 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.os != .windows && (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) {
 		return false
 	}
-	//
+
 	if prefs.os != .linux && (file.ends_with('_linux.c.v') || file.ends_with('_linux.v')) {
 		return false
 	}
-	//
+
 	if prefs.os != .macos && (file.ends_with('_darwin.c.v') || file.ends_with('_darwin.v')) {
 		return false
 	}
 	if prefs.os != .macos && (file.ends_with('_macos.c.v') || file.ends_with('_macos.v')) {
 		return false
 	}
-	//
+
 	if prefs.os != .ios && (file.ends_with('_ios.c.v') || file.ends_with('_ios.v')) {
 		return false
 	}
@@ -247,6 +249,10 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		}
 	} else if file.ends_with('_android.c.v') || file.ends_with('_termux.c.v')
 		|| file.ends_with('_android_outside_termux.c.v') {
+		return false
+	}
+	if prefs.os != .wasm32_emscripten
+		&& (file.ends_with('_wasm32_emscripten.c.v') || file.ends_with('_wasm32_emscripten.v')) {
 		return false
 	}
 	return true

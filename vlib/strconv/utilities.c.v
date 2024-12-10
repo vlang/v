@@ -1,7 +1,5 @@
 module strconv
 
-// import math
-
 /*
 f32/f64 to string utilities
 

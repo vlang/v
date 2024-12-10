@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module builtin
 
+// utf8_char_len returns the length in bytes of a UTF-8 encoded codepoint that starts with the byte `b`
 pub fn utf8_char_len(b u8) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }
@@ -183,4 +184,16 @@ pub fn utf8_str_visible_length(s string) int {
 		}
 	}
 	return l
+}
+
+// string_to_ansi_not_null_terminated returns an ANSI version of the string `_str`.
+// NOTE: This is most useful for converting a vstring to an ANSI string under Windows.
+// NOTE: The ANSI string return is not null-terminated, then you can use `os.write_file_array` write an ANSI file.
+pub fn string_to_ansi_not_null_terminated(_str string) []u8 {
+	wstr := _str.to_wide()
+	mut ansi := wide_to_ansi(wstr)
+	if ansi.len > 0 {
+		unsafe { ansi.len-- } // remove tailing zero
+	}
+	return ansi
 }

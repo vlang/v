@@ -30,7 +30,7 @@ fn test_set_buffer_line_buffered() {
 		unsafe { buf.reset() }
 	}
 	wfile.close()
-	//
+
 	content := os.read_lines('text.txt')!
 	dump(content)
 	assert content == ['----------------------------------', 'hello', 'world', 'hi']
@@ -57,7 +57,7 @@ fn test_set_buffer_fully_buffered() {
 	dump(buf)
 	// assert buf.bytestr().starts_with('---\nhello\nworld\nhi\n') // works on GLIBC, fails on MUSL
 	assert buf.bytestr().contains('---\nhello\nworld\n')
-	//
+
 	content := os.read_lines('text.txt')!
 	dump(content)
 	assert content == ['S---', 'hello', 'world', 'hi']
@@ -80,7 +80,7 @@ fn test_set_unbuffered() {
 	wfile.close()
 	// dump(buf.bytestr())
 	assert buf.all(it == 0)
-	//
+
 	content := os.read_lines('text.txt')!
 	dump(content)
 	assert content == ['S---', 'hello', 'world', 'hi']

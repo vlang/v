@@ -29,7 +29,7 @@ const html = '<!doctype html>
 </html>'
 
 fn test_search_tag_by_type() {
-	mut dom := parse(html.html)
+	mut dom := parse(html)
 	tag := dom.get_tags(name: 'body')[0]
 	assert tag.get_tag('div')?.attributes['id'] == '1st'
 	assert tag.get_tag_by_attribute('href')?.content == 'V'
@@ -39,7 +39,7 @@ fn test_search_tag_by_type() {
 }
 
 fn test_search_tags_by_type() {
-	mut dom := parse(html.html)
+	mut dom := parse(html)
 	tag := dom.get_tags_by_attribute_value('id', '2nd')[0]
 	assert tag.get_tags('div').len == 5
 	assert tag.get_tags_by_attribute('href')[2].content == 'vpm'

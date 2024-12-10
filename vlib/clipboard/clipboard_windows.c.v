@@ -91,11 +91,11 @@ fn new_clipboard() &Clipboard {
 	}
 	class_name := 'clipboard'
 	wndclass := WndClassEx{
-		cb_size: sizeof(WndClassEx)
-		lpfn_wnd_proc: voidptr(&C.DefWindowProc)
+		cb_size:         sizeof(WndClassEx)
+		lpfn_wnd_proc:   voidptr(&C.DefWindowProc)
 		lpsz_class_name: class_name.to_wide()
-		lpsz_menu_name: unsafe { 0 }
-		h_icon_sm: unsafe { 0 }
+		lpsz_menu_name:  unsafe { 0 }
+		h_icon_sm:       unsafe { 0 }
 	}
 	if C.RegisterClassEx(voidptr(&wndclass)) == 0
 		&& C.GetLastError() != u32(C.ERROR_CLASS_ALREADY_EXISTS) {
@@ -142,13 +142,13 @@ const cp_utf8 = 65001
 
 // the string.to_wide doesn't work with SetClipboardData, don't know why
 fn to_wide(text string) C.HGLOBAL {
-	len_required := C.MultiByteToWideChar(clipboard.cp_utf8, C.MB_ERR_INVALID_CHARS, voidptr(text.str),
+	len_required := C.MultiByteToWideChar(cp_utf8, C.MB_ERR_INVALID_CHARS, voidptr(text.str),
 		text.len + 1, C.NULL, 0)
 	buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof(u16)) * len_required)
 	if buf != unsafe { nil } {
 		mut locked := &u16(C.GlobalLock(buf))
-		C.MultiByteToWideChar(clipboard.cp_utf8, C.MB_ERR_INVALID_CHARS, voidptr(text.str),
-			text.len + 1, locked, len_required)
+		C.MultiByteToWideChar(cp_utf8, C.MB_ERR_INVALID_CHARS, voidptr(text.str), text.len + 1,
+			locked, len_required)
 		unsafe {
 			locked[len_required - 1] = u16(0)
 		}

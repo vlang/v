@@ -74,7 +74,7 @@ fn test_set_primary_value() {
 	}!
 
 	child := Child{
-		id: 10
+		id:        10
 		parent_id: 20
 	}
 
@@ -98,7 +98,7 @@ fn test_uuid_primary_key() {
 	}!
 
 	entity := Entity{
-		uuid: uuid
+		uuid:        uuid
 		description: 'Test'
 	}
 
@@ -130,7 +130,7 @@ fn test_float_primary_key() {
 	}!
 
 	entity := EntityWithFloatPrimary{
-		id: id
+		id:   id
 		name: 'Test'
 	}
 
@@ -184,7 +184,7 @@ fn test_insert_empty_mandatory_field() {
 	}!
 
 	package := Package{
-		name: 'xml'
+		name:   'xml'
 		author: User{}
 	}
 
@@ -232,7 +232,7 @@ fn test_insert_empty_optional_field() {
 	}!
 
 	package := Delivery{
-		name: 'bob'
+		name:   'bob'
 		author: User{}
 	}
 
@@ -296,7 +296,7 @@ fn test_orm_insert_with_multiple_child_elements() {
 	}!
 
 	new_parent := Parent{
-		name: 'test'
+		name:     'test'
 		children: [
 			Child{
 				name: 'Lisa'
@@ -305,7 +305,7 @@ fn test_orm_insert_with_multiple_child_elements() {
 				name: 'Steve'
 			},
 		]
-		notes: [
+		notes:    [
 			Note{
 				text: 'First note'
 			},
@@ -356,7 +356,7 @@ fn test_orm_insert_with_child_element_and_no_table() {
 	}!
 
 	new_parent := Parent{
-		name: 'test'
+		name:     'test'
 		children: [
 			Child{
 				name: 'Lisa'
@@ -377,7 +377,7 @@ fn test_orm_insert_with_child_element_and_no_table() {
 	} or { assert false }
 
 	new_parent_two := Parent{
-		name: 'retest'
+		name:     'retest'
 		children: [
 			Child{
 				name: 'Sophia'
@@ -420,4 +420,38 @@ fn test_i64_primary_field_works_with_insertions_of_id_0() {
 	}!
 	assert users.len == 2
 	// println("${users}")
+}
+
+struct Address {
+	id     i64 @[primary; sql: serial]
+	street string
+	number int
+}
+
+fn test_the_result_of_insert_should_be_the_last_insert_id() {
+	db := sqlite.connect(':memory:')!
+	address := Address{
+		street: 'abc'
+		number: 123
+	}
+	dump(address)
+	sql db {
+		create table Address
+	} or {}
+	aid1 := sql db {
+		insert address into Address
+	} or { panic(err) }
+	dump(aid1)
+	assert aid1 == 1
+	aid2 := sql db {
+		insert address into Address
+	} or { panic(err) }
+	dump(aid2)
+	assert aid2 == 2
+	addresses := sql db {
+		select from Address
+	}!
+	dump(addresses)
+	assert addresses.len == 2
+	assert addresses.all(it.street == 'abc' && it.number == 123)
 }

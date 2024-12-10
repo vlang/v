@@ -1,5 +1,5 @@
 fn main() {
-    println(x)
-    x := 'hello v'
-   _ = x
+	println(x)
+	x := 'hello v'
+	_ = x
 }

@@ -33,8 +33,8 @@ fn (mut x Integer) free() {
 
 fn (x Integer) clone() Integer {
 	return Integer{
-		digits: x.digits.clone()
-		signum: x.signum
+		digits:   x.digits.clone()
+		signum:   x.signum
 		is_const: false
 	}
 }
@@ -184,7 +184,7 @@ fn validate_string(characters string, radix u32) ! {
 
 	for index := start_index; index < characters.len; index++ {
 		digit := characters[index]
-		value := big.digit_array.index(digit)
+		value := digit_array.index(digit)
 
 		if value == -1 {
 			return error('math.big: Invalid character ${digit}')
@@ -212,7 +212,7 @@ fn integer_from_special_string(characters string, chunk_size int) Integer {
 	mut offset := 0
 	for index := characters.len - 1; index >= start_index; index-- {
 		digit := characters[index]
-		value := u32(big.digit_array.index(digit))
+		value := u32(digit_array.index(digit))
 
 		current |= value << offset
 		offset += chunk_size
@@ -254,7 +254,7 @@ fn integer_from_regular_string(characters string, radix u32) Integer {
 
 	for index := start_index; index < characters.len; index++ {
 		digit := characters[index]
-		value := big.digit_array.index(digit)
+		value := digit_array.index(digit)
 
 		result *= radix_int
 		result += integer_from_int(value)
@@ -300,11 +300,21 @@ pub fn (augend Integer) + (addend Integer) Integer {
 		return augend.clone()
 	}
 	// Non-zero cases
-	return if augend.signum == addend.signum {
-		augend.add(addend)
-	} else { // Unequal signs
-		augend.subtract(addend)
+	if augend.signum == addend.signum {
+		return augend.add(addend)
 	}
+	// Unequal signs, left is negative:
+	if augend.signum == -1 {
+		// -1 + 5 == 5 - 1
+		return addend.subtract(augend)
+	}
+	// Unequal signs, left is positive:
+	res := augend.subtract(addend)
+	cmp := augend.abs_cmp(addend)
+	if cmp < 0 {
+		return res.neg()
+	}
+	return res
 }
 
 // - returns the difference of the integers `minuend` and `subtrahend`
@@ -317,11 +327,11 @@ pub fn (minuend Integer) - (subtrahend Integer) Integer {
 		return minuend.clone()
 	}
 	// Non-zero cases
-	return if minuend.signum == subtrahend.signum {
-		minuend.subtract(subtrahend)
-	} else {
-		minuend.add(subtrahend)
+	if minuend.signum == subtrahend.signum {
+		return minuend.subtract(subtrahend)
 	}
+	// Unequal signs:
+	return minuend.add(subtrahend)
 }
 
 fn (integer Integer) add(addend Integer) Integer {
@@ -876,7 +886,7 @@ fn (integer Integer) general_radix_str(radix u32) string {
 	mut rune_array := []rune{cap: current.digits.len * 4}
 	for current.signum > 0 {
 		new_current, digit = current.div_mod_internal(divisor)
-		rune_array << big.digit_array[digit.int()]
+		rune_array << digit_array[digit.int()]
 		unsafe { digit.free() }
 		unsafe { current.free() }
 		current = new_current

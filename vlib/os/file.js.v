@@ -59,21 +59,21 @@ pub fn create(path string) !File {
 
 pub fn stdin() File {
 	return File{
-		fd: 0
+		fd:        0
 		is_opened: true
 	}
 }
 
 pub fn stdout() File {
 	return File{
-		fd: 1
+		fd:        1
 		is_opened: true
 	}
 }
 
 pub fn stderr() File {
 	return File{
-		fd: 2
+		fd:        2
 		is_opened: true
 	}
 }

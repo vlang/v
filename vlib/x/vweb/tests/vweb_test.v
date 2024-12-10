@@ -153,7 +153,7 @@ fn test_http_client_settings_page() {
 	x := http.get('http://${localserver}/bilbo/settings') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.body == 'username: bilbo'
-	//
+
 	y := http.get('http://${localserver}/kent/settings') or { panic(err) }
 	assert_common_http_headers(y)!
 	assert y.body == 'username: kent'
@@ -163,11 +163,11 @@ fn test_http_client_user_repo_settings_page() {
 	x := http.get('http://${localserver}/bilbo/gostamp/settings') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.body == 'username: bilbo | repository: gostamp'
-	//
+
 	y := http.get('http://${localserver}/kent/golang/settings') or { panic(err) }
 	assert_common_http_headers(y)!
 	assert y.body == 'username: kent | repository: golang'
-	//
+
 	z := http.get('http://${localserver}/missing/golang/settings') or { panic(err) }
 	assert z.status() == .not_found
 }
@@ -180,7 +180,7 @@ struct User {
 fn test_http_client_json_post() {
 	ouser := User{
 		name: 'Bilbo'
-		age: 123
+		age:  123
 	}
 	json_for_ouser := json.encode(ouser)
 	mut x := http.post_json('http://${localserver}/json_echo', json_for_ouser) or { panic(err) }
@@ -191,7 +191,7 @@ fn test_http_client_json_post() {
 	assert x.body == json_for_ouser
 	nuser := json.decode(User, x.body) or { User{} }
 	assert '${ouser}' == '${nuser}'
-	//
+
 	x = http.post_json('http://${localserver}/json', json_for_ouser) or { panic(err) }
 	$if debug_net_socket_client ? {
 		eprintln('/json endpoint response: ${x}')
@@ -218,9 +218,9 @@ fn test_http_client_multipart_form_data() {
 
 	mut files := []http.FileData{}
 	files << http.FileData{
-		filename: 'vweb'
+		filename:     'vweb'
 		content_type: 'text'
-		data: '"vweb test"'
+		data:         '"vweb test"'
 	}
 
 	mut form_config_files := http.PostMultipartFormConfig{
@@ -257,7 +257,7 @@ fn test_query_params_are_passed_as_arguments() {
 
 fn test_host() {
 	mut req := http.Request{
-		url: 'http://${localserver}/with_host'
+		url:    'http://${localserver}/with_host'
 		method: .get
 	}
 
@@ -281,8 +281,8 @@ fn testsuite_end() {
 	// This test is guaranteed to be called last.
 	// It sends a request to the server to shutdown.
 	x := http.fetch(
-		url: 'http://${localserver}/shutdown'
-		method: .get
+		url:     'http://${localserver}/shutdown'
+		method:  .get
 		cookies: {
 			'skey': 'superman'
 		}

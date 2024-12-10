@@ -17,5 +17,5 @@ fn main() {
 	mut a := new_map()
 	b := new_map()
 	println(a - b)
-    a -= b
+	a -= b
 }

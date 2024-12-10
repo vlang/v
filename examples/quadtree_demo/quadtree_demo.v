@@ -3,7 +3,6 @@ module main
 import datatypes
 import gg
 import gx
-import os
 import time
 import math
 import rand
@@ -14,11 +13,11 @@ const timer_period = 40 * time.millisecond // defaulted at 25 fps
 
 const font_small = gx.TextCfg{
 	color: gx.black
-	size: 20
+	size:  20
 }
 const font_large = gx.TextCfg{
 	color: gx.black
-	size: 40
+	size:  40
 }
 
 struct App {
@@ -96,9 +95,9 @@ fn (mut app App) insert_particles() {
 		mut x := rand_minmax(0, gridh) * grid
 		mut y := rand_minmax(0, gridv) * grid
 		mut random_particle := datatypes.AABB{
-			x: x
-			y: y
-			width: rand_minmax(1, 4) * grid
+			x:      x
+			y:      y
+			width:  rand_minmax(1, 4) * grid
 			height: rand_minmax(1, 4) * grid
 		}
 		app.particles << Particle{random_particle, 0.0, 0.0}
@@ -115,15 +114,14 @@ fn main() {
 		gg: unsafe { nil }
 	}
 	app.gg = gg.new_context(
-		bg_color: gx.white
-		width: win_width
-		height: win_height
+		bg_color:      gx.white
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'Quadtree Demo'
-		frame_fn: frame
-		event_fn: on_event
-		user_data: app
-		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
+		window_title:  'Quadtree Demo'
+		frame_fn:      frame
+		event_fn:      on_event
+		user_data:     app
 	)
 	app.qt = app.qt.create(0, 0, 1340, 640, 8, 4, 0)
 	app.start()

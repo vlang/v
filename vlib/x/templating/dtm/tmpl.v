@@ -16,7 +16,7 @@ enum State {
 	simple // default - no special interpretation of tags, *at all*!
 	// That is suitable for the general case of text template interpolation,
 	// for example for interpolating arbitrary source code (even V source) templates.
-	//
+
 	html // default, only when the template extension is .html
 	css  // <style>
 	js   // <script>
@@ -134,7 +134,7 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string, data
 	state State) string {
 	// HTML, may include `@var`
 	// escaped by cgen, unless it's a `vweb.RawHtml` string
-	trailing_bs := dtm.tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
+	trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
 	round1 := ['\\', '\\\\', r"'", "\\'", r'@', r'$']
 	round2 := [r'$$', r'\@', r'.$', r'.@']
 	mut rline := line.replace_each(round1).replace_each(round2)
