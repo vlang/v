@@ -235,33 +235,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 			}
-			if left is ast.Ident && left.is_mut() && !c.inside_unsafe {
-				if left_type.is_ptr() && mut right is ast.Ident && !right.is_mut()
-					&& right_type.is_ptr() {
-					c.error('`${right.name}` is immutable, cannot have a mutable reference to an immutable object',
-						right.pos)
-				} else if mut right is ast.StructInit {
-					typ_sym := c.table.sym(right.typ)
-					for init_field in right.init_fields {
-						if field_info := c.table.find_field_with_embeds(typ_sym, init_field.name) {
-							if field_info.is_mut {
-								if init_field.expr is ast.Ident && !init_field.expr.is_mut()
-									&& init_field.typ.is_ptr() {
-									c.note('`${init_field.expr.name}` is immutable, cannot have a mutable reference to an immutable object',
-										init_field.pos)
-								} else if init_field.expr is ast.PrefixExpr {
-									if init_field.expr.op == .amp
-										&& init_field.expr.right is ast.Ident
-										&& !init_field.expr.right.is_mut() {
-										c.note('`${init_field.expr.right.name}` is immutable, cannot have a mutable reference to an immutable object',
-											init_field.expr.right.pos)
-									}
-								}
-							}
-						}
-					}
-				}
-			}
 		} else {
 			// Make sure the variable is mutable
 			c.fail_if_immutable(mut left)
@@ -274,6 +247,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// 	println(left_type)
 			// 	c.error('cannot assign a `none` value to a non-option variable', right.pos())
 			// }
+		}
+		if !c.inside_unsafe && !is_blank_ident && node.op in [.decl_assign, .assign]
+			&& left is ast.Ident && left.is_mut() {
+			// check if right-side is a immutable reference
+			c.fail_if_immutable_to_mutable(left_type, right_type, right)
 		}
 		if mut left is ast.Ident && left.info is ast.IdentVar && right is ast.Ident
 			&& right.name in c.global_names {

@@ -803,6 +803,78 @@ fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, ifac
 	return ares
 }
 
+// fail_if_immutable_to_mutable checks if there is a immutable reference on right-side of assignment for mutable var
+fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type ast.Type, right ast.Expr) bool {
+	match right {
+		ast.Ident {
+			if c.inside_unsafe || c.pref.translated || c.file.is_translated {
+				return true
+			}
+			if right.obj is ast.Var {
+				if left_type.is_ptr() && !right.is_mut() && right_type.is_ptr() {
+					c.note('`${right.name}` is immutable, cannot have a mutable reference to an immutable object',
+						right.pos)
+					return false
+				}
+				if !right.obj.is_mut
+					&& c.table.final_sym(right_type).kind in [.array, .array_fixed, .map] {
+					c.note('left-side of assignment expects a mutable reference, but variable `${right.name}` is immutable, declare it with `mut` to make it mutable or clone it',
+						right.pos)
+					return false
+				}
+			}
+		}
+		ast.IfExpr {
+			if c.inside_unsafe || c.pref.translated || c.file.is_translated {
+				return true
+			}
+			for branch in right.branches {
+				stmts := branch.stmts.filter(it is ast.ExprStmt)
+				if stmts.len > 0 {
+					last_expr := stmts.last() as ast.ExprStmt
+					c.fail_if_immutable_to_mutable(left_type, right_type, last_expr.expr)
+				}
+			}
+		}
+		ast.MatchExpr {
+			if c.inside_unsafe || c.pref.translated || c.file.is_translated {
+				return true
+			}
+			for branch in right.branches {
+				stmts := branch.stmts.filter(it is ast.ExprStmt)
+				if stmts.len > 0 {
+					last_expr := stmts.last() as ast.ExprStmt
+					c.fail_if_immutable_to_mutable(left_type, right_type, last_expr.expr)
+				}
+			}
+		}
+		ast.StructInit {
+			typ_sym := c.table.sym(right.typ)
+			for init_field in right.init_fields {
+				if field_info := c.table.find_field_with_embeds(typ_sym, init_field.name) {
+					if field_info.is_mut {
+						if init_field.expr is ast.Ident && !init_field.expr.is_mut()
+							&& init_field.typ.is_ptr() {
+							c.note('`${init_field.expr.name}` is immutable, cannot have a mutable reference to an immutable object',
+								init_field.pos)
+						} else if init_field.expr is ast.PrefixExpr {
+							if init_field.expr.op == .amp && init_field.expr.right is ast.Ident
+								&& !init_field.expr.right.is_mut() {
+								c.note('`${init_field.expr.right.name}` is immutable, cannot have a mutable reference to an immutable object',
+									init_field.expr.right.pos)
+							}
+						}
+					}
+				}
+			}
+		}
+		else {
+			return true
+		}
+	}
+	return true
+}
+
 // returns name and position of variable that needs write lock
 // also sets `is_changed` to true (TODO update the name to reflect this?)
 fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
@@ -4800,7 +4872,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			unwrapped_sym := c.table.final_sym(unwrapped_typ)
 			if unwrapped_sym.kind in [.map, .array, .array_fixed] {
 				typ = unwrapped_typ
-				typ_sym = unwrapped_sym
+				typ_sym = unsafe { unwrapped_sym }
 			}
 		}
 		else {}
