@@ -1194,12 +1194,14 @@ fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string
 	return g.out.cut_to(pos)
 }
 
+@[inline]
 fn (mut g Gen) write_expr(before string, expr ast.Expr, after string) {
 	g.write(before)
 	g.expr(expr)
 	g.write(after)
 }
 
+@[inline]
 fn (mut g Gen) write_exprln(before string, expr ast.Expr, after string) {
 	g.write(before)
 	g.expr(expr)
