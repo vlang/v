@@ -1795,7 +1795,8 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 }
 
 pub fn (mut g Gen) write_array_fixed_return_types() {
-	fixed_arr_rets := g.table.type_symbols.filter(it.info is ast.ArrayFixed && it.info.is_fn_ret)
+	fixed_arr_rets := g.table.type_symbols.filter(it.info is ast.ArrayFixed && it.info.is_fn_ret
+		&& !it.info.elem_type.has_flag(.generic))
 	if fixed_arr_rets.len == 0 {
 		return
 	}
