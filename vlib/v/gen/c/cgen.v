@@ -609,7 +609,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		b.write_string2('\n// V json forward decls:\n', g.json_forward_decls.str())
 	}
 	b.write_string2('\n// V definitions:\n', g.definitions.str())
-	b.write_string2('\n// V sort fn definitions:\n', g.sort_fn_definitions.str())
+	if g.sort_fn_definitions.len > 0 {
+		b.write_string2('\n// V sort fn definitions:\n', g.sort_fn_definitions.str())
+	}
 	b.writeln('\n// V global/const non-precomputed definitions:')
 	for var_name in g.sorted_global_const_names {
 		if var := g.global_const_defs[var_name] {
