@@ -74,7 +74,8 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 		is_none := expr is ast.CastExpr && expr.expr is ast.None
 		if expr is ast.CallExpr && expr.return_type.has_flag(.option) {
 			tmp_var := g.new_tmp_var()
-			g.write('${g.styp(expr.return_type).replace('*', '_ptr')} ${tmp_var} = ')
+			ret_styp := g.styp(expr.return_type).replace('*', '_ptr')
+			g.write('${ret_styp} ${tmp_var} = ')
 			g.expr(expr)
 			g.writeln(';')
 			g.writeln('_option_clone(&${tmp_var}, (${option_name}*)(&${past.tmp_var}), sizeof(${styp}));')
