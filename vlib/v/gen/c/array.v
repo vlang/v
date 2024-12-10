@@ -633,7 +633,7 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 			false
 		}
 		if !deref_field {
-			g.write_expr_ln('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},',
+			g.write_exprln('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},',
 				node.left, '), ${depth});')
 		} else {
 			g.write_exprln('${atype} ${past.tmp_var} = array_clone_to_depth(', node.left,
