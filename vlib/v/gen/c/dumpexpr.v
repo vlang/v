@@ -258,8 +258,10 @@ fn (mut g Gen) dump_expr_definitions() {
 	for tdef, _ in dump_typedefs {
 		g.definitions.writeln(tdef)
 	}
-	g.definitions.writeln(dump_fn_defs.str())
-	g.dump_funcs.writeln(dump_fns.str())
+	if dump_fn_defs.len > 0 {
+		g.definitions.writeln(dump_fn_defs.str())
+		g.dump_funcs.writeln(dump_fns.str())
+	}
 }
 
 fn (mut g Gen) writeln_fn_header(s string, mut sb strings.Builder) bool {

@@ -1,1 +1,1 @@
- string VV_EXPORTED_SYMBOL  global_exported = _SLIT("barqux");
+string VV_EXPORTED_SYMBOL global_exported = _SLIT("barqux");

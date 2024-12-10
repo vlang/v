@@ -1787,14 +1787,15 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 }
 
 pub fn (mut g Gen) write_array_fixed_return_types() {
+	fixed_arr_rets := g.table.type_symbols.filter(it.info is ast.ArrayFixed && it.info.is_fn_ret)
+	if fixed_arr_rets.len == 0 {
+		return
+	}
+
 	g.typedefs.writeln('\n// BEGIN_array_fixed_return_typedefs')
 	g.type_definitions.writeln('\n// BEGIN_array_fixed_return_structs')
 
-	for sym in g.table.type_symbols {
-		if sym.kind != .array_fixed || (sym.info as ast.ArrayFixed).elem_type.has_flag(.generic)
-			|| !(sym.info as ast.ArrayFixed).is_fn_ret {
-			continue
-		}
+	for sym in fixed_arr_rets {
 		info := sym.info as ast.ArrayFixed
 		mut fixed_elem_name := g.styp(info.elem_type.set_nr_muls(0))
 		if info.elem_type.is_ptr() {
@@ -6534,7 +6535,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		mut init := ''
 		extern := if cextern { 'extern ' } else { '' }
 		modifier := if field.is_volatile { ' volatile ' } else { '' }
-		def_builder.write_string('${extern}${visibility_kw}${modifier}${styp} ${attributes} ${field.name}')
+		def_builder.write_string('${extern}${visibility_kw}${modifier}${styp} ${attributes}${field.name}')
 		if cextern {
 			def_builder.writeln('; // global5')
 			g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
@@ -8272,9 +8273,13 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 			sb.writeln2(methods_wrapper.str(), methods_struct_def.str())
 			sb.writeln(methods_struct.str())
 		}
-		sb.writeln(cast_functions.str())
+		if cast_functions.len > 0 {
+			sb.writeln(cast_functions.str())
+		}
 	}
-	sb.writeln(conversion_functions.str())
+	if conversion_functions.len > 0 {
+		sb.writeln(conversion_functions.str())
+	}
 	return sb.str()
 }
 
