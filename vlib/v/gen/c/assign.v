@@ -68,28 +68,46 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 		defer {
 			g.past_tmp_var_done(past)
 		}
-
 		styp := g.base_type(ret_typ)
 		decl_styp := g.styp(ret_typ).replace('*', '_ptr')
 		g.writeln('${decl_styp} ${past.tmp_var};')
 		is_none := expr is ast.CastExpr && expr.expr is ast.None
-		if is_none {
-			g.write('_option_none(&(${styp}[]) {')
-		} else {
-			g.write('_option_ok(&(${styp}[]) {')
-		}
-		if expr is ast.CastExpr && expr_typ.has_flag(.option) {
+		if expr is ast.CallExpr && expr.return_type.has_flag(.option) {
+			tmp_var := g.new_tmp_var()
+			g.write('${g.styp(expr.return_type)} ${tmp_var} = ')
+			g.expr(expr)
+			g.writeln(';')
+			g.writeln('if (${tmp_var}.state == 2) {')
+			g.write('\t_option_none(&(${styp}[]) { ')
 			g.write('*((${g.base_type(expr_typ)}*)')
 			g.expr(expr)
 			g.write('.data)')
+			g.writeln(' }, (${option_name}*)(&${past.tmp_var}), sizeof(${styp}));')
+			g.writeln('} else {')
+			g.write('\t_option_ok(&(${styp}[]) { ')
+			g.write('*((${g.base_type(expr_typ)}*)')
+			g.expr(expr)
+			g.write('.data)')
+			g.writeln(' }, (${option_name}*)(&${past.tmp_var}), sizeof(${styp}));')
+			g.writeln('}')
 		} else {
-			old_inside_opt_or_res := g.inside_opt_or_res
-			g.inside_opt_or_res = false
-			g.expr_with_cast(expr, expr_typ, ret_typ)
-			g.inside_opt_or_res = old_inside_opt_or_res
+			if is_none {
+				g.write('_option_none(&(${styp}[]) {')
+			} else {
+				g.write('_option_ok(&(${styp}[]) {')
+			}
+			if expr is ast.CastExpr && expr_typ.has_flag(.option) {
+				g.write('*((${g.base_type(expr_typ)}*)')
+				g.expr(expr)
+				g.write('.data)')
+			} else {
+				old_inside_opt_or_res := g.inside_opt_or_res
+				g.inside_opt_or_res = false
+				g.expr_with_cast(expr, expr_typ, ret_typ)
+				g.inside_opt_or_res = old_inside_opt_or_res
+			}
+			g.writeln(' }, (${option_name}*)(&${past.tmp_var}), sizeof(${styp}));')
 		}
-		g.writeln(' }, (${option_name}*)(&${past.tmp_var}), sizeof(${styp}));')
-
 		return past.tmp_var
 	}
 }
