@@ -576,6 +576,28 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
 			g.expr(expr.expr)
 		}
+		ast.SelectorExpr {
+			if expr.typ != ast.void_type && g.table.final_sym(expr.typ).kind == .array_fixed {
+				atype := g.styp(expr.typ)
+				if closure_var_decl != '' {
+					g.write('memcpy(&${closure_var_decl}, &')
+					g.expr(expr)
+					g.write(', sizeof(${atype}))')
+				} else {
+					g.writeln('${ret_elem_styp} ${tmp_map_expr_result_name};')
+					g.write('memcpy(&${tmp_map_expr_result_name}, &')
+					g.expr(expr)
+					g.write(', sizeof(${atype}))')
+				}
+			} else {
+				if closure_var_decl != '' {
+					g.write('${closure_var_decl} = ')
+				} else {
+					g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
+				}
+				g.expr(expr)
+			}
+		}
 		else {
 			if closure_var_decl != '' {
 				g.write('${closure_var_decl} = ')
