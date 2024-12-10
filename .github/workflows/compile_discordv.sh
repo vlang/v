@@ -8,8 +8,8 @@ function show() {
 
 rm -rf discord/
 
-show "Clone https://github.com/DarpHome/discord.v"
-v retry -- git clone --filter=blob:none --quiet https://github.com/DarpHome/discord.v discord/
+show "Clone https://github.com/vcv88/discord.v"
+v retry -- git clone --filter=blob:none --quiet https://github.com/vcv88/discord.v discord/
 cd discord/
 show "Checkout last known good commit"
 git checkout ce9ff457fce92d5bb15df2974440cd8292457ee0
