@@ -766,7 +766,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	}
 
 	stype_arg := g.styp(elem_type)
-	g.definitions.writeln('VV_LOCAL_SYMBOL ${g.static_modifier} int ${compare_fn}(${stype_arg}* a, ${stype_arg}* b) {')
+	g.sort_fn_definitions.writeln('VV_LOCAL_SYMBOL ${g.static_modifier} int ${compare_fn}(${stype_arg}* a, ${stype_arg}* b) {')
 	c_condition := if comparison_type.sym.has_method('<') {
 		'${g.styp(comparison_type.typ)}__lt(${left_expr}, ${right_expr})'
 	} else if comparison_type.unaliased_sym.has_method('<') {
@@ -776,9 +776,9 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	} else {
 		'${left_expr} < ${right_expr}'
 	}
-	g.definitions.writeln('\tif (${c_condition}) return -1;')
-	g.definitions.writeln('\telse return 1;')
-	g.definitions.writeln('}\n')
+	g.sort_fn_definitions.writeln('\tif (${c_condition}) return -1;')
+	g.sort_fn_definitions.writeln('\telse return 1;')
+	g.sort_fn_definitions.writeln('}\n')
 
 	// write call to the generated function
 	g.gen_array_sort_call(node, compare_fn, left_is_array)
