@@ -49,6 +49,8 @@ mut:
 	args          []string
 }
 
+const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
+
 const vls_folder = os.join_path(os.home_dir(), '.vls')
 
 const vls_bin_folder = os.join_path(vls_folder, 'bin')
@@ -77,7 +79,7 @@ fn (upd VlsUpdater) check_or_create_vls_folder() ! {
 
 fn (upd VlsUpdater) manifest_config() !map[string]json2.Any {
 	manifest_buf := os.read_file(vls_manifest_path) or { '{}' }
-	manifest_contents := json2.raw_decode(manifest_buf)!.as_map()
+	manifest_contents := json2.decode[json2.Any](manifest_buf)!.as_map()
 	return manifest_contents
 }
 
@@ -166,7 +168,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 
 	upd.log('Finding prebuilt executables from GitHub release..')
 	resp := http.get('https://api.github.com/repos/vlang/vls/releases')!
-	releases_json := json2.raw_decode(resp.body)!.arr()
+	releases_json := json2.decode[json2.Any](resp.body)!.arr()
 	if releases_json.len == 0 {
 		return error('Unable to fetch latest VLS release data: No releases found.')
 	}
@@ -255,13 +257,13 @@ fn (upd VlsUpdater) compile_from_source() ! {
 
 	if !os.exists(vls_src_folder) {
 		upd.log('Cloning VLS repo...')
-		clone_result := os.execute('${git} clone --filter=blob:none https://github.com/vlang/vls ${vls_src_folder}')
+		clone_result := os.execute('${os.quoted_path(vexe)} retry -- ${git} clone --filter=blob:none https://github.com/vlang/vls ${vls_src_folder}')
 		if clone_result.exit_code != 0 {
 			return error('Failed to build VLS from source. Reason: ${clone_result.output}')
 		}
 	} else {
 		upd.log('Updating VLS repo...')
-		pull_result := os.execute('${git} -C ${vls_src_folder} pull')
+		pull_result := os.execute('${os.quoted_path(vexe)} retry -- ${git} -C ${vls_src_folder} pull')
 		if !upd.is_force && pull_result.output.trim_space() == 'Already up to date.' {
 			upd.log("VLS was already updated to it's latest version.")
 			return
@@ -282,7 +284,8 @@ fn (upd VlsUpdater) compile_from_source() ! {
 		return error('Cannot compile VLS from source: no appropriate C compiler found.')
 	}
 
-	compile_result := os.execute('v run ${os.join_path(vls_src_folder, 'build.vsh')} ${possible_compilers[selected_compiler_idx]}')
+	compile_result := os.execute('${os.quoted_path(vexe)} run ${os.join_path(vls_src_folder,
+		'build.vsh')} ${possible_compilers[selected_compiler_idx]}')
 	if compile_result.exit_code != 0 {
 		return error('Cannot compile VLS from source: ${compile_result.output}')
 	}

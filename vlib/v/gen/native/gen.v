@@ -8,7 +8,6 @@ import strings
 import v.ast
 import v.ast.walker
 import v.util
-import v.mathutil as mu
 import v.token
 import v.errors
 import v.pref
@@ -74,6 +73,7 @@ mut:
 	pe_dll_relocations map[string]i64
 
 	requires_linking bool
+	is_builtin_mod   bool // true for .v files inside `builtin`
 }
 
 interface CodeGen {
@@ -662,7 +662,11 @@ fn (mut g Gen) align_to(align i32) {
 }
 
 fn (g &Gen) abs_to_rel_addr(addr i64) i32 {
-	return i32(mu.abs(addr - g.buf.len)) - 1
+	return i32(abs(addr - g.buf.len)) - 1
+}
+
+fn abs(a i64) i64 {
+	return if a > 0 { a } else { -a }
 }
 
 fn (mut g Gen) try_var_offset(var_name string) i32 {
@@ -992,7 +996,7 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	mut used := true
 	if g.pref.skip_unused {
 		fkey := node.fkey()
-		used = g.table.used_fns[fkey]
+		used = g.table.used_features.used_fns[fkey]
 	}
 	return used
 }
@@ -1099,7 +1103,7 @@ fn (mut g Gen) println(comment string) {
 
 	colored := sb.str()
 	plain := term.strip_ansi(colored)
-	padding := ' '.repeat(mu.max(1, 40 - plain.len))
+	padding := ' '.repeat(int_max(1, 40 - plain.len))
 	final := '${colored}${padding}${comment}'
 	println(final)
 }

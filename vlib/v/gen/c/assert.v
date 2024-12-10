@@ -253,5 +253,4 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			}
 		}
 	}
-	g.write(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
 }

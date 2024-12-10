@@ -8,6 +8,56 @@ import v.cflag
 import v.util
 
 @[heap; minify]
+pub struct UsedFeatures {
+pub mut:
+	interfaces       bool            // interface
+	dump             bool            // dump()
+	index            bool            // string[0]
+	range_index      bool            // string[0..1]
+	cast_ptr         bool            // &u8(...)
+	asserts          bool            // assert expr
+	as_cast          bool            // expr as Type
+	anon_fn          bool            // fn () { }
+	auto_str         bool            // auto str fns
+	auto_str_ptr     bool            // auto str fns for ptr type
+	arr_prepend      bool            // arr.prepend()
+	arr_insert       bool            // arr.insert()
+	arr_first        bool            // arr.first()
+	arr_last         bool            // arr.last()
+	arr_pop          bool            // arr.pop()
+	arr_delete       bool            // arr.delete()
+	arr_reverse      bool            // arr.reverse()
+	arr_init         bool            // [1, 2, 3]
+	arr_map          bool            // []map[key]value
+	map_update       bool            // {...foo}
+	interpolation    bool            // '${foo} ${bar}'
+	option_or_result bool            // has panic call
+	print_types      map[int]bool    // print() idx types
+	used_fns         map[string]bool // filled in by markused
+	used_consts      map[string]bool // filled in by markused
+	used_globals     map[string]bool // filled in by markused
+	used_veb_types   []Type          // veb context types, filled in by checker
+	used_maps        int             // how many times maps were used, filled in by markused
+	used_arrays      int             // how many times arrays were used, filled in by markused
+	used_modules     map[string]bool // filled in checker
+	// json             bool            // json is imported
+	debugger       bool            // debugger is used
+	comptime_calls map[string]bool // resolved name to call on comptime
+	comptime_for   bool            // uses $for
+}
+
+@[unsafe]
+pub fn (mut uf UsedFeatures) free() {
+	unsafe {
+		uf.print_types.free()
+		uf.used_fns.free()
+		uf.used_consts.free()
+		uf.used_globals.free()
+		uf.used_veb_types.free()
+	}
+}
+
+@[heap; minify]
 pub struct Table {
 mut:
 	parsing_type string // name of the type to enable recursive type parsing
@@ -27,13 +77,9 @@ pub mut:
 	sumtypes           map[int]SumTypeDecl
 	cmod_prefix        string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt             bool
-	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_veb_types     []Type          // veb context types, filled in by checker, when pref.skip_unused = true;
-	veb_res_idx_cache  int             // Cache of `veb.Result` type
-	veb_ctx_idx_cache  int             // Cache of `veb.Context` type
-	used_maps          int             // how many times maps were used, filled in by checker, when pref.skip_unused = true;
+	used_features      &UsedFeatures = &UsedFeatures{} // filled in by the builder via markused module, when pref.skip_unused = true;
+	veb_res_idx_cache  int // Cache of `veb.Result` type
+	veb_ctx_idx_cache  int // Cache of `veb.Context` type
 	panic_handler      FnPanicHandler = default_table_panic_handler
 	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
 	panic_npanics      int
@@ -72,10 +118,7 @@ pub fn (mut t Table) free() {
 		t.redefined_fns.free()
 		t.fn_generic_types.free()
 		t.cmod_prefix.free()
-		t.used_fns.free()
-		t.used_consts.free()
-		t.used_globals.free()
-		t.used_veb_types.free()
+		t.used_features.free()
 	}
 }
 
@@ -84,7 +127,7 @@ pub const map_cname_escape_seq = ['[', '_T_', ', ', '_', ']', '']
 
 pub type FnPanicHandler = fn (&Table, string)
 
-fn default_table_panic_handler(t &Table, message string) {
+fn default_table_panic_handler(_t &Table, message string) {
 	panic(message)
 }
 
@@ -426,7 +469,7 @@ pub fn (t &Table) find_enum_field_val(name string, field_ string) ?i64 {
 			}
 		}
 	}
-	return if enum_decl.is_flag { u64(1) << val } else { val }
+	return if enum_decl.is_flag { i64(u64(1) << u64(val)) } else { val }
 }
 
 pub fn (t &Table) get_enum_field_names(name string) []string {
@@ -730,6 +773,25 @@ pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 	// this should never happen
 	t.panic('table.final_sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.')
 	return invalid_type_symbol
+}
+
+// final_type returns the underlying type, if the final type is an Enum it returns the enum defined type (int one) otherwise the aliased/real type is returned
+pub fn (t &Table) final_type(typ Type) Type {
+	mut idx := typ.idx()
+	if idx > 0 && idx < t.type_symbols.len {
+		cur_sym := t.type_symbols[idx]
+		if cur_sym.info is Alias {
+			idx = cur_sym.info.parent_type.idx()
+			aliased_sym := t.type_symbols[idx]
+			if aliased_sym.info is Enum {
+				return aliased_sym.info.typ
+			}
+			return cur_sym.info.parent_type
+		} else if cur_sym.info is Enum {
+			return cur_sym.info.typ
+		}
+	}
+	return typ
 }
 
 @[inline]
@@ -1611,7 +1673,7 @@ pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 	return false
 }
 
-pub fn (mut t Table) convert_generic_static_type_name(fn_name string, generic_names []string, concrete_types []Type) string {
+pub fn (mut t Table) convert_generic_static_type_name(fn_name string, generic_names []string, concrete_types []Type) (Type, string) {
 	if index := fn_name.index('__static__') {
 		if index > 0 {
 			generic_name := fn_name[0..index]
@@ -1620,12 +1682,12 @@ pub fn (mut t Table) convert_generic_static_type_name(fn_name string, generic_na
 			if valid_generic {
 				name_type := t.find_type(generic_name).set_flag(.generic)
 				if typ := t.convert_generic_type(name_type, generic_names, concrete_types) {
-					return '${t.type_to_str(typ)}${fn_name[index..]}'
+					return name_type, '${t.type_to_str(typ)}${fn_name[index..]}'
 				}
 			}
 		}
 	}
-	return fn_name
+	return void_type, fn_name
 }
 
 // convert_generic_type convert generics to real types (T => int) or other generics type.
@@ -1888,7 +1950,6 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, concrete_types []Type, recheck_concrete_types bool) Type {
 	mut final_concrete_types := []Type{}
 	mut fields := []StructField{}
-	mut needs_unwrap_types := []Type{}
 	mut nrt := ''
 	mut c_nrt := ''
 	ts := t.sym(typ)
@@ -1986,6 +2047,17 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 								recheck_concrete_types)
 						}
 					}
+					// update concrete types
+					for i in 0 .. ts.info.generic_types.len {
+						if t_typ := t.convert_generic_type(ts.info.generic_types[i], t_generic_names,
+							t_concrete_types)
+						{
+							final_concrete_types << t_typ
+						}
+					}
+					if final_concrete_types.len > 0 {
+						t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
+					}
 				}
 				return new_type(idx).derive(typ).clear_flag(.generic)
 			} else {
@@ -2034,27 +2106,6 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 						final_concrete_types << t_typ
 					}
 				}
-				if final_concrete_types.len > 0 {
-					for method in ts.methods {
-						for i in 1 .. method.params.len {
-							if method.params[i].typ.has_flag(.generic)
-								&& method.params[i].typ != method.params[0].typ {
-								if method.params[i].typ !in needs_unwrap_types {
-									needs_unwrap_types << method.params[i].typ
-								}
-							}
-							if method.return_type.has_flag(.generic)
-								&& method.return_type != method.params[0].typ {
-								if method.return_type !in needs_unwrap_types {
-									needs_unwrap_types << method.return_type
-								}
-							}
-						}
-						if final_concrete_types.len == method.generic_names.len {
-							t.register_fn_concrete_types(method.fkey(), final_concrete_types)
-						}
-					}
-				}
 			}
 		}
 		else {}
@@ -2074,8 +2125,8 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 				info:   info
 				is_pub: ts.is_pub
 			)
-			for typ_ in needs_unwrap_types {
-				t.unwrap_generic_type(typ_, generic_names, concrete_types)
+			if final_concrete_types.len > 0 {
+				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
 			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
@@ -2110,8 +2161,8 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 				info:   info
 				is_pub: ts.is_pub
 			)
-			for typ_ in needs_unwrap_types {
-				t.unwrap_generic_type(typ_, generic_names, concrete_types)
+			if final_concrete_types.len > 0 {
+				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
 			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
@@ -2163,6 +2214,31 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 		else {}
 	}
 	return typ
+}
+
+fn (mut t Table) unwrap_method_types(ts &TypeSymbol, generic_names []string, concrete_types []Type, final_concrete_types []Type) {
+	mut needs_unwrap_types := []Type{}
+	for method in ts.get_methods() {
+		for i in 1 .. method.params.len {
+			if method.params[i].typ.has_flag(.generic)
+				&& method.params[i].typ != method.params[0].typ {
+				if method.params[i].typ !in needs_unwrap_types {
+					needs_unwrap_types << method.params[i].typ
+				}
+			}
+			if method.return_type.has_flag(.generic) && method.return_type != method.params[0].typ {
+				if method.return_type !in needs_unwrap_types {
+					needs_unwrap_types << method.return_type
+				}
+			}
+		}
+		if final_concrete_types.len == method.generic_names.len {
+			t.register_fn_concrete_types(method.fkey(), final_concrete_types)
+		}
+	}
+	for typ_ in needs_unwrap_types {
+		t.unwrap_generic_type(typ_, generic_names, concrete_types)
+	}
 }
 
 // generic struct instantiations to concrete types

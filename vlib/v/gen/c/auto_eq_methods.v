@@ -66,7 +66,7 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	right_typ := g.read_field(left_type, '_typ', 'b')
 
 	mut fn_builder := strings.new_builder(512)
-	fn_builder.writeln('static bool ${ptr_styp}_sumtype_eq(${ptr_styp} a, ${ptr_styp} b) {')
+	fn_builder.writeln('static inline bool ${ptr_styp}_sumtype_eq(${ptr_styp} a, ${ptr_styp} b) {')
 	fn_builder.writeln('\tif (${left_typ} != ${right_typ}) { return false; }')
 	fn_builder.writeln('\tif (${left_typ} == ${right_typ} && ${right_typ} == 0) { return true; } // uninitialized')
 	for typ in info.variants {
@@ -190,7 +190,7 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('static bool ${fn_name}_struct_eq(${ptr_styp} a, ${ptr_styp} b) {')
+	fn_builder.writeln('static inline bool ${fn_name}_struct_eq(${ptr_styp} a, ${ptr_styp} b) {')
 
 	// overloaded
 	if left.sym.has_method('==') {
@@ -290,7 +290,7 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 	g.definitions.writeln('static bool ${ptr_styp}_alias_eq(${ptr_styp} a, ${ptr_styp} b); // auto')
 
 	mut fn_builder := strings.new_builder(512)
-	fn_builder.writeln('static bool ${ptr_styp}_alias_eq(${ptr_styp} a, ${ptr_styp} b) {')
+	fn_builder.writeln('static inline bool ${ptr_styp}_alias_eq(${ptr_styp} a, ${ptr_styp} b) {')
 
 	is_option := left.typ.has_flag(.option)
 
@@ -351,7 +351,7 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	g.definitions.writeln('static bool ${ptr_styp}_arr_eq(${ptr_styp} a, ${ptr_styp} b); // auto')
 
 	mut fn_builder := strings.new_builder(512)
-	fn_builder.writeln('static bool ${ptr_styp}_arr_eq(${ptr_styp} a, ${ptr_styp} b) {')
+	fn_builder.writeln('static inline bool ${ptr_styp}_arr_eq(${ptr_styp} a, ${ptr_styp} b) {')
 
 	left_len := g.read_field(left_type, 'len', 'a')
 	right_len := g.read_field(left_type, 'len', 'b')
@@ -426,13 +426,17 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	elem_info := left_typ.sym.array_fixed_info()
 	elem := g.unwrap(elem_info.elem_type)
 	size := elem_info.size
-	g.definitions.writeln('static bool ${ptr_styp}_arr_eq(${ptr_styp} a, ${ptr_styp} b); // auto')
+	mut arg_styp := ptr_styp
+	if elem_info.is_fn_ret {
+		arg_styp = ptr_styp[3..] // removes the _v_ prefix for returning fixed array
+	}
+	g.definitions.writeln('static bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b); // auto')
 
 	left := if left_type.has_flag(.option) { 'a.data' } else { 'a' }
 	right := if left_type.has_flag(.option) { 'b.data' } else { 'b' }
 
 	mut fn_builder := strings.new_builder(512)
-	fn_builder.writeln('static bool ${ptr_styp}_arr_eq(${ptr_styp} a, ${ptr_styp} b) {')
+	fn_builder.writeln('static inline bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b) {')
 	fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
 	// compare every pair of elements of the two fixed arrays
 	if elem.sym.kind == .string {
@@ -494,7 +498,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	b := if left.typ.has_flag(.option) { g.read_map_from_option(left.typ, 'b') } else { '&b' }
 
 	mut fn_builder := strings.new_builder(512)
-	fn_builder.writeln('static bool ${ptr_styp}_map_eq(${ptr_styp} a, ${ptr_styp} b) {')
+	fn_builder.writeln('static inline bool ${ptr_styp}_map_eq(${ptr_styp} a, ${ptr_styp} b) {')
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
@@ -587,7 +591,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 	right_arg := g.read_field(left_type, '_typ', 'b')
 
 	fn_builder.writeln('static int v_typeof_interface_idx_${idx_fn}(int sidx); // for auto eq method')
-	fn_builder.writeln('static bool ${fn_name}_interface_eq(${ptr_styp} a, ${ptr_styp} b) {')
+	fn_builder.writeln('static inline bool ${fn_name}_interface_eq(${ptr_styp} a, ${ptr_styp} b) {')
 	fn_builder.writeln('\tif (${left_arg} == ${right_arg}) {')
 	fn_builder.writeln('\t\tint idx = v_typeof_interface_idx_${idx_fn}(${left_arg});')
 	if info is ast.Interface {

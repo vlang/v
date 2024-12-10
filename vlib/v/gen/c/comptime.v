@@ -195,8 +195,12 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 
+		mut has_unwrap := false
 		if !g.inside_call && node.or_block.kind != .block && m.return_type.has_option_or_result() {
-			g.write('(*(${g.base_type(m.return_type)}*)')
+			if !(g.assign_ct_type != 0 && g.assign_ct_type.has_option_or_result()) {
+				g.write('(*(${g.base_type(m.return_type)}*)')
+				has_unwrap = true
+			}
 		}
 		// TODO: check argument types
 		g.write('${util.no_dots(sym.name)}_${g.comptime.comptime_for_method.name}(')
@@ -258,7 +262,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 		g.write(')')
-		if !g.inside_call && node.or_block.kind != .block && m.return_type.has_option_or_result() {
+		if has_unwrap {
 			g.write('.data)')
 		}
 		if node.or_block.kind != .absent && m.return_type.has_option_or_result() {
@@ -353,7 +357,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		g.write(util.tabs(g.indent))
 		styp := g.styp(node.typ)
 		g.writeln('${styp} ${tmp_var};')
-		stmt_str.trim_space()
+		stmt_str
 	} else {
 		''
 	}
@@ -452,18 +456,14 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	g.defer_ifdef = ''
 	g.writeln('#endif')
 	if node.is_expr {
-		g.write('${line} ${tmp_var}')
+		g.write('${line}${tmp_var}')
 	}
 }
 
 fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 	match cond {
 		ast.Ident {
-			return if g.comptime.is_comptime_var(cond) {
-				g.unwrap_generic(g.comptime.get_type(cond))
-			} else {
-				g.unwrap_generic(cond.obj.typ)
-			}
+			return g.unwrap_generic(g.comptime.get_type_or_default(cond, cond.obj.typ))
 		}
 		ast.TypeNode {
 			return g.unwrap_generic(cond.typ)
@@ -473,6 +473,8 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 				return g.unwrap_generic(cond.name_type)
 			} else if cond.gkind_field == .unaliased_typ {
 				return g.table.unaliased_type(g.unwrap_generic(cond.name_type))
+			} else if cond.gkind_field == .indirections {
+				return ast.int_type
 			} else {
 				name := '${cond.expr}.${cond.field_name}'
 				if name in g.comptime.type_map {
@@ -513,12 +515,17 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 			return is_cond_true, false
 		}
 		ast.PostfixExpr {
-			ifdef := g.comptime_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
+			dname := (cond.expr as ast.Ident).name
+			ifdef := g.comptime_if_to_ifdef(dname, true) or {
 				verror(err.str())
 				return false, true
 			}
 			g.write('defined(${ifdef})')
-			return true, false
+			if dname in g.pref.compile_defines_all && dname !in g.pref.compile_defines {
+				return false, true
+			} else {
+				return true, false
+			}
 		}
 		ast.InfixExpr {
 			match cond.op {

@@ -11,7 +11,7 @@ __global (
 )
 
 struct GameObject {
-	id int = game.object_id++
+	id u32 = game.object_id++
 }
 
 fn (mut game Game) init() {

@@ -6,7 +6,7 @@ import v.util
 import v.builder
 import sync.pool
 
-fn parallel_cc(mut b builder.Builder, header string, res string, out_str string, out_fn_start_pos []int) {
+fn parallel_cc(mut b builder.Builder, header string, _res string, out_str string, out_fn_start_pos []int) {
 	c_files := util.nr_jobs
 	println('> c_files: ${c_files} | util.nr_jobs: ${util.nr_jobs}')
 	out_h := header.replace_once('static char * v_typeof_interface_IError', 'char * v_typeof_interface_IError')
@@ -67,7 +67,7 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	eprint_time('link_cmd', link_cmd, link_res, sw_link)
 }
 
-fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr {
+fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) voidptr {
 	postfix := p.get_item[string](idx)
 	sw := time.new_stopwatch()
 	cmd := '${os.quoted_path(cc_compiler)} ${cc_cflags} -c -w -o out_${postfix}.o out_${postfix}.c'

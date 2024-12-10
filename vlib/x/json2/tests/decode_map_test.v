@@ -1,5 +1,3 @@
-module main
-
 import x.json2
 
 const data = '
@@ -31,7 +29,7 @@ const data = '
 }
 '
 
-struct Comment {
+pub struct Comment {
 	id      string
 	message string
 }

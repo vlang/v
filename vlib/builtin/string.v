@@ -134,7 +134,7 @@ pub fn tos2(s &u8) string {
 // It will panic, when the pointer `s` is 0.
 // It is the same as `tos2`, but for &char pointers, avoiding callsite casts.
 // See also `tos_clone`.
-@[unsafe]
+@[markused; unsafe]
 pub fn tos3(s &char) string {
 	if s == 0 {
 		panic('tos3: nil string')
@@ -151,7 +151,7 @@ pub fn tos3(s &char) string {
 // It returns '', when given a 0 pointer `s`, it does NOT panic.
 // It is the same as `tos5`, but for &u8 pointers, avoiding callsite casts.
 // See also `tos_clone`.
-@[unsafe]
+@[markused; unsafe]
 pub fn tos4(s &u8) string {
 	if s == 0 {
 		return ''
@@ -168,7 +168,7 @@ pub fn tos4(s &u8) string {
 // It returns '', when given a 0 pointer `s`, it does NOT panic.
 // It is the same as `tos4`, but for &char pointers, avoiding callsite casts.
 // See also `tos_clone`.
-@[unsafe]
+@[markused; unsafe]
 pub fn tos5(s &char) string {
 	if s == 0 {
 		return ''
@@ -383,7 +383,7 @@ pub fn (s string) replace(rep string, with string) string {
 	mut stack_idxs := [replace_stack_buffer_size]int{}
 	mut pidxs := unsafe { &stack_idxs[0] }
 	if pidxs_cap > replace_stack_buffer_size {
-		pidxs = unsafe { &int(malloc(sizeof(int) * pidxs_cap)) }
+		pidxs = unsafe { &int(malloc(int(sizeof(int)) * pidxs_cap)) }
 	}
 	defer {
 		if pidxs_cap > replace_stack_buffer_size {
@@ -1277,7 +1277,7 @@ fn (s string) index_kmp(p string) int {
 	mut stack_prefixes := [kmp_stack_buffer_size]int{}
 	mut p_prefixes := unsafe { &stack_prefixes[0] }
 	if p.len > kmp_stack_buffer_size {
-		p_prefixes = unsafe { &int(vcalloc(p.len * sizeof(int))) }
+		p_prefixes = unsafe { &int(vcalloc(p.len * int(sizeof(int)))) }
 	}
 	defer {
 		if p.len > kmp_stack_buffer_size {
@@ -1394,7 +1394,7 @@ pub fn (s string) index_u8_last(c u8) int {
 }
 
 // last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.
-@[inline]
+@[direct_array_access; inline]
 pub fn (s string) last_index_u8(c u8) int {
 	for i := s.len - 1; i >= 0; i-- {
 		if s[i] == c {

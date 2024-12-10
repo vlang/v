@@ -183,3 +183,34 @@ fn test_goto_end() {
 	s.goto_end()
 	assert s.current() == `c`
 }
+
+fn test_skip_whitespace() {
+	mut s := textscanner.new('abc   d  \n   xyz')
+	assert s.current() == -1
+	assert s.next() == `a`
+	assert s.next() == `b`
+	assert s.next() == `c`
+	s.skip_whitespace()
+	assert s.next() == `d`
+	s.skip_whitespace()
+	assert s.next() == `x`
+	assert s.next() == `y`
+	assert s.next() == `z`
+}
+
+fn test_peek_u8() {
+	mut s := textscanner.new('abc')
+	assert s.peek_u8() == `a`
+	assert !s.peek_u8().is_digit()
+	assert s.next() == `a`
+	assert s.peek_u8() == `b`
+}
+
+fn test_peek_n_u8() {
+	mut s := textscanner.new('abc')
+	assert s.peek_n_u8(0) == `a`
+	assert s.peek_n_u8(1) == `b`
+	assert s.peek_n_u8(2) == `c`
+	assert s.peek_n_u8(3) == 0
+	assert s.peek_n_u8(4) == 0
+}

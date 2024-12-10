@@ -115,7 +115,7 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 			}
 			return folders_so_far, res
 		}
-		if mcache.check_for_stop(cfolder, files) {
+		if mcache.check_for_stop(files) {
 			break
 		}
 		cfolder = os.dir(cfolder)
@@ -143,7 +143,7 @@ fn (mut mcache ModFileCacher) mark_folders_as_vmod_free(folders_so_far []string)
 	}
 }
 
-fn (mcache &ModFileCacher) check_for_stop(cfolder string, files []string) bool {
+fn (mcache &ModFileCacher) check_for_stop(files []string) bool {
 	for i in mod_file_stop_paths {
 		if i in files {
 			return true

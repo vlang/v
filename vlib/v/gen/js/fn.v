@@ -514,7 +514,7 @@ fn (mut g JsGen) is_used_by_main(node ast.FnDecl) bool {
 	mut is_used_by_main := true
 	if g.pref.skip_unused {
 		fkey := node.fkey()
-		is_used_by_main = g.table.used_fns[fkey]
+		is_used_by_main = g.table.used_features.used_fns[fkey]
 		$if trace_skip_unused_fns ? {
 			println('> is_used_by_main: ${is_used_by_main} | node.name: ${node.name} | fkey: ${fkey} | node.is_method: ${node.is_method}')
 		}

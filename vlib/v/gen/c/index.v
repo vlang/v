@@ -256,7 +256,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			}
 		} else {
 			if needs_clone {
-				g.write('/*2*/string_clone(')
+				g.write('string_clone(')
 			}
 			if is_fn_index_call {
 				if elem_sym.info is ast.FnType {

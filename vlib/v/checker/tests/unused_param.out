@@ -1,0 +1,14 @@
+vlib/v/checker/tests/unused_param.vv:5:33: notice: unused parameter: `unused_param`
+    3 | struct Foo {}
+    4 | 
+    5 | fn (unused_receiver Foo) method(unused_param int) {}
+      |                                 ~~~~~~~~~~~~
+    6 | 
+    7 | fn func(unused_param int) {}
+vlib/v/checker/tests/unused_param.vv:7:9: notice: unused parameter: `unused_param`
+    5 | fn (unused_receiver Foo) method(unused_param int) {}
+    6 | 
+    7 | fn func(unused_param int) {}
+      |         ~~~~~~~~~~~~
+    8 | 
+    9 | fn func2(_ int) {}

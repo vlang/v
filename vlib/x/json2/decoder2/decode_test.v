@@ -4,42 +4,42 @@ fn test_check_if_json_match() {
 	// /* Test wrong string values */
 	mut has_error := false
 
-	check_if_json_match[string]('{"key": "value"}') or {
+	decode[string]('{"key": "value"}') or {
 		assert err.str() == 'Expected string, but got object'
 		has_error = true
 	}
 	assert has_error, 'Expected error'
 	has_error = false
 
-	check_if_json_match[map[string]string]('"value"') or {
+	decode[map[string]string]('"value"') or {
 		assert err.str() == 'Expected object, but got string_'
 		has_error = true
 	}
 	assert has_error, 'Expected error'
 	has_error = false
 
-	check_if_json_match[[]int]('{"key": "value"}') or {
+	decode[[]int]('{"key": "value"}') or {
 		assert err.str() == 'Expected array, but got object'
 		has_error = true
 	}
 	assert has_error, 'Expected error'
 	has_error = false
 
-	check_if_json_match[string]('[1, 2, 3]') or {
+	decode[string]('[1, 2, 3]') or {
 		assert err.str() == 'Expected string, but got array'
 		has_error = true
 	}
 	assert has_error, 'Expected error'
 	has_error = false
 
-	check_if_json_match[int]('{"key": "value"}') or {
+	decode[int]('{"key": "value"}') or {
 		assert err.str() == 'Expected number, but got object'
 		has_error = true
 	}
 	assert has_error, 'Expected error'
 	has_error = false
 
-	check_if_json_match[bool]('{"key": "value"}') or {
+	decode[bool]('{"key": "value"}') or {
 		assert err.str() == 'Expected boolean, but got object'
 		has_error = true
 	}
@@ -47,19 +47,19 @@ fn test_check_if_json_match() {
 	has_error = false
 
 	// /* Right string values */
-	check_if_json_match[string]('"value"') or { assert false }
+	decode[string]('"value"') or { assert false }
 
-	check_if_json_match[map[string]string]('{"key": "value"}') or { assert false }
+	decode[map[string]string]('{"key": "value"}') or { assert false }
 
-	check_if_json_match[[]int]('[1, 2, 3]') or { assert false }
+	decode[[]int]('[1, 2, 3]') or { assert false }
 
-	check_if_json_match[string]('"string"') or { assert false }
+	decode[string]('"string"') or { assert false }
 
-	check_if_json_match[int]('123') or { assert false }
+	decode[int]('123') or { assert false }
 
-	check_if_json_match[bool]('true') or { assert false }
+	decode[bool]('true') or { assert false }
 
-	check_if_json_match[bool]('false') or { assert false }
+	decode[bool]('false') or { assert false }
 
 	// TODO: test null
 }
@@ -157,7 +157,7 @@ fn test_check_json_format() {
 		},
 		{
 			'json':  '{"key": 123, "key2": 456,}'
-			'error': '\n{"key": 123, "key2": 456,}\n                         ^ Expecting object key'
+			'error': '\n{"key": 123, "key2": 456,}\n                         ^ Expecting object key after `,`'
 		},
 		{
 			'json':  '[[1, 2, 3], [4, 5, 6],]'
@@ -181,7 +181,6 @@ fn test_check_json_format() {
 }
 
 fn test_get_value_kind() {
-
 	struct Object_ {
 		byte_      u8
 		value_kind ValueKind

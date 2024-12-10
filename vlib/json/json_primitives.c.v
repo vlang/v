@@ -257,6 +257,7 @@ fn json_print(data &C.cJSON) string {
 	return r
 }
 
+@[markused]
 fn json_print_pretty(data &C.cJSON) string {
 	s := C.cJSON_Print(data)
 	r := unsafe { tos_clone(&u8(s)) }

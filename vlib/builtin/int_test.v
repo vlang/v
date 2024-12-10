@@ -246,3 +246,25 @@ fn test_repeat() {
 	assert b.repeat(1) == b.ascii_str()
 	assert b.repeat(0) == ''
 }
+
+fn test_int_min() {
+	assert int_min(1, 2) == 1
+	assert int_min(2, 1) == 1
+	assert int_min(-2, -1) == -2
+	assert int_min(-1, -2) == -2
+	assert int_min(0, 5) == 0
+	assert int_min(5, 0) == 0
+	assert int_min(-5, 5) == -5
+	assert int_min(5, -5) == -5
+}
+
+fn test_int_max() {
+	assert int_max(1, 2) == 2
+	assert int_max(2, 1) == 2
+	assert int_max(-2, -1) == -1
+	assert int_max(-1, -2) == -1
+	assert int_max(0, 5) == 5
+	assert int_max(5, 0) == 5
+	assert int_max(-5, 5) == 5
+	assert int_max(5, -5) == 5
+}

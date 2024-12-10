@@ -73,7 +73,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				ident := p.ident(.v)
 				node = ident
 				if p.peek_tok.kind != .assign && (p.inside_if_cond || p.inside_match) {
-					p.mark_var_as_used(ident.name)
+					p.scope.mark_var_as_used(ident.name)
 				}
 				p.add_defer_var(ident)
 				p.is_stmt_ident = is_stmt_ident
@@ -128,7 +128,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					p.is_stmt_ident = is_stmt_ident
 				}
 				.key_if {
-					return p.if_expr(true)
+					return p.if_expr(true, false)
 				}
 				else {
 					return p.unexpected_with_pos(p.peek_tok.pos(),
@@ -222,7 +222,11 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
 				node = p.call_expr(p.language, p.mod)
 			} else {
-				node = p.if_expr(false)
+				mut is_expr := false
+				if p.prev_tok.kind.is_assign() {
+					is_expr = true
+				}
+				node = p.if_expr(false, is_expr)
 			}
 		}
 		.key_unsafe {
@@ -356,7 +360,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			} else {
 				p.check(.lpar)
 				pos := p.tok.pos()
-				mut is_known_var := p.mark_var_as_used(p.tok.lit)
+				mut is_known_var := p.scope.mark_var_as_used(p.tok.lit)
 					|| p.table.global_scope.known_const(p.mod + '.' + p.tok.lit)
 				//|| p.table.known_fn(p.mod + '.' + p.tok.lit)
 				// assume `mod.` prefix leads to a type
@@ -524,7 +528,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				// variable name: type
 				ident := p.ident(.v)
 				node = ident
-				p.mark_var_as_used(ident.name)
+				p.scope.mark_var_as_used(ident.name)
 				p.add_defer_var(ident)
 				p.is_stmt_ident = is_stmt_ident
 			} else if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
@@ -615,7 +619,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 					}
 				}
 			}
-		} else if p.tok.kind == .key_as {
+		} else if p.tok.kind == .key_as && p.tok.line_nr == p.prev_tok.line_nr {
 			// sum type as cast `x := SumType as Variant`
 			if !p.inside_asm {
 				pos := p.tok.pos()
@@ -649,7 +653,8 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				pos:     pos
 				is_stmt: true
 			}
-		} else if p.tok.kind.is_infix() && !(p.tok.kind in [.minus, .amp, .mul]
+		} else if p.tok.kind.is_infix()
+			&& !(p.tok.kind in [.minus, .amp, .mul, .key_as, .key_in, .key_is]
 			&& p.tok.line_nr != p.prev_tok.line_nr) {
 			// continue on infix expr
 			node = p.infix_expr(node)
@@ -782,7 +787,9 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 
 	right_op_pos := p.tok.pos()
 	old_assign_rhs := p.inside_assign_rhs
-	p.inside_assign_rhs = true
+	if op in [.decl_assign, .assign] {
+		p.inside_assign_rhs = true
+	}
 	right = p.expr(precedence)
 	p.inside_assign_rhs = old_assign_rhs
 	if op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && mut right is ast.PrefixExpr {

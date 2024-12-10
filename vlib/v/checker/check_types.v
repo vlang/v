@@ -162,6 +162,8 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	if expected.has_option_or_result() {
 		sym := c.table.sym(got)
+		// Allow error() for Option and Result types
+		// `none` for Option only
 		if ((sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type])
 			&& expected.has_flag(.option))
 			|| ((sym.idx == ast.error_type_idx || got == ast.error_type)
@@ -363,6 +365,9 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		}
 		if got == ast.void_type {
 			return error('`${arg.expr}` (no value) used as value')
+		}
+		if expected == ast.voidptr_type && got_typ_sym.kind == .array_fixed {
+			return
 		}
 		got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 		return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
@@ -735,8 +740,16 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 	} else if idx_lo >= ast.i8_type_idx
 		&& (idx_hi <= ast.isize_type_idx || idx_hi == ast.rune_type_idx) { // both signed
 		return if idx_lo == ast.i64_type_idx { type_lo } else { type_hi }
-	} else if idx_hi - idx_lo < (ast.u8_type_idx - ast.i8_type_idx) {
-		return type_lo // conversion unsigned -> signed if signed type is larger
+	} else if idx_hi == ast.u8_type_idx && idx_lo > ast.i8_type_idx {
+		return type_lo // conversion unsigned u8 -> signed if signed type is larger
+	} else if idx_hi == ast.u16_type_idx && idx_lo > ast.i16_type_idx {
+		return type_lo // conversion unsigned u16 -> signed if signed type is larger
+	} else if idx_hi == ast.u32_type_idx && idx_lo > ast.int_type_idx {
+		return type_lo // conversion unsigned u32 -> signed if signed type is larger
+	} else if idx_hi == ast.u64_type_idx && idx_lo >= ast.i64_type_idx {
+		return type_lo // conversion unsigned u64 -> signed if signed type is larger
+	} else if idx_hi == ast.usize_type_idx && idx_lo >= ast.isize_type_idx {
+		return type_lo // conversion unsigned usize -> signed if signed type is larger
 	} else if c.pref.translated {
 		return type_hi
 	} else {

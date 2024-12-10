@@ -147,13 +147,13 @@ fn (mut p Process) win_is_alive() bool {
 	return false
 }
 
-fn (mut p Process) win_write_string(idx int, s string) {
+fn (mut p Process) win_write_string(_idx int, _s string) {
 }
 
-fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
+fn (mut p Process) win_read_string(_idx int, _maxbytes int) (string, int) {
 	return '', 0
 }
 
-fn (mut p Process) win_slurp(idx int) string {
+fn (mut p Process) win_slurp(_idx int) string {
 	return ''
 }

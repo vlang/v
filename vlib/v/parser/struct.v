@@ -122,7 +122,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				end_comments = p.eat_comments(same_line: true)
 				break
 			}
-			if p.tok.kind == .key_pub {
+			if p.tok.kind == .key_pub && p.peek_tok.kind in [.key_mut, .colon] {
 				p.next()
 				if p.tok.kind == .key_mut {
 					if pub_mut_pos != -1 {
@@ -145,7 +145,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					is_field_global = false
 				}
 				p.check(.colon)
-			} else if p.tok.kind == .key_mut {
+			} else if p.tok.kind == .key_mut && p.peek_tok.kind == .colon {
 				if mut_pos != -1 {
 					p.error('redefinition of `mut` section')
 					return ast.StructDecl{}
@@ -156,7 +156,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_field_pub = false
 				is_field_mut = true
 				is_field_global = false
-			} else if p.tok.kind == .key_global {
+			} else if p.tok.kind == .key_global && p.peek_tok.kind == .colon {
 				if global_pos != -1 {
 					p.error('redefinition of `global` section')
 					return ast.StructDecl{}
@@ -167,7 +167,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_field_pub = true
 				is_field_mut = true
 				is_field_global = true
-			} else if p.tok.kind == .key_module {
+			} else if p.tok.kind == .key_module && p.peek_tok.kind == .colon {
 				if module_pos != -1 {
 					p.error('redefinition of `module` section')
 					return ast.StructDecl{}
@@ -184,7 +184,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			field_start_pos := p.tok.pos()
 			mut is_field_volatile := false
 			mut is_field_deprecated := false
-			if p.tok.kind == .key_volatile {
+			if p.tok.kind == .key_volatile && p.peek_token(2).line_nr == p.tok.line_nr {
 				p.next()
 				is_field_volatile = true
 			}
@@ -355,7 +355,10 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		p.check(.rcbr)
 		end_comments = p.eat_comments(same_line: true)
 	}
-	scoped_name := if !is_anon && p.inside_fn { '_${name}_${p.cur_fn_scope.start_pos}' } else { '' }
+	mut scoped_name := ''
+	if !is_anon && p.inside_fn && p.cur_fn_scope != unsafe { nil } {
+		scoped_name = '_${name}_${p.cur_fn_scope.start_pos}'
+	}
 	is_minify := attrs.contains('minify')
 	mut sym := ast.TypeSymbol{
 		kind:       .struct

@@ -1903,7 +1903,9 @@
  *
  * Uncomment this to enable pthread mutexes.
  */
-//#define MBEDTLS_THREADING_PTHREAD
+#if ( defined(__linux__) || defined(__FreeBSD__) )
+#define MBEDTLS_THREADING_PTHREAD
+#endif
 
 /**
  * \def MBEDTLS_USE_PSA_CRYPTO
@@ -3283,7 +3285,9 @@
  *
  * Enable this layer to allow use of mutexes within mbed TLS
  */
-//#define MBEDTLS_THREADING_C
+#if ( defined(__linux__) || defined(__FreeBSD__) )
+#define MBEDTLS_THREADING_C
+#endif
 
 /**
  * \def MBEDTLS_TIMING_C
@@ -3803,3 +3807,16 @@
 //#define MBEDTLS_ECDH_VARIANT_EVEREST_ENABLED
 
 /** \} name SECTION: Module configuration options */
+
+
+#if ( defined(__TINYC__) && defined(__APPLE__) && defined(__arm64__) )
+#undef MBEDTLS_HAVE_ASM
+#undef MBEDTLS_AESNI_C
+#undef MBEDTLS_PADLOCK_C
+#endif
+
+#if ( defined(__TINYC__) && defined(__FreeBSD__) )
+#undef MBEDTLS_HAVE_ASM
+#undef MBEDTLS_AESNI_C
+#undef MBEDTLS_PADLOCK_C
+#endif

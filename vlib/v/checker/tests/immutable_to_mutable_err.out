@@ -1,11 +1,11 @@
-vlib/v/checker/tests/immutable_to_mutable_err.vv:10:27: error: left-side of assignment expects a mutable reference, but variable `arr` is immutable, declare it with `mut` to make it mutable or clone it
+vlib/v/checker/tests/immutable_to_mutable_err.vv:10:27: notice: left-side of assignment expects a mutable reference, but variable `arr` is immutable, declare it with `mut` to make it mutable or clone it
     8 | fn main() {
     9 |     arr := [1, 2, 3] // declared as immutable!
    10 |     mut arr_mut := if true { arr } else { []int{} }
       |                              ~~~
    11 |     mut arr_mut2 := match true {
    12 |         true { arr }
-vlib/v/checker/tests/immutable_to_mutable_err.vv:12:10: error: left-side of assignment expects a mutable reference, but variable `arr` is immutable, declare it with `mut` to make it mutable or clone it
+vlib/v/checker/tests/immutable_to_mutable_err.vv:12:10: notice: left-side of assignment expects a mutable reference, but variable `arr` is immutable, declare it with `mut` to make it mutable or clone it
    10 |     mut arr_mut := if true { arr } else { []int{} }
    11 |     mut arr_mut2 := match true {
    12 |         true { arr }

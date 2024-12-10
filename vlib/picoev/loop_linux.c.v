@@ -6,12 +6,12 @@ $if !musl ? {
 	#include <sys/cdefs.h> // needed for cross compiling to linux
 }
 
-fn C.epoll_create(int) int
-fn C.epoll_wait(int, voidptr, int, int) int
-fn C.epoll_ctl(int, int, int, voidptr) int
+fn C.epoll_create(__flags int) int
+fn C.epoll_wait(__epfd int, __events &C.epoll_event, __maxevents int, __timeout int) int
+fn C.epoll_ctl(__epfd int, __op int, __fd int, __event &C.epoll_event) int
 
 @[typedef]
-pub union C.epoll_data_t {
+union C.epoll_data {
 mut:
 	ptr voidptr
 	fd  int
@@ -21,9 +21,8 @@ mut:
 
 @[packed]
 pub struct C.epoll_event {
-mut:
 	events u32
-	data   C.epoll_data_t
+	data   C.epoll_data
 }
 
 @[heap]
@@ -106,7 +105,7 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 
 @[direct_array_access]
 fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
-	nevents := C.epoll_wait(pv.loop.epoll_fd, &pv.loop.events, max_fds, max_wait_in_sec * 1000)
+	nevents := C.epoll_wait(pv.loop.epoll_fd, &pv.loop.events[0], max_fds, max_wait_in_sec * 1000)
 
 	if nevents == -1 {
 		// timeout has occurred

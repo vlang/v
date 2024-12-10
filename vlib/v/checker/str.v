@@ -45,18 +45,24 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 	c.inside_interface_deref = true
 	for i, mut expr in node.exprs {
 		mut ftyp := c.expr(mut expr)
-		ftyp = c.check_expr_option_or_result_call(expr, ftyp)
-		if c.comptime.is_comptime_var(expr) {
-			ctyp := c.comptime.get_type(expr)
-			if ctyp != ast.void_type {
-				ftyp = ctyp
-			}
-		}
+		ftyp = c.comptime.get_type_or_default(expr, c.check_expr_option_or_result_call(expr,
+			ftyp))
 		if ftyp == ast.void_type {
 			c.error('expression does not return a value', expr.pos())
 		} else if ftyp == ast.char_type && ftyp.nr_muls() == 0 {
 			c.error('expression returning type `char` cannot be used in string interpolation directly, print its address or cast it to an integer instead',
 				expr.pos())
+		}
+		if c.pref.skip_unused && !c.is_builtin_mod {
+			if !c.table.sym(ftyp).has_method('str') {
+				c.table.used_features.auto_str = true
+				if ftyp.is_ptr() {
+					c.table.used_features.auto_str_ptr = true
+				}
+			} else {
+				c.table.used_features.print_types[ftyp.idx()] = true
+			}
+			c.table.used_features.interpolation = true
 		}
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
@@ -234,5 +240,8 @@ fn (mut c Checker) check_num_literal(lohi LoHiLimit, is_neg bool, lit string) ! 
 }
 
 fn (mut c Checker) num_lit_overflow_error(node &ast.IntegerLiteral) {
+	if c.inside_integer_literal_cast {
+		return
+	}
 	c.error('integer literal ${node.val} overflows int', node.pos)
 }

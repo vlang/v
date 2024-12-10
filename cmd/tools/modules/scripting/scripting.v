@@ -147,6 +147,20 @@ pub fn run(cmd string) string {
 	return ''
 }
 
+// frun runs a command, tracing its results, and returning ONLY its output, or an error, if it failed
+pub fn frun(cmd string) !string {
+	verbose_trace_strong(modfn(@MOD, @FN), cmd)
+	x := os.execute(cmd)
+	if x.exit_code != 0 {
+		verbose_trace(modfn(@MOD, @FN), '## failed.')
+		verbose_trace(modfn(@MOD, @FN), '## failure   code: ${x.exit_code}')
+		verbose_trace(modfn(@MOD, @FN), '## failure output: ${x.output}')
+		return error_with_code('failed cmd: ${cmd}', x.exit_code)
+	}
+	verbose_trace_exec_result(x)
+	return x.output.trim_right('\r\n')
+}
+
 pub fn exit_0_status(cmd string) bool {
 	verbose_trace_strong(modfn(@MOD, @FN), cmd)
 	x := os.execute(cmd)

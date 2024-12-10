@@ -8,13 +8,6 @@ mut:
 	as_double32 f32
 }
 
-// htn64 - DON'T USE, use hton64 instead
-@[deprecated: 'use hton64() instead']
-@[deprecated_after: '2023-12-31']
-pub fn htn64(host u64) u64 {
-	return hton64(host)
-}
-
 // htonf32 converts the 32 bit double `host` to the net format
 pub fn htonf32(host f32) f32 {
 	$if little_endian {
@@ -50,13 +43,6 @@ pub fn hton64(host u64) u64 {
 	}
 }
 
-// htn32 - DON'T USE, use hton32 instead
-@[deprecated: 'use hton32() instead']
-@[deprecated_after: '2023-12-31']
-pub fn htn32(host u32) u32 {
-	return hton32(host)
-}
-
 // hton32 converts the 32 bit value `host` to the net format (htonl)
 pub fn hton32(host u32) u32 {
 	$if little_endian {
@@ -64,13 +50,6 @@ pub fn hton32(host u32) u32 {
 	} $else {
 		return host
 	}
-}
-
-// htn16 - DON'T USE, use hton16 instead
-@[deprecated: 'use hton16() instead']
-@[deprecated_after: '2023-12-31']
-pub fn htn16(host u16) u16 {
-	return hton16(host)
 }
 
 // hton16 converts the 16 bit value `host` to the net format (htons)
@@ -82,35 +61,14 @@ pub fn hton16(host u16) u16 {
 	}
 }
 
-// nth64 - DON'T USE, use ntoh64 instead
-@[deprecated: 'use ntoh64() instead']
-@[deprecated_after: '2023-12-31']
-pub fn nth64(net u64) u64 {
-	return ntoh64(net)
-}
-
 // ntoh64 converts the 64 bit value `net` to the host format (ntohll)
 pub fn ntoh64(net u64) u64 {
 	return hton64(net)
 }
 
-// nth32 - DON'T USE, use ntoh32 instead
-@[deprecated: 'use ntoh32() instead']
-@[deprecated_after: '2023-12-31']
-pub fn nth32(net u32) u32 {
-	return ntoh32(net)
-}
-
 // ntoh32 converts the 32 bit value `net` to the host format (ntohl)
 pub fn ntoh32(net u32) u32 {
 	return hton32(net)
-}
-
-// nth16 - DON'T USE, use ntoh16 instead
-@[deprecated: 'use ntoh16() instead']
-@[deprecated_after: '2023-12-31']
-pub fn nth16(net u16) u16 {
-	return ntoh16(net)
 }
 
 // ntoh16 converts the 16 bit value `net` to the host format (ntohs)

@@ -195,7 +195,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			af = false
 		}
 	}
-	g.gen_assign_vars_autofree(node)
+	// TODO: g.gen_assign_vars_autofree(node)
 	// json_test failed w/o this check
 	if return_type != ast.void_type && return_type != 0 {
 		sym := g.table.sym(return_type)
@@ -322,6 +322,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
 							// eprintln('>> ${func.name} > resolve ${left.name}.${left.obj.pos.pos}.generic to ${g.table.type_to_str(var_type)}')
 						}
+					} else if val.is_static_method && val.left_type.has_flag(.generic) {
+						fn_ret_type := g.resolve_return_type(val)
+						var_type = fn_ret_type
+						val_type = var_type
+						left.obj.typ = var_type
+						g.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
+						g.assign_ct_type = var_type
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
@@ -404,12 +411,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		unwrapped_val_type := g.unwrap_generic(val_type)
 		right_sym := g.table.sym(unwrapped_val_type)
 		unaliased_right_sym := g.table.final_sym(unwrapped_val_type)
-		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && val !is ast.ArrayInit
+		is_fixed_array_var := !g.pref.translated && unaliased_right_sym.kind == .array_fixed
+			&& val !is ast.ArrayInit
 			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.DumpExpr, ast.InfixExpr]
 			|| (val is ast.CastExpr && val.expr !is ast.ArrayInit)
 			|| (val is ast.PrefixExpr && val.op == .arrow)
 			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident]))
-			&& !g.pref.translated
 		g.is_assign_lhs = true
 		g.assign_op = node.op
 
@@ -443,13 +450,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(val)
 				g.writeln(';}')
 			}
-		} else if node.op == .assign && !g.pref.translated
-			&& (is_fixed_array_init || (right_sym.kind == .array_fixed && val is ast.Ident)) {
+		} else if node.op == .assign && !g.pref.translated && (is_fixed_array_init
+			|| (unaliased_right_sym.kind == .array_fixed && val in [ast.Ident, ast.CastExpr])) {
 			// Fixed arrays
 			if is_fixed_array_init && var_type.has_flag(.option) {
 				g.expr(left)
 				g.write(' = ')
 				g.expr_with_opt(val, val_type, var_type)
+			} else if unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr {
+				g.write('memcpy(')
+				g.expr(left)
+				g.write(', ')
+				g.expr(val)
+				g.writeln(', sizeof(${g.styp(var_type)}));')
 			} else {
 				mut v_var := ''
 				arr_typ := styp.trim('*')
@@ -782,7 +795,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.expr(left)
 							g.write(', ${final_ref_str}')
 							g.expr(val)
-							g.write(', sizeof(${typ_str})) /*assign*/')
+							g.write(', sizeof(${typ_str}))')
 						}
 					}
 				} else if is_decl {
@@ -952,48 +965,6 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	}
 }
 
-fn (mut g Gen) gen_assign_vars_autofree(node &ast.AssignStmt) {
-	// Autofree tmp arg vars
-	// first_right := node.right[0]
-	// af := g.autofree && first_right is ast.CallExpr && !g.is_builtin_mod
-	// if af {
-	// g.autofree_call_pregen(first_right as ast.CallExpr)
-	// }
-	//
-	//
-	// Handle options. We need to declare a temp variable for them, that's why they are handled
-	// here, not in call_expr().
-	// `pos := s.index('x') or { return }`
-	// ==========>
-	// Option_int _t190 = string_index(s, _STR("x")); // _STR() no more used!!
-	// if (_t190.state != 2) {
-	// Error err = _t190.err;
-	// return;
-	// }
-	// int pos = *(int*)_t190.data;
-	// mut tmp_opt := ''
-	/*
-	is_option := false && g.is_autofree && (node.op in [.decl_assign, .assign])
-		&& node.left_types.len == 1 && node.right[0] is ast.CallExpr
-	if is_option {
-		// g.write('/* option assignment */')
-		call_expr := node.right[0] as ast.CallExpr
-		if call_expr.or_block.kind != .absent {
-			styp := g.styp(call_expr.return_type.set_flag(.option))
-			tmp_opt = g.new_tmp_var()
-			g.write('/*AF opt*/$styp $tmp_opt = ')
-			g.expr(node.right[0])
-			g.or_block(tmp_opt, call_expr.or_block, call_expr.return_type)
-			g.writeln('/*=============ret*/')
-			// if af && is_option {
-			// g.autofree_call_postgen()
-			// }
-			// return
-		}
-	}
-	*/
-}
-
 fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 	for i, left in node.left {
 		left_is_auto_deref_var := left.is_auto_deref_var()
@@ -1003,9 +974,10 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				left_sym := g.table.sym(left_typ)
 				mut anon_ctx := ''
 				if g.anon_fn {
-					obj := left.scope.find(left.name)
-					if obj is ast.Var && obj.is_inherited {
-						anon_ctx = '${closure_ctx}->'
+					if obj := left.scope.find_var(left.name) {
+						if obj.is_inherited {
+							anon_ctx = '${closure_ctx}->'
+						}
 					}
 				}
 				if left_sym.kind == .function {
@@ -1073,7 +1045,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					}
 					needs_clone := info.elem_type == ast.string_type && g.is_autofree
 					if needs_clone {
-						g.write('/*2*/string_clone(')
+						g.write('string_clone(')
 					}
 					g.expr(left)
 					if needs_clone {

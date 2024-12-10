@@ -77,7 +77,7 @@ fn main() {
 	resp := http.get('https://reqres.in/api/products/1')!
 
 	// This returns an Any type
-	raw_product := json2.raw_decode(resp.body)!
+	raw_product := json2.decode[json2.Any](resp.body)!
 }
 ```
 
@@ -90,7 +90,7 @@ import net.http
 fn main() {
 	resp := http.get('https://reqres.in/api/products/1')!
 
-	raw_product := json2.raw_decode(resp.body)!
+	raw_product := json2.decode[json2.Any](resp.body)!
 
 	product := raw_product.as_map()
 	data := product['data'] as map[string]json2.Any

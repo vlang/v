@@ -68,7 +68,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 			g.gen_free_for_array(sym.info, styp, fn_name)
 		}
 		ast.Map {
-			g.gen_free_for_map(objtyp, sym.info, styp, fn_name)
+			g.gen_free_for_map(objtyp, styp, fn_name)
 		}
 		ast.Interface {
 			g.gen_free_for_interface(sym, sym.info, styp, fn_name)
@@ -200,7 +200,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 	fn_builder.writeln('}')
 }
 
-fn (mut g Gen) gen_free_for_map(typ ast.Type, info ast.Map, styp string, fn_name string) {
+fn (mut g Gen) gen_free_for_map(typ ast.Type, styp string, fn_name string) {
 	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {

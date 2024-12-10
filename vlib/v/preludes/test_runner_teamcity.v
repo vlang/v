@@ -65,8 +65,8 @@ fn (mut runner TeamcityTestRunner) fn_start() bool {
 	println(term.gray(msg))
 
 	runner.print_service("
-		|##teamcity[
-		|testStarted name='${runner.fname}'
+		|##teamcity[testStarted
+		|name='${runner.fname}'
 		|locationHint='v_qn://${runner.file_test_info.file}:${runner.fname}'
 		|]".strip_margin())
 	return true
@@ -124,8 +124,8 @@ fn (mut runner TeamcityTestRunner) fn_fail() {
 	details := 'See failed assertion: ${assertion.fpath}:${assertion.line_nr + 1}'
 
 	runner.print_service("
-		 |##teamcity[
-		 |testFailed name='${runner.fname}'
+		 |##teamcity[testFailed
+		 |name='${runner.fname}'
 		 |duration='${duration}'
 		 |details='${details}'
 		 |type='comparisonFailure'
@@ -161,6 +161,7 @@ fn (mut runner TeamcityTestRunner) print_service(msg string) {
 	without_new_lines := msg
 		.trim('\n\r ')
 		.replace('\r', '')
+		.replace('\n]', ']')
 		.replace('\n', ' ')
 	eprintln(without_new_lines)
 }

@@ -144,7 +144,7 @@ fn smix(mut block []u8, r u32, n u64, mut v_block []u8, mut temp_block []u8) {
 	}
 
 	for _ in 0 .. n {
-		j := binary.little_endian_u64_at(temp_block, ((2 * r) - 1) * 64) & (n - 1)
+		j := binary.little_endian_u64_at(temp_block, int(((2 * r) - 1) * 64)) & (n - 1)
 
 		v_start := j * (128 * r)
 		v_stop := v_start + (128 * r)
@@ -226,7 +226,7 @@ pub fn scrypt(password []u8, salt []u8, n u64, r u32, p u32, dk_len u64) ![]u8 {
 		}
 	}
 
-	mut b := pbkdf2.key(password, salt, 1, 128 * r * p, sha256.new())!
+	mut b := pbkdf2.key(password, salt, 1, int(128 * r * p), sha256.new())!
 
 	mut xy := []u8{len: int(256 * r), cap: int(256 * r), init: 0}
 	mut v := []u8{len: int(128 * r * n), cap: int(128 * r * n), init: 0}
@@ -235,7 +235,7 @@ pub fn scrypt(password []u8, salt []u8, n u64, r u32, p u32, dk_len u64) ![]u8 {
 		smix(mut b[i * 128 * r..], r, n, mut v, mut xy)
 	}
 
-	result := pbkdf2.key(password, b, 1, 128 * r * p, sha256.new())!
+	result := pbkdf2.key(password, b, 1, int(128 * r * p), sha256.new())!
 
 	return result[..dk_len]
 }

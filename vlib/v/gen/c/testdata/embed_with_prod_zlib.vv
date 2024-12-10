@@ -1,4 +1,4 @@
-// vtest vflags: -prod
+// vtest vflags: -prod -no-skip-unused
 fn main() {
 	mut my_source := $embed_file('embed.vv', .zlib)
 	assert my_source.len > 0

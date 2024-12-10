@@ -16,9 +16,12 @@ const default_paths = [
 	'/usr/lib/pkgconfig',
 	'/usr/share/pkgconfig',
 	'/opt/homebrew/lib/pkgconfig', // Brew on macOS
+	'/opt/homebrew/share/pkgconfig', // Brew on macOS. Needed for fish.pc, eigen3.pc, applewmproto.pc, fontsproto.pc, xextproto.pc, SPIRV-Headers.pc etc; seems like a legacy folder.
+	'/opt/homebrew/Library/Homebrew/os/mac/pkgconfig/11', // Brew on macOS. Needed for zlib.pc, libcurl.pc, expat.pc and a few others; all the rest are symlinked in /opt/homebrew/lib/pkgconfig .
 	'/usr/local/libdata/pkgconfig', // FreeBSD
 	'/usr/libdata/pkgconfig', // FreeBSD
 	'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
+	'/data/data/com.termux/files/usr/lib/pkgconfig', // Termux
 ]
 
 pub struct Options {

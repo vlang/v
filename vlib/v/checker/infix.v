@@ -44,6 +44,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// `arr << if n > 0 { 10 } else { 11 }` set the right c.expected_type
 	if node.op == .left_shift && c.table.sym(left_type).kind == .array {
+		if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'strings' {
+			c.table.used_features.index = true
+			c.table.used_features.arr_init = true
+		}
 		if mut node.right is ast.IfExpr {
 			if node.right.is_expr && node.right.branches.len > 0 {
 				mut last_stmt := node.right.branches[0].stmts.last()
@@ -140,8 +144,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if node.op != .key_is {
 		match mut node.left {
 			ast.Ident, ast.SelectorExpr {
-				if node.left.is_mut {
-					c.error('the `mut` keyword is invalid here', node.left.mut_pos)
+				// mut foo != none is allowed for unwrapping option
+				if !(node.op == .ne && node.right is ast.None) {
+					if node.left.is_mut {
+						c.error('the `mut` keyword is invalid here', node.left.mut_pos)
+					}
 				}
 			}
 			else {}
@@ -516,8 +523,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		.gt, .lt, .ge, .le {
 			unwrapped_left_type := c.unwrap_generic(left_type)
 			left_sym = c.table.sym(unwrapped_left_type)
+			if left_sym.kind == .alias && !left_sym.has_method_with_generic_parent(node.op.str()) {
+				left_sym = c.table.final_sym(unwrapped_left_type)
+			}
 			unwrapped_right_type := c.unwrap_generic(right_type)
 			right_sym = c.table.sym(unwrapped_right_type)
+			if right_sym.kind == .alias && !right_sym.has_method_with_generic_parent(node.op.str()) {
+				right_sym = c.table.final_sym(unwrapped_right_type)
+			}
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
 			} else if left_sym.kind == .struct
@@ -884,9 +897,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	right_is_option := right_type.has_flag(.option)
 	if left_is_option || right_is_option {
 		opt_infix_pos := if left_is_option { left_pos } else { right_pos }
-		if (node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
-			|| node.op in [.eq, .ne, .lt, .gt, .le, .ge]) && right_sym.kind != .none
-			&& !c.inside_sql {
+		if (node.left !in [ast.Ident, ast.IndexExpr, ast.SelectorExpr, ast.ComptimeSelector]
+			|| (node.op in [.eq, .ne] && !right_is_option)
+			|| node.op in [.lt, .gt, .le, .ge]) && right_sym.kind != .none && !c.inside_sql {
 			c.error('unwrapped Option cannot be used in an infix expression', opt_infix_pos)
 		}
 	}

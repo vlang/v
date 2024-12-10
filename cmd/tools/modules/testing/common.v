@@ -13,6 +13,8 @@ import runtime
 import rand
 import strings
 
+pub const max_header_len = get_max_header_len()
+
 pub const host_os = pref.get_host_os()
 
 pub const github_job = os.getenv('GITHUB_JOB')
@@ -45,7 +47,8 @@ pub const is_go_present = os.execute('go version').exit_code == 0
 pub const all_processes = get_all_processes()
 
 pub const header_bytes_to_search_for_module_main = 500
-pub const separator = '-'.repeat(100)
+
+pub const separator = '-'.repeat(max_header_len) + '\n'
 
 pub const max_compilation_retries = get_max_compilation_retries()
 
@@ -226,7 +229,6 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		skip_files << 'examples/coroutines/coroutines_bench.v'
 		$if msvc {
 			skip_files << 'vlib/v/tests/consts/const_comptime_eval_before_vinit_test.v' // _constructor used
-			skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 		$if solaris {
 			skip_files << 'examples/pico/pico.v'
@@ -529,6 +531,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	} else {
 		fname_without_extension
 	}
+	reproduce_options := cmd_options.clone()
 	generated_binary_fpath := os.join_path_single(test_folder_path, generated_binary_fname)
 	if produces_file_output {
 		if ts.rm_binaries {
@@ -546,6 +549,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		skip_running = ''
 	}
+	reproduce_cmd := '${os.quoted_path(ts.vexe)} ${reproduce_options.join(' ')} ${os.quoted_path(file)}'
 	cmd := '${os.quoted_path(ts.vexe)} ${skip_running} ${cmd_options.join(' ')} ${os.quoted_path(file)}'
 	run_cmd := if run_js {
 		'node ${os.quoted_path(generated_binary_fpath)}'
@@ -618,7 +622,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
 		}
 	} else {
@@ -648,7 +652,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
 		}
 		tls_bench.step_restart()
@@ -676,8 +680,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				// retry running at least 1 more time, to avoid CI false positives as much as possible
 				details.retry++
 			}
-			failure_output.write_string(separator)
-			failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+			if details.retry != 0 {
+				failure_output.write_string(separator)
+				failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+			}
 			failure_output.writeln(trimmed_output)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry = 1; retry <= details.retry; retry++ {
@@ -720,11 +726,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			tls_bench.fail()
 			cmd_duration = d_cmd.elapsed() - (fail_retry_delay_ms * details.retry)
 			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
-				'${normalised_relative_file}\n         retry: ${retry}\n      comp_cmd: ${cmd}\n       run_cmd: ${run_cmd}\nfailure code: ${r.exit_code}; foutput.len: ${full_failure_output.len}; failure output:\n${full_failure_output}',
-				cmd_duration,
+				'${normalised_relative_file}\n${full_failure_output}', cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
 		}
 	}
@@ -851,9 +856,13 @@ pub fn building_any_v_binaries_failed() bool {
 		}
 	}
 	bmark.stop()
-	eprintln(term.h_divider('-'))
+	h_divider()
 	eprintln(bmark.total_message('building v binaries'))
 	return failed
+}
+
+pub fn h_divider() {
+	eprintln(term.h_divider('-')#[..max_header_len])
 }
 
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
@@ -900,15 +909,28 @@ pub fn find_started_process(pname string) !string {
 	return error('could not find process matching ${pname}')
 }
 
+fn limited_header(msg string) string {
+	return term.header_left(msg, '-')#[..max_header_len]
+}
+
 pub fn eheader(msg string) {
-	eprintln(term.header_left(msg, '-'))
+	eprintln(limited_header(msg))
 }
 
 pub fn header(msg string) {
-	println(term.header_left(msg, '-'))
+	println(limited_header(msg))
 	flush_stdout()
 }
 
 fn random_sleep_ms(min_ms int, random_add_ms int) {
-	time.sleep((100 + rand.intn(100) or { 0 }) * time.millisecond)
+	time.sleep((50 + rand.intn(50) or { 0 }) * time.millisecond)
+}
+
+fn get_max_header_len() int {
+	maximum := 140
+	cols, _ := term.get_terminal_size()
+	if cols > maximum {
+		return maximum
+	}
+	return cols
 }

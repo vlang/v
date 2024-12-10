@@ -77,7 +77,7 @@ fn test_multi_return_sym() {
 	assert func.receiver_typ == 0
 	assert func.is_pub == false
 
-	typ := reflection.get_type(func.return_typ)?
+	typ := reflection.get_type(int(func.return_typ))?
 	assert typ.name == '(int, f64, string)'
 	assert typ.sym.mod == ''
 	assert typ.sym.language == .v

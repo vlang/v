@@ -489,10 +489,10 @@ pub fn (mut f Fmt) node_str(node ast.Node) string {
 //=== General Stmt-related methods and helpers ===//
 
 pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
-	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt }
+	mut prev_stmt := ast.empty_stmt
 	f.indent++
-	for stmt in stmts {
-		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
+	for i, stmt in stmts {
+		if i > 0 && f.should_insert_newline_before_node(stmt, prev_stmt) {
 			f.out.writeln('')
 		}
 		f.stmt(stmt)
@@ -2058,7 +2058,7 @@ fn (mut f Fmt) write_static_method(name string, short_name string) {
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	mut is_method_newline := false
 	if node.is_method {
-		if node.name in ['map', 'filter', 'all', 'any'] {
+		if node.name in ['map', 'filter', 'all', 'any', 'count'] {
 			f.in_lambda_depth++
 			defer { f.in_lambda_depth-- }
 		}
@@ -2091,7 +2091,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			f.write('${node.name.after_char(`.`)}')
 		} else {
 			name := f.short_module(node.name)
-			if node.name.contains('__static__') {
+			if node.is_static_method {
 				f.write_static_method(node.name, name)
 			} else {
 				f.mark_import_as_used(name)
@@ -2363,15 +2363,13 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 			}
 		}
 		if !is_local && !node.name.contains('.') && !f.inside_const {
-			if obj := f.file.global_scope.find('${f.cur_mod}.${node.name}') {
-				if obj is ast.ConstField {
-					const_name := node.name.all_after_last('.')
-					f.write(const_name)
-					if node.or_expr.kind == .block {
-						f.or_expr(node.or_expr)
-					}
-					return
+			if _ := f.file.global_scope.find_const('${f.cur_mod}.${node.name}') {
+				const_name := node.name.all_after_last('.')
+				f.write(const_name)
+				if node.or_expr.kind == .block {
+					f.or_expr(node.or_expr)
 				}
+				return
 			}
 		}
 		name := f.short_module(node.name)

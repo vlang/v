@@ -21,7 +21,7 @@ pub fn signal_opt(signum Signal, handler SignalHandler) !SignalHandler {
 // So a global variable is introduced to make the distinction.
 
 // An empty system signal handler (callback function) used to mask the specified system signal.
-fn ignore_signal_handler(signal Signal) {
+fn ignore_signal_handler(_signal Signal) {
 }
 
 // signal_ignore to mask system signals, e.g.: signal_ignore(.pipe, .urg, ...)

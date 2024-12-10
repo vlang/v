@@ -319,7 +319,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if field.typ.has_flag(.option) {
 				opt_fields << arrs.len
 			}
-			arrs << unsafe { node.sub_structs[int(field.typ)] }
+			if node.sub_structs.len > 0 {
+				arrs << unsafe { node.sub_structs[int(field.typ)] }
+			}
 			field_names << field.name
 		}
 	}
@@ -411,7 +413,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				ctyp = 'time__Time'
 				typ = 'time'
 			} else if sym.kind == .enum {
-				typ = 'i64'
+				typ = g.table.sym(g.table.final_type(field.typ)).cname
 			}
 			var := '${node.object_var}${member_access_type}${c_name(field.name)}'
 			if field.typ.has_flag(.option) {
@@ -602,6 +604,8 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 
 		if t.has_flag(.option) {
 			typ = 'option_${typ}'
+		} else if g.table.final_sym(t).kind == .enum {
+			typ = g.table.sym(g.table.final_type(t)).cname
 		}
 		g.write('orm__${typ}_to_primitive(')
 		if expr is ast.CallExpr {
@@ -865,7 +869,14 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 	if node.has_order {
 		g.write('.order = _SLIT("')
-		g.expr(node.order_expr)
+		if node.order_expr is ast.Ident {
+			field := g.get_orm_current_table_field(node.order_expr.name) or {
+				verror('field "${node.order_expr.name}" does not exist on "${g.sql_table_name}"')
+			}
+			g.write(g.get_orm_column_name_from_struct_field(field))
+		} else {
+			g.expr(node.order_expr)
+		}
 		g.writeln('"),')
 		if node.has_desc {
 			g.writeln('.order_type = orm__OrderType__desc,')
@@ -1266,6 +1277,8 @@ fn get_auto_field_idxs(fields []ast.StructField) []int {
 			if attr.name == 'default' {
 				ret << i
 			} else if attr.name == 'sql' && attr.arg == 'serial' {
+				ret << i
+			} else if attr.name == 'serial' && attr.kind == .plain && !attr.has_arg {
 				ret << i
 			}
 		}

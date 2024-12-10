@@ -24,7 +24,7 @@ pub fn (table &Table) get_anon_fn_name(prefix string, func &Fn, pos int) string 
 
 // get_name returns the real name for the function calling
 pub fn (f &CallExpr) get_name() string {
-	if f.name != '' && f.name.all_after_last('.')[0].is_capital() && f.name.contains('__static__') {
+	if f.is_static_method {
 		return f.name.replace('__static__', '.')
 	} else {
 		return f.name
@@ -474,7 +474,7 @@ pub fn (x &Expr) str() string {
 			if x.name.contains('.') {
 				return '${x.get_name()}(${sargs})${propagate_suffix}'
 			}
-			if x.name.contains('__static__') {
+			if x.is_static_method {
 				return '${x.mod}.${x.get_name()}(${sargs})${propagate_suffix}'
 			}
 			if x.mod == 'main' {

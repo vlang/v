@@ -107,6 +107,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					if expr.obj.smartcasts.len > 0 {
 						typ = c.unwrap_generic(expr.obj.smartcasts.last())
 					}
+					if expr.obj.ct_type_var != .no_comptime {
+						typ = c.comptime.get_type_or_default(expr, typ)
+					}
 				}
 			}
 			got_types << typ
@@ -177,7 +180,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 		}
 		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
-		midx := imax(0, imin(expected_types.len, expr_idxs.len - 1))
+		midx := int_max(0, int_min(expected_types.len, expr_idxs.len - 1))
 		mismatch_pos := node.exprs[expr_idxs[midx]].pos()
 		c.error('expected ${expected_types.len} ${arg}, but got ${got_types.len}', mismatch_pos)
 		return
@@ -477,12 +480,4 @@ fn is_noreturn_callexpr(expr ast.Expr) bool {
 		return expr.is_noreturn
 	}
 	return false
-}
-
-fn imin(a int, b int) int {
-	return if a < b { a } else { b }
-}
-
-fn imax(a int, b int) int {
-	return if a < b { b } else { a }
 }

@@ -5,6 +5,7 @@ import v.slow_tests.repl.runner
 import benchmark
 import sync.pool
 
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 fn test_the_v_compiler_can_be_invoked() {

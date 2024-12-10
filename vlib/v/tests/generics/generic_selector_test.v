@@ -26,11 +26,17 @@ pub fn (mut l List[T]) append(mut node Node[T]) ?int {
 
 	mut curr_node := l.head
 	for {
+<<<<<<< HEAD
 		if curr_node != none {
 			if next_node := curr_node?.next {
 				curr_node = unsafe { next_node }
+=======
+		if mut curr_node != none {
+			if next_node := curr_node.next {
+				curr_node = next_node
+>>>>>>> origin/master
 			} else {
-				curr_node?.next = &node
+				curr_node.next = &node
 				l.size = l.size + 1
 				break
 			}

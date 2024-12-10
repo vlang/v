@@ -11,6 +11,7 @@ import time
 import v.pref
 import v.vmod
 import v.util.recompilation
+import v.util.vflags
 import runtime
 
 // math.bits is needed by strconv.ftoa
@@ -441,11 +442,7 @@ pub fn quote_path(s string) string {
 }
 
 pub fn args_quote_paths(args []string) string {
-	mut res := []string{}
-	for a in args {
-		res << quote_path(a)
-	}
-	return res.join(' ')
+	return args.map(quote_path(it)).join(' ')
 }
 
 pub fn path_of_executable(path string) string {
@@ -510,26 +507,9 @@ pub fn replace_op(s string) string {
 	}
 }
 
+// join_env_vflags_and_os_args returns all the arguments (the ones from the env variable VFLAGS too), passed on the command line.
 pub fn join_env_vflags_and_os_args() []string {
-	vosargs := os.getenv('VOSARGS')
-	if vosargs != '' {
-		return non_empty(vosargs.split(' '))
-	}
-	mut args := []string{}
-	vflags := os.getenv('VFLAGS')
-	if vflags != '' {
-		args << os.args[0]
-		args << vflags.split(' ')
-		if os.args.len > 1 {
-			args << os.args[1..]
-		}
-		return non_empty(args)
-	}
-	return os.args
-}
-
-fn non_empty(arg []string) []string {
-	return arg.filter(it != '')
+	return vflags.join_env_vflags_and_os_args()
 }
 
 pub fn check_module_is_installed(modulename string, is_verbose bool, need_update bool) !bool {
@@ -541,9 +521,9 @@ pub fn check_module_is_installed(modulename string, is_verbose bool, need_update
 		eprintln('check_module_is_installed: mod_v_file: ${mod_v_file}')
 		eprintln('check_module_is_installed: murl: ${murl}')
 	}
+	vexe := pref.vexe_path()
 	if os.exists(mod_v_file) {
 		if need_update {
-			vexe := pref.vexe_path()
 			update_cmd := "${os.quoted_path(vexe)} update '${modulename}'"
 			if is_verbose {
 				eprintln('check_module_is_installed: updating with ${update_cmd} ...')
@@ -568,10 +548,7 @@ and the existing module `${modulename}` may still work.')
 	if is_verbose {
 		eprintln('check_module_is_installed: cloning from ${murl} ...')
 	}
-	cloning_res := os.execute('git clone ${os.quoted_path(murl)} ${os.quoted_path(mpath)}')
-	if cloning_res.exit_code < 0 {
-		return error_with_code('git is not installed, error: ${cloning_res.output}', cloning_res.exit_code)
-	}
+	cloning_res := os.execute('${os.quoted_path(vexe)} retry -- git clone ${os.quoted_path(murl)} ${os.quoted_path(mpath)}')
 	if cloning_res.exit_code != 0 {
 		return error_with_code('cloning failed, details: ${cloning_res.output}', cloning_res.exit_code)
 	}

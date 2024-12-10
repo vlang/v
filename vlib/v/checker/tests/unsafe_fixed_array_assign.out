@@ -1,4 +1,4 @@
-vlib/v/checker/tests/unsafe_fixed_array_assign.vv:10:10: error: left-side of assignment expects a mutable reference, but variable `a` is immutable, declare it with `mut` to make it mutable or clone it
+vlib/v/checker/tests/unsafe_fixed_array_assign.vv:10:10: notice: left-side of assignment expects a mutable reference, but variable `a` is immutable, declare it with `mut` to make it mutable or clone it
     8 | }
     9 | a := [&box]!
    10 | mut b := a

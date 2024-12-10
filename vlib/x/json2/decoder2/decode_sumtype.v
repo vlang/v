@@ -6,9 +6,12 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 	$if initialized_sumtype is $sumtype {
 		$for v in initialized_sumtype.variants {
 			if initialized_sumtype is v {
-				mut val := initialized_sumtype
-				decoder.decode_value(mut val)!
-				return T(val)
+				// workaround for auto generated function considering sumtype as array
+				unsafe {
+					mut val := initialized_sumtype
+					decoder.decode_value(mut val)!
+					return T(val)
+				}
 			}
 		}
 	}

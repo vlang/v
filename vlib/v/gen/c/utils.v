@@ -32,7 +32,7 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 				}
 			}
 		} else if g.table.sym(typ).kind == .struct {
-			// resolve selector `a.foo` where `a` is struct[T] on non generic function	
+			// resolve selector `a.foo` where `a` is struct[T] on non generic function
 			sym := g.table.sym(typ)
 			if sym.info is ast.Struct {
 				if sym.info.generic_types.len > 0 {
@@ -143,5 +143,27 @@ fn (mut g Gen) dot_or_ptr(val_type ast.Type) string {
 		'->'
 	} else {
 		'.'
+	}
+}
+
+fn (mut g Gen) unwrap_option_type(typ ast.Type, name string, is_auto_heap bool) {
+	styp := g.base_type(typ)
+	if is_auto_heap {
+		g.write('(*(${styp}*)${name}->data)')
+	} else {
+		type_sym := g.table.sym(typ)
+		if type_sym.kind == .alias {
+			// Alias to Option type
+			parent_typ := (type_sym.info as ast.Alias).parent_type
+			if parent_typ.has_flag(.option) {
+				g.write('*((${g.base_type(parent_typ)}*)')
+			}
+			g.write('(*(${styp}*)${name}.data)')
+			if parent_typ.has_flag(.option) {
+				g.write('.data)')
+			}
+		} else {
+			g.write('(*(${styp}*)${name}.data)')
+		}
 	}
 }

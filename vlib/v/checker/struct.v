@@ -177,8 +177,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
 			sym := c.table.sym(field.typ)
+			field_name, field_name_len := field.name, field.name.len
 			for j in 0 .. i {
-				if field.name == node.fields[j].name {
+				if field_name_len == node.fields[j].name.len && field_name == node.fields[j].name {
 					c.error('field name `${field.name}` duplicate', field.pos)
 				}
 			}
@@ -745,6 +746,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						got_type = c.expr(mut right)
 						node.init_fields[i].expr = right
 					}
+					// disallow `mut a: b`, when b is const array
+					if field_info.is_mut
+						&& (init_field.expr is ast.Ident && init_field.expr.obj is ast.ConstField)
+						&& !c.inside_unsafe {
+						c.error('cannot assign a const array to mut struct field, call `clone` method (or use `unsafe`)',
+							init_field.expr.pos())
+					}
 				}
 				if exp_type_sym.kind == .interface {
 					if c.type_implements(got_type, exp_type, init_field.pos) {
@@ -794,7 +802,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					c.fail_if_stack_struct_action_outside_unsafe(mut init_field.expr,
 						'assigned')
 				}
-				if field_info.typ in ast.unsigned_integer_type_idxs
+				if c.table.unaliased_type(exp_type) in ast.unsigned_integer_type_idxs
 					&& mut init_field.expr is ast.IntegerLiteral
 					&& (init_field.expr as ast.IntegerLiteral).val[0] == `-` {
 					c.error('cannot assign negative value to unsigned integer type', init_field.expr.pos)
@@ -937,7 +945,7 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 				if mut field.default_expr is ast.StructInit {
 					idx := c.table.find_type(field.default_expr.typ_str)
 					if idx != 0 {
-						info.fields[i].default_expr_typ = ast.new_type(idx)
+						info.fields[i].default_expr_typ = ast.new_type(int(idx))
 					}
 				} else if field.default_expr.is_nil() {
 					if field.typ.is_any_kind_of_pointer() {

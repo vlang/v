@@ -41,7 +41,7 @@ vlib/v/checker/tests/array_prepend_type_mismatch.vv:8:12: error: cannot prepend 
     9 |     println(a)
    10 |
 vlib/v/checker/tests/array_prepend_type_mismatch.vv:12:12: error: cannot prepend `[][][]int` to `[][]int`
-   10 |
+   10 | 
    11 |     mut b := [[1, 2, 3]]
    12 |     b.prepend([[[2]]])
       |               ~~~~~~~
