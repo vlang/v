@@ -126,12 +126,23 @@ pub:
 // If you want a negative integer, use in the following manner:
 // `value := big.integer_from_bytes(bytes, signum: -1)`
 @[direct_array_access]
-pub fn integer_from_bytes(input []u8, config IntegerConfig) Integer {
+pub fn integer_from_bytes(oinput []u8, config IntegerConfig) Integer {
 	// Thank you to Miccah (@mcastorina) for this implementation and relevant unit tests.
-	if input.len == 0 {
+	if oinput.len == 0 {
 		return integer_from_int(0)
 	}
 	// pad input
+	mut first_non_zero_index := -1
+	for i in 0 .. oinput.len {
+		if oinput[i] != 0 {
+			first_non_zero_index = i
+			break
+		}
+	}
+	if first_non_zero_index == -1 {
+		return integer_from_int(0)
+	}
+	input := oinput[first_non_zero_index..]
 	mut padded_input := []u8{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3}
 	padded_input << input
 	mut digits := []u32{len: padded_input.len / 4}

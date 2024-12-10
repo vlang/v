@@ -849,3 +849,22 @@ fn test_set_bit() {
 	a.set_bit(100, false)
 	assert a == b
 }
+
+fn test_integer_from_bytes_ignores_potential_leading_zero_bytes() {
+	bint0 := big.integer_from_int(0)
+	for j in 0 .. 10 {
+		assert bint0 == big.integer_from_bytes([]u8{len: j}, signum: 0)
+		assert bint0 == big.integer_from_bytes([]u8{len: j}, signum: -1)
+	}
+	for i in 0 .. 10 {
+		bint := big.integer_from_int(i)
+		nbint := big.integer_from_int(-i)
+		for j in 0 .. 15 {
+			mut input := []u8{len: j}
+			input << i
+			assert bint == big.integer_from_bytes(input)
+			assert bint == big.integer_from_bytes(input, signum: 1)
+			assert nbint == big.integer_from_bytes(input, signum: -1)
+		}
+	}
+}
