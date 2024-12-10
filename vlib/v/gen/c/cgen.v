@@ -5631,8 +5631,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	fn_return_is_fixed_array := sym.is_array_fixed()
 	fn_return_is_fixed_array_non_result := fn_return_is_fixed_array
 		&& !fn_ret_type.has_option_or_result()
-	expr0_is_option_alias := node.exprs.len == 1 && fn_return_is_option
-		&& g.table.type_kind(node.types[0]) in [.placeholder, .alias]
 	mut has_semicolon := false
 	if node.exprs.len == 0 {
 		g.write_defer_stmts_when_needed()
@@ -6021,7 +6019,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		} else {
 			if g.fn_decl.return_type.has_flag(.option) {
-				if expr0_is_option_alias {
+				expr0_is_alias_fn_ret := expr0 is ast.CallExpr && node.types[0].has_flag(.option)
+					&& g.table.type_kind(node.types[0]) in [.placeholder, .alias]
+				// return foo() where foo() returns different option alias than current fn
+				if expr0_is_alias_fn_ret {
 					g.expr_opt_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 				} else {
 					g.expr_with_opt(node.exprs[0], node.types[0], g.fn_decl.return_type)
