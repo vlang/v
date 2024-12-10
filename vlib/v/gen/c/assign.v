@@ -79,9 +79,7 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 			g.write('_option_ok(&(${styp}[]) {')
 		}
 		if expr is ast.CastExpr && expr_typ.has_flag(.option) {
-			g.write('*((${g.base_type(expr_typ)}*)')
-			g.expr(expr)
-			g.write('.data)')
+			g.write_expr('*((${g.base_type(expr_typ)}*)', expr, '.data)')
 		} else {
 			old_inside_opt_or_res := g.inside_opt_or_res
 			g.inside_opt_or_res = false
@@ -469,9 +467,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if is_fixed_array_init {
 					right := val as ast.ArrayInit
 					v_var = g.new_tmp_var()
-					g.write('${arr_typ} ${v_var} = ')
-					g.expr(right)
-					g.writeln(';')
+					g.write_exprln('${arr_typ} ${v_var} = ', right, ';')
 				} else {
 					right := val as ast.Ident
 					v_var = right.name
@@ -554,9 +550,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					concrete_types := left_sym.info.concrete_types
 					mut method_name := left_sym.cname + '_' + util.replace_op(extracted_op)
 					method_name = g.generic_fn_name(concrete_types, method_name)
-					g.write(' = ${method_name}(')
-					g.expr(left)
-					g.write(', ')
+					g.write_expr(' = ${method_name}(', left, ', ')
 					g.expr(val)
 					g.writeln(');')
 					return
@@ -883,9 +877,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		is_option = false
 		mr_styp = g.styp(return_type.clear_option_and_result())
 	}
-	g.write('${mr_styp} ${mr_var_name} = ')
-	g.expr(node.right[0])
-	g.writeln(';')
+	g.write_exprln('${mr_styp} ${mr_var_name} = ', node.right[0], ';')
 	mr_types := (return_sym.info as ast.MultiReturn).types
 	for i, lx in node.left {
 		mut cur_indexexpr := -1
@@ -1067,15 +1059,11 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 						g.write('${styp} _var_${left.pos.pos} = *(${styp}*)map_get(')
 					}
 					if !left.left_type.is_ptr() {
-						g.write('ADDR(map, ')
-						g.expr(left.left)
-						g.write(')')
+						g.write_expr('ADDR(map, ', left.left, ')')
 					} else {
 						g.expr(left.left)
 					}
-					g.write(', &(${skeytyp}[]){')
-					g.expr(left.index)
-					g.write('}')
+					g.write_expr(', &(${skeytyp}[]){', left.index, '}')
 					if val_typ.kind == .function {
 						g.writeln(', &(voidptr[]){ ${zero} });')
 					} else {

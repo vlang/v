@@ -132,9 +132,8 @@ fn (mut g Gen) write_orm_connection_init(connection_var_name string, db_expr &as
 		g.expr(db_expr)
 		g.writeln(';')
 	} else {
-		g.write('(orm__Connection){._${db_ctype_name} = ${reference_sign}')
-		g.expr(db_expr)
-		g.writeln(', ._typ = _orm__Connection_${db_ctype_name}_index};')
+		g.write_exprln('(orm__Connection){._${db_ctype_name} = ${reference_sign}', db_expr,
+			', ._typ = _orm__Connection_${db_ctype_name}_index};')
 	}
 }
 

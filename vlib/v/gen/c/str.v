@@ -78,9 +78,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	if typ.has_flag(.variadic) {
 		str_fn_name := g.get_str_fn(typ)
-		g.write('${str_fn_name}(')
-		g.expr(expr)
-		g.write(')')
+		g.write_expr('${str_fn_name}(', expr, ')')
 	} else if typ == ast.string_type {
 		if etype.is_ptr() {
 			g.write('*')
@@ -126,9 +124,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			ret_typ := g.styp(exp_typ)
 			line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
-			g.write('${ret_typ} ${tmp_var} = ')
-			g.expr(expr)
-			g.writeln(';')
+			g.write_exprln('${ret_typ} ${tmp_var} = ', expr, ';')
 			g.write(line)
 		}
 		if is_ptr && !is_var_mut {
@@ -217,9 +213,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				ret_typ := g.styp(exp_typ)
 				line := g.go_before_last_stmt().trim_space()
 				g.empty_line = true
-				g.write('${ret_typ} ${tmp_var} = ')
-				g.expr(expr)
-				g.writeln(';')
+				g.write_exprln('${ret_typ} ${tmp_var} = ', expr, ';')
 				g.write(line)
 			}
 			if str_method_expects_ptr && !is_ptr && !typ.has_flag(.option) {

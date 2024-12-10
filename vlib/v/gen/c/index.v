@@ -24,9 +24,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				cur_line := g.go_before_last_stmt()
 				g.out.write_string(util.tabs(g.indent))
 				opt_elem_type := g.styp(ast.u8_type.set_flag(.option))
-				g.write('${opt_elem_type} ${tmp_opt} = string_at_with_check(')
-				g.expr(node.left)
-				g.write(', ')
+				g.write_expr('${opt_elem_type} ${tmp_opt} = string_at_with_check(', node.left,
+					', ')
 				g.expr(node.index)
 				g.writeln(');')
 				if !node.is_option {
@@ -37,13 +36,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				is_direct_array_access := g.is_direct_array_access || node.is_direct
 				if is_direct_array_access {
 					g.expr(node.left)
-					g.write('.str[ ')
-					g.expr(node.index)
-					g.write(']')
+					g.write_expr('.str[', node.index, ']')
 				} else {
-					g.write('string_at(')
-					g.expr(node.left)
-					g.write(', ')
+					g.write_expr('string_at(', node.left, ', ')
 					g.expr(node.index)
 					g.write(')')
 				}
@@ -55,9 +50,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			g.index_expr(ast.IndexExpr{ ...node, left_type: unwrapped_got_type })
 		} else {
 			g.expr(node.left)
-			g.write('[')
-			g.expr(node.index)
-			g.write(']')
+			g.write_expr('[', node.index, ']')
 		}
 	}
 }
@@ -114,9 +107,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 			line := g.go_before_last_stmt().trim_space()
 			styp := g.styp(node.left_type)
 			g.empty_line = true
-			g.write('${styp} ${var} = ')
-			g.expr(node.left)
-			g.writeln(';')
+			g.write_exprln('${styp} ${var} = ', node.left, ';')
 			g.write2(line, ' ${var})')
 		} else {
 			g.expr(node.left)
@@ -202,9 +193,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			} else {
 				g.write('.')
 			}
-			g.write('data)[')
-			g.expr(node.index)
-			g.write(']')
+			g.write_expr('data)[', node.index, ']')
 		} else {
 			g.write(', ')
 			g.expr(node.index)
@@ -295,9 +284,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			} else {
 				g.write('.')
 			}
-			g.write('data)[')
-			g.expr(node.index)
-			g.write(']')
+			g.write_expr('data)[', node.index, ']')
 			if is_fn_index_call {
 				g.write(')')
 			}
@@ -339,16 +326,12 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	if node.left is ast.ArrayInit {
 		past := g.past_tmp_var_new()
 		styp := g.styp(node.left_type)
-		g.write('${styp} ${past.tmp_var} = ')
-		g.expr(node.left)
-		g.writeln(';')
+		g.write_exprln('${styp} ${past.tmp_var} = ', node.left, ';')
 		g.past_tmp_var_done(past)
 	} else if node.left is ast.IndexExpr && node.left.is_setter {
 		past := g.past_tmp_var_new()
 		styp := g.styp(node.left_type)
-		g.write('${styp}* ${past.tmp_var} = &')
-		g.expr(node.left)
-		g.writeln(';')
+		g.write_expr('${styp}* ${past.tmp_var} = &', node.left, ';')
 		g.write('(*')
 		g.past_tmp_var_done(past)
 		g.write(')')
@@ -357,9 +340,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('(*')
 		}
 		if node.left_type.is_ptr() {
-			g.write('(*')
-			g.expr(node.left)
-			g.write(')')
+			g.write_expr('(*', node.left, ')')
 		} else {
 			g.expr(node.left)
 		}
@@ -369,9 +350,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		g.expr(node.index)
 	} else {
 		// bounds check
-		g.write('v_fixed_index(')
-		g.expr(node.index)
-		g.write(', ${info.size})')
+		g.write_expr('v_fixed_index(', node.index, ', ${info.size})')
 	}
 	g.write(']')
 	if is_fn_index_call {
@@ -500,9 +479,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.write('.val')
 			}
 		}
-		g.write('), &(${key_type_str}[]){')
-		g.expr(node.index)
-		g.write('}')
+		g.write_expr('), &(${key_type_str}[]){', node.index, '}')
 		if gen_or {
 			g.write('))')
 		} else if is_fn_last_index_call {

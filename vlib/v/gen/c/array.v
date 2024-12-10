@@ -47,9 +47,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		for i, expr in node.exprs {
 			if node.expr_types[i] == ast.string_type
 				&& expr !in [ast.StringLiteral, ast.StringInterLiteral] {
-				g.write('string_clone(')
-				g.expr(expr)
-				g.write(')')
+				g.write_expr('string_clone(', expr, ')')
 			} else {
 				if node.elem_type.has_flag(.option) {
 					g.expr_with_opt(expr, node.expr_types[i], node.elem_type)
@@ -376,25 +374,17 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		} else {
 			0
 		}
-		g.write('(${elem_styp}[]){')
-		g.expr(node.init_expr)
-		g.write('}[0], ${depth})')
+		g.write_expr('(${elem_styp}[]){', node.init_expr, '}[0], ${depth})')
 	} else if is_default_map {
-		g.write('(${elem_styp}[]){')
-		g.expr(node.init_expr)
-		g.write('}[0])')
+		g.write_expr('(${elem_styp}[]){', node.init_expr, '}[0])')
 	} else if needs_more_defaults {
 		tmp := g.new_tmp_var()
 		line := g.go_before_last_stmt().trim_space()
 		g.empty_line = true
-
-		g.write('${elem_styp}* ${tmp} = (${elem_styp}*) _v_malloc((')
-		g.expr(node.len_expr)
-		g.writeln(') * sizeof(${elem_styp}));')
+		g.write_exprln('${elem_styp}* ${tmp} = (${elem_styp}*) _v_malloc((', node.len_expr,
+			') * sizeof(${elem_styp}));')
 		ind := g.new_tmp_var()
-		g.write('for (int ${ind}=0; ${ind}<')
-		g.expr(node.len_expr)
-		g.writeln('; ${ind}++) {')
+		g.write_exprln('for (int ${ind}=0; ${ind}<', node.len_expr, '; ${ind}++) {')
 		g.write('\t${tmp}[${ind}] = ')
 		if node.has_init {
 			g.expr_with_init(node)
@@ -580,14 +570,10 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			if expr.typ != ast.void_type && g.table.final_sym(expr.typ).kind == .array_fixed {
 				atype := g.styp(expr.typ)
 				if closure_var_decl != '' {
-					g.write('memcpy(&${closure_var_decl}, &')
-					g.expr(expr)
-					g.write(', sizeof(${atype}))')
+					g.write_expr('memcpy(&${closure_var_decl}, &', expr, ', sizeof(${atype}))')
 				} else {
 					g.writeln('${ret_elem_styp} ${tmp_map_expr_result_name};')
-					g.write('memcpy(&${tmp_map_expr_result_name}, &')
-					g.expr(expr)
-					g.write(', sizeof(${atype}))')
+					g.write_expr('memcpy(&${tmp_map_expr_result_name}, &', expr, ', sizeof(${atype}))')
 				}
 			} else {
 				if closure_var_decl != '' {
@@ -647,13 +633,11 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 			false
 		}
 		if !deref_field {
-			g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
-			g.expr(node.left)
-			g.writeln('), ${depth});')
+			g.write_expr('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},',
+				node.left, '), ${depth});\n')
 		} else {
-			g.write('${atype} ${past.tmp_var} = array_clone_to_depth(')
-			g.expr(node.left)
-			g.writeln(', ${depth});')
+			g.write_expr('${atype} ${past.tmp_var} = array_clone_to_depth(', node.left,
+				', ${depth});\n')
 		}
 	} else {
 		g.writeln('${atype} ${past.tmp_var};')
@@ -806,9 +790,7 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string, is_arra
 	} else {
 		info := g.table.final_sym(node.left_type).info as ast.ArrayFixed
 		elem_styp := g.styp(info.elem_type)
-		g.write('qsort(&')
-		g.expr(node.left)
-		g.write(', ${info.size}, sizeof(${elem_styp}), (voidptr)${compare_fn});')
+		g.write_expr('qsort(&', node.left, ', ${info.size}, sizeof(${elem_styp}), (voidptr)${compare_fn});')
 	}
 }
 
@@ -1378,9 +1360,7 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 	thread_ret_type := thread_sym.thread_info().return_type
 	eltyp := g.table.sym(thread_ret_type).cname
 	fn_name := g.register_thread_array_wait_call(eltyp)
-	g.write('${fn_name}(')
-	g.expr(node.left)
-	g.write(')')
+	g.write_expr('${fn_name}(', node.left, ')')
 }
 
 fn (mut g Gen) gen_fixed_array_wait(node ast.CallExpr) {
@@ -1390,9 +1370,7 @@ fn (mut g Gen) gen_fixed_array_wait(node ast.CallExpr) {
 	thread_ret_type := thread_sym.thread_info().return_type
 	eltyp := g.table.sym(thread_ret_type).cname
 	fn_name := g.register_thread_fixed_array_wait_call(node, eltyp)
-	g.write('${fn_name}(')
-	g.expr(node.left)
-	g.write(')')
+	g.write_expr('${fn_name}(', node.left, ')')
 }
 
 fn (mut g Gen) gen_array_any(node ast.CallExpr) {
@@ -1746,9 +1724,7 @@ fn (mut g Gen) fixed_array_init_with_cast(expr ast.ArrayInit, typ ast.Type) {
 	if g.is_cc_msvc {
 		stmts := g.go_before_last_stmt().trim_space()
 		tmp_var := g.new_tmp_var()
-		g.write('${g.styp(typ)} ${tmp_var} = ')
-		g.expr(expr)
-		g.writeln(';')
+		g.write_exprln('${g.styp(typ)} ${tmp_var} = ', expr, ';\n')
 		g.write2(stmts, tmp_var)
 	} else {
 		g.write('(${g.styp(typ)})')

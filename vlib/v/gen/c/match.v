@@ -82,9 +82,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			''
 		}
 		cond_var = g.new_tmp_var()
-		g.write('${g.styp(node.cond_type)} ${cond_var} = ')
-		g.expr(node.cond)
-		g.writeln(';')
+		g.write_exprln('${g.styp(node.cond_type)} ${cond_var} = ', node.cond, ';')
 		g.set_current_pos_as_last_stmt_pos()
 		g.write(line)
 	}
@@ -303,17 +301,11 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 						if expr is ast.RangeExpr {
 							g.write('(')
 							if g.should_check_low_bound_in_range_expr(expr, node_cond_type_unsigned) {
-								g.write('${cond_var} >= ')
-								g.expr(expr.low)
-								g.write(' && ')
+								g.write_expr('${cond_var} >= ', expr.low, ' && ')
 							}
-							g.write('${cond_var} <= ')
-							g.expr(expr.high)
-							g.write(')')
+							g.write_expr('${cond_var} <= ', expr.high, ')')
 						} else {
-							g.write('${cond_var} == (')
-							g.expr(expr)
-							g.write(')')
+							g.write_expr('${cond_var} == (', expr, ')')
 						}
 					}
 					g.writeln(') {')
@@ -368,17 +360,11 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 				if expr is ast.RangeExpr {
 					g.write('(')
 					if g.should_check_low_bound_in_range_expr(expr, node_cond_type_unsigned) {
-						g.write('${cond_var} >= ')
-						g.expr(expr.low)
-						g.write(' && ')
+						g.write_expr('${cond_var} >= ', expr.low, ' && ')
 					}
-					g.write('${cond_var} <= ')
-					g.expr(expr.high)
-					g.write(')')
+					g.write_expr('${cond_var} <= ', expr.high, ')')
 				} else {
-					g.write('${cond_var} == (')
-					g.expr(expr)
-					g.write(')')
+					g.write_expr('${cond_var} == (', expr, ')')
 				}
 			}
 			g.writeln(') {')
@@ -475,21 +461,15 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				match type_sym.kind {
 					.array {
 						ptr_typ := g.equality_fn(node.cond_type)
-						g.write('${ptr_typ}_arr_eq(${cond_var}, ')
-						g.expr(expr)
-						g.write(')')
+						g.write_expr('${ptr_typ}_arr_eq(${cond_var}, ', expr, ')')
 					}
 					.array_fixed {
 						ptr_typ := g.equality_fn(node.cond_type)
-						g.write('${ptr_typ}_arr_eq(${cond_var}, ')
-						g.expr(expr)
-						g.write(')')
+						g.write_expr('${ptr_typ}_arr_eq(${cond_var}, ', expr, ')')
 					}
 					.map {
 						ptr_typ := g.equality_fn(node.cond_type)
-						g.write('${ptr_typ}_map_eq(${cond_var}, ')
-						g.expr(expr)
-						g.write(')')
+						g.write_expr('${ptr_typ}_map_eq(${cond_var}, ', expr, ')')
 					}
 					.string {
 						if expr is ast.StringLiteral {
@@ -501,30 +481,24 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 							}
 						} else {
 							ptr_str := if node.cond_type.is_ptr() { '*' } else { '' }
-							g.write('fast_string_eq(${ptr_str}${cond_var}, ')
-							g.expr(expr)
-							g.write(')')
+							g.write_expr('fast_string_eq(${ptr_str}${cond_var}, ', expr,
+								')')
 						}
 					}
 					.struct {
 						derefs_expr := '*'.repeat(g.get_expr_type(expr).nr_muls())
 						derefs_ctype := '*'.repeat(node.cond_type.nr_muls())
 						ptr_typ := g.equality_fn(node.cond_type)
-						g.write('${ptr_typ}_struct_eq(${derefs_ctype}${cond_var}, ${derefs_expr}')
-						g.expr(expr)
-						g.write(')')
+						g.write_expr('${ptr_typ}_struct_eq(${derefs_ctype}${cond_var}, ${derefs_expr}',
+							expr, ')')
 					}
 					else {
 						if expr is ast.RangeExpr {
 							g.write('(')
 							if g.should_check_low_bound_in_range_expr(expr, node_cond_type_unsigned) {
-								g.write('${cond_var} >= ')
-								g.expr(expr.low)
-								g.write(' && ')
+								g.write_expr('${cond_var} >= ', expr.low, ' && ')
 							}
-							g.write('${cond_var} <= ')
-							g.expr(expr.high)
-							g.write(')')
+							g.write_expr('${cond_var} <= ', expr.high, ')')
 						} else if expr is ast.None {
 							old_left_is_opt := g.left_is_opt
 							g.left_is_opt = true
@@ -532,9 +506,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 							g.left_is_opt = old_left_is_opt
 							g.write('.state == 2')
 						} else {
-							g.write('${cond_var} == (')
-							g.expr(expr)
-							g.write(')')
+							g.write_expr('${cond_var} == (', expr, ')')
 						}
 					}
 				}

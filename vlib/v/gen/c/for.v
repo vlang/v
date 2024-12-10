@@ -34,9 +34,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		}
 		g.writeln('}')
 		if node.has_cond {
-			g.write('if (!(')
-			g.expr(node.cond)
-			g.writeln(')) break;')
+			g.write_exprln('if (!(', node.cond, ')) break;')
 		}
 		g.is_vlines_enabled = true
 		g.inside_for_c_stmt = false
@@ -120,9 +118,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	if !node.is_inf {
 		g.indent++
 		g.set_current_pos_as_last_stmt_pos()
-		g.write('if (!(')
-		g.expr(node.cond)
-		g.writeln(')) break;')
+		g.write_exprln('if (!(', node.cond, ')) break;')
 		g.indent--
 	}
 	g.is_vlines_enabled = true
@@ -209,9 +205,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
 		val_typ := ast.mktyp(node.val_type)
-		g.write('for (${g.styp(val_typ)} ${i} = ')
-		g.expr(node.cond)
-		g.write('; ${i} < ')
+		g.write_expr('for (${g.styp(val_typ)} ${i} = ', node.cond, '; ${i} < ')
 		g.expr(node.high)
 		g.writeln('; ++${i}) {')
 	} else if node.kind == .array {
@@ -418,13 +412,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		g.write('for (int ${i} = 0; ${i} < ')
-		g.expr(cond)
-		g.writeln('${field_accessor}len; ++${i}) {')
+		g.write_exprln('for (int ${i} = 0; ${i} < ', cond, '${field_accessor}len; ++${i}) {')
 		if node.val_var != '_' {
-			g.write('\tu8 ${c_name(node.val_var)} = ')
-			g.expr(cond)
-			g.writeln('${field_accessor}str[${i}];')
+			g.write_exprln('\tu8 ${c_name(node.val_var)} = ', cond, '${field_accessor}str[${i}];')
 		}
 	} else if node.kind == .struct {
 		cond_type_sym := g.table.sym(node.cond_type)
@@ -434,9 +424,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		ret_typ := next_fn.return_type
 		t_expr := g.new_tmp_var()
-		g.write('${g.styp(node.cond_type)} ${t_expr} = ')
-		g.expr(node.cond)
-		g.writeln(';')
+		g.write_exprln('${g.styp(node.cond_type)} ${t_expr} = ', node.cond, ';')
 		if node.key_var in ['', '_'] {
 			g.writeln('while (1) {')
 		} else {

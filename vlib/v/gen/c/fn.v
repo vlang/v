@@ -853,9 +853,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				tmp_anon_fn_var)
 			line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
-			g.write('${fn_type} = ')
-			g.expr(node.left)
-			g.writeln(';')
+			g.write_exprln('${fn_type} = ', node.left, ';')
 			g.set_current_pos_as_last_stmt_pos()
 			g.write(line)
 			if node.or_block.kind == .absent {
@@ -2238,10 +2236,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.write('${c_name(rec_type_name)}_name_table[')
 				g.expr(expr)
 				dot := if typ.is_ptr() { '->' } else { '.' }
-				g.write('${dot}_typ]._method_str(')
-				g.expr(expr)
-				g.write('${dot}_object')
-				g.writeln('));')
+				g.write_exprln('${dot}_typ]._method_str(', expr, '${dot}_object));')
 				return
 			}
 			if g.is_autofree && !typ.has_flag(.option) && !typ.has_flag(.result) {
@@ -2661,9 +2656,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				g.empty_line = true
 				ret_type := arg.expr.return_type
 				tmp_var := g.new_tmp_var()
-				g.write('${g.styp(ret_type)} ${tmp_var} = ')
-				g.expr(arg.expr)
-				g.writeln(';')
+				g.write_exprln('${g.styp(ret_type)} ${tmp_var} = ', arg.expr, ';')
 				g.write(line)
 				for n in 0 .. arg.expr.nr_ret_values {
 					if n != arg.expr.nr_ret_values - 1 || i != args.len - 1 {
@@ -2855,9 +2848,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				} else {
 					// Special case for mutable arrays. We can't `&` function
 					// results,	have to use `(array[]){ expr }[0]` hack.
-					g.write('&(array[]){')
-					g.expr(arg.expr)
-					g.write('}[0]')
+					g.write_expr('&(array[]){', arg.expr, '}[0]')
 				}
 				return
 			} else if arg_sym.kind == .sum_type && exp_sym.kind == .sum_type

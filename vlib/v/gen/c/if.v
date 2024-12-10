@@ -303,9 +303,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					} else {
 						branch.cond.vars[0].name
 					}
-					g.write('\t${base_type} ${cond_var_name} = ')
-					g.expr(branch.cond.expr)
-					g.writeln(';')
+					g.write_exprln('\t${base_type} ${cond_var_name} = ', branch.cond.expr,
+						';')
 				} else {
 					mut is_auto_heap := false
 					if branch.stmts.len > 0 {
@@ -347,9 +346,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				cond_var_name := g.new_tmp_var()
 				line := g.go_before_last_stmt().trim_space()
 				g.empty_line = true
-				g.write('bool ${cond_var_name} = ')
-				g.expr(branch.cond)
-				g.writeln(';')
+				g.write_exprln('bool ${cond_var_name} = ', branch.cond, ';')
 				branch_cond_var_names << cond_var_name
 				g.set_current_pos_as_last_stmt_pos()
 				g.writeln2(line, 'if (${cond_var_name}) {')

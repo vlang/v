@@ -1194,6 +1194,18 @@ fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string
 	return g.out.cut_to(pos)
 }
 
+fn (mut g Gen) write_expr(before string, expr ast.Expr, after string) {
+	g.write(before)
+	g.expr(expr)
+	g.write(after)
+}
+
+fn (mut g Gen) write_exprln(before string, expr ast.Expr, after string) {
+	g.write(before)
+	g.expr(expr)
+	g.writeln(after)
+}
+
 // TODO: this really shouldn't be separate from typ
 // but I(emily) would rather have this generation
 // all unified in one place so that it doesn't break

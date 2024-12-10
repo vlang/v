@@ -18,9 +18,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.empty_line = true
 
 		styp := g.styp(node.update_expr_type)
-		g.write('${styp} ${tmp_update_var} = ')
-		g.expr(node.update_expr)
-		g.writeln(';')
+		g.write_exprln('${styp} ${tmp_update_var} = ', node.update_expr, ';')
 		g.empty_line = false
 
 		g.write(s)
@@ -314,9 +312,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 							update_expr_sym.info.elem_type, update_expr_sym.info.size,
 							node.is_update_embed)
 					} else {
-						g.write('(')
-						g.expr(node.update_expr)
-						g.write(')')
+						g.write_expr('(', node.update_expr, ')')
 					}
 				}
 				if !is_arr_fixed {

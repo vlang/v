@@ -127,9 +127,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		|| (node.left is ast.Ident && node.left.or_expr.kind == .absent))) {
 		if node.right.val == '' {
 			// `str == ''` -> `str.len == 0` optimization
-			g.write('(')
-			g.expr(node.left)
-			g.write(')')
+			g.write_expr('(', node.left, ')')
 			arrow := if left.typ.is_ptr() { '->' } else { '.' }
 			g.write('${arrow}len ${node.op} 0')
 		} else if node.left is ast.Ident {
@@ -150,9 +148,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write('fast_string_eq(')
 			}
 			g.expr(node.left)
-			g.write(', ')
-			g.expr(node.right)
-			g.write(')')
+			g.write_expr(', ', node.right, ')')
 		}
 	} else if has_defined_eq_operator {
 		if node.op == .ne {
@@ -375,9 +371,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		if node.op == .eq {
 			g.write('!')
 		}
-		g.write('memcmp(')
-		g.expr(node.left)
-		g.write('.data, ')
+		g.write_expr('memcmp(', node.left, '.data, ')
 		g.expr(node.right)
 		g.write('.data, sizeof(${g.base_type(left_type)}))')
 		g.inside_opt_or_res = old_inside_opt_or_res
@@ -598,9 +592,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		g.write('_IN_MAP(')
 		if !left.typ.is_ptr() {
 			styp := g.styp(node.left_type)
-			g.write('ADDR(${styp}, ')
-			g.expr(node.left)
-			g.write(')')
+			g.write_expr('ADDR(${styp}, ', node.left, ')')
 		} else {
 			g.expr(node.left)
 		}
@@ -671,34 +663,23 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 	} else if right.unaliased_sym.kind == .string && node.right !is ast.RangeExpr {
 		g.write2('(', 'string_contains(')
 		g.expr(node.right)
-		g.write(', ')
-		g.expr(node.left)
-		g.write('))')
+		g.write_expr(', ', node.left, '))')
 	} else if node.right is ast.RangeExpr {
 		// call() in min..max
 		if node.left is ast.CallExpr {
 			line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
 			tmp_var := g.new_tmp_var()
-			g.write('${g.styp(node.left.return_type)} ${tmp_var} = ')
-			g.expr(node.left)
-			g.writeln(';')
+			g.write_exprln('${g.styp(node.left.return_type)} ${tmp_var} = ', node.left,
+				';')
 			g.write(line)
 			g.write('(')
-			g.write('${tmp_var} >= ')
-			g.expr(node.right.low)
-			g.write(' && ')
-			g.write('${tmp_var} < ')
-			g.expr(node.right.high)
-			g.write(')')
+			g.write_expr('${tmp_var} >= ', node.right.low, ' && ')
+			g.write_expr('${tmp_var} < ', node.right.high, ')')
 		} else {
-			g.write('(')
-			g.expr(node.left)
-			g.write(' >= ')
+			g.write_expr('(', node.left, ' >= ')
 			g.expr(node.right.low)
-			g.write(' && ')
-			g.expr(node.left)
-			g.write(' < ')
+			g.write_expr(' && ', node.left, ' < ')
 			g.expr(node.right.high)
 			g.write(')')
 		}
@@ -776,9 +757,8 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 					if i == 0 {
 						line := g.go_before_last_stmt().trim_space()
 						g.empty_line = true
-						g.write('${g.styp(left.return_type)} ${tmp_var} = ')
-						g.expr(left)
-						g.writeln(';')
+						g.write_exprln('${g.styp(left.return_type)} ${tmp_var} = ', left,
+							';')
 						g.write2(line, tmp_var)
 					} else {
 						g.write(tmp_var)
@@ -786,18 +766,15 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 				} else {
 					g.expr(left)
 				}
-				g.write(', ')
-				g.expr(array_expr)
-				g.write(')')
+				g.write_expr(', ', array_expr, ')')
 			}
 			else { // works in function kind
 				if left is ast.CallExpr {
 					if i == 0 {
 						line := g.go_before_last_stmt().trim_space()
 						g.empty_line = true
-						g.write('${g.styp(left.return_type)} ${tmp_var} = ')
-						g.expr(left)
-						g.writeln(';')
+						g.write_exprln('${g.styp(left.return_type)} ${tmp_var} = ', left,
+							';')
 						g.write2(line, tmp_var)
 					} else {
 						g.write(tmp_var)
@@ -915,9 +892,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		method_name = g.generic_fn_name(left.sym.info.concrete_types, method_name)
 		g.write2(method_name, '(')
 		g.expr(node.left)
-		g.write(', ')
-		g.expr(node.right)
-		g.write(')')
+		g.write_expr(', ', node.right, ')')
 	} else {
 		mut method := ast.Fn{}
 		mut method_name := ''
@@ -1127,9 +1102,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		tmp := g.new_tmp_var()
 		cur_line := g.go_before_last_stmt().trim_space()
 		g.empty_line = true
-		g.write('bool ${tmp} = (')
-		g.expr(node.left)
-		g.writeln(');')
+		g.write_exprln('bool ${tmp} = (', node.left, ');')
 		g.set_current_pos_as_last_stmt_pos()
 		g.write('${cur_line} ${tmp} ${node.op.str()} ')
 		g.infix_left_var_name = if node.op == .and { tmp } else { '!${tmp}' }
@@ -1145,9 +1118,7 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 	if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.CallExpr] {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
-		g.write('(')
-		g.expr(node.left)
-		g.write(')')
+		g.write_expr('(', node.left, ')')
 		g.inside_opt_or_res = old_inside_opt_or_res
 		g.write('.state')
 	} else {
@@ -1259,9 +1230,7 @@ fn (mut g Gen) gen_safe_integer_infix_expr(cfg GenSafeIntegerCfg) {
 	}
 	op_idx := int(cfg.op) - int(token.Kind.eq)
 	op_str := if cfg.reverse { cmp_rev[op_idx] } else { cmp_str[op_idx] }
-	g.write('_us${bitsize}_${op_str}(')
-	g.expr(cfg.unsigned_expr)
-	g.write(',')
+	g.write_expr('_us${bitsize}_${op_str}(', cfg.unsigned_expr, ',')
 	g.expr(cfg.signed_expr)
 	g.write(')')
 }

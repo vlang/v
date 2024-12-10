@@ -180,9 +180,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 		g.write('${c_name(rec_type_name)}_name_table[')
 		g.expr(expr)
 		dot := if typ.is_ptr() { '->' } else { '.' }
-		g.write('${dot}_typ]._method_str(')
-		g.expr(expr)
-		g.write2('${dot}_object', ')')
+		g.write_expr('${dot}_typ]._method_str(', expr, '${dot}_object)')
 	} else if fmt == `s` || typ.has_flag(.variadic) {
 		mut exp_typ := typ
 		if expr is ast.Ident {

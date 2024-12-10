@@ -58,9 +58,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			fn_sym := g.table.sym(expr.fn_var_type)
 			func := (fn_sym.info as ast.FnType).func
 			fn_var := g.fn_var_signature(func.return_type, func.params.map(it.typ), tmp_fn)
-			g.write('\t${fn_var} = ')
-			g.expr(expr.left)
-			g.writeln(';')
+			g.write_exprln('\t${fn_var} = ', expr.left, ';')
 			name = fn_sym.cname
 			use_tmp_fn_var = true
 		}
@@ -109,9 +107,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		g.writeln(';')
 	}
 	for i, arg in expr.args {
-		g.write('${arg_tmp_var}${dot}arg${i + 1} = ')
-		g.expr(arg.expr)
-		g.writeln(';')
+		g.write_exprln('${arg_tmp_var}${dot}arg${i + 1} = ', arg.expr, ';')
 	}
 	s_ret_typ := g.styp(node.call_expr.return_type)
 	if g.pref.os == .windows && node.call_expr.return_type != ast.void_type {

@@ -62,15 +62,11 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		(if expr_type.is_ptr() { '__ptr'.repeat(expr_type.nr_muls()) } else { '' })
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, ${line}, ${sexpr}, ')
 	if expr_type.has_flag(.shared_f) {
-		g.write('&')
-		g.expr(node.expr)
-		g.write('->val')
+		g.write_expr('&', node.expr, '->val')
 	} else if expr_type.has_flag(.result) {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
-		g.write('(*(${name}*)')
-		g.expr(node.expr)
-		g.write('.data)')
+		g.write_expr('(*(${name}*)', node.expr, '.data)')
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else if node.expr is ast.ArrayInit {
 		if node.expr.is_fixed {

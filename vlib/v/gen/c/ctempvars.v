@@ -24,18 +24,12 @@ fn (mut g Gen) gen_ctemp_var(mut tvar ast.CTempVar) {
 		tvar.is_fixed_ret = final_sym.info.is_fn_ret
 		g.writeln('${styp} ${tvar.name};')
 		if tvar.is_fixed_ret {
-			g.write('memcpy(${tvar.name}.ret_arr, ')
-			g.expr(tvar.orig)
-			g.writeln(' , sizeof(${styp[3..]}));')
+			g.write_exprln('memcpy(${tvar.name}.ret_arr, ', tvar.orig, ' , sizeof(${styp[3..]}));')
 		} else {
-			g.write('memcpy(&${tvar.name}, ')
-			g.expr(tvar.orig)
-			g.writeln(' , sizeof(${styp}));')
+			g.write_exprln('memcpy(&${tvar.name}, ', tvar.orig, ' , sizeof(${styp}));')
 		}
 	} else {
-		g.write('${styp} ${tvar.name} = ')
-		g.expr(tvar.orig)
-		g.writeln(';')
+		g.write_exprln('${styp} ${tvar.name} = ', tvar.orig, ';')
 	}
 	g.set_current_pos_as_last_stmt_pos()
 }

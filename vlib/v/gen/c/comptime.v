@@ -227,10 +227,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				&& node.args[i - 1].expr is ast.ArrayDecompose {
 				mut d_count := 0
 				for d_i in i .. m.params.len {
-					g.write('*(${g.styp(m.params[i].typ)}*)array_get(')
-					g.expr(node.args[i - 1].expr)
-					g.write(', ${d_count})')
-
+					g.write_expr('*(${g.styp(m.params[i].typ)}*)array_get(', node.args[i - 1].expr,
+						', ${d_count})')
 					if d_i < m.params.len - 1 {
 						g.write(', ')
 					}
@@ -295,9 +293,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 			g.write('if (string__eq(${node.method_name}, _SLIT("${method.name}"))) ')
 		}
-		g.write('${util.no_dots(sym.name)}_${method.name}(${amp} ')
-		g.expr(node.left)
-		g.writeln(');')
+		g.write_exprln('${util.no_dots(sym.name)}_${method.name}(${amp} ', node.left,
+			');')
 		j++
 	}
 }
