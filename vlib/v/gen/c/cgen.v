@@ -59,6 +59,7 @@ mut:
 	enum_typedefs             strings.Builder // enum types
 	definitions               strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	type_definitions          strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	sort_fn_definitions       strings.Builder // sort fns
 	alias_definitions         strings.Builder // alias fixed array of non-builtin
 	hotcode_definitions       strings.Builder // -live declarations & functions
 	channel_definitions       strings.Builder // channel related code
@@ -304,6 +305,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		typedefs:             strings.new_builder(100)
 		enum_typedefs:        strings.new_builder(100)
 		type_definitions:     strings.new_builder(100)
+		sort_fn_definitions:  strings.new_builder(100)
 		alias_definitions:    strings.new_builder(100)
 		hotcode_definitions:  strings.new_builder(100)
 		channel_definitions:  strings.new_builder(100)
@@ -392,6 +394,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			global_g.includes.write(g.includes) or { panic(err) }
 			global_g.typedefs.write(g.typedefs) or { panic(err) }
 			global_g.type_definitions.write(g.type_definitions) or { panic(err) }
+			global_g.sort_fn_definitions.write(g.sort_fn_definitions) or { panic(err) }
 			global_g.alias_definitions.write(g.alias_definitions) or { panic(err) }
 			global_g.definitions.write(g.definitions) or { panic(err) }
 			global_g.gowrappers.write(g.gowrappers) or { panic(err) }
@@ -590,6 +593,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	b.write_string2('\n// V result_xxx definitions:\n', g.out_results.str())
 	b.write_string2('\n// V json forward decls:\n', g.json_forward_decls.str())
 	b.write_string2('\n// V definitions:\n', g.definitions.str())
+	b.write_string2('\n// V sort fn definitions:\n', g.sort_fn_definitions.str())
 	b.writeln('\n// V global/const non-precomputed definitions:')
 	for var_name in g.sorted_global_const_names {
 		if var := g.global_const_defs[var_name] {
@@ -682,6 +686,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		includes:              strings.new_builder(100)
 		typedefs:              strings.new_builder(100)
 		type_definitions:      strings.new_builder(100)
+		sort_fn_definitions:   strings.new_builder(100)
 		alias_definitions:     strings.new_builder(100)
 		definitions:           strings.new_builder(100)
 		gowrappers:            strings.new_builder(100)
@@ -754,6 +759,7 @@ pub fn (mut g Gen) free_builders() {
 		g.includes.free()
 		g.typedefs.free()
 		g.type_definitions.free()
+		g.sort_fn_definitions.free()
 		g.alias_definitions.free()
 		g.definitions.free()
 		g.cleanup.free()
