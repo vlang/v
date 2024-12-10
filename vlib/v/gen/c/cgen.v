@@ -342,7 +342,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		is_cc_msvc:           pref_.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
-		static_modifier:      if pref_.parallel_cc { 'static' } else { '' }
+		static_modifier:      if pref_.parallel_cc { 'static ' } else { '' }
 		has_reflection:       'v.reflection' in table.modules
 		has_debugger:         'v.debug' in table.modules
 		reflection_strings:   &reflection_strings
@@ -581,14 +581,30 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			}
 		}
 	}
-	b.write_string2('\n// Enum definitions:\n', g.enum_typedefs.str())
-	b.write_string2('\n// Thread definitions:\n', g.thread_definitions.str())
-	b.write_string2('\n// V type definitions:\n', g.type_definitions.str())
-	b.write_string2('\n// V alias definitions:\n', g.alias_definitions.str())
-	b.write_string2('\n// V shared types:\n', g.shared_types.str())
-	b.write_string2('\n// V Option_xxx definitions:\n', g.out_options.str())
-	b.write_string2('\n// V result_xxx definitions:\n', g.out_results.str())
-	b.write_string2('\n// V json forward decls:\n', g.json_forward_decls.str())
+	if g.enum_typedefs.len > 0 {
+		b.write_string2('\n// Enum definitions:\n', g.enum_typedefs.str())
+	}
+	if g.thread_definitions.len > 0 {
+		b.write_string2('\n// Thread definitions:\n', g.thread_definitions.str())
+	}
+	if g.type_definitions.len > 0 {
+		b.write_string2('\n// V type definitions:\n', g.type_definitions.str())
+	}
+	if g.alias_definitions.len > 0 {
+		b.write_string2('\n// V alias definitions:\n', g.alias_definitions.str())
+	}
+	if g.shared_types.len > 0 {
+		b.write_string2('\n// V shared types:\n', g.shared_types.str())
+	}
+	if g.out_options.len > 0 {
+		b.write_string2('\n// V Option_xxx definitions:\n', g.out_options.str())
+	}
+	if g.out_results.len > 0 {
+		b.write_string2('\n// V result_xxx definitions:\n', g.out_results.str())
+	}
+	if g.json_forward_decls.len > 0 {
+		b.write_string2('\n// V json forward decls:\n', g.json_forward_decls.str())
+	}
 	b.write_string2('\n// V definitions:\n', g.definitions.str())
 	b.writeln('\n// V global/const non-precomputed definitions:')
 	for var_name in g.sorted_global_const_names {
@@ -6336,7 +6352,7 @@ fn (mut g Gen) const_decl_write_precomputed(mod string, styp string, cname strin
 	}
 	g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
 		mod: mod
-		def: '${g.static_modifier} const ${styp} ${cname} = ${ct_value}; // precomputed2'
+		def: '${g.static_modifier}const ${styp} ${cname} = ${ct_value}; // precomputed2'
 		// is_precomputed: true
 	}
 }
@@ -6467,7 +6483,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		&& !util.should_bundle_module(node.mod) {
 		'extern '
 	} else {
-		'${g.static_modifier} ' // TODO: used to be '' before parallel_cc, may cause issues
+		g.static_modifier // TODO: used to be '' before parallel_cc, may cause issues
 	}
 	// should the global be initialized now, not later in `vinit()`
 	cinit := node.attrs.contains('cinit')
@@ -7945,12 +7961,12 @@ fn (mut g Gen) interface_table() string {
 		iname_table_length := inter_info.types.len
 		if iname_table_length == 0 {
 			// msvc can not process `static struct x[0] = {};`
-			methods_struct.writeln('${g.static_modifier} ${methods_struct_name} ${interface_name}_name_table[1];')
+			methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[1];')
 		} else {
 			if g.pref.build_mode != .build_module {
-				methods_struct.writeln('${g.static_modifier} ${methods_struct_name} ${interface_name}_name_table[${iname_table_length}] = {')
+				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[${iname_table_length}] = {')
 			} else {
-				methods_struct.writeln('${g.static_modifier} ${methods_struct_name} ${interface_name}_name_table[${iname_table_length}];')
+				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[${iname_table_length}];')
 			}
 		}
 		mut cast_functions := strings.new_builder(100)
@@ -8205,7 +8221,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 			}
 			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base
 			if g.pref.build_mode != .build_module {
-				sb.writeln('${g.static_modifier} const int ${interface_index_name} = ${iin_idx};')
+				sb.writeln('${g.static_modifier}const int ${interface_index_name} = ${iin_idx};')
 			} else {
 				sb.writeln('extern const int ${interface_index_name};')
 			}
