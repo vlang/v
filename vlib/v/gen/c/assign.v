@@ -458,9 +458,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			} else if unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr {
 				g.write('memcpy(')
 				g.expr(left)
-				g.write(', ')
-				g.expr(val)
-				g.writeln(', sizeof(${g.styp(var_type)}));')
+				g.write_exprln(', ', val, ', sizeof(${g.styp(var_type)}));')
 			} else {
 				mut v_var := ''
 				arr_typ := styp.trim('*')
@@ -557,9 +555,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if left_sym.kind == .alias
 					&& g.table.final_sym(g.unwrap_generic(var_type)).is_number()
 					&& !left_sym.has_method(extracted_op) {
-					g.write(' = ')
-					g.expr(left)
-					g.write(' ${extracted_op} ')
+					g.write_expr(' = ', left, ' ${extracted_op} ')
 					g.expr(val)
 					if !g.inside_for_c_stmt {
 						g.write(';')
@@ -569,9 +565,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					if g.table.final_sym(g.unwrap_generic(var_type)).kind == .array_fixed {
 						g.go_back_to(pos)
 						g.empty_line = true
-						g.write('memcpy(')
-						g.expr(left)
-						g.write(', ${styp}_${util.replace_op(extracted_op)}(')
+						g.write_expr('memcpy(', left, ', ${styp}_${util.replace_op(extracted_op)}(')
 					} else {
 						g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
 					}
@@ -604,9 +598,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(left)
 				g.write(' = ')
 				g.expr(left)
-				g.write(' ${extracted_op} ')
-				g.expr(val)
-				g.writeln(';')
+				g.write_exprln(' ${extracted_op} ', val, ';')
 				return
 			}
 			if right_sym.info is ast.FnType && is_decl {
@@ -781,13 +773,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else {
 						if op_overloaded {
 							g.expr(left)
-							g.write(', ')
-							g.expr(val)
-							g.write(').ret_arr, sizeof(${typ_str})')
+							g.write_expr(', ', val, ').ret_arr, sizeof(${typ_str})')
 						} else {
-							g.write('memcpy(${final_typ_str}')
-							g.expr(left)
-							g.write(', ${final_ref_str}')
+							g.write_expr('memcpy(${final_typ_str}', left, ', ${final_ref_str}')
 							g.expr(val)
 							g.write(', sizeof(${typ_str}))')
 						}

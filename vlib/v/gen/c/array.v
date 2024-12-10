@@ -782,9 +782,7 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string, is_arra
 		g.expr(node.left)
 		g.write2('${deref_field}len > 0) { ', 'qsort(')
 		g.expr(node.left)
-		g.write('${deref_field}data, ')
-		g.expr(node.left)
-		g.write('${deref_field}len, ')
+		g.write_expr('${deref_field}data, ', node.left, '${deref_field}len, ')
 		g.expr(node.left)
 		g.write2('${deref_field}element_size, (voidptr)${compare_fn});', ' }')
 	} else {
@@ -987,9 +985,7 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 	g.write(', ')
 	g.expr(node.args[0].expr)
 	if is_arg2_array {
-		g.write(', ')
-		g.expr(node.args[1].expr)
-		g.write('.data, ')
+		g.write_expr(', ', node.args[1].expr, '.data, ')
 		g.expr(node.args[1].expr)
 		g.write('.len)')
 	} else {
@@ -1022,9 +1018,7 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 	}
 	g.expr(node.left)
 	if is_arg_array {
-		g.write(', ')
-		g.expr(node.args[0].expr)
-		g.write('.data, ')
+		g.write_expr(', ', node.args[0].expr, '.data, ')
 		g.expr(node.args[0].expr)
 		g.write('.len)')
 	} else {

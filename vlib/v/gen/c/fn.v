@@ -1081,9 +1081,7 @@ fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 			g.expr(node)
 		} else if !node.is_lvalue()
 			|| (node is ast.Ident && g.table.is_interface_smartcast(node.obj)) {
-			g.write('ADDR(${g.styp(node_type)}, ')
-			g.expr(node)
-			g.write(')')
+			g.write_expr('ADDR(${g.styp(node_type)}, ', node, ')')
 		} else {
 			g.write('&')
 			g.expr(node)
@@ -1096,18 +1094,14 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 		'reserve' {
 			g.write('map_reserve(')
 			g.gen_arg_from_type(left_type, node.left)
-			g.write(', ')
-			g.expr(node.args[0].expr)
-			g.write(')')
+			g.write_expr(', ', node.args[0].expr, ')')
 		}
 		'delete' {
 			left_info := left_sym.info as ast.Map
 			elem_type_str := g.styp(left_info.key_type)
 			g.write('map_delete(')
 			g.gen_arg_from_type(left_type, node.left)
-			g.write(', &(${elem_type_str}[]){')
-			g.expr(node.args[0].expr)
-			g.write('})')
+			g.write_expr(', &(${elem_type_str}[]){', node.args[0].expr, '})')
 		}
 		'free', 'clear', 'keys', 'values' {
 			g.write('map_${node.name}(')
@@ -1961,9 +1955,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
 		if node.left is ast.MapInit {
-			g.write('(map[]){')
-			g.expr(node.left)
-			g.write('}[0]')
+			g.write_expr('(map[]){', node.left, '}[0]')
 		} else if !is_interface && node.from_embed_types.len > 0 {
 			n_ptr := node.left_type.nr_muls() - 1
 			if n_ptr > 0 {
@@ -1990,15 +1982,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			} else if !node.receiver_type.is_ptr() && left_type.is_ptr() {
 				// *((main__IFoo*)bar)
 				g.write2('*((', g.table.sym(node.from_embed_types.last()).cname)
-				g.write('*)')
-				g.expr(node.left)
-				g.write(')')
+				g.write_expr('*)', node.left, ')')
 			} else {
 				// *((main__IFoo*)&bar)
 				g.write2('*((', g.table.sym(node.from_embed_types.last()).cname)
-				g.write('*)&')
-				g.expr(node.left)
-				g.write(')')
+				g.write_expr('*)&', node.left, ')')
 			}
 		} else {
 			if is_free_method && !node.receiver_type.is_ptr() {
@@ -2159,9 +2147,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	} else if is_va_arg {
 		ast_type := node.args[0].expr as ast.TypeNode
 		typ := g.styp(ast_type.typ)
-		g.write('va_arg(')
-		g.expr(node.args[1].expr)
-		g.write(', ${typ})')
+		g.write_expr('va_arg(', node.args[1].expr, ', ${typ})')
 		return
 	}
 	if name == '__addr' {
@@ -2633,10 +2619,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		} else if arg.expr is ast.ArrayDecompose {
 			mut d_count := 0
 			for d_i in i .. expected_types.len {
-				g.write('*(${g.styp(expected_types[d_i])}*)array_get(')
-				g.expr(arg.expr)
-				g.write(', ${d_count})')
-
+				g.write_expr('*(${g.styp(expected_types[d_i])}*)array_get(', arg.expr,
+					', ${d_count})')
 				if d_i < expected_types.len - 1 {
 					g.write(', ')
 				}
