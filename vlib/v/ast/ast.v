@@ -1073,6 +1073,7 @@ pub mut:
 	is_mut         bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
 	or_expr        OrExpr
 	concrete_types []Type
+	ct_expr        bool // is it a comptime expr?
 }
 
 // full_name returns the name of the ident, prefixed with the module name

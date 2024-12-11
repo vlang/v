@@ -562,8 +562,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		}
 		ast.CastExpr {
 			// value.map(Type(it)) when `value` is a comptime var
-			if expr.expr is ast.Ident && node.left is ast.Ident
-				&& g.comptime.is_comptime_var(node.left) {
+			if expr.expr is ast.Ident && node.left is ast.Ident && node.left.ct_expr {
 				ctyp := g.comptime.get_type(node.left)
 				if ctyp != ast.void_type {
 					expr.expr_type = g.table.value_type(ctyp)

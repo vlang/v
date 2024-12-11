@@ -579,7 +579,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 					scope, false, true)
 			}
 		} else if node.op == .key_is {
-			if node.left is ast.Ident && c.comptime.is_comptime_var(node.left) {
+			if node.left is ast.Ident && node.left.ct_expr {
 				node.left_type = c.comptime.get_type(node.left)
 			} else {
 				node.left_type = c.expr(mut node.left)

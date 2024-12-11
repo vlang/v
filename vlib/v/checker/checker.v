@@ -3052,8 +3052,8 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 				}
 				c.table.used_features.print_types[ast.int_type_idx] = true
 			}
-			if c.comptime.inside_comptime_for && node.expr is ast.Ident {
-				if c.comptime.is_comptime_var(node.expr) {
+			if c.comptime.inside_comptime_for && mut node.expr is ast.Ident {
+				if node.expr.ct_expr {
 					node.expr_type = c.comptime.get_type(node.expr as ast.Ident)
 				} else if (node.expr as ast.Ident).name in c.comptime.type_map {
 					node.expr_type = c.comptime.type_map[(node.expr as ast.Ident).name]
@@ -4072,6 +4072,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						obj.typ = typ
 					}
 					node.obj = obj
+					node.ct_expr = obj.ct_type_var != .no_comptime
 					// unwrap option (`println(x)`)
 					if is_option {
 						if node.or_expr.kind == .absent {
