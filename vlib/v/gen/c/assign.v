@@ -55,32 +55,25 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 }
 
 // expr_opt_with_alias handles conversion from different option alias type name
-fn (mut g Gen) expr_opt_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) {
-	expr_tmp_var := g.new_tmp_var()
+fn (mut g Gen) expr_opt_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) string {
 	styp := g.base_type(ret_typ)
-	ret_var := if tmp_var == '' { g.new_tmp_var() } else { tmp_var }
-	line := if tmp_var == '' {
-		s := g.go_before_last_stmt()
-		g.empty_line = true
-		s
-	} else {
-		''
-	}
-	if tmp_var == '' {
-		ret_styp := g.styp(ret_typ).replace('*', '_ptr')
-		g.writeln('${ret_styp} ${ret_var} = {0};')
-	}
-	expr_styp := g.styp(expr_typ).replace('*', '_ptr')
-	g.write('${expr_styp} ${expr_tmp_var} = ')
+
+	line := g.go_before_last_stmt().trim_space()
+	g.empty_line = true
+
+	ret_var := g.new_tmp_var()
+	ret_styp := g.styp(ret_typ).replace('*', '_ptr')
+	g.writeln('${ret_styp} ${ret_var} = {0};')
+
+	g.write('_option_clone((${option_name}*)&')
 	g.expr(expr)
-	g.writeln(';')
-	g.writeln('_option_clone((${option_name}*)&${expr_tmp_var}, (${option_name}*)&${ret_var}, sizeof(${styp}));')
-	if line != '' {
-		g.writeln(line)
+	g.writeln(', (${option_name}*)&${ret_var}, sizeof(${styp}));')
+	g.write(line)
+	if g.inside_return {
+		g.write(' ')
 	}
-	if tmp_var == '' {
-		g.write(ret_var)
-	}
+	g.write(ret_var)
+	return ret_var
 }
 
 // expr_opt_with_cast is used in cast expr when converting compatible option types
@@ -93,17 +86,17 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 	if expr_typ.idx() == ret_typ.idx() && g.table.sym(expr_typ).kind != .alias {
 		return g.expr_with_opt(expr, expr_typ, ret_typ)
 	} else {
-		past := g.past_tmp_var_new()
-		defer {
-			g.past_tmp_var_done(past)
-		}
-		styp := g.base_type(ret_typ)
-		decl_styp := g.styp(ret_typ).replace('*', '_ptr')
-		g.writeln('${decl_styp} ${past.tmp_var};')
-		is_none := expr is ast.CastExpr && expr.expr is ast.None
 		if expr is ast.CallExpr && expr.return_type.has_flag(.option) {
-			g.expr_opt_with_alias(expr, expr_typ, ret_typ, past.tmp_var)
+			return g.expr_opt_with_alias(expr, expr_typ, ret_typ, '')
 		} else {
+			past := g.past_tmp_var_new()
+			defer {
+				g.past_tmp_var_done(past)
+			}
+			styp := g.base_type(ret_typ)
+			decl_styp := g.styp(ret_typ).replace('*', '_ptr')
+			g.writeln('${decl_styp} ${past.tmp_var};')
+			is_none := expr is ast.CastExpr && expr.expr is ast.None
 			if is_none {
 				g.write('_option_none(&(${styp}[]) {')
 			} else {
@@ -120,8 +113,8 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 				g.inside_opt_or_res = old_inside_opt_or_res
 			}
 			g.writeln(' }, (${option_name}*)(&${past.tmp_var}), sizeof(${styp}));')
+			return past.tmp_var
 		}
-		return past.tmp_var
 	}
 }
 
