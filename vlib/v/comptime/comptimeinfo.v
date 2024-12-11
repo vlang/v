@@ -56,12 +56,6 @@ pub fn (mut ct ComptimeInfo) is_comptime(node ast.Expr) bool {
 	}
 }
 
-// is_comptime_var checks if the node is related to a comptime variable
-@[inline]
-pub fn (mut ct ComptimeInfo) is_comptime_var(node ast.Expr) bool {
-	return ct.get_ct_type_var(node) != .no_comptime
-}
-
 // is_comptime_variant_var checks if the node is related to a comptime variant variable
 @[inline]
 pub fn (mut ct ComptimeInfo) is_comptime_variant_var(node ast.Ident) bool {
@@ -174,7 +168,7 @@ pub fn (mut ct ComptimeInfo) get_type(node ast.Expr) ast.Type {
 			return ast.void_type
 		}
 		return f.return_type
-	} else if node is ast.IndexExpr && ct.is_comptime_var(node.left) {
+	} else if node is ast.IndexExpr && ct.is_comptime(node.left) {
 		nltype := ct.get_type(node.left)
 		nltype_unwrapped := ct.resolver.unwrap_generic(nltype)
 		return ct.table.value_type(nltype_unwrapped)
@@ -372,16 +366,16 @@ pub fn (mut ct ComptimeInfo) unwrap_generic_expr(expr ast.Expr, default_typ ast.
 			return expr.typ
 		}
 		ast.InfixExpr {
-			if ct.is_comptime_var(expr.left) {
+			if ct.is_comptime(expr.left) {
 				return ct.resolver.unwrap_generic(ct.get_type(expr.left))
 			}
-			if ct.is_comptime_var(expr.right) {
+			if ct.is_comptime(expr.right) {
 				return ct.resolver.unwrap_generic(ct.get_type(expr.right))
 			}
 			return default_typ
 		}
 		ast.Ident {
-			return if ct.is_comptime_var(expr) {
+			return if expr.ct_expr {
 				ct.resolver.unwrap_generic(ct.get_type(expr))
 			} else {
 				default_typ
