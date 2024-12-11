@@ -2946,7 +2946,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.write('->val')
 		return
 	} else if expected_type.has_flag(.option) {
-		g.expr_with_opt(arg.expr, arg_typ, expected_type)
+		if arg_sym.info is ast.Alias && expected_type != arg_typ {
+			g.expr_opt_with_alias(arg.expr, arg_typ, expected_type, '')
+		} else {
+			g.expr_with_opt(arg.expr, arg_typ, expected_type)
+		}
 		return
 	} else if arg.expr is ast.ArrayInit {
 		if arg.expr.is_fixed {
