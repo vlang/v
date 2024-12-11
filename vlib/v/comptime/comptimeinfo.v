@@ -31,7 +31,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_selector_key_type(val ast.ComptimeSele
 // is_comptime_expr checks if the node is related to a comptime expr
 @[inline]
 pub fn (mut ct ComptimeInfo) is_comptime_expr(node ast.Expr) bool {
-	return (node is ast.Ident && ct.get_ct_type_var(node) != .no_comptime)
+	return (node is ast.Ident && node.ct_expr)
 		|| (node is ast.IndexExpr && ct.is_comptime_expr(node.left))
 		|| node is ast.ComptimeSelector
 }
@@ -109,7 +109,7 @@ pub fn (mut ct ComptimeInfo) get_expr_type_or_default(node ast.Expr, default_typ
 pub fn (mut ct ComptimeInfo) get_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
 	match node {
 		ast.Ident {
-			if ct.is_comptime_var(node) {
+			if node.ct_expr {
 				ctyp := ct.get_type(node)
 				return if ctyp != ast.void_type { ctyp } else { default_typ }
 			}
