@@ -1,0 +1,5 @@
+vlib/v/checker/for_in_same_var_err.vv:1:15: error: the `high` variable cannot be the same value iteration variable
+    1 | for v in 0 .. v {
+      |               ^
+    2 |     println(v)
+    3 | }
