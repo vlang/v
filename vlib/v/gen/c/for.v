@@ -4,6 +4,7 @@
 module c
 
 import v.ast
+import v.util
 
 fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 	g.loop_depth++
@@ -426,7 +427,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.expr(cond)
 			g.writeln('${field_accessor}str[${i}];')
 		}
-	} else if node.kind == .struct {
+	} else if node.kind in [.struct, .interface] {
 		cond_type_sym := g.table.sym(node.cond_type)
 		next_fn := cond_type_sym.find_method_with_generic_parent('next') or {
 			verror('`next` method not found')
@@ -451,12 +452,20 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			if receiver_sym.info.concrete_types.len > 0 {
 				fn_name = g.generic_fn_name(receiver_sym.info.concrete_types, fn_name)
 			}
+		} else if receiver_sym.info is ast.Interface {
+			left_cc_type := g.cc_type(g.table.unaliased_type(node.cond_type), false)
+			left_type_name := util.no_dots(left_cc_type)
+			fn_name = '${c_name(left_type_name)}_name_table[${t_expr}._typ]._method_next'
 		}
 		g.write('\t${g.styp(ret_typ)} ${t_var} = ${fn_name}(')
 		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
 			g.write('&')
 		}
-		g.writeln('${t_expr});')
+		if node.kind == .interface {
+			g.writeln('${t_expr}._object);')
+		} else {
+			g.writeln('${t_expr});')
+		}
 		g.writeln('\tif (${t_var}.state != 0) break;')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
 		val_styp := g.styp(ret_typ.clear_option_and_result())

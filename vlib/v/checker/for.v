@@ -114,10 +114,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('string type is immutable, it cannot be changed', node.pos)
 			return
 		}
-		if sym.kind == .struct {
+		if sym.kind in [.struct, .interface] {
 			// iterators
 			next_fn := sym.find_method_with_generic_parent('next') or {
-				c.error('a struct must have a `next()` method to be an iterator', node.cond.pos())
+				kind_str := if sym.kind == .struct { 'struct' } else { 'interface' }
+				c.error('a ${kind_str} must have a `next()` method to be an iterator',
+					node.cond.pos())
 				return
 			}
 			if !next_fn.return_type.has_flag(.option) {
