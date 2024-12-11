@@ -65,8 +65,18 @@ fn (mut g Gen) expr_opt_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast
 	ret_styp := g.styp(ret_typ).replace('*', '_ptr')
 	g.writeln('${ret_styp} ${ret_var} = {0};')
 
-	g.write('_option_clone((${option_name}*)&')
+	g.write('_option_clone((${option_name}*)')
+	has_addr := expr !in [ast.Ident, ast.SelectorExpr]
+	if has_addr {
+		expr_styp := g.styp(expr_typ).replace('*', '_ptr')
+		g.write('ADDR(${expr_styp}, ')
+	} else {
+		g.write('&')
+	}
 	g.expr(expr)
+	if has_addr {
+		g.write(')')
+	}
 	g.writeln(', (${option_name}*)&${ret_var}, sizeof(${styp}));')
 	g.write(line)
 	if g.inside_return {
