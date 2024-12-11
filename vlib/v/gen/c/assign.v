@@ -54,6 +54,35 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 	}
 }
 
+// expr_opt_with_alias handles conversion from different option alias type name
+fn (mut g Gen) expr_opt_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) {
+	expr_tmp_var := g.new_tmp_var()
+	styp := g.base_type(ret_typ)
+	ret_var := if tmp_var == '' { g.new_tmp_var() } else { tmp_var }
+	line := if tmp_var == '' {
+		s := g.go_before_last_stmt()
+		g.empty_line = true
+		s
+	} else {
+		''
+	}
+	if tmp_var == '' {
+		ret_styp := g.styp(ret_typ).replace('*', '_ptr')
+		g.writeln('${ret_styp} ${ret_var} = {0};')
+	}
+	expr_styp := g.styp(expr_typ).replace('*', '_ptr')
+	g.write('${expr_styp} ${expr_tmp_var} = ')
+	g.expr(expr)
+	g.writeln(';')
+	g.writeln('_option_clone((${option_name}*)&${expr_tmp_var}, (${option_name}*)&${ret_var}, sizeof(${styp}));')
+	if line != '' {
+		g.writeln(line)
+	}
+	if tmp_var == '' {
+		g.write(ret_var)
+	}
+}
+
 // expr_opt_with_cast is used in cast expr when converting compatible option types
 // e.g. ?int(?u8(0))
 fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
@@ -73,12 +102,7 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 		g.writeln('${decl_styp} ${past.tmp_var};')
 		is_none := expr is ast.CastExpr && expr.expr is ast.None
 		if expr is ast.CallExpr && expr.return_type.has_flag(.option) {
-			tmp_var := g.new_tmp_var()
-			ret_styp := g.styp(expr.return_type).replace('*', '_ptr')
-			g.write('${ret_styp} ${tmp_var} = ')
-			g.expr(expr)
-			g.writeln(';')
-			g.writeln('_option_clone(&${tmp_var}, (${option_name}*)(&${past.tmp_var}), sizeof(${styp}));')
+			g.expr_opt_with_alias(expr, expr_typ, ret_typ, past.tmp_var)
 		} else {
 			if is_none {
 				g.write('_option_none(&(${styp}[]) {')
