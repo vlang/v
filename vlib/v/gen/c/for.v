@@ -221,7 +221,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		mut val_sym := g.table.sym(node.val_type)
 		op_field := g.dot_or_ptr(node.cond_type)
 
-		if is_comptime && g.comptime.is_comptime_var(node.cond) {
+		if is_comptime && g.comptime.is_comptime(node.cond) {
 			mut unwrapped_typ := g.unwrap_generic(node.cond_type)
 			ctyp := g.unwrap_generic(g.comptime.get_type(node.cond))
 			if ctyp != ast.void_type {

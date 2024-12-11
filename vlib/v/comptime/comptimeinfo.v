@@ -36,6 +36,26 @@ pub fn (mut ct ComptimeInfo) is_comptime_expr(node ast.Expr) bool {
 		|| node is ast.ComptimeSelector
 }
 
+// is_comptime checks if the node is related to a comptime marked variable
+@[inline]
+pub fn (mut ct ComptimeInfo) is_comptime(node ast.Expr) bool {
+	return match node {
+		ast.Ident {
+			node.ct_expr
+		}
+		ast.IndexExpr {
+			if node.left is ast.Ident {
+				node.left.ct_expr
+			} else {
+				false
+			}
+		}
+		else {
+			false
+		}
+	}
+}
+
 // is_comptime_var checks if the node is related to a comptime variable
 @[inline]
 pub fn (mut ct ComptimeInfo) is_comptime_var(node ast.Expr) bool {
