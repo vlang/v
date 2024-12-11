@@ -265,7 +265,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 			}
 			if mut left.obj is ast.Var {
-				if val is ast.Ident && g.comptime.is_comptime_var(val) {
+				if val is ast.Ident && val.ct_expr {
 					ctyp := g.unwrap_generic(g.comptime.get_type(val))
 					if ctyp != ast.void_type {
 						var_type = ctyp

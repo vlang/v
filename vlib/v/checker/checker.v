@@ -4072,6 +4072,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						obj.typ = typ
 					}
 					node.obj = obj
+					node.ct_expr = obj.ct_type_var != .no_comptime
 					// unwrap option (`println(x)`)
 					if is_option {
 						if node.or_expr.kind == .absent {
