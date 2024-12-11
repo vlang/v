@@ -1,0 +1,3 @@
+for v in 0 .. v {
+	println(v)
+}

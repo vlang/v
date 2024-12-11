@@ -68,6 +68,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		} else if high_type.has_option_or_result() {
 			c.error('the `high` value in a `for x in low..high {` loop, cannot be Result or Option',
 				node.high.pos())
+		} else if node.high is ast.Ident && node.val_var == node.high.name {
+			c.error('the `high` variable cannot be the same value iteration variable',
+				node.high.pos())
 		}
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
