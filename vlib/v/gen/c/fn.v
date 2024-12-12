@@ -61,8 +61,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 
 	if g.pref.parallel_cc {
 		if node.is_anon {
-			g.write('static ')
-			g.definitions.write_string('static ')
+			// g.write('static ')
+			// g.definitions.write_string('static ')
 		}
 		if !node.is_anon {
 			g.out_fn_start_pos << g.out.len
@@ -376,6 +376,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				// If we are building vlib/builtin, we need all private functions like array_get
 				// to be public, so that all V programs can access them.
 				g.write('VV_LOCAL_SYMBOL ')
+				// g.definitions.write_string('${g.static_modifier} VV_LOCAL_SYMBOL ')
 				g.definitions.write_string('VV_LOCAL_SYMBOL ')
 			}
 		}
@@ -674,24 +675,25 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	}
 	node.has_gen[fn_name] = true
 	mut builder := strings.new_builder(256)
-	builder.writeln('/*F*/')
+	builder.writeln('/*F1*/')
+	// Generate a closure struct
 	if node.inherited_vars.len > 0 {
 		ctx_struct := g.closure_ctx(node.decl)
 		if ctx_struct !in g.closure_structs {
 			g.closure_structs << ctx_struct
-			builder.writeln('${ctx_struct} {')
+			g.definitions.writeln('/*HALLO*/${ctx_struct} {')
 			for var in node.inherited_vars {
 				var_sym := g.table.sym(var.typ)
 				if var_sym.info is ast.FnType {
 					sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
 						c_name(var.name))
-					builder.writeln('\t' + sig + ';')
+					g.definitions.writeln('\t' + sig + ';')
 				} else {
 					styp := g.styp(var.typ)
-					builder.writeln('\t${styp} ${c_name(var.name)};')
+					g.definitions.writeln('\t${styp} ${c_name(var.name)};')
 				}
 			}
-			builder.writeln('};\n')
+			g.definitions.writeln('};\n')
 		}
 	}
 	pos := g.out.len
@@ -699,7 +701,9 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	g.anon_fn = true
 	g.fn_decl(node.decl)
 	g.anon_fn = was_anon_fn
+	builder.write_string('/*LOL*/')
 	builder.write_string(g.out.cut_to(pos))
+	builder.writeln('/*F2*/')
 	g.anon_fn_definitions << builder.str()
 }
 
