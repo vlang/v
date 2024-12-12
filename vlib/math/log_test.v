@@ -10,6 +10,7 @@ fn test_log2_base() {
 
 fn test_log10_base() {
 	assert math.log10(10.0) == 1.0
+	assert math.log10(0.00000000000000001) ==  -17.0
 }
 
 fn test_log1p_base() {
