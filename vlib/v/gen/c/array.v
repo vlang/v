@@ -1096,8 +1096,8 @@ fn (mut g Gen) gen_array_contains_methods() {
 				left_type_str = 'Array_voidptr'
 				elem_type_str = 'voidptr'
 			}
-			g.type_definitions.writeln('static bool ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
-			fn_builder.writeln('static bool ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
+			g.type_definitions.writeln('bool ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
+			fn_builder.writeln('bool ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
 			fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 			if elem_kind == .string {
 				fn_builder.writeln('\t\tif (fast_string_eq(((string*)a.data)[i], v)) {')
@@ -1138,8 +1138,8 @@ fn (mut g Gen) gen_array_contains_methods() {
 			if elem_kind == .function {
 				elem_type_str = 'voidptr'
 			}
-			g.type_definitions.writeln('static bool ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
-			fn_builder.writeln('static bool ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
+			g.type_definitions.writeln('/*KU*/bool ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
+			fn_builder.writeln('bool ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
 			fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
 			if elem_kind == .string {
 				fn_builder.writeln('\t\tif (fast_string_eq(a[i], v)) {')
@@ -1244,8 +1244,8 @@ fn (mut g Gen) gen_array_index_methods() {
 				left_type_str = 'Array_voidptr'
 				elem_type_str = 'voidptr'
 			}
-			g.type_definitions.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
-			fn_builder.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
+			g.type_definitions.writeln('int ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
+			fn_builder.writeln('int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
 			fn_builder.writeln('\t${elem_type_str}* pelem = a.data;')
 			fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i, ++pelem) {')
 			if elem_sym.kind == .string {
@@ -1288,8 +1288,8 @@ fn (mut g Gen) gen_array_index_methods() {
 			if elem_sym.kind == .function {
 				elem_type_str = 'voidptr'
 			}
-			g.type_definitions.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
-			fn_builder.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
+			g.type_definitions.writeln('int ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
+			fn_builder.writeln('int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
 			fn_builder.writeln('\tfor (int i = 0; i < ${info.size}; ++i) {')
 			if elem_sym.kind == .string {
 				fn_builder.writeln('\t\tif (fast_string_eq(a[i], v)) {')

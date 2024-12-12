@@ -20,8 +20,6 @@ $if windows {
 // call Windows API to get screen size
 fn C.GetSystemMetrics(int) int
 
-// fn C.WaitMessage()
-
 pub type TouchPoint = C.sapp_touchpoint
 
 pub struct Event {
