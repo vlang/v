@@ -325,7 +325,11 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			if !node.is_option {
 				g.or_block(tmp_opt, node.or_expr, elem_type)
 			}
-			g.write('\n${cur_line}(*(${elem_type_str}*)${tmp_opt}.data)')
+			if !g.is_amp {
+				g.write('\n${cur_line}(*(${elem_type_str}*)${tmp_opt}.data)')
+			} else {
+				g.write('\n${cur_line}*${tmp_opt_ptr}')
+			}
 		}
 	}
 }
