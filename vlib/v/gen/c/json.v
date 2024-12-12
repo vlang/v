@@ -421,7 +421,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 
 		// Helpers for decoding
 		g.get_sumtype_casting_fn(variant, typ)
-		g.definitions.writeln('static inline ${sym.cname} ${variant_typ}_to_sumtype_${sym.cname}(${variant_typ}* x);')
+		g.definitions.writeln('/*KEK*/static inline ${sym.cname} ${variant_typ}_to_sumtype_${sym.cname}(${variant_typ}* x);')
 
 		// ENCODING
 		enc.writeln('\tif (${var_data}${field_op}_typ == ${int(variant.idx())}) {')

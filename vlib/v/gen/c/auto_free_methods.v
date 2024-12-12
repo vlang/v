@@ -84,12 +84,12 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 }
 
 fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, styp string, fn_name string) {
-	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
+	g.definitions.writeln('void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
+	fn_builder.writeln('void ${fn_name}(${styp}* it) {')
 	for t in info.types {
 		typ_ := g.unwrap_generic(t)
 		sub_sym := g.table.sym(typ_)
@@ -106,12 +106,12 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 }
 
 fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, fn_name string) {
-	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
+	g.definitions.writeln('void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
+	fn_builder.writeln('void ${fn_name}(${styp}* it) {')
 	for field in info.fields {
 		field_name := c_name(field.name)
 		sym := g.table.sym(g.unwrap_generic(field.typ))
@@ -176,12 +176,12 @@ fn (mut g Gen) gen_type_name_for_free_call(typ ast.Type) string {
 }
 
 fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
-	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
+	g.definitions.writeln('void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
+	fn_builder.writeln('void ${fn_name}(${styp}* it) {')
 
 	sym := g.table.sym(g.unwrap_generic(info.elem_type))
 	if sym.kind in [.string, .array, .map, .struct] {
@@ -201,12 +201,12 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 }
 
 fn (mut g Gen) gen_free_for_map(typ ast.Type, styp string, fn_name string) {
-	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
+	g.definitions.writeln('void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
+	fn_builder.writeln('void ${fn_name}(${styp}* it) {')
 
 	if typ.has_flag(.option) {
 		fn_builder.writeln('\tif (it->state != 2) {')

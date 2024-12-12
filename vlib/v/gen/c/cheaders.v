@@ -213,7 +213,7 @@ void __closure_init() {
 	_closure_cap--;
 }
 #else
-void __closure_init() {
+static void __closure_init() {
 	uint32_t page_size = sysconf(_SC_PAGESIZE);
 	page_size = page_size * (((ASSUMED_PAGE_SIZE - 1) / page_size) + 1);
 	_V_page_size = page_size;
