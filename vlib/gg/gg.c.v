@@ -58,6 +58,7 @@ pub:
 	create_window bool    // TODO: implement or deprecate
 	// window_user_ptr voidptr
 	window_title      string // the desired title of the window
+	icon              sapp.IconDesc
 	html5_canvas_name string = 'canvas'
 	borderless_window bool     // TODO: implement or deprecate
 	always_on_top     bool     // TODO: implement or deprecate
@@ -477,6 +478,7 @@ pub fn new_context(cfg Config) &Context {
 			// fail_userdata_cb: gg_fail_fn
 			cleanup_userdata_cb: gg_cleanup_fn
 			window_title:        &char(cfg.window_title.str)
+			icon:                cfg.icon
 			html5_canvas_name:   &char(cfg.html5_canvas_name.str)
 			width:               cfg.width
 			height:              cfg.height
