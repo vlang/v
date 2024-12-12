@@ -218,7 +218,7 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 			right_arg := g.read_field(left_type, field_name, 'b')
 
 			if field.typ.has_flag(.option) {
-				fn_builder.write_string('(${left_arg}.state == ${right_arg}.state && ${right_arg}.state == 2 || ')
+				fn_builder.write_string('((${left_arg}.state == ${right_arg}.state && ${right_arg}.state == 2) || ')
 			}
 			if field_type.sym.kind == .string {
 				if field.typ.has_flag(.option) {
