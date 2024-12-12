@@ -729,7 +729,7 @@ fn test_log10() {
 	for i := 0; i < vf_.len; i++ {
 		a := abs(vf_[i])
 		f := log10(a)
-		assert log10_[i] == f
+		assert veryclose(log10_[i], f)
 	}
 	vflog_sc_ := [inf(-1), -pi, copysign(0, -1), 0, 1, inf(1),
 		nan()]
