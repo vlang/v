@@ -87,6 +87,9 @@ fn (mut g Gen) gen_jsons() {
 					g.write(')')
 				}
 				init_styp = g.out.cut_to(pos).trim_space()
+			} else if utyp.is_ptr() {
+				ptr_styp := g.styp(utyp.set_nr_muls(utyp.nr_muls() - 1))
+				init_styp += ' = HEAP(${ptr_styp}, {0})'
 			}
 		}
 
