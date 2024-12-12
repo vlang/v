@@ -714,7 +714,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 	elem_str_fn_name := g.get_str_fn(typ)
 	def_arg := if info.is_fn_ret { '${g.styp(typ)} a[${info.size}]' } else { '${styp} a' }
 
-	g.definitions.writeln('static string ${str_fn_name}(); // auto')
+	g.definitions.writeln('static string ${str_fn_name}(${def_arg}); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}(${def_arg}) { return indent_${str_fn_name}(a, 0);}')
 	g.definitions.writeln('static string indent_${str_fn_name}(${def_arg}, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${def_arg}, int indent_count) {')
