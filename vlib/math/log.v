@@ -24,7 +24,7 @@ pub fn log10(x f64) f64 {
 	if hx < i64(0x0010000000000000) {
 		// x < 2**-1022
 		if hx & 0x7fffffffffffffff == 0 {
-			return -two54 / abs(x_) // log(+-0)=-inf
+			return inf(-1) // log(+-0)=-inf
 		}
 		if hx < 0 {
 			return (x_ - x_) / (x_ - x_) // log(-#) = NaN
