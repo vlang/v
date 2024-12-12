@@ -427,8 +427,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	if 'C.cJSON_Parse' in all_fns {
 		all_fn_root_names << 'tos5'
 		all_fn_root_names << 'time.unix' // used by json
-		all_fn_root_names << '${ast.string_type_idx}.is_int'
-		all_fn_root_names << '${ast.string_type_idx}.trim'
 		table.used_features.used_maps++ // json needs new_map etc
 	}
 

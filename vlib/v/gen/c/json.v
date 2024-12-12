@@ -629,7 +629,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 
 fn (mut g Gen) gen_prim_type_validation(name string, typ ast.Type, tmp string, ret_styp string, mut dec strings.Builder) {
 	json_check := if typ.is_int() || typ.is_float() {
-		"cJSON_IsNumber(jsonroot_${tmp}) || (cJSON_IsString(jsonroot_${tmp}) && string_is_int(string_trim(tos2(jsonroot_${tmp}->valuestring), _SLIT(\"\\\"\"))))"
+		'cJSON_IsNumber(jsonroot_${tmp}) || (cJSON_IsString(jsonroot_${tmp}) && strlen(jsonroot_${tmp}->valuestring))'
 	} else if typ.is_string() {
 		'cJSON_IsString(jsonroot_${tmp})'
 	} else if typ.is_bool() {
