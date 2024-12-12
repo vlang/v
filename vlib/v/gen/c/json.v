@@ -628,19 +628,19 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 }
 
 fn (mut g Gen) gen_prim_type_validation(name string, typ ast.Type, tmp string, ret_styp string, mut dec strings.Builder) {
-	json_fn := if typ.is_int() || typ.is_float() {
-		'IsNumber'
+	json_check := if typ.is_int() || typ.is_float() {
+		"cJSON_IsNumber(jsonroot_${tmp}) || (cJSON_IsString(jsonroot_${tmp}) && string_is_int(string_trim(tos2(jsonroot_${tmp}->valuestring), _SLIT(\"\\\"\"))))"
 	} else if typ.is_string() {
-		'IsString'
+		'cJSON_IsString(jsonroot_${tmp})'
 	} else if typ.is_bool() {
-		'IsBool'
+		'cJSON_IsBool(jsonroot_${tmp})'
 	} else {
 		''
 	}
-	if json_fn == '' {
+	if json_check == '' {
 		return
 	}
-	dec.writeln('if (!cJSON_${json_fn}(jsonroot_${tmp})) {')
+	dec.writeln('if (!(${json_check})) {')
 	dec.writeln('\treturn (${ret_styp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("type mismatch for field \'${name}\', expecting `${g.table.type_to_str(typ)}` type, got: "), tos2(cJSON_PrintUnformatted(jsonroot_${tmp})))), .data = {0} };')
 	dec.writeln('}')
 }
