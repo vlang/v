@@ -15,28 +15,28 @@ pub fn log_n(x f64, b f64) f64 {
 // log10 returns the decimal logarithm of x.
 // The special cases are the same as for log.
 // log10(10**N) = N  for N=0,1,...,22.
-pub fn log10(xx f64) f64 {
+pub fn log10(x f64) f64 {
 	// https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/ieee754/dbl-64/e_log10.c
 
-	mut x := xx
-	mut hx := i64(f64_bits(x))
+	mut x_ := x
+	mut hx := i64(f64_bits(x_))
 	mut k := i32(0)
 	if hx < i64(0x0010000000000000) {
 		// x < 2**-1022
 		if hx & 0x7fffffffffffffff == 0 {
-			return -two54 / abs(x) // log(+-0)=-inf
+			return -two54 / abs(x_) // log(+-0)=-inf
 		}
 		if hx < 0 {
-			return (x - x) / (x - x) // log(-#) = NaN
+			return (x_ - x_) / (x_ - x_) // log(-#) = NaN
 		}
 		k = k - 54
-		x *= two54 // subnormal number, scale up x
-		hx = i64(f64_bits(x))
+		x_ *= two54 // subnormal number, scale up x
+		hx = i64(f64_bits(x_))
 	}
 
 	// scale up resulted in a NaN number
 	if hx >= u64(0x7ff0000000000000) {
-		return x + x
+		return x_ + x_
 	}
 
 	k = k + i32((u64((hx >> 52) - 1023)))
@@ -48,8 +48,8 @@ pub fn log10(xx f64) f64 {
 		y = 0.0
 	}
 	*/
-	x = f64_from_bits(u64(hx))
-	z := y * log10_2lo + ivln10 * log(x)
+	x_ = f64_from_bits(u64(hx))
+	z := y * log10_2lo + ivln10 * log(x_)
 	return z + y * log10_2hi
 }
 
