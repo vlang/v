@@ -84,27 +84,33 @@ fn test_vec2_f64_utils_2() {
 	assert invv2.y == 0.5
 }
 
-const correct_angles = [
-	math.pi * 1.0 / 4.0,
-	math.pi * 2.0 / 4.0,
-	math.pi * 3.0 / 4.0,
-	math.pi,
-	math.pi * 5.0 / 4.0 - 2 * math.pi,
-	math.pi * 6.0 / 4.0 - 2 * math.pi,
-	math.pi * 7.0 / 4.0 - 2 * math.pi,
-]!
+fn fcorrect_angles() []f64 {
+	return [
+		math.pi * 1.0 / 4.0,
+		math.pi * 2.0 / 4.0,
+		math.pi * 3.0 / 4.0,
+		math.pi,
+		math.pi * 5.0 / 4.0 - 2 * math.pi,
+		math.pi * 6.0 / 4.0 - 2 * math.pi,
+		math.pi * 7.0 / 4.0 - 2 * math.pi,
+	]
+}
 
-const surround = [
-	vec.vec2(1.0, 1.0),
-	vec.vec2(0.0, 1.0),
-	vec.vec2(-1.0, 1.0),
-	vec.vec2(-1.0, 0.0),
-	vec.vec2(-1.0, -1.0),
-	vec.vec2(0.0, -1.0),
-	vec.vec2(1.0, -1.0),
-]
+fn fsurround() []vec.Vec2[f64] {
+	return [
+		vec.vec2(1.0, 1.0),
+		vec.vec2(0.0, 1.0),
+		vec.vec2(-1.0, 1.0),
+		vec.vec2(-1.0, 0.0),
+		vec.vec2(-1.0, -1.0),
+		vec.vec2(0.0, -1.0),
+		vec.vec2(1.0, -1.0),
+	]
+}
 
 fn test_vec2_angle_between() {
+	surround := fsurround()
+	correct_angles := fcorrect_angles()
 	v1 := vec.vec2(1.0, 0.0)
 	for i in 0 .. 7 {
 		assert v1.angle_between(surround[i]) == correct_angles[i]
@@ -124,6 +130,8 @@ fn test_vec2_angle_between() {
 }
 
 fn test_vec2_angle_towards() {
+	surround := fsurround()
+	correct_angles := fcorrect_angles()
 	// basic case, let p0 be the coordinate origin point:
 	p0 := vec.vec2(0.0, 0.0)
 	for i in 0 .. 7 {
