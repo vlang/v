@@ -266,6 +266,7 @@ mut:
 	out_fn_start_pos     []int // for generating multiple .c files, stores locations of all fn positions in `out` string builder
 	out0_start           int
 	static_modifier      string // for parallel_cc
+	static_non_parallel  string // for non -parallel_cc
 	has_reflection       bool   // v.reflection has been imported
 	has_debugger         bool   // $dbg has been used in the code
 	reflection_strings   &map[string]int
@@ -338,6 +339,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
 		static_modifier:      if pref_.parallel_cc { 'static ' } else { '' }
+		static_non_parallel:  if !pref_.parallel_cc { 'static ' } else { '' }
 		has_reflection:       'v.reflection' in table.modules
 		has_debugger:         'v.debug' in table.modules
 		reflection_strings:   &reflection_strings
@@ -1102,12 +1104,11 @@ pub fn (mut g Gen) write_typeof_functions() {
 			if inter_info.is_generic {
 				continue
 			}
-			static_modifier := if g.pref.parallel_cc { '' } else { 'static ' }
-			g.definitions.writeln('${static_modifier}char * v_typeof_interface_${sym.cname}(int sidx);')
+			g.definitions.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(int sidx);')
 			if g.pref.parallel_cc {
 				g.extern_out.writeln('extern char * v_typeof_interface_${sym.cname}(int sidx);')
 			}
-			g.writeln('${static_modifier}char * v_typeof_interface_${sym.cname}(int sidx) {')
+			g.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(int sidx) {')
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
