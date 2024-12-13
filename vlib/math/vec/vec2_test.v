@@ -92,4 +92,13 @@ fn test_vec2_angle_between() {
 	assert vec.vec2(1.0, 0.0).angle_between(vec.vec2(-1.0, -1.0)) == math.pi * 5.0 / 4.0 - 2 * math.pi
 	assert vec.vec2(1.0, 0.0).angle_between(vec.vec2(0.0, -1.0)) == math.pi * 6.0 / 4.0 - 2 * math.pi
 	assert vec.vec2(1.0, 0.0).angle_between(vec.vec2(1.0, -1.0)) == math.pi * 7.0 / 4.0 - 2 * math.pi
+
+	// check the angle between non-normalised vectors too:
+	assert vec.vec2(5.0, 0.0).angle_between(vec.vec2(2.0, 2.0)) == math.pi * 1.0 / 4.0
+	assert vec.vec2(5.0, 0.0).angle_between(vec.vec2(0.0, 2.0)) == math.pi * 2.0 / 4.0
+	assert vec.vec2(5.0, 0.0).angle_between(vec.vec2(-2.0, 2.0)) == math.pi * 3.0 / 4.0
+	assert vec.vec2(5.0, 0.0).angle_between(vec.vec2(-2.0, 0.0)) == math.pi
+	assert vec.vec2(5.0, 0.0).angle_between(vec.vec2(-2.0, -2.0)) == math.pi * 5.0 / 4.0 - 2 * math.pi
+	assert vec.vec2(5.0, 0.0).angle_between(vec.vec2(0.0, -2.0)) == math.pi * 6.0 / 4.0 - 2 * math.pi
+	assert vec.vec2(5.0, 0.0).angle_between(vec.vec2(2.0, -2.0)) == math.pi * 7.0 / 4.0 - 2 * math.pi
 }
