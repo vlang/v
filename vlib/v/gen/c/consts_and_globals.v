@@ -57,7 +57,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					val := g.expr_string(field.expr)
 					g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
 						mod:       field.mod
-						def:       '${g.static_modifier} ${styp} ${const_name} = ${val}; // fixed array const'
+						def:       '${g.static_non_parallel}${styp} ${const_name} = ${val}; // fixed array const'
 						dep_names: g.table.dependent_names_in_expr(field_expr)
 					}
 				} else if field.expr.is_fixed && !field.expr.has_index
@@ -123,7 +123,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 							val := g.expr_string(field.expr.expr)
 							g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
 								mod:       field.mod
-								def:       '${g.static_modifier} ${styp} ${const_name} = ${val}; // fixed array const'
+								def:       '${g.static_non_parallel}${styp} ${const_name} = ${val}; // fixed array const'
 								dep_names: g.table.dependent_names_in_expr(field_expr)
 							}
 							continue
@@ -262,7 +262,7 @@ fn (mut g Gen) const_decl_write_precomputed(mod string, styp string, cname strin
 	}
 	g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
 		mod: mod
-		def: '${g.static_modifier}const ${styp} ${cname} = ${ct_value}; // precomputed2'
+		def: '${g.static_non_parallel}const ${styp} ${cname} = ${ct_value}; // precomputed2'
 		// is_precomputed: true
 	}
 }
@@ -450,9 +450,6 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		extern := if cextern { 'extern ' } else { '' }
 		modifier := if field.is_volatile { ' volatile ' } else { '' }
 		def_builder.write_string('${extern}${visibility_kw}${modifier}${styp} ${attributes}${field.name}')
-		if g.pref.parallel_cc {
-			g.extern_out.writeln('extern ${visibility_kw}${modifier}${styp} ${attributes}${field.name};')
-		}
 		if cextern {
 			def_builder.writeln('; // global5')
 			g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
