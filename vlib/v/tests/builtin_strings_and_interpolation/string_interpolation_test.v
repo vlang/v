@@ -233,3 +233,10 @@ fn test_interpo_non_ascii_characters() {
 	hello := '你好'
 	assert '${hello},世界！' == '你好,世界！'
 }
+
+fn test_float_exponent_sign() {
+	a := 1.234567
+	assert '${a:4.1}' == ' 1.2'
+	assert '${a:4.2}' == '1.23'
+	assert '${a:4.3}' == '1.235'
+}
