@@ -1,0 +1,7 @@
+struct Type {
+	a int
+}
+
+pub struct Token {
+	foo Type @[json: type]
+}
