@@ -375,9 +375,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			if g.pref.build_mode != .build_module && !g.pref.use_cache {
 				// If we are building vlib/builtin, we need all private functions like array_get
 				// to be public, so that all V programs can access them.
-				g.write('VV_LOCAL_SYMBOL ')
-				// g.definitions.write_string('${g.static_modifier} VV_LOCAL_SYMBOL ')
-				g.definitions.write_string('VV_LOCAL_SYMBOL ')
+				if !(node.is_anon && g.pref.parallel_cc) {
+					g.write('VV_LOCAL_SYMBOL ')
+					// g.definitions.write_string('${g.static_modifier} VV_LOCAL_SYMBOL ')
+					g.definitions.write_string('VV_LOCAL_SYMBOL ')
+				}
 			}
 		}
 		// as a temp solution generic functions are marked static
@@ -675,7 +677,7 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	}
 	node.has_gen[fn_name] = true
 	mut builder := strings.new_builder(256)
-	builder.writeln('/*F1*/')
+	// builder.writeln('/*F1*/')
 	// Generate a closure struct
 	if node.inherited_vars.len > 0 {
 		ctx_struct := g.closure_ctx(node.decl)
@@ -701,10 +703,14 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	g.anon_fn = true
 	g.fn_decl(node.decl)
 	g.anon_fn = was_anon_fn
-	builder.write_string('/*LOL*/')
+	// builder.write_string('/*LOL*/')
 	builder.write_string(g.out.cut_to(pos))
-	builder.writeln('/*F2*/')
-	g.anon_fn_definitions << builder.str()
+	// builder.writeln('/*F2*/')
+	out := builder.str()
+	g.anon_fn_definitions << out
+	if g.pref.parallel_cc {
+		g.extern_out.writeln('extern ${out.all_before(' {')};')
+	}
 }
 
 fn (g &Gen) defer_flag_var(stmt &ast.DeferStmt) string {

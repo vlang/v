@@ -51,7 +51,8 @@ pub struct Gen {
 	module_built        string
 	timers_should_print bool
 mut:
-	out strings.Builder
+	out        strings.Builder
+	extern_out strings.Builder // extern declarations for -parallel-cc
 	// line_nr                   int
 	cheaders                  strings.Builder
 	preincludes               strings.Builder // allows includes to go before `definitions`
@@ -265,6 +266,7 @@ mut:
 	out_fn_start_pos     []int // for generating multiple .c files, stores locations of all fn positions in `out` string builder
 	out0_start           int
 	static_modifier      string // for parallel_cc
+	static_non_parallel  string // for non -parallel_cc
 	has_reflection       bool   // v.reflection has been imported
 	has_debugger         bool   // $dbg has been used in the code
 	reflection_strings   &map[string]int
@@ -272,7 +274,7 @@ mut:
 	vweb_filter_fn_name  string // vweb__filter or x__vweb__filter, used by $vweb.html() for escaping strings in the templates, depending on which `vweb` import is used
 }
 
-pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (string, string, string, []int) {
+pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (string, string, string, string, []int) {
 	mut module_built := ''
 	if pref_.build_mode == .build_module {
 		for file in files {
@@ -337,6 +339,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
 		static_modifier:      if pref_.parallel_cc { 'static ' } else { '' }
+		static_non_parallel:  if !pref_.parallel_cc { 'static ' } else { '' }
 		has_reflection:       'v.reflection' in table.modules
 		has_debugger:         'v.debug' in table.modules
 		reflection_strings:   &reflection_strings
@@ -604,11 +607,13 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	if g.sort_fn_definitions.len > 0 {
 		b.write_string2('\n// V sort fn definitions:\n', g.sort_fn_definitions.str())
 	}
-	b.writeln('\n// V global/const non-precomputed definitions:')
-	for var_name in g.sorted_global_const_names {
-		if var := g.global_const_defs[var_name] {
-			if !var.def.starts_with('#define') {
-				b.writeln(var.def)
+	if !pref_.parallel_cc {
+		b.writeln('\n// V global/const non-precomputed definitions:')
+		for var_name in g.sorted_global_const_names {
+			if var := g.global_const_defs[var_name] {
+				if !var.def.starts_with('#define') {
+					b.writeln(var.def)
+				}
 			}
 		}
 	}
@@ -658,6 +663,36 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	// Code added here (after the header) goes to out_0.c in parallel cc mode
 	// Previously it went to the header which resulted in duplicated code and more code
 	// to compile for the C compiler
+	if g.anon_fn_definitions.len > 0 {
+		if g.nr_closures > 0 {
+			b.writeln2('\n// V closure helpers', c_closure_fn_helpers(g.pref))
+		}
+		/*
+		b.writeln('\n// V anon functions:')
+		for fn_def in g.anon_fn_definitions {
+			b.writeln(fn_def)
+		}
+		*/
+		if g.pref.parallel_cc {
+			g.extern_out.writeln('extern void* __closure_create(void* fn, void* data);')
+			g.extern_out.writeln('extern void __closure_init();')
+		}
+	}
+	if g.pref.parallel_cc {
+		b.writeln('\n// V global/const non-precomputed definitions:')
+		for var_name in g.sorted_global_const_names {
+			if var := g.global_const_defs[var_name] {
+				if !var.def.starts_with('#define') {
+					b.writeln(var.def)
+					if var.def.contains(' = ') {
+						g.extern_out.writeln('extern ${var.def.all_before(' = ')};')
+					} else {
+						g.extern_out.writeln('extern ${var.def}')
+					}
+				}
+			}
+		}
+	}
 	if g.auto_str_funcs.len > 0 {
 		b.write_string2('\n// V auto str functions:\n', g.auto_str_funcs.str())
 	}
@@ -681,6 +716,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	b.writeln('// ZULUL2')
 	// The rest of the output
 	out_str := g.out.str()
+	extern_out_str := g.extern_out.str()
 	b.write_string(out_str)
 	b.writeln('// THE END.')
 	util.timing_measure('cgen common')
@@ -695,7 +731,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	unsafe { b.free() }
 	unsafe { g.free_builders() }
 
-	return header, res, out_str, out_fn_start_pos
+	return header, res, out_str, extern_out_str, out_fn_start_pos
 }
 
 fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
@@ -1089,8 +1125,11 @@ pub fn (mut g Gen) write_typeof_functions() {
 			if inter_info.is_generic {
 				continue
 			}
-			g.definitions.writeln('static char * v_typeof_interface_${sym.cname}(int sidx);')
-			g.writeln('static char * v_typeof_interface_${sym.cname}(int sidx) {')
+			g.definitions.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(int sidx);')
+			if g.pref.parallel_cc {
+				g.extern_out.writeln('extern char * v_typeof_interface_${sym.cname}(int sidx);')
+			}
+			g.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(int sidx) {')
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {

@@ -169,8 +169,17 @@ static pthread_mutex_t _closure_mtx;
 #define _closure_mtx_lock() pthread_mutex_lock(&_closure_mtx)
 #define _closure_mtx_unlock() pthread_mutex_unlock(&_closure_mtx)
 #endif
-static char* _closure_ptr = 0;
-static int _closure_cap = 0;
+')
+	return builder.str()
+}
+
+fn c_closure_fn_helpers(pref_ &pref.Preferences) string {
+	static_non_parallel := if pref_.parallel_cc { '' } else { 'static ' }
+
+	mut builder := strings.new_builder(2048)
+	builder.write_string('
+	${static_non_parallel}char* _closure_ptr = 0;
+	${static_non_parallel}int _closure_cap = 0;
 
 static void __closure_alloc(void) {
 #ifdef _WIN32
@@ -213,7 +222,7 @@ void __closure_init() {
 	_closure_cap--;
 }
 #else
-static void __closure_init() {
+${static_non_parallel}void __closure_init() {
 	uint32_t page_size = sysconf(_SC_PAGESIZE);
 	page_size = page_size * (((ASSUMED_PAGE_SIZE - 1) / page_size) + 1);
 	_V_page_size = page_size;
@@ -227,7 +236,7 @@ static void __closure_init() {
 }
 #endif
 
-static void* __closure_create(void* fn, void* data) {
+${static_non_parallel}void* __closure_create(void* fn, void* data) {
 	_closure_mtx_lock();
 	if (_closure_cap == 0) {
 		__closure_alloc();
