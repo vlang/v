@@ -1068,8 +1068,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 			if sum_info.is_generic {
 				continue
 			}
-			g.writeln('/*C1*/${static_prefix}char * v_typeof_sumtype_${sym.cname}(int sidx) {')
-			g.definitions.writeln('/*C1*/${static_prefix}char * v_typeof_sumtype_${sym.cname}(int);')
+			g.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(int sidx) {')
+			g.definitions.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(int);')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return "${util.strip_main_name(sym.name)}";')
 				for v in sum_info.variants {
@@ -2554,7 +2554,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	}
 	g.sumtype_definitions[i] = true
 	g.sumtype_casting_fns << SumtypeCastingFn{
-		fn_name: fn_name + '/*ISEE*/'
+		fn_name: fn_name
 		got:     if got_.has_flag(.option) {
 			new_got := ast.idx_to_type(got_sym.idx).set_flag(.option)
 			new_got
@@ -2785,7 +2785,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				// Do not allocate for `Interface(unsafe{nil})` casts
 				is_nil_cast := expr is ast.UnsafeExpr && expr.expr is ast.Nil
 				if is_nil_cast {
-					g.write2('/*nil*/', '((void*)0)')
+					g.write('((void*)0)')
 					return
 				}
 			}
@@ -2842,9 +2842,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					unwrapped_got_sym = g.table.sym(unwrapped_got_type)
 				}
 
-				fname := g.get_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type) +
-					'/*Q*/'
-
+				fname := g.get_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
 				if expr is ast.ArrayInit && got_sym.kind == .array_fixed {
 					stmt_str := g.go_before_last_stmt().trim_space()
 					g.empty_line = true
@@ -3224,7 +3222,7 @@ fn (mut g Gen) gen_clone_assignment(var_type ast.Type, val ast.Expr, typ ast.Typ
 			is_sumtype := g.table.type_kind(var_type) == .sum_type
 			if is_sumtype {
 				variant_typ := g.styp(typ).replace('*', '')
-				fn_name := g.get_sumtype_casting_fn(typ, var_type) + '/*L*/'
+				fn_name := g.get_sumtype_casting_fn(typ, var_type)
 				g.write('${fn_name}(ADDR(${variant_typ}, array_clone_static_to_depth(')
 				if typ.is_ptr() {
 					g.write('*')
