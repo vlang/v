@@ -152,7 +152,7 @@ fn test_parse_expr() {
 		global_scope: scope
 	}
 	chk.check(mut program)
-	mut res, _, _, _ := c.gen([program], mut table, vpref)
+	mut res, _, _, _, _ := c.gen([program], mut table, vpref)
 	res = res.after('#endif')
 	println('========')
 	println(res)
