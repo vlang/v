@@ -6,7 +6,7 @@ import v.util
 import v.builder
 import sync.pool
 
-fn parallel_cc(mut b builder.Builder, header string, _res string, out_str string, out_fn_start_pos []int) {
+fn parallel_cc(mut b builder.Builder, header string, _res string, out_str string, extern_str string, out_fn_start_pos []int) {
 	c_files := util.nr_jobs - 1
 	println('> c_files: ${c_files} | util.nr_jobs: ${util.nr_jobs}')
 	out_h := header.replace_once('static char * v_typeof_interface_IError', 'char * v_typeof_interface_IError')
@@ -23,9 +23,8 @@ fn parallel_cc(mut b builder.Builder, header string, _res string, out_str string
 	os.write_file('out.h', out_h) or { panic(err) }
 	os.write_file('out_0.c', '#include "out.h"\n' + out0 + '\n//X:\n' + x) or { panic(err) }
 	// os.write_file('out_0.c', out0) or { panic(err) }
-	os.write_file('out_x.c', '#include "out.h"\n' + out_str[out_fn_start_pos.last()..]) or {
-		panic(err)
-	}
+	os.write_file('out_x.c', '#include "out.h"\n' + extern_str + '\n' +
+		out_str[out_fn_start_pos.last()..]) or { panic(err) }
 
 	mut prev_fn_pos := 0
 	mut out_files := []os.File{len: c_files}
@@ -35,6 +34,7 @@ fn parallel_cc(mut b builder.Builder, header string, _res string, out_str string
 		fnames << fname
 		out_files[i] = os.create(fname) or { panic(err) }
 		out_files[i].writeln('#include "out.h"\n') or { panic(err) }
+		out_files[i].writeln(extern_str) or { panic(err) }
 	}
 	// out_fn_start_pos.sort()
 	for i, fn_pos in out_fn_start_pos {
@@ -69,7 +69,7 @@ fn parallel_cc(mut b builder.Builder, header string, _res string, out_str string
 	eprintln('> C compilation on ${nr_threads} threads, working on ${o_postfixes.len} files took: ${sw.elapsed().milliseconds()} ms')
 	// cc := os.quoted_path(cc_compiler)
 	link_cmd := '${cc} -o ${os.quoted_path(b.pref.out_name)} out_0.o ${fnames.map(it.replace('.c',
-		'.o')).join(' ')} out_x.o -lpthread ${cc_ldflags}'
+		'.o')).join(' ')} out_x.o -lpthread -lgc ${cc_ldflags}'
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_time('link_cmd', link_cmd, link_res, sw_link)

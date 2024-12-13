@@ -450,6 +450,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		extern := if cextern { 'extern ' } else { '' }
 		modifier := if field.is_volatile { ' volatile ' } else { '' }
 		def_builder.write_string('${extern}${visibility_kw}${modifier}${styp} ${attributes}${field.name}')
+		if g.pref.parallel_cc {
+			g.extern_out.writeln('extern ${visibility_kw}${modifier}${styp} ${attributes}${field.name};')
+		}
 		if cextern {
 			def_builder.writeln('; // global5')
 			g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
