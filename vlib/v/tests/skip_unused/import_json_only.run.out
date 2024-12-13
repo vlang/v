@@ -1,0 +1,3 @@
+vlib/v/tests/skip_unused/import_json_only.vv:1:8: warning: module 'json' is imported but never used
+    1 | import json
+      |        ~~~~
