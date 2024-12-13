@@ -662,6 +662,21 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	// Code added here (after the header) goes to out_0.c in parallel cc mode
 	// Previously it went to the header which resulted in duplicated code and more code
 	// to compile for the C compiler
+	if g.anon_fn_definitions.len > 0 {
+		if g.nr_closures > 0 {
+			b.writeln2('\n// V closure helpers', c_closure_fn_helpers(g.pref))
+		}
+		/*
+		b.writeln('\n// V anon functions:')
+		for fn_def in g.anon_fn_definitions {
+			b.writeln(fn_def)
+		}
+		*/
+		if g.pref.parallel_cc {
+			g.extern_out.writeln('extern void* __closure_create(void* fn, void* data);')
+			g.extern_out.writeln('extern void __closure_init();')
+		}
+	}
 	if g.pref.parallel_cc {
 		b.writeln('\n// V global/const non-precomputed definitions:')
 		for var_name in g.sorted_global_const_names {
