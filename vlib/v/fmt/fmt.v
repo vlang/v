@@ -1721,6 +1721,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 			if s.starts_with('&') {
 				s = s[1..]
 			}
+			s = s.trim_left('shared ')
 		}
 		is_last_arg := i == fn_info.params.len - 1
 		should_add_type := true || is_last_arg
