@@ -322,6 +322,17 @@ pub fn (v Vec2[T]) angle_between(u Vec2[T]) T {
 	}
 }
 
+// angle_towards returns the angle in radians between the horizontal axis,
+// and a line passing through the first and second point, as if the first point
+// was at the center of the coordinate system.
+pub fn (p1 Vec2[T]) angle_towards(p2 Vec2[T]) T {
+	$if T is f64 {
+		return math.atan2(p2.y - p1.y, p2.x - p1.x)
+	} $else {
+		return T(math.atan2(f64(p2.y) - f64(p1.y), f64(p2.x) - f64(p1.x)))
+	}
+}
+
 // angle returns the angle in radians of the vector.
 pub fn (v Vec2[T]) angle() T {
 	$if T is f64 {
