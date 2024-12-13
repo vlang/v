@@ -475,7 +475,7 @@ fn (mut s Scanner) ident_dec_number() string {
 	}
 	// scan exponential part
 	mut has_exp := false
-	if s.pos < s.text.len && s.text[s.pos] in [`e`, `E`] {
+	if s.pos < s.text.len && s.text[s.pos] in [`e`, `E`] && !s.is_inside_string {
 		has_exp = true
 		s.pos++
 		if s.pos < s.text.len && s.text[s.pos] in [`-`, `+`] {

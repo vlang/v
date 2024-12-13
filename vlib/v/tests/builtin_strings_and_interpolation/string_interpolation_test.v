@@ -235,8 +235,8 @@ fn test_interpo_non_ascii_characters() {
 }
 
 fn test_float_exponent_sign() {
-	a := 1.234567
-	assert '${a:4.1}' == ' 1.2'
-	assert '${a:4.2}' == '1.23'
-	assert '${a:4.3}' == '1.235'
+	a := 1234567.0123456e03
+	assert '${a:6.1e}' == '1.2e+09'
+	assert '${a:6.2e}' == '1.23e+09'
+	assert '${a:6.5e}' == '1.23457e+09'
 }
