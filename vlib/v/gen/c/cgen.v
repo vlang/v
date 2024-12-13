@@ -608,7 +608,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	b.writeln('\n// V global/const non-precomputed definitions:')
 	for var_name in g.sorted_global_const_names {
 		if var := g.global_const_defs[var_name] {
-			if !var.def.starts_with('#define') && !var.def.ends_with('// global4\n') {
+			if !var.def.starts_with('#define')
+				&& (!g.pref.parallel_cc || !var.def.ends_with('// global4\n')) {
 				b.writeln(var.def)
 			}
 		}
@@ -659,11 +660,13 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	// Code added here (after the header) goes to out_0.c in parallel cc mode
 	// Previously it went to the header which resulted in duplicated code and more code
 	// to compile for the C compiler
-	b.writeln('\n// V global/const non-precomputed definitions:')
-	for var_name in g.sorted_global_const_names {
-		if var := g.global_const_defs[var_name] {
-			if !var.def.starts_with('#define') && var.def.ends_with('// global4\n') {
-				b.writeln(var.def)
+	if g.pref.parallel_cc {
+		b.writeln('\n// V global/const non-precomputed definitions:')
+		for var_name in g.sorted_global_const_names {
+			if var := g.global_const_defs[var_name] {
+				if !var.def.starts_with('#define') && var.def.ends_with('// global4\n') {
+					b.writeln(var.def)
+				}
 			}
 		}
 	}
