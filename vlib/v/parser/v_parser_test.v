@@ -109,7 +109,7 @@ fn test_one() {
 	}
 	mut checker_ := checker.new_checker(table, vpref)
 	checker_.check(mut program)
-	mut res, _, _, _ := c.gen([program], mut table, vpref)
+	mut res, _, _, _, _ := c.gen([program], mut table, vpref)
 	res = res.replace('\n', '').trim_space().after('#endif')
 	println(res)
 	ok := expected == res
