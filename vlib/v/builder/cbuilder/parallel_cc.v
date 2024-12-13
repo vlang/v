@@ -68,8 +68,10 @@ fn parallel_cc(mut b builder.Builder, header string, _res string, out_str string
 	pp.work_on_items(o_postfixes)
 	eprintln('> C compilation on ${nr_threads} threads, working on ${o_postfixes.len} files took: ${sw.elapsed().milliseconds()} ms')
 	// cc := os.quoted_path(cc_compiler)
-	link_cmd := '${cc} -o ${os.quoted_path(b.pref.out_name)} out_0.o ${fnames.map(it.replace('.c',
-		'.o')).join(' ')} out_x.o -lpthread -lgc ${cc_ldflags}'
+	gc_flag := if b.pref.gc_mode != .no_gc { '-lgc ' } else { '' }
+	obj_files := fnames.map(it.replace('.c', '.o')).join(' ')
+	ld_flags := '${gc_flag}${cc_ldflags}'
+	link_cmd := '${cc} -o ${os.quoted_path(b.pref.out_name)} out_0.o ${obj_files} out_x.o -lpthread ${ld_flags}'
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_time('link_cmd', link_cmd, link_res, sw_link)
