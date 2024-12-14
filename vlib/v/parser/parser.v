@@ -2045,7 +2045,7 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 		if p.tok.kind == .colon {
 			has_arg = true
 			p.next()
-			if p.tok.kind == .name || p.tok.kind == .key_type { // `name: arg`
+			if p.tok.kind == .name || (p.tok.kind != .string && token.is_key(p.tok.lit)) { // `name: arg`
 				kind = .plain
 				arg = p.check_name()
 			} else if p.tok.kind == .number { // `name: 123`
