@@ -568,7 +568,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 
 	g.finish()
 
-	mut b := strings.new_builder(g.out.len + 200_000)
+	mut b := strings.new_builder(g.out.len + 600_000)
 	b.write_string(g.hashes())
 	if g.use_segfault_handler || g.pref.is_prof {
 		b.writeln('\n#define V_USE_SIGNAL_H')
@@ -669,7 +669,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	header = '#ifndef V_HEADER_FILE\n#define V_HEADER_FILE' + header
 	header += '\n#endif\n'
 
-	mut helpers := strings.new_builder(50_000)
+	mut helpers := strings.new_builder(200_000)
 	// Code added here (after the header) goes to out_0.c in parallel cc mode
 	// Previously it went to the header which resulted in duplicated code and more code
 	// to compile for the C compiler
