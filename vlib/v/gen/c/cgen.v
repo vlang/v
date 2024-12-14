@@ -743,6 +743,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	}
 	out_fn_start_pos := g.out_fn_start_pos.clone()
 	unsafe { b.free() }
+	unsafe { helpers.free() }
 	unsafe { g.free_builders() }
 
 	return GenOutput{
