@@ -296,6 +296,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 
 fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	mut init_expr := node.init_expr
+	c.expected_type = node.elem_type
 	init_typ := c.check_expr_option_or_result_call(init_expr, c.expr(mut init_expr))
 	node.init_type = init_typ
 	if !node.elem_type.has_flag(.option) && init_typ.has_flag(.option) {
