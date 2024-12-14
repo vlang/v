@@ -203,6 +203,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << 'v.trace_calls.current_time'
 			core_fns << 'v.trace_calls.on_call'
 		}
+		if 'C.cJSON_Parse' in all_fns {
+			all_fn_root_names << 'tos5'
+			all_fn_root_names << 'time.unix' // used by json
+			table.used_features.used_maps++ // json needs new_map etc
+			include_panic_deps = true
+		}
 		all_fn_root_names << core_fns
 		if include_panic_deps {
 			all_fn_root_names << [
@@ -422,12 +428,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << '${typ}.drop'
 			all_fn_root_names << '${typ}.last_id'
 		}
-	}
-
-	if 'C.cJSON_Parse' in all_fns {
-		all_fn_root_names << 'tos5'
-		all_fn_root_names << 'time.unix' // used by json
-		table.used_features.used_maps++ // json needs new_map etc
 	}
 
 	mut walker := Walker.new(
