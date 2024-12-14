@@ -57,9 +57,7 @@ fn parallel_cc(mut b builder.Builder, result c.CGenOutput) {
 			continue
 		}
 		fn_text := result.out_str[prev_fn_pos..fn_pos]
-		out_files[i % c_files].writeln(fn_text + '\n///////////////////////////\n\n') or {
-			panic(err)
-		}
+		out_files[i % c_files].writeln(fn_text) or { panic(err) }
 		prev_fn_pos = fn_pos
 	}
 	for i in 0 .. c_files {
