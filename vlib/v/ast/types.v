@@ -1006,6 +1006,16 @@ pub fn (t &Struct) is_unresolved_generic() bool {
 	return t.generic_types.len > 0 && t.concrete_types.len == 0
 }
 
+pub fn (t &TypeSymbol) is_primitive_fixed_array() bool {
+	if t.info is ArrayFixed {
+		return global_table.final_sym(t.info.elem_type).is_primitive()
+	} else if t.info is Alias {
+		return global_table.final_sym(t.info.parent_type).is_primitive_fixed_array()
+	} else {
+		return false
+	}
+}
+
 pub fn (t &TypeSymbol) is_array_fixed() bool {
 	if t.info is ArrayFixed {
 		return true

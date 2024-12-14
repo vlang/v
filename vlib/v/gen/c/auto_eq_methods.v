@@ -437,6 +437,11 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('inline bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b) {')
+	if left_typ.sym.is_primitive_fixed_array() {
+		fn_builder.writeln('\tif (!memcmp(${left}, ${right}, sizeof(${arg_styp}))) {')
+		fn_builder.writeln('\t\treturn true;')
+		fn_builder.writeln('\t}')
+	}
 	fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
 	// compare every pair of elements of the two fixed arrays
 	if elem.sym.kind == .string {
