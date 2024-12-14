@@ -153,7 +153,8 @@ pub enum AttributeKind {
 	plain           // [name]
 	string          // ['name']
 	number          // [123]
-	comptime_define // [if name]
+	bool            // [true] || [false]
+	comptime_define // [if name]	
 }
 
 pub struct VAttribute {
