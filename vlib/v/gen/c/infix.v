@@ -216,13 +216,13 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					if left.typ.is_ptr() {
 						g.write('*'.repeat(left.typ.nr_muls()))
 					}
-					if node.left is ast.StructInit {
+					if !g.is_cc_msvc && node.left is ast.StructInit {
 						s := g.styp(left.unaliased)
 						g.write('(${s})')
 					}
 					g.expr(node.left)
 					g.write(', ')
-					if node.right is ast.StructInit {
+					if !g.is_cc_msvc && node.right is ast.StructInit {
 						s := g.styp(right.unaliased)
 						g.write('(${s})')
 					}
@@ -274,8 +274,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 						s := g.styp(left.unaliased)
 						g.write('(${s})')
 					}
-				}
-				if node.left is ast.StructInit {
+				} else if !g.is_cc_msvc && node.left is ast.StructInit {
 					s := g.styp(left.unaliased)
 					g.write('(${s})')
 				}
@@ -286,8 +285,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 						s := g.styp(right.unaliased)
 						g.write('(${s})')
 					}
-				}
-				if node.right is ast.StructInit {
+				} else if !g.is_cc_msvc && node.right is ast.StructInit {
 					s := g.styp(right.unaliased)
 					g.write('(${s})')
 				}

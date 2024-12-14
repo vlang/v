@@ -234,7 +234,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			if temp_var_needed {
 				g.write(tmp_var)
 			} else {
-				if expr is ast.StructInit && sym.kind in [.array_fixed, .alias] {
+				if !g.is_cc_msvc && expr is ast.StructInit && sym.kind in [.array_fixed, .alias] {
 					s := g.styp(expr.typ)
 					g.write('(${s})')
 				}
