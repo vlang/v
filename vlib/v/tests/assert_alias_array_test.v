@@ -1,5 +1,6 @@
 type Arr = [4]u8
 type Arr2 = []u8
+type ArrStr = [4]string
 
 fn test_main() {
 	a := Arr{}
@@ -12,4 +13,6 @@ fn test_main() {
 
 	assert Arr2{} == Arr2{}
 	assert Arr2{} == []u8{}
+
+	assert ArrStr{} == ArrStr{}
 }
