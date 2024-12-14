@@ -263,8 +263,7 @@ mut:
 	/////////
 	// out_parallel []strings.Builder
 	// out_idx      int
-	out_fn_start_pos     []int // for generating multiple .c files, stores locations of all fn positions in `out` string builder
-	out0_start           int
+	out_fn_start_pos     []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
 	static_modifier      string // for parallel_cc
 	static_non_parallel  string // for non -parallel_cc
 	has_reflection       bool   // v.reflection has been imported
@@ -274,7 +273,18 @@ mut:
 	vweb_filter_fn_name  string // vweb__filter or x__vweb__filter, used by $vweb.html() for escaping strings in the templates, depending on which `vweb` import is used
 }
 
-pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (string, string, string, string, []int) {
+@[heap]
+pub struct GenOutput {
+pub:
+	header           string // produced output for out.h (-parallel-cc)
+	res              string // produced output (complete)
+	out_str          string // produced output from g.out
+	out0_str         string // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)	
+	extern_str       string // extern chunk for (-parallel-cc)
+	out_fn_start_pos []int  // fn decl positions
+}
+
+pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenOutput {
 	mut module_built := ''
 	if pref_.build_mode == .build_module {
 		for file in files {
@@ -558,7 +568,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 
 	g.finish()
 
-	mut b := strings.new_builder(g.out.len + 200_000)
+	mut b := strings.new_builder(g.out.len + 600_000)
 	b.write_string(g.hashes())
 	if g.use_segfault_handler || g.pref.is_prof {
 		b.writeln('\n#define V_USE_SIGNAL_H')
@@ -658,14 +668,14 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	mut header := b.last_n(b.len)
 	header = '#ifndef V_HEADER_FILE\n#define V_HEADER_FILE' + header
 	header += '\n#endif\n'
-	g.out0_start = b.len
-	b.writeln('// ZULUL1')
+
+	mut helpers := strings.new_builder(200_000)
 	// Code added here (after the header) goes to out_0.c in parallel cc mode
 	// Previously it went to the header which resulted in duplicated code and more code
 	// to compile for the C compiler
 	if g.anon_fn_definitions.len > 0 {
 		if g.nr_closures > 0 {
-			b.writeln2('\n// V closure helpers', c_closure_fn_helpers(g.pref))
+			helpers.writeln2('\n// V closure helpers', c_closure_fn_helpers(g.pref))
 		}
 		/*
 		b.writeln('\n// V anon functions:')
@@ -679,11 +689,11 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		}
 	}
 	if g.pref.parallel_cc {
-		b.writeln('\n// V global/const non-precomputed definitions:')
+		helpers.writeln('\n// V global/const non-precomputed definitions:')
 		for var_name in g.sorted_global_const_names {
 			if var := g.global_const_defs[var_name] {
 				if !var.def.starts_with('#define') {
-					b.writeln(var.def)
+					helpers.writeln(var.def)
 					if var.def.contains(' = ') {
 						g.extern_out.writeln('extern ${var.def.all_before(' = ')};')
 					} else {
@@ -694,28 +704,32 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		}
 	}
 	if g.auto_str_funcs.len > 0 {
-		b.write_string2('\n// V auto str functions:\n', g.auto_str_funcs.str())
+		helpers.write_string2('\n// V auto str functions:\n', g.auto_str_funcs.str())
 	}
 	if g.auto_fn_definitions.len > 0 {
-		b.writeln('\n// V auto functions2:')
+		helpers.writeln('\n// V auto functions:')
 		for fn_def in g.auto_fn_definitions {
-			b.writeln(fn_def)
+			helpers.writeln(fn_def)
 		}
-		b.writeln('\n// end of V auto functions2:')
 	}
 	if g.dump_funcs.len > 0 {
-		b.write_string2('\n// V dump functions2:\n', g.dump_funcs.str())
+		helpers.write_string2('\n// V dump functions:\n', g.dump_funcs.str())
 	}
 	if g.anon_fn_definitions.len > 0 {
-		b.writeln('\n// V anon functions:')
+		helpers.writeln('\n// V anon functions:')
 		for fn_def in g.anon_fn_definitions {
-			b.writeln(fn_def)
+			helpers.writeln(fn_def)
 		}
 	}
 	// End of out_0.c
-	b.writeln('// ZULUL2')
+
+	if !g.pref.parallel_cc {
+		b.write_string(helpers.str())
+	}
+
 	// The rest of the output
 	out_str := g.out.str()
+	out0_str := helpers.str()
 	extern_out_str := g.extern_out.str()
 	b.write_string(out_str)
 	b.writeln('// THE END.')
@@ -729,9 +743,17 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	}
 	out_fn_start_pos := g.out_fn_start_pos.clone()
 	unsafe { b.free() }
+	unsafe { helpers.free() }
 	unsafe { g.free_builders() }
 
-	return header, res, out_str, extern_out_str, out_fn_start_pos
+	return GenOutput{
+		header:           header
+		res:              res
+		out_str:          out_str
+		out0_str:         out0_str
+		extern_str:       extern_out_str
+		out_fn_start_pos: out_fn_start_pos
+	}
 }
 
 fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {

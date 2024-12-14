@@ -5,41 +5,50 @@ import time
 import v.util
 import v.builder
 import sync.pool
+import v.gen.c
 
-fn parallel_cc(mut b builder.Builder, header string, _res string, out_str string, extern_str string, out_fn_start_pos []int) {
+const cc_compiler = os.getenv_opt('CC') or { 'cc' }
+const cc = os.quoted_path(cc_compiler)
+const cc_ldflags = os.getenv_opt('LDFLAGS') or { '' }
+const cc_cflags = os.getenv_opt('CFLAGS') or { '' }
+
+fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	c_files := util.nr_jobs - 1
 	println('> c_files: ${c_files} | util.nr_jobs: ${util.nr_jobs}')
-	out_h := header.replace_once('static char * v_typeof_interface_IError', 'char * v_typeof_interface_IError')
-	os.write_file('out_str.txt', out_str) or { panic(err) }
-	os.write_file('out_res.txt', _res) or { panic(err) }
+
 	// Write generated stuff in `g.out` before and after the `out_fn_start_pos` locations,
 	// like the `int main()` to "out_0.c" and "out_x.c"
-	x := _res.find_between('// ZULUL1', '// ZULUL2')
-	os.write_file('out_x.txt', x) or { panic(err) }
-	out0 := '//out0\n' +
-		out_str[..out_fn_start_pos[0]].replace_once('static char * v_typeof_interface_IError', 'char * v_typeof_interface_IError')
-	// out_str[..out0_start].replace_once('static char * v_typeof_interface_IError', 'char * v_typeof_interface_IError')
-	// os.write_file('out.h', out_h + '\n//out0:\n' + out0) or { panic(err) }
-	os.write_file('out.h', out_h) or { panic(err) }
-	os.write_file('out_0.c', '#include "out.h"\n' + out0 + '\n//X:\n' + x) or { panic(err) }
-	// os.write_file('out_0.c', out0) or { panic(err) }
-	os.write_file('out_x.c', '#include "out.h"\n' + extern_str + '\n' +
-		out_str[out_fn_start_pos.last()..]) or { panic(err) }
+
+	// out.h
+	os.write_file('out.h', result.header) or { panic(err) }
+
+	// out_0.c
+	out0 := '//out0\n' + result.out_str[..result.out_fn_start_pos[0]]
+	os.write_file('out_0.c', '#include "out.h"\n' + out0 + '\n//X:\n' + result.out0_str) or {
+		panic(err)
+	}
+
+	// out_x.c
+	os.write_file('out_x.c', '#include "out.h"\n\n' + result.extern_str + '\n' +
+		result.out_str[result.out_fn_start_pos.last()..]) or { panic(err) }
 
 	mut prev_fn_pos := 0
 	mut out_files := []os.File{len: c_files}
 	mut fnames := []string{}
+
 	for i in 0 .. c_files {
 		fname := 'out_${i + 1}.c'
 		fnames << fname
 		out_files[i] = os.create(fname) or { panic(err) }
+
+		// Common .c file code
 		out_files[i].writeln('#include "out.h"\n') or { panic(err) }
-		out_files[i].writeln(extern_str) or { panic(err) }
+		out_files[i].writeln(result.extern_str) or { panic(err) }
 	}
-	// out_fn_start_pos.sort()
-	for i, fn_pos in out_fn_start_pos {
-		if prev_fn_pos >= out_str.len || fn_pos >= out_str.len || prev_fn_pos > fn_pos {
-			println('> EXITING i=${i} out of ${out_fn_start_pos.len} prev_pos=${prev_fn_pos} fn_pos=${fn_pos}')
+
+	for i, fn_pos in result.out_fn_start_pos {
+		if prev_fn_pos >= result.out_str.len || fn_pos >= result.out_str.len || prev_fn_pos > fn_pos {
+			println('> EXITING i=${i} out of ${result.out_fn_start_pos.len} prev_pos=${prev_fn_pos} fn_pos=${fn_pos}')
 			break
 		}
 		if i == 0 {
@@ -47,10 +56,8 @@ fn parallel_cc(mut b builder.Builder, header string, _res string, out_str string
 			prev_fn_pos = fn_pos
 			continue
 		}
-		fn_text := out_str[prev_fn_pos..fn_pos]
-		out_files[i % c_files].writeln(fn_text + '\n///////////////////////////\n\n') or {
-			panic(err)
-		}
+		fn_text := result.out_str[prev_fn_pos..fn_pos]
+		out_files[i % c_files].writeln(fn_text) or { panic(err) }
 		prev_fn_pos = fn_pos
 	}
 	for i in 0 .. c_files {
@@ -93,11 +100,3 @@ fn eprint_time(label string, cmd string, res os.Result, sw time.StopWatch) {
 		eprintln(res.output)
 	}
 }
-
-// const cc = '/Users/work5/code/v/thirdparty/tcc/tcc.exe'
-const cc = os.quoted_path(cc_compiler)
-const cc_compiler = os.getenv_opt('CC') or { 'cc' }
-
-const cc_ldflags = os.getenv_opt('LDFLAGS') or { '' }
-
-const cc_cflags = os.getenv_opt('CFLAGS') or { '' }
