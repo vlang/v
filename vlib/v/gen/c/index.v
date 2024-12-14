@@ -348,13 +348,16 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		g.writeln(';')
 		g.past_tmp_var_done(past)
 	} else if node.left is ast.IndexExpr && node.left.is_setter {
-		past := g.past_tmp_var_new()
+		line := g.go_before_last_stmt().trim_space()
+		g.empty_line = true
+		tmp_var := g.new_tmp_var()
 		styp := g.styp(node.left_type)
-		g.write('${styp}* ${past.tmp_var} = &')
+		g.write('${styp}* ${tmp_var} = &')
 		g.expr(node.left)
 		g.writeln(';')
+		g.write(line)
 		g.write('(*')
-		g.past_tmp_var_done(past)
+		g.write(tmp_var)
 		g.write(')')
 	} else {
 		if is_fn_index_call {
