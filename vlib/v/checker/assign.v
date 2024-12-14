@@ -139,6 +139,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('cannot reassign using range expression on the left side of an assignment',
 					left.pos)
 			}
+		} else if mut left is ast.Ident && node.op == .decl_assign {
+			if left.name in c.global_names {
+				c.error('already exists a global variable named `${left.name}`', left.pos)
+			}
 		}
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := ast.void_type
