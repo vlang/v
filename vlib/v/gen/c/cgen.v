@@ -52,7 +52,6 @@ pub struct Gen {
 	timers_should_print bool
 mut:
 	out        strings.Builder
-	out0       strings.Builder // on -parallel-cc is the file where auto fns are placed in
 	extern_out strings.Builder // extern declarations for -parallel-cc
 	// line_nr                   int
 	cheaders                  strings.Builder
@@ -670,12 +669,13 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	header = '#ifndef V_HEADER_FILE\n#define V_HEADER_FILE' + header
 	header += '\n#endif\n'
 
+	mut helpers := strings.new_builder(50_000)
 	// Code added here (after the header) goes to out_0.c in parallel cc mode
 	// Previously it went to the header which resulted in duplicated code and more code
 	// to compile for the C compiler
 	if g.anon_fn_definitions.len > 0 {
 		if g.nr_closures > 0 {
-			g.out0.writeln2('\n// V closure helpers', c_closure_fn_helpers(g.pref))
+			helpers.writeln2('\n// V closure helpers', c_closure_fn_helpers(g.pref))
 		}
 		/*
 		b.writeln('\n// V anon functions:')
@@ -689,11 +689,11 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		}
 	}
 	if g.pref.parallel_cc {
-		g.out0.writeln('\n// V global/const non-precomputed definitions:')
+		helpers.writeln('\n// V global/const non-precomputed definitions:')
 		for var_name in g.sorted_global_const_names {
 			if var := g.global_const_defs[var_name] {
 				if !var.def.starts_with('#define') {
-					g.out0.writeln(var.def)
+					helpers.writeln(var.def)
 					if var.def.contains(' = ') {
 						g.extern_out.writeln('extern ${var.def.all_before(' = ')};')
 					} else {
@@ -704,33 +704,32 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		}
 	}
 	if g.auto_str_funcs.len > 0 {
-		g.out0.write_string2('\n// V auto str functions:\n', g.auto_str_funcs.str())
+		helpers.write_string2('\n// V auto str functions:\n', g.auto_str_funcs.str())
 	}
 	if g.auto_fn_definitions.len > 0 {
-		g.out0.writeln('\n// V auto functions:')
+		helpers.writeln('\n// V auto functions:')
 		for fn_def in g.auto_fn_definitions {
-			g.out0.writeln(fn_def)
+			helpers.writeln(fn_def)
 		}
-		g.out0.writeln('// end of V auto functions')
 	}
 	if g.dump_funcs.len > 0 {
-		g.out0.write_string2('\n// V dump functions:\n', g.dump_funcs.str())
+		helpers.write_string2('\n// V dump functions:\n', g.dump_funcs.str())
 	}
 	if g.anon_fn_definitions.len > 0 {
-		g.out0.writeln('\n// V anon functions:')
+		helpers.writeln('\n// V anon functions:')
 		for fn_def in g.anon_fn_definitions {
-			g.out0.writeln(fn_def)
+			helpers.writeln(fn_def)
 		}
 	}
 	// End of out_0.c
 
 	if !g.pref.parallel_cc {
-		b.write_string(g.out0.str())
+		b.write_string(helpers.str())
 	}
 
 	// The rest of the output
 	out_str := g.out.str()
-	out0_str := g.out0.str()
+	out0_str := helpers.str()
 	extern_out_str := g.extern_out.str()
 	b.write_string(out_str)
 	b.writeln('// THE END.')
