@@ -7,12 +7,12 @@ import v.builder
 import sync.pool
 import v.gen.c
 
-const cc = os.quoted_path(cc_compiler)
 const cc_compiler = os.getenv_opt('CC') or { 'cc' }
+const cc = os.quoted_path(cc_compiler)
 const cc_ldflags = os.getenv_opt('LDFLAGS') or { '' }
 const cc_cflags = os.getenv_opt('CFLAGS') or { '' }
 
-fn parallel_cc(mut b builder.Builder, result c.CGenOutput) {
+fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	c_files := util.nr_jobs - 1
 	println('> c_files: ${c_files} | util.nr_jobs: ${util.nr_jobs}')
 

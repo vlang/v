@@ -275,7 +275,7 @@ mut:
 }
 
 @[heap]
-pub struct CGenOutput {
+pub struct GenOutput {
 pub:
 	header           string // produced output for out.h (-parallel-cc)
 	res              string // produced output (complete)
@@ -285,7 +285,7 @@ pub:
 	out_fn_start_pos []int  // fn decl positions
 }
 
-pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) CGenOutput {
+pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenOutput {
 	mut module_built := ''
 	if pref_.build_mode == .build_module {
 		for file in files {
@@ -746,7 +746,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) CGen
 	unsafe { b.free() }
 	unsafe { g.free_builders() }
 
-	return CGenOutput{
+	return GenOutput{
 		header:           header
 		res:              res
 		out_str:          out_str
