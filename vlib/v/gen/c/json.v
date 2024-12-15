@@ -835,11 +835,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 						dec)
 				}
 				if field.typ.has_flag(.option) {
-					if field_sym.kind == .array_fixed {
-						dec.writeln('\t\tvmemcpy(&${prefix}${op}${c_name(field.name)}, (${field_type}*)${tmp}.data, sizeof(${field_type}));')
-					} else {
-						dec.writeln('\t\tvmemcpy(&${prefix}${op}${c_name(field.name)}, (${field_type}*)${tmp}.data, sizeof(${field_type}));')
-					}
+					dec.writeln('\t\tvmemcpy(&${prefix}${op}${c_name(field.name)}, (${field_type}*)${tmp}.data, sizeof(${field_type}));')
 				} else {
 					if field_sym.kind == .array_fixed {
 						dec.writeln('\t\tvmemcpy(${prefix}${op}${c_name(field.name)},*(${field_type}*)${tmp}.data,sizeof(${field_type}));')
@@ -1022,7 +1018,7 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 		if fixed_array_size > -1 {
 			fixed_array_idx += 'int fixed_array_idx = 0;'
 			array_element_assign += '((${styp}*)res.data)[fixed_array_idx] = val;'
-			fixed_array_idx_increment += 'fixed_array_idx++;'
+			fixed_array_idx_increment += 'fixed_array_idx++; res.state = 0;'
 		} else {
 			array_element_assign += 'array_push${noscan}((array*)&res.data, &val);'
 			res_str += '_option_ok(&(${g.base_type(utyp)}[]) { __new_array${noscan}(0, 0, sizeof(${styp})) }, (${option_name}*)&res, sizeof(${g.base_type(utyp)}));'
