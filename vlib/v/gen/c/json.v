@@ -214,11 +214,6 @@ ${enc_fn_dec} {
 		// cJSON_delete
 		dec.writeln('\t${result_name}_${ret_styp} ret;')
 		dec.writeln('\t_result_ok(&res, (${result_name}*)&ret, sizeof(res));')
-		if utyp.has_flag(.option) {
-			dec.writeln('\tif (res.state != 2) {')
-			dec.writeln('\t\t_option_ok(&res.data, (${option_name}*)&ret.data, sizeof(${g.base_type(utyp)}));')
-			dec.writeln('\t}')
-		}
 		dec.writeln('\treturn ret;\n}')
 		enc.writeln('\treturn o;\n}')
 		g.gowrappers.writeln(dec.str())
@@ -646,7 +641,7 @@ fn (mut g Gen) gen_prim_type_validation(name string, typ ast.Type, tmp string, r
 		return
 	}
 	dec.writeln('if (!(${type_check})) {')
-	dec.writeln('\treturn (${ret_styp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("type mismatch for field \'${name}\', expecting `${g.table.type_to_str(typ)}` type, got: "), tos5(cJSON_PrintUnformatted(jsonroot_${tmp})))), .data = {0} };')
+	dec.writeln('\treturn (${ret_styp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("type mismatch for field \'${name}\', expecting `${g.table.type_to_str(typ)}` type, got: "), json__json_print(jsonroot_${tmp}))), .data = {0} };')
 	dec.writeln('}')
 }
 
@@ -712,11 +707,9 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				}
 				dec.writeln('\t\t_option_none(&(${base_typ}[]) { ${default_init} }, (${option_name}*)&${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
 				dec.writeln('\telse')
-				dec.writeln('\t\t_option_ok(&(${base_typ}[]) {  tos5(cJSON_PrintUnformatted(js_get(root, "${name}"))) }, (${option_name}*)&${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
+				dec.writeln('\t\t_option_ok(&(${base_typ}[]) {  json__json_print(js_get(root, "${name}")) }, (${option_name}*)&${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
 			} else {
-				dec.writeln(
-					'\t${prefix}${op}${c_name(field.name)} = tos5(cJSON_PrintUnformatted(' +
-					'js_get(root, "${name}")));')
+				dec.writeln('\t${prefix}${op}${c_name(field.name)} = json__json_print(js_get(root, "${name}"));')
 			}
 		} else {
 			// Now generate decoders for all field types in this struct
@@ -1076,7 +1069,7 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
-		return (${result_name}_${ret_styp}){.is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
+		return (${result_name}_${ret_styp}){.is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an array: "), json__json_print(root))), .data = {0}};
 	}
 	${res_str}
 	const cJSON *jsval = NULL;
@@ -1145,7 +1138,7 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 	if utyp.has_flag(.option) {
 		return '
 		if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-			return (${result_name}_${ustyp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an object: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
+			return (${result_name}_${ustyp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an object: "), json__json_print(root))), .data = {0}};
 		}
 		_option_ok(&(${g.base_type(utyp)}[]) { new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn}) }, (${option_name}*)&res, sizeof(${g.base_type(utyp)}));
 		cJSON *jsval = NULL;
@@ -1159,7 +1152,7 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 	} else {
 		return '
 		if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-			return (${result_name}_${ustyp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an object: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
+			return (${result_name}_${ustyp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an object: "), json__json_print(root))), .data = {0}};
 		}
 		res = new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn});
 		cJSON *jsval = NULL;
