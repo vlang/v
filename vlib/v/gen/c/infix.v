@@ -216,17 +216,8 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					if left.typ.is_ptr() {
 						g.write('*'.repeat(left.typ.nr_muls()))
 					}
-					if node.left is ast.StructInit && left.unaliased_sym.is_primitive_fixed_array() {
-						s := g.styp(left.unaliased)
-						g.write('(${s})')
-					}
 					g.expr(node.left)
 					g.write(', ')
-					if node.right is ast.StructInit
-						&& right.unaliased_sym.is_primitive_fixed_array() {
-						s := g.styp(right.unaliased)
-						g.write('(${s})')
-					}
 					if right.typ.is_ptr() {
 						g.write('*'.repeat(right.typ.nr_muls()))
 					}
@@ -275,10 +266,6 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 						s := g.styp(left.unaliased)
 						g.write('(${s})')
 					}
-				} else if node.left is ast.StructInit
-					&& left.unaliased_sym.is_primitive_fixed_array() {
-					s := g.styp(left.unaliased)
-					g.write('(${s})')
 				}
 				g.expr(node.left)
 				g.write(', ')
@@ -287,10 +274,6 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 						s := g.styp(right.unaliased)
 						g.write('(${s})')
 					}
-				} else if node.right is ast.StructInit
-					&& right.unaliased_sym.is_primitive_fixed_array() {
-					s := g.styp(right.unaliased)
-					g.write('(${s})')
 				}
 				g.expr(node.right)
 				g.write(')')
