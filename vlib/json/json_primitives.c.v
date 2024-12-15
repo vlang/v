@@ -252,6 +252,9 @@ fn json_parse(s string) &C.cJSON {
 @[markused]
 fn json_print(data &C.cJSON) string {
 	s := C.cJSON_PrintUnformatted(data)
+	if s == unsafe { nil } {
+		return ''
+	}
 	r := unsafe { tos_clone(&u8(s)) }
 	C.cJSON_free(s)
 	return r
@@ -260,6 +263,9 @@ fn json_print(data &C.cJSON) string {
 @[markused]
 fn json_print_pretty(data &C.cJSON) string {
 	s := C.cJSON_Print(data)
+	if s == unsafe { nil } {
+		return ''
+	}
 	r := unsafe { tos_clone(&u8(s)) }
 	C.cJSON_free(s)
 	return r
