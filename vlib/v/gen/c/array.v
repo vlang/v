@@ -131,7 +131,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	}
 	elem_sym := g.table.final_sym(node.elem_type)
 	is_struct := g.inside_array_fixed_struct && elem_sym.kind == .struct
-	if !is_struct {
+	if !is_struct && !node.is_option {
 		g.write('{')
 	}
 	if node.has_val {
@@ -212,6 +212,8 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			})
 			schan_expr := g.out.cut_to(before_chan_expr_pos)
 			g.write_c99_elements_for_array(array_info.size, schan_expr)
+		} else if node.is_option {
+			g.gen_option_error(node.typ, ast.None{})
 		} else {
 			std := g.type_default(node.elem_type)
 			if g.can_use_c99_designators() && std == '0' {
@@ -226,7 +228,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			}
 		}
 	}
-	if !is_struct {
+	if !is_struct && !node.is_option {
 		g.write('}')
 	}
 }

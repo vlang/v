@@ -192,6 +192,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 		has_index:     has_index
 		cap_expr:      cap_expr
 		init_expr:     init_expr
+		is_option:     is_option
 	}
 }
 
