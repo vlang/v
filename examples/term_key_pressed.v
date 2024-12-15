@@ -8,11 +8,11 @@ fn main() {
 	println('Press Ctrl-D or ESC to exit.')
 
 	term.enable_echo(false)
+	mut frame := 0
 	for {
-		print('\r${time.now()} | ')
-		// non-blocking mode, without echo
-		x := term.key_pressed(false, false)
-		if x in [0, 4, 27] {
+		print('\r${time.now()} | frame: ${frame:06} | ')
+		x := term.key_pressed()
+		if x in [4, 27] {
 			// pressing Ctrl-D exits the loop
 			break
 		}
@@ -20,6 +20,7 @@ fn main() {
 			println(x)
 		}
 		time.sleep(16 * time.millisecond)
+		frame++
 	}
 	term.enable_echo(true)
 

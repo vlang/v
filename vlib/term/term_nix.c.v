@@ -229,9 +229,17 @@ pub fn enable_echo(enable bool) {
 	termios.tcsetattr(0, C.TCSANOW, mut state)
 }
 
+// KeyPressedParams contains the optional parameters that you can pass to key_pressed.
+@[params]
+pub struct KeyPressedParams {
+pub mut:
+	blocking bool // whether to wait for a pressed key
+	echo     bool // whether to output the pressed key to stdout
+}
+
 // key_pressed gives back a single character, read from the standard input.
 // It returns -1 on error or no character in non-blocking mode
-pub fn key_pressed(blocking bool, echo bool) int {
+pub fn key_pressed(params KeyPressedParams) int {
 	mut state := termios.Termios{}
 	if termios.tcgetattr(0, mut state) != 0 {
 		return -1
@@ -245,7 +253,7 @@ pub fn key_pressed(blocking bool, echo bool) int {
 	// disable line by line input
 	state.c_lflag &= ~C.ICANON
 
-	if echo {
+	if params.echo {
 		state.c_lflag |= C.ECHO
 	} else {
 		state.c_lflag &= ~C.ECHO
@@ -264,7 +272,7 @@ pub fn key_pressed(blocking bool, echo bool) int {
 				return ret
 			}
 		}
-		if blocking == false {
+		if !params.blocking {
 			// in non-blocking mode, we need to return immediately
 			return -1
 		}
