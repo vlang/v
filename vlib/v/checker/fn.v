@@ -1422,6 +1422,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			if !c.table.sym(c.unwrap_generic(node.args[0].typ)).has_method('str') {
 				c.table.used_features.auto_str = true
 			} else {
+				if node.args[0].typ.has_flag(.option) {
+					c.table.used_features.option_or_result = true
+				}
 				c.table.used_features.print_types[node.args[0].typ.idx()] = true
 			}
 			if node.args[0].typ.is_ptr() {
