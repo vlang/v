@@ -2180,7 +2180,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// Skip "C."
 		name = util.no_dots(name[2..])
 	} else {
-		name = c_fn_name(name)
+		name = if is_selector_call { c_name(name) } else { c_fn_name(name) }
 	}
 	if g.pref.translated || g.file.is_translated || node.is_file_translated {
 		// For `@[c: 'P_TryMove'] fn p_trymove( ... `
