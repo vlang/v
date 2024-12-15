@@ -437,6 +437,10 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('inline bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b) {')
+	if left_type.has_flag(.option) {
+		fn_builder.writeln('\tif (a.state != b.state) return false;')
+		fn_builder.writeln('\tif (a.state == 2 && a.state == b.state) return true;')
+	}
 	if left_typ.sym.is_primitive_fixed_array() {
 		suffix := if left_type.has_flag(.option) { '.data' } else { '[0]' }
 		size_styp := if left_type.has_flag(.option) {
@@ -444,11 +448,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 		} else {
 			arg_styp
 		}
-		fn_builder.write_string('\tif (')
-		if left_type.has_flag(.option) {
-			fn_builder.write_string('(a.state == b.state && a.state == 2) || ')
-		}
-		fn_builder.writeln('!memcmp(&a${suffix}, &b${suffix}, sizeof(${size_styp}))) {')
+		fn_builder.write_string('\tif (!memcmp(&a${suffix}, &b${suffix}, sizeof(${size_styp}))) {')
 		fn_builder.writeln('\t\treturn true;')
 		fn_builder.writeln('\t}')
 	}
