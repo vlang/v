@@ -2,6 +2,7 @@ module term
 
 import os
 import term.termios
+import time
 
 #include <sys/ioctl.h>
 
@@ -214,4 +215,61 @@ pub fn graphics_num_colors() u16 {
 		}
 	}
 	return buf.bytestr().u16()
+}
+
+// enable_echo enable/disable echo input characters
+pub fn enable_echo(enable bool) {
+	mut state := termios.Termios{}
+	termios.tcgetattr(0, mut state)
+	if enable {
+		state.c_lflag |= C.ECHO
+	} else {
+		state.c_lflag &= ~C.ECHO
+	}
+	termios.tcsetattr(0, C.TCSANOW, mut state)
+}
+
+// key_pressed gives back a single character, read from the standard input.
+// It returns -1 on error or no character in non-blocking mode
+pub fn key_pressed(blocking bool, echo bool) int {
+	mut state := termios.Termios{}
+	if termios.tcgetattr(0, mut state) != 0 {
+		return -1
+	}
+	mut old_state := state
+	defer {
+		// restore the old terminal state:
+		termios.tcsetattr(0, C.TCSANOW, mut old_state)
+	}
+
+	// disable line by line input
+	state.c_lflag &= ~C.ICANON
+
+	if echo {
+		state.c_lflag |= C.ECHO
+	} else {
+		state.c_lflag &= ~C.ECHO
+	}
+	termios.tcsetattr(0, C.TCSANOW, mut state)
+
+	mut ret := u8(0)
+
+	for {
+		pending := os.fd_is_pending(0)
+		if pending {
+			r := C.read(0, &ret, 1)
+			if r < 0 {
+				return r
+			} else {
+				return ret
+			}
+		}
+		if blocking == false {
+			// in non-blocking mode, we need to return immediately
+			return -1
+		}
+		time.sleep(1 * time.millisecond)
+	}
+
+	return ret
 }

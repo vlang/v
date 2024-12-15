@@ -1,6 +1,9 @@
 module term
 
 import os
+import time
+
+#include <conio.h>
 
 @[typedef]
 pub struct C.COORD {
@@ -155,4 +158,35 @@ pub fn graphics_num_colors() u16 {
 	// Since this call is related to sixel terminal graphics and Windows Console and Terminal
 	// does not have support for querying the graphics setup this call returns 0
 	return 0
+}
+
+// enable_echo enable/disable echo input characters
+pub fn enable_echo(enable bool) {
+	// no need under windows, use key_pressed func's echo
+}
+
+fn C.kbhit() bool
+fn C.getch() u8
+fn C.getche() u8
+
+// key_pressed gives back a single character, read from the standard input.
+// It returns -1 on error or no character in non-blocking mode
+pub fn key_pressed(blocking bool, echo bool) int {
+	mut ret := u8(0)
+	for {
+		pressed := C.kbhit()
+		if pressed {
+			if echo {
+				return C.getche()
+			} else {
+				return C.getch()
+			}
+		}
+		if blocking == false {
+			// in non-blocking mode, we need to return immediately
+			return -1
+		}
+		time.sleep(1 * time.millisecond)
+	}
+	return ret
 }
