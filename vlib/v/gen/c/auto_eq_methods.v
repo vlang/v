@@ -448,7 +448,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 		} else {
 			arg_styp
 		}
-		fn_builder.write_string('\tif (!memcmp(&a${suffix}, &b${suffix}, sizeof(${size_styp}))) {')
+		fn_builder.writeln('\tif (!memcmp(&a${suffix}, &b${suffix}, sizeof(${size_styp}))) {')
 		fn_builder.writeln('\t\treturn true;')
 		fn_builder.writeln('\t}')
 	}
