@@ -5,14 +5,14 @@ import time
 
 fn main() {
 	unbuffer_stdout()
+	println('Press Ctrl-D or ESC to exit.')
+
 	term.enable_echo(false)
-	defer {
-		term.enable_echo(true)
-	}
 	for {
-		// non-blocking mode, with echo
-		x := term.key_pressed(false, true)
-		if x == 0 {
+		print('\r${time.now()} | ')
+		// non-blocking mode, without echo
+		x := term.key_pressed(false, false)
+		if x in [0, 4, 27] {
 			// pressing Ctrl-D exits the loop
 			break
 		}
@@ -20,7 +20,8 @@ fn main() {
 			println(x)
 		}
 		time.sleep(16 * time.millisecond)
-		print('\r${time.now()} | ')
 	}
+	term.enable_echo(true)
+
 	println('done')
 }
