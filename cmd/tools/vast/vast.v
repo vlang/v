@@ -1645,6 +1645,7 @@ fn (t Tree) array_init(node ast.ArrayInit) &Node {
 	obj.add('pre_cmnts', t.array_node_comment(node.pre_cmnts))
 	obj.add('elem_type_pos', t.pos(node.elem_type_pos))
 	obj.add_terse('is_fixed', t.bool_node(node.is_fixed))
+	obj.add_terse('is_option', t.bool_node(node.is_option))
 	obj.add_terse('has_val', t.bool_node(node.has_val))
 	obj.add_terse('mod', t.string_node(node.mod))
 	obj.add_terse('len_expr', t.expr(node.len_expr))

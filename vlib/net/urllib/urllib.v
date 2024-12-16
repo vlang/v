@@ -436,11 +436,15 @@ fn split(s string, sep u8, cutc bool) (string, string) {
 pub fn parse(rawurl string) !URL {
 	// Cut off #frag
 	u, frag := split(rawurl, `#`, true)
-	mut url := parse_url(u, false) or { return error(error_msg(err_msg_parse, u)) }
+	mut url := parse_url(u, false) or {
+		return error(error_msg(err_msg_parse + '[${err.msg()}]', u))
+	}
 	if frag == '' {
 		return url
 	}
-	f := unescape(frag, .encode_fragment) or { return error(error_msg(err_msg_parse, u)) }
+	f := unescape(frag, .encode_fragment) or {
+		return error(error_msg(err_msg_parse + '[${err.msg()}]', u))
+	}
 	url.fragment = f
 	return url
 }
@@ -503,12 +507,13 @@ fn parse_url(rawurl string, via_request bool) !URL {
 		// RFC 3986, §3.3:
 		// In addition, a URI reference (Section 4.1) may be a relative-path reference,
 		// in which case the first path segment cannot contain a colon (':') character.
-		colon := rest.index(':') or { return error('there should be a : in the URL') }
-		slash := rest.index('/') or { return error('there should be a / in the URL') }
-		if colon >= 0 && (slash < 0 || colon < slash) {
-			// First path segment has colon. Not allowed in relative URL.
-			return error(error_msg('parse_url: first path segment in URL cannot contain colon',
-				''))
+		if colon := rest.index(':') {
+			slash := rest.index('/') or { return error('there should be a / in the URL') }
+			if colon >= 0 && (slash < 0 || colon < slash) {
+				// First path segment has colon. Not allowed in relative URL.
+				return error(error_msg('parse_url: first path segment in URL cannot contain colon',
+					''))
+			}
 		}
 	}
 	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//')
