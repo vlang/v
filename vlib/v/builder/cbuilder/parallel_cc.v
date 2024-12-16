@@ -11,7 +11,7 @@ const cc_compiler = os.getenv_opt('CC') or { 'cc' }
 const cc = os.quoted_path(cc_compiler)
 const cc_ldflags = os.getenv_opt('LDFLAGS') or { '' }
 const cc_cflags = os.getenv_opt('CFLAGS') or { '' }
-const cc_cflags_opt = os.getenv_opt('CFLAGS_OPT') or { '-O3' }
+const cc_cflags_opt = os.getenv_opt('CFLAGS_OPT') or { '' } // '-O3' }
 
 fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	sw_total := time.new_stopwatch()
@@ -76,7 +76,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 		o_postfixes << (i + 1).str()
 	}
 	for postfix in o_postfixes {
-		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} -c -w -o out_${postfix}.o out_${postfix}.c'
+		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${b.str_args} -c -w -o out_${postfix}.o out_${postfix}.c'
 	}
 	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)

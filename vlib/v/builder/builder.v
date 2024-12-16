@@ -43,6 +43,7 @@ pub mut:
 	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
 	crun_cache_keys       []string            // target executable + top level source files; filled in by Builder.should_rebuild
 	executable_exists     bool                // if the executable already exists, don't remove new executable after `v run`
+	str_args              string              // for parallel_cc mode only, to know which cc args to use (like -I etc)
 }
 
 pub fn new_builder(pref_ &pref.Preferences) Builder {
