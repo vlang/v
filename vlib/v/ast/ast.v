@@ -1546,12 +1546,13 @@ pub:
 	ecmnts        [][]Comment // optional iembed comments after each expr
 	pre_cmnts     []Comment
 	is_fixed      bool
+	is_option     bool // true if it was declared as ?[2]Type or ?[]Type
 	has_val       bool // fixed size literal `[expr, expr]!`
 	mod           string
 	has_len       bool
 	has_cap       bool
 	has_init      bool
-	has_index     bool // true if temp variable index is used
+	has_index     bool // true if temp variable index is used	
 pub mut:
 	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	len_expr     Expr   // len: expr

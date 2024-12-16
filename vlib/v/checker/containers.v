@@ -285,6 +285,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			|| c.array_fixed_has_unresolved_size(sym.info as ast.ArrayFixed) {
 			mut size_expr := node.exprs[0]
 			node.typ = c.eval_array_fixed_sizes(mut size_expr, 0, node.elem_type)
+			if node.is_option {
+				node.typ = node.typ.set_flag(.option)
+			}
 			node.elem_type = (c.table.sym(node.typ).info as ast.ArrayFixed).elem_type
 		}
 		if node.has_init {
