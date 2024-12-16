@@ -2364,10 +2364,19 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		// call struct field fn type
 		// TODO: can we use SelectorExpr for all? this dosent really belong here
 		if field := c.table.find_field_with_embeds(left_sym, method_name) {
+			mut field_typ := field.typ
 			if field.typ.has_flag(.option) {
-				c.error('Option function field must be unwrapped first', node.pos)
+				// unwrapped callback (if f.func != none {})
+				if scope_field := node.scope.find_struct_field(node.left.str(), node.left_type,
+					method_name)
+				{
+					field_typ = scope_field.smartcasts.last()
+					node.is_unwrapped_fn_selector = true
+				} else {
+					c.error('Option function field must be unwrapped first', node.pos)
+				}
 			}
-			field_sym := c.table.sym(c.unwrap_generic(field.typ))
+			field_sym := c.table.sym(c.unwrap_generic(field_typ))
 			if field_sym.kind == .function {
 				node.is_method = false
 				node.is_field = true

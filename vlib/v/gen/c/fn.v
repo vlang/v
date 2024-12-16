@@ -2077,10 +2077,19 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if field := g.table.find_field_with_embeds(left_sym, node.name) {
 				fn_typ = field.typ
 			}
+			if node.is_unwrapped_fn_selector {
+				fn_typ = fn_typ.clear_option_and_result()
+			}
 		}
 		if left_sym.kind == .interface || fn_typ.is_ptr() {
 			is_interface_call = true
 			g.write('(*')
+		}
+		if node.is_unwrapped_fn_selector {
+			callback_sym := g.table.final_sym(fn_typ)
+			if callback_sym.info is ast.FnType {
+				g.write('(*(${g.styp(fn_typ)}*)')
+			}
 		}
 		g.expr(node.left)
 		if node.left_type.is_ptr() {
@@ -2386,6 +2395,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				} else {
 					g.write(g.get_ternary_name(name))
 				}
+			}
+			if node.is_unwrapped_fn_selector {
+				g.write('.data)')
 			}
 			if is_interface_call {
 				g.write(')')
