@@ -261,7 +261,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			if is_fn_index_call {
 				if elem_sym.info is ast.FnType {
 					g.write('((')
-					g.write_fn_ptr_decl(&elem_sym.info, '', true)
+					g.write_fn_ptr_decl(&elem_sym.info, '')
 					if is_direct_array_access {
 						g.write(')((${elem_type_str}*)')
 					} else {
@@ -484,7 +484,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			if g.is_fn_index_call {
 				if val_sym.info is ast.FnType {
 					g.write('((')
-					g.write_fn_ptr_decl(&val_sym.info, '', true)
+					g.write_fn_ptr_decl(&val_sym.info, '')
 					g.write(')(*(voidptr*)map_get(')
 					is_fn_last_index_call = true
 					g.is_fn_index_call = false
