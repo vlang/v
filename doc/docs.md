@@ -195,6 +195,7 @@ by using any of the following commands in a terminal:
     * [Performance tuning](#performance-tuning)
     * [Atomics](#atomics)
     * [Global Variables](#global-variables)
+    * [Static Variables](#static-variables)
     * [Cross compilation](#cross-compilation)
     * [Debugging](#debugging)
         * [C Backend binaries Default](#c-backend-binaries-default)
@@ -7327,6 +7328,41 @@ to race conditions. There are several approaches to deal with these:
   In this case data races lead to random numbers in different threads becoming somewhat
   correlated, which is acceptable considering the performance penalty that using
   synchronization primitives would represent.
+
+## Static Variables
+
+V also supports *static variables*, which are like *global variables*, but
+available only *inside* a single unsafe function (you can look at them as
+namespaced globals).
+
+Note: their use is discouraged too, for reasons similar to why globals
+are discouraged. The feature is supported to enable translating existing
+low level C code into V code, using `v translate`.
+
+Note: the function in which you use a static variable, has to be marked
+with @[unsafe]. Also unlike using globals, using static variables, do not
+require you to pass the flag `-enable-globals`, because they can only be
+read/changed inside a single function, which has full control over the
+state stored in them.
+
+Here is a small example of how static variables can be used:
+```v
+@[unsafe]
+fn counter() int {
+	mut static x := 42
+	// Note: x is initialised to 42, just _once_.
+	x++
+	return x
+}
+
+fn f() int {
+	return unsafe { counter() }
+}
+
+println(f()) // prints 43
+println(f()) // prints 44
+println(f()) // prints 45
+```
 
 ## Cross compilation
 
