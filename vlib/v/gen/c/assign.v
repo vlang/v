@@ -1014,8 +1014,8 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 						}
 					}
 				}
-				if left_sym.kind == .function {
-					g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
+				if left_sym.info is ast.FnType {
+					g.write_fn_ptr_decl(&left_sym.info, '_var_${left.pos.pos}')
 					g.writeln(' = ${anon_ctx}${c_name(left.name)};')
 				} else if left_is_auto_deref_var {
 					styp := g.styp(left_typ).trim('*')
