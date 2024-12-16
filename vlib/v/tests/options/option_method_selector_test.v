@@ -4,7 +4,7 @@ mut:
 }
 
 fn callback(foo &Foo) bool {
-	return foo.func? == callback
+	return foo.func != none
 }
 
 type OptFn = fn (&Foo) bool
