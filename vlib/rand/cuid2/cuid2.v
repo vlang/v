@@ -1,4 +1,3 @@
-@[has_globals]
 module cuid2
 
 import rand
@@ -8,22 +7,23 @@ import crypto.sha3
 import math.big
 import os
 
-// A counter that will be used to affect the entropy of
-// successive id generation calls
-__global session_counter = i64(0)
-// A unique string that will be used by the Cuid generator
-// to help prevent collisions when generating Cuids in a
-// distributed system.
-__global fingerprint string
-
-pub const default_id_length = 24
-pub const min_id_length = 2
-pub const max_id_length = 32
+const default_id_length = 24
+const min_id_length = 2
+const max_id_length = 32
 // ~22k hosts before 50% chance of initial counter collision
-pub const max_session_count = 476782367
+const max_session_count = 476782367
 
-@[params]
-pub struct Cuid2Params {
+// Cuid2Generator Secure, collision-resistant ids optimized for horizontal
+// scaling and performance. Next generation UUIDs.
+pub struct Cuid2Generator {
+mut:
+	// A counter that will be used to affect the entropy of
+	// successive id generation calls
+	session_counter i64
+	// A unique string that will be used by the Cuid generator
+	// to help prevent collisions when generating Cuids in a
+	// distributed system.
+	fingerprint string
 pub mut:
 	// A PRNG that has a PRNG interface
 	prng &rand.PRNG = rand.get_current_rng()
@@ -35,28 +35,28 @@ pub mut:
 // Secure, collision-resistant ids optimized for horizontal
 // scaling and performance. Next generation UUIDs.
 // Ported from https://github.com/paralleldrive/cuid2
-pub fn cuid2(param Cuid2Params) string {
-	if param.length < min_id_length || param.length > max_id_length {
-		panic('cuid2 length(${param.length}) out of range: min=${min_id_length}, max=${max_id_length}')
+pub fn (mut g Cuid2Generator) cuid2() string {
+	if g.length < min_id_length || g.length > max_id_length {
+		panic('cuid2 length(${g.length}) out of range: min=${min_id_length}, max=${max_id_length}')
 	}
 
-	mut prng := param.prng
+	mut prng := g.prng
 	first_letter := prng.string(1).to_lower()
 	now := strconv.format_int(time.now().unix_milli(), 36)
-	if session_counter == 0 {
+	if g.session_counter == 0 {
 		// First call, init session counter, fingerprint.
-		session_counter = i64(prng.f64() * max_session_count)
-		fingerprint = create_fingerprint(mut prng, get_environment_key_string())
+		g.session_counter = i64(prng.f64() * max_session_count)
+		g.fingerprint = create_fingerprint(mut prng, get_environment_key_string())
 	}
-	session_counter = session_counter + 1
-	count := strconv.format_int(session_counter, 36)
+	g.session_counter = g.session_counter + 1
+	count := strconv.format_int(g.session_counter, 36)
 
 	// The salt should be long enough to be globally unique
 	// across the full length of the hash. For simplicity,
 	// we use the same length as the intended id output.
-	salt := create_entropy(param.length, mut prng)
-	hash_input := now + salt + count + fingerprint
-	hash_digest := first_letter + hash(hash_input)[1..param.length]
+	salt := create_entropy(g.length, mut prng)
+	hash_input := now + salt + count + g.fingerprint
+	hash_digest := first_letter + hash(hash_input)[1..g.length]
 	return hash_digest
 }
 

@@ -24,30 +24,46 @@ fn check_valid_cuid2(uuid string, length int) bool {
 }
 
 fn test_cuid2() {
-	// default prng(wyrand)
-	uuid2 := cuid2(length: 2)
-	assert check_valid_cuid2(uuid2, 2)
-	uuid24 := cuid2(length: 24)
+	// default prng(wyrand), default id length = 24
+	mut g24 := Cuid2Generator{}
+	uuid24 := g24.cuid2()
 	assert check_valid_cuid2(uuid24, 24)
-	uuid32 := cuid2(length: 32)
+
+	// default prng(wyrand), length = 2
+	mut g2 := Cuid2Generator{
+		length: 2
+	}
+	uuid2 := g2.cuid2()
+	assert check_valid_cuid2(uuid2, 2)
+
+	// default prng(wyrand), length = 32
+	mut g32 := Cuid2Generator{
+		length: 32
+	}
+	uuid32 := g32.cuid2()
 	assert check_valid_cuid2(uuid32, 32)
 
 	// musl prng
-	musl_prng := &musl.MuslRNG{}
-	uuid_musl := cuid2(prng: musl_prng, length: 32)
-	assert check_valid_cuid2(uuid_musl, 32)
+	mut g_musl := Cuid2Generator{
+		prng: &musl.MuslRNG{}
+	}
+	uuid_musl := g_musl.cuid2()
+	assert check_valid_cuid2(uuid_musl, 24)
 
 	// mt19937 prng
-	mt19937_prng := &mt19937.MT19937RNG{}
-	uuid_mt19937 := cuid2(prng: mt19937_prng, length: 32)
-	assert check_valid_cuid2(uuid_mt19937, 32)
+	mut g_mt19937 := Cuid2Generator{
+		prng: &mt19937.MT19937RNG{}
+	}
+	uuid_mt19937 := g_mt19937.cuid2()
+	assert check_valid_cuid2(uuid_mt19937, 24)
 
 	// successive calls
-	uuid_1 := cuid2()
-	uuid_2 := cuid2()
-	uuid_3 := cuid2()
-	uuid_4 := cuid2()
-	uuid_5 := cuid2()
+	mut g := Cuid2Generator{}
+	uuid_1 := g.cuid2()
+	uuid_2 := g.cuid2()
+	uuid_3 := g.cuid2()
+	uuid_4 := g.cuid2()
+	uuid_5 := g.cuid2()
 
 	eprintln(uuid_1)
 	eprintln(uuid_2)
