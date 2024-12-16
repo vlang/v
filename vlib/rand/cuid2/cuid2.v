@@ -14,7 +14,7 @@ __global session_counter = i64(0)
 // A unique string that will be used by the Cuid generator
 // to help prevent collisions when generating Cuids in a
 // distributed system.
-__global fingerprint = ''
+__global fingerprint = string('')
 
 pub const default_id_length = 24
 pub const min_id_length = 2
