@@ -115,6 +115,9 @@ fn test_parse() {
 	assert u.scheme == 'https' && u.hostname() == 'www.mydomain.com' && u.port() == '8080'
 		&& u.path == '/som/url' && u.fragment == 'testfragment' && u.user.username == 'joe'
 		&& u.user.password == 'pass'
+
+	v := urllib.parse('https://vip.ffzy-online4.com/20230205/6094_d2720761/index.m3u8')!.resolve_reference(urllib.parse('2000k/hls/mixed.m3u8')!)!
+	assert v.str() == 'https://vip.ffzy-online4.com/20230205/6094_d2720761/2000k/hls/mixed.m3u8'
 }
 
 fn test_parse_authority() {
