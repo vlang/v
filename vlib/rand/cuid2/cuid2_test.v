@@ -71,11 +71,11 @@ fn test_cuid2() {
 	eprintln(uuid_4)
 	eprintln(uuid_5)
 
-	assert check_valid_cuid2(uuid_1, default_id_length)
-	assert check_valid_cuid2(uuid_2, default_id_length)
-	assert check_valid_cuid2(uuid_3, default_id_length)
-	assert check_valid_cuid2(uuid_4, default_id_length)
-	assert check_valid_cuid2(uuid_5, default_id_length)
+	assert check_valid_cuid2(uuid_1, 24)
+	assert check_valid_cuid2(uuid_2, 24)
+	assert check_valid_cuid2(uuid_3, 24)
+	assert check_valid_cuid2(uuid_4, 24)
+	assert check_valid_cuid2(uuid_5, 24)
 
 	// successive calls to cuid2 in a row should be unique
 	assert uuid_1 != uuid_2
