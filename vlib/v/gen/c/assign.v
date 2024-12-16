@@ -1015,7 +1015,8 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					}
 				}
 				if left_sym.kind == .function {
-					g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
+					g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}',
+						true)
 					g.writeln(' = ${anon_ctx}${c_name(left.name)};')
 				} else if left_is_auto_deref_var {
 					styp := g.styp(left_typ).trim('*')
@@ -1043,7 +1044,8 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					if elem_typ.kind == .function {
 						left_typ := node.left_types[i]
 						left_sym := g.table.sym(left_typ)
-						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
+						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}',
+							true)
 						g.write(' = *(voidptr*)array_get(')
 					} else {
 						styp := g.styp(info.elem_type)
@@ -1068,7 +1070,8 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					if elem_typ.kind == .function {
 						left_typ := node.left_types[i]
 						left_sym := g.table.sym(left_typ)
-						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
+						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}',
+							true)
 						g.write(' = *(voidptr*)')
 					} else {
 						styp := g.styp(info.elem_type)
@@ -1095,7 +1098,8 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					if val_typ.kind == .function {
 						left_type := node.left_types[i]
 						left_sym := g.table.sym(left_type)
-						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
+						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}',
+							true)
 						g.write(' = *(voidptr*)map_get(')
 					} else {
 						g.write('${styp} _var_${left.pos.pos} = *(${styp}*)map_get(')

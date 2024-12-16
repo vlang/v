@@ -1654,7 +1654,7 @@ pub fn (mut g Gen) write_typedef_types() {
 						if elem_sym.info is ast.FnType {
 							pos := g.out.len
 							// pos2:=g.out_parallel[g.out_idx].len
-							g.write_fn_ptr_decl(&elem_sym.info, '')
+							g.write_fn_ptr_decl(&elem_sym.info, '', true)
 							fixed = g.out.cut_to(pos)
 							// g.out_parallel[g.out_idx].cut_to(pos2)
 							mut def_str := 'typedef ${fixed};'
@@ -2172,13 +2172,14 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 	stmt_str := g.go_before_last_stmt().trim_space()
 	mut styp := g.base_type(ret_typ)
 	g.empty_line = true
+	final_expr_sym := g.table.final_sym(expr_typ)
 
-	if g.table.sym(expr_typ).kind == .none {
+	if final_expr_sym.kind == .none {
 		g.write('${g.styp(ret_typ)} ${tmp_var} = ')
 		g.gen_option_error(ret_typ, expr)
 		g.writeln(';')
 	} else if expr is ast.Ident && expr_typ == ast.error_type {
-		g.writeln('${g.styp(ret_typ)} ${tmp_var} = {.state=2, .err = ${expr.name}};')
+		g.writeln('${g.styp(ret_typ)} ${tmp_var} = {.state=2, .err=${expr.name}};')
 	} else {
 		mut simple_assign := false
 		if ret_typ.has_flag(.generic) {
@@ -2225,6 +2226,14 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					g.write('_option_none(&(${styp}[]) { ')
 				} else {
 					g.write('_option_ok(&(${styp}[]) { ')
+					if final_expr_sym.info is ast.FnType {
+						final_ret_sym := g.table.final_sym(ret_typ)
+						if final_ret_sym.info is ast.FnType {
+							g.write('(')
+							g.write_fn_ptr_decl(&final_ret_sym.info, '', false)
+							g.write(')')
+						}
+					}
 				}
 				if ret_typ.nr_muls() > expr_typ.nr_muls() {
 					g.write('&'.repeat(ret_typ.nr_muls() - expr_typ.nr_muls()))
@@ -3192,13 +3201,16 @@ fn cnewlines(s string) string {
 	return s.replace('\n', r'\n')
 }
 
-fn (mut g Gen) write_fn_ptr_decl(func &ast.FnType, ptr_name string) {
+fn (mut g Gen) write_fn_ptr_decl(func &ast.FnType, ptr_name string, with_argname bool) {
 	ret_styp := g.styp(func.func.return_type)
 	g.write('${ret_styp} (*${ptr_name}) (')
 	arg_len := func.func.params.len
 	for i, arg in func.func.params {
 		arg_styp := g.styp(arg.typ)
-		g.write('${arg_styp} ${arg.name}')
+		g.write(arg_styp)
+		if with_argname {
+			g.write(' ${arg.name}')
+		}
 		if i < arg_len - 1 {
 			g.write(', ')
 		}
@@ -6625,7 +6637,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					if len > 0 {
 						if elem_sym.info is ast.FnType {
 							pos := g.out.len
-							g.write_fn_ptr_decl(&elem_sym.info, '')
+							g.write_fn_ptr_decl(&elem_sym.info, '', true)
 							fixed_elem_name = g.out.cut_to(pos)
 							mut def_str := 'typedef ${fixed_elem_name};'
 							def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')

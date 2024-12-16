@@ -133,7 +133,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			fninfo := dump_sym.info as ast.FnType
 			str_dumparg_type = 'DumpFNType_${name}'
 			tdef_pos := g.out.len
-			g.write_fn_ptr_decl(&fninfo, str_dumparg_type)
+			g.write_fn_ptr_decl(&fninfo, str_dumparg_type, true)
 			str_tdef := g.out.after(tdef_pos)
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef ${str_tdef};'] = true
