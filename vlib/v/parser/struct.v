@@ -668,7 +668,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			is_mut = true
 			mut_pos = fields.len
 		}
-		if p.peek_tok.kind in [.lt, .lsbr] && p.peek_tok.is_next_to(p.tok) {
+		if p.peek_tok.kind == .lsbr && p.peek_tok.is_next_to(p.tok) {
 			if generic_types.len == 0 {
 				p.error_with_pos('non-generic interface `${interface_name}` cannot define a generic method',
 					p.peek_tok.pos())

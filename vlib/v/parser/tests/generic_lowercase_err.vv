@@ -1,1 +1,1 @@
-fn lowercase_generic<a>() {}
+fn lowercase_generic[a]() {}
