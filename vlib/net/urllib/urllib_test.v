@@ -102,6 +102,9 @@ fn test_parse() {
 		'foo://example.com:8042/over/there?name=ferret#nose',
 		'ftp://2001:0db8:85a3:0000:0000:8a2e:0370:7334/path/file.txt',
 		'ws://[2001:0db8:85a3:0000:0000:8a2e:0370:7334]:4000',
+		'/2000k/hls/mixed.m3u8',
+		'2000k/hls/mixed.m3u8',
+		'./2000k:hls/mixed.m3u8',
 	]
 	for url in urls {
 		urllib.parse(url)!
@@ -112,6 +115,9 @@ fn test_parse() {
 	assert u.scheme == 'https' && u.hostname() == 'www.mydomain.com' && u.port() == '8080'
 		&& u.path == '/som/url' && u.fragment == 'testfragment' && u.user.username == 'joe'
 		&& u.user.password == 'pass'
+
+	v := urllib.parse('https://vip.ffzy-online4.com/20230205/6094_d2720761/index.m3u8')!.resolve_reference(urllib.parse('2000k/hls/mixed.m3u8')!)!
+	assert v.str() == 'https://vip.ffzy-online4.com/20230205/6094_d2720761/2000k/hls/mixed.m3u8'
 }
 
 fn test_parse_authority() {
