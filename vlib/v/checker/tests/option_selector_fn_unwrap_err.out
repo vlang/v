@@ -1,0 +1,14 @@
+vlib/v/checker/tests/option_selector_fn_unwrap_err.vv:7:17: error: to propagate the call, `callback` must return an Option type
+    5 | 
+    6 | fn callback(foo &Foo) bool {
+    7 |     return foo.func? == callback
+      |                    ^
+    8 | }
+    9 |
+Details: vlib/v/checker/tests/option_selector_fn_unwrap_err.vv:6:23: details: prepend ? before the declaration of the return type of `callback`
+    4 | }
+    5 | 
+    6 | fn callback(foo &Foo) bool {
+      |                       ~~~~
+    7 |     return foo.func? == callback
+    8 | }

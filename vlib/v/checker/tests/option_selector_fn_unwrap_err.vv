@@ -1,0 +1,13 @@
+struct Foo {
+mut:
+	func ?fn (voidptr) bool
+}
+
+fn callback(foo &Foo) bool {
+	return foo.func? == callback
+}
+
+fn main() {
+	t := Foo{}
+	assert callback(&t)
+}
