@@ -18,7 +18,7 @@ fn new_linked_list[T]() &LinkedList[T] {
 	return &LinkedList[T]{}
 }
 
-fn (mut li LinkedList[T]) add[T](data T) {
+fn (mut li LinkedList[T]) add[T](data T) ? {
 	mut node := &Node[T]{data, none, none}
 
 	if li.head == none {

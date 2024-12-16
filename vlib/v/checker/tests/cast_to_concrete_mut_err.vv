@@ -10,7 +10,7 @@ pub fn (mut m Message) update_text(new_text string) {
 	m.text = new_text
 }
 
-pub fn (mut m Message) update_ext_text(new_text string) {
+pub fn (mut m Message) update_ext_text(new_text string) ? {
 	m.m2?.text = new_text
 }
 

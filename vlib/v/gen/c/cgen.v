@@ -7041,11 +7041,15 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl == unsafe { nil } || g.fn_decl.return_type == ast.void_type {
 				g.writeln('\treturn;')
-			} else {
+			} else if g.fn_decl.return_type.clear_option_and_result() == return_type.clear_option_and_result() {
 				styp := g.styp(g.fn_decl.return_type).replace('*', '_ptr')
 				err_obj := g.new_tmp_var()
 				g.writeln2('\t${styp} ${err_obj};', '\tmemcpy(&${err_obj}, &${cvar_name}, sizeof(_option));')
 				g.writeln('\treturn ${err_obj};')
+			} else {
+				g.write('\treturn ')
+				g.gen_option_error(g.fn_decl.return_type, ast.None{})
+				g.writeln(';')
 			}
 		}
 	}

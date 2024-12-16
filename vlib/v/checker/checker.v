@@ -1412,7 +1412,7 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 					node.pos)
 			}
 		}
-		if expr !is ast.Ident && !expr_return_type.has_flag(.option) {
+		if expr !in [ast.Ident, ast.SelectorExpr] && !expr_return_type.has_flag(.option) {
 			if expr_return_type.has_flag(.result) {
 				c.error('propagating a Result like an Option is deprecated, use `foo()!` instead of `foo()?`',
 					node.pos)
@@ -1791,7 +1791,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			}
 		}
 		node.typ = field.typ
-		if node.or_block.kind == .block {
+		if node.or_block.kind != .absent {
 			unwrapped_typ := c.unwrap_generic(node.typ)
 			c.expected_or_type = unwrapped_typ.clear_option_and_result()
 			c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
