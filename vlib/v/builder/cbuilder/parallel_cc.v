@@ -11,10 +11,15 @@ const cc_compiler = os.getenv_opt('CC') or { 'cc' }
 const cc = os.quoted_path(cc_compiler)
 const cc_ldflags = os.getenv_opt('LDFLAGS') or { '' }
 const cc_cflags = os.getenv_opt('CFLAGS') or { '' }
+const cc_cflags_opt = os.getenv_opt('CFLAGS_OPT') or { '-O3' }
 
 fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
-	c_files := util.nr_jobs - 1
-	println('> c_files: ${c_files} | util.nr_jobs: ${util.nr_jobs}')
+	sw_total := time.new_stopwatch()
+	defer {
+		eprint_time(sw_total, @METHOD)
+	}
+	c_files := int_max(1, util.nr_jobs)
+	eprintln('> c_files: ${c_files} | util.nr_jobs: ${util.nr_jobs}')
 
 	// Write generated stuff in `g.out` before and after the `out_fn_start_pos` locations,
 	// like the `int main()` to "out_0.c" and "out_x.c"
@@ -48,7 +53,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 
 	for i, fn_pos in result.out_fn_start_pos {
 		if prev_fn_pos >= result.out_str.len || fn_pos >= result.out_str.len || prev_fn_pos > fn_pos {
-			println('> EXITING i=${i} out of ${result.out_fn_start_pos.len} prev_pos=${prev_fn_pos} fn_pos=${fn_pos}')
+			eprintln('> EXITING i=${i} out of ${result.out_fn_start_pos.len} prev_pos=${prev_fn_pos} fn_pos=${fn_pos}')
 			break
 		}
 		if i == 0 {
@@ -64,39 +69,44 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 		out_files[i].close()
 	}
 
-	sw := time.new_stopwatch()
+	// cc := os.quoted_path(cc_compiler)
 	mut o_postfixes := ['0', 'x']
+	mut cmds := []string{}
 	for i in 0 .. c_files {
 		o_postfixes << (i + 1).str()
 	}
+	for postfix in o_postfixes {
+		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} -c -w -o out_${postfix}.o out_${postfix}.c'
+	}
+	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
-	nr_threads := c_files + 2
-	pp.set_max_jobs(nr_threads)
-	pp.work_on_items(o_postfixes)
-	eprintln('> C compilation on ${nr_threads} threads, working on ${o_postfixes.len} files took: ${sw.elapsed().milliseconds()} ms')
-	// cc := os.quoted_path(cc_compiler)
+	pp.set_max_jobs(util.nr_jobs)
+	pp.work_on_items(cmds)
+	eprintln('> ${sw.elapsed().milliseconds():5} ms, C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands')
 	gc_flag := if b.pref.gc_mode != .no_gc { '-lgc ' } else { '' }
 	obj_files := fnames.map(it.replace('.c', '.o')).join(' ')
 	ld_flags := '${gc_flag}${cc_ldflags}'
 	link_cmd := '${cc} -o ${os.quoted_path(b.pref.out_name)} out_0.o ${obj_files} out_x.o -lpthread ${ld_flags}'
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
-	eprint_time('link_cmd', link_cmd, link_res, sw_link)
+	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)
 }
 
 fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) voidptr {
-	postfix := p.get_item[string](idx)
+	cmd := p.get_item[string](idx)
 	sw := time.new_stopwatch()
-	// cc := os.quoted_path(cc_compiler)
-	cmd := '${cc} ${cc_cflags} -O3 -c -w -o out_${postfix}.o out_${postfix}.c'
 	res := os.execute(cmd)
-	eprint_time('c cmd2', cmd, res, sw)
+	eprint_result_time(sw, 'cc_cmd', cmd, res)
 	return unsafe { nil }
 }
 
-fn eprint_time(label string, cmd string, res os.Result, sw time.StopWatch) {
-	eprintln('> ${label}: `${cmd}` => ${res.exit_code} , ${sw.elapsed().milliseconds()} ms')
+fn eprint_result_time(sw time.StopWatch, label string, cmd string, res os.Result) {
+	eprint_time(sw, '${label}: `${cmd}` => ${res.exit_code}')
 	if res.exit_code != 0 {
 		eprintln(res.output)
 	}
+}
+
+fn eprint_time(sw time.StopWatch, label string) {
+	eprintln('> ${sw.elapsed().milliseconds():5} ms, ${label}')
 }
