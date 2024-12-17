@@ -394,6 +394,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	key_type_str := g.styp(info.key_type)
 	val_type := info.value_type
 	val_sym := g.table.sym(val_type)
+	left_is_shared := node.left_type.has_flag(.shared_f)
 	val_type_str := if val_sym.kind == .function {
 		'voidptr'
 	} else {
@@ -416,7 +417,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.write('(*((${val_type_str}*)map_get((map*)')
 			}
 		}
-		if !left_is_ptr || node.left_type.has_flag(.shared_f) {
+		if !left_is_ptr || left_is_shared {
 			g.write('&')
 		}
 		if node.left is ast.IndexExpr {
@@ -426,7 +427,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		} else {
 			g.expr(node.left)
 		}
-		if node.left_type.has_flag(.shared_f) {
+		if left_is_shared {
 			g.write('->val')
 		}
 		g.write(', &(${key_type_str}[]){')
@@ -453,11 +454,11 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		} else {
 			g.write('(*(${val_type_str}*)map_get((map*)')
 		}
-		if !left_is_ptr || node.left_type.has_flag(.shared_f) {
+		if !left_is_ptr || left_is_shared {
 			g.write('&')
 		}
 		g.expr(node.left)
-		if node.left_type.has_flag(.shared_f) {
+		if left_is_shared {
 			g.write('->val')
 		}
 		g.write(', &(${key_type_str}[]){')
@@ -494,14 +495,14 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.write('(*(${val_type_str}*)map_get(')
 			}
 		}
-		if !left_is_ptr || node.left_type.has_flag(.shared_f) {
+		if !left_is_ptr || left_is_shared {
 			g.write('ADDR(map, ')
 			g.expr(node.left)
 		} else {
 			g.write('(')
 			g.expr(node.left)
 		}
-		if node.left_type.has_flag(.shared_f) {
+		if left_is_shared {
 			if left_is_ptr {
 				g.write('->val')
 			} else {
