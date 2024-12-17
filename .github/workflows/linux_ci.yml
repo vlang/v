@@ -177,4 +177,3 @@ jobs:
         run: v run ci/linux_ci.vsh build_modules_clang
       - name: native machine code generation
         run: v run ci/linux_ci.vsh native_machine_code_generation_clang
-
