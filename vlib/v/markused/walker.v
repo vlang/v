@@ -53,12 +53,11 @@ pub fn (mut w Walker) mark_builtin_map_method_as_used(method_name string) {
 pub fn (mut w Walker) mark_builtin_type_method_as_used(k string, rk string) {
 	if mut cfn := w.all_fns[k] {
 		w.fn_decl(mut cfn)
-	}
-	if mut cfn := w.all_fns[rk] {
+		w.mark_fn_as_used(k)
+	} else if mut cfn := w.all_fns[rk] {
 		w.fn_decl(mut cfn)
+		w.mark_fn_as_used(rk)
 	}
-	w.mark_fn_as_used(k)
-	w.mark_fn_as_used(rk)
 }
 
 pub fn (mut w Walker) mark_const_as_used(ckey string) {
@@ -721,6 +720,7 @@ pub fn (mut w Walker) const_fields(cfields []ast.ConstField) {
 	}
 }
 
+@[inline]
 pub fn (mut w Walker) or_block(node ast.OrExpr) {
 	if node.kind == .block {
 		w.stmts(node.stmts)
