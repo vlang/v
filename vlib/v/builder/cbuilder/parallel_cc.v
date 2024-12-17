@@ -82,7 +82,9 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 		compile_args = compile_args.filter(it != '-bt25')
 		linker_args = linker_args.filter(it != '-bt25')
 	}
-	scompile_args := compile_args.filter(it != '-flto').join(' ') // always remove link time optimization, it slows down linking 10x
+	compile_args = compile_args.filter(it != '-flto') // always remove link time optimization, it slows down linking 10x
+	scompile_args := compile_args.join(' ')
+	slinker_compile_args := compile_args.filter(it != '-O3').join(' ')
 	slinker_args := linker_args.join(' ')
 
 	mut o_postfixes := ['0', 'x']
@@ -100,7 +102,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	eprint_time(sw, 'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands')
 
 	obj_files := fnames.map(it.replace('.c', '.o')).join(' ')
-	link_cmd := '${cc} ${scompile_args} -o ${os.quoted_path(b.pref.out_name)} ${tmp_dir}/out_0.o ${obj_files} ${tmp_dir}/out_x.o ${slinker_args} ${cc_ldflags}'
+	link_cmd := '${cc} ${slinker_compile_args} -o ${os.quoted_path(b.pref.out_name)} ${tmp_dir}/out_0.o ${obj_files} ${tmp_dir}/out_x.o ${slinker_args} ${cc_ldflags}'
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)
