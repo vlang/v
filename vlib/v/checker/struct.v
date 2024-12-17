@@ -6,7 +6,6 @@ import v.ast
 import v.util
 import v.token
 
-@[direct_array_access]
 fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	util.timing_start(@METHOD)
 	defer {

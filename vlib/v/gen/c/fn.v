@@ -2577,7 +2577,6 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 	// g.doing_autofree_tmp = false
 }
 
-@[direct_array_access]
 fn (mut g Gen) call_args(node ast.CallExpr) {
 	g.expected_fixed_arr = true
 	defer {
