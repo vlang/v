@@ -25,7 +25,7 @@ fn main() {
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
 	mut args := os.args[1..].filter(it != 'self')
-	if args.len == 0 || ('-cc' !in args && '-prod' !in args) {
+	if args.len == 0 || ('-cc' !in args && '-prod' !in args && '-parallel-cc' !in args) {
 		// compiling by default, i.e. `v self`:
 		uos := os.user_os()
 		uname := os.uname()

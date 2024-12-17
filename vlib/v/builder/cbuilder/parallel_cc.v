@@ -14,6 +14,7 @@ const cc_cflags = os.getenv_opt('CFLAGS') or { '' }
 const cc_cflags_opt = os.getenv_opt('CFLAGS_OPT') or { '' } // '-O3' }
 
 fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
+	tmp_dir := os.vtmp_dir()
 	sw_total := time.new_stopwatch()
 	defer {
 		eprint_time(sw_total, @METHOD)
@@ -25,16 +26,16 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	// like the `int main()` to "out_0.c" and "out_x.c"
 
 	// out.h
-	os.write_file('out.h', result.header) or { panic(err) }
+	os.write_file('${tmp_dir}/out.h', result.header) or { panic(err) }
 
 	// out_0.c
 	out0 := '//out0\n' + result.out_str[..result.out_fn_start_pos[0]]
-	os.write_file('out_0.c', '#include "out.h"\n' + out0 + '\n//X:\n' + result.out0_str) or {
+	os.write_file('${tmp_dir}/out_0.c', '#include "out.h"\n' + out0 + '\n//X:\n' + result.out0_str) or {
 		panic(err)
 	}
 
 	// out_x.c
-	os.write_file('out_x.c', '#include "out.h"\n\n' + result.extern_str + '\n' +
+	os.write_file('${tmp_dir}/out_x.c', '#include "out.h"\n\n' + result.extern_str + '\n' +
 		result.out_str[result.out_fn_start_pos.last()..]) or { panic(err) }
 
 	mut prev_fn_pos := 0
@@ -42,7 +43,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	mut fnames := []string{}
 
 	for i in 0 .. c_files {
-		fname := 'out_${i + 1}.c'
+		fname := '${tmp_dir}/out_${i + 1}.c'
 		fnames << fname
 		out_files[i] = os.create(fname) or { panic(err) }
 
@@ -77,7 +78,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	}
 	str_args := b.str_args.replace('-flto', '') // remove link time optimization, slows down linking 10x
 	for postfix in o_postfixes {
-		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${str_args} -c -w -o out_${postfix}.o out_${postfix}.c'
+		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${str_args} -c -w -o ${tmp_dir}/out_${postfix}.o ${tmp_dir}/out_${postfix}.c'
 	}
 	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
@@ -87,7 +88,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	gc_flag := if b.pref.gc_mode != .no_gc { '-lgc ' } else { '' }
 	obj_files := fnames.map(it.replace('.c', '.o')).join(' ')
 	ld_flags := '${gc_flag}${cc_ldflags}'
-	link_cmd := '${cc} -o ${os.quoted_path(b.pref.out_name)} out_0.o ${obj_files} out_x.o -lpthread ${ld_flags}'
+	link_cmd := '${cc} -o ${os.quoted_path(b.pref.out_name)} ${tmp_dir}/out_0.o ${obj_files} ${tmp_dir}/out_x.o -lpthread ${ld_flags}'
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)
