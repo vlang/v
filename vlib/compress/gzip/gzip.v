@@ -69,6 +69,7 @@ pub mut:
 }
 
 // validate validates the header and returns its details if valid
+@[direct_array_access]
 pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 	if data.len < min_header_length {
 		return error('data is too short, not gzip compressed?')
