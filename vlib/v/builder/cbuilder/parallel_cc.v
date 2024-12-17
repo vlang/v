@@ -75,8 +75,9 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	for i in 0 .. c_files {
 		o_postfixes << (i + 1).str()
 	}
+	str_args := b.str_args.replace('-flto', '') // remove link time optimization, slows down linking 10x
 	for postfix in o_postfixes {
-		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${b.str_args} -c -w -o out_${postfix}.o out_${postfix}.c'
+		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${str_args} -c -w -o out_${postfix}.o out_${postfix}.c'
 	}
 	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
