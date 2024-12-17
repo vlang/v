@@ -235,6 +235,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		$if windows {
 			have_flto = false
 		}
+		if v.pref.parallel_cc {
+			have_flto = false
+		}
 		if have_flto {
 			optimization_options << '-flto'
 		}
@@ -252,7 +255,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				debug_options << '-no-pie'
 			}
 		}
-		optimization_options = ['-O3', '-flto']
+		optimization_options = ['-O3']
+		mut have_flto := true
+		if v.pref.parallel_cc {
+			have_flto = false
+		}
+		if have_flto {
+			optimization_options << '-flto'
+		}
 	}
 	if ccoptions.cc == .icc {
 		if ccoptions.debug_mode {
@@ -1034,7 +1044,14 @@ fn (mut c Builder) cc_windows_cross() {
 	mut debug_options := []string{}
 	if c.pref.is_prod {
 		if c.pref.ccompiler != 'msvc' {
-			optimization_options = ['-O3', '-flto']
+			optimization_options = ['-O3']
+			mut have_flto := true
+			if c.pref.parallel_cc {
+				have_flto = false
+			}
+			if have_flto {
+				optimization_options << '-flto'
+			}
 		}
 	}
 	if c.pref.is_debug {
