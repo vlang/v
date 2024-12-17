@@ -420,7 +420,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 
 		// Helpers for decoding
 		g.get_sumtype_casting_fn(variant, typ)
-		g.definitions.writeln('/*KEK*/static inline ${sym.cname} ${variant_typ}_to_sumtype_${sym.cname}(${variant_typ}* x);')
+		g.definitions.writeln('static inline ${sym.cname} ${variant_typ}_to_sumtype_${sym.cname}(${variant_typ}* x);')
 
 		// ENCODING
 		enc.writeln('\tif (${var_data}${field_op}_typ == ${int(variant.idx())}) {')
@@ -455,6 +455,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "value", ${js_enc_name('i64')}(${var_data}${field_op}_${variant_typ}->__v_unix));')
 			} else {
+				enc.writeln('\t\tcJSON_free(o);')
 				enc.writeln('\t\to = ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ});')
 				if variant_sym.kind == .array {
 					enc.writeln('\t\tif (cJSON_IsObject(o->child)) {')
