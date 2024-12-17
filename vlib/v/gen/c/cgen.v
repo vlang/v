@@ -6894,12 +6894,12 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					mut is_array_fixed := false
 					mut return_wrapped := false
 					if is_option {
+						return_is_option := return_type.has_option_or_result()
 						is_array_fixed = g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
 							if g.inside_return && !g.inside_struct_init
 								&& expr_stmt.expr is ast.CallExpr&& (expr_stmt.expr as ast.CallExpr).return_type.has_option_or_result()
-								&& g.cur_fn.return_type.has_option_or_result()
-								&& return_type.has_option_or_result()
+								&& g.cur_fn.return_type.has_option_or_result() && return_is_option
 								&& expr_stmt.expr.or_block.kind == .absent {
 								g.write('${cvar_name} = ')
 								return_wrapped = true
@@ -6919,7 +6919,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					}
 					// return expr or { fn_returns_option() }
 					if is_option && g.inside_return && expr_stmt.expr is ast.CallExpr
-						&& return_type.has_option_or_result() {
+						&& return_is_option {
 						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type)
 					} else {
 						old_inside_opt_data := g.inside_opt_data
