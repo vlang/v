@@ -6893,8 +6893,8 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 				} else {
 					mut is_array_fixed := false
 					mut return_wrapped := false
+					mut return_is_option := is_option && return_type.has_option_or_result()
 					if is_option {
-						return_is_option := return_type.has_option_or_result()
 						is_array_fixed = g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
 							if g.inside_return && !g.inside_struct_init
