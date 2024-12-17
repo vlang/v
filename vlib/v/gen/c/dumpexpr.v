@@ -129,11 +129,10 @@ fn (mut g Gen) dump_expr_definitions() {
 			str_dumparg_type += g.cc_type(typ, true) + ptr_asterisk
 		}
 		mut is_fixed_arr_ret := false
-		if dump_sym.kind == .function && !is_option {
-			fninfo := dump_sym.info as ast.FnType
+		if dump_sym.info is ast.FnType && !is_option {
 			str_dumparg_type = 'DumpFNType_${name}'
 			tdef_pos := g.out.len
-			g.write_fn_ptr_decl(&fninfo, str_dumparg_type, true)
+			g.write_fn_ptr_decl(&dump_sym.info, str_dumparg_type)
 			str_tdef := g.out.after(tdef_pos)
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef ${str_tdef};'] = true

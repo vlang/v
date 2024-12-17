@@ -1654,7 +1654,7 @@ pub fn (mut g Gen) write_typedef_types() {
 						if elem_sym.info is ast.FnType {
 							pos := g.out.len
 							// pos2:=g.out_parallel[g.out_idx].len
-							g.write_fn_ptr_decl(&elem_sym.info, '', true)
+							g.write_fn_ptr_decl(&elem_sym.info, '')
 							fixed = g.out.cut_to(pos)
 							// g.out_parallel[g.out_idx].cut_to(pos2)
 							mut def_str := 'typedef ${fixed};'
@@ -2230,7 +2230,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 						final_ret_sym := g.table.final_sym(ret_typ)
 						if final_ret_sym.info is ast.FnType {
 							g.write('(')
-							g.write_fn_ptr_decl(&final_ret_sym.info, '', false)
+							g.write_fn_ptr_decl(&final_ret_sym.info, '')
 							g.write(')')
 						}
 					}
@@ -3201,16 +3201,14 @@ fn cnewlines(s string) string {
 	return s.replace('\n', r'\n')
 }
 
-fn (mut g Gen) write_fn_ptr_decl(func &ast.FnType, ptr_name string, with_argname bool) {
+fn (mut g Gen) write_fn_ptr_decl(func &ast.FnType, ptr_name string) {
 	ret_styp := g.styp(func.func.return_type)
 	g.write('${ret_styp} (*${ptr_name}) (')
 	arg_len := func.func.params.len
 	for i, arg in func.func.params {
 		arg_styp := g.styp(arg.typ)
 		g.write(arg_styp)
-		if with_argname {
-			g.write(' ${arg.name}')
-		}
+		g.write(' ${arg.name}')
 		if i < arg_len - 1 {
 			g.write(', ')
 		}
@@ -6637,7 +6635,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					if len > 0 {
 						if elem_sym.info is ast.FnType {
 							pos := g.out.len
-							g.write_fn_ptr_decl(&elem_sym.info, '', true)
+							g.write_fn_ptr_decl(&elem_sym.info, '')
 							fixed_elem_name = g.out.cut_to(pos)
 							mut def_str := 'typedef ${fixed_elem_name};'
 							def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
