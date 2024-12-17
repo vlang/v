@@ -8,7 +8,6 @@ import sync.pool
 import v.gen.c
 
 const cc_compiler = os.getenv_opt('CC') or { 'cc' }
-const cc = os.quoted_path(cc_compiler)
 const cc_ldflags = os.getenv_opt('LDFLAGS') or { '' }
 const cc_cflags = os.getenv_opt('CFLAGS') or { '' }
 const cc_cflags_opt = os.getenv_opt('CFLAGS_OPT') or { '' } // '-O3' }
@@ -70,25 +69,32 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 		out_files[i].close()
 	}
 
-	// cc := os.quoted_path(cc_compiler)
+	mut cc_path := cc_compiler
+	if b.pref.ccompiler != '' {
+		cc_path = b.pref.ccompiler
+	}
+	cc := os.quoted_path(cc_path)
+
 	mut o_postfixes := ['0', 'x']
 	mut cmds := []string{}
 	for i in 0 .. c_files {
 		o_postfixes << (i + 1).str()
 	}
-	str_args := b.str_args.replace('-flto', '') // remove link time optimization, slows down linking 10x
+	gc_flag := if b.pref.gc_mode != .no_gc { '-lgc ' } else { '' }
+	bt_flag := if b.ccoptions.cc == .tcc { '-bt25' } else { '' }
+	scompile_args := b.get_compile_args().filter(it != '-flto').join(' ') // remove link time optimization, slows down linking 10x
+	slinker_args := b.get_linker_args().join(' ')
 	for postfix in o_postfixes {
-		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${str_args} -c -w -o ${tmp_dir}/out_${postfix}.o ${tmp_dir}/out_${postfix}.c'
+		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${scompile_args} -w -o ${tmp_dir}/out_${postfix}.o -c ${tmp_dir}/out_${postfix}.c'
 	}
 	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
 	pp.set_max_jobs(util.nr_jobs)
 	pp.work_on_items(cmds)
 	eprintln('> ${sw.elapsed().milliseconds():5} ms, C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands')
-	gc_flag := if b.pref.gc_mode != .no_gc { '-lgc ' } else { '' }
 	obj_files := fnames.map(it.replace('.c', '.o')).join(' ')
-	ld_flags := '${gc_flag}${cc_ldflags}'
-	link_cmd := '${cc} -o ${os.quoted_path(b.pref.out_name)} ${tmp_dir}/out_0.o ${obj_files} ${tmp_dir}/out_x.o -lpthread ${ld_flags}'
+	ld_flags := '${gc_flag}${cc_ldflags}${bt_flag}'
+	link_cmd := '${cc} ${scompile_args} -o ${os.quoted_path(b.pref.out_name)} ${tmp_dir}/out_0.o ${obj_files} ${tmp_dir}/out_x.o ${slinker_args} ${ld_flags}'
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)

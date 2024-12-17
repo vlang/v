@@ -100,7 +100,7 @@ fn (mut v Builder) show_cc(cmd string, response_file string, response_file_conte
 	}
 }
 
-enum CC {
+pub enum CC {
 	tcc
 	gcc
 	icc
@@ -109,8 +109,8 @@ enum CC {
 	unknown
 }
 
-struct CcompilerOptions {
-mut:
+pub struct CcompilerOptions {
+pub mut:
 	guessed_compiler string
 	shared_postfix   string // .so, .dll
 
@@ -462,6 +462,17 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 
 fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	mut all := []string{}
+	all << v.only_compile_args(ccoptions)
+	all << v.only_linker_args(ccoptions)
+	return all
+}
+
+pub fn (v &Builder) get_compile_args() []string {
+	return v.only_compile_args(v.ccoptions)
+}
+
+fn (v &Builder) only_compile_args(ccoptions CcompilerOptions) []string {
+	mut all := []string{}
 	all << ccoptions.env_cflags
 	if v.pref.is_cstrict {
 		all << ccoptions.wargs
@@ -488,6 +499,15 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args
+	return all
+}
+
+pub fn (v &Builder) get_linker_args() []string {
+	return v.only_linker_args(v.ccoptions)
+}
+
+fn (v &Builder) only_linker_args(ccoptions CcompilerOptions) []string {
+	mut all := []string{}
 	// in `build-mode`, we do not need -lxyz flags, since we are
 	// building an (.o) object file, that will be linked later.
 	if v.pref.build_mode != .build_module {
