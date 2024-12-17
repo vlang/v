@@ -492,11 +492,21 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.write(' = ')
 				g.expr_with_opt(val, val_type, var_type)
 			} else if unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr {
-				g.write('memcpy(')
-				g.expr(left)
-				g.write(', ')
-				g.expr(val)
-				g.writeln(', sizeof(${g.styp(var_type)}));')
+				if var_type.has_flag(.option) {
+					g.expr(left)
+					g.writeln('.state = 0;')
+					g.write('memcpy(')
+					g.expr(left)
+					g.write('.data, ')
+					g.expr(val)
+					g.writeln(', sizeof(${g.styp(var_type.clear_flag(.option))}));')
+				} else {
+					g.write('memcpy(')
+					g.expr(left)
+					g.write(', ')
+					g.expr(val)
+					g.writeln(', sizeof(${g.styp(var_type)}));')
+				}
 			} else {
 				mut v_var := ''
 				arr_typ := styp.trim('*')
