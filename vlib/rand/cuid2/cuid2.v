@@ -31,6 +31,29 @@ pub mut:
 	length int = default_id_length
 }
 
+@[params]
+pub struct Cuid2Param {
+pub mut:
+	// A PRNG that has a PRNG interface
+	prng &rand.PRNG = rand.get_current_rng()
+	// Length of the generated Cuid, min = 2, max = 32, default = 24
+	length int = default_id_length
+}
+
+// new Create a cuid2 UUID generator.
+pub fn new(param Cuid2Param) Cuid2Generator {
+	return Cuid2Generator{
+		prng:   param.prng
+		length: param.length
+	}
+}
+
+// generate Generate a new cuid2 UUID.
+// It is an alias to function `cuid2()`
+pub fn (mut g Cuid2Generator) generate() string {
+	return g.cuid2()
+}
+
 // cuid2 generates a random (cuid2) UUID.
 // Secure, collision-resistant ids optimized for horizontal
 // scaling and performance. Next generation UUIDs.
@@ -58,6 +81,33 @@ pub fn (mut g Cuid2Generator) cuid2() string {
 	hash_input := now + salt + count + g.fingerprint
 	hash_digest := first_letter + hash(hash_input)[1..g.length]
 	return hash_digest
+}
+
+// next Generate a new cuid2 UUID.
+// It is an alias to function `cuid2()`
+pub fn (mut g Cuid2Generator) next() ?string {
+	return g.cuid2()
+}
+
+// is_cuid Checks whether a given `cuid` has a valid form and length
+pub fn is_cuid(cuid string) bool {
+	if cuid.len < min_id_length || cuid.len > max_id_length {
+		return false
+	}
+
+	// first letter should in [a..z]
+	if cuid[0] < u8(`a`) || cuid[0] > u8(`z`) {
+		return false
+	}
+
+	// other letter should in [a..z,0..9]
+	for letter in cuid[1..] {
+		if (letter >= u8(`a`) && letter <= u8(`z`)) || (letter >= u8(`0`) && letter <= u8(`9`)) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 fn create_entropy(length int, mut prng rand.PRNG) string {

@@ -3,89 +3,62 @@ module cuid2
 import rand.musl
 import rand.mt19937
 
-fn check_valid_cuid2(uuid string, length int) bool {
-	if uuid.len != length || uuid.len < min_id_length || uuid.len > max_id_length {
-		return false
-	}
-
-	// first letter should in [a..z]
-	if uuid[0] < u8(`a`) || uuid[0] > u8(`z`) {
-		return false
-	}
-
-	// other letter should in [a..z,0..9]
-	for letter in uuid[1..] {
-		if (letter >= u8(`a`) && uuid[0] <= u8(`z`)) || (letter >= u8(`0`) && letter <= u8(`9`)) {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
 fn test_cuid2() {
 	// default prng(wyrand), default id length = 24
-	mut g24 := Cuid2Generator{}
-	uuid24 := g24.cuid2()
-	assert check_valid_cuid2(uuid24, 24)
+	mut g24 := new()
+	uuid24 := g24.generate()
+	assert uuid24.len == 24
+	assert is_cuid(uuid24)
 
-	// default prng(wyrand), length = 2
-	mut g2 := Cuid2Generator{
-		length: 2
-	}
-	uuid2 := g2.cuid2()
-	assert check_valid_cuid2(uuid2, 2)
+	// default prng(wyrand), id length = 2
+	mut g2 := new(length: 2)
+	uuid2 := g2.generate()
+	assert uuid2.len == 2
+	assert is_cuid(uuid2)
 
-	// default prng(wyrand), length = 32
-	mut g32 := Cuid2Generator{
-		length: 32
-	}
-	uuid32 := g32.cuid2()
-	assert check_valid_cuid2(uuid32, 32)
+	// default prng(wyrand), id length = 32
+	mut g32 := new(length: 32)
+	uuid32 := g32.generate()
+	assert uuid32.len == 32
+	assert is_cuid(uuid32)
 
-	// musl prng
-	mut g_musl := Cuid2Generator{
-		prng: &musl.MuslRNG{}
-	}
-	uuid_musl := g_musl.cuid2()
-	assert check_valid_cuid2(uuid_musl, 24)
+	// musl prng, id length = 28
+	mut g_musl := new(prng: &musl.MuslRNG{}, length: 28)
+	uuid_musl := g_musl.generate()
+	assert uuid_musl.len == 28
+	assert is_cuid(uuid_musl)
 
-	// mt19937 prng
-	mut g_mt19937 := Cuid2Generator{
-		prng: &mt19937.MT19937RNG{}
-	}
-	uuid_mt19937 := g_mt19937.cuid2()
-	assert check_valid_cuid2(uuid_mt19937, 24)
+	// mt19937 prng, default id length = 24
+	mut g_mt19937 := new(prng: &mt19937.MT19937RNG{})
+	uuid_mt19937 := g_mt19937.generate()
+	assert uuid_mt19937.len == 24
+	assert is_cuid(uuid_mt19937)
 
 	// successive calls
-	mut g := Cuid2Generator{}
-	uuid_1 := g.cuid2()
-	uuid_2 := g.cuid2()
-	uuid_3 := g.cuid2()
-	uuid_4 := g.cuid2()
-	uuid_5 := g.cuid2()
+	// default prng(wyrand), default id length = 24
+	mut g := new()
+	mut ids := []string{}
+	for id in g {
+		eprintln(id)
+		// id length should be default length(24)
+		assert id.len == 24
+		assert is_cuid(id)
 
-	eprintln(uuid_1)
-	eprintln(uuid_2)
-	eprintln(uuid_3)
-	eprintln(uuid_4)
-	eprintln(uuid_5)
+		ids << id
+		if ids.len == 5 {
+			break
+		}
+	}
 
-	assert check_valid_cuid2(uuid_1, 24)
-	assert check_valid_cuid2(uuid_2, 24)
-	assert check_valid_cuid2(uuid_3, 24)
-	assert check_valid_cuid2(uuid_4, 24)
-	assert check_valid_cuid2(uuid_5, 24)
-
-	// successive calls to cuid2 in a row should be unique
-	assert uuid_1 != uuid_2
-	assert uuid_1 != uuid_3
-	assert uuid_1 != uuid_4
-	assert uuid_1 != uuid_5
-	assert uuid_2 != uuid_3
-	assert uuid_2 != uuid_4
-	assert uuid_2 != uuid_5
-	assert uuid_3 != uuid_4
-	assert uuid_3 != uuid_5
-	assert uuid_4 != uuid_5
+	// successive calls to g.next() in a row should be unique
+	assert ids[0] != ids[1]
+	assert ids[0] != ids[2]
+	assert ids[0] != ids[3]
+	assert ids[0] != ids[4]
+	assert ids[1] != ids[2]
+	assert ids[1] != ids[3]
+	assert ids[1] != ids[4]
+	assert ids[2] != ids[3]
+	assert ids[2] != ids[4]
+	assert ids[3] != ids[4]
 }
