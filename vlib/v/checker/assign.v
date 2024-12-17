@@ -141,7 +141,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		} else if mut left is ast.Ident && node.op == .decl_assign {
 			if left.name in c.global_names {
-				c.error('already exists a global variable named `${left.name}`', left.pos)
+				c.error('the global variable named `${left.name}` already exists', left.pos)
 			}
 		}
 		is_blank_ident := left.is_blank_ident()
