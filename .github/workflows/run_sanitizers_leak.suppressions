@@ -3,3 +3,7 @@ leak:mbedtls_ssl_setup
 
 # sqlite tests
 leak:*sqlite*
+
+# v
+leak:v__*
+leak:os__*
