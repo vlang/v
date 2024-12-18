@@ -22,7 +22,7 @@ struct TrData {
 // m['en']['house'] == 'House'
 fn load_tr_map() map[string]map[string]string {
 	// Find all translation files to figure out how many languages we have and to load the translation map
-	files := os.walk_ext('translations/', '.tr')
+	files := os.walk_ext('translations', '.tr')
 	mut res := map[string]map[string]string{}
 	for tr_path in files {
 		lang := fetch_lang_from_tr_path(tr_path)
@@ -35,7 +35,7 @@ fn load_tr_map() map[string]map[string]string {
 			// println('val="${val}"')
 			nl_pos := s.index('\n') or { continue }
 			key := s[..nl_pos]
-			val := s[nl_pos..]
+			val := s[nl_pos + 1..]
 			// v := vals[i + 1]
 			// println('key="${key}" => val="${v}"')
 			res[lang][key] = val
@@ -46,7 +46,7 @@ fn load_tr_map() map[string]map[string]string {
 }
 
 fn fetch_lang_from_tr_path(path string) string {
-	return path.find_between('/', '.')
+	return path.find_between(os.path_separator, '.')
 }
 
 // Used by %key in templates
