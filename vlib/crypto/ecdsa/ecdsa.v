@@ -68,6 +68,10 @@ pub struct PublicKey {
 	key &C.EC_KEY
 }
 
+pub fn key_free(ec_key &C.EC_KEY) {
+	C.EC_KEY_free(ec_key)
+}
+
 // Generate a new key pair
 pub fn generate_key() !(PublicKey, PrivateKey) {
 	nid := nid_prime256v1 // Using NIST P-256 curve
