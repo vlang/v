@@ -11,7 +11,7 @@ enum Height as u8 {
 }
 
 fn test_main() {
-	db := sqlite.connect(':memory:')!
+	mut db := sqlite.connect(':memory:')!
 
 	sql db {
 		create table Person
@@ -38,4 +38,5 @@ fn test_main() {
 	}!
 
 	assert rows.len == 2
+	db.close()!
 }

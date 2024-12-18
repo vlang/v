@@ -14,7 +14,7 @@ struct Counter {
 }
 
 fn test_orm_enum() {
-	db := sqlite.connect(':memory:') or { panic(err) }
+	mut db := sqlite.connect(':memory:') or { panic(err) }
 	sql db {
 		create table Counter
 	}!
@@ -42,4 +42,5 @@ fn test_orm_enum() {
 	}!
 
 	assert counters.first().number == .five
+	db.close()!
 }
