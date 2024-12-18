@@ -2,5 +2,5 @@
 leak:mbedtls_ssl_setup
 
 # sqlite tests
-leak:db__sqlite__connect
+leak:sqlite3_vmprintf
 leak:db__sqlite__Stmt_step

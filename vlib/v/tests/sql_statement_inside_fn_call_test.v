@@ -10,7 +10,7 @@ fn x(m Movie) int {
 }
 
 fn test_sql_statement_inside_fn_call() {
-	mut db := sqlite.connect(':memory:') or { panic('failed') }
+	db := sqlite.connect(':memory:') or { panic('failed') }
 	sql db {
 		create table Movie
 	}!
@@ -21,6 +21,4 @@ fn test_sql_statement_inside_fn_call() {
 	dump(x(sql db {
 		select from Movie where id == 1
 	}!.first()))
-
-	db.close()!
 }

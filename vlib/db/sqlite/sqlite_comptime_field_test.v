@@ -22,7 +22,7 @@ fn records_by_field[T](db sqlite.DB, fieldname string, value string) ![]T {
 }
 
 fn test_main() {
-	mut db := sqlite.connect(':memory:')!
+	db := sqlite.connect(':memory:')!
 	sql db {
 		create table Blog
 	}!
@@ -40,5 +40,4 @@ fn test_main() {
 		return
 	}
 	assert rows.len == 1
-	db.close()!
 }
