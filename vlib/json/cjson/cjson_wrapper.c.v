@@ -82,6 +82,8 @@ fn C.cJSON_Print(object &C.cJSON) &char
 
 fn C.cJSON_PrintUnformatted(object &C.cJSON) &char
 
+fn C.cJSON_free(voidptr)
+
 //
 
 // version returns the version of cJSON as a string
@@ -168,7 +170,9 @@ pub fn (mut obj Node) print() string {
 // print serialises the node to a string, without formatting its structure, so the resulting string is shorter/cheaper to transmit.
 pub fn (mut obj Node) print_unformatted() string {
 	mut s := C.cJSON_PrintUnformatted(obj)
-	return unsafe { tos3(s) }
+	ret := unsafe { tos_clone(&u8(s)) }
+	C.cJSON_free(s)
+	return ret
 }
 
 // str returns the unformatted serialisation to string of the given Node.
