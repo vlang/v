@@ -145,13 +145,11 @@ jobs:
           ./v retry -- sudo apt install clang
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
-      - name: Create LSAN suppression file for ignoring websocket test
-        run: echo "leak:mbedtls_ssl_setup" > suppress.txt
       - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=1:fast_unwind_on_malloc=0 LSAN_OPTIONS=suppressions=suppress.txt ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self vlib
+        run: ASAN_OPTIONS=detect_leaks=1:fast_unwind_on_malloc=0 LSAN_OPTIONS=suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
         run: ./v -cflags -fsanitize=address -o v cmd/v &&
-          ASAN_OPTIONS=detect_leaks=1:fast_unwind_on_malloc=0 LSAN_OPTIONS=suppressions=suppress.txt ./v -cc tcc test-self -asan-compiler vlib
+          ASAN_OPTIONS=detect_leaks=1:fast_unwind_on_malloc=0 LSAN_OPTIONS=suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v -cc tcc test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=1:fast_unwind_on_malloc=0 ./v build-examples
 
