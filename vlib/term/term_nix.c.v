@@ -239,7 +239,7 @@ pub mut:
 
 // key_pressed gives back a single character, read from the standard input.
 // It returns -1 on error or no character in non-blocking mode
-pub fn key_pressed(params KeyPressedParams) int {
+pub fn key_pressed(params KeyPressedParams) i64 {
 	mut state := termios.Termios{}
 	if termios.tcgetattr(0, mut state) != 0 {
 		return -1
@@ -260,12 +260,12 @@ pub fn key_pressed(params KeyPressedParams) int {
 	}
 	termios.tcsetattr(0, C.TCSANOW, mut state)
 
-	mut ret := u8(0)
+	mut ret := i64(0)
 
 	for {
 		pending := os.fd_is_pending(0)
 		if pending {
-			r := C.read(0, &ret, 1)
+			r := C.read(0, &ret, 8)
 			if r < 0 {
 				return r
 			} else {

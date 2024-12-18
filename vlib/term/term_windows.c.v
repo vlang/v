@@ -179,7 +179,7 @@ pub mut:
 
 // key_pressed gives back a single character, read from the standard input.
 // It returns -1 on error or no character in non-blocking mode
-pub fn key_pressed(params KeyPressedParams) int {
+pub fn key_pressed(params KeyPressedParams) i64 {
 	for {
 		if C.kbhit() {
 			res := if params.echo {
@@ -197,10 +197,10 @@ pub fn key_pressed(params KeyPressedParams) int {
 					} else {
 						C._getch()
 					}
-					return int(u32(0xe0) << 16 | u32(res2))
+					return i64(u32(0xe0) << 16 | u32(res2))
 				}
 			}
-			return res
+			return i64(res)
 		}
 		if !params.blocking {
 			// in non-blocking mode, we need to return immediately
