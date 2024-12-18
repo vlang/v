@@ -157,6 +157,18 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 	return ''
 }
 
+fn (mut g Gen) expr_with_fixed_array_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) {
+	tmp_var := g.new_tmp_var()
+	stmt_str := g.go_before_last_stmt().trim_space()
+	styp := g.styp(expr_typ)
+	g.empty_line = true
+	g.writeln('${styp} ${tmp_var} = {.state = 0};')
+	g.write('memcpy(${tmp_var}.data, ')
+	g.expr(expr)
+	g.writeln(', sizeof(${g.styp(ret_typ)}));')
+	g.write2(stmt_str, tmp_var)
+}
+
 fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	mut node := unsafe { node_ }
 	if node.is_static {
