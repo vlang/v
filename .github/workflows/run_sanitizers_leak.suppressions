@@ -1,0 +1,6 @@
+# websocket tests
+leak:mbedtls_ssl_setup
+
+# sqlite tests
+leak:db__sqlite__connect
+leak:db__sqlite__Stmt_step
