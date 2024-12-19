@@ -234,14 +234,15 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			node.cond_type = node.val_type
 		}
 		mut cond_var := ''
-		if (node.cond is ast.Ident && !node.cond_type.has_flag(.option))
+		cond_is_option := node.cond_type.has_flag(.option)
+		if (node.cond is ast.Ident && !cond_is_option)
 			|| (node.cond is ast.SelectorExpr && node.cond.or_block.kind == .absent) {
 			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
 			g.write2(g.styp(node.cond_type), ' ${cond_var} = ')
 			old_inside_opt_or_res := g.inside_opt_or_res
-			if node.cond_type.has_flag(.option) {
+			if cond_is_option {
 				g.inside_opt_or_res = true
 			}
 			g.expr(node.cond)
@@ -251,7 +252,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		g.empty_line = true
 		opt_expr := '(*(${g.styp(node.cond_type.clear_flag(.option))}*)${cond_var}${op_field}data)'
-		cond_expr := if node.cond_type.has_flag(.option) {
+		cond_expr := if cond_is_option {
 			'${opt_expr}${op_field}len'
 		} else {
 			'${cond_var}${op_field}len'
@@ -274,7 +275,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				// instead of
 				// `int* val = ((int**)arr.data)[i];`
 				// right := if node.val_is_mut { styp } else { styp + '*' }
-				right := if node.cond_type.has_flag(.option) {
+				right := if cond_is_option {
 					'((${styp}*)${opt_expr}${op_field}data)[${i}]'
 				} else if node.val_is_mut || node.val_is_ref {
 					'((${styp})${cond_var}${op_field}data) + ${i}'

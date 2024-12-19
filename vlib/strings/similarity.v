@@ -1,7 +1,7 @@
 module strings
 
 @[inline]
-fn min(a u16, b u16, c u16) u16 {
+fn min(a int, b int, c int) int {
 	mut m := a
 	if b < m {
 		m = b
@@ -49,11 +49,9 @@ pub fn levenshtein_distance(a string, b string) int {
 	if a == b {
 		return 0
 	}
-
-	mut row := []u16{len: a.len + 1, init: u16(index)}
-
+	mut row := []int{len: a.len + 1, init: index}
 	for i := 1; i < b.len + 1; i++ {
-		mut prev := u16(i)
+		mut prev := i
 		for j := 1; j < a.len + 1; j++ {
 			mut current := row[j - 1] // match
 			if b[i - 1] != a[j - 1] {
@@ -65,7 +63,6 @@ pub fn levenshtein_distance(a string, b string) int {
 		}
 		row[a.len] = prev
 	}
-
 	return row[a.len]
 }
 

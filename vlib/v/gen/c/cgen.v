@@ -2165,7 +2165,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 // applicable to situations where the expr_typ does not have `option` and `result`,
 // e.g. field default: "foo ?int = 1", field assign: "foo = 1", field init: "foo: 1"
 fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) {
-	if !ret_typ.has_flag(.option) && !ret_typ.has_flag(.result) {
+	if !ret_typ.has_option_or_result() {
 		panic('cgen: parameter `ret_typ` of function `expr_with_tmp_var()` must be an Option or Result')
 	}
 
@@ -2182,6 +2182,8 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.writeln('${g.styp(ret_typ)} ${tmp_var} = {.state=2, .err=${expr.name}};')
 	} else {
 		mut simple_assign := false
+		expr_typ_is_option := expr_typ.has_flag(.option)
+		ret_typ_is_option := ret_typ.has_flag(.option)
 		if ret_typ.has_flag(.generic) {
 			if expr is ast.SelectorExpr && g.cur_concrete_types.len == 0 {
 				// resolve generic struct on selectorExpr inside non-generic function
@@ -2203,8 +2205,9 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		} else {
 			g.writeln('${g.styp(ret_typ)} ${tmp_var};')
 		}
-		if ret_typ.has_flag(.option) {
-			if expr_typ.has_flag(.option) && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
+		mut expr_is_fixed_array_var := false
+		if ret_typ_is_option {
+			if expr_typ_is_option && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
 				simple_assign = expr is ast.StructInit
 				if simple_assign {
 					g.write('${tmp_var} = ')
@@ -2214,16 +2217,20 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			} else {
 				simple_assign =
 					((expr is ast.SelectorExpr || (expr is ast.Ident && !expr.is_auto_heap()))
-					&& ret_typ.is_ptr() && expr_typ.is_ptr() && expr_typ.has_flag(.option))
+					&& ret_typ.is_ptr() && expr_typ.is_ptr() && expr_typ_is_option)
 					|| (expr_typ == ret_typ && !(expr_typ.has_option_or_result()
 					&& (expr_typ.is_ptr() || expr is ast.LambdaExpr)))
 				// option ptr assignment simplification
 				if simple_assign {
 					g.write('${tmp_var} = ')
-				} else if expr_typ.has_flag(.option) && expr is ast.PrefixExpr
+				} else if expr_typ_is_option && expr is ast.PrefixExpr
 					&& expr.right is ast.StructInit
 					&& (expr.right as ast.StructInit).init_fields.len == 0 {
 					g.write('_option_none(&(${styp}[]) { ')
+				} else if expr in [ast.Ident, ast.SelectorExpr]
+					&& final_expr_sym.kind == .array_fixed {
+					expr_is_fixed_array_var = true
+					g.write('_option_ok(&')
 				} else {
 					g.write('_option_ok(&(${styp}[]) { ')
 					if final_expr_sym.info is ast.FnType {
@@ -2243,9 +2250,11 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			g.write('_result_ok(&(${styp}[]) { ')
 		}
 		g.expr_with_cast(expr, expr_typ, ret_typ)
-		if ret_typ.has_flag(.option) {
+		if ret_typ_is_option {
 			if simple_assign {
 				g.writeln(';')
+			} else if expr_is_fixed_array_var {
+				g.writeln(', (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
 			} else {
 				g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
 			}
@@ -2448,8 +2457,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					if method.return_type.has_flag(.option) {
 						// Register an option if it's not registered yet
 						g.register_option(method.return_type)
-					}
-					if method.return_type.has_flag(.result) {
+					} else if method.return_type.has_flag(.result) {
 						// Register a result if it's not registered yet
 						g.register_result(method.return_type)
 					}
@@ -2896,7 +2904,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	neither_void := ast.voidptr_type !in [got_type, expected_type]
 		&& ast.nil_type !in [got_type, expected_type]
 	if expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
-		&& !expected_type.has_flag(.option) && !expected_type.has_flag(.result) {
+		&& !expected_type.has_option_or_result() {
 		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
 		if got_type_raw.is_ptr() {
 			g.error('cannot convert reference to `shared`', expr.pos())
@@ -2939,8 +2947,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			return
 		}
 	}
-	if exp_sym.kind == .function && !expected_type.has_flag(.option)
-		&& !expected_type.has_flag(.result) {
+	if exp_sym.kind == .function && !expected_type.has_option_or_result() {
 		g.write('(voidptr)')
 	}
 	// no cast
@@ -3626,7 +3633,8 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				node.return_type.clear_option_and_result()
 			}
 			mut shared_styp := ''
-			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block {
+			ret_typ_is_shared := ret_type.has_flag(.shared_f)
+			if g.is_shared && !ret_typ_is_shared && !g.inside_or_block {
 				ret_sym := g.table.sym(ret_type)
 				shared_typ := if ret_type.is_ptr() {
 					ret_type.deref().set_flag(.shared_f)
@@ -3648,8 +3656,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				0
 			}
 
-			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block
-				&& ret_type.is_ptr() {
+			if g.is_shared && !ret_typ_is_shared && !g.inside_or_block && ret_type.is_ptr() {
 				g.write('*'.repeat(ret_type.nr_muls()))
 			}
 			g.call_expr(node)
@@ -3665,7 +3672,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				}
 				g.strs_to_free0 = []
 			}
-			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block {
+			if g.is_shared && !ret_typ_is_shared && !g.inside_or_block {
 				g.writeln('}, sizeof(${shared_styp}))')
 			}
 			/*
@@ -4524,10 +4531,10 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 				cast_sym := g.table.sym(var_typ)
 
 				mut param_var := strings.new_builder(50)
+				is_option := obj.typ.has_flag(.option)
+				var_typ_is_option := var_typ.has_flag(.option)
 				if obj.smartcasts.len > 0 {
-					is_option_unwrap := obj.typ.has_flag(.option)
-						&& var_typ == obj.typ.clear_flag(.option)
-					is_option := obj.typ.has_flag(.option)
+					is_option_unwrap := is_option && var_typ == obj.typ.clear_flag(.option)
 					mut opt_cast := false
 					mut func := if cast_sym.info is ast.Aggregate {
 						''
@@ -4571,7 +4578,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 							param_var.write_string('.data)')
 						}
 						param_var.write_string('${dot}_${cast_sym.cname}')
-					} else if obj.typ.has_flag(.option) && !var_typ.has_flag(.option) {
+					} else if is_option && !var_typ_is_option {
 						param_var.write_string('${obj.name}.data')
 					} else {
 						param_var.write_string('${obj.name}')
@@ -4581,7 +4588,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 					values.write_string('${func}(${param_var.str()})}')
 				} else {
 					func := g.get_str_fn(var_typ)
-					if obj.typ.has_flag(.option) && !var_typ.has_flag(.option) {
+					if is_option && !var_typ_is_option {
 						// option unwrap
 						base_typ := g.base_type(obj.typ)
 						values.write_string('${func}(*(${base_typ}*)${obj.name}.data)}')
@@ -4589,7 +4596,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 						_, str_method_expects_ptr, _ := cast_sym.str_method_info()
 
 						// eprintln(">> ${obj.name} | str expects ptr? ${str_method_expects_ptr} | ptr? ${var_typ.is_ptr()} || auto heap? ${obj.is_auto_heap} | auto deref? ${obj.is_auto_deref}")
-						deref := if var_typ.has_flag(.option) {
+						deref := if var_typ_is_option {
 							''
 						} else if str_method_expects_ptr && !obj.typ.is_ptr() {
 							'&'
@@ -5355,18 +5362,19 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	if g.comptime.is_comptime_expr(node.expr) {
 		expr_type = g.unwrap_generic(g.comptime.get_type(node.expr))
 	}
+	node_typ_is_option := node.typ.has_flag(.option)
 	if sym.kind in [.sum_type, .interface] {
-		if node.typ.has_flag(.option) && node.expr is ast.None {
+		if node_typ_is_option && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.expr is ast.Ident && g.comptime.is_comptime_variant_var(node.expr) {
 			g.expr_with_cast(node.expr, g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'],
 				node_typ)
-		} else if node.typ.has_flag(.option) {
+		} else if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node.typ)
 		} else {
 			g.expr_with_cast(node.expr, expr_type, node_typ)
 		}
-	} else if !node.typ.has_flag(.option) && !node.typ.is_ptr() && sym.info is ast.Struct
+	} else if !node_typ_is_option && !node.typ.is_ptr() && sym.info is ast.Struct
 		&& !sym.info.is_typedef {
 		// deprecated, replaced by Struct{...exr}
 		styp := g.styp(node.typ)
@@ -5374,7 +5382,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.expr(node.expr)
 		g.write('))')
 	} else if sym.kind == .alias && g.table.final_sym(node.typ).kind == .array_fixed {
-		if node.typ.has_flag(.option) {
+		if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node.typ)
 		} else {
 			if node.expr is ast.ArrayInit && g.assign_op != .decl_assign {
@@ -5409,9 +5417,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 				cast_label = '(${styp})'
 			}
 		}
-		if node.typ.has_flag(.option) && node.expr is ast.None {
+		if node_typ_is_option && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
-		} else if node.typ.has_flag(.option) {
+		} else if node_typ_is_option {
 			if sym.info is ast.Alias {
 				if sym.info.parent_type.has_flag(.option) {
 					cur_stmt := g.go_before_last_stmt()
@@ -6893,13 +6901,13 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 				} else {
 					mut is_array_fixed := false
 					mut return_wrapped := false
+					mut return_is_option := is_option && return_type.has_option_or_result()
 					if is_option {
 						is_array_fixed = g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
 							if g.inside_return && !g.inside_struct_init
 								&& expr_stmt.expr is ast.CallExpr&& (expr_stmt.expr as ast.CallExpr).return_type.has_option_or_result()
-								&& g.cur_fn.return_type.has_option_or_result()
-								&& return_type.has_option_or_result()
+								&& g.cur_fn.return_type.has_option_or_result() && return_is_option
 								&& expr_stmt.expr.or_block.kind == .absent {
 								g.write('${cvar_name} = ')
 								return_wrapped = true
@@ -6919,7 +6927,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					}
 					// return expr or { fn_returns_option() }
 					if is_option && g.inside_return && expr_stmt.expr is ast.CallExpr
-						&& return_type.has_option_or_result() {
+						&& return_is_option {
 						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type)
 					} else {
 						old_inside_opt_data := g.inside_opt_data

@@ -12,6 +12,7 @@ module ttf
 *
 * TODO:
 **********************************************************************/
+// Text_block represents a visual block of TTF text.
 pub struct Text_block {
 	x         int // x position of the left high corner
 	y         int // y position of the left high corner
@@ -20,6 +21,7 @@ pub struct Text_block {
 	cut_lines bool = true // force to cut the line if the length is over the text block width
 }
 
+// get_justify_space_cw returns the space needed to justify `txt`.
 pub fn (mut dev BitMap) get_justify_space_cw(txt string, w int, block_w int, space_cw int) f32 {
 	num_spaces := txt.count(' ')
 	if num_spaces < 1 {
@@ -33,7 +35,7 @@ pub fn (mut dev BitMap) get_justify_space_cw(txt string, w int, block_w int, spa
 	return res
 }
 
-// write out a text
+// draw_text_block renders out `text` in the `Text_block` `block`.
 pub fn (mut bmp BitMap) draw_text_block(text string, block Text_block) {
 	mut x := block.x
 	mut y := block.y

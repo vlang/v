@@ -84,6 +84,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	}
 	scompile_args := compile_args.join(' ')
 	slinker_args := linker_args.join(' ')
+	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
 
 	mut o_postfixes := ['0', 'x']
 	mut cmds := []string{}
@@ -100,7 +101,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	eprint_time(sw, 'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands')
 
 	obj_files := fnames.map(it.replace('.c', '.o')).join(' ')
-	link_cmd := '${cc} ${scompile_args} -o ${os.quoted_path(b.pref.out_name)} ${tmp_dir}/out_0.o ${obj_files} ${tmp_dir}/out_x.o ${slinker_args} ${cc_ldflags}'
+	link_cmd := '${cc} ${scompile_args_for_linker} -o ${os.quoted_path(b.pref.out_name)} ${tmp_dir}/out_0.o ${obj_files} ${tmp_dir}/out_x.o ${slinker_args} ${cc_ldflags}'
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)
