@@ -371,7 +371,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.pref.os in [.macos, .ios] {
 		if ccoptions.cc != .tcc && !user_darwin_ppc && !v.pref.is_bare && ccompiler != 'musl-gcc' {
-			ccoptions.source_args << '-x objective-c'
+			if !v.pref.parallel_cc {
+				ccoptions.source_args << '-x objective-c'
+			}
 		}
 	}
 	// The C file we are compiling
