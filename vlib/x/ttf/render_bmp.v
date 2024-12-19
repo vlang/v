@@ -193,8 +193,9 @@ pub fn (mut bmp BitMap) fline(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32)
 * Draw functions
 *
 ******************************************************************************/
-@[inline]
+
 // plot plots a pixel at `x`,`y` in color `c` in the internal bitmap buffer.
+@[inline]
 pub fn (mut bmp BitMap) plot(x int, y int, c u32) bool {
 	if x < 0 || x >= bmp.width || y < 0 || y >= bmp.height {
 		return false
