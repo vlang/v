@@ -227,3 +227,8 @@ pub fn (pub_key PublicKey) equal(other PublicKey) bool {
 	res := C.EC_POINT_cmp(group, point1, point2, ctx)
 	return res == 0
 }
+
+// Clear allocated memory for key
+pub fn key_free(ec_key &C.EC_KEY) {
+	C.EC_KEY_free(ec_key)
+}
