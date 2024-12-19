@@ -1361,6 +1361,7 @@ pub fn (mut f Fmt) goto_stmt(node ast.GotoStmt) {
 }
 
 pub fn (mut f Fmt) hash_stmt(node ast.HashStmt) {
+	f.attrs(node.attrs)
 	f.writeln('#${node.val}')
 }
 

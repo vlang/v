@@ -1365,6 +1365,7 @@ pub:
 	mod         string
 	pos         token.Pos
 	source_file string
+	is_use_once bool // true for @[use_once]
 pub mut:
 	val      string // example: 'include <openssl/rand.h> # please install openssl // comment'
 	kind     string // : 'include'
@@ -1372,6 +1373,7 @@ pub mut:
 	msg      string // : 'please install openssl'
 	ct_conds []Expr // *all* comptime conditions, that must be true, for the hash to be processed
 	// ct_conds is filled by the checker, based on the current nesting of `$if cond1 {}` blocks
+	attrs []Attr
 }
 
 // variable assign statement
