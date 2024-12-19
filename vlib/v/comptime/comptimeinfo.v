@@ -36,6 +36,17 @@ pub fn (mut ct ComptimeInfo) is_comptime_expr(node ast.Expr) bool {
 		|| node is ast.ComptimeSelector
 }
 
+// has_comptime_expr checks if the expr contains some comptime expr
+@[inline]
+pub fn (mut ct ComptimeInfo) has_comptime_expr(node ast.Expr) bool {
+	return (node is ast.Ident && node.ct_expr)
+		|| (node is ast.IndexExpr && ct.has_comptime_expr(node.left))
+		|| node is ast.ComptimeSelector
+		|| (node is ast.SelectorExpr && ct.has_comptime_expr(node.expr))
+		|| (node is ast.InfixExpr && (ct.has_comptime_expr(node.left)
+		|| ct.has_comptime_expr(node.right)))
+}
+
 // is_comptime checks if the node is related to a comptime marked variable
 @[inline]
 pub fn (mut ct ComptimeInfo) is_comptime(node ast.Expr) bool {
@@ -100,6 +111,7 @@ pub fn (mut ct ComptimeInfo) get_expr_type_or_default(node ast.Expr, default_typ
 }
 
 // get_type_or_default retries the comptime value if the AST node is related to comptime otherwise default_typ is returned
+@[inline]
 pub fn (mut ct ComptimeInfo) get_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
 	match node {
 		ast.Ident {
