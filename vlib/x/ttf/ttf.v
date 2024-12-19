@@ -43,6 +43,11 @@ mut:
 * TTF_File structs
 *
 ******************************************************************************/
+// TTF_File represents the data contents of a complete `*.ttf` file.
+// The struct is usually initialized by reading raw TTF data into the `buf` member field
+// for example by doing: `ttf_font.buf = os.read_bytes("arial.ttf") or { panic(err) }`,
+// and then run the `init/0` method, for example: `ttf_font.init()`
+
 pub struct TTF_File {
 pub mut:
 	buf                     []u8
@@ -96,6 +101,7 @@ pub mut:
 	width_scale f32 = 1.0
 }
 
+// init initializes essential `TTF_File` fields from the contents of `buf`.
 pub fn (mut tf TTF_File) init() {
 	tf.read_offset_tables()
 	tf.read_head_table()
@@ -117,6 +123,7 @@ pub fn (mut tf TTF_File) init() {
 * TTF_File Glyph Structs
 *
 ******************************************************************************/
+// Point represents a 2D point
 pub struct Point {
 pub mut:
 	x        int
@@ -134,6 +141,7 @@ const g_type_simple = u16(1) // simple type
 
 const g_type_complex = u16(2)
 
+// Glyph represents a single renderable unit ("a character") of the TTF.
 pub struct Glyph {
 pub mut:
 	g_type             u16 = g_type_simple
@@ -153,6 +161,8 @@ pub mut:
 * TTF_File metrics and glyph
 *
 ******************************************************************************/
+// get_horizontal_metrics returns the horizontal metrics `advance_width` and `left_side_bearing`
+// for the glyph at index `glyph_index`.
 pub fn (mut tf TTF_File) get_horizontal_metrics(glyph_index u16) (int, int) {
 	assert 'hmtx' in tf.tables
 	old_pos := tf.pos
@@ -206,6 +216,7 @@ fn (mut tf TTF_File) get_glyph_offset(index u32) u32 {
 	return offset + tf.tables['glyf'].offset
 }
 
+// glyph_count returns the number of glyphs available in the TTF.
 pub fn (mut tf TTF_File) glyph_count() u16 {
 	assert 'maxp' in tf.tables
 	old_pos := tf.pos
@@ -215,6 +226,7 @@ pub fn (mut tf TTF_File) glyph_count() u16 {
 	return count
 }
 
+// read_glyph_dim returns glyph dimension data in the form `x_min`, `x_max`, `y_min` and `y_max`.
 pub fn (mut tf TTF_File) read_glyph_dim(index u16) (int, int, int, int) {
 	offset := tf.get_glyph_offset(index)
 	// dprintln("offset: $offset")
@@ -239,6 +251,7 @@ pub fn (mut tf TTF_File) read_glyph_dim(index u16) (int, int, int, int) {
 	return x_min, x_max, y_min, y_max
 }
 
+// get_ttf_widths returns all possible widths of the TTF.
 pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 	mut space_cw, _ := tf.get_horizontal_metrics(u16(` `))
 	// div_space_cw := int((f32(space_cw) * 0.3))
@@ -291,6 +304,7 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 	return widths, min_code, max_code
 }
 
+// read_glyph returns `Glyph` data for the glyph at `index`.
 pub fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 	index_int := int(index) // index.str()
 	if index_int in tf.glyph_cache {
@@ -834,6 +848,8 @@ fn (mut tf TTF_File) read_cmap(offset u32) {
 * CMAPS 0/4
 *
 ******************************************************************************/
+// map_code returns the glyph index for the `char_code` character code.
+// map_code returns `0` if the character code could not be found.
 pub fn (mut tf TTF_File) map_code(char_code int) u16 {
 	mut index := 0
 	for i in 0 .. tf.cmaps.len {
@@ -1069,12 +1085,14 @@ fn (mut tf TTF_File) read_kern_table() {
 	}
 }
 
+// reset_kern resets the internal kerning table data.
 pub fn (mut tf TTF_File) reset_kern() {
 	for i in 0 .. tf.kern.len {
 		tf.kern[i].reset()
 	}
 }
 
+// next_kern returns the next `x`, `y` kerning for the glyph at index `glyph_index`.
 pub fn (mut tf TTF_File) next_kern(glyph_index int) (int, int) {
 	mut x := 0
 	mut y := 0
@@ -1128,6 +1146,7 @@ fn (mut tf TTF_File) read_panose_table() {
 * TTF_File Utility
 *
 ******************************************************************************/
+// get_info_string returns a string with various information about the TTF.
 pub fn (tf TTF_File) get_info_string() string {
 	txt := '----- Font Info -----
 font_family     : ${tf.font_family}

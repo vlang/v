@@ -49,7 +49,7 @@ fn dprintln(txt string) {
 * Utility
 *
 ******************************************************************************/
-// transform the bitmap from one layer to color layers
+// format_texture transforms the bitmap from one layer to color layers
 fn (mut bmp BitMap) format_texture() {
 	r := u8(bmp.color >> 24)
 	g := u8((bmp.color >> 16) & 0xFF)
@@ -84,7 +84,7 @@ fn (mut bmp BitMap) format_texture() {
 	}
 }
 
-// write out a .ppm file
+// save_as_ppm saves the `BitMap` data in .ppm file format to `file_name`.
 pub fn (mut bmp BitMap) save_as_ppm(file_name string) {
 	tmp_buf := bmp.buf
 	mut buf := unsafe { malloc_noscan(bmp.buf_size) }
@@ -114,6 +114,7 @@ pub fn (mut bmp BitMap) save_as_ppm(file_name string) {
 	bmp.buf = tmp_buf
 }
 
+// get_raw_bytes returns the raw bytes of the bitmap.
 pub fn (mut bmp BitMap) get_raw_bytes() []u8 {
 	mut f_buf := []u8{len: bmp.buf_size / 4}
 	mut i := 0
@@ -126,6 +127,7 @@ pub fn (mut bmp BitMap) get_raw_bytes() []u8 {
 	return f_buf
 }
 
+// save_raw_data saves the raw data to `file_name`.
 pub fn (mut bmp BitMap) save_raw_data(file_name string) {
 	os.write_file_array(file_name, bmp.get_raw_bytes()) or { panic(err) }
 }
@@ -160,36 +162,39 @@ fn rfpart(x f32) f32 {
 * Colors
 *
 ******************************************************************************/
-/*
-@[inline]
-pub fn (mut dev BitMap) get_color(x int, y int) (int, int, int, int){
-	if x < 0 || x >= dev.width || y < 0 || y >= dev.height {
-		return 0,0,0,0
-	}
-	mut i := (x + y * dev.width)*dev.bp
-	unsafe{
-		return dev.buf[i], dev.buf[i+1], dev.buf[i+2], dev.buf[i+3]
-	}
-}
 
-@[inline]
-pub fn (mut dev BitMap) get_color_u32(x int, y int) u32{
-	r, g, b, a := dev.get_color(x, y)
-	unsafe{
-		return u32(r<<24) | u32(g<<16) | u32(b<<8) | u32(a)
-	}
-}
-*/
+// @[inline]
+// pub fn (mut dev BitMap) get_color(x int, y int) (int, int, int, int){
+// 	if x < 0 || x >= dev.width || y < 0 || y >= dev.height {
+// 		return 0,0,0,0
+// 	}
+// 	mut i := (x + y * dev.width)*dev.bp
+// 	unsafe{
+// 		return dev.buf[i], dev.buf[i+1], dev.buf[i+2], dev.buf[i+3]
+// 	}
+// }
+
+// @[inline]
+// pub fn (mut dev BitMap) get_color_u32(x int, y int) u32{
+// 	r, g, b, a := dev.get_color(x, y)
+// 	unsafe{
+// 		return u32(r<<24) | u32(g<<16) | u32(b<<8) | u32(a)
+// 	}
+// }
+
 /******************************************************************************
 *
 * Drawing
 *
 ******************************************************************************/
+
+// color_multiply_alpha multiplies color `c`'s alpha channel with the `level` value.
 @[inline]
 pub fn color_multiply_alpha(c u32, level f32) u32 {
 	return u32(f32(c & 0xFF) * level)
 }
 
+// color_multiply multiplies R,G,B channels of color `c` with the `level` value.
 @[inline]
 pub fn color_multiply(c u32, level f32) u32 {
 	mut r := (f32((c >> 24) & 0xFF) / 255.0) * level
