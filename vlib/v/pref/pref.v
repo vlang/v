@@ -110,7 +110,7 @@ pub mut:
 	is_eval_argument   bool // true for `v -e 'println(2+2)'`. `println(2+2)` will be in pref.eval_argument .
 	is_run             bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
 	is_crun            bool // similar to run, but does not recompile the executable, if there were no changes to the sources
-	is_debug           bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
+	is_debug           bool // turned on by -g/-debug or -cg/-cdebug, it tells v to pass -g to the C backend compiler.
 	is_vlines          bool // turned on by -g (it slows down .tmp.c generation slightly).
 	is_stats           bool // `v -stats file.v` will produce more detailed statistics for the file that is compiled
 	show_asserts       bool // `VTEST_SHOW_ASSERTS=1 v file_test.v` will show details about the asserts done by a test file. Also activated for `-stats` and `-show-asserts`.
@@ -516,12 +516,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				i++
 			}
-			'-g' {
+			'-g', '-debug' {
 				res.is_debug = true
 				res.is_vlines = true
 				res.build_options << arg
 			}
-			'-cg' {
+			'-cg', '-cdebug' {
 				res.is_debug = true
 				res.is_vlines = false
 				res.build_options << arg

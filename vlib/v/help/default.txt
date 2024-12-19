@@ -8,7 +8,7 @@ Examples:
                                `hello` or `hello.exe`.
   v run hello.v                Same as above but also run the produced
                                executable immediately after compilation.
-  v -cg run hello.v            Same as above, but make debugging easier
+  v -g run hello.v             Same as above, but make debugging easier
                                (in case your program crashes).
   v crun hello.v               Same as above, but do not recompile, if the
                                executable already exists, and is newer than the
