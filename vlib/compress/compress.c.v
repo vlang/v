@@ -24,7 +24,11 @@ pub fn compress(data []u8, flags int) ![]u8 {
 	if u64(out_len) > max_size {
 		return error('compressed data is too large (${out_len} > ${max_size})')
 	}
-	return unsafe { address.vbytes(int(out_len)) }
+	unsafe {
+		ret := address.vbytes(int(out_len)).clone()
+		C.free(address)
+		return ret
+	}
 }
 
 // decompresses an array of bytes based on providing flags and returns the decompressed bytes in a new array
@@ -40,5 +44,10 @@ pub fn decompress(data []u8, flags int) ![]u8 {
 	if u64(out_len) > max_size {
 		return error('decompressed data is too large (${out_len} > ${max_size})')
 	}
-	return unsafe { address.vbytes(int(out_len)) }
+
+	unsafe {
+		ret := address.vbytes(int(out_len)).clone()
+		C.free(address)
+		return ret
+	}
 }

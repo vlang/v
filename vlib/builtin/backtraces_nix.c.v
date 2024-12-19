@@ -106,6 +106,9 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					output = output.replace(' (discriminator', ': (d.')
 					eprintln('${output:-55s} | ${addr:14s} | ${beforeaddr}')
 				}
+				if sframes.len > 0 {
+					unsafe { C.free(csymbols) }
+				}
 			}
 		}
 	}
