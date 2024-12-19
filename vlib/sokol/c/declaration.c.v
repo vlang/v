@@ -56,6 +56,8 @@ $if emscripten ? {
 //#flag windows -DSOKOL_D3D11
 // for simplicity, all header includes are here because import order matters and we dont have any way
 // to ensure import order with V yet
+
+@[use_once]
 #define SOKOL_IMPL
 // TODO: should not be defined for android graphic (apk/aab using sokol) builds, but we have no ways to undefine
 //#define SOKOL_NO_ENTRY
@@ -75,9 +77,13 @@ $if emscripten ? {
 $if !no_sokol_app ? {
 	#include "sokol_app.h"
 }
+
+@[use_once]
 #define SOKOL_IMPL
 #define SOKOL_NO_DEPRECATED
 #include "sokol_gfx.h"
+
+@[use_once]
 #define SOKOL_GL_IMPL
 #include "util/sokol_gl.h"
 #include "sokol_v.post.h"

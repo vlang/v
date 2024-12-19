@@ -78,6 +78,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	pos := p.tok.pos()
 	val := p.tok.lit
 	kind := val.all_before(' ')
+	attrs := p.attrs
 	p.next()
 	mut main_str := ''
 	mut msg := ''
@@ -89,6 +90,15 @@ fn (mut p Parser) hash() ast.HashStmt {
 		main_str = content.trim_space()
 		msg = ''
 	}
+
+	mut is_use_once := false
+	for fna in attrs {
+		match fna.name {
+			'use_once' { is_use_once = true }
+			else {}
+		}
+	}
+
 	return ast.HashStmt{
 		mod:         p.mod
 		source_file: p.file_path
@@ -97,6 +107,8 @@ fn (mut p Parser) hash() ast.HashStmt {
 		main:        main_str
 		msg:         msg
 		pos:         pos
+		attrs:       attrs
+		is_use_once: is_use_once
 	}
 }
 
