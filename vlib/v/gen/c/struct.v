@@ -685,35 +685,16 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 		field_unwrap_typ := g.unwrap_generic(sfield.typ)
 		field_unwrap_sym := g.table.final_sym(field_unwrap_typ)
 		is_auto_deref_var := sfield.expr.is_auto_deref_var()
-		if field_unwrap_sym.info is ast.ArrayFixed {
+		if field_unwrap_sym.info is ast.ArrayFixed && !sfield.expected_type.has_flag(.option) {
 			match sfield.expr {
 				ast.Ident, ast.SelectorExpr {
-					if sfield.expected_type.has_flag(.option) {
-						if field_unwrap_typ.has_flag(.option) {
-							g.expr_with_opt(sfield.expr, sfield.expected_type, field_unwrap_typ)
-						} else {
-							g.expr_with_fixed_array_opt(sfield.expr, sfield.expected_type,
-								field_unwrap_typ)
-						}
-					} else {
-						g.fixed_array_var_init(g.expr_string(sfield.expr), is_auto_deref_var,
-							field_unwrap_sym.info.elem_type, field_unwrap_sym.info.size)
-					}
+					g.fixed_array_var_init(g.expr_string(sfield.expr), is_auto_deref_var,
+						field_unwrap_sym.info.elem_type, field_unwrap_sym.info.size)
 				}
 				ast.CastExpr, ast.CallExpr {
-					if sfield.expected_type.has_flag(.option) {
-						if field_unwrap_typ.has_flag(.option) {
-							g.expr_with_opt(sfield.expr, sfield.expected_type, field_unwrap_typ)
-						} else {
-							g.expr_with_fixed_array_opt(sfield.expr, sfield.expected_type,
-								field_unwrap_typ)
-						}
-					} else {
-						tmp_var := g.expr_with_var(sfield.expr, sfield.expected_type,
-							false)
-						g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
-							field_unwrap_sym.info.size)
-					}
+					tmp_var := g.expr_with_var(sfield.expr, sfield.expected_type, false)
+					g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
+						field_unwrap_sym.info.size)
 				}
 				ast.ArrayInit {
 					if sfield.expr.has_index {

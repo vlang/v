@@ -2205,6 +2205,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		} else {
 			g.writeln('${g.styp(ret_typ)} ${tmp_var};')
 		}
+		mut expr_is_fixed_array_var := false
 		if ret_typ_is_option {
 			if expr_typ_is_option && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
 				simple_assign = expr is ast.StructInit
@@ -2226,6 +2227,10 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					&& expr.right is ast.StructInit
 					&& (expr.right as ast.StructInit).init_fields.len == 0 {
 					g.write('_option_none(&(${styp}[]) { ')
+				} else if expr in [ast.Ident, ast.SelectorExpr]
+					&& final_expr_sym.kind == .array_fixed {
+					expr_is_fixed_array_var = true
+					g.write('_option_ok(&')
 				} else {
 					g.write('_option_ok(&(${styp}[]) { ')
 					if final_expr_sym.info is ast.FnType {
@@ -2248,6 +2253,8 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		if ret_typ_is_option {
 			if simple_assign {
 				g.writeln(';')
+			} else if expr_is_fixed_array_var {
+				g.writeln(', (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
 			} else {
 				g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
 			}
