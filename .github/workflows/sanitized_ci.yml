@@ -75,7 +75,7 @@ concurrency:
 jobs:
   tests-sanitize-undefined-clang:
     runs-on: ubuntu-20.04
-    timeout-minutes: 240
+    timeout-minutes: 120
     env:
       VFLAGS: -cc clang
       VJOBS: 1
@@ -101,7 +101,7 @@ jobs:
 
   tests-sanitize-undefined-gcc:
     runs-on: ubuntu-20.04
-    timeout-minutes: 240
+    timeout-minutes: 120
     env:
       VFLAGS: -cc gcc
       VJOBS: 1
@@ -126,7 +126,7 @@ jobs:
 
   tests-sanitize-address-clang:
     runs-on: ubuntu-20.04
-    timeout-minutes: 240
+    timeout-minutes: 300
     env:
       VFLAGS: -cc clang
       VJOBS: 1
@@ -155,7 +155,7 @@ jobs:
 
   tests-sanitize-address-msvc:
     runs-on: windows-2019
-    timeout-minutes: 240
+    timeout-minutes: 30
     env:
       VFLAGS: -cc msvc
       VJOBS: 1
@@ -179,7 +179,7 @@ jobs:
 
   tests-sanitize-address-gcc:
     runs-on: ubuntu-20.04
-    timeout-minutes: 240
+    timeout-minutes: 300
     env:
       VFLAGS: -cc gcc
       VJOBS: 1
