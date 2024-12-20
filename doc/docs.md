@@ -4691,7 +4691,7 @@ struct User {
 	// If the field name is different in JSON, it can be specified
 	last_name string @[json: lastName]
 	// Use the `json_allow_null` to allow null values
-	nullable @[json_allow_null]
+	nullable string @[json_allow_null]
 }
 
 data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25, "nullable": null }'
