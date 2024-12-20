@@ -6,12 +6,14 @@ struct ORMTableSpecificName {
 }
 
 fn test_orm_table_name() {
-	db := sqlite.connect(':memory:') or { panic(err) }
+	mut db := sqlite.connect(':memory:') or { panic(err) }
 	r := sql db {
 		select from ORMTableSpecificName
 	} or {
+		db.close()!
 		assert true
 		return
 	}
+	db.close()!
 	assert false
 }
