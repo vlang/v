@@ -82,7 +82,7 @@ pub fn gen_c(mut b builder.Builder, v_files []string) string {
 	if b.pref.parallel_cc {
 		b.cc() // Call it just to gen b.str_args
 		util.timing_start('Parallel C compilation')
-		parallel_cc(mut b, result)
+		parallel_cc(mut b, result) or { builder.verror(err.msg()) }
 		util.timing_measure('Parallel C compilation')
 	}
 
