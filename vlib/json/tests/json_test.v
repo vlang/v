@@ -538,3 +538,38 @@ fn test_encoding_struct_with_pointers() {
 	}
 	assert json.encode(value) == '{"association":{"price":{}},"price":{}}'
 }
+
+struct ChildNullish {
+	name string
+}
+
+struct NullishStruct {
+	name   string
+	lastname string @[json_allow_null]
+	age    int
+	salary f32
+	child ChildNullish @[json_allow_null]
+}
+
+fn test_nullish() {
+	nullish_one := json.decode(NullishStruct, '{"name":"Peter", "lastname":null, "age":28,"salary":95000.5,"title":"worker"}')!
+	assert nullish_one.name == 'Peter'
+	assert nullish_one.lastname == ''
+	assert nullish_one.age == 28
+	assert nullish_one.salary == 95000.5
+	assert nullish_one.child.name == ''
+
+	nullish_two := json.decode(NullishStruct, '{"name":"Peter", "lastname": "Parker", "age":28,"salary":95000.5,"title":"worker"}')!
+	assert nullish_two.name == 'Peter'
+	assert nullish_two.lastname == 'Parker'
+	assert nullish_two.age == 28
+	assert nullish_two.salary == 95000.5
+	assert nullish_two.child.name == ''
+
+	nullish_third := json.decode(NullishStruct, '{"name":"Peter", "age":28,"salary":95000.5,"title":"worker", "child": {"name":"Nullish"}}')!
+	assert nullish_third.name == 'Peter'
+	assert nullish_third.lastname == ''
+	assert nullish_third.age == 28
+	assert nullish_third.salary == 95000.5
+	assert nullish_third.child.name == 'Nullish'
+}
