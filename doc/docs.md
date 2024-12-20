@@ -4690,9 +4690,11 @@ struct User {
 	foo Foo @[skip]
 	// If the field name is different in JSON, it can be specified
 	last_name string @[json: lastName]
+	// Use the `json_allow_null` to allow null values
+	nullable @[json_allow_null]
 }
 
-data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25 }'
+data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25, "nullable": null }'
 user := json.decode(User, data) or {
 	eprintln('Failed to decode json, error: ${err}')
 	return
