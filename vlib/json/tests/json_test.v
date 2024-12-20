@@ -544,11 +544,11 @@ struct ChildNullish {
 }
 
 struct NullishStruct {
-	name   string
+	name     string
 	lastname string @[json_allow_null]
-	age    int
-	salary f32
-	child ChildNullish @[json_allow_null]
+	age      int
+	salary   f32
+	child    ChildNullish @[json_allow_null]
 }
 
 fn test_nullish() {
