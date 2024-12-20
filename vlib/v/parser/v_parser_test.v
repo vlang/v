@@ -110,7 +110,7 @@ fn test_one() {
 	mut checker_ := checker.new_checker(table, vpref)
 	checker_.check(mut program)
 	result := c.gen([program], mut table, vpref)
-	res := result.res.replace('\n', '').trim_space().after('#endif')
+	res := result.res_builder.bytestr().replace('\n', '').trim_space().after('#endif')
 	println(res)
 	ok := expected == res
 	println(res)
@@ -153,7 +153,7 @@ fn test_parse_expr() {
 	}
 	chk.check(mut program)
 	result := c.gen([program], mut table, vpref)
-	res := result.res.after('#endif')
+	res := result.res_builder.bytestr().after('#endif')
 	println('========')
 	println(res)
 	println('========')
