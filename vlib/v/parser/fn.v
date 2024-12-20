@@ -203,7 +203,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_markused := false
 	mut is_expand_simple_interpolation := false
 	mut comments := []ast.Comment{}
-	for fna in p.attrs {
+	fn_attrs := p.attrs
+	p.attrs = []
+	for fna in fn_attrs {
 		match fna.name {
 			'noreturn' {
 				is_noreturn = true
@@ -271,7 +273,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			else {}
 		}
 	}
-	conditional_ctdefine_idx := p.attrs.find_comptime_define() or { -1 }
+	conditional_ctdefine_idx := fn_attrs.find_comptime_define() or { -1 }
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -286,7 +288,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut language := p.parse_language()
 	p.fn_language = language
 	if language != .v {
-		for fna in p.attrs {
+		for fna in fn_attrs {
 			if fna.name == 'export' {
 				p.error_with_pos('interop function cannot be exported', fna.pos)
 				break
@@ -555,7 +557,7 @@ run them via `v file.v` instead',
 			is_method:     true
 			receiver_type: rec.typ
 			//
-			attrs:          p.attrs
+			attrs:          fn_attrs
 			is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
 			ctdefine_idx:   conditional_ctdefine_idx
 			//
@@ -611,7 +613,7 @@ run them via `v file.v` instead',
 			receiver_type:         if is_static_type_method { rec.typ } else { 0 } // used only if is static type method
 			is_file_translated:    p.is_translated
 			//
-			attrs:          p.attrs
+			attrs:          fn_attrs
 			is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
 			ctdefine_idx:   conditional_ctdefine_idx
 			//
@@ -686,7 +688,7 @@ run them via `v file.v` instead',
 		is_markused:        is_markused
 		is_file_translated: p.is_translated
 		//
-		attrs:          p.attrs
+		attrs:          fn_attrs
 		is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
 		ctdefine_idx:   conditional_ctdefine_idx
 		//
