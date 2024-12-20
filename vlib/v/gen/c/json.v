@@ -653,7 +653,7 @@ fn (mut g Gen) gen_prim_type_validation(name string, typ ast.Type, tmp string, a
 
 @[inline]
 fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp string, mut enc strings.Builder,
-	mut dec strings.Builder, embed_prefix string, allow_null_father bool) {
+	mut dec strings.Builder, embed_prefix string, allow_null_parent bool) {
 	info := type_info as ast.Struct
 	for field in info.fields {
 		mut name := field.name
@@ -662,7 +662,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		mut is_required := false
 		mut is_omit_empty := false
 		mut skip_embed := false
-		mut allow_null := allow_null_father
+		mut allow_null := allow_null_parent
 
 		for attr in field.attrs {
 			match attr.name {
