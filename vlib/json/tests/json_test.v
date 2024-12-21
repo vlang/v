@@ -516,11 +516,8 @@ fn test_encode_alias_field() {
 			a: 1
 		}
 	})
-	println(s)
 	assert s == '{"sub":{"a":1}}'
 }
-
-//
 
 struct APrice {}
 
@@ -537,4 +534,56 @@ fn test_encoding_struct_with_pointers() {
 		price:       APrice{}
 	}
 	assert json.encode(value) == '{"association":{"price":{}},"price":{}}'
+}
+
+struct ChildNullish {
+	name string
+}
+
+struct NullishStruct {
+	name     string
+	lastname string
+	age      int
+	salary   f32
+	child    ChildNullish
+}
+
+struct RequiredStruct {
+	name     string @[required]
+	lastname string
+}
+
+fn test_required() {
+	nullish_one := json.decode(NullishStruct, '{"name":"Peter", "lastname":null, "age":28,"salary":95000.5,"title":"worker"}')!
+	assert nullish_one.name == 'Peter'
+	assert nullish_one.lastname == ''
+	assert nullish_one.age == 28
+	assert nullish_one.salary == 95000.5
+	assert nullish_one.child.name == ''
+
+	nullish_two := json.decode(NullishStruct, '{"name":"Peter", "lastname": "Parker", "age":28,"salary":95000.5,"title":"worker"}')!
+	assert nullish_two.name == 'Peter'
+	assert nullish_two.lastname == 'Parker'
+	assert nullish_two.age == 28
+	assert nullish_two.salary == 95000.5
+	assert nullish_two.child.name == ''
+
+	nullish_third := json.decode(NullishStruct, '{"name":"Peter", "age":28,"salary":95000.5,"title":"worker", "child": {"name":"Nullish"}}')!
+	assert nullish_third.name == 'Peter'
+	assert nullish_third.lastname == ''
+	assert nullish_third.age == 28
+	assert nullish_third.salary == 95000.5
+	assert nullish_third.child.name == 'Nullish'
+
+	required_struct := json.decode(RequiredStruct, '{"name":"Peter", "lastname": "Parker"}')!
+	assert required_struct.name == 'Peter'
+	assert required_struct.lastname == 'Parker'
+
+	required_struct_err := json.decode(RequiredStruct, '{"name": null, "lastname": "Parker"}') or {
+		assert err.msg() == "type mismatch for field 'name', expecting `string` type, got: null"
+		RequiredStruct{
+			name:     'Peter'
+			lastname: 'Parker'
+		}
+	}
 }
