@@ -1,6 +1,9 @@
 module term
 
 import os
+import time
+
+#include <conio.h>
 
 @[typedef]
 pub struct C.COORD {
@@ -154,5 +157,56 @@ pub fn supports_sixel() bool {
 pub fn graphics_num_colors() u16 {
 	// Since this call is related to sixel terminal graphics and Windows Console and Terminal
 	// does not have support for querying the graphics setup this call returns 0
+	return 0
+}
+
+// enable_echo enable/disable echo input characters
+pub fn enable_echo(enable bool) {
+	// no need under windows, use key_pressed func's echo
+}
+
+fn C.kbhit() bool
+fn C._getch() int
+fn C._getche() int
+
+// KeyPressedParams contains the optional parameters that you can pass to key_pressed.
+@[params]
+pub struct KeyPressedParams {
+pub mut:
+	blocking bool // whether to wait for a pressed key
+	echo     bool // whether to output the pressed key to stdout
+}
+
+// key_pressed gives back a single character, read from the standard input.
+// It returns -1 on error or no character in non-blocking mode
+pub fn key_pressed(params KeyPressedParams) i64 {
+	for {
+		if C.kbhit() {
+			res := if params.echo {
+				C._getche()
+			} else {
+				C._getch()
+			}
+			// see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/getche-getwche?view=msvc-170
+			// > When _getche or _getwche reads a function key or an arrow key, the function must be called twice;
+			// > the first call returns 0 or 0xE0, and the second call returns the actual key code.
+			if res in [0, 0xe0] {
+				if C.kbhit() {
+					res2 := if params.echo {
+						C._getche()
+					} else {
+						C._getch()
+					}
+					return i64(u32(0xe0) << 16 | u32(res2))
+				}
+			}
+			return i64(res)
+		}
+		if !params.blocking {
+			// in non-blocking mode, we need to return immediately
+			return -1
+		}
+		time.sleep(1 * time.millisecond)
+	}
 	return 0
 }
