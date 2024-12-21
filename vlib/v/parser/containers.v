@@ -281,7 +281,9 @@ fn (mut p Parser) handle_index_variable(mut default_expr ast.Expr, elem_type ast
 		mut variable := unsafe { var }
 		is_used := variable.is_used
 		variable.is_used = true
-		variable.typ = elem_type
+		if elem_type.is_int() {
+			variable.typ = elem_type
+		}
 		has_index = is_used
 	}
 	if var := p.scope.find_var('it') { // FIXME: Remove this block when `it` is forbidden
