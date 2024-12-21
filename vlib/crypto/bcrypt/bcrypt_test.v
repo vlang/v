@@ -18,4 +18,13 @@ fn test_crypto_bcrypt() {
 	}
 
 	assert hash2_must_mismatch
+
+	long_password := 'jvaqhblwxtoytiaglflbisdeyoieianidksglxyitwopxgrjurhjvrsuydlcguaiueliuoikabibownvfcrcaogheq'
+	assert long_password.len > 72
+	bcrypt.generate_from_password(long_password.bytes(), 5) or {
+		assert err.msg() == 'Maximum password length is 72 bytes'
+	}
+	bcrypt.compare_hash_and_password(long_password.bytes(), hash2.bytes()) or {
+		assert err.msg() == 'Maximum password length is 72 bytes'
+	}
 }

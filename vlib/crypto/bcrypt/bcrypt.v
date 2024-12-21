@@ -15,6 +15,8 @@ pub const min_hash_size = 59
 pub const major_version = '2'
 pub const minor_version = 'a'
 
+const error_msg_max_length_exceed_72 = 'Maximum password length is 72 bytes'
+
 pub struct Hashed {
 mut:
 	hash  []u8
@@ -41,6 +43,9 @@ const magic_cipher_data = [u8(0x4f), 0x72, 0x70, 0x68, 0x65, 0x61, 0x6e, 0x42, 0
 
 // generate_from_password return a bcrypt string from Hashed struct.
 pub fn generate_from_password(password []u8, cost int) !string {
+	if password.len > 72 {
+		return error(error_msg_max_length_exceed_72)
+	}
 	mut p := new_from_password(password, cost) or { return error('Error: ${err}') }
 	x := p.hash_u8()
 	return x.bytestr()
@@ -48,6 +53,9 @@ pub fn generate_from_password(password []u8, cost int) !string {
 
 // compare_hash_and_password compares a bcrypt hashed password with its possible hashed version.
 pub fn compare_hash_and_password(password []u8, hashed_password []u8) ! {
+	if password.len > 72 {
+		return error(error_msg_max_length_exceed_72)
+	}
 	mut p := new_from_hash(hashed_password) or { return error('Error: ${err}') }
 	p.salt << `=`
 	p.salt << `=`
