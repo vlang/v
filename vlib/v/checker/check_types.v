@@ -1125,7 +1125,9 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 								if typ.has_flag(.generic) {
 									lambda_ret_gt_name := c.table.type_to_str(typ)
 									idx := func.generic_names.index(lambda_ret_gt_name)
-									typ = node.concrete_types[idx]
+									if idx < node.concrete_types.len {
+										typ = node.concrete_types[idx]
+									}
 								}
 							}
 						}
