@@ -77,6 +77,7 @@ pub mut:
 	is_builtin_mod              bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
 	is_just_builtin_mod         bool // true only inside 'builtin'
 	is_generated                bool // true for `@[generated] module xyz` .v files
+	inside_recheck              bool // true when rechecking rhs assign statement
 	inside_unsafe               bool // true inside `unsafe {}` blocks
 	inside_const                bool // true inside `const ( ... )` blocks
 	inside_anon_fn              bool // true inside `fn() { ... }()`
@@ -1774,7 +1775,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	}
 
 	if has_field {
-		is_used_outside := sym.mod != c.mod
+		is_used_outside := !c.inside_recheck && sym.mod != c.mod
 		if is_used_outside && !field.is_pub && sym.language != .c {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
 			c.error('field `${unwrapped_sym.name}.${field_name}` is not public', node.pos)

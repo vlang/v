@@ -182,6 +182,17 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				node.right_types << c.check_expr_option_or_result_call(node.right[i],
 					right_type)
 			}
+		} else {
+			// on generic recheck phase it might be needed to resolve the rhs again
+			if i < node.right.len && c.comptime.has_comptime_expr(node.right[i]) {
+				mut expr := mut node.right[i]
+				old_inside_recheck := c.inside_recheck
+				c.inside_recheck = true
+				right_type := c.expr(mut expr)
+				node.right_types[i] = c.check_expr_option_or_result_call(node.right[i],
+					right_type)
+				c.inside_recheck = old_inside_recheck
+			}
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
@@ -494,7 +505,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if (left.is_map || left.is_farray) && left.is_setter {
 						left.recursive_mapset_is_setter(true)
 					}
-
 					right_type = c.comptime.get_type_or_default(right, right_type)
 				}
 				if mut left is ast.InfixExpr {

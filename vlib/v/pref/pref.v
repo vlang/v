@@ -104,8 +104,9 @@ pub mut:
 	is_liveshared      bool   // a shared library, that will be used in a -live main program
 	is_shared          bool   // an ordinary shared library, -shared, no matter if it is live or not
 	is_o               bool   // building an .o file
-	is_prof            bool   // benchmark every function
-	is_prod            bool   // use "-O2"
+	is_prof            bool   // benchmark every function	
+	is_prod            bool   // use "-O3"
+	no_prod_options    bool   // `-no-prod-options`, means do not pass any optimization flags to the C compilation, while still allowing the user to use for example `-cflags -Os` to pass custom ones
 	is_repl            bool
 	is_eval_argument   bool // true for `v -e 'println(2+2)'`. `println(2+2)` will be in pref.eval_argument .
 	is_run             bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
@@ -666,6 +667,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-prod' {
 				res.is_prod = true
+				res.build_options << arg
+			}
+			'-no-prod-options' {
+				res.no_prod_options = true
 				res.build_options << arg
 			}
 			'-sanitize' {
