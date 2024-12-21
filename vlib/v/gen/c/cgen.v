@@ -4412,7 +4412,12 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 		}
 		sb.write_string('${g.styp(param.typ)} a${i}')
 	}
-	sb.writeln(') {')
+	sb.write_string(')')
+	if g.pref.parallel_cc {
+		g.extern_out.write_string(sb.bytestr())
+		g.extern_out.writeln(';')
+	}
+	sb.writeln(' {')
 	sb.writeln('\t${data_styp}* a0 = __CLOSURE_GET_DATA();')
 	if m.return_type != ast.void_type {
 		sb.write_string('\treturn ')
