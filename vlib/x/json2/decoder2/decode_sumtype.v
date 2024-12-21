@@ -8,9 +8,15 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 			if initialized_sumtype is v {
 				// workaround for auto generated function considering sumtype as array
 				unsafe {
-					mut val := initialized_sumtype
-					decoder.decode_value(mut val)!
-					return T(val)
+					$if initialized_sumtype is $map {
+						mut val := initialized_sumtype.clone()
+						decoder.decode_value(mut val)!
+						return T(val)
+					} $else {
+						mut val := initialized_sumtype
+						decoder.decode_value(mut val)!
+						return T(val)
+					}
 				}
 			}
 		}

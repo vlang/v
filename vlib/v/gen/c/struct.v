@@ -685,7 +685,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 		field_unwrap_typ := g.unwrap_generic(sfield.typ)
 		field_unwrap_sym := g.table.final_sym(field_unwrap_typ)
 		is_auto_deref_var := sfield.expr.is_auto_deref_var()
-		if field_unwrap_sym.info is ast.ArrayFixed {
+		if field_unwrap_sym.info is ast.ArrayFixed && !sfield.expected_type.has_flag(.option) {
 			match sfield.expr {
 				ast.Ident, ast.SelectorExpr {
 					g.fixed_array_var_init(g.expr_string(sfield.expr), is_auto_deref_var,

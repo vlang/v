@@ -270,7 +270,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// `/volatile:ms` enables atomic volatile (gcc _Atomic)
 	// `/F 16777216` changes the stack size to 16MB, see https://docs.microsoft.com/en-us/cpp/build/reference/f-set-stack-size?view=msvc-170
 	a << ['-w', '/we4013', '/volatile:ms', '/F 16777216']
-	if v.pref.is_prod {
+	if v.pref.is_prod && !v.pref.no_prod_options {
 		a << '/O2'
 	}
 	if v.pref.is_debug {
@@ -344,7 +344,7 @@ pub fn (mut v Builder) cc_msvc() {
 		// only use /DEBUG, if the user *did not* provide its own:
 		a << '/DEBUG:FULL' // required for prod builds to generate a PDB file
 	}
-	if v.pref.is_prod {
+	if v.pref.is_prod && !v.pref.no_prod_options {
 		a << '/INCREMENTAL:NO' // Disable incremental linking
 		a << '/OPT:REF'
 		a << '/OPT:ICF'
@@ -420,9 +420,11 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	oargs << '/volatile:ms'
 
 	if v.pref.is_prod {
-		oargs << '/O2'
-		oargs << '/MD'
-		oargs << '/DNDEBUG'
+		if !v.pref.no_prod_options {
+			oargs << '/O2'
+			oargs << '/MD'
+			oargs << '/DNDEBUG'
+		}
 	} else {
 		oargs << '/MDd'
 		oargs << '/D_DEBUG'

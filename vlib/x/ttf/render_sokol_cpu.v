@@ -17,6 +17,8 @@ import gg
 import sokol.sgl
 import sokol.gfx
 
+// TTF_render_Sokol is a structure containing data for rendering a TTF font
+// as a sokol texture
 pub struct TTF_render_Sokol {
 pub mut:
 	bmp &BitMap = unsafe { nil } // Base bitmap render
@@ -32,10 +34,12 @@ pub mut:
 * Render functions
 *
 ******************************************************************************/
+// format_texture formats the BMP (bitmap).
 pub fn (mut tf_skl TTF_render_Sokol) format_texture() {
 	tf_skl.bmp.format_texture()
 }
 
+// create_text prepares the text `in_txt` in size `in_font_size` as a sokol texture.
 pub fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32) {
 	scale_reduct := tf_skl.scale_reduct
 	device_dpi := tf_skl.device_dpi
@@ -72,6 +76,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32
 	tf_skl.format_texture()
 }
 
+// create_text_block prepares a block of text as a sokol texture.
 pub fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, in_h int, in_font_size f32) {
 	scale_reduct := tf_skl.scale_reduct
 	device_dpi := tf_skl.device_dpi
@@ -116,6 +121,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, 
 * Sokol Render functions
 *
 ******************************************************************************/
+// create_texture creates the sokol texture from the internal buffer state.
 pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 	w := tf_skl.bmp.width
 	h := tf_skl.bmp.height
@@ -150,12 +156,14 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 	tf_skl.sg_smp = ssmp
 }
 
+// destroy_texture detroys the internal sokol texture.
 pub fn (tf_skl TTF_render_Sokol) destroy_texture() {
 	gfx.destroy_image(tf_skl.sg_img)
 	gfx.destroy_sampler(tf_skl.sg_smp)
 }
 
-// Use only if usage: .dynamic
+// update_text_texture updates the sokol texture with current internal state.
+// NOTE: Only use if `.dynamic` is set.
 pub fn (mut tf_skl TTF_render_Sokol) update_text_texture() {
 	sz := tf_skl.bmp.width * tf_skl.bmp.height * tf_skl.bmp.bp
 	mut tmp_sbc := gfx.ImageData{}
@@ -166,6 +174,7 @@ pub fn (mut tf_skl TTF_render_Sokol) update_text_texture() {
 	gfx.update_image(tf_skl.sg_img, &tmp_sbc)
 }
 
+// draw_text_bmp renders the internal state to the current sokol pipeline.
 pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 	// width  := tf_skl.bmp.width  >> 1
 	// height := tf_skl.bmp.height >> 1

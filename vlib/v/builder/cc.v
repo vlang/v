@@ -283,7 +283,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			&& v.parsed_files.last().path.contains('vlib')) {
 			eprintln('Note: tcc is not recommended for -prod builds')
 		}
-		ccoptions.args << optimization_options
+		if !v.pref.no_prod_options {
+			ccoptions.args << optimization_options
+		}
 	}
 	if v.pref.is_prod && !ccoptions.debug_mode {
 		// sokol and other C libraries that use asserts
@@ -1085,7 +1087,9 @@ fn (mut c Builder) cc_windows_cross() {
 
 	mut all_args := []string{}
 	all_args << '-std=gnu11'
-	all_args << optimization_options
+	if !c.pref.no_prod_options {
+		all_args << optimization_options
+	}
 	all_args << debug_options
 
 	all_args << args

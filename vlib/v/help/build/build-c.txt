@@ -262,7 +262,7 @@ see also `v help build`.
       your custom one loaded from specified <path>.
 
 # Debugging:
-   -g
+   -g, -debug
       Generate more debug information in the compiled executable.
       This makes program backtraces more useful.
       Using debuggers like gdb/lldb with such executables is easier too.
@@ -270,7 +270,7 @@ see also `v help build`.
       so that your debugger and the stacktraces will show you directly
       what .v file is responsible for each call/panic.
 
-   -cg
+   -cg, -cdebug
       Like -g, but do not use V source line numbers.
       When debugging code that wraps C libraries, this option may be
       more useful than -g, since it will reduce the amount of context

@@ -47,7 +47,7 @@ fn (mut g Gen) gen_vlines_reset() {
 	}
 }
 
-pub fn fix_reset_dbg_line(src string, out_file string) string {
+pub fn fix_reset_dbg_line(src strings.Builder, out_file string) strings.Builder {
 	util.timing_start(@FN)
 	defer {
 		util.timing_measure(@FN)
@@ -60,7 +60,7 @@ pub fn fix_reset_dbg_line(src string, out_file string) string {
 	for idx, ob in src {
 		if ob == `\n` {
 			lines++
-			if unsafe { vmemcmp(src.str + idx + 1, reset_dbg_line.str, reset_dbg_line.len) } == 0 {
+			if unsafe { vmemcmp(&u8(src.data) + idx + 1, reset_dbg_line.str, reset_dbg_line.len) } == 0 {
 				dbg_reset_line_idx = idx + 1
 				break
 			}
@@ -69,7 +69,7 @@ pub fn fix_reset_dbg_line(src string, out_file string) string {
 	// find the position of the "..\..\..\src.tmp.c":
 	mut first_quote_idx := 0
 	for idx := dbg_reset_line_idx; idx < src.len; idx++ {
-		if unsafe { src.str[idx] } == `"` {
+		if unsafe { &u8(src.data)[idx] } == `"` {
 			first_quote_idx = idx
 			break
 		}
@@ -78,15 +78,15 @@ pub fn fix_reset_dbg_line(src string, out_file string) string {
 	// before and after it unchanged:
 	mut sb := strings.new_builder(src.len)
 	unsafe {
-		sb.write_ptr(src.str, dbg_reset_line_idx)
+		sb.write_ptr(&u8(src.data), dbg_reset_line_idx)
 		sb.write_string('#line ')
 		sb.write_decimal(lines)
-		sb.write_ptr(src.str + first_quote_idx - 1, src.len - first_quote_idx)
+		sb.write_ptr(&u8(src.data) + first_quote_idx - 1, src.len - first_quote_idx)
 	}
 	$if trace_reset_dbg_line ? {
 		eprintln('> reset_dbg_line: ${out_file}:${lines} | first_quote_idx: ${first_quote_idx} | src.len: ${src.len} | sb.len: ${sb.len} | sb.cap: ${sb.cap}')
 	}
-	return sb.str()
+	return sb
 }
 
 fn (mut g Gen) gen_c_main_function_only_header() {

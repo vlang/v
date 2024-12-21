@@ -3,6 +3,7 @@ import net
 import net.websocket
 import time
 
+@[heap]
 struct WebsocketTestResults {
 pub mut:
 	nr_messages      int

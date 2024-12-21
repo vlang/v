@@ -10,7 +10,7 @@ const const_users_offset = 1
 const const_users_offset2 = 1
 
 fn test_orm() {
-	db := sqlite.connect(':memory:') or { panic(err) }
+	mut db := sqlite.connect(':memory:') or { panic(err) }
 
 	upper_1 := User{
 		name: 'Test'
@@ -31,4 +31,5 @@ fn test_orm() {
 	} or { panic(err) }
 
 	assert result[0].name == 'Test'
+	db.close()!
 }

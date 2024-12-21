@@ -50,15 +50,23 @@ fn (mut g Gen) profile_fn(fn_decl ast.FnDecl) {
 pub fn (mut g Gen) gen_vprint_profile_stats() {
 	g.pcs_declarations.writeln('void vprint_profile_stats(){')
 	fstring := '"%14llu %14.3fms %14.0fns %s \\n"'
+	g.pcs_declarations.writeln('\tf64 f = 1.0;')
+	if g.pref.os == .windows {
+		// QueryPerformanceCounter() / QueryPerformanceFrequency()
+		// https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps
+		g.pcs_declarations.writeln('\tu64 freq_time = 0;')
+		g.pcs_declarations.writeln('\tQueryPerformanceFrequency(((voidptr)(&freq_time)));')
+		g.pcs_declarations.writeln('\tf = (f64)1000000000.0/(f64)freq_time;')
+	}
 	if g.pref.profile_file == '-' {
 		for pc_meta in g.pcs {
-			g.pcs_declarations.writeln('\tif (${pc_meta.vpc_calls}) printf(${fstring}, ${pc_meta.vpc_calls}, ${pc_meta.vpc_name}/1000000.0, ${pc_meta.vpc_name}/${pc_meta.vpc_calls}, "${pc_meta.fn_name}" );')
+			g.pcs_declarations.writeln('\tif (${pc_meta.vpc_calls}) printf(${fstring}, ${pc_meta.vpc_calls}, (${pc_meta.vpc_name}*f)/1000000.0, (${pc_meta.vpc_name}*f)/${pc_meta.vpc_calls}, "${pc_meta.fn_name}" );')
 		}
 	} else {
 		g.pcs_declarations.writeln('\tFILE * fp;')
 		g.pcs_declarations.writeln('\tfp = fopen ("${g.pref.profile_file}", "w+");')
 		for pc_meta in g.pcs {
-			g.pcs_declarations.writeln('\tif (${pc_meta.vpc_calls}) fprintf(fp, ${fstring}, ${pc_meta.vpc_calls}, ${pc_meta.vpc_name}/1000000.0, ${pc_meta.vpc_name}/${pc_meta.vpc_calls}, "${pc_meta.fn_name}" );')
+			g.pcs_declarations.writeln('\tif (${pc_meta.vpc_calls}) fprintf(fp, ${fstring}, ${pc_meta.vpc_calls}, (${pc_meta.vpc_name}*f)/1000000.0, (${pc_meta.vpc_name}*f)/${pc_meta.vpc_calls}, "${pc_meta.fn_name}" );')
 		}
 		g.pcs_declarations.writeln('\tfclose(fp);')
 	}

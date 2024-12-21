@@ -12,7 +12,7 @@ const cc_ldflags = os.getenv_opt('LDFLAGS') or { '' }
 const cc_cflags = os.getenv_opt('CFLAGS') or { '' }
 const cc_cflags_opt = os.getenv_opt('CFLAGS_OPT') or { '' } // '-O3' }
 
-fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
+fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	tmp_dir := os.vtmp_dir()
 	sw_total := time.new_stopwatch()
 	defer {
@@ -84,6 +84,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	}
 	scompile_args := compile_args.join(' ')
 	slinker_args := linker_args.join(' ')
+	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
 
 	mut o_postfixes := ['0', 'x']
 	mut cmds := []string{}
@@ -93,25 +94,37 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) {
 	for postfix in o_postfixes {
 		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${scompile_args} -w -o ${tmp_dir}/out_${postfix}.o -c ${tmp_dir}/out_${postfix}.c'
 	}
+	mut failed := 0
 	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
 	pp.set_max_jobs(util.nr_jobs)
 	pp.work_on_items(cmds)
-	eprint_time(sw, 'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands')
+	for x in pp.get_results[os.Result]() {
+		failed += if x.exit_code == 0 { 0 } else { 1 }
+	}
+	eprint_time(sw, 'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
+	if failed > 0 {
+		return error_with_code('failed parallel C compilation', failed)
+	}
 
 	obj_files := fnames.map(it.replace('.c', '.o')).join(' ')
-	link_cmd := '${cc} ${scompile_args} -o ${os.quoted_path(b.pref.out_name)} ${tmp_dir}/out_0.o ${obj_files} ${tmp_dir}/out_x.o ${slinker_args} ${cc_ldflags}'
+	link_cmd := '${cc} ${scompile_args_for_linker} -o ${os.quoted_path(b.pref.out_name)} ${tmp_dir}/out_0.o ${obj_files} ${tmp_dir}/out_x.o ${slinker_args} ${cc_ldflags}'
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)
+	if link_res.exit_code != 0 {
+		return error_with_code('failed to link after parallel C compilation', 1)
+	}
 }
 
-fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) voidptr {
+fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) &os.Result {
 	cmd := p.get_item[string](idx)
 	sw := time.new_stopwatch()
 	res := os.execute(cmd)
 	eprint_result_time(sw, 'cc_cmd', cmd, res)
-	return unsafe { nil }
+	return &os.Result{
+		...res
+	}
 }
 
 fn eprint_result_time(sw time.StopWatch, label string, cmd string, res os.Result) {

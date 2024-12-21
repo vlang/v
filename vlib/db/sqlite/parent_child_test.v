@@ -20,7 +20,7 @@ struct Baby {
 }
 
 fn test_main() {
-	db := sqlite.connect(':memory:')!
+	mut db := sqlite.connect(':memory:')!
 
 	sql db {
 		create table Parent
@@ -80,4 +80,6 @@ fn test_main() {
 	assert parent[0].children[0].id == 1
 	assert parent[0].children[1].id == 2
 	assert parent[0].children.len == 2
+
+	db.close()!
 }

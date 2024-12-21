@@ -276,12 +276,12 @@ mut:
 @[heap]
 pub struct GenOutput {
 pub:
-	header           string // produced output for out.h (-parallel-cc)
-	res              string // produced output (complete)
-	out_str          string // produced output from g.out
-	out0_str         string // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)	
-	extern_str       string // extern chunk for (-parallel-cc)
-	out_fn_start_pos []int  // fn decl positions
+	header           string          // produced output for out.h (-parallel-cc)
+	res_builder      strings.Builder // produced output (complete)
+	out_str          string          // produced output from g.out
+	out0_str         string          // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)	
+	extern_str       string          // extern chunk for (-parallel-cc)
+	out_fn_start_pos []int           // fn decl positions
 }
 
 pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenOutput {
@@ -723,18 +723,18 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	}
 	// End of out_0.c
 
+	shelpers := helpers.str()
+
 	if !g.pref.parallel_cc {
-		b.write_string(helpers.str())
+		b.write_string(shelpers)
 	}
 
 	// The rest of the output
 	out_str := g.out.str()
-	out0_str := helpers.str()
 	extern_out_str := g.extern_out.str()
 	b.write_string(out_str)
 	b.writeln('// THE END.')
 	util.timing_measure('cgen common')
-	res := b.str()
 	$if trace_all_generic_fn_keys ? {
 		gkeys := g.table.fn_generic_types.keys()
 		for gkey in gkeys {
@@ -742,15 +742,14 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		}
 	}
 	out_fn_start_pos := g.out_fn_start_pos.clone()
-	unsafe { b.free() }
 	unsafe { helpers.free() }
 	unsafe { g.free_builders() }
 
 	return GenOutput{
 		header:           header
-		res:              res
+		res_builder:      b
 		out_str:          out_str
-		out0_str:         out0_str
+		out0_str:         shelpers
 		extern_str:       extern_out_str
 		out_fn_start_pos: out_fn_start_pos
 	}
@@ -2205,6 +2204,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		} else {
 			g.writeln('${g.styp(ret_typ)} ${tmp_var};')
 		}
+		mut expr_is_fixed_array_var := false
 		if ret_typ_is_option {
 			if expr_typ_is_option && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
 				simple_assign = expr is ast.StructInit
@@ -2226,6 +2226,10 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					&& expr.right is ast.StructInit
 					&& (expr.right as ast.StructInit).init_fields.len == 0 {
 					g.write('_option_none(&(${styp}[]) { ')
+				} else if expr in [ast.Ident, ast.SelectorExpr]
+					&& final_expr_sym.kind == .array_fixed {
+					expr_is_fixed_array_var = true
+					g.write('_option_ok(&')
 				} else {
 					g.write('_option_ok(&(${styp}[]) { ')
 					if final_expr_sym.info is ast.FnType {
@@ -2248,6 +2252,8 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		if ret_typ_is_option {
 			if simple_assign {
 				g.writeln(';')
+			} else if expr_is_fixed_array_var {
+				g.writeln(', (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
 			} else {
 				g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
 			}
@@ -4406,7 +4412,12 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 		}
 		sb.write_string('${g.styp(param.typ)} a${i}')
 	}
-	sb.writeln(') {')
+	sb.write_string(')')
+	if g.pref.parallel_cc {
+		g.extern_out.write_string(sb.bytestr())
+		g.extern_out.writeln(';')
+	}
+	sb.writeln(' {')
 	sb.writeln('\t${data_styp}* a0 = __CLOSURE_GET_DATA();')
 	if m.return_type != ast.void_type {
 		sb.write_string('\treturn ')

@@ -10,6 +10,8 @@ $if linux {
 #flag -I @VEXEROOT/thirdparty/sokol
 // FreeBSD requires the audio/alsa-lib to be installed
 #flag freebsd -I/usr/local/include
+
+@[use_once]
 #define SOKOL_IMPL
 #include "sokol_audio.h"
 #flag linux -lasound -lpthread
