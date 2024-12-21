@@ -1,0 +1,7 @@
+fn main() {
+	array := []i32{len: 3, init: index}
+	println(array)
+
+	array2 := [3]i32{init: index}
+	println(array2)
+}

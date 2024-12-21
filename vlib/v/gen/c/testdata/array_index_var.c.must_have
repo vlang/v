@@ -1,0 +1,2 @@
+		for (i32 index=0; index<__v_array.len; index++, pelem++) {
+		for (i32 index=0; index<_len; index++, pelem++) {
