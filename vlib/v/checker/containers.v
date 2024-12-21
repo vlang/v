@@ -305,6 +305,9 @@ fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	if !node.elem_type.has_flag(.option) && init_typ.has_flag(.option) {
 		c.error('cannot use unwrapped Option as initializer', init_expr.pos())
 	}
+	if init_typ.is_number() {
+		return
+	}
 	c.check_expected(init_typ, node.elem_type) or { c.error(err.msg(), init_expr.pos()) }
 }
 
