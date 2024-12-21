@@ -1127,6 +1127,8 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 									idx := func.generic_names.index(lambda_ret_gt_name)
 									if idx < node.concrete_types.len {
 										typ = node.concrete_types[idx]
+									} else {
+										typ = ast.void_type
 									}
 								}
 							}
