@@ -1,6 +1,7 @@
 module cbuilder
 
 import os
+import strings
 import v.pref
 import v.util
 import v.builder
@@ -60,17 +61,17 @@ pub fn build_c(mut b builder.Builder, v_files []string, out_file string) {
 	if b.pref.is_vlines {
 		output2 = c.fix_reset_dbg_line(output2, out_file)
 	}
-	os.write_file(out_file, output2) or { panic(err) }
+	os.write_file_array(out_file, output2) or { panic(err) }
 	if b.pref.is_stats {
-		b.stats_lines = output2.count('\n') + 1
+		b.stats_lines = output2.count(it == `\n`) + 1
 		b.stats_bytes = output2.len
 	}
 }
 
-pub fn gen_c(mut b builder.Builder, v_files []string) string {
+pub fn gen_c(mut b builder.Builder, v_files []string) strings.Builder {
 	b.front_and_middle_stages(v_files) or {
 		if err.code() > 7000 {
-			return ''
+			return []u8{}
 		}
 		builder.verror(err.msg())
 	}
@@ -86,5 +87,5 @@ pub fn gen_c(mut b builder.Builder, v_files []string) string {
 		util.timing_measure('Parallel C compilation')
 	}
 
-	return result.res
+	return result.res_builder
 }
