@@ -516,11 +516,8 @@ fn test_encode_alias_field() {
 			a: 1
 		}
 	})
-	println(s)
 	assert s == '{"sub":{"a":1}}'
 }
-
-//
 
 struct APrice {}
 
@@ -545,13 +542,18 @@ struct ChildNullish {
 
 struct NullishStruct {
 	name     string
-	lastname string @[json_allow_null]
+	lastname string
 	age      int
 	salary   f32
-	child    ChildNullish @[json_allow_null]
+	child    ChildNullish
 }
 
-fn test_nullish() {
+struct RequiredStruct {
+	name     string @[required]
+	lastname string
+}
+
+fn test_required() {
 	nullish_one := json.decode(NullishStruct, '{"name":"Peter", "lastname":null, "age":28,"salary":95000.5,"title":"worker"}')!
 	assert nullish_one.name == 'Peter'
 	assert nullish_one.lastname == ''
@@ -572,4 +574,16 @@ fn test_nullish() {
 	assert nullish_third.age == 28
 	assert nullish_third.salary == 95000.5
 	assert nullish_third.child.name == 'Nullish'
+
+	required_struct := json.decode(RequiredStruct, '{"name":"Peter", "lastname": "Parker"}')!
+	assert required_struct.name == 'Peter'
+	assert required_struct.lastname == 'Parker'
+
+	required_struct_err := json.decode(RequiredStruct, '{"name": null, "lastname": "Parker"}') or {
+		assert err.msg() == "type mismatch for field 'name', expecting `string` type, got: null"
+		RequiredStruct{
+			name:     'Peter'
+			lastname: 'Parker'
+		}
+	}
 }
