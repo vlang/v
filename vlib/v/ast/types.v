@@ -1722,8 +1722,8 @@ pub fn (t &TypeSymbol) has_method(name string) bool {
 }
 
 pub fn (t &TypeSymbol) has_method_with_generic_parent(name string) bool {
-	t.find_method_with_generic_parent(name) or { return false }
-	return true
+	m := t.find_method_with_generic_parent(name) or { return false }
+	return t.kind != .interface || !m.no_body
 }
 
 pub fn (t &TypeSymbol) find_method(name string) ?Fn {
@@ -1813,7 +1813,7 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 	mut expects_ptr := false
 	mut nr_args := 0
 	if sym_str_method := t.find_method_with_generic_parent('str') {
-		has_str_method = true
+		has_str_method = t.kind != .interface || !sym_str_method.no_body
 		nr_args = sym_str_method.params.len
 		if nr_args > 0 {
 			expects_ptr = sym_str_method.params[0].typ.is_ptr()
