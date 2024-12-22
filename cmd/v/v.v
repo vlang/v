@@ -47,6 +47,7 @@ const external_tools = [
 	'test-fmt',
 	'test-parser',
 	'test-self',
+	'time',
 	'tracev',
 	'up',
 	'vet',
