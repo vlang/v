@@ -1,4 +1,6 @@
 ## V 0.4.9
+*28 Sep 2024*
+
 #### Improvements in the language
 - `-skip-unused` is now on by default resulting in much smaller cgen and binaries. 70% reduction for hello world.
 - `-parallel-cc` for speeding up `-prod` and `-cc clang/gcc` compilation by up to 14 times!
@@ -170,10 +172,6 @@
 - Fix mark as used var on insert statement (fix #23032) (#23038)
 - Fix update stmt with enum value (fix #23031) (#23037)
 
-#### Database drivers
-
-#### Native backend
-
 #### C backend
 - Fix codegen for fixed array contains - `[1,2]! in a` (fix #22559) (#22579)
 - Improve fixed array literal in operation and index calls (#22590)
@@ -270,8 +268,6 @@
 - Fix assign optional aliases of fixed array (fix #23185) (#23188)
 - Fix struct field init with optional fixed array (fix #23193, fix #23195) (#23199)
 - Reduce RAM usage, by avoiding a .str() call, for the final string builder, containing the final C program, used to write it to a file (#23226)
-
-#### JavaScript backend
 
 #### vfmt
 - Add support for comments inside `sql db { ... }` blocks (fix #22601) (#22602)
