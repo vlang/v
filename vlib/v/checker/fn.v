@@ -1806,15 +1806,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						}
 						if mut call_arg.expr is ast.LambdaExpr {
 							// Calling fn is generic and lambda arg also is generic
-							if node.concrete_types.len > 0 && call_arg.expr.func != unsafe { nil }
-								&& call_arg.expr.func.decl.generic_names.len > 0 {
-								call_arg.expr.call_ctx = unsafe { node }
-								if c.table.register_fn_concrete_types(call_arg.expr.func.decl.fkey(),
-									node.concrete_types)
-								{
-									call_arg.expr.func.decl.ninstances++
-								}
-							}
+							c.handle_generic_lambda_arg(node, mut call_arg.expr)
 							continue
 						}
 						c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
@@ -2793,6 +2785,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
 				arg.pos)
 		}
+		if mut arg.expr is ast.LambdaExpr {
+			// Calling fn is generic and lambda arg also is generic
+			c.handle_generic_lambda_arg(node, mut arg.expr)
+		}
 		param_typ_sym := c.table.sym(exp_arg_typ)
 		if param_typ_sym.kind == .struct && got_arg_typ !in [ast.voidptr_type, ast.nil_type]
 			&& !c.check_multiple_ptr_match(got_arg_typ, param.typ, param, arg) {
@@ -2869,6 +2865,17 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	c.register_trace_call(node, method)
 	return node.return_type
+}
+
+fn (mut c Checker) handle_generic_lambda_arg(node &ast.CallExpr, mut lambda ast.LambdaExpr) {
+	// Calling fn is generic and lambda arg also is generic
+	if node.concrete_types.len > 0 && lambda.func != unsafe { nil }
+		&& lambda.func.decl.generic_names.len > 0 {
+		lambda.call_ctx = unsafe { node }
+		if c.table.register_fn_concrete_types(lambda.func.decl.fkey(), node.concrete_types) {
+			lambda.func.decl.ninstances++
+		}
+	}
 }
 
 fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
