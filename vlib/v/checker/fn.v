@@ -2544,7 +2544,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.fail_if_unreadable(node.left, left_type, 'receiver')
 	}
 	if left_sym.language != .js && (!left_sym.is_builtin() && method.mod != 'builtin')
-		&& method.language == .v && method.no_body {
+		&& method.language == .v && final_left_sym.kind != .interface && method.no_body {
 		c.error('cannot call a method that does not have a body', node.pos)
 	}
 	if node.concrete_types.len > 0 && method.generic_names.len > 0
