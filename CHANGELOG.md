@@ -1,5 +1,5 @@
 ## V 0.4.9
-*28 Sep 2024*
+*22 Dec 2024*
 
 #### Improvements in the language
 - `-skip-unused` is now on by default resulting in much smaller cgen and binaries. 70% reduction for hello world.
