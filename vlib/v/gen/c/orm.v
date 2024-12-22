@@ -423,7 +423,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				g.writeln('${var}.state == 2? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${var}.data)),')
 			} else if inserting_object_sym.kind == .sum_type {
 				table_sym := g.table.sym(node.table_expr.typ)
-				sum_type_var := '*(${node.object_var}._${table_sym.cname})${member_access_type}${c_name(field.name)}'
+				sum_type_var := '(*${node.object_var}._${table_sym.cname})${member_access_type}${c_name(field.name)}'
 				g.writeln('orm__${typ}_to_primitive(${sum_type_var}),')
 			} else {
 				g.writeln('orm__${typ}_to_primitive(${var}),')
