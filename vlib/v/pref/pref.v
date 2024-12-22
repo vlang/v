@@ -612,8 +612,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.compress = true
 			}
 			'-freestanding' {
-				res.is_bare = true
-				res.build_options << arg
+				$if macos || linux {
+					res.is_bare = true
+					res.build_options << arg
+				} $else {
+					eprintln('`-freestanding` supported only on `linux` targets currently.')
+					exit(1)
+				}
 			}
 			'-no-retry-compilation' {
 				res.retry_compilation = false
