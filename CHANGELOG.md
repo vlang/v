@@ -3,6 +3,7 @@
 - `-skip-unused` is now on by default resulting in much smaller cgen and binaries. 70% reduction for hello world.
 - `-parallel-cc` for speeding up `-prod` and `-cc clang/gcc` compilation by up to 14 times!
 - C functions no longer need to be manually defined. An `#include "foo.c"` is enough (behind `-experimental` for now).
+- Fixed arrays now have `.index .any .all .map .sort .sorted` methods
 - Remove inline sum types completely
 - Support `in` expr with number ranges: `if var in 1..4 {` (fix #20352) (#22754)
 - Optimize literal string comparison (`match`, `in` and `==`) (#22643)
@@ -161,13 +162,13 @@
 - veb: fix key value and translation file name (#23203)
 
 #### ORM
-- orm: fix orm.Connection only allowing immutable Connections (#22684)
-- orm: fix order by with custom column name (#22813)
-- orm: support plain `@[serial]` attribute for marking struct fields (#22814)
-- orm: fix crash when working with array field (fix #22822) (#22824)
-- orm: fix list generation and escape loose backtick (#23039)
-- orm: fix mark as used var on insert statement (fix #23032) (#23038)
-- orm: fix update stmt with enum value (fix #23031) (#23037)
+- Fix orm.Connection only allowing immutable Connections (#22684)
+- Fix order by with custom column name (#22813)
+- Support plain `@[serial]` attribute for marking struct fields (#22814)
+- Fix crash when working with array field (fix #22822) (#22824)
+- Fix list generation and escape loose backtick (#23039)
+- Fix mark as used var on insert statement (fix #23032) (#23038)
+- Fix update stmt with enum value (fix #23031) (#23037)
 
 #### Database drivers
 
@@ -176,21 +177,17 @@
 #### C backend
 - Fix codegen for fixed array contains - `[1,2]! in a` (fix #22559) (#22579)
 - Improve fixed array literal in operation and index calls (#22590)
-- Implement .index/1 method for fixed arrays  (#22593)
 - Add codegen for auto free methods for interface type (#22555)
 - Add test for #22586 (#22600)
 - Parser,ast,cgen: do is_builtin sym marking during parse time just *once*, to save multiple checks later (#22580)
 - Cache the results of g.base_type/1 (#22613)
 - Add caching to contains_ptr return (#22605)
-- Implement fixed array methods any() and all() (#22609)
 - Add .write2/2 and .writeln2/2 methods to reduce consecutive write calls (#22610)
 - Optimise the generated code for returning literal values and option/result values (#22622)
 - Optimize literal string comparison (string__eq -> vmemcmp) (#22614)
 - Fix selector indexexpr with fntype on assignment (fix #22635) (#22637)
 - Fix anon fn with `&` prefix (fix #22628) (#22638)
 - Fix struct field init with fixed array using index (fix #22616) (#22641)
-- Implement method map() for fixed arrays (#22644)
-- Implement method sort()/sorted() for fixed array (#22650)
 - Fix interface conversion codegen race issue (fix #22640, #17943) (#22655)
 - Fix waiter funcs declarations (fix #22640) (#22649)
 - Improve the assert informations (fix #22666) (#22668)
