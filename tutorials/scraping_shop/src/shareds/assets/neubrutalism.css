@@ -1,0 +1,435 @@
+@import url('./neubrutalism-essentials.css');
+
+:root {
+	--primary-color: #6ecb81;
+	--border-color: #000;
+	--background-color: #fefefe;
+	--font-color: #000000;
+	--secondary-color: #61a761;
+	--none-color: #cccccc;
+	--font-family: "Space Mono", monospace;
+	--modal-neubrutalis: rgba(27, 27, 27, 0.5);
+}
+
+.dark-mode {
+	--primary-color: #5eb371;
+	--border-color: #000;
+	--background-color: #1a1f2f;
+	--font-color: #ffffff;
+	--secondary-color: #61a761;
+	--none-color: #3d3d3d;
+	--modal-neubrutalis: rgba(189, 189, 189, 0.5);
+}
+
+:root {
+	--default-rounded-square: 5px;
+	/* Define o valor padrão para a borda arredondada */
+}
+
+* {
+	border-radius: var(--default-rounded-square);
+	/* Usa a variável para definir a borda */
+}
+
+
+:focus {
+	/* outline: 3px solid var(--secondary-color);
+	outline-style: dashed;
+	outline-offset: 3px; */
+	outline: unset;
+	outline-style: unset;
+	outline-offset: unset;
+}
+
+/* [no-outline] {
+	outline: unset;
+	outline-style: unset;
+	outline-offset: unset;
+} */
+
+* {
+	box-sizing: border-box;
+	font-family: var(--font-family);
+}
+
+body {
+	margin: 0;
+	background-color: var(--background-color);
+	color: var(--font-color);
+	transition: background-color 0.3s, color 0.3s;
+}
+
+.button {
+	width: 25%;
+	padding: 10px;
+	cursor: pointer;
+	font-weight: bold;
+	color: var(--font-color);
+	border: 3px solid var(--border-color);
+	background-color: var(--primary-color);
+	box-shadow: 6px 6px 0 var(--border-color);
+	transition: transform 0.1s ease;
+	transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.button:hover {
+	transform: translate(-1px, -1px);
+}
+
+.button:active {
+	transform: translate(2px, 2px);
+	box-shadow: 2px 2px 0px rgba(0, 0, 0, 1);
+}
+
+button {
+	width: 25%;
+	padding: 10px;
+	cursor: pointer;
+	font-weight: bold;
+	color: var(--font-color);
+	border: 3px solid var(--border-color);
+	background-color: var(--primary-color);
+	box-shadow: 6px 6px 0 var(--border-color);
+	transition: transform 0.1s ease;
+	transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+button:hover {
+	transform: translate(-1px, -1px);
+}
+
+button:active {
+	transform: translate(2px, 2px);
+	box-shadow: 2px 2px 0px rgba(0, 0, 0, 1);
+}
+
+article {
+	position: relative;
+	background-color: var(--background-color);
+	border: 3px solid var(--border-color);
+	padding: 20px;
+	box-shadow: 6px 6px 0 var(--border-color);
+}
+
+article>header {
+	position: sticky;
+	top: 0;
+	background-color: var(--background-color);
+	z-index: 10;
+	border: none;
+	border-bottom: 3px solid var(--border-color);
+	padding-left: 20px;
+	padding-right: 20px;
+	margin-left: -20px;
+	margin-right: -20px;
+}
+
+article>footer {
+	position: sticky;
+	bottom: 0;
+	background-color: var(--background-color);
+	z-index: 10;
+	border: none;
+	border-top: 3px solid var(--border-color);
+	padding-left: 20px;
+	padding-right: 20px;
+	margin-left: -20px;
+	margin-right: -20px;
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	border: 3px solid var(--border-color);
+	box-shadow: 6px 6px 0 var(--border-color);
+}
+
+table th,
+table td {
+	padding: 10px;
+	border: 2px solid var(--border-color);
+	background-color: var(--background-color);
+	color: var(--font-color);
+}
+
+a {
+	color: var(--secondary-color);
+	text-decoration: none;
+	border-bottom: 3px solid var(--border-color);
+}
+
+img[nbtl] {
+	border: 3px solid var(--border-color);
+	box-shadow: 6px 6px 0 var(--border-color);
+}
+
+
+.panel {
+	background-color: var(--background-color);
+	border: 3px solid var(--border-color);
+	padding: 16px;
+	box-shadow: 6px 6px 0 var(--border-color);
+}
+
+[dots] {
+	border-style: dotted;
+}
+
+.vr {
+	border-left: 3px solid var(--border-color);
+	height: 100%;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="password"] {
+	width: 100%;
+	padding: 16px;
+	font-weight: bold;
+	border: 3px solid var(--border-color);
+	box-shadow: 6px 6px 0 var(--border-color);
+	background-color: var(--background-color);
+	color: var(--font-color);
+}
+
+input[type="submit"] {
+	width: 25%;
+	color: var(--font-color);
+	padding: 10px;
+	cursor: pointer;
+	font-weight: bold;
+	transition: transform 0.1s ease;
+	border: 3px solid var(--border-color);
+	background-color: var(--primary-color);
+	box-shadow: 6px 6px 0 var(--border-color);
+}
+
+input[type="submit"]:hover {
+	transform: translate(-1px, -1px);
+}
+
+input[type="submit"]:active {
+	transform: translate(1px, 1px);
+}
+
+textarea {
+	border: none;
+	background-color: var(--background-color);
+	color: var(--font-color);
+	width: 100%;
+	resize: none;
+}
+
+[role="group"] {
+	display: flex;
+	width: 100%;
+	border-radius: var(--default-rounded-square);
+	background-color: #000;
+}
+
+[role="group"] input {
+	flex: 1;
+	border-right: 3px solid var(--border-color) !important;
+}
+
+[role="group"] button {
+	border-left: 3px solid var(--border-color) !important;
+}
+
+/* [role="group"]:focus-within { */
+	/* outline: 3px solid var(--secondary-color);
+	outline-style: dashed;
+	outline-offset: 5px; */
+/* } */
+
+[role="group"]:focus-within * {
+	outline: none;
+}
+
+[rounded-square] {
+	border-radius: 5px;
+}
+
+.rounded-full {
+	border-radius: 9999px;
+}
+
+[no-rounded] {
+	border-radius: 0;
+}
+
+grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+	gap: 16px;
+}
+
+grid>* {
+	padding: 3px;
+	display: flex;
+	flex-direction: column;
+	max-width: 100%;
+	height: auto;
+	overflow: hidden;
+	object-fit: contain;
+}
+
+gridflex {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16px;
+}
+
+gridflex>* {
+	flex: 0 1 auto;
+}
+
+.loading-dots {
+	font-weight: bold;
+}
+
+.loading-dots::after {
+	content: ".";
+	animation: dots 1s infinite;
+}
+
+@keyframes dots {
+	0% {
+		content: ".";
+	}
+
+	33% {
+		content: "..";
+	}
+
+	66% {
+		content: "...";
+	}
+
+	100% {
+		content: ".";
+	}
+}
+
+.loading-dots.fade-out {
+	opacity: 0;
+}
+
+.loading-dots.hidden {
+	visibility: hidden;
+	opacity: 0;
+	transition: opacity 0.5s, visibility 0.5s;
+}
+
+::-webkit-scrollbar {
+	cursor: default;
+	width: 12px;
+}
+
+::-webkit-scrollbar-track {
+	cursor: default;
+	background: var(--background-color);
+}
+
+::-webkit-scrollbar-thumb {
+	cursor: default;
+	background-color: var(--primary-color);
+	border-radius: 4px;
+	border: 3px solid var(--border-color);
+}
+
+::-webkit-scrollbar-thumb:hover {
+	cursor: default;
+	background-color: var(--secondary-color);
+}
+
+.badge {
+	display: inline-block;
+	padding: 5px 10px;
+	background-color: var(--primary-color);
+	color: var(--font-color);
+	font-size: 14px;
+	font-weight: bold;
+	text-align: center;
+	border: 3px solid var(--border-color);
+	box-shadow: 3px 3px 0 var(--border-color);
+	transition: transform 0.1s ease;
+}
+
+.badge:hover {
+	transform: translate(-1px, -1px);
+}
+
+.badge-none {
+	background-color: var(--none-color);
+}
+
+.badge-success {
+	background-color: var(--secondary-color);
+}
+
+.badge-error {
+	background-color: #e74c3c;
+}
+
+.dropdown {
+	position: relative;
+	display: inline-block;
+}
+
+.dropdown-button {
+	width: fit-content;
+	background-color: var(--primary-color);
+	color: var(--font-color);
+	border: 3px solid var(--border-color);
+	box-shadow: 3px 3px 0 var(--border-color);
+	padding: 10px 20px;
+	cursor: pointer;
+	font-family: var(--font-family);
+	transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.dropdown-button:hover {
+	transform: translate(-1px, -1px);
+}
+
+.dropdown-button:active {
+	transform: translate(2px, 2px);
+	box-shadow: 2px 2px 0 var(--border-color);
+}
+
+.dropdown-content {
+	position: absolute;
+	background-color: var(--background-color);
+	min-width: 160px;
+	border: 3px solid var(--border-color);
+	box-shadow: 3px 3px 0 var(--border-color);
+	z-index: 1;
+	padding: 10px 0;
+	right: 5%;
+
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	visibility: hidden;
+	opacity: 0;
+	transition: visibility 0.2s, opacity 0.2s ease;
+}
+
+
+.dropdown-content * {
+	display: block;
+	width: fit-content;
+	font-weight: bold;
+	font-family: var(--font-family);
+	background-color: var(--background-color);
+	transition: background-color 0.3s, transform 0.1s ease;
+}
+
+.dropdown:hover .dropdown-content {
+	display: flex;
+	visibility: visible;
+	opacity: 1;
+}

@@ -1,0 +1,31 @@
+<div id="home_result" hx-boost="true">
+
+	<section class="container margin-bt">
+
+		<form hx-post="/home/scraping" hx-target="#result-scraping" hx-indicator="#loading-result-scraping">
+			<div>
+				<div role="group">
+					<input type="text" name="urlToScraping" placeholder="Digite a Url para Scraping" required
+					value="https://www.instant-gaming.com/en/3324-comprar-gris-pc-mac-jogo-steam/?igr=maisfoco0a" />
+					<!-- value="https://www.amazon.com/gp/product/1839213434?tag=maisfocozeroa-20" /> -->
+
+					<button type="submit"><b>%scrape</b></button>
+				</div>
+				<div class="margin-bt m-childs-right">
+					<gridflex>
+						@for badge_plataform in badges_plataforms
+						${ badge_plataform }
+						@endfor
+					</gridflex>
+				</div>
+			</div>
+
+		</form>
+
+		<div>
+			<div id="loading-result-scraping" class="htmx-indicator loading-dots margin-bt">%loading</div>
+			<div id="result-scraping"></div>
+		</div>
+
+	</section>
+</div>

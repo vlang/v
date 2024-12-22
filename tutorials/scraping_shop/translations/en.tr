@@ -1,0 +1,95 @@
+en
+English
+-----
+autor
+Autor
+-----
+scrape
+Scrape
+-----
+studio
+Studio
+-----
+publisher
+Publisher
+-----
+activation_platform
+Activation platform
+-----
+genres
+Genres
+-----
+about
+About
+-----
+rating
+Rating
+-----
+num_rating
+Nº Rating
+-----
+price
+Price
+-----
+bt_save
+Save
+-----
+synopsis
+Synopsis
+-----
+overall_rating
+Overall rating
+-----
+num_rating
+Nº Overall rating
+-----
+physical
+physical
+-----
+loading
+Loading
+-----
+msg_error_not_found
+Unable to capture data
+-----
+msg_error_not_found_handler_from_plataform
+No suitable handler identified for this url
+-----
+msg_error_fail_to_save
+Falhou ao salvar
+-----
+msg_successfully_saved
+Sucesso ao salvar
+-----
+msg_all_completed
+All completed
+-----
+msg_error_msg_unknown_scrape_type
+Unknown scraping type
+-----
+msg_error_title_not_identified
+Title not identified
+-----
+msg_error_unable_capture_review
+Unable to capture review
+-----
+msg_error_unable_capture_image
+Unable to capture image
+-----
+msg_error_undetifined_genders
+Undetified genders
+-----
+msg_error_price_not_identified
+Price not identified
+-----
+msg_error_unidentified_studio
+Unidentified studio
+-----
+msg_error_undentified_publisher
+Undetified publisher
+-----
+msg_error_unidentified_banner_image
+Unidentified banner image
+-----
+msg_error_unidentified_review_table
+Unidentified review table

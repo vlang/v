@@ -1,0 +1,95 @@
+ru
+Русский
+-----
+autor
+Автор
+-----
+scrape
+Скрапинг
+-----
+studio
+Студия
+-----
+publisher
+Издатель
+-----
+activation_platform
+Платформа активации
+-----
+genres
+Жанры
+-----
+about
+О
+-----
+rating
+Рейтинг
+-----
+num_rating
+№ Рейтинг
+-----
+price
+Цена
+-----
+bt_save
+Сохранить
+-----
+synopsis
+Синопсис
+-----
+overall_rating
+Общий рейтинг
+-----
+num_rating
+№ Общий рейтинг
+-----
+physical
+Физический
+-----
+loading
+Загрузка
+-----
+msg_error_not_found
+Не удалось захватить данные
+-----
+msg_error_not_found_handler_from_plataform
+Не удалось определить подходящий обработчик для этого URL
+-----
+msg_error_fail_to_save
+Ошибка при сохранении
+-----
+msg_successfully_saved
+Успешно сохранено
+-----
+msg_all_completed
+Все выполнено
+-----
+msg_error_msg_unknown_scrape_type
+Неизвестный тип скрапинга
+-----
+msg_error_title_not_identified
+Заголовок не определен
+-----
+msg_error_unable_capture_review
+Не удалось захватить обзор
+-----
+msg_error_unable_capture_image
+Не удалось захватить изображение
+-----
+msg_error_undetifined_genders
+Неопределенные жанры
+-----
+msg_error_price_not_identified
+Цена не определена
+-----
+msg_error_unidentified_studio
+Студия не определена
+-----
+msg_error_undentified_publisher
+Издатель не определен
+-----
+msg_error_unidentified_banner_image
+Баннерное изображение не определено
+-----
+msg_error_unidentified_review_table
+Таблица обзоров не определена

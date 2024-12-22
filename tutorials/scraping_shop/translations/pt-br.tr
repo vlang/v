@@ -1,0 +1,95 @@
+pt-br
+Português
+-----
+autor
+Autor
+-----
+scrape
+Raspar
+-----
+studio
+Estúdio
+-----
+publisher
+Editora
+-----
+activation_platform
+Plataforma de ativação
+-----
+genres
+Gêneros
+-----
+about
+Sobre
+-----
+rating
+Classificação
+-----
+num_rating
+Nº de Avaliações
+-----
+price
+Preço
+-----
+bt_save
+Salvar
+-----
+synopsis
+Sinopse
+-----
+overall_rating
+Classificação geral
+-----
+num_rating
+Nº de Avaliações gerais
+-----
+physical
+Físico
+-----
+loading
+Carregando
+-----
+msg_error_not_found
+Não foi possível capturar os dados
+-----
+msg_error_not_found_handler_from_plataform
+Nenhum manipulador adequado identificado para esta URL
+-----
+msg_error_fail_to_save
+Falha ao salvar
+-----
+msg_successfully_saved
+Salvo com sucesso
+-----
+msg_all_completed
+Tudo concluído
+-----
+msg_error_msg_unknown_scrape_type
+Tipo de raspagem desconhecido
+-----
+msg_error_title_not_identified
+Título não identificado
+-----
+msg_error_unable_capture_review
+Não foi possível capturar a avaliação
+-----
+msg_error_unable_capture_image
+Não foi possível capturar a imagem
+-----
+msg_error_undetifined_genders
+Gêneros não identificados
+-----
+msg_error_price_not_identified
+Preço não identificado
+-----
+msg_error_unidentified_studio
+Estúdio não identificado
+-----
+msg_error_undentified_publisher
+Editora não identificada
+-----
+msg_error_unidentified_banner_image
+Imagem do banner não identificada
+-----
+msg_error_unidentified_review_table
+Tabela de avaliações não identificada

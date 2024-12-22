@@ -1,0 +1,15 @@
+<div class="dropdown">
+    <button style="height: 52px;" class="dropdown-button">
+        <div hx-ext="sse" sse-connect="/home/current_lang" sse-swap="langName"></div>
+    </button>
+    <div style="width: fit-content;" class="dropdown-content">
+        <a href="/home/pt-br" class="button" style="width: 90%;" hx-headers='{"render-only-home": "true"}'
+            hx-push-url="true" hx-get="/home/pt-br" hx-target="#home_result">Português</a>
+
+        <a href="/home/en" class="button" style="width: 90%;" hx-headers='{"render-only-home": "true"}'
+            hx-push-url="true" hx-get="/home/en" hx-target="#home_result">English</a>
+
+        <a href="/home/ru" class="button" style="width: 90%;" hx-headers='{"render-only-home": "true"}'
+            hx-push-url="true" hx-get="/home/ru" hx-target="#home_result">Русский</a>
+    </div>
+</div>

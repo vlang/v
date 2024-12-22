@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="shortcut icon" href="/assets/favicon.ico" />
+	<title>ScrapingShop</title>
+	<script src="https://unpkg.com/htmx.org@@2.0.4"
+		integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
+		crossorigin="anonymous"></script>
+	<script src="https://unpkg.com/htmx-ext-sse@@2.2.2/sse.js"></script>
+	<script src="https://unpkg.com/htmx-ext-json-enc@@2.0.1/json-enc.js"></script>
+	
+	
+	@css '/assets/neubrutalism.css'
+	@css '/assets/base.css'
+	<style>
+		#barra-superior {
+			position: fixed;
+			top: 0;
+			right: 0;
+			z-index: 99999;
+			padding: 10px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+	</style>
+</head>
+
+<body>
+	<div style="margin-bottom: 85px;">
+		<div id="barra-superior" class="m-childs-right">
+			@switch_language
+			@include '/src/shareds/components/toogle_darkmode/toggledarkmode.html'
+		</div>
+	</div>
+
+	@home
+</body>
+
+@js '/assets/base.js'
+@js '/assets/modal.js'
+@js '/components/toogle_darkmode/toggleDarkMode.js'
+
+</html>

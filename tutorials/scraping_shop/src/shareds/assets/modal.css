@@ -1,0 +1,51 @@
+.modal {
+	display: none;
+	position: fixed;
+	z-index: 1;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	background: repeating-linear-gradient(
+		0deg,
+		var(--modal-neubrutalis),
+		var(--modal-neubrutalis) 1px,
+		transparent 1px,
+		transparent 5px
+	),
+	repeating-linear-gradient(
+		90deg,
+		var(--modal-neubrutalis),
+		var(--modal-neubrutalis) 1px,
+		transparent 1px,
+		transparent 5px
+	);
+}
+
+.modal[open] {
+	display: unset;
+}
+
+.modal-content {
+	background-color: var(--background-color);
+	margin: 15% auto;
+	padding: 20px;
+	width: fit-content;
+	max-width: 80%;
+}
+
+.close-modal {}
+
+.close-modal[xclose-modal] {
+	color: #aaa;
+	float: right;
+	font-size: 28px;
+	font-weight: bold;
+}
+
+.close-modal[xclose-modal]:hover,
+.close-modal[xclose-modal]:focus {
+	color: var(--font-color);
+	text-decoration: none;
+	cursor: pointer;
+}

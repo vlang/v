@@ -1,0 +1,49 @@
+<article>
+	<section>
+		<div class="flex justify-start align-center">
+			<img nbtl class="margin-lr" style="height: 76px;" src="@data.thumbnails_links" />
+			<h2 class="margin-lr">@data.title</h2>
+		</div>
+
+		<grid>
+			<div>
+				<img nbtl class="margin-lr" src="@data.images_links" />
+			</div>
+
+			<div class="flex" style="height: 100%;">
+				<p>%autor: <b>@data.author</b></p>
+				<div class="margin-bot padding-bot" style="flex-grow: 1;">
+					<p>%synopsis:</p><textarea no-outline readonly class="font-bold"
+						style="width: 100%; height: 80%;">@data.sinopse</textarea>
+				</div>
+				<div class="margin-top margin padding-top">
+					<p>%overall_rating: <b>@data.geral_evaluation</b></p>
+					<p>%num_rating: <b>@data.qtde_evaluation</b></p>
+				</div>
+			</div>
+		</grid>
+
+		<grid class="margin-bt margin-lr">
+			@if data.price_printed != none
+			<article>
+				<h4 class="margin-lr">
+					%price
+					( %physical) : <b>$ @price_printed </b></h4>
+			</article>
+			@endif
+
+			@if data.price_kindle_ebook != none
+			<article>
+				<h4 class="margin-lr">%price ( digital ): <b>$ @price_kindle_ebook</b></h3>
+			</article>
+			@endif
+		</grid>
+	</section>
+
+	<form class="margin-lr" hx-post="/home/save/@save_is" hx-ext="json-enc" hx-vals="@json_data"
+		hx-target="#result-modal">
+		<button type="submit" class="container-full padding-bt">%bt_save</button>
+	</form>
+	<div id="result-modal"></div>
+
+</article>

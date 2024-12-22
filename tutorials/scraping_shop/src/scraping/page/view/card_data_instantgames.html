@@ -1,0 +1,50 @@
+<article>
+	<section>
+		<div class="flex justify-start align-center margin-bot">
+			<img nbtl class="margin-lr" style="height: 76px;" src="@banner_img" />
+			<h2 class="margin-lr">@data.title</h2>
+		</div>
+		<grid class="margin-bot">
+			<div>
+				<img nbtl class="margin-bot margin-lr" src="@banner_img" />
+				<div class="margin-lr">
+					<p>Tags:</p>
+					<gridflex>
+						@for tag in badges_html
+						@tag
+						@endfor
+					</gridflex>
+				</div>
+			</div>
+
+			<div style="min-height: 600px;">
+				<p>%studio: <b>@data.studio</b></p>
+				<p>%publisher: <b>@data.publisher</b></p>
+				<p>%activation_platform: <b>@data.activating_plataform</b></p>
+				<p>%genres: <b>@data.genders</b></p>
+				<div class="margin-bot padding-bot" style="flex-grow: 1;">
+					<p>%about:</p>
+					<textarea no-outline readonly class="font-bold"
+						style="width: 100%; height: 80%; resize: none;">@data.about</textarea>
+				</div>
+				<div class="margin-top padding-top">
+					<p>%rating: <b>@data.review_general</b></p>
+					<p>%num_rating: <b>@data.qtde_review</b></p>
+				</div>
+			</div>
+		</grid>
+
+		<grid class="margin-bt margin-lr">
+			<article>
+				<h4 class="margin-lr">%price: <b>$ @price (-${discount}% $ <s>@old_price</s>) </b></h4>
+			</article>
+		</grid>
+	</section>
+
+	<form class="margin-lr" hx-post="/home/save/@save_is" hx-ext="json-enc" hx-vals="@json_data"
+		hx-target="#result-modal">
+		<button type="submit" class="container-full padding-bt">%bt_save</button>
+	</form>
+	<div id="result-modal"></div>
+
+</article>
