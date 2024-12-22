@@ -627,8 +627,12 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 	}
 }
 
-fn (mut g Gen) gen_prim_type_validation(name string, typ ast.Type, tmp string, ret_styp string, mut dec strings.Builder) {
-	none_check := if typ.has_flag(.option) { 'cJSON_IsNull(jsonroot_${tmp}) || ' } else { '' }
+fn (mut g Gen) gen_prim_type_validation(name string, typ ast.Type, tmp string, is_required bool, ret_styp string, mut dec strings.Builder) {
+	none_check := if !is_required {
+		'cJSON_IsNull(jsonroot_${tmp}) || '
+	} else {
+		''
+	}
 	type_check := if typ.is_int() || typ.is_float() {
 		'${none_check}cJSON_IsNumber(jsonroot_${tmp}) || (cJSON_IsString(jsonroot_${tmp}) && strlen(jsonroot_${tmp}->valuestring))'
 	} else if typ.is_string() {
@@ -724,7 +728,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				if utyp.has_flag(.option) {
 					dec.writeln('\t\tres.state = 0;')
 				}
-				g.gen_prim_type_validation(field.name, field.typ, tmp, '${result_name}_${styp}', mut
+				g.gen_prim_type_validation(field.name, field.typ, tmp, is_required, '${result_name}_${styp}', mut
 					dec)
 				dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${dec_name}(jsonroot_${tmp});')
 				if field.has_default_expr {
@@ -791,8 +795,8 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 					tmp := g.new_tmp_var()
 					gen_js_get(styp, tmp, name, mut dec, is_required)
 					dec.writeln('\tif (jsonroot_${tmp}) {')
-					g.gen_prim_type_validation(field.name, parent_type, tmp, '${result_name}_${styp}', mut
-						dec)
+					g.gen_prim_type_validation(field.name, parent_type, tmp, is_required,
+						'${result_name}_${styp}', mut dec)
 					dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${parent_dec_name} (jsonroot_${tmp});')
 					if field.has_default_expr {
 						dec.writeln('\t} else {')
@@ -832,8 +836,8 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_${tmp}) {')
 				if is_js_prim(g.styp(field.typ.clear_option_and_result())) {
-					g.gen_prim_type_validation(field.name, field.typ, tmp, '${result_name}_${styp}', mut
-						dec)
+					g.gen_prim_type_validation(field.name, field.typ, tmp, is_required,
+						'${result_name}_${styp}', mut dec)
 				}
 				if field.typ.has_flag(.option) {
 					dec.writeln('\t\tvmemcpy(&${prefix}${op}${c_name(field.name)}, (${field_type}*)${tmp}.data, sizeof(${field_type}));')

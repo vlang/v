@@ -738,6 +738,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				is_pub:        true
 				is_method:     true
 				receiver_type: typ
+				no_body:       true
 			}
 			ts.register_method(tmethod)
 			info.methods << tmethod

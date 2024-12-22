@@ -4692,7 +4692,7 @@ struct User {
 	last_name string @[json: lastName]
 }
 
-data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25 }'
+data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25, "nullable": null }'
 user := json.decode(User, data) or {
 	eprintln('Failed to decode json, error: ${err}')
 	return
