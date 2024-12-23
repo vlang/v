@@ -131,21 +131,21 @@ pub fn in_out_quint(x f64) f64 {
 // in_expo returns the equivalent of https://easings.net/#easeInExpo .
 @[inline]
 pub fn in_expo(x f64) f64 {
-	return if x == 0.0 { 0.0 } else { pow(2.0, 10.0 * x - 10.0) }
+	return if math.close(x, 0.0) { 0.0 } else { pow(2.0, 10.0 * x - 10.0) }
 }
 
 // out_expo returns the equivalent of https://easings.net/#easeOutExpo .
 @[inline]
 pub fn out_expo(x f64) f64 {
-	return if x == 1.0 { 1.0 } else { 1.0 - pow(2, -10.0 * x) }
+	return if math.close(x, 1.0) { 1.0 } else { 1.0 - pow(2, -10.0 * x) }
 }
 
 // in_out_expo returns the equivalent of https://easings.net/#easeInOutExpo .
 @[inline]
 pub fn in_out_expo(x f64) f64 {
-	return if x == 0.0 {
+	return if math.close(x, 0.0) {
 		0.0
-	} else if x == 1.0 {
+	} else if math.close(x, 1.0) {
 		1.0
 	} else if x < 0.5 {
 		pow(2.0, 20.0 * x - 10.0) / 2.0
@@ -201,9 +201,9 @@ pub fn in_out_back(x f64) f64 {
 // in_elastic returns the equivalent of https://easings.net/#easeInElastic .
 @[inline]
 pub fn in_elastic(x f64) f64 {
-	return if x == 0.0 {
+	return if math.close(x, 0.0) {
 		0.0
-	} else if x == 1.0 {
+	} else if math.close(x, 1.0) {
 		1.0
 	} else {
 		-pow(2.0, 10.0 * x - 10.0) * sin((x * 10.0 - 10.75) * c4)
@@ -213,9 +213,9 @@ pub fn in_elastic(x f64) f64 {
 // out_elastic returns the equivalent of https://easings.net/#easeOutElastic .
 @[inline]
 pub fn out_elastic(x f64) f64 {
-	return if x == 0.0 {
+	return if math.close(x, 0.0) {
 		0.0
-	} else if x == 1.0 {
+	} else if math.close(x, 1.0) {
 		1.0
 	} else {
 		pow(2.0, -10.0 * x) * sin((x * 10.0 - 0.75) * c4) + 1.0
@@ -225,9 +225,9 @@ pub fn out_elastic(x f64) f64 {
 // in_out_elastic returns the equivalent of https://easings.net/#easeInOutElastic .
 @[inline]
 pub fn in_out_elastic(x f64) f64 {
-	return if x == 0.0 {
+	return if math.close(x, 0.0) {
 		0.0
-	} else if x == 1.0 {
+	} else if math.close(x, 1.0) {
 		1.0
 	} else if x < 0.5 {
 		-(pow(2.0, 20.0 * x - 10.0) * sin((20.0 * x - 11.125) * c5)) / 2.0
@@ -243,8 +243,10 @@ pub fn in_bounce(x f64) f64 {
 }
 
 // out_bounce returns the equivalent of https://easings.net/#easeOutBounce .
-@[inline]
 pub fn out_bounce(x f64) f64 {
+	if math.close(x, 1.0) {
+		return 1.0
+	}
 	xd1 := x * d1
 	return n1 * (if xd1 < 1.0 {
 		x * x
@@ -258,8 +260,10 @@ pub fn out_bounce(x f64) f64 {
 }
 
 // in_out_bounce returns the equivalent of https://easings.net/#easeInOutBounce .
-@[inline]
 pub fn in_out_bounce(x f64) f64 {
+	if math.close(x, 1.0) {
+		return 1.0
+	}
 	return if x < 0.5 {
 		(1.0 - out_bounce(1.0 - 2.0 * x)) / 2.0
 	} else {
