@@ -2695,8 +2695,9 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	}
 	g.write('${fname}(')
 	if !got_is_ptr && !got_is_fn {
-		if is_comptime_variant || !expr.is_lvalue()
-			|| (expr is ast.Ident && expr.obj.is_simple_define_const()) {
+		is_cast_array_init := expr is ast.CastExpr && expr.expr is ast.ArrayInit
+		if !is_cast_array_init && (is_comptime_variant || !expr.is_lvalue()
+			|| (expr is ast.Ident && expr.obj.is_simple_define_const())) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
 			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
 			if expr.is_as_cast() {
