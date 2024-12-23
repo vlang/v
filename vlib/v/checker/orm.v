@@ -253,7 +253,8 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			inserting_object_type = inserting_object.typ.deref()
 		}
 
-		if inserting_object_type != node.table_expr.typ {
+		if inserting_object_type != node.table_expr.typ
+			&& !c.table.sumtype_has_variant(inserting_object_type, node.table_expr.typ, false) {
 			table_name := table_sym.name
 			inserting_type_name := c.table.sym(inserting_object_type).name
 
