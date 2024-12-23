@@ -183,8 +183,6 @@ fn (mut app App) frame() {
 	}
 	app.gg.draw_text_def(50, int(app.h + 50), 'Note: use left and right arrows to change functions. Frame: ${app.gg.frame:010} | t: ${app.t:6.3f} | kind: ${app.kind}.')
 	app.gg.end()
-	if app.gg.pressed_keys[int(gg.KeyCode.down)] {
-	}
 }
 
 fn (mut app App) change_functions(direction int) {
