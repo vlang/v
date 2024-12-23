@@ -220,7 +220,7 @@ pub fn (db &DB) exec_map(query string) ![]map[string]string {
 		C.sqlite3_finalize(stmt)
 	}
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
-	if code != sqlite.sqlite_ok {
+	if code != sqlite_ok {
 		return db.error_message(code, query)
 	}
 
