@@ -212,6 +212,42 @@ pub fn (db &DB) q_string(query string) !string {
 	return if val != &u8(0) { unsafe { tos_clone(val) } } else { '' }
 }
 
+// exec_map executes the query on the given `db`, and returns an array of maps of strings, or an error on failure
+@[manualfree]
+pub fn (db &DB) exec_map(query string) ![]map[string]string {
+	stmt := &C.sqlite3_stmt(unsafe { nil })
+	defer {
+		C.sqlite3_finalize(stmt)
+	}
+	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
+	if code != sqlite.sqlite_ok {
+		return db.error_message(code, query)
+	}
+
+	nr_cols := C.sqlite3_column_count(stmt)
+	mut res := 0
+	mut rows := []map[string]string{}
+	for {
+		res = C.sqlite3_step(stmt)
+		if res != 100 {
+			break
+		}
+		mut row := map[string]string{}
+		for i in 0 .. nr_cols {
+			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
+			col_char := unsafe { &u8(C.sqlite3_column_name(stmt, i)) }
+			col := unsafe { tos_clone(col_char) }
+			if val == &u8(0) {
+				row[col] = ''
+			} else {
+				row[col] = unsafe { tos_clone(val) }
+			}
+		}
+		rows << row
+	}
+	return rows
+}
+
 // exec executes the query on the given `db`, and returns an array of all the results, or an error on failure
 @[manualfree]
 pub fn (db &DB) exec(query string) ![]Row {
