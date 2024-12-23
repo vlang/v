@@ -4,150 +4,45 @@ import gg
 import gx
 import math.easing
 
-struct Easing {
-	f     easing.EasingFN = easing.linear
-	label string
-	color gx.Color
-}
-
 const all = {
 	'in_functions':     {
-		'linear':     Easing{
-			f:     easing.linear
-			color: gx.rgb(250, 250, 250)
-		}
-		'in_sine':    Easing{
-			f:     easing.in_sine
-			color: gx.rgb(20, 200, 50)
-		}
-		'in_quad':    Easing{
-			f:     easing.in_quad
-			color: gx.rgb(200, 0, 250)
-		}
-		'in_cubic':   Easing{
-			f:     easing.in_cubic
-			color: gx.rgb(200, 250, 50)
-		}
-		'in_quart':   Easing{
-			f:     easing.in_quart
-			color: gx.rgb(250, 20, 20)
-		}
-		'in_quint':   Easing{
-			f:     easing.in_quint
-			color: gx.rgb(100, 50, 100)
-		}
-		'in_expo':    Easing{
-			f:     easing.in_expo
-			color: gx.rgba(50, 55, 255, 100)
-		}
-		'in_circ':    Easing{
-			f:     easing.in_circ
-			color: gx.rgb(155, 255, 200)
-		}
-		'in_back':    Easing{
-			f:     easing.in_back
-			color: gx.rgb(0, 50, 200)
-		}
-		'in_elastic': Easing{
-			f:     easing.in_elastic
-			color: gx.rgb(255, 50, 255)
-		}
-		'in_bounce':  Easing{
-			f:     easing.in_bounce
-			color: gx.rgb(50, 0, 150)
-		}
+		'linear':     easing.linear
+		'in_sine':    easing.in_sine
+		'in_quad':    easing.in_quad
+		'in_cubic':   easing.in_cubic
+		'in_quart':   easing.in_quart
+		'in_quint':   easing.in_quint
+		'in_expo':    easing.in_expo
+		'in_circ':    easing.in_circ
+		'in_back':    easing.in_back
+		'in_elastic': easing.in_elastic
+		'in_bounce':  easing.in_bounce
 	}
 	'out_functions':    {
-		'linear':      Easing{
-			f:     easing.linear
-			color: gx.rgb(250, 250, 250)
-		}
-		'out_sine':    Easing{
-			f:     easing.out_sine
-			color: gx.rgb(100, 0, 250)
-		}
-		'out_quad':    Easing{
-			f:     easing.out_quad
-			color: gx.rgb(100, 0, 250)
-		}
-		'out_cubic':   Easing{
-			f:     easing.out_cubic
-			color: gx.rgb(100, 100, 250)
-		}
-		'out_quart':   Easing{
-			f:     easing.out_quart
-			color: gx.rgb(100, 100, 100)
-		}
-		'out_quint':   Easing{
-			f:     easing.out_quint
-			color: gx.rgb(100, 50, 100)
-		}
-		'out_expo':    Easing{
-			f:     easing.out_expo
-			color: gx.rgb(50, 50, 100)
-		}
-		'out_circ':    Easing{
-			f:     easing.out_circ
-			color: gx.rgb(50, 50, 50)
-		}
-		'out_back':    Easing{
-			f:     easing.out_back
-			color: gx.rgb(0, 50, 200)
-		}
-		'out_elastic': Easing{
-			f:     easing.out_elastic
-			color: gx.rgb(50, 50, 50)
-		}
-		'out_bounce':  Easing{
-			f:     easing.out_bounce
-			color: gx.rgb(50, 0, 150)
-		}
+		'linear':      easing.linear
+		'out_sine':    easing.out_sine
+		'out_quad':    easing.out_quad
+		'out_cubic':   easing.out_cubic
+		'out_quart':   easing.out_quart
+		'out_quint':   easing.out_quint
+		'out_expo':    easing.out_expo
+		'out_circ':    easing.out_circ
+		'out_back':    easing.out_back
+		'out_elastic': easing.out_elastic
+		'out_bounce':  easing.out_bounce
 	}
 	'in_out_functions': {
-		'linear':         Easing{
-			f:     easing.linear
-			color: gx.rgb(250, 250, 250)
-		}
-		'in_out_sine':    Easing{
-			f:     easing.in_out_sine
-			color: gx.rgb(100, 0, 250)
-		}
-		'in_out_quad':    Easing{
-			f:     easing.in_out_quad
-			color: gx.rgb(100, 0, 250)
-		}
-		'in_out_cubic':   Easing{
-			f:     easing.in_out_cubic
-			color: gx.rgb(100, 100, 250)
-		}
-		'in_out_quart':   Easing{
-			f:     easing.in_out_quart
-			color: gx.rgb(100, 100, 100)
-		}
-		'in_out_quint':   Easing{
-			f:     easing.in_out_quint
-			color: gx.rgb(100, 50, 100)
-		}
-		'in_out_expo':    Easing{
-			f:     easing.in_out_expo
-			color: gx.rgb(50, 50, 100)
-		}
-		'in_out_circ':    Easing{
-			f:     easing.in_out_circ
-			color: gx.rgb(50, 50, 50)
-		}
-		'in_out_back':    Easing{
-			f:     easing.in_out_back
-			color: gx.rgb(0, 50, 200)
-		}
-		'in_out_elastic': Easing{
-			f:     easing.in_out_elastic
-			color: gx.rgb(50, 50, 50)
-		}
-		'in_out_bounce':  Easing{
-			f:     easing.in_out_bounce
-			color: gx.rgb(50, 0, 150)
-		}
+		'linear':         easing.linear
+		'in_out_sine':    easing.in_out_sine
+		'in_out_quad':    easing.in_out_quad
+		'in_out_cubic':   easing.in_out_cubic
+		'in_out_quart':   easing.in_out_quart
+		'in_out_quint':   easing.in_out_quint
+		'in_out_expo':    easing.in_out_expo
+		'in_out_circ':    easing.in_out_circ
+		'in_out_back':    easing.in_out_back
+		'in_out_elastic': easing.in_out_elastic
+		'in_out_bounce':  easing.in_out_bounce
 	}
 }
 const all_keys = all.keys()
@@ -162,11 +57,12 @@ mut:
 	kind string = all_keys.first()
 }
 
-fn (mut app App) draw_circle(label string, e Easing) {
+fn (mut app App) draw_circle(label string, f easing.EasingFN) {
 	offset := 30
 	app.gg.draw_text_def(int(app.x) - 30, 5, label)
 	app.gg.draw_line(f32(app.x), offset, f32(app.x), f32(app.h + offset), gx.gray)
-	app.gg.draw_circle_filled(f32(app.x), f32(offset + e.f(app.t) * app.h), 10, e.color)
+	app.gg.draw_circle_filled(f32(app.x), f32(offset + f(app.t) * app.h), 10, gx.rgb(0,
+		0, 255))
 	app.x += 120
 }
 
