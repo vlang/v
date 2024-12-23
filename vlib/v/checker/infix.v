@@ -9,8 +9,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		c.expected_type = former_expected_type
 	}
 	mut left_type := c.expr(mut node.left)
+	mut left_sym := c.table.sym(left_type)
 	node.left_type = left_type
 	c.expected_type = left_type
+
+	if left_sym.kind == .chan {
+		chan_info := left_sym.chan_info()
+		c.expected_type = chan_info.elem_type
+	}
 
 	// `if n is ast.Ident && n.is_mut { ... }`
 	if !c.inside_sql && node.op == .and {
@@ -103,7 +109,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	mut right_sym := c.table.sym(right_type)
 	right_final_sym := c.table.final_sym(right_type)
-	mut left_sym := c.table.sym(left_type)
 	left_final_sym := c.table.final_sym(left_type)
 	left_pos := node.left.pos()
 	right_pos := node.right.pos()
