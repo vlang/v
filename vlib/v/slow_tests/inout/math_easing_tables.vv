@@ -1,0 +1,70 @@
+import math.easing
+
+fn hline() {
+	println('+------+---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+')
+}
+
+fn header(label string) {
+	println('                                  ${label}')
+	hline()
+	println('|  x   |  linear |   sine  |   quad  |   cubic |   quart |   quint |   expo  |    circ |   back  | elastic |  bounce |')
+	hline()
+}
+
+const min_x = -0.5
+const max_x = 1.51
+const step_x = 0.1
+
+fn main() {
+	header('in_ functions, compared to the linear one')
+	for x := min_x; x <= max_x; x += step_x {
+		print('|${x:5.1f} |')
+		print('${easing.linear(x):8.3f} |')
+		print('${easing.in_sine(x):8.3f} |')
+		print('${easing.in_quad(x):8.3f} |')
+		print('${easing.in_cubic(x):8.3f} |')
+		print('${easing.in_quart(x):8.3f} |')
+		print('${easing.in_quint(x):8.3f} |')
+		print('${easing.in_expo(x):8.3f} |')
+		print('${easing.in_circ(x):8.3f} |')
+		print('${easing.in_back(x):8.3f} |')
+		print('${easing.in_elastic(x):8.3f} |')
+		print('${easing.in_bounce(x):8.3f} |')
+		println('')
+	}
+	hline()
+	header('out_ functions, compared to the linear one')
+	for x := min_x; x <= max_x; x += step_x {
+		print('|${x:5.1f} |')
+		print('${easing.linear(x):8.3f} |')
+		print('${easing.out_sine(x):8.3f} |')
+		print('${easing.out_quad(x):8.3f} |')
+		print('${easing.out_cubic(x):8.3f} |')
+		print('${easing.out_quart(x):8.3f} |')
+		print('${easing.out_quint(x):8.3f} |')
+		print('${easing.out_expo(x):8.3f} |')
+		print('${easing.out_circ(x):8.3f} |')
+		print('${easing.out_back(x):8.3f} |')
+		print('${easing.out_elastic(x):8.3f} |')
+		print('${easing.out_bounce(x):8.3f} |')
+		println('')
+	}
+	hline()
+	header('in_out_ functions, compared to the linear one')
+	for x := min_x; x <= max_x; x += step_x {
+		print('|${x:5.1f} |')
+		print('${easing.linear(x):8.3f} |')
+		print('${easing.in_out_sine(x):8.3f} |')
+		print('${easing.in_out_quad(x):8.3f} |')
+		print('${easing.in_out_cubic(x):8.3f} |')
+		print('${easing.in_out_quart(x):8.3f} |')
+		print('${easing.in_out_quint(x):8.3f} |')
+		print('${easing.in_out_expo(x):8.3f} |')
+		print('${easing.in_out_circ(x):8.3f} |')
+		print('${easing.in_out_back(x):8.3f} |')
+		print('${easing.in_out_elastic(x):8.3f} |')
+		print('${easing.in_out_bounce(x):8.3f} |')
+		println('')
+	}
+	hline()
+}
