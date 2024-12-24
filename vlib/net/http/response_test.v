@@ -57,4 +57,10 @@ fn test_parse_response_with_cookies() {
 	assert x.body == 'Foo'
 	response_cookie := x.cookies()
 	assert response_cookie[0].str().contains(cookie)
+
+	// weird cookies test
+	content_weird := 'HTTP/1.1 200 OK\r\nSet-Cookie: a=b; ; =; aa=; =bb\r\nContent-Length: 3\r\n\r\nFoo'
+	mut xx := parse_response(content_weird)!
+	weird_cookie := xx.cookies()
+	assert weird_cookie[0].str() == 'a=b'
 }
