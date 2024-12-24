@@ -26,7 +26,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	mut handle := ''
 	tmp := g.new_tmp_var()
 	mut expr := node.call_expr
-	mut name := expr.name
+	mut name := '${expr.name}_${expr.pos.pos}'
 	mut use_tmp_fn_var := false
 	tmp_fn := g.new_tmp_var()
 
