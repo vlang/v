@@ -74,7 +74,8 @@ fn (mut app App) frame() {
 	app.h = size.height - 100
 	app.gg.begin()
 	app.gg.draw_line(0, f32(app.h + 30), size.width, f32(app.h + 30), gx.gray)
-	for k, e in all[app.kind] {
+	current_map := all[app.kind].clone()
+	for k, e in current_map {
 		app.draw_circle(k, e)
 	}
 	app.gg.draw_text_def(50, int(app.h + 50), 'Note: use left and right arrows to change functions. Frame: ${app.gg.frame:010} | t: ${app.t:6.3f} | kind: ${app.kind}.')
