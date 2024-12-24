@@ -2924,7 +2924,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 						g.expr_with_opt(arg.expr, arg_typ, expected_type)
 						return
 					} else if arg.expr.is_literal() {
-						g.write('(voidptr)')
+						g.write('(voidptr)ADDR(${g.styp(arg_typ)}, ')
+						g.expr(arg.expr)
+						g.write(')')
+						return
 					} else {
 						if arg_typ_sym.kind in [.sum_type, .interface] {
 							atype = arg_typ
