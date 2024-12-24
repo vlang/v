@@ -2552,6 +2552,9 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 			names << t.dependent_names_in_expr(expr.right)
 		}
 		MapInit {
+			for key in expr.keys {
+				names << t.dependent_names_in_expr(key)
+			}
 			for val in expr.vals {
 				names << t.dependent_names_in_expr(val)
 			}
