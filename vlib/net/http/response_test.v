@@ -44,3 +44,17 @@ fn test_parse_response() {
 	assert x.header.get(.content_length)! == '3'
 	assert x.body == 'Foo'
 }
+
+fn test_parse_response_with_cookies() {
+	cookie := 'Ln0kBnAaAyYFQ8lH7d5J8Y5w1/iyDRpj6d0nBLTbBUMbtEyPD32rPvpApsvxhLJWlkHuHT3KYL0g/xNBxC9od5tMFAgurLxKdRd5lZ6Pd7W+SllkbsXmUA=='
+	content := 'HTTP/1.1 200 OK\r\nSet-Cookie: enctoken=${cookie}; path=/; secure; SameSite=None\r\nContent-Length: 3\r\n\r\nFoo'
+	mut x := parse_response(content)!
+	assert x.http_version == '1.1'
+	assert x.status_code == 200
+	assert x.status_msg == 'OK'
+	assert x.header.contains(.content_length)
+	assert x.header.get(.content_length)! == '3'
+	assert x.body == 'Foo'
+	response_cookie := x.cookies()
+	assert response_cookie[0].str().contains(cookie)
+}
