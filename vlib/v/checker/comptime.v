@@ -294,6 +294,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			for field in fields {
 				c.push_new_comptime_info()
 				c.comptime.inside_comptime_for = true
+				c.table.used_features.comptime_for = true
 				if c.field_data_type == 0 {
 					c.field_data_type = c.table.find_type('FieldData')
 				}
