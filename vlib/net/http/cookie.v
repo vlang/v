@@ -312,12 +312,9 @@ fn parse_cookie(line string) !Cookie {
 		return error('malformed cookie')
 	}
 	parts[0] = parts[0].trim_space()
-	keyval := parts[0].split('=')
-	if keyval.len < 2 {
-		return error('malformed cookie')
-	}
-	name := keyval[0]
-	raw_value := keyval[1..].join('=')
+	index := parts[0].index('=') or { return error('malformed cookie') }
+	name := parts[0][..index]
+	raw_value := parts[0][index + 1..]
 	if !is_cookie_name_valid(name) {
 		return error('malformed cookie')
 	}
@@ -334,10 +331,9 @@ fn parse_cookie(line string) !Cookie {
 		}
 		mut attr := parts[i]
 		mut raw_val := ''
-		if attr.contains('=') {
-			pieces := attr.split('=')
-			attr = pieces[0]
-			raw_val = pieces[1..].join('=')
+		if ind := parts[i].index('=') {
+			attr = parts[i][..ind]
+			raw_val = parts[i][ind + 1..]
 		}
 		lower_attr := attr.to_lower()
 		val := parse_cookie_value(raw_val, false) or {
