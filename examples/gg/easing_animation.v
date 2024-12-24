@@ -6,7 +6,7 @@ import math.easing
 
 const all = {
 	'in_functions':     {
-		'linear':     easing.linear
+		'linear':     voidptr(easing.linear)
 		'in_sine':    easing.in_sine
 		'in_quad':    easing.in_quad
 		'in_cubic':   easing.in_cubic
@@ -19,7 +19,7 @@ const all = {
 		'in_bounce':  easing.in_bounce
 	}
 	'out_functions':    {
-		'linear':      easing.linear
+		'linear':      voidptr(easing.linear)
 		'out_sine':    easing.out_sine
 		'out_quad':    easing.out_quad
 		'out_cubic':   easing.out_cubic
@@ -32,7 +32,7 @@ const all = {
 		'out_bounce':  easing.out_bounce
 	}
 	'in_out_functions': {
-		'linear':         easing.linear
+		'linear':         voidptr(easing.linear)
 		'in_out_sine':    easing.in_out_sine
 		'in_out_quad':    easing.in_out_quad
 		'in_out_cubic':   easing.in_out_cubic
@@ -74,7 +74,7 @@ fn (mut app App) frame() {
 	app.h = size.height - 100
 	app.gg.begin()
 	app.gg.draw_line(0, f32(app.h + 30), size.width, f32(app.h + 30), gx.gray)
-	current_map := all[app.kind].clone()
+	current_map := unsafe { all[app.kind].clone() }
 	for k, e in current_map {
 		app.draw_circle(k, e)
 	}
