@@ -4209,6 +4209,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	mut field_typ := ast.void_type
 	mut is_option_unwrap := false
 	mut is_dereferenced := node.expr is ast.SelectorExpr && node.expr.expr_type.is_ptr()
+		&& !node.expr.typ.is_ptr()
 		&& g.table.final_sym(node.expr.expr_type).kind in [.interface, .sum_type]
 	if f := g.table.find_field_with_embeds(sym, node.field_name) {
 		field_sym := g.table.sym(f.typ)
@@ -4391,7 +4392,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	g.write(field_name)
 	if is_option_unwrap {
-		if field_typ.is_ptr() {
+		if field_typ.is_ptr() && g.table.final_sym(node.expr_type).kind in [.sum_type, .interface] {
 			g.write('->')
 		} else {
 			g.write('.')
