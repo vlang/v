@@ -30,6 +30,11 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	mut use_tmp_fn_var := false
 	tmp_fn := g.new_tmp_var()
 
+	if expr.is_fn_var {
+		// generate a name different for same var fn name declared in another scope
+		name = '${name}_${node.pos.pos}'
+	}
+
 	if expr.concrete_types.len > 0 {
 		name = g.generic_fn_name(expr.concrete_types, name)
 	} else if expr.is_fn_var && expr.fn_var_type.has_flag(.generic) {
