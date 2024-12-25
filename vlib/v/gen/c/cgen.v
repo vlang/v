@@ -7096,16 +7096,19 @@ fn c_fn_name(name_ string) string {
 }
 
 fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
+	if typ_.has_flag(.option) {
+		return '(${g.styp(typ_)}){.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}}'
+	}
 	first_typ := g.unwrap_generic((sym.info as ast.SumType).variants[0])
 	first_sym := g.table.sym(first_typ)
 	first_styp := g.styp(first_typ)
 	first_field := g.get_sumtype_variant_name(first_typ, first_sym)
 	default_str := if first_typ.has_flag(.option) {
-		'(${first_styp}){ .state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} }'
+		'(${first_styp}){.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}}'
 	} else if first_sym.info is ast.Struct && first_sym.info.is_empty_struct() {
 		'{EMPTY_STRUCT_INITIALIZATION}'
 	} else {
-		g.type_default(first_typ)
+		g.type_default_no_sumtype(first_typ)
 	}
 	if default_str[0] == `{` {
 		return '(${g.styp(typ_)}){._${first_field}=HEAP(${first_styp}, ((${first_styp})${default_str})),._typ=${int(first_typ)}}'
@@ -7114,9 +7117,22 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 	}
 }
 
+@[inline]
+fn (mut g Gen) type_default_no_sumtype(typ_ ast.Type) string {
+	return g.type_default_impl(typ_, false)
+}
+
+@[inline]
 fn (mut g Gen) type_default(typ_ ast.Type) string {
+	return g.type_default_impl(typ_, true)
+}
+
+fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 	typ := g.unwrap_generic(typ_)
-	if typ.has_option_or_result() {
+	if typ.has_flag(.option) {
+		return '(${g.styp(typ)}){.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}}'
+	}
+	if typ.has_flag(.result) {
 		return '{0}'
 	}
 	// Always set pointers to 0
@@ -7139,7 +7155,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			return '{0}'
 		}
 		.sum_type {
-			return '{0}' // g.type_default_sumtype(typ, sym)
+			return if decode_sumtype { g.type_default_sumtype(typ, sym) } else { '{0}' }
 		}
 		.interface, .multi_return, .thread {
 			return '{0}'
@@ -7210,7 +7226,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
-						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct, .chan, .sum_type] {
+						|| field_sym.kind in [.enum, .array_fixed, .array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct, .chan, .sum_type] {
 						if sym.language == .c && !field.has_default_expr {
 							continue
 						}
@@ -7255,13 +7271,25 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 									}
 								}
 							} else {
-								expr_str = g.expr_string(field.default_expr)
+								default_str := g.expr_string(field.default_expr)
+								if default_str.count('\n') > 1 {
+									g.type_default_vars.writeln(default_str.all_before_last('\n'))
+									expr_str = default_str.all_after_last('\n')
+								} else {
+									expr_str = default_str
+								}
 							}
 							init_str += '.${field_name} = ${expr_str},'
 						} else {
 							zero_str := if field_sym.language == .v && field_sym.info is ast.Struct
 								&& field_sym.info.is_empty_struct() {
 								'{EMPTY_STRUCT_INITIALIZATION}'
+							} else if field_sym.kind == .sum_type {
+								if decode_sumtype {
+									g.type_default_sumtype(field.typ, field_sym)
+								} else {
+									'{0}'
+								}
 							} else {
 								g.type_default(field.typ)
 							}
