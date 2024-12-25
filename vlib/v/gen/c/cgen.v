@@ -7116,7 +7116,10 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 
 fn (mut g Gen) type_default(typ_ ast.Type) string {
 	typ := g.unwrap_generic(typ_)
-	if typ.has_option_or_result() {
+	if typ.has_flag(.option) {
+		return '(${g.styp(typ)}){.state=2}'
+	}
+	if typ.has_flag(.result) {
 		return '{0}'
 	}
 	// Always set pointers to 0
@@ -7210,7 +7213,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
-						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct, .chan, .sum_type] {
+						|| field_sym.kind in [.enum, .array_fixed, .array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct, .chan, .sum_type] {
 						if sym.language == .c && !field.has_default_expr {
 							continue
 						}
@@ -7255,7 +7258,14 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 									}
 								}
 							} else {
-								expr_str = g.expr_string(field.default_expr)
+								default_str := g.expr_string(field.default_expr)
+								if default_str.count('\n') > 1 {
+									println('>>> ${default_str.all_before_last('\n')}')
+									g.type_default_vars.writeln(default_str.all_before_last('\n'))
+									expr_str = default_str.all_after_last('\n')
+								} else {
+									expr_str = default_str
+								}
 							}
 							init_str += '.${field_name} = ${expr_str},'
 						} else {

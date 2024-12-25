@@ -58,35 +58,35 @@ fn (mut g Gen) gen_jsons() {
 
 		mut init_styp := '${styp} res'
 		if utyp.has_flag(.option) {
-			if sym.kind == .struct && !utyp.is_ptr() {
-				init_styp += ' = '
-				g.set_current_pos_as_last_stmt_pos()
-				pos := g.out.len
-				g.expr_with_tmp_var(ast.Expr(ast.StructInit{ typ: utyp, typ_str: styp }),
-					utyp, utyp, 'res')
-				init_styp = g.out.cut_to(pos).trim_space()
-			} else {
-				none_str := g.expr_string(ast.None{})
-				init_styp += ' = (${styp}){ .state=2, .err=${none_str}, .data={EMPTY_STRUCT_INITIALIZATION} }'
-			}
+			none_str := g.expr_string(ast.None{})
+			init_styp += ' = (${styp}){ .state=2, .err=${none_str}, .data={EMPTY_STRUCT_INITIALIZATION} }'
 		} else {
-			if sym.kind == .struct {
+			if !utyp.is_ptr() {
 				init_styp += ' = '
 				g.set_current_pos_as_last_stmt_pos()
 				pos := g.out.len
-				g.write(init_styp)
-				if utyp.is_ptr() {
-					ptr_styp := g.styp(utyp.set_nr_muls(utyp.nr_muls() - 1))
-					g.write('HEAP(${ptr_styp}, ')
+				g.write(g.type_default(utyp))
+				init_generated := g.out.cut_to(pos).trim_space()
+				if g.type_default_vars.len > 0 {
+					saved_init := init_styp
+					init_styp = g.type_default_vars.bytestr()
+					init_styp += '\n'
+					init_styp += saved_init
+					g.type_default_vars.clear()
 				}
-				g.expr(ast.Expr(ast.StructInit{
-					typ:     utyp.set_nr_muls(0)
-					typ_str: styp
-				}))
-				if utyp.is_ptr() {
-					g.write(')')
-				}
-				init_styp = g.out.cut_to(pos).trim_space()
+				init_styp += init_generated
+				// if utyp.is_ptr() {
+				// 	ptr_styp := g.styp(utyp.set_nr_muls(utyp.nr_muls() - 1))
+				// 	g.write('HEAP(${ptr_styp}, ')
+				// }
+				// g.expr(ast.Expr(ast.StructInit{
+				// 	typ:     utyp.set_nr_muls(0)
+				// 	typ_str: styp
+				// }))
+				// if utyp.is_ptr() {
+				// 	g.write(')')
+				// }
+				// init_styp = g.out.cut_to(pos).trim_space()
 			} else if utyp.is_ptr() {
 				ptr_styp := g.styp(utyp.set_nr_muls(utyp.nr_muls() - 1))
 				init_styp += ' = HEAP(${ptr_styp}, {0})'
@@ -645,9 +645,9 @@ fn (mut g Gen) gen_prim_type_validation(name string, typ ast.Type, tmp string, i
 	if type_check == '' {
 		return
 	}
-	dec.writeln('if (!(${type_check})) {')
-	dec.writeln('\treturn (${ret_styp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("type mismatch for field \'${name}\', expecting `${g.table.type_to_str(typ)}` type, got: "), json__json_print(jsonroot_${tmp}))), .data = {0} };')
-	dec.writeln('}')
+	dec.writeln('\t\tif (!(${type_check})) {')
+	dec.writeln('\t\t\treturn (${ret_styp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("type mismatch for field \'${name}\', expecting `${g.table.type_to_str(typ)}` type, got: "), json__json_print(jsonroot_${tmp}))), .data = {0} };')
+	dec.writeln('\t\t}')
 }
 
 @[inline]
