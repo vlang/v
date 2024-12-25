@@ -7107,10 +7107,8 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 		'(${first_styp}){.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}}'
 	} else if first_sym.info is ast.Struct && first_sym.info.is_empty_struct() {
 		'{EMPTY_STRUCT_INITIALIZATION}'
-	} else if first_sym.kind == .struct {
-		'{0}'
 	} else {
-		g.type_default(first_typ)
+		g.type_default_no_sumtype(first_typ)
 	}
 	if default_str[0] == `{` {
 		return '(${g.styp(typ_)}){._${first_field}=HEAP(${first_styp}, ((${first_styp})${default_str})),._typ=${int(first_typ)}}'
