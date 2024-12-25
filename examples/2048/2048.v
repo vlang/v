@@ -756,16 +756,10 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 			.none {} // Don't draw any text here, colors only
 			.end {} // Should never get here
 		}
-		oidx_fmt := gx.TextCfg{
-			...fmt
-			size: 14
-		}
-		/*
-		app.gg.draw_text(xoffset + 50, yoffset + 15, 'y:${oidx >> 16}|x:${oidx & 0xFFFF}|m:${app.mtickers[y][x]:5.3f}',
-			oidx_fmt)
-		app.gg.draw_text(xoffset + 52, yoffset + 30, 'ox:${ox}|oy:${oy}', oidx_fmt)
-		app.gg.draw_text(xoffset + 52, yoffset + 85, 'dx:${dx}|dy:${dy}', oidx_fmt)
-        */
+		// oidx_fmt := gx.TextCfg{...fmt,size: 14}
+		// app.gg.draw_text(xoffset + 50, yoffset + 15, 'y:${oidx >> 16}|x:${oidx & 0xFFFF}|m:${app.mtickers[y][x]:5.3f}',	oidx_fmt)
+		// app.gg.draw_text(xoffset + 52, yoffset + 30, 'ox:${ox}|oy:${oy}', oidx_fmt)
+		// app.gg.draw_text(xoffset + 52, yoffset + 85, 'dx:${dx}|dy:${dy}', oidx_fmt)
 	}
 }
 
