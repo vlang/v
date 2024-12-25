@@ -7096,14 +7096,19 @@ fn c_fn_name(name_ string) string {
 }
 
 fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
+	if typ_.has_flag(.option) {
+		return '(${g.styp(typ_)}){.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}}'
+	}
 	first_typ := g.unwrap_generic((sym.info as ast.SumType).variants[0])
 	first_sym := g.table.sym(first_typ)
 	first_styp := g.styp(first_typ)
 	first_field := g.get_sumtype_variant_name(first_typ, first_sym)
 	default_str := if first_typ.has_flag(.option) {
-		'(${first_styp}){ .state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} }'
+		'(${first_styp}){.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}}'
 	} else if first_sym.info is ast.Struct && first_sym.info.is_empty_struct() {
 		'{EMPTY_STRUCT_INITIALIZATION}'
+	} else if first_sym.kind == .struct {
+		'{0}'
 	} else {
 		g.type_default(first_typ)
 	}
@@ -7114,10 +7119,20 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 	}
 }
 
+@[inline]
+fn (mut g Gen) type_default_no_sumtype(typ_ ast.Type) string {
+	return g.type_default_impl(typ_, false)
+}
+
+@[inline]
 fn (mut g Gen) type_default(typ_ ast.Type) string {
+	return g.type_default_impl(typ_, true)
+}
+
+fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 	typ := g.unwrap_generic(typ_)
 	if typ.has_flag(.option) {
-		return '(${g.styp(typ)}){.state=2}'
+		return '(${g.styp(typ)}){.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}}'
 	}
 	if typ.has_flag(.result) {
 		return '{0}'
@@ -7142,7 +7157,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			return '{0}'
 		}
 		.sum_type {
-			return '{0}' // g.type_default_sumtype(typ, sym)
+			return if decode_sumtype { g.type_default_sumtype(typ, sym) } else { '{0}' }
 		}
 		.interface, .multi_return, .thread {
 			return '{0}'
@@ -7271,6 +7286,8 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 							zero_str := if field_sym.language == .v && field_sym.info is ast.Struct
 								&& field_sym.info.is_empty_struct() {
 								'{EMPTY_STRUCT_INITIALIZATION}'
+							} else if field_sym.kind == .sum_type {
+								g.type_default_sumtype(field.typ, field_sym)
 							} else {
 								g.type_default(field.typ)
 							}
