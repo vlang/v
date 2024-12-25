@@ -7260,7 +7260,6 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 							} else {
 								default_str := g.expr_string(field.default_expr)
 								if default_str.count('\n') > 1 {
-									println('>>> ${default_str.all_before_last('\n')}')
 									g.type_default_vars.writeln(default_str.all_before_last('\n'))
 									expr_str = default_str.all_after_last('\n')
 								} else {
