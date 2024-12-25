@@ -312,7 +312,7 @@ fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 }
 
 fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, pos token.Pos) {
-	sym := c.table.sym(c.unwrap_generic(c.expr(mut expr)))
+	sym := c.table.final_sym(c.unwrap_generic(c.expr(mut expr)))
 	if sym.kind !in [.int, .int_literal] {
 		c.error('array ${para} needs to be an int', pos)
 	}
