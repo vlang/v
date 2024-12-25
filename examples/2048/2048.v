@@ -442,7 +442,6 @@ fn (mut app App) apply_new_board(new Board) {
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
 			if old.oidxs[y][x] != new.oidxs[y][x] {
-				println('>>> y: ${y} x: ${x}')
 				app.mtickers[y][x] = 1.0
 			}
 		}
