@@ -7285,7 +7285,11 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 								&& field_sym.info.is_empty_struct() {
 								'{EMPTY_STRUCT_INITIALIZATION}'
 							} else if field_sym.kind == .sum_type {
-								g.type_default_sumtype(field.typ, field_sym)
+								if decode_sumtype {
+									g.type_default_sumtype(field.typ, field_sym)
+								} else {
+									'{0}'
+								}
 							} else {
 								g.type_default(field.typ)
 							}
