@@ -75,18 +75,6 @@ fn (mut g Gen) gen_jsons() {
 					g.type_default_vars.clear()
 				}
 				init_styp += init_generated
-				// if utyp.is_ptr() {
-				// 	ptr_styp := g.styp(utyp.set_nr_muls(utyp.nr_muls() - 1))
-				// 	g.write('HEAP(${ptr_styp}, ')
-				// }
-				// g.expr(ast.Expr(ast.StructInit{
-				// 	typ:     utyp.set_nr_muls(0)
-				// 	typ_str: styp
-				// }))
-				// if utyp.is_ptr() {
-				// 	g.write(')')
-				// }
-				// init_styp = g.out.cut_to(pos).trim_space()
 			} else if utyp.is_ptr() {
 				ptr_styp := g.styp(utyp.set_nr_muls(utyp.nr_muls() - 1))
 				init_styp += ' = HEAP(${ptr_styp}, {0})'
