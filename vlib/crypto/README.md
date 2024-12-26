@@ -72,8 +72,10 @@ fn main() {
 	token := make_token(secret)
 	ok := auth_verify(secret, token)
 	dt := sw.elapsed().microseconds()
+	pl := parse_payload(token)!
 	println('token: ${token}')
 	println('auth_verify(secret, token): ${ok}')
+	println('parse_payload(token): ${pl}')
 	println('Elapsed time: ${dt} uS')
 }
 
@@ -92,5 +94,11 @@ fn auth_verify(secret string, token string) bool {
 		sha256.sum, sha256.block_size)
 	signature_from_token := base64.url_decode(token_split[2])
 	return hmac.equal(signature_from_token, signature_mirror)
+}
+
+fn parse_payload(token string) JwtPayload {
+	token_split := token.split('.')
+	payload := json.decode(JwtPayload, base64.url_decode_str(token_split[1]))!
+	return payload
 }
 ```
