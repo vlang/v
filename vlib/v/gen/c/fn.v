@@ -2109,12 +2109,17 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 		is_selector_call = true
 	}
+	mut node_name := node.name // name to find on fn table
 	mut name := node.name
 	if node.is_static_method {
 		// resolve static call T.name()
 		if g.cur_fn != unsafe { nil } {
 			_, name = g.table.convert_generic_static_type_name(node.name, g.cur_fn.generic_names,
 				g.cur_concrete_types)
+			if node.concrete_types.len > 0 {
+				// Resolves T.from() to real symbol name to search on fn table
+				node_name = name
+			}
 		}
 	}
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
@@ -2210,7 +2215,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	if !is_selector_call {
-		if func := g.table.find_fn(node.name) {
+		if func := g.table.find_fn(node_name) {
 			mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 			mut node_ := unsafe { node }
 			comptime_args := g.resolve_comptime_args(func, mut node_, concrete_types)
