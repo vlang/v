@@ -3386,6 +3386,9 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					// Do not free vars that were declared after this scope
 					continue
 				}
+				if obj.expr is ast.IfGuardExpr {
+					continue
+				}
 				g.autofree_variable(obj)
 			}
 			else {}
