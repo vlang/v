@@ -71,9 +71,7 @@ fn main() {
 	secret := 'your-256-bit-secret'
 	token := make_token(secret)
 	ok := auth_verify(secret, token)
-	pl := decode_payload(token) or {
-		panic(err)
-	}
+	pl := decode_payload(token)  or { panic(err) }
 	dt := sw.elapsed().microseconds()
 	println('token: ${token}')
 	println('auth_verify(secret, token): ${ok}')
