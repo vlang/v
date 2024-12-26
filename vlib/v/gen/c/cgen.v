@@ -1877,6 +1877,10 @@ pub fn (mut g Gen) write_array_fixed_return_types() {
 
 	for sym in fixed_arr_rets {
 		info := sym.info as ast.ArrayFixed
+		if info.size <= 0 {
+			// unresolved sizes e.g. [unknown_const]int
+			continue
+		}
 		mut fixed_elem_name := g.styp(info.elem_type.set_nr_muls(0))
 		if info.elem_type.is_ptr() {
 			fixed_elem_name += '*'.repeat(info.elem_type.nr_muls())

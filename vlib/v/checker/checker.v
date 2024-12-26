@@ -74,20 +74,21 @@ pub mut:
 	in_for_count                int      // if checker is currently in a for loop
 	returns                     bool
 	scope_returns               bool
-	is_builtin_mod              bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
-	is_just_builtin_mod         bool // true only inside 'builtin'
-	is_generated                bool // true for `@[generated] module xyz` .v files
-	inside_recheck              bool // true when rechecking rhs assign statement
-	inside_unsafe               bool // true inside `unsafe {}` blocks
-	inside_const                bool // true inside `const ( ... )` blocks
-	inside_anon_fn              bool // true inside `fn() { ... }()`
-	inside_lambda               bool // true inside `|...| ...`
-	inside_ref_lit              bool // true inside `a := &something`
-	inside_defer                bool // true inside `defer {}` blocks
-	inside_return               bool // true inside `return ...` blocks
-	inside_fn_arg               bool // `a`, `b` in `a.f(b)`
-	inside_ct_attr              bool // true inside `[if expr]`
-	inside_x_is_type            bool // true inside the Type expression of `if x is Type {`
+	is_builtin_mod              bool          // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
+	is_just_builtin_mod         bool          // true only inside 'builtin'
+	is_generated                bool          // true for `@[generated] module xyz` .v files
+	unresolved_return_size      []&ast.FnDecl // funcs with unresolved array fixed size e.g. fn func() [const1]int
+	inside_recheck              bool          // true when rechecking rhs assign statement
+	inside_unsafe               bool          // true inside `unsafe {}` blocks
+	inside_const                bool          // true inside `const ( ... )` blocks
+	inside_anon_fn              bool          // true inside `fn() { ... }()`
+	inside_lambda               bool          // true inside `|...| ...`
+	inside_ref_lit              bool          // true inside `a := &something`
+	inside_defer                bool          // true inside `defer {}` blocks
+	inside_return               bool          // true inside `return ...` blocks
+	inside_fn_arg               bool          // `a`, `b` in `a.f(b)`
+	inside_ct_attr              bool          // true inside `[if expr]`
+	inside_x_is_type            bool          // true inside the Type expression of `if x is Type {`
 	inside_generic_struct_init  bool
 	inside_integer_literal_cast bool // true inside `int(123)`
 	cur_struct_generic_types    []ast.Type
@@ -5550,4 +5551,14 @@ fn (c &Checker) check_import_sym_conflict(ident string) bool {
 		}
 	}
 	return false
+}
+
+pub fn (mut c Checker) update_unresolved_return_sizes() {
+	for mut fun in c.unresolved_return_size {
+		ret_sym := c.table.sym(fun.return_type)
+		if ret_sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(ret_sym.info) {
+			mut size_expr := ret_sym.info.size_expr
+			fun.return_type = c.eval_array_fixed_sizes(mut size_expr, 0, ret_sym.info.elem_type)
+		}
+	}
 }

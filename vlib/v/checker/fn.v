@@ -170,6 +170,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.warn('byte is deprecated, use u8 instead', node.return_type_pos)
 			}
 		}
+		if return_sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(return_sym.info) {
+			c.unresolved_return_size << node
+		}
+
 		final_return_sym := c.table.final_sym(node.return_type)
 		if final_return_sym.info is ast.MultiReturn {
 			for multi_type in final_return_sym.info.types {
