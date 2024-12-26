@@ -93,6 +93,18 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						branch.scope.update_var_type(var.name, mr_info.types[vi])
 					}
 				}
+			} else {
+				for _, var in branch.cond.vars {
+					if var.name == '_' {
+						continue
+					}
+					if w := branch.scope.find_var(var.name) {
+						if var.name !in branch.scope.objects {
+							branch.scope.objects[var.name] = w
+						}
+						branch.scope.update_var_type(var.name, branch.cond.expr_type.clear_option_and_result())
+					}
+				}
 			}
 		}
 		if node.is_comptime { // Skip checking if needed
