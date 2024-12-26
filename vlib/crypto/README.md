@@ -71,11 +71,11 @@ fn main() {
 	secret := 'your-256-bit-secret'
 	token := make_token(secret)
 	ok := auth_verify(secret, token)
-	pl := parse_payload(token)!
+	pl := decode_payload(token)!
 	dt := sw.elapsed().microseconds()
 	println('token: ${token}')
 	println('auth_verify(secret, token): ${ok}')
-	println('parse_payload(token): ${pl}')
+	println('decode_payload(token): ${pl}')
 	println('Elapsed time: ${dt} uS')
 }
 
@@ -96,7 +96,7 @@ fn auth_verify(secret string, token string) bool {
 	return hmac.equal(signature_from_token, signature_mirror)
 }
 
-fn parse_payload(token string) JwtPayload {
+fn decode_payload(token string) JwtPayload {
 	token_split := token.split('.')
 	payload := json.decode(JwtPayload, base64.url_decode_str(token_split[1]))!
 	return payload
