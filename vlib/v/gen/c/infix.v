@@ -925,8 +925,8 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 // infix_expr_arithmetic_op generates code for `+`, `-`, `*`, `/`, and `%`
 // It handles operator overloading when necessary
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
-	left := g.unwrap(node.left_type)
-	right := g.unwrap(node.right_type)
+	left := g.unwrap(g.comptime.get_type_or_default(node.left, node.left_type))
+	right := g.unwrap(g.comptime.get_type_or_default(node.right, node.right_type))
 	if left.sym.info is ast.Struct && left.sym.info.generic_types.len > 0 {
 		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
 		method_name = g.generic_fn_name(left.sym.info.concrete_types, method_name)
@@ -1188,7 +1188,11 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)
 	if needs_cast {
-		typ_str := g.styp(node.promoted_type)
+		typ_str := if g.comptime.is_comptime(node.left) {
+			g.styp(g.comptime.get_type_or_default(node.left, node.promoted_type))
+		} else {
+			g.styp(node.promoted_type)
+		}
 		g.write('(${typ_str})(')
 	}
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {

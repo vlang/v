@@ -512,7 +512,7 @@ run them via `v file.v` instead',
 				pos:           param.pos
 				is_used:       is_pub || no_body || (is_method && k == 0) || p.builtin_mod
 				is_arg:        true
-				ct_type_var:   if (!is_method || k > 0) && param.typ.has_flag(.generic)
+				ct_type_var:   if (!is_method || k >= 0) && param.typ.has_flag(.generic)
 					&& !param.typ.has_flag(.variadic) {
 					.generic_param
 				} else {
