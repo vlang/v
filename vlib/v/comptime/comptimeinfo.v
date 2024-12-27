@@ -132,8 +132,12 @@ pub fn (mut ct ComptimeInfo) get_type_or_default(node ast.Expr, default_typ ast.
 		ast.SelectorExpr {
 			if node.expr is ast.Ident && node.expr.ct_expr {
 				struct_typ := ct.resolver.unwrap_generic(ct.get_type(node.expr))
-				if field := ct.table.find_field(ct.table.sym(struct_typ), node.field_name) {
-					return field.typ
+				struct_sym := ct.table.final_sym(struct_typ)
+				// Struct[T] can have field with generic type
+				if struct_sym.info is ast.Struct && struct_sym.info.generic_types.len > 0 {
+					if field := ct.table.find_field(struct_sym, node.field_name) {
+						return field.typ
+					}
 				}
 			}
 		}
