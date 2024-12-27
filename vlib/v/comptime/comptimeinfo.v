@@ -61,6 +61,21 @@ pub fn (mut ct ComptimeInfo) is_comptime(node ast.Expr) bool {
 				false
 			}
 		}
+		ast.SelectorExpr {
+			return node.expr is ast.Ident && node.expr.ct_expr
+		}
+		ast.CastExpr {
+			if node.is_generated {
+				if node.expr is ast.InfixExpr {
+					return ct.is_comptime(node.expr.left) || ct.is_comptime(node.expr.right)
+				}
+				return ct.is_comptime(node.expr)
+			}
+			return false
+		}
+		ast.ParExpr {
+			return ct.is_comptime(node.expr)
+		}
 		else {
 			false
 		}
@@ -118,6 +133,22 @@ pub fn (mut ct ComptimeInfo) get_type_or_default(node ast.Expr, default_typ ast.
 			if node.ct_expr {
 				ctyp := ct.get_type(node)
 				return if ctyp != ast.void_type { ctyp } else { default_typ }
+			}
+		}
+		ast.SelectorExpr {
+			if node.expr is ast.Ident && node.expr.ct_expr {
+				struct_typ := ct.resolver.unwrap_generic(ct.get_type(node.expr))
+				if field := ct.table.find_field(ct.table.sym(struct_typ), node.field_name) {
+					return field.typ
+				}
+			}
+		}
+		ast.ParExpr {
+			return ct.get_type_or_default(node.expr, default_typ)
+		}
+		ast.CastExpr {
+			if node.is_generated {
+				return ct.get_type_or_default(node.expr, default_typ)
 			}
 		}
 		else {
@@ -184,6 +215,8 @@ pub fn (mut ct ComptimeInfo) get_type(node ast.Expr) ast.Type {
 		nltype := ct.get_type(node.left)
 		nltype_unwrapped := ct.resolver.unwrap_generic(nltype)
 		return ct.table.value_type(nltype_unwrapped)
+	} else if node is ast.SelectorExpr && ct.is_comptime(node.expr) {
+		println('>>> ${node.expr}')
 	}
 	return ast.void_type
 }

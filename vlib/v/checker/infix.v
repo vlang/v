@@ -84,11 +84,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		if left_type in [ast.f32_type_idx, ast.f64_type_idx] && right_type == ast.float_literal_type {
 			defer {
 				node.right = ast.CastExpr{
-					expr:      node.right
-					typ:       left_type
-					typname:   c.table.get_type_name(left_type)
-					expr_type: right_type
-					pos:       node.right.pos()
+					expr:         node.right
+					typ:          left_type
+					typname:      c.table.get_type_name(left_type)
+					expr_type:    right_type
+					pos:          node.right.pos()
+					is_generated: true
 				}
 			}
 		}
@@ -99,10 +100,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		if right_type in [ast.f32_type_idx, ast.f64_type_idx] && left_type == ast.float_literal_type {
 			defer {
 				node.left = ast.CastExpr{
-					expr:      node.left
-					typ:       right_type
-					typname:   c.table.get_type_name(right_type)
-					expr_type: left_type
+					expr:         node.left
+					typ:          right_type
+					typname:      c.table.get_type_name(right_type)
+					expr_type:    left_type
+					is_generated: true
 				}
 			}
 		}
@@ -732,11 +734,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 
 			node = ast.InfixExpr{
 				left:        ast.CastExpr{
-					expr:      node.left
-					typ:       modified_left_type
-					typname:   c.table.type_str(modified_left_type)
-					expr_type: left_type
-					pos:       node.pos
+					expr:         node.left
+					typ:          modified_left_type
+					typname:      c.table.type_str(modified_left_type)
+					expr_type:    left_type
+					pos:          node.pos
+					is_generated: true
 				}
 				left_type:   left_type
 				op:          .right_shift
