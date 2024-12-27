@@ -8113,77 +8113,54 @@ instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 ## Appendix I: Keywords
 
-V has 69 reserved keywords:
+V has 45 reserved keywords:
 
 ```v ignore
-!in
-!is
 __global
 __offsetof
 as
 asm
 assert
 atomic
-bool
 break
-byte
-char
 const
 continue
 defer
 dump
-else
 enum
-f32
-f64
+else
 false
 fn
 for
 go
 goto
-i16
-i64
-i8
 if
 implements
 import
 in
-int
 interface
 is
-isize
 isreftype
 lock
-map
 match
 module
 mut
-nil
 none
 or
 pub
 return
 rlock
-rune
 select
 shared
 sizeof
 spawn
 static
-string
 struct
-thread
 true
 type
 typeof
-u16
-u32
-u64
-u8
 union
 unsafe
-usize
-voidptr
 volatile
 ```
 
