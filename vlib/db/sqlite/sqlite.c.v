@@ -163,7 +163,6 @@ fn get_int_from_stmt(stmt &C.sqlite3_stmt) int {
 	if x != C.SQLITE_OK && x != C.SQLITE_DONE {
 		C.puts(C.sqlite3_errstr(x))
 	}
-
 	res := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
 	return res
@@ -183,15 +182,17 @@ pub fn (db &DB) get_affected_rows_count() int {
 // q_int returns a single integer value, from the first column of the result of executing `query`, or an error on failure
 pub fn (db &DB) q_int(query string) !int {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
+	pres := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
+	if pres != sqlite_ok {
+		return db.error_message(pres, query)
+	}
 	defer {
 		C.sqlite3_finalize(stmt)
 	}
-	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	code := C.sqlite3_step(stmt)
 	if code != sqlite_row {
 		return db.error_message(code, query)
 	}
-
 	res := C.sqlite3_column_int(stmt, 0)
 	return res
 }
@@ -199,15 +200,17 @@ pub fn (db &DB) q_int(query string) !int {
 // q_string returns a single string value, from the first column of the result of executing `query`, or an error on failure
 pub fn (db &DB) q_string(query string) !string {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
+	pres := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
+	if pres != sqlite_ok {
+		return db.error_message(pres, query)
+	}
 	defer {
 		C.sqlite3_finalize(stmt)
 	}
-	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	code := C.sqlite3_step(stmt)
 	if code != sqlite_row {
 		return db.error_message(code, query)
 	}
-
 	val := unsafe { &u8(C.sqlite3_column_text(stmt, 0)) }
 	return if val != &u8(0) { unsafe { tos_clone(val) } } else { '' }
 }
@@ -216,14 +219,13 @@ pub fn (db &DB) q_string(query string) !string {
 @[manualfree]
 pub fn (db &DB) exec_map(query string) ![]map[string]string {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
-	defer {
-		C.sqlite3_finalize(stmt)
-	}
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	if code != sqlite_ok {
 		return db.error_message(code, query)
 	}
-
+	defer {
+		C.sqlite3_finalize(stmt)
+	}
 	nr_cols := C.sqlite3_column_count(stmt)
 	mut res := 0
 	mut rows := []map[string]string{}
@@ -236,7 +238,7 @@ pub fn (db &DB) exec_map(query string) ![]map[string]string {
 		for i in 0 .. nr_cols {
 			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
 			col_char := unsafe { &u8(C.sqlite3_column_name(stmt, i)) }
-			col := unsafe { tos_clone(col_char) }
+			col := unsafe { col_char.vstring() }
 			if val == &u8(0) {
 				row[col] = ''
 			} else {
@@ -248,18 +250,19 @@ pub fn (db &DB) exec_map(query string) ![]map[string]string {
 	return rows
 }
 
+fn C.sqlite3_memory_used() i64
+
 // exec executes the query on the given `db`, and returns an array of all the results, or an error on failure
 @[manualfree]
 pub fn (db &DB) exec(query string) ![]Row {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
-	defer {
-		C.sqlite3_finalize(stmt)
-	}
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	if code != sqlite_ok {
 		return db.error_message(code, query)
 	}
-
+	defer {
+		C.sqlite3_finalize(stmt)
+	}
 	nr_cols := C.sqlite3_column_count(stmt)
 	mut res := 0
 	mut rows := []Row{}
@@ -276,7 +279,7 @@ pub fn (db &DB) exec(query string) ![]Row {
 			if val == &u8(0) {
 				row.vals << ''
 			} else {
-				row.vals << unsafe { tos_clone(val) }
+				row.vals << unsafe { val.vstring() }
 			}
 		}
 		rows << row
@@ -319,9 +322,14 @@ pub fn (db &DB) error_message(code int, query string) IError {
 // e.g. for queries like these: `INSERT INTO ... VALUES (...)`
 pub fn (db &DB) exec_none(query string) int {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
-	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
+	pres := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
+	if pres != sqlite_ok {
+		return -1
+	}
+	defer {
+		C.sqlite3_finalize(stmt)
+	}
 	code := C.sqlite3_step(stmt)
-	C.sqlite3_finalize(stmt)
 	return code
 }
 
@@ -329,22 +337,19 @@ pub fn (db &DB) exec_none(query string) int {
 // and returns either an error on failure, or the full result set on success
 pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 	mut stmt := &C.sqlite3_stmt(unsafe { nil })
-	defer {
-		C.sqlite3_finalize(stmt)
-	}
-
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), -1, &stmt, 0)
 	if code != 0 {
 		return db.error_message(code, query)
 	}
-
+	defer {
+		C.sqlite3_finalize(stmt)
+	}
 	for i, param in params {
 		code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len, 0)
 		if code != 0 {
 			return db.error_message(code, query)
 		}
 	}
-
 	nr_cols := C.sqlite3_column_count(stmt)
 	mut res := 0
 	mut rows := []Row{}
@@ -362,12 +367,11 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 			if val == &u8(0) {
 				row.vals << ''
 			} else {
-				row.vals << unsafe { tos_clone(val) }
+				row.vals << unsafe { val.vstring() }
 			}
 		}
 		rows << row
 	}
-
 	return rows
 }
 
