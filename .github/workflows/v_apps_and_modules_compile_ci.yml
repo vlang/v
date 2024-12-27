@@ -55,6 +55,7 @@ jobs:
         run: |
           echo "Install vsql"
           v retry -- v install elliotchance.vsql ; cd ~/.vmodules/elliotchance/vsql
+          git checkout 4727b8b65aaa18f7f3ad10406c3aa66f924b2e39
           echo "Generate vsql/grammar.v"
           make vsql/grammar.v
           echo "Compile vsql"
