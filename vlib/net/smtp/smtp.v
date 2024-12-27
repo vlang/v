@@ -88,7 +88,7 @@ pub fn (mut c Client) reconnect() ! {
 	conn := net.dial_tcp('${c.server}:${c.port}') or { return error('Connecting to server failed') }
 	c.conn = conn
 
-	if c.ssl {
+	if c.ssl || c.encrypted {
 		c.connect_ssl()!
 	} else {
 		c.reader = io.new_buffered_reader(reader: c.conn)
