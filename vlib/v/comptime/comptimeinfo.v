@@ -145,7 +145,9 @@ pub fn (mut ct ComptimeInfo) get_type_or_default(node ast.Expr, default_typ ast.
 			return ct.get_type_or_default(node.expr, default_typ)
 		}
 		ast.InfixExpr {
-			return ct.get_type_or_default(node.left, default_typ)
+			if node.op in [.plus, .minus, .mul, .div, .mod] {
+				return ct.get_type_or_default(node.left, default_typ)
+			}
 		}
 		else {
 			return default_typ
