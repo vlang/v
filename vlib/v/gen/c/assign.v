@@ -363,6 +363,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						left.obj.typ = var_type
 						g.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
 						g.assign_ct_type = var_type
+					} else if val.name == 'map' && val.args.len > 0
+						&& val.args[0].expr is ast.AsCast {
+						var_type = g.table.find_or_register_array(g.unwrap_generic((val.args[0].expr as ast.AsCast).typ))
+						val_type = var_type
+						left.obj.typ = var_type
+						g.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
+						g.assign_ct_type = var_type
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap

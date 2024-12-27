@@ -403,8 +403,17 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									&& right.expr is ast.ComptimeSelector {
 									left.obj.ct_type_var = .field_var
 									left.obj.typ = c.comptime.comptime_for_field_type
+									// } else if is_decl && mut right is ast.ArrayInit
+									//  && right.elem_type.has_flag(.generic) {
+									//  	left.obj.ct_type_var = .generic_var
+									// 	c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = right.elem_type.set_nr_muls(right.elem_type.nr_muls()+1)
 								} else if mut right is ast.CallExpr {
-									if left.obj.ct_type_var in [.generic_var, .no_comptime]
+									if right.name == 'map' && right.args.len > 0
+										&& right.args[0].expr is ast.AsCast {
+										left.obj.ct_type_var = .generic_var
+										fn_ret_type := c.table.find_or_register_array(c.unwrap_generic((right.args[0].expr as ast.AsCast).typ))
+										c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = fn_ret_type
+									} else if left.obj.ct_type_var in [.generic_var, .no_comptime]
 										&& c.table.cur_fn != unsafe { nil }
 										&& c.table.cur_fn.generic_names.len != 0
 										&& !right.comptime_ret_val && c.is_generic_expr(right) {
