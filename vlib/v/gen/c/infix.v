@@ -1189,11 +1189,11 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		|| g.file.is_translated)
 	if needs_cast {
 		typ_str := if g.comptime.is_comptime(node.left) {
-			g.styp(g.comptime.get_type(node.left))
+			g.styp(g.comptime.get_type_or_default(node.left, node.promoted_type))
 		} else {
 			g.styp(node.promoted_type)
 		}
-		g.write('(${typ_str}/*${node.left}*/)(')
+		g.write('(${typ_str})(')
 	}
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {
 		g.write('*')

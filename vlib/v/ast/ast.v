@@ -1625,14 +1625,13 @@ pub mut:
 @[minify]
 pub struct CastExpr {
 pub mut:
-	arg          Expr   // `n` in `string(buf, n)`
-	typ          Type   // `string`
-	expr         Expr   // `buf` in `string(buf, n)` and `&Type(buf)`
-	typname      string // `&Type` in `&Type(buf)`
-	expr_type    Type   // `byteptr`, the type of the `buf` expression
-	has_arg      bool   // true for `string(buf, n)`, false for `&Type(buf)`
-	pos          token.Pos
-	is_generated bool // true when added by Checker
+	arg       Expr   // `n` in `string(buf, n)`
+	typ       Type   // `string`
+	expr      Expr   // `buf` in `string(buf, n)` and `&Type(buf)`
+	typname   string // `&Type` in `&Type(buf)`
+	expr_type Type   // `byteptr`, the type of the `buf` expression
+	has_arg   bool   // true for `string(buf, n)`, false for `&Type(buf)`
+	pos       token.Pos
 }
 
 @[minify]
