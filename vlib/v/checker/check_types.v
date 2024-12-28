@@ -1022,7 +1022,8 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 					typ = ast.new_type(idx).derive(arg.typ)
 				} else if c.comptime.comptime_for_field_var != '' && sym.kind in [.struct, .any]
 					&& arg.expr is ast.ComptimeSelector {
-					comptime_typ := c.comptime.get_comptime_selector_type(arg.expr, ast.void_type)
+					comptime_typ := c.type_resolver.get_comptime_selector_type(arg.expr,
+						ast.void_type)
 					if comptime_typ != ast.void_type {
 						typ = comptime_typ
 						if func.return_type.has_flag(.generic)
@@ -1121,7 +1122,8 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 							}
 							// resolve lambda with generic return type
 							if arg.expr is ast.LambdaExpr && typ.has_flag(.generic) {
-								typ = c.comptime.unwrap_generic_expr(arg.expr.expr, typ)
+								typ = c.type_resolver.unwrap_generic_expr(arg.expr.expr,
+									typ)
 								if typ.has_flag(.generic) {
 									lambda_ret_gt_name := c.table.type_to_str(typ)
 									idx := func.generic_names.index(lambda_ret_gt_name)
