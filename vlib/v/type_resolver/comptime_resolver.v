@@ -4,8 +4,17 @@ module type_resolver
 
 import v.ast
 
+pub fn (mut t TypeResolver) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {
+	field_name := t.info.comptime_for_field_value.name
+	left_sym := t.table.sym(t.resolver.unwrap_generic(node.left_type))
+	field := t.table.find_field_with_embeds(left_sym, field_name) or {
+		t.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
+	}
+	return field, field_name
+}
+
 @[inline]
-pub fn (_ &ResolverInfo) get_comptime_selector_key_type(val ast.ComptimeSelector) string {
+pub fn (t &ResolverInfo) get_comptime_selector_key_type(val ast.ComptimeSelector) string {
 	if val.field_expr is ast.SelectorExpr {
 		if val.field_expr.expr is ast.Ident {
 			return '${val.field_expr.expr.name}.typ'
@@ -16,26 +25,26 @@ pub fn (_ &ResolverInfo) get_comptime_selector_key_type(val ast.ComptimeSelector
 
 // is_comptime_expr checks if the node is related to a comptime expr
 @[inline]
-pub fn (ct &ResolverInfo) is_comptime_expr(node ast.Expr) bool {
+pub fn (t &ResolverInfo) is_comptime_expr(node ast.Expr) bool {
 	return (node is ast.Ident && node.ct_expr)
-		|| (node is ast.IndexExpr && ct.is_comptime_expr(node.left))
+		|| (node is ast.IndexExpr && t.is_comptime_expr(node.left))
 		|| node is ast.ComptimeSelector
 }
 
 // has_comptime_expr checks if the expr contains some comptime expr
 @[inline]
-pub fn (mut ct ResolverInfo) has_comptime_expr(node ast.Expr) bool {
+pub fn (t &ResolverInfo) has_comptime_expr(node ast.Expr) bool {
 	return (node is ast.Ident && node.ct_expr)
-		|| (node is ast.IndexExpr && ct.has_comptime_expr(node.left))
+		|| (node is ast.IndexExpr && t.has_comptime_expr(node.left))
 		|| node is ast.ComptimeSelector
-		|| (node is ast.SelectorExpr && ct.has_comptime_expr(node.expr))
-		|| (node is ast.InfixExpr && (ct.has_comptime_expr(node.left)
-		|| ct.has_comptime_expr(node.right)))
+		|| (node is ast.SelectorExpr && t.has_comptime_expr(node.expr))
+		|| (node is ast.InfixExpr && (t.has_comptime_expr(node.left)
+		|| t.has_comptime_expr(node.right)))
 }
 
 // is_comptime checks if the node is related to a comptime marked variable
 @[inline]
-pub fn (mut ct ResolverInfo) is_comptime(node ast.Expr) bool {
+pub fn (t &ResolverInfo) is_comptime(node ast.Expr) bool {
 	return match node {
 		ast.Ident {
 			node.ct_expr
@@ -51,10 +60,10 @@ pub fn (mut ct ResolverInfo) is_comptime(node ast.Expr) bool {
 			return node.expr is ast.Ident && node.expr.ct_expr
 		}
 		ast.InfixExpr {
-			return ct.is_comptime(node.left) || ct.is_comptime(node.right)
+			return t.is_comptime(node.left) || t.is_comptime(node.right)
 		}
 		ast.ParExpr {
-			return ct.is_comptime(node.expr)
+			return t.is_comptime(node.expr)
 		}
 		else {
 			false
@@ -64,29 +73,29 @@ pub fn (mut ct ResolverInfo) is_comptime(node ast.Expr) bool {
 
 // is_comptime_variant_var checks if the node is related to a comptime variant variable
 @[inline]
-pub fn (mut ct ResolverInfo) is_comptime_variant_var(node ast.Ident) bool {
-	return node.name == ct.comptime_for_variant_var
+pub fn (t &ResolverInfo) is_comptime_variant_var(node ast.Ident) bool {
+	return node.name == t.comptime_for_variant_var
 }
 
 // get_ct_type_var gets the comptime type of the variable (.generic_param, .key_var, etc)
 @[inline]
-pub fn (mut ct ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
+pub fn (t &ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
 	if node is ast.Ident {
 		if node.obj is ast.Var {
 			return node.obj.ct_type_var
 		}
 	} else if node is ast.IndexExpr {
-		return ct.get_ct_type_var(node.left)
+		return t.get_ct_type_var(node.left)
 	}
 	return .no_comptime
 }
 
 // get_expr_type_or_default computes the ast node type regarding its or_expr if its comptime var otherwise default_typ is returned
-pub fn (mut ct TypeResolver) get_expr_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
-	if !ct.info.is_comptime_expr(node) {
+pub fn (mut t TypeResolver) get_expr_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
+	if !t.info.is_comptime_expr(node) {
 		return default_typ
 	}
-	ctyp := ct.get_type(node)
+	ctyp := t.get_type(node)
 	match node {
 		ast.Ident {
 			// returns the unwrapped type of the var
@@ -101,45 +110,45 @@ pub fn (mut ct TypeResolver) get_expr_type_or_default(node ast.Expr, default_typ
 
 // get_type_from_comptime_var retrives the comptime type related to $for variable
 @[inline]
-pub fn (mut ct TypeResolver) get_type_from_comptime_var(var ast.Ident) ast.Type {
+pub fn (t &TypeResolver) get_type_from_comptime_var(var ast.Ident) ast.Type {
 	return match var.name {
-		ct.info.comptime_for_variant_var {
-			ct.type_map['${ct.info.comptime_for_variant_var}.typ']
+		t.info.comptime_for_variant_var {
+			t.type_map['${t.info.comptime_for_variant_var}.typ']
 		}
-		ct.info.comptime_for_method_param_var {
-			ct.type_map['${ct.info.comptime_for_method_param_var}.typ']
+		t.info.comptime_for_method_param_var {
+			t.type_map['${t.info.comptime_for_method_param_var}.typ']
 		}
 		else {
 			// field_var.typ from $for field
-			ct.info.comptime_for_field_type
+			t.info.comptime_for_field_type
 		}
 	}
 }
 
 // get_comptime_selector_type retrieves the var.$(field.name) type when field_name is 'name' otherwise default_type is returned
 @[inline]
-pub fn (mut ct TypeResolver) get_comptime_selector_type(node ast.ComptimeSelector, default_type ast.Type) ast.Type {
+pub fn (mut t TypeResolver) get_comptime_selector_type(node ast.ComptimeSelector, default_type ast.Type) ast.Type {
 	if node.field_expr is ast.SelectorExpr
-		&& ct.info.check_comptime_is_field_selector(node.field_expr)
+		&& t.info.check_comptime_is_field_selector(node.field_expr)
 		&& node.field_expr.field_name == 'name' {
-		return ct.resolver.unwrap_generic(ct.info.comptime_for_field_type)
+		return t.resolver.unwrap_generic(t.info.comptime_for_field_type)
 	}
 	return default_type
 }
 
 // is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable accessing specific field name provided by `field_name`
 @[inline]
-pub fn (mut ct ResolverInfo) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
-	return ct.comptime_for_field_var != '' && node.expr is ast.Ident
-		&& node.expr.name == ct.comptime_for_field_var && node.field_name == field_name
+pub fn (t &ResolverInfo) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
+	return t.comptime_for_field_var != '' && node.expr is ast.Ident
+		&& node.expr.name == t.comptime_for_field_var && node.field_name == field_name
 }
 
 // is_comptime_selector_type checks if the SelectorExpr is related to $for variable accessing .typ field
 @[inline]
-pub fn (mut ct ResolverInfo) is_comptime_selector_type(node ast.SelectorExpr) bool {
-	if ct.inside_comptime_for && node.expr is ast.Ident {
+pub fn (t &ResolverInfo) is_comptime_selector_type(node ast.SelectorExpr) bool {
+	if t.inside_comptime_for && node.expr is ast.Ident {
 		return
-			node.expr.name in [ct.comptime_for_enum_var, ct.comptime_for_variant_var, ct.comptime_for_field_var, ct.comptime_for_method_param_var]
+			node.expr.name in [t.comptime_for_enum_var, t.comptime_for_variant_var, t.comptime_for_field_var, t.comptime_for_method_param_var]
 			&& node.field_name == 'typ'
 	}
 	return false
@@ -147,17 +156,17 @@ pub fn (mut ct ResolverInfo) is_comptime_selector_type(node ast.SelectorExpr) bo
 
 // check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable
 @[inline]
-pub fn (mut ct ResolverInfo) check_comptime_is_field_selector(node ast.SelectorExpr) bool {
-	if ct.comptime_for_field_var != '' && node.expr is ast.Ident {
-		return node.expr.name == ct.comptime_for_field_var
+pub fn (t &ResolverInfo) check_comptime_is_field_selector(node ast.SelectorExpr) bool {
+	if t.comptime_for_field_var != '' && node.expr is ast.Ident {
+		return node.expr.name == t.comptime_for_field_var
 	}
 	return false
 }
 
 // check_comptime_is_field_selector_bool checks if the SelectorExpr is related to field.is_* boolean fields
 @[inline]
-pub fn (mut ct ResolverInfo) check_comptime_is_field_selector_bool(node ast.SelectorExpr) bool {
-	if ct.check_comptime_is_field_selector(node) {
+pub fn (t &ResolverInfo) check_comptime_is_field_selector_bool(node ast.SelectorExpr) bool {
+	if t.check_comptime_is_field_selector(node) {
 		return node.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option',
 			'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum']
 	}
@@ -165,10 +174,10 @@ pub fn (mut ct ResolverInfo) check_comptime_is_field_selector_bool(node ast.Sele
 }
 
 // get_comptime_selector_bool_field evaluates the bool value for field.is_* fields
-pub fn (mut ct TypeResolver) get_comptime_selector_bool_field(field_name string) bool {
-	field := ct.info.comptime_for_field_value
-	field_typ := ct.info.comptime_for_field_type
-	field_sym := ct.table.sym(ct.resolver.unwrap_generic(ct.info.comptime_for_field_type))
+pub fn (mut t TypeResolver) get_comptime_selector_bool_field(field_name string) bool {
+	field := t.info.comptime_for_field_value
+	field_typ := t.info.comptime_for_field_type
+	field_sym := t.table.sym(t.resolver.unwrap_generic(t.info.comptime_for_field_type))
 
 	match field_name {
 		'is_pub' { return field.is_pub }
@@ -186,8 +195,9 @@ pub fn (mut ct TypeResolver) get_comptime_selector_bool_field(field_name string)
 	}
 }
 
-pub fn (mut ct TypeResolver) is_comptime_type(x ast.Type, y ast.ComptimeType) bool {
-	x_kind := ct.table.type_kind(x)
+// is_comptime_type check if the type is compatible with the supplied ComptimeType
+pub fn (t &TypeResolver) is_comptime_type(x ast.Type, y ast.ComptimeType) bool {
+	x_kind := t.table.type_kind(x)
 	match y.kind {
 		.unknown {
 			return false
@@ -239,28 +249,28 @@ pub fn (mut ct TypeResolver) is_comptime_type(x ast.Type, y ast.ComptimeType) bo
 }
 
 // comptime_get_kind_var identifies the comptime variable kind (i.e. if it is about .values, .fields, .methods, .args etc)
-fn (mut ct ResolverInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKind {
-	if ct.inside_comptime_for {
+fn (t &ResolverInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKind {
+	if t.inside_comptime_for {
 		return none
 	}
 
 	match var.name {
-		ct.comptime_for_variant_var {
+		t.comptime_for_variant_var {
 			return .variants
 		}
-		ct.comptime_for_field_var {
+		t.comptime_for_field_var {
 			return .fields
 		}
-		ct.comptime_for_enum_var {
+		t.comptime_for_enum_var {
 			return .values
 		}
-		ct.comptime_for_method_var {
+		t.comptime_for_method_var {
 			return .methods
 		}
-		ct.comptime_for_attr_var {
+		t.comptime_for_attr_var {
 			return .attributes
 		}
-		ct.comptime_for_method_param_var {
+		t.comptime_for_method_param_var {
 			return .params
 		}
 		else {
