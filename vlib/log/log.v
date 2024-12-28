@@ -37,9 +37,9 @@ mut:
 	custom_time_format string     = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
 	short_tag          bool
 	always_flush       bool // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
+	output_stream      io.Writer = os.stderr()
 pub mut:
 	output_file_name string // log output to this file
-	output_stream    io.Writer = os.stderr()
 }
 
 // get_level gets the internal logging level.
@@ -142,7 +142,9 @@ fn (mut l Log) log_file(s string, level Level) {
 fn (mut l Log) log_stream(s string, level Level) {
 	timestamp := l.time_format(time.utc())
 	tag := tag_to_console(level, l.short_tag)
-	l.output_stream.write('${timestamp} [${tag}] ${s}\n'.bytes()) or {}
+	msg := '${timestamp} [${tag}] ${s}\n'
+	arr := msg.bytes()
+	l.output_stream.write(arr) or {}
 	if l.always_flush {
 		match (l.output_stream as os.File).fd {
 			1 { flush_stdout() }
@@ -213,6 +215,7 @@ pub fn (mut f Log) free() {
 		f.output_label.free()
 		f.ofile.close()
 		f.output_file_name.free()
+		f.output_stream.free()
 	}
 }
 
