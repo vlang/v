@@ -13,7 +13,7 @@ import v.token
 import v.util
 import v.util.version
 import v.depgraph
-import v.comptime
+import v.type_resolver
 import sync.pool
 
 // Note: some of the words in c_reserved, are not reserved in C, but are
@@ -224,8 +224,8 @@ mut:
 	// autofree_tmp_vars     []string // to avoid redefining the same tmp vars in a single function
 	// nr_vars_to_free       int
 	// doing_autofree_tmp    bool
-	comptime_info_stack              []comptime.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
-	comptime                         comptime.ComptimeInfo
+	type_resolver                    type_resolver.TypeResolver
+	comptime                         &type_resolver.ResolverInfo = unsafe { nil }
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
 	// used in match multi branch
 	// TypeOne, TypeTwo {}
@@ -355,11 +355,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		reflection_strings:   &reflection_strings
 	}
 
-	global_g.comptime = &comptime.ComptimeInfo{
-		resolver: &global_g
-		table:    table
-	}
-
+	global_g.type_resolver = type_resolver.TypeResolver.new(table, global_g)
+	global_g.comptime = &global_g.type_resolver.info
 	/*
 	global_g.out_parallel = []strings.Builder{len: nr_cpus}
 	for i in 0 .. nr_cpus {
@@ -824,10 +821,8 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		has_debugger:          'v.debug' in global_g.table.modules
 		reflection_strings:    global_g.reflection_strings
 	}
-	g.comptime = &comptime.ComptimeInfo{
-		resolver: g
-		table:    global_g.table
-	}
+	g.type_resolver = type_resolver.TypeResolver.new(global_g.table, g)
+	g.comptime = &g.type_resolver.info
 	g.gen_file()
 	return g
 }
@@ -2723,7 +2718,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	if got_styp == 'none' && !g.cur_fn.return_type.has_flag(.option) {
 		g.write('(none){EMPTY_STRUCT_INITIALIZATION}')
 	} else if is_comptime_variant {
-		g.write(g.type_default(g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ']))
+		g.write(g.type_default(g.type_resolver.type_map['${g.comptime.comptime_for_variant_var}.typ']))
 	} else {
 		g.expr(expr)
 	}
@@ -4299,7 +4294,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 			if obj is ast.Var && g.check_var_scope(obj, node.pos.pos) {
 				keys.write_string('_SLIT("${obj.name}")')
 				var_typ := if obj.ct_type_var != .no_comptime {
-					g.comptime.get_type(ast.Ident{ obj: obj })
+					g.type_resolver.get_type(ast.Ident{ obj: obj })
 				} else if obj.smartcasts.len > 0 {
 					obj.smartcasts.last()
 				} else {
@@ -4342,7 +4337,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 
 					dot := if obj.orig_type.is_ptr() || obj.is_auto_heap { '->' } else { '.' }
 					if obj.ct_type_var == .smartcast {
-						cur_variant_sym := g.table.sym(g.unwrap_generic(g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ']))
+						cur_variant_sym := g.table.sym(g.unwrap_generic(g.type_resolver.type_map['${g.comptime.comptime_for_variant_var}.typ']))
 						param_var.write_string('${obj.name}${dot}_${cur_variant_sym.cname}')
 					} else if cast_sym.info is ast.Aggregate {
 						sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
@@ -4896,7 +4891,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if node.obj is ast.Var {
 			if !g.is_assign_lhs
 				&& node.obj.ct_type_var !in [.smartcast, .generic_param, .no_comptime] {
-				comptime_type := g.comptime.get_type(node)
+				comptime_type := g.type_resolver.get_type(node)
 				if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
 						if !g.is_assign_lhs && is_auto_heap {
@@ -4968,7 +4963,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if has_smartcast {
 					obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
 					if node.obj.ct_type_var == .smartcast {
-						ctyp := g.unwrap_generic(g.comptime.get_type(node))
+						ctyp := g.unwrap_generic(g.type_resolver.get_type(node))
 						cur_variant_sym := g.table.sym(ctyp)
 						variant_name := g.get_sumtype_variant_name(ctyp, cur_variant_sym)
 						g.write('._${variant_name}')
@@ -5004,7 +4999,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
 						g.write('(')
 						if i == 0 && node.obj.is_unwrapped && node.obj.ct_type_var == .smartcast {
-							ctyp := g.unwrap_generic(g.comptime.get_type(node))
+							ctyp := g.unwrap_generic(g.type_resolver.get_type(node))
 							g.write('*(${g.base_type(ctyp)}*)(')
 						}
 						if obj_sym.kind == .sum_type && !is_auto_heap {
@@ -5060,7 +5055,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 									}
 								}
 								if node.obj.ct_type_var == .smartcast {
-									mut ctyp := g.unwrap_generic(g.comptime.get_type(node))
+									mut ctyp := g.unwrap_generic(g.type_resolver.get_type(node))
 									cur_variant_sym := g.table.sym(ctyp)
 									if node.obj.is_unwrapped {
 										ctyp = ctyp.set_flag(.option)
@@ -5139,14 +5134,14 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
 	if g.comptime.is_comptime_expr(node.expr) {
-		expr_type = g.unwrap_generic(g.comptime.get_type(node.expr))
+		expr_type = g.unwrap_generic(g.type_resolver.get_type(node.expr))
 	}
 	node_typ_is_option := node.typ.has_flag(.option)
 	if sym.kind in [.sum_type, .interface] {
 		if node_typ_is_option && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.expr is ast.Ident && g.comptime.is_comptime_variant_var(node.expr) {
-			g.expr_with_cast(node.expr, g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'],
+			g.expr_with_cast(node.expr, g.type_resolver.type_map['${g.comptime.comptime_for_variant_var}.typ'],
 				node_typ)
 		} else if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node.typ)

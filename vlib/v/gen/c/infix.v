@@ -96,8 +96,8 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 
 // infix_expr_eq_op generates code for `==` and `!=`
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
-	left_type := g.comptime.get_expr_type_or_default(node.left, node.left_type)
-	right_type := g.comptime.get_expr_type_or_default(node.right, node.right_type)
+	left_type := g.type_resolver.get_expr_type_or_default(node.left, node.left_type)
+	right_type := g.type_resolver.get_expr_type_or_default(node.right, node.right_type)
 	left := g.unwrap(left_type)
 	right := g.unwrap(right_type)
 	mut has_defined_eq_operator := false
@@ -834,7 +834,7 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 
 // infix_expr_is_op generates code for `is` and `!is`
 fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
-	mut left_sym := g.table.sym(g.unwrap_generic(g.comptime.get_type_or_default(node.left,
+	mut left_sym := g.table.sym(g.unwrap_generic(g.type_resolver.get_type_or_default(node.left,
 		node.left_type)))
 	is_aggregate := left_sym.kind == .aggregate
 	if is_aggregate {
@@ -886,7 +886,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	if node.right is ast.None {
 		g.write('${ast.none_type.idx()}')
 	} else if node.right is ast.Ident && node.right.name == g.comptime.comptime_for_variant_var {
-		variant_idx := g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'] or {
+		variant_idx := g.type_resolver.type_map['${g.comptime.comptime_for_variant_var}.typ'] or {
 			ast.void_type
 		}
 		g.write('${int(variant_idx)}')
@@ -925,8 +925,8 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 // infix_expr_arithmetic_op generates code for `+`, `-`, `*`, `/`, and `%`
 // It handles operator overloading when necessary
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
-	left := g.unwrap(g.comptime.get_type_or_default(node.left, node.left_type))
-	right := g.unwrap(g.comptime.get_type_or_default(node.right, node.right_type))
+	left := g.unwrap(g.type_resolver.get_type_or_default(node.left, node.left_type))
+	right := g.unwrap(g.type_resolver.get_type_or_default(node.right, node.right_type))
 	if left.sym.info is ast.Struct && left.sym.info.generic_types.len > 0 {
 		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
 		method_name = g.generic_fn_name(left.sym.info.concrete_types, method_name)
@@ -1189,7 +1189,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		|| g.file.is_translated)
 	if needs_cast {
 		typ_str := if g.comptime.is_comptime(node.left) {
-			g.styp(g.comptime.get_type_or_default(node.left, node.promoted_type))
+			g.styp(g.type_resolver.get_type_or_default(node.left, node.promoted_type))
 		} else {
 			g.styp(node.promoted_type)
 		}

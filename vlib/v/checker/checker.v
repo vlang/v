@@ -13,7 +13,7 @@ import v.util.version
 import v.errors
 import v.pkgconfig
 import v.transformer
-import v.comptime
+import v.type_resolver
 
 // prevent stack overflows by restricting too deep recursion:
 const expr_level_cutoff_limit = 40
@@ -116,9 +116,9 @@ mut:
 	loop_labels                      []string   // filled, when inside labelled for loops: `a_label: for x in 0..10 {`
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
-	comptime_info_stack              []comptime.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
-	comptime                         comptime.ComptimeInfo
-	fn_scope                         &ast.Scope = unsafe { nil }
+	type_resolver                    type_resolver.TypeResolver
+	comptime                         &type_resolver.ResolverInfo = unsafe { nil }
+	fn_scope                         &ast.Scope                  = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	is_last_stmt                     bool
@@ -164,10 +164,8 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		v_current_commit_hash:         if pref_.building_v { version.githash(pref_.vroot) or {
 				@VCURRENTHASH} } else { @VCURRENTHASH }
 	}
-	checker.comptime = &comptime.ComptimeInfo{
-		resolver: checker
-		table:    table
-	}
+	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
+	checker.comptime = &checker.type_resolver.info
 	return checker
 }
 
@@ -1674,7 +1672,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	} else if c.comptime.inside_comptime_for && typ == c.enum_data_type
 		&& node.field_name == 'value' {
 		// for comp-time enum.values
-		node.expr_type = c.comptime.type_map['${c.comptime.comptime_for_enum_var}.typ']
+		node.expr_type = c.type_resolver.type_map['${c.comptime.comptime_for_enum_var}.typ']
 		node.typ = typ
 		return node.expr_type
 	}
@@ -3056,9 +3054,9 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			}
 			if c.comptime.inside_comptime_for && mut node.expr is ast.Ident {
 				if node.expr.ct_expr {
-					node.expr_type = c.comptime.get_type(node.expr as ast.Ident)
-				} else if (node.expr as ast.Ident).name in c.comptime.type_map {
-					node.expr_type = c.comptime.type_map[(node.expr as ast.Ident).name]
+					node.expr_type = c.type_resolver.get_type(node.expr as ast.Ident)
+				} else if (node.expr as ast.Ident).name in c.type_resolver.type_map {
+					node.expr_type = c.type_resolver.type_map[(node.expr as ast.Ident).name]
 				}
 			}
 			c.check_expr_option_or_result_call(node.expr, node.expr_type)
@@ -3348,9 +3346,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	c.inside_integer_literal_cast = old_inside_integer_literal_cast
 
 	if mut node.expr is ast.ComptimeSelector {
-		node.expr_type = c.comptime.get_comptime_selector_type(node.expr, node.expr_type)
+		node.expr_type = c.type_resolver.get_comptime_selector_type(node.expr, node.expr_type)
 	} else if node.expr is ast.Ident && c.comptime.is_comptime_variant_var(node.expr) {
-		node.expr_type = c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
+		node.expr_type = c.type_resolver.type_map['${c.comptime.comptime_for_variant_var}.typ']
 	}
 	mut from_type := c.unwrap_generic(node.expr_type)
 	from_sym := c.table.sym(from_type)
@@ -3960,7 +3958,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	// second use
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
-		typ := c.comptime.get_type_or_default(node, info.typ)
+		typ := c.type_resolver.get_type_or_default(node, info.typ)
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
 			if !typ.has_flag(.option) {
