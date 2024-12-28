@@ -1,4 +1,5 @@
 import os
+import log
 
 fn dump_of_int() {
 	x := dump(1) + 1
@@ -18,16 +19,16 @@ mut:
 }
 
 struct Aa {
-	cmd &os.Command
+	log &log.Logger
 }
 
 fn dump_of_struct() {
 	p := Point{1, 2, 3}
 	mut p_mut := Point{1, 2, 3}
 	p_ptr := &Point{1, 2, 3}
-	c := &os.Command{}
+	l := &log.Log{}
 	a := Aa{
-		cmd: c
+		log: l
 	}
 
 	dump(a)
