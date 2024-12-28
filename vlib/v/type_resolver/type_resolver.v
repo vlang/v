@@ -6,6 +6,7 @@ import ast
 import v.token
 import v.util
 
+@[minify]
 pub struct ResolverInfo {
 pub mut:
 	saved_type_map map[string]ast.Type
@@ -32,6 +33,7 @@ pub mut:
 	comptime_for_method_param_var string
 }
 
+// Interface for cgen / checker instance
 pub interface IResolverType {
 mut:
 	file &ast.File
@@ -52,11 +54,12 @@ pub struct TypeResolver {
 pub mut:
 	resolver   IResolverType = DummyResolver{}
 	table      &ast.Table    = unsafe { nil }
-	info       ResolverInfo   // infoent info
-	info_stack []ResolverInfo // stores the values from the above on each $for loop, to make nesting them easier
-	type_map   map[string]ast.Type
+	info       ResolverInfo        // current info
+	info_stack []ResolverInfo      // stores the values from the above on each $for loop, to make nesting them easier
+	type_map   map[string]ast.Type // map for storing dynamic resolved types on checker/gen phase
 }
 
+@[inline]
 pub fn TypeResolver.new(table &ast.Table, resolver &IResolverType) &TypeResolver {
 	return &TypeResolver{
 		table:    table
