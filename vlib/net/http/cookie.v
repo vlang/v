@@ -67,13 +67,7 @@ pub fn read_cookies(h Header, filter string) []&Cookie {
 			if part.len == 0 {
 				continue
 			}
-			mut name := part
-			mut val := ''
-			if part.contains('=') {
-				val_parts := part.split('=')
-				name = val_parts[0]
-				val = val_parts[1]
-			}
+			mut name, mut val := part.split_once('=') or { part, '' }
 			if !is_cookie_name_valid(name) {
 				continue
 			}
