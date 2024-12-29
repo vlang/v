@@ -4162,7 +4162,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('data))')
 	}
 	if sum_type_deref_field != '' {
-		g.write2('${sum_type_dot}${sum_type_deref_field})')
+		g.write2(sum_type_dot, sum_type_deref_field)
+		g.write(')')
 	}
 	if sym.kind in [.interface, .sum_type] {
 		g.write('))')
