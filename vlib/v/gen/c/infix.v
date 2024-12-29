@@ -886,9 +886,8 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	if node.right is ast.None {
 		g.write('${ast.none_type.idx()}')
 	} else if node.right is ast.Ident && node.right.name == g.comptime.comptime_for_variant_var {
-		variant_idx := g.type_resolver.type_map['${g.comptime.comptime_for_variant_var}.typ'] or {
-			ast.void_type
-		}
+		variant_idx := g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
+			ast.void_type)
 		g.write('${int(variant_idx)}')
 	} else {
 		g.expr(node.right)

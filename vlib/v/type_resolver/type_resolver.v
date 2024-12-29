@@ -72,7 +72,7 @@ pub fn TypeResolver.new(table &ast.Table, resolver &IResolverType) &TypeResolver
 @[inline]
 pub fn (mut t TypeResolver) update_generic(var ast.Ident, var_type ast.Type) {
 	if var.obj is ast.Var {
-		t.type_map['g.${var.name}.${var.obj.pos.pos}'] = var_type
+		// t.type_map['g.${var.name}.${var.obj.pos.pos}'] = var_type
 	}
 }
 
@@ -84,6 +84,12 @@ pub fn (mut t TypeResolver) update_generic(var ast.Ident, var_type ast.Type) {
 @[inline]
 pub fn (mut t TypeResolver) update_ct_type(key string, var_type ast.Type) {
 	t.type_map[key] = var_type
+}
+
+// get_ct_type_or_default retrieves a comptime variable value on type map or default_type otherwise
+@[inline]
+pub fn (t &TypeResolver) get_ct_type_or_default(key string, default_type ast.Type) ast.Type {
+	return t.type_map[key] or { default_type }
 }
 
 @[noreturn]
@@ -136,7 +142,7 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 		if node.obj is ast.Var {
 			return match node.obj.ct_type_var {
 				.generic_param {
-					// generic parameter from infoent function
+					// generic parameter from generic function
 					node.obj.typ
 				}
 				.generic_var {
@@ -144,11 +150,12 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 					if node.obj.smartcasts.len > 0 {
 						node.obj.smartcasts.last()
 					} else {
-						t.type_map['t.${node.name}.${node.obj.pos.pos}'] or { node.obj.typ }
+						node.obj.typ
 					}
 				}
 				.smartcast {
-					ctyp := t.type_map['${t.info.comptime_for_variant_var}.typ'] or { node.obj.typ }
+					ctyp := t.get_ct_type_or_default('${t.info.comptime_for_variant_var}.typ',
+						node.obj.typ)
 					return if (node.obj as ast.Var).is_unwrapped {
 						ctyp.clear_flag(.option)
 					} else {
@@ -157,7 +164,7 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 				}
 				.key_var, .value_var {
 					// key and value variables from normal for stmt
-					t.type_map[node.name] or { ast.void_type }
+					t.get_ct_type_or_default(node.name, ast.void_type)
 				}
 				.field_var {
 					// field var from $for loop

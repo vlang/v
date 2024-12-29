@@ -478,7 +478,7 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 			} else {
 				name := '${cond.expr}.${cond.field_name}'
 				if name in g.type_resolver.type_map {
-					return g.type_resolver.type_map[name]
+					return g.type_resolver.get_ct_type_or_default(name, ast.void_type)
 				} else {
 					return g.unwrap_generic(cond.typ)
 				}
@@ -1083,7 +1083,8 @@ fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
 	}
 	if g.comptime.inside_comptime_for && typ == g.enum_data_type && node.field_name == 'value' {
 		// for comp-time enum.values
-		return g.type_resolver.type_map['${g.comptime.comptime_for_enum_var}.typ']
+		return g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_enum_var}.typ',
+			ast.void_type)
 	}
 	field_name := node.field_name
 	sym := g.table.sym(typ)

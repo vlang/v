@@ -250,7 +250,7 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 		}
 		expr_name := node.field_expr.expr.str()
 		if expr_name in c.type_resolver.type_map {
-			return c.type_resolver.type_map[expr_name]
+			return c.type_resolver.get_ct_type_or_default(expr_name, ast.void_type)
 		}
 		c.error('unknown `\$for` variable `${expr_name}`', left_pos)
 	} else {

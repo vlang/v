@@ -1304,7 +1304,7 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	if left_node is ast.ComptimeSelector {
 		key_str := g.comptime.get_comptime_selector_key_type(left_node)
 		if key_str != '' {
-			rec_type = g.type_resolver.type_map[key_str] or { rec_type }
+			rec_type = g.type_resolver.get_ct_type_or_default(key_str, rec_type)
 			g.gen_expr_to_string(left_node, rec_type)
 			return true
 		}
@@ -2276,7 +2276,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				if expr is ast.ComptimeSelector {
 					key_str := g.comptime.get_comptime_selector_key_type(expr)
 					if key_str != '' {
-						typ = g.type_resolver.type_map[key_str] or { typ }
+						typ = g.type_resolver.get_ct_type_or_default(key_str, typ)
 					}
 				} else if expr is ast.ComptimeCall {
 					if expr.method_name == 'method' {

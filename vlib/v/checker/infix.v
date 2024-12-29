@@ -763,7 +763,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				ast.Ident {
 					if right_expr.name == c.comptime.comptime_for_variant_var {
-						c.type_resolver.type_map['${c.comptime.comptime_for_variant_var}.typ']
+						c.type_resolver.get_ct_type_or_default('${c.comptime.comptime_for_variant_var}.typ',
+							ast.void_type)
 					} else {
 						c.error('invalid type `${right_expr}`', right_expr.pos)
 						ast.no_type

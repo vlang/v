@@ -188,8 +188,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								c.comptime.comptime_for_enum_var,
 							] {
 								if left.field_name == 'typ' {
-									skip_state = c.check_compatible_types(c.type_resolver.type_map['${comptime_field_name}.typ'],
-										right as ast.TypeNode)
+									skip_state = c.check_compatible_types(c.type_resolver.get_ct_type_or_default('${comptime_field_name}.typ',
+										ast.void_type), right as ast.TypeNode)
 								}
 							}
 						} else if left is ast.TypeNode {
@@ -608,7 +608,8 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 				ast.Ident {
 					if right_expr.name == c.comptime.comptime_for_variant_var {
 						is_comptime = true
-						c.type_resolver.type_map['${c.comptime.comptime_for_variant_var}.typ']
+						c.type_resolver.get_ct_type_or_default('${c.comptime.comptime_for_variant_var}.typ',
+							ast.no_type)
 					} else {
 						c.error('invalid type `${right_expr}`', right_expr.pos)
 						ast.no_type

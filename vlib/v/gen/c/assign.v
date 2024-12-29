@@ -308,17 +308,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					key_str := g.comptime.get_comptime_selector_key_type(val)
 					if key_str != '' {
 						if is_decl {
-							var_type = g.type_resolver.type_map[key_str] or { var_type }
+							var_type = g.type_resolver.get_ct_type_or_default(key_str,
+								var_type)
 							val_type = var_type
 							left.obj.typ = var_type
 						} else {
-							val_type = g.type_resolver.type_map[key_str] or { var_type }
+							val_type = g.type_resolver.get_ct_type_or_default(key_str,
+								var_type)
 						}
 						g.assign_ct_type = var_type
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
-					var_type = g.type_resolver.type_map[key_str] or { var_type }
+					var_type = g.type_resolver.get_ct_type_or_default(key_str, var_type)
 					left.obj.typ = var_type
 					g.assign_ct_type = var_type
 				} else if is_decl && val is ast.Ident && val.info is ast.IdentVar {
@@ -331,7 +333,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if val is ast.DumpExpr && val.expr is ast.ComptimeSelector {
 					key_str := g.comptime.get_comptime_selector_key_type(val.expr as ast.ComptimeSelector)
 					if key_str != '' {
-						var_type = g.type_resolver.type_map[key_str] or { var_type }
+						var_type = g.type_resolver.get_ct_type_or_default(key_str, var_type)
 						val_type = var_type
 						left.obj.typ = var_type
 					}
@@ -353,14 +355,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							var_type = fn_ret_type
 							val_type = var_type
 							left.obj.typ = var_type
-							g.type_resolver.update_generic(left, var_type)
+							// g.type_resolver.update_generic(left, var_type)
 						}
 					} else if val.is_static_method && val.left_type.has_flag(.generic) {
 						fn_ret_type := g.resolve_return_type(val)
 						var_type = fn_ret_type
 						val_type = var_type
 						left.obj.typ = var_type
-						g.type_resolver.update_generic(left, var_type)
+						// g.type_resolver.update_generic(left, var_type)
 						g.assign_ct_type = var_type
 					}
 				}
@@ -369,13 +371,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		} else if mut left is ast.ComptimeSelector {
 			key_str := g.comptime.get_comptime_selector_key_type(left)
 			if key_str != '' {
-				var_type = g.type_resolver.type_map[key_str] or { var_type }
+				var_type = g.type_resolver.get_ct_type_or_default(key_str, var_type)
 			}
 			g.assign_ct_type = var_type
 			if val is ast.ComptimeSelector {
 				key_str_right := g.comptime.get_comptime_selector_key_type(val)
 				if key_str_right != '' {
-					val_type = g.type_resolver.type_map[key_str_right] or { var_type }
+					val_type = g.type_resolver.get_ct_type_or_default(key_str_right, var_type)
 				}
 			} else if val is ast.CallExpr {
 				g.assign_ct_type = g.comptime.comptime_for_field_type
@@ -383,7 +385,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		} else if mut left is ast.IndexExpr && val is ast.ComptimeSelector {
 			key_str := g.comptime.get_comptime_selector_key_type(val)
 			if key_str != '' {
-				val_type = g.type_resolver.type_map[key_str] or { var_type }
+				val_type = g.type_resolver.get_ct_type_or_default(key_str, var_type)
 			}
 			g.assign_ct_type = val_type
 		}

@@ -420,7 +420,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 												} else {
 													fn_ret_type.clear_option_and_result()
 												}
-												c.type_resolver.update_generic(left, var_type)
+												// c.type_resolver.update_generic(left, var_type)
 											}
 										} else if right.is_static_method
 											&& right.left_type.has_flag(.generic) {
@@ -430,7 +430,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 											} else {
 												fn_ret_type.clear_option_and_result()
 											}
-											c.type_resolver.update_generic(left, var_type)
+											// c.type_resolver.update_generic(left, var_type)
 										}
 									}
 								}
