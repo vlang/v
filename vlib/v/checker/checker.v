@@ -36,7 +36,7 @@ pub const fixed_array_builtin_methods = ['contains', 'index', 'any', 'all', 'wai
 	'sorted', 'sort_with_compare', 'sorted_with_compare', 'reverse', 'reverse_in_place', 'count']
 pub const fixed_array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(fixed_array_builtin_methods)
 // TODO: remove `byte` from this list when it is no longer supported
-pub const reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
+pub const reserved_type_names = ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
 	'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread']
 pub const reserved_type_names_chk = token.new_keywords_matcher_from_array_trie(reserved_type_names)
 pub const vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'

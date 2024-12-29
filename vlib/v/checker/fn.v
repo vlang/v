@@ -167,7 +167,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					parent_sym.info.size_expr, true)
 			}
 			if return_sym.name == 'byte' {
-				c.warn('byte is deprecated, use u8 instead', node.return_type_pos)
+				c.error('byte is deprecated, use u8 instead', node.return_type_pos)
 			}
 		}
 		if return_sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(return_sym.info) {
@@ -337,7 +337,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('duplicate of an import symbol `${param.name}`', param.pos)
 			}
 			if arg_typ_sym.kind == .alias && arg_typ_sym.name == 'byte' {
-				c.warn('byte is deprecated, use u8 instead', param.type_pos)
+				c.error('byte is deprecated, use u8 instead', param.type_pos)
 			}
 		}
 		if !node.is_method {
