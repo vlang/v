@@ -163,6 +163,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << '__new_array_with_multi_default'
 			core_fns << '__new_array_with_multi_default_noscan'
 			core_fns << '__new_array_with_array_default'
+			core_fns << ref_array_idx_str + '.set'
 		}
 		if table.used_features.option_or_result {
 			include_panic_deps = true
