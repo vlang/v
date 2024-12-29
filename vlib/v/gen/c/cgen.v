@@ -2718,8 +2718,9 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	if got_styp == 'none' && !g.cur_fn.return_type.has_flag(.option) {
 		g.write('(none){EMPTY_STRUCT_INITIALIZATION}')
 	} else if is_comptime_variant {
-		g.write(g.type_default(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
-			ast.void_type)))
+		ctyp := g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
+			ast.void_type)
+		g.write(g.type_default(ctyp))
 	} else {
 		g.expr(expr)
 	}

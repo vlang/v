@@ -111,16 +111,18 @@ pub fn (mut t TypeResolver) get_expr_type_or_default(node ast.Expr, default_typ 
 // get_type_from_comptime_var retrives the comptime type related to $for variable
 @[inline]
 pub fn (t &TypeResolver) get_type_from_comptime_var(var ast.Ident) ast.Type {
-	return match var.name {
+	match var.name {
 		t.info.comptime_for_variant_var {
-			t.get_ct_type_or_default('${t.info.comptime_for_variant_var}.typ', ast.void_type)
+			return t.get_ct_type_or_default('${t.info.comptime_for_variant_var}.typ',
+				ast.void_type)
 		}
 		t.info.comptime_for_method_param_var {
-			t.get_ct_type_or_default('${t.info.comptime_for_method_param_var}.typ', ast.void_type)
+			return t.get_ct_type_or_default('${t.info.comptime_for_method_param_var}.typ',
+				ast.void_type)
 		}
 		else {
 			// field_var.typ from $for field
-			t.info.comptime_for_field_type
+			return t.info.comptime_for_field_type
 		}
 	}
 }
