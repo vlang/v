@@ -30,6 +30,7 @@ pub enum ArrayFlags {
 
 // Internal function, used by V (`nums := []int`)
 fn __new_array(mylen int, cap int, elm_size int) array {
+	panic_on_negative_len(mylen)
 	cap_ := if cap < mylen { mylen } else { cap }
 	arr := array{
 		element_size: elm_size
@@ -41,6 +42,7 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 }
 
 fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array {
+	panic_on_negative_len(mylen)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -79,6 +81,7 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 }
 
 fn __new_array_with_multi_default(mylen int, cap int, elm_size int, val voidptr) array {
+	panic_on_negative_len(mylen)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -106,6 +109,7 @@ fn __new_array_with_multi_default(mylen int, cap int, elm_size int, val voidptr)
 }
 
 fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, depth int) array {
+	panic_on_negative_len(mylen)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -127,6 +131,7 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, d
 }
 
 fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array {
+	panic_on_negative_len(mylen)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -149,6 +154,7 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array
 
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array {
+	panic_on_negative_len(len)
 	cap_ := if cap < len { len } else { cap }
 	arr := array{
 		element_size: elm_size
@@ -163,6 +169,7 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 
 // Private function, used by V (`nums := [1, 2, 3] !`)
 fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidptr) array {
+	panic_on_negative_len(len)
 	arr := array{
 		element_size: elm_size
 		data:         c_array
@@ -1034,4 +1041,11 @@ pub fn (data voidptr) vbytes(len int) []u8 {
 @[unsafe]
 pub fn (data &u8) vbytes(len int) []u8 {
 	return unsafe { voidptr(data).vbytes(len) }
+}
+
+@[if !no_bounds_checking ?; inline]
+fn panic_on_negative_len(len int) {
+	if len < 0 {
+		panic('negative .len')
+	}
 }

@@ -393,7 +393,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									&& right.or_expr.kind == .absent {
 									right_obj_var := right.obj as ast.Var
 									if right_obj_var.ct_type_var != .no_comptime {
-										ctyp := c.comptime.get_type(right)
+										ctyp := c.type_resolver.get_type(right)
 										if ctyp != ast.void_type {
 											left.obj.ct_type_var = right_obj_var.ct_type_var
 											left.obj.typ = ctyp
@@ -416,7 +416,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									} else if left.obj.ct_type_var in [.generic_var, .no_comptime]
 										&& c.table.cur_fn != unsafe { nil }
 										&& c.table.cur_fn.generic_names.len != 0
-										&& !right.comptime_ret_val && c.is_generic_expr(right) {
+										&& !right.comptime_ret_val
+										&& c.type_resolver.is_generic_expr(right) {
 										// mark variable as generic var because its type changes according to fn return generic resolution type
 										left.obj.ct_type_var = .generic_var
 										if right.return_type_generic.has_flag(.generic) {
@@ -428,7 +429,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 												} else {
 													fn_ret_type.clear_option_and_result()
 												}
-												c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
+												c.type_resolver.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
 											}
 										} else if right.is_static_method
 											&& right.left_type.has_flag(.generic) {
@@ -438,7 +439,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 											} else {
 												fn_ret_type.clear_option_and_result()
 											}
-											c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
+											c.type_resolver.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
 										}
 									}
 								}
@@ -514,7 +515,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if (left.is_map || left.is_farray) && left.is_setter {
 						left.recursive_mapset_is_setter(true)
 					}
-					right_type = c.comptime.get_type_or_default(right, right_type)
+					right_type = c.type_resolver.get_type_or_default(right, right_type)
 				}
 				if mut left is ast.InfixExpr {
 					c.error('cannot use infix expression on the left side of `${node.op}`',

@@ -108,7 +108,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 						typ = c.unwrap_generic(expr.obj.smartcasts.last())
 					}
 					if expr.obj.ct_type_var != .no_comptime {
-						typ = c.comptime.get_type_or_default(expr, typ)
+						typ = c.type_resolver.get_type_or_default(expr, typ)
 					}
 					if mut expr.obj.expr is ast.IfGuardExpr {
 						if var := expr.scope.find_var(expr.name) {

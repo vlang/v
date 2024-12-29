@@ -54,19 +54,14 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install vsql"
-          v retry -- v install elliotchance.vsql ; cd ~/.vmodules/elliotchance/vsql
-          echo "Generate vsql/grammar.v"
-          make vsql/grammar.v
+          v retry -- v install elliotchance.vsql
+          cd ~/.vmodules/elliotchance/vsql
           echo "Compile vsql"
-          v -o bin/vsql cmd/vsql
-          echo "Compile vsql with -skip-unused"
-          v -skip-unused -o bin/vsql cmd/vsql
+          make bin/vsql
           echo "Run examples"
           make examples
           echo "Run vsql/connection_test.v"
           v vsql/connection_test.v
-          echo "Run vsql/connection_test.v with -skip-unused"
-          v -skip-unused vsql/connection_test.v
 
       - name: Test discord.v
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
