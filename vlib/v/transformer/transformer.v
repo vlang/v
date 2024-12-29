@@ -547,6 +547,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		return node
 	}
 	match mut node {
+		ast.Ident {}
 		ast.AnonFn {
 			node.decl = t.stmt(mut node.decl) as ast.FnDecl
 		}
