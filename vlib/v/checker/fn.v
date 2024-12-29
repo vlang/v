@@ -3569,7 +3569,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			c.error('`.contains()` expected 1 argument, but got ${node.args.len}', node.pos)
 		} else if !left_sym.has_method('contains') {
 			arg_typ := c.expr(mut node.args[0].expr)
-			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+			c.check_expected_call_arg(arg_typ, c.unwrap_generic(elem_typ), node.language,
+				node.args[0]) or {
 				c.error('${err.msg()} in argument 1 to `.contains()`', node.args[0].pos)
 			}
 		}

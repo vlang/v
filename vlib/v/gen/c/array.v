@@ -474,8 +474,15 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	ret_styp := g.styp(node.return_type)
-	ret_sym := g.table.final_sym(node.return_type)
+	return_type := if g.type_resolver.is_generic_expr(node.args[0].expr) {
+		ast.new_type(g.table.find_or_register_array(g.type_resolver.unwrap_generic_expr(node.args[0].expr,
+			node.return_type)))
+	} else {
+		node.return_type
+	}
+	ret_styp := g.styp(return_type)
+	ret_sym := g.table.final_sym(return_type)
+
 	left_is_array := g.table.final_sym(node.left_type).kind == .array
 	inp_sym := g.table.final_sym(node.receiver_type)
 
@@ -607,6 +614,13 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 				}
 				g.expr(expr)
 			}
+		}
+		ast.AsCast {
+			if expr.typ.has_flag(.generic) {
+				ret_elem_styp = g.styp(g.unwrap_generic(expr.typ))
+			}
+			g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
+			g.expr(expr)
 		}
 		else {
 			if closure_var_decl != '' {

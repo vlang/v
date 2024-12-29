@@ -10,7 +10,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	if node.index is ast.RangeExpr {
 		g.index_range_expr(node, node.index)
 	} else {
-		sym := g.table.final_sym(g.unwrap_generic(node.left_type))
+		left_type := g.unwrap_generic(g.type_resolver.get_type_or_default(node.left, node.left_type))
+		sym := g.table.final_sym(left_type)
 		if sym.kind == .array {
 			g.index_of_array(node, sym)
 		} else if sym.kind == .array_fixed {
