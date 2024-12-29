@@ -7,6 +7,7 @@ module builtin
 
 fn __new_array_noscan(mylen int, cap int, elm_size int) array {
 	panic_on_negative_len(mylen)
+	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	arr := array{
 		element_size: elm_size
@@ -19,6 +20,7 @@ fn __new_array_noscan(mylen int, cap int, elm_size int) array {
 
 fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr) array {
 	panic_on_negative_len(mylen)
+	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -46,6 +48,7 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 
 fn __new_array_with_multi_default_noscan(mylen int, cap int, elm_size int, val voidptr) array {
 	panic_on_negative_len(mylen)
+	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -63,6 +66,7 @@ fn __new_array_with_multi_default_noscan(mylen int, cap int, elm_size int, val v
 
 fn __new_array_with_array_default_noscan(mylen int, cap int, elm_size int, val array) array {
 	panic_on_negative_len(mylen)
+	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -80,6 +84,7 @@ fn __new_array_with_array_default_noscan(mylen int, cap int, elm_size int, val a
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr) array {
 	panic_on_negative_len(len)
+	panic_on_negative_cap(cap)
 	cap_ := if cap < len { len } else { cap }
 	arr := array{
 		element_size: elm_size
