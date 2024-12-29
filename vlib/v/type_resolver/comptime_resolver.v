@@ -120,9 +120,8 @@ pub fn (t &TypeResolver) get_type_from_comptime_var(var ast.Ident) ast.Type {
 // get_comptime_selector_type retrieves the var.$(field.name) type when field_name is 'name' otherwise default_type is returned
 @[inline]
 pub fn (mut t TypeResolver) get_comptime_selector_type(node ast.ComptimeSelector, default_type ast.Type) ast.Type {
-	if node.field_expr is ast.SelectorExpr
-		&& t.info.check_comptime_is_field_selector(node.field_expr)
-		&& node.field_expr.field_name == 'name' {
+	if node.is_name && node.field_expr is ast.SelectorExpr
+		&& t.info.check_comptime_is_field_selector(node.field_expr) {
 		return t.resolver.unwrap_generic(t.info.comptime_for_field_type)
 	}
 	return default_type
