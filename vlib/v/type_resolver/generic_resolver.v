@@ -32,6 +32,9 @@ pub fn (mut ct TypeResolver) unwrap_generic_expr(expr ast.Expr, default_typ ast.
 				default_typ
 			}
 		}
+		ast.AsCast {
+			return ct.resolver.unwrap_generic(expr.typ)
+		}
 		else {
 			return default_typ
 		}
@@ -70,6 +73,10 @@ pub fn (t &TypeResolver) is_generic_expr(node ast.Expr) bool {
 		ast.SelectorExpr {
 			// generic_var.property
 			t.is_generic_param_var(node.expr)
+		}
+		ast.AsCast {
+			// var as T
+			node.typ.has_flag(.generic)
 		}
 		else {
 			false

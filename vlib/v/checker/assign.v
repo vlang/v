@@ -412,7 +412,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										&& right.args[0].expr is ast.AsCast {
 										left.obj.ct_type_var = .generic_var
 										fn_ret_type := c.table.find_or_register_array(c.unwrap_generic((right.args[0].expr as ast.AsCast).typ))
-										c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = fn_ret_type
+										c.type_resolver.type_map['g.${left.name}.${left.obj.pos.pos}'] = fn_ret_type
 									} else if left.obj.ct_type_var in [.generic_var, .no_comptime]
 										&& c.table.cur_fn != unsafe { nil }
 										&& c.table.cur_fn.generic_names.len != 0
