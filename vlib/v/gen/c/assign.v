@@ -368,7 +368,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						var_type = g.table.find_or_register_array(g.unwrap_generic((val.args[0].expr as ast.AsCast).typ))
 						val_type = var_type
 						left.obj.typ = var_type
-						g.type_resolver.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
 						g.assign_ct_type = var_type
 					}
 				}
