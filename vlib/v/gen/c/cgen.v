@@ -4137,8 +4137,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	alias_to_ptr := sym.info is ast.Alias && sym.info.parent_type.is_ptr()
 	is_dereferenced := node.expr is ast.SelectorExpr && node.expr.expr_type.is_ptr()
-		&& !node.expr.typ.is_ptr()
-		&& g.table.final_sym(node.expr.expr_type).kind in [.interface, .sum_type]
+		&& !node.expr.typ.is_ptr() && final_sym.kind in [.interface, .sum_type]
 	if field_is_opt || (((!is_dereferenced && unwrapped_expr_type.is_ptr())
 		|| sym.kind == .chan || alias_to_ptr) && node.from_embed_types.len == 0)
 		|| (node.expr.is_as_cast() && g.inside_smartcast) {
