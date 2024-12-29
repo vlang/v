@@ -1827,10 +1827,10 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 
 pub fn (t &TypeSymbol) find_field(name string) ?StructField {
 	match t.info {
-		Aggregate { return t.info.find_field(name) }
 		Struct { return t.info.find_field(name) }
 		Interface { return t.info.find_field(name) }
 		SumType { return t.info.find_sum_type_field(name) }
+		Aggregate { return t.info.find_field(name) }
 		else { return none }
 	}
 }

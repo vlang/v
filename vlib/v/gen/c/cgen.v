@@ -3895,7 +3895,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
 
-	sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	unwrapped_expr_type := g.unwrap_generic(node.expr_type)
+	sym := g.table.sym(unwrapped_expr_type)
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 	is_as_cast := node.expr is ast.AsCast
 	if is_as_cast {
@@ -3950,7 +3951,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		opt_base_typ := g.base_type(node.expr_type)
 		g.write('(*(${opt_base_typ}*)')
 	}
-	final_sym := g.table.final_sym(g.unwrap_generic(node.expr_type))
+	final_sym := g.table.final_sym(unwrapped_expr_type)
 	if final_sym.kind == .array_fixed {
 		if node.field_name != 'len' {
 			g.error('field_name should be `len`', node.pos)
@@ -3972,9 +3973,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	mut sum_type_dot := '.'
 	mut field_typ := ast.void_type
 	mut is_option_unwrap := false
-	mut is_dereferenced := node.expr is ast.SelectorExpr && node.expr.expr_type.is_ptr()
-		&& !node.expr.typ.is_ptr()
-		&& g.table.final_sym(node.expr.expr_type).kind in [.interface, .sum_type]
 	if f := g.table.find_field_with_embeds(sym, node.field_name) {
 		field_sym := g.table.sym(f.typ)
 		field_typ = f.typ
@@ -4140,8 +4138,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 	alias_to_ptr := sym.info is ast.Alias && sym.info.parent_type.is_ptr()
-	if field_is_opt
-		|| (((!is_dereferenced && g.unwrap_generic(node.expr_type).is_ptr())
+	is_dereferenced := node.expr is ast.SelectorExpr && node.expr.expr_type.is_ptr()
+		&& !node.expr.typ.is_ptr() && final_sym.kind in [.interface, .sum_type]
+	if field_is_opt || (((!is_dereferenced && unwrapped_expr_type.is_ptr())
 		|| sym.kind == .chan || alias_to_ptr) && node.from_embed_types.len == 0)
 		|| (node.expr.is_as_cast() && g.inside_smartcast) {
 		g.write('->')
@@ -4164,7 +4163,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('data))')
 	}
 	if sum_type_deref_field != '' {
-		g.write('${sum_type_dot}${sum_type_deref_field})')
+		g.write2(sum_type_dot, sum_type_deref_field)
+		g.write(')')
 	}
 	if sym.kind in [.interface, .sum_type] {
 		g.write('))')

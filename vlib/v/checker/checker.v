@@ -1706,8 +1706,8 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	mut unknown_field_msg := ''
 	mut has_field := false
 	mut field := ast.StructField{}
-	if field_name.len > 0 && field_name[0].is_capital() && sym.info is ast.Struct
-		&& sym.language == .v {
+	if field_name.len > 0 && sym.info is ast.Struct && sym.language == .v
+		&& field_name[0].is_capital() {
 		// x.Foo.y => access the embedded struct
 		for embed in sym.info.embeds {
 			embed_sym := c.table.sym(embed)
