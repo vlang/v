@@ -403,10 +403,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									&& right.expr is ast.ComptimeSelector {
 									left.obj.ct_type_var = .field_var
 									left.obj.typ = c.comptime.comptime_for_field_type
-									// } else if is_decl && mut right is ast.ArrayInit
-									//  && right.elem_type.has_flag(.generic) {
-									//  	left.obj.ct_type_var = .generic_var
-									// 	c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = right.elem_type.set_nr_muls(right.elem_type.nr_muls()+1)
 								} else if mut right is ast.CallExpr {
 									if right.name == 'map' && right.args.len > 0
 										&& right.args[0].expr is ast.AsCast {
