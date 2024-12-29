@@ -13,16 +13,6 @@ pub fn (mut t TypeResolver) get_comptime_selector_var_type(node ast.ComptimeSele
 	return field, field_name
 }
 
-@[inline]
-pub fn (t &ResolverInfo) get_comptime_selector_key_type(val ast.ComptimeSelector) string {
-	if val.field_expr is ast.SelectorExpr {
-		if val.field_expr.expr is ast.Ident {
-			return '${val.field_expr.expr.name}.typ'
-		}
-	}
-	return ''
-}
-
 // is_comptime_expr checks if the node is related to a comptime expr
 @[inline]
 pub fn (t &ResolverInfo) is_comptime_expr(node ast.Expr) bool {
