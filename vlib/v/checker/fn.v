@@ -3568,7 +3568,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if node.args.len != 1 {
 			c.error('`.contains()` expected 1 argument, but got ${node.args.len}', node.pos)
 		} else if !left_sym.has_method('contains') {
-			arg_typ := c.expr(mut node.args[0].expr)
+			arg_typ := c.unwrap_generic(c.expr(mut node.args[0].expr))
 			c.check_expected_call_arg(arg_typ, c.unwrap_generic(elem_typ), node.language,
 				node.args[0]) or {
 				c.error('${err.msg()} in argument 1 to `.contains()`', node.args[0].pos)
@@ -3582,8 +3582,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if node.args.len != 1 {
 			c.error('`.index()` expected 1 argument, but got ${node.args.len}', node.pos)
 		} else if !left_sym.has_method('index') {
-			arg_typ := c.expr(mut node.args[0].expr)
-			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+			arg_typ := c.unwrap_generic(c.expr(mut node.args[0].expr))
+			c.check_expected_call_arg(arg_typ, c.unwrap_generic(elem_typ), node.language,
+				node.args[0]) or {
 				c.error('${err.msg()} in argument 1 to `.index()`', node.args[0].pos)
 			}
 		}
@@ -3625,7 +3626,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if node.args.len != 1 {
 			c.error('`.delete()` expected 1 argument, but got ${node.args.len}', node.pos)
 		} else {
-			arg_typ := c.expr(mut node.args[0].expr)
+			arg_typ := c.unwrap_generic(c.expr(mut node.args[0].expr))
 			c.check_expected_call_arg(arg_typ, ast.int_type, node.language, node.args[0]) or {
 				c.error('${err.msg()} in argument 1 to `.delete()`', node.args[0].pos)
 			}
