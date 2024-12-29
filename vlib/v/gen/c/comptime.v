@@ -873,7 +873,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					if j < len - 1 {
 						g.write(', ')
 					}
-					g.type_resolver.type_map['${node.val_var}.args[${j}].typ'] = typ
+					g.type_resolver.update_ct_type('${node.val_var}.args[${j}].typ', typ)
 				}
 				g.writeln('}));\n')
 			}
@@ -892,15 +892,15 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			if ret_type != 'void' {
 				sig += ' ${ret_type}'
 			}
-			styp := g.table.find_type(sig)
+			typ := g.table.find_type(sig)
 
 			// TODO: type aliases
 			ret_typ := method.return_type
-			g.writeln('\t${node.val_var}.typ = ${int(styp)};')
+			g.writeln('\t${node.val_var}.typ = ${int(typ)};')
 			g.writeln('\t${node.val_var}.return_type = ${int(ret_typ.idx())};')
 
-			g.type_resolver.type_map['${node.val_var}.return_type'] = ret_typ
-			g.type_resolver.type_map['${node.val_var}.typ'] = styp
+			g.type_resolver.update_ct_type('${node.val_var}.return_type', ret_typ)
+			g.type_resolver.update_ct_type('${node.val_var}.typ', typ)
 			g.stmts(node.stmts)
 			i++
 			g.writeln('}')
@@ -962,8 +962,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 
 				g.writeln('\t${node.val_var}.indirections = ${field.typ.nr_muls()};')
 
-				g.type_resolver.type_map['${node.val_var}.typ'] = field.typ
-				g.type_resolver.type_map['${node.val_var}.unaliased_typ'] = unaliased_styp
+				g.type_resolver.update_ct_type('${node.val_var}.typ', field.typ)
+				g.type_resolver.update_ct_type('${node.val_var}.unaliased_typ', unaliased_styp)
 				g.stmts(node.stmts)
 				i++
 				g.writeln('}')
@@ -979,7 +979,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.push_new_comptime_info()
 				for val in sym.info.vals {
 					g.comptime.comptime_for_enum_var = node.val_var
-					g.type_resolver.type_map['${node.val_var}.typ'] = node.typ
+					g.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
 
 					g.writeln('/* enum vals ${i} */ {')
 					g.writeln('\t${node.val_var}.name = _SLIT("${val}");')
@@ -1030,7 +1030,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.push_new_comptime_info()
 			for variant in sym.info.variants {
 				g.comptime.comptime_for_variant_var = node.val_var
-				g.type_resolver.type_map['${node.val_var}.typ'] = variant
+				g.type_resolver.update_ct_type('${node.val_var}.typ', variant)
 
 				g.writeln('/* variant ${i} */ {')
 				g.writeln('\t${node.val_var}.typ = ${int(variant)};')
@@ -1050,7 +1050,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		g.comptime.inside_comptime_for = true
 		g.comptime.comptime_for_method_param_var = node.val_var
 		for param in method.params[1..] {
-			g.type_resolver.type_map['${node.val_var}.typ'] = param.typ
+			g.type_resolver.update_ct_type('${node.val_var}.typ', param.typ)
 
 			g.writeln('/* method param ${i} */ {')
 			g.writeln('\t${node.val_var}.typ = ${int(param.typ)};')

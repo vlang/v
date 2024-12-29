@@ -158,7 +158,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		node.kind = unwrapped_sym.kind
 
 		if is_comptime {
-			g.type_resolver.type_map[node.val_var] = node.val_type
+			g.type_resolver.update_ct_type(node.val_var, node.val_type)
 			node.scope.update_ct_var_kind(node.val_var, .value_var)
 
 			defer {
@@ -175,7 +175,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			node.scope.update_var_type(node.key_var, key_type)
 
 			if is_comptime {
-				g.type_resolver.type_map[node.key_var] = node.key_type
+				g.type_resolver.update_ct_type(node.key_var, node.key_type)
 				node.scope.update_ct_var_kind(node.key_var, .key_var)
 
 				defer {

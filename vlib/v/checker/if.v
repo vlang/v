@@ -387,9 +387,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 			if comptime_field_name.len > 0 {
 				if comptime_field_name == c.comptime.comptime_for_method_var {
-					c.type_resolver.type_map[comptime_field_name] = c.comptime.comptime_for_method_ret_type
+					c.type_resolver.update_ct_type(comptime_field_name, c.comptime.comptime_for_method_ret_type)
 				} else if comptime_field_name == c.comptime.comptime_for_field_var {
-					c.type_resolver.type_map[comptime_field_name] = c.comptime.comptime_for_field_type
+					c.type_resolver.update_ct_type(comptime_field_name, c.comptime.comptime_for_field_type)
 				}
 			}
 			c.skip_flags = cur_skip_flags

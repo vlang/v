@@ -300,8 +300,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				}
 				c.comptime.comptime_for_field_value = field
 				c.comptime.comptime_for_field_var = node.val_var
-				c.type_resolver.type_map[node.val_var] = c.field_data_type
-				c.type_resolver.type_map['${node.val_var}.typ'] = node.typ
+				c.type_resolver.update_ct_type(node.val_var, c.field_data_type)
+				c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
 				c.comptime.comptime_for_field_type = field.typ
 				c.stmts(mut node.stmts)
 
@@ -345,8 +345,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				c.enum_data_type = c.table.find_type('EnumData')
 			}
 			c.comptime.comptime_for_enum_var = node.val_var
-			c.type_resolver.type_map[node.val_var] = c.enum_data_type
-			c.type_resolver.type_map['${node.val_var}.typ'] = node.typ
+			c.type_resolver.update_ct_type(node.val_var, c.enum_data_type)
+			c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 			c.table.used_features.comptime_for = true
@@ -363,7 +363,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime.comptime_for_method = unsafe { &method }
 			c.comptime.comptime_for_method_var = node.val_var
 			c.comptime.comptime_for_method_ret_type = method.return_type
-			c.type_resolver.type_map['${node.val_var}.return_type'] = method.return_type
+			c.type_resolver.update_ct_type('${node.val_var}.return_type', method.return_type)
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}
@@ -398,8 +398,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
 			c.comptime.comptime_for_variant_var = node.val_var
-			c.type_resolver.type_map[node.val_var] = c.variant_data_type
-			c.type_resolver.type_map['${node.val_var}.typ'] = variant
+			c.type_resolver.update_ct_type(node.val_var, c.variant_data_type)
+			c.type_resolver.update_ct_type('${node.val_var}.typ', variant)
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}

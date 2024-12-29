@@ -67,6 +67,25 @@ pub fn TypeResolver.new(table &ast.Table, resolver &IResolverType) &TypeResolver
 	}
 }
 
+// update_generic updates generic type for specific variables (for overwriting its last known checker type)
+// `var` are usually variables as `var := fn_returning_generic()`
+@[inline]
+pub fn (mut t TypeResolver) update_generic(var ast.Ident, var_type ast.Type) {
+	if var.obj is ast.Var {
+		t.type_map['g.${var.name}.${var.obj.pos.pos}'] = var_type
+	}
+}
+
+// update_ct_type updates current type for specific key (comptime vars)
+// `var` iteration vars, comptime vars
+// `var.typ` => for comptime $for variables
+// `var.unaliased_typ` => for comptime $for variables
+// `var.return_type` => for .method return type
+@[inline]
+pub fn (mut t TypeResolver) update_ct_type(key string, var_type ast.Type) {
+	t.type_map[key] = var_type
+}
+
 @[noreturn]
 fn (t &TypeResolver) error(s string, pos token.Pos) {
 	util.show_compiler_message('cgen error:', pos: pos, file_path: t.resolver.file.path, message: s)
