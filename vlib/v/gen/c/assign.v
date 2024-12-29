@@ -355,14 +355,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							var_type = fn_ret_type
 							val_type = var_type
 							left.obj.typ = var_type
-							// g.type_resolver.update_generic(left, var_type)
 						}
 					} else if val.is_static_method && val.left_type.has_flag(.generic) {
 						fn_ret_type := g.resolve_return_type(val)
 						var_type = fn_ret_type
 						val_type = var_type
 						left.obj.typ = var_type
-						// g.type_resolver.update_generic(left, var_type)
 						g.assign_ct_type = var_type
 					}
 				}

@@ -67,15 +67,6 @@ pub fn TypeResolver.new(table &ast.Table, resolver &IResolverType) &TypeResolver
 	}
 }
 
-// update_generic updates generic type for specific variables (for overwriting its last known checker type)
-// `var` are usually variables as `var := fn_returning_generic()`
-@[inline]
-pub fn (mut t TypeResolver) update_generic(var ast.Ident, var_type ast.Type) {
-	if var.obj is ast.Var {
-		// t.type_map['g.${var.name}.${var.obj.pos.pos}'] = var_type
-	}
-}
-
 // update_ct_type updates current type for specific key (comptime vars)
 // `var` iteration vars, comptime vars
 // `var.typ` => for comptime $for variables
