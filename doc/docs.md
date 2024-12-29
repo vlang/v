@@ -6933,7 +6933,6 @@ performance, memory usage, or size.
 | `@[packed]`              | Memory usage                    | Potential performance loss                        |
 | `@[minify]`              | Performance, Memory usage       | May break binary serialization/reflection         |
 | `_likely_/_unlikely_`    | Performance                     | Risk of negative performance impact               |
-| `-skip-unused`           | Performance, Compile time, Size | Potential instability                             |
 | `-fast-math`             | Performance                     | Risk of incorrect mathematical operations results |
 | `-d no_segfault_handler` | Compile time, Size              | Loss of segfault trace                            |
 | `-cflags -march=native`  | Performance                     | Risk of reduced CPU compatibility                 |
@@ -7059,15 +7058,6 @@ expression is highly improbable. In the JS backend, that does nothing.
 - When the prediction can be wrong, as it might cause a performance penalty due to branch
 misprediction.
 
-#### `-skip-unused`
-
-This flag tells the V compiler to omit code that is not needed in the final executable to run your
-program correctly. This will remove unneeded `const` arrays allocations and unused functions
-from the code in the generated executable.
-
-This flag will be on by default in the future when its implementation will be stabilized and all
-severe bugs will be found.
-
 **When to Use**
 
 - For production builds where you want to reduce the executable size and improve runtime
@@ -7177,7 +7167,7 @@ rm -f *.profraw
 rm -f default.profdata
 
 # Initial build with PGO instrumentation
-v -cc clang -skip-unused -prod -cflags -fprofile-generate -o pgo_gen .
+v -cc clang -prod -cflags -fprofile-generate -o pgo_gen .
 
 # Run the instrumented executable 10 times
 for i in {1..10}; do
@@ -7188,7 +7178,7 @@ done
 llvm-profdata merge -o default.profdata *.profraw
 
 # Compile the optimized version using the PGO data
-v -cc clang -skip-unused -prod -cflags "-fprofile-use=${CUR_DIR}/default.profdata" -o optimized_program .
+v -cc clang -prod -cflags "-fprofile-use=${CUR_DIR}/default.profdata" -o optimized_program .
 
 # Remove PGO data and instrumented executable
 rm *.profraw
