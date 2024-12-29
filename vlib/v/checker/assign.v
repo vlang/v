@@ -405,7 +405,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									left.obj.typ = c.comptime.comptime_for_field_type
 								} else if mut right is ast.CallExpr {
 									if right.name == 'map' && right.args.len > 0
-										&& right.args[0].expr is ast.AsCast {
+										&& right.args[0].expr is ast.AsCast
+										&& right.args[0].expr.typ.has_flag(.generic) {
 										left.obj.ct_type_var = .generic_var
 									} else if left.obj.ct_type_var in [.generic_var, .no_comptime]
 										&& c.table.cur_fn != unsafe { nil }
