@@ -4005,29 +4005,6 @@ fn (mut c Checker) resolve_fn_return_type(func &ast.Fn, node ast.CallExpr) ast.T
 	return ret_type
 }
 
-// resolve_return_type resolves the generic return type of CallExpr
-fn (mut c Checker) resolve_return_type(node ast.CallExpr) ast.Type {
-	if node.is_method {
-		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
-		if method := c.table.find_method(left_sym, node.name) {
-			return c.resolve_fn_return_type(method, node)
-		}
-	} else if node.is_static_method {
-		if c.table.cur_fn != unsafe { nil } {
-			_, name := c.table.convert_generic_static_type_name(node.name, c.table.cur_fn.generic_names,
-				c.table.cur_concrete_types)
-			if func := c.table.find_fn(name) {
-				return c.resolve_fn_return_type(func, node)
-			}
-		}
-	} else {
-		if func := c.table.find_fn(node.name) {
-			return c.resolve_fn_return_type(func, node)
-		}
-	}
-	return node.return_type
-}
-
 fn (mut c Checker) check_must_use_call_result(node &ast.CallExpr, f &ast.Fn, label string) {
 	if node.is_return_used {
 		return

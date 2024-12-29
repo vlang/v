@@ -2718,7 +2718,9 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	if got_styp == 'none' && !g.cur_fn.return_type.has_flag(.option) {
 		g.write('(none){EMPTY_STRUCT_INITIALIZATION}')
 	} else if is_comptime_variant {
-		g.write(g.type_default(g.type_resolver.type_map['${g.comptime.comptime_for_variant_var}.typ']))
+		ctyp := g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
+			ast.void_type)
+		g.write(g.type_default(ctyp))
 	} else {
 		g.expr(expr)
 	}
@@ -4337,7 +4339,8 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 
 					dot := if obj.orig_type.is_ptr() || obj.is_auto_heap { '->' } else { '.' }
 					if obj.ct_type_var == .smartcast {
-						cur_variant_sym := g.table.sym(g.unwrap_generic(g.type_resolver.type_map['${g.comptime.comptime_for_variant_var}.typ']))
+						cur_variant_sym := g.table.sym(g.unwrap_generic(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
+							ast.void_type)))
 						param_var.write_string('${obj.name}${dot}_${cur_variant_sym.cname}')
 					} else if cast_sym.info is ast.Aggregate {
 						sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
@@ -5141,8 +5144,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		if node_typ_is_option && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.expr is ast.Ident && g.comptime.is_comptime_variant_var(node.expr) {
-			g.expr_with_cast(node.expr, g.type_resolver.type_map['${g.comptime.comptime_for_variant_var}.typ'],
-				node_typ)
+			g.expr_with_cast(node.expr, g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
+				ast.void_type), node_typ)
 		} else if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node.typ)
 		} else {

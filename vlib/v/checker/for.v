@@ -159,7 +159,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.scope.update_var_type(node.val_var, val_type)
 
 			if is_comptime {
-				c.type_resolver.type_map[node.val_var] = val_type
+				c.type_resolver.update_ct_type(node.val_var, val_type)
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
 				defer {
@@ -182,7 +182,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.scope.update_var_type(node.key_var, key_type)
 
 				if is_comptime {
-					c.type_resolver.type_map[node.key_var] = key_type
+					c.type_resolver.update_ct_type(node.key_var, key_type)
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
 
 					defer {
@@ -195,7 +195,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.scope.update_var_type(node.val_var, value_type)
 
 			if is_comptime {
-				c.type_resolver.type_map[node.val_var] = value_type
+				c.type_resolver.update_ct_type(node.val_var, value_type)
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
 				defer {
@@ -220,7 +220,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.scope.update_var_type(node.key_var, key_type)
 
 				if is_comptime {
-					c.type_resolver.type_map[node.key_var] = key_type
+					c.type_resolver.update_ct_type(node.key_var, key_type)
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
 
 					defer {
@@ -279,7 +279,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.val_type = value_type
 			node.scope.update_var_type(node.val_var, value_type)
 			if is_comptime {
-				c.type_resolver.type_map[node.val_var] = value_type
+				c.type_resolver.update_ct_type(node.val_var, value_type)
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
 				defer {

@@ -411,27 +411,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										&& c.type_resolver.is_generic_expr(right) {
 										// mark variable as generic var because its type changes according to fn return generic resolution type
 										left.obj.ct_type_var = .generic_var
-										if right.return_type_generic.has_flag(.generic) {
-											fn_ret_type := c.resolve_return_type(right)
-											if fn_ret_type != ast.void_type
-												&& c.table.final_sym(fn_ret_type).kind != .multi_return {
-												var_type := if right.or_block.kind == .absent {
-													fn_ret_type
-												} else {
-													fn_ret_type.clear_option_and_result()
-												}
-												c.type_resolver.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
-											}
-										} else if right.is_static_method
-											&& right.left_type.has_flag(.generic) {
-											fn_ret_type := c.unwrap_generic(c.resolve_return_type(right))
-											var_type := if right.or_block.kind == .absent {
-												fn_ret_type
-											} else {
-												fn_ret_type.clear_option_and_result()
-											}
-											c.type_resolver.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
-										}
 									}
 								}
 							}
