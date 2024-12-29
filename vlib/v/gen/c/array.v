@@ -475,8 +475,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	}
 
 	return_type := if g.type_resolver.is_generic_expr(node.args[0].expr) {
-		g.table.find_or_register_array(g.type_resolver.unwrap_generic_expr(node.args[0].expr,
-			node.return_type))
+		ast.new_type(g.table.find_or_register_array(g.type_resolver.unwrap_generic_expr(node.args[0].expr,
+			node.return_type)))
 	} else {
 		node.return_type
 	}
