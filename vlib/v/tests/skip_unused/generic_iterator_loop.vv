@@ -1,9 +1,5 @@
 module main
 
-interface IFoo {
-	next() ?Foo
-}
-
 struct Foo {}
 
 fn (f Foo) next() ?Foo {
@@ -17,11 +13,6 @@ fn (f Bar) next() ?Bar {
 }
 
 fn loop[T](iter T) {
-	for _ in iter {
-	}
-}
-
-fn loop2(iter IFoo) {
 	for _ in iter {
 	}
 }
