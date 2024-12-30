@@ -1994,6 +1994,8 @@ pub mut:
 	left_type  Type
 	field_expr Expr
 	typ        Type
+	is_name    bool   // true if f.$(field.name)
+	typ_key    string // `f.typ` cached key for type resolver
 }
 
 @[minify]
