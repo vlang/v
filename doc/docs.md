@@ -4686,7 +4686,9 @@ struct User {
 	// and decoding will not fail.
 	name string @[required]
 	age  int
-	// Use the `skip` attribute to skip certain fields
+	// Use the `@[skip]` attribute to skip certain fields.
+	// You can also use `@[json: '-']`, and `@[sql: '-']`, which will cause only
+	// the `json` module to skip the field, or only the SQL orm to skip it.
 	foo Foo @[skip]
 	// If the field name is different in JSON, it can be specified
 	last_name string @[json: lastName]
