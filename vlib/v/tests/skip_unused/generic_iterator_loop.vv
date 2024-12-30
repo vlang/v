@@ -1,0 +1,32 @@
+module main
+
+interface IFoo {
+	next() ?Foo
+}
+
+struct Foo {}
+
+fn (f Foo) next() ?Foo {
+	return none
+}
+
+struct Bar {}
+
+fn (f Bar) next() ?Bar {
+	return none
+}
+
+fn loop[T](iter T) {
+	for _ in iter {
+	}
+}
+
+fn loop2(iter IFoo) {
+	for _ in iter {
+	}
+}
+
+fn main() {
+	loop(Foo{})
+	loop(Bar{})
+}
