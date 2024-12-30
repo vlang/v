@@ -17,9 +17,11 @@ pub type ComptTimeConstValue = EmptyExpr
 
 //| int
 
+const ectcv = ComptTimeConstValue(EmptyExpr(0))
+
 // empty_comptime_const_expr return an EmptyExpr.
 pub fn empty_comptime_const_expr() ComptTimeConstValue {
-	return EmptyExpr(0)
+	return ectcv
 }
 
 // i8 tries to return a `ComptTimeConstValue` as `i8` type.
