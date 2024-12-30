@@ -1,6 +1,6 @@
 @[inline]
-fn char(ch byte) fn (string) !(byte, string) {
-	return fn [ch] (input string) !(byte, string) {
+fn char(ch u8) fn (string) !(u8, string) {
+	return fn [ch] (input string) !(u8, string) {
 		return if input[0] == ch {
 			ch, input[1..]
 		} else {

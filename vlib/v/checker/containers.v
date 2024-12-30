@@ -61,7 +61,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 				ast.Alias {
 					if elem_sym.name == 'byte' {
-						c.warn('byte is deprecated, use u8 instead', node.elem_type_pos)
+						c.error('byte is deprecated, use u8 instead', node.elem_type_pos)
 					}
 				}
 				ast.Map {

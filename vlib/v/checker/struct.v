@@ -220,7 +220,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 				.alias {
 					if sym.name == 'byte' {
-						c.warn('byte is deprecated, use u8 instead', field.type_pos)
+						c.error('byte is deprecated, use u8 instead', field.type_pos)
 					}
 				}
 				else {

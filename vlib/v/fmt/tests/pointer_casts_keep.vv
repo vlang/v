@@ -5,10 +5,10 @@ struct Struct {
 
 fn main() {
 	unsafe {
-		pb := &byte(0)
-		ppb := &&byte(0)
-		pppb := &&&byte(0)
-		ppppb := &&&&byte(0)
+		pb := &u8(0)
+		ppb := &&u8(0)
+		pppb := &&&u8(0)
+		ppppb := &&&&u8(0)
 		dump(voidptr(pb))
 		dump(voidptr(ppb))
 		dump(voidptr(pppb))
