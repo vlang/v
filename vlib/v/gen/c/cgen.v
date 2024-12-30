@@ -1236,6 +1236,14 @@ fn (mut g Gen) expr_string(expr ast.Expr) string {
 	return g.out.cut_to(pos).trim_space()
 }
 
+fn (mut g Gen) expr_string_opt(typ ast.Type, expr ast.Expr) string {
+	expr_str := g.expr_string(expr)
+	if expr is ast.None {
+		return '(${g.styp(typ)}){.state=2, .err=${expr_str}, .data={EMPTY_STRUCT_INITIALIZATION}}'
+	}
+	return expr_str
+}
+
 fn (mut g Gen) expr_string_with_cast(expr ast.Expr, typ ast.Type, exp ast.Type) string {
 	pos := g.out.len
 	// pos2 := 	g.out_parallel[g.out_idx].len
@@ -7034,7 +7042,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 									}
 								}
 							} else {
-								default_str := g.expr_string(field.default_expr)
+								default_str := g.expr_string_opt(field.typ, field.default_expr)
 								if default_str.count('\n') > 1 {
 									g.type_default_vars.writeln(default_str.all_before_last('\n'))
 									expr_str = default_str.all_after_last('\n')
