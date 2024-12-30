@@ -337,7 +337,7 @@ fn (mut g Gen) gen_prim_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec s
 @[inline]
 fn (mut g Gen) gen_option_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec strings.Builder) {
 	enc.writeln('\tif (val.state == 2) {')
-	enc.writeln('\t\treturn NULL;')
+	enc.writeln('\t\treturn cJSON_CreateNull();')
 	enc.writeln('\t}')
 	type_str := g.styp(typ.clear_flag(.option))
 	encode_name := js_enc_name(type_str)
@@ -649,6 +649,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		mut is_required := false
 		mut is_omit_empty := false
 		mut skip_embed := false
+		mut is_json_null := false
 
 		for attr in field.attrs {
 			match attr.name {
@@ -671,6 +672,9 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				}
 				'omitempty' {
 					is_omit_empty = true
+				}
+				'json_null' {
+					is_json_null = true
 				}
 				else {}
 			}
@@ -952,7 +956,11 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		}
 
 		if is_option {
-			enc.writeln('\t} // !none')
+			if is_json_null {
+				enc.writeln('\t} else {')
+				enc.writeln('\t\tcJSON_AddItemToObject(o, "${name}", cJSON_CreateNull());')
+			}
+			enc.writeln('\t}')
 		}
 	}
 }
