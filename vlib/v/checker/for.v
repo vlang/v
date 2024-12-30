@@ -173,6 +173,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			unwrapped_typ := c.unwrap_generic(typ)
 			unwrapped_sym := c.table.sym(unwrapped_typ)
 
+			c.table.used_features.comptime_calls['${int(unwrapped_typ)}.next'] = true
+
 			if node.key_var.len > 0 {
 				key_type := match unwrapped_sym.kind {
 					.map { unwrapped_sym.map_info().key_type }
