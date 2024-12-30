@@ -10,3 +10,9 @@ vlib/v/checker/tests/globals/assign_global_to_shared_err.vv:5:14: error: cannot 
     5 |     shared b := a
       |                 ^
     6 | }
+vlib/v/checker/tests/globals/assign_global_to_shared_err.vv:5:14: error: cannot copy map: call `move` or `clone` method (or use a reference)
+    3 | 
+    4 | fn main() {
+    5 |     shared b := a
+      |                 ^
+    6 | }

@@ -1,5 +1,5 @@
 @[has_globals]
-__global a = 0
+__global a = {1: 'one', 2: 'two'}
 
 fn main() {
 	shared b := a
