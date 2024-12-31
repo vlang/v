@@ -876,10 +876,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		// TODO: broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			node.pos)
-	} else if left_sym.kind == .enum && right_sym.kind == .enum && !eq_ne {
-		left_enum := left_sym.info as ast.Enum
-		right_enum := right_sym.info as ast.Enum
-		if left_enum.is_flag && right_enum.is_flag {
+	} else if !eq_ne && mut left_sym.info is ast.Enum && mut right_sym.info is ast.Enum {
+		if left_sym.info.is_flag && right_sym.info.is_flag {
 			// `@[flag]` tagged enums are a special case that allow also `|` and `&` binary operators
 			if node.op !in [.pipe, .amp, .xor, .bit_not] {
 				c.error('only `==`, `!=`, `|`, `&`, `^` and `~` are defined on `@[flag]` tagged `enum`, use an explicit cast to `int` if needed',
@@ -894,9 +892,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// sum types can't have any infix operation except of `is`, `eq`, `ne`.
 	// `is` is checked before and doesn't reach this.
-	if c.table.type_kind(left_type) == .sum_type && !eq_ne {
+	if left_sym.kind == .sum_type && !eq_ne {
 		c.error('cannot use operator `${node.op}` with `${left_sym.name}`', node.pos)
-	} else if c.table.type_kind(right_type) == .sum_type && !eq_ne {
+	} else if right_sym.kind == .sum_type && !eq_ne {
 		c.error('cannot use operator `${node.op}` with `${right_sym.name}`', node.pos)
 	}
 	// TODO: move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
