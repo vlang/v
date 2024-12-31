@@ -892,9 +892,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// sum types can't have any infix operation except of `is`, `eq`, `ne`.
 	// `is` is checked before and doesn't reach this.
-	if left_sym.kind == .sum_type && !eq_ne {
+	if c.table.type_kind(left_type) == .sum_type && !eq_ne {
 		c.error('cannot use operator `${node.op}` with `${left_sym.name}`', node.pos)
-	} else if right_sym.kind == .sum_type && !eq_ne {
+	} else if c.table.type_kind(right_type) == .sum_type && !eq_ne {
 		c.error('cannot use operator `${node.op}` with `${right_sym.name}`', node.pos)
 	}
 	// TODO: move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
