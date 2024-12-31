@@ -538,8 +538,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
-			} else if left_sym.kind == .struct
-				&& (left_sym.info as ast.Struct).generic_types.len > 0 {
+			} else if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0 {
 				node.promoted_type = ast.bool_type
 				return ast.bool_type
 			} else if left_sym.kind == .struct && right_sym.kind == .struct && node.op in [.eq, .lt] {
