@@ -10,6 +10,13 @@ import sokol.sapp
 import sokol.sgl
 import sokol.gfx
 
+struct C.Display {}
+
+fn C.XOpenDisplay(int) &C.Display
+fn C.DefaultScreen(&C.Display) int
+fn C.DisplayHeight(&C.Display, int) int
+fn C.DisplayWidth(&C.Display, int) int
+
 $if windows {
 	#flag -lgdi32
 	#include "windows.h"
@@ -739,7 +746,14 @@ pub fn screen_size() Size {
 			height: int(C.GetSystemMetrics(C.SM_CYSCREEN))
 		}
 	}
-	// TODO: linux, etc
+	$if linux {
+		display := C.XOpenDisplay(0)
+		screen := C.DefaultScreen(display)
+		return Size{
+			width: C.DisplayWidth(display, screen)
+			height: C.DisplayHeight(display, screen)
+		}
+	}
 	return Size{}
 }
 
