@@ -1992,7 +1992,12 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 							}
 						}
 					} else if call_arg.expr.obj.ct_type_var == .generic_var {
-						mut ctyp := c.type_resolver.get_type(call_arg.expr)
+						mut ctyp := c.unwrap_generic(c.type_resolver.get_type(call_arg.expr))
+						cparam_type_sym := c.table.sym(c.unwrap_generic(ctyp))
+						param_typ_sym := c.table.sym(param_typ)
+						if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
+							ctyp = cparam_type_sym.info.elem_type
+						}
 						if node_.args[i].expr.is_auto_deref_var() {
 							ctyp = ctyp.deref()
 						}
