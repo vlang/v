@@ -16,15 +16,24 @@ fn get_vdoctor_output(is_verbose bool) string {
 	return result.output
 }
 
-// get output from `./v -g -o vdbg cmd/v && ./vdbg file.v`
-fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
+fn compiler_flag_to_single_str(args []string) string {
+	mut str := ''
+	for arg in args {
+		str = str + arg + ' '
+	}
+	return str
+}
+
+// get output from `./v -g -compiler_args -o vdbg cmd/v && ./vdbg file.v`
+fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, compiler_args []string) string {
 	mut vexe := os.getenv('VEXE')
 	// prepare a V compiler with -g to have better backtraces if possible
 	wd := os.getwd()
 	os.chdir(vroot) or {}
 	verbose_flag := if is_verbose { '-v' } else { '' }
 	vdbg_path := $if windows { '${vroot}/vdbg.exe' } $else { '${vroot}/vdbg' }
-	vdbg_compilation_cmd := '${os.quoted_path(vexe)} ${verbose_flag} -g -o ${os.quoted_path(vdbg_path)} cmd/v'
+	vdbg_v_args := compiler_flag_to_single_str(compiler_args)
+	vdbg_compilation_cmd := '${os.quoted_path(vexe)} ${verbose_flag} -g ${vdbg_v_args} -o ${os.quoted_path(vdbg_path)} cmd/v'
 	vdbg_result := os.execute(vdbg_compilation_cmd)
 	os.chdir(wd) or {}
 	if vdbg_result.exit_code == 0 {
@@ -77,34 +86,30 @@ fn confirm_or_exit(msg string) {
 }
 
 fn main() {
+	mut compiler_args := []string{}
 	mut file_path := ''
-	mut is_verbose := false
-	mut is_yes := false
-	for arg in os.args[2..] {
-		match arg {
-			'-v' {
-				is_verbose = true
+	is_verbose := '-v' in os.args
+	is_yes := '-y' in os.args
+
+	for arg in os.args[1..] {
+		if arg.ends_with('.v') || arg.ends_with('.vsh') || arg.ends_with('.vv') {
+			if file_path != '' {
+				eprintln('v bug: only one V file can be submitted')
+				exit(1)
 			}
-			'-y' {
-				is_yes = true
-			}
-			else {
-				if !arg.ends_with('.v') && !arg.ends_with('.vsh') && !arg.ends_with('.vv') {
-					eprintln('unknown argument: `${arg}`')
-					exit(1)
-				}
-				if file_path != '' {
-					eprintln('only one V file can be submitted')
-					exit(1)
-				}
-				file_path = arg
+			file_path = arg
+		} else {
+			if arg !in ['-y', '-v'] {
+				compiler_args << arg
 			}
 		}
 	}
+
 	if file_path == '' {
 		eprintln('v bug: no v file listed to report')
 		exit(1)
 	}
+
 	os.unsetenv('VCOLORS')
 	// collect error information
 	// output from `v doctor`
@@ -114,8 +119,10 @@ fn main() {
 		eprintln('unable to get file "${file_path}" content: ${err}')
 		''
 	}
+
 	// output from `./v -g -o vdbg cmd/v && ./vdbg file.v`
-	build_output := get_v_build_output(is_verbose, is_yes, file_path)
+	build_output := get_v_build_output(is_verbose, is_yes, file_path, compiler_args)
+
 	// ask the user if he wants to submit even after an error
 	if !is_yes && (vdoctor_output == '' || file_content == '' || build_output == '') {
 		confirm_or_exit('An error occurred retrieving the information, do you want to continue?')
