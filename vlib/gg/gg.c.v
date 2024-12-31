@@ -750,7 +750,7 @@ pub fn screen_size() Size {
 		display := C.XOpenDisplay(0)
 		screen := C.DefaultScreen(display)
 		return Size{
-			width: C.DisplayWidth(display, screen)
+			width:  C.DisplayWidth(display, screen)
 			height: C.DisplayHeight(display, screen)
 		}
 	}
