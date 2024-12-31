@@ -10,7 +10,7 @@ import sokol.sapp
 import sokol.sgl
 import sokol.gfx
 
-struct C.Display {}
+pub struct C.Display {}
 
 fn C.XOpenDisplay(int) &C.Display
 fn C.DefaultScreen(&C.Display) int
