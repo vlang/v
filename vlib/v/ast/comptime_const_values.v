@@ -17,11 +17,6 @@ pub type ComptTimeConstValue = EmptyExpr
 
 //| int
 
-// empty_comptime_const_expr return an EmptyExpr.
-pub fn empty_comptime_const_expr() ComptTimeConstValue {
-	return EmptyExpr(0)
-}
-
 // i8 tries to return a `ComptTimeConstValue` as `i8` type.
 pub fn (val ComptTimeConstValue) i8() ?i8 {
 	x := val.i64()?

@@ -205,6 +205,7 @@ pub:
 pub const empty_expr = Expr(EmptyExpr(0))
 pub const empty_stmt = Stmt(EmptyStmt{})
 pub const empty_node = Node(EmptyNode{})
+pub const empty_comptime_const_value = ComptTimeConstValue(EmptyExpr(0))
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
@@ -398,7 +399,7 @@ pub mut:
 	end_comments []Comment // comments that after const field
 	// the comptime_expr_value field is filled by the checker, when it has enough
 	// info to evaluate the constant at compile time
-	comptime_expr_value ComptTimeConstValue = empty_comptime_const_expr()
+	comptime_expr_value ComptTimeConstValue = empty_comptime_const_value
 }
 
 // const declaration
@@ -1132,9 +1133,9 @@ pub mut:
 	or_block      OrExpr
 
 	ct_left_value_evaled  bool
-	ct_left_value         ComptTimeConstValue = empty_comptime_const_expr()
+	ct_left_value         ComptTimeConstValue = empty_comptime_const_value
 	ct_right_value_evaled bool
-	ct_right_value        ComptTimeConstValue = empty_comptime_const_expr()
+	ct_right_value        ComptTimeConstValue = empty_comptime_const_value
 
 	before_op_comments []Comment
 	after_op_comments  []Comment
