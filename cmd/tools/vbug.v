@@ -1,8 +1,15 @@
-import net.urllib
 import os
+import term
 import readline
+import net.urllib
 
-const vroot = @VMODROOT
+fn elog(msg string) {
+	eprintln(term.ecolorize(term.gray, msg))
+}
+
+fn olog(msg string) {
+	println(term.colorize(term.green, msg))
+}
 
 // get output from `v doctor`
 fn get_vdoctor_output(is_verbose bool) string {
@@ -10,7 +17,7 @@ fn get_vdoctor_output(is_verbose bool) string {
 	verbose_flag := if is_verbose { '-v' } else { '' }
 	result := os.execute('${os.quoted_path(vexe)} ${verbose_flag} doctor')
 	if result.exit_code != 0 {
-		eprintln('unable to get `v doctor` output: ${result.output}')
+		elog('> unable to get `v doctor` output: ${result.output}')
 		return ''
 	}
 	return result.output
@@ -18,7 +25,7 @@ fn get_vdoctor_output(is_verbose bool) string {
 
 fn runv(label string, user_cmd string) os.Result {
 	mut result := os.Result{}
-	println('> ${label} using: ${user_cmd} ...')
+	elog('> ${label} using: ${term.ecolorize(term.magenta, user_cmd)}')
 	result = os.execute(user_cmd)
 	print(result.output)
 	return result
@@ -31,24 +38,25 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, user_args 
 
 	// prepare a V compiler with -g to have better backtraces if possible
 	wd := os.getwd()
+	vroot := @VMODROOT
 	os.chdir(vroot) or {}
 	verbose_flag := if is_verbose { '-v' } else { '' }
 	vdbg_path := $if windows { '${vroot}/vdbg.exe' } $else { '${vroot}/vdbg' }
 	vdbg_compilation_cmd := '${os.quoted_path(vexe)} ${verbose_flag} -g -o ${os.quoted_path(vdbg_path)} cmd/v'
-	result = runv('Preparing vdbg', vdbg_compilation_cmd)
+	result = runv('Prepare vdbg', vdbg_compilation_cmd)
 	os.chdir(wd) or {}
 
 	if result.exit_code == 0 {
 		vexe = vdbg_path
 	} else {
-		eprintln('unable to compile V in debug mode: ${result.output}\ncommand: ${vdbg_compilation_cmd}\n')
+		elog('> unable to compile V in debug mode: ${result.output}\ncommand: ${vdbg_compilation_cmd}\n')
 	}
 
-	result = runv('Compiling', '${os.quoted_path(vexe)} ${verbose_flag} ${user_args} ${os.quoted_path(file_path)}')
+	result = runv('Compile', '${os.quoted_path(vexe)} ${verbose_flag} ${user_args} ${os.quoted_path(file_path)}')
 	defer {
 		os.rm(vdbg_path) or {
 			if is_verbose {
-				eprintln('unable to delete `vdbg`: ${err}')
+				elog('> unable to delete `vdbg`: ${err}')
 			}
 		}
 	}
@@ -56,16 +64,17 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, user_args 
 		defer {
 			os.rm(generated_file) or {
 				if is_verbose {
-					eprintln('unable to delete generated file: ${err}')
+					elog('> unable to delete generated file: ${err}')
 				}
 			}
 		}
 		run := is_yes
 			|| ask('It looks like the compilation went well, do you want to run the file?')
 		if run {
-			result = runv('Running', generated_file)
+			result = runv('Run', generated_file)
 			if result.exit_code == 0 && !is_yes {
-				confirm_or_exit('It looks like the file ran correctly as well, are you sure you want to continue?')
+				elog('> The file ran correctly as well.')
+				confirm_or_exit('Are you sure you want to continue?')
 			}
 		}
 	}
@@ -73,7 +82,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, user_args 
 }
 
 fn ask(msg string) bool {
-	prompt := os.input_opt('${msg} [Y/n] ') or { 'y' }
+	prompt := os.input_opt(term.colorize(term.bright_white, '${msg} [Y/n] ')) or { 'y' }
 	return prompt == '' || prompt[0].ascii_str().to_lower() != 'n'
 }
 
@@ -96,7 +105,7 @@ fn main() {
 		}
 		if arg.ends_with('.v') || arg.ends_with('.vsh') || arg.ends_with('.vv') {
 			if file_path != '' {
-				eprintln('v bug: only one V file can be submitted')
+				elog('> v bug: only one V file can be submitted')
 				exit(1)
 			}
 			file_path = arg
@@ -108,7 +117,7 @@ fn main() {
 	}
 
 	if file_path == '' {
-		eprintln('v bug: no v file listed to report')
+		elog('> v bug: no v file listed to report')
 		exit(1)
 	}
 
@@ -118,7 +127,7 @@ fn main() {
 	vdoctor_output := get_vdoctor_output(is_verbose)
 	// file content
 	file_content := os.read_file(file_path) or {
-		eprintln('unable to get file "${file_path}" content: ${err}')
+		elog('> unable to get file "${file_path}" content: ${err}')
 		''
 	}
 
@@ -131,18 +140,21 @@ fn main() {
 
 	// ask the user if he wants to submit even after an error
 	if !is_yes && (vdoctor_output == '' || file_content == '' || build_output == '') {
-		confirm_or_exit('An error occurred retrieving the information, do you want to continue?')
+		elog('> Error while retrieving the information.')
+		confirm_or_exit('Do you want to continue?')
 	}
 
 	expected_result := readline.read_line('What did you expect to see? ') or {
 		// Ctrl-C was pressed
-		eprintln('\nCanceled')
+		elog('\nCanceled')
 		exit(1)
 	}
 	// open prefilled issue creation page, or print link as a fallback
 
 	if !is_yes && vdoctor_output.contains('behind V master') {
-		confirm_or_exit('It looks like your installation of V is outdated, we advise you to run `v up` before submitting an issue. Are you sure you want to continue?')
+		olog('> It looks like your installation of V is outdated.')
+		olog('> We advise you to run `v up` before submitting an issue.')
+		confirm_or_exit('Are you sure you want to continue?')
 	}
 
 	// When updating this template, make sure to update `.github/ISSUE_TEMPLATE/bug_report.md` too
@@ -171,14 +183,15 @@ ${expected_result}
 		// GitHub doesn't support URLs longer than 8192 characters
 		encoded_body = urllib.query_escape(raw_body.replace_once('{file_content}', 'See attached file `${file_path}`'))
 		generated_uri = 'https://github.com/vlang/v/issues/new?labels=Bug&body=${encoded_body}'
-		println('Your file is too big to be submitted. Head over to the following URL and attach your file.')
-		println(generated_uri)
+		elog('> Your file is too big to be submitted.')
+		elog('> Go to the following URL, and attach your file:')
+		olog(generated_uri)
 	} else {
 		os.open_uri(generated_uri) or {
 			if is_verbose {
-				eprintln(err)
+				elog(err.str())
 			}
-			println(generated_uri)
+			olog(generated_uri)
 		}
 	}
 }
