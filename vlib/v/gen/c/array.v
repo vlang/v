@@ -1036,7 +1036,7 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 		g.write('.len)')
 	} else {
 		needs_clone = left_info.elem_type == ast.string_type
-			&& node.args[1].expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral])
+			&& node.args[1].expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral]
 		g.write(', &(${elem_type_str}[]){')
 		if needs_clone {
 			g.write('string_clone(')
