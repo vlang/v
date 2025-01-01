@@ -24,8 +24,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, compiler_a
 	os.chdir(vroot) or {}
 	verbose_flag := if is_verbose { '-v' } else { '' }
 	vdbg_path := $if windows { '${vroot}/vdbg.exe' } $else { '${vroot}/vdbg' }
-	vdbg_v_args := compiler_args.join(' ')
-	vdbg_compilation_cmd := '${os.quoted_path(vexe)} ${verbose_flag} -g ${vdbg_v_args} -o ${os.quoted_path(vdbg_path)} cmd/v'
+	vdbg_compilation_cmd := '${os.quoted_path(vexe)} ${verbose_flag} -g -o ${os.quoted_path(vdbg_path)} cmd/v'
 	vdbg_result := os.execute(vdbg_compilation_cmd)
 	os.chdir(wd) or {}
 	if vdbg_result.exit_code == 0 {
@@ -34,7 +33,8 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, compiler_a
 		eprintln('unable to compile V in debug mode: ${vdbg_result.output}\ncommand: ${vdbg_compilation_cmd}\n')
 	}
 
-	mut result := os.execute('${os.quoted_path(vexe)} ${verbose_flag} ${os.quoted_path(file_path)}')
+	user_args := compiler_args.join(' ')
+	mut result := os.execute('${os.quoted_path(vexe)} ${verbose_flag} ${user_args} ${os.quoted_path(file_path)}')
 	defer {
 		os.rm(vdbg_path) or {
 			if is_verbose {
