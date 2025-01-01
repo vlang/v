@@ -84,6 +84,9 @@ fn main() {
 	is_yes := '-y' in os.args
 
 	for arg in os.args[1..] {
+		if arg == 'bug' {
+			continue
+		}
 		if arg.ends_with('.v') || arg.ends_with('.vsh') || arg.ends_with('.vv') {
 			if file_path != '' {
 				eprintln('v bug: only one V file can be submitted')
