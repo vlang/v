@@ -1509,7 +1509,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if call_arg.expr is ast.MapInit && e_sym.kind == .struct {
 			c.error('cannot initialize a struct with a map', call_arg.pos)
 			continue
-		} else if call_arg.expr is ast.StructInit && e_sym.kind == .map {
+		} else if call_arg.expr is ast.StructInit && e_sym.kind == .map
+			&& !call_arg.expr.typ.has_flag(.generic) {
 			c.error('cannot initialize a map with a struct', call_arg.pos)
 			continue
 		}
