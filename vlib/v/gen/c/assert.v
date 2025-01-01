@@ -229,7 +229,8 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 		}
 		else {
 			mut should_clone := true
-			if typ == ast.string_type && expr is ast.StringLiteral {
+			if typ == ast.string_type
+				&& expr in [ast.CallExpr, ast.StringInterLiteral, ast.StringLiteral] {
 				should_clone = false
 			}
 			if expr is ast.CTempVar {

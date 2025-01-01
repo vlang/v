@@ -1054,6 +1054,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				needs_clone := !g.is_builtin_mod
 					&& array_info.elem_type.idx() == ast.string_type_idx
 					&& array_info.elem_type.nr_muls() == 0
+					&& node.right !in [ast.StringLiteral, ast.StringInterLiteral, ast.CallExpr, ast.IndexExpr]
 				if needs_clone {
 					g.write('string_clone(')
 				}
