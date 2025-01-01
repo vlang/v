@@ -101,11 +101,14 @@ pub fn (f Any) u8() u8 {
 		u8 {
 			return f
 		}
+		u16, u32, i8, i16, i32, int, i64, f32, f64, bool {
+			return u8(u16(f))
+		}
 		string {
 			return f.u8()
 		}
 		else {
-			return u8(f as u8)
+			return 0
 		}
 	}
 }
