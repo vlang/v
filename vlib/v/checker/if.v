@@ -690,14 +690,12 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 }
 
 fn (mut c Checker) check_non_expr_branch_last_stmt(stmts []ast.Stmt) {
-	if stmts.len > 0 {
-		last_stmt := stmts.last()
-		if last_stmt is ast.ExprStmt {
-			if last_stmt.expr is ast.InfixExpr {
-				if last_stmt.expr.op !in [.left_shift, .right_shift, .unsigned_right_shift, .arrow] {
-					c.error('expression evaluated but not used', last_stmt.pos)
-				}
-			}
-		}
+	if stmts.len == 0 {
+		return
+	}
+	last_stmt := stmts.last()
+	if last_stmt is ast.ExprStmt && (last_stmt.expr is ast.InfixExpr
+		&& last_stmt.expr.op !in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]) {
+		c.error('expression evaluated but not used', last_stmt.pos)
 	}
 }
