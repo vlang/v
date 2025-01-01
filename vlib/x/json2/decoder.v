@@ -291,8 +291,8 @@ fn decode_array_item[T](mut field T, arr []Any) {
 			$else $if T is [][]?u64 { field << arr.map(it.as_map().values().map(?u64(it.u64()))) }
 			$else $if T is [][]bool { field << arr.map(it.as_map().values().map(it.bool())) }
 			$else $if T is [][]?bool  { field << arr.map(it.as_map().values().map(?bool(it.bool()))) }
-			$else $if T is [][]string  { field << arr.map(it.as_map().values().map(it.string())) }
-			$else $if T is [][]?string { field << arr.map(it.as_map().values().map(?string(it.string()))) }
+			$else $if T is [][]string  { field << arr.map(it.as_map().values().map(it.str())) }
+			$else $if T is [][]?string { field << arr.map(it.as_map().values().map(?string(it.str()))) }
 		}
 	}
 	// vfmt on

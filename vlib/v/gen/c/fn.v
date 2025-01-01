@@ -1659,6 +1659,14 @@ fn (mut g Gen) resolve_comptime_args(func &ast.Fn, mut node_ ast.CallExpr, concr
 					comptime_args[k] = cparam_type_sym.info.key_type
 					comptime_args[k + 1] = cparam_type_sym.info.value_type
 				}
+			} else if mut call_arg.expr is ast.IndexExpr && g.comptime.is_comptime(call_arg.expr) {
+				mut ctyp := g.type_resolver.get_type(call_arg.expr)
+				param_typ_sym := g.table.sym(param_typ)
+				cparam_type_sym := g.table.sym(g.unwrap_generic(ctyp))
+				if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
+					ctyp = cparam_type_sym.info.elem_type
+				}
+				comptime_args[k] = ctyp
 			}
 		}
 	}

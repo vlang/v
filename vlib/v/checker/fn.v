@@ -2043,6 +2043,14 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 				}
 			} else if call_arg.expr is ast.ComptimeCall {
 				comptime_args[k] = c.type_resolver.get_type(call_arg.expr)
+			} else if call_arg.expr is ast.IndexExpr && c.comptime.is_comptime(call_arg.expr) {
+				mut ctyp := c.type_resolver.get_type(call_arg.expr)
+				param_typ_sym := c.table.sym(param_typ)
+				cparam_type_sym := c.table.sym(c.unwrap_generic(ctyp))
+				if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
+					ctyp = cparam_type_sym.info.elem_type
+				}
+				comptime_args[k] = ctyp
 			}
 		}
 	}
