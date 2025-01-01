@@ -81,7 +81,7 @@ fn main() {
 	mut glsl_folders := map[string]bool{}
 	mut pfi := 0
 	for pf, _ in project_folders {
-		glsl_files := os.glob(os.join_path(pf, '*.glsl'))!
+		glsl_files := os.walk_ext(pf, '.glsl')
 		if glsl_files.len > 0 {
 			if pf !in glsl_folders {
 				log.debug('>>> found .glsl files in ${pf} ... running `v shader ${pf}` ...')
