@@ -7043,8 +7043,8 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 								}
 							} else {
 								default_str := g.expr_string_opt(field.typ, field.default_expr)
-								if field.default_expr !is ast.ArrayInit
-									&& default_str.count('\n') > 1 {
+								if !(field.default_expr is ast.ArrayInit
+									&& field.default_expr.has_init) && default_str.count(';\n') > 1 {
 									g.type_default_vars.writeln(default_str.all_before_last('\n'))
 									expr_str = default_str.all_after_last('\n')
 								} else {
