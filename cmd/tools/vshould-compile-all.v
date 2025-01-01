@@ -33,10 +33,19 @@ fn main() {
 	}
 	mut executables := []string{}
 	mut failed_commands := []string{}
+	mut project_folders := map[string]bool{}
 	for idx, example in files {
 		folder_of_example := os.dir(example)
 		if os.is_file(os.join_path_single(folder_of_example, '.skip_should_compile_all')) {
 			log.info('>>> skipping file: ${example}, because a `.skip_should_compile_all` file is present next to it.')
+			continue
+		}
+		if project_folders[folder_of_example] {
+			continue
+		}
+		if os.is_file(os.join_path_single(folder_of_example, 'v.mod')) {
+			log.info('>>> delaying compilation of entire project folder ${folder_of_example} ...')
+			project_folders[folder_of_example] = true
 			continue
 		}
 		cmd := '${os.quoted_path(@VEXE)} ${os.quoted_path(example)}'
@@ -46,6 +55,18 @@ fn main() {
 		} else {
 			executables << executable_name(example)
 		}
+	}
+	mut pfi := 0
+	for pf, _ in project_folders {
+		exe_path := os.join_path(pf, os.file_name(pf) + exe_extension)
+		cmd := '${os.quoted_path(@VEXE)} -o ${exe_path} ${pf}'
+		log.info('> compiling project ${pfi + 1:4}/${project_folders.len:-4}: ${cmd}')
+		if 0 != os.system(cmd) {
+			failed_commands << cmd
+		} else {
+			executables << exe_path
+		}
+		pfi++
 	}
 	if should_clean {
 		log.info('Removing ${executables.len} successfully build executables...')
