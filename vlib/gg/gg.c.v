@@ -778,7 +778,7 @@ pub fn screen_size() Size {
 		if display == unsafe { nil } {
 			return Size{}
 		}
-		defer { _ := C.XCloseDisplay(display) }
+		defer { C.XCloseDisplay(display) }
 		root := C.DefaultRootWindow(display)
 		resources := C.XRRGetScreenResources(display, root)
 		if resources == unsafe { nil } {
