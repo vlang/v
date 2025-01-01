@@ -16,14 +16,6 @@ fn get_vdoctor_output(is_verbose bool) string {
 	return result.output
 }
 
-fn compiler_flag_to_single_str(args []string) string {
-	mut str := ''
-	for arg in args {
-		str = str + arg + ' '
-	}
-	return str
-}
-
 // get output from `./v -g -compiler_args -o vdbg cmd/v && ./vdbg file.v`
 fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, compiler_args []string) string {
 	mut vexe := os.getenv('VEXE')
@@ -32,7 +24,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, compiler_a
 	os.chdir(vroot) or {}
 	verbose_flag := if is_verbose { '-v' } else { '' }
 	vdbg_path := $if windows { '${vroot}/vdbg.exe' } $else { '${vroot}/vdbg' }
-	vdbg_v_args := compiler_flag_to_single_str(compiler_args)
+	vdbg_v_args := compiler_args.join(' ')
 	vdbg_compilation_cmd := '${os.quoted_path(vexe)} ${verbose_flag} -g ${vdbg_v_args} -o ${os.quoted_path(vdbg_path)} cmd/v'
 	vdbg_result := os.execute(vdbg_compilation_cmd)
 	os.chdir(wd) or {}
