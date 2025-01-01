@@ -84,7 +84,24 @@ pub fn (t &TypeResolver) is_generic_expr(node ast.Expr) bool {
 	}
 }
 
-fn (t &TypeResolver) get_generic_array_element_type(array ast.Array) ast.Type {
+// get_generic_array_fixed_element_type retrieves the plain element type from a nested fixed array [N][N]T -> T
+pub fn (t &TypeResolver) get_generic_array_fixed_element_type(array ast.ArrayFixed) ast.Type {
+	mut cparam_elem_info := array as ast.ArrayFixed
+	mut cparam_elem_sym := t.table.sym(cparam_elem_info.elem_type)
+	mut typ := ast.void_type
+	for {
+		if cparam_elem_sym.kind == .array_fixed {
+			cparam_elem_info = cparam_elem_sym.info as ast.ArrayFixed
+			cparam_elem_sym = t.table.sym(cparam_elem_info.elem_type)
+		} else {
+			return cparam_elem_info.elem_type.set_nr_muls(0)
+		}
+	}
+	return typ
+}
+
+// get_generic_array_element_type retrieves the plain element type from a nested array [][]T -> T
+pub fn (t &TypeResolver) get_generic_array_element_type(array ast.Array) ast.Type {
 	mut cparam_elem_info := array as ast.Array
 	mut cparam_elem_sym := t.table.sym(cparam_elem_info.elem_type)
 	mut typ := ast.void_type
