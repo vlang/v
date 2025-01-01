@@ -16,25 +16,35 @@ fn get_vdoctor_output(is_verbose bool) string {
 	return result.output
 }
 
-// get output from `./v -g -compiler_args -o vdbg cmd/v && ./vdbg file.v`
-fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, compiler_args []string) string {
+fn runv(label string, user_cmd string) os.Result {
+	mut result := os.Result{}
+	println('> ${label} using: ${user_cmd} ...')
+	result = os.execute(user_cmd)
+	print(result.output)
+	return result
+}
+
+// get output from `./v -g -o vdbg cmd/v && ./vdbg -user_args run file.v`
+fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, user_args string, generated_file string) string {
+	mut result := os.Result{}
 	mut vexe := os.getenv('VEXE')
+
 	// prepare a V compiler with -g to have better backtraces if possible
 	wd := os.getwd()
 	os.chdir(vroot) or {}
 	verbose_flag := if is_verbose { '-v' } else { '' }
 	vdbg_path := $if windows { '${vroot}/vdbg.exe' } $else { '${vroot}/vdbg' }
 	vdbg_compilation_cmd := '${os.quoted_path(vexe)} ${verbose_flag} -g -o ${os.quoted_path(vdbg_path)} cmd/v'
-	vdbg_result := os.execute(vdbg_compilation_cmd)
+	result = runv('Preparing vdbg', vdbg_compilation_cmd)
 	os.chdir(wd) or {}
-	if vdbg_result.exit_code == 0 {
+
+	if result.exit_code == 0 {
 		vexe = vdbg_path
 	} else {
-		eprintln('unable to compile V in debug mode: ${vdbg_result.output}\ncommand: ${vdbg_compilation_cmd}\n')
+		eprintln('unable to compile V in debug mode: ${result.output}\ncommand: ${vdbg_compilation_cmd}\n')
 	}
 
-	user_args := compiler_args.join(' ')
-	mut result := os.execute('${os.quoted_path(vexe)} ${verbose_flag} ${user_args} ${os.quoted_path(file_path)}')
+	result = runv('Compiling', '${os.quoted_path(vexe)} ${verbose_flag} ${user_args} ${os.quoted_path(file_path)}')
 	defer {
 		os.rm(vdbg_path) or {
 			if is_verbose {
@@ -44,10 +54,6 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, compiler_a
 	}
 	if result.exit_code == 0 {
 		defer {
-			mut generated_file := file_path.all_before_last('.')
-			$if windows {
-				generated_file += '.exe'
-			}
 			os.rm(generated_file) or {
 				if is_verbose {
 					eprintln('unable to delete generated file: ${err}')
@@ -57,7 +63,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, compiler_a
 		run := is_yes
 			|| ask('It looks like the compilation went well, do you want to run the file?')
 		if run {
-			result = os.execute('${os.quoted_path(vexe)} ${verbose_flag} run ${os.quoted_path(file_path)}')
+			result = runv('Running', generated_file)
 			if result.exit_code == 0 && !is_yes {
 				confirm_or_exit('It looks like the file ran correctly as well, are you sure you want to continue?')
 			}
@@ -78,6 +84,7 @@ fn confirm_or_exit(msg string) {
 }
 
 fn main() {
+	unbuffer_stdout()
 	mut compiler_args := []string{}
 	mut file_path := ''
 	is_verbose := '-v' in os.args
@@ -115,8 +122,12 @@ fn main() {
 		''
 	}
 
-	// output from `./v -g -o vdbg cmd/v && ./vdbg file.v`
-	build_output := get_v_build_output(is_verbose, is_yes, file_path, compiler_args)
+	user_args := compiler_args.join(' ')
+	mut generated_file := file_path.all_before_last('.')
+	if os.user_os() == 'windows' {
+		generated_file += '.exe'
+	}
+	build_output := get_v_build_output(is_verbose, is_yes, file_path, user_args, generated_file)
 
 	// ask the user if he wants to submit even after an error
 	if !is_yes && (vdoctor_output == '' || file_content == '' || build_output == '') {
@@ -142,16 +153,18 @@ ${vdoctor_output}
 ```
 
 **What did you do?**
-`./v -g -o vdbg cmd/v && ./vdbg ${file_path}`
+`./v -g -o vdbg cmd/v && ./vdbg ${user_args} ${file_path} && ${generated_file}`
 {file_content}
+
+**What did you see instead?**
+```
+${build_output}```
 
 **What did you expect to see?**
 
 ${expected_result}
 
-**What did you see instead?**
-```
-${build_output}```'
+'
 	mut encoded_body := urllib.query_escape(raw_body.replace_once('{file_content}', '```v\n${file_content}\n```'))
 	mut generated_uri := 'https://github.com/vlang/v/issues/new?labels=Bug&body=${encoded_body}'
 	if generated_uri.len > 8192 {
