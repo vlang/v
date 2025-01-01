@@ -1036,11 +1036,13 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 		g.write('.len)')
 	} else {
 		g.write(', &(${elem_type_str}[]){')
-		if left_info.elem_type == ast.string_type && node.args[1].expr !is ast.CallExpr {
+		if left_info.elem_type == ast.string_type
+			&& node.args[1].expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral] {
 			g.write('string_clone(')
 		}
 		g.expr_with_cast(node.args[1].expr, node.args[1].typ, left_info.elem_type)
-		if left_info.elem_type == ast.string_type {
+		if left_info.elem_type == ast.string_type
+			&& node.args[1].expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral] {
 			g.write(')')
 		}
 		g.write('})')
