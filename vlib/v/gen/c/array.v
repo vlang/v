@@ -46,7 +46,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		}
 		for i, expr in node.exprs {
 			if node.expr_types[i] == ast.string_type
-				&& expr !in [ast.StringLiteral, ast.StringInterLiteral] {
+				&& expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral, ast.InfixExpr] {
 				g.write('string_clone(')
 				g.expr(expr)
 				g.write(')')
@@ -1035,12 +1035,14 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 		g.expr(node.args[1].expr)
 		g.write('.len)')
 	} else {
+		needs_clone := left_info.elem_type == ast.string_type
+			&& node.args[1].expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral, ast.InfixExpr]
 		g.write(', &(${elem_type_str}[]){')
-		if left_info.elem_type == ast.string_type {
+		if needs_clone {
 			g.write('string_clone(')
 		}
 		g.expr_with_cast(node.args[1].expr, node.args[1].typ, left_info.elem_type)
-		if left_info.elem_type == ast.string_type {
+		if needs_clone {
 			g.write(')')
 		}
 		g.write('})')
