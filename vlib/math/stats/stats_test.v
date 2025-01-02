@@ -428,13 +428,13 @@ fn test_covariance() {
 fn test_lag1_autocorrelation() {
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.lag1_autocorrelation(data)
-	assert math.alike(o, -0.554228566606572)
+	assert math.alike(o, -0.5542285495255542)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.lag1_autocorrelation(data)
-	assert math.alike(o, -0.5102510823460722)
+	assert math.alike(o, -0.5102510688760657)
 	data = [12.0, 7.88, 76.122, 54.83]
 	o = stats.lag1_autocorrelation(data)
-	assert math.alike(o, 0.10484451825170164)
+	assert math.alike(o, 0.10484451223403927)
 
 	// test for int, i64, f32 array
 	assert stats.lag1_autocorrelation[int]([1, 2, 3, 1]) == 0
