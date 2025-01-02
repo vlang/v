@@ -464,7 +464,6 @@ fn test_kurtosis() {
 fn test_skew() {
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.skew(data)
-	dump(o)
 	assert math.alike(o, 0.5754021106320453)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.skew(data)
@@ -485,13 +484,13 @@ fn test_quantile() {
 
 	mut data := [2.7, 4.45, 5.9, 10.0]
 	mut o := stats.quantile(data, 0.1)!
-	assert math.alike(o, 3.2249999046325684)
+	assert math.alike(o, 3.225)
 	data = [-3.0, 1.89, 4.4, 67.31]
 	o = stats.quantile(data, 0.2)!
-	assert math.alike(o, -0.06600001454353333)
+	assert math.alike(o, -0.06599999999999961)
 	data = [7.88, 12.0, 54.83, 76.122]
 	o = stats.quantile(data, 0.3)!
-	assert math.alike(o, 11.588000297546387)
+	assert math.alike(o, 11.588)
 
 	stats.quantile(data, -0.3) or { assert err.msg() == 'index out of range' }
 

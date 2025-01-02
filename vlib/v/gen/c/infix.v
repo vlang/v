@@ -1188,8 +1188,10 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)
 	if needs_cast {
-		typ_str := if g.comptime.is_comptime(node.left) {
+		typ_str := if !node.left.is_literal() && g.comptime.is_comptime(node.left) {
 			g.styp(g.type_resolver.get_type_or_default(node.left, node.promoted_type))
+		} else if !node.right.is_literal() && g.comptime.is_comptime(node.right) {
+			g.styp(g.type_resolver.get_type_or_default(node.right, node.promoted_type))
 		} else {
 			g.styp(node.promoted_type)
 		}

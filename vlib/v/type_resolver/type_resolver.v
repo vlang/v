@@ -115,8 +115,11 @@ pub fn (mut t TypeResolver) get_type_or_default(node ast.Expr, default_typ ast.T
 			return t.get_type_or_default(node.expr, default_typ)
 		}
 		ast.InfixExpr {
-			if node.op in [.plus, .minus, .mul, .div, .mod] {
+			if !node.left.is_literal() && node.op in [.plus, .minus, .mul, .div, .mod] {
 				return t.get_type_or_default(node.left, default_typ)
+			}
+			if !node.right.is_literal() && node.op in [.plus, .minus, .mul, .div, .mod] {
+				return t.get_type_or_default(node.right, default_typ)
 			}
 		}
 		ast.IndexExpr {
@@ -199,8 +202,12 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 		return t.table.value_type(nltype_unwrapped)
 	} else if node is ast.ParExpr && t.info.is_comptime(node.expr) {
 		return t.get_type(node.expr)
-	} else if node is ast.InfixExpr && t.info.is_comptime(node.left) {
-		return t.get_type(node.left)
+	} else if node is ast.InfixExpr {
+		if !node.left.is_literal() && t.info.is_comptime(node.left) {
+			return t.get_type(node.left)
+		} else if !node.right.is_literal() && t.info.is_comptime(node.right) {
+			return t.get_type(node.right)
+		}
 	} else if node is ast.CastExpr && node.typ.has_flag(.generic) {
 		return t.resolver.unwrap_generic(node.typ)
 	}
