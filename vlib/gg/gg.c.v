@@ -10,6 +10,40 @@ import sokol.sapp
 import sokol.sgl
 import sokol.gfx
 
+@[typedef]
+struct C.XRRScreenResources {
+	noutput int
+	outputs &int
+}
+
+@[typedef]
+struct C.XRROutputInfo {
+	crtc u64
+}
+
+@[typedef]
+struct C.XRRCrtcInfo {
+	width  u32
+	height u32
+}
+
+fn C.XOpenDisplay(int) voidptr
+fn C.XCloseDisplay(voidptr) int
+fn C.DefaultScreen(voidptr) int
+fn C.DefaultRootWindow(voidptr) u64
+fn C.XRRGetScreenResources(voidptr, u64) &C.XRRScreenResources
+fn C.XRRGetOutputPrimary(voidptr, u64) u64
+fn C.XRRFreeScreenResources(&C.XRRScreenResources)
+fn C.XRRGetOutputInfo(voidptr, &C.XRRScreenResources, u64) &C.XRROutputInfo
+fn C.XRRFreeOutputInfo(&C.XRROutputInfo)
+fn C.XRRGetCrtcInfo(voidptr, &C.XRRScreenResources, u64) &C.XRRCrtcInfo
+fn C.XRRFreeCrtcInfo(&C.XRRCrtcInfo)
+
+$if linux {
+	#flag -lXrandr
+	#include <X11/extensions/Xrandr.h>
+}
+
 $if windows {
 	#flag -lgdi32
 	#include "windows.h"
@@ -739,7 +773,41 @@ pub fn screen_size() Size {
 			height: int(C.GetSystemMetrics(C.SM_CYSCREEN))
 		}
 	}
-	// TODO: linux, etc
+	$if linux {
+		display := C.XOpenDisplay(0)
+		if display == unsafe { nil } {
+			return Size{}
+		}
+		defer { C.XCloseDisplay(display) }
+		root := C.DefaultRootWindow(display)
+		resources := C.XRRGetScreenResources(display, root)
+		if resources == unsafe { nil } {
+			return Size{}
+		}
+		defer { C.XRRFreeScreenResources(resources) }
+		primary_output := C.XRRGetOutputPrimary(display, root)
+		if primary_output == 0 {
+			return Size{}
+		}
+		for i := 0; i < resources.noutput; i++ {
+			if unsafe { u64(resources.outputs[i]) } == primary_output {
+				output_info := C.XRRGetOutputInfo(display, resources, unsafe { resources.outputs[i] })
+				if output_info == unsafe { nil } {
+					return Size{}
+				}
+				defer { C.XRRFreeOutputInfo(output_info) }
+				crtc_info := C.XRRGetCrtcInfo(display, resources, output_info.crtc)
+				if crtc_info == unsafe { nil } {
+					return Size{}
+				}
+				defer { C.XRRFreeCrtcInfo(crtc_info) }
+				return Size{
+					width:  unsafe { int(crtc_info.width) }
+					height: unsafe { int(crtc_info.height) }
+				}
+			}
+		}
+	}
 	return Size{}
 }
 

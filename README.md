@@ -266,16 +266,21 @@ v run news_fetcher.v
 v run tetris/tetris.v
 ```
 
+
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300 alt='tetris screenshot'>
 
-In order to build Tetris or 2048 (or anything else using `sokol` or `gg` graphics modules),
-you will need additional development libraries for your system.
+## Sokol and GG GUI apps/games:
+
+In order to build Tetris or 2048 (or anything else using the `sokol` or `gg` graphics modules),
+you will need to install additional development libraries for your system.
 
 | System              | Installation method                                                                                |
 |---------------------|----------------------------------------------------------------------------------------------------|
-| Debian/Ubuntu based | `sudo apt install libxi-dev libxcursor-dev libgl-dev libasound2-dev`                               |
-| Fedora/RH/CentOS    | `sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel`                        |
-| NixOS               | add `xorg.libX11.dev xorg.libXcursor.dev xorg.libXi.dev libGL.dev` to `environment.systemPackages` |
+| Debian/Ubuntu based | Run `sudo apt install libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev`             |
+| Fedora/RH/CentOS    | Run `sudo dnf install libXi-devel libXcursor-devel libX11-devel libXrandr-devel libglvnd-devel`    |
+|                     |                                                                                                    |
+| NixOS               | Add `xorg.libX11.dev xorg.libXcursor.dev xorg.libXi.dev xorg.libXrandr.dev libGL.dev` to           |
+|                     | to `environment.systemPackages`                                                                    |
 
 ## V net.http, net.websocket, `v install`
 

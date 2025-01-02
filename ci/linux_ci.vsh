@@ -58,7 +58,7 @@ fn build_v_with_prealloc() {
 fn install_dependencies_for_examples_and_tools_tcc() {
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev')
+	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 	// The following is needed for examples/wkhtmltopdf.v
 	exec('v retry -- wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb')
 	exec('v retry -- sudo apt install --quiet -y xfonts-75dpi xfonts-base')
@@ -171,7 +171,7 @@ fn all_code_is_formatted_gcc() {
 fn install_dependencies_for_examples_and_tools_gcc() {
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev')
+	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 }
 
 fn recompile_v_with_cstrict_gcc() {
@@ -287,7 +287,7 @@ fn all_code_is_formatted_clang() {
 fn install_dependencies_for_examples_and_tools_clang() {
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev')
+	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 	exec('v retry -- sudo apt install --quiet -y clang')
 }
 
