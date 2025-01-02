@@ -86,38 +86,32 @@ pub fn (t &TypeResolver) is_generic_expr(node ast.Expr) bool {
 
 // get_generic_array_fixed_element_type retrieves the plain element type from a nested fixed array [N][N]T -> T
 pub fn (t &TypeResolver) get_generic_array_fixed_element_type(array ast.ArrayFixed) ast.Type {
-	mut cparam_elem_info := array as ast.ArrayFixed
-	mut cparam_elem_sym := t.table.sym(cparam_elem_info.elem_type)
-	mut typ := ast.void_type
+	mut cparam_elem_info := array
+	mut cparam_elem_sym := t.table.sym(array.elem_type)
 	for {
-		if cparam_elem_sym.kind == .array_fixed {
-			cparam_elem_info = cparam_elem_sym.info as ast.ArrayFixed
+		if mut cparam_elem_sym.info is ast.ArrayFixed {
+			cparam_elem_info = cparam_elem_sym.info
 			cparam_elem_sym = t.table.sym(cparam_elem_info.elem_type)
 		} else {
 			return cparam_elem_info.elem_type.set_nr_muls(0)
 		}
 	}
-	return typ
+	return ast.void_type
 }
 
 // get_generic_array_element_type retrieves the plain element type from a nested array [][]T -> T
 pub fn (t &TypeResolver) get_generic_array_element_type(array ast.Array) ast.Type {
-	mut cparam_elem_info := array as ast.Array
-	mut cparam_elem_sym := t.table.sym(cparam_elem_info.elem_type)
-	mut typ := ast.void_type
+	mut cparam_elem_info := array
+	mut cparam_elem_sym := t.table.sym(array.elem_type)
 	for {
-		if cparam_elem_sym.kind == .array {
-			cparam_elem_info = cparam_elem_sym.info as ast.Array
+		if mut cparam_elem_sym.info is ast.Array {
+			cparam_elem_info = cparam_elem_sym.info
 			cparam_elem_sym = t.table.sym(cparam_elem_info.elem_type)
 		} else {
-			typ = cparam_elem_info.elem_type
-			if cparam_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
-				typ = typ.set_nr_muls(0)
-			}
-			break
+			return cparam_elem_info.elem_type.set_nr_muls(0)
 		}
 	}
-	return typ
+	return ast.void_type
 }
 
 // resolve_args resolves the ast node types dynamically depending on its special meaning
