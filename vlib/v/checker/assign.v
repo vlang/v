@@ -58,7 +58,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				node.right_types = right_type_sym.mr_info().types
 				right_len = node.right_types.len
 			} else if right_type == ast.void_type {
-				right_len = 0
+				right_len = if c.inside_recheck { right_len } else { 0 }
 				if mut right is ast.IfExpr {
 					last_branch := right.branches.last()
 					last_stmts := last_branch.stmts.filter(it is ast.ExprStmt)
@@ -95,7 +95,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 	}
-	if node.left.len != right_len {
+	if !c.inside_recheck && node.left.len != right_len {
 		if mut right_first is ast.CallExpr {
 			if node.left_types.len > 0 && node.left_types[0] == ast.void_type {
 				// If it's a void type, it's an unknown variable, already had an error earlier.
