@@ -95,6 +95,24 @@ pub fn (f Any) i64() i64 {
 	}
 }
 
+// u8 uses `Any` as a 8-bit unsigned integer.
+pub fn (f Any) u8() u8 {
+	match f {
+		u8 {
+			return f
+		}
+		u16, u32, i8, i16, i32, int, i64, f32, f64, bool {
+			return u8(u16(f))
+		}
+		string {
+			return f.u8()
+		}
+		else {
+			return 0
+		}
+	}
+}
+
 // u64 uses `Any` as a 64-bit unsigned integer.
 pub fn (f Any) u64() u64 {
 	match f {

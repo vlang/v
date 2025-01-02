@@ -310,6 +310,14 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 				comptime_args[k] = cparam_type_sym.info.key_type
 				comptime_args[k + 1] = cparam_type_sym.info.value_type
 			}
+		} else if call_arg.expr is ast.IndexExpr && t.info.is_comptime(call_arg.expr) {
+			mut ctyp := t.get_type(call_arg.expr)
+			param_typ_sym := t.table.sym(param_typ)
+			cparam_type_sym := t.table.sym(t.resolver.unwrap_generic(ctyp))
+			if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
+				ctyp = cparam_type_sym.info.elem_type
+			}
+			comptime_args[k] = ctyp
 		}
 	}
 	return comptime_args
