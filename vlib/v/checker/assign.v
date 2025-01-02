@@ -410,6 +410,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										left.obj.ct_type_var = .field_var
 										left.obj.typ = c.comptime.comptime_for_field_type
 									}
+								} else if mut right is ast.InfixExpr {
+									right_ct_var := c.comptime.get_ct_type_var(right.left)
+									if right_ct_var in [.generic_var, .generic_param] {
+										left.obj.ct_type_var = right_ct_var
+									}
 								} else if mut right is ast.Ident && right.obj is ast.Var
 									&& right.or_expr.kind == .absent {
 									right_obj_var := right.obj as ast.Var

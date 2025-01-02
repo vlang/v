@@ -371,6 +371,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						left.obj.typ = var_type
 						g.assign_ct_type = var_type
 					}
+				} else if val is ast.InfixExpr {
+					ctyp := g.unwrap_generic(g.type_resolver.get_type(val.left))
+					if ctyp != ast.void_type {
+						var_type = ctyp
+						val_type = var_type
+						left.obj.typ = var_type
+						g.assign_ct_type = var_type
+					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
 			}
