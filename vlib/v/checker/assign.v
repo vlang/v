@@ -43,7 +43,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			right_type_sym := c.table.sym(right_type)
 			// fixed array returns an struct, but when assigning it must be the array type
-			right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+			if right_type_sym.info is ast.ArrayFixed {
+				right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+			}
 			if i == 0 {
 				right_first_type = right_type
 				node.right_types = [
@@ -73,7 +75,18 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('cannot use `<-` on the right-hand side of an assignment, as it does not return any values',
 					right.pos)
 			} else if c.inside_recheck {
-				c.expr(mut right)
+				mut right_type := c.expr(mut right)
+				right_type_sym := c.table.sym(right_type)
+				// fixed array returns an struct, but when assigning it must be the array type
+				if right_type_sym.info is ast.ArrayFixed {
+					right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+				}
+				if i == 0 {
+					right_first_type = right_type
+					node.right_types = [
+						c.check_expr_option_or_result_call(right, right_first_type),
+					]
+				}
 			}
 		}
 		if mut right is ast.Ident {
