@@ -1303,7 +1303,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	}
 
 	mut local_labels := []string{}
-	// riscv: https://github.com/jameslzhu/riscv-card/blob/master/riscv-card.pdf
+	// riscv: https://github.com/jameslzhu/riscv-card/releases/download/latest/riscv-card.pdf
 	// x86: https://www.felixcloutier.com/x86/
 	// arm: https://developer.arm.com/documentation/dui0068/b/arm-instruction-reference
 	mut templates := []ast.AsmTemplate{}
