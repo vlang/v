@@ -23,6 +23,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	node.left_types = []
 	mut right_len := node.right.len
 	mut right_first_type := ast.void_type
+	old_recheck := c.inside_recheck
+	// check if we are rechecking an already checked expression on generic rechecking
+	c.inside_recheck = old_recheck || node.right_types.len > 0
+	defer {
+		c.inside_recheck = old_recheck
+	}
 	for i, mut right in node.right {
 		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
 			ast.SelectorExpr, ast.ParExpr, ast.ComptimeCall, ast.InfixExpr] {
@@ -182,16 +188,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				node.right_types << c.check_expr_option_or_result_call(node.right[i],
 					right_type)
 			}
-		} else {
+		} else if c.inside_recheck {
 			// on generic recheck phase it might be needed to resolve the rhs again
 			if i < node.right.len && c.comptime.has_comptime_expr(node.right[i]) {
 				mut expr := mut node.right[i]
-				old_inside_recheck := c.inside_recheck
-				c.inside_recheck = true
 				right_type := c.expr(mut expr)
 				node.right_types[i] = c.check_expr_option_or_result_call(node.right[i],
 					right_type)
-				c.inside_recheck = old_inside_recheck
 			}
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
