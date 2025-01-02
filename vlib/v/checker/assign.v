@@ -412,7 +412,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									}
 								} else if mut right is ast.InfixExpr {
 									right_ct_var := c.comptime.get_ct_type_var(right.left)
-									if right_ct_var in [.generic_var, .generic_param] {
+									if right_ct_var != .no_comptime {
+										left.obj.ct_type_var = right_ct_var
+									}
+								} else if mut right is ast.IndexExpr
+									&& c.comptime.is_comptime(right) {
+									right_ct_var := c.comptime.get_ct_type_var(right.left)
+									if right_ct_var != .no_comptime {
 										left.obj.ct_type_var = right_ct_var
 									}
 								} else if mut right is ast.Ident && right.obj is ast.Var

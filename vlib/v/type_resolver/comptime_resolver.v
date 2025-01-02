@@ -76,6 +76,10 @@ pub fn (t &ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
 		}
 	} else if node is ast.IndexExpr {
 		return t.get_ct_type_var(node.left)
+	} else if node is ast.InfixExpr {
+		return t.get_ct_type_var(node.left)
+	} else if node is ast.ParExpr {
+		return t.get_ct_type_var(node.expr)
 	}
 	return .no_comptime
 }

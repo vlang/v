@@ -458,7 +458,7 @@ fn test_kurtosis() {
 	assert stats.kurtosis[int]([1, 2, 3, 1]) == 1
 	assert stats.kurtosis[i64]([i64(1), 2, 3, 1]) == 1
 	o = stats.kurtosis[f32]([f32(1.0), 3, 5, 7, 3])
-	assert math.alike(o, -1.0443782806396484)
+	assert math.alike(o, -1.044378399848938)
 }
 
 fn test_skew() {
@@ -476,7 +476,7 @@ fn test_skew() {
 	assert stats.skew[int]([1, 2, 3, 1]) == 2
 	assert stats.skew[i64]([i64(1), 2, 3, 1]) == 2
 	o = stats.skew[f32]([f32(1.0), 3, 5, 7, 3])
-	assert math.alike(o, 0.2715454697608948)
+	assert math.alike(o, 0.27154541015625)
 }
 
 fn test_quantile() {
