@@ -143,7 +143,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 		param_typ := param.typ
 		if mut call_arg.expr is ast.Ident {
 			if mut call_arg.expr.obj is ast.Var {
-				// node_.args[i].typ = call_arg.expr.obj.typ
+				node_.args[i].typ = call_arg.expr.obj.typ
 				if call_arg.expr.obj.ct_type_var !in [.generic_var, .generic_param, .no_comptime] {
 					mut ctyp := t.get_type(call_arg.expr)
 					if ctyp != ast.void_type {
