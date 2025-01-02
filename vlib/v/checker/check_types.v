@@ -942,21 +942,6 @@ fn (g Checker) get_generic_array_element_type(array ast.Array) ast.Type {
 	return typ
 }
 
-fn (g Checker) get_generic_array_fixed_element_type(array ast.ArrayFixed) ast.Type {
-	mut cparam_elem_info := array as ast.ArrayFixed
-	mut cparam_elem_sym := g.table.sym(cparam_elem_info.elem_type)
-	mut typ := ast.void_type
-	for {
-		if cparam_elem_sym.kind == .array_fixed {
-			cparam_elem_info = cparam_elem_sym.info as ast.ArrayFixed
-			cparam_elem_sym = g.table.sym(cparam_elem_info.elem_type)
-		} else {
-			return cparam_elem_info.elem_type.set_nr_muls(0)
-		}
-	}
-	return typ
-}
-
 fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
 	mut arg_inferred := []int{}
@@ -1166,9 +1151,9 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						typ = cur_param.typ
 						mut cparam_type_sym := c.table.sym(c.unwrap_generic(typ))
 						if cparam_type_sym.kind == .array {
-							typ = c.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
+							typ = c.type_resolver.get_generic_array_element_type(cparam_type_sym.info as ast.Array)
 						} else if cparam_type_sym.kind == .array_fixed {
-							typ = c.get_generic_array_fixed_element_type(cparam_type_sym.info as ast.ArrayFixed)
+							typ = c.type_resolver.get_generic_array_fixed_element_type(cparam_type_sym.info as ast.ArrayFixed)
 						}
 						typ = c.unwrap_generic(typ)
 						break
