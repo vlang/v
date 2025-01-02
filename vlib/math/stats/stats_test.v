@@ -446,6 +446,7 @@ fn test_lag1_autocorrelation() {
 fn test_kurtosis() {
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.kurtosis(data)
+	dump(o)
 	assert math.alike(o, -1.0443212849233845)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.kurtosis(data)
@@ -464,6 +465,7 @@ fn test_kurtosis() {
 fn test_skew() {
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.skew(data)
+	dump(o)
 	assert math.alike(o, 0.5754021106320453)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.skew(data)
