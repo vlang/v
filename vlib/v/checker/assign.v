@@ -31,7 +31,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	}
 	for i, mut right in node.right {
 		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
-			ast.SelectorExpr, ast.ParExpr, ast.ComptimeCall, ast.InfixExpr] {
+			ast.SelectorExpr, ast.ParExpr, ast.ComptimeCall] {
 			if right in [ast.IfExpr, ast.MatchExpr] && node.left.len == node.right.len && !is_decl
 				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
 				mut expr := node.left[i]
@@ -58,7 +58,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				node.right_types = right_type_sym.mr_info().types
 				right_len = node.right_types.len
 			} else if right_type == ast.void_type {
-				right_len = if c.inside_recheck { right_len } else { 0 }
+				right_len = 0
 				if mut right is ast.IfExpr {
 					last_branch := right.branches.last()
 					last_stmts := last_branch.stmts.filter(it is ast.ExprStmt)
@@ -68,11 +68,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 			}
-		}
-		if mut right is ast.InfixExpr {
+		} else if mut right is ast.InfixExpr {
 			if right.op == .arrow {
 				c.error('cannot use `<-` on the right-hand side of an assignment, as it does not return any values',
 					right.pos)
+			} else if c.inside_recheck {
+				c.expr(mut right)
 			}
 		}
 		if mut right is ast.Ident {
@@ -95,7 +96,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 	}
-	if !c.inside_recheck && node.left.len != right_len {
+	if node.left.len != right_len {
 		if mut right_first is ast.CallExpr {
 			if node.left_types.len > 0 && node.left_types[0] == ast.void_type {
 				// If it's a void type, it's an unknown variable, already had an error earlier.
