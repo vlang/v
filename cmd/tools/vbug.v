@@ -168,7 +168,7 @@ ${vdoctor_output}
 `./v -g -o vdbg cmd/v && ./vdbg ${user_args} ${file_path} && ${generated_file}`
 {file_content}
 
-**What did you see instead?**
+**What did you see?**
 ```
 ${build_output}```
 
