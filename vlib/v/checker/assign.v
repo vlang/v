@@ -25,7 +25,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	mut right_first_type := ast.void_type
 	for i, mut right in node.right {
 		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
-			ast.SelectorExpr, ast.ParExpr, ast.ComptimeCall] {
+			ast.SelectorExpr, ast.ParExpr, ast.ComptimeCall, ast.InfixExpr] {
 			if right in [ast.IfExpr, ast.MatchExpr] && node.left.len == node.right.len && !is_decl
 				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
 				mut expr := node.left[i]
