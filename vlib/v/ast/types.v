@@ -96,9 +96,8 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 // See also: Table.sym.
 @[minify]
 pub struct TypeSymbol {
-pub:
-	parent_idx int
 pub mut:
+	parent_idx    int
 	info          TypeInfo
 	kind          Kind
 	name          string // the internal & source name of the type, i.e. `[5]int`.
@@ -211,10 +210,11 @@ pub:
 
 @[minify]
 pub struct Alias {
-pub:
+pub mut:
 	parent_type Type
-	language    Language
-	is_import   bool
+pub:
+	language  Language
+	is_import bool
 }
 
 pub struct Aggregate {
