@@ -6094,9 +6094,6 @@ fn (mut g Gen) write_init_function() {
 	defer {
 		util.timing_measure(@METHOD)
 	}
-	if g.pref.is_liveshared {
-		return
-	}
 	fn_vinit_start_pos := g.out.len
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
