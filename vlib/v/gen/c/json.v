@@ -848,8 +848,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				if field.has_default_expr {
 					dec.writeln('\t} else {')
 					default_str := g.expr_string_opt(field.typ, field.default_expr)
-					lines := default_str.count('\n')
-					if lines > 1 {
+					if default_str.count(';\n') > 1 {
 						dec.writeln(default_str.all_before_last('\n'))
 						dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${default_str.all_after_last('\n')};')
 					} else {
