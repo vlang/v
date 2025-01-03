@@ -171,7 +171,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 		if return_sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(return_sym.info) {
-			c.unresolved_return_size << node
+			c.unresolved_fixed_sizes << node
 		}
 
 		final_return_sym := c.table.final_sym(node.return_type)
