@@ -318,6 +318,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			return ast.bool_type
 		}
 		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe {
+			if !node.left_ct_expr && !node.left.is_literal() {
+				node.left_ct_expr = c.comptime.is_comptime(node.left)
+			}
+			if !node.right_ct_expr && !node.right.is_literal() {
+				node.right_ct_expr = c.comptime.is_comptime(node.right)
+			}
 			// binary operators that expect matching types
 			unwrapped_left_type := c.unwrap_generic(left_type)
 			left_sym = c.table.sym(unwrapped_left_type)
