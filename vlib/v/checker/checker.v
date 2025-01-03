@@ -1386,6 +1386,13 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 			c.check_expr_option_or_result_call(expr.expr, ret_type)
 		}
 		ast.AsCast {
+			if expr.expr is ast.Ident {
+				if !ret_type.has_flag(.option) && expr.expr.obj.typ.has_flag(.option)
+					&& expr.expr.or_expr.kind == .absent {
+					c.error('variable `${expr.expr.name}` is an Option, it must be unwrapped first',
+						expr.expr.pos)
+				}
+			}
 			c.check_expr_option_or_result_call(expr.expr, ret_type)
 		}
 		ast.ParExpr {
@@ -2958,6 +2965,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			if !c.is_builtin_mod {
 				c.table.used_features.as_cast = true
 			}
+			c.check_expr_option_or_result_call(node.expr, node.typ)
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos)
 				if !c.table.sumtype_has_variant(c.unwrap_generic(node.expr_type), c.unwrap_generic(node.typ),
