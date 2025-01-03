@@ -54,9 +54,7 @@ pub fn info() &LiveReloadInfo {
 		// crashes. In this case, the background reloader thread is not
 		// started, and the structure LiveReloadInfo will not get updated.
 		// All its fields will be 0, but still safe to access.
-		unsafe {
-			C.g_live_info = int(&LiveReloadInfo{})
-		}
+		C.g_live_info = int(&LiveReloadInfo{})
 	}
-	return unsafe { &LiveReloadInfo(C.g_live_info) }
+	return &LiveReloadInfo(C.g_live_info)
 }
