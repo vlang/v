@@ -13,8 +13,8 @@ mut:
 @[live]
 fn print_message(mut app App) {
 	i := live.info()
-	println('OK reloads: ${i.reloads_ok:4d} | Total reloads: ${i.reloads:4d} | ${voidptr(i)} Hello! Modify this message while the program is running. app: ${app}')
-	app.x = 2 // try changing this to another value, while the program is running ...
+	println('OK reloads: ${i.reloads_ok:4d} | Total reloads: ${i.reloads:4d} | Hello! Modify this message while the program is running. app: ${voidptr(app)} | app.x: ${app.x:6} | app.counter: ${app.counter:6}')
+	// app.x = 99 // try changing this to another value, while the program is running ...
 	app.counter++
 }
 
