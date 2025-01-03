@@ -428,13 +428,15 @@ fn test_covariance() {
 fn test_lag1_autocorrelation() {
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.lag1_autocorrelation(data)
+	mut e := 0.0
 	assert math.alike(o, -0.5542285481446095)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.lag1_autocorrelation(data)
 	assert math.alike(o, -0.5102510654033415)
 	data = [12.0, 7.88, 76.122, 54.83]
 	o = stats.lag1_autocorrelation(data)
-	assert math.alike(o, 0.10484450460892072)
+	e = 0.10484450460892072
+	assert math.veryclose(o, e), diff(o, e)
 
 	// test for int, i64, f32 array
 	assert stats.lag1_autocorrelation[int]([1, 2, 3, 1]) == 0
@@ -444,7 +446,7 @@ fn test_lag1_autocorrelation() {
 }
 
 fn diff(actual f64, expected f64) string {
-	return '\nactual:\n${actual}\nexpected:\n${expected}'
+	return '\n  actual:${actual:40.35f}\nexpected:${expected:40.35f}\n    diff:${actual - expected:40.35f}'
 }
 
 fn test_kurtosis() {
@@ -464,27 +466,30 @@ fn test_kurtosis() {
 	assert stats.kurtosis[int]([1, 2, 3, 1]) == 1
 	assert stats.kurtosis[i64]([i64(1), 2, 3, 1]) == 1
 	o = stats.kurtosis[f32]([f32(1.0), 3, 5, 7, 3])
-	assert math.alike(o, -1.044378399848938)
+	e = -1.044378399848938
+	assert math.alike(o, e), diff(o, e)
 }
 
 fn test_skew() {
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.skew(data)
 	mut e := 0.5754021106320453
-	assert math.veryclose(o, e), diff(o, e)
+	assert math.close(o, e), diff(o, e)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.skew(data)
 	e = 1.1248733711136492
 	assert math.veryclose(o, e), diff(o, e)
 	data = [12.0, 7.88, 76.122, 54.83]
 	o = stats.skew(data)
-	assert math.alike(o, 0.19007911706827735)
+	e = 0.19007911706827735
+	assert math.veryclose(o, e), diff(o, e)
 
 	// test for int, i64, f32 array
 	assert stats.skew[int]([1, 2, 3, 1]) == 2
 	assert stats.skew[i64]([i64(1), 2, 3, 1]) == 2
 	o = stats.skew[f32]([f32(1.0), 3, 5, 7, 3])
-	assert math.alike(o, 0.27154541015625)
+	e = 0.27154541015625
+	assert math.close(o, e), diff(o, e)
 }
 
 fn test_quantile() {
