@@ -394,7 +394,7 @@ fn _memory_panic(fname string, size isize) {
 	$if freestanding || vinix {
 		eprint('size') // TODO: use something more informative here
 	} $else {
-		C.fprintf(C.stderr, c'%ld', size)
+		C.fprintf(C.stderr, c'%lld', size)
 	}
 	if size < 0 {
 		eprint(' < 0')
@@ -768,9 +768,8 @@ __global g_main_argc = int(0)
 @[markused]
 __global g_main_argv = unsafe { nil }
 
-@[export: 'g_live_reload_info']
 @[markused]
-__global g_live_reload_info = unsafe { nil }
+__global g_live_reload_info voidptr
 
 // arguments returns the command line arguments, used for starting the current program as a V array of strings.
 // The first string in the array (index 0), is the name of the program, used for invoking the program.

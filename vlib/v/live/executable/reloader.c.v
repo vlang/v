@@ -65,7 +65,7 @@ pub fn add_live_monitored_file(mut lri live.LiveReloadInfo, path string) {
 
 @[if debuglive ?]
 fn elog(r &live.LiveReloadInfo, s string) {
-	eprintln('> debuglive r: ${voidptr(r)} ${s}')
+	eprintln('> debuglive r: ${voidptr(r)} &g_live_reload_info: ${voidptr(&g_live_reload_info)} | g_live_reload_info: ${voidptr(g_live_reload_info)} ${s}')
 }
 
 fn compile_and_reload_shared_lib(mut r live.LiveReloadInfo) !bool {

@@ -56,5 +56,5 @@ pub fn info() &LiveReloadInfo {
 		// All its fields will be 0, but still safe to access.
 		g_live_reload_info = &LiveReloadInfo{}
 	}
-	return &LiveReloadInfo(g_live_reload_info)
+	return unsafe { &LiveReloadInfo(g_live_reload_info) }
 }
