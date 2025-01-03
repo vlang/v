@@ -1,0 +1,5 @@
+vlib/v/checker/tests/option_as_cast_err.vv:12:9: error: variable `b` is an Option, it must be unwrapped first
+   10 | println(b)
+   11 | println(b? as int)
+   12 | println(b as int)
+      |         ^
