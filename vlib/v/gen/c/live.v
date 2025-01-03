@@ -50,6 +50,10 @@ fn (mut g Gen) generate_hotcode_reloader_code() {
 			}
 			phd = windows_hotcode_definitions_1
 		}
+		// Ensure that g_live_reload_info from the executable is passed to the DLL/SO .
+		// See also vlib/v/live/sharedlib/live_sharedlib.v .
+		load_code << 'void (* fn_set_live_reload_pointer)(void *) = (void *)GetProcAddress(live_lib, "set_live_reload_pointer");'
+		load_code << 'if(fn_set_live_reload_pointer){ fn_set_live_reload_pointer( g_live_reload_info ); }'
 		g.hotcode_definitions.writeln(phd.replace('@LOAD_FNS@', load_code.join('\n')))
 	}
 }
