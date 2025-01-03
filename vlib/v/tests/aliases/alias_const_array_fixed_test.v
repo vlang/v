@@ -14,7 +14,6 @@ const buffer_size = image_width * image_height * sizeof[Colour]()
 type ImageBuffer = [buffer_size]Colour
 
 fn test_main() {
-	println('Hello World!')
 	t := ImageBuffer{}
 	assert t.len == buffer_size
 }
