@@ -768,7 +768,8 @@ __global g_main_argc = int(0)
 @[markused]
 __global g_main_argv = unsafe { nil }
 
-@[markused; export: 'g_live_reload_info']
+@[export: 'g_live_reload_info']
+@[markused]
 __global g_live_reload_info = unsafe { nil }
 
 // arguments returns the command line arguments, used for starting the current program as a V array of strings.
