@@ -768,6 +768,9 @@ __global g_main_argc = int(0)
 @[markused]
 __global g_main_argv = unsafe { nil }
 
+@[markused]
+__global g_live_reload_info = unsafe { nil }
+
 // arguments returns the command line arguments, used for starting the current program as a V array of strings.
 // The first string in the array (index 0), is the name of the program, used for invoking the program.
 // The second string in the array (index 1), if it exists, is the first argument to the program, etc.
