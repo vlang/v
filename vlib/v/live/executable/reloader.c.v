@@ -16,7 +16,7 @@ pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_
 		so_extension = '.dylib'
 	}
 	// $if msvc { so_extension = '.dll' } $else { so_extension = '.so' }
-	return &live.LiveReloadInfo{
+	res := &live.LiveReloadInfo{
 		original:         original
 		vexe:             vexe
 		vopts:            vopts
@@ -28,6 +28,8 @@ pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_
 		reloads:          0
 		reload_time_ms:   0
 	}
+	elog(res, @FN)
+	return res
 }
 
 // Note: start_reloader will be called by generated code inside main(), to start
@@ -35,6 +37,7 @@ pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_
 // the original main thread.
 @[markused]
 pub fn start_reloader(mut r live.LiveReloadInfo) {
+	elog(r, @FN)
 	// The shared library should be loaded once in the main thread
 	// If that fails, the program would crash anyway, just provide
 	// an error message to the user and exit:
@@ -62,7 +65,7 @@ pub fn add_live_monitored_file(mut lri live.LiveReloadInfo, path string) {
 
 @[if debuglive ?]
 fn elog(r &live.LiveReloadInfo, s string) {
-	eprintln(s)
+	eprintln('> debuglive r: ${voidptr(r)} &g_live_reload_info: ${voidptr(&g_live_reload_info)} | g_live_reload_info: ${voidptr(g_live_reload_info)} ${s}')
 }
 
 fn compile_and_reload_shared_lib(mut r live.LiveReloadInfo) !bool {
