@@ -394,7 +394,7 @@ fn _memory_panic(fname string, size isize) {
 	$if freestanding || vinix {
 		eprint('size') // TODO: use something more informative here
 	} $else {
-		C.fprintf(C.stderr, c'%lld', size)
+		C.fprintf(C.stderr, c'%ld', i64(size))
 	}
 	if size < 0 {
 		eprint(' < 0')
