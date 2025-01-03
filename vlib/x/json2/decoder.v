@@ -202,8 +202,6 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 					}
 				} $else $if field.is_array {
 					arr := res[field.name]! as []Any
-					println(arr)
-					println(typ.$(field.name))
 					decode_array_item(mut typ.$(field.name), arr)
 				} $else $if field.is_struct {
 					typ.$(field.name) = decode_struct(typ.$(field.name), res[field.name]!.as_map())!
@@ -237,7 +235,6 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 }
 
 fn decode_array_item[T](mut field T, arr []Any) {
-	println('item> ${typeof[T]().name}')
 	// vfmt off
 	match typeof[T]().idx {
 		typeof[[]bool]().idx  { field = arr.map(it.bool()) }
