@@ -59,7 +59,7 @@ pub fn info() &LiveReloadInfo {
 	mut x := &LiveReloadInfo{}
 	unsafe {
 		mut p := &u64(&C.g_live_info)
-		*p = &u64(x)
+		*p = u64(x)
 		_ = p
 	}
 	return x
