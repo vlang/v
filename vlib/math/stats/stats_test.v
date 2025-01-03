@@ -443,13 +443,19 @@ fn test_lag1_autocorrelation() {
 	assert math.alike(o, 0.1975308507680893)
 }
 
+fn diff(actual f64, expected f64) string {
+	return '\nactual:\n${actual}\nexpected:\n${expected}'
+}
+
 fn test_kurtosis() {
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.kurtosis(data)
-	assert math.alike(o, -1.0443212849233845)
+	mut e := -1.0443212849233845
+	assert math.close(o, e), diff(o, e)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.kurtosis(data)
-	assert math.alike(o, -0.6884953374814851)
+	e = -0.6884953374814851
+	assert math.close(o, e), diff(o, e)
 	data = [12.0, 7.88, 76.122, 54.83]
 	o = stats.kurtosis(data)
 	assert math.alike(o, -1.7323772836921467)
@@ -464,10 +470,12 @@ fn test_kurtosis() {
 fn test_skew() {
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.skew(data)
-	assert math.alike(o, 0.5754021106320453)
+	mut e := 0.5754021106320453
+	assert math.veryclose(o, e), diff(o, e)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.skew(data)
-	assert math.alike(o, 1.1248733711136492)
+	e = 1.1248733711136492
+	assert math.veryclose(o, e), diff(o, e)
 	data = [12.0, 7.88, 76.122, 54.83]
 	o = stats.skew(data)
 	assert math.alike(o, 0.19007911706827735)
