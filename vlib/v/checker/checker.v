@@ -615,7 +615,7 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 		.array_fixed {
 			array_fixed_info := parent_typ_sym.info as ast.ArrayFixed
 			if c.array_fixed_has_unresolved_size(array_fixed_info) {
-				c.unresolved_fixed_sizes << unsafe { &ast.TypeDecl(node) }
+				c.unresolved_fixed_sizes << &ast.TypeDecl(node)
 			}
 			c.check_alias_vs_element_type_of_parent(node, array_fixed_info.elem_type,
 				'fixed array')
