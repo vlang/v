@@ -440,7 +440,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			fn_type_name := g.get_anon_fn_type_name(mut anon_fn_expr, field.name)
 			g.global_const_defs[util.no_dots(fn_type_name)] = GlobalConstDef{
 				mod:   node.mod
-				def:   '${fn_type_name} = ${g.table.sym(field.typ).name}; // global2'
+				def:   '${fn_type_name} = ${g.table.sym(field.typ).name}; // global 1'
 				order: -1
 			}
 			continue
@@ -451,7 +451,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		modifier := if field.is_volatile { ' volatile ' } else { '' }
 		def_builder.write_string('${extern}${visibility_kw}${modifier}${styp} ${attributes}${field.name}')
 		if cextern {
-			def_builder.writeln('; // global5')
+			def_builder.writeln('; // global 2')
 			g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
 				mod:   node.mod
 				def:   def_builder.str()
@@ -484,7 +484,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 				if field.name in ['g_main_argc', 'g_main_argv'] {
 					init = '\t// skipping ${field.name}, it was initialised in main'
 				} else {
-					init = '\t${field.name} = ${g.expr_string(field.expr)}; // 3global'
+					init = '\t${field.name} = ${g.expr_string(field.expr)}; // global 3'
 				}
 			}
 		} else if !g.pref.translated { // don't zero globals from C code
@@ -493,18 +493,18 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			if default_initializer == '{0}' && should_init {
 				def_builder.write_string(' = {0}')
 			} else if default_initializer == '{EMPTY_STRUCT_INITIALIZATION}' && should_init {
-				init = '\tmemcpy(${field.name}, (${styp}){${default_initializer}}, sizeof(${styp})); // global'
+				init = '\tmemcpy(${field.name}, (${styp}){${default_initializer}}, sizeof(${styp})); // global 4'
 			} else {
 				if field.name !in ['as_cast_type_indexes', 'g_memory_block', 'global_allocator'] {
 					decls := g.type_default_vars.str()
 					if decls != '' {
 						init = '\t${decls}'
 					}
-					init += '\t${field.name} = *(${styp}*)&((${styp}[]){${default_initializer}}[0]); // global'
+					init += '\t${field.name} = *(${styp}*)&((${styp}[]){${default_initializer}}[0]); // global 5'
 				}
 			}
 		}
-		def_builder.writeln('; // global4')
+		def_builder.writeln('; // global 6')
 		g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
 			mod:       node.mod
 			def:       def_builder.str()
