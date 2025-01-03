@@ -520,21 +520,21 @@ fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos t
 	}
 }
 
-fn (mut c Checker) type_decl(node ast.TypeDecl) {
+fn (mut c Checker) type_decl(mut node ast.TypeDecl) {
 	if node.typ == ast.invalid_type && (node is ast.AliasTypeDecl || node is ast.SumTypeDecl) {
 		typ_desc := if node is ast.AliasTypeDecl { 'alias' } else { 'sum type' }
 		c.error('cannot register ${typ_desc} `${node.name}`, another type with this name exists',
 			node.pos)
 		return
 	}
-	match node {
-		ast.AliasTypeDecl { c.alias_type_decl(node) }
-		ast.FnTypeDecl { c.fn_type_decl(node) }
-		ast.SumTypeDecl { c.sum_type_decl(node) }
+	match mut node {
+		ast.AliasTypeDecl { c.alias_type_decl(mut node) }
+		ast.FnTypeDecl { c.fn_type_decl(mut node) }
+		ast.SumTypeDecl { c.sum_type_decl(mut node) }
 	}
 }
 
-fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
+fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 	if c.file.mod.name != 'builtin' && !node.name.starts_with('C.') {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
@@ -615,7 +615,7 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		.array_fixed {
 			array_fixed_info := parent_typ_sym.info as ast.ArrayFixed
 			if c.array_fixed_has_unresolved_size(array_fixed_info) {
-				c.unresolved_fixed_sizes << unsafe { &ast.TypeDecl(&node) }
+				c.unresolved_fixed_sizes << unsafe { &ast.TypeDecl(node) }
 			}
 			c.check_alias_vs_element_type_of_parent(node, array_fixed_info.elem_type,
 				'fixed array')
@@ -669,7 +669,7 @@ fn (mut c Checker) check_any_type(typ ast.Type, sym &ast.TypeSymbol, pos token.P
 	}
 }
 
-fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
+fn (mut c Checker) fn_type_decl(mut node ast.FnTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'fn type', node.pos)
 	typ_sym := c.table.sym(node.typ)
 	fn_typ_info := typ_sym.info as ast.FnType
@@ -690,7 +690,7 @@ fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
 	}
 }
 
-fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
+fn (mut c Checker) sum_type_decl(mut node ast.SumTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
 	mut names_used := []string{}
 	for variant in node.variants {
@@ -2380,7 +2380,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			c.struct_decl(mut node)
 		}
 		ast.TypeDecl {
-			c.type_decl(node)
+			c.type_decl(mut node)
 		}
 	}
 }
