@@ -197,7 +197,11 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				embed_sym := g.table.sym(embed)
 				embed_name := embed_sym.embed_name()
 				if embed_name !in inited_fields {
-					embed_info := embed_sym.info as ast.Struct
+					embed_info := if embed_sym.info is ast.Struct {
+						embed_sym.info
+					} else {
+						g.table.final_sym(embed).info as ast.Struct
+					}
 					embed_field_names := embed_info.fields.map(it.name)
 					fields_to_embed := init_fields_to_embed.filter(it.name !in used_embed_fields
 						&& it.name in embed_field_names)
