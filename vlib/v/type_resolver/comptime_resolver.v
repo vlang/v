@@ -50,7 +50,11 @@ pub fn (t &ResolverInfo) is_comptime(node ast.Expr) bool {
 			return node.expr is ast.Ident && node.expr.ct_expr
 		}
 		ast.InfixExpr {
-			return t.is_comptime(node.left) || t.is_comptime(node.right)
+			if node.op in [.plus, .minus, .mul, .div, .mod] {
+				t.is_comptime(node.left) || t.is_comptime(node.right)
+			} else {
+				false
+			}
 		}
 		ast.ParExpr {
 			return t.is_comptime(node.expr)
@@ -76,6 +80,10 @@ pub fn (t &ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
 		}
 	} else if node is ast.IndexExpr {
 		return t.get_ct_type_var(node.left)
+	} else if node is ast.InfixExpr {
+		return t.get_ct_type_var(node.left)
+	} else if node is ast.ParExpr {
+		return t.get_ct_type_var(node.expr)
 	}
 	return .no_comptime
 }

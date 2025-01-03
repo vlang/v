@@ -23,6 +23,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	node.left_types = []
 	mut right_len := node.right.len
 	mut right_first_type := ast.void_type
+	old_recheck := c.inside_recheck
+	// check if we are rechecking an already checked expression on generic rechecking
+	c.inside_recheck = old_recheck || node.right_types.len > 0
+	defer {
+		c.inside_recheck = old_recheck
+	}
 	for i, mut right in node.right {
 		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
 			ast.SelectorExpr, ast.ParExpr, ast.ComptimeCall] {
@@ -37,7 +43,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			right_type_sym := c.table.sym(right_type)
 			// fixed array returns an struct, but when assigning it must be the array type
-			right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+			if right_type_sym.info is ast.ArrayFixed {
+				right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+			}
 			if i == 0 {
 				right_first_type = right_type
 				node.right_types = [
@@ -62,11 +70,23 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 			}
-		}
-		if mut right is ast.InfixExpr {
+		} else if mut right is ast.InfixExpr {
 			if right.op == .arrow {
 				c.error('cannot use `<-` on the right-hand side of an assignment, as it does not return any values',
 					right.pos)
+			} else if c.inside_recheck {
+				mut right_type := c.expr(mut right)
+				right_type_sym := c.table.sym(right_type)
+				// fixed array returns an struct, but when assigning it must be the array type
+				if right_type_sym.info is ast.ArrayFixed {
+					right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+				}
+				if i == 0 {
+					right_first_type = right_type
+					node.right_types = [
+						c.check_expr_option_or_result_call(right, right_first_type),
+					]
+				}
 			}
 		}
 		if mut right is ast.Ident {
@@ -182,16 +202,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				node.right_types << c.check_expr_option_or_result_call(node.right[i],
 					right_type)
 			}
-		} else {
+		} else if c.inside_recheck {
 			// on generic recheck phase it might be needed to resolve the rhs again
 			if i < node.right.len && c.comptime.has_comptime_expr(node.right[i]) {
 				mut expr := mut node.right[i]
-				old_inside_recheck := c.inside_recheck
-				c.inside_recheck = true
 				right_type := c.expr(mut expr)
 				node.right_types[i] = c.check_expr_option_or_result_call(node.right[i],
 					right_type)
-				c.inside_recheck = old_inside_recheck
 			}
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
@@ -392,6 +409,17 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									if is_decl {
 										left.obj.ct_type_var = .field_var
 										left.obj.typ = c.comptime.comptime_for_field_type
+									}
+								} else if mut right is ast.InfixExpr {
+									right_ct_var := c.comptime.get_ct_type_var(right.left)
+									if right_ct_var != .no_comptime {
+										left.obj.ct_type_var = right_ct_var
+									}
+								} else if mut right is ast.IndexExpr
+									&& c.comptime.is_comptime(right) {
+									right_ct_var := c.comptime.get_ct_type_var(right.left)
+									if right_ct_var != .no_comptime {
+										left.obj.ct_type_var = right_ct_var
 									}
 								} else if mut right is ast.Ident && right.obj is ast.Var
 									&& right.or_expr.kind == .absent {

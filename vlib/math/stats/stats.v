@@ -434,7 +434,7 @@ pub fn covariance_mean[T](data1 []T, data2 []T, mean1 T, mean2 T) T {
 	for i in 0 .. n {
 		delta1 := data1[i] - mean1
 		delta2 := data2[i] - mean2
-		covariance += T((delta1 * delta2 - covariance) / (i + T(1)))
+		covariance += T((delta1 * delta2 - covariance) / (T(i) + T(1)))
 	}
 	return covariance
 }
@@ -459,8 +459,11 @@ pub fn lag1_autocorrelation_mean[T](data []T, mean T) T {
 	for i := 1; i < data.len; i++ {
 		delta0 := data[i - 1] - mean
 		delta1 := data[i] - mean
-		q += T((delta0 * delta1 - q) / (i + T(1)))
-		v += T((delta1 * delta1 - v) / (T(i) + T(1)))
+		d01 := delta0 * delta1
+		d11 := delta1 * delta1
+		ti1 := T(i) + T(1)
+		q += T((d01 - q) / ti1)
+		v += T((d11 - v) / ti1)
 	}
 	return T(q / v)
 }
@@ -486,7 +489,9 @@ pub fn kurtosis_mean_stddev[T](data []T, mean T, sd T) T {
 	*/
 	for i, v in data {
 		x := (v - mean) / sd
-		avg += T((x * x * x * x - avg) / (i + T(1)))
+		x4 := x * x * x * x
+		ti1 := (T(i) + T(1))
+		avg += T((x4 - avg) / ti1)
 	}
 	return avg - T(3)
 }
@@ -511,7 +516,8 @@ pub fn skew_mean_stddev[T](data []T, mean T, sd T) T {
 	*/
 	for i, v in data {
 		x := (v - mean) / sd
-		skew += T((x * x * x - skew) / (i + T(1)))
+		x3 := x * x * x
+		skew += T((x3 - skew) / (T(i) + T(1)))
 	}
 	return skew
 }

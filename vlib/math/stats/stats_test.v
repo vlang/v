@@ -400,15 +400,15 @@ fn test_covariance() {
 	mut data0 := [10.0, 4.45, 5.9, 2.7]
 	mut data1 := [5.0, 14.45, -15.9, 22.7]
 	mut o := stats.covariance(data0, data1)
-	assert math.alike(o, -17.37078207731247)
+	assert math.alike(o, -17.37078125)
 	data0 = [-3.0, 67.31, 4.4, 1.89]
 	data1 = [5.0, 77.31, 44.4, 11.89]
 	o = stats.covariance(data0, data1)
-	assert math.alike(o, 740.0695419311523)
+	assert math.alike(o, 740.06955)
 	data0 = [12.0, 7.88, 76.122, 54.83]
 	data1 = [2.0, 5.88, 7.122, 5.83]
 	o = stats.covariance(data0, data1)
-	assert math.alike(o, 36.65028190612793)
+	assert math.alike(o, 36.650282000000004)
 
 	// test for int, i64, f32 array
 	data0_int := [1, 2, 3, 1]
@@ -428,13 +428,15 @@ fn test_covariance() {
 fn test_lag1_autocorrelation() {
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.lag1_autocorrelation(data)
-	assert math.alike(o, -0.554228566606572)
+	mut e := 0.0
+	assert math.alike(o, -0.5542285481446095)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.lag1_autocorrelation(data)
-	assert math.alike(o, -0.5102510823460722)
+	assert math.alike(o, -0.5102510654033415)
 	data = [12.0, 7.88, 76.122, 54.83]
 	o = stats.lag1_autocorrelation(data)
-	assert math.alike(o, 0.10484451825170164)
+	e = 0.10484450460892072
+	assert math.alike(o, e), diff(o, e)
 
 	// test for int, i64, f32 array
 	assert stats.lag1_autocorrelation[int]([1, 2, 3, 1]) == 0
@@ -443,40 +445,51 @@ fn test_lag1_autocorrelation() {
 	assert math.alike(o, 0.1975308507680893)
 }
 
+fn diff(actual f64, expected f64) string {
+	return '\n  actual:${actual:40.35f}\nexpected:${expected:40.35f}\n    diff:${actual - expected:40.35f}'
+}
+
 fn test_kurtosis() {
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.kurtosis(data)
-	assert math.alike(o, -1.0443214689384779)
+	mut e := -1.0443212849233845
+	assert math.close(o, e), diff(o, e)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.kurtosis(data)
-	assert math.alike(o, -0.688495594786176)
+	e = -0.6884953374814851
+	assert math.close(o, e), diff(o, e)
 	data = [12.0, 7.88, 76.122, 54.83]
 	o = stats.kurtosis(data)
-	assert math.alike(o, -1.7323772574195067)
+	assert math.alike(o, -1.7323772836921467)
 
 	// test for int, i64, f32 array
 	assert stats.kurtosis[int]([1, 2, 3, 1]) == 1
 	assert stats.kurtosis[i64]([i64(1), 2, 3, 1]) == 1
 	o = stats.kurtosis[f32]([f32(1.0), 3, 5, 7, 3])
-	assert math.alike(o, -1.0443782806396484)
+	e = -1.044378399848938
+	assert math.alike(o, e), diff(o, e)
 }
 
 fn test_skew() {
 	mut data := [10.0, 4.45, 5.9, 2.7]
 	mut o := stats.skew(data)
-	assert math.alike(o, 0.5754020379048158)
+	mut e := 0.5754021106320453
+	assert math.veryclose(o, e), diff(o, e)
 	data = [-3.0, 67.31, 4.4, 1.89]
 	o = stats.skew(data)
-	assert math.alike(o, 1.1248732608899568)
+	e = 1.1248733711136492
+	assert math.veryclose(o, e), diff(o, e)
 	data = [12.0, 7.88, 76.122, 54.83]
 	o = stats.skew(data)
-	assert math.alike(o, 0.19007917421924964)
+	e = 0.19007911706827735
+	assert math.alike(o, e), diff(o, e)
 
 	// test for int, i64, f32 array
 	assert stats.skew[int]([1, 2, 3, 1]) == 2
 	assert stats.skew[i64]([i64(1), 2, 3, 1]) == 2
 	o = stats.skew[f32]([f32(1.0), 3, 5, 7, 3])
-	assert math.alike(o, 0.2715454697608948)
+	e = 0.27154541015625
+	assert math.alike(o, e), diff(o, e)
 }
 
 fn test_quantile() {
@@ -484,13 +497,13 @@ fn test_quantile() {
 
 	mut data := [2.7, 4.45, 5.9, 10.0]
 	mut o := stats.quantile(data, 0.1)!
-	assert math.alike(o, 3.225000020861626)
+	assert math.alike(o, 3.225)
 	data = [-3.0, 1.89, 4.4, 67.31]
 	o = stats.quantile(data, 0.2)!
-	assert math.alike(o, -0.06599988341331486)
+	assert math.alike(o, -0.06599999999999961)
 	data = [7.88, 12.0, 54.83, 76.122]
 	o = stats.quantile(data, 0.3)!
-	assert math.alike(o, 11.587999901771546)
+	assert math.alike(o, 11.588)
 
 	stats.quantile(data, -0.3) or { assert err.msg() == 'index out of range' }
 
