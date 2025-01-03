@@ -69,7 +69,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprint(' function: '); eprint(fn_name); eprintln('()')
 		eprint('  message: '); eprintln(s)
 		eprint('     file: '); eprint(file); eprint(':');
-		C.fprintf(C.stderr, c'%d\n', line_no)		
+		C.fprintf(C.stderr, c'%d\n', line_no)
 		eprint('   v hash: '); eprintln(@VCURRENTHASH)
 		eprintln('=========================================')
 		// vfmt on
@@ -768,7 +768,7 @@ __global g_main_argc = int(0)
 @[markused]
 __global g_main_argv = unsafe { nil }
 
-@[markused]
+@[markused; export: 'g_live_reload_info']
 __global g_live_reload_info = unsafe { nil }
 
 // arguments returns the command line arguments, used for starting the current program as a V array of strings.

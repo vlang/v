@@ -107,9 +107,9 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 		idx++
 	}
 	g.writeln('')
-	// g_live_info gives access to the LiveReloadInfo methods,
+	// g_live_reload_info gives access to the LiveReloadInfo methods,
 	// to the custom user code, through calling v_live_info()
-	g.writeln('\t\tg_live_info = (void*)live_info;')
+	g.writeln('\t\tg_live_reload_info = (void*)live_info;')
 	g.writeln('\t\tv__live__executable__start_reloader(live_info);')
 	g.writeln('\t}\t// end of live code initialization section')
 	g.writeln('')
