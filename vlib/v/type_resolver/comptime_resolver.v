@@ -50,8 +50,7 @@ pub fn (t &ResolverInfo) is_comptime(node ast.Expr) bool {
 			return node.expr is ast.Ident && node.expr.ct_expr
 		}
 		ast.InfixExpr {
-			return node.op in [.plus, .minus, .mul, .div, .mod]
-				&& (node.left_ct_expr || node.right_ct_expr)
+			return node.left_ct_expr || node.right_ct_expr
 		}
 		ast.ParExpr {
 			return t.is_comptime(node.expr)
