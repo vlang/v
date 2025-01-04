@@ -103,9 +103,13 @@ fn (mut a App) collect_info() {
 	}
 	a.line('OS', '${os_kind}, ${os_details}')
 	a.line('Processor', arch_details.join(', '))
-	total_memory := f64(runtime.total_memory()) / (1024.0 * 1024.0 * 1024.0)
-	free_memory := f64(runtime.free_memory()) / (1024.0 * 1024.0 * 1024.0)
-	a.line('Memory', '${free_memory:.2}GB/${total_memory:.2}GB')
+	total_memory := f32(runtime.total_memory()) / (1024.0 * 1024.0 * 1024.0)
+	free_memory := f32(runtime.free_memory()) / (1024.0 * 1024.0 * 1024.0)
+	if total_memory != 0 && free_memory != 0 {
+		a.line('Memory', '${free_memory:.2}GB/${total_memory:.2}GB')
+	} else {
+		a.line('Memory', 'N/A')
+	}
 
 	a.line('', '')
 	mut vexe := os.getenv('VEXE')
@@ -132,15 +136,14 @@ fn (mut a App) collect_info() {
 	a.line('.git/config present', os.is_file('.git/config').str())
 	a.line('', '')
 	a.line('CC version', a.cmd(command: 'cc --version'))
-	a.line('GCC version', a.cmd(command: 'gcc --version'))
+	a.line('gcc version', a.cmd(command: 'gcc --version'))
 	a.line('clang version', a.cmd(command: 'clang --version'))
 	if os_kind == 'windows' {
 		// Check for MSVC on windows
-		a.line('MSVC version', a.cmd(command: 'cl'))
+		a.line('msvc version', a.cmd(command: 'cl'))
 	}
 	a.report_tcc_version('thirdparty/tcc')
 	a.line('glibc version', a.cmd(command: 'ldd --version'))
-	a.line('emcc version', a.cmd(command: 'emcc --version'))
 }
 
 struct CmdConfig {
@@ -295,6 +298,13 @@ fn diagnose_dir(path string) string {
 	mut diagnostics := []string{}
 	if !is_writable_dir(path) {
 		diagnostics << 'NOT writable'
+	}
+	if path.contains(' ') {
+		diagnostics << 'contains spaces'
+	}
+	path_non_ascii_runes := path.runes().filter(it > 255)
+	if path_non_ascii_runes.len > 0 {
+		diagnostics << 'contains these non ASCII characters: ${path_non_ascii_runes}'
 	}
 	if diagnostics.len == 0 {
 		diagnostics << 'OK'
