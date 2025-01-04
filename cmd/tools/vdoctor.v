@@ -103,6 +103,10 @@ fn (mut a App) collect_info() {
 	}
 	a.line('OS', '${os_kind}, ${os_details}')
 	a.line('Processor', arch_details.join(', '))
+	total_memory := f64(runtime.total_memory()) / (1024.0 * 1024.0 * 1024.0)
+	free_memory := f64(runtime.free_memory()) / (1024.0 * 1024.0 * 1024.0)
+	a.line('Memory', '${free_memory:.2}GB/${total_memory:.2}GB')
+
 	a.line('', '')
 	mut vexe := os.getenv('VEXE')
 	mut vroot := os.dir(vexe)
