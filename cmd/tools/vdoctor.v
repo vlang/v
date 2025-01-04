@@ -116,7 +116,7 @@ fn (mut a App) collect_info() {
 	a.line2('V home dir', diagnose_dir(vroot), vroot)
 	a.line2('VMODULES', diagnose_dir(vmodules), vmodules)
 	a.line2('VTMP', diagnose_dir(vtmp_dir), vtmp_dir)
-	a.line2('Current dir', diagnose_dir(getwd), getwd)
+	a.line2('Current working dir', diagnose_dir(getwd), getwd)
 	vflags := os.getenv('VFLAGS')
 	a.line('', '')
 	if vflags != '' {
