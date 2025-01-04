@@ -130,6 +130,10 @@ pub fn (mut t TypeResolver) get_type_or_default(node ast.Expr, default_typ ast.T
 				}
 			}
 		}
+		ast.ComptimeSelector {
+			// val.$(field.name)
+			return t.get_comptime_selector_type(node, ast.void_type)
+		}
 		ast.CastExpr {
 			if node.typ.has_flag(.generic) {
 				return t.resolver.unwrap_generic(node.typ)
