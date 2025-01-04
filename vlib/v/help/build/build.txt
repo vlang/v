@@ -9,7 +9,7 @@ to be a .v source file or folder containing .v source files.
 Everything after that, is assumed to be flags, that V will ignore itself,
 but will pass to the executable after it is compiled.
 
-This enables you to do for example: `v -cc gcc -g myfile.v run -param1 abcde`
+This enables you to do for example: `v -cc gcc -g run myfile.v -param1 abcde`
 ... which means for V: "compile using gcc, produce debugging information,
 then run `./myfile -param1 abcde` and exit with its exit code".
 
@@ -59,7 +59,7 @@ NB: the build flags are shared with the run command too:
     value assigned to `<flag>`.
     If no flag identifier (or value) is assigned, `$d()` will return the passed `<default value>`.
 
-  -g
+  -g, -debug
     Compile the executable in debug mode, allowing code to be debugged more easily.
 
   -o <output>, -output <output>
