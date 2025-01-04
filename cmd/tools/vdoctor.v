@@ -92,13 +92,11 @@ fn (mut a App) collect_info() {
 			line:    -1
 		)
 		p := a.parse(wmic_info, '=')
-		caption, build_number, os_arch := p['caption'], p['buildnumber'], p['osarchitecture']
-		caption_utf := iconv.encoding_to_vstring(caption.bytes(), 'ANSI') or { caption }
-		build_number_utf := iconv.encoding_to_vstring(build_number.bytes(), 'ANSI') or {
-			build_number
-		}
-		os_arch_utf := iconv.encoding_to_vstring(os_arch.bytes(), 'ANSI') or { os_arch }
-		os_details = '${caption_utf} ${build_number_utf} ${os_arch_utf}'
+		mut caption, mut build_number, mut os_arch := p['caption'], p['buildnumber'], p['osarchitecture']
+		caption = iconv.encoding_to_vstring(caption.bytes(), 'ANSI') or { caption }
+		build_number = iconv.encoding_to_vstring(build_number.bytes(), 'ANSI') or { build_number }
+		os_arch = iconv.encoding_to_vstring(os_arch.bytes(), 'ANSI') or { os_arch }
+		os_details = '${caption} ${build_number} ${os_arch}'
 	} else {
 		ouname := os.uname()
 		os_details = '${ouname.release}, ${ouname.version}'
@@ -107,12 +105,20 @@ fn (mut a App) collect_info() {
 	a.line('Processor', arch_details.join(', '))
 	a.line('', '')
 	// a.println('')
-	getwd := os.getwd()
-	vmodules := os.vmodules_dir()
-	vtmp_dir := os.vtmp_dir()
-	vexe := os.getenv('VEXE')
-	vroot := os.dir(vexe)
+	mut getwd := os.getwd()
+	mut vmodules := os.vmodules_dir()
+	mut vtmp_dir := os.vtmp_dir()
+	mut vexe := os.getenv('VEXE')
+	mut vroot := os.dir(vexe)
 	os.chdir(vroot) or {}
+	if os_kind == 'windows' {
+		// Windows use ANSI encoding
+		getwd = iconv.encoding_to_vstring(getwd.bytes(), 'ANSI') or { getwd }
+		vmodules = iconv.encoding_to_vstring(vmodules.bytes(), 'ANSI') or { vmodules }
+		vtmp_dir = iconv.encoding_to_vstring(vtmp_dir.bytes(), 'ANSI') or { vtmp_dir }
+		vexe = iconv.encoding_to_vstring(vexe.bytes(), 'ANSI') or { vexe }
+		vroot = iconv.encoding_to_vstring(vroot.bytes(), 'ANSI') or { vroot }
+	}
 	a.line('getwd', getwd)
 	a.line('vexe', vexe)
 	a.line('vexe mtime', time.unix(os.file_last_mod_unix(vexe)).str())
