@@ -41,7 +41,8 @@ fn test_reading_gzip_files_compressed_with_different_options() {
 }
 
 fn test_compress_with_deferent_level() {
-	_, content9 := read_and_decode_file(s('readme_level_9.gz'))!
+	compressed := os.read_bytes(s('readme_level_9.gz'))!
+	content9 := gzip.decompress(compressed)!
 
 	// compression: Huffman only=0
 	compress_0 := gzip.compress(content9, flags: int(gzip.CompressFlags.huffman_only))!
