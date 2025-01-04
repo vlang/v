@@ -3,6 +3,7 @@ import time
 import term
 import v.util.version
 import runtime
+import encoding.iconv
 
 struct App {
 mut:
@@ -16,6 +17,7 @@ fn (mut a App) println(s string) {
 
 fn (mut a App) collect_info() {
 	a.line('V full version', version.full_v_version(true))
+	a.line(':-------------------', ':-------------------')
 
 	mut os_kind := os.user_os()
 	mut arch_details := []string{}
@@ -51,7 +53,7 @@ fn (mut a App) collect_info() {
 	if os_kind == 'windows' {
 		arch_details << a.cmd(
 			command: 'wmic cpu get name /format:table'
-			line:    1
+			line:    2
 		)
 	}
 
@@ -91,14 +93,20 @@ fn (mut a App) collect_info() {
 		)
 		p := a.parse(wmic_info, '=')
 		caption, build_number, os_arch := p['caption'], p['buildnumber'], p['osarchitecture']
-		os_details = '${caption} v${build_number} ${os_arch}'
+		caption_utf := iconv.encoding_to_vstring(caption.bytes(), 'ANSI') or { caption }
+		build_number_utf := iconv.encoding_to_vstring(build_number.bytes(), 'ANSI') or {
+			build_number
+		}
+		os_arch_utf := iconv.encoding_to_vstring(os_arch.bytes(), 'ANSI') or { os_arch }
+		os_details = '${caption_utf} ${build_number_utf} ${os_arch_utf}'
 	} else {
 		ouname := os.uname()
 		os_details = '${ouname.release}, ${ouname.version}'
 	}
 	a.line('OS', '${os_kind}, ${os_details}')
 	a.line('Processor', arch_details.join(', '))
-	a.println('')
+	a.line('', '')
+	// a.println('')
 	getwd := os.getwd()
 	vmodules := os.vmodules_dir()
 	vtmp_dir := os.vtmp_dir()
@@ -108,20 +116,20 @@ fn (mut a App) collect_info() {
 	a.line('getwd', getwd)
 	a.line('vexe', vexe)
 	a.line('vexe mtime', time.unix(os.file_last_mod_unix(vexe)).str())
-	a.println('')
+	a.line('', '')
 	a.line2('vroot', diagnose_dir(vroot), vroot)
 	a.line2('VMODULES', diagnose_dir(vmodules), vmodules)
 	a.line2('VTMP', diagnose_dir(vtmp_dir), vtmp_dir)
 	vflags := os.getenv('VFLAGS')
-	a.println('')
+	a.line('', '')
 	if vflags != '' {
 		a.line('env VFLAGS', '"${vflags}"')
-		a.println('')
+		a.line('', '')
 	}
 	a.line('Git version', a.cmd(command: 'git --version'))
 	a.line('Git vroot status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
-	a.println('')
+	a.line('', '')
 	a.line('CC version', a.cmd(command: 'cc --version'))
 	a.line('emcc version', a.cmd(command: 'emcc --version'))
 	a.report_tcc_version('thirdparty/tcc')
@@ -134,7 +142,8 @@ struct CmdConfig {
 
 fn (mut a App) cmd(c CmdConfig) string {
 	x := os.execute(c.command)
-	if x.exit_code < 0 || x.exit_code == 127 {
+	os_kind := os.user_os()
+	if x.exit_code < 0 || x.exit_code == 127 || (os_kind == 'windows' && x.exit_code == 1) {
 		return 'N/A'
 	}
 	if x.exit_code == 0 {
@@ -150,11 +159,11 @@ fn (mut a App) cmd(c CmdConfig) string {
 }
 
 fn (mut a App) line(label string, value string) {
-	a.println('${label}: ${term.colorize(term.bold, value)}')
+	a.println('|${label:-20}|${term.colorize(term.bold, value)}')
 }
 
 fn (mut a App) line2(label string, value string, value2 string) {
-	a.println('${label}: ${term.colorize(term.bold, value)}, value: ${term.colorize(term.bold,
+	a.println('|${label:-20}|${term.colorize(term.bold, value)}, value: ${term.colorize(term.bold,
 		value2)}')
 }
 
@@ -243,16 +252,24 @@ fn (mut a App) git_info() string {
 
 fn (mut a App) report_tcc_version(tccfolder string) {
 	if !os.is_file(os.join_path(tccfolder, '.git', 'config')) {
-		a.line(tccfolder, 'N/A')
-		return
+		a.line('tcc git status', 'N/A')
+	} else {
+		tcc_branch_name := a.cmd(
+			command: 'git -C ${os.quoted_path(tccfolder)} rev-parse --abbrev-ref HEAD'
+		)
+		tcc_commit := a.cmd(
+			command: 'git -C ${os.quoted_path(tccfolder)} describe --abbrev=8 --dirty --always --tags'
+		)
+		a.line('tcc git status', '${tcc_branch_name} ${tcc_commit}')
 	}
-	tcc_branch_name := a.cmd(
-		command: 'git -C ${os.quoted_path(tccfolder)} rev-parse --abbrev-ref HEAD'
-	)
-	tcc_commit := a.cmd(
-		command: 'git -C ${os.quoted_path(tccfolder)} describe --abbrev=8 --dirty --always --tags'
-	)
-	a.line('${tccfolder} status', '${tcc_branch_name} ${tcc_commit}')
+	cmd := os.join_path(tccfolder, 'tcc.exe') + ' -v'
+	x := os.execute(cmd)
+	os_kind := os.user_os()
+	if x.exit_code == 0 {
+		a.line('tcc version', '${x.output.trim_space()}')
+	} else {
+		a.line('tcc version', 'N/A')
+	}
 }
 
 fn (mut a App) report_info() {
