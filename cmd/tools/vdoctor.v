@@ -123,7 +123,7 @@ fn (mut a App) collect_info() {
 	a.line('V executable', vexe)
 	a.line('V last modified time', time.unix(os.file_last_mod_unix(vexe)).str())
 	a.line('', '')
-	a.line2('vroot', diagnose_dir(vroot), vroot)
+	a.line2('V home dir', diagnose_dir(vroot), vroot)
 	a.line2('VMODULES', diagnose_dir(vmodules), vmodules)
 	a.line2('VTMP', diagnose_dir(vtmp_dir), vtmp_dir)
 	vflags := os.getenv('VFLAGS')
