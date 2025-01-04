@@ -104,28 +104,19 @@ fn (mut a App) collect_info() {
 	a.line('OS', '${os_kind}, ${os_details}')
 	a.line('Processor', arch_details.join(', '))
 	a.line('', '')
-	// a.println('')
-	mut getwd := os.getwd()
-	mut vmodules := os.vmodules_dir()
-	mut vtmp_dir := os.vtmp_dir()
 	mut vexe := os.getenv('VEXE')
 	mut vroot := os.dir(vexe)
+	mut vmodules := os.vmodules_dir()
+	mut vtmp_dir := os.vtmp_dir()
+	mut getwd := os.getwd()
 	os.chdir(vroot) or {}
-	if os_kind == 'windows' {
-		// Windows use ANSI encoding
-		getwd = iconv.encoding_to_vstring(getwd.bytes(), 'ANSI') or { getwd }
-		vmodules = iconv.encoding_to_vstring(vmodules.bytes(), 'ANSI') or { vmodules }
-		vtmp_dir = iconv.encoding_to_vstring(vtmp_dir.bytes(), 'ANSI') or { vtmp_dir }
-		vexe = iconv.encoding_to_vstring(vexe.bytes(), 'ANSI') or { vexe }
-		vroot = iconv.encoding_to_vstring(vroot.bytes(), 'ANSI') or { vroot }
-	}
-	a.line('V home dir', getwd)
 	a.line('V executable', vexe)
 	a.line('V last modified time', time.unix(os.file_last_mod_unix(vexe)).str())
 	a.line('', '')
 	a.line2('V home dir', diagnose_dir(vroot), vroot)
 	a.line2('VMODULES', diagnose_dir(vmodules), vmodules)
 	a.line2('VTMP', diagnose_dir(vtmp_dir), vtmp_dir)
+	a.line2('Current dir', diagnose_dir(getwd), getwd)
 	vflags := os.getenv('VFLAGS')
 	a.line('', '')
 	if vflags != '' {
@@ -137,8 +128,15 @@ fn (mut a App) collect_info() {
 	a.line('.git/config present', os.is_file('.git/config').str())
 	a.line('', '')
 	a.line('CC version', a.cmd(command: 'cc --version'))
-	a.line('emcc version', a.cmd(command: 'emcc --version'))
+	a.line('GCC version', a.cmd(command: 'gcc --version'))
+	a.line('clang version', a.cmd(command: 'clang --version'))
+	if os_kind == 'windows' {
+		// Check for MSVC on windows
+		a.line('MSVC version', a.cmd(command: 'cl'))
+	}
 	a.report_tcc_version('thirdparty/tcc')
+	a.line('glibc version', a.cmd(command: 'ldd --version'))
+	a.line('emcc version', a.cmd(command: 'emcc --version'))
 }
 
 struct CmdConfig {
@@ -257,6 +255,14 @@ fn (mut a App) git_info() string {
 }
 
 fn (mut a App) report_tcc_version(tccfolder string) {
+	cmd := os.join_path(tccfolder, 'tcc.exe') + ' -v'
+	x := os.execute(cmd)
+	os_kind := os.user_os()
+	if x.exit_code == 0 {
+		a.line('tcc version', '${x.output.trim_space()}')
+	} else {
+		a.line('tcc version', 'N/A')
+	}
 	if !os.is_file(os.join_path(tccfolder, '.git', 'config')) {
 		a.line('tcc git status', 'N/A')
 	} else {
@@ -267,14 +273,6 @@ fn (mut a App) report_tcc_version(tccfolder string) {
 			command: 'git -C ${os.quoted_path(tccfolder)} describe --abbrev=8 --dirty --always --tags'
 		)
 		a.line('tcc git status', '${tcc_branch_name} ${tcc_commit}')
-	}
-	cmd := os.join_path(tccfolder, 'tcc.exe') + ' -v'
-	x := os.execute(cmd)
-	os_kind := os.user_os()
-	if x.exit_code == 0 {
-		a.line('tcc version', '${x.output.trim_space()}')
-	} else {
-		a.line('tcc version', 'N/A')
 	}
 }
 
@@ -293,13 +291,6 @@ fn diagnose_dir(path string) string {
 	mut diagnostics := []string{}
 	if !is_writable_dir(path) {
 		diagnostics << 'NOT writable'
-	}
-	if path.contains(' ') {
-		diagnostics << 'contains spaces'
-	}
-	path_non_ascii_runes := path.runes().filter(it > 255)
-	if path_non_ascii_runes.len > 0 {
-		diagnostics << 'contains these non ASCII characters: ${path_non_ascii_runes}'
 	}
 	if diagnostics.len == 0 {
 		diagnostics << 'OK'
