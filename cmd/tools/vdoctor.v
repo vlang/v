@@ -135,7 +135,7 @@ fn (mut a App) collect_info() {
 	a.line('V git status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
 	a.line('', '')
-	a.line('CC version', a.cmd(command: 'cc --version'))
+	a.line('cc version', a.cmd(command: 'cc --version'))
 	a.line('gcc version', a.cmd(command: 'gcc --version'))
 	a.line('clang version', a.cmd(command: 'clang --version'))
 	if os_kind == 'windows' {
@@ -143,6 +143,7 @@ fn (mut a App) collect_info() {
 		a.line('msvc version', a.cmd(command: 'cl'))
 	}
 	a.report_tcc_version('thirdparty/tcc')
+	a.line('emcc version', a.cmd(command: 'emcc --version'))
 	a.line('glibc version', a.cmd(command: 'ldd --version'))
 }
 
