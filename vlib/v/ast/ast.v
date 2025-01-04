@@ -1454,13 +1454,14 @@ pub:
 
 pub struct AliasTypeDecl {
 pub:
-	name        string
-	is_pub      bool
-	typ         Type
+	name     string
+	is_pub   bool
+	typ      Type
+	pos      token.Pos
+	type_pos token.Pos
+	comments []Comment
+pub mut:
 	parent_type Type
-	pos         token.Pos
-	type_pos    token.Pos
-	comments    []Comment
 }
 
 // SumTypeDecl is the ast node for `type MySumType = string | int`
