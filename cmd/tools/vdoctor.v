@@ -265,7 +265,6 @@ fn (mut a App) git_info() string {
 fn (mut a App) report_tcc_version(tccfolder string) {
 	cmd := os.join_path(tccfolder, 'tcc.exe') + ' -v'
 	x := os.execute(cmd)
-	os_kind := os.user_os()
 	if x.exit_code == 0 {
 		a.line('tcc version', '${x.output.trim_space()}')
 	} else {
