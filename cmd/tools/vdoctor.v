@@ -119,7 +119,7 @@ fn (mut a App) collect_info() {
 		vexe = iconv.encoding_to_vstring(vexe.bytes(), 'ANSI') or { vexe }
 		vroot = iconv.encoding_to_vstring(vroot.bytes(), 'ANSI') or { vroot }
 	}
-	a.line('getwd', getwd)
+	a.line('V home dir', getwd)
 	a.line('vexe', vexe)
 	a.line('vexe mtime', time.unix(os.file_last_mod_unix(vexe)).str())
 	a.line('', '')
