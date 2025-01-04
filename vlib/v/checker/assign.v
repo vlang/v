@@ -76,7 +76,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('cannot use `<-` on the right-hand side of an assignment, as it does not return any values',
 					right.pos)
 			} else if c.inside_recheck {
-				c.expected_type = node.right_types[i]
+				if i < node.right_types.len {
+					c.expected_type = node.right_types[i]
+				}
 				mut right_type := c.expr(mut right)
 				right_type_sym := c.table.sym(right_type)
 				// fixed array returns an struct, but when assigning it must be the array type
