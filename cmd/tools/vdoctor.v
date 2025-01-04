@@ -133,7 +133,7 @@ fn (mut a App) collect_info() {
 		a.line('', '')
 	}
 	a.line('Git version', a.cmd(command: 'git --version'))
-	a.line('Git vroot status', a.git_info())
+	a.line('V git status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
 	a.line('', '')
 	a.line('CC version', a.cmd(command: 'cc --version'))
