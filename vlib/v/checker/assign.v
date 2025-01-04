@@ -24,6 +24,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	mut right_len := node.right.len
 	mut right_first_type := ast.void_type
 	old_recheck := c.inside_recheck
+
 	// check if we are rechecking an already checked expression on generic rechecking
 	c.inside_recheck = old_recheck || node.right_types.len > 0
 	defer {
@@ -75,6 +76,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('cannot use `<-` on the right-hand side of an assignment, as it does not return any values',
 					right.pos)
 			} else if c.inside_recheck {
+				c.expected_type = node.right_types[i]
 				mut right_type := c.expr(mut right)
 				right_type_sym := c.table.sym(right_type)
 				// fixed array returns an struct, but when assigning it must be the array type
