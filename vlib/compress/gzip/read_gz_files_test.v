@@ -39,3 +39,23 @@ fn test_reading_gzip_files_compressed_with_different_options() {
 	assert content9 == content5
 	assert content5 == content1
 }
+
+fn test_compress_with_deferent_level() {
+	_, content9 := read_and_decode_file(s('readme_level_9.gz'))!
+
+	// compression: Huffman only=0
+	compress_0 := gzip.compress(content9, flags: int(gzip.CompressFlags.huffman_only))!
+	decompress_0 := gzip.decompress(compress_0)!
+
+	// compression: default_max_probes=128
+	compress_128 := gzip.compress(content9)!
+	decompress_128 := gzip.decompress(compress_128)!
+
+	// compression: Huffman+LZ=4095
+	compress_4095 := gzip.compress(content9, flags: int(gzip.CompressFlags.max_probes_mask))!
+	decompress_4095 := gzip.decompress(compress_4095)!
+
+	assert content9 == decompress_0
+	assert content9 == decompress_128
+	assert content9 == decompress_4095
+}
