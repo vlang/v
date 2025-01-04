@@ -29,13 +29,16 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 			line_nr := p.tok.line_nr
 			p.next()
 			// []string
-			if p.tok.kind in [.name, .amp, .lsbr, .question, .key_shared]
+			if p.tok.kind in [.name, .amp, .lsbr, .question, .key_shared, .not]
 				&& p.tok.line_nr == line_nr {
 				elem_type_pos = p.tok.pos()
 				elem_type = p.parse_type()
 				// this is set here because it's a known type, others could be the
 				// result of expr so we do those in checker
 				if elem_type != 0 {
+					if elem_type.has_flag(.result) {
+						p.error_with_pos('array does not support storing storing Result', elem_type_pos)
+					}
 					idx := p.table.find_or_register_array(elem_type)
 					if elem_type.has_flag(.generic) {
 						array_type = ast.new_type(idx).set_flag(.generic)

@@ -10,3 +10,9 @@ vlib/v/parser/tests/array_init.vv:3:7: warning: use e.g. `x := [1]Type{}` instea
     3 |     _ := [1]int
       |          ~~~~~~
     4 | }
+vlib/v/parser/tests/array_init.vv4:9:: error: expression evaluated but not used
+    2 |     _ := []int
+    3 |     _ := [1]int
+    4 |     _ := []!int{}
+      |            ^
+    5 | }
