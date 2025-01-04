@@ -121,7 +121,7 @@ fn (mut a App) collect_info() {
 	}
 	a.line('V home dir', getwd)
 	a.line('V executable', vexe)
-	a.line('vexe mtime', time.unix(os.file_last_mod_unix(vexe)).str())
+	a.line('V last modified time', time.unix(os.file_last_mod_unix(vexe)).str())
 	a.line('', '')
 	a.line2('vroot', diagnose_dir(vroot), vroot)
 	a.line2('VMODULES', diagnose_dir(vmodules), vmodules)
