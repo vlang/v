@@ -906,6 +906,10 @@ pub fn (mut g Gen) init() {
 #endif
 ')
 		}
+		if g.pref.os == .linux {
+			// For gettid() declaration (and other GNU-specific bits).
+			g.cheaders.writeln('#define _GNU_SOURCE')
+		}
 		if g.pref.os == .wasm32 {
 			g.cheaders.writeln('#define VWASM 1')
 			// Include <stdint.h> instead of <inttypes.h> for WASM target
