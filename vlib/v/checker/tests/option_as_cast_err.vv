@@ -1,0 +1,12 @@
+type Sum = int | string
+
+fn sum() ?Sum {
+	return Sum(5)
+}
+
+a := sum()?
+println(a as int)
+b := sum()
+println(b)
+println(b? as int)
+println(b as int)

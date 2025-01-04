@@ -15,9 +15,9 @@ fn get_opt_int(a int) ?int {
 fn test_option_unwrap_as_cast() {
 	x := get_opt(1)
 	d := get_opt_int(12)
-	dump(d as int == 12)
-	dump('${x as string}' == 'success')
+	dump(d? as int == 12)
+	dump('${x? as string}' == 'success')
 
-	assert d as int == 12
-	assert x as string == 'success'
+	assert d? as int == 12
+	assert x? as string == 'success'
 }

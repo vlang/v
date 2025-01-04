@@ -2962,6 +2962,20 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			if !c.is_builtin_mod {
 				c.table.used_features.as_cast = true
 			}
+			if mut node.expr is ast.Ident {
+				if mut node.expr.obj is ast.Var {
+					ident_typ := if node.expr.obj.smartcasts.len > 0 {
+						node.expr.obj.smartcasts.last()
+					} else {
+						node.expr.obj.typ
+					}
+					if !node.typ.has_flag(.option) && ident_typ.has_flag(.option)
+						&& node.expr.or_expr.kind == .absent {
+						c.error('variable `${node.expr.name}` is an Option, it must be unwrapped first',
+							node.expr.pos)
+					}
+				}
+			}
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos)
 				if !c.table.sumtype_has_variant(c.unwrap_generic(node.expr_type), c.unwrap_generic(node.typ),
