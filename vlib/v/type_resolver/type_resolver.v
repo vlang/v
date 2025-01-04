@@ -213,6 +213,7 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 			return t.get_type(node.right)
 		}
 	} else if node is ast.CastExpr && node.typ.has_flag(.generic) {
+		// T(expr)
 		return t.resolver.unwrap_generic(node.typ)
 	}
 	return ast.void_type

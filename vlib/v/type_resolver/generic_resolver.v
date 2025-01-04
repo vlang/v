@@ -17,10 +17,10 @@ pub fn (mut ct TypeResolver) unwrap_generic_expr(expr ast.Expr, default_typ ast.
 			return expr.typ
 		}
 		ast.InfixExpr {
-			if ct.info.is_comptime(expr.left) {
+			if expr.left_ct_expr {
 				return ct.resolver.unwrap_generic(ct.get_type(expr.left))
 			}
-			if ct.info.is_comptime(expr.right) {
+			if expr.right_ct_expr {
 				return ct.resolver.unwrap_generic(ct.get_type(expr.right))
 			}
 			return default_typ
