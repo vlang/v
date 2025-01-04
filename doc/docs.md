@@ -1051,6 +1051,7 @@ An array can be of these types:
 | Thread       | `[]thread int`                       |
 | Reference    | `[]&f64`                             |
 | Shared       | `[]shared MyStructType`              |
+| Option       | `[]?f64`                          |
 
 **Example Code:**
 
