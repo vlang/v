@@ -282,7 +282,12 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 		}
 
-		if !expected.has_flag(.option) && got.has_flag(.option)
+		is_expected_optional := if is_aliased {
+			expected_.has_flag(.option)
+		} else {
+			expected.has_flag(.option)
+		}
+		if !is_expected_optional && got.has_flag(.option)
 			&& (!(arg.expr is ast.Ident || arg.expr is ast.ComptimeSelector)
 			|| (arg.expr is ast.Ident && c.comptime.get_ct_type_var(arg.expr) != .field_var)) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
