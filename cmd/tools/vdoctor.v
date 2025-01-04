@@ -120,7 +120,7 @@ fn (mut a App) collect_info() {
 		vroot = iconv.encoding_to_vstring(vroot.bytes(), 'ANSI') or { vroot }
 	}
 	a.line('V home dir', getwd)
-	a.line('vexe', vexe)
+	a.line('V executable', vexe)
 	a.line('vexe mtime', time.unix(os.file_last_mod_unix(vexe)).str())
 	a.line('', '')
 	a.line2('vroot', diagnose_dir(vroot), vroot)
