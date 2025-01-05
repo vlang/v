@@ -8,7 +8,15 @@ fn (a any) toString()
 
 @[noreturn]
 pub fn panic(s string) {
-	eprintln('V panic: ${s}\n${js_stacktrace()}')
+	eprintln('V panic: ${s}')
+	eprintln(js_stacktrace())
+	exit(1)
+}
+
+@[noreturn]
+pub fn panic_n(s string, n i64) {
+	eprintln('V panic: ${s}')
+	eprintln(js_stacktrace())
 	exit(1)
 }
 
