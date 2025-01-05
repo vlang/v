@@ -112,7 +112,7 @@ fn unhandled_exception_handler(e &ExceptionPointers) int {
 			return 0
 		}
 		else {
-			println('Unhandled Exception 0x${e.exception_record.code:X}')
+			println('Unhandled Exception 0x' + ptr_str(e.exception_record.code))
 			print_backtrace_skipping_top_frames(5)
 		}
 	}
