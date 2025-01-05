@@ -735,7 +735,17 @@ pub fn (mut w Walker) or_block(node ast.OrExpr) {
 }
 
 pub fn (mut w Walker) as_cast(node ast.AsCast) {
-	if node.typ.has_flag(.generic) || node.expr_type.has_flag(.generic) {
+	if node.typ == 0 {
+		return
+	}
+	if node.typ.has_flag(.generic) {
+		w.as_cast_type_names['some_generic_type'] = 'some_generic_name'
+		return
+	}
+	if node.expr_type == 0 {
+		return
+	}
+	if node.expr_type.has_flag(.generic) {
 		w.as_cast_type_names['some_generic_type'] = 'some_generic_name'
 		return
 	}
