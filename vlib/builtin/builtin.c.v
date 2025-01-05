@@ -769,7 +769,8 @@ pub fn gc_memory_use() usize {
 fn v_fixed_index(i int, len int) int {
 	$if !no_bounds_checking {
 		if i < 0 || i >= len {
-			panic_n2('fixed array index out of range (index, len):', i, len)
+			panic('fixed array index out of range (index: ' + i64(i).str() + ', len: ' +
+				i64(len).str() + ')')
 		}
 	}
 	return i

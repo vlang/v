@@ -563,13 +563,15 @@ fn (a array) slice(start int, _end int) array {
 	end := if _end == max_int { a.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end {
-			panic_n2('array.slice: invalid slice index (start>end):', start, end)
+			panic('array.slice: invalid slice index (start>end):' + i64(start).str() + ', ' +
+				i64(end).str())
 		}
 		if end > a.len {
-			panic_n2('array.slice: slice bounds out of range (end>=a.len):', end, a.len)
+			panic('array.slice: slice bounds out of range (' + i64(end).str() + ' >= ' +
+				i64(a.len).str() + ')')
 		}
 		if start < 0 {
-			panic_n('array.slice: slice bounds out of range (start<0):', start)
+			panic('array.slice: slice bounds out of range (start<0):' + start.str())
 		}
 	}
 	// TODO: integrate reference counting
