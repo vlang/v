@@ -7,35 +7,42 @@ import compress as compr
 import hash.crc32
 
 // CompressFlags
+// TODO: These flags have no use now
+@[flag]
 pub enum CompressFlags {
-	// 0: Huffman only
-	// 1: Huffman+LZ (fastest/crap compression)
-	// 4095: Huffman+LZ (slowest/best compression)
-	huffman_only       = 0
-	default_max_probes = 128
-	max_probes_mask    = 0xfff
+	// The low 12 bits will be overwritten by `compression_level`
+	compression_level_overwrite_flag01
+	compression_level_overwrite_flag02
+	compression_level_overwrite_flag03
+	compression_level_overwrite_flag04
+	compression_level_overwrite_flag05
+	compression_level_overwrite_flag06
+	compression_level_overwrite_flag07
+	compression_level_overwrite_flag08
+	compression_level_overwrite_flag09
+	compression_level_overwrite_flag10
+	compression_level_overwrite_flag11
+	compression_level_overwrite_flag12
 
 	// If set, the compressor outputs a zlib header before the deflate data, and the Adler-32 of the source data at the end. Otherwise, you'll get raw deflate data.
-	// write_zlib_header = 0x01000
+	write_zlib_header //= 0x01000
 	// Always compute the adler-32 of the input data (even when not writing zlib headers).
-	// compute_adler32 = 0x02000
+	compute_adler32 //= 0x02000
 	// Set to use faster greedy parsing, instead of more efficient lazy parsing.
-	greedy_parsing_flag = 0x04000
+	greedy_parsing_flag //= 0x04000
 	// Enable to decrease the compressor's initialization time to the minimum, but the output may vary from run to run given the same input (depending on the contents of memory).
-	nondeterministic_parsing_flag = 0x08000
+	nondeterministic_parsing_flag //= 0x08000
 	// Only look for RLE matches (matches with a distance of 1)
-	rle_matches = 0x10000
+	rle_matches //= 0x10000
 	// Discards matches <= 5 chars if enabled.
-	filter_matches = 0x20000
+	filter_matches //= 0x20000
 	// Disable usage of optimized Huffman tables.
-	force_all_static_blocks = 0x40000
+	force_all_static_blocks //= 0x40000
 	// Only use raw (uncompressed) deflate blocks.
-	force_all_raw_blocks = 0x80000
-	// The low 12 bits are reserved to control the max # of hash probes per dictionary lookup.
+	force_all_raw_blocks //= 0x80000
 }
 
-// CompressParams set flags for compression:
-// `flags`:
+// CompressParams set compression_level for compression:
 // 0: Huffman only;
 // 1: Huffman+LZ (fastest/crap compression);
 // 128: default_max_probes;
@@ -43,13 +50,20 @@ pub enum CompressFlags {
 @[params]
 pub struct CompressParams {
 pub:
-	flags int = int(CompressFlags.default_max_probes)
+	compression_level int = 128 // 0~4095
+	flags             CompressFlags
 }
 
 // compresses an array of bytes using gzip and returns the compressed bytes in a new array
-// Example: compressed := gzip.compress(b)!
+// Example: compressed := gzip.compress(b, compression_level:4095)!
+// Note: compression_level 0~4095
 pub fn compress(data []u8, params CompressParams) ![]u8 {
-	compressed := compr.compress(data, params.flags)!
+	if params.compression_level !in 0..4096 {
+		return error('compression level should in [0,4095]')
+	}
+	// The low 12 bits are reserved to control the max # of hash probes per dictionary lookup.
+	flags := params.compression_level | (int(params.flags) & ~int(4095))
+	compressed := compr.compress(data, flags)!
 	// header
 	mut result := [
 		u8(0x1f), // magic numbers (1F 8B)
@@ -81,26 +95,27 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 }
 
 // DecompressFlags
+// TODO: These flags have no use now
+@[flag]
 pub enum DecompressFlags {
 	// If set, the input has a valid zlib header and ends with an adler32 checksum (it's a valid zlib stream). Otherwise, the input is a raw deflate stream.
-	parse_zlib_header = 1
+	parse_zlib_header
 	// If set, there are more input bytes available beyond the end of the supplied input buffer. If clear, the input buffer contains all remaining input.
-	has_more_input = 2
+	has_more_input
 	// If set, the output buffer is large enough to hold the entire decompressed stream. If clear, the output buffer is at least the size of the dictionary (typically 32KB).
-	using_non_wrapping_output_buf = 4
+	using_non_wrapping_output_buf
 	// Force adler-32 checksum computation of the decompressed bytes.
-	compute_adler32 = 8
+	compute_adler32
 }
 
 // DecompressParams set flags for decompression:
-// `flags` has no use now
 @[params]
 pub struct DecompressParams {
 pub:
 	verify_header_checksum bool = true
 	verify_length          bool = true
 	verify_checksum        bool = true
-	flags                  int
+	flags                  DecompressFlags
 }
 
 pub const reserved_bits = 0b1110_0000

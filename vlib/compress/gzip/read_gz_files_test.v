@@ -45,15 +45,15 @@ fn test_compress_with_deferent_level() {
 	content9 := gzip.decompress(compressed)!
 
 	// compression: Huffman only=0
-	compress_0 := gzip.compress(content9, flags: int(gzip.CompressFlags.huffman_only))!
+	compress_0 := gzip.compress(content9, compression_level: 0)!
 	decompress_0 := gzip.decompress(compress_0)!
 
 	// compression: default_max_probes=128
 	compress_128 := gzip.compress(content9)!
 	decompress_128 := gzip.decompress(compress_128)!
 
-	// compression: Huffman+LZ=4095
-	compress_4095 := gzip.compress(content9, flags: int(gzip.CompressFlags.max_probes_mask))!
+	// compression: Huffman+LZ=4095(slowest/best compression)
+	compress_4095 := gzip.compress(content9, compression_level: 4095)!
 	decompress_4095 := gzip.decompress(compress_4095)!
 
 	assert content9 == decompress_0
