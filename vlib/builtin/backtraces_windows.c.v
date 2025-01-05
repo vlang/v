@@ -76,6 +76,7 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) bool {
 	return false
 }
 
+@[direct_array_access]
 fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 	$if msvc {
 		mut offset := u64(0)
@@ -116,23 +117,31 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 				if C.SymGetLineFromAddr64(handle, frame_addr, &offset, &sline64) == 1 {
 					file_name := unsafe { tos3(sline64.f_file_name) }
 					lnumber := sline64.f_line_number
-					lineinfo = '${file_name}:${lnumber}'
+					lineinfo = file_name + i64(lnumber).str()
 				} else {
 					// addr:
-					lineinfo = '?? : address = 0x${(&frame_addr):x}'
+					lineinfo = '?? : address = 0x' + ptr_str(frame_addr)
 				}
 				sfunc := unsafe { tos3(fname) }
-				eprintln('${nframe:-2d}: ${sfunc:-25s}  ${lineinfo}')
+				snframe := i64(nframe).str()
+				eprint_space_padding(snframe, 2)
+				eprint(': ')
+				eprint(sfunc)
+				eprint_space_padding(sfunc, 25)
+				eprint('  ')
+				eprint(lineinfo)
 			} else {
 				// https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes
 				cerr := int(C.GetLastError())
+				eprint('SymFromAddr failure: ')
+				eprint(i64(cerr).str())
 				if cerr == 87 {
-					eprintln('SymFromAddr failure: ${cerr} = The parameter is incorrect)')
+					eprintln(' = The parameter is incorrect)')
 				} else if cerr == 487 {
 					// probably caused because the .pdb isn't in the executable folder
-					eprintln('SymFromAddr failure: ${cerr} = Attempt to access invalid address (Verify that you have the .pdb file in the right folder.)')
+					eprintln(' = Attempt to access invalid address (Verify that you have the .pdb file in the right folder.)')
 				} else {
-					eprintln('SymFromAddr failure: ${cerr} (see https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes)')
+					eprintln(' (see https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes)')
 				}
 			}
 		}

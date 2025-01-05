@@ -22,3 +22,12 @@ pub fn print_backtrace() {
 		}
 	}
 }
+
+fn eprint_space_padding(output string, max_len int) {
+	padding_len := max_len - output.len
+	if padding_len > 0 {
+		for _ in 0 .. padding_len {
+			eprint(' ')
+		}
+	}
+}
