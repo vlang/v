@@ -1531,7 +1531,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		arg_typ_sym := c.table.sym(arg_typ)
-		if arg_typ_sym.kind == .none && param.typ.has_flag(.generic) {
+		if arg_typ_sym.kind == .none && param.typ.has_flag(.generic) && !param.typ.has_flag(.option) {
 			c.error('cannot use `none` as generic argument', call_arg.pos)
 		}
 		param_typ_sym := c.table.sym(param.typ)
@@ -2546,7 +2546,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 			continue
 		}
-		if final_arg_sym.kind == .none && param.typ.has_flag(.generic) {
+		if final_arg_sym.kind == .none && param.typ.has_flag(.generic)
+			&& !param.typ.has_flag(.option) {
 			c.error('cannot use `none` as generic argument', arg.pos)
 		}
 		if param.typ.is_ptr() && !arg.typ.is_any_kind_of_pointer() && arg.expr.is_literal()
