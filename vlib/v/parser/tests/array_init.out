@@ -11,7 +11,7 @@ vlib/v/parser/tests/array_init.vv:3:7: warning: use e.g. `x := [1]Type{}` instea
       |          ~~~~~~
     4 |     _ := []!int{}
     5 | }
-vlib/v/parser/tests/array_init.vv:4:9: error: array does not support storing storing Result
+vlib/v/parser/tests/array_init.vv:4:9: error: arrays do not support storing Result values
     2 |     _ := []int
     3 |     _ := [1]int
     4 |     _ := []!int{}
