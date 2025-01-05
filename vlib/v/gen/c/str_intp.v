@@ -231,7 +231,6 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 }
 
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
-	// fn (mut g Gen) str_int2(node ast.StringInterLiteral) {
 	inside_interface_deref_old := g.inside_interface_deref
 	g.inside_interface_deref = true
 	defer {
