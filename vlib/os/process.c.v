@@ -258,10 +258,10 @@ fn (mut p Process) _is_pending(pkind ChildProcessPipeKind) bool {
 // _check_redirection_call - should be called just by stdxxx methods
 fn (mut p Process) _check_redirection_call(fn_name string) {
 	if !p.use_stdio_ctl {
-		panic('Call p.set_redirect_stdio() before calling p.${fn_name}')
+		panic('Call p.set_redirect_stdio() before calling p.' + fn_name)
 	}
 	if p.status == .not_started {
-		panic('Call p.${fn_name}() after you have called p.run()')
+		panic('Call p.' + fn_name + '() after you have called p.run()')
 	}
 }
 

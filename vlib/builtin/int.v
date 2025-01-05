@@ -3,28 +3,17 @@
 // that can be found in the LICENSE file.
 module builtin
 
-//
-// ----- value to string functions -----
-//
-
 pub struct VContext {
 	allocator int
 }
 
-// type u8 = byte
 type byte = u8
-
-// type i32 = int
 
 // ptr_str returns the address of `ptr` as a `string`.
 pub fn ptr_str(ptr voidptr) string {
 	buf1 := u64(ptr).hex()
 	return buf1
 }
-
-// pub fn nil_str(x voidptr) string {
-// return 'nil'
-//}
 
 // str returns string equivalent of x
 pub fn (x isize) str() string {
@@ -118,18 +107,7 @@ fn (nn int) str_l(max int) string {
 		}
 		diff := max - index
 		vmemmove(buf, voidptr(buf + index), diff + 1)
-		/*
-		// === manual memory move for bare metal ===
-		mut c:= 0
-		for c < diff {
-			buf[c] = buf[c+index]
-			c++
-		}
-		buf[c] = 0
-		*/
 		return tos(buf, diff)
-
-		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
@@ -165,10 +143,6 @@ pub fn (n int) str() string {
 	return n.str_l(12)
 }
 
-// pub fn int_str(n int) string {
-// return i64(n).str()
-//}
-
 // str returns the value of the `u32` as a `string`.
 // Example: assert u32(20000).str() == '20000'
 @[direct_array_access; inline]
@@ -202,8 +176,6 @@ pub fn (nn u32) str() string {
 		diff := max - index
 		vmemmove(buf, voidptr(buf + index), diff + 1)
 		return tos(buf, diff)
-
-		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
@@ -258,7 +230,6 @@ pub fn (nn i64) str() string {
 		diff := max - index
 		vmemmove(buf, voidptr(buf + index), diff + 1)
 		return tos(buf, diff)
-		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
@@ -295,7 +266,6 @@ pub fn (nn u64) str() string {
 		diff := max - index
 		vmemmove(buf, voidptr(buf + index), diff + 1)
 		return tos(buf, diff)
-		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
@@ -307,10 +277,6 @@ pub fn (b bool) str() string {
 	}
 	return 'false'
 }
-
-//
-// ----- value to hex string functions -----
-//
 
 // u64_to_hex converts the number `nn` to a (zero padded if necessary) hexadecimal `string`.
 @[direct_array_access; inline]

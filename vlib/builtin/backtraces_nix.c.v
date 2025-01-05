@@ -77,7 +77,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					executable := sframe.all_before('(')
 					addr := sframe.all_after('[').all_before(']')
 					beforeaddr := sframe.all_before('[')
-					cmd := 'addr2line -e ${executable} ${addr}'
+					cmd := 'addr2line -e ' + executable + ' ' + addr
 					// taken from os, to avoid depending on the os module inside builtin.v
 					f := C.popen(&char(cmd.str), c'r')
 					if f == unsafe { nil } {
@@ -104,7 +104,12 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					// Note: it is shortened here to just d. , just so that it fits, and so
 					// that the common error file:lineno: line format is enforced.
 					output = output.replace(' (discriminator', ': (d.')
-					eprintln('${output:-55s} | ${addr:14s} | ${beforeaddr}')
+					eprint(output)
+					eprint_space_padding(output, 55)
+					eprint(' | ')
+					eprint(addr)
+					eprint(' | ')
+					eprintln(beforeaddr)
 				}
 				if sframes.len > 0 {
 					unsafe { C.free(csymbols) }
@@ -113,4 +118,13 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		}
 	}
 	return true
+}
+
+fn eprint_space_padding(output string, max_len int) {
+	padding_len := max_len - output.len
+	if padding_len > 0 {
+		for _ in 0 .. padding_len {
+			eprint(' ')
+		}
+	}
 }

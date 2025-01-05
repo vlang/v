@@ -1115,7 +1115,8 @@ pub fn (s string) substr(start int, _end int) string {
 	end := if _end == max_int { s.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			panic('substr(${start}, ${end}) out of bounds (len=${s.len}) s="${s}"')
+			panic('substr(' + start.str() + ', ' + end.str() + ') out of bounds (len=' +
+				s.len.str() + ') s=' + s)
 		}
 	}
 	len := end - start
@@ -1962,7 +1963,7 @@ pub fn (s string) str() string {
 fn (s string) at(idx int) u8 {
 	$if !no_bounds_checking {
 		if idx < 0 || idx >= s.len {
-			panic('string index out of range: ${idx} / ${s.len}')
+			panic_n2('string index out of range(idx,s.len):', idx, s.len)
 		}
 	}
 	return unsafe { s.str[idx] }

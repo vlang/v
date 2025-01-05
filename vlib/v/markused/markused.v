@@ -69,7 +69,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if pref_.autofree {
 			core_fns << string_idx_str + '.clone_static'
 		}
-		if table.used_features.as_cast || table.used_features.auto_str || pref_.is_shared {
+		if table.used_features.auto_str || pref_.is_shared {
 			include_panic_deps = true
 			core_fns << 'isnil'
 			core_fns << '__new_array'
@@ -133,15 +133,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.arr_last {
 			core_fns << array_idx_str + '.last'
 		}
-		if table.used_features.arr_delete {
-			include_panic_deps = true
-		}
 		if table.used_features.arr_insert {
 			core_fns << ref_array_idx_str + '.insert_many'
-		}
-		if pref_.ccompiler_type != .tinyc && 'no_backtrace' !in pref_.compile_defines {
-			// with backtrace on gcc/clang more code needs be generated
-			include_panic_deps = true
 		}
 		if table.used_features.interpolation {
 			include_panic_deps = true

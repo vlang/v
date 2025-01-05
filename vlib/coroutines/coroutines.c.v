@@ -113,6 +113,6 @@ fn init() {
 	}
 
 	if ret < 0 {
-		panic('failed to initialize coroutines via photon (ret=${ret})')
+		panic_n('failed to initialize coroutines via photon ret:', ret)
 	}
 }
