@@ -6,6 +6,7 @@ module builtin
 
 fn (a any) toString()
 
+// panic prints an error message, then exits the process with exit code of 1.
 @[noreturn]
 pub fn panic(s string) {
 	eprintln('V panic: ${s}')
@@ -13,6 +14,7 @@ pub fn panic(s string) {
 	exit(1)
 }
 
+// panic_n prints an error message, followed by the given number, then exits the process with exit code of 1.
 @[noreturn]
 pub fn panic_n(s string, n i64) {
 	eprintln('V panic: ${s}')
