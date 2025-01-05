@@ -11,6 +11,11 @@ fn olog(msg string) {
 	println(term.colorize(term.green, msg))
 }
 
+fn vversion() string {
+	vexe := os.getenv('VEXE')
+	return os.execute('${os.quoted_path(vexe)} version').output.trim_space()
+}
+
 // get output from `v doctor`
 fn get_vdoctor_output(is_verbose bool) string {
 	vexe := os.getenv('VEXE')
@@ -61,7 +66,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, user_args 
 		}
 	}
 	if result.exit_code == 0 {
-		real_generated_file := './' + generated_file
+		real_generated_file := os.real_path(generated_file)
 		defer {
 			os.rm(generated_file) or {
 				if is_verbose {
@@ -160,13 +165,15 @@ fn main() {
 
 	// When updating this template, make sure to update `.github/ISSUE_TEMPLATE/bug_report.md` too
 	raw_body := '<!-- It is advisable to update all relevant modules using `v outdated` and `v install` -->
-**V doctor:**
-```
+
+<details>
+<summary>V version: ${vversion()}, press to see full `v doctor` output</summary>
+
 ${vdoctor_output}
-```
+</details>
 
 **What did you do?**
-`./v -g -o vdbg cmd/v && ./vdbg ${user_args} ${file_path} && ./${generated_file}`
+`./v -g -o vdbg cmd/v && ./vdbg ${user_args} ${file_path} && ${os.real_path(generated_file)}`
 {file_content}
 
 **What did you see?**
