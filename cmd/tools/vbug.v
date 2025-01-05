@@ -61,6 +61,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, user_args 
 		}
 	}
 	if result.exit_code == 0 {
+		real_generated_file := './' + generated_file
 		defer {
 			os.rm(generated_file) or {
 				if is_verbose {
@@ -71,7 +72,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, user_args 
 		run := is_yes
 			|| ask('It looks like the compilation went well, do you want to run the file?')
 		if run {
-			result = runv('Run', generated_file)
+			result = runv('Run', real_generated_file)
 			if result.exit_code == 0 && !is_yes {
 				elog('> The file ran correctly as well.')
 				confirm_or_exit('Are you sure you want to continue?')
@@ -165,7 +166,7 @@ ${vdoctor_output}
 ```
 
 **What did you do?**
-`./v -g -o vdbg cmd/v && ./vdbg ${user_args} ${file_path} && ${generated_file}`
+`./v -g -o vdbg cmd/v && ./vdbg ${user_args} ${file_path} && ./${generated_file}`
 {file_content}
 
 **What did you see?**
