@@ -1154,7 +1154,8 @@ pub fn (s string) substr_unsafe(start int, _end int) string {
 pub fn (s string) substr_with_check(start int, _end int) !string {
 	end := if _end == max_int { s.len } else { _end } // max_int
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-		return error('substr(${start}, ${end}) out of bounds (len=${s.len})')
+		return error('substr(' + start.str() + ', ' + end.str() + ') out of bounds (len=' +
+			s.len.str() + ')')
 	}
 	len := end - start
 	if len == s.len {

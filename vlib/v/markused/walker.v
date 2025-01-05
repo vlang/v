@@ -367,6 +367,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.features.used_maps++
 			} else if sym.kind == .array {
 				w.features.used_arrays++
+			} else if sym.kind == .string {
+				if node.index is ast.RangeExpr {
+					w.features.range_index = true
+				}
 			}
 		}
 		ast.InfixExpr {
