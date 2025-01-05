@@ -14,26 +14,47 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		util.timing_measure('MARKUSED')
 	}
 
-	trace_skip_unused := 'trace_skip_unused' in pref_.compile_defines
-	trace_skip_unused_all_fns := 'trace_skip_unused_all_fns' in pref_.compile_defines
-	trace_skip_unused_fn_names := 'trace_skip_unused_fn_names' in pref_.compile_defines
-	trace_skip_unused_interface_methods := 'trace_skip_unused_interface_methods' in pref_.compile_defines
+	trace_skip_unused := pref_.compile_values['trace_skip_unused'] == 'true'
+	trace_skip_unused_all_fns := pref_.compile_values['trace_skip_unused_all_fns'] == 'true'
+	trace_skip_unused_fn_names := pref_.compile_values['trace_skip_unused_fn_names'] == 'true'
+	trace_skip_unused_interface_methods := pref_.compile_values['trace_skip_unused_interface_methods'] == 'true'
+	used_fns := pref_.compile_values['used_fns']
+
+	byteptr_idx_str := ast.byteptr_type_idx.str()
+	charptr_idx_str := ast.charptr_type_idx.str()
+	string_idx_str := ast.string_type_idx.str()
+	array_idx_str := ast.array_type_idx.str()
+	map_idx_str := ast.map_type_idx.str()
+	ref_map_idx_str := int(ast.map_type.ref()).str()
+	ref_densearray_idx_str := int(table.find_type('DenseArray').ref()).str()
+	ref_array_idx_str := int(ast.array_type.ref()).str()
 
 	// Functions that must be generated and can't be skipped
 	mut all_fn_root_names := []string{}
+	if used_fns != '' {
+		aused_fns := used_fns.split(',')
+		all_fns_keys := all_fns.keys()
+		mut matching := []string{}
+		for ufn in aused_fns {
+			if ufn.contains('*') {
+				matching_fns := all_fns_keys.filter(it.match_glob(ufn))
+				if matching_fns.len > 0 {
+					matching << matching_fns
+				}
+			} else {
+				matching << ufn
+			}
+		}
+		all_fn_root_names << matching
+		for m in matching {
+			println('> used_fn, found matching symbol: ${m}')
+		}
+	}
+
 	if pref_.backend == .native {
 		// Note: this is temporary, until the native backend supports more features!
 		all_fn_root_names << 'main.main'
 	} else {
-		byteptr_idx_str := ast.byteptr_type_idx.str()
-		charptr_idx_str := ast.charptr_type_idx.str()
-		string_idx_str := ast.string_type_idx.str()
-		array_idx_str := ast.array_type_idx.str()
-		map_idx_str := ast.map_type_idx.str()
-		ref_map_idx_str := int(ast.map_type.ref()).str()
-		ref_densearray_idx_str := int(table.find_type('DenseArray').ref()).str()
-		ref_array_idx_str := int(ast.array_type.ref()).str()
-
 		mut include_panic_deps := false
 		mut core_fns := [
 			'main.main',
