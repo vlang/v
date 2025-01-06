@@ -5,8 +5,11 @@ import rand
 #flag -D_SGL_DEFAULT_MAX_VERTICES=4194304
 #flag -D_SGL_DEFAULT_MAX_COMMANDS=65536
 
-// Without the flags, `max_circles` > 5040, will just show
-// a blue screen without *any circles* drawn.
+// Without the flags, `max_circles` > 5040, will just show a blue screen without
+// *any circles* drawn.
+// **Note** however, that increasing `_SGL_DEFAULT_MAX_VERTICES`, also increases
+// the default RAM usage of your app. In this case, instead of using ~40MB on
+// Ubuntu 20.04, the app instead uses ~140MB.
 const max_circles = 10_000
 
 fn main() {
