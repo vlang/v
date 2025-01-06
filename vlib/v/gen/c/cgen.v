@@ -4120,7 +4120,18 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if is_as_cast {
 		g.write(')')
 	}
+
+	left_is_shared := node.expr_type.has_flag(.shared_f)
+	alias_to_ptr := sym.info is ast.Alias && sym.info.parent_type.is_ptr()
+	is_dereferenced := node.expr is ast.SelectorExpr && node.expr.expr_type.is_ptr()
+		&& !node.expr.typ.is_ptr() && final_sym.kind in [.interface, .sum_type]
+	left_is_ptr := field_is_opt
+		|| (((!is_dereferenced && unwrapped_expr_type.is_ptr()) || sym.kind == .chan
+		|| alias_to_ptr) && node.from_embed_types.len == 0)
+		|| (node.expr.is_as_cast() && g.inside_smartcast)
+
 	// struct embedding
+	mut has_embed := false
 	if sym.info in [ast.Struct, ast.Aggregate] {
 		if node.generic_from_embed_types.len > 0 && sym.info is ast.Struct {
 			if sym.info.embeds.len > 0 {
@@ -4130,36 +4141,36 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 						if arr_val[0] == sym.info.embeds[0] {
 							g.write_selector_expr_embed_name(node, arr_val)
 							is_find = true
+							has_embed = true
 							break
 						}
 					}
 				}
 				if !is_find {
+					has_embed = node.from_embed_types.len > 0
 					g.write_selector_expr_embed_name(node, node.from_embed_types)
 				}
 			} else {
+				has_embed = node.from_embed_types.len > 0
 				g.write_selector_expr_embed_name(node, node.from_embed_types)
 			}
 		} else if sym.info is ast.Aggregate {
 			agg_sym := g.table.sym(sym.info.types[g.aggregate_type_idx])
 			if !g.table.struct_has_field(agg_sym, field_name) {
+				has_embed = node.from_embed_types.len > 0
 				g.write_selector_expr_embed_name(node, node.from_embed_types)
 			}
 		} else {
+			has_embed = node.from_embed_types.len > 0
 			g.write_selector_expr_embed_name(node, node.from_embed_types)
 		}
 	}
-	alias_to_ptr := sym.info is ast.Alias && sym.info.parent_type.is_ptr()
-	is_dereferenced := node.expr is ast.SelectorExpr && node.expr.expr_type.is_ptr()
-		&& !node.expr.typ.is_ptr() && final_sym.kind in [.interface, .sum_type]
-	if field_is_opt || (((!is_dereferenced && unwrapped_expr_type.is_ptr())
-		|| sym.kind == .chan || alias_to_ptr) && node.from_embed_types.len == 0)
-		|| (node.expr.is_as_cast() && g.inside_smartcast) {
+	if !has_embed && left_is_ptr {
 		g.write('->')
 	} else {
 		g.write('.')
 	}
-	if node.expr_type.has_flag(.shared_f) {
+	if !has_embed && left_is_shared {
 		g.write('val.')
 	}
 	if node.expr_type == 0 {
@@ -4239,13 +4250,17 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 }
 
 fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types []ast.Type) {
+	is_shared := node.expr_type.has_flag(.shared_f)
 	for i, embed in embed_types {
 		embed_sym := g.table.sym(embed)
 		embed_name := embed_sym.embed_name()
 		is_left_ptr := if i == 0 {
-			node.expr_type.is_ptr()
+			node.expr_type.is_ptr() && !is_shared
 		} else {
 			embed_types[i - 1].is_ptr()
+		}
+		if i == 0 && is_shared {
+			g.write('->val')
 		}
 		if is_left_ptr {
 			g.write('->')
