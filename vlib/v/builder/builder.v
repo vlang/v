@@ -59,13 +59,12 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 	}
 	table.pointer_size = if pref_.m64 { 8 } else { 4 }
 	mut msvc := MsvcResult{}
-	$if windows {
-		msvc = find_msvc(pref_.m64) or {
-			if pref_.ccompiler == 'msvc' {
-				// verror('cannot find MSVC on this OS')
-			}
-			MsvcResult{
-				valid: false
+	if pref_.ccompiler == 'msvc' {
+		$if windows {
+			msvc = find_msvc(pref_.m64) or {
+				MsvcResult{
+					valid: false
+				}
 			}
 		}
 	}
