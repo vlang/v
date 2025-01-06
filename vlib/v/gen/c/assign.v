@@ -55,7 +55,7 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 }
 
 // expr_opt_with_alias handles conversion from different option alias type name
-fn (mut g Gen) expr_opt_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type, tmp_var string) string {
+fn (mut g Gen) expr_opt_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
 	styp := g.base_type(ret_typ)
 
 	line := g.go_before_last_stmt().trim_space()
@@ -63,21 +63,23 @@ fn (mut g Gen) expr_opt_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast
 
 	ret_var := g.new_tmp_var()
 	ret_styp := g.styp(ret_typ).replace('*', '_ptr')
-	g.writeln('${ret_styp} ${ret_var} = {0};')
+	g.writeln('${ret_styp} ${ret_var} = {.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}};')
 
-	g.write('_option_clone((${option_name}*)')
-	has_addr := expr !in [ast.Ident, ast.SelectorExpr]
-	if has_addr {
-		expr_styp := g.styp(expr_typ).replace('*', '_ptr')
-		g.write('ADDR(${expr_styp}, ')
-	} else {
-		g.write('&')
+	if expr !is ast.None {
+		g.write('_option_clone((${option_name}*)')
+		has_addr := expr !in [ast.Ident, ast.SelectorExpr]
+		if has_addr {
+			expr_styp := g.styp(expr_typ).replace('*', '_ptr')
+			g.write('ADDR(${expr_styp}, ')
+		} else {
+			g.write('&')
+		}
+		g.expr(expr)
+		if has_addr {
+			g.write(')')
+		}
+		g.writeln(', (${option_name}*)&${ret_var}, sizeof(${styp}));')
 	}
-	g.expr(expr)
-	if has_addr {
-		g.write(')')
-	}
-	g.writeln(', (${option_name}*)&${ret_var}, sizeof(${styp}));')
 	g.write(line)
 	if g.inside_return {
 		g.write(' ')
@@ -97,7 +99,7 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 		return g.expr_with_opt(expr, expr_typ, ret_typ)
 	} else {
 		if expr is ast.CallExpr && expr.return_type.has_flag(.option) {
-			return g.expr_opt_with_alias(expr, expr_typ, ret_typ, '')
+			return g.expr_opt_with_alias(expr, expr_typ, ret_typ)
 		} else {
 			past := g.past_tmp_var_new()
 			defer {

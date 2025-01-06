@@ -5223,7 +5223,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 					g.writeln('_option_ok(&(${g.styp(parent_type)}[]) { ${tmp_var2} }, (${option_name}*)&${tmp_var}, sizeof(${g.styp(parent_type)}));')
 					g.write2(cur_stmt, tmp_var)
 				} else if node.expr_type.has_flag(.option) {
-					g.expr_opt_with_cast(node.expr, expr_type, node.typ)
+					g.expr_opt_with_alias(node.expr, expr_type, node.typ)
 				} else {
 					g.expr_with_opt(node.expr, expr_type, node.typ)
 				}
