@@ -17,7 +17,7 @@ pub fn (mut v Builder) find_win_cc() ! {
 			println('failed command: `${cmd_version}`')
 			println('${v.pref.ccompiler} not found, looking for msvc...')
 		}
-		find_msvc(v.pref.m64) or {
+		msvc := find_msvc(v.pref.m64) or {
 			if v.pref.is_verbose {
 				println('msvc not found, looking for thirdparty/tcc...')
 			}
@@ -35,6 +35,7 @@ pub fn (mut v Builder) find_win_cc() ! {
 		}
 		v.pref.ccompiler = 'msvc'
 		v.pref.ccompiler_type = .msvc
+		v.cached_msvc = msvc
 		return
 	}
 	v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
