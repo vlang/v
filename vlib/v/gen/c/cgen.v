@@ -4120,16 +4120,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if is_as_cast {
 		g.write(')')
 	}
-
-	left_is_shared := node.expr_type.has_flag(.shared_f)
-	alias_to_ptr := sym.info is ast.Alias && sym.info.parent_type.is_ptr()
-	is_dereferenced := node.expr is ast.SelectorExpr && node.expr.expr_type.is_ptr()
-		&& !node.expr.typ.is_ptr() && final_sym.kind in [.interface, .sum_type]
-	left_is_ptr := field_is_opt
-		|| (((!is_dereferenced && unwrapped_expr_type.is_ptr()) || sym.kind == .chan
-		|| alias_to_ptr) && node.from_embed_types.len == 0)
-		|| (node.expr.is_as_cast() && g.inside_smartcast)
-
 	// struct embedding
 	mut has_embed := false
 	if sym.info in [ast.Struct, ast.Aggregate] {
@@ -4165,6 +4155,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write_selector_expr_embed_name(node, node.from_embed_types)
 		}
 	}
+	left_is_shared := node.expr_type.has_flag(.shared_f)
+	alias_to_ptr := sym.info is ast.Alias && sym.info.parent_type.is_ptr()
+	is_dereferenced := node.expr is ast.SelectorExpr && node.expr.expr_type.is_ptr()
+		&& !node.expr.typ.is_ptr() && final_sym.kind in [.interface, .sum_type]
+	left_is_ptr := field_is_opt
+		|| (((!is_dereferenced && unwrapped_expr_type.is_ptr()) || sym.kind == .chan
+		|| alias_to_ptr) && node.from_embed_types.len == 0)
+		|| (node.expr.is_as_cast() && g.inside_smartcast)
 	if !has_embed && left_is_ptr {
 		g.write('->')
 	} else {
