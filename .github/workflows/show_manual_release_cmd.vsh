@@ -8,7 +8,7 @@ year := now.year
 week := int(math.ceil(f64(now.year_day()) / 7.0))
 
 mut remote_name := 'origin'
-mut release_tag := 'weekly.${year}.${week}'
+mut release_tag := 'weekly.${year:04}.${week:02}'
 
 if os.args.len > 1 {
 	remote_name = os.args[1]
