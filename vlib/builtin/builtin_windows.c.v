@@ -67,6 +67,9 @@ fn builtin_init() {
 	$if !no_backtrace ? {
 		add_unhandled_exception_handler()
 	}
+	// On windows, the default buffering is block based (~4096bytes), which interferes badly with non cmd shells
+	// It is much better to have it off by default instead.
+	unbuffer_stdout()
 }
 
 // TODO: copypaste from os
@@ -109,7 +112,7 @@ fn unhandled_exception_handler(e &ExceptionPointers) int {
 			return 0
 		}
 		else {
-			println('Unhandled Exception 0x${e.exception_record.code:X}')
+			println('Unhandled Exception 0x' + ptr_str(e.exception_record.code))
 			print_backtrace_skipping_top_frames(5)
 		}
 	}

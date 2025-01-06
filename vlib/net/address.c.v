@@ -254,7 +254,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 				addresses << new_addr
 			}
 			else {
-				panic('Unexpected address family ${result.ai_family}')
+				panic('Unexpected address family ' + result.ai_family.str())
 			}
 		}
 	}

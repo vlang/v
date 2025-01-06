@@ -1124,6 +1124,6 @@ pub fn string_buffer_to_generic_number[T](result &T, data []u8) {
 		}
 		*result = T(enumeration)
 	} $else {
-		panic('unsupported type ${typeof[T]().name}')
+		panic('unsupported type ' + typeof[T]().name)
 	}
 }

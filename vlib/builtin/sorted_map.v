@@ -158,6 +158,7 @@ fn (mut n mapnode) split_child(child_index int, mut y mapnode) {
 	n.len++
 }
 
+@[direct_array_access]
 fn (m SortedMap) get(key string, out voidptr) bool {
 	mut node := m.root
 	for {

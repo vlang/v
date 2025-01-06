@@ -10,19 +10,24 @@ pub fn print_backtrace() {
 	$if !no_backtrace ? {
 		$if freestanding {
 			println(bare_backtrace())
+		} $else $if native {
+			// TODO: native backtrace solution
+		} $else $if tinyc {
+			C.tcc_backtrace(c'Backtrace')
+		} $else $if use_libbacktrace ? {
+			// NOTE: TCC doesn't have the unwind library
+			print_libbacktrace(1)
 		} $else {
-			$if native {
-				// TODO: native backtrace solution
-			} $else $if tinyc {
-				C.tcc_backtrace(c'Backtrace')
-			} $else {
-				// NOTE: TCC doesn't have the unwind library
-				$if use_libbacktrace ? {
-					print_libbacktrace(1)
-				} $else {
-					print_backtrace_skipping_top_frames(2)
-				}
-			}
+			print_backtrace_skipping_top_frames(2)
+		}
+	}
+}
+
+fn eprint_space_padding(output string, max_len int) {
+	padding_len := max_len - output.len
+	if padding_len > 0 {
+		for _ in 0 .. padding_len {
+			eprint(' ')
 		}
 	}
 }

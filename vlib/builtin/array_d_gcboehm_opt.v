@@ -103,7 +103,8 @@ fn (mut a array) ensure_cap_noscan(required int) {
 		return
 	}
 	if a.flags.has(.nogrow) {
-		panic('array.ensure_cap_noscan: array with the flag `.nogrow` cannot grow in size, array required new size: ${required}')
+		panic_n('array.ensure_cap_noscan: array with the flag `.nogrow` cannot grow in size, array required new size:',
+			required)
 	}
 	mut cap := if a.cap > 0 { i64(a.cap) } else { i64(2) }
 	for required > cap {
@@ -114,7 +115,8 @@ fn (mut a array) ensure_cap_noscan(required int) {
 			// limit the capacity, since bigger values, will overflow the 32bit integer used to store it
 			cap = max_int
 		} else {
-			panic('array.ensure_cap_noscan: array needs to grow to cap = ${cap}, which is > 2^31')
+			panic_n('array.ensure_cap_noscan: array needs to grow to cap (which is > 2^31):',
+				cap)
 		}
 	}
 	new_size := u64(cap) * u64(a.element_size)
@@ -136,7 +138,7 @@ fn (mut a array) ensure_cap_noscan(required int) {
 @[unsafe]
 fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 	if count < 0 {
-		panic('array.repeat: count is negative: ${count}')
+		panic_n('array.repeat: count is negative:', count)
 	}
 	mut size := u64(count) * u64(a.len) * u64(a.element_size)
 	if size == 0 {
@@ -170,7 +172,7 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 // insert inserts a value in the array at index `i`
 fn (mut a array) insert_noscan(i int, val voidptr) {
 	if i < 0 || i > a.len {
-		panic('array.insert_noscan: index out of range (i == ${i}, a.len == ${a.len})')
+		panic_n2('array.insert_noscan: index out of range (i,a.len):', i, a.len)
 	}
 	if a.len == max_int {
 		panic('array.insert_noscan: a.len reached max_int')
@@ -187,11 +189,11 @@ fn (mut a array) insert_noscan(i int, val voidptr) {
 @[unsafe]
 fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
 	if i < 0 || i > a.len {
-		panic('array.insert_many: index out of range (i == ${i}, a.len == ${a.len})')
+		panic_n2('array.insert_many: index out of range (i, a.len):', i, a.len)
 	}
 	new_len := i64(a.len) + i64(size)
 	if new_len > max_int {
-		panic('array.insert_many_noscan: a.len = ${new_len} will exceed max_int')
+		panic_n('array.insert_many_noscan: max_int will be exceeded by a.len:', new_len)
 	}
 	a.ensure_cap_noscan(a.len + size)
 	elem_size := a.element_size
@@ -328,7 +330,7 @@ fn (a array) reverse_noscan() array {
 fn (mut a array) grow_cap_noscan(amount int) {
 	new_cap := i64(amount) + i64(a.cap)
 	if new_cap > max_int {
-		panic('array.grow_cap: new capacity ${new_cap} will exceed max_int')
+		panic_n('array.grow_cap: max_int will be exceeded by new cap:', new_cap)
 	}
 	a.ensure_cap_noscan(int(new_cap))
 }
@@ -338,7 +340,7 @@ fn (mut a array) grow_cap_noscan(amount int) {
 fn (mut a array) grow_len_noscan(amount int) {
 	new_len := i64(amount) + i64(a.len)
 	if new_len > max_int {
-		panic('array.grow_len: new len ${new_len} will exceed max_int')
+		panic_n('array.grow_len: max_int will be exceeded by new len:', new_len)
 	}
 	a.ensure_cap_noscan(int(new_len))
 	a.len = int(new_len)

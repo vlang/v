@@ -106,14 +106,14 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 // It ends the program with a panic.
 @[noreturn]
 pub fn panic_option_not_set(s string) {
-	panic('option not set (${s})')
+	panic('option not set (' + s + ')')
 }
 
 // panic_result_not_set is called by V, when you use result error propagation in your main function
 // It ends the program with a panic.
 @[noreturn]
 pub fn panic_result_not_set(s string) {
-	panic('result not set (${s})')
+	panic('result not set (' + s + ')')
 }
 
 // panic prints a nice error message, then exits the process with exit code of 1.
@@ -173,6 +173,24 @@ pub fn c_error_number_str(errnum int) string {
 		}
 	}
 	return err_msg
+}
+
+// panic_n prints an error message, followed by the given number, then exits the process with exit code of 1.
+@[noreturn]
+pub fn panic_n(s string, number1 i64) {
+	panic(s + number1.str())
+}
+
+// panic_n2 prints an error message, followed by the given numbers, then exits the process with exit code of 1.
+@[noreturn]
+pub fn panic_n2(s string, number1 i64, number2 i64) {
+	panic(s + number1.str() + ', ' + number2.str())
+}
+
+// panic_n3 prints an error message, followed by the given numbers, then exits the process with exit code of 1.
+@[noreturn]
+fn panic_n3(s string, number1 i64, number2 i64, number3 i64) {
+	panic(s + number1.str() + ', ' + number2.str() + ', ' + number2.str())
 }
 
 // panic with a C-API error message matching `errnum`
@@ -751,8 +769,8 @@ pub fn gc_memory_use() usize {
 fn v_fixed_index(i int, len int) int {
 	$if !no_bounds_checking {
 		if i < 0 || i >= len {
-			s := 'fixed array index out of range (index: ${i}, len: ${len})'
-			panic(s)
+			panic('fixed array index out of range (index: ' + i64(i).str() + ', len: ' +
+				i64(len).str() + ')')
 		}
 	}
 	return i

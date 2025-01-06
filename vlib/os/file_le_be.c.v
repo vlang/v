@@ -93,7 +93,7 @@ fn swap_bytes[T](input T) T {
 	} $else $if T is i64 {
 		return i64(swap_bytes_u64(u64(input)))
 	} $else {
-		panic('type is not supported: ${typeof[T]()}')
+		panic('type is not supported: ' + typeof[T]().str())
 	}
 }
 

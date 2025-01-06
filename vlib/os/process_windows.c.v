@@ -198,7 +198,7 @@ fn (mut p Process) win_is_alive() bool {
 ///////////////
 
 fn (mut p Process) win_write_string(idx int, _s string) {
-	panic('Process.write_string ${idx} is not implemented yet')
+	panic_n('Process.write_string is not implemented yet, idx:', idx)
 }
 
 fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {

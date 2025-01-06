@@ -78,14 +78,15 @@ pub fn utf32_decode_to_buffer(code u32, mut buf &u8) int {
 // it is used in vlib/builtin/string.v,
 // and also in vlib/v/gen/c/cgen.v
 pub fn (_rune string) utf32_code() int {
-	return int(_rune.bytes().utf8_to_utf32() or {
-		// error('more than one utf-8 rune found in this string')
-		rune(0)
-	})
+	if res := _rune.bytes().utf8_to_utf32() {
+		return int(res)
+	}
+	return 0
 }
 
 // convert array of utf8 bytes to single utf32 value
 // will error if more than 4 bytes are submitted
+@[direct_array_access]
 pub fn (_bytes []u8) utf8_to_utf32() !rune {
 	if _bytes.len == 0 {
 		return 0

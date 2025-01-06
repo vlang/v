@@ -606,7 +606,7 @@ pub fn read_file_array[T](path string) []T {
 	// On some systems C.ftell can return values in the 64-bit range
 	// that, when cast to `int`, can result in values below 0.
 	if i64(allocate) < fsize {
-		panic('${fsize} cast to int results in ${int(fsize)})')
+		panic_n2('cast to int results in (fsize, int(fsize)):', i64(fsize), i64(int(fsize)))
 	}
 	buf := unsafe {
 		malloc_noscan(allocate)
