@@ -2713,9 +2713,9 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
 			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
 			if expr.is_as_cast() {
-				if got_is_ptr && expr is ast.SelectorExpr {
+				if !got_is_ptr && expr is ast.SelectorExpr {
 					// (var as Type).field_non_ptr
-					// g.write('&')
+					g.write('&')
 				}
 				old_inside_smartcast := g.inside_smartcast
 				g.inside_smartcast = true
