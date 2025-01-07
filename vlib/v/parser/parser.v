@@ -2719,10 +2719,23 @@ fn (mut p Parser) name_expr() ast.Expr {
 		if is_option {
 			map_type = map_type.set_flag(.option)
 		}
-		return ast.MapInit{
+		node = ast.MapInit{
 			typ: map_type
 			pos: pos
 		}
+		if p.tok.kind == .lpar {
+			// ?map[int]int(none) cast expr
+			p.check(.lpar)
+			expr := p.expr(0)
+			p.check(.rpar)
+			return ast.CastExpr{
+				typ:     map_type
+				typname: p.table.sym(map_type).name
+				expr:    expr
+				pos:     pos.extend(p.tok.pos())
+			}
+		}
+		return node
 	}
 	// `chan typ{...}`
 	if p.tok.lit == 'chan' {
