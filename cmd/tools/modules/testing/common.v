@@ -278,7 +278,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		$if !macos {
 			skip_files << 'examples/macos_tray/tray.v'
 		}
-		if github_job == 'ubuntu-docker-musl' {
+		if github_job == 'docker-ubuntu-musl' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
 			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v'
 			skip_files << 'vlib/x/ttf/ttf_test.v'
