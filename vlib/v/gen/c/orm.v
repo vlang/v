@@ -1071,7 +1071,6 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				sub_result_c_typ := g.styp(sub.typ)
 				g.writeln('${sub_result_c_typ} ${sub_result_var};')
 				g.write_orm_select(sub, connection_var_name, sub_result_var)
-
 				if field.typ.has_flag(.option) {
 					unwrapped_field_c_typ := g.styp(field.typ.clear_flag(.option))
 					g.writeln('if (!${sub_result_var}.is_error)')
@@ -1172,6 +1171,10 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		}
 
 		g.indent--
+		if !node.is_array {
+			g.writeln('} else {')
+			g.writeln('\t${result_var}.is_error = true;')
+		}
 		g.writeln('}')
 
 		if node.is_array {
