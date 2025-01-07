@@ -25,11 +25,26 @@ RUN apk --no-cache add \
   libunwind-dev libunwind-static \
   gc gc-dev \
   binutils diffutils elfutils \
-  pcre strace bash
+  strace gdb \
+  pcre bash fzf fzf-vim tmux less file colordiff \
+  vim vim-editorconfig \
+  nano nano-syntax \
+  micro
+
+RUN git config --global --add safe.directory /opt/vlang &&\
+    git config --global --add safe.directory /opt/vlang/vc &&\
+    git config --global --add safe.directory /opt/vlang/thirdparty/tcc &&\
+    find /usr/share/nano/ -iname "*.nanorc" -exec echo include {} \; >> ~/.nanorc &&\
+    micro -plugin install detectindent &&\
+    micro -plugin install editorconfig &&\
+    micro -plugin install monokai-dark &&\
+    micro -plugin install quickfix &&\
+    micro -plugin install runit &&\
+    micro -plugin install cheat &&\
+    micro -plugin install jump &&\
+    true
 
 ## setup runtime environment for v and bash:
-USER 1000:1000
-ENV HOME     /home
 ENV VTMP     /tmp/v
 ENV VMODULES /tmp/vmodules
 ENV VFLAGS  "-d dynamic_boehm"
