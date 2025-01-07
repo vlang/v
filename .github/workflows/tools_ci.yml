@@ -101,7 +101,7 @@ jobs:
         if: ${{ matrix.cc == 'msvc' }}
         run: ./v -W -cstrict test-self cmd
 
-  ubuntu-docker-musl:
+  tools-docker-ubuntu-musl:
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     container:
