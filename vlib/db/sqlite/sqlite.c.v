@@ -181,6 +181,9 @@ pub fn (db &DB) get_affected_rows_count() int {
 
 // q_int returns a single integer value, from the first column of the result of executing `query`, or an error on failure
 pub fn (db &DB) q_int(query string) !int {
+	$if trace_sqlite ? {
+		eprintln('> q_int query: "${query}"')
+	}
 	stmt := &C.sqlite3_stmt(unsafe { nil })
 	pres := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	if pres != sqlite_ok {
@@ -199,6 +202,9 @@ pub fn (db &DB) q_int(query string) !int {
 
 // q_string returns a single string value, from the first column of the result of executing `query`, or an error on failure
 pub fn (db &DB) q_string(query string) !string {
+	$if trace_sqlite ? {
+		eprintln('> q_string query: "${query}"')
+	}
 	stmt := &C.sqlite3_stmt(unsafe { nil })
 	pres := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	if pres != sqlite_ok {
@@ -218,6 +224,9 @@ pub fn (db &DB) q_string(query string) !string {
 // exec_map executes the query on the given `db`, and returns an array of maps of strings, or an error on failure
 @[manualfree]
 pub fn (db &DB) exec_map(query string) ![]map[string]string {
+	$if trace_sqlite ? {
+		eprintln('> exec_map query: "${query}"')
+	}
 	stmt := &C.sqlite3_stmt(unsafe { nil })
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	if code != sqlite_ok {
@@ -255,6 +264,9 @@ fn C.sqlite3_memory_used() i64
 // exec executes the query on the given `db`, and returns an array of all the results, or an error on failure
 @[manualfree]
 pub fn (db &DB) exec(query string) ![]Row {
+	$if trace_sqlite ? {
+		eprintln('> exec query: "${query}"')
+	}
 	stmt := &C.sqlite3_stmt(unsafe { nil })
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	if code != sqlite_ok {
@@ -321,6 +333,9 @@ pub fn (db &DB) error_message(code int, query string) IError {
 // Use it, in case you don't expect any row results, but still want a result code.
 // e.g. for queries like these: `INSERT INTO ... VALUES (...)`
 pub fn (db &DB) exec_none(query string) int {
+	$if trace_sqlite ? {
+		eprintln('> exec_none query: "${query}"')
+	}
 	stmt := &C.sqlite3_stmt(unsafe { nil })
 	pres := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	if pres != sqlite_ok {
@@ -336,6 +351,9 @@ pub fn (db &DB) exec_none(query string) int {
 // exec_param_many executes a query with parameters provided as ?,
 // and returns either an error on failure, or the full result set on success
 pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
+	$if trace_sqlite ? {
+		eprintln('> exec_param_many query: "${query}", params: ${params}')
+	}
 	mut stmt := &C.sqlite3_stmt(unsafe { nil })
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), -1, &stmt, 0)
 	if code != 0 {
