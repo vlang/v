@@ -11,20 +11,31 @@ mut:
 	repeated shared map[string]map[string][]token.Pos
 }
 
+fn (mut vt Vet) add_repeated_code(expr string, pos token.Pos) {
+	lock vt.analysis.repeated {
+		vt.analysis.repeated[expr][vt.file] << pos
+	}
+}
+
 fn (mut vt Vet) repeated_code(expr ast.Expr) {
 	match expr {
 		ast.IndexExpr {
-			lock vt.analysis.repeated {
-				vt.analysis.repeated['${expr.left}[${expr.index}]'][vt.file] << expr.pos
+			vt.add_repeated_code('${expr.left}[${expr.index}]', expr.pos)
+		}
+		ast.SelectorExpr {
+			// nested selectors
+			if expr.expr is ast.SelectorExpr {
+				vt.add_repeated_code('${ast.Expr(expr.expr).str()}.${expr.field_name}',
+					expr.pos)
 			}
 		}
 		ast.CallExpr {
-			lock vt.analysis.repeated {
-				if expr.is_static_method || expr.is_method {
-					vt.analysis.repeated['${expr.left}.${expr.name}(${expr.args.map(it.str()).join(', ')})'][vt.file] << expr.pos
-				} else {
-					vt.analysis.repeated['${expr.mod}.${expr.name}(${expr.args.map(it.str()).join(', ')})'][vt.file] << expr.pos
-				}
+			if expr.is_static_method || expr.is_method {
+				vt.add_repeated_code('${expr.left}.${expr.name}(${expr.args.map(it.str()).join(', ')})',
+					expr.pos)
+			} else {
+				vt.add_repeated_code('${expr.mod}.${expr.name}(${expr.args.map(it.str()).join(', ')})',
+					expr.pos)
 			}
 		}
 		else {}
@@ -48,7 +59,7 @@ fn (mut vt Vet) vet_repeated_code() {
 	rlock vt.analysis.repeated {
 		for expr, info in vt.analysis.repeated {
 			occurrences := arrays.sum(info.values().map(it.len)) or { 0 }
-			if occurrences < 10 {
+			if occurrences < 20 {
 				continue
 			}
 			for file, info_pos in info {

@@ -308,8 +308,12 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 		ast.Comment {
 			vt.filtered_lines.comments(expr.is_multi, expr.pos)
 		}
-		ast.StringLiteral, ast.StringInterLiteral {
+		ast.StringLiteral {
 			vt.filtered_lines.assigns(expr.pos)
+		}
+		ast.StringInterLiteral {
+			vt.filtered_lines.assigns(expr.pos)
+			vt.exprs(expr.exprs)
 		}
 		ast.ArrayInit {
 			vt.filtered_lines.assigns(expr.pos)
@@ -337,6 +341,9 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 				vt.expr(b.cond)
 				vt.stmts(b.stmts)
 			}
+		}
+		ast.SelectorExpr {
+			vt.repeated_code(expr)
 		}
 		ast.IndexExpr {
 			vt.repeated_code(expr)
