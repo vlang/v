@@ -3,6 +3,11 @@
 // that can be found in the LICENSE file.
 module ecdsa
 
+import hash
+import crypto
+import crypto.sha256
+import crypto.sha512
+
 #flag darwin -L /opt/homebrew/opt/openssl/lib -I /opt/homebrew/opt/openssl/include
 
 #flag -I/usr/include/openssl
@@ -40,7 +45,33 @@ fn C.BN_CTX_new() &C.BN_CTX
 fn C.BN_CTX_free(ctx &C.BN_CTX)
 
 // NID constants
+//
+// NIST P-256 is refered to as secp256r1 and prime256v1, defined as #define NID_X9_62_prime256v1 415
+// Different names, but they are all the same.
+// https://www.rfc-editor.org/rfc/rfc4492.html#appendix-A
 const nid_prime256v1 = C.NID_X9_62_prime256v1
+
+// NIST P-384, ie, secp384r1 curve, defined as #define NID_secp384r1 715
+const nid_secp384r1 = C.NID_secp384r1
+
+// NIST P-521, ie, secp521r1 curve, defined as #define NID_secp521r1 716
+const nid_secp521r1 = C.NID_secp521r1
+
+// Bitcoin curve, defined as #define NID_secp256k1 714
+const nid_secp256k1 = C.NID_secp256k1
+
+// The list of supported curve(s)
+pub enum Nid {
+	prime256v1
+	secp384r1
+	secp521r1
+	secp256k1
+}
+
+@[params]
+struct CurveOptions {
+	nid Nid = .prime256v1 // default to NIST P-256 curve
+}
 
 @[typedef]
 struct C.EC_KEY {}
@@ -68,10 +99,9 @@ pub struct PublicKey {
 	key &C.EC_KEY
 }
 
-// Generate a new key pair
-pub fn generate_key() !(PublicKey, PrivateKey) {
-	nid := nid_prime256v1 // Using NIST P-256 curve
-	ec_key := C.EC_KEY_new_by_curve_name(nid)
+// Generate a new key pair. If opt was not provided, its default to prime256v1 curve.
+pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
+	ec_key := new_curve(opt)
 	if ec_key == 0 {
 		return error('Failed to create new EC_KEY')
 	}
@@ -89,11 +119,10 @@ pub fn generate_key() !(PublicKey, PrivateKey) {
 	return pub_key, priv_key
 }
 
-// Create a new private key from a seed
-pub fn new_key_from_seed(seed []u8) !PrivateKey {
-	nid := nid_prime256v1
+// Create a new private key from a seed. If opt was not provided, its default to prime256v1 curve.
+pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	// Create a new EC_KEY object with the specified curve
-	ec_key := C.EC_KEY_new_by_curve_name(nid)
+	ec_key := new_curve(opt)
 	if ec_key == 0 {
 		return error('Failed to create new EC_KEY')
 	}
@@ -151,6 +180,7 @@ pub fn new_key_from_seed(seed []u8) !PrivateKey {
 }
 
 // Sign a message with private key
+// FIXME: should the message should be hashed?
 pub fn (priv_key PrivateKey) sign(message []u8) ![]u8 {
 	if message.len == 0 {
 		return error('Message cannot be null or empty')
@@ -204,19 +234,16 @@ pub fn (priv_key PrivateKey) public_key() !PublicKey {
 	}
 }
 
-// Compare two private keys
-pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
-	bn1 := C.EC_KEY_get0_private_key(priv_key.key)
-	bn2 := C.EC_KEY_get0_private_key(other.key)
-	res := C.BN_cmp(bn1, bn2)
-	return res == 0
-}
+// EC_GROUP_cmp() for comparing two group (curve).
+// EC_GROUP_cmp returns 0 if the curves are equal, 1 if they are not equal, or -1 on error.
+fn C.EC_GROUP_cmp(a &C.EC_GROUP, b &C.EC_GROUP, ctx &C.BN_CTX) int
 
-// Compare two public keys
-pub fn (pub_key PublicKey) equal(other PublicKey) bool {
-	group := C.EC_KEY_get0_group(pub_key.key)
-	point1 := C.EC_KEY_get0_public_key(pub_key.key)
-	point2 := C.EC_KEY_get0_public_key(other.key)
+// equal compares two private keys was equal. Its checks for two things, ie:
+// - whether both of private keys lives under the same group (curve)
+// - compares if two private key bytes was equal
+pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
+	group1 := C.EC_KEY_get0_group(priv_key.key)
+	group2 := C.EC_KEY_get0_group(other.key)
 	ctx := C.BN_CTX_new()
 	if ctx == 0 {
 		return false
@@ -224,8 +251,167 @@ pub fn (pub_key PublicKey) equal(other PublicKey) bool {
 	defer {
 		C.BN_CTX_free(ctx)
 	}
-	res := C.EC_POINT_cmp(group, point1, point2, ctx)
-	return res == 0
+	gres := C.EC_GROUP_cmp(group1, group2, ctx)
+	// Its lives on the same group
+	if gres == 0 {
+		bn1 := C.EC_KEY_get0_private_key(priv_key.key)
+		bn2 := C.EC_KEY_get0_private_key(other.key)
+		res := C.BN_cmp(bn1, bn2)
+		return res == 0
+	}
+	return false
+}
+
+// Compare two public keys
+pub fn (pub_key PublicKey) equal(other PublicKey) bool {
+	// TODO: check validity of the group
+	group1 := C.EC_KEY_get0_group(pub_key.key)
+	group2 := C.EC_KEY_get0_group(other.key)
+
+	ctx := C.BN_CTX_new()
+	if ctx == 0 {
+		return false
+	}
+	defer {
+		C.BN_CTX_free(ctx)
+	}
+	gres := C.EC_GROUP_cmp(group1, group2, ctx)
+	// Its lives on the same group
+	if gres == 0 {
+		point1 := C.EC_KEY_get0_public_key(pub_key.key)
+		point2 := C.EC_KEY_get0_public_key(other.key)
+		res := C.EC_POINT_cmp(group1, point1, point2, ctx)
+		return res == 0
+	}
+
+	return false
+}
+
+// Helpers
+//
+// new_curve creates a new empty curve based on curve NID, default to prime256v1 (or secp256r1).
+fn new_curve(opt CurveOptions) &C.EC_KEY {
+	mut nid := nid_prime256v1
+	match opt.nid {
+		.prime256v1 {
+			// do nothing
+		}
+		.secp384r1 {
+			nid = nid_secp384r1
+		}
+		.secp521r1 {
+			nid = nid_secp521r1
+		}
+		.secp256k1 {
+			nid = nid_secp256k1
+		}
+	}
+	return C.EC_KEY_new_by_curve_name(nid)
+}
+
+// Gets recommended hash function of the current PrivateKey.
+// Its purposes for hashing message to be signed
+fn (pv PrivateKey) recommended_hash() !crypto.Hash {
+	group := C.EC_KEY_get0_group(pv.key)
+	if group == 0 {
+		return error('Unable to load group')
+	}
+	// gets the bits size of private key group
+	num_bits := C.EC_GROUP_get_degree(group)
+	match true {
+		// use sha256
+		num_bits <= 256 {
+			return .sha256
+		}
+		num_bits > 256 && num_bits <= 384 {
+			return .sha384
+		}
+		// TODO: what hash should be used if the size is over > 512 bits
+		num_bits > 384 {
+			return .sha512
+		}
+		else {
+			return error('Unsupported bits size')
+		}
+	}
+}
+
+pub enum HashConfig {
+	with_recomended_hash
+	with_no_hash
+	with_custom_hash
+}
+
+@[params]
+pub struct SignerOpts {
+mut:
+	hash_config HashConfig = .with_recomended_hash
+	// make sense when HashConfig != with_recomended_hash
+	allow_smaller_size bool
+	allow_custom_hash  bool
+	// set to non-nil if allow_custom_hash was true
+	custom_hash &hash.Hash = unsafe { nil }
+}
+
+// sign_with_options sign the message with the options. By default, it would precompute
+// hash value from message, with recommended_hash function, and then sign the hash value.
+pub fn (pv PrivateKey) sign_with_options(message []u8, opts SignerOpts) ![]u8 {
+	// we're working on mutable copy of SignerOpts, with some issues when make it as a mutable.
+	// ie, declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed.
+	mut cfg := opts
+	match cfg.hash_config {
+		.with_recomended_hash {
+			h := pv.recommended_hash()!
+			match h {
+				.sha256 {
+					digest := sha256.sum256(message)
+					return pv.sign(digest)!
+				}
+				.sha384 {
+					digest := sha512.sum384(message)
+					return pv.sign(digest)!
+				}
+				.sha512 {
+					digest := sha512.sum512(message)
+					return pv.sign(digest)!
+				}
+				else {
+					return error('Unsupported hash')
+				}
+			}
+		}
+		.with_no_hash {
+			return pv.sign(message)!
+		}
+		.with_custom_hash {
+			if !cfg.allow_custom_hash {
+				return error('custom hash was not allowed, set it into true')
+			}
+			if cfg.custom_hash == unsafe { nil } {
+				return error('Custom hasher was not defined')
+			}
+			// check key size bits
+			group := C.EC_KEY_get0_group(pv.key)
+			if group == 0 {
+				return error('fail to load group')
+			}
+			num_bits := C.EC_GROUP_get_degree(group)
+			// check for key size matching
+			key_size := (num_bits + 7) / 8
+			// If current Private Key size is bigger then current hash output size,
+			// by default its not allowed, until set the allow_smaller_size into true
+			if key_size > cfg.custom_hash.size() {
+				if !cfg.allow_smaller_size {
+					return error('Hash into smaller size than current key size was not allowed')
+				}
+			}
+			// otherwise, just hash the message and sign
+			digest := cfg.custom_hash.sum(message)
+			defer { unsafe { cfg.custom_hash.free() } }
+			return pv.sign(digest)!
+		}
+	}
+	return error('Not should be here')
 }
 
 // Clear allocated memory for key
