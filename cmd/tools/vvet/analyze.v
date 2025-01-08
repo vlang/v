@@ -14,6 +14,7 @@ const callexpr_cutoff = 10
 const stringinterliteral_cutoff = 10
 const stringliteral_cutoff = 10
 const ascast_cutoff = 10
+const stringconcat_cutoff = 5
 
 // minimum size for string literals
 const stringliteral_min_size = 20
@@ -23,7 +24,6 @@ const long_fns_cutoff = 300
 
 struct VetAnalyze {
 mut:
-	vet                  &Vet = unsafe { nil }
 	repeated_expr_cutoff shared map[string]int // repeated code cutoff	
 	repeated_expr        shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
 	cur_fn               ast.FnDecl // current fn declaration
@@ -33,7 +33,10 @@ fn (mut vt VetAnalyze) stmt(vet &Vet, stmt ast.Stmt) {
 	match stmt {
 		ast.AssignStmt {
 			if stmt.op == .plus_assign {
-				vt.exprs(vet, stmt.right)
+				if stmt.right[0] in [ast.StringLiteral, ast.StringInterLiteral] {
+					vt.add_repeated_code(stringconcat_cutoff, '${stmt.left[0].str()} += ${stmt.right[0].str()}',
+						vet.file, stmt.pos)
+				}
 			}
 		}
 		else {}
@@ -101,22 +104,21 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 }
 
 // long_or_empty_fns checks for long or empty functions
-fn (mut vt VetAnalyze) long_or_empty_fns(fn_decl ast.FnDecl) {
+fn (mut vt VetAnalyze) long_or_empty_fns(mut vet Vet, fn_decl ast.FnDecl) {
 	nr_lines := if fn_decl.stmts.len == 0 {
 		0
 	} else {
 		fn_decl.stmts.last().pos.line_nr - fn_decl.pos.line_nr
 	}
 	if nr_lines > long_fns_cutoff {
-		vt.vet.notice('Long function - ${nr_lines} lines long.', fn_decl.pos.line_nr,
-			.long_fns)
+		vet.notice('Long function - ${nr_lines} lines long.', fn_decl.pos.line_nr, .long_fns)
 	} else if nr_lines == 0 {
-		vt.vet.notice('Empty function.', fn_decl.pos.line_nr, .empty_fn)
+		vet.notice('Empty function.', fn_decl.pos.line_nr, .empty_fn)
 	}
 }
 
 // vet_fn_analysis reports repeated code by scope
-fn (mut vt VetAnalyze) vet_repeated_code() {
+fn (mut vt VetAnalyze) vet_repeated_code(mut vet Vet) {
 	rlock vt.repeated_expr {
 		for fn_name, ref_expr in vt.repeated_expr {
 			scope_name := if fn_name == '' { 'global scope' } else { 'function scope (${fn_name})' }
@@ -127,7 +129,7 @@ fn (mut vt VetAnalyze) vet_repeated_code() {
 				}
 				for file, info_pos in info {
 					for k, pos in info_pos {
-						vt.vet.notice_with_file(file, '${expr} occurs ${k + 1}/${occurrences} times in ${scope_name}.',
+						vet.notice_with_file(file, '${expr} occurs ${k + 1}/${occurrences} times in ${scope_name}.',
 							pos.line_nr, .repeated_code)
 					}
 				}
@@ -137,8 +139,7 @@ fn (mut vt VetAnalyze) vet_repeated_code() {
 }
 
 fn (mut vt Vet) vet_code_analyze() {
-	vt.analyze.vet = vt
 	if vt.opt.repeated_code {
-		vt.analyze.vet_repeated_code()
+		vt.analyze.vet_repeated_code(mut vt)
 	}
 }

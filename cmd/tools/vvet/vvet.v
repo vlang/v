@@ -283,18 +283,18 @@ fn (mut vt Vet) stmt(stmt ast.Stmt) {
 		}
 		ast.AssertStmt {
 			vt.expr(stmt.expr)
-			vt.analyze.stmt(&vt, stmt)
 		}
 		ast.AssignStmt {
 			vt.exprs(stmt.left)
 			vt.exprs(stmt.right)
+			vt.analyze.stmt(&vt, stmt)
 		}
 		ast.FnDecl {
 			old_fn_decl := vt.analyze.cur_fn
 			vt.analyze.cur_fn = stmt
 			vt.stmts(stmt.stmts)
 			if vt.opt.fn_sizing {
-				vt.analyze.long_or_empty_fns(stmt)
+				vt.analyze.long_or_empty_fns(mut vt, stmt)
 			}
 			vt.analyze.cur_fn = old_fn_decl
 		}
