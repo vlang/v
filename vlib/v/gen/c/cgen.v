@@ -158,6 +158,7 @@ mut:
 	inside_for_c_stmt         bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
 	inside_cast               bool
+	inside_selector           bool
 	inside_memset             bool
 	inside_const              bool
 	inside_array_item         bool
@@ -4008,7 +4009,12 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					}
 					for i, typ in field.smartcasts {
 						if i == 0 && is_option_unwrap {
-							g.write('(*(${g.styp(typ)}*)')
+							deref := if g.inside_selector {
+								'*'.repeat(field.smartcasts.last().nr_muls() + 1)
+							} else {
+								'*'
+							}
+							g.write('(${deref}(${g.styp(typ)}*)')
 						}
 						g.write('(')
 						if field_sym.kind == .sum_type && !is_option {
@@ -4107,6 +4113,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if field_is_opt {
 		g.write('((${g.base_type(field_typ)})')
 	}
+	old_inside_selector := g.inside_selector
+	g.inside_selector = node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
 	n_ptr := node.expr_type.nr_muls() - 1
 	if n_ptr > 0 {
 		g.write2('(', '*'.repeat(n_ptr))
@@ -4115,6 +4123,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	} else {
 		g.expr(node.expr)
 	}
+	g.inside_selector = old_inside_selector
 	if field_is_opt {
 		g.write(')')
 	}
