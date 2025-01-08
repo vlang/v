@@ -69,7 +69,8 @@ pub enum Nid {
 }
 
 @[params]
-struct CurveOptions {
+pub struct CurveOptions {
+pub mut:
 	nid Nid = .prime256v1 // default to NIST P-256 curve
 }
 
@@ -344,7 +345,7 @@ pub enum HashConfig {
 
 @[params]
 pub struct SignerOpts {
-mut:
+pub mut:
 	hash_config HashConfig = .with_recomended_hash
 	// make sense when HashConfig != with_recomended_hash
 	allow_smaller_size bool
