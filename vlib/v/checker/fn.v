@@ -3379,7 +3379,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		// error: incompatible function pointer types passing
 		//                            'int (string *, string *)'  (aka 'int (struct string *, struct string *)')
 		//       to parameter of type 'int (*)(voidptr, voidptr)' (aka 'int (*)(void *, void *)')
-		arg0.expr = ast.CastExpr{
+		node.args[0].expr = ast.CastExpr{
 			expr:      arg0.expr
 			typ:       ast.voidptr_type
 			typname:   'voidptr'
