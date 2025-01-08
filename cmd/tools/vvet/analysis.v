@@ -21,9 +21,9 @@ fn (mut vt Vet) repeated_code(expr ast.Expr) {
 		ast.CallExpr {
 			lock vt.analysis.repeated {
 				if expr.is_static_method || expr.is_method {
-					vt.analysis.repeated['${expr.left}.${expr.name}(${expr.args})'][vt.file] << expr.pos
+					vt.analysis.repeated['${expr.left}.${expr.name}(${expr.args.map(it.str()).join(', ')})'][vt.file] << expr.pos
 				} else {
-					vt.analysis.repeated['${expr.mod}.${expr.name}(${expr.args})'][vt.file] << expr.pos
+					vt.analysis.repeated['${expr.mod}.${expr.name}(${expr.args.map(it.str()).join(', ')})'][vt.file] << expr.pos
 				}
 			}
 		}
