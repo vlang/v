@@ -12,6 +12,8 @@ const infixexpr_cutoff = 5
 const selectorexpr_cutoff = 10
 const callexpr_cutoff = 10
 
+const long_fns_cutoff = 300
+
 struct VetAnalysis {
 mut:
 	repeated_expr_cutoff shared map[string]int // repeated code cutoff	
@@ -69,7 +71,7 @@ fn (mut vt Vet) long_or_empty_fns(fn_decl ast.FnDecl) {
 	} else {
 		fn_decl.stmts.last().pos.line_nr - fn_decl.pos.line_nr
 	}
-	if nr_lines > 300 {
+	if nr_lines > long_fns_cutoff {
 		vt.notice('Long function - ${nr_lines} lines long.', fn_decl.pos.line_nr, .long_fns)
 	} else if nr_lines == 0 {
 		vt.notice('Empty function.', fn_decl.pos.line_nr, .empty_fn)
