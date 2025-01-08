@@ -3142,21 +3142,22 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.table.sym(unaliased_left_type).info as ast.Array
 	}
 	elem_typ = array_info.elem_type
+	mut arg0 := if node.args.len > 0 { node.args[0] } else { ast.CallArg{} }
 	if method_name in ['filter', 'map', 'any', 'all', 'count'] {
-		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
-			if node.args[0].expr.params.len != 1 {
+		if node.args.len > 0 && mut arg0.expr is ast.LambdaExpr {
+			if arg0.expr.params.len != 1 {
 				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
-					node.args[0].expr.pos)
+					arg0.expr.pos)
 				return ast.void_type
 			}
 			if method_name == 'map' {
-				c.lambda_expr_fix_type_of_param(mut node.args[0].expr, mut node.args[0].expr.params[0],
+				c.lambda_expr_fix_type_of_param(mut arg0.expr, mut arg0.expr.params[0],
 					elem_typ)
-				le_type := c.expr(mut node.args[0].expr.expr)
+				le_type := c.expr(mut arg0.expr.expr)
 				// eprintln('>>>>> node.args[0].expr: ${ast.Expr(node.args[0].expr)} | elem_typ: ${elem_typ} | etype: ${le_type}')
-				c.support_lambda_expr_one_param(elem_typ, le_type, mut node.args[0].expr)
+				c.support_lambda_expr_one_param(elem_typ, le_type, mut arg0.expr)
 			} else {
-				c.support_lambda_expr_one_param(elem_typ, ast.bool_type, mut node.args[0].expr)
+				c.support_lambda_expr_one_param(elem_typ, ast.bool_type, mut arg0.expr)
 			}
 		} else {
 			// position of `it` doesn't matter
@@ -3169,10 +3170,10 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					node.pos)
 				return ast.void_type
 			} else {
-				arg_type := c.expr(mut node.args[0].expr)
+				arg_type := c.expr(mut arg0.expr)
 				if arg_type !in [ast.int_type, ast.int_literal_type] {
 					c.error('the first argument of `array.insert()` should be integer',
-						node.args[0].expr.pos())
+						arg0.expr.pos())
 					return ast.void_type
 				}
 			}
@@ -3215,10 +3216,10 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			c.error('`.${method_name}()` expected 1 argument, but got ${node.args.len}',
 				node.pos)
 		} else {
-			if mut node.args[0].expr is ast.LambdaExpr {
-				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
+			if mut arg0.expr is ast.LambdaExpr {
+				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut arg0.expr)
 			}
-			arg_type := c.expr(mut node.args[0].expr)
+			arg_type := c.expr(mut arg0.expr)
 			arg_sym := c.table.sym(arg_type)
 			if arg_sym.kind == .function {
 				func_info := arg_sym.info as ast.FnType
@@ -3237,12 +3238,12 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					}
 				}
 			}
-			node.args[0].typ = arg_type
+			arg0.typ = arg_type
 			if method := c.table.find_method(left_sym, method_name) {
 				c.check_expected_call_arg(arg_type, method.params[1].typ, node.language,
-					node.args[0]) or {
+					arg0) or {
 					c.error('${err.msg()} in argument 1 to `${left_sym.name}.${method_name}`',
-						node.args[0].pos)
+						arg0.pos)
 				}
 			}
 			if method_name == 'sort_with_compare' {
@@ -3268,24 +3269,24 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if node.args.len > 1 {
 			c.error('expected 0 or 1 argument, but got ${node.args.len}', node.pos)
 		} else if node.args.len == 1 {
-			if mut node.args[0].expr is ast.LambdaExpr {
-				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.bool_type, mut node.args[0].expr)
-			} else if node.args[0].expr is ast.InfixExpr {
-				c.check_sort_external_variable_access(node.args[0].expr)
-				if node.args[0].expr.op !in [.gt, .lt] {
+			if mut arg0.expr is ast.LambdaExpr {
+				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.bool_type, mut arg0.expr)
+			} else if mut arg0.expr is ast.InfixExpr {
+				c.check_sort_external_variable_access(arg0.expr)
+				if arg0.expr.op !in [.gt, .lt] {
 					c.error('`.${method_name}()` can only use `<` or `>` comparison',
 						node.pos)
 				}
-				left_name := '${node.args[0].expr.left}'[0]
-				right_name := '${node.args[0].expr.right}'[0]
+				left_name := '${arg0.expr.left}'[0]
+				right_name := '${arg0.expr.right}'[0]
 				if left_name !in [`a`, `b`] || right_name !in [`a`, `b`] {
 					c.error('`.${method_name}()` can only use `a` or `b` as argument, e.g. `arr.${method_name}(a < b)`',
 						node.pos)
 				} else if left_name == right_name {
 					c.error('`.${method_name}()` cannot use same argument', node.pos)
 				}
-				if node.args[0].expr.left !in [ast.CallExpr, ast.Ident, ast.SelectorExpr, ast.IndexExpr]
-					|| node.args[0].expr.right !in [ast.CallExpr, ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
+				if arg0.expr.left !in [ast.CallExpr, ast.Ident, ast.SelectorExpr, ast.IndexExpr]
+					|| arg0.expr.right !in [ast.CallExpr, ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
 					c.error('`.${method_name}()` can only use ident, index, selector or call as argument, \ne.g. `arr.${method_name}(a < b)`, `arr.${method_name}(a.id < b.id)`, `arr.${method_name}(a[0] < b[0])`',
 						node.pos)
 				}
@@ -3303,7 +3304,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		elem_sym := c.table.sym(elem_typ)
 		if elem_sym.kind == .thread {
 			if node.args.len != 0 {
-				c.error('`.wait()` does not have any arguments', node.args[0].pos)
+				c.error('`.wait()` does not have any arguments', arg0.pos)
 			}
 			thread_ret_type := c.unwrap_generic(elem_sym.thread_info().return_type)
 			if thread_ret_type.has_flag(.option) {
@@ -3331,7 +3332,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		arg_sym := c.table.sym(arg_type)
 		ret_type := match arg_sym.info {
 			ast.FnType {
-				if node.args[0].expr is ast.SelectorExpr {
+				if arg0.expr is ast.SelectorExpr {
 					arg_type
 				} else {
 					arg_sym.info.func.return_type
@@ -3365,7 +3366,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		node.return_type = ast.int_type
 	} else if method_name == 'clone' {
 		if node.args.len != 0 {
-			c.error('`.clone()` does not have any arguments', node.args[0].pos)
+			c.error('`.clone()` does not have any arguments', arg0.pos)
 		}
 		c.ensure_same_array_return_type(mut node, left_type)
 	} else if method_name == 'sorted' {
@@ -3378,11 +3379,11 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		// error: incompatible function pointer types passing
 		//                            'int (string *, string *)'  (aka 'int (struct string *, struct string *)')
 		//       to parameter of type 'int (*)(voidptr, voidptr)' (aka 'int (*)(void *, void *)')
-		node.args[0].expr = ast.CastExpr{
-			expr:      node.args[0].expr
+		arg0.expr = ast.CastExpr{
+			expr:      arg0.expr
 			typ:       ast.voidptr_type
 			typname:   'voidptr'
-			expr_type: c.expr(mut node.args[0].expr)
+			expr_type: c.expr(mut arg0.expr)
 			pos:       node.pos
 		}
 	} else if method_name == 'sort' {
@@ -3392,11 +3393,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if node.args.len != 1 {
 			c.error('`.contains()` expected 1 argument, but got ${node.args.len}', node.pos)
 		} else if !left_sym.has_method('contains') {
-			arg_typ := c.unwrap_generic(c.expr(mut node.args[0].expr))
+			arg_typ := c.unwrap_generic(c.expr(mut arg0.expr))
 			c.check_expected_call_arg(arg_typ, c.unwrap_generic(elem_typ), node.language,
-				node.args[0]) or {
-				c.error('${err.msg()} in argument 1 to `.contains()`', node.args[0].pos)
-			}
+				arg0) or { c.error('${err.msg()} in argument 1 to `.contains()`', arg0.pos) }
 		}
 		for i, mut arg in node.args {
 			node.args[i].typ = c.expr(mut arg.expr)
@@ -3406,11 +3405,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if node.args.len != 1 {
 			c.error('`.index()` expected 1 argument, but got ${node.args.len}', node.pos)
 		} else if !left_sym.has_method('index') {
-			arg_typ := c.unwrap_generic(c.expr(mut node.args[0].expr))
+			arg_typ := c.unwrap_generic(c.expr(mut arg0.expr))
 			c.check_expected_call_arg(arg_typ, c.unwrap_generic(elem_typ), node.language,
-				node.args[0]) or {
-				c.error('${err.msg()} in argument 1 to `.index()`', node.args[0].pos)
-			}
+				arg0) or { c.error('${err.msg()} in argument 1 to `.index()`', arg0.pos) }
 		}
 		for i, mut arg in node.args {
 			node.args[i].typ = c.expr(mut arg.expr)
@@ -3429,7 +3426,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			}
 		}
 		if node.args.len != 0 {
-			c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
+			c.error('`.${method_name}()` does not have any arguments', arg0.pos)
 		}
 		node.return_type = array_info.elem_type
 		if method_name == 'pop' {
@@ -3450,9 +3447,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if node.args.len != 1 {
 			c.error('`.delete()` expected 1 argument, but got ${node.args.len}', node.pos)
 		} else {
-			arg_typ := c.unwrap_generic(c.expr(mut node.args[0].expr))
-			c.check_expected_call_arg(arg_typ, ast.int_type, node.language, node.args[0]) or {
-				c.error('${err.msg()} in argument 1 to `.delete()`', node.args[0].pos)
+			arg_typ := c.unwrap_generic(c.expr(mut arg0.expr))
+			c.check_expected_call_arg(arg_typ, ast.int_type, node.language, arg0) or {
+				c.error('${err.msg()} in argument 1 to `.delete()`', arg0.pos)
 			}
 		}
 		node.return_type = ast.void_type
