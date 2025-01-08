@@ -288,10 +288,13 @@ fn (mut vt Vet) stmt(stmt ast.Stmt) {
 			vt.exprs(stmt.right)
 		}
 		ast.FnDecl {
+			old_fn_decl := vt.analysis.cur_fn
+			vt.analysis.cur_fn = stmt
 			vt.stmts(stmt.stmts)
 			if vt.opt.fn_sizing {
 				vt.long_or_empty_fns(stmt)
 			}
+			vt.analysis.cur_fn = old_fn_decl
 		}
 		else {}
 	}
