@@ -62,5 +62,7 @@ fn (mut vt Vet) vet_repeated_code() {
 }
 
 fn (mut vt Vet) vet_code_analysis() {
-	vt.vet_repeated_code()
+	if vt.opt.repeated_code {
+		vt.vet_repeated_code()
+	}
 }

@@ -29,6 +29,8 @@ struct Options {
 	show_warnings       bool
 	use_color           bool
 	doc_private_fns_too bool
+	fn_sizing           bool
+	repeated_code       bool
 mut:
 	is_vfmt_off bool
 }
@@ -47,6 +49,8 @@ fn main() {
 			doc_private_fns_too: '-p' in vet_options
 			use_color:           '-color' in vet_options
 				|| (term_colors && '-nocolor' !in vet_options)
+			repeated_code:       '-r' in vet_options
+			fn_sizing:           '-F' in vet_options
 		}
 	}
 	mut paths := cmdline.only_non_options(vet_options)
@@ -285,7 +289,9 @@ fn (mut vt Vet) stmt(stmt ast.Stmt) {
 		}
 		ast.FnDecl {
 			vt.stmts(stmt.stmts)
-			vt.long_or_empty_fns(stmt)
+			if vt.opt.fn_sizing {
+				vt.long_or_empty_fns(stmt)
+			}
 		}
 		else {}
 	}
