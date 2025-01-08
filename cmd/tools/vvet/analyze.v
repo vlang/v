@@ -73,8 +73,8 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 		}
 		ast.SelectorExpr {
 			// nested selectors
-			if expr.expr is ast.SelectorExpr {
-				vt.save_expr(selectorexpr_cutoff, '${ast.Expr(expr.expr).str()}.${expr.field_name}',
+			if expr.expr !is ast.Ident {
+				vt.save_expr(selectorexpr_cutoff, '${expr.expr.str()}.${expr.field_name}',
 					vet.file, expr.pos)
 			}
 		}
