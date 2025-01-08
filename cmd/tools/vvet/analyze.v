@@ -34,7 +34,7 @@ fn (mut vt VetAnalyze) stmt(vet &Vet, stmt ast.Stmt) {
 		ast.AssignStmt {
 			if stmt.op == .plus_assign {
 				if stmt.right[0] in [ast.StringLiteral, ast.StringInterLiteral] {
-					vt.add_repeated_code(stringconcat_cutoff, '${stmt.left[0].str()} += ${stmt.right[0].str()}',
+					vt.save_expr(stringconcat_cutoff, '${stmt.left[0].str()} += ${stmt.right[0].str()}',
 						vet.file, stmt.pos)
 				}
 			}
@@ -43,8 +43,8 @@ fn (mut vt VetAnalyze) stmt(vet &Vet, stmt ast.Stmt) {
 	}
 }
 
-// add_repeated_code registers a repeated code occurrence
-fn (mut vt VetAnalyze) add_repeated_code(cutoff int, expr string, file string, pos token.Pos) {
+// save_expr registers a repeated code occurrence
+fn (mut vt VetAnalyze) save_expr(cutoff int, expr string, file string, pos token.Pos) {
 	lock vt.repeated_expr {
 		vt.repeated_expr[vt.cur_fn.name][expr][file] << pos
 	}
@@ -63,41 +63,38 @@ fn (mut vt VetAnalyze) exprs(vet &Vet, exprs []ast.Expr) {
 fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 	match expr {
 		ast.InfixExpr {
-			vt.add_repeated_code(infixexpr_cutoff, '${expr.left} ${expr.op} ${expr.right}',
-				vet.file, expr.pos)
+			vt.save_expr(infixexpr_cutoff, '${expr.left} ${expr.op} ${expr.right}', vet.file,
+				expr.pos)
 		}
 		ast.IndexExpr {
-			vt.add_repeated_code(indexexpr_cutoff, '${expr.left}[${expr.index}]', vet.file,
-				expr.pos)
+			vt.save_expr(indexexpr_cutoff, '${expr.left}[${expr.index}]', vet.file, expr.pos)
 		}
 		ast.SelectorExpr {
 			// nested selectors
 			if expr.expr is ast.SelectorExpr {
-				vt.add_repeated_code(selectorexpr_cutoff, '${ast.Expr(expr.expr).str()}.${expr.field_name}',
+				vt.save_expr(selectorexpr_cutoff, '${ast.Expr(expr.expr).str()}.${expr.field_name}',
 					vet.file, expr.pos)
 			}
 		}
 		ast.CallExpr {
 			if expr.is_static_method || expr.is_method {
-				vt.add_repeated_code(callexpr_cutoff, '${expr.left}.${expr.name}(${expr.args.map(it.str()).join(', ')})',
+				vt.save_expr(callexpr_cutoff, '${expr.left}.${expr.name}(${expr.args.map(it.str()).join(', ')})',
 					vet.file, expr.pos)
 			} else {
-				vt.add_repeated_code(callexpr_cutoff, '${expr.name}(${expr.args.map(it.str()).join(', ')})',
+				vt.save_expr(callexpr_cutoff, '${expr.name}(${expr.args.map(it.str()).join(', ')})',
 					vet.file, expr.pos)
 			}
 		}
 		ast.AsCast {
-			vt.add_repeated_code(ascast_cutoff, ast.Expr(expr).str(), vet.file, expr.pos)
+			vt.save_expr(ascast_cutoff, ast.Expr(expr).str(), vet.file, expr.pos)
 		}
 		ast.StringLiteral {
 			if expr.val.len > stringliteral_min_size {
-				vt.add_repeated_code(stringliteral_cutoff, ast.Expr(expr).str(), vet.file,
-					expr.pos)
+				vt.save_expr(stringliteral_cutoff, ast.Expr(expr).str(), vet.file, expr.pos)
 			}
 		}
 		ast.StringInterLiteral {
-			vt.add_repeated_code(stringinterliteral_cutoff, ast.Expr(expr).str(), vet.file,
-				expr.pos)
+			vt.save_expr(stringinterliteral_cutoff, ast.Expr(expr).str(), vet.file, expr.pos)
 		}
 		else {}
 	}
