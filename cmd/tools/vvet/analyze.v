@@ -7,14 +7,14 @@ import v.token
 import arrays
 
 // cutoffs
-const indexexpr_cutoff = 5
-const infixexpr_cutoff = 5
+const indexexpr_cutoff = 10
+const infixexpr_cutoff = 10
 const selectorexpr_cutoff = 10
 const callexpr_cutoff = 10
 const stringinterliteral_cutoff = 10
 const stringliteral_cutoff = 10
 const ascast_cutoff = 10
-const stringconcat_cutoff = 5
+const stringconcat_cutoff = 10
 
 // minimum size for string literals
 const stringliteral_min_size = 20

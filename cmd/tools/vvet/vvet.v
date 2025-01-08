@@ -379,6 +379,9 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 			vt.expr(expr.update_expr)
 			vt.exprs(expr.init_fields.map(it.expr))
 		}
+		ast.DumpExpr {
+			vt.expr(expr.expr)
+		}
 		else {}
 	}
 }
