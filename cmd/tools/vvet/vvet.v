@@ -324,7 +324,9 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 		ast.InfixExpr {
 			vt.vet_in_condition(expr)
 			vt.vet_empty_str(expr)
+			vt.expr(expr.left)
 			vt.expr(expr.right)
+			vt.repeated_code(expr)
 		}
 		ast.ParExpr {
 			vt.expr(expr.expr)
@@ -335,6 +337,7 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 			vt.repeated_code(expr)
 		}
 		ast.MatchExpr {
+			vt.expr(expr.cond)
 			for b in expr.branches {
 				vt.stmts(b.stmts)
 			}
@@ -351,6 +354,13 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 		ast.IndexExpr {
 			vt.repeated_code(expr)
 		}
+		ast.AsCast {
+			vt.repeated_code(expr)
+			vt.expr(expr.expr)
+		}
+		ast.UnsafeExpr {
+			vt.expr(expr.expr)
+		}
 		else {}
 	}
 }
@@ -366,11 +376,7 @@ fn (mut vt Vet) const_decl(stmt ast.ConstDecl) {
 }
 
 fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {
-	if expr.left is ast.InfixExpr {
-		vt.expr(expr.left)
-	} else if expr.right is ast.InfixExpr {
-		vt.expr(expr.right)
-	} else if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral {
+	if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral {
 		operand := (expr.left as ast.SelectorExpr) // TODO: remove as-casts when multiple conds can be smart-casted.
 		if operand.expr is ast.Ident && operand.expr.info.typ == ast.string_type_idx
 			&& operand.field_name == 'len' {

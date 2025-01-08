@@ -6,47 +6,63 @@ import v.ast
 import v.token
 import arrays
 
+// cutoffs
+const indexexpr_cutoff = 5
+const infixexpr_cutoff = 5
+const selectorexpr_cutoff = 10
+const callexpr_cutoff = 10
+
 struct VetAnalysis {
 mut:
-	repeated_global    shared map[string]map[string][]token.Pos            // repeated exprs in whole codebase
-	repeated_fn_scoped shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
-	cur_fn             ast.FnDecl // current fn declaration
+	repeated_expr_cutoff shared map[string]int // repeated code cutoff	
+	repeated_expr        shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
+	cur_fn               ast.FnDecl // current fn declaration
 }
 
-fn (mut vt Vet) add_repeated_code(expr string, pos token.Pos) {
-	lock vt.analysis.repeated_global {
-		vt.analysis.repeated_global[expr][vt.file] << pos
+// add_repeated_code registers a repeated code occurrence
+fn (mut vt Vet) add_repeated_code(cutoff int, expr string, pos token.Pos) {
+	lock vt.analysis.repeated_expr {
+		vt.analysis.repeated_expr[vt.analysis.cur_fn.name][expr][vt.file] << pos
 	}
-	lock vt.analysis.repeated_fn_scoped {
-		vt.analysis.repeated_fn_scoped[vt.analysis.cur_fn.name][expr][vt.file] << pos
+	lock vt.analysis.repeated_expr_cutoff {
+		vt.analysis.repeated_expr_cutoff[expr] = cutoff
 	}
 }
 
+// repeated_code checks for repeated code
 fn (mut vt Vet) repeated_code(expr ast.Expr) {
 	match expr {
+		ast.InfixExpr {
+			vt.add_repeated_code(infixexpr_cutoff, '${expr.left} ${expr.op} ${expr.right}',
+				expr.pos)
+		}
 		ast.IndexExpr {
-			vt.add_repeated_code('${expr.left}[${expr.index}]', expr.pos)
+			vt.add_repeated_code(indexexpr_cutoff, '${expr.left}[${expr.index}]', expr.pos)
 		}
 		ast.SelectorExpr {
 			// nested selectors
 			if expr.expr is ast.SelectorExpr {
-				vt.add_repeated_code('${ast.Expr(expr.expr).str()}.${expr.field_name}',
+				vt.add_repeated_code(selectorexpr_cutoff, '${ast.Expr(expr.expr).str()}.${expr.field_name}',
 					expr.pos)
 			}
 		}
 		ast.CallExpr {
 			if expr.is_static_method || expr.is_method {
-				vt.add_repeated_code('${expr.left}.${expr.name}(${expr.args.map(it.str()).join(', ')})',
+				vt.add_repeated_code(callexpr_cutoff, '${expr.left}.${expr.name}(${expr.args.map(it.str()).join(', ')})',
 					expr.pos)
 			} else {
-				vt.add_repeated_code('${expr.name}(${expr.args.map(it.str()).join(', ')})',
+				vt.add_repeated_code(callexpr_cutoff, '${expr.name}(${expr.args.map(it.str()).join(', ')})',
 					expr.pos)
 			}
+		}
+		ast.AsCast {
+			vt.add_repeated_code(10, ast.Expr(expr).str(), expr.pos)
 		}
 		else {}
 	}
 }
 
+// long_or_empty_fns checks for long or empty functions
 fn (mut vt Vet) long_or_empty_fns(fn_decl ast.FnDecl) {
 	nr_lines := if fn_decl.stmts.len == 0 {
 		0
@@ -60,33 +76,19 @@ fn (mut vt Vet) long_or_empty_fns(fn_decl ast.FnDecl) {
 	}
 }
 
+// vet_fn_analysis reports repeated code by scope
 fn (mut vt Vet) vet_repeated_code() {
-	rlock vt.analysis.repeated_global {
-		for expr, info in vt.analysis.repeated_global {
-			occurrences := arrays.sum(info.values().map(it.len)) or { 0 }
-			if occurrences < 30 {
-				continue
-			}
-			for file, info_pos in info {
-				for pos in info_pos {
-					vt.notice_with_file(file, '${expr} occurs ${occurrences} times on ${info.len} file(s).',
-						pos.line_nr, .repeated_code)
-				}
-			}
-		}
-	}
-
-	rlock vt.analysis.repeated_fn_scoped {
-		for fn_name, ref_expr in vt.analysis.repeated_fn_scoped {
+	rlock vt.analysis.repeated_expr {
+		for fn_name, ref_expr in vt.analysis.repeated_expr {
 			scope_name := if fn_name == '' { 'global scope' } else { 'function scope (${fn_name})' }
 			for expr, info in ref_expr {
 				occurrences := arrays.sum(info.values().map(it.len)) or { 0 }
-				if occurrences < 15 {
+				if occurrences < vt.analysis.repeated_expr_cutoff[expr] {
 					continue
 				}
 				for file, info_pos in info {
-					for pos in info_pos {
-						vt.notice_with_file(file, '${expr} occurs ${occurrences} times in ${scope_name}.',
+					for k, pos in info_pos {
+						vt.notice_with_file(file, '${expr} occurs ${k + 1}/${occurrences} times in ${scope_name}.',
 							pos.line_nr, .repeated_code)
 					}
 				}
