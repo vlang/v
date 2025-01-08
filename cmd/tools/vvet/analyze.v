@@ -29,6 +29,7 @@ mut:
 	cur_fn               ast.FnDecl // current fn declaration
 }
 
+// stmt checks for repeated code in statements
 fn (mut vt VetAnalyze) stmt(vet &Vet, stmt ast.Stmt) {
 	match stmt {
 		ast.AssignStmt {
@@ -53,6 +54,7 @@ fn (mut vt VetAnalyze) save_expr(cutoff int, expr string, file string, pos token
 	}
 }
 
+// exprs checks for repeated code in expressions
 fn (mut vt VetAnalyze) exprs(vet &Vet, exprs []ast.Expr) {
 	for expr in exprs {
 		vt.expr(vet, expr)
@@ -135,6 +137,7 @@ fn (mut vt VetAnalyze) vet_repeated_code(mut vet Vet) {
 	}
 }
 
+// vet_code_analyze performs code analysis
 fn (mut vt Vet) vet_code_analyze() {
 	if vt.opt.repeated_code {
 		vt.analyze.vet_repeated_code(mut vt)
