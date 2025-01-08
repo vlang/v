@@ -11,6 +11,7 @@ import v.help
 import term
 import arrays
 
+@[heap]
 struct Vet {
 mut:
 	opt            Options
@@ -19,7 +20,7 @@ mut:
 	notices        shared []VetError
 	file           string
 	filtered_lines FilteredLines
-	analysis       VetAnalysis
+	analyze        VetAnalyze
 }
 
 struct Options {
@@ -87,7 +88,7 @@ fn main() {
 			})
 		}
 	}
-	vt.vet_code_analysis()
+	vt.vet_code_analyze()
 	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
 	for n in vt.notices {
 		eprintln(vt.e2string(n))
@@ -282,19 +283,23 @@ fn (mut vt Vet) stmt(stmt ast.Stmt) {
 		}
 		ast.AssertStmt {
 			vt.expr(stmt.expr)
+			vt.analyze.stmt(&vt, stmt)
 		}
 		ast.AssignStmt {
 			vt.exprs(stmt.left)
 			vt.exprs(stmt.right)
 		}
 		ast.FnDecl {
-			old_fn_decl := vt.analysis.cur_fn
-			vt.analysis.cur_fn = stmt
+			old_fn_decl := vt.analyze.cur_fn
+			vt.analyze.cur_fn = stmt
 			vt.stmts(stmt.stmts)
 			if vt.opt.fn_sizing {
-				vt.long_or_empty_fns(stmt)
+				vt.analyze.long_or_empty_fns(stmt)
 			}
-			vt.analysis.cur_fn = old_fn_decl
+			vt.analyze.cur_fn = old_fn_decl
+		}
+		ast.StructDecl {
+			vt.exprs(stmt.fields.map(it.default_expr))
 		}
 		else {}
 	}
@@ -313,20 +318,25 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 		}
 		ast.StringLiteral {
 			vt.filtered_lines.assigns(expr.pos)
+			vt.analyze.expr(&vt, expr)
 		}
 		ast.StringInterLiteral {
 			vt.filtered_lines.assigns(expr.pos)
-			vt.exprs(expr.exprs)
+			vt.analyze.expr(&vt, expr)
 		}
 		ast.ArrayInit {
 			vt.filtered_lines.assigns(expr.pos)
+			vt.expr(expr.len_expr)
+			vt.expr(expr.cap_expr)
+			vt.expr(expr.init_expr)
+			vt.exprs(expr.exprs)
 		}
 		ast.InfixExpr {
 			vt.vet_in_condition(expr)
 			vt.vet_empty_str(expr)
 			vt.expr(expr.left)
 			vt.expr(expr.right)
-			vt.repeated_code(expr)
+			vt.analyze.expr(&vt, expr)
 		}
 		ast.ParExpr {
 			vt.expr(expr.expr)
@@ -334,11 +344,12 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 		ast.CallExpr {
 			vt.expr(expr.left)
 			vt.exprs(expr.args.map(it.expr))
-			vt.repeated_code(expr)
+			vt.analyze.expr(&vt, expr)
 		}
 		ast.MatchExpr {
 			vt.expr(expr.cond)
 			for b in expr.branches {
+				vt.exprs(b.exprs)
 				vt.stmts(b.stmts)
 			}
 		}
@@ -349,17 +360,24 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 			}
 		}
 		ast.SelectorExpr {
-			vt.repeated_code(expr)
+			vt.analyze.expr(&vt, expr)
 		}
 		ast.IndexExpr {
-			vt.repeated_code(expr)
+			vt.analyze.expr(&vt, expr)
 		}
 		ast.AsCast {
-			vt.repeated_code(expr)
+			vt.analyze.expr(&vt, expr)
 			vt.expr(expr.expr)
 		}
 		ast.UnsafeExpr {
 			vt.expr(expr.expr)
+		}
+		ast.CastExpr {
+			vt.expr(expr.expr)
+		}
+		ast.StructInit {
+			vt.expr(expr.update_expr)
+			vt.exprs(expr.init_fields.map(it.expr))
 		}
 		else {}
 	}
