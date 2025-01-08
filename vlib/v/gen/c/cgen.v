@@ -5512,11 +5512,14 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		g.inside_return = old_inside_return
 	}
 
+	expr0 := if node.exprs.len > 0 { node.exprs[0] } else { ast.empty_expr }
+	type0 := if node.exprs.len > 0 { node.types[0] } else { ast.void_type }
+
 	if node.exprs.len > 0 {
 		// skip `return $vweb.html()`
-		if node.exprs[0] is ast.ComptimeCall && node.exprs[0].is_vweb {
+		if expr0 is ast.ComptimeCall && expr0.is_vweb {
 			g.inside_return_tmpl = true
-			g.expr(node.exprs[0])
+			g.expr(expr0)
 			g.inside_return_tmpl = false
 			g.writeln(';')
 			return
@@ -5562,19 +5565,18 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	ret_typ := g.ret_styp(g.unwrap_generic(fn_ret_type))
 
 	// `return fn_call_opt()`
-	if node.exprs.len == 1 && (fn_return_is_option || fn_return_is_result)
-		&& node.exprs[0] is ast.CallExpr && node.exprs[0].return_type == g.fn_decl.return_type
-		&& node.exprs[0].or_block.kind == .absent {
+	if node.exprs.len == 1 && (fn_return_is_option || fn_return_is_result) && expr0 is ast.CallExpr
+		&& expr0.return_type == g.fn_decl.return_type && expr0.or_block.kind == .absent {
 		if g.defer_stmts.len > 0 {
 			g.write('${ret_typ} ${tmpvar} = ')
-			g.expr(node.exprs[0])
+			g.expr(expr0)
 			g.writeln(';')
 			g.write_defer_stmts_when_needed()
 			g.writeln('return ${tmpvar};')
 		} else {
 			g.write_defer_stmts_when_needed()
 			g.write('return ')
-			g.expr(node.exprs[0])
+			g.expr(expr0)
 			g.writeln(';')
 		}
 		return
@@ -5586,14 +5588,14 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		|| (fn_return_is_multi && node.types.any(g.table.final_sym(it).kind == .array_fixed))
 	// handle promoting none/error/function returning _option'
 	if fn_return_is_option {
-		option_none := node.exprs[0] is ast.None
-		ftyp := g.styp(node.types[0])
+		option_none := expr0 is ast.None
+		ftyp := g.styp(type0)
 		mut is_regular_option := ftyp == '_option'
-		if option_none || is_regular_option || node.types[0] == ast.error_type_idx {
+		if option_none || is_regular_option || type0 == ast.error_type_idx {
 			if g.fn_decl != unsafe { nil } && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
 				g.write('${ret_typ} ${test_error_var} = ')
-				g.gen_option_error(fn_ret_type, node.exprs[0])
+				g.gen_option_error(fn_ret_type, expr0)
 				g.writeln(';')
 				g.write_defer_stmts_when_needed()
 				g.gen_failing_return_error_for_test_fn(node, test_error_var)
@@ -5626,13 +5628,13 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 	// handle promoting error/function returning result
 	if fn_return_is_result {
-		ftyp := g.styp(node.types[0])
+		ftyp := g.styp(type0)
 		mut is_regular_result := ftyp == result_name
-		if is_regular_result || node.types[0] == ast.error_type_idx {
+		if is_regular_result || type0 == ast.error_type_idx {
 			if g.fn_decl != unsafe { nil } && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
 				g.write('${ret_typ} ${test_error_var} = ')
-				g.gen_result_error(fn_ret_type, node.exprs[0])
+				g.gen_result_error(fn_ret_type, expr0)
 				g.writeln(';')
 				g.write_defer_stmts_when_needed()
 				g.gen_failing_return_error_for_test_fn(node, test_error_var)
@@ -5777,30 +5779,29 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.pos)
 		}
 		// normal return
-		return_sym := g.table.final_sym(g.unwrap_generic(node.types[0]))
-		expr0 := node.exprs[0]
+		return_sym := g.table.final_sym(g.unwrap_generic(type0))
 		// `return opt_ok(expr)` for functions that expect an option
 		expr_type_is_opt := match expr0 {
 			ast.CallExpr {
 				expr0.return_type.has_flag(.option) && expr0.or_block.kind == .absent
 			}
 			else {
-				node.types[0].has_flag(.option)
+				type0.has_flag(.option)
 			}
 		}
 		if fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name {
 			if fn_return_is_fixed_array && (expr0 in [ast.StructInit, ast.CallExpr, ast.CastExpr]
 				|| (expr0 is ast.ArrayInit && expr0.has_callexpr))
-				&& g.table.final_sym(node.types[0]).kind == .array_fixed {
+				&& g.table.final_sym(type0).kind == .array_fixed {
 				styp := g.styp(fn_ret_type.clear_option_and_result())
 				if expr0 is ast.CallExpr {
-					tmp_var := g.expr_with_fixed_array(expr0, node.types[0], fn_ret_type)
+					tmp_var := g.expr_with_fixed_array(expr0, type0, fn_ret_type)
 					g.writeln('${ret_typ} ${tmpvar} = ${tmp_var};')
 				} else {
 					g.writeln('${ret_typ} ${tmpvar} = (${ret_typ}){ .state=0, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} };')
 					if expr0 is ast.StructInit {
 						g.write('memcpy(${tmpvar}.data, ')
-						tmp_var := g.expr_with_opt(expr0, node.types[0], fn_ret_type)
+						tmp_var := g.expr_with_opt(expr0, type0, fn_ret_type)
 						g.writeln('.data, sizeof(${styp}));')
 						if tmp_var != '' {
 							g.writeln('${tmpvar}.state = ${tmp_var}.state;')
