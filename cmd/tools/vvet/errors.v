@@ -125,15 +125,3 @@ fn (vt &Vet) e2string(err VetError) string {
 	}
 	return '${location} ${kind} ${err.message}'
 }
-
-fn (vt &Vet) report(err_kind ErrorKind, message string) string {
-	mut kind := '${err_kind}:'
-	if vt.opt.use_color {
-		kind = term.bold(match err_kind {
-			.warning { term.magenta(kind) }
-			.error { term.red(kind) }
-			.notice { term.yellow(kind) }
-		})
-	}
-	return '${kind} ${message}'
-}

@@ -14,18 +14,18 @@ mut:
 fn (mut vt Vet) repeated_code(expr ast.Expr) {
 	match expr {
 		ast.IndexExpr {
-			lock vt.analysis.repeated {
-				vt.analysis.repeated['${expr.left}[${expr.index}]'][vt.file] << expr.pos
-			}
+			// lock vt.analysis.repeated {
+			// 	vt.analysis.repeated['${expr.left}[${expr.index}]'][vt.file] << expr.pos
+			// }
 		}
 		ast.CallExpr {
-			lock vt.analysis.repeated {
-				if expr.is_static_method || expr.is_method {
-					vt.analysis.repeated['${expr.left}.${expr.name}(${expr.args.map(it.str()).join(', ')})'][vt.file] << expr.pos
-				} else {
-					vt.analysis.repeated['${expr.mod}.${expr.name}(${expr.args.map(it.str()).join(', ')})'][vt.file] << expr.pos
-				}
-			}
+			// lock vt.analysis.repeated {
+			// 	if expr.is_static_method || expr.is_method {
+			// 		vt.analysis.repeated['${expr.left}.${expr.name}(${expr.args.map(it.str()).join(', ')})'][vt.file] << expr.pos
+			// 	} else {
+			// 		vt.analysis.repeated['${expr.mod}.${expr.name}(${expr.args.map(it.str()).join(', ')})'][vt.file] << expr.pos
+			// 	}
+			// }
 		}
 		else {}
 	}
