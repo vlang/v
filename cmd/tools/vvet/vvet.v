@@ -14,11 +14,12 @@ import arrays
 struct Vet {
 mut:
 	opt            Options
-	errors         []VetError
-	warns          []VetError
-	notices        []VetError
+	errors         shared []VetError
+	warns          shared []VetError
+	notices        shared []VetError
 	file           string
 	filtered_lines FilteredLines
+	analysis       VetAnalysis
 }
 
 struct Options {
@@ -82,6 +83,7 @@ fn main() {
 			})
 		}
 	}
+	vt.vet_code_analysis()
 	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
 	for n in vt.notices {
 		eprintln(vt.e2string(n))
@@ -95,8 +97,10 @@ fn main() {
 		eprintln(vt.e2string(err))
 	}
 	if vfmt_err_count > 0 {
-		filtered_out := arrays.distinct(vt.errors.map(it.file_path))
-		eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
+		rlock vt.errors {
+			filtered_out := arrays.distinct(vt.errors.map(it.file_path))
+			eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
+		}
 	}
 	if vt.errors.len > 0 {
 		exit(1)
@@ -263,12 +267,26 @@ fn (mut vt Vet) stmts(stmts []ast.Stmt) {
 
 fn (mut vt Vet) stmt(stmt ast.Stmt) {
 	match stmt {
-		ast.ConstDecl { vt.const_decl(stmt) }
-		ast.ExprStmt { vt.expr(stmt.expr) }
-		ast.Return { vt.exprs(stmt.exprs) }
-		ast.AssertStmt { vt.expr(stmt.expr) }
-		ast.AssignStmt { vt.exprs(stmt.right) }
-		ast.FnDecl { vt.stmts(stmt.stmts) }
+		ast.ConstDecl {
+			vt.const_decl(stmt)
+		}
+		ast.ExprStmt {
+			vt.expr(stmt.expr)
+		}
+		ast.Return {
+			vt.exprs(stmt.exprs)
+		}
+		ast.AssertStmt {
+			vt.expr(stmt.expr)
+		}
+		ast.AssignStmt {
+			vt.exprs(stmt.left)
+			vt.exprs(stmt.right)
+		}
+		ast.FnDecl {
+			vt.stmts(stmt.stmts)
+			vt.long_or_empty_fns(stmt)
+		}
 		else {}
 	}
 }
@@ -301,6 +319,7 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 		ast.CallExpr {
 			vt.expr(expr.left)
 			vt.exprs(expr.args.map(it.expr))
+			vt.repeated_code(expr)
 		}
 		ast.MatchExpr {
 			for b in expr.branches {
@@ -312,6 +331,9 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 				vt.expr(b.cond)
 				vt.stmts(b.stmts)
 			}
+		}
+		ast.IndexExpr {
+			vt.repeated_code(expr)
 		}
 		else {}
 	}
