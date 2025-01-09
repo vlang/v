@@ -118,14 +118,15 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		g.expr(arg.expr)
 		g.writeln(';')
 	}
-	s_ret_typ := g.styp(node.call_expr.return_type)
-	if g.pref.os == .windows && node.call_expr.return_type != ast.void_type {
+	call_ret_type := node.call_expr.return_type
+	s_ret_typ := g.styp(call_ret_type)
+	if g.pref.os == .windows && call_ret_type != ast.void_type {
 		g.writeln('${arg_tmp_var}->ret_ptr = (void *) _v_malloc(sizeof(${s_ret_typ}));')
 	}
-	is_opt := node.call_expr.return_type.has_flag(.option)
-	is_res := node.call_expr.return_type.has_flag(.result)
+	is_opt := call_ret_type.has_flag(.option)
+	is_res := call_ret_type.has_flag(.result)
 	mut gohandle_name := ''
-	if node.call_expr.return_type == ast.void_type {
+	if call_ret_type == ast.void_type {
 		if is_opt {
 			gohandle_name = '__v_thread_Option_void'
 		} else if is_res {
@@ -134,13 +135,12 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			gohandle_name = '__v_thread'
 		}
 	} else {
-		ret_styp := g.styp(g.unwrap_generic(node.call_expr.return_type)).replace('*',
-			'_ptr')
+		ret_styp := g.styp(g.unwrap_generic(call_ret_type)).replace('*', '_ptr')
 		gohandle_name = '__v_thread_${ret_styp}'
 	}
 	if is_spawn {
 		if g.pref.os == .windows {
-			simple_handle := if node.is_expr && node.call_expr.return_type != ast.void_type {
+			simple_handle := if node.is_expr && call_ret_type != ast.void_type {
 				'thread_handle_${tmp}'
 			} else {
 				'thread_${tmp}'
@@ -148,7 +148,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			stack_size := g.get_cur_thread_stack_size(expr.name)
 			g.writeln('HANDLE ${simple_handle} = CreateThread(0, ${stack_size}, (LPTHREAD_START_ROUTINE)${wrapper_fn_name}, ${arg_tmp_var}, 0, 0); // fn: ${expr.name}')
 			g.writeln('if (!${simple_handle}) panic_lasterr(tos3("`go ${name}()`: "));')
-			if node.is_expr && node.call_expr.return_type != ast.void_type {
+			if node.is_expr && call_ret_type != ast.void_type {
 				g.writeln('${gohandle_name} thread_${tmp} = {')
 				g.writeln('\t.ret_ptr = ${arg_tmp_var}->ret_ptr,')
 				g.writeln2('\t.handle = thread_handle_${tmp}', '};')
@@ -195,12 +195,12 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			g.waiter_fn_definitions.writeln('${s_ret_typ} ${waiter_fn_name}(${gohandle_name} thread);')
 			g.gowrappers.writeln('\n${s_ret_typ} ${waiter_fn_name}(${gohandle_name} thread) {')
 			mut c_ret_ptr_ptr := 'NULL'
-			if node.call_expr.return_type != ast.void_type {
+			if call_ret_type != ast.void_type {
 				g.gowrappers.writeln('\t${s_ret_typ}* ret_ptr;')
 				c_ret_ptr_ptr = '&ret_ptr'
 			}
 			if g.pref.os == .windows {
-				if node.call_expr.return_type == ast.void_type {
+				if call_ret_type == ast.void_type {
 					g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
 				} else {
 					g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread.handle, INFINITE);')
@@ -211,13 +211,13 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 			g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_SLIT("unable to join thread")); }')
 			if g.pref.os == .windows {
-				if node.call_expr.return_type == ast.void_type {
+				if call_ret_type == ast.void_type {
 					g.gowrappers.writeln('\tCloseHandle(thread);')
 				} else {
 					g.gowrappers.writeln('\tCloseHandle(thread.handle);')
 				}
 			}
-			if node.call_expr.return_type != ast.void_type {
+			if call_ret_type != ast.void_type {
 				g.gowrappers.writeln('\t${s_ret_typ} ret = *ret_ptr;')
 				g.gowrappers.writeln('\t_v_free(ret_ptr);')
 				g.gowrappers.writeln('\treturn ret;')
@@ -288,7 +288,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			styp := g.styp(expr.receiver_type)
 			g.type_definitions.writeln('\t${styp} arg0;')
 		}
-		need_return_ptr := g.pref.os == .windows && node.call_expr.return_type != ast.void_type
+		need_return_ptr := g.pref.os == .windows && call_ret_type != ast.void_type
 		for i, arg in expr.args {
 			arg_sym := g.table.sym(arg.typ)
 			if arg_sym.info is ast.FnType {
@@ -307,7 +307,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		thread_ret_type := if g.pref.os == .windows { 'u32' } else { 'void*' }
 		g.type_definitions.writeln('${g.static_modifier} ${thread_ret_type} ${wrapper_fn_name}(${wrapper_struct_name} *arg);')
 		g.gowrappers.writeln('${thread_ret_type} ${wrapper_fn_name}(${wrapper_struct_name} *arg) {')
-		if node.call_expr.return_type != ast.void_type {
+		if call_ret_type != ast.void_type {
 			if g.pref.os == .windows {
 				g.gowrappers.write_string('\t*((${s_ret_typ}*)(arg->ret_ptr)) = ')
 			} else {
@@ -398,7 +398,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		if is_spawn {
 			g.gowrappers.writeln('\t_v_free(arg);')
 		}
-		if g.pref.os != .windows && node.call_expr.return_type != ast.void_type {
+		if g.pref.os != .windows && call_ret_type != ast.void_type {
 			g.gowrappers.writeln('\treturn ret_ptr;')
 		} else {
 			g.gowrappers.writeln('\treturn 0;')
