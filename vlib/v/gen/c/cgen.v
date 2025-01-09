@@ -5341,7 +5341,6 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 		}
 		ct_condition = g.out.cut_to(ct_condition_start).trim_space()
 	}
-	has_ct_condition := ct_condition != ''
 	// #include etc
 	if node.kind == 'include' {
 		mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
@@ -5357,24 +5356,24 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 		}
 		if node.main.contains('.m') {
 			g.definitions.writeln('')
-			if has_ct_condition {
+			if ct_condition != '' {
 				g.definitions.writeln('#if ${ct_condition}')
 			}
 			// Objective C code import, include it after V types, so that e.g. `string` is
 			// available there
 			g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
 			g.definitions.writeln(guarded_include)
-			if has_ct_condition {
+			if ct_condition != '' {
 				g.definitions.writeln('#endif // \$if ${ct_condition}')
 			}
 		} else {
 			g.includes.writeln('')
-			if has_ct_condition {
+			if ct_condition != '' {
 				g.includes.writeln('#if ${ct_condition}')
 			}
 			g.includes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
 			g.includes.writeln(guarded_include)
-			if has_ct_condition {
+			if ct_condition != '' {
 				g.includes.writeln('#endif // \$if ${ct_condition}')
 			}
 		}
@@ -5401,36 +5400,36 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 			// available there
 			g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
 			g.definitions.writeln(guarded_include)
-			if has_ct_condition {
+			if ct_condition != '' {
 				g.definitions.writeln('#endif // \$if ${ct_condition}')
 			}
 		} else {
 			g.preincludes.writeln('')
-			if has_ct_condition {
+			if ct_condition != '' {
 				g.preincludes.writeln('#if ${ct_condition}')
 			}
 			g.preincludes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
 			g.preincludes.writeln(guarded_include)
-			if has_ct_condition {
+			if ct_condition != '' {
 				g.preincludes.writeln('#endif // \$if ${ct_condition}')
 			}
 		}
 	} else if node.kind == 'insert' {
-		if has_ct_condition {
+		if ct_condition != '' {
 			g.includes.writeln('#if ${ct_condition}')
 		}
 		g.includes.writeln('// inserted by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
 		g.includes.writeln(node.val)
-		if has_ct_condition {
+		if ct_condition != '' {
 			g.includes.writeln('#endif // \$if ${ct_condition}')
 		}
 	} else if node.kind == 'define' {
-		if has_ct_condition {
+		if ct_condition != '' {
 			g.includes.writeln('#if ${ct_condition}')
 		}
 		g.includes.writeln('// defined by module `${node.mod}`')
 		g.includes.writeln('#define ${node.main}')
-		if has_ct_condition {
+		if ct_condition != '' {
 			g.includes.writeln('#endif // \$if ${ct_condition}')
 		}
 	}
