@@ -5503,10 +5503,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		g.inside_return = old_inside_return
 	}
 
-	expr0 := if node.exprs.len > 0 { node.exprs[0] } else { ast.empty_expr }
-	type0 := if node.exprs.len > 0 { node.types[0] } else { ast.void_type }
+	exprs_len := node.exprs.len
+	expr0 := if exprs_len > 0 { node.exprs[0] } else { ast.empty_expr }
+	type0 := if exprs_len > 0 { node.types[0] } else { ast.void_type }
 
-	if node.exprs.len > 0 {
+	if exprs_len > 0 {
 		// skip `return $vweb.html()`
 		if expr0 is ast.ComptimeCall && expr0.is_vweb {
 			g.inside_return_tmpl = true
@@ -5534,7 +5535,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	fn_return_is_fixed_array_non_result := fn_return_is_fixed_array
 		&& !fn_ret_type.has_option_or_result()
 	mut has_semicolon := false
-	if node.exprs.len == 0 {
+	if exprs_len == 0 {
 		g.write_defer_stmts_when_needed()
 		if fn_return_is_option || fn_return_is_result {
 			styp := g.styp(fn_ret_type)
@@ -5557,7 +5558,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	ret_typ := g.ret_styp(g.unwrap_generic(fn_ret_type))
 
 	// `return fn_call_opt()`
-	if node.exprs.len == 1 && (fn_return_is_option || fn_return_is_result) && expr0 is ast.CallExpr
+	if exprs_len == 1 && (fn_return_is_option || fn_return_is_result) && expr0 is ast.CallExpr
 		&& expr0.return_type == ret_type && expr0.or_block.kind == .absent {
 		if g.defer_stmts.len > 0 {
 			g.write('${ret_typ} ${tmpvar} = ')
@@ -5575,7 +5576,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 		|| g.cur_lock.lockeds.len > 0
-		|| (fn_return_is_multi && node.exprs.len >= 1 && fn_return_is_option)
+		|| (fn_return_is_multi && exprs_len >= 1 && fn_return_is_option)
 		|| fn_return_is_fixed_array_non_result
 		|| (fn_return_is_multi && node.types.any(g.table.final_sym(it).kind == .array_fixed))
 	// handle promoting none/error/function returning _option'
@@ -5602,7 +5603,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln(';')
 			if use_tmp_var {
 				// handle options when returning `none` for `?(int, ?int)`
-				if fn_return_is_multi && node.exprs.len >= 1 {
+				if fn_return_is_multi && exprs_len >= 1 {
 					mr_info := sym.info as ast.MultiReturn
 					for i in 0 .. mr_info.types.len {
 						if mr_info.types[i].has_flag(.option) {
@@ -5647,8 +5648,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 	}
 	// regular cases
-	if fn_return_is_multi && node.exprs.len > 0 && !g.expr_is_multi_return_call(expr0) {
-		if node.exprs.len == 1 && (expr0 is ast.IfExpr || expr0 is ast.MatchExpr) {
+	if fn_return_is_multi && exprs_len > 0 && !g.expr_is_multi_return_call(expr0) {
+		if exprs_len == 1 && (expr0 is ast.IfExpr || expr0 is ast.MatchExpr) {
 			// use a temporary for `return if cond { x,y } else { a,b }` or `return match expr { abc { x, y } else { z, w } }`
 			g.write('${ret_typ} ${tmpvar} = ')
 			g.expr(expr0)
@@ -5706,7 +5707,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				expr_types := expr_sym.mr_info().types
 				for j, _ in expr_types {
 					g.write('.arg${arg_idx}=${tmp}.arg${j}')
-					if j < expr_types.len || i < node.exprs.len - 1 {
+					if j < expr_types.len || i < exprs_len - 1 {
 						g.write(',')
 					}
 					arg_idx++
@@ -5734,7 +5735,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.expr(expr)
 				}
 			}
-			if i < node.exprs.len - 1 {
+			if i < exprs_len - 1 {
 				g.write(', ')
 			}
 			arg_idx++
@@ -5765,7 +5766,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln('return ${tmpvar};')
 			has_semicolon = true
 		}
-	} else if node.exprs.len >= 1 {
+	} else if exprs_len >= 1 {
 		if node.types.len == 0 {
 			g.checker_bug('node.exprs.len == ${node.exprs.len} && node.types.len == 0',
 				node.pos)
