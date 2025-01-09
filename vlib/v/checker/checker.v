@@ -313,15 +313,6 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 	}
 }
 
-// not used right now
-pub fn (mut c Checker) check2(mut ast_file ast.File) []errors.Error {
-	c.change_current_file(ast_file)
-	for mut stmt in ast_file.stmts {
-		c.stmt(mut stmt)
-	}
-	return c.errors
-}
-
 pub fn (mut c Checker) change_current_file(file &ast.File) {
 	c.file = unsafe { file }
 	c.vmod_file_content = ''

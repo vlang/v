@@ -725,27 +725,6 @@ fn (_ &Checker) check_field_of_inserting_struct_is_uninitialized(node &ast.SqlSt
 	return false
 }
 
-fn (c &Checker) orm_get_field_pos(expr &ast.Expr) token.Pos {
-	mut pos := token.Pos{}
-	if expr is ast.InfixExpr {
-		if expr.left is ast.Ident {
-			pos = expr.left.pos
-		} else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
-			|| expr.left is ast.PrefixExpr {
-			pos = c.orm_get_field_pos(expr.left)
-		} else {
-			pos = expr.left.pos()
-		}
-	} else if expr is ast.ParExpr {
-		pos = c.orm_get_field_pos(expr.expr)
-	} else if expr is ast.PrefixExpr {
-		pos = c.orm_get_field_pos(expr.right)
-	} else {
-		pos = expr.pos()
-	}
-	return pos
-}
-
 // check_recursive_structs returns true if type is struct and has any child or nested child with the type of the given struct name,
 // array elements are all checked.
 fn (mut c Checker) check_recursive_structs(ts &ast.TypeSymbol, struct_name string) bool {

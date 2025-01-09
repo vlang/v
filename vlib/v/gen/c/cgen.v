@@ -35,14 +35,6 @@ const cmp_rev = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
 const result_name = ast.result_name
 const option_name = ast.option_name
 
-fn string_array_to_map(a []string) map[string]bool {
-	mut res := map[string]bool{}
-	for x in a {
-		res[x] = true
-	}
-	return res
-}
-
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
@@ -2383,9 +2375,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.expr(node.expr)
 			}
 			g.is_void_expr_stmt = old_is_void_expr_stmt
-			// if af {
-			// g.autofree_call_postgen()
-			// }
 			if g.inside_ternary == 0 && !g.inside_if_option && !g.inside_match_option
 				&& !g.inside_if_result && !g.inside_match_result && !node.is_expr
 				&& node.expr !is ast.IfExpr {
@@ -2544,15 +2533,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
 		g.stmt_path_pos.delete_last()
 	}
-	// If we have temporary string exprs to free after this statement, do it. e.g.:
+	// TODO: If we have temporary string exprs to free after this statement, do it. e.g.:
 	// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
-	if g.is_autofree {
-		// if node is ast.ExprStmt {&& node.expr is ast.CallExpr {
-		if node !is ast.FnDecl {
-			// p := node.pos()
-			// g.autofree_call_postgen(p.pos)
-		}
-	}
 }
 
 fn (mut g Gen) write_defer_stmts() {
