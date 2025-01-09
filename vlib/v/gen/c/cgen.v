@@ -5516,10 +5516,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			return
 		}
 	}
+	ret_type := g.fn_decl.return_type
 
 	// got to do a correct check for multireturn
-	sym := g.table.sym(g.unwrap_generic(g.fn_decl.return_type))
-	mut fn_ret_type := g.fn_decl.return_type
+	sym := g.table.sym(g.unwrap_generic(ret_type))
+	mut fn_ret_type := ret_type
 	if sym.kind == .alias {
 		unaliased_type := g.table.unaliased_type(fn_ret_type)
 		if unaliased_type.has_option_or_result() {
@@ -5557,7 +5558,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 
 	// `return fn_call_opt()`
 	if node.exprs.len == 1 && (fn_return_is_option || fn_return_is_result) && expr0 is ast.CallExpr
-		&& expr0.return_type == g.fn_decl.return_type && expr0.or_block.kind == .absent {
+		&& expr0.return_type == ret_type && expr0.or_block.kind == .absent {
 		if g.defer_stmts.len > 0 {
 			g.write('${ret_typ} ${tmpvar} = ')
 			g.expr(expr0)
@@ -5660,11 +5661,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		mut styp := ''
 		if fn_return_is_option {
 			g.writeln('${ret_typ} ${tmpvar};')
-			styp = g.base_type(g.fn_decl.return_type)
+			styp = g.base_type(ret_type)
 			g.write('_option_ok(&(${styp}[]) { ')
 		} else if fn_return_is_result {
 			g.writeln('${ret_typ} ${tmpvar};')
-			styp = g.base_type(g.fn_decl.return_type)
+			styp = g.base_type(ret_type)
 			g.write('_result_ok(&(${styp}[]) { ')
 		} else {
 			if use_tmp_var {
@@ -5672,7 +5673,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			} else {
 				g.write('return ')
 			}
-			styp = g.styp(g.fn_decl.return_type)
+			styp = g.styp(ret_type)
 		}
 		// Use this to keep the tmp assignments in order
 		mut multi_unpack := ''
@@ -5904,26 +5905,26 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.write('return ')
 		}
 		if expr0.is_auto_deref_var() && !fn_return_is_fixed_array {
-			if g.fn_decl.return_type.is_ptr() {
+			if ret_type.is_ptr() {
 				var_str := g.expr_string(expr0)
 				g.write(var_str.trim('&'))
-			} else if g.fn_decl.return_type.has_flag(.option) {
-				g.expr_with_opt(expr0, type0, g.fn_decl.return_type)
-			} else if g.table.sym(g.fn_decl.return_type).kind in [.sum_type, .interface] {
-				g.expr_with_cast(expr0, type0, g.fn_decl.return_type)
+			} else if ret_type.has_flag(.option) {
+				g.expr_with_opt(expr0, type0, ret_type)
+			} else if g.table.sym(ret_type).kind in [.sum_type, .interface] {
+				g.expr_with_cast(expr0, type0, ret_type)
 			} else {
 				g.write('*')
 				g.expr(expr0)
 			}
 		} else {
-			if g.fn_decl.return_type.has_flag(.option) {
+			if ret_type.has_flag(.option) {
 				expr0_is_alias_fn_ret := expr0 is ast.CallExpr && type0.has_flag(.option)
 					&& g.table.type_kind(type0) in [.placeholder, .alias]
 				// return foo() where foo() returns different option alias than current fn
 				if expr0_is_alias_fn_ret {
-					g.expr_opt_with_cast(expr0, type0, g.fn_decl.return_type)
+					g.expr_opt_with_cast(expr0, type0, ret_type)
 				} else {
-					g.expr_with_opt(expr0, type0, g.fn_decl.return_type)
+					g.expr_with_opt(expr0, type0, ret_type)
 				}
 			} else {
 				if fn_return_is_fixed_array && !type0.has_option_or_result() {
@@ -5945,30 +5946,30 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 						if expr0 is ast.ArrayInit && expr0.is_fixed && expr0.has_init {
 							if (expr0 as ast.ArrayInit).init_expr.is_literal() {
 								g.write('{.ret_arr=')
-								g.expr_with_cast(expr0, type0, g.fn_decl.return_type)
+								g.expr_with_cast(expr0, type0, ret_type)
 								g.writeln('};')
 							} else {
 								g.writeln('{0};')
 								g.write('memcpy(${tmpvar}.ret_arr, ')
-								g.expr_with_cast(expr0, type0, g.fn_decl.return_type)
+								g.expr_with_cast(expr0, type0, ret_type)
 								g.write(', sizeof(${g.styp(type0)}))')
 							}
 						} else {
 							g.writeln('{0};')
 							tmpvar2 := g.new_tmp_var()
 							g.write('${g.styp(type0)} ${tmpvar2} = ')
-							g.expr_with_cast(expr0, type0, g.fn_decl.return_type)
+							g.expr_with_cast(expr0, type0, ret_type)
 							g.writeln(';')
 							g.write('memcpy(${tmpvar}.ret_arr, ${tmpvar2}, sizeof(${g.styp(type0)}))')
 						}
 					} else {
 						g.writeln('{0};')
 						g.write('memcpy(${tmpvar}.ret_arr, ')
-						g.expr_with_cast(expr0, type0, g.fn_decl.return_type)
+						g.expr_with_cast(expr0, type0, ret_type)
 						g.write(', sizeof(${g.styp(type0)}))')
 					}
 				} else {
-					g.expr_with_cast(expr0, type0, g.fn_decl.return_type)
+					g.expr_with_cast(expr0, type0, ret_type)
 				}
 			}
 		}
