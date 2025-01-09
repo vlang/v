@@ -113,13 +113,15 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		return
 	}
 	left_is_option := left_type.has_flag(.option)
+	left_is_ptr := left.typ.is_ptr()
 	right_is_option := right_type.has_flag(.option)
+	right_is_ptr := right.typ.is_ptr()
 	is_none_check := left_is_option && node.right is ast.None
 	if is_none_check {
 		g.gen_is_none_check(node)
-	} else if (left.typ.is_ptr() && right.typ.is_int())
-		|| (right.typ.is_ptr() && left.typ.is_int())
-		|| (left.typ.is_ptr() && right.typ == ast.nil_type) {
+	} else if (left_is_ptr && right.typ.is_int())
+		|| (right_is_ptr && left.typ.is_int())
+		|| (left_is_ptr && right.typ == ast.nil_type) {
 		g.gen_plain_infix_expr(node)
 	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
@@ -130,13 +132,13 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			g.write('(')
 			g.expr(node.left)
 			g.write(')')
-			arrow := if left.typ.is_ptr() { '->' } else { '.' }
+			arrow := if left_is_ptr { '->' } else { '.' }
 			g.write('${arrow}len ${node.op} 0')
 		} else if node.left is ast.Ident {
 			// vmemcmp(left, "str", sizeof("str")) optimization
 			slit := cescape_nonascii(util.smart_quote(node.right.val, node.right.is_raw))
 			var := g.expr_string(node.left)
-			arrow := if left.typ.is_ptr() { '->' } else { '.' }
+			arrow := if left_is_ptr { '->' } else { '.' }
 			if node.op == .eq {
 				g.write('_SLIT_EQ(${var}${arrow}str, ${var}${arrow}len, "${slit}")')
 			} else {
@@ -197,12 +199,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			.alias {
 				// optimize simple eq/ne operation on numbers
 				if left.unaliased_sym.is_int() {
-					if left.typ.is_ptr() && node.left.is_auto_deref_var() && !right.typ.is_pointer() {
+					if left_is_ptr && node.left.is_auto_deref_var() && !right.typ.is_pointer() {
 						g.write('*'.repeat(left.typ.nr_muls()))
 					}
 					g.expr(node.left)
 					g.write(' ${node.op} ')
-					if right.typ.is_ptr() {
+					if right_is_ptr {
 						g.write('*'.repeat(right.typ.nr_muls()))
 					}
 					g.expr(node.right)
@@ -213,7 +215,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 						g.write('!')
 					}
 					g.write('${ptr_typ}_alias_eq(')
-					if left.typ.is_ptr() {
+					if left_is_ptr {
 						g.write('*'.repeat(left.typ.nr_muls()))
 					}
 					if node.left is ast.StructInit && left.unaliased_sym.is_primitive_fixed_array() {
@@ -227,7 +229,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 						s := g.styp(right.unaliased)
 						g.write('(${s})')
 					}
-					if right.typ.is_ptr() {
+					if right_is_ptr {
 						g.write('*'.repeat(right.typ.nr_muls()))
 					}
 					g.expr(node.right)
@@ -240,7 +242,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					g.write('!')
 				}
 				g.write('${ptr_typ}_arr_eq(')
-				if left.typ.is_ptr() && !left.typ.has_flag(.shared_f) {
+				if left_is_ptr && !left.typ.has_flag(.shared_f) {
 					if node.left !is ast.ArrayInit {
 						g.write('*'.repeat(left.typ.nr_muls()))
 					}
@@ -250,7 +252,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					g.write('->val')
 				}
 				g.write(', ')
-				if right.typ.is_ptr() && !right.typ.has_flag(.shared_f) {
+				if right_is_ptr && !right.typ.has_flag(.shared_f) {
 					if node.right !is ast.ArrayInit {
 						g.write('*'.repeat(right.typ.nr_muls()))
 					}
@@ -267,7 +269,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					g.write('!')
 				}
 				g.write('${ptr_typ}_arr_eq(')
-				if left.typ.is_ptr() {
+				if left_is_ptr {
 					g.write('*')
 				}
 				if node.left is ast.ArrayInit {
@@ -301,12 +303,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					g.write('!')
 				}
 				g.write('${ptr_typ}_map_eq(')
-				if left.typ.is_ptr() {
+				if left_is_ptr {
 					g.write('*'.repeat(left.typ.nr_muls()))
 				}
 				g.expr(node.left)
 				g.write(', ')
-				if right.typ.is_ptr() {
+				if right_is_ptr {
 					g.write('*'.repeat(right.typ.nr_muls()))
 				}
 				g.expr(node.right)
@@ -318,12 +320,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					g.write('!')
 				}
 				g.write('${ptr_typ}_struct_eq(')
-				if left.typ.is_ptr() {
+				if left_is_ptr {
 					g.write('*'.repeat(left.typ.nr_muls()))
 				}
 				g.expr(node.left)
 				g.write(', ')
-				if right.typ.is_ptr() {
+				if right_is_ptr {
 					g.write('*'.repeat(right.typ.nr_muls()))
 				}
 				g.expr(node.right)
@@ -335,12 +337,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					g.write('!')
 				}
 				g.write('${ptr_typ}_sumtype_eq(')
-				if left.typ.is_ptr() {
+				if left_is_ptr {
 					g.write('*'.repeat(left.typ.nr_muls()))
 				}
 				g.expr(node.left)
 				g.write(', ')
-				if right.typ.is_ptr() {
+				if right_is_ptr {
 					g.write('*'.repeat(right.typ.nr_muls()))
 				}
 				g.expr(node.right)
@@ -352,12 +354,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					g.write('!')
 				}
 				g.write('${ptr_typ}_interface_eq(')
-				if left.typ.is_ptr() {
+				if left_is_ptr {
 					g.write('*'.repeat(left.typ.nr_muls()))
 				}
 				g.expr(node.left)
 				g.write(', ')
-				if right.typ.is_ptr() {
+				if right_is_ptr {
 					g.write('*'.repeat(right.typ.nr_muls()))
 				}
 				g.expr(node.right)
