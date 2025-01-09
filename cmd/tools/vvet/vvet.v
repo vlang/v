@@ -11,14 +11,16 @@ import v.help
 import term
 import arrays
 
+@[heap]
 struct Vet {
 mut:
 	opt            Options
-	errors         []VetError
-	warns          []VetError
-	notices        []VetError
+	errors         shared []VetError
+	warns          shared []VetError
+	notices        shared []VetError
 	file           string
 	filtered_lines FilteredLines
+	analyze        VetAnalyze
 }
 
 struct Options {
@@ -28,6 +30,8 @@ struct Options {
 	show_warnings       bool
 	use_color           bool
 	doc_private_fns_too bool
+	fn_sizing           bool
+	repeated_code       bool
 mut:
 	is_vfmt_off bool
 }
@@ -46,6 +50,8 @@ fn main() {
 			doc_private_fns_too: '-p' in vet_options
 			use_color:           '-color' in vet_options
 				|| (term_colors && '-nocolor' !in vet_options)
+			repeated_code:       '-r' in vet_options
+			fn_sizing:           '-F' in vet_options
 		}
 	}
 	mut paths := cmdline.only_non_options(vet_options)
@@ -82,6 +88,7 @@ fn main() {
 			})
 		}
 	}
+	vt.vet_code_analyze()
 	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
 	for n in vt.notices {
 		eprintln(vt.e2string(n))
@@ -95,8 +102,10 @@ fn main() {
 		eprintln(vt.e2string(err))
 	}
 	if vfmt_err_count > 0 {
-		filtered_out := arrays.distinct(vt.errors.map(it.file_path))
-		eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
+		rlock vt.errors {
+			filtered_out := arrays.distinct(vt.errors.map(it.file_path))
+			eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
+		}
 	}
 	if vt.errors.len > 0 {
 		exit(1)
@@ -263,12 +272,35 @@ fn (mut vt Vet) stmts(stmts []ast.Stmt) {
 
 fn (mut vt Vet) stmt(stmt ast.Stmt) {
 	match stmt {
-		ast.ConstDecl { vt.const_decl(stmt) }
-		ast.ExprStmt { vt.expr(stmt.expr) }
-		ast.Return { vt.exprs(stmt.exprs) }
-		ast.AssertStmt { vt.expr(stmt.expr) }
-		ast.AssignStmt { vt.exprs(stmt.right) }
-		ast.FnDecl { vt.stmts(stmt.stmts) }
+		ast.ConstDecl {
+			vt.const_decl(stmt)
+		}
+		ast.ExprStmt {
+			vt.expr(stmt.expr)
+		}
+		ast.Return {
+			vt.exprs(stmt.exprs)
+		}
+		ast.AssertStmt {
+			vt.expr(stmt.expr)
+		}
+		ast.AssignStmt {
+			vt.exprs(stmt.left)
+			vt.exprs(stmt.right)
+			vt.analyze.stmt(&vt, stmt)
+		}
+		ast.FnDecl {
+			old_fn_decl := vt.analyze.cur_fn
+			vt.analyze.cur_fn = stmt
+			vt.stmts(stmt.stmts)
+			if vt.opt.fn_sizing {
+				vt.analyze.long_or_empty_fns(mut vt, stmt)
+			}
+			vt.analyze.cur_fn = old_fn_decl
+		}
+		ast.StructDecl {
+			vt.exprs(stmt.fields.map(it.default_expr))
+		}
 		else {}
 	}
 }
@@ -284,16 +316,27 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 		ast.Comment {
 			vt.filtered_lines.comments(expr.is_multi, expr.pos)
 		}
-		ast.StringLiteral, ast.StringInterLiteral {
+		ast.StringLiteral {
 			vt.filtered_lines.assigns(expr.pos)
+			vt.analyze.expr(&vt, expr)
+		}
+		ast.StringInterLiteral {
+			vt.filtered_lines.assigns(expr.pos)
+			vt.analyze.expr(&vt, expr)
 		}
 		ast.ArrayInit {
 			vt.filtered_lines.assigns(expr.pos)
+			vt.expr(expr.len_expr)
+			vt.expr(expr.cap_expr)
+			vt.expr(expr.init_expr)
+			vt.exprs(expr.exprs)
 		}
 		ast.InfixExpr {
 			vt.vet_in_condition(expr)
 			vt.vet_empty_str(expr)
+			vt.expr(expr.left)
 			vt.expr(expr.right)
+			vt.analyze.expr(&vt, expr)
 		}
 		ast.ParExpr {
 			vt.expr(expr.expr)
@@ -301,9 +344,12 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 		ast.CallExpr {
 			vt.expr(expr.left)
 			vt.exprs(expr.args.map(it.expr))
+			vt.analyze.expr(&vt, expr)
 		}
 		ast.MatchExpr {
+			vt.expr(expr.cond)
 			for b in expr.branches {
+				vt.exprs(b.exprs)
 				vt.stmts(b.stmts)
 			}
 		}
@@ -312,6 +358,29 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 				vt.expr(b.cond)
 				vt.stmts(b.stmts)
 			}
+		}
+		ast.SelectorExpr {
+			vt.analyze.expr(&vt, expr)
+		}
+		ast.IndexExpr {
+			vt.analyze.expr(&vt, expr)
+		}
+		ast.AsCast {
+			vt.analyze.expr(&vt, expr)
+			vt.expr(expr.expr)
+		}
+		ast.UnsafeExpr {
+			vt.expr(expr.expr)
+		}
+		ast.CastExpr {
+			vt.expr(expr.expr)
+		}
+		ast.StructInit {
+			vt.expr(expr.update_expr)
+			vt.exprs(expr.init_fields.map(it.expr))
+		}
+		ast.DumpExpr {
+			vt.expr(expr.expr)
 		}
 		else {}
 	}
@@ -328,11 +397,7 @@ fn (mut vt Vet) const_decl(stmt ast.ConstDecl) {
 }
 
 fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {
-	if expr.left is ast.InfixExpr {
-		vt.expr(expr.left)
-	} else if expr.right is ast.InfixExpr {
-		vt.expr(expr.right)
-	} else if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral {
+	if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral {
 		operand := (expr.left as ast.SelectorExpr) // TODO: remove as-casts when multiple conds can be smart-casted.
 		if operand.expr is ast.Ident && operand.expr.info.typ == ast.string_type_idx
 			&& operand.field_name == 'len' {
