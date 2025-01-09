@@ -372,6 +372,9 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		} else {
 			g.expr(node.left)
 		}
+		if node.left_type.has_flag(.shared_f) {
+			g.write('.val')
+		}
 	}
 	g.write('[')
 	if g.is_direct_array_access || g.pref.translated || node.index is ast.IntegerLiteral {
