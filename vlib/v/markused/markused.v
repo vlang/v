@@ -18,6 +18,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	trace_skip_unused_all_fns := pref_.compile_values['trace_skip_unused_all_fns'] == 'true'
 	trace_skip_unused_fn_names := pref_.compile_values['trace_skip_unused_fn_names'] == 'true'
 	trace_skip_unused_interface_methods := pref_.compile_values['trace_skip_unused_interface_methods'] == 'true'
+	trace_skip_unused_just_unused_fns := pref_.compile_values['trace_skip_unused_just_unused_fns'] == 'true'
 	used_fns := pref_.compile_values['used_fns']
 
 	byteptr_idx_str := ast.byteptr_type_idx.str()
@@ -536,6 +537,16 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		eprintln('>> t.used_consts: ${table.used_features.used_consts.keys()}')
 		eprintln('>> t.used_globals: ${table.used_features.used_globals.keys()}')
 		eprintln('>> walker.table.used_features.used_maps: ${walker.table.used_features.used_maps}')
+	}
+	if trace_skip_unused_just_unused_fns {
+		all_fns_keys := all_fns.keys()
+		used_fns_keys := table.used_features.used_fns.keys()
+		for k in all_fns_keys {
+			if k in used_fns_keys {
+				continue
+			}
+			println('> k: ${k}')
+		}
 	}
 }
 

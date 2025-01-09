@@ -10,6 +10,15 @@ import v.util
 const c_fn_name_escape_seq = ['[', '_T_', ']', '']
 
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
+	$if trace_unused_by_main ? {
+		defer {
+			used_by_main := $res()
+			if !used_by_main {
+				fkey := node.fkey()
+				println('> trace_unused_by_main: mod: ${node.mod} | ${node.name} | fkey: ${fkey} | line_nr: ${node.pos.line_nr}')
+			}
+		}
+	}
 	if node.is_c_extern {
 		return true
 	}
@@ -2308,56 +2317,6 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		g.strs_to_free0 << s
 		// This tmp arg var will be freed with the rest of the vars at the end of the scope.
 	}
-}
-
-fn (mut g Gen) autofree_call_postgen(node_pos int) {
-	// if g.strs_to_free.len == 0 {
-	// 	return
-	// }
-	// g.writeln('\n/* strs_to_free3: $g.nr_vars_to_free */')
-	// if g.nr_vars_to_free <= 0 {
-	// 	return
-	// }
-	/*
-	for s in g.strs_to_free {
-		g.writeln('string_free(&$s);')
-	}
-	if !g.inside_or_block {
-		// we need to free the vars both inside the or block (in case of an error) and after it
-		// if we reset the array here, then the vars will not be freed after the block.
-		g.strs_to_free = []
-	}
-	*/
-	if g.inside_vweb_tmpl {
-		return
-	}
-	// g.doing_autofree_tmp = true
-	// g.write('/* postgen */')
-	mut scope := g.file.scope.innermost(node_pos)
-	for _, mut obj in scope.objects {
-		match mut obj {
-			ast.Var {
-				is_result := obj.typ.has_flag(.result)
-				if is_result {
-					// TODO: free results
-					continue
-				}
-				if !obj.is_autofree_tmp {
-					continue
-				}
-				if obj.is_used {
-					// this means this tmp expr var has already been freed
-					continue
-				}
-				obj.is_used = true // TODO: bug? sets all vars is_used to true
-				g.autofree_variable(obj)
-				// g.nr_vars_to_free--
-			}
-			else {}
-		}
-	}
-	// g.write('/* postgen end */')
-	// g.doing_autofree_tmp = false
 }
 
 fn (mut g Gen) call_args(node ast.CallExpr) {
