@@ -498,15 +498,21 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		g.write(g.type_default_sumtype(field.typ, sym))
 		return true
 	} else if sym.info is ast.ArrayFixed {
+		elem_is_option := sym.info.elem_type.has_flag(.option)
 		g.write('{')
-		for i in 0 .. sym.info.size {
-			if sym.info.elem_type.has_flag(.option) {
-				g.expr_with_opt(ast.None{}, ast.none_type, sym.info.elem_type)
-			} else {
-				g.write(g.type_default(sym.info.elem_type))
-			}
-			if i != sym.info.size - 1 {
-				g.write(', ')
+		if !elem_is_option && field.typ.has_flag(.shared_f) {
+			g.write('0')
+		} else {
+			default_str := g.type_default(sym.info.elem_type)
+			for i in 0 .. sym.info.size {
+				if elem_is_option {
+					g.gen_option_error(sym.info.elem_type, ast.None{})
+				} else {
+					g.write(default_str)
+				}
+				if i != sym.info.size - 1 {
+					g.write(', ')
+				}
 			}
 		}
 		g.write('}')
