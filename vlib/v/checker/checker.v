@@ -4679,6 +4679,12 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			if node.right.op == .amp {
 				c.error('unexpected `&`, expecting expression', node.right.pos)
 			}
+		} else if mut node.right is ast.ParExpr {
+			if mut node.right.expr is ast.PrefixExpr {
+				if node.right.expr.op == .amp {
+					c.error('cannot take the address of this expression', node.right.pos)
+				}
+			}
 		} else if mut node.right is ast.SelectorExpr {
 			if node.right.expr.is_literal() {
 				c.error('cannot take the address of a literal value', node.pos.extend(node.right.pos))
