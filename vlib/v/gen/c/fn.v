@@ -1879,7 +1879,15 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.write('(*(${g.styp(fn_typ)}*)')
 			}
 		}
+		needs_deref := node.left_type.nr_muls() > 1
+		if needs_deref {
+			g.write('(')
+			g.write('*'.repeat(node.left_type.nr_muls() - 1))
+		}
 		g.expr(node.left)
+		if needs_deref {
+			g.write(')')
+		}
 		if node.left_type.is_ptr() {
 			g.write('->')
 		} else {
