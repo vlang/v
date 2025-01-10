@@ -269,7 +269,7 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		// `fn foo(mut p &Expr); mut expr := Expr{}; foo(mut expr)`
 		if arg.is_mut && expected.nr_muls() > 1 && got.nr_muls() < expected.nr_muls() {
 			got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
-			return error('cannot use `${got_typ_str}` as `${expected_typ_str}` ${got.nr_muls()}:${expected.nr_muls()}')
+			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 		}
 
 		exp_sym_idx := expected.idx()
