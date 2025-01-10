@@ -5463,6 +5463,9 @@ fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) 
 			if c.fail_if_unreadable(expr.left, expr.left_type, what) {
 				return true
 			}
+			if typ.has_flag(.shared_f) {
+				return false
+			}
 		}
 		ast.InfixExpr {
 			pos = expr.left.pos().extend(expr.pos)
