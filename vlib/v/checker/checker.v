@@ -4671,6 +4671,11 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	right_type := c.expr(mut node.right)
 	c.inside_ref_lit = old_inside_ref_lit
 	node.right_type = right_type
+	mut expr := node.right
+	// if ParExpr get the innermost expr
+	for mut expr is ast.ParExpr {
+		expr = expr.expr
+	}
 	if node.op == .amp {
 		if node.right is ast.Nil {
 			c.error('invalid operation: cannot take address of nil', node.right.pos())
@@ -4679,11 +4684,9 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			if node.right.op == .amp {
 				c.error('unexpected `&`, expecting expression', node.right.pos)
 			}
-		} else if mut node.right is ast.ParExpr {
-			if mut node.right.expr is ast.PrefixExpr {
-				if node.right.expr.op == .amp {
-					c.error('cannot take the address of this expression', node.right.pos)
-				}
+		} else if mut expr is ast.PrefixExpr {
+			if expr.op == .amp {
+				c.error('cannot take the address of this expression', expr.pos)
 			}
 		} else if mut node.right is ast.SelectorExpr {
 			if node.right.expr.is_literal() {
@@ -4710,11 +4713,6 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	// TODO: testing ref/deref strategy
 	right_is_ptr := right_type.is_ptr()
 	if node.op == .amp && (!right_is_ptr || (right_is_ptr && node.right is ast.CallExpr)) {
-		mut expr := node.right
-		// if ParExpr get the innermost expr
-		for mut expr is ast.ParExpr {
-			expr = expr.expr
-		}
 		if expr in [ast.BoolLiteral, ast.CallExpr, ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral,
 			ast.InfixExpr, ast.StringLiteral, ast.StringInterLiteral] {
 			c.error('cannot take the address of ${expr}', node.pos)
