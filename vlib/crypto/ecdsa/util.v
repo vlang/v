@@ -2,8 +2,9 @@ module ecdsa
 
 #include <openssl/evp.h>
 #include <openssl/err.h>
+#include <openssl/x509.h>
 
-// #define NID_X9_62_id_ecPublicKey                408
+// #define NID_X9_62_id_ecPublicKey   408
 const nid_ec_publickey = C.NID_X9_62_id_ecPublicKey
 
 @[typedef]
@@ -19,7 +20,7 @@ fn C.EVP_PKEY_free(key &C.EVP_PKEY)
 fn C.EVP_PKEY_get1_EC_KEY(pkey &C.EVP_PKEY) &C.EC_KEY
 
 // EVP_PKEY *d2i_PUBKEY(EVP_PKEY **a, const unsigned char **pp, long length);
-fn C.d2i_PUBKEY(mut k &C.EVP_PKEY, pp &u8, length u32) &C.EVP_PKEY
+fn C.d2i_PUBKEY(k &&C.EVP_PKEY, pp &&u8, length u32) &C.EVP_PKEY
 
 // point_conversion_form_t EC_KEY_get_conv_form(const EC_KEY *key);
 fn C.EC_KEY_get_conv_form(k &C.EC_KEY) int
@@ -63,7 +64,7 @@ pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
 		return error('Invalid bytes')
 	}
 	mut pub_key := C.EVP_PKEY_new()
-	pub_key = C.d2i_PUBKEY(mut &pub_key, &bytes.data, bytes.len)
+	pub_key = C.d2i_PUBKEY(&pub_key, voidptr(&bytes.data), bytes.len)
 	if pub_key == 0 {
 		C.EVP_PKEY_free(pub_key)
 		return error('Error loading public key')
@@ -78,11 +79,11 @@ pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
 
 	eckey := C.EVP_PKEY_get1_EC_KEY(pub_key)
 	if eckey == 0 {
-		C.EC_KEY_free(eckey)
+		key_free(eckey)
 		return error('Failed to get ec key')
 	}
 	// check the group for the supported curve(s)
-	group := C.EC_KEY_get0_group(eckey)
+	group := voidptr(C.EC_KEY_get0_group(eckey))
 	if group == 0 {
 		C.EC_GROUP_free(group)
 		return error('Failed to load group from key')
@@ -100,13 +101,13 @@ pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
 
 // bytes gets the bytes of public key parts of this keypair.
 pub fn (pbk PublicKey) bytes() ![]u8 {
-	point := C.EC_KEY_get0_public_key(pbk.key)
+	point := voidptr(C.EC_KEY_get0_public_key(pbk.key))
 	if point == 0 {
 		C.EC_POINT_free(point)
 		return error('Failed to get public key BIGNUM')
 	}
 
-	group := C.EC_KEY_get0_group(pbk.key)
+	group := voidptr(C.EC_KEY_get0_group(pbk.key))
 	num_bits := C.EC_GROUP_get_degree(group)
 	// 1 byte of conversion format || x || y of EC_POINT
 	num_bytes := 1 + 2 * ((num_bits + 7) / 8)

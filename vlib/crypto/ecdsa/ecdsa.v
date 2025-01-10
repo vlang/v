@@ -44,6 +44,9 @@ fn C.EC_POINT_cmp(group &C.EC_GROUP, a &C.EC_POINT, b &C.EC_POINT, ctx &C.BN_CTX
 fn C.BN_CTX_new() &C.BN_CTX
 fn C.BN_CTX_free(ctx &C.BN_CTX)
 
+// for checking the key
+fn C.EC_KEY_check_key(key &C.EC_KEY) int
+
 // NID constants
 //
 // NIST P-256 is refered to as secp256r1 and prime256v1, defined as #define NID_X9_62_prime256v1 415
@@ -111,6 +114,7 @@ pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
 		C.EC_KEY_free(ec_key)
 		return error('Failed to generate EC_KEY')
 	}
+
 	priv_key := PrivateKey{
 		key: ec_key
 	}
@@ -143,7 +147,16 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	// Now compute the public key
 	//
 	// Retrieve the EC_GROUP object associated with the EC_KEY
-	group := C.EC_KEY_get0_group(ec_key)
+	// Note:
+	// Its cast-ed with voidptr() to workaround the strictness of the type system,
+	// ie, cc backend with `-cstrict` option behaviour. Without this cast,
+	// C.EC_KEY_get0_group expected to return `const EC_GROUP *`,
+	// ie expected to return pointer into constant of EC_GROUP on C parts,
+	// so, its make cgen not happy with this and would fail with error.
+	group := voidptr(C.EC_KEY_get0_group(ec_key))
+	if group == 0 {
+		return error('failed to load group')
+	}
 	// Create a new EC_POINT object for the public key
 	pub_key_point := C.EC_POINT_new(group)
 	// Create a new BN_CTX object for efficient BIGNUM operations
@@ -172,6 +185,13 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 		C.BN_free(bn)
 		C.EC_KEY_free(ec_key)
 		return error('Failed to set public key')
+	}
+	// Add key check
+	// EC_KEY_check_key return 1 on success or 0 on error.
+	chk := C.EC_KEY_check_key(ec_key)
+	if chk == 0 {
+		key_free(ec_key)
+		return error('EC_KEY_check_key failed')
 	}
 	C.EC_POINT_free(pub_key_point)
 	C.BN_free(bn)
@@ -210,7 +230,7 @@ pub fn (pub_key PublicKey) verify(message []u8, sig []u8) !bool {
 
 // Get the seed (private key bytes)
 pub fn (priv_key PrivateKey) seed() ![]u8 {
-	bn := C.EC_KEY_get0_private_key(priv_key.key)
+	bn := voidptr(C.EC_KEY_get0_private_key(priv_key.key))
 	if bn == 0 {
 		return error('Failed to get private key BIGNUM')
 	}
@@ -243,8 +263,8 @@ fn C.EC_GROUP_cmp(a &C.EC_GROUP, b &C.EC_GROUP, ctx &C.BN_CTX) int
 // - whether both of private keys lives under the same group (curve)
 // - compares if two private key bytes was equal
 pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
-	group1 := C.EC_KEY_get0_group(priv_key.key)
-	group2 := C.EC_KEY_get0_group(other.key)
+	group1 := voidptr(C.EC_KEY_get0_group(priv_key.key))
+	group2 := voidptr(C.EC_KEY_get0_group(other.key))
 	ctx := C.BN_CTX_new()
 	if ctx == 0 {
 		return false
@@ -255,8 +275,8 @@ pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
 	gres := C.EC_GROUP_cmp(group1, group2, ctx)
 	// Its lives on the same group
 	if gres == 0 {
-		bn1 := C.EC_KEY_get0_private_key(priv_key.key)
-		bn2 := C.EC_KEY_get0_private_key(other.key)
+		bn1 := voidptr(C.EC_KEY_get0_private_key(priv_key.key))
+		bn2 := voidptr(C.EC_KEY_get0_private_key(other.key))
 		res := C.BN_cmp(bn1, bn2)
 		return res == 0
 	}
@@ -266,9 +286,11 @@ pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
 // Compare two public keys
 pub fn (pub_key PublicKey) equal(other PublicKey) bool {
 	// TODO: check validity of the group
-	group1 := C.EC_KEY_get0_group(pub_key.key)
-	group2 := C.EC_KEY_get0_group(other.key)
-
+	group1 := voidptr(C.EC_KEY_get0_group(pub_key.key))
+	group2 := voidptr(C.EC_KEY_get0_group(other.key))
+	if group1 == 0 || group2 == 0 {
+		return false
+	}
 	ctx := C.BN_CTX_new()
 	if ctx == 0 {
 		return false
@@ -279,8 +301,11 @@ pub fn (pub_key PublicKey) equal(other PublicKey) bool {
 	gres := C.EC_GROUP_cmp(group1, group2, ctx)
 	// Its lives on the same group
 	if gres == 0 {
-		point1 := C.EC_KEY_get0_public_key(pub_key.key)
-		point2 := C.EC_KEY_get0_public_key(other.key)
+		point1 := voidptr(C.EC_KEY_get0_public_key(pub_key.key))
+		point2 := voidptr(C.EC_KEY_get0_public_key(other.key))
+		if point1 == 0 || point2 == 0 {
+			return false
+		}
 		res := C.EC_POINT_cmp(group1, point1, point2, ctx)
 		return res == 0
 	}
@@ -313,7 +338,7 @@ fn new_curve(opt CurveOptions) &C.EC_KEY {
 // Gets recommended hash function of the current PrivateKey.
 // Its purposes for hashing message to be signed
 fn (pv PrivateKey) recommended_hash() !crypto.Hash {
-	group := C.EC_KEY_get0_group(pv.key)
+	group := voidptr(C.EC_KEY_get0_group(pv.key))
 	if group == 0 {
 		return error('Unable to load group')
 	}
@@ -392,7 +417,7 @@ pub fn (pv PrivateKey) sign_with_options(message []u8, opts SignerOpts) ![]u8 {
 				return error('Custom hasher was not defined')
 			}
 			// check key size bits
-			group := C.EC_KEY_get0_group(pv.key)
+			group := voidptr(C.EC_KEY_get0_group(pv.key))
 			if group == 0 {
 				return error('fail to load group')
 			}

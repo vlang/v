@@ -146,5 +146,3 @@ fn test_different_keys_not_equal() ! {
 	key_free(priv_key1.key)
 	key_free(priv_key2.key)
 }
-
-// Example was taken from https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/P384_SHA384.pdf

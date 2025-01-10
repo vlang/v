@@ -35,3 +35,14 @@ fn test_load_pubkey_from_der_serialized_bytes() ! {
 	status_with_hashed := pbkey.verify(hashed_msg, expected_signature)!
 	assert status_with_hashed == true
 }
+
+fn test_for_pubkey_bytes() ! {
+	// material generated with online ecdsa generator https://emn178.github.io/online-tools/ecdsa/key-generator/
+	pv := '62e998bea8a15f52ff0b76cf3fe281cfcd8042ce4479b6e652ca7b5a36f6fb40'
+	pb := '0421af184ac64c8a13e66c65d4f1ad31677edeaa97af791aef73b66ea26d1623a411f67b6c4d842ba22fa39d1216bd64acef00a1b924ac11a10af679ac3a7eb2fd'
+	pvkey := new_key_from_seed(hex.decode(pv)!)!
+
+	assert pvkey.seed()!.hex() == pv
+	pbkey := pvkey.public_key()!
+	assert pbkey.bytes()!.hex() == pb
+}
