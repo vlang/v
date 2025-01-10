@@ -78,7 +78,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	}
 	if is_anon {
-		g.writeln('(${styp}){')
+		if node.language == .v {
+			g.write('(${styp})')
+		}
+		g.writeln('{')
 	} else if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.styp(shared_typ)
@@ -433,7 +436,8 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			}
 			if has_option_field || field.anon_struct_decl.fields.len > 0 {
 				default_init := ast.StructInit{
-					typ: field.typ
+					typ:      field.typ
+					language: field.anon_struct_decl.language
 				}
 				g.write('.${field_name} = ')
 				if field.typ.has_flag(.option) {

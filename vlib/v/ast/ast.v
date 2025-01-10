@@ -424,22 +424,21 @@ pub:
 	generic_types []Type
 	is_pub        bool
 	// _pos fields for vfmt
-	mut_pos      int = -1 // mut:
-	pub_pos      int = -1 // pub:
-	pub_mut_pos  int = -1 // pub mut:
-	global_pos   int = -1 // __global:
-	module_pos   int = -1 // module:
-	language     Language
-	is_union     bool
-	attrs        []Attr
-	pre_comments []Comment
-	end_comments []Comment
-	embeds       []Embed
-
+	mut_pos          int = -1 // mut:
+	pub_pos          int = -1 // pub:
+	pub_mut_pos      int = -1 // pub mut:
+	global_pos       int = -1 // __global:
+	module_pos       int = -1 // module:
+	is_union         bool
+	attrs            []Attr
+	pre_comments     []Comment
+	end_comments     []Comment
+	embeds           []Embed
 	is_implements    bool
 	implements_types []TypeNode
 pub mut:
-	fields []StructField
+	language Language
+	fields   []StructField
 }
 
 pub struct Embed {
@@ -522,6 +521,7 @@ pub mut:
 	has_update_expr      bool // has `...a`
 	init_fields          []StructInitField
 	generic_types        []Type
+	language             Language
 }
 
 pub enum StructInitKind {
