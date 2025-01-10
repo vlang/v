@@ -5463,7 +5463,7 @@ fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) 
 			if c.fail_if_unreadable(expr.left, expr.left_type, what) {
 				return true
 			}
-			if typ.has_flag(.shared_f) {
+			if typ.has_flag(.shared_f) && expr.left is ast.SelectorExpr {
 				return false
 			}
 		}
