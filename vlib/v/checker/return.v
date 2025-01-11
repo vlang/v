@@ -360,7 +360,9 @@ fn has_top_return(stmts []ast.Stmt) bool {
 						return true
 					}
 				} else if stmt.expr is ast.LockExpr {
-					return has_top_return(stmt.expr.stmts)
+					if has_top_return(stmt.expr.stmts) {
+						return true
+					}
 				}
 			}
 			else {}
