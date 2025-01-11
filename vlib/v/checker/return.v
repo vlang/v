@@ -359,6 +359,10 @@ fn has_top_return(stmts []ast.Stmt) bool {
 					if stmt.expr.method_name == 'compile_error' {
 						return true
 					}
+				} else if stmt.expr is ast.LockExpr {
+					if has_top_return(stmt.expr.stmts) {
+						return true
+					}
 				}
 			}
 			else {}
