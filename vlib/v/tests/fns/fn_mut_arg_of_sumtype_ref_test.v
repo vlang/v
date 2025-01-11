@@ -9,7 +9,7 @@ pub type Expr = Expr1 | Expr2
 pub struct Gen {
 }
 
-fn (mut g Gen) foo(mut expr &Expr1) string {
+fn (mut g Gen) foo(mut expr Expr1) string {
 	return '${expr}'
 }
 
