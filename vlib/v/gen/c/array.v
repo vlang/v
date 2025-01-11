@@ -23,6 +23,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		g.write('HEAP(${array_styp}, ')
 	}
 	len := node.exprs.len
+	elem_sym := g.table.sym(g.unwrap_generic(node.elem_type))
 	if array_type.unaliased_sym.kind == .array_fixed {
 		g.fixed_array_init(node, array_type, var_name, is_amp)
 		if is_amp {
@@ -44,12 +45,17 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 			g.writeln('')
 			g.write('\t\t')
 		}
+		is_sumtype := elem_sym.kind == .sum_type
 		for i, expr in node.exprs {
 			if node.expr_types[i] == ast.string_type
 				&& expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral, ast.InfixExpr] {
-				g.write('string_clone(')
-				g.expr(expr)
-				g.write(')')
+				if is_sumtype {
+					g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
+				} else {
+					g.write('string_clone(')
+					g.expr(expr)
+					g.write(')')
+				}
 			} else {
 				if node.elem_type.has_flag(.option) {
 					g.expr_with_opt(expr, node.expr_types[i], node.elem_type)
