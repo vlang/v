@@ -99,7 +99,9 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 
 	// set Content-Type and Content-Length headers
 	mut custom_mimetype := if ctx.content_type.len == 0 { mimetype } else { ctx.content_type }
-	ctx.res.header.set(.content_type, custom_mimetype)
+	if custom_mimetype != '' {
+		ctx.res.header.set(.content_type, custom_mimetype)
+	}
 	if ctx.res.body != '' {
 		ctx.res.header.set(.content_length, ctx.res.body.len.str())
 	}
@@ -223,6 +225,12 @@ pub fn (mut ctx Context) request_error(msg string) Result {
 pub fn (mut ctx Context) server_error(msg string) Result {
 	ctx.res.set_status(.internal_server_error)
 	return ctx.send_response_to_client('text/plain', msg)
+}
+
+// send a 204 No Content response without body and content-type
+pub fn (mut ctx Context) no_content() Result {
+	ctx.res.set_status(.no_content)
+	return ctx.send_response_to_client('', '')
 }
 
 @[params]
