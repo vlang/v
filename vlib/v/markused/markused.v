@@ -166,6 +166,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				builderptr_idx + '.write_rune',
 			]
 		}
+		if !table.used_features.arr_init {
+			table.used_features.arr_init = table.used_features.print_types.keys().any(table.type_to_str(it).contains('[]'))
+		}
 		if table.used_features.arr_init || table.used_features.comptime_for {
 			include_panic_deps = true
 			core_fns << '__new_array'
