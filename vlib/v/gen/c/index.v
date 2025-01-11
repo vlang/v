@@ -64,10 +64,12 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 }
 
 fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
-	sym := g.table.final_sym(g.unwrap_generic(node.left_type))
+	unwrapped_left_type := g.unwrap_generic(node.left_type)
+	sym := g.table.final_sym(unwrapped_left_type)
 	mut tmp_opt := ''
 	mut cur_line := ''
 	mut gen_or := node.or_expr.kind != .absent || node.is_option
+	left_is_shared := unwrapped_left_type.has_flag(.shared_f)
 	if sym.kind == .string {
 		if node.is_gated {
 			g.write('string_substr_ni(')
@@ -92,10 +94,16 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		} else {
 			g.write('array_slice(')
 		}
+		if left_is_shared {
+			g.write('(')
+		}
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
 		g.expr(node.left)
+		if left_is_shared {
+			g.write(').val')
+		}
 	} else if sym.info is ast.ArrayFixed {
 		// Convert a fixed array to V array when doing `fixed_arr[start..end]`
 		noscan := g.check_noscan(sym.info.elem_type)
@@ -107,6 +115,9 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		g.write('new_array_from_c_array${noscan}(')
 		ctype := g.styp(sym.info.elem_type)
 		g.write('${sym.info.size}, ${sym.info.size}, sizeof(${ctype}), ')
+		if left_is_shared {
+			g.write('(')
+		}
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
@@ -118,11 +129,14 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 			g.write('${styp} ${var} = ')
 			g.expr(node.left)
 			g.writeln(';')
-			g.write2(line, ' ${var})')
+			g.write2(line, ' ${var}')
 		} else {
 			g.expr(node.left)
-			g.write(')')
 		}
+		if left_is_shared {
+			g.write(').val')
+		}
+		g.write(')')
 	} else {
 		g.expr(node.left)
 	}
@@ -192,7 +206,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 
 		if left_is_shared {
-			if left_is_ptr {
+			if node.index !is ast.RangeExpr && left_is_ptr {
 				g.write('->val')
 			} else {
 				g.write('.val')

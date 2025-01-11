@@ -2928,7 +2928,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.write('&')
 		}
 		g.expr(expr)
-		g.write('->val')
+		if expr !is ast.IndexExpr {
+			g.write('->val')
+		}
 		return
 	}
 	if got_is_ptr && !expected_is_ptr && neither_void && exp_sym.kind != .placeholder
