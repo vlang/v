@@ -704,12 +704,12 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		return ast.void_type
 	}
 	c.inside_fn_arg = old_inside_fn_arg
+	arg0 := if node.args.len > 0 { node.args[0] } else { ast.CallArg{} }
 	// autofree: mark args that have to be freed (after saving them in tmp exprs)
 	free_tmp_arg_vars := c.pref.autofree && !c.is_builtin_mod && node.args.len > 0
-		&& !c.inside_const && !node.args[0].typ.has_flag(.option)
-		&& !node.args[0].typ.has_flag(.result) && !(node.args[0].expr is ast.CallExpr
-		&& (node.args[0].expr.return_type.has_flag(.option)
-		|| node.args[0].expr.return_type.has_flag(.result)))
+		&& !c.inside_const && !arg0.typ.has_flag(.option) && !arg0.typ.has_flag(.result)
+		&& !(arg0.expr is ast.CallExpr
+		&& (arg0.expr.return_type.has_flag(.option) || arg0.expr.return_type.has_flag(.result)))
 	if free_tmp_arg_vars {
 		for i, arg in node.args {
 			if arg.typ != ast.string_type {
@@ -893,17 +893,18 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.error('generic fn using generic types cannot be called outside of generic fn',
 			node.pos)
 	}
+	fkey := node.fkey()
+	fn_name_has_dot := fn_name.contains('.')
 	if concrete_types.len > 0 {
 		mut no_exists := true
-		if fn_name.contains('.') {
-			no_exists = c.table.register_fn_concrete_types(node.fkey(), concrete_types)
+		if fn_name_has_dot {
+			no_exists = c.table.register_fn_concrete_types(fkey, concrete_types)
 		} else {
-			no_exists = c.table.register_fn_concrete_types(c.mod + '.' + node.fkey(),
-				concrete_types)
+			no_exists = c.table.register_fn_concrete_types(c.mod + '.' + fkey, concrete_types)
 			// if the generic fn does not exist in the current fn calling module, continue
 			// to look in builtin module
 			if !no_exists {
-				no_exists = c.table.register_fn_concrete_types(node.fkey(), concrete_types)
+				no_exists = c.table.register_fn_concrete_types(fkey, concrete_types)
 			}
 		}
 		if no_exists {
@@ -1024,7 +1025,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	// try prefix with current module as it would have never gotten prefixed
-	if !found && node.mod != 'builtin' && !fn_name.contains('.') {
+	if !found && node.mod != 'builtin' && !fn_name_has_dot {
 		name_prefixed := '${node.mod}.${fn_name}'
 		if f := c.table.find_fn(name_prefixed) {
 			node.name = name_prefixed
@@ -1109,7 +1110,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 			if !found {
 				// aliased static method on current mod
-				full_type_name := if !fn_name.contains('.') {
+				full_type_name := if !fn_name_has_dot {
 					c.mod + '.' + owner_name
 				} else {
 					owner_name
@@ -1196,7 +1197,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		os_name := 'os.${fn_name}'
 		if f := c.table.find_fn(os_name) {
 			if f.generic_names.len == node.concrete_types.len {
-				node_alias_name := node.fkey()
+				node_alias_name := fkey
 				mut existing := c.table.fn_generic_types[os_name] or { [] }
 				existing << c.table.fn_generic_types[node_alias_name]
 				existing << node.concrete_types
@@ -1278,7 +1279,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	// a same module constant?
 	if !found {
 		// allow for `const abc = myfunc`, then calling `abc()`
-		qualified_const_name := if fn_name.contains('.') { fn_name } else { '${c.mod}.${fn_name}' }
+		qualified_const_name := if fn_name_has_dot { fn_name } else { '${c.mod}.${fn_name}' }
 		if mut obj := c.table.global_scope.find_const(qualified_const_name) {
 			if obj.typ == 0 {
 				obj.typ = c.expr(mut obj.expr)
