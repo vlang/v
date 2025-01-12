@@ -4,7 +4,7 @@ fn make_option() ?string {
 	return 'abc'
 }
 
-fn main() {
+fn test_main() {
 	cols := [make_option()]
 	if col := cols[0] {
 		assert col == 'abc'
