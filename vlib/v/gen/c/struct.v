@@ -414,6 +414,14 @@ fn (mut g Gen) get_embed_field_name(field_type ast.Type, field_name string) stri
 	return s
 }
 
+fn (mut g Gen) init_shared_field(field ast.StructField) {
+	field_typ := field.typ.deref()
+	shared_styp := g.styp(field_typ)
+	g.write('(${shared_styp}*)__dup${shared_styp}(&(${shared_styp}){.mtx= {0}, .val=')
+	g.write(g.type_default(field_typ.clear_flag(.shared_f)))
+	g.write('}, sizeof(${shared_styp}))')
+}
+
 fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	old_inside_cast_in_heap := g.inside_cast_in_heap
 	g.inside_cast_in_heap = 0
@@ -428,6 +436,11 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			return false
 		} else if !field.has_default_expr {
 			mut has_option_field := false
+			if sym.info.is_shared || field.typ.has_flag(.shared_f) {
+				g.write('.${field_name} = ')
+				g.init_shared_field(field)
+				return true
+			}
 			for fd in sym.info.fields {
 				if fd.typ.has_flag(.option) {
 					has_option_field = true
@@ -520,6 +533,8 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			}
 		}
 		g.write('}')
+	} else if field.typ.has_flag(.shared_f) {
+		g.init_shared_field(field)
 	} else {
 		g.write(g.type_default(field.typ))
 	}
@@ -570,7 +585,11 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		}
 	}
 	if is_anon {
-		g.type_definitions.write_string('\t${name} ')
+		if s.is_shared {
+			g.type_definitions.write_string('\t__shared__${name}* ')
+		} else {
+			g.type_definitions.write_string('\t${name} ')
+		}
 		return
 	} else if s.is_union {
 		if g.is_cc_msvc && aligned_attr != '' {
