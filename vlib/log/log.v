@@ -5,6 +5,7 @@ module log
 
 import os
 import time
+import io
 
 // TimeFormat define the log time string format, come from time/format.v
 pub enum TimeFormat {
@@ -25,6 +26,8 @@ pub enum TimeFormat {
 	tf_custom_format // 'MMMM Do YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
 }
 
+const stderr = os.stderr()
+
 // Log represents a logging object
 pub struct Log {
 mut:
@@ -36,6 +39,7 @@ mut:
 	custom_time_format string     = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
 	short_tag          bool
 	always_flush       bool // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
+	output_stream      io.Writer = stderr
 pub mut:
 	output_file_name string // log output to this file
 }
@@ -75,6 +79,11 @@ pub fn (mut l Log) set_output_path(output_file_path string) {
 		panic('error while opening log file ' + l.output_file_name + ' for appending')
 	}
 	l.ofile = ofile
+}
+
+// set_output_stream sets the output stream to write log e.g. stderr, stdout, etc.
+pub fn (mut l Log) set_output_stream(stream io.Writer) {
+	l.output_stream = stream
 }
 
 // log_to_console_too turns on logging to the console too, in addition to logging to a file.
@@ -131,13 +140,21 @@ fn (mut l Log) log_file(s string, level Level) {
 	}
 }
 
-// log_cli writes log line `s` with `level` to stdout.
-fn (l &Log) log_cli(s string, level Level) {
+// log_stream writes log line `s` with `level` to stderr or stderr depending on set output stream.
+fn (mut l Log) log_stream(s string, level Level) {
 	timestamp := l.time_format(time.utc())
-	e := tag_to_cli(level, l.short_tag)
-	println('${timestamp} [${e}] ${s}')
+	tag := tag_to_console(level, l.short_tag)
+	msg := '${timestamp} [${tag}] ${s}\n'
+	arr := msg.bytes()
+	l.output_stream.write(arr) or {}
 	if l.always_flush {
-		flush_stdout()
+		if mut l.output_stream is os.File {
+			match l.output_stream.fd {
+				1 { flush_stdout() }
+				2 { flush_stderr() }
+				else {}
+			}
+		}
 	}
 }
 
@@ -148,7 +165,7 @@ pub fn (mut l Log) send_output(s &string, level Level) {
 		l.log_file(s, level)
 	}
 	if l.output_target == .console || l.output_target == .both {
-		l.log_cli(s, level)
+		l.log_stream(s, level)
 	}
 }
 
