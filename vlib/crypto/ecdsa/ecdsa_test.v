@@ -15,6 +15,25 @@ fn test_ecdsa() {
 	key_free(priv_key.key)
 }
 
+// This test should exactly has the same behaviour with default sign(message),
+// because we passed .with_no_hash flag as an option.
+fn test_ecdsa_signing_with_options() {
+	// Generate key pair
+	pub_key, priv_key := generate_key() or { panic(err) }
+
+	// Sign a message
+	message := 'Hello, ECDSA!'.bytes()
+	opts := SignerOpts{
+		hash_config: .with_no_hash
+	}
+	signature := priv_key.sign_with_options(message, opts) or { panic(err) }
+
+	// Verify the signature
+	is_valid := pub_key.verify(message, signature) or { panic(err) }
+	println('Signature valid: ${is_valid}')
+	assert is_valid
+}
+
 fn test_generate_key() ! {
 	// Test key generation
 	pub_key, priv_key := generate_key() or { panic(err) }
@@ -69,6 +88,15 @@ fn test_private_key_equal() ! {
 	assert priv_key1.equal(priv_key2)
 	key_free(priv_key1.key)
 	key_free(priv_key2.key)
+}
+
+fn test_private_key_equality_on_different_curve() ! {
+	// default group
+	_, priv_key1 := generate_key() or { panic(err) }
+	seed := priv_key1.seed() or { panic(err) }
+	// using different group
+	priv_key2 := new_key_from_seed(seed, nid: .secp384r1) or { panic(err) }
+	assert !priv_key1.equal(priv_key2)
 }
 
 fn test_public_key_equal() ! {
