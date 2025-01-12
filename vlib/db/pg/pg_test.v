@@ -28,3 +28,16 @@ WHERE
 		row.str()
 	}
 }
+
+fn test_prepared() {
+	db := pg.connect(pg.Config{ user: 'postgres', password: 'secret', dbname: 'postgres' })!
+	defer {
+		db.close()
+	}
+
+	db.prepare('test_prepared', 'SELECT NOW(), $1 AS NAME', 1) or { panic(err) }
+
+	result := db.exec_prepared('test_prepared', ['hello world']) or { panic(err) }
+
+	assert result.len == 1
+}
