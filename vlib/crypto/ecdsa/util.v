@@ -93,6 +93,7 @@ pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
 		&& nidgroup != nid_secp256k1 {
 		return error('Unsupported group')
 	}
+	C.EVP_PKEY_free(pub_key)
 	// Its OK to return
 	return PublicKey{
 		key: eckey

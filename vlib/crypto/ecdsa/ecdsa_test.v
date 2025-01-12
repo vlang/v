@@ -31,6 +31,7 @@ fn test_ecdsa_signing_with_options() {
 	// Verify the signature
 	is_valid := pub_key.verify(message, signature) or { panic(err) }
 	println('Signature valid: ${is_valid}')
+	key_free(pub_key.key)
 	assert is_valid
 }
 
@@ -97,6 +98,8 @@ fn test_private_key_equality_on_different_curve() ! {
 	// using different group
 	priv_key2 := new_key_from_seed(seed, nid: .secp384r1) or { panic(err) }
 	assert !priv_key1.equal(priv_key2)
+	key_free(priv_key1.key)
+	key_free(priv_key2.key)
 }
 
 fn test_public_key_equal() ! {
