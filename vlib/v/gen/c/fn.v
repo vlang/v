@@ -2577,7 +2577,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 @[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language, is_smartcast bool) {
-	arg_typ := if arg.expr is ast.ComptimeSelector {
+	arg_typ := if g.comptime.is_comptime(arg.expr) {
 		g.unwrap_generic(g.type_resolver.get_type(arg.expr))
 	} else {
 		g.unwrap_generic(arg.typ)
@@ -2727,7 +2727,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		styp := g.base_type(arg_typ)
 		g.write('*(${styp}*)')
 		g.expr_with_cast(arg.expr, arg_typ, expected_type)
-		g.write('.data')
+		g.write('.data/**/')
 		return
 	}
 	// check if the argument must be dereferenced or not

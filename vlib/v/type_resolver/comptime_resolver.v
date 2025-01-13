@@ -55,6 +55,9 @@ pub fn (t &ResolverInfo) is_comptime(node ast.Expr) bool {
 		ast.ParExpr {
 			return t.is_comptime(node.expr)
 		}
+		ast.ComptimeSelector {
+			return true
+		}
 		else {
 			false
 		}
