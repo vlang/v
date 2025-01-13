@@ -6718,6 +6718,12 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								if expr_stmt.expr.is_return_used {
 									g.write('*(${cast_typ}*) ${cvar_name}.data = ')
 								}
+							} else if g.inside_opt_or_res && return_is_option && g.inside_assign {
+								g.write('_option_ok(&(${cast_typ}[]) { ')
+								g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
+								g.writeln(' }, (${g.styp(return_type)}*)${cvar_name}.data, sizeof(${cast_typ}));')
+								g.indent--
+								return
 							} else {
 								g.write('*(${cast_typ}*) ${cvar_name}.data = ')
 							}
