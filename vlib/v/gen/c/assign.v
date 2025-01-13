@@ -293,96 +293,100 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					var_type = var_type.set_flag(.atomic_f)
 				}
 			}
-			if node_.op == .decl_assign && mut left.obj is ast.Var {
-				if val is ast.Ident && val.ct_expr {
-					ctyp := g.unwrap_generic(g.type_resolver.get_type(val))
-					if ctyp != ast.void_type {
-						var_type = ctyp
-						val_type = var_type
+			if mut left.obj is ast.Var {
+				if is_decl {
+					if val is ast.Ident && val.ct_expr {
+						ctyp := g.unwrap_generic(g.type_resolver.get_type(val))
+						if ctyp != ast.void_type {
+							var_type = ctyp
+							val_type = var_type
+							gen_or = val.or_expr.kind != .absent
+							if gen_or {
+								var_type = val_type.clear_flag(.option)
+							}
+							left.obj.typ = var_type
+							g.assign_ct_type = var_type
+						}
+					} else if val is ast.ComptimeSelector {
+						if val.typ_key != '' {
+							if is_decl {
+								var_type = g.type_resolver.get_ct_type_or_default(val.typ_key,
+									var_type)
+								val_type = var_type
+								left.obj.typ = var_type
+							} else {
+								val_type = g.type_resolver.get_ct_type_or_default(val.typ_key,
+									var_type)
+							}
+							g.assign_ct_type = var_type
+						}
+					} else if val is ast.ComptimeCall {
+						key_str := '${val.method_name}.return_type'
+						var_type = g.type_resolver.get_ct_type_or_default(key_str, var_type)
+						left.obj.typ = var_type
+						g.assign_ct_type = var_type
+					} else if val is ast.Ident && val.info is ast.IdentVar {
+						val_info := (val as ast.Ident).info
 						gen_or = val.or_expr.kind != .absent
-						if gen_or {
+						if val_info.is_option && gen_or {
 							var_type = val_type.clear_flag(.option)
-						}
-						left.obj.typ = var_type
-						g.assign_ct_type = var_type
-					}
-				} else if val is ast.ComptimeSelector {
-					if val.typ_key != '' {
-						if is_decl {
-							var_type = g.type_resolver.get_ct_type_or_default(val.typ_key,
-								var_type)
-							val_type = var_type
-							left.obj.typ = var_type
-						} else {
-							val_type = g.type_resolver.get_ct_type_or_default(val.typ_key,
-								var_type)
-						}
-						g.assign_ct_type = var_type
-					}
-				} else if val is ast.ComptimeCall {
-					key_str := '${val.method_name}.return_type'
-					var_type = g.type_resolver.get_ct_type_or_default(key_str, var_type)
-					left.obj.typ = var_type
-					g.assign_ct_type = var_type
-				} else if is_decl && val is ast.Ident && val.info is ast.IdentVar {
-					val_info := (val as ast.Ident).info
-					gen_or = val.or_expr.kind != .absent
-					if val_info.is_option && gen_or {
-						var_type = val_type.clear_flag(.option)
-						left.obj.typ = var_type
-					}
-				} else if val is ast.DumpExpr {
-					if val.expr is ast.ComptimeSelector {
-						if val.expr.typ_key != '' {
-							var_type = g.type_resolver.get_ct_type_or_default(val.expr.typ_key,
-								var_type)
-							val_type = var_type
 							left.obj.typ = var_type
 						}
-						g.assign_ct_type = var_type
-					}
-				} else if val is ast.IndexExpr && (val.left is ast.Ident && val.left.ct_expr) {
-					ctyp := g.unwrap_generic(g.type_resolver.get_type(val))
-					if ctyp != ast.void_type {
-						var_type = ctyp
-						val_type = var_type
-						left.obj.typ = var_type
-						g.assign_ct_type = var_type
-					}
-				} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
-					if val.return_type_generic != 0 && val.return_type_generic.has_flag(.generic) {
-						fn_ret_type := g.resolve_return_type(val)
-						if fn_ret_type != ast.void_type {
+					} else if val is ast.DumpExpr {
+						if val.expr is ast.ComptimeSelector {
+							if val.expr.typ_key != '' {
+								var_type = g.type_resolver.get_ct_type_or_default(val.expr.typ_key,
+									var_type)
+								val_type = var_type
+								left.obj.typ = var_type
+							}
+							g.assign_ct_type = var_type
+						}
+					} else if val is ast.IndexExpr && (val.left is ast.Ident && val.left.ct_expr) {
+						ctyp := g.unwrap_generic(g.type_resolver.get_type(val))
+						if ctyp != ast.void_type {
+							var_type = ctyp
+							val_type = var_type
+							left.obj.typ = var_type
+							g.assign_ct_type = var_type
+						}
+					} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
+						if val.return_type_generic != 0
+							&& val.return_type_generic.has_flag(.generic) {
+							fn_ret_type := g.resolve_return_type(val)
+							if fn_ret_type != ast.void_type {
+								var_type = fn_ret_type
+								val_type = var_type
+								left.obj.typ = var_type
+							}
+						} else if val.is_static_method && val.left_type.has_flag(.generic) {
+							fn_ret_type := g.resolve_return_type(val)
 							var_type = fn_ret_type
 							val_type = var_type
 							left.obj.typ = var_type
+							g.assign_ct_type = var_type
+						} else if val.left_type != 0 && g.table.type_kind(val.left_type) == .array
+							&& val.name == 'map' && val.args.len > 0
+							&& val.args[0].expr is ast.AsCast
+							&& val.args[0].expr.typ.has_flag(.generic) {
+							var_type = g.table.find_or_register_array(g.unwrap_generic((val.args[0].expr as ast.AsCast).typ))
+							val_type = var_type
+							left.obj.typ = var_type
+							g.assign_ct_type = var_type
 						}
-					} else if val.is_static_method && val.left_type.has_flag(.generic) {
-						fn_ret_type := g.resolve_return_type(val)
-						var_type = fn_ret_type
-						val_type = var_type
-						left.obj.typ = var_type
-						g.assign_ct_type = var_type
-					} else if val.left_type != 0 && g.table.type_kind(val.left_type) == .array
-						&& val.name == 'map' && val.args.len > 0 && val.args[0].expr is ast.AsCast
-						&& val.args[0].expr.typ.has_flag(.generic) {
-						var_type = g.table.find_or_register_array(g.unwrap_generic((val.args[0].expr as ast.AsCast).typ))
-						val_type = var_type
-						left.obj.typ = var_type
-						g.assign_ct_type = var_type
-					}
-				} else if val is ast.InfixExpr && val.op in [.plus, .minus, .mul, .div, .mod]
-					&& val.left_ct_expr {
-					ctyp := g.unwrap_generic(g.type_resolver.get_type(val.left))
-					if ctyp != ast.void_type {
-						ct_type_var := g.comptime.get_ct_type_var(val.left)
-						if ct_type_var in [.key_var, .value_var] {
-							g.type_resolver.update_ct_type(left.name, g.unwrap_generic(ctyp))
+					} else if val is ast.InfixExpr && val.op in [.plus, .minus, .mul, .div, .mod]
+						&& val.left_ct_expr {
+						ctyp := g.unwrap_generic(g.type_resolver.get_type(val.left))
+						if ctyp != ast.void_type {
+							ct_type_var := g.comptime.get_ct_type_var(val.left)
+							if ct_type_var in [.key_var, .value_var] {
+								g.type_resolver.update_ct_type(left.name, g.unwrap_generic(ctyp))
+							}
+							var_type = ctyp
+							val_type = var_type
+							left.obj.typ = var_type
+							g.assign_ct_type = var_type
 						}
-						var_type = ctyp
-						val_type = var_type
-						left.obj.typ = var_type
-						g.assign_ct_type = var_type
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
