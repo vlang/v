@@ -67,6 +67,9 @@ pub fn (t &TypeResolver) is_generic_expr(node ast.Expr) bool {
 			if node.is_static_method && node.left_type.has_flag(.generic) {
 				return true
 			}
+			if node.return_type_generic.has_flag(.generic) {
+				return true
+			}
 			// fn[T]() or generic_var.fn[T]()
 			node.concrete_types.any(it.has_flag(.generic))
 		}
