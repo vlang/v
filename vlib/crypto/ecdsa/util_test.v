@@ -34,6 +34,7 @@ fn test_load_pubkey_from_der_serialized_bytes() ! {
 	hashed_msg := sha512.sum384(message_tobe_signed.bytes())
 	status_with_hashed := pbkey.verify(hashed_msg, expected_signature)!
 	assert status_with_hashed == true
+	key_free(pbkey.key)
 }
 
 fn test_for_pubkey_bytes() ! {
@@ -45,4 +46,6 @@ fn test_for_pubkey_bytes() ! {
 	assert pvkey.seed()!.hex() == pv
 	pbkey := pvkey.public_key()!
 	assert pbkey.bytes()!.hex() == pb
+	key_free(pbkey.key)
+	key_free(pvkey.key)
 }
