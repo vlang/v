@@ -1,0 +1,11 @@
+fn foo(x int, p voidptr) {}
+
+fn foo2(p &Aa) {}
+
+struct Aa {}
+
+fn main() {
+	a := Aa{}
+	foo(3, a)
+	// foo2(a)
+}

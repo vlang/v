@@ -1754,11 +1754,25 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				call_arg.pos)
 		}
 		// Warn about automatic (de)referencing, which will be removed soon.
-		if func.language != .c && !c.inside_unsafe && arg_typ.nr_muls() != param.typ.nr_muls()
-			&& !(call_arg.is_mut && param.is_mut) && !(!call_arg.is_mut && !param.is_mut)
-			&& param.typ !in [ast.byteptr_type, ast.charptr_type, ast.voidptr_type, ast.nil_type] {
-			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: ${arg_typ.nr_muls()} references, expected: ${param.typ.nr_muls()} references)',
-				call_arg.pos)
+		if func.language != .c && !c.inside_unsafe && !(call_arg.is_mut && param.is_mut) {
+			if arg_typ.nr_muls() != param.typ.nr_muls()
+				&& param.typ !in [ast.byteptr_type, ast.charptr_type, ast.voidptr_type, ast.nil_type]
+				&& arg_typ != ast.voidptr_type && !(!call_arg.is_mut && !param.is_mut) //&& !(!call_arg.is_mut && !param.is_mut)
+			  {
+				c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: ${arg_typ.nr_muls()} references, expected: ${param.typ.nr_muls()} references)',
+					call_arg.pos)
+			}
+			// A special case of the check to not allow voidptr params like in the recently reported raylib
+			// bug with fn...
+			// fn f(p &Foo) => f(foo) -- do not allow this, force f(&foo)
+			// if !c.is_builtin_mod
+			if param.typ == ast.voidptr_type && func.language == .v
+				&& arg_typ !in [ast.voidptr_type, ast.nil_type] && arg_typ.nr_muls() == 0
+				&& func.name !in ['isnil', 'ptr_str'] && !func.name.starts_with('json.')
+				&& arg_typ_sym.kind !in [.float_literal, .int_literal] && !c.pref.backend.is_js() {
+				c.warn('automatic ${arg_typ_sym.name} referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`',
+					call_arg.pos)
+			}
 		}
 	}
 	if func.generic_names.len != node.concrete_types.len {

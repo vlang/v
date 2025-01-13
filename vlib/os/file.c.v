@@ -503,6 +503,7 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []u8) !int {
 			return nbytes
 		} $else {
 			C.fseeko(f.cfile, pos, C.SEEK_SET)
+			// TODO(alex): require casts for voidptrs? &C.FILE(f.cfile)
 			nbytes := fread(buf.data, 1, buf.len, f.cfile)!
 			$if debug {
 				C.fseeko(f.cfile, 0, C.SEEK_SET)
