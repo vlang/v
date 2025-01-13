@@ -47,7 +47,7 @@ pub fn (t &ResolverInfo) is_comptime(node ast.Expr) bool {
 			}
 		}
 		ast.SelectorExpr {
-			return node.expr is ast.Ident && node.expr.ct_expr
+			return node.expr is ast.Ident && node.expr.ct_expr && node.field_name != 'len'
 		}
 		ast.InfixExpr {
 			return node.left_ct_expr || node.right_ct_expr
