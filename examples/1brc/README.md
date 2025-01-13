@@ -1,13 +1,15 @@
 # 1 Billion Row Challenge (1BRC)
 
-A solution to the [1 Billion Row Challenge](https://www.morling.dev/blog/one-billion-row-challenge/), written in [the V programming language](https://vlang.io/).
+A solution to the [1 Billion Row Challenge](https://www.morling.dev/blog/one-billion-row-challenge/), 
+written in [the V programming language](https://vlang.io/).
 
 Read more about the challenge here: https://www.morling.dev/blog/one-billion-row-challenge/
 
 
 ## Running instructions
 
-Suggested compiler options for performance: `v -cc gcc -cflags "-std=c17 -O2 -m64 -march=native -mtune=native -flto`
+Suggested compiler options for performance: 
+`v -cc gcc -cflags "-std=c17 -O2 -m64 -march=native -mtune=native -flto"`
 
 
 ### Step 1: Create a measurements file
@@ -34,7 +36,9 @@ On Linux, you can time the solution using the `time` command:
 
 `time ./solution ~/measurements.txt`
 
-By default, the solution runs in a single thread. If you want to run parallel processing, use the `-n` parameter, for example, to run with 8 threads:
+By default, the solution runs in a single thread. If you want to run
+parallel processing, use the `-n` parameter, for example, to run with 
+8 threads:
 
 `./solution -n 8 ~/measurements.txt`
 
@@ -44,4 +48,7 @@ On Linux, to run one thread per core, use
 
 ### Step 3: Improve upon the solution
 
-Make changes that improve the performance and submit them. Let's show off what is possible in V. In various tests, this solution takes 4-10 times longer than the fastest C solution, so we have room to improve!
+Make changes that improve the performance and submit them. 
+Let's show off what is possible in V. In various tests, 
+this solution takes 4-10 times longer than the fastest C solution, 
+so we have room to improve!
