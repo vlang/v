@@ -118,7 +118,7 @@ pub fn (t &TypeResolver) get_generic_array_element_type(array ast.Array) ast.Typ
 pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (cur_fn != unsafe { nil } && cur_fn.generic_names.len > 0)
-		|| t.info.comptime_for_field_var != ''
+		|| t.info.comptime_for_field_var != '' || func.generic_names.len > 0
 	if !has_dynamic_vars {
 		return comptime_args
 	}
