@@ -6719,13 +6719,15 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 									g.write('*(${cast_typ}*) ${cvar_name}.data = ')
 								}
 							} else if g.inside_opt_or_res && return_is_option && g.inside_assign {
+								tmp_var := g.new_tmp_var()
+								g.write('${cast_typ} ${tmp_var} = ')
+								g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
+								g.writeln(';')
 								g.write('_option_ok(&(${cast_typ}[]) { ')
 								if return_type.idx() == ast.string_type_idx {
-									g.write('string_clone(')
-									g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
-									g.write(')')
+									g.write('string_clone(${tmp_var})')
 								} else {
-									g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
+									g.write('${tmp_var}')
 								}
 								g.writeln(' }, (${g.styp(return_type)}*)${cvar_name}.data, sizeof(${cast_typ}));')
 								g.indent--
