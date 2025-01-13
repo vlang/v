@@ -453,7 +453,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										&& c.table.cur_fn != unsafe { nil }
 										&& c.table.cur_fn.generic_names.len != 0
 										&& !right.comptime_ret_val
-										&& c.type_resolver.is_generic_expr(right) {
+										&& c.type_resolver.is_generic_expr(right)
+										&& right.return_type_generic.has_flag(.generic) {
 										// mark variable as generic var because its type changes according to fn return generic resolution type
 										left.obj.ct_type_var = .generic_var
 									}

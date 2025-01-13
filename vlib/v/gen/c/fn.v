@@ -2727,7 +2727,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		styp := g.base_type(arg_typ)
 		g.write('*(${styp}*)')
 		g.expr_with_cast(arg.expr, arg_typ, expected_type)
-		g.write('.data/**/')
+		g.write('.data')
 		return
 	}
 	// check if the argument must be dereferenced or not
