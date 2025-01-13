@@ -154,6 +154,11 @@ fn C.PQputCopyEnd(conn &C.PGconn, const_errmsg &char) int
 
 fn C.PQgetCopyData(conn &C.PGconn, buffer &&char, async int) int
 
+fn C.PQprepare(conn &C.PGconn, const_stmtName &char, const_query &char, nParams int, const_param_types &&char) &C.PGresult
+
+fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams int, const_paramValues &char,
+	const_paramLengths &int, const_paramFormats &int, resultFormat int) &C.PGresult
+
 // cleanup
 
 fn C.PQclear(res &C.PGresult)
@@ -309,6 +314,27 @@ pub fn (db DB) exec_param2(query string, param string, param2 string) ![]Row {
 	return db.exec_param_many(query, [param, param2])
 }
 
+// prepare submits a request to create a prepared statement with the given parameters, and waits for completion. You must provide the number of parameters (`$1, $2, $3 ...`) used in the statement
+pub fn (db DB) prepare(name string, query string, num_params int) ! {
+	res := C.PQprepare(db.conn, &char(name.str), &char(query.str), num_params, 0) // defining param types is optional
+
+	return db.handle_error(res, 'prepare')
+}
+
+// exec_prepared sends a request to execute a prepared statement with given parameters, and waits for the result. The number of parameters must match with the parameters declared in the prepared statement.
+pub fn (db DB) exec_prepared(name string, params []string) ![]Row {
+	unsafe {
+		mut param_vals := []&char{len: params.len}
+		for i in 0 .. params.len {
+			param_vals[i] = &char(params[i].str)
+		}
+
+		res := C.PQexecPrepared(db.conn, &char(name.str), params.len, param_vals.data,
+			0, 0, 0)
+		return db.handle_error_or_result(res, 'exec_prepared')
+	}
+}
+
 fn (db DB) handle_error_or_result(res voidptr, elabel string) ![]Row {
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
@@ -319,6 +345,17 @@ fn (db DB) handle_error_or_result(res voidptr, elabel string) ![]Row {
 		return error('pg ${elabel} error:\n${e}')
 	}
 	return res_to_rows(res)
+}
+
+fn (db DB) handle_error(res voidptr, elabel string) ! {
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		C.PQclear(res)
+		$if trace_pg_error ? {
+			eprintln('pg error: ${e}')
+		}
+		return error('pg ${elabel} error:\n${e}')
+	}
 }
 
 // copy_expert executes COPY command
