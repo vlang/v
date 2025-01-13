@@ -392,7 +392,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					node.left_types[i] = left_type
 					ident_var_info.typ = left_type
 					left.info = ident_var_info
-					if left_type != 0 {
+					if is_decl && left_type != 0 {
 						match mut left.obj {
 							ast.Var {
 								left.obj.typ = left_type
