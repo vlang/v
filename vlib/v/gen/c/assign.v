@@ -293,7 +293,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					var_type = var_type.set_flag(.atomic_f)
 				}
 			}
-			if mut left.obj is ast.Var {
+			if node_.op == .decl_assign && mut left.obj is ast.Var {
 				if val is ast.Ident && val.ct_expr {
 					ctyp := g.unwrap_generic(g.type_resolver.get_type(val))
 					if ctyp != ast.void_type {

@@ -480,16 +480,27 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
+	left_is_array := g.table.final_sym(node.left_type).kind == .array
 	return_type := if g.type_resolver.is_generic_expr(node.args[0].expr) {
-		ast.new_type(g.table.find_or_register_array(g.type_resolver.unwrap_generic_expr(node.args[0].expr,
-			node.return_type)))
+		mut ctyp := ast.void_type
+		if node.args[0].expr is ast.CallExpr && node.args[0].expr.return_type_generic != 0
+			&& node.args[0].expr.return_type_generic.has_flag(.generic) {
+			ctyp = g.resolve_return_type(node.args[0].expr)
+		}
+		if ctyp == ast.void_type {
+			ctyp = g.type_resolver.unwrap_generic_expr(node.args[0].expr, node.return_type)
+		}
+		if g.table.type_kind(ctyp) !in [.array, .array_fixed] {
+			ast.new_type(g.table.find_or_register_array(ctyp))
+		} else {
+			ctyp
+		}
 	} else {
 		node.return_type
 	}
 	ret_styp := g.styp(return_type)
 	ret_sym := g.table.final_sym(return_type)
 
-	left_is_array := g.table.final_sym(node.left_type).kind == .array
 	inp_sym := g.table.final_sym(node.receiver_type)
 
 	ret_elem_type := if left_is_array {
