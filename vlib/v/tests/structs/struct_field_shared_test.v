@@ -1,5 +1,5 @@
 struct Foo {
-	bar struct {
+	bar shared struct {
 		foo int
 		bar int
 	}
@@ -14,4 +14,12 @@ fn test_main() {
     }
     baz: 0
 }'
+	mut t := Foo{}
+	lock t.bar {
+		t.bar.foo = 1
+		t.bar.bar = 2
+	}
+	rlock t.bar {
+		assert t.bar.foo + t.bar.bar == 3
+	}
 }
