@@ -1,0 +1,9 @@
+struct Abc {
+mut:
+	m ?map[string]string
+}
+
+fn main() {
+	x := Abc{}
+	_ := x.m['test'] or { 'test' }
+}
