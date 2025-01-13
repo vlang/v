@@ -1,5 +1,6 @@
 struct Foo {
 	bar shared struct {
+	mut:
 		foo int
 		bar int
 	}
