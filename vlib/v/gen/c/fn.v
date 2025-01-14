@@ -2028,8 +2028,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// Handle `print(x)`
 	mut print_auto_str := false
 	if is_print && (node.args[0].typ != ast.string_type
-		|| g.comptime.comptime_for_method != unsafe { nil }
-		|| g.comptime.is_comptime(node.args[0].expr)) {
+		|| g.comptime.comptime_for_method != unsafe { nil } || node.args[0].ct_expr) {
 		g.inside_interface_deref = true
 		defer {
 			g.inside_interface_deref = false
