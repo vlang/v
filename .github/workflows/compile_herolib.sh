@@ -12,6 +12,9 @@ show "Clone https://github.com/freeflowuniverse/herolib"
 v retry -- git clone --filter=blob:none --quiet https://github.com/freeflowuniverse/herolib herolib
 cd herolib
 git checkout development
+
+mkdir -p ~/.vmodules/freeflowuniverse
+ln -s $(pwd)/lib ~/.vmodules/freeflowuniverse/herolib
 cd cli
 
 show "Checkout last known good commit"

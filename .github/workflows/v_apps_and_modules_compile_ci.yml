@@ -66,6 +66,9 @@ jobs:
       - name: Test discord.v
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/workflows/compile_discordv.sh
+      - name: Build herolib
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: .github/workflows/compile_herolib.sh
       - name: Build vlang/vab
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
@@ -208,9 +211,6 @@ jobs:
           v -skip-unused test ~/.vmodules/msgpack/
           echo "MessagePack examples should compile"
           v should-compile-all ~/.vmodules/msgpack/examples
-      - name: Build herolib
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: .github/workflows/compile_herolib.sh
 
       # - name: Build VEX
       #   if: ${{ !cancelled() }} && steps.build.outcome == 'success'
