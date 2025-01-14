@@ -12,7 +12,9 @@ mut:
 
 fn main() {
 	mut context := Context{}
-	mut fp := flag.new_flag_parser(os.args#[1..])
+	args := os.args#[1..]
+	// dump(args)
+	mut fp := flag.new_flag_parser(args)
 	fp.application('v retry')
 	fp.version('0.0.1')
 	fp.description('Run the command CMD in a loop, until it succeeds, or until a predetermined amount of seconds pass.')
@@ -32,6 +34,7 @@ fn main() {
 		exit(1)
 	}
 	cmd := command_args.join(' ')
+	// dump(cmd)
 
 	spawn fn (context Context) {
 		time.sleep(context.timeout)
