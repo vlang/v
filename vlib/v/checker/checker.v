@@ -4915,7 +4915,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped with `func()?`, or use `func() or {default}`',
 				node.left.pos())
 		} else if node.left is ast.SelectorExpr && node.left.or_block.kind == .absent {
-			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped first; use `struct.var?[]` to do it',
+			c.error('type `?${typ_sym.name}` is an Option, it must be unwrapped first; use `${node.left}?` to do it',
 				node.left.pos())
 		}
 	} else if typ.has_flag(.result) {
