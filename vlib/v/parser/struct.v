@@ -13,10 +13,15 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	attrs := p.attrs
 	start_pos := p.tok.pos()
 	mut is_pub := p.tok.kind == .key_pub
+	mut is_shared := p.tok.kind == .key_shared
 	if is_pub {
 		p.next()
 	}
 	if is_anon {
+		if is_shared {
+			p.register_auto_import('sync')
+			p.next()
+		}
 		is_pub = true
 	}
 	is_union := p.tok.kind == .key_union
@@ -236,12 +241,18 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				// struct field
 				field_name = p.check_name()
 				p.inside_struct_field_decl = true
-				if p.tok.kind == .key_struct {
+				if p.tok.kind == .key_struct
+					|| (p.tok.kind == .key_shared && p.peek_tok.kind == .key_struct) {
 					// Anon structs
+					field_is_shared := p.tok.kind == .key_shared
 					p.anon_struct_decl = p.struct_decl(true)
 					p.anon_struct_decl.language = language
 					// Find the registered anon struct type, it was registered above in `p.struct_decl()`
 					typ = p.table.find_type_idx(p.anon_struct_decl.name)
+					if field_is_shared {
+						typ = typ.set_flag(.shared_f)
+						typ = typ.set_nr_muls(1)
+					}
 				} else {
 					start_type_pos := p.tok.pos()
 					typ = p.parse_type()
@@ -379,6 +390,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			generic_types: generic_types
 			attrs:         attrs
 			is_anon:       is_anon
+			is_shared:     is_shared
 			has_option:    has_option
 		}
 		is_pub:     is_pub
