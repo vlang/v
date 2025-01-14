@@ -305,7 +305,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		}
 		g.type_definitions.writeln('} ${wrapper_struct_name};')
 		thread_ret_type := if g.pref.os == .windows { 'u32' } else { 'void*' }
-		g.type_definitions.writeln('${g.static_modifier} ${thread_ret_type} ${wrapper_fn_name}(${wrapper_struct_name} *arg);')
+		g.waiter_fn_definitions.writeln('${g.static_non_parallel}${thread_ret_type} ${wrapper_fn_name}(${wrapper_struct_name} *arg);')
 		g.gowrappers.writeln('${thread_ret_type} ${wrapper_fn_name}(${wrapper_struct_name} *arg) {')
 		if call_ret_type != ast.void_type {
 			if g.pref.os == .windows {
