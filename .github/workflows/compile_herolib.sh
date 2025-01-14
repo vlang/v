@@ -23,6 +23,13 @@ v -cc gcc -cg -enable-globals -w -n hero.v
 show "Checking build"
 ls -l ./hero
 
+
+v wipe-cache
+show "Build project no parallel (clang)"
+v -cc clang -cg -enable-globals -w -n hero.v 
+show "Checking build"
+ls -l ./hero
+
 v wipe-cache
 show "Build project with -parallel-cc (clang)"
 v -cc clang -cg -enable-globals -parallel-cc -w -n hero.v 
