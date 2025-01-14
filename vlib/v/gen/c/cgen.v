@@ -6721,7 +6721,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 							} else if g.inside_opt_or_res && return_is_option && g.inside_assign {
 								g.write('_option_ok(&(${cast_typ}[]) { ')
 								g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
-								g.writeln(' }, (${option_name}*)${cvar_name}.data, sizeof(${cast_typ}));')
+								g.writeln(' }, (${option_name}*)&${cvar_name}, sizeof(${cast_typ}));')
 								g.indent--
 								return
 							} else {
