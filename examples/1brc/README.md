@@ -9,7 +9,8 @@ Read more about the challenge here: https://www.morling.dev/blog/one-billion-row
 ## Running instructions
 
 Suggested compiler options for performance: 
-`v -cc gcc -cflags "-std=c17 -O2 -m64 -march=native -mtune=native -flto"`
+
+`v -cc gcc -prod -cflags "-std=c17 -march=native -mtune=native"`
 
 
 ### Step 1: Create a measurements file
@@ -18,7 +19,7 @@ Compile and run `make-samples` to create the sample file.
 
 ```
 cd make-samples
-v -cc gcc -cflags "-std=c17 -O2 -m64 -march=native -mtune=native -flto" .
+v -cc gcc -prod -cflags "-std=c17 -march=native -mtune=native" .
 ./make-samples 1000000000 > ~/measurements.txt
 ```
 
@@ -28,13 +29,13 @@ NOTE: If you create a billion rows, the file will be about 12GB!
 
 ```
 cd solution
-v -cc gcc -cflags "-std=c17 -O2 -m64 -march=native -mtune=native -flto" .
+v -cc gcc -prod -cflags "-std=c17 -march=native -mtune=native" .
 ./solution ~/measurements.txt
 ```
 
-On Linux, you can time the solution using the `time` command:
+You can time the solution using `v time`:
 
-`time ./solution ~/measurements.txt`
+`v time ./solution ~/measurements.txt`
 
 By default, the solution runs in a single thread. If you want to run
 parallel processing, use the `-n` parameter, for example, to run with 
