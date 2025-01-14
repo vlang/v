@@ -103,10 +103,12 @@ pub struct PublicKey {
 	key &C.EC_KEY
 }
 
-// Generate a new key pair. If opt was not provided, its default to prime256v1 curve.
+// generate_key generates a new key pair. If opt was not provided, its default to prime256v1 curve.
+// If you want another curve, use in the following manner: `pubkey, pivkey := ecdsa.generate_key(nid: .secp384r1)!`
 pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
 	ec_key := new_curve(opt)
 	if ec_key == 0 {
+		C.EC_KEY_free(ec_key)
 		return error('Failed to create new EC_KEY')
 	}
 	res := C.EC_KEY_generate_key(ec_key)
@@ -124,13 +126,47 @@ pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
 	return pub_key, priv_key
 }
 
-// Create a new private key from a seed. If opt was not provided, its default to prime256v1 curve.
+// new_key_from_seed creates a new private key from the seed bytes. If opt was not provided,
+// its default to prime256v1 curve.
+//
+// Notes on the seed:
+// You should make sure, the seed bytes was comes from cryptographically secure random generators,
+// likes the `crypto.rand` or other trusted sources.
+// Internally, the seed size's would be checked to not exceed the key size of underlying curve,
+// ie, 32 bytes length for p-256 and secp256k1, 48 bytes length for p-384 and 64 bytes length for p-521.
+// Its recommended to use seed with bytes length matching with underlying curve key size.
 pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
+	// Early exit check
+	if seed.len == 0 {
+		return error('Seed with null-length was not allowed')
+	}
 	// Create a new EC_KEY object with the specified curve
 	ec_key := new_curve(opt)
 	if ec_key == 0 {
+		C.EC_KEY_free(ec_key)
 		return error('Failed to create new EC_KEY')
 	}
+	// Retrieve the EC_GROUP object associated with the EC_KEY
+	// Note:
+	// Its cast-ed with voidptr() to workaround the strictness of the type system,
+	// ie, cc backend with `-cstrict` option behaviour. Without this cast,
+	// C.EC_KEY_get0_group expected to return `const EC_GROUP *`,
+	// ie expected to return pointer into constant of EC_GROUP on C parts,
+	// so, its make cgen not happy with this and would fail with error.
+	group := voidptr(C.EC_KEY_get0_group(ec_key))
+	if group == 0 {
+		C.EC_KEY_free(ec_key)
+		return error('Unable to load group')
+	}
+	// Adds early check for upper size, so, we dont hit unnecessary
+	// call to math intensive calculation, conversion and checking routines.
+	num_bits := C.EC_GROUP_get_degree(group)
+	key_size := (num_bits + 7) / 8
+	if seed.len > key_size {
+		C.EC_KEY_free(ec_key)
+		return error('Seed length exceeds key size')
+	}
+
 	// Convert the seed bytes into a BIGNUM
 	bn := C.BN_bin2bn(seed.data, seed.len, 0)
 	if bn == 0 {
@@ -146,17 +182,6 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	}
 	// Now compute the public key
 	//
-	// Retrieve the EC_GROUP object associated with the EC_KEY
-	// Note:
-	// Its cast-ed with voidptr() to workaround the strictness of the type system,
-	// ie, cc backend with `-cstrict` option behaviour. Without this cast,
-	// C.EC_KEY_get0_group expected to return `const EC_GROUP *`,
-	// ie expected to return pointer into constant of EC_GROUP on C parts,
-	// so, its make cgen not happy with this and would fail with error.
-	group := voidptr(C.EC_KEY_get0_group(ec_key))
-	if group == 0 {
-		return error('failed to load group')
-	}
 	// Create a new EC_POINT object for the public key
 	pub_key_point := C.EC_POINT_new(group)
 	// Create a new BN_CTX object for efficient BIGNUM operations
@@ -200,9 +225,18 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	}
 }
 
-// Sign a message with private key
-// FIXME: should the message should be hashed?
-pub fn (priv_key PrivateKey) sign(message []u8) ![]u8 {
+// sign performs signing the message with the options. By default, the options was using `.with_no_hash` options,
+// so, its would not precompute the the digest (hash) of message before signing.
+// If you wish to use with recommended hash function, you should pass `hash_config: .with_recommended_hash`
+// to precompute the digest and and then sign the hash value.
+// TODO: maybe changed to use .with_recommended_hash in the future to align with recommended way for signing.
+pub fn (pv PrivateKey) sign(message []u8, opt SignerOpts) ![]u8 {
+	digest := calc_digest(pv.key, message, opt)!
+	return pv.sign_message(digest)!
+}
+
+// sign_message sign a message with private key
+fn (priv_key PrivateKey) sign_message(message []u8) ![]u8 {
 	if message.len == 0 {
 		return error('Message cannot be null or empty')
 	}
@@ -219,22 +253,31 @@ pub fn (priv_key PrivateKey) sign(message []u8) ![]u8 {
 	return signed_data.clone()
 }
 
-// Verify a signature with public key
-pub fn (pub_key PublicKey) verify(message []u8, sig []u8) !bool {
-	res := C.ECDSA_verify(0, message.data, message.len, sig.data, sig.len, pub_key.key)
+// verify verifies a message with the signature are valid with public key provided .
+// You should provide it with the same SignerOpts used with the `.sign()` call.
+// or verify would fail (false).
+pub fn (pub_key PublicKey) verify(message []u8, sig []u8, opt SignerOpts) !bool {
+	digest := calc_digest(pub_key.key, message, opt)!
+	res := C.ECDSA_verify(0, digest.data, digest.len, sig.data, sig.len, pub_key.key)
 	if res == -1 {
 		return error('Failed to verify signature')
 	}
 	return res == 1
 }
 
-// Get the seed (private key bytes)
+// seed gets the seed (private key bytes).
+// Notes:
+// Generally, if the private key generated from the seed with `new_key_from_seed(seed)`
+// the call to `.seed()` would produce original seed bytes except your original seed bytes
+// contains leading zeros bytes, internally its would be chopped off by underlying wrapper,
+// so, its would produces unmatching length with the original seed.
 pub fn (priv_key PrivateKey) seed() ![]u8 {
 	bn := voidptr(C.EC_KEY_get0_private_key(priv_key.key))
 	if bn == 0 {
 		return error('Failed to get private key BIGNUM')
 	}
 	num_bytes := (C.BN_num_bits(bn) + 7) / 8
+
 	mut buf := []u8{len: int(num_bytes)}
 	res := C.BN_bn2bin(bn, buf.data)
 	if res == 0 {
@@ -260,8 +303,9 @@ pub fn (priv_key PrivateKey) public_key() !PublicKey {
 fn C.EC_GROUP_cmp(a &C.EC_GROUP, b &C.EC_GROUP, ctx &C.BN_CTX) int
 
 // equal compares two private keys was equal. Its checks for two things, ie:
-// - whether both of private keys lives under the same group (curve)
-// - compares if two private key bytes was equal
+//
+// - whether both of private keys lives under the same group (curve),
+// - compares if two private key bytes was equal.
 pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
 	group1 := voidptr(C.EC_KEY_get0_group(priv_key.key))
 	group2 := voidptr(C.EC_KEY_get0_group(other.key))
@@ -335,10 +379,10 @@ fn new_curve(opt CurveOptions) &C.EC_KEY {
 	return C.EC_KEY_new_by_curve_name(nid)
 }
 
-// Gets recommended hash function of the current PrivateKey.
-// Its purposes for hashing message to be signed
-fn (pv PrivateKey) recommended_hash() !crypto.Hash {
-	group := voidptr(C.EC_KEY_get0_group(pv.key))
+// Gets recommended hash function of the key.
+// Its purposes for hashing message to be signed.
+fn recommended_hash(key &C.EC_KEY) !crypto.Hash {
+	group := voidptr(C.EC_KEY_get0_group(key))
 	if group == 0 {
 		return error('Unable to load group')
 	}
@@ -363,7 +407,7 @@ fn (pv PrivateKey) recommended_hash() !crypto.Hash {
 }
 
 pub enum HashConfig {
-	with_recomended_hash
+	with_recommended_hash
 	with_no_hash
 	with_custom_hash
 }
@@ -371,43 +415,45 @@ pub enum HashConfig {
 @[params]
 pub struct SignerOpts {
 pub mut:
-	hash_config HashConfig = .with_recomended_hash
-	// make sense when HashConfig != with_recomended_hash
+	// default to .with_no_hash to align with the current behaviour of signing.
+	hash_config HashConfig = .with_no_hash
+	// make sense when HashConfig != with_recommended_hash
 	allow_smaller_size bool
 	allow_custom_hash  bool
 	// set to non-nil if allow_custom_hash was true
 	custom_hash &hash.Hash = unsafe { nil }
 }
 
-// sign_with_options sign the message with the options. By default, it would precompute
-// hash value from message, with recommended_hash function, and then sign the hash value.
-pub fn (pv PrivateKey) sign_with_options(message []u8, opts SignerOpts) ![]u8 {
+// calc_digest tries to calculates digest (hash) of the message based on options provided.
+// If the options was with_no_hash, its return default message without hashing.
+fn calc_digest(key &C.EC_KEY, message []u8, opt SignerOpts) ![]u8 {
+	if message.len == 0 {
+		return error('null-length messages')
+	}
 	// we're working on mutable copy of SignerOpts, with some issues when make it as a mutable.
 	// ie, declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed.
-	mut cfg := opts
+	mut cfg := opt
 	match cfg.hash_config {
-		.with_recomended_hash {
-			h := pv.recommended_hash()!
+		.with_no_hash {
+			// return original message
+			return message
+		}
+		.with_recommended_hash {
+			h := recommended_hash(key)!
 			match h {
 				.sha256 {
-					digest := sha256.sum256(message)
-					return pv.sign(digest)!
+					return sha256.sum256(message)
 				}
 				.sha384 {
-					digest := sha512.sum384(message)
-					return pv.sign(digest)!
+					return sha512.sum384(message)
 				}
 				.sha512 {
-					digest := sha512.sum512(message)
-					return pv.sign(digest)!
+					return sha512.sum512(message)
 				}
 				else {
 					return error('Unsupported hash')
 				}
 			}
-		}
-		.with_no_hash {
-			return pv.sign(message)!
 		}
 		.with_custom_hash {
 			if !cfg.allow_custom_hash {
@@ -417,7 +463,7 @@ pub fn (pv PrivateKey) sign_with_options(message []u8, opts SignerOpts) ![]u8 {
 				return error('Custom hasher was not defined')
 			}
 			// check key size bits
-			group := voidptr(C.EC_KEY_get0_group(pv.key))
+			group := voidptr(C.EC_KEY_get0_group(key))
 			if group == 0 {
 				return error('fail to load group')
 			}
@@ -431,16 +477,27 @@ pub fn (pv PrivateKey) sign_with_options(message []u8, opts SignerOpts) ![]u8 {
 					return error('Hash into smaller size than current key size was not allowed')
 				}
 			}
-			// otherwise, just hash the message and sign
 			digest := cfg.custom_hash.sum(message)
 			defer { unsafe { cfg.custom_hash.free() } }
-			return pv.sign(digest)!
+			return digest
 		}
 	}
 	return error('Not should be here')
 }
 
 // Clear allocated memory for key
-pub fn key_free(ec_key &C.EC_KEY) {
+fn key_free(ec_key &C.EC_KEY) {
 	C.EC_KEY_free(ec_key)
+}
+
+// free clears out allocated memory for PublicKey.
+// Dont use PublicKey after calling `.free()`
+pub fn (pb &PublicKey) free() {
+	C.EC_KEY_free(pb.key)
+}
+
+// free clears out allocated memory for PrivateKey
+// Dont use PrivateKey after calling `.free()`
+pub fn (pv &PrivateKey) free() {
+	C.EC_KEY_free(pv.key)
 }

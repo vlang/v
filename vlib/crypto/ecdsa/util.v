@@ -3,6 +3,8 @@ module ecdsa
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/x509.h>
+#include <openssl/bio.h>
+#include <openssl/pem.h>
 
 // #define NID_X9_62_id_ecPublicKey   408
 const nid_ec_publickey = C.NID_X9_62_id_ecPublicKey
@@ -49,6 +51,7 @@ fn C.EC_GROUP_free(group &C.EC_GROUP)
 // Examples:
 // ```codeblock
 // import crypto.pem
+// import crypto.ecdsa
 //
 // const pubkey_sample = '-----BEGIN PUBLIC KEY-----
 // MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE+P3rhFkT1fXHYbY3CpcBdh6xTC74MQFx
@@ -57,7 +60,7 @@ fn C.EC_GROUP_free(group &C.EC_GROUP)
 // -----END PUBLIC KEY-----'
 //
 // block, _ := pem.decode(pubkey_sample) or { panic(err) }
-// pubkey := pubkey_from_bytes(block.data)!
+// pubkey := ecdsa.pubkey_from_bytes(block.data)!
 // ```
 pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
 	if bytes.len == 0 {
@@ -79,7 +82,7 @@ pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
 
 	eckey := C.EVP_PKEY_get1_EC_KEY(pub_key)
 	if eckey == 0 {
-		key_free(eckey)
+		C.EC_KEY_free(eckey)
 		return error('Failed to get ec key')
 	}
 	// check the group for the supported curve(s)
@@ -100,7 +103,7 @@ pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
 	}
 }
 
-// bytes gets the bytes of public key parts of this keypair.
+// bytes gets the bytes of public key parts of this key.
 pub fn (pbk PublicKey) bytes() ![]u8 {
 	point := voidptr(C.EC_KEY_get0_public_key(pbk.key))
 	if point == 0 {
@@ -126,6 +129,7 @@ pub fn (pbk PublicKey) bytes() ![]u8 {
 	mut buf := []u8{len: num_bytes}
 
 	// Get conversion format.
+	//
 	// The uncompressed form is indicated by 0x04 and the compressed form is indicated
 	// by either 0x02 or 0x03, hybrid 0x06
 	// The public key MUST be rejected if any other value is included in the first octet.
@@ -134,7 +138,87 @@ pub fn (pbk PublicKey) bytes() ![]u8 {
 		return error('bad conversion format')
 	}
 	n := C.EC_POINT_point2oct(group, point, conv_form, buf.data, buf.len, ctx)
-
+	if n == 0 {
+		return error('Fails on EC_POINT_point2oct')
+	}
 	// returns the clone of the buffer[..n]
 	return buf[..n].clone()
+}
+
+@[typedef]
+struct C.BIO_METHOD {}
+
+@[typedef]
+struct C.BIO {}
+
+// BIO *  BIO_new(BIO_METHOD *type);
+fn C.BIO_new(t &C.BIO_METHOD) &C.BIO
+
+// void   BIO_free_all(BIO *a);
+fn C.BIO_free_all(a &C.BIO)
+
+// BIO_METHOD *   BIO_s_mem(void);
+fn C.BIO_s_mem() &C.BIO_METHOD
+
+// int    BIO_write(BIO *b, const void *buf, int len);
+fn C.BIO_write(b &C.BIO, buf &u8, length int) int
+
+// EVP_PKEY *PEM_read_bio_PrivateKey(BIO *bp, EVP_PKEY **x,  pem_password_cb *cb, void *u);
+fn C.PEM_read_bio_PrivateKey(bp &C.BIO, x &&C.EVP_PKEY, cb int, u &voidptr) &C.EVP_PKEY
+
+// load_privkey_from_string loads PrivateKey from valid PEM-formatted string in s.
+// Underlying wrapper support for old secg and pkcs8 private key format, but this not heavily tested.
+// This routine also does not handling for pkcs8 EncryptedPrivateKeyInfo format, the callback was not handled.
+pub fn load_privkey_from_string(s string) !PrivateKey {
+	if s.len == 0 {
+		return error('null string was not allowed')
+	}
+	//
+	mut key := C.EVP_PKEY_new()
+	bo := C.BIO_new(C.BIO_s_mem())
+	if bo == 0 {
+		return error('Failed to create BIO_new')
+	}
+	n := C.BIO_write(bo, s.str, s.len)
+	if n == 0 {
+		// todo: retry the write
+	}
+	defer { C.BIO_free_all(bo) }
+	key = C.PEM_read_bio_PrivateKey(bo, &key, 0, 0)
+
+	if key == 0 {
+		C.BIO_free_all(bo)
+		C.EVP_PKEY_free(key)
+		return error('Error loading key')
+	}
+	// Get the NID of this key, and check if the key object was
+	// have the correct NID of ec public key type, ie, NID_X9_62_id_ecPublicKey
+	nid := C.EVP_PKEY_base_id(key)
+	if nid != nid_ec_publickey {
+		C.EVP_PKEY_free(key)
+		return error('Get an nid of non ecPublicKey')
+	}
+
+	eckey := C.EVP_PKEY_get1_EC_KEY(key)
+	if eckey == 0 {
+		C.EC_KEY_free(eckey)
+		return error('Failed to get ec key')
+	}
+	// check the group for the supported curve(s)
+	group := voidptr(C.EC_KEY_get0_group(eckey))
+	if group == 0 {
+		C.EC_GROUP_free(group)
+		return error('Failed to load group from key')
+	}
+	nidgroup := C.EC_GROUP_get_curve_name(group)
+	if nidgroup != nid_prime256v1 && nidgroup != nid_secp384r1 && nidgroup != nid_secp521r1
+		&& nidgroup != nid_secp256k1 {
+		C.EC_GROUP_free(group)
+		C.EC_KEY_free(eckey)
+		return error('Unsupported group')
+	}
+	// Its OK to return
+	return PrivateKey{
+		key: eckey
+	}
 }

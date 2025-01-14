@@ -15,21 +15,19 @@ fn test_ecdsa() {
 	key_free(priv_key.key)
 }
 
-// This test should exactly has the same behaviour with default sign(message),
-// because we passed .with_no_hash flag as an option.
-fn test_ecdsa_signing_with_options() {
+fn test_ecdsa_signing_with_recommended_hash_options() {
 	// Generate key pair
 	pub_key, priv_key := generate_key() or { panic(err) }
 
 	// Sign a message
 	message := 'Hello, ECDSA!'.bytes()
-	opts := SignerOpts{
-		hash_config: .with_no_hash
+	opt := SignerOpts{
+		hash_config: .with_recommended_hash
 	}
-	signature := priv_key.sign_with_options(message, opts) or { panic(err) }
+	signature := priv_key.sign(message, opt) or { panic(err) }
 
 	// Verify the signature
-	is_valid := pub_key.verify(message, signature) or { panic(err) }
+	is_valid := pub_key.verify(message, signature, opt) or { panic(err) }
 	println('Signature valid: ${is_valid}')
 	key_free(pub_key.key)
 	assert is_valid
