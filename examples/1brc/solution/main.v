@@ -86,25 +86,25 @@ fn combine_results(results []map[string]Result) map[string]Result {
 	return combined_result
 }
 
+@[direct_array_access]
 fn process_chunk(addr &u8, from u64, to u64) map[string]Result {
 	mut results := map[string]Result{}
 	mut state := ReadState.city
-	mut city_sb := []u8{cap: 64}
+	mut city := ''
 	mut temp := i32(0)
 	mut mod := i32(1)
+	mut j := int(0)
 	for i in from .. to {
-		c := unsafe {
-			u8(addr[i])
-		}
-
+		c := unsafe { u8(addr[i]) }
 		match state {
 			.city {
 				match c {
 					`;` {
 						state = .temp
+						city = unsafe { tos(addr[i - u64(j)], j) }
 					}
 					else {
-						city_sb << c
+						j += 1
 					}
 				}
 			}
@@ -112,7 +112,6 @@ fn process_chunk(addr &u8, from u64, to u64) map[string]Result {
 				match c {
 					`\n` {
 						temp *= mod
-						city := city_sb.bytestr()
 						if city !in results {
 							results[city] = Result{
 								min:   temp
@@ -130,17 +129,17 @@ fn process_chunk(addr &u8, from u64, to u64) map[string]Result {
 							results[city].sum += temp
 							results[city].count += 1
 						}
-
-						city_sb.clear()
 						state = .city
 						temp = 0
 						mod = 1
+						j = 0
 					}
 					`-` {
 						mod = -1
 					}
 					`.` {}
 					else {
+						// ASCII 48 = '0' ... ASCII 57 = '9' => (ASCII value) - 48 = decimal value
 						temp = temp * 10 + (c - 48)
 					}
 				}

@@ -49,6 +49,4 @@ On Linux, to run one thread per core, use
 ### Step 3: Improve upon the solution
 
 Make changes that improve the performance and submit them. 
-Let's show off what is possible in V. In various tests, 
-this solution takes 4-10 times longer than the fastest C solution, 
-so we have room to improve!
+Let's show off what is possible in V!
