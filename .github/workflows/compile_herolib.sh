@@ -33,4 +33,4 @@ v -cc gcc -cg -enable-globals -parallel-cc -w -n hero.v
 show "Checking clang build"
 ls -l ./hero
 
-rm -rf ../herolib
+rm -rf ../../herolib
