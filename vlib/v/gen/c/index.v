@@ -342,7 +342,11 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.or_block(tmp_opt, node.or_expr, elem_type)
 			}
 			if !g.is_amp {
-				g.write('\n${cur_line}(*(${elem_type_str}*)${tmp_opt}.data)')
+				if g.inside_opt_or_res && elem_type.has_flag(.option) && g.inside_assign {
+					g.write('\n${cur_line}(*(${elem_type_str}*)&${tmp_opt})')
+				} else {
+					g.write('\n${cur_line}(*(${elem_type_str}*)${tmp_opt}.data)')
+				}
 			} else {
 				g.write('\n${cur_line}*${tmp_opt_ptr}')
 			}
