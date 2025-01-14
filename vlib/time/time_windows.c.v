@@ -96,7 +96,7 @@ fn vpc_now() u64 {
 fn local_as_unix_time() i64 {
 	t := C.time(0)
 	tm := C.localtime(&t)
-	return make_unix_time(tm)
+	return make_unix_time(*tm)
 }
 
 // local - return the time `t`, converted to the currently active local timezone
