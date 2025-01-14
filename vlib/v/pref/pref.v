@@ -343,6 +343,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
 		match arg {
+			'--' {
+				break
+			}
 			'-wasm-validate' {
 				res.wasm_validate = true
 			}

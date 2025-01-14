@@ -53,9 +53,10 @@ fn test_retry() {
 	assert res.output == run(pass_cmd).output
 
 	// Include flags on the cmd as well.
-	pass_cmd_with_flags := '${vexe} run cmd/tools/check_retry.vsh --list -x arguments'
+	pass_cmd_with_flags := '${vexe} run cmd/tools/check_retry.vsh --list -x -- -b js arguments'
 	res = run('${vexe} retry -r 3 -- ${pass_cmd_with_flags}')
 	dump_on_ci(res)
 	assert res.exit_code == 0
-	assert res.output == run(pass_cmd_with_flags).output
+	output_trimmed := res.output.trim_space()
+	assert output_trimmed == "['--list', '-x', '--', '-b', 'js', 'arguments']"
 }
