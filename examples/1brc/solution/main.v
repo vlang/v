@@ -178,6 +178,7 @@ fn main() {
 	fp.description('The 1 billion rows challenge solved in V.\nFor details, see https://www.morling.dev/blog/one-billion-row-challenge/')
 	thread_count := u32(fp.int('threads', `n`, 1, 'number of threads for parallel processing.'))
 	print_nicely := fp.bool('human-readable', `h`, false, 'Print results with new lines rather than following challenge spec')
+	quiet := fp.bool('quiet', `q`, false, 'Suppress the results output (e.g., if you only care about timing)')
 	fp.limit_free_args_to_exactly(1)!
 	path := fp.remaining_parameters()[0]
 
@@ -192,5 +193,7 @@ fn main() {
 		process_chunk(mf.data, 0, mf.size)
 	}
 
-	print_results(results, print_nicely)
+	if !quiet {
+		print_results(results, print_nicely)
+	}
 }
