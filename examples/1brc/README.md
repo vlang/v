@@ -10,7 +10,7 @@ Read more about the challenge here: https://www.morling.dev/blog/one-billion-row
 
 Suggested compiler options for performance: 
 
-`v -cc gcc -prod -cflags "-std=c17 -march=native -mtune=native"`
+`v -cc gcc -prod -cflags "-std=c17 -march=native -mtune=native" .`
 
 
 ### Step 1: Create a measurements file
