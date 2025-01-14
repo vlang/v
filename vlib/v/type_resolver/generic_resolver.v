@@ -67,6 +67,9 @@ pub fn (t &TypeResolver) is_generic_expr(node ast.Expr) bool {
 			if node.is_static_method && node.left_type.has_flag(.generic) {
 				return true
 			}
+			if node.return_type_generic != 0 && node.return_type_generic.has_flag(.generic) {
+				return true
+			}
 			// fn[T]() or generic_var.fn[T]()
 			node.concrete_types.any(it.has_flag(.generic))
 		}
@@ -119,6 +122,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (cur_fn != unsafe { nil } && cur_fn.generic_names.len > 0)
 		|| t.info.comptime_for_field_var != ''
+		|| func.generic_names.len != node_.raw_concrete_types.len
 	if !has_dynamic_vars {
 		return comptime_args
 	}
