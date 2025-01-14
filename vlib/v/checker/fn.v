@@ -1421,6 +1421,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 	// println / eprintln / panic can print anything
 	if node.args.len > 0 && fn_name in print_everything_fns {
+		node.args[0].ct_expr = c.comptime.is_comptime(node.args[0].expr)
 		c.builtin_args(mut node, fn_name, func)
 		if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'math.bits'
 			&& node.args[0].expr !is ast.StringLiteral {
@@ -1442,6 +1443,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if node.args.len == 1 && fn_name == 'error' {
 		mut arg := node.args[0]
 		node.args[0].typ = c.expr(mut arg.expr)
+		node.args[0].ct_expr = c.comptime.is_comptime(node.args[0].expr)
 		if node.args[0].typ == ast.error_type {
 			c.warn('`error(${arg})` can be shortened to just `${arg}`', node.pos)
 		}
@@ -1455,6 +1457,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	for i, mut call_arg in node.args {
 		if func.params.len == 0 {
 			continue
+		}
+		if !c.inside_recheck {
+			call_arg.ct_expr = c.comptime.is_comptime(call_arg.expr)
 		}
 		if !func.is_variadic && has_decompose {
 			c.error('cannot have parameter after array decompose', node.pos)
@@ -2382,6 +2387,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				method.params.last().typ
 			} else {
 				method.params[i + 1].typ
+			}
+			if !c.inside_recheck {
+				arg.ct_expr = c.comptime.is_comptime(arg.expr)
 			}
 			// If initialize a generic struct with short syntax,
 			// need to get the parameter information from the original generic method

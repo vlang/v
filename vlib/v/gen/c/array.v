@@ -481,8 +481,22 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	}
 
 	return_type := if g.type_resolver.is_generic_expr(node.args[0].expr) {
-		ast.new_type(g.table.find_or_register_array(g.type_resolver.unwrap_generic_expr(node.args[0].expr,
-			node.return_type)))
+		mut ctyp := ast.void_type
+		if node.args[0].expr is ast.CallExpr && node.args[0].expr.return_type_generic != 0
+			&& node.args[0].expr.return_type_generic.has_flag(.generic) {
+			ctyp = g.resolve_return_type(node.args[0].expr)
+			if g.table.type_kind(node.args[0].expr.return_type_generic) in [.array, .array_fixed] {
+				ctyp = ast.new_type(g.table.find_or_register_array(ctyp))
+			}
+		}
+		if ctyp == ast.void_type {
+			ctyp = g.type_resolver.unwrap_generic_expr(node.args[0].expr, node.return_type)
+		}
+		if g.table.type_kind(g.unwrap_generic(ctyp)) !in [.array, .array_fixed] {
+			ast.new_type(g.table.find_or_register_array(ctyp))
+		} else {
+			ctyp
+		}
 	} else {
 		node.return_type
 	}
@@ -498,7 +512,6 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		(ret_sym.info as ast.ArrayFixed).elem_type
 	}
 	mut ret_elem_styp := g.styp(ret_elem_type)
-
 	inp_elem_type := if left_is_array {
 		(inp_sym.info as ast.Array).elem_type
 	} else {

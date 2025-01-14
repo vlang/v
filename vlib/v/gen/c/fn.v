@@ -2028,8 +2028,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// Handle `print(x)`
 	mut print_auto_str := false
 	if is_print && (node.args[0].typ != ast.string_type
-		|| g.comptime.comptime_for_method != unsafe { nil }
-		|| g.comptime.is_comptime(node.args[0].expr)) {
+		|| g.comptime.comptime_for_method != unsafe { nil } || node.args[0].ct_expr) {
 		g.inside_interface_deref = true
 		defer {
 			g.inside_interface_deref = false
@@ -2577,7 +2576,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 @[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language, is_smartcast bool) {
-	arg_typ := if arg.expr is ast.ComptimeSelector {
+	arg_typ := if arg.ct_expr {
 		g.unwrap_generic(g.type_resolver.get_type(arg.expr))
 	} else {
 		g.unwrap_generic(arg.typ)
