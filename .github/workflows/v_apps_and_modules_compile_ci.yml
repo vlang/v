@@ -208,6 +208,9 @@ jobs:
           v -skip-unused test ~/.vmodules/msgpack/
           echo "MessagePack examples should compile"
           v should-compile-all ~/.vmodules/msgpack/examples
+      - name: Test herolib
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: .github/workflows/compile_herolib.sh
 
       # - name: Build VEX
       #   if: ${{ !cancelled() }} && steps.build.outcome == 'success'
