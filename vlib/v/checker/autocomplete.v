@@ -6,6 +6,11 @@ import strings
 import v.ast
 import os
 
+struct ACFieldMethod {
+	name string
+	typ  string
+}
+
 fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	// Mini LS hack (v -line-info "a.v:16")
 	println(
@@ -81,7 +86,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	}
 }
 
-fn build_method_summary(method &ast.Fn) string {
+fn build_method_summary(method ast.Fn) string {
 	mut s := method.name + '('
 	for i, param in method.params {
 		s += param.name

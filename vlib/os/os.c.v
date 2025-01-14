@@ -278,7 +278,7 @@ pub fn vfopen(path string, mode string) !&C.FILE {
 	} $else {
 		fp = C.fopen(&char(path.str), &char(mode.str))
 	}
-	if isnil(fp) {
+	if isnil(voidptr(fp)) {
 		return error_posix(msg: 'failed to open file "${path}"')
 	} else {
 		return fp

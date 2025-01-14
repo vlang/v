@@ -2597,7 +2597,7 @@ fn (p &Parser) is_generic_call() bool {
 const valid_tokens_inside_types = [token.Kind.lsbr, .rsbr, .name, .dot, .comma, .key_fn, .lt]
 
 fn (mut p Parser) is_generic_cast() bool {
-	if !ast.type_can_start_with_token(p.tok) {
+	if !ast.type_can_start_with_token(&p.tok) {
 		return false
 	}
 	mut i := 0

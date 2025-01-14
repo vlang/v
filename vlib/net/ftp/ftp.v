@@ -67,7 +67,7 @@ mut:
 // new returns an `FTP` instance.
 pub fn new() FTP {
 	mut f := FTP{
-		conn: 0
+		conn: unsafe { nil }
 	}
 	f.buffer_size = 1024
 	return f
@@ -184,7 +184,7 @@ fn new_dtp(msg string) !&DTP {
 	mut dtp := &DTP{
 		ip:   ip
 		port: port
-		conn: 0
+		conn: unsafe { nil }
 	}
 	conn := net.dial_tcp('${ip}:${port}') or { return error('Cannot connect to the data channel') }
 	dtp.conn = conn
