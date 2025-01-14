@@ -19,7 +19,7 @@ git checkout fa0dac57ec218c0d65e0e8d5bba45ba2fd28d3d7
 
 v wipe-cache
 
-show "Build project with -parallel-cc (clang-18)"
+show "Build project with -parallel-cc (clang)"
 v -cc clang -cg -enable-globals -parallel-cc -w -n hero.v 
 
 show "Checking gcc build"
