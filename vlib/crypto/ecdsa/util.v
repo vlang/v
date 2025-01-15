@@ -12,6 +12,12 @@ const nid_ec_publickey = C.NID_X9_62_id_ecPublicKey
 @[typedef]
 struct C.EVP_PKEY {}
 
+@[typedef]
+struct C.BIO_METHOD {}
+
+@[typedef]
+struct C.BIO {}
+
 // EVP_PKEY *EVP_PKEY_new(void);
 fn C.EVP_PKEY_new() &C.EVP_PKEY
 
@@ -43,6 +49,24 @@ fn C.EVP_PKEY_base_id(key &C.EVP_PKEY) int
 fn C.EC_GROUP_get_curve_name(g &C.EC_GROUP) int
 fn C.EC_GROUP_free(group &C.EC_GROUP)
 
+// BIO *  BIO_new(BIO_METHOD *type);
+fn C.BIO_new(t &C.BIO_METHOD) &C.BIO
+
+// void   BIO_free_all(BIO *a);
+fn C.BIO_free_all(a &C.BIO)
+
+// BIO_METHOD *   BIO_s_mem(void);
+fn C.BIO_s_mem() &C.BIO_METHOD
+
+// int    BIO_write(BIO *b, const void *buf, int len);
+fn C.BIO_write(b &C.BIO, buf &u8, length int) int
+
+// EVP_PKEY *PEM_read_bio_PrivateKey(BIO *bp, EVP_PKEY **x,  pem_password_cb *cb, void *u);
+fn C.PEM_read_bio_PrivateKey(bp &C.BIO, x &&C.EVP_PKEY, cb int, u &voidptr) &C.EVP_PKEY
+
+// EVP_PKEY *PEM_read_bio_PUBKEY(BIO *bp, EVP_PKEY **x, pem_password_cb *cb, void *u);
+fn C.PEM_read_bio_PUBKEY(bp &C.BIO, x &&C.EVP_PKEY, cb int, u &voidptr) &C.EVP_PKEY
+
 // pubkey_from_bytes loads ECDSA Public Key from bytes array.
 // The bytes of data should be a valid of ASN.1 DER serialized SubjectPublicKeyInfo structrue of RFC 5480.
 // Otherwise, its should an error.
@@ -62,7 +86,7 @@ fn C.EC_GROUP_free(group &C.EC_GROUP)
 // block, _ := pem.decode(pubkey_sample) or { panic(err) }
 // pubkey := ecdsa.pubkey_from_bytes(block.data)!
 // ```
-pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
+fn pubkey_from_bytes(bytes []u8) !PublicKey {
 	if bytes.len == 0 {
 		return error('Invalid bytes')
 	}
@@ -147,37 +171,12 @@ pub fn (pbk PublicKey) bytes() ![]u8 {
 	return buf[..n].clone()
 }
 
-@[typedef]
-struct C.BIO_METHOD {}
-
-@[typedef]
-struct C.BIO {}
-
-// BIO *  BIO_new(BIO_METHOD *type);
-fn C.BIO_new(t &C.BIO_METHOD) &C.BIO
-
-// void   BIO_free_all(BIO *a);
-fn C.BIO_free_all(a &C.BIO)
-
-// BIO_METHOD *   BIO_s_mem(void);
-fn C.BIO_s_mem() &C.BIO_METHOD
-
-// int    BIO_write(BIO *b, const void *buf, int len);
-fn C.BIO_write(b &C.BIO, buf &u8, length int) int
-
-// EVP_PKEY *PEM_read_bio_PrivateKey(BIO *bp, EVP_PKEY **x,  pem_password_cb *cb, void *u);
-fn C.PEM_read_bio_PrivateKey(bp &C.BIO, x &&C.EVP_PKEY, cb int, u &voidptr) &C.EVP_PKEY
-
-// privkey_from_string loads PrivateKey from valid PEM-formatted string in s.
-// Underlying wrapper support for old secg and pkcs8 private key format, but this not heavily tested.
-// This routine also does not handling for pkcs8 EncryptedPrivateKeyInfo format, the callback was not handled.
-pub fn privkey_from_string(s string) !PrivateKey {
+// pubkey_from_string loads a PublicKey from valid PEM-formatted string in s.
+pub fn pubkey_from_string(s string) !PublicKey {
 	if s.len == 0 {
-		return error('null string was not allowed')
+		return error('Null length string was not allowed')
 	}
-	//
 	mut evpkey := C.EVP_PKEY_new()
-
 	bo := C.BIO_new(C.BIO_s_mem())
 	if bo == 0 {
 		return error('Failed to create BIO_new')
@@ -186,9 +185,7 @@ pub fn privkey_from_string(s string) !PrivateKey {
 	if n == 0 {
 		// todo: retry the write
 	}
-	// defer { C.BIO_free_all(bo) }
-	evpkey = C.PEM_read_bio_PrivateKey(bo, &evpkey, 0, 0)
-
+	evpkey = C.PEM_read_bio_PUBKEY(bo, &evpkey, 0, 0)
 	if evpkey == 0 {
 		C.BIO_free_all(bo)
 		C.EVP_PKEY_free(evpkey)
@@ -213,7 +210,78 @@ pub fn privkey_from_string(s string) !PrivateKey {
 	// check the group for the supported curve(s)
 	group := voidptr(C.EC_KEY_get0_group(eckey))
 	if group == 0 {
-		C.EC_GROUP_free(group)
+		C.BIO_free_all(bo)
+		C.EC_KEY_free(eckey)
+		C.EVP_PKEY_free(evpkey)
+		return error('Failed to load group from key')
+	}
+	nidgroup := C.EC_GROUP_get_curve_name(group)
+	if nidgroup != nid_prime256v1 && nidgroup != nid_secp384r1 && nidgroup != nid_secp521r1
+		&& nidgroup != nid_secp256k1 {
+		C.BIO_free_all(bo)
+		C.EC_KEY_free(eckey)
+		C.EVP_PKEY_free(evpkey)
+		return error('Unsupported group')
+	}
+	chk := C.EC_KEY_check_key(eckey)
+	if chk == 0 {
+		C.EC_KEY_free(eckey)
+		return error('EC_KEY_check_key failed')
+	}
+	C.EVP_PKEY_free(evpkey)
+	C.BIO_free_all(bo)
+	// Its OK to return
+	return PublicKey{
+		key: eckey
+	}
+}
+
+// privkey_from_string loads a PrivateKey from valid PEM-formatted string in s.
+// Underlying wrapper support for old secg and pkcs8 private key format, but this not heavily tested.
+// This routine also does not handling for pkcs8 EncryptedPrivateKeyInfo format, the callback was not handled.
+pub fn privkey_from_string(s string) !PrivateKey {
+	if s.len == 0 {
+		return error('null string was not allowed')
+	}
+	//
+	mut evpkey := C.EVP_PKEY_new()
+	bo := C.BIO_new(C.BIO_s_mem())
+	if bo == 0 {
+		return error('Failed to create BIO_new')
+	}
+	n := C.BIO_write(bo, s.str, s.len)
+	if n == 0 {
+		// todo: retry the write
+	}
+	// defer { C.BIO_free_all(bo) }
+	evpkey = C.PEM_read_bio_PrivateKey(bo, &evpkey, 0, 0)
+
+	if evpkey == 0 {
+		C.BIO_free_all(bo)
+		C.EVP_PKEY_free(evpkey)
+		return error('Error loading key')
+	}
+
+	// Get the NID of this key, and check if the key object was
+	// have the correct NID of ec public key type, ie, NID_X9_62_id_ecPublicKey
+	nid := C.EVP_PKEY_base_id(evpkey)
+	if nid != nid_ec_publickey {
+		C.BIO_free_all(bo)
+		C.EVP_PKEY_free(evpkey)
+		return error('Get an nid of non ecPublicKey')
+	}
+
+	eckey := C.EVP_PKEY_get1_EC_KEY(evpkey)
+	if eckey == 0 {
+		C.BIO_free_all(bo)
+		C.EC_KEY_free(eckey)
+		C.EVP_PKEY_free(evpkey)
+		return error('Failed to get ec key')
+	}
+	// check the group for the supported curve(s)
+	group := voidptr(C.EC_KEY_get0_group(eckey))
+	if group == 0 {
+		// C.EC_GROUP_free(group)
 		C.BIO_free_all(bo)
 		C.EC_KEY_free(eckey)
 		C.EVP_PKEY_free(evpkey)
@@ -228,8 +296,15 @@ pub fn privkey_from_string(s string) !PrivateKey {
 		C.EVP_PKEY_free(evpkey)
 		return error('Unsupported group')
 	}
+	chk := C.EC_KEY_check_key(eckey)
+	if chk == 0 {
+		C.EC_KEY_free(eckey)
+		return error('EC_KEY_check_key failed')
+	}
+
 	C.EVP_PKEY_free(evpkey)
 	C.BIO_free_all(bo)
+
 	// Its OK to return
 	return PrivateKey{
 		key: eckey
