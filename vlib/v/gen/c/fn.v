@@ -1581,6 +1581,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 		return
+	} else if typ_sym.info is ast.Thread {
+		waiter_fn_name := g.gen_gohandle_name(typ_sym.info.return_type)
+		g.create_waiter_handler(node.return_type, g.styp(typ_sym.info.return_type), waiter_fn_name)
 	}
 	left_sym := g.table.sym(left_type)
 	final_left_sym := g.table.final_sym(left_type)

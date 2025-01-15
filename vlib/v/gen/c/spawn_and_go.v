@@ -123,21 +123,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	if g.pref.os == .windows && call_ret_type != ast.void_type {
 		g.writeln('${arg_tmp_var}->ret_ptr = (void *) _v_malloc(sizeof(${s_ret_typ}));')
 	}
-	is_opt := call_ret_type.has_flag(.option)
-	is_res := call_ret_type.has_flag(.result)
-	mut gohandle_name := ''
-	if call_ret_type == ast.void_type {
-		if is_opt {
-			gohandle_name = '__v_thread_Option_void'
-		} else if is_res {
-			gohandle_name = '__v_thread_Result_void'
-		} else {
-			gohandle_name = '__v_thread'
-		}
-	} else {
-		ret_styp := g.styp(g.unwrap_generic(call_ret_type)).replace('*', '_ptr')
-		gohandle_name = '__v_thread_${ret_styp}'
-	}
+	gohandle_name := g.gen_gohandle_name(call_ret_type)
 	if is_spawn {
 		if g.pref.os == .windows {
 			simple_handle := if node.is_expr && call_ret_type != ast.void_type {
@@ -182,48 +168,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	g.writeln('// end go')
 	if node.is_expr {
 		handle = 'thread_${tmp}'
-		// create wait handler for this return type if none exists
-		waiter_fn_name := gohandle_name + '_wait'
-		mut should_register := false
-		lock g.waiter_fns {
-			if waiter_fn_name !in g.waiter_fns {
-				g.waiter_fns << waiter_fn_name
-				should_register = true
-			}
-		}
-		if should_register {
-			g.waiter_fn_definitions.writeln('${s_ret_typ} ${waiter_fn_name}(${gohandle_name} thread);')
-			g.gowrappers.writeln('\n${s_ret_typ} ${waiter_fn_name}(${gohandle_name} thread) {')
-			mut c_ret_ptr_ptr := 'NULL'
-			if call_ret_type != ast.void_type {
-				g.gowrappers.writeln('\t${s_ret_typ}* ret_ptr;')
-				c_ret_ptr_ptr = '&ret_ptr'
-			}
-			if g.pref.os == .windows {
-				if call_ret_type == ast.void_type {
-					g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
-				} else {
-					g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread.handle, INFINITE);')
-					g.gowrappers.writeln('\tret_ptr = thread.ret_ptr;')
-				}
-			} else {
-				g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)${c_ret_ptr_ptr});')
-			}
-			g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_SLIT("unable to join thread")); }')
-			if g.pref.os == .windows {
-				if call_ret_type == ast.void_type {
-					g.gowrappers.writeln('\tCloseHandle(thread);')
-				} else {
-					g.gowrappers.writeln('\tCloseHandle(thread.handle);')
-				}
-			}
-			if call_ret_type != ast.void_type {
-				g.gowrappers.writeln('\t${s_ret_typ} ret = *ret_ptr;')
-				g.gowrappers.writeln('\t_v_free(ret_ptr);')
-				g.gowrappers.writeln('\treturn ret;')
-			}
-			g.gowrappers.writeln('}')
-		}
+		g.create_waiter_handler(call_ret_type, s_ret_typ, gohandle_name)
 	}
 	// Register the wrapper type and function
 	mut should_register := false
@@ -411,9 +356,6 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	}
 }
 
-// fn (mut g Gen) go_expr(node ast.GoExpr) {
-//}
-
 // get current thread size, if fn hasn't defined return default
 @[inline]
 fn (mut g Gen) get_cur_thread_stack_size(name string) string {
@@ -428,4 +370,68 @@ fn (mut g Gen) get_cur_thread_stack_size(name string) string {
 		}
 	}
 	return '${g.pref.thread_stack_size}'
+}
+
+fn (mut g Gen) gen_gohandle_name(typ ast.Type) string {
+	mut gohandle_name := ''
+	if typ == ast.void_type {
+		if typ.has_flag(.option) {
+			gohandle_name = '__v_thread_Option_void'
+		} else if typ.has_flag(.result) {
+			gohandle_name = '__v_thread_Result_void'
+		} else {
+			gohandle_name = '__v_thread'
+		}
+	} else {
+		ret_styp := g.styp(g.unwrap_generic(typ)).replace('*', '_ptr')
+		gohandle_name = '__v_thread_${ret_styp}'
+	}
+	return gohandle_name
+}
+
+fn (mut g Gen) create_waiter_handler(call_ret_type ast.Type, s_ret_typ string, gohandle_name string) {
+	// create wait handler for this return type if none exists
+	waiter_fn_name := gohandle_name + '_wait'
+	mut should_register := false
+	lock g.waiter_fns {
+		if waiter_fn_name !in g.waiter_fns {
+			g.waiter_fns << waiter_fn_name
+			should_register = true
+		}
+	}
+	if !should_register {
+		return
+	}
+	g.waiter_fn_definitions.writeln('${s_ret_typ} ${waiter_fn_name}(${gohandle_name} thread);')
+	g.gowrappers.writeln('\n${s_ret_typ} ${waiter_fn_name}(${gohandle_name} thread) {')
+	mut c_ret_ptr_ptr := 'NULL'
+	if call_ret_type != ast.void_type {
+		g.gowrappers.writeln('\t${s_ret_typ}* ret_ptr;')
+		c_ret_ptr_ptr = '&ret_ptr'
+	}
+	if g.pref.os == .windows {
+		if call_ret_type == ast.void_type {
+			g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
+		} else {
+			g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread.handle, INFINITE);')
+			g.gowrappers.writeln('\tret_ptr = thread.ret_ptr;')
+		}
+	} else {
+		g.gowrappers.writeln('\tif ((unsigned long int)thread == 0) { _v_panic(_SLIT("unable to join thread")); }')
+		g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)${c_ret_ptr_ptr});')
+	}
+	g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_SLIT("unable to join thread")); }')
+	if g.pref.os == .windows {
+		if call_ret_type == ast.void_type {
+			g.gowrappers.writeln('\tCloseHandle(thread);')
+		} else {
+			g.gowrappers.writeln('\tCloseHandle(thread.handle);')
+		}
+	}
+	if call_ret_type != ast.void_type {
+		g.gowrappers.writeln('\t${s_ret_typ} ret = *ret_ptr;')
+		g.gowrappers.writeln('\t_v_free(ret_ptr);')
+		g.gowrappers.writeln('\treturn ret;')
+	}
+	g.gowrappers.writeln('}')
 }
