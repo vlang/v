@@ -97,6 +97,8 @@ fn test_load_privkey_from_string_sign_and_verify() ! {
 
 	verified := pbkey.verify(message_tobe_signed.bytes(), signature)!
 	assert verified == true
+	pvkey.free()
+	pbkey.free()
 }
 
 // test for loading privat key from unsupported curve should fail.
