@@ -137,7 +137,6 @@ pub fn (pbk PublicKey) bytes() ![]u8 {
 	}
 
 	group := voidptr(C.EC_KEY_get0_group(pbk.key))
-	// defer { C.EC_GROUP_free(group)}
 	num_bits := C.EC_GROUP_get_degree(group)
 	// 1 byte of conversion format || x || y of EC_POINT
 	num_bytes := 1 + 2 * ((num_bits + 7) / 8)
@@ -172,6 +171,22 @@ pub fn (pbk PublicKey) bytes() ![]u8 {
 }
 
 // pubkey_from_string loads a PublicKey from valid PEM-formatted string in s.
+//
+// Examples:
+// ```codeblock
+// import crypto.pem
+// import crypto.ecdsa
+//
+// const pubkey_sample = '-----BEGIN PUBLIC KEY-----
+// MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE+P3rhFkT1fXHYbY3CpcBdh6xTC74MQFx
+// cftNVD3zEPVzo//OalIVatY162ksg8uRWBdvFFuHZ9OMVXkbjwWwhcXP7qmI9rOS
+// LR3AGUldy+bBpV2nT306qCIwgUAMeOJP
+// -----END PUBLIC KEY-----'
+//
+// pubkey := ecdsa.pubkey_from_string(pubkey_sample)!
+// verified := pubkey.verify(digest, signature)!
+// assert verified == true
+// ```
 pub fn pubkey_from_string(s string) !PublicKey {
 	if s.len == 0 {
 		return error('Null length string was not allowed')
@@ -199,7 +214,7 @@ pub fn pubkey_from_string(s string) !PublicKey {
 		C.EVP_PKEY_free(evpkey)
 		return error('Get an nid of non ecPublicKey')
 	}
-
+	// Gets the ec key
 	eckey := C.EVP_PKEY_get1_EC_KEY(evpkey)
 	if eckey == 0 {
 		C.BIO_free_all(bo)
@@ -208,16 +223,7 @@ pub fn pubkey_from_string(s string) !PublicKey {
 		return error('Failed to get ec key')
 	}
 	// check the group for the supported curve(s)
-	group := voidptr(C.EC_KEY_get0_group(eckey))
-	if group == 0 {
-		C.BIO_free_all(bo)
-		C.EC_KEY_free(eckey)
-		C.EVP_PKEY_free(evpkey)
-		return error('Failed to load group from key')
-	}
-	nidgroup := C.EC_GROUP_get_curve_name(group)
-	if nidgroup != nid_prime256v1 && nidgroup != nid_secp384r1 && nidgroup != nid_secp521r1
-		&& nidgroup != nid_secp256k1 {
+	if !is_valid_supported_group(eckey) {
 		C.BIO_free_all(bo)
 		C.EC_KEY_free(eckey)
 		C.EVP_PKEY_free(evpkey)
@@ -238,12 +244,12 @@ pub fn pubkey_from_string(s string) !PublicKey {
 
 // privkey_from_string loads a PrivateKey from valid PEM-formatted string in s.
 // Underlying wrapper support for old secg and pkcs8 private key format, but this not heavily tested.
-// This routine also does not handling for pkcs8 EncryptedPrivateKeyInfo format, the callback was not handled.
+// This routine also does not handling for pkcs8 EncryptedPrivateKeyInfo format,
+// the callback handler was discarded and not supported currently.
 pub fn privkey_from_string(s string) !PrivateKey {
 	if s.len == 0 {
 		return error('null string was not allowed')
 	}
-	//
 	mut evpkey := C.EVP_PKEY_new()
 	bo := C.BIO_new(C.BIO_s_mem())
 	if bo == 0 {
@@ -253,9 +259,7 @@ pub fn privkey_from_string(s string) !PrivateKey {
 	if n == 0 {
 		// todo: retry the write
 	}
-	// defer { C.BIO_free_all(bo) }
 	evpkey = C.PEM_read_bio_PrivateKey(bo, &evpkey, 0, 0)
-
 	if evpkey == 0 {
 		C.BIO_free_all(bo)
 		C.EVP_PKEY_free(evpkey)
@@ -279,18 +283,7 @@ pub fn privkey_from_string(s string) !PrivateKey {
 		return error('Failed to get ec key')
 	}
 	// check the group for the supported curve(s)
-	group := voidptr(C.EC_KEY_get0_group(eckey))
-	if group == 0 {
-		// C.EC_GROUP_free(group)
-		C.BIO_free_all(bo)
-		C.EC_KEY_free(eckey)
-		C.EVP_PKEY_free(evpkey)
-		return error('Failed to load group from key')
-	}
-	nidgroup := C.EC_GROUP_get_curve_name(group)
-	if nidgroup != nid_prime256v1 && nidgroup != nid_secp384r1 && nidgroup != nid_secp521r1
-		&& nidgroup != nid_secp256k1 {
-		// C.EC_GROUP_free(group) // with uncommented this, will get signal 11: segmentation fault
+	if !is_valid_supported_group(eckey) {
 		C.BIO_free_all(bo)
 		C.EC_KEY_free(eckey)
 		C.EVP_PKEY_free(evpkey)
@@ -301,7 +294,6 @@ pub fn privkey_from_string(s string) !PrivateKey {
 		C.EC_KEY_free(eckey)
 		return error('EC_KEY_check_key failed')
 	}
-
 	C.EVP_PKEY_free(evpkey)
 	C.BIO_free_all(bo)
 
@@ -309,4 +301,21 @@ pub fn privkey_from_string(s string) !PrivateKey {
 	return PrivateKey{
 		key: eckey
 	}
+}
+
+// Helpers
+//
+// is_valid_supported_group checks whether this eckey has valid group of supported curve.
+@[inline]
+fn is_valid_supported_group(eckey &C.EC_KEY) bool {
+	group := voidptr(C.EC_KEY_get0_group(eckey))
+	if group == 0 {
+		return false
+	}
+	nidgroup := C.EC_GROUP_get_curve_name(group)
+	if nidgroup == nid_prime256v1 || nidgroup == nid_secp384r1 || nidgroup == nid_secp521r1
+		|| nidgroup == nid_secp256k1 {
+		return true
+	}
+	return false
 }
