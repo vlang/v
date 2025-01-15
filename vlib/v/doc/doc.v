@@ -143,6 +143,8 @@ pub mut:
 	from_scope  bool
 	is_pub      bool @[json: public]
 	platform    Platform
+	is_readme   bool
+	frontmatter map[string]string
 }
 
 // new_vdoc_preferences creates a new instance of pref.Preferences tailored for v.doc.
