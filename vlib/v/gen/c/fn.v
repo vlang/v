@@ -2369,6 +2369,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	// only v variadic, C variadic args will be appended like normal args
 	is_variadic := expected_types.len > 0 && expected_types.last().has_flag(.variadic)
 		&& node.language == .v
+	mut already_decomposed := false
 	for i, arg in args {
 		if is_variadic && i == expected_types.len - 1 {
 			break
@@ -2409,6 +2410,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				}
 				d_count++
 			}
+			already_decomposed = true
 			continue
 		} else if arg.expr is ast.ComptimeSelector && i < node.expected_arg_types.len
 			&& node.expected_arg_types[i].has_flag(.generic) {
@@ -2509,7 +2511,9 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			// TODOC2V handle this in a better place
 			g.expr(args[0].expr)
 		} else if args.len > 0 && args.last().expr is ast.ArrayDecompose {
-			g.expr(args.last().expr)
+			if !already_decomposed {
+				g.expr(args.last().expr)
+			}
 		} else {
 			if variadic_count > 0 {
 				if g.pref.translated || g.file.is_translated {
