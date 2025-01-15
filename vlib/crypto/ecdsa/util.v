@@ -168,10 +168,10 @@ fn C.BIO_write(b &C.BIO, buf &u8, length int) int
 // EVP_PKEY *PEM_read_bio_PrivateKey(BIO *bp, EVP_PKEY **x,  pem_password_cb *cb, void *u);
 fn C.PEM_read_bio_PrivateKey(bp &C.BIO, x &&C.EVP_PKEY, cb int, u &voidptr) &C.EVP_PKEY
 
-// load_privkey_from_string loads PrivateKey from valid PEM-formatted string in s.
+// privkey_from_string loads PrivateKey from valid PEM-formatted string in s.
 // Underlying wrapper support for old secg and pkcs8 private key format, but this not heavily tested.
 // This routine also does not handling for pkcs8 EncryptedPrivateKeyInfo format, the callback was not handled.
-pub fn load_privkey_from_string(s string) !PrivateKey {
+pub fn privkey_from_string(s string) !PrivateKey {
 	if s.len == 0 {
 		return error('null string was not allowed')
 	}

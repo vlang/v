@@ -82,7 +82,7 @@ fn test_for_pubkey_bytes() ! {
 // -----END EC PRIVATE KEY-----
 // ```
 fn test_load_privkey_from_string_sign_and_verify() ! {
-	pvkey := load_privkey_from_string(privatekey_sample)!
+	pvkey := privkey_from_string(privatekey_sample)!
 	expected_pvkey_bytes := '30ce3da288965ac6093f0ba9a9a15b2476bea3eda925e1b3c1f094674f52795cd6cb3cafe235dfc15bec542448ffa715'
 	assert pvkey.seed()!.hex() == expected_pvkey_bytes
 
@@ -108,7 +108,7 @@ fn test_load_privkey_from_string_with_unsupported_curve() ! {
 MFwCAQEEGDHV+WhJL2UjUhgMLh52k0RJjRebtu4HvqAHBgUrgQQAH6E0AzIABFyF
 UHhnmmVRraSwrVkPdYIeXhH/Ob4+8OLcwrQBMv4RXsD1GVFsgkvEYDTEb/vnMA==
 -----END EC PRIVATE KEY-----'
-	_ := load_privkey_from_string(key) or {
+	_ := privkey_from_string(key) or {
 		assert err == error('Unsupported group')
 		return
 	}
