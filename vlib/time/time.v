@@ -127,34 +127,6 @@ pub fn (t Time) unix_nano() i64 {
 	return t.unix() * 1_000_000_000 + i64(t.nanosecond)
 }
 
-// unix_time returns the UNIX time with second resolution.
-@[deprecated: 'use `t.unix()` instead']
-@[deprecated_after: '2024-05-31']
-pub fn (t Time) unix_time() i64 {
-	return t.unix()
-}
-
-// unix_time_milli returns the UNIX time with millisecond resolution.
-@[deprecated: 'use `t.unix_milli()` instead']
-@[deprecated_after: '2024-05-31']
-pub fn (t Time) unix_time_milli() i64 {
-	return t.unix_milli()
-}
-
-// unix_time_micro returns the UNIX time with microsecond resolution.
-@[deprecated: 'use `t.unix_micro()` instead']
-@[deprecated_after: '2024-05-31']
-pub fn (t Time) unix_time_micro() i64 {
-	return t.unix_micro()
-}
-
-// unix_time_nano returns the UNIX time with nanosecond resolution.
-@[deprecated: 'use `t.unix_nano()` instead']
-@[deprecated_after: '2024-05-31']
-pub fn (t Time) unix_time_nano() i64 {
-	return t.unix_nano()
-}
-
 // add returns a new time with the given duration added.
 pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 	// This expression overflows i64 for big years (and we do not have i128 yet):

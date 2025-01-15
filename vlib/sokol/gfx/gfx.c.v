@@ -124,10 +124,6 @@ pub fn query_buffer_overflow(buf Buffer) bool {
 
 // rendering functions
 
-@[deprecated: 'use begin_pass instead, please see examples/sokol/* for how to utilize new unified begin_pass']
-@[inline]
-pub fn begin_default_pass(actions &PassAction, width int, height int) {}
-
 // begin_pass begins a rendering pass.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 @[inline]

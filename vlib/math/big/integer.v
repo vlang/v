@@ -754,12 +754,6 @@ pub fn (a Integer) bitwise_xor(b Integer) Integer {
 	}
 }
 
-// lshift returns the integer `a` shifted left by `amount` bits.
-@[deprecated: 'use a.Integer.left_shift(amount) instead']
-pub fn (a Integer) lshift(amount u32) Integer {
-	return a.left_shift(amount)
-}
-
 // left_shift returns the integer `a` shifted left by `amount` bits.
 @[direct_array_access]
 pub fn (a Integer) left_shift(amount u32) Integer {
@@ -782,12 +776,6 @@ pub fn (a Integer) left_shift(amount u32) Integer {
 		digits: new_array
 		signum: a.signum
 	}
-}
-
-// rshift returns the integer `a` shifted right by `amount` bits.
-@[deprecated: 'use a.Integer.right_shift(amount) instead']
-pub fn (a Integer) rshift(amount u32) Integer {
-	return a.right_shift(amount)
 }
 
 // right_shift returns the integer `a` shifted right by `amount` bits.
@@ -815,12 +803,6 @@ pub fn (a Integer) right_shift(amount u32) Integer {
 		digits: new_array
 		signum: a.signum
 	}
-}
-
-// binary_str returns the binary string representation of the integer `a`.
-@[deprecated: 'use integer.bin_str() instead']
-pub fn (integer Integer) binary_str() string {
-	return integer.bin_str()
 }
 
 // bin_str returns the binary string representation of the integer `a`.

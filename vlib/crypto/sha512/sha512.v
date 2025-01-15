@@ -208,7 +208,7 @@ pub fn (mut d Digest) write(p_ []u8) !int {
 pub fn (d &Digest) sum(b_in []u8) []u8 {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := d.clone()
-	hash := d0.checksum_internal()
+	hash := d0.checksum()
 	mut b_out := b_in.clone()
 	match d0.function {
 		.sha384 {
@@ -235,9 +235,9 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 	return b_out
 }
 
-// TODO:
-// When the deprecated "checksum()" is finally removed, restore this function name as: "checksum()"
-fn (mut d Digest) checksum_internal() []u8 {
+// checksum returns the current byte checksum of the Digest,
+// it is an internal method and is not recommended because its results are not idempotent.
+fn (mut d Digest) checksum() []u8 {
 	// Padding. Add a 1 bit and 0 bits until 112 bytes mod 128.
 	mut len := d.len
 	mut tmp := []u8{len: (128)}
@@ -269,40 +269,18 @@ fn (mut d Digest) checksum_internal() []u8 {
 	return digest
 }
 
-// checksum returns the current byte checksum of the Digest,
-// it is an internal method and is not recommended because its results are not idempotent.
-@[deprecated: 'checksum() will be changed to a private method, use sum() instead']
-@[deprecated_after: '2024-04-30']
-pub fn (mut d Digest) checksum() []u8 {
-	out := d.checksum_internal()
-	match d.function {
-		.sha384 {
-			return out[0..size384]
-		}
-		.sha512_224 {
-			return out[0..size224]
-		}
-		.sha512_256 {
-			return out[0..size256]
-		}
-		else {
-			return out
-		}
-	}
-}
-
 // sum512 returns the SHA512 checksum of the data.
 pub fn sum512(data []u8) []u8 {
 	mut d := new_digest(.sha512)
 	d.write(data) or { panic(err) }
-	return d.checksum_internal()
+	return d.checksum()
 }
 
 // sum384 returns the SHA384 checksum of the data.
 pub fn sum384(data []u8) []u8 {
 	mut d := new_digest(.sha384)
 	d.write(data) or { panic(err) }
-	sum := d.checksum_internal()
+	sum := d.checksum()
 	mut sum384 := []u8{len: size384}
 	copy(mut sum384, sum[..size384])
 	return sum384
@@ -312,7 +290,7 @@ pub fn sum384(data []u8) []u8 {
 pub fn sum512_224(data []u8) []u8 {
 	mut d := new_digest(.sha512_224)
 	d.write(data) or { panic(err) }
-	sum := d.checksum_internal()
+	sum := d.checksum()
 	mut sum224 := []u8{len: size224}
 	copy(mut sum224, sum[..size224])
 	return sum224
@@ -322,7 +300,7 @@ pub fn sum512_224(data []u8) []u8 {
 pub fn sum512_256(data []u8) []u8 {
 	mut d := new_digest(.sha512_256)
 	d.write(data) or { panic(err) }
-	sum := d.checksum_internal()
+	sum := d.checksum()
 	mut sum256 := []u8{len: size256}
 	copy(mut sum256, sum[..size256])
 	return sum256
