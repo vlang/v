@@ -127,8 +127,8 @@ fn pubkey_from_bytes(bytes []u8) !PublicKey {
 	}
 }
 
-// bytes gets the bytes of public key parts of this key.
-pub fn (pbk PublicKey) bytes() ![]u8 {
+// seed gets the bytes of public key parts of this key.
+pub fn (pbk PublicKey) seed() ![]u8 {
 	point := voidptr(C.EC_KEY_get0_public_key(pbk.key))
 	// defer { C.EC_POINT_free(point)}
 	if point == 0 {
@@ -289,17 +289,22 @@ pub fn privkey_from_string(s string) !PrivateKey {
 		C.EVP_PKEY_free(evpkey)
 		return error('Unsupported group')
 	}
+
 	chk := C.EC_KEY_check_key(eckey)
 	if chk == 0 {
 		C.EC_KEY_free(eckey)
 		return error('EC_KEY_check_key failed')
 	}
+	ksize := ec_key_size(eckey)!
+
 	C.EVP_PKEY_free(evpkey)
 	C.BIO_free_all(bo)
 
 	// Its OK to return
 	return PrivateKey{
-		key: eckey
+		key:     eckey
+		ks_flag: .fixed
+		ks_size: ksize
 	}
 }
 
@@ -318,4 +323,15 @@ fn is_valid_supported_group(eckey &C.EC_KEY) bool {
 		return true
 	}
 	return false
+}
+
+// key_size get the key size of this ec key
+fn ec_key_size(ec_key &C.EC_KEY) !int {
+	group := voidptr(C.EC_KEY_get0_group(ec_key))
+	if group == 0 {
+		return error('Unable to load group')
+	}
+	num_bits := C.EC_GROUP_get_degree(group)
+	key_size := (num_bits + 7) / 8
+	return key_size
 }

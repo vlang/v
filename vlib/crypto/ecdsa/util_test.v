@@ -46,7 +46,7 @@ fn test_for_pubkey_bytes() ! {
 
 	assert pvkey.seed()!.hex() == pv
 	pbkey := pvkey.public_key()!
-	assert pbkey.bytes()!.hex() == pb
+	assert pbkey.seed()!.hex() == pb
 	key_free(pbkey.key)
 	key_free(pvkey.key)
 }
@@ -88,7 +88,7 @@ fn test_load_privkey_from_string_sign_and_verify() ! {
 
 	// public key part	
 	pbkey := pvkey.public_key()!
-	pbkey_bytes := pbkey.bytes()!
+	pbkey_bytes := pbkey.seed()!
 	expected_pubkey_bytes := '04f8fdeb845913d5f5c761b6370a9701761eb14c2ef831017171fb4d543df310f573a3ffce6a52156ad635eb692c83cb9158176f145b8767d38c55791b8f05b085c5cfeea988f6b3922d1dc019495dcbe6c1a55da74f7d3aa8223081400c78e24f'
 	assert pbkey_bytes.hex() == expected_pubkey_bytes
 
@@ -103,7 +103,7 @@ fn test_load_privkey_from_string_sign_and_verify() ! {
 
 fn test_load_pubkey_from_string_and_used_for_verifying() ! {
 	pbkey := pubkey_from_string(public_key_sample)!
-	pbkey_bytes := pbkey.bytes()!
+	pbkey_bytes := pbkey.seed()!
 	expected_pubkey_bytes := '04f8fdeb845913d5f5c761b6370a9701761eb14c2ef831017171fb4d543df310f573a3ffce6a52156ad635eb692c83cb9158176f145b8767d38c55791b8f05b085c5cfeea988f6b3922d1dc019495dcbe6c1a55da74f7d3aa8223081400c78e24f'
 	assert pbkey_bytes.hex() == expected_pubkey_bytes
 

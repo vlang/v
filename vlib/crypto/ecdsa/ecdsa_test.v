@@ -50,6 +50,15 @@ fn test_new_key_from_seed() ! {
 	key_free(priv_key.key)
 }
 
+fn test_new_key_from_seed_with_leading_zeros_bytes() ! {
+	// Test generating a key from a seed
+	seed := [u8(0), u8(1), 2, 3, 4, 5]
+	priv_key := new_key_from_seed(seed) or { panic(err) }
+	retrieved_seed := priv_key.seed() or { panic(err) }
+	assert seed == retrieved_seed
+	key_free(priv_key.key)
+}
+
 fn test_sign_and_verify() ! {
 	// Test signing and verifying a message
 	pub_key, priv_key := generate_key() or { panic(err) }

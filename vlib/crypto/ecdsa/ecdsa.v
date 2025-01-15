@@ -36,6 +36,7 @@ fn C.EC_POINT_cmp(group &C.EC_GROUP, a &C.EC_POINT, b &C.EC_POINT, ctx &C.BN_CTX
 fn C.EC_POINT_free(point &C.EC_POINT)
 fn C.BN_num_bits(a &C.BIGNUM) int
 fn C.BN_bn2bin(a &C.BIGNUM, to &u8) int
+fn C.BN_bn2binpad(a &C.BIGNUM, to &u8, tolen int) int
 fn C.BN_cmp(a &C.BIGNUM, b &C.BIGNUM) int
 fn C.BN_CTX_new() &C.BN_CTX
 fn C.BN_CTX_free(ctx &C.BN_CTX)
@@ -72,7 +73,12 @@ pub enum Nid {
 @[params]
 pub struct CurveOptions {
 pub mut:
-	nid Nid = .prime256v1 // default to NIST P-256 curve
+	// default to NIST P-256 curve
+	nid Nid = .prime256v1
+	// by default, using current behavior with allowing
+	// arbitrary size of seed bytes as key.
+	// Set into true when you need fixed one using curve key size.
+	with_fixed_size bool
 }
 
 @[typedef]
@@ -93,8 +99,24 @@ struct C.ECDSA_SIG {}
 @[typedef]
 struct C.BN_CTX {}
 
+// enum flag to allow flexible PrivateKey size
+enum KeyFlag {
+	// flexible flag to allow flexible-size of seed bytes
+	flexible
+	// fixed flag for using underlying curve key size
+	fixed
+}
+
 pub struct PrivateKey {
 	key &C.EC_KEY
+mut:
+	// ks_flag with .flexible value allowing
+	// flexible-size seed bytes as key.
+	// When it .fixed will use underlying key size.
+	ks_flag KeyFlag = .flexible
+	// ks_size stores size of the seed bytes when ks_flag was .flexible.
+	// You should set it to non null value
+	ks_size int
 }
 
 pub struct PublicKey {
@@ -114,9 +136,11 @@ pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
 		C.EC_KEY_free(ec_key)
 		return error('Failed to generate EC_KEY')
 	}
-
+	// when using default generate_key, its using underlying curve key size
+	// and discarded opt.with_fixed_size flag when its not set.
 	priv_key := PrivateKey{
-		key: ec_key
+		key:     ec_key
+		ks_flag: .fixed
 	}
 	pub_key := PublicKey{
 		key: ec_key
@@ -164,7 +188,13 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 		C.EC_KEY_free(ec_key)
 		return error('Seed length exceeds key size')
 	}
-
+	// Check if its using fixed key size or flexible one
+	if opt.with_fixed_size {
+		if seed.len != key_size {
+			C.EC_KEY_free(ec_key)
+			return error('seed size doesnt match with curve key size')
+		}
+	}
 	// Convert the seed bytes into a BIGNUM
 	bn := C.BN_bin2bn(seed.data, seed.len, 0)
 	if bn == 0 {
@@ -218,9 +248,20 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	}
 	C.EC_POINT_free(pub_key_point)
 	C.BN_free(bn)
-	return PrivateKey{
+
+	mut pvkey := PrivateKey{
 		key: ec_key
 	}
+	// we set the flag information on the key
+	if opt.with_fixed_size {
+		// using fixed one
+		pvkey.ks_flag = .fixed
+		pvkey.ks_size = key_size
+	} else {
+		pvkey.ks_size = seed.len
+	}
+
+	return pvkey
 }
 
 // sign performs signing the message with the options. By default, the options was using `.with_no_hash` options,
@@ -275,9 +316,16 @@ pub fn (priv_key PrivateKey) seed() ![]u8 {
 		return error('Failed to get private key BIGNUM')
 	}
 	num_bytes := (C.BN_num_bits(bn) + 7) / 8
+	dump(num_bytes)
 
-	mut buf := []u8{len: int(num_bytes)}
-	res := C.BN_bn2bin(bn, buf.data)
+	size := if priv_key.ks_flag == .flexible { // should non-null
+		priv_key.ks_size
+	} else {
+		num_bytes
+	}
+	dump(size)
+	mut buf := []u8{len: int(size)}
+	res := C.BN_bn2binpad(bn, buf.data, size)
 	if res == 0 {
 		return error('Failed to convert BIGNUM to bytes')
 	}
