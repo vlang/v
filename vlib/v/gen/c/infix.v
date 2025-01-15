@@ -1189,8 +1189,8 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		|| g.file.is_translated)
 	if needs_cast {
 		typ_str := if node.left_ct_expr {
-			g.styp(g.type_resolver.get_type_or_default(node.left, node.promoted_type))
-		} else if node.right_ct_expr {
+			g.styp(g.type_resolver.get_type_or_default(node.left, node.left_type))
+		} else if node.left !in [ast.Ident, ast.CastExpr] && node.right_ct_expr {
 			g.styp(g.type_resolver.get_type_or_default(node.right, node.promoted_type))
 		} else {
 			g.styp(node.promoted_type)

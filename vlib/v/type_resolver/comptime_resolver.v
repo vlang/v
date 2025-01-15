@@ -47,7 +47,7 @@ pub fn (t &ResolverInfo) is_comptime(node ast.Expr) bool {
 			}
 		}
 		ast.SelectorExpr {
-			return node.expr is ast.Ident && node.expr.ct_expr && node.field_name != 'len'
+			return node.expr is ast.Ident && node.expr.ct_expr
 		}
 		ast.InfixExpr {
 			return node.left_ct_expr || node.right_ct_expr
@@ -82,6 +82,8 @@ pub fn (t &ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
 	} else if node is ast.InfixExpr {
 		return t.get_ct_type_var(node.left)
 	} else if node is ast.ParExpr {
+		return t.get_ct_type_var(node.expr)
+	} else if node is ast.SelectorExpr {
 		return t.get_ct_type_var(node.expr)
 	}
 	return .no_comptime
