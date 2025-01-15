@@ -5,7 +5,7 @@
 module builtin
 
 // isnil returns true if an object is nil (only for C objects).
-@[inline; markused]
+@[inline]
 pub fn isnil(v voidptr) bool {
 	return v == 0
 }
