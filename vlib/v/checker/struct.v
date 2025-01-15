@@ -165,7 +165,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				continue
 			}
 			field_is_generic := field.typ.has_flag(.generic)
-			if c.needs_unwrap_generic_type(field.typ)
+			if c.table.type_kind(field.typ) != .alias
 				&& !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos, c.table.final_sym(field.typ).kind in [.array, .array_fixed, .map], field_is_generic) {
 				continue
 			}
