@@ -61,9 +61,10 @@ pub:
 }
 
 pub struct Attachment {
+pub:
+	cid      string
 	filename string
 	bytes    []u8
-	cid      string
 }
 
 // new_client returns a new SMTP client and connects to it
