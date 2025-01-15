@@ -67,14 +67,14 @@ pub fn harmonic_mean[T](data []T) T {
 		for v in data {
 			sum += f64(1.0) / v
 		}
-		return f64(data.len / sum)
+		return f64(f64(data.len) / sum)
 	} $else {
 		// use f32 for f32/int/...
 		mut sum := f32(0)
 		for v in data {
 			sum += f32(1.0) / f32(v)
 		}
-		return T(data.len / sum)
+		return T(f32(data.len) / sum)
 	}
 }
 
