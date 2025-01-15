@@ -15,6 +15,8 @@ fn test_main() {
 	assert arrays.concat([0], ...get().map(it)) == [0, 1, 2, 3, 4, 5]
 	assert arrays.concat[int]([], ...get().map(it)) == [1, 2, 3, 4, 5]
 	assert arrays.concat[[]int]([[0]], ...[get().map(it)]) == [
-		[0], [1, 2, 3, 4, 5]]
+		[0],
+		[1, 2, 3, 4, 5],
+	]
 	assert arrays.concat[int](...get2()) == [0, 1, 2, 3, 4, 5]
 }
