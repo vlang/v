@@ -600,9 +600,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	if g.out_results.len > 0 {
 		b.write_string2('\n// V result_xxx definitions:\n', g.out_results.str())
 	}
-	if g.json_forward_decls.len > 0 {
-		b.write_string2('\n// V json forward decls:\n', g.json_forward_decls.str())
-	}
 	b.write_string2('\n// V definitions:\n', g.definitions.str())
 	if g.sort_fn_definitions.len > 0 {
 		b.write_string2('\n// V sort fn definitions:\n', g.sort_fn_definitions.str())
@@ -621,17 +618,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	if interface_table.len > 0 {
 		b.write_string2('\n// V interface table:\n', interface_table)
 	}
-	if g.waiter_fn_definitions.len > 0 {
-		b.write_string2('\n// V gowrappers waiter fns:\n', g.waiter_fn_definitions.str())
-	}
-	if g.gowrappers.len > 0 {
-		b.write_string2('\n// V gowrappers:\n', g.gowrappers.str())
-	}
 	if g.hotcode_definitions.len > 0 {
 		b.write_string2('\n// V hotcode definitions:\n', g.hotcode_definitions.str())
-	}
-	if g.embedded_data.len > 0 {
-		b.write_string2('\n// V embedded data:\n', g.embedded_data.str())
 	}
 	if g.shared_functions.len > 0 {
 		b.writeln('\n// V shared type functions:\n')
@@ -659,10 +647,13 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	header = '#ifndef V_HEADER_FILE\n#define V_HEADER_FILE' + header
 	header += '\n#endif\n'
 
-	mut helpers := strings.new_builder(200_000)
+	mut helpers := strings.new_builder(300_000)
 	// Code added here (after the header) goes to out_0.c in parallel cc mode
 	// Previously it went to the header which resulted in duplicated code and more code
 	// to compile for the C compiler
+	if g.embedded_data.len > 0 {
+		helpers.write_string2('\n// V embedded data:\n', g.embedded_data.str())
+	}
 	if g.anon_fn_definitions.len > 0 {
 		if g.nr_closures > 0 {
 			helpers.writeln2('\n// V closure helpers', c_closure_fn_helpers(g.pref))
@@ -693,6 +684,12 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			}
 		}
 	}
+	if g.waiter_fn_definitions.len > 0 {
+		if g.pref.parallel_cc {
+			g.extern_out.write_string2('\n// V gowrappers waiter fns:\n', g.waiter_fn_definitions.bytestr())
+		}
+		helpers.write_string2('\n// V gowrappers waiter fns:\n', g.waiter_fn_definitions.str())
+	}
 	if g.auto_str_funcs.len > 0 {
 		helpers.write_string2('\n// V auto str functions:\n', g.auto_str_funcs.str())
 	}
@@ -701,6 +698,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		for fn_def in g.auto_fn_definitions {
 			helpers.writeln(fn_def)
 		}
+	}
+	if g.json_forward_decls.len > 0 {
+		helpers.write_string2('\n// V json forward decls:\n', g.json_forward_decls.bytestr())
+		if g.pref.parallel_cc {
+			g.extern_out.write_string2('\n// V json forward decls:\n', g.json_forward_decls.str())
+		}
+	}
+	if g.gowrappers.len > 0 {
+		helpers.write_string2('\n// V gowrappers:\n', g.gowrappers.str())
 	}
 	if g.dump_funcs.len > 0 {
 		helpers.write_string2('\n// V dump functions:\n', g.dump_funcs.str())
@@ -1152,6 +1158,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
 			g.writeln2('', 'int v_typeof_interface_idx_${sym.cname}(int sidx) {')
+			if g.pref.parallel_cc {
+				g.extern_out.writeln('extern int v_typeof_interface_idx_${sym.cname}(int sidx);')
+			}
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
@@ -6718,6 +6727,12 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								if expr_stmt.expr.is_return_used {
 									g.write('*(${cast_typ}*) ${cvar_name}.data = ')
 								}
+							} else if g.inside_opt_or_res && return_is_option && g.inside_assign {
+								g.write('_option_ok(&(${cast_typ}[]) { ')
+								g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
+								g.writeln(' }, (${option_name}*)&${cvar_name}, sizeof(${cast_typ}));')
+								g.indent--
+								return
 							} else {
 								g.write('*(${cast_typ}*) ${cvar_name}.data = ')
 							}

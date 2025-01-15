@@ -861,6 +861,7 @@ pub mut:
 	pos             token.Pos
 	should_be_ptr   bool // fn expects a ptr for this arg
 	// tmp_name        string // for autofree
+	ct_expr bool // true, when the expression is a comptime/generic expression
 }
 
 // function return statement

@@ -85,6 +85,9 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 // into a single generated function _v_embed_file_metadata, that accepts a hash of the absolute path of the embedded
 // files.
 fn (mut g Gen) gen_embedded_metadata() {
+	if g.pref.parallel_cc {
+		g.extern_out.writeln('extern v__embed_file__EmbedFileData _v_embed_file_metadata(u64 ef_hash);')
+	}
 	g.embedded_data.writeln('v__embed_file__EmbedFileData _v_embed_file_metadata(u64 ef_hash) {')
 	g.embedded_data.writeln('\tv__embed_file__EmbedFileData res;')
 	g.embedded_data.writeln('\tmemset(&res, 0, sizeof(res));')

@@ -412,51 +412,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										}
 									}
 								}
-								if right is ast.ComptimeSelector {
-									if is_decl {
-										left.obj.ct_type_var = .field_var
-										left.obj.typ = c.comptime.comptime_for_field_type
-									}
-								} else if mut right is ast.InfixExpr {
-									right_ct_var := c.comptime.get_ct_type_var(right.left)
-									if right_ct_var != .no_comptime {
-										left.obj.ct_type_var = right_ct_var
-									}
-								} else if mut right is ast.IndexExpr
-									&& c.comptime.is_comptime(right) {
-									right_ct_var := c.comptime.get_ct_type_var(right.left)
-									if right_ct_var != .no_comptime {
-										left.obj.ct_type_var = right_ct_var
-									}
-								} else if mut right is ast.Ident && right.obj is ast.Var
-									&& right.or_expr.kind == .absent {
-									right_obj_var := right.obj as ast.Var
-									if right_obj_var.ct_type_var != .no_comptime {
-										ctyp := c.type_resolver.get_type(right)
-										if ctyp != ast.void_type {
-											left.obj.ct_type_var = right_obj_var.ct_type_var
-											left.obj.typ = ctyp
-										}
-									}
-								} else if right is ast.DumpExpr
-									&& right.expr is ast.ComptimeSelector {
-									left.obj.ct_type_var = .field_var
-									left.obj.typ = c.comptime.comptime_for_field_type
-								} else if mut right is ast.CallExpr {
-									if right.left_type != 0
-										&& c.table.type_kind(right.left_type) == .array
-										&& right.name == 'map' && right.args.len > 0
-										&& right.args[0].expr is ast.AsCast
-										&& right.args[0].expr.typ.has_flag(.generic) {
-										left.obj.ct_type_var = .generic_var
-									} else if left.obj.ct_type_var in [.generic_var, .no_comptime]
-										&& c.table.cur_fn != unsafe { nil }
-										&& c.table.cur_fn.generic_names.len != 0
-										&& !right.comptime_ret_val
-										&& c.type_resolver.is_generic_expr(right) {
-										// mark variable as generic var because its type changes according to fn return generic resolution type
-										left.obj.ct_type_var = .generic_var
-									}
+								// flag the variable as comptime/generic related on its declaration
+								if is_decl {
+									c.change_flags_if_comptime_expr(mut left, right)
 								}
 							}
 							ast.GlobalField {
@@ -960,5 +918,48 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 	}
 	if node.left_types.len != node.left.len {
 		c.error('assign statement left type number mismatch', node.pos)
+	}
+}
+
+// change_flags_if_comptime_expr changes the flags of the left variable if the right expression is comptime/generic expr
+fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.Expr) {
+	if mut left.obj is ast.Var {
+		if right is ast.ComptimeSelector {
+			left.obj.ct_type_var = .field_var
+			left.obj.typ = c.comptime.comptime_for_field_type
+		} else if right is ast.InfixExpr {
+			right_ct_var := c.comptime.get_ct_type_var(right.left)
+			if right_ct_var != .no_comptime {
+				left.obj.ct_type_var = right_ct_var
+			}
+		} else if right is ast.IndexExpr && c.comptime.is_comptime(right) {
+			right_ct_var := c.comptime.get_ct_type_var(right.left)
+			if right_ct_var != .no_comptime {
+				left.obj.ct_type_var = right_ct_var
+			}
+		} else if right is ast.Ident && right.obj is ast.Var && right.or_expr.kind == .absent {
+			right_obj_var := right.obj as ast.Var
+			if right_obj_var.ct_type_var != .no_comptime {
+				ctyp := c.type_resolver.get_type(right)
+				if ctyp != ast.void_type {
+					left.obj.ct_type_var = right_obj_var.ct_type_var
+					left.obj.typ = ctyp
+				}
+			}
+		} else if right is ast.DumpExpr && right.expr is ast.ComptimeSelector {
+			left.obj.ct_type_var = .field_var
+			left.obj.typ = c.comptime.comptime_for_field_type
+		} else if right is ast.CallExpr {
+			if right.left_type != 0 && c.table.type_kind(right.left_type) == .array
+				&& right.name == 'map' && right.args.len > 0 && right.args[0].expr is ast.AsCast
+				&& right.args[0].expr.typ.has_flag(.generic) {
+				left.obj.ct_type_var = .generic_var
+			} else if left.obj.ct_type_var in [.generic_var, .no_comptime]
+				&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len != 0
+				&& !right.comptime_ret_val && c.type_resolver.is_generic_expr(right) {
+				// mark variable as generic var because its type changes according to fn return generic resolution type
+				left.obj.ct_type_var = .generic_var
+			}
+		}
 	}
 }

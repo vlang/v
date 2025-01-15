@@ -119,12 +119,13 @@ ${dec_fn_dec} {
 		}
 	}
 ')
-		g.json_forward_decls.writeln('${dec_fn_dec};')
+		extern_str := if g.pref.parallel_cc { 'extern ' } else { '' }
+		g.json_forward_decls.writeln('${extern_str}${dec_fn_dec};')
 		// Codegen encoder
 		// encode_TYPE funcs receive an object to encode
 		enc_fn_name := js_enc_name(styp)
 		enc_fn_dec := 'cJSON* ${enc_fn_name}(${styp} val)'
-		g.json_forward_decls.writeln('${enc_fn_dec};\n')
+		g.json_forward_decls.writeln('${extern_str}${enc_fn_dec};\n')
 		enc.writeln('
 ${enc_fn_dec} {
 \tcJSON *o;')
