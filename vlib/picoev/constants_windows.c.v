@@ -9,4 +9,3 @@ module picoev
 // Note: this works, because on windows we use select, and select on win32,
 // is not limited to polling on only 1024 fds.
 pub const max_fds = 4096
-
