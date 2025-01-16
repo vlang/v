@@ -4,9 +4,6 @@ import net
 import picohttpparser
 import time
 
-// maximum number of file descriptors that can be managed
-pub const max_fds = 1024
-
 // maximum size of the event queue
 pub const max_queue = 4096
 
@@ -70,12 +67,12 @@ pub struct Picoev {
 	max_write    int = 8192
 mut:
 	loop             &LoopType = unsafe { nil }
-	file_descriptors [max_fds]&Target
+	file_descriptors [4096]&Target // TODO: use max_fds here, instead of the hardcoded size, when the compiler allows it
 	timeouts         map[int]i64
 	num_loops        int
 
 	buf &u8 = unsafe { nil }
-	idx [1024]int
+	idx [max_fds]int
 	out &u8 = unsafe { nil }
 
 	date string
@@ -192,6 +189,7 @@ fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
 	}
 	if accepted_fd >= max_fds {
 		// should never happen
+		elog('Error during accept, accepted_fd >= max_fd')
 		close_socket(accepted_fd)
 		return
 	}
