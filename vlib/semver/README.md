@@ -16,8 +16,8 @@ fn main() {
 		println('Invalid version')
 		return
 	}
-	println(ver1.gt(ver2))
-	println(ver2.gt(ver1))
+	println(ver1 > ver2)
+	println(ver2 > ver1)
 	println(ver1.satisfies('>=1.1.0 <2.0.0'))
 	println(ver2.satisfies('>=1.1.0 <2.0.0'))
 	println(ver2.satisfies('>=1.1.0 <2.0.0 || >2.2.0'))

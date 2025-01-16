@@ -272,16 +272,6 @@ pub fn loginname() !string {
 	return error(posix_get_error_msg(C.errno))
 }
 
-@[deprecated: 'os.args now uses arguments()']
-@[deprecated_after: '2024-07-30']
-fn init_os_args(argc int, argv &&u8) []string {
-	mut args_ := []string{len: argc}
-	for i in 0 .. argc {
-		args_[i] = unsafe { tos_clone(argv[i]) }
-	}
-	return args_
-}
-
 // ls returns ![]string of the files and dirs in the given `path` ( os.ls uses C.readdir ). Symbolic links are returned to be files. For recursive list see os.walk functions.
 // See also: `os.walk`, `os.walk_ext`, `os.is_dir`, `os.is_file`
 // Example: https://github.com/vlang/v/blob/master/examples/readdir.v

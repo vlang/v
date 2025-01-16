@@ -174,12 +174,6 @@ fn win_utc() Time {
 	return t
 }
 
-// unix_time returns Unix time.
-@[deprecated: 'use `st.unix()` instead']
-fn (st SystemTime) unix_time() i64 {
-	return st.unix()
-}
-
 // unix returns Unix time.
 fn (st SystemTime) unix() i64 {
 	tt := C.tm{

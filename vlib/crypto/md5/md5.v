@@ -108,7 +108,7 @@ pub fn (mut d Digest) write(p_ []u8) !int {
 pub fn (d &Digest) sum(b_in []u8) []u8 {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := d.clone()
-	hash := d0.checksum_internal()
+	hash := d0.checksum()
 	mut b_out := b_in.clone()
 	for b in hash {
 		b_out << b
@@ -116,9 +116,8 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 	return b_out
 }
 
-// TODO:
-// When the deprecated "checksum()" is finally removed, restore this function name as: "checksum()"
-fn (mut d Digest) checksum_internal() []u8 {
+// checksum returns the byte checksum of the `Digest`,
+fn (mut d Digest) checksum() []u8 {
 	// Append 0x80 to the end of the message and then append zeros
 	// until the length is a multiple of 56 bytes. Finally append
 	// 8 bytes representing the message length in bits.
@@ -143,19 +142,11 @@ fn (mut d Digest) checksum_internal() []u8 {
 	return digest
 }
 
-// checksum returns the byte checksum of the `Digest`,
-// it is an internal method and is not recommended because its results are not idempotent.
-@[deprecated: 'checksum() will be changed to a private method, use sum() instead']
-@[deprecated_after: '2024-04-30']
-pub fn (mut d Digest) checksum() []u8 {
-	return d.checksum_internal()
-}
-
 // sum returns the MD5 checksum of the data.
 pub fn sum(data []u8) []u8 {
 	mut d := new()
 	d.write(data) or { panic(err) }
-	return d.checksum_internal()
+	return d.checksum()
 }
 
 fn block(mut dig Digest, p []u8) {

@@ -68,9 +68,6 @@ pub struct Picoev {
 	max_headers  int = 100
 	max_read     int = 4096
 	max_write    int = 8192
-
-	err_cb fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_error_callback @[deprecated: 'use `error_callback` instead']
-	raw_cb fn (mut Picoev, int, int) = unsafe { nil } @[deprecated: 'use `raw_callback` instead']
 mut:
 	loop             &LoopType = unsafe { nil }
 	file_descriptors [max_fds]&Target
@@ -114,13 +111,6 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 	}
 	pv.set_timeout(fd, timeout)
 	return 0
-}
-
-// del remove a file descriptor from the event loop
-@[deprecated: 'use delete() instead']
-@[direct_array_access]
-pub fn (mut pv Picoev) del(fd int) int {
-	return pv.delete(fd)
 }
 
 // remove a file descriptor from the event loop

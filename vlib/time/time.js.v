@@ -44,13 +44,6 @@ pub fn sleep(dur Duration) {
 	#while (new Date().getTime() < now + Number(toWait)) {}
 }
 
-// new_time returns a time struct with the calculated Unix time.
-@[deprecated: 'use `new()` instead']
-@[deprecated_after: '2024-05-31']
-pub fn new_time(t Time) Time {
-	return time_with_unix(t)
-}
-
 fn time_with_unix(t Time) Time {
 	if t.unix != 0 {
 		return t
