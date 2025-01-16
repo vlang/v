@@ -1,5 +1,5 @@
 // import v.ast
-import v.doc
+import doc
 
 // fn test_generate_with_pos() {}
 // fn test_generate() {}

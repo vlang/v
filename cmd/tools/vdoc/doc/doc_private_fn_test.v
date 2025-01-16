@@ -43,5 +43,5 @@ fn test_get_parent_mod_normal_cases() {
 	assert get_parent_mod(os.join_path(@VMODROOT, 'vlib', 'os', 'os.v'))? == 'os'
 	assert get_parent_mod(os.join_path(@VMODROOT, 'cmd'))? == ''
 	assert get_parent_mod(os.join_path(@VMODROOT, 'cmd', 'tools', 'modules', 'testing',
-		'common.v'))? == 'testing'
+		'common.v'))? == 'tools.modules.testing'
 }

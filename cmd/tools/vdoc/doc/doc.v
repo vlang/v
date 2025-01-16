@@ -536,28 +536,28 @@ pub fn generate(input_path string, pub_only bool, with_comments bool, platform P
 	if platform == .js {
 		return error('vdoc: Platform `${platform}` is not supported.')
 	}
-	mut doc := new(input_path)
-	doc.pub_only = pub_only
-	doc.with_comments = with_comments
-	doc.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
-	doc.prefs.os = if platform == .auto {
+	mut d := new(input_path)
+	d.pub_only = pub_only
+	d.with_comments = with_comments
+	d.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
+	d.prefs.os = if platform == .auto {
 		pref.get_host_os()
 	} else {
 		unsafe { pref.OS(int(platform)) }
 	}
-	doc.generate()!
-	return doc
+	d.generate()!
+	return d
 }
 
 // generate_with_pos has the same function as the `generate` function but
 // accepts an offset-based position and enables the comments by default.
 pub fn generate_with_pos(input_path string, filename string, pos int) !Doc {
-	mut doc := new(input_path)
-	doc.pub_only = false
-	doc.with_comments = true
-	doc.with_pos = true
-	doc.filename = filename
-	doc.pos = pos
-	doc.generate()!
-	return doc
+	mut d := new(input_path)
+	d.pub_only = false
+	d.with_comments = true
+	d.with_pos = true
+	d.filename = filename
+	d.pos = pos
+	d.generate()!
+	return d
 }

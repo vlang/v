@@ -1,6 +1,6 @@
 module main
 
-import v.doc
+import doc
 
 @[inline]
 fn slug(title string) string {
