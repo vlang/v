@@ -67,7 +67,7 @@ pub struct Picoev {
 	max_write    int = 8192
 mut:
 	loop             &LoopType = unsafe { nil }
-	file_descriptors [max_fds]&Target
+	file_descriptors [4096]&Target // TODO: use max_fds here, instead of the hardcoded size, when the compiler allows it
 	timeouts         map[int]i64
 	num_loops        int
 
