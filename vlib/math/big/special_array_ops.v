@@ -1,6 +1,5 @@
 module big
 
-import math.bits
 import strings
 
 @[direct_array_access; inline]
