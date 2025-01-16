@@ -25,7 +25,6 @@ fn test_new_key_from_seed_with_random_size_and_data() ! {
 			continue
 		}
 		ret_seed := pvkey.seed()!
-		// this test would fail if random_bytes was leading by zeros bytes.
 		assert random_bytes == ret_seed
 		pvkey.free()
 	}

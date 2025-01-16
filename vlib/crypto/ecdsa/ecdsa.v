@@ -8,6 +8,9 @@ import crypto
 import crypto.sha256
 import crypto.sha512
 
+// See https://docs.openssl.org/master/man7/openssl_user_macros/#description
+#define OPENSSL_API_COMPAT 0x10100000L
+
 #flag darwin -L /opt/homebrew/opt/openssl/lib -I /opt/homebrew/opt/openssl/include
 
 #flag -I/usr/include/openssl
@@ -21,6 +24,7 @@ import crypto.sha512
 
 // C function declarations
 fn C.EC_KEY_new_by_curve_name(nid int) &C.EC_KEY
+fn C.EC_KEY_dup(src &C.EC_KEY) &C.EC_KEY
 fn C.EC_KEY_generate_key(key &C.EC_KEY) int
 fn C.EC_KEY_free(key &C.EC_KEY)
 fn C.EC_KEY_set_public_key(key &C.EC_KEY, &C.EC_POINT) int
@@ -34,6 +38,7 @@ fn C.EC_POINT_new(group &C.EC_GROUP) &C.EC_POINT
 fn C.EC_POINT_mul(group &C.EC_GROUP, r &C.EC_POINT, n &C.BIGNUM, q &C.EC_POINT, m &C.BIGNUM, ctx &C.BN_CTX) int
 fn C.EC_POINT_cmp(group &C.EC_GROUP, a &C.EC_POINT, b &C.EC_POINT, ctx &C.BN_CTX) int
 fn C.EC_POINT_free(point &C.EC_POINT)
+fn C.EC_GROUP_cmp(a &C.EC_GROUP, b &C.EC_GROUP, ctx &C.BN_CTX) int
 fn C.BN_num_bits(a &C.BIGNUM) int
 fn C.BN_bn2bin(a &C.BIGNUM, to &u8) int
 fn C.BN_bn2binpad(a &C.BIGNUM, to &u8, tolen int) int
@@ -75,9 +80,9 @@ pub struct CurveOptions {
 pub mut:
 	// default to NIST P-256 curve
 	nid Nid = .prime256v1
-	// by default, using current behavior with allowing
-	// arbitrary size of seed bytes as key.
+	// by default, using current behavior with allowing arbitrary size of seed bytes as key.
 	// Set into true when you need fixed one using curve key size.
+	// Its mainly purposes for support within `.new_key_from_seed` call.
 	with_fixed_size bool
 }
 
@@ -107,6 +112,8 @@ enum KeyFlag {
 	fixed
 }
 
+// PrivateKey represents ECDSA private key. Actually its a key pair,
+// contains private key and public key parts.
 pub struct PrivateKey {
 	key &C.EC_KEY
 mut:
@@ -119,22 +126,83 @@ mut:
 	ks_size int
 }
 
+// PublicKey represents ECDSA public key for verifying message.
 pub struct PublicKey {
 	key &C.EC_KEY
 }
 
-// generate_key generates a new key pair. If opt was not provided, its default to prime256v1 curve.
-// If you want another curve, use in the following manner: `pubkey, pivkey := ecdsa.generate_key(nid: .secp384r1)!`
-pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
+// PrivateKey.new creates a new ECDSA PrivateKey key pair. By default, it would create a prime256v1 curve.
+// You can create another supported key by supplying it with options, for example `.new(nid: .secp256k1)`.
+// If second options, ie, with_fixed_size was not set, it would be discarded and treated as fixed one.
+// This differs with `generate_key` in the sense `generate_key` produces two different ec_key opaque.
+// where this `.new()` only produces single opaque. You can get the public key part by calling `.public_key()`
+// method on this object.
+pub fn PrivateKey.new(opt CurveOptions) !PrivateKey {
+	// creates new empty key
 	ec_key := new_curve(opt)
 	if ec_key == 0 {
 		C.EC_KEY_free(ec_key)
 		return error('Failed to create new EC_KEY')
 	}
+	// Generates new public and private key for the supplied ec_key object.
 	res := C.EC_KEY_generate_key(ec_key)
 	if res != 1 {
 		C.EC_KEY_free(ec_key)
 		return error('Failed to generate EC_KEY')
+	}
+	// performs explicit check
+	chk := C.EC_KEY_check_key(ec_key)
+	if chk == 0 {
+		C.EC_KEY_free(ec_key)
+		return error('EC_KEY_check_key failed')
+	}
+	// when using default EC_KEY_generate_key, its using underlying curve key size
+	// and discarded opt.with_fixed_size flag when its not set.
+	priv_key := PrivateKey{
+		key:     ec_key
+		ks_flag: .fixed
+	}
+	return priv_key
+}
+
+// generate_key generates a new key pair. If opt was not provided, its default to prime256v1 curve.
+// If you want another curve, use in the following manner: `pubkey, pivkey := ecdsa.generate_key(nid: .secp384r1)!`
+pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
+	// creates new empty key
+	ec_key := new_curve(opt)
+	if ec_key == 0 {
+		C.EC_KEY_free(ec_key)
+		return error('Failed to create new EC_KEY')
+	}
+	// we duplicate the empty ec_key and shares similiar curve infos
+	// and used this as public key
+	pbkey := C.EC_KEY_dup(ec_key)
+	if pbkey == 0 {
+		C.EC_KEY_free(ec_key)
+		C.EC_KEY_free(pbkey)
+		return error('Failed on EC_KEY_dup')
+	}
+	res := C.EC_KEY_generate_key(ec_key)
+	if res != 1 {
+		C.EC_KEY_free(ec_key)
+		C.EC_KEY_free(pbkey)
+		return error('Failed to generate EC_KEY')
+	}
+	// we take public key bits from above generated key
+	// and stored in duplicated public key object before.
+	pubkey_point := voidptr(C.EC_KEY_get0_public_key(ec_key))
+	if pubkey_point == 0 {
+		C.EC_POINT_free(pubkey_point)
+		C.EC_KEY_free(ec_key)
+		C.EC_KEY_free(pbkey)
+		return error('Failed to get public key BIGNUM')
+	}
+	np := C.EC_KEY_set_public_key(pbkey, pubkey_point)
+	if np != 1 {
+		C.EC_POINT_free(pubkey_point)
+		C.EC_KEY_free(ec_key)
+		C.EC_KEY_free(pbkey)
+		return error('Failed to set public key')
 	}
 	// when using default generate_key, its using underlying curve key size
 	// and discarded opt.with_fixed_size flag when its not set.
@@ -143,7 +211,7 @@ pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
 		ks_flag: .fixed
 	}
 	pub_key := PublicKey{
-		key: ec_key
+		key: pbkey
 	}
 	return pub_key, priv_key
 }
@@ -316,14 +384,13 @@ pub fn (priv_key PrivateKey) seed() ![]u8 {
 		return error('Failed to get private key BIGNUM')
 	}
 	num_bytes := (C.BN_num_bits(bn) + 7) / 8
-	dump(num_bytes)
-
-	size := if priv_key.ks_flag == .flexible { // should non-null
+	// Get the buffer size to store the seed.
+	size := if priv_key.ks_flag == .flexible {
+		// should be non-null
 		priv_key.ks_size
 	} else {
 		num_bytes
 	}
-	dump(size)
 	mut buf := []u8{len: int(size)}
 	res := C.BN_bn2binpad(bn, buf.data, size)
 	if res == 0 {
@@ -334,19 +401,47 @@ pub fn (priv_key PrivateKey) seed() ![]u8 {
 
 // Get the public key from private key
 pub fn (priv_key PrivateKey) public_key() !PublicKey {
-	// Increase reference count
-	res := C.EC_KEY_up_ref(priv_key.key)
-	if res != 1 {
-		return error('Failed to increment EC_KEY reference count')
+	// There are some issues concerned when returning PublicKey directly using underlying
+	// `PrivateKey.key`. This private key containing sensitive information inside it, so return
+	// this without care maybe can lead to some serious security impact.
+	// See https://discord.com/channels/592103645835821068/592320321995014154/1329261267965448253
+	// So, we instead return a new EC_KEY opaque based information availables on private key object
+	// without private key bits has been set on this new opaque.
+	group := voidptr(C.EC_KEY_get0_group(priv_key.key))
+	if group == 0 {
+		return error('Failed to load group from priv_key')
 	}
+	nid := C.EC_GROUP_get_curve_name(group)
+	if nid != nid_prime256v1 && nid != nid_secp384r1 && nid != nid_secp521r1 && nid != nid_secp256k1 {
+		return error('Get unsupported curve nid')
+	}
+	// get public key point from private key opaque
+	pubkey_point := voidptr(C.EC_KEY_get0_public_key(priv_key.key))
+	if pubkey_point == 0 {
+		// C.EC_POINT_free(pubkey_point)
+		// todo: maybe its not set, just calculates new one
+		return error('Failed to get public key BIGNUM')
+	}
+	// creates a new EC_KEY opaque based on the same NID with private key and
+	// sets public key on it.
+	pub_key := C.EC_KEY_new_by_curve_name(nid)
+	np := C.EC_KEY_set_public_key(pub_key, pubkey_point)
+	if np != 1 {
+		// C.EC_POINT_free(pubkey_point)
+		C.EC_KEY_free(pub_key)
+		return error('Failed to set public key')
+	}
+	// performs explicit check
+	chk := C.EC_KEY_check_key(pub_key)
+	if chk == 0 {
+		C.EC_KEY_free(pub_key)
+		return error('EC_KEY_check_key failed')
+	}
+	// OK ?
 	return PublicKey{
-		key: priv_key.key
+		key: pub_key
 	}
 }
-
-// EC_GROUP_cmp() for comparing two group (curve).
-// EC_GROUP_cmp returns 0 if the curves are equal, 1 if they are not equal, or -1 on error.
-fn C.EC_GROUP_cmp(a &C.EC_GROUP, b &C.EC_GROUP, ctx &C.BN_CTX) int
 
 // equal compares two private keys was equal. Its checks for two things, ie:
 //
