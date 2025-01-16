@@ -8,7 +8,7 @@ import markdown
 import v.scanner
 import v.ast
 import v.token
-import v.doc
+import doc
 import v.pref
 import v.util { tabs }
 

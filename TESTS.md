@@ -188,7 +188,7 @@ tests in the main V repository, for example:
 
 > [!NOTE]
 The VDOC test vdoc_file_test.v now also supports VAUTOFIX, which is
-useful, if you change anything inside cmd/tools/vdoc or vlib/v/doc/,
+useful, if you change anything inside cmd/tools/vdoc,
 or inside the modules that it depends on (like markdown).
 After such changes, just run this command *2 times*, and commit the
 resulting changes in `cmd/tools/vdoc/testdata` as well:
