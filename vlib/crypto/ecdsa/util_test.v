@@ -19,7 +19,7 @@ LR3AGUldy+bBpV2nT306qCIwgUAMeOJP
 -----END PUBLIC KEY-----'
 
 // Message tobe signed and verified
-const message_tobe_signed = 'Example of ECDSA with P-384'
+const message_tobe_signed = 'Example of ECDSA with P-384'.bytes()
 // Message signature created with SHA384 digest with associated above key
 const expected_signature = hex.decode('3066023100b08f6ec77bb319fdb7bce55a2714d7e79cc645d834ee539d8903cfcc88c6fa90df1558856cb840b2dd82e82cd89d7046023100d9d482ca8a6545a3b081fbdd4bb9643a2b4eda4e21fd624833216596032471faae646891f8d2f0bbb86b796c36d3c390')!
 
@@ -27,13 +27,13 @@ fn test_load_pubkey_from_der_serialized_bytes() ! {
 	block, _ := pem.decode(public_key_sample) or { panic(err) }
 	pbkey := pubkey_from_bytes(block.data)!
 
-	status_without_hashed := pbkey.verify(message_tobe_signed.bytes(), expected_signature)!
+	status_without_hashed := pbkey.verify(message_tobe_signed, expected_signature,
+		hash_config: .with_no_hash
+	)!
 	assert status_without_hashed == false
 
 	// expected signature was comes from hashed message with sha384
-	status_with_hashed := pbkey.verify(message_tobe_signed.bytes(), expected_signature,
-		hash_config: .with_recommended_hash
-	)!
+	status_with_hashed := pbkey.verify(message_tobe_signed, expected_signature)!
 	assert status_with_hashed == true
 	key_free(pbkey.key)
 }
@@ -93,9 +93,9 @@ fn test_load_privkey_from_string_sign_and_verify() ! {
 	assert pbkey_bytes.hex() == expected_pubkey_bytes
 
 	// lets sign the message with default hash, ie, sha384
-	signature := pvkey.sign(message_tobe_signed.bytes())!
+	signature := pvkey.sign(message_tobe_signed)!
 
-	verified := pbkey.verify(message_tobe_signed.bytes(), signature)!
+	verified := pbkey.verify(message_tobe_signed, signature)!
 	assert verified == true
 	pvkey.free()
 	pbkey.free()
@@ -108,9 +108,7 @@ fn test_load_pubkey_from_string_and_used_for_verifying() ! {
 	assert pbkey_bytes.hex() == expected_pubkey_bytes
 
 	// expected signature was comes from hashed message with sha384
-	status_with_hashed := pbkey.verify(message_tobe_signed.bytes(), expected_signature,
-		hash_config: .with_recommended_hash
-	)!
+	status_with_hashed := pbkey.verify(message_tobe_signed, expected_signature)!
 	assert status_with_hashed == true
 	pbkey.free()
 }

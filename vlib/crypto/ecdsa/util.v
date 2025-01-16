@@ -16,7 +16,7 @@ struct C.EVP_PKEY {}
 struct C.BIO_METHOD {}
 
 @[typedef]
-struct C.BIO {}
+pub struct C.BIO {}
 
 // EVP_PKEY *EVP_PKEY_new(void);
 fn C.EVP_PKEY_new() &C.EVP_PKEY
@@ -164,29 +164,13 @@ pub fn (pbk PublicKey) seed() ![]u8 {
 	}
 	n := C.EC_POINT_point2oct(group, point, conv_form, buf.data, buf.len, ctx)
 	if n == 0 {
-		return error('Fails on EC_POINT_point2oct')
+		return error('EC_POINT_point2oct failed')
 	}
 	// returns the clone of the buffer[..n]
 	return buf[..n].clone()
 }
 
 // pubkey_from_string loads a PublicKey from valid PEM-formatted string in s.
-//
-// Examples:
-// ```codeblock
-// import crypto.pem
-// import crypto.ecdsa
-//
-// const pubkey_sample = '-----BEGIN PUBLIC KEY-----
-// MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE+P3rhFkT1fXHYbY3CpcBdh6xTC74MQFx
-// cftNVD3zEPVzo//OalIVatY162ksg8uRWBdvFFuHZ9OMVXkbjwWwhcXP7qmI9rOS
-// LR3AGUldy+bBpV2nT306qCIwgUAMeOJP
-// -----END PUBLIC KEY-----'
-//
-// pubkey := ecdsa.pubkey_from_string(pubkey_sample)!
-// verified := pubkey.verify(digest, signature)!
-// assert verified == true
-// ```
 pub fn pubkey_from_string(s string) !PublicKey {
 	if s.len == 0 {
 		return error('Null length string was not allowed')
@@ -243,9 +227,10 @@ pub fn pubkey_from_string(s string) !PublicKey {
 }
 
 // privkey_from_string loads a PrivateKey from valid PEM-formatted string in s.
-// Underlying wrapper support for old secg and pkcs8 private key format, but this not heavily tested.
-// This routine also does not handling for pkcs8 EncryptedPrivateKeyInfo format,
-// the callback handler was discarded and not supported currently.
+// Underlying wrapper support for old secg and pkcs8 private key format, but this was not heavily tested.
+// This routine does not support for the pkcs8 EncryptedPrivateKeyInfo format.
+// See [usage_test.v](https://github.com/vlang/v/blob/master/vlib/crypto/ecdsa/usage_test.v) file
+// for example of usage.
 pub fn privkey_from_string(s string) !PrivateKey {
 	if s.len == 0 {
 		return error('null string was not allowed')

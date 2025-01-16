@@ -22,13 +22,10 @@ fn test_ecdsa_signing_with_recommended_hash_options() {
 
 	// Sign a message
 	message := 'Hello, ECDSA!'.bytes()
-	opt := SignerOpts{
-		hash_config: .with_recommended_hash
-	}
-	signature := priv_key.sign(message, opt) or { panic(err) }
+	signature := priv_key.sign(message) or { panic(err) }
 
 	// Verify the signature
-	is_valid := pub_key.verify(message, signature, opt) or { panic(err) }
+	is_valid := pub_key.verify(message, signature) or { panic(err) }
 	println('Signature valid: ${is_valid}')
 	key_free(pub_key.key)
 	key_free(priv_key.key)

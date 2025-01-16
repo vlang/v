@@ -9,6 +9,7 @@ import crypto.sha256
 import crypto.sha512
 
 // See https://docs.openssl.org/master/man7/openssl_user_macros/#description
+// should be 0x30000000L, but a lot of EC_KEY method was deprecated on version 3.0
 #define OPENSSL_API_COMPAT 0x10100000L
 
 #flag darwin -L /opt/homebrew/opt/openssl/lib -I /opt/homebrew/opt/openssl/include
@@ -80,10 +81,10 @@ pub struct CurveOptions {
 pub mut:
 	// default to NIST P-256 curve
 	nid Nid = .prime256v1
-	// by default, using current behavior with allowing arbitrary size of seed bytes as key.
-	// Set into true when you need fixed one using curve key size.
-	// Its mainly purposes for support within `.new_key_from_seed` call.
-	with_fixed_size bool
+	// by default, allow arbitrary size of seed bytes as key.
+	// Set it to `true` when you need fixed size, using the curve key size.
+	// Its main purposes is to support the `.new_key_from_seed` call.
+	fixed_size bool
 }
 
 @[typedef]
@@ -119,10 +120,10 @@ pub struct PrivateKey {
 mut:
 	// ks_flag with .flexible value allowing
 	// flexible-size seed bytes as key.
-	// When it .fixed will use underlying key size.
+	// When it is `.fixed`, it will use the underlying key size.
 	ks_flag KeyFlag = .flexible
 	// ks_size stores size of the seed bytes when ks_flag was .flexible.
-	// You should set it to non null value
+	// You should set it to a non zero value
 	ks_size int
 }
 
@@ -131,12 +132,7 @@ pub struct PublicKey {
 	key &C.EC_KEY
 }
 
-// PrivateKey.new creates a new ECDSA PrivateKey key pair. By default, it would create a prime256v1 curve.
-// You can create another supported key by supplying it with options, for example `.new(nid: .secp256k1)`.
-// If second options, ie, with_fixed_size was not set, it would be discarded and treated as fixed one.
-// This differs with `generate_key` in the sense `generate_key` produces two different ec_key opaque.
-// where this `.new()` only produces single opaque. You can get the public key part by calling `.public_key()`
-// method on this object.
+// PrivateKey.new creates a new key pair. By default, it would create a prime256v1 based key.
 pub fn PrivateKey.new(opt CurveOptions) !PrivateKey {
 	// creates new empty key
 	ec_key := new_curve(opt)
@@ -157,7 +153,7 @@ pub fn PrivateKey.new(opt CurveOptions) !PrivateKey {
 		return error('EC_KEY_check_key failed')
 	}
 	// when using default EC_KEY_generate_key, its using underlying curve key size
-	// and discarded opt.with_fixed_size flag when its not set.
+	// and discarded opt.fixed_size flag when its not set.
 	priv_key := PrivateKey{
 		key:     ec_key
 		ks_flag: .fixed
@@ -205,7 +201,7 @@ pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
 		return error('Failed to set public key')
 	}
 	// when using default generate_key, its using underlying curve key size
-	// and discarded opt.with_fixed_size flag when its not set.
+	// and discarded opt.fixed_size flag when its not set.
 	priv_key := PrivateKey{
 		key:     ec_key
 		ks_flag: .fixed
@@ -220,7 +216,7 @@ pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
 // its default to prime256v1 curve.
 //
 // Notes on the seed:
-// You should make sure, the seed bytes was comes from cryptographically secure random generators,
+// You should make sure, the seed bytes come from a cryptographically secure random generator,
 // likes the `crypto.rand` or other trusted sources.
 // Internally, the seed size's would be checked to not exceed the key size of underlying curve,
 // ie, 32 bytes length for p-256 and secp256k1, 48 bytes length for p-384 and 64 bytes length for p-521.
@@ -237,12 +233,7 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 		return error('Failed to create new EC_KEY')
 	}
 	// Retrieve the EC_GROUP object associated with the EC_KEY
-	// Note:
-	// Its cast-ed with voidptr() to workaround the strictness of the type system,
-	// ie, cc backend with `-cstrict` option behaviour. Without this cast,
-	// C.EC_KEY_get0_group expected to return `const EC_GROUP *`,
-	// ie expected to return pointer into constant of EC_GROUP on C parts,
-	// so, its make cgen not happy with this and would fail with error.
+	// Note: cast with voidptr() to allow -cstrict checks to pass
 	group := voidptr(C.EC_KEY_get0_group(ec_key))
 	if group == 0 {
 		C.EC_KEY_free(ec_key)
@@ -257,7 +248,7 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 		return error('Seed length exceeds key size')
 	}
 	// Check if its using fixed key size or flexible one
-	if opt.with_fixed_size {
+	if opt.fixed_size {
 		if seed.len != key_size {
 			C.EC_KEY_free(ec_key)
 			return error('seed size doesnt match with curve key size')
@@ -321,7 +312,7 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 		key: ec_key
 	}
 	// we set the flag information on the key
-	if opt.with_fixed_size {
+	if opt.fixed_size {
 		// using fixed one
 		pvkey.ks_flag = .fixed
 		pvkey.ks_size = key_size
@@ -386,7 +377,7 @@ pub fn (priv_key PrivateKey) seed() ![]u8 {
 	num_bytes := (C.BN_num_bits(bn) + 7) / 8
 	// Get the buffer size to store the seed.
 	size := if priv_key.ks_flag == .flexible {
-		// should be non-null
+		// should be non zero
 		priv_key.ks_size
 	} else {
 		num_bytes
@@ -556,8 +547,8 @@ pub enum HashConfig {
 @[params]
 pub struct SignerOpts {
 pub mut:
-	// default to .with_no_hash to align with the current behaviour of signing.
-	hash_config HashConfig = .with_no_hash
+	// default to .with_recommended_hash
+	hash_config HashConfig = .with_recommended_hash
 	// make sense when HashConfig != with_recommended_hash
 	allow_smaller_size bool
 	allow_custom_hash  bool

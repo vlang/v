@@ -11,4 +11,6 @@ fn main() {
 	// verified the message with signature
 	verified := pbkey.verify(message_tobe_signed, signature, hash_config: .with_recommended_hash)!
 	dump(verified) // should true
+	pbkey.free()
+	pvkey.free()
 }
