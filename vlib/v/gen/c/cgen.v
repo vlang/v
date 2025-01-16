@@ -5106,7 +5106,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 							}
 						}
 						if node.obj.ct_type_var != .smartcast && node.obj.is_unwrapped {
-							g.write('.data')
+							dot := if obj_sym.is_heap() { '->' } else { '.' }
+							g.write('${dot}data')
 						}
 						g.write(')')
 					}
