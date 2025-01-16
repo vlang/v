@@ -22,7 +22,7 @@ pub type RequestFinishFn = fn (request &Request, final_size u64) !
 // a server or to be sent by a client)
 pub struct Request {
 mut:
-	cookies    map[string]string
+	cookies map[string]string
 pub mut:
 	version    Version = .v1_1
 	method     Method  = .get
