@@ -5025,11 +5025,17 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if is_auto_heap {
 				g.write('(*(')
 			}
+			is_option = is_option || node.obj.orig_type.has_flag(.option)
 			if node.obj.smartcasts.len > 0 {
 				obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
 				if !prevent_sum_type_unwrapping_once {
+					nested_unwrap := node.obj.smartcasts.len > 1
+					if is_option && nested_unwrap && obj_sym.kind == .sum_type {
+						g.write('*(')
+					}
 					for i, typ in node.obj.smartcasts {
-						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
+						is_option_unwrap := i == 0 && is_option
+							&& typ == node.obj.orig_type.clear_flag(.option)
 						g.write('(')
 						if i == 0 && node.obj.is_unwrapped && node.obj.ct_type_var == .smartcast {
 							ctyp := g.unwrap_generic(g.type_resolver.get_type(node))
@@ -5037,11 +5043,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 						if obj_sym.kind == .sum_type && !is_auto_heap {
 							if is_option {
-								if !is_option_unwrap {
-									g.write('*(')
+								if i == 0 {
+									if !is_option_unwrap {
+										g.write('*(')
+									}
+									styp := g.base_type(node.obj.typ)
+									g.write('*(${styp}*)')
 								}
-								styp := g.base_type(node.obj.typ)
-								g.write('*(${styp}*)')
 							} else if !g.arg_no_auto_deref {
 								g.write('*')
 							}
@@ -5082,7 +5090,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 								g.write('${dot}_${sym.cname}')
 							} else {
 								if is_option && !node.obj.is_unwrapped {
-									g.write('.data')
+									if i == 0 {
+										g.write('.data')
+									}
 									if !is_option_unwrap {
 										g.write(')')
 									}

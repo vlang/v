@@ -346,21 +346,19 @@ pub fn println(s string) {
 
 @[manualfree]
 fn _writeln_to_fd(fd int, s string) {
-	$if !builtin_writeln_should_write_at_once ? {
+	$if builtin_writeln_should_write_at_once ? {
+		unsafe {
+			buf_len := s.len + 1 // space for \n
+			mut buf := malloc(buf_len)
+			C.memcpy(buf, s.str, s.len)
+			buf[s.len] = `\n`
+			_write_buf_to_fd(fd, buf, buf_len)
+			free(buf)
+		}
+	} $else {
 		lf := u8(`\n`)
 		_write_buf_to_fd(fd, s.str, s.len)
 		_write_buf_to_fd(fd, &lf, 1)
-		return
-	}
-	unsafe {
-		buf_len := s.len + 1 // space for \n
-		mut buf := malloc(buf_len)
-		defer {
-			free(buf)
-		}
-		C.memcpy(buf, s.str, s.len)
-		buf[s.len] = `\n`
-		_write_buf_to_fd(fd, buf, buf_len)
 	}
 }
 
