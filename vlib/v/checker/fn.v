@@ -764,7 +764,9 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	if c.pref.skip_unused && !c.is_builtin_mod && c.mod == 'main'
 		&& !c.table.used_features.external_types {
 		if node.is_method {
-			c.table.used_features.external_types = true
+			if c.table.sym(node.left_type).is_builtin() {
+				c.table.used_features.external_types = true
+			}
 		} else if node.name.contains('.') {
 			c.table.used_features.external_types = true
 		}
