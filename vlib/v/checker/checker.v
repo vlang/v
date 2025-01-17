@@ -3971,7 +3971,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 				node.pos)
 		}
 		if c.pref.skip_unused && !c.is_builtin_mod && node.language == .v && node.name.contains('.') {
-			c.table.used_features.used_modules[node.name.all_before('.')] = true
+			c.table.used_features.external_types = true
 		}
 		if mut obj := node.scope.find(node.name) {
 			match mut obj {
