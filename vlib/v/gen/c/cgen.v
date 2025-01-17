@@ -3995,13 +3995,17 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				// check first if field is sum type because scope searching is expensive
 				scope := g.file.scope.innermost(node.pos.pos)
 				if field := scope.find_struct_field(node.expr.str(), node.expr_type, node.field_name) {
+					nested_unwrap := is_option && field.smartcasts.len > 1
 					is_option_unwrap = is_option && field.smartcasts.len > 0
 						&& field.typ.clear_flag(.option) == field.smartcasts.last()
 					if field.orig_type.is_ptr() {
 						sum_type_dot = '->'
 					}
+					if nested_unwrap && field_sym.kind == .sum_type {
+						g.write('*(')
+					}
 					for i, typ in field.smartcasts {
-						if i == 0 && is_option_unwrap {
+						if i == 0 && (is_option_unwrap || nested_unwrap) {
 							deref := if g.inside_selector {
 								'*'.repeat(field.smartcasts.last().nr_muls() + 1)
 							} else {
@@ -4009,7 +4013,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							}
 							g.write('(${deref}(${g.styp(typ)}*)')
 						}
-						g.write('(')
+						if i == 0 {
+							g.write('(')
+						}
 						if field_sym.kind == .sum_type && !is_option {
 							g.write('*')
 						}
@@ -4029,7 +4035,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 								agg_sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 								sum_type_deref_field += '_${agg_sym.cname}'
 							} else {
-								sum_type_deref_field += '_${cast_sym.cname}'
+								if i == 0 && is_option && nested_unwrap {
+									sum_type_deref_field += 'data)'
+								} else {
+									sum_type_deref_field += '_${cast_sym.cname}'
+								}
 							}
 						}
 					}
