@@ -444,7 +444,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.is_assign_lhs = false
 						g.is_arraymap_set = false
 						if mut left is ast.IndexExpr {
-							sym := g.table.sym(left.left_type)
+							sym := g.table.final_sym(left.left_type)
 							if sym.kind in [.map, .array] {
 								g.expr(val)
 								g.writeln('});')
