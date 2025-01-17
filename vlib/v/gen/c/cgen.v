@@ -4013,7 +4013,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							}
 							g.write('(${deref}(${g.styp(typ)}*)')
 						}
-						if i == 0 {
+						if i == 0 || !nested_unwrap {
 							g.write('(')
 						}
 						if field_sym.kind == .sum_type && !is_option {
@@ -4035,7 +4035,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 								agg_sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 								sum_type_deref_field += '_${agg_sym.cname}'
 							} else {
-								if i == 0 && is_option && nested_unwrap {
+								if i == 0 && nested_unwrap {
 									sum_type_deref_field += 'data)'
 								} else {
 									sum_type_deref_field += '_${cast_sym.cname}'
