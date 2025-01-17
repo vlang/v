@@ -1424,7 +1424,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.builtin_args(mut node, fn_name, func)
 		if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'math.bits'
 			&& node.args[0].expr !is ast.StringLiteral {
-			if (node.args[0].expr is ast.CallExpr && node.args[0].expr.name == 'str')
+			if (node.args[0].expr is ast.CallExpr && node.args[0].expr.is_method
+				&& node.args[0].expr.name == 'str')
 				|| !c.table.sym(c.unwrap_generic(node.args[0].typ)).has_method('str') {
 				c.table.used_features.auto_str = true
 			} else {
