@@ -81,7 +81,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << ref_array_idx_str + '.push'
 			core_fns << ref_array_idx_str + '.pop'
 		}
-		if table.used_features.used_modules.len > 0 {
+		if table.used_features.external_types {
 			include_panic_deps = true
 		}
 		if pref_.autofree {
@@ -289,7 +289,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			if table.used_features.auto_str || table.used_features.dump
 				|| table.used_features.print_types[mfn.receiver.typ.idx()]
 				|| table.used_features.asserts || table.used_features.debugger
-				|| table.used_features.used_modules.len > 0 {
+				|| table.used_features.external_types {
 				all_fn_root_names << k
 			}
 			continue
@@ -298,7 +298,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		if (pref_.autofree || table.used_features.used_modules.len > 0) && k.ends_with('.free') {
+		if (pref_.autofree || table.used_features.external_types) && k.ends_with('.free') {
 			all_fn_root_names << k
 			continue
 		}

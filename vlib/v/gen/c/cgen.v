@@ -6169,7 +6169,7 @@ fn (mut g Gen) write_init_function() {
 		g.write('\tas_cast_type_indexes = ')
 		g.writeln(g.as_cast_name_table())
 	}
-	if !g.pref.is_shared && (!g.pref.skip_unused || g.table.used_features.used_modules.len > 0) {
+	if !g.pref.is_shared && (!g.pref.skip_unused || g.table.used_features.external_types) {
 		// shared object does not need this
 		g.writeln('\tbuiltin_init();')
 	}
