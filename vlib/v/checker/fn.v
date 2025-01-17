@@ -756,22 +756,10 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
 		c.inside_or_block_value = old_inside_or_block_value
 	} else if node.or_block.kind == .propagate_option || node.or_block.kind == .propagate_result {
-		if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'strings' {
-			c.table.used_features.option_or_result = true
-		}
+		c.markused_option_or_result(!c.is_builtin_mod && c.mod != 'strings')
 	}
 	c.expected_or_type = old_expected_or_type
-	if c.pref.skip_unused && !c.is_builtin_mod && c.mod == 'main'
-		&& !c.table.used_features.external_types {
-		if node.is_method {
-			if c.table.sym(node.left_type).is_builtin() {
-				c.table.used_features.external_types = true
-			}
-		} else if node.name.contains('.') {
-			c.table.used_features.external_types = true
-		}
-	}
-
+	c.markused_call_expr(mut node)
 	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main
 		&& !c.table.cur_fn.is_test {
 		// TODO: use just `if node.or_block.kind == .propagate_result && !c.table.cur_fn.return_type.has_flag(.result) {` after the deprecation for ?!Type
@@ -1422,20 +1410,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if node.args.len > 0 && fn_name in print_everything_fns {
 		node.args[0].ct_expr = c.comptime.is_comptime(node.args[0].expr)
 		c.builtin_args(mut node, fn_name, func)
-		if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'math.bits'
-			&& node.args[0].expr !is ast.StringLiteral {
-			if !c.table.sym(c.unwrap_generic(node.args[0].typ)).has_method('str') {
-				c.table.used_features.auto_str = true
-			} else {
-				if node.args[0].typ.has_option_or_result() {
-					c.table.used_features.option_or_result = true
-				}
-				c.table.used_features.print_types[node.args[0].typ.idx()] = true
-			}
-			if node.args[0].typ.is_ptr() {
-				c.table.used_features.auto_str_ptr = true
-			}
-		}
+		c.markused_fn_call(mut node)
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`
@@ -1980,15 +1955,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		continue_check = false
 		return ast.void_type
 	}
-	if c.pref.skip_unused {
-		if !left_type.has_flag(.generic) && mut left_expr is ast.Ident {
-			if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
-				c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
-			}
-		} else if left_type.has_flag(.generic) {
-			c.table.used_features.comptime_calls['${int(c.unwrap_generic(left_type))}.${node.name}'] = true
-		}
-	}
+	c.markused_method_call(mut node, mut left_expr, left_type)
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
 	node.left_type = left_type
@@ -2119,9 +2086,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if embed_types.len != 0 {
 				is_method_from_embed = true
 				node.from_embed_types = embed_types
-				if c.pref.skip_unused && node.left_type.has_flag(.generic) {
-					c.table.used_features.comptime_calls['${int(method.receiver_type)}.${method.name}'] = true
-				}
+				c.markused_comptime_call(node.left_type.has_flag(.generic), '${int(method.receiver_type)}.${method.name}')
 			}
 		}
 		if final_left_sym.kind == .aggregate {
