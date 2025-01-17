@@ -57,10 +57,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// `arr << if n > 0 { 10 } else { 11 }` set the right c.expected_type
 	if node.op == .left_shift && c.table.sym(left_type).kind == .array {
-		if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'strings' {
-			c.table.used_features.index = true
-			c.table.used_features.arr_init = true
-		}
+		c.markused_infiexpr(!c.is_builtin_mod && c.mod != 'strings')
 		if mut node.right is ast.IfExpr {
 			if node.right.is_expr && node.right.branches.len > 0 {
 				mut last_stmt := node.right.branches[0].stmts.last()

@@ -53,17 +53,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 			c.error('expression returning type `char` cannot be used in string interpolation directly, print its address or cast it to an integer instead',
 				expr.pos())
 		}
-		if c.pref.skip_unused && !c.is_builtin_mod {
-			if !c.table.sym(ftyp).has_method('str') {
-				c.table.used_features.auto_str = true
-			} else {
-				c.table.used_features.print_types[ftyp.idx()] = true
-			}
-			if ftyp.is_ptr() {
-				c.table.used_features.auto_str_ptr = true
-			}
-			c.table.used_features.interpolation = true
-		}
+		c.markused_string_inter_lit(mut node, ftyp)
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
 		ftyp_sym := c.table.sym(ftyp)
