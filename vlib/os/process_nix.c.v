@@ -60,7 +60,7 @@ fn (mut p Process) unix_spawn_process() int {
 		chdir(p.work_folder) or {}
 	}
 	execve(p.filename, p.args, p.env) or {
-		eprintln(err)
+		eprintln('${err}')
 		exit(1)
 	}
 	return 0
