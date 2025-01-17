@@ -8,22 +8,20 @@ Its currently (expanded) to support the following curves:
 - NIST P-521 curve, commonly referred as secp521r1
 - A famous Bitcoin curve, commonly referred as secp256k1
 
-# Warning
----------
-This module defines symbol `OPENSSL_API_COMPAT` as 0x10100000L (or 1.1.0) for 
-compatibility reason with rest of underlying low level OpenSSL API used here.
-Its mostly has been deprecated in OpenSSL 3.0.
-Unfortonately, standard `net.openssl` module also defines `OPENSSL_API_COMPAT` as `0x30000000L`
-So, it would fail to build if you use both of the modules together, ie, `net.openssl` and `crypto.ecdsa`
-under the same circumstance.
+> [!CAUTION]
+> This module using low level OpenSSL opaque methods that mostly has been deprecated 
+> in OpenSSL 3.0. 
+> Please be aware, likely it would not compile with `-cstrict` options until
+> its migrated into supported higher level API.
+
 
 # Example
 ```v
 import crypto.ecdsa
 
 fn main() {
-	// create default NIST P-256 secp256r1 curve key pair
-	// If you wish to generate another curve, use: `pbkey, pvkey := ecdsa.generate_key(nid: .secp521r1)!`
+	// create default NIST P-256 secp256r1 curve key pair. If you wish to generate another curve,
+	// use: `pbkey, pvkey := ecdsa.generate_key(nid: .secp521r1)!` instead.
 	pbkey, pvkey := ecdsa.generate_key()!
 
 	message_tobe_signed := 'Hello ecdsa'.bytes()

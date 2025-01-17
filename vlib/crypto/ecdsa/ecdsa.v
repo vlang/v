@@ -10,7 +10,7 @@ import crypto.sha512
 
 // See https://docs.openssl.org/master/man7/openssl_user_macros/#description
 // should be 0x30000000L, but a lot of EC_KEY method was deprecated on version 3.0
-#define OPENSSL_API_COMPAT 0x10100000L
+// #define OPENSSL_API_COMPAT 0x10100000L
 
 #flag darwin -L /opt/homebrew/opt/openssl/lib -I /opt/homebrew/opt/openssl/include
 
