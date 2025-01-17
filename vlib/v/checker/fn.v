@@ -761,15 +761,14 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	c.expected_or_type = old_expected_or_type
-	if c.pref.skip_unused && !c.is_builtin_mod && c.mod == 'main' {
+	if c.pref.skip_unused && !c.is_builtin_mod && c.mod == 'main'
+		&& !c.table.used_features.external_types {
 		if node.is_method {
-			type_str := c.table.type_to_str(node.left_type)
-			if c.table.sym(node.left_type).is_builtin()
-				&& type_str !in c.table.used_features.used_modules {
-				c.table.used_features.used_modules[type_str] = true
+			if c.table.sym(node.left_type).is_builtin() {
+				c.table.used_features.external_types = true
 			}
 		} else if node.name.contains('.') {
-			c.table.used_features.used_modules[node.name.all_before('.')] = true
+			c.table.used_features.external_types = true
 		}
 	}
 
