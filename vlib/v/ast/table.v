@@ -10,7 +10,6 @@ import v.util
 @[heap; minify]
 pub struct UsedFeatures {
 pub mut:
-	interfaces       bool            // interface
 	dump             bool            // dump()
 	index            bool            // string[0]
 	range_index      bool            // string[0..1]
