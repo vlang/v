@@ -1392,8 +1392,7 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 }
 
 fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type, expr ast.Expr) {
-	c.markused_option_or_result(c.pref.skip_unused && !c.is_builtin_mod && node.kind != .absent
-		&& c.mod != 'strings')
+	c.markused_option_or_result(!c.is_builtin_mod && node.kind != .absent && c.mod != 'strings')
 
 	if node.kind == .propagate_option {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.option)
@@ -1794,7 +1793,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.check_or_expr(node.or_block, unwrapped_typ, c.expected_or_type, node)
 			c.expected_or_type = ast.void_type
 		}
-		c.markused_option_or_result(c.pref.skip_unused && node.or_block.kind != .absent
+		c.markused_option_or_result(node.or_block.kind != .absent
 			&& !c.table.used_features.option_or_result)
 		return field.typ
 	}
@@ -3262,8 +3261,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.StructInit {
 			if node.unresolved {
 				mut expr_ := c.table.resolve_init(node, c.unwrap_generic(node.typ))
-				c.markused_used_maps(c.pref.skip_unused && c.table.used_features.used_maps == 0
-					&& expr_ is ast.MapInit)
+				c.markused_used_maps(c.table.used_features.used_maps == 0 && expr_ is ast.MapInit)
 				return c.expr(mut expr_)
 			}
 			mut inited_fields := []string{}
