@@ -65,9 +65,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					}
 				}
 				ast.Map {
-					if c.pref.skip_unused && !c.is_builtin_mod {
-						c.table.used_features.arr_map = true
-					}
+					c.markused_array_method(!c.is_builtin_mod, 'map')
 				}
 				else {}
 			}

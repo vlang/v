@@ -2781,9 +2781,7 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	}
 	if f.is_variadic {
 		min_required_params--
-		if c.pref.skip_unused && !c.is_builtin_mod {
-			c.table.used_features.arr_init = true
-		}
+		c.markused_array_method(!c.is_builtin_mod, '')
 	} else {
 		has_decompose := node.args.any(it.expr is ast.ArrayDecompose)
 		if has_decompose {
@@ -3402,17 +3400,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		node.return_type = ast.int_type
 	} else if method_name in ['first', 'last', 'pop'] {
-		if c.pref.skip_unused && !c.is_builtin_mod {
-			if method_name == 'first' {
-				c.table.used_features.arr_first = true
-			}
-			if method_name == 'last' {
-				c.table.used_features.arr_last = true
-			}
-			if method_name == 'pop' {
-				c.table.used_features.arr_pop = true
-			}
-		}
+		c.markused_array_method(!c.is_builtin_mod, method_name)
 		if node.args.len != 0 {
 			c.error('`.${method_name}()` does not have any arguments', arg0.pos)
 		}
@@ -3424,9 +3412,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.receiver_type = node.left_type
 		}
 	} else if method_name == 'delete' {
-		if c.pref.skip_unused && !c.is_builtin_mod {
-			c.table.used_features.arr_delete = true
-		}
+		c.markused_array_method(!c.is_builtin_mod, method_name)
 		c.check_for_mut_receiver(mut node.left)
 		unwrapped_left_sym := c.table.sym(unwrapped_left_type)
 		if method := c.table.find_method(unwrapped_left_sym, method_name) {
