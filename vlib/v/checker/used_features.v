@@ -2,21 +2,20 @@ module checker
 
 import v.ast
 
-@[inline; if skip_unused ?]
+@[inline]
 fn (mut c Checker) markused_option_or_result(check bool) {
 	if check {
 		c.table.used_features.option_or_result = true
 	}
 }
 
-@[inline; if skip_unused ?]
+@[inline]
 fn (mut c Checker) markused_comptime_call(check bool, key string) {
 	if check {
 		c.table.used_features.comptime_calls[key] = true
 	}
 }
 
-@[if skip_unused ?]
 fn (mut c Checker) markused_assertstmt_auto_str(mut node ast.AssertStmt) {
 	if !c.table.used_features.auto_str && !c.is_builtin_mod && mut node.expr is ast.InfixExpr {
 		if !c.table.sym(c.unwrap_generic(node.expr.left_type)).has_method('str') {
@@ -29,7 +28,6 @@ fn (mut c Checker) markused_assertstmt_auto_str(mut node ast.AssertStmt) {
 	}
 }
 
-@[if skip_unused ?]
 fn (mut c Checker) markused_dumpexpr(mut node ast.DumpExpr) {
 	if c.is_builtin_mod {
 		return
@@ -45,14 +43,13 @@ fn (mut c Checker) markused_dumpexpr(mut node ast.DumpExpr) {
 	c.table.used_features.print_types[ast.int_type_idx] = true
 }
 
-@[inline; if skip_unused ?]
+@[inline]
 fn (mut c Checker) markused_used_maps(check bool) {
 	if check {
 		c.table.used_features.used_maps++
 	}
 }
 
-@[if skip_unused ?]
 fn (mut c Checker) markused_castexpr(mut node ast.CastExpr, to_type ast.Type, mut final_to_sym ast.TypeSymbol) {
 	if c.is_builtin_mod {
 		return
@@ -67,14 +64,12 @@ fn (mut c Checker) markused_castexpr(mut node ast.CastExpr, to_type ast.Type, mu
 	}
 }
 
-@[inline; if skip_unused ?]
 fn (mut c Checker) markused_external_type(check bool) {
 	if check {
 		c.table.used_features.external_types = true
 	}
 }
 
-@[if skip_unused ?]
 fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
 	c.markused_comptime_call(true, '${int(c.unwrap_generic(c.comptime.comptime_for_method.receiver_type))}.${c.comptime.comptime_for_method.name}')
 	if c.inside_anon_fn {
@@ -102,7 +97,6 @@ fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
 	}
 }
 
-@[if skip_unused ?]
 fn (mut c Checker) markused_comptimefor(mut node ast.ComptimeFor, unwrapped_expr_type ast.Type) {
 	c.table.used_features.dump = true
 	if c.table.used_features.used_maps == 0 {
@@ -117,7 +111,6 @@ fn (mut c Checker) markused_comptimefor(mut node ast.ComptimeFor, unwrapped_expr
 	}
 }
 
-@[if skip_unused ?]
 fn (mut c Checker) markused_call_expr(mut node ast.CallExpr) {
 	if !c.is_builtin_mod && c.mod == 'main' && !c.table.used_features.external_types {
 		if node.is_method {
@@ -130,7 +123,6 @@ fn (mut c Checker) markused_call_expr(mut node ast.CallExpr) {
 	}
 }
 
-@[if skip_unused ?]
 fn (mut c Checker) markused_fn_call(mut node ast.CallExpr) {
 	if !c.is_builtin_mod && c.mod != 'math.bits' && node.args[0].expr !is ast.StringLiteral {
 		if !c.table.sym(c.unwrap_generic(node.args[0].typ)).has_method('str') {
@@ -147,7 +139,6 @@ fn (mut c Checker) markused_fn_call(mut node ast.CallExpr) {
 	}
 }
 
-@[if skip_unused ?]
 fn (mut c Checker) markused_method_call(mut node ast.CallExpr, mut left_expr ast.Expr, left_type ast.Type) {
 	if !left_type.has_flag(.generic) && mut left_expr is ast.Ident {
 		if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
@@ -158,7 +149,6 @@ fn (mut c Checker) markused_method_call(mut node ast.CallExpr, mut left_expr ast
 	}
 }
 
-@[if skip_unused ?]
 fn (mut c Checker) markused_string_inter_lit(mut node ast.StringInterLiteral, ftyp ast.Type) {
 	if c.is_builtin_mod {
 		return
@@ -174,7 +164,6 @@ fn (mut c Checker) markused_string_inter_lit(mut node ast.StringInterLiteral, ft
 	c.table.used_features.interpolation = true
 }
 
-@[if skip_unused ?]
 fn (mut c Checker) markused_infiexpr(check bool) {
 	if check {
 		c.table.used_features.index = true
@@ -182,7 +171,6 @@ fn (mut c Checker) markused_infiexpr(check bool) {
 	}
 }
 
-@[if skip_unused ?]
 fn (mut c Checker) markused_array_method(check bool, method_name string) {
 	if !check {
 		return

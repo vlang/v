@@ -1153,10 +1153,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		if no_skip_unused {
 			res.skip_unused = false
 		}
-		if res.skip_unused {
-			res.compile_defines << 'skip_unused'
-			res.compile_defines_all << 'skip_unused'
-		}
 	}
 
 	return res, command
