@@ -1,0 +1,6 @@
+vlib/v/checker/tests/array_none_element_err.vv:2:8: error: invalid expression `none`, it is not an array of Option type
+    1 | fn main() {
+    2 |     a := [none]
+      |           ~~~~
+    3 |     println('${a}')
+    4 | }
