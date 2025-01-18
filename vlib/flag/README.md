@@ -1,7 +1,7 @@
 # Description
 
 A V module to parse, map and document different command line option flag styles
-(as typically found in in `os.args`).
+(as typically found in `os.args`).
 
 `flag.to_struct[T](os.args)!` can map flags into user defined V `struct`s via
 compile time reflection.
