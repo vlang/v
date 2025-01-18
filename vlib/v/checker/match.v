@@ -76,11 +76,13 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				} else {
 					c.expr(mut stmt.expr)
 				})
+				unwrapped_expected_type := c.unwrap_generic(node.expected_type)
 				stmt.typ = expr_type
 				if first_iteration {
-					if node.expected_type.has_option_or_result()
-						|| c.table.type_kind(node.expected_type) in [.sum_type, .multi_return] {
-						c.check_match_branch_last_stmt(stmt, node.expected_type, expr_type)
+					if unwrapped_expected_type.has_option_or_result()
+						|| c.table.type_kind(unwrapped_expected_type) in [.sum_type, .multi_return] {
+						c.check_match_branch_last_stmt(stmt, unwrapped_expected_type,
+							expr_type)
 						ret_type = node.expected_type
 					} else {
 						ret_type = expr_type
@@ -105,10 +107,9 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 				} else {
 					if ret_type.idx() != expr_type.idx() {
-						if node.expected_type.has_option_or_result()
+						if unwrapped_expected_type.has_option_or_result()
 							&& c.table.sym(stmt.typ).kind == .struct
-							&& (c.table.sym(ret_type).kind != .sum_type
-							|| !c.check_types(expr_type, ret_type))
+							&& !c.check_types(expr_type, c.unwrap_generic(ret_type))
 							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
 							stmt.expr = ast.CastExpr{
 								expr:      stmt.expr
@@ -119,7 +120,8 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							}
 							stmt.typ = ast.error_type
 						} else {
-							c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+							c.check_match_branch_last_stmt(stmt, c.unwrap_generic(ret_type),
+								expr_type)
 							if ret_type.is_number() && expr_type.is_number() && !c.inside_return {
 								ret_type = c.promote_num(ret_type, expr_type)
 							}
