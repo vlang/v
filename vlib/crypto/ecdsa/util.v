@@ -86,7 +86,7 @@ fn C.PEM_read_bio_PUBKEY(bp &C.BIO, x &&C.EVP_PKEY, cb int, u &voidptr) &C.EVP_P
 // block, _ := pem.decode(pubkey_sample) or { panic(err) }
 // pubkey := ecdsa.pubkey_from_bytes(block.data)!
 // ```
-fn pubkey_from_bytes(bytes []u8) !PublicKey {
+pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
 	if bytes.len == 0 {
 		return error('Invalid bytes')
 	}
@@ -127,8 +127,8 @@ fn pubkey_from_bytes(bytes []u8) !PublicKey {
 	}
 }
 
-// seed gets the bytes of public key parts of this key.
-pub fn (pbk PublicKey) seed() ![]u8 {
+// bytes gets the bytes of public key.
+pub fn (pbk PublicKey) bytes() ![]u8 {
 	point := voidptr(C.EC_KEY_get0_public_key(pbk.key))
 	// defer { C.EC_POINT_free(point)}
 	if point == 0 {
@@ -181,8 +181,9 @@ pub fn pubkey_from_string(s string) !PublicKey {
 		return error('Failed to create BIO_new')
 	}
 	n := C.BIO_write(bo, s.str, s.len)
-	if n == 0 {
-		// todo: retry the write
+	if n <= 0 {
+		C.BIO_free_all(bo)
+		return error('BIO_write failed')
 	}
 	evpkey = C.PEM_read_bio_PUBKEY(bo, &evpkey, 0, 0)
 	if evpkey == 0 {
@@ -241,8 +242,9 @@ pub fn privkey_from_string(s string) !PrivateKey {
 		return error('Failed to create BIO_new')
 	}
 	n := C.BIO_write(bo, s.str, s.len)
-	if n == 0 {
-		// todo: retry the write
+	if n <= 0 {
+		C.BIO_free_all(bo)
+		return error('BIO_write failed')
 	}
 	evpkey = C.PEM_read_bio_PrivateKey(bo, &evpkey, 0, 0)
 	if evpkey == 0 {

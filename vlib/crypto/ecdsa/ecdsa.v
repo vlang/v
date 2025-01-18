@@ -323,17 +323,21 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	return pvkey
 }
 
-// sign performs signing the message with the options. By default, the options was using `.with_no_hash` options,
-// so, its would not precompute the the digest (hash) of message before signing.
-// If you wish to use with recommended hash function, you should pass `hash_config: .with_recommended_hash`
-// to precompute the digest and and then sign the hash value.
-// TODO: maybe changed to use .with_recommended_hash in the future to align with recommended way for signing.
+// sign performs signing the message with the options. By default options,
+// it will perform hashing before signing the message.
 pub fn (pv PrivateKey) sign(message []u8, opt SignerOpts) ![]u8 {
 	digest := calc_digest(pv.key, message, opt)!
 	return pv.sign_message(digest)!
 }
 
-// sign_message sign a message with private key
+// sign_with_options signs message with the options. It will be deprecated,
+// Use `PrivateKey.sign()` instead.
+@[deprecated: 'use PrivateKey.sign() instead']
+pub fn (pv PrivateKey) sign_with_options(message []u8, opt SignerOpts) ![]u8 {
+	return pv.sign(message, opt)
+}
+
+// sign_message sign a message with private key.
 fn (priv_key PrivateKey) sign_message(message []u8) ![]u8 {
 	if message.len == 0 {
 		return error('Message cannot be null or empty')
@@ -363,13 +367,8 @@ pub fn (pub_key PublicKey) verify(message []u8, sig []u8, opt SignerOpts) !bool 
 	return res == 1
 }
 
-// seed gets the seed (private key bytes).
-// Notes:
-// Generally, if the private key generated from the seed with `new_key_from_seed(seed)`
-// the call to `.seed()` would produce original seed bytes except your original seed bytes
-// contains leading zeros bytes, internally its would be chopped off by underlying wrapper,
-// so, its would produces unmatching length with the original seed.
-pub fn (priv_key PrivateKey) seed() ![]u8 {
+// bytes represent private key as bytes.
+pub fn (priv_key PrivateKey) bytes() ![]u8 {
 	bn := voidptr(C.EC_KEY_get0_private_key(priv_key.key))
 	if bn == 0 {
 		return error('Failed to get private key BIGNUM')
@@ -390,7 +389,14 @@ pub fn (priv_key PrivateKey) seed() ![]u8 {
 	return buf
 }
 
-// Get the public key from private key
+// seed gets the seed (private key bytes). It will be deprecated.
+// Use `PrivateKey.bytes()` instead.
+@[deprecated: 'use PrivateKey.bytes() instead']
+pub fn (priv_key PrivateKey) seed() ![]u8 {
+	return priv_key.bytes()
+}
+
+// Get the public key from private key.
 pub fn (priv_key PrivateKey) public_key() !PublicKey {
 	// There are some issues concerned when returning PublicKey directly using underlying
 	// `PrivateKey.key`. This private key containing sensitive information inside it, so return
