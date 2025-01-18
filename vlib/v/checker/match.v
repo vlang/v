@@ -71,11 +71,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				} else {
 					node.expected_type
 				}
-				expr_type := if stmt.expr is ast.CallExpr {
+				expr_type := c.unwrap_generic(if stmt.expr is ast.CallExpr {
 					stmt.typ
 				} else {
 					c.expr(mut stmt.expr)
-				}
+				})
 				stmt.typ = expr_type
 				if first_iteration {
 					if node.expected_type.has_option_or_result()
