@@ -5768,7 +5768,7 @@ Deprecated functions cause warnings, which cause errors if built with `-prod`. T
 CI breakage, it is advisable to set a future date, ahead of the date when the code is merged. This 
 gives people who actively developed V projects, the chance to see the deprecation notice at least 
 once and fix the uses. Setting a date in the next 30 days, assumes they would have compiled their 
-projects manually at least once, within that time. For small changes, this should be plenty time. 
+projects manually at least once, within that time. For small changes, this should be plenty of time. 
 For complex changes, this time may need to be longer. 
 
 Different V projects and maintainers may reasonably choose different deprecation policies. 
