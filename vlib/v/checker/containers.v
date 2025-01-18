@@ -174,6 +174,12 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
 				c.expected_type = old_expected_type
 			} else {
+				// [none]
+				if c.expected_type == ast.none_type && expr is ast.None {
+					c.error('invalid expression `none`, it is not an array of Option type',
+						expr.pos())
+					continue
+				}
 				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
 			}
 			if expr is ast.CallExpr {
