@@ -47,17 +47,3 @@ vlib/v/checker/tests/orm_op_with_option_and_none.vv:45:30: warning: comparison w
       |                                    ~~
    46 |     }!
    47 |
-vlib/v/checker/tests/orm_op_with_option_and_none.vv:49:25: error: name is an Optional, it needs to be unwrapped first
-   47 | 
-   48 |     _ := sql db {
-   49 |         select from Foo where name is none
-      |                               ~~~~
-   50 |     }!
-   51 |
-vlib/v/checker/tests/orm_op_with_option_and_none.vv:53:25: error: name is an Optional, it needs to be unwrapped first
-   51 | 
-   52 |     _ := sql db {
-   53 |         select from Foo where name !is none
-      |                               ~~~~
-   54 |     }!
-   55 | }

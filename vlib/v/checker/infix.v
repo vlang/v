@@ -781,7 +781,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if typ != ast.no_type {
 				typ_sym := c.table.sym(typ)
 				op := node.op.str()
-				if left_type.has_flag(.option) {
+				if left_type.has_flag(.option) && !c.inside_sql {
 					c.error('${node.left} is an Optional, it needs to be unwrapped first',
 						node.left.pos())
 				}
