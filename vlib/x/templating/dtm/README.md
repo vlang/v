@@ -62,7 +62,7 @@ HTML tags are always escaped in text file : @html_section
 ### 2. Minimal Vweb example:
 
 ```v
-import x.veb
+import veb
 import x.templating.dtm
 import os
 
