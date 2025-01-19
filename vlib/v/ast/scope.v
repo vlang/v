@@ -157,16 +157,6 @@ pub fn (mut s Scope) register_struct_field(name string, field ScopeStructField) 
 	s.struct_fields[name] = field
 }
 
-pub fn (mut s Scope) register_or_update_struct_field(name string, field ScopeStructField) {
-	if mut f := s.struct_fields[name] {
-		if f.struct_type == field.struct_type && f.name == field.name {
-			s.struct_fields[name].smartcasts = field.smartcasts
-			return
-		}
-	}
-	s.struct_fields[name] = field
-}
-
 pub fn (mut s Scope) register(obj ScopeObject) {
 	if !(obj.name == '_' || obj.name in s.objects) {
 		s.objects[obj.name] = obj
