@@ -308,13 +308,14 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 					rep_group << g.expr_string(expr.args[i].expr)
 					rep_group << 'arg->arg${i + 1}'
 				}
-				fn_str := if call_args_str.starts_with('I_') {
-					call_args_str.all_before('(') + '('
+				if call_args_str.starts_with('I_') {
+					g.gowrappers.write_string(call_args_str.all_before('('))
+					g.gowrappers.write_string('(')
+					g.gowrappers.write_string(call_args_str.all_after('(').replace_each(rep_group))
 				} else {
-					''
+					call_args_str = call_args_str.replace_each(rep_group)
+					g.gowrappers.write_string(call_args_str)
 				}
-				call_args_str = fn_str + call_args_str.all_after('(').replace_each(rep_group)
-				g.gowrappers.write_string(call_args_str)
 			} else if expr.name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 				&& expr.args[0].typ != ast.string_type {
 				pos := g.out.len
