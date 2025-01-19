@@ -49,10 +49,12 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 			ftyp))
 		if ftyp == ast.void_type || ftyp == 0 {
 			c.error('expression does not return a value', expr.pos())
-			return ast.void_type
 		} else if ftyp == ast.char_type && ftyp.nr_muls() == 0 {
 			c.error('expression returning type `char` cannot be used in string interpolation directly, print its address or cast it to an integer instead',
 				expr.pos())
+		}
+		if ftyp == 0 {
+			return ast.void_type
 		}
 		c.markused_string_inter_lit(mut node, ftyp)
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
