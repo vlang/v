@@ -668,7 +668,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 	if mut node.ct_expr is ast.Ident {
 		if node.ct_opt {
 			if node.ct_expr.name in ast.valid_comptime_not_user_defined {
-				c.error('option `[if expression ?]` tags, can be used only for user defined identifiers',
+				c.error('option `@[if expression ?]` tags, can be used only for user defined identifiers',
 					node.pos)
 				node.ct_skip = true
 			} else {
@@ -678,7 +678,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 			return node.ct_skip
 		} else {
 			if node.ct_expr.name !in ast.valid_comptime_not_user_defined {
-				c.note('`[if ${node.ct_expr.name}]` is deprecated. Use `@[if ${node.ct_expr.name} ?]` instead',
+				c.note('`@[if ${node.ct_expr.name}]` is deprecated. Use `@[if ${node.ct_expr.name} ?]` instead',
 					node.pos)
 				node.ct_skip = node.ct_expr.name !in c.pref.compile_defines
 				node.ct_evaled = true
