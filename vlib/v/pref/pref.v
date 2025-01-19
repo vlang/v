@@ -104,13 +104,14 @@ pub mut:
 	is_liveshared      bool   // a shared library, that will be used in a -live main program
 	is_shared          bool   // an ordinary shared library, -shared, no matter if it is live or not
 	is_o               bool   // building an .o file
-	is_prof            bool   // benchmark every function
-	is_prod            bool   // use "-O2"
+	is_prof            bool   // benchmark every function	
+	is_prod            bool   // use "-O3"
+	no_prod_options    bool   // `-no-prod-options`, means do not pass any optimization flags to the C compilation, while still allowing the user to use for example `-cflags -Os` to pass custom ones
 	is_repl            bool
 	is_eval_argument   bool // true for `v -e 'println(2+2)'`. `println(2+2)` will be in pref.eval_argument .
 	is_run             bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
 	is_crun            bool // similar to run, but does not recompile the executable, if there were no changes to the sources
-	is_debug           bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
+	is_debug           bool // turned on by -g/-debug or -cg/-cdebug, it tells v to pass -g to the C backend compiler.
 	is_vlines          bool // turned on by -g (it slows down .tmp.c generation slightly).
 	is_stats           bool // `v -stats file.v` will produce more detailed statistics for the file that is compiled
 	show_asserts       bool // `VTEST_SHOW_ASSERTS=1 v file_test.v` will show details about the asserts done by a test file. Also activated for `-stats` and `-show-asserts`.
@@ -342,6 +343,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
 		match arg {
+			'--' {
+				break
+			}
 			'-wasm-validate' {
 				res.wasm_validate = true
 			}
@@ -516,12 +520,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				i++
 			}
-			'-g' {
+			'-g', '-debug' {
 				res.is_debug = true
 				res.is_vlines = true
 				res.build_options << arg
 			}
-			'-cg' {
+			'-cg', '-cdebug' {
 				res.is_debug = true
 				res.is_vlines = false
 				res.build_options << arg
@@ -666,6 +670,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-prod' {
 				res.is_prod = true
+				res.build_options << arg
+			}
+			'-no-prod-options' {
+				res.no_prod_options = true
 				res.build_options << arg
 			}
 			'-sanitize' {

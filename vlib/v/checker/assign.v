@@ -23,6 +23,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	node.left_types = []
 	mut right_len := node.right.len
 	mut right_first_type := ast.void_type
+	old_recheck := c.inside_recheck
+
+	// check if we are rechecking an already checked expression on generic rechecking
+	c.inside_recheck = old_recheck || node.right_types.len > 0
+	defer {
+		c.inside_recheck = old_recheck
+	}
 	for i, mut right in node.right {
 		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
 			ast.SelectorExpr, ast.ParExpr, ast.ComptimeCall] {
@@ -37,7 +44,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			right_type_sym := c.table.sym(right_type)
 			// fixed array returns an struct, but when assigning it must be the array type
-			right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+			if right_type_sym.info is ast.ArrayFixed {
+				right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+			}
 			if i == 0 {
 				right_first_type = right_type
 				node.right_types = [
@@ -62,11 +71,26 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 			}
-		}
-		if mut right is ast.InfixExpr {
+		} else if mut right is ast.InfixExpr {
 			if right.op == .arrow {
 				c.error('cannot use `<-` on the right-hand side of an assignment, as it does not return any values',
 					right.pos)
+			} else if c.inside_recheck {
+				if i < node.right_types.len {
+					c.expected_type = node.right_types[i]
+				}
+				mut right_type := c.expr(mut right)
+				right_type_sym := c.table.sym(right_type)
+				// fixed array returns an struct, but when assigning it must be the array type
+				if right_type_sym.info is ast.ArrayFixed {
+					right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+				}
+				if i == 0 {
+					right_first_type = right_type
+					node.right_types = [
+						c.check_expr_option_or_result_call(right, right_first_type),
+					]
+				}
 			}
 		}
 		if mut right is ast.Ident {
@@ -139,6 +163,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('cannot reassign using range expression on the left side of an assignment',
 					left.pos)
 			}
+		} else if mut left is ast.Ident && node.op == .decl_assign {
+			if left.name in c.global_names {
+				c.note('the global variable named `${left.name}` already exists', left.pos)
+			}
 		}
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := ast.void_type
@@ -178,6 +206,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				node.right_types << c.check_expr_option_or_result_call(node.right[i],
 					right_type)
 			}
+		} else if c.inside_recheck {
+			// on generic recheck phase it might be needed to resolve the rhs again
+			if i < node.right.len && c.comptime.has_comptime_expr(node.right[i]) {
+				mut expr := mut node.right[i]
+				right_type := c.expr(mut expr)
+				node.right_types[i] = c.check_expr_option_or_result_call(node.right[i],
+					right_type)
+			}
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
@@ -201,6 +237,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		} else if right is ast.ComptimeSelector {
 			right_type = c.comptime.comptime_for_field_type
+		}
+		if is_decl && left is ast.Ident && left.info is ast.IdentVar
+			&& (left.info as ast.IdentVar).share == .shared_t && c.table.sym(right_type).kind !in [.array, .map, .struct] {
+			c.fatal('shared variables must be structs, arrays or maps', right.pos())
 		}
 		if is_decl || is_shared_re_assign {
 			// check generic struct init and return unwrap generic struct type
@@ -235,33 +275,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 			}
-			if left is ast.Ident && left.is_mut() && !c.inside_unsafe {
-				if left_type.is_ptr() && mut right is ast.Ident && !right.is_mut()
-					&& right_type.is_ptr() {
-					c.error('`${right.name}` is immutable, cannot have a mutable reference to an immutable object',
-						right.pos)
-				} else if mut right is ast.StructInit {
-					typ_sym := c.table.sym(right.typ)
-					for init_field in right.init_fields {
-						if field_info := c.table.find_field_with_embeds(typ_sym, init_field.name) {
-							if field_info.is_mut {
-								if init_field.expr is ast.Ident && !init_field.expr.is_mut()
-									&& init_field.typ.is_ptr() {
-									c.note('`${init_field.expr.name}` is immutable, cannot have a mutable reference to an immutable object',
-										init_field.pos)
-								} else if init_field.expr is ast.PrefixExpr {
-									if init_field.expr.op == .amp
-										&& init_field.expr.right is ast.Ident
-										&& !init_field.expr.right.is_mut() {
-										c.note('`${init_field.expr.right.name}` is immutable, cannot have a mutable reference to an immutable object',
-											init_field.expr.right.pos)
-									}
-								}
-							}
-						}
-					}
-				}
-			}
 		} else {
 			// Make sure the variable is mutable
 			c.fail_if_immutable(mut left)
@@ -274,6 +287,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// 	println(left_type)
 			// 	c.error('cannot assign a `none` value to a non-option variable', right.pos())
 			// }
+		}
+		if !c.inside_unsafe && !is_blank_ident && node.op in [.decl_assign, .assign]
+			&& left is ast.Ident && left.is_mut() {
+			// check if right-side is a immutable reference
+			c.fail_if_immutable_to_mutable(left_type, right_type, right)
 		}
 		if mut left is ast.Ident && left.info is ast.IdentVar && right is ast.Ident
 			&& right.name in c.global_names {
@@ -360,7 +378,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							left_type = left_type.set_nr_muls(1)
 						}
 					} else if left_type.has_flag(.shared_f) {
-						left_type = left_type.clear_flag(.shared_f).deref()
+						left_type = left_type.clear_flag(.shared_f)
+						if left_type.is_ptr() {
+							left_type = left_type.deref()
+						}
 					}
 					if ident_var_info.share == .atomic_t {
 						left_type = left_type.set_flag(.atomic_f)
@@ -391,54 +412,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										}
 									}
 								}
-								if right is ast.ComptimeSelector {
-									if is_decl {
-										left.obj.ct_type_var = .field_var
-										left.obj.typ = c.comptime.comptime_for_field_type
-									}
-								} else if mut right is ast.Ident && right.obj is ast.Var
-									&& right.or_expr.kind == .absent {
-									right_obj_var := right.obj as ast.Var
-									if right_obj_var.ct_type_var != .no_comptime {
-										ctyp := c.comptime.get_type(right)
-										if ctyp != ast.void_type {
-											left.obj.ct_type_var = right_obj_var.ct_type_var
-											left.obj.typ = ctyp
-										}
-									}
-								} else if right is ast.DumpExpr
-									&& right.expr is ast.ComptimeSelector {
-									left.obj.ct_type_var = .field_var
-									left.obj.typ = c.comptime.comptime_for_field_type
-								} else if mut right is ast.CallExpr {
-									if left.obj.ct_type_var in [.generic_var, .no_comptime]
-										&& c.table.cur_fn != unsafe { nil }
-										&& c.table.cur_fn.generic_names.len != 0
-										&& !right.comptime_ret_val && c.is_generic_expr(right) {
-										// mark variable as generic var because its type changes according to fn return generic resolution type
-										left.obj.ct_type_var = .generic_var
-										if right.return_type_generic.has_flag(.generic) {
-											fn_ret_type := c.resolve_return_type(right)
-											if fn_ret_type != ast.void_type
-												&& c.table.final_sym(fn_ret_type).kind != .multi_return {
-												var_type := if right.or_block.kind == .absent {
-													fn_ret_type
-												} else {
-													fn_ret_type.clear_option_and_result()
-												}
-												c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
-											}
-										} else if right.is_static_method
-											&& right.left_type.has_flag(.generic) {
-											fn_ret_type := c.unwrap_generic(c.resolve_return_type(right))
-											var_type := if right.or_block.kind == .absent {
-												fn_ret_type
-											} else {
-												fn_ret_type.clear_option_and_result()
-											}
-											c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
-										}
-									}
+								// flag the variable as comptime/generic related on its declaration
+								if is_decl {
+									c.change_flags_if_comptime_expr(mut left, right)
 								}
 							}
 							ast.GlobalField {
@@ -512,8 +488,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if (left.is_map || left.is_farray) && left.is_setter {
 						left.recursive_mapset_is_setter(true)
 					}
-
-					right_type = c.comptime.get_type_or_default(right, right_type)
+					right_type = c.type_resolver.get_type_or_default(right, right_type)
 				}
 				if mut left is ast.InfixExpr {
 					c.error('cannot use infix expression on the left side of `${node.op}`',
@@ -892,7 +867,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			c.error('cannot assign anonymous `struct` to a typed `struct`', right.pos())
 		}
 		if right_sym.kind == .alias && right_sym.name == 'byte' {
-			c.warn('byte is deprecated, use u8 instead', right.pos())
+			c.error('byte is deprecated, use u8 instead', right.pos())
 		}
 	}
 	// this needs to run after the assign stmt left exprs have been run through checker
@@ -943,5 +918,48 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 	}
 	if node.left_types.len != node.left.len {
 		c.error('assign statement left type number mismatch', node.pos)
+	}
+}
+
+// change_flags_if_comptime_expr changes the flags of the left variable if the right expression is comptime/generic expr
+fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.Expr) {
+	if mut left.obj is ast.Var {
+		if right is ast.ComptimeSelector {
+			left.obj.ct_type_var = .field_var
+			left.obj.typ = c.comptime.comptime_for_field_type
+		} else if right is ast.InfixExpr {
+			right_ct_var := c.comptime.get_ct_type_var(right.left)
+			if right_ct_var != .no_comptime {
+				left.obj.ct_type_var = right_ct_var
+			}
+		} else if right is ast.IndexExpr && c.comptime.is_comptime(right) {
+			right_ct_var := c.comptime.get_ct_type_var(right.left)
+			if right_ct_var != .no_comptime {
+				left.obj.ct_type_var = right_ct_var
+			}
+		} else if right is ast.Ident && right.obj is ast.Var && right.or_expr.kind == .absent {
+			right_obj_var := right.obj as ast.Var
+			if right_obj_var.ct_type_var != .no_comptime {
+				ctyp := c.type_resolver.get_type(right)
+				if ctyp != ast.void_type {
+					left.obj.ct_type_var = right_obj_var.ct_type_var
+					left.obj.typ = ctyp
+				}
+			}
+		} else if right is ast.DumpExpr && right.expr is ast.ComptimeSelector {
+			left.obj.ct_type_var = .field_var
+			left.obj.typ = c.comptime.comptime_for_field_type
+		} else if right is ast.CallExpr {
+			if right.left_type != 0 && c.table.type_kind(right.left_type) == .array
+				&& right.name == 'map' && right.args.len > 0 && right.args[0].expr is ast.AsCast
+				&& right.args[0].expr.typ.has_flag(.generic) {
+				left.obj.ct_type_var = .generic_var
+			} else if left.obj.ct_type_var in [.generic_var, .no_comptime]
+				&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len != 0
+				&& !right.comptime_ret_val && c.type_resolver.is_generic_expr(right) {
+				// mark variable as generic var because its type changes according to fn return generic resolution type
+				left.obj.ct_type_var = .generic_var
+			}
+		}
 	}
 }

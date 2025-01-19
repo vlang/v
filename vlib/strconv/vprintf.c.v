@@ -551,7 +551,8 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 	}
 
 	if p_index != pt.len {
-		panic('${p_index} % conversion specifiers, but given ${pt.len} args')
+		panic_n2('% conversion specifiers number mismatch (expected %, given args)', p_index,
+			pt.len)
 	}
 
 	return res.str()
@@ -560,7 +561,8 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 @[inline]
 fn v_sprintf_panic(idx int, len int) {
 	if idx >= len {
-		panic('${idx + 1} % conversion specifiers, but given only ${len} args')
+		panic_n2('% conversion specifiers number mismatch (expected %, given args)', idx + 1,
+			len)
 	}
 }
 

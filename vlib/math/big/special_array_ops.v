@@ -1,6 +1,5 @@
 module big
 
-import math.bits
 import strings
 
 @[direct_array_access; inline]
@@ -60,13 +59,6 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 	remainder = r.digits.clone()
 
 	shrink_tail_zeros(mut remainder)
-}
-
-// bit_length returns the number of bits needed to represent the absolute value of the integer a.
-@[deprecated: 'use a.bit_len() instead']
-@[inline]
-pub fn bit_length(a Integer) int {
-	return a.digits.len * 32 - bits.leading_zeros_32(a.digits.last())
 }
 
 @[direct_array_access; inline]

@@ -10,7 +10,6 @@ import v.util
 @[heap; minify]
 pub struct UsedFeatures {
 pub mut:
-	interfaces       bool            // interface
 	dump             bool            // dump()
 	index            bool            // string[0]
 	range_index      bool            // string[0..1]
@@ -39,7 +38,7 @@ pub mut:
 	used_veb_types   []Type          // veb context types, filled in by checker
 	used_maps        int             // how many times maps were used, filled in by markused
 	used_arrays      int             // how many times arrays were used, filled in by markused
-	used_modules     map[string]bool // filled in checker
+	external_types   bool            // true, when external type is used
 	// json             bool            // json is imported
 	debugger       bool            // debugger is used
 	comptime_calls map[string]bool // resolved name to call on comptime
@@ -2552,6 +2551,9 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 			names << t.dependent_names_in_expr(expr.right)
 		}
 		MapInit {
+			for key in expr.keys {
+				names << t.dependent_names_in_expr(key)
+			}
 			for val in expr.vals {
 				names << t.dependent_names_in_expr(val)
 			}

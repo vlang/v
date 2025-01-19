@@ -789,12 +789,6 @@ fn (s string) index_last_(p string) int {
 	return -1
 }
 
-// index_last returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
-@[deprecated: 'use `.last_index(needle string)` instead']
-pub fn (s string) index_last(needle string) ?int {
-	return s.last_index(needle)
-}
-
 // last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
 @[inline]
 pub fn (s string) last_index(needle string) ?int {
@@ -803,15 +797,6 @@ pub fn (s string) last_index(needle string) ?int {
 		return none
 	}
 	return idx
-}
-
-// index_u8_last returns the index of the *last* occurrence of the byte `c` (if found) in the string.
-// It returns -1, if `c` is not found.
-@[deprecated: 'use `.last_index_u8(c u8)` instead']
-@[deprecated_after: '2024-06-30']
-@[inline]
-pub fn (s string) index_u8_last(c u8) int {
-	return s.last_index_u8(c)
 }
 
 // last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.

@@ -100,7 +100,7 @@ fn (mut v Builder) show_cc(cmd string, response_file string, response_file_conte
 	}
 }
 
-enum CC {
+pub enum CC {
 	tcc
 	gcc
 	icc
@@ -109,8 +109,8 @@ enum CC {
 	unknown
 }
 
-struct CcompilerOptions {
-mut:
+pub struct CcompilerOptions {
+pub mut:
 	guessed_compiler string
 	shared_postfix   string // .so, .dll
 
@@ -235,6 +235,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		$if windows {
 			have_flto = false
 		}
+		if v.pref.parallel_cc {
+			have_flto = false
+		}
 		if have_flto {
 			optimization_options << '-flto'
 		}
@@ -252,7 +255,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				debug_options << '-no-pie'
 			}
 		}
-		optimization_options = ['-O3', '-flto']
+		optimization_options = ['-O3']
+		mut have_flto := true
+		if v.pref.parallel_cc {
+			have_flto = false
+		}
+		if have_flto {
+			optimization_options << '-flto'
+		}
 	}
 	if ccoptions.cc == .icc {
 		if ccoptions.debug_mode {
@@ -273,7 +283,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			&& v.parsed_files.last().path.contains('vlib')) {
 			eprintln('Note: tcc is not recommended for -prod builds')
 		}
-		ccoptions.args << optimization_options
+		if !v.pref.no_prod_options {
+			ccoptions.args << optimization_options
+		}
 	}
 	if v.pref.is_prod && !ccoptions.debug_mode {
 		// sokol and other C libraries that use asserts
@@ -365,7 +377,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		}
 	}
 	// The C file we are compiling
-	ccoptions.source_args << '"${v.out_name_c}"'
+	if !v.pref.parallel_cc { // parallel_cc uses its own split up c files
+		ccoptions.source_args << '"${v.out_name_c}"'
+	}
 	// Min macos version is mandatory I think?
 	if v.pref.os == .macos {
 		if v.pref.macosx_version_min != '0' {
@@ -460,6 +474,17 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 
 fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	mut all := []string{}
+	all << v.only_compile_args(ccoptions)
+	all << v.only_linker_args(ccoptions)
+	return all
+}
+
+pub fn (v &Builder) get_compile_args() []string {
+	return v.only_compile_args(v.ccoptions)
+}
+
+fn (v &Builder) only_compile_args(ccoptions CcompilerOptions) []string {
+	mut all := []string{}
 	all << ccoptions.env_cflags
 	if v.pref.is_cstrict {
 		all << ccoptions.wargs
@@ -486,6 +511,15 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args
+	return all
+}
+
+pub fn (v &Builder) get_linker_args() []string {
+	return v.only_linker_args(v.ccoptions)
+}
+
+fn (v &Builder) only_linker_args(ccoptions CcompilerOptions) []string {
+	mut all := []string{}
 	// in `build-mode`, we do not need -lxyz flags, since we are
 	// building an (.o) object file, that will be linked later.
 	if v.pref.build_mode != .build_module {
@@ -569,7 +603,10 @@ fn (mut v Builder) setup_output_name() {
 	if os.is_dir(v.pref.out_name) {
 		verror("'${v.pref.out_name}' is a directory")
 	}
-	v.ccoptions.o_args << '-o "${v.pref.out_name}"'
+	if !v.pref.parallel_cc {
+		// parallel_cc sets its own `-o out_n.o`
+		v.ccoptions.o_args << '-o "${v.pref.out_name}"'
+	}
 }
 
 pub fn (mut v Builder) cc() {
@@ -682,6 +719,12 @@ pub fn (mut v Builder) cc() {
 			all_args.join(' ')
 		}
 		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
+		if v.pref.parallel_cc {
+			// In parallel cc mode, all we want in cc() is build the str_args.
+			// Actual cc logic then happens in `parallel_cc()`
+			v.str_args = str_args
+			return
+		}
 		mut response_file := ''
 		mut response_file_content := str_args
 		if !v.pref.no_rsp {
@@ -1003,7 +1046,14 @@ fn (mut c Builder) cc_windows_cross() {
 	mut debug_options := []string{}
 	if c.pref.is_prod {
 		if c.pref.ccompiler != 'msvc' {
-			optimization_options = ['-O3', '-flto']
+			optimization_options = ['-O3']
+			mut have_flto := true
+			if c.pref.parallel_cc {
+				have_flto = false
+			}
+			if have_flto {
+				optimization_options << '-flto'
+			}
 		}
 	}
 	if c.pref.is_debug {
@@ -1037,7 +1087,9 @@ fn (mut c Builder) cc_windows_cross() {
 
 	mut all_args := []string{}
 	all_args << '-std=gnu11'
-	all_args << optimization_options
+	if !c.pref.no_prod_options {
+		all_args << optimization_options
+	}
 	all_args << debug_options
 
 	all_args << args

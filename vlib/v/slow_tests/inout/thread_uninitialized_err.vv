@@ -1,0 +1,10 @@
+struct Client {
+mut:
+	network_thread thread
+}
+
+fn main() {
+	mut client := &Client{}
+	println('================ V panic ================')
+	client.network_thread.wait()
+}

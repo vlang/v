@@ -97,7 +97,10 @@ fn v_self_compilation_usecache() {
 }
 
 fn v_self_compilation_parallel_cc() {
-	exec('v -o v2 -parallel-cc cmd/v')
+	exec('v -o vp -parallel-cc cmd/v')
+	// exec('./v2 -o v3 -usecache cmd/v')
+	exec('./vp version')
+	exec('./vp -o tetris examples/tetris/tetris.v')
 }
 
 fn test_password_input() {

@@ -1,7 +1,6 @@
 module main
 
 // vtest vflags: -os wasm32_emscripten
-
 import platform_wrapper
 
 fn main() {

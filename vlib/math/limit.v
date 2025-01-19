@@ -36,7 +36,7 @@ pub fn maxof[T]() T {
 		}
 		return int(max_i32)
 	} $else {
-		panic('A maximum value of the type `${typeof[T]().name}` is not defined.')
+		panic('A maximum value of the type `' + typeof[T]().name + '` is not defined.')
 	}
 }
 
@@ -73,6 +73,6 @@ pub fn minof[T]() T {
 		}
 		return int(min_i32)
 	} $else {
-		panic('A minimum value of the type `${typeof[T]().name}` is not defined.')
+		panic('A minimum value of the type `' + typeof[T]().name + '` is not defined.')
 	}
 }

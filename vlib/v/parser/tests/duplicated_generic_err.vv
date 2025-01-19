@@ -1,1 +1,1 @@
-fn test<A, A>() {}
+fn test[A, A]() {}

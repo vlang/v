@@ -61,13 +61,11 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 				ast.Alias {
 					if elem_sym.name == 'byte' {
-						c.warn('byte is deprecated, use u8 instead', node.elem_type_pos)
+						c.error('byte is deprecated, use u8 instead', node.elem_type_pos)
 					}
 				}
 				ast.Map {
-					if c.pref.skip_unused && !c.is_builtin_mod {
-						c.table.used_features.arr_map = true
-					}
+					c.markused_array_method(!c.is_builtin_mod, 'map')
 				}
 				else {}
 			}
@@ -169,7 +167,21 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		for i, mut expr in node.exprs {
-			mut typ := c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+			mut typ := ast.void_type
+			if expr is ast.ArrayInit {
+				old_expected_type := c.expected_type
+				c.expected_type = c.table.value_type(c.expected_type)
+				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+				c.expected_type = old_expected_type
+			} else {
+				// [none]
+				if c.expected_type == ast.none_type && expr is ast.None {
+					c.error('invalid expression `none`, it is not an array of Option type',
+						expr.pos())
+					continue
+				}
+				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+			}
 			if expr is ast.CallExpr {
 				ret_sym := c.table.sym(typ)
 				if ret_sym.kind == .array_fixed {
@@ -277,6 +289,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			|| c.array_fixed_has_unresolved_size(sym.info as ast.ArrayFixed) {
 			mut size_expr := node.exprs[0]
 			node.typ = c.eval_array_fixed_sizes(mut size_expr, 0, node.elem_type)
+			if node.is_option {
+				node.typ = node.typ.set_flag(.option)
+			}
 			node.elem_type = (c.table.sym(node.typ).info as ast.ArrayFixed).elem_type
 		}
 		if node.has_init {
@@ -288,16 +303,20 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 
 fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	mut init_expr := node.init_expr
+	c.expected_type = node.elem_type
 	init_typ := c.check_expr_option_or_result_call(init_expr, c.expr(mut init_expr))
 	node.init_type = init_typ
 	if !node.elem_type.has_flag(.option) && init_typ.has_flag(.option) {
 		c.error('cannot use unwrapped Option as initializer', init_expr.pos())
 	}
+	if node.elem_type.is_number() && init_typ.is_number() {
+		return
+	}
 	c.check_expected(init_typ, node.elem_type) or { c.error(err.msg(), init_expr.pos()) }
 }
 
 fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, pos token.Pos) {
-	sym := c.table.sym(c.unwrap_generic(c.expr(mut expr)))
+	sym := c.table.final_sym(c.unwrap_generic(c.expr(mut expr)))
 	if sym.kind !in [.int, .int_literal] {
 		c.error('array ${para} needs to be an int', pos)
 	}

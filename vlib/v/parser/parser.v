@@ -1303,7 +1303,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	}
 
 	mut local_labels := []string{}
-	// riscv: https://github.com/jameslzhu/riscv-card/blob/master/riscv-card.pdf
+	// riscv: https://github.com/jameslzhu/riscv-card/releases/download/latest/riscv-card.pdf
 	// x86: https://www.felixcloutier.com/x86/
 	// arm: https://developer.arm.com/documentation/dui0068/b/arm-instruction-reference
 	mut templates := []ast.AsmTemplate{}
@@ -2060,6 +2060,9 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 				kind = .bool
 				arg = p.tok.kind.str()
 				p.next()
+			} else if token.is_key(p.tok.lit) { // // `name: keyword`
+				kind = .plain
+				arg = p.check_name()
 			} else {
 				p.unexpected(additional_msg: 'an argument is expected after `:`')
 			}
@@ -2594,7 +2597,7 @@ fn (p &Parser) is_generic_call() bool {
 const valid_tokens_inside_types = [token.Kind.lsbr, .rsbr, .name, .dot, .comma, .key_fn, .lt]
 
 fn (mut p Parser) is_generic_cast() bool {
-	if !ast.type_can_start_with_token(p.tok) {
+	if !ast.type_can_start_with_token(&p.tok) {
 		return false
 	}
 	mut i := 0
@@ -2716,10 +2719,23 @@ fn (mut p Parser) name_expr() ast.Expr {
 		if is_option {
 			map_type = map_type.set_flag(.option)
 		}
-		return ast.MapInit{
+		node = ast.MapInit{
 			typ: map_type
 			pos: pos
 		}
+		if p.tok.kind == .lpar {
+			// ?map[int]int(none) cast expr
+			p.check(.lpar)
+			expr := p.expr(0)
+			p.check(.rpar)
+			return ast.CastExpr{
+				typ:     map_type
+				typname: p.table.sym(map_type).name
+				expr:    expr
+				pos:     pos.extend(p.tok.pos())
+			}
+		}
+		return node
 	}
 	// `chan typ{...}`
 	if p.tok.lit == 'chan' {
@@ -3439,10 +3455,13 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 	mut types := []ast.Type{}
 	mut param_names := []string{}
-	if p.tok.kind !in [.lt, .lsbr] {
+	if p.tok.kind == .lt {
+		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
+	}
+	if p.tok.kind != .lsbr {
 		return types, param_names
 	}
-	end_kind := if p.tok.kind == .lt { token.Kind.gt } else { token.Kind.rsbr }
+	end_kind := token.Kind.rsbr
 	p.next()
 	mut first_done := false
 	mut count := 0
@@ -3489,15 +3508,18 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 
 fn (mut p Parser) parse_concrete_types() []ast.Type {
 	mut types := []ast.Type{}
-	if p.tok.kind !in [.lt, .lsbr] {
+	if p.tok.kind == .lt {
+		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
+	}
+	if p.tok.kind != .lsbr {
 		return types
 	}
 	p.inside_fn_concrete_type = true
 	defer {
 		p.inside_fn_concrete_type = false
 	}
-	end_kind := if p.tok.kind == .lt { token.Kind.gt } else { token.Kind.rsbr }
-	p.next() // `<`
+	end_kind := token.Kind.rsbr
+	p.next() // `[`
 	mut first_done := false
 	for p.tok.kind !in [.eof, end_kind] {
 		if first_done {
@@ -3506,7 +3528,7 @@ fn (mut p Parser) parse_concrete_types() []ast.Type {
 		types << p.parse_type()
 		first_done = true
 	}
-	p.check(end_kind) // `>`
+	p.check(end_kind) // `]`
 	return types
 }
 

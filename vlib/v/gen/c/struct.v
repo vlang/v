@@ -78,7 +78,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	}
 	if is_anon {
-		g.writeln('(${styp}){')
+		if node.language == .v {
+			g.write('(${styp})')
+		}
+		g.writeln('{')
 	} else if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.styp(shared_typ)
@@ -197,7 +200,11 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				embed_sym := g.table.sym(embed)
 				embed_name := embed_sym.embed_name()
 				if embed_name !in inited_fields {
-					embed_info := embed_sym.info as ast.Struct
+					embed_info := if embed_sym.info is ast.Struct {
+						embed_sym.info
+					} else {
+						g.table.final_sym(embed).info as ast.Struct
+					}
 					embed_field_names := embed_info.fields.map(it.name)
 					fields_to_embed := init_fields_to_embed.filter(it.name !in used_embed_fields
 						&& it.name in embed_field_names)
@@ -407,6 +414,14 @@ fn (mut g Gen) get_embed_field_name(field_type ast.Type, field_name string) stri
 	return s
 }
 
+fn (mut g Gen) init_shared_field(field ast.StructField) {
+	field_typ := field.typ.deref()
+	shared_styp := g.styp(field_typ)
+	g.write('(${shared_styp}*)__dup${shared_styp}(&(${shared_styp}){.mtx= {0}, .val=')
+	g.write(g.type_default(field_typ.clear_flag(.shared_f)))
+	g.write('}, sizeof(${shared_styp}))')
+}
+
 fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	old_inside_cast_in_heap := g.inside_cast_in_heap
 	g.inside_cast_in_heap = 0
@@ -421,6 +436,11 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			return false
 		} else if !field.has_default_expr {
 			mut has_option_field := false
+			if sym.info.is_shared || field.typ.has_flag(.shared_f) {
+				g.write('.${field_name} = ')
+				g.init_shared_field(field)
+				return true
+			}
 			for fd in sym.info.fields {
 				if fd.typ.has_flag(.option) {
 					has_option_field = true
@@ -429,7 +449,8 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			}
 			if has_option_field || field.anon_struct_decl.fields.len > 0 {
 				default_init := ast.StructInit{
-					typ: field.typ
+					typ:      field.typ
+					language: field.anon_struct_decl.language
 				}
 				g.write('.${field_name} = ')
 				if field.typ.has_flag(.option) {
@@ -494,18 +515,26 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		g.write(g.type_default_sumtype(field.typ, sym))
 		return true
 	} else if sym.info is ast.ArrayFixed {
+		elem_is_option := sym.info.elem_type.has_flag(.option)
 		g.write('{')
-		for i in 0 .. sym.info.size {
-			if sym.info.elem_type.has_flag(.option) {
-				g.expr_with_opt(ast.None{}, ast.none_type, sym.info.elem_type)
-			} else {
-				g.write(g.type_default(sym.info.elem_type))
-			}
-			if i != sym.info.size - 1 {
-				g.write(', ')
+		if !elem_is_option && field.typ.has_flag(.shared_f) {
+			g.write('0')
+		} else {
+			default_str := g.type_default(sym.info.elem_type)
+			for i in 0 .. sym.info.size {
+				if elem_is_option {
+					g.gen_option_error(sym.info.elem_type, ast.None{})
+				} else {
+					g.write(default_str)
+				}
+				if i != sym.info.size - 1 {
+					g.write(', ')
+				}
 			}
 		}
 		g.write('}')
+	} else if field.typ.has_flag(.shared_f) {
+		g.init_shared_field(field)
 	} else {
 		g.write(g.type_default(field.typ))
 	}
@@ -556,7 +585,11 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		}
 	}
 	if is_anon {
-		g.type_definitions.write_string('\t${name} ')
+		if s.is_shared {
+			g.type_definitions.write_string('\t__shared__${name}* ')
+		} else {
+			g.type_definitions.write_string('\t${name} ')
+		}
 		return
 	} else if s.is_union {
 		if g.is_cc_msvc && aligned_attr != '' {
@@ -685,7 +718,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 		field_unwrap_typ := g.unwrap_generic(sfield.typ)
 		field_unwrap_sym := g.table.final_sym(field_unwrap_typ)
 		is_auto_deref_var := sfield.expr.is_auto_deref_var()
-		if field_unwrap_sym.info is ast.ArrayFixed {
+		if field_unwrap_sym.info is ast.ArrayFixed && !sfield.expected_type.has_flag(.option) {
 			match sfield.expr {
 				ast.Ident, ast.SelectorExpr {
 					g.fixed_array_var_init(g.expr_string(sfield.expr), is_auto_deref_var,

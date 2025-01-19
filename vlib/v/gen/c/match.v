@@ -482,6 +482,9 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					.array_fixed {
 						ptr_typ := g.equality_fn(node.cond_type)
 						g.write('${ptr_typ}_arr_eq(${cond_var}, ')
+						if expr is ast.ArrayInit {
+							g.write('(${g.styp(node.cond_type)})')
+						}
 						g.expr(expr)
 						g.write(')')
 					}

@@ -69,7 +69,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprint(' function: '); eprint(fn_name); eprintln('()')
 		eprint('  message: '); eprintln(s)
 		eprint('     file: '); eprint(file); eprint(':');
-		C.fprintf(C.stderr, c'%d\n', line_no)		
+		C.fprintf(C.stderr, c'%d\n', line_no)
 		eprint('   v hash: '); eprintln(@VCURRENTHASH)
 		eprintln('=========================================')
 		// vfmt on
@@ -106,14 +106,14 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 // It ends the program with a panic.
 @[noreturn]
 pub fn panic_option_not_set(s string) {
-	panic('option not set (${s})')
+	panic('option not set (' + s + ')')
 }
 
 // panic_result_not_set is called by V, when you use result error propagation in your main function
 // It ends the program with a panic.
 @[noreturn]
 pub fn panic_result_not_set(s string) {
-	panic('result not set (${s})')
+	panic('result not set (' + s + ')')
 }
 
 // panic prints a nice error message, then exits the process with exit code of 1.
@@ -173,6 +173,24 @@ pub fn c_error_number_str(errnum int) string {
 		}
 	}
 	return err_msg
+}
+
+// panic_n prints an error message, followed by the given number, then exits the process with exit code of 1.
+@[noreturn]
+pub fn panic_n(s string, number1 i64) {
+	panic(s + number1.str())
+}
+
+// panic_n2 prints an error message, followed by the given numbers, then exits the process with exit code of 1.
+@[noreturn]
+pub fn panic_n2(s string, number1 i64, number2 i64) {
+	panic(s + number1.str() + ', ' + number2.str())
+}
+
+// panic_n3 prints an error message, followed by the given numbers, then exits the process with exit code of 1.
+@[noreturn]
+fn panic_n3(s string, number1 i64, number2 i64, number3 i64) {
+	panic(s + number1.str() + ', ' + number2.str() + ', ' + number2.str())
 }
 
 // panic with a C-API error message matching `errnum`
@@ -328,21 +346,19 @@ pub fn println(s string) {
 
 @[manualfree]
 fn _writeln_to_fd(fd int, s string) {
-	$if !builtin_writeln_should_write_at_once ? {
+	$if builtin_writeln_should_write_at_once ? {
+		unsafe {
+			buf_len := s.len + 1 // space for \n
+			mut buf := malloc(buf_len)
+			C.memcpy(buf, s.str, s.len)
+			buf[s.len] = `\n`
+			_write_buf_to_fd(fd, buf, buf_len)
+			free(buf)
+		}
+	} $else {
 		lf := u8(`\n`)
 		_write_buf_to_fd(fd, s.str, s.len)
 		_write_buf_to_fd(fd, &lf, 1)
-		return
-	}
-	unsafe {
-		buf_len := s.len + 1 // space for \n
-		mut buf := malloc(buf_len)
-		defer {
-			free(buf)
-		}
-		C.memcpy(buf, s.str, s.len)
-		buf[s.len] = `\n`
-		_write_buf_to_fd(fd, buf, buf_len)
 	}
 }
 
@@ -394,7 +410,7 @@ fn _memory_panic(fname string, size isize) {
 	$if freestanding || vinix {
 		eprint('size') // TODO: use something more informative here
 	} $else {
-		C.fprintf(C.stderr, c'%ld', size)
+		C.fprintf(C.stderr, c'%p', voidptr(size))
 	}
 	if size < 0 {
 		eprint(' < 0')
@@ -751,8 +767,8 @@ pub fn gc_memory_use() usize {
 fn v_fixed_index(i int, len int) int {
 	$if !no_bounds_checking {
 		if i < 0 || i >= len {
-			s := 'fixed array index out of range (index: ${i}, len: ${len})'
-			panic(s)
+			panic('fixed array index out of range (index: ' + i64(i).str() + ', len: ' +
+				i64(len).str() + ')')
 		}
 	}
 	return i
@@ -767,6 +783,9 @@ __global g_main_argc = int(0)
 
 @[markused]
 __global g_main_argv = unsafe { nil }
+
+@[markused]
+__global g_live_reload_info voidptr
 
 // arguments returns the command line arguments, used for starting the current program as a V array of strings.
 // The first string in the array (index 0), is the name of the program, used for invoking the program.

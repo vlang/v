@@ -4,9 +4,6 @@ import net
 import picohttpparser
 import time
 
-// maximum number of file descriptors that can be managed
-pub const max_fds = 1024
-
 // maximum size of the event queue
 pub const max_queue = 4096
 
@@ -68,17 +65,14 @@ pub struct Picoev {
 	max_headers  int = 100
 	max_read     int = 4096
 	max_write    int = 8192
-
-	err_cb fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_error_callback @[deprecated: 'use `error_callback` instead']
-	raw_cb fn (mut Picoev, int, int) = unsafe { nil } @[deprecated: 'use `raw_callback` instead']
 mut:
 	loop             &LoopType = unsafe { nil }
-	file_descriptors [max_fds]&Target
+	file_descriptors [4096]&Target // TODO: use max_fds here, instead of the hardcoded size, when the compiler allows it
 	timeouts         map[int]i64
 	num_loops        int
 
 	buf &u8 = unsafe { nil }
-	idx [1024]int
+	idx [max_fds]int
 	out &u8 = unsafe { nil }
 
 	date string
@@ -114,13 +108,6 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 	}
 	pv.set_timeout(fd, timeout)
 	return 0
-}
-
-// del remove a file descriptor from the event loop
-@[deprecated: 'use delete() instead']
-@[direct_array_access]
-pub fn (mut pv Picoev) del(fd int) int {
-	return pv.delete(fd)
 }
 
 // remove a file descriptor from the event loop
@@ -202,6 +189,7 @@ fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
 	}
 	if accepted_fd >= max_fds {
 		// should never happen
+		elog('Error during accept, accepted_fd >= max_fd')
 		close_socket(accepted_fd)
 		return
 	}

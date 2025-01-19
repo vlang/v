@@ -86,6 +86,7 @@ fn (mut g Gen) writeln(s string) {
 	g.out.writeln(s)
 	// g.out_parallel[g.out_idx].writeln(s)
 	g.empty_line = true
+	// g.line_nr++
 }
 
 fn (mut g Gen) writeln2(s1 string, s2 string) {

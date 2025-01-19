@@ -39,7 +39,7 @@ pub fn strict_check[T](json_data string) StructCheckResult {
 				field_name := field.name
 				last_key := arrays.find_last(key_struct, fn [field_name] (k KeyStruct) bool {
 					return k.key == field_name
-				}) or { panic('${field.name} not found') }
+				}) or { panic('field not found: ' + field.name) }
 
 				// TODO: get path here from `last_key.key`
 				if last_key.value_type == .map {

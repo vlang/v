@@ -141,7 +141,7 @@ fn (mut p Parser) call_args() []ast.CallArg {
 			array_decompose = true
 		}
 		mut expr := ast.empty_expr
-		if p.tok.kind == .name && p.peek_tok.kind == .colon {
+		if p.tok.kind in [.name, .key_type] && p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
 			expr = p.struct_init('void_type', .short_syntax, false)
 		} else {
@@ -203,7 +203,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_markused := false
 	mut is_expand_simple_interpolation := false
 	mut comments := []ast.Comment{}
-	for fna in p.attrs {
+	fn_attrs := p.attrs
+	p.attrs = []
+	for fna in fn_attrs {
 		match fna.name {
 			'noreturn' {
 				is_noreturn = true
@@ -271,7 +273,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			else {}
 		}
 	}
-	conditional_ctdefine_idx := p.attrs.find_comptime_define() or { -1 }
+	conditional_ctdefine_idx := fn_attrs.find_comptime_define() or { -1 }
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -286,7 +288,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut language := p.parse_language()
 	p.fn_language = language
 	if language != .v {
-		for fna in p.attrs {
+		for fna in fn_attrs {
 			if fna.name == 'export' {
 				p.error_with_pos('interop function cannot be exported', fna.pos)
 				break
@@ -510,7 +512,7 @@ run them via `v file.v` instead',
 				pos:           param.pos
 				is_used:       is_pub || no_body || (is_method && k == 0) || p.builtin_mod
 				is_arg:        true
-				ct_type_var:   if (!is_method || k > 0) && param.typ.has_flag(.generic)
+				ct_type_var:   if (!is_method || k >= 0) && param.typ.has_flag(.generic)
 					&& !param.typ.has_flag(.variadic) {
 					.generic_param
 				} else {
@@ -555,7 +557,7 @@ run them via `v file.v` instead',
 			is_method:     true
 			receiver_type: rec.typ
 			//
-			attrs:          p.attrs
+			attrs:          fn_attrs
 			is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
 			ctdefine_idx:   conditional_ctdefine_idx
 			//
@@ -611,7 +613,7 @@ run them via `v file.v` instead',
 			receiver_type:         if is_static_type_method { rec.typ } else { 0 } // used only if is static type method
 			is_file_translated:    p.is_translated
 			//
-			attrs:          p.attrs
+			attrs:          fn_attrs
 			is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
 			ctdefine_idx:   conditional_ctdefine_idx
 			//
@@ -686,7 +688,7 @@ run them via `v file.v` instead',
 		is_markused:        is_markused
 		is_file_translated: p.is_translated
 		//
-		attrs:          p.attrs
+		attrs:          fn_attrs
 		is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
 		ctdefine_idx:   conditional_ctdefine_idx
 		//
@@ -921,6 +923,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 }
 
 // part of fn declaration
+// returns: params, are_params_type_only, mut is_variadic, mut is_c_variadic
 fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 	p.check(.lpar)
 	mut params := []ast.Param{}
@@ -938,7 +941,8 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 		|| (p.peek_tok.kind == .comma && (p.table.known_type(param_name) || is_generic_type))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar || p.fn_language == .c
 		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
-		|| p.peek_token(2).kind == .comma || p.peek_token(2).kind == .rpar
+		|| (p.peek_token(2).kind == .comma && (p.tok.kind != .key_mut
+		|| p.peek_tok.lit[0].is_capital())) || p.peek_token(2).kind == .rpar
 		|| (p.peek_tok.kind == .name && p.peek_token(2).kind == .dot)))
 	mut prev_param_newline := p.tok.pos().line_nr
 	// TODO: copy paste, merge 2 branches
@@ -1070,8 +1074,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				if !p.pref.is_fmt {
-					p.warn(
-						'`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' +
+					p.error('`fn f(x, y Type)` syntax has been deprecated. ' +
 						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "${p.scanner.file_path}"` to automatically fix your code.')
 				}
 				p.next()

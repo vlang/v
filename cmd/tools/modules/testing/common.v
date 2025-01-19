@@ -242,6 +242,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/database/psql/customer.v'
 		}
 		$if windows {
+			skip_files << 'examples/1brc/solution/main.v' // requires mmap
 			skip_files << 'examples/database/mysql.v'
 			skip_files << 'examples/database/orm.v'
 			skip_files << 'examples/smtp/mail.v' // requires OpenSSL
@@ -250,6 +251,8 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
 			skip_files << 'vlib/v/tests/websocket_logger_interface_should_compile_test.v' // requires OpenSSL
 			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
+			skip_files << 'vlib/crypto/ecdsa/util_test.v' // requires OpenSSL
+			skip_files << 'vlib/crypto/ecdsa/example/ecdsa_seed_test.v' // requires OpenSSL
 			$if tinyc {
 				skip_files << 'examples/database/orm.v' // try fix it
 			}
@@ -271,22 +274,25 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			if !os.exists('/usr/local/include/wkhtmltox/pdf.h') {
 				skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 			}
-			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
-			skip_files << 'vlib/x/vweb/tests/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
-			skip_files << 'vlib/veb/tests/veb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
+			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes `sqlite3.h`
+			skip_files << 'vlib/veb/tests/veb_app_test.v' // imports the `sqlite` module, which in turn includes `sqlite3.h`
 		}
 		$if !macos {
 			skip_files << 'examples/macos_tray/tray.v'
 		}
-		if github_job == 'ubuntu-docker-musl' {
+		if github_job == 'docker-ubuntu-musl' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
-			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v'
+			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
+			skip_files << 'vlib/crypto/ecdsa/util_test.v' // requires OpenSSL
+			skip_files << 'vlib/crypto/ecdsa/example/ecdsa_seed_test.v' // requires OpenSSL
 			skip_files << 'vlib/x/ttf/ttf_test.v'
 			skip_files << 'vlib/encoding/iconv/iconv_test.v' // needs libiconv to be installed
 		}
 		if github_job == 'tests-sanitize-memory-clang' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
-			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v'
+			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
+			skip_files << 'vlib/crypto/ecdsa/util_test.v' // requires OpenSSL
+			skip_files << 'vlib/crypto/ecdsa/example/ecdsa_seed_test.v' // requires OpenSSL
 			// Fails compilation with: `/usr/bin/ld: /lib/x86_64-linux-gnu/libpthread.so.0: error adding symbols: DSO missing from command line`
 			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}

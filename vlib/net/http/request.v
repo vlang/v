@@ -21,12 +21,13 @@ pub type RequestFinishFn = fn (request &Request, final_size u64) !
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
 pub struct Request {
+mut:
+	cookies map[string]string
 pub mut:
 	version    Version = .v1_1
 	method     Method  = .get
 	header     Header
 	host       string
-	cookies    map[string]string @[deprecated: 'use req.cookie(name) and req.add_cookie(name) instead']
 	data       string
 	url        string
 	user_agent string = 'v.http'

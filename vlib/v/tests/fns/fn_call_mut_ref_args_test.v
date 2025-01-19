@@ -17,7 +17,7 @@ fn init_vm2(mut head &Client) {
 
 fn test_fn_call_mut_ref_args() {
 	mut head := &Client{}
-	init_vm1(mut head)
-	init_vm2(mut head)
+	init_vm1(mut &head)
+	init_vm2(mut &head)
 	assert true
 }

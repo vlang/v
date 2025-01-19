@@ -35,6 +35,7 @@ fn (mut c Crc32) generate_table(poly int) {
 	}
 }
 
+@[direct_array_access]
 fn (c &Crc32) sum32(b []u8) u32 {
 	mut crc := ~u32(0)
 	for i in 0 .. b.len {
@@ -56,8 +57,9 @@ pub fn new(poly int) &Crc32 {
 	return c
 }
 
+const ieee_poly = new(int(ieee))
+
 // sum calculates the CRC-32 checksum of `b` by using the IEEE polynomial.
 pub fn sum(b []u8) u32 {
-	c := new(int(ieee))
-	return c.sum32(b)
+	return ieee_poly.sum32(b)
 }

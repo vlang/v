@@ -146,9 +146,6 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		comments << p.eat_comments()
 		p.check(.key_in)
-		if p.tok.kind == .name && p.tok.lit in [key_var_name, val_var_name] {
-			return p.error('in a `for x in array` loop, the key or value iteration variable `${p.tok.lit}` can not be the same as the array variable')
-		}
 		comments << p.eat_comments()
 		// arr_expr
 		p.inside_for_expr = true

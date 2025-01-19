@@ -8,19 +8,21 @@ Examples:
                                `hello` or `hello.exe`.
   v run hello.v                Same as above but also run the produced
                                executable immediately after compilation.
-  v -cg run hello.v            Same as above, but make debugging easier
-                               (in case your program crashes).
-  v crun hello.v               Same as above, but do not recompile, if the
-                               executable already exists, and is newer than the
+  v -g run hello.v             Same as above but makes debugging easier
+                               (Useful in case your program crashes).
+                               (see `v help build` and `v help build-c` 
+                               for more information)
+  v crun hello.v               Same as above but do not recompile if the
+                               executable already exists and is newer than the
                                sources.
-  v -o h.c hello.v             Translate `hello.v` to `h.c`. Do not compile
+  v -o h.c hello.v             Translate `hello.v` to `h.c` only. Do not compile
                                further.
-  v -o - hello.v               Translate `hello.v` and output the C source code
-                               to stdout. Do not compile further.
-  v watch hello.v              Re-does the same compilation, when a source code
-                               change is detected.
-                               The program is only compiled, not run.
-  v watch run hello.v          Re-runs the same `hello.v` file, when a source
+  v -o - hello.v               Translates `hello.v` and outputs the C source 
+                               code to stdout. Does not compile further.
+  v watch hello.v              Re-do the same compilation when a source code
+                               change is detected. The compiled result does not
+                               get executed, only compiled.
+  v watch run hello.v          Re-run the same `hello.v` file when a source
                                code change is detected.
 
 V supports the following commands:
@@ -44,11 +46,13 @@ V supports the following commands:
   fmt                          Format the V code provided.
   vet                          Report suspicious code constructs.
   doc                          Generate the documentation for a V module.
+                               example: `v doc strings`
   vlib-docs                    Generate and open the documentation of all the
                                vlib modules.
-  repl                         Run the REPL.
+  repl                         Run the REPL (Read-eval-print loop).
   watch                        Re-compile/re-run a source file, each time it is
                                changed.
+                               example: `v watch run hello.v`
   where                        Find and print the location of current project
                                declarations.
 
@@ -76,5 +80,5 @@ Use "v help other" to see less frequently used commands.
 Use "v help topics" to see a list of all known help topics.
 
 Note: Help is required to write more help topics.
-Only build, new, init, doc, fmt, vet, run, test, watch, search, install, remove,
-update, bin2v, check-md are properly documented currently.
+Only build, new, init, doc, fmt, vet, run, test, watch, search, install, 
+remove, update, bin2v, check-md are properly documented currently.

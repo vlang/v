@@ -109,8 +109,8 @@ fn test_one() {
 	}
 	mut checker_ := checker.new_checker(table, vpref)
 	checker_.check(mut program)
-	mut res, _, _, _ := c.gen([program], mut table, vpref)
-	res = res.replace('\n', '').trim_space().after('#endif')
+	result := c.gen([program], mut table, vpref)
+	res := result.res_builder.bytestr().replace('\n', '').trim_space().after('#endif')
 	println(res)
 	ok := expected == res
 	println(res)
@@ -152,8 +152,8 @@ fn test_parse_expr() {
 		global_scope: scope
 	}
 	chk.check(mut program)
-	mut res, _, _, _ := c.gen([program], mut table, vpref)
-	res = res.after('#endif')
+	result := c.gen([program], mut table, vpref)
+	res := result.res_builder.bytestr().after('#endif')
 	println('========')
 	println(res)
 	println('========')

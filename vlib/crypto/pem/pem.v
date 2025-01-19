@@ -7,13 +7,6 @@ const pem_end = '\n-----END '
 const pem_eol = '-----'
 const colon = ':'
 
-// new returns a new `Block` with the specified block_type
-@[deprecated: 'use Block.new instead']
-@[inline]
-pub fn new(block_type string) Block {
-	return Block.new(block_type)
-}
-
 @[params]
 pub struct EncodeConfig {
 pub mut:

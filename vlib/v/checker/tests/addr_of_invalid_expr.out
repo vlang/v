@@ -1,0 +1,6 @@
+vlib/v/checker/tests/addr_of_invalid_expr.vv:3:9: error: cannot take the address of this expression
+    1 | fn main() {
+    2 |     a := 1
+    3 |     _ := &(&a)
+      |            ^
+    4 | }

@@ -22,6 +22,8 @@ mut:
 	all_fns     map[string]ast.FnDecl
 	all_consts  map[string]ast.ConstField
 	all_globals map[string]ast.GlobalField
+	//
+	as_cast_type_names map[string]string
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -53,12 +55,11 @@ pub fn (mut w Walker) mark_builtin_map_method_as_used(method_name string) {
 pub fn (mut w Walker) mark_builtin_type_method_as_used(k string, rk string) {
 	if mut cfn := w.all_fns[k] {
 		w.fn_decl(mut cfn)
-	}
-	if mut cfn := w.all_fns[rk] {
+		w.mark_fn_as_used(k)
+	} else if mut cfn := w.all_fns[rk] {
 		w.fn_decl(mut cfn)
+		w.mark_fn_as_used(rk)
 	}
-	w.mark_fn_as_used(k)
-	w.mark_fn_as_used(rk)
 }
 
 pub fn (mut w Walker) mark_const_as_used(ckey string) {
@@ -368,6 +369,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.features.used_maps++
 			} else if sym.kind == .array {
 				w.features.used_arrays++
+			} else if sym.kind == .string {
+				if node.index is ast.RangeExpr {
+					w.features.range_index = true
+				}
 			}
 		}
 		ast.InfixExpr {
@@ -508,6 +513,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		///
 		ast.AsCast {
 			w.expr(node.expr)
+			w.as_cast(node)
 		}
 		ast.AtExpr {}
 		ast.BoolLiteral {}
@@ -721,8 +727,43 @@ pub fn (mut w Walker) const_fields(cfields []ast.ConstField) {
 	}
 }
 
+@[inline]
 pub fn (mut w Walker) or_block(node ast.OrExpr) {
 	if node.kind == .block {
 		w.stmts(node.stmts)
+	}
+}
+
+pub fn (mut w Walker) as_cast(node ast.AsCast) {
+	if node.typ == 0 {
+		return
+	}
+	if node.typ.has_flag(.generic) {
+		w.as_cast_type_names['some_generic_type'] = 'some_generic_name'
+		return
+	}
+	if node.expr_type == 0 {
+		return
+	}
+	if node.expr_type.has_flag(.generic) {
+		w.as_cast_type_names['some_generic_type'] = 'some_generic_name'
+		return
+	}
+	mut expr_type_sym := w.table.sym(node.expr_type)
+	if mut expr_type_sym.info is ast.SumType {
+		w.fill_as_cast_type_names(expr_type_sym.info.variants)
+	} else if mut expr_type_sym.info is ast.Interface && node.expr_type != node.typ {
+		w.fill_as_cast_type_names(expr_type_sym.info.types)
+	}
+}
+
+fn (mut w Walker) fill_as_cast_type_names(types []ast.Type) {
+	for variant in types {
+		idx := u32(variant).str()
+		if idx in w.as_cast_type_names {
+			continue
+		}
+		variant_sym := w.table.sym(variant)
+		w.as_cast_type_names[idx] = variant_sym.name
 	}
 }

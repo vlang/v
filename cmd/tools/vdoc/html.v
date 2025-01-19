@@ -8,7 +8,7 @@ import markdown
 import v.scanner
 import v.ast
 import v.token
-import v.doc
+import doc
 import v.pref
 import v.util { tabs }
 
@@ -222,14 +222,18 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	if cfg.is_multi || vd.docs.len > 1 {
 		mut used_submod_prefixes := map[string]bool{}
 		for dc in vd.docs {
-			submod_prefix := dc.head.name.all_before('.')
+			mut submod_prefix := dc.head.name.all_before('.')
+			if index := dc.head.frontmatter['index'] {
+				if dc.head.name == 'index' {
+					submod_prefix = index
+				}
+			}
 			if used_submod_prefixes[submod_prefix] {
 				continue
 			}
 			used_submod_prefixes[submod_prefix] = true
 			mut href_name := './${dc.head.name}.html'
-			if (cfg.is_vlib && dc.head.name == 'builtin' && !cfg.include_readme)
-				|| dc.head.name == 'README' {
+			if dc.head.name in ['README', 'index'] {
 				href_name = './index.html'
 			} else if submod_prefix !in vd.docs.map(it.head.name) {
 				href_name = '#'

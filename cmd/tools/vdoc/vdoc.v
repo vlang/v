@@ -6,11 +6,16 @@ import time
 import strings
 import sync
 import runtime
-import v.doc
+import doc
 import v.vmod
 import v.util
 import json
 import term
+
+struct Readme {
+	frontmatter map[string]string
+	content     string
+}
 
 enum OutputType {
 	unset
@@ -159,8 +164,7 @@ fn (mut vd VDoc) render_doc(d doc.Doc, out Output) (string, string) {
 fn (vd &VDoc) get_file_name(mod string, out Output) string {
 	cfg := vd.cfg
 	mut name := mod
-	// since builtin is generated first, ignore it
-	if (cfg.is_vlib && mod == 'builtin' && !cfg.include_readme) || mod == 'README' {
+	if mod == 'README' {
 		name = 'index'
 	} else if !cfg.is_multi && !os.is_dir(out.path) {
 		name = os.file_name(out.path)
@@ -220,10 +224,10 @@ fn (mut vd VDoc) render(out Output) map[string]string {
 	return docs
 }
 
-fn (vd &VDoc) get_readme(path string) string {
+fn (vd &VDoc) get_readme(path string) Readme {
 	mut fname := ''
-	for name in ['readme', 'README'] {
-		if os.exists(os.join_path(path, '${name}.md')) {
+	for name in ['readme.md', 'README.md'] {
+		if os.exists(os.join_path(path, name)) {
 			fname = name
 			break
 		}
@@ -232,12 +236,28 @@ fn (vd &VDoc) get_readme(path string) string {
 		if path.all_after_last(os.path_separator) == 'src' {
 			return vd.get_readme(path.all_before_last(os.path_separator))
 		}
-		return ''
+		return Readme{}
 	}
-	readme_path := os.join_path(path, '${fname}.md')
+	readme_path := os.join_path(path, fname)
 	vd.vprintln('Reading README file from ${readme_path}')
-	readme_contents := os.read_file(readme_path) or { '' }
-	return readme_contents
+	mut readme_contents := os.read_file(readme_path) or { '' }
+	mut readme_frontmatter := map[string]string{}
+	if readme_contents.starts_with('---\n') {
+		if frontmatter_lines_end_idx := readme_contents.index('\n---\n') {
+			front_matter_lines := readme_contents#[4..frontmatter_lines_end_idx].trim_space().split_into_lines()
+			for line in front_matter_lines {
+				x := line.split(': ')
+				if x.len == 2 {
+					readme_frontmatter[x[0]] = x[1]
+				}
+			}
+			readme_contents = readme_contents#[5 + frontmatter_lines_end_idx..]
+		}
+	}
+	return Readme{
+		frontmatter: readme_frontmatter
+		content:     readme_contents
+	}
 }
 
 fn (vd &VDoc) emit_generate_err(err IError) {
@@ -277,7 +297,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		exit(1)
 	}
 	dir_path := if cfg.is_vlib {
-		vroot
+		os.join_path(vroot, 'vlib')
 	} else if os.is_dir(cfg.input_path) {
 		cfg.input_path
 	} else {
@@ -290,18 +310,26 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			vd.manifest = manifest
 		}
 	}
-	if cfg.include_readme {
-		readme_contents := vd.get_readme(dir_path)
+	if cfg.include_readme || cfg.is_vlib {
+		mut readme_name := 'README'
+		readme := vd.get_readme(dir_path)
+		if page := readme.frontmatter['page'] {
+			readme_name = page
+		}
 		comment := doc.DocComment{
-			text: readme_contents
+			is_readme:   true
+			frontmatter: readme.frontmatter
+			text:        readme.content
 		}
 		if out.typ == .ansi {
-			println(markdown.to_plain(readme_contents))
+			println(markdown.to_plain(readme.content))
 		} else if out.typ == .html && cfg.is_multi {
 			vd.docs << doc.Doc{
 				head:           doc.DocNode{
-					name:     'README'
-					comments: [comment]
+					is_readme:   true
+					name:        readme_name
+					frontmatter: readme.frontmatter
+					comments:    [comment]
 				}
 				time_generated: time.now()
 			}
@@ -327,9 +355,11 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			continue
 		}
 		if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
-			readme_contents := vd.get_readme(dirpath)
+			readme := vd.get_readme(dirpath)
 			comment := doc.DocComment{
-				text: readme_contents
+				is_readme:   true
+				frontmatter: readme.frontmatter
+				text:        readme.content
 			}
 			dcs.head.comments = [comment]
 		}
@@ -342,13 +372,6 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			}
 		}
 		vd.docs << dcs
-	}
-	// Important. Let builtin be in the top of the module list
-	// if we are generating docs for vlib.
-	if cfg.is_vlib {
-		mut docs := vd.docs.filter(it.head.name == 'builtin')
-		docs << vd.docs.filter(it.head.name != 'builtin')
-		vd.docs = docs
 	}
 	if dirs.len == 0 && cfg.is_multi {
 		eprintln('vdoc: -m requires at least 1 module folder')

@@ -13,6 +13,9 @@ pub enum FixKind {
 	unknown
 	doc
 	vfmt
+	repeated_code
+	long_fns
+	empty_fn
 }
 
 // ErrorType is used to filter out false positive errors under specific conditions
@@ -20,6 +23,7 @@ pub enum ErrorType {
 	default
 	space_indent
 	trailing_space
+	long_fns
 }
 
 @[minify]
@@ -40,13 +44,15 @@ fn (mut vt Vet) error(msg string, line int, fix FixKind) {
 	pos := token.Pos{
 		line_nr: line + 1
 	}
-	vt.errors << VetError{
-		message:   msg
-		file_path: vt.file
-		pos:       pos
-		kind:      .error
-		fix:       fix
-		typ:       .default
+	lock vt.errors {
+		vt.errors << VetError{
+			message:   msg
+			file_path: vt.file
+			pos:       pos
+			kind:      .error
+			fix:       fix
+			typ:       .default
+		}
 	}
 }
 
@@ -64,9 +70,13 @@ fn (mut vt Vet) warn(msg string, line int, fix FixKind) {
 	}
 	if vt.opt.is_werror {
 		w.kind = .error
-		vt.errors << w
+		lock vt.errors {
+			vt.errors << w
+		}
 	} else {
-		vt.warns << w
+		lock vt.warns {
+			vt.warns << w
+		}
 	}
 }
 
@@ -74,13 +84,31 @@ fn (mut vt Vet) notice(msg string, line int, fix FixKind) {
 	pos := token.Pos{
 		line_nr: line + 1
 	}
-	vt.notices << VetError{
-		message:   msg
-		file_path: vt.file
-		pos:       pos
-		kind:      .notice
-		fix:       fix
-		typ:       .default
+	lock vt.notices {
+		vt.notices << VetError{
+			message:   msg
+			file_path: vt.file
+			pos:       pos
+			kind:      .notice
+			fix:       fix
+			typ:       .default
+		}
+	}
+}
+
+fn (mut vt Vet) notice_with_file(file string, msg string, line int, fix FixKind) {
+	pos := token.Pos{
+		line_nr: line + 1
+	}
+	lock vt.notices {
+		vt.notices << VetError{
+			message:   msg
+			file_path: file
+			pos:       pos
+			kind:      .notice
+			fix:       fix
+			typ:       .default
+		}
 	}
 }
 

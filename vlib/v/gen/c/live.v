@@ -41,15 +41,21 @@ fn (mut g Gen) generate_hotcode_reloader_code() {
 		mut load_code := []string{}
 		if g.pref.os != .windows {
 			for so_fn in g.hotcode_fn_names {
-				load_code << 'impl_live_${so_fn} = dlsym(live_lib, "impl_live_${so_fn}");'
+				load_code << '\timpl_live_${so_fn} = dlsym(live_lib, "impl_live_${so_fn}");'
 			}
+			load_code << 'void (* fn_set_live_reload_pointer)(void *) = (void *)dlsym(live_lib, "set_live_reload_pointer");'
 			phd = posix_hotcode_definitions_1
 		} else {
 			for so_fn in g.hotcode_fn_names {
-				load_code << 'impl_live_${so_fn} = (void *)GetProcAddress(live_lib, "impl_live_${so_fn}");  '
+				load_code << '\timpl_live_${so_fn} = (void *)GetProcAddress(live_lib, "impl_live_${so_fn}");  '
 			}
+			load_code << 'void (* fn_set_live_reload_pointer)(void *) = (void *)GetProcAddress(live_lib, "set_live_reload_pointer");'
 			phd = windows_hotcode_definitions_1
 		}
+		// Ensure that g_live_reload_info from the executable is passed to the DLL .
+		// See also vlib/v/live/sharedlib/live_sharedlib.v .
+		load_code << 'if(fn_set_live_reload_pointer){ fn_set_live_reload_pointer( g_live_reload_info ); }'
+
 		g.hotcode_definitions.writeln(phd.replace('@LOAD_FNS@', load_code.join('\n')))
 	}
 }
@@ -107,9 +113,9 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 		idx++
 	}
 	g.writeln('')
-	// g_live_info gives access to the LiveReloadInfo methods,
+	// g_live_reload_info gives access to the LiveReloadInfo methods,
 	// to the custom user code, through calling v_live_info()
-	g.writeln('\t\tg_live_info = (void*)live_info;')
+	g.writeln('\t\tg_live_reload_info = (void*)live_info;')
 	g.writeln('\t\tv__live__executable__start_reloader(live_info);')
 	g.writeln('\t}\t// end of live code initialization section')
 	g.writeln('')

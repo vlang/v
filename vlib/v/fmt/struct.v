@@ -153,6 +153,9 @@ fn (mut f Fmt) write_anon_struct_field_decl(field_typ ast.Type, field_anon_decl 
 			info := sym.info as ast.Struct
 			if info.is_anon {
 				f.indent++
+				if info.is_shared {
+					f.write('shared ')
+				}
 				f.struct_decl(field_anon_decl, true)
 				f.indent--
 				return true

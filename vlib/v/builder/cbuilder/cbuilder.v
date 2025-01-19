@@ -1,6 +1,7 @@
 module cbuilder
 
 import os
+import strings
 import v.pref
 import v.util
 import v.builder
@@ -60,30 +61,31 @@ pub fn build_c(mut b builder.Builder, v_files []string, out_file string) {
 	if b.pref.is_vlines {
 		output2 = c.fix_reset_dbg_line(output2, out_file)
 	}
-	os.write_file(out_file, output2) or { panic(err) }
+	os.write_file_array(out_file, output2) or { panic(err) }
 	if b.pref.is_stats {
-		b.stats_lines = output2.count('\n') + 1
+		b.stats_lines = output2.count(it == `\n`) + 1
 		b.stats_bytes = output2.len
 	}
 }
 
-pub fn gen_c(mut b builder.Builder, v_files []string) string {
+pub fn gen_c(mut b builder.Builder, v_files []string) strings.Builder {
 	b.front_and_middle_stages(v_files) or {
 		if err.code() > 7000 {
-			return ''
+			return []u8{}
 		}
 		builder.verror(err.msg())
 	}
 
 	util.timing_start('C GEN')
-	header, res, out_str, out_fn_start_pos := c.gen(b.parsed_files, mut b.table, b.pref)
+	result := c.gen(b.parsed_files, mut b.table, b.pref)
 	util.timing_measure('C GEN')
 
 	if b.pref.parallel_cc {
+		b.cc() // Call it just to gen b.str_args
 		util.timing_start('Parallel C compilation')
-		parallel_cc(mut b, header, res, out_str, out_fn_start_pos)
+		parallel_cc(mut b, result) or { builder.verror(err.msg()) }
 		util.timing_measure('Parallel C compilation')
 	}
 
-	return res
+	return result.res_builder
 }

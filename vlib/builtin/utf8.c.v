@@ -82,14 +82,12 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 		}
 	} $else {
 		mut sb := strings.new_builder(len)
-		defer {
-			unsafe { sb.free() }
-		}
 		for i := 0; i < len; i++ {
 			u := unsafe { rune(_wstr[i]) }
 			sb.write_rune(u)
 		}
 		res := sb.str()
+		unsafe { sb.free() }
 		return res
 	}
 }

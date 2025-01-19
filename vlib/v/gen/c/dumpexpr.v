@@ -32,24 +32,23 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			}
 		}
 	}
-	// var.${field.name}
-	if node.expr is ast.ComptimeSelector {
+	// var.$(field.name)
+	if node.expr is ast.ComptimeSelector && node.expr.is_name {
 		if node.expr.field_expr is ast.SelectorExpr {
 			if node.expr.field_expr.expr is ast.Ident {
-				if node.expr.field_expr.expr.name == g.comptime.comptime_for_field_var
-					&& node.expr.field_expr.field_name == 'name' {
-					field, _ := g.comptime.get_comptime_selector_var_type(node.expr)
+				if node.expr.field_expr.expr.name == g.comptime.comptime_for_field_var {
+					field, _ := g.type_resolver.get_comptime_selector_var_type(node.expr)
 					name = g.styp(g.unwrap_generic(field.typ.clear_flags(.shared_f, .result)))
 					expr_type = field.typ
 				}
 			}
 		}
-	} else if node.expr is ast.Ident && g.comptime.is_comptime_var(node.expr) {
-		expr_type = g.comptime.get_type(node.expr)
+	} else if node.expr is ast.Ident && node.expr.ct_expr {
+		expr_type = g.type_resolver.get_type(node.expr)
 		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
 			'')
 	} else if node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
-		&& g.comptime.is_comptime_var(node.expr.expr) {
+		&& (node.expr.expr as ast.Ident).ct_expr {
 		expr_type = g.comptime_selector_type(node.expr)
 		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
 			'')
@@ -129,11 +128,10 @@ fn (mut g Gen) dump_expr_definitions() {
 			str_dumparg_type += g.cc_type(typ, true) + ptr_asterisk
 		}
 		mut is_fixed_arr_ret := false
-		if dump_sym.kind == .function && !is_option {
-			fninfo := dump_sym.info as ast.FnType
+		if dump_sym.info is ast.FnType && !is_option {
 			str_dumparg_type = 'DumpFNType_${name}'
 			tdef_pos := g.out.len
-			g.write_fn_ptr_decl(&fninfo, str_dumparg_type)
+			g.write_fn_ptr_decl(&dump_sym.info, str_dumparg_type)
 			str_tdef := g.out.after(tdef_pos)
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef ${str_tdef};'] = true
@@ -258,8 +256,10 @@ fn (mut g Gen) dump_expr_definitions() {
 	for tdef, _ in dump_typedefs {
 		g.definitions.writeln(tdef)
 	}
-	g.definitions.writeln(dump_fn_defs.str())
-	g.dump_funcs.writeln(dump_fns.str())
+	if dump_fn_defs.len > 0 {
+		g.definitions.writeln(dump_fn_defs.str())
+		g.dump_funcs.writeln(dump_fns.str())
+	}
 }
 
 fn (mut g Gen) writeln_fn_header(s string, mut sb strings.Builder) bool {

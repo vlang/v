@@ -46,7 +46,7 @@ jobs:
         run: make && ./v symlink && ./v version
 
       - name: Download latest release ZIP
-        run: wget https://github.com/vlang/v/releases/latest/download/${{ matrix.zip }}
+        run: ./v retry -- ./v download --sha256 https://github.com/vlang/v/releases/latest/download/${{ matrix.zip }}
 
       - name: Extract ZIP 1, no changes
         run: |

@@ -37,9 +37,11 @@ jobs:
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
       - name: Code in cmd/ is formatted
         run: ./v fmt -verify cmd/
-      - name: Test
+      - name: Check build-tools
+        run: ./v -N -W -check build-tools
+      - name: Test tools
         run: ./v test-self cmd
-      - name: Test (-cstrict)
+      - name: Test tools (-cstrict)
         if: ${{ matrix.cc != 'tcc' }}
         run: ./v -W -cstrict test-self cmd
       - name: Test sanitized
@@ -72,9 +74,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build V
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
-      - name: Test
+      - name: Check build-tools
+        run: ./v -N -W -check build-tools
+      - name: Test tools
         run: ./v test-self cmd
-      - name: Test (-cstrict)
+      - name: Test tools (-cstrict)
         run: ./v -W -cstrict test-self cmd
 
   windows:
@@ -89,13 +93,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build V
         run: ./make.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
-      - name: Test
+      - name: Check build tools
+        run: ./v -N -W -check build-tools
+      - name: Test tools
         run: ./v test-self cmd
-      - name: Test (-cstrict)
+      - name: Test tools (-cstrict)
         if: ${{ matrix.cc == 'msvc' }}
         run: ./v -W -cstrict test-self cmd
 
-  ubuntu-docker-musl:
+  tools-docker-ubuntu-musl:
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     container:
@@ -117,7 +123,9 @@ jobs:
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-      - name: Test
+      - name: Check build tools
+        run: ./v -N -W -check build-tools
+      - name: Test tools
         run: ./v test-self cmd
-      - name: Test (-cstrict)
+      - name: Test tools (-cstrict)
         run: ./v -W -cstrict test-self cmd

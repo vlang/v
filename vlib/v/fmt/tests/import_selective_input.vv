@@ -76,7 +76,7 @@ fn f(v FnArg, vv ...FnArgVariadic) FnRet {
 	return FnRet{}
 }
 
-fn f2(v Generic<FnArgTypeParam1, FnArgTypeParam2>) Generic<FnRetTypeParam1, FnRetTypeParam2> {}
+fn f2(v Generic[FnArgTypeParam1, FnArgTypeParam2]) Generic[FnRetTypeParam1, FnRetTypeParam2] {}
 
 fn f_generic[T](v FnArgGeneric[T]) FnRetGeneric[T] {
 	return FnRetGeneric[T]{}

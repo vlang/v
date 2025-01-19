@@ -45,7 +45,7 @@ jobs:
           gcc -Werror -municode -w v.c -lws2_32
       - name: Install dependencies
         run: |
-          v setup-freetype
+          v retry -- v setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
       - name: v doctor
         run: |
@@ -64,7 +64,7 @@ jobs:
       - name: Build option_test.c.v with -autofree
         run: v -autofree vlib/v/tests/options/option_test.c.v
       - name: Test v->js
-        run: v -o hi.js examples/hello_v_js.v && node hi.js
+        run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         run: v build-vbinaries
       - name: Build examples
@@ -100,7 +100,7 @@ jobs:
         run: v -no-retry-compilation -gc boehm run examples/hello_world.v
       - name: Install dependencies
         run: |
-          v setup-freetype
+          v retry -- v setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
       - name: v doctor
         run: |
@@ -119,7 +119,7 @@ jobs:
       # - name: Test
       #   run: v test-all
       - name: Test v->js
-        run: v -o hi.js examples/hello_v_js.v && node hi.js
+        run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         run: v build-vbinaries
       - name: Build examples
@@ -151,7 +151,7 @@ jobs:
           .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -lws2_32 -bt10 v.c
       - name: Install dependencies
         run: |
-          v setup-freetype
+          v retry -- v setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
       - name: v doctor
         run: |
@@ -173,7 +173,7 @@ jobs:
       - name: Self tests
         run: v test-self vlib
       - name: Test v->js
-        run: v -o hi.js examples/hello_v_js.v && node hi.js
+        run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         run: v build-vbinaries
       - name: Build examples
@@ -217,7 +217,7 @@ jobs:
         # - name: Self tests
         #   run: v test-self vlib
         # - name: Test v->js
-        #   run: v -o hi.js examples/hello_v_js.v && node hi.js
+        #   run: v -o hi.js examples/js_hello_world.v && node hi.js
         # - name: Test v binaries
         #   run: v build-vbinaries
         # - name: Build examples

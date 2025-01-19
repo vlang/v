@@ -67,17 +67,14 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					return false
 				}
 				nr_actual_frames := nr_ptrs - skipframes
-				mut sframes := []string{}
 				//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
 				csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
 				for i in 0 .. nr_actual_frames {
-					sframes << unsafe { tos2(&u8(csymbols[i])) }
-				}
-				for sframe in sframes {
+					sframe := unsafe { tos2(&u8(csymbols[i])) }
 					executable := sframe.all_before('(')
 					addr := sframe.all_after('[').all_before(']')
 					beforeaddr := sframe.all_before('[')
-					cmd := 'addr2line -e ${executable} ${addr}'
+					cmd := 'addr2line -e ' + executable + ' ' + addr
 					// taken from os, to avoid depending on the os module inside builtin.v
 					f := C.popen(&char(cmd.str), c'r')
 					if f == unsafe { nil } {
@@ -92,7 +89,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 							output += tos(bp, vstrlen(bp))
 						}
 					}
-					output = output.trim_space() + ':'
+					output = output.trim_chars(' \t\n', .trim_both) + ':'
 					if C.pclose(f) != 0 {
 						eprintln(sframe)
 						continue
@@ -104,7 +101,15 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					// Note: it is shortened here to just d. , just so that it fits, and so
 					// that the common error file:lineno: line format is enforced.
 					output = output.replace(' (discriminator', ': (d.')
-					eprintln('${output:-55s} | ${addr:14s} | ${beforeaddr}')
+					eprint(output)
+					eprint_space_padding(output, 55)
+					eprint(' | ')
+					eprint(addr)
+					eprint(' | ')
+					eprintln(beforeaddr)
+				}
+				if nr_actual_frames > 0 {
+					unsafe { C.free(csymbols) }
 				}
 			}
 		}

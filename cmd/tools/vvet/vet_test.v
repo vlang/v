@@ -3,6 +3,22 @@ import term
 import v.util.vtest
 import v.util.diff
 
+struct FileOptions {
+mut:
+	vflags string
+}
+
+fn get_file_options(file string) FileOptions {
+	mut res := FileOptions{}
+	lines := os.read_lines(file) or { [] }
+	for line in lines {
+		if line.starts_with('// vtest vflags:') {
+			res.vflags = line.all_after(':').trim_space()
+		}
+	}
+	return res
+}
+
 fn test_vet() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
@@ -26,7 +42,8 @@ fn check_path(vexe string, dir string, tests []string) int {
 	for path in paths {
 		program := path
 		print(path + ' ')
-		res := os.execute('${os.quoted_path(vexe)} vet -nocolor ${os.quoted_path(program)}')
+		file_options := get_file_options(path)
+		res := os.execute('${os.quoted_path(vexe)} vet -nocolor ${file_options.vflags} ${os.quoted_path(program)}')
 		if res.exit_code < 0 {
 			panic(res.output)
 		}

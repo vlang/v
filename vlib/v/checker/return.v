@@ -108,7 +108,12 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 						typ = c.unwrap_generic(expr.obj.smartcasts.last())
 					}
 					if expr.obj.ct_type_var != .no_comptime {
-						typ = c.comptime.get_type_or_default(expr, typ)
+						typ = c.type_resolver.get_type_or_default(expr, typ)
+					}
+					if mut expr.obj.expr is ast.IfGuardExpr {
+						if var := expr.scope.find_var(expr.name) {
+							typ = var.typ
+						}
 					}
 				}
 			}
@@ -197,7 +202,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		}
 		got_type := c.unwrap_generic(got_types[i])
 		if got_type.has_flag(.option) && (!exp_type.has_flag(.option)
-			|| got_type.clear_flag(.option) != exp_type.clear_flag(.option)) {
+			|| !c.check_types(got_type.clear_flag(.option), exp_type.clear_flag(.option))) {
 			pos := node.exprs[expr_idxs[i]].pos()
 			c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
 				pos)
@@ -352,6 +357,10 @@ fn has_top_return(stmts []ast.Stmt) bool {
 					}
 				} else if stmt.expr is ast.ComptimeCall {
 					if stmt.expr.method_name == 'compile_error' {
+						return true
+					}
+				} else if stmt.expr is ast.LockExpr {
+					if has_top_return(stmt.expr.stmts) {
 						return true
 					}
 				}

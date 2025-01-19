@@ -9,8 +9,21 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		c.expected_type = former_expected_type
 	}
 	mut left_type := c.expr(mut node.left)
+	mut left_sym := c.table.sym(left_type)
 	node.left_type = left_type
 	c.expected_type = left_type
+
+	if left_sym.kind == .chan {
+		chan_info := left_sym.chan_info()
+		c.expected_type = chan_info.elem_type
+	}
+
+	if !node.left_ct_expr && !node.left.is_literal() {
+		node.left_ct_expr = c.comptime.is_comptime(node.left)
+	}
+	if !node.right_ct_expr && !node.right.is_literal() {
+		node.right_ct_expr = c.comptime.is_comptime(node.right)
+	}
 
 	// `if n is ast.Ident && n.is_mut { ... }`
 	if !c.inside_sql && node.op == .and {
@@ -44,6 +57,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// `arr << if n > 0 { 10 } else { 11 }` set the right c.expected_type
 	if node.op == .left_shift && c.table.sym(left_type).kind == .array {
+		c.markused_infiexpr(!c.is_builtin_mod && c.mod != 'strings')
 		if mut node.right is ast.IfExpr {
 			if node.right.is_expr && node.right.branches.len > 0 {
 				mut last_stmt := node.right.branches[0].stmts.last()
@@ -99,7 +113,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	mut right_sym := c.table.sym(right_type)
 	right_final_sym := c.table.final_sym(right_type)
-	mut left_sym := c.table.sym(left_type)
 	left_final_sym := c.table.final_sym(left_type)
 	left_pos := node.left.pos()
 	right_pos := node.right.pos()
@@ -317,12 +330,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if mut right_sym.info is ast.Alias && (right_sym.info.language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_right_type).split('.')[0]
 				&& (right_final_sym.is_primitive() || right_final_sym.kind == .enum)) {
-				right_sym = right_final_sym
+				right_sym = unsafe { right_final_sym }
 			}
 			if mut left_sym.info is ast.Alias && (left_sym.info.language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_left_type).split('.')[0]
 				&& (left_final_sym.is_primitive() || left_final_sym.kind == .enum)) {
-				left_sym = left_final_sym
+				left_sym = unsafe { left_final_sym }
 			}
 
 			if c.pref.translated && node.op in [.plus, .minus, .mul]
@@ -529,8 +542,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
-			} else if left_sym.kind == .struct
-				&& (left_sym.info as ast.Struct).generic_types.len > 0 {
+			} else if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0 {
 				node.promoted_type = ast.bool_type
 				return ast.bool_type
 			} else if left_sym.kind == .struct && right_sym.kind == .struct && node.op in [.eq, .lt] {
@@ -754,7 +766,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				ast.Ident {
 					if right_expr.name == c.comptime.comptime_for_variant_var {
-						c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
+						c.type_resolver.get_ct_type_or_default('${c.comptime.comptime_for_variant_var}.typ',
+							ast.void_type)
 					} else {
 						c.error('invalid type `${right_expr}`', right_expr.pos)
 						ast.no_type
@@ -780,11 +793,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('`${op}` can only be used to test for none in sql', node.pos)
 					}
 				} else if left_sym.kind !in [.interface, .sum_type]
-					&& !c.comptime.is_comptime_var(node.left) {
+					&& !c.comptime.is_comptime(node.left) {
 					c.error('`${op}` can only be used with interfaces and sum types',
 						node.pos) // can be used in sql too, but keep err simple
 				} else if mut left_sym.info is ast.SumType {
-					if typ !in left_sym.info.variants {
+					if typ !in left_sym.info.variants
+						&& c.unwrap_generic(typ) !in left_sym.info.variants {
 						c.error('`${left_sym.name}` has no variant `${right_sym.name}`',
 							right_pos)
 					}
@@ -865,10 +879,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		// TODO: broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			node.pos)
-	} else if left_sym.kind == .enum && right_sym.kind == .enum && !eq_ne {
-		left_enum := left_sym.info as ast.Enum
-		right_enum := right_sym.info as ast.Enum
-		if left_enum.is_flag && right_enum.is_flag {
+	} else if !eq_ne && mut left_sym.info is ast.Enum && mut right_sym.info is ast.Enum {
+		if left_sym.info.is_flag && right_sym.info.is_flag {
 			// `@[flag]` tagged enums are a special case that allow also `|` and `&` binary operators
 			if node.op !in [.pipe, .amp, .xor, .bit_not] {
 				c.error('only `==`, `!=`, `|`, `&`, `^` and `~` are defined on `@[flag]` tagged `enum`, use an explicit cast to `int` if needed',
@@ -893,9 +905,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	right_is_option := right_type.has_flag(.option)
 	if left_is_option || right_is_option {
 		opt_infix_pos := if left_is_option { left_pos } else { right_pos }
-		if (node.left !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector]
-			|| node.op in [.eq, .ne, .lt, .gt, .le, .ge]) && right_sym.kind != .none
-			&& !c.inside_sql {
+		if (node.left !in [ast.Ident, ast.IndexExpr, ast.SelectorExpr, ast.ComptimeSelector]
+			|| (node.op in [.eq, .ne] && !right_is_option)
+			|| node.op in [.lt, .gt, .le, .ge]) && right_sym.kind != .none && !c.inside_sql {
 			c.error('unwrapped Option cannot be used in an infix expression', opt_infix_pos)
 		}
 	}

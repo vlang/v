@@ -205,6 +205,7 @@ pub:
 pub const empty_expr = Expr(EmptyExpr(0))
 pub const empty_stmt = Stmt(EmptyStmt{})
 pub const empty_node = Node(EmptyNode{})
+pub const empty_comptime_const_value = ComptTimeConstValue(EmptyExpr(0))
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
@@ -398,7 +399,7 @@ pub mut:
 	end_comments []Comment // comments that after const field
 	// the comptime_expr_value field is filled by the checker, when it has enough
 	// info to evaluate the constant at compile time
-	comptime_expr_value ComptTimeConstValue = empty_comptime_const_expr()
+	comptime_expr_value ComptTimeConstValue = empty_comptime_const_value
 }
 
 // const declaration
@@ -423,22 +424,21 @@ pub:
 	generic_types []Type
 	is_pub        bool
 	// _pos fields for vfmt
-	mut_pos      int = -1 // mut:
-	pub_pos      int = -1 // pub:
-	pub_mut_pos  int = -1 // pub mut:
-	global_pos   int = -1 // __global:
-	module_pos   int = -1 // module:
-	language     Language
-	is_union     bool
-	attrs        []Attr
-	pre_comments []Comment
-	end_comments []Comment
-	embeds       []Embed
-
+	mut_pos          int = -1 // mut:
+	pub_pos          int = -1 // pub:
+	pub_mut_pos      int = -1 // pub mut:
+	global_pos       int = -1 // __global:
+	module_pos       int = -1 // module:
+	is_union         bool
+	attrs            []Attr
+	pre_comments     []Comment
+	end_comments     []Comment
+	embeds           []Embed
 	is_implements    bool
 	implements_types []TypeNode
 pub mut:
-	fields []StructField
+	language Language
+	fields   []StructField
 }
 
 pub struct Embed {
@@ -521,6 +521,7 @@ pub mut:
 	has_update_expr      bool // has `...a`
 	init_fields          []StructInitField
 	generic_types        []Type
+	language             Language
 }
 
 pub enum StructInitKind {
@@ -834,6 +835,7 @@ pub mut:
 	is_return_used         bool // return value is used for another expr
 	//
 	is_expand_simple_interpolation bool // true, when the function/method is marked as @[expand_simple_interpolation]
+	is_unwrapped_fn_selector       bool // true, when the call is from an unwrapped selector (e.g. if t.foo != none { t.foo() })
 	// Calls to it with an interpolation argument like `b.f('x ${y}')`, will be converted to `b.f('x ')` followed by `b.f(y)`.
 	// The same type, has to support also a .write_decimal(n i64) method.
 }
@@ -859,6 +861,7 @@ pub mut:
 	pos             token.Pos
 	should_be_ptr   bool // fn expects a ptr for this arg
 	// tmp_name        string // for autofree
+	ct_expr bool // true, when the expression is a comptime/generic expression
 }
 
 // function return statement
@@ -1073,6 +1076,7 @@ pub mut:
 	is_mut         bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
 	or_expr        OrExpr
 	concrete_types []Type
+	ct_expr        bool // is it a comptime expr?
 }
 
 // full_name returns the name of the ident, prefixed with the module name
@@ -1130,9 +1134,11 @@ pub mut:
 	or_block      OrExpr
 
 	ct_left_value_evaled  bool
-	ct_left_value         ComptTimeConstValue = empty_comptime_const_expr()
+	ct_left_value         ComptTimeConstValue = empty_comptime_const_value
+	left_ct_expr          bool // true when left is comptime/generic expr
 	ct_right_value_evaled bool
-	ct_right_value        ComptTimeConstValue = empty_comptime_const_expr()
+	ct_right_value        ComptTimeConstValue = empty_comptime_const_value
+	right_ct_expr         bool // true when right is comptime/generic expr
 
 	before_op_comments []Comment
 	after_op_comments  []Comment
@@ -1363,6 +1369,7 @@ pub:
 	mod         string
 	pos         token.Pos
 	source_file string
+	is_use_once bool // true for @[use_once]
 pub mut:
 	val      string // example: 'include <openssl/rand.h> # please install openssl // comment'
 	kind     string // : 'include'
@@ -1370,6 +1377,7 @@ pub mut:
 	msg      string // : 'please install openssl'
 	ct_conds []Expr // *all* comptime conditions, that must be true, for the hash to be processed
 	// ct_conds is filled by the checker, based on the current nesting of `$if cond1 {}` blocks
+	attrs []Attr
 }
 
 // variable assign statement
@@ -1447,13 +1455,14 @@ pub:
 
 pub struct AliasTypeDecl {
 pub:
-	name        string
-	is_pub      bool
-	typ         Type
+	name     string
+	is_pub   bool
+	typ      Type
+	pos      token.Pos
+	type_pos token.Pos
+	comments []Comment
+pub mut:
 	parent_type Type
-	pos         token.Pos
-	type_pos    token.Pos
-	comments    []Comment
 }
 
 // SumTypeDecl is the ast node for `type MySumType = string | int`
@@ -1545,12 +1554,13 @@ pub:
 	ecmnts        [][]Comment // optional iembed comments after each expr
 	pre_cmnts     []Comment
 	is_fixed      bool
+	is_option     bool // true if it was declared as ?[2]Type or ?[]Type
 	has_val       bool // fixed size literal `[expr, expr]!`
 	mod           string
 	has_len       bool
 	has_cap       bool
 	has_init      bool
-	has_index     bool // true if temp variable index is used
+	has_index     bool // true if temp variable index is used	
 pub mut:
 	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	len_expr     Expr   // len: expr
@@ -1989,6 +1999,8 @@ pub mut:
 	left_type  Type
 	field_expr Expr
 	typ        Type
+	is_name    bool   // true if f.$(field.name)
+	typ_key    string // `f.typ` cached key for type resolver
 }
 
 @[minify]
@@ -2148,6 +2160,17 @@ pub fn (expr Expr) is_blank_ident() bool {
 	return false
 }
 
+@[inline]
+pub fn (expr Expr) is_as_cast() bool {
+	if expr is ParExpr {
+		return expr.expr.is_as_cast()
+	} else if expr is SelectorExpr {
+		return expr.expr.is_as_cast()
+	} else {
+		return expr is AsCast
+	}
+}
+
 __global nested_expr_pos_calls = i64(0)
 // values above 14000 risk stack overflow by default on macos in Expr.pos() calls
 const max_nested_expr_pos_calls = 5000
@@ -2291,7 +2314,8 @@ pub:
 	typ    Type   // the type of the original expression
 	is_ptr bool   // whether the type is a pointer
 pub mut:
-	orig Expr // the original expression, which produced the C temp variable; used by x.str()
+	orig         Expr // the original expression, which produced the C temp variable; used by x.str()
+	is_fixed_ret bool // it is an array fixed returned from call
 }
 
 pub fn (node Node) pos() token.Pos {

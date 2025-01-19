@@ -873,6 +873,9 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		p.error('too many levels of Parser.parse_generic_inst_type() calls: ${p.generic_type_level}, probably due to too many layers embedded generic type')
 		return ast.void_type
 	}
+	if p.tok.kind == .lt {
+		p.error('The generic symbol `<>` is obsolete, please replace it with `[]`')
+	}
 	mut bs_name := name
 	mut bs_cname := name
 	start_pos := p.tok.pos()

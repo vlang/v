@@ -195,6 +195,7 @@ by using any of the following commands in a terminal:
     * [Performance tuning](#performance-tuning)
     * [Atomics](#atomics)
     * [Global Variables](#global-variables)
+    * [Static Variables](#static-variables)
     * [Cross compilation](#cross-compilation)
     * [Debugging](#debugging)
         * [C Backend binaries Default](#c-backend-binaries-default)
@@ -261,7 +262,7 @@ As in many other languages (such as C, Go, and Rust), `main` is the entry point 
 [`println`](#println) is one of the few [built-in functions](#builtin-functions).
 It prints the value passed to it to standard output.
 
-`fn main()` declaration can be skipped in one file programs.
+`fn main()` declaration can be skipped in single file programs.
 This is useful when writing small programs, "scripts", or just learning the language.
 For brevity, `fn main()` will be skipped in this tutorial.
 
@@ -1050,6 +1051,7 @@ An array can be of these types:
 | Thread       | `[]thread int`                       |
 | Reference    | `[]&f64`                             |
 | Shared       | `[]shared MyStructType`              |
+| Option       | `[]?f64`                          |
 
 **Example Code:**
 
@@ -4685,13 +4687,15 @@ struct User {
 	// and decoding will not fail.
 	name string @[required]
 	age  int
-	// Use the `skip` attribute to skip certain fields
+	// Use the `@[skip]` attribute to skip certain fields.
+	// You can also use `@[json: '-']`, and `@[sql: '-']`, which will cause only
+	// the `json` module to skip the field, or only the SQL orm to skip it.
 	foo Foo @[skip]
 	// If the field name is different in JSON, it can be specified
 	last_name string @[json: lastName]
 }
 
-data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25 }'
+data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25, "nullable": null }'
 user := json.decode(User, data) or {
 	eprintln('Failed to decode json, error: ${err}')
 	return
@@ -5764,8 +5768,8 @@ Deprecated functions cause warnings, which cause errors if built with `-prod`. T
 CI breakage, it is advisable to set a future date, ahead of the date when the code is merged. This 
 gives people who actively developed V projects, the chance to see the deprecation notice at least 
 once and fix the uses. Setting a date in the next 30 days, assumes they would have compiled their 
-projects manually at least once, within that time. For small changes, this should be plenty time. 
-For complex changes, this time may need to be longer. 
+projects manually at least once, within that time. For small changes, this should be plenty
+of time. For complex changes, this time may need to be longer. 
 
 Different V projects and maintainers may reasonably choose different deprecation policies. 
 Depending on the type and impact of the change, you may want to consult with them first, before 
@@ -6932,7 +6936,6 @@ performance, memory usage, or size.
 | `@[packed]`              | Memory usage                    | Potential performance loss                        |
 | `@[minify]`              | Performance, Memory usage       | May break binary serialization/reflection         |
 | `_likely_/_unlikely_`    | Performance                     | Risk of negative performance impact               |
-| `-skip-unused`           | Performance, Compile time, Size | Potential instability                             |
 | `-fast-math`             | Performance                     | Risk of incorrect mathematical operations results |
 | `-d no_segfault_handler` | Compile time, Size              | Loss of segfault trace                            |
 | `-cflags -march=native`  | Performance                     | Risk of reduced CPU compatibility                 |
@@ -7058,15 +7061,6 @@ expression is highly improbable. In the JS backend, that does nothing.
 - When the prediction can be wrong, as it might cause a performance penalty due to branch
 misprediction.
 
-#### `-skip-unused`
-
-This flag tells the V compiler to omit code that is not needed in the final executable to run your
-program correctly. This will remove unneeded `const` arrays allocations and unused functions
-from the code in the generated executable.
-
-This flag will be on by default in the future when its implementation will be stabilized and all
-severe bugs will be found.
-
 **When to Use**
 
 - For production builds where you want to reduce the executable size and improve runtime
@@ -7176,7 +7170,7 @@ rm -f *.profraw
 rm -f default.profdata
 
 # Initial build with PGO instrumentation
-v -cc clang -skip-unused -prod -cflags -fprofile-generate -o pgo_gen .
+v -cc clang -prod -cflags -fprofile-generate -o pgo_gen .
 
 # Run the instrumented executable 10 times
 for i in {1..10}; do
@@ -7187,7 +7181,7 @@ done
 llvm-profdata merge -o default.profdata *.profraw
 
 # Compile the optimized version using the PGO data
-v -cc clang -skip-unused -prod -cflags "-fprofile-use=${CUR_DIR}/default.profdata" -o optimized_program .
+v -cc clang -prod -cflags "-fprofile-use=${CUR_DIR}/default.profdata" -o optimized_program .
 
 # Remove PGO data and instrumented executable
 rm *.profraw
@@ -7327,6 +7321,41 @@ to race conditions. There are several approaches to deal with these:
   In this case data races lead to random numbers in different threads becoming somewhat
   correlated, which is acceptable considering the performance penalty that using
   synchronization primitives would represent.
+
+## Static Variables
+
+V also supports *static variables*, which are like *global variables*, but
+available only *inside* a single unsafe function (you can look at them as
+namespaced globals).
+
+Note: their use is discouraged too, for reasons similar to why globals
+are discouraged. The feature is supported to enable translating existing
+low level C code into V code, using `v translate`.
+
+Note: the function in which you use a static variable, has to be marked
+with @[unsafe]. Also unlike using globals, using static variables, do not
+require you to pass the flag `-enable-globals`, because they can only be
+read/changed inside a single function, which has full control over the
+state stored in them.
+
+Here is a small example of how static variables can be used:
+```v
+@[unsafe]
+fn counter() int {
+	mut static x := 42
+	// Note: x is initialised to 42, just _once_.
+	x++
+	return x
+}
+
+fn f() int {
+	return unsafe { counter() }
+}
+
+println(f()) // prints 43
+println(f()) // prints 44
+println(f()) // prints 45
+```
 
 ## Cross compilation
 

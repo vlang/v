@@ -24,7 +24,7 @@ env:
   V_CI_MUSL: 1
 
 jobs:
-  alpine-docker-musl-gcc:
+  docker-alpine-musl-gcc:
     runs-on: ubuntu-20.04
     timeout-minutes: 241
     container:
@@ -45,7 +45,7 @@ jobs:
           echo "C Compiler:"
           gcc --version
       - name: Add dependencies
-        run: apk add libc6-compat
+        run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V
         run: CC=gcc make
       - name: All code is formatted
@@ -53,7 +53,7 @@ jobs:
       - name: Run only essential tests
         run: VTEST_JUST_ESSENTIAL=1 ./v test-self
 
-  ubuntu-docker-musl:
+  docker-ubuntu-musl:
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     container:

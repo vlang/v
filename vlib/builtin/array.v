@@ -30,6 +30,8 @@ pub enum ArrayFlags {
 
 // Internal function, used by V (`nums := []int`)
 fn __new_array(mylen int, cap int, elm_size int) array {
+	panic_on_negative_len(mylen)
+	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	arr := array{
 		element_size: elm_size
@@ -41,6 +43,8 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 }
 
 fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array {
+	panic_on_negative_len(mylen)
+	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -79,6 +83,8 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 }
 
 fn __new_array_with_multi_default(mylen int, cap int, elm_size int, val voidptr) array {
+	panic_on_negative_len(mylen)
+	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -106,6 +112,8 @@ fn __new_array_with_multi_default(mylen int, cap int, elm_size int, val voidptr)
 }
 
 fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, depth int) array {
+	panic_on_negative_len(mylen)
+	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -127,6 +135,8 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, d
 }
 
 fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array {
+	panic_on_negative_len(mylen)
+	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
@@ -149,6 +159,8 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array
 
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array {
+	panic_on_negative_len(len)
+	panic_on_negative_cap(cap)
 	cap_ := if cap < len { len } else { cap }
 	arr := array{
 		element_size: elm_size
@@ -163,6 +175,8 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 
 // Private function, used by V (`nums := [1, 2, 3] !`)
 fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidptr) array {
+	panic_on_negative_len(len)
+	panic_on_negative_cap(cap)
 	arr := array{
 		element_size: elm_size
 		data:         c_array
@@ -180,7 +194,8 @@ fn (mut a array) ensure_cap(required int) {
 		return
 	}
 	if a.flags.has(.nogrow) {
-		panic('array.ensure_cap: array with the flag `.nogrow` cannot grow in size, array required new size: ${required}')
+		panic_n('array.ensure_cap: array with the flag `.nogrow` cannot grow in size, array required new size:',
+			required)
 	}
 	mut cap := if a.cap > 0 { i64(a.cap) } else { i64(2) }
 	for required > cap {
@@ -191,7 +206,8 @@ fn (mut a array) ensure_cap(required int) {
 			// limit the capacity, since bigger values, will overflow the 32bit integer used to store it
 			cap = max_int
 		} else {
-			panic('array.ensure_cap: array needs to grow to cap = ${cap}, which is > 2^31')
+			panic_n('array.ensure_cap: array needs to grow to cap (which is > 2^31):',
+				cap)
 		}
 	}
 	new_size := u64(cap) * u64(a.element_size)
@@ -226,7 +242,7 @@ pub fn (a array) repeat(count int) array {
 @[direct_array_access; unsafe]
 pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
-		panic('array.repeat: count is negative: ${count}')
+		panic_n('array.repeat: count is negative:', count)
 	}
 	mut size := u64(count) * u64(a.len) * u64(a.element_size)
 	if size == 0 {
@@ -279,7 +295,7 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 // ```
 pub fn (mut a array) insert(i int, val voidptr) {
 	if i < 0 || i > a.len {
-		panic('array.insert: index out of range (i == ${i}, a.len == ${a.len})')
+		panic_n2('array.insert: index out of range (i,a.len):', i, a.len)
 	}
 	if a.len == max_int {
 		panic('array.insert: a.len reached max_int')
@@ -299,11 +315,11 @@ pub fn (mut a array) insert(i int, val voidptr) {
 @[unsafe]
 fn (mut a array) insert_many(i int, val voidptr, size int) {
 	if i < 0 || i > a.len {
-		panic('array.insert_many: index out of range (i == ${i}, a.len == ${a.len})')
+		panic_n2('array.insert_many: index out of range (i,a.len):', i, a.len)
 	}
 	new_len := i64(a.len) + i64(size)
 	if new_len > max_int {
-		panic('array.insert_many: a.len = ${new_len} will exceed max_int')
+		panic_n('array.insert_many: max_int will be exceeded by a.len:', new_len)
 	}
 	a.ensure_cap(int(new_len))
 	elem_size := a.element_size
@@ -360,8 +376,12 @@ pub fn (mut a array) delete(i int) {
 // ```
 pub fn (mut a array) delete_many(i int, size int) {
 	if i < 0 || i64(i) + i64(size) > i64(a.len) {
-		endidx := if size > 1 { '..${i + size}' } else { '' }
-		panic('array.delete: index out of range (i == ${i}${endidx}, a.len == ${a.len})')
+		if size > 1 {
+			panic_n3('array.delete: index out of range (i,i+size,a.len):', i, i + size,
+				a.len)
+		} else {
+			panic_n2('array.delete: index out of range (i,a.len):', i, a.len)
+		}
 	}
 	if a.flags.all(.noshrink | .noslices) {
 		unsafe {
@@ -451,7 +471,7 @@ fn (a array) get_unsafe(i int) voidptr {
 fn (a array) get(i int) voidptr {
 	$if !no_bounds_checking {
 		if i < 0 || i >= a.len {
-			panic('array.get: index out of range (i == ${i}, a.len == ${a.len})')
+			panic_n2('array.get: index out of range (i,a.len):', i, a.len)
 		}
 	}
 	unsafe {
@@ -543,13 +563,15 @@ fn (a array) slice(start int, _end int) array {
 	end := if _end == max_int { a.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end {
-			panic('array.slice: invalid slice index (${start} > ${end})')
+			panic('array.slice: invalid slice index (start>end):' + i64(start).str() + ', ' +
+				i64(end).str())
 		}
 		if end > a.len {
-			panic('array.slice: slice bounds out of range (${end} >= ${a.len})')
+			panic('array.slice: slice bounds out of range (' + i64(end).str() + ' >= ' +
+				i64(a.len).str() + ')')
 		}
 		if start < 0 {
-			panic('array.slice: slice bounds out of range (${start} < 0)')
+			panic('array.slice: slice bounds out of range (start<0):' + start.str())
 		}
 	}
 	// TODO: integrate reference counting
@@ -669,7 +691,7 @@ fn (mut a array) set_unsafe(i int, val voidptr) {
 fn (mut a array) set(i int, val voidptr) {
 	$if !no_bounds_checking {
 		if i < 0 || i >= a.len {
-			panic('array.set: index out of range (i == ${i}, a.len == ${a.len})')
+			panic_n2('array.set: index out of range (i,a.len):', i, a.len)
 		}
 	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
@@ -986,7 +1008,7 @@ pub fn copy(mut dst []u8, src []u8) int {
 pub fn (mut a array) grow_cap(amount int) {
 	new_cap := i64(amount) + i64(a.cap)
 	if new_cap > max_int {
-		panic('array.grow_cap: new capacity ${new_cap} will exceed max_int')
+		panic_n('array.grow_cap: max_int will be exceeded by new cap:', new_cap)
 	}
 	a.ensure_cap(int(new_cap))
 }
@@ -999,7 +1021,7 @@ pub fn (mut a array) grow_cap(amount int) {
 pub fn (mut a array) grow_len(amount int) {
 	new_len := i64(amount) + i64(a.len)
 	if new_len > max_int {
-		panic('array.grow_len: new len ${new_len} will exceed max_int')
+		panic_n('array.grow_len: max_int will be exceeded by new len:', new_len)
 	}
 	a.ensure_cap(int(new_len))
 	a.len = int(new_len)
@@ -1034,4 +1056,18 @@ pub fn (data voidptr) vbytes(len int) []u8 {
 @[unsafe]
 pub fn (data &u8) vbytes(len int) []u8 {
 	return unsafe { voidptr(data).vbytes(len) }
+}
+
+@[if !no_bounds_checking ?; inline]
+fn panic_on_negative_len(len int) {
+	if len < 0 {
+		panic_n('negative .len:', len)
+	}
+}
+
+@[if !no_bounds_checking ?; inline]
+fn panic_on_negative_cap(cap int) {
+	if cap < 0 {
+		panic_n('negative .cap:', cap)
+	}
 }

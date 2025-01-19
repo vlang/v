@@ -10,7 +10,7 @@ const text_size = 16
 struct App {
 mut:
 	gg                &gg.Context = unsafe { nil }
-	dropped_file_list []string    = []string{}
+	dropped_file_list []string
 }
 
 fn main() {

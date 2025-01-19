@@ -1,6 +1,6 @@
 module main
 
-import v.doc
+import doc
 
 @[inline]
 fn slug(title string) string {
@@ -12,12 +12,15 @@ fn escape(str string) string {
 }
 
 fn get_sym_name(dn doc.DocNode) string {
-	sym_name := if dn.parent_name.len > 0 && dn.parent_name != 'void' {
-		'(${dn.parent_name}) ${dn.name}'
-	} else {
-		dn.name
+	if dn.is_readme {
+		if title := dn.frontmatter['title'] {
+			return title
+		}
 	}
-	return sym_name
+	if dn.parent_name.len > 0 && dn.parent_name != 'void' {
+		return '(${dn.parent_name}) ${dn.name}'
+	}
+	return dn.name
 }
 
 fn get_node_id(dn doc.DocNode) string {
@@ -30,7 +33,7 @@ fn get_node_id(dn doc.DocNode) string {
 }
 
 fn is_module_readme(dn doc.DocNode) bool {
-	return dn.comments.len > 0 && (dn.content == 'module ${dn.name}' || dn.name == 'README')
+	return dn.is_readme || (dn.comments.len > 0 && dn.content == 'module ${dn.name}')
 }
 
 // trim_doc_node_description returns the nodes trimmed description.

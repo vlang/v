@@ -72,7 +72,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		parent_sym := g.table.sym(sym.info.parent_type)
 		if parent_sym.has_method('str') {
 			typ = sym.info.parent_type
-			sym = parent_sym
+			sym = unsafe { parent_sym }
 		}
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
@@ -118,7 +118,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(exp_typ)
-		temp_var_needed := expr is ast.CallExpr && expr.return_type.is_ptr()
+		temp_var_needed := expr is ast.CallExpr
+			&& (expr.return_type.is_ptr() || g.table.sym(expr.return_type).is_c_struct())
 		mut tmp_var := ''
 		if temp_var_needed {
 			tmp_var = g.new_tmp_var()
@@ -206,6 +207,21 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
 		if sym.kind != .function {
+			unwrap_option := expr is ast.Ident && expr.or_expr.kind == .propagate_option
+			exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
+			temp_var_needed := expr is ast.CallExpr
+				&& (expr.return_type.is_ptr() || g.table.sym(expr.return_type).is_c_struct())
+			mut tmp_var := ''
+			if temp_var_needed {
+				tmp_var = g.new_tmp_var()
+				ret_typ := g.styp(exp_typ)
+				line := g.go_before_last_stmt().trim_space()
+				g.empty_line = true
+				g.write('${ret_typ} ${tmp_var} = ')
+				g.expr(expr)
+				g.writeln(';')
+				g.write(line)
+			}
 			if str_method_expects_ptr && !is_ptr && !typ.has_flag(.option) {
 				g.write('&')
 			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
@@ -215,7 +231,15 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 					g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 				}
 			}
-			g.expr_with_cast(expr, typ, typ)
+			if temp_var_needed {
+				g.write(tmp_var)
+			} else {
+				if expr is ast.StructInit && g.table.final_sym(expr.typ).is_primitive_fixed_array() {
+					s := g.styp(expr.typ)
+					g.write('(${s})')
+				}
+				g.expr_with_cast(expr, typ, typ)
+			}
 		} else if typ.has_flag(.option) {
 			// only Option fn receive argument
 			g.expr_with_cast(expr, typ, typ)

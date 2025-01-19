@@ -45,7 +45,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 	c.inside_interface_deref = true
 	for i, mut expr in node.exprs {
 		mut ftyp := c.expr(mut expr)
-		ftyp = c.comptime.get_type_or_default(expr, c.check_expr_option_or_result_call(expr,
+		ftyp = c.type_resolver.get_type_or_default(expr, c.check_expr_option_or_result_call(expr,
 			ftyp))
 		if ftyp == ast.void_type {
 			c.error('expression does not return a value', expr.pos())
@@ -53,17 +53,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 			c.error('expression returning type `char` cannot be used in string interpolation directly, print its address or cast it to an integer instead',
 				expr.pos())
 		}
-		if c.pref.skip_unused && !c.is_builtin_mod {
-			if !c.table.sym(ftyp).has_method('str') {
-				c.table.used_features.auto_str = true
-				if ftyp.is_ptr() {
-					c.table.used_features.auto_str_ptr = true
-				}
-			} else {
-				c.table.used_features.print_types[ftyp.idx()] = true
-			}
-			c.table.used_features.interpolation = true
-		}
+		c.markused_string_inter_lit(mut node, ftyp)
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
 		ftyp_sym := c.table.sym(ftyp)
@@ -85,7 +75,8 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 					c.error('no known default format for type `${c.table.get_type_name(ftyp)}`',
 						node.fmt_poss[i])
 				}
-			} else if c.comptime.is_comptime_var(expr) && c.comptime.get_type(expr) != ast.void_type {
+			} else if c.comptime.is_comptime(expr)
+				&& c.type_resolver.get_type_or_default(expr, ast.void_type) != ast.void_type {
 				// still `_` placeholder for comptime variable without specifier
 				node.need_fmts[i] = false
 			} else {

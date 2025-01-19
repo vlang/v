@@ -475,7 +475,7 @@ fn (mut s Scanner) ident_dec_number() string {
 	}
 	// scan exponential part
 	mut has_exp := false
-	if s.pos < s.text.len && s.text[s.pos] in [`e`, `E`] {
+	if s.pos < s.text.len && s.text[s.pos] in [`e`, `E`] && !s.is_inside_string {
 		has_exp = true
 		s.pos++
 		if s.pos < s.text.len && s.text[s.pos] in [`-`, `+`] {
@@ -505,7 +505,7 @@ fn (mut s Scanner) ident_dec_number() string {
 		if !s.pref.translated {
 			s.error('this number has unsuitable digit `${first_wrong_digit.str()}`')
 		}
-	} else if s.text[s.pos - 1] in [`e`, `E`] {
+	} else if s.text[s.pos - 1] in [`e`, `E`] && !s.is_inside_string {
 		// error check: 5e
 		s.pos-- // adjust error position
 		s.error('exponent has no digits')

@@ -33,6 +33,7 @@ pub fn (t Task) run() {
 }
 
 pub fn run(all_tasks map[string]Task) {
+	unbuffer_stdout()
 	if os.args.len < 2 {
 		println('Usage: v run macos_ci.vsh <task_name>')
 		println('Available tasks are: ${all_tasks.keys()}')

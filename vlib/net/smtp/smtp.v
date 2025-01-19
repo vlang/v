@@ -61,9 +61,10 @@ pub:
 }
 
 pub struct Attachment {
+pub:
+	cid      string
 	filename string
 	bytes    []u8
-	cid      string
 }
 
 // new_client returns a new SMTP client and connects to it
@@ -88,7 +89,7 @@ pub fn (mut c Client) reconnect() ! {
 	conn := net.dial_tcp('${c.server}:${c.port}') or { return error('Connecting to server failed') }
 	c.conn = conn
 
-	if c.ssl {
+	if c.ssl || c.encrypted {
 		c.connect_ssl()!
 	} else {
 		c.reader = io.new_buffered_reader(reader: c.conn)

@@ -96,8 +96,8 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 
 // infix_expr_eq_op generates code for `==` and `!=`
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
-	left_type := g.comptime.get_expr_type_or_default(node.left, node.left_type)
-	right_type := g.comptime.get_expr_type_or_default(node.right, node.right_type)
+	left_type := g.type_resolver.get_expr_type_or_default(node.left, node.left_type)
+	right_type := g.type_resolver.get_expr_type_or_default(node.right, node.right_type)
 	left := g.unwrap(left_type)
 	right := g.unwrap(right_type)
 	mut has_defined_eq_operator := false
@@ -112,7 +112,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 		return
 	}
-	is_none_check := left_type.has_flag(.option) && node.right is ast.None
+	left_is_option := left_type.has_flag(.option)
+	right_is_option := right_type.has_flag(.option)
+	is_none_check := left_is_option && node.right is ast.None
 	if is_none_check {
 		g.gen_is_none_check(node)
 	} else if (left.typ.is_ptr() && right.typ.is_int())
@@ -214,8 +216,17 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					if left.typ.is_ptr() {
 						g.write('*'.repeat(left.typ.nr_muls()))
 					}
+					if node.left is ast.StructInit && left.unaliased_sym.is_primitive_fixed_array() {
+						s := g.styp(left.unaliased)
+						g.write('(${s})')
+					}
 					g.expr(node.left)
 					g.write(', ')
+					if node.right is ast.StructInit
+						&& right.unaliased_sym.is_primitive_fixed_array() {
+						s := g.styp(right.unaliased)
+						g.write('(${s})')
+					}
 					if right.typ.is_ptr() {
 						g.write('*'.repeat(right.typ.nr_muls()))
 					}
@@ -264,6 +275,10 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 						s := g.styp(left.unaliased)
 						g.write('(${s})')
 					}
+				} else if node.left is ast.StructInit
+					&& left.unaliased_sym.is_primitive_fixed_array() {
+					s := g.styp(left.unaliased)
+					g.write('(${s})')
 				}
 				g.expr(node.left)
 				g.write(', ')
@@ -272,6 +287,10 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 						s := g.styp(right.unaliased)
 						g.write('(${s})')
 					}
+				} else if node.right is ast.StructInit
+					&& right.unaliased_sym.is_primitive_fixed_array() {
+					s := g.styp(right.unaliased)
+					g.write('(${s})')
 				}
 				g.expr(node.right)
 				g.write(')')
@@ -367,6 +386,18 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			signed_type:   left.unaliased
 			signed_expr:   node.left
 		)
+	} else if left_is_option && right_is_option {
+		old_inside_opt_or_res := g.inside_opt_or_res
+		g.inside_opt_or_res = true
+		if node.op == .eq {
+			g.write('!')
+		}
+		g.write('memcmp(')
+		g.expr(node.left)
+		g.write('.data, ')
+		g.expr(node.right)
+		g.write('.data, sizeof(${g.base_type(left_type)}))')
+		g.inside_opt_or_res = old_inside_opt_or_res
 	} else {
 		g.gen_plain_infix_expr(node)
 	}
@@ -803,7 +834,7 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 
 // infix_expr_is_op generates code for `is` and `!is`
 fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
-	mut left_sym := g.table.sym(g.unwrap_generic(g.comptime.get_type_or_default(node.left,
+	mut left_sym := g.table.sym(g.unwrap_generic(g.type_resolver.get_type_or_default(node.left,
 		node.left_type)))
 	is_aggregate := left_sym.kind == .aggregate
 	if is_aggregate {
@@ -855,9 +886,8 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	if node.right is ast.None {
 		g.write('${ast.none_type.idx()}')
 	} else if node.right is ast.Ident && node.right.name == g.comptime.comptime_for_variant_var {
-		variant_idx := g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'] or {
-			ast.void_type
-		}
+		variant_idx := g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
+			ast.void_type)
 		g.write('${int(variant_idx)}')
 	} else {
 		g.expr(node.right)
@@ -894,8 +924,8 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 // infix_expr_arithmetic_op generates code for `+`, `-`, `*`, `/`, and `%`
 // It handles operator overloading when necessary
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
-	left := g.unwrap(node.left_type)
-	right := g.unwrap(node.right_type)
+	left := g.unwrap(g.type_resolver.get_type_or_default(node.left, node.left_type))
+	right := g.unwrap(g.type_resolver.get_type_or_default(node.right, node.right_type))
 	if left.sym.info is ast.Struct && left.sym.info.generic_types.len > 0 {
 		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
 		method_name = g.generic_fn_name(left.sym.info.concrete_types, method_name)
@@ -1024,6 +1054,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				needs_clone := !g.is_builtin_mod
 					&& array_info.elem_type.idx() == ast.string_type_idx
 					&& array_info.elem_type.nr_muls() == 0
+					&& node.right !in [ast.StringLiteral, ast.StringInterLiteral, ast.CallExpr, ast.IndexExpr, ast.InfixExpr]
 				if needs_clone {
 					g.write('string_clone(')
 				}
@@ -1157,7 +1188,13 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)
 	if needs_cast {
-		typ_str := g.styp(node.promoted_type)
+		typ_str := if node.left_ct_expr {
+			g.styp(g.type_resolver.get_type_or_default(node.left, node.left_type))
+		} else if node.left !in [ast.Ident, ast.CastExpr] && node.right_ct_expr {
+			g.styp(g.type_resolver.get_type_or_default(node.right, node.promoted_type))
+		} else {
+			g.styp(node.promoted_type)
+		}
 		g.write('(${typ_str})(')
 	}
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {
@@ -1170,13 +1207,32 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 			g.inside_interface_deref = inside_interface_deref_old
 		}
 	}
+	is_ctemp_fixed_ret := node.op in [.eq, .ne] && node.left is ast.CTempVar
+		&& node.left.is_fixed_ret
+	if is_ctemp_fixed_ret {
+		if node.op == .eq {
+			g.write('!')
+		}
+		g.write('memcmp(')
+	}
 	g.expr(node.left)
-	g.write(' ${node.op.str()} ')
+	if !is_ctemp_fixed_ret {
+		g.write(' ${node.op.str()} ')
+	} else {
+		g.write(', ')
+	}
+
+	if is_ctemp_fixed_ret {
+		g.write('(${g.styp(node.right_type)})')
+	}
 	if node.right_type.is_ptr() && node.right.is_auto_deref_var() && !node.left_type.is_pointer() {
 		g.write('*')
 		g.expr(node.right)
 	} else {
 		g.expr_with_cast(node.right, node.right_type, node.left_type)
+	}
+	if is_ctemp_fixed_ret {
+		g.write(', sizeof(${g.styp(node.right_type)}))')
 	}
 	if needs_cast {
 		g.write(')')

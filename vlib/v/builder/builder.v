@@ -43,6 +43,7 @@ pub mut:
 	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
 	crun_cache_keys       []string            // target executable + top level source files; filled in by Builder.should_rebuild
 	executable_exists     bool                // if the executable already exists, don't remove new executable after `v run`
+	str_args              string              // for parallel_cc mode only, to know which cc args to use (like -I etc)
 }
 
 pub fn new_builder(pref_ &pref.Preferences) Builder {
@@ -58,13 +59,12 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 	}
 	table.pointer_size = if pref_.m64 { 8 } else { 4 }
 	mut msvc := MsvcResult{}
-	$if windows {
-		msvc = find_msvc(pref_.m64) or {
-			if pref_.ccompiler == 'msvc' {
-				// verror('cannot find MSVC on this OS')
-			}
-			MsvcResult{
-				valid: false
+	if pref_.ccompiler == 'msvc' {
+		$if windows {
+			msvc = find_msvc(pref_.m64) or {
+				MsvcResult{
+					valid: false
+				}
 			}
 		}
 	}
@@ -136,6 +136,11 @@ pub fn (mut b Builder) middle_stages() ! {
 	b.print_warnings_and_errors()
 	if b.checker.should_abort {
 		return error('too many errors/warnings/notices')
+	}
+	if b.checker.unresolved_fixed_sizes.len > 0 {
+		util.timing_start('Checker.update_unresolved_fixed_sizes')
+		b.checker.update_unresolved_fixed_sizes()
+		util.timing_measure('Checker.update_unresolved_fixed_sizes')
 	}
 	if b.pref.check_only {
 		return error_with_code('stop_after_checker', 8001)

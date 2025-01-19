@@ -225,7 +225,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	mut c_flags := '-std=gnu11 -I ./thirdparty/stdatomic/nix -w'
 	mut c_ldflags := '-lm -lpthread'
 	mut vc_source_file_location := os.join_path_single(vgit_context.path_vc, 'v.c')
-	mut vc_v_cpermissive_flags := '${vgit_context.cc_options} -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration -Wno-error=int-conversion'
+	mut vc_v_cpermissive_flags := '${vgit_context.cc_options} -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration -Wno-error=int-conversion -fpermissive'
 	// after 85b58b0 2021-09-28, -no-parallel is supported, and can be used to force the cgen stage to be single threaded, which increases the chances of successful bootstraps
 	mut vc_v_bootstrap_flags := ''
 	if vgit_context.commit_v__ts >= 1632778086 {
@@ -254,10 +254,10 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 			c_flags += '-lws2_32'
 		}
 		command_for_building_v_from_c_source = c(vgit_context.cc, '${vc_v_cpermissive_flags} ${c_flags} -o cv.exe "${vc_source_file_location}" ${c_ldflags}')
-		command_for_selfbuilding = c('.\\cv.exe', '${vc_v_bootstrap_flags} -o ${vgit_context.vexename} {SOURCE}')
+		command_for_selfbuilding = c('.\\cv.exe', '${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" -o ${vgit_context.vexename} {SOURCE}')
 	} else {
 		command_for_building_v_from_c_source = c(vgit_context.cc, '${vc_v_cpermissive_flags} ${c_flags} -o cv "${vc_source_file_location}" ${c_ldflags}')
-		command_for_selfbuilding = c('./cv', '${vc_v_bootstrap_flags} -o ${vgit_context.vexename} {SOURCE}')
+		command_for_selfbuilding = c('./cv', '${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" -o ${vgit_context.vexename} {SOURCE}')
 	}
 
 	scripting.run(command_for_building_v_from_c_source)

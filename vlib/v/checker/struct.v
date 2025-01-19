@@ -42,11 +42,12 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			} else if (embed_sym.info as ast.Struct).is_heap && !embed.typ.is_ptr() {
 				struct_sym.info.is_heap = true
 			}
-			if embed.typ.has_flag(.generic) {
+			embed_is_generic := embed.typ.has_flag(.generic)
+			if embed_is_generic {
 				has_generic_types = true
 			}
 			// Ensure each generic type of the embed was declared in the struct's definition
-			if node.generic_types.len > 0 && embed.typ.has_flag(.generic) {
+			if embed_is_generic && node.generic_types.len > 0 {
 				embed_generic_names := c.table.generic_type_names(embed.typ)
 				node_generic_names := node.generic_types.map(c.table.type_to_str(it))
 				for name in embed_generic_names {
@@ -163,14 +164,12 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if !c.ensure_type_exists(field.typ, field.type_pos) {
 				continue
 			}
-			if !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos, c.table.final_sym(field.typ).kind in [
-				.array,
-				.array_fixed,
-				.map,
-			], field.typ.has_flag(.generic)) {
+			field_is_generic := field.typ.has_flag(.generic)
+			if c.table.type_kind(field.typ) != .alias
+				&& !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos, c.table.final_sym(field.typ).kind in [.array, .array_fixed, .map], field_is_generic) {
 				continue
 			}
-			if field.typ.has_flag(.generic) {
+			if field_is_generic {
 				has_generic_types = true
 			}
 			if node.language == .v {
@@ -218,7 +217,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 				.alias {
 					if sym.name == 'byte' {
-						c.warn('byte is deprecated, use u8 instead', field.type_pos)
+						c.error('byte is deprecated, use u8 instead', field.type_pos)
 					}
 				}
 				else {
@@ -228,7 +227,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 
 			if field.has_default_expr {
 				c.expected_type = field.typ
-				if !field.typ.has_flag(.option) && !field.typ.has_flag(.result) {
+				if !field.typ.has_option_or_result() {
 					c.check_expr_option_or_result_call(field.default_expr, field.default_expr_typ)
 				}
 				if sym.info is ast.ArrayFixed && field.typ == field.default_expr_typ {
@@ -272,12 +271,14 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 								field.default_expr.pos)
 						}
 					}
-					if field.typ.has_flag(.option) && field.default_expr is ast.None {
-						c.warn('unnecessary default value of `none`: struct fields are zeroed by default',
-							field.default_expr.pos)
-					}
-					if field.typ.has_flag(.option) && field.default_expr.is_nil() {
-						c.error('cannot assign `nil` to option value', field.default_expr.pos())
+					field_is_option := field.typ.has_flag(.option)
+					if field_is_option {
+						if field.default_expr is ast.None {
+							c.warn('unnecessary default value of `none`: struct fields are zeroed by default',
+								field.default_expr.pos)
+						} else if field.default_expr.is_nil() {
+							c.error('cannot assign `nil` to option value', field.default_expr.pos())
+						}
 					}
 					continue
 				}
@@ -441,6 +442,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		} else {
 			node.typ = c.expected_type
 		}
+	}
+	if c.pref.skip_unused && !c.is_builtin_mod && !c.table.used_features.external_types {
+		type_str := c.table.type_to_str(node.typ)
+		c.table.used_features.external_types = type_str.contains('.') && type_str.len > 1
 	}
 	struct_sym := c.table.sym(node.typ)
 	mut old_inside_generic_struct_init := false
@@ -694,7 +699,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				if got_type == ast.void_type {
 					c.error('`${init_field.expr}` (no value) used as value', init_field.pos)
 				}
-				if !exp_type.has_flag(.option) {
+				exp_type_is_option := exp_type.has_flag(.option)
+				if !exp_type_is_option {
 					got_type = c.check_expr_option_or_result_call(init_field.expr, got_type)
 					if got_type.has_flag(.option) {
 						c.error('cannot assign an Option value to a non-option struct field',
@@ -707,7 +713,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				if got_type.has_flag(.result) {
 					c.check_expr_option_or_result_call(init_field.expr, init_field.typ)
 				}
-				if exp_type.has_flag(.option) && got_type.is_ptr() && !(exp_type.is_ptr()
+				if exp_type_is_option && got_type.is_ptr() && !(exp_type.is_ptr()
 					&& exp_type_sym.kind == .struct) {
 					c.error('cannot assign a pointer to option struct field', init_field.pos)
 				}
@@ -776,7 +782,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				} else {
 					if !c.inside_unsafe && type_sym.language == .v && !(c.file.is_translated
 						|| c.pref.translated) && exp_type.is_ptr()
-						&& !got_type.is_any_kind_of_pointer() && !exp_type.has_flag(.option)
+						&& !got_type.is_any_kind_of_pointer() && !exp_type_is_option
 						&& !(init_field.expr is ast.UnsafeExpr && init_field.expr.expr.str() == '0') {
 						if init_field.expr.str() == '0' {
 							c.error('assigning `0` to a reference field is only allowed in `unsafe` blocks',
@@ -787,7 +793,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						}
 					} else if exp_type.is_any_kind_of_pointer()
 						&& !got_type.is_any_kind_of_pointer() && !got_type.is_int()
-						&& (!exp_type.has_flag(.option) || got_type.idx() != ast.none_type_idx) {
+						&& (!exp_type_is_option || got_type.idx() != ast.none_type_idx) {
 						got_typ_str := c.table.type_to_str(got_type)
 						exp_typ_str := c.table.type_to_str(exp_type)
 						c.error('cannot assign to field `${field_info.name}`: expected a pointer `${exp_typ_str}`, but got `${got_typ_str}`',

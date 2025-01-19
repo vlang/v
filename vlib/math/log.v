@@ -1,5 +1,10 @@
 module math
 
+const two54 = f64(1.80143985094819840000e+16)
+const ivln10 = f64(4.34294481903251816668e-01)
+const log10_2hi = f64(3.01029995663611771306e-01)
+const log10_2lo = f64(3.69423907715893078616e-13)
+
 // log_n returns log base b of x
 pub fn log_n(x f64, b f64) f64 {
 	y := log(x)
@@ -9,8 +14,43 @@ pub fn log_n(x f64, b f64) f64 {
 
 // log10 returns the decimal logarithm of x.
 // The special cases are the same as for log.
+// log10(10**N) = N  for N=0,1,...,22.
 pub fn log10(x f64) f64 {
-	return log(x) * (1.0 / ln10)
+	// https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/ieee754/dbl-64/e_log10.c
+
+	mut x_ := x
+	mut hx := i64(f64_bits(x_))
+	mut k := i32(0)
+	if hx < i64(0x0010000000000000) {
+		// x < 2**-1022
+		if hx & 0x7fffffffffffffff == 0 {
+			return inf(-1) // log(+-0)=-inf
+		}
+		if hx < 0 {
+			return (x_ - x_) / (x_ - x_) // log(-#) = NaN
+		}
+		k = k - 54
+		x_ *= two54 // subnormal number, scale up x
+		hx = i64(f64_bits(x_))
+	}
+
+	// scale up resulted in a NaN number
+	if hx >= u64(0x7ff0000000000000) {
+		return x_ + x_
+	}
+
+	k = k + i32((u64((hx >> 52) - 1023)))
+	i := i32((u64(k) & 0x8000000000000000) >> 63)
+	hx = (hx & 0x000fffffffffffff) | (u64(0x3ff - i) << 52)
+	y := f64(k + i)
+	/*
+	if FIX_INT_FP_CONVERT_ZERO && y == 0.0 {
+		y = 0.0
+	}
+	*/
+	x_ = f64_from_bits(u64(hx))
+	z := y * log10_2lo + ivln10 * log(x_)
+	return z + y * log10_2hi
 }
 
 // log2 returns the binary logarithm of x.

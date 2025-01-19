@@ -592,7 +592,7 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add_terse('return_type', t.type_node(node.return_type))
 	obj.add('source_file', t.number_node(int(node.source_file)))
 	obj.add('scope', t.number_node(int(node.scope)))
-	obj.add('attrs', t.array_node_attr(node.attrs))
+	obj.add_terse('attrs', t.array_node_attr(node.attrs))
 	obj.add_terse('params', t.array_node_arg(node.params))
 	obj.add_terse('generic_names', t.array_node_string(node.generic_names))
 	obj.add_terse('stmts', t.array_node_stmt(node.stmts))
@@ -756,8 +756,10 @@ fn (t Tree) hash_stmt(node ast.HashStmt) &Node {
 	obj.add_terse('kind', t.string_node(node.kind))
 	obj.add_terse('main', t.string_node(node.main))
 	obj.add_terse('msg', t.string_node(node.msg))
+	obj.add_terse('is_use_once', t.bool_node(node.is_use_once))
 	obj.add_terse('ct_conds', t.array_node_expr(node.ct_conds))
 	obj.add_terse('source_file', t.string_node(node.source_file))
+	obj.add_terse('attrs', t.array_node_attr(node.attrs))
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }
@@ -778,11 +780,11 @@ fn (t Tree) global_decl(node ast.GlobalDecl) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('GlobalDecl'))
 	obj.add_terse('mod', t.string_node(node.mod))
-	obj.add('pos', t.pos(node.pos))
+	obj.add_terse('attrs', t.array_node_attr(node.attrs))
 	obj.add_terse('is_block', t.bool_node(node.is_block))
 	obj.add_terse('fields', t.array_node_global_field(node.fields))
+	obj.add('pos', t.pos(node.pos))
 	obj.add('end_comments', t.array_node_comment(node.end_comments))
-	obj.add('attrs', t.array_node_attr(node.attrs))
 	return obj
 }
 
@@ -1645,6 +1647,7 @@ fn (t Tree) array_init(node ast.ArrayInit) &Node {
 	obj.add('pre_cmnts', t.array_node_comment(node.pre_cmnts))
 	obj.add('elem_type_pos', t.pos(node.elem_type_pos))
 	obj.add_terse('is_fixed', t.bool_node(node.is_fixed))
+	obj.add_terse('is_option', t.bool_node(node.is_option))
 	obj.add_terse('has_val', t.bool_node(node.has_val))
 	obj.add_terse('mod', t.string_node(node.mod))
 	obj.add_terse('len_expr', t.expr(node.len_expr))

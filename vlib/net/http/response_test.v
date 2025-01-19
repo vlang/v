@@ -44,3 +44,38 @@ fn test_parse_response() {
 	assert x.header.get(.content_length)! == '3'
 	assert x.body == 'Foo'
 }
+
+fn test_parse_response_with_cookies() {
+	cookie_id := 'v_is_best'
+	content := 'HTTP/1.1 200 OK\r\nSet-Cookie: id=${cookie_id}\r\nContent-Length: 3\r\n\r\nFoo'
+	mut x := parse_response(content)!
+	assert x.http_version == '1.1'
+	assert x.status_code == 200
+	assert x.status_msg == 'OK'
+	assert x.header.contains(.content_length)
+	assert x.header.get(.content_length)! == '3'
+	assert x.body == 'Foo'
+	response_cookie := x.cookies()
+	assert response_cookie[0].str() == 'id=${cookie_id}'
+
+	// cookie has Base64 encoding info, ending with '=='
+	cookie_base64 := 'Ln0kBnAaAyYFQ8lH7d5J8Y5w1/iyDRpj6d0nBLTbBUMbtEyPD32rPvpApsvxhLJWlkHuHT3KYL0g/xNBxC9od5tMFAgurLxKdRd5lZ6Pd7W+SllkbsXmUA=='
+	content_cookie_base64 := 'HTTP/1.1 200 OK\r\nSet-Cookie: enctoken=${cookie_base64}; path=/; secure; SameSite=None\r\nContent-Length: 3\r\n\r\nFoo'
+	x = parse_response(content_cookie_base64)!
+	assert x.http_version == '1.1'
+	assert x.status_code == 200
+	assert x.status_msg == 'OK'
+	assert x.header.contains(.content_length)
+	assert x.header.get(.content_length)! == '3'
+	assert x.body == 'Foo'
+	response_cookie_base64 := x.cookies()
+	assert response_cookie_base64[0].str().split(';')[0] == 'enctoken=${cookie_base64}'
+}
+
+fn test_parse_response_with_weird_cookie() {
+	// weird cookies test
+	content_weird := 'HTTP/1.1 200 OK\r\nSet-Cookie: a=b; ; =; aa=; =bb; cc; ==\r\nContent-Length: 3\r\n\r\nFoo'
+	mut xx := parse_response(content_weird)!
+	weird_cookie := xx.cookies()
+	assert weird_cookie[0].str() == 'a=b'
+}

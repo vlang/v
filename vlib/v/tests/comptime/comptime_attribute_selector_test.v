@@ -1,3 +1,4 @@
+@[foo: true]
 @[name: 'abc']
 @[amount: 2]
 @[abc]
@@ -26,8 +27,19 @@ fn test_attributes() {
 		} else if attr.has_arg && attr.kind == .number {
 			assert attr.name == 'amount'
 			assert attr.arg == '2'
-		} else {
+		} else if attr.kind != .bool {
 			assert attr.name == 'abc'
 		}
 	}
+}
+
+fn test_attr_boolean() {
+	mut bool_fields := []string{}
+	$for attr in Abc.attributes {
+		if attr.kind == .bool {
+			bool_fields << attr.name
+		}
+	}
+	assert bool_fields.len == 1
+	assert bool_fields[0] == 'foo'
 }

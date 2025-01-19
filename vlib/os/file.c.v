@@ -438,13 +438,6 @@ pub fn (f &File) read_bytes_at(size int, pos u64) []u8 {
 	return arr[0..nreadbytes]
 }
 
-// read_bytes_into_newline reads from the current position of the file into the provided buffer.
-@[deprecated: 'use read_bytes_with_newline instead']
-@[deprecated_after: '2024-05-04']
-pub fn (f &File) read_bytes_into_newline(mut buf []u8) !int {
-	return f.read_bytes_with_newline(mut buf)
-}
-
 // read_bytes_with_newline reads from the current position of the file into the provided buffer.
 // Each consecutive call on the same file, continues reading, from where it previously ended.
 // A read call is either stopped, if the buffer is full, a newline was read or EOF.
@@ -503,6 +496,7 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []u8) !int {
 			return nbytes
 		} $else {
 			C.fseeko(f.cfile, pos, C.SEEK_SET)
+			// TODO(alex): require casts for voidptrs? &C.FILE(f.cfile)
 			nbytes := fread(buf.data, 1, buf.len, f.cfile)!
 			$if debug {
 				C.fseeko(f.cfile, 0, C.SEEK_SET)

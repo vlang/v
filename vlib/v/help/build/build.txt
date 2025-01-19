@@ -9,7 +9,7 @@ to be a .v source file or folder containing .v source files.
 Everything after that, is assumed to be flags, that V will ignore itself,
 but will pass to the executable after it is compiled.
 
-This enables you to do for example: `v -cc gcc -g myfile.v run -param1 abcde`
+This enables you to do for example: `v -cc gcc -g run myfile.v -param1 abcde`
 ... which means for V: "compile using gcc, produce debugging information,
 then run `./myfile -param1 abcde` and exit with its exit code".
 
@@ -59,7 +59,7 @@ NB: the build flags are shared with the run command too:
     value assigned to `<flag>`.
     If no flag identifier (or value) is assigned, `$d()` will return the passed `<default value>`.
 
-  -g
+  -g, -debug
     Compile the executable in debug mode, allowing code to be debugged more easily.
 
   -o <output>, -output <output>
@@ -96,6 +96,15 @@ NB: the build flags are shared with the run command too:
     Compile the executable in production mode, where most optimizations are enabled.
     Note that most V warnings turn to errors, if you pass -prod, so you will have
     to fix them first.
+
+  -no-prod-options
+    Useful in combination with -prod and -cflags, for allowing more complete customisation,
+    of what flags will be used for the C compiler, for example:
+       `v -prod -no-prod-options -cflags "-Os" program.v`
+    will compile the program, without passing `-O3` and `-flto`, that would otherwise
+    have been used, but passing `-Os` instead. Note, since `-prod` is used, the V compiler
+    itself will still compile your potential `$if prod {` branches, and it will still do the
+    optimisations on the V side, that -prod enables.
 
   -no-bounds-checking
     Programs compiled with this option, will do no runtime checking of array access operations.

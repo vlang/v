@@ -152,12 +152,12 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind)
 			g.writeln('\t${metaname}.llabel = ${expr_left_str};')
 			g.writeln('\t${metaname}.rlabel = ${expr_right_str};')
 			left_type := if g.comptime.is_comptime_expr(node.expr.left) {
-				g.comptime.get_type(node.expr.left)
+				g.type_resolver.get_type(node.expr.left)
 			} else {
 				node.expr.left_type
 			}
 			right_type := if g.comptime.is_comptime_expr(node.expr.right) {
-				g.comptime.get_type(node.expr.right)
+				g.type_resolver.get_type(node.expr.right)
 			} else {
 				node.expr.right_type
 			}
@@ -229,7 +229,8 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 		}
 		else {
 			mut should_clone := true
-			if typ == ast.string_type && expr is ast.StringLiteral {
+			if typ == ast.string_type
+				&& expr in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral] {
 				should_clone = false
 			}
 			if expr is ast.CTempVar {

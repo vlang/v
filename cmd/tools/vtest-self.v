@@ -25,6 +25,7 @@ const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
+	'cmd/tools/vdoc/doc/doc_test.v',
 	'vlib/arrays/arrays_test.v',
 	'vlib/bitfield/bitfield_test.v',
 	//
@@ -84,7 +85,6 @@ const essential_list = [
 	'vlib/time/time_test.v',
 	'vlib/toml/tests/toml_test.v',
 	'vlib/v/compiler_errors_test.v',
-	'vlib/v/doc/doc_test.v',
 	'vlib/v/eval/interpret_test.v',
 	'vlib/v/fmt/fmt_keep_test.v',
 	'vlib/v/fmt/fmt_test.v',
@@ -114,7 +114,6 @@ const skip_test_files = [
 const skip_fsanitize_too_slow = [
 	'do_not_remove',
 	'vlib/v/compiler_errors_test.v',
-	'vlib/v/doc/doc_test.v',
 	'vlib/v/fmt/fmt_test.v',
 	'vlib/v/fmt/fmt_keep_test.v',
 	'vlib/v/fmt/fmt_vlib_test.v',
@@ -131,6 +130,7 @@ const skip_fsanitize_too_slow = [
 	'cmd/tools/vpm/install_version_input_test.v',
 	'cmd/tools/vpm/install_version_test.v',
 	'cmd/tools/vpm/update_test.v',
+	'cmd/tools/vdoc/doc/doc_test.v',
 ]
 const skip_with_fsanitize_memory = [
 	'do_not_remove',
@@ -152,6 +152,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/orm/orm_create_and_drop_test.v',
 	'vlib/orm/orm_insert_test.v',
 	'vlib/orm/orm_insert_reserved_name_test.v',
+	'vlib/orm/orm_sum_type_insert_test.v',
 	'vlib/orm/orm_fn_calls_test.v',
 	'vlib/orm/orm_last_id_test.v',
 	'vlib/orm/orm_string_interpolation_in_where_test.v',
@@ -166,6 +167,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/orm/orm_option_time_test.v',
 	'vlib/orm/orm_order_by_custom_field_test.v',
 	'vlib/orm/orm_serial_attribute_test.v',
+	'vlib/orm/orm_option_subselect_test.v',
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_comptime_field_test.v',
@@ -199,6 +201,7 @@ const skip_with_fsanitize_address = [
 	'vlib/orm/orm_create_and_drop_test.v',
 	'vlib/orm/orm_insert_test.v',
 	'vlib/orm/orm_insert_reserved_name_test.v',
+	'vlib/orm/orm_sum_type_insert_test.v',
 	'vlib/orm/orm_references_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/orm_enum_test.v',
@@ -212,6 +215,7 @@ const skip_with_fsanitize_undefined = [
 	'vlib/orm/orm_create_and_drop_test.v',
 	'vlib/orm/orm_insert_test.v',
 	'vlib/orm/orm_insert_reserved_name_test.v',
+	'vlib/orm/orm_sum_type_insert_test.v',
 	'vlib/orm/orm_references_test.v',
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
@@ -254,6 +258,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_create_and_drop_test.v',
 	'vlib/orm/orm_insert_test.v',
 	'vlib/orm/orm_insert_reserved_name_test.v',
+	'vlib/orm/orm_sum_type_insert_test.v',
 	'vlib/orm/orm_fn_calls_test.v',
 	'vlib/orm/orm_null_test.v',
 	'vlib/orm/orm_last_id_test.v',
@@ -268,6 +273,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_option_time_test.v',
 	'vlib/orm/orm_order_by_custom_field_test.v',
 	'vlib/orm/orm_serial_attribute_test.v',
+	'vlib/orm/orm_option_subselect_test.v',
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_struct_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
@@ -293,8 +299,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fns/fn_literal_type_test.v',
 	'vlib/x/sessions/tests/db_store_test.v',
-	'vlib/x/vweb/tests/vweb_test.v',
-	'vlib/x/vweb/tests/vweb_app_test.v',
 	'vlib/veb/tests/veb_app_test.v',
 ]
 const skip_on_linux = [

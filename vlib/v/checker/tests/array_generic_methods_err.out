@@ -1,0 +1,21 @@
+vlib/v/checker/tests/array_generic_methods_err.vv:3:23: error: cannot use `[]string` as `string` in argument 1 to `.contains()`
+    1 | fn generic_fn[T]() {
+    2 |     mut arr := []T{}
+    3 |     println(arr.contains(arr))
+      |                          ~~~
+    4 |     arr.delete(arr)
+    5 |     arr.index(arr)
+vlib/v/checker/tests/array_generic_methods_err.vv:4:13: error: cannot use `[]string` as `int` in argument 1 to `.delete()`
+    2 |     mut arr := []T{}
+    3 |     println(arr.contains(arr))
+    4 |     arr.delete(arr)
+      |                ~~~
+    5 |     arr.index(arr)
+    6 | }
+vlib/v/checker/tests/array_generic_methods_err.vv:5:12: error: cannot use `[]string` as `string` in argument 1 to `.index()`
+    3 |     println(arr.contains(arr))
+    4 |     arr.delete(arr)
+    5 |     arr.index(arr)
+      |               ~~~
+    6 | }
+    7 |

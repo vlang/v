@@ -23,6 +23,6 @@ fn bang(mut logr ?&Logger, this string) {
 
 fn test_option_reference_params() {
 	mut logr := new_logger()
-	bang(mut logr, 'bang!')
+	bang(mut &logr, 'bang!')
 	assert true
 }

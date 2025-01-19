@@ -253,7 +253,22 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
-				g.writeln('${g.styp(g.unwrap_generic(cond.expr_type))} ${var_name};')
+				cond_expr_type := if cond.expr is ast.CallExpr && cond.expr.is_static_method
+					&& cond.expr.left_type.has_flag(.generic) {
+					g.resolve_return_type(cond.expr)
+				} else {
+					cond.expr_type
+				}
+				g.writeln('${g.styp(g.unwrap_generic(cond_expr_type))} ${var_name};')
+			} else if cond.expr is ast.IndexExpr {
+				value_type := g.table.value_type(g.unwrap_generic(cond.expr.left_type))
+				if value_type.has_flag(.option) {
+					var_name := g.new_tmp_var()
+					guard_vars[i] = var_name
+					g.writeln('${g.styp(value_type)} ${var_name};')
+				} else {
+					guard_vars[i] = ''
+				}
 			} else {
 				guard_vars[i] = ''
 			}

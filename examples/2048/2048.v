@@ -1,9 +1,21 @@
 import gg
 import gx
 import math
+import math.easing
 import os.asset
 import rand
 import time
+
+const zooming_percent_per_frame = 5
+const movement_percent_per_frame = 10
+
+const window_title = 'V 2048'
+const default_window_width = 544
+const default_window_height = 560
+
+const possible_moves = [Direction.up, .right, .down, .left]
+const predictions_per_move = 300
+const prediction_depth = 8
 
 struct App {
 mut:
@@ -14,7 +26,8 @@ mut:
 	theme_idx   int
 	board       Board
 	undo        []Undo
-	atickers    [4][4]int
+	atickers    [4][4]f64
+	mtickers    [4][4]f64
 	state       GameState  = .play
 	tile_format TileFormat = .normal
 	moves       int
@@ -111,14 +124,6 @@ const themes = [
 		]
 	},
 ]
-const window_title = 'V 2048'
-const default_window_width = 544
-const default_window_height = 560
-const animation_length = 10 // frames
-
-const possible_moves = [Direction.up, .right, .down, .left]
-const predictions_per_move = 300
-const prediction_depth = 8
 
 struct Pos {
 	x int = -1
@@ -128,6 +133,7 @@ struct Pos {
 struct Board {
 mut:
 	field  [4][4]int
+	oidxs  [4][4]u32 // old indexes of the fields, when != 0;  each index is an encoding of its y,x coordinates = y << 16 | x
 	points int
 	shifts int
 }
@@ -141,6 +147,7 @@ struct TileLine {
 	ypos int
 mut:
 	field  [5]int
+	oidxs  [5]u32
 	points int
 	shifts int
 }
@@ -201,6 +208,7 @@ fn (b Board) transpose() Board {
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
 			res.field[y][x] = b.field[x][y]
+			res.oidxs[y][x] = b.oidxs[x][y]
 		}
 	}
 	return res
@@ -211,6 +219,7 @@ fn (b Board) hmirror() Board {
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
 			res.field[y][x] = b.field[y][3 - x]
+			res.oidxs[y][x] = b.oidxs[y][3 - x]
 		}
 	}
 	return res
@@ -241,6 +250,7 @@ fn (t TileLine) to_left() TileLine {
 				res.shifts++
 				for k := x; k < right_border_idx; k++ {
 					res.field[k] = res.field[k + 1]
+					res.oidxs[k] = res.oidxs[k + 1]
 				}
 				remaining_zeros--
 			}
@@ -255,6 +265,7 @@ fn (t TileLine) to_left() TileLine {
 		if res.field[x] == res.field[x + 1] {
 			for k := x; k < right_border_idx; k++ {
 				res.field[k] = res.field[k + 1]
+				res.oidxs[k] = res.oidxs[k + 1]
 			}
 			res.shifts++
 			res.field[x]++
@@ -272,18 +283,29 @@ fn (b Board) to_left() Board {
 		}
 		for x in 0 .. 4 {
 			hline.field[x] = b.field[y][x]
+			hline.oidxs[x] = b.oidxs[y][x]
 		}
 		reshline := hline.to_left()
 		res.shifts += reshline.shifts
 		res.points += reshline.points
 		for x in 0 .. 4 {
 			res.field[y][x] = reshline.field[x]
+			res.oidxs[y][x] = reshline.oidxs[x]
 		}
 	}
 	return res
 }
 
-fn (b Board) move(d Direction) (Board, bool) {
+fn yx2i(y int, x int) u32 {
+	return u32(y) << 16 | u32(x)
+}
+
+fn (mut b Board) move(d Direction) (Board, bool) {
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			b.oidxs[y][x] = yx2i(y, x)
+		}
+	}
 	new := match d {
 		.left { b.to_left() }
 		.right { b.hmirror().to_left().hmirror() }
@@ -291,9 +313,9 @@ fn (b Board) move(d Direction) (Board, bool) {
 		.down { b.transpose().hmirror().to_left().hmirror().transpose() }
 	}
 	// If the board hasn't changed, it's an illegal move, don't allow it.
-	for x in 0 .. 4 {
-		for y in 0 .. 4 {
-			if b.field[x][y] != new.field[x][y] {
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			if b.field[y][x] != new.field[y][x] {
 				return new, true
 			}
 		}
@@ -324,11 +346,10 @@ fn (mut b Board) is_game_over() bool {
 fn (mut app App) update_tickers() {
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
-			mut old := app.atickers[y][x]
-			if old > 0 {
-				old--
-				app.atickers[y][x] = old
-			}
+			app.atickers[y][x] = math.clip(app.atickers[y][x] - f64(zooming_percent_per_frame) / 100.0,
+				0.0, 1.0)
+			app.mtickers[y][x] = math.clip(app.mtickers[y][x] - f64(movement_percent_per_frame) / 100.0,
+				0.0, 1.0)
 		}
 	}
 }
@@ -339,6 +360,7 @@ fn (mut app App) new_game() {
 		for x in 0 .. 4 {
 			app.board.field[y][x] = 0
 			app.atickers[y][x] = 0
+			app.mtickers[y][x] = 0
 		}
 	}
 	app.state = .play
@@ -387,23 +409,26 @@ fn (mut b Board) place_random_tile() (Pos, int) {
 		value := rand.f64n(1.0) or { 0.0 }
 		random_value := if value < 0.9 { 1 } else { 2 }
 		b.field[empty_pos.y][empty_pos.x] = random_value
+		b.oidxs[empty_pos.y][empty_pos.x] = yx2i(empty_pos.y, empty_pos.x)
 		return empty_pos, random_value
 	}
 	return Pos{}, 0
 }
 
 fn (mut app App) new_random_tile() {
+	// do not animate empty fields:
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
 			fidx := app.board.field[y][x]
 			if fidx == 0 {
 				app.atickers[y][x] = 0
+				app.board.oidxs[y][x] = 0xFFFF_FFFF
 			}
 		}
 	}
 	empty_pos, random_value := app.board.place_random_tile()
 	if random_value > 0 {
-		app.atickers[empty_pos.y][empty_pos.x] = animation_length
+		app.atickers[empty_pos.y][empty_pos.x] = 1.0
 	}
 	if app.state != .freeplay {
 		app.check_for_victory()
@@ -414,6 +439,13 @@ fn (mut app App) new_random_tile() {
 fn (mut app App) apply_new_board(new Board) {
 	old := app.board
 	app.moves++
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			if old.oidxs[y][x] != new.oidxs[y][x] {
+				app.mtickers[y][x] = 1.0
+			}
+		}
+	}
 	app.board = new
 	app.undo << Undo{old, app.state}
 	app.new_random_tile()
@@ -623,59 +655,111 @@ fn (app &App) draw_tiles() {
 	// Draw the padding around the tiles
 	app.gg.draw_rounded_rect_filled(xstart, ystart, tiles_size, tiles_size, tiles_size / 24,
 		app.theme.padding_color)
-	// Draw the actual tiles
+
+	// Draw empty tiles:
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			tw := app.ui.tile_size
+			th := tw // square tiles, w == h
+			xoffset := xstart + app.ui.padding_size + x * toffset
+			yoffset := ystart + app.ui.padding_size + y * toffset
+			app.gg.draw_rounded_rect_filled(xoffset, yoffset, tw, th, tw / 8, app.theme.tile_colors[0])
+		}
+	}
+
+	// Draw the already placed and potentially moving tiles:
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
 			tidx := app.board.field[y][x]
-			tile_color := if tidx < app.theme.tile_colors.len {
-				app.theme.tile_colors[tidx]
-			} else {
-				// If there isn't a specific color for this tile, reuse the last color available
-				app.theme.tile_colors.last()
+			oidx := app.board.oidxs[y][x]
+			if tidx == 0 || oidx == 0xFFFF_FFFF {
+				continue
 			}
-			anim_size := animation_length - app.atickers[y][x]
-			tw := int(f64(app.ui.tile_size) / animation_length * anim_size)
-			th := tw // square tiles, w == h
-			xoffset := xstart + app.ui.padding_size + x * toffset + (app.ui.tile_size - tw) / 2
-			yoffset := ystart + app.ui.padding_size + y * toffset + (app.ui.tile_size - th) / 2
-			app.gg.draw_rounded_rect_filled(xoffset, yoffset, tw, th, tw / 8, tile_color)
-			if tidx != 0 { // 0 == blank spot
-				xpos := xoffset + tw / 2
-				ypos := yoffset + th / 2
-				mut fmt := app.label_format(.tile)
-				fmt = gx.TextCfg{
-					...fmt
-					size: int(f32(fmt.size - 1) / animation_length * anim_size)
-				}
-				match app.tile_format {
-					.normal {
-						app.gg.draw_text(xpos, ypos, '${1 << tidx}', fmt)
-					}
-					.log {
-						app.gg.draw_text(xpos, ypos, '${tidx}', fmt)
-					}
-					.exponent {
-						app.gg.draw_text(xpos, ypos, '2', fmt)
-						fs2 := int(f32(fmt.size) * 0.67)
-						app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
-							'${tidx}', gx.TextCfg{
-							...fmt
-							size:  fs2
-							align: gx.HorizontalAlign.left
-						})
-					}
-					.shifts {
-						fs2 := int(f32(fmt.size) * 0.6)
-						app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gx.TextCfg{
-							...fmt
-							size: fs2
-						})
-					}
-					.none {} // Don't draw any text here, colors only
-					.end {} // Should never get here
-				}
+			app.draw_one_tile(x, y, tidx)
+		}
+	}
+
+	// Draw the newly placed random tiles on top of everything else:
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			tidx := app.board.field[y][x]
+			oidx := app.board.oidxs[y][x]
+			if oidx == 0xFFFF_FFFF && tidx != 0 {
+				app.draw_one_tile(x, y, tidx)
 			}
 		}
+	}
+}
+
+fn (app &App) draw_one_tile(x int, y int, tidx int) {
+	xstart := app.ui.x_padding + app.ui.border_size
+	ystart := app.ui.y_padding + app.ui.border_size + app.ui.header_size
+	toffset := app.ui.tile_size + app.ui.padding_size
+	oidx := app.board.oidxs[y][x]
+	oy := oidx >> 16
+	ox := oidx & 0xFFFF
+	mut dx := 0
+	mut dy := 0
+	if oidx != 0xFFFF_FFFF {
+		scaling := app.ui.tile_size * easing.in_out_quint(app.mtickers[y][x])
+		if ox != x {
+			dx = math.clip(int(scaling * (f64(ox) - f64(x))), -4 * app.ui.tile_size, 4 * app.ui.tile_size)
+		}
+		if oy != y {
+			dy = math.clip(int(scaling * (f64(oy) - f64(y))), -4 * app.ui.tile_size, 4 * app.ui.tile_size)
+		}
+	}
+	tile_color := if tidx < app.theme.tile_colors.len {
+		app.theme.tile_colors[tidx]
+	} else {
+		// If there isn't a specific color for this tile, reuse the last color available
+		app.theme.tile_colors.last()
+	}
+	anim_size := 1.0 - app.atickers[y][x]
+	tw := int(f64(anim_size * app.ui.tile_size))
+	th := tw // square tiles, w == h
+	xoffset := dx + xstart + app.ui.padding_size + x * toffset + (app.ui.tile_size - tw) / 2
+	yoffset := dy + ystart + app.ui.padding_size + y * toffset + (app.ui.tile_size - th) / 2
+	app.gg.draw_rounded_rect_filled(xoffset, yoffset, tw, th, tw / 8, tile_color)
+	if tidx != 0 { // 0 == blank spot
+		xpos := xoffset + tw / 2
+		ypos := yoffset + th / 2
+		mut fmt := app.label_format(.tile)
+		fmt = gx.TextCfg{
+			...fmt
+			size: int(anim_size * (fmt.size - 1))
+		}
+		match app.tile_format {
+			.normal {
+				app.gg.draw_text(xpos, ypos, '${1 << tidx}', fmt)
+			}
+			.log {
+				app.gg.draw_text(xpos, ypos, '${tidx}', fmt)
+			}
+			.exponent {
+				app.gg.draw_text(xpos, ypos, '2', fmt)
+				fs2 := int(f32(fmt.size) * 0.67)
+				app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
+					'${tidx}', gx.TextCfg{
+					...fmt
+					size:  fs2
+					align: gx.HorizontalAlign.left
+				})
+			}
+			.shifts {
+				fs2 := int(f32(fmt.size) * 0.6)
+				app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gx.TextCfg{
+					...fmt
+					size: fs2
+				})
+			}
+			.none {} // Don't draw any text here, colors only
+			.end {} // Should never get here
+		}
+		// oidx_fmt := gx.TextCfg{...fmt,size: 14}
+		// app.gg.draw_text(xoffset + 50, yoffset + 15, 'y:${oidx >> 16}|x:${oidx & 0xFFFF}|m:${app.mtickers[y][x]:5.3f}',	oidx_fmt)
+		// app.gg.draw_text(xoffset + 52, yoffset + 30, 'ox:${ox}|oy:${oy}', oidx_fmt)
+		// app.gg.draw_text(xoffset + 52, yoffset + 85, 'dx:${dx}|dy:${dy}', oidx_fmt)
 	}
 }
 
@@ -733,7 +817,7 @@ fn (mut app App) handle_swipe() {
 	adx, ady := math.abs(dx), math.abs(dy)
 	dmin := if math.min(adx, ady) > 0 { math.min(adx, ady) } else { 1 }
 	dmax := if math.max(adx, ady) > 0 { math.max(adx, ady) } else { 1 }
-	tdiff := int(e.time.unix_milli() - s.time.unix_milli())
+	tdiff := (e.time - s.time).milliseconds()
 	// TODO: make this calculation more accurate (don't use arbitrary numbers)
 	min_swipe_distance := int(math.sqrt(math.min(w, h) * tdiff / 100)) + 20
 	if dmax < min_swipe_distance {

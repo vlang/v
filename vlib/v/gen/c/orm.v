@@ -334,6 +334,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	is_serial := primary_field.attrs.contains_arg('sql', 'serial')
 		&& primary_field.typ == ast.int_type
 
+	mut inserting_object_type := ast.void_type
 	mut member_access_type := '.'
 	if node.scope != unsafe { nil } {
 		inserting_object := node.scope.find(node.object_var) or {
@@ -342,8 +343,10 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		if inserting_object.typ.is_ptr() {
 			member_access_type = '->'
 		}
+		inserting_object_type = inserting_object.typ
 	}
 
+	inserting_object_sym := g.table.sym(inserting_object_type)
 	for i, mut sub in subs {
 		if subs_unwrapped_c_typ[i].len > 0 {
 			var := '${node.object_var}${member_access_type}${sub.object_var}'
@@ -418,6 +421,10 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			var := '${node.object_var}${member_access_type}${c_name(field.name)}'
 			if field.typ.has_flag(.option) {
 				g.writeln('${var}.state == 2? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${var}.data)),')
+			} else if inserting_object_sym.kind == .sum_type {
+				table_sym := g.table.sym(node.table_expr.typ)
+				sum_type_var := '(*${node.object_var}._${table_sym.cname})${member_access_type}${c_name(field.name)}'
+				g.writeln('orm__${typ}_to_primitive(${sum_type_var}),')
 			} else {
 				g.writeln('orm__${typ}_to_primitive(${var}),')
 			}
@@ -1064,7 +1071,6 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				sub_result_c_typ := g.styp(sub.typ)
 				g.writeln('${sub_result_c_typ} ${sub_result_var};')
 				g.write_orm_select(sub, connection_var_name, sub_result_var)
-
 				if field.typ.has_flag(.option) {
 					unwrapped_field_c_typ := g.styp(field.typ.clear_flag(.option))
 					g.writeln('if (!${sub_result_var}.is_error)')
@@ -1165,6 +1171,10 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		}
 
 		g.indent--
+		if !node.is_array {
+			g.writeln('} else {')
+			g.writeln('\t${result_var}.is_error = true;')
+		}
 		g.writeln('}')
 
 		if node.is_array {

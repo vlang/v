@@ -758,6 +758,8 @@ ctx.json(User{
 	name: 'test'
 	age: 20
 })
+// send response HTTP_NO_CONTENT (204) without a content-type and body
+ctx.no_content()
 ```
 
 #### Sending files

@@ -96,9 +96,8 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 // See also: Table.sym.
 @[minify]
 pub struct TypeSymbol {
-pub:
-	parent_idx int
 pub mut:
+	parent_idx    int
 	info          TypeInfo
 	kind          Kind
 	name          string // the internal & source name of the type, i.e. `[5]int`.
@@ -170,6 +169,7 @@ pub mut:
 	is_minify      bool
 	is_anon        bool
 	is_generic     bool
+	is_shared      bool
 	has_option     bool // contains any option field
 	generic_types  []Type
 	concrete_types []Type
@@ -211,10 +211,11 @@ pub:
 
 @[minify]
 pub struct Alias {
-pub:
+pub mut:
 	parent_type Type
-	language    Language
-	is_import   bool
+pub:
+	language  Language
+	is_import bool
 }
 
 pub struct Aggregate {
@@ -1006,6 +1007,16 @@ pub fn (t &Struct) is_unresolved_generic() bool {
 	return t.generic_types.len > 0 && t.concrete_types.len == 0
 }
 
+pub fn (t &TypeSymbol) is_primitive_fixed_array() bool {
+	if t.info is ArrayFixed {
+		return global_table.final_sym(t.info.elem_type).is_primitive()
+	} else if t.info is Alias {
+		return global_table.final_sym(t.info.parent_type).is_primitive_fixed_array()
+	} else {
+		return false
+	}
+}
+
 pub fn (t &TypeSymbol) is_array_fixed() bool {
 	if t.info is ArrayFixed {
 		return true
@@ -1712,8 +1723,8 @@ pub fn (t &TypeSymbol) has_method(name string) bool {
 }
 
 pub fn (t &TypeSymbol) has_method_with_generic_parent(name string) bool {
-	t.find_method_with_generic_parent(name) or { return false }
-	return true
+	m := t.find_method_with_generic_parent(name) or { return false }
+	return t.kind != .interface || !m.no_body
 }
 
 pub fn (t &TypeSymbol) find_method(name string) ?Fn {
@@ -1803,7 +1814,7 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 	mut expects_ptr := false
 	mut nr_args := 0
 	if sym_str_method := t.find_method_with_generic_parent('str') {
-		has_str_method = true
+		has_str_method = t.kind != .interface || !sym_str_method.no_body
 		nr_args = sym_str_method.params.len
 		if nr_args > 0 {
 			expects_ptr = sym_str_method.params[0].typ.is_ptr()
@@ -1817,10 +1828,10 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 
 pub fn (t &TypeSymbol) find_field(name string) ?StructField {
 	match t.info {
-		Aggregate { return t.info.find_field(name) }
 		Struct { return t.info.find_field(name) }
 		Interface { return t.info.find_field(name) }
 		SumType { return t.info.find_sum_type_field(name) }
+		Aggregate { return t.info.find_field(name) }
 		else { return none }
 	}
 }

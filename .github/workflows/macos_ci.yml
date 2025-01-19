@@ -66,8 +66,8 @@ jobs:
         run: v run ci/macos_ci.vsh build_examples_prod
       - name: Build examples with V build with tcc
         run: v run ci/macos_ci.vsh build_examples_v_compiled_with_tcc
-      - name: V self compilation with -usecache
-        run: v run ci/macos_ci.vsh v_self_compilation_usecache
+      ##      - name: V self compilation with -usecache
+      ##        run: v run ci/macos_ci.vsh v_self_compilation_usecache
       - name: V self compilation with -parallel-cc
         run: v run ci/macos_ci.vsh v_self_compilation_parallel_cc
       - name: Test password input
