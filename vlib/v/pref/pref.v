@@ -974,7 +974,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					arch := $if arm64 { 'arm64' } $else { 'amd64' }
 					vexe := vexe_path()
 					vroot := os.dir(vexe)
-					so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
+					so_path := os.join_path(vroot, 'photonwrapper.so')
 					so_url := 'https://github.com/vlang/photonbin/raw/master/photonwrapper_${os.user_os()}_${arch}.so'
 					if !os.exists(so_path) {
 						println('coroutines .so not found, downloading...')
