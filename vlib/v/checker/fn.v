@@ -786,7 +786,7 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func &ast
 	}
 	arg := node.args[0]
 	c.check_expr_option_or_result_call(arg.expr, arg.typ)
-	if arg.typ.is_void() {
+	if arg.typ.is_void() || arg.typ == 0 {
 		c.error('`${fn_name}` can not print void expressions', node.pos)
 	} else if arg.typ == ast.char_type && arg.typ.nr_muls() == 0 {
 		c.error('`${fn_name}` cannot print type `char` directly, print its address or cast it to an integer instead',
