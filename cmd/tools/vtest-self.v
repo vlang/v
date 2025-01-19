@@ -299,8 +299,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fns/fn_literal_type_test.v',
 	'vlib/x/sessions/tests/db_store_test.v',
-	'vlib/x/vweb/tests/vweb_test.v',
-	'vlib/x/vweb/tests/vweb_app_test.v',
 	'vlib/veb/tests/veb_app_test.v',
 ]
 const skip_on_linux = [

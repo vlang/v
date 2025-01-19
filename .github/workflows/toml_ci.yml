@@ -26,8 +26,9 @@ jobs:
         run: make -j4 && ./v symlink
       - name: Install dependencies
         run: |
-          v retry -- sudo apt update
-          v retry -- sudo apt install --quiet -y jq libgc-dev
+          v retry -- v download https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64
+          sudo chmod 755 jq-linux64
+          sudo mv jq-linux64 /usr/bin/jq
 
       - name: Show JQ Version
         run: jq --version
