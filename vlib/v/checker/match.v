@@ -132,13 +132,13 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						stmt_sym := c.table.sym(stmt.typ)
 						if ret_sym.kind !in [.sum_type, .interface]
 							&& stmt_sym.kind in [.sum_type, .interface] {
-							c.error('return type mismatch, it should be `${ret_sym.name}`',
+							c.error('return type mismatch, it should be `${ret_sym.name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
 								stmt.pos)
 						}
 						if ret_type.nr_muls() != stmt.typ.nr_muls()
 							&& stmt.typ.idx() !in [ast.voidptr_type_idx, ast.nil_type_idx] {
 							type_name := '&'.repeat(ret_type.nr_muls()) + ret_sym.name
-							c.error('return type mismatch, it should be `${type_name}`',
+							c.error('return type mismatch, it should be `${type_name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
 								stmt.pos)
 						}
 					}
@@ -281,7 +281,8 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 					return
 				}
 			}
-			c.error('return type mismatch, it should be `${ret_sym.name}`', last_stmt.pos)
+			c.error('return type mismatch, it should be `${ret_sym.name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
+				last_stmt.pos)
 		}
 	} else if expr_type == ast.void_type && ret_type.idx() == ast.void_type_idx
 		&& ret_type.has_option_or_result() {
