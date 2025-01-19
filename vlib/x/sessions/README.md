@@ -8,7 +8,7 @@ The sessions module provides an implementation for [session stores](#custom-stor
 The session store handles the saving, storing and retrieving of data. You can
 either use a store directly yourself, or you can use the `session.Sessions` struct
 which is easier to use since it also handles session verification and integrates nicely
-with vweb.
+with veb.
 
 If you want to use `session.Sessions` in your web app the session id's will be
 stored using cookies. The best way to get started is to follow the
@@ -18,10 +18,10 @@ Otherwise have a look at the [advanced usage](#advanced-usage) section.
 
 ## Getting Started
 
-The examples in this section use `x.vweb`. See the [advanced usage](#advanced-usage) section
-for examples without `x.vweb`.
+The examples in this section use `x.veb`. See the [advanced usage](#advanced-usage) section
+for examples without `x.veb`.
 
-To start using sessions in vweb embed `sessions.CurrentSession` on the
+To start using sessions in veb embed `sessions.CurrentSession` on the
 Context struct and add `sessions.Sessions` to the app struct. We must also pass the type
 of our session data.
 
@@ -30,7 +30,7 @@ For any further example code we will use the `User` struct.
 
 ```v ignore
 import x.sessions
-import x.vweb
+import veb
 
 pub struct User {
 pub mut:
@@ -39,7 +39,7 @@ pub mut:
 }
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 	// By embedding the CurrentSession struct we can directly access the current session id
 	// and any associated session data. Set the session data type to `User`
 	sessions.CurrentSession[User]
@@ -48,18 +48,18 @@ pub struct Context {
 pub struct App {
 pub mut:
 	// this struct contains the store that holds all session data it also provides
-	// an easy way to manage sessions in your vweb app. Set the session data type to `User`
+	// an easy way to manage sessions in your veb app. Set the session data type to `User`
 	sessions &sessions.Sessions[User]
 }
 ```
 
 Next we need to create the `&sessions.Sessions[User]` instance for our app. This
-struct provides functionality to easier manage sessions in a vweb app.
+struct provides functionality to easier manage sessions in a veb app.
 
 ### Session Stores
 
 To create `sessions.Sessions` We must specify a "store" which handles the session data.
-Currently vweb provides two options for storing session data:
+Currently veb provides two options for storing session data:
 
 1. The `MemoryStore[T]` stores session data in memory only using the `map` datatype.
 2. The `DBStore[T]` stores session data in a database by encoding the session data to JSON.
@@ -81,13 +81,13 @@ fn main() {
 		secret: 'my secret'.bytes()
 	}
 
-	vweb.run[App, Context](mut app, 8080)
+	veb.run[App, Context](mut app, 8080)
 }
 ```
 
 ### Middleware
 
-The `sessions.vweb2_middleware` module provides a middleware handler. This handler will execute
+The `sessions.veb2_middleware` module provides a middleware handler. This handler will execute
 before your own route handlers and will verify the current session and fetch any associated
 session data and load it into `sessions.CurrentSession`, which is embedded on the Context struct.
 
@@ -99,14 +99,14 @@ session data and load it into `sessions.CurrentSession`, which is embedded on th
 
 ```v ignore
 // add this import at the top of your file
-import x.sessions.vweb2_middleware
+import x.sessions.veb2_middleware
 
 pub struct App {
-    // embed the Middleware struct from vweb
-    vweb.Middleware[Context]
+    // embed the Middleware struct from veb
+    veb.Middleware[Context]
 pub mut:
 	// this struct contains the store that holds all session data it also provides
-	// an easy way to manage sessions in your vweb app. Set the session data type to `User`
+	// an easy way to manage sessions in your veb app. Set the session data type to `User`
 	sessions &sessions.Sessions[User]
 }
 
@@ -118,13 +118,13 @@ fn main() {
 	}
 
     // register the sessions middleware
-    app.use(vweb2_middleware.create[User, Context](mut app.sessions))
+    app.use(veb2_middleware.create[User, Context](mut app.sessions))
 
-	vweb.run[App, Context](mut app, 8080)
+	veb.run[App, Context](mut app, 8080)
 }
 ```
 
-You can now start using sessions with vweb!
+You can now start using sessions with veb!
 
 ### Usage in endpoint handlers
 
@@ -137,7 +137,7 @@ if no data is set.
 **Example:**
 
 ```v ignore
-pub fn (app &App) index(mut ctx Context) vweb.Result {
+pub fn (app &App) index(mut ctx Context) veb.Result {
 	// check if a user is logged in
 	if user := ctx.session_data {
 		return ctx.text('Welcome ${user.name}! Verification status: ${user.verified}')
@@ -160,7 +160,7 @@ method. This method will save the data and *always* set a new session id.
 **Example:**
 
 ```v ignore
-pub fn (mut app App) login(mut ctx Context) vweb.Result {
+pub fn (mut app App) login(mut ctx Context) veb.Result {
 	// set a session id cookie and save data for the new user
 	app.sessions.save(mut ctx, User{
 		name: '[no name provided]'
@@ -179,7 +179,7 @@ query parameter is not passed an error 400 (bad request) is returned.
 **Example:**
 
 ```v ignore
-pub fn (mut app App) save(mut ctx Context) vweb.Result {
+pub fn (mut app App) save(mut ctx Context) veb.Result {
 	// check if there is a session
 	app.sessions.get(ctx) or { return ctx.request_error('You are not logged in :(') }
 
@@ -205,7 +205,7 @@ method.
 **Example:**
 
 ```v ignore
-pub fn (mut app App) logout(mut ctx Context) vweb.Result {
+pub fn (mut app App) logout(mut ctx Context) veb.Result {
 	app.sessions.logout(mut ctx) or { return ctx.server_error('could not logout, please try again') }
 	return ctx.text('You are now logged out!')
 }
@@ -249,7 +249,7 @@ in, you can set a new session id with `resave`..
 ## Advanced Usage
 
 If you want to store session id's in another manner than cookies, or if you want
-to use this sessions module outside of vweb, the easiest way is to create an
+to use this sessions module outside of veb, the easiest way is to create an
 instance of a `Store` and directly interact with it.
 
 First we create an instance of the `MemoryStore` and pass the user struct as data type.

@@ -62,7 +62,7 @@ HTML tags are always escaped in text file : @html_section
 ### 2. Minimal Vweb example:
 
 ```v
-import x.vweb
+import veb
 import x.templating.dtm
 import os
 
@@ -72,7 +72,7 @@ pub mut:
 }
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 }
 
 fn main() {
@@ -96,11 +96,11 @@ fn main() {
     )
 	*/
 
-	vweb.run[App, Context](mut app, 18081)
+	veb.run[App, Context](mut app, 18081)
 }
 
 @['/']
-pub fn (mut app App) index(mut ctx Context) vweb.Result {
+pub fn (mut app App) index(mut ctx Context) veb.Result {
 	mut tmpl_var := map[string]dtm.DtmMultiTypeMap{}
 	tmpl_var['title'] = 'The true title'
 	html_content := app.dtmi.expand('index.html', placeholders: &tmpl_var)
@@ -125,7 +125,7 @@ pub fn (mut app App) index(mut ctx Context) vweb.Result {
 ```
 
 You have a ready-to-view demonstration available
-[here](https://github.com/vlang/v/tree/master/vlib/vweb/tests/dynamic_template_manager_test_server).
+[here](https://github.com/vlang/v/tree/master/vlib/veb/tests/dynamic_template_manager_test_server).
 
 ## Available Options
 
