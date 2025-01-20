@@ -259,6 +259,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if trace_skip_unused_all_fns {
 			println('k: ${k} | mfn: ${mfn.name}')
 		}
+		// public/exported functions can not be skipped,
+		// especially when producing a shared library:
+		if mfn.is_pub && pref_.is_shared {
+			all_fn_root_names << k
+			continue
+		}
 		if pref_.translated && mfn.attrs.any(it.name == 'c') {
 			all_fn_root_names << k
 			continue
@@ -277,40 +283,46 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		if method_receiver_typename == '&strings.Builder' && table.used_features.auto_str {
+		if table.used_features.auto_str && method_receiver_typename == '&strings.Builder' {
 			// implicit string builders are generated in auto_eq_methods.v
 			all_fn_root_names << k
 			continue
 		}
+		has_dot := k.contains('.')
 		// auto generated string interpolation functions, may
 		// call .str or .auto_str methods for user types:
-		if k.ends_with('.str') || k.ends_with('.auto_str')
-			|| (k.starts_with('_Atomic_') && k.ends_with('_str')) {
-			if table.used_features.auto_str || table.used_features.dump
-				|| table.used_features.print_types[mfn.receiver.typ.idx()]
-				|| table.used_features.asserts || table.used_features.debugger
-				|| table.used_features.external_types {
+		if table.used_features.auto_str || table.used_features.dump || table.used_features.asserts
+			|| table.used_features.debugger || table.used_features.external_types
+			|| table.used_features.print_types[mfn.receiver.typ.idx()] {
+			if (has_dot && (k.ends_with('.str') || k.ends_with('.auto_str')))
+				|| (k.starts_with('_Atomic_') && k.ends_with('_str')) {
 				all_fn_root_names << k
+				continue
 			}
-			continue
 		}
-		if k.ends_with('.init') || k.ends_with('.cleanup') {
-			all_fn_root_names << k
-			continue
-		}
-		if (pref_.autofree || table.used_features.external_types) && k.ends_with('.free') {
-			all_fn_root_names << k
-			continue
-		}
-
-		// sync:
-		if k in ['sync.new_channel_st', 'sync.channel_select'] {
-			all_fn_root_names << k
-			continue
-		}
-		if pref_.is_prof {
-			if k.starts_with('time.vpc_now') || k.starts_with('v.profile.') {
-				// needed for -profile
+		if has_dot {
+			if k.ends_with('.init') || k.ends_with('.cleanup') {
+				all_fn_root_names << k
+				continue
+			}
+			// sync:
+			if k in ['sync.new_channel_st', 'sync.channel_select'] {
+				all_fn_root_names << k
+				continue
+			}
+			if pref_.is_prof {
+				if k.starts_with('time.vpc_now') || k.starts_with('v.profile.') {
+					// needed for -profile
+					all_fn_root_names << k
+					continue
+				}
+			}
+			if (pref_.autofree || table.used_features.external_types) && k.ends_with('.free') {
+				all_fn_root_names << k
+				continue
+			}
+			if has_dot && (k.ends_with('.lock') || k.ends_with('.unlock')
+				|| k.ends_with('.rlock') || k.ends_with('.runlock')) {
 				all_fn_root_names << k
 				continue
 			}
@@ -325,11 +337,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		if k.ends_with('.lock') || k.ends_with('.unlock') || k.ends_with('.rlock')
-			|| k.ends_with('.runlock') {
-			all_fn_root_names << k
-			continue
-		}
 		if mfn.receiver.typ != ast.void_type && mfn.generic_names.len > 0 {
 			// generic methods may be used in cgen after specialisation :-|
 			// TODO: move generic method specialisation from cgen to before markused
@@ -338,20 +345,15 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		// testing framework:
 		if pref_.is_test {
-			if k.starts_with('test_') || k.contains('.test_') || k.contains('.vtest_') {
+			if k.starts_with('test_')
+				|| (has_dot && (k.contains('.test_') || k.contains('.vtest_'))) {
 				all_fn_root_names << k
 				continue
 			}
-			if k.starts_with('testsuite_') || k.contains('.testsuite_') {
+			if k.starts_with('testsuite_') || (has_dot && k.contains('.testsuite_')) {
 				all_fn_root_names << k
 				continue
 			}
-		}
-		// public/exported functions can not be skipped,
-		// especially when producing a shared library:
-		if mfn.is_pub && pref_.is_shared {
-			all_fn_root_names << k
-			continue
 		}
 		if mfn.name in ['+', '-', '*', '%', '/', '<', '=='] {
 			// TODO: mark the used operators in the checker
