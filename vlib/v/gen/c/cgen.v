@@ -1413,6 +1413,10 @@ fn (mut g Gen) write_results() {
 		ck := c_name(k)
 		g.typedefs.writeln('typedef struct ${ck} ${ck};')
 	}
+	for k, _ in g.table.anon_union_names {
+		ck := c_name(k)
+		g.typedefs.writeln('typedef union ${ck} ${ck};')
+	}
 }
 
 fn (mut g Gen) find_or_register_shared(t ast.Type, base string) string {

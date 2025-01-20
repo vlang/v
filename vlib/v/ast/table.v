@@ -94,9 +94,11 @@ pub mut:
 	pointer_size      int
 	// cache for type_to_str_using_aliases
 	cached_type_to_str map[u64]string
-	anon_struct_names  map[string]int // anon struct name -> struct sym idx
-	// counter for anon struct, avoid name conflicts.
+	// counters and maps for anon structs and unions, to avoid name conflicts.
+	anon_struct_names   map[string]int // anon struct name -> struct sym idx
 	anon_struct_counter int
+	anon_union_names    map[string]int // anon union name -> union sym idx
+	anon_union_counter  int
 }
 
 // used by vls to avoid leaks
@@ -910,6 +912,11 @@ pub fn (mut t Table) register_enum_decl(enum_decl EnumDecl) {
 @[inline]
 pub fn (mut t Table) register_anon_struct(name string, sym_idx int) {
 	t.anon_struct_names[name] = sym_idx
+}
+
+@[inline]
+pub fn (mut t Table) register_anon_union(name string, sym_idx int) {
+	t.anon_union_names[name] = sym_idx
 }
 
 pub fn (t &Table) known_type(name string) bool {
