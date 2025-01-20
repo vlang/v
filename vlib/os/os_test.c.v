@@ -641,6 +641,7 @@ fn test_rmdir_not_exist() ! {
 
 fn test_dir() {
 	$if windows {
+		assert os.dir('\\') == '\\'
 		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'
 		assert os.dir('C:\\a\\b\\') == 'C:\\a\\b'
 		assert os.dir('C:/a/b/c') == 'C:\\a\\b'
@@ -682,6 +683,76 @@ fn test_file_name() {
 		assert os.file_name('v/vlib/os') == 'os'
 	}
 	assert os.file_name('filename') == 'filename'
+}
+
+fn test_split_path() {
+	mut dir := ''
+	mut filename := ''
+	mut ext := ''
+	$if windows {
+		dir, filename, ext = os.split_path(r'\')
+		assert [dir, filename, ext] == [r'\', '', '']
+
+		dir, filename, ext = os.split_path('.')
+		assert [dir, filename, ext] == ['.', '', '']
+
+		dir, filename, ext = os.split_path('..')
+		assert [dir, filename, ext] == ['..', '', '']
+
+		dir, filename, ext = os.split_path(r'\x.c.v')
+		assert [dir, filename, ext] == [r'\', 'x.c', '.v']
+
+		dir, filename, ext = os.split_path(r'.\x.c.v')
+		assert [dir, filename, ext] == ['.', 'x.c', '.v']
+
+		dir, filename, ext = os.split_path(r'x.c.v')
+		assert [dir, filename, ext] == ['.', 'x.c', '.v']
+
+		dir, filename, ext = os.split_path(r'..\x.c.v')
+		assert [dir, filename, ext] == ['..', 'x.c', '.v']
+
+		dir, filename, ext = os.split_path(r'\lib\x.c.v')
+		assert [dir, filename, ext] == [r'\lib', 'x.c', '.v']
+
+		dir, filename, ext = os.split_path(r'\lib\x.c.v\')
+		assert [dir, filename, ext] == [r'\lib\x.c.v', '', '']
+
+		dir, filename, ext = os.split_path(r'\lib\x.c.')
+		assert [dir, filename, ext] == [r'\lib', 'x.c.', '']
+	} $else {
+		dir, filename, ext = os.split_path('/')
+		assert [dir, filename, ext] == ['/', '', '']
+
+		dir, filename, ext = os.split_path('.')
+		assert [dir, filename, ext] == ['.', '', '']
+
+		dir, filename, ext = os.split_path('..')
+		assert [dir, filename, ext] == ['..', '', '']
+
+		dir, filename, ext = os.split_path('/x.c.v')
+		assert [dir, filename, ext] == ['/', 'x.c', '.v']
+
+		dir, filename, ext = os.split_path('./x.c.v')
+		assert [dir, filename, ext] == ['.', 'x.c', '.v']
+
+		dir, filename, ext = os.split_path('x.c.v')
+		assert [dir, filename, ext] == ['.', 'x.c', '.v']
+
+		dir, filename, ext = os.split_path('../x.c.v')
+		assert [dir, filename, ext] == ['..', 'x.c', '.v']
+
+		dir, filename, ext = os.split_path('/lib/x.c.v')
+		assert [dir, filename, ext] == ['/lib', 'x.c', '.v']
+
+		dir, filename, ext = os.split_path('/lib/x.c.v/')
+		assert [dir, filename, ext] == ['/lib/x.c.v', '', '']
+
+		dir, filename, ext = os.split_path('/lib/../x.c.v/')
+		assert [dir, filename, ext] == ['/lib/../x.c.v', '', '']
+
+		dir, filename, ext = os.split_path('/lib/x.c.')
+		assert [dir, filename, ext] == ['/lib', 'x.c.', '']
+	}
 }
 
 fn test_uname() {
