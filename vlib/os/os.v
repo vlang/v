@@ -324,36 +324,38 @@ pub fn file_name(opath string) string {
 	return path.all_after_last(path_separator)
 }
 
-// split_path will split `opath` into (`dir`,`filename`,`ext`).
+// split_path will split `path` into (`dir`,`filename`,`ext`).
 // Examples:
 // ```v
 // dir,filename,ext := os.split_path('/usr/lib/test.so')
 // assert [dir,filename,ext] == ['/usr/lib','test','.so']
 // ```
-pub fn split_path(opath string) (string, string, string) {
-	if opath == '.' {
+pub fn split_path(path string) (string, string, string) {
+	if path == '' {
+		return '', '', ''
+	} else if path == '.' {
 		return '.', '', ''
-	} else if opath == '..' {
+	} else if path == '..' {
 		return '..', '', ''
 	}
 
-	other_separator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_separator, path_separator)
-	if path == path_separator {
-		return path_separator, '', ''
+	my_path_separator := if path.contains('/') { '/' } else { '\\' }
+
+	if path == my_path_separator {
+		return my_path_separator, '', ''
 	}
-	if path.ends_with(path_separator) {
+	if path.ends_with(my_path_separator) {
 		return path[..path.len - 1], '', ''
 	}
 	mut dir := '.'
-	if pos := path.last_index(path_separator) {
+	if pos := path.last_index(my_path_separator) {
 		if pos == 0 {
-			dir = path_separator
+			dir = my_path_separator
 		} else {
 			dir = path[..pos]
 		}
 	}
-	file_name := path.all_after_last(path_separator)
+	file_name := path.all_after_last(my_path_separator)
 	pos_ext := file_name.last_index_u8(`.`)
 	if pos_ext == -1 || pos_ext == 0 || pos_ext + 1 >= file_name.len {
 		return dir, file_name, ''
