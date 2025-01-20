@@ -4199,8 +4199,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	g.write(field_name)
 	if is_option_unwrap {
-		if (is_dereferenced || field_typ.is_ptr())
-			&& g.table.final_sym(node.expr_type).kind in [.sum_type, .interface] {
+		if g.table.final_sym(node.expr_type).kind in [.sum_type, .interface] {
 			g.write('->')
 		} else {
 			g.write('.')
