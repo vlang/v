@@ -4286,13 +4286,14 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = field.typ
 				}
 			}
-			if mut field := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
+			expr_str := expr.expr.str()
+			if mut field := scope.find_struct_field(expr_str, expr.expr_type, expr.field_name) {
 				smartcasts << field.smartcasts
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if !is_mut || expr.is_mut || is_option_unwrap || orig_type.has_flag(.option) {
 				smartcasts << to_type
-				scope.register_struct_field(expr.expr.str(), ast.ScopeStructField{
+				scope.register_struct_field(expr_str, ast.ScopeStructField{
 					struct_type: expr.expr_type
 					name:        expr.field_name
 					typ:         cur_type
