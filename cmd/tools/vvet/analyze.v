@@ -16,6 +16,10 @@ const stringliteral_cutoff = 10
 const ascast_cutoff = 10
 const stringconcat_cutoff = 10
 
+// possibly inline fn cutoff
+const fns_call_cutoff = 10 // at least N calls
+const short_fns_cutoff = 3 // lines
+
 // minimum size for string literals
 const stringliteral_min_size = 20
 
@@ -24,9 +28,11 @@ const long_fns_cutoff = 300
 
 struct VetAnalyze {
 mut:
-	repeated_expr_cutoff shared map[string]int // repeated code cutoff	
-	repeated_expr        shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
-	cur_fn               ast.FnDecl // current fn declaration
+	repeated_expr_cutoff  shared map[string]int // repeated code cutoff	
+	repeated_expr         shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
+	potential_non_inlined shared map[string]map[string]token.Pos              // fns might be inlined
+	call_counter          shared map[string]int // fn call counter
+	cur_fn                ast.FnDecl            // current fn declaration
 }
 
 // stmt checks for repeated code in statements
@@ -86,6 +92,9 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 				vt.save_expr(callexpr_cutoff, '${expr.name}(${expr.args.map(it.str()).join(', ')})',
 					vet.file, expr.pos)
 			}
+			lock vt.call_counter {
+				vt.call_counter[expr.name]++
+			}
 		}
 		ast.AsCast {
 			vt.save_expr(ascast_cutoff, ast.Expr(expr).str(), vet.file, expr.pos)
@@ -104,10 +113,14 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 
 // long_or_empty_fns checks for long or empty functions
 fn (mut vt VetAnalyze) long_or_empty_fns(mut vet Vet, fn_decl ast.FnDecl) {
-	nr_lines := if fn_decl.stmts.len == 0 {
-		0
-	} else {
-		fn_decl.stmts.last().pos.line_nr - fn_decl.pos.line_nr
+	nr_lines := fn_decl.end_pos.line_nr - fn_decl.pos.line_nr - 2
+	if nr_lines < short_fns_cutoff {
+		attr := fn_decl.attrs.find_first('inline')
+		if attr == none {
+			lock vt.potential_non_inlined {
+				vt.potential_non_inlined[fn_decl.name][vet.file] = fn_decl.pos
+			}
+		}
 	}
 	if nr_lines > long_fns_cutoff {
 		vet.notice('Long function - ${nr_lines} lines long.', fn_decl.pos.line_nr, .long_fns)
@@ -137,9 +150,26 @@ fn (mut vt VetAnalyze) vet_repeated_code(mut vet Vet) {
 	}
 }
 
+// vet_inlining_fn reports possible fn to be inlined
+fn (mut vt VetAnalyze) vet_inlining_fn(mut vet Vet) {
+	for fn_name, info in vt.potential_non_inlined {
+		for file, pos in info {
+			calls := vt.call_counter[fn_name] or { 0 }
+			if calls < fns_call_cutoff {
+				continue
+			}
+			vet.notice_with_file(file, '${fn_name} might be inlined (possibly called at least ${calls} times)',
+				pos.line_nr, .inline_fn)
+		}
+	}
+}
+
 // vet_code_analyze performs code analysis
 fn (mut vt Vet) vet_code_analyze() {
 	if vt.opt.repeated_code {
 		vt.analyze.vet_repeated_code(mut vt)
+	}
+	if vt.opt.fn_sizing {
+		vt.analyze.vet_inlining_fn(mut vt)
 	}
 }

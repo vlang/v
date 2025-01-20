@@ -630,6 +630,7 @@ pub mut:
 	scope       &Scope = unsafe { nil }
 	label_names []string
 	pos         token.Pos // function declaration position
+	end_pos     token.Pos // end position
 	//
 	is_expand_simple_interpolation bool // true, when @[expand_simple_interpolation] is used on a fn. It should have a single string argument.
 }
