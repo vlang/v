@@ -188,6 +188,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if table.used_features.as_cast {
 			core_fns << '__as_cast'
+			core_fns << 'new_array_from_c_array'
 		}
 		if table.used_features.anon_fn {
 			core_fns << 'memdup_uncollectable'
