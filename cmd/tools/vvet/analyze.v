@@ -86,14 +86,20 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 		}
 		ast.CallExpr {
 			if expr.is_static_method || expr.is_method {
-				vt.save_expr(callexpr_cutoff, '${expr.left}.${expr.name}(${expr.args.map(it.str()).join(', ')})',
+				left_str := expr.left.str()
+				lock vt.call_counter {
+					if vt.cur_fn.receiver.name == left_str {
+						vt.call_counter['${int(vt.cur_fn.receiver.typ)}.${expr.name}']++
+					}
+				}
+				vt.save_expr(callexpr_cutoff, '${left_str}.${expr.name}(${expr.args.map(it.str()).join(', ')})',
 					vet.file, expr.pos)
 			} else {
+				lock vt.call_counter {
+					vt.call_counter[expr.name]++
+				}
 				vt.save_expr(callexpr_cutoff, '${expr.name}(${expr.args.map(it.str()).join(', ')})',
 					vet.file, expr.pos)
-			}
-			lock vt.call_counter {
-				vt.call_counter[expr.name]++
 			}
 		}
 		ast.AsCast {
@@ -118,7 +124,7 @@ fn (mut vt VetAnalyze) long_or_empty_fns(mut vet Vet, fn_decl ast.FnDecl) {
 		attr := fn_decl.attrs.find_first('inline')
 		if attr == none {
 			lock vt.potential_non_inlined {
-				vt.potential_non_inlined[fn_decl.name][vet.file] = fn_decl.pos
+				vt.potential_non_inlined[fn_decl.fkey()][vet.file] = fn_decl.pos
 			}
 		}
 	}
@@ -158,7 +164,7 @@ fn (mut vt VetAnalyze) vet_inlining_fn(mut vet Vet) {
 			if calls < fns_call_cutoff {
 				continue
 			}
-			vet.notice_with_file(file, '${fn_name} might be inlined (possibly called at least ${calls} times)',
+			vet.notice_with_file(file, '${fn_name.all_after('.')} fn might be inlined (possibly called at least ${calls} times)',
 				pos.line_nr, .inline_fn)
 		}
 	}
