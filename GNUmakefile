@@ -90,7 +90,7 @@ endif
 endif
 endif
 
-.PHONY: all clean rebuild check fresh_vc fresh_tcc fresh_legacy check_for_working_tcc
+.PHONY: all clean rebuild check fresh_vc fresh_tcc fresh_legacy check_for_working_tcc etags ctags
 
 ifdef prod
 VFLAGS+=-prod
@@ -213,3 +213,9 @@ install:
 
 check:
 	$(VEXE) test-all
+
+etags:
+	./v -print-v-files cmd/v | grep -v :parse_text| etags -L -
+
+ctags:
+	./v -print-v-files cmd/v | grep -v :parse_text| ctags -L -
