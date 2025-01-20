@@ -605,7 +605,6 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 	left_arg := g.read_field(left_type, '_typ', 'a')
 	right_arg := g.read_field(left_type, '_typ', 'b')
 
-	fn_builder.writeln('${g.static_non_parallel}int v_typeof_interface_idx_${idx_fn}(int sidx); // for auto eq method')
 	fn_builder.writeln('${g.static_non_parallel}inline bool ${fn_name}_interface_eq(${ptr_styp} a, ${ptr_styp} b) {')
 	fn_builder.writeln('\tif (${left_arg} == ${right_arg}) {')
 	fn_builder.writeln('\t\tint idx = v_typeof_interface_idx_${idx_fn}(${left_arg});')
