@@ -925,8 +925,9 @@ pub:
 	name        string
 	pos         token.Pos
 	typ         Type
-	smartcasts  []Type // nested sum types require nested smart casting, for that a list of types is needed
-	orig_type   Type   // original sumtype type; 0 if it's not a sumtype
+	orig_type   Type // original sumtype type; 0 if it's not a sumtype
+pub mut:
+	smartcasts []Type // nested sum types require nested smart casting, for that a list of types is needed
 	// TODO: move this to a real docs site later
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)

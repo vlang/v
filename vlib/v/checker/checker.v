@@ -4273,7 +4273,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			mut is_mut := false
 			mut smartcasts := []ast.Type{}
 			expr_sym := c.table.sym(expr.expr_type)
-			mut orig_type := 0
+			mut orig_type := ast.no_type
 			if field := c.table.find_field(expr_sym, expr.field_name) {
 				if field.is_mut {
 					if root_ident := expr.root_ident() {
@@ -4286,20 +4286,33 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = field.typ
 				}
 			}
-			if field := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
+			mut nested_unwrap := false
+			if mut field := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
 				smartcasts << field.smartcasts
+				nested_unwrap = smartcasts.len > 1
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
-			if !is_mut || expr.is_mut || is_option_unwrap {
+			if !is_mut || expr.is_mut || is_option_unwrap || orig_type.has_flag(.option) {
 				smartcasts << to_type
-				scope.register_struct_field(expr.expr.str(), ast.ScopeStructField{
-					struct_type: expr.expr_type
-					name:        expr.field_name
-					typ:         cur_type
-					smartcasts:  smartcasts
-					pos:         expr.pos
-					orig_type:   orig_type
-				})
+				if nested_unwrap {
+					scope.register_or_update_struct_field(expr.expr.str(), ast.ScopeStructField{
+						struct_type: expr.expr_type
+						name:        expr.field_name
+						typ:         cur_type
+						smartcasts:  smartcasts
+						pos:         expr.pos
+						orig_type:   orig_type
+					})
+				} else {
+					scope.register_struct_field(expr.expr.str(), ast.ScopeStructField{
+						struct_type: expr.expr_type
+						name:        expr.field_name
+						typ:         cur_type
+						smartcasts:  smartcasts
+						pos:         expr.pos
+						orig_type:   orig_type
+					})
+				}
 			} else {
 				c.smartcast_mut_pos = expr.pos
 			}
