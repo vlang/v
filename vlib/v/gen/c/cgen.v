@@ -6287,11 +6287,7 @@ fn (mut g Gen) write_init_function() {
 		// provide a constructor/destructor pair, ensuring that all constants
 		// are initialized just once, and that they will be freed too.
 		// Note: os.args in this case will be [].
-		if g.pref.os == .windows {
-			g.writeln('// workaround for windows, export _vinit_caller, let dl.open() call it')
-			g.writeln('// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
-			g.writeln('VV_EXPORTED_SYMBOL void _vinit_caller();')
-		} else {
+		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((constructor))')
 		}
 		g.writeln('void _vinit_caller() {')
@@ -6302,11 +6298,7 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 
-		if g.pref.os == .windows {
-			g.writeln('// workaround for windows, export _vcleanup_caller, let dl.close() call it')
-			g.writeln('// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
-			g.writeln('VV_EXPORTED_SYMBOL void _vcleanup_caller();')
-		} else {
+		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((destructor))')
 		}
 		g.writeln('void _vcleanup_caller() {')
