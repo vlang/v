@@ -29,7 +29,7 @@ const long_fns_cutoff = os.getenv_opt('VET_LONG_FNS_CUTOFF') or { '300' }.int()
 
 struct VetAnalyze {
 mut:
-	repeated_expr_cutoff  shared map[string]i64 // repeated code cutoff	
+	repeated_expr_cutoff  shared map[string]int // repeated code cutoff	
 	repeated_expr         shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
 	potential_non_inlined shared map[string]map[string]token.Pos              // fns might be inlined
 	call_counter          shared map[string]int // fn call counter
@@ -52,7 +52,7 @@ fn (mut vt VetAnalyze) stmt(vet &Vet, stmt ast.Stmt) {
 }
 
 // save_expr registers a repeated code occurrence
-fn (mut vt VetAnalyze) save_expr(cutoff i64, expr string, file string, pos token.Pos) {
+fn (mut vt VetAnalyze) save_expr(cutoff int, expr string, file string, pos token.Pos) {
 	lock vt.repeated_expr {
 		vt.repeated_expr[vt.cur_fn.name][expr][file] << pos
 	}
