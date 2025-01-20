@@ -4,27 +4,28 @@ module main
 
 import v.ast
 import v.token
+import os
 import arrays
 
 // cutoffs
-const indexexpr_cutoff = $d('VET_INDEXEXPR_CUTOFF', 10)
-const infixexpr_cutoff = $d('VET_INFIXEXPR_CUTOFF', 10)
-const selectorexpr_cutoff = $d('VET_SELECTOREXPR_CUTOFF', 10)
-const callexpr_cutoff = $d('VET_CALLEXPR_CUTOFF', 10)
-const stringinterliteral_cutoff = $d('STRINGINTERLITERAL_CUTOFF', 10)
-const stringliteral_cutoff = $d('STRINGLITERAL_CUTOFF', 10)
-const ascast_cutoff = $d('ASCAST_CUTOFF', 10)
-const stringconcat_cutoff = $d('STRINGCONCAT_CUTOFF', 10)
+const indexexpr_cutoff = os.getenv_opt('VET_INDEXEXPR_CUTOFF') or { '10' }.int()
+const infixexpr_cutoff = os.getenv_opt('VET_INFIXEXPR_CUTOFF') or { '10' }.int()
+const selectorexpr_cutoff = os.getenv_opt('VET_SELECTOREXPR_CUTOFF') or { '10' }.int()
+const callexpr_cutoff = os.getenv_opt('VET_CALLEXPR_CUTOFF') or { '10' }.int()
+const stringinterliteral_cutoff = os.getenv_opt('STRINGINTERLITERAL_CUTOFF') or { '10' }.int()
+const stringliteral_cutoff = os.getenv_opt('STRINGLITERAL_CUTOFF') or { '10' }.int()
+const ascast_cutoff = os.getenv_opt('ASCAST_CUTOFF') or { '10' }.int()
+const stringconcat_cutoff = os.getenv_opt('STRINGCONCAT_CUTOFF') or { '10' }.int()
 
 // possibly inline fn cutoff
-const fns_call_cutoff = $d('VET_FNS_CALL_CUTOFF', 10) // at least N calls
-const short_fns_cutoff = $d('VET_SHORT_FNS_CUTOFF', 3) // lines
+const fns_call_cutoff = os.getenv_opt('VET_FNS_CALL_CUTOFF') or { '10' }.int() // at least N calls
+const short_fns_cutoff = os.getenv_opt('VET_SHORT_FNS_CUTOFF') or { '3' }.int() // lines
 
 // minimum size for string literals
-const stringliteral_min_size = $d('VET_STRINGLITERAL_MIN_SIZE', 20)
+const stringliteral_min_size = os.getenv_opt('VET_STRINGLITERAL_MIN_SIZE') or { '20' }.int()
 
 // long functions cutoff
-const long_fns_cutoff = $d('VET_LONG_FNS_CUTOFF', 300)
+const long_fns_cutoff = os.getenv_opt('VET_LONG_FNS_CUTOFF') or { '300' }.int()
 
 struct VetAnalyze {
 mut:
