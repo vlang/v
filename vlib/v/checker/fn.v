@@ -3131,9 +3131,10 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.table.sym(unaliased_left_type).info as ast.Array
 	}
 	elem_typ = array_info.elem_type
-	mut arg0 := if node.args.len > 0 { node.args[0] } else { ast.CallArg{} }
+	node_args_len := node.args.len
+	mut arg0 := if node_args_len > 0 { node.args[0] } else { ast.CallArg{} }
 	if method_name in ['filter', 'map', 'any', 'all', 'count'] {
-		if node.args.len > 0 && mut arg0.expr is ast.LambdaExpr {
+		if node_args_len > 0 && mut arg0.expr is ast.LambdaExpr {
 			if arg0.expr.params.len != 1 {
 				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
 					arg0.expr.pos)
@@ -3154,7 +3155,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 	} else if method_name in ['insert', 'prepend'] {
 		if method_name == 'insert' {
-			if node.args.len != 2 {
+			if node_args_len != 2 {
 				c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
 					node.pos)
 				return ast.void_type
@@ -3169,7 +3170,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			c.table.used_features.arr_insert = true
 		} else {
 			c.table.used_features.arr_prepend = true
-			if node.args.len != 1 {
+			if node_args_len != 1 {
 				c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
 					node.pos)
 				return ast.void_type
@@ -3201,8 +3202,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			}
 		}
 	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
-		if node.args.len != 1 {
-			c.error('`.${method_name}()` expected 1 argument, but got ${node.args.len}',
+		if node_args_len != 1 {
+			c.error('`.${method_name}()` expected 1 argument, but got ${node_args_len}',
 				node.pos)
 		} else {
 			if mut arg0.expr is ast.LambdaExpr {
@@ -3255,9 +3256,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		// position of `a` and `b` doesn't matter, they're the same
 		scope_register_a_b(mut node.scope, node.pos, elem_typ)
 
-		if node.args.len > 1 {
-			c.error('expected 0 or 1 argument, but got ${node.args.len}', node.pos)
-		} else if node.args.len == 1 {
+		if node_args_len > 1 {
+			c.error('expected 0 or 1 argument, but got ${node_args_len}', node.pos)
+		} else if node_args_len == 1 {
 			if mut arg0.expr is ast.LambdaExpr {
 				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.bool_type, mut arg0.expr)
 			} else if mut arg0.expr is ast.InfixExpr {
@@ -3292,7 +3293,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	} else if method_name == 'wait' {
 		elem_sym := c.table.sym(elem_typ)
 		if elem_sym.kind == .thread {
-			if node.args.len != 0 {
+			if node_args_len != 0 {
 				c.error('`.wait()` does not have any arguments', arg0.pos)
 			}
 			thread_ret_type := c.unwrap_generic(elem_sym.thread_info().return_type)
@@ -3354,7 +3355,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.int_type
 	} else if method_name == 'clone' {
-		if node.args.len != 0 {
+		if node_args_len != 0 {
 			c.error('`.clone()` does not have any arguments', arg0.pos)
 		}
 		c.ensure_same_array_return_type(mut node, left_type)
@@ -3379,8 +3380,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		node.return_type = ast.void_type
 	} else if method_name == 'contains' {
 		// c.warn('use `value in arr` instead of `arr.contains(value)`', node.pos)
-		if node.args.len != 1 {
-			c.error('`.contains()` expected 1 argument, but got ${node.args.len}', node.pos)
+		if node_args_len != 1 {
+			c.error('`.contains()` expected 1 argument, but got ${node_args_len}', node.pos)
 		} else if !left_sym.has_method('contains') {
 			arg_typ := c.unwrap_generic(c.expr(mut arg0.expr))
 			c.check_expected_call_arg(arg_typ, c.unwrap_generic(elem_typ), node.language,
@@ -3391,8 +3392,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		node.return_type = ast.bool_type
 	} else if method_name == 'index' {
-		if node.args.len != 1 {
-			c.error('`.index()` expected 1 argument, but got ${node.args.len}', node.pos)
+		if node_args_len != 1 {
+			c.error('`.index()` expected 1 argument, but got ${node_args_len}', node.pos)
 		} else if !left_sym.has_method('index') {
 			arg_typ := c.unwrap_generic(c.expr(mut arg0.expr))
 			c.check_expected_call_arg(arg_typ, c.unwrap_generic(elem_typ), node.language,
@@ -3404,7 +3405,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		node.return_type = ast.int_type
 	} else if method_name in ['first', 'last', 'pop'] {
 		c.markused_array_method(!c.is_builtin_mod, method_name)
-		if node.args.len != 0 {
+		if node_args_len != 0 {
 			c.error('`.${method_name}()` does not have any arguments', arg0.pos)
 		}
 		node.return_type = array_info.elem_type
@@ -3421,8 +3422,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if method := c.table.find_method(unwrapped_left_sym, method_name) {
 			node.receiver_type = method.receiver_type
 		}
-		if node.args.len != 1 {
-			c.error('`.delete()` expected 1 argument, but got ${node.args.len}', node.pos)
+		if node_args_len != 1 {
+			c.error('`.delete()` expected 1 argument, but got ${node_args_len}', node.pos)
 		} else {
 			arg_typ := c.unwrap_generic(c.expr(mut arg0.expr))
 			c.check_expected_call_arg(arg_typ, ast.int_type, node.language, arg0) or {
@@ -3431,8 +3432,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		node.return_type = ast.void_type
 	} else if method_name == 'delete_many' {
-		if node.args.len != 2 {
-			c.error('`.delete_many()` expected 2 arguments, but got ${node.args.len}',
+		if node_args_len != 2 {
+			c.error('`.delete_many()` expected 2 arguments, but got ${node_args_len}',
 				node.pos)
 		} else {
 			for i, mut arg in node.args {
