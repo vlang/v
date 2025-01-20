@@ -259,6 +259,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if trace_skip_unused_all_fns {
 			println('k: ${k} | mfn: ${mfn.name}')
 		}
+		// public/exported functions can not be skipped,
+		// especially when producing a shared library:
+		if mfn.is_pub && pref_.is_shared {
+			all_fn_root_names << k
+			continue
+		}
 		if pref_.translated && mfn.attrs.any(it.name == 'c') {
 			all_fn_root_names << k
 			continue
@@ -277,7 +283,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		if method_receiver_typename == '&strings.Builder' && table.used_features.auto_str {
+		if table.used_features.auto_str && method_receiver_typename == '&strings.Builder' {
 			// implicit string builders are generated in auto_eq_methods.v
 			all_fn_root_names << k
 			continue
@@ -348,12 +354,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				all_fn_root_names << k
 				continue
 			}
-		}
-		// public/exported functions can not be skipped,
-		// especially when producing a shared library:
-		if mfn.is_pub && pref_.is_shared {
-			all_fn_root_names << k
-			continue
 		}
 		if mfn.name in ['+', '-', '*', '%', '/', '<', '=='] {
 			// TODO: mark the used operators in the checker
