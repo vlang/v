@@ -241,8 +241,11 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				// struct field
 				field_name = p.check_name()
 				p.inside_struct_field_decl = true
-				if p.tok.kind == .key_struct
-					|| (p.tok.kind == .key_shared && p.peek_tok.kind == .key_struct) {
+				is_anon_struct := p.tok.kind == .key_struct
+					|| (p.tok.kind == .key_shared && p.peek_tok.kind == .key_struct)
+				is_anon_union := p.tok.kind == .key_union
+					|| (p.tok.kind == .key_shared && p.peek_tok.kind == .key_union)
+				if is_anon_struct || is_anon_union {
 					// Anon structs
 					field_is_shared := p.tok.kind == .key_shared
 					p.anon_struct_decl = p.struct_decl(true)
