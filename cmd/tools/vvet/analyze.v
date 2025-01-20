@@ -7,28 +7,28 @@ import v.token
 import arrays
 
 // cutoffs
-const indexexpr_cutoff = 10
-const infixexpr_cutoff = 10
-const selectorexpr_cutoff = 10
-const callexpr_cutoff = 10
-const stringinterliteral_cutoff = 10
-const stringliteral_cutoff = 10
-const ascast_cutoff = 10
-const stringconcat_cutoff = 10
+const indexexpr_cutoff = $d('VET_INDEXEXPR_CUTOFF', 10)
+const infixexpr_cutoff = $d('VET_INFIXEXPR_CUTOFF', 10)
+const selectorexpr_cutoff = $d('VET_SELECTOREXPR_CUTOFF', 10)
+const callexpr_cutoff = $d('VET_CALLEXPR_CUTOFF', 10)
+const stringinterliteral_cutoff = $d('STRINGINTERLITERAL_CUTOFF', 10)
+const stringliteral_cutoff = $d('STRINGLITERAL_CUTOFF', 10)
+const ascast_cutoff = $d('ASCAST_CUTOFF', 10)
+const stringconcat_cutoff = $d('STRINGCONCAT_CUTOFF', 10)
 
 // possibly inline fn cutoff
-const fns_call_cutoff = 10 // at least N calls
-const short_fns_cutoff = 3 // lines
+const fns_call_cutoff = $d('VET_FNS_CALL_CUTOFF', 10) // at least N calls
+const short_fns_cutoff = $d('VET_SHORT_FNS_CUTOFF', 3) // lines
 
 // minimum size for string literals
-const stringliteral_min_size = 20
+const stringliteral_min_size = $d('VET_STRINGLITERAL_MIN_SIZE', 20)
 
 // long functions cutoff
-const long_fns_cutoff = 300
+const long_fns_cutoff = $d('VET_LONG_FNS_CUTOFF', 300)
 
 struct VetAnalyze {
 mut:
-	repeated_expr_cutoff  shared map[string]int // repeated code cutoff	
+	repeated_expr_cutoff  shared map[string]i64 // repeated code cutoff	
 	repeated_expr         shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
 	potential_non_inlined shared map[string]map[string]token.Pos              // fns might be inlined
 	call_counter          shared map[string]int // fn call counter
@@ -51,7 +51,7 @@ fn (mut vt VetAnalyze) stmt(vet &Vet, stmt ast.Stmt) {
 }
 
 // save_expr registers a repeated code occurrence
-fn (mut vt VetAnalyze) save_expr(cutoff int, expr string, file string, pos token.Pos) {
+fn (mut vt VetAnalyze) save_expr(cutoff i64, expr string, file string, pos token.Pos) {
 	lock vt.repeated_expr {
 		vt.repeated_expr[vt.cur_fn.name][expr][file] << pos
 	}
