@@ -37,8 +37,13 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	mut name := if is_anon {
-		p.table.anon_struct_counter++
-		'_VAnonStruct${p.table.anon_struct_counter}'
+		if is_union {
+			p.table.anon_union_counter++
+			'_VAnonUnion${p.table.anon_union_counter}'
+		} else {
+			p.table.anon_struct_counter++
+			'_VAnonStruct${p.table.anon_struct_counter}'
+		}
 	} else {
 		p.check_name()
 	}
@@ -405,7 +410,11 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 	mut ret := p.table.register_sym(sym)
 	if is_anon {
-		p.table.register_anon_struct(name, ret)
+		if is_union {
+			p.table.register_anon_union(name, ret)
+		} else {
+			p.table.register_anon_struct(name, ret)
+		}
 	}
 	// allow duplicate c struct declarations
 	if ret == -1 && language != .c {
