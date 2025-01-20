@@ -138,7 +138,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		if ct_attr_idx := node.attrs.find_comptime_define() {
 			sexpr := node.attrs[ct_attr_idx].ct_expr.str()
-			c.error('only functions that do NOT return values can have `[if ${sexpr}]` tags',
+			c.error('only functions that do NOT return values can have `@[if ${sexpr}]` tags',
 				node.pos)
 		}
 		if node.generic_names.len > 0 {
