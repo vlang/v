@@ -301,15 +301,21 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			if has_cast {
 				pos := g.out.len
 				g.call_args(expr)
-				mut call_args_str := g.out.after(pos)
+				mut call_args_str := g.out.after(pos).trim_space()
 				g.go_back(call_args_str.len)
 				mut rep_group := []string{cap: 2 * expr.args.len}
 				for i in 0 .. expr.args.len {
 					rep_group << g.expr_string(expr.args[i].expr)
 					rep_group << 'arg->arg${i + 1}'
 				}
-				call_args_str = call_args_str.replace_each(rep_group)
-				g.gowrappers.write_string(call_args_str)
+				if call_args_str.starts_with('I_') {
+					g.gowrappers.write_string(call_args_str.all_before('('))
+					g.gowrappers.write_string('(')
+					g.gowrappers.write_string(call_args_str.all_after('(').replace_each(rep_group))
+				} else {
+					call_args_str = call_args_str.replace_each(rep_group)
+					g.gowrappers.write_string(call_args_str)
+				}
 			} else if expr.name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 				&& expr.args[0].typ != ast.string_type {
 				pos := g.out.len

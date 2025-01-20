@@ -1157,6 +1157,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
+			g.definitions.writeln('int v_typeof_interface_idx_${sym.cname}(int sidx);')
 			g.writeln2('', 'int v_typeof_interface_idx_${sym.cname}(int sidx) {')
 			if g.pref.parallel_cc {
 				g.extern_out.writeln('extern int v_typeof_interface_idx_${sym.cname}(int sidx);')
@@ -1411,6 +1412,10 @@ fn (mut g Gen) write_results() {
 	for k, _ in g.table.anon_struct_names {
 		ck := c_name(k)
 		g.typedefs.writeln('typedef struct ${ck} ${ck};')
+	}
+	for k, _ in g.table.anon_union_names {
+		ck := c_name(k)
+		g.typedefs.writeln('typedef union ${ck} ${ck};')
 	}
 }
 
@@ -6286,11 +6291,7 @@ fn (mut g Gen) write_init_function() {
 		// provide a constructor/destructor pair, ensuring that all constants
 		// are initialized just once, and that they will be freed too.
 		// Note: os.args in this case will be [].
-		if g.pref.os == .windows {
-			g.writeln('// workaround for windows, export _vinit_caller, let dl.open() call it')
-			g.writeln('// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
-			g.writeln('VV_EXPORTED_SYMBOL void _vinit_caller();')
-		} else {
+		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((constructor))')
 		}
 		g.writeln('void _vinit_caller() {')
@@ -6301,11 +6302,7 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 
-		if g.pref.os == .windows {
-			g.writeln('// workaround for windows, export _vcleanup_caller, let dl.close() call it')
-			g.writeln('// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
-			g.writeln('VV_EXPORTED_SYMBOL void _vcleanup_caller();')
-		} else {
+		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((destructor))')
 		}
 		g.writeln('void _vcleanup_caller() {')
