@@ -2256,7 +2256,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		left_type.has_flag(.generic)
 	}
 	mut rec_concrete_types := []ast.Type{}
-	method_generic_names_len := method.generic_names.len
+	mut method_generic_names_len := method.generic_names.len
 	match rec_sym.info {
 		ast.Struct, ast.SumType, ast.Interface {
 			if rec_sym.info.concrete_types.len > 0 {
@@ -2608,6 +2608,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if left_sym.kind == .interface && is_method_from_embed && method.return_type.has_flag(.generic)
 		&& method_generic_names_len == 0 {
 		method.generic_names = c.table.get_generic_names((rec_sym.info as ast.Interface).generic_types)
+		method_generic_names_len = method.generic_names.len
 	}
 	if method_generic_names_len != node.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
