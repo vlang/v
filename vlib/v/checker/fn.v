@@ -898,6 +898,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.need_recheck_generic_fns = true
 		}
 	}
+	args_len := node.args.len
 	if fn_name == 'JS.await' {
 		if node.args.len > 1 {
 			c.error('JS.await expects 1 argument, a promise value (e.g `JS.await(fs.read())`',
@@ -929,11 +930,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		panic('unreachable')
-	} else if node.args.len > 0 && node.args[0].typ.has_flag(.shared_f) && fn_name == 'json.encode' {
+	} else if args_len > 0 && node.args[0].typ.has_flag(.shared_f) && fn_name == 'json.encode' {
 		c.error('json.encode cannot handle shared data', node.pos)
 		return ast.void_type
-	} else if node.args.len > 0 && (is_va_arg || is_json_decode) {
-		if node.args.len != 2 {
+	} else if args_len > 0 && (is_va_arg || is_json_decode) {
+		if args_len != 2 {
 			if is_json_decode {
 				c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
 					node.pos)
@@ -981,7 +982,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if !c.inside_unsafe {
 			c.error('`__addr` must be called from an unsafe block', node.pos)
 		}
-		if node.args.len != 1 {
+		if args_len != 1 {
 			c.error('`__addr` requires 1 argument', node.pos)
 			return ast.void_type
 		}
@@ -1157,8 +1158,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 
 			ret_typ := ast.idx_to_type(idx).set_flag(.option)
-			if node.args.len != 1 {
-				c.error('expected 1 argument, but got ${node.args.len}', node.pos)
+			if args_len != 1 {
+				c.error('expected 1 argument, but got ${args_len}', node.pos)
 			} else {
 				node.args[0].typ = c.expr(mut node.args[0].expr)
 				if node.args[0].typ != ast.string_type {
@@ -1197,7 +1198,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	if is_native_builtin {
-		if node.args.len > 0 && fn_name in print_everything_fns {
+		if args_len > 0 && fn_name in print_everything_fns {
 			c.builtin_args(mut node, fn_name, func)
 			return func.return_type
 		}
@@ -1383,7 +1384,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	for concrete_type in node.concrete_types {
 		c.ensure_type_exists(concrete_type, node.concrete_list_pos)
 	}
-	if func.generic_names.len > 0 && node.args.len == 0 && node.concrete_types.len == 0 {
+	if func.generic_names.len > 0 && args_len == 0 && node.concrete_types.len == 0 {
 		c.error('no argument generic function must add concrete types, e.g. foo[int]()',
 			node.pos)
 		return func.return_type
@@ -1407,14 +1408,14 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.check_expected_arg_count(mut node, func) or { return func.return_type }
 	}
 	// println / eprintln / panic can print anything
-	if node.args.len > 0 && fn_name in print_everything_fns {
+	if args_len > 0 && fn_name in print_everything_fns {
 		node.args[0].ct_expr = c.comptime.is_comptime(node.args[0].expr)
 		c.builtin_args(mut node, fn_name, func)
 		c.markused_fn_call(mut node)
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`
-	if node.args.len == 1 && fn_name == 'error' {
+	if args_len == 1 && fn_name == 'error' {
 		mut arg := node.args[0]
 		node.args[0].typ = c.expr(mut arg.expr)
 		node.args[0].ct_expr = c.comptime.is_comptime(node.args[0].expr)
@@ -1423,7 +1424,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	c.set_node_expected_arg_types(mut node, func)
-	if !c.pref.backend.is_js() && node.args.len > 0 && func.params.len == 0 {
+	if !c.pref.backend.is_js() && args_len > 0 && func.params.len == 0 {
 		c.error('too many arguments in call to `${func.name}` (non-js backend: ${c.pref.backend})',
 			node.pos)
 	}
@@ -1464,7 +1465,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			} else {
 				c.expr(mut call_arg.expr)
 			}
-			if i == node.args.len - 1 {
+			if i == args_len - 1 {
 				if c.table.sym(typ).kind == .array && call_arg.expr !is ast.ArrayDecompose
 					&& c.table.sym(expected_type).kind !in [.sum_type, .interface]
 					&& !param.typ.has_flag(.generic) && expected_type != typ {
@@ -1515,7 +1516,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('cannot use `none` as generic argument', call_arg.pos)
 		}
 		param_typ_sym := c.table.sym(param.typ)
-		if func.is_variadic && arg_typ.has_flag(.variadic) && node.args.len - 1 > i {
+		if func.is_variadic && arg_typ.has_flag(.variadic) && args_len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument',
 				call_arg.pos)
 		}
