@@ -3460,11 +3460,12 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 	} else {
 		c.table.sym(unaliased_left_type).info as ast.ArrayFixed
 	}
-	mut arg0 := if node.args.len > 0 { node.args[0] } else { ast.CallArg{} }
+	node_args_len := node.args.len
+	mut arg0 := if node_args_len > 0 { node.args[0] } else { ast.CallArg{} }
 	elem_typ := array_info.elem_type
 	if method_name == 'index' {
-		if node.args.len != 1 {
-			c.error('`.index()` expected 1 argument, but got ${node.args.len}', node.pos)
+		if node_args_len != 1 {
+			c.error('`.index()` expected 1 argument, but got ${node_args_len}', node.pos)
 			return ast.int_type
 		} else if !left_sym.has_method('index') {
 			arg_typ := c.expr(mut arg0.expr)
@@ -3478,8 +3479,8 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		}
 		node.return_type = ast.int_type
 	} else if method_name == 'contains' {
-		if node.args.len != 1 {
-			c.error('`.contains()` expected 1 argument, but got ${node.args.len}', node.pos)
+		if node_args_len != 1 {
+			c.error('`.contains()` expected 1 argument, but got ${node_args_len}', node.pos)
 			return ast.bool_type
 		} else if !left_sym.has_method('contains') {
 			arg_typ := c.expr(mut arg0.expr)
@@ -3493,12 +3494,12 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		}
 		node.return_type = ast.bool_type
 	} else if method_name in ['any', 'all'] {
-		if node.args.len != 1 {
-			c.error('`.${method_name}` expected 1 argument, but got ${node.args.len}',
+		if node_args_len != 1 {
+			c.error('`.${method_name}` expected 1 argument, but got ${node_args_len}',
 				node.pos)
 			return ast.bool_type
 		}
-		if node.args.len > 0 && mut arg0.expr is ast.LambdaExpr {
+		if node_args_len > 0 && mut arg0.expr is ast.LambdaExpr {
 			if arg0.expr.params.len != 1 {
 				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
 					arg0.expr.pos)
@@ -3513,12 +3514,12 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.bool_type
 	} else if method_name == 'count' {
-		if node.args.len != 1 {
-			c.error('`.${method_name}` expected 1 argument, but got ${node.args.len}',
+		if node_args_len != 1 {
+			c.error('`.${method_name}` expected 1 argument, but got ${node_args_len}',
 				node.pos)
 			return ast.bool_type
 		}
-		if node.args.len > 0 && mut arg0.expr is ast.LambdaExpr {
+		if node_args_len > 0 && mut arg0.expr is ast.LambdaExpr {
 			if arg0.expr.params.len != 1 {
 				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
 					arg0.expr.pos)
@@ -3535,7 +3536,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 	} else if method_name == 'wait' {
 		elem_sym := c.table.sym(elem_typ)
 		if elem_sym.kind == .thread {
-			if node.args.len != 0 {
+			if node_args_len != 0 {
 				c.error('`.wait()` does not have any arguments', arg0.pos)
 			}
 			thread_ret_type := c.unwrap_generic(elem_sym.thread_info().return_type)
@@ -3552,8 +3553,8 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 				node.left.pos())
 		}
 	} else if method_name == 'map' {
-		if node.args.len != 1 {
-			c.error('`.${method_name}` expected 1 argument, but got ${node.args.len}',
+		if node_args_len != 1 {
+			c.error('`.${method_name}` expected 1 argument, but got ${node_args_len}',
 				node.pos)
 			return ast.void_type
 		}
@@ -3606,9 +3607,9 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		// position of `a` and `b` doesn't matter, they're the same
 		scope_register_a_b(mut node.scope, node.pos, elem_typ)
 
-		if node.args.len > 1 {
-			c.error('expected 0 or 1 argument, but got ${node.args.len}', node.pos)
-		} else if node.args.len == 1 {
+		if node_args_len > 1 {
+			c.error('expected 0 or 1 argument, but got ${node_args_len}', node.pos)
+		} else if node_args_len == 1 {
 			if mut arg0.expr is ast.LambdaExpr {
 				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.bool_type, mut arg0.expr)
 			} else if mut arg0.expr is ast.InfixExpr {
@@ -3649,8 +3650,8 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			node.return_type = node.left_type
 		}
 	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
-		if node.args.len != 1 {
-			c.error('`.${method_name}()` expected 1 argument, but got ${node.args.len}',
+		if node_args_len != 1 {
+			c.error('`.${method_name}()` expected 1 argument, but got ${node_args_len}',
 				node.pos)
 		} else {
 			if mut arg0.expr is ast.LambdaExpr {
@@ -3696,7 +3697,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			}
 		}
 	} else if method_name in ['reverse', 'reverse_in_place'] {
-		if node.args.len != 0 {
+		if node_args_len != 0 {
 			c.error('`.${method_name}` does not have any arguments', arg0.pos)
 		} else {
 			if method_name == 'reverse' {
