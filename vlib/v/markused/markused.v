@@ -123,6 +123,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.range_index || pref_.is_shared {
 			core_fns << string_idx_str + '.substr_with_check'
 			core_fns << string_idx_str + '.substr_ni'
+			core_fns << string_idx_str + '.substr'
 			core_fns << array_idx_str + '.slice_ni'
 			core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
 			core_fns << array_idx_str + '.clone_static_to_depth'
@@ -522,13 +523,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			walker.mark_const_as_used(kcon)
 			continue
 		}
-	}
-
-	if table.used_features.range_index {
-		walker.fn_by_name(string_idx_str + '.substr')
-	}
-	if walker.as_cast_type_names.len > 0 {
-		walker.fn_by_name('new_array_from_c_array')
 	}
 
 	table.used_features.used_fns = walker.used_fns.move()
