@@ -2256,6 +2256,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		left_type.has_flag(.generic)
 	}
 	mut rec_concrete_types := []ast.Type{}
+	method_generic_names_len := method.generic_names.len
 	match rec_sym.info {
 		ast.Struct, ast.SumType, ast.Interface {
 			if rec_sym.info.concrete_types.len > 0 {
@@ -2263,22 +2264,22 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 			concrete_types_len := node.concrete_types.len
 			if rec_is_generic && concrete_types_len == 0
-				&& method.generic_names.len == rec_sym.info.generic_types.len {
+				&& method_generic_names_len == rec_sym.info.generic_types.len {
 				node.concrete_types = rec_sym.info.generic_types
 			} else if rec_is_generic && concrete_types_len > 0
-				&& method.generic_names.len > concrete_types_len
-				&& rec_sym.info.generic_types.len + concrete_types_len == method.generic_names.len {
+				&& method_generic_names_len > concrete_types_len
+				&& rec_sym.info.generic_types.len + concrete_types_len == method_generic_names_len {
 				t_concrete_types := node.concrete_types.clone()
 				node.concrete_types = rec_sym.info.generic_types
 				node.concrete_types << t_concrete_types
 			} else if !rec_is_generic && rec_sym.info.concrete_types.len > 0
 				&& concrete_types_len > 0
-				&& rec_sym.info.concrete_types.len + concrete_types_len == method.generic_names.len {
+				&& rec_sym.info.concrete_types.len + concrete_types_len == method_generic_names_len {
 				t_concrete_types := node.concrete_types.clone()
 				node.concrete_types = rec_sym.info.concrete_types
 				node.concrete_types << t_concrete_types
 			} else if !rec_is_generic && rec_concrete_types.len > 0
-				&& method.generic_names.len == rec_concrete_types.len {
+				&& method_generic_names_len == rec_concrete_types.len {
 				node.concrete_types = rec_concrete_types
 			}
 		}
@@ -2320,10 +2321,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& method.language == .v && final_left_sym.kind != .interface && method.no_body {
 		c.error('cannot call a method that does not have a body', node.pos)
 	}
-	if node.concrete_types.len > 0 && method.generic_names.len > 0
-		&& node.concrete_types.len != method.generic_names.len {
-		plural := if method.generic_names.len == 1 { '' } else { 's' }
-		c.error('expected ${method.generic_names.len} generic parameter${plural}, got ${node.concrete_types.len}',
+	if node.concrete_types.len > 0 && method_generic_names_len > 0
+		&& node.concrete_types.len != method_generic_names_len {
+		plural := if method_generic_names_len == 1 { '' } else { 's' }
+		c.error('expected ${method_generic_names_len} generic parameter${plural}, got ${node.concrete_types.len}',
 			node.concrete_list_pos)
 	}
 	for concrete_type in node.concrete_types {
@@ -2479,7 +2480,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.fail_if_unreadable(arg.expr, got_arg_typ, 'argument')
 			}
 		}
-		if concrete_types.len > 0 && method.generic_names.len != rec_concrete_types.len {
+		if concrete_types.len > 0 && method_generic_names_len != rec_concrete_types.len {
 			need_recheck, mut new_concrete_types := c.type_resolver.resolve_fn_generic_args(c.table.cur_fn,
 				method, mut node)
 			concrete_types = new_concrete_types.clone()
@@ -2491,7 +2492,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 		}
 		if exp_arg_typ.has_flag(.generic) {
-			method_concrete_types := if method.generic_names.len == rec_concrete_types.len {
+			method_concrete_types := if method_generic_names_len == rec_concrete_types.len {
 				rec_concrete_types
 			} else {
 				concrete_types
@@ -2605,10 +2606,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		method.params[0].typ
 	}
 	if left_sym.kind == .interface && is_method_from_embed && method.return_type.has_flag(.generic)
-		&& method.generic_names.len == 0 {
+		&& method_generic_names_len == 0 {
 		method.generic_names = c.table.get_generic_names((rec_sym.info as ast.Interface).generic_types)
 	}
-	if method.generic_names.len != node.concrete_types.len {
+	if method_generic_names_len != node.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
 		c.infer_fn_generic_types(method, mut node)
 		concrete_types = node.concrete_types.map(c.unwrap_generic(it))
@@ -2622,11 +2623,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 	}
 
-	if node.concrete_types.len > 0 && method.generic_names.len == 0 {
+	if node.concrete_types.len > 0 && method_generic_names_len == 0 {
 		c.error('a non generic function called like a generic one', node.concrete_list_pos)
 	}
 	// resolve return generics struct to concrete type
-	if method.generic_names.len > 0 && method.return_type.has_flag(.generic)
+	if method_generic_names_len > 0 && method.return_type.has_flag(.generic)
 		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
 		node.return_type = c.table.unwrap_generic_type(method.return_type, method.generic_names,
 			concrete_types)
@@ -2634,16 +2635,16 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		node.return_type = method.return_type
 	}
 	// resolve generic fn return type
-	if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
+	if method_generic_names_len > 0 && method.return_type.has_flag(.generic) {
 		ret_type := c.resolve_fn_return_type(method, node)
 		c.register_trace_call(node, method)
 		node.return_type = ret_type
 		return ret_type
 	}
-	if method.generic_names.len > 0 {
+	if method_generic_names_len > 0 {
 		if !left_type.has_flag(.generic) {
 			if left_sym.info is ast.Struct {
-				if method.generic_names.len == left_sym.info.concrete_types.len {
+				if method_generic_names_len == left_sym.info.concrete_types.len {
 					node.concrete_types = left_sym.info.concrete_types
 				}
 			}
