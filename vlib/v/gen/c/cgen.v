@@ -1157,6 +1157,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
+			g.definitions.writeln('int v_typeof_interface_idx_${sym.cname}(int sidx);')
 			g.writeln2('', 'int v_typeof_interface_idx_${sym.cname}(int sidx) {')
 			if g.pref.parallel_cc {
 				g.extern_out.writeln('extern int v_typeof_interface_idx_${sym.cname}(int sidx);')
