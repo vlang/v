@@ -468,7 +468,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		unaliased_right_sym := g.table.final_sym(unwrapped_val_type)
 		is_fixed_array_var := !g.pref.translated && unaliased_right_sym.kind == .array_fixed
 			&& val !is ast.ArrayInit
-			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.DumpExpr, ast.InfixExpr]
+			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.DumpExpr, ast.InfixExpr, ast.UnsafeExpr]
 			|| (val is ast.CastExpr && val.expr !is ast.ArrayInit)
 			|| (val is ast.PrefixExpr && val.op == .arrow)
 			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident]))
