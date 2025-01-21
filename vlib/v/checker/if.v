@@ -675,8 +675,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 		// handles unwrapping on if var == none { /**/ } else { /*unwrapped var*/ }
 		if mut first_cond is ast.InfixExpr {
 			if first_cond.left is ast.Ident && first_cond.op == .eq && first_cond.right is ast.None {
-				if first_cond.left is ast.Ident
-					&& c.comptime.get_ct_type_var(first_cond.left) == .smartcast {
+				if c.comptime.get_ct_type_var(first_cond.left) == .smartcast {
 					first_cond.left_type = c.type_resolver.get_type(first_cond.left)
 					c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.left_type.clear_flag(.option), mut
 						scope, true, true)
