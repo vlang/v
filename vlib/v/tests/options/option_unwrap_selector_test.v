@@ -10,6 +10,12 @@ struct Foo {
 	field IBar
 }
 
+fn (f &Foo) t() {
+	if f.field.opt != none {
+		assert f.field.opt == 'foo'
+	}
+}
+
 fn test_main() {
 	a := Foo{
 		field: Bar{
@@ -19,4 +25,5 @@ fn test_main() {
 	if a.field.opt != none {
 		assert a.field.opt == 'foo'
 	}
+	a.t()
 }
