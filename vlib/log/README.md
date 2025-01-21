@@ -52,3 +52,22 @@ fn main() {
 	l.fatal('fatal') // panic, marked as [noreturn]
 }
 ```
+
+## Backwards compatibility
+
+After 2025/01/21, the `log` module outputs to `stderr` by default.
+Before that, it used `stdout` by default.
+
+If you want to restore the previous behaviour, you have to explicitly call l.set_output_stream():
+```v
+import os
+import log
+
+fn main() {
+	// log.info('this will be printed to stderr after 2025/01/21 by default')
+	mut l := log.ThreadSafeLog{}
+	l.set_output_stream(os.stdout())
+	log.set_logger(l)
+	log.info('this will be printed to stdout')
+}
+```

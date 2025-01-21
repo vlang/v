@@ -19,8 +19,8 @@ pub enum LogTarget {
 	both
 }
 
-// tag_to_cli returns the tag for log level `l` as a colored string.
-fn tag_to_cli(l Level, short_tag bool) string {
+// tag_to_console returns the tag for log level `l` as a colored string.
+fn tag_to_console(l Level, short_tag bool) string {
 	if short_tag {
 		return match l {
 			.disabled { ' ' }
