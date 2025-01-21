@@ -5306,7 +5306,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 		if sym.kind == .function {
 			fn_info := sym.info as ast.FnType
 			// hack: recover fn mod from func name
-			mut fn_mod := fn_info.func.name.all_before('.')
+			mut fn_mod := fn_info.func.name.all_before_last('.')
 			if fn_mod == fn_info.func.name {
 				fn_mod = 'builtin'
 			}
