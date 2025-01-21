@@ -5293,10 +5293,29 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 		return false
 	}
 	sym := c.table.sym(typ)
-	if !c.is_builtin_mod && sym.kind == .struct && !sym.is_pub && sym.mod != c.mod {
-		c.error('struct `${sym.name}` was declared as private to module `${sym.mod}`, so it can not be used inside module `${c.mod}`',
-			pos)
-		return false
+	if !c.is_builtin_mod && !sym.is_pub && sym.mod != c.mod {
+		if sym.kind == .struct {
+			c.error('struct `${sym.name}` was declared as private to module `${sym.mod}`, so it can not be used inside module `${c.mod}`',
+				pos)
+			return false
+		}
+		if sym.kind == .alias || sym.kind == .sum_type {
+			c.error('module `${sym.mod}` type `${sym.name}` is private', pos)
+			return false
+		}
+		if sym.kind == .function {
+			fn_info := sym.info as ast.FnType
+			// hack: recover fn mod from func name
+			mut fn_mod := fn_info.func.name.all_before('.')
+			if fn_mod == fn_info.func.name {
+				fn_mod = 'builtin'
+			}
+			if fn_mod != '' && fn_mod != c.mod && fn_info.func.name != '' {
+				c.error('module `${fn_mod}` function type `${fn_info.func.name}` is private',
+					pos)
+				return false
+			}
+		}
 	}
 	match sym.kind {
 		.placeholder {

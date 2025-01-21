@@ -1,0 +1,13 @@
+import cli
+
+fn my_sort(a voidptr, b voidptr) int {
+	return 1
+}
+
+fn hello(func FnSortCB) {
+}
+
+fn main() {
+	_ := cli.Defaults(true)
+	hello(my_sort)
+}

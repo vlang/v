@@ -1,0 +1,15 @@
+type_alias_decl_private_err.vv:7:15: error: module `builtin` function type `FnSortCB` is private
+    5 | }
+    6 |
+    7 | fn hello(func FnSortCB) {
+      |               ~~~~~~~~
+    8 | }
+    9 |
+type_alias_decl_private_err.vv:11:11: error: module `cli` type `cli.Defaults` is private
+    9 |
+   10 | fn main() {
+   11 |     _ := cli.Defaults(true)
+      |              ~~~~~~~~~~~~~~
+   12 |     hello(my_sort)
+   13 | }
+

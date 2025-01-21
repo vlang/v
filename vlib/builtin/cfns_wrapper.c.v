@@ -82,3 +82,5 @@ type FnSortCB = fn (const_a voidptr, const_b voidptr) int
 fn vqsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
 	C.qsort(base, nmemb, size, voidptr(sort_cb))
 }
+
+type MyPrivateType = u32
