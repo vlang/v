@@ -4013,6 +4013,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 						if i == 0 && (is_option_unwrap || nested_unwrap) {
 							deref := if g.inside_selector {
 								'*'.repeat(field.smartcasts.last().nr_muls() + 1)
+							} else if sym.kind == .interface && !typ.is_ptr()
+								&& field.orig_type.has_flag(.option) {
+								''
 							} else {
 								'*'
 							}
@@ -4196,7 +4199,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	g.write(field_name)
 	if is_option_unwrap {
-		if field_typ.is_ptr() && g.table.final_sym(node.expr_type).kind in [.sum_type, .interface] {
+		if g.table.final_sym(node.expr_type).kind in [.sum_type, .interface] {
 			g.write('->')
 		} else {
 			g.write('.')
