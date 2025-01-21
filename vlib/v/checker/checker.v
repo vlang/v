@@ -5294,7 +5294,8 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 	}
 	sym := c.table.sym(typ)
 	if !c.is_builtin_mod && sym.kind in [.struct, .alias, .sum_type, .function]! && !sym.is_pub
-		&& sym.mod != c.mod && c.comptime.comptime_for_field_var == '' && !c.inside_recheck {
+		&& sym.mod != c.mod && sym.mod != 'main' && c.comptime.comptime_for_field_var == ''
+		&& !c.inside_recheck {
 		if sym.kind == .function {
 			fn_info := sym.info as ast.FnType
 			// hack: recover fn mod from func name
