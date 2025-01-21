@@ -5295,7 +5295,6 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 	sym := c.table.sym(typ)
 	if !c.is_builtin_mod && sym.kind in [.struct, .alias] && !sym.is_pub && sym.mod != c.mod
 		&& c.comptime.comptime_for_field_var == '' && !c.inside_recheck {
-		println('>>> ${sym.mod} ${c.mod}')
 		c.error('${sym.kind} `${sym.name}` was declared as private to module `${sym.mod}`, so it can not be used inside module `${c.mod}`',
 			pos)
 		return false
