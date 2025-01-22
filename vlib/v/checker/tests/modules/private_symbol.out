@@ -1,0 +1,21 @@
+vlib/v/checker/tests/modules/private_symbol/main.v:10:11: error: function `priv_sym.priv` is private
+    8 | 
+    9 | fn main() {
+   10 |     priv_sym.priv()
+      |              ~~~~~~
+   11 |     a := priv_sym.Foo(0)
+   12 |     dump(a)
+vlib/v/checker/tests/modules/private_symbol/main.v:11:16: error: alias `priv_sym.Foo` was declared as private to module `priv_sym`, so it can not be used inside module `main`
+    9 | fn main() {
+   10 |     priv_sym.priv()
+   11 |     a := priv_sym.Foo(0)
+      |                   ~~~~~~
+   12 |     dump(a)
+   13 |     b := priv_sym.BarFn(t)
+vlib/v/checker/tests/modules/private_symbol/main.v:13:16: error: function type `priv_sym.BarFn` was declared as private to module `priv_sym`, so it can not be used inside module `main`
+   11 |     a := priv_sym.Foo(0)
+   12 |     dump(a)
+   13 |     b := priv_sym.BarFn(t)
+      |                   ~~~~~~~~
+   14 |     dump(b)
+   15 |     c := priv_sym.PubFoo(0)
