@@ -203,7 +203,8 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
 	deref := if typ.is_ptr() {
-		'**(${sym.cname}**)&'
+		dot := if expects_ptr { '*'.repeat(typ.nr_muls()) } else { '*'.repeat(typ.nr_muls() + 1) }
+		'${dot}(${sym.cname}**)&'
 	} else if expects_ptr {
 		'(${sym.cname}*)'
 	} else {
