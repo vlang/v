@@ -2768,10 +2768,23 @@ fn (mut g Gen) expr_with_fixed_array(expr ast.Expr, got_type_raw ast.Type, expec
 		g.writeln('${styp} ${tmp_var};')
 		// [ foo(), foo() ]!
 		val_typ := g.table.value_type(got_type_raw)
+		val_styp := g.styp(val_typ)
+		val_sym := g.table.final_sym(val_typ)
+		prefix := if val_sym.kind !in [.array, .array_fixed] { '&' } else { '' }
 		for i, item_expr in expr.exprs {
-			g.write('memcpy(${tmp_var}[${i}], ')
+			g.write('memcpy(${prefix}${tmp_var}[${i}], ')
+			needs_addr := (item_expr is ast.CallExpr && !item_expr.return_type.is_ptr()
+				&& g.table.final_sym(item_expr.return_type).kind !in [.array, .array_fixed])
+				|| (item_expr is ast.InfixExpr && !item_expr.promoted_type.is_ptr())
+				|| item_expr is ast.StructInit
+			if needs_addr {
+				g.write('ADDR(${val_styp}, ')
+			}
 			g.expr(item_expr)
-			g.writeln(', sizeof(${g.styp(val_typ)}));')
+			if needs_addr {
+				g.write(')')
+			}
+			g.writeln(', sizeof(${val_styp}));')
 		}
 	} else if expr is ast.CallExpr {
 		// return var.call() where returns is option/result fixed array
