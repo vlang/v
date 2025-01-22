@@ -1130,7 +1130,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		is_builtin: true
 		is_pub:     true
 	) // 30
-	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin') // 31
+	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin', is_pub: true) // 31
 }
 
 @[inline]
