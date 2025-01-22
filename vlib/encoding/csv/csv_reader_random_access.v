@@ -421,7 +421,7 @@ pub fn (mut cr RandomAccessReader) get_cell(cfg GetCellConfig) !string {
 	return cr.default_cell
 }
 
-type CellValue = f32 | int | string
+pub type CellValue = f32 | int | string
 
 // get_cellt read a single cell and return a sum type CellValue
 pub fn (mut cr RandomAccessReader) get_cellt(cfg GetCellConfig) !CellValue {
