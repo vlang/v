@@ -32,6 +32,7 @@ struct Options {
 	doc_private_fns_too bool
 	fn_sizing           bool
 	repeated_code       bool
+	fn_inlining         bool
 mut:
 	is_vfmt_off bool
 }
@@ -52,6 +53,7 @@ fn main() {
 				|| (term_colors && '-nocolor' !in vet_options)
 			repeated_code:       '-r' in vet_options
 			fn_sizing:           '-F' in vet_options
+			fn_inlining:         '-I' in vet_options
 		}
 	}
 	mut paths := cmdline.only_non_options(vet_options)
@@ -295,6 +297,9 @@ fn (mut vt Vet) stmt(stmt ast.Stmt) {
 			vt.stmts(stmt.stmts)
 			if vt.opt.fn_sizing {
 				vt.analyze.long_or_empty_fns(mut vt, stmt)
+			}
+			if vt.opt.fn_inlining {
+				vt.analyze.potential_non_inlined(mut vt, stmt)
 			}
 			vt.analyze.cur_fn = old_fn_decl
 		}

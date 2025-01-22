@@ -121,6 +121,16 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 // long_or_empty_fns checks for long or empty functions
 fn (mut vt VetAnalyze) long_or_empty_fns(mut vet Vet, fn_decl ast.FnDecl) {
 	nr_lines := fn_decl.end_pos.line_nr - fn_decl.pos.line_nr - 2
+	if nr_lines > long_fns_cutoff {
+		vet.notice('Long function - ${nr_lines} lines long.', fn_decl.pos.line_nr, .long_fns)
+	} else if nr_lines == 0 {
+		vet.notice('Empty function.', fn_decl.pos.line_nr, .empty_fn)
+	}
+}
+
+// potential_non_inlined checks for potential fns to be inlined
+fn (mut vt VetAnalyze) potential_non_inlined(mut vet Vet, fn_decl ast.FnDecl) {
+	nr_lines := fn_decl.end_pos.line_nr - fn_decl.pos.line_nr - 2
 	if nr_lines < short_fns_cutoff {
 		attr := fn_decl.attrs.find_first('inline')
 		if attr == none {
@@ -128,11 +138,6 @@ fn (mut vt VetAnalyze) long_or_empty_fns(mut vet Vet, fn_decl ast.FnDecl) {
 				vt.potential_non_inlined[fn_decl.fkey()][vet.file] = fn_decl.pos
 			}
 		}
-	}
-	if nr_lines > long_fns_cutoff {
-		vet.notice('Long function - ${nr_lines} lines long.', fn_decl.pos.line_nr, .long_fns)
-	} else if nr_lines == 0 {
-		vet.notice('Empty function.', fn_decl.pos.line_nr, .empty_fn)
 	}
 }
 
@@ -176,7 +181,7 @@ fn (mut vt Vet) vet_code_analyze() {
 	if vt.opt.repeated_code {
 		vt.analyze.vet_repeated_code(mut vt)
 	}
-	if vt.opt.fn_sizing {
+	if vt.opt.fn_inlining {
 		vt.analyze.vet_inlining_fn(mut vt)
 	}
 }
