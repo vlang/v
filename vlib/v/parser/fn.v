@@ -707,6 +707,7 @@ run them via `v file.v` instead',
 		language:              language
 		no_body:               no_body
 		pos:                   start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
+		end_pos:               p.tok.pos()
 		name_pos:              name_pos
 		body_pos:              body_start_pos
 		file:                  p.file_path

@@ -12,7 +12,10 @@ Options:
 
   -v, -verbose        Enable verbose logging.
 
-  -F                  Report empty and long function declaration (>300 lines).
+  -F                  Report empty and long function declaration 
+                      (default: >300 lines).
+
+  -I                  Report potential function to be inlined.
 
   -p                  Report private functions with missing documentation too
                       (by default, only the `pub fn` functions will be reported).

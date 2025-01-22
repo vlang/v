@@ -582,6 +582,7 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add('is_direct_arr', t.bool_node(node.is_direct_arr))
 	obj.add('ctdefine_idx', t.number_node(node.ctdefine_idx))
 	obj.add('pos', t.pos(node.pos))
+	obj.add('end_pos', t.pos(node.end_pos))
 	obj.add('body_pos', t.pos(node.body_pos))
 	obj.add('return_type_pos', t.pos(node.return_type_pos))
 	obj.add('file', t.string_node(node.file))
