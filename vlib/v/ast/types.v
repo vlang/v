@@ -1099,25 +1099,28 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin', is_pub: true) // 25
 	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin', is_pub: true) // 26
 	t.register_sym(
-		kind:  .float_literal
-		name:  'float literal'
-		cname: 'float_literal'
-		mod:   'builtin'
+		kind:   .float_literal
+		name:   'float literal'
+		cname:  'float_literal'
+		mod:    'builtin'
+		is_pub: true
 	) // 27
 	t.register_sym(
-		kind:  .int_literal
-		name:  'int literal'
-		cname: 'int_literal'
-		mod:   'builtin'
+		kind:   .int_literal
+		name:   'int literal'
+		cname:  'int_literal'
+		mod:    'builtin'
+		is_pub: true
 	) // 28
 	t.register_sym(
-		kind:  .thread
-		name:  'thread'
-		cname: '__v_thread'
-		mod:   'builtin'
-		info:  Thread{
+		kind:   .thread
+		name:   'thread'
+		cname:  '__v_thread'
+		mod:    'builtin'
+		info:   Thread{
 			return_type: void_type
 		}
+		is_pub: true
 	) // 29
 	t.register_sym(
 		kind:       .interface
@@ -1125,6 +1128,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		cname:      'IError'
 		mod:        'builtin'
 		is_builtin: true
+		is_pub:     true
 	) // 30
 	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin') // 31
 }
