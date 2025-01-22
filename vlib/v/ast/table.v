@@ -1337,6 +1337,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 		cname:      util.no_dots(name).replace_each(['&', ''])
 		language:   language
 		mod:        modname
+		is_pub:     true
 		is_builtin: name in builtins
 	}
 	return t.register_sym(ph_type)
