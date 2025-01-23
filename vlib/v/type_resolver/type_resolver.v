@@ -89,6 +89,14 @@ fn (t &TypeResolver) error(s string, pos token.Pos) {
 	exit(1)
 }
 
+// promote_type resolves the final type of different generic/comptime operand types
+pub fn (t &TypeResolver) promote_type(left_type ast.Type, right_type ast.Type) ast.Type {
+	if left_type == ast.f32_type && right_type == ast.f64_type {
+		return right_type
+	}
+	return left_type
+}
+
 // get_type_or_default retries the comptime value if the AST node is related to comptime otherwise default_typ is returned
 @[inline]
 pub fn (mut t TypeResolver) get_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
