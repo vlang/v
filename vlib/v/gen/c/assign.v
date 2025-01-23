@@ -375,7 +375,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.assign_ct_type = var_type
 						}
 					} else if val is ast.InfixExpr && val.op in [.plus, .minus, .mul, .div, .mod]
-						&& val.left_ct_expr {
+						&& val.left_ct_expr && val.right_ct_expr {
 						ctyp := g.unwrap_generic(g.type_resolver.get_type(val.left))
 						if ctyp != ast.void_type {
 							ct_type_var := g.comptime.get_ct_type_var(val.left)
