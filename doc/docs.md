@@ -2424,6 +2424,21 @@ p := &Point{10, 10}
 println(p.x)
 ```
 
+Struct fields can re-use reserved keywords:
+
+```v
+struct Employee {
+	type string
+	name string
+}
+
+employee := Employee{
+	type: 'FTE'
+	name: 'John Doe'
+}
+println(employee.type)
+```
+
 The type of `p` is `&Point`. It's a [reference](#references) to `Point`.
 References are similar to Go pointers and C++ references.
 
