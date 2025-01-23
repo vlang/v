@@ -1,0 +1,12 @@
+vlib/v/checker/tests/option_str_call.vv:8:10: error: Option type cannot be called directly, you should unwrap it first
+    6 |     footer := doc.get_tags_by_class_name('Box-footer')[0]
+    7 |     invalid := footer.get_tag_by_class_name('invalid')
+    8 |     println(invalid.str()) // runtime error, invalid memory access
+      |             ~~~~~~~
+    9 | }
+vlib/v/checker/tests/option_str_call.vv:8:2: error: `println` can not print void expressions
+    6 |     footer := doc.get_tags_by_class_name('Box-footer')[0]
+    7 |     invalid := footer.get_tag_by_class_name('invalid')
+    8 |     println(invalid.str()) // runtime error, invalid memory access
+      |     ~~~~~~~~~~~~~~~~~~~~~~
+    9 | }
