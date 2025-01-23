@@ -2071,6 +2071,8 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							}
 						}
 					}
+				} else if stmt is ast.Return {
+					g.stmt(stmt)
 				}
 			} else if g.inside_if_result || g.inside_match_result {
 				g.set_current_pos_as_last_stmt_pos()
