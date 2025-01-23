@@ -759,7 +759,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		c.markused_option_or_result(!c.is_builtin_mod && c.mod != 'strings')
 	}
 	c.expected_or_type = old_expected_or_type
-	c.markused_call_expr(mut node)
+	c.markused_call_expr(left_type, mut node)
 	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main
 		&& !c.table.cur_fn.is_test {
 		// TODO: use just `if node.or_block.kind == .propagate_result && !c.table.cur_fn.return_type.has_flag(.result) {` after the deprecation for ?!Type
