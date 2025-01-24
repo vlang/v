@@ -2408,6 +2408,21 @@ p = Point{10, 20}
 assert p.x == 10
 ```
 
+Struct fields can re-use reserved keywords:
+
+```v
+struct Employee {
+	type string
+	name string
+}
+
+employee := Employee{
+	type: 'FTE'
+	name: 'John Doe'
+}
+println(employee.type)
+```
+
 ### Heap structs
 
 Structs are allocated on the stack. To allocate a struct on the heap
