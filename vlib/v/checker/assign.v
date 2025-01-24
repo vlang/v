@@ -928,9 +928,9 @@ fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.E
 			left.obj.typ = c.comptime.comptime_for_field_type
 			if right.or_block.kind == .propagate_option {
 				left.obj.typ = left.obj.typ.clear_flag(.option)
-			} else if right.or_block.kind == .absent {
-				left.obj.ct_type_var = .field_var
+				left.obj.ct_type_unwrapped = true
 			}
+			left.obj.ct_type_var = .field_var
 		} else if right is ast.InfixExpr {
 			right_ct_var := c.comptime.get_ct_type_var(right.left)
 			if right_ct_var != .no_comptime {
@@ -967,8 +967,15 @@ fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.E
 		} else if right is ast.PostfixExpr && right.op == .question {
 			if right.expr is ast.Ident && right.expr.ct_expr {
 				right_obj_var := right.expr.obj as ast.Var
+				ctyp := c.type_resolver.get_type(right)
+				if ctyp != ast.void_type {
+					left.obj.ct_type_unwrapped = true
+					left.obj.ct_type_var = right_obj_var.ct_type_var
+					left.obj.typ = ctyp.clear_flag(.option)
+				}
+			} else if right.expr is ast.ComptimeSelector {
 				left.obj.ct_type_unwrapped = true
-				left.obj.ct_type_var = right_obj_var.ct_type_var
+				left.obj.ct_type_var = .field_var
 				left.obj.typ = c.comptime.comptime_for_field_type.clear_flag(.option)
 			}
 		}
