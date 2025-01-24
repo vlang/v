@@ -80,6 +80,9 @@ fn C.fclose(stream &C.FILE) int
 
 fn C.pclose(stream &C.FILE) int
 
+fn C.open(path &char, flags int, mode ...int) int
+fn C.close(fd int) int
+
 fn C.strrchr(s &char, c int) &char
 fn C.strchr(s &char, c int) &char
 
