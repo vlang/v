@@ -238,7 +238,9 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 		// T(expr)
 		return t.resolver.unwrap_generic(node.typ)
 	} else if node is ast.PostfixExpr && node.op == .question
-		&& (node.expr is ast.Ident && node.expr.ct_expr) {
+		&& node.expr in [ast.Ident, ast.ComptimeSelector] {
+		// var?
+		// f.$(field.name)?
 		ctyp := t.get_type(node.expr)
 		return ctyp.clear_flag(.option)
 	}

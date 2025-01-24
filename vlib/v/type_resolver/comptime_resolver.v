@@ -19,6 +19,7 @@ pub fn (t &ResolverInfo) is_comptime_expr(node ast.Expr) bool {
 	return (node is ast.Ident && node.ct_expr)
 		|| (node is ast.IndexExpr && t.is_comptime_expr(node.left))
 		|| node is ast.ComptimeSelector
+		|| (node is ast.PostfixExpr && t.is_comptime_expr(node.expr))
 }
 
 // has_comptime_expr checks if the expr contains some comptime expr
@@ -27,6 +28,7 @@ pub fn (t &ResolverInfo) has_comptime_expr(node ast.Expr) bool {
 	return (node is ast.Ident && node.ct_expr)
 		|| (node is ast.IndexExpr && t.has_comptime_expr(node.left))
 		|| node is ast.ComptimeSelector
+		|| (node is ast.PostfixExpr && t.has_comptime_expr(node.expr))
 		|| (node is ast.SelectorExpr && t.has_comptime_expr(node.expr))
 		|| (node is ast.InfixExpr && (t.has_comptime_expr(node.left)
 		|| t.has_comptime_expr(node.right)))
@@ -57,6 +59,9 @@ pub fn (t &ResolverInfo) is_comptime(node ast.Expr) bool {
 		}
 		ast.ComptimeSelector {
 			return true
+		}
+		ast.PostfixExpr {
+			return t.is_comptime(node.expr)
 		}
 		else {
 			false

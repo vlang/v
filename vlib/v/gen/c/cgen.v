@@ -3661,7 +3661,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				} else if mut node.expr is ast.Ident && node.expr.ct_expr {
 					// val?
 					expr_str = node.expr.name
-					is_unwrapped = g.type_resolver.get_type(node.expr).has_flag(.option)
+					is_unwrapped = !g.inside_assign
 				}
 				g.writeln('if (${expr_str}.state != 0) {')
 				g.writeln2('\tpanic_option_not_set(_SLIT("none"));', '}')
