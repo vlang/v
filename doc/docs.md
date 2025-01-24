@@ -2408,6 +2408,21 @@ p = Point{10, 20}
 assert p.x == 10
 ```
 
+Struct fields can re-use reserved keywords:
+
+```v
+struct Employee {
+	type string
+	name string
+}
+
+employee := Employee{
+	type: 'FTE'
+	name: 'John Doe'
+}
+println(employee.type)
+```
+
 ### Heap structs
 
 Structs are allocated on the stack. To allocate a struct on the heap
@@ -2422,21 +2437,6 @@ struct Point {
 p := &Point{10, 10}
 // References have the same syntax for accessing fields
 println(p.x)
-```
-
-Struct fields can re-use reserved keywords:
-
-```v
-struct Employee {
-	type string
-	name string
-}
-
-employee := Employee{
-	type: 'FTE'
-	name: 'John Doe'
-}
-println(employee.type)
 ```
 
 The type of `p` is `&Point`. It's a [reference](#references) to `Point`.
