@@ -1190,6 +1190,13 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			}
 			g.write(')')
 		}
+		'grow_cap', 'grow_len' {
+			g.write('array_${node.name}(')
+			g.gen_arg_from_type(left_type, node.left)
+			g.write(', ')
+			g.expr(node.args[0].expr)
+			g.write(')')
+		}
 		'first', 'last', 'pop' {
 			mut noscan := ''
 			array_info := left_sym.info as ast.Array
