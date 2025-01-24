@@ -3664,10 +3664,14 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.writeln('if (${expr_str}.state != 0) {')
 				g.writeln2('\tpanic_option_not_set(_SLIT("none"));', '}')
 				g.write(cur_line)
-				typ := g.resolve_comptime_type(node.expr, node.typ)
-				g.write('*(${g.base_type(typ)}*)&')
-				g.expr(node.expr)
-				g.write('.data')
+				if node.expr is ast.ComptimeSelector {
+					typ := g.resolve_comptime_type(node.expr, node.typ)
+					g.write('*(${g.base_type(typ)}*)&')
+					g.expr(node.expr)
+					g.write('.data')
+				} else {
+					g.expr(node.expr)
+				}
 			} else {
 				g.expr(node.expr)
 			}

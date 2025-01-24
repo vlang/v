@@ -906,10 +906,11 @@ pub mut:
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
-	pos         token.Pos
-	is_used     bool            // whether the local variable was used in other expressions
-	is_changed  bool            // to detect mutable vars that are never changed
-	ct_type_var ComptimeVarKind // comptime variable type
+	pos               token.Pos
+	is_used           bool            // whether the local variable was used in other expressions
+	is_changed        bool            // to detect mutable vars that are never changed
+	ct_type_var       ComptimeVarKind // comptime variable type
+	ct_type_unwrapped bool            // true when the comptime variable gets unwrapped
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
@@ -1995,6 +1996,7 @@ pub struct ComptimeSelector {
 pub:
 	has_parens bool // if $() is used, for vfmt
 	pos        token.Pos
+	or_block   OrExpr
 pub mut:
 	left       Expr
 	left_type  Type

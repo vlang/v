@@ -134,6 +134,12 @@ pub fn (mut t TypeResolver) get_type_or_default(node ast.Expr, default_typ ast.T
 				return t.resolver.unwrap_generic(node.typ)
 			}
 		}
+		ast.PostfixExpr {
+			if node.op == .question && node.expr is ast.Ident && node.expr.ct_expr {
+				ctyp := t.get_type(node)
+				return if ctyp != ast.void_type { ctyp } else { default_typ }
+			}
+		}
 		else {
 			return default_typ
 		}
@@ -174,7 +180,11 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 				}
 				.field_var {
 					// field var from $for loop
-					t.info.comptime_for_field_type
+					if node.obj.ct_type_unwrapped {
+						t.info.comptime_for_field_type.clear_flag(.option)
+					} else {
+						t.info.comptime_for_field_type
+					}
 				}
 				else {
 					ast.void_type
@@ -183,7 +193,11 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 		}
 	} else if node is ast.ComptimeSelector {
 		// val.$(field.name)
-		return t.get_comptime_selector_type(node, ast.void_type)
+		ctyp := t.get_comptime_selector_type(node, ast.void_type)
+		if node.or_block.kind == .propagate_option {
+			return ctyp.clear_flag(.option)
+		}
+		return ctyp
 	} else if node is ast.SelectorExpr {
 		if t.info.is_comptime_selector_type(node) {
 			return t.get_type_from_comptime_var(node.expr as ast.Ident)
@@ -223,6 +237,10 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 	} else if node is ast.CastExpr && node.typ.has_flag(.generic) {
 		// T(expr)
 		return t.resolver.unwrap_generic(node.typ)
+	} else if node is ast.PostfixExpr && node.op == .question
+		&& (node.expr is ast.Ident && node.expr.ct_expr) {
+		ctyp := t.get_type(node.expr)
+		return ctyp.clear_flag(.option)
 	}
 	return ast.void_type
 }

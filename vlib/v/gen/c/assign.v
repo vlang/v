@@ -387,6 +387,20 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							left.obj.typ = var_type
 							g.assign_ct_type = var_type
 						}
+					} else if val is ast.PostfixExpr && val.op == .question
+						&& (val.expr is ast.Ident && val.expr.ct_expr) {
+						ctyp := g.unwrap_generic(g.type_resolver.get_type(val))
+						if ctyp != ast.void_type {
+							var_type = ctyp
+							val_type = var_type
+							left.obj.typ = var_type
+							g.assign_ct_type = var_type
+
+							ct_type_var := g.comptime.get_ct_type_var(val.expr)
+							if ct_type_var == .field_var {
+								g.type_resolver.update_ct_type(left.name, ctyp)
+							}
+						}
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
