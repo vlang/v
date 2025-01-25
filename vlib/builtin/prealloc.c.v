@@ -20,14 +20,13 @@ __global g_memory_block &VMemoryBlock
 @[heap]
 struct VMemoryBlock {
 mut:
-	id        int
-	mallocs   int
-	cap       isize
-	remaining isize
-	previous  &VMemoryBlock = 0
-	next      &VMemoryBlock = 0
-	start     &u8           = 0
-	current   &u8           = 0
+	current  &u8           = 0 // 8
+	stop     &u8           = 0 // 8
+	start    &u8           = 0 // 8
+	previous &VMemoryBlock = 0 // 8
+	next     &VMemoryBlock = 0 // 8
+	id       int // 4
+	mallocs  int // 4
 }
 
 fn vmemory_abort_on_nil(p voidptr, bytes isize) {
@@ -64,8 +63,7 @@ fn vmemory_block_new(prev &VMemoryBlock, at_least isize) &VMemoryBlock {
 	$if prealloc_memset ? {
 		unsafe { C.memset(v.start, int($d('prealloc_memset_value', 0)), block_size) }
 	}
-	v.cap = block_size
-	v.remaining = block_size
+	v.stop = unsafe { &u8(i64(v.start) + block_size) }
 	v.current = v.start
 	return v
 }
@@ -77,14 +75,15 @@ fn vmemory_block_malloc(n isize) &u8 {
 			g_memory_block.id, n)
 	}
 	unsafe {
-		if _unlikely_(g_memory_block.remaining < n) {
+		remaining := i64(g_memory_block.stop) - i64(g_memory_block.current)
+		if _unlikely_(remaining < n) {
 			g_memory_block = vmemory_block_new(g_memory_block, n)
 		}
-		mut res := &u8(nil)
-		res = g_memory_block.current
+		res := &u8(g_memory_block.current)
 		g_memory_block.current += n
-		g_memory_block.remaining -= n
-		g_memory_block.mallocs++
+		$if prealloc_stats ? {
+			g_memory_block.mallocs++
+		}
 		return res
 	}
 }
@@ -112,14 +111,16 @@ fn prealloc_vcleanup() {
 		// in the first loop may still use g_memory_block
 		// The second loop however should *not* allocate at all.
 		mut nr_mallocs := i64(0)
-		mut total_used := u64(0)
+		mut total_used := i64(0)
 		mut mb := g_memory_block
 		for unsafe { mb != 0 } {
 			nr_mallocs += mb.mallocs
-			used := u64(mb.current) - u64(mb.start)
+			used := i64(mb.current) - i64(mb.start)
 			total_used += used
-			C.fprintf(C.stderr, c'> freeing mb: %16p, mb.id: %3d | cap: %10lld | rem: %10lld | start: %16p | current: %16p | used: %10lld bytes | mallocs: %6d\n',
-				mb, mb.id, mb.cap, mb.remaining, mb.start, mb.current, used, mb.mallocs)
+			remaining := i64(mb.stop) - i64(mb.current)
+			size := i64(mb.stop) - i64(mb.start)
+			C.fprintf(C.stderr, c'> freeing mb: %16p, mb.id: %3d | size: %10lld | rem: %10lld | start: %16p | current: %16p | used: %10lld bytes | mallocs: %6d\n',
+				mb, mb.id, size, remaining, mb.start, mb.current, used, mb.mallocs)
 			mb = mb.previous
 		}
 		C.fprintf(C.stderr, c'> nr_mallocs: %lld, total_used: %lld bytes\n', nr_mallocs,
