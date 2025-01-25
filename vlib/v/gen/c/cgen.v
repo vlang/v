@@ -6086,7 +6086,7 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 			return g.check_expr_is_const(expr.expr)
 		}
 		ast.PrefixExpr {
-			return g.check_expr_is_const(expr.right)
+			return expr.right is ast.Ident || g.check_expr_is_const(expr.right)
 		}
 		else {
 			return false
