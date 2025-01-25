@@ -2,8 +2,12 @@ module iconv
 
 // Module iconv provides functions convert between vstring(UTF8) to/from different encodings.
 
+#flag openbsd -I/usr/local/include
+
 #include <iconv.h>
+
 #flag darwin -liconv
+#flag openbsd -L/usr/local/lib -liconv
 
 fn C.iconv_open(tocode charptr, fromcode charptr) voidptr
 fn C.iconv_close(cd voidptr) int
