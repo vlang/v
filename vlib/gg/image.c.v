@@ -199,6 +199,7 @@ pub fn (mut img Image) update_pixel_data(buf &u8) {
 // `width` x `height` dimension.
 //
 // TODO: copypasta
+@[deprecated]
 pub fn (mut ctx Context) create_image_with_size(file string, width int, height int) Image {
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
