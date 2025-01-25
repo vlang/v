@@ -6076,14 +6076,17 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 		ast.InfixExpr {
 			return g.check_expr_is_const(expr.left) && g.check_expr_is_const(expr.right)
 		}
-		ast.Ident, ast.StructInit, ast.EnumVal {
+		ast.Ident {
+			return expr.kind == .function || g.table.final_sym(expr.obj.typ).kind != .array_fixed
+		}
+		ast.StructInit, ast.EnumVal {
 			return true
 		}
 		ast.CastExpr {
 			return g.check_expr_is_const(expr.expr)
 		}
 		ast.PrefixExpr {
-			return g.check_expr_is_const(expr.right)
+			return expr.right is ast.Ident || g.check_expr_is_const(expr.right)
 		}
 		else {
 			return false

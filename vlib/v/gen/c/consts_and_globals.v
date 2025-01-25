@@ -367,6 +367,16 @@ fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name st
 			elem_typ := g.styp(elem_expr.typ)
 			init.writeln(g.expr_string_surround('\tmemcpy(${cname}[${i}], (${elem_typ})',
 				elem_expr, ', sizeof(${elem_typ}));'))
+		} else if elem_expr is ast.Ident {
+			elem_typ := elem_expr.obj.typ
+			if g.table.final_sym(elem_typ).kind == .array_fixed {
+				elem_styp := g.styp(elem_expr.obj.typ)
+				init.writeln(g.expr_string_surround('\tmemcpy(${cname}[${i}], ', elem_expr,
+					', sizeof(${elem_styp}));'))
+			} else {
+				init.writeln(g.expr_string_surround('\t${cname}[${i}] = ', elem_expr,
+					';'))
+			}
 		} else {
 			init.writeln(g.expr_string_surround('\t${cname}[${i}] = ', elem_expr, ';'))
 		}
