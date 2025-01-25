@@ -1,0 +1,21 @@
+type Foo = int | string
+
+struct Struct {
+	a ?Foo
+}
+
+fn r(a string) {}
+
+fn t(s ?Foo) {
+	mut t := Struct{
+		a: s
+	}
+	if t.a is string {
+		r(t.a)
+	}
+}
+
+fn main() {
+	s := ?Foo('hello')
+	t(s)
+}
