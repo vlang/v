@@ -6077,7 +6077,7 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 			return g.check_expr_is_const(expr.left) && g.check_expr_is_const(expr.right)
 		}
 		ast.Ident {
-			return g.table.final_sym(expr.obj.typ).kind != .array_fixed
+			return expr.obj.typ != 0 && g.table.final_sym(expr.obj.typ).kind != .array_fixed
 		}
 		ast.StructInit, ast.EnumVal {
 			return true
