@@ -54,8 +54,8 @@ fn test_cast() {
 }
 
 fn test_cast_alias() {
-	assert ?MyByte(0).str() == 'Option(MyByte(0))'
-	assert ?MyByte(255).str() == 'Option(MyByte(255))'
-	assert ?MyByte(?u8(0)).str() == 'Option(MyByte(0))'
-	assert ?MyByte(?u8(255)).str() == 'Option(MyByte(255))'
+	assert '${?MyByte(0)}' == 'Option(MyByte(0))'
+	assert '${?MyByte(255)}' == 'Option(MyByte(255))'
+	assert '${?MyByte(?u8(0))}' == 'Option(MyByte(0))'
+	assert '${?MyByte(?u8(255))}' == 'Option(MyByte(255))'
 }

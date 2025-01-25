@@ -229,9 +229,14 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 		mut ignore_field := false
 
 		value := val.$(field.name)
-
-		is_nil := val.$(field.name).str() == '&nil'
-
+		mut is_nil := false
+		$if value is $option {
+			if field.indirections > 0 {
+				is_nil = value == none
+			}
+		} $else $if field.indirections > 0 {
+			is_nil = value == unsafe { nil }
+		}
 		mut json_name := ''
 
 		for attr in field.attrs {

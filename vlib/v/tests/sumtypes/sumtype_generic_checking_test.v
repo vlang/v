@@ -15,6 +15,6 @@ fn generic_fn[T]() ?T {
 }
 
 fn test_main() {
-	assert generic_fn[string]().str() == "Option('123')"
-	assert generic_fn[int]().str() == 'Option(123)'
+	assert '${generic_fn[string]()}' == "Option('123')"
+	assert '${generic_fn[int]()}' == 'Option(123)'
 }
