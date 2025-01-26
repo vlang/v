@@ -1135,10 +1135,15 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	obj_path := os.real_path(path)
 	mut cfile := '${obj_path[..obj_path.len - 2]}.c'
 	mut cpp_file := false
+	mut rc_file := false
 	if !os.exists(cfile) {
 		// Guessed C file does not exist, so it may be a CPP file
 		cfile += 'pp'
 		cpp_file = true
+	}
+	if !os.exists(cfile) {
+		cfile = '${obj_path[..obj_path.len - 2]}.rc'
+		rc_file = true
 	}
 	opath := v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.o', obj_path)
 	mut rebuild_reason_message := '${obj_path} not found, building it in ${opath} ...'
@@ -1179,6 +1184,41 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		}
 		ccompiler = v.pref.cppcompiler
 	}
+
+	if rc_file {
+		if v.pref.os != .windows {
+			eprintln('error: building an .rc file is not supported, when the target OS is not windows. RC file: `${cfile}` .')
+			//			exit(1)
+		}
+		// TODO: add pref setting for the resource compiler
+		mut windres_path := ''
+		for rc_name in ['windres', 'x86_64-w64-mingw32-windres'] {
+			windres_path = os.find_abs_path_of_executable(rc_name) or { continue }
+			break
+		}
+		println('> found windres_path: ${windres_path}')
+		rc_cmd := '${windres_path} -i ${os.quoted_path(cfile)} -o ${os.quoted_path(opath)}'
+		rc_res := os.execute(rc_cmd)
+		os.chdir(current_folder) or {}
+		if rc_res.exit_code != 0 {
+			eprintln('failed building resource file cmd:\n${rc_cmd}')
+			verror(rc_res.output)
+			return
+		}
+		v.pref.cache_manager.mod_save(mod, '.description.txt', obj_path, '${obj_path:-30} @ ${rc_cmd}\n') or {
+			panic(err)
+		}
+		if v.pref.show_cc {
+			println('>> OBJECT FILE compilation cmd: ${rc_cmd}')
+		}
+		$if trace_thirdparty_obj_files ? {
+			if rc_res.output != '' {
+				println(rc_res.output)
+			}
+		}
+		return
+	}
+
 	cmd := '${v.quote_compiler_name(ccompiler)} ${cc_options}'
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_files cmd: ${cmd}')
