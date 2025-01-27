@@ -8,50 +8,6 @@ import crypto
 import crypto.sha256
 import crypto.sha512
 
-// See https://docs.openssl.org/master/man7/openssl_user_macros/#description
-// should be 0x30000000L, but a lot of EC_KEY method was deprecated on version 3.0
-// #define OPENSSL_API_COMPAT 0x10100000L
-
-#flag darwin -L /opt/homebrew/opt/openssl/lib -I /opt/homebrew/opt/openssl/include
-
-#flag -I/usr/include/openssl
-#flag -lcrypto
-#flag darwin -I/usr/local/opt/openssl/include
-#flag darwin -L/usr/local/opt/openssl/lib
-#include <openssl/ecdsa.h>
-#include <openssl/obj_mac.h>
-#include <openssl/objects.h>
-#include <openssl/bn.h>
-
-// C function declarations
-fn C.EC_KEY_new_by_curve_name(nid int) &C.EC_KEY
-fn C.EC_KEY_dup(src &C.EC_KEY) &C.EC_KEY
-fn C.EC_KEY_generate_key(key &C.EC_KEY) int
-fn C.EC_KEY_free(key &C.EC_KEY)
-fn C.EC_KEY_set_public_key(key &C.EC_KEY, &C.EC_POINT) int
-fn C.EC_KEY_set_private_key(key &C.EC_KEY, prv &C.BIGNUM) int
-fn C.EC_KEY_get0_group(key &C.EC_KEY) &C.EC_GROUP
-fn C.EC_KEY_get0_private_key(key &C.EC_KEY) &C.BIGNUM
-fn C.EC_KEY_get0_public_key(key &C.EC_KEY) &C.EC_POINT
-fn C.EC_KEY_check_key(key &C.EC_KEY) int
-fn C.EC_KEY_up_ref(key &C.EC_KEY) int
-fn C.EC_POINT_new(group &C.EC_GROUP) &C.EC_POINT
-fn C.EC_POINT_mul(group &C.EC_GROUP, r &C.EC_POINT, n &C.BIGNUM, q &C.EC_POINT, m &C.BIGNUM, ctx &C.BN_CTX) int
-fn C.EC_POINT_cmp(group &C.EC_GROUP, a &C.EC_POINT, b &C.EC_POINT, ctx &C.BN_CTX) int
-fn C.EC_POINT_free(point &C.EC_POINT)
-fn C.EC_GROUP_cmp(a &C.EC_GROUP, b &C.EC_GROUP, ctx &C.BN_CTX) int
-fn C.BN_num_bits(a &C.BIGNUM) int
-fn C.BN_bn2bin(a &C.BIGNUM, to &u8) int
-fn C.BN_bn2binpad(a &C.BIGNUM, to &u8, tolen int) int
-fn C.BN_cmp(a &C.BIGNUM, b &C.BIGNUM) int
-fn C.BN_CTX_new() &C.BN_CTX
-fn C.BN_CTX_free(ctx &C.BN_CTX)
-fn C.BN_bin2bn(s &u8, len int, ret &C.BIGNUM) &C.BIGNUM
-fn C.BN_free(a &C.BIGNUM)
-fn C.ECDSA_size(key &C.EC_KEY) u32
-fn C.ECDSA_sign(type_ int, dgst &u8, dgstlen int, sig &u8, siglen &u32, eckey &C.EC_KEY) int
-fn C.ECDSA_verify(type_ int, dgst &u8, dgstlen int, sig &u8, siglen int, eckey &C.EC_KEY) int
-
 // NID constants
 //
 // NIST P-256 is refered to as secp256r1 and prime256v1, defined as #define NID_X9_62_prime256v1 415
@@ -67,6 +23,9 @@ const nid_secp521r1 = C.NID_secp521r1
 
 // Bitcoin curve, defined as #define NID_secp256k1 714
 const nid_secp256k1 = C.NID_secp256k1
+
+// #define NID_X9_62_id_ecPublicKey   408
+const nid_ec_publickey = C.NID_X9_62_id_ecPublicKey
 
 // The list of supported curve(s)
 pub enum Nid {
@@ -87,24 +46,6 @@ pub mut:
 	fixed_size bool
 }
 
-@[typedef]
-struct C.EC_KEY {}
-
-@[typedef]
-struct C.EC_GROUP {}
-
-@[typedef]
-struct C.BIGNUM {}
-
-@[typedef]
-struct C.EC_POINT {}
-
-@[typedef]
-struct C.ECDSA_SIG {}
-
-@[typedef]
-struct C.BN_CTX {}
-
 // enum flag to allow flexible PrivateKey size
 enum KeyFlag {
 	// flexible flag to allow flexible-size of seed bytes
@@ -116,6 +57,10 @@ enum KeyFlag {
 // PrivateKey represents ECDSA private key. Actually its a key pair,
 // contains private key and public key parts.
 pub struct PrivateKey {
+	// The new high level of keypair opaque, set to nil now.
+	evpkey &C.EVP_PKEY = unsafe { nil }
+	// TODO: when all has been migrated to the new one,
+	// removes this low level declarations.
 	key &C.EC_KEY
 mut:
 	// ks_flag with .flexible value allowing
@@ -129,6 +74,9 @@ mut:
 
 // PublicKey represents ECDSA public key for verifying message.
 pub struct PublicKey {
+	// The new high level of keypair opaque, set to nil now.
+	evpkey &C.EVP_PKEY = unsafe { nil }
+	// Remove this when its fully obsoleted by the new one.
 	key &C.EC_KEY
 }
 
