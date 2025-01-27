@@ -74,14 +74,10 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 			g.gen_free_for_interface(sym, sym.info, styp, fn_name)
 		}
 		else {
-			if sym.kind == .u8 {
-				g.gen_free_for_plain_type(typ, styp, fn_name)
-			} else {
-				println(g.table.type_str(typ))
-				// print_backtrace()
-				println("could not generate free method '${fn_name}' for type '${styp}'")
-				// verror("could not generate free method '${fn_name}' for type '${styp}'")
-			}
+			println(g.table.type_str(typ))
+			// print_backtrace()
+			println("could not generate free method '${fn_name}' for type '${styp}'")
+			// verror("could not generate free method '${fn_name}' for type '${styp}'")
 		}
 	}
 	return fn_name
@@ -219,17 +215,6 @@ fn (mut g Gen) gen_free_for_map(typ ast.Type, styp string, fn_name string) {
 	} else {
 		fn_builder.writeln('\tmap_free(it);')
 	}
-	fn_builder.writeln('}')
-}
-
-fn (mut g Gen) gen_free_for_plain_type(typ ast.Type, styp string, fn_name string) {
-	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it); // auto')
-	mut fn_builder := strings.new_builder(128)
-	defer {
-		g.auto_fn_definitions << fn_builder.str()
-	}
-	fn_builder.writeln('${g.static_non_parallel}inline void ${fn_name}(${styp}* it) {')
-	fn_builder.writeln('\t_v_free(it);')
 	fn_builder.writeln('}')
 }
 
