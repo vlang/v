@@ -4312,7 +4312,9 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			mut orig_type := 0
 			mut is_inherited := false
 			mut ct_type_var := ast.ComptimeVarKind.no_comptime
+			mut is_ct_type_unwrapped := false
 			if mut expr.obj is ast.Var {
+				is_ct_type_unwrapped = expr.obj.ct_type_var != ast.ComptimeVarKind.no_comptime
 				is_mut = expr.obj.is_mut
 				smartcasts << expr.obj.smartcasts
 				is_already_casted = expr.obj.pos.pos == expr.pos.pos
@@ -4334,16 +4336,17 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 						if cur_type.has_flag(.option) && !to_type.has_flag(.option) {
 							if !var.is_unwrapped {
 								scope.register(ast.Var{
-									name:         expr.name
-									typ:          cur_type
-									pos:          expr.pos
-									is_used:      true
-									is_mut:       expr.is_mut
-									is_inherited: is_inherited
-									smartcasts:   [to_type]
-									orig_type:    orig_type
-									ct_type_var:  ct_type_var
-									is_unwrapped: true
+									name:              expr.name
+									typ:               cur_type
+									pos:               expr.pos
+									is_used:           true
+									is_mut:            expr.is_mut
+									is_inherited:      is_inherited
+									smartcasts:        [to_type]
+									orig_type:         orig_type
+									ct_type_var:       ct_type_var
+									ct_type_unwrapped: is_ct_type_unwrapped
+									is_unwrapped:      true
 								})
 							} else {
 								scope.update_smartcasts(expr.name, to_type, true)
@@ -4355,16 +4358,17 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					}
 				}
 				scope.register(ast.Var{
-					name:         expr.name
-					typ:          cur_type
-					pos:          expr.pos
-					is_used:      true
-					is_mut:       expr.is_mut
-					is_inherited: is_inherited
-					is_unwrapped: is_option_unwrap
-					smartcasts:   smartcasts
-					orig_type:    orig_type
-					ct_type_var:  ct_type_var
+					name:              expr.name
+					typ:               cur_type
+					pos:               expr.pos
+					is_used:           true
+					is_mut:            expr.is_mut
+					is_inherited:      is_inherited
+					is_unwrapped:      is_option_unwrap
+					smartcasts:        smartcasts
+					orig_type:         orig_type
+					ct_type_var:       ct_type_var
+					ct_type_unwrapped: is_ct_type_unwrapped
 				})
 			} else if is_mut && !expr.is_mut {
 				c.smartcast_mut_pos = expr.pos

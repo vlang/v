@@ -5158,7 +5158,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 							}
 						}
 						if i == 0 && node.obj.ct_type_var != .smartcast && node.obj.is_unwrapped {
-							dot := if !node.obj.orig_type.is_ptr() && obj_sym.is_heap() {
+							dot := if !node.obj.ct_type_unwrapped && !node.obj.orig_type.is_ptr()
+								&& obj_sym.is_heap() {
 								'->'
 							} else {
 								'.'
