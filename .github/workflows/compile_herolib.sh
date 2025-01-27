@@ -18,7 +18,7 @@ ln -s $(pwd)/lib ~/.vmodules/freeflowuniverse/herolib
 cd cli
 
 show "Checkout last known good commit"
-git checkout fa0dac57ec218c0d65e0e8d5bba45ba2fd28d3d7
+git checkout ca8799af39228a5678a7be81128c5b0c342c9efc
 
 v wipe-cache
 show "Build project no parallel (gcc)"
