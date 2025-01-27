@@ -1051,52 +1051,76 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	// save index check, 0 will mean not found
 	// THE ORDER MUST BE THE SAME AS xxx_type_idx CONSTS EARLIER IN THIS FILE
 	t.register_sym(kind: .placeholder, name: 'reserved_0')
-	t.register_sym(kind: .void, name: 'void', cname: 'void', mod: 'builtin') // 1
-	t.register_sym(kind: .voidptr, name: 'voidptr', cname: 'voidptr', mod: 'builtin') // 2
-	t.register_sym(kind: .byteptr, name: 'byteptr', cname: 'byteptr', mod: 'builtin') // 3
-	t.register_sym(kind: .charptr, name: 'charptr', cname: 'charptr', mod: 'builtin') // 4
-	t.register_sym(kind: .i8, name: 'i8', cname: 'i8', mod: 'builtin') // 5
-	t.register_sym(kind: .i16, name: 'i16', cname: 'i16', mod: 'builtin') // 6
-	t.register_sym(kind: .i32, name: 'i32', cname: 'i32', mod: 'builtin') // 7
-	t.register_sym(kind: .int, name: 'int', cname: int_type_name, mod: 'builtin') // 8
-	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin') // 9
-	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin') // 10
-	t.register_sym(kind: .u8, name: 'u8', cname: 'u8', mod: 'builtin') // 11
-	t.register_sym(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin') // 12
-	t.register_sym(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin') // 13
-	t.register_sym(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin') // 14
-	t.register_sym(kind: .usize, name: 'usize', cname: 'usize', mod: 'builtin') // 15
-	t.register_sym(kind: .f32, name: 'f32', cname: 'f32', mod: 'builtin') // 16
-	t.register_sym(kind: .f64, name: 'f64', cname: 'f64', mod: 'builtin') // 17
-	t.register_sym(kind: .char, name: 'char', cname: 'char', mod: 'builtin') // 18
-	t.register_sym(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin') // 19
-	t.register_sym(kind: .none, name: 'none', cname: 'none', mod: 'builtin') // 20
-	t.register_sym(kind: .string, name: 'string', cname: 'string', mod: 'builtin', is_builtin: true) // 21
-	t.register_sym(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin') // 22
-	t.register_sym(kind: .array, name: 'array', cname: 'array', mod: 'builtin', is_builtin: true) // 23
-	t.register_sym(kind: .map, name: 'map', cname: 'map', mod: 'builtin', is_builtin: true) // 24
-	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin') // 25
-	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin') // 26
+	t.register_sym(kind: .void, name: 'void', cname: 'void', mod: 'builtin', is_pub: true) // 1
+	t.register_sym(kind: .voidptr, name: 'voidptr', cname: 'voidptr', mod: 'builtin', is_pub: true) // 2
+	t.register_sym(kind: .byteptr, name: 'byteptr', cname: 'byteptr', mod: 'builtin', is_pub: true) // 3
+	t.register_sym(kind: .charptr, name: 'charptr', cname: 'charptr', mod: 'builtin', is_pub: true) // 4
+	t.register_sym(kind: .i8, name: 'i8', cname: 'i8', mod: 'builtin', is_pub: true) // 5
+	t.register_sym(kind: .i16, name: 'i16', cname: 'i16', mod: 'builtin', is_pub: true) // 6
+	t.register_sym(kind: .i32, name: 'i32', cname: 'i32', mod: 'builtin', is_pub: true) // 7
+	t.register_sym(kind: .int, name: 'int', cname: int_type_name, mod: 'builtin', is_pub: true) // 8
+	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin', is_pub: true) // 9
+	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin', is_pub: true) // 10
+	t.register_sym(kind: .u8, name: 'u8', cname: 'u8', mod: 'builtin', is_pub: true) // 11
+	t.register_sym(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin', is_pub: true) // 12
+	t.register_sym(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin', is_pub: true) // 13
+	t.register_sym(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin', is_pub: true) // 14
+	t.register_sym(kind: .usize, name: 'usize', cname: 'usize', mod: 'builtin', is_pub: true) // 15
+	t.register_sym(kind: .f32, name: 'f32', cname: 'f32', mod: 'builtin', is_pub: true) // 16
+	t.register_sym(kind: .f64, name: 'f64', cname: 'f64', mod: 'builtin', is_pub: true) // 17
+	t.register_sym(kind: .char, name: 'char', cname: 'char', mod: 'builtin', is_pub: true) // 18
+	t.register_sym(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin', is_pub: true) // 19
+	t.register_sym(kind: .none, name: 'none', cname: 'none', mod: 'builtin', is_pub: true) // 20
 	t.register_sym(
-		kind:  .float_literal
-		name:  'float literal'
-		cname: 'float_literal'
-		mod:   'builtin'
+		kind:       .string
+		name:       'string'
+		cname:      'string'
+		mod:        'builtin'
+		is_builtin: true
+		is_pub:     true
+	) // 21
+	t.register_sym(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin', is_pub: true) // 22
+	t.register_sym(
+		kind:       .array
+		name:       'array'
+		cname:      'array'
+		mod:        'builtin'
+		is_builtin: true
+		is_pub:     true
+	) // 23
+	t.register_sym(
+		kind:       .map
+		name:       'map'
+		cname:      'map'
+		mod:        'builtin'
+		is_builtin: true
+		is_pub:     true
+	) // 24
+	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin', is_pub: true) // 25
+	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin', is_pub: true) // 26
+	t.register_sym(
+		kind:   .float_literal
+		name:   'float literal'
+		cname:  'float_literal'
+		mod:    'builtin'
+		is_pub: true
 	) // 27
 	t.register_sym(
-		kind:  .int_literal
-		name:  'int literal'
-		cname: 'int_literal'
-		mod:   'builtin'
+		kind:   .int_literal
+		name:   'int literal'
+		cname:  'int_literal'
+		mod:    'builtin'
+		is_pub: true
 	) // 28
 	t.register_sym(
-		kind:  .thread
-		name:  'thread'
-		cname: '__v_thread'
-		mod:   'builtin'
-		info:  Thread{
+		kind:   .thread
+		name:   'thread'
+		cname:  '__v_thread'
+		mod:    'builtin'
+		info:   Thread{
 			return_type: void_type
 		}
+		is_pub: true
 	) // 29
 	t.register_sym(
 		kind:       .interface
@@ -1104,8 +1128,9 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		cname:      'IError'
 		mod:        'builtin'
 		is_builtin: true
+		is_pub:     true
 	) // 30
-	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin') // 31
+	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin', is_pub: true) // 31
 }
 
 @[inline]
