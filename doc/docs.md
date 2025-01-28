@@ -627,8 +627,8 @@ s[0] = `H` // not allowed
 > error: cannot assign to `s[i]` since V strings are immutable
 
 Note that indexing a string normally will produce a `u8` (byte), not a `rune` nor another `string`.
-Indexes correspond to _bytes_ in the string, not Unicode code points. If you want to convert the `u8`
-to a `string`, use the `.ascii_str()` method on the `u8`:
+Indexes correspond to _bytes_ in the string, not Unicode code points.
+If you want to convert the `u8` to a `string`, use the `.ascii_str()` method on the `u8`:
 
 ```v
 country := 'Netherlands'
