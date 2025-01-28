@@ -1058,6 +1058,12 @@ pub fn (data &u8) vbytes(len int) []u8 {
 	return unsafe { voidptr(data).vbytes(len) }
 }
 
+// free frees the memory allocated
+@[unsafe]
+pub fn (data &u8) free() {
+	unsafe { free(data) }
+}
+
 @[if !no_bounds_checking ?; inline]
 fn panic_on_negative_len(len int) {
 	if len < 0 {
