@@ -211,10 +211,10 @@ fn test_various_map_value() {
 	// assert m13['test'] == rune(0)
 	mut m14 := map[string]voidptr{}
 	m14['test'] = unsafe { nil }
-	assert m14['test'] == unsafe { nil }
+	assert unsafe { m14['test'] } == unsafe { nil }
 	mut m15 := map[string]&u8{}
 	m15['test'] = &u8(0)
-	assert m15['test'] == &u8(0)
+	assert unsafe { m15['test'] } == &u8(0)
 	mut m16 := map[string]i64{}
 	m16['test'] = i64(0)
 	assert m16['test'] == i64(0)
@@ -223,7 +223,7 @@ fn test_various_map_value() {
 	assert m17['test'] == u64(0)
 	mut m18 := map[string]&int{}
 	m18['test'] = &int(0)
-	assert m18['test'] == &int(0)
+	assert unsafe { m18['test'] } == &int(0)
 }
 
 fn test_string_arr() {
@@ -668,8 +668,8 @@ fn test_voidptr_values() {
 	v := 5
 	m['var'] = &v
 	m['map'] = &m
-	assert m['var'] == &v
-	assert m['map'] == &m
+	assert unsafe { m['var'] } == &v
+	assert unsafe { m['map'] } == &m
 	assert m.values().len == 2
 }
 
