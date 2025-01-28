@@ -604,7 +604,7 @@ assert star_str == '★'
 assert star_str == '\xe2\x98\x85' // UTF-8 can be specified this way too.
 ```
 
-In V, a string is a read-only array of bytes. All Unicode characters are encoded using UTF-8:
+In V, strings are read-only, and Unicode characters are encoded in UTF-8:
 
 ```v
 s := 'hello 🌎' // emoji takes 4 bytes
@@ -626,14 +626,24 @@ s[0] = `H` // not allowed
 
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Note that indexing a string will produce a `u8` (byte), not a `rune` nor another `string`. Indexes
-correspond to _bytes_ in the string, not Unicode code points. If you want to convert the `u8` to a
-`string`, use the `.ascii_str()` method on the `u8`:
+Note that indexing a string normally will produce a `u8` (byte), not a `rune` nor another `string`.
+Indexes correspond to _bytes_ in the string, not Unicode code points.
+If you want to convert the `u8` to a `string`, use the `.ascii_str()` method on the `u8`:
 
 ```v
 country := 'Netherlands'
 println(country[0]) // Output: 78
 println(country[0].ascii_str()) // Output: N
+```
+
+However, you can easily get the runes for a string with the `runes()` method, which will return an
+array of the UTF-8 characters from the string.  You can then index this array.  Just be aware that
+there may be fewer indexes available on the `rune` array than on the bytes in the string, if there
+_are_ any non-ASCII characters.
+
+```v
+mut s := 'hello 🌎'
+println(s.runes()[6])
 ```
 
 If you want the code point from a specific `string` index or other more advanced 
