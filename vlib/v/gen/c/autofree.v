@@ -205,7 +205,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		return
 	}
 	mut af := strings.new_builder(128)
-	if v.typ.is_ptr() {
+	if v.typ.is_ptr() && v.typ.idx() != ast.u8_type_idx {
 		af.write_string('\t')
 		if v.typ.share() == .shared_t {
 			af.write_string(free_fn_name.replace_each(['__shared__', '']))
@@ -241,7 +241,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 			af.writeln('\tif (${c_name(v.name)}.state != 2) {')
 			af.writeln('\t\t${free_fn_name}((${base_type}*)${c_name(v.name)}.data); // autofreed option var ${g.cur_mod.name} ${g.is_builtin_mod}')
 			af.writeln('\t}')
-		} else {
+		} else if v.typ.idx() != ast.u8_type_idx {
 			af.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var ${g.cur_mod.name} ${g.is_builtin_mod}')
 		}
 	}
