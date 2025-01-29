@@ -577,14 +577,28 @@ d := b + x     // d is of type `f64` - automatic promotion of `x`'s value
 
 ### Strings
 
-```v nofmt
+In V, strings are encoded in UTF-8, and are immutable (read-only) by default:
+
+```v
+s := 'hello 🌎' // the `world` emoji takes 4 bytes, and string length is reported in bytes
+assert s.len == 10
+
+arr := s.bytes() // convert `string` to `[]u8`
+assert arr.len == 10
+
+s2 := arr.bytestr() // convert `[]u8` to `string`
+assert s2 == s
+
 name := 'Bob'
-assert name.len == 3       // will print 3
-assert name[0] == u8(66) // indexing gives a byte, u8(66) == `B`
-assert name[1..3] == 'ob'  // slicing gives a string 'ob'
+assert name.len == 3
+// indexing gives a byte, u8(66) == `B`
+assert name[0] == u8(66)
+// slicing gives a string 'ob'
+assert name[1..3] == 'ob'
 
 // escape codes
-windows_newline := '\r\n'      // escape special characters like in C
+// escape special characters like in C
+windows_newline := '\r\n'
 assert windows_newline.len == 2
 
 // arbitrary bytes can be directly specified using `\x##` notation where `#` is
@@ -601,23 +615,11 @@ assert aardvark_str2 == 'aardvark'
 // and will be converted internally to its UTF-8 representation
 star_str := '\u2605' // ★
 assert star_str == '★'
-assert star_str == '\xe2\x98\x85' // UTF-8 can be specified this way too.
+// UTF-8 can be specified this way too, as individual bytes.
+assert star_str == '\xe2\x98\x85'
 ```
 
-In V, strings are read-only, and Unicode characters are encoded in UTF-8:
-
-```v
-s := 'hello 🌎' // emoji takes 4 bytes
-assert s.len == 10
-
-arr := s.bytes() // convert `string` to `[]u8`
-assert arr.len == 10
-
-s2 := arr.bytestr() // convert `[]u8` to `string`
-assert s2 == s
-```
-
-String values are immutable. You cannot mutate elements:
+Since strings are immutable, you cannot directly change characters in a string:
 
 ```v failcompile
 mut s := 'hello 🌎'
@@ -643,17 +645,20 @@ _are_ any non-ASCII characters.
 
 ```v
 mut s := 'hello 🌎'
+// there are 10 bytes in the string (as shown earlier), but only 7 runes, since the `world` emoji
+// only counts as one `rune` (one Unicode character)
+assert s.runes().len == 7
 println(s.runes()[6])
 ```
 
-If you want the code point from a specific `string` index or other more advanced 
-utf8 processing and conversions, refer to the
-[vlib/encoding.utf8](https://modules.vlang.io/encoding.utf8.html) module.
+If you want the code point from a specific `string` index or other more advanced UTF-8 processing
+and conversions, refer to the
+[vlib/encoding/utf8](https://modules.vlang.io/encoding.utf8.html) module.
 
 Both single and double quotes can be used to denote strings. For consistency, `vfmt` converts double
 quotes to single quotes unless the string contains a single quote character.
 
-For raw strings, prepend `r`. Escape handling is not done for raw strings:
+Prepend `r` for raw strings. Escapes are not handled, so you will get exacly what you type:
 
 ```v
 s := r'hello\nworld' // the `\n` will be preserved as two characters
@@ -7797,7 +7802,7 @@ Ordinary zero terminated C strings can be converted to V strings with
 > If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
 > since they return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
 
-On Windows, C APIs often return so called `wide` strings (utf16 encoding).
+On Windows, C APIs often return so called `wide` strings (UTF-16 encoding).
 These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
 
 V has these types for easier interoperability with C:
