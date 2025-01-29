@@ -479,7 +479,7 @@ fn (mut p Parser) parse_type() ast.Type {
 		is_attr := p.tok.kind == .at
 
 		if p.tok.line_nr > line_nr || p.tok.kind in [.comma, .rpar, .assign]
-			|| (is_attr || is_required_field) {
+			|| (is_attr || is_required_field) || p.tok.kind == .comment {
 			mut typ := ast.void_type
 			if is_option {
 				typ = typ.set_flag(.option)
