@@ -580,7 +580,7 @@ d := b + x     // d is of type `f64` - automatic promotion of `x`'s value
 In V, strings are encoded in UTF-8, and are immutable (read-only) by default:
 
 ```v
-s := 'hello 🌎' // emoji takes 4 bytes, and string length is reported in bytes
+s := 'hello 🌎' // this emoji takes 4 bytes, and string length is reported in bytes
 assert s.len == 10
 
 arr := s.bytes() // convert `string` to `[]u8`
