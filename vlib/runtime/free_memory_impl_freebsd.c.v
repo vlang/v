@@ -7,13 +7,12 @@ fn free_memory_impl() usize {
 	$if !cross ? {
 		$if freebsd {
 			page_size := usize(C.sysconf(C._SC_PAGESIZE))
-			// sysctlnametomib("vm.stats.vm.v_free_count") => mib :
-			mib := [C.CTL_VM, 2147481600, 2147481598, 2147481557]!
+			mut mib := [4]int{}
+			mut len := usize(4)
+			unsafe { C.sysctlnametomib(c'vm.stats.vm.v_free_count', &mib[0], &len) }
 			mut free_pages := int(0)
 			bufsize := usize(4)
-			unsafe {
-				C.sysctl(&mib[0], mib.len, &free_pages, &bufsize, 0, 0)
-			}
+			unsafe { C.sysctl(&mib[0], mib.len, &free_pages, &bufsize, 0, 0) }
 			return page_size * usize(free_pages)
 		}
 	}
