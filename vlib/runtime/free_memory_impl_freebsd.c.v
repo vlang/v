@@ -1,5 +1,7 @@
 module runtime
 
+fn C.sysctlnametomib(name charptr, mib &int, len &usize) int
+
 fn free_memory_impl() usize {
 	$if cross ? {
 		return 1
