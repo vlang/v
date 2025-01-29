@@ -983,6 +983,7 @@ pub struct File {
 pub:
 	nr_lines      int    // number of source code lines in the file (including newlines and comments)
 	nr_bytes      int    // number of processed source code bytes
+	nr_tokens     int    // number of processed tokens in the source code of the file
 	mod           Module // the module of the source file (from `module xyz` at the top)
 	global_scope  &Scope = unsafe { nil }
 	is_test       bool // true for _test.v files

@@ -335,22 +335,25 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 	if b.pref.is_stats {
 		compilation_time_micros := 1 + sw.elapsed().microseconds()
 		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')
-		mut all_v_source_lines, mut all_v_source_bytes := 0, 0
+		mut all_v_source_lines, mut all_v_source_bytes, mut all_v_source_tokens := 0, 0, 0
 		for pf in b.parsed_files {
 			all_v_source_lines += pf.nr_lines
 			all_v_source_bytes += pf.nr_bytes
+			all_v_source_tokens += pf.nr_tokens
 		}
 		mut sall_v_source_lines := all_v_source_lines.str()
 		mut sall_v_source_bytes := all_v_source_bytes.str()
+		mut sall_v_source_tokens := all_v_source_tokens.str()
 		mut sall_v_types := b.table.type_symbols.len.str()
 		mut sall_v_modules := b.table.modules.len.str()
 		mut sall_v_files := b.parsed_files.len.str()
 		sall_v_source_lines = util.bold('${sall_v_source_lines:10s}')
 		sall_v_source_bytes = util.bold('${sall_v_source_bytes:10s}')
+		sall_v_source_tokens = util.bold('${sall_v_source_tokens:10s}')
 		sall_v_types = util.bold('${sall_v_types:5s}')
 		sall_v_modules = util.bold('${sall_v_modules:5s}')
 		sall_v_files = util.bold('${sall_v_files:5s}')
-		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_bytes} bytes, ${sall_v_types} types, ${sall_v_modules} modules, ${sall_v_files} files')
+		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_tokens} tokens, ${sall_v_source_bytes} bytes, ${sall_v_types} types, ${sall_v_modules} modules, ${sall_v_files} files')
 		//
 		mut slines := b.stats_lines.str()
 		mut sbytes := b.stats_bytes.str()

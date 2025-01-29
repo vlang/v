@@ -340,6 +340,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		is_translated:    p.is_translated
 		nr_lines:         p.scanner.line_nr
 		nr_bytes:         p.scanner.text.len
+		nr_tokens:        p.scanner.all_tokens.len
 		mod:              module_decl
 		imports:          p.ast_imports
 		imported_symbols: p.imported_symbols
