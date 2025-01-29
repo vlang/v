@@ -191,8 +191,8 @@ struct CheckResultContext {
 
 fn (mut f MDFile) wcheck(actual int, limit int, ctx CheckResultContext, msg_template string) {
 	if actual > limit {
-		wprintln(wline(ctx.path, ctx.line_number, ctx.line.len, msg_template.replace('@',
-			limit.str())))
+		final := msg_template.replace('@', limit.str()) + ', actual: ' + actual.str()
+		wprintln(wline(ctx.path, ctx.line_number, ctx.line.len, final))
 		wprintln(ctx.line)
 		wprintln(ftext('-'.repeat(limit) + '^', term.gray))
 		f.warnings++
@@ -201,8 +201,8 @@ fn (mut f MDFile) wcheck(actual int, limit int, ctx CheckResultContext, msg_temp
 
 fn (mut f MDFile) echeck(actual int, limit int, ctx CheckResultContext, msg_template string) {
 	if actual > limit {
-		eprintln(eline(ctx.path, ctx.line_number, ctx.line.len, msg_template.replace('@',
-			limit.str())))
+		final := msg_template.replace('@', limit.str()) + ', actual: ' + actual.str()
+		eprintln(eline(ctx.path, ctx.line_number, ctx.line.len, final))
 		eprintln(ctx.line)
 		eprintln(ftext('-'.repeat(limit) + '^', term.gray))
 		f.errors++
