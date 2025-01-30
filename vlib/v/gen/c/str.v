@@ -64,9 +64,6 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	if is_shared {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
-	if expr is ast.SelectorExpr && g.comptime.is_comptime_selector_type(expr) {
-		typ = ast.int_type
-	}
 	// original is_ptr for the typ (aliased type could overwrite it)
 	is_ptr := typ.is_ptr()
 	mut sym := g.table.sym(typ)

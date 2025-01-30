@@ -108,15 +108,9 @@ pub fn (mut t TypeResolver) get_type_or_default(node ast.Expr, default_typ ast.T
 			}
 		}
 		ast.SelectorExpr {
-			if node.expr is ast.Ident {
-				if node.expr.ct_expr {
-					ctyp := t.get_type(node)
-					return if ctyp != ast.void_type { ctyp } else { default_typ }
-				}
-				if node.is_field_typ {
-					ctyp := t.get_type_from_comptime_var(node.expr)
-					return if ctyp != ast.void_type { ctyp } else { default_typ }
-				}
+			if node.expr is ast.Ident && node.expr.ct_expr {
+				ctyp := t.get_type(node)
+				return if ctyp != ast.void_type { ctyp } else { default_typ }
 			}
 			return default_typ
 		}
@@ -213,8 +207,8 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 		}
 		return ctyp
 	} else if node is ast.SelectorExpr {
-		if node.is_field_typ && node.expr is ast.Ident {
-			return t.get_type_from_comptime_var(node.expr)
+		if node.is_field_typ {
+			return t.get_type_from_comptime_var(node.expr as ast.Ident)
 		}
 		if node.expr is ast.Ident && node.expr.ct_expr {
 			struct_typ := t.resolver.unwrap_generic(t.get_type(node.expr))

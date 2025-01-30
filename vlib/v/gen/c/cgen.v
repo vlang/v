@@ -3584,7 +3584,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			}
 		}
 		ast.IsRefType {
-			typ := g.type_resolver.get_type_or_default(node.expr, g.get_type(node.typ))
+			typ := g.type_resolver.typeof_type(node.expr, g.get_type(node.typ))
 			node_typ := g.unwrap_generic(typ)
 			sym := g.table.sym(node_typ)
 			if sym.language == .v && sym.kind in [.placeholder, .any] {
@@ -3669,7 +3669,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.writeln2('\tpanic_option_not_set(_SLIT("none"));', '}')
 				g.write(cur_line)
 				if is_unwrapped {
-					typ := g.type_resolver.get_type_or_default(node.expr, node.typ)
+					typ := g.type_resolver.typeof_type(node.expr, node.typ)
 					g.write('*(${g.base_type(typ)}*)&')
 					g.expr(node.expr)
 					g.write('.data')
@@ -3844,7 +3844,7 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
-	typ := g.type_resolver.get_type_or_default(node.expr, g.get_type(node.typ))
+	typ := g.type_resolver.typeof_type(node.expr, g.get_type(node.typ))
 	sym := g.table.sym(typ)
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
@@ -3894,16 +3894,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// typeof(expr).name
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.get_type_or_default(node.expr.expr,
-							name_type)
+						name_type = g.type_resolver.typeof_type(node.expr.expr, name_type)
 					}
 					g.type_name(name_type)
 					return
 				} else if node.field_name == 'idx' {
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.get_type_or_default(node.expr.expr,
-							name_type)
+						name_type = g.type_resolver.typeof_type(node.expr.expr, name_type)
 					}
 					// `typeof(expr).idx`
 					g.write(int(g.unwrap_generic(name_type)).str())
@@ -3911,8 +3909,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				} else if node.field_name == 'unaliased_typ' {
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.get_type_or_default(node.expr.expr,
-							name_type)
+						name_type = g.type_resolver.typeof_type(node.expr.expr, name_type)
 					}
 					// `typeof(expr).unaliased_typ`
 					g.write(int(g.table.unaliased_type(g.unwrap_generic(name_type))).str())
@@ -3920,8 +3917,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				} else if node.field_name == 'indirections' {
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.get_type_or_default(node.expr.expr,
-							name_type)
+						name_type = g.type_resolver.typeof_type(node.expr.expr, name_type)
 					}
 					// `typeof(expr).indirections`
 					g.write(int(g.unwrap_generic(name_type).nr_muls()).str())
@@ -7235,7 +7231,7 @@ fn (mut g Gen) get_type(typ ast.Type) ast.Type {
 }
 
 fn (mut g Gen) size_of(node ast.SizeOf) {
-	typ := g.type_resolver.get_type_or_default(node.expr, g.get_type(node.typ))
+	typ := g.type_resolver.typeof_type(node.expr, g.get_type(node.typ))
 	node_typ := g.unwrap_generic(typ)
 	sym := g.table.sym(node_typ)
 	if sym.language == .v && sym.kind in [.placeholder, .any] {
