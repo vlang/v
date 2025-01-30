@@ -9,3 +9,9 @@ fn cpanic(res int) {
 fn cpanic_errno() {
 	cpanic(C.errno)
 }
+
+fn should_be_zero(res int) {
+	if res != 0 {
+		cpanic(res)
+	}
+}
