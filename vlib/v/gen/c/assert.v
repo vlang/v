@@ -151,12 +151,12 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind)
 			g.writeln('\t${metaname}.op = ${expr_op_str};')
 			g.writeln('\t${metaname}.llabel = ${expr_left_str};')
 			g.writeln('\t${metaname}.rlabel = ${expr_right_str};')
-			left_type := if g.comptime.is_comptime_expr(node.expr.left) {
-				g.type_resolver.get_type(node.expr.left)
+			left_type := if node.expr.left_ct_expr {
+				g.type_resolver.get_type_or_default(node.expr.left, node.expr.left_type)
 			} else {
 				node.expr.left_type
 			}
-			right_type := if g.comptime.is_comptime_expr(node.expr.right) {
+			right_type := if node.expr.right_ct_expr {
 				g.type_resolver.get_type(node.expr.right)
 			} else {
 				node.expr.right_type

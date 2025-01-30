@@ -1324,7 +1324,7 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 			return true
 		}
 	} else if left_node is ast.PostfixExpr {
-		rec_type = g.resolve_comptime_type(left_node.expr, rec_type)
+		rec_type = g.type_resolver.get_type_or_default(left_node.expr, rec_type)
 		if left_node.op == .question {
 			rec_type = rec_type.clear_flag(.option)
 		}

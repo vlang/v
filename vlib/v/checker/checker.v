@@ -1645,6 +1645,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			return node.expr_type
 		}
 	}
+	node.is_field_typ = node.is_field_typ || c.comptime.is_comptime_selector_type(node)
 	old_selector_expr := c.inside_selector_expr
 	c.inside_selector_expr = true
 	mut typ := c.expr(mut node.expr)

@@ -311,6 +311,7 @@ pub mut:
 	from_embed_types         []Type   // holds the type of the embed that the method is called from
 	generic_from_embed_types [][]Type // holds the types of the embeds for each generic instance when the same generic method is called.
 	has_hidden_receiver      bool
+	is_field_typ             bool // var.typ for comptime $for var
 }
 
 // root_ident returns the origin ident where the selector started.

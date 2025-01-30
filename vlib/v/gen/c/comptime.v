@@ -801,21 +801,6 @@ fn (mut g Gen) pop_comptime_info() {
 	g.comptime.comptime_for_method_ret_type = old.comptime_for_method_ret_type
 }
 
-fn (mut g Gen) resolve_comptime_type(node ast.Expr, default_type ast.Type) ast.Type {
-	if g.comptime.is_comptime_expr(node) {
-		return g.type_resolver.get_type(node)
-	} else if node is ast.SelectorExpr && node.expr_type != 0 {
-		if node.expr is ast.Ident && g.comptime.is_comptime_selector_type(node) {
-			return g.type_resolver.get_type_from_comptime_var(node.expr)
-		}
-		sym := g.table.sym(g.unwrap_generic(node.expr_type))
-		if f := g.table.find_field_with_embeds(sym, node.field_name) {
-			return f.typ
-		}
-	}
-	return default_type
-}
-
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	sym := if node.typ != g.field_data_type {
 		g.table.final_sym(g.unwrap_generic(node.typ))
