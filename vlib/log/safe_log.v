@@ -25,6 +25,7 @@ pub fn (mut x ThreadSafeLog) free() {
 	unsafe {
 		x.Log.free()
 		x.mu.destroy()
+		free(x.mu)
 		// C.printf(c'ThreadSafeLog free(x), x: %p\n', x)
 	}
 }
