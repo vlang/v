@@ -510,36 +510,47 @@ pub mut:
 	custom_hash &hash.Hash = unsafe { nil }
 }
 
+fn calc_digest_with_recommended_hash(key &C.EC_KEY, msg []u8) ![]u8 {
+	h := recommended_hash(key)!
+	match h {
+		.sha256 {
+			return sha256.sum256(msg)
+		}
+		.sha384 {
+			return sha512.sum384(msg)
+		}
+		.sha512 {
+			return sha512.sum512(msg)
+		}
+		else {
+			return error('Unsupported hash')
+		}
+	}
+}
+
 // calc_digest tries to calculates digest (hash) of the message based on options provided.
-// If the options was with_no_hash, its return default message without hashing.
+// If the options was .with_no_hash, its has the same behaviour with .with_recommended_hash.
 fn calc_digest(key &C.EC_KEY, message []u8, opt SignerOpts) ![]u8 {
 	if message.len == 0 {
 		return error('null-length messages')
 	}
+	// check key size bits
+	group := voidptr(C.EC_KEY_get0_group(key))
+	if group == 0 {
+		return error('fail to load group')
+	}
+	num_bits := C.EC_GROUP_get_degree(group)
+	// check for key size matching
+	key_size := (num_bits + 7) / 8
 	// we're working on mutable copy of SignerOpts, with some issues when make it as a mutable.
 	// ie, declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed.
 	mut cfg := opt
 	match cfg.hash_config {
-		.with_no_hash {
-			// return original message
-			return message
-		}
-		.with_recommended_hash {
-			h := recommended_hash(key)!
-			match h {
-				.sha256 {
-					return sha256.sum256(message)
-				}
-				.sha384 {
-					return sha512.sum384(message)
-				}
-				.sha512 {
-					return sha512.sum512(message)
-				}
-				else {
-					return error('Unsupported hash')
-				}
-			}
+		// There are issues when your message size was exceeds the current key size with .with_no_hash options.
+		// See https://discord.com/channels/592103645835821068/592114487759470596/1334319744098107423
+		// So, we aliased it into .with_recommended_hash
+		.with_no_hash, .with_recommended_hash {
+			return calc_digest_with_recommended_hash(key, message)!
 		}
 		.with_custom_hash {
 			if !cfg.allow_custom_hash {
@@ -548,14 +559,6 @@ fn calc_digest(key &C.EC_KEY, message []u8, opt SignerOpts) ![]u8 {
 			if cfg.custom_hash == unsafe { nil } {
 				return error('Custom hasher was not defined')
 			}
-			// check key size bits
-			group := voidptr(C.EC_KEY_get0_group(key))
-			if group == 0 {
-				return error('fail to load group')
-			}
-			num_bits := C.EC_GROUP_get_degree(group)
-			// check for key size matching
-			key_size := (num_bits + 7) / 8
 			// If current Private Key size is bigger then current hash output size,
 			// by default its not allowed, until set the allow_smaller_size into true
 			if key_size > cfg.custom_hash.size() {
