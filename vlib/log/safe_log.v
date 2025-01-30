@@ -7,7 +7,7 @@ import sync
 pub struct ThreadSafeLog {
 	Log
 pub mut:
-	mu sync.Mutex
+	mu &sync.Mutex = sync.new_mutex()
 }
 
 // new_thread_safe_log returns a new log structure, whose methods are safe
@@ -16,7 +16,6 @@ pub fn new_thread_safe_log() &ThreadSafeLog {
 	mut x := &ThreadSafeLog{
 		level: .info
 	}
-	x.mu.init()
 	return x
 }
 
