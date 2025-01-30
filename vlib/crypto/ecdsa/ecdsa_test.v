@@ -204,3 +204,27 @@ fn test_private_key_new() ! {
 	pubkey2.free()
 	pubkey3.free()
 }
+
+// See https://discord.com/channels/592103645835821068/592114487759470596/1334319744098107423
+fn test_key_with_msg_exceed_key_size() ! {
+	pv := PrivateKey.new()!
+	msg := 'a'.repeat(200).bytes()
+	opt := SignerOpts{
+		hash_config: .with_no_hash
+	}
+	signed := pv.sign(msg, opt)!
+	pb := pv.public_key()!
+
+	// should be verified
+	st := pb.verify(msg, signed, opt)!
+	assert st
+
+	// different msg should not be verified
+	other_msg := 'a'.repeat(392).bytes()
+	ds := pb.verify(other_msg, signed, opt)!
+	// This should assert to false.
+	assert !ds
+
+	pv.free()
+	pb.free()
+}

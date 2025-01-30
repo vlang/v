@@ -27,10 +27,11 @@ fn test_load_pubkey_from_der_serialized_bytes() ! {
 	block, _ := pem.decode(public_key_sample) or { panic(err) }
 	pbkey := pubkey_from_bytes(block.data)!
 
+	// .with_no_hash currently changed to have same behaviour with .with_recommended_hash
 	status_without_hashed := pbkey.verify(message_tobe_signed, expected_signature,
 		hash_config: .with_no_hash
 	)!
-	assert status_without_hashed == false
+	assert status_without_hashed == true
 
 	// expected signature was comes from hashed message with sha384
 	status_with_hashed := pbkey.verify(message_tobe_signed, expected_signature)!
