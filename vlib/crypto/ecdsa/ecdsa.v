@@ -540,7 +540,6 @@ fn calc_digest(key &C.EC_KEY, message []u8, opt SignerOpts) ![]u8 {
 		return error('fail to load group')
 	}
 	num_bits := C.EC_GROUP_get_degree(group)
-	// check for key size matching
 	key_size := (num_bits + 7) / 8
 	// we're working on mutable copy of SignerOpts, with some issues when make it as a mutable.
 	// ie, declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed.
@@ -566,8 +565,22 @@ fn calc_digest(key &C.EC_KEY, message []u8, opt SignerOpts) ![]u8 {
 					return error('Hash into smaller size than current key size was not allowed')
 				}
 			}
-			digest := cfg.custom_hash.sum(message)
-			defer { unsafe { cfg.custom_hash.free() } }
+			// we need to reset the custom hash before writes message
+			cfg.custom_hash.reset()
+			_ := cfg.custom_hash.write(message)!
+			digest := cfg.custom_hash.sum([]u8{})
+			// NOTES:
+			// NIST FIPS 186-4 at the end of section 6.4 states that:
+			// When the length of the output of the hash function is greater than the bit length of n,
+			// then the leftmost n bits of the hash function output block shall be used in any calculation
+			// using the hash function output during the generation or verification of a digital signature
+			// with output of custom_hash was bigger than bit length (key size)
+			// TODO:
+			// Maybe better to pick up only required bytes from digest, ie,
+			// out := digest[..key_size].clone()
+			// unsafe { digest.free() }
+			// return out
+			// Currently, just boildown to the caller
 			return digest
 		}
 	}
