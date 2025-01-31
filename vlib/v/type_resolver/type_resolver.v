@@ -207,7 +207,7 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 		}
 		return ctyp
 	} else if node is ast.SelectorExpr {
-		if t.info.is_comptime_selector_type(node) {
+		if node.is_field_typ {
 			return t.get_type_from_comptime_var(node.expr as ast.Ident)
 		}
 		if node.expr is ast.Ident && node.expr.ct_expr {
@@ -216,7 +216,17 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 			// Struct[T] can have field with generic type
 			if struct_sym.info is ast.Struct && struct_sym.info.generic_types.len > 0 {
 				if field := t.table.find_field(struct_sym, node.field_name) {
+					if f_unwrap := node.scope.find_struct_field(ast.Expr(node.expr).str(),
+						t.get_type_or_default(node.expr, node.expr_type), node.field_name)
+					{
+						return f_unwrap.smartcasts.last()
+					}
 					return field.typ
+				}
+			} else {
+				sym := t.table.sym(t.resolver.unwrap_generic(node.expr_type))
+				if f := t.table.find_field_with_embeds(sym, node.field_name) {
+					return f.typ
 				}
 			}
 		}

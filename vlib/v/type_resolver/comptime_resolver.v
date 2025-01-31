@@ -75,6 +75,22 @@ pub fn (t &ResolverInfo) is_comptime_variant_var(node ast.Ident) bool {
 	return node.name == t.comptime_for_variant_var
 }
 
+// typeof_type resolves type for typeof() expr where field.typ is resolved to real type instead of int type to make type(field.typ).name working
+pub fn (mut t TypeResolver) typeof_type(node ast.Expr, default_type ast.Type) ast.Type {
+	if t.info.is_comptime(node) {
+		return t.get_type(node)
+	} else if node is ast.SelectorExpr && node.expr_type != 0 {
+		if node.expr is ast.Ident && node.is_field_typ {
+			return t.get_type_from_comptime_var(node.expr)
+		}
+		sym := t.table.sym(t.resolver.unwrap_generic(node.expr_type))
+		if f := t.table.find_field_with_embeds(sym, node.field_name) {
+			return f.typ
+		}
+	}
+	return default_type
+}
+
 // get_ct_type_var gets the comptime type of the variable (.generic_param, .key_var, etc)
 @[inline]
 pub fn (t &ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {

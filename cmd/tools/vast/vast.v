@@ -1453,6 +1453,7 @@ fn (t Tree) selector_expr(node ast.SelectorExpr) &Node {
 	obj.add_terse('from_embed_types', t.array_node_type(node.from_embed_types))
 	obj.add_terse('has_hidden_receiver', t.bool_node(node.has_hidden_receiver))
 	obj.add_terse('next_token', t.token_node(node.next_token))
+	obj.add_terse('is_field_typ', t.bool_node(node.is_field_typ))
 	obj.add('pos', t.pos(node.pos))
 	obj.add('scope', t.number_node(int(node.scope)))
 	return obj
