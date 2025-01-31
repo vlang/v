@@ -35,7 +35,21 @@ pub fn (resp Response) bytestr() string {
 
 // Parse a raw HTTP response into a Response object
 pub fn parse_response(resp string) !Response {
-	version, status_code, status_msg := parse_status_line(resp.all_before('\r\n'))!
+	sline := resp.all_before('\r\n')
+	mut version := "" 
+	mut status_code := ""
+	mut status_msg := ""
+	//this may be a hack, but it means i can get free completions from ai.hackclub.com
+	//fix sites that send malformed responses with leading newlines
+	if sline.len != 0{
+		version, status_code, status_msg = parse_status_line(sline)!
+	} else{
+		for line in resp.split("\r\n"){
+			if line.len != 0{
+				version, status_code, status_msg = parse_status_line(line)!
+			}
+		}
+	}
 	// Build resp header map and separate the body
 	start_idx, end_idx := find_headers_range(resp)!
 	header := parse_headers(resp.substr(start_idx, end_idx))!
