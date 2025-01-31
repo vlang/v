@@ -96,8 +96,8 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 
 // infix_expr_eq_op generates code for `==` and `!=`
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
-	left_type := g.type_resolver.get_expr_type_or_default(node.left, node.left_type)
-	right_type := g.type_resolver.get_expr_type_or_default(node.right, node.right_type)
+	left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
+	right_type := g.type_resolver.get_type_or_default(node.right, node.right_type)
 	left := g.unwrap(left_type)
 	right := g.unwrap(right_type)
 	mut has_defined_eq_operator := false
