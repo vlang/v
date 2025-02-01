@@ -13,15 +13,6 @@ pub fn (mut t TypeResolver) get_comptime_selector_var_type(node ast.ComptimeSele
 	return field, field_name
 }
 
-// is_comptime_expr checks if the node is related to a comptime expr
-@[inline]
-pub fn (t &ResolverInfo) is_comptime_expr(node ast.Expr) bool {
-	return (node is ast.Ident && node.ct_expr)
-		|| (node is ast.IndexExpr && t.is_comptime_expr(node.left))
-		|| node is ast.ComptimeSelector
-		|| (node is ast.PostfixExpr && t.is_comptime_expr(node.expr))
-}
-
 // has_comptime_expr checks if the expr contains some comptime expr
 @[inline]
 pub fn (t &ResolverInfo) has_comptime_expr(node ast.Expr) bool {
@@ -108,24 +99,6 @@ pub fn (t &ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
 		return t.get_ct_type_var(node.expr)
 	}
 	return .no_comptime
-}
-
-// get_expr_type_or_default computes the ast node type regarding its or_expr if its comptime var otherwise default_typ is returned
-pub fn (mut t TypeResolver) get_expr_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
-	if !t.info.is_comptime_expr(node) {
-		return default_typ
-	}
-	ctyp := t.get_type(node)
-	match node {
-		ast.Ident {
-			// returns the unwrapped type of the var
-			if ctyp.has_flag(.option) && node.or_expr.kind != .absent {
-				return ctyp.clear_flag(.option)
-			}
-		}
-		else {}
-	}
-	return if ctyp != ast.void_type { ctyp } else { default_typ }
 }
 
 // get_type_from_comptime_var retrives the comptime type related to $for variable

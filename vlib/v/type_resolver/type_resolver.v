@@ -104,7 +104,15 @@ pub fn (mut t TypeResolver) get_type_or_default(node ast.Expr, default_typ ast.T
 		ast.Ident {
 			if node.ct_expr {
 				ctyp := t.get_type(node)
-				return if ctyp != ast.void_type { ctyp } else { default_typ }
+				return if ctyp != ast.void_type {
+					if node.or_expr.kind == .absent {
+						ctyp
+					} else {
+						ctyp.clear_flag(.option)
+					}
+				} else {
+					default_typ
+				}
 			}
 		}
 		ast.SelectorExpr {

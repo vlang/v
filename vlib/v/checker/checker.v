@@ -3936,7 +3936,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		typ := c.type_resolver.get_type_or_default(node, info.typ)
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
-			if !typ.has_flag(.option) {
+			if !info.typ.has_flag(.option) {
 				if node.or_expr.kind == .propagate_option {
 					c.error('cannot use `?` on non-option variable', node.pos)
 				} else if node.or_expr.kind == .block {
