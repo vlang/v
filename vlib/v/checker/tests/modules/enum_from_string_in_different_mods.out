@@ -1,10 +1,3 @@
-vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:3:8: warning: module 'mod' is imported but never used
-    1 | module main
-    2 | 
-    3 | import mod { MyEnum, MyStruct }
-      |        ~~~
-    4 | 
-    5 | fn main() {
 vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:3:14: error: module `mod` type `MyEnum` is private
     1 | module main
     2 | 
