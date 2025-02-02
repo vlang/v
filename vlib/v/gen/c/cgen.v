@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2025 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -272,7 +272,7 @@ pub:
 	header           string          // produced output for out.h (-parallel-cc)
 	res_builder      strings.Builder // produced output (complete)
 	out_str          string          // produced output from g.out
-	out0_str         string          // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)	
+	out0_str         string          // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)
 	extern_str       string          // extern chunk for (-parallel-cc)
 	out_fn_start_pos []int           // fn decl positions
 }

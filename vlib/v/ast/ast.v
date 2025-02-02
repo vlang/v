@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2025 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 @[has_globals]
@@ -1564,7 +1564,7 @@ pub:
 	has_len       bool
 	has_cap       bool
 	has_init      bool
-	has_index     bool // true if temp variable index is used	
+	has_index     bool // true if temp variable index is used
 pub mut:
 	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	len_expr     Expr   // len: expr

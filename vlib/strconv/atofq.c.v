@@ -3,7 +3,7 @@ module strconv
 /*
 atof util
 
-Copyright (c) 2019 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2025 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
