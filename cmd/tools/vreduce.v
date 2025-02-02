@@ -2,35 +2,38 @@ import os
 import flag
 import math
 
-const default_command = 'v -no-skip-unused' // Command used to compile the program, using -no-skip-unused to ease the reducing
+const default_command = '${os.quoted_path(@VEXE)} -no-skip-unused' // Command used to compile the program, using -no-skip-unused to ease the reducing
 const default_error_msg = 'C error found' // the pattern to reproduce
 // Temporary files
-const tmp_folder = '.tmp_v_reduce'
+const tmp_folder = os.join_path(os.vtmp_dir(), 'vreduce')
 const tmp_reduced_code_file_name = '__v_reduced_code.v'
 const path = '${tmp_folder}/${tmp_reduced_code_file_name}'
 
 fn main() {
 	mut fp := flag.new_flag_parser(os.args)
 	fp.skip_executable()
-	fp.application('v reduce')
+	fp.application('v reduce path/to/file_to_reduce.v')
 	fp.description('This tool will reduce the code file and try to make the smallest one it can that reproduces the error when the command is executed')
-	fp.version('')
+	fp.version('0.0.1')
 
-	file_path := fp.string('file_path', `f`, '', 'the path of the file you want to reduce')
 	error_msg := fp.string('error_msg', `e`, default_error_msg, 'the error message you want to reproduce, default: \'${default_error_msg}\'')
 	command := fp.string('command', `c`, default_command, 'the command used to try to reproduce the error, default: \'${default_command}\'')
 	do_fmt := fp.bool('fmt', `w`, false, 'enable v fmt for the output (rpdc.v)')
-	_ := fp.finalize() or {
+	file_paths := fp.finalize() or {
 		eprintln(err)
 		println(fp.usage())
 		return
 	}
+
+	assert file_paths.len == 2, fp.usage() // ['reduce', 'path/to/file.v']
+	file_path := file_paths[1]
 	if file_path == '' || !os.exists(file_path) {
-		eprintln('You need to specify a valid file to reduce (with the `-f` flag) (more information with `-h` or `--help`)')
+		eprintln('You need to specify a valid file to reduce')
+		println(fp.usage())
 		exit(1)
 	}
 
-	println("Starting to reduce the file '${file_path}' with command '${command}' reproducing '${error_msg}'")
+	println("Starting to reduce the file '${file_path}' with command `${command}` reproducing `${error_msg}`")
 
 	if do_fmt {
 		println('Will do v fmt to the output rpdc.v file')
@@ -51,9 +54,6 @@ fn main() {
 
 	// reduce the code
 	reduce_scope(mut tree, error_msg, command, do_fmt)
-
-	// clean up
-	os.rmdir_all(tmp_folder) or { panic(err) }
 }
 
 // Return true if the command ran on the file produces the pattern
