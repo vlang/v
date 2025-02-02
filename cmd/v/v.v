@@ -31,6 +31,7 @@ const external_tools = [
 	'gret',
 	'ls',
 	'missdoc',
+	'reduce',
 	'repl',
 	'repeat',
 	'retry',
