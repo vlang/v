@@ -616,7 +616,7 @@ pub fn disk_usage(path string) !DiskUsage {
 			&total, &available)
 	}
 	if ret == false {
-		return error('can\`t get disk usage of path')
+		return error('cannot get disk usage of path')
 	}
 	return DiskUsage{
 		total:     total
