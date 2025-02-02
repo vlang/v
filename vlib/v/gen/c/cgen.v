@@ -4036,7 +4036,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					for i, typ in field.smartcasts {
 						if i == 0 && (is_option_unwrap || nested_unwrap) {
 							deref := if g.inside_selector {
-								'*'.repeat(field.smartcasts.last().nr_muls() + 1)
+								if sym.kind in [.interface, .sum_type] {
+									'*'.repeat(field.smartcasts.last().nr_muls())
+								} else {
+									'*'.repeat(field.smartcasts.last().nr_muls() + 1)
+								}
 							} else if sym.kind == .interface && !typ.is_ptr()
 								&& field.orig_type.has_flag(.option) {
 								''
