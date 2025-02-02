@@ -1110,3 +1110,10 @@ fn test_mkdir_at_file_dst() {
 	}
 	assert false
 }
+
+fn test_disk_usage() {
+	total, available, used := os.disk_usage('.')!
+	assert total > 0
+	assert available > 0
+	assert used > 0
+}

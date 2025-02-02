@@ -513,3 +513,5 @@ fn C.WrappedNSLog(str &u8)
 // absolute value
 @[trusted]
 fn C.abs(number int) int
+
+fn C.GetDiskFreeSpaceExA(path charptr, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool

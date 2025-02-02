@@ -601,3 +601,25 @@ pub fn page_size() int {
 	C.GetSystemInfo(&sinfo)
 	return int(sinfo.dwPageSize)
 }
+
+// disk_usage returns disk usage of `path`
+// Examples:
+// ```v
+// total,available,used := os.disk_usage('.')
+// ```
+pub fn disk_usage(path string) !(u64, u64, u64) {
+	mut free_bytes_available_to_caller := u64(0)
+	mut total := u64(0)
+	mut available := u64(0)
+	mut ret := false
+	if path == '.' || path == '' {
+		ret = C.GetDiskFreeSpaceExA(0, &free_bytes_available_to_caller, &total, &available)
+	} else {
+		ret = C.GetDiskFreeSpaceExA(path.str, &free_bytes_available_to_caller, &total,
+			&available)
+	}
+	if ret == false {
+		return error("can't get disk usage of path")
+	}
+	return total, available, total - available
+}
