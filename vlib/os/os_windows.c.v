@@ -619,7 +619,7 @@ pub fn disk_usage(path string) !(u64, u64, u64) {
 			&available)
 	}
 	if ret == false {
-		return error("can't get disk usage of path")
+		return error('can\`t get disk usage of path')
 	}
 	return total, available, total - available
 }
