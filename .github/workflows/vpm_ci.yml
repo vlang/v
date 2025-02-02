@@ -15,16 +15,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  setup:
+  setup-vpm:
     strategy:
       matrix:
-        os: [ubuntu-20.04, windows-2019, macos-14]
+        os: [ubuntu-latest, windows-latest, macos-latest]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
           path: vlang
+      - name: Show git version
+        run: git version
       - name: Build V
         if: runner.os != 'Windows'
         run: cd vlang && make -j4 && ./v doctor
@@ -37,25 +39,25 @@ jobs:
           path: vlang
           key: ${{ runner.os }}-${{ github.sha }}
 
-  test:
-    needs: setup
+  test-vpm:
+    needs: setup-vpm
     strategy:
       matrix:
         include:
-          - os: ubuntu-20.04
+          - os: ubuntu-latest
             cc: tcc
-          - os: ubuntu-20.04
+          - os: ubuntu-latest
             cc: gcc
-          - os: ubuntu-20.04
+          - os: ubuntu-latest
             cc: clang
-          - os: windows-2019
+          - os: macos-latest
+            cc: clang
+          - os: windows-latest
             cc: tcc
-          - os: windows-2019
+          - os: windows-latest
             cc: gcc
-          - os: windows-2019
+          - os: windows-latest
             cc: msvc
-          - os: macos-14
-            cc: clang
       fail-fast: false
     runs-on: ${{ matrix.os }}
     env:
@@ -66,5 +68,7 @@ jobs:
         with:
           path: vlang
           key: ${{ runner.os }}-${{ github.sha }}
+      - name: Show git version
+        run: git version
       - name: Test
         run: cd vlang && ./v test cmd/tools/vpm
