@@ -65,7 +65,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut pre_comments := p.eat_comments()
 	no_body := p.tok.kind != .lcbr && p.tok.kind != .key_implements
 	if language == .v && no_body {
-		p.error('`${p.tok.lit}` lacks body')
+		p.error_with_pos('`${p.tok.lit}` lacks body', name_pos)
 		return ast.StructDecl{}
 	}
 	if name.len == 1 {
