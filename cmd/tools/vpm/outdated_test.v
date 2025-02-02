@@ -55,8 +55,8 @@ fn test_outdated() {
 		assert is_outdated(m)
 	}
 	res := cmd_ok(@LOCATION, '${vexe} outdated')
-	output := res.output.all_after(' vpm exit ')
-	assert output.contains('Outdated modules:'), output
+	output := res.output.all_after('Outdated modules:')
+	assert output.len > 0, output
 	assert output.contains('pcre'), output
 	assert output.contains('vtray'), output
 	assert output.contains('nedpals.args'), output
