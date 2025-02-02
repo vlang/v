@@ -178,6 +178,19 @@ NB 3: To run only some of the tests, use:
 `VTEST_ONLY=mismatch ./v vlib/v/compiler_errors_test.v`
 This will check only the .vv files, whose paths match the given filter.
 
+NB 4: To run tests, but without printing status lines for all the successfull
+ones, use:
+`VTEST_HIDE_OK=1 ./v test vlib/math/`
+This will print only the total stats, and the failing tests, but otherwise
+it will be silent. It is useful, when you have hundreds or thousands of
+individual `_test.v` files, and you want to avoid scrolling.
+
+NB 5: To show only *the currently running test*, use:
+`./v -progress test vlib/math/`
+In this mode, the output lines will be limited, no matter how many `_test.v`
+files there are. The output will contain the total stats and the output of
+the failing tests too.
+
 ## `.github/workflows/ci.yml`
 
 This is a Github Actions configuration file, that runs various CI
