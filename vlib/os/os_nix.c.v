@@ -547,7 +547,7 @@ pub fn disk_usage(path string) !DiskUsage {
 	mut vfs := C.statvfs{}
 	ret := unsafe { C.statvfs(&char(mpath.str), &vfs) }
 	if ret == -1 {
-		return error('can\`t get disk usage of path')
+		return error('cannot get disk usage of path')
 	}
 	f_bsize := u64(vfs.f_bsize)
 	f_blocks := u64(vfs.f_blocks)
