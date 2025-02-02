@@ -7,6 +7,7 @@ import strings
 #include <fcntl.h>
 #include <sys/utsname.h>
 #include <sys/types.h>
+#include <sys/statvfs.h>
 #include <utime.h>
 
 // path_separator is the platform specific separator string, used between the folders
@@ -529,4 +530,32 @@ fn C.sysconf(name int) i64
 // page_size returns the page size in bytes.
 pub fn page_size() int {
 	return int(C.sysconf(C._SC_PAGESIZE))
+}
+
+struct C.statvfs {
+	f_bsize  usize
+	f_blocks usize
+	f_bfree  usize
+	f_bavail usize
+}
+
+// disk_usage returns disk usage of `path`
+@[manualfree]
+pub fn disk_usage(path string) !DiskUsage {
+	mpath := if path == '' { '.' } else { path }
+	defer { unsafe { mpath.free() } }
+	mut vfs := C.statvfs{}
+	ret := unsafe { C.statvfs(&char(mpath.str), &vfs) }
+	if ret == -1 {
+		return error('cannot get disk usage of path')
+	}
+	f_bsize := u64(vfs.f_bsize)
+	f_blocks := u64(vfs.f_blocks)
+	f_bavail := u64(vfs.f_bavail)
+	f_bfree := u64(vfs.f_bfree)
+	return DiskUsage{
+		total:     f_bsize * f_blocks
+		available: f_bsize * f_bavail
+		used:      f_bsize * (f_blocks - f_bfree)
+	}
 }
