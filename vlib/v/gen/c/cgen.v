@@ -3328,14 +3328,14 @@ fn (mut g Gen) gen_clone_assignment(var_type ast.Type, val ast.Expr, typ ast.Typ
 	return true
 }
 
-fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, string) {
+fn (mut g Gen) map_fn_ptrs(key_sym ast.TypeSymbol) (string, string, string, string) {
 	mut hash_fn := ''
 	mut key_eq_fn := ''
 	mut clone_fn := ''
 	mut free_fn := '&map_free_nop'
-	match key_typ.kind {
+	match key_sym.kind {
 		.alias {
-			alias_key_type := (key_typ.info as ast.Alias).parent_type
+			alias_key_type := (key_sym.info as ast.Alias).parent_type
 			return g.map_fn_ptrs(g.table.sym(alias_key_type))
 		}
 		.u8, .i8, .char {
@@ -3348,8 +3348,11 @@ fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, stri
 			key_eq_fn = '&map_eq_int_2'
 			clone_fn = '&map_clone_int_2'
 		}
-		.int, .i32, .u32, .rune, .f32, .enum {
-			// XTODO i64
+		.enum {
+			einfo := (key_sym.info) as ast.Enum
+			return g.map_fn_ptrs(g.table.sym(einfo.typ))
+		}
+		.int, .i32, .u32, .rune, .f32 {
 			hash_fn = '&map_hash_int_4'
 			key_eq_fn = '&map_eq_int_4'
 			clone_fn = '&map_clone_int_4'
@@ -3374,7 +3377,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, stri
 			free_fn = '&map_free_string'
 		}
 		else {
-			verror('map key type `${key_typ.name}` not supported')
+			verror('map key type `${key_sym.name}` not supported')
 		}
 	}
 	return hash_fn, key_eq_fn, clone_fn, free_fn
