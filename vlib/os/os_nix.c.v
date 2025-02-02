@@ -542,12 +542,8 @@ struct C.statvfs {
 fn C.statvfs(path charptr, vfs &C.statvfs) int
 
 // disk_usage returns disk usage of `path`
-// Examples:
-// ```v
-// total,available,used := os.disk_usage('.')
-// ```
 @[manualfree]
-pub fn disk_usage(path string) !(u64, u64, u64) {
+pub fn disk_usage(path string) !DiskUsage {
 	mpath := if path == '' { '.' } else { path }
 	defer { unsafe { mpath.free() } }
 	mut vfs := C.statvfs{}
@@ -559,5 +555,9 @@ pub fn disk_usage(path string) !(u64, u64, u64) {
 	f_blocks := u64(vfs.f_blocks)
 	f_bavail := u64(vfs.f_bavail)
 	f_bfree := u64(vfs.f_bfree)
-	return f_bsize * f_blocks, f_bsize * f_bavail, f_bsize * (f_blocks - f_bfree)
+	return DiskUsage{
+		total:     f_bsize * f_blocks
+		available: f_bsize * f_bavail
+		used:      f_bsize * (f_blocks - f_bfree)
+	}
 }

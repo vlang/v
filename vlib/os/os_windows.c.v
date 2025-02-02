@@ -603,11 +603,7 @@ pub fn page_size() int {
 }
 
 // disk_usage returns disk usage of `path`
-// Examples:
-// ```v
-// total,available,used := os.disk_usage('.')
-// ```
-pub fn disk_usage(path string) !(u64, u64, u64) {
+pub fn disk_usage(path string) !DiskUsage {
 	mut free_bytes_available_to_caller := u64(0)
 	mut total := u64(0)
 	mut available := u64(0)
@@ -621,5 +617,9 @@ pub fn disk_usage(path string) !(u64, u64, u64) {
 	if ret == false {
 		return error('can\`t get disk usage of path')
 	}
-	return total, available, total - available
+	return DiskUsage{
+		total:     total
+		available: available
+		used:      total - available
+	}
 }
