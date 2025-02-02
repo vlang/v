@@ -146,7 +146,7 @@ fn test_get_installed_version() {
 
 	// Create a tag -> latests commit and tag are at the same state,
 	// but it should not be treated as a version installation, when there is another head branch.
-	res = cmd_ok(@LOCATION, 'git tag v0.1.0')
+	res = cmd_ok(@LOCATION, 'git tag v0.1.0 -m "some tag message"') // note: without a tag message, git will try to start an editor when you run this test locally, which will block
 	mod.is_installed = false
 	mod.get_installed()
 	assert mod.is_installed
