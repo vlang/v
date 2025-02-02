@@ -4012,10 +4012,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	mut sum_type_dot := '.'
 	mut field_typ := ast.void_type
 	mut is_option_unwrap := false
+	is_iface_or_sumtype := sym.kind in [.interface, .sum_type]
 	if f := g.table.find_field_with_embeds(sym, node.field_name) {
 		field_sym := g.table.sym(f.typ)
 		field_typ = f.typ
-		if sym.kind in [.interface, .sum_type] {
+		if is_iface_or_sumtype {
 			g.write('(*(')
 		}
 		is_option := field_typ.has_flag(.option)
@@ -4036,7 +4037,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					for i, typ in field.smartcasts {
 						if i == 0 && (is_option_unwrap || nested_unwrap) {
 							deref := if g.inside_selector {
-								if sym.kind in [.interface, .sum_type] {
+								if is_iface_or_sumtype {
 									'*'.repeat(field.smartcasts.last().nr_muls())
 								} else {
 									'*'.repeat(field.smartcasts.last().nr_muls() + 1)
@@ -4142,7 +4143,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			return
 		}
 	} else {
-		if sym.kind in [.interface, .sum_type] {
+		if is_iface_or_sumtype {
 			g.write('(*(')
 		}
 	}
