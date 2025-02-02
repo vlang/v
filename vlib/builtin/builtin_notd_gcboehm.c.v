@@ -49,7 +49,7 @@ pub fn gc_disable() {}
 // When the GC is not on, (with `-gc none`), it is a NOP.
 pub fn gc_collect() {}
 
-type FnGC_WarnCB = fn (msg &char, arg usize)
+pub type FnGC_WarnCB = fn (msg &char, arg usize)
 
 fn C.GC_get_warn_proc() FnGC_WarnCB
 fn C.GC_set_warn_proc(cb FnGC_WarnCB)
