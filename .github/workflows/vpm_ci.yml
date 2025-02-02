@@ -60,8 +60,6 @@ jobs:
             cc: msvc
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    env:
-      VFLAGS: -cc ${{ matrix.cc }} -d network
     steps:
       - name: Restore V cache
         uses: actions/cache/restore@v4
@@ -71,4 +69,4 @@ jobs:
       - name: Show git version
         run: git version
       - name: Test
-        run: cd vlang && ./v test cmd/tools/vpm
+        run: cd vlang && ./v -cc ${{ matrix.cc }} -d network test cmd/tools/vpm
