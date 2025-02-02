@@ -539,15 +539,13 @@ struct C.statvfs {
 	f_bavail usize
 }
 
-fn C.statvfs(path charptr, vfs &C.statvfs) int
-
 // disk_usage returns disk usage of `path`
 @[manualfree]
 pub fn disk_usage(path string) !DiskUsage {
 	mpath := if path == '' { '.' } else { path }
 	defer { unsafe { mpath.free() } }
 	mut vfs := C.statvfs{}
-	ret := C.statvfs(mpath.str, &vfs)
+	ret := unsafe { C.statvfs(&char(mpath.str), &vfs) }
 	if ret == -1 {
 		return error('can\`t get disk usage of path')
 	}

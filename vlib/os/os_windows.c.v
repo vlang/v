@@ -609,10 +609,11 @@ pub fn disk_usage(path string) !DiskUsage {
 	mut available := u64(0)
 	mut ret := false
 	if path == '.' || path == '' {
-		ret = C.GetDiskFreeSpaceExA(0, &free_bytes_available_to_caller, &total, &available)
-	} else {
-		ret = C.GetDiskFreeSpaceExA(path.str, &free_bytes_available_to_caller, &total,
+		ret = C.GetDiskFreeSpaceExA(&char(0), &free_bytes_available_to_caller, &total,
 			&available)
+	} else {
+		ret = C.GetDiskFreeSpaceExA(&char(path.str), &free_bytes_available_to_caller,
+			&total, &available)
 	}
 	if ret == false {
 		return error('can\`t get disk usage of path')

@@ -142,6 +142,8 @@ fn C.stat(&char, voidptr) int
 
 fn C.lstat(path &char, buf &C.stat) int
 
+fn C.statvfs(const_path &char, buf &C.statvfs) int
+
 fn C.rename(old_filename &char, new_filename &char) int
 
 fn C.fgets(str &char, n int, stream &C.FILE) int
@@ -514,4 +516,4 @@ fn C.WrappedNSLog(str &u8)
 @[trusted]
 fn C.abs(number int) int
 
-fn C.GetDiskFreeSpaceExA(path charptr, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool
+fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool
