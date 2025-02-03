@@ -2131,6 +2131,13 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				}
 			}
 		} else {
+			if i > 0 && stmt is ast.Return {
+				last_stmt := stmts[i - 1]
+				if last_stmt is ast.ExprStmt && last_stmt.expr is ast.CallExpr
+					&& !g.out.last_n(2).contains(';') {
+					g.writeln(';')
+				}
+			}
 			g.stmt(stmt)
 			if (g.inside_if_option || g.inside_if_result || g.inside_match_option
 				|| g.inside_match_result) && stmt is ast.ExprStmt {
