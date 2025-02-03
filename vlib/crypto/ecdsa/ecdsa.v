@@ -26,6 +26,10 @@ const nid_secp256k1 = C.NID_secp256k1
 
 // #define NID_X9_62_id_ecPublicKey   408
 const nid_ec_publickey = C.NID_X9_62_id_ecPublicKey
+// C.EVP_PKEY_EC = NID_X9_62_id_ecPublicKey
+const nid_evp_pkey_ec = C.EVP_PKEY_EC
+// we only support this
+const openssl_ec_named_curve = C.OPENSSL_EC_NAMED_CURVE
 
 // Constants of short name of the supported curve(s).
 // In the C parts, its defined as #define SN_X9_62_prime256v1  "prime256v1"
@@ -266,34 +270,67 @@ mut:
 // Dont forget to call `.free()` after finish with your key.
 pub fn PrivateKey.new(opt CurveOptions) !PrivateKey {
 	// Default to prime256v1 based key
-	mut group_name := sn_prime256v1
+	mut group_nid := nid_prime256v1
 	match opt.nid {
 		.prime256v1 {}
 		.secp384r1 {
-			group_name = sn_secp384r1
+			group_nid = nid_secp384r1
 		}
 		.secp521r1 {
-			group_name = sn_secp521r1
+			group_nid = nid_secp521r1
 		}
 		.secp256k1 {
-			group_name = sn_secp256k1
+			group_nid = nid_secp256k1
 		}
 	}
 	// New high level keypair generator
-	evpkey := C.EVP_EC_gen(group_name.str)
-	if evpkey == 0 {
+	evpkey := C.EVP_PKEY_new()
+	pctx := C.EVP_PKEY_CTX_new_id(nid_evp_pkey_ec, 0)
+	if pctx == 0 {
 		C.EVP_PKEY_free(evpkey)
-		return error('C.EVP_EC_gen failed')
+		C.EVP_PKEY_CTX_free(pctx)
+		return error('C.EVP_PKEY_CTX_new_id failed')
 	}
+	nt := C.EVP_PKEY_keygen_init(pctx)
+	if nt <= 0 {
+		C.EVP_PKEY_free(evpkey)
+		C.EVP_PKEY_CTX_free(pctx)
+		return error('EVP_PKEY_keygen_init failed')
+	}
+	// set the group (curve)
+	cn := C.EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, group_nid)
+	if cn <= 0 {
+		C.EVP_PKEY_free(evpkey)
+		C.EVP_PKEY_CTX_free(pctx)
+		return error('EVP_PKEY_CTX_set_ec_paramgen_curve_nid')
+	}
+	// explicitly only allowing named curve, likely its the default on 3.0.
+	pn := C.EVP_PKEY_CTX_set_ec_param_enc(pctx, openssl_ec_named_curve)
+	if pn <= 0 {
+		C.EVP_PKEY_free(evpkey)
+		C.EVP_PKEY_CTX_free(pctx)
+		return error('EVP_PKEY_CTX_set_ec_param_enc failed')
+	}
+	// generates keypair
+	nr := C.EVP_PKEY_keygen(pctx, &evpkey)
+	if nr <= 0 {
+		C.EVP_PKEY_free(evpkey)
+		C.EVP_PKEY_CTX_free(pctx)
+		return error('EVP_PKEY_keygen failed')
+	}
+
 	// EVP_PKEY_get1_EC_KEY was deprecated in 3.0. Its used here for compatibility purposes
 	// to support the old key function.
 	// TODO: removes this when its ready to obsolete.
 	eckey := C.EVP_PKEY_get1_EC_KEY(evpkey)
 	if eckey == 0 {
+		C.EVP_PKEY_CTX_free(pctx)
 		C.EC_KEY_free(eckey)
 		C.EVP_PKEY_free(evpkey)
 		return error('EVP_PKEY_get1_EC_KEY failed')
 	}
+	// Cleans up the context
+	C.EVP_PKEY_CTX_free(pctx)
 	// when using default this function, its using underlying curve key size
 	// and discarded opt.fixed_size flag when its not set.
 	priv_key := PrivateKey{
