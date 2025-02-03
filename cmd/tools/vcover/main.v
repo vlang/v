@@ -148,6 +148,7 @@ fn normalize_path(path string) string {
 }
 
 fn main() {
+	log.use_stdout()
 	mut ctx := Context{}
 	ctx.working_folder = normalize_path(os.real_path(os.getwd()))
 	mut fp := flag.new_flag_parser(os.args#[1..])
