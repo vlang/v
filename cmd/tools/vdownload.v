@@ -23,9 +23,7 @@ mut:
 const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
 fn main() {
-	mut l := log.ThreadSafeLog{}
-	l.set_output_stream(os.stdout())
-	log.set_logger(l)
+	log.use_stdout()
 	mut ctx := Context{}
 	mut fp := flag.new_flag_parser(os.args#[1..])
 	fp.application(os.file_name(os.executable()))

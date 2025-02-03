@@ -4,6 +4,7 @@ import log
 const should_clean = os.args.contains('-c')
 
 fn main() {
+	log.use_stdout()
 	mut files := []string{}
 	args := os.args#[2..].filter(it != '-c')
 	for a in args {
