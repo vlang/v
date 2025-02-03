@@ -429,7 +429,6 @@ fn main() {
 	}
 	// dump(cfg)
 	title := 'testing: ${cfg.test_dirs.join(', ')}'
-	testing.eheader(title)
 	mut tpaths := map[string]bool{}
 	mut tpaths_ref := &tpaths
 	for dir in cfg.test_dirs {
@@ -541,10 +540,11 @@ fn main() {
 		exit(1)
 	}
 	tsession.skip_files = tsession.skip_files.map(os.abs_path)
+	tsession.session_start(title)
 	tsession.test()
-	eprintln(tsession.benchmark.total_message(title))
+	tsession.session_stop(title)
 	if tsession.benchmark.nfail > 0 {
-		eprintln('\nWARNING: failed ${tsession.benchmark.nfail} times.\n')
+		eprintln('\nError: failed ${tsession.benchmark.nfail} times.\n')
 		exit(1)
 	}
 }
