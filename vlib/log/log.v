@@ -324,3 +324,11 @@ pub fn (mut l Log) set_short_tag(enabled bool) {
 pub fn (l Log) get_short_tag() bool {
 	return l.short_tag
 }
+
+// use_stdout will restore the old behaviour of logging to stdout, instead of stderr.
+// It will also silence the deprecation note in the transition period.
+pub fn use_stdout() {
+	mut l := ThreadSafeLog{}
+	l.set_output_stream(os.stdout())
+	set_logger(l)
+}

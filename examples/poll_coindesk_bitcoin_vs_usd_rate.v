@@ -7,6 +7,7 @@ import net.http
 const url = 'https://api.coindesk.com/v1/bpi/currentprice.json'
 
 fn main() {
+	log.use_stdout()
 	mut old_rate := f64(0)
 	for i := u64(1); true; i++ {
 		data := http.get(url) or {

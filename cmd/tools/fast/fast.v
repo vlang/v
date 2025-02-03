@@ -41,6 +41,7 @@ fn lexec(cmd string) string {
 
 fn main() {
 	// ensure all log messages will be visible to the observers, even if the program panics
+	log.use_stdout()
 	log.set_always_flush(true)
 
 	total_sw := time.new_stopwatch()
