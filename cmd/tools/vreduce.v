@@ -3,7 +3,7 @@ import flag
 import math
 
 const default_command = '${os.quoted_path(@VEXE)} -no-skip-unused' // Command used to compile the program, using -no-skip-unused to ease the reducing
-const default_error_msg = 'C error found' // the pattern to reproduce
+const default_error_msg = 'C compilation error' // the pattern to reproduce
 // Temporary files
 const tmp_folder = os.join_path(os.vtmp_dir(), 'vreduce')
 const tmp_reduced_code_file_name = '__v_reduced_code.v'
