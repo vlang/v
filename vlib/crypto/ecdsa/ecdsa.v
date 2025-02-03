@@ -27,7 +27,15 @@ const nid_secp256k1 = C.NID_secp256k1
 // #define NID_X9_62_id_ecPublicKey   408
 const nid_ec_publickey = C.NID_X9_62_id_ecPublicKey
 
-// The list of supported curve(s)
+// Constants of short name of the supported curve(s).
+// In the C parts, its defined as #define SN_X9_62_prime256v1  "prime256v1"
+// Its placed here to simplify the access.
+const sn_prime256v1 = 'prime256v1'
+const sn_secp384r1 = 'secp384r1'
+const sn_secp521r1 = 'secp521r1'
+const sn_secp256k1 = 'secp256k1'
+
+// The enum of supported curve(s)
 pub enum Nid {
 	prime256v1
 	secp384r1
@@ -46,67 +54,32 @@ pub mut:
 	fixed_size bool
 }
 
+// enum of hashing config for key signing (verifying).
+pub enum HashConfig {
+	with_recommended_hash
+	with_no_hash
+	with_custom_hash
+}
+
+// SignerOpts was configuration options to drive signing and verifying process.
+@[params]
+pub struct SignerOpts {
+pub mut:
+	// default to .with_recommended_hash
+	hash_config HashConfig = .with_recommended_hash
+	// make sense when HashConfig != with_recommended_hash
+	allow_smaller_size bool
+	allow_custom_hash  bool
+	// set to non-nil if allow_custom_hash was true
+	custom_hash &hash.Hash = unsafe { nil }
+}
+
 // enum flag to allow flexible PrivateKey size
 enum KeyFlag {
 	// flexible flag to allow flexible-size of seed bytes
 	flexible
 	// fixed flag for using underlying curve key size
 	fixed
-}
-
-// PrivateKey represents ECDSA private key. Actually its a key pair,
-// contains private key and public key parts.
-pub struct PrivateKey {
-	// The new high level of keypair opaque, set to nil now.
-	evpkey &C.EVP_PKEY = unsafe { nil }
-	// TODO: when all has been migrated to the new one,
-	// removes this low level declarations.
-	key &C.EC_KEY
-mut:
-	// ks_flag with .flexible value allowing
-	// flexible-size seed bytes as key.
-	// When it is `.fixed`, it will use the underlying key size.
-	ks_flag KeyFlag = .flexible
-	// ks_size stores size of the seed bytes when ks_flag was .flexible.
-	// You should set it to a non zero value
-	ks_size int
-}
-
-// PublicKey represents ECDSA public key for verifying message.
-pub struct PublicKey {
-	// The new high level of keypair opaque, set to nil now.
-	evpkey &C.EVP_PKEY = unsafe { nil }
-	// Remove this when its fully obsoleted by the new one.
-	key &C.EC_KEY
-}
-
-// PrivateKey.new creates a new key pair. By default, it would create a prime256v1 based key.
-pub fn PrivateKey.new(opt CurveOptions) !PrivateKey {
-	// creates new empty key
-	ec_key := new_curve(opt)
-	if ec_key == 0 {
-		C.EC_KEY_free(ec_key)
-		return error('Failed to create new EC_KEY')
-	}
-	// Generates new public and private key for the supplied ec_key object.
-	res := C.EC_KEY_generate_key(ec_key)
-	if res != 1 {
-		C.EC_KEY_free(ec_key)
-		return error('Failed to generate EC_KEY')
-	}
-	// performs explicit check
-	chk := C.EC_KEY_check_key(ec_key)
-	if chk == 0 {
-		C.EC_KEY_free(ec_key)
-		return error('EC_KEY_check_key failed')
-	}
-	// when using default EC_KEY_generate_key, its using underlying curve key size
-	// and discarded opt.fixed_size flag when its not set.
-	priv_key := PrivateKey{
-		key:     ec_key
-		ks_flag: .fixed
-	}
-	return priv_key
 }
 
 // generate_key generates a new key pair. If opt was not provided, its default to prime256v1 curve.
@@ -250,7 +223,7 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	// EC_KEY_check_key return 1 on success or 0 on error.
 	chk := C.EC_KEY_check_key(ec_key)
 	if chk == 0 {
-		key_free(ec_key)
+		C.EC_KEY_free(ec_key)
 		return error('EC_KEY_check_key failed')
 	}
 	C.EC_POINT_free(pub_key_point)
@@ -269,6 +242,66 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	}
 
 	return pvkey
+}
+
+// PrivateKey represents ECDSA private key. Actually its a key pair,
+// contains private key and public key parts.
+pub struct PrivateKey {
+	// The new high level of keypair opaque, set to nil now.
+	evpkey &C.EVP_PKEY = unsafe { nil }
+	// TODO: when all has been migrated to the new one,
+	// removes this low level declarations.
+	key &C.EC_KEY
+mut:
+	// ks_flag with .flexible value allowing
+	// flexible-size seed bytes as key.
+	// When it is `.fixed`, it will use the underlying key size.
+	ks_flag KeyFlag = .flexible
+	// ks_size stores size of the seed bytes when ks_flag was .flexible.
+	// You should set it to a non zero value
+	ks_size int
+}
+
+// PrivateKey.new creates a new key pair. By default, it would create a prime256v1 based key.
+// Dont forget to call `.free()` after finish with your key.
+pub fn PrivateKey.new(opt CurveOptions) !PrivateKey {
+	// Default to prime256v1 based key
+	mut group_name := sn_prime256v1
+	match opt.nid {
+		.prime256v1 {}
+		.secp384r1 {
+			group_name = sn_secp384r1
+		}
+		.secp521r1 {
+			group_name = sn_secp521r1
+		}
+		.secp256k1 {
+			group_name = sn_secp256k1
+		}
+	}
+	// New high level keypair generator
+	evpkey := C.EVP_EC_gen(group_name.str)
+	if evpkey == 0 {
+		C.EVP_PKEY_free(evpkey)
+		return error('C.EVP_EC_gen failed')
+	}
+	// EVP_PKEY_get1_EC_KEY was deprecated in 3.0. Its used here for compatibility purposes
+	// to support the old key function.
+	// TODO: removes this when its ready to obsolete.
+	eckey := C.EVP_PKEY_get1_EC_KEY(evpkey)
+	if eckey == 0 {
+		C.EC_KEY_free(eckey)
+		C.EVP_PKEY_free(evpkey)
+		return error('EVP_PKEY_get1_EC_KEY failed')
+	}
+	// when using default this function, its using underlying curve key size
+	// and discarded opt.fixed_size flag when its not set.
+	priv_key := PrivateKey{
+		evpkey:  evpkey
+		key:     eckey
+		ks_flag: .fixed
+	}
+	return priv_key
 }
 
 // sign performs signing the message with the options. By default options,
@@ -301,18 +334,6 @@ fn (priv_key PrivateKey) sign_message(message []u8) ![]u8 {
 	signed_data := unsafe { sig.vbytes(int(sig_len)) }
 	unsafe { free(sig) }
 	return signed_data.clone()
-}
-
-// verify verifies a message with the signature are valid with public key provided .
-// You should provide it with the same SignerOpts used with the `.sign()` call.
-// or verify would fail (false).
-pub fn (pub_key PublicKey) verify(message []u8, sig []u8, opt SignerOpts) !bool {
-	digest := calc_digest(pub_key.key, message, opt)!
-	res := C.ECDSA_verify(0, digest.data, digest.len, sig.data, sig.len, pub_key.key)
-	if res == -1 {
-		return error('Failed to verify signature')
-	}
-	return res == 1
 }
 
 // bytes represent private key as bytes.
@@ -413,6 +434,33 @@ pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
 	return false
 }
 
+// free clears out allocated memory for PrivateKey
+// Dont use PrivateKey after calling `.free()`
+pub fn (pv &PrivateKey) free() {
+	C.EC_KEY_free(pv.key)
+	C.EVP_PKEY_free(pv.evpkey)
+}
+
+// PublicKey represents ECDSA public key for verifying message.
+pub struct PublicKey {
+	// The new high level of keypair opaque, set to nil now.
+	evpkey &C.EVP_PKEY = unsafe { nil }
+	// Remove this when its fully obsoleted by the new one.
+	key &C.EC_KEY
+}
+
+// verify verifies a message with the signature are valid with public key provided .
+// You should provide it with the same SignerOpts used with the `.sign()` call.
+// or verify would fail (false).
+pub fn (pub_key PublicKey) verify(message []u8, sig []u8, opt SignerOpts) !bool {
+	digest := calc_digest(pub_key.key, message, opt)!
+	res := C.ECDSA_verify(0, digest.data, digest.len, sig.data, sig.len, pub_key.key)
+	if res == -1 {
+		return error('Failed to verify signature')
+	}
+	return res == 1
+}
+
 // Compare two public keys
 pub fn (pub_key PublicKey) equal(other PublicKey) bool {
 	// TODO: check validity of the group
@@ -441,6 +489,13 @@ pub fn (pub_key PublicKey) equal(other PublicKey) bool {
 	}
 
 	return false
+}
+
+// free clears out allocated memory for PublicKey.
+// Dont use PublicKey after calling `.free()`
+pub fn (pb &PublicKey) free() {
+	C.EC_KEY_free(pb.key)
+	C.EVP_PKEY_free(pb.evpkey)
 }
 
 // Helpers
@@ -490,24 +545,6 @@ fn recommended_hash(key &C.EC_KEY) !crypto.Hash {
 			return error('Unsupported bits size')
 		}
 	}
-}
-
-pub enum HashConfig {
-	with_recommended_hash
-	with_no_hash
-	with_custom_hash
-}
-
-@[params]
-pub struct SignerOpts {
-pub mut:
-	// default to .with_recommended_hash
-	hash_config HashConfig = .with_recommended_hash
-	// make sense when HashConfig != with_recommended_hash
-	allow_smaller_size bool
-	allow_custom_hash  bool
-	// set to non-nil if allow_custom_hash was true
-	custom_hash &hash.Hash = unsafe { nil }
 }
 
 fn calc_digest_with_recommended_hash(key &C.EC_KEY, msg []u8) ![]u8 {
@@ -590,16 +627,4 @@ fn calc_digest(key &C.EC_KEY, message []u8, opt SignerOpts) ![]u8 {
 // Clear allocated memory for key
 fn key_free(ec_key &C.EC_KEY) {
 	C.EC_KEY_free(ec_key)
-}
-
-// free clears out allocated memory for PublicKey.
-// Dont use PublicKey after calling `.free()`
-pub fn (pb &PublicKey) free() {
-	C.EC_KEY_free(pb.key)
-}
-
-// free clears out allocated memory for PrivateKey
-// Dont use PrivateKey after calling `.free()`
-pub fn (pv &PrivateKey) free() {
-	C.EC_KEY_free(pv.key)
 }
