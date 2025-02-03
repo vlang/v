@@ -33,24 +33,23 @@ fn main() {
 		exit(1)
 	}
 
-	println("Starting to reduce the file '${file_path}' with command `${command}` reproducing `${error_msg}`")
+	println("Starting to reduce the file: '${file_path}'\n    with command: `${command}`,\n    trying to reproduce: `${error_msg}`")
 
 	if do_fmt {
-		println('Will do v fmt to the output rpdc.v file')
+		println('Will do `v fmt -w rpdc.v` after the reduction.')
 	} else {
-		println('Will not do v fmt to the output rpdc.v file (use the `--fmt` or `-w` flag to enable it)')
+		println('Will NOT do `v fmt -w rpdc.v` (use the `--fmt` or `-w` flag to enable it)')
 	}
 
-	// Opening the file
-	file := os.read_file(file_path)!
-	assert string_reproduces(file, error_msg, command)
-	println('Original code size: ${file.len}')
-	mut tree := parse(file)
+	content := os.read_file(file_path)!
+	assert string_reproduces(content, error_msg, command)
+	show_code_stats(content, label: 'Original code size')
+	mut tree := parse(content)
 
 	// start tests
 	tmp_code := create_code(tree)
 	assert string_reproduces(tmp_code, error_msg, command)
-	println('Code size without comments: ${tmp_code.len}')
+	show_code_stats(tmp_code, label: 'Code size without comments')
 
 	// reduce the code
 	reduce_scope(mut tree, error_msg, command, do_fmt)
@@ -189,7 +188,7 @@ fn reduce_scope(mut sc Scope, error_msg string, command string, do_fmt bool) {
 	mut modified_smth := true // was a modification successful in reducing the code in the last iteration
 	for modified_smth { // as long as there are successful modifications
 		modified_smth = false
-		println('NEXT ITERATION')
+		println('NEXT ITERATION, loop 1')
 		mut stack := []&Elem{}
 		for i in 0 .. sc.children.len {
 			stack << &sc.children[i]
@@ -204,7 +203,7 @@ fn reduce_scope(mut sc Scope, error_msg string, command string, do_fmt bool) {
 					if string_reproduces(code, error_msg, command) {
 						item.ignored = true
 						modified_smth = true
-						println('Code size: ${code.len} chars')
+						show_code_stats(code)
 					} else { // if can remove it, no need to go though it's children
 						for i in 0 .. item.children.len {
 							stack << &item.children[i]
@@ -250,7 +249,7 @@ fn reduce_scope(mut sc Scope, error_msg string, command string, do_fmt bool) {
 	modified_smth = true
 	for modified_smth {
 		modified_smth = false
-		println('NEXT ITERATION')
+		println('NEXT ITERATION, loop 2')
 		mut stack := []&Elem{}
 		for i in 0 .. line_tree.children.len {
 			stack << &line_tree.children[i]
@@ -265,7 +264,7 @@ fn reduce_scope(mut sc Scope, error_msg string, command string, do_fmt bool) {
 					if string_reproduces(code, error_msg, command) {
 						item.ignored = true
 						modified_smth = true
-						println('Code size: ${code.len} chars')
+						show_code_stats(code)
 					} else { // if can remove it, can remove it's children
 						for i in 0 .. item.children.len {
 							stack << &item.children[i]
@@ -281,6 +280,18 @@ fn reduce_scope(mut sc Scope, error_msg string, command string, do_fmt bool) {
 	os.write_file('rpdc.v', mre) or { panic(err) }
 	if do_fmt {
 		os.execute('v fmt -w rpdc.v')
+		final_content := os.read_file('rpdc.v') or { panic(err) }
+		show_code_stats(final_content, label: 'Code size after formatting')
 	}
 	println('The reduced code is now in rpdc.v')
+}
+
+@[params]
+struct ShowParams {
+	label string = 'Code size'
+}
+
+fn show_code_stats(code string, params ShowParams) {
+	lines := code.split_into_lines()
+	println('${params.label}: ${code.len} chars, ${lines.len} lines.')
 }
