@@ -97,6 +97,7 @@ const auto_complete_commands = [
 	'gret',
 	'ls',
 	'retry',
+	'reduce',
 	'repl',
 	'repeat',
 	'self',
@@ -402,6 +403,15 @@ const auto_complete_flags_where = [
 	'-f',
 	'-v',
 ]
+const auto_complete_flags_reduce = [
+	'-e',
+	'--error_msg',
+	'-c',
+	'--command',
+	'-w',
+	'--fmt',
+	'--version',
+]
 const auto_complete_flags_repeat = [
 	'--help',
 	'-h',
@@ -602,6 +612,9 @@ fn auto_complete_request(args []string) []string {
 				}
 				'missdoc' { // 'v missdoc -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_missdoc, part)
+				}
+				'reduce' { // 'v reduce -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_reduce, part)
 				}
 				'retry' { // 'v retry -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_retry, part)
