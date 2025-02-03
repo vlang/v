@@ -27,7 +27,6 @@ module ecdsa
 struct C.EVP_PKEY {}
 
 fn C.EVP_PKEY_new() &C.EVP_PKEY
-fn C.EVP_EC_gen(curve &u8) &C.EVP_PKEY
 fn C.EVP_PKEY_free(key &C.EVP_PKEY)
 fn C.EVP_PKEY_get1_EC_KEY(pkey &C.EVP_PKEY) &C.EC_KEY
 fn C.EVP_PKEY_base_id(key &C.EVP_PKEY) int

@@ -31,15 +31,7 @@ const nid_evp_pkey_ec = C.EVP_PKEY_EC
 // we only support this
 const openssl_ec_named_curve = C.OPENSSL_EC_NAMED_CURVE
 
-// Constants of short name of the supported curve(s).
-// In the C parts, its defined as #define SN_X9_62_prime256v1  "prime256v1"
-// Its placed here to simplify the access.
-const sn_prime256v1 = 'prime256v1'
-const sn_secp384r1 = 'secp384r1'
-const sn_secp521r1 = 'secp521r1'
-const sn_secp256k1 = 'secp256k1'
-
-// The enum of supported curve(s)
+// Nid is an enumeration of the supported curves
 pub enum Nid {
 	prime256v1
 	secp384r1
@@ -58,14 +50,14 @@ pub mut:
 	fixed_size bool
 }
 
-// enum of hashing config for key signing (verifying).
+// HashConfig is an enumeration of the possible options for key signing (verifying).
 pub enum HashConfig {
 	with_recommended_hash
 	with_no_hash
 	with_custom_hash
 }
 
-// SignerOpts was configuration options to drive signing and verifying process.
+// SignerOpts represents configuration options to drive signing and verifying process.
 @[params]
 pub struct SignerOpts {
 pub mut:
@@ -78,7 +70,7 @@ pub mut:
 	custom_hash &hash.Hash = unsafe { nil }
 }
 
-// enum flag to allow flexible PrivateKey size
+// KeyFlag is an enumeration of possible options to support flexible of PrivateKey key size.
 enum KeyFlag {
 	// flexible flag to allow flexible-size of seed bytes
 	flexible
