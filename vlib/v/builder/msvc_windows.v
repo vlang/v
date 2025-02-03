@@ -373,6 +373,7 @@ pub fn (mut v Builder) cc_msvc() {
 	util.timing_start('C msvc')
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
+		eprintln('================== ${c_compilation_error_title} (from msvc): ==============')
 		eprintln(res.output)
 		verror('msvc error')
 	}
