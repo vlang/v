@@ -2,8 +2,18 @@ module testing
 
 import time
 import term
+import os
 
 pub const empty = term.header(' ', ' ')
+
+// TODO: AGAIN --- this !!!*reliably*!!! fails compilation of `v cmd/tools/vbuild-examples.v` with a cgen error, without `-no-parallel`:
+// pub const report_running_period_ms = os.getenv_opt('VTEST_REPORT_RUNNING_PERIOD_MS') or { '60000' }.int() * time.millisecond
+
+pub const report_running_period_ms = get_report_running_period_ms()
+
+fn get_report_running_period_ms() time.Duration {
+	return os.getenv_opt('VTEST_REPORT_RUNNING_PERIOD_MS') or { '60000' }.int() * time.millisecond
+}
 
 // NormalReporter implements the interface testing.Reporter.
 // It is used by default by `v test .`
@@ -12,13 +22,39 @@ pub struct NormalReporter {
 mut:
 	runtime  time.Duration
 	comptime time.Duration
+	running  shared map[string]LogMessage
+	nfiles   int
 }
 
-pub fn (r NormalReporter) session_start(message string, mut ts TestSession) {
+pub fn (mut r NormalReporter) session_start(message string, mut ts TestSession) {
 	header(message)
+	r.nfiles = ts.files.len
+	spawn r.report_current_running_status_periodically()
 }
 
-pub fn (r NormalReporter) session_stop(message string, mut ts TestSession) {
+fn (r &NormalReporter) report_current_running_status_periodically() {
+	if report_running_period_ms == 0 {
+		return
+	}
+	mut start_t := time.now()
+	mut pi := 0
+	mut crunning := map[string]LogMessage{}
+	for {
+		pi++
+		time.sleep(report_running_period_ms)
+		t := time.now()
+		rlock r.running {
+			crunning = r.running.clone()
+		}
+		keys := crunning.keys()
+		eprintln('       >>>>> ${t.format_ss_micro()} | period ${pi:2} | started: ${t - start_t:10} ago | total files: ${r.nfiles:5} | vjobs: ${' | running ${keys.len} _test.v files'}')
+		for ik, k in keys {
+			eprintln('       >>>>>     ${ik + 1:4}/${keys.len:-4}, T: ${crunning[k].flow_id:3}, started: ${t - crunning[k].when:10} ago, `${k}`')
+		}
+	}
+}
+
+pub fn (r &NormalReporter) session_stop(message string, mut ts TestSession) {
 	println('${ts.benchmark.total_message(message)} Comptime: ${r.comptime.microseconds() / 1000} ms. Runtime: ${r.runtime.microseconds() / 1000} ms.')
 }
 
@@ -31,6 +67,16 @@ pub fn (mut r NormalReporter) report(index int, message LogMessage) {
 	}
 	if message.kind == .cmd_end {
 		r.runtime += message.took
+	}
+	if message.kind == .cmd_begin {
+		lock r.running {
+			r.running[message.file] = message
+		}
+	}
+	if message.kind == .cmd_end {
+		lock r.running {
+			r.running.delete(message.file)
+		}
 	}
 }
 

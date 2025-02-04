@@ -19,6 +19,8 @@ const c_verror_message_marker = 'VERROR_MESSAGE '
 
 const current_os = os.user_os()
 
+const c_compilation_error_title = 'C compilation error'
+
 fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	header := '======== Output of the C Compiler (${ccompiler}) ========'
 	println(header)
@@ -58,7 +60,7 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 			trimmed_output := res.output.trim_space()
 			original_elines := trimmed_output.split_into_lines()
 			elines := error_context_lines(trimmed_output, 'error:', 1, 12)
-			header := '================== C compilation error (from ${ccompiler}): =============='
+			header := '================== ${c_compilation_error_title} (from ${ccompiler}): =============='
 			println(header)
 			for eline in elines {
 				println('cc: ${eline}')
