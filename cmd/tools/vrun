@@ -10,8 +10,8 @@ v run $@
 
 ## On such systems, you can copy this script, or symlink it, somewhere in your PATH,
 ## and then start your .vsh scripts with: `#!/usr/bin/env vrun`.
-## You can also start them with `#!/usr/bin/env /full/path/to/v/cmd/tools/vrun` directly,
-## if you prefer.
+## You can also start them with `#!/usr/bin/env /full/path/to/v/cmd/tools/vrun`, or
+## even just `#!/full/path/to/v run` directly, if you prefer.
 
 ## You can check, if it works, by saving this as a /tmp/args.vsh file:
 ## ```v
