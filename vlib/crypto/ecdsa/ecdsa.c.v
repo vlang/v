@@ -31,6 +31,17 @@ fn C.EVP_PKEY_free(key &C.EVP_PKEY)
 fn C.EVP_PKEY_get1_EC_KEY(pkey &C.EVP_PKEY) &C.EC_KEY
 fn C.EVP_PKEY_base_id(key &C.EVP_PKEY) int
 
+// EVP_PKEY Context
+@[typedef]
+struct C.EVP_PKEY_CTX {}
+
+fn C.EVP_PKEY_CTX_new_id(id int, e voidptr) &C.EVP_PKEY_CTX
+fn C.EVP_PKEY_keygen_init(ctx &C.EVP_PKEY_CTX) int
+fn C.EVP_PKEY_keygen(ctx &C.EVP_PKEY_CTX, ppkey &&C.EVP_PKEY) int
+fn C.EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx &C.EVP_PKEY_CTX, nid int) int
+fn C.EVP_PKEY_CTX_set_ec_param_enc(ctx &C.EVP_PKEY_CTX, param_enc int) int
+fn C.EVP_PKEY_CTX_free(ctx &C.EVP_PKEY_CTX)
+
 // Elliptic curve keypair declarations
 @[typedef]
 struct C.EC_KEY {}
