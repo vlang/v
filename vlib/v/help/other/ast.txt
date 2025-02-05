@@ -21,6 +21,7 @@ Options:
                              File, *AND* generate a .c file too on any change
   -t, --terse                terse output, only with tree node names
                              (AST structure), no details
+  -s, --skip-defaults        skip properties that have default values like [], {}, false, 0, ""
   --hide <multiple strings>  Hide the specified fields. You can give several, by
                              separating them with `,`
   -h, --help                 Display this help and exit

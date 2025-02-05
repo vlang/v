@@ -79,7 +79,7 @@ fn (ctx Context) skip_empty(child &Node) bool {
 				return true
 			}
 			if slen > 7 {
-				s := child.valuestring.vstring_with_len(slen)
+				s := unsafe { child.valuestring.vstring_with_len(slen) }
 				if s.starts_with('enum:0(') {
 					return true
 				}
