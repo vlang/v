@@ -1,114 +1,75 @@
 module main
 
-import json
+import json.cjson
 
-struct UseJson {
-	x int
+type Node = C.cJSON
+
+fn as_n(p &cjson.Node) &Node {
+	return unsafe { &Node(p) }
 }
 
-fn suppress_json_warning() {
-	json.encode(UseJson{})
-}
-
-// struct C.cJSON {}
-fn C.cJSON_CreateObject() &C.cJSON
-
-fn C.cJSON_CreateArray() &C.cJSON
-
-// fn C.cJSON_CreateBool(bool) &C.cJSON
-fn C.cJSON_CreateTrue() &C.cJSON
-
-fn C.cJSON_CreateFalse() &C.cJSON
-
-fn C.cJSON_CreateNull() &C.cJSON
-
-// fn C.cJSON_CreateNumber() &C.cJSON
-// fn C.cJSON_CreateString() &C.cJSON
-fn C.cJSON_CreateRaw(&u8) &C.cJSON
-
-fn C.cJSON_IsInvalid(voidptr) bool
-
-fn C.cJSON_IsFalse(voidptr) bool
-
-// fn C.cJSON_IsTrue(voidptr) bool
-fn C.cJSON_IsBool(voidptr) bool
-
-fn C.cJSON_IsNull(voidptr) bool
-
-fn C.cJSON_IsNumber(voidptr) bool
-
-fn C.cJSON_IsString(voidptr) bool
-
-fn C.cJSON_IsArray(voidptr) bool
-
-fn C.cJSON_IsObject(voidptr) bool
-
-fn C.cJSON_IsRaw(voidptr) bool
-
-fn C.cJSON_AddItemToObject(voidptr, &u8, voidptr)
-
-fn C.cJSON_AddItemToArray(voidptr, voidptr)
-
-fn C.cJSON_Delete(voidptr)
-
-fn C.cJSON_Print(voidptr) &u8
-
-@[inline]
-fn create_object() &C.cJSON {
-	return C.cJSON_CreateObject()
+fn as_c(p &Node) &cjson.Node {
+	return unsafe { &cjson.Node(p) }
 }
 
 @[inline]
-fn create_array() &C.cJSON {
-	return C.cJSON_CreateArray()
+fn create_object() &Node {
+	return as_n(cjson.create_object())
 }
 
 @[inline]
-fn create_string(val string) &C.cJSON {
-	return C.cJSON_CreateString(val.str)
+fn create_array() &Node {
+	return as_n(cjson.create_array())
 }
 
 @[inline]
-fn create_number(val f64) &C.cJSON {
-	return C.cJSON_CreateNumber(val)
+fn create_string(val string) &Node {
+	return as_n(cjson.create_string(val))
 }
 
 @[inline]
-fn create_bool(val bool) &C.cJSON {
-	return C.cJSON_CreateBool(val)
+fn create_number(val f64) &Node {
+	return as_n(cjson.create_number(val))
 }
 
 @[inline]
-fn create_true() &C.cJSON {
-	return C.cJSON_CreateTrue()
+fn create_bool(val bool) &Node {
+	return as_n(cjson.create_bool(val))
 }
 
 @[inline]
-fn create_false() &C.cJSON {
-	return C.cJSON_CreateFalse()
+fn create_true() &Node {
+	return as_n(cjson.create_true())
 }
 
 @[inline]
-fn create_null() &C.cJSON {
-	return C.cJSON_CreateNull()
+fn create_false() &Node {
+	return as_n(cjson.create_false())
+}
+
+@[inline]
+fn create_null() &Node {
+	return as_n(cjson.create_null())
 }
 
 @[inline]
 fn delete(b voidptr) {
-	C.cJSON_Delete(b)
+	unsafe { cjson.delete(b) }
 }
 
 @[inline]
-fn add_item_to_object(obj &C.cJSON, key string, item &C.cJSON) {
-	C.cJSON_AddItemToObject(obj, key.str, item)
+fn add_item_to_object(mut obj Node, key string, item &Node) {
+	mut o := unsafe { &cjson.Node(obj) }
+	o.add_item_to_object(key, item)
 }
 
 @[inline]
-fn add_item_to_array(obj &C.cJSON, item &C.cJSON) {
-	C.cJSON_AddItemToArray(obj, item)
+fn add_item_to_array(mut obj Node, item &Node) {
+	mut o := as_c(obj)
+	o.add_item_to_array(item)
 }
 
-fn json_print(json_ &C.cJSON) string {
-	s := C.cJSON_Print(json_)
-	return unsafe { tos3(s) }
+fn json_print(mut obj Node) string {
+	mut o := as_c(obj)
+	return o.print()
 }
