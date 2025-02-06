@@ -84,15 +84,13 @@ pub fn round(x f64) f64 {
 	mut y := floor(x) // Fractional part
 	mut r := x - y // Round up to nearest.
 	if r > 0.5 {
-		unsafe {
-			goto rndup
-		}
+		y += 1.0
+		return y
 	}
 	// Round to even
 	if r == 0.5 {
 		r = y - 2.0 * floor(0.5 * y)
 		if r == 1.0 {
-			rndup:
 			y += 1.0
 		}
 	}
