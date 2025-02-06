@@ -340,7 +340,7 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 		}
 		ts = t.type_symbols[ts.parent_idx]
 	}
-	return error('unknown method `${name}`')
+	return error('unknown method')
 }
 
 @[params]
