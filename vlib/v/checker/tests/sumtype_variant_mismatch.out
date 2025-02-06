@@ -5,14 +5,14 @@ vlib/v/checker/tests/sumtype_variant_mismatch.vv:4:7: error: cannot cast `?strin
       |       ~~~~~~~~~~~~~~~~~~~
     5 | _ := ?Any(string('baz'))
     6 | _ := ?Any('baz')
-vlib/v/checker/tests/sumtype_variant_mismatch.vv:10:7: error: cannot cast `string` to `?Any2`
-    8 | 
-    9 | _ := ?Any2(?string('baz'))
-   10 | _ := ?Any2(string('baz'))
+vlib/v/checker/tests/sumtype_variant_mismatch.vv:9:7: error: cannot cast `string` to `?Any2`
+    7 | 
+    8 | _ := ?Any2(?string('baz'))
+    9 | _ := ?Any2(string('baz'))
       |       ~~~~~~~~~~~~~~~~~~~
-   11 | _ := ?Any2('baz')
-vlib/v/checker/tests/sumtype_variant_mismatch.vv:11:7: error: cannot cast `string` to `?Any2`
-    9 | _ := ?Any2(?string('baz'))
-   10 | _ := ?Any2(string('baz'))
-   11 | _ := ?Any2('baz')
+   10 | _ := ?Any2('baz')
+vlib/v/checker/tests/sumtype_variant_mismatch.vv:10:7: error: cannot cast `string` to `?Any2`
+    8 | _ := ?Any2(?string('baz'))
+    9 | _ := ?Any2(string('baz'))
+   10 | _ := ?Any2('baz')
       |       ~~~~~~~~~~~
