@@ -169,26 +169,6 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 					// do not generate anything if the argument lengths don't match
 					g.writeln('/* skipping ${sym.name}.${m.name} due to mismatched arguments list: node.args=${node.args.len} m.params=${m.params.len} */')
 					// Adding a println(_SLIT(...)) like this breaks options
-					/*
-					g.writeln(
-						'println(_SLIT("comptime: ${sym.name}.${m.name} has a mismatched arguments list.' +
-						' The method has ${m.params.len - 1} parameters, but ${node.args.len} arguments were ' +
-						'provided. \\nargs: ${node.args}\\n${g.file.path}:${node.pos.line_nr}"));')
-						*/
-					/*
-					if true {
-						println(node.args)
-						verror('comptime: ${sym.name}.${m.name} has a mismatched arguments list.' +
-							' The method has ${m.params.len - 1} parameters, but ${node.args.len} arguments were ' +
-							'provided. ${g.file.path}:${node.pos.line_nr}\n')
-					}
-					if true {
-						eprintln(
-							'comptime: skipping ${sym.name}.${m.name} due to mismatched arguments list\n' +
-							'method.params: ${m.params}, args: ${node.args}\n\n')
-						// verror('expected ${m.params.len - 1} arguments to method ${node.sym.name}.${m.name}, but got ${node.args.len}')
-					}
-					*/
 					return
 				}
 			}
