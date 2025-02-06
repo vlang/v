@@ -489,7 +489,7 @@ that is already used in a parent scope will cause a compilation error.
 ```v failcompile nofmt
 fn main() {
 	a := 10
-	if true {
+	{
 		a := 20 // error: redefinition of `a`
 	}
 }
