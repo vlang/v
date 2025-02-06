@@ -1217,17 +1217,18 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 		}
 		ast.InfixExpr {
 			sym := g.table.sym(val.left_type)
-			if _ := g.table.find_method(sym, val.op.str()) {
+			svalop := val.op.str()
+			if _ := g.table.find_method(sym, svalop) {
 				left_styp := g.styp(val.left_type.set_nr_muls(0))
 				g.write2(left_styp, '_')
-				g.write2(util.replace_op(val.op.str()), '(')
+				g.write2(util.replace_op(svalop), '(')
 				g.gen_cross_tmp_variable(left, val.left)
 				g.write(', ')
 				g.gen_cross_tmp_variable(left, val.right)
 				g.write(')')
 			} else {
 				g.gen_cross_tmp_variable(left, val.left)
-				g.write(val.op.str())
+				g.write(svalop)
 				g.gen_cross_tmp_variable(left, val.right)
 			}
 		}

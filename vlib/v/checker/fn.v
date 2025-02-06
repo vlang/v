@@ -2093,6 +2093,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if final_left_sym.kind == .aggregate {
 			// the error message contains the problematic type
 			unknown_method_msg = err.msg()
+			if unknown_method_msg == 'unknown method' {
+				unknown_method_msg += ' `' + method_name + '`'
+			}
 		}
 	}
 
