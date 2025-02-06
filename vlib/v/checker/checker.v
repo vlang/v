@@ -3402,8 +3402,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			node.expr_type = c.promote_num(node.expr_type, xx)
 			from_type = node.expr_type
 		}
-		if !c.table.sumtype_has_variant(to_type, from_type, false) && !to_type.has_flag(.option)
-			&& !to_type.has_flag(.result) {
+		if !c.table.sumtype_has_variant(to_type, from_type, false) {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
