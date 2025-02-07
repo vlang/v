@@ -456,8 +456,8 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 				return ast.int_type
 			} else {
 				if cond.expr is ast.TypeOf {
-					typ := g.type_resolver.typeof_type(cond.expr.expr, cond.name_type)
-					return g.unwrap_generic(typ)
+					return g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(cond.expr.expr,
+						cond.name_type), cond.field_name)
 				}
 				name := '${cond.expr}.${cond.field_name}'
 				if name in g.type_resolver.type_map {
