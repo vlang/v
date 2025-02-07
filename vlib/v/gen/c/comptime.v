@@ -455,6 +455,10 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 			} else if cond.gkind_field == .indirections {
 				return ast.int_type
 			} else {
+				if cond.expr is ast.TypeOf {
+					return g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(cond.expr.expr,
+						cond.name_type), cond.field_name)
+				}
 				name := '${cond.expr}.${cond.field_name}'
 				if name in g.type_resolver.type_map {
 					return g.type_resolver.get_ct_type_or_default(name, ast.void_type)

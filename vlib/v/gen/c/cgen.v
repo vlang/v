@@ -3908,21 +3908,16 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					}
 					g.type_name(name_type)
 					return
-				} else if node.field_name == 'idx' {
+				} else if node.field_name in ['idx', 'unaliased_typ'] {
+					// `typeof(expr).idx`, // `typeof(expr).unalised_typ`
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.typeof_type(node.expr.expr, name_type)
+						name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr.expr,
+							name_type), node.field_name)
+						g.write(int(name_type).str())
+					} else {
+						g.write(int(g.unwrap_generic(name_type)).str())
 					}
-					// `typeof(expr).idx`
-					g.write(int(g.unwrap_generic(name_type)).str())
-					return
-				} else if node.field_name == 'unaliased_typ' {
-					mut name_type := node.name_type
-					if node.expr is ast.TypeOf {
-						name_type = g.type_resolver.typeof_type(node.expr.expr, name_type)
-					}
-					// `typeof(expr).unaliased_typ`
-					g.write(int(g.table.unaliased_type(g.unwrap_generic(name_type))).str())
 					return
 				} else if node.field_name == 'indirections' {
 					mut name_type := node.name_type

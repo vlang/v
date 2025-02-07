@@ -82,6 +82,27 @@ pub fn (mut t TypeResolver) typeof_type(node ast.Expr, default_type ast.Type) as
 	return default_type
 }
 
+// typeof_field_type resolves the typeof[T]().<field_name> type
+pub fn (mut t TypeResolver) typeof_field_type(typ ast.Type, field_name string) ast.Type {
+	match field_name {
+		'name' {
+			return ast.string_type
+		}
+		'idx' {
+			return t.resolver.unwrap_generic(typ)
+		}
+		'unaliased_typ' {
+			return t.table.unaliased_type(t.resolver.unwrap_generic(typ))
+		}
+		'indirections' {
+			return ast.int_type
+		}
+		else {
+			return typ
+		}
+	}
+}
+
 // get_ct_type_var gets the comptime type of the variable (.generic_param, .key_var, etc)
 @[inline]
 pub fn (t &ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
