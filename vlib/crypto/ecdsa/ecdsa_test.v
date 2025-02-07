@@ -12,8 +12,9 @@ fn test_ecdsa() {
 	is_valid := pub_key.verify(message, signature) or { panic(err) }
 	println('Signature valid: ${is_valid}')
 	assert is_valid
-	key_free(priv_key.key)
-	key_free(pub_key.key)
+
+	priv_key.free()
+	pub_key.free()
 }
 
 fn test_ecdsa_signing_with_recommended_hash_options() {
@@ -27,9 +28,9 @@ fn test_ecdsa_signing_with_recommended_hash_options() {
 	// Verify the signature
 	is_valid := pub_key.verify(message, signature) or { panic(err) }
 	println('Signature valid: ${is_valid}')
-	key_free(pub_key.key)
-	key_free(priv_key.key)
 	assert is_valid
+	pub_key.free()
+	priv_key.free()
 }
 
 fn test_generate_key() ! {
@@ -37,8 +38,9 @@ fn test_generate_key() ! {
 	pub_key, priv_key := generate_key() or { panic(err) }
 	assert pub_key.key != unsafe { nil }
 	assert priv_key.key != unsafe { nil }
-	key_free(priv_key.key)
-	key_free(pub_key.key)
+
+	priv_key.free()
+	pub_key.free()
 }
 
 fn test_new_key_from_seed() ! {
@@ -47,7 +49,7 @@ fn test_new_key_from_seed() ! {
 	priv_key := new_key_from_seed(seed) or { panic(err) }
 	retrieved_seed := priv_key.seed() or { panic(err) }
 	assert seed == retrieved_seed
-	key_free(priv_key.key)
+	priv_key.free()
 }
 
 fn test_new_key_from_seed_with_leading_zeros_bytes() ! {
@@ -56,7 +58,7 @@ fn test_new_key_from_seed_with_leading_zeros_bytes() ! {
 	priv_key := new_key_from_seed(seed) or { panic(err) }
 	retrieved_seed := priv_key.seed() or { panic(err) }
 	assert seed == retrieved_seed
-	key_free(priv_key.key)
+	priv_key.free()
 }
 
 fn test_sign_and_verify() ! {
@@ -66,8 +68,9 @@ fn test_sign_and_verify() ! {
 	signature := priv_key.sign(message) or { panic(err) }
 	is_valid := pub_key.verify(message, signature) or { panic(err) }
 	assert is_valid
-	key_free(priv_key.key)
-	key_free(pub_key.key)
+
+	priv_key.free()
+	pub_key.free()
 }
 
 fn test_seed() ! {
@@ -75,8 +78,8 @@ fn test_seed() ! {
 	pub_key, priv_key := generate_key() or { panic(err) }
 	seed := priv_key.seed() or { panic(err) }
 	assert seed.len > 0
-	key_free(priv_key.key)
-	key_free(pub_key.key)
+	priv_key.free()
+	pub_key.free()
 }
 
 fn test_public_key() ! {
@@ -85,11 +88,12 @@ fn test_public_key() ! {
 	pub_key1 := priv_key.public_key() or { panic(err) }
 	pub_key2, privkk := generate_key() or { panic(err) }
 	assert !pub_key1.equal(pub_key2)
-	key_free(pubkk.key)
-	key_free(privkk.key)
-	key_free(priv_key.key)
-	key_free(pub_key1.key)
-	key_free(pub_key2.key)
+
+	pubkk.free()
+	privkk.free()
+	priv_key.free()
+	pub_key1.free()
+	pub_key2.free()
 }
 
 fn test_private_key_equal() ! {
@@ -98,9 +102,10 @@ fn test_private_key_equal() ! {
 	seed := priv_key1.seed() or { panic(err) }
 	priv_key2 := new_key_from_seed(seed) or { panic(err) }
 	assert priv_key1.equal(priv_key2)
-	key_free(pbk.key)
-	key_free(priv_key1.key)
-	key_free(priv_key2.key)
+
+	pbk.free()
+	priv_key1.free()
+	priv_key2.free()
 }
 
 fn test_private_key_equality_on_different_curve() ! {
@@ -110,9 +115,9 @@ fn test_private_key_equality_on_different_curve() ! {
 	// using different group
 	priv_key2 := new_key_from_seed(seed, nid: .secp384r1) or { panic(err) }
 	assert !priv_key1.equal(priv_key2)
-	key_free(pbk.key)
-	key_free(priv_key1.key)
-	key_free(priv_key2.key)
+	pbk.free()
+	priv_key1.free()
+	priv_key2.free()
 }
 
 fn test_public_key_equal() ! {
@@ -121,10 +126,10 @@ fn test_public_key_equal() ! {
 	pub_key1 := priv_key.public_key() or { panic(err) }
 	pub_key2 := priv_key.public_key() or { panic(err) }
 	assert pub_key1.equal(pub_key2)
-	key_free(pbk.key)
-	key_free(priv_key.key)
-	key_free(pub_key1.key)
-	key_free(pub_key2.key)
+	pbk.free()
+	priv_key.free()
+	pub_key1.free()
+	pub_key2.free()
 }
 
 fn test_sign_with_new_key_from_seed() ! {
@@ -136,8 +141,8 @@ fn test_sign_with_new_key_from_seed() ! {
 	pub_key := priv_key.public_key() or { panic(err) }
 	is_valid := pub_key.verify(message, signature) or { panic(err) }
 	assert is_valid
-	key_free(priv_key.key)
-	key_free(pub_key.key)
+	priv_key.free()
+	pub_key.free()
 }
 
 fn test_invalid_signature() ! {
@@ -148,13 +153,13 @@ fn test_invalid_signature() ! {
 	result := pub_key.verify(message, invalid_signature) or {
 		// Expecting verification to fail
 		assert err.msg() == 'Failed to verify signature'
-		key_free(pub_key.key)
-		key_free(pvk.key)
+		pub_key.free()
+		pvk.free()
 		return
 	}
 	assert !result
-	key_free(pub_key.key)
-	key_free(pvk.key)
+	pub_key.free()
+	pvk.free()
 }
 
 fn test_different_keys_not_equal() ! {
@@ -162,10 +167,10 @@ fn test_different_keys_not_equal() ! {
 	pbk1, priv_key1 := generate_key() or { panic(err) }
 	pbk2, priv_key2 := generate_key() or { panic(err) }
 	assert !priv_key1.equal(priv_key2)
-	key_free(pbk1.key)
-	key_free(pbk2.key)
-	key_free(priv_key1.key)
-	key_free(priv_key2.key)
+	pbk1.free()
+	pbk2.free()
+	priv_key1.free()
+	priv_key2.free()
 }
 
 fn test_private_key_new() ! {
