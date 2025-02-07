@@ -259,7 +259,7 @@ fn decode_array_item[T](mut field T, arr []Any) {
 		typeof[[]time.Time]().idx { field = arr.map(it.to_time() or { time.Time{} }) }
 		typeof[[]?time.Time]().idx { field = arr.map(?time.Time(it.to_time() or { time.Time{} })) }
 		typeof[[]Any]().idx { field = arr.clone() }
-		typeof[[]?Any]().idx { field = arr.map(?Any(it)) }
+		typeof[[]?Any]().idx { field = arr.map(it) }
 		typeof[[]u8]().idx   { field = arr.map(it.u64()) }
 		typeof[[]?u8]().idx  { field = arr.map(?u8(it.u64())) }
 		typeof[[]u16]().idx  { field = arr.map(it.u64()) }

@@ -1,0 +1,18 @@
+vlib/v/checker/tests/sumtype_variant_mismatch.vv:4:7: error: cannot cast `?string` to `?Any`
+    2 | type Any2 = ?int | ?string
+    3 | 
+    4 | _ := ?Any(?string('baz'))
+      |       ~~~~~~~~~~~~~~~~~~~
+    5 | _ := ?Any(string('baz'))
+    6 | _ := ?Any('baz')
+vlib/v/checker/tests/sumtype_variant_mismatch.vv:9:7: error: cannot cast `string` to `?Any2`
+    7 | 
+    8 | _ := ?Any2(?string('baz'))
+    9 | _ := ?Any2(string('baz'))
+      |       ~~~~~~~~~~~~~~~~~~~
+   10 | _ := ?Any2('baz')
+vlib/v/checker/tests/sumtype_variant_mismatch.vv:10:7: error: cannot cast `string` to `?Any2`
+    8 | _ := ?Any2(?string('baz'))
+    9 | _ := ?Any2(string('baz'))
+   10 | _ := ?Any2('baz')
+      |       ~~~~~~~~~~~
