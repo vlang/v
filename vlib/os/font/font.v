@@ -135,5 +135,5 @@ pub fn get_path_variant(font_path string, variant Variant) string {
 			}
 		}
 	}
-	return fpath + file + '.ttf'
+	return '${fpath}${file}.ttf'
 }

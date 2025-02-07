@@ -56,10 +56,10 @@ fn new_ft(c FTConfig) ?&FT {
 			fons.set_error_callback(clear_atlas_callback, fons)
 			return &FT{
 				fons:        fons
-				font_normal: fons.add_font_mem('sans', bytes_normal, false)
-				font_bold:   fons.add_font_mem('sans', bytes_bold, false)
-				font_mono:   fons.add_font_mem('sans', bytes_mono, false)
-				font_italic: fons.add_font_mem('sans', bytes_italic, false)
+				font_normal: fons.add_font_mem('sans', bytes_normal.clone(), false)
+				font_bold:   fons.add_font_mem('sans', bytes_bold.clone(), false)
+				font_mono:   fons.add_font_mem('sans', bytes_mono.clone(), false)
+				font_italic: fons.add_font_mem('sans', bytes_italic.clone(), false)
 				scale:       c.scale
 			}
 		} else {
@@ -122,10 +122,10 @@ fn new_ft(c FTConfig) ?&FT {
 	fons.set_error_callback(clear_atlas_callback, fons)
 	return &FT{
 		fons:        fons
-		font_normal: fons.add_font_mem('sans', bytes, false)
-		font_bold:   fons.add_font_mem('sans', bytes_bold, false)
-		font_mono:   fons.add_font_mem('sans', bytes_mono, false)
-		font_italic: fons.add_font_mem('sans', bytes_italic, false)
+		font_normal: fons.add_font_mem('sans', bytes.clone(), false)
+		font_bold:   fons.add_font_mem('sans', bytes_bold.clone(), false)
+		font_mono:   fons.add_font_mem('sans', bytes_mono.clone(), false)
+		font_italic: fons.add_font_mem('sans', bytes_italic.clone(), false)
 		scale:       c.scale
 	}
 }
