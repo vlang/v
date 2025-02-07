@@ -100,7 +100,7 @@ fn init(mut state AppState) {
 		'RobotoMono-Regular.ttf')))
 	{
 		println('loaded font: ${bytes.len}')
-		state.font_normal = state.fons.add_font_mem('sans', bytes, false)
+		state.font_normal = state.fons.add_font_mem('sans', bytes.clone(), true)
 	}
 }
 
