@@ -2702,11 +2702,11 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	g.auto_fn_definitions << sb.str()
 }
 
-fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr bool, exp_styp string,
+fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, exp_styp string,
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
 	is_comptime_variant := expr is ast.Ident && g.comptime.is_comptime_variant_var(expr)
-	if exp_is_ptr {
+	if exp.is_ptr() {
 		g.write('HEAP(${exp_styp}, ')
 		rparen_n++
 	}
@@ -2745,7 +2745,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 		g.write(g.type_default(ctyp))
 	} else {
 		old_left_is_opt := g.left_is_opt
-		g.left_is_opt = true
+		g.left_is_opt = !exp.has_flag(.option)
 		g.expr(expr)
 		g.left_is_opt = old_left_is_opt
 	}
@@ -2841,8 +2841,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			if exp_sym.info.is_generic {
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
 			}
-			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, true,
-				false, got_styp)
+			g.call_cfn_for_casting_expr(fname, expr, expected_type, exp_styp, true, false,
+				got_styp)
 			g.inside_cast_in_heap--
 		} else {
 			got_styp := g.cc_type(got_type, true)
@@ -2868,7 +2868,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					return
 				}
 			}
-			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
+			g.call_cfn_for_casting_expr(fname, expr, expected_type, exp_styp, got_is_ptr,
 				false, got_styp)
 		}
 		return
@@ -2933,7 +2933,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					g.write('${fname}(&${tmp_var})')
 					return
 				} else {
-					g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, unwrapped_exp_sym.cname,
+					g.call_cfn_for_casting_expr(fname, expr, expected_type, unwrapped_exp_sym.cname,
 						got_is_ptr, got_is_fn, got_styp)
 				}
 			}
