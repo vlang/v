@@ -20,6 +20,9 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 
+	got_is_any_kind_of_pointer := got.is_any_kind_of_pointer()
+	exp_is_any_kind_of_pointer := expected.is_any_kind_of_pointer()
+
 	if c.pref.translated {
 		got_is_int := got.is_int()
 		exp_is_int := expected.is_int()
@@ -33,12 +36,12 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.voidptr_type || expected == ast.nil_type {
 			return true
 		}
-		if (expected == ast.bool_type && (got_is_int || got.is_any_kind_of_pointer()))
-			|| ((exp_is_int || expected.is_any_kind_of_pointer()) && got == ast.bool_type) {
+		if (expected == ast.bool_type && (got_is_int || got_is_any_kind_of_pointer))
+			|| ((exp_is_int || exp_is_any_kind_of_pointer) && got == ast.bool_type) {
 			return true
 		}
 
-		if expected.is_any_kind_of_pointer() {
+		if exp_is_any_kind_of_pointer {
 			// Allow `int` as `&i8` etc in C code.
 			deref := expected.deref()
 			// deref := expected.set_nr_muls(0)
@@ -78,11 +81,11 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			}
 		} else if got_sym.kind == .array_fixed {
 			// Allow fixed arrays as `&i8` etc
-			if expected_sym.is_number() || expected.is_any_kind_of_pointer() {
+			if expected_sym.is_number() || exp_is_any_kind_of_pointer {
 				return true
 			}
 		} else if expected_sym.kind == .array_fixed {
-			if got_sym.is_number() && got.is_any_kind_of_pointer() {
+			if got_sym.is_number() && got_is_any_kind_of_pointer {
 				return true
 			} else if got_sym.kind == .array {
 				info := expected_sym.info as ast.ArrayFixed
@@ -92,11 +95,11 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 				}
 			}
 		} else if got_sym.kind == .array {
-			if expected_sym.is_number() || expected.is_any_kind_of_pointer() {
+			if expected_sym.is_number() || exp_is_any_kind_of_pointer {
 				return true
 			}
 		} else if expected_sym.kind == .array {
-			if got_sym.is_number() && got.is_any_kind_of_pointer() {
+			if got_sym.is_number() && got_is_any_kind_of_pointer {
 				return true
 			}
 		}
@@ -125,7 +128,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.nil_type_idx
 		|| exp_idx == ast.byteptr_type_idx
 		|| (exp_is_ptr && expected.deref().idx() == ast.u8_type_idx) {
-		if got.is_any_kind_of_pointer() {
+		if got_is_any_kind_of_pointer {
 			return true
 		}
 	}
@@ -145,7 +148,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future options should be used for that
-	if expected.is_any_kind_of_pointer() {
+	if exp_is_any_kind_of_pointer {
 		if got == ast.int_literal_type {
 			return true
 		}
@@ -153,7 +156,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if got_idx == ast.voidptr_type_idx || got_idx == ast.nil_type_idx
 		|| got_idx == ast.byteptr_type_idx
 		|| (got_idx == ast.u8_type_idx && got_is_ptr) {
-		if expected.is_any_kind_of_pointer() {
+		if exp_is_any_kind_of_pointer {
 			return true
 		}
 	}
