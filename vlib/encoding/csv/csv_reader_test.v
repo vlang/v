@@ -409,11 +409,11 @@ fn read_lines(id int, csvr csv.RandomAccessReader, mut data [][]csv.CellValue, s
 }
 
 fn test_multithreading() {
-	file_path := os.join_path(os.temp_dir(), 'test_csv.csv')
+	file_path_str := os.join_path(os.temp_dir(), 'test_csv.csv')
 	size := 10_000
 
 	// create the test file
-	res_count := create_csv(file_path, size)!
+	res_count := create_csv(file_path_str, size)!
 
 	slices := 2 // number of slice of the csv
 	mem_buf_size := 1024 * 1024 * 1
@@ -421,13 +421,13 @@ fn test_multithreading() {
 	mut csvr := []csv.RandomAccessReader{}
 
 	// init first csv reader
-	csvr << csv.csv_reader(file_path: file_path, mem_buf_size: mem_buf_size)!
+	csvr << csv.csv_reader(file_path: file_path_str, mem_buf_size: mem_buf_size)!
 	csvr[0].build_header_dict(csv.GetHeaderConf{})!
 
 	// init other csv readers using the first reader configuration
 	for _ in 1 .. slices {
 		mut tmp_csvr := csv.csv_reader(
-			file_path:      file_path
+			file_path:      file_path_str
 			mem_buf_size:   mem_buf_size
 			create_map_csv: false
 		)!
@@ -466,4 +466,7 @@ fn test_multithreading() {
 	}
 
 	assert ck_count == res_count, 'check on csv file failed!'
+
+	// remove the temp file
+	os.rm(file_path_str)!
 }
