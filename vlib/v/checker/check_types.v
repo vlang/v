@@ -230,6 +230,8 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 	if expected == got {
 		return
 	}
+	got_is_ptr := got.is_ptr()
+	exp_is_ptr := expected.is_ptr()
 	if language == .c {
 		// allow number types to be used interchangeably
 		if got.is_number() && expected.is_number() {
@@ -245,22 +247,21 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		exp_sym := c.table.sym(expected)
 		// unknown C types are set to int, allow int to be used for types like `&C.FILE`
 		// eg. `C.fflush(C.stderr)` - error: cannot use `int` as `&C.FILE` in argument 1 to `C.fflush`
-		if expected.is_ptr() && exp_sym.language == .c && exp_sym.kind in [.placeholder, .struct]
+		if exp_is_ptr && exp_sym.language == .c && exp_sym.kind in [.placeholder, .struct]
 			&& got == ast.int_type_idx {
 			return
 		}
 	} else {
 		// passing &expr where no-pointer is expected
-		if expected != ast.voidptr_type && !expected.is_ptr() && got.is_ptr()
-			&& arg.expr.is_reference() {
+		if expected != ast.voidptr_type && !exp_is_ptr && got_is_ptr && arg.expr.is_reference() {
 			got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
 			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 		}
 		if expected.has_flag(.option) {
-			got_is_ptr := got.is_ptr()
+			is_ptr := got_is_ptr
 				|| (arg.expr is ast.Ident && (arg.expr as ast.Ident).is_mut())
 				|| arg.expr is ast.None
-			if (expected.is_ptr() && !got_is_ptr) || (!expected.is_ptr() && got.is_ptr()) {
+			if (exp_is_ptr && !is_ptr) || (!exp_is_ptr && got_is_ptr) {
 				got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
 				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 			}
@@ -275,7 +276,7 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		exp_sym_idx := expected.idx()
 		got_sym_idx := got.idx()
 
-		if expected.is_ptr() && got.is_ptr() && exp_sym_idx != got_sym_idx
+		if exp_is_ptr && got_is_ptr && exp_sym_idx != got_sym_idx
 			&& exp_sym_idx in [ast.u8_type_idx, ast.byteptr_type_idx]
 			&& got_sym_idx !in [ast.u8_type_idx, ast.byteptr_type_idx] {
 			got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
@@ -331,7 +332,7 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 	}
 	if c.check_types(if is_exp_sumtype { got_ } else { got }, exp_type) {
 		if language == .v && idx_got == ast.voidptr_type_idx {
-			if expected.is_int_valptr() || expected.is_int() || expected.is_ptr() {
+			if expected.is_int_valptr() || expected.is_int() || exp_is_ptr {
 				return
 			}
 			exp_sym := c.table.final_sym(expected)
@@ -341,9 +342,8 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 			}
 		}
-		if language != .v || expected.is_ptr() == got.is_ptr() || arg.is_mut
-			|| arg.expr.is_auto_deref_var() || got.has_flag(.shared_f)
-			|| c.table.sym(expected_).kind !in [.array, .map] {
+		if language != .v || exp_is_ptr == got_is_ptr || arg.is_mut || arg.expr.is_auto_deref_var()
+			|| got.has_flag(.shared_f) || c.table.sym(expected_).kind !in [.array, .map] {
 			return
 		}
 	} else {
@@ -359,10 +359,8 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		if got_typ_sym.symbol_name_except_generic() == expected_typ_sym.symbol_name_except_generic() {
 			// Check if we are making a comparison between two different types of
 			// the same type like `Type[int] and &Type[]`
-			if got.is_ptr() != expected.is_ptr()
-				|| !c.check_same_module(got, expected)
-				|| (!got.is_ptr() && !expected.is_ptr()
-				&& got_typ_sym.name != expected_typ_sym.name) {
+			if got_is_ptr != exp_is_ptr || !c.check_same_module(got, expected)
+				|| (!got_is_ptr && !exp_is_ptr && got_typ_sym.name != expected_typ_sym.name) {
 				got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 			}
