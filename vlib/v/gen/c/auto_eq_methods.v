@@ -432,18 +432,19 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	}
 	g.definitions.writeln('bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b); // auto')
 
-	left := if left_type.has_flag(.option) { 'a.data' } else { 'a' }
-	right := if left_type.has_flag(.option) { 'b.data' } else { 'b' }
+	is_option := left_type.has_flag(.option)
+	left := if is_option { 'a.data' } else { 'a' }
+	right := if is_option { 'b.data' } else { 'b' }
 
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('inline bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b) {')
-	if left_type.has_flag(.option) {
+	if is_option {
 		fn_builder.writeln('\tif (a.state != b.state) return false;')
 		fn_builder.writeln('\tif (a.state == 2 && a.state == b.state) return true;')
 	}
 	if left_typ.sym.is_primitive_fixed_array() {
-		suffix := if left_type.has_flag(.option) { '.data' } else { '[0]' }
-		size_styp := if left_type.has_flag(.option) {
+		suffix := if is_option { '.data' } else { '[0]' }
+		size_styp := if is_option {
 			g.base_type(left_typ.typ.set_nr_muls(0))
 		} else {
 			arg_styp
