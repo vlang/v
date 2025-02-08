@@ -2744,7 +2744,10 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 			ast.void_type)
 		g.write(g.type_default(ctyp))
 	} else {
+		old_left_is_opt := g.left_is_opt
+		g.left_is_opt = true
 		g.expr(expr)
+		g.left_is_opt = old_left_is_opt
 	}
 	g.write(')'.repeat(rparen_n))
 }
