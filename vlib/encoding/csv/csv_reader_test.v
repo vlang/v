@@ -410,7 +410,7 @@ fn read_lines(id int, csvr csv.RandomAccessReader, mut data [][]csv.CellValue, s
 
 fn test_multithreading() {
 	file_path := os.join_path(os.temp_dir(), 'test_csv.csv')
-	size := 1_000
+	size := 10_000
 
 	// create the test file
 	res_count := create_csv(file_path, size)!

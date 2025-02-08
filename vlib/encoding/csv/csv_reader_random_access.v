@@ -454,13 +454,17 @@ pub fn (mut cr RandomAccessReader) get_cellt(cfg GetCellConfig) !CellValue {
 	if cr.header_row >= 0 && cfg.x < cr.header_list.len {
 		h := cr.header_list[cfg.x]
 		res := cr.get_cell(cfg)!
-		if h.htype == .int {
-			return res.int()
+		match h.htype {
+			.int {
+				return res.trim_space().int()
+			}
+			.string {
+				return res
+			}
+			.f32 {
+				return res.trim_space().f32()
+			}
 		}
-		if h.htype == .f32 {
-			return res.f32()
-		}
-		return res
 	}
 	return cr.get_cell(cfg)!
 }
