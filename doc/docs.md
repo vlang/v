@@ -4365,8 +4365,11 @@ println(compare(1.1, 1.2)) //         -1
 
 ### Spawning Concurrent Tasks
 
-V's model of concurrency is going to be very similar to Go's.
-For now, `spawn foo()` runs `foo()` concurrently in a different thread:
+V's model of concurrency is similar to Go's.
+
+`go foo()` runs `foo()` concurrently in a lightweight thread managed by the V runtime.
+
+`spawn foo()` runs `foo()` concurrently in a different thread:
 
 ```v
 import math
@@ -4393,10 +4396,6 @@ fn main() {
 > have limitations in regard to concurrency,
 > including resource overhead and scalability issues,
 > and might affect performance in cases of high thread count.
-
-There's also a `go` keyword. Right now `go foo()` will be automatically renamed via vfmt
-to `spawn foo()`, and there will be a way to launch a coroutine with `go` (a lightweight
-thread managed by the runtime).
 
 Sometimes it is necessary to wait until a parallel thread has finished. This can
 be done by assigning a *handle* to the started thread and calling the `wait()` method
