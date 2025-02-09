@@ -22,7 +22,9 @@ module ecdsa
 #include <openssl/x509.h>
 #include <openssl/bio.h>
 #include <openssl/pem.h>
-#include <openssl/core.h>
+
+// The following header is available on OpenSSL 3.0, but not in OpenSSL 1.1.1f
+//#include <openssl/core.h>
 
 // The new opaque of public key pair high level API
 @[typedef]
