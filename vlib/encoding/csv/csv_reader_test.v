@@ -361,9 +361,9 @@ fn create_csv(file_path string, size int) !i64 {
 	for i in 0 .. size {
 		tmp := "${rand.int()}, ${i}, 3, \"txt1${i}\", \"txt2${i}\", ${f32(rand.u32()) / 1000.0}\n"
 		f.write_string(tmp)!
-		if i % 1_000_000 == 0 {
-			println(i)
-		}
+		// if i % 1_000_000 == 0 {
+		//	 println(i)
+		// }
 		count += i
 	}
 	f.close()
@@ -377,7 +377,7 @@ fn read_lines(id int, csvr csv.RandomAccessReader, mut data [][]csv.CellValue, s
 			// println("Check: ${col_elem}")
 			match col_elem.htype {
 				.string {
-					println('id:${id} String here')
+					// println('id:${id} String here')
 					for row_index in start_row .. end_row {
 						// println("str ${count},${row_index}")
 						data[count][row_index - 1] = csvr.get_cell(x: count, y: row_index) or {
@@ -386,7 +386,7 @@ fn read_lines(id int, csvr csv.RandomAccessReader, mut data [][]csv.CellValue, s
 					}
 				}
 				.int {
-					println('id:${id} Int here')
+					// println('id:${id} Int here')
 					for row_index in start_row .. end_row {
 						// println("int ${count},${row_index}")
 						data[count][row_index - 1] = csvr.get_cell(x: count, y: row_index) or {
@@ -395,7 +395,7 @@ fn read_lines(id int, csvr csv.RandomAccessReader, mut data [][]csv.CellValue, s
 					}
 				}
 				.f32 {
-					println('id:${id} f32 here')
+					// println('id:${id} f32 here')
 					for row_index in start_row .. end_row {
 						// println("f32 ${count},${row_index}")
 						data[count][row_index - 1] = csvr.get_cell(x: count, y: row_index) or {
