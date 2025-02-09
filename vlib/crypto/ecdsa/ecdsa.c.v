@@ -18,9 +18,13 @@ module ecdsa
 #include <openssl/objects.h>
 #include <openssl/bn.h>
 #include <openssl/evp.h>
+#include <openssl/ec.h>
 #include <openssl/x509.h>
 #include <openssl/bio.h>
 #include <openssl/pem.h>
+
+// The following header is available on OpenSSL 3.0, but not in OpenSSL 1.1.1f
+//#include <openssl/core.h>
 
 // The new opaque of public key pair high level API
 @[typedef]
@@ -73,6 +77,8 @@ fn C.BIO_write(b &C.BIO, buf &u8, length int) int
 fn C.PEM_read_bio_PrivateKey(bp &C.BIO, x &&C.EVP_PKEY, cb int, u &voidptr) &C.EVP_PKEY
 fn C.PEM_read_bio_PUBKEY(bp &C.BIO, x &&C.EVP_PKEY, cb int, u &voidptr) &C.EVP_PKEY
 fn C.d2i_PUBKEY(k &&C.EVP_PKEY, pp &&u8, length u32) &C.EVP_PKEY
+fn C.i2d_PUBKEY_bio(bo &C.BIO, pkey &C.EVP_PKEY) int
+fn C.d2i_PUBKEY_bio(bo &C.BIO, key &&C.EVP_PKEY) &C.EVP_PKEY
 
 // Elliptic curve point related declarations.
 @[typedef]

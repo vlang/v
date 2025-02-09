@@ -81,58 +81,18 @@ enum KeyFlag {
 // generate_key generates a new key pair. If opt was not provided, its default to prime256v1 curve.
 // If you want another curve, use in the following manner: `pubkey, pivkey := ecdsa.generate_key(nid: .secp384r1)!`
 pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
-	// creates new empty key
-	ec_key := new_curve(opt)
-	if ec_key == 0 {
-		C.EC_KEY_free(ec_key)
-		return error('Failed to create new EC_KEY')
-	}
-	// we duplicate the empty ec_key and shares similiar curve infos
-	// and used this as public key
-	pbkey := C.EC_KEY_dup(ec_key)
-	if pbkey == 0 {
-		C.EC_KEY_free(ec_key)
-		C.EC_KEY_free(pbkey)
-		return error('Failed on EC_KEY_dup')
-	}
-	res := C.EC_KEY_generate_key(ec_key)
-	if res != 1 {
-		C.EC_KEY_free(ec_key)
-		C.EC_KEY_free(pbkey)
-		return error('Failed to generate EC_KEY')
-	}
-	// we take public key bits from above generated key
-	// and stored in duplicated public key object before.
-	pubkey_point := voidptr(C.EC_KEY_get0_public_key(ec_key))
-	if pubkey_point == 0 {
-		C.EC_POINT_free(pubkey_point)
-		C.EC_KEY_free(ec_key)
-		C.EC_KEY_free(pbkey)
-		return error('Failed to get public key BIGNUM')
-	}
-	np := C.EC_KEY_set_public_key(pbkey, pubkey_point)
-	if np != 1 {
-		C.EC_POINT_free(pubkey_point)
-		C.EC_KEY_free(ec_key)
-		C.EC_KEY_free(pbkey)
-		return error('Failed to set public key')
-	}
-	// when using default generate_key, its using underlying curve key size
-	// and discarded opt.fixed_size flag when its not set.
-	priv_key := PrivateKey{
-		key:     ec_key
-		ks_flag: .fixed
-	}
-	pub_key := PublicKey{
-		key: pbkey
-	}
-	return pub_key, priv_key
+	// This can be simplified to just more simpler one
+	pv := PrivateKey.new(opt)!
+	pb := pv.public_key()!
+
+	return pb, pv
 }
 
 // new_key_from_seed creates a new private key from the seed bytes. If opt was not provided,
 // its default to prime256v1 curve.
 //
 // Notes on the seed:
+//
 // You should make sure, the seed bytes come from a cryptographically secure random generator,
 // likes the `crypto.rand` or other trusted sources.
 // Internally, the seed size's would be checked to not exceed the key size of underlying curve,
@@ -366,16 +326,17 @@ fn (priv_key PrivateKey) sign_message(message []u8) ![]u8 {
 }
 
 // bytes represent private key as bytes.
-pub fn (priv_key PrivateKey) bytes() ![]u8 {
-	bn := voidptr(C.EC_KEY_get0_private_key(priv_key.key))
+pub fn (pv PrivateKey) bytes() ![]u8 {
+	// This is the old one
+	bn := voidptr(C.EC_KEY_get0_private_key(pv.key))
 	if bn == 0 {
 		return error('Failed to get private key BIGNUM')
 	}
 	num_bytes := (C.BN_num_bits(bn) + 7) / 8
 	// Get the buffer size to store the seed.
-	size := if priv_key.ks_flag == .flexible {
+	size := if pv.ks_flag == .flexible {
 		// should be non zero
-		priv_key.ks_size
+		pv.ks_size
 	} else {
 		num_bytes
 	}
@@ -390,19 +351,46 @@ pub fn (priv_key PrivateKey) bytes() ![]u8 {
 // seed gets the seed (private key bytes). It will be deprecated.
 // Use `PrivateKey.bytes()` instead.
 @[deprecated: 'use PrivateKey.bytes() instead']
-pub fn (priv_key PrivateKey) seed() ![]u8 {
-	return priv_key.bytes()
+pub fn (pv PrivateKey) seed() ![]u8 {
+	return pv.bytes()
 }
 
-// Get the public key from private key.
-pub fn (priv_key PrivateKey) public_key() !PublicKey {
+// public_key gets the PublicKey from private key.
+pub fn (pv PrivateKey) public_key() !PublicKey {
+	// Check if EVP_PKEY opaque was availables or not.
+	// TODO: removes this check when its ready
+	if pv.evpkey != unsafe { nil } {
+		bo := C.BIO_new(C.BIO_s_mem())
+		n := C.i2d_PUBKEY_bio(bo, pv.evpkey)
+		assert n != 0
+		// stores this bio as another key
+		pbkey := C.d2i_PUBKEY_bio(bo, 0)
+
+		// TODO: removes this when its ready to obsolete.
+		eckey := C.EVP_PKEY_get1_EC_KEY(pbkey)
+		if eckey == 0 {
+			C.EC_KEY_free(eckey)
+			C.EVP_PKEY_free(pbkey)
+			C.BIO_free_all(bo)
+			return error('EVP_PKEY_get1_EC_KEY failed')
+		}
+		C.BIO_free_all(bo)
+
+		return PublicKey{
+			evpkey: pbkey
+			key:    eckey
+		}
+	}
+	// Otherwise, use the old EC_KEY opaque.
+	// TODO: removes this when its ready to obsolete
+	//
 	// There are some issues concerned when returning PublicKey directly using underlying
 	// `PrivateKey.key`. This private key containing sensitive information inside it, so return
 	// this without care maybe can lead to some serious security impact.
 	// See https://discord.com/channels/592103645835821068/592320321995014154/1329261267965448253
 	// So, we instead return a new EC_KEY opaque based information availables on private key object
 	// without private key bits has been set on this new opaque.
-	group := voidptr(C.EC_KEY_get0_group(priv_key.key))
+	group := voidptr(C.EC_KEY_get0_group(pv.key))
 	if group == 0 {
 		return error('Failed to load group from priv_key')
 	}
@@ -411,7 +399,7 @@ pub fn (priv_key PrivateKey) public_key() !PublicKey {
 		return error('Get unsupported curve nid')
 	}
 	// get public key point from private key opaque
-	pubkey_point := voidptr(C.EC_KEY_get0_public_key(priv_key.key))
+	pubkey_point := voidptr(C.EC_KEY_get0_public_key(pv.key))
 	if pubkey_point == 0 {
 		// C.EC_POINT_free(pubkey_point)
 		// todo: maybe its not set, just calculates new one
@@ -651,9 +639,4 @@ fn calc_digest(key &C.EC_KEY, message []u8, opt SignerOpts) ![]u8 {
 		}
 	}
 	return error('Not should be here')
-}
-
-// Clear allocated memory for key
-fn key_free(ec_key &C.EC_KEY) {
-	C.EC_KEY_free(ec_key)
 }

@@ -38,7 +38,7 @@ fn test_load_pubkey_from_der_serialized_bytes() ! {
 	// expected signature was comes from hashed message with sha384
 	status_with_hashed := pbkey.verify(message_tobe_signed, expected_signature)!
 	assert status_with_hashed == true
-	key_free(pbkey.key)
+	pbkey.free()
 }
 
 fn test_for_pubkey_bytes() ! {
@@ -50,8 +50,8 @@ fn test_for_pubkey_bytes() ! {
 	assert pvkey.seed()!.hex() == pv
 	pbkey := pvkey.public_key()!
 	assert pbkey.bytes()!.hex() == pb
-	key_free(pbkey.key)
-	key_free(pvkey.key)
+	pbkey.free()
+	pvkey.free()
 }
 
 // above pem-formatted private key read with
