@@ -72,7 +72,7 @@ pub mut:
 	mem_buf_start i64 = -1 // start index in the file of the read buffer
 	mem_buf_end   i64 = -1 // end index in the file of the read buffer
 	// csv map for quick access
-	create_map_csv bool = true // flag to enamble the csv map creation
+	create_map_csv bool = true // flag to enable the csv map creation
 	csv_map        [][]i64
 	// header
 	header_row  int = -1 // row index of the header in the csv_map
@@ -96,7 +96,7 @@ pub:
 	end_line_len   int = endline_cr_len // size of the endline rune
 	quote          u8  = `"`            // double quote is the standard quote char
 	quote_remove   bool // if true clear the cell from the quotes
-	create_map_csv bool = true // make the map of the csv file if true
+	create_map_csv bool = true // if true make the map of the csv file
 }
 
 /******************************************************************************
@@ -232,8 +232,8 @@ fn (mut cr RandomAccessReader) fill_buffer(i i64) !i64 {
 	return i64(-1)
 }
 
-// copy_configuration copy the configuration from another csv RandomAccessReader using reference
-// this function is an helper to user the RandomAccessReader in multi thread applicatiuons
+// copy_configuration copies the configuration from another csv RandomAccessReader
+// this function is a helper for using the RandomAccessReader in multi threaded applications
 // pay attention to the free process
 pub fn (mut cr RandomAccessReader) copy_configuration(src_cr RandomAccessReader) {
 	cr.header_row = src_cr.header_row
