@@ -6102,6 +6102,9 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 		ast.PrefixExpr {
 			return expr.right is ast.Ident || g.check_expr_is_const(expr.right)
 		}
+		ast.UnsafeExpr {
+			return g.check_expr_is_const(expr.expr)
+		}
 		else {
 			return false
 		}
