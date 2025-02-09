@@ -116,7 +116,9 @@ fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
 	}
 	if g.pref.assert_failure_mode == .backtraces
 		|| g.fn_decl.attrs.any(it.name == 'assert_backtraces') {
-		g.writeln('\tprint_backtrace();')
+		if _ := g.table.fns['print_backtrace'] {
+			g.writeln('\tprint_backtrace();')
+		}
 	}
 	if g.pref.is_test {
 		g.writeln('\tlongjmp(g_jump_buffer, 1);')
