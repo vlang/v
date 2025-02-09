@@ -12,6 +12,7 @@ Known limitations:
 import encoding.csv
 import strings
 import os
+import rand
 
 /******************************************************************************
 *
@@ -346,4 +347,126 @@ fn test_coherence() {
 // Debug code
 fn main() {
 	test_csv_string()
+}
+
+// Multithreaded tests
+
+fn create_csv(file_path string, size int) !i64 {
+	// create csv file for the test
+	mut csv_txt := 'pippo,count,count1,pera,sempronio,float'
+
+	mut f := os.open_file(file_path, 'w')!
+	f.write_string(csv_txt + '\n')!
+	mut count := i64(0)
+	for i in 0 .. size {
+		tmp := "${rand.int()}, ${i}, 3, \"txt1${i}\", \"txt2${i}\", ${f32(rand.u32()) / 1000.0}\n"
+		f.write_string(tmp)!
+		// if i % 1_000_000 == 0 {
+		//	 println(i)
+		// }
+		count += i
+	}
+	f.close()
+	return count
+}
+
+fn read_lines(id int, csvr csv.RandomAccessReader, mut data [][]csv.CellValue, start_row int, end_row int) {
+	// println(" func ${data.len},${data[1].len}")
+	unsafe {
+		for count, col_elem in csvr.header_list {
+			// println("Check: ${col_elem}")
+			match col_elem.htype {
+				.string {
+					// println('id:${id} String here')
+					for row_index in start_row .. end_row {
+						// println("str ${count},${row_index}")
+						data[count][row_index - 1] = csvr.get_cell(x: count, y: row_index) or {
+							panic('Str get_cell failed')
+						}
+					}
+				}
+				.int {
+					// println('id:${id} Int here')
+					for row_index in start_row .. end_row {
+						// println("int ${count},${row_index}")
+						data[count][row_index - 1] = csvr.get_cell(x: count, y: row_index) or {
+							panic('Int get_cell failed')
+						}.trim_space().int()
+					}
+				}
+				.f32 {
+					// println('id:${id} f32 here')
+					for row_index in start_row .. end_row {
+						// println("f32 ${count},${row_index}")
+						data[count][row_index - 1] = csvr.get_cell(x: count, y: row_index) or {
+							panic('F32 get_cell failed')
+						}.trim_space().f32()
+					}
+				}
+			}
+		}
+	} // unsafe
+}
+
+fn test_multithreading() {
+	file_path_str := os.join_path(os.temp_dir(), 'test_csv.csv')
+	size := 10_000
+
+	// create the test file
+	res_count := create_csv(file_path_str, size)!
+
+	slices := 2 // number of slice of the csv
+	mem_buf_size := 1024 * 1024 * 1
+
+	mut csvr := []csv.RandomAccessReader{}
+
+	// init first csv reader
+	csvr << csv.csv_reader(file_path: file_path_str, mem_buf_size: mem_buf_size)!
+	csvr[0].build_header_dict(csv.GetHeaderConf{})!
+
+	// init other csv readers using the first reader configuration
+	for _ in 1 .. slices {
+		mut tmp_csvr := csv.csv_reader(
+			file_path:      file_path_str
+			mem_buf_size:   mem_buf_size
+			create_map_csv: false
+		)!
+		tmp_csvr.copy_configuration(csvr[0])
+		csvr << tmp_csvr
+	}
+
+	// read the data from the csv file
+	mut data := [][]csv.CellValue{}
+
+	n_rows := csvr[0].csv_map.len
+	unsafe {
+		data = [][]csv.CellValue{len: csvr[0].header_list.len, init: []csv.CellValue{len: n_rows}}
+	}
+	step := n_rows / slices
+	mut start := 1
+	mut end := if (start + step) > n_rows { n_rows } else { start + step }
+
+	mut threads := []thread{}
+	for task_index in 0 .. slices {
+		threads << spawn read_lines(task_index, csvr[task_index], mut &data, start, end)
+		start = end
+		end = if (start + step) > n_rows { n_rows } else { start + step }
+	}
+	threads.wait()
+
+	// release the csv readers
+	for mut item in csvr {
+		item.dispose_csv_reader()
+	}
+
+	// check for the integer column sum
+	mut ck_count := i64(0)
+	for i in 0 .. csvr[0].csv_map.len - 1 {
+		ck_count += data[1][i] as int
+	}
+
+	assert ck_count == res_count, 'check on csv file failed!'
+
+	// remove the temp file
+	os.rm(file_path_str)!
 }
