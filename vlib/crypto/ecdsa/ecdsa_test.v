@@ -47,7 +47,7 @@ fn test_new_key_from_seed() ! {
 	// Test generating a key from a seed
 	seed := [u8(1), 2, 3, 4, 5]
 	priv_key := new_key_from_seed(seed) or { panic(err) }
-	retrieved_seed := priv_key.seed() or { panic(err) }
+	retrieved_seed := priv_key.bytes() or { panic(err) }
 	assert seed == retrieved_seed
 	priv_key.free()
 }
@@ -56,7 +56,7 @@ fn test_new_key_from_seed_with_leading_zeros_bytes() ! {
 	// Test generating a key from a seed
 	seed := [u8(0), u8(1), 2, 3, 4, 5]
 	priv_key := new_key_from_seed(seed) or { panic(err) }
-	retrieved_seed := priv_key.seed() or { panic(err) }
+	retrieved_seed := priv_key.bytes() or { panic(err) }
 	assert seed == retrieved_seed
 	priv_key.free()
 }
@@ -76,7 +76,7 @@ fn test_sign_and_verify() ! {
 fn test_seed() ! {
 	// Test retrieving the seed from a private key
 	pub_key, priv_key := generate_key() or { panic(err) }
-	seed := priv_key.seed() or { panic(err) }
+	seed := priv_key.bytes() or { panic(err) }
 	assert seed.len > 0
 	priv_key.free()
 	pub_key.free()
@@ -99,7 +99,7 @@ fn test_public_key() ! {
 fn test_private_key_equal() ! {
 	// Test private key equality
 	pbk, priv_key1 := generate_key() or { panic(err) }
-	seed := priv_key1.seed() or { panic(err) }
+	seed := priv_key1.bytes() or { panic(err) }
 	priv_key2 := new_key_from_seed(seed) or { panic(err) }
 	assert priv_key1.equal(priv_key2)
 
@@ -111,7 +111,7 @@ fn test_private_key_equal() ! {
 fn test_private_key_equality_on_different_curve() ! {
 	// default group
 	pbk, priv_key1 := generate_key() or { panic(err) }
-	seed := priv_key1.seed() or { panic(err) }
+	seed := priv_key1.bytes() or { panic(err) }
 	// using different group
 	priv_key2 := new_key_from_seed(seed, nid: .secp384r1) or { panic(err) }
 	assert !priv_key1.equal(priv_key2)
@@ -186,7 +186,7 @@ fn test_private_key_new() ! {
 	assert is_valid
 
 	// new private key
-	seed := priv_key.seed()!
+	seed := priv_key.bytes()!
 	priv_key2 := new_key_from_seed(seed)!
 	pubkey2 := priv_key2.public_key()!
 	assert priv_key.equal(priv_key2)
