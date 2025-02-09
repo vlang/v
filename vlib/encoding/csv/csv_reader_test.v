@@ -352,7 +352,7 @@ fn main() {
 // Multithreaded tests
 
 fn create_csv(file_path string, size int) !i64 {
-	// create csv in ram
+	// create csv file for the test
 	mut csv_txt := 'pippo,count,count1,pera,sempronio,float'
 
 	mut f := os.open_file(file_path, 'w')!
@@ -437,23 +437,23 @@ fn test_multithreading() {
 
 	// read the data from the csv file
 	mut data := [][]csv.CellValue{}
+
+	n_rows := csvr[0].csv_map.len
 	unsafe {
-		n_rows := csvr[0].csv_map.len
 		data = [][]csv.CellValue{len: csvr[0].header_list.len, init: []csv.CellValue{len: n_rows}}
-
-		step := n_rows / slices
-		mut start := 1
-		mut end := if (start + step) > n_rows { n_rows } else { start + step }
-
-		mut threads := []thread{}
-		for task_index in 0 .. slices {
-			threads << spawn read_lines(task_index, csvr[task_index], mut &data, start,
-				end)
-			start = end
-			end = if (start + step) > n_rows { n_rows } else { start + step }
-		}
-		threads.wait()
 	}
+	step := n_rows / slices
+	mut start := 1
+	mut end := if (start + step) > n_rows { n_rows } else { start + step }
+
+	mut threads := []thread{}
+	for task_index in 0 .. slices {
+		threads << spawn read_lines(task_index, csvr[task_index], mut &data, start, end)
+		start = end
+		end = if (start + step) > n_rows { n_rows } else { start + step }
+	}
+	threads.wait()
+
 	// release the csv readers
 	for mut item in csvr {
 		item.dispose_csv_reader()
