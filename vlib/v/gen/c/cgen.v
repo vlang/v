@@ -6213,17 +6213,25 @@ fn (mut g Gen) write_init_function() {
 	}
 
 	if g.use_segfault_handler && !g.pref.is_shared {
-		// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
-		// shared object does not need this
-		g.writeln('#if __STDC_HOSTED__ == 1\n\tsignal(11, v_segmentation_fault_handler);\n#endif')
+		if _ := g.table.fns['v_segmentation_fault_handler'] {
+			// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
+			// shared object does not need this
+			g.writeln('#if __STDC_HOSTED__ == 1\n\tsignal(11, v_segmentation_fault_handler);\n#endif')
+		}
 	}
+
 	if g.pref.is_bare {
-		g.writeln('init_global_allocator();')
+		if _ := g.table.fns['init_global_allocator'] {
+			g.writeln('init_global_allocator();')
+		}
 	}
 
 	if g.pref.prealloc {
-		g.writeln('prealloc_vinit();')
+		if _ := g.table.fns['prealloc_vinit'] {
+			g.writeln('prealloc_vinit();')
+		}
 	}
+
 	// Note: the as_cast table should be *before* the other constant initialize calls,
 	// because it may be needed during const initialization of builtin and during
 	// calling module init functions too, just in case they do fail...
@@ -6233,7 +6241,9 @@ fn (mut g Gen) write_init_function() {
 	}
 	if !g.pref.is_shared && (!g.pref.skip_unused || g.table.used_features.external_types) {
 		// shared object does not need this
-		g.writeln('\tbuiltin_init();')
+		if _ := g.table.find_fn('builtin_init') {
+			g.writeln('\tbuiltin_init();')
+		}
 	}
 
 	if g.nr_closures > 0 {

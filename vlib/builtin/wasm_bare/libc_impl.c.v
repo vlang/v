@@ -158,7 +158,3 @@ fn __exit(code int) {
 fn __qsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
 	panic('qsort() is not yet implemented in `-freestanding`')
 }
-
-fn init_global_allocator() {
-	// global_allocator = dlmalloc.new(get_wasm_allocator())
-}
