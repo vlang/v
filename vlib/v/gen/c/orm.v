@@ -331,8 +331,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 
 	primary_field := g.get_orm_struct_primary_field(fields) or { ast.StructField{} }
 
-	is_serial := primary_field.attrs.contains_arg('sql', 'serial')
-		&& primary_field.typ == ast.int_type
+	is_serial := (primary_field.attrs.contains_arg('sql', 'serial')
+		|| primary_field.attrs.contains('serial')) && primary_field.typ == ast.int_type
 
 	mut inserting_object_type := ast.void_type
 	mut member_access_type := '.'
