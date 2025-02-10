@@ -1,32 +1,32 @@
-Note: an important detail to remember, is that in V, the type always
-follows the identifier in declarations, i.e. you use `x int` in V in
-function parameters, and in struct declarations, not `int x`, like you
-would in C.
+> [!NOTE]
+> an important detail to remember, is that in V, the type always follows
+> the identifier in declarations, i.e. you use `x int` in V in function parameters,
+> and in struct declarations, not `int x`, like you would in C.
 
 ## Number types in C and V:
 
-A V `i8`  is equivalent to C `char`,  or `int8_t`.
-A V `i16` is equivalent to C `short`, or `int16_t`.
-A V `i32` is equivalent to C `int`,   or `int32_t`.
-A V `i64` is equivalent to C `long`,  or `int64_t`.
+* A V `i8`  is equivalent to C `char`,  or `int8_t`.
+* A V `i16` is equivalent to C `short`, or `int16_t`.
+* A V `i32` is equivalent to C `int`,   or `int32_t`.
+* A V `i64` is equivalent to C `long`,  or `int64_t`.
 
-A V `u8`  is equivalent to C `unsigned char`,  or `uint8_t`.
-A V `u16` is equivalent to C `unsigned short`, or `uint16_t`.
-A V `u32` is equivalent to C `unsigned int`,   or `uint32_t`.
-A V `u64` is equivalent to C `unsigned long`,  or `uint64_t`.
+* A V `u8`  is equivalent to C `unsigned char`,  or `uint8_t`.
+* A V `u16` is equivalent to C `unsigned short`, or `uint16_t`.
+* A V `u32` is equivalent to C `unsigned int`,   or `uint32_t`.
+* A V `u64` is equivalent to C `unsigned long`,  or `uint64_t`.
 
-A V `f32` is equivalent to C `float`.
-A V `f64` is equivalent to C `double`.
+* A V `f32` is equivalent to C `float`.
+* A V `f64` is equivalent to C `double`.
 
-A V `isize` is equivalent to C `ssize_t`.
+* A V `isize` is equivalent to C `ssize_t`.
 It is a signed integer, and `isize` is guaranteed to be at least 16 bits.
 It is 32 bit on 32 bit platforms, and 64 bits on 64 bit ones.
 
-A V `usize` is equivalent to C `size_t`.
+* A V `usize` is equivalent to C `size_t`.
 It is an unsigned integer, and `usize` is guaranteed to be at least 16 bits.
 It is 32 bit on 32 bit platforms, and 64 bits on 64 bit ones.
 
-A V `int` is currently equivalent C `int`,  or `int64_t`.
+* A V `int` is currently equivalent to C `int`,  or `int64_t`.
 There are plans to make it equivalent to `isize`, so if you want to write C
 library wrappers, it is better to describe your `fn C.` parameters using `i32`
 instead of using `int`.
@@ -140,5 +140,4 @@ corresponding memory, while the C function is still using it. You can use the
 attribute `@[keep_args_alive]` to tag your `fn C.` declarations, that accept
 pointers, to keep them from being freed, while the call to your `C.fname()`
 function has not returned.
-For more details, see also
-https://github.com/vlang/v/blob/master/vlib/v/slow_tests/keep_args_alive_test.c.v
+For more details, see also this [test for keep_args_alive](vlib/v/slow_tests/keep_args_alive_test.c.v) .
