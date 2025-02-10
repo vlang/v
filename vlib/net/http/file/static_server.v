@@ -65,6 +65,7 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 	mut res := http.new_response(body: '')
 	sw := time.new_stopwatch()
 	mut url := urllib.query_unescape(req.url) or {
+		log.warn('bad request; url: ${req.url} ')
 		res.set_status(.bad_request)
 		res.body = '<!DOCTYPE html><h1>url decode fail</h1>'
 		res.header.add(.content_type, 'text/html; charset=utf-8')
