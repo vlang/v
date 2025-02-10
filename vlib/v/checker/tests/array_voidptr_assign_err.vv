@@ -1,0 +1,7 @@
+fn main() {
+	mut a := []int{}
+	a = unsafe { nil }
+
+	// vfmt off
+	a = voidptr(0)
+}
