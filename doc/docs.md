@@ -7501,8 +7501,8 @@ For all supported options check the latest help:
 
 ## V and C
 
-The basic mapping between C and V types is described here:
-https://github.com/vlang/v/blob/master/doc/c_and_v_type_interoperability.md
+The basic mapping between C and V types is described in
+[C and V Type Interoperability](https://github.com/vlang/v/blob/master/doc/c_and_v_type_interoperability.md).
 
 ### Calling C from V
 
