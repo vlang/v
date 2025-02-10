@@ -64,7 +64,12 @@ const no_such_file_doc = '<!DOCTYPE html><h1>no such file</h1>'
 fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 	mut res := http.new_response(body: '')
 	sw := time.new_stopwatch()
-	mut url := urllib.query_unescape(req.url) or { panic(err) }
+	mut url := urllib.query_unescape(req.url) or {
+		res.set_status(.not_found)
+		res.body = '<!DOCTYPE html><h1>url decode fail</h1>'
+		res.header.add(.content_type, 'text/html; charset=utf-8')
+		return res
+	}
 	defer {
 		log.info('took: ${sw.elapsed().microseconds():6}µs, status: ${res.status_code}, size: ${res.body.len:9}, url: ${url}')
 	}
