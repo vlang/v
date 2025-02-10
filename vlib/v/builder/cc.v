@@ -810,16 +810,16 @@ pub fn (mut v Builder) cc() {
 		break
 	}
 	if v.pref.compress {
-		ret := os.system('strip ${v.pref.out_name}')
+		ret := os.system('strip ${os.quoted_path(v.pref.out_name)}')
 		if ret != 0 {
 			println('strip failed')
 			return
 		}
 		// Note: upx --lzma can sometimes fail with NotCompressibleException
 		// See https://github.com/vlang/v/pull/3528
-		mut ret2 := os.system('upx --lzma -qqq ${v.pref.out_name}')
+		mut ret2 := os.system('upx --lzma -qqq ${os.quoted_path(v.pref.out_name)}')
 		if ret2 != 0 {
-			ret2 = os.system('upx -qqq ${v.pref.out_name}')
+			ret2 = os.system('upx -qqq ${os.quoted_path(v.pref.out_name)}')
 		}
 		if ret2 != 0 {
 			println('upx failed')
