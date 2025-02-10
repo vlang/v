@@ -6,6 +6,7 @@ import time
 import runtime
 import net.http
 import net.http.mime
+import net.urllib
 
 @[params]
 pub struct StaticServeParams {
@@ -63,10 +64,17 @@ const no_such_file_doc = '<!DOCTYPE html><h1>no such file</h1>'
 fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 	mut res := http.new_response(body: '')
 	sw := time.new_stopwatch()
-	defer {
-		log.info('took: ${sw.elapsed().microseconds():6}µs, status: ${res.status_code}, size: ${res.body.len:9}, url: ${req.url}')
+	mut url := urllib.query_unescape(req.url) or {
+		log.warn('bad request; url: ${req.url} ')
+		res.set_status(.bad_request)
+		res.body = '<!DOCTYPE html><h1>url decode fail</h1>'
+		res.header.add(.content_type, 'text/html; charset=utf-8')
+		return res
 	}
-	mut uri_path := req.url.all_after_first('/').trim_right('/')
+	defer {
+		log.info('took: ${sw.elapsed().microseconds():6}µs, status: ${res.status_code}, size: ${res.body.len:9}, url: ${url}')
+	}
+	mut uri_path := url.all_after_first('/').trim_right('/')
 	requested_file_path := os.norm_path(os.real_path(os.join_path_single(h.params.folder,
 		uri_path)))
 	if !requested_file_path.starts_with(h.params.folder) {
