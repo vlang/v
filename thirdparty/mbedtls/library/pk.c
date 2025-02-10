@@ -576,6 +576,7 @@ int mbedtls_pk_sign_restartable( mbedtls_pk_context *ctx,
     if( ( md_alg != MBEDTLS_MD_NONE || hash_len != 0 ) && hash == NULL )
         return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
 
+    if( ctx == NULL ) return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
     if( ctx->pk_info == NULL || pk_hashlen_helper( md_alg, &hash_len ) != 0 )
         return( MBEDTLS_ERR_PK_BAD_INPUT_DATA );
 

@@ -3774,9 +3774,8 @@ int mbedtls_ssl_handshake( mbedtls_ssl_context *ssl )
 
     /* Sanity checks */
 
-    if( ssl == NULL || ssl->conf == NULL )
-        return( MBEDTLS_ERR_SSL_BAD_INPUT_DATA );
-
+    if( NULL == ssl ) return( MBEDTLS_ERR_SSL_BAD_INPUT_DATA );
+    if( NULL == ssl->conf ) return( MBEDTLS_ERR_SSL_BAD_INPUT_DATA );
 #if defined(MBEDTLS_SSL_PROTO_DTLS)
     if( ssl->conf->transport == MBEDTLS_SSL_TRANSPORT_DATAGRAM &&
         ( ssl->f_set_timer == NULL || ssl->f_get_timer == NULL ) )
