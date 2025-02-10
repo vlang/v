@@ -140,4 +140,5 @@ corresponding memory, while the C function is still using it. You can use the
 attribute `@[keep_args_alive]` to tag your `fn C.` declarations, that accept
 pointers, to keep them from being freed, while the call to your `C.fname()`
 function has not returned.
-For more details, see also this [test for keep_args_alive](vlib/v/slow_tests/keep_args_alive_test.c.v) .
+For more details, see also this
+[test for keep_args_alive](vlib/v/slow_tests/keep_args_alive_test.c.v) .
