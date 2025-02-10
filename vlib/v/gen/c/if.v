@@ -20,6 +20,9 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 			if branch.stmts.len == 1 {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
+					if stmt.expr is ast.ArrayInit && stmt.expr.is_fixed {
+						return true
+					}
 					if g.need_tmp_var_in_expr(stmt.expr) {
 						return true
 					}

@@ -2114,6 +2114,9 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					g.stmt(stmt)
 				}
 			} else {
+				mut is_array_fixed_init := false
+				mut ret_type := ast.void_type
+
 				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
 				mut is_noreturn := false
@@ -2121,11 +2124,23 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					is_noreturn = true
 				} else if stmt is ast.ExprStmt {
 					is_noreturn = is_noreturn_callexpr(stmt.expr)
+					if stmt.expr is ast.ArrayInit && stmt.expr.is_fixed {
+						is_array_fixed_init = true
+						ret_type = stmt.expr.typ
+					}
 				}
 				if !is_noreturn {
-					g.write('${tmp_var} = ')
+					if is_array_fixed_init {
+						g.write('memcpy(${tmp_var}, (${g.styp(ret_type)})')
+					} else {
+						g.write('${tmp_var} = ')
+					}
 				}
 				g.stmt(stmt)
+				if is_array_fixed_init {
+					lines := g.go_before_last_stmt().trim_right('; \n')
+					g.writeln('${lines}, sizeof(${tmp_var}));')
+				}
 				if !g.out.last_n(2).contains(';') {
 					g.writeln(';')
 				}
