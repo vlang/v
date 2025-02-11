@@ -36,7 +36,7 @@ jobs:
           envs: 'MYTOKEN MYTOKEN2'
           usesh: true
           prepare: |
-            pkg install -y curl git gmake colordiff
+            pkg install -y curl git gmake colordiff sqlite3
 
           run: |
             set -x ## print all commands as they are executed
