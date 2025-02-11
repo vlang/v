@@ -44,7 +44,7 @@ fn main() {
 	content := os.read_file(file_path)!
 	assert string_reproduces(content, error_msg, command)
 	show_code_stats(content, label: 'Original code size')
-	
+
 	// start tests
 	tmp_code := create_code(parse(content))
 	assert string_reproduces(tmp_code, error_msg, command)
@@ -96,15 +96,19 @@ fn parse(file string) Scope { // The parser is surely incomplete for the V synta
 			for file[i] != `\n` { // comment -> skip until newline
 				i++
 			}
-		} else if file[i] == `\n` && file[i-1] == `\n` {
+		} else if file[i] == `\n` && file[i - 1] == `\n` {
 			i++ // remove excess newlines
 		} else if file[i] == `\t` {
 			i++ // remove tabs for easier processing
-		} else if file[i] == `f` && file[i + 1] == `n`&& file[i+2] == ` ` && file[i-1] or {`\n`} == `\n` {
+		} else if file[i] == `f` && file[i + 1] == `n` && file[i + 2] == ` ` && file[i - 1] or {
+			`\n`
+		} == `\n` {
 			top.children << current_string
 			// no increase in scope because not handled with {}
 			current_string = ''
-			top.children << &Scope{fn_scope: true}
+			top.children << &Scope{
+				fn_scope: true
+			}
 			stack << &(top.children[top.children.len - 1] as Scope)
 			current_string += file[i].ascii_str() // f
 			i++
@@ -160,8 +164,8 @@ fn parse(file string) Scope { // The parser is surely incomplete for the V synta
 				top.children << current_string
 			}
 			if stack.last().children == [] {
-				stack[stack.len-2].children.delete(stack[stack.len-2].children.len - 1) // delete the empty scope (the last children because top of the stack)
-			} 
+				stack[stack.len - 2].children.delete(stack[stack.len - 2].children.len - 1) // delete the empty scope (the last children because top of the stack)
+			}
 			stack.pop()
 			top = stack[stack.len - 1]
 			current_string = ''
@@ -245,9 +249,9 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool) {
 				}
 			}
 		}
-		
+
 		text_code = create_code(sc)
-		
+
 		println('Processing remaining lines')
 		split_code := text_code.split_into_lines() // dont forget to add back the \n
 		// Create the binary tree of the lines
