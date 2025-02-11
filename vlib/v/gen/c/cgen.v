@@ -48,6 +48,7 @@ mut:
 	// line_nr                   int
 	cheaders                  strings.Builder
 	preincludes               strings.Builder // allows includes to go before `definitions`
+	postincludes              strings.Builder // allows includes to go after all the rest of the code generation
 	includes                  strings.Builder // all C #includes required by V modules
 	typedefs                  strings.Builder
 	enum_typedefs             strings.Builder // enum types
@@ -300,6 +301,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		cheaders:             strings.new_builder(15000)
 		includes:             strings.new_builder(100)
 		preincludes:          strings.new_builder(100)
+		postincludes:         strings.new_builder(100)
 		typedefs:             strings.new_builder(100)
 		enum_typedefs:        strings.new_builder(100)
 		type_definitions:     strings.new_builder(100)
@@ -387,6 +389,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.out.write(g.out) or { panic(err) }
 			global_g.cheaders.write(g.cheaders) or { panic(err) }
 			global_g.preincludes.write(g.preincludes) or { panic(err) }
+			global_g.postincludes.write(g.postincludes) or { panic(err) }
 			global_g.includes.write(g.includes) or { panic(err) }
 			global_g.typedefs.write(g.typedefs) or { panic(err) }
 			global_g.type_definitions.write(g.type_definitions) or { panic(err) }
@@ -567,7 +570,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	}
 	b.write_string2('\n// V comptime_definitions:\n', g.comptime_definitions.str())
 	b.write_string2('\n// V typedefs:\n', g.typedefs.str())
-	b.write_string2('\n // V preincludes:\n', g.preincludes.str())
 	b.write_string2('\n// V cheaders:', g.cheaders.str())
 	if g.pcs_declarations.len > 0 {
 		b.write_string2('\n// V profile counters:\n', g.pcs_declarations.str())
@@ -741,6 +743,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	extern_out_str := g.extern_out.str()
 	b.write_string(out_str)
 	b.writeln('// THE END.')
+	b.write_string2('\n // V postincludes:\n', g.postincludes.str())
 	util.timing_measure('cgen common')
 	$if trace_all_generic_fn_keys ? {
 		gkeys := g.table.fn_generic_types.keys()
@@ -5436,6 +5439,21 @@ fn (mut g Gen) gen_option_error(target_type ast.Type, expr ast.Expr) {
 	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
 }
 
+fn (mut g Gen) hash_stmt_guarded_include(node ast.HashStmt) string {
+	mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
+	if node.msg != '' {
+		missing_message += ' ${node.msg}.'
+	} else {
+		missing_message += ' Please install the corresponding development headers.'
+	}
+	mut guarded_include := get_guarded_include_text(node.main, missing_message)
+	if node.main == '<errno.h>' {
+		// fails with musl-gcc and msvc; but an unguarded include works:
+		guarded_include = '#include ${node.main}'
+	}
+	return guarded_include
+}
+
 fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 	line_nr := node.pos.line_nr + 1
 	mut ct_condition := ''
@@ -5451,17 +5469,7 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 	}
 	// #include etc
 	if node.kind == 'include' {
-		mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
-		if node.msg != '' {
-			missing_message += ' ${node.msg}.'
-		} else {
-			missing_message += ' Please install the corresponding development headers.'
-		}
-		mut guarded_include := get_guarded_include_text(node.main, missing_message)
-		if node.main == '<errno.h>' {
-			// fails with musl-gcc and msvc; but an unguarded include works:
-			guarded_include = '#include ${node.main}'
-		}
+		guarded_include := g.hash_stmt_guarded_include(node)
 		if node.main.contains('.m') {
 			g.definitions.writeln('')
 			if ct_condition != '' {
@@ -5486,17 +5494,7 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 			}
 		}
 	} else if node.kind == 'preinclude' {
-		mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
-		if node.msg != '' {
-			missing_message += ' ${node.msg}.'
-		} else {
-			missing_message += ' Please install the corresponding development headers.'
-		}
-		mut guarded_include := get_guarded_include_text(node.main, missing_message)
-		if node.main == '<errno.h>' {
-			// fails with musl-gcc and msvc; but an unguarded include works:
-			guarded_include = '#include ${node.main}'
-		}
+		guarded_include := g.hash_stmt_guarded_include(node)
 		if node.main.contains('.m') {
 			// Might need to support '#preinclude' for .m files as well but for the moment
 			// this does the same as '#include' for them
@@ -5521,6 +5519,17 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 			if ct_condition != '' {
 				g.preincludes.writeln('#endif // \$if ${ct_condition}')
 			}
+		}
+	} else if node.kind == 'postinclude' {
+		guarded_include := g.hash_stmt_guarded_include(node)
+		g.postincludes.writeln('')
+		if ct_condition != '' {
+			g.postincludes.writeln('#if ${ct_condition}')
+		}
+		g.postincludes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+		g.postincludes.writeln(guarded_include)
+		if ct_condition != '' {
+			g.postincludes.writeln('#endif // \$if ${ct_condition}')
 		}
 	} else if node.kind == 'insert' {
 		if ct_condition != '' {

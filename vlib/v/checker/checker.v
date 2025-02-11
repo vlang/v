@@ -2612,7 +2612,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		return
 	}
 	match node.kind {
-		'include', 'insert', 'preinclude' {
+		'include', 'insert', 'preinclude', 'postinclude' {
 			original_flag := node.main
 			mut flag := node.main
 			if flag.contains('@VROOT') {
@@ -2655,7 +2655,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				node.main = d
 			}
 			flag_no_comment := flag.all_before('//').trim_space()
-			if node.kind == 'include' || node.kind == 'preinclude' {
+			if node.kind in ['include', 'preinclude', 'postinclude'] {
 				if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"'))
 					|| (flag_no_comment.starts_with('<') && flag_no_comment.ends_with('>'))) {
 					c.error('including C files should use either `"header_file.h"` or `<header_file.h>` quoting',

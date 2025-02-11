@@ -75,7 +75,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 
 			match node.kind {
-				'include', 'preinclude', 'define', 'insert' {
+				'include', 'preinclude', 'postinclude', 'define', 'insert' {
 					g.v_error('#${node.kind} is not supported with the native backend',
 						node.pos)
 				}

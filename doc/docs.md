@@ -7949,26 +7949,36 @@ seamlessly across all platforms.
 However, since the Windows header libraries use extremely generic names such as `Rectangle`,
 this will cause a conflict if you wish to use C code that also has a name defined as `Rectangle`.
 
-For very specific cases like this, we have `#preinclude`.
+For very specific cases like this, V has `#preinclude` and `#postinclude` directives.
 
-This will allow things to be configured before V adds in its built in libraries.
+These directives allow things to be configured *before* V adds in its built in libraries,
+and *after* all of the V code generation has completed (and thus all of the prototypes,
+declarations and definitions are already present).
 
 Example usage:
 ```v ignore
 // This will include before built in libraries are used.
 #preinclude "pre_include.h"
+
 // This will include after built in libraries are used.
 #include "include.h"
+
+// This will include after all of the V code generation is complete,
+// including the one for the main function of the project
+#postinclude "post_include.h"
 ```
 
 An example of what might be included in `pre_include.h`
 can be [found here](https://github.com/irishgreencitrus/raylib.v/blob/main/include/pre.h)
 
-This is an advanced feature, and will not be necessary
-outside of very specific cases with C interop,
-meaning it could cause more issues than it solves.
+The `#postinclude` directive on the other hand is useful for allowing the integration
+of frameworks like SDL3 or Sokol, that insist on having callbacks in your code, instead
+of behaving like ordinary libraries, and allowing you to decide when to call them.
 
-Consider it last resort!
+NOTE: these are advanced features, and will not be necessary outside of very specific cases
+with C interop. Other than those, using them could cause more issues than it solves.
+
+Consider using them as a last resort!
 
 ## Other V Features
 
