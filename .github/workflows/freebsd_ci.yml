@@ -25,7 +25,7 @@ on:
 jobs:
   test-on-freebsd-14-x86:
     runs-on: ubuntu-latest
-    name: Run a FreeBSD VM
+    name: Run a FreeBSD 14 x86 VM
     steps:
       - uses: actions/checkout@v4
       - name: Test in FreeBSD
