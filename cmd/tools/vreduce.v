@@ -44,15 +44,14 @@ fn main() {
 	content := os.read_file(file_path)!
 	assert string_reproduces(content, error_msg, command)
 	show_code_stats(content, label: 'Original code size')
-	mut tree := parse(content)
-
+	
 	// start tests
-	tmp_code := create_code(tree)
+	tmp_code := create_code(parse(content))
 	assert string_reproduces(tmp_code, error_msg, command)
 	show_code_stats(tmp_code, label: 'Code size without comments')
 
 	// reduce the code
-	reduce_scope(mut tree, error_msg, command, do_fmt)
+	reduce_scope(content, error_msg, command, do_fmt)
 }
 
 // Return true if the command ran on the file produces the pattern
@@ -77,6 +76,7 @@ type Elem = string | Scope
 @[heap]
 struct Scope {
 mut:
+	fn_scope    bool   // contains a function (string: signature{}, children: function body)
 	ignored     bool   // is the scope ignored when creating the file
 	tmp_ignored bool   // used when testing if it can be ignored in the file
 	children    []Elem // code blocks (strings & children scope
@@ -96,6 +96,20 @@ fn parse(file string) Scope { // The parser is surely incomplete for the V synta
 			for file[i] != `\n` { // comment -> skip until newline
 				i++
 			}
+		} else if file[i] == `\n` && file[i-1] == `\n` {
+			i++ // remove excess newlines
+		} else if file[i] == `\t` {
+			i++ // remove tabs for easier processing
+		} else if file[i] == `f` && file[i + 1] == `n`&& file[i+2] == ` ` && file[i-1] or {`\n`} == `\n` {
+			top.children << current_string
+			// no increase in scope because not handled with {}
+			current_string = ''
+			top.children << &Scope{fn_scope: true}
+			stack << &(top.children[top.children.len - 1] as Scope)
+			current_string += file[i].ascii_str() // f
+			i++
+			current_string += file[i].ascii_str() // n
+			i++
 		} else if file[i] == `/` && file[i + 1] == `*` {
 			i++
 			i++
@@ -142,12 +156,23 @@ fn parse(file string) Scope { // The parser is surely incomplete for the V synta
 		} else if file[i] == `}` {
 			scope_level -= 1
 			assert scope_level >= 0, 'The scopes are not well detected ${stack[0]}'
-			top.children << current_string
+			if current_string != '' {
+				top.children << current_string
+			}
+			if stack.last().children == [] {
+				stack[stack.len-2].children.delete(stack[stack.len-2].children.len - 1) // delete the empty scope (the last children because top of the stack)
+			} 
 			stack.pop()
 			top = stack[stack.len - 1]
 			current_string = ''
 			current_string += file[i].ascii_str() // }
 			i++
+			if scope_level == 0 && stack.len == 2 { // the function and the body scope
+				top.children << current_string
+				stack.pop()
+				top = stack[stack.len - 1]
+				current_string = ''
+			}
 		} else {
 			current_string += file[i].ascii_str()
 			i++
@@ -157,7 +182,7 @@ fn parse(file string) Scope { // The parser is surely incomplete for the V synta
 	top = stack[stack.len - 1]
 	top.children << current_string // last part of the file
 	assert scope_level == 0, 'The scopes are not well detected'
-	assert stack.len == 1, 'The stack should only have the BODY scope'
+	assert stack.len == 1, 'The stack should only have the body scope'
 	return *stack[0]
 }
 
@@ -183,41 +208,46 @@ fn create_code(sc Scope) string {
 }
 
 // Reduces the code contained in the scope tree and writes the reduced code to `rpdc.v`
-fn reduce_scope(mut sc Scope, error_msg string, command string, do_fmt bool) {
+fn reduce_scope(content string, error_msg string, command string, do_fmt bool) {
+	mut sc := parse('') // will get filled in the start of the loop
 	println('Cleaning the scopes')
-	mut modified_smth := true // was a modification successful in reducing the code in the last iteration
-	for modified_smth { // as long as there are successful modifications
-		modified_smth = false
-		println('NEXT ITERATION, loop 1')
-		mut stack := []&Elem{}
-		for i in 0 .. sc.children.len {
-			stack << &sc.children[i]
-		}
-		for stack.len > 0 { // traverse the tree and disable (ignore) scopes that are not needed for reproduction
-			mut item := stack.pop()
-			if mut item is Scope {
-				if !item.ignored {
-					item.tmp_ignored = true // try to ignore it
-					code := create_code(sc)
-					item.tmp_ignored = false // dont need it anymore
-					if string_reproduces(code, error_msg, command) {
-						item.ignored = true
-						modified_smth = true
-						show_code_stats(code)
-					} else { // if can remove it, no need to go though it's children
-						for i in 0 .. item.children.len {
-							stack << &item.children[i]
+	mut text_code := content
+	mut outer_modified_smth := true
+	for outer_modified_smth {
+		sc = parse(text_code)
+		outer_modified_smth = false
+		mut modified_smth := true // was a modification successful in reducing the code in the last iteration
+		for modified_smth { // as long as there are successful modifications
+			modified_smth = false
+			println('NEXT ITERATION, loop 1')
+			mut stack := []&Elem{}
+			for i in 0 .. sc.children.len {
+				stack << &sc.children[i]
+			}
+			for stack.len > 0 { // traverse the tree and disable (ignore) scopes that are not needed for reproduction
+				mut item := stack.pop()
+				if mut item is Scope {
+					if !item.ignored {
+						item.tmp_ignored = true // try to ignore it
+						code := create_code(sc)
+						item.tmp_ignored = false // dont need it anymore
+						if string_reproduces(code, error_msg, command) {
+							item.ignored = true
+							modified_smth = true
+							outer_modified_smth = true
+							show_code_stats(code)
+						} else { // if can remove it, no need to go though it's children
+							for i in 0 .. item.children.len {
+								stack << &item.children[i]
+							}
 						}
 					}
 				}
 			}
 		}
-	}
-
-	mut text_code := create_code(sc)
-	mut regen_tree_modified_smth := true
-	for regen_tree_modified_smth {
-		regen_tree_modified_smth = false
+		
+		text_code = create_code(sc)
+		
 		println('Processing remaining lines')
 		split_code := text_code.split_into_lines() // dont forget to add back the \n
 		// Create the binary tree of the lines
@@ -268,7 +298,7 @@ fn reduce_scope(mut sc Scope, error_msg string, command string, do_fmt bool) {
 						if string_reproduces(code, error_msg, command) {
 							item.ignored = true
 							modified_smth = true
-							regen_tree_modified_smth = true
+							outer_modified_smth = true
 							show_code_stats(code)
 						} else { // if can remove it, can remove it's children
 							for i in 0 .. item.children.len {
