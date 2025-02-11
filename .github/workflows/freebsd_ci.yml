@@ -21,26 +21,48 @@ jobs:
     runs-on: ubuntu-latest
     name: A simple job to test running in a FreeBSD VM
     env:
-      MYTOKEN: ${{ secrets.MYTOKEN }}
+      MYTOKEN: "value1"
       MYTOKEN2: "value2"
     steps:
       - uses: actions/checkout@v4
       - name: Test in FreeBSD
-        id: test
+        id: test-freebsd-runs-in-vm
         uses: vmactions/freebsd-vm@v1
         with:
           envs: 'MYTOKEN MYTOKEN2'
           usesh: true
           prepare: |
-            pkg install -y curl
+            pkg install -y curl git make
 
           run: |
-            pwd
-            ls -lah
-            whoami
-            env
             freebsd-version
             sysctl hw.model
             sysctl hw.ncpu
             sysctl hw.physmem
             sysctl hw.usermem
+            echo 'number of detected processors:'
+            getconf _NPROCESSORS_ONLN
+            whoami
+            pwd
+            ls -lah
+            git log -n1
+            cc --version
+            echo '----------------------------------------------------------'
+            echo 'Building local V'
+            make CFLAGS=
+            echo '----------------------------------------------------------'
+            echo 'Build cmd/tools/fast'
+            cd cmd/tools/fast && ../../../v fast.v ## && ./fast -clang
+            echo '----------------------------------------------------------'
+            echo 'Test the math module'
+            ./v test vlib/math
+            echo '----------------------------------------------------------'
+            echo 'Test the math module, using only the pure V versions,'
+            echo '                      without the .c.v overrides'
+            ./v -exclude @vlib/math/*.c.v test vlib/math
+            echo '----------------------------------------------------------'
+            echo 'Test modules using thirdparty/zip'
+            ./v test vlib/compress/
+            echo '----------------------------------------------------------'
+            echo 'Run test-self'
+            VTEST_JUST_ESSENTIAL=1 ./v test-self
