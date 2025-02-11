@@ -1,4 +1,4 @@
-name: CI Linux
+name: CI FreeBSD
 on:
   workflow_dispatch:
   push:
