@@ -214,70 +214,76 @@ fn reduce_scope(mut sc Scope, error_msg string, command string, do_fmt bool) {
 		}
 	}
 
-	println('Processing remaining lines')
-	tmp_code := create_code(sc).split_into_lines() // dont forget to add back the \n
-	// Create the binary tree of the lines
-	depth := int(math.log2(tmp_code.len)) + 1
-	mut c := 0
-	mut line_stack := []&Scope{}
-	line_stack << &Scope{}
-	for c < tmp_code.len {
-		l1 := line_stack.len
-		if l1 <= depth { // or equal because of the first node
-			if line_stack[l1 - 1].children.len < 2 {
-				line_stack[l1 - 1].children << &Scope{}
-				l2 := line_stack[l1 - 1].children.len
-				line_stack << &(line_stack[l1 - 1].children[l2 - 1] as Scope)
+	mut text_code := create_code(sc)
+	mut regen_tree_modified_smth := true
+	for regen_tree_modified_smth {
+		regen_tree_modified_smth = false
+		println('Processing remaining lines')
+		split_code := text_code.split_into_lines() // dont forget to add back the \n
+		// Create the binary tree of the lines
+		depth := int(math.log2(split_code.len)) + 1
+		mut c := 0
+		mut line_stack := []&Scope{}
+		line_stack << &Scope{}
+		for c < split_code.len {
+			l1 := line_stack.len
+			if l1 <= depth { // or equal because of the first node
+				if line_stack[l1 - 1].children.len < 2 {
+					line_stack[l1 - 1].children << &Scope{}
+					l2 := line_stack[l1 - 1].children.len
+					line_stack << &(line_stack[l1 - 1].children[l2 - 1] as Scope)
+				} else {
+					line_stack.pop()
+				}
 			} else {
-				line_stack.pop()
-			}
-		} else {
-			if line_stack[l1 - 1].children.len != 0 { // if there is already a string
-				line_stack.pop()
-			} else {
-				line_stack[l1 - 1].children << tmp_code[c] + '\n' // the \n were removed by the split
-				c++
-				line_stack.pop() // already a string
+				if line_stack[l1 - 1].children.len != 0 { // if there is already a string
+					line_stack.pop()
+				} else {
+					line_stack[l1 - 1].children << split_code[c] + '\n' // the \n were removed by the split
+					c++
+					line_stack.pop() // already a string
+				}
 			}
 		}
-	}
 
-	// Traverse the tree and prune the useless lines / line groups for the reproduction
-	mut line_tree := *line_stack[0]
-	assert string_reproduces(create_code(line_tree), error_msg, command) // should be the same
-	println('Pruning the lines/line groups')
-	modified_smth = true
-	for modified_smth {
-		modified_smth = false
-		println('NEXT ITERATION, loop 2')
-		mut stack := []&Elem{}
-		for i in 0 .. line_tree.children.len {
-			stack << &line_tree.children[i]
-		}
-		for stack.len > 0 { // traverse the binary tree (of the lines)
-			mut item := stack.pop()
-			if mut item is Scope {
-				if !item.ignored {
-					item.tmp_ignored = true
-					code := create_code(line_tree)
-					item.tmp_ignored = false // dont need it anymore
-					if string_reproduces(code, error_msg, command) {
-						item.ignored = true
-						modified_smth = true
-						show_code_stats(code)
-					} else { // if can remove it, can remove it's children
-						for i in 0 .. item.children.len {
-							stack << &item.children[i]
+		// Traverse the tree and prune the useless lines / line groups for the reproduction
+		mut line_tree := *line_stack[0]
+		assert string_reproduces(create_code(line_tree), error_msg, command) // should be the same
+		println('Pruning the lines/line groups')
+		modified_smth = true
+		for modified_smth {
+			modified_smth = false
+			println('NEXT ITERATION, loop 2')
+			mut stack := []&Elem{}
+			for i in 0 .. line_tree.children.len {
+				stack << &line_tree.children[i]
+			}
+			for stack.len > 0 { // traverse the binary tree (of the lines)
+				mut item := stack.pop()
+				if mut item is Scope {
+					if !item.ignored {
+						item.tmp_ignored = true
+						code := create_code(line_tree)
+						item.tmp_ignored = false // dont need it anymore
+						if string_reproduces(code, error_msg, command) {
+							item.ignored = true
+							modified_smth = true
+							regen_tree_modified_smth = true
+							show_code_stats(code)
+						} else { // if can remove it, can remove it's children
+							for i in 0 .. item.children.len {
+								stack << &item.children[i]
+							}
 						}
 					}
 				}
 			}
 		}
+		text_code = create_code(line_tree)
 	}
 
-	mre := create_code(line_tree) // final minimal reproductible example
-	assert string_reproduces(mre, error_msg, command)
-	os.write_file('rpdc.v', mre) or { panic(err) }
+	assert string_reproduces(text_code, error_msg, command)
+	os.write_file('rpdc.v', text_code) or { panic(err) }
 	if do_fmt {
 		os.execute('v fmt -w rpdc.v')
 		final_content := os.read_file('rpdc.v') or { panic(err) }
