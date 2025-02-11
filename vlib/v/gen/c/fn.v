@@ -367,6 +367,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 		if is_liveshared {
 			if g.pref.os == .windows {
+				g.export_funcs << impl_fn_name
 				g.definitions.write_string('VV_EXPORTED_SYMBOL ${type_name} ${impl_fn_name}(')
 				g.write('VV_EXPORTED_SYMBOL ${type_name} ${impl_fn_name}(')
 			} else {
@@ -538,6 +539,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		if attr.name == 'export' {
 			weak := if node.attrs.any(it.name == 'weak') { 'VWEAK ' } else { '' }
 			g.writeln('// export alias: ${attr.arg} -> ${name}')
+			g.export_funcs << attr.arg
 			export_alias := '${weak}${type_name} ${fn_attrs}${attr.arg}(${arg_str})'
 			g.definitions.writeln('VV_EXPORTED_SYMBOL ${export_alias}; // exported fn ${node.name}')
 			g.writeln('${export_alias} {')
