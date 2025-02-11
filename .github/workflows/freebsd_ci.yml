@@ -39,6 +39,8 @@ jobs:
             pkg install -y curl git gmake colordiff
 
           run: |
+            set -x ## print all commands as they are executed
+            echo $PATH
             freebsd-version
             sysctl hw.model
             sysctl hw.ncpu
@@ -49,24 +51,26 @@ jobs:
             whoami
             pwd
             ls -lah
+            git config --global --add safe.directory /home/runner/work/v/v
             git log -n1
             cc --version
             echo '----------------------------------------------------------'
             echo 'Building local V'
-            make CFLAGS=
+            make
+            ./v symlink
             echo '----------------------------------------------------------'
             echo 'Build cmd/tools/fast'
-            cd cmd/tools/fast && ../../../v fast.v ## && ./fast -clang
+            (cd cmd/tools/fast && v fast.v) ## && ./fast -clang
             echo '----------------------------------------------------------'
             echo 'Test the math module'
-            ./v test vlib/math
+            v test vlib/math
             echo '----------------------------------------------------------'
             echo 'Test the math module, using only the pure V versions,'
             echo '                      without the .c.v overrides'
-            ./v -exclude @vlib/math/*.c.v test vlib/math
+            v -exclude @vlib/math/*.c.v test vlib/math
             echo '----------------------------------------------------------'
             echo 'Test modules using thirdparty/zip'
-            ./v test vlib/compress/
+            v test vlib/compress/
             echo '----------------------------------------------------------'
             echo 'Run test-self'
             VTEST_JUST_ESSENTIAL=1 ./v test-self
