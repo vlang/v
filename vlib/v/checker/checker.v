@@ -324,6 +324,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// println('check_files')
 	// c.files = ast_files
 	mut has_main_mod_file := false
+	mut has_no_main_mod_file := false
 	mut has_main_fn := false
 	unsafe {
 		mut files_from_main_module := []&ast.File{}
@@ -331,6 +332,9 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			mut file := ast_files[i]
 			c.timers.start('checker_check ${file.path}')
 			c.check(mut file)
+			if file.mod.name == 'no_main' {
+				has_no_main_mod_file = true
+			}
 			if file.mod.name == 'main' {
 				files_from_main_module << file
 				has_main_mod_file = true
@@ -444,6 +448,9 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	if c.pref.no_builtin {
 		// `v -no-builtin module/` do not necessarily need to have a `main` function
 		// This is useful for compiling linux kernel modules for example.
+		return
+	}
+	if has_no_main_mod_file {
 		return
 	}
 	if !has_main_mod_file {
