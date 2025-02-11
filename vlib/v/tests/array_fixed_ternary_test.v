@@ -4,8 +4,8 @@ fn test_main() {
 
 	a := if true { [0]! } else { [1]! }
 	b := if true { [0] } else { [1] }
-	dump(a)
-	dump(b)
+	assert a.str() == '[0]'
+	assert b.str() == '[0]'
 }
 
 fn test_match() {
@@ -24,5 +24,5 @@ fn test_match() {
 		5 { ['Big', '5x5']! }
 		else { ['Large', '6x6']! }
 	}
-	dump(w)
+	assert w.str() == "['Large', '6x6']"
 }
