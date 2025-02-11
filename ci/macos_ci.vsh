@@ -10,7 +10,7 @@ fn test_cross_compilation() {
 }
 
 fn build_with_cstrict() {
-	exec('v -cg -cstrict -o v cmd/v')
+	exec('v -cg -cstrict -o vstrict1 cmd/v')
 }
 
 fn all_code_is_formatted() {
