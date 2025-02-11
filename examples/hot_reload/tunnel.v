@@ -11,12 +11,7 @@ fn main() {
 		width:        1024
 		height:       768
 		frame_fn:     unsafe { state.draw }
-		event_fn:     fn (event &gg.Event, ctx voidptr) {
-			if event.typ == .char && event.char_code == `f` {
-				gg.toggle_fullscreen()
-				return
-			}
-		}
+		event_fn:     unsafe { state.on_event }
 	)
 }
 
@@ -35,6 +30,7 @@ struct State {
 mut:
 	t       f32
 	real_t  f32
+	drt     f32 = 0.1
 	tparams gg.DrawTextParams
 	rects   []BigRect
 }
@@ -45,7 +41,9 @@ const colors = []gg.Color{len: 1024, init: gg.Color{u8(100 +
 
 fn init_state() State {
 	mut state := State{
-		real_t:  1300
+		t:       0
+		real_t:  120
+		drt:     0.1
 		tparams: gg.DrawTextParams{
 			x:     40
 			size:  20
@@ -69,6 +67,41 @@ fn init_state() State {
 	return state
 }
 
+fn (mut state State) on_event(e &gg.Event, ctx voidptr) {
+	if e.typ == .char {
+		if e.char_code == `f` {
+			gg.toggle_fullscreen()
+			return
+		}
+		if e.char_code == `1` {
+			state.real_t -= 100
+		}
+		if e.char_code == `2` {
+			state.real_t += 100
+		}
+		if e.char_code == `3` {
+			state.t -= 100
+		}
+		if e.char_code == `4` {
+			state.t += 100
+		}
+		if e.char_code == `5` {
+			state.rects[0].w += 10
+		}
+		if e.char_code == `6` {
+			state.rects[0].w -= 10
+		}
+		if e.char_code == `r` {
+			state.real_t = 120
+			state.t = 0
+			state.rects[0].w = 30
+		}
+		if e.char_code == ` ` {
+			state.drt = if state.drt > 0.0001 { f32(0.0) } else { 0.1 }
+		}
+	}
+}
+
 fn (mut state State) draw(ctx &gg.Context) {
 	update(mut state)
 	ctx.begin()
@@ -80,7 +113,7 @@ fn (mut state State) draw(ctx &gg.Context) {
 	ctx.draw_text2(gg.DrawTextParams{
 		...state.tparams
 		y:    0
-		text: 'real_t: ${state.real_t:7.3f}, r: ${state.t:7.3f}, r0.x: ${r0.x:7.3f}, r0.y: ${r0.y:7.3f}'
+		text: 'rt[1,2]: ${state.real_t:08.3f}, t[3,4]: ${state.t:08.3f}, r0.x: ${r0.x:07.3f}, r0.y: ${r0.y:07.3f}, r0.w[5,6]: ${r0.w:4.1f}, [f]-toggle fs, [r]-reset, [ ]-pause'
 	})
 	draw_center_point(ctx, r0, state.t)
 	ctx.show_fps()
@@ -89,8 +122,11 @@ fn (mut state State) draw(ctx &gg.Context) {
 
 @[live]
 fn update(mut state State) {
-	state.real_t += 0.1
-	state.t += 0.5 * math.sinf(state.real_t / 7000)
+	if state.drt <= 0.0001 {
+		return
+	}
+	state.real_t += state.drt
+	state.t += 0.5 * math.sinf(state.real_t / 1000)
 	mut r0 := &state.rects[0]
 	r0.t = state.t
 	r0.x = 550 + 450 * math.sinf(state.t / 10) * math.sinf(state.t / 50)
