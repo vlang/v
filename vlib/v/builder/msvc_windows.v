@@ -338,7 +338,7 @@ pub fn (mut v Builder) cc_msvc() {
 	a << real_libs.join(' ')
 	a << '/link'
 	a << '/nologo' // NOTE: /NOLOGO is explicitly not recognised!
-	a << '/OUT:"${v.pref.out_name}"'
+	a << '/OUT:${os.quoted_path(v.pref.out_name)}'
 	a << r.library_paths()
 	if !all_cflags.contains('/DEBUG') {
 		// only use /DEBUG, if the user *did not* provide its own:
