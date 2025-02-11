@@ -40,9 +40,6 @@ jobs:
           copyback: false
           prepare: pkg install -y git sqlite3 bash
           run: |
-            pwd
-            ls -la .
-            ls -la ./.github/workflows/freebsd_ci.sh
             ./.github/workflows/freebsd_ci.sh
 
   test-on-freebsd-15-aarch64:
@@ -61,7 +58,4 @@ jobs:
           copyback: false
           prepare: pkg install -y git sqlite3 bash
           run: |
-            pwd
-            ls -la .
-            ls -la ./.github/workflows/freebsd_ci.sh
             ./.github/workflows/freebsd_ci.sh
