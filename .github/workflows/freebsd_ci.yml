@@ -1,4 +1,5 @@
 name: CI FreeBSD
+
 on:
   workflow_dispatch:
   push:
@@ -7,70 +8,50 @@ on:
       - '**.yml'
       - 'cmd/tools/**'
       - '!**/freebsd_ci.yml'
+      - '!**/freebsd_ci.sh'
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
       - '**.md'
       - '**.yml'
       - 'cmd/tools/**'
-      - '!**/frebsd_ci.yml'
+      - '!**/freebsd_ci.yml'
+      - '!**/freebsd_ci.sh'
       - '!cmd/tools/builders/**.v'
 
+### See https://github.com/vmactions/freebsd-vm
+### for a description of the used fields here
+
 jobs:
-  test-on-freebsd:
+  test-on-freebsd-14-x86:
     runs-on: ubuntu-latest
-    name: A simple job to test running in a FreeBSD VM
-    env:
-      MYTOKEN: "value1"
-      MYTOKEN2: "value2"
+    name: Run a FreeBSD VM
     steps:
       - uses: actions/checkout@v4
       - name: Test in FreeBSD
         id: test-freebsd-runs-in-vm
         uses: vmactions/freebsd-vm@v1
         with:
-          ## release: "15.0"
+          release: "14.0"
           ## arch: aarch64
           mem: 2048
           ## cpu: 3
-          envs: 'MYTOKEN MYTOKEN2'
           usesh: true
-          prepare: |
-            pkg install -y curl git gmake colordiff sqlite3
+          prepare: pkg install -y curl git gmake colordiff sqlite3
+          run: .github/workflows/freebsd_ci.sh
 
-          run: |
-            set -x ## print all commands as they are executed
-            echo $PATH
-            freebsd-version
-            sysctl hw.model
-            sysctl hw.ncpu
-            sysctl hw.physmem
-            sysctl hw.usermem
-            echo 'number of detected processors:'
-            getconf _NPROCESSORS_ONLN
-            whoami
-            pwd
-            ls -lah
-            git config --global --add safe.directory /home/runner/work/v/v
-            git log -n1
-            cc --version
-            echo '----------------------------------------------------------'
-            echo 'Building local V'
-            make
-            ./v symlink
-            echo '----------------------------------------------------------'
-            echo 'Build cmd/tools/fast'
-            (cd cmd/tools/fast && v fast.v) ## && ./fast -clang
-            echo '----------------------------------------------------------'
-            echo 'Test the math module'
-            v test vlib/math
-            echo '----------------------------------------------------------'
-            echo 'Test the math module, using only the pure V versions,'
-            echo '                      without the .c.v overrides'
-            v -exclude @vlib/math/*.c.v test vlib/math
-            echo '----------------------------------------------------------'
-            echo 'Test modules using thirdparty/zip'
-            v test vlib/compress/
-            echo '----------------------------------------------------------'
-            echo 'Run test-self'
-            VTEST_JUST_ESSENTIAL=1 ./v test-self
+  test-on-freebsd-15-aarch64:
+    runs-on: ubuntu-latest
+    name: Run a FreeBSD 15 aarch64 VM
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test in FreeBSD
+        id: test-freebsd-runs-in-vm
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "15.0"
+          arch: aarch64
+          mem: 2048
+          usesh: true
+          prepare: pkg install -y curl git gmake colordiff sqlite3
+          run: .github/workflows/freebsd_ci.sh
