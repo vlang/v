@@ -20,8 +20,8 @@ git log -n1
 echo '----------------------------------------------------------'
 cc --version
 echo '----------------------------------------------------------'
-echo 'Building local V'
-make
+echo 'Building local V, without optimisations, which are too slow on the emulated ARM VM'
+make CFLAGS=
 ./v symlink
 echo '----------------------------------------------------------'
 echo 'Build cmd/tools/fast'
