@@ -37,7 +37,8 @@ jobs:
           mem: 2048
           ## cpu: 3
           usesh: true
-          prepare: pkg install -y curl git gmake colordiff sqlite3
+          copyback: false
+          prepare: pkg install -y curl git gmake colordiff sqlite3 bash
           run: |
             pwd
             ls -la .
@@ -57,7 +58,8 @@ jobs:
           arch: aarch64
           mem: 2048
           usesh: true
-          prepare: pkg install -y curl git gmake colordiff sqlite3
+          copyback: false
+          prepare: pkg install -y curl git gmake colordiff sqlite3 bash
           run: |
             pwd
             ls -la .
