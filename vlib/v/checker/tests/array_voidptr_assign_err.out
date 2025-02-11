@@ -1,0 +1,19 @@
+vlib/v/checker/tests/array_voidptr_assign_err.vv:2:6: warning: unused variable: `a`
+    1 | fn main() {
+    2 |     mut a := []int{}
+      |         ^
+    3 |     a = unsafe { nil }
+    4 |
+vlib/v/checker/tests/array_voidptr_assign_err.vv:3:6: error: cannot assign to `a`: expected `[]int`, not `voidptr`
+    1 | fn main() {
+    2 |     mut a := []int{}
+    3 |     a = unsafe { nil }
+      |         ~~~~~~
+    4 | 
+    5 |     // vfmt off
+vlib/v/checker/tests/array_voidptr_assign_err.vv:6:6: error: cannot assign to `a`: expected `[]int`, not `voidptr`
+    4 | 
+    5 |     // vfmt off
+    6 |     a = voidptr(0)
+      |         ~~~~~~~~~~
+    7 | }

@@ -801,6 +801,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface
 			&& ((!right_type.has_flag(.generic) && !left_type.has_flag(.generic))
 			|| right_sym.kind != left_sym.kind) {
+			// Disallow `array = voidptr` assign
+			if left_sym.kind in [.array, .array_fixed]
+				&& (right_type_unwrapped.is_voidptr() || right.is_nil()) {
+				left_str := c.table.type_to_str(left_type_unwrapped)
+				right_str := c.table.type_to_str(right_type_unwrapped)
+				c.error('cannot assign to `${left}`: expected `${left_str}`, not `${right_str}`',
+					right.pos())
+			}
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)
