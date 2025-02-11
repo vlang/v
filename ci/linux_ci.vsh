@@ -50,8 +50,8 @@ fn v_doctor() {
 //
 
 fn build_v_with_prealloc() {
-	exec('v -d debug_malloc -d debug_realloc -o v cmd/v')
-	exec('v -cg -cstrict -o v cmd/v')
+	exec('v -d debug_malloc -d debug_realloc -o vdebug1 cmd/v')
+	exec('v -cg -cstrict -o vstrict1 cmd/v')
 	exec('v -o vrealloc -prealloc cmd/v && ./vrealloc -o v3 cmd/v && ./v3 -o v4 cmd/v')
 }
 
@@ -68,7 +68,7 @@ fn install_dependencies_for_examples_and_tools_tcc() {
 
 fn test_v_to_c_tcc() {
 	exec('thirdparty/tcc/tcc.exe -version')
-	exec('v -cg -o v cmd/v') // ensure vtcc can build itself twice
+	exec('v -cg -o vtcc cmd/v') // ensure vtcc can build itself twice
 }
 
 fn v_self_compilation_tcc() {
@@ -175,7 +175,7 @@ fn install_dependencies_for_examples_and_tools_gcc() {
 }
 
 fn recompile_v_with_cstrict_gcc() {
-	exec('v -cc gcc -cg -cstrict -o v cmd/v')
+	exec('v -cc gcc -cg -cstrict -o vstrict cmd/v')
 }
 
 fn valgrind_v_c_gcc() {
@@ -292,7 +292,7 @@ fn install_dependencies_for_examples_and_tools_clang() {
 }
 
 fn recompile_v_with_cstrict_clang() {
-	exec('v -cc clang -cg -cstrict -o v cmd/v')
+	exec('v -cc clang -cg -cstrict -o vstrict cmd/v')
 }
 
 fn valgrind_clang() {

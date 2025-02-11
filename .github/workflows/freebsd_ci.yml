@@ -8,7 +8,7 @@ on:
       - '**.yml'
       - 'cmd/tools/**'
       - '!**/freebsd_ci.yml'
-      - '!**/freebsd_ci.sh'
+      - '!ci/freebsd_ci.vsh'
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
@@ -16,7 +16,7 @@ on:
       - '**.yml'
       - 'cmd/tools/**'
       - '!**/freebsd_ci.yml'
-      - '!**/freebsd_ci.sh'
+      - '!ci/freebsd_ci.vsh'
       - '!cmd/tools/builders/**.v'
 
 ### See https://github.com/vmactions/freebsd-vm
@@ -38,7 +38,15 @@ jobs:
           copyback: false
           prepare: pkg install -y git sqlite3 bash
           run: |
-            ./.github/workflows/freebsd_ci.sh
+            git config --global --add safe.directory /home/runner/work/v/v
+            make CFLAGS=
+            ./v symlink
+            ./v run ci/freebsd_ci.vsh v_doctor
+            ./v run ci/freebsd_ci.vsh verify_v_test_works
+            ./v run ci/freebsd_ci.vsh build_fast_script
+            ./v run ci/freebsd_ci.vsh check_math
+            ./v run ci/freebsd_ci.vsh check_compress
+            ./v run ci/freebsd_ci.vsh run_essential_tests
 
 ##### Run a FreeBSD 14 x86 VM:
 ##### [ 2/25] C:   808.5 ms, R:     3.835 ms vlib/math/big/array_ops_test.v
