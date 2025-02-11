@@ -23,39 +23,44 @@ on:
 ### for a description of the used fields here
 
 jobs:
-  test-on-freebsd-14-x86:
+  test-on-freebsd-14-2-x86:
     runs-on: ubuntu-latest
-    name: Run a FreeBSD 14 x86 VM
+    name: Run a FreeBSD 14.2 x86 VM
     steps:
       - uses: actions/checkout@v4
       - name: Test in FreeBSD
-        id: test-freebsd-14-runs-in-vm
+        id: test-freebsd-14-2-runs-in-vm
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.0"
-          ## arch: aarch64
-          mem: 2048
-          ## cpu: 3
+          release: "14.2"
+          mem: 4096
           usesh: true
           copyback: false
           prepare: pkg install -y git sqlite3 bash
           run: |
             ./.github/workflows/freebsd_ci.sh
 
-  test-on-freebsd-15-aarch64:
-    runs-on: ubuntu-latest
-    name: Run a FreeBSD 15 ARM VM
-    steps:
-      - uses: actions/checkout@v4
-      - name: Test in FreeBSD
-        id: test-freebsd-15-runs-in-vm
-        uses: vmactions/freebsd-vm@v1
-        with:
-          release: "15.0"
-          arch: aarch64
-          mem: 2048
-          usesh: true
-          copyback: false
-          prepare: pkg install -y git sqlite3 bash
-          run: |
-            ./.github/workflows/freebsd_ci.sh
+##### Run a FreeBSD 14 x86 VM:
+##### [ 2/25] C:   808.5 ms, R:     3.835 ms vlib/math/big/array_ops_test.v
+##### Run a FreeBSD 15 ARM VM
+##### [ 1/25] C: 15992.4 ms, R:   146.582 ms vlib/math/big/array_ops_test.v
+##### => the overhead is too much to be practical for the full test suite.
+##### It is still nice, that it works at all though ...
+##  test-on-freebsd-15-aarch64:
+##    runs-on: ubuntu-latest
+##    name: Run a FreeBSD 15 ARM VM
+##    steps:
+##      - uses: actions/checkout@v4
+##      - name: Test in FreeBSD
+##        id: test-freebsd-15-runs-in-vm
+##        uses: vmactions/freebsd-vm@v1
+##        with:
+##          release: "15.0"
+##          arch: aarch64
+##          ## cpu: 3
+##          mem: 4096
+##          usesh: true
+##          copyback: false
+##          prepare: pkg install -y git sqlite3 bash
+##          run: |
+##            ./.github/workflows/freebsd_ci.sh
