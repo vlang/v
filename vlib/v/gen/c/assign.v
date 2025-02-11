@@ -526,7 +526,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else {
 					g.write('{${styp} _ = ')
 				}
-				g.expr(val)
+				if val in [ast.MatchExpr, ast.IfExpr] && unaliased_right_sym.info is ast.ArrayFixed {
+					tmp_var := g.expr_with_var(val, var_type, false)
+					g.fixed_array_var_init(tmp_var, false, unaliased_right_sym.info.elem_type,
+						unaliased_right_sym.info.size)
+				} else {
+					g.expr(val)
+				}
 				g.writeln(';}')
 			}
 		} else if node.op == .assign && !g.pref.translated && (is_fixed_array_init
@@ -911,6 +917,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
+						} else if val in [ast.MatchExpr, ast.IfExpr]
+							&& unaliased_right_sym.info is ast.ArrayFixed {
+							tmp_var := g.expr_with_var(val, var_type, false)
+							g.fixed_array_var_init(tmp_var, false, unaliased_right_sym.info.elem_type,
+								unaliased_right_sym.info.size)
 						} else {
 							g.expr(val)
 						}
