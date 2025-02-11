@@ -337,6 +337,13 @@ pub fn (mut v Builder) cc_msvc() {
 	// Libs are passed to cl.exe which passes them to the linker
 	a << real_libs.join(' ')
 	a << '/link'
+	if v.pref.is_shared {
+		// generate a .def for export function names, avoid function name mangle
+		// must put after the /link flag!
+		def_name := v.pref.out_name[0..v.pref.out_name.len - 4]
+		a << '/DEF:' + os.quoted_path('${def_name}.def')
+	}
+
 	a << '/nologo' // NOTE: /NOLOGO is explicitly not recognised!
 	a << '/OUT:${os.quoted_path(v.pref.out_name)}'
 	a << r.library_paths()

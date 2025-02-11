@@ -263,7 +263,8 @@ mut:
 	has_debugger         bool   // $dbg has been used in the code
 	reflection_strings   &map[string]int
 	defer_return_tmp_var string
-	vweb_filter_fn_name  string // vweb__filter or x__vweb__filter, used by $vweb.html() for escaping strings in the templates, depending on which `vweb` import is used
+	vweb_filter_fn_name  string   // vweb__filter or x__vweb__filter, used by $vweb.html() for escaping strings in the templates, depending on which `vweb` import is used
+	export_funcs         []string // for .dll export function names
 }
 
 @[heap]
@@ -403,6 +404,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
 			global_g.shared_types.write(g.shared_types) or { panic(err) }
 			global_g.shared_functions.write(g.channel_definitions) or { panic(err) }
+			global_g.export_funcs << g.export_funcs
 
 			global_g.force_main_console = global_g.force_main_console || g.force_main_console
 
@@ -717,6 +719,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			helpers.writeln(fn_def)
 		}
 	}
+
+	if g.pref.is_shared && g.pref.os == .windows && g.export_funcs.len > 0 {
+		// generate a .def for export function names, avoid function name mangle
+		def_name := g.pref.out_name[0..g.pref.out_name.len - 4]
+		dll_name := g.pref.out_name.all_after_last('\\')
+		file_content := 'LIBRARY ${dll_name}.dll\n\nEXPORTS\n' + g.export_funcs.join('\n')
+		os.write_file('${def_name}.def', file_content) or { panic(err) }
+	}
+
 	// End of out_0.c
 
 	shelpers := helpers.str()
@@ -6366,6 +6377,7 @@ fn (mut g Gen) write_init_function() {
 		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((constructor))')
 		}
+		g.export_funcs << '_vinit_caller'
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		if g.nr_closures > 0 {
@@ -6377,6 +6389,7 @@ fn (mut g Gen) write_init_function() {
 		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((destructor))')
 		}
+		g.export_funcs << '_vcleanup_caller'
 		g.writeln('void _vcleanup_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vcleanup();')
