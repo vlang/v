@@ -32,7 +32,7 @@ jobs:
         id: test-freebsd-14-2-runs-in-vm
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.2"
+          release: '14.2'
           mem: 4096
           usesh: true
           copyback: false
