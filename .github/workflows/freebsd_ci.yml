@@ -41,12 +41,7 @@ jobs:
             git config --global --add safe.directory /home/runner/work/v/v
             make CFLAGS=
             ./v symlink
-            ./v run ci/freebsd_ci.vsh v_doctor
-            ./v run ci/freebsd_ci.vsh verify_v_test_works
-            ./v run ci/freebsd_ci.vsh build_fast_script
-            ./v run ci/freebsd_ci.vsh check_math
-            ./v run ci/freebsd_ci.vsh check_compress
-            ./v run ci/freebsd_ci.vsh run_essential_tests
+            ./v run ci/freebsd_ci.vsh all
 
 ##### Run a FreeBSD 14 x86 VM:
 ##### [ 2/25] C:   808.5 ms, R:     3.835 ms vlib/math/big/array_ops_test.v
