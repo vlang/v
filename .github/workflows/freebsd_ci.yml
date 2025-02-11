@@ -29,10 +29,14 @@ jobs:
         id: test-freebsd-runs-in-vm
         uses: vmactions/freebsd-vm@v1
         with:
+          ## release: "15.0"
+          ## arch: aarch64
+          mem: 2048
+          ## cpu: 3
           envs: 'MYTOKEN MYTOKEN2'
           usesh: true
           prepare: |
-            pkg install -y curl git make
+            pkg install -y curl git gmake colordiff
 
           run: |
             freebsd-version
