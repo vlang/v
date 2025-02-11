@@ -12,10 +12,10 @@ pub struct Var {
 	name string
 mut:
 	typ        ast.Type
-	idx        wasm.LocalIndex
+	idx        LocalIndex
 	is_address bool
 	is_global  bool
-	g_idx      wasm.GlobalIndex
+	g_idx      GlobalIndex
 	offset     int
 }
 
@@ -111,14 +111,14 @@ pub fn (mut g Gen) get_var_or_make_from_expr(node ast.Expr, typ ast.Type) Var {
 	return v
 }
 
-pub fn (mut g Gen) bp() wasm.LocalIndex {
+pub fn (mut g Gen) bp() LocalIndex {
 	if g.bp_idx == -1 {
 		g.bp_idx = g.func.new_local_named(.i32_t, '__vbp')
 	}
 	return g.bp_idx
 }
 
-pub fn (mut g Gen) sp() wasm.GlobalIndex {
+pub fn (mut g Gen) sp() GlobalIndex {
 	if sp := g.sp_global {
 		return sp
 	}
@@ -128,7 +128,7 @@ pub fn (mut g Gen) sp() wasm.GlobalIndex {
 	return g.sp()
 }
 
-pub fn (mut g Gen) hp() wasm.GlobalIndex {
+pub fn (mut g Gen) hp() GlobalIndex {
 	if hp := g.heap_base {
 		return hp
 	}
@@ -186,7 +186,7 @@ pub fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 	return v
 }
 
-pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) ?wasm.ConstExpression {
+pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) ?ConstExpression {
 	typ := ast.mktyp(typ_)
 	match init {
 		ast.BoolLiteral {
@@ -729,7 +729,7 @@ pub fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			// `set_with_expr` is never called with a multireturn call expression
 			is_pt := g.is_param_type(v.typ)
 
-			g.call_expr(init, v.typ, if is_pt { [v] } else { []Var{} })
+			g.call_expr(init, v.typ, if is_pt { [v] } else { []wasm.Var{} })
 			if !is_pt {
 				g.set(v)
 			}
