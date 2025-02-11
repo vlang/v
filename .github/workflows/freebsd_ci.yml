@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Test in FreeBSD
-        id: test-freebsd-runs-in-vm
+        id: test-freebsd-14-runs-in-vm
         uses: vmactions/freebsd-vm@v1
         with:
           release: "14.0"
@@ -38,15 +38,19 @@ jobs:
           ## cpu: 3
           usesh: true
           prepare: pkg install -y curl git gmake colordiff sqlite3
-          run: .github/workflows/freebsd_ci.sh
+          run: |
+            pwd
+            ls -la .
+            ls -la ./.github/workflows/freebsd_ci.sh
+            ./.github/workflows/freebsd_ci.sh
 
   test-on-freebsd-15-aarch64:
     runs-on: ubuntu-latest
-    name: Run a FreeBSD 15 aarch64 VM
+    name: Run a FreeBSD 15 ARM VM
     steps:
       - uses: actions/checkout@v4
       - name: Test in FreeBSD
-        id: test-freebsd-runs-in-vm
+        id: test-freebsd-15-runs-in-vm
         uses: vmactions/freebsd-vm@v1
         with:
           release: "15.0"
@@ -54,4 +58,8 @@ jobs:
           mem: 2048
           usesh: true
           prepare: pkg install -y curl git gmake colordiff sqlite3
-          run: .github/workflows/freebsd_ci.sh
+          run: |
+            pwd
+            ls -la .
+            ls -la ./.github/workflows/freebsd_ci.sh
+            ./.github/workflows/freebsd_ci.sh
