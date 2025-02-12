@@ -1,7 +1,9 @@
 import os
 import flag
 import math
+import log
 
+const version = '0.0.2'
 const default_command = '${os.quoted_path(@VEXE)} -no-skip-unused' // Command used to compile the program, using -no-skip-unused to ease the reducing
 const default_error_msg = 'C compilation error' // the pattern to reproduce
 // Temporary files
@@ -10,11 +12,12 @@ const tmp_reduced_code_file_name = '__v_reduced_code.v'
 const path = '${tmp_folder}/${tmp_reduced_code_file_name}'
 
 fn main() {
+	log.use_stdout()
 	mut fp := flag.new_flag_parser(os.args)
 	fp.skip_executable()
 	fp.application('v reduce path/to/file_to_reduce.v')
 	fp.description('This tool will reduce the code file and try to make the smallest one it can that reproduces the error when the command is executed')
-	fp.version('0.0.1')
+	fp.version(version)
 
 	error_msg := fp.string('error_msg', `e`, default_error_msg, 'the error message you want to reproduce, default: \'${default_error_msg}\'')
 	command := fp.string('command', `c`, default_command, 'the command used to try to reproduce the error, default: \'${default_command}\'')
@@ -25,29 +28,38 @@ fn main() {
 		return
 	}
 
-	assert file_paths.len == 2, fp.usage() // ['reduce', 'path/to/file.v']
+	if file_paths.len != 2 {
+		println(fp.usage())
+		exit(0)
+	}
+
 	file_path := file_paths[1]
 	if file_path == '' || !os.exists(file_path) {
-		eprintln('You need to specify a valid file to reduce')
+		log.error('You need to specify a valid file to reduce.')
+		if file_path != '' {
+			log.error('Path `${file_path}` is not a valid .v file.')
+		}
 		println(fp.usage())
 		exit(1)
 	}
 
-	println("Starting to reduce the file: '${file_path}'\n    with command: `${command}`,\n    trying to reproduce: `${error_msg}`")
+	log.info("Starting to reduce the file: '${file_path}'\n    with command: `${command}`,\n    trying to reproduce: `${error_msg}`")
 
 	if do_fmt {
-		println('Will do `v fmt -w rpdc.v` after the reduction.')
+		log.info('Will do `v fmt -w rpdc.v` after the reduction.')
 	} else {
-		println('Will NOT do `v fmt -w rpdc.v` (use the `--fmt` or `-w` flag to enable it)')
+		log.info('Will NOT do `v fmt -w rpdc.v` (use the `--fmt` or `-w` flag to enable it)')
 	}
 
 	content := os.read_file(file_path)!
-	assert string_reproduces(content, error_msg, command)
+	warn_on_false(string_reproduces(content, error_msg, command), 'string_reproduces',
+		@LOCATION)
 	show_code_stats(content, label: 'Original code size')
 
 	// start tests
 	tmp_code := create_code(parse(content))
-	assert string_reproduces(tmp_code, error_msg, command)
+	warn_on_false(string_reproduces(tmp_code, error_msg, command), 'string_reproduces',
+		@LOCATION)
 	show_code_stats(tmp_code, label: 'Code size without comments')
 
 	// reduce the code
@@ -185,8 +197,10 @@ fn parse(file string) Scope { // The parser is surely incomplete for the V synta
 	}
 	top = stack[stack.len - 1]
 	top.children << current_string // last part of the file
-	assert scope_level == 0, 'The scopes are not well detected'
-	assert stack.len == 1, 'The stack should only have the body scope'
+	warn_on_false(scope_level == 0, 'scope_level == 0 /* the scopes are not well detected*/',
+		@LOCATION)
+	warn_on_false(stack.len == 1, 'stack.len == 1 /* the stack should only have the body scope */',
+		@LOCATION)
 	return *stack[0]
 }
 
@@ -214,7 +228,7 @@ fn create_code(sc Scope) string {
 // Reduces the code contained in the scope tree and writes the reduced code to `rpdc.v`
 fn reduce_scope(content string, error_msg string, command string, do_fmt bool) {
 	mut sc := parse('') // will get filled in the start of the loop
-	println('Cleaning the scopes')
+	log.info('Cleaning the scopes')
 	mut text_code := content
 	mut outer_modified_smth := true
 	for outer_modified_smth {
@@ -223,7 +237,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool) {
 		mut modified_smth := true // was a modification successful in reducing the code in the last iteration
 		for modified_smth { // as long as there are successful modifications
 			modified_smth = false
-			println('NEXT ITERATION, loop 1')
+			log.info('NEXT ITERATION, loop 1')
 			mut stack := []&Elem{}
 			for i in 0 .. sc.children.len {
 				stack << &sc.children[i]
@@ -252,7 +266,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool) {
 
 		text_code = create_code(sc)
 
-		println('Processing remaining lines')
+		log.info('Processing remaining lines')
 		split_code := text_code.split_into_lines() // dont forget to add back the \n
 		// Create the binary tree of the lines
 		depth := int(math.log2(split_code.len)) + 1
@@ -282,12 +296,13 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool) {
 
 		// Traverse the tree and prune the useless lines / line groups for the reproduction
 		mut line_tree := *line_stack[0]
-		assert string_reproduces(create_code(line_tree), error_msg, command) // should be the same
-		println('Pruning the lines/line groups')
+		warn_on_false(string_reproduces(create_code(line_tree), error_msg, command), 'string_reproduces',
+			@LOCATION) // should be the same
+		log.info('Pruning the lines/line groups')
 		modified_smth = true
 		for modified_smth {
 			modified_smth = false
-			println('NEXT ITERATION, loop 2')
+			log.info('NEXT ITERATION, loop 2')
 			mut stack := []&Elem{}
 			for i in 0 .. line_tree.children.len {
 				stack << &line_tree.children[i]
@@ -316,7 +331,8 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool) {
 		text_code = create_code(line_tree)
 	}
 
-	assert string_reproduces(text_code, error_msg, command)
+	warn_on_false(string_reproduces(text_code, error_msg, command), 'string_reproduces',
+		@LOCATION)
 	os.write_file('rpdc.v', text_code) or { panic(err) }
 	if do_fmt {
 		os.execute('v fmt -w rpdc.v')
@@ -333,5 +349,9 @@ struct ShowParams {
 
 fn show_code_stats(code string, params ShowParams) {
 	lines := code.split_into_lines()
-	println('${params.label}: ${code.len} chars, ${lines.len} lines.')
+	log.info('${params.label}: ${code.len} chars, ${lines.len} lines.')
+}
+
+fn warn_on_false(res bool, what string, loc string) {
+	log.warn('${what} is false, at ${loc}')
 }
