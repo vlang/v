@@ -127,7 +127,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							}
 						}
 					}
-					if stmt.typ != ast.error_type {
+					if stmt.typ != ast.error_type && !is_noreturn_callexpr(stmt.expr) {
 						ret_sym := c.table.sym(ret_type)
 						stmt_sym := c.table.sym(stmt.typ)
 						if ret_sym.kind !in [.sum_type, .interface]
