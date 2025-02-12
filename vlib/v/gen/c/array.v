@@ -350,9 +350,15 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
-		g.write('*pelem = ')
-		g.expr_with_init(node)
-		g.writeln(';')
+		if elem_type.unaliased_sym.kind != .array_fixed {
+			g.write('*pelem = ')
+			g.expr_with_init(node)
+			g.writeln(';')
+		} else {
+			g.write('memcpy(pelem, ')
+			g.expr_with_init(node)
+			g.writeln(', sizeof(${elem_styp}));')
+		}
 		g.indent--
 		g.writeln('}')
 		g.indent--

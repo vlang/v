@@ -72,6 +72,7 @@ mut:
 	inside_orm               bool
 	inside_chan_decl         bool
 	inside_attr_decl         bool
+	array_dim                int               // array dim parsing level
 	fixed_array_dim          int               // fixed array dim parsing level
 	or_is_handled            bool              // ignore `or` in this expression
 	builtin_mod              bool              // are we in the `builtin` module?
