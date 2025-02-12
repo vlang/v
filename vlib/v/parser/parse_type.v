@@ -95,7 +95,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr,
-			p.fixed_array_dim == 1 && !is_option && p.inside_fn_return)
+			p.array_dim == 1 && p.fixed_array_dim == 1 && !is_option && p.inside_fn_return)
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
 		}
@@ -646,6 +646,10 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 		}
 		.lsbr, .nilsbr {
 			// array
+			p.array_dim++
+			defer {
+				p.array_dim--
+			}
 			return p.parse_array_type(p.tok.kind, is_option)
 		}
 		else {
