@@ -744,7 +744,12 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	extern_out_str := g.extern_out.str()
 	b.write_string(out_str)
 	b.writeln('// THE END.')
-	b.write_string2('\n // V postincludes:\n', g.postincludes.str())
+
+	postincludes_str := g.postincludes.str()
+	if postincludes_str != '' {
+		b.write_string2('\n // V postincludes:\n', postincludes_str)
+	}
+
 	util.timing_measure('cgen common')
 	$if trace_all_generic_fn_keys ? {
 		gkeys := g.table.fn_generic_types.keys()
