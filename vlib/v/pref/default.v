@@ -377,3 +377,11 @@ pub fn (p &Preferences) vcross_compiler_name() string {
 	}
 	return 'cc'
 }
+
+// vroot_file reads the given file, given a path relative to @VROOT .
+// Its goal is to give all backends a shared infrastructure to read their own static preludes (like C headers etc),
+// without each having to implement their own way of lookup/embedding/caching them.
+pub fn (mut p Preferences) vroot_file(path string) string {
+	full_path := os.join_path(p.vroot, path)
+	return os.read_file(full_path) or { '/* missing vroot content of path: ${full_path} */' }
+}
