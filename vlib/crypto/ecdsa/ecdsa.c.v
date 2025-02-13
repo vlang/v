@@ -15,7 +15,7 @@ module ecdsa
 #flag darwin -L/usr/local/opt/openssl/lib
 #include <openssl/ecdsa.h>
 #include <openssl/obj_mac.h>
-#include <openssl/objects.h>
+#include <openssl/types.h>
 #include <openssl/bn.h>
 #include <openssl/evp.h>
 #include <openssl/ec.h>
@@ -34,11 +34,37 @@ fn C.EVP_PKEY_new() &C.EVP_PKEY
 fn C.EVP_PKEY_free(key &C.EVP_PKEY)
 fn C.EVP_PKEY_get1_EC_KEY(pkey &C.EVP_PKEY) &C.EC_KEY
 fn C.EVP_PKEY_base_id(key &C.EVP_PKEY) int
+fn C.EVP_PKEY_get_bits(pkey &C.EVP_PKEY) int
+fn C.EVP_PKEY_size(key &C.EVP_PKEY) int
+
+// no-prehash signing (verifying)
+fn C.EVP_PKEY_sign(ctx &C.EVP_PKEY_CTX, sig &u8, siglen &usize, tbs &u8, tbslen int) int
+fn C.EVP_PKEY_sign_init(ctx &C.EVP_PKEY_CTX) int
+fn C.EVP_PKEY_verify_init(ctx &C.EVP_PKEY_CTX) int
+fn C.EVP_PKEY_verify(ctx &C.EVP_PKEY_CTX, sig &u8, siglen int, tbs &u8, tbslen int) int
+
+// single shoot digest signing (verifying) routine
+fn C.EVP_DigestSign(ctx &C.EVP_MD_CTX, sig &u8, siglen &usize, tbs &u8, tbslen int) int
+fn C.EVP_DigestVerify(ctx &C.EVP_MD_CTX, sig &u8, siglen int, tbs &u8, tbslen int) int
+
+// Message digest routines
+fn C.EVP_DigestInit(ctx &C.EVP_MD_CTX, md &C.EVP_MD) int
+fn C.EVP_DigestUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt int) int
+fn C.EVP_DigestFinal(ctx &C.EVP_MD_CTX, md &u8, s &usize) int
+
+// Recommended hashed signing/verifying routines
+fn C.EVP_DigestSignInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e voidptr, pkey &C.EVP_PKEY) int
+fn C.EVP_DigestSignUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt int) int
+fn C.EVP_DigestSignFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen &usize) int
+fn C.EVP_DigestVerifyInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e voidptr, pkey &C.EVP_PKEY) int
+fn C.EVP_DigestVerifyUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt int) int
+fn C.EVP_DigestVerifyFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen int) int
 
 // EVP_PKEY Context
 @[typedef]
 struct C.EVP_PKEY_CTX {}
 
+fn C.EVP_PKEY_CTX_new(pkey &C.EVP_PKEY, e voidptr) &C.EVP_PKEY_CTX
 fn C.EVP_PKEY_CTX_new_id(id int, e voidptr) &C.EVP_PKEY_CTX
 fn C.EVP_PKEY_keygen_init(ctx &C.EVP_PKEY_CTX) int
 fn C.EVP_PKEY_keygen(ctx &C.EVP_PKEY_CTX, ppkey &&C.EVP_PKEY) int
@@ -124,3 +150,18 @@ struct C.ECDSA_SIG {}
 fn C.ECDSA_size(key &C.EC_KEY) u32
 fn C.ECDSA_sign(type_ int, dgst &u8, dgstlen int, sig &u8, siglen &u32, eckey &C.EC_KEY) int
 fn C.ECDSA_verify(type_ int, dgst &u8, dgstlen int, sig &u8, siglen int, eckey &C.EC_KEY) int
+
+@[typedef]
+struct C.EVP_MD_CTX {}
+
+fn C.EVP_MD_CTX_new() &C.EVP_MD_CTX
+fn C.EVP_MD_CTX_free(ctx &C.EVP_MD_CTX)
+
+// Wrapper of digest and signing related of the C opaque and functions.
+@[typedef]
+struct C.EVP_MD {}
+
+fn C.EVP_sha256() &C.EVP_MD
+fn C.EVP_sha384() &C.EVP_MD
+fn C.EVP_sha512() &C.EVP_MD
+fn C.EVP_MD_get_size(md &C.EVP_MD) int // -1 failure
