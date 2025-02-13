@@ -98,7 +98,7 @@ endif
 
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
-	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32
+	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
 	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
 	./v2.exe -o $(VEXE) $(VFLAGS) cmd/v
 	$(RM) v1.exe
@@ -110,7 +110,7 @@ ifdef LEGACY
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
-	$(CC) $(CFLAGS) -std=gnu99 -w -o v1.exe $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS) || echo 'Compilation of v.c failed. See https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-and-macOS' && false
+	$(CC) $(CFLAGS) -std=gnu99 -w -o v1.exe $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
 	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
 	./v2.exe -nocache -o $(VEXE) $(VFLAGS) cmd/v
 	rm -rf v1.exe v2.exe
