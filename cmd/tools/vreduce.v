@@ -353,5 +353,7 @@ fn show_code_stats(code string, params ShowParams) {
 }
 
 fn warn_on_false(res bool, what string, loc string) {
-	log.warn('${what} is false, at ${loc}')
+	if !res {
+		log.warn('${what} is false, at ${loc}')
+	}
 }
