@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   check-markdown:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +34,7 @@ jobs:
         ## thus real errors are easier to spot.
 
   report-missing-fn-doc:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/

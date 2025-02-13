@@ -52,7 +52,7 @@ jobs:
           ./v -os windows examples/2048/2048.v
 
   linux-cross:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       VFLAGS: -cc tcc -no-retry-compilation

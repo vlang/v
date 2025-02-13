@@ -76,7 +76,7 @@ concurrency:
 
 jobs:
   tests-sanitize-undefined-clang:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       VFLAGS: -cc clang
@@ -102,7 +102,7 @@ jobs:
         run: ./v2 build-examples
 
   tests-sanitize-undefined-gcc:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       VFLAGS: -cc gcc
@@ -127,7 +127,7 @@ jobs:
         run: ./v2 build-examples
 
   tests-sanitize-address-clang:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
       VFLAGS: -cc clang
@@ -180,7 +180,7 @@ jobs:
         #   run: .\v.exe -cflags "/fsanitize=address" test-self vlib
 
   tests-sanitize-address-gcc:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
       VFLAGS: -cc gcc
@@ -210,7 +210,7 @@ jobs:
         run: ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v build-examples
 
   tests-sanitize-memory-clang:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
       VFLAGS: -cc clang -gc none
