@@ -682,8 +682,8 @@ pub fn free(ptr voidptr) {
 		$if trace_free_nulls ? {
 			C.fprintf(C.stderr, c'free null ptr\n', ptr)
 		}
-		$if abort_on_free_null ? {
-			C.abort()
+		$if trace_free_nulls_break ? {
+			break_if_debugger_attached()
 		}
 		return
 	}
