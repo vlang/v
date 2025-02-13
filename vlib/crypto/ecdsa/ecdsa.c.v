@@ -15,7 +15,6 @@ module ecdsa
 #flag darwin -L/usr/local/opt/openssl/lib
 #include <openssl/ecdsa.h>
 #include <openssl/obj_mac.h>
-#include <openssl/types.h>
 #include <openssl/bn.h>
 #include <openssl/evp.h>
 #include <openssl/ec.h>
