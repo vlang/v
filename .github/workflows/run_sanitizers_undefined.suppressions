@@ -2,3 +2,5 @@
 function:rand__internal_ulid_at_millisecond
 function:sync__pool__process_in_thread
 function:rand__deinit
+function:v__type_resolver__TypeResolver_resolve_fn_generic_args
+function:v__type_resolver__TypeResolver_unwrap_generic_expr
