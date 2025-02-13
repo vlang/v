@@ -386,27 +386,27 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		util.timing_start('cgen unification')
 		for g in pp.get_results_ref[Gen]() {
 			global_g.embedded_files << g.embedded_files
-			global_g.out.write(g.out) or { panic(err) }
-			global_g.cheaders.write(g.cheaders) or { panic(err) }
-			global_g.preincludes.write(g.preincludes) or { panic(err) }
-			global_g.postincludes.write(g.postincludes) or { panic(err) }
-			global_g.includes.write(g.includes) or { panic(err) }
-			global_g.typedefs.write(g.typedefs) or { panic(err) }
-			global_g.type_definitions.write(g.type_definitions) or { panic(err) }
-			global_g.sort_fn_definitions.write(g.sort_fn_definitions) or { panic(err) }
-			global_g.alias_definitions.write(g.alias_definitions) or { panic(err) }
-			global_g.definitions.write(g.definitions) or { panic(err) }
-			global_g.gowrappers.write(g.gowrappers) or { panic(err) }
-			global_g.waiter_fn_definitions.write(g.waiter_fn_definitions) or { panic(err) }
-			global_g.auto_str_funcs.write(g.auto_str_funcs) or { panic(err) }
-			global_g.dump_funcs.write(g.auto_str_funcs) or { panic(err) }
-			global_g.comptime_definitions.write(g.comptime_definitions) or { panic(err) }
-			global_g.pcs_declarations.write(g.pcs_declarations) or { panic(err) }
-			global_g.cov_declarations.write(g.cov_declarations) or { panic(err) }
-			global_g.hotcode_definitions.write(g.hotcode_definitions) or { panic(err) }
-			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
-			global_g.shared_types.write(g.shared_types) or { panic(err) }
-			global_g.shared_functions.write(g.channel_definitions) or { panic(err) }
+			global_g.out << g.out
+			global_g.cheaders << g.cheaders
+			global_g.preincludes << g.preincludes
+			global_g.postincludes << g.postincludes
+			global_g.includes << g.includes
+			global_g.typedefs << g.typedefs
+			global_g.type_definitions << g.type_definitions
+			global_g.sort_fn_definitions << g.sort_fn_definitions
+			global_g.alias_definitions << g.alias_definitions
+			global_g.definitions << g.definitions
+			global_g.gowrappers << g.gowrappers
+			global_g.waiter_fn_definitions << g.waiter_fn_definitions
+			global_g.auto_str_funcs << g.auto_str_funcs
+			global_g.dump_funcs << g.auto_str_funcs
+			global_g.comptime_definitions << g.comptime_definitions
+			global_g.pcs_declarations << g.pcs_declarations
+			global_g.cov_declarations << g.cov_declarations
+			global_g.hotcode_definitions << g.hotcode_definitions
+			global_g.embedded_data << g.embedded_data
+			global_g.shared_types << g.shared_types
+			global_g.shared_functions << g.channel_definitions
 			global_g.export_funcs << g.export_funcs
 
 			global_g.force_main_console = global_g.force_main_console || g.force_main_console
@@ -439,13 +439,12 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			for k, v in g.coverage_files {
 				global_g.coverage_files[k] = v
 			}
-			global_g.json_forward_decls.write(g.json_forward_decls) or { panic(err) }
-			global_g.enum_typedefs.write(g.enum_typedefs) or { panic(err) }
-			global_g.channel_definitions.write(g.channel_definitions) or { panic(err) }
-			global_g.thread_definitions.write(g.thread_definitions) or { panic(err) }
-			global_g.sql_buf.write(g.sql_buf) or { panic(err) }
-
-			global_g.cleanups[g.file.mod.name].write(g.cleanup) or { panic(err) } // strings.Builder.write never fails; it is like that in the source
+			global_g.json_forward_decls << g.json_forward_decls
+			global_g.enum_typedefs << g.enum_typedefs
+			global_g.channel_definitions << g.channel_definitions
+			global_g.thread_definitions << g.thread_definitions
+			global_g.sql_buf << g.sql_buf
+			global_g.cleanups[g.file.mod.name] << g.cleanup
 
 			for str_type in g.str_types {
 				global_g.str_types << str_type
@@ -469,13 +468,14 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.hotcode_fn_names << g.hotcode_fn_names
 			global_g.hotcode_fpaths << g.hotcode_fpaths
 			global_g.test_function_names << g.test_function_names
-			unsafe { g.free_builders() }
 			for k, v in g.autofree_methods {
 				global_g.autofree_methods[k] = v
 			}
 			for k, v in g.no_eq_method_types {
 				global_g.no_eq_method_types[k] = v
 			}
+
+			unsafe { g.free_builders() } // free at the very end
 		}
 	} else {
 		util.timing_start('cgen serial processing')
@@ -5243,7 +5243,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			key := node.name
 			g.write('/* obf identfn: ${key} */')
 			name = g.obf_table[key] or {
-				panic('cgen: obf name "${key}" not found, this should never happen')
+				panic('cgen: obf key name "${key}" not found, this should never happen')
 			}
 		}
 	}
