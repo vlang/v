@@ -71,8 +71,14 @@ jobs:
           ./v retry -- sudo apt install --quiet -y mingw-w64 wine-stable winetricks
           ## ./v retry -- sudo apt install --quiet -y wine32
 
-      - name: Turn off the wine crash dialog
-        run: winetricks nocrashdialog
+      - name: Show diagnostics for wine64
+        run: |
+          which wine64
+          ls -la $(which wine64)
+          ldd $(which wine64)
+
+##      - name: Turn off the wine crash dialog
+##        run: which wine64 winetricks nocrashdialog
 
       - name: v.c can be compiled and run with -os cross
         run: |
