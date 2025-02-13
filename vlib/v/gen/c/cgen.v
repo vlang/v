@@ -5249,7 +5249,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			key := node.name
 			g.write('/* obf identfn: ${key} */')
 			name = g.obf_table[key] or {
-				panic('cgen: obf key name "${key}" not found, this should never happen')
+				panic('cgen: obf name "${key}" not found, this should never happen')
 			}
 		}
 	}
