@@ -433,6 +433,8 @@ pub fn malloc(n isize) &u8 {
 	vplayground_mlimit(n)
 	if n < 0 {
 		_memory_panic(@FN, n)
+	} else if n == 0 {
+		return &u8(0)
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -639,6 +641,7 @@ pub fn vcalloc(n isize) &u8 {
 	} $else {
 		return unsafe { C.calloc(1, n) }
 	}
+	return &u8(0) // not reached, TODO: remove when V's checker is improved
 }
 
 // special versions of the above that allocate memory which is not scanned
@@ -655,19 +658,35 @@ pub fn vcalloc_noscan(n isize) &u8 {
 		if n < 0 {
 			_memory_panic(@FN, n)
 		}
-		return $if gcboehm_opt ? {
-			unsafe { &u8(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
+		$if gcboehm_opt ? {
+			res := unsafe { C.GC_MALLOC_ATOMIC(n) }
+			unsafe { C.memset(res, 0, n) }
+			return &u8(res)
 		} $else {
-			unsafe { &u8(C.GC_MALLOC(n)) }
+			res := unsafe { C.GC_MALLOC(n) }
+			return &u8(res)
 		}
 	} $else {
 		return unsafe { vcalloc(n) }
 	}
+	return &u8(0) // not reached, TODO: remove when V's checker is improved
 }
 
 // free allows for manually freeing memory allocated at the address `ptr`.
 @[unsafe]
 pub fn free(ptr voidptr) {
+	$if trace_free ? {
+		C.fprintf(C.stderr, c'free ptr: %p\n', ptr)
+	}
+	if ptr == unsafe { 0 } {
+		$if trace_free_nulls ? {
+			C.fprintf(C.stderr, c'free null ptr\n', ptr)
+		}
+		$if trace_free_nulls_break ? {
+			break_if_debugger_attached()
+		}
+		return
+	}
 	$if prealloc {
 		return
 	} $else $if gcboehm ? {
