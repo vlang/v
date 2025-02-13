@@ -110,7 +110,7 @@ ifdef LEGACY
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
-	$(CC) $(CFLAGS) -std=gnu99 -w -o v1.exe $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
+	$(CC) $(CFLAGS) -std=gnu99 -w -o v1.exe $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS) || echo 'Compilation of v.c failed. See https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-and-macOS' && false
 	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
 	./v2.exe -nocache -o $(VEXE) $(VFLAGS) cmd/v
 	rm -rf v1.exe v2.exe
