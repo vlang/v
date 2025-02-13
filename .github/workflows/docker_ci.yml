@@ -25,7 +25,7 @@ env:
 
 jobs:
   docker-alpine-musl-gcc:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 241
     container:
       image: thevlang/vlang:alpine-build
@@ -54,7 +54,7 @@ jobs:
         run: VTEST_JUST_ESSENTIAL=1 ./v test-self
 
   docker-ubuntu-musl:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 121
     container:
       image: thevlang/vlang:ubuntu-build
