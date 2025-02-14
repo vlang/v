@@ -19,12 +19,12 @@ on:
       - '**/tools_ci.yml'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: tools-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         cc: [tcc, gcc, clang]
@@ -102,7 +102,7 @@ jobs:
         run: ./v -W -cstrict test-self cmd
 
   tools-docker-ubuntu-musl:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 121
     container:
       image: thevlang/vlang:ubuntu-build

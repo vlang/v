@@ -23,7 +23,7 @@ on:
       - '!cmd/tools/builders/**.v'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: c2v-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -71,7 +71,7 @@ jobs:
           WAD_FILE=~/DOOM1.WAD ~/code/doom/build_whole_project.sh
 
   test-regression:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       VFLAGS: -cc tcc

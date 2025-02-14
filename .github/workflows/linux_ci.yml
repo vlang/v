@@ -18,12 +18,12 @@ on:
       - '!cmd/tools/builders/**.v'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: linux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   tcc:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -81,7 +81,7 @@ jobs:
         run: v run ci/linux_ci.vsh test_leak_detector_not_active_tcc
 
   gcc:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
@@ -135,7 +135,7 @@ jobs:
         run: v run ci/linux_ci.vsh test_vlib_skip_unused_gcc
 
   clang:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
