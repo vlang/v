@@ -255,6 +255,14 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		}
 	}
+
+	mut tmp_var := ''
+	mut curr_line := ''
+	if g.is_autofree {
+		curr_line = g.go_before_ternary().trim_space() + ' '
+		tmp_var = g.new_tmp_var()
+		g.write('\tstring ${tmp_var} = ')
+	}
 	g.write2('str_intp(', node.vals.len.str())
 	g.write(', _MOV((StrIntpData[]){')
 	for i, val in node.vals {
@@ -294,4 +302,15 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 	}
 	g.write('}))')
+	if g.is_autofree {
+		g.writeln(';')
+		g.write(curr_line + tmp_var)
+		mut scope := g.file.scope.innermost(node.pos.pos)
+		scope.register(ast.Var{
+			name:            tmp_var
+			typ:             ast.string_type
+			is_autofree_tmp: true
+			pos:             node.pos
+		})
+	}
 }
