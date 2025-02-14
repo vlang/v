@@ -70,14 +70,12 @@ jobs:
       - name: Show diagnostics for wine
         run: |
           which wine
-          ls -la $(which wine)
-          ldd $(which wine)
+          ls -la $(realpath $(which wine))
 
       - name: Show diagnostics for wine64
         run: |
           which wine64
-          ls -la $(which wine64)
-          ldd $(which wine64)
+          ls -la $(realpath $(which wine))
 
       - name: v.c can be compiled and run with -os cross
         run: |
