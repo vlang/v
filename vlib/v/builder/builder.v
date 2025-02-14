@@ -51,6 +51,7 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	mut table := ast.new_table()
 	table.is_fmt = false
+	table.no_builtin = pref_.no_builtin
 	if pref_.use_color == .always {
 		util.emanager.set_support_color(true)
 	}
