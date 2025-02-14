@@ -76,6 +76,7 @@ pub mut:
 	sumtypes           map[int]SumTypeDecl
 	cmod_prefix        string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt             bool
+	no_builtin         bool
 	used_features      &UsedFeatures = &UsedFeatures{} // filled in by the builder via markused module, when pref.skip_unused = true;
 	veb_res_idx_cache  int // Cache of `veb.Result` type
 	veb_ctx_idx_cache  int // Cache of `veb.Context` type
@@ -943,12 +944,20 @@ pub fn (t &Table) known_type_idx(typ Type) bool {
 			return sym.language != .v || sym.name.starts_with('C.')
 		}
 		.array {
+			if t.no_builtin {
+				util.verror('error', 'V builtin usage detected, but -no-builtin was supplied')
+				return false
+			}
 			return t.known_type_idx((sym.info as Array).elem_type)
 		}
 		.array_fixed {
 			return t.known_type_idx((sym.info as ArrayFixed).elem_type)
 		}
 		.map {
+			if t.no_builtin {
+				util.verror('error', 'V builtin usage detected, but -no-builtin was supplied')
+				return false
+			}
 			info := sym.info as Map
 			return t.known_type_idx(info.key_type) && t.known_type_idx(info.value_type)
 		}
