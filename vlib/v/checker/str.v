@@ -133,7 +133,7 @@ const unicode_lit_overflow_message = 'unicode character exceeds max allowed valu
 @[direct_array_access]
 fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 	valid_utf8 := utf8.validate(node.val.str, node.val.len)
-	if valid_utf8 == false {
+	if !valid_utf8 {
 		c.warn("invalid utf8 string, please check your file's encoding is utf8", node.pos)
 	}
 	mut idx := 0
