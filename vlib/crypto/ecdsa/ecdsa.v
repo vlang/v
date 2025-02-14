@@ -296,8 +296,12 @@ pub fn PrivateKey.new(opt CurveOptions) !PrivateKey {
 // sign performs signing the message with the options. By default options,
 // it will perform hashing before signing the message.
 pub fn (pv PrivateKey) sign(message []u8, opt SignerOpts) ![]u8 {
-	digest := calc_digest(pv.key, message, opt)!
-	return pv.sign_message(digest)!
+	if pv.evpkey != unsafe { nil } {
+		digest := calc_digest_with_evpkey(pv.evpkey, message, opt)!
+		return sign_digest(pv.evpkey, digest)!
+	}
+	digest := calc_digest_with_eckey(pv.key, message, opt)!
+	return pv.sign_digest(digest)!
 }
 
 // sign_with_options signs message with the options. It will be deprecated,
@@ -307,18 +311,18 @@ pub fn (pv PrivateKey) sign_with_options(message []u8, opt SignerOpts) ![]u8 {
 	return pv.sign(message, opt)
 }
 
-// sign_message sign a message with private key.
-fn (priv_key PrivateKey) sign_message(message []u8) ![]u8 {
-	if message.len == 0 {
-		return error('Message cannot be null or empty')
+// sign_digest sign a digest with private key.
+fn (pv PrivateKey) sign_digest(digest []u8) ![]u8 {
+	if digest.len == 0 {
+		return error('Digest cannot be null or empty')
 	}
 	mut sig_len := u32(0)
-	sig_size := C.ECDSA_size(priv_key.key)
+	sig_size := C.ECDSA_size(pv.key)
 	sig := unsafe { malloc(int(sig_size)) }
-	res := C.ECDSA_sign(0, message.data, message.len, sig, &sig_len, priv_key.key)
+	res := C.ECDSA_sign(0, digest.data, digest.len, sig, &sig_len, pv.key)
 	if res != 1 {
 		unsafe { free(sig) }
-		return error('Failed to sign message')
+		return error('Failed to sign digest')
 	}
 	signed_data := unsafe { sig.vbytes(int(sig_len)) }
 	unsafe { free(sig) }
@@ -469,9 +473,13 @@ pub struct PublicKey {
 // verify verifies a message with the signature are valid with public key provided .
 // You should provide it with the same SignerOpts used with the `.sign()` call.
 // or verify would fail (false).
-pub fn (pub_key PublicKey) verify(message []u8, sig []u8, opt SignerOpts) !bool {
-	digest := calc_digest(pub_key.key, message, opt)!
-	res := C.ECDSA_verify(0, digest.data, digest.len, sig.data, sig.len, pub_key.key)
+pub fn (pb PublicKey) verify(message []u8, sig []u8, opt SignerOpts) !bool {
+	if pb.evpkey != unsafe { nil } {
+		digest := calc_digest_with_evpkey(pb.evpkey, message, opt)!
+		return verify_signature(pb.evpkey, sig, digest)
+	}
+	digest := calc_digest_with_eckey(pb.key, message, opt)!
+	res := C.ECDSA_verify(0, digest.data, digest.len, sig.data, sig.len, pb.key)
 	if res == -1 {
 		return error('Failed to verify signature')
 	}
@@ -582,9 +590,9 @@ fn calc_digest_with_recommended_hash(key &C.EC_KEY, msg []u8) ![]u8 {
 	}
 }
 
-// calc_digest tries to calculates digest (hash) of the message based on options provided.
+// calc_digest_with_eckey tries to calculates digest (hash) of the message based on options provided.
 // If the options was .with_no_hash, its has the same behaviour with .with_recommended_hash.
-fn calc_digest(key &C.EC_KEY, message []u8, opt SignerOpts) ![]u8 {
+fn calc_digest_with_eckey(key &C.EC_KEY, message []u8, opt SignerOpts) ![]u8 {
 	if message.len == 0 {
 		return error('null-length messages')
 	}
@@ -639,4 +647,153 @@ fn calc_digest(key &C.EC_KEY, message []u8, opt SignerOpts) ![]u8 {
 		}
 	}
 	return error('Not should be here')
+}
+
+// calc_digest_with_evpkey get the digest of the messages under the EVP_PKEY and options
+fn calc_digest_with_evpkey(key &C.EVP_PKEY, message []u8, opt SignerOpts) ![]u8 {
+	if message.len == 0 {
+		return error('null-length messages')
+	}
+	bits_size := C.EVP_PKEY_get_bits(key)
+	if bits_size <= 0 {
+		return error(' bits_size was invalid')
+	}
+	key_size := (bits_size + 7) / 8
+
+	match opt.hash_config {
+		.with_no_hash, .with_recommended_hash {
+			md := default_digest(key)!
+			return calc_digest_with_md(message, md)!
+		}
+		.with_custom_hash {
+			mut cfg := opt
+			if !cfg.allow_custom_hash {
+				return error('custom hash was not allowed, set it into true')
+			}
+			if cfg.custom_hash == unsafe { nil } {
+				return error('Custom hasher was not defined')
+			}
+			if key_size > cfg.custom_hash.size() {
+				if !cfg.allow_smaller_size {
+					return error('Hash into smaller size than current key size was not allowed')
+				}
+			}
+			// we need to reset the custom hash before writes message
+			cfg.custom_hash.reset()
+			_ := cfg.custom_hash.write(message)!
+			digest := cfg.custom_hash.sum([]u8{})
+
+			return digest
+		}
+	}
+	return error('Not should be here')
+}
+
+// sign_digest signs the digest with the key. Under the hood, EVP_PKEY_sign() does not
+// hash the data to be signed, and therefore is normally used to sign digests.
+fn sign_digest(key &C.EVP_PKEY, digest []u8) ![]u8 {
+	ctx := C.EVP_PKEY_CTX_new(key, 0)
+	if ctx == 0 {
+		C.EVP_PKEY_CTX_free(ctx)
+		return error('EVP_PKEY_CTX_new failed')
+	}
+	sin := C.EVP_PKEY_sign_init(ctx)
+	if sin != 1 {
+		C.EVP_PKEY_CTX_free(ctx)
+		return error('EVP_PKEY_sign_init failed')
+	}
+	// siglen was used to store the size of the signature output. When EVP_PKEY_sign
+	// was called with NULL signature buffer, siglen will tell maximum size of signature.
+	siglen := usize(C.EVP_PKEY_size(key))
+	st := C.EVP_PKEY_sign(ctx, 0, &siglen, digest.data, digest.len)
+	if st <= 0 {
+		C.EVP_PKEY_CTX_free(ctx)
+		return error('Get null buffer length on EVP_PKEY_sign')
+	}
+	sig := []u8{len: int(siglen)}
+	do := C.EVP_PKEY_sign(ctx, sig.data, &siglen, digest.data, digest.len)
+	if do <= 0 {
+		C.EVP_PKEY_CTX_free(ctx)
+		return error('EVP_PKEY_sign fails to sign message')
+	}
+	// siglen now contains actual length of the signature buffer.
+	signed := sig[..siglen].clone()
+
+	// Cleans up
+	unsafe { sig.free() }
+	C.EVP_PKEY_CTX_free(ctx)
+
+	return signed
+}
+
+// verify_signature verifies the signature for the digest under the provided key.
+fn verify_signature(key &C.EVP_PKEY, sig []u8, digest []u8) bool {
+	ctx := C.EVP_PKEY_CTX_new(key, 0)
+	if ctx == 0 {
+		C.EVP_PKEY_CTX_free(ctx)
+		return false
+	}
+	vinit := C.EVP_PKEY_verify_init(ctx)
+	if vinit != 1 {
+		C.EVP_PKEY_CTX_free(ctx)
+		return false
+	}
+	res := C.EVP_PKEY_verify(ctx, sig.data, sig.len, digest.data, digest.len)
+	if res <= 0 {
+		C.EVP_PKEY_CTX_free(ctx)
+		return false
+	}
+	C.EVP_PKEY_CTX_free(ctx)
+	return res == 1
+}
+
+// calc_digest_with_md get the digest of the msg using md digest algorithm
+fn calc_digest_with_md(msg []u8, md &C.EVP_MD) ![]u8 {
+	ctx := C.EVP_MD_CTX_new()
+	if ctx == 0 {
+		C.EVP_MD_CTX_free(ctx)
+		return error('EVP_MD_CTX_new failed')
+	}
+	nt := C.EVP_DigestInit(ctx, md)
+	assert nt == 1
+	upd := C.EVP_DigestUpdate(ctx, msg.data, msg.len)
+	assert upd == 1
+
+	size := usize(C.EVP_MD_get_size(md))
+	out := []u8{len: int(size)}
+
+	fin := C.EVP_DigestFinal(ctx, out.data, &size)
+	assert fin == 1
+
+	digest := out[..size].clone()
+	// cleans up
+	unsafe { out.free() }
+	C.EVP_MD_CTX_free(ctx)
+
+	return digest
+}
+
+// default_digest gets the default digest (hash) algorithm for this key.
+fn default_digest(key &C.EVP_PKEY) !&C.EVP_MD {
+	// get bits size of this key
+	bits_size := C.EVP_PKEY_get_bits(key)
+	if bits_size <= 0 {
+		return error(' this size isnt available.')
+	}
+	// based on this bits_size, choose appropriate digest algorithm
+	match true {
+		bits_size <= 256 {
+			return voidptr(C.EVP_sha256())
+		}
+		bits_size > 256 && bits_size <= 384 {
+			return voidptr(C.EVP_sha384())
+		}
+		bits_size > 384 {
+			return voidptr(C.EVP_sha512())
+		}
+		else {
+			return error('Unsupported bits size')
+		}
+	}
+	return error('should not here')
 }
