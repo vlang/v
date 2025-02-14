@@ -39,6 +39,8 @@
 
 [[apps]]
   path = 'examples/ttf_font/example_ttf.v'
+  compare.flags = ['-p','-fail 0.008','-failpercent 1.5']
+
 
 # Reasons for ex- or inclusion:
 #
@@ -62,7 +64,7 @@
 # 'examples/flappylearning/game.v'      // Random movement
 # 'examples/hot_reload/bounce.v'        // Inaccurate captures
 # 'examples/hot_reload/graph.v'         // Inaccurate captures
-# 'examples/ttf_font/example_ttf.v',    // OK
+# 'examples/ttf_font/example_ttf.v' // OK-ish ... the font rendering seems to be shifted with a few pixels on Ubuntu 24.04, compared to Ubuntu 20.04 . TODO: update it with the newer visuals.
 # 'examples/sokol/01_cubes/cube.v',     // Can pass with a warning and diff at around 1.2%
 # 'examples/sokol/02_cubes_glsl/cube_glsl.v',       // Inaccurate captures
 # 'examples/sokol/03_march_tracing_glsl/rt_glsl.v', // Inaccurate captures
