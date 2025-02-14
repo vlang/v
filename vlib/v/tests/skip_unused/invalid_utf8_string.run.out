@@ -1,4 +1,0 @@
-invalid_utf8_string.vv:1:6: warning: invalid utf8 string, please check your file's encoding is utf8
-    1 | x := '≤‚ ‘txt'
-      |      ~~~~~~~
-    2 | println(x)
