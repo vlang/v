@@ -50,7 +50,7 @@ const essential_list = [
 	'vlib/crypto/md5/md5_test.v',
 	'vlib/dl/dl_test.v',
 	'vlib/encoding/base64/base64_test.v',
-	'vlib/encoding/utf8/encoding_utf8_test.v',
+	'vlib/encoding/utf8/validate/encoding_utf8_test.v',
 	'vlib/encoding/utf8/utf8_util_test.v',
 	'vlib/flag/flag_test.v',
 	'vlib/json/tests/json_decode_test.v',
