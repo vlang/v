@@ -1560,7 +1560,8 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 				}
 			}
 			else {
-				if stmt.typ == ast.void_type || expr_return_type == ast.void_type {
+				if expr_return_type == 0 || stmt.typ == ast.void_type
+					|| expr_return_type == ast.void_type {
 					return
 				}
 				if is_noreturn_callexpr(stmt.expr) {
