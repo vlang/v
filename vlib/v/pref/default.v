@@ -30,7 +30,7 @@ fn (mut p Preferences) expand_lookup_paths() {
 		match path {
 			'@vlib' { expanded_paths << p.vlib }
 			'@vmodules' { expanded_paths << p.vmodules_paths }
-			else { expanded_paths << path }
+			else { expanded_paths << path.replace('@vroot', p.vroot) }
 		}
 	}
 	p.lookup_path = expanded_paths
