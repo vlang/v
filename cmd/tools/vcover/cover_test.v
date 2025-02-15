@@ -4,6 +4,10 @@ const vexe = @VEXE
 const vroot = os.dir(vexe)
 const tfolder = os.join_path(os.vtmp_dir(), 'cover_test')
 
+const t1 = np(os.join_path(tfolder, 't1'))
+const t2 = np(os.join_path(tfolder, 't2'))
+const t3 = np(os.join_path(tfolder, 't3'))
+
 fn testsuite_begin() {
 	os.setenv('VCOLORS', 'never', true)
 	os.chdir(vroot)!
@@ -34,13 +38,6 @@ fn np(path string) string {
 }
 
 fn test_simple() {
-	// if true {
-	// return
-	//}
-
-	t1 := np(os.join_path(tfolder, 't1'))
-	t2 := np(os.join_path(tfolder, 't2'))
-	t3 := np(os.join_path(tfolder, 't3'))
 	assert !os.exists(t1), t1
 	assert !os.exists(t2), t2
 	assert !os.exists(t3), t3
