@@ -339,7 +339,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			label:        'global_cgen'
 		)
 		inner_loop:           unsafe { &ast.empty_stmt }
-		last_if_option_type:  ast.void_type
 		field_data_type:      table.find_type('FieldData')
 		enum_data_type:       table.find_type('EnumData')
 		variant_data_type:    table.find_type('VariantData')
@@ -821,7 +820,6 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
 		)
 		inner_loop:            &ast.empty_stmt
-		last_if_option_type:   ast.void_type
 		field_data_type:       global_g.table.find_type('FieldData')
 		enum_data_type:        global_g.table.find_type('EnumData')
 		variant_data_type:     global_g.table.find_type('VariantData')

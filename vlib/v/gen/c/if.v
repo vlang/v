@@ -194,12 +194,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 	mut cur_line := ''
 	mut raw_state := false
+	tmp_if_option_type := g.last_if_option_type
 	if needs_tmp_var {
 		mut styp := g.styp(node.typ)
 		if g.inside_if_option || node.typ.has_flag(.option) {
 			raw_state = g.inside_if_option
 			if node.typ != ast.void_type {
-				tmp_if_option_type := g.last_if_option_type
 				g.last_if_option_type = node.typ
 				defer {
 					g.last_if_option_type = tmp_if_option_type
