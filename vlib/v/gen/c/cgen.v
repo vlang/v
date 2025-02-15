@@ -161,6 +161,7 @@ mut:
 	inside_global_decl        bool
 	inside_interface_deref    bool
 	last_tmp_call_var         []string
+	last_if_option_type       ast.Type // stores the expected if type on nested if expr
 	loop_depth                int
 	ternary_names             map[string]string
 	ternary_level_names       map[string][]string
@@ -2068,7 +2069,8 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 								styp = 'f64'
 							}
 						}
-						if stmt.typ.has_flag(.option) {
+						if stmt.typ.has_flag(.option)
+							|| (g.inside_if_option && stmt.expr is ast.IfExpr) {
 							g.writeln('')
 							g.write('${tmp_var} = ')
 							g.expr(stmt.expr)
@@ -2082,7 +2084,6 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							}
 							styp = g.base_type(ret_typ)
 							if stmt.expr is ast.CallExpr && stmt.expr.is_noreturn {
-								g.expr(stmt.expr)
 								g.writeln(';')
 							} else {
 								g.write('_option_ok(&(${styp}[]) { ')
