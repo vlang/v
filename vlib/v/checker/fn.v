@@ -634,8 +634,13 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 			c.error('original `${parent_var.name}` is immutable, declare it with `mut` to make it mutable',
 				var.pos)
 		}
+		ptyp := if parent_var.smartcasts.len > 0 {
+			parent_var.smartcasts.last()
+		} else {
+			parent_var.typ
+		}
 		if parent_var.typ != ast.no_type {
-			parent_var_sym := c.table.final_sym(parent_var.typ)
+			parent_var_sym := c.table.final_sym(ptyp)
 			if parent_var_sym.info is ast.FnType {
 				ret_typ := c.unwrap_generic(parent_var_sym.info.func.return_type)
 				if ret_typ.has_flag(.generic) {
@@ -663,7 +668,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 				var.typ = parent_var.expr.expr_type.clear_option_and_result()
 			}
 		} else {
-			var.typ = parent_var.typ
+			var.typ = ptyp
 		}
 		if var.typ.has_flag(.generic) {
 			has_generic = true
