@@ -5,7 +5,7 @@ module checker
 
 import v.ast
 import v.token
-import encoding.utf8
+import encoding.utf8.validate
 
 fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
@@ -132,7 +132,7 @@ const unicode_lit_overflow_message = 'unicode character exceeds max allowed valu
 // https://stackoverflow.com/questions/52203351/why-unicode-is-restricted-to-0x10ffff
 @[direct_array_access]
 fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
-	valid_utf8 := utf8.validate(node.val.str, node.val.len)
+	valid_utf8 := validate.utf8_string(node.val)
 	if !valid_utf8 {
 		c.warn("invalid utf8 string, please check your file's encoding is utf8", node.pos)
 	}
