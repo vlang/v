@@ -25,7 +25,7 @@ const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
-	'cmd/tools/vdoc/doc/doc_test.v',
+	'cmd/tools/vdoc/document/doc_test.v',
 	'vlib/arrays/arrays_test.v',
 	'vlib/bitfield/bitfield_test.v',
 	//
@@ -130,7 +130,7 @@ const skip_fsanitize_too_slow = [
 	'cmd/tools/vpm/install_version_input_test.v',
 	'cmd/tools/vpm/install_version_test.v',
 	'cmd/tools/vpm/update_test.v',
-	'cmd/tools/vdoc/doc/doc_test.v',
+	'cmd/tools/vdoc/document/doc_test.v',
 ]
 const skip_with_fsanitize_memory = [
 	'do_not_remove',

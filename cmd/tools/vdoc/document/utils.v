@@ -107,7 +107,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			for key in highlight_keys {
 				if ll.starts_with(key) {
 					comment += '\n\n${key.title()}${l[key.len..]}'
-					// Workaround for compiling with `v -cstrict -cc gcc cmd/tools/vdoc/doc/doc_test.v`
+					// Workaround for compiling with `v -cstrict -cc gcc cmd/tools/vdoc/document/doc_test.v`
 					// and using multiple continue `<label>`.
 					continue_line_loop = true
 					break
