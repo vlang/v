@@ -3,7 +3,7 @@ module main
 import os
 import os.cmdline
 import term
-import doc
+import document as doc
 import v.vmod
 
 const vexe = os.getenv_opt('VEXE') or { @VEXE }

@@ -1,4 +1,4 @@
-module doc
+module document
 
 import v.token
 
