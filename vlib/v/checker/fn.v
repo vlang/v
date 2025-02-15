@@ -1154,6 +1154,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 			if idx == 0 {
 				c.error('unknown enum `${enum_name}`', node.pos)
+				continue_check = false
 				return ast.void_type
 			}
 
