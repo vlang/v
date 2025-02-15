@@ -6,7 +6,7 @@ import time
 import strings
 import sync
 import runtime
-import doc
+import document as doc
 import v.vmod
 import v.util
 import json

@@ -1,7 +1,7 @@
 module main
 
 import strings
-import doc
+import document as doc
 
 fn (vd &VDoc) gen_markdown(d doc.Doc, with_toc bool) string {
 	cfg := vd.cfg

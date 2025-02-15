@@ -1,4 +1,4 @@
-module doc
+module document
 
 import os
 
@@ -37,9 +37,7 @@ fn test_get_parent_mod_normal_cases() {
 		assert err.msg() == 'No V files found.'
 		'---'
 	}
-	// TODO: WTF?
-	// assert get_parent_mod(os.join_path(@VMODROOT, 'vlib', 'v', 'doc', 'doc.v'))? == 'v.v.doc'
-	assert get_parent_mod(os.join_path(@VMODROOT, 'vlib', 'v', 'doc'))? == 'v'
+	assert get_parent_mod(os.join_path(@VMODROOT, 'vlib', 'v', 'token'))? == 'v'
 	assert get_parent_mod(os.join_path(@VMODROOT, 'vlib', 'os', 'os.v'))? == 'os'
 	assert get_parent_mod(os.join_path(@VMODROOT, 'cmd'))? == ''
 	assert get_parent_mod(os.join_path(@VMODROOT, 'cmd', 'tools', 'modules', 'testing',

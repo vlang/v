@@ -1,6 +1,6 @@
 module main
 
-import doc
+import document as doc
 import v.vmod
 import strings
 import os
