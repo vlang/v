@@ -603,7 +603,7 @@ fn (mut c Amd64) mov_store(regptr Amd64Register, reg Amd64Register, size Size) {
 	}
 	c.g.write8(if size == ._8 { i32(0x88) } else { i32(0x89) })
 	c.g.write8(i32(reg) % 8 * 8 + i32(regptr) % 8)
-	c.g.println('mov [${regptr}], ${reg}')
+	c.g.println('mov [${regptr}], ${reg} ; size:${size}bits')
 }
 
 fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
@@ -3536,10 +3536,7 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	c.div_reg(.rax, .rbx) // rax will be the result of the division
 	c.add8(.rdx, i32(`0`)) // rdx is the remainder, add 48 to convert it into it's ascii representation
 
-	c.g.write8(0x66)
-	c.g.write8(0x89)
-	c.g.write8(0x17)
-	c.g.println('mov BYTE PTR [rdi], rdx')
+	c.mov_store(.rdi, .rdx, ._8)
 
 	// go to the next character
 	c.inc(.rdi)
@@ -3555,7 +3552,6 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	c.g.labels.addrs[loop_label] = loop_start
 
 	// null terminate the string
-	c.inc(.rdi)
 	c.g.write8(0xc6)
 	c.g.write8(0x07)
 	c.g.write8(0x0)
