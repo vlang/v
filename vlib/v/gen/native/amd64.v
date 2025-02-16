@@ -466,7 +466,7 @@ fn (mut c Amd64) jmp(addr i32) i32 {
 	c.g.write8(0xe9)
 	pos := c.g.pos()
 	c.g.write32(addr) // 0xffffff
-	c.g.println('jmp ${int(pos+addr).hex2()}')
+	c.g.println('jmp ${int(pos + addr).hex2()}')
 	// return the position of jump address for placeholder
 	return i32(pos)
 }
@@ -3482,13 +3482,13 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	c.g.write8(0x07)
 	c.g.write8(0x30)
 	c.g.println("mov BYTE PTR [rdi], '0'")
-	
+
 	// null terminate the string
 	c.inc(.rdi)
 	c.g.write8(0xc6)
 	c.g.write8(0x07)
 	c.g.write8(0x0)
-	c.g.println("mov BYTE PTR [rdi], `\0`")
+	c.g.println('mov BYTE PTR [rdi], `\0`')
 
 	end_label := c.g.labels.new_label()
 	end_jmp_addr := c.jmp(0)
@@ -3525,7 +3525,7 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	c.g.labels.addrs[skip_minus_label] = c.g.pos()
 	c.g.println('; label ${skip_minus_label}')
 
-	c.mov_reg(Amd64Register.r12, Amd64Register.rdi) // copy the buffer position (start of the number without `-`) to r12 
+	c.mov_reg(Amd64Register.r12, Amd64Register.rdi) // copy the buffer position (start of the number without `-`) to r12
 
 	loop_label := c.g.labels.new_label()
 	loop_start := c.g.pos()
@@ -3553,13 +3553,13 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	}
 	c.g.println('; jump to label ${loop_label}')
 	c.g.labels.addrs[loop_label] = loop_start
-	
+
 	// null terminate the string
 	c.inc(.rdi)
 	c.g.write8(0xc6)
 	c.g.write8(0x07)
 	c.g.write8(0x0)
-	c.g.println("mov BYTE PTR [rdi], `\0`")
+	c.g.println('mov BYTE PTR [rdi], `\0`')
 
 	// after all was converted, reverse the string
 	reg := c.g.get_builtin_arg_reg(.reverse_string, 0) as Amd64Register
