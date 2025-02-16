@@ -9,8 +9,6 @@ module strconv
 // max_u64 = u64(u64(1 << 63) - 1)
 const int_size = 32
 const max_u64 = u64(18446744073709551615)
-const int32_max = 2147483647
-const int32_min = -2147483648
 
 @[inline]
 pub fn byte_to_lower(c u8) u8 {
@@ -274,9 +272,9 @@ pub fn atoi(s string) !int {
 // in case of overflow or underflow.
 @[inline]
 fn safe_add_32bits(a int, b int) !int {
-	if a > 0 && b > (int32_max - a) {
+	if a > 0 && b > (max_int - a) {
 		return error('integer overflow')
-	} else if a < 0 && b < (int32_min - a) {
+	} else if a < 0 && b < (min_int - a) {
 		return error('integer underflow')
 	}
 	return int(a + b)
@@ -286,10 +284,10 @@ fn safe_add_32bits(a int, b int) !int {
 // in case of overflow or underflow.
 @[inline]
 fn safe_mul10_32bits(a int) !int {
-	if a > 0 && a > (int32_max / 10) {
+	if a > 0 && a > (max_int / 10) {
 		return error('integer overflow')
 	}
-	if a < 0 && a < (int32_min / 10) {
+	if a < 0 && a < (min_int / 10) {
 		return error('integer underflow')
 	}
 	return int(a * 10)
