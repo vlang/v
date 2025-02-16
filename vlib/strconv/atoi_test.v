@@ -29,7 +29,7 @@ fn test_atoi() {
 
 	// Check that extracted int value matches its string.
 	for v in ok {
-		println('Parsing ${v.str_value} should equals ${v.int_value}')
+		// println('Parsing ${v.str_value} should equals ${v.int_value}')
 		assert strconv.atoi(v.str_value)! == v.int_value
 	}
 

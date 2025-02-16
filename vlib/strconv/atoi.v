@@ -219,55 +219,7 @@ pub fn parse_int(_s string, base int, _bit_size int) !i64 {
 
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
 // It follows V scanner as much as observed.
-@[direct_array_access]
-pub fn atoi32(s string) !int {
-	if s == '' {
-		return error('strconv.atoi: parsing "": empty string')
-	}
-
-	mut start_idx := 0
-	mut sign := 1
-
-	if s[0] == `-` || s[0] == `+` {
-		start_idx++
-		if s[0] == `-` {
-			sign = -1
-		}
-	}
-
-	if s.len - start_idx < 1 {
-		return error('strconv.atoi: parsing "${s}": invalid syntax')
-	}
-
-	if s[start_idx] == `_` || s[s.len - 1] == `_` {
-		return error('strconv.atoi: parsing "${s}": invalid syntax')
-	}
-
-	mut x := int(0)
-	mut underscored := false
-	for i in start_idx .. s.len {
-		c := s[i] - `0`
-		if c == 47 { // 47 = Ascii(`_`) -  ascii(`0`) = 95 - 48.
-			if underscored == true { // Two consecutives underscore
-				return error('strconv.atoi: parsing "${s}": consecutives underscores are not allowed')
-			}
-			underscored = true
-			continue // Skip underscore
-		} else {
-			if c > 9 {
-				return error('strconv.atoi: parsing "${s}": invalid radix 10 character')
-			}
-			underscored = false
-			x = safe_mul10_32bits(x) or { return error('strconv.atoi: parsing "${s}": ${err}') }
-			x = safe_add_32bits(x, int(c * sign)) or {
-				return error('strconv.atoi: parsing "${s}": ${err}')
-			}
-		}
-	}
-	println('Final = ${int(x)}')
-	return int(x)
-}
-
+// @[direct_array_access]
 @[direct_array_access]
 pub fn atoi(s string) !int {
 	if s == '' {
@@ -318,29 +270,4 @@ pub fn atoi(s string) !int {
 		}
 	}
 	return int(x)
-}
-
-// safe_add32 performs a signed 32 bits addition and returns an error
-// in case of overflow or underflow.
-@[inline]
-fn safe_add_32bits(a int, b int) !int {
-	if a > 0 && b > (max_int - a) {
-		return error('integer overflow')
-	} else if a < 0 && b < (min_int - a) {
-		return error('integer underflow')
-	}
-	return int(a + b)
-}
-
-// safe_mul10 performs a * 10 multiplication and returns an error
-// in case of overflow or underflow.
-@[inline]
-fn safe_mul10_32bits(a int) !int {
-	if a > 0 && a > (max_int / 10) {
-		return error('integer overflow')
-	}
-	if a < 0 && a < (min_int / 10) {
-		return error('integer underflow')
-	}
-	return int(a * 10)
 }
