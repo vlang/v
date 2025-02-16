@@ -35,13 +35,9 @@ fn test_native() {
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		if test == 'libc.vv' {
-			// TODO: remove the skips here, when the native backend is more advanced
-			if os.getenv('UBSAN_OPTIONS') != '' {
-				println('>>> SKIPPING ${test} since UBSAN_OPTIONS is defined')
-				continue
-			}
-			if os.getenv('ASAN_OPTIONS') != '' {
-				println('>>> SKIPPING ${test} since ASAN_OPTIONS is defined')
+			// TODO: remove the skip here, when the native backend is more advanced
+			if os.getenv('VNATIVE_SKIP_LIBC_VV') != '' {
+				println('>>> SKIPPING ${test} since VNATIVE_SKIP_LIBC_VV is defined')
 				continue
 			}
 		}

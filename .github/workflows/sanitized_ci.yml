@@ -82,6 +82,7 @@ jobs:
       VFLAGS: -cc clang
       VJOBS: 1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -110,6 +111,7 @@ jobs:
       VFLAGS: -cc gcc
       VJOBS: 1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -221,6 +223,7 @@ jobs:
     env:
       VFLAGS: -cc clang -gc none
       VJOBS: 1
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -236,7 +239,7 @@ jobs:
       - name: Recompile V with clang and -cstrict
         run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=memory)
-        run: ./v -cflags -fsanitize=memory test-self vlib
+        run: ./v -cflags -fsanitize=memory test-self -msan-compiler vlib
       - name: Self tests (V compiled with -fsanitize=memory)
         run: |
           ./v -cflags -fsanitize=memory -o v cmd/v
