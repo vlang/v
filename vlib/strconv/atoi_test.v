@@ -1,28 +1,66 @@
 import strconv
 
 fn test_atoi() {
-	assert strconv.atoi('16')! == 16
-	assert strconv.atoi('+16')! == 16
-	assert strconv.atoi('-16')! == -16
+	struct StrVal { // Inner test struct
+		str_value string
+		int_value int
+	}
 
-	// invalid strings
-	if x := strconv.atoi('str') {
-		println(x)
-		assert false
-	} else {
-		assert true
+	// Parsing of theses value should succeed.
+	ok := [
+		StrVal{'1', 1},
+		StrVal{'-1', -1},
+		StrVal{'0', 0},
+		StrVal{'+0', 0},
+		StrVal{'-0', 0},
+		StrVal{'-0_00', 0},
+		StrVal{'+0_00', 0},
+		StrVal{'+1', 1},
+		StrVal{'+1024', 1024},
+		StrVal{'+3_14159', 314159},
+		StrVal{'-1_00_1', -1001},
+		StrVal{'-1_024', -1024},
+		StrVal{'123_456_789', 123456789},
+		StrVal{'00000006', 6},
+		StrVal{'0_0_0_0_0_0_0_6', 6},
+		StrVal{'2147483647', 2147483647}, // Signed 32bits max.
+		StrVal{'-2147483648', -2147483648}, // Signed 32bits min.
+	]
+
+	// Check that extracted int value matches its string.
+	for v in ok {
+		// println('Parsing ${v.str_value} should equals ${v.int_value}')
+		assert strconv.atoi(v.str_value)! == v.int_value
 	}
-	if x := strconv.atoi('string_longer_than_10_chars') {
-		println(x)
-		assert false
-	} else {
-		assert true
-	}
-	if x := strconv.atoi('') {
-		println(x)
-		assert false
-	} else {
-		assert true
+
+	// Parsing of these values should fail !
+	ko := [
+		'', // Empty string
+		'-', // Only sign
+		'+', // Only sign
+		'_', // Only Underscore
+		'_10', // Start with underscore
+		'+_10', // Start with underscore after sign.
+		'-_16', // Start with underscore after sign.
+		'123_', // End with underscore
+		'-3__14159', // Two consecutives underscore.
+		'-3_14159A', // Non radix 10 char.
+		'A42', // Non radix 10 char.
+		'-2147483649', // 32bits inderflow by 1.
+		'+2147483648', // 32 bit overflow by 1.
+		'+3147483648', // 32 bit overflow by a lot.
+		'-2147244836470', // Large underflow.
+		'+86842255899621148766244',
+	]
+
+	for v in ko {
+		if r := strconv.atoi(v) {
+			// These conversions should fail so force assertion !
+			assert false, 'The string ${v} int extraction should not succeed or be considered as valid ${r}).'
+		} else {
+			// println('Parsing fails as it should for : "${v}')
+			assert true
+		}
 	}
 }
 

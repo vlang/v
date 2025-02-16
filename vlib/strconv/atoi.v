@@ -9,6 +9,8 @@ module strconv
 // max_u64 = u64(u64(1 << 63) - 1)
 const int_size = 32
 const max_u64 = u64(18446744073709551615)
+const int32_max = 2147483647
+const int32_min = -2147483648
 
 @[inline]
 pub fn byte_to_lower(c u8) u8 {
@@ -218,34 +220,77 @@ pub fn parse_int(_s string, base int, _bit_size int) !i64 {
 }
 
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
+// It follows V scanner as much as observed.
 @[direct_array_access]
 pub fn atoi(s string) !int {
 	if s == '' {
 		return error('strconv.atoi: parsing "": invalid syntax')
 	}
-	if (int_size == 32 && (0 < s.len && s.len < 10))
-		|| (int_size == 64 && (0 < s.len && s.len < 19)) {
-		// Fast path for small integers that fit int type.
-		mut start_idx := 0
-		if s[0] == `-` || s[0] == `+` {
-			start_idx++
-			if s.len - start_idx < 1 {
-				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "${s}": invalid syntax')
-			}
+
+	mut start_idx := 0
+	mut sign := 1
+
+	if s[0] == `-` || s[0] == `+` {
+		start_idx++
+		if s[0] == `-` {
+			sign = -1
 		}
-		mut n := 0
-		for i in start_idx .. s.len {
-			ch := s[i] - `0`
-			if ch > 9 {
-				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "${s}": invalid syntax')
-			}
-			n = n * 10 + int(ch)
-		}
-		return if s[0] == `-` { -n } else { n }
 	}
-	// Slow path for invalid, big, or underscored integers.
-	int64 := parse_int(s, 10, 0)!
-	return int(int64)
+
+	if s.len - start_idx < 1 {
+		return error('strconv.atoi: parsing "${s}": invalid syntax')
+	}
+
+	if s[start_idx] == `_` || s[s.len - 1] == `_` {
+		return error('strconv.atoi: parsing "${s}": invalid syntax')
+	}
+
+	mut x := int(0)
+	mut underscored := false
+	for i in start_idx .. s.len {
+		c := s[i] - `0`
+		if c == 47 { // 47 = Ascii(`_`) -  ascii(`0`) = 95 - 48.
+			if underscored == true { // Two consecutives underscore
+				return error('strconv.atoi: parsing "${s}": invalid syntax')
+			}
+			underscored = true
+			continue // Skip underscore
+		} else {
+			if c > 9 {
+				return error('strconv.atoi: parsing "${s}": invalid syntax')
+			}
+			underscored = false
+			x = safe_mul10_32bits(x) or { return error('strconv.atoi: parsing "${s}": ${err}') }
+			x = safe_add_32bits(x, int(c * sign)) or {
+				return error('strconv.atoi: parsing "${s}": ${err}')
+			}
+		}
+	}
+
+	return int(x)
+}
+
+// safe_add32 performs a signed 32 bits addition and returns an error
+// in case of overflow or underflow.
+@[inline]
+fn safe_add_32bits(a int, b int) !int {
+	if a > 0 && b > (int32_max - a) {
+		return error('integer overflow')
+	} else if a < 0 && b < (int32_min - a) {
+		return error('integer underflow')
+	}
+	return int(a + b)
+}
+
+// safe_mul10 performs a * 10 multiplication and returns an error
+// in case of overflow or underflow.
+@[inline]
+fn safe_mul10_32bits(a int) !int {
+	if a > 0 && a > (int32_max / 10) {
+		return error('integer overflow')
+	}
+	if a < 0 && a < (int32_min / 10) {
+		return error('integer underflow')
+	}
+	return int(a * 10)
 }
