@@ -235,7 +235,7 @@ pub fn atoi(s string) !int {
 	}
 
 	if s.len - start_idx < 1 {
-		return error('strconv.atoi: parsing "${s}": invalid syntax')
+		return error('strconv.atoi: parsing "${s}": no number after sign')
 	}
 
 	if s[start_idx] == `_` || s[s.len - 1] == `_` {
