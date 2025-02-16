@@ -72,11 +72,6 @@ jobs:
           which wine
           ls -la $(realpath $(which wine))
 
-      - name: Show diagnostics for wine64
-        run: |
-          which wine64
-          ls -la $(realpath $(which wine))
-
       - name: v.c can be compiled and run with -os cross
         run: |
           ./v -os cross -o /tmp/v.c cmd/v
@@ -89,13 +84,13 @@ jobs:
           ./v -cc msvc -os windows -o /tmp/v_win.c cmd/v
           x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe -lws2_32
           ls -lart v_from_vc.exe
-          wine64 ./v_from_vc.exe version
+          wine ./v_from_vc.exe version
 
       - name: hello_world.v can be cross compiled to hello_world.exe
         run: |
           ./v -os windows examples/hello_world.v
           ls -lart examples/hello_world.exe
-          wine64 examples/hello_world.exe
+          wine examples/hello_world.exe
 
       - name: 2048.v can be cross compiled to 2048.exe
         run: |
