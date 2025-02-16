@@ -457,7 +457,7 @@ fn (op JumpOp) amd64() u16 {
 fn (mut c Amd64) cjmp(op JumpOp) i32 {
 	c.g.write16(op.amd64())
 	pos := c.g.pos()
-	c.g.write32(placeholder)
+	c.g.write32(placeholder) // will get replaced by the right address
 	c.g.println('${op}')
 	return i32(pos)
 }
@@ -3518,7 +3518,7 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	c.g.labels.addrs[skip_minus_label] = c.g.pos()
 	c.g.println('; label ${skip_minus_label}')
 
-	c.mov_reg(Amd64Register.r12, Amd64Register.rdi) // copy the buffer position to r12
+	c.mov_reg(Amd64Register.r12, Amd64Register.rdi) // copy the buffer position (start of the number without `-`) to r12 
 
 	loop_label := c.g.labels.new_label()
 	loop_start := c.g.pos()
@@ -3540,11 +3540,7 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	c.pop(.rax)
 	c.mov(Amd64Register.rbx, 10)
 	c.cdq()
-	c.g.write8(0x48)
-	c.g.write8(0x48) // REX.W prefix for dividend RDX:RAX and quotient RAX
-	c.g.write8(0xf7)
-	c.g.write8(0xfb)
-	c.g.println('idiv rbx')
+	c.div_reg(.rax, .rbx)
 
 	// go to the next character
 	c.inc(.rdi)
@@ -3556,7 +3552,7 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 		id:  loop_label
 		pos: loop_cjmp_addr
 	}
-	c.g.println('; jump to label ${skip_minus_label}')
+	c.g.println('; jump to label ${loop_label}')
 	c.g.labels.addrs[loop_label] = loop_start
 
 	// after all was converted, reverse the string
