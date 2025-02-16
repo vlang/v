@@ -362,12 +362,11 @@ const c_common_macros = '
 
 // for __offset_of
 #ifndef __offsetof
-#ifdef __TINYC__
+#if defined(__TINYC__) || defined(_MSC_VER)
 	#define __offsetof(PTYPE,FIELDNAME) ((size_t)(&((PTYPE *)0)->FIELDNAME))
-#endif
-#ifndef __TINYC__
+#else
 	#define __offsetof(st, m) __builtin_offsetof(st, m)
-#endif	
+#endif
 #endif
 
 #define OPTION_CAST(x) (x)
