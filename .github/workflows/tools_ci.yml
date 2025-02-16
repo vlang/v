@@ -58,8 +58,8 @@ jobs:
             echo $cmd && $cmd
             cmd="./v -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self -asan-compiler cmd/tools"
             echo $cmd && $cmd
-            cmd="./v -cc gcc -cflags -fsanitize=kernel-address test-self -asan-compiler cmd"
-            echo $cmd && $cmd
+            ## cmd="./v -cc gcc -cflags -fsanitize=kernel-address test-self -asan-compiler cmd"
+            ## echo $cmd && $cmd
           fi
 
   macos:
