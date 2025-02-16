@@ -219,7 +219,6 @@ pub fn parse_int(_s string, base int, _bit_size int) !i64 {
 
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
 // It follows V scanner as much as observed.
-// @[direct_array_access]
 @[direct_array_access]
 pub fn atoi(s string) !int {
 	if s == '' {
@@ -256,7 +255,7 @@ pub fn atoi(s string) !int {
 			continue // Skip underscore
 		} else {
 			if c > 9 {
-				return error('strconv.atoi: parsing "${s}":  invalid radix 10 character')
+				return error('strconv.atoi: parsing "${s}": invalid radix 10 character')
 			}
 			underscored = false
 			x = (x * 10) + (c * sign)
