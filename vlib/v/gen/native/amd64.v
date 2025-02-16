@@ -3563,8 +3563,6 @@ fn (mut c Amd64) reverse_string(r Register) {
 		c.mov_reg(Amd64Register.rdi, reg)
 	}
 
-	c.mov(Amd64Register.eax, 0)
-
 	c.g.write8(0x48)
 	c.g.write8(0x8d)
 	c.g.write8(0x48)
@@ -3573,9 +3571,9 @@ fn (mut c Amd64) reverse_string(r Register) {
 
 	c.mov_reg(Amd64Register.rsi, Amd64Register.rdi)
 
-	c.g.write8(0xf2)
-	c.g.write8(0xae)
-	c.g.println('repnz scas al, BYTE PTR es:[rdi]')
+	// search for null at end of string
+	c.mov(Amd64Register.eax, 0)
+	c.cld_repne_scasb()
 
 	c.sub8(.rdi, 0x2)
 	c.cmp_reg(.rdi, .rsi)
