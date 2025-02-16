@@ -3482,6 +3482,13 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	c.g.write8(0x07)
 	c.g.write8(0x30)
 	c.g.println("mov BYTE PTR [rdi], '0'")
+	
+	// null terminate the string
+	c.inc(.rdi)
+	c.g.write8(0xc6)
+	c.g.write8(0x07)
+	c.g.write8(0x0)
+	c.g.println("mov BYTE PTR [rdi], `\0`")
 
 	end_label := c.g.labels.new_label()
 	end_jmp_addr := c.jmp(0)
@@ -3546,6 +3553,13 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	}
 	c.g.println('; jump to label ${loop_label}')
 	c.g.labels.addrs[loop_label] = loop_start
+	
+	// null terminate the string
+	c.inc(.rdi)
+	c.g.write8(0xc6)
+	c.g.write8(0x07)
+	c.g.write8(0x0)
+	c.g.println("mov BYTE PTR [rdi], `\0`")
 
 	// after all was converted, reverse the string
 	reg := c.g.get_builtin_arg_reg(.reverse_string, 0) as Amd64Register
