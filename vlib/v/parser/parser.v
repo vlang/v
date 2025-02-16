@@ -333,6 +333,9 @@ pub fn (mut p Parser) parse() &ast.File {
 			p.pref)
 	}
 
+	$if trace_parse_file_path_and_mod ? {
+		eprintln('>> ast.File, mname: ${module_decl.name:20}, sname: ${module_decl.short_name:11}, path: ${p.file_display_path}')
+	}
 	return &ast.File{
 		path:             p.file_path
 		path_base:        p.file_base
