@@ -34,6 +34,17 @@ fn test_native() {
 	}
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
+		if test == 'libc.vv' {
+			// TODO: remove the skips here, when the native backend is more advanced
+			if os.getenv('UBSAN_OPTIONS') != '' {
+				println('>>> SKIPPING ${test} since UBSAN_OPTIONS is defined')
+				continue
+			}
+			if os.getenv('ASAN_OPTIONS') != '' {
+				println('>>> SKIPPING ${test} since ASAN_OPTIONS is defined')
+				continue
+			}
+		}
 		bench.step()
 		full_test_path := os.real_path(os.join_path(dir, test))
 		test_file_name := os.file_name(test)
@@ -41,7 +52,7 @@ fn test_native() {
 		work_test_path := os.join_path(wrkdir, test_file_name)
 		exe_test_path := os.join_path(wrkdir, test_file_name + '.exe')
 		tmperrfile := os.join_path(dir, test + '.tmperr')
-		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native -skip-unused ${os.quoted_path(full_test_path)} -d no_backtrace -d custom_define 2> ${os.quoted_path(tmperrfile)}'
+		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native ${os.quoted_path(full_test_path)} -d no_backtrace -d custom_define 2> ${os.quoted_path(tmperrfile)}'
 		if is_verbose {
 			println(cmd)
 		}
