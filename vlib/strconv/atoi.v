@@ -8,7 +8,6 @@ module strconv
 // int_size = 32 << (~u32(0) >> 63)
 // max_u64 = u64(u64(1 << 63) - 1)
 const int_size = 32
-const max_u64 = u64(18446744073709551615)
 
 @[inline]
 pub fn byte_to_lower(c u8) u8 {
