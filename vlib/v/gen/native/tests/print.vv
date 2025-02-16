@@ -104,6 +104,12 @@ fn test_interpolated() {
 	println('num: ${num}; bool: ${boool}')
 }
 
+fn test_intermediate() {
+	c := 0
+	a := 'a'
+	println(c)
+}
+
 fn main() {
 	test_stdout()
 	test_stderr()
@@ -113,4 +119,5 @@ fn main() {
 	test_exprs()
 	test_sizeof()
 	test_interpolated()
+	test_intermediate()
 }
