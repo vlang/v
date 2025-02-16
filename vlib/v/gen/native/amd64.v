@@ -3524,23 +3524,15 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	loop_start := c.g.pos()
 	c.g.println('; label ${loop_label}')
 
-	c.push(Amd64Register.rax)
-
 	c.mov(Amd64Register.rdx, 0) // upperhalf of the dividend
 	c.mov(Amd64Register.rbx, 10)
-	c.div_reg(.rax, .rbx)
+	c.div_reg(.rax, .rbx) // rax will be the result of the division
 	c.add8(.rdx, i32(`0`)) // rdx is the remainder, add 48 to convert it into it's ascii representation
 
 	c.g.write8(0x66)
 	c.g.write8(0x89)
 	c.g.write8(0x17)
 	c.g.println('mov BYTE PTR [rdi], rdx')
-
-	// divide the integer in rax by 10 for next iteration
-	c.pop(.rax)
-	c.mov(Amd64Register.rbx, 10)
-	c.cdq()
-	c.div_reg(.rax, .rbx)
 
 	// go to the next character
 	c.inc(.rdi)
