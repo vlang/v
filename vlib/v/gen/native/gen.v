@@ -856,9 +856,11 @@ fn (mut g Gen) allocate_string(s string, opsize i32, typ RelocType) i32 {
 	return str_pos
 }
 
+// name, size of stored type (nb of bytes), nb of items
 fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 {
-	pos := g.code_gen.allocate_var(name, size, items)
-	g.stack_var_pos += (size * items)
+	g.println('; allocate array `${name}` item-size:${size} items:${items}:')
+	pos := g.code_gen.allocate_var(name, size, items) // store the lenght of the array
+	g.stack_var_pos += (size * items) // reserve space on the stack
 	return pos
 }
 
@@ -945,6 +947,7 @@ fn (mut g Gen) eval_escape_codes(str string) string {
 }
 
 fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
+	g.println('; to_string (reg:${reg}) {')
 	if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
 		g.code_gen.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), buffer)
@@ -969,9 +972,11 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 	} else {
 		g.n_error('int-to-string conversion not implemented for type ${typ}')
 	}
+	g.println('; to_string }')
 }
 
 fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config VarConfig) {
+	g.println('; var_to_string {')
 	typ := g.get_type_from_var(var)
 	if typ == ast.rune_type_idx {
 		buffer := g.code_gen.allocate_var('rune-buffer', 8, 0)
@@ -990,6 +995,7 @@ fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config Va
 	} else {
 		g.n_error('int-to-string conversion not implemented for type ${typ}')
 	}
+	g.println('; var_to_string }')
 }
 
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {

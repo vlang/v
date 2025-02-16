@@ -466,7 +466,7 @@ fn (mut c Amd64) jmp(addr i32) i32 {
 	c.g.write8(0xe9)
 	pos := c.g.pos()
 	c.g.write32(addr) // 0xffffff
-	c.g.println('jmp')
+	c.g.println('jmp ${int(pos+addr).hex2()}')
 	// return the position of jump address for placeholder
 	return i32(pos)
 }
@@ -885,7 +885,7 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			} else {
 				c.g.write8((0xff - offset + 1) % 0x100)
 			}
-			c.g.println('${instruction} ${reg}, ${size_str} PTR [rbp-${int(offset).hex2()}]')
+			c.g.println('${instruction} ${reg}, ${size_str} PTR [rbp-${int(offset).hex2()}] ; `${var.name}`')
 		}
 		GlobalVar {
 			// TODO
@@ -1263,6 +1263,7 @@ pub fn (mut c Amd64) test_reg(r Amd64Register) {
 
 // return length in .rax of string pointed by given register
 pub fn (mut c Amd64) inline_strlen(r Amd64Register) {
+	c.g.println('; inline_strlen: (reg:${r}) {')
 	c.mov_reg(Amd64Register.rdi, r)
 	c.mov(Amd64Register.rcx, -1)
 	c.mov(Amd64Register.eax, 0)
@@ -1271,6 +1272,7 @@ pub fn (mut c Amd64) inline_strlen(r Amd64Register) {
 	c.dec(.rcx)
 	c.mov_reg(Amd64Register.rax, Amd64Register.rcx)
 	c.g.println('strlen rax, ${r}')
+	c.g.println('; inline_strlen }')
 }
 
 pub fn (mut c Amd64) get_dllcall_addr(import_addr i64) i64 {
@@ -1296,6 +1298,7 @@ pub fn (mut c Amd64) dllcall(symbol string) {
 }
 
 fn (mut c Amd64) gen_print(s string, fd i32) {
+	c.g.println('; print: (fd:${fd} s:\'${s}\') {')
 	if c.g.pref.os == .windows {
 		c.sub(.rsp, 0x38)
 		c.mov(Amd64Register.rcx, -10 - fd)
@@ -1317,9 +1320,11 @@ fn (mut c Amd64) gen_print(s string, fd i32) {
 		c.mov(Amd64Register.edx, i32(s.len)) // len
 		c.syscall()
 	}
+	c.g.println('; print }')
 }
 
 pub fn (mut c Amd64) gen_print_reg(r Register, n i32, fd i32) {
+	c.g.println('; print_reg: (reg:${r} fd:${fd} len:${n}) {')
 	str_reg := if c.g.pref.os == .windows { Amd64Register.rdx } else { Amd64Register.rsi }
 	len_reg := if c.g.pref.os == .windows { Amd64Register.r8 } else { Amd64Register.rdx }
 	c.mov_reg(str_reg, r)
@@ -1347,6 +1352,7 @@ pub fn (mut c Amd64) gen_print_reg(r Register, n i32, fd i32) {
 		c.mov(Amd64Register.edi, fd)
 		c.syscall()
 	}
+	c.g.println('; print_reg }')
 }
 
 pub fn (mut c Amd64) gen_exit(expr ast.Expr) {
@@ -1604,7 +1610,7 @@ fn (mut c Amd64) div_reg(a Amd64Register, b Amd64Register) {
 			panic('unhandled div ${b}')
 		}
 	}
-	c.g.println('div ${b}')
+	c.g.println('idiv ${b}')
 }
 
 fn (mut c Amd64) mod_reg(a Amd64Register, b Amd64Register) {
@@ -1937,8 +1943,8 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 }
 
 fn (mut c Amd64) call_builtin(name Builtin) i64 {
-	call_addr := c.call(0)
-	c.g.println('call builtin `${name}`')
+	c.g.println('; call builtin `${name}`: (the 0 will get replaced)')
+	call_addr := c.call(0) // the 0 will get replaced by the right addr when the function will be generated
 	return call_addr
 }
 
@@ -3521,10 +3527,10 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 
 	c.push(Amd64Register.rax)
 
-	c.mov(Amd64Register.rdx, 0)
+	c.mov(Amd64Register.rdx, 0) // upperhalf of the dividend
 	c.mov(Amd64Register.rbx, 10)
 	c.div_reg(.rax, .rbx)
-	c.add8(.rdx, '0'[0])
+	c.add8(.rdx, i32(`0`)) // rdx is the remainder, add 48 to convert it into it's ascii representation
 
 	c.g.write8(0x66)
 	c.g.write8(0x89)
@@ -3536,6 +3542,7 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	c.mov(Amd64Register.rbx, 10)
 	c.cdq()
 	c.g.write8(0x48)
+	c.g.write8(0x48) // REX.W prefix for dividend RDX:RAX and quotient RAX
 	c.g.write8(0xf7)
 	c.g.write8(0xfb)
 	c.g.println('idiv rbx')
