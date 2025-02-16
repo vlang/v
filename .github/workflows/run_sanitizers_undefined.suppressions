@@ -1,6 +1,9 @@
 ## See https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html 
 function:rand__internal_ulid_at_millisecond
-function:sync__pool__process_in_thread
 function:rand__deinit
+## needed for tests; TODO: move the test specific setup code into its own separate VDO_tests function, so only it can be added here
+function:main
+function:sync__pool__process_in_thread
 function:v__type_resolver__TypeResolver_resolve_fn_generic_args
 function:v__type_resolver__TypeResolver_unwrap_generic_expr
+function:v__type_resolver__TypeResolver_get_type

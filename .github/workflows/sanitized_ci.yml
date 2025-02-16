@@ -81,6 +81,7 @@ jobs:
     env:
       VFLAGS: -cc clang
       VJOBS: 1
+	  UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
     steps:
       - uses: actions/checkout@v4
       - name: Build V
