@@ -220,9 +220,9 @@ pub fn parse_int(_s string, base int, _bit_size int) !i64 {
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
 // It follows V scanner as much as observed.
 @[direct_array_access]
-pub fn atoi(s string) !int {
+pub fn atoi32(s string) !int {
 	if s == '' {
-		return error('strconv.atoi: parsing "": invalid syntax')
+		return error('strconv.atoi: parsing "": empty string')
 	}
 
 	mut start_idx := 0
@@ -249,13 +249,13 @@ pub fn atoi(s string) !int {
 		c := s[i] - `0`
 		if c == 47 { // 47 = Ascii(`_`) -  ascii(`0`) = 95 - 48.
 			if underscored == true { // Two consecutives underscore
-				return error('strconv.atoi: parsing "${s}": invalid syntax')
+				return error('strconv.atoi: parsing "${s}": consecutives underscores are not allowed')
 			}
 			underscored = true
 			continue // Skip underscore
 		} else {
 			if c > 9 {
-				return error('strconv.atoi: parsing "${s}": invalid syntax')
+				return error('strconv.atoi: parsing "${s}": invalid radix 10 character')
 			}
 			underscored = false
 			x = safe_mul10_32bits(x) or { return error('strconv.atoi: parsing "${s}": ${err}') }
@@ -264,7 +264,59 @@ pub fn atoi(s string) !int {
 			}
 		}
 	}
+	println('Final = ${int(x)}')
+	return int(x)
+}
 
+@[direct_array_access]
+pub fn atoi(s string) !int {
+	if s == '' {
+		return error('strconv.atoi: parsing "": empty string')
+	}
+
+	mut start_idx := 0
+	mut sign := i64(1)
+
+	if s[0] == `-` || s[0] == `+` {
+		start_idx++
+		if s[0] == `-` {
+			sign = -1
+		}
+	}
+
+	if s.len - start_idx < 1 {
+		return error('strconv.atoi: parsing "${s}": invalid syntax')
+	}
+
+	if s[start_idx] == `_` || s[s.len - 1] == `_` {
+		return error('strconv.atoi: parsing "${s}": invalid syntax')
+	}
+
+	mut x := i64(0)
+	mut underscored := false
+	for i in start_idx .. s.len {
+		c := s[i] - `0`
+		if c == 47 { // 47 = Ascii(`_`) -  ascii(`0`) = 95 - 48.
+			if underscored == true { // Two consecutives underscore
+				return error('strconv.atoi: parsing "${s}": consecutives underscores are not allowed')
+			}
+			underscored = true
+			continue // Skip underscore
+		} else {
+			if c > 9 {
+				return error('strconv.atoi: parsing "${s}":  invalid radix 10 character')
+			}
+			underscored = false
+			x = (x * 10) + (c * sign)
+			if sign == 1 && x > i64(max_int) {
+				return error('strconv.atoi: parsing "${s}": integer overflow')
+			} else {
+				if x < i64(min_int) {
+					return error('strconv.atoi: parsing "${s}": integer underflow')
+				}
+			}
+		}
+	}
 	return int(x)
 }
 

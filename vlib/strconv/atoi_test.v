@@ -29,7 +29,7 @@ fn test_atoi() {
 
 	// Check that extracted int value matches its string.
 	for v in ok {
-		// println('Parsing ${v.str_value} should equals ${v.int_value}')
+		println('Parsing ${v.str_value} should equals ${v.int_value}')
 		assert strconv.atoi(v.str_value)! == v.int_value
 	}
 
@@ -46,7 +46,7 @@ fn test_atoi() {
 		'-3__14159', // Two consecutives underscore.
 		'-3_14159A', // Non radix 10 char.
 		'A42', // Non radix 10 char.
-		'-2147483649', // 32bits inderflow by 1.
+		'-2147483649', // 32bits underflow by 1.
 		'+2147483648', // 32 bit overflow by 1.
 		'+3147483648', // 32 bit overflow by a lot.
 		'-2147244836470', // Large underflow.
