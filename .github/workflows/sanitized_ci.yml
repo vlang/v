@@ -81,7 +81,6 @@ jobs:
     env:
       VFLAGS: -cc clang
       VJOBS: 1
-      VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -109,7 +108,6 @@ jobs:
     env:
       VFLAGS: -cc gcc
       VJOBS: 1
-      VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -136,7 +134,6 @@ jobs:
     env:
       VFLAGS: -cc clang
       VJOBS: 1
-      VTEST_SHOW_START: 1
       ASAN_OPTIONS: detect_leaks=1
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
     steps:
@@ -168,7 +165,6 @@ jobs:
     env:
       VFLAGS: -cc msvc
       VJOBS: 1
-      VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build
@@ -192,7 +188,6 @@ jobs:
     env:
       VFLAGS: -cc gcc
       VJOBS: 1
-      VTEST_SHOW_START: 1
       ASAN_OPTIONS: detect_leaks=1
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
     steps:
@@ -224,7 +219,6 @@ jobs:
     env:
       VFLAGS: -cc clang -gc none
       VJOBS: 1
-      VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
