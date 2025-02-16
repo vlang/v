@@ -1596,10 +1596,9 @@ fn (mut c Amd64) div_reg(a Amd64Register, b Amd64Register) {
 			c.g.write8(0xf8)
 		}
 		.rbx {
-			c.mov(Amd64Register.edx, 0)
 			c.g.write8(0x48)
 			c.g.write8(0xf7)
-			c.g.write8(0xfb) // idiv ebx
+			c.g.write8(0xfb)
 		}
 		.rdx {
 			c.g.write8(0x48)
@@ -1610,7 +1609,7 @@ fn (mut c Amd64) div_reg(a Amd64Register, b Amd64Register) {
 			panic('unhandled div ${b}')
 		}
 	}
-	c.g.println('idiv ${b}')
+	c.g.println('div ${b}')
 }
 
 fn (mut c Amd64) mod_reg(a Amd64Register, b Amd64Register) {
