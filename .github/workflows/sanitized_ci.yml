@@ -97,7 +97,9 @@ jobs:
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
-        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self vlib
+        run: |
+          ./v -cflags -fsanitize=undefined -o v2 cmd/v
+          ./v2 -cflags -fsanitize=undefined test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
         run: ./v2 build-examples
 
@@ -122,7 +124,9 @@ jobs:
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
-        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self vlib
+        run: |
+          ./v  -cflags -fsanitize=undefined -o v2 cmd/v
+          ./v2 -cflags -fsanitize=undefined test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
         run: ./v2 build-examples
 
@@ -133,6 +137,8 @@ jobs:
       VFLAGS: -cc clang
       VJOBS: 1
       VTEST_SHOW_START: 1
+      ASAN_OPTIONS: detect_leaks=1
+      LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -148,12 +154,13 @@ jobs:
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self vlib
+        run: ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
-        run: ./v -cflags -fsanitize=address -o v cmd/v &&
-          ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v -cc tcc test-self -asan-compiler vlib
+        run: |
+          ./v -cflags -fsanitize=address -o v cmd/v
+          ./v -cc tcc test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v build-examples
+        run: ./v build-examples
 
   tests-sanitize-address-msvc:
     runs-on: windows-2019
@@ -186,6 +193,8 @@ jobs:
       VFLAGS: -cc gcc
       VJOBS: 1
       VTEST_SHOW_START: 1
+      ASAN_OPTIONS: detect_leaks=1
+      LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -201,13 +210,13 @@ jobs:
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v -cflags -fsanitize=address test-self vlib
+        run: ./v -cflags -fsanitize=address test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
-        run:
-          ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v &&
-          ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v -cc tcc test-self -asan-compiler vlib
+        run: |
+          ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v
+          ./v -cc tcc test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v build-examples
+        run: ./v build-examples
 
   tests-sanitize-memory-clang:
     runs-on: ubuntu-22.04
