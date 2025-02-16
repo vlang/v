@@ -212,6 +212,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << '__print_assert_failure'
 			core_fns << 'isnil'
 		}
+		if table.used_features.type_name {
+			core_fns << charptr_idx_str + '.vstring_literal'
+		}
 		if pref_.trace_calls || pref_.trace_fns.len > 0 {
 			include_panic_deps = true
 			core_fns << 'vgettid'
