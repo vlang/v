@@ -239,7 +239,7 @@ pub fn atoi(s string) !int {
 	}
 
 	if s[start_idx] == `_` || s[s.len - 1] == `_` {
-		return error('strconv.atoi: parsing "${s}": invalid syntax')
+		return error('strconv.atoi: parsing "${s}": values cannot start or end with underscores')
 	}
 
 	mut x := i64(0)
