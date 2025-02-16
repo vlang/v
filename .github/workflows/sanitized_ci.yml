@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
-      VFLAGS: -cc clang
+      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
       VJOBS: 1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
-      VFLAGS: -cc gcc
+      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
       VJOBS: 1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
@@ -136,10 +136,11 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc clang
+      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
       VJOBS: 1
       ASAN_OPTIONS: detect_leaks=1
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -169,6 +170,7 @@ jobs:
     env:
       VFLAGS: -cc msvc
       VJOBS: 1
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build
@@ -190,10 +192,11 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc gcc
+      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
       VJOBS: 1
       ASAN_OPTIONS: detect_leaks=1
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -221,7 +224,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 240
     env:
-      VFLAGS: -cc clang -gc none
+      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
       VJOBS: 1
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
