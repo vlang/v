@@ -531,7 +531,7 @@ fn main() {
 	}
 	$if macos {
 		$if arm64 {
-			if cfg.github_job == 'clang' {
+			if cfg.github_job.starts_with('clang-') {
 				tsession.skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
 			}
 		}
