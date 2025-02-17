@@ -126,6 +126,7 @@ mut:
 	mov_var_to_reg(reg Register, var Var, config VarConfig)
 	mov(r Register, val i32)
 	mov64(r Register, val i64)
+	mov64u(r Register, val u64)
 	movabs(reg Register, val i64)
 	patch_relative_jmp(pos i32, addr i64)
 	prefix_expr(node ast.PrefixExpr)

@@ -376,6 +376,10 @@ fn (mut c Arm64) mov_reg(r1 Register, r2 Register) {
 	panic('Arm64.mov_reg() not implemented')
 }
 
+fn (mut c Arm64) mov64u(r Register, val u64) {
+	panic('Arm64.mov64u() not implemented')
+}
+
 fn (mut c Arm64) mov64(r Register, val i64) {
 	panic('Arm64.mov64() not implemented')
 }

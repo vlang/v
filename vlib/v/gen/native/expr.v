@@ -62,7 +62,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.code_gen.infix_expr(node)
 		}
 		ast.IntegerLiteral {
-			g.code_gen.mov64(g.code_gen.main_reg(), i64(node.val.u64()))
+			// Integer literal stores both signed and unsigned integers but sometimes unsigned integers are too big for i64 but not for u64
+			println(node.val)
+			if node.val[0] == `-` { // if the number is negative
+				g.code_gen.mov64(g.code_gen.main_reg(), node.val.i64())
+			} else {
+				g.code_gen.mov64u(g.code_gen.main_reg(), node.val.u64())
+			}
 		}
 		ast.Nil {
 			g.code_gen.mov64(g.code_gen.main_reg(), 0)

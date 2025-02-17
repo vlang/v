@@ -532,36 +532,64 @@ fn (mut c Amd64) mov32(reg Amd64Register, val i32) {
 	c.g.println('mov32 ${reg}, ${val}')
 }
 
-fn (mut c Amd64) mov64(reg Register, val i64) {
+// moves unsigned 64 bits, explained better in mov64
+fn (mut c Amd64) mov64u(reg Register, val u64) {
 	match reg as Amd64Register {
-		.eax {
-			c.g.write8(0xb8)
-			c.g.write8(0x49)
-		}
 		.rax {
 			c.g.write8(0x48)
 			c.g.write8(0xb8)
 		}
 		.rcx {
 			c.g.write8(0x48)
-			c.g.write8(0xc7)
-			c.g.write8(0xc1)
+			c.g.write8(0xb9)
 		}
 		.rdx {
 			c.g.write8(0x48)
-			c.g.write8(0xc7)
-			c.g.write8(0xc2)
-			c.g.write32(i32(val))
-			c.g.println('mov32 ${reg}, ${val}')
-			return
+			c.g.write8(0xba)
 		}
 		.rbx {
 			c.g.write8(0x48)
-			c.g.write8(0xc7)
-			c.g.write8(0xc3)
+			c.g.write8(0xbb)
 		}
-		.edi {
+		.rsi {
+			c.g.write8(0x48)
 			c.g.write8(0xbe)
+		}
+		.rdi {
+			c.g.write8(0x48)
+			c.g.write8(0xbf)
+		}
+		else {
+			eprintln('unhandled mov64 ${reg}')
+		}
+	}
+	c.g.write64(val)
+	c.g.println('mov64 ${reg}, ${val}')
+}
+
+fn (mut c Amd64) mov64(reg Register, val i64) {
+	// see AMD64 Architecture Programmer's Manual Volume 3 about the MOV instruction to have a detailed explaination
+	// if you wonder about the BF (B8+rq) there is an explaination about that in Table 2-2 (and a bit above in 2.5.2 Opcode Syntax)
+	// in short the 64 mov instruction is 0xB8 and after a 64 bits immediate value
+	// but for the cpu to know which register to move the value to, it adds a number to B8
+	// that number is the Value column in table 2-2
+	// for example the bytecode for mov rdx is 0xB8 + 2 so 0xBA
+	match reg as Amd64Register {
+		.rax {
+			c.g.write8(0x48)
+			c.g.write8(0xb8)
+		}
+		.rcx {
+			c.g.write8(0x48)
+			c.g.write8(0xb9)
+		}
+		.rdx {
+			c.g.write8(0x48)
+			c.g.write8(0xba)
+		}
+		.rbx {
+			c.g.write8(0x48)
+			c.g.write8(0xbb)
 		}
 		.rsi {
 			c.g.write8(0x48)
