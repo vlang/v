@@ -20,7 +20,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  release-build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -101,9 +101,9 @@ jobs:
           name: ${{ matrix.target }}
           path: ${{ matrix.artifact }}
 
-  release:
+  release-publish:
     if: github.ref_type == 'tag'
-    needs: build
+    needs: release-build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

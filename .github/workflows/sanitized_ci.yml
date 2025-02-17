@@ -75,7 +75,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tests-sanitize-undefined-clang:
+  sanitize-undefined-clang:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
@@ -104,7 +104,7 @@ jobs:
       - name: Build examples (V compiled with -fsanitize=undefined)
         run: ./v2 build-examples
 
-  tests-sanitize-undefined-gcc:
+  sanitize-undefined-gcc:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
@@ -164,7 +164,7 @@ jobs:
       - name: Build examples (V compiled with -fsanitize=address)
         run: ./v build-examples
 
-  tests-sanitize-address-msvc:
+  sanitize-address-msvc:
     runs-on: windows-2019
     timeout-minutes: 30
     env:
@@ -188,7 +188,7 @@ jobs:
         # - name: Self tests (/fsanitize=address) # TODO:
         #   run: .\v.exe -cflags "/fsanitize=address" test-self vlib
 
-  tests-sanitize-address-gcc:
+  sanitize-address-gcc:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
@@ -220,7 +220,7 @@ jobs:
       - name: Build examples (V compiled with -fsanitize=address)
         run: ./v build-examples
 
-  tests-sanitize-memory-clang:
+  sanitize-memory-clang:
     runs-on: ubuntu-22.04
     timeout-minutes: 240
     env:

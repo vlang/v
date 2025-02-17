@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  vsl:
+  vsl-compiles:
     strategy:
       matrix:
         os: [ubuntu-20.04, macos-14]
@@ -52,7 +52,7 @@ jobs:
       - name: Test with Pure V Backend and Pure V Math
         run: ~/.vmodules/vsl/bin/test --use-cblas
 
-  vtl:
+  vtl-compiles:
     strategy:
       matrix:
         os: [ubuntu-20.04, macos-14]

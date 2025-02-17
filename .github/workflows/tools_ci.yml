@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  linux:
+  tools-linux:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
@@ -62,7 +62,7 @@ jobs:
             ## echo $cmd && $cmd
           fi
 
-  macos:
+  tools-macos:
     runs-on: macos-14
     strategy:
       matrix:
@@ -81,7 +81,7 @@ jobs:
       - name: Test tools (-cstrict)
         run: ./v -W -cstrict test-self cmd
 
-  windows:
+  tools-windows:
     runs-on: windows-2019
     strategy:
       matrix:

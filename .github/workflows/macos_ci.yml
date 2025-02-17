@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  clang:
+  clang-macos:
     strategy:
       matrix:
         os: [macos-14]

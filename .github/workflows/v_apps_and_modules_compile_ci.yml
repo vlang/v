@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  common:
+  v-apps-compile:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-14]
@@ -220,7 +220,7 @@ jobs:
       #     echo "Run Vex Tests"
       #     v test ~/.vmodules/nedpals/vex
 
-  vpm-site:
+  vpm-site-compile:
     strategy:
       matrix:
         os: [ubuntu-20.04, macos-14]

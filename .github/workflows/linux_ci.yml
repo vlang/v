@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tcc:
+  tcc-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
@@ -76,7 +76,7 @@ jobs:
       - name: Test leak detector not being active for normal compile
         run: v run ci/linux_ci.vsh test_leak_detector_not_active_tcc
 
-  gcc:
+  gcc-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 121
     steps:
@@ -126,7 +126,7 @@ jobs:
       - name: compile vup.v with -prod
         run: v run ci/linux_ci.vsh compile_vup_prod_gcc
 
-  clang:
+  clang-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:

@@ -43,7 +43,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  wasm-backend:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

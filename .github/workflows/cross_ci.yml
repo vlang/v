@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  macos-cross:
+  cross-macos:
     runs-on: macos-13
     timeout-minutes: 25
     env:
@@ -51,7 +51,7 @@ jobs:
           ./v -os windows cmd/v
           ./v -os windows examples/2048/2048.v
 
-  linux-cross:
+  cross-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -97,7 +97,7 @@ jobs:
           ./v -os windows examples/2048/2048.v
           ls -lart examples/2048/2048.exe
 
-  windows-cross:
+  cross-windows:
     runs-on: windows-2019
     timeout-minutes: 25
     steps:

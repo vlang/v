@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  symlink-unix:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -57,7 +57,7 @@ jobs:
           echo 'println(123)' > hi.v
           v run hi.v
 
-  test-windows:
+  symlink-windows:
     runs-on: windows-2019
     strategy:
       matrix:

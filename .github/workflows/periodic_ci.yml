@@ -11,7 +11,7 @@ on:
       - '**/periodic_ci.yml'
 
 jobs:
-  network:
+  periodic-network:
     strategy:
       matrix:
         include:
