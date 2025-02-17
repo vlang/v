@@ -710,7 +710,8 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 			ast.u8_type_idx { 1 }
 			ast.i16_type_idx { 2 }
 			ast.u16_type_idx { 2 }
-			ast.int_type_idx { 4 }
+			ast.int_type_idx { 4 } // TODO: change when V will have changed
+			ast.i32_type_idx { 4 }
 			ast.u32_type_idx { 4 }
 			ast.i64_type_idx { 8 }
 			ast.u64_type_idx { 8 }
@@ -722,7 +723,7 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 			ast.float_literal_type_idx { 8 }
 			ast.char_type_idx { 1 }
 			ast.rune_type_idx { 4 }
-			else { 8 }
+			else { g.n_error('unknown type size ${typ}') }
 		}
 	}
 	if typ.is_bool() {

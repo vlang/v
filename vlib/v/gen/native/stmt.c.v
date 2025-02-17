@@ -243,50 +243,56 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 
 fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 	if node.is_range {
+		g.println('; for ${node.val_var} in range {')
 		// for a in node.cond .. node.high {
 		i := g.code_gen.allocate_var(node.val_var, 8, 0) // iterator variable
+		g.println('; evaluate node.cond for lower bound:')
 		g.expr(node.cond) // outputs the lower loop bound (initial value) to the main reg
 		main_reg := g.code_gen.main_reg()
+		g.println('; move the result to i')
 		g.code_gen.mov_reg_to_var(LocalVar{i, ast.i64_type_idx, node.val_var}, main_reg) // i = node.cond // initial value
 
 		start := g.pos() // label-begin:
 		start_label := g.labels.new_label()
+
+		g.println('; check iterator against upper loop bound')
 		g.code_gen.mov_var_to_reg(main_reg, LocalVar{i, ast.i64_type_idx, node.val_var})
 		g.code_gen.push(main_reg) // put the iterator on the stack
 		g.expr(node.high) // final value (upper bound) to the main reg
 		g.code_gen.cmp_to_stack_top(main_reg)
 		jump_addr := g.code_gen.cjmp(.jge) // leave loop i >= upper bound
-
 		end_label := g.labels.new_label()
 		g.labels.patches << LabelPatch{
 			id:  end_label
 			pos: jump_addr
 		}
-		g.println('; jump to label ${end_label}')
+		g.println('; jump to label ${end_label} (end_label)')
 		g.labels.branches << BranchLabel{
 			name:  node.label
 			start: start_label
 			end:   end_label
 		}
+
 		g.stmts(node.stmts) // writes the actual body of the loop
 		g.labels.addrs[start_label] = g.pos()
-		g.println('; label ${start_label}')
+		g.println('; label ${start_label} (start_label)')
 		g.code_gen.inc_var(LocalVar{i, ast.i64_type_idx, node.val_var})
 		g.labels.branches.pop()
 		g.code_gen.jmp_back(start) // loops
 		g.labels.addrs[end_label] = g.pos()
-		g.println('; label ${end_label}')
+		g.println('; label ${end_label} (end_label)')
+		g.println('; for ${node.val_var} in range }')
 		/*
-		} else if node.kind == .array {
+	} else if node.kind == .array {
 	} else if node.kind == .array_fixed {
 	} else if node.kind == .map {
 	} else if node.kind == .string {
 	} else if node.kind == .struct {
 	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
 	} else if it.kind == .map {
-		*/
+	*/
 	} else {
-		g.v_error('for-in statement is not yet implemented', node.pos)
+		g.n_error('for-in ${node.kind} statement is not yet implemented')
 	}
 }
 
