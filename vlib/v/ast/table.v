@@ -28,6 +28,7 @@ pub mut:
 	arr_reverse      bool            // arr.reverse()
 	arr_init         bool            // [1, 2, 3]
 	arr_map          bool            // []map[key]value
+	type_name        bool            // var.type_name()
 	map_update       bool            // {...foo}
 	interpolation    bool            // '${foo} ${bar}'
 	option_or_result bool            // has panic call

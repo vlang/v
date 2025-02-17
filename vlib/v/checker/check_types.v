@@ -656,11 +656,13 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 							node.right.pos())
 						return left_type
 					}
-					if node.ct_left_value_evaled {
-						if lval := node.ct_left_value.i64() {
-							if lval < 0 {
-								c.error('invalid bitshift of a negative number', node.left.pos())
-								return left_type
+					if !c.inside_unsafe {
+						if node.ct_left_value_evaled {
+							if lval := node.ct_left_value.i64() {
+								if lval < 0 {
+									c.error('invalid bitshift of a negative number', node.left.pos())
+									return left_type
+								}
 							}
 						}
 					}

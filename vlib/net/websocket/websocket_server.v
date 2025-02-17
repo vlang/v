@@ -206,12 +206,14 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 		}
 	}
 	// set standard close so we can remove client if closed
-	sc.client.on_close_ref(fn (mut c Client, code int, reason string, mut sc ServerClient) ! {
-		c.logger.debug('server-> Delete client')
-		lock sc.server.server_state {
-			sc.server.server_state.clients.delete(sc.client.id)
-		}
-	}, sc)
+	sc.client.on_close_ref(delete_client_cb, sc)
+}
+
+fn delete_client_cb(mut c Client, code int, reason string, mut sc ServerClient) ! {
+	c.logger.debug('server-> Delete client')
+	lock sc.server.server_state {
+		sc.server.server_state.clients.delete(sc.client.id)
+	}
 }
 
 // accept_new_client creates a new client instance for client that connects to the socket

@@ -7,7 +7,7 @@ on:
 
 jobs:
   ubuntu:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Download V

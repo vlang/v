@@ -3396,6 +3396,11 @@ fn (mut g Gen) map_fn_ptrs(key_sym ast.TypeSymbol) (string, string, string, stri
 		}
 		.enum {
 			einfo := (key_sym.info) as ast.Enum
+			if g.pref.ccompiler_type == .tinyc
+				&& einfo.typ in [ast.u8_type, ast.u16_type, ast.i8_type, ast.i16_type] {
+				// workaround for tcc, since we can not generate a packed Enum with size < 4 bytes
+				return g.map_fn_ptrs(g.table.sym(ast.int_type))
+			}
 			return g.map_fn_ptrs(g.table.sym(einfo.typ))
 		}
 		.int, .i32, .u32, .rune, .f32 {
@@ -5244,7 +5249,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			key := node.name
 			g.write('/* obf identfn: ${key} */')
 			name = g.obf_table[key] or {
-				panic('cgen: obf key name "${key}" not found, this should never happen')
+				panic('cgen: obf name "${key}" not found, this should never happen')
 			}
 		}
 	}
