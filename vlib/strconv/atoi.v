@@ -270,6 +270,5 @@ pub fn atoi(s string) !int {
 	return int(x)
 }
 
-const i64_min_int32 = i64(min_int+1)-1 // msvc has a bug that treats just i64(min_int) as 2147483648 :-(; this is a workaround for it
-const i64_max_int32 = i64(max_int-1)+1
-  
+const i64_min_int32 = i64(-2147483647) - 1 // msvc has a bug that treats just i64(min_int) as 2147483648 :-(; this is a workaround for it
+const i64_max_int32 = i64(2147483646) + 1
