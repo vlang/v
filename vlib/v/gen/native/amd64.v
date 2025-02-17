@@ -400,26 +400,51 @@ fn (mut c Amd64) inc_var(var Var, config VarConfig) {
 					c.inc_var(var_object as GlobalVar, config)
 				}
 				Register {
+					c.g.n_error('Register incrementation is not supported yet')
 					// TODO
 					// g.inc()
 				}
 			}
 		}
 		LocalVar {
-			// TODO: size
-			c.g.write8(0x81) // 83 for 1 byte
+			typ := c.g.unwrap(var.typ)
+			mut size_str := 'UNKNOWN'
 			offset := var.offset - config.offset
 			is_far_var := offset > 0x80 || offset < -0x7f
+			match typ {
+				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
+				ast.int_literal_type_idx {
+					c.g.write16(0xFF48)
+					size_str = 'QWORD'
+				}
+				ast.i32_type_idx, ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
+					c.g.write8(0xFF)
+					size_str = 'DWORD'
+				}
+				ast.i16_type_idx, ast.u16_type_idx {
+					c.g.write8(0xFF)
+					size_str = 'WORD'
+				}
+				ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx {
+					c.g.write8(0xFE)
+					size_str = 'BYTE'
+				}
+				else {
+					ts := c.g.table.sym(typ.idx_type())
+					c.g.n_error('unsupported type for inc_var ${ts.info}')
+				}
+			}
+	
 			c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
 			if is_far_var {
 				c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 			} else {
 				c.g.write8((0xff - offset + 1) % 0x100)
 			}
-			c.g.write32(1)
-			c.g.println('inc_var `${var.name}`')
+			c.g.println('inc_var ${size_str} `${var.name}`')
 		}
 		GlobalVar {
+			c.g.n_error('Global variables incrementation is not supported yet')
 			// TODO
 		}
 	}
@@ -643,7 +668,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 						c.g.write16(0x8948 + if is_extended_register { i32(4) } else { i32(0) })
 						size_str = 'QWORD'
 					}
-					ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
+					ast.i32_type_idx, ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
 						if is_extended_register {
 							c.g.write8(0x44)
 						}
@@ -694,7 +719,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 			} else {
 				c.g.write8((0xff - offset + 1) % 0x100)
 			}
-			c.g.println('mov ${size_str} PTR [rbp-${int(offset).hex2()}],${reg}')
+			c.g.println('mov ${size_str} PTR [rbp-${int(offset).hex2()}],${reg} ; `${var.name}`')
 		}
 		GlobalVar {
 			// TODO
@@ -746,7 +771,7 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 					c.g.write16(u16(integer))
 					c.g.println('mov WORD PTR[rbp-${int(offset).hex2()}], ${integer}')
 				}
-				ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
+				ast.i32_type_idx, ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
 					c.g.write8(0xc7)
 					c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
 					if is_far_var {
@@ -832,7 +857,8 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			typ := if config.typ == 0 { var.typ } else { config.typ }
 			size := c.g.get_type_size(typ)
 			is_signed := !typ.is_any_kind_of_pointer() && typ.is_signed()
-
+			dump(size)
+			dump(is_signed)
 			instruction, size_str := match true {
 				size == 4 && is_signed {
 					// movsxd rax, DWORD PTR [rbp-0x8]
