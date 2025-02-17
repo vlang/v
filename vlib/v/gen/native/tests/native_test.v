@@ -80,6 +80,7 @@ fn test_native() {
 			eprintln('------------------------------------------------')
 			eprintln('> tmperrfile: ${tmperrfile}, exists: ${os.exists(tmperrfile)}, content:')
 			errstr := os.read_file(tmperrfile) or { '' }
+			eprintln('------------------------------------------------')
 			eprintln(errstr)
 			eprintln('------------------------------------------------')
 			eprintln('')
