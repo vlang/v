@@ -11,9 +11,10 @@ struct Config {
 	is_sandboxed_packaging bool   = os.getenv('VTEST_SANDBOXED_PACKAGING') != ''
 	github_job             string = os.getenv('GITHUB_JOB')
 mut:
-	test_dirs        []string = ['cmd', 'vlib']
-	is_asan_compiler bool
-	is_msan_compiler bool
+	test_dirs         []string = ['cmd', 'vlib']
+	is_asan_compiler  bool
+	is_msan_compiler  bool
+	is_ubsan_compiler bool
 	// Options relating to the v command itself (passed in the prefix) `v [...args] test-self`.
 	werror             bool
 	sanitize_memory    bool
@@ -234,6 +235,9 @@ const skip_with_asan_compiler = [
 const skip_with_msan_compiler = [
 	'do_not_remove',
 ]
+const skip_with_ubsan_compiler = [
+	'do_not_remove',
+]
 const skip_on_musl = [
 	'do_not_remove',
 	'vlib/v/slow_tests/profile/profile_test.v',
@@ -396,6 +400,9 @@ fn Config.init(vargs []string, targs []string) !Config {
 			'-msan-compiler', '--msan-compiler' {
 				cfg.is_msan_compiler = true
 			}
+			'-ubsan-compiler', '--ubsan-compiler' {
+				cfg.is_ubsan_compiler = true
+			}
 			else {
 				if arg.starts_with('-') {
 					errs << 'error: unknown flag `${arg}`'
@@ -465,7 +472,7 @@ fn main() {
 	}
 	if !cfg.run_slow_sanitize
 		&& ((cfg.sanitize_undefined || cfg.sanitize_memory || cfg.sanitize_address)
-		|| (cfg.is_msan_compiler || cfg.is_asan_compiler)) {
+		|| (cfg.is_msan_compiler || cfg.is_asan_compiler || cfg.is_ubsan_compiler)) {
 		tsession.skip_files << skip_fsanitize_too_slow
 	}
 	if cfg.werror {
@@ -485,6 +492,9 @@ fn main() {
 	}
 	if cfg.is_msan_compiler {
 		tsession.skip_files << skip_with_msan_compiler
+	}
+	if cfg.is_ubsan_compiler {
+		tsession.skip_files << skip_with_ubsan_compiler
 	}
 	if cfg.is_musl_ci {
 		tsession.skip_files << skip_on_musl

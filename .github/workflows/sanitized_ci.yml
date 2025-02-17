@@ -71,17 +71,18 @@ on:
       - '**/sanitized_ci.yml'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: sanitized-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   tests-sanitize-undefined-clang:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
-      VFLAGS: -cc clang
+      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
       VJOBS: 1
-      VTEST_SHOW_START: 1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -97,17 +98,20 @@ jobs:
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
-        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self vlib
+        run: |
+          ./v -cflags -fsanitize=undefined -o v2 cmd/v
+          ./v2 -cflags -fsanitize=undefined test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
         run: ./v2 build-examples
 
   tests-sanitize-undefined-gcc:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
-      VFLAGS: -cc gcc
+      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
       VJOBS: 1
-      VTEST_SHOW_START: 1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -122,17 +126,21 @@ jobs:
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
-        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self vlib
+        run: |
+          ./v  -cflags -fsanitize=undefined -o v2 cmd/v
+          ./v2 -cflags -fsanitize=undefined test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
         run: ./v2 build-examples
 
   tests-sanitize-address-clang:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc clang
+      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
       VJOBS: 1
-      VTEST_SHOW_START: 1
+      ASAN_OPTIONS: detect_leaks=1
+      LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -148,12 +156,13 @@ jobs:
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self vlib
+        run: ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
-        run: ./v -cflags -fsanitize=address -o v cmd/v &&
-          ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v -cc tcc test-self -asan-compiler vlib
+        run: |
+          ./v -cflags -fsanitize=address -o v cmd/v
+          ./v -cc tcc test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v build-examples
+        run: ./v build-examples
 
   tests-sanitize-address-msvc:
     runs-on: windows-2019
@@ -161,7 +170,7 @@ jobs:
     env:
       VFLAGS: -cc msvc
       VJOBS: 1
-      VTEST_SHOW_START: 1
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build
@@ -180,12 +189,14 @@ jobs:
         #   run: .\v.exe -cflags "/fsanitize=address" test-self vlib
 
   tests-sanitize-address-gcc:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc gcc
+      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
       VJOBS: 1
-      VTEST_SHOW_START: 1
+      ASAN_OPTIONS: detect_leaks=1
+      LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -201,21 +212,21 @@ jobs:
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v -cflags -fsanitize=address test-self vlib
+        run: ./v -cflags -fsanitize=address test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
-        run:
-          ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v &&
-          ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v -cc tcc test-self -asan-compiler vlib
+        run: |
+          ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v
+          ./v -cc tcc test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=max_leaks=1:print_suppressions=0:suppressions=.github/workflows/run_sanitizers_leak.suppressions ./v build-examples
+        run: ./v build-examples
 
   tests-sanitize-memory-clang:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 240
     env:
-      VFLAGS: -cc clang -gc none
+      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
       VJOBS: 1
-      VTEST_SHOW_START: 1
+      VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -231,7 +242,7 @@ jobs:
       - name: Recompile V with clang and -cstrict
         run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=memory)
-        run: ./v -cflags -fsanitize=memory test-self vlib
+        run: ./v -cflags -fsanitize=memory test-self -msan-compiler vlib
       - name: Self tests (V compiled with -fsanitize=memory)
         run: |
           ./v -cflags -fsanitize=memory -o v cmd/v

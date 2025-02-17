@@ -291,19 +291,21 @@ pub fn (mut bmp BitMap) aline(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32)
 		mut y := y0
 		for y <= y1 + 0.5 {
 			x := n * (y - y0) + x0
-			e := f32(1 - math.abs(x - 0.5 - int(x)))
-			bmp.plot(int(x), int(y), color_multiply_alpha(c, f32(e * 0.75)))
+			if !math.is_nan(x) && !math.is_nan(y) {
+				e := f32(1 - math.abs(x - 0.5 - int(x)))
+				bmp.plot(int(x), int(y), color_multiply_alpha(c, f32(e * 0.75)))
 
-			xs1 := x + dist
-			if int(xs1) != int(x) {
-				v1 := math.abs(xs1 - x) / dist * (1 - e)
-				bmp.plot(int(xs1), int(y), color_multiply_alpha(c, f32(v1)))
-			}
+				xs1 := x + dist
+				if int(xs1) != int(x) {
+					v1 := math.abs(xs1 - x) / dist * (1 - e)
+					bmp.plot(int(xs1), int(y), color_multiply_alpha(c, f32(v1)))
+				}
 
-			xs2 := x - dist
-			if int(xs2) != int(x) {
-				v2 := math.abs(x - xs1) / dist * (1 - e)
-				bmp.plot(int(xs2), int(y), color_multiply_alpha(c, f32(v2)))
+				xs2 := x - dist
+				if int(xs2) != int(x) {
+					v2 := math.abs(x - xs1) / dist * (1 - e)
+					bmp.plot(int(xs2), int(y), color_multiply_alpha(c, f32(v2)))
+				}
 			}
 			y += 1.0
 		}
