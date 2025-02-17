@@ -110,7 +110,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.TypeDecl {}
 		ast.InterfaceDecl {}
 		else {
-			eprintln('native.stmt(): bad node: ' + node.type_name())
+			g.n_error('native.stmt(): bad node: ' + node.type_name())
 		}
 	}
 }
@@ -208,62 +208,23 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		g.println('; label ${end_label}')
 		return
 	}
-	infix_expr := node.cond as ast.InfixExpr
-	mut jump_addr := i32(0) // location of `jne *00 00 00 00*`
+	g.println('; for stmt {')
+
 	start := g.pos()
 	start_label := g.labels.new_label()
 	g.labels.addrs[start_label] = start
-	g.println('; label ${start_label}')
-	match infix_expr.left {
-		ast.Ident {
-			match infix_expr.right {
-				ast.Ident {
-					reg := g.code_gen.main_reg()
-					g.code_gen.mov_var_to_reg(reg, infix_expr.right as ast.Ident)
-					g.code_gen.cmp_var_reg(infix_expr.left as ast.Ident, reg)
-				}
-				ast.IntegerLiteral {
-					lit := infix_expr.right as ast.IntegerLiteral
-					g.code_gen.cmp_var(infix_expr.left as ast.Ident, i32(lit.val.int()))
-				}
-				else {
-					g.n_error('unhandled expression type')
-				}
-			}
-			match infix_expr.left.tok_kind {
-				.lt {
-					jump_addr = g.code_gen.cjmp(.jge)
-				}
-				.gt {
-					jump_addr = g.code_gen.cjmp(.jle)
-				}
-				.le {
-					jump_addr = g.code_gen.cjmp(.jg)
-				}
-				.ge {
-					jump_addr = g.code_gen.cjmp(.jl)
-				}
-				.ne {
-					jump_addr = g.code_gen.cjmp(.je)
-				}
-				.eq {
-					jump_addr = g.code_gen.cjmp(.jne)
-				}
-				else {
-					g.n_error('unhandled infix cond token')
-				}
-			}
-		}
-		else {
-			g.n_error('unhandled infix.left')
-		}
-	}
+	g.println('; label ${start_label} (start of for loop)')
+
+	// Condition
+	mut cjmp_addr := g.condition(node.cond, false) // jmp if false, location of `jne *00 00 00 00*` (to be patched by LabelPatch)
 	end_label := g.labels.new_label()
 	g.labels.patches << LabelPatch{
 		id:  end_label
-		pos: jump_addr
+		pos: cjmp_addr
 	}
-	g.println('; jump to label ${end_label}')
+	g.println('; cjmp to label ${end_label} (out of loop)')
+
+	// Body of the loop
 	g.labels.branches << BranchLabel{
 		name:  node.label
 		start: start_label
@@ -273,10 +234,11 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.labels.branches.pop()
 	// Go back to `cmp ...`
 	g.code_gen.jmp_back(start)
-	// Update the jump addr to current pos
+
+	g.println('; for stmt }')
+	// Set the jump (out of the loop) addr to current pos
 	g.labels.addrs[end_label] = g.pos()
-	g.println('; label ${end_label}')
-	g.println('jmp after for')
+	g.println('; label ${end_label} (out of for loop)')
 }
 
 fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
