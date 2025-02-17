@@ -26,7 +26,7 @@ concurrency:
 jobs:
   gcc:
     runs-on: windows-2019
-    timeout-minutes: 271
+    timeout-minutes: 60
     env:
       VFLAGS: -cc gcc
     steps:
@@ -77,7 +77,7 @@ jobs:
 
   msvc:
     runs-on: windows-2019
-    timeout-minutes: 271
+    timeout-minutes: 60
     env:
       VFLAGS: -cc msvc
     steps:
@@ -125,7 +125,7 @@ jobs:
 
   tcc:
     runs-on: windows-2019
-    timeout-minutes: 181
+    timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
