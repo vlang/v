@@ -258,10 +258,10 @@ pub fn atoi(s string) !int {
 			}
 			underscored = false
 			x = (x * 10) + (c * sign)
-			if sign == 1 && x > i64(max_int) {
+			if sign == 1 && x > i64_max_int32 {
 				return error('strconv.atoi: parsing "${s}": integer overflow')
 			} else {
-				if x < i64(min_int) {
+				if x < i64_min_int32 {
 					return error('strconv.atoi: parsing "${s}": integer underflow')
 				}
 			}
@@ -269,3 +269,7 @@ pub fn atoi(s string) !int {
 	}
 	return int(x)
 }
+
+const i64_min_int32 = i64(min_int+1)-1 // msvc has a bug that treats just i64(min_int) as 2147483648 :-(; this is a workaround for it
+const i64_max_int32 = i64(max_int-1)+1
+  
