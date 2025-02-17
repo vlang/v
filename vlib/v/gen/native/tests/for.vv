@@ -33,6 +33,9 @@ fn simple_for_test() {
 		println('loop7')
 		i++
 	}
+	for j in -2 .. 3 {
+		println('loop8')
+	}
 }
 
 fn break_continue_test() {

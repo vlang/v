@@ -20,7 +20,26 @@ fn signed_inc_test() {
 	e++
 	println(e)
 
-	// TODO: negative inc test (when negative ints will be supported)
+	mut f := i64(-1)
+	println(f)
+	f++
+	println(f)
+	mut g := i32(-1)
+	println(g)
+	g++
+	println(g)
+	mut h := i16(-1)
+	println(h)
+	h++
+	println(h)
+	mut i := i8(-1)
+	println(i)
+	i++
+	println(i)
+	mut j := int(-1)
+	println(j)
+	j++
+	println(j)
 }
 
 fn unsigned_inc_test() {
