@@ -7,12 +7,18 @@ module ecdsa
 // should be 0x30000000L, but a lot of EC_KEY method was deprecated on version 3.0
 // #define OPENSSL_API_COMPAT 0x10100000L
 
-#flag darwin -L /opt/homebrew/opt/openssl/lib -I /opt/homebrew/opt/openssl/include
-
-#flag -I/usr/include/openssl
-#flag -lcrypto
+#flag darwin -L/opt/homebrew/opt/openssl/lib
+#flag darwin -I/opt/homebrew/opt/openssl/include
 #flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
+
+#flag linux -I/usr/local/include/openssl
+#flag linux -L/usr/local/lib64/
+
+#flag -I/usr/include/openssl
+
+#flag -lcrypto
+
 #include <openssl/ecdsa.h>
 #include <openssl/obj_mac.h>
 #include <openssl/bn.h>
