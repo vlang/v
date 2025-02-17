@@ -1,6 +1,8 @@
 # Request ID Middleware
 
-This module implements request ID tracking functionality for V web applications. Request IDs are unique identifiers assigned to each HTTP request, which is essential for request tracing, debugging, and maintaining distributed systems.
+This module implements request ID tracking functionality for V web applications.
+Request IDs are unique identifiers assigned to each HTTP request, 
+which is essential for request tracing, debugging, and maintaining distributed systems.
 
 ## Purpose
 
@@ -13,7 +15,8 @@ Request IDs help in:
 
 ## Usage
 
-To enable request ID tracking in your veb app, you must embed the `RequestIdContext` struct in your `Context` struct.
+To enable request ID tracking in your veb app, you must embed the `RequestIdContext`
+struct in your `Context` struct.
 
 **Example:**
 
@@ -22,8 +25,8 @@ import veb
 import veb.request_id
 
 pub struct Context {
-    veb.Context
-    request_id.RequestIdContext
+	veb.Context
+	request_id.RequestIdContext
 }
 ```
 
@@ -32,28 +35,46 @@ pub struct Context {
 Here's a simple configuration example:
 
 ```v
-const request_id_config := request_id.Config{
-    header: 'X-Request-ID'
-    generator: rand.uuid_v4
+import rand
+import veb.request_id
+
+const request_id_config = request_id.Config{
+	header:    'X-Request-ID'
+	generator: rand.uuid_v4
 }
 ```
 
 ### Middleware Setup
 
-Enable request ID tracking for all routes or specific routes using veb's middleware system.
+Enable request ID tracking for all routes or specific routes using veb's middleware
+system.
 
 **Example:**
 
 ```v
+import veb
+import rand
+import veb.request_id
+
+pub struct Context {
+	veb.Context
+	request_id.RequestIdContext
+}
+
 pub struct App {
-    veb.Middleware[Context]
+	veb.Middleware[Context]
+}
+
+const request_id_config = request_id.Config{
+	header:    'X-Request-ID'
+	generator: rand.uuid_v4
 }
 
 fn main() {
-    mut app := &App{}
-    // Register the RequestID middleware with custom configuration
-    app.use(request_id.middleware[Context](request_id_config))
-    veb.run[App, Context](mut app, 8080)
+	mut app := &App{}
+	// Register the RequestID middleware with custom configuration
+	app.use(request_id.middleware[Context](request_id_config))
+	veb.run[App, Context](mut app, 8080)
 }
 ```
 
@@ -61,12 +82,15 @@ fn main() {
 
 You can access the request ID in your route handlers:
 
-```v
+```v okfmt
+import veb
+import veb.request_id
+
 fn (app &App) handler(mut ctx Context) veb.Result {
-    // Get the current request ID
-    request_id := ctx.request_id
-    // Use the request ID for logging, etc.
-    return ctx.text('Request ID: $request_id')
+	// Get the current request ID
+	request_id := ctx.request_id
+	// Use the request ID for logging, etc.
+	return ctx.text('Request ID: ${request_id}')
 }
 ```
 
@@ -74,19 +98,14 @@ fn (app &App) handler(mut ctx Context) veb.Result {
 
 The `Config` struct provides several configuration options:
 
-```v
+```v okfmt
 pub struct Config {
 pub:
-    // Next defines a function to skip this middleware when returned true
-    next ?fn (ctx &veb.Context) bool
-    // Generator defines a function to generate the unique identifier
-    generator fn () string = rand.uuid_v4
-    // Header is the header key where to get/set the unique request ID
-    header string = 'X-Request-ID'
-    // Allow empty sets whether to allow empty request IDs
-    allow_empty bool
-    // Force determines whether to always generate a new ID even if one exists
-    force bool
+	next        ?fn (ctx &veb.Context) bool
+	generator   fn () string = rand.uuid_v4
+	header      string       = 'X-Request-ID'
+	allow_empty bool
+	force       bool
 }
 ```
 
@@ -105,12 +124,15 @@ pub:
 You can provide your own ID generator function:
 
 ```v
+import rand
+import veb.request_id
+
 fn custom_id_generator() string {
-    return 'custom-prefix-${rand.uuid_v4()}'
+	return 'custom-prefix-${rand.uuid_v4()}'
 }
 
 config := request_id.Config{
-    generator: custom_id_generator
+	generator: custom_id_generator
 }
 ```
 
@@ -119,11 +141,15 @@ config := request_id.Config{
 Use the `next` function to skip the middleware based on custom logic:
 
 ```v
+import veb
+import rand
+import veb.request_id
+
 config := request_id.Config{
-    next: fn (ctx &veb.Context) bool {
-        // Skip for health check endpoints
-        return ctx.req.url.starts_with('/health')
-    }
+	next: fn (ctx &veb.Context) bool {
+		// Skip for health check endpoints
+		return ctx.req.url.starts_with('/health')
+	}
 }
 ```
 
@@ -131,9 +157,11 @@ config := request_id.Config{
 
 When you want to ensure a new ID is generated regardless of existing headers:
 
-```v
+```v 
+import veb.request_id
+
 config := request_id.Config{
-    force: true
+	force: true
 }
 ```
 
@@ -162,41 +190,44 @@ import veb
 import veb.request_id
 
 pub struct Context {
-    veb.Context
-    request_id.RequestIdContext
+	veb.Context
+	request_id.RequestIdContext
 }
 
 pub struct App {
-    veb.Middleware[Context]
+	veb.Middleware[Context]
 }
 
 @['/request-id'; get]
 pub fn (app &App) index(mut ctx Context) veb.Result {
-    return ctx.text("Current request ID: ${ctx.request_id}")
+	return ctx.text('Current request ID: ${ctx.request_id}')
 }
 
 fn main() {
-    mut app := &App{}
-    config := request_id.Config{
-        header:      'X-Request-ID'
-        force:       false
-        allow_empty: false
+	mut app := &App{}
+	config := request_id.Config{
+		header:      'X-Request-ID'
+		force:       false
+		allow_empty: false
 	}
-    app.use(request_id.middleware[Context](config))
-    veb.run[App, Context](mut app, 8080)
+	app.use(request_id.middleware[Context](config))
+	veb.run[App, Context](mut app, 8080)
 }
-
 ```
 
 ### With Custom Generator and Conditional Execution
 
 ```v
+import veb
+import rand
+import veb.request_id
+
 config := request_id.Config{
-    generator: fn () string {
-        return 'app-${rand.uuid_v4()}'
-    }
-    next: fn (ctx &veb.Context) bool {
-        return ctx.req.url.starts_with('/public')
-    }
+	generator: fn () string {
+		return 'app-${rand.uuid_v4()}'
+	}
+	next:      fn (ctx &veb.Context) bool {
+		return ctx.req.url.starts_with('/public')
+	}
 }
 ```
