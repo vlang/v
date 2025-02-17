@@ -3466,11 +3466,14 @@ This is a special case of a [sum type](#sum-types) declaration.
 
 ### Enums
 
+An enum is a group of constant integer values, each having its own name,
+and values that are usually in sequence.
+For example:
 ```v
 enum Color as u8 {
-	red
-	green
-	blue
+	red   // the default start value is 0
+	green // the value is automatically incremented to 1
+	blue  // the final value is now 2
 }
 
 mut color := Color.red
@@ -3482,6 +3485,7 @@ match color {
 	.green { println('the color was green') }
 	.blue { println('the color was blue') }
 }
+println(int(color)) // prints 1
 ```
 
 The enum type can be any integer type, but can be omitted, if it is `int`: `enum Color {`.
