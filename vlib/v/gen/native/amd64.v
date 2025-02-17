@@ -457,7 +457,7 @@ fn (op JumpOp) amd64() u16 {
 fn (mut c Amd64) cjmp(op JumpOp) i32 {
 	c.g.write16(op.amd64())
 	pos := c.g.pos()
-	c.g.write32(placeholder)
+	c.g.write32(placeholder) // will get replaced by the right address
 	c.g.println('${op}')
 	return i32(pos)
 }
@@ -466,7 +466,7 @@ fn (mut c Amd64) jmp(addr i32) i32 {
 	c.g.write8(0xe9)
 	pos := c.g.pos()
 	c.g.write32(addr) // 0xffffff
-	c.g.println('jmp')
+	c.g.println('jmp ${int(pos + addr).hex2()}')
 	// return the position of jump address for placeholder
 	return i32(pos)
 }
@@ -603,7 +603,7 @@ fn (mut c Amd64) mov_store(regptr Amd64Register, reg Amd64Register, size Size) {
 	}
 	c.g.write8(if size == ._8 { i32(0x88) } else { i32(0x89) })
 	c.g.write8(i32(reg) % 8 * 8 + i32(regptr) % 8)
-	c.g.println('mov [${regptr}], ${reg}')
+	c.g.println('mov [${regptr}], ${reg} ; size:${size}bits')
 }
 
 fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
@@ -885,7 +885,7 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			} else {
 				c.g.write8((0xff - offset + 1) % 0x100)
 			}
-			c.g.println('${instruction} ${reg}, ${size_str} PTR [rbp-${int(offset).hex2()}]')
+			c.g.println('${instruction} ${reg}, ${size_str} PTR [rbp-${int(offset).hex2()}] ; `${var.name}`')
 		}
 		GlobalVar {
 			// TODO
@@ -1263,6 +1263,7 @@ pub fn (mut c Amd64) test_reg(r Amd64Register) {
 
 // return length in .rax of string pointed by given register
 pub fn (mut c Amd64) inline_strlen(r Amd64Register) {
+	c.g.println('; inline_strlen: (reg:${r}) {')
 	c.mov_reg(Amd64Register.rdi, r)
 	c.mov(Amd64Register.rcx, -1)
 	c.mov(Amd64Register.eax, 0)
@@ -1271,6 +1272,7 @@ pub fn (mut c Amd64) inline_strlen(r Amd64Register) {
 	c.dec(.rcx)
 	c.mov_reg(Amd64Register.rax, Amd64Register.rcx)
 	c.g.println('strlen rax, ${r}')
+	c.g.println('; inline_strlen }')
 }
 
 pub fn (mut c Amd64) get_dllcall_addr(import_addr i64) i64 {
@@ -1296,6 +1298,7 @@ pub fn (mut c Amd64) dllcall(symbol string) {
 }
 
 fn (mut c Amd64) gen_print(s string, fd i32) {
+	c.g.println('; print: (fd:${fd} s:\'${s}\') {')
 	if c.g.pref.os == .windows {
 		c.sub(.rsp, 0x38)
 		c.mov(Amd64Register.rcx, -10 - fd)
@@ -1317,9 +1320,11 @@ fn (mut c Amd64) gen_print(s string, fd i32) {
 		c.mov(Amd64Register.edx, i32(s.len)) // len
 		c.syscall()
 	}
+	c.g.println('; print }')
 }
 
 pub fn (mut c Amd64) gen_print_reg(r Register, n i32, fd i32) {
+	c.g.println('; print_reg: (reg:${r} fd:${fd} len:${n}) {')
 	str_reg := if c.g.pref.os == .windows { Amd64Register.rdx } else { Amd64Register.rsi }
 	len_reg := if c.g.pref.os == .windows { Amd64Register.r8 } else { Amd64Register.rdx }
 	c.mov_reg(str_reg, r)
@@ -1347,6 +1352,7 @@ pub fn (mut c Amd64) gen_print_reg(r Register, n i32, fd i32) {
 		c.mov(Amd64Register.edi, fd)
 		c.syscall()
 	}
+	c.g.println('; print_reg }')
 }
 
 pub fn (mut c Amd64) gen_exit(expr ast.Expr) {
@@ -1590,10 +1596,9 @@ fn (mut c Amd64) div_reg(a Amd64Register, b Amd64Register) {
 			c.g.write8(0xf8)
 		}
 		.rbx {
-			c.mov(Amd64Register.edx, 0)
 			c.g.write8(0x48)
 			c.g.write8(0xf7)
-			c.g.write8(0xfb) // idiv ebx
+			c.g.write8(0xfb)
 		}
 		.rdx {
 			c.g.write8(0x48)
@@ -1937,8 +1942,8 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 }
 
 fn (mut c Amd64) call_builtin(name Builtin) i64 {
-	call_addr := c.call(0)
-	c.g.println('call builtin `${name}`')
+	c.g.println('; call builtin `${name}`: (the 0 will get replaced)')
+	call_addr := c.call(0) // the 0 will get replaced by the right addr when the function will be generated
 	return call_addr
 }
 
@@ -3478,6 +3483,13 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	c.g.write8(0x30)
 	c.g.println("mov BYTE PTR [rdi], '0'")
 
+	// null terminate the string
+	c.inc(.rdi)
+	c.g.write8(0xc6)
+	c.g.write8(0x07)
+	c.g.write8(0x0)
+	c.g.println('mov BYTE PTR [rdi], `\0`')
+
 	end_label := c.g.labels.new_label()
 	end_jmp_addr := c.jmp(0)
 	c.g.labels.patches << LabelPatch{
@@ -3513,32 +3525,18 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	c.g.labels.addrs[skip_minus_label] = c.g.pos()
 	c.g.println('; label ${skip_minus_label}')
 
-	c.mov_reg(Amd64Register.r12, Amd64Register.rdi) // copy the buffer position to r12
+	c.mov_reg(Amd64Register.r12, Amd64Register.rdi) // copy the buffer position (start of the number without `-`) to r12
 
 	loop_label := c.g.labels.new_label()
 	loop_start := c.g.pos()
 	c.g.println('; label ${loop_label}')
 
-	c.push(Amd64Register.rax)
-
-	c.mov(Amd64Register.rdx, 0)
+	c.mov(Amd64Register.rdx, 0) // upperhalf of the dividend
 	c.mov(Amd64Register.rbx, 10)
-	c.div_reg(.rax, .rbx)
-	c.add8(.rdx, '0'[0])
+	c.div_reg(.rax, .rbx) // rax will be the result of the division
+	c.add8(.rdx, i32(`0`)) // rdx is the remainder, add 48 to convert it into it's ascii representation
 
-	c.g.write8(0x66)
-	c.g.write8(0x89)
-	c.g.write8(0x17)
-	c.g.println('mov BYTE PTR [rdi], rdx')
-
-	// divide the integer in rax by 10 for next iteration
-	c.pop(.rax)
-	c.mov(Amd64Register.rbx, 10)
-	c.cdq()
-	c.g.write8(0x48)
-	c.g.write8(0xf7)
-	c.g.write8(0xfb)
-	c.g.println('idiv rbx')
+	c.mov_store(.rdi, .rdx, ._8)
 
 	// go to the next character
 	c.inc(.rdi)
@@ -3550,8 +3548,14 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 		id:  loop_label
 		pos: loop_cjmp_addr
 	}
-	c.g.println('; jump to label ${skip_minus_label}')
+	c.g.println('; jump to label ${loop_label}')
 	c.g.labels.addrs[loop_label] = loop_start
+
+	// null terminate the string
+	c.g.write8(0xc6)
+	c.g.write8(0x07)
+	c.g.write8(0x0)
+	c.g.println('mov BYTE PTR [rdi], `\0`')
 
 	// after all was converted, reverse the string
 	reg := c.g.get_builtin_arg_reg(.reverse_string, 0) as Amd64Register
@@ -3569,8 +3573,6 @@ fn (mut c Amd64) reverse_string(r Register) {
 		c.mov_reg(Amd64Register.rdi, reg)
 	}
 
-	c.mov(Amd64Register.eax, 0)
-
 	c.g.write8(0x48)
 	c.g.write8(0x8d)
 	c.g.write8(0x48)
@@ -3579,9 +3581,9 @@ fn (mut c Amd64) reverse_string(r Register) {
 
 	c.mov_reg(Amd64Register.rsi, Amd64Register.rdi)
 
-	c.g.write8(0xf2)
-	c.g.write8(0xae)
-	c.g.println('repnz scas al, BYTE PTR es:[rdi]')
+	// search for null at end of string
+	c.mov(Amd64Register.eax, 0)
+	c.cld_repne_scasb()
 
 	c.sub8(.rdi, 0x2)
 	c.cmp_reg(.rdi, .rsi)
