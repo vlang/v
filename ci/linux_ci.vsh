@@ -29,10 +29,6 @@ fn self_tests() {
 	}
 }
 
-fn test_vlib_skip_unused() {
-	exec('v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/')
-}
-
 fn build_examples() {
 	if common.is_github_job {
 		exec('v build-examples')
@@ -73,14 +69,6 @@ fn test_v_to_c_tcc() {
 
 fn v_self_compilation_tcc() {
 	exec('v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v')
-}
-
-fn v_self_compilation_skip_unused_tcc() {
-	exec('v -skip-unused -o v2 cmd/v && ./v2 -skip-unused -o v3 cmd/v && ./v3 -skip-unused -o v4 cmd/v')
-}
-
-fn test_vlib_skip_unused_tcc() {
-	test_vlib_skip_unused()
 }
 
 fn v_doctor_tcc() {
@@ -242,10 +230,6 @@ fn v_self_compilation_parallel_cc_gcc() {
 	exec('v -o v2 -parallel-cc cmd/v')
 }
 
-fn test_vlib_skip_unused_gcc() {
-	test_vlib_skip_unused()
-}
-
 fn build_modules_gcc() {
 	exec('v build-module vlib/os')
 	exec('v build-module vlib/builtin')
@@ -268,12 +252,12 @@ fn native_machine_code_generation_gcc() {
 	exec('cd cmd/tools && ../../vprod -backend native -o 1m 1m.v && ./1m && ls')
 }
 
-fn compile_vdoctor_skip_unused_prod_gcc() {
-	exec('v -showcc -skip-unused -cc gcc -prod cmd/tools/vdoctor.v')
+fn compile_vdoctor_prod_gcc() {
+	exec('v -showcc -cc gcc -prod cmd/tools/vdoctor.v')
 }
 
-fn compile_vup_skip_unused_prod_gcc() {
-	exec('v -showcc -skip-unused -cc gcc -prod cmd/tools/vup.v')
+fn compile_vup_prod_gcc() {
+	exec('v -showcc -cc gcc -prod cmd/tools/vup.v')
 }
 
 //
@@ -344,10 +328,6 @@ fn build_examples_autofree_clang() {
 	exec('v -autofree -experimental -o tetris examples/tetris/tetris.v')
 }
 
-fn test_vlib_skip_unused_clang() {
-	test_vlib_skip_unused()
-}
-
 fn build_modules_clang() {
 	exec('v build-module vlib/os')
 	exec('v build-module vlib/builtin')
@@ -380,8 +360,6 @@ const all_tasks = {
 	'install_dependencies_for_examples_and_tools_tcc':   Task{install_dependencies_for_examples_and_tools_tcc, 'Install deps for examples/tools (tcc)'}
 	'test_v_to_c_tcc':                                   Task{test_v_to_c_tcc, 'Test v->c with tcc'}
 	'v_self_compilation_tcc':                            Task{v_self_compilation_tcc, 'V self compilation (tcc)'}
-	'v_self_compilation_skip_unused_tcc':                Task{v_self_compilation_skip_unused_tcc, 'V self compilation with -skip-unused (tcc)'}
-	'test_vlib_skip_unused_tcc':                         Task{test_vlib_skip_unused_tcc, 'Test vlib modules with -skip-unused (tcc)'}
 	'v_doctor_tcc':                                      Task{v_doctor_tcc, 'v doctor (tcc)'}
 	'verify_v_test_works_tcc':                           Task{verify_v_test_works_tcc, 'Verify `v test` works (tcc)'}
 	'test_pure_v_math_module_tcc':                       Task{test_pure_v_math_module_tcc, 'Test pure V math module (tcc)'}
@@ -417,11 +395,10 @@ const all_tasks = {
 	'build_blog_autofree_gcc':                           Task{build_blog_autofree_gcc, 'Build blog tutorial with -autofree (gcc)'}
 	'build_option_test_autofree_gcc':                    Task{build_option_test_autofree_gcc, 'Build option_test.c.v with -autofree (gcc)'}
 	'v_self_compilation_parallel_cc_gcc':                Task{v_self_compilation_parallel_cc_gcc, 'V self compilation with -parallel-cc (gcc)'}
-	'test_vlib_skip_unused_gcc':                         Task{test_vlib_skip_unused_gcc, 'Test vlib modules with -skip-unused (gcc)'}
 	'build_modules_gcc':                                 Task{build_modules_gcc, 'Build modules (gcc)'}
 	'native_machine_code_generation_gcc':                Task{native_machine_code_generation_gcc, 'native machine code generation (gcc)'}
-	'compile_vdoctor_skip_unused_prod_gcc':              Task{compile_vdoctor_skip_unused_prod_gcc, 'compile vdoctor with -skip-unused -prod (gcc)'}
-	'compile_vup_skip_unused_prod_gcc':                  Task{compile_vup_skip_unused_prod_gcc, 'compile vup with -skip-unused -prod (gcc)'}
+	'compile_vdoctor_prod_gcc':                          Task{compile_vdoctor_prod_gcc, 'compile vdoctor with -prod (gcc)'}
+	'compile_vup_prod_gcc':                              Task{compile_vup_prod_gcc, 'compile vup with -prod (gcc)'}
 	// clang tasks
 	'all_code_is_formatted_clang':                       Task{all_code_is_formatted_clang, 'All code is formatted (clang)'}
 	'install_dependencies_for_examples_and_tools_clang': Task{install_dependencies_for_examples_and_tools_clang, 'Install deps for examples/tools (clang)'}
@@ -437,7 +414,6 @@ const all_tasks = {
 	'self_tests_cstrict_clang':                          Task{self_tests_cstrict_clang, 'Self tests (-cstrict) (clang)'}
 	'build_examples_clang':                              Task{build_examples_clang, 'Build examples (clang)'}
 	'build_examples_autofree_clang':                     Task{build_examples_autofree_clang, 'Build examples with -autofree (clang)'}
-	'test_vlib_skip_unused_clang':                       Task{test_vlib_skip_unused_clang, 'Test vlib modules with -skip-unused (clang)'}
 	'build_modules_clang':                               Task{build_modules_clang, 'Build modules (clang)'}
 	'native_machine_code_generation_clang':              Task{native_machine_code_generation_clang, 'native machine code generation (clang)'}
 }

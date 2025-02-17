@@ -53,14 +53,8 @@ jobs:
       - name: Check PV compiles with -g
         run: cd puzzle_vibes && v -g .
 
-      - name: Check PV compiles with -skip-unused
-        run: cd puzzle_vibes && v -skip-unused .
-
-      - name: Check PV compiles with both -g and -skip-unused
-        run: cd puzzle_vibes && v -g -skip-unused .
-
       - name: Check PV compiles with -prod
         run: cd puzzle_vibes && v -prod .
 
-      - name: Check PV compiles with -prod and -g and -skip-unused
-        run: cd puzzle_vibes && v -prod -g -skip-unused .
+      - name: Check PV compiles with -prod and -g
+        run: cd puzzle_vibes && v -prod -g .

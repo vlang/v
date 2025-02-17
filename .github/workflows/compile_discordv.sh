@@ -15,8 +15,5 @@ show "Checkout last known good commit"
 git checkout ce9ff457fce92d5bb15df2974440cd8292457ee0
 show "Execute Tests"
 v test .
-show "Execute Tests with -skip-unused"
-v -skip-unused test .
-
 cd ..
 rm -rf discord/
