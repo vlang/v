@@ -116,6 +116,20 @@ fn test_for_range() {
 	}
 }
 
+fn test_for_range2() {
+	for i in 7 .. 9 {
+		println(i)
+	}
+}
+
+/* Does not work yet
+fn test_for_range3() {
+	for i in -2 .. 3 {
+		println(i)
+	}
+}
+*/
+
 fn test_2_in_a_row() {
 	a := 12345
 	println(a)
@@ -133,5 +147,7 @@ fn main() {
 	test_interpolated()
 	test_intermediate()
 	test_for_range()
+	test_for_range2()
+//	test_for_range3()
 	test_2_in_a_row()
 }

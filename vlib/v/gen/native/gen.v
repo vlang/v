@@ -859,7 +859,7 @@ fn (mut g Gen) allocate_string(s string, opsize i32, typ RelocType) i32 {
 // allocates a buffer variable: name, size of stored type (nb of bytes), nb of items
 fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 {
 	g.println('; allocate array `${name}` item-size:${size} items:${items}:')
-	pos := g.code_gen.allocate_var(name, 4, items) // store the lenght of the array on the stack in a 4 byte var
+	pos := g.code_gen.allocate_var(name, 4, items) // store the length of the array on the stack in a 4 byte var
 	g.stack_var_pos += (size * items) // reserve space on the stack for the items
 	return pos
 }
