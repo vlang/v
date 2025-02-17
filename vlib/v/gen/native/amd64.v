@@ -857,8 +857,6 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			typ := if config.typ == 0 { var.typ } else { config.typ }
 			size := c.g.get_type_size(typ)
 			is_signed := !typ.is_any_kind_of_pointer() && typ.is_signed()
-			dump(size)
-			dump(is_signed)
 			instruction, size_str := match true {
 				size == 4 && is_signed {
 					// movsxd rax, DWORD PTR [rbp-0x8]
