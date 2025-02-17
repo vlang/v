@@ -130,7 +130,6 @@ jobs:
     timeout-minutes: 181
     env:
       VFLAGS: -cc tcc -no-retry-compilation
-      VJOBS: 1
       VTEST_SHOW_START: 1
       VERBOSE_MAKE: 1
     steps:
