@@ -22,3 +22,6 @@ v:
 
 check:
 	./v test-all
+
+install:
+	@echo 'Please use `sudo ./v symlink` instead, or manually add the current directory to your PATH.'
