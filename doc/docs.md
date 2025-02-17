@@ -3467,7 +3467,7 @@ This is a special case of a [sum type](#sum-types) declaration.
 ### Enums
 
 An enum is a group of constant integer values, each having its own name,
-and values that are usually in sequence.
+whose values start at 0 and increase by 1 for each name listed.
 For example:
 ```v
 enum Color as u8 {
