@@ -86,7 +86,11 @@ pub fn (mut e Eval) eval(mut files []&ast.File) {
 
 // first arg is receiver (if method)
 pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
-	e.back_trace << EvalTrace{func.idx, func.source_file.idx, func.pos.line_nr}
+	e.back_trace << EvalTrace{func.idx, if unsafe { func.source_file != 0 } {
+		func.source_file.idx
+	} else {
+		0
+	}, func.pos.line_nr}
 	old_mod := e.cur_mod
 	old_file := e.cur_file
 	e.cur_mod = func.mod

@@ -222,11 +222,18 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					return e.local_vars[expr.name].val
 				}
 				.constant {
+					key := expr.name.all_after_last('.')
 					return if expr.name.contains('.') {
 						e.mods[expr.name.all_before_last('.')]
 					} else {
 						e.mods[e.cur_mod]
-					}[expr.name.all_after_last('.')] or { ast.EmptyStmt{} } as Object
+					}[key] or {
+						if builtin_constant := e.mods['builtin'][key] {
+							builtin_constant
+						} else {
+							e.error('unknown constant `${key}`')
+						}
+					} as Object
 				}
 				else {
 					e.error('unknown ident kind for `${expr.name}`: ${expr.kind}')
