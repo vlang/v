@@ -292,7 +292,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 
 		start := g.pos() // label-begin:
 		start_label := g.labels.new_label()
-	
+
 		g.println('; check iterator against upper loop bound')
 		g.code_gen.mov_var_to_reg(main_reg, LocalVar{i, ast.i64_type_idx, node.val_var})
 		g.code_gen.push(main_reg) // put the iterator on the stack
@@ -320,7 +320,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		g.labels.addrs[end_label] = g.pos()
 		g.println('; label ${end_label} (end_label)')
 		g.println('; for ${node.val_var} in range }')
-	/*
+		/*
 	} else if node.kind == .array {
 	} else if node.kind == .array_fixed {
 	} else if node.kind == .map {

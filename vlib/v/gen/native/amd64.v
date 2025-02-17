@@ -434,7 +434,7 @@ fn (mut c Amd64) inc_var(var Var, config VarConfig) {
 					c.g.n_error('unsupported type for inc_var ${ts.info}')
 				}
 			}
-	
+
 			c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
 			if is_far_var {
 				c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))

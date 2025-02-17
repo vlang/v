@@ -723,9 +723,7 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 			ast.float_literal_type_idx { 8 }
 			ast.char_type_idx { 1 }
 			ast.rune_type_idx { 4 }
-			else {
-				g.n_error('unknown type size ${typ}')
-			}
+			else { g.n_error('unknown type size ${typ}') }
 		}
 	}
 	if typ.is_bool() {
