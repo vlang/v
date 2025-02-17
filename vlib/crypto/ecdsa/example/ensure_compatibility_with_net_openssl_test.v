@@ -7,6 +7,8 @@ fn test_openssl_and_crypto_ecdsa_are_compatible() {
 	signature := pvkey.sign(message_tobe_signed)!
 	verified := pbkey.verify(message_tobe_signed, signature)!
 	assert verified
+	pbkey.free()
+	pvkey.free()
 	c := openssl.SSLConn{}
 	assert c.str().contains('in_memory_verification: false')
 }
