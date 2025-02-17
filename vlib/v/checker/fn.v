@@ -1631,6 +1631,14 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				}
 			} else if arg_typ_sym.info is ast.MultiReturn {
 				arg_typs := arg_typ_sym.info.types
+				if !(func.is_variadic && i >= func.params.len - 1) {
+					if arg_typ_sym.info.types.len > func.params.len {
+						c.error('trying to pass ${arg_typ_sym.info.types.len} argument(s), but function expects ${func.params.len} argument(s)',
+							node.pos)
+						continue_check = false
+						return ast.void_type
+					}
+				}
 				out: for n in 0 .. arg_typ_sym.info.types.len {
 					curr_arg := arg_typs[n]
 					multi_param := if func.is_variadic && i >= func.params.len - 1 {
