@@ -209,7 +209,7 @@ selfcompile-static:
 
 ### NB: Please keep this Makefile and make.bat simple.
 install:
-	@echo 'Please use `sudo ./v symlink` instead.'
+	@echo 'Please use `sudo ./v symlink` instead, or manually add the current directory to your PATH.'
 
 check:
 	$(VEXE)$(EXE_EXT) test-all
