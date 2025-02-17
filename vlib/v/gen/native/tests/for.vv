@@ -23,6 +23,16 @@ fn simple_for_test() {
 		println('loop5')
 		i--
 	}
+	i = 0
+	for i * i < 3 {
+		println('loop6')
+		i++
+	}
+	i = 0
+	for 3 > i * i {
+		println('loop7')
+		i++
+	}
 }
 
 fn break_continue_test() {

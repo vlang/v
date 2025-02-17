@@ -180,8 +180,8 @@ mut:
 }
 
 struct LabelPatch {
-	id  i32
-	pos i32
+	id  i32 // id of the needed label address
+	pos i32 // where (in the generated code) to fix the address (of a jump for example)
 }
 
 struct BranchLabel {
