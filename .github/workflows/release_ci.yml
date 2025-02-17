@@ -54,16 +54,16 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           make
-          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -skip-unused -prod -o v cmd/v
-          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -skip-unused -prod cmd/tools/vup.v
-          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -skip-unused -prod cmd/tools/vdoctor.v
+          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -prod -o v cmd/v
+          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -prod cmd/tools/vup.v
+          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -prod cmd/tools/vdoctor.v
       - name: Compile release binaries (Windows)
         if: runner.os == 'Windows'
         run: |
           ./make.bat -msvc
-          ./v -skip-unused -prod -cc msvc -o cmd/vprod.exe cmd/v
-          ./v -skip-unused -prod -cc msvc cmd/tools/vup.v
-          ./v -skip-unused -prod -cc msvc cmd/tools/vdoctor.v
+          ./v -prod -cc msvc -o cmd/vprod.exe cmd/v
+          ./v -prod -cc msvc cmd/tools/vup.v
+          ./v -prod -cc msvc cmd/tools/vdoctor.v
           del *.exe
           del *.tmp.obj
           move cmd/vprod.exe v.exe

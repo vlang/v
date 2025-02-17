@@ -111,10 +111,6 @@ fn test_readline() {
 	exec('v -progress test examples/readline/')
 }
 
-fn test_vlib_skip_unused() {
-	exec('v -skip-unused -progress test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/')
-}
-
 const all_tasks = {
 	'test_symlink':                       Task{test_symlink, 'Test symlink'}
 	'test_cross_compilation':             Task{test_cross_compilation, 'Test cross compilation to Linux'}
@@ -136,7 +132,6 @@ const all_tasks = {
 	'v_self_compilation_parallel_cc':     Task{v_self_compilation_parallel_cc, 'V self compilation with -parallel-cc'}
 	'test_password_input':                Task{test_password_input, 'Test password input'}
 	'test_readline':                      Task{test_readline, 'Test readline'}
-	'test_vlib_skip_unused':              Task{test_vlib_skip_unused, 'Test vlib modules with -skip-unused'}
 }
 
 common.run(all_tasks)
