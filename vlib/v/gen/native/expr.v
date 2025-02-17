@@ -152,8 +152,9 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 }
 
 fn (mut g Gen) condition(expr ast.Expr, neg bool) i32 {
+	g.println('; condition cjmp if ${neg}:')
 	g.expr(expr)
-	g.code_gen.cmp_zero(g.code_gen.main_reg())
+	g.code_gen.cmp_zero(g.code_gen.main_reg()) // 0 is false
 	return g.code_gen.cjmp(if neg { .jne } else { .je })
 }
 
