@@ -8,7 +8,6 @@ module strconv
 // int_size = 32 << (~u32(0) >> 63)
 // max_u64 = u64(u64(1 << 63) - 1)
 const int_size = 32
-const max_u64 = u64(18446744073709551615)
 
 @[inline]
 pub fn byte_to_lower(c u8) u8 {
@@ -218,34 +217,58 @@ pub fn parse_int(_s string, base int, _bit_size int) !i64 {
 }
 
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
+// It follows V scanner as much as observed.
 @[direct_array_access]
 pub fn atoi(s string) !int {
 	if s == '' {
-		return error('strconv.atoi: parsing "": invalid syntax')
+		return error('strconv.atoi: parsing "": empty string')
 	}
-	if (int_size == 32 && (0 < s.len && s.len < 10))
-		|| (int_size == 64 && (0 < s.len && s.len < 19)) {
-		// Fast path for small integers that fit int type.
-		mut start_idx := 0
-		if s[0] == `-` || s[0] == `+` {
-			start_idx++
-			if s.len - start_idx < 1 {
-				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "${s}": invalid syntax')
+
+	mut start_idx := 0
+	mut sign := i64(1)
+
+	if s[0] == `-` || s[0] == `+` {
+		start_idx++
+		if s[0] == `-` {
+			sign = -1
+		}
+	}
+
+	if s.len - start_idx < 1 {
+		return error('strconv.atoi: parsing "${s}": no number after sign')
+	}
+
+	if s[start_idx] == `_` || s[s.len - 1] == `_` {
+		return error('strconv.atoi: parsing "${s}": values cannot start or end with underscores')
+	}
+
+	mut x := i64(0)
+	mut underscored := false
+	for i in start_idx .. s.len {
+		c := s[i] - `0`
+		if c == 47 { // 47 = Ascii(`_`) -  ascii(`0`) = 95 - 48.
+			if underscored == true { // Two consecutives underscore
+				return error('strconv.atoi: parsing "${s}": consecutives underscores are not allowed')
+			}
+			underscored = true
+			continue // Skip underscore
+		} else {
+			if c > 9 {
+				return error('strconv.atoi: parsing "${s}": invalid radix 10 character')
+			}
+			underscored = false
+			x = (x * 10) + (c * sign)
+			if sign == 1 && x > i64_max_int32 {
+				return error('strconv.atoi: parsing "${s}": integer overflow')
+			} else {
+				if x < i64_min_int32 {
+					return error('strconv.atoi: parsing "${s}": integer underflow')
+				}
 			}
 		}
-		mut n := 0
-		for i in start_idx .. s.len {
-			ch := s[i] - `0`
-			if ch > 9 {
-				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "${s}": invalid syntax')
-			}
-			n = n * 10 + int(ch)
-		}
-		return if s[0] == `-` { -n } else { n }
 	}
-	// Slow path for invalid, big, or underscored integers.
-	int64 := parse_int(s, 10, 0)!
-	return int(int64)
+	return int(x)
 }
+
+const i64_min_int32 = i64(-2147483647) - 1 // msvc has a bug that treats just i64(min_int) as 2147483648 :-(; this is a workaround for it
+const i64_max_int32 = i64(2147483646) + 1
