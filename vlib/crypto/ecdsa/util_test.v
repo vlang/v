@@ -47,7 +47,7 @@ fn test_for_pubkey_bytes() ! {
 	pb := '0421af184ac64c8a13e66c65d4f1ad31677edeaa97af791aef73b66ea26d1623a411f67b6c4d842ba22fa39d1216bd64acef00a1b924ac11a10af679ac3a7eb2fd'
 	pvkey := new_key_from_seed(hex.decode(pv)!)!
 
-	assert pvkey.seed()!.hex() == pv
+	assert pvkey.bytes()!.hex() == pv
 	pbkey := pvkey.public_key()!
 	assert pbkey.bytes()!.hex() == pb
 	pbkey.free()
@@ -87,7 +87,7 @@ fn test_for_pubkey_bytes() ! {
 fn test_load_privkey_from_string_sign_and_verify() ! {
 	pvkey := privkey_from_string(privatekey_sample)!
 	expected_pvkey_bytes := '30ce3da288965ac6093f0ba9a9a15b2476bea3eda925e1b3c1f094674f52795cd6cb3cafe235dfc15bec542448ffa715'
-	assert pvkey.seed()!.hex() == expected_pvkey_bytes
+	assert pvkey.bytes()!.hex() == expected_pvkey_bytes
 
 	// public key part	
 	pbkey := pvkey.public_key()!
