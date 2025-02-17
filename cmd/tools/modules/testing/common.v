@@ -265,13 +265,13 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/pendulum-simulation/parallel.v'
 			skip_files << 'examples/pendulum-simulation/parallel_with_iw.v'
 			skip_files << 'examples/pendulum-simulation/sequential.v'
-			if github_job == 'tcc' {
+			if github_job == 'tcc-windows' {
 				// TODO: fix these by adding declarations for the missing functions in the prebuilt tcc
 				skip_files << 'vlib/net/mbedtls/mbedtls_compiles_test.v'
 				skip_files << 'vlib/net/ssl/ssl_compiles_test.v'
 			}
 		}
-		if runner_os != 'Linux' || github_job != 'tcc' {
+		if runner_os != 'Linux' || !github_job.starts_with('tcc-') {
 			if !os.exists('/usr/local/include/wkhtmltox/pdf.h') {
 				skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 			}
@@ -290,7 +290,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'vlib/x/ttf/ttf_test.v'
 			skip_files << 'vlib/encoding/iconv/iconv_test.v' // needs libiconv to be installed
 		}
-		if github_job == 'tests-sanitize-memory-clang' {
+		if github_job == 'sanitize-memory-clang' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
 			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
 			skip_files << 'vlib/crypto/ecdsa/util_test.v' // requires OpenSSL
