@@ -29,7 +29,6 @@ jobs:
     timeout-minutes: 271
     env:
       VFLAGS: -cc gcc
-      VERBOSE_MAKE: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build
@@ -81,7 +80,6 @@ jobs:
     timeout-minutes: 271
     env:
       VFLAGS: -cc msvc
-      VERBOSE_MAKE: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build
@@ -130,8 +128,6 @@ jobs:
     timeout-minutes: 181
     env:
       VFLAGS: -cc tcc -no-retry-compilation
-      VTEST_SHOW_START: 1
-      VERBOSE_MAKE: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build with make.bat -tcc
