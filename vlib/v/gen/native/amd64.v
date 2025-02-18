@@ -3244,7 +3244,7 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 	is_main := node.name == 'main.main'
 	if is_main && c.g.pref.os != .linux {
 		// println('end of main: gen exit')
-		zero := ast.IntegerLiteral{}
+		zero := ast.IntegerLiteral{'0', node.pos}
 		c.gen_exit(zero)
 		c.ret()
 		return
