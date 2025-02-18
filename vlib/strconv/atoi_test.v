@@ -294,7 +294,7 @@ fn test_atoi64() {
 		'-9223372036854775809', // i64 bits underflow by 1.
 		'+9223372036854775808', // i64 bit overflow by 1.
 		'+18446744073709551615', // Large Overflow but equal to u64 max.
-		'-483647909912754123456789', // Large i32 underflow.
+		'-483647909912754123456789', // Large i64 underflow.
 	]
 
 	for v in ko {

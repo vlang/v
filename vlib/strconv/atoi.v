@@ -246,8 +246,9 @@ fn atoi_common_check(s string) !(i64, int) {
 	return sign, start_idx
 }
 
-// atoi_common performs computation for all i8, i16 i32 and i64 types.
-// Factorizes the code, and return consistent error message over differents types.
+// atoi_common performs computation for all i8, i16 and i32 type, excluding i64.
+// Parse values, and returns consistent error message over differents types.
+// s is string to parse, type_min/max are respective types min/max values.
 @[direct_array_access]
 fn atoi_common(s string, type_min i64, type_max i64) !i64 {
 	mut sign, mut start_idx := atoi_common_check(s)!
