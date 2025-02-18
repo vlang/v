@@ -83,8 +83,8 @@ fn test_atoi() {
 		StrInt{'123_456_789', 123456789},
 		StrInt{'00000006', 6},
 		StrInt{'0_0_0_0_0_0_0_6', 6},
-		StrInt{'2147483647', 2147483647}, // Signed 32bits max.
-		StrInt{'-2147483648', -2147483648}, // Signed 32bits min.
+		StrInt{'2147483647', max_int},
+		StrInt{'-2147483648', min_int},
 	]
 
 	// Check that extracted int value matches its string.
@@ -132,8 +132,8 @@ fn test_atoi8() {
 		StrI8{'+123', 123},
 		StrI8{'-1_2_1', -121},
 		StrI8{'0_0_0_0_0_0_0_6', 6},
-		StrI8{'127', 127}, // max val i8
-		StrI8{'-128', 128}, // min val i8
+		StrI8{'127', max_i8},
+		StrI8{'-128', min_i8},
 	]
 
 	// Check that extracted int value matches its string.
@@ -181,8 +181,8 @@ fn test_atoi16() {
 		StrI16{'+123', 123},
 		StrI16{'-1_2_1', -121},
 		StrI16{'0_0_0_0_0_0_0_6', 6},
-		StrI16{'32767', 32767}, // max val i16
-		StrI16{'-32768', -32768}, // min val i16
+		StrI16{'32767', max_i16},
+		StrI16{'-32768', min_i16},
 	]
 
 	// Check that extracted int value matches its string.
@@ -232,8 +232,8 @@ fn test_atoi32() {
 		StrI32{'+123', 123},
 		StrI32{'-1_2_1', -121},
 		StrI32{'0_0_0_0_0_0_0_6', 6},
-		StrI32{'2147483647', 2147483647}, // max val i32
-		StrI32{'-2147483648', -2147483648}, // min val i32
+		StrI32{'2147483647', max_i32},
+		StrI32{'-2147483648', min_i32},
 	]
 
 	// Check that extracted int value matches its string.
@@ -279,8 +279,8 @@ fn test_atoi64() {
 		StrI64{'+123', 123},
 		StrI64{'-1_2_1', -121},
 		StrI64{'0_0_0_0_0_0_0_6', 6},
-		StrI64{'9223372036854775807', 9223372036854775807}, // max val i64
-		StrI64{'-9223372036854775808', -9223372036854775808}, // min val i64
+		StrI64{'9223372036854775807', max_i64},
+		StrI64{'-9223372036854775808', min_i64},
 	]
 
 	// Check that extracted int value matches its string.
