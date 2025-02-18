@@ -16,7 +16,8 @@ fn test_int() {
 	mut c := u8(b)
 	d := 4
 	c += u8(-d)
-	println(c)
+	// TODO: remove the int cast when unsigned integer print will be supported
+	println(int(c))
 }
 
 fn test_fp() {
