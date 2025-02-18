@@ -568,8 +568,8 @@ fn (mut c Amd64) mov64u(reg Register, val u64) {
 }
 
 fn (mut c Amd64) mov64(reg Register, val i64) {
-	// see AMD64 Architecture Programmer's Manual Volume 3 about the MOV instruction to have a detailed explaination
-	// about the BF (B8+rq) there is an explaination in Table 2-2 (and a bit above in 2.5.2 Opcode Syntax)
+	// see AMD64 Architecture Programmer's Manual Volume 3 about the MOV instruction to have a detailed explanation
+	// about the BF (B8+rq) there is an explanation in Table 2-2 (and a bit above in 2.5.2 Opcode Syntax)
 	// in short the 64 mov instruction is 0xB8 and after a 64 bits immediate value
 	// but for the cpu to know which register to move the value to, it adds a number to B8
 	// that number is the Value column in table 2-2
