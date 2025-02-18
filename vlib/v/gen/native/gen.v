@@ -985,12 +985,16 @@ fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config Va
 		buffer := g.code_gen.allocate_var('rune-buffer', 8, 0)
 		g.code_gen.convert_rune_to_string(reg, buffer, var, config)
 	} else if typ.is_int() {
-		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
-		end_of_buffer := buffer + 4 + 32 - 1 // 4 bytes for the size and 32 for the chars, -1 to not go out of array
-		g.code_gen.mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
-		g.code_gen.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
-		g.call_builtin(.int_to_string)
-		g.code_gen.lea_var_to_reg(reg, end_of_buffer) // the (int) string starts at the end of the buffer
+		if typ.is_unsigned() {
+			g.n_error('Unsigned integer print is not supported')
+		} else {
+			buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
+			end_of_buffer := buffer + 4 + 32 - 1 // 4 bytes for the size and 32 for the chars, -1 to not go out of array
+			g.code_gen.mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
+			g.code_gen.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
+			g.call_builtin(.int_to_string)
+			g.code_gen.lea_var_to_reg(reg, end_of_buffer) // the (int) string starts at the end of the buffer
+		}
 	} else if typ.is_bool() {
 		g.code_gen.mov_var_to_reg(g.get_builtin_arg_reg(.bool_to_string, 0), var, config)
 		g.call_builtin(.bool_to_string)

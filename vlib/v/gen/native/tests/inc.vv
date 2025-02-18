@@ -43,22 +43,24 @@ fn signed_inc_test() {
 }
 
 fn unsigned_inc_test() {
+	// TODO: remove int casts when unsigned print will be supported for large numbers
+	// (it was handled by int_to_string before which was leading to problem with large unsigned numbers like u64(10000000000000000000) not being printed properly)
 	mut f := u64(1)
-	println(f)
+	println(int(f))
 	f++
-	println(f)
+	println(int(f))
 	mut g := u32(1)
-	println(g)
+	println(int(g))
 	g++
-	println(g)
+	println(int(g))
 	mut h := u16(1)
-	println(h)
+	println(int(h))
 	h++
-	println(h)
+	println(int(h))
 	mut i := u8(1)
-	println(i)
+	println(int(i))
 	i++
-	println(i)
+	println(int(i))
 }
 
 fn main() {
