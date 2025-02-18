@@ -216,10 +216,12 @@ pub fn parse_int(_s string, base int, _bit_size int) !i64 {
 	return common_parse_int(_s, base, _bit_size, true, true)
 }
 
-// atoi is equivalent to parse_int(s, 10, 0), converted to type int.
-// It follows V scanner as much as observed.
+// atoi_common_check perform basics check on string to parse:
+// Test emptiness, + or - sign presence, presence of digit after signs and no
+// underscore as first character.
+// returns +1 or -1 depending on sign, and s first digit index or an error.
 @[direct_array_access]
-pub fn atoi(s string) !int {
+fn atoi_common_check(s string) !(i64, int) {
 	if s == '' {
 		return error('strconv.atoi: parsing "": empty string')
 	}
@@ -241,7 +243,14 @@ pub fn atoi(s string) !int {
 	if s[start_idx] == `_` || s[s.len - 1] == `_` {
 		return error('strconv.atoi: parsing "${s}": values cannot start or end with underscores')
 	}
+	return sign, start_idx
+}
 
+// atoi_common performs computation for all i8, i16 i32 and i64 types.
+// Factorizes the code, and return consistent error message over differents types.
+@[direct_array_access]
+fn atoi_common(s string, type_min i64, type_max i64) !i64 {
+	mut sign, mut start_idx := atoi_common_check(s)!
 	mut x := i64(0)
 	mut underscored := false
 	for i in start_idx .. s.len {
@@ -258,16 +267,110 @@ pub fn atoi(s string) !int {
 			}
 			underscored = false
 			x = (x * 10) + (c * sign)
-			if sign == 1 && x > i64_max_int32 {
+			if sign == 1 && x > type_max {
 				return error('strconv.atoi: parsing "${s}": integer overflow')
 			} else {
-				if x < i64_min_int32 {
+				if x < type_min {
 					return error('strconv.atoi: parsing "${s}": integer underflow')
 				}
 			}
 		}
 	}
-	return int(x)
+	return x
+}
+
+// atoi is equivalent to parse_int(s, 10, 0), converted to type int.
+// It follows V scanner as much as observed.
+pub fn atoi(s string) !int {
+	return if x := atoi_common(s, i64_min_int32, i64_max_int32) {
+		int(x)
+	} else {
+		err
+	}
+}
+
+// atoi8 is equivalent to atoi(s), converted to type i8.
+// returns an i8 [-128 .. 127] or an error.
+pub fn atoi8(s string) !i8 {
+	return if x := atoi_common(s, min_i8, max_i8) {
+		i8(x)
+	} else {
+		err
+	}
+}
+
+// atoi16 is equivalent to atoi(s), converted to type i16.
+// returns an i16 [-32678 .. 32767] or an error.
+pub fn atoi16(s string) !i16 {
+	return if x := atoi_common(s, min_i16, max_i16) {
+		i16(x)
+	} else {
+		err
+	}
+}
+
+// atoi32 is equivalent to atoi(s), converted to type i32.
+// returns an i32 [-2147483648 .. 2147483647] or an error.
+pub fn atoi32(s string) !i32 {
+	return if x := atoi_common(s, min_i32, max_i32) {
+		i32(x)
+	} else {
+		err
+	}
+}
+
+// atoi64 converts radix 10 string to i64 type.
+// returns an i64 [-9223372036854775808 .. 9223372036854775807] or an error.
+@[direct_array_access]
+pub fn atoi64(s string) !i64 {
+	mut sign, mut start_idx := atoi_common_check(s)!
+	mut x := i64(0)
+	mut underscored := false
+	for i in start_idx .. s.len {
+		c := s[i] - `0`
+		if c == 47 { // 47 = Ascii(`_`) -  ascii(`0`) = 95 - 48.
+			if underscored == true { // Two consecutives underscore
+				return error('strconv.atoi64: parsing "${s}": consecutives underscores are not allowed')
+			}
+			underscored = true
+			continue // Skip underscore
+		} else {
+			if c > 9 {
+				return error('strconv.atoi64: parsing "${s}": invalid radix 10 character')
+			}
+			underscored = false
+			x = safe_mul10_64bits(x) or { return error('strconv.atoi64: parsing "${s}": ${err}') }
+			x = safe_add_64bits(x, int(c * sign)) or {
+				return error('strconv.atoi64: parsing "${s}": ${err}')
+			}
+		}
+	}
+	return x
+}
+
+// safe_add64 performs a signed 64 bits addition and returns an error
+// in case of overflow or underflow.
+@[inline]
+fn safe_add_64bits(a i64, b i64) !i64 {
+	if a > 0 && b > (max_i64 - a) {
+		return error('integer overflow')
+	} else if a < 0 && b < (min_i64 - a) {
+		return error('integer underflow')
+	}
+	return a + b
+}
+
+// safe_mul10 performs a * 10 multiplication and returns an error
+// in case of overflow or underflow.
+@[inline]
+fn safe_mul10_64bits(a i64) !i64 {
+	if a > 0 && a > (max_i64 / 10) {
+		return error('integer overflow')
+	}
+	if a < 0 && a < (min_i64 / 10) {
+		return error('integer underflow')
+	}
+	return a * 10
 }
 
 const i64_min_int32 = i64(-2147483647) - 1 // msvc has a bug that treats just i64(min_int) as 2147483648 :-(; this is a workaround for it
