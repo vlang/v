@@ -283,41 +283,25 @@ fn atoi_common(s string, type_min i64, type_max i64) !i64 {
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
 // It follows V scanner as much as observed.
 pub fn atoi(s string) !int {
-	return if x := atoi_common(s, i64_min_int32, i64_max_int32) {
-		int(x)
-	} else {
-		err
-	}
+	return int(atoi_common(s, i64_min_int32, i64_max_int32)!)
 }
 
 // atoi8 is equivalent to atoi(s), converted to type i8.
 // returns an i8 [-128 .. 127] or an error.
 pub fn atoi8(s string) !i8 {
-	return if x := atoi_common(s, min_i8, max_i8) {
-		i8(x)
-	} else {
-		err
-	}
+	return i8(atoi_common(s, min_i8, max_i8)!)
 }
 
 // atoi16 is equivalent to atoi(s), converted to type i16.
 // returns an i16 [-32678 .. 32767] or an error.
 pub fn atoi16(s string) !i16 {
-	return if x := atoi_common(s, min_i16, max_i16) {
-		i16(x)
-	} else {
-		err
-	}
+	return i16(atoi_common(s, min_i16, max_i16)!)
 }
 
 // atoi32 is equivalent to atoi(s), converted to type i32.
 // returns an i32 [-2147483648 .. 2147483647] or an error.
 pub fn atoi32(s string) !i32 {
-	return if x := atoi_common(s, min_i32, max_i32) {
-		i32(x)
-	} else {
-		err
-	}
+	return i32(atoi_common(s, min_i32, max_i32)!)
 }
 
 // atoi64 converts radix 10 string to i64 type.
