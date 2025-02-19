@@ -635,13 +635,28 @@ fn (mut g Gen) gen_pe_idata() {
 	]
 
 	for symbol in g.extern_symbols {
-		sym := symbol.all_after('C.')
+		mut sym := symbol.all_after('C.')
 		mut found := false
 		for mut dll in dlls {
 			if sym in dll.exports {
 				found = true
 				dll.exports[sym] = true
 				break
+			}
+		}
+
+		if !found {
+			if sym == 'CaptureStackBackTrace' {
+				sym = 'RtlCaptureStackBackTrace'
+			} else if sym == '__debugbreak' {
+				sym = 'DebugBreak'
+			}
+			for mut dll in dlls {
+				if sym in dll.exports {
+					found = true
+					dll.exports[sym] = true
+					break
+				}
 			}
 		}
 
