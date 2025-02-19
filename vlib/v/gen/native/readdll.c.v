@@ -49,7 +49,7 @@ fn (mut g Gen) lookup_system_dll(dll string) !SystemDll {
 			}
 		}
 	} $else {
-		// TODO: look into librarys dirs
+		// TODO: look into library's dirs
 		return SystemDll{
 			name: dll
 		}

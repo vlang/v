@@ -15,6 +15,7 @@ fn test_native() {
 		eprintln('>> skipping testing on FreeBSD/OpenBSD for now')
 		return
 	}
+
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
@@ -26,12 +27,14 @@ fn test_native() {
 	defer {
 		os.rmdir_all(wrkdir) or {}
 	}
+
 	os.chdir(wrkdir) or {}
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
 		println('no native tests found')
 		assert false
 	}
+
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		if test == 'libc.vv' {
@@ -41,6 +44,7 @@ fn test_native() {
 				continue
 			}
 		}
+
 		bench.step()
 		full_test_path := os.real_path(os.join_path(dir, test))
 		test_file_name := os.file_name(test)
@@ -64,7 +68,6 @@ fn test_native() {
 				err := os.read_file(tmperrfile) or { panic(err) }
 				eprintln(err)
 			}
-
 			continue
 		}
 
@@ -95,6 +98,7 @@ fn test_native() {
 			errstr := os.read_file(tmperrfile) or {
 				panic('${err}: ${os.quoted_path(exe_test_path)} 2> ${os.quoted_path(tmperrfile)}')
 			}
+
 			mut err_found := errstr.trim_right('\r\n').replace('\r\n', '\n')
 			if err_expected != err_found {
 				println(term.red('FAIL'))
@@ -107,6 +111,7 @@ fn test_native() {
 				continue
 			}
 		}
+
 		os.rm(tmperrfile) or {}
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
@@ -123,7 +128,8 @@ fn test_native() {
 		}
 		bench.ok()
 		eprintln(bench.step_message_ok('${relative_test_path:-45} , took ${compile_time_ms:4}ms to compile, ${runtime_ms:4}ms to run'))
-	}
+	} // for loop
+
 	bench.stop()
 	eprintln(term.h_divider('-'))
 	eprintln(bench.total_message('native'))
