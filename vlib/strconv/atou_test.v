@@ -1,5 +1,10 @@
+// Copyright (c) 2019-2024 V language community. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 import strconv
 
+// Perform tests against basic check done on fn test_atou_common_check()
+// used from atou_common.
 fn test_atou_common_check() {
 	// Parsing of these strings should fail on all types.
 	ko := [
@@ -25,7 +30,7 @@ fn test_atou_common_check() {
 	}
 }
 
-// Performs tests on possible error of atou_common.
+// Performs tests on possible errors from atou_common function.
 // Function called from atou_common are tested above.
 fn test_atou_common() {
 	struct StrUint {
@@ -73,6 +78,7 @@ fn test_atou_common() {
 	}
 }
 
+// performs numeric (bounds) tests over u8 type.
 fn test_atou8() {
 	struct StrU8 {
 		str_value  string
@@ -113,6 +119,7 @@ fn test_atou8() {
 	}
 }
 
+// performs numeric (bounds) tests over u16 type.
 fn test_atou16() {
 	struct StrU16 {
 		str_value  string
@@ -199,6 +206,7 @@ fn test_atou() {
 	}
 }
 
+// performs numeric (bounds) tests over u64 type.
 fn test_atou32() {
 	struct StrU32 {
 		str_value  string
@@ -242,6 +250,7 @@ fn test_atou32() {
 	}
 }
 
+// performs numeric (bounds) tests over u64 type.
 fn test_atou64() {
 	struct StrU64 {
 		str_value  string
