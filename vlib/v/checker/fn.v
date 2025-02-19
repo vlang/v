@@ -478,7 +478,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.fn_scope = node.scope
 	// Register implicit context var
 	typ_veb_result := c.table.get_veb_result_type_idx() // c.table.find_type('veb.Result')
-	if node.return_type == typ_veb_result {
+	if node.is_method && node.return_type == typ_veb_result {
 		// Find a custom user Context type first
 		mut ctx_idx := c.table.find_type('main.Context')
 		if ctx_idx < 1 {
