@@ -129,6 +129,9 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		'haiku' {
 			g.pref.os == .haiku
 		}
+		'qnx' {
+			g.pref.os == .qnx
+		}
 		//
 		// C compilers, these will probably always be false
 		//
@@ -159,7 +162,7 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		'arm64' {
 			g.pref.arch == .arm64
 		}
-		'x86' {
+		'x86', 'x32' {
 			false // native only supports 64-bit systems
 		}
 		'little_endian' {
@@ -167,6 +170,9 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		}
 		'big_endian' {
 			false // all systems targeted by native should be little-endian
+		}
+		'autofree' {
+			false
 		}
 		//
 		// Other
