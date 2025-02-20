@@ -5,6 +5,7 @@ module native
 
 import v.ast
 import v.util
+import v.token
 
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
@@ -445,11 +446,17 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 }
 
 fn (mut g Gen) gen_selector_expr(expr ast.SelectorExpr) {
+	g.println('; .${expr.field_name} {')
 	main_reg := g.code_gen.main_reg()
 	g.expr(expr.expr)
 	offset := g.get_field_offset(expr.expr_type, expr.field_name)
-	g.code_gen.add(main_reg, offset)
-	g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+	if offset != 0 {
+		g.code_gen.add(main_reg, offset)
+	}
+	if expr.next_token != token.Kind.dot { // the deref needs to be on the last selector (that has no . after it)
+		g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+	}
+	g.println('; .${expr.field_name} {')
 }
 
 fn (mut g Gen) gen_left_value(node ast.Expr) {
@@ -465,10 +472,15 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 				g.code_gen.add(Amd64Register.rax, offset)
 			}
 		}
-		ast.StructInit, ast.ArrayInit {
+		ast.StructInit {
 			g.expr(node)
 		}
-		ast.IndexExpr {} // TODO
+		ast.ArrayInit {
+			g.expr(node) // TODO: add a test that uses this
+		}
+		ast.IndexExpr { // TODO
+			g.n_error('Unsupported IndexExpr left value')
+		}
 		ast.PrefixExpr {
 			if node.op != .mul {
 				g.n_error('Unsupported left value')

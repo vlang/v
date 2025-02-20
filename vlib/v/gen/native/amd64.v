@@ -674,6 +674,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 				}
 				Register {
 					// TODO
+					c.g.n_error('${@FILE}:${@LINE} unsupported Ident Register in mov_reg_to_var')
 				}
 			}
 		}
@@ -727,8 +728,10 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 							}
 							c.g.write8(0x89)
 							size_str = 'DWORD'
+						} else if ts.info is ast.Struct {
+							c.g.n_error('${@FILE}:${@LINE} Unsupported struct')
 						} else {
-							c.g.n_error('unsupported type for mov_reg_to_var ${ts.info}')
+							c.g.n_error('${@FILE}:${@LINE} unsupported type for mov_reg_to_var ${ts.info}')
 						}
 					}
 				}
@@ -752,6 +755,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 		}
 		GlobalVar {
 			// TODO
+			c.g.n_error('${@FILE}:${@LINE} Unsupported mov_reg_to_var GlobalVar')
 		}
 	}
 }
@@ -2085,49 +2089,42 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 			Register { c.mov_reg(var as Amd64Register, Amd64Register.rax) }
 		}
 	} else {
-		c.g.n_error('error assigning type ${typ} with size ${size}: ${info}')
+		c.g.n_error('${@FILE}:${@LINE} error assigning type ${typ} with size ${size}: ${info}')
 	}
 }
 
-fn (mut c Amd64) assign_int(node ast.AssignStmt, i i32, name string, ident ast.Ident, int_lit ast.IntegerLiteral) {
+// Could be nice to have left as an expr to be able to take all int assigns
+fn (mut c Amd64) assign_ident_int(node ast.AssignStmt, i i32, int_lit ast.IntegerLiteral, left ast.Ident) {
 	match node.op {
 		.plus_assign {
-			c.mov_var_to_reg(Amd64Register.rax, ident)
+			c.mov_var_to_reg(Amd64Register.rax, left)
 			c.add(Amd64Register.rax, i32(int_lit.val.int()))
-			c.mov_reg_to_var(ident, Amd64Register.rax)
+			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		.minus_assign {
-			c.mov_var_to_reg(Amd64Register.rax, ident)
+			c.mov_var_to_reg(Amd64Register.rax, left)
 			c.sub(.rax, i32(int_lit.val.int()))
-			c.mov_reg_to_var(ident, Amd64Register.rax)
+			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		.mult_assign {
-			c.mov_var_to_reg(Amd64Register.rax, ident)
+			c.mov_var_to_reg(Amd64Register.rax, left)
 			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
 			c.mul_reg(.rax, .rdx)
-			c.mov_reg_to_var(ident, Amd64Register.rax)
+			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		.div_assign {
-			c.mov_var_to_reg(Amd64Register.rax, ident)
+			c.mov_var_to_reg(Amd64Register.rax, left)
 			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
 			c.div_reg(.rax, .rdx)
-			c.mov_reg_to_var(ident, Amd64Register.rax)
+			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		.decl_assign {
-			c.allocate_var(name, 8, i32(int_lit.val.int()))
+			c.allocate_var(left.name, 8, i32(int_lit.val.int()))
 		}
 		.assign {
-			match node.left[i] {
-				ast.Ident {
-					c.mov(Amd64Register.rax, i32(int_lit.val.int()))
-					c.mov_reg_to_var(ident, Amd64Register.rax)
-				}
-				else {
-					tn := node.left[i].type_name()
-					dump(node.left_types)
-					c.g.n_error('unhandled assign type: ${tn}')
-				}
-			}
+			c.mov(Amd64Register.rax, i32(int_lit.val.int()))
+			dump(left)
+			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		else {
 			c.g.n_error('unexpected assignment op ${node.op}')
@@ -2135,11 +2132,98 @@ fn (mut c Amd64) assign_int(node ast.AssignStmt, i i32, name string, ident ast.I
 	}
 }
 
-fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i i32, right ast.Expr, name string, ident ast.Ident) {
+fn (mut c Amd64) assign_float(node ast.AssignStmt, i i32, right ast.Expr, left ast.Expr) {
+	var_type := node.left_types[i]
+	if node.op == .decl_assign {
+		if left is ast.Ident {
+			c.g.allocate_by_type(left.name, var_type)
+		} else {
+			c.g.n_error('decl_assign not supported for ${left}')
+		}
+	}
+
+	c.g.gen_left_value(left)
+	c.push(c.main_reg()) // rax, stores effective address of the left expr
+	c.g.expr(right)
+	c.pop(.rdx) // effective address of left expr
+	c.gen_type_promotion(node.right_types[0], var_type)
+
+	match node.op {
+		.plus_assign {
+			c.mov_ssereg(.xmm1, .xmm0)
+			c.mov_float_var_xmm0(.rdx, var_type)
+			c.add_sse(.xmm0, .xmm1, var_type)
+		}
+		.minus_assign {
+			c.mov_ssereg(.xmm1, .xmm0)
+			c.mov_float_var_xmm0(.rdx, var_type)
+			c.sub_sse(.xmm0, .xmm1, var_type)
+		}
+		.mult_assign {
+			c.mov_ssereg(.xmm1, .xmm0)
+			c.mov_float_var_xmm0(.rdx, var_type)
+			c.mul_sse(.xmm0, .xmm1, var_type)
+		}
+		.div_assign {
+			c.mov_ssereg(.xmm1, .xmm0)
+			c.mov_float_var_xmm0(.rdx, var_type)
+			c.div_sse(.xmm0, .xmm1, var_type)
+		}
+		.decl_assign {}
+		.assign {}
+		else {
+			c.g.n_error('${@FILE}:${@LINE} unexpected assignment op ${node.op}')
+		}
+	}
+	c.mov_float_xmm0_var(.rdx, var_type)
+}
+
+fn (mut c Amd64) mov_float_var_xmm0(reg Amd64Register, var_type ast.Type) {
+	match reg {
+		.rdx {
+			if var_type == ast.f32_type_idx {
+				c.g.write32(0x02100ff3)
+				c.g.println('movss xmm0, [rdx]')
+			} else {
+				c.g.write32(0x02100ff2)
+				c.g.println('movsd xmm0, [rdx]')
+			}
+		}
+		else {
+			c.g.n_error('${@FILE}:${@LINE} Unsupported mov_float_var_xmm0 ${reg}')
+		}
+	}
+}
+
+fn (mut c Amd64) mov_float_xmm0_var(reg Amd64Register, var_type ast.Type) {
+	match reg {
+		.rdx {
+			if var_type == ast.f32_type_idx {
+				c.g.write32(0x02110ff3)
+				c.g.println('movss [rdx], xmm0')
+			} else {
+				c.g.write32(0x02110ff2)
+				c.g.println('movsd [rdx], xmm0')
+			}
+		}
+		else {
+			c.g.n_error('${@FILE}:${@LINE} Unsupported mov_float_xmm0_var ${reg}')
+		}
+	}
+}
+
+fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.Expr, name string, ident ast.Ident) {
 	match right {
 		ast.IntegerLiteral {
-			c.assign_int(node, i, name, ident, right)
-			return
+			left_type := node.left_types[i]
+			if left_type.is_pure_float() {
+				c.assign_float(node, i, right, ident)
+			} else {
+				c.assign_ident_int(node, i, right, ident)
+			}
+		}
+		ast.FloatLiteral {
+			c.assign_float(node, i, right, ident)
 		}
 		ast.StringLiteral {
 			dest := c.allocate_var(name, 8, 0)
@@ -2147,7 +2231,6 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i i32, right ast.Expr, n
 			str := c.g.eval_str_lit_escape_codes(ie)
 			c.learel(Amd64Register.rsi, c.g.allocate_string(str, 3, .rel32))
 			c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
-			return
 		}
 		ast.StructInit {
 			match node.op {
@@ -2161,11 +2244,13 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i i32, right ast.Expr, n
 						c.init_struct(ident, right)
 					}
 				}
+				.assign {
+					c.init_struct(ident, right)
+				}
 				else {
-					c.g.n_error('Unexpected operator `${node.op}`')
+					c.g.n_error('${@FILE}:${@LINE} Unexpected operator `${node.op}`')
 				}
 			}
-			return
 		}
 		ast.ArrayInit {
 			match node.op {
@@ -2174,10 +2259,9 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i i32, right ast.Expr, n
 					c.init_array(ident, right)
 				}
 				else {
-					c.g.n_error('Unexpected operator `${node.op}`')
+					c.g.n_error('${@FILE}:${@LINE} Unexpected operator `${node.op}`')
 				}
 			}
-			return
 		}
 		ast.TypeOf {
 			c.g.gen_typeof_expr(right as ast.TypeOf, true)
@@ -2189,69 +2273,105 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i i32, right ast.Expr, n
 			c.learel(Amd64Register.rsi, c.g.allocate_string(c.g.comptime_at(right), 3,
 				.rel32))
 			c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
-			return
 		}
 		ast.IfExpr {
 			if right.is_comptime {
-				if branch := c.g.comptime_conditional(right) {
+				if branch := c.g.comptime_conditional(right) { // Only one branch because solved at comptime
 					for j, stmt in branch.stmts {
 						if j + 1 != branch.stmts.len {
 							c.g.stmt(stmt)
-							continue
-						}
-
-						if stmt is ast.ExprStmt {
-							c.assign_right_expr(node, i, stmt.expr, name, ident)
 						} else {
-							c.g.n_error('last stmt must be expr')
+							if stmt is ast.ExprStmt {
+								c.assign_ident_right_expr(node, i, stmt.expr, name, ident)
+							} else {
+								c.g.n_error('${@FILE}:${@LINE} last stmt must be expr')
+							}
 						}
 					}
 				} else {
 					c.g.n_error('missing value for assignment')
 				}
-				return
+			} else {
+				left_type := node.left_types[i]
+				if node.op == .decl_assign {
+					c.g.allocate_by_type(name, left_type)
+				}
+
+				c.g.expr(right)
+
+				if node.op in [.assign, .decl_assign] {
+					var := c.g.get_var_from_ident(ident)
+					c.assign_var(var, left_type)
+				} else if left_type.is_pure_float() {
+					c.mov_var_to_ssereg(.xmm1, ident)
+
+					match node.op {
+						.plus_assign { c.add_sse(.xmm1, .xmm0, left_type) }
+						.minus_assign { c.sub_sse(.xmm1, .xmm0, left_type) }
+						.mult_assign { c.mul_sse(.xmm1, .xmm0, left_type) }
+						.div_assign { c.div_sse(.xmm1, .xmm0, left_type) }
+						else { c.g.n_error('${@FILE}:${@LINE} unexpected assignment operator ${node.op} for fp') }
+					}
+
+					c.mov_ssereg_to_var(ident, .xmm1)
+				} else if left_type.is_int() {
+					c.mov_var_to_reg(Amd64Register.rbx, ident)
+
+					match node.op {
+						.plus_assign { c.add_reg(.rbx, .rax) }
+						.minus_assign { c.sub_reg(.rbx, .rax) }
+						.div_assign { c.div_reg(.rbx, .rax) }
+						.mult_assign { c.mul_reg(.rbx, .rax) }
+						else { c.g.n_error('${@FILE}:${@LINE} unexpected assignment operator ${node.op} for i32') }
+					}
+
+					c.mov_reg_to_var(ident, Amd64Register.rbx)
+				} else {
+					c.g.n_error('${@FILE}:${@LINE} assignment arithmetic not implemented for type ${node.left_types[i]}')
+				}
 			}
 		}
-		else {}
-	}
+		else {
+			left_type := node.left_types[i]
+			if node.op == .decl_assign {
+				c.g.allocate_by_type(name, left_type)
+			}
 
-	left_type := node.left_types[i]
-	if node.op == .decl_assign {
-		c.g.allocate_by_type(name, left_type)
-	}
+			c.g.expr(right)
 
-	c.g.expr(right)
+			if node.op in [.assign, .decl_assign] {
+				var := c.g.get_var_from_ident(ident)
+				c.assign_var(var, left_type)
+			} else if left_type.is_pure_float() {
+				c.mov_var_to_ssereg(.xmm1, ident)
 
-	if node.op in [.assign, .decl_assign] {
-		var := c.g.get_var_from_ident(ident)
-		c.assign_var(var, left_type)
-	} else if left_type.is_pure_float() {
-		c.mov_var_to_ssereg(.xmm1, ident)
+				match node.op {
+					.plus_assign { c.add_sse(.xmm1, .xmm0, left_type) }
+					.minus_assign { c.sub_sse(.xmm1, .xmm0, left_type) }
+					.mult_assign { c.mul_sse(.xmm1, .xmm0, left_type) }
+					.div_assign { c.div_sse(.xmm1, .xmm0, left_type) }
+					else { c.g.n_error('${@FILE}:${@LINE} unexpected assignment operator ${node.op} for fp') }
+				}
 
-		match node.op {
-			.plus_assign { c.add_sse(.xmm1, .xmm0, left_type) }
-			.minus_assign { c.sub_sse(.xmm1, .xmm0, left_type) }
-			.mult_assign { c.mul_sse(.xmm1, .xmm0, left_type) }
-			.div_assign { c.div_sse(.xmm1, .xmm0, left_type) }
-			else { c.g.n_error('unexpected assignment operator ${node.op} for fp') }
+				c.mov_ssereg_to_var(ident, .xmm1)
+			} else if left_type.is_int() {
+				c.mov_var_to_reg(Amd64Register.rbx, ident)
+
+				match node.op {
+					.plus_assign { c.add_reg(.rbx, .rax) }
+					.minus_assign { c.sub_reg(.rbx, .rax) }
+					.div_assign { c.div_reg(.rbx, .rax) }
+					.mult_assign { c.mul_reg(.rbx, .rax) }
+					else { c.g.n_error('${@FILE}:${@LINE} unexpected assignment operator ${node.op} for i32') }
+				}
+
+				c.mov_reg_to_var(ident, Amd64Register.rbx)
+			} else {
+				c.g.n_error('${@FILE}:${@LINE} assignment arithmetic not implemented for type ${node.left_types[i]}')
+			}
 		}
-
-		c.mov_ssereg_to_var(ident, .xmm1)
-	} else if left_type.is_int() {
-		c.mov_var_to_reg(Amd64Register.rbx, ident)
-
-		match node.op {
-			.plus_assign { c.add_reg(.rbx, .rax) }
-			.minus_assign { c.sub_reg(.rbx, .rax) }
-			.div_assign { c.div_reg(.rbx, .rax) }
-			.mult_assign { c.mul_reg(.rbx, .rax) }
-			else { c.g.n_error('unexpected assignment operator ${node.op} for i32') }
-		}
-
-		c.mov_reg_to_var(ident, Amd64Register.rbx)
-	} else {
-		c.g.n_error('assignment arithmetic not implemented for type ${node.left_types[i]}')
 	}
+
 	/*
 	ast.IndexExpr {
 			// a := arr[0]
@@ -2620,125 +2740,99 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 	}
 	// `a := 1` | `a,b := 1,2`
 	for i, left in node.left {
-		right := node.right[i]
-		typ := node.left_types[i]
-		// this branch would be removed, but left for compatibility
-		if left is ast.Ident && !typ.is_pure_float() {
-			ident := left as ast.Ident
-			c.assign_right_expr(node, i32(i), right, ident.name, ident)
-			continue
-		}
-		if left is ast.Ident && node.op == .decl_assign {
-			c.g.allocate_by_type((left as ast.Ident).name, typ)
-		}
-		c.g.gen_left_value(left)
-		c.push(Amd64Register.rax)
-		c.g.expr(right)
-		c.pop(.rdx)
-		c.gen_type_promotion(node.right_types[0], typ)
-		if c.g.is_register_type(typ) {
-			match node.op {
-				.decl_assign, .assign {
-					c.mov_store(.rdx, .rax, match c.g.get_type_size(typ) {
-						1 { ._8 }
-						2 { ._16 }
-						4 { ._32 }
-						else { ._64 }
-					})
-				}
-				else {
-					c.g.n_error('Unsupported assign instruction (${node.op})')
-				}
-			}
-		} else if typ.is_pure_float() {
-			is_f32 := typ == ast.f32_type_idx
-			if node.op !in [.assign, .decl_assign] {
-				c.mov_ssereg(.xmm1, .xmm0)
-				if is_f32 {
-					c.g.write32(0x02100ff3)
-					c.g.println('movss xmm0, [rdx]')
-				} else {
-					c.g.write32(0x02100ff2)
-					c.g.println('movsd xmm0, [rdx]')
-				}
-			}
-			match node.op {
-				.plus_assign {
-					c.add_sse(.xmm0, .xmm1, typ)
-				}
-				.minus_assign {
-					c.sub_sse(.xmm0, .xmm1, typ)
-				}
-				.mult_assign {
-					c.mul_sse(.xmm0, .xmm1, typ)
-				}
-				.div_assign {
-					c.div_sse(.xmm0, .xmm1, typ)
-				}
-				else {}
-			}
-			if is_f32 {
-				c.g.write32(0x02110ff3)
-				c.g.println('movss [rdx], xmm0')
-			} else {
-				c.g.write32(0x02110ff2)
-				c.g.println('movsd [rdx], xmm0')
-			}
+		val := node.right[i]
+		var_type := node.left_types[i]
+
+		if left is ast.Ident {
+			c.assign_ident_right_expr(node, i32(i), val, left.name, left)
 		} else {
-			if node.op !in [.assign, .decl_assign] {
-				c.g.n_error('Unsupported assign instruction (${node.op})')
-			}
-			ts := c.g.table.sym(typ)
-			match ts.kind {
-				.struct {
-					size := c.g.get_type_size(typ)
-					if size >= 8 {
-						for j in 0 .. size / 8 {
-							c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, ast.u64_type_idx)
-							c.mov_store(.rax, .rcx, ._64)
-							offset := if j == size / 8 - 1 && size % 8 != 0 {
-								size % 8
-							} else {
-								8
-							}
-							c.add(Amd64Register.rax, offset)
-							c.add(Amd64Register.rdx, offset)
-						}
-						if size % 8 != 0 {
-							c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, ast.u64_type_idx)
-							c.mov_store(.rax, .rcx, ._64)
-						}
-					} else {
-						mut left_size := if size >= 4 {
-							c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, ast.u32_type_idx)
-							c.mov_store(.rax, .rcx, ._32)
-							if size > 4 {
-								c.add(Amd64Register.rax, 4)
-								c.add(Amd64Register.rdx, 4)
-							}
-							size - 4
-						} else {
-							size
-						}
-						if left_size >= 2 {
-							c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, ast.u16_type_idx)
-							c.mov_store(.rax, .rcx, ._16)
-							if left_size > 2 {
-								c.add(Amd64Register.rax, 2)
-								c.add(Amd64Register.rdx, 2)
-							}
-							left_size -= 2
-						}
-						if left_size == 1 {
-							c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, ast.u8_type_idx)
-							c.mov_store(.rax, .rcx, ._8)
-						}
+			if c.g.is_register_type(var_type) {
+				c.g.gen_left_value(left)
+				c.push(c.main_reg()) // rax here, stores effective address of the left expr
+				c.g.expr(val)
+				c.pop(.rdx) // effective address of left expr
+				c.gen_type_promotion(node.right_types[0], var_type)
+
+				match node.op {
+					.decl_assign, .assign {
+						c.mov_store(.rdx, .rax, match c.g.get_type_size(var_type) {
+							1 { ._8 }
+							2 { ._16 }
+							4 { ._32 }
+							else { ._64 }
+						})
+					}
+					else {
+						c.g.n_error('${@FILE}:${@LINE} Unsupported assign instruction (${node.op})')
 					}
 				}
-				.enum {
-					c.mov_store(.rdx, .rax, ._32)
+			} else if var_type.is_pure_float() {
+				c.assign_float(node, i32(i), val, left)
+			} else {
+				c.g.gen_left_value(left)
+				c.push(c.main_reg()) // rax here, stores effective address of the left expr
+				c.g.expr(val)
+				c.pop(.rdx) // effective address of left expr
+				c.gen_type_promotion(node.right_types[0], var_type)
+
+				if node.op !in [.assign, .decl_assign] {
+					c.g.n_error('Unsupported assign')
 				}
-				else {}
+				ts := c.g.table.sym(var_type)
+				match ts.kind {
+					.struct {
+						size := c.g.get_type_size(var_type)
+						if size >= 8 {
+							for j in 0 .. size / 8 {
+								c.mov_deref(Amd64Register.rcx, Amd64Register.rax, ast.u64_type_idx)
+								c.mov_store(.rdx, .rcx, ._64)
+								offset := if j == size / 8 - 1 && size % 8 != 0 {
+									size % 8
+								} else {
+									8
+								}
+								c.add(Amd64Register.rax, offset)
+								c.add(Amd64Register.rdx, offset)
+							}
+							if size % 8 != 0 {
+								c.mov_deref(Amd64Register.rcx, Amd64Register.rax, ast.u64_type_idx)
+								c.mov_store(.rdx, .rcx, ._64)
+							}
+						} else {
+							mut left_size := if size >= 4 {
+								c.mov_deref(Amd64Register.rcx, Amd64Register.rax, ast.u32_type_idx)
+								c.mov_store(.rdx, .rcx, ._32)
+								if size > 4 {
+									c.add(Amd64Register.rax, 4)
+									c.add(Amd64Register.rdx, 4)
+								}
+								size - 4
+							} else {
+								size
+							}
+							if left_size >= 2 {
+								c.mov_deref(Amd64Register.rcx, Amd64Register.rax, ast.u16_type_idx)
+								c.mov_store(.rdx, .rcx, ._16)
+								if left_size > 2 {
+									c.add(Amd64Register.rax, 2)
+									c.add(Amd64Register.rdx, 2)
+								}
+								left_size -= 2
+							}
+							if left_size == 1 {
+								c.mov_deref(Amd64Register.rcx, Amd64Register.rax, ast.u8_type_idx)
+								c.mov_store(.rdx, .rcx, ._8)
+							}
+						}
+					}
+					.enum {
+						// TODO: fix sizes
+						c.mov_store(.rdx, .rax, ._32)
+					}
+					else {
+						c.g.n_error('${@FILE}:${@LINE} Unsupported expression SelectorExpr ${ts.kind}')
+					}
+				}
 			}
 		}
 	}
