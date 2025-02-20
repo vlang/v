@@ -124,7 +124,7 @@ fn test_native() {
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
 		found = found.trim_space()
 		if expected != found {
-			println(term.red('FAIL'))
+			eprintln(bench.step_message_fail('${full_test_path} did not match expected output: '))
 			println('============')
 			println('expected: "${expected}" len=${expected.len}')
 			println('============')
