@@ -4,7 +4,8 @@ import os
 import os.cmdline
 import v.util.recompilation
 
-const is_debug = os.args.contains('-debug')
+const args_ = arguments()
+const is_debug = args_.contains('-debug')
 
 // support a renamed `v` executable too:
 const vexe = os.getenv_opt('VEXE') or { @VEXE }
@@ -24,7 +25,7 @@ fn main() {
 	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `${vexe_name} self` .')
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
-	mut args := os.args[1..].filter(it != 'self')
+	mut args := args_[1..].filter(it != 'self')
 	if args.len == 0 || ('-cc' !in args && '-prod' !in args && '-parallel-cc' !in args) {
 		// compiling by default, i.e. `v self`:
 		uos := os.user_os()

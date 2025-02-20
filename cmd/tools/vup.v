@@ -18,14 +18,16 @@ struct App {
 	skip_current bool // skip the current hash check, enabling easier testing on the same commit, without using docker etc
 }
 
+const args = arguments()
+
 fn new_app() App {
 	return App{
-		is_verbose:   '-v' in os.args
-		is_prod:      '-prod' in os.args
+		is_verbose:   '-v' in args
+		is_prod:      '-prod' in args
 		vexe:         vexe
 		vroot:        vroot
-		skip_v_self:  '-skip_v_self' in os.args
-		skip_current: '-skip_current' in os.args
+		skip_v_self:  '-skip_v_self' in args
+		skip_current: '-skip_current' in args
 	}
 }
 
