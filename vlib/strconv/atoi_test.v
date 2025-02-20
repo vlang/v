@@ -1,11 +1,11 @@
 import strconv
 
-struct StrInt { // Inner test struct
+struct StrInt { // test struct
 	str_value string
 	int_value int
 }
 
-// test what should be catch by atoi_common_check
+// test what should be caught by atoi_common_check
 fn test_common_check() {
 	// Parsing of these strings should fail on all types.
 	ko := [
