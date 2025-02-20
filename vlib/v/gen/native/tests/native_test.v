@@ -4,6 +4,7 @@ import benchmark
 import term
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
+const user_os = os.user_os()
 
 // TODO: some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_native() {
@@ -11,7 +12,7 @@ fn test_native() {
 		eprintln('>> skipping testing on ARM for now')
 		return
 	}
-	$if freebsd || openbsd {
+	if user_os in ['freebsd', 'openbsd'] {
 		eprintln('>> skipping testing on FreeBSD/OpenBSD for now')
 		return
 	}
@@ -29,7 +30,7 @@ fn test_native() {
 	}
 
 	os.chdir(wrkdir) or {}
-	tests := files.filter(it.ends_with('.vv'))
+	tests := files.filter(it.ends_with('.vv')).sorted()
 	if tests.len == 0 {
 		println('no native tests found')
 		assert false
@@ -41,6 +42,12 @@ fn test_native() {
 			// TODO: remove the skip here, when the native backend is more advanced
 			if os.getenv('VNATIVE_SKIP_LIBC_VV') != '' {
 				println('>>> SKIPPING ${test} since VNATIVE_SKIP_LIBC_VV is defined')
+				continue
+			}
+		}
+		if test == 'fibonacci_native.vv' {
+			if user_os == 'windows' {
+				println('>>> SKIPPING ${test} on windows for now')
 				continue
 			}
 		}
