@@ -5,7 +5,7 @@ struct StrInt { // test struct
 	int_value int
 }
 
-// test what should be catched by atoi_common_check
+// test what should be caught by atoi_common_check
 fn test_common_check() {
 	// Parsing of these strings should fail on all types.
 	ko := [
