@@ -55,6 +55,16 @@ $if linux {
 			#flag -L/usr/lib64/gcc/x86_64-suse-linux/12
 			#flag -L/usr/lib64/gcc/x86_64-suse-linux/13
 			#flag -L/usr/lib64/gcc/x86_64-suse-linux/14
+			// ALT Linux paths:
+			#flag -L/usr/lib64/gcc/x86_64-alt-linux/6
+			#flag -L/usr/lib64/gcc/x86_64-alt-linux/7
+			#flag -L/usr/lib64/gcc/x86_64-alt-linux/8
+			#flag -L/usr/lib64/gcc/x86_64-alt-linux/9
+			#flag -L/usr/lib64/gcc/x86_64-alt-linux/10
+			#flag -L/usr/lib64/gcc/x86_64-alt-linux/11
+			#flag -L/usr/lib64/gcc/x86_64-alt-linux/12
+			#flag -L/usr/lib64/gcc/x86_64-alt-linux/13
+			#flag -L/usr/lib64/gcc/x86_64-alt-linux/14
 			$if musl ? {
 				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/6
 				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/7
