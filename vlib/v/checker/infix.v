@@ -344,7 +344,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				return_type = left_type
 			} else if !c.pref.translated && left_sym.info is ast.Alias
 				&& !left_final_sym.is_primitive() {
-				println('${left_final_sym}')
 				if left_sym.has_method(op_str) {
 					if method := left_sym.find_method(op_str) {
 						return_type = method.return_type
