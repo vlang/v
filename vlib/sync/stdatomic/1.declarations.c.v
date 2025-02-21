@@ -24,7 +24,16 @@ $if linux {
 			// ALT Linux paths:
 			#flag $when_first_existing('/usr/lib64/gcc/x86_64-alt-linux/6/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/7/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/8/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/9/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/10/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/11/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/12/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/13/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/14/libatomic.a')
 			$if musl ? {
-				#flag -L$when_first_existing('/usr/lib/gcc/x86_64-pc-linux-musl/6','/usr/lib/gcc/x86_64-pc-linux-musl/7','/usr/lib/gcc/x86_64-pc-linux-musl/8','/usr/lib/gcc/x86_64-pc-linux-musl/9','/usr/lib/gcc/x86_64-pc-linux-musl/10','/usr/lib/gcc/x86_64-pc-linux-musl/11','/usr/lib/gcc/x86_64-pc-linux-musl/12','/usr/lib/gcc/x86_64-pc-linux-musl/13','/usr/lib/gcc/x86_64-pc-linux-musl/14')
+				// TODO: convert this as well
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/6
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/7
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/8
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/9
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/10
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/11
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/12
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/13
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/14
 				#flag -latomic
 			}
 		} $else $if arm64 {
@@ -38,7 +47,16 @@ $if linux {
 			// ALT Linux paths:
 			#flag $when_first_existing('/usr/lib64/gcc/aarch64-alt-linux/6/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/7/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/8/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/9/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/10/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/11/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/12/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/13/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/14/libatomic.a')
 			$if musl ? {
-				#flag -L$when_first_existing('/usr/lib/gcc/aarch64-pc-linux-musl/6','/usr/lib/gcc/aarch64-pc-linux-musl/7','/usr/lib/gcc/aarch64-pc-linux-musl/8','/usr/lib/gcc/aarch64-pc-linux-musl/9','/usr/lib/gcc/aarch64-pc-linux-musl/10','/usr/lib/gcc/aarch64-pc-linux-musl/11','/usr/lib/gcc/aarch64-pc-linux-musl/12','/usr/lib/gcc/aarch64-pc-linux-musl/13','/usr/lib/gcc/aarch64-pc-linux-musl/14')
+				// TODO: convert this as well
+				#flag -L/usr/lib/gcc/aarch64-pc-linux-musl/6
+				#flag -L/usr/lib/gcc/aarch64-pc-linux-musl/7
+				#flag -L/usr/lib/gcc/aarch64-pc-linux-musl/8
+				#flag -L/usr/lib/gcc/aarch64-pc-linux-musl/9
+				#flag -L/usr/lib/gcc/aarch64-pc-linux-musl/10
+				#flag -L/usr/lib/gcc/aarch64-pc-linux-musl/11
+				#flag -L/usr/lib/gcc/aarch64-pc-linux-musl/12
+				#flag -L/usr/lib/gcc/aarch64-pc-linux-musl/13
+				#flag -L/usr/lib/gcc/aarch64-pc-linux-musl/14
 				#flag -latomic
 			}
 		}
