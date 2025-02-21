@@ -61,9 +61,6 @@ $if linux {
 			}
 		}
 	}
-	$if !tinyc {
-		#flag -latomic
-	}
 }
 
 // The following functions are actually generic in C
