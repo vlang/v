@@ -51,7 +51,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.local_var_ident(node, var)
 				}
 				else {
-					g.n_error('Unsupported variable kind')
+					g.n_error('${@LOCATION} Unsupported variable kind')
 				}
 			}
 		}
@@ -90,7 +90,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			for i, v in bytes {
 				val |= v << (i * 8)
 				if i >= sizeof(rune) {
-					g.n_error('runes are only 4 bytes wide')
+					g.n_error('${@LOCATION} runes are only 4 bytes wide')
 				}
 			}
 			g.code_gen.movabs(g.code_gen.main_reg(), i64(val))
@@ -129,7 +129,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.gen_sizeof_expr(node)
 		}
 		else {
-			g.n_error('expr: unhandled node type: ${node.type_name()}')
+			g.n_error('${@LOCATION} expr: unhandled node type: ${node.type_name()}')
 		}
 	}
 }
@@ -151,7 +151,7 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 				)
 			}
 			else {
-				g.n_error('Unsupported variable type')
+				g.n_error('${@LOCATION} Unsupported variable type')
 			}
 		}
 	}
@@ -273,7 +273,7 @@ fn (mut g Gen) gen_typeof_expr(node ast.TypeOf, newline bool) {
 
 	match ts.kind {
 		.sum_type {
-			g.n_error('`typeof()` is not implemented for sum types yet')
+			g.n_error('${@LOCATION} `typeof()` is not implemented for sum types yet')
 		}
 		.array_fixed {
 			fixed_info := ts.info as ast.ArrayFixed
@@ -427,10 +427,10 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 						}
 					}
 				} else {
-					g.n_error('nothing to print')
+					g.n_error('${@LOCATION} nothing to print')
 				}
 			} else {
-				g.n_error('non-comptime conditionals are not implemented yet.')
+				g.n_error('${@LOCATION} non-comptime conditionals are not implemented yet.')
 			}
 		}
 		else {
@@ -445,11 +445,17 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 }
 
 fn (mut g Gen) gen_selector_expr(expr ast.SelectorExpr) {
+	g.println('; .${expr.field_name} {')
 	main_reg := g.code_gen.main_reg()
 	g.expr(expr.expr)
 	offset := g.get_field_offset(expr.expr_type, expr.field_name)
-	g.code_gen.add(main_reg, offset)
-	g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+	if offset != 0 {
+		g.code_gen.add(main_reg, offset)
+	}
+	if expr.next_token != .dot { // the deref needs to be on the last selector (that has no . after it)
+		g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+	}
+	g.println('; .${expr.field_name} {')
 }
 
 fn (mut g Gen) gen_left_value(node ast.Expr) {
@@ -465,18 +471,23 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 				g.code_gen.add(Amd64Register.rax, offset)
 			}
 		}
-		ast.StructInit, ast.ArrayInit {
+		ast.StructInit {
 			g.expr(node)
 		}
-		ast.IndexExpr {} // TODO
+		ast.ArrayInit {
+			g.expr(node) // TODO: add a test that uses this
+		}
+		ast.IndexExpr { // TODO
+			g.n_error('${@LOCATION} Unsupported IndexExpr left value')
+		}
 		ast.PrefixExpr {
 			if node.op != .mul {
-				g.n_error('Unsupported left value')
+				g.n_error('${@LOCATION} Unsupported left value')
 			}
 			g.expr(node.right)
 		}
 		else {
-			g.n_error('Unsupported left value')
+			g.n_error('${@LOCATION} Unsupported left value')
 		}
 	}
 }
