@@ -265,7 +265,7 @@ fn byt(n i32, s i32) u8 {
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
-		obj = ident.scope.find(ident.name) or { g.n_error('unknown variable ${ident.name}') }
+		obj = ident.scope.find(ident.name) or { g.n_error('${@LOCATION} unknown variable ${ident.name}') }
 	}
 	match obj {
 		ast.Var {
@@ -277,7 +277,7 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 			}
 		}
 		else {
-			g.n_error('unsupported variable type type:${obj} name:${ident.name}')
+			g.n_error('${@LOCATION} unsupported variable type type:${obj} name:${ident.name}')
 		}
 	}
 }
@@ -291,7 +291,7 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 			return var.typ
 		}
 		GlobalVar {
-			g.n_error('cannot get type from GlobalVar yet')
+			g.n_error('${@LOCATION} cannot get type from GlobalVar yet')
 		}
 	}
 }
@@ -452,7 +452,7 @@ pub fn (mut g Gen) generate_header() {
 			}
 		}
 		else {
-			g.n_error('only `raw`, `linux`, `windows` and `macos` are supported for -os in -native')
+			g.n_error('${@LOCATION} only `raw`, `linux`, `windows` and `macos` are supported for -os in -native')
 		}
 	}
 }
@@ -517,7 +517,7 @@ pub fn (mut g Gen) link(obj_name string) {
 			// TODO: implement linking for macos!
 		}
 		else {
-			g.n_error('native linking is not implemented for ${g.pref.os}')
+			g.n_error('${@LOCATION} native linking is not implemented for ${g.pref.os}')
 		}
 	}
 }
@@ -681,7 +681,7 @@ fn (mut g Gen) try_var_offset(var_name string) i32 {
 fn (mut g Gen) get_var_offset(var_name string) i32 {
 	r := g.try_var_offset(var_name)
 	if r == -1 {
-		g.n_error('unknown variable `${var_name}`')
+		g.n_error('${@LOCATION} unknown variable `${var_name}`')
 	}
 	return r
 }
@@ -689,7 +689,7 @@ fn (mut g Gen) get_var_offset(var_name string) i32 {
 fn (mut g Gen) get_field_offset(in_type ast.Type, name string) i32 {
 	typ := g.unwrap(in_type)
 	ts := g.table.sym(typ)
-	field := ts.find_field(name) or { g.n_error('Could not find field `${name}` on init') }
+	field := ts.find_field(name) or { g.n_error('${@LOCATION} Could not find field `${name}` on init') }
 	return g.structs[typ.idx()].offsets[field.i]
 }
 
@@ -724,7 +724,7 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 			ast.float_literal_type_idx { 8 }
 			ast.char_type_idx { 1 }
 			ast.rune_type_idx { 4 }
-			else { g.n_error('unknown type size ${typ}') }
+			else { g.n_error('${@LOCATION} unknown type size ${typ}') }
 		}
 	}
 	if typ.is_bool() {
@@ -835,7 +835,7 @@ fn (mut g Gen) get_sizeof_ident(ident ast.Ident) i32 {
 		return g.get_type_size(typ)
 	}
 	size := g.var_alloc_size[ident.name] or {
-		g.n_error('unknown variable `${ident}`')
+		g.n_error('${@LOCATION} unknown variable `${ident}`')
 		return 0
 	}
 	return size
@@ -911,7 +911,7 @@ fn (mut g Gen) eval_escape_codes(str string) string {
 			`u` {
 				i++
 				utf8 := strconv.parse_int(str[i..i + 4], 16, 16) or {
-					g.n_error('invalid \\u escape code (${str[i..i + 4]})')
+					g.n_error('${@LOCATION} invalid \\u escape code (${str[i..i + 4]})')
 					0
 				}
 				i += 4
@@ -925,7 +925,7 @@ fn (mut g Gen) eval_escape_codes(str string) string {
 			`x` {
 				i++
 				c := strconv.parse_int(str[i..i + 2], 16, 8) or {
-					g.n_error('invalid \\x escape code (${str[i..i + 2]})')
+					g.n_error('${@LOCATION} invalid \\x escape code (${str[i..i + 2]})')
 					0
 				}
 				i += 2
@@ -933,14 +933,14 @@ fn (mut g Gen) eval_escape_codes(str string) string {
 			}
 			`0`...`7` {
 				c := strconv.parse_int(str[i..i + 3], 8, 8) or {
-					g.n_error('invalid escape code \\${str[i..i + 3]}')
+					g.n_error('${@LOCATION} invalid escape code \\${str[i..i + 3]}')
 					0
 				}
 				i += 3
 				buffer << u8(c)
 			}
 			else {
-				g.n_error('invalid escape code \\${str[i]}')
+				g.n_error('${@LOCATION} invalid escape code \\${str[i]}')
 			}
 		}
 	}
@@ -973,7 +973,7 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 			g.code_gen.mov_reg(g.code_gen.main_reg(), reg)
 		}
 	} else {
-		g.n_error('int-to-string conversion not implemented for type ${typ}')
+		g.n_error('${@LOCATION} int-to-string conversion not implemented for type ${typ}')
 	}
 	g.println('; to_string }')
 }
@@ -986,7 +986,7 @@ fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config Va
 		g.code_gen.convert_rune_to_string(reg, buffer, var, config)
 	} else if typ.is_int() {
 		if typ.is_unsigned() {
-			g.n_error('Unsigned integer print is not supported')
+			g.n_error('${@LOCATION} Unsigned integer print is not supported')
 		} else {
 			buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
 			end_of_buffer := buffer + 4 + 32 - 1 // 4 bytes for the size and 32 for the chars, -1 to not go out of array
@@ -1001,7 +1001,7 @@ fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config Va
 	} else if typ.is_string() {
 		g.code_gen.mov_var_to_reg(reg, var, config)
 	} else {
-		g.n_error('int-to-string conversion not implemented for type ${typ}')
+		g.n_error('${@LOCATION} int-to-string conversion not implemented for type ${typ}')
 	}
 	g.println('; var_to_string }')
 }
@@ -1019,7 +1019,7 @@ fn (mut g Gen) patch_calls() {
 	for c in g.callpatches {
 		addr := g.fn_addr[c.name]
 		if addr == 0 {
-			g.n_error('fn addr of `${c.name}` = 0')
+			g.n_error('${@LOCATION} fn addr of `${c.name}` = 0')
 			return
 		}
 		last := i32(g.buf.len)
@@ -1038,7 +1038,7 @@ fn (mut g Gen) patch_labels() {
 	for label in g.labels.patches {
 		addr := g.labels.addrs[label.id]
 		if addr == 0 {
-			g.n_error('label addr = 0')
+			g.n_error('${@LOCATION} label addr = 0')
 			return
 		}
 

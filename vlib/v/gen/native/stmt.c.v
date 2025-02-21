@@ -111,7 +111,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.TypeDecl {}
 		ast.InterfaceDecl {}
 		else {
-			g.n_error('native.stmt(): bad node: ' + node.type_name())
+			g.n_error('${@LOCATION} bad node: ' + node.type_name())
 		}
 	}
 }
@@ -149,12 +149,12 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 								jump_addr = g.code_gen.cjmp(.jg)
 							}
 							else {
-								g.n_error('unsupported conditional in for-c loop')
+								g.n_error('${@LOCATION} unsupported conditional in for-c loop')
 							}
 						}
 					}
 					else {
-						g.n_error('unhandled infix.left')
+						g.n_error('${@LOCATION} unhandled infix.left')
 					}
 				}
 			}
@@ -301,7 +301,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 	} else if it.kind == .map {
 	*/
 	} else {
-		g.n_error('for-in ${node.kind} statement is not yet implemented')
+		g.n_error('${@LOCATION} for-in ${node.kind} statement is not yet implemented')
 	}
 }
 

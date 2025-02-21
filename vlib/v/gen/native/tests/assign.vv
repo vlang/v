@@ -32,14 +32,22 @@ fn test_fp() {
 	a := 1.0
 	mut b := a
 	b += 1.5
+	assert b == 1.5
 	b -= 1.0
+	assert b == 0.5
 	b *= 4
+	assert b == 2.0
 	b /= 2
+	assert b == 1.0
 
 	b += a
+	assert b == 2.0
 	b -= a
+	assert b == 1.0
 	b *= a
+	assert b == 1.0
 	b /= a
+	assert b == 1.0
 
 	println(int(b))
 }
