@@ -29,25 +29,26 @@ fn test_int() {
 }
 
 fn test_fp() {
-	a := 1.0
+	// TODO: implement asserts for floats
+	a := 10.0
 	mut b := a
-	b += 1.5
-	assert b == 1.5
-	b -= 1.0
-	assert b == 0.5
+	b += 15.0
+	assert int(b) == 25
+	b -= 10.0
+	assert int(b) == 15
 	b *= 4
-	assert b == 2.0
+	assert int(b) == 60
 	b /= 2
-	assert b == 1.0
+	assert int(b) == 30
 
 	b += a
-	assert b == 2.0
+	assert int(b) == 40
 	b -= a
-	assert b == 1.0
+	assert int(b) == 30
 	b *= a
-	assert b == 1.0
+	assert int(b) == 300
 	b /= a
-	assert b == 1.0
+	assert int(b) == 30
 
 	println(int(b))
 }
