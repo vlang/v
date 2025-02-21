@@ -112,8 +112,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	mut right_sym := c.table.sym(right_type)
-	right_final_sym := c.table.final_sym(right_type)
-	left_final_sym := c.table.final_sym(left_type)
+	right_final_sym := c.table.final_sym(c.unwrap_generic(right_type))
+	left_final_sym := c.table.final_sym(c.unwrap_generic(left_type))
 	left_pos := node.left.pos()
 	right_pos := node.right.pos()
 	left_right_pos := left_pos.extend(right_pos)
