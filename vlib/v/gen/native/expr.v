@@ -5,7 +5,6 @@ module native
 
 import v.ast
 import v.util
-import v.token
 
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
