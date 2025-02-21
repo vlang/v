@@ -38,7 +38,7 @@ jobs:
           copyback: false
           prepare: pkg install -y git sqlite3 bash
           run: |
-            git config --global --add safe.directory /home/runner/work/v/v
+            git config --global --add safe.directory .
             make CFLAGS=
             ./v symlink
             ./v run ci/freebsd_ci.vsh all
