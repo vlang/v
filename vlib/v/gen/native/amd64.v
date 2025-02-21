@@ -1337,7 +1337,9 @@ pub fn (mut c Amd64) get_dllcall_addr(import_addr i64) i64 {
 	// +2 because of ff 05
 	// return i32(-(0xe00 + c.g.pos() + 2) + import_addr)
 	// return i32(c.g.code_start_pos + import_addr)
-	text_section := c.g.get_pe_section('.text') or { c.g.n_error('${@LOCATION} no .text section generated') }
+	text_section := c.g.get_pe_section('.text') or {
+		c.g.n_error('${@LOCATION} no .text section generated')
+	}
 	return 0xfffffffa - (i64(c.g.pos()) - i64(c.g.code_start_pos) +
 		i64(text_section.header.virtual_address) - import_addr)
 }

@@ -265,7 +265,9 @@ fn byt(n i32, s i32) u8 {
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
-		obj = ident.scope.find(ident.name) or { g.n_error('${@LOCATION} unknown variable ${ident.name}') }
+		obj = ident.scope.find(ident.name) or {
+			g.n_error('${@LOCATION} unknown variable ${ident.name}')
+		}
 	}
 	match obj {
 		ast.Var {
@@ -689,7 +691,9 @@ fn (mut g Gen) get_var_offset(var_name string) i32 {
 fn (mut g Gen) get_field_offset(in_type ast.Type, name string) i32 {
 	typ := g.unwrap(in_type)
 	ts := g.table.sym(typ)
-	field := ts.find_field(name) or { g.n_error('${@LOCATION} Could not find field `${name}` on init') }
+	field := ts.find_field(name) or {
+		g.n_error('${@LOCATION} Could not find field `${name}` on init')
+	}
 	return g.structs[typ.idx()].offsets[field.i]
 }
 
