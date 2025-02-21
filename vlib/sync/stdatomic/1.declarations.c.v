@@ -24,7 +24,8 @@ $if linux {
 			// ALT Linux paths:
 			#flag $when_first_existing('/usr/lib64/gcc/x86_64-alt-linux/6/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/7/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/8/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/9/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/10/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/11/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/12/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/13/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/14/libatomic.a')
 			$if musl ? {
-				#flag $when_first_existing('/usr/lib/gcc/x86_64-pc-linux-musl/6/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/7/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/8/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/9/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/10/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/11/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/12/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/13/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/14/libatomic.a')
+				#flag -L$when_first_existing('/usr/lib/gcc/x86_64-pc-linux-musl/6','/usr/lib/gcc/x86_64-pc-linux-musl/7','/usr/lib/gcc/x86_64-pc-linux-musl/8','/usr/lib/gcc/x86_64-pc-linux-musl/9','/usr/lib/gcc/x86_64-pc-linux-musl/10','/usr/lib/gcc/x86_64-pc-linux-musl/11','/usr/lib/gcc/x86_64-pc-linux-musl/12','/usr/lib/gcc/x86_64-pc-linux-musl/13','/usr/lib/gcc/x86_64-pc-linux-musl/14')
+				#flag -latomic
 			}
 		} $else $if arm64 {
 			#flag $when_first_existing('/usr/lib/gcc/aarch64-linux-gnu/6/libatomic.a','/usr/lib/gcc/aarch64-linux-gnu/7/libatomic.a','/usr/lib/gcc/aarch64-linux-gnu/8/libatomic.a','/usr/lib/gcc/aarch64-linux-gnu/9/libatomic.a','/usr/lib/gcc/aarch64-linux-gnu/10/libatomic.a','/usr/lib/gcc/aarch64-linux-gnu/11/libatomic.a','/usr/lib/gcc/aarch64-linux-gnu/12/libatomic.a','/usr/lib/gcc/aarch64-linux-gnu/13/libatomic.a','/usr/lib/gcc/aarch64-linux-gnu/14/libatomic.a')
@@ -37,7 +38,8 @@ $if linux {
 			// ALT Linux paths:
 			#flag $when_first_existing('/usr/lib64/gcc/aarch64-alt-linux/6/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/7/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/8/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/9/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/10/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/11/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/12/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/13/libatomic.a','/usr/lib64/gcc/aarch64-alt-linux/14/libatomic.a')
 			$if musl ? {
-				#flag $when_first_existing('/usr/lib/gcc/aarch64-pc-linux-musl/6/libatomic.a','/usr/lib/gcc/aarch64-pc-linux-musl/7/libatomic.a','/usr/lib/gcc/aarch64-pc-linux-musl/8/libatomic.a','/usr/lib/gcc/aarch64-pc-linux-musl/9/libatomic.a','/usr/lib/gcc/aarch64-pc-linux-musl/10/libatomic.a','/usr/lib/gcc/aarch64-pc-linux-musl/11/libatomic.a','/usr/lib/gcc/aarch64-pc-linux-musl/12/libatomic.a','/usr/lib/gcc/aarch64-pc-linux-musl/13/libatomic.a','/usr/lib/gcc/aarch64-pc-linux-musl/14/libatomic.a')
+				#flag -L$when_first_existing('/usr/lib/gcc/aarch64-pc-linux-musl/6','/usr/lib/gcc/aarch64-pc-linux-musl/7','/usr/lib/gcc/aarch64-pc-linux-musl/8','/usr/lib/gcc/aarch64-pc-linux-musl/9','/usr/lib/gcc/aarch64-pc-linux-musl/10','/usr/lib/gcc/aarch64-pc-linux-musl/11','/usr/lib/gcc/aarch64-pc-linux-musl/12','/usr/lib/gcc/aarch64-pc-linux-musl/13','/usr/lib/gcc/aarch64-pc-linux-musl/14')
+				#flag -latomic
 			}
 		}
 	}
