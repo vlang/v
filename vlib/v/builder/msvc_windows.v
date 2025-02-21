@@ -516,10 +516,11 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 			lib_lib := flag.value + '.lib'
 			real_libs << lib_lib
 		} else if flag.name == '-I' {
-			inc_paths << flag.format()
+			inc_paths << flag.format() or { continue }
 		} else if flag.name == '-D' {
 			defines << '/D${flag.value}'
 		} else if flag.name == '-L' {
+			// TODO: use flag.format() here as well; `#flag -L$when_first_existing(...)` is a more explicit way to achieve the same
 			lib_paths << flag.value
 			lib_paths << flag.value + os.path_separator + 'msvc'
 			// The above allows putting msvc specific .lib files in a subfolder msvc/ ,
@@ -528,6 +529,7 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 			// When both a msvc .lib file and .dll file are present in the same folder,
 			// as for example for glfw3, compilation with gcc would fail.
 		} else if flag.value.ends_with('.o') {
+			// TODO: use flag.format() here as well; `#flag -L$when_first_existing(...)` is a more explicit way to achieve the same
 			// msvc expects .obj not .o
 			other_flags << '"${flag.value}bj"'
 		} else if flag.value.starts_with('-D') {
