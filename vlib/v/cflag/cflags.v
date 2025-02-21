@@ -54,8 +54,7 @@ pub fn (cf &CFlag) eval() ?string {
 				panic('>> error: none of the paths ${svalues} exist')
 			}
 			if remainder.starts_with(wexisting_literal) {
-				found, spath, delta_i, svalues := find_first_existing_path(remainder,
-					wexisting_literal)
+				found, spath, delta_i, _ := find_first_existing_path(remainder, wexisting_literal)
 				if found {
 					value_builder.write_string(spath)
 					i += delta_i
