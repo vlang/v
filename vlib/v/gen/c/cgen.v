@@ -5019,7 +5019,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 	if node.info is ast.IdentVar {
 		if node.obj is ast.Var {
 			if !g.is_assign_lhs
-				&& node.obj.ct_type_var !in [.smartcast, .generic_param, .no_comptime] {
+				&& node.obj.ct_type_var !in [.smartcast, .generic_param, .no_comptime, .aggregate] {
 				comptime_type := g.type_resolver.get_type(node)
 				if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
@@ -7306,7 +7306,13 @@ fn (mut g Gen) get_type(typ ast.Type) ast.Type {
 }
 
 fn (mut g Gen) size_of(node ast.SizeOf) {
-	typ := g.type_resolver.typeof_type(node.expr, g.get_type(node.typ))
+	typ_sym := g.table.sym(node.typ)
+	val_type := if typ_sym.info is ast.Aggregate {
+		typ_sym.info.types[g.aggregate_type_idx]
+	} else {
+		node.typ
+	}
+	typ := g.type_resolver.typeof_type(node.expr, g.get_type(val_type))
 	node_typ := g.unwrap_generic(typ)
 	sym := g.table.sym(node_typ)
 	if sym.language == .v && sym.kind in [.placeholder, .any] {

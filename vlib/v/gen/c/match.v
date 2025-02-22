@@ -211,6 +211,9 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				g.write(cond_var)
 				cur_expr := unsafe { &branch.exprs[sumtype_index] }
 				if cond_sym.kind == .sum_type {
+					if cur_expr is ast.TypeNode {
+						g.type_resolver.update_ct_type(cond_var, cur_expr.typ)
+					}
 					g.write('${dot_or_ptr}_typ == ')
 					if cur_expr is ast.None {
 						g.write('${ast.none_type.idx()} /* none */')
