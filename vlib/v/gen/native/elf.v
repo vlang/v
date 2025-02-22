@@ -250,15 +250,15 @@ fn (mut g Gen) gen_program_header(p ProgramHeader) {
 	g.write64(p.offset) // p_offset
 	g.println('; p_offset')
 	g.write64(if p.vaddr == 0 {
-		segment_start
+		i64(segment_start)
 	} else {
-		p.vaddr
+		i64(p.vaddr)
 	}) // p_vaddr
 	g.println('; p_vaddr')
 	g.write64(if p.paddr == 0 {
-		segment_start
+		i64(segment_start)
 	} else {
-		p.paddr
+		i64(p.paddr)
 	}) // p_paddr
 	g.println('; p_paddr')
 	if p.filesz == 0 {
@@ -758,7 +758,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 
 	g.code_gen.call(placeholder)
 	g.println('; call main.main')
-	g.code_gen.mov64(g.code_gen.main_reg(), 0)
+	g.code_gen.mov64(g.code_gen.main_reg(), i64(0))
 	g.code_gen.ret()
 	g.println('; return 0')
 

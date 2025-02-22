@@ -67,11 +67,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if node.val.len > 0 && node.val[0] == `-` { // if the number is negative
 				g.code_gen.mov64(g.code_gen.main_reg(), node.val.i64())
 			} else {
-				g.code_gen.mov64u(g.code_gen.main_reg(), node.val.u64())
+				g.code_gen.mov64(g.code_gen.main_reg(), node.val.u64())
 			}
 		}
 		ast.Nil {
-			g.code_gen.mov64(g.code_gen.main_reg(), 0)
+			g.code_gen.mov64(g.code_gen.main_reg(), i64(0))
 		}
 		ast.PostfixExpr {
 			g.postfix_expr(node)
@@ -114,7 +114,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.EnumVal {
 			type_name := g.table.get_type_name(node.typ)
-			g.code_gen.mov(g.code_gen.main_reg(), g.enum_vals[type_name].fields[node.val])
+			val := g.enum_vals[type_name].fields[node.val] or {
+				g.n_error('${@LOCATION} enum field not found ${node.val}')
+			}
+			g.code_gen.mov64(g.code_gen.main_reg(), val)
 		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)
@@ -146,9 +149,7 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 				g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), g.get_var_offset(ident.name))
 			}
 			ast.Enum {
-				g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident,
-					typ: ast.int_type_idx
-				)
+				g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
 			}
 			else {
 				g.n_error('${@LOCATION} Unsupported variable type')

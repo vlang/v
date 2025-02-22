@@ -682,10 +682,10 @@ fn (mut g Gen) gen_pe_idata() {
 
 		for func in imp.functions {
 			g.pe_dll_relocations[func] = g.pos()
-			g.write64(0) // filled in later
+			g.write64(i64(0)) // filled in later
 			g.println('; name lookup addr to "${func}"')
 		}
-		g.write64(0) // null entry
+		g.write64(i64(0)) // null entry
 		g.println('; null entry')
 		g.println('^^^ import lookup table ("${imp.name}")')
 	}

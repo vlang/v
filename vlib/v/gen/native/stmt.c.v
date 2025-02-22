@@ -251,7 +251,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		g.println('; for ${node.val_var} in range {')
 		// for a in node.cond .. node.high {
 
-		i := g.code_gen.allocate_var(node.val_var, 8, 0) // iterator variable
+		i := g.code_gen.allocate_var(node.val_var, 8, i64(0)) // iterator variable
 		g.println('; evaluate node.cond for lower bound:')
 		g.expr(node.cond) // outputs the lower loop bound (initial value) to the main reg
 		main_reg := g.code_gen.main_reg()

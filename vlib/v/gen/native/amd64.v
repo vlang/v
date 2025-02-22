@@ -532,42 +532,7 @@ fn (mut c Amd64) mov32(reg Amd64Register, val i32) {
 	c.g.println('mov32 ${reg}, ${val}')
 }
 
-// moves unsigned 64 bits, explained better in mov64
-fn (mut c Amd64) mov64u(reg Register, val u64) {
-	match reg as Amd64Register {
-		.rax {
-			c.g.write8(0x48)
-			c.g.write8(0xb8)
-		}
-		.rcx {
-			c.g.write8(0x48)
-			c.g.write8(0xb9)
-		}
-		.rdx {
-			c.g.write8(0x48)
-			c.g.write8(0xba)
-		}
-		.rbx {
-			c.g.write8(0x48)
-			c.g.write8(0xbb)
-		}
-		.rsi {
-			c.g.write8(0x48)
-			c.g.write8(0xbe)
-		}
-		.rdi {
-			c.g.write8(0x48)
-			c.g.write8(0xbf)
-		}
-		else {
-			eprintln('unhandled mov64u ${reg}')
-		}
-	}
-	c.g.write64(val)
-	c.g.println('mov64 ${reg}, ${val}')
-}
-
-fn (mut c Amd64) mov64(reg Register, val i64) {
+fn (mut c Amd64) mov64(reg Register, val Number) {
 	// see AMD64 Architecture Programmer's Manual Volume 3 about the MOV instruction to have a detailed explanation
 	// about the BF (B8+rq) there is an explanation in Table 2-2 (and a bit above in 2.5.2 Opcode Syntax)
 	// in short the 64 mov instruction is 0xB8 and after a 64 bits immediate value
@@ -945,7 +910,7 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			c.g.println('${instruction} ${reg}, ${size_str} PTR [rbp-${int(offset).hex2()}] ; `${var.name}`')
 		}
 		GlobalVar {
-			// TODO
+			c.g.n_error('${@LOCATION} Unsupported GlobalVar')
 		}
 	}
 }
@@ -1057,7 +1022,7 @@ fn (mut c Amd64) gen_syscall(node ast.CallExpr) {
 						ast.StringLiteral {
 							s := c.g.eval_str_lit_escape_codes(expr.expr)
 							c.g.allocate_string(s, 2, .abs64)
-							c.mov64(ra[i], 1)
+							c.mov64(ra[i], i64(1))
 							done = true
 						}
 						else {}
@@ -1074,7 +1039,7 @@ fn (mut c Amd64) gen_syscall(node ast.CallExpr) {
 				}
 				s := c.g.eval_str_lit_escape_codes(expr)
 				c.g.allocate_string(s, 2, .abs64)
-				c.mov64(ra[i], 1)
+				c.mov64(ra[i], i64(1))
 			}
 			else {
 				c.g.v_error('Unknown syscall ${expr.type_name()} argument type ${expr}',
@@ -1741,6 +1706,7 @@ fn (mut c Amd64) sub_store(a Amd64Register, b Amd64Register, size Size) {
 
 fn (mut c Amd64) mul_store(a Amd64Register, b Amd64Register, size Size) {
 	if size == ._8 {
+		c.g.n_error('${@LOCATION} Unsupported size')
 	} else {
 		if size == ._16 {
 			c.g.write8(0x66)
@@ -2096,7 +2062,7 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 }
 
 // Could be nice to have left as an expr to be able to take all int assigns
-fn (mut c Amd64) assign_ident_int(node ast.AssignStmt, i i32, int_lit ast.IntegerLiteral, left ast.Ident) {
+fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.IntegerLiteral, left ast.Ident) {
 	match node.op {
 		.plus_assign {
 			c.mov_var_to_reg(Amd64Register.rax, left)
@@ -2121,7 +2087,7 @@ fn (mut c Amd64) assign_ident_int(node ast.AssignStmt, i i32, int_lit ast.Intege
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		.decl_assign {
-			c.allocate_var(left.name, 8, i32(int_lit.val.int()))
+			c.allocate_var(left.name, 8, i64(int_lit.val.int()))
 		}
 		.assign {
 			c.mov(Amd64Register.rax, i32(int_lit.val.int()))
@@ -2216,18 +2182,33 @@ fn (mut c Amd64) mov_float_xmm0_var(reg Amd64Register, var_type ast.Type) {
 fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.Expr, name string, ident ast.Ident) {
 	match right {
 		ast.IntegerLiteral {
+			// a = 230 // no cast, just a int literal
+			// TODO: when V changes int (not fixed i32), change the size of the assigns
 			left_type := node.left_types[i]
 			if left_type.is_pure_float() {
 				c.assign_float(node, i, right, ident)
 			} else {
-				c.assign_ident_int(node, i, right, ident)
+				c.assign_ident_int_lit(node, i, right, ident)
+			}
+		}
+		ast.EnumVal {
+			type_name := c.g.table.get_type_name(right.typ)
+			enum_info := c.g.enum_vals[type_name]
+			val := enum_info.fields[right.val] or {
+				c.g.n_error('${@LOCATION} enum field not found ${right.val}')
+			}
+			if node.op == .decl_assign {
+				c.allocate_var(ident.name, enum_info.size, val)
+			} else {
+				c.mov64(Amd64Register.rax, val)
+				c.mov_reg_to_var(ident, Amd64Register.rax)
 			}
 		}
 		ast.FloatLiteral {
 			c.assign_float(node, i, right, ident)
 		}
 		ast.StringLiteral {
-			dest := c.allocate_var(name, 8, 0)
+			dest := c.allocate_var(name, 8, i64(0))
 			ie := right as ast.StringLiteral
 			str := c.g.eval_str_lit_escape_codes(ie)
 			c.learel(Amd64Register.rsi, c.g.allocate_string(str, 3, .rel32))
@@ -2270,7 +2251,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 			return
 		}
 		ast.AtExpr {
-			dest := c.allocate_var(name, 8, 0)
+			dest := c.allocate_var(name, 8, i64(0))
 			c.learel(Amd64Register.rsi, c.g.allocate_string(c.g.comptime_at(right), 3,
 				.rel32))
 			c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
@@ -2827,8 +2808,18 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 						}
 					}
 					.enum {
-						// TODO: fix sizes
-						c.mov_store(.rdx, .rax, ._32)
+						size := c.g.get_type_size(var_type)
+						if size == 4 {
+							c.mov_store(.rdx, .rax, ._32)
+						} else if size == 8 {
+							c.mov_store(.rdx, .rax, ._64)
+						} else if size == 2 {
+							c.mov_store(.rdx, .rax, ._16)
+						} else if size == 1 {
+							c.mov_store(.rdx, .rax, ._8)
+						} else {
+							c.g.n_error('${@LOCATION} Unsupported enum size assignment')
+						}
 					}
 					else {
 						c.g.n_error('${@LOCATION} Unsupported expression SelectorExpr ${ts.kind}')
@@ -2893,7 +2884,7 @@ fn (mut c Amd64) prefix_expr(node ast.PrefixExpr) {
 			c.g.expr(node.right)
 			c.cmp_zero(Amd64Register.rax)
 			// TODO: mov_extend_reg
-			c.mov64(Amd64Register.rax, 0)
+			c.mov64(Amd64Register.rax, i64(0))
 			c.cset(.e)
 		}
 		.bit_not {
@@ -2930,7 +2921,7 @@ fn (mut c Amd64) fp_infix_expr(node ast.InfixExpr, left_type ast.Type) {
 		.gt, .lt, .ge, .le {
 			c.cmp_sse(.xmm0, .xmm1, left_type)
 			// TODO: mov_extend_reg
-			c.mov64(Amd64Register.rax, 0)
+			c.mov64(Amd64Register.rax, i64(0))
 			c.cset(match node.op {
 				.gt { .a }
 				.lt { .b }
@@ -3010,7 +3001,7 @@ fn (mut c Amd64) infix_expr(node ast.InfixExpr) {
 		.eq, .ne, .gt, .lt, .ge, .le {
 			c.cmp_reg(.rax, .rdx)
 			// TODO: mov_extend_reg
-			c.mov64(Amd64Register.rax, 0)
+			c.mov64(Amd64Register.rax, i64(0))
 			c.cset_op(node.op)
 		}
 		.plus {
@@ -3326,7 +3317,7 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 	// define defer vars
 	for i in 0 .. node.defer_stmts.len {
 		name := '_defer${i}'
-		c.allocate_var(name, 8, 0)
+		c.allocate_var(name, 8, i64(0))
 	}
 	// body
 	c.g.stmts(node.stmts)
@@ -3366,13 +3357,12 @@ pub fn (mut c Amd64) builtin_decl(builtin BuiltinFn) {
 	c.leave()
 }
 
-pub fn (mut c Amd64) allocate_var_two_step(name string, size i32, initial_val i32) i32 {
-	// TODO: replace i32 by i64 or bigger
-	c.allocate_var(name, size - 8, 0)
+pub fn (mut c Amd64) allocate_var_two_step(name string, size i32, initial_val Number) i32 {
+	c.allocate_var(name, size - 8, i64(0))
 	return c.allocate_var(name, 8, initial_val)
 }
 
-pub fn (mut c Amd64) allocate_var(name string, size i32, initial_val i32) i32 {
+pub fn (mut c Amd64) allocate_var(name string, size i32, initial_val Number) i32 {
 	if size > 8 {
 		return c.allocate_var_two_step(name, size, initial_val)
 	}
@@ -3387,56 +3377,89 @@ pub fn (mut c Amd64) allocate_var(name string, size i32, initial_val i32) i32 {
 			// BYTE
 			c.g.write8(0xc6)
 			c.g.write8(i32(0x45) + far_var_offset)
+			// Generate N in `[rbp-N]`
+			if is_far_var {
+				c.g.write32(i32((0xffffffff - i64(n) + 1) % 0x100000000))
+			} else {
+				c.g.write8(i32((0xff - n + 1) % 0x100))
+			}
+			c.g.stack_var_pos += size + padding
+			c.g.var_offset[name] = c.g.stack_var_pos
+			c.g.var_alloc_size[name] = size
+			// Generate the value assigned to the variable
+			match initial_val {
+				i64 {
+					c.g.write8(i32(initial_val as i64))
+				}
+				u64 {
+					c.g.write8(i32(initial_val as u64))
+				}
+			}
 		}
 		2 {
 			// WORD
 			c.g.write8(0x66)
 			c.g.write8(0xc7)
 			c.g.write8(i32(0x45) + far_var_offset)
+			// Generate N in `[rbp-N]`
+			if is_far_var {
+				c.g.write32(i32((0xffffffff - i64(n) + 1) % 0x100000000))
+			} else {
+				c.g.write8(i32((0xff - n + 1) % 0x100))
+			}
+			c.g.stack_var_pos += size + padding
+			c.g.var_offset[name] = c.g.stack_var_pos
+			c.g.var_alloc_size[name] = size
+			// Generate the value assigned to the variable
+			match initial_val {
+				i64 {
+					c.g.write16(i32(initial_val as i64))
+				}
+				u64 {
+					c.g.write16(i32(initial_val as u64))
+				}
+			}
 		}
 		4 {
 			// DWORD
 			c.g.write8(0xc7)
 			c.g.write8(i32(0x45) + far_var_offset)
+			// Generate N in `[rbp-N]`
+			if is_far_var {
+				c.g.write32(i32((0xffffffff - i64(n) + 1) % 0x100000000))
+			} else {
+				c.g.write8(i32((0xff - n + 1) % 0x100))
+			}
+			c.g.stack_var_pos += size + padding
+			c.g.var_offset[name] = c.g.stack_var_pos
+			c.g.var_alloc_size[name] = size
+			// Generate the value assigned to the variable
+			match initial_val {
+				i64 {
+					c.g.write32(i32(initial_val as i64))
+				}
+				u64 {
+					c.g.write32(i32(initial_val as u64))
+				}
+			}
 		}
 		8 {
 			// QWORD
-			c.g.write8(0x48)
-			c.g.write8(0xc7)
-			c.g.write8(i32(0x45) + far_var_offset)
-		}
-		else {
-			c.g.n_error('${@LOCATION} bad size ${int(size)}')
-		}
-	}
-	// Generate N in `[rbp-N]`
-	if is_far_var {
-		c.g.write32(i32((0xffffffff - i64(n) + 1) % 0x100000000))
-	} else {
-		c.g.write8(i32((0xff - n + 1) % 0x100))
-	}
-	c.g.stack_var_pos += size + padding
-	c.g.var_offset[name] = c.g.stack_var_pos
-	c.g.var_alloc_size[name] = size
+			// Can not move directly an immediate value of 64 bits in a 64 bits register
 
-	// Generate the value assigned to the variable
-	match size {
-		1 {
-			c.g.write8(initial_val)
-		}
-		2 {
-			c.g.write16(initial_val)
-		}
-		4 {
-			c.g.write32(initial_val)
-		}
-		8 {
-			c.g.write32(initial_val) // fixme: 64-bit segfaulting
+			c.g.stack_var_pos += size + padding
+			c.g.var_offset[name] = c.g.stack_var_pos
+			c.g.var_alloc_size[name] = size
+
+			c.lea_var_to_reg(Amd64Register.rax, c.g.var_offset[name])
+			c.mov64(Amd64Register.rdx, initial_val)
+			c.mov_store(.rax, .rdx, ._64)
 		}
 		else {
 			c.g.n_error('${@LOCATION} bad size ${int(size)}')
 		}
 	}
+
 
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
 	c.g.println('mov [rbp-${int(n).hex2()}], ${initial_val} ; Allocate var `${name}`')
