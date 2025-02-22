@@ -208,7 +208,14 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write_v_source_line_info(branch)
 					g.write('if (')
 				}
+				need_deref := node.cond_type.nr_muls() > 1
+				if need_deref {
+					g.write2('(', '*'.repeat(node.cond_type.nr_muls() - 1))
+				}
 				g.write(cond_var)
+				if need_deref {
+					g.write(')')
+				}
 				cur_expr := unsafe { &branch.exprs[sumtype_index] }
 				if cond_sym.kind == .sum_type {
 					g.write('${dot_or_ptr}_typ == ')
