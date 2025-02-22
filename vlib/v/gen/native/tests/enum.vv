@@ -68,10 +68,107 @@ fn value_test() {
 	assert Value.e == unsafe { Value(3) }
 }
 
+enum BigI as i64 {
+        first = -3_000_000_000
+        sec
+}
+
+enum BigU as u64 {
+	first = 3_000_000_000
+	sec
+}
+
+enum SmallI as i8 {
+	first = -3
+	sec
+}
+
+enum SmallU as u8 {
+	first = 3
+	sec
+}
+
+enum MediumI as i16 {
+	first = -300
+	sec
+}
+
+enum MediumU as u16 {
+	first = 300
+	sec
+}
+
+enum NormalI as i32 {
+	first = -3_000_000
+	sec
+}
+
+enum NormalU as u32 {
+	first = 3_000_000
+	sec
+}
+
+struct DiffSizes {
+mut:
+	a BigI
+	b BigU
+	c SmallI
+	d SmallU
+	e MediumI
+	f MediumU
+	g NormalI
+	h NormalU
+}
+
+fn size_enum() {
+	a := BigI.sec
+	assert i64(a) == -2_999_999_999
+
+	b := BigU.sec
+	assert u64(b) == 3_000_000_001
+
+	c := SmallI.sec
+	assert i8(c) == -2
+
+	d := SmallU.sec
+	assert u8(d) == 4
+	
+	e := MediumI.sec
+	assert i16(e) == -299
+
+	f := MediumU.sec
+	assert u16(f) == 301
+	
+	g := NormalI.sec
+	assert i32(g) == -2_999_999
+
+	h := NormalU.sec
+	assert u32(h) == 3_000_001
+
+	mut diff := DiffSizes{}
+	diff.a = .sec
+	diff.b = .sec
+	diff.c = .sec
+	diff.d = .sec
+	diff.e = .sec
+	diff.f = .sec
+	diff.g = .sec
+	diff.h = .sec
+	assert i64(diff.a) == -2_999_999_999
+	assert u64(diff.b) == 3_000_000_001
+	assert i8(diff.c) == -2
+	assert u8(diff.d) == 4
+	assert i16(diff.e) == -299
+	assert u16(diff.f) == 301
+	assert i32(diff.g) == -2_999_999
+	assert u32(diff.h) == 3_000_001
+}
+
 fn main() {
 	enum_test()
 	match_test()
 	test_enum_variant_and_method_name_clash()
 	value_test()
+	size_enum()
 	println('OK')
 }

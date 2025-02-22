@@ -82,7 +82,7 @@ mut:
 	add(r Register, val i32)
 	address_size() i32
 	adr(r Arm64Register, delta i32) // Note: Temporary!
-	allocate_var(name string, size i32, initial_val i32) i32
+	allocate_var(name string, size i32, initial_val Number) i32
 	assign_stmt(node ast.AssignStmt) // TODO: make platform-independent
 	builtin_decl(builtin BuiltinFn)
 	call_addr_at(addr i32, at i64) i64
@@ -125,8 +125,7 @@ mut:
 	mov_reg(r1 Register, r2 Register)
 	mov_var_to_reg(reg Register, var Var, config VarConfig)
 	mov(r Register, val i32)
-	mov64(r Register, val i64)
-	mov64u(r Register, val u64)
+	mov64(r Register, val Number)
 	movabs(reg Register, val i64)
 	patch_relative_jmp(pos i32, addr i64)
 	prefix_expr(node ast.PrefixExpr)
@@ -202,9 +201,12 @@ mut:
 	offsets []i32
 }
 
+type Number = u64 | i64
+
 struct Enum {
+	size i32 // size of the type of the enum in bytes
 mut:
-	fields map[string]i32
+	fields map[string]Number
 }
 
 struct MultiReturn {
@@ -536,17 +538,47 @@ pub fn (mut g Gen) calculate_all_size_align() {
 
 pub fn (mut g Gen) calculate_enum_fields() {
 	for name, decl in g.table.enum_decls {
-		mut enum_vals := Enum{}
-		mut value := if decl.is_flag { i32(1) } else { i32(0) }
+		enum_size := g.get_type_size(decl.typ)
+		mut enum_vals := Enum{
+			size: i32(enum_size)
+		}
+		mut value := Number(if decl.is_flag { i64(1) } else { i64(0) })
 		for field in decl.fields {
 			if field.has_expr {
-				value = i32(g.eval.expr(field.expr, ast.int_type_idx).int_val())
+				str_val := g.eval.expr(field.expr, ast.int_type_idx).string()
+				if str_val.len >= 0 && str_val[0] == `-` {
+					value = str_val.i64()
+				} else {
+					value = str_val.u64()
+				}
 			}
-			enum_vals.fields[field.name] = value
+			match value {
+				// Dereferences the sumtype (it would get assigned by address and messed up)
+				i64 {
+					enum_vals.fields[field.name] = value as i64
+				}
+				u64 {
+					enum_vals.fields[field.name] = value as u64
+				}
+			}
 			if decl.is_flag {
-				value <<= 1
+				match mut value {
+					i64 {
+						value = value * 2 // same as << 1 but without notice
+					}
+					u64 {
+						value = value << u64(1)
+					}
+				}
 			} else {
-				value++
+				match mut value {
+					i64 {
+						value++
+					}
+					u64 {
+						value++
+					}
+				}
 			}
 		}
 		g.enum_vals[name] = enum_vals
@@ -585,16 +617,30 @@ fn (mut g Gen) write32(n i32) {
 	g.buf << u8(n >> 24)
 }
 
-fn (mut g Gen) write64(n i64) {
+fn (mut g Gen) write64(n Number) {
 	// write 8 bytes
-	g.buf << u8(n)
-	g.buf << u8(n >> 8)
-	g.buf << u8(n >> 16)
-	g.buf << u8(n >> 24)
-	g.buf << u8(n >> 32)
-	g.buf << u8(n >> 40)
-	g.buf << u8(n >> 48)
-	g.buf << u8(n >> 56)
+	match n {
+		i64 {
+			g.buf << u8(n)
+			g.buf << u8(n >> 8)
+			g.buf << u8(n >> 16)
+			g.buf << u8(n >> 24)
+			g.buf << u8(n >> 32)
+			g.buf << u8(n >> 40)
+			g.buf << u8(n >> 48)
+			g.buf << u8(n >> 56)
+		}
+		u64 {
+			g.buf << u8(n)
+			g.buf << u8(n >> 8)
+			g.buf << u8(n >> 16)
+			g.buf << u8(n >> 24)
+			g.buf << u8(n >> 32)
+			g.buf << u8(n >> 40)
+			g.buf << u8(n >> 48)
+			g.buf << u8(n >> 56)
+		}
+	}
 }
 
 fn (mut g Gen) write64_at(at i64, n i64) {
@@ -757,8 +803,8 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 			g.structs[typ.idx()] = strc
 		}
 		ast.Enum {
-			size = 4
-			align = 4
+			size = g.get_type_size(ts.info.typ)
+			align = g.get_type_align(ts.info.typ)
 		}
 		ast.MultiReturn {
 			for t in ts.info.types {
@@ -865,7 +911,7 @@ fn (mut g Gen) allocate_string(s string, opsize i32, typ RelocType) i32 {
 // allocates a buffer variable: name, size of stored type (nb of bytes), nb of items
 fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 {
 	g.println('; allocate array `${name}` item-size:${size} items:${items}:')
-	pos := g.code_gen.allocate_var(name, 4, items) // store the length of the array on the stack in a 4 byte var
+	pos := g.code_gen.allocate_var(name, 4, i64(items)) // store the length of the array on the stack in a 4 byte var
 	g.stack_var_pos += (size * items) // reserve space on the stack for the items
 	return pos
 }
@@ -986,7 +1032,7 @@ fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config Va
 	g.println('; var_to_string {')
 	typ := g.get_type_from_var(var)
 	if typ == ast.rune_type_idx {
-		buffer := g.code_gen.allocate_var('rune-buffer', 8, 0)
+		buffer := g.code_gen.allocate_var('rune-buffer', 8, i64(0))
 		g.code_gen.convert_rune_to_string(reg, buffer, var, config)
 	} else if typ.is_int() {
 		if typ.is_unsigned() {
