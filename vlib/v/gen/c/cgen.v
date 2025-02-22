@@ -7306,13 +7306,7 @@ fn (mut g Gen) get_type(typ ast.Type) ast.Type {
 }
 
 fn (mut g Gen) size_of(node ast.SizeOf) {
-	typ_sym := g.table.sym(node.typ)
-	val_type := if typ_sym.info is ast.Aggregate {
-		typ_sym.info.types[g.aggregate_type_idx]
-	} else {
-		node.typ
-	}
-	typ := g.type_resolver.typeof_type(node.expr, g.get_type(val_type))
+	typ := g.type_resolver.typeof_type(node.expr, g.get_type(node.typ))
 	node_typ := g.unwrap_generic(typ)
 	sym := g.table.sym(node_typ)
 	if sym.language == .v && sym.kind in [.placeholder, .any] {
