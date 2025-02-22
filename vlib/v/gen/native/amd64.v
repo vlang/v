@@ -3460,7 +3460,6 @@ pub fn (mut c Amd64) allocate_var(name string, size i32, initial_val Number) i32
 		}
 	}
 
-
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
 	c.g.println('mov [rbp-${int(n).hex2()}], ${initial_val} ; Allocate var `${name}`')
 	return c.g.stack_var_pos
