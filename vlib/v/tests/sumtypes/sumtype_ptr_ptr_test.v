@@ -22,4 +22,7 @@ fn test_main() {
 	} else {
 		assert false
 	}
+
+	assert typeof(command_arr_el_ptr) == 'Call'
+	assert typeof(command_arr_ptr) == '[]&Command'
 }
