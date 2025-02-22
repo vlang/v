@@ -564,7 +564,7 @@ pub fn (mut g Gen) calculate_enum_fields() {
 			if decl.is_flag {
 				match mut value {
 					i64 {
-						value = value << i64(1)
+						value = value * 2 // same as << 1 but without notice
 					}
 					u64 {
 						value = value << u64(1)
