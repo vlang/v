@@ -3568,7 +3568,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast incompatible option ${final_to_sym.name} `${ft}` to `${tt}`',
 			node.pos)
-	} else if final_from_sym.kind == .struct && to_sym.kind !in [final_from_sym.kind, .voidptr] {
+	} else if !from_type.is_ptr() && final_from_sym.kind == .struct
+		&& to_sym.kind !in [.struct, .voidptr] {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast type `${ft}` to `${tt}`', node.pos)
