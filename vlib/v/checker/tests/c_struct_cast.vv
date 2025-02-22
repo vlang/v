@@ -1,0 +1,19 @@
+module main
+
+pub struct C.Vector3 {
+	x f32
+	y f32
+	z f32
+}
+
+pub type Vector3 = C.Vector3
+
+fn main() {
+	v := Vector3{
+		x: 0.0
+		y: 1.7
+		z: 0.0
+	}
+	dump(v)
+	dump(int(v))
+}
