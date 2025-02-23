@@ -850,6 +850,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				res.os = target_os_kind
 				res.build_options << '${arg} ${target_os}'
+				res.compile_defines << target_os
+				res.compile_defines_all << target_os
 			}
 			'-printfn' {
 				res.printfn_list << cmdline.option(args[i..], '-printfn', '').split(',')
