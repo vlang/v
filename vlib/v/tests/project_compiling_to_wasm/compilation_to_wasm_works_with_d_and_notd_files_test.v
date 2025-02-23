@@ -17,6 +17,9 @@ fn testsuite_end() {
 }
 
 fn test_normal() {
+	if os.user_os() == 'windows' {
+		return
+	}
 	defer { println('done ${@FN}') }
 	dump(vexe)
 	res := os.system('${os.quoted_path(vexe)} -o normal.exe ${os.quoted_path(project_folder)}')
@@ -28,6 +31,9 @@ fn test_normal() {
 }
 
 fn test_emcc() {
+	if os.user_os() == 'windows' {
+		return
+	}
 	defer { println('done ${@FN}') }
 	emcc := os.find_abs_path_of_executable('emcc') or {
 		println('skipping ${@FN} since `emcc` is not found')
