@@ -884,6 +884,7 @@ pub enum ComptimeVarKind {
 	generic_param // generic fn parameter
 	generic_var   // generic var
 	smartcast     // smart cast when used in `is v` (when `v` is from $for .variants)
+	aggregate     // aggregate var
 }
 
 @[minify]

@@ -190,6 +190,13 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 						ctyp
 					}
 				}
+				.aggregate {
+					t.get_ct_type_or_default(node.name, if node.obj.smartcasts.len > 0 {
+						node.obj.smartcasts.last()
+					} else {
+						node.obj.typ
+					})
+				}
 				.key_var, .value_var {
 					// key and value variables from normal for stmt
 					t.get_ct_type_or_default(node.name, ast.void_type)
