@@ -3568,9 +3568,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast incompatible option ${final_to_sym.name} `${ft}` to `${tt}`',
 			node.pos)
-	}
-
-	if to_sym.kind == .rune && from_sym.is_string() {
+	} else if to_sym.kind == .rune && from_sym.is_string() {
 		snexpr := node.expr.str()
 		ft := c.table.type_to_str(from_type)
 		c.error('cannot cast `${ft}` to rune, use `${snexpr}.runes()` instead.', node.pos)
