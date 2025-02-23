@@ -608,7 +608,7 @@ pub fn find_abs_path_of_executable(exe_name string) !string {
 			$if trace_find_abs_path_of_executable ? {
 				dump(found_abs_path)
 			}
-			if exists(found_abs_path) && is_executable(found_abs_path) {
+			if is_file(found_abs_path) && is_executable(found_abs_path) {
 				res = found_abs_path
 				break
 			}
