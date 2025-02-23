@@ -108,6 +108,7 @@ pub enum CC {
 	icc
 	msvc
 	clang
+	emcc
 	unknown
 }
 
@@ -210,6 +211,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			cc_file_name.contains('clang') || ccoptions.guessed_compiler == 'clang' { .clang }
 			cc_file_name.contains('msvc') || ccoptions.guessed_compiler == 'msvc' { .msvc }
 			cc_file_name.contains('icc') || ccoptions.guessed_compiler == 'icc' { .icc }
+			cc_file_name.contains('emcc') || ccoptions.guessed_compiler == 'emcc' { .emcc }
 			else { .unknown }
 			// vfmt on
 		}
@@ -652,7 +654,7 @@ pub fn (mut v Builder) cc() {
 	// whether to just create a .c or .js file and exit, for example: `v -o v.c cmd.v`
 	ends_with_c := v.pref.out_name.ends_with('.c')
 	ends_with_js := v.pref.out_name.ends_with('.js')
-	if ends_with_c || ends_with_js {
+	if ends_with_c || (ends_with_js && v.pref.os != .wasm32_emscripten) {
 		v.pref.skip_running = true
 		msg_mv := 'os.mv_by_cp ${os.quoted_path(v.out_name_c)} => ${os.quoted_path(v.pref.out_name)}'
 		util.timing_start(msg_mv)
