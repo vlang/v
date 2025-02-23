@@ -3574,8 +3574,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		snexpr := node.expr.str()
 		ft := c.table.type_to_str(from_type)
 		c.error('cannot cast `${ft}` to rune, use `${snexpr}.runes()` instead.', node.pos)
-	} else if !from_type.is_ptr() && final_from_sym.info is ast.Struct
-		&& !final_from_sym.info.is_empty_struct() && final_to_sym.is_int() {
+	} else if !from_type.is_ptr() && from_type != ast.string_type
+		&& final_from_sym.info is ast.Struct && !final_from_sym.info.is_empty_struct()
+		&& final_to_sym.is_int() {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast type `${ft}` to `${tt}`', node.pos)
