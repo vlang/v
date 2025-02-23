@@ -830,7 +830,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << '${arg}'
 			}
 			'-os' {
-				target_os := cmdline.option(args[i..], '-os', '')
+				target_os := cmdline.option(args[i..], '-os', '').to_lower_ascii()
 				i++
 				target_os_kind := os_from_string(target_os) or {
 					if target_os == 'cross' {
@@ -850,8 +850,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				res.os = target_os_kind
 				res.build_options << '${arg} ${target_os}'
-				res.compile_defines << target_os
-				res.compile_defines_all << target_os
 			}
 			'-printfn' {
 				res.printfn_list << cmdline.option(args[i..], '-printfn', '').split(',')

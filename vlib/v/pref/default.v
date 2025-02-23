@@ -61,7 +61,7 @@ fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
 	host_os := if p.backend == .wasm { OS.wasi } else { get_host_os() }
 	if p.os == ._auto {
 		p.os = host_os
-		p.build_options << '-os ${host_os}'
+		p.build_options << '-os ${host_os.lower()}'
 	}
 
 	if !p.output_cross_c {
@@ -189,13 +189,17 @@ pub fn (mut p Preferences) fill_with_defaults() {
 			}
 		}
 	}
+
+	final_os := p.os.lower()
+	p.parse_define(final_os)
+
 	// Prepare the cache manager. All options that can affect the generated cached .c files
 	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
 	vhash := @VHASH
 	p.cache_manager = vcache.new_cache_manager([
 		vhash,
 		// ensure that different v versions use separate build artefacts
-		'${p.backend} | ${p.os} | ${p.ccompiler} | ${p.is_prod} | ${p.sanitize}',
+		'${p.backend} | ${final_os} | ${p.ccompiler} | ${p.is_prod} | ${p.sanitize}',
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),
 		p.compile_defines_all.str(),
