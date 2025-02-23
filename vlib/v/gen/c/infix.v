@@ -836,11 +836,7 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	mut left_sym := g.table.sym(g.unwrap_generic(g.type_resolver.get_type_or_default(node.left,
 		node.left_type)))
-	is_aggregate := left_sym.kind == .aggregate
-	if is_aggregate {
-		parent_left_type := (left_sym.info as ast.Aggregate).sum_type
-		left_sym = g.table.sym(parent_left_type)
-	}
+	is_aggregate := node.left is ast.Ident && g.comptime.get_ct_type_var(node.left) == .aggregate
 	right_sym := g.table.sym(node.right_type)
 	if left_sym.kind == .interface && right_sym.kind == .interface {
 		g.gen_interface_is_op(node)
@@ -880,7 +876,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 		sub_sym := g.table.sym(sub_type)
 		g.write('_${left_sym.cname}_${sub_sym.cname}_index')
 		return
-	} else if left_sym.kind == .sum_type {
+	} else if left_sym.kind == .sum_type || is_aggregate {
 		g.write('_typ ${cmp_op} ')
 	}
 	if node.right is ast.None {
