@@ -896,6 +896,7 @@ pub:
 	is_autofree_tmp bool
 	is_inherited    bool
 	has_inherited   bool
+	is_it_var       bool // is `it` var
 pub mut:
 	is_arg        bool // fn args should not be autofreed
 	is_auto_deref bool

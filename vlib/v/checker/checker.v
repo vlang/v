@@ -298,7 +298,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 							}
 						}
 					}
-					if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
+					if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && !obj.is_it_var {
 						// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
 						// c.warn('`$obj.name` is declared as mutable, but it was never changed',
 						// obj.pos)
@@ -4591,7 +4591,7 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 					match type_sym.kind {
 						.struct {
 							info := type_sym.info as ast.Struct
-							if !info.is_heap {
+							if !info.is_heap && !node.obj.is_it_var {
 								node.obj.is_auto_heap = true
 							}
 						}
