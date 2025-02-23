@@ -41,13 +41,14 @@ This simple program covers many of the principal aspects of the `term ` module.
 
 ## API
 
-Here are some functions you should be aware of in the `term `module:
+Here are some of the main functions of the `term `module:
 
-```v oksyntax
+```v
 import term
 
 // returns the height and the width of the terminal
 width, height := term.get_terminal_size()
+println('width: ${width}, height: ${height}')
 // returns the string as green text to be printed on stdout
 term.ok_message('cool')
 // returns the string as red text to be printed on stdout
@@ -77,15 +78,15 @@ term.bg_green('field')
 // sets the position of the cursor at a given place in the terminal
 term.set_cursor_position(x: 5, y: 10)
 // moves the cursor up
-term.cursor_up()
+term.cursor_up(1)
 // moves the cursor down
-term.cursor_down()
+term.cursor_down(1)
 // moves the cursor to the right
-term.cursor_forward()
+term.cursor_forward(2)
 // moves the cursor to the left
-term.cursor_back()
-// shows the cursor
-term.show_cursor()
+term.cursor_back(2)
 // hides the cursor
 term.hide_cursor()
+// shows the cursor
+term.show_cursor()
 ```
