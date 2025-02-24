@@ -5,7 +5,7 @@ import common { Task, exec }
 //
 fn all_code_is_formatted() {
 	if common.is_github_job {
-		exec('VJOBS=1 v -silent test-cleancode')
+		exec('v -silent test-cleancode')
 	} else {
 		exec('v -progress test-cleancode')
 	}
@@ -23,7 +23,7 @@ fn test_pure_v_math_module() {
 
 fn self_tests() {
 	if common.is_github_job {
-		exec('VJOBS=1 v -silent test-self vlib')
+		exec('v -silent test-self vlib')
 	} else {
 		exec('v -progress test-self vlib')
 	}
@@ -95,7 +95,11 @@ fn run_submodule_example_tcc() {
 }
 
 fn build_tools_tcc() {
-	exec('v -N -W build-tools')
+	if common.is_github_job {
+		exec('v -silent -N -W build-tools')
+	} else {
+		exec('v -progress -N -W build-tools')
+	}
 }
 
 fn build_vbinaries_tcc() {
