@@ -560,7 +560,13 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
 	var_name := g.get_array_expr_param_name(mut expr)
-	g.write_prepared_var(var_name, inp_elem_type, inp_elem_styp, past.tmp_var, i, left_is_array)
+	mut ret_type := if mut expr is ast.CastExpr {
+		expr.typ
+	} else {
+		ret_elem_type
+	}
+	g.write_prepared_var(var_name, inp_elem_type, inp_elem_styp, past.tmp_var, i, left_is_array,
+		ret_type)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	match mut expr {
@@ -976,7 +982,8 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	g.write_prepared_var(var_name, info.elem_type, elem_type_str, past.tmp_var, i, true)
+	g.write_prepared_var(var_name, info.elem_type, elem_type_str, past.tmp_var, i, true,
+		info.elem_type)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	match mut expr {
@@ -1477,7 +1484,8 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
 
-	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array)
+	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array,
+		elem_type)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	match mut expr {
@@ -1567,7 +1575,8 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
 
-	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array)
+	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array,
+		elem_type)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	match mut expr {
@@ -1659,7 +1668,8 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 
 	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array)
+	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array,
+		elem_type)
 	g.empty_line = true
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
@@ -1770,10 +1780,13 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 }
 
 fn (mut g Gen) write_prepared_var(var_name string, elem_type ast.Type, inp_elem_type string, tmp string,
-	i string, is_array bool) {
+	i string, is_array bool, ret_type ast.Type) {
 	elem_sym := g.table.sym(elem_type)
+	ret_sym := g.table.sym(ret_type)
 	if is_array {
-		if elem_sym.kind == .array_fixed {
+		if ret_sym.kind == .interface {
+			g.writeln('${inp_elem_type} *${var_name} = &((${inp_elem_type}*) ${tmp}_orig.data)[${i}];')
+		} else if elem_sym.kind == .array_fixed {
 			g.writeln('${inp_elem_type} ${var_name};')
 			g.writeln('memcpy(&${var_name}, ((${inp_elem_type}*) ${tmp}_orig.data)[${i}], sizeof(${inp_elem_type}));')
 		} else if elem_sym.kind == .function {
