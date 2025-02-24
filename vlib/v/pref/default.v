@@ -83,6 +83,19 @@ fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
 	}
 }
 
+pub fn (mut p Preferences) defines_map_unique_keys() string {
+	mut defines_map := map[string]bool{}
+	for d in p.compile_defines {
+		defines_map[d] = true
+	}
+	for d in p.compile_defines_all {
+		defines_map[d] = true
+	}
+	keys := defines_map.keys()
+	skeys := keys.sorted()
+	return skeys.join(',')
+}
+
 pub fn (mut p Preferences) fill_with_defaults() {
 	p.setup_os_and_arch_when_not_explicitly_set()
 	p.expand_lookup_paths()
@@ -200,10 +213,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		vhash,
 		// ensure that different v versions use separate build artefacts
 		'${p.backend} | ${final_os} | ${p.ccompiler} | ${p.is_prod} | ${p.sanitize}',
+		p.defines_map_unique_keys(),
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),
-		p.compile_defines_all.str(),
-		p.compile_defines.str(),
 		p.lookup_path.str(),
 	])
 	// eprintln('prefs.cache_manager: $p')
