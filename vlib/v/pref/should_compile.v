@@ -15,28 +15,9 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 			|| file.all_before_last('.v').all_before_last('.').ends_with('_test') {
 			continue
 		}
-		if prefs.backend in [.c, .interpret] && !prefs.should_compile_c(file) {
-			continue
-		}
-		if prefs.backend.is_js() && !prefs.should_compile_js(file) {
-			continue
-		}
-		if prefs.backend == .native && !prefs.should_compile_native(file) {
-			continue
-		}
-		if !prefs.backend.is_js() && !prefs.should_compile_asm(file) {
-			continue
-		}
-		if file.starts_with('.#') {
-			continue
-		}
-		if !prefs.prealloc && !prefs.output_cross_c && file.ends_with('prealloc.c.v') {
-			continue
-		}
-		if prefs.nofloat && file.ends_with('float.c.v') {
-			continue
-		}
+		mut is_d_notd_file := false
 		if file.contains('_d_') {
+			is_d_notd_file = true
 			if prefs.compile_defines_all.len == 0 {
 				continue
 			}
@@ -58,6 +39,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 			}
 		}
 		if file.contains('_notd_') {
+			is_d_notd_file = true
 			mut allowed := true
 			for cdefine in prefs.compile_defines {
 				file_postfixes := ['_notd_${cdefine}.v', '_notd_${cdefine}.c.v']
@@ -74,6 +56,27 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 			if !allowed {
 				continue
 			}
+		}
+		if prefs.backend in [.c, .interpret] && !is_d_notd_file && !prefs.should_compile_c(file) {
+			continue
+		}
+		if prefs.backend.is_js() && !prefs.should_compile_js(file) {
+			continue
+		}
+		if prefs.backend == .native && !prefs.should_compile_native(file) {
+			continue
+		}
+		if !prefs.backend.is_js() && !prefs.should_compile_asm(file) {
+			continue
+		}
+		if file.starts_with('.#') {
+			continue
+		}
+		if !prefs.prealloc && !prefs.output_cross_c && file.ends_with('prealloc.c.v') {
+			continue
+		}
+		if prefs.nofloat && file.ends_with('float.c.v') {
+			continue
 		}
 		if prefs.exclude.len > 0 {
 			full_file_path := os.join_path(dir, file)
