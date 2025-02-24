@@ -29,19 +29,19 @@ fn build_fast_script() {
 }
 
 fn check_math() {
-	exec('v test vlib/math')
+	exec('v -silent test vlib/math')
 	println('Test the math module, using only the pure V versions,')
 	println('                          without the .c.v overrides.')
-	exec('v -exclude @vlib/math/*.c.v test vlib/math')
+	exec('v -silent -exclude @vlib/math/*.c.v test vlib/math')
 }
 
 fn check_compress() {
-	exec('v test vlib/compress')
+	exec('v -silent test vlib/compress')
 }
 
 fn run_essential_tests() {
 	if common.is_github_job {
-		exec('VTEST_JUST_ESSENTIAL=1 v test-self')
+		exec('VTEST_JUST_ESSENTIAL=1 v -silent test-self')
 	} else {
 		exec('VTEST_JUST_ESSENTIAL=1 v -progress test-self')
 	}

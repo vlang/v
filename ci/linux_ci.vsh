@@ -5,7 +5,7 @@ import common { Task, exec }
 //
 fn all_code_is_formatted() {
 	if common.is_github_job {
-		exec('VJOBS=1 v test-cleancode')
+		exec('VJOBS=1 v -silent test-cleancode')
 	} else {
 		exec('v -progress test-cleancode')
 	}
@@ -18,12 +18,12 @@ fn verify_v_test_works() {
 }
 
 fn test_pure_v_math_module() {
-	exec('v -exclude @vlib/math/*.c.v test vlib/math/')
+	exec('v -silent -exclude @vlib/math/*.c.v test vlib/math/')
 }
 
 fn self_tests() {
 	if common.is_github_job {
-		exec('VJOBS=1 v test-self vlib')
+		exec('VJOBS=1 v -silent test-self vlib')
 	} else {
 		exec('v -progress test-self vlib')
 	}
@@ -31,7 +31,7 @@ fn self_tests() {
 
 fn build_examples() {
 	if common.is_github_job {
-		exec('v build-examples')
+		exec('v -silent build-examples')
 	} else {
 		exec('v -progress build-examples')
 	}
@@ -129,11 +129,11 @@ fn v_self_compilation_usecache_tcc() {
 }
 
 fn test_password_input_tcc() {
-	exec('v test examples/password/')
+	exec('v -silent test examples/password/')
 }
 
 fn test_readline_tcc() {
-	exec('v test examples/readline/')
+	exec('v -silent test examples/readline/')
 }
 
 fn test_leak_detector_tcc() {
@@ -178,12 +178,17 @@ fn run_sanitizers_gcc() {
 }
 
 fn v_self_compilation_gcc() {
-	exec('v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v')
+	exec('v -o v2 cmd/v')
+	exec('./v2 -o v3 cmd/v')
+	exec('./v3 -o v4 cmd/v')
 }
 
 fn v_self_compilation_usecache_gcc() {
 	exec('unset VFLAGS')
-	exec('v -usecache examples/hello_world.v && examples/hello_world')
+
+	exec('v -usecache examples/hello_world.v')
+	exec('examples/hello_world')
+
 	exec('v -o v2 -usecache cmd/v')
 	exec('./v2 -o v3 -usecache cmd/v')
 	exec('./v3 version')
@@ -203,11 +208,12 @@ fn self_tests_gcc() {
 }
 
 fn self_tests_prod_gcc() {
-	exec('v -o vprod -prod cmd/v && ./vprod test-self vlib')
+	exec('v -o vprod -prod cmd/v')
+	exec('./vprod -silent test-self vlib')
 }
 
 fn self_tests_cstrict_gcc() {
-	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -cc gcc -cstrict test-self vlib')
+	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -cc gcc -cstrict -silent test-self vlib')
 }
 
 fn build_examples_gcc() {
@@ -313,11 +319,12 @@ fn self_tests_clang() {
 }
 
 fn self_tests_vprod_clang() {
-	exec('v -o vprod -prod cmd/v && ./vprod test-self vlib')
+	exec('v -o vprod -prod cmd/v')
+	exec('./vprod -silent test-self vlib')
 }
 
 fn self_tests_cstrict_clang() {
-	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict test-self vlib')
+	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict -silent test-self vlib')
 }
 
 fn build_examples_clang() {
