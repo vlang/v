@@ -57,9 +57,9 @@ jobs:
       - name: Build local v
         run: make -j4 && ./v symlink
       - name: v test-cleancode
-        run: ./v test-cleancode
+        run: ./v -silent test-cleancode
       - name: v test-fmt
-        run: ./v test-fmt
+        run: ./v -silent test-fmt
 
   performance-regressions:
     runs-on: ubuntu-24.04

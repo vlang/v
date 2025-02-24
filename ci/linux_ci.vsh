@@ -56,9 +56,8 @@ fn install_dependencies_for_examples_and_tools_tcc() {
 	exec('v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind')
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 	// The following is needed for examples/wkhtmltopdf.v
-	exec('v retry -- wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb')
-	exec('v retry -- sudo apt install --quiet -y xfonts-75dpi xfonts-base')
-	exec('v retry -- sudo apt install --quiet -y expect')
+	exec('v retry -- sudo apt install --quiet -y xfonts-75dpi xfonts-base expect')
+	exec('v retry -- wget --quiet https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb')
 	exec('v retry -- sudo dpkg -i wkhtmltox_0.12.6.1-2.jammy_amd64.deb')
 }
 
