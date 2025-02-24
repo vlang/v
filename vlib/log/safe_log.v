@@ -24,12 +24,11 @@ pub fn new_thread_safe_log() &ThreadSafeLog {
 pub fn (mut x ThreadSafeLog) free() {
 	unsafe {
 		// make sure other threads are not in the blocks protected by the mutex:
-		mut p := x.mu
-		p.try_lock()
+		x.mu.try_lock()
+		x.mu.unlock()
+		x.mu.destroy()
+		free(x.mu)
 		x.mu = nil
-		p.unlock()
-		p.destroy()
-		free(p)
 		x.Log.free()
 	}
 }
