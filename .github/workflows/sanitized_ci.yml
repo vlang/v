@@ -88,7 +88,7 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
-        run: ./v test-cleancode
+        run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
           ./v retry -- sudo apt update
@@ -100,9 +100,9 @@ jobs:
       - name: Self tests (-fsanitize=undefined)
         run: |
           ./v -cflags -fsanitize=undefined -o v2 cmd/v
-          ./v2 -cflags -fsanitize=undefined test-self vlib
+          ./v2 -cflags -fsanitize=undefined -silent test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
-        run: ./v2 build-examples
+        run: ./v2 -silent build-examples
 
   sanitize-undefined-gcc:
     runs-on: ubuntu-22.04
@@ -117,7 +117,7 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
-        run: ./v test-cleancode
+        run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
           ./v retry -- sudo apt update
@@ -128,9 +128,9 @@ jobs:
       - name: Self tests (-fsanitize=undefined)
         run: |
           ./v  -cflags -fsanitize=undefined -o v2 cmd/v
-          ./v2 -cflags -fsanitize=undefined test-self vlib
+          ./v2 -cflags -fsanitize=undefined -silent test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
-        run: ./v2 build-examples
+        run: ./v2 -silent build-examples
 
   tests-sanitize-address-clang:
     runs-on: ubuntu-22.04
@@ -146,7 +146,7 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
-        run: ./v test-cleancode
+        run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
           ./v retry -- sudo apt update
@@ -156,13 +156,13 @@ jobs:
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
-        run: ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract test-self vlib
+        run: ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -silent test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
         run: |
           ./v -cflags -fsanitize=address -o v cmd/v
-          ./v -cc tcc test-self -asan-compiler vlib
+          ./v -cc tcc -silent test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
-        run: ./v build-examples
+        run: ./v -silent build-examples
 
   sanitize-address-msvc:
     runs-on: windows-2019
@@ -180,13 +180,13 @@ jobs:
           .\make.bat -msvc
           .\v.exe self
       - name: Ensure code is well formatted
-        run: .\v.exe test-cleancode
+        run: .\v.exe -silent test-cleancode
         # - name: Install dependencies
         #   run: |
         #     .\v.exe setup-freetype
         #     .\.github\workflows\windows-install-sqlite.bat
         # - name: Self tests (/fsanitize=address) # TODO:
-        #   run: .\v.exe -cflags "/fsanitize=address" test-self vlib
+        #   run: .\v.exe -cflags "/fsanitize=address" -silent test-self vlib
 
   sanitize-address-gcc:
     runs-on: ubuntu-22.04
@@ -202,7 +202,7 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
-        run: ./v test-cleancode
+        run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
           ./v retry -- sudo apt update
@@ -212,13 +212,13 @@ jobs:
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
-        run: ./v -cflags -fsanitize=address test-self vlib
+        run: ./v -cflags -fsanitize=address -silent test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
         run: |
           ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v
-          ./v -cc tcc test-self -asan-compiler vlib
+          ./v -cc tcc -silent test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
-        run: ./v build-examples
+        run: ./v -silent build-examples
 
   sanitize-memory-clang:
     runs-on: ubuntu-22.04
@@ -232,7 +232,7 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
-        run: ./v test-cleancode
+        run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
           ./v retry -- sudo apt update
@@ -242,10 +242,10 @@ jobs:
       - name: Recompile V with clang and -cstrict
         run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=memory)
-        run: ./v -cflags -fsanitize=memory test-self -msan-compiler vlib
+        run: ./v -cflags -fsanitize=memory -silent test-self -msan-compiler vlib
       - name: Self tests (V compiled with -fsanitize=memory)
         run: |
           ./v -cflags -fsanitize=memory -o v cmd/v
-          ./v -cc tcc test-self -msan-compiler vlib
+          ./v -cc tcc -silent test-self -msan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=memory)
-        run: ./v build-examples
+        run: ./v -silent build-examples

@@ -76,6 +76,7 @@ pub enum CompilerType {
 	gcc
 	tinyc
 	clang
+	emcc
 	mingw
 	msvc
 	cplusplus
@@ -104,7 +105,7 @@ pub mut:
 	is_liveshared      bool   // a shared library, that will be used in a -live main program
 	is_shared          bool   // an ordinary shared library, -shared, no matter if it is live or not
 	is_o               bool   // building an .o file
-	is_prof            bool   // benchmark every function	
+	is_prof            bool   // benchmark every function
 	is_prod            bool   // use "-O3"
 	no_prod_options    bool   // `-no-prod-options`, means do not pass any optimization flags to the C compilation, while still allowing the user to use for example `-cflags -Os` to pass custom ones
 	is_repl            bool
@@ -830,7 +831,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << '${arg}'
 			}
 			'-os' {
-				target_os := cmdline.option(args[i..], '-os', '')
+				target_os := cmdline.option(args[i..], '-os', '').to_lower_ascii()
 				i++
 				target_os_kind := os_from_string(target_os) or {
 					if target_os == 'cross' {
@@ -895,12 +896,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-o', '-output' {
 				res.out_name = cmdline.option(args[i..], arg, '')
-				if res.out_name.ends_with('.js') {
-					res.backend = .js_node
-					res.output_cross_c = true
-				} else if res.out_name.ends_with('.o') {
-					res.is_o = true
-				}
 				if !os.is_abs_path(res.out_name) {
 					res.out_name = os.join_path(os.getwd(), res.out_name)
 				}
@@ -1053,6 +1048,18 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.is_run = true
 	}
 	res.show_asserts = res.show_asserts || res.is_stats || os.getenv('VTEST_SHOW_ASSERTS') != ''
+
+	if res.os != .wasm32_emscripten {
+		if res.out_name.ends_with('.js') {
+			res.backend = .js_node
+			res.output_cross_c = true
+		}
+	}
+
+	if res.out_name.ends_with('.o') {
+		res.is_o = true
+	}
+
 	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
 		eprintln_cond(show_output && !res.is_quiet, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
 		eprintln_cond(show_output && !res.is_quiet, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
@@ -1079,7 +1086,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		run_code_in_tmp_vfile_and_exit(args, mut res, '-e', 'vsh', res.eval_argument)
 	}
 
-	command_args := args[command_idx + 1..]
+	command_args := args#[command_idx + 1..]
 	if res.is_run || res.is_crun {
 		res.path = command_args[0] or { eprintln_exit('v run: no v files listed') }
 		res.run_args = command_args[1..]
@@ -1226,6 +1233,7 @@ pub fn cc_from_string(s string) CompilerType {
 		cc.contains('tcc') || cc.contains('tinyc') { .tinyc }
 		cc.contains('gcc') { .gcc }
 		cc.contains('clang') { .clang }
+		cc.contains('emcc') { .emcc }
 		cc.contains('msvc') { .msvc }
 		cc.contains('mingw') { .mingw }
 		cc.contains('++') { .cplusplus }

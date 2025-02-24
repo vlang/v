@@ -37,7 +37,7 @@ jobs:
           .\make.bat -gcc
           .\v.exe symlink
       - name: All code is formatted
-        run: v test-cleancode
+        run: v -silent test-cleancode
       - name: Test new v.c
         run: |
           v -o v.c cmd/v
@@ -55,19 +55,19 @@ jobs:
           v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Test pure V math module
-        run: v -exclude @vlib/math/*.c.v test vlib/math/
+        run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
-        run: v test-self vlib
+        run: v -silent test-self vlib
       # - name: Test
-      #   run: v test-all
+      #   run: v -silent test-all
       - name: Build option_test.c.v with -autofree
         run: v -autofree vlib/v/tests/options/option_test.c.v
       - name: Test v->js
         run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
-        run: v build-vbinaries
+        run: v -silent build-vbinaries
       - name: Build examples
-        run: v build-examples
+        run: v -silent build-examples
       - name: v2 self compilation
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
       - name: compile vdoctor.v with -prod
@@ -91,7 +91,7 @@ jobs:
       - name: Build V with WX
         run: v -cflags /WX self
       - name: All code is formatted
-        run: v test-cleancode
+        run: v -silent test-cleancode
       - name: Test -cc msvc works
         run: v -no-retry-compilation run examples/hello_world.v
       - name: Install dependencies
@@ -107,19 +107,17 @@ jobs:
           v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Test pure V math module
-        run: v -exclude @vlib/math/*.c.v test vlib/math/
+        run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
-        run: |
-          v -cg cmd\tools\vtest-self.v
-          v test-self vlib
+        run: v -silent test-self vlib
       # - name: Test
-      #   run: v test-all
+      #   run: v -silent test-all
       - name: Test v->js
         run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         run: v build-vbinaries
       - name: Build examples
-        run: v build-examples
+        run: v -silent build-examples
       - name: v2 self compilation
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
@@ -135,7 +133,7 @@ jobs:
           .\make.bat -tcc
           .\v.exe symlink
       - name: All code is formatted
-        run: v test-cleancode
+        run: v -silent test-cleancode
       - name: Test new v.c
         run: |
           v -o v.c cmd/v
@@ -158,17 +156,17 @@ jobs:
       - name: Test ./v doc -v clipboard *BEFORE building tools*
         run: v doc -v clipboard
       - name: Test v build-tools
-        run: v -W build-tools
+        run: v -silent -W build-tools
       - name: Test pure V math module
-        run: v -exclude @vlib/math/*.c.v test vlib/math/
+        run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
-        run: v test-self vlib
+        run: v -silent test-self vlib
       - name: Test v->js
         run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         run: v build-vbinaries
       - name: Build examples
-        run: v build-examples
+        run: v -silent build-examples
       - name: v2 self compilation
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v && .\v3.exe -o v4.exe cmd/v
 
@@ -196,18 +194,18 @@ jobs:
         #   run: v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
         #
         # - name: Test v build-tools
-        #   run: v -W build-tools
+        #   run: v -silent -W build-tools
         #
         # - name: Test ./v doc clipboard
         #   run: v doc clipboard
         #
         # - name: Self tests
-        #   run: v test-self vlib
+        #   run: v -silent test-self vlib
         # - name: Test v->js
         #   run: v -o hi.js examples/js_hello_world.v && node hi.js
         # - name: Test v binaries
-        #   run: v build-vbinaries
+        #   run: v -silent build-vbinaries
         # - name: Build examples
-        #   run: v build-examples
+        #   run: v -silent build-examples
         # - name: v2 self compilation
         #   run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v

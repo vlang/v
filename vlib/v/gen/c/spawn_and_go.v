@@ -106,9 +106,9 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	}
 	if expr.is_method {
 		g.write('${arg_tmp_var}${dot}arg0 = ')
-		if expr.left is ast.Ident && expr.left.obj.typ.is_ptr()
+		if mut expr.left is ast.Ident && expr.left.obj.typ.is_ptr()
 			&& !node.call_expr.receiver_type.is_ptr() {
-			g.write('*')
+			g.write('*'.repeat(expr.left.obj.typ.nr_muls()))
 		}
 		g.expr(expr.left)
 		g.writeln(';')
@@ -271,10 +271,10 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				receiver_type_name := util.no_dots(rec_cc_type)
 				g.gowrappers.write_string2('${c_name(receiver_type_name)}_name_table[',
 					'arg->arg0')
-				idot := if expr.left_type.is_ptr() { '->' } else { '.' }
+				dot_or_ptr := g.dot_or_ptr(unwrapped_rec_type)
 				mname := c_name(expr.name)
-				g.gowrappers.write_string2('${idot}_typ]._method_${mname}(', 'arg->arg0')
-				g.gowrappers.write_string('${idot}_object')
+				g.gowrappers.write_string2('${dot_or_ptr}_typ]._method_${mname}(', 'arg->arg0')
+				g.gowrappers.write_string('${dot_or_ptr}_object')
 			} else if typ_sym.kind == .struct && expr.is_field {
 				g.gowrappers.write_string('arg->arg0')
 				idot := if expr.left_type.is_ptr() { '->' } else { '.' }
