@@ -50,6 +50,13 @@ Compile & run the game with `./v run examples/2048`
    ```sh
    emrun examples/2048/index.html
    ```
+   
+   If you prefer, instead of `emrun`, you can start a simple V http file server:
+   ```sh
+   v -e 'import net.http.file; file.serve(folder: "examples/2048")'   
+   ```
+   and then open http://127.0.0.1:4001/ in your browser.
 
-Once you have run the game, you can make changes,
-then just recompile (step 3), and refresh the game in your browser.
+Once you have opened the game in your browser, you can make changes to
+the V source, then recompile (step 3), and refresh the browser window
+with the game, to see their effect.
