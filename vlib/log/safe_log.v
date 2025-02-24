@@ -23,15 +23,22 @@ pub fn new_thread_safe_log() &ThreadSafeLog {
 @[unsafe]
 pub fn (mut x ThreadSafeLog) free() {
 	unsafe {
+		// make sure other threads are not in the blocks protected by the mutex:
+		mut p := x.mu
+		p.try_lock()
+		x.mu = nil
+		p.unlock()
+		p.destroy()
+		free(p)
 		x.Log.free()
-		x.mu.destroy()
-		free(x.mu)
-		// C.printf(c'ThreadSafeLog free(x), x: %p\n', x)
 	}
 }
 
 // set_level changes the log level
 pub fn (mut x ThreadSafeLog) set_level(level Level) {
+	if unsafe { x.mu == 0 } {
+		return
+	}
 	x.mu.lock()
 	x.Log.set_level(level)
 	x.mu.unlock()
@@ -40,6 +47,9 @@ pub fn (mut x ThreadSafeLog) set_level(level Level) {
 // set_always_flush called with true, will make the log flush after every single .fatal(), .error(), .warn(), .info(), .debug() call.
 // That can be much slower, if you plan to do lots of frequent calls, but if your program exits early or crashes, your logs will be more complete.
 pub fn (mut x ThreadSafeLog) set_always_flush(should_flush bool) {
+	if unsafe { x.mu == 0 } {
+		return
+	}
 	x.mu.lock()
 	x.Log.set_always_flush(should_flush)
 	x.mu.unlock()
@@ -47,6 +57,9 @@ pub fn (mut x ThreadSafeLog) set_always_flush(should_flush bool) {
 
 // debug logs a debug message
 pub fn (mut x ThreadSafeLog) debug(s string) {
+	if unsafe { x.mu == 0 } {
+		return
+	}
 	x.mu.lock()
 	x.Log.debug(s)
 	x.mu.unlock()
@@ -54,6 +67,9 @@ pub fn (mut x ThreadSafeLog) debug(s string) {
 
 // info logs an info messagep
 pub fn (mut x ThreadSafeLog) info(s string) {
+	if unsafe { x.mu == 0 } {
+		return
+	}
 	x.mu.lock()
 	x.Log.info(s)
 	x.mu.unlock()
@@ -61,6 +77,9 @@ pub fn (mut x ThreadSafeLog) info(s string) {
 
 // warn logs a warning message
 pub fn (mut x ThreadSafeLog) warn(s string) {
+	if unsafe { x.mu == 0 } {
+		return
+	}
 	x.mu.lock()
 	x.Log.warn(s)
 	x.mu.unlock()
@@ -68,6 +87,9 @@ pub fn (mut x ThreadSafeLog) warn(s string) {
 
 // error logs an error message
 pub fn (mut x ThreadSafeLog) error(s string) {
+	if unsafe { x.mu == 0 } {
+		return
+	}
 	x.mu.lock()
 	x.Log.error(s)
 	x.mu.unlock()
@@ -76,6 +98,9 @@ pub fn (mut x ThreadSafeLog) error(s string) {
 // fatal logs a fatal message, and panics
 @[noreturn]
 pub fn (mut x ThreadSafeLog) fatal(s string) {
+	if unsafe { x.mu == 0 } {
+		panic(s)
+	}
 	x.mu.lock()
 	defer {
 		// TODO: Log.fatal() is marked as noreturn, but this defer is allowed.

@@ -6,11 +6,6 @@ pub type FnExitCb = fn ()
 fn C.atexit(f FnExitCb) int
 fn C.strerror(int) &char
 
-@[noreturn]
-fn vhalt() {
-	for {}
-}
-
 @[markused]
 fn v_segmentation_fault_handler(signal_number i32) {
 	$if freestanding {
@@ -99,7 +94,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 			C.exit(1)
 		}
 	}
-	vhalt()
+	C.exit(1)
 }
 
 // panic_option_not_set is called by V, when you use option error propagation in your main function.
@@ -154,7 +149,7 @@ pub fn panic(s string) {
 			C.exit(1)
 		}
 	}
-	vhalt()
+	C.exit(1)
 }
 
 // return a C-API error message matching to `errnum`
