@@ -258,6 +258,23 @@ pub fn (v Vec2[T]) project(u Vec2[T]) Vec2[T] {
 	return u.mul_scalar(percent)
 }
 
+// rotate_around_cw returns the vector `v` rotated *clockwise* `radians` around an origin vector `o` in Cartesian space.
+pub fn (v Vec2[T]) rotate_around_cw(o Vec2[T], radians f64) Vec2[T] {
+	return v.rotate_around_ccw(o, -radians)
+}
+
+// rotate_around_ccw returns the vector `v` rotated *counter-clockwise* `radians` around an origin vector `o` in Cartesian space.
+pub fn (v Vec2[T]) rotate_around_ccw(o Vec2[T], radians f64) Vec2[T] {
+	s := math.sin(radians)
+	c := math.cos(radians)
+	dx := v.x - o.x
+	dy := v.y - o.y
+	return Vec2[T]{
+		x: T(c * dx - s * dy + o.x)
+		y: T(s * dx + c * dy + o.y)
+	}
+}
+
 // eq returns a bool indicating if the two vectors are equal.
 @[inline]
 pub fn (v Vec2[T]) eq(u Vec2[T]) bool {
