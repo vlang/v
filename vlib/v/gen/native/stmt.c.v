@@ -328,7 +328,9 @@ fn (mut g Gen) gen_flag_hash_stmt(node ast.HashStmt) {
 	} else if node.main.contains('-L') {
 		g.linker_include_paths << node.main.all_after('-L').trim_space()
 	} else if node.main.contains('-D') || node.main.contains('-I') {
-		g.v_error('`-D` and `-I` flags are not supported with the native backend', node.pos)
+		// g.v_error('`-D` and `-I` flags are not supported with the native backend', node.pos)
+		println(util.formatted_error('warn', '`-D` and `-I` flags are not supported with the native backend',
+			g.current_file.path, node.pos))
 	} else {
 		g.v_error('unknown `#flag` format: `${node.main}`', node.pos)
 	}

@@ -162,30 +162,41 @@ fn (mut c Amd64) neg(reg Amd64Register) {
 }
 
 fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
+	// for a register 32bits immediate value compare, CMP is REX.W + 81 /7 id
+	// REX.W -> 0x48 (0x4a here to enable .r8 to .r15)
+	// 0x81
+	// modr/m byte:
+	// 	/7 -> the reg/opcode bits are 0b111
+	// 	the mod bits 0b11 for register value
+	// 	R/M bits depends on the register used in the CMP
+	// 	see https://www.sandpile.org/x86/opc_rm.htm for a table for modr/m byte (at the bottom of the second one)
+
 	if c.g.pref.arch != .amd64 {
 		panic('cmp')
 	}
 	// Second byte depends on the size of the value
 	match size {
 		._8 {
-			c.g.write8(0x48)
-			c.g.write8(0x83)
+			c.g.write8(0x48) // REX.W
+			c.g.write8(0x83) // compares a 64bits register with a 8 bits immediate value
 		}
 		._32 {
-			c.g.write8(0x4a)
-			c.g.write8(0x81)
+			c.g.write8(0x4a) // REX.WX
+			c.g.write8(0x81) // compares a 64bits register with a 32bits immediate value
 		}
 		else {
-			panic('unhandled cmp')
+			panic('unhandled cmp size ${size}')
 		}
 	}
-	// Third byte depends on the register being compared to
+	// Third byte (modr/m byte) depends on the regiister being compared to
 	match reg {
 		.r12 { c.g.write8(0xfc) }
 		.rsi { c.g.write8(0x3f) }
-		.eax { c.g.write8(0xf8) }
+		.rax { c.g.write8(0xf8) }
+		.rcx { c.g.write8(0xf9) }
+		.rdx { c.g.write8(0xfa) }
 		.rbx { c.g.write8(0xfb) }
-		else { panic('unhandled cmp') }
+		else { panic('unhandled cmp reg ${reg}') }
 	}
 	match size {
 		._8 {
@@ -195,7 +206,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 			c.g.write32(i32(val))
 		}
 		else {
-			panic('unhandled cmp')
+			panic('unhandled cmp size ${size}')
 		}
 	}
 	c.g.println('cmp ${reg}, ${val}')
@@ -231,6 +242,9 @@ fn (mut c Amd64) cmp_reg(reg Amd64Register, reg2 Amd64Register) {
 			match reg2 {
 				.rax {
 					c.g.write([u8(0x48), 0x39, 0xc3])
+				}
+				.rdx {
+					c.g.write([u8(0x48), 0x39, 0xd3])
 				}
 				else {
 					c.g.n_error('${@LOCATION} Cannot compare ${reg} and ${reg2}')
@@ -2964,6 +2978,7 @@ fn (mut c Amd64) infix_expr(node ast.InfixExpr) {
 
 	c.g.expr(node.right)
 
+	right_type := c.g.unwrap(node.right_type)
 	left_type := c.g.unwrap(node.left_type)
 
 	if left_type.is_pure_float() {
@@ -2999,10 +3014,135 @@ fn (mut c Amd64) infix_expr(node ast.InfixExpr) {
 	// left: rax, right: rdx
 	match node.op {
 		.eq, .ne, .gt, .lt, .ge, .le {
-			c.cmp_reg(.rax, .rdx)
-			// TODO: mov_extend_reg
-			c.mov64(Amd64Register.rax, i64(0))
-			c.cset_op(node.op)
+			if left_type.is_unsigned() && right_type.is_unsigned() {
+				c.cmp_reg(.rax, .rdx)
+				// TODO: mov_extend_reg
+				c.mov64(Amd64Register.rax, i64(0))
+				match node.op {
+					.gt { c.cset(.a) }
+					.lt { c.cset(.b) }
+					.ge { c.cset(.ae) }
+					.le { c.cset(.be) }
+					else { c.cset_op(node.op) }
+				}
+			} else if left_type.is_unsigned() && right_type.is_signed() {
+				c.mov_reg(Amd64Register.rbx, Amd64Register.rax)
+				c.mov64(Amd64Register.rax, i64(0))
+				match node.op {
+					.eq {
+						c.cmp(.rdx, ._32, 0)
+						c.cset(.ge) // if right >= 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.e) // if left (unsigned ==) right
+						c.bitand_reg(.rax, .rcx) // only true when right >= 0 and left (unsigned ==) right
+					}
+					.ne {
+						c.cmp(.rdx, ._32, 0)
+						c.cset(.l) // if right < 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.ne) // if left (unsigned !=) right
+						c.bitor_reg(.rax, .rcx) // true when right < 0 or left (unsigned !=) right
+					}
+					.gt {
+						c.cmp(.rdx, ._32, 0)
+						c.cset(.l) // if right < 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.a) // if left (unsigned >) right
+						c.bitor_reg(.rax, .rcx) // true when right < 0 or left (unsigned >) right
+					}
+					.lt {
+						c.cmp(.rdx, ._32, 0)
+						c.cset(.ge) // if right >= 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.b) // if left (unsigned >) right
+						c.bitand_reg(.rax, .rcx) // true when right >= 0 and left (unsigned <) right
+					}
+					.ge {
+						c.cmp(.rdx, ._32, 0)
+						c.cset(.l) // if right < 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.ae) // if left (unsigned >=) right
+						c.bitor_reg(.rax, .rcx) // true when right < 0 or left (unsigned >=) right
+					}
+					.le {
+						c.cmp(.rdx, ._32, 0)
+						c.cset(.ge) // if right >= 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.be) // if left (unsigned <=) right
+						c.bitand_reg(.rax, .rcx) // true when right >= 0 and left (unsigned <=) right
+					}
+					else {
+						c.g.n_error('${@LOCATION} unhandled op ${node.op}')
+					}
+				}
+			} else if left_type.is_signed() && right_type.is_unsigned() {
+				c.mov_reg(Amd64Register.rbx, Amd64Register.rax)
+				c.mov64(Amd64Register.rax, i64(0))
+				match node.op {
+					.eq {
+						c.cmp(.rbx, ._32, 0)
+						c.cset(.ge) // if left >= 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.e) // if left (unsigned ==) right
+						c.bitand_reg(.rax, .rcx) // only true when left >= 0 and left (unsigned ==) right
+					}
+					.ne {
+						c.cmp(.rbx, ._32, 0)
+						c.cset(.l) // if left < 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.ne) // if left (unsigned !=) right
+						c.bitor_reg(.rax, .rcx) // true when left < 0 or left (unsigned !=) right
+					}
+					.gt {
+						c.cmp(.rbx, ._32, 0)
+						c.cset(.ge) // if left >= 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.a) // if left (unsigned >) right
+						c.bitand_reg(.rax, .rcx) // true when left >= 0 and left (unsigned >) right
+					}
+					.lt {
+						c.cmp(.rbx, ._32, 0)
+						c.cset(.l) // if left < 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.b) // if left (unsigned >) right
+						c.bitor_reg(.rax, .rcx) // true when left < 0 or left (unsigned <) right
+					}
+					.ge {
+						c.cmp(.rbx, ._32, 0)
+						c.cset(.ge) // if left >= 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.ae) // if left (unsigned >=) right
+						c.bitand_reg(.rax, .rcx) // true when left >= 0 and left (unsigned >=) right
+					}
+					.le {
+						c.cmp(.rbx, ._32, 0)
+						c.cset(.l) // if left < 0
+						c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+						c.cmp_reg(.rbx, .rdx)
+						c.cset(.be) // if left (unsigned <=) right
+						c.bitor_reg(.rax, .rcx) // true when left < 0 or left (unsigned <=) right
+					}
+					else {
+						c.g.n_error('${@LOCATION} unhandled op ${node.op}')
+					}
+				}
+			} else {
+				c.cmp_reg(.rax, .rdx)
+				// TODO: mov_extend_reg
+				c.mov64(Amd64Register.rax, i64(0))
+				c.cset_op(node.op)
+			}
 		}
 		.plus {
 			c.add_reg(.rax, .rdx)
