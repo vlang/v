@@ -23,3 +23,12 @@ fn test_main() {
     height: 5
 })]'
 }
+
+fn test_fixed_array() {
+	squares := [Square{
+		side:   5
+		width:  5
+		height: 5
+	}]!
+	rects := squares.map(Rect(it))
+}

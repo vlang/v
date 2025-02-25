@@ -298,7 +298,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 							}
 						}
 					}
-					if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && !obj.is_it_var {
+					if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
 						// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
 						// c.warn('`$obj.name` is declared as mutable, but it was never changed',
 						// obj.pos)

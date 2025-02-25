@@ -1779,24 +1779,40 @@ fn (mut g Gen) write_prepared_var(var_name string, elem_type ast.Type, inp_elem_
 	i string, is_array bool, auto_heap bool) {
 	elem_sym := g.table.sym(elem_type)
 	if is_array {
-		if auto_heap {
-			g.writeln('${inp_elem_type} *${var_name} = &((${inp_elem_type}*) ${tmp}_orig.data)[${i}];')
-		} else if elem_sym.kind == .array_fixed {
+		if elem_sym.kind == .array_fixed {
 			g.writeln('${inp_elem_type} ${var_name};')
 			g.writeln('memcpy(&${var_name}, ((${inp_elem_type}*) ${tmp}_orig.data)[${i}], sizeof(${inp_elem_type}));')
 		} else if elem_sym.kind == .function {
 			g.writeln('voidptr ${var_name} = ((${inp_elem_type}*) ${tmp}_orig.data)[${i}];')
 		} else {
-			g.writeln('${inp_elem_type} ${var_name} = ((${inp_elem_type}*) ${tmp}_orig.data)[${i}];')
+			g.write('${inp_elem_type} ')
+			if auto_heap {
+				g.write('*')
+			}
+			g.write('${var_name} = ')
+			if auto_heap {
+				g.write('&')
+			}
+			g.writeln('((${inp_elem_type}*) ${tmp}_orig.data)[${i}];')
 		}
 	} else {
 		if elem_sym.kind == .array_fixed {
 			g.writeln('${inp_elem_type} ${var_name};')
 			g.writeln('memcpy(&${var_name}, &${tmp}_orig[${i}], sizeof(${inp_elem_type}));')
+		} else if auto_heap {
+			g.writeln('${inp_elem_type} *${var_name} = &${tmp}_orig[${i}];')
 		} else if elem_sym.kind == .function {
 			g.writeln('voidptr ${var_name} = (voidptr)${tmp}_orig[${i}];')
 		} else {
-			g.writeln('${inp_elem_type} ${var_name} = ${tmp}_orig[${i}];')
+			g.write('${inp_elem_type} ')
+			if auto_heap {
+				g.write('*')
+			}
+			g.write('${var_name} = ')
+			if auto_heap {
+				g.write('&')
+			}
+			g.writeln('${tmp}_orig[${i}];')
 		}
 	}
 }

@@ -3749,11 +3749,10 @@ fn scope_register_a_b(mut s ast.Scope, pos token.Pos, typ ast.Type) {
 
 fn scope_register_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name string) {
 	s.register(ast.Var{
-		name:      name
-		pos:       pos
-		typ:       typ
-		is_used:   true
-		is_it_var: name == 'it'
+		name:    name
+		pos:     pos
+		typ:     typ
+		is_used: true
 	})
 }
 
