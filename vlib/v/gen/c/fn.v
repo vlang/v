@@ -2585,7 +2585,7 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 			g.write('${typ} __tmp_arg_${tmp_cnt_save + i} = ')
 			g.ref_or_deref_arg(arg, expected_type, node.language, false)
 		} else {
-			g.write('${typ} __tmp_arg_${tmp_cnt_save + i} = {0};')
+			g.writeln('${typ} __tmp_arg_${tmp_cnt_save + i} = {0};')
 			g.write('memcpy(&__tmp_arg_${tmp_cnt_save + i}, ')
 			g.ref_or_deref_arg(arg, expected_type, node.language, false)
 			g.writeln(', sizeof(${typ}));')
