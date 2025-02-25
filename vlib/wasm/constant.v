@@ -1,6 +1,9 @@
 // Copyright (c) 2023 l-m.dev. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+
+// wasm module constant provides utilities for creating WebAssembly constant expressions.
+// Constant expressions are limited to a subset of instructions usable in global and element initializers.
 module wasm
 
 import encoding.leb128
@@ -18,9 +21,8 @@ pub fn constexpr_value[T](v T) ConstExpression {
 	} $else $if T is f64 {
 		expr.f64_const(v)
 	} $else {
-		$compile_error('values can only be int, i32, i64, f32, f64')
+		$compile_error('Constant expressions only support be int, i32, i64, f32 and f64')
 	}
-
 	return expr
 }
 
@@ -55,17 +57,17 @@ pub fn constexpr_value_zero(v ValType) ConstExpression {
 // constexpr_ref_null returns a constant expression that evaluates to a null reference.
 pub fn constexpr_ref_null(rt RefType) ConstExpression {
 	mut expr := ConstExpression{}
-
 	expr.ref_null(rt)
-
 	return expr
 }
 
-// WebAssembly constant expressions are permitted to use a subset of valid instructions.
+// ConstExpression represents a WebAssembly constant expression.
+// Limited to instructions like const, global.get, and ref operations.
+// See: https://webassembly.github.io/spec/core/syntax/instructions.html
 pub struct ConstExpression {
 mut:
-	call_patches []CallPatch
-	code         []u8
+	call_patches []CallPatch // Patches for function references
+	code         []u8        // Encoded instruction bytes
 }
 
 // i32_const places a constant i32 value on the stack.
@@ -158,7 +160,7 @@ pub fn (mut expr ConstExpression) ref_func(name string) {
 	}
 }
 
-// ref_func places a reference to an imported function with `name` on the stack.
+// ref_func_import places a reference to an imported function on the stack.
 // If the imported function does not exist when calling `compile` on the module, it will panic.
 // WebAssembly instruction: `ref.func`.
 pub fn (mut expr ConstExpression) ref_func_import(mod string, name string) {

@@ -1,14 +1,19 @@
 // Copyright (c) 2023 l-m.dev. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+
+// wasm module instructions provide methods to generate WebAssembly opcodes.
+// This file implements a comprehensive set of instructions for function code generation.
 module wasm
 
 import encoding.leb128
 
+// u32 encodes an unsigned 32-bit integer into the function’s code buffer using LEB128.
 fn (mut func Function) u32(v u32) {
 	func.code << leb128.encode_u32(v)
 }
 
+// blocktype encodes a block type (parameters and results) for control instructions.
 fn (mut func Function) blocktype(typ FuncType) {
 	if typ.parameters.len == 0 {
 		if typ.results.len == 0 {
@@ -25,6 +30,7 @@ fn (mut func Function) blocktype(typ FuncType) {
 	func.code << leb128.encode_i32(i32(tidx))
 }
 
+// PatchPos is a position in the code buffer for later patching.
 pub type PatchPos = int
 
 // patch_pos returns a `PatchPos` for use with `patch`.
@@ -51,7 +57,7 @@ pub fn (mut func Function) patch(loc PatchPos, begin PatchPos) {
 	if loc == begin {
 		return
 	}
-	assert loc < begin
+	assert loc < begin, 'Patch location must precede begin position'
 
 	v := func.code[begin..].clone()
 	func.code.trim(begin)
@@ -107,8 +113,9 @@ pub fn (mut func Function) new_local_named(v ValType, name string) LocalIndex {
 	return ret
 }
 
+// Numeric Instructions
+
 // i32_const places a constant i32 value on the stack.
-// WebAssembly instruction: `i32.const`.
 pub fn (mut func Function) i32_const(v i32) {
 	func.code << 0x41 // i32.const
 	func.code << leb128.encode_i32(v)
@@ -134,6 +141,8 @@ pub fn (mut func Function) f64_const(v f64) {
 	func.code << 0x44 // f64.const
 	push_f64(mut func.code, v)
 }
+
+// Local and Global Instructions
 
 // local_get places the value of the local at the index `local` on the stack.
 // WebAssembly instruction: `local.get`.
@@ -191,6 +200,8 @@ pub fn (mut func Function) global_set(global GlobalIndices) {
 		}
 	}
 }
+
+// Comparison Instructions
 
 // drop drops the value on the stack
 // WebAssembly instruction: `drop`.
@@ -900,26 +911,25 @@ pub fn (mut func Function) reinterpret(a NumType) {
 	}
 }
 
-// unreachable denotes a point in code that should not be reachable, it is an unconditional trap.
-// WebAssembly instruction: `unreachable`.
+// Control Instructions
+
+// unreachable triggers an unconditional trap.
 pub fn (mut func Function) unreachable() {
-	func.code << 0x00
+	func.code << 0x00 // unreachable
 }
 
 // nop instruction, does nothing.
 // WebAssembly instruction: `nop`.
 pub fn (mut func Function) nop() {
-	func.code << 0x01
+	func.code << 0x01 // nop
 }
-
-pub type LabelIndex = int
 
 // c_block creates a label that can later be branched out of with `c_br` and `c_br_if`.
 // Blocks are strongly typed, you must supply a list of types for `parameters` and `results`.
 // All blocks must be ended, see the `c_end` function.
 pub fn (mut func Function) c_block(parameters []ValType, results []ValType) LabelIndex {
 	func.label++
-	func.code << 0x02
+	func.code << 0x02 // block
 	func.blocktype(parameters: parameters, results: results)
 	return func.label
 }
@@ -929,7 +939,7 @@ pub fn (mut func Function) c_block(parameters []ValType, results []ValType) Labe
 // All loops must be ended, see the `c_end` function.
 pub fn (mut func Function) c_loop(parameters []ValType, results []ValType) LabelIndex {
 	func.label++
-	func.code << 0x03
+	func.code << 0x03 // loop
 	func.blocktype(parameters: parameters, results: results)
 	return func.label
 }
@@ -941,7 +951,7 @@ pub fn (mut func Function) c_loop(parameters []ValType, results []ValType) Label
 // All if expressions must be ended, see the `c_end` function.
 pub fn (mut func Function) c_if(parameters []ValType, results []ValType) LabelIndex {
 	func.label++
-	func.code << 0x04
+	func.code << 0x04 // if
 	func.blocktype(parameters: parameters, results: results)
 	return func.label
 }
@@ -950,12 +960,6 @@ pub fn (mut func Function) c_if(parameters []ValType, results []ValType) LabelIn
 pub fn (mut func Function) c_else(label LabelIndex) {
 	assert func.label == label, 'c_else: called with an invalid label ${label}'
 	func.code << 0x05
-}
-
-// c_return returns from a function.
-// WebAssembly instruction: `return`.
-pub fn (mut func Function) c_return() {
-	func.code << 0x0F // return
 }
 
 // c_end ends the block, loop or if expression with the label passed in at `label`.
@@ -984,6 +988,12 @@ pub fn (mut func Function) c_br_if(label LabelIndex) {
 	func.u32(u32(v))
 }
 
+// c_return returns from a function.
+// WebAssembly instruction: `return`.
+pub fn (mut func Function) c_return() {
+	func.code << 0x0F // return
+}
+
 // call calls a locally defined function.
 // If this function does not exist when calling `compile` on the module, it will panic.
 // WebAssembly instruction: `call`.
@@ -995,7 +1005,7 @@ pub fn (mut func Function) call(name string) {
 	})
 }
 
-// call calls an imported function.
+// call_import invokes an imported function.
 // If the imported function does not exist when calling `compile` on the module, it will panic.
 // WebAssembly instruction: `call`.
 pub fn (mut func Function) call_import(mod string, name string) {
@@ -1006,6 +1016,8 @@ pub fn (mut func Function) call_import(mod string, name string) {
 		pos:  func.code.len
 	})
 }
+
+// Memory Instructions
 
 // load loads a value with type `typ` from memory.
 // WebAssembly instruction: `i32|i64|f32|f64.load`.

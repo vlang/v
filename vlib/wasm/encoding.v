@@ -1,30 +1,39 @@
+// ... (previous functions: u32, patch_start, etc.)
 // Copyright (c) 2023 l-m.dev. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+
+// wasm module encoding implements serialization of WebAssembly modules into the binary format.
+// This file handles the encoding logic for all sections defined in the spec.
 module wasm
 
 import encoding.leb128
 import math.bits
 
+// u32 encodes an unsigned 32-bit integer into the module’s buffer using LEB128.
 fn (mut mod Module) u32(v u32) {
 	mod.buf << leb128.encode_u32(v)
 }
 
+// patch_start returns the current position in the buffer for later patching.
 fn (mut mod Module) patch_start() int {
 	return mod.buf.len
 }
 
+// patch_len inserts the length of a section or subsection at the given position.
 fn (mut mod Module) patch_len(pos int) {
 	len := mod.buf.len - pos
 	data := leb128.encode_u32(u32(len))
 	mod.buf.insert(pos, data)
 }
 
+// patch_u32 inserts a specific u32 value at the given position.
 fn (mut mod Module) patch_u32(pos int, val u32) {
 	data := leb128.encode_u32(val)
 	mod.buf.insert(pos, data)
 }
 
+// result_type encodes a vector of result types (parameters or returns).
 fn (mut mod Module) result_type(results []ValType) {
 	mod.u32(u32(results.len))
 	for r in results {
@@ -32,17 +41,20 @@ fn (mut mod Module) result_type(results []ValType) {
 	}
 }
 
+// function_type encodes a function type (parameters and results).
 fn (mut mod Module) function_type(ft FuncType) {
-	mod.buf << 0x60 // function type indicator
+	mod.buf << 0x60 // Function type indicator
 	mod.result_type(ft.parameters)
 	mod.result_type(ft.results)
 }
 
+// global_type encodes a global type with mutability flag.
 fn (mut mod Module) global_type(vt ValType, is_mut bool) {
 	mod.buf << u8(vt)
 	mod.buf << u8(is_mut)
 }
 
+// push_f32 encodes a 32-bit float into the buffer.
 fn push_f32(mut buf []u8, v f32) {
 	rv := bits.f32_bits(v)
 	buf << u8(rv >> u32(0))
@@ -51,6 +63,7 @@ fn push_f32(mut buf []u8, v f32) {
 	buf << u8(rv >> u32(24))
 }
 
+// push_f64 encodes a 64-bit float into the buffer.
 fn push_f64(mut buf []u8, v f64) {
 	rv := bits.f64_bits(v)
 	buf << u8(rv >> u32(0))
@@ -63,13 +76,13 @@ fn push_f64(mut buf []u8, v f64) {
 	buf << u8(rv >> u32(56))
 }
 
+// get_function_idx resolves the index of a function (local or imported) for patching.
 fn (mod &Module) get_function_idx(patch CallPatch) int {
 	mut idx := -1
-
 	match patch {
 		FunctionCallPatch {
 			ftt := mod.functions[patch.name] or {
-				panic('called function ${patch.name} does not exist')
+				panic('Called function "${patch.name}" does not exist')
 			}
 			idx = ftt.idx + mod.fn_imports.len
 		}
@@ -81,17 +94,16 @@ fn (mod &Module) get_function_idx(patch CallPatch) int {
 				}
 			}
 			if idx == -1 {
-				panic('called imported function ${patch.mod}.${patch.name} does not exist')
+				panic('Called imported function "${patch.mod}.${patch.name}" does not exist')
 			}
 		}
 	}
-
 	return idx
 }
 
+// patch applies function patches (calls or globals) to the code buffer.
 fn (mut mod Module) patch(ft Function) {
 	mut ptr := 0
-
 	for patch in ft.patches {
 		mut idx := 0
 		match patch {
@@ -106,39 +118,43 @@ fn (mut mod Module) patch(ft Function) {
 		mod.u32(u32(idx))
 		ptr = patch.pos
 	}
-
 	mod.buf << ft.code[ptr..]
 }
 
+// name encodes a string as a name (length-prefixed byte array).
 fn (mut mod Module) name(name string) {
 	mod.u32(u32(name.len))
 	mod.buf << name.bytes()
 }
 
+// start_subsection begins a custom subsection and returns its patch position.
 fn (mut mod Module) start_subsection(sec Subsection) int {
 	mod.buf << u8(sec)
 	return mod.patch_start()
 }
 
+// start_section begins a section and returns its patch position.
 fn (mut mod Module) start_section(sec Section) int {
 	mod.buf << u8(sec)
 	return mod.patch_start()
 }
 
+// end_section patches the length of a section or subsection.
 fn (mut mod Module) end_section(tpatch int) {
 	mod.patch_len(tpatch)
 }
 
-// compile serialises the WebAssembly module into a byte array.
-// The returned byte array can be written out into a `.wasm`, or executed in memory.
+// compile serializes the WebAssembly module into a byte array.
+// Returns a binary that can be written to a .wasm file or executed in memory.
+// Implements the full WebAssembly binary format: https://webassembly.github.io/spec/core/binary/modules.html
 pub fn (mut mod Module) compile() []u8 {
 	mod.buf = []u8{cap: 128}
 
 	// WASM_BINARY_MAGIC, WASM_BINARY_VERSION
 	mod.buf << [u8(0x00), 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]
 
+	// Type Section
 	// https://webassembly.github.io/spec/core/binary/modules.html#type-section
-	//
 	if mod.functypes.len > 0 {
 		tpatch := mod.start_section(.type_section)
 		{
@@ -149,8 +165,9 @@ pub fn (mut mod Module) compile() []u8 {
 		}
 		mod.end_section(tpatch)
 	}
+
+	// Import Section
 	// https://webassembly.github.io/spec/core/binary/modules.html#import-section
-	//
 	if mod.fn_imports.len > 0 || mod.global_imports.len > 0 {
 		tpatch := mod.start_section(.import_section)
 		{
@@ -158,20 +175,21 @@ pub fn (mut mod Module) compile() []u8 {
 			for ft in mod.fn_imports {
 				mod.name(ft.mod)
 				mod.name(ft.name)
-				mod.buf << 0x00 // function
+				mod.buf << 0x00 // Function kind
 				mod.u32(u32(ft.tidx))
 			}
 			for gt in mod.global_imports {
 				mod.name(gt.mod)
 				mod.name(gt.name)
-				mod.buf << 0x03 // global
+				mod.buf << 0x03 // Global kind
 				mod.global_type(gt.typ, gt.is_mut)
 			}
 		}
 		mod.end_section(tpatch)
 	}
+
+	// Function Section
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-funcsec
-	//
 	if mod.functions.len > 0 {
 		tpatch := mod.start_section(.function_section)
 		{
@@ -182,8 +200,9 @@ pub fn (mut mod Module) compile() []u8 {
 		}
 		mod.end_section(tpatch)
 	}
+
+	// Memory Section
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-memsec
-	//
 	if memory := mod.memory {
 		tpatch := mod.start_section(.memory_section)
 		{
@@ -199,8 +218,9 @@ pub fn (mut mod Module) compile() []u8 {
 		}
 		mod.end_section(tpatch)
 	}
+
+	// Global Section
 	// https://webassembly.github.io/spec/core/binary/modules.html#global-section
-	//
 	if mod.globals.len > 0 {
 		tpatch := mod.start_section(.global_section)
 		{
@@ -224,8 +244,9 @@ pub fn (mut mod Module) compile() []u8 {
 		}
 		mod.end_section(tpatch)
 	}
+
+	// Export Section
 	// https://webassembly.github.io/spec/core/binary/modules.html#export-section
-	//
 	{
 		tpatch := mod.start_section(.export_section)
 		{
@@ -261,18 +282,20 @@ pub fn (mut mod Module) compile() []u8 {
 		}
 		mod.end_section(tpatch)
 	}
+
+	// Start Section
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-startsec
-	//
 	if start := mod.start {
-		ftt := mod.functions[start] or { panic('start function ${start} does not exist') }
+		ftt := mod.functions[start] or { panic('Start function "${start}" does not exist') }
 		tpatch := mod.start_section(.start_section)
 		{
 			mod.u32(u32(ftt.idx + mod.fn_imports.len))
 		}
 		mod.end_section(tpatch)
 	}
+
+	// Data Count Section
 	// https://webassembly.github.io/spec/core/binary/modules.html#data-count-section
-	//
 	if mod.segments.len > 0 {
 		tpatch := mod.start_section(.data_count_section)
 		{
@@ -280,8 +303,10 @@ pub fn (mut mod Module) compile() []u8 {
 		}
 		mod.end_section(tpatch)
 	}
+
+	// Code Section
 	// https://webassembly.github.io/spec/core/binary/modules.html#binary-codesec
-	//
+
 	if mod.functions.len > 0 {
 		tpatch := mod.start_section(.code_section)
 		{
@@ -303,21 +328,22 @@ pub fn (mut mod Module) compile() []u8 {
 		}
 		mod.end_section(tpatch)
 	}
+
+	// Data Section
 	// https://webassembly.github.io/spec/core/binary/modules.html#data-section
-	//
 	if mod.segments.len > 0 {
 		tpatch := mod.start_section(.data_section)
 		{
 			mod.u32(u32(mod.segments.len))
 			for _, seg in mod.segments {
 				if idx := seg.idx {
-					mod.buf << 0x00 // active
+					mod.buf << 0x00 // Active segment
 					// constant expr
 					mod.buf << 0x41 // i32.const
 					mod.buf << leb128.encode_i32(i32(idx))
-					mod.buf << 0x0B // END expression opcode
+					mod.buf << 0x0B // END opcode
 				} else {
-					mod.buf << 0x01 // passive
+					mod.buf << 0x01 // Passive segment
 				}
 				mod.u32(u32(seg.data.len))
 				mod.buf << seg.data
@@ -325,8 +351,9 @@ pub fn (mut mod Module) compile() []u8 {
 		}
 		mod.end_section(tpatch)
 	}
+
+	// Custom Section (Debug Info)
 	// https://webassembly.github.io/spec/core/appendix/custom.html#name-section
-	//
 	if mod.debug {
 		tpatch := mod.start_section(.custom_section)
 		mod.name('name')
