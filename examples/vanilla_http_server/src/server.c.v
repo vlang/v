@@ -16,18 +16,11 @@ import sync
 
 const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
-$if windows {
-	#include <winsock2.h>
-} $else {
-	#include <arpa/inet.h>
-}
 #include <fcntl.h>
 #include <sys/epoll.h>
 #include <errno.h>
-#include <stdio.h>
 #include <netinet/in.h>
 
-// https://man7.org/linux/man-pages/man7/socket.7.html
 fn C.socket(socket_family int, socket_type int, protocol int) int
 
 fn C.bind(sockfd int, addr &Addr, addrlen u32) int
@@ -40,38 +33,24 @@ fn C.setsockopt(__fd int, __level int, __optname int, __optval voidptr, __optlen
 
 fn C.listen(__fd int, __n int) int
 
-fn C.select(nfds int, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) int
+fn C.perror(s &u8) voidptr
 
-fn C.FD_ZERO(set &C.fd_set)
+fn C.close(fd int) int
 
-fn C.FD_SET(fd int, set &C.fd_set)
+fn C.accept(sockfd int, address &C.sockaddr_in, addrlen &u32) int
 
-fn C.FD_CLR(fd int, set &C.fd_set)
+fn C.htons(__hostshort u16) u16
 
-fn C.FD_ISSET(fd int, set &C.fd_set) int
+fn C.epoll_create1(__flags int) int
 
-fn C.ioctlsocket(s int, cmd int, argp &u32) int
+fn C.epoll_ctl(__epfd int, __op int, __fd int, __event &C.epoll_event) int
 
-fn C.closesocket(s int) int
+fn C.epoll_wait(__epfd int, __events &C.epoll_event, __maxevents int, __timeout int) int
 
-fn C.WSAStartup(wVersionRequested u16, lpWSAData &C.WSADATA) int
-
-fn C.WSAGetLastError() int
-
-fn C.WSACleanup() int
+fn C.fcntl(fd int, cmd int, arg int) int
 
 struct In_addr {
 	s_addr int
-}
-
-enum In_port_t as u16 {
-	ipproto_hopopts  = 0
-	ipproto_routing  = 43
-	ipproto_fragment = 44
-	ipproto_icmpv6   = 58
-	ipproto_none     = 59
-	ipproto_dstopts  = 60
-	ipproto_mh       = 135
 }
 
 struct Sockaddr_in {
@@ -80,8 +59,6 @@ struct Sockaddr_in {
 	sin_addr   In_addr
 	sin_zero   [8]u8
 }
-
-fn C.htons(__hostshort u16) u16
 
 @[typedef]
 union C.epoll_data {
@@ -97,12 +74,6 @@ pub struct C.epoll_event {
 	data   C.epoll_data
 }
 
-fn C.epoll_create1(__flags int) int
-
-fn C.epoll_ctl(__epfd int, __op int, __fd int, __event &C.epoll_event) int
-
-fn C.epoll_wait(__epfd int, __events &C.epoll_event, __maxevents int, __timeout int) int
-
 struct Server {
 mut:
 	server_socket   int
@@ -112,11 +83,6 @@ mut:
 	threads         [max_thread_pool_size]thread
 	request_handler fn (HttpRequest) ![]u8 @[required]
 }
-
-fn C.fcntl(fd int, cmd int, arg int) int
-fn C.perror(s &u8) voidptr
-fn C.close(fd int) int
-fn C.accept(sockfd int, address &C.sockaddr_in, addrlen &u32) int
 
 const max_unix_path = 108
 
@@ -155,39 +121,23 @@ pub:
 }
 
 fn set_blocking(fd int, blocking bool) {
-	$if windows {
-		// https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-ioctlsocket
-		// 0x8004667e is FIONBIO
-		mut i_mode := u32(0) // 0 = blocking, 1 = non-blocking
-		if !blocking {
-			i_mode = 1
-		}
-		if C.ioctlsocket(fd, C.FIONBIO, &i_mode) != 0 {
-			C.perror('ioctlsocket failed'.str)
-		}
-	} $else {
-		flags := C.fcntl(fd, C.F_GETFL, 0)
-		if flags == -1 {
-			// TODO: better error handling
-			eprintln(@LOCATION)
-			return
-		}
-		if blocking {
-			// This removes the O_NONBLOCK flag from flags and set it.
-			C.fcntl(fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
-		} else {
-			// This adds the O_NONBLOCK flag from flags and set it.
-			C.fcntl(fd, C.F_SETFL, flags | C.O_NONBLOCK)
-		}
+	flags := C.fcntl(fd, C.F_GETFL, 0)
+	if flags == -1 {
+		// TODO: better error handling
+		eprintln(@LOCATION)
+		return
+	}
+	if blocking {
+		// This removes the O_NONBLOCK flag from flags and set it.
+		C.fcntl(fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
+	} else {
+		// This adds the O_NONBLOCK flag from flags and set it.
+		C.fcntl(fd, C.F_SETFL, flags | C.O_NONBLOCK)
 	}
 }
 
 fn close_socket(fd int) {
-	$if windows {
-		C.closesocket(fd)
-	} $else {
-		C.close(fd)
-	}
+	C.close(fd)
 }
 
 fn create_server_socket(port int) int {
@@ -338,4 +288,35 @@ fn event_loop(server &Server) {
 	for {
 		handle_accept(server)
 	}
+}
+
+fn (mut server Server) run() {
+	server.server_socket = create_server_socket(port)
+	if server.server_socket < 0 {
+		return
+	}
+
+	server.epoll_fd = C.epoll_create1(0)
+	if server.epoll_fd < 0 {
+		C.perror('epoll_create1 failed'.str)
+		close_socket(server.server_socket)
+		return
+	}
+	server.lock_flag.lock()
+	if add_fd_to_epoll(server.epoll_fd, server.server_socket, u32(C.EPOLLIN)) == -1 {
+		close_socket(server.server_socket)
+		close_socket(server.epoll_fd)
+		server.lock_flag.unlock()
+		return
+	}
+	server.lock_flag.unlock()
+
+	server.lock_flag.init()
+
+	for i := 0; i < max_thread_pool_size; i++ {
+		server.threads[i] = spawn process_events(&server)
+	}
+
+	println('listening on http://localhost:${port}/')
+	event_loop(&server)
 }

@@ -26,45 +26,9 @@ fn handle_request(req HttpRequest) ![]u8 {
 }
 
 fn main() {
-	// 0x0202 = MAKEWORD(2,2). it is the version number for Winsock 2.2
-	$if windows {
-		mut wsa_data := C.WSADATA{}
-		if C.WSAStartup(0x0202, &wsa_data) != 0 {
-			eprintln('WSAStartup failed')
-			return
-		}
-	}
-
 	mut server := Server{
 		request_handler: handle_request
 	}
 
-	server.server_socket = create_server_socket(port)
-	if server.server_socket < 0 {
-		return
-	}
-	server.epoll_fd = C.epoll_create1(0)
-	if server.epoll_fd < 0 {
-		C.perror('epoll_create1 failed'.str)
-		close_socket(server.server_socket)
-		return
-	}
-
-	server.lock_flag.lock()
-	if add_fd_to_epoll(server.epoll_fd, server.server_socket, u32(C.EPOLLIN)) == -1 {
-		close_socket(server.server_socket)
-		close_socket(server.epoll_fd)
-
-		server.lock_flag.unlock()
-		return
-	}
-
-	server.lock_flag.unlock()
-
-	server.lock_flag.init()
-	for i := 0; i < max_thread_pool_size; i++ {
-		server.threads[i] = spawn process_events(&server)
-	}
-	println('listening on http://localhost:${port}/')
-	event_loop(&server)
+	server.run()
 }
