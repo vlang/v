@@ -29,7 +29,10 @@ fn main() {
 	// 0x0202 = MAKEWORD(2,2). it is the version number for Winsock 2.2
 	$if windows {
 		mut wsa_data := C.WSADATA{}
-		C.WSAStartup(0x0202, &wsa_data)
+		if C.WSAStartup(0x0202, &wsa_data) != 0 {
+			eprintln('WSAStartup failed')
+			return
+		}
 	}
 
 	mut server := Server{
