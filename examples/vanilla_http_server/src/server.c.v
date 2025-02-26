@@ -27,7 +27,8 @@ $if windows {
 #include <stdio.h>
 #include <netinet/in.h>
 
-fn C.socket(__domain int, __type int, __protocol int) int
+// https://man7.org/linux/man-pages/man7/socket.7.html
+fn C.socket(socket_family int, socket_type int, protocol int) int
 
 fn C.bind(sockfd int, addr &Addr, addrlen u32) int
 
@@ -117,9 +118,6 @@ fn C.perror(s &u8) voidptr
 fn C.close(fd int) int
 fn C.accept(sockfd int, address &C.sockaddr_in, addrlen &u32) int
 
-const sock_stream = C.SOCK_STREAM
-const sock_nonblock = C.SOCK_NONBLOCK
-
 const max_unix_path = 108
 
 const max_connection_size = 1024
@@ -175,8 +173,10 @@ fn set_blocking(fd int, blocking bool) {
 			return
 		}
 		if blocking {
+			// This removes the O_NONBLOCK flag from flags and set it.
 			C.fcntl(fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
 		} else {
+			// This adds the O_NONBLOCK flag from flags and set it.
 			C.fcntl(fd, C.F_SETFL, flags | C.O_NONBLOCK)
 		}
 	}
@@ -191,7 +191,8 @@ fn close_socket(fd int) {
 }
 
 fn create_server_socket(port int) int {
-	server_fd := C.socket(2, sock_stream | sock_nonblock, 0)
+	// Create a socket with non-blocking mode
+	server_fd := C.socket(C.AF_INET, C.SOCK_STREAM | C.SOCK_NONBLOCK, 0)
 	if server_fd < 0 {
 		eprintln(@LOCATION)
 		C.perror('Socket creation failed'.str)
@@ -208,7 +209,7 @@ fn create_server_socket(port int) int {
 	}
 
 	server_addr := Sockaddr_in{
-		sin_family: 2 // AF_INET
+		sin_family: u16(C.AF_INET)
 		sin_port:   C.htons(port)
 		sin_addr:   In_addr{C.INADDR_ANY}
 		sin_zero:   [8]u8{}
@@ -262,8 +263,6 @@ fn handle_accept(server &Server) {
 			return
 		}
 
-		// Set the client socket to non-blocking mode if accepted successfully
-		set_blocking(client_fd, false)
 		unsafe {
 			server.lock_flag.lock()
 			if add_fd_to_epoll(server.epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
