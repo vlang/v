@@ -114,6 +114,7 @@ enum ParserState {
 	pinf           // number is higher than +HUGE_VAL
 	minf           // number is lower than -HUGE_VAL
 	invalid_number // invalid number, used for '#@%^' for example
+	extra_char     // extra char after number
 }
 
 // parser tries to parse the given string into a number
@@ -217,6 +218,9 @@ fn parser(s string) (ParserState, PrepNumber) {
 	}
 	if i == 0 && s.len > 0 {
 		return ParserState.invalid_number, pn
+	}
+	if i != s.len {
+		return ParserState.extra_char, pn
 	}
 	return result, pn
 }
@@ -387,8 +391,14 @@ fn converter(mut pn PrepNumber) u64 {
 	return result
 }
 
+@[params]
+pub struct AtoF64Param {
+pub mut:
+	no_extra_char bool // exact convertion, no extra char after number
+}
+
 // atof64 parses the string `s`, and if possible, converts it into a f64 number
-pub fn atof64(s string) !f64 {
+pub fn atof64(s string, param AtoF64Param) !f64 {
 	if s.len == 0 {
 		return error('expected a number found an empty string')
 	}
@@ -409,6 +419,13 @@ pub fn atof64(s string) !f64 {
 		}
 		.minf {
 			res.u = double_minus_infinity
+		}
+		.extra_char {
+			if param.no_extra_char {
+				return error('extra char after number')
+			} else {
+				res.u = converter(mut pn)
+			}
 		}
 		.invalid_number {
 			return error('not a number')

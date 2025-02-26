@@ -20,6 +20,7 @@ fn test_atof() {
 		0.0,
 		-0.0,
 		31234567890123,
+		123,
 	]
 
 	// strings
@@ -31,6 +32,7 @@ fn test_atof() {
 		'0.0',
 		'-0.0',
 		'31234567890123',
+		'123xyz',
 	]
 
 	// check conversion case 1 string <=> string
@@ -88,5 +90,11 @@ fn test_atof_errors() {
 		assert false // strconv.atof64 should have failed
 	} else {
 		assert err.str() == 'not a number'
+	}
+	if x := strconv.atof64('123xyz', no_extra_char: true) {
+		eprintln('> x: ${x}')
+		assert false // strconv.atof64 should have failed
+	} else {
+		assert err.str() == 'extra char after number'
 	}
 }
