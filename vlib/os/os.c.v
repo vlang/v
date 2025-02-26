@@ -504,7 +504,8 @@ pub fn get_raw_line() string {
 	$if windows {
 		unsafe {
 			max_line_chars := 256
-			buf := malloc_noscan(max_line_chars * 2)
+			mut buf := malloc_noscan(max_line_chars * 2)
+			mut old_size := max_line_chars * 2
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := u32(0)
 			if is_atty(0) > 0 {
@@ -530,6 +531,11 @@ pub fn get_raw_line() string {
 					break
 				}
 				offset++
+				if offset >= old_size {
+					new_size := old_size + max_line_chars * 2
+					buf = realloc_data(buf, old_size, new_size)
+					old_size = new_size
+				}
 			}
 			return buf.vstring_with_len(offset)
 		}
