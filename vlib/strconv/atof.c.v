@@ -393,7 +393,7 @@ fn converter(mut pn PrepNumber) u64 {
 
 @[params]
 pub struct AtoF64Param {
-pub mut:
+pub:
 	no_extra_char bool // exact convertion, no extra char after number
 }
 
@@ -403,7 +403,7 @@ pub fn atof64(s string, param AtoF64Param) !f64 {
 		return error('expected a number found an empty string')
 	}
 	mut res := Float64u{}
-	mut res_parsing, mut pn := parser(s)
+	res_parsing, mut pn := parser(s)
 	match res_parsing {
 		.ok {
 			res.u = converter(mut pn)
