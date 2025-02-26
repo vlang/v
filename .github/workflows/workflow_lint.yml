@@ -15,7 +15,7 @@ on:
       - '**.yml'
 
 jobs:
-  format:
+  lint-yml-workflows:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

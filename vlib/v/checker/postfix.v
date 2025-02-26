@@ -3,7 +3,7 @@ module checker
 import v.ast
 
 fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
-	typ := c.unwrap_generic(c.expr(mut node.expr))
+	typ := c.unwrap_generic(c.type_resolver.get_type_or_default(node, c.expr(mut node.expr)))
 	typ_sym := c.table.sym(typ)
 	is_non_void_pointer := typ.is_any_kind_of_pointer() && typ_sym.kind != .voidptr
 
@@ -37,7 +37,11 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 		c.error('invalid operation: ${node.op.str()} (non-numeric type `${typ_str}`)',
 			node.pos)
 	} else {
-		node.auto_locked, _ = c.fail_if_immutable(mut node.expr)
+		if node.op == .question {
+			c.table.used_features.option_or_result = true
+		} else {
+			node.auto_locked, _ = c.fail_if_immutable(mut node.expr)
+		}
 	}
 	node.typ = typ
 	return typ

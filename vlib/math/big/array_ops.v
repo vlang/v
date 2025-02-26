@@ -245,7 +245,7 @@ fn divide_array_by_digit(operand_a []u32, divisor u32, mut quotient []u32, mut r
 	shrink_tail_zeros(mut remainder)
 }
 
-const newton_division_limit = 10_000
+const newton_division_limit = 1_000_000
 
 @[inline]
 fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {

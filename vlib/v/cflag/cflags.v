@@ -22,28 +22,45 @@ pub fn (c &CFlag) str() string {
 }
 
 const fexisting_literal = r'$first_existing'
+const wexisting_literal = r'$when_first_existing'
+
+fn find_first_existing_path(remainder string, literal string) (bool, string, int, []string) {
+	sparams := remainder[literal.len + 1..].all_before(')')
+	delta_i := sparams.len + literal.len + 1
+	svalues := sparams.replace(',', '\n').split_into_lines().map(it.trim('\t \'"'))
+	for spath in svalues {
+		if os.exists(spath) {
+			return true, spath, delta_i, []string{}
+		}
+	}
+	return false, '', delta_i, svalues
+}
 
 // expand the flag value
-pub fn (cf &CFlag) eval() string {
+pub fn (cf &CFlag) eval() ?string {
 	mut value_builder := strings.new_builder(10 * cf.value.len)
 	cflag_eval_outer_loop: for i := 0; i < cf.value.len; i++ {
 		x := cf.value[i]
 		if x == `$` {
 			remainder := cf.value[i..]
 			if remainder.starts_with(fexisting_literal) {
-				sparams := remainder[fexisting_literal.len + 1..].all_before(')')
-				i += sparams.len + fexisting_literal.len + 1
-				svalues := sparams.replace(',', '\n').split_into_lines().map(it.trim('\t \'"'))
-				// mut found_spath := ''
-				for spath in svalues {
-					if os.exists(spath) {
-						// found_spath = spath
-						value_builder.write_string(spath)
-						continue cflag_eval_outer_loop
-					}
+				found, spath, delta_i, svalues := find_first_existing_path(remainder,
+					fexisting_literal)
+				if found {
+					value_builder.write_string(spath)
+					i += delta_i
+					continue
 				}
 				panic('>> error: none of the paths ${svalues} exist')
-				continue
+			}
+			if remainder.starts_with(wexisting_literal) {
+				found, spath, delta_i, _ := find_first_existing_path(remainder, wexisting_literal)
+				if found {
+					value_builder.write_string(spath)
+					i += delta_i
+					continue
+				}
+				return none
 			}
 		}
 		value_builder.write_string(x.ascii_str())
@@ -52,12 +69,12 @@ pub fn (cf &CFlag) eval() string {
 }
 
 // format flag
-pub fn (cf &CFlag) format() string {
+pub fn (cf &CFlag) format() ?string {
 	mut value := ''
 	if cf.cached != '' {
 		value = cf.cached
 	} else {
-		value = cf.eval()
+		value = cf.eval()?
 	}
 	if cf.name in ['-l', '-Wa', '-Wl', '-Wp'] && value != '' {
 		return '${cf.name}${value}'.trim_space()
@@ -97,7 +114,7 @@ pub fn (cflags []CFlag) c_options_without_object_files() []string {
 		if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
 			continue
 		}
-		args << flag.format()
+		args << flag.format() or { continue }
 	}
 	return args
 }
@@ -108,10 +125,10 @@ pub fn (cflags []CFlag) c_options_only_object_files() []string {
 		// TODO figure out a better way to copy cross compiling flags to the linker
 		if flag.value.ends_with('.o') || flag.value.ends_with('.obj')
 			|| (flag.name == '-l' && flag.value == 'pq') {
-			args << flag.format()
+			args << flag.format() or { continue }
 		}
 	}
-	return args
+	return args.filter(it != '')
 }
 
 pub fn (cflags []CFlag) defines_others_libs() ([]string, []string, []string) {

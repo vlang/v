@@ -45,7 +45,7 @@ mut:
 	// arm64 specific stuff for code generation
 }
 
-fn (mut x Arm64) allocate_var(name string, size i32, initial_val i32) i32 {
+fn (mut x Arm64) allocate_var(name string, size i32, initial_val Number) i32 {
 	eprintln('TODO: allocating var on arm64 (${name}) = ${size} = ${initial_val}')
 	return 0
 }
@@ -376,7 +376,7 @@ fn (mut c Arm64) mov_reg(r1 Register, r2 Register) {
 	panic('Arm64.mov_reg() not implemented')
 }
 
-fn (mut c Arm64) mov64(r Register, val i64) {
+fn (mut c Arm64) mov64(r Register, val Number) {
 	panic('Arm64.mov64() not implemented')
 }
 

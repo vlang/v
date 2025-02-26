@@ -8,8 +8,8 @@ module sha1
 
 import math.bits
 
-const _k0 = 0x5A827999
-const _k1 = 0x6ED9EBA1
+const _k0 = u32(0x5A827999)
+const _k1 = u32(0x6ED9EBA1)
 const _k2 = u32(0x8F1BBCDC)
 const _k3 = u32(0xCA62C1D6)
 

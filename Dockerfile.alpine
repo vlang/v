@@ -4,14 +4,14 @@
 FROM alpine:3.20
 LABEL maintainer="spytheman <spytheman@bulsynt.org>"
 WORKDIR /opt/vlang
-ENV PATH /opt/vlang:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV PATH=/opt/vlang:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 ## install development packages
 RUN apk --no-cache add \
   musl-dev libc-dev libc6-compat gcompat \
   openssl-dev sqlite-dev mbedtls \
   libuv-dev libev-dev libevent-dev libmemcached-dev \
-  binutils diffutils elfutils pcre strace \
+  binutils diffutils elfutils pcre strace rsync \
   libunwind-dev libunwind-static gc gc-dev \
   make bash file git upx tmux micro nano nano-syntax \
   gcc gdb wasi-sdk \
@@ -46,9 +46,9 @@ RUN if [[ -z "${USE_LOCAL}" ]] ; then \
 RUN mkdir -p /tmp/v /tmp/v /home/ && chown -Rh 1000:1000 /opt/ /tmp/ /home/
 ## setup runtime environment for v and bash:
 USER 1000:1000
-ENV HOME     /home
-ENV VTMP     /tmp/v
-ENV VMODULES /tmp/vmodules
+ENV HOME=/home
+ENV VTMP=/tmp/v
+ENV VMODULES=/tmp/vmodules
 
 RUN make && v -version && ls -la v && \
   du -b -s . && \

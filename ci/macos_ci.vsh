@@ -10,12 +10,12 @@ fn test_cross_compilation() {
 }
 
 fn build_with_cstrict() {
-	exec('v -cg -cstrict -o v cmd/v')
+	exec('v -cg -cstrict -o vstrict1 cmd/v')
 }
 
 fn all_code_is_formatted() {
 	if common.is_github_job {
-		exec('VJOBS=1 v test-cleancode')
+		exec('VJOBS=1 v -silent test-cleancode')
 	} else {
 		exec('v -progress test-cleancode')
 	}
@@ -42,12 +42,12 @@ fn install_iconv() {
 }
 
 fn test_pure_v_math_module() {
-	exec('v -progress -exclude @vlib/math/*.c.v test vlib/math/')
+	exec('v -silent -exclude @vlib/math/*.c.v test vlib/math/')
 }
 
 fn self_tests() {
 	if common.is_github_job {
-		exec('VJOBS=1 v test-self vlib')
+		exec('VJOBS=1 v -silent test-self vlib')
 	} else {
 		exec('v -progress test-self vlib')
 	}
@@ -55,7 +55,7 @@ fn self_tests() {
 
 fn build_examples() {
 	if common.is_github_job {
-		exec('v build-examples')
+		exec('v -silent build-examples')
 	} else {
 		exec('v -progress build-examples')
 	}
@@ -65,7 +65,7 @@ fn build_examples_v_compiled_with_tcc() {
 	exec('v -o vtcc -cc tcc cmd/v')
 	if common.is_github_job {
 		// ensure that examples/veb/veb_example.v etc compiles
-		exec('./vtcc build-examples')
+		exec('./vtcc -silent build-examples')
 	} else {
 		exec('./vtcc -progress build-examples')
 	}
@@ -104,15 +104,11 @@ fn v_self_compilation_parallel_cc() {
 }
 
 fn test_password_input() {
-	exec('v -progress test examples/password/')
+	exec('v -silent test examples/password/')
 }
 
 fn test_readline() {
-	exec('v -progress test examples/readline/')
-}
-
-fn test_vlib_skip_unused() {
-	exec('v -skip-unused -progress test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/')
+	exec('v -silent test examples/readline/')
 }
 
 const all_tasks = {
@@ -136,7 +132,6 @@ const all_tasks = {
 	'v_self_compilation_parallel_cc':     Task{v_self_compilation_parallel_cc, 'V self compilation with -parallel-cc'}
 	'test_password_input':                Task{test_password_input, 'Test password input'}
 	'test_readline':                      Task{test_readline, 'Test readline'}
-	'test_vlib_skip_unused':              Task{test_vlib_skip_unused, 'Test vlib modules with -skip-unused'}
 }
 
 common.run(all_tasks)

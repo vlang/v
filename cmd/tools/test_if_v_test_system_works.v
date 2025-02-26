@@ -75,7 +75,7 @@ fn check_assert_continues_works() ! {
 	result.has('assert_continues_option_works_test.v:5: fn test_fail2')
 	result.has('> assert 2 == 4').has('> assert 2 == 1').has('> assert 2 == 0')
 	// Check if a test function, tagged with [assert_continues], has the same behaviour, without needing additional options
-	create_test('assert_continues_tag_works_test.v', '[assert_continues]fn test_fail1() { assert 2==4\nassert 2==1\nassert 2==0 }\nfn test_ok(){ assert true }\nfn test_fail2() { assert false\n assert false }')!
+	create_test('assert_continues_tag_works_test.v', '@[assert_continues]fn test_fail1() { assert 2==4\nassert 2==1\nassert 2==0 }\nfn test_ok(){ assert true }\nfn test_fail2() { assert false\n assert false }')!
 	tag_res := check_fail('${vexe} assert_continues_tag_works_test.v')
 	tag_res.has('assert_continues_tag_works_test.v:1: fn test_fail1')
 	tag_res.has('assert_continues_tag_works_test.v:2: fn test_fail1')

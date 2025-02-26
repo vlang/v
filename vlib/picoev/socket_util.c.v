@@ -104,7 +104,7 @@ fn listen(config Config) !int {
 		// can be accepted
 		net.socket_error(C.setsockopt(fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, &flag_zero, sizeof(int)))!
 	}
-	$if linux {
+	$if linux || termux {
 		// epoll socket options
 		net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)))!
 		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(int)))!

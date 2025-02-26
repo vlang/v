@@ -16,15 +16,39 @@ fn test_int() {
 	mut c := u8(b)
 	d := 4
 	c += u8(-d)
-	println(c)
+	// TODO: remove the int cast when unsigned integer print will be supported
+	println(int(c))
+
+	mut e := 3
+	assert e == 3
+	mut f := &e
+	assert *f == 3
+	unsafe{*f = 5}
+	assert *f == 5
+	assert e == 5
 }
 
 fn test_fp() {
-	a := 1.0
+	// TODO: implement asserts for floats
+	a := 10.0
 	mut b := a
-	b += 0.5
+	b += 15.0
+	assert int(b) == 25
+	b -= 10.0
+	assert int(b) == 15
 	b *= 4
+	assert int(b) == 60
 	b /= 2
+	assert int(b) == 30
+
+	b += a
+	assert int(b) == 40
+	b -= a
+	assert int(b) == 30
+	b *= a
+	assert int(b) == 300
+	b /= a
+	assert int(b) == 30
 
 	println(int(b))
 }

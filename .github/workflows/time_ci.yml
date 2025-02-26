@@ -15,11 +15,11 @@ on:
       - '!**.md'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: time-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test-time-linux:
+  time-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
       - name: Test in a timezone using daylight saving (Europe/Paris)
         run: TZ=Europe/Paris ./v test vlib/time/
 
-  test-time-macos:
+  time-macos:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +53,7 @@ jobs:
       - name: Test in a timezone using daylight saving (Europe/Paris)
         run: TZ=Europe/Paris ./v test vlib/time/
 
-  test-time-windows:
+  time-windows:
     runs-on: windows-2019
     steps:
       - uses: actions/checkout@v4

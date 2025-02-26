@@ -5,6 +5,7 @@ module checker
 
 import v.ast
 import v.token
+import encoding.utf8.validate
 
 fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
@@ -31,7 +32,7 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 			return `s`
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
-			|| sym.kind in [.enum, .array, .array_fixed, .struct, .map, .multi_return, .sum_type, .interface, .none]
+			|| sym.kind in [.enum, .array, .array_fixed, .struct, .map, .multi_return, .sum_type, .interface, .aggregate, .none]
 			|| ftyp.has_option_or_result() || sym.has_method('str') {
 			return `s`
 		} else {
@@ -47,11 +48,14 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 		mut ftyp := c.expr(mut expr)
 		ftyp = c.type_resolver.get_type_or_default(expr, c.check_expr_option_or_result_call(expr,
 			ftyp))
-		if ftyp == ast.void_type {
+		if ftyp == ast.void_type || ftyp == 0 {
 			c.error('expression does not return a value', expr.pos())
 		} else if ftyp == ast.char_type && ftyp.nr_muls() == 0 {
 			c.error('expression returning type `char` cannot be used in string interpolation directly, print its address or cast it to an integer instead',
 				expr.pos())
+		}
+		if ftyp == 0 {
+			return ast.void_type
 		}
 		c.markused_string_inter_lit(mut node, ftyp)
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
@@ -128,6 +132,10 @@ const unicode_lit_overflow_message = 'unicode character exceeds max allowed valu
 // https://stackoverflow.com/questions/52203351/why-unicode-is-restricted-to-0x10ffff
 @[direct_array_access]
 fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
+	valid_utf8 := validate.utf8_string(node.val)
+	if !valid_utf8 {
+		c.warn("invalid utf8 string, please check your file's encoding is utf8", node.pos)
+	}
 	mut idx := 0
 	for idx < node.val.len {
 		match node.val[idx] {

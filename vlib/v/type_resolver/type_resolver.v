@@ -89,6 +89,14 @@ fn (t &TypeResolver) error(s string, pos token.Pos) {
 	exit(1)
 }
 
+// promote_type resolves the final type of different generic/comptime operand types
+pub fn (t &TypeResolver) promote_type(left_type ast.Type, right_type ast.Type) ast.Type {
+	if left_type == ast.f32_type && right_type == ast.f64_type {
+		return right_type
+	}
+	return left_type
+}
+
 // get_type_or_default retries the comptime value if the AST node is related to comptime otherwise default_typ is returned
 @[inline]
 pub fn (mut t TypeResolver) get_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
@@ -96,7 +104,15 @@ pub fn (mut t TypeResolver) get_type_or_default(node ast.Expr, default_typ ast.T
 		ast.Ident {
 			if node.ct_expr {
 				ctyp := t.get_type(node)
-				return if ctyp != ast.void_type { ctyp } else { default_typ }
+				return if ctyp != ast.void_type {
+					if node.or_expr.kind == .absent {
+						ctyp
+					} else {
+						ctyp.clear_flag(.option)
+					}
+				} else {
+					default_typ
+				}
 			}
 		}
 		ast.SelectorExpr {
@@ -134,6 +150,12 @@ pub fn (mut t TypeResolver) get_type_or_default(node ast.Expr, default_typ ast.T
 				return t.resolver.unwrap_generic(node.typ)
 			}
 		}
+		ast.PostfixExpr {
+			if node.op == .question && node.expr is ast.Ident && node.expr.ct_expr {
+				ctyp := t.get_type(node)
+				return if ctyp != ast.void_type { ctyp } else { default_typ }
+			}
+		}
 		else {
 			return default_typ
 		}
@@ -168,13 +190,24 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 						ctyp
 					}
 				}
+				.aggregate {
+					t.get_ct_type_or_default(node.name, if node.obj.smartcasts.len > 0 {
+						node.obj.smartcasts.last()
+					} else {
+						node.obj.typ
+					})
+				}
 				.key_var, .value_var {
 					// key and value variables from normal for stmt
 					t.get_ct_type_or_default(node.name, ast.void_type)
 				}
 				.field_var {
 					// field var from $for loop
-					t.info.comptime_for_field_type
+					if node.obj.ct_type_unwrapped {
+						t.info.comptime_for_field_type.clear_flag(.option)
+					} else {
+						t.info.comptime_for_field_type
+					}
 				}
 				else {
 					ast.void_type
@@ -183,9 +216,13 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 		}
 	} else if node is ast.ComptimeSelector {
 		// val.$(field.name)
-		return t.get_comptime_selector_type(node, ast.void_type)
+		ctyp := t.get_comptime_selector_type(node, ast.void_type)
+		if node.or_block.kind == .propagate_option {
+			return ctyp.clear_flag(.option)
+		}
+		return ctyp
 	} else if node is ast.SelectorExpr {
-		if t.info.is_comptime_selector_type(node) {
+		if node.is_field_typ {
 			return t.get_type_from_comptime_var(node.expr as ast.Ident)
 		}
 		if node.expr is ast.Ident && node.expr.ct_expr {
@@ -194,7 +231,17 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 			// Struct[T] can have field with generic type
 			if struct_sym.info is ast.Struct && struct_sym.info.generic_types.len > 0 {
 				if field := t.table.find_field(struct_sym, node.field_name) {
+					if f_unwrap := node.scope.find_struct_field(ast.Expr(node.expr).str(),
+						t.get_type_or_default(node.expr, node.expr_type), node.field_name)
+					{
+						return f_unwrap.smartcasts.last()
+					}
 					return field.typ
+				}
+			} else {
+				sym := t.table.sym(t.resolver.unwrap_generic(node.expr_type))
+				if f := t.table.find_field_with_embeds(sym, node.field_name) {
+					return f.typ
 				}
 			}
 		}
@@ -223,6 +270,12 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 	} else if node is ast.CastExpr && node.typ.has_flag(.generic) {
 		// T(expr)
 		return t.resolver.unwrap_generic(node.typ)
+	} else if node is ast.PostfixExpr && node.op == .question
+		&& node.expr in [ast.Ident, ast.ComptimeSelector] {
+		// var?
+		// f.$(field.name)?
+		ctyp := t.get_type(node.expr)
+		return ctyp.clear_flag(.option)
 	}
 	return ast.void_type
 }

@@ -323,7 +323,7 @@ pub fn new(config Config) !&Picoev {
 	// epoll on linux
 	// kqueue on macos and bsd
 	// select on windows and others
-	$if linux {
+	$if linux || termux {
 		pv.loop = create_epoll_loop(0) or { panic(err) }
 	} $else $if freebsd || macos {
 		pv.loop = create_kqueue_loop(0) or { panic(err) }

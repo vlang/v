@@ -18,12 +18,12 @@ on:
       - '!cmd/tools/builders/**.v'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: other-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   prevent-gpl-licenses:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout V ${{ github.head_ref }}
@@ -46,7 +46,7 @@ jobs:
           diff -d -a -U 2 --color=always gpl_res_vmaster gpl_res_vnew
 
   code-formatting:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
@@ -57,12 +57,12 @@ jobs:
       - name: Build local v
         run: make -j4 && ./v symlink
       - name: v test-cleancode
-        run: ./v test-cleancode
+        run: ./v -silent test-cleancode
       - name: v test-fmt
-        run: ./v test-fmt
+        run: ./v -silent test-fmt
 
   performance-regressions:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
@@ -86,7 +86,7 @@ jobs:
         run: ./v repeat --max_time 1731 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o v.c cmd/v' . ./vmaster
 
   misc-tooling:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -124,7 +124,7 @@ jobs:
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
   parser-silent:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4

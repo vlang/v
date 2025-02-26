@@ -20,13 +20,13 @@ on:
       - '!**.md'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: puzzle_vibes-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   v-compiles-puzzle-vibes:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -53,14 +53,8 @@ jobs:
       - name: Check PV compiles with -g
         run: cd puzzle_vibes && v -g .
 
-      - name: Check PV compiles with -skip-unused
-        run: cd puzzle_vibes && v -skip-unused .
-
-      - name: Check PV compiles with both -g and -skip-unused
-        run: cd puzzle_vibes && v -g -skip-unused .
-
       - name: Check PV compiles with -prod
         run: cd puzzle_vibes && v -prod .
 
-      - name: Check PV compiles with -prod and -g and -skip-unused
-        run: cd puzzle_vibes && v -prod -g -skip-unused .
+      - name: Check PV compiles with -prod and -g
+        run: cd puzzle_vibes && v -prod -g .

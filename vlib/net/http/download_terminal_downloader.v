@@ -28,7 +28,11 @@ pub fn (mut d TerminalStreamingDownloader) on_chunk(request &Request, chunk []u8
 	d.past_time = now
 	d.past_received = already_received
 	ratio := f64(already_received) / f64(expected)
-	estimated := time.Duration(i64(f64(elapsed) / ratio))
+	res := f64(elapsed) / ratio
+	mut estimated := time.Duration(max_i64)
+	if f64(min_i64) < res && res < f64(max_i64) {
+		estimated = i64(res)
+	}
 	speed := f64(time.millisecond) * f64(already_received) / f64(elapsed)
 	elapsed_s := elapsed.seconds()
 	estimated_s := estimated.seconds()

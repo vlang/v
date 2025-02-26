@@ -25,6 +25,9 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 			if branch.stmts.len == 1 {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
+					if stmt.expr is ast.ArrayInit && stmt.expr.is_fixed {
+						return true
+					}
 					if g.need_tmp_var_in_expr(stmt.expr) {
 						return true
 					}
@@ -205,9 +208,19 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write_v_source_line_info(branch)
 					g.write('if (')
 				}
+				need_deref := node.cond_type.nr_muls() > 1
+				if need_deref {
+					g.write2('(', '*'.repeat(node.cond_type.nr_muls() - 1))
+				}
 				g.write(cond_var)
+				if need_deref {
+					g.write(')')
+				}
 				cur_expr := unsafe { &branch.exprs[sumtype_index] }
 				if cond_sym.kind == .sum_type {
+					if cur_expr is ast.TypeNode {
+						g.type_resolver.update_ct_type(cond_var, cur_expr.typ)
+					}
 					g.write('${dot_or_ptr}_typ == ')
 					if cur_expr is ast.None {
 						g.write('${ast.none_type.idx()} /* none */')

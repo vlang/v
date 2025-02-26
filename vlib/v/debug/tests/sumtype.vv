@@ -20,9 +20,11 @@ fn sumtype() {
 	b := ?MySum(Test{
 		a: 1
 	})
-	if b is Test {
-		dump(b)
-		$dbg;
+	if b != none {
+		if b is Test {
+    		dump(b)
+    		$dbg;
+    	}
 	}
 }
 

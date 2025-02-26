@@ -20,42 +20,70 @@ __global g_memory_block &VMemoryBlock
 @[heap]
 struct VMemoryBlock {
 mut:
-	id        int
-	cap       isize
-	start     &u8           = 0
-	previous  &VMemoryBlock = 0
-	remaining isize
-	current   &u8 = 0
-	mallocs   int
+	current  &u8           = 0 // 8
+	stop     &u8           = 0 // 8
+	start    &u8           = 0 // 8
+	previous &VMemoryBlock = 0 // 8
+	next     &VMemoryBlock = 0 // 8
+	id       int // 4
+	mallocs  int // 4
+}
+
+fn vmemory_abort_on_nil(p voidptr, bytes isize) {
+	if unsafe { p == 0 } {
+		C.fprintf(C.stderr, c'could not allocate %lld bytes\n', bytes)
+		exit(1)
+	}
 }
 
 @[unsafe]
 fn vmemory_block_new(prev &VMemoryBlock, at_least isize) &VMemoryBlock {
-	mut v := unsafe { &VMemoryBlock(C.calloc(1, sizeof(VMemoryBlock))) }
+	vmem_block_size := sizeof(VMemoryBlock)
+	mut v := unsafe { &VMemoryBlock(C.calloc(1, vmem_block_size)) }
+	vmemory_abort_on_nil(v, vmem_block_size)
 	if unsafe { prev != 0 } {
 		v.id = prev.id + 1
 	}
 
 	v.previous = prev
-	block_size := if at_least < prealloc_block_size { prealloc_block_size } else { at_least }
+	if unsafe { prev != 0 } {
+		prev.next = v
+	}
+	block_size := if at_least < isize(prealloc_block_size) {
+		isize(prealloc_block_size)
+	} else {
+		at_least
+	}
+	$if prealloc_trace_malloc ? {
+		C.fprintf(C.stderr, c'vmemory_block_new id: %d, block_size: %lld, at_least: %lld\n',
+			v.id, block_size, at_least)
+	}
 	v.start = unsafe { C.malloc(block_size) }
-	v.cap = block_size
-	v.remaining = block_size
+	vmemory_abort_on_nil(v.start, block_size)
+	$if prealloc_memset ? {
+		unsafe { C.memset(v.start, int($d('prealloc_memset_value', 0)), block_size) }
+	}
+	v.stop = unsafe { &u8(i64(v.start) + block_size) }
 	v.current = v.start
 	return v
 }
 
 @[unsafe]
 fn vmemory_block_malloc(n isize) &u8 {
+	$if prealloc_trace_malloc ? {
+		C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, n: %lld\n',
+			g_memory_block.id, n)
+	}
 	unsafe {
-		if g_memory_block.remaining < n {
+		remaining := i64(g_memory_block.stop) - i64(g_memory_block.current)
+		if _unlikely_(remaining < n) {
 			g_memory_block = vmemory_block_new(g_memory_block, n)
 		}
-		mut res := &u8(0)
-		res = g_memory_block.current
-		g_memory_block.remaining -= n
-		g_memory_block.mallocs++
+		res := &u8(g_memory_block.current)
 		g_memory_block.current += n
+		$if prealloc_stats ? {
+			g_memory_block.mallocs++
+		}
 		return res
 	}
 }
@@ -64,26 +92,81 @@ fn vmemory_block_malloc(n isize) &u8 {
 
 @[unsafe]
 fn prealloc_vinit() {
+	$if prealloc_trace_vinit ? {
+		C.fprintf(C.stderr, c'prealloc_vinit started\n')
+	}
 	unsafe {
-		g_memory_block = vmemory_block_new(nil, prealloc_block_size)
+		g_memory_block = vmemory_block_new(nil, isize(prealloc_block_size))
 		at_exit(prealloc_vcleanup) or {}
 	}
 }
 
 @[unsafe]
 fn prealloc_vcleanup() {
+	$if prealloc_trace_vcleanup ? {
+		C.fprintf(C.stderr, c'prealloc_vcleanup started\n')
+	}
 	$if prealloc_stats ? {
 		// Note: we do 2 loops here, because string interpolation
 		// in the first loop may still use g_memory_block
 		// The second loop however should *not* allocate at all.
 		mut nr_mallocs := i64(0)
+		mut total_used := i64(0)
 		mut mb := g_memory_block
 		for unsafe { mb != 0 } {
 			nr_mallocs += mb.mallocs
-			eprintln('> freeing mb.id: ${mb.id:3} | cap: ${mb.cap:7} | rem: ${mb.remaining:7} | start: ${voidptr(mb.start)} | current: ${voidptr(mb.current)} | diff: ${u64(mb.current) - u64(mb.start):7} bytes | mallocs: ${mb.mallocs}')
+			used := i64(mb.current) - i64(mb.start)
+			total_used += used
+			remaining := i64(mb.stop) - i64(mb.current)
+			size := i64(mb.stop) - i64(mb.start)
+			C.fprintf(C.stderr, c'> freeing mb: %16p, mb.id: %3d | size: %10lld | rem: %10lld | start: %16p | current: %16p | used: %10lld bytes | mallocs: %6d\n',
+				mb, mb.id, size, remaining, mb.start, mb.current, used, mb.mallocs)
 			mb = mb.previous
 		}
-		eprintln('> nr_mallocs: ${nr_mallocs}')
+		C.fprintf(C.stderr, c'> nr_mallocs: %lld, total_used: %lld bytes\n', nr_mallocs,
+			total_used)
+	}
+	$if prealloc_dump ? {
+		C.fprintf(C.stderr, c'prealloc_vcleanup dumping memory contents ...\n')
+		mut start := g_memory_block
+		unsafe {
+			for start.previous != 0 {
+				start = start.previous
+			}
+			C.fprintf(C.stderr, c'prealloc_vcleanup      start: %p\n', start)
+			C.fprintf(C.stderr, c'prealloc_vcleanup   start.id: %d\n', start.id)
+			C.fprintf(C.stderr, c'prealloc_vcleanup start.next: %p\n', start.next)
+
+			mut total_used := u64(0)
+			path := $d('memdumpfile', 'memdump.bin')
+			C.fprintf(C.stderr, c'prealloc_vcleanup dumping process memory to path: %s\n',
+				path.str)
+			stream := C.fopen(path.str, 'wb'.str)
+			mut mb := start
+			for {
+				used := u64(mb.current) - u64(mb.start)
+				total_used += used
+				C.fprintf(C.stderr, c'prealloc_vcleanup dumping mb: %p, mb.id: %d, used: %10lld bytes\n',
+					mb, mb.id, used)
+
+				mut ptr := mb.start
+				mut remaining_bytes := isize(used)
+				mut x := isize(0)
+				for remaining_bytes > 0 {
+					x = isize(C.fwrite(ptr, 1, remaining_bytes, stream))
+					ptr += x
+					remaining_bytes -= x
+				}
+
+				if mb.next == 0 {
+					break
+				}
+				mb = mb.next
+			}
+			C.fclose(stream)
+			C.fprintf(C.stderr, c'prealloc_vcleanup total dump size in bytes: %lld\n',
+				total_used)
+		}
 	}
 	unsafe {
 		for g_memory_block != 0 {

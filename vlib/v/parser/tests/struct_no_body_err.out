@@ -1,0 +1,5 @@
+vlib/v/parser/tests/struct_no_body_err.vv:1:8: error: `struct` lacks body
+    1 | struct Lexer
+      |        ~~~~~
+    2 | 
+    3 | struct Token {

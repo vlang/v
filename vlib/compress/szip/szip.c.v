@@ -14,7 +14,7 @@ pub:
 pub struct C.zip_t {
 }
 
-type Zip = C.zip_t
+pub type Zip = C.zip_t
 
 pub type Fn_on_extract_entry = fn (&&char, &&char) int
 

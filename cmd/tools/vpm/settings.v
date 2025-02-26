@@ -34,6 +34,7 @@ fn init_settings() VpmSettings {
 	is_ci := os.getenv('CI') != ''
 
 	mut logger := &log.Log{}
+	logger.set_output_stream(os.stderr())
 	if is_dbg {
 		logger.set_level(.debug)
 	}

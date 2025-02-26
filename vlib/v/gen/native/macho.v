@@ -44,14 +44,14 @@ struct Reloc {
 fn (mut g Gen) macho_segment64_pagezero() {
 	g.macho_add_loadcommand(lc_segment_64, 72)
 	g.write_string_with_padding('__PAGEZERO', 16) // section name
-	g.write64(0) // vmaddr
+	g.write64(i64(0)) // vmaddr
 	if g.pref.arch == .amd64 {
 		g.write64(i64(g.get_pagesize())) // vmsize
 	} else {
 		g.write64(base_addr) // vmsize
 	}
-	g.write64(0) // fileoff
-	g.write64(0) // filesize
+	g.write64(i64(0)) // fileoff
+	g.write64(i64(0)) // filesize
 	g.write32(0) // maxprot
 	g.write32(0) // initprot
 	g.write32(0) // nsects
@@ -86,17 +86,17 @@ fn (mut g Gen) macho_segment64_linkedit() {
 	g.write_string_with_padding('__LINKEDIT', 16)
 
 	if g.pref.arch == .amd64 {
-		g.write64(0x3000) // vmaddr
-		g.write64(0x1000) // vmsize
-		g.write64(0x1000) // fileoff
+		g.write64(i64(0x3000)) // vmaddr
+		g.write64(i64(0x1000)) // vmsize
+		g.write64(i64(0x1000)) // fileoff
 	} else {
 		// g.size_pos << g.buf.len
 		// g.write64(native.base_addr + g.get_pagesize()) // vmaddr
 		g.write64(i64(g.get_pagesize()) - 0x1000) // vmaddr
-		g.write64(0) // g.get_pagesize()) // vmsize
+		g.write64(i64(0)) // g.get_pagesize()) // vmsize
 		g.write64(i64(g.get_pagesize())) // fileoff
 	}
-	g.write64(0) // filesize
+	g.write64(i64(0)) // filesize
 	g.write32(7) // maxprot
 	g.write32(3) // initprot // must be writeable
 	g.write32(0) // nsects
@@ -134,7 +134,7 @@ fn (mut g Gen) macho_segment64_text() []i32 {
 	g.write64(base_addr) // vmaddr
 
 	g.write64(i64(g.get_pagesize()) * 2) // vmsize
-	g.write64(0) // fileoff
+	g.write64(i64(0)) // fileoff
 	g.write64(i64(g.get_pagesize()) + 63) // filesize
 
 	g.write32(7) // maxprot
@@ -146,13 +146,13 @@ fn (mut g Gen) macho_segment64_text() []i32 {
 	g.write_string_with_padding('__TEXT', 16) // segment name
 	if g.pref.arch == .arm64 {
 		g.write64(base_addr + i64(g.get_pagesize())) // vmaddr
-		g.write64(0) // vmsize
+		g.write64(i64(0)) // vmsize
 		g.write32(0) // offset
 		g.write32(4) // align
 	} else {
 		g.write64(base_addr + i64(g.get_pagesize())) // vmaddr
 		patch << i32(g.buf.len)
-		g.write64(0) // vmsize
+		g.write64(i64(0)) // vmsize
 		g.write32(g.get_pagesize()) // offset
 		g.write32(0) // align
 	}
@@ -292,10 +292,10 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	g.write32(0x19) // LC_SEGMENT_64
 	g.write32(0x98) // command size
 	g.zeroes(16) // segment name
-	g.write64(0) // VM address
-	g.write64(0x25) // VM size
+	g.write64(i64(0)) // VM address
+	g.write64(i64(0x25)) // VM size
 	g.write64(i64(text_offset)) // file offset
-	g.write64(0x25) // file size
+	g.write64(i64(0x25)) // file size
 	g.write32(0x7) // max vm protection
 	g.write32(0x7) // initial vm protection
 	g.write32(0x1) // # of sections
@@ -303,8 +303,8 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	////
 	g.write_string_with_padding('__text', 16) // section name
 	g.write_string_with_padding('__TEXT', 16) // segment name
-	g.write64(0) // address
-	g.write64(0x25) // size
+	g.write64(i64(0)) // address
+	g.write64(i64(0x25)) // size
 	g.write32(text_offset) // offset
 	if g.pref.arch == .arm64 {
 		g.write32(4) // alignment
@@ -363,7 +363,7 @@ pub fn (mut g Gen) generate_macho_footer() {
 		// eprintln('$n + $delta')
 		g.write32_at(i64(o), n + delta)
 	}
-	g.write64(0)
+	g.write64(i64(0))
 	g.macho_patch_header()
 	if g.pref.arch == .amd64 {
 		call_delta := i32(g.main_fn_addr - g.code_start_pos) - 5

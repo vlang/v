@@ -203,7 +203,8 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
 	deref := if typ.is_ptr() {
-		'**(${sym.cname}**)&'
+		dot := if expects_ptr { '*'.repeat(typ.nr_muls()) } else { '*'.repeat(typ.nr_muls() + 1) }
+		'${dot}(${sym.cname}**)&'
 	} else if expects_ptr {
 		'(${sym.cname}*)'
 	} else {
@@ -309,7 +310,7 @@ fn (mut g Gen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_f
 	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} a); // auto')
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} a) {')
-	fn_builder.writeln('\tstrings__Builder sb = strings__new_builder(${info.types.len} * 10);')
+	fn_builder.writeln('\tstrings__Builder sb = strings__new_builder(2 + ${info.types.len} * 10);')
 	fn_builder.writeln('\tstrings__Builder_write_string(&sb, _SLIT("("));')
 	for i, typ in info.types {
 		sym := g.table.sym(typ)
@@ -611,7 +612,7 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} a) { return indent_${str_fn_name}(a, 0);}')
 	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} a, int indent_count); // auto')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} a, int indent_count) {')
-	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(a.len * 10);')
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(2 + a.len * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 	if sym.kind == .function {
@@ -718,7 +719,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${def_arg}) { return indent_${str_fn_name}(a, 0);}')
 	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${def_arg}, int indent_count); // auto')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${def_arg}, int indent_count) {')
-	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(${info.size} * 10);')
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(2 + ${info.size} * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < ${info.size}; ++i) {')
 	if sym.kind == .function {
@@ -814,7 +815,7 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} m) { return indent_${str_fn_name}(m, 0);}')
 	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} m, int indent_count); // auto')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} m, int indent_count) { /* gen_str_for_map */')
-	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.len*10);')
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(2 + m.key_values.len * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT("{"));')
 	g.auto_str_funcs.writeln('\tbool is_first = true;')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < m.key_values.len; ++i) {')

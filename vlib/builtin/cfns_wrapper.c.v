@@ -22,6 +22,16 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
 	$if trace_vmemcpy ? {
 		C.fprintf(C.stderr, c'vmemcpy dest: %p src: %p n: %6ld\n', dest, const_src, n)
 	}
+	$if trace_vmemcpy_nulls ? {
+		if dest == unsafe { 0 } || const_src == unsafe { 0 } {
+			C.fprintf(C.stderr, c'vmemcpy null pointers passed, dest: %p src: %p n: %6ld\n',
+				dest, const_src, n)
+			print_backtrace()
+		}
+	}
+	if n == 0 {
+		return dest
+	}
 	unsafe {
 		return C.memcpy(dest, const_src, n)
 	}
@@ -36,6 +46,9 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
 pub fn vmemmove(dest voidptr, const_src voidptr, n isize) voidptr {
 	$if trace_vmemmove ? {
 		C.fprintf(C.stderr, c'vmemmove dest: %p src: %p n: %6ld\n', dest, const_src, n)
+	}
+	if n == 0 {
+		return dest
 	}
 	unsafe {
 		return C.memmove(dest, const_src, n)
@@ -59,6 +72,9 @@ pub fn vmemcmp(const_s1 voidptr, const_s2 voidptr, n isize) int {
 	$if trace_vmemcmp ? {
 		C.fprintf(C.stderr, c'vmemcmp s1: %p s2: %p n: %6ld\n', const_s1, const_s2, n)
 	}
+	if n == 0 {
+		return 0
+	}
 	unsafe {
 		return C.memcmp(const_s1, const_s2, n)
 	}
@@ -71,6 +87,16 @@ pub fn vmemset(s voidptr, c int, n isize) voidptr {
 	$if trace_vmemset ? {
 		C.fprintf(C.stderr, c'vmemset s: %p c: %d n: %6ld\n', s, c, n)
 	}
+	$if trace_vmemset_nulls ? {
+		if s == unsafe { 0 } {
+			C.fprintf(C.stderr, c'vmemset null pointers passed s: %p, c: %6d, n: %6ld\n',
+				s, c, n)
+			print_backtrace()
+		}
+	}
+	if n == 0 {
+		return s
+	}
 	unsafe {
 		return C.memset(s, c, n)
 	}
@@ -80,5 +106,19 @@ type FnSortCB = fn (const_a voidptr, const_b voidptr) int
 
 @[inline; unsafe]
 fn vqsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
+	$if trace_vqsort ? {
+		C.fprintf(C.stderr, c'vqsort base: %p, nmemb: %6uld, size: %6uld, sort_cb: %p\n',
+			base, nmemb, size, sort_cb)
+	}
+	if nmemb == 0 {
+		return
+	}
+	$if trace_vqsort_nulls ? {
+		if base == unsafe { 0 } || u64(sort_cb) == 0 {
+			C.fprintf(C.stderr, c'vqsort null pointers passed base: %p, nmemb: %6uld, size: %6uld, sort_cb: %p\n',
+				base, nmemb, size, sort_cb)
+			print_backtrace()
+		}
+	}
 	C.qsort(base, nmemb, size, voidptr(sort_cb))
 }

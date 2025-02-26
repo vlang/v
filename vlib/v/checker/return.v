@@ -392,7 +392,7 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 			ast.ExprStmt {
 				if last_stmt.expr is ast.CallExpr {
 					if last_stmt.expr.should_be_skipped {
-						c.error('[noreturn] functions cannot end with a skippable `[if ..]` call',
+						c.error('@[noreturn] functions cannot end with a skippable `@[if ..]` call',
 							last_stmt.pos)
 						return
 					}

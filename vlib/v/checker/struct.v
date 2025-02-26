@@ -835,8 +835,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						init_field.expr.pos.extend(init_field.expr.expr.pos()))
 				}
 			}
-			c.check_uninitialized_struct_fields_and_embeds(node, type_sym, mut info, mut
-				inited_fields)
+			if !node.has_update_expr {
+				c.check_uninitialized_struct_fields_and_embeds(node, type_sym, mut info, mut
+					inited_fields)
+			}
 			// println('>> checked_types.len: $checked_types.len | checked_types: $checked_types | type_sym: $type_sym.name ')
 		}
 		.sum_type {

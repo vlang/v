@@ -362,7 +362,11 @@ const c_common_macros = '
 
 // for __offset_of
 #ifndef __offsetof
+#if defined(__TINYC__) || defined(_MSC_VER)
 	#define __offsetof(PTYPE,FIELDNAME) ((size_t)(&((PTYPE *)0)->FIELDNAME))
+#else
+	#define __offsetof(st, m) __builtin_offsetof(st, m)
+#endif
 #endif
 
 #define OPTION_CAST(x) (x)
@@ -536,6 +540,12 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 int load_so(byteptr);
 void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup(void);
+#ifdef _WIN32
+	// workaround for windows, export _vinit_caller/_vcleanup_caller, let dl.open()/dl.close() call it
+	// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!
+	VV_EXPORTED_SYMBOL void _vinit_caller();
+	VV_EXPORTED_SYMBOL void _vcleanup_caller();
+#endif
 #define sigaction_size sizeof(sigaction);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 

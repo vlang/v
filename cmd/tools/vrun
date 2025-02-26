@@ -1,0 +1,26 @@
+#!/bin/sh
+v run $@
+
+## The purpose of this script, is to make it easier to run V scripts on systems, where
+## the `/usr/bin/env` implementation, does not yet support a `-S` option.
+## Notes: FreeBSD's env supports it since 2006.
+##        GNU's coreutils env supports it since 2018.
+##        However, for example BusyBox's env still does not (2025/02/04), and there may
+##        be others like it too :-| .
+
+## On such systems, you can copy this script, or symlink it, somewhere in your PATH,
+## and then start your .vsh scripts with: `#!/usr/bin/env vrun`.
+## You can also start them with `#!/usr/bin/env /full/path/to/v/cmd/tools/vrun`, or
+## even just `#!/full/path/to/v run` directly, if you prefer.
+
+## You can check, if it works, by saving this as a /tmp/args.vsh file:
+## ```v
+## !/usr/bin/env vrun
+## println(arguments())
+## ```
+##
+## ... then run `chmod 755 /tmp/args.vsh`, and finally run:
+## `/tmp/args.vsh abc 123`
+##
+## If everything works correctly, you should see something like:
+## ['/tmp/args', 'abc', '123']

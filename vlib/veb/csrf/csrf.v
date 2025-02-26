@@ -40,6 +40,8 @@ pub:
 	cookie_domain string
 	// whether the cookie can be send only over HTTPS
 	secure bool
+	// enable printing verbose statements
+	verbose bool
 }
 
 pub struct CsrfContext {
@@ -136,7 +138,9 @@ pub fn protect(mut ctx veb.Context, config &CsrfConfig) bool {
 	}
 	// retrieve timestamp and nonce from csrftoken
 	data := base64.url_decode_str(actual_token).split('.')
-	println(data)
+	if config.verbose {
+		eprintln('[CSRF] Token data: ${data}')
+	}
 	if data.len < 3 {
 		request_is_invalid(mut ctx)
 		return false
@@ -164,15 +168,22 @@ pub fn protect(mut ctx veb.Context, config &CsrfConfig) bool {
 
 	// generate new hmac based on information in the http request
 	expected_hash := generate_cookie(expire_timestamp, expected_token, config.secret)
-	eprintln(actual_hash)
-	eprintln(expected_hash)
+	if config.verbose {
+		eprintln('[CSRF] Actual Hash: ${actual_hash}')
+		eprintln('[CSRF] Expected Hash: ${expected_hash}')
+	}
 
 	// if the new hmac matches the cookie value the request is legit
 	if actual_hash != expected_hash {
+		if config.verbose {
+			eprintln('[CSRF] The actual hash differs from the expected hash')
+		}
 		request_is_invalid(mut ctx)
 		return false
 	}
-	eprintln('matching')
+	if config.verbose {
+		eprintln('[CSRF] The actual hash matches the expected hash')
+	}
 
 	return true
 }

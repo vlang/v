@@ -144,7 +144,7 @@ fn (err InputBufferSizeError) msg() string {
 // new_digest creates an initialized digest structure based on
 // the hash size and whether or not you specify a MAC key.
 //
-// hash_size - the number if bytes in the generated hash.
+// hash_size - the number of bytes in the generated hash.
 //     Legal values are between 1 and 32.
 //
 // key - key used for generating a prefix MAC.  A zero length

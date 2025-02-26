@@ -17,13 +17,14 @@ pub fn (mut g Gen) stmts(stmts []ast.Stmt) {
 fn (mut g Gen) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
-			g.code_gen.assign_stmt(node)
+			g.assign_stmt(node)
 		}
 		ast.Block {
 			g.stmts(node.stmts)
 		}
 		ast.BranchStmt {
 			label_name := node.label
+			// break / continue statements in for loops
 			for i := g.labels.branches.len - 1; i >= 0; i-- {
 				branch := g.labels.branches[i]
 				if label_name == '' || label_name == branch.name {
@@ -75,7 +76,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 
 			match node.kind {
-				'include', 'preinclude', 'define', 'insert' {
+				'include', 'preinclude', 'postinclude', 'define', 'insert' {
 					g.v_error('#${node.kind} is not supported with the native backend',
 						node.pos)
 				}
@@ -110,9 +111,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.TypeDecl {}
 		ast.InterfaceDecl {}
 		else {
-			eprintln('native.stmt(): bad node: ' + node.type_name())
+			g.n_error('${@LOCATION} bad node: ' + node.type_name())
 		}
 	}
+}
+
+fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
+	g.code_gen.assign_stmt(node)
 }
 
 fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
@@ -144,12 +149,12 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 								jump_addr = g.code_gen.cjmp(.jg)
 							}
 							else {
-								g.n_error('unsupported conditional in for-c loop')
+								g.n_error('${@LOCATION} unsupported conditional in for-c loop')
 							}
 						}
 					}
 					else {
-						g.n_error('unhandled infix.left')
+						g.n_error('${@LOCATION} unhandled infix.left')
 					}
 				}
 			}
@@ -208,62 +213,23 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		g.println('; label ${end_label}')
 		return
 	}
-	infix_expr := node.cond as ast.InfixExpr
-	mut jump_addr := i32(0) // location of `jne *00 00 00 00*`
+	g.println('; for stmt {')
+
 	start := g.pos()
 	start_label := g.labels.new_label()
 	g.labels.addrs[start_label] = start
-	g.println('; label ${start_label}')
-	match infix_expr.left {
-		ast.Ident {
-			match infix_expr.right {
-				ast.Ident {
-					reg := g.code_gen.main_reg()
-					g.code_gen.mov_var_to_reg(reg, infix_expr.right as ast.Ident)
-					g.code_gen.cmp_var_reg(infix_expr.left as ast.Ident, reg)
-				}
-				ast.IntegerLiteral {
-					lit := infix_expr.right as ast.IntegerLiteral
-					g.code_gen.cmp_var(infix_expr.left as ast.Ident, i32(lit.val.int()))
-				}
-				else {
-					g.n_error('unhandled expression type')
-				}
-			}
-			match infix_expr.left.tok_kind {
-				.lt {
-					jump_addr = g.code_gen.cjmp(.jge)
-				}
-				.gt {
-					jump_addr = g.code_gen.cjmp(.jle)
-				}
-				.le {
-					jump_addr = g.code_gen.cjmp(.jg)
-				}
-				.ge {
-					jump_addr = g.code_gen.cjmp(.jl)
-				}
-				.ne {
-					jump_addr = g.code_gen.cjmp(.je)
-				}
-				.eq {
-					jump_addr = g.code_gen.cjmp(.jne)
-				}
-				else {
-					g.n_error('unhandled infix cond token')
-				}
-			}
-		}
-		else {
-			g.n_error('unhandled infix.left')
-		}
-	}
+	g.println('; label ${start_label} (start of for loop)')
+
+	// Condition
+	mut cjmp_addr := g.condition(node.cond, false) // jmp if false, location of `jne *00 00 00 00*` (to be patched by LabelPatch)
 	end_label := g.labels.new_label()
 	g.labels.patches << LabelPatch{
 		id:  end_label
-		pos: jump_addr
+		pos: cjmp_addr
 	}
-	g.println('; jump to label ${end_label}')
+	g.println('; cjmp to label ${end_label} (out of loop)')
+
+	// Body of the loop
 	g.labels.branches << BranchLabel{
 		name:  node.label
 		start: start_label
@@ -273,62 +239,74 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.labels.branches.pop()
 	// Go back to `cmp ...`
 	g.code_gen.jmp_back(start)
-	// Update the jump addr to current pos
+
+	g.println('; for stmt }')
+	// Set the jump (out of the loop) addr to current pos
 	g.labels.addrs[end_label] = g.pos()
-	g.println('; label ${end_label}')
-	g.println('jmp after for')
+	g.println('; label ${end_label} (out of for loop)')
 }
 
 fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 	if node.is_range {
+		g.println('; for ${node.val_var} in range {')
 		// for a in node.cond .. node.high {
-		i := g.code_gen.allocate_var(node.val_var, 8, 0) // iterator variable
+
+		i := g.code_gen.allocate_var(node.val_var, 8, i64(0)) // iterator variable
+		g.println('; evaluate node.cond for lower bound:')
 		g.expr(node.cond) // outputs the lower loop bound (initial value) to the main reg
 		main_reg := g.code_gen.main_reg()
+		g.println('; move the result to i')
 		g.code_gen.mov_reg_to_var(LocalVar{i, ast.i64_type_idx, node.val_var}, main_reg) // i = node.cond // initial value
 
 		start := g.pos() // label-begin:
-		start_label := g.labels.new_label()
+
+		g.println('; check iterator against upper loop bound')
 		g.code_gen.mov_var_to_reg(main_reg, LocalVar{i, ast.i64_type_idx, node.val_var})
 		g.code_gen.push(main_reg) // put the iterator on the stack
 		g.expr(node.high) // final value (upper bound) to the main reg
 		g.code_gen.cmp_to_stack_top(main_reg)
 		jump_addr := g.code_gen.cjmp(.jge) // leave loop i >= upper bound
-
 		end_label := g.labels.new_label()
 		g.labels.patches << LabelPatch{
 			id:  end_label
 			pos: jump_addr
 		}
-		g.println('; jump to label ${end_label}')
+		g.println('; jump to label ${end_label} (end_label)')
+
+		start_label := g.labels.new_label() // used for continue
 		g.labels.branches << BranchLabel{
 			name:  node.label
 			start: start_label
 			end:   end_label
 		}
 		g.stmts(node.stmts) // writes the actual body of the loop
-		g.labels.addrs[start_label] = g.pos()
-		g.println('; label ${start_label}')
+
+		g.labels.addrs[start_label] = g.pos() // used for continue (continue: jump before the inc)
+		g.println('; label ${start_label} (continue_label)')
+
 		g.code_gen.inc_var(LocalVar{i, ast.i64_type_idx, node.val_var})
 		g.labels.branches.pop()
 		g.code_gen.jmp_back(start) // loops
+
 		g.labels.addrs[end_label] = g.pos()
-		g.println('; label ${end_label}')
+		g.println('; label ${end_label} (end_label)')
+		g.println('; for ${node.val_var} in range }')
 		/*
-		} else if node.kind == .array {
+	} else if node.kind == .array {
 	} else if node.kind == .array_fixed {
 	} else if node.kind == .map {
 	} else if node.kind == .string {
 	} else if node.kind == .struct {
 	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
 	} else if it.kind == .map {
-		*/
+	*/
 	} else {
-		g.v_error('for-in statement is not yet implemented', node.pos)
+		g.n_error('${@LOCATION} for-in ${node.kind} statement is not yet implemented')
 	}
 }
 
 fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
+	g.println('; gen_assert {')
 	mut cjmp_addr := i32(0)
 	ane := assert_node.expr
 	label := g.labels.new_label()
@@ -338,10 +316,10 @@ fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
 		pos: cjmp_addr
 	}
 	g.println('; jump to label ${label}')
-	g.expr(assert_node.expr)
 	g.code_gen.trap()
 	g.labels.addrs[label] = g.pos()
 	g.println('; label ${label}')
+	g.println('; gen_assert }')
 }
 
 fn (mut g Gen) gen_flag_hash_stmt(node ast.HashStmt) {
@@ -350,7 +328,9 @@ fn (mut g Gen) gen_flag_hash_stmt(node ast.HashStmt) {
 	} else if node.main.contains('-L') {
 		g.linker_include_paths << node.main.all_after('-L').trim_space()
 	} else if node.main.contains('-D') || node.main.contains('-I') {
-		g.v_error('`-D` and `-I` flags are not supported with the native backend', node.pos)
+		// g.v_error('`-D` and `-I` flags are not supported with the native backend', node.pos)
+		println(util.formatted_error('warn', '`-D` and `-I` flags are not supported with the native backend',
+			g.current_file.path, node.pos))
 	} else {
 		g.v_error('unknown `#flag` format: `${node.main}`', node.pos)
 	}

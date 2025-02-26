@@ -72,6 +72,7 @@ mut:
 	inside_orm               bool
 	inside_chan_decl         bool
 	inside_attr_decl         bool
+	array_dim                int               // array dim parsing level
 	fixed_array_dim          int               // fixed array dim parsing level
 	or_is_handled            bool              // ignore `or` in this expression
 	builtin_mod              bool              // are we in the `builtin` module?
@@ -332,7 +333,7 @@ pub fn (mut p Parser) parse() &ast.File {
 			p.pref)
 	}
 
-	return &ast.File{
+	ast_file := &ast.File{
 		path:             p.file_path
 		path_base:        p.file_base
 		is_test:          p.inside_test_file
@@ -340,6 +341,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		is_translated:    p.is_translated
 		nr_lines:         p.scanner.line_nr
 		nr_bytes:         p.scanner.text.len
+		nr_tokens:        p.scanner.all_tokens.len
 		mod:              module_decl
 		imports:          p.ast_imports
 		imported_symbols: p.imported_symbols
@@ -354,68 +356,16 @@ pub fn (mut p Parser) parse() &ast.File {
 		template_paths:   p.template_paths
 		unique_prefix:    p.unique_prefix
 	}
-}
-
-/*
-struct Queue {
-mut:
-	idx              int
-	mu               &sync.Mutex = sync.new_mutex()
-	mu2              &sync.Mutex = sync.new_mutex()
-	paths            []string
-	table            &ast.Table = unsafe { nil }
-	parsed_ast_files []&ast.File
-	pref             &pref.Preferences = unsafe { nil }
-	global_scope     &ast.Scope = unsafe { nil }
-}
-
-fn (mut q Queue) run() {
-	for {
-		q.mu.lock()
-		idx := q.idx
-		if idx >= q.paths.len {
-			q.mu.unlock()
-			return
-		}
-		q.idx++
-		q.mu.unlock()
-		println('run(idx=$idx)')
-		path := q.paths[idx]
-		file := parse_file(path, q.table, .skip_comments, q.pref, q.global_scope)
-		q.mu2.lock()
-		q.parsed_ast_files << file
-		q.mu2.unlock()
-		println('run done(idx=$idx)')
+	$if trace_parse_file_path_and_mod ? {
+		eprintln('>> ast.File, tokens: ${ast_file.nr_tokens:5}, mname: ${ast_file.mod.name:20}, sname: ${ast_file.mod.short_name:11}, path: ${p.file_display_path}')
 	}
+	return ast_file
 }
-*/
+
 pub fn parse_files(paths []string, mut table ast.Table, pref_ &pref.Preferences) []&ast.File {
 	mut timers := util.new_timers(should_print: false, label: 'parse_files: ${paths}')
 	$if time_parsing ? {
 		timers.should_print = true
-	}
-	$if macos {
-		/*
-		if !pref.no_parallel && paths[0].contains('/array.v') {
-			println('\n\n\nparse_files() nr_files=$paths.len')
-			println(paths)
-			nr_cpus := runtime.nr_cpus()
-			mut q := &Queue{
-				paths: paths
-				table: table
-				pref: pref
-				global_scope: global_scope
-				mu: sync.new_mutex()
-				mu2: sync.new_mutex()
-			}
-			for _ in 0 .. nr_cpus - 1 {
-				go q.run()
-			}
-			time.sleep(time.second)
-			println('all done')
-			return q.parsed_ast_files
-		}
-		*/
 	}
 	unsafe {
 		mut files := []&ast.File{cap: paths.len}
@@ -746,6 +696,9 @@ fn (mut p Parser) check_name() string {
 	name := p.tok.lit
 	if p.tok.kind != .name && p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
+	} else if p.tok.kind == .name && p.peek_tok.kind == .dot && name in p.imported_symbols {
+		// symbols like Enum.field_name
+		p.register_used_import_for_symbol_name(p.imported_symbols[name])
 	}
 	if !is_ident_name(name) {
 		p.check(.name)
@@ -1937,12 +1890,15 @@ fn (mut p Parser) is_attributes() bool {
 	return true
 }
 
-// when is_top_stmt is true attrs are added to p.attrs
+// when is_top_stmt is true, attrs are added to p.attrs
 fn (mut p Parser) attributes() {
 	start_pos := p.tok.pos()
 	mut is_at := false
 	if p.tok.kind == .lsbr {
-		p.warn('`[attr]` has been deprecated, use `@[attr]` instead')
+		if p.pref.is_fmt {
+		} else {
+			p.error('`[attr]` has been deprecated, use `@[attr]` instead')
+		}
 		// [attr]
 		p.check(.lsbr)
 	} else if p.tok.kind == .at {
@@ -3533,6 +3489,7 @@ fn (mut p Parser) parse_concrete_types() []ast.Type {
 }
 
 // is_generic_name returns true if the current token is a generic name.
+@[inline]
 fn (p &Parser) is_generic_name() bool {
 	return p.tok.kind == .name && util.is_generic_type_name(p.tok.lit)
 }

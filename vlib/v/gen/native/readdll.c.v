@@ -49,7 +49,7 @@ fn (mut g Gen) lookup_system_dll(dll string) !SystemDll {
 			}
 		}
 	} $else {
-		// TODO: look into librarys dirs
+		// TODO: look into library's dirs
 		return SystemDll{
 			name: dll
 		}
@@ -73,9 +73,10 @@ fn (di DllIndex) to_import() PeDllImport {
 
 fn index_dll(dll SystemDll) !DllIndex {
 	mut file := os.open(dll.full_path)!
+	exports := get_dllexports(mut file)!
 	index := DllIndex{
 		dllname: dll.name
-		exports: get_dllexports(mut file)!
+		exports: exports
 	}
 	file.close()
 	return index

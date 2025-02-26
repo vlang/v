@@ -801,6 +801,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface
 			&& ((!right_type.has_flag(.generic) && !left_type.has_flag(.generic))
 			|| right_sym.kind != left_sym.kind) {
+			// Disallow `array = voidptr` assign
+			if left_sym.kind in [.array, .array_fixed]
+				&& (right_type_unwrapped.is_voidptr() || right.is_nil()) {
+				left_str := c.table.type_to_str(left_type_unwrapped)
+				right_str := c.table.type_to_str(right_type_unwrapped)
+				c.error('cannot assign to `${left}`: expected `${left_str}`, not `${right_str}`',
+					right.pos())
+			}
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)
@@ -925,8 +933,12 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.Expr) {
 	if mut left.obj is ast.Var {
 		if right is ast.ComptimeSelector {
-			left.obj.ct_type_var = .field_var
 			left.obj.typ = c.comptime.comptime_for_field_type
+			if right.or_block.kind == .propagate_option {
+				left.obj.typ = left.obj.typ.clear_flag(.option)
+				left.obj.ct_type_unwrapped = true
+			}
+			left.obj.ct_type_var = .field_var
 		} else if right is ast.InfixExpr {
 			right_ct_var := c.comptime.get_ct_type_var(right.left)
 			if right_ct_var != .no_comptime {
@@ -959,6 +971,20 @@ fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.E
 				&& !right.comptime_ret_val && c.type_resolver.is_generic_expr(right) {
 				// mark variable as generic var because its type changes according to fn return generic resolution type
 				left.obj.ct_type_var = .generic_var
+			}
+		} else if right is ast.PostfixExpr && right.op == .question {
+			if right.expr is ast.Ident && right.expr.ct_expr {
+				right_obj_var := right.expr.obj as ast.Var
+				ctyp := c.type_resolver.get_type(right)
+				if ctyp != ast.void_type {
+					left.obj.ct_type_unwrapped = true
+					left.obj.ct_type_var = right_obj_var.ct_type_var
+					left.obj.typ = ctyp.clear_flag(.option)
+				}
+			} else if right.expr is ast.ComptimeSelector {
+				left.obj.ct_type_unwrapped = true
+				left.obj.ct_type_var = .field_var
+				left.obj.typ = c.comptime.comptime_for_field_type.clear_flag(.option)
 			}
 		}
 	}

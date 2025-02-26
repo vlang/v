@@ -28,6 +28,7 @@ pub mut:
 	arr_reverse      bool            // arr.reverse()
 	arr_init         bool            // [1, 2, 3]
 	arr_map          bool            // []map[key]value
+	type_name        bool            // var.type_name()
 	map_update       bool            // {...foo}
 	interpolation    bool            // '${foo} ${bar}'
 	option_or_result bool            // has panic call
@@ -94,9 +95,11 @@ pub mut:
 	pointer_size      int
 	// cache for type_to_str_using_aliases
 	cached_type_to_str map[u64]string
-	anon_struct_names  map[string]int // anon struct name -> struct sym idx
-	// counter for anon struct, avoid name conflicts.
+	// counters and maps for anon structs and unions, to avoid name conflicts.
+	anon_struct_names   map[string]int // anon struct name -> struct sym idx
 	anon_struct_counter int
+	anon_union_names    map[string]int // anon union name -> union sym idx
+	anon_union_counter  int
 }
 
 // used by vls to avoid leaks
@@ -338,7 +341,7 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 		}
 		ts = t.type_symbols[ts.parent_idx]
 	}
-	return error('unknown method `${name}`')
+	return error('unknown method')
 }
 
 @[params]
@@ -912,6 +915,11 @@ pub fn (mut t Table) register_anon_struct(name string, sym_idx int) {
 	t.anon_struct_names[name] = sym_idx
 }
 
+@[inline]
+pub fn (mut t Table) register_anon_union(name string, sym_idx int) {
+	t.anon_union_names[name] = sym_idx
+}
+
 pub fn (t &Table) known_type(name string) bool {
 	return t.type_idxs[name] != 0 || t.parsing_type == name || name in ['i32', 'byte']
 }
@@ -1330,6 +1338,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 		cname:      util.no_dots(name).replace_each(['&', ''])
 		language:   language
 		mod:        modname
+		is_pub:     true
 		is_builtin: name in builtins
 	}
 	return t.register_sym(ph_type)

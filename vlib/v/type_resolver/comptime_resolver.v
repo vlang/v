@@ -13,20 +13,13 @@ pub fn (mut t TypeResolver) get_comptime_selector_var_type(node ast.ComptimeSele
 	return field, field_name
 }
 
-// is_comptime_expr checks if the node is related to a comptime expr
-@[inline]
-pub fn (t &ResolverInfo) is_comptime_expr(node ast.Expr) bool {
-	return (node is ast.Ident && node.ct_expr)
-		|| (node is ast.IndexExpr && t.is_comptime_expr(node.left))
-		|| node is ast.ComptimeSelector
-}
-
 // has_comptime_expr checks if the expr contains some comptime expr
 @[inline]
 pub fn (t &ResolverInfo) has_comptime_expr(node ast.Expr) bool {
 	return (node is ast.Ident && node.ct_expr)
 		|| (node is ast.IndexExpr && t.has_comptime_expr(node.left))
 		|| node is ast.ComptimeSelector
+		|| (node is ast.PostfixExpr && t.has_comptime_expr(node.expr))
 		|| (node is ast.SelectorExpr && t.has_comptime_expr(node.expr))
 		|| (node is ast.InfixExpr && (t.has_comptime_expr(node.left)
 		|| t.has_comptime_expr(node.right)))
@@ -58,6 +51,9 @@ pub fn (t &ResolverInfo) is_comptime(node ast.Expr) bool {
 		ast.ComptimeSelector {
 			return true
 		}
+		ast.PostfixExpr {
+			return t.is_comptime(node.expr)
+		}
 		else {
 			false
 		}
@@ -68,6 +64,43 @@ pub fn (t &ResolverInfo) is_comptime(node ast.Expr) bool {
 @[inline]
 pub fn (t &ResolverInfo) is_comptime_variant_var(node ast.Ident) bool {
 	return node.name == t.comptime_for_variant_var
+}
+
+// typeof_type resolves type for typeof() expr where field.typ is resolved to real type instead of int type to make type(field.typ).name working
+pub fn (mut t TypeResolver) typeof_type(node ast.Expr, default_type ast.Type) ast.Type {
+	if t.info.is_comptime(node) {
+		return t.get_type(node)
+	} else if node is ast.SelectorExpr && node.expr_type != 0 {
+		if node.expr is ast.Ident && node.is_field_typ {
+			return t.get_type_from_comptime_var(node.expr)
+		}
+		sym := t.table.sym(t.resolver.unwrap_generic(node.expr_type))
+		if f := t.table.find_field_with_embeds(sym, node.field_name) {
+			return f.typ
+		}
+	}
+	return default_type
+}
+
+// typeof_field_type resolves the typeof[T]().<field_name> type
+pub fn (mut t TypeResolver) typeof_field_type(typ ast.Type, field_name string) ast.Type {
+	match field_name {
+		'name' {
+			return ast.string_type
+		}
+		'idx' {
+			return t.resolver.unwrap_generic(typ)
+		}
+		'unaliased_typ' {
+			return t.table.unaliased_type(t.resolver.unwrap_generic(typ))
+		}
+		'indirections' {
+			return ast.int_type
+		}
+		else {
+			return typ
+		}
+	}
 }
 
 // get_ct_type_var gets the comptime type of the variable (.generic_param, .key_var, etc)
@@ -87,24 +120,6 @@ pub fn (t &ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
 		return t.get_ct_type_var(node.expr)
 	}
 	return .no_comptime
-}
-
-// get_expr_type_or_default computes the ast node type regarding its or_expr if its comptime var otherwise default_typ is returned
-pub fn (mut t TypeResolver) get_expr_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
-	if !t.info.is_comptime_expr(node) {
-		return default_typ
-	}
-	ctyp := t.get_type(node)
-	match node {
-		ast.Ident {
-			// returns the unwrapped type of the var
-			if ctyp.has_flag(.option) && node.or_expr.kind != .absent {
-				return ctyp.clear_flag(.option)
-			}
-		}
-		else {}
-	}
-	return if ctyp != ast.void_type { ctyp } else { default_typ }
 }
 
 // get_type_from_comptime_var retrives the comptime type related to $for variable

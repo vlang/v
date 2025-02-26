@@ -54,7 +54,7 @@ fn test_create_and_dllmain() {
 				run_test('clang32')
 			}
 			$if msvc {
-				// run_test('msvc32')  // something wrong as it passes when it should fail
+				run_test('msvc32')
 			}
 		}
 	}

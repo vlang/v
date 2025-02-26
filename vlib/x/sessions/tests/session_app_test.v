@@ -40,7 +40,7 @@ pub fn (mut app App) before_accept_loop() {
 }
 
 pub fn (app &App) session_data(mut ctx Context) veb.Result {
-	return ctx.text(ctx.session_data.str())
+	return ctx.text('${ctx.session_data}')
 }
 
 pub fn (app &App) protected(mut ctx Context) veb.Result {
@@ -122,7 +122,7 @@ fn test_save_session() {
 	x := make_request_with_session_id(.get, '/session_data', sid)!
 
 	// cast to `?User` since, session_data is of type `?T`
-	assert x.body == ?User(default_user).str()
+	assert x.body == '${?User(default_user)}'
 }
 
 fn test_update_session() {
@@ -133,7 +133,7 @@ fn test_update_session() {
 
 	mut updated_user := default_user
 	updated_user.age++
-	assert x.body == ?User(updated_user).str()
+	assert x.body == '${?User(updated_user)}'
 }
 
 fn test_destroy_session() {

@@ -12,15 +12,15 @@ on:
       - '.github/workflows/symlink_ci.yml'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name == 'master' && github.sha || github.ref_name }}
+  group: symlink-${{ github.workflow }}-${{ github.ref_name == 'master' && github.sha || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
-  test:
+  symlink-unix:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-13]
+        os: [ubuntu-24.04, macos-13]
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +57,7 @@ jobs:
           echo 'println(123)' > hi.v
           v run hi.v
 
-  test-windows:
+  symlink-windows:
     runs-on: windows-2019
     strategy:
       matrix:

@@ -43,6 +43,7 @@ pub mut:
 	htype  ColumType = .string
 }
 
+@[heap]
 pub struct RandomAccessReader {
 pub mut:
 	index i64
@@ -71,7 +72,8 @@ pub mut:
 	mem_buf_start i64 = -1 // start index in the file of the read buffer
 	mem_buf_end   i64 = -1 // end index in the file of the read buffer
 	// csv map for quick access
-	csv_map [][]i64
+	create_map_csv bool = true // flag to enable the csv map creation
+	csv_map        [][]i64
 	// header
 	header_row  int = -1 // row index of the header in the csv_map
 	header_list []HeaderItem   // list of the header item
@@ -81,19 +83,20 @@ pub mut:
 @[params]
 pub struct RandomAccessReaderConfig {
 pub:
-	scr_buf      voidptr // pointer to the buffer of data
-	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data
-	file_path    string
-	start_index  i64
-	end_index    i64    = -1
-	mem_buf_size int    = 1024 * 64 // default buffer size 64KByte
-	separator    u8     = `,`
-	comment      u8     = `#` // every line that start with the quote char is ignored
-	default_cell string = '*' // return this string if out of the csv boundaries
-	empty_cell   string // return this string if empty cell
-	end_line_len int = endline_cr_len // size of the endline rune
-	quote        u8  = `"`            // double quote is the standard quote char
-	quote_remove bool // if true clear the cell from the quotes
+	scr_buf        voidptr // pointer to the buffer of data
+	scr_buf_len    i64     // if > 0 use the RAM pointed from scr_buf as source of data
+	file_path      string
+	start_index    i64
+	end_index      i64    = -1
+	mem_buf_size   int    = 1024 * 64 // default buffer size 64KByte
+	separator      u8     = `,`
+	comment        u8     = `#` // every line that start with the quote char is ignored
+	default_cell   string = '*' // return this string if out of the csv boundaries
+	empty_cell     string // return this string if empty cell
+	end_line_len   int = endline_cr_len // size of the endline rune
+	quote          u8  = `"`            // double quote is the standard quote char
+	quote_remove   bool // if true clear the cell from the quotes
+	create_map_csv bool = true // if true make the map of the csv file
 }
 
 /******************************************************************************
@@ -177,7 +180,10 @@ pub fn csv_reader(cfg RandomAccessReaderConfig) !&RandomAccessReader {
 	cr.quote_remove = cfg.quote_remove
 	cr.quote = cfg.quote
 
-	cr.map_csv()!
+	cr.create_map_csv = cfg.create_map_csv
+	if cr.create_map_csv {
+		cr.map_csv()!
+	}
 
 	return cr
 }
@@ -226,6 +232,18 @@ fn (mut cr RandomAccessReader) fill_buffer(i i64) !i64 {
 	return i64(-1)
 }
 
+// copy_configuration copies the configuration from another csv RandomAccessReader
+// this function is a helper for using the RandomAccessReader in multi threaded applications
+// pay attention to the free process
+pub fn (mut cr RandomAccessReader) copy_configuration(src_cr RandomAccessReader) {
+	cr.header_row = src_cr.header_row
+	unsafe {
+		cr.header_list = &src_cr.header_list
+		cr.header_map = &src_cr.header_map
+		cr.csv_map = &src_cr.csv_map
+	}
+}
+
 /******************************************************************************
 *
 * Csv mapper, mapped reader
@@ -248,8 +266,15 @@ pub fn (mut cr RandomAccessReader) map_csv() ! {
 		p := &u8(cr.mem_buf)
 		cr.csv_map << []i64{}
 		cr.csv_map[0] << if cr.is_bom_present { 3 } else { 0 } // skip the BOM data
+
+		// mut counter := i64(0)
 		for i < cr.end_index {
 			read_bytes_count := cr.fill_buffer(i)!
+
+			// DEBUG print
+			// perc := f32(counter) / f32(cr.end_index) * 100.0
+			// println("${perc:.2f}")
+
 			// println("${i:-12d} of ${cr.f_len:-12d} readed: ${read_bytes_count}")
 			mut p1 := p
 			mut i1 := i64(0)
@@ -317,6 +342,7 @@ pub fn (mut cr RandomAccessReader) map_csv() ! {
 				}
 			}
 			i += read_bytes_count
+			// counter += i1
 		}
 	}
 	// remove last row if it is not a valid one
@@ -421,20 +447,24 @@ pub fn (mut cr RandomAccessReader) get_cell(cfg GetCellConfig) !string {
 	return cr.default_cell
 }
 
-type CellValue = f32 | int | string
+pub type CellValue = f32 | int | string
 
 // get_cellt read a single cell and return a sum type CellValue
 pub fn (mut cr RandomAccessReader) get_cellt(cfg GetCellConfig) !CellValue {
 	if cr.header_row >= 0 && cfg.x < cr.header_list.len {
 		h := cr.header_list[cfg.x]
 		res := cr.get_cell(cfg)!
-		if h.htype == .int {
-			return res.int()
+		match h.htype {
+			.int {
+				return res.trim_space().int()
+			}
+			.string {
+				return res
+			}
+			.f32 {
+				return res.trim_space().f32()
+			}
 		}
-		if h.htype == .f32 {
-			return res.f32()
-		}
-		return res
 	}
 	return cr.get_cell(cfg)!
 }

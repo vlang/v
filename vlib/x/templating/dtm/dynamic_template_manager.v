@@ -7,7 +7,7 @@ import time
 import regex
 
 // These are all the types of dynamic values that the DTM allows to be returned in the context of a map
-type DtmMultiTypeMap = f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64 | u8
+pub type DtmMultiTypeMap = f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64 | u8
 
 // type MiddlewareFn = fn (mut Context, string) bool
 

@@ -169,26 +169,6 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 					// do not generate anything if the argument lengths don't match
 					g.writeln('/* skipping ${sym.name}.${m.name} due to mismatched arguments list: node.args=${node.args.len} m.params=${m.params.len} */')
 					// Adding a println(_SLIT(...)) like this breaks options
-					/*
-					g.writeln(
-						'println(_SLIT("comptime: ${sym.name}.${m.name} has a mismatched arguments list.' +
-						' The method has ${m.params.len - 1} parameters, but ${node.args.len} arguments were ' +
-						'provided. \\nargs: ${node.args}\\n${g.file.path}:${node.pos.line_nr}"));')
-						*/
-					/*
-					if true {
-						println(node.args)
-						verror('comptime: ${sym.name}.${m.name} has a mismatched arguments list.' +
-							' The method has ${m.params.len - 1} parameters, but ${node.args.len} arguments were ' +
-							'provided. ${g.file.path}:${node.pos.line_nr}\n')
-					}
-					if true {
-						eprintln(
-							'comptime: skipping ${sym.name}.${m.name} due to mismatched arguments list\n' +
-							'method.params: ${m.params}, args: ${node.args}\n\n')
-						// verror('expected ${m.params.len - 1} arguments to method ${node.sym.name}.${m.name}, but got ${node.args.len}')
-					}
-					*/
 					return
 				}
 			}
@@ -475,6 +455,10 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 			} else if cond.gkind_field == .indirections {
 				return ast.int_type
 			} else {
+				if cond.expr is ast.TypeOf {
+					return g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(cond.expr.expr,
+						cond.name_type), cond.field_name)
+				}
 				name := '${cond.expr}.${cond.field_name}'
 				if name in g.type_resolver.type_map {
 					return g.type_resolver.get_ct_type_or_default(name, ast.void_type)
@@ -799,21 +783,6 @@ fn (mut g Gen) pop_comptime_info() {
 	g.comptime.comptime_for_method_var = old.comptime_for_method_var
 	g.comptime.comptime_for_method = old.comptime_for_method
 	g.comptime.comptime_for_method_ret_type = old.comptime_for_method_ret_type
-}
-
-fn (mut g Gen) resolve_comptime_type(node ast.Expr, default_type ast.Type) ast.Type {
-	if g.comptime.is_comptime_expr(node) {
-		return g.type_resolver.get_type(node)
-	} else if node is ast.SelectorExpr && node.expr_type != 0 {
-		if node.expr is ast.Ident && g.comptime.is_comptime_selector_type(node) {
-			return g.type_resolver.get_type_from_comptime_var(node.expr)
-		}
-		sym := g.table.sym(g.unwrap_generic(node.expr_type))
-		if f := g.table.find_field_with_embeds(sym, node.field_name) {
-			return f.typ
-		}
-	}
-	return default_type
 }
 
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {

@@ -22,6 +22,7 @@ fn run(cmd string) os.Result {
 }
 
 fn test_retry() {
+	log.use_stdout()
 	log.warn('start...')
 	defer {
 		log.warn('... done')

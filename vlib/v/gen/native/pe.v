@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module native
 
+import os
 import arrays
 
 enum PeCharacteristics {
@@ -608,9 +609,20 @@ fn (mut g Gen) gen_pe_idata() {
 	idata_pos := g.pos()
 	idata_section.set_pointer_to_raw_data(mut g, i32(idata_pos))
 
+	// Allow for adding more search paths for DLLs, through setting VNATIVE_PE_DLL_PATH:
+	dll_paths := os.getenv('VNATIVE_PE_DLL_PATH').split(':').filter(it != '')
+	if dll_paths.len > 0 {
+		g.linker_include_paths << dll_paths
+	}
+
+	wine_system32_folder := os.join_path(os.home_dir(), '.wine/drive_c/windows/system32')
+	if os.exists(wine_system32_folder) {
+		g.linker_include_paths << wine_system32_folder
+	}
+
 	g.linker_include_paths << '.'
 
-	mut dll_files := ['KERNEL32.DLL', 'USER32.DLL', 'msvcrt.dll']
+	mut dll_files := ['kernel32.dll', 'user32.dll', 'msvcrt.dll']
 	dll_files << g.linker_libs.map(it + '.dll')
 	mut dlls := dll_files
 		.map(g.lookup_system_dll(it) or { g.n_error('${it}: ${err}') })
@@ -623,13 +635,28 @@ fn (mut g Gen) gen_pe_idata() {
 	]
 
 	for symbol in g.extern_symbols {
-		sym := symbol.all_after('C.')
+		mut sym := symbol.all_after('C.')
 		mut found := false
 		for mut dll in dlls {
 			if sym in dll.exports {
 				found = true
 				dll.exports[sym] = true
 				break
+			}
+		}
+
+		if !found {
+			if sym == 'CaptureStackBackTrace' {
+				sym = 'RtlCaptureStackBackTrace'
+			} else if sym == '__debugbreak' {
+				sym = 'DebugBreak'
+			}
+			for mut dll in dlls {
+				if sym in dll.exports {
+					found = true
+					dll.exports[sym] = true
+					break
+				}
 			}
 		}
 
@@ -655,10 +682,10 @@ fn (mut g Gen) gen_pe_idata() {
 
 		for func in imp.functions {
 			g.pe_dll_relocations[func] = g.pos()
-			g.write64(0) // filled in later
+			g.write64(i64(0)) // filled in later
 			g.println('; name lookup addr to "${func}"')
 		}
-		g.write64(0) // null entry
+		g.write64(i64(0)) // null entry
 		g.println('; null entry')
 		g.println('^^^ import lookup table ("${imp.name}")')
 	}

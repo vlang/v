@@ -15,10 +15,10 @@ pub const size = 16
 // The blocksize of MD5 in bytes.
 pub const block_size = 64
 
-const init0 = 0x67452301
+const init0 = u32(0x67452301)
 const init1 = u32(0xEFCDAB89)
 const init2 = u32(0x98BADCFE)
-const init3 = 0x10325476
+const init3 = u32(0x10325476)
 
 // Digest represents the partial evaluation of a checksum.
 struct Digest {
@@ -110,9 +110,7 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 	mut d0 := d.clone()
 	hash := d0.checksum()
 	mut b_out := b_in.clone()
-	for b in hash {
-		b_out << b
-	}
+	b_out << hash
 	return b_out
 }
 

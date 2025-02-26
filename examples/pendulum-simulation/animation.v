@@ -8,6 +8,7 @@ import sim.args as simargs
 
 fn main() {
 	unbuffer_stdout()
+	log.use_stdout()
 	args := simargs.parse_args(extra_workers: 1)! as simargs.ParallelArgs
 	mut app := anim.new_app(args)
 	mut workers := []thread{cap: args.workers}

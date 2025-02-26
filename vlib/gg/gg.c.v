@@ -377,12 +377,18 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 			e.mouse_button = .middle
 		}
 	}
-	ctx.mouse_pos_x = int(e.mouse_x / ctx.scale)
-	ctx.mouse_pos_y = int(e.mouse_y / ctx.scale)
-	ctx.mouse_dx = int(e.mouse_dx / ctx.scale)
-	ctx.mouse_dy = int(e.mouse_dy / ctx.scale)
-	ctx.scroll_x = int(e.scroll_x / ctx.scale)
-	ctx.scroll_y = int(e.scroll_y / ctx.scale)
+	e.mouse_x /= ctx.scale
+	e.mouse_y /= ctx.scale
+	e.mouse_dx /= ctx.scale
+	e.mouse_dy /= ctx.scale
+	e.scroll_x /= ctx.scale
+	e.scroll_y /= ctx.scale
+	ctx.mouse_pos_x = int(e.mouse_x)
+	ctx.mouse_pos_y = int(e.mouse_y)
+	ctx.mouse_dx = int(e.mouse_dx)
+	ctx.mouse_dy = int(e.mouse_dy)
+	ctx.scroll_x = int(e.scroll_x)
+	ctx.scroll_y = int(e.scroll_y)
 	ctx.key_modifiers = unsafe { Modifier(e.modifiers) }
 	ctx.key_repeat = e.key_repeat
 	if e.typ in [.key_down, .key_up] {
@@ -400,19 +406,17 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	match e.typ {
 		.mouse_move {
 			if ctx.config.move_fn != unsafe { nil } {
-				ctx.config.move_fn(e.mouse_x / ctx.scale, e.mouse_y / ctx.scale, ctx.config.user_data)
+				ctx.config.move_fn(e.mouse_x, e.mouse_y, ctx.config.user_data)
 			}
 		}
 		.mouse_down {
 			if ctx.config.click_fn != unsafe { nil } {
-				ctx.config.click_fn(e.mouse_x / ctx.scale, e.mouse_y / ctx.scale, e.mouse_button,
-					ctx.config.user_data)
+				ctx.config.click_fn(e.mouse_x, e.mouse_y, e.mouse_button, ctx.config.user_data)
 			}
 		}
 		.mouse_up {
 			if ctx.config.unclick_fn != unsafe { nil } {
-				ctx.config.unclick_fn(e.mouse_x / ctx.scale, e.mouse_y / ctx.scale, e.mouse_button,
-					ctx.config.user_data)
+				ctx.config.unclick_fn(e.mouse_x, e.mouse_y, e.mouse_button, ctx.config.user_data)
 			}
 		}
 		.mouse_leave {

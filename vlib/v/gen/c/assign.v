@@ -115,9 +115,17 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 				g.write('_option_ok(&(${styp}[]) {')
 			}
 			if expr is ast.CastExpr && expr_typ.has_flag(.option) {
-				g.write('*((${g.base_type(expr_typ)}*)')
-				g.expr(expr)
-				g.write('.data)')
+				ret_sym := g.table.sym(ret_typ)
+				if ret_sym.kind == .sum_type {
+					exp_sym := g.table.sym(expr_typ)
+					fname := g.get_sumtype_casting_fn(expr_typ, ret_typ)
+					g.call_cfn_for_casting_expr(fname, expr, ret_typ, ret_sym.cname, expr_typ.is_ptr(),
+						exp_sym.kind == .function, g.styp(expr_typ))
+				} else {
+					g.write('*((${g.base_type(expr_typ)}*)')
+					g.expr(expr)
+					g.write('.data)')
+				}
 			} else {
 				old_inside_opt_or_res := g.inside_opt_or_res
 				g.inside_opt_or_res = false
@@ -138,7 +146,7 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 	defer {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
-	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option)
+	if expr_typ.has_flag(.option) && ret_typ.has_flag(.option) && !g.is_arraymap_set
 		&& expr in [ast.SelectorExpr, ast.DumpExpr, ast.Ident, ast.ComptimeSelector, ast.AsCast, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr, ast.UnsafeExpr, ast.CastExpr] {
 		if expr in [ast.Ident, ast.CastExpr] {
 			if expr_typ.idx() != ret_typ.idx() {
@@ -376,7 +384,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 					} else if val is ast.InfixExpr && val.op in [.plus, .minus, .mul, .div, .mod]
 						&& val.left_ct_expr {
-						ctyp := g.unwrap_generic(g.type_resolver.get_type(val.left))
+						ctyp := g.type_resolver.promote_type(g.unwrap_generic(g.type_resolver.get_type(val.left)),
+							g.unwrap_generic(g.type_resolver.get_type_or_default(val.right,
+							val.right_type)))
 						if ctyp != ast.void_type {
 							ct_type_var := g.comptime.get_ct_type_var(val.left)
 							if ct_type_var in [.key_var, .value_var] {
@@ -386,6 +396,20 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							val_type = var_type
 							left.obj.typ = var_type
 							g.assign_ct_type = var_type
+						}
+					} else if val is ast.PostfixExpr && val.op == .question
+						&& (val.expr is ast.Ident && val.expr.ct_expr) {
+						ctyp := g.unwrap_generic(g.type_resolver.get_type(val))
+						if ctyp != ast.void_type {
+							var_type = ctyp
+							val_type = var_type
+							left.obj.typ = var_type
+							g.assign_ct_type = var_type
+
+							ct_type_var := g.comptime.get_ct_type_var(val.expr)
+							if ct_type_var == .field_var {
+								g.type_resolver.update_ct_type(left.name, ctyp)
+							}
 						}
 					}
 				}
@@ -471,7 +495,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.DumpExpr, ast.InfixExpr]
 			|| (val is ast.CastExpr && val.expr !is ast.ArrayInit)
 			|| (val is ast.PrefixExpr && val.op == .arrow)
-			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident]))
+			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident, ast.CallExpr]))
 		g.is_assign_lhs = true
 		g.assign_op = node.op
 
@@ -502,7 +526,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else {
 					g.write('{${styp} _ = ')
 				}
-				g.expr(val)
+				if val in [ast.MatchExpr, ast.IfExpr] && unaliased_right_sym.info is ast.ArrayFixed {
+					tmp_var := g.expr_with_var(val, var_type, false)
+					g.fixed_array_var_init(tmp_var, false, unaliased_right_sym.info.elem_type,
+						unaliased_right_sym.info.size)
+				} else {
+					g.expr(val)
+				}
 				g.writeln(';}')
 			}
 		} else if node.op == .assign && !g.pref.translated && (is_fixed_array_init
@@ -887,6 +917,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.array_init(val, c_name(ident.name))
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
+						} else if val in [ast.MatchExpr, ast.IfExpr]
+							&& unaliased_right_sym.info is ast.ArrayFixed {
+							tmp_var := g.expr_with_var(val, var_type, false)
+							g.fixed_array_var_init(tmp_var, false, unaliased_right_sym.info.elem_type,
+								unaliased_right_sym.info.size)
 						} else {
 							g.expr(val)
 						}
@@ -1193,17 +1228,18 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 		}
 		ast.InfixExpr {
 			sym := g.table.sym(val.left_type)
-			if _ := g.table.find_method(sym, val.op.str()) {
+			svalop := val.op.str()
+			if _ := g.table.find_method(sym, svalop) {
 				left_styp := g.styp(val.left_type.set_nr_muls(0))
 				g.write2(left_styp, '_')
-				g.write2(util.replace_op(val.op.str()), '(')
+				g.write2(util.replace_op(svalop), '(')
 				g.gen_cross_tmp_variable(left, val.left)
 				g.write(', ')
 				g.gen_cross_tmp_variable(left, val.right)
 				g.write(')')
 			} else {
 				g.gen_cross_tmp_variable(left, val.left)
-				g.write(val.op.str())
+				g.write(svalop)
 				g.gen_cross_tmp_variable(left, val.right)
 			}
 		}

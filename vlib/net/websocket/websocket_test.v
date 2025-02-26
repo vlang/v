@@ -87,41 +87,46 @@ fn start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws
 	eprintln('-----------------------------------------------------------------------------')
 }
 
+fn open_cb(mut client websocket.Client) ! {
+	client.pong()!
+	assert true
+}
+
+fn close_cb(mut client websocket.Client, err string) ! {
+	println('error: ${err}')
+	// this can be thrown by internet connection problems
+	assert false
+}
+
+fn message_cb(mut client websocket.Client, msg &websocket.Message, mut res WebsocketTestResults) ! {
+	println('client got type: ${msg.opcode} payload:\n${msg.payload}')
+	if msg.opcode == .text_frame {
+		smessage := msg.payload.bytestr()
+		match smessage {
+			'pong' {
+				res.nr_pong_received++
+			}
+			'a' {
+				res.nr_messages++
+			}
+			else {
+				assert false
+			}
+		}
+	} else {
+		println('Binary message: ${msg}')
+	}
+}
+
 // ws_test tests connect to the websocket server from websocket client
 fn ws_test(family net.AddrFamily, uri string) ! {
 	eprintln('connecting to ${uri} ...')
 
 	mut test_results := WebsocketTestResults{}
 	mut client := websocket.new_client(uri)!
-	client.on_open(fn (mut client websocket.Client) ! {
-		client.pong()!
-		assert true
-	})
-	client.on_error(fn (mut client websocket.Client, err string) ! {
-		println('error: ${err}')
-		// this can be thrown by internet connection problems
-		assert false
-	})
-
-	client.on_message_ref(fn (mut client websocket.Client, msg &websocket.Message, mut res WebsocketTestResults) ! {
-		println('client got type: ${msg.opcode} payload:\n${msg.payload}')
-		if msg.opcode == .text_frame {
-			smessage := msg.payload.bytestr()
-			match smessage {
-				'pong' {
-					res.nr_pong_received++
-				}
-				'a' {
-					res.nr_messages++
-				}
-				else {
-					assert false
-				}
-			}
-		} else {
-			println('Binary message: ${msg}')
-		}
-	}, test_results)
+	client.on_open(open_cb)
+	client.on_error(close_cb)
+	client.on_message_ref(message_cb, test_results)
 	client.connect()!
 	spawn client.listen()
 
@@ -140,17 +145,21 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 	assert test_results.nr_messages == 2
 }
 
+fn on_message_cb_2(mut cli websocket.Client, msg &websocket.Message) ! {
+	if msg.opcode == .text_frame {
+		cli.close(1000, 'closing connection')!
+	}
+}
+
+fn on_close_cb_2(mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
+	res.nr_closes++
+}
+
 fn test_on_close_when_server_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30003, '')
-	ws.on_message(fn (mut cli websocket.Client, msg &websocket.Message) ! {
-		if msg.opcode == .text_frame {
-			cli.close(1000, 'closing connection')!
-		}
-	})
+	ws.on_message(on_message_cb_2)
 	mut test_results := WebsocketTestResults{}
-	ws.on_close_ref(fn (mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
-		res.nr_closes++
-	}, test_results)
+	ws.on_close_ref(on_close_cb_2, test_results)
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
 
 	mut client := websocket.new_client('ws://localhost:30003')!
@@ -162,15 +171,17 @@ fn test_on_close_when_server_closing_connection() ! {
 	assert test_results.nr_closes == 1
 }
 
+fn on_close_cb_3(mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
+	res.nr_closes++
+}
+
 fn test_on_close_when_client_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30004, '')
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
 
 	mut client := websocket.new_client('ws://localhost:30004')!
 	mut test_results := WebsocketTestResults{}
-	client.on_close_ref(fn (mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {
-		res.nr_closes++
-	}, test_results)
+	client.on_close_ref(on_close_cb_3, test_results)
 	client.connect()!
 	spawn client.listen()
 	time.sleep(1000 * time.millisecond)

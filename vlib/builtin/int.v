@@ -7,7 +7,7 @@ pub struct VContext {
 	allocator int
 }
 
-type byte = u8
+pub type byte = u8
 
 // ptr_str returns the address of `ptr` as a `string`.
 pub fn ptr_str(ptr voidptr) string {

@@ -20,6 +20,9 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 			if branch.stmts.len == 1 {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
+					if stmt.expr is ast.ArrayInit && stmt.expr.is_fixed {
+						return true
+					}
 					if g.need_tmp_var_in_expr(stmt.expr) {
 						return true
 					}
@@ -182,15 +185,26 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
-	needs_tmp_var := g.need_tmp_var_in_if(node)
+	needs_tmp_var := g.inside_if_option || g.need_tmp_var_in_if(node)
 	needs_conds_order := g.needs_conds_order(node)
-	tmp := if node.typ != ast.void_type && needs_tmp_var { g.new_tmp_var() } else { '' }
+	tmp := if g.inside_if_option || (node.typ != ast.void_type && needs_tmp_var) {
+		g.new_tmp_var()
+	} else {
+		''
+	}
 	mut cur_line := ''
 	mut raw_state := false
+	tmp_if_option_type := g.last_if_option_type
 	if needs_tmp_var {
 		mut styp := g.styp(node.typ)
-		if node.typ.has_flag(.option) {
+		if g.inside_if_option || node.typ.has_flag(.option) {
 			raw_state = g.inside_if_option
+			if node.typ != ast.void_type {
+				g.last_if_option_type = node.typ
+				defer {
+					g.last_if_option_type = tmp_if_option_type
+				}
+			}
 			defer {
 				g.inside_if_option = raw_state
 			}
@@ -207,7 +221,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		cur_line = g.go_before_last_stmt()
 		g.empty_line = true
 		if tmp != '' {
-			g.writeln('${styp} ${tmp}; /* if prepend */')
+			if node.typ == ast.void_type && g.last_if_option_type != 0 {
+				// nested if on return stmt
+				g.write2(g.styp(g.last_if_option_type), ' ')
+			} else {
+				g.write('${styp} ')
+			}
+			g.writeln('${tmp}; /* if prepend */')
 		}
 		if g.infix_left_var_name.len > 0 {
 			g.writeln('if (${g.infix_left_var_name}) {')

@@ -17,21 +17,21 @@ pub const size224 = 28
 pub const block_size = 64
 
 const chunk = 64
-const init0 = 0x6A09E667
+const init0 = u32(0x6A09E667)
 const init1 = u32(0xBB67AE85)
-const init2 = 0x3C6EF372
+const init2 = u32(0x3C6EF372)
 const init3 = u32(0xA54FF53A)
-const init4 = 0x510E527F
+const init4 = u32(0x510E527F)
 const init5 = u32(0x9B05688C)
-const init6 = 0x1F83D9AB
-const init7 = 0x5BE0CD19
+const init6 = u32(0x1F83D9AB)
+const init7 = u32(0x5BE0CD19)
 const init0_224 = u32(0xC1059ED8)
-const init1_224 = 0x367CD507
-const init2_224 = 0x3070DD17
+const init1_224 = u32(0x367CD507)
+const init2_224 = u32(0x3070DD17)
 const init3_224 = u32(0xF70E5939)
 const init4_224 = u32(0xFFC00B31)
-const init5_224 = 0x68581511
-const init6_224 = 0x64F98FA7
+const init5_224 = u32(0x68581511)
+const init6_224 = u32(0x64F98FA7)
 const init7_224 = u32(0xBEFA4FA4)
 
 // digest represents the partial evaluation of a checksum.
@@ -165,6 +165,7 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 
 // checksum returns the current byte checksum of the Digest,
 // it is an internal method and is not recommended because its results are not idempotent.
+@[direct_array_access]
 fn (mut d Digest) checksum() []u8 {
 	mut len := d.len
 	// Padding. Add a 1 bit and 0 bits until 56 bytes mod 64.

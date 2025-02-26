@@ -106,9 +106,9 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	}
 	if expr.is_method {
 		g.write('${arg_tmp_var}${dot}arg0 = ')
-		if expr.left is ast.Ident && expr.left.obj.typ.is_ptr()
+		if mut expr.left is ast.Ident && expr.left.obj.typ.is_ptr()
 			&& !node.call_expr.receiver_type.is_ptr() {
-			g.write('*')
+			g.write('*'.repeat(expr.left.obj.typ.nr_muls()))
 		}
 		g.expr(expr.left)
 		g.writeln(';')
@@ -271,10 +271,10 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				receiver_type_name := util.no_dots(rec_cc_type)
 				g.gowrappers.write_string2('${c_name(receiver_type_name)}_name_table[',
 					'arg->arg0')
-				idot := if expr.left_type.is_ptr() { '->' } else { '.' }
+				dot_or_ptr := g.dot_or_ptr(unwrapped_rec_type)
 				mname := c_name(expr.name)
-				g.gowrappers.write_string2('${idot}_typ]._method_${mname}(', 'arg->arg0')
-				g.gowrappers.write_string('${idot}_object')
+				g.gowrappers.write_string2('${dot_or_ptr}_typ]._method_${mname}(', 'arg->arg0')
+				g.gowrappers.write_string('${dot_or_ptr}_object')
 			} else if typ_sym.kind == .struct && expr.is_field {
 				g.gowrappers.write_string('arg->arg0')
 				idot := if expr.left_type.is_ptr() { '->' } else { '.' }
@@ -301,15 +301,21 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			if has_cast {
 				pos := g.out.len
 				g.call_args(expr)
-				mut call_args_str := g.out.after(pos)
+				mut call_args_str := g.out.after(pos).trim_space()
 				g.go_back(call_args_str.len)
 				mut rep_group := []string{cap: 2 * expr.args.len}
 				for i in 0 .. expr.args.len {
 					rep_group << g.expr_string(expr.args[i].expr)
 					rep_group << 'arg->arg${i + 1}'
 				}
-				call_args_str = call_args_str.replace_each(rep_group)
-				g.gowrappers.write_string(call_args_str)
+				if call_args_str.starts_with('I_') {
+					g.gowrappers.write_string(call_args_str.all_before('('))
+					g.gowrappers.write_string('(')
+					g.gowrappers.write_string(call_args_str.all_after('(').replace_each(rep_group))
+				} else {
+					call_args_str = call_args_str.replace_each(rep_group)
+					g.gowrappers.write_string(call_args_str)
+				}
 			} else if expr.name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 				&& expr.args[0].typ != ast.string_type {
 				pos := g.out.len

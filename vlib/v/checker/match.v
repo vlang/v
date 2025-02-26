@@ -71,16 +71,18 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				} else {
 					node.expected_type
 				}
-				expr_type := if stmt.expr is ast.CallExpr {
+				expr_type := c.unwrap_generic(if stmt.expr is ast.CallExpr {
 					stmt.typ
 				} else {
 					c.expr(mut stmt.expr)
-				}
+				})
+				unwrapped_expected_type := c.unwrap_generic(node.expected_type)
 				stmt.typ = expr_type
 				if first_iteration {
-					if node.expected_type.has_option_or_result()
-						|| c.table.type_kind(node.expected_type) in [.sum_type, .multi_return] {
-						c.check_match_branch_last_stmt(stmt, node.expected_type, expr_type)
+					if unwrapped_expected_type.has_option_or_result()
+						|| c.table.type_kind(unwrapped_expected_type) in [.sum_type, .multi_return] {
+						c.check_match_branch_last_stmt(stmt, unwrapped_expected_type,
+							expr_type)
 						ret_type = node.expected_type
 					} else {
 						ret_type = expr_type
@@ -105,10 +107,9 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 				} else {
 					if ret_type.idx() != expr_type.idx() {
-						if node.expected_type.has_option_or_result()
+						if unwrapped_expected_type.has_option_or_result()
 							&& c.table.sym(stmt.typ).kind == .struct
-							&& (c.table.sym(ret_type).kind != .sum_type
-							|| !c.check_types(expr_type, ret_type))
+							&& !c.check_types(expr_type, c.unwrap_generic(ret_type))
 							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
 							stmt.expr = ast.CastExpr{
 								expr:      stmt.expr
@@ -119,24 +120,25 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							}
 							stmt.typ = ast.error_type
 						} else {
-							c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+							c.check_match_branch_last_stmt(stmt, c.unwrap_generic(ret_type),
+								expr_type)
 							if ret_type.is_number() && expr_type.is_number() && !c.inside_return {
 								ret_type = c.promote_num(ret_type, expr_type)
 							}
 						}
 					}
-					if stmt.typ != ast.error_type {
+					if stmt.typ != ast.error_type && !is_noreturn_callexpr(stmt.expr) {
 						ret_sym := c.table.sym(ret_type)
 						stmt_sym := c.table.sym(stmt.typ)
 						if ret_sym.kind !in [.sum_type, .interface]
 							&& stmt_sym.kind in [.sum_type, .interface] {
-							c.error('return type mismatch, it should be `${ret_sym.name}`',
+							c.error('return type mismatch, it should be `${ret_sym.name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
 								stmt.pos)
 						}
 						if ret_type.nr_muls() != stmt.typ.nr_muls()
 							&& stmt.typ.idx() !in [ast.voidptr_type_idx, ast.nil_type_idx] {
 							type_name := '&'.repeat(ret_type.nr_muls()) + ret_sym.name
-							c.error('return type mismatch, it should be `${type_name}`',
+							c.error('return type mismatch, it should be `${type_name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
 								stmt.pos)
 						}
 					}
@@ -279,7 +281,8 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 					return
 				}
 			}
-			c.error('return type mismatch, it should be `${ret_sym.name}`', last_stmt.pos)
+			c.error('return type mismatch, it should be `${ret_sym.name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
+				last_stmt.pos)
 		}
 	} else if expr_type == ast.void_type && ret_type.idx() == ast.void_type_idx
 		&& ret_type.has_option_or_result() {

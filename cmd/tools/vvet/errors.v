@@ -16,6 +16,7 @@ pub enum FixKind {
 	repeated_code
 	long_fns
 	empty_fn
+	inline_fn
 }
 
 // ErrorType is used to filter out false positive errors under specific conditions
@@ -23,7 +24,6 @@ pub enum ErrorType {
 	default
 	space_indent
 	trailing_space
-	long_fns
 }
 
 @[minify]

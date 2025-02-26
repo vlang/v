@@ -28,6 +28,17 @@ fn float_assign_test() {
 	assert a == 13.5
 	a /= 4.5
 	assert a == 3.0
+
+	a = 1.0
+	mut b := &a
+        unsafe{*b += 2.5}
+        assert a == 3.5
+        unsafe{*b -= 1.25}
+        assert a == 2.25
+        unsafe{*b *= 6.0}
+        assert a == 13.5
+        unsafe{*b /= 4.5}
+        assert a == 3.0	
 }
 
 fn float_cast_test() {

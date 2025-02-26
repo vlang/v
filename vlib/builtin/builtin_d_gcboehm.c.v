@@ -225,7 +225,7 @@ fn C.GC_get_sp_corrector() fn (voidptr, voidptr)
 fn C.GC_set_sp_corrector(fn (voidptr, voidptr))
 
 // GC warnings are silenced by default, but can be redirected to a custom cb function by programs too:
-type FnGC_WarnCB = fn (msg &char, arg usize)
+pub type FnGC_WarnCB = fn (msg &char, arg usize)
 
 fn C.GC_get_warn_proc() FnGC_WarnCB
 fn C.GC_set_warn_proc(cb FnGC_WarnCB)

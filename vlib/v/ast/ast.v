@@ -311,6 +311,7 @@ pub mut:
 	from_embed_types         []Type   // holds the type of the embed that the method is called from
 	generic_from_embed_types [][]Type // holds the types of the embeds for each generic instance when the same generic method is called.
 	has_hidden_receiver      bool
+	is_field_typ             bool // var.typ for comptime $for var
 }
 
 // root_ident returns the origin ident where the selector started.
@@ -630,6 +631,7 @@ pub mut:
 	scope       &Scope = unsafe { nil }
 	label_names []string
 	pos         token.Pos // function declaration position
+	end_pos     token.Pos // end position
 	//
 	is_expand_simple_interpolation bool // true, when @[expand_simple_interpolation] is used on a fn. It should have a single string argument.
 }
@@ -882,6 +884,7 @@ pub enum ComptimeVarKind {
 	generic_param // generic fn parameter
 	generic_var   // generic var
 	smartcast     // smart cast when used in `is v` (when `v` is from $for .variants)
+	aggregate     // aggregate var
 }
 
 @[minify]
@@ -905,10 +908,11 @@ pub mut:
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
-	pos         token.Pos
-	is_used     bool            // whether the local variable was used in other expressions
-	is_changed  bool            // to detect mutable vars that are never changed
-	ct_type_var ComptimeVarKind // comptime variable type
+	pos               token.Pos
+	is_used           bool            // whether the local variable was used in other expressions
+	is_changed        bool            // to detect mutable vars that are never changed
+	ct_type_var       ComptimeVarKind // comptime variable type
+	ct_type_unwrapped bool            // true when the comptime variable gets unwrapped
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
@@ -925,8 +929,8 @@ pub:
 	name        string
 	pos         token.Pos
 	typ         Type
-	smartcasts  []Type // nested sum types require nested smart casting, for that a list of types is needed
 	orig_type   Type   // original sumtype type; 0 if it's not a sumtype
+	smartcasts  []Type // nested sum types require nested smart casting, for that a list of types is needed
 	// TODO: move this to a real docs site later
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)
@@ -981,6 +985,7 @@ pub struct File {
 pub:
 	nr_lines      int    // number of source code lines in the file (including newlines and comments)
 	nr_bytes      int    // number of processed source code bytes
+	nr_tokens     int    // number of processed tokens in the source code of the file
 	mod           Module // the module of the source file (from `module xyz` at the top)
 	global_scope  &Scope = unsafe { nil }
 	is_test       bool // true for _test.v files
@@ -1994,6 +1999,7 @@ pub struct ComptimeSelector {
 pub:
 	has_parens bool // if $() is used, for vfmt
 	pos        token.Pos
+	or_block   OrExpr
 pub mut:
 	left       Expr
 	left_type  Type

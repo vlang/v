@@ -17,11 +17,11 @@ on:
       - '!cmd/tools/builders/**.v'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: macos-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  clang:
+  clang-macos:
     strategy:
       matrix:
         os: [macos-14]
@@ -74,5 +74,3 @@ jobs:
         run: v run ci/macos_ci.vsh test_password_input
       - name: Test readline
         run: v run ci/macos_ci.vsh test_readline
-      - name: Test vlib modules with -skip-unused
-        run: v run ci/macos_ci.vsh test_vlib_skip_unused

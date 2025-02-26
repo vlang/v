@@ -82,7 +82,7 @@ mut:
 	add(r Register, val i32)
 	address_size() i32
 	adr(r Arm64Register, delta i32) // Note: Temporary!
-	allocate_var(name string, size i32, initial_val i32) i32
+	allocate_var(name string, size i32, initial_val Number) i32
 	assign_stmt(node ast.AssignStmt) // TODO: make platform-independent
 	builtin_decl(builtin BuiltinFn)
 	call_addr_at(addr i32, at i64) i64
@@ -125,7 +125,7 @@ mut:
 	mov_reg(r1 Register, r2 Register)
 	mov_var_to_reg(reg Register, var Var, config VarConfig)
 	mov(r Register, val i32)
-	mov64(r Register, val i64)
+	mov64(r Register, val Number)
 	movabs(reg Register, val i64)
 	patch_relative_jmp(pos i32, addr i64)
 	prefix_expr(node ast.PrefixExpr)
@@ -180,8 +180,8 @@ mut:
 }
 
 struct LabelPatch {
-	id  i32
-	pos i32
+	id  i32 // id of the needed label address
+	pos i32 // where (in the generated code) to fix the address (of a jump for example)
 }
 
 struct BranchLabel {
@@ -201,9 +201,12 @@ mut:
 	offsets []i32
 }
 
+type Number = u64 | i64
+
 struct Enum {
+	size i32 // size of the type of the enum in bytes
 mut:
-	fields map[string]i32
+	fields map[string]Number
 }
 
 struct MultiReturn {
@@ -264,7 +267,9 @@ fn byt(n i32, s i32) u8 {
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
-		obj = ident.scope.find(ident.name) or { g.n_error('unknown variable ${ident.name}') }
+		obj = ident.scope.find(ident.name) or {
+			g.n_error('${@LOCATION} unknown variable ${ident.name}')
+		}
 	}
 	match obj {
 		ast.Var {
@@ -276,7 +281,7 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 			}
 		}
 		else {
-			g.n_error('unsupported variable type type:${obj} name:${ident.name}')
+			g.n_error('${@LOCATION} unsupported variable type type:${obj} name:${ident.name}')
 		}
 	}
 }
@@ -290,7 +295,7 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 			return var.typ
 		}
 		GlobalVar {
-			g.n_error('cannot get type from GlobalVar yet')
+			g.n_error('${@LOCATION} cannot get type from GlobalVar yet')
 		}
 	}
 }
@@ -451,7 +456,7 @@ pub fn (mut g Gen) generate_header() {
 			}
 		}
 		else {
-			g.n_error('only `raw`, `linux`, `windows` and `macos` are supported for -os in -native')
+			g.n_error('${@LOCATION} only `raw`, `linux`, `windows` and `macos` are supported for -os in -native')
 		}
 	}
 }
@@ -516,7 +521,7 @@ pub fn (mut g Gen) link(obj_name string) {
 			// TODO: implement linking for macos!
 		}
 		else {
-			g.n_error('native linking is not implemented for ${g.pref.os}')
+			g.n_error('${@LOCATION} native linking is not implemented for ${g.pref.os}')
 		}
 	}
 }
@@ -533,17 +538,47 @@ pub fn (mut g Gen) calculate_all_size_align() {
 
 pub fn (mut g Gen) calculate_enum_fields() {
 	for name, decl in g.table.enum_decls {
-		mut enum_vals := Enum{}
-		mut value := if decl.is_flag { i32(1) } else { i32(0) }
+		enum_size := g.get_type_size(decl.typ)
+		mut enum_vals := Enum{
+			size: i32(enum_size)
+		}
+		mut value := Number(if decl.is_flag { i64(1) } else { i64(0) })
 		for field in decl.fields {
 			if field.has_expr {
-				value = i32(g.eval.expr(field.expr, ast.int_type_idx).int_val())
+				str_val := g.eval.expr(field.expr, ast.int_type_idx).string()
+				if str_val.len >= 0 && str_val[0] == `-` {
+					value = str_val.i64()
+				} else {
+					value = str_val.u64()
+				}
 			}
-			enum_vals.fields[field.name] = value
+			match value {
+				// Dereferences the sumtype (it would get assigned by address and messed up)
+				i64 {
+					enum_vals.fields[field.name] = value as i64
+				}
+				u64 {
+					enum_vals.fields[field.name] = value as u64
+				}
+			}
 			if decl.is_flag {
-				value <<= 1
+				match mut value {
+					i64 {
+						value = value * 2 // same as << 1 but without notice
+					}
+					u64 {
+						value = value << u64(1)
+					}
+				}
 			} else {
-				value++
+				match mut value {
+					i64 {
+						value++
+					}
+					u64 {
+						value++
+					}
+				}
 			}
 		}
 		g.enum_vals[name] = enum_vals
@@ -582,16 +617,30 @@ fn (mut g Gen) write32(n i32) {
 	g.buf << u8(n >> 24)
 }
 
-fn (mut g Gen) write64(n i64) {
+fn (mut g Gen) write64(n Number) {
 	// write 8 bytes
-	g.buf << u8(n)
-	g.buf << u8(n >> 8)
-	g.buf << u8(n >> 16)
-	g.buf << u8(n >> 24)
-	g.buf << u8(n >> 32)
-	g.buf << u8(n >> 40)
-	g.buf << u8(n >> 48)
-	g.buf << u8(n >> 56)
+	match n {
+		i64 {
+			g.buf << u8(n)
+			g.buf << u8(n >> 8)
+			g.buf << u8(n >> 16)
+			g.buf << u8(n >> 24)
+			g.buf << u8(n >> 32)
+			g.buf << u8(n >> 40)
+			g.buf << u8(n >> 48)
+			g.buf << u8(n >> 56)
+		}
+		u64 {
+			g.buf << u8(n)
+			g.buf << u8(n >> 8)
+			g.buf << u8(n >> 16)
+			g.buf << u8(n >> 24)
+			g.buf << u8(n >> 32)
+			g.buf << u8(n >> 40)
+			g.buf << u8(n >> 48)
+			g.buf << u8(n >> 56)
+		}
+	}
 }
 
 fn (mut g Gen) write64_at(at i64, n i64) {
@@ -680,7 +729,7 @@ fn (mut g Gen) try_var_offset(var_name string) i32 {
 fn (mut g Gen) get_var_offset(var_name string) i32 {
 	r := g.try_var_offset(var_name)
 	if r == -1 {
-		g.n_error('unknown variable `${var_name}`')
+		g.n_error('${@LOCATION} unknown variable `${var_name}`')
 	}
 	return r
 }
@@ -688,7 +737,9 @@ fn (mut g Gen) get_var_offset(var_name string) i32 {
 fn (mut g Gen) get_field_offset(in_type ast.Type, name string) i32 {
 	typ := g.unwrap(in_type)
 	ts := g.table.sym(typ)
-	field := ts.find_field(name) or { g.n_error('Could not find field `${name}` on init') }
+	field := ts.find_field(name) or {
+		g.n_error('${@LOCATION} Could not find field `${name}` on init')
+	}
 	return g.structs[typ.idx()].offsets[field.i]
 }
 
@@ -710,7 +761,8 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 			ast.u8_type_idx { 1 }
 			ast.i16_type_idx { 2 }
 			ast.u16_type_idx { 2 }
-			ast.int_type_idx { 4 }
+			ast.int_type_idx { 4 } // TODO: change when V will have changed
+			ast.i32_type_idx { 4 }
 			ast.u32_type_idx { 4 }
 			ast.i64_type_idx { 8 }
 			ast.u64_type_idx { 8 }
@@ -722,7 +774,7 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 			ast.float_literal_type_idx { 8 }
 			ast.char_type_idx { 1 }
 			ast.rune_type_idx { 4 }
-			else { 8 }
+			else { g.n_error('${@LOCATION} unknown type size ${typ}') }
 		}
 	}
 	if typ.is_bool() {
@@ -751,8 +803,8 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 			g.structs[typ.idx()] = strc
 		}
 		ast.Enum {
-			size = 4
-			align = 4
+			size = g.get_type_size(ts.info.typ)
+			align = g.get_type_align(ts.info.typ)
 		}
 		ast.MultiReturn {
 			for t in ts.info.types {
@@ -833,7 +885,7 @@ fn (mut g Gen) get_sizeof_ident(ident ast.Ident) i32 {
 		return g.get_type_size(typ)
 	}
 	size := g.var_alloc_size[ident.name] or {
-		g.n_error('unknown variable `${ident}`')
+		g.n_error('${@LOCATION} unknown variable `${ident}`')
 		return 0
 	}
 	return size
@@ -856,9 +908,11 @@ fn (mut g Gen) allocate_string(s string, opsize i32, typ RelocType) i32 {
 	return str_pos
 }
 
+// allocates a buffer variable: name, size of stored type (nb of bytes), nb of items
 fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 {
-	pos := g.code_gen.allocate_var(name, size, items)
-	g.stack_var_pos += (size * items)
+	g.println('; allocate array `${name}` item-size:${size} items:${items}:')
+	pos := g.code_gen.allocate_var(name, 4, i64(items)) // store the length of the array on the stack in a 4 byte var
+	g.stack_var_pos += (size * items) // reserve space on the stack for the items
 	return pos
 }
 
@@ -907,7 +961,7 @@ fn (mut g Gen) eval_escape_codes(str string) string {
 			`u` {
 				i++
 				utf8 := strconv.parse_int(str[i..i + 4], 16, 16) or {
-					g.n_error('invalid \\u escape code (${str[i..i + 4]})')
+					g.n_error('${@LOCATION} invalid \\u escape code (${str[i..i + 4]})')
 					0
 				}
 				i += 4
@@ -921,7 +975,7 @@ fn (mut g Gen) eval_escape_codes(str string) string {
 			`x` {
 				i++
 				c := strconv.parse_int(str[i..i + 2], 16, 8) or {
-					g.n_error('invalid \\x escape code (${str[i..i + 2]})')
+					g.n_error('${@LOCATION} invalid \\x escape code (${str[i..i + 2]})')
 					0
 				}
 				i += 2
@@ -929,14 +983,14 @@ fn (mut g Gen) eval_escape_codes(str string) string {
 			}
 			`0`...`7` {
 				c := strconv.parse_int(str[i..i + 3], 8, 8) or {
-					g.n_error('invalid escape code \\${str[i..i + 3]}')
+					g.n_error('${@LOCATION} invalid escape code \\${str[i..i + 3]}')
 					0
 				}
 				i += 3
 				buffer << u8(c)
 			}
 			else {
-				g.n_error('invalid escape code \\${str[i]}')
+				g.n_error('${@LOCATION} invalid escape code \\${str[i]}')
 			}
 		}
 	}
@@ -945,9 +999,11 @@ fn (mut g Gen) eval_escape_codes(str string) string {
 }
 
 fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
+	g.println('; to_string (reg:${reg}) {')
 	if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
-		g.code_gen.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), buffer)
+		end_of_buffer := buffer + 4 + 32 - 1 // 4 bytes for the size and 32 for the chars, -1 to not go out of array
+		g.code_gen.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
 
 		arg0_reg := g.get_builtin_arg_reg(.int_to_string, 0)
 		if arg0_reg != reg {
@@ -955,7 +1011,7 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 		}
 
 		g.call_builtin(.int_to_string)
-		g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), buffer)
+		g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), end_of_buffer) // the (int) string starts at the end of the buffer
 	} else if typ.is_bool() {
 		arg_reg := g.get_builtin_arg_reg(.bool_to_string, 0)
 		if arg_reg != reg {
@@ -967,29 +1023,37 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 			g.code_gen.mov_reg(g.code_gen.main_reg(), reg)
 		}
 	} else {
-		g.n_error('int-to-string conversion not implemented for type ${typ}')
+		g.n_error('${@LOCATION} int-to-string conversion not implemented for type ${typ}')
 	}
+	g.println('; to_string }')
 }
 
 fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config VarConfig) {
+	g.println('; var_to_string {')
 	typ := g.get_type_from_var(var)
 	if typ == ast.rune_type_idx {
-		buffer := g.code_gen.allocate_var('rune-buffer', 8, 0)
+		buffer := g.code_gen.allocate_var('rune-buffer', 8, i64(0))
 		g.code_gen.convert_rune_to_string(reg, buffer, var, config)
 	} else if typ.is_int() {
-		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
-		g.code_gen.mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
-		g.code_gen.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), buffer)
-		g.call_builtin(.int_to_string)
-		g.code_gen.lea_var_to_reg(reg, buffer)
+		if typ.is_unsigned() {
+			g.n_error('${@LOCATION} Unsigned integer print is not supported')
+		} else {
+			buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
+			end_of_buffer := buffer + 4 + 32 - 1 // 4 bytes for the size and 32 for the chars, -1 to not go out of array
+			g.code_gen.mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
+			g.code_gen.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
+			g.call_builtin(.int_to_string)
+			g.code_gen.lea_var_to_reg(reg, end_of_buffer) // the (int) string starts at the end of the buffer
+		}
 	} else if typ.is_bool() {
 		g.code_gen.mov_var_to_reg(g.get_builtin_arg_reg(.bool_to_string, 0), var, config)
 		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
 		g.code_gen.mov_var_to_reg(reg, var, config)
 	} else {
-		g.n_error('int-to-string conversion not implemented for type ${typ}')
+		g.n_error('${@LOCATION} int-to-string conversion not implemented for type ${typ}')
 	}
+	g.println('; var_to_string }')
 }
 
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
@@ -1005,7 +1069,7 @@ fn (mut g Gen) patch_calls() {
 	for c in g.callpatches {
 		addr := g.fn_addr[c.name]
 		if addr == 0 {
-			g.n_error('fn addr of `${c.name}` = 0')
+			g.n_error('${@LOCATION} fn addr of `${c.name}` = 0')
 			return
 		}
 		last := i32(g.buf.len)
@@ -1024,7 +1088,7 @@ fn (mut g Gen) patch_labels() {
 	for label in g.labels.patches {
 		addr := g.labels.addrs[label.id]
 		if addr == 0 {
-			g.n_error('label addr = 0')
+			g.n_error('${@LOCATION} label addr = 0')
 			return
 		}
 

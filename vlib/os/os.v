@@ -281,15 +281,14 @@ pub fn file_ext(opath string) string {
 // If the path is empty, dir returns ".". If the path consists entirely of separators,
 // dir returns a single separator.
 // The returned path does not end in a separator unless it is the root directory.
-pub fn dir(opath string) string {
-	if opath == '' {
+pub fn dir(path string) string {
+	if path == '' {
 		return '.'
 	}
-	other_separator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_separator, path_separator)
-	pos := path.last_index(path_separator) or { return '.' }
-	if pos == 0 && path_separator == '/' {
-		return '/'
+	detected_path_separator := if path.contains('/') { '/' } else { '\\' }
+	pos := path.last_index(detected_path_separator) or { return '.' }
+	if pos == 0 {
+		return detected_path_separator
 	}
 	return path[..pos]
 }
@@ -298,30 +297,71 @@ pub fn dir(opath string) string {
 // Trailing path separators are removed before extracting the last element.
 // If the path is empty, base returns ".". If the path consists entirely of separators, base returns a
 // single separator.
-pub fn base(opath string) string {
-	if opath == '' {
+pub fn base(path string) string {
+	if path == '' {
 		return '.'
 	}
-	other_separator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_separator, path_separator)
-	if path == path_separator {
-		return path_separator
+	detected_path_separator := if path.contains('/') { '/' } else { '\\' }
+	if path == detected_path_separator {
+		return detected_path_separator
 	}
-	if path.ends_with(path_separator) {
+	if path.ends_with(detected_path_separator) {
 		path2 := path[..path.len - 1]
-		pos := path2.last_index(path_separator) or { return path2.clone() }
+		pos := path2.last_index(detected_path_separator) or { return path2.clone() }
 		return path2[pos + 1..]
 	}
-	pos := path.last_index(path_separator) or { return path.clone() }
+	pos := path.last_index(detected_path_separator) or { return path.clone() }
 	return path[pos + 1..]
 }
 
 // file_name will return all characters found after the last occurrence of `path_separator`.
 // file extension is included.
-pub fn file_name(opath string) string {
-	other_separator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_separator, path_separator)
-	return path.all_after_last(path_separator)
+pub fn file_name(path string) string {
+	detected_path_separator := if path.contains('/') { '/' } else { '\\' }
+	return path.all_after_last(detected_path_separator)
+}
+
+// split_path will split `path` into (`dir`,`filename`,`ext`).
+// Examples:
+// ```v
+// dir,filename,ext := os.split_path('/usr/lib/test.so')
+// assert [dir,filename,ext] == ['/usr/lib','test','.so']
+// ```
+pub fn split_path(path string) (string, string, string) {
+	if path == '' {
+		return '.', '', ''
+	} else if path == '.' {
+		return '.', '', ''
+	} else if path == '..' {
+		return '..', '', ''
+	}
+
+	detected_path_separator := if path.contains('/') { '/' } else { '\\' }
+
+	if path == detected_path_separator {
+		return detected_path_separator, '', ''
+	}
+	if path.ends_with(detected_path_separator) {
+		return path[..path.len - 1], '', ''
+	}
+	mut dir := '.'
+	/*
+		TODO: JS backend does not support IfGuard yet.
+	*/
+	pos := path.last_index(detected_path_separator) or { -1 }
+	if pos == -1 {
+		dir = '.'
+	} else if pos == 0 {
+		dir = detected_path_separator
+	} else {
+		dir = path[..pos]
+	}
+	file_name := path.all_after_last(detected_path_separator)
+	pos_ext := file_name.last_index_u8(`.`)
+	if pos_ext == -1 || pos_ext == 0 || pos_ext + 1 >= file_name.len {
+		return dir, file_name, ''
+	}
+	return dir, file_name[..pos_ext], file_name[pos_ext..]
 }
 
 // input_opt returns a one-line string from stdin, after printing a prompt.
@@ -514,11 +554,16 @@ pub fn home_dir() string {
 // See also `home_dir()`.
 pub fn expand_tilde_to_home(path string) string {
 	if path == '~' {
-		return home_dir().trim_right(path_separator)
+		hdir := home_dir()
+		return hdir.trim_right(path_separator)
 	}
-	if path.starts_with('~' + path_separator) {
-		return path.replace_once('~' + path_separator, home_dir().trim_right(path_separator) +
-			path_separator)
+	source := '~' + path_separator
+	if path.starts_with(source) {
+		hdir := home_dir()
+		trimmed := hdir.trim_right(path_separator)
+		final := trimmed + path_separator
+		result := path.replace_once(source, final)
+		return result
 	}
 	return path
 }
@@ -563,7 +608,7 @@ pub fn find_abs_path_of_executable(exe_name string) !string {
 			$if trace_find_abs_path_of_executable ? {
 				dump(found_abs_path)
 			}
-			if exists(found_abs_path) && is_executable(found_abs_path) {
+			if is_file(found_abs_path) && is_executable(found_abs_path) {
 				res = found_abs_path
 				break
 			}

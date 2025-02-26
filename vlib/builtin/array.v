@@ -658,24 +658,26 @@ pub fn (a &array) clone() array {
 // recursively clone given array - `unsafe` when called directly because depth is not checked
 @[unsafe]
 pub fn (a &array) clone_to_depth(depth int) array {
+	source_capacity_in_bytes := u64(a.cap) * u64(a.element_size)
 	mut arr := array{
 		element_size: a.element_size
-		data:         vcalloc(u64(a.cap) * u64(a.element_size))
+		data:         vcalloc(source_capacity_in_bytes)
 		len:          a.len
 		cap:          a.cap
 	}
 	// Recursively clone-generated elements if array element is array type
 	if depth > 0 && a.element_size == sizeof(array) && a.len >= 0 && a.cap >= a.len {
+		ar := array{}
+		asize := int(sizeof(array))
 		for i in 0 .. a.len {
-			ar := array{}
-			unsafe { vmemcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
+			unsafe { vmemcpy(&ar, a.get_unsafe(i), asize) }
 			ar_clone := unsafe { ar.clone_to_depth(depth - 1) }
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
 		return arr
 	} else {
-		if a.data != 0 {
-			unsafe { vmemcpy(&u8(arr.data), a.data, u64(a.cap) * u64(a.element_size)) }
+		if a.data != 0 && source_capacity_in_bytes > 0 {
+			unsafe { vmemcpy(&u8(arr.data), a.data, source_capacity_in_bytes) }
 		}
 		return arr
 	}
@@ -1056,6 +1058,12 @@ pub fn (data voidptr) vbytes(len int) []u8 {
 @[unsafe]
 pub fn (data &u8) vbytes(len int) []u8 {
 	return unsafe { voidptr(data).vbytes(len) }
+}
+
+// free frees the memory allocated
+@[unsafe]
+pub fn (data &u8) free() {
+	unsafe { free(data) }
 }
 
 @[if !no_bounds_checking ?; inline]

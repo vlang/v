@@ -30,7 +30,7 @@ pub fn (mut g Gen) init_builtins() {
 			body:     fn (builtin BuiltinFn, mut g Gen) {
 				g.code_gen.convert_int_to_string(builtin.arg_regs[0], builtin.arg_regs[1])
 			}
-			arg_regs: [Amd64Register.rcx, Amd64Register.rdi]
+			arg_regs: [Amd64Register.rcx, Amd64Register.rdi] // rcx: int to convert, rdi: end of 32byte buffer (with 4 bytes at the beggining for len) see allocate_array
 		}
 		.bool_to_string: BuiltinFn{
 			body:     fn (builtin BuiltinFn, mut g Gen) {

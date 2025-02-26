@@ -1,0 +1,14 @@
+vlib/v/checker/tests/call_arg_multi_return_err.vv:6:6: error: assignment mismatch: 1 variable but `some_fn()` returns 2 values
+    4 | 
+    5 | fn some_fn2() {
+    6 |     ret := some_fn()
+      |         ~~
+    7 |     some_fn3(ret)
+    8 | }
+vlib/v/checker/tests/call_arg_multi_return_err.vv:7:2: error: trying to pass 2 argument(s), but function expects 1 argument(s)
+    5 | fn some_fn2() {
+    6 |     ret := some_fn()
+    7 |     some_fn3(ret)
+      |     ~~~~~~~~~~~~~
+    8 | }
+    9 |

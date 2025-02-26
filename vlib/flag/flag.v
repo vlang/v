@@ -51,9 +51,11 @@ fn (mut f Flag) free() {
 
 // str returns a string representation of the given Flag
 pub fn (f Flag) str() string {
-	return '' + '    flag:\n' + '            name: ${f.name}\n' +
-		'            abbr: `${f.abbr.ascii_str()}`\n' + '            usage: ${f.usage}\n' +
-		'            desc: ${f.val_desc}'
+	return '    flag:
+            name: ${f.name}
+            abbr: `${f.abbr.ascii_str()}`
+            usage: ${f.usage}
+            desc: ${f.val_desc}'
 }
 
 // str returns a string representation of the given array of Flags

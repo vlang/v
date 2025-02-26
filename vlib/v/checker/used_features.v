@@ -111,7 +111,7 @@ fn (mut c Checker) markused_comptimefor(mut node ast.ComptimeFor, unwrapped_expr
 	}
 }
 
-fn (mut c Checker) markused_call_expr(mut node ast.CallExpr) {
+fn (mut c Checker) markused_call_expr(left_type ast.Type, mut node ast.CallExpr) {
 	if !c.is_builtin_mod && c.mod == 'main' && !c.table.used_features.external_types {
 		if node.is_method {
 			if c.table.sym(node.left_type).is_builtin() {
@@ -120,6 +120,10 @@ fn (mut c Checker) markused_call_expr(mut node ast.CallExpr) {
 		} else if node.name.contains('.') {
 			c.table.used_features.external_types = true
 		}
+	}
+	if left_type != 0 && left_type.is_ptr() && !c.table.used_features.auto_str_ptr
+		&& node.name == 'str' {
+		c.table.used_features.auto_str_ptr = true
 	}
 }
 

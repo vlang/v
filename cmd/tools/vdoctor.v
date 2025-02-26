@@ -136,7 +136,11 @@ fn (mut a App) collect_info() {
 	a.line('.git/config present', os.is_file('.git/config').str())
 	a.line('', '')
 	a.line('cc version', a.cmd(command: 'cc --version'))
-	a.line('gcc version', a.cmd(command: 'gcc --version'))
+	if os_kind == 'openbsd' {
+		a.line('gcc version', a.cmd(command: 'egcc --version'))
+	} else {
+		a.line('gcc version', a.cmd(command: 'gcc --version'))
+	}
 	a.line('clang version', a.cmd(command: 'clang --version'))
 	if os_kind == 'windows' {
 		// Check for MSVC on windows
@@ -144,7 +148,11 @@ fn (mut a App) collect_info() {
 	}
 	a.report_tcc_version('thirdparty/tcc')
 	a.line('emcc version', a.cmd(command: 'emcc --version'))
-	a.line('glibc version', a.cmd(command: 'ldd --version'))
+	if os_kind != 'openbsd' {
+		a.line('glibc version', a.cmd(command: 'ldd --version'))
+	} else {
+		a.line('glibc version', 'N/A')
+	}
 }
 
 struct CmdConfig {

@@ -5,6 +5,7 @@ module log
 
 import os
 import time
+import io
 
 // TimeFormat define the log time string format, come from time/format.v
 pub enum TimeFormat {
@@ -25,10 +26,12 @@ pub enum TimeFormat {
 	tf_custom_format // 'MMMM Do YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
 }
 
+const stderr = os.stderr()
+
 // Log represents a logging object
 pub struct Log {
 mut:
-	level              Level
+	level              Level = .debug
 	output_label       string
 	ofile              os.File
 	output_target      LogTarget // output to console (stdout/stderr) or file or both.
@@ -36,6 +39,9 @@ mut:
 	custom_time_format string     = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
 	short_tag          bool
 	always_flush       bool // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
+	output_stream      io.Writer = stderr
+	//
+	show_notice_about_stdout_to_stderr_change bool = true // this field is temporary, and should be deleted after 2025-03-01
 pub mut:
 	output_file_name string // log output to this file
 }
@@ -75,6 +81,12 @@ pub fn (mut l Log) set_output_path(output_file_path string) {
 		panic('error while opening log file ' + l.output_file_name + ' for appending')
 	}
 	l.ofile = ofile
+}
+
+// set_output_stream sets the output stream to write log e.g. stderr, stdout, etc.
+pub fn (mut l Log) set_output_stream(stream io.Writer) {
+	l.show_notice_about_stdout_to_stderr_change = false
+	l.output_stream = stream
 }
 
 // log_to_console_too turns on logging to the console too, in addition to logging to a file.
@@ -131,13 +143,30 @@ fn (mut l Log) log_file(s string, level Level) {
 	}
 }
 
-// log_cli writes log line `s` with `level` to stdout.
-fn (l &Log) log_cli(s string, level Level) {
-	timestamp := l.time_format(time.utc())
-	e := tag_to_cli(level, l.short_tag)
-	println('${timestamp} [${e}] ${s}')
-	if l.always_flush {
+// log_stream writes log line `s` with `level` to stderr or stderr depending on set output stream.
+fn (mut l Log) log_stream(s string, level Level) {
+	if l.show_notice_about_stdout_to_stderr_change {
+		l.show_notice_about_stdout_to_stderr_change = false
+		// Show a warning at runtime, once, before the first logged message, that describes the stdout -> stderr change,
+		// and how to opt in explicitly for the old behaviour:
+		println('   NOTE: the `log.Log` output goes to stderr now by default, not to stdout.')
+		println('      Call `l.set_output_stream(os.stdout())` explicitly, to opt in for the previous behavior.')
+		println('      Call `l.set_output_stream(os.stderr())` explicitly, if you want to silence this message (it will be removed after 2025-03-01 .')
 		flush_stdout()
+	}
+	timestamp := l.time_format(time.utc())
+	tag := tag_to_console(level, l.short_tag)
+	msg := '${timestamp} [${tag}] ${s}\n'
+	arr := msg.bytes()
+	l.output_stream.write(arr) or {}
+	if l.always_flush {
+		if mut l.output_stream is os.File {
+			match l.output_stream.fd {
+				1 { flush_stdout() }
+				2 { flush_stderr() }
+				else {}
+			}
+		}
 	}
 }
 
@@ -148,7 +177,7 @@ pub fn (mut l Log) send_output(s &string, level Level) {
 		l.log_file(s, level)
 	}
 	if l.output_target == .console || l.output_target == .both {
-		l.log_cli(s, level)
+		l.log_stream(s, level)
 	}
 }
 
@@ -294,4 +323,12 @@ pub fn (mut l Log) set_short_tag(enabled bool) {
 // get_short_tag will get the log short tag enable state
 pub fn (l Log) get_short_tag() bool {
 	return l.short_tag
+}
+
+// use_stdout will restore the old behaviour of logging to stdout, instead of stderr.
+// It will also silence the deprecation note in the transition period.
+pub fn use_stdout() {
+	mut l := ThreadSafeLog{}
+	l.set_output_stream(os.stdout())
+	set_logger(l)
 }

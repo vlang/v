@@ -17,11 +17,11 @@ on:
       - '!cmd/tools/builders/**.v'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: cross-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  macos-cross:
+  cross-macos:
     runs-on: macos-13
     timeout-minutes: 25
     env:
@@ -51,8 +51,8 @@ jobs:
           ./v -os windows cmd/v
           ./v -os windows examples/2048/2048.v
 
-  linux-cross:
-    runs-on: ubuntu-20.04
+  cross-linux:
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -65,14 +65,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          ## sudo dpkg --add-architecture i386
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev
-          ./v retry -- sudo apt install --quiet -y mingw-w64 wine-stable winetricks
-          ## ./v retry -- sudo apt install --quiet -y wine32
+          ./v retry -- sudo apt install --quiet -y mingw-w64 wine wine64 winetricks libssl-dev sqlite3 libsqlite3-dev
 
-      - name: Turn off the wine crash dialog
-        run: winetricks nocrashdialog
+      - name: Show diagnostics for wine
+        run: |
+          which wine
+          ls -la $(realpath $(which wine))
 
       - name: v.c can be compiled and run with -os cross
         run: |
@@ -86,20 +84,20 @@ jobs:
           ./v -cc msvc -os windows -o /tmp/v_win.c cmd/v
           x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe -lws2_32
           ls -lart v_from_vc.exe
-          wine64 ./v_from_vc.exe version
+          wine ./v_from_vc.exe version
 
       - name: hello_world.v can be cross compiled to hello_world.exe
         run: |
           ./v -os windows examples/hello_world.v
           ls -lart examples/hello_world.exe
-          wine64 examples/hello_world.exe
+          wine examples/hello_world.exe
 
       - name: 2048.v can be cross compiled to 2048.exe
         run: |
           ./v -os windows examples/2048/2048.v
           ls -lart examples/2048/2048.exe
 
-  windows-cross:
+  cross-windows:
     runs-on: windows-2019
     timeout-minutes: 25
     steps:

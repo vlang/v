@@ -442,6 +442,13 @@ fn test_rsplit_once() ? {
 	assert ext3 == ''
 }
 
+fn test_split_by_space() {
+	assert 'a     b    c'.split_by_space() == ['a', 'b', 'c']
+	assert '  a\t\tb\tc'.split_by_space() == ['a', 'b', 'c']
+	assert 'a b c \n\r'.split_by_space() == ['a', 'b', 'c']
+	assert '\ta b \t \tc \r\n'.split_by_space() == ['a', 'b', 'c']
+}
+
 fn test_is_bin() {
 	assert ''.is_bin() == false
 	assert '0b1'.is_bin() == true

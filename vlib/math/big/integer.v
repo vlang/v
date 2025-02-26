@@ -144,7 +144,8 @@ pub fn integer_from_bytes(oinput []u8, config IntegerConfig) Integer {
 	}
 	input := oinput[first_non_zero_index..]
 	// pad input
-	mut padded_input := []u8{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3}
+	mut padded_input := []u8{len: int_max(0, ((input.len + 3) & ~0x3) - input.len), cap: (
+		input.len + 3) & ~0x3}
 	padded_input << input
 	mut digits := []u32{len: padded_input.len / 4}
 	// combine every 4 bytes into a u32 and insert into n.digits
@@ -421,7 +422,7 @@ fn (dividend Integer) div_mod_internal(divisor Integer) (Integer, Integer) {
 		}
 	}
 	// Division for positive integers
-	mut q := []u32{cap: dividend.digits.len - divisor.digits.len + 1}
+	mut q := []u32{cap: int_max(1, dividend.digits.len - divisor.digits.len + 1)}
 	mut r := []u32{cap: dividend.digits.len}
 	divide_digit_array(dividend.digits, divisor.digits, mut q, mut r)
 	quotient := Integer{

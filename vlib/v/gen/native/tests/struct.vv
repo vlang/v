@@ -27,6 +27,7 @@ struct StructWithDefault {
 struct Mutable {
 mut:
 	a int
+	b int
 }
 
 fn struct_test() {
@@ -50,30 +51,37 @@ fn struct_test() {
 	assert d.a == 8
 	assert d.b == 2
 	assert d.c == 3
-	mut e := Mutable{1}
+	mut e := Mutable{1, 0}
 	e.a = 2
 	assert e.a == 2
+	assert e.b == 0
 	mut f := &e
 	f.a = 3
 	assert e.a == 3
+	f.b = 2
+	assert e.b == 2
 
-	g := &Mutable{2}
+	g := &Mutable{2, 1}
 	assert g.a == 2
+	assert g.b == 1
 }
 
 type AliasedStruct = Mutable
 type AliasedPointer = &Mutable
 
 fn alias_test() {
-	mut a := AliasedStruct{1}
+	mut a := AliasedStruct{1, 0}
 	a.a = 2
 	assert a.a == 2
 	mut b := &a
 	b.a = 3
 	assert a.a == 3
+	b.b = 2
+	assert a.b == 2
 
-	c := AliasedPointer{2}
+	c := AliasedPointer{2, 1}
 	assert c.a == 2
+	assert c.b == 1
 }
 
 fn init_size28() Size28 {
@@ -106,8 +114,91 @@ fn return_test() {
 	assert b.g == 7
 }
 
+struct Tree {
+mut:
+        leaf Leaf
+        sp Species
+        h f32
+        age int
+	big_leaf BigLeaf
+	medium_leaf MediumLeaf
+	small_leaf SmallLeaf
+}
+
+enum Species {
+        oak
+        willow
+}
+
+struct Leaf {
+        a int
+}
+
+struct BigLeaf {
+	a i64
+	b int
+	c i64
+}
+
+struct MediumLeaf {
+	a i16
+}
+
+struct SmallLeaf {
+	a u8
+}
+
+fn assign_fields() {
+	// TODO: fix commented
+	mut a := Tree{}
+	println(a.leaf.a)
+	assert a.leaf.a == 0
+	assert a.sp == .oak
+	assert a.h == 0.0
+	assert a.age == 0
+
+	a = Tree{age: 3}
+	assert a.age == 3
+
+//	a = Tree{h: 2.0}
+//	assert a.h == 2.0
+
+	a.h = 1.1
+	assert a.h == 1.1
+
+	a.age = 3
+	assert a.age == 3
+
+	a.sp = .willow
+	assert a.sp == .willow
+
+	a.leaf = Leaf{2}
+	assert a.leaf.a == 2
+	println(a.leaf.a)
+
+	a.big_leaf = BigLeaf{1, 2, 3}
+	assert a.big_leaf.a == 1
+	assert a.big_leaf.b == 2
+	assert a.big_leaf.c == 3
+
+	a.small_leaf = SmallLeaf{5}
+	assert a.small_leaf.a == 5
+	
+	a.medium_leaf = MediumLeaf{23}
+	assert a.medium_leaf.a == 23
+
+	mut f := Leaf{1}
+	assert f.a == 1
+	mut f2 := &f
+	assert f2.a == 1
+	unsafe{*f2 = Leaf{2}}
+	assert f2.a == 2
+	assert f.a == 2
+}
+
 fn main() {
 	struct_test()
 	return_test()
 	alias_test()
+	assign_fields()
 }

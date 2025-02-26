@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_generic_case_err.vv:16:4: error: return type mismatch, it should be `int`, but it is instead `string`
+   14 |         }
+   15 |         'int' {
+   16 |             v
+      |             ^
+   17 |         }
+   18 |         else {

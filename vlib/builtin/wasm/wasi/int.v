@@ -1,6 +1,6 @@
 module builtin
 
-type byte = u8
+pub type byte = u8
 
 // type i32 = int
 

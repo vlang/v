@@ -6,8 +6,8 @@ on:
     types: [edited, published]
 
 jobs:
-  ubuntu:
-    runs-on: ubuntu-20.04
+  prebuilt-linux:
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Download V
@@ -22,7 +22,7 @@ jobs:
           ./v run examples/hello_world.v
           ./v -showcc -gc none -cc tcc -no-retry-compilation run examples/hello_world.v
 
-  macos-arm64:
+  prebuilt-macos-arm64:
     ## macos-14 is a m1 runner
     runs-on: macos-14
     timeout-minutes: 5
@@ -39,7 +39,7 @@ jobs:
           ./v run examples/hello_world.v
           ./v -showcc -gc none -cc tcc -no-retry-compilation run examples/hello_world.v
 
-  macos-x86_64:
+  prebuilt-macos-x86_64:
     runs-on: macos-latest
     timeout-minutes: 5
     steps:
@@ -54,7 +54,7 @@ jobs:
           cd v
           ./v run examples/hello_world.v
 
-  windows:
+  prebuilt-windows:
     runs-on: windows-latest
     timeout-minutes: 5
     steps:

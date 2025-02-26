@@ -37,8 +37,13 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	mut name := if is_anon {
-		p.table.anon_struct_counter++
-		'_VAnonStruct${p.table.anon_struct_counter}'
+		if is_union {
+			p.table.anon_union_counter++
+			'_VAnonUnion${p.table.anon_union_counter}'
+		} else {
+			p.table.anon_struct_counter++
+			'_VAnonStruct${p.table.anon_struct_counter}'
+		}
 	} else {
 		p.check_name()
 	}
@@ -60,7 +65,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut pre_comments := p.eat_comments()
 	no_body := p.tok.kind != .lcbr && p.tok.kind != .key_implements
 	if language == .v && no_body {
-		p.error('`${p.tok.lit}` lacks body')
+		p.error_with_pos('`${p.tok.lit}` lacks body', name_pos)
 		return ast.StructDecl{}
 	}
 	if name.len == 1 {
@@ -241,8 +246,11 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				// struct field
 				field_name = p.check_name()
 				p.inside_struct_field_decl = true
-				if p.tok.kind == .key_struct
-					|| (p.tok.kind == .key_shared && p.peek_tok.kind == .key_struct) {
+				is_anon_struct := p.tok.kind == .key_struct
+					|| (p.tok.kind == .key_shared && p.peek_tok.kind == .key_struct)
+				is_anon_union := p.tok.kind == .key_union
+					|| (p.tok.kind == .key_shared && p.peek_tok.kind == .key_union)
+				if is_anon_struct || is_anon_union {
 					// Anon structs
 					field_is_shared := p.tok.kind == .key_shared
 					p.anon_struct_decl = p.struct_decl(true)
@@ -402,7 +410,11 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 	mut ret := p.table.register_sym(sym)
 	if is_anon {
-		p.table.register_anon_struct(name, ret)
+		if is_union {
+			p.table.register_anon_union(name, ret)
+		} else {
+			p.table.register_anon_struct(name, ret)
+		}
 	}
 	// allow duplicate c struct declarations
 	if ret == -1 && language != .c {

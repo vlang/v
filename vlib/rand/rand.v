@@ -6,7 +6,6 @@ module rand
 
 import math.bits
 import rand.config
-import rand.constants
 import rand.wyrand
 import time
 
@@ -165,13 +164,13 @@ pub fn (mut rng PRNG) i64() i64 {
 // int31 returns a positive pseudorandom 31-bit `int`.
 @[inline]
 pub fn (mut rng PRNG) int31() int {
-	return int(rng.u32() & constants.u31_mask) // Set the 32nd bit to 0.
+	return int(rng.u32() & u32(0x7FFFFFFF)) // Set the 32nd bit to 0.
 }
 
 // int63 returns a positive pseudorandom 63-bit `i64`.
 @[inline]
 pub fn (mut rng PRNG) int63() i64 {
-	return i64(rng.u64() & constants.u63_mask) // Set the 64th bit to 0.
+	return i64(rng.u64() & u64(0x7FFFFFFFFFFFFFFF)) // Set the 64th bit to 0.
 }
 
 // intn returns a pseudorandom `int` in range `[0, max)`.
@@ -221,11 +220,17 @@ pub fn (mut rng PRNG) i64_in_range(min i64, max i64) !i64 {
 	return min + rng.i64n(max - min)!
 }
 
+// smallest mantissa with exponent 0 (un normalized)
+const reciprocal_2_23rd = 1.0 / f64(u32(1) << 23)
+const reciprocal_2_52nd = 1.0 / f64(u64(1) << 52)
+const ieee754_mantissa_f32_mask = (u32(1) << 23) - 1 // 23 bits for f32
+const ieee754_mantissa_f64_mask = (u64(1) << 52) - 1 // 52 bits for f64
+
 // f32 returns a pseudorandom `f32` value in range `[0, 1)`
 // using rng.u32() multiplied by an f64 constant.
 @[inline]
 pub fn (mut rng PRNG) f32() f32 {
-	return f32((rng.u32() >> 9) * constants.reciprocal_2_23rd)
+	return f32((rng.u32() >> 9) * reciprocal_2_23rd)
 }
 
 // f32cp returns a pseudorandom `f32` value in range `[0, 1)`
@@ -258,7 +263,7 @@ pub fn (mut rng PRNG) f32cp() f32 {
 	}
 
 	// Assumes little-endian IEEE floating point.
-	x = (exp << 23) | (x >> 8) & constants.ieee754_mantissa_f32_mask
+	x = (exp << 23) | (x >> 8) & ieee754_mantissa_f32_mask
 	return bits.f32_from_bits(x)
 }
 
@@ -266,7 +271,7 @@ pub fn (mut rng PRNG) f32cp() f32 {
 // using rng.u64() multiplied by a constant.
 @[inline]
 pub fn (mut rng PRNG) f64() f64 {
-	return f64((rng.u64() >> 12) * constants.reciprocal_2_52nd)
+	return f64((rng.u64() >> 12) * reciprocal_2_52nd)
 }
 
 // f64cp returns a pseudorandom `f64` value in range `[0, 1)`
@@ -298,7 +303,7 @@ pub fn (mut rng PRNG) f64cp() f64 {
 	if bitcount > 11 {
 		x = rng.u64()
 	}
-	x = (exp << 52) | (x & constants.ieee754_mantissa_f64_mask)
+	x = (exp << 52) | (x & ieee754_mantissa_f64_mask)
 	return bits.f64_from_bits(x)
 }
 

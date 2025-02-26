@@ -489,7 +489,7 @@ that is already used in a parent scope will cause a compilation error.
 ```v failcompile nofmt
 fn main() {
 	a := 10
-	if true {
+	{
 		a := 20 // error: redefinition of `a`
 	}
 }
@@ -577,14 +577,28 @@ d := b + x     // d is of type `f64` - automatic promotion of `x`'s value
 
 ### Strings
 
-```v nofmt
+In V, strings are encoded in UTF-8, and are immutable (read-only) by default:
+
+```v
+s := 'hello 🌎' // the `world` emoji takes 4 bytes, and string length is reported in bytes
+assert s.len == 10
+
+arr := s.bytes() // convert `string` to `[]u8`
+assert arr.len == 10
+
+s2 := arr.bytestr() // convert `[]u8` to `string`
+assert s2 == s
+
 name := 'Bob'
-assert name.len == 3       // will print 3
-assert name[0] == u8(66) // indexing gives a byte, u8(66) == `B`
-assert name[1..3] == 'ob'  // slicing gives a string 'ob'
+assert name.len == 3
+// indexing gives a byte, u8(66) == `B`
+assert name[0] == u8(66)
+// slicing gives a string 'ob'
+assert name[1..3] == 'ob'
 
 // escape codes
-windows_newline := '\r\n'      // escape special characters like in C
+// escape special characters like in C
+windows_newline := '\r\n'
 assert windows_newline.len == 2
 
 // arbitrary bytes can be directly specified using `\x##` notation where `#` is
@@ -601,23 +615,11 @@ assert aardvark_str2 == 'aardvark'
 // and will be converted internally to its UTF-8 representation
 star_str := '\u2605' // ★
 assert star_str == '★'
-assert star_str == '\xe2\x98\x85' // UTF-8 can be specified this way too.
+// UTF-8 can be specified this way too, as individual bytes.
+assert star_str == '\xe2\x98\x85'
 ```
 
-In V, a string is a read-only array of bytes. All Unicode characters are encoded using UTF-8:
-
-```v
-s := 'hello 🌎' // emoji takes 4 bytes
-assert s.len == 10
-
-arr := s.bytes() // convert `string` to `[]u8`
-assert arr.len == 10
-
-s2 := arr.bytestr() // convert `[]u8` to `string`
-assert s2 == s
-```
-
-String values are immutable. You cannot mutate elements:
+Since strings are immutable, you cannot directly change characters in a string:
 
 ```v failcompile
 mut s := 'hello 🌎'
@@ -626,9 +628,9 @@ s[0] = `H` // not allowed
 
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Note that indexing a string will produce a `u8` (byte), not a `rune` nor another `string`. Indexes
-correspond to _bytes_ in the string, not Unicode code points. If you want to convert the `u8` to a
-`string`, use the `.ascii_str()` method on the `u8`:
+Note that indexing a string normally will produce a `u8` (byte), not a `rune` nor another `string`.
+Indexes correspond to _bytes_ in the string, not Unicode code points.
+If you want to convert the `u8` to a `string`, use the `.ascii_str()` method on the `u8`:
 
 ```v
 country := 'Netherlands'
@@ -636,14 +638,27 @@ println(country[0]) // Output: 78
 println(country[0].ascii_str()) // Output: N
 ```
 
-If you want the code point from a specific `string` index or other more advanced 
-utf8 processing and conversions, refer to the
-[vlib/encoding.utf8](https://modules.vlang.io/encoding.utf8.html) module.
+However, you can easily get the runes for a string with the `runes()` method, which will return an
+array of the UTF-8 characters from the string.  You can then index this array.  Just be aware that
+there may be fewer indexes available on the `rune` array than on the bytes in the string, if there
+_are_ any non-ASCII characters.
+
+```v
+mut s := 'hello 🌎'
+// there are 10 bytes in the string (as shown earlier), but only 7 runes, since the `world` emoji
+// only counts as one `rune` (one Unicode character)
+assert s.runes().len == 7
+println(s.runes()[6])
+```
+
+If you want the code point from a specific `string` index or other more advanced UTF-8 processing
+and conversions, refer to the
+[vlib/encoding/utf8](https://modules.vlang.io/encoding.utf8.html) module.
 
 Both single and double quotes can be used to denote strings. For consistency, `vfmt` converts double
 quotes to single quotes unless the string contains a single quote character.
 
-For raw strings, prepend `r`. Escape handling is not done for raw strings:
+Prepend `r` for raw strings. Escapes are not handled, so you will get exacly what you type:
 
 ```v
 s := r'hello\nworld' // the `\n` will be preserved as two characters
@@ -2408,6 +2423,21 @@ p = Point{10, 20}
 assert p.x == 10
 ```
 
+Struct fields can re-use reserved keywords:
+
+```v
+struct Employee {
+	type string
+	name string
+}
+
+employee := Employee{
+	type: 'FTE'
+	name: 'John Doe'
+}
+println(employee.type)
+```
+
 ### Heap structs
 
 Structs are allocated on the stack. To allocate a struct on the heap
@@ -3436,11 +3466,14 @@ This is a special case of a [sum type](#sum-types) declaration.
 
 ### Enums
 
+An enum is a group of constant integer values, each having its own name,
+whose values start at 0 and increase by 1 for each name listed.
+For example:
 ```v
 enum Color as u8 {
-	red
-	green
-	blue
+	red   // the default start value is 0
+	green // the value is automatically incremented to 1
+	blue  // the final value is now 2
 }
 
 mut color := Color.red
@@ -3452,6 +3485,7 @@ match color {
 	.green { println('the color was green') }
 	.blue { println('the color was blue') }
 }
+println(int(color)) // prints 1
 ```
 
 The enum type can be any integer type, but can be omitted, if it is `int`: `enum Color {`.
@@ -4335,8 +4369,11 @@ println(compare(1.1, 1.2)) //         -1
 
 ### Spawning Concurrent Tasks
 
-V's model of concurrency is going to be very similar to Go's.
-For now, `spawn foo()` runs `foo()` concurrently in a different thread:
+V's model of concurrency is similar to Go's.
+
+`go foo()` runs `foo()` concurrently in a lightweight thread managed by the V runtime.
+
+`spawn foo()` runs `foo()` concurrently in a different thread:
 
 ```v
 import math
@@ -4363,10 +4400,6 @@ fn main() {
 > have limitations in regard to concurrency,
 > including resource overhead and scalability issues,
 > and might affect performance in cases of high thread count.
-
-There's also a `go` keyword. Right now `go foo()` will be automatically renamed via vfmt
-to `spawn foo()`, and there will be a way to launch a coroutine with `go` (a lightweight
-thread managed by the runtime).
 
 Sometimes it is necessary to wait until a parallel thread has finished. This can
 be done by assigning a *handle* to the started thread and calling the `wait()` method
@@ -7472,6 +7505,9 @@ For all supported options check the latest help:
 
 ## V and C
 
+The basic mapping between C and V types is described in
+[C and V Type Interoperability](https://github.com/vlang/v/blob/master/doc/c_and_v_type_interoperability.md).
+
 ### Calling C from V
 
 V currently does not have a parser for C code. That means that even
@@ -7772,7 +7808,7 @@ Ordinary zero terminated C strings can be converted to V strings with
 > If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
 > since they return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
 
-On Windows, C APIs often return so called `wide` strings (utf16 encoding).
+On Windows, C APIs often return so called `wide` strings (UTF-16 encoding).
 These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
 
 V has these types for easier interoperability with C:
@@ -7917,26 +7953,36 @@ seamlessly across all platforms.
 However, since the Windows header libraries use extremely generic names such as `Rectangle`,
 this will cause a conflict if you wish to use C code that also has a name defined as `Rectangle`.
 
-For very specific cases like this, we have `#preinclude`.
+For very specific cases like this, V has `#preinclude` and `#postinclude` directives.
 
-This will allow things to be configured before V adds in its built in libraries.
+These directives allow things to be configured *before* V adds in its built in libraries,
+and *after* all of the V code generation has completed (and thus all of the prototypes,
+declarations and definitions are already present).
 
 Example usage:
 ```v ignore
 // This will include before built in libraries are used.
 #preinclude "pre_include.h"
+
 // This will include after built in libraries are used.
 #include "include.h"
+
+// This will include after all of the V code generation is complete,
+// including the one for the main function of the project
+#postinclude "post_include.h"
 ```
 
 An example of what might be included in `pre_include.h`
 can be [found here](https://github.com/irishgreencitrus/raylib.v/blob/main/include/pre.h)
 
-This is an advanced feature, and will not be necessary
-outside of very specific cases with C interop,
-meaning it could cause more issues than it solves.
+The `#postinclude` directive on the other hand is useful for allowing the integration
+of frameworks like SDL3 or Sokol, that insist on having callbacks in your code, instead
+of behaving like ordinary libraries, and allowing you to decide when to call them.
 
-Consider it last resort!
+NOTE: these are advanced features, and will not be necessary outside of very specific cases
+with C interop. Other than those, using them could cause more issues than it solves.
+
+Consider using them as a last resort!
 
 ## Other V Features
 
@@ -8101,6 +8147,10 @@ the built executable. This will run in crun mode so it will only rebuild if chan
 were made and keep the binary as `tmp.<scriptfilename>`. **Caution**: if this filename already
 exists the file will be overridden. If you want to rebuild each time and not keep this binary
 instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
+
+Note: there is a small shell script `cmd/tools/vrun`, that can be useful for systems, that have an
+env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox). 
+See https://github.com/vlang/v/blob/master/cmd/tools/vrun for more details.
 
 # Appendices
 

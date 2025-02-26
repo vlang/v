@@ -135,7 +135,12 @@ fn (mut g Gen) gen_c_main_function_header() {
 	g.gen_c_main_function_only_header()
 	g.gen_c_main_trace_calls_hook()
 	if !g.pref.no_builtin {
-		g.writeln2('\tg_main_argc = ___argc;', '\tg_main_argv = ___argv;')
+		if _ := g.table.global_scope.find_global('g_main_argc') {
+			g.writeln('\tg_main_argc = ___argc;')
+		}
+		if _ := g.table.global_scope.find_global('g_main_argv') {
+			g.writeln('\tg_main_argv = ___argv;')
+		}
 	}
 	if g.nr_closures > 0 {
 		g.writeln('\t__closure_init(); // main()')

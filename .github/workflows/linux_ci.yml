@@ -18,12 +18,12 @@ on:
       - '!cmd/tools/builders/**.v'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: linux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  tcc:
-    runs-on: ubuntu-20.04
+  tcc-linux:
+    runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -41,10 +41,6 @@ jobs:
         run: v run ci/linux_ci.vsh test_v_to_c_tcc
       - name: v self compilation
         run: v run ci/linux_ci.vsh v_self_compilation_tcc
-      - name: v self compilation with -skip-unused
-        run: v run ci/linux_ci.vsh v_self_compilation_skip_unused_tcc
-      - name: Test vlib modules with -skip-unused
-        run: v run ci/linux_ci.vsh test_vlib_skip_unused_tcc
       - name: v doctor
         run: v run ci/linux_ci.vsh v_doctor_tcc
       - name: Verify `v test` works
@@ -80,8 +76,8 @@ jobs:
       - name: Test leak detector not being active for normal compile
         run: v run ci/linux_ci.vsh test_leak_detector_not_active_tcc
 
-  gcc:
-    runs-on: ubuntu-20.04
+  gcc-linux:
+    runs-on: ubuntu-24.04
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
@@ -121,21 +117,17 @@ jobs:
         run: v run ci/linux_ci.vsh build_option_test_autofree_gcc
       - name: V self compilation with -parallel-cc
         run: v run ci/linux_ci.vsh v_self_compilation_parallel_cc_gcc
-      - name: Test vlib modules with -skip-unused
-        run: v run ci/linux_ci.vsh test_vlib_skip_unused_gcc
       - name: Build modules
         run: v run ci/linux_ci.vsh build_modules_gcc
       - name: native machine code generation
         run: v run ci/linux_ci.vsh native_machine_code_generation_gcc
-      - name: compile vdoctor.v with -skip-unused and -prod
-        run: v run ci/linux_ci.vsh compile_vdoctor_skip_unused_prod_gcc
-      - name: compile vup.v with -skip-unused and -prod
-        run: v run ci/linux_ci.vsh compile_vup_skip_unused_prod_gcc
-      - name: Test vlib modules with -skip-unused
-        run: v run ci/linux_ci.vsh test_vlib_skip_unused_gcc
+      - name: compile vdoctor.v with -prod
+        run: v run ci/linux_ci.vsh compile_vdoctor_prod_gcc
+      - name: compile vup.v with -prod
+        run: v run ci/linux_ci.vsh compile_vup_prod_gcc
 
-  clang:
-    runs-on: ubuntu-20.04
+  clang-linux:
+    runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
@@ -171,8 +163,6 @@ jobs:
         run: v run ci/linux_ci.vsh build_examples_clang
       - name: Build examples with -autofree
         run: v run ci/linux_ci.vsh build_examples_autofree_clang
-      - name: Test vlib modules with -skip-unused
-        run: v run ci/linux_ci.vsh test_vlib_skip_unused_clang
       - name: Build modules
         run: v run ci/linux_ci.vsh build_modules_clang
       - name: native machine code generation

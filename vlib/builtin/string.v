@@ -1108,6 +1108,18 @@ pub fn (s string) split_into_lines() []string {
 	return res
 }
 
+// split_by_space splits the string by whitespace (any of ` `, `\n`, `\t`, `\v`, `\f`, `\r`).
+// Repeated, trailing or leading whitespaces will be omitted.
+pub fn (s string) split_by_space() []string {
+	mut res := []string{}
+	for word in s.split_any(' \n\t\v\f\r') {
+		if word != '' {
+			res << word
+		}
+	}
+	return res
+}
+
 // substr returns the string between index positions `start` and `end`.
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
 @[direct_array_access]

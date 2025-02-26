@@ -30,7 +30,7 @@ fn (mut p Preferences) expand_lookup_paths() {
 		match path {
 			'@vlib' { expanded_paths << p.vlib }
 			'@vmodules' { expanded_paths << p.vmodules_paths }
-			else { expanded_paths << path }
+			else { expanded_paths << path.replace('@vroot', p.vroot) }
 		}
 	}
 	p.lookup_path = expanded_paths
@@ -61,7 +61,7 @@ fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
 	host_os := if p.backend == .wasm { OS.wasi } else { get_host_os() }
 	if p.os == ._auto {
 		p.os = host_os
-		p.build_options << '-os ${host_os}'
+		p.build_options << '-os ${host_os.lower()}'
 	}
 
 	if !p.output_cross_c {
@@ -81,6 +81,19 @@ fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
 		p.arch = get_host_arch()
 		p.build_options << '-arch ${p.arch}'
 	}
+}
+
+pub fn (mut p Preferences) defines_map_unique_keys() string {
+	mut defines_map := map[string]bool{}
+	for d in p.compile_defines {
+		defines_map[d] = true
+	}
+	for d in p.compile_defines_all {
+		defines_map[d] = true
+	}
+	keys := defines_map.keys()
+	skeys := keys.sorted()
+	return skeys.join(',')
 }
 
 pub fn (mut p Preferences) fill_with_defaults() {
@@ -189,17 +202,20 @@ pub fn (mut p Preferences) fill_with_defaults() {
 			}
 		}
 	}
+
+	final_os := p.os.lower()
+	p.parse_define(final_os)
+
 	// Prepare the cache manager. All options that can affect the generated cached .c files
 	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
 	vhash := @VHASH
 	p.cache_manager = vcache.new_cache_manager([
 		vhash,
 		// ensure that different v versions use separate build artefacts
-		'${p.backend} | ${p.os} | ${p.ccompiler} | ${p.is_prod} | ${p.sanitize}',
+		'${p.backend} | ${final_os} | ${p.ccompiler} | ${p.is_prod} | ${p.sanitize}',
+		p.defines_map_unique_keys(),
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),
-		p.compile_defines_all.str(),
-		p.compile_defines.str(),
 		p.lookup_path.str(),
 	])
 	// eprintln('prefs.cache_manager: $p')
@@ -376,4 +392,12 @@ pub fn (p &Preferences) vcross_compiler_name() string {
 		eprintln('Set `VCROSS_COMPILER_NAME` to the name of your cross compiler, for your target OS: ${p.os} .')
 	}
 	return 'cc'
+}
+
+// vroot_file reads the given file, given a path relative to @VROOT .
+// Its goal is to give all backends a shared infrastructure to read their own static preludes (like C headers etc),
+// without each having to implement their own way of lookup/embedding/caching them.
+pub fn (mut p Preferences) vroot_file(path string) string {
+	full_path := os.join_path(p.vroot, path)
+	return os.read_file(full_path) or { '/* missing vroot content of path: ${full_path} */' }
 }

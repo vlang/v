@@ -107,8 +107,26 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		return error_with_code('failed parallel C compilation', failed)
 	}
 
-	obj_files := fnames.map(it.replace('.c', '.o')).join(' ')
-	link_cmd := '${cc} ${scompile_args_for_linker} -o ${os.quoted_path(b.pref.out_name)} ${tmp_dir}/out_0.o ${obj_files} ${tmp_dir}/out_x.o ${slinker_args} ${cc_ldflags}'
+	mut ofiles := []string{}
+	for f in fnames {
+		fo := f.replace('.c', '.o')
+		ofiles << os.quoted_path(fo)
+	}
+	obj_files := ofiles.join(' ')
+
+	alink := [
+		cc,
+		scompile_args_for_linker,
+		'-o',
+		os.quoted_path(b.pref.out_name),
+		os.quoted_path('${tmp_dir}/out_0.o'),
+		obj_files,
+		os.quoted_path('${tmp_dir}/out_x.o'),
+		slinker_args,
+		cc_ldflags,
+	]
+	link_cmd := alink.join(' ')
+
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)

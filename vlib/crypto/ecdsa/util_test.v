@@ -2,6 +2,8 @@ module ecdsa
 
 import encoding.hex
 import crypto.pem
+import crypto.sha1
+import crypto.sha512
 
 // This material wss generated with https://emn178.github.io/online-tools/ecdsa/key-generator
 // with curve SECG secp384r1 aka NIST P-384
@@ -27,15 +29,16 @@ fn test_load_pubkey_from_der_serialized_bytes() ! {
 	block, _ := pem.decode(public_key_sample) or { panic(err) }
 	pbkey := pubkey_from_bytes(block.data)!
 
+	// .with_no_hash currently changed to have same behaviour with .with_recommended_hash
 	status_without_hashed := pbkey.verify(message_tobe_signed, expected_signature,
 		hash_config: .with_no_hash
 	)!
-	assert status_without_hashed == false
+	assert status_without_hashed == true
 
 	// expected signature was comes from hashed message with sha384
 	status_with_hashed := pbkey.verify(message_tobe_signed, expected_signature)!
 	assert status_with_hashed == true
-	key_free(pbkey.key)
+	pbkey.free()
 }
 
 fn test_for_pubkey_bytes() ! {
@@ -44,11 +47,11 @@ fn test_for_pubkey_bytes() ! {
 	pb := '0421af184ac64c8a13e66c65d4f1ad31677edeaa97af791aef73b66ea26d1623a411f67b6c4d842ba22fa39d1216bd64acef00a1b924ac11a10af679ac3a7eb2fd'
 	pvkey := new_key_from_seed(hex.decode(pv)!)!
 
-	assert pvkey.seed()!.hex() == pv
+	assert pvkey.bytes()!.hex() == pv
 	pbkey := pvkey.public_key()!
 	assert pbkey.bytes()!.hex() == pb
-	key_free(pbkey.key)
-	key_free(pvkey.key)
+	pbkey.free()
+	pvkey.free()
 }
 
 // above pem-formatted private key read with
@@ -84,7 +87,7 @@ fn test_for_pubkey_bytes() ! {
 fn test_load_privkey_from_string_sign_and_verify() ! {
 	pvkey := privkey_from_string(privatekey_sample)!
 	expected_pvkey_bytes := '30ce3da288965ac6093f0ba9a9a15b2476bea3eda925e1b3c1f094674f52795cd6cb3cafe235dfc15bec542448ffa715'
-	assert pvkey.seed()!.hex() == expected_pvkey_bytes
+	assert pvkey.bytes()!.hex() == expected_pvkey_bytes
 
 	// public key part	
 	pbkey := pvkey.public_key()!
@@ -124,4 +127,69 @@ UHhnmmVRraSwrVkPdYIeXhH/Ob4+8OLcwrQBMv4RXsD1GVFsgkvEYDTEb/vnMA==
 		assert err == error('Unsupported group')
 		return
 	}
+}
+
+fn test_key_signing_verifying_with_custom_hash() ! {
+	// privatekey_sample was P-384 key
+	pvkey := privkey_from_string(privatekey_sample)!
+	// public key part	
+	pbkey := pvkey.public_key()!
+	pbk := pubkey_from_string(public_key_sample)!
+
+	// lets sign the message with default hash, ie, sha384
+	signature := pvkey.sign(message_tobe_signed)!
+	verified := pbkey.verify(message_tobe_signed, signature)!
+	assert verified == true
+
+	// Use the bigger custom hash
+	opt0 := SignerOpts{
+		hash_config:       .with_custom_hash
+		allow_custom_hash: true
+		custom_hash:       sha512.new()
+	}
+	// online-generated signature with sha512 digest with the same params from https://emn178.github.io/online-tools/ecdsa/sign/
+	online_sign0 := hex.decode('3066023100b54b479b64961481074c4200a9dec83fb8a42bb7db53cf97f1da131504a058ead85d0a9e4e32be14098bc9b4d1a5a8dd023100f9c7de178a286329103f684d1eab1ccfe359c65a41a1459d7f535b703c57048f25931b1670ab4ec7a812d94c69063522')!
+	// library generated signature
+	sign0 := pvkey.sign(message_tobe_signed, opt0)!
+	v00 := pbkey.verify(message_tobe_signed, sign0, opt0)!
+	// this own signature should assert into true
+	assert v00 == true
+
+	// verify online-generated signature
+	v01 := pbkey.verify(message_tobe_signed, online_sign0, opt0)!
+	assert v01 == true
+
+	// with public_key_sample key
+	v02 := pbk.verify(message_tobe_signed, sign0, opt0)!
+	assert v02 == true
+	v03 := pbk.verify(message_tobe_signed, online_sign0, opt0)!
+	assert v03 == true
+
+	// Use smaller custom hash
+	opt1 := SignerOpts{
+		hash_config:        .with_custom_hash
+		allow_custom_hash:  true
+		allow_smaller_size: true
+		custom_hash:        sha1.new()
+	}
+	// online-generated signature with SHA1 digest
+	online_sign1 := hex.decode('306602310084299d8a70bf512c25cd2b79ae36509572f2bd6f198baeee074683578a70b4af8008e1cf451a2df1a887cf43daff4eea023100dceb267fe5037025c2af9f37911e05a36cbe666dd90fd6904020b5db056e86f25f9439a0ccb443d113b174cab6e2ad61')!
+	// library generated signature
+	sign1 := pvkey.sign(message_tobe_signed, opt1)!
+	verified1 := pbkey.verify(message_tobe_signed, sign1, opt1)!
+	// this own signature should assert into true
+	assert verified1 == true
+	// verify online-generated signature
+	verified11 := pbkey.verify(message_tobe_signed, online_sign1, opt1)!
+	assert verified11 == true
+
+	// verify with public_key_sample key
+	v11 := pbk.verify(message_tobe_signed, sign1, opt1)!
+	assert v11 == true
+	v12 := pbk.verify(message_tobe_signed, online_sign1, opt1)!
+	assert v12 == true
+
+	pvkey.free()
+	pbkey.free()
+	pbk.free()
 }

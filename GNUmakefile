@@ -25,7 +25,7 @@ _SYS := $(patsubst MINGW%,MinGW,$(_SYS))
 
 ifneq ($(filter $(_SYS),MSYS MinGW),)
 WIN32 := 1
-VEXE := ./v.exe
+EXE_EXT := .exe
 endif
 
 ifeq ($(_SYS),Linux)
@@ -90,7 +90,7 @@ endif
 endif
 endif
 
-.PHONY: all clean rebuild check fresh_vc fresh_tcc fresh_legacy check_for_working_tcc
+.PHONY: all clean rebuild check fresh_vc fresh_tcc fresh_legacy check_for_working_tcc etags ctags
 
 ifdef prod
 VFLAGS+=-prod
@@ -98,11 +98,11 @@ endif
 
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
-	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32
-	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
-	./v2.exe -o $(VEXE) $(VFLAGS) cmd/v
-	$(RM) v1.exe
-	$(RM) v2.exe
+	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
+	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(VFLAGS) cmd/v
+	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(VFLAGS) cmd/v
+	$(RM) v1$(EXE_EXT)
+	$(RM) v2$(EXE_EXT)
 else
 ifdef LEGACY
 	$(MAKE) -C $(TMPLEGACY)
@@ -110,15 +110,15 @@ ifdef LEGACY
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
-	$(CC) $(CFLAGS) -std=gnu99 -w -o v1.exe $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
-	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
-	./v2.exe -nocache -o $(VEXE) $(VFLAGS) cmd/v
-	rm -rf v1.exe v2.exe
+	$(CC) $(CFLAGS) -std=gnu99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(VFLAGS) cmd/v
+	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(VFLAGS) cmd/v
+	rm -rf v1$(EXE_EXT) v2$(EXE_EXT)
 endif
-	@$(VEXE) run cmd/tools/detect_tcc.v
+	@$(VEXE)$(EXE_EXT) run cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
-	@$(VEXE) -version
-	@$(VEXE) run .github/problem-matchers/register_all.vsh
+	@$(VEXE)$(EXE_EXT) -version
+	@$(VEXE)$(EXE_EXT) run .github/problem-matchers/register_all.vsh
 
 clean:
 	rm -rf $(TMPTCC)
@@ -136,7 +136,7 @@ latest_vc:
 endif
 
 check_for_working_tcc:
-	@$(TMPTCC)/tcc.exe --version > /dev/null 2> /dev/null || echo "The executable '$(TMPTCC)/tcc.exe' does not work."
+	@$(TMPTCC)/tcc$(EXE_EXT) --version > /dev/null 2> /dev/null || echo "The executable '$(TMPTCC)/tcc$(EXE_EXT)' does not work."
 
 fresh_vc:
 	rm -rf $(VC)
@@ -145,7 +145,7 @@ fresh_vc:
 ifndef local
 latest_tcc: $(TMPTCC)/.git/config
 	cd $(TMPTCC) && $(GITCLEANPULL)
-ifneq (,$(wildcard ./tcc.exe))
+ifneq (,$(wildcard ./tcc$(EXE_EXT)))
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 endif
 
@@ -202,14 +202,21 @@ asan:
 	$(MAKE) all CFLAGS='-fsanitize=address,undefined'
 
 selfcompile:
-	$(VEXE) -cg -o v cmd/v
+	$(VEXE)$(EXE_EXT) -cg -o v cmd/v
 
 selfcompile-static:
-	$(VEXE) -cg -cflags '--static' -o v-static cmd/v
+	$(VEXE)$(EXE_EXT) -cg -cflags '--static' -o v-static cmd/v
 
 ### NB: Please keep this Makefile and make.bat simple.
 install:
-	@echo 'Please use `sudo ./v symlink` instead.'
+	@echo 'Please use `sudo ./v symlink` instead, or manually add the current directory to your PATH.'
 
 check:
-	$(VEXE) test-all
+	$(VEXE)$(EXE_EXT) test-all
+
+etags:
+	./v$(EXE_EXT) -print-v-files cmd/v | grep -v :parse_text| etags -L -
+
+ctags:
+	./v$(EXE_EXT) -print-v-files cmd/v | grep -v :parse_text| ctags -L -
+

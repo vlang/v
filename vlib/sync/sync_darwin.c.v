@@ -92,9 +92,8 @@ pub fn new_mutex() &Mutex {
 
 // init initialises the mutex. It should be called once before the mutex is used,
 // since it creates the associated resources needed for the mutex to work properly.
-@[inline]
 pub fn (mut m Mutex) init() {
-	C.pthread_mutex_init(&m.mutex, C.NULL)
+	should_be_zero(C.pthread_mutex_init(&m.mutex, C.NULL))
 }
 
 // new_rwmutex creates a new read/write mutex instance on the heap, and returns a pointer to it.
@@ -108,11 +107,11 @@ pub fn new_rwmutex() &RwMutex {
 // since it creates the associated resources needed for the mutex to work properly.
 pub fn (mut m RwMutex) init() {
 	a := RwMutexAttr{}
-	C.pthread_rwlockattr_init(&a.attr)
+	should_be_zero(C.pthread_rwlockattr_init(&a.attr))
 	// Give writer priority over readers
 	C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
 	C.pthread_rwlockattr_setpshared(&a.attr, C.PTHREAD_PROCESS_PRIVATE)
-	C.pthread_rwlock_init(&m.mutex, &a.attr)
+	should_be_zero(C.pthread_rwlock_init(&m.mutex, &a.attr))
 }
 
 // lock locks the mutex instance (`lock` is a keyword).
@@ -138,12 +137,8 @@ pub fn (mut m Mutex) unlock() {
 
 // destroy frees the resources associated with the mutex instance.
 // Note: the mutex itself is not freed.
-@[inline]
 pub fn (mut m Mutex) destroy() {
-	res := C.pthread_mutex_destroy(&m.mutex)
-	if res != 0 {
-		cpanic(res)
-	}
+	should_be_zero(C.pthread_mutex_destroy(&m.mutex))
 }
 
 // rlock locks the given RwMutex instance for reading.
@@ -184,12 +179,8 @@ pub fn (mut m RwMutex) try_wlock() bool {
 
 // destroy frees the resources associated with the rwmutex instance.
 // Note: the mutex itself is not freed.
-@[inline]
 pub fn (mut m RwMutex) destroy() {
-	res := C.pthread_rwlock_destroy(&m.mutex)
-	if res != 0 {
-		cpanic(res)
-	}
+	should_be_zero(C.pthread_rwlock_destroy(&m.mutex))
 }
 
 // runlock unlocks the RwMutex instance, locked for reading.
@@ -214,7 +205,6 @@ pub fn (mut m RwMutex) unlock() {
 
 // new_semaphore creates a new initialised Semaphore instance on the heap, and returns a pointer to it.
 // The initial counter value of the semaphore is 0.
-@[inline]
 pub fn new_semaphore() &Semaphore {
 	return new_semaphore_init(0)
 }
@@ -232,9 +222,9 @@ pub fn new_semaphore_init(n u32) &Semaphore {
 // resources needed for the semaphore to work properly.
 pub fn (mut sem Semaphore) init(n u32) {
 	C.atomic_store_u32(&sem.count, n)
-	C.pthread_mutex_init(&sem.mtx, C.NULL)
+	should_be_zero(C.pthread_mutex_init(&sem.mtx, C.NULL))
 	attr := CondAttr{}
-	C.pthread_condattr_init(&attr.attr)
+	should_be_zero(C.pthread_condattr_init(&attr.attr))
 	C.pthread_condattr_setpshared(&attr.attr, C.PTHREAD_PROCESS_PRIVATE)
 	C.pthread_cond_init(&sem.cond, &attr.attr)
 	C.pthread_condattr_destroy(&attr.attr)
@@ -344,12 +334,6 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 // destroy frees the resources associated with the Semaphore instance.
 // Note: the semaphore instance itself is not freed.
 pub fn (mut sem Semaphore) destroy() {
-	mut res := C.pthread_cond_destroy(&sem.cond)
-	if res != 0 {
-		cpanic(res)
-	}
-	res = C.pthread_mutex_destroy(&sem.mtx)
-	if res != 0 {
-		cpanic(res)
-	}
+	should_be_zero(C.pthread_cond_destroy(&sem.cond))
+	should_be_zero(C.pthread_mutex_destroy(&sem.mtx))
 }

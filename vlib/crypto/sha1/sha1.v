@@ -16,10 +16,10 @@ pub const size = 20
 pub const block_size = 64
 
 const chunk = 64
-const init0 = 0x67452301
+const init0 = u32(0x67452301)
 const init1 = u32(0xEFCDAB89)
 const init2 = u32(0x98BADCFE)
-const init3 = 0x10325476
+const init3 = u32(0x10325476)
 const init4 = u32(0xC3D2E1F0)
 
 // digest represents the partial evaluation of a checksum.
@@ -124,6 +124,7 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 }
 
 // checksum returns the current byte checksum of the `Digest`,
+@[direct_array_access]
 fn (mut d Digest) checksum() []u8 {
 	mut len := d.len
 	// Padding.  Add a 1 bit and 0 bits until 56 bytes mod 64.

@@ -139,7 +139,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	}
 	mut ret := 0
 	if b.pref.use_os_system_to_run {
-		command_to_run := run_file + ' ' + run_args.join(' ')
+		command_to_run := os.quoted_path(run_file) + ' ' + run_args.join(' ')
 		ret = os.system(command_to_run)
 		// eprintln('> ret: ${ret:5} | command_to_run: ${command_to_run}')
 	} else {

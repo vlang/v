@@ -255,6 +255,7 @@ exit /b 1
 "%V_EXE%" run cmd/tools/detect_tcc.v
 echo  ^> V built successfully!
 echo  ^> To add V to your PATH, run `%V_EXE% symlink`.
+echo  ^> Note: Antivirus programs may sometimes tell you there is a virus in V (there aren't any).  They can also slow compilation by a considerable amount.  Consider adding exemptions for the V install directory as well as your V project folders.
 
 :version
 echo.

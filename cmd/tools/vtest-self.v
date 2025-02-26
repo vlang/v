@@ -11,9 +11,10 @@ struct Config {
 	is_sandboxed_packaging bool   = os.getenv('VTEST_SANDBOXED_PACKAGING') != ''
 	github_job             string = os.getenv('GITHUB_JOB')
 mut:
-	test_dirs        []string = ['cmd', 'vlib']
-	is_asan_compiler bool
-	is_msan_compiler bool
+	test_dirs         []string = ['cmd', 'vlib']
+	is_asan_compiler  bool
+	is_msan_compiler  bool
+	is_ubsan_compiler bool
 	// Options relating to the v command itself (passed in the prefix) `v [...args] test-self`.
 	werror             bool
 	sanitize_memory    bool
@@ -25,7 +26,7 @@ const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
-	'cmd/tools/vdoc/doc/doc_test.v',
+	'cmd/tools/vdoc/document/doc_test.v',
 	'vlib/arrays/arrays_test.v',
 	'vlib/bitfield/bitfield_test.v',
 	//
@@ -50,7 +51,7 @@ const essential_list = [
 	'vlib/crypto/md5/md5_test.v',
 	'vlib/dl/dl_test.v',
 	'vlib/encoding/base64/base64_test.v',
-	'vlib/encoding/utf8/encoding_utf8_test.v',
+	'vlib/encoding/utf8/validate/encoding_utf8_test.v',
 	'vlib/encoding/utf8/utf8_util_test.v',
 	'vlib/flag/flag_test.v',
 	'vlib/json/tests/json_decode_test.v',
@@ -130,7 +131,7 @@ const skip_fsanitize_too_slow = [
 	'cmd/tools/vpm/install_version_input_test.v',
 	'cmd/tools/vpm/install_version_test.v',
 	'cmd/tools/vpm/update_test.v',
-	'cmd/tools/vdoc/doc/doc_test.v',
+	'cmd/tools/vdoc/document/doc_test.v',
 ]
 const skip_with_fsanitize_memory = [
 	'do_not_remove',
@@ -232,6 +233,9 @@ const skip_with_asan_compiler = [
 	'do_not_remove',
 ]
 const skip_with_msan_compiler = [
+	'do_not_remove',
+]
+const skip_with_ubsan_compiler = [
 	'do_not_remove',
 ]
 const skip_on_musl = [
@@ -396,6 +400,9 @@ fn Config.init(vargs []string, targs []string) !Config {
 			'-msan-compiler', '--msan-compiler' {
 				cfg.is_msan_compiler = true
 			}
+			'-ubsan-compiler', '--ubsan-compiler' {
+				cfg.is_ubsan_compiler = true
+			}
 			else {
 				if arg.starts_with('-') {
 					errs << 'error: unknown flag `${arg}`'
@@ -429,7 +436,6 @@ fn main() {
 	}
 	// dump(cfg)
 	title := 'testing: ${cfg.test_dirs.join(', ')}'
-	testing.eheader(title)
 	mut tpaths := map[string]bool{}
 	mut tpaths_ref := &tpaths
 	for dir in cfg.test_dirs {
@@ -466,7 +472,7 @@ fn main() {
 	}
 	if !cfg.run_slow_sanitize
 		&& ((cfg.sanitize_undefined || cfg.sanitize_memory || cfg.sanitize_address)
-		|| (cfg.is_msan_compiler || cfg.is_asan_compiler)) {
+		|| (cfg.is_msan_compiler || cfg.is_asan_compiler || cfg.is_ubsan_compiler)) {
 		tsession.skip_files << skip_fsanitize_too_slow
 	}
 	if cfg.werror {
@@ -486,6 +492,9 @@ fn main() {
 	}
 	if cfg.is_msan_compiler {
 		tsession.skip_files << skip_with_msan_compiler
+	}
+	if cfg.is_ubsan_compiler {
+		tsession.skip_files << skip_with_ubsan_compiler
 	}
 	if cfg.is_musl_ci {
 		tsession.skip_files << skip_on_musl
@@ -522,7 +531,7 @@ fn main() {
 	}
 	$if macos {
 		$if arm64 {
-			if cfg.github_job == 'clang' {
+			if cfg.github_job.starts_with('clang-') {
 				tsession.skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
 			}
 		}
@@ -541,10 +550,11 @@ fn main() {
 		exit(1)
 	}
 	tsession.skip_files = tsession.skip_files.map(os.abs_path)
+	tsession.session_start(title)
 	tsession.test()
-	eprintln(tsession.benchmark.total_message(title))
+	tsession.session_stop(title)
 	if tsession.benchmark.nfail > 0 {
-		eprintln('\nWARNING: failed ${tsession.benchmark.nfail} times.\n')
+		eprintln('\nError: failed ${tsession.benchmark.nfail} times.\n')
 		exit(1)
 	}
 }

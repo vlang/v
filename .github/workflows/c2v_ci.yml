@@ -23,21 +23,17 @@ on:
       - '!cmd/tools/builders/**.v'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: c2v-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-doom:
-    strategy:
-      matrix:
-        os: [ubuntu-20.04]
-      fail-fast: false
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
 
       - name: Set 8.8.8.8 as dns server
         run: |
@@ -71,7 +67,7 @@ jobs:
           WAD_FILE=~/DOOM1.WAD ~/code/doom/build_whole_project.sh
 
   test-regression:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       VFLAGS: -cc tcc
@@ -81,7 +77,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
 
       - name: Set 8.8.8.8 as dns server
         run: |

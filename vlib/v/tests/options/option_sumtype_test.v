@@ -6,11 +6,13 @@ pub fn teste() ?TType {
 
 fn test_main() {
 	x := teste()
-	if x is []int {
-		dump(x)
-		y := x as []int
-		assert y == [1, 2]
-		return
+	if x != none {
+		if x is []int {
+			dump(x)
+			y := x as []int
+			assert y == [1, 2]
+			return
+		}
 	}
 	assert false
 }

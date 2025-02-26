@@ -1,0 +1,49 @@
+vlib/v/checker/tests/invalid_generic_field_err.vv:4:15: error: type `User` has no field named `typo`
+    2 | 
+    3 | fn (u &User) debug_1() {
+    4 |     println('${u.typo}')
+      |                  ~~~~
+    5 | }
+    6 |
+vlib/v/checker/tests/invalid_generic_field_err.vv:4:15: error: expression does not return a value
+    2 | 
+    3 | fn (u &User) debug_1() {
+    4 |     println('${u.typo}')
+      |                  ~~~~
+    5 | }
+    6 |
+vlib/v/checker/tests/invalid_generic_field_err.vv:8:9: error: `User` has no property `typo`
+    6 | 
+    7 | fn debug_2[T](t T) {
+    8 |     _ := t.typo
+      |            ~~~~
+    9 | }
+   10 |
+vlib/v/checker/tests/invalid_generic_field_err.vv:8:4: error: assignment mismatch: 1 variable 0 values
+    6 | 
+    7 | fn debug_2[T](t T) {
+    8 |     _ := t.typo
+      |       ~~
+    9 | }
+   10 |
+vlib/v/checker/tests/invalid_generic_field_err.vv:12:15: error: `User` has no property `typo`
+   10 | 
+   11 | fn debug_3[T](t T) {
+   12 |     println('${t.typo}')
+      |                  ~~~~
+   13 | }
+   14 |
+vlib/v/checker/tests/invalid_generic_field_err.vv:12:15: error: expression does not return a value
+   10 | 
+   11 | fn debug_3[T](t T) {
+   12 |     println('${t.typo}')
+      |                  ~~~~
+   13 | }
+   14 |
+vlib/v/checker/tests/invalid_generic_field_err.vv:12:2: error: `println` can not print void expressions
+   10 | 
+   11 | fn debug_3[T](t T) {
+   12 |     println('${t.typo}')
+      |     ~~~~~~~~~~~~~~~~~~~~
+   13 | }
+   14 |

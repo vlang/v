@@ -1,0 +1,22 @@
+module main
+
+import strconv
+
+fn main() {
+	println(to_int('1'))
+	println(to_int(1))
+}
+
+fn to_int[T](v T) i64 {
+	return match typeof(v).name {
+		'string' {
+			strconv.atoi(v) or { 0 }
+		}
+		'int' {
+			v
+		}
+		else {
+			0
+		}
+	}
+}

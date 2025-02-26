@@ -18,12 +18,12 @@ on:
       - '!**.md'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: vab-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   vab-compiles-v-examples:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
       VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3
@@ -65,7 +65,7 @@ jobs:
           done
 
   v-compiles-os-android:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

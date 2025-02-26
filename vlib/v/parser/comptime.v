@@ -112,6 +112,8 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
+const error_msg = 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()` and `\$res()` comptime functions are supported right now'
+
 fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
 		scope: unsafe { nil }
@@ -119,7 +121,6 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	start_pos := p.tok.pos()
 	p.check(.dollar)
 	mut is_veb := false
-	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()` and `\$res()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		name := p.check_name() // skip `vweb.html()` TODO
 		if name != 'vweb' && name != 'veb' {
@@ -526,5 +527,10 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		left:       left
 		field_expr: expr
 		pos:        start_pos.extend(p.prev_tok.pos())
+		or_block:   ast.OrExpr{
+			stmts: []ast.Stmt{}
+			kind:  if p.tok.kind == .question { .propagate_option } else { .absent }
+			pos:   p.tok.pos()
+		}
 	}
 }

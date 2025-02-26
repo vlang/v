@@ -80,6 +80,9 @@ fn C.fclose(stream &C.FILE) int
 
 fn C.pclose(stream &C.FILE) int
 
+fn C.open(path &char, flags int, mode ...int) int
+fn C.close(fd int) int
+
 fn C.strrchr(s &char, c int) &char
 fn C.strchr(s &char, c int) &char
 
@@ -138,6 +141,8 @@ fn C.ftell(&C.FILE) isize
 fn C.stat(&char, voidptr) int
 
 fn C.lstat(path &char, buf &C.stat) int
+
+fn C.statvfs(const_path &char, buf &C.statvfs) int
 
 fn C.rename(old_filename &char, new_filename &char) int
 
@@ -233,7 +238,7 @@ fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr,
 @[trusted]
 fn C._fileno(int) int
 
-type C.intptr_t = voidptr
+pub type C.intptr_t = voidptr
 
 fn C._get_osfhandle(fd int) C.intptr_t
 
@@ -510,3 +515,5 @@ fn C.WrappedNSLog(str &u8)
 // absolute value
 @[trusted]
 fn C.abs(number int) int
+
+fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool

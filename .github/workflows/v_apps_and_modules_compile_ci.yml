@@ -17,11 +17,11 @@ on:
       - 'cmd/tools/vrepl.v'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  group: v_apps-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  common:
+  v-apps-compile:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-14]
@@ -76,18 +76,18 @@ jobs:
           v retry -- v install vab
           echo "Build vab"
           v ~/.vmodules/vab
-          echo "Build vab with -gc boehm -skip-unused"
-          v -g -gc boehm -skip-unused ~/.vmodules/vab
+          echo "Build vab with -g"
+          v -g ~/.vmodules/vab
 
       - name: Build vlang/ved
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           v retry -- git clone --depth 1 https://github.com/vlang/ved
           cd ved && v -o ved .
+          echo "Build"
+          v .
           echo "Build with -autofree ..."
           v -autofree .
-          echo "Build with -skip-unused ..."
-          v -skip-unused .
           echo "Build with -prod ..."
           v -prod .
           cd ..
@@ -97,7 +97,7 @@ jobs:
         run: |
           v retry -- v install pdf
           echo "PDF examples should compile"
-          v -skip-unused should-compile-all ~/.vmodules/pdf/examples
+          v should-compile-all ~/.vmodules/pdf/examples
 
       - name: Build vlang/libsodium
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -105,7 +105,7 @@ jobs:
           echo "Install the libsodium wrapper"
           v retry -- v install libsodium
           echo "Test libsodium"
-          VJOBS=1 v -skip-unused test ~/.vmodules/libsodium
+          VJOBS=1 v test ~/.vmodules/libsodium
 
       - name: Build vlang/coreutils
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -126,7 +126,6 @@ jobs:
           v retry -- git clone https://github.com/vlang/gitly /tmp/gitly
           echo "Build Gitly"
           v -cc gcc /tmp/gitly
-          v -skip-unused -cc gcc /tmp/gitly
           ## echo "Build Gitly with -autofree"
           ## v -cc gcc -autofree /tmp/gitly
           echo "Compile gitly.css from gitly.scss"
@@ -141,7 +140,6 @@ jobs:
           v retry -- v install ui
           v -no-parallel ~/.vmodules/ui/examples/rectangles.v
           v -no-parallel ~/.vmodules/ui/examples/users.v
-          # v -skip-unused -no-parallel ~/.vmodules/ui/examples/users.v
           # v run ~/.vmodules/ui/examples/build_examples.vsh
 
       - name: Build vlang/v-analyzer
@@ -177,7 +175,6 @@ jobs:
           v retry -- git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
           echo "Build Go2V"
           v /tmp/go2v/
-          v -skip-unused /tmp/go2v/
           echo "Run Go2V tests"
           VJOBS=1 v test /tmp/go2v/
 
@@ -208,7 +205,6 @@ jobs:
           v -shared ~/.vmodules/msgpack/
           echo "Run msgpack tests"
           v test ~/.vmodules/msgpack/
-          v -skip-unused test ~/.vmodules/msgpack/
           echo "MessagePack examples should compile"
           v should-compile-all ~/.vmodules/msgpack/examples
 
@@ -219,15 +215,15 @@ jobs:
       #     v retry -- v install nedpals.vex
       #     echo "Compile all of the Vex examples"
       #     v should-compile-all ~/.vmodules/nedpals/vex/examples
-      #     echo "Compile the simple Vex example with -skip-unused"
-      #     v -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
+      #     echo "Compile the simple Vex example"
+      #     v ~/.vmodules/nedpals/vex/examples/simple_example.v
       #     echo "Run Vex Tests"
       #     v test ~/.vmodules/nedpals/vex
 
-  vpm-site:
+  vpm-site-compile:
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-14]
+        os: [ubuntu-24.04, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
@@ -238,4 +234,4 @@ jobs:
         run: |
           v retry -- v install markdown
           v retry -- git clone --depth 1 https://github.com/vlang/vpm
-          cd vpm && v . && v -skip-unused .
+          cd vpm && v .

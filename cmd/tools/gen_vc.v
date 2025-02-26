@@ -97,6 +97,7 @@ struct FlagOptions {
 }
 
 fn main() {
+	log.use_stdout()
 	mut fp := flag.new_flag_parser(os.args.clone())
 	fp.application(app_name)
 	fp.version(app_version)

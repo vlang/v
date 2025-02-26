@@ -1,0 +1,9 @@
+module main
+
+type Dbv = int | string
+
+fn main() {
+	mut m := Dbv('foo')
+	println(typeof(m).name)
+	println(m.type_name())
+}

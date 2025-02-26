@@ -6,6 +6,7 @@ import time
 import arrays
 import log
 
+const args = arguments()
 const warmup_samples = 2
 
 const max_samples = 20
@@ -41,6 +42,7 @@ fn lexec(cmd string) string {
 
 fn main() {
 	// ensure all log messages will be visible to the observers, even if the program panics
+	log.use_stdout()
 	log.set_always_flush(true)
 
 	total_sw := time.new_stopwatch()
@@ -53,7 +55,7 @@ fn main() {
 	if vdir.contains('/tmp/cirrus-ci-build') {
 		ccompiler_path = 'clang'
 	}
-	if os.args.contains('-clang') {
+	if args.contains('-clang') {
 		ccompiler_path = 'clang'
 	}
 	elog('fast_dir: ${fast_dir} | vdir: ${vdir} | compiler: ${ccompiler_path}')
@@ -67,7 +69,7 @@ fn main() {
 		os.create('table.html')!
 	}
 
-	if !os.args.contains('-noupdate') {
+	if !args.contains('-noupdate') {
 		elog('Fetching updates...')
 		ret := lsystem('${vdir}/v up')
 		if ret != 0 {
@@ -82,7 +84,7 @@ fn main() {
 		uploaded_index := os.read_file('fast.vlang.io/index.html')!
 		if uploaded_index.contains('>${commit}<') {
 			elog('NOTE: commit ${commit} had been benchmarked already.')
-			if !os.args.contains('-force') {
+			if !args.contains('-force') {
 				elog('nothing more to do')
 				return
 			}
@@ -97,21 +99,21 @@ fn main() {
 	elog('Benchmarking commit ${commit} , with commit message: "${message}", commit_date: ${commit_date}, date: ${date}')
 
 	// build an optimized V
-	if os.args.contains('-do-not-rebuild-vprod') {
+	if args.contains('-do-not-rebuild-vprod') {
 		if !os.exists('vprod') {
 			elog('Exiting, since if you use `-do-not-rebuild-vprod`, you should already have a `${vdir}/vprod` executable, but it is missing!')
 			return
 		}
 	} else {
 		elog('  Building vprod...')
-		if os.args.contains('-noprod') {
+		if args.contains('-noprod') {
 			lexec('./v -o vprod cmd/v') // for faster debugging
 		} else {
 			lexec('./v -o vprod -prod -prealloc cmd/v')
 		}
 	}
 
-	if !os.args.contains('-do-not-rebuild-caches') {
+	if !args.contains('-do-not-rebuild-caches') {
 		elog('clearing caches...')
 		// cache vlib modules
 		lexec('${vdir}/v wipe-cache')
@@ -162,7 +164,7 @@ fn main() {
 	res.close()
 
 	// upload the result to github pages
-	if os.args.contains('-upload') {
+	if args.contains('-upload') {
 		$if freebsd {
 			// Note: tcc currently can not compile vpm on FreeBSD, due to its dependence on net.ssl and net.mbedtls, so force using clang instead:
 			elog('FreeBSD: compiling the VPM tool with clang...')

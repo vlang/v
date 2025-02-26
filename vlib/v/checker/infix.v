@@ -112,8 +112,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	mut right_sym := c.table.sym(right_type)
-	right_final_sym := c.table.final_sym(right_type)
-	left_final_sym := c.table.final_sym(left_type)
+	right_final_sym := c.table.final_sym(c.unwrap_generic(right_type))
+	left_final_sym := c.table.final_sym(c.unwrap_generic(left_type))
 	left_pos := node.left.pos()
 	right_pos := node.right.pos()
 	left_right_pos := left_pos.extend(right_pos)
@@ -337,21 +337,21 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				&& (left_final_sym.is_primitive() || left_final_sym.kind == .enum)) {
 				left_sym = unsafe { left_final_sym }
 			}
-
+			op_str := node.op.str()
 			if c.pref.translated && node.op in [.plus, .minus, .mul]
 				&& unwrapped_left_type.is_any_kind_of_pointer()
 				&& unwrapped_right_type.is_any_kind_of_pointer() {
 				return_type = left_type
 			} else if !c.pref.translated && left_sym.info is ast.Alias
 				&& !left_final_sym.is_primitive() {
-				if left_sym.has_method(node.op.str()) {
-					if method := left_sym.find_method(node.op.str()) {
+				if left_sym.has_method(op_str) {
+					if method := left_sym.find_method(op_str) {
 						return_type = method.return_type
 					} else {
 						return_type = left_type
 					}
-				} else if left_final_sym.has_method_with_generic_parent(node.op.str()) {
-					if method := left_final_sym.find_method_with_generic_parent(node.op.str()) {
+				} else if left_final_sym.has_method_with_generic_parent(op_str) {
+					if method := left_final_sym.find_method_with_generic_parent(op_str) {
 						return_type = method.return_type
 					} else {
 						return_type = left_type
@@ -360,7 +360,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
-						c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
+						c.error('undefined operation `${left_name}` ${op_str} `${right_name}`',
 							left_right_pos)
 					} else {
 						c.error('mismatched types `${left_name}` and `${right_name}`',
@@ -369,26 +369,26 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			} else if !c.pref.translated && right_sym.info is ast.Alias
 				&& !right_final_sym.is_primitive() {
-				if right_sym.has_method(node.op.str()) {
-					if method := right_sym.find_method(node.op.str()) {
+				if right_sym.has_method(op_str) {
+					if method := right_sym.find_method(op_str) {
 						return_type = method.return_type
 					} else {
 						return_type = right_type
 					}
-				} else if right_final_sym.has_method_with_generic_parent(node.op.str()) {
-					if method := right_final_sym.find_method_with_generic_parent(node.op.str()) {
+				} else if right_final_sym.has_method_with_generic_parent(op_str) {
+					if method := right_final_sym.find_method_with_generic_parent(op_str) {
 						return_type = method.return_type
 					} else {
 						return_type = right_type
 					}
-				} else if left_sym.has_method(node.op.str()) {
-					if method := left_sym.find_method(node.op.str()) {
+				} else if left_sym.has_method(op_str) {
+					if method := left_sym.find_method(op_str) {
 						return_type = method.return_type
 					} else {
 						return_type = left_type
 					}
-				} else if left_final_sym.has_method_with_generic_parent(node.op.str()) {
-					if method := left_final_sym.find_method_with_generic_parent(node.op.str()) {
+				} else if left_final_sym.has_method_with_generic_parent(op_str) {
+					if method := left_final_sym.find_method_with_generic_parent(op_str) {
 						return_type = method.return_type
 					} else {
 						return_type = left_type
@@ -397,7 +397,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
-						c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
+						c.error('undefined operation `${left_name}` ${op_str} `${right_name}`',
 							left_right_pos)
 					} else {
 						c.error('mismatched types `${left_name}` and `${right_name}`',
@@ -413,8 +413,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 
 			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct] {
-				if left_sym.has_method_with_generic_parent(node.op.str()) {
-					if method := left_sym.find_method_with_generic_parent(node.op.str()) {
+				if left_sym.has_method_with_generic_parent(op_str) {
+					if method := left_sym.find_method_with_generic_parent(op_str) {
 						return_type = method.return_type
 					} else {
 						return_type = left_type
@@ -423,7 +423,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
-						c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
+						c.error('undefined operation `${left_name}` ${op_str} `${right_name}`',
 							left_right_pos)
 					} else {
 						c.error('mismatched types `${left_name}` and `${right_name}`',
@@ -431,8 +431,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct] {
-				if right_sym.has_method_with_generic_parent(node.op.str()) {
-					if method := right_sym.find_method_with_generic_parent(node.op.str()) {
+				if right_sym.has_method_with_generic_parent(op_str) {
+					if method := right_sym.find_method_with_generic_parent(op_str) {
 						return_type = method.return_type
 					} else {
 						return_type = right_type
@@ -441,7 +441,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
-						c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
+						c.error('undefined operation `${left_name}` ${op_str} `${right_name}`',
 							left_right_pos)
 					} else {
 						c.error('mismatched types `${left_name}` and `${right_name}`',
@@ -499,7 +499,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							c.error('float modulo not allowed, use math.fmod() instead',
 								pos)
 						} else {
-							c.error('${side} type of `${node.op.str()}` cannot be non-integer type `${name}`',
+							c.error('${side} type of `${op_str}` cannot be non-integer type `${name}`',
 								pos)
 						}
 					}
@@ -511,14 +511,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				left_sym = c.table.sym(unwrapped_left_type)
 				right_sym = c.table.sym(unwrapped_right_type)
 				if left_sym.info is ast.Alias && left_final_sym.is_primitive() {
-					if left_sym.has_method(node.op.str()) {
-						if method := left_sym.find_method(node.op.str()) {
+					if left_sym.has_method(op_str) {
+						if method := left_sym.find_method(op_str) {
 							return_type = method.return_type
 						}
 					}
 				} else if right_sym.info is ast.Alias && right_final_sym.is_primitive() {
-					if right_sym.has_method(node.op.str()) {
-						if method := right_sym.find_method(node.op.str()) {
+					if right_sym.has_method(op_str) {
+						if method := right_sym.find_method(op_str) {
 							return_type = method.return_type
 						}
 					}
@@ -781,6 +781,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if typ != ast.no_type {
 				typ_sym := c.table.sym(typ)
 				op := node.op.str()
+				if left_type.has_flag(.option) && !c.inside_sql {
+					c.error('${node.left} is an Optional, it needs to be unwrapped first',
+						node.left.pos())
+				}
 				if typ_sym.kind == .placeholder {
 					c.error('${op}: type `${typ_sym.name}` does not exist', right_expr.pos())
 				}

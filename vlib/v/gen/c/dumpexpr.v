@@ -207,7 +207,7 @@ fn (mut g Gen) dump_expr_definitions() {
 				'\tstring_free(&value);')
 		}
 		surrounder.add('
-	strings__Builder sb = strings__new_builder(256);
+	strings__Builder sb = strings__new_builder(64);
 ', '
 	string res;
 	res = strings__Builder_str(&sb);

@@ -1073,3 +1073,10 @@ pub fn error_win32(e SystemError) IError {
 		panic('Win32 API not available on this platform.')
 	}
 }
+
+pub struct DiskUsage {
+pub:
+	total     u64
+	available u64
+	used      u64
+}

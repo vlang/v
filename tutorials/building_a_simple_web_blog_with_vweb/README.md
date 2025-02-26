@@ -24,7 +24,7 @@ The code is available [here](./code/blog).
 ### Installing V
 
 ```
-wget https://github.com/vlang/v/releases/latest/download/v_linux.zip
+wget --quiet https://github.com/vlang/v/releases/latest/download/v_linux.zip
 unzip v_linux.zip
 cd v
 sudo ./v symlink

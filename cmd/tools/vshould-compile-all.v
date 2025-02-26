@@ -4,6 +4,7 @@ import log
 const should_clean = os.args.contains('-c')
 
 fn main() {
+	log.use_stdout()
 	mut files := []string{}
 	args := os.args#[2..].filter(it != '-c')
 	for a in args {
@@ -64,7 +65,7 @@ fn main() {
 			backend_options = '-b js'
 		}
 		lines := os.read_lines(example)!#[..50].filter(it.starts_with('module'))
-		if lines.len > 0 && lines[0] != 'module main' {
+		if lines.len > 0 && lines[0] !in ['module main', 'module no_main'] {
 			log.info('>>> skipping non main module file: ${example}')
 			skipped_files << example
 			continue

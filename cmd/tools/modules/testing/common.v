@@ -249,10 +249,12 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/websocket/ping.v' // requires OpenSSL
 			skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
 			skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
+			skip_files << 'examples/minimal_c_like_program_using_puts.v' // declares its own `main` function, while on windows it needs to be `wWinMain` ... although only for gcc for some reason ¯\_(ツ)_/¯
 			skip_files << 'vlib/v/tests/websocket_logger_interface_should_compile_test.v' // requires OpenSSL
 			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
 			skip_files << 'vlib/crypto/ecdsa/util_test.v' // requires OpenSSL
 			skip_files << 'vlib/crypto/ecdsa/example/ecdsa_seed_test.v' // requires OpenSSL
+			skip_files << 'vlib/crypto/ecdsa/example/ensure_compatibility_with_net_openssl_test.v' // requires OpenSSL
 			$if tinyc {
 				skip_files << 'examples/database/orm.v' // try fix it
 			}
@@ -264,13 +266,13 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/pendulum-simulation/parallel.v'
 			skip_files << 'examples/pendulum-simulation/parallel_with_iw.v'
 			skip_files << 'examples/pendulum-simulation/sequential.v'
-			if github_job == 'tcc' {
+			if github_job == 'tcc-windows' {
 				// TODO: fix these by adding declarations for the missing functions in the prebuilt tcc
 				skip_files << 'vlib/net/mbedtls/mbedtls_compiles_test.v'
 				skip_files << 'vlib/net/ssl/ssl_compiles_test.v'
 			}
 		}
-		if runner_os != 'Linux' || github_job != 'tcc' {
+		if runner_os != 'Linux' || !github_job.starts_with('tcc-') {
 			if !os.exists('/usr/local/include/wkhtmltox/pdf.h') {
 				skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 			}
@@ -285,14 +287,16 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
 			skip_files << 'vlib/crypto/ecdsa/util_test.v' // requires OpenSSL
 			skip_files << 'vlib/crypto/ecdsa/example/ecdsa_seed_test.v' // requires OpenSSL
+			skip_files << 'vlib/crypto/ecdsa/example/ensure_compatibility_with_net_openssl_test.v' // requires OpenSSL
 			skip_files << 'vlib/x/ttf/ttf_test.v'
 			skip_files << 'vlib/encoding/iconv/iconv_test.v' // needs libiconv to be installed
 		}
-		if github_job == 'tests-sanitize-memory-clang' {
+		if github_job == 'sanitize-memory-clang' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
 			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
 			skip_files << 'vlib/crypto/ecdsa/util_test.v' // requires OpenSSL
 			skip_files << 'vlib/crypto/ecdsa/example/ecdsa_seed_test.v' // requires OpenSSL
+			skip_files << 'vlib/crypto/ecdsa/example/ensure_compatibility_with_net_openssl_test.v' // requires OpenSSL
 			// Fails compilation with: `/usr/bin/ld: /lib/x86_64-linux-gnu/libpthread.so.0: error adding symbols: DSO missing from command line`
 			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}
@@ -793,9 +797,12 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 		}
 		c := os.read_file(fnormalised) or { panic(err) }
 		start := c#[0..header_bytes_to_search_for_module_main]
-		if start.contains('module ') && !start.contains('module main') {
-			skipped << fnormalised.replace(nparent_dir + '/', '')
-			continue next_file
+		if start.contains('module ') {
+			modname := start.all_after('module ').all_before('\n')
+			if modname !in ['main', 'no_main'] {
+				skipped << fnormalised.replace(nparent_dir + '/', '')
+				continue next_file
+			}
 		}
 		for skip_prefix in oskipped {
 			skip_folder := skip_prefix + '/'

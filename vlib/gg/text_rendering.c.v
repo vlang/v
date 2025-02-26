@@ -56,10 +56,10 @@ fn new_ft(c FTConfig) ?&FT {
 			fons.set_error_callback(clear_atlas_callback, fons)
 			return &FT{
 				fons:        fons
-				font_normal: fons.add_font_mem('sans', bytes_normal, false)
-				font_bold:   fons.add_font_mem('sans', bytes_bold, false)
-				font_mono:   fons.add_font_mem('sans', bytes_mono, false)
-				font_italic: fons.add_font_mem('sans', bytes_italic, false)
+				font_normal: fons.add_font_mem('sans', bytes_normal.clone(), true)
+				font_bold:   fons.add_font_mem('sans', bytes_bold.clone(), true)
+				font_mono:   fons.add_font_mem('sans', bytes_mono.clone(), true)
+				font_italic: fons.add_font_mem('sans', bytes_italic.clone(), true)
 				scale:       c.scale
 			}
 		} else {
@@ -122,10 +122,10 @@ fn new_ft(c FTConfig) ?&FT {
 	fons.set_error_callback(clear_atlas_callback, fons)
 	return &FT{
 		fons:        fons
-		font_normal: fons.add_font_mem('sans', bytes, false)
-		font_bold:   fons.add_font_mem('sans', bytes_bold, false)
-		font_mono:   fons.add_font_mem('sans', bytes_mono, false)
-		font_italic: fons.add_font_mem('sans', bytes_italic, false)
+		font_normal: fons.add_font_mem('sans', bytes.clone(), true)
+		font_bold:   fons.add_font_mem('sans', bytes_bold.clone(), true)
+		font_mono:   fons.add_font_mem('sans', bytes_mono.clone(), true)
+		font_italic: fons.add_font_mem('sans', bytes_italic.clone(), true)
 		scale:       c.scale
 	}
 }
@@ -144,7 +144,7 @@ pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 				debug_font_println('failed to load font "${cfg.family}"')
 				return
 			}
-			f = ctx.ft.fons.add_font_mem(cfg.family, bytes, false)
+			f = ctx.ft.fons.add_font_mem(cfg.family, bytes.clone(), true)
 			unsafe {
 				ctx.ft.fonts_map[cfg.family] = f
 			}

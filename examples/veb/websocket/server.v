@@ -12,6 +12,7 @@ import net.websocket
 const app_port = 8990
 
 fn main() {
+	log.use_stdout()
 	mut app := &App{
 		wss: new_websocker_server()!
 	}
@@ -64,6 +65,7 @@ fn wlog(message string) {
 fn new_websocker_server() !&websocket.Server {
 	mut logger := &log.Log{}
 	logger.set_level(.info)
+	logger.set_output_stream(os.stderr())
 	mut wss := websocket.new_server(.ip, app_port, '', logger: logger)
 	wss.set_ping_interval(100)
 	wss.on_connect(fn [mut logger] (mut server_client websocket.ServerClient) !bool {

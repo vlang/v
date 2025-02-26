@@ -11,14 +11,12 @@ fn stirling(x f64) (f64, f64) {
 	if x > 200 {
 		return inf(1), 1.0
 	}
-	sqrt_two_pi := 2.506628274631000502417
-	max_stirling := 143.01608
 	mut w := 1.0 / x
 	w = 1.0 + w * ((((gamma_s[0] * w + gamma_s[1]) * w + gamma_s[2]) * w + gamma_s[3]) * w +
 		gamma_s[4])
 	mut y1 := exp(x)
 	mut y2 := 1.0
-	if x > max_stirling { // avoid Pow() overflow
+	if x > 143.01608 { // avoid Pow() overflow, the constant is max_stirling
 		v := pow(x, 0.5 * x - 0.25)
 		y1_ := y1
 		y1 = v
@@ -26,7 +24,7 @@ fn stirling(x f64) (f64, f64) {
 	} else {
 		y1 = pow(x, x - 0.5) / y1
 	}
-	return y1, f64(sqrt_two_pi) * w * y2
+	return y1, f64(2.506628274631000502417) * w * y2 // the constant is sqrt_two_pi
 }
 
 // gamma returns the gamma function of x.
@@ -40,7 +38,6 @@ fn stirling(x f64) (f64, f64) {
 // gamma(nan) = nan
 pub fn gamma(a f64) f64 {
 	mut x := a
-	euler := 0.57721566490153286060651209008240243104215933593992 // A001620
 	if is_neg_int(x) || is_inf(x, -1) || is_nan(x) {
 		return nan()
 	}
@@ -92,18 +89,14 @@ pub fn gamma(a f64) f64 {
 	}
 	for x < 0 {
 		if x > -1e-09 {
-			unsafe {
-				goto small
-			}
+			return gamma_too_small(x, z)
 		}
 		z = z / x
 		x = x + 1
 	}
 	for x < 2 {
 		if x < 1e-09 {
-			unsafe {
-				goto small
-			}
+			return gamma_too_small(x, z)
 		}
 		z = z / x
 		x = x + 1
@@ -116,13 +109,14 @@ pub fn gamma(a f64) f64 {
 		gamma_p[4]) * x + gamma_p[5]) * x + gamma_p[6]
 	q = ((((((x * gamma_q[0] + gamma_q[1]) * x + gamma_q[2]) * x + gamma_q[3]) * x +
 		gamma_q[4]) * x + gamma_q[5]) * x + gamma_q[6]) * x + gamma_q[7]
-	if true {
-		return z * p / q
-	}
-	small:
+	return z * p / q
+}
+
+fn gamma_too_small(x f64, z f64) f64 {
 	if x == 0 {
 		return inf(1)
 	}
+	euler := 0.57721566490153286060651209008240243104215933593992 // A001620
 	return z / ((1.0 + euler * x) * x)
 }
 
@@ -142,14 +136,6 @@ pub fn log_gamma(x f64) f64 {
 // log_gamma_sign returns the natural logarithm and sign (-1 or +1) of Gamma(x)
 pub fn log_gamma_sign(a f64) (f64, int) {
 	mut x := a
-	ymin := 1.461632144968362245
-	tiny := exp2(-70)
-	two52 := exp2(52) // 0x4330000000000000 ~4.5036e+15
-	two58 := exp2(58) // 0x4390000000000000 ~2.8823e+17
-	tc := 1.46163214496836224576e+00 // 0x3FF762D86356BE3F
-	tf := -1.21486290535849611461e-01 // 0xBFBF19B9BCC38A42
-	// tt := -(tail of tf)
-	tt := -3.63867699703950536541e-18 // 0xBC50C7CAA48A971F
 	mut sign := 1
 	if is_nan(x) {
 		return x, sign
@@ -165,7 +151,7 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 		x = -x
 		neg = true
 	}
-	if x < tiny { // if |x| < 2**-70, return -log(|x|)
+	if x < exp2(-70) { // if |x| < 2**-70, return -log(|x|)
 		if neg {
 			sign = -1
 		}
@@ -173,7 +159,7 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 	}
 	mut nadj := 0.0
 	if neg {
-		if x >= two52 {
+		if x >= exp2(52) { // the constant is 0x4330000000000000 ~4.5036e+15
 			// x| >= 2**52, must be -integer
 			return inf(1), sign
 		}
@@ -190,6 +176,8 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 	if x == 1 || x == 2 { // purge off 1 and 2
 		return 0.0, sign
 	} else if x < 2 { // use lgamma(x) = lgamma(x+1) - log(x)
+		ymin := 1.461632144968362245
+		tc := 1.46163214496836224576e+00 // 0x3FF762D86356BE3F
 		mut y := 0.0
 		mut i := 0
 		if x <= 0.9 {
@@ -234,6 +222,9 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 				w * lgamma_t[13])))
 			gamma_p3 := lgamma_t[2] + w * (lgamma_t[5] + w * (lgamma_t[8] + w * (lgamma_t[11] +
 				w * lgamma_t[14])))
+			tf := -1.21486290535849611461e-01 // 0xBFBF19B9BCC38A42
+			// tt := -(tail of tf)
+			tt := -3.63867699703950536541e-18 // 0xBC50C7CAA48A971F
 			p := z * gamma_p1 - (tt - w * (gamma_p2 + y * gamma_p3))
 			lgamma += (tf + p)
 		} else if i == 2 {
@@ -278,7 +269,7 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 			z *= (y + 2)
 			lgamma += log(z)
 		}
-	} else if x < two58 { // 8 <= x < 2**58
+	} else if x < exp2(58) { // 8 <= x < 2**58, which is 0x4390000000000000 ~2.8823e+17
 		t := log(x)
 		z := 1.0 / x
 		y := z * z
@@ -297,8 +288,6 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 // sin_pi(x) is a helper function for negative x
 fn sin_pi(x_ f64) f64 {
 	mut x := x_
-	two52 := exp2(52) // 0x4330000000000000 ~4.5036e+15
-	two53 := exp2(53) // 0x4340000000000000 ~9.0072e+15
 	if x < 0.25 {
 		return -sin(pi * x)
 	}
@@ -309,10 +298,11 @@ fn sin_pi(x_ f64) f64 {
 		x = mod(x, 2)
 		n = int(x * 4)
 	} else {
-		if x >= two53 { // x must be even
+		if x >= exp2(53) { // x must be even; the constant is 0x4340000000000000 ~9.0072e+15
 			x = 0
 			n = 0
 		} else {
+			two52 := exp2(52) // 0x4330000000000000 ~4.5036e+15
 			if x < two52 {
 				z = x + two52 // exact
 			}

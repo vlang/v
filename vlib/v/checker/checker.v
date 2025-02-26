@@ -324,6 +324,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// println('check_files')
 	// c.files = ast_files
 	mut has_main_mod_file := false
+	mut has_no_main_mod_file := false
 	mut has_main_fn := false
 	unsafe {
 		mut files_from_main_module := []&ast.File{}
@@ -331,6 +332,9 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			mut file := ast_files[i]
 			c.timers.start('checker_check ${file.path}')
 			c.check(mut file)
+			if file.mod.name == 'no_main' {
+				has_no_main_mod_file = true
+			}
 			if file.mod.name == 'main' {
 				files_from_main_module << file
 				has_main_mod_file = true
@@ -446,6 +450,9 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 		// This is useful for compiling linux kernel modules for example.
 		return
 	}
+	if has_no_main_mod_file {
+		return
+	}
 	if !has_main_mod_file {
 		c.error('project must include a `main` module or be a shared library (compile with `v -shared`)',
 			token.Pos{})
@@ -543,8 +550,10 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 		}
 		.alias {
 			orig_sym := c.table.sym((parent_typ_sym.info as ast.Alias).parent_type)
-			c.error('type `${parent_typ_sym.str()}` is an alias, use the original alias type `${orig_sym.name}` instead',
-				node.type_pos)
+			if !node.name.starts_with('C.') {
+				c.error('type `${parent_typ_sym.str()}` is an alias, use the original alias type `${orig_sym.name}` instead',
+					node.type_pos)
+			}
 		}
 		.chan {
 			c.error('aliases of `chan` types are not allowed', node.type_pos)
@@ -921,7 +930,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 					}
 				}
 			} else if expr.obj is ast.ConstField && expr.name in c.const_names {
-				if !c.inside_unsafe && !c.pref.translated {
+				if !c.pref.translated {
 					// TODO: fix this in c2v, do not allow modification of all consts
 					// in translated code
 					c.error('cannot modify constant `${expr.name}`', expr.pos)
@@ -1645,6 +1654,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			return node.expr_type
 		}
 	}
+	node.is_field_typ = node.is_field_typ || c.comptime.is_comptime_selector_type(node)
 	old_selector_expr := c.inside_selector_expr
 	c.inside_selector_expr = true
 	mut typ := c.expr(mut node.expr)
@@ -2604,7 +2614,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		return
 	}
 	match node.kind {
-		'include', 'insert', 'preinclude' {
+		'include', 'insert', 'preinclude', 'postinclude' {
 			original_flag := node.main
 			mut flag := node.main
 			if flag.contains('@VROOT') {
@@ -2647,7 +2657,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				node.main = d
 			}
 			flag_no_comment := flag.all_before('//').trim_space()
-			if node.kind == 'include' || node.kind == 'preinclude' {
+			if node.kind in ['include', 'preinclude', 'postinclude'] {
 				if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"'))
 					|| (flag_no_comment.starts_with('<') && flag_no_comment.ends_with('>'))) {
 					c.error('including C files should use either `"header_file.h"` or `<header_file.h>` quoting',
@@ -3401,8 +3411,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			node.expr_type = c.promote_num(node.expr_type, xx)
 			from_type = node.expr_type
 		}
-		if !c.table.sumtype_has_variant(to_type, from_type, false) && !to_type.has_flag(.option)
-			&& !to_type.has_flag(.result) {
+		if !c.table.sumtype_has_variant(to_type, from_type, false) {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
@@ -3561,12 +3570,16 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast incompatible option ${final_to_sym.name} `${ft}` to `${tt}`',
 			node.pos)
-	}
-
-	if to_sym.kind == .rune && from_sym.is_string() {
+	} else if to_sym.kind == .rune && from_sym.is_string() {
 		snexpr := node.expr.str()
 		ft := c.table.type_to_str(from_type)
 		c.error('cannot cast `${ft}` to rune, use `${snexpr}.runes()` instead.', node.pos)
+	} else if !from_type.is_ptr() && from_type != ast.string_type
+		&& final_from_sym.info is ast.Struct && !final_from_sym.info.is_empty_struct()
+		&& (final_to_sym.is_int() || final_to_sym.is_float()) {
+		ft := c.table.type_to_str(from_type)
+		tt := c.table.type_to_str(to_type)
+		c.error('cannot cast type `${ft}` to `${tt}`', node.pos)
 	}
 
 	if to_sym.kind == .enum && !(c.inside_unsafe || c.file.is_translated) && from_sym.is_int() {
@@ -3935,7 +3948,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		typ := c.type_resolver.get_type_or_default(node, info.typ)
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
-			if !typ.has_flag(.option) {
+			if !info.typ.has_flag(.option) {
 				if node.or_expr.kind == .propagate_option {
 					c.error('cannot use `?` on non-option variable', node.pos)
 				} else if node.or_expr.kind == .block {
@@ -4273,7 +4286,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			mut is_mut := false
 			mut smartcasts := []ast.Type{}
 			expr_sym := c.table.sym(expr.expr_type)
-			mut orig_type := 0
+			mut orig_type := ast.no_type
 			if field := c.table.find_field(expr_sym, expr.field_name) {
 				if field.is_mut {
 					if root_ident := expr.root_ident() {
@@ -4286,13 +4299,14 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = field.typ
 				}
 			}
-			if field := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
+			expr_str := expr.expr.str()
+			if mut field := scope.find_struct_field(expr_str, expr.expr_type, expr.field_name) {
 				smartcasts << field.smartcasts
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
-			if !is_mut || expr.is_mut || is_option_unwrap {
+			if !is_mut || expr.is_mut || is_option_unwrap || orig_type.has_flag(.option) {
 				smartcasts << to_type
-				scope.register_struct_field(expr.expr.str(), ast.ScopeStructField{
+				scope.register_struct_field(expr_str, ast.ScopeStructField{
 					struct_type: expr.expr_type
 					name:        expr.field_name
 					typ:         cur_type
@@ -4311,7 +4325,9 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			mut orig_type := 0
 			mut is_inherited := false
 			mut ct_type_var := ast.ComptimeVarKind.no_comptime
+			mut is_ct_type_unwrapped := false
 			if mut expr.obj is ast.Var {
+				is_ct_type_unwrapped = expr.obj.ct_type_var != ast.ComptimeVarKind.no_comptime
 				is_mut = expr.obj.is_mut
 				smartcasts << expr.obj.smartcasts
 				is_already_casted = expr.obj.pos.pos == expr.pos.pos
@@ -4321,6 +4337,8 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				is_inherited = expr.obj.is_inherited
 				ct_type_var = if is_comptime {
 					.smartcast
+				} else if c.table.type_kind(to_type_) == .aggregate {
+					.aggregate
 				} else {
 					.no_comptime
 				}
@@ -4333,16 +4351,17 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 						if cur_type.has_flag(.option) && !to_type.has_flag(.option) {
 							if !var.is_unwrapped {
 								scope.register(ast.Var{
-									name:         expr.name
-									typ:          cur_type
-									pos:          expr.pos
-									is_used:      true
-									is_mut:       expr.is_mut
-									is_inherited: is_inherited
-									smartcasts:   [to_type]
-									orig_type:    orig_type
-									ct_type_var:  ct_type_var
-									is_unwrapped: true
+									name:              expr.name
+									typ:               cur_type
+									pos:               expr.pos
+									is_used:           true
+									is_mut:            expr.is_mut
+									is_inherited:      is_inherited
+									smartcasts:        [to_type]
+									orig_type:         orig_type
+									ct_type_var:       ct_type_var
+									ct_type_unwrapped: is_ct_type_unwrapped
+									is_unwrapped:      true
 								})
 							} else {
 								scope.update_smartcasts(expr.name, to_type, true)
@@ -4354,16 +4373,17 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					}
 				}
 				scope.register(ast.Var{
-					name:         expr.name
-					typ:          cur_type
-					pos:          expr.pos
-					is_used:      true
-					is_mut:       expr.is_mut
-					is_inherited: is_inherited
-					is_unwrapped: is_option_unwrap
-					smartcasts:   smartcasts
-					orig_type:    orig_type
-					ct_type_var:  ct_type_var
+					name:              expr.name
+					typ:               cur_type
+					pos:               expr.pos
+					is_used:           true
+					is_mut:            expr.is_mut
+					is_inherited:      is_inherited
+					is_unwrapped:      is_option_unwrap
+					smartcasts:        smartcasts
+					orig_type:         orig_type
+					ct_type_var:       ct_type_var
+					ct_type_unwrapped: is_ct_type_unwrapped
 				})
 			} else if is_mut && !expr.is_mut {
 				c.smartcast_mut_pos = expr.pos
@@ -5292,10 +5312,27 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 		return false
 	}
 	sym := c.table.sym(typ)
-	if !c.is_builtin_mod && sym.kind == .struct && !sym.is_pub && sym.mod != c.mod {
-		c.error('struct `${sym.name}` was declared as private to module `${sym.mod}`, so it can not be used inside module `${c.mod}`',
-			pos)
-		return false
+	if !c.is_builtin_mod && !sym.is_pub && sym.mod != c.mod && sym.mod != 'main' {
+		if sym.kind == .function {
+			fn_info := sym.info as ast.FnType
+			// hack: recover fn mod from func name
+			mut fn_mod := sym.mod
+			if fn_mod == '' {
+				fn_mod = fn_info.func.name.all_before_last('.')
+				if fn_mod == fn_info.func.name {
+					fn_mod = 'builtin'
+				}
+			}
+			if fn_mod != '' && fn_mod != c.mod && fn_info.func.name != '' && !fn_info.is_anon {
+				c.error('function type `${fn_info.func.name}` was declared as private to module `${fn_mod}`, so it can not be used inside module `${c.mod}`',
+					pos)
+				return false
+			}
+		} else if sym.mod != '' {
+			c.error('${sym.kind} `${sym.name}` was declared as private to module `${sym.mod}`, so it can not be used inside module `${c.mod}`',
+				pos)
+			return false
+		}
 	}
 	match sym.kind {
 		.placeholder {
