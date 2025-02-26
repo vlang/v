@@ -550,8 +550,10 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 		}
 		.alias {
 			orig_sym := c.table.sym((parent_typ_sym.info as ast.Alias).parent_type)
-			c.error('type `${parent_typ_sym.str()}` is an alias, use the original alias type `${orig_sym.name}` instead',
-				node.type_pos)
+			if !node.name.starts_with('C.') {
+				c.error('type `${parent_typ_sym.str()}` is an alias, use the original alias type `${orig_sym.name}` instead',
+					node.type_pos)
+			}
 		}
 		.chan {
 			c.error('aliases of `chan` types are not allowed', node.type_pos)

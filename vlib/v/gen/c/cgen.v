@@ -1815,6 +1815,12 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 		// TODO: remove this check; it is here just to fix V rebuilding in -cstrict mode with clang-12
 		return
 	}
+	if sym.name.starts_with('C.') {
+		// `pub type C.HINSTANCE = voidptr` means that `HINSTANCE` should be treated as a voidptr by V.
+		// The C type itself however already exists on the C side, so just treat C__HINSTANCE as a macro for it:
+		g.type_definitions.writeln('#define ${sym.cname} ${sym.cname#[3..]}')
+		return
+	}
 	if is_fixed_array_of_non_builtin && levels == 0 {
 		g.alias_definitions.writeln('typedef ${parent_styp} ${sym.cname};')
 	} else {
