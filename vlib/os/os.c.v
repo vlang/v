@@ -504,8 +504,8 @@ pub fn get_raw_line() string {
 	$if windows {
 		unsafe {
 			max_line_chars := 256
-			mut buf := malloc_noscan(max_line_chars * 2)
 			mut old_size := max_line_chars * 2
+			mut buf := malloc_noscan(old_size)
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := u32(0)
 			if is_atty(0) > 0 {
