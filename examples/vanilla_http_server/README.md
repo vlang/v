@@ -69,7 +69,7 @@ fn main() {
 
 	server.lock_flag.init()
 	for i := 0; i < 16; i++ {
-		server.threads[i] = spawn worker_thread(&server)
+		server.threads[i] = spawn process_events(&server)
 	}
 	println('listening on http://localhost:${port}/')
 	event_loop(&server)

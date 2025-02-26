@@ -39,6 +39,26 @@ fn C.setsockopt(__fd int, __level int, __optname int, __optval voidptr, __optlen
 
 fn C.listen(__fd int, __n int) int
 
+fn C.select(nfds int, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) int
+
+fn C.FD_ZERO(set &C.fd_set)
+
+fn C.FD_SET(fd int, set &C.fd_set)
+
+fn C.FD_CLR(fd int, set &C.fd_set)
+
+fn C.FD_ISSET(fd int, set &C.fd_set) int
+
+fn C.ioctlsocket(s int, cmd int, argp &u32) int
+
+fn C.closesocket(s int) int
+
+fn C.WSAStartup(wVersionRequested u16, lpWSAData &C.WSADATA) int
+
+fn C.WSAGetLastError() int
+
+fn C.WSACleanup() int
+
 struct In_addr {
 	s_addr int
 }
@@ -137,14 +157,36 @@ pub:
 }
 
 fn set_blocking(fd int, blocking bool) {
-	flags := C.fcntl(fd, C.F_GETFL, 0)
-	if flags == -1 {
-		return
+	$if windows {
+		// https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-ioctlsocket
+		// 0x8004667e is FIONBIO
+		mut i_mode := u32(0) // 0 = blocking, 1 = non-blocking
+		if !blocking {
+			i_mode = 1
+		}
+		if C.ioctlsocket(fd, C.FIONBIO, &i_mode) != 0 {
+			C.perror('ioctlsocket failed'.str)
+		}
+	} $else {
+		flags := C.fcntl(fd, C.F_GETFL, 0)
+		if flags == -1 {
+			// TODO: better error handling
+			eprintln(@LOCATION)
+			return
+		}
+		if blocking {
+			C.fcntl(fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
+		} else {
+			C.fcntl(fd, C.F_SETFL, flags | C.O_NONBLOCK)
+		}
 	}
-	if blocking {
-		C.fcntl(fd, C.F_SETFL, flags & ~C.O_NONBLOCK)
-	} else {
-		C.fcntl(fd, C.F_SETFL, flags | C.O_NONBLOCK)
+}
+
+fn close_socket(fd int) {
+	$if windows {
+		C.closesocket(fd)
+	} $else {
+		C.close(fd)
 	}
 }
 
@@ -161,12 +203,12 @@ fn create_server_socket(port int) int {
 	if C.setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEPORT, &opt, sizeof(opt)) < 0 {
 		eprintln(@LOCATION)
 		C.perror('setsockopt SO_REUSEPORT failed'.str)
-		C.close(server_fd)
+		close_socket(server_fd)
 		return -1
 	}
 
 	server_addr := Sockaddr_in{
-		sin_family: 2 // ip
+		sin_family: 2 // AF_INET
 		sin_port:   C.htons(port)
 		sin_addr:   In_addr{C.INADDR_ANY}
 		sin_zero:   [8]u8{}
@@ -175,13 +217,13 @@ fn create_server_socket(port int) int {
 	if C.bind(server_fd, voidptr(&server_addr), sizeof(server_addr)) < 0 {
 		eprintln(@LOCATION)
 		C.perror('Bind failed'.str)
-		C.close(server_fd)
+		close_socket(server_fd)
 		return -1
 	}
 	if C.listen(server_fd, max_connection_size) < 0 {
 		eprintln(@LOCATION)
 		C.perror('Listen failed'.str)
-		C.close(server_fd)
+		close_socket(server_fd)
 		return -1
 	}
 	return server_fd
@@ -225,7 +267,7 @@ fn handle_accept(server &Server) {
 		unsafe {
 			server.lock_flag.lock()
 			if add_fd_to_epoll(server.epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
-				C.close(client_fd)
+				close_socket(client_fd)
 			}
 			server.lock_flag.unlock()
 		}
@@ -241,61 +283,56 @@ fn handle_client_closure(server &Server, client_fd int) {
 }
 
 fn process_events(server &Server) {
-	events := [max_connection_size]C.epoll_event{}
-	num_events := C.epoll_wait(server.epoll_fd, &events[0], max_connection_size, -1)
-	for i := 0; i < num_events; i++ {
-		if events[i].events & u32((C.EPOLLHUP | C.EPOLLERR)) != 0 {
-			handle_client_closure(server, unsafe { events[i].data.fd })
-			continue
-		}
-		if events[i].events & u32(C.EPOLLIN) != 0 {
-			request_buffer := [140]u8{}
-			bytes_read := C.recv(unsafe { events[i].data.fd }, &request_buffer[0], 140 - 1,
-				0)
-			if bytes_read > 0 {
-				mut readed_request_buffer := []u8{cap: bytes_read}
+	for {
+		events := [max_connection_size]C.epoll_event{}
+		num_events := C.epoll_wait(server.epoll_fd, &events[0], max_connection_size, -1)
+		for i := 0; i < num_events; i++ {
+			if events[i].events & u32((C.EPOLLHUP | C.EPOLLERR)) != 0 {
+				handle_client_closure(server, unsafe { events[i].data.fd })
+				continue
+			}
+			if events[i].events & u32(C.EPOLLIN) != 0 {
+				request_buffer := [140]u8{}
+				bytes_read := C.recv(unsafe { events[i].data.fd }, &request_buffer[0],
+					140 - 1, 0)
+				if bytes_read > 0 {
+					mut readed_request_buffer := []u8{cap: bytes_read}
 
-				unsafe {
-					readed_request_buffer.push_many(&request_buffer[0], bytes_read)
-				}
+					unsafe {
+						readed_request_buffer.push_many(&request_buffer[0], bytes_read)
+					}
 
-				decoded_http_request := decode_http_request(readed_request_buffer) or {
-					eprintln('Error decoding request ${err}')
-					C.send(unsafe { events[i].data.fd }, tiny_bad_request_response.data,
-						tiny_bad_request_response.len, 0)
-					handle_client_closure(server, unsafe { events[i].data.fd })
-					continue
-				}
+					decoded_http_request := decode_http_request(readed_request_buffer) or {
+						eprintln('Error decoding request ${err}')
+						C.send(unsafe { events[i].data.fd }, tiny_bad_request_response.data,
+							tiny_bad_request_response.len, 0)
+						handle_client_closure(server, unsafe { events[i].data.fd })
+						continue
+					}
 
-				// This lock is a workaround for avoiding race condition in router.params
-				// This slows down the server, but it's a temporary solution
-				(*server).lock_flag.lock()
-				response_buffer := (*server).request_handler(decoded_http_request) or {
-					eprintln('Error handling request ${err}')
-					C.send(unsafe { events[i].data.fd }, tiny_bad_request_response.data,
-						tiny_bad_request_response.len, 0)
-					handle_client_closure(server, unsafe { events[i].data.fd })
+					// This lock is a workaround for avoiding race condition in router.params
+					// This slows down the server, but it's a temporary solution
+					(*server).lock_flag.lock()
+					response_buffer := (*server).request_handler(decoded_http_request) or {
+						eprintln('Error handling request ${err}')
+						C.send(unsafe { events[i].data.fd }, tiny_bad_request_response.data,
+							tiny_bad_request_response.len, 0)
+						handle_client_closure(server, unsafe { events[i].data.fd })
+						(*server).lock_flag.unlock()
+						continue
+					}
 					(*server).lock_flag.unlock()
-					continue
-				}
-				(*server).lock_flag.unlock()
 
-				C.send(unsafe { events[i].data.fd }, response_buffer.data, response_buffer.len,
-					0)
-				handle_client_closure(server, unsafe { events[i].data.fd })
-			} else if bytes_read == 0
-				|| (bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK) {
-				handle_client_closure(server, unsafe { events[i].data.fd })
+					C.send(unsafe { events[i].data.fd }, response_buffer.data, response_buffer.len,
+						0)
+					handle_client_closure(server, unsafe { events[i].data.fd })
+				} else if bytes_read == 0
+					|| (bytes_read < 0 && C.errno != C.EAGAIN && C.errno != C.EWOULDBLOCK) {
+					handle_client_closure(server, unsafe { events[i].data.fd })
+				}
 			}
 		}
 	}
-}
-
-fn worker_thread(server &Server) {
-	for {
-		process_events(server)
-	}
-	return
 }
 
 fn event_loop(server &Server) {
