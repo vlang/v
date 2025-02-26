@@ -1,6 +1,5 @@
 module test
 
-fn C._vinit(int, voidptr)
 fn C.GC_INIT()
 
 const foo = 1
