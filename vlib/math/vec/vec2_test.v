@@ -1,4 +1,4 @@
-import math { close, veryclose }
+import math { close, radians, veryclose }
 import math.vec
 
 fn test_vec2_int() {
@@ -159,4 +159,72 @@ fn test_vec2_angle_towards() {
 			}
 		}
 	}
+}
+
+fn test_vec2_rotate_around_cw() {
+	origin := vec.vec2(0.0, 0.0)
+	mut v := vec.vec2(0.0, 1.0)
+	v = v.rotate_around_cw(origin, radians(90))
+	assert close(v.x, 1.0)
+	assert close(v.y, 0.0)
+	v = v.rotate_around_cw(origin, radians(90))
+	assert close(v.x, 0.0)
+	assert close(v.y, -1.0)
+	v = v.rotate_around_cw(origin, radians(90))
+	assert close(v.x, -1.0)
+	assert close(v.y, 0.0)
+	v = v.rotate_around_cw(origin, radians(90))
+	assert close(v.x, 0.0)
+	assert close(v.y, 1.0)
+}
+
+fn test_vec2_rotate_around_ccw() {
+	origin := vec.vec2(0.0, 0.0)
+	mut v := vec.vec2(0.0, 1.0)
+	v = v.rotate_around_ccw(origin, radians(90))
+	assert close(v.x, -1.0)
+	assert close(v.y, 0.0)
+	v = v.rotate_around_ccw(origin, radians(90))
+	assert close(v.x, 0.0)
+	assert close(v.y, -1.0)
+	v = v.rotate_around_ccw(origin, radians(90))
+	assert close(v.x, 1.0)
+	assert close(v.y, 0.0)
+	v = v.rotate_around_ccw(origin, radians(90))
+	assert close(v.x, 0.0)
+	assert close(v.y, 1.0)
+}
+
+fn test_vec2_rotate_around_cw_2() {
+	origin := vec.vec2(1.0, 1.0)
+	mut v := vec.vec2(1.0, 2.0)
+	v = v.rotate_around_cw(origin, radians(90))
+	assert close(v.x, 2.0)
+	assert close(v.y, 1.0)
+	v = v.rotate_around_cw(origin, radians(90))
+	assert close(v.x, 1.0)
+	assert close(v.y, 0.0)
+	v = v.rotate_around_cw(origin, radians(90))
+	assert close(v.x, 0.0)
+	assert close(v.y, 1.0)
+	v = v.rotate_around_cw(origin, radians(90))
+	assert close(v.x, 1.0)
+	assert close(v.y, 2.0)
+}
+
+fn test_vec2_rotate_around_ccw_2() {
+	origin := vec.vec2(-1.0, 1.0)
+	mut v := vec.vec2(-1.0, -1.0)
+	v = v.rotate_around_ccw(origin, radians(90))
+	assert close(v.x, 1.0)
+	assert close(v.y, 1.0)
+	v = v.rotate_around_ccw(origin, radians(90))
+	assert close(v.x, -1.0)
+	assert close(v.y, 3.0)
+	v = v.rotate_around_ccw(origin, radians(90))
+	assert close(v.x, -3.0)
+	assert close(v.y, 1.0)
+	v = v.rotate_around_ccw(origin, radians(90))
+	assert close(v.x, -1.0)
+	assert close(v.y, -1.0)
 }
