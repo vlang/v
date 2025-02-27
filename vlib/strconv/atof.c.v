@@ -391,8 +391,14 @@ fn converter(mut pn PrepNumber) u64 {
 	return result
 }
 
+@[params]
+pub struct AtoF64Param {
+pub:
+	allow_extra_chars bool // allow extra characters after number
+}
+
 // atof64 parses the string `s`, and if possible, converts it into a f64 number
-pub fn atof64(s string) !f64 {
+pub fn atof64(s string, param AtoF64Param) !f64 {
 	if s.len == 0 {
 		return error('expected a number found an empty string')
 	}
@@ -415,7 +421,11 @@ pub fn atof64(s string) !f64 {
 			res.u = double_minus_infinity
 		}
 		.extra_char {
-			return error('extra char after number')
+			if param.allow_extra_chars {
+				res.u = converter(mut pn)
+			} else {
+				return error('extra char after number')
+			}
 		}
 		.invalid_number {
 			return error('not a number')
