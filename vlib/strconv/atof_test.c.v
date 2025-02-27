@@ -20,7 +20,9 @@ fn test_atof() {
 		0.0,
 		-0.0,
 		31234567890123,
-		123,
+		0.01,
+		2000,
+		-300,
 	]
 
 	// strings
@@ -32,7 +34,9 @@ fn test_atof() {
 		'0.0',
 		'-0.0',
 		'31234567890123',
-		'123xyz',
+		'1e-2',
+		'+2e+3',
+		'-3.0e+2',
 	]
 
 	// check conversion case 1 string <=> string
@@ -91,7 +95,13 @@ fn test_atof_errors() {
 	} else {
 		assert err.str() == 'not a number'
 	}
-	if x := strconv.atof64('123xyz', no_extra_char: true) {
+	if x := strconv.atof64('uu577.01') {
+		eprintln('> x: ${x}')
+		assert false // strconv.atof64 should have failed
+	} else {
+		assert err.str() == 'not a number'
+	}
+	if x := strconv.atof64('123.33xyz') {
 		eprintln('> x: ${x}')
 		assert false // strconv.atof64 should have failed
 	} else {
