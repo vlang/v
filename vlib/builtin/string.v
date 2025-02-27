@@ -636,13 +636,13 @@ pub fn (s string) i64() i64 {
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
 @[inline]
 pub fn (s string) f32() f32 {
-	return f32(strconv.atof64(s) or { 0 })
+	return f32(strconv.atof64(s, allow_extra_chars: true) or { 0 })
 }
 
 // f64 returns the value of the string as f64 `'1.0'.f64() == f64(1)`.
 @[inline]
 pub fn (s string) f64() f64 {
-	return strconv.atof64(s) or { 0 }
+	return strconv.atof64(s, allow_extra_chars: true) or { 0 }
 }
 
 // u8_array returns the value of the hex/bin string as u8 array.
