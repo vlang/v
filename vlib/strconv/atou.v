@@ -82,7 +82,7 @@ pub fn atou(s string) !u32 {
 	return u32(atou_common(s, max_u32)!)
 }
 
-// atou32 is identical to atou. Here to provide a symetrical API with atoi/atoi32
+// atou32 is identical to atou. Here to provide a symmetrical API with atoi/atoi32
 // It returns u32 in range [0..4294967295] or an Error.
 pub fn atou32(s string) !u32 {
 	return u32(atou_common(s, max_u32)!)
