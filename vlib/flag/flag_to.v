@@ -665,7 +665,7 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 		docs << '${name_and_version}'
 	}
 
-	// Resolve the desciption if visible
+	// Resolve the description if visible
 	if dc.options.show.has(.description) {
 		mut description := ''
 		// Set the description from any `xdoc` (or user defined) from *struct*
