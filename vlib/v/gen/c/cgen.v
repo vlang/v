@@ -572,7 +572,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	b.write_string2('\n// V comptime_definitions:\n', g.comptime_definitions.str())
 	b.write_string2('\n// V typedefs:\n', g.typedefs.str())
 	b.write_string2('\n // V preincludes:\n', g.preincludes.str())
-	b.write_string2('\n// V cheaders:', g.cheaders.str())
+	b.write_string2('\n// V cheaders:\n', g.cheaders.str())
 	if g.pcs_declarations.len > 0 {
 		b.write_string2('\n// V profile counters:\n', g.pcs_declarations.str())
 	}
