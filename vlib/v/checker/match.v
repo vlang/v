@@ -287,7 +287,7 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 				}
 			}
 			if ret_type != ast.none_type {
-				c.error('return type mismatch,3 it should be `${ret_sym.name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
+				c.error('return type mismatch, it should be `${ret_sym.name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
 					last_stmt.pos)
 			}
 		}
