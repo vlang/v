@@ -7,6 +7,8 @@ module builtin
 // g_original_codepage - used to restore the original windows console code page when exiting
 __global g_original_codepage = u32(0)
 
+// See https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types
+// See https://www.codeproject.com/KB/string/cppstringguide1.aspx
 pub type C.BOOL = int
 
 pub type C.HINSTANCE = voidptr
@@ -24,6 +26,20 @@ pub type C.HGLOBAL = voidptr
 pub type C.HANDLE = voidptr
 
 pub type C.LRESULT = voidptr
+
+pub type C.CHAR = char
+
+pub type C.TCHAR = u16 // It is u8 if UNICODE is not defined, but for V programs it always is
+
+pub type C.WCHAR = u16
+
+pub type C.LPSTR = &char
+
+pub type C.LPWSTR = &C.WCHAR
+
+pub type C.LPTSTR = &C.TCHAR
+
+pub type C.LPCTSTR = &C.TCHAR
 
 // utf8 to stdout needs C.SetConsoleOutputCP(cp_utf8)
 fn C.GetConsoleOutputCP() u32
