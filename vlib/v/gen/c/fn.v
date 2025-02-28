@@ -2579,9 +2579,17 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 		// save all arguments in temp vars (not only pointers) to make sure the
 		// evaluation order is preserved
 		expected_type := node.expected_arg_types[i]
-		typ := g.table.sym(expected_type).cname
-		g.write('${typ} __tmp_arg_${tmp_cnt_save + i} = ')
-		g.ref_or_deref_arg(arg, expected_type, node.language, false)
+		typ_sym := g.table.sym(expected_type)
+		typ := typ_sym.cname
+		if typ_sym.kind != .array_fixed {
+			g.write('${typ} __tmp_arg_${tmp_cnt_save + i} = ')
+			g.ref_or_deref_arg(arg, expected_type, node.language, false)
+		} else {
+			g.writeln('${typ} __tmp_arg_${tmp_cnt_save + i} = {0};')
+			g.write('memcpy(&__tmp_arg_${tmp_cnt_save + i}, ')
+			g.ref_or_deref_arg(arg, expected_type, node.language, false)
+			g.writeln(', sizeof(${typ}));')
+		}
 		g.writeln(';')
 	}
 	g.empty_line = false
