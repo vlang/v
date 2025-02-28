@@ -37,6 +37,10 @@ fn main() {
 		return
 	}#[0..10]
 
+ mut fetcher_pool := pool.new_pool_processor( 
+  callback: worker_fetch 
+ )
+
 	// Note: if you do not call set_max_jobs, the pool will try to use an optimal
 	// number of threads, one per each core in your system, which in most
 	// cases is what you want anyway... You can override the automatic choice
