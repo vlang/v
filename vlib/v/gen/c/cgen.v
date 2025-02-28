@@ -6504,7 +6504,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							}
 						}
 					}
-					g.struct_decl(sym.info, name, false)
+					g.struct_decl(sym.info, name, false, false)
 					struct_names[name] = true
 				}
 			}

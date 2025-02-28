@@ -10,6 +10,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	if node.is_pub && !is_anon {
 		f.write('pub ')
 	}
+	if node.is_option {
+		f.write('?')
+	}
 	if node.is_union {
 		f.write('union')
 	} else {

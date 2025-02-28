@@ -525,7 +525,11 @@ fn (mut p Parser) parse_type() ast.Type {
 	if p.tok.kind == .key_struct {
 		p.anon_struct_decl = p.struct_decl(true)
 		// Find the registered anon struct type, it was registered above in `p.struct_decl()`
-		return p.table.find_type_idx(p.anon_struct_decl.name)
+		mut typ := p.table.find_type_idx(p.anon_struct_decl.name)
+		if is_option {
+			typ = ast.new_type(typ).set_flag(.option)
+		}
+		return typ
 	}
 
 	language := p.parse_language()

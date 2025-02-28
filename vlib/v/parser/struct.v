@@ -14,6 +14,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	start_pos := p.tok.pos()
 	mut is_pub := p.tok.kind == .key_pub
 	mut is_shared := p.tok.kind == .key_shared
+	is_option := is_anon && p.prev_tok.kind == .question
 	if is_pub {
 		p.next()
 	}
@@ -436,6 +437,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		module_pos:       module_pos
 		language:         language
 		is_union:         is_union
+		is_option:        is_option
 		attrs:            if is_anon { []ast.Attr{} } else { attrs } // anon structs can't have attributes
 		pre_comments:     pre_comments
 		end_comments:     end_comments

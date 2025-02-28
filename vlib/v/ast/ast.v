@@ -431,6 +431,7 @@ pub:
 	global_pos       int = -1 // __global:
 	module_pos       int = -1 // module:
 	is_union         bool
+	is_option        bool
 	attrs            []Attr
 	pre_comments     []Comment
 	end_comments     []Comment
