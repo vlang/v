@@ -31,17 +31,12 @@ fn main() {
 		println('failed to fetch data from /v0/topstories.json')
 		return
 	}
-	// TODO bring back once json2 can decode []int
-	/*
+
 	ids := json2.decode[[]int](resp.body) or {
 		println('failed to decode topstories.json $err')
 		return
 	}#[0..10]
-	*/
-	ids := resp.body.replace_once('[', '').replace_once(']', '').split(',').map(it.int())#[0..10]
-	mut fetcher_pool := pool.new_pool_processor(
-		callback: worker_fetch
-	)
+
 	// Note: if you do not call set_max_jobs, the pool will try to use an optimal
 	// number of threads, one per each core in your system, which in most
 	// cases is what you want anyway... You can override the automatic choice
