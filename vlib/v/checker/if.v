@@ -576,7 +576,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		}
 	}
 	if node.typ == ast.none_type {
-		c.error('invalid if expression with no value type supplied beyond `none`', node.pos)
+		c.error('invalid if expression, must supply at least one value other than `none`',
+			node.pos)
 	}
 	// if only untyped literals were given default to int/f64
 	node.typ = ast.mktyp(node.typ)
