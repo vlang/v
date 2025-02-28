@@ -510,6 +510,15 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							stmt.typ = ast.error_type
 							continue
 						}
+						if (node.typ == ast.none_type && stmt.typ != ast.none_type)
+							|| (stmt.typ == ast.none_type && node.typ != ast.none_type) {
+							node.typ = if stmt.typ != ast.none_type {
+								stmt.typ.set_flag(.option)
+							} else {
+								node.typ.set_flag(.option)
+							}
+							continue
+						}
 						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 							node.pos)
 					} else {
