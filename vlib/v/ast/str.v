@@ -186,7 +186,12 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		f.write_string(param.name)
 		param_sym := t.sym(param.typ)
 		if param_sym.info is Struct && param_sym.info.is_anon {
-			f.write_string(' struct {')
+			if param.typ.has_flag(.option) {
+				f.write_string(' ?')
+			} else {
+				f.write_string(' ')
+			}
+			f.write_string('struct {')
 			for field in param_sym.info.fields {
 				f.write_string(' ${field.name} ${t.type_to_str(field.typ)}')
 				if field.has_default_expr {

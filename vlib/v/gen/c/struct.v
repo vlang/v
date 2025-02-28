@@ -77,7 +77,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write(')')
 		}
 	}
-	if is_anon {
+	if is_anon && !node.typ.has_flag(.option) {
 		if node.language == .v {
 			g.write('(${styp})')
 		}
@@ -541,7 +541,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	return true
 }
 
-fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
+fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool, is_option bool) {
 	if s.is_generic {
 		return
 	}
@@ -585,10 +585,11 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		}
 	}
 	if is_anon {
+		option_prefix := if is_option { '_option_' } else { '' }
 		if s.is_shared {
-			g.type_definitions.write_string('\t__shared__${name}* ')
+			g.type_definitions.write_string('\t${option_prefix}__shared__${name}* ')
 		} else {
-			g.type_definitions.write_string('\t${name} ')
+			g.type_definitions.write_string('\t${option_prefix}${name} ')
 		}
 		return
 	} else if s.is_union {
@@ -671,7 +672,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 				if field_sym.info.is_anon {
 					field_is_anon = true
 					// Recursively generate code for this anon struct (this is the field's type)
-					g.struct_decl(field_sym.info, field_sym.cname, true)
+					g.struct_decl(field_sym.info, field_sym.cname, true, field.typ.has_flag(.option))
 					// Now the field's name
 					g.type_definitions.writeln(' ${field_name}${size_suffix};')
 				}
