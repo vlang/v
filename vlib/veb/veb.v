@@ -400,11 +400,12 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 
 		n := reader.read(mut buf) or {
 			if reader.total_read > 0 {
-				eprintln('got it!')
 				// the headers were parsed in this cycle, but the body has not been
 				// sent yet. No need to error
 				return
 			}
+
+			eprintln('[veb] error reading request body: ${err}')
 
 			if err is io.Eof {
 				// we expect more data to be send, but an Eof error occured, meaning
