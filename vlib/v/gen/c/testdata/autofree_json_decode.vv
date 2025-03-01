@@ -1,9 +1,9 @@
-// main.v
+// vtest vflags: -autofree
 module main
 
 import json
 
-fn test_main() {
+fn main() {
 	input := '{"methode":"test"}'
 	decode_message(input) or {}
 	assert true

@@ -1,0 +1,2 @@
+string _arg_expr_json_decode_2_271 = string_str(msg);
+cJSON* _t2 = json__json_parse(/*af arg2*/_arg_expr_json_decode_2_271);
