@@ -2477,9 +2477,10 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		} else {
 			if use_tmp_var_autofree {
+				n := if node.name == 'json.decode' { i + 2 } else { i + 1 }
 				// TODO: copypasta, move to an inline fn
 				fn_name := node.name.replace('.', '_')
-				name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
+				name := '_arg_expr_${fn_name}_${n}_${node.pos.pos}'
 				g.write('/*af arg2*/' + name)
 			} else {
 				g.expr(arg.expr)
