@@ -1,28 +1,24 @@
-## Building a 400 KB web blog in V & SQLite
+# Building a 400 KB Web Blog in V & SQLite with Veb
 
 Hello,
 
-In this guide, we'll build a simple web blog in V.
+In this guide, we'll build a simple web blog using V and the Veb framework.
 
-The benefits of using V for web:
+The benefits of using V and Veb for web development:
 
-- A safe, fast, language with the development agility of Python or Ruby and
-  the performance of C.
-- Zero dependencies: everything you need for web development comes with the language
-  in a 1 MB package.
-- Very small resulting binaries: the blog we'll create in this tutorial is about 150 KB.
-- Easy deployments: a single binary file that even includes the precompiled templates.
-- Runs on the cheapest hardware with minimum footprint: for most apps a $3 instance
-  is enough.
-- Fast development without any boilerplate.
+- A safe, fast language with the development agility of Python or Ruby and the performance of C
+- Zero dependencies: everything needed comes in a 1 MB package
+- Very small binaries: this blog will be about 150 KB
+- Easy deployments: single binary including precompiled templates
+- Runs on minimal hardware: $3 instance sufficient for most apps
+- Fast development with minimal boilerplate
 
 > [!NOTE]
-> V and Vweb are at a very early stage and are changing rapidly.
+> V and Veb are at an early stage and evolving rapidly.
 
 The code is available [here](./code/blog).
 
-### Installing V
-
+## Installing V
 ```
 wget --quiet https://github.com/vlang/v/releases/latest/download/v_linux.zip
 unzip v_linux.zip
@@ -30,21 +26,20 @@ cd v
 sudo ./v symlink
 ```
 
-Now V should be globally available on your system.
+
+V should now be globally available.
 
 > On macOS use `v_macos.zip`, on Windows - `v_windows.zip`.
-> If you use a BSD system, Solaris, Android, or simply want to install V
-> from source, follow the simple instructions here:
+> For BSD, Solaris, Android, or source installation, see:
 > https://github.com/vlang/v#installing-v-from-source
 
-### Install SQLite development dependency
+## Install SQLite Development Dependency
 
-If you don't have it already installed, look at the
-[`sqlite` README](../../vlib/db/sqlite/README.md) for instructions.
+See [`sqlite` README](../../vlib/db/sqlite/README.md) for instructions if not already installed.
 
-### Creating a new Vweb project
+## Creating a New Veb Project
 
-V projects can be created anywhere and don't need to have a certain structure:
+V projects can be created anywhere:
 
 ```bash
 mkdir blog
@@ -58,20 +53,21 @@ First, let's create a simple hello world website:
 // blog.v
 module main
 
-import vweb
+import veb
 
-struct App {
-	vweb.Context
+pub struct Context {
+	veb.Context
 }
+
+pub struct App {}
 
 fn main() {
-	app := App{}
-	vweb.run(app, 8081)
+	mut app := &App{}
+	veb.run[App, Context](mut app, 8081)
 }
 
-@['/index']
-pub fn (mut app App) index() vweb.Result {
-	return app.text('Hello world from vweb!')
+pub fn (app &App) index(mut ctx Context) veb.Result {
+	return ctx.text('Hello world from Veb!')
 }
 ```
 
@@ -82,17 +78,20 @@ v run blog.v
 ```
 
 ```
-Running a Vweb app on http://localhost:8081 ...
+Running a Veb app on http://localhost:8081 ...
 ```
 
-Vweb helpfully provided a link, open http://localhost:8081/ in your browser:
+Veb helpfully provided a link, open http://localhost:8081/ in your browser:
 
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/hello.png?raw=true">
 
-The `App` struct is an entry point of our web application. If you have experience
-with an MVC web framework, you can think of it as a controller. (Vweb is
-not an MVC framework however.) It embeds the vweb Context object, that's why we get access
-to methods like `.text()`.
+The App struct holds shared application data, while Context handles per-request data and embeds
+`veb.Context` for response methods like `.text()`.
+
+If you have experiencewith an MVC web framework, you can think of it as a controller. (Veb is
+not an MVC framework however.)
+
+
 
 As you can see, there are no routing rules. The `index()` action handles the `/` request by default.
 Vweb often uses convention over configuration and adding a new action requires
@@ -100,13 +99,15 @@ no routing rules either:
 
 ```v oksyntax
 // blog.v
-import vweb
+import veb
 import time
 
-fn (mut app App) time() vweb.Result {
+fn (mut app App) time() veb.Result {
 	return app.text(time.now().format())
 }
 ```
+
+Custom routes can be defined using attributes like @['/index'].
 
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/time.png?raw=true">
 
@@ -122,12 +123,12 @@ Let's return an HTML view instead. Create `index.html` in the same directory:
 ```html
 <html>
   <head>
-    <title>V Blog</title>
+	<title>V Blog</title>
   </head>
   <body>
-    <b>@message</b>
-    <br />
-    <img src="https://vlang.io/img/v-logo.png" width="100" />
+	<b>@message</b>
+	<br />
+	<img src="https://vlang.io/img/v-logo.png" width="100" />
   </body>
 </html>
 ```
@@ -136,9 +137,9 @@ and update our `index()` action so that it returns the HTML view we just created
 
 ```v ignore
 // blog.v
-pub fn (mut app App) index() vweb.Result {
+pub fn (mut app App) index() veb.Result {
 	message := 'Hello, world from Vweb!'
-	return $vweb.html()
+	return $veb.html()
 }
 ```
 
@@ -162,7 +163,7 @@ to modify any data from a view. `<b>@foo.bar()</b>` will only work if the `bar()
 doesn't modify `foo`.
 
 The HTML template is compiled to V during the compilation of the website,
-that's done by the `$vweb.html()` line.
+that's done by the `$veb.html()` line.
 (`$` always means compile time actions in V.) offering the following benefits:
 
 - Great performance, since the templates don't need to be compiled
@@ -185,12 +186,12 @@ Add a SQLite handle to `App`:
 ```v oksyntax
 // blog.v
 import db.sqlite
-import vweb
+import veb
 
 struct App {
-	vweb.Context
-pub mut:
+	// ...
 	db sqlite.DB
+	// ...
 }
 ```
 
@@ -202,7 +203,7 @@ since a DB connection doesn't have to be set up for each request.
 ```v oksyntax
 // blog.v
 fn main() {
-	mut app := App{
+	mut app := &App{
 		db: sqlite.connect(':memory:')!
 	}
 	sql app.db {
@@ -223,7 +224,7 @@ fn main() {
 		insert first_article into Article
 		insert second_article into Article
 	}!
-	vweb.run(app, 8080)
+	veb.run[App, Context](mut app, 8081)
 }
 ```
 
@@ -254,9 +255,9 @@ Let's fetch the articles in the `index()` action:
 
 ```v ignore
 // blog.v
-pub fn (app &App) index() vweb.Result {
+pub fn (app &App) index() veb.Result {
 	articles := app.find_all_articles()
-	return $vweb.html()
+	return $veb.html()
 }
 ```
 
@@ -266,8 +267,8 @@ Finally, let's update our view:
 <body>
   @for article in articles
   <div>
-    <b>@article.title</b> <br />
-    @article.text
+	<b>@article.title</b> <br />
+	@article.text
   </div>
   @end
 </body>
@@ -309,7 +310,7 @@ bad queries will always be handled by the developer:
 ```v ignore
 // article.v
 article := app.retrieve_article() or {
-	return app.text('Article not found')
+	return ctx.text('Article not found')
 }
 ```
 
@@ -320,40 +321,45 @@ Create `new.html`:
 ```html
 <html>
   <head>
-    <title>V Blog</title>
+	<title>V Blog</title>
   </head>
   <body>
-    <form action="/new_article" method="post">
-      <input type="text" placeholder="Title" name="title" /> <br />
-      <textarea placeholder="Text" name="text"></textarea>
-      <input type="submit" />
-    </form>
+	<form action="/new_article" method="post">
+	  <input type="text" placeholder="Title" name="title" /> <br />
+	  <textarea placeholder="Text" name="text"></textarea>
+	  <input type="submit" />
+	</form>
   </body>
 </html>
 ```
 
 ```v ignore
-// article.v
-import vweb
+@['/new']
+pub fn (app &App) new(mut ctx Context) veb.Result {
+	return $veb.html()
+}
 
-@[post]
-pub fn (mut app App) new_article(title string, text string) vweb.Result {
+@['/new_article'; post]
+pub fn (app &App) new_article(mut ctx Context) veb.Result {
+	title := ctx.form['title'] or { '' }
+	text := ctx.form['text'] or { '' }
+
 	if title == '' || text == '' {
-		return app.text('Empty text/title')
+		return ctx.text('Empty text/title')
 	}
+
 	article := Article{
 		title: title
 		text: text
 	}
-	println(article)
 	sql app.db {
 		insert article into Article
 	} or { panic(err) }
-	return app.redirect('/')
+	return ctx.redirect('/')
 }
 ```
 
-The decorator on our function tells vweb that it is an HTTP POST type operation.
+The decorator on our function tells Veb that it is an HTTP POST type operation.
 
 This time Vweb parses the HTTP form and assigns correct values with correct types to
 function arguments, which saves a lot of typing (e.g. `title := app.form['title']` is
@@ -369,8 +375,8 @@ Next we need to add the HTML endpoint to our code like we did with `index.html`:
 
 ```v ignore
 @['/new']
-pub fn (mut app App) new() vweb.Result {
-	return $vweb.html()
+pub fn (mut app App) new() veb.Result {
+	return $veb.html()
 }
 ```
 
@@ -383,11 +389,10 @@ to render everything on the client or need an API, creating JSON endpoints
 in V is very simple:
 
 ```v oksyntax
-// article.v
-import vweb
+import veb
 
 @['/articles'; get]
-pub fn (mut app App) articles() vweb.Result {
+pub fn (mut app App) articles() veb.Result {
 	articles := app.find_all_articles()
 	return app.json(articles)
 }
@@ -417,10 +422,10 @@ Run
 v -d use_openssl -o blog -prod . && strip ./blog
 ```
 
-This will result in a ~400KB binary. `-d use_openssl` tells vweb to link to OpenSSL.
+This will result in a ~400KB binary. `-d use_openssl` tells Veb to link to OpenSSL.
 Without this flag mbedtls will be embedded, and the binary size will increase to ~700KB.
 
 
 ### To be continued...
 
-For an example of a more sophisticated web app written in V, check out Vorum: https://github.com/vlang/vorum
+For an example of a more sophisticated web app written in V, check out Gitly: https://github.com/vlang/gitly
