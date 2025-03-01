@@ -407,7 +407,9 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			}
 
 			if err is io.Eof {
-				// eprintln('[veb] error parsing request: ${err}')
+				// we expect more data to be send, but an Eof error occured, meaning
+				// that there is no more data to be read from the socket.
+				// And at this point we expect that there is data to be read for the body.
 				fast_send_resp(mut conn, http.new_response(
 					status: .bad_request
 					body:   'Mismatch of body length and Content-Length header'
