@@ -251,6 +251,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		}
 	}
 	node.return_type = if must_be_option { ret_type.set_flag(.option) } else { ret_type }
+	if ret_type == ast.none_type {
+		c.error('invalid match expression, must supply at least one value other than `none`',
+			node.pos)
+	}
+	node.return_type = ret_type
 	cond_var := c.get_base_name(&node.cond)
 	if cond_var != '' {
 		mut cond_is_auto_heap := false
