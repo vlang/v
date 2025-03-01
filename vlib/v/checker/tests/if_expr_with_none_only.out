@@ -1,0 +1,10 @@
+vlib/v/checker/tests/if_expr_with_none_only.vv:2:2: warning: unused variable: `a`
+    1 | fn main() {
+    2 |     a := if true { none } else { none }
+      |     ^
+    3 | }
+vlib/v/checker/tests/if_expr_with_none_only.vv:2:7: error: invalid if expression, must supply at least one value other than `none`
+    1 | fn main() {
+    2 |     a := if true { none } else { none }
+      |          ~~
+    3 | }
