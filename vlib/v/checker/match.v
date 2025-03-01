@@ -246,7 +246,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		}
 	}
 	if ret_type == ast.none_type {
-		c.error('invalid if expression, must supply at least one value other than `none`',
+		c.error('invalid match expression, must supply at least one value other than `none`',
 			node.pos)
 	}
 	node.return_type = ret_type

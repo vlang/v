@@ -4,7 +4,7 @@ vlib/v/checker/tests/match_expr_with_none_only.vv:2:2: warning: unused variable:
       |     ^
     3 |         1 { none }
     4 |         else { none }
-vlib/v/checker/tests/match_expr_with_none_only.vv:2:7: error: invalid if expression, must supply at least one value other than `none`
+vlib/v/checker/tests/match_expr_with_none_only.vv:2:7: error: invalid match expression, must supply at least one value other than `none`
     1 | fn main() {
     2 |     a := match 1 {
       |          ~~~~~~~~~
