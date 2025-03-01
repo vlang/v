@@ -215,6 +215,14 @@ fn test_week_of_year() {
 		assert t.custom_format('w') == '${weeks[i]}'
 		assert t.custom_format('ww') == '${weeks[i]:02}'
 	}
+
+	t1 := time.Time{
+		year:  2025
+		month: 3
+		day:   3
+	}
+	assert t1.week_of_year() == 10
+	assert t1.add_days(1).week_of_year() == 10
 }
 
 fn test_year_day() {
