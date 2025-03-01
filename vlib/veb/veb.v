@@ -399,7 +399,25 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		mut buf := unsafe { buf_ptr.vbytes(max_bytes_to_read) }
 
 		n := reader.read(mut buf) or {
-			eprintln('[veb] error parsing request: ${err}')
+			if reader.total_read > 0 {
+				eprintln('got it!')
+				// the headers were parsed in this cycle, but the body has not been
+				// sent yet. No need to error
+				return
+			}
+
+			if err is io.Eof {
+				// eprintln('[veb] error parsing request: ${err}')
+				fast_send_resp(mut conn, http.new_response(
+					status: .bad_request
+					body:   'Mismatch of body length and Content-Length header'
+					header: http.new_header(
+						key:   .content_type
+						value: 'text/plain'
+					).join(headers_close)
+				)) or {}
+			}
+
 			pv.close_conn(fd)
 			params.incomplete_requests[fd] = http.Request{}
 			params.idx[fd] = 0
