@@ -40,8 +40,6 @@ mut:
 	short_tag          bool
 	always_flush       bool // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
 	output_stream      io.Writer = stderr
-	//
-	show_notice_about_stdout_to_stderr_change bool = true // this field is temporary, and should be deleted after 2025-03-01
 pub mut:
 	output_file_name string // log output to this file
 }
@@ -85,7 +83,6 @@ pub fn (mut l Log) set_output_path(output_file_path string) {
 
 // set_output_stream sets the output stream to write log e.g. stderr, stdout, etc.
 pub fn (mut l Log) set_output_stream(stream io.Writer) {
-	l.show_notice_about_stdout_to_stderr_change = false
 	l.output_stream = stream
 }
 
@@ -145,15 +142,6 @@ fn (mut l Log) log_file(s string, level Level) {
 
 // log_stream writes log line `s` with `level` to stderr or stderr depending on set output stream.
 fn (mut l Log) log_stream(s string, level Level) {
-	if l.show_notice_about_stdout_to_stderr_change {
-		l.show_notice_about_stdout_to_stderr_change = false
-		// Show a warning at runtime, once, before the first logged message, that describes the stdout -> stderr change,
-		// and how to opt in explicitly for the old behaviour:
-		println('   NOTE: the `log.Log` output goes to stderr now by default, not to stdout.')
-		println('      Call `l.set_output_stream(os.stdout())` explicitly, to opt in for the previous behavior.')
-		println('      Call `l.set_output_stream(os.stderr())` explicitly, if you want to silence this message (it will be removed after 2025-03-01 .')
-		flush_stdout()
-	}
 	timestamp := l.time_format(time.utc())
 	tag := tag_to_console(level, l.short_tag)
 	msg := '${timestamp} [${tag}] ${s}\n'
