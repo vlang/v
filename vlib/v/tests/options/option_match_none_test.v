@@ -11,4 +11,11 @@ fn test_main() {
 		else { 1 }
 	}
 	assert '${b}' == 'Option(none)'
+
+	c := match 2 {
+		0 { 1 }
+		2 { 2 }
+		else { none }
+	}
+	assert '${c}' == 'Option(2)'
 }

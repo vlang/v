@@ -250,12 +250,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.returns = false
 		}
 	}
-	node.return_type = if must_be_option { ret_type.set_flag(.option) } else { ret_type }
 	if ret_type == ast.none_type {
 		c.error('invalid match expression, must supply at least one value other than `none`',
 			node.pos)
 	}
-	node.return_type = ret_type
+	node.return_type = if must_be_option { ret_type.set_flag(.option) } else { ret_type }
 	cond_var := c.get_base_name(&node.cond)
 	if cond_var != '' {
 		mut cond_is_auto_heap := false
@@ -274,7 +273,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			}
 		}
 	}
-	return ret_type
+	return node.return_type
 }
 
 fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type ast.Type, expr_type ast.Type) {
@@ -291,7 +290,7 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 					return
 				}
 			}
-			if ret_type != ast.none_type {
+			if expr_type != ast.none_type && ret_type != ast.none_type {
 				c.error('return type mismatch, it should be `${ret_sym.name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
 					last_stmt.pos)
 			}
