@@ -484,12 +484,10 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${(t.hour + 1):02}')
 			}
 			'w' {
-				sb.write_string('${mceil((t.day + days_before[t.month - 1] +
-					int(is_leap_year(t.year))) / 7):.0}')
+				sb.write_string('${t.week_of_year():.0}')
 			}
 			'ww' {
-				sb.write_string('${mceil((t.day + days_before[t.month - 1] +
-					int(is_leap_year(t.year))) / 7):02.0}')
+				sb.write_string('${t.week_of_year():02.0}')
 			}
 			'wo' {
 				sb.write_string(ordinal_suffix(int(mceil((t.day + days_before[t.month - 1] +

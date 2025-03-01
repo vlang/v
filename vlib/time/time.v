@@ -296,6 +296,39 @@ pub fn (t Time) day_of_week() int {
 	return day_of_week(t.year, t.month, t.day)
 }
 
+// week_of_year returns the current week of year as an integer.
+// follow ISO 8601 standard
+pub fn (t Time) week_of_year() int {
+	// Find the first day of the year (January 1st)
+	first_day := new(Time{
+		year:  t.year
+		month: 1
+		day:   1
+	})
+	// Calculate the offset to the first Thursday of the year
+	// ISO 8601 defines the first week as the one containing the first Thursday
+	offset := (4 - first_day.day_of_week() + 7) % 7 // 4 represents Thursday
+	first_thursday := first_day.add_days(offset)
+
+	// Determine the start of the first week (Monday before the first Thursday)
+	first_monday := first_thursday.add_days(-3)
+
+	// If the given date is before the first Monday, it belongs to the last week of the previous year
+	if t < first_monday {
+		last_day := new(Time{
+			year:  t.year - 1
+			month: 12
+			day:   31
+		})
+		return last_day.week_of_year()
+	}
+
+	// Calculate the number of days between the given date and the first Monday
+	days_diff := int((t - first_monday).days())
+	// Calculate the week number
+	return (days_diff / 7) + 1
+}
+
 // year_day returns the current day of the year as an integer.
 // See also #Time.custom_format .
 pub fn (t Time) year_day() int {

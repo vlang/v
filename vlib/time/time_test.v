@@ -201,6 +201,22 @@ fn test_day_of_week() {
 	}
 }
 
+const years = [2005, 2011, 2016, 2022, 2028, 2033, 2039, 2023, 2024, 2025, 2026]!
+const weeks = [53, 52, 53, 52, 52, 53, 52, 52, 1, 1, 1]!
+
+fn test_week_of_year() {
+	for i, year in years {
+		t := time.Time{
+			year:  year
+			month: 1
+			day:   1
+		}
+		assert t.week_of_year() == weeks[i]
+		assert t.custom_format('w') == '${weeks[i]}'
+		assert t.custom_format('ww') == '${weeks[i]:02}'
+	}
+}
+
 fn test_year_day() {
 	// testing if December 31st in a leap year is numbered as 366
 	assert time.parse('2024-12-31 20:00:00')!.year_day() == 366
