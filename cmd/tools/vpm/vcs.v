@@ -29,7 +29,7 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 	git_installed_raw_ver := parse_git_version(os.execute_opt('git --version')!.output) or { '' }
 	git_installed_ver := semver.from(git_installed_raw_ver)!
 	git_submod_filter_ver := semver.from('2.36.0')!
-	mut git_install_cmd := 'clone --recursive --shallow-submodules'
+	mut git_install_cmd := 'clone --recursive'
 	if os.user_os() != 'windows' {
 		// The variation of environment factors on windows is too high;
 		// the following options are known to work well on != windows,
@@ -38,6 +38,7 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 		// for more details, about why this is now allowed only on != windows platforms.
 		git_install_cmd += ' --filter=blob:none'
 		if git_installed_ver >= git_submod_filter_ver {
+			git_install_cmd += ' --shallow-submodules'
 			git_install_cmd += ' --also-filter-submodules'
 		}
 	}
