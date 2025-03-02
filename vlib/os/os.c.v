@@ -499,91 +499,72 @@ fn print_c_errno() {
 	eprintln('errno=${e} err=${se}')
 }
 
-fn to_utf8(input []u8, source_cp u32) string {
-	$if windows {
-		if source_cp == 65001 { // already in UTF-8
-			return unsafe { tos_clone(&input[0]) }
-		}
-		// Multi Byte -> Wide Char (UTF-16)
-		required_wchars := C.MultiByteToWideChar(C.CP_ACP, 0, input.data, input.len, C.NULL,
-			0)
-		mut wbuffer := []u16{len: required_wchars}
-		C.MultiByteToWideChar(C.CP_ACP, 0, input.data, input.len, wbuffer.data, required_wchars)
-
-		// Wide Char -> UTF-8
-		required_bytes := C.WideCharToMultiByte(C.CP_UTF8, 0, wbuffer.data, required_wchars,
-			C.NULL, 0, C.NULL, C.NULL)
-		mut utf8_buffer := []u8{len: required_bytes}
-		C.WideCharToMultiByte(C.CP_UTF8, 0, wbuffer.data, required_wchars, utf8_buffer.data,
-			required_bytes, C.NULL, C.NULL)
-
-		return unsafe { tos_clone(&utf8_buffer[0]) }
-	} $else {
-		panic('Win32 function not available on this platform.')
-		return ''
-	}
-	return ''
-}
-
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any.
 @[direct_array_access]
 pub fn get_raw_line() string {
 	$if windows {
+		is_console := is_atty(0) > 0
+		wide_char_size := if is_console { 2 } else { 1 }
 		h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 		if h_input == C.INVALID_HANDLE_VALUE {
 			return ''
 		}
-
-		mut is_console := false
-		// detect console
-		mut console_mode := u32(0)
-		if C.GetConsoleMode(h_input, &console_mode) {
-			is_console = true
-		}
-
-		source_cp := C.GetConsoleCP()
-
-		mut raw_buffer := []u8{cap: 256}
-
-		for {
-			mut chunk := []u8{len: 256}
+		unsafe {
+			max_line_chars := 256
+			mut old_size := max_line_chars * 2
+			mut buf := malloc_noscan(old_size)
+			mut offset := 0
+			mut res := false
 			mut bytes_read := u32(0)
-
-			if !C.ReadFile(h_input, chunk.data, chunk.len, &bytes_read, C.NULL) || bytes_read == 0 {
-				break
-			}
-
-			// console input process Ctrl+Z at line begin
-			if is_console && raw_buffer.len == 0 && bytes_read >= 1 && chunk[0] == 0x1A {
-				break
-			}
-
-			raw_buffer << chunk[0..bytes_read]
-
-			// handle \r\n, Ctrl+Z
-			mut line_end := -1
-			for i in 0 .. raw_buffer.len {
-				if raw_buffer[i] == `\n` {
-					line_end = i + 1
-					break
-				} else if i > 0 && raw_buffer[i - 1] == `\r` && raw_buffer[i] == `\n` {
-					line_end = i + 1
-					break
-				} else if raw_buffer[i] == 0x1A {
-					// Ctrl+Z at middle or end of input??
-					line_end = i
+			for {
+				pos := buf + offset
+				// read 1 byte/char every time
+				if is_console {
+					res = C.ReadConsole(h_input, pos, 1, voidptr(&bytes_read), 0)
+				} else {
+					res = C.ReadFile(h_input, pos, 1, voidptr(&bytes_read), 0)
+				}
+				if !res && offset == 0 {
+					return tos(buf, 0)
+				}
+				if !res || bytes_read == 0 {
 					break
 				}
-			}
 
-			if line_end != -1 {
-				mut final_data := []u8{}
-				final_data << raw_buffer[0..line_end]
-				return to_utf8(final_data, source_cp)
+				if is_console {
+					read_char := *(&u16(pos))
+					dump(read_char)
+					if read_char == `\n` {
+						offset += wide_char_size
+						break
+					} else if read_char == 0x1A {
+						// Ctrl+Z
+						break
+					}
+				} else {
+					read_byte := *pos
+					if read_byte == `\n` {
+						offset += wide_char_size
+						break
+					} else if read_byte == 0x1A {
+						// Ctrl+Z
+						break
+					}
+				}
+				offset += wide_char_size
+				if offset >= old_size {
+					new_size := old_size + max_line_chars * 2
+					buf = realloc_data(buf, old_size, new_size)
+					old_size = new_size
+					dump(old_size)
+				}
+			}
+			if is_console {
+				return string_from_wide2(&u16(buf), int(offset / 2))
+			} else {
+				return buf.vstring_with_len(offset)
 			}
 		}
-
-		return if raw_buffer.len > 0 { to_utf8(raw_buffer, source_cp) } else { '' }
 	} $else {
 		max := usize(0)
 		buf := &char(0)
