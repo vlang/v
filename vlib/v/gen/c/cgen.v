@@ -6610,6 +6610,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 											base)};')
 									}
 								}
+								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							} else if !(elem_sym.info is ast.ArrayFixed && elem_sym.info.is_fn_ret) {
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							}
