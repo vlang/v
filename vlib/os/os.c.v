@@ -561,9 +561,8 @@ pub fn get_raw_line() string {
 			}
 			if is_console {
 				return string_from_wide2(&u16(buf), int(offset / 2))
-			} else {
-				return buf.vstring_with_len(offset)
 			}
+			return buf.vstring_with_len(offset)
 		}
 	} $else {
 		max := usize(0)
