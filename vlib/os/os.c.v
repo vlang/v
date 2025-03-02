@@ -500,7 +500,7 @@ fn print_c_errno() {
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any.
-@[direct_array_access]
+@[manualfree]
 pub fn get_raw_line() string {
 	$if windows {
 		is_console := is_atty(0) > 0
@@ -512,6 +512,7 @@ pub fn get_raw_line() string {
 		unsafe {
 			initial_size := 256 * wide_char_size
 			mut buf := malloc_noscan(initial_size)
+			defer { buf.free() }
 			mut capacity := initial_size
 			mut offset := 0
 
@@ -564,7 +565,8 @@ pub fn get_raw_line() string {
 			return if is_console {
 				string_from_wide2(&u16(buf), offset / 2)
 			} else {
-				buf.vstring_with_len(offset)
+				// let defer buf.free() to avoid memory leak
+				buf.vstring_with_len(offset).clone()
 			}
 		}
 	} $else {
