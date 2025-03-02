@@ -416,14 +416,13 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(ordinal_suffix(t.day))
 			}
 			'DDD' {
-				sb.write_string((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))).str())
+				sb.write_string((t.year_day()).str())
 			}
 			'DDDD' {
-				sb.write_string('${t.day + days_before[t.month - 1] + int(is_leap_year(t.year)):03}')
+				sb.write_string('${t.year_day():03}')
 			}
 			'DDDo' {
-				sb.write_string(ordinal_suffix(t.day + days_before[t.month - 1] +
-					int(is_leap_year(t.year))))
+				sb.write_string(ordinal_suffix(t.year_day()))
 			}
 			'd' {
 				sb.write_string('${t.day_of_week() % 7}')
@@ -490,8 +489,7 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${t.week_of_year():02.0}')
 			}
 			'wo' {
-				sb.write_string(ordinal_suffix(int(mceil((t.day + days_before[t.month - 1] +
-					int(is_leap_year(t.year))) / 7))))
+				sb.write_string(ordinal_suffix(t.week_of_year()))
 			}
 			'Q' {
 				sb.write_string('${(t.month % 4) + 1}')

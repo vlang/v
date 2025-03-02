@@ -201,19 +201,19 @@ fn test_day_of_week() {
 	}
 }
 
-const years = [2005, 2011, 2016, 2022, 2028, 2033, 2039, 2023, 2024, 2025, 2026]!
-const weeks = [53, 52, 53, 52, 52, 53, 52, 52, 1, 1, 1]!
-
 fn test_week_of_year() {
-	for i, year in years {
-		t := time.Time{
+	for year in 2000 .. 2100 {
+		mut t := time.new(time.Time{
 			year:  year
-			month: 1
-			day:   1
+			month: 12
+			day:   20
+		})
+
+		// check from year.12.20 to next_year.1.8
+		for _ in 0 .. 20 {
+			assert t.strftime('%V') == '${t.week_of_year():02}', '${t}'
+			t = t.add_days(1)
 		}
-		assert t.week_of_year() == weeks[i]
-		assert t.custom_format('w') == '${weeks[i]}'
-		assert t.custom_format('ww') == '${weeks[i]:02}'
 	}
 
 	t1 := time.Time{
