@@ -520,6 +520,7 @@ fn to_utf8(input []u8, source_cp u32) string {
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any.
+@[direct_array_access]
 pub fn get_raw_line() string {
 	$if windows {
 		h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
