@@ -399,7 +399,28 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		mut buf := unsafe { buf_ptr.vbytes(max_bytes_to_read) }
 
 		n := reader.read(mut buf) or {
-			eprintln('[veb] error parsing request: ${err}')
+			if reader.total_read > 0 {
+				// the headers were parsed in this cycle, but the body has not been
+				// sent yet. No need to error
+				return
+			}
+
+			eprintln('[veb] error reading request body: ${err}')
+
+			if err is io.Eof {
+				// we expect more data to be send, but an Eof error occured, meaning
+				// that there is no more data to be read from the socket.
+				// And at this point we expect that there is data to be read for the body.
+				fast_send_resp(mut conn, http.new_response(
+					status: .bad_request
+					body:   'Mismatch of body length and Content-Length header'
+					header: http.new_header(
+						key:   .content_type
+						value: 'text/plain'
+					).join(headers_close)
+				)) or {}
+			}
+
 			pv.close_conn(fd)
 			params.incomplete_requests[fd] = http.Request{}
 			params.idx[fd] = 0
