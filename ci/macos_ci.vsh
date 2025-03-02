@@ -76,7 +76,7 @@ fn build_tetris_autofree() {
 }
 
 fn build_blog_autofree() {
-	exec('v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog')
+	exec('v -autofree -o blog tutorials/building_a_simple_web_blog_with_veb/code/blog')
 }
 
 fn build_examples_prod() {

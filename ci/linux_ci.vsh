@@ -115,7 +115,7 @@ fn run_vsh_script_tcc() {
 }
 
 fn test_v_tutorials_tcc() {
-	exec('v tutorials/building_a_simple_web_blog_with_vweb/code/blog')
+	exec('v tutorials/building_a_simple_web_blog_with_veb/code/blog')
 }
 
 fn build_fast_tcc() {
@@ -228,7 +228,7 @@ fn build_tetris_autofree_gcc() {
 }
 
 fn build_blog_autofree_gcc() {
-	exec('v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog')
+	exec('v -autofree -o blog tutorials/building_a_simple_web_blog_with_veb/code/blog')
 }
 
 fn build_option_test_autofree_gcc() {

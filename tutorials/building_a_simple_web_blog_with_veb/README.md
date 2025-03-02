@@ -83,7 +83,7 @@ Running a Veb app on http://localhost:8081 ...
 
 Veb helpfully provided a link, open http://localhost:8081/ in your browser:
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/hello.png?raw=true">
+<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_veb/img/hello.png?raw=true">
 
 The App struct holds shared application data, while Context handles per-request data and embeds
 `veb.Context` for response methods like `.text()`.
@@ -109,7 +109,7 @@ fn (mut app App) time() veb.Result {
 
 Custom routes can be defined using attributes like @['/index'].
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/time.png?raw=true">
+<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_veb/img/time.png?raw=true">
 
 > TIP: run the following command to live-reload the server: `v watch run blog.v`
 
@@ -143,7 +143,7 @@ pub fn (mut app App) index() veb.Result {
 }
 ```
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/hello_html.png?raw=true">
+<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_veb/img/hello_html.png?raw=true">
 
 Good, now we have an actual HTML page.
 
@@ -278,7 +278,7 @@ Finally, let's update our view:
 v run .
 ```
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/articles1.png?raw=true">
+<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_veb/img/articles1.png?raw=true">
 
 That was very simple, wasn't it?
 
@@ -398,7 +398,7 @@ pub fn (mut app App) articles() veb.Result {
 }
 ```
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/articles_json.png?raw=true">
+<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_veb/img/articles_json.png?raw=true">
 
 ### Persistent data
 
