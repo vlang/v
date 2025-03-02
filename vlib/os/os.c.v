@@ -500,23 +500,29 @@ fn print_c_errno() {
 }
 
 fn to_utf8(input []u8, source_cp u32) string {
-	if source_cp == 65001 { // already in UTF-8
-		return unsafe { tos_clone(&input[0]) }
+	$if windows {
+		if source_cp == 65001 { // already in UTF-8
+			return unsafe { tos_clone(&input[0]) }
+		}
+		// Multi Byte -> Wide Char (UTF-16)
+		required_wchars := C.MultiByteToWideChar(C.CP_ACP, 0, input.data, input.len, C.NULL,
+			0)
+		mut wbuffer := []u16{len: required_wchars}
+		C.MultiByteToWideChar(C.CP_ACP, 0, input.data, input.len, wbuffer.data, required_wchars)
+
+		// Wide Char -> UTF-8
+		required_bytes := C.WideCharToMultiByte(C.CP_UTF8, 0, wbuffer.data, required_wchars,
+			C.NULL, 0, C.NULL, C.NULL)
+		mut utf8_buffer := []u8{len: required_bytes}
+		C.WideCharToMultiByte(C.CP_UTF8, 0, wbuffer.data, required_wchars, utf8_buffer.data,
+			required_bytes, C.NULL, C.NULL)
+
+		return unsafe { tos_clone(&utf8_buffer[0]) }
+	} $else {
+		panic('Win32 function not available on this platform.')
+		return ''
 	}
-	// Multi Byte -> Wide Char (UTF-16)
-	required_wchars := C.MultiByteToWideChar(C.CP_ACP, 0, input.data, input.len, C.NULL,
-		0)
-	mut wbuffer := []u16{len: required_wchars}
-	C.MultiByteToWideChar(C.CP_ACP, 0, input.data, input.len, wbuffer.data, required_wchars)
-
-	// Wide Char -> UTF-8
-	required_bytes := C.WideCharToMultiByte(C.CP_UTF8, 0, wbuffer.data, required_wchars,
-		C.NULL, 0, C.NULL, C.NULL)
-	mut utf8_buffer := []u8{len: required_bytes}
-	C.WideCharToMultiByte(C.CP_UTF8, 0, wbuffer.data, required_wchars, utf8_buffer.data,
-		required_bytes, C.NULL, C.NULL)
-
-	return unsafe { tos_clone(&utf8_buffer[0]) }
+	return ''
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any.
