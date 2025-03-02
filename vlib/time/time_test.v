@@ -201,6 +201,34 @@ fn test_day_of_week() {
 	}
 }
 
+fn test_week_of_year() {
+	// As windows use msvcrt.dll, which `strftime` does not support %V, so skip test
+	// TODO: newer version windows use ucrtbase.dll, which support %V
+	$if !windows {
+		for year in 2000 .. 2100 {
+			mut t := time.new(time.Time{
+				year:  year
+				month: 12
+				day:   20
+			})
+
+			// check from year.12.20 to next_year.1.8
+			for _ in 0 .. 20 {
+				assert t.strftime('%V') == '${t.week_of_year():02}', '${t}'
+				t = t.add_days(1)
+			}
+		}
+	}
+
+	t1 := time.Time{
+		year:  2025
+		month: 3
+		day:   3
+	}
+	assert t1.week_of_year() == 10
+	assert t1.add_days(1).week_of_year() == 10
+}
+
 fn test_year_day() {
 	// testing if December 31st in a leap year is numbered as 366
 	assert time.parse('2024-12-31 20:00:00')!.year_day() == 366

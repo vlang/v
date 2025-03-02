@@ -296,6 +296,37 @@ pub fn (t Time) day_of_week() int {
 	return day_of_week(t.year, t.month, t.day)
 }
 
+// week_of_year returns the current week of year as an integer.
+// follow ISO 8601 standard
+pub fn (t Time) week_of_year() int {
+	// ISO 8601 Week of Year Rules:
+	// --------------------------------------------
+	// 1. Week Definition:
+	//    - A week starts on ​**Monday**​ (Day 1) and ends on ​**Sunday**​ (Day 7).
+	// 2. First Week of the Year:
+	//    - The first week is the one containing the year's ​**first Thursday**.
+	//    - Equivalently, the week with January 4th always belongs to Week 1.
+	// 3. Year Assignment:
+	//    - Dates in December/January may belong to the previous/next ISO year,
+	//      depending on the week's Thursday.
+	// 4. Week Number Format:
+	//    - Expressed as `YYYY-Www` (e.g., `2026-W01` for the first week of 2026).
+	// --------------------------------------------
+	// Algorithm Steps:
+	// 1. Find the Thursday of the current week:
+	//    - If date is Monday-Wednesday, add days to reach Thursday.
+	//    - If date is Thursday-Sunday, subtract days to reach Thursday.
+	// 2. The ISO year is the calendar year of this Thursday.
+	// 3. Compute the week number as:
+	//    week_number = (thursday's day_of_year - 1) / 7 + 1
+	day_of_week := t.day_of_week()
+	days_to_thursday := 4 - day_of_week
+	thursday_date := t.add_days(days_to_thursday)
+	thursday_day_of_year := thursday_date.year_day()
+	week_number := (thursday_day_of_year - 1) / 7 + 1
+	return week_number
+}
+
 // year_day returns the current day of the year as an integer.
 // See also #Time.custom_format .
 pub fn (t Time) year_day() int {
