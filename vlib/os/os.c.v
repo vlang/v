@@ -533,7 +533,6 @@ pub fn get_raw_line() string {
 
 				if is_console {
 					read_char := *(&u16(pos))
-					dump(read_char)
 					if read_char == `\n` {
 						offset += wide_char_size
 						break
@@ -556,7 +555,6 @@ pub fn get_raw_line() string {
 					new_size := old_size + max_line_chars * 2
 					buf = realloc_data(buf, old_size, new_size)
 					old_size = new_size
-					dump(old_size)
 				}
 			}
 			return if is_console {
