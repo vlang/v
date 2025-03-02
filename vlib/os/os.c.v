@@ -510,34 +510,42 @@ pub fn get_raw_line() string {
 			return ''
 		}
 		unsafe {
-			max_line_chars := 256
-			mut old_size := max_line_chars * 2
-			mut buf := malloc_noscan(old_size)
+			initial_size := 256 * wide_char_size
+			mut buf := malloc_noscan(initial_size)
+			mut capacity := initial_size
 			mut offset := 0
-			mut res := false
-			mut bytes_read := u32(0)
+
 			for {
+				required_space := offset + wide_char_size
+				if required_space > capacity {
+					new_capacity := capacity * 2
+					new_buf := realloc_data(buf, capacity, new_capacity)
+					if new_buf == 0 {
+						break
+					}
+					buf = new_buf
+					capacity = new_capacity
+				}
+
 				pos := buf + offset
-				// read 1 byte/char every time
-				if is_console {
-					res = C.ReadConsole(h_input, pos, 1, voidptr(&bytes_read), 0)
+				mut bytes_read := u32(0)
+				res := if is_console {
+					C.ReadConsole(h_input, pos, 1, voidptr(&bytes_read), 0)
 				} else {
-					res = C.ReadFile(h_input, pos, 1, voidptr(&bytes_read), 0)
+					C.ReadFile(h_input, pos, 1, voidptr(&bytes_read), 0)
 				}
-				if !res && offset == 0 {
-					return tos(buf, 0)
-				}
+
 				if !res || bytes_read == 0 {
 					break
 				}
 
+				// check for `\n` and Ctrl+Z
 				if is_console {
 					read_char := *(&u16(pos))
 					if read_char == `\n` {
 						offset += wide_char_size
 						break
 					} else if read_char == 0x1A {
-						// Ctrl+Z
 						break
 					}
 				} else {
@@ -546,19 +554,15 @@ pub fn get_raw_line() string {
 						offset += wide_char_size
 						break
 					} else if read_byte == 0x1A {
-						// Ctrl+Z
 						break
 					}
 				}
+
 				offset += wide_char_size
-				if offset >= old_size {
-					new_size := old_size + max_line_chars * 2
-					buf = realloc_data(buf, old_size, new_size)
-					old_size = new_size
-				}
 			}
+
 			return if is_console {
-				string_from_wide2(&u16(buf), int(offset / 2))
+				string_from_wide2(&u16(buf), offset / 2)
 			} else {
 				buf.vstring_with_len(offset)
 			}
