@@ -301,6 +301,8 @@ fn C.SetConsoleMode(voidptr, u32) bool
 
 fn C.GetConsoleMode(voidptr, &u32) bool
 
+fn C.GetConsoleCP() u32
+
 @[trusted]
 fn C.GetCurrentProcessId() u32
 
