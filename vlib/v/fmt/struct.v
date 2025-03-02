@@ -169,6 +169,9 @@ fn (mut f Fmt) write_anon_struct_field_decl(field_typ ast.Type, field_anon_decl 
 				elem_sym := f.table.sym(sym.info.elem_type)
 				if elem_sym.info is ast.Struct {
 					if elem_sym.info.is_anon {
+						if field_typ.has_flag(.option) {
+							f.write('?')
+						}
 						f.write('[]'.repeat(sym.info.nr_dims))
 						f.write_anon_struct_field_decl(sym.info.elem_type, field_anon_decl)
 						return true
