@@ -1,3 +1,4 @@
+`vweb` has been deprecated. Please use the more stable and fast `veb` instead.
 vlib/v/checker/tests/vweb_routing_checks.vv:20:1: warning: mismatched parameters count between vweb method `App.bar` (1) and route attribute ['/bar'] (0)
    18 | // segfault because path takes 0 vars and fcn takes 1 arg
    19 | @['/bar']
