@@ -271,6 +271,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					return
 				}
 			}
+			has_different_types := fields.len > 1 && !fields.all(it.typ == fields[0].typ)
 			for field in fields {
 				c.push_new_comptime_info()
 				c.comptime.inside_comptime_for = true
@@ -283,6 +284,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				c.type_resolver.update_ct_type(node.val_var, c.field_data_type)
 				c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
 				c.comptime.comptime_for_field_type = field.typ
+				c.comptime.has_different_types = has_different_types
 				c.stmts(mut node.stmts)
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
@@ -809,6 +811,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 					} else if cond.left in [ast.Ident, ast.SelectorExpr, ast.TypeNode] {
 						// `$if method.type is string`
 						c.expr(mut cond.left)
+						c.comptime.inside_comptime_if = true
 						if mut cond.left is ast.SelectorExpr && cond.right is ast.ComptimeType {
 							comptime_type := cond.right as ast.ComptimeType
 							if c.comptime.is_comptime_selector_type(cond.left) {
