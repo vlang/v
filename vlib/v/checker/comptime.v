@@ -271,7 +271,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					return
 				}
 			}
-			has_different_types := fields.len > 1 && !fields.all(it.typ == fields[0].typ)
+			has_different_types := fields.len > 1
+				&& !fields.all(c.check_basic(it.typ, fields[0].typ))
 			for field in fields {
 				c.push_new_comptime_info()
 				c.comptime.inside_comptime_for = true
