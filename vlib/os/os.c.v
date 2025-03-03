@@ -500,44 +500,74 @@ fn print_c_errno() {
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any.
+@[manualfree]
 pub fn get_raw_line() string {
 	$if windows {
+		is_console := is_atty(0) > 0
+		wide_char_size := if is_console { 2 } else { 1 }
+		h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
+		if h_input == C.INVALID_HANDLE_VALUE {
+			return ''
+		}
 		unsafe {
-			max_line_chars := 256
-			mut old_size := max_line_chars * 2
-			mut buf := malloc_noscan(old_size)
-			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
-			mut bytes_read := u32(0)
-			if is_atty(0) > 0 {
-				x := C.ReadConsole(h_input, buf, max_line_chars * 2, voidptr(&bytes_read),
-					0)
-				if !x {
-					return tos(buf, 0)
-				}
-				return string_from_wide2(&u16(buf), int(bytes_read))
-			}
+			initial_size := 256 * wide_char_size
+			mut buf := malloc_noscan(initial_size)
+			defer { buf.free() }
+			mut capacity := initial_size
 			mut offset := 0
+
 			for {
-				pos := buf + offset
-				res := C.ReadFile(h_input, pos, 1, voidptr(&bytes_read), 0)
-				if !res && offset == 0 {
-					return tos(buf, 0)
+				required_space := offset + wide_char_size
+				if required_space > capacity {
+					new_capacity := capacity * 2
+					new_buf := realloc_data(buf, capacity, new_capacity)
+					if new_buf == 0 {
+						break
+					}
+					buf = new_buf
+					capacity = new_capacity
 				}
+
+				pos := buf + offset
+				mut bytes_read := u32(0)
+				res := if is_console {
+					C.ReadConsole(h_input, pos, 1, voidptr(&bytes_read), 0)
+				} else {
+					C.ReadFile(h_input, pos, 1, voidptr(&bytes_read), 0)
+				}
+
 				if !res || bytes_read == 0 {
 					break
 				}
-				if *pos == `\n` {
-					offset++
-					break
+
+				// check for `\n` and Ctrl+Z
+				if is_console {
+					read_char := *(&u16(pos))
+					if read_char == `\n` {
+						offset += wide_char_size
+						break
+					} else if read_char == 0x1A {
+						break
+					}
+				} else {
+					read_byte := *pos
+					if read_byte == `\n` {
+						offset += wide_char_size
+						break
+					} else if read_byte == 0x1A {
+						break
+					}
 				}
-				offset++
-				if offset >= old_size {
-					new_size := old_size + max_line_chars * 2
-					buf = realloc_data(buf, old_size, new_size)
-					old_size = new_size
-				}
+
+				offset += wide_char_size
 			}
-			return buf.vstring_with_len(offset)
+
+			return if is_console {
+				string_from_wide2(&u16(buf), offset / 2)
+			} else {
+				// let defer buf.free() to avoid memory leak
+				buf.vstring_with_len(offset).clone()
+			}
 		}
 	} $else {
 		max := usize(0)
