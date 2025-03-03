@@ -8,6 +8,9 @@ import v.util
 
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
+		if g.inside_return {
+			return true
+		}
 		if g.table.sym(node.return_type).kind in [.sum_type, .multi_return]
 			|| node.return_type.has_option_or_result() {
 			return true
