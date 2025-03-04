@@ -20,17 +20,14 @@ fn collect_undocumented_functions_in_file(file string) []string {
 		line_trimmed := line.trim_space()
 
 		if line_trimmed.starts_with('//') || line_trimmed.starts_with('@[') {
-			// Consider these lines as "doc/attribute" lines
 			comments << line_trimmed
 		} else if line_trimmed.starts_with('pub fn') {
-			// Check if no 'doc/attribute' lines were recorded
 			current_fn = line_trimmed
 			if comments.len == 0 {
 				undocumented << current_fn
 			}
 			comments.clear()
 		} else {
-			// If it's anything else, reset the recorded lines
 			comments.clear()
 		}
 	}
@@ -75,25 +72,38 @@ fn analyze_libs() ![]LibStats {
 }
 
 fn generate_html(stats []LibStats) string {
-	html_head := '<!DOCTYPE html>\\n<html>\\n<head><title>VLib Docs Coverage</title></head>\n<body>'
-	mut html_body := '<h1>Documentation Coverage</h1><table border="1">\n<tr><th>Library</th><th>Public Methods</th><th>Undocumented</th><th>Coverage %</th></tr>'
+	mut html_head := '<!DOCTYPE html>\n<html>\n<head><title>VLib Docs Coverage</title>'
+	html_head += '<style>body{font-family:sans-serif;margin:20px;background:#121212;color:#fff}table{width:100%;border-collapse:collapse}th,td{border:1px solid #444;padding:8px;text-align:left}th{background:#1e1e1e;color:#fff}tr:nth-child(even){background:#222}a{color:#62baff;text-decoration:none}a:hover{text-decoration:underline}ul{margin:5px 0;padding-left:20px} .coverage-high{background:#4CAF50;color:#fff} .coverage-medium{background:#FFC107;color:#000} .coverage-low{background:#F44336;color:#fff} .coverage-very-low{background:#D32F2F;color:#fff}</style></head>'
+	html_head += '<body>'
+
+	mut html_body := '<h1>Documentation Coverage</h1><table>'
+	html_body += '<tr><th>Library</th><th>Public Methods</th><th>Undocumented</th><th>Coverage %</th></tr>'
 	mut rows := ''
 	for i, stat in stats {
 		total := f64(stat.pub_methods)
 		undoc := f64(stat.undocumented_count)
 		coverage := if total > 0 { 100.0 - (undoc * 100.0 / total) } else { 100.0 }
 
-		// Create a clickable `<a>` to show the undocumented methods
+		mut coverage_class := 'coverage-high'
+		if coverage < 25.0 {
+			coverage_class = 'coverage-very-low'
+		} else if coverage < 50.0 {
+			coverage_class = 'coverage-low'
+		} else if coverage < 80.0 {
+			coverage_class = 'coverage-medium'
+		}
+
 		click_id := 'undoc_${i}'
 		rows += '<tr><td>${stat.name}</td><td>${stat.pub_methods}</td>'
 		rows += '<td><a href="javascript:void(0)" onClick="showUndocumented(\'${click_id}\')">${stat.undocumented_count}</a>'
-		rows += '<div id="${click_id}" style="display:none"><ul>'
+		rows += '<div id="${click_id}" style="display:none;background:#333;padding:10px;border-radius:5px"><ul>'
 		for meth in stat.undocumented_methods {
 			rows += '<li>${meth.replace('<', '&lt;').replace('>', '&gt;')}</li>'
 		}
-		rows += '</ul></div></td><td>${coverage:.2f}%</td></tr>'
+		rows += '</ul></div></td><td class="${coverage_class}">${coverage:.2f}%</td></tr>'
 	}
-	html_footer := '</table>\n<script>\nfunction showUndocumented(id){\n  var div = document.getElementById(id);\n  div.style.display = (div.style.display==="none")?"block":"none";\n}\n</script>\n</body>\n</html>'
+
+	html_footer := '</table><script>function showUndocumented(id){var div=document.getElementById(id);div.style.display=(div.style.display==="none")?"block":"none";}</script></body></html>'
 	return html_head + html_body + rows + html_footer
 }
 
