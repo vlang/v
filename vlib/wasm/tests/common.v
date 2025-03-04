@@ -24,6 +24,7 @@ fn find_wasm_validate() !string {
 	return error('could not find wasm-validate executable in thirdparty/ as well, try first `v run cmd/tools/install_wabt.vsh`')
 }
 
+// validate validates the given wasm code using `wasm-validate` executable.
 pub fn validate(code []u8) ! {
 	println('validating using: ${wasm_validate_exe}')
 	outfile := os.join_path(os.temp_dir(), 'code_${pid}.wasm')
