@@ -89,6 +89,7 @@ pub mut:
 	inside_fn_arg               bool        // `a`, `b` in `a.f(b)`
 	inside_ct_attr              bool        // true inside `[if expr]`
 	inside_x_is_type            bool        // true inside the Type expression of `if x is Type {`
+	anon_struct_should_be_mut   bool        // true when `mut var := struct { ... }` is used
 	inside_generic_struct_init  bool
 	inside_integer_literal_cast bool // true inside `int(123)`
 	cur_struct_generic_types    []ast.Type

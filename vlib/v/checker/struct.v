@@ -856,8 +856,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			for init_field in node.init_fields {
 				mut expr := unsafe { init_field }
 				init_fields << ast.StructField{
-					name: init_field.name
-					typ:  c.expr(mut expr.expr)
+					name:   init_field.name
+					typ:    c.expr(mut expr.expr)
+					is_mut: c.anon_struct_should_be_mut
 				}
 			}
 			c.table.anon_struct_counter++
@@ -1167,4 +1168,18 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 			}
 		}
 	}
+}
+
+fn (mut c Checker) is_anon_struct_compatible(s1 ast.Struct, s2 ast.Struct) bool {
+	if !(s1.is_anon && s2.is_anon && s1.fields.len == s2.fields.len) {
+		return false
+	}
+	mut is_compatible := true
+	for k, field in s1.fields {
+		if !c.check_basic(field.typ, s2.fields[k].typ) {
+			is_compatible = false
+			break
+		}
+	}
+	return is_compatible
 }

@@ -1654,6 +1654,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					}
 				}
 				continue
+			} else if param_typ_sym.info is ast.Struct && arg_typ_sym.info is ast.Struct
+				&& param_typ_sym.info.is_anon {
+				if c.is_anon_struct_compatible(param_typ_sym.info, arg_typ_sym.info) {
+					continue
+				}
 			}
 			if c.pref.translated || c.file.is_translated {
 				// in case of variadic make sure to use array elem type for checks
