@@ -203,10 +203,12 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 	return cb
 }
 
+// check_availability returns `true` if the clipboard is available for use.
 pub fn (cb &Clipboard) check_availability() bool {
 	return cb.display != C.NULL
 }
 
+// free releases the clipboard resources.
 pub fn (mut cb Clipboard) free() {
 	C.XDestroyWindow(cb.display, cb.window)
 	cb.window = Window(0)
@@ -214,6 +216,7 @@ pub fn (mut cb Clipboard) free() {
 	// XCloseDisplay(cb.display)
 }
 
+// clear clears the clipboard (sets it to an empty string).
 pub fn (mut cb Clipboard) clear() {
 	cb.mutex.lock()
 	C.XSetSelectionOwner(cb.display, cb.selection, Window(0), C.CurrentTime)
@@ -223,6 +226,7 @@ pub fn (mut cb Clipboard) clear() {
 	cb.mutex.unlock()
 }
 
+// has_ownership returns `true` if the `Clipboard` has the content ownership.
 pub fn (cb &Clipboard) has_ownership() bool {
 	return cb.is_owner
 }
@@ -248,6 +252,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	return cb.is_owner
 }
 
+// get_text returns the current entry as a `string` from the clipboard.
 pub fn (mut cb Clipboard) get_text() string {
 	if cb.window == Window(0) {
 		return ''
