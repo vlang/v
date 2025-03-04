@@ -423,16 +423,13 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		}
 		oline := r.get_one_line(prompt) or { break }
 		line := oline.trim_space()
-		if line == '' && oline.ends_with('\n') {
+		if line == '' {
 			continue
 		}
 		if line.len <= -1 || line == 'exit' {
 			break
 		}
 		r.line = line
-		if r.line == '\n' {
-			continue
-		}
 		if r.line == 'clear' {
 			term.erase_clear()
 			continue
