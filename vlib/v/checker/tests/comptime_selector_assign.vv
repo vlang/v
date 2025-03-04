@@ -1,0 +1,31 @@
+import x.json2 { Any, raw_decode }
+
+struct Income {
+mut:
+	email string
+	code  int
+}
+
+pub fn structuring[T](res Any) T {
+	mut typ := T{}
+	res_map := res.as_map()
+
+	$for field in T.fields {
+		if field.name in res_map {
+			$if field.typ is int {
+				typ.$(field.name) = 2
+			}
+			typ.$(field.name) = 3
+		}
+	}
+	return typ
+}
+
+fn main() {
+	res := raw_decode('{
+        "email": ["sdvsdv", "sds"],
+        "code": 12
+    }')!.as_map()
+
+	structuring[Income](res)
+}

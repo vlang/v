@@ -15,6 +15,9 @@ pub mut:
 	comptime_loop_id int
 	// $for
 	inside_comptime_for bool
+	// $if
+	inside_comptime_if  bool
+	has_different_types bool
 	// .variants
 	comptime_for_variant_var string
 	// .fields

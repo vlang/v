@@ -53,6 +53,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	mut skip_state := ComptimeBranchSkipState.unknown
 	mut found_branch := false // Whether a matching branch was found- skip the rest
 	mut is_comptime_type_is_expr := false // if `$if T is string`
+	last_in_comptime_if := c.comptime.inside_comptime_if
+	defer {
+		c.comptime.inside_comptime_if = last_in_comptime_if
+	}
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
