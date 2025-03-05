@@ -7533,7 +7533,8 @@ fn (mut g Gen) interface_table() string {
 		methods_struct_name := 'struct _${interface_name}_interface_methods'
 		mut methods_struct_def := strings.new_builder(100)
 		methods_struct_def.writeln('${methods_struct_name} {')
-		inter_methods := inter_info.get_methods()
+		mut inter_methods := inter_info.get_methods()
+		inter_methods.sort(a < b)
 		mut methodidx := map[string]int{}
 		for k, method_name in inter_methods {
 			method := isym.find_method_with_generic_parent(method_name) or { continue }
@@ -7664,7 +7665,9 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				methods_struct.writeln('\t{')
 			}
 			if st == ast.voidptr_type || st == ast.nil_type {
-				for mname, _ in methodidx {
+				mut mnames := methodidx.keys()
+				mnames.sort(a < b)
+				for mname in mnames {
 					if g.pref.build_mode != .build_module {
 						methods_struct.writeln('\t\t._method_${c_fn_name(mname)} = (void*) 0,')
 					}
@@ -7721,7 +7724,9 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				}
 			}
 
-			for method in methods {
+			mut ordered_methods := methods.clone()
+			ordered_methods.sort(a.name < b.name)
+			for method in ordered_methods {
 				mut name := method.name
 				if method.generic_names.len > 0 && inter_info.parent_type.has_flag(.generic) {
 					parent_sym := g.table.sym(inter_info.parent_type)
