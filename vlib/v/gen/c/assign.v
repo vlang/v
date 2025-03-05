@@ -66,17 +66,25 @@ fn (mut g Gen) expr_opt_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast
 	g.writeln('${ret_styp} ${ret_var} = {.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}};')
 
 	if expr !is ast.None {
-		g.write('_option_clone((${option_name}*)')
-		has_addr := expr !in [ast.Ident, ast.SelectorExpr]
+		is_option_expr := expr_typ.has_flag(.option)
+		if is_option_expr {
+			g.write('_option_clone((${option_name}*)')
+		} else {
+			g.write('_option_ok(&(${styp}[]){ ')
+		}
+		has_addr := is_option_expr && expr !in [ast.Ident, ast.SelectorExpr]
 		if has_addr {
 			expr_styp := g.styp(expr_typ).replace('*', '_ptr')
 			g.write('ADDR(${expr_styp}, ')
-		} else {
+		} else if is_option_expr {
 			g.write('&')
 		}
 		g.expr(expr)
 		if has_addr {
 			g.write(')')
+		}
+		if !is_option_expr {
+			g.write(' }')
 		}
 		g.writeln(', (${option_name}*)&${ret_var}, sizeof(${styp}));')
 	}
