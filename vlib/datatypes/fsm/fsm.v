@@ -36,7 +36,7 @@ pub fn new() StateMachine {
 	return StateMachine{}
 }
 
-// set_state sets the current state of the state machine to the given `name`.
+// set_state sets the current state of the state machine to the given state by `name`.
 pub fn (mut s StateMachine) set_state(name string) ! {
 	if name in s.states {
 		s.current_state = name
