@@ -31,7 +31,7 @@ mut:
 	current_state string
 }
 
-// StateMachine constructor. Returns a new StateMachine instance.
+// StateMachine static method returns a new StateMachine instance.
 pub fn new() StateMachine {
 	return StateMachine{}
 }
