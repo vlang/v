@@ -63,6 +63,7 @@ fn new_cfb(b Block, iv []u8, decrypt bool) Cfb {
 	return x
 }
 
+// xor_key_stream xors each byte in the given slice with a byte from the key stream.
 pub fn (mut x Cfb) xor_key_stream(mut dst []u8, src []u8) {
 	unsafe {
 		mut local_dst := *dst

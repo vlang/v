@@ -8,6 +8,7 @@ struct ReadError {
 	Error
 }
 
+// msg returns the error message.
 pub fn (err ReadError) msg() string {
 	return 'crypto.rand.read() error reading random bytes'
 }
