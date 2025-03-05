@@ -1,11 +1,12 @@
-import datatypes
 import gg
 import gx
 import os
 import rand
 import time
+import math.vec { Vec2 }
 
 // constants
+const font = $embed_file('../assets/fonts/RobotoMono-Regular.ttf')
 const top_height = 100
 const canvas_size = 700
 const game_size = 17
@@ -14,20 +15,8 @@ const tick_rate_ms = 100
 const high_score_file_path = os.join_path(os.cache_dir(), 'v', 'examples', 'snek')
 
 // types
-struct Vec {
-	x int
-	y int
-}
-
-fn (a Vec) + (b Vec) Vec {
-	return Vec{a.x + b.x, a.y + b.y}
-}
-
-fn (a Vec) - (b Vec) Vec {
-	return Vec{a.x - b.x, a.y - b.y}
-}
-
 type HighScore = int
+type Vec = Vec2[int]
 
 fn (mut h HighScore) save() {
 	os.mkdir_all(os.dir(high_score_file_path)) or { return }
@@ -45,7 +34,7 @@ mut:
 	best      HighScore
 	snake     []Vec
 	dir       Vec
-	dir_queue datatypes.Queue[Vec]
+	dir_queue []Vec
 	food      Vec
 	last_tick i64
 }
@@ -53,14 +42,9 @@ mut:
 // utility
 fn (mut app App) reset_game() {
 	app.score = 0
-	app.snake = [
-		Vec{3, 8},
-		Vec{2, 8},
-		Vec{1, 8},
-		Vec{0, 8},
-	]
+	app.snake = [Vec{3, 8}, Vec{2, 8}, Vec{1, 8}, Vec{0, 8}]
 	app.dir = Vec{1, 0}
-	app.dir_queue = datatypes.Queue[Vec]{}
+	app.dir_queue = []
 	app.food = Vec{10, 8}
 	app.last_tick = time.ticks()
 }
@@ -70,33 +54,10 @@ fn (mut app App) move_food() {
 		x := rand.intn(game_size) or { 0 }
 		y := rand.intn(game_size) or { 0 }
 		app.food = Vec{x, y}
-
 		if app.food !in app.snake {
 			return
 		}
 	}
-}
-
-// events
-fn on_keydown(key gg.KeyCode, mod gg.Modifier, mut app App) {
-	dir := match key {
-		.w, .up {
-			Vec{0, -1}
-		}
-		.s, .down {
-			Vec{0, 1}
-		}
-		.a, .left {
-			Vec{-1, 0}
-		}
-		.d, .right {
-			Vec{1, 0}
-		}
-		else {
-			return
-		}
-	}
-	app.dir_queue.push(dir)
 }
 
 fn on_frame(mut app App) {
@@ -110,10 +71,10 @@ fn on_frame(mut app App) {
 		|| app.snake[0].y >= game_size {
 		app.reset_game()
 	}
-
 	progress := f32_min(1, f32(time.ticks() - app.last_tick) / f32(tick_rate_ms))
-	app.gg.begin()
 
+	// draw everything:
+	app.gg.begin()
 	// draw food
 	app.gg.draw_rect_filled(tile_size * app.food.x, tile_size * app.food.y + top_height,
 		tile_size, tile_size, gx.red)
@@ -126,16 +87,14 @@ fn on_frame(mut app App) {
 
 	// draw partial head
 	head := app.snake[0]
-	app.gg.draw_rect_filled(int(tile_size * (head.x + app.dir.x * progress)),
-		int(tile_size * (head.y + app.dir.y * progress)) + top_height, tile_size, tile_size,
-		gx.blue)
+	app.gg.draw_rect_filled(tile_size * (head.x + app.dir.x * progress), tile_size * (head.y +
+		app.dir.y * progress) + top_height, tile_size, tile_size, gx.blue)
 
 	// draw partial tail
 	tail := app.snake.last()
 	tail_dir := app.snake[app.snake.len - 2] - tail
-	app.gg.draw_rect_filled(int(tile_size * (tail.x + tail_dir.x * progress)),
-		int(tile_size * (tail.y + tail_dir.y * progress)) + top_height, tile_size, tile_size,
-		gx.blue)
+	app.gg.draw_rect_filled(tile_size * (tail.x + tail_dir.x * progress), tile_size * (tail.y +
+		tail_dir.y * progress) + top_height, tile_size, tile_size, gx.blue)
 
 	// draw score bar
 	app.gg.draw_rect_filled(0, 0, canvas_size, top_height, gx.black)
@@ -156,11 +115,8 @@ fn on_frame(mut app App) {
 		// "snake" along
 		mut prev := app.snake[0]
 		app.snake[0] = app.snake[0] + app.dir
-
 		for i in 1 .. app.snake.len {
-			tmp := app.snake[i]
-			app.snake[i] = prev
-			prev = tmp
+			app.snake[i], prev = prev, app.snake[i]
 		}
 
 		// add tail segment if food has been eaten
@@ -174,7 +130,8 @@ fn on_frame(mut app App) {
 			app.move_food()
 		}
 
-		if dir := app.dir_queue.pop() {
+		if app.dir_queue.len > 0 {
+			dir := app.dir_queue.pop()
 			if dir.x != -app.dir.x || dir.y != -app.dir.y {
 				app.dir = dir
 			}
@@ -186,31 +143,40 @@ fn on_frame(mut app App) {
 	app.gg.end()
 }
 
-const font = $embed_file('../assets/fonts/RobotoMono-Regular.ttf')
-
-// setup
-fn main() {
-	mut app := App{}
-	app.reset_game()
-	app.best.load()
-
-	mut font_copy := font
-	font_bytes := unsafe {
-		font_copy.data().vbytes(font_copy.len)
+// events
+fn on_keydown(key gg.KeyCode, mod gg.Modifier, mut app App) {
+	app.dir_queue << match key {
+		.w, .up {
+			Vec{0, -1}
+		}
+		.s, .down {
+			Vec{0, 1}
+		}
+		.a, .left {
+			Vec{-1, 0}
+		}
+		.d, .right {
+			Vec{1, 0}
+		}
+		else {
+			return
+		}
 	}
-
-	app.gg = gg.new_context(
-		bg_color:          gx.white
-		frame_fn:          on_frame
-		keydown_fn:        on_keydown
-		user_data:         &app
-		width:             canvas_size
-		height:            top_height + canvas_size
-		create_window:     true
-		resizable:         false
-		window_title:      'snek'
-		font_bytes_normal: font_bytes
-	)
-
-	app.gg.run()
 }
+
+mut app := App{}
+app.reset_game()
+app.best.load()
+
+mut font_copy := font
+app.gg = gg.new_context(
+	bg_color:          gx.white
+	frame_fn:          on_frame
+	keydown_fn:        on_keydown
+	user_data:         &app
+	width:             canvas_size
+	height:            top_height + canvas_size
+	window_title:      'snek'
+	font_bytes_normal: unsafe { font_copy.data().vbytes(font_copy.len) }
+)
+app.gg.run()
