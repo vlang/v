@@ -72,17 +72,42 @@ fn analyze_libs() ![]LibStats {
 }
 
 fn generate_html(stats []LibStats) string {
-	mut html_head := '<!DOCTYPE html>\n<html>\n<head><title>VLib Docs Coverage</title>'
-	html_head += '<style>body{font-family:sans-serif;margin:20px;background:#121212;color:#fff}table{width:100%;border-collapse:collapse}th,td{border:1px solid #444;padding:8px;text-align:left}th{background:#1e1e1e;color:#fff}tr:nth-child(even){background:#222}a{color:#62baff;text-decoration:none}a:hover{text-decoration:underline}ul{margin:5px 0;padding-left:20px} .coverage-high{background:#4CAF50;color:#fff} .coverage-medium{background:#FFC107;color:#000} .coverage-low{background:#F44336;color:#fff} .coverage-very-low{background:#D32F2F;color:#fff}</style></head>'
-	html_head += '<body>'
+	mut total_methods := 0
+	mut total_undoc := 0
+	for stat in stats {
+		total_methods += stat.pub_methods
+		total_undoc += stat.undocumented_count
+	}
+	overall_coverage := if total_methods > 0 {
+		100.0 - (f64(total_undoc) * 100.0 / f64(total_methods))
+	} else {
+		100.0
+	}
 
-	mut html_body := '<h1>Documentation Coverage</h1><table>'
-	html_body += '<tr><th>Library</th><th>Public Methods</th><th>Undocumented</th><th>Coverage %</th></tr>'
+	mut html_head :=
+		'<!DOCTYPE html>\n<html>\n<head><title>VLib Docs Coverage</title>
+	<style>body{font-family:sans-serif;margin:20px;background:#121212;color:#fff}table{width:100%;border-collapse:collapse}th,td{border:1px solid #444;padding:8px;text-align:left}th{background:#1e1e1e;color:#fff}tr:nth-child(even){background:#222}a{color:#62baff;text-decoration:none}a:hover{text-decoration:underline}ul{margin:5px 0;padding-left:20px} .coverage-high{background:#4CAF50;color:#fff} .coverage-medium{background:#FFC107;color:#000} .coverage-low{background:#F44336;color:#fff} .coverage-very-low{background:#D32F2F;color:#fff}</style>
+	<style>.progressbar-outer{width:100%;background-color:#333;height:20px;border-radius:4px;margin:10px 0;} @keyframes fillBar {0% {width:0%;}100% {width:' +
+		'${overall_coverage}%;}} .progressbar-inner{animation:fillBar 0.7s ease-in-out forwards; background-color:#4CAF50;height:100%;border-radius:4px; display: flex; align-items: center; justify-content: center;} @keyframes fadeIn {0% {opacity: 0;}100% {opacity: 1;}} .progressbar-label{animation:fadeIn 0.7s ease-in-out forwards;}</style>
+	</head>'
+
+	mut html_body := '<body><h1>Documentation Coverage</h1>'
+
+	html_body += '<p>Total public methods: <span id="total_methods">0</span></p>
+	<p>Total undocumented methods: <span id="total_undoc">0</span></p>
+	<p>Overall coverage: </p>
+	<div class="progressbar-outer">
+	<div class="progressbar-inner"><span class="progressbar-label">${overall_coverage:.2f}%</span></div>
+	</div><br>'
+
+	html_body += '<table><tr><th>Library</th><th>Public Methods</th><th>Undocumented</th><th>Coverage %</th></tr>'
 	mut rows := ''
 	for i, stat in stats {
-		total := f64(stat.pub_methods)
-		undoc := f64(stat.undocumented_count)
-		coverage := if total > 0 { 100.0 - (undoc * 100.0 / total) } else { 100.0 }
+		coverage := if stat.pub_methods > 0 {
+			100.0 - (f64(stat.undocumented_count) * 100.0 / f64(stat.pub_methods))
+		} else {
+			100.0
+		}
 
 		mut coverage_class := 'coverage-high'
 		if coverage < 25.0 {
@@ -94,16 +119,40 @@ fn generate_html(stats []LibStats) string {
 		}
 
 		click_id := 'undoc_${i}'
-		rows += '<tr><td>${stat.name}</td><td>${stat.pub_methods}</td>'
-		rows += '<td><a href="javascript:void(0)" onClick="showUndocumented(\'${click_id}\')">${stat.undocumented_count}</a>'
-		rows += '<div id="${click_id}" style="display:none;background:#333;padding:10px;border-radius:5px"><ul>'
+		rows += '<tr><td>${stat.name}</td><td>${stat.pub_methods}</td>
+		<td><a href="javascript:void(0)" onClick="showUndocumented(\'${click_id}\')">${stat.undocumented_count}</a>
+		<div id="${click_id}" style="display:none;background:#333;padding:10px;border-radius:5px"><ul>'
 		for meth in stat.undocumented_methods {
 			rows += '<li>${meth.replace('<', '&lt;').replace('>', '&gt;')}</li>'
 		}
 		rows += '</ul></div></td><td class="${coverage_class}">${coverage:.2f}%</td></tr>'
 	}
 
-	html_footer := '</table><script>function showUndocumented(id){var div=document.getElementById(id);div.style.display=(div.style.display==="none")?"block":"none";}</script></body></html>'
+	mut html_footer := '</table><script>function showUndocumented(id){var div=document.getElementById(id);div.style.display=(div.style.display==="none")?"block":"none";}</script>'
+	html_footer += '<script>
+	function animateValue(id, start, end, duration) {
+	  let obj = document.getElementById(id);
+	  let range = end - start;
+	  let startTime = performance.now();
+
+	  function update() {
+	    let now = performance.now();
+	    let elapsed = now - startTime;
+	    if (elapsed > duration) elapsed = duration;
+	    let current = start + (range * (elapsed / duration));
+	    current = Math.round(current);
+	    obj.textContent = current;
+	    if (elapsed < duration) {
+	      requestAnimationFrame(update);
+	    }
+	  }
+	  requestAnimationFrame(update);
+	}
+	window.onload=function(){
+	  animateValue("total_methods",0,${total_methods},700);
+	  animateValue("total_undoc",0,${total_undoc},700);
+	};
+	</script></body></html>'
 	return html_head + html_body + rows + html_footer
 }
 
