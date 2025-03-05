@@ -158,7 +158,27 @@ fn (mut g Game) goto_next_level() {
 	g.nlevels++
 }
 
+fn (mut g Game) move(k f32) {
+	if k < 0 {
+		if g.paddle_x <= 0 {
+			return
+		}
+	} else if k > 0 {
+		if g.paddle_x >= g.width - g.paddle_w {
+			return
+		}
+	}
+	g.paddle_x += k * g.paddle_dx
+}
+
 fn (mut g Game) update() {
+	if g.ctx.pressed_keys[gg.KeyCode.left] {
+		g.move(-1.0)
+	}
+	if g.ctx.pressed_keys[gg.KeyCode.right] {
+		g.move(1.0)
+	}
+	//
 	g.ball_x, g.ball_y = g.ball_x + g.ball_dx, g.ball_y + g.ball_dy
 	// Wall collisions
 	if g.ball_x < g.ball_r || g.ball_x > g.width - g.ball_r {
@@ -211,31 +231,13 @@ fn (mut g Game) update() {
 	}
 }
 
-fn frame(mut g Game) {
-	if g.ctx.pressed_keys[gg.KeyCode.left] {
-		if g.paddle_x > 0 {
-			g.paddle_x -= g.paddle_dx
-		}
-	}
-	if g.ctx.pressed_keys[gg.KeyCode.right] {
-		if g.paddle_x < g.width - g.paddle_w {
-			g.paddle_x += g.paddle_dx
-		}
-	}
-	g.update()
-	g.draw()
-}
-
-fn key_down(key gg.KeyCode, _ gg.Modifier, mut g Game) {
-	g.handle_event()
-	match key {
-		.r {
-			g.game_over()
-		}
-		.escape {
-			exit(0)
-		}
-		else {}
+fn (mut g Game) touch_event(touch_point gg.TouchPoint) {
+	ws := gg.window_size()
+	tx := touch_point.pos_x
+	if tx <= f32(ws.width) * 0.5 {
+		g.move(-1.0)
+	} else {
+		g.move(1.0)
 	}
 }
 
@@ -244,7 +246,8 @@ fn (mut g Game) handle_event() {
 	if g.nevent > 0 {
 		return
 	}
-	// the audio has to be started when the wasm canvas has received user interaction, unlike on desktop platforms
+	// the audio has to be started when the wasm canvas has received user
+	// interaction, unlike on desktop platforms
 	audio.setup(buffer_frames: 1024)
 	g.sound.init()
 	g.nevent++
@@ -254,7 +257,7 @@ fn main() {
 	mut g := Game.new()
 	mut fpath := asset.get_path('../assets', 'fonts/RobotoMono-Regular.ttf')
 	$if !wasm32_emscripten {
-		audio.setup(buffer_frames: 128)
+		audio.setup(buffer_frames: 512) // too small values lead to cracking sounds or no sound at all on macos
 		g.sound.init()
 		fpath = ''
 	}
@@ -263,10 +266,33 @@ fn main() {
 		height:       g.height
 		window_title: 'V Breakout'
 		sample_count: 2
-		frame_fn:     frame
-		keydown_fn:   key_down
+		frame_fn:     fn (mut g Game) {
+			g.update()
+			g.draw()
+		}
 		click_fn:     fn (x f32, y f32, btn gg.MouseButton, mut g Game) {
 			g.handle_event()
+		}
+		event_fn:     fn (e &gg.Event, mut g Game) {
+			g.handle_event()
+			if e.typ == .touches_began || e.typ == .touches_moved {
+				if e.num_touches > 0 {
+					touch_point := e.touches[0]
+					g.touch_event(touch_point)
+				}
+			}
+		}
+		keydown_fn:   fn (key gg.KeyCode, _ gg.Modifier, mut g Game) {
+			g.handle_event()
+			match key {
+				.r {
+					g.game_over()
+				}
+				.escape {
+					exit(0)
+				}
+				else {}
+			}
 		}
 		user_data:    g
 		font_path:    fpath
