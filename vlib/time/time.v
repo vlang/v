@@ -84,6 +84,7 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
+// new returns a time struct with the calculated Unix time.
 pub fn Time.new(t Time) Time {
 	return time_with_unix(t)
 }
