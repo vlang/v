@@ -56,6 +56,7 @@ fn (mut c DesCipher) generate_subkeys(key_bytes []u8) {
 	}
 }
 
+// encrypt a block of data using the DES algorithm
 pub fn (c &DesCipher) encrypt(mut dst []u8, src []u8) {
 	if src.len < block_size {
 		panic('crypto/des: input not full block')
@@ -69,6 +70,7 @@ pub fn (c &DesCipher) encrypt(mut dst []u8, src []u8) {
 	encrypt_block(c.subkeys[..], mut dst, src)
 }
 
+// decrypt a block of data using the DES algorithm
 pub fn (c &DesCipher) decrypt(mut dst []u8, src []u8) {
 	if src.len < block_size {
 		panic('crypto/des: input not full block')
@@ -94,6 +96,7 @@ pub fn new_triple_des_cipher(key []u8) cipher.Block {
 	return c
 }
 
+// encrypt a block of data using the TripleDES algorithm
 pub fn (c &TripleDesCipher) encrypt(mut dst []u8, src []u8) {
 	if src.len < block_size {
 		panic('crypto/des: input not full block')
@@ -130,6 +133,7 @@ pub fn (c &TripleDesCipher) encrypt(mut dst []u8, src []u8) {
 	binary.big_endian_put_u64(mut dst, permute_final_block(pre_output))
 }
 
+// decrypt a block of data using the TripleDES algorithm
 pub fn (c &TripleDesCipher) decrypt(mut dst []u8, src []u8) {
 	if src.len < block_size {
 		panic('crypto/des: input not full block')

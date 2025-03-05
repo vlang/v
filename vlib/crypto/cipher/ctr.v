@@ -49,6 +49,7 @@ pub fn new_ctr(b Block, iv []u8) Ctr {
 	}
 }
 
+// xor_key_stream xors each byte in the given slice with a byte from the key stream.
 pub fn (mut x Ctr) xor_key_stream(mut dst []u8, src []u8) {
 	unsafe {
 		mut local_dst := *dst
