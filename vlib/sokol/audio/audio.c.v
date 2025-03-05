@@ -19,6 +19,7 @@ $if linux {
 #flag windows -lole32
 #flag freebsd -L/usr/local/lib
 #flag freebsd -lasound
+#flag android -laaudio
 
 // callback function for `stream_cb` in [[C.saudio_desc](#C.saudio_desc)] when calling [audio.setup()](#setup)
 //
