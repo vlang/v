@@ -187,6 +187,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				&& c.table.sym(left_type).kind in [.array, .map, .struct]
 		}
 		if c.comptime.comptime_for_field_var != '' && mut left is ast.ComptimeSelector {
+			if c.comptime.has_different_types && node.right[i].is_literal()
+				&& !c.comptime.inside_comptime_if {
+				c.error('mismatched types: check field type with \$if to avoid this problem',
+					node.right[i].pos())
+			}
 			left_type = c.comptime.comptime_for_field_type
 			c.expected_type = c.unwrap_generic(left_type)
 		}
