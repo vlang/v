@@ -1079,6 +1079,8 @@ fn (mut c Checker) push_new_comptime_info() {
 	c.type_resolver.info_stack << type_resolver.ResolverInfo{
 		saved_type_map:               c.type_resolver.type_map.clone()
 		inside_comptime_for:          c.comptime.inside_comptime_for
+		inside_comptime_if:           c.comptime.inside_comptime_if
+		has_different_types:          c.comptime.has_different_types
 		comptime_for_variant_var:     c.comptime.comptime_for_variant_var
 		comptime_for_field_var:       c.comptime.comptime_for_field_var
 		comptime_for_field_type:      c.comptime.comptime_for_field_type
@@ -1095,6 +1097,8 @@ fn (mut c Checker) pop_comptime_info() {
 	old := c.type_resolver.info_stack.pop()
 	c.type_resolver.type_map = old.saved_type_map.clone()
 	c.comptime.inside_comptime_for = old.inside_comptime_for
+	c.comptime.inside_comptime_if = old.inside_comptime_if
+	c.comptime.has_different_types = old.has_different_types
 	c.comptime.comptime_for_variant_var = old.comptime_for_variant_var
 	c.comptime.comptime_for_field_var = old.comptime_for_field_var
 	c.comptime.comptime_for_field_type = old.comptime_for_field_type
