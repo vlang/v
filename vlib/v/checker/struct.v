@@ -534,7 +534,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		&& c.table.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index_u8(`.`)
 		first_letter := type_sym.name[pos + 1]
-		if !first_letter.is_capital()
+		if !first_letter.is_capital() && type_sym.kind != .none
 			&& (type_sym.kind != .struct || !(type_sym.info is ast.Struct && type_sym.info.is_anon))
 			&& type_sym.kind != .placeholder {
 			c.error('cannot initialize builtin type `${type_sym.name}`', node.pos)
@@ -850,6 +850,35 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					inited_fields)
 			}
 		}
+		.none {
+			// var := struct { name: "" }
+			mut init_fields := []ast.StructField{}
+			for init_field in node.init_fields {
+				mut expr := unsafe { init_field }
+				init_fields << ast.StructField{
+					name:   init_field.name
+					typ:    c.expr(mut expr.expr)
+					is_mut: c.anon_struct_should_be_mut
+				}
+			}
+			c.table.anon_struct_counter++
+			name := '_VAnonStruct${c.table.anon_struct_counter}'
+			sym_struct := ast.TypeSymbol{
+				kind:     .struct
+				language: .v
+				name:     name
+				cname:    util.no_dots(name)
+				mod:      c.mod
+				info:     ast.Struct{
+					is_anon: true
+					fields:  init_fields
+				}
+				is_pub:   true
+			}
+			ret := c.table.register_sym(sym_struct)
+			c.table.register_anon_struct(name, ret)
+			node.typ = c.table.find_type_idx(name)
+		}
 		else {}
 	}
 	if node.has_update_expr {
@@ -1139,4 +1168,18 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 			}
 		}
 	}
+}
+
+fn (mut c Checker) is_anon_struct_compatible(s1 ast.Struct, s2 ast.Struct) bool {
+	if !(s1.is_anon && s2.is_anon && s1.fields.len == s2.fields.len) {
+		return false
+	}
+	mut is_compatible := true
+	for k, field in s1.fields {
+		if !c.check_basic(field.typ, s2.fields[k].typ) {
+			is_compatible = false
+			break
+		}
+	}
+	return is_compatible
 }
