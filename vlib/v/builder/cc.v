@@ -159,6 +159,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		'-Wno-int-to-pointer-cast', // gcc version of the above
 		'-Wno-trigraphs', // see stackoverflow.com/a/8435413
 		'-Wno-missing-braces', // see stackoverflow.com/q/13746033
+		'-Wno-enum-conversion', // silences `.dst_factor_rgb = sokol__gfx__BlendFactor__one_minus_src_alpha`
+		'-Wno-enum-compare', // silences `if (ev->mouse_button == sokol__sapp__MouseButton__left) {`
 		// enable additional warnings:
 		'-Wno-unknown-warning', // if a C compiler does not understand a certain flag, it should just ignore it
 		'-Wno-unknown-warning-option', // clang equivalent of the above
