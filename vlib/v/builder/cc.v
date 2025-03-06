@@ -59,14 +59,18 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 		} else {
 			trimmed_output := res.output.trim_space()
 			original_elines := trimmed_output.split_into_lines()
-			elines := error_context_lines(trimmed_output, 'error:', 1, 12)
+			mlines := 12
+			cut_off_limit := if original_elines.len > mlines + 3 { mlines } else { mlines + 3 }
+			elines := error_context_lines(trimmed_output, 'error:', 1, cut_off_limit)
 			header := '================== ${c_compilation_error_title} (from ${ccompiler}): =============='
 			println(header)
 			for eline in elines {
 				println('cc: ${eline}')
 			}
 			if original_elines.len != elines.len {
-				println('... (the original output was ${original_elines.len} lines long, and was truncated to ${elines.len} lines)')
+				println('...')
+				println('cc: ${original_elines#[-1..][0]}')
+				println('(note: the original output was ${original_elines.len} lines long; it was truncated to its first ${elines.len} lines + the last line)')
 			}
 			println('='.repeat(header.len))
 			println('(You can pass `-cg`, or `-show-c-output` as well, to print all the C error messages).')
