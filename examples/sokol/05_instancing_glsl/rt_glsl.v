@@ -74,7 +74,7 @@ fn create_texture(w int, h int, buf byteptr) (gfx.Image, gfx.Sampler) {
 		//usage: .dynamic
 //		wrap_u:        .clamp_to_edge
 //		wrap_v:        .clamp_to_edge
-		label:         &u8(0)
+		label:         &char(0)
 		d3d11_texture: 0
 	}
 	// vfmt on
@@ -225,7 +225,7 @@ fn init_cube_glsl_i(mut app App) {
 	ibuf := gfx.make_buffer(&index_buffer_desc)
 
 	// create shader
-	shader := gfx.make_shader(C.instancing_shader_desc(C.sg_query_backend()))
+	shader := gfx.make_shader(voidptr(C.instancing_shader_desc(C.sg_query_backend())))
 
 	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
@@ -257,7 +257,7 @@ fn init_cube_glsl_i(mut app App) {
 	}
 	pipdesc.cull_mode = .back
 
-	pipdesc.label = 'glsl_shader pipeline'.str
+	pipdesc.label = c'glsl_shader pipeline'
 
 	mut bind := gfx.Bindings{}
 	unsafe { vmemset(&bind, 0, int(sizeof(bind))) }

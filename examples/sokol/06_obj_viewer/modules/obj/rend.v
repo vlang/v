@@ -29,7 +29,7 @@ pub fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 		// usage: .dynamic
 		// wrap_u: .clamp_to_edge
 		// wrap_v: .clamp_to_edge
-		label:         &u8(0)
+		label:         &char(0)
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
@@ -87,7 +87,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 	}
 
 	vert_buffer_desc.type = .vertexbuffer
-	vert_buffer_desc.label = 'vertbuf_part_${in_part:03}'.str
+	vert_buffer_desc.label = &char('vertbuf_part_${in_part:03}'.str)
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
 	// index buffer
@@ -101,7 +101,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 	}
 
 	index_buffer_desc.type = .indexbuffer
-	index_buffer_desc.label = 'indbuf_part_${in_part:03}'.str
+	index_buffer_desc.label = &char('indbuf_part_${in_part:03}'.str)
 	ibuf := gfx.make_buffer(&index_buffer_desc)
 
 	mut pipdesc := gfx.PipelineDesc{}
@@ -131,7 +131,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 	}
 	pipdesc.cull_mode = .front
 
-	pipdesc.label = 'pip_part_${in_part:03}'.str
+	pipdesc.label = &char('pip_part_${in_part:03}'.str)
 
 	// shader
 	pipdesc.shader = shader
@@ -153,7 +153,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 pub fn (mut obj_part ObjPart) init_render_data(texture gfx.Image, sampler gfx.Sampler) {
 	// create shader
 	// One shader for all the model
-	shader := gfx.make_shader(C.gouraud_shader_desc(gfx.query_backend()))
+	shader := gfx.make_shader(voidptr(C.gouraud_shader_desc(gfx.query_backend())))
 
 	mut part_dict := map[string][]int{}
 	for i, p in obj_part.part {
