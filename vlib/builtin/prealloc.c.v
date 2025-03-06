@@ -31,7 +31,7 @@ mut:
 
 fn vmemory_abort_on_nil(p voidptr, bytes isize) {
 	if unsafe { p == 0 } {
-		C.fprintf(C.stderr, c'could not allocate %lld bytes\n', bytes)
+		C.fprintf(C.stderr, c'could not allocate %td bytes\n', bytes)
 		exit(1)
 	}
 }
