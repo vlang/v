@@ -117,6 +117,7 @@ pub const mime_types = {
 	'.pptx':   'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 	'.rar':    'application/vnd.rar'
 	'.rtf':    'application/rtf'
+	'.scss':   'text/css'
 	'.sh':     'application/x-sh'
 	'.svg':    'image/svg+xml'
 	'.swf':    'application/x-shockwave-flash'

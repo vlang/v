@@ -287,8 +287,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				param.typ = c.eval_array_fixed_sizes(mut size_expr, 0, arg_typ_sym.info.elem_type)
 				mut v := node.scope.find_var(param.name) or { continue }
 				v.typ = param.typ
-			}
-			if arg_typ_sym.info is ast.Struct {
+			} else if arg_typ_sym.info is ast.Struct {
 				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
 					mut v := node.scope.find_var(param.name) or { continue }
 					v.is_auto_heap = true
@@ -315,6 +314,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					&& arg_typ_sym.info.concrete_types.len == 0 {
 					pure_sym_name := arg_typ_sym.embed_name()
 					c.error('generic sumtype `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
+						param.type_pos)
+				}
+			} else if arg_typ_sym.info is ast.FnType {
+				if arg_typ_sym.info.func.generic_names.len > 0 && !param.typ.has_flag(.generic) {
+					pure_sym_name := arg_typ_sym.embed_name()
+					c.error('generic function `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			}
@@ -1654,6 +1659,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					}
 				}
 				continue
+			} else if param_typ_sym.info is ast.Struct && arg_typ_sym.info is ast.Struct
+				&& param_typ_sym.info.is_anon {
+				if c.is_anon_struct_compatible(param_typ_sym.info, arg_typ_sym.info) {
+					continue
+				}
 			}
 			if c.pref.translated || c.file.is_translated {
 				// in case of variadic make sure to use array elem type for checks

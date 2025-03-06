@@ -1,0 +1,14 @@
+vlib/v/checker/tests/generic_fntype_err.vv:19:15: error: cannot use `fn (int, int) int` as `fn (T, T) int` in argument 2 to `sort`
+   17 | fn main() {
+   18 |     mut a := [123, 553, 223, 126, 883, 257]
+   19 |     x := sort(a, my_cmp)
+      |                  ~~~~~~
+   20 |     println(x)
+   21 | }
+vlib/v/checker/tests/generic_fntype_err.vv:3:29: error: generic function `FnSort` in fn declaration must specify the generic type names, e.g. FnSort[T]
+    1 | type FnSort[T] = fn (const_a T, const_b T) int
+    2 | 
+    3 | fn sort[T](arr []T, sort_cb FnSort) []T {
+      |                             ~~~~~~
+    4 |     return arr
+    5 | }

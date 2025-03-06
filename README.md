@@ -289,7 +289,7 @@ V comes with a version of mbedtls, which should work on all systems. If you find
 use OpenSSL instead, you will need to make sure that it is installed on your system, then
 use the `-d use_openssl` switch when you compile.
 
-Note: Mbed-TLS is smaller and easier to install on windows too (V comes with it), but if you 
+Note: Mbed-TLS is smaller and easier to install on windows too (V comes with it), but if you
 write programs, that do lots of http requests to HTTPS/SSL servers, in most cases, it is *best*
 to compile with `-d use_openssl`, and do so on a system, where you do have OpenSSL installed
 (see below). Mbed-TLS is slower, and can have more issues, especially when you are doing parallel
@@ -363,7 +363,7 @@ With V's `vab` tool, building V UI and graphical apps for Android can become as 
 ## Developing web applications
 
 Check out the
-[Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/README.md)
+[Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_veb/README.md)
 tutorial and Gitly, a light and fast alternative to GitHub/GitLab:
 
 https://github.com/vlang/gitly

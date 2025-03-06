@@ -41,8 +41,8 @@ pub fn (mut s System) update(dt f64) {
 			moved++
 		}
 	}
-	$if trace_moves_spool_to_sbin ? {
-		if moved != 0 {
+	if moved != 0 {
+		$if trace_moves_spool_to_sbin ? {
 			eprintln('${moved:4} particles s.pool -> s.bin')
 		}
 	}
@@ -88,8 +88,8 @@ pub fn (mut s System) explode(x f32, y f32) {
 		moved++
 		reserve--
 	}
-	$if trace_moves_sbin_to_spool ? {
-		if moved != 0 {
+	if moved != 0 {
+		$if trace_moves_sbin_to_spool ? {
 			eprintln('${moved:4} particles s.bin -> s.pool')
 		}
 	}

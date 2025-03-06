@@ -239,7 +239,7 @@ fn (mut s SSLConn) complete_connect() ! {
 			}
 			return error('Could not validate SSL certificate. (${err_res}),err')
 		}
-		pcert := C.SSL_get_peer_certificate(voidptr(s.ssl))
+		pcert := C.SSL_get1_peer_certificate(voidptr(s.ssl))
 		defer {
 			if pcert != 0 {
 				C.X509_free(pcert)

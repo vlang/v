@@ -50,7 +50,12 @@ fn main() {
 		}
 	}
 	eprintln('>> webserver: pid: ${os.getpid()}, started on http://localhost:${app.port}/ , with maximum runtime of ${app.timeout} milliseconds.')
-	veb.run_at[ServerApp, ServerContext](mut app, host: 'localhost', port: http_port, family: .ip)!
+	veb.run_at[ServerApp, ServerContext](mut app,
+		host:               'localhost'
+		port:               http_port
+		family:             .ip
+		timeout_in_seconds: 2
+	)!
 }
 
 // pub fn (mut app ServerApp) init_server() {

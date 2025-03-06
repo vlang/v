@@ -572,7 +572,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	b.write_string2('\n// V comptime_definitions:\n', g.comptime_definitions.str())
 	b.write_string2('\n// V typedefs:\n', g.typedefs.str())
 	b.write_string2('\n // V preincludes:\n', g.preincludes.str())
-	b.write_string2('\n// V cheaders:', g.cheaders.str())
+	b.write_string2('\n// V cheaders:\n', g.cheaders.str())
 	if g.pcs_declarations.len > 0 {
 		b.write_string2('\n// V profile counters:\n', g.pcs_declarations.str())
 	}
@@ -6504,7 +6504,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							}
 						}
 					}
-					g.struct_decl(sym.info, name, false)
+					g.struct_decl(sym.info, name, false, false)
 					struct_names[name] = true
 				}
 			}
@@ -6610,6 +6610,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 											base)};')
 									}
 								}
+								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							} else if !(elem_sym.info is ast.ArrayFixed && elem_sym.info.is_fn_ret) {
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							}
@@ -7532,7 +7533,8 @@ fn (mut g Gen) interface_table() string {
 		methods_struct_name := 'struct _${interface_name}_interface_methods'
 		mut methods_struct_def := strings.new_builder(100)
 		methods_struct_def.writeln('${methods_struct_name} {')
-		inter_methods := inter_info.get_methods()
+		mut inter_methods := inter_info.get_methods()
+		inter_methods.sort(a < b)
 		mut methodidx := map[string]int{}
 		for k, method_name in inter_methods {
 			method := isym.find_method_with_generic_parent(method_name) or { continue }
@@ -7663,7 +7665,9 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				methods_struct.writeln('\t{')
 			}
 			if st == ast.voidptr_type || st == ast.nil_type {
-				for mname, _ in methodidx {
+				mut mnames := methodidx.keys()
+				mnames.sort(a < b)
+				for mname in mnames {
 					if g.pref.build_mode != .build_module {
 						methods_struct.writeln('\t\t._method_${c_fn_name(mname)} = (void*) 0,')
 					}
@@ -7720,7 +7724,9 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				}
 			}
 
-			for method in methods {
+			mut ordered_methods := methods.clone()
+			ordered_methods.sort(a.name < b.name)
+			for method in ordered_methods {
 				mut name := method.name
 				if method.generic_names.len > 0 && inter_info.parent_type.has_flag(.generic) {
 					parent_sym := g.table.sym(inter_info.parent_type)

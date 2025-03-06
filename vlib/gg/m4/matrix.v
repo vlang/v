@@ -29,15 +29,14 @@ pub const precision = f32(10e-7)
 *********************************************************************/
 // String representation of the matrix
 pub fn (x Mat4) str() string {
-	unsafe {
-		// vfmt off
-		return
-			'|${x.e[0]: -6.3},${x.e[1]: -6.3},${x.e[2]: -6.3},${x.e[3]: -6.3}|\n' +
-			'|${x.e[4]: -6.3},${x.e[5]: -6.3},${x.e[6]: -6.3},${x.e[7]: -6.3}|\n' +
-			'|${x.e[8]: -6.3},${x.e[9]: -6.3},${x.e[10]:-6.3},${x.e[11]:-6.3}|\n' +
-			'|${x.e[12]:-6.3},${x.e[13]:-6.3},${x.e[14]:-6.3},${x.e[15]:-6.3}|'
-		// vfmt on
+	// vfmt off
+	return unsafe {
+		'|${x.e[0]: -6.3},${x.e[1]: -6.3},${x.e[2]: -6.3},${x.e[3]: -6.3}|\n' +
+		'|${x.e[4]: -6.3},${x.e[5]: -6.3},${x.e[6]: -6.3},${x.e[7]: -6.3}|\n' +
+		'|${x.e[8]: -6.3},${x.e[9]: -6.3},${x.e[10]:-6.3},${x.e[11]:-6.3}|\n' +
+		'|${x.e[12]:-6.3},${x.e[13]:-6.3},${x.e[14]:-6.3},${x.e[15]:-6.3}|'
 	}
+	// vfmt on
 }
 
 // Remove all the raw zeros
@@ -54,6 +53,7 @@ pub fn (a Mat4) clean() Mat4 {
 		}
 		return x
 	}
+	return zero_m4() // workaround -cstrict
 }
 
 // Sum all the elements of the matrix
@@ -254,30 +254,30 @@ pub fn (mut x Mat4) swap_row(row1 int, row2 int) {
 //-------------------------------------
 // Transpose the matrix
 pub fn (x Mat4) transpose() Mat4 {
-	unsafe {
-		// vfmt off
-		return Mat4{ e: [
+	// vfmt off
+	return unsafe {
+		Mat4{ e: [
 		    x.e[0 ], x.e[4 ], x.e[8 ], x.e[12],
 		    x.e[1 ], x.e[5 ], x.e[9 ], x.e[13],
 		    x.e[2 ], x.e[6 ], x.e[10], x.e[14],
 		    x.e[3 ], x.e[7 ], x.e[11], x.e[15],
 		]!}
-		// vfmt on
 	}
+	// vfmt on
 }
 
 // Multiply the all the elements of the matrix by a scalar
 pub fn (x Mat4) mul_scalar(s f32) Mat4 {
-	unsafe {
-		// vfmt off
-		return Mat4{ e: [
+	// vfmt off
+	return unsafe {
+		Mat4{ e: [
 		    x.e[0 ] * s, x.e[1 ] * s, x.e[2 ] * s, x.e[3 ] * s,
 		    x.e[4 ] * s, x.e[5 ] * s, x.e[6 ] * s, x.e[7 ] * s,
 		    x.e[8 ] * s, x.e[9 ] * s, x.e[10] * s, x.e[11] * s,
 		    x.e[12] * s, x.e[13] * s, x.e[14] * s, x.e[15] * s,
 		]!}
-		// vfmt on
 	}
+	// vfmt on
 }
 
 /*********************************************************************
@@ -329,37 +329,37 @@ pub fn set_m4(value f32) Mat4 {
 
 // Sum of matrix, operator +
 pub fn (a Mat4) + (b Mat4) Mat4 {
-	unsafe {
-		// vfmt off
-		return Mat4{ e: [
+	// vfmt off
+	return unsafe {
+		Mat4{ e: [
 			a.e[0 ] + b.e[0 ],  a.e[1 ] + b.e[1 ],  a.e[2 ] + b.e[2 ],  a.e[3 ] + b.e[3 ],
 			a.e[4 ] + b.e[4 ],  a.e[5 ] + b.e[5 ],  a.e[6 ] + b.e[6 ],  a.e[7 ] + b.e[7 ],
 			a.e[8 ] + b.e[8 ],  a.e[9 ] + b.e[9 ],  a.e[10] + b.e[10],  a.e[11] + b.e[11],
 			a.e[12] + b.e[12],  a.e[13] + b.e[13],  a.e[14] + b.e[14],  a.e[15] + b.e[15],
 		]!}
-		// vfmt on
 	}
+	// vfmt on
 }
 
 // Subtraction of matrix, operator -
 pub fn (a Mat4) - (b Mat4) Mat4 {
-	unsafe {
-		// vfmt off
-		return Mat4{ e: [
+	// vfmt off
+	return unsafe {
+		Mat4{ e: [
 			a.e[0 ] - b.e[0 ],  a.e[1 ] - b.e[1 ],  a.e[2 ] - b.e[2 ],  a.e[3 ] - b.e[3 ],
 			a.e[4 ] - b.e[4 ],  a.e[5 ] - b.e[5 ],  a.e[6 ] - b.e[6 ],  a.e[7 ] - b.e[7 ],
 			a.e[8 ] - b.e[8 ],  a.e[9 ] - b.e[9 ],  a.e[10] - b.e[10],  a.e[11] - b.e[11],
 			a.e[12] - b.e[12],  a.e[13] - b.e[13],  a.e[14] - b.e[14],  a.e[15] - b.e[15],
 		]!}
-		// vfmt on
 	}
+	// vfmt on
 }
 
 // Multiplication of matrix, operator *
 pub fn (a Mat4) * (b Mat4) Mat4 {
-	unsafe {
-		// vfmt off
-		return Mat4{ e: [
+	// vfmt off
+	return unsafe {
+		Mat4{ e: [
 			a.f[0][0] * b.f[0][0] + a.f[0][1] * b.f[1][0] + a.f[0][2] * b.f[2][0] + a.f[0][3] * b.f[3][0], // [0][0]
 			a.f[0][0] * b.f[0][1] + a.f[0][1] * b.f[1][1] + a.f[0][2] * b.f[2][1] + a.f[0][3] * b.f[3][1], // [0][1]
 			a.f[0][0] * b.f[0][2] + a.f[0][1] * b.f[1][2] + a.f[0][2] * b.f[2][2] + a.f[0][3] * b.f[3][2], // [0][2]
@@ -380,43 +380,37 @@ pub fn (a Mat4) * (b Mat4) Mat4 {
 			a.f[3][0] * b.f[0][2] + a.f[3][1] * b.f[1][2] + a.f[3][2] * b.f[2][2] + a.f[3][3] * b.f[3][2], // [3][2]
 			a.f[3][0] * b.f[0][3] + a.f[3][1] * b.f[1][3] + a.f[3][2] * b.f[2][3] + a.f[3][3] * b.f[3][3], // [3][3]
 		]!}
-		// vfmt on
 	}
+	// vfmt on
 }
 
 // Sum of matrix function
 pub fn add(a Mat4, b Mat4) Mat4 {
-	unsafe {
-		return a + b
-	}
+	return a + b
 }
 
 // Subtraction of matrix function
 pub fn sub(a Mat4, b Mat4) Mat4 {
-	unsafe {
-		return a - b
-	}
+	return a - b
 }
 
 // Multiplication of matrix function
 pub fn mul(a Mat4, b Mat4) Mat4 {
-	unsafe {
-		return a * b
-	}
+	return a * b
 }
 
 // Multiply a Matrix by a vector
 pub fn mul_vec(a Mat4, v Vec4) Vec4 {
-	unsafe {
-		// vfmt off
-		return Vec4{ e: [
+	// vfmt off
+	return unsafe {
+		Vec4{ e: [
 			a.e[0 ] * v.e[0] + a.e[1 ] * v.e[1] + a.e[2 ] * v.e[2] + a.e[3 ] * v.e[3],
 			a.e[4 ] * v.e[0] + a.e[5 ] * v.e[1] + a.e[6 ] * v.e[2] + a.e[7 ] * v.e[3],
 			a.e[8 ] * v.e[0] + a.e[9 ] * v.e[1] + a.e[10] * v.e[2] + a.e[11] * v.e[3],
 			a.e[12] * v.e[0] + a.e[13] * v.e[1] + a.e[14] * v.e[2] + a.e[15] * v.e[3],
 		]!}
-		// vfmt on
 	}
+	// vfmt on
 }
 
 // Calculate the determinant of the Matrix
@@ -446,15 +440,15 @@ pub fn det(x Mat4) f32 {
 		t[3] = x02 * x33 - x03 * x32
 		t[4] = x02 * x23 - x03 * x22
 		t[5] = x02 * x13 - x03 * x12
-
 		// vfmt off
-		return
-			x00 * (x11 * t[0] - x21 * t[1] + x31 * t[2]) -
-			x10 * (x01 * t[0] - x21 * t[3] + x31 * t[4]) +
-			x20 * (x01 * t[1] - x11 * t[3] + x31 * t[5]) -
-			x30 * (x01 * t[2] - x11 * t[4] + x21 * t[5])
+		return 
+		        x00 * (x11 * t[0] - x21 * t[1] + x31 * t[2]) -
+		        x10 * (x01 * t[0] - x21 * t[3] + x31 * t[4]) + 
+		        x20 * (x01 * t[1] - x11 * t[3] + x31 * t[5]) - 
+		        x30 * (x01 * t[2] - x11 * t[4] + x21 * t[5])
 		// vfmt on
 	}
+	return 0 // workaround -cstrict
 }
 
 // Calculate the inverse of the Matrix
@@ -530,6 +524,7 @@ pub fn (x Mat4) inverse() Mat4 {
 		}
 		return dest.mul_scalar(det)
 	}
+	return zero_m4()
 }
 
 /*********************************************************************
@@ -558,6 +553,7 @@ pub fn rotate(angle f32, w Vec4) Mat4 {
 		]!}
 		// vfmt on
 	}
+	return zero_m4()
 }
 
 /*********************************************************************
@@ -567,28 +563,28 @@ pub fn rotate(angle f32, w Vec4) Mat4 {
 *********************************************************************/
 // Get a matrix translated by a vector w
 pub fn (x Mat4) translate(w Vec4) Mat4 {
-	unsafe {
-		// vfmt off
-		return Mat4{ e: [
+	// vfmt off
+	return unsafe { 
+		Mat4{ e: [
 			x.e[0],             x.e[1],             x.e[2 ],            x.e[3 ],
 			x.e[4],             x.e[5],             x.e[6 ],            x.e[7 ],
 			x.e[8],             x.e[9],             x.e[10],            x.e[11],
 			x.e[12] + w.e[0],   x.e[13] + w.e[1],   x.e[14] + w.e[2],   x.e[15],
 		]!}
-		// vfmt on
 	}
+	// vfmt on
 }
 
 // Get a scale matrix, the scale vector is w, only xyz are evaluated.
 pub fn scale(w Vec4) Mat4 {
-	unsafe {
-		// vfmt off
-		return Mat4{ e: [
+	// vfmt off
+	return unsafe { 
+		Mat4{ e: [
 			w.e[0],     0,          0,          0,
 			0,          w.e[1],     0,          0,
 			0,          0,          w.e[2],     0,
 			0,          0,          0,          1,
 		]!}
-		// vfmt on
 	}
+	// vfmt on
 }

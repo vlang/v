@@ -136,7 +136,7 @@ latest_vc:
 endif
 
 check_for_working_tcc:
-	@$(TMPTCC)/tcc$(EXE_EXT) --version > /dev/null 2> /dev/null || echo "The executable '$(TMPTCC)/tcc$(EXE_EXT)' does not work."
+	@$(TMPTCC)/tcc.exe --version > /dev/null 2> /dev/null || echo "The executable '$(TMPTCC)/tcc.exe' does not work."
 
 fresh_vc:
 	rm -rf $(VC)
@@ -145,7 +145,7 @@ fresh_vc:
 ifndef local
 latest_tcc: $(TMPTCC)/.git/config
 	cd $(TMPTCC) && $(GITCLEANPULL)
-ifneq (,$(wildcard ./tcc$(EXE_EXT)))
+ifneq (,$(wildcard ./tcc.exe))
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 endif
 

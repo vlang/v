@@ -54,6 +54,22 @@ pub fn (mut f File) read_be[T]() !T {
 	return serialized
 }
 
+// write_u8 writes a single byte value to the file `f`.
+// Note: if possible, use some of the other APIs, that write larger chunks of data, before using write_u8/1.
+pub fn (mut f File) write_u8(b u8) ! {
+	C.errno = 0 // needed for tcc
+	check_fwrite(C.fwrite(voidptr(&b), 1, 1, f.cfile))!
+}
+
+// read_u8 reads a single byte value from the file `f`.
+// Note: if possible, use some of the other APIs, that read larger chunks of data, before using read_u8/1.
+pub fn (mut f File) read_u8() !u8 {
+	mut res := u8(0)
+	C.errno = 0 // needed for tcc
+	check_fread(C.fread(voidptr(&res), 1, 1, f.cfile))!
+	return res
+}
+
 // private helpers
 
 @[inline]

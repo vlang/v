@@ -60,7 +60,7 @@ fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 		height:      h
 		num_mipmaps: 0
 		// usage: .dynamic
-		label:         &u8(0)
+		label:         &char(0)
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
@@ -339,7 +339,7 @@ fn init_cube_glsl(mut app App) {
 	ibuf := gfx.make_buffer(&index_buffer_desc)
 
 	// create shader
-	shader := gfx.make_shader(C.cube_shader_desc(C.sg_query_backend()))
+	shader := gfx.make_shader(voidptr(C.cube_shader_desc(C.sg_query_backend())))
 
 	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
@@ -360,7 +360,7 @@ fn init_cube_glsl(mut app App) {
 	}
 	pipdesc.cull_mode = .back
 
-	pipdesc.label = 'glsl_shader pipeline'.str
+	pipdesc.label = c'glsl_shader pipeline'
 
 	app.cube_bind.vertex_buffers[0] = vbuf
 	app.cube_bind.index_buffer = ibuf

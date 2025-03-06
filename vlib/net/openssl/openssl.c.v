@@ -8,7 +8,7 @@ module openssl
 // the next #pkgconfig flag is harmless, since it will still
 // use the (older) system openssl.
 #flag linux -I/usr/local/include/openssl
-#flag linux -L/usr/local/lib
+#flag linux -L/usr/local/lib64
 // On FreeBSD, prefer openssl from the ports collection, because
 // it is much more likely for it to be newer, than the system
 // openssl.
@@ -116,9 +116,7 @@ fn C.SSL_do_handshake(&C.SSL) int
 
 fn C.SSL_set_cipher_list(ctx &SSL, str &char) int
 
-fn C.SSL_get_peer_certificate(ssl &SSL) &C.X509
-
-// fn C.SSL_get1_peer_certificate(ssl &SSL) &C.X509
+fn C.SSL_get1_peer_certificate(ssl &SSL) &C.X509
 
 fn C.X509_free(const_cert &C.X509)
 

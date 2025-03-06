@@ -4,7 +4,19 @@ import time
 import x.json2
 import net.http
 
-const url = 'https://api.coindesk.com/v1/bpi/currentprice.json'
+const url = 'https://api.coinbase.com/v2/prices/BTC-USD/spot'
+
+struct JsonResult {
+mut:
+	data PriceResult
+}
+
+struct PriceResult {
+mut:
+	amount   f64
+	base     string
+	currency string
+}
 
 fn main() {
 	log.use_stdout()
@@ -16,13 +28,13 @@ fn main() {
 			continue
 		}
 		if data.status_code == 200 {
-			res := json2.decode[PriceResult](data.body) or {
+			res := json2.decode[JsonResult](data.body) or {
 				log.error('can not decode data: ${data.body}')
 				time.sleep(10 * time.second)
 				continue
 			}
-			new_rate := res.bpi['USD'].rate_float
-			show_result(i, res, new_rate - old_rate)
+			new_rate := res.data.amount
+			show_result(i, res.data, new_rate - old_rate)
 			old_rate = new_rate
 		}
 		time.sleep(3 * time.second)
@@ -42,26 +54,5 @@ fn show_result(i u64, res PriceResult, delta f64) {
 		term.red
 	}
 	cdelta := term.colorize(color, sdelta)
-	log.info('${cdelta}, ${res.bpi['USD'].rate_float:10.3f} USD/BTC, ${res.time.updated_iso}, cycle: ${i:5}')
-}
-
-struct PriceTime {
-	updated_iso time.Time @[json: 'updatedISO']
-	updated     string
-	updateduk   string
-}
-
-struct CurrencyResult {
-	code        string
-	symbol      string
-	rate        string
-	description string
-	rate_float  f64
-}
-
-struct PriceResult {
-	time       PriceTime
-	disclaimer string
-	chart_name string @[json: 'chartName']
-	bpi        map[string]CurrencyResult
+	log.info('${cdelta}, ${res.amount:10.3f} USD/BTC, cycle: ${i:5}')
 }

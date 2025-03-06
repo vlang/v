@@ -25,6 +25,7 @@ on:
 jobs:
   test-on-freebsd-14-2-x86:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     name: Run a FreeBSD 14.2 x86 VM
     steps:
       - uses: actions/checkout@v4

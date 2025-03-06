@@ -27,6 +27,7 @@ module ecdsa
 #include <openssl/x509.h>
 #include <openssl/bio.h>
 #include <openssl/pem.h>
+#include <openssl/param_build.h>
 
 // The following header is available on OpenSSL 3.0, but not in OpenSSL 1.1.1f
 //#include <openssl/core.h>
@@ -39,8 +40,12 @@ fn C.EVP_PKEY_new() &C.EVP_PKEY
 fn C.EVP_PKEY_free(key &C.EVP_PKEY)
 fn C.EVP_PKEY_get1_EC_KEY(pkey &C.EVP_PKEY) &C.EC_KEY
 fn C.EVP_PKEY_base_id(key &C.EVP_PKEY) int
-fn C.EVP_PKEY_get_bits(pkey &C.EVP_PKEY) int
+fn C.EVP_PKEY_bits(pkey &C.EVP_PKEY) int
 fn C.EVP_PKEY_size(key &C.EVP_PKEY) int
+fn C.EVP_PKEY_eq(a &C.EVP_PKEY, b &C.EVP_PKEY) int
+
+fn C.EVP_PKEY_fromdata_init(ctx &C.EVP_PKEY_CTX) int
+fn C.EVP_PKEY_fromdata(ctx &C.EVP_PKEY_CTX, ppkey &&C.EVP_PKEY, selection int, params &C.OSSL_PARAM) int
 
 // no-prehash signing (verifying)
 fn C.EVP_PKEY_sign(ctx &C.EVP_PKEY_CTX, sig &u8, siglen &usize, tbs &u8, tbslen int) int
@@ -55,7 +60,7 @@ fn C.EVP_DigestVerify(ctx &C.EVP_MD_CTX, sig &u8, siglen int, tbs &u8, tbslen in
 // Message digest routines
 fn C.EVP_DigestInit(ctx &C.EVP_MD_CTX, md &C.EVP_MD) int
 fn C.EVP_DigestUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt int) int
-fn C.EVP_DigestFinal(ctx &C.EVP_MD_CTX, md &u8, s &usize) int
+fn C.EVP_DigestFinal(ctx &C.EVP_MD_CTX, md &u8, s &u32) int
 
 // Recommended hashed signing/verifying routines
 fn C.EVP_DigestSignInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e voidptr, pkey &C.EVP_PKEY) int
@@ -76,6 +81,8 @@ fn C.EVP_PKEY_keygen(ctx &C.EVP_PKEY_CTX, ppkey &&C.EVP_PKEY) int
 fn C.EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx &C.EVP_PKEY_CTX, nid int) int
 fn C.EVP_PKEY_CTX_set_ec_param_enc(ctx &C.EVP_PKEY_CTX, param_enc int) int
 fn C.EVP_PKEY_CTX_free(ctx &C.EVP_PKEY_CTX)
+
+fn C.EVP_PKEY_get_bits(pkey &C.EVP_PKEY) int
 
 // Elliptic curve keypair declarations
 @[typedef]
@@ -118,6 +125,7 @@ struct C.EC_POINT {}
 fn C.EC_POINT_new(group &C.EC_GROUP) &C.EC_POINT
 fn C.EC_POINT_mul(group &C.EC_GROUP, r &C.EC_POINT, n &C.BIGNUM, q &C.EC_POINT, m &C.BIGNUM, ctx &C.BN_CTX) int
 fn C.EC_POINT_point2oct(g &C.EC_GROUP, p &C.EC_POINT, form int, buf &u8, max_out int, ctx &C.BN_CTX) int
+fn C.EC_POINT_point2buf(group &C.EC_GROUP, point &C.EC_POINT, form int, pbuf &&u8, ctx &C.BN_CTX) int
 fn C.EC_POINT_cmp(group &C.EC_GROUP, a &C.EC_POINT, b &C.EC_POINT, ctx &C.BN_CTX) int
 fn C.EC_POINT_free(point &C.EC_POINT)
 
@@ -129,6 +137,7 @@ fn C.EC_GROUP_free(group &C.EC_GROUP)
 fn C.EC_GROUP_get_degree(g &C.EC_GROUP) int
 fn C.EC_GROUP_get_curve_name(g &C.EC_GROUP) int
 fn C.EC_GROUP_cmp(a &C.EC_GROUP, b &C.EC_GROUP, ctx &C.BN_CTX) int
+fn C.EC_GROUP_new_by_curve_name(nid int) &C.EC_GROUP
 
 // Elliptic BIGNUM related declarations.
 @[typedef]
@@ -170,3 +179,19 @@ fn C.EVP_sha256() &C.EVP_MD
 fn C.EVP_sha384() &C.EVP_MD
 fn C.EVP_sha512() &C.EVP_MD
 fn C.EVP_MD_get_size(md &C.EVP_MD) int // -1 failure
+
+fn C.OPENSSL_free(addr voidptr)
+
+@[typedef]
+struct C.OSSL_PARAM {}
+
+@[typedef]
+struct C.OSSL_PARAM_BLD {}
+
+fn C.OSSL_PARAM_free(params &C.OSSL_PARAM)
+fn C.OSSL_PARAM_BLD_free(param_bld &C.OSSL_PARAM_BLD)
+fn C.OSSL_PARAM_BLD_new() &C.OSSL_PARAM_BLD
+fn C.OSSL_PARAM_BLD_push_utf8_string(bld &C.OSSL_PARAM_BLD, key &char, buf &char, bsize int) int
+fn C.OSSL_PARAM_BLD_push_BN(bld &C.OSSL_PARAM_BLD, key &u8, bn &C.BIGNUM) int
+fn C.OSSL_PARAM_BLD_push_octet_string(bld &C.OSSL_PARAM_BLD, key &u8, buf voidptr, bsize int) int
+fn C.OSSL_PARAM_BLD_to_param(bld &C.OSSL_PARAM_BLD) &C.OSSL_PARAM

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_selector_assign.vv:18:24: error: mismatched types: check field type with $if to avoid this problem
+   16 |                 typ.$(field.name) = 2
+   17 |             }
+   18 |             typ.$(field.name) = 3
+      |                                 ^
+   19 |         }
+   20 |     }

@@ -37,7 +37,7 @@ fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 		height:      h
 		num_mipmaps: 0
 		// usage: .dynamic
-		label:         &u8(0)
+		label:         &char(0)
 		d3d11_texture: 0
 	}
 	// comment, if .dynamic is enabled

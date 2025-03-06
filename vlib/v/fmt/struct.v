@@ -10,6 +10,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	if node.is_pub && !is_anon {
 		f.write('pub ')
 	}
+	if node.is_option {
+		f.write('?')
+	}
 	if node.is_union {
 		f.write('union')
 	} else {
@@ -166,6 +169,9 @@ fn (mut f Fmt) write_anon_struct_field_decl(field_typ ast.Type, field_anon_decl 
 				elem_sym := f.table.sym(sym.info.elem_type)
 				if elem_sym.info is ast.Struct {
 					if elem_sym.info.is_anon {
+						if field_typ.has_flag(.option) {
+							f.write('?')
+						}
 						f.write('[]'.repeat(sym.info.nr_dims))
 						f.write_anon_struct_field_decl(sym.info.elem_type, field_anon_decl)
 						return true

@@ -1,0 +1,21 @@
+type FnSort[T] = fn (const_a T, const_b T) int
+
+fn sort[T](arr []T, sort_cb FnSort) []T {
+	return arr
+}
+
+fn my_cmp(a int, b int) int {
+	if a == b {
+		return 0
+	}
+	if a < b {
+		return 1
+	}
+	return -1
+}
+
+fn main() {
+	mut a := [123, 553, 223, 126, 883, 257]
+	x := sort(a, my_cmp)
+	println(x)
+}

@@ -96,6 +96,22 @@ fn test_a_simple_tcp_client_zero_content_length() {
 	assert watch.elapsed() < 1 * time.second
 }
 
+fn test_timeout_after_delayed_body() {
+	// content length is 10, but we don't send anything. The request should timeout,
+	// but not error.
+	watch := time.new_stopwatch(auto_start: true)
+	res := simple_tcp_client(
+		path:       '/json_echo'
+		headers:    'Content-Length: 10\r\n\r\n'
+		method_str: 'POST'
+	) or {
+		assert err.msg() == ''
+		return
+	}
+
+	assert res.ends_with('408 Request Timeout')
+}
+
 fn test_a_simple_tcp_client_html_page() {
 	received := simple_tcp_client(path: '/html_page') or {
 		assert err.msg() == ''
@@ -296,12 +312,13 @@ fn testsuite_end() {
 
 // utility code:
 struct SimpleTcpClientConfig {
-	retries int    = 4
-	host    string = 'static.dev'
-	path    string = '/'
-	agent   string = 'v/net.tcp.v'
-	headers string = '\r\n'
-	content string
+	retries    int    = 4
+	host       string = 'static.dev'
+	path       string = '/'
+	agent      string = 'v/net.tcp.v'
+	headers    string = '\r\n'
+	content    string
+	method_str string = 'GET'
 }
 
 fn simple_tcp_client(config SimpleTcpClientConfig) !string {
@@ -329,7 +346,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 	defer {
 		client.close() or {}
 	}
-	message := 'GET ${config.path} HTTP/1.1
+	message := '${config.method_str} ${config.path} HTTP/1.1
 Host: ${config.host}
 User-Agent: ${config.agent}
 Accept: */*

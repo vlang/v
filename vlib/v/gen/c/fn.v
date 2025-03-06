@@ -2477,9 +2477,10 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		} else {
 			if use_tmp_var_autofree {
+				n := if node.name == 'json.decode' { i + 2 } else { i + 1 }
 				// TODO: copypasta, move to an inline fn
 				fn_name := node.name.replace('.', '_')
-				name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
+				name := '_arg_expr_${fn_name}_${n}_${node.pos.pos}'
 				g.write('/*af arg2*/' + name)
 			} else {
 				g.expr(arg.expr)
@@ -2579,9 +2580,17 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 		// save all arguments in temp vars (not only pointers) to make sure the
 		// evaluation order is preserved
 		expected_type := node.expected_arg_types[i]
-		typ := g.table.sym(expected_type).cname
-		g.write('${typ} __tmp_arg_${tmp_cnt_save + i} = ')
-		g.ref_or_deref_arg(arg, expected_type, node.language, false)
+		typ_sym := g.table.sym(expected_type)
+		typ := typ_sym.cname
+		if typ_sym.kind != .array_fixed {
+			g.write('${typ} __tmp_arg_${tmp_cnt_save + i} = ')
+			g.ref_or_deref_arg(arg, expected_type, node.language, false)
+		} else {
+			g.writeln('${typ} __tmp_arg_${tmp_cnt_save + i} = {0};')
+			g.write('memcpy(&__tmp_arg_${tmp_cnt_save + i}, ')
+			g.ref_or_deref_arg(arg, expected_type, node.language, false)
+			g.writeln(', sizeof(${typ}));')
+		}
 		g.writeln(';')
 	}
 	g.empty_line = false
@@ -2751,6 +2760,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.expr_with_cast(arg.expr, arg_typ, expected_type)
 		g.write('.data')
 		return
+	} else if arg.expr is ast.Ident && arg_sym.info is ast.Struct && arg_sym.info.is_anon {
+		// make anon struct struct compatible with another anon struct declaration
+		g.write('*(${g.cc_type(expected_type, false)}*)&')
 	}
 	// check if the argument must be dereferenced or not
 	g.arg_no_auto_deref = is_smartcast && !arg_is_ptr && !exp_is_ptr && arg.should_be_ptr

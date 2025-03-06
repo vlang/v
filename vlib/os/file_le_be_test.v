@@ -21,6 +21,8 @@ fn test_write_be_read_be() {
 	f.write_be[u16](0x1617)!
 	f.write_be[u32](0x3233)!
 	f.write_be[u64](0x6465)!
+	f.write_u8(123)!
+	f.write_u8(42)!
 	f.close()
 	// vfmt off
 	assert os.read_bytes(fname)! == [
@@ -28,6 +30,7 @@ fn test_write_be_read_be() {
 		0x16, 0x17,
 		0x00, 0x00, 0x32, 0x33,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, 0x65,
+		123, 42
 	]
 	// vfmt on
 }
@@ -39,6 +42,8 @@ fn test_write_le_read_le() {
 	f.write_le[u16](0x1617)!
 	f.write_le[u32](0x3233)!
 	f.write_le[u64](0x6465)!
+	f.write_u8(12)!
+	f.write_u8(34)!
 	f.close()
 	// vfmt off
 	assert os.read_bytes('f_le')! == [
@@ -46,6 +51,7 @@ fn test_write_le_read_le() {
 		0x17, 0x16,
 		0x33, 0x32, 0x00, 0x00,
 		0x65, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		12, 34
 	]
 	// vfmt on
 	mut r := os.open_file(fname, 'rb')!
@@ -53,5 +59,7 @@ fn test_write_le_read_le() {
 	assert r.read_le[u16]()! == 0x1617
 	assert r.read_le[u32]()! == 0x3233
 	assert r.read_le[u64]()! == 0x6465
+	assert r.read_u8()! == 12
+	assert r.read_u8()! == 34
 	r.close()
 }

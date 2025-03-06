@@ -89,6 +89,7 @@ pub mut:
 	inside_fn_arg               bool        // `a`, `b` in `a.f(b)`
 	inside_ct_attr              bool        // true inside `[if expr]`
 	inside_x_is_type            bool        // true inside the Type expression of `if x is Type {`
+	anon_struct_should_be_mut   bool        // true when `mut var := struct { ... }` is used
 	inside_generic_struct_init  bool
 	inside_integer_literal_cast bool // true inside `int(123)`
 	cur_struct_generic_types    []ast.Type
@@ -2777,8 +2778,8 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 fn (mut c Checker) import_stmt(node ast.Import) {
 	if node.mod == 'x.vweb' {
 		println('`x.vweb` is now `veb`. The module is no longer experimental. Simply `import veb` instead of `import x.vweb`.')
-		//} else if node.mod == 'vweb' {
-		// println('`vweb` has been deprecated. Please use the more stable and fast `veb` instead')
+	} else if node.mod == 'vweb' {
+		println('`vweb` has been deprecated. Please use the more stable and fast `veb` instead.')
 	}
 	c.check_valid_snake_case(node.alias, 'module alias', node.pos)
 	for sym in node.syms {

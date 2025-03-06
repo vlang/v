@@ -69,6 +69,11 @@ pub fn powi(a i64, b i64) i64 {
 	return v
 }
 
+fn is_odd_int(x f64) bool {
+	xi, xf := modf(x)
+	return xf == 0 && (i64(xi) & 1) == 1
+}
+
 // pow returns the base x, raised to the provided power y. (float64)
 //
 // todo(playXE): make this function work on JS backend, probably problem of JS codegen that it does not work.

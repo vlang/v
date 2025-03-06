@@ -1,3 +1,8 @@
+// reserved_keywords_as_struct_field_test.v
+// Copyright (c) 2021 Pasha Radchenko <ep4sh2k@gmail.com>. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
 struct Empty {}
 
 // LLNode is struct which holds data and links

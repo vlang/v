@@ -59,13 +59,13 @@ const external_tools = [
 const list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 
 fn main() {
+	unbuffer_stdout()
 	mut timers_should_print := false
 	$if time_v ? {
 		timers_should_print = true
 	}
 	if '-show-timings' in os.args {
 		timers_should_print = true
-		unbuffer_stdout()
 	}
 	mut timers := util.new_timers(should_print: timers_should_print, label: 'main')
 	timers.start('v start')

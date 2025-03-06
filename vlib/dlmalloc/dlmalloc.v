@@ -238,6 +238,7 @@ mut:
 	release_checks usize
 }
 
+// new creates a new instance of `Dlmalloc` with the given system allocator.
 pub fn new(system_allocator Allocator) Dlmalloc {
 	return Dlmalloc{
 		smallmap:         0
@@ -914,6 +915,7 @@ fn (mut dl Dlmalloc) treemap_is_marked(idx u32) bool {
 	return dl.treemap & (1 << idx) != 0
 }
 
+// malloc allocates a block of memory of the given size.
 pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
 	unsafe {
 		p := dl.malloc_real(size)

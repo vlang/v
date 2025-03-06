@@ -299,6 +299,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'vlib/crypto/ecdsa/example/ensure_compatibility_with_net_openssl_test.v' // requires OpenSSL
 			// Fails compilation with: `/usr/bin/ld: /lib/x86_64-linux-gnu/libpthread.so.0: error adding symbols: DSO missing from command line`
 			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
+			skip_files << 'examples/sokol/sounds/simple_sin_tone_using_audio_push.v'
 		}
 		if github_job != 'misc-tooling' {
 			// These examples need .h files that are produced from the supplied .glsl files,

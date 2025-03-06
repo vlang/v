@@ -41,6 +41,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut ret_type := ast.void_type
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
+	mut must_be_option := false
 	for mut branch in node.branches {
 		if node.is_expr {
 			c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
@@ -77,6 +78,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					c.expr(mut stmt.expr)
 				})
 				unwrapped_expected_type := c.unwrap_generic(node.expected_type)
+				must_be_option = must_be_option || expr_type == ast.none_type
 				stmt.typ = expr_type
 				if first_iteration {
 					if unwrapped_expected_type.has_option_or_result()
@@ -126,6 +128,9 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 								ret_type = c.promote_num(ret_type, expr_type)
 							}
 						}
+					}
+					if must_be_option && ret_type == ast.none_type && expr_type != ret_type {
+						ret_type = expr_type.set_flag(.option)
 					}
 					if stmt.typ != ast.error_type && !is_noreturn_callexpr(stmt.expr) {
 						ret_sym := c.table.sym(ret_type)
@@ -245,7 +250,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.returns = false
 		}
 	}
-	node.return_type = ret_type
+	if ret_type == ast.none_type {
+		c.error('invalid match expression, must supply at least one value other than `none`',
+			node.pos)
+	}
+	node.return_type = if must_be_option { ret_type.set_flag(.option) } else { ret_type }
 	cond_var := c.get_base_name(&node.cond)
 	if cond_var != '' {
 		mut cond_is_auto_heap := false
@@ -264,7 +273,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			}
 		}
 	}
-	return ret_type
+	return node.return_type
 }
 
 fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type ast.Type, expr_type ast.Type) {
@@ -281,8 +290,10 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 					return
 				}
 			}
-			c.error('return type mismatch, it should be `${ret_sym.name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
-				last_stmt.pos)
+			if expr_type != ast.none_type && ret_type != ast.none_type {
+				c.error('return type mismatch, it should be `${ret_sym.name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
+					last_stmt.pos)
+			}
 		}
 	} else if expr_type == ast.void_type && ret_type.idx() == ast.void_type_idx
 		&& ret_type.has_option_or_result() {

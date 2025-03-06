@@ -28,6 +28,7 @@ fn system_page_size(_ voidptr) usize {
 	return 4096
 }
 
+// get_system_allocator returns an allocator that uses the system allocator.
 pub fn get_system_allocator() Allocator {
 	return Allocator{
 		alloc:            system_alloc

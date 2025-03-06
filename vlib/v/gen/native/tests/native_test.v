@@ -5,6 +5,16 @@ import term
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 const user_os = os.user_os()
+const wrkdir = os.join_path(os.vtmp_dir(), 'native_tests')
+
+fn testsuite_begin() {
+	os.mkdir_all(wrkdir) or {}
+	os.chdir(wrkdir) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(wrkdir) or {}
+}
 
 // TODO: some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_native() {
@@ -23,13 +33,6 @@ fn test_native() {
 	dir := os.join_path(vroot, 'vlib', 'v', 'gen', 'native', 'tests')
 	files := os.ls(dir) or { panic(err) }
 
-	wrkdir := os.join_path(os.vtmp_dir(), 'native_tests')
-	os.mkdir_all(wrkdir) or { panic(err) }
-	defer {
-		os.rmdir_all(wrkdir) or {}
-	}
-
-	os.chdir(wrkdir) or {}
 	tests := files.filter(it.ends_with('.vv')).sorted()
 	if tests.len == 0 {
 		println('no native tests found')
@@ -143,4 +146,11 @@ fn test_native() {
 	if bench.nfail > 0 {
 		exit(1)
 	}
+}
+
+fn test_prevent_could_not_find_symbols_regression() {
+	res := os.execute('${os.quoted_path(@VEXE)} -b native ${os.quoted_path(os.join_path(@VROOT,
+		'examples/hello_world.v'))}')
+	assert !res.output.contains('CaptureStackBackTrace'), 'Test failed system unable to find symbol: CaptureStackBackTrace'
+	assert !res.output.contains('__debugbreak'), 'Test failed system unable to find symbol: __debugbreak'
 }

@@ -53,6 +53,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	mut skip_state := ComptimeBranchSkipState.unknown
 	mut found_branch := false // Whether a matching branch was found- skip the rest
 	mut is_comptime_type_is_expr := false // if `$if T is string`
+	last_in_comptime_if := c.comptime.inside_comptime_if
+	defer {
+		c.comptime.inside_comptime_if = last_in_comptime_if
+	}
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
@@ -510,6 +514,15 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							stmt.typ = ast.error_type
 							continue
 						}
+						if (node.typ == ast.none_type && stmt.typ != ast.none_type)
+							|| (stmt.typ == ast.none_type && node.typ != ast.none_type) {
+							node.typ = if stmt.typ != ast.none_type {
+								stmt.typ.set_flag(.option)
+							} else {
+								node.typ.set_flag(.option)
+							}
+							continue
+						}
 						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 							node.pos)
 					} else {
@@ -565,6 +578,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			// some of the branches did not return
 			c.returns = false
 		}
+	}
+	if node.typ == ast.none_type {
+		c.error('invalid if expression, must supply at least one value other than `none`',
+			node.pos)
 	}
 	// if only untyped literals were given default to int/f64
 	node.typ = ast.mktyp(node.typ)

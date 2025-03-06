@@ -285,12 +285,12 @@ fn (mut app App) on_init() {
 	app.texture, app.sampler = create_texture(w, h, tmp_txt)
 
     // vfmt off
-    app.init_glsl_shader('march', C.rt_march_shader_desc(C.sg_query_backend()), [
+    app.init_glsl_shader('march', voidptr(C.rt_march_shader_desc(C.sg_query_backend())), [
         u16(0), 1,  2,    0,   2,  3,
             6,  5,  4,    7,   6,  4,
             8,  9, 10,    8,  10, 11,
     ])
-    app.init_glsl_shader('puppy', C.rt_puppy_shader_desc(C.sg_query_backend()), [
+    app.init_glsl_shader('puppy', voidptr(C.rt_puppy_shader_desc(C.sg_query_backend())), [
         u16(14), 13, 12,  15, 14, 12,
             16,  17, 18,  16, 18, 19,
             22,  21, 20,  23, 22, 20,

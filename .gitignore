@@ -154,3 +154,4 @@ bench/vectors/bin
 bench/vectors/obj
 
 autofuzz.log
+.project.gf

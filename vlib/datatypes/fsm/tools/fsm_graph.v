@@ -1,6 +1,7 @@
 import os
 import flag
 
+// read_file reads a file and returns the lines as a list of strings. It takes the file path as an argument.
 pub fn read_file(file string) ![]string {
 	if os.is_file(file) {
 		text := os.read_lines(file) or {
@@ -12,6 +13,7 @@ pub fn read_file(file string) ![]string {
 	return ['']
 }
 
+// extract_transitions extracts the transitions from a line and returns it as a formatted string.
 pub fn extract_transitions(line string) ?string {
 	mut result := '  '
 	first_comma := line.index(',')?
@@ -24,12 +26,14 @@ pub fn extract_transitions(line string) ?string {
 	return result + from + ' -> ' + to + ' [label=' + condition + '];'
 }
 
+// get_transitions gets the transitions from a line and returns it as a formatted string using `extract_transitions`.
 pub fn get_transitions(line string) ?string {
 	mut raw_text := line[line.index_any('(') + 1..line.index_any(')')]
 	raw_text = raw_text.replace("'", '').replace(' ', '')
 	return extract_transitions(raw_text)
 }
 
+// main reads a file and generates a graph from the transitions in the file.
 pub fn main() {
 	mut fp := flag.new_flag_parser(os.args)
 	file := fp.string('file', `f`, '', 'input V file with transitions to generate graph from.')

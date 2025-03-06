@@ -31,10 +31,12 @@ mut:
 	current_state string
 }
 
+// StateMachine static method returns a new StateMachine instance.
 pub fn new() StateMachine {
 	return StateMachine{}
 }
 
+// set_state sets the current state of the state machine to the given state by `name`.
 pub fn (mut s StateMachine) set_state(name string) ! {
 	if name in s.states {
 		s.current_state = name
@@ -43,10 +45,13 @@ pub fn (mut s StateMachine) set_state(name string) ! {
 	}
 }
 
+// get_state returns the current state of the state machine.
 pub fn (mut s StateMachine) get_state() string {
 	return s.current_state
 }
 
+// add_state adds a new state to the state machine.
+// It takes the `name` of the state, and three event handlers: `entry`, `run`, and `exit`.
 pub fn (mut s StateMachine) add_state(name string, entry EventHandlerFn, run EventHandlerFn, exit EventHandlerFn) {
 	s.states[name] = State{
 		entry_handler: entry
@@ -58,6 +63,8 @@ pub fn (mut s StateMachine) add_state(name string, entry EventHandlerFn, run Eve
 	}
 }
 
+// add_transition adds a new transition to the state machine.
+// It takes the `from` and `to` states, and a condition handler.
 pub fn (mut s StateMachine) add_transition(from string, to string, condition_handler ConditionFn) {
 	t := Transition{
 		to:                to
@@ -70,6 +77,7 @@ pub fn (mut s StateMachine) add_transition(from string, to string, condition_han
 	s.transitions[from] = [t]
 }
 
+// run runs the state machine. It takes a `receiver` argument that is passed to the event handlers.
 pub fn (mut s StateMachine) run(receiver voidptr) ! {
 	from_state := s.current_state
 	mut to_state := s.current_state

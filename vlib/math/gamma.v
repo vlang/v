@@ -1,5 +1,13 @@
 module math
 
+fn is_neg_int(x f64) bool {
+	if x < 0 {
+		_, xf := modf(x)
+		return xf == 0
+	}
+	return false
+}
+
 // gamma function computed by Stirling's formula.
 // The pair of results must be multiplied together to get the actual answer.
 // The multiplication is left to the caller so that, if careful, the caller can avoid

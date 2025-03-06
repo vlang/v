@@ -227,6 +227,12 @@ pub fn (mut ctx Context) server_error(msg string) Result {
 	return ctx.send_response_to_client('text/plain', msg)
 }
 
+// send an error with a custom status
+pub fn (mut ctx Context) server_error_with_status(s http.Status) Result {
+	ctx.res.set_status(s)
+	return ctx.send_response_to_client('text/plain', 'Server error')
+}
+
 // send a 204 No Content response without body and content-type
 pub fn (mut ctx Context) no_content() Result {
 	ctx.res.set_status(.no_content)

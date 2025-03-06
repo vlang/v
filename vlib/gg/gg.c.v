@@ -799,16 +799,17 @@ pub fn screen_size() Size {
 				if output_info == unsafe { nil } {
 					return Size{}
 				}
-				defer { C.XRRFreeOutputInfo(output_info) }
 				crtc_info := C.XRRGetCrtcInfo(display, resources, output_info.crtc)
+				C.XRRFreeOutputInfo(output_info)
 				if crtc_info == unsafe { nil } {
 					return Size{}
 				}
-				defer { C.XRRFreeCrtcInfo(crtc_info) }
-				return Size{
+				res := Size{
 					width:  unsafe { int(crtc_info.width) }
 					height: unsafe { int(crtc_info.height) }
 				}
+				C.XRRFreeCrtcInfo(crtc_info)
+				return res
 			}
 		}
 	}
