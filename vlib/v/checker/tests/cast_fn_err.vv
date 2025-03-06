@@ -1,0 +1,19 @@
+type FnType = fn () bool
+
+fn foo() int {
+	return 0
+}
+
+fn bar() bool {
+	return true
+}
+
+fn main() {
+	_ := FnType(foo)
+	_ := FnType(bar)
+	_ := unsafe { FnType(nil) }
+	_ := unsafe { FnType(0) }
+	_ := FnType(nil)
+	_ := FnType(0)
+	_ := FnType('foo')
+}

@@ -1,0 +1,34 @@
+vlib/v/checker/tests/cast_fn_err.vv:16:7: warning: casting `nil` to function value should be done inside `unsafe{}` blocks
+   14 |     _ := unsafe { FnType(nil) }
+   15 |     _ := unsafe { FnType(0) }
+   16 |     _ := FnType(nil)
+      |          ~~~~~~~~~~~
+   17 |     _ := FnType(0)
+   18 |     _ := FnType('foo')
+vlib/v/checker/tests/cast_fn_err.vv:17:7: warning: casting number to function value should be done inside `unsafe{}` blocks
+   15 |     _ := unsafe { FnType(0) }
+   16 |     _ := FnType(nil)
+   17 |     _ := FnType(0)
+      |          ~~~~~~~~~
+   18 |     _ := FnType('foo')
+   19 | }
+vlib/v/checker/tests/cast_fn_err.vv:12:7: error: casting a function value from one function signature, to another function signature, should be done inside `unsafe{}` blocks
+   10 | 
+   11 | fn main() {
+   12 |     _ := FnType(foo)
+      |          ~~~~~~~~~~~
+   13 |     _ := FnType(bar)
+   14 |     _ := unsafe { FnType(nil) }
+vlib/v/checker/tests/cast_fn_err.vv:16:14: error: `nil` is only allowed in `unsafe` code
+   14 |     _ := unsafe { FnType(nil) }
+   15 |     _ := unsafe { FnType(0) }
+   16 |     _ := FnType(nil)
+      |                 ~~~
+   17 |     _ := FnType(0)
+   18 |     _ := FnType('foo')
+vlib/v/checker/tests/cast_fn_err.vv:18:7: error: invalid casting value to function
+   16 |     _ := FnType(nil)
+   17 |     _ := FnType(0)
+   18 |     _ := FnType('foo')
+      |          ~~~~~~~~~~~~~
+   19 | }
