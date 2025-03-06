@@ -571,9 +571,9 @@ pub fn get_raw_line() string {
 		}
 	} $else {
 		max := usize(0)
-		buf := &char(0)
+		buf := unsafe { &u8(0) }
 		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
-		str := unsafe { tos(&u8(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
+		str := unsafe { tos(buf, if nr_chars < 0 { 0 } else { nr_chars }) }
 		ret := str.clone()
 		$if !autofree {
 			unsafe {
@@ -616,7 +616,7 @@ pub fn get_raw_stdin() []u8 {
 		}
 	} $else {
 		max := usize(0)
-		buf := &char(0)
+		buf := unsafe { &u8(0) }
 		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
 		return array{
 			element_size: 1

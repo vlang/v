@@ -1034,14 +1034,14 @@ pub fn (mut t Transformer) if_expr(mut node ast.IfExpr) ast.Expr {
 					match expr {
 						ast.IfExpr {
 							if expr.branches.len == 1 {
-								branch.stmts.pop()
+								branch.stmts.delete(branch.stmts.len - 1)
 								branch.stmts << expr.branches[0].stmts
 								break
 							}
 						}
 						ast.MatchExpr {
 							if expr.branches.len == 1 {
-								branch.stmts.pop()
+								branch.stmts.delete(branch.stmts.len - 1)
 								branch.stmts << expr.branches[0].stmts
 								break
 							}
@@ -1075,14 +1075,14 @@ pub fn (mut t Transformer) match_expr(mut node ast.MatchExpr) ast.Expr {
 					match expr {
 						ast.IfExpr {
 							if expr.branches.len == 1 {
-								branch.stmts.pop()
+								branch.stmts.delete(branch.stmts.len - 1)
 								branch.stmts << expr.branches[0].stmts
 								break
 							}
 						}
 						ast.MatchExpr {
 							if expr.branches.len == 1 {
-								branch.stmts.pop()
+								branch.stmts.delete(branch.stmts.len - 1)
 								branch.stmts << expr.branches[0].stmts
 								break
 							}
