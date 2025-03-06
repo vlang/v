@@ -59,7 +59,9 @@ pub fn (mut ss TextScanner) skip() {
 @[inline]
 pub fn (mut ss TextScanner) skip_n(n int) {
 	ss.pos += n
-	if ss.pos > ss.ilen {
+	if ss.pos < 0 {
+		ss.pos = 0
+	} else if ss.pos > ss.ilen {
 		ss.pos = ss.ilen
 	}
 }
@@ -126,8 +128,7 @@ pub fn (mut ss TextScanner) back_n(n int) {
 	ss.pos -= n
 	if ss.pos < 0 {
 		ss.pos = 0
-	}
-	if ss.pos > ss.ilen {
+	} else if ss.pos > ss.ilen {
 		ss.pos = ss.ilen
 	}
 }
@@ -184,4 +185,75 @@ pub fn (mut ss TextScanner) skip_whitespace() {
 	for ss.ilen - ss.pos > 0 && ss.peek_u8().is_space() {
 		ss.next()
 	}
+}
+
+// next_line advances the scanner’s position to the start of
+// the next line, and return the line.
+// Returns true if successful, or false if the end of the input
+// is reached.
+@[direct_array_access]
+pub fn (mut ss TextScanner) next_line() (string, bool) {
+	if ss.pos == ss.ilen {
+		return '', false
+	}
+	start := ss.pos
+	mut end := ss.ilen
+	for i in start .. ss.ilen {
+		if ss.input[i] == `\n` || ss.input[i] == `\r` {
+			end = i
+			break
+		}
+	}
+
+	if end >= ss.ilen {
+		ss.pos = ss.ilen
+		return ss.input[start..], false
+	}
+	if ss.input[end] == `\r` {
+		// check next char is `\n`
+		if end + 1 < ss.ilen && ss.input[end + 1] == `\n` {
+			ss.pos = end + 2
+		} else {
+			ss.pos = end + 1
+		}
+	} else {
+		ss.pos = end + 1
+	}
+	if ss.pos > ss.ilen {
+		ss.pos = ss.ilen
+	}
+	return ss.input[start..end], true
+}
+
+// read_until reads characters from the current scanning position
+// until a delimiter (from the provided list `delimiters`) is encountered.
+// The returned string includes all characters from the starting
+// position up to (but ​not​ including) the first encountered
+// delimiter. The scanner's position is advanced to the character
+// immediately after the delimiter (or to the end of the input if
+// no delimiter is found).
+@[direct_array_access]
+pub fn (mut ss TextScanner) read_until(delimiters []rune) !string {
+	if delimiters.len == 0 {
+		return error('delimiters cannot be empty')
+	}
+	if ss.pos >= ss.ilen {
+		return error('already at EOF')
+	}
+	start := ss.pos
+	mut current_pos := ss.pos
+	for {
+		if current_pos >= ss.ilen {
+			break
+		}
+		r := ss.input[current_pos]
+		if r in delimiters {
+			end := current_pos
+			ss.pos = end + 1
+			return ss.input[start..end]
+		}
+		current_pos += 1
+	}
+	ss.pos = ss.ilen
+	return ss.input[start..]
 }
