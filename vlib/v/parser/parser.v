@@ -3716,19 +3716,14 @@ fn (mut p Parser) module_decl() ast.Module {
 					p.is_generated = true
 				}
 				'has_globals' {
-					if p.inside_vlib_file {
-						p.has_globals = true
-					} else {
-						p.error_with_pos('[has_globals] is allowed only in .v files of `vlib` modules',
-							ma.pos)
-					}
+					p.has_globals = true
 				}
 				'translated' {
 					p.is_translated = true
 				}
 				'wasm_import_namespace' {
 					if !p.pref.is_fmt && p.pref.backend != .wasm {
-						p.error_with_pos('[wasm_import_namespace] is allowed only in the wasm backend',
+						p.note_with_pos('@[wasm_import_namespace] is only supported by the wasm backend',
 							ma.pos)
 					}
 				}
