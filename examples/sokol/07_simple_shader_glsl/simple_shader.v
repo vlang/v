@@ -58,8 +58,8 @@ fn (mut a App) run() {
 		user_data:           a
 		init_userdata_cb:    init
 		frame_userdata_cb:   frame
-		window_title:        title.str
-		html5_canvas_name:   title.str
+		window_title:        &char(title.str)
+		html5_canvas_name:   &char(title.str)
 		cleanup_userdata_cb: cleanup
 		sample_count:        4 // Enables MSAA (Multisample anti-aliasing) x4 on rendered output, this can be omitted.
 	}
@@ -110,7 +110,7 @@ fn init(user_data voidptr) {
 	// Note the function `C.simple_shader_desc()` (also defined above) - this is
 	// the function that returns the compiled shader code/desciption we have
 	// written in `simple_shader.glsl` and compiled with `v shader .` (`sokol-shdc`).
-	shader := gfx.make_shader(C.simple_shader_desc(gfx.query_backend()))
+	shader := gfx.make_shader(voidptr(C.simple_shader_desc(gfx.query_backend())))
 
 	// Create a pipeline object (default render states are fine for triangle)
 	mut pipeline_desc := gfx.PipelineDesc{}

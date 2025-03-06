@@ -80,8 +80,8 @@ fn main() {
 		user_data:         state
 		init_userdata_cb:  init
 		frame_userdata_cb: frame
-		window_title:      title.str
-		html5_canvas_name: title.str
+		window_title:      &char(title.str)
+		html5_canvas_name: &char(title.str)
 		width:             600
 		height:            700
 		high_dpi:          true
