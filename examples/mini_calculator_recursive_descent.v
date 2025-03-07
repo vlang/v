@@ -77,7 +77,7 @@ fn (mut p Parser) number() !f64 {
 		}
 		break
 	}
-	return strconv.atof64(p.input[start..p.pos]) or { error('Invalid number') }
+	return strconv.atof64(p.input_bytes[start..p.pos].bytestr()) or { error('Invalid number') }
 }
 
 println('Enter expressions to calculate, e.g. `2 * (5-1)` or `exit` to quit.')
