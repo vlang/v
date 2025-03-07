@@ -14,7 +14,7 @@ type FN_NTSuspendResume = fn (voidptr) u64
 fn ntdll_fn(name &char) FN_NTSuspendResume {
 	ntdll := C.GetModuleHandleA(c'NTDLL')
 	if ntdll == 0 {
-		return FN_NTSuspendResume(0)
+		return unsafe { FN_NTSuspendResume(0) }
 	}
 	the_fn := FN_NTSuspendResume(C.GetProcAddress(ntdll, voidptr(name)))
 	return the_fn
