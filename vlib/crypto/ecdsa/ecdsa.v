@@ -31,12 +31,30 @@ const nid_evp_pkey_ec = C.EVP_PKEY_EC
 // we only support this
 const openssl_ec_named_curve = C.OPENSSL_EC_NAMED_CURVE
 
+// https://docs.openssl.org/3.0/man3/EVP_PKEY_fromdata/#selections
+const evp_pkey_keypair = C.EVP_PKEY_KEYPAIR
+
+// POINT_CONVERSION FORAMT
+const point_conversion_uncompressed = 4
+
 // Nid is an enumeration of the supported curves
 pub enum Nid {
-	prime256v1
-	secp384r1
-	secp521r1
-	secp256k1
+	prime256v1 = C.NID_X9_62_prime256v1
+	secp384r1  = C.NID_secp384r1
+	secp521r1  = C.NID_secp521r1
+	secp256k1  = C.NID_secp256k1
+}
+
+// we need this group (cruve) name representation to pass them into needed routines
+fn (nid Nid) str() string {
+	match nid {
+		// TODO: maybe better relies on info from underlying C defined constants,
+		// ie, #define SN_X9_62_prime256v1     "prime256v1" etc
+		.prime256v1 { return 'prime256v1' }
+		.secp384r1 { return 'secp384r1' }
+		.secp521r1 { return 'secp521r1' }
+		.secp256k1 { return 'secp256k1' }
+	}
 }
 
 @[params]
@@ -103,92 +121,32 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	if seed.len == 0 {
 		return error('Seed with null-length was not allowed')
 	}
-	// Create a new EC_KEY object with the specified curve
-	ec_key := new_curve(opt)
-	if ec_key == 0 {
-		C.EC_KEY_free(ec_key)
-		return error('Failed to create new EC_KEY')
-	}
-	// Retrieve the EC_GROUP object associated with the EC_KEY
-	// Note: cast with voidptr() to allow -cstrict checks to pass
-	group := voidptr(C.EC_KEY_get0_group(ec_key))
-	if group == 0 {
-		C.EC_KEY_free(ec_key)
-		return error('Unable to load group')
-	}
-	// Adds early check for upper size, so, we dont hit unnecessary
-	// call to math intensive calculation, conversion and checking routines.
-	num_bits := C.EC_GROUP_get_degree(group)
+	evpkey := evpkey_from_seed(seed, opt)!
+	num_bits := C.EVP_PKEY_get_bits(evpkey)
 	key_size := (num_bits + 7) / 8
 	if seed.len > key_size {
-		C.EC_KEY_free(ec_key)
+		C.EVP_PKEY_free(evpkey)
 		return error('Seed length exceeds key size')
 	}
 	// Check if its using fixed key size or flexible one
 	if opt.fixed_size {
 		if seed.len != key_size {
-			C.EC_KEY_free(ec_key)
+			C.EVP_PKEY_free(evpkey)
 			return error('seed size doesnt match with curve key size')
 		}
 	}
-	// Convert the seed bytes into a BIGNUM
-	bn := C.BN_bin2bn(seed.data, seed.len, 0)
-	if bn == 0 {
-		C.EC_KEY_free(ec_key)
-		return error('Failed to create BIGNUM from seed')
+	// TODO: remove this when its ready to go out
+	eckey := C.EVP_PKEY_get1_EC_KEY(evpkey)
+	if eckey == 0 {
+		C.EC_KEY_free(eckey)
+		C.EVP_PKEY_free(evpkey)
+		return error('EVP_PKEY_get1_EC_KEY failed')
 	}
-	// Set the BIGNUM as the private key in the EC_KEY object
-	mut res := C.EC_KEY_set_private_key(ec_key, bn)
-	if res != 1 {
-		C.BN_free(bn)
-		C.EC_KEY_free(ec_key)
-		return error('Failed to set private key')
-	}
-	// Now compute the public key
-	//
-	// Create a new EC_POINT object for the public key
-	pub_key_point := C.EC_POINT_new(group)
-	// Create a new BN_CTX object for efficient BIGNUM operations
-	ctx := C.BN_CTX_new()
-	if ctx == 0 {
-		C.EC_POINT_free(pub_key_point)
-		C.BN_free(bn)
-		C.EC_KEY_free(ec_key)
-		return error('Failed to create BN_CTX')
-	}
-	defer {
-		C.BN_CTX_free(ctx)
-	}
-	// Perform the point multiplication to compute the public key: pub_key_point = bn * G
-	res = C.EC_POINT_mul(group, pub_key_point, bn, 0, 0, ctx)
-	if res != 1 {
-		C.EC_POINT_free(pub_key_point)
-		C.BN_free(bn)
-		C.EC_KEY_free(ec_key)
-		return error('Failed to compute public key')
-	}
-	// Set the computed public key in the EC_KEY object
-	res = C.EC_KEY_set_public_key(ec_key, pub_key_point)
-	if res != 1 {
-		C.EC_POINT_free(pub_key_point)
-		C.BN_free(bn)
-		C.EC_KEY_free(ec_key)
-		return error('Failed to set public key')
-	}
-	// Add key check
-	// EC_KEY_check_key return 1 on success or 0 on error.
-	chk := C.EC_KEY_check_key(ec_key)
-	if chk == 0 {
-		C.EC_KEY_free(ec_key)
-		return error('EC_KEY_check_key failed')
-	}
-	C.EC_POINT_free(pub_key_point)
-	C.BN_free(bn)
-
 	mut pvkey := PrivateKey{
-		key: ec_key
+		key:    eckey
+		evpkey: evpkey
 	}
-	// we set the flag information on the key
+
 	if opt.fixed_size {
 		// using fixed one
 		pvkey.ks_flag = .fixed
@@ -435,6 +393,11 @@ pub fn (pv PrivateKey) public_key() !PublicKey {
 // - whether both of private keys lives under the same group (curve),
 // - compares if two private key bytes was equal.
 pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
+	if priv_key.evpkey != unsafe { nil } && other.evpkey != unsafe { nil } {
+		eq := C.EVP_PKEY_eq(voidptr(priv_key.evpkey), voidptr(other.evpkey))
+		return eq == 1
+	}
+	// TODO: remove this when its ready
 	group1 := voidptr(C.EC_KEY_get0_group(priv_key.key))
 	group2 := voidptr(C.EC_KEY_get0_group(other.key))
 	ctx := C.BN_CTX_new()
@@ -488,6 +451,10 @@ pub fn (pb PublicKey) verify(message []u8, sig []u8, opt SignerOpts) !bool {
 
 // Compare two public keys
 pub fn (pub_key PublicKey) equal(other PublicKey) bool {
+	if pub_key.evpkey != unsafe { nil } && other.evpkey != unsafe { nil } {
+		eq := C.EVP_PKEY_eq(voidptr(pub_key.evpkey), voidptr(other.evpkey))
+		return eq == 1
+	}
 	// TODO: check validity of the group
 	group1 := voidptr(C.EC_KEY_get0_group(pub_key.key))
 	group2 := voidptr(C.EC_KEY_get0_group(other.key))
@@ -759,7 +726,7 @@ fn calc_digest_with_md(msg []u8, md &C.EVP_MD) ![]u8 {
 	upd := C.EVP_DigestUpdate(ctx, msg.data, msg.len)
 	assert upd == 1
 
-	size := usize(C.EVP_MD_get_size(md))
+	size := u32(C.EVP_MD_get_size(md))
 	out := []u8{len: int(size)}
 
 	fin := C.EVP_DigestFinal(ctx, out.data, &size)
@@ -796,4 +763,139 @@ fn default_digest(key &C.EVP_PKEY) !&C.EVP_MD {
 		}
 	}
 	return error('should not here')
+}
+
+// Build EVP_PKEY from raw seed of bytes and options.
+fn evpkey_from_seed(seed []u8, opt CurveOptions) !&C.EVP_PKEY {
+	// This routine mostly comes from the official docs with adds some checking at
+	// https://docs.openssl.org/3.0/man3/EVP_PKEY_fromdata/#creating-an-ecc-keypair-using-raw-key-data
+	//
+	// convert the seed bytes to BIGNUM.
+	bn := C.BN_bin2bn(seed.data, seed.len, 0)
+	if bn == 0 {
+		C.BN_free(bn)
+		return error('BN_bin2bn failed from seed')
+	}
+	// build the group (curve) from the options.
+	group := C.EC_GROUP_new_by_curve_name(int(opt.nid))
+	if group == 0 {
+		C.EC_GROUP_free(group)
+		C.BN_free(bn)
+		return error('EC_GROUP_new_by_curve_name failed')
+	}
+	// Build EC_POINT from this BIGNUM and gets bytes represantion of this point
+	// in uncompressed format.
+	point := ec_point_mult(group, bn)!
+	pub_bytes := point_2_buf(group, point, point_conversion_uncompressed)!
+
+	// Lets build params builder
+	param_bld := C.OSSL_PARAM_BLD_new()
+	assert param_bld != 0
+
+	// push the group, private and public key bytes infos into the builder
+	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, c'group', opt.nid.str().str, 0)
+	m := C.OSSL_PARAM_BLD_push_BN(param_bld, c'priv', bn)
+	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'pub', pub_bytes.data, pub_bytes.len)
+	if n <= 0 || m <= 0 || o <= 0 {
+		C.EC_POINT_free(point)
+		C.BN_free(bn)
+		C.EC_GROUP_free(group)
+		C.OSSL_PARAM_BLD_free(param_bld)
+		return error('OSSL_PARAM_BLD_push FAILED')
+	}
+	// Setup the new key
+	mut pkey := C.EVP_PKEY_new()
+	assert pkey != 0
+
+	// build parameter, initialize and build the key from params
+	params := C.OSSL_PARAM_BLD_to_param(param_bld)
+	pctx := C.EVP_PKEY_CTX_new_id(nid_evp_pkey_ec, 0)
+	if params == 0 || pctx == 0 {
+		C.EC_POINT_free(point)
+		C.BN_free(bn)
+		C.EC_GROUP_free(group)
+		C.OSSL_PARAM_BLD_free(param_bld)
+		C.OSSL_PARAM_free(params)
+		C.EVP_PKEY_free(pkey)
+		if pctx == 0 {
+			C.EVP_PKEY_CTX_free(pctx)
+		}
+		return error('EVP_PKEY_CTX_new or OSSL_PARAM_BLD_to_param failed')
+	}
+	// initialize key and build the key from builded params context.
+	p := C.EVP_PKEY_fromdata_init(pctx)
+	q := C.EVP_PKEY_fromdata(pctx, &pkey, evp_pkey_keypair, params)
+	if p <= 0 || q <= 0 {
+		C.EC_POINT_free(point)
+		C.BN_free(bn)
+		C.EC_GROUP_free(group)
+		C.OSSL_PARAM_BLD_free(param_bld)
+		C.OSSL_PARAM_free(params)
+		C.EVP_PKEY_free(pkey)
+		C.EVP_PKEY_CTX_free(pctx)
+		return error('EVP_PKEY_fromdata failed')
+	}
+	// After this step, we have build the key in pkey
+	// TODO: right way to check the builded key
+
+	// Cleans up
+	C.EC_POINT_free(point)
+	C.BN_free(bn)
+	C.EC_GROUP_free(group)
+	C.OSSL_PARAM_BLD_free(param_bld)
+	C.OSSL_PARAM_free(params)
+	C.EVP_PKEY_CTX_free(pctx)
+
+	return pkey
+}
+
+// ec_point_mult performs point multiplications, point = bn * generator
+fn ec_point_mult(group &C.EC_GROUP, bn &C.BIGNUM) !&C.EC_POINT {
+	// Create a new EC_POINT object for the public key
+	point := C.EC_POINT_new(group)
+	// Create a new BN_CTX object for efficient BIGNUM operations
+	ctx := C.BN_CTX_new()
+	if ctx == 0 {
+		C.EC_POINT_free(point)
+		C.BN_CTX_free(ctx)
+		return error('Failed to create BN_CTX')
+	}
+
+	// Perform the point multiplication to compute the public key: point = bn * G
+	res := C.EC_POINT_mul(group, point, bn, 0, 0, ctx)
+	if res != 1 {
+		C.EC_POINT_free(point)
+		C.BN_CTX_free(ctx)
+		return error('Failed to compute public key')
+	}
+	C.BN_CTX_free(ctx)
+	return point
+}
+
+// maximum key size we supported was 64 bytes.
+const default_point_bufsize = 160 // 2 * 64 + 1 + extra
+
+// point_2_buf gets bytes representation of the EC_POINT
+fn point_2_buf(group &C.EC_GROUP, point &C.EC_POINT, fmt int) ![]u8 {
+	ctx := C.BN_CTX_new()
+	pbuf := []u8{len: default_point_bufsize}
+	// Notes from the docs:
+	// EC_POINT_point2buf() allocates a buffer of suitable length and writes an EC_POINT to it in octet format.
+	// The allocated buffer is written to *pbuf and its length is returned.
+	// The caller must free up the allocated buffer with a call to OPENSSL_free().
+	// Since the allocated buffer value is written to *pbuf the pbuf parameter MUST NOT be NULL.
+	// So, we explicitly call `.OPENSSL_free` on the allocated buffer.
+	n := C.EC_POINT_point2buf(group, point, fmt, voidptr(&pbuf.data), ctx)
+	if n <= 0 {
+		C.BN_CTX_free(ctx)
+		C.OPENSSL_free(voidptr(&pbuf.data))
+		return error('Get null length of buf')
+	}
+	// Gets the copy of the result with the correct length
+	result := pbuf[..n].clone()
+
+	C.OPENSSL_free(voidptr(pbuf.data))
+	C.BN_CTX_free(ctx)
+
+	return result
 }
