@@ -3,19 +3,38 @@ module textscanner
 // TextScanner simplifies writing small scanners/parsers
 // by providing safe methods to scan texts character by
 // character, peek for the next characters, go back, etc.
+// TODO: maybe a generic type is more suitable for this.
 pub struct TextScanner {
 pub:
-	input string
-	ilen  int
+	input_runes []rune
+	input_bytes []u8
+	ilen        int
 pub mut:
-	pos int // current position; pos is *always* kept in [0,ilen]
+	pos    int // current position; pos is *always* kept in [0,ilen]
+	config TextScannerConfig
+}
+
+@[params]
+pub struct TextScannerConfig {
+pub mut:
+	force_rune_mode bool
 }
 
 // new returns a stack allocated instance of TextScanner.
-pub fn new(input string) TextScanner {
+pub fn new(input string, config TextScannerConfig) TextScanner {
+	if config.force_rune_mode {
+		input_runes := input.runes()
+		return TextScanner{
+			input_runes: input_runes
+			ilen:        input_runes.len
+			config:      config
+		}
+	}
+	input_bytes := input.bytes()
 	return TextScanner{
-		input: input
-		ilen:  input.len
+		input_bytes: input_bytes
+		ilen:        input_bytes.len
+		config:      config
 	}
 }
 
@@ -23,7 +42,12 @@ pub fn new(input string) TextScanner {
 @[unsafe]
 pub fn (mut ss TextScanner) free() {
 	unsafe {
-		ss.input.free()
+		if ss.input_runes.len > 0 {
+			ss.input_runes.free()
+		}
+		if ss.input_bytes.len > 0 {
+			ss.input_bytes.free()
+		}
 	}
 }
 
@@ -41,7 +65,11 @@ pub fn (mut ss TextScanner) next() int {
 	if ss.pos < ss.ilen {
 		opos := ss.pos
 		ss.pos++
-		return ss.input[opos]
+		if ss.config.force_rune_mode {
+			return int(ss.input_runes[opos])
+		} else {
+			return ss.input_bytes[opos]
+		}
 	}
 	return -1
 }
@@ -72,7 +100,11 @@ pub fn (mut ss TextScanner) skip_n(n int) {
 @[direct_array_access; inline]
 pub fn (ss &TextScanner) peek() int {
 	if ss.pos < ss.ilen {
-		return ss.input[ss.pos]
+		if ss.config.force_rune_mode {
+			return int(ss.input_runes[ss.pos])
+		} else {
+			return ss.input_bytes[ss.pos]
+		}
 	}
 	return -1
 }
@@ -85,7 +117,11 @@ pub fn (ss &TextScanner) peek() int {
 @[direct_array_access; inline]
 pub fn (ss &TextScanner) peek_u8() u8 {
 	if ss.pos < ss.ilen {
-		return ss.input[ss.pos]
+		if ss.config.force_rune_mode {
+			return u8(ss.input_runes[ss.pos])
+		} else {
+			return ss.input_bytes[ss.pos]
+		}
 	}
 	return 0
 }
@@ -97,7 +133,11 @@ pub fn (ss &TextScanner) peek_u8() u8 {
 @[direct_array_access; inline]
 pub fn (ss &TextScanner) peek_n(n int) int {
 	if ss.pos + n < ss.ilen {
-		return ss.input[ss.pos + n]
+		if ss.config.force_rune_mode {
+			return int(ss.input_runes[ss.pos + n])
+		} else {
+			return ss.input_bytes[ss.pos + n]
+		}
 	}
 	return -1
 }
@@ -110,7 +150,11 @@ pub fn (ss &TextScanner) peek_n(n int) int {
 @[direct_array_access; inline]
 pub fn (ss &TextScanner) peek_n_u8(n int) u8 {
 	if ss.pos + n < ss.ilen {
-		return ss.input[ss.pos + n]
+		if ss.config.force_rune_mode {
+			return u8(ss.input_runes[ss.pos + n])
+		} else {
+			return ss.input_bytes[ss.pos + n]
+		}
 	}
 	return 0
 }
@@ -124,6 +168,7 @@ pub fn (mut ss TextScanner) back() {
 }
 
 // back_n goes back `n` characters from the current scanner position.
+@[inline]
 pub fn (mut ss TextScanner) back_n(n int) {
 	ss.pos -= n
 	if ss.pos < 0 {
@@ -149,7 +194,11 @@ pub fn (ss &TextScanner) peek_back() int {
 pub fn (ss &TextScanner) peek_back_n(n int) int {
 	offset := n + 1
 	if ss.pos >= offset {
-		return ss.input[ss.pos - offset]
+		if ss.config.force_rune_mode {
+			return int(ss.input_runes[ss.pos - offset])
+		} else {
+			return ss.input_bytes[ss.pos - offset]
+		}
 	}
 	return -1
 }
@@ -160,7 +209,11 @@ pub fn (ss &TextScanner) peek_back_n(n int) int {
 @[direct_array_access; inline]
 pub fn (mut ss TextScanner) current() int {
 	if ss.pos > 0 {
-		return ss.input[ss.pos - 1]
+		if ss.config.force_rune_mode {
+			return int(ss.input_runes[ss.pos - 1])
+		} else {
+			return ss.input_bytes[ss.pos - 1]
+		}
 	}
 	return -1
 }
@@ -168,6 +221,7 @@ pub fn (mut ss TextScanner) current() int {
 // reset resets the internal state of the scanner
 // After calling .reset(), .next() will start reading
 // again from the start of the input text.
+@[inline]
 pub fn (mut ss TextScanner) reset() {
 	ss.pos = 0
 }
@@ -176,11 +230,13 @@ pub fn (mut ss TextScanner) reset() {
 // i.e. after calling .goto_end(), the scanner will be at
 // the end of the input text. Further .next() calls will
 // return -1, unless you go back.
+@[inline]
 pub fn (mut ss TextScanner) goto_end() {
 	ss.pos = ss.ilen
 }
 
 // skip_whitespace advances the scanner pass any space characters in the input.
+@[inline]
 pub fn (mut ss TextScanner) skip_whitespace() {
 	for ss.ilen - ss.pos > 0 && ss.peek_u8().is_space() {
 		ss.next()
@@ -198,42 +254,69 @@ pub fn (mut ss TextScanner) next_line() (string, bool) {
 	}
 	start := ss.pos
 	mut end := ss.ilen
-	for i in start .. ss.ilen {
-		if ss.input[i] == `\n` || ss.input[i] == `\r` {
-			end = i
-			break
+	if ss.config.force_rune_mode {
+		for i in start .. ss.ilen {
+			if ss.input_runes[i] == `\r` || ss.input_runes[i] == `\n` {
+				end = i
+				break
+			}
+		}
+		if ss.input_runes[end] == `\r` {
+			// check next char is `\n`
+			if end + 1 < ss.ilen && ss.input_runes[end + 1] == `\n` {
+				ss.pos = end + 2
+			} else {
+				ss.pos = end + 1
+			}
+		} else {
+			ss.pos = end + 1
+		}
+	} else {
+		for i in start .. ss.ilen {
+			if ss.input_bytes[i] == `\r` || ss.input_bytes[i] == `\n` {
+				end = i
+				break
+			}
+		}
+		if ss.input_bytes[end] == `\r` {
+			// check next char is `\n`
+			if end + 1 < ss.ilen && ss.input_bytes[end + 1] == `\n` {
+				ss.pos = end + 2
+			} else {
+				ss.pos = end + 1
+			}
+		} else {
+			ss.pos = end + 1
 		}
 	}
 
 	if end >= ss.ilen {
 		ss.pos = ss.ilen
-		return ss.input[start..], false
-	}
-	if ss.input[end] == `\r` {
-		// check next char is `\n`
-		if end + 1 < ss.ilen && ss.input[end + 1] == `\n` {
-			ss.pos = end + 2
+		if ss.config.force_rune_mode {
+			return ss.input_runes[start..].string(), false
 		} else {
-			ss.pos = end + 1
+			return unsafe { tos(&ss.input_bytes[start], ss.ilen - start) }, false
 		}
-	} else {
-		ss.pos = end + 1
 	}
 	if ss.pos > ss.ilen {
 		ss.pos = ss.ilen
 	}
-	return ss.input[start..end], true
+	if ss.config.force_rune_mode {
+		return ss.input_runes[start..end].string(), true
+	} else {
+		return unsafe { tos(&ss.input_bytes[start], end - start) }, true
+	}
 }
 
 // read_until reads characters from the current scanning position
-// until a delimiter (from the provided list `delimiters`) is encountered.
+// until a delimiter (from the provided string `delimiters`) is encountered.
 // The returned string includes all characters from the starting
 // position up to (but ​not​ including) the first encountered
 // delimiter. The scanner's position is advanced to the character
 // immediately after the delimiter (or to the end of the input if
 // no delimiter is found).
 @[direct_array_access]
-pub fn (mut ss TextScanner) read_until(delimiters []rune) !string {
+pub fn (mut ss TextScanner) read_until(delimiters string) !string {
 	if delimiters.len == 0 {
 		return error('delimiters cannot be empty')
 	}
@@ -242,18 +325,37 @@ pub fn (mut ss TextScanner) read_until(delimiters []rune) !string {
 	}
 	start := ss.pos
 	mut current_pos := ss.pos
-	for {
-		if current_pos >= ss.ilen {
-			break
+	if ss.config.force_rune_mode {
+		delimiters_runes := delimiters.runes()
+		for {
+			if current_pos >= ss.ilen {
+				break
+			}
+			r := ss.input_runes[current_pos]
+			if r in delimiters_runes {
+				end := current_pos
+				ss.pos = end + 1
+				return ss.input_runes[start..end].string()
+			}
+			current_pos += 1
 		}
-		r := ss.input[current_pos]
-		if r in delimiters {
-			end := current_pos
-			ss.pos = end + 1
-			return ss.input[start..end]
+		ss.pos = ss.ilen
+		return ss.input_runes[start..].string()
+	} else {
+		delimiters_bytes := delimiters.bytes()
+		for {
+			if current_pos >= ss.ilen {
+				break
+			}
+			r := ss.input_bytes[current_pos]
+			if r in delimiters_bytes {
+				end := current_pos
+				ss.pos = end + 1
+				return unsafe { tos(&ss.input_bytes[start], end - start) }
+			}
+			current_pos += 1
 		}
-		current_pos += 1
+		ss.pos = ss.ilen
+		return unsafe { tos(&ss.input_bytes[start], ss.ilen - start) }
 	}
-	ss.pos = ss.ilen
-	return ss.input[start..]
 }
