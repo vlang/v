@@ -7,7 +7,7 @@ module textscanner
 pub struct TextScanner {
 pub:
 	input_runes []rune
-	input_bytes []u8
+	input       string
 	ilen        int
 pub mut:
 	pos    int // current position; pos is *always* kept in [0,ilen]
@@ -30,11 +30,10 @@ pub fn new(input string, config TextScannerConfig) TextScanner {
 			config:      config
 		}
 	}
-	input_bytes := input.bytes()
 	return TextScanner{
-		input_bytes: input_bytes
-		ilen:        input_bytes.len
-		config:      config
+		input:  input.clone()
+		ilen:   input.len
+		config: config
 	}
 }
 
@@ -45,7 +44,7 @@ pub fn (mut ss TextScanner) free() {
 		if ss.config.force_rune_mode {
 			ss.input_runes.free()
 		} else {
-			ss.input_bytes.free()
+			ss.input.free()
 		}
 	}
 }
@@ -67,7 +66,7 @@ pub fn (mut ss TextScanner) next() int {
 		if ss.config.force_rune_mode {
 			return int(ss.input_runes[opos])
 		} else {
-			return ss.input_bytes[opos]
+			return ss.input[opos]
 		}
 	}
 	return -1
@@ -102,7 +101,7 @@ pub fn (ss &TextScanner) peek() int {
 		if ss.config.force_rune_mode {
 			return int(ss.input_runes[ss.pos])
 		} else {
-			return ss.input_bytes[ss.pos]
+			return ss.input[ss.pos]
 		}
 	}
 	return -1
@@ -119,7 +118,7 @@ pub fn (ss &TextScanner) peek_u8() u8 {
 		if ss.config.force_rune_mode {
 			return u8(ss.input_runes[ss.pos])
 		} else {
-			return ss.input_bytes[ss.pos]
+			return ss.input[ss.pos]
 		}
 	}
 	return 0
@@ -138,7 +137,7 @@ pub fn (ss &TextScanner) peek_n(n int) int {
 	if ss.config.force_rune_mode {
 		return int(ss.input_runes[ss.pos + n])
 	} else {
-		return ss.input_bytes[ss.pos + n]
+		return ss.input[ss.pos + n]
 	}
 }
 
@@ -156,7 +155,7 @@ pub fn (ss &TextScanner) peek_n_u8(n int) u8 {
 	if ss.config.force_rune_mode {
 		return u8(ss.input_runes[ss.pos + n])
 	} else {
-		return ss.input_bytes[ss.pos + n]
+		return ss.input[ss.pos + n]
 	}
 }
 
@@ -198,7 +197,7 @@ pub fn (ss &TextScanner) peek_back_n(n int) int {
 		if ss.config.force_rune_mode {
 			return int(ss.input_runes[ss.pos - offset])
 		} else {
-			return ss.input_bytes[ss.pos - offset]
+			return ss.input[ss.pos - offset]
 		}
 	}
 	return -1
@@ -213,7 +212,7 @@ pub fn (mut ss TextScanner) current() int {
 		if ss.config.force_rune_mode {
 			return int(ss.input_runes[ss.pos - 1])
 		} else {
-			return ss.input_bytes[ss.pos - 1]
+			return ss.input[ss.pos - 1]
 		}
 	}
 	return -1
@@ -274,14 +273,14 @@ pub fn (mut ss TextScanner) next_line() (string, bool) {
 		}
 	} else {
 		for i in start .. ss.ilen {
-			if ss.input_bytes[i] == `\r` || ss.input_bytes[i] == `\n` {
+			if ss.input[i] == `\r` || ss.input[i] == `\n` {
 				end = i
 				break
 			}
 		}
-		if ss.input_bytes[end] == `\r` {
+		if ss.input[end] == `\r` {
 			// check next char is `\n`
-			if end + 1 < ss.ilen && ss.input_bytes[end + 1] == `\n` {
+			if end + 1 < ss.ilen && ss.input[end + 1] == `\n` {
 				ss.pos = end + 2
 			} else {
 				ss.pos = end + 1
@@ -296,7 +295,7 @@ pub fn (mut ss TextScanner) next_line() (string, bool) {
 		if ss.config.force_rune_mode {
 			return ss.input_runes[start..].string(), false
 		} else {
-			return ss.input_bytes[start..].bytestr(), false
+			return ss.input[start..], false
 		}
 	}
 	if ss.pos > ss.ilen {
@@ -305,7 +304,7 @@ pub fn (mut ss TextScanner) next_line() (string, bool) {
 	if ss.config.force_rune_mode {
 		return ss.input_runes[start..end].string(), true
 	} else {
-		return ss.input_bytes[start..end].bytestr(), true
+		return ss.input[start..end], true
 	}
 }
 
@@ -348,16 +347,16 @@ pub fn (mut ss TextScanner) read_until(delimiters string) !string {
 			if current_pos >= ss.ilen {
 				break
 			}
-			r := ss.input_bytes[current_pos]
+			r := ss.input[current_pos]
 			if r in delimiters_bytes {
 				end := current_pos
 				ss.pos = end + 1
-				return ss.input_bytes[start..end].bytestr()
+				return ss.input[start..end]
 			}
 			current_pos += 1
 		}
 		ss.pos = ss.ilen
-		return ss.input_bytes[start..].bytestr()
+		return ss.input[start..]
 	}
 }
 
@@ -369,6 +368,6 @@ pub fn (mut ss TextScanner) substr(start int, end int) string {
 	if ss.config.force_rune_mode {
 		return ss.input_runes[start..end].string()
 	} else {
-		return ss.input_bytes[start..end].bytestr()
+		return ss.input[start..end]
 	}
 }
