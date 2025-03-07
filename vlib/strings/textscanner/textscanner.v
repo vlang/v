@@ -132,14 +132,15 @@ pub fn (ss &TextScanner) peek_u8() u8 {
 // ts.peek_n(1) == ts.peek() .
 @[direct_array_access; inline]
 pub fn (ss &TextScanner) peek_n(n int) int {
-	if ss.pos + n < ss.ilen {
-		if ss.config.force_rune_mode {
-			return int(ss.input_runes[ss.pos + n])
-		} else {
-			return ss.input_bytes[ss.pos + n]
-		}
+	new_pos := ss.pos + n
+	if new_pos < 0 || new_pos >= ss.ilen {
+		return -1
 	}
-	return -1
+	if ss.config.force_rune_mode {
+		return int(ss.input_runes[ss.pos + n])
+	} else {
+		return ss.input_bytes[ss.pos + n]
+	}
 }
 
 // peek_n_u8 returns the character code from the input text, at position + `n`,
@@ -149,14 +150,15 @@ pub fn (ss &TextScanner) peek_n(n int) int {
 // legitimately contain bytes with value `0`.
 @[direct_array_access; inline]
 pub fn (ss &TextScanner) peek_n_u8(n int) u8 {
-	if ss.pos + n < ss.ilen {
-		if ss.config.force_rune_mode {
-			return u8(ss.input_runes[ss.pos + n])
-		} else {
-			return ss.input_bytes[ss.pos + n]
-		}
+	new_pos := ss.pos + n
+	if new_pos < 0 || new_pos >= ss.ilen {
+		return 0
 	}
-	return 0
+	if ss.config.force_rune_mode {
+		return u8(ss.input_runes[ss.pos + n])
+	} else {
+		return ss.input_bytes[ss.pos + n]
+	}
 }
 
 // back goes back one character from the current scanner position.
