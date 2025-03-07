@@ -138,7 +138,6 @@ fn C.EC_GROUP_get_degree(g &C.EC_GROUP) int
 fn C.EC_GROUP_get_curve_name(g &C.EC_GROUP) int
 fn C.EC_GROUP_cmp(a &C.EC_GROUP, b &C.EC_GROUP, ctx &C.BN_CTX) int
 fn C.EC_GROUP_new_by_curve_name(nid int) &C.EC_GROUP
-fn C.EC_GROUP_check(group &C.EC_GROUP, ctx &C.BN_CTX) int
 
 // Elliptic BIGNUM related declarations.
 @[typedef]
@@ -192,8 +191,7 @@ struct C.OSSL_PARAM_BLD {}
 fn C.OSSL_PARAM_free(params &C.OSSL_PARAM)
 fn C.OSSL_PARAM_BLD_free(param_bld &C.OSSL_PARAM_BLD)
 fn C.OSSL_PARAM_BLD_new() &C.OSSL_PARAM_BLD
-fn C.OSSL_PARAM_BLD_push_utf8_string(bld &C.OSSL_PARAM_BLD, key &u8, buf &u8, bsize int) int
+fn C.OSSL_PARAM_BLD_push_utf8_string(bld &C.OSSL_PARAM_BLD, key &char, buf &char, bsize int) int
 fn C.OSSL_PARAM_BLD_push_BN(bld &C.OSSL_PARAM_BLD, key &u8, bn &C.BIGNUM) int
 fn C.OSSL_PARAM_BLD_push_octet_string(bld &C.OSSL_PARAM_BLD, key &u8, buf voidptr, bsize int) int
 fn C.OSSL_PARAM_BLD_to_param(bld &C.OSSL_PARAM_BLD) &C.OSSL_PARAM
-fn C.OSSL_PARAM_BLD_push_int(bld &C.OSSL_PARAM_BLD, key &u8, val int) int

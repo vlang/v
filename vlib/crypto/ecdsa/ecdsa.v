@@ -32,14 +32,10 @@ const nid_evp_pkey_ec = C.EVP_PKEY_EC
 const openssl_ec_named_curve = C.OPENSSL_EC_NAMED_CURVE
 
 // https://docs.openssl.org/3.0/man3/EVP_PKEY_fromdata/#selections
-const evp_pkey_key_parameters = C.EVP_PKEY_KEY_PARAMETERS
-const evp_pkey_public_key = C.EVP_PKEY_PUBLIC_KEY
 const evp_pkey_keypair = C.EVP_PKEY_KEYPAIR
 
 // POINT_CONVERSION FORAMT
-const point_conversion_compressed = 2
 const point_conversion_uncompressed = 4
-const point_conversion_hybrid = 6
 
 // Nid is an enumeration of the supported curves
 pub enum Nid {
@@ -47,6 +43,18 @@ pub enum Nid {
 	secp384r1  = C.NID_secp384r1
 	secp521r1  = C.NID_secp521r1
 	secp256k1  = C.NID_secp256k1
+}
+
+// we need this group (cruve) name representation to pass them into needed routines
+fn (nid Nid) str() string {
+	match nid {
+		// TODO: maybe better relies on info from underlying C defined constants,
+		// ie, #define SN_X9_62_prime256v1     "prime256v1" etc
+		.prime256v1 { return 'prime256v1' }
+		.secp384r1 { return 'secp384r1' }
+		.secp521r1 { return 'secp521r1' }
+		.secp256k1 { return 'secp256k1' }
+	}
 }
 
 @[params]
@@ -113,7 +121,7 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	if seed.len == 0 {
 		return error('Seed with null-length was not allowed')
 	}
-	evpkey := evpkey_from_seed_with(seed, opt)!
+	evpkey := evpkey_from_seed(seed, opt)!
 	num_bits := C.EVP_PKEY_get_bits(evpkey)
 	key_size := (num_bits + 7) / 8
 	if seed.len > key_size {
@@ -758,7 +766,7 @@ fn default_digest(key &C.EVP_PKEY) !&C.EVP_MD {
 }
 
 // Build EVP_PKEY from raw seed of bytes and options.
-fn evpkey_from_seed_with(seed []u8, opt CurveOptions) !&C.EVP_PKEY {
+fn evpkey_from_seed(seed []u8, opt CurveOptions) !&C.EVP_PKEY {
 	// This routine mostly comes from the official docs with adds some checking at
 	// https://docs.openssl.org/3.0/man3/EVP_PKEY_fromdata/#creating-an-ecc-keypair-using-raw-key-data
 	//
@@ -785,11 +793,9 @@ fn evpkey_from_seed_with(seed []u8, opt CurveOptions) !&C.EVP_PKEY {
 	assert param_bld != 0
 
 	// push the group, private and public key bytes infos into the builder
-	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, voidptr('group'.str), voidptr(opt.nid.str().str),
-		0)
-	m := C.OSSL_PARAM_BLD_push_BN(param_bld, voidptr('priv'.str), bn)
-	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, voidptr('pub'.str), pub_bytes.data,
-		pub_bytes.len)
+	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, c'group', opt.nid.str().str, 0)
+	m := C.OSSL_PARAM_BLD_push_BN(param_bld, c'priv', bn)
+	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'pub', pub_bytes.data, pub_bytes.len)
 	if n <= 0 || m <= 0 || o <= 0 {
 		C.EC_POINT_free(point)
 		C.BN_free(bn)
@@ -827,7 +833,7 @@ fn evpkey_from_seed_with(seed []u8, opt CurveOptions) !&C.EVP_PKEY {
 		C.OSSL_PARAM_free(params)
 		C.EVP_PKEY_free(pkey)
 		C.EVP_PKEY_CTX_free(pctx)
-		return error('EVP_PKEY_fromdata(_init) failed')
+		return error('EVP_PKEY_fromdata failed')
 	}
 	// After this step, we have build the key in pkey
 	// TODO: right way to check the builded key
