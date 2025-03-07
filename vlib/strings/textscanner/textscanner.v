@@ -295,7 +295,7 @@ pub fn (mut ss TextScanner) next_line() (string, bool) {
 		if ss.config.force_rune_mode {
 			return ss.input_runes[start..].string(), false
 		} else {
-			return unsafe { tos(&ss.input_bytes[start], ss.ilen - start) }, false
+			return ss.input_bytes[start..].bytestr(), false
 		}
 	}
 	if ss.pos > ss.ilen {
@@ -304,7 +304,7 @@ pub fn (mut ss TextScanner) next_line() (string, bool) {
 	if ss.config.force_rune_mode {
 		return ss.input_runes[start..end].string(), true
 	} else {
-		return unsafe { tos(&ss.input_bytes[start], end - start) }, true
+		return ss.input_bytes[start..end].bytestr(), true
 	}
 }
 
@@ -351,11 +351,11 @@ pub fn (mut ss TextScanner) read_until(delimiters string) !string {
 			if r in delimiters_bytes {
 				end := current_pos
 				ss.pos = end + 1
-				return unsafe { tos(&ss.input_bytes[start], end - start) }
+				return ss.input_bytes[start..end].bytestr()
 			}
 			current_pos += 1
 		}
 		ss.pos = ss.ilen
-		return unsafe { tos(&ss.input_bytes[start], ss.ilen - start) }
+		return ss.input_bytes[start..].bytestr()
 	}
 }
