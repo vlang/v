@@ -3,12 +3,6 @@ import gg
 import gx
 
 const csize = 32
-const color_box = gx.rgb(139, 69, 19) // Brown
-const color_wall = gx.rgb(100, 100, 100) // Gray
-const color_floor = gx.rgb(200, 200, 200) // Light gray
-const color_player = gx.rgb(0, 0, 255) // Blue
-const color_storage = gx.rgb(0, 255, 0) // Green
-const color_box_on_storage = gx.rgb(255, 255, 0) // Yellow
 
 struct Pos {
 	x int
@@ -36,6 +30,14 @@ mut:
 	levels    []string
 	moves     int
 	ctx       &gg.Context = unsafe { nil }
+	//
+	id_box            int
+	id_box_on_storage int
+	id_wall           int
+	id_floor          int
+	id_other          int
+	id_player         int
+	id_storage        int
 }
 
 fn (mut g Game) parse_level(lnumber int) ! {
@@ -132,24 +134,24 @@ fn (mut g Game) move_player(dir Direction) {
 	g.moves++
 }
 
-fn (g &Game) get_cell_color(pos Pos) gx.Color {
+fn (g &Game) get_cell_iid(pos Pos) int {
 	c := g.warehouse[pos.y][pos.x]
 	if pos.x == g.player.x && pos.y == g.player.y {
-		return color_player
+		return g.id_player
 	}
 	for box in g.boxes {
 		if box.x == pos.x && box.y == pos.y {
 			if c == `@` {
-				return color_box_on_storage
+				return g.id_box_on_storage
 			}
-			return color_box
+			return g.id_box
 		}
 	}
 	match c {
-		` ` { return color_floor }
-		`#` { return color_wall }
-		`@` { return color_storage }
-		else { return gx.black }
+		` ` { return g.id_floor }
+		`#` { return g.id_wall }
+		`@` { return g.id_storage }
+		else { return g.id_other }
 	}
 }
 
@@ -212,8 +214,12 @@ fn (g &Game) draw_frame(_ voidptr) {
 	for y in 0 .. g.warehouse.len {
 		for x in 0 .. g.warehouse[y].len {
 			pos := Pos{x, y}
-			color := g.get_cell_color(pos)
-			g.ctx.draw_rect_filled(ox + x * csize, oy + y * csize, csize, csize, color)
+			iid := g.get_cell_iid(pos)
+			if iid == g.id_player {
+				// the player is transparent
+				g.ctx.draw_image_by_id(ox + x * csize, oy + y * csize, 32, 32, g.id_floor)
+			}
+			g.ctx.draw_image_by_id(ox + x * csize, oy + y * csize, 32, 32, iid)
 		}
 	}
 	g.ctx.draw_rect_filled(0, ws.height - 70, ws.width, 70, gx.black)
@@ -231,6 +237,10 @@ fn (g &Game) draw_frame(_ voidptr) {
 	g.ctx.end()
 }
 
+fn (mut g Game) iid(name string) !int {
+	return g.ctx.create_image(asset.get_path('/', name))!.id
+}
+
 fn main() {
 	mut g := &Game{}
 	all_level_names := asset.read_bytes('/', '_all_levels.txt')!.bytestr().split_into_lines()
@@ -244,5 +254,12 @@ fn main() {
 		frame_fn:     g.draw_frame
 		keydown_fn:   g.key_down
 	)
+	g.id_box = g.iid('box.png')!
+	g.id_box_on_storage = g.iid('box_on_storage.png')!
+	g.id_wall = g.iid('wall.png')!
+	g.id_floor = g.iid('floor.png')!
+	g.id_other = g.iid('other.png')!
+	g.id_player = g.iid('player.png')!
+	g.id_storage = g.iid('storage.png')!
 	g.ctx.run()
 }
