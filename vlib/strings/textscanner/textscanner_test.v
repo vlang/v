@@ -30,7 +30,7 @@ fn test_remaining_rune() {
 	assert s.remaining() == 3
 }
 
-fn xtest_next() {
+fn test_next() {
 	mut s := textscanner.new('abc')
 	assert s.next() == `a`
 	assert s.next() == `b`
@@ -540,4 +540,20 @@ fn test_read_until_rune() {
 		'已经到结尾了'
 	}
 	assert tt4 == '已经到结尾了'
+}
+
+fn test_substr() {
+	mut s := textscanner.new('abc\r\n12|3#')
+	assert s.substr(0, 4) == 'abc\r'
+	assert s.substr(6, 8) == '2|'
+	assert s.substr(-1, 2) == ''
+	assert s.substr(2, 500) == ''
+}
+
+fn test_substr_rune() {
+	mut s := textscanner.new('v语言♥\r\n大家好|♥3#', force_rune_mode: true)
+	assert s.substr(0, 4) == 'v语言♥'
+	assert s.substr(6, 8) == '大家'
+	assert s.substr(-1, 2) == ''
+	assert s.substr(2, 500) == ''
 }

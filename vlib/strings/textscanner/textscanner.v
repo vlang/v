@@ -359,3 +359,15 @@ pub fn (mut ss TextScanner) read_until(delimiters string) !string {
 		return ss.input_bytes[start..].bytestr()
 	}
 }
+
+// substr return a sub string of input string from start to end.
+pub fn (mut ss TextScanner) substr(start int, end int) string {
+	if start < 0 || start > ss.ilen || end < 0 || end > ss.ilen || start >= end {
+		return ''
+	}
+	if ss.config.force_rune_mode {
+		return ss.input_runes[start..end].string()
+	} else {
+		return ss.input_bytes[start..end].bytestr()
+	}
+}
