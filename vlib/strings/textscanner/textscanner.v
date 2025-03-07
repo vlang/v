@@ -42,10 +42,9 @@ pub fn new(input string, config TextScannerConfig) TextScanner {
 @[unsafe]
 pub fn (mut ss TextScanner) free() {
 	unsafe {
-		if ss.input_runes.len > 0 {
+		if ss.config.force_rune_mode {
 			ss.input_runes.free()
-		}
-		if ss.input_bytes.len > 0 {
+		} else {
 			ss.input_bytes.free()
 		}
 	}
