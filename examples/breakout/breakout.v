@@ -218,7 +218,7 @@ fn (mut g Game) update() {
 	// Brick collisions
 	for mut brick in g.bricks {
 		if brick.alive && g.ball_y - g.ball_r < brick.y + brick.h && g.ball_y + g.ball_r > brick.y
-			&& g.ball_x > brick.x && g.ball_x < brick.x + brick.w {
+			&& g.ball_x + g.ball_r > brick.x && g.ball_x - g.ball_r < brick.x + brick.w {
 			g.play(.brick)
 			brick.alive = false
 			g.nbricks--
