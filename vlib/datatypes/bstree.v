@@ -1,6 +1,6 @@
 module datatypes
 
-/// Internal representation of the tree node
+// Internal representation of the tree node
 @[heap]
 struct BSTreeNode[T] {
 mut:

@@ -754,7 +754,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			g.write('void')
 		}
 	}
-	/// mut is_implicit_ctx := false
+	// mut is_implicit_ctx := false
 	// Veb actions defined by user can have implicit context
 	/*
 	if g.cur_fn != unsafe { nil } && g.cur_fn.is_method && g.cur_mod.name != 'veb' {

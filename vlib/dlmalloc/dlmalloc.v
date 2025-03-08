@@ -926,7 +926,7 @@ pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
 	}
 }
 
-/// malloc behaves as libc malloc, but operates within the given space
+// malloc_real behaves as libc malloc, but operates within the given space
 @[unsafe]
 fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 	mut nb := usize(0)

@@ -42,7 +42,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	if !c.pref.linfo.vars_printed[nt] { // avoid dups
 		sb.writeln('===')
 		sb.writeln('VAR ${nt}') //${node.name}:${sym.name}')
-		/// print_backtrace()
+		// print_backtrace()
 		/*
 		if sym.kind == .alias {
 			parent_sym := c.table.sym(sym.parent_type)
