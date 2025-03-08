@@ -2639,7 +2639,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		&& g.table.unaliased_type(arg_typ).is_pointer() && expected_type.is_pointer()) {
 		if arg.is_mut {
 			if exp_sym.kind == .array {
-				if (arg.expr is ast.Ident && arg.expr.kind == .variable)
+				if (arg.expr is ast.Ident && arg.expr.kind in [.global, .variable])
 					|| arg.expr is ast.SelectorExpr {
 					g.write('&')
 					g.expr(arg.expr)
