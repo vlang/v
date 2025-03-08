@@ -44,6 +44,8 @@ fn C.EVP_PKEY_bits(pkey &C.EVP_PKEY) int
 fn C.EVP_PKEY_size(key &C.EVP_PKEY) int
 fn C.EVP_PKEY_eq(a &C.EVP_PKEY, b &C.EVP_PKEY) int
 
+fn C.EVP_PKEY_get1_encoded_public_key(pkey &C.EVP_PKEY, ppub &&u8) int
+fn C.EVP_PKEY_get_bn_param(pkey &C.EVP_PKEY, key_name &u8, bn &&C.BIGNUM) int
 fn C.EVP_PKEY_fromdata_init(ctx &C.EVP_PKEY_CTX) int
 fn C.EVP_PKEY_fromdata(ctx &C.EVP_PKEY_CTX, ppkey &&C.EVP_PKEY, selection int, params &C.OSSL_PARAM) int
 
@@ -143,6 +145,7 @@ fn C.EC_GROUP_new_by_curve_name(nid int) &C.EC_GROUP
 @[typedef]
 struct C.BIGNUM {}
 
+fn C.BN_new() &C.BIGNUM
 fn C.BN_num_bits(a &C.BIGNUM) int
 fn C.BN_bn2bin(a &C.BIGNUM, to &u8) int
 fn C.BN_bn2binpad(a &C.BIGNUM, to &u8, tolen int) int

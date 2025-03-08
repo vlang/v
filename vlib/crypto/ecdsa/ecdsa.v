@@ -289,10 +289,12 @@ fn (pv PrivateKey) sign_digest(digest []u8) ![]u8 {
 
 // bytes represent private key as bytes.
 pub fn (pv PrivateKey) bytes() ![]u8 {
-	// This is the old one
-	bn := voidptr(C.EC_KEY_get0_private_key(pv.key))
-	if bn == 0 {
-		return error('Failed to get private key BIGNUM')
+	bn := C.BN_new()
+	// retrieves a BIGNUM value associated with a 'priv' key name
+	n := C.EVP_PKEY_get_bn_param(pv.evpkey, c'priv', &bn)
+	if n <= 0 {
+		C.BN_free(bn)
+		return error('EVP_PKEY_get_bn_param failed')
 	}
 	num_bytes := (C.BN_num_bits(bn) + 7) / 8
 	// Get the buffer size to store the seed.
@@ -305,8 +307,10 @@ pub fn (pv PrivateKey) bytes() ![]u8 {
 	mut buf := []u8{len: int(size)}
 	res := C.BN_bn2binpad(bn, buf.data, size)
 	if res == 0 {
+		C.BN_free(bn)
 		return error('Failed to convert BIGNUM to bytes')
 	}
+	C.BN_free(bn)
 	return buf
 }
 

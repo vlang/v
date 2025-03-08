@@ -62,45 +62,17 @@ pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
 
 // bytes gets the bytes of public key.
 pub fn (pbk PublicKey) bytes() ![]u8 {
-	point := voidptr(C.EC_KEY_get0_public_key(pbk.key))
-	// defer { C.EC_POINT_free(point)}
-	if point == 0 {
-		C.EC_POINT_free(point)
-		return error('Failed to get public key BIGNUM')
+	ppub := []u8{len: default_point_bufsize}
+	n := C.EVP_PKEY_get1_encoded_public_key(pbk.evpkey, voidptr(&ppub.data))
+	if n <= 0 {
+		C.OPENSSL_free(voidptr(ppub.data))
+		return error('EVP_PKEY_get1_encoded_public_key failed')
 	}
+	out := ppub[..n].clone()
+	// ppub should be freed by calling `OPENSSL_free` or memleak happens.
+	C.OPENSSL_free(voidptr(ppub.data))
 
-	group := voidptr(C.EC_KEY_get0_group(pbk.key))
-	num_bits := C.EC_GROUP_get_degree(group)
-	// 1 byte of conversion format || x || y of EC_POINT
-	num_bytes := 1 + 2 * ((num_bits + 7) / 8)
-
-	ctx := C.BN_CTX_new()
-	defer {
-		C.BN_CTX_free(ctx)
-	}
-
-	if ctx == 0 {
-		C.EC_POINT_free(point)
-		C.BN_CTX_free(ctx)
-		return error('Failed to create BN_CTX')
-	}
-	mut buf := []u8{len: num_bytes}
-
-	// Get conversion format.
-	//
-	// The uncompressed form is indicated by 0x04 and the compressed form is indicated
-	// by either 0x02 or 0x03, hybrid 0x06
-	// The public key MUST be rejected if any other value is included in the first octet.
-	conv_form := C.EC_KEY_get_conv_form(pbk.key)
-	if conv_form !in [2, 3, 4, 6] {
-		return error('bad conversion format')
-	}
-	n := C.EC_POINT_point2oct(group, point, conv_form, buf.data, buf.len, ctx)
-	if n == 0 {
-		return error('EC_POINT_point2oct failed')
-	}
-	// returns the clone of the buffer[..n]
-	return buf[..n].clone()
+	return out
 }
 
 // pubkey_from_string loads a PublicKey from valid PEM-formatted string in s.
@@ -149,14 +121,16 @@ pub fn pubkey_from_string(s string) !PublicKey {
 	}
 	chk := C.EC_KEY_check_key(eckey)
 	if chk == 0 {
+		C.BIO_free_all(bo)
 		C.EC_KEY_free(eckey)
+		C.EVP_PKEY_free(evpkey)
 		return error('EC_KEY_check_key failed')
 	}
-	C.EVP_PKEY_free(evpkey)
 	C.BIO_free_all(bo)
 	// Its OK to return
 	return PublicKey{
-		key: eckey
+		evpkey: evpkey
+		key:    eckey
 	}
 }
 
@@ -212,16 +186,18 @@ pub fn privkey_from_string(s string) !PrivateKey {
 
 	chk := C.EC_KEY_check_key(eckey)
 	if chk == 0 {
+		C.BIO_free_all(bo)
 		C.EC_KEY_free(eckey)
+		C.EVP_PKEY_free(evpkey)
 		return error('EC_KEY_check_key failed')
 	}
 	ksize := ec_key_size(eckey)!
 
-	C.EVP_PKEY_free(evpkey)
 	C.BIO_free_all(bo)
 
 	// Its OK to return
 	return PrivateKey{
+		evpkey:  evpkey
 		key:     eckey
 		ks_flag: .fixed
 		ks_size: ksize
