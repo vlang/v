@@ -89,6 +89,15 @@ fn test_as_map() {
 	assert sample_data['obj'] or { 0 }.as_map()['foo'] or { 0 }.int() == 10
 }
 
+fn test_as_map_of_strings() {
+	assert sample_data['obj']!.as_map() == {
+		'foo': json.Any(10)
+	}
+	assert sample_data['obj']!.as_map_of_strings() == {
+		'foo': '10'
+	}
+}
+
 fn test_arr() {
 	assert sample_data['int'] or { 0 }.arr()[0].int() == 1
 	assert sample_data['i64'] or { 0 }.arr()[0].i64() == 128.0

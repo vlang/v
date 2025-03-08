@@ -231,6 +231,26 @@ pub fn (f Any) as_map() map[string]Any {
 	}
 }
 
+pub fn (f Any) as_map_of_strings() map[string]string {
+	if f is map[string]Any {
+		mut ms := map[string]string{}
+		for k, v in f {
+			ms[k] = v.str()
+		}
+		return ms
+	}
+	if f is []Any {
+		mut ms := map[string]string{}
+		for i, fi in f {
+			ms['${i}'] = fi.str()
+		}
+		return ms
+	}
+	return {
+		'0': f.str()
+	}
+}
+
 // to_time uses `Any` as a time.Time.
 pub fn (f Any) to_time() !time.Time {
 	match f {
