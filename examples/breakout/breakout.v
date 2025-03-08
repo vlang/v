@@ -2,6 +2,7 @@ import gg
 import gx
 import math
 import rand
+import time
 import sokol.audio
 import os.asset
 import sokol.sgl
@@ -295,8 +296,15 @@ fn main() {
 		height:       g.height
 		window_title: 'V Breakout'
 		sample_count: 2
+		init_fn:      fn (mut g Game) {
+			spawn fn (mut g Game) {
+				for {
+					g.update()
+					time.sleep(16666 * time.microsecond)
+				}
+			}(mut g)
+		}
 		frame_fn:     fn (mut g Game) {
-			g.update()
 			g.draw()
 		}
 		click_fn:     fn (x f32, y f32, btn gg.MouseButton, mut g Game) {
