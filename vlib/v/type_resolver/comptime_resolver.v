@@ -18,7 +18,8 @@ pub fn (mut t TypeResolver) get_comptime_selector_var_type(node ast.ComptimeSele
 pub fn (t &ResolverInfo) has_comptime_expr(node ast.Expr) bool {
 	return (node is ast.Ident && node.ct_expr)
 		|| (node is ast.IndexExpr && t.has_comptime_expr(node.left))
-		|| node is ast.ComptimeSelector
+		|| node is ast.ComptimeSelector || (node is ast.StructInit
+		&& node.init_fields.any(it.expr is ast.AnonFn && it.expr.decl.generic_names.len > 0))
 		|| (node is ast.PostfixExpr && t.has_comptime_expr(node.expr))
 		|| (node is ast.SelectorExpr && t.has_comptime_expr(node.expr))
 		|| (node is ast.InfixExpr && (t.has_comptime_expr(node.left)
