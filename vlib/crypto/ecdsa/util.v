@@ -241,7 +241,7 @@ fn key_group_name(key &C.EVP_PKEY) !string {
 		unsafe { gname.free() }
 		return error('fail to get group name')
 	}
-	group := gname[..gname_len].clone().bytestr()
+	group := gname[..gname_len].bytestr()
 	unsafe { gname.free() }
 	return group
 }
