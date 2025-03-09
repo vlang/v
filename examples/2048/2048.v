@@ -31,6 +31,7 @@ mut:
 	state       GameState  = .play
 	tile_format TileFormat = .normal
 	moves       int
+	updates     u64
 
 	is_ai_mode bool
 	ai_fpm     u64 = 8
@@ -956,14 +957,23 @@ fn on_event(e &gg.Event, mut app App) {
 }
 
 fn frame(mut app App) {
+	mut do_update := false
+	if app.gg.timer.elapsed().milliseconds() > 15 {
+		app.gg.timer.restart()
+		do_update = true
+		app.updates++
+	}
 	app.gg.begin()
-	app.update_tickers()
+	if do_update {
+		app.update_tickers()
+	}
 	app.draw()
 	app.gg.end()
-	if app.is_ai_mode && app.state in [.play, .freeplay] && app.gg.frame % app.ai_fpm == 0 {
+	if do_update && app.is_ai_mode && app.state in [.play, .freeplay]
+		&& app.updates % app.ai_fpm == 0 {
 		app.ai_move()
 	}
-	if app.gg.frame % 120 == 0 {
+	if app.updates % 120 == 0 {
 		// do GC once per 2 seconds
 		// eprintln('> gc_memory_use: ${gc_memory_use()}')
 		if gc_is_enabled() {
