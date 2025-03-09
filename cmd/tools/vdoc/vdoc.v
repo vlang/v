@@ -314,7 +314,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			vd.manifest = manifest
 		}
 	} else if cfg.is_vlib {
-		assert false, 'vdoc: manifest does not exists for vlib'
+		assert false, 'vdoc: manifest does not exist for vlib'
 	}
 	if cfg.include_readme || cfg.is_vlib {
 		mut readme_name := 'README'
