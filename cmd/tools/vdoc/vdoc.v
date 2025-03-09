@@ -303,7 +303,11 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	} else {
 		os.dir(cfg.input_path)
 	}
-	manifest_path := os.join_path(dir_path, 'v.mod')
+	manifest_path := if cfg.is_vlib {
+		os.join_path(vroot, 'v.mod')
+	} else {
+		os.join_path(dir_path, 'v.mod')
+	}
 	if os.exists(manifest_path) {
 		vd.vprintln('Reading v.mod info from ${manifest_path}')
 		if manifest := vmod.from_file(manifest_path) {
