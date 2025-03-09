@@ -317,7 +317,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	g.write32(0)
 	g.write32(0)
 	g.write32(0)
-	/// ???
+	// ???
 	g.write32(0x32)
 	g.write32(0x18)
 	g.write32(0x01)

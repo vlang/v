@@ -754,7 +754,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			g.write('void')
 		}
 	}
-	/// mut is_implicit_ctx := false
+	// mut is_implicit_ctx := false
 	// Veb actions defined by user can have implicit context
 	/*
 	if g.cur_fn != unsafe { nil } && g.cur_fn.is_method && g.cur_mod.name != 'veb' {
@@ -2639,7 +2639,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		&& g.table.unaliased_type(arg_typ).is_pointer() && expected_type.is_pointer()) {
 		if arg.is_mut {
 			if exp_sym.kind == .array {
-				if (arg.expr is ast.Ident && arg.expr.kind == .variable)
+				if (arg.expr is ast.Ident && arg.expr.kind in [.global, .variable])
 					|| arg.expr is ast.SelectorExpr {
 					g.write('&')
 					g.expr(arg.expr)

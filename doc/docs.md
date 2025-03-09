@@ -5469,7 +5469,7 @@ To disable formatting for a block of code, wrap it with `// vfmt off` and
 ### v shader
 
 You can use GPU shaders with V graphical apps. You write your shaders in an
-[annotated GLSL dialect](https://github.com/vlang/v/blob/1d8ece7/examples/sokol/02_cubes_glsl/cube_glsl.glsl)
+[annotated GLSL dialect](https://github.com/vlang/v/blob/master/examples/sokol/02_cubes_glsl/cube_glsl.glsl)
 and use `v shader` to compile them for all supported target platforms.
 
 ```shell
@@ -5477,7 +5477,7 @@ v shader /path/to/project/dir/or/file.v
 ```
 
 Currently you need to
-[include a header and declare a glue function](https://github.com/vlang/v/blob/c14c324/examples/sokol/02_cubes_glsl/cube_glsl.v#L43-L46)
+[include a header and declare a glue function](https://github.com/vlang/v/blob/master/examples/sokol/02_cubes_glsl/cube_glsl.v#L25-L28)
 before using the shader in your code.
 
 ### Profiling

@@ -1,6 +1,6 @@
 module os
 
-/// Eof error means that we reach the end of the file.
+// Eof error means that we reach the end of the file.
 pub struct Eof {
 	Error
 }

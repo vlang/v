@@ -1,6 +1,6 @@
 module io
 
-/// Eof error means that we reach the end of the stream.
+// Eof error means that we reach the end of the stream.
 pub struct Eof {
 	Error
 }

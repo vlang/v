@@ -83,6 +83,34 @@ pub fn (cmd &Command) str() string {
 	res << '	flags: ${cmd.flags}'
 	res << '	required_args: ${cmd.required_args}'
 	res << '	args: ${cmd.args}'
+	res << '	posix_mode: ${cmd.posix_mode}'
+	match cmd.defaults.help {
+		bool {
+			res << '	defaults.help: ${cmd.defaults.help}'
+		}
+		CommandFlag {
+			res << '	defaults.help.command: ${cmd.defaults.help.command}'
+			res << '	defaults.help.flag: ${cmd.defaults.help.flag}'
+		}
+	}
+	match cmd.defaults.man {
+		bool {
+			res << '	defaults.man: ${cmd.defaults.man}'
+		}
+		CommandFlag {
+			res << '	defaults.man.command: ${cmd.defaults.man.command}'
+			res << '	defaults.man.flag: ${cmd.defaults.man.flag}'
+		}
+	}
+	match cmd.defaults.version {
+		bool {
+			res << '	defaults.version: ${cmd.defaults.version}'
+		}
+		CommandFlag {
+			res << '	defaults.version.command: ${cmd.defaults.version.command}'
+			res << '	defaults.version.flag: ${cmd.defaults.version.flag}'
+		}
+	}
 	res << '}'
 	return res.join('\n')
 }
@@ -217,7 +245,7 @@ pub fn (mut cmd Command) parse(args []string) {
 	cmd.parse_commands()
 }
 
-// add_default_flags adds the commonly used `-h`/`--help` and
+// add_default_flags adds the commonly used `-h`/`--help`, `--man`,  and
 // `-v`/`--version` flags to the `Command`.
 fn (mut cmd Command) add_default_flags() {
 	if cmd.defaults.parsed.help.flag && !cmd.flags.contains('help') {
@@ -233,8 +261,8 @@ fn (mut cmd Command) add_default_flags() {
 	}
 }
 
-// add_default_commands adds the command functions of the
-// commonly used `help` and `version` flags to the `Command`.
+// add_default_commands adds the command functions of the commonly
+// used `help`, `man`, and `version` subcommands to the `Command`.
 fn (mut cmd Command) add_default_commands() {
 	if cmd.defaults.parsed.help.command && !cmd.commands.contains('help') && cmd.is_root() {
 		cmd.add_command(help_cmd())
@@ -369,7 +397,7 @@ pub fn (cmd &Command) execute_help() {
 	print(cmd.help_message())
 }
 
-// execute_help executes the callback registered
+// execute_man executes the callback registered
 // for the `-man` flag option.
 pub fn (cmd &Command) execute_man() {
 	if cmd.commands.contains('man') {

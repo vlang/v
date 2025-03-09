@@ -10,6 +10,9 @@ const designed_width = 600
 const designed_height = 800
 const brick_width = 53
 const brick_height = 20
+const bevel_size = int(brick_height * 0.18)
+const highlight_color = gx.rgba(255, 255, 255, 65)
+const shade_color = gx.rgba(0, 0, 0, 65)
 
 struct Brick {
 mut:
@@ -127,15 +130,11 @@ fn (mut g Game) draw() {
 	sgl.scale(f32(ws.width) / f32(designed_width), f32(ws.height) / f32(designed_height),
 		0)
 
-	roffset, rradius := -5, 18
-	g.ctx.draw_circle_filled(g.paddle_x - roffset, g.height, rradius, gx.blue)
-	g.ctx.draw_circle_filled(g.paddle_x + g.paddle_w + roffset, g.height, rradius, gx.blue)
-	g.ctx.draw_rect_filled(g.paddle_x, g.height - g.paddle_h + 2, g.paddle_w, g.paddle_h,
-		gx.blue)
-	g.ctx.draw_circle_filled(g.ball_x, g.ball_y, g.ball_r, gx.red)
+	g.draw_paddle()
+	g.draw_ball()
 	for brick in g.bricks {
 		if brick.alive {
-			g.ctx.draw_rect_filled(brick.x, brick.y, brick.w, brick.h, brick.c)
+			g.draw_brick(brick)
 		}
 	}
 	label1 := 'Level: ${g.nlevels:02}  Points: ${g.npoints:06}'
@@ -145,6 +144,36 @@ fn (mut g Game) draw() {
 
 	sgl.pop_matrix()
 	g.ctx.end()
+}
+
+fn (g &Game) draw_ball() {
+	g.ctx.draw_circle_filled(g.ball_x, g.ball_y, g.ball_r, gx.red)
+	mut ball_r_less := g.ball_r
+	for _ in 0 .. 3 {
+		ball_r_less *= 0.8
+		g.ctx.draw_circle_filled(g.ball_x - g.ball_r + ball_r_less, g.ball_y - g.ball_r +
+			ball_r_less, ball_r_less, highlight_color)
+	}
+}
+
+fn (g &Game) draw_paddle() {
+	roffset, rradius := -5, 18
+	g.ctx.draw_circle_filled(g.paddle_x - roffset, g.height, rradius, gx.blue)
+	g.ctx.draw_circle_filled(g.paddle_x + g.paddle_w + roffset, g.height, rradius, gx.blue)
+	g.ctx.draw_rect_filled(g.paddle_x, g.height - g.paddle_h + 2, g.paddle_w, g.paddle_h,
+		gx.blue)
+	g.ctx.draw_rect_filled(g.paddle_x, g.height - g.paddle_h + 2, g.paddle_w, bevel_size,
+		highlight_color)
+}
+
+fn (g &Game) draw_brick(brick Brick) {
+	g.ctx.draw_rect_filled(brick.x, brick.y, brick.w, brick.h, brick.c)
+	g.ctx.draw_rect_filled(brick.x, brick.y, brick.w, bevel_size, highlight_color)
+	g.ctx.draw_rect_filled(brick.x, brick.y, bevel_size, brick.h - bevel_size, highlight_color)
+	g.ctx.draw_rect_filled(brick.x + brick.w - bevel_size, brick.y, bevel_size, brick.h - bevel_size,
+		shade_color)
+	g.ctx.draw_rect_filled(brick.x, brick.y + brick.h - bevel_size, brick.w, bevel_size,
+		shade_color)
 }
 
 fn (mut g Game) game_over() {
@@ -218,7 +247,7 @@ fn (mut g Game) update() {
 	// Brick collisions
 	for mut brick in g.bricks {
 		if brick.alive && g.ball_y - g.ball_r < brick.y + brick.h && g.ball_y + g.ball_r > brick.y
-			&& g.ball_x > brick.x && g.ball_x < brick.x + brick.w {
+			&& g.ball_x + g.ball_r > brick.x && g.ball_x - g.ball_r < brick.x + brick.w {
 			g.play(.brick)
 			brick.alive = false
 			g.nbricks--
@@ -265,9 +294,12 @@ fn main() {
 		width:        g.width
 		height:       g.height
 		window_title: 'V Breakout'
-		sample_count: 2
 		frame_fn:     fn (mut g Game) {
-			g.update()
+			dt := g.ctx.timer.elapsed().milliseconds()
+			if dt > 15 {
+				g.update()
+				g.ctx.timer.restart()
+			}
 			g.draw()
 		}
 		click_fn:     fn (x f32, y f32, btn gg.MouseButton, mut g Game) {

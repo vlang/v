@@ -75,8 +75,11 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 				|| (p.tok.kind == .lsbr && p.is_array_type())) {
 				// [100]u8
 				elem_type = p.parse_type()
-				if p.table.sym(elem_type).name == 'byte' {
-					p.error('`byte` has been deprecated in favor of `u8`: use `[10]u8{}` instead of `[10]byte{}`')
+				if elem_type != 0 {
+					s := p.table.sym(elem_type)
+					if s.name == 'byte' {
+						p.error('`byte` has been deprecated in favor of `u8`: use `[10]u8{}` instead of `[10]byte{}`')
+					}
 				}
 				last_pos = p.tok.pos()
 				is_fixed = true

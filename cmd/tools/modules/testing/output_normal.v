@@ -113,8 +113,8 @@ pub fn (r NormalReporter) report_stop() {
 	eprintln('')
 }
 
-//// TODO: reconsider if these should be public:
-
+// progress will show the given message normally
+// TODO: reconsider if these should be public:
 pub fn (r NormalReporter) progress(index int, message string) {
 	eprintln(message)
 }

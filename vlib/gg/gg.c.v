@@ -6,6 +6,7 @@ module gg
 import os
 import os.font
 import gx
+import time
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
@@ -202,6 +203,7 @@ pub mut:
 	font_inited bool
 	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
 	frame       u64  // the current frame counted from the start of the application; always increasing
+	timer       time.StopWatch
 
 	mbtn_mask     u8
 	mouse_buttons MouseButtons // typed version of mbtn_mask; easier to use for user programs
@@ -285,6 +287,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	ctx.pipeline = &PipelineContainer{}
 	ctx.pipeline.init_pipeline()
 
+	ctx.timer = time.new_stopwatch()
 	if ctx.config.init_fn != unsafe { nil } {
 		$if android {
 			// NOTE on Android sokol can emit resize events *before* the init function is

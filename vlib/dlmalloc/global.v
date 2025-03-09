@@ -3,10 +3,9 @@ module dlmalloc
 
 __global global = new(get_system_allocator())
 
-/// malloc allocates `size` bytes.
-///
-/// Returns a null pointer if allocation fails. Returns a valid pointer
-/// otherwise.
+// malloc allocates `size` bytes.
+// It returns a null pointer if allocation fails.
+// It returns a valid pointer otherwise.
 @[unsafe]
 pub fn malloc(size usize) voidptr {
 	unsafe {

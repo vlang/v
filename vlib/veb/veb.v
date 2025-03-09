@@ -254,7 +254,11 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 
 	$if linux || freebsd {
 		bytes_written := sendfile(fd, params.file_responses[fd].file.fd, bytes_to_write)
-		params.file_responses[fd].pos += bytes_written
+		if bytes_written < 0 {
+			params.file_responses[fd].pos += bytes_to_write
+		} else {
+			params.file_responses[fd].pos += bytes_written
+		}
 	} $else {
 		if bytes_to_write > max_write {
 			bytes_to_write = max_write
