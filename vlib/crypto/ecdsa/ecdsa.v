@@ -118,7 +118,7 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	if seed.len == 0 {
 		return error('Seed with null-length was not allowed')
 	}
-	evpkey := evpkey_from_seed(seed, opt)!
+	evpkey := evpkey_from_seed(seed, opt) or { return err }
 	num_bits := C.EVP_PKEY_get_bits(evpkey)
 	key_size := (num_bits + 7) / 8
 	if seed.len > key_size {
@@ -504,7 +504,7 @@ fn evpkey_from_seed(seed []u8, opt CurveOptions) !&C.EVP_PKEY {
 	}
 	// Build EC_POINT from this BIGNUM and gets bytes represantion of this point
 	// in uncompressed format.
-	point := ec_point_mult(group, bn)!
+	point := ec_point_mult(group, bn) or { return err }
 	pub_bytes := point_2_buf(group, point, point_conversion_uncompressed)!
 
 	// Lets build params builder
