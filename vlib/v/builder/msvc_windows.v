@@ -256,6 +256,15 @@ pub fn (mut v Builder) cc_msvc() {
 	}
 	out_name_pdb := os.real_path(v.out_name_c + '.pdb')
 	out_name_cmd_line := os.real_path(v.out_name_c + '.rsp')
+	// testdll.01JNX9W7JAV4FKMZ6KDXT67QYV.tmp.so.c
+	app_dir_out_name_c := (v.pref.out_name.all_before_last('\\') + '\\' +
+		v.pref.out_name_c.all_after_last('\\')).all_before_last('.')
+	// testdll.dll
+	app_dir_out_name := if v.pref.out_name.ends_with('.dll') || v.pref.out_name.ends_with('.exe') {
+		v.pref.out_name[0..v.pref.out_name.len - 4]
+	} else {
+		v.pref.out_name
+	}
 	mut a := []string{}
 
 	env_cflags := os.getenv('CFLAGS')
@@ -282,6 +291,10 @@ pub fn (mut v Builder) cc_msvc() {
 	} else {
 		a << '/MD'
 		a << '/DNDEBUG'
+		if !v.ccoptions.debug_mode {
+			v.pref.cleanup_files << out_name_pdb
+			v.pref.cleanup_files << app_dir_out_name + '.pdb'
+		}
 	}
 	if v.pref.is_shared {
 		if !v.pref.out_name.ends_with('.dll') {
@@ -319,6 +332,9 @@ pub fn (mut v Builder) cc_msvc() {
 	// The C file we are compiling
 	// a << '"$TmpPath/$v.out_name_c"'
 	a << '"' + os.real_path(v.out_name_c) + '"'
+	if !v.ccoptions.debug_mode {
+		v.pref.cleanup_files << os.real_path(v.out_name_c)
+	}
 	// Emily:
 	// Not all of these are needed (but the compiler should discard them if they are not used)
 	// these are the defaults used by msbuild and visual studio
@@ -340,8 +356,13 @@ pub fn (mut v Builder) cc_msvc() {
 	if v.pref.is_shared {
 		// generate a .def for export function names, avoid function name mangle
 		// must put after the /link flag!
-		def_name := v.pref.out_name[0..v.pref.out_name.len - 4]
-		a << '/DEF:' + os.quoted_path('${def_name}.def')
+		def_name := app_dir_out_name + '.def'
+		a << '/DEF:' + os.quoted_path(def_name)
+		if !v.ccoptions.debug_mode {
+			v.pref.cleanup_files << def_name
+			v.pref.cleanup_files << app_dir_out_name_c + '.exp'
+			v.pref.cleanup_files << app_dir_out_name_c + '.lib'
+		}
 	}
 
 	a << '/nologo' // NOTE: /NOLOGO is explicitly not recognised!
@@ -369,6 +390,11 @@ pub fn (mut v Builder) cc_msvc() {
 	// write args to a file so that we dont smash createprocess
 	os.write_file(out_name_cmd_line, args) or {
 		verror('Unable to write response file to "${out_name_cmd_line}"')
+	}
+	if !v.ccoptions.debug_mode {
+		v.pref.cleanup_files << out_name_cmd_line
+		v.pref.cleanup_files << app_dir_out_name_c + '.obj'
+		v.pref.cleanup_files << app_dir_out_name + '.ilk'
 	}
 	cmd := '"${r.full_cl_exe_path}" "@${out_name_cmd_line}"'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
