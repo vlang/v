@@ -726,10 +726,17 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 
 	if g.pref.is_shared && g.pref.os == .windows && g.export_funcs.len > 0 {
 		// generate a .def for export function names, avoid function name mangle
-		def_name := g.pref.out_name[0..g.pref.out_name.len - 4]
-		dll_name := g.pref.out_name.all_after_last('\\')
-		file_content := 'LIBRARY ${dll_name}.dll\n\nEXPORTS\n' + g.export_funcs.join('\n')
-		os.write_file('${def_name}.def', file_content) or { panic(err) }
+		mut def_name := ''
+		mut dll_name := ''
+		if g.pref.out_name.ends_with('.dll') {
+			def_name = g.pref.out_name[0..g.pref.out_name.len - 4] + '.def'
+			dll_name = g.pref.out_name.all_after_last('\\')
+		} else {
+			def_name = g.pref.out_name + '.def'
+			dll_name = g.pref.out_name.all_after_last('\\') + '.dll'
+		}
+		file_content := 'LIBRARY ${dll_name}\n\nEXPORTS\n' + g.export_funcs.join('\n')
+		os.write_file('${def_name}', file_content) or { panic(err) }
 	}
 
 	// End of out_0.c
