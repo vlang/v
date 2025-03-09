@@ -4,9 +4,6 @@
 module ecdsa
 
 import hash
-import crypto
-import crypto.sha256
-import crypto.sha512
 
 // NID constants
 //
@@ -135,15 +132,7 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 			return error('seed size doesnt match with curve key size')
 		}
 	}
-	// TODO: remove this when its ready to go out
-	eckey := C.EVP_PKEY_get1_EC_KEY(evpkey)
-	if eckey == 0 {
-		C.EC_KEY_free(eckey)
-		C.EVP_PKEY_free(evpkey)
-		return error('EVP_PKEY_get1_EC_KEY failed')
-	}
 	mut pvkey := PrivateKey{
-		key:    eckey
 		evpkey: evpkey
 	}
 
@@ -161,11 +150,8 @@ pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 // PrivateKey represents ECDSA private key. Actually its a key pair,
 // contains private key and public key parts.
 pub struct PrivateKey {
-	// The new high level of keypair opaque, set to nil now.
-	evpkey &C.EVP_PKEY = unsafe { nil }
-	// TODO: when all has been migrated to the new one,
-	// removes this low level declarations.
-	key &C.EC_KEY
+	// The new high level of keypair opaque
+	evpkey &C.EVP_PKEY
 mut:
 	// ks_flag with .flexible value allowing
 	// flexible-size seed bytes as key.
@@ -229,23 +215,12 @@ pub fn PrivateKey.new(opt CurveOptions) !PrivateKey {
 		return error('EVP_PKEY_keygen failed')
 	}
 
-	// EVP_PKEY_get1_EC_KEY was deprecated in 3.0. Its used here for compatibility purposes
-	// to support the old key function.
-	// TODO: removes this when its ready to obsolete.
-	eckey := C.EVP_PKEY_get1_EC_KEY(evpkey)
-	if eckey == 0 {
-		C.EVP_PKEY_CTX_free(pctx)
-		C.EC_KEY_free(eckey)
-		C.EVP_PKEY_free(evpkey)
-		return error('EVP_PKEY_get1_EC_KEY failed')
-	}
 	// Cleans up the context
 	C.EVP_PKEY_CTX_free(pctx)
 	// when using default this function, its using underlying curve key size
 	// and discarded opt.fixed_size flag when its not set.
 	priv_key := PrivateKey{
 		evpkey:  evpkey
-		key:     eckey
 		ks_flag: .fixed
 	}
 	return priv_key
@@ -254,12 +229,8 @@ pub fn PrivateKey.new(opt CurveOptions) !PrivateKey {
 // sign performs signing the message with the options. By default options,
 // it will perform hashing before signing the message.
 pub fn (pv PrivateKey) sign(message []u8, opt SignerOpts) ![]u8 {
-	if pv.evpkey != unsafe { nil } {
-		digest := calc_digest_with_evpkey(pv.evpkey, message, opt)!
-		return sign_digest(pv.evpkey, digest)!
-	}
-	digest := calc_digest_with_eckey(pv.key, message, opt)!
-	return pv.sign_digest(digest)!
+	digest := calc_digest_with_evpkey(pv.evpkey, message, opt)!
+	return sign_digest(pv.evpkey, digest)!
 }
 
 // sign_with_options signs message with the options. It will be deprecated,
@@ -267,24 +238,6 @@ pub fn (pv PrivateKey) sign(message []u8, opt SignerOpts) ![]u8 {
 @[deprecated: 'use PrivateKey.sign() instead']
 pub fn (pv PrivateKey) sign_with_options(message []u8, opt SignerOpts) ![]u8 {
 	return pv.sign(message, opt)
-}
-
-// sign_digest sign a digest with private key.
-fn (pv PrivateKey) sign_digest(digest []u8) ![]u8 {
-	if digest.len == 0 {
-		return error('Digest cannot be null or empty')
-	}
-	mut sig_len := u32(0)
-	sig_size := C.ECDSA_size(pv.key)
-	sig := unsafe { malloc(int(sig_size)) }
-	res := C.ECDSA_sign(0, digest.data, digest.len, sig, &sig_len, pv.key)
-	if res != 1 {
-		unsafe { free(sig) }
-		return error('Failed to sign digest')
-	}
-	signed_data := unsafe { sig.vbytes(int(sig_len)) }
-	unsafe { free(sig) }
-	return signed_data.clone()
 }
 
 // bytes represent private key as bytes.
@@ -325,70 +278,17 @@ pub fn (pv PrivateKey) seed() ![]u8 {
 pub fn (pv PrivateKey) public_key() !PublicKey {
 	// Check if EVP_PKEY opaque was availables or not.
 	// TODO: removes this check when its ready
-	if pv.evpkey != unsafe { nil } {
-		bo := C.BIO_new(C.BIO_s_mem())
-		n := C.i2d_PUBKEY_bio(bo, pv.evpkey)
-		assert n != 0
-		// stores this bio as another key
-		pbkey := C.d2i_PUBKEY_bio(bo, 0)
 
-		// TODO: removes this when its ready to obsolete.
-		eckey := C.EVP_PKEY_get1_EC_KEY(pbkey)
-		if eckey == 0 {
-			C.EC_KEY_free(eckey)
-			C.EVP_PKEY_free(pbkey)
-			C.BIO_free_all(bo)
-			return error('EVP_PKEY_get1_EC_KEY failed')
-		}
-		C.BIO_free_all(bo)
+	bo := C.BIO_new(C.BIO_s_mem())
+	n := C.i2d_PUBKEY_bio(bo, pv.evpkey)
+	assert n != 0
+	// stores this bio as another key
+	pbkey := C.d2i_PUBKEY_bio(bo, 0)
 
-		return PublicKey{
-			evpkey: pbkey
-			key:    eckey
-		}
-	}
-	// Otherwise, use the old EC_KEY opaque.
-	// TODO: removes this when its ready to obsolete
-	//
-	// There are some issues concerned when returning PublicKey directly using underlying
-	// `PrivateKey.key`. This private key containing sensitive information inside it, so return
-	// this without care maybe can lead to some serious security impact.
-	// See https://discord.com/channels/592103645835821068/592320321995014154/1329261267965448253
-	// So, we instead return a new EC_KEY opaque based information availables on private key object
-	// without private key bits has been set on this new opaque.
-	group := voidptr(C.EC_KEY_get0_group(pv.key))
-	if group == 0 {
-		return error('Failed to load group from priv_key')
-	}
-	nid := C.EC_GROUP_get_curve_name(group)
-	if nid != nid_prime256v1 && nid != nid_secp384r1 && nid != nid_secp521r1 && nid != nid_secp256k1 {
-		return error('Get unsupported curve nid')
-	}
-	// get public key point from private key opaque
-	pubkey_point := voidptr(C.EC_KEY_get0_public_key(pv.key))
-	if pubkey_point == 0 {
-		// C.EC_POINT_free(pubkey_point)
-		// todo: maybe its not set, just calculates new one
-		return error('Failed to get public key BIGNUM')
-	}
-	// creates a new EC_KEY opaque based on the same NID with private key and
-	// sets public key on it.
-	pub_key := C.EC_KEY_new_by_curve_name(nid)
-	np := C.EC_KEY_set_public_key(pub_key, pubkey_point)
-	if np != 1 {
-		// C.EC_POINT_free(pubkey_point)
-		C.EC_KEY_free(pub_key)
-		return error('Failed to set public key')
-	}
-	// performs explicit check
-	chk := C.EC_KEY_check_key(pub_key)
-	if chk == 0 {
-		C.EC_KEY_free(pub_key)
-		return error('EC_KEY_check_key failed')
-	}
-	// OK ?
+	C.BIO_free_all(bo)
+
 	return PublicKey{
-		key: pub_key
+		evpkey: pbkey
 	}
 }
 
@@ -397,229 +297,44 @@ pub fn (pv PrivateKey) public_key() !PublicKey {
 // - whether both of private keys lives under the same group (curve),
 // - compares if two private key bytes was equal.
 pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
-	if priv_key.evpkey != unsafe { nil } && other.evpkey != unsafe { nil } {
-		eq := C.EVP_PKEY_eq(voidptr(priv_key.evpkey), voidptr(other.evpkey))
-		return eq == 1
-	}
-	// TODO: remove this when its ready
-	group1 := voidptr(C.EC_KEY_get0_group(priv_key.key))
-	group2 := voidptr(C.EC_KEY_get0_group(other.key))
-	ctx := C.BN_CTX_new()
-	if ctx == 0 {
-		return false
-	}
-	defer {
-		C.BN_CTX_free(ctx)
-	}
-	gres := C.EC_GROUP_cmp(group1, group2, ctx)
-	// Its lives on the same group
-	if gres == 0 {
-		bn1 := voidptr(C.EC_KEY_get0_private_key(priv_key.key))
-		bn2 := voidptr(C.EC_KEY_get0_private_key(other.key))
-		res := C.BN_cmp(bn1, bn2)
-		return res == 0
-	}
-	return false
+	eq := C.EVP_PKEY_eq(voidptr(priv_key.evpkey), voidptr(other.evpkey))
+	return eq == 1
 }
 
 // free clears out allocated memory for PrivateKey
 // Dont use PrivateKey after calling `.free()`
 pub fn (pv &PrivateKey) free() {
-	C.EC_KEY_free(pv.key)
 	C.EVP_PKEY_free(pv.evpkey)
 }
 
 // PublicKey represents ECDSA public key for verifying message.
 pub struct PublicKey {
-	// The new high level of keypair opaque, set to nil now.
-	evpkey &C.EVP_PKEY = unsafe { nil }
-	// Remove this when its fully obsoleted by the new one.
-	key &C.EC_KEY
+	// The new high level of keypair opaque
+	evpkey &C.EVP_PKEY
 }
 
 // verify verifies a message with the signature are valid with public key provided .
 // You should provide it with the same SignerOpts used with the `.sign()` call.
 // or verify would fail (false).
 pub fn (pb PublicKey) verify(message []u8, sig []u8, opt SignerOpts) !bool {
-	if pb.evpkey != unsafe { nil } {
-		digest := calc_digest_with_evpkey(pb.evpkey, message, opt)!
-		return verify_signature(pb.evpkey, sig, digest)
-	}
-	digest := calc_digest_with_eckey(pb.key, message, opt)!
-	res := C.ECDSA_verify(0, digest.data, digest.len, sig.data, sig.len, pb.key)
-	if res == -1 {
-		return error('Failed to verify signature')
-	}
-	return res == 1
+	digest := calc_digest_with_evpkey(pb.evpkey, message, opt)!
+	return verify_signature(pb.evpkey, sig, digest)
 }
 
 // Compare two public keys
 pub fn (pub_key PublicKey) equal(other PublicKey) bool {
-	if pub_key.evpkey != unsafe { nil } && other.evpkey != unsafe { nil } {
-		eq := C.EVP_PKEY_eq(voidptr(pub_key.evpkey), voidptr(other.evpkey))
-		return eq == 1
-	}
-	// TODO: check validity of the group
-	group1 := voidptr(C.EC_KEY_get0_group(pub_key.key))
-	group2 := voidptr(C.EC_KEY_get0_group(other.key))
-	if group1 == 0 || group2 == 0 {
-		return false
-	}
-	ctx := C.BN_CTX_new()
-	if ctx == 0 {
-		return false
-	}
-	defer {
-		C.BN_CTX_free(ctx)
-	}
-	gres := C.EC_GROUP_cmp(group1, group2, ctx)
-	// Its lives on the same group
-	if gres == 0 {
-		point1 := voidptr(C.EC_KEY_get0_public_key(pub_key.key))
-		point2 := voidptr(C.EC_KEY_get0_public_key(other.key))
-		if point1 == 0 || point2 == 0 {
-			return false
-		}
-		res := C.EC_POINT_cmp(group1, point1, point2, ctx)
-		return res == 0
-	}
-
-	return false
+	eq := C.EVP_PKEY_eq(voidptr(pub_key.evpkey), voidptr(other.evpkey))
+	return eq == 1
 }
 
 // free clears out allocated memory for PublicKey.
 // Dont use PublicKey after calling `.free()`
 pub fn (pb &PublicKey) free() {
-	C.EC_KEY_free(pb.key)
 	C.EVP_PKEY_free(pb.evpkey)
 }
 
 // Helpers
 //
-// new_curve creates a new empty curve based on curve NID, default to prime256v1 (or secp256r1).
-fn new_curve(opt CurveOptions) &C.EC_KEY {
-	mut nid := nid_prime256v1
-	match opt.nid {
-		.prime256v1 {
-			// do nothing
-		}
-		.secp384r1 {
-			nid = nid_secp384r1
-		}
-		.secp521r1 {
-			nid = nid_secp521r1
-		}
-		.secp256k1 {
-			nid = nid_secp256k1
-		}
-	}
-	return C.EC_KEY_new_by_curve_name(nid)
-}
-
-// Gets recommended hash function of the key.
-// Its purposes for hashing message to be signed.
-fn recommended_hash(key &C.EC_KEY) !crypto.Hash {
-	group := voidptr(C.EC_KEY_get0_group(key))
-	if group == 0 {
-		return error('Unable to load group')
-	}
-	// gets the bits size of private key group
-	num_bits := C.EC_GROUP_get_degree(group)
-	match true {
-		// use sha256
-		num_bits <= 256 {
-			return .sha256
-		}
-		num_bits > 256 && num_bits <= 384 {
-			return .sha384
-		}
-		// TODO: what hash should be used if the size is over > 512 bits
-		num_bits > 384 {
-			return .sha512
-		}
-		else {
-			return error('Unsupported bits size')
-		}
-	}
-}
-
-fn calc_digest_with_recommended_hash(key &C.EC_KEY, msg []u8) ![]u8 {
-	h := recommended_hash(key)!
-	match h {
-		.sha256 {
-			return sha256.sum256(msg)
-		}
-		.sha384 {
-			return sha512.sum384(msg)
-		}
-		.sha512 {
-			return sha512.sum512(msg)
-		}
-		else {
-			return error('Unsupported hash')
-		}
-	}
-}
-
-// calc_digest_with_eckey tries to calculates digest (hash) of the message based on options provided.
-// If the options was .with_no_hash, its has the same behaviour with .with_recommended_hash.
-fn calc_digest_with_eckey(key &C.EC_KEY, message []u8, opt SignerOpts) ![]u8 {
-	if message.len == 0 {
-		return error('null-length messages')
-	}
-	// check key size bits
-	group := voidptr(C.EC_KEY_get0_group(key))
-	if group == 0 {
-		return error('fail to load group')
-	}
-	num_bits := C.EC_GROUP_get_degree(group)
-	key_size := (num_bits + 7) / 8
-	// we're working on mutable copy of SignerOpts, with some issues when make it as a mutable.
-	// ie, declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed.
-	mut cfg := opt
-	match cfg.hash_config {
-		// There are issues when your message size was exceeds the current key size with .with_no_hash options.
-		// See https://discord.com/channels/592103645835821068/592114487759470596/1334319744098107423
-		// So, we aliased it into .with_recommended_hash
-		.with_no_hash, .with_recommended_hash {
-			return calc_digest_with_recommended_hash(key, message)!
-		}
-		.with_custom_hash {
-			if !cfg.allow_custom_hash {
-				return error('custom hash was not allowed, set it into true')
-			}
-			if cfg.custom_hash == unsafe { nil } {
-				return error('Custom hasher was not defined')
-			}
-			// If current Private Key size is bigger then current hash output size,
-			// by default its not allowed, until set the allow_smaller_size into true
-			if key_size > cfg.custom_hash.size() {
-				if !cfg.allow_smaller_size {
-					return error('Hash into smaller size than current key size was not allowed')
-				}
-			}
-			// we need to reset the custom hash before writes message
-			cfg.custom_hash.reset()
-			_ := cfg.custom_hash.write(message)!
-			digest := cfg.custom_hash.sum([]u8{})
-			// NOTES:
-			// NIST FIPS 186-4 at the end of section 6.4 states that:
-			// When the length of the output of the hash function is greater than the bit length of n,
-			// then the leftmost n bits of the hash function output block shall be used in any calculation
-			// using the hash function output during the generation or verification of a digital signature
-			// with output of custom_hash was bigger than bit length (key size)
-			// TODO:
-			// Maybe better to pick up only required bytes from digest, ie,
-			// out := digest[..key_size].clone()
-			// unsafe { digest.free() }
-			// return out
-			// Currently, just boildown to the caller
-			return digest
-		}
-	}
-	return error('Not should be here')
-}
-
 // calc_digest_with_evpkey get the digest of the messages under the EVP_PKEY and options
 fn calc_digest_with_evpkey(key &C.EVP_PKEY, message []u8, opt SignerOpts) ![]u8 {
 	if message.len == 0 {
@@ -797,7 +512,8 @@ fn evpkey_from_seed(seed []u8, opt CurveOptions) !&C.EVP_PKEY {
 	assert param_bld != 0
 
 	// push the group, private and public key bytes infos into the builder
-	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, c'group', opt.nid.str().str, 0)
+	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, c'group', voidptr(opt.nid.str().str),
+		0)
 	m := C.OSSL_PARAM_BLD_push_BN(param_bld, c'priv', bn)
 	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'pub', pub_bytes.data, pub_bytes.len)
 	if n <= 0 || m <= 0 || o <= 0 {

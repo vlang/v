@@ -34,10 +34,10 @@ fn test_ecdsa_signing_with_recommended_hash_options() {
 }
 
 fn test_generate_key() ! {
-	// Test key generation
+	// Test key generation with high level opaque
 	pub_key, priv_key := generate_key() or { panic(err) }
-	assert pub_key.key != unsafe { nil }
-	assert priv_key.key != unsafe { nil }
+	assert pub_key.evpkey != unsafe { nil }
+	assert priv_key.evpkey != unsafe { nil }
 
 	priv_key.free()
 	pub_key.free()
@@ -176,7 +176,7 @@ fn test_different_keys_not_equal() ! {
 fn test_private_key_new() ! {
 	priv_key := PrivateKey.new()!
 	assert priv_key.ks_flag == .fixed
-	size := ec_key_size(priv_key.key)!
+	size := evp_key_size(priv_key.evpkey)!
 	assert size == 32
 	pubkey := priv_key.public_key()!
 

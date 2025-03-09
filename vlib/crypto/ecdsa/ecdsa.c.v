@@ -38,12 +38,14 @@ struct C.EVP_PKEY {}
 
 fn C.EVP_PKEY_new() &C.EVP_PKEY
 fn C.EVP_PKEY_free(key &C.EVP_PKEY)
-fn C.EVP_PKEY_get1_EC_KEY(pkey &C.EVP_PKEY) &C.EC_KEY
 fn C.EVP_PKEY_base_id(key &C.EVP_PKEY) int
 fn C.EVP_PKEY_bits(pkey &C.EVP_PKEY) int
 fn C.EVP_PKEY_size(key &C.EVP_PKEY) int
 fn C.EVP_PKEY_eq(a &C.EVP_PKEY, b &C.EVP_PKEY) int
+fn C.EVP_PKEY_check(ctx &C.EVP_PKEY_CTX) int
+fn C.EVP_PKEY_public_check(ctx &C.EVP_PKEY_CTX) int
 
+fn C.EVP_PKEY_get_group_name(pkey &C.EVP_PKEY, gname &u8, gname_sz u32, gname_len &usize) int
 fn C.EVP_PKEY_get1_encoded_public_key(pkey &C.EVP_PKEY, ppub &&u8) int
 fn C.EVP_PKEY_get_bn_param(pkey &C.EVP_PKEY, key_name &u8, bn &&C.BIGNUM) int
 fn C.EVP_PKEY_fromdata_init(ctx &C.EVP_PKEY_CTX) int
@@ -86,23 +88,6 @@ fn C.EVP_PKEY_CTX_free(ctx &C.EVP_PKEY_CTX)
 
 fn C.EVP_PKEY_get_bits(pkey &C.EVP_PKEY) int
 
-// Elliptic curve keypair declarations
-@[typedef]
-struct C.EC_KEY {}
-
-fn C.EC_KEY_new_by_curve_name(nid int) &C.EC_KEY
-fn C.EC_KEY_generate_key(key &C.EC_KEY) int
-fn C.EC_KEY_dup(src &C.EC_KEY) &C.EC_KEY
-fn C.EC_KEY_free(key &C.EC_KEY)
-fn C.EC_KEY_set_public_key(key &C.EC_KEY, &C.EC_POINT) int
-fn C.EC_KEY_set_private_key(key &C.EC_KEY, prv &C.BIGNUM) int
-fn C.EC_KEY_get0_group(key &C.EC_KEY) &C.EC_GROUP
-fn C.EC_KEY_get0_private_key(key &C.EC_KEY) &C.BIGNUM
-fn C.EC_KEY_get0_public_key(key &C.EC_KEY) &C.EC_POINT
-fn C.EC_KEY_get_conv_form(k &C.EC_KEY) int
-fn C.EC_KEY_check_key(key &C.EC_KEY) int
-fn C.EC_KEY_up_ref(key &C.EC_KEY) int
-
 // BIO input output declarations.
 @[typedef]
 struct C.BIO_METHOD {}
@@ -126,9 +111,7 @@ struct C.EC_POINT {}
 
 fn C.EC_POINT_new(group &C.EC_GROUP) &C.EC_POINT
 fn C.EC_POINT_mul(group &C.EC_GROUP, r &C.EC_POINT, n &C.BIGNUM, q &C.EC_POINT, m &C.BIGNUM, ctx &C.BN_CTX) int
-fn C.EC_POINT_point2oct(g &C.EC_GROUP, p &C.EC_POINT, form int, buf &u8, max_out int, ctx &C.BN_CTX) int
 fn C.EC_POINT_point2buf(group &C.EC_GROUP, point &C.EC_POINT, form int, pbuf &&u8, ctx &C.BN_CTX) int
-fn C.EC_POINT_cmp(group &C.EC_GROUP, a &C.EC_POINT, b &C.EC_POINT, ctx &C.BN_CTX) int
 fn C.EC_POINT_free(point &C.EC_POINT)
 
 // Elliptic group (curve) related declarations.
@@ -136,9 +119,6 @@ fn C.EC_POINT_free(point &C.EC_POINT)
 struct C.EC_GROUP {}
 
 fn C.EC_GROUP_free(group &C.EC_GROUP)
-fn C.EC_GROUP_get_degree(g &C.EC_GROUP) int
-fn C.EC_GROUP_get_curve_name(g &C.EC_GROUP) int
-fn C.EC_GROUP_cmp(a &C.EC_GROUP, b &C.EC_GROUP, ctx &C.BN_CTX) int
 fn C.EC_GROUP_new_by_curve_name(nid int) &C.EC_GROUP
 
 // Elliptic BIGNUM related declarations.
@@ -159,14 +139,6 @@ struct C.BN_CTX {}
 
 fn C.BN_CTX_new() &C.BN_CTX
 fn C.BN_CTX_free(ctx &C.BN_CTX)
-
-// ELliptic ECDSA signing and verifying related declarations.
-@[typedef]
-struct C.ECDSA_SIG {}
-
-fn C.ECDSA_size(key &C.EC_KEY) u32
-fn C.ECDSA_sign(type_ int, dgst &u8, dgstlen int, sig &u8, siglen &u32, eckey &C.EC_KEY) int
-fn C.ECDSA_verify(type_ int, dgst &u8, dgstlen int, sig &u8, siglen int, eckey &C.EC_KEY) int
 
 @[typedef]
 struct C.EVP_MD_CTX {}
