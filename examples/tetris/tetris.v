@@ -140,7 +140,8 @@ fn (mut game Game) showfps() {
 }
 
 fn frame(mut game Game) {
-	if game.gg.frame & 15 == 0 {
+	if game.gg.timer.elapsed().milliseconds() > 264 {
+		game.gg.timer.restart()
 		game.update_game_state()
 	}
 	ws := gg.window_size()
