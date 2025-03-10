@@ -92,3 +92,10 @@ curl -X GET --verbose http://localhost:3000/user/1
 ```sh
 wrk --connection 512 --threads 16 --duration 10s http://localhost:3000
 ```
+
+### Valgrind
+```sh
+# Race condition check
+v -prod -gc none . 
+valgrind --tool=helgrind ./vanilla_http_server
+```
