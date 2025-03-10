@@ -201,7 +201,7 @@ fn remove_fd_from_epoll(epoll_fd int, fd int) {
 	C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, C.NULL)
 }
 
-fn handle_accept(mut server Server) {
+fn handle_accept_loop(mut server Server) {
 	for {
 		client_fd := C.accept(server.server_socket, C.NULL, C.NULL)
 		if client_fd < 0 {
@@ -286,12 +286,6 @@ fn process_events(mut server Server) {
 	}
 }
 
-fn event_loop(mut server Server) {
-	for {
-		handle_accept(mut server)
-	}
-}
-
 fn (mut server Server) run() {
 	server.server_socket = create_server_socket(port)
 	if server.server_socket < 0 {
@@ -320,5 +314,5 @@ fn (mut server Server) run() {
 	}
 
 	println('listening on http://localhost:${port}/')
-	event_loop(mut server)
+	handle_accept_loop(mut server)
 }
