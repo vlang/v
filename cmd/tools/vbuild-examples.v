@@ -10,6 +10,7 @@ const efolders = [
 	'examples/viewer',
 	'examples/vweb_orm_jwt',
 	'examples/vweb_fullstack',
+	'examples/vanilla_http_server',
 ]
 
 pub fn normalised_vroot_path(path string) string {
