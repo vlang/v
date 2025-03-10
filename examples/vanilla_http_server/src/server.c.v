@@ -16,10 +16,10 @@ const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0
 
 #include <fcntl.h>
 #include <errno.h>
-#include <netinet/in.h>
 
 $if !windows {
 	#include <sys/epoll.h>
+	#include <netinet/in.h>
 }
 
 fn C.socket(socket_family int, socket_type int, protocol int) int
