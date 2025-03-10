@@ -142,12 +142,14 @@ fn close_socket(fd int) {
 
 fn create_server_socket(port int) int {
 	// Create a socket with non-blocking mode
-	server_fd := C.socket(C.AF_INET, C.SOCK_STREAM | C.SOCK_NONBLOCK, 0)
+	server_fd := C.socket(C.AF_INET, C.SOCK_STREAM, 0)
 	if server_fd < 0 {
 		eprintln(@LOCATION)
 		C.perror('Socket creation failed'.str)
 		return -1
 	}
+
+	// set_blocking(server_fd, false)
 
 	// Enable SO_REUSEPORT
 	opt := 1
@@ -199,7 +201,7 @@ fn remove_fd_from_epoll(epoll_fd int, fd int) {
 	C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, C.NULL)
 }
 
-fn handle_accept(server &Server) {
+fn handle_accept(mut server Server) {
 	for {
 		client_fd := C.accept(server.server_socket, C.NULL, C.NULL)
 		if client_fd < 0 {
@@ -231,7 +233,7 @@ fn handle_client_closure(server &Server, client_fd int) {
 	}
 }
 
-fn process_events(server &Server) {
+fn process_events(mut server Server) {
 	for {
 		events := [max_connection_size]C.epoll_event{}
 		num_events := C.epoll_wait(server.epoll_fd, &events[0], max_connection_size, -1)
@@ -261,16 +263,16 @@ fn process_events(server &Server) {
 
 					// This lock is a workaround for avoiding race condition in router.params
 					// This slows down the server, but it's a temporary solution
-					(*server).lock_flag.lock()
-					response_buffer := (*server).request_handler(decoded_http_request) or {
+					server.lock_flag.lock()
+					response_buffer := server.request_handler(decoded_http_request) or {
 						eprintln('Error handling request ${err}')
 						C.send(unsafe { events[i].data.fd }, tiny_bad_request_response.data,
 							tiny_bad_request_response.len, 0)
 						handle_client_closure(server, unsafe { events[i].data.fd })
-						(*server).lock_flag.unlock()
+						server.lock_flag.unlock()
 						continue
 					}
-					(*server).lock_flag.unlock()
+					server.lock_flag.unlock()
 
 					C.send(unsafe { events[i].data.fd }, response_buffer.data, response_buffer.len,
 						0)
@@ -284,9 +286,9 @@ fn process_events(server &Server) {
 	}
 }
 
-fn event_loop(server &Server) {
+fn event_loop(mut server Server) {
 	for {
-		handle_accept(server)
+		handle_accept(mut server)
 	}
 }
 
@@ -314,9 +316,9 @@ fn (mut server Server) run() {
 	server.lock_flag.init()
 
 	for i := 0; i < max_thread_pool_size; i++ {
-		server.threads[i] = spawn process_events(&server)
+		server.threads[i] = spawn process_events(mut server)
 	}
 
 	println('listening on http://localhost:${port}/')
-	event_loop(&server)
+	event_loop(mut server)
 }
