@@ -54,6 +54,7 @@ fn (nid Nid) str() string {
 	}
 }
 
+// CurveOptions represents configuration options to drive keypair generation.
 @[params]
 pub struct CurveOptions {
 pub mut:
@@ -94,7 +95,7 @@ enum KeyFlag {
 }
 
 // generate_key generates a new key pair. If opt was not provided, its default to prime256v1 curve.
-// If you want another curve, use in the following manner: `pubkey, pivkey := ecdsa.generate_key(nid: .secp384r1)!`
+// If you want another curve, use `pubkey, pivkey := ecdsa.generate_key(nid: .secp384r1)!` instead.
 pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
 	// This can be simplified to just more simpler one
 	pv := PrivateKey.new(opt)!
@@ -111,7 +112,7 @@ pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
 // You should make sure, the seed bytes come from a cryptographically secure random generator,
 // likes the `crypto.rand` or other trusted sources.
 // Internally, the seed size's would be checked to not exceed the key size of underlying curve,
-// ie, 32 bytes length for p-256 and secp256k1, 48 bytes length for p-384 and 64 bytes length for p-521.
+// ie, 32 bytes length for p-256 and secp256k1, 48 bytes length for p-384 and 66 bytes length for p-521.
 // Its recommended to use seed with bytes length matching with underlying curve key size.
 pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
 	// Early exit check
@@ -276,9 +277,6 @@ pub fn (pv PrivateKey) seed() ![]u8 {
 
 // public_key gets the PublicKey from private key.
 pub fn (pv PrivateKey) public_key() !PublicKey {
-	// Check if EVP_PKEY opaque was availables or not.
-	// TODO: removes this check when its ready
-
 	bo := C.BIO_new(C.BIO_s_mem())
 	n := C.i2d_PUBKEY_bio(bo, pv.evpkey)
 	assert n != 0
@@ -292,17 +290,13 @@ pub fn (pv PrivateKey) public_key() !PublicKey {
 	}
 }
 
-// equal compares two private keys was equal. Its checks for two things, ie:
-//
-// - whether both of private keys lives under the same group (curve),
-// - compares if two private key bytes was equal.
+// equal compares two private keys was equal.
 pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
 	eq := C.EVP_PKEY_eq(voidptr(priv_key.evpkey), voidptr(other.evpkey))
 	return eq == 1
 }
 
-// free clears out allocated memory for PrivateKey
-// Dont use PrivateKey after calling `.free()`
+// free clears out allocated memory for PrivateKey. Dont use PrivateKey after calling `.free()`
 pub fn (pv &PrivateKey) free() {
 	C.EVP_PKEY_free(pv.evpkey)
 }
@@ -321,14 +315,13 @@ pub fn (pb PublicKey) verify(message []u8, sig []u8, opt SignerOpts) !bool {
 	return verify_signature(pb.evpkey, sig, digest)
 }
 
-// Compare two public keys
+// equal compares two public keys was equal.
 pub fn (pub_key PublicKey) equal(other PublicKey) bool {
 	eq := C.EVP_PKEY_eq(voidptr(pub_key.evpkey), voidptr(other.evpkey))
 	return eq == 1
 }
 
-// free clears out allocated memory for PublicKey.
-// Dont use PublicKey after calling `.free()`
+// free clears out allocated memory for PublicKey. Dont use PublicKey after calling `.free()`
 pub fn (pb &PublicKey) free() {
 	C.EVP_PKEY_free(pb.evpkey)
 }

@@ -151,9 +151,9 @@ pub fn pubkey_from_string(s string) !PublicKey {
 }
 
 // privkey_from_string loads a PrivateKey from valid PEM-formatted string in s.
-// Underlying wrapper support for old secg and pkcs8 private key format, but this was not heavily tested.
-// This routine does not support for the pkcs8 EncryptedPrivateKeyInfo format.
-// See [usage_test.v](https://github.com/vlang/v/blob/master/vlib/crypto/ecdsa/example/ecdsa_seed_test.v) file
+// Underlying wrapper support for old SECG and PKCS8 private key format, but this was not heavily tested.
+// This routine does not support for the PKCS8 EncryptedPrivateKeyInfo format.
+// See [ecdsa_seed_test.v](https://github.com/vlang/v/blob/master/vlib/crypto/ecdsa/example/ecdsa_seed_test.v) file
 // for example of usage.
 pub fn privkey_from_string(s string) !PrivateKey {
 	if s.len == 0 {
