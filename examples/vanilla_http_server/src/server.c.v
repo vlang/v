@@ -85,43 +85,9 @@ mut:
 	request_handler fn (HttpRequest) ![]u8 @[required]
 }
 
-const max_unix_path = 108
-
 const max_connection_size = 1024
 
 const max_thread_pool_size = 8
-
-@[_pack: '1']
-pub struct Ip6 {
-	port      u16
-	flow_info u32
-	addr      [16]u8
-	scope_id  u32
-}
-
-@[_pack: '1']
-pub struct Ip {
-	port    u16
-	addr    [4]u8
-	sin_pad [8]u8
-}
-
-pub struct Unix {
-	path [max_unix_path]u8
-}
-
-union AddrData {
-	Unix
-	Ip
-	Ip6
-}
-
-@[_pack: '1']
-pub struct Addr {
-pub:
-	f    u16
-	addr AddrData
-}
 
 fn set_blocking(fd int, blocking bool) {
 	flags := C.fcntl(fd, C.F_GETFL, 0)
