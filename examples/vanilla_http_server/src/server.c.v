@@ -23,7 +23,7 @@ const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0
 
 fn C.socket(socket_family int, socket_type int, protocol int) int
 
-fn C.bind(sockfd int, addr &Addr, addrlen u32) int
+fn C.bind(sockfd int, addr &C.sockaddr_in, addrlen u32) int
 
 fn C.send(__fd int, __buf voidptr, __n usize, __flags int) int
 
@@ -33,7 +33,7 @@ fn C.setsockopt(__fd int, __level int, __optname int, __optval voidptr, __optlen
 
 fn C.listen(__fd int, __n int) int
 
-fn C.perror(s &u8) voidptr
+fn C.perror(s &u8)
 
 fn C.close(fd int) int
 
@@ -49,27 +49,25 @@ fn C.epoll_wait(__epfd int, __events &C.epoll_event, __maxevents int, __timeout 
 
 fn C.fcntl(fd int, cmd int, arg int) int
 
-struct In_addr {
-	s_addr int
+struct C.in_addr {
+	s_addr u32
 }
 
-struct Sockaddr_in {
+struct C.sockaddr_in {
 	sin_family u16
 	sin_port   u16
-	sin_addr   In_addr
+	sin_addr   C.in_addr
 	sin_zero   [8]u8
 }
 
-@[typedef]
 union C.epoll_data {
-mut:
 	ptr voidptr
 	fd  int
 	u32 u32
 	u64 u64
 }
 
-pub struct C.epoll_event {
+struct C.epoll_event {
 	events u32
 	data   C.epoll_data
 }
@@ -129,10 +127,10 @@ fn create_server_socket(port int) int {
 		return -1
 	}
 
-	server_addr := Sockaddr_in{
+	server_addr := C.sockaddr_in{
 		sin_family: u16(C.AF_INET)
 		sin_port:   C.htons(port)
-		sin_addr:   In_addr{C.INADDR_ANY}
+		sin_addr:   C.in_addr{u32(C.INADDR_ANY)}
 		sin_zero:   [8]u8{}
 	}
 
