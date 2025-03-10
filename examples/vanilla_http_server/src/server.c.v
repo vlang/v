@@ -76,7 +76,7 @@ pub struct C.epoll_event {
 
 struct Server {
 mut:
-	server_socket   int
+	socket_fd       int
 	epoll_fd        int
 	lock_flag       sync.Mutex
 	has_clients     int
@@ -203,7 +203,7 @@ fn remove_fd_from_epoll(epoll_fd int, fd int) {
 
 fn handle_accept_loop(mut server Server) {
 	for {
-		client_fd := C.accept(server.server_socket, C.NULL, C.NULL)
+		client_fd := C.accept(server.socket_fd, C.NULL, C.NULL)
 		if client_fd < 0 {
 			// Check for EAGAIN or EWOULDBLOCK, usually represented by errno 11.
 			if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
@@ -291,20 +291,20 @@ fn (mut server Server) run() {
 		eprintln('Windows is not supported yet')
 		return
 	}
-	server.server_socket = create_server_socket(port)
-	if server.server_socket < 0 {
+	server.socket_fd = create_server_socket(port)
+	if server.socket_fd < 0 {
 		return
 	}
 
 	server.epoll_fd = C.epoll_create1(0)
 	if server.epoll_fd < 0 {
 		C.perror('epoll_create1 failed'.str)
-		close_socket(server.server_socket)
+		close_socket(server.socket_fd)
 		return
 	}
 	server.lock_flag.lock()
-	if add_fd_to_epoll(server.epoll_fd, server.server_socket, u32(C.EPOLLIN)) == -1 {
-		close_socket(server.server_socket)
+	if add_fd_to_epoll(server.epoll_fd, server.socket_fd, u32(C.EPOLLIN)) == -1 {
+		close_socket(server.socket_fd)
 		close_socket(server.epoll_fd)
 		server.lock_flag.unlock()
 		return

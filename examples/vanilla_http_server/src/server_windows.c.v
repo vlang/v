@@ -56,7 +56,7 @@ struct Sockaddr_in {
 
 pub struct Server {
 mut:
-	server_socket   int
+	socket_fd       int
 	clients         []int // List of client sockets (for WSAPoll)
 	lock_flag       sync.Mutex
 	threads         [max_thread_pool_size]thread
@@ -136,7 +136,7 @@ fn create_server_socket(port int) int {
 
 fn handle_accept(server &Server) {
 	for {
-		client_fd := C.accept(server.server_socket, C.NULL, C.NULL)
+		client_fd := C.accept(server.socket_fd, C.NULL, C.NULL)
 		if client_fd < 0 {
 			// Check for EAGAIN or EWOULDBLOCK, usually represented by errno 11.
 			if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
@@ -247,8 +247,8 @@ fn (mut server Server) run() {
 		return
 	}
 
-	server.server_socket = create_server_socket(port)
-	if server.server_socket < 0 {
+	server.socket_fd = create_server_socket(port)
+	if server.socket_fd < 0 {
 		return
 	}
 
