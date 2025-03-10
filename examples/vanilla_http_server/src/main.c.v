@@ -1,8 +1,5 @@
 module main
 
-const port = 3000
-const max_thread_pool_size = 8
-
 // handle_request finds and executes the handler for a given route.
 // It takes an HttpRequest object as an argument and returns the response as a byte array.
 fn handle_request(req HttpRequest) ![]u8 {
@@ -28,6 +25,7 @@ fn handle_request(req HttpRequest) ![]u8 {
 fn main() {
 	mut server := Server{
 		request_handler: handle_request
+		port:            3001
 	}
 
 	server.run()

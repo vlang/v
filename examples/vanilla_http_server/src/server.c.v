@@ -75,6 +75,8 @@ pub struct C.epoll_event {
 }
 
 struct Server {
+pub:
+	port int = 3000
 mut:
 	socket_fd       int
 	epoll_fd        int
@@ -86,6 +88,8 @@ mut:
 const max_unix_path = 108
 
 const max_connection_size = 1024
+
+const max_thread_pool_size = 8
 
 @[_pack: '1']
 pub struct Ip6 {
@@ -290,7 +294,7 @@ fn (mut server Server) run() {
 		eprintln('Windows is not supported yet')
 		return
 	}
-	server.socket_fd = create_server_socket(port)
+	server.socket_fd = create_server_socket(server.port)
 	if server.socket_fd < 0 {
 		return
 	}
@@ -316,6 +320,6 @@ fn (mut server Server) run() {
 		server.threads[i] = spawn process_events(mut server)
 	}
 
-	println('listening on http://localhost:${port}/')
+	println('listening on http://localhost:${server.port}/')
 	handle_accept_loop(mut server)
 }
