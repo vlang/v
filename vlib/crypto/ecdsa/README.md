@@ -8,13 +8,6 @@ Its currently (expanded) to support the following curves:
 - NIST P-521 curve, commonly referred as secp521r1
 - A famous Bitcoin curve, commonly referred as secp256k1
 
-> [!CAUTION]
-> This module using low level OpenSSL opaque methods that mostly has been deprecated 
-> in OpenSSL 3.0. 
-> Please be aware, likely it would not compile with `-cstrict` options until
-> its migrated into supported higher level API.
-
-
 # Example
 ```v
 import crypto.ecdsa
