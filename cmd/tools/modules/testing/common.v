@@ -242,6 +242,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/database/psql/customer.v'
 		}
 		$if windows {
+			skip_files << 'examples/vanilla_http_server' // requires epoll
 			skip_files << 'examples/1brc/solution/main.v' // requires mmap
 			skip_files << 'examples/database/mysql.v'
 			skip_files << 'examples/database/orm.v'
