@@ -79,7 +79,6 @@ mut:
 	socket_fd       int
 	epoll_fd        int
 	lock_flag       sync.Mutex
-	has_clients     int
 	threads         [max_thread_pool_size]thread
 	request_handler fn (HttpRequest) ![]u8 @[required]
 }
