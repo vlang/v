@@ -16,7 +16,7 @@ pub:
 fn window_resized(mut w &Window) {
 	window_width, window_height := 200, 100
 
-	if w.resize_fn != WindowResizeFn(0) {
+	if w.resize_fn != unsafe { WindowResizeFn(0) } {
 		println('fn present ${window_width} ${window_height}')
 		w.resize_fn(w, window_width, window_height)
 	}
