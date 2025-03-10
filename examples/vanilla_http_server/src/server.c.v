@@ -12,8 +12,6 @@
 // - Mutex Locking: The server uses mutex locks to manage access to shared resources, ensuring thread safety while minimizing contention.
 module main
 
-import sync
-
 const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
 #include <fcntl.h>
@@ -80,8 +78,7 @@ pub:
 	port int = 3000
 mut:
 	socket_fd       int
-	epoll_fd        int
-	lock_flag       sync.Mutex
+	epoll_fds       [max_thread_pool_size]int
 	threads         [max_thread_pool_size]thread
 	request_handler fn (HttpRequest) ![]u8 @[required]
 }
@@ -186,27 +183,25 @@ fn handle_accept_loop(mut server Server) {
 		}
 
 		unsafe {
-			server.lock_flag.lock()
-			if add_fd_to_epoll(server.epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
+			// Distribute client connections among epoll_fds
+			epoll_fd := server.epoll_fds[client_fd % max_thread_pool_size]
+			if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
 				close_socket(client_fd)
 			}
-			server.lock_flag.unlock()
 		}
 	}
 }
 
 fn handle_client_closure(server &Server, client_fd int) {
 	unsafe {
-		server.lock_flag.lock()
 		remove_fd_from_epoll(client_fd, client_fd)
-		server.lock_flag.unlock()
 	}
 }
 
-fn process_events(mut server Server) {
+fn process_events(mut server Server, epoll_fd int) {
 	for {
 		events := [max_connection_size]C.epoll_event{}
-		num_events := C.epoll_wait(server.epoll_fd, &events[0], max_connection_size, -1)
+		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, -1)
 		for i := 0; i < num_events; i++ {
 			if events[i].events & u32((C.EPOLLHUP | C.EPOLLERR)) != 0 {
 				handle_client_closure(server, unsafe { events[i].data.fd })
@@ -233,16 +228,15 @@ fn process_events(mut server Server) {
 
 					// This lock is a workaround for avoiding race condition in router.params
 					// This slows down the server, but it's a temporary solution
-					server.lock_flag.lock()
+
 					response_buffer := server.request_handler(decoded_http_request) or {
 						eprintln('Error handling request ${err}')
 						C.send(unsafe { events[i].data.fd }, tiny_bad_request_response.data,
 							tiny_bad_request_response.len, 0)
 						handle_client_closure(server, unsafe { events[i].data.fd })
-						server.lock_flag.unlock()
+
 						continue
 					}
-					server.lock_flag.unlock()
 
 					C.send(unsafe { events[i].data.fd }, response_buffer.data, response_buffer.len,
 						0)
@@ -266,25 +260,21 @@ fn (mut server Server) run() {
 		return
 	}
 
-	server.epoll_fd = C.epoll_create1(0)
-	if server.epoll_fd < 0 {
-		C.perror('epoll_create1 failed'.str)
-		close_socket(server.socket_fd)
-		return
-	}
-	server.lock_flag.lock()
-	if add_fd_to_epoll(server.epoll_fd, server.socket_fd, u32(C.EPOLLIN)) == -1 {
-		close_socket(server.socket_fd)
-		close_socket(server.epoll_fd)
-		server.lock_flag.unlock()
-		return
-	}
-	server.lock_flag.unlock()
-
-	server.lock_flag.init()
-
 	for i := 0; i < max_thread_pool_size; i++ {
-		server.threads[i] = spawn process_events(mut server)
+		server.epoll_fds[i] = C.epoll_create1(0)
+		if server.epoll_fds[i] < 0 {
+			C.perror('epoll_create1 failed'.str)
+			close_socket(server.socket_fd)
+			return
+		}
+
+		if add_fd_to_epoll(server.epoll_fds[i], server.socket_fd, u32(C.EPOLLIN)) == -1 {
+			close_socket(server.socket_fd)
+			close_socket(server.epoll_fds[i])
+
+			return
+		}
+		server.threads[i] = spawn process_events(mut server, server.epoll_fds[i])
 	}
 
 	println('listening on http://localhost:${server.port}/')
