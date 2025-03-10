@@ -17,9 +17,12 @@ import sync
 const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
 #include <fcntl.h>
-#include <sys/epoll.h>
 #include <errno.h>
 #include <netinet/in.h>
+
+$if !windows {
+	#include <sys/epoll.h>
+}
 
 fn C.socket(socket_family int, socket_type int, protocol int) int
 
