@@ -287,6 +287,10 @@ fn process_events(mut server Server) {
 }
 
 fn (mut server Server) run() {
+	$if windows {
+		eprintln('Windows is not supported yet')
+		return
+	}
 	server.server_socket = create_server_socket(port)
 	if server.server_socket < 0 {
 		return
