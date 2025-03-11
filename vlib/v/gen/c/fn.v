@@ -1477,7 +1477,7 @@ fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.T
 		receiver_type_name = 'map'
 	}
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
-		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
+		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
 		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
 			// `array_Xyz_clone` => `array_clone`
 			receiver_type_name = 'array'
@@ -1658,7 +1658,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 
 	receiver_type_name = g.resolve_receiver_name(node, unwrapped_rec_type, final_left_sym,
 		left_sym, typ_sym)
-	mut name := util.no_dots('${receiver_type_name}_${node.name}')
+	mut name := ''
+	if is_free_method {
+		free_method_name := g.get_free_method(unwrapped_rec_type)
+		name = free_method_name
+	} else {
+		name = util.no_dots('${receiver_type_name}_${node.name}')
+	}
 	if left_sym.kind == .chan && node.name in ['close', 'try_pop', 'try_push'] {
 		name = 'sync__Channel_${node.name}'
 	}

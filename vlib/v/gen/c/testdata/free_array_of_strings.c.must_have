@@ -1,0 +1,2 @@
+Array_string my_array_of_strings = __new_array_with_default(0, 10, sizeof(string), 0);
+Array_string_free(&my_array_of_strings);
