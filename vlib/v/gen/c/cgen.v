@@ -2024,8 +2024,10 @@ pub fn (mut g Gen) current_tmp_var() string {
 	return prefix_with_counter('_t', g.tmp_count)
 }
 
-pub fn (mut g Gen) reset_tmp_count() {
+pub fn (mut g Gen) reset_tmp_count() int {
+	old := g.tmp_count
 	g.tmp_count = 0
+	return old
 }
 
 fn (mut g Gen) decrement_inside_ternary() {

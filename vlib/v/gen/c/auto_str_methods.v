@@ -284,6 +284,8 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0); }')
 	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${arg_def}, int indent_count); // auto')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${arg_def}, int indent_count) {')
+	old := g.reset_tmp_count()
+	defer { g.tmp_count = old }
 	g.auto_str_funcs.writeln('\tstring indents = string_repeat(_SLIT("    "), indent_count);')
 	if str_method_expects_ptr {
 		it_arg := if is_c_struct { 'it' } else { '&it' }
@@ -954,7 +956,8 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		g.auto_fn_definitions << fn_builder.str()
 	}
 	fn_builder.writeln('string indent_${str_fn_name}(${arg_def}, int indent_count) {')
-
+	old := g.reset_tmp_count()
+	defer { g.tmp_count = old }
 	clean_struct_v_type_name := if info.is_anon { 'struct ' } else { util.strip_main_name(typ_str) }
 	// generate ident / indent length = 4 spaces
 	if info.fields.len == 0 {
