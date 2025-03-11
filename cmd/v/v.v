@@ -210,6 +210,7 @@ fn rebuild(prefs &pref.Preferences) {
 	}
 }
 
+@[manualfree]
 fn setup_vbuild_env_vars(prefs &pref.Preferences) {
 	mut facts := []string{cap: 10}
 	facts << prefs.os.lower()
@@ -223,7 +224,13 @@ fn setup_vbuild_env_vars(prefs &pref.Preferences) {
 		facts << github_job
 	}
 	sfacts := facts.join(',')
-	sdefines := prefs.compile_defines_all.join(',')
 	os.setenv('VBUILD_FACTS', sfacts, true)
+
+	sdefines := prefs.compile_defines_all.join(',')
 	os.setenv('VBUILD_DEFINES', sdefines, true)
+
+	unsafe { sdefines.free() }
+	unsafe { sfacts.free() }
+	unsafe { github_job.free() }
+	unsafe { facts.free() }
 }
