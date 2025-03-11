@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_any_err.vv:3:8: error: cannot use type `any` here
+    1 | fn g[T](x T) {
+    2 |     for _ in 0 .. 10 {
+    3 |         _ := any{}
+      |              ~~~~~
+    4 |     }
+    5 | }
