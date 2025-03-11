@@ -6,10 +6,7 @@ fn test_main() {
 		age:  20
 	}]
 	for tst in tsts {
-		assert '${tst}' == "struct {
-    name: 'Vlang'
-    age: 20
-}"
+		assert '${tst}' == "struct {\n    name: 'Vlang'\n    age: 20\n}"
 		assert tst.age == 20
 		assert tst.name == 'Vlang'
 	}
