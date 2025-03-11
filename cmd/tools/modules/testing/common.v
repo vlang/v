@@ -575,14 +575,14 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		os.quoted_path(generated_binary_fpath)
 	}
 	mut details := get_test_details(file)
-	mut should_be_build := true
+	mut should_be_built := true
 	if details.vbuild != '' {
-		should_be_build = ts.build_environment.eval(details.vbuild) or {
+		should_be_built = ts.build_environment.eval(details.vbuild) or {
 			eprintln('${file}:${details.vbuild_line}:17: error during parsing the `// v test build` expression `${details.vbuild}`: ${err}')
 			false
 		}
-		$if trace_should_be_build ? {
-			eprintln('${file} has specific build constraint: `${details.vbuild}` => should_be_build: `${should_be_build}`')
+		$if trace_should_be_built ? {
+			eprintln('${file} has specific build constraint: `${details.vbuild}` => should_be_built: `${should_be_built}`')
 			eprintln('>          env   facts: ${ts.build_environment.facts}')
 			eprintln('>          env defines: ${ts.build_environment.defines}')
 		}
@@ -590,7 +590,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 	ts.benchmark.step()
 	tls_bench.step()
-	if !ts.build_tools && (!should_be_build || abs_path in ts.skip_files) {
+	if !ts.build_tools && (!should_be_built || abs_path in ts.skip_files) {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		if !hide_skips {
