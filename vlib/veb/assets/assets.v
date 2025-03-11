@@ -93,7 +93,7 @@ pub fn (mut am AssetManager) add(asset_type AssetType, file_path string, include
 		return error('cannot minify asset of type "all"')
 	}
 	if !os.exists(file_path) {
-		return error('cnanot add asset: file "${file_path}" does not exist')
+		return error('cannot add asset: file "${file_path}" does not exist')
 	}
 
 	last_modified_unix := os.file_last_mod_unix(file_path)
