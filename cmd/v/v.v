@@ -221,7 +221,7 @@ fn setup_vbuild_env_vars(prefs &pref.Preferences) {
 	}
 	github_job := os.getenv('GITHUB_JOB')
 	if github_job != '' {
-		facts << github_job
+		facts << os.getenv('GITHUB_JOB')
 	}
 	sfacts := facts.join(',')
 	os.setenv('VBUILD_FACTS', sfacts, true)
