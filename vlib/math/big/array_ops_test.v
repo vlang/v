@@ -1,3 +1,4 @@
+// vtest build: !do_not_test ?
 module big
 
 fn test_add_digit_array_01() {
