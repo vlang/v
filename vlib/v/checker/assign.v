@@ -329,6 +329,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		node.left_types << left_type
 
+		if right is ast.StructInit {
+			right_sym := c.table.sym(right_type)
+			c.check_any_type(right_type, right_sym, right.pos())
+		}
+
 		if left is ast.ParExpr && is_decl {
 			c.error('parentheses are not supported on the left side of `:=`', left.pos())
 		}
