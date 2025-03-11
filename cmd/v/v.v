@@ -211,7 +211,7 @@ fn rebuild(prefs &pref.Preferences) {
 }
 
 fn setup_vbuild_env_vars(prefs &pref.Preferences) {
-	mut facts := []string{}
+	mut facts := []string{cap: 10}
 	facts << prefs.os.lower()
 	facts << prefs.ccompiler_type.str()
 	facts << prefs.arch.str()
