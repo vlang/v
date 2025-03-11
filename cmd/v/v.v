@@ -211,8 +211,10 @@ fn rebuild(prefs &pref.Preferences) {
 }
 
 fn setup_vbuild_env_vars(prefs &pref.Preferences) {
-	mut facts := [prefs.os.lower(), prefs.ccompiler_type.str(),
-		prefs.arch.str()]
+	mut facts := []string{}
+	facts << prefs.os.lower()
+	facts << prefs.ccompiler_type.str()
+	facts << prefs.arch.str()
 	if prefs.is_prod {
 		facts << 'prod'
 	}
@@ -220,6 +222,8 @@ fn setup_vbuild_env_vars(prefs &pref.Preferences) {
 	if github_job != '' {
 		facts << github_job
 	}
-	os.setenv('VBUILD_FACTS', facts.join(','), true)
-	os.setenv('VBUILD_DEFINES', prefs.compile_defines_all.join(','), true)
+	sfacts := facts.join(',')
+	sdefines := prefs.compile_defines_all.join(',')
+	os.setenv('VBUILD_FACTS', sfacts, true)
+	os.setenv('VBUILD_DEFINES', sdefines, true)
 }
