@@ -852,11 +852,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		.none {
 			// var := struct { name: "" }
 			mut init_fields := []ast.StructField{}
-			for init_field in node.init_fields {
+			for mut init_field in node.init_fields {
 				mut expr := unsafe { init_field }
+				init_field.typ = c.expr(mut expr.expr)
+				init_field.expected_type = init_field.typ
 				init_fields << ast.StructField{
 					name:   init_field.name
-					typ:    c.expr(mut expr.expr)
+					typ:    init_field.typ
 					is_mut: c.anon_struct_should_be_mut
 				}
 			}
