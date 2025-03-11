@@ -12,6 +12,7 @@ import v.util.vtest
 import runtime
 import rand
 import strings
+import v.build_constraint
 
 pub const max_header_len = get_max_header_len()
 
@@ -98,6 +99,8 @@ pub mut:
 	hash          string // used as part of the name of the temporary directory created for tests, to ease cleanup
 
 	exec_mode ActionMode = .compile // .compile_and_run only for `v test`
+
+	build_environment build_constraint.Environment // see the documentation in v.build_constraint
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -443,6 +446,9 @@ pub fn (mut ts TestSession) test() {
 	printing_thread := spawn ts.print_messages()
 	pool_of_test_runners.set_shared_context(ts)
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
+
+	ts.build_environment = get_build_environment()
+
 	// all the testing happens here:
 	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
 
@@ -568,9 +574,23 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	} else {
 		os.quoted_path(generated_binary_fpath)
 	}
+	mut details := get_test_details(file)
+	mut should_be_built := true
+	if details.vbuild != '' {
+		should_be_built = ts.build_environment.eval(details.vbuild) or {
+			eprintln('${file}:${details.vbuild_line}:17: error during parsing the `// v test build` expression `${details.vbuild}`: ${err}')
+			false
+		}
+		$if trace_should_be_built ? {
+			eprintln('${file} has specific build constraint: `${details.vbuild}` => should_be_built: `${should_be_built}`')
+			eprintln('>          env   facts: ${ts.build_environment.facts}')
+			eprintln('>          env defines: ${ts.build_environment.defines}')
+		}
+	}
+
 	ts.benchmark.step()
 	tls_bench.step()
-	if !ts.build_tools && abs_path in ts.skip_files {
+	if !ts.build_tools && (!should_be_built || abs_path in ts.skip_files) {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		if !hide_skips {
@@ -599,7 +619,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
 		if status != 0 {
-			details := get_test_details(file)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
 				if !details.hide_retries {
@@ -686,7 +705,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			println(r.output.split_into_lines().filter(it.contains(' assert')).join('\n'))
 		}
 		if r.exit_code != 0 {
-			mut details := get_test_details(file)
 			mut trimmed_output := r.output.trim_space()
 			if trimmed_output.len == 0 {
 				// retry running at least 1 more time, to avoid CI false positives as much as possible
@@ -895,18 +913,24 @@ pub mut:
 	retry int
 	flaky bool // when flaky tests fail, the whole run is still considered successful, unless VTEST_FAIL_FLAKY is 1
 	//
-	hide_retries bool // when true, all retry tries are silent; used by `vlib/v/tests/retry_test.v`
+	hide_retries bool   // when true, all retry tries are silent; used by `vlib/v/tests/retry_test.v`
+	vbuild       string // could be `!(windows && tinyc)`
+	vbuild_line  int    // for more precise error reporting, if the `vbuild` expression is incorrect
 }
 
 pub fn get_test_details(file string) TestDetails {
 	mut res := TestDetails{}
 	lines := os.read_lines(file) or { [] }
-	for line in lines {
+	for idx, line in lines {
 		if line.starts_with('// vtest retry:') {
 			res.retry = line.all_after(':').trim_space().int()
 		}
 		if line.starts_with('// vtest flaky:') {
 			res.flaky = line.all_after(':').trim_space().bool()
+		}
+		if line.starts_with('// vtest build:') {
+			res.vbuild = line.all_after(':').trim_space()
+			res.vbuild_line = idx + 1
 		}
 		if line.starts_with('// vtest hide_retries') {
 			res.hide_retries = true
@@ -948,4 +972,10 @@ fn get_max_header_len() int {
 		return maximum
 	}
 	return cols
+}
+
+fn get_build_environment() &build_constraint.Environment {
+	facts := os.getenv('VBUILD_FACTS').split_any(',')
+	defines := os.getenv('VBUILD_DEFINES').split_any(',')
+	return build_constraint.new_environment(facts, defines)
 }

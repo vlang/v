@@ -98,6 +98,9 @@ fn main() {
 		exit(1)
 	}
 	timers.show('v parsing CLI args')
+
+	setup_vbuild_env_vars(prefs)
+
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in external_tools {
@@ -205,4 +208,29 @@ fn rebuild(prefs &pref.Preferences) {
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])
 		}
 	}
+}
+
+@[manualfree]
+fn setup_vbuild_env_vars(prefs &pref.Preferences) {
+	mut facts := []string{cap: 10}
+	facts << prefs.os.lower()
+	facts << prefs.ccompiler_type.str()
+	facts << prefs.arch.str()
+	if prefs.is_prod {
+		facts << 'prod'
+	}
+	github_job := os.getenv('GITHUB_JOB')
+	if github_job != '' {
+		facts << github_job
+	}
+	sfacts := facts.join(',')
+	os.setenv('VBUILD_FACTS', sfacts, true)
+
+	sdefines := prefs.compile_defines_all.join(',')
+	os.setenv('VBUILD_DEFINES', sdefines, true)
+
+	unsafe { sdefines.free() }
+	unsafe { sfacts.free() }
+	unsafe { github_job.free() }
+	unsafe { facts.free() }
 }
