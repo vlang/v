@@ -1,0 +1,32 @@
+i8s := [
+	i8(0xff), // converted to -1
+	i8(128), // converted to -128
+	i8(-129), // converted to +127
+	i8(-0xff), // converted to +1
+]
+
+i16s := [
+	i16(0xffff), // converted to -1
+	i16(32768), // converted to -32768
+	i16(-32769), // converted to +32767
+	i16(-0xffff), // converted to +1
+]
+
+ints := [
+	int(0xffffffff), // converted to -1
+	int(2147483648), // converted to -2147483648
+	int(-2147483649), // converted to +2147483647
+	int(-0xffffffff), // converted to +1
+]
+
+i64s := [
+	i64(0xffffffffffffffff), // converted to -1
+	i64(9223372036854775808), // converted to -9223372036854775808
+	i64(-9223372036854775809), // converted to +9223372036854775807
+	i64(-0xffffffffffffffff), // converted to +1
+]
+
+println('i8s: ${i8s}')
+println('i16s: ${i16s}')
+println('ints: ${ints}')
+println('i64s: ${i64s}')

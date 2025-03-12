@@ -3651,6 +3651,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		tsize, _ := c.table.type_size(to_type.idx_type())
 		bit_size := tsize * 8
+		signed := node.expr.val[0] == `-`
 		value_string := match node.expr.val[0] {
 			`-`, `+` {
 				node.expr.val[1..]
@@ -3659,7 +3660,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				node.expr.val
 			}
 		}
-		_, e := strconv.common_parse_uint2(value_string, 0, bit_size)
+		value, e := strconv.common_parse_uint2(value_string, 0, bit_size)
 		match e {
 			0 {}
 			-3 {
@@ -3667,6 +3668,20 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			}
 			else {
 				c.error('cannot cast value `${node.expr.val}` to `${tt}`', node.pos)
+			}
+		}
+
+		// checks if integer literal's most significant bit occupies sign bit when casting to
+		// signed integer, we determine the condition by checking most significant bit's index
+		if !signed && to_type.is_signed() {
+			mut v := value
+			mut ms_bit_index := 0
+			for v != 0 {
+				v >>= 1
+				ms_bit_index += 1
+			}
+			if ms_bit_index == bit_size {
+				c.error('value `${node.expr.val} overflows `${tt}`', node.pos)
 			}
 		}
 	} else if to_type.is_float() && mut node.expr is ast.FloatLiteral {
