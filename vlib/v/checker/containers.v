@@ -110,6 +110,15 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		if node.has_len {
 			c.check_elements_ref_fields_initialized(unwrap_elem_type, node.pos)
 		}
+		if node.expr_types.len == 0 {
+			for mut expr in node.exprs {
+				typ := c.expr(mut expr)
+				c.check_expected(typ, node.elem_type) or {
+					c.error('invalid array element: ${err.msg()}', expr.pos())
+				}
+				node.expr_types << typ
+			}
+		}
 		return node.typ
 	}
 
