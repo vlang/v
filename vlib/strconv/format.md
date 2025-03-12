@@ -155,7 +155,7 @@ hexadecimal
 import strconv
 
 a1 := u8(0xff)
-b1 := i16(0xffff)
+b1 := i16(u16(0xffff))
 c1 := u32(0xffffffff)
 d1 := u64(-1)
 sc3 := '%hhx %hx %x %lx'

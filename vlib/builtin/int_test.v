@@ -17,7 +17,7 @@ fn test_str_methods() {
 	assert int(1).str() == '1'
 	assert int(-1).str() == '-1'
 	assert int(2147483647).str() == '2147483647'
-	assert int(2147483648).str() == '-2147483648'
+	assert int(u32(2147483648)).str() == '-2147483648'
 	assert int(-2147483648).str() == '-2147483648'
 	assert i64(1).str() == '1'
 	assert i64(-1).str() == '-1'

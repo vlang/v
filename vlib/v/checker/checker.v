@@ -3660,7 +3660,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				node.expr.val
 			}
 		}
-		value, e := strconv.common_parse_uint2(value_string, 0, bit_size)
+		v, e := strconv.common_parse_uint2(value_string, 0, bit_size)
 		match e {
 			0 {}
 			-3 {
@@ -3671,16 +3671,30 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			}
 		}
 
-		// checks if integer literal's most significant bit occupies sign bit when casting to
-		// signed integer, we determine the condition by checking most significant bit's index
-		if !signed && to_type.is_signed() {
-			mut v := value
-			mut ms_bit_index := 0
-			for v != 0 {
-				v >>= 1
-				ms_bit_index += 1
+		// checks if integer literal's most significant bit
+		// alters sign bit when casting to signed integer
+		if to_type.is_signed() {
+			signed_min := match to_type.idx() {
+				ast.i8_type_idx {
+					u64(0xff)
+				}
+				ast.i16_type_idx {
+					u64(0xffff)
+				}
+				ast.i32_type_idx {
+					u64(0xffffffff)
+				}
+				ast.i64_type_idx {
+					u64(0xffffffffffffffff)
+				}
+				else {
+					u64(0xffffffffffffffff)
+				}
 			}
-			if ms_bit_index == bit_size {
+			signed_max := signed_min ^ (1 << (bit_size - 1))
+
+			if (signed && (v - 2 == signed_max || v == signed_min))
+				|| (!signed && (v == signed_min || v == (1 << (bit_size - 1)))) {
 				c.error('value `${node.expr.val} overflows `${tt}`', node.pos)
 			}
 		}
