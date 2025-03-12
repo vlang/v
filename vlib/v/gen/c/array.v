@@ -47,10 +47,11 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		}
 		is_sumtype := elem_sym.kind == .sum_type
 		for i, expr in node.exprs {
-			if node.expr_types[i] == ast.string_type
+			expr_type := if node.expr_types.len > i { node.expr_types[i] } else { node.elem_type }
+			if expr_type == ast.string_type
 				&& expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral, ast.InfixExpr] {
 				if is_sumtype {
-					g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
+					g.expr_with_cast(expr, expr_type, node.elem_type)
 				} else {
 					g.write('string_clone(')
 					g.expr(expr)
@@ -58,14 +59,14 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 				}
 			} else {
 				if node.elem_type.has_flag(.option) {
-					g.expr_with_opt(expr, node.expr_types[i], node.elem_type)
+					g.expr_with_opt(expr, expr_type, node.elem_type)
 				} else if elem_type.unaliased_sym.kind == .array_fixed
 					&& expr in [ast.Ident, ast.SelectorExpr] {
 					info := elem_type.unaliased_sym.info as ast.ArrayFixed
 					g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
 						info.elem_type, info.size)
 				} else {
-					g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
+					g.expr_with_cast(expr, expr_type, node.elem_type)
 				}
 			}
 			if i != len - 1 {
