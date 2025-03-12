@@ -13,6 +13,7 @@ pub mut:
 // `defines` is a list of the user defines, for example: ['abc', 'gcboehm_opt', 'gg_record', 'show_fps']
 pub fn new_environment(facts []string, defines []string) &Environment {
 	mut b := &Environment{}
+	b.facts['true'] = true
 	for f in facts {
 		b.facts[f] = true
 	}

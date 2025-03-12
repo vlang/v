@@ -15,6 +15,21 @@ fn test_eval_define() {
 	assert !benv.is_define('xyz')
 }
 
+fn test_eval_true() {
+	assert benv.eval('true')!
+}
+
+fn test_eval_false() {
+	assert !benv.eval('false')!
+}
+
+fn test_eval_comment() {
+	assert benv.eval('true // some comment')!
+	assert benv.eval(' true// another comment  ...')!
+	assert !benv.eval('false // some comment')!
+	assert !benv.eval(' false// another comment  ...')!
+}
+
 fn test_eval_platforms_and_compilers() {
 	assert benv.eval('tinyc')!
 	assert benv.eval(' tinyc')!
