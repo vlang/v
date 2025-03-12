@@ -226,20 +226,17 @@ make
 
 ## Editor/IDE Plugins
 
+- [Atom](https://github.com/vlang/awesome-v#atom)
+- [Emacs](https://github.com/vlang/awesome-v#emacs)
+- [JetBrains](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html)
+- [Sublime Text 3](https://github.com/vlang/awesome-v#sublime-text-3)
+- [Vim](https://github.com/vlang/awesome-v#vim)
+- [VS Code](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
+- [zed](https://github.com/lv37/zed-v)
+
+
 To bring IDE functions for the V programming languages to your editor, check out
-[v-analyzer](https://github.com/vlang/v-analyzer). It provides a
-[VS Code extension](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
-and language server capabilities for other editors.
-
-The plugin for JetBrains IDEs (IntelliJ, CLion, GoLand, etc.) also offers a great development
-experience with V. You can find all features in [its documentation](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html).
-
-Other Plugins:
-
-- [Vim plugins](https://github.com/vlang/awesome-v#vim)
-- [Emacs plugins](https://github.com/vlang/awesome-v#emacs)
-- [Sublime Text 3 plugins](https://github.com/vlang/awesome-v#sublime-text-3)
-- [Atom plugins](https://github.com/vlang/awesome-v#atom)
+[v-analyzer](https://github.com/vlang/v-analyzer). It provides language server capabilities.
 
 ## Testing and running the examples
 
