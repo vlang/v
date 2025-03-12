@@ -1130,6 +1130,7 @@ fn (mut c Builder) cc_windows_cross() {
 	} else {
 		args << cflags.c_options_after_target()
 	}
+
 	if current_os !in ['macos', 'linux', 'termux'] {
 		println(current_os)
 		panic('your platform is not supported yet')
@@ -1144,8 +1145,9 @@ fn (mut c Builder) cc_windows_cross() {
 
 	all_args << args
 	all_args << c.get_subsystem_flag()
-	all_args << c.ccoptions.linker_flags
-	all_args << '${c.pref.ldflags}'
+	// Note: c.ccoptions.linker_flags was already in cflags.c_options_after_target(), which is in args, so no need to add it again here
+	all_args << c.pref.ldflags
+
 	c.dump_c_options(all_args)
 	mut cmd := cross_compiler_name_path + ' ' + all_args.join(' ')
 	// cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'

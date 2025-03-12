@@ -100,7 +100,7 @@ pub fn (cflags []CFlag) c_options_before_target() []string {
 	mut args := []string{cap: defines.len + others.len}
 	args << defines
 	args << others
-	return args
+	return uniq_non_empty(args)
 }
 
 pub fn (cflags []CFlag) c_options_after_target() []string {
@@ -116,7 +116,7 @@ pub fn (cflags []CFlag) c_options_without_object_files() []string {
 		}
 		args << flag.format() or { continue }
 	}
-	return args
+	return uniq_non_empty(args)
 }
 
 pub fn (cflags []CFlag) c_options_only_object_files() []string {
@@ -128,7 +128,7 @@ pub fn (cflags []CFlag) c_options_only_object_files() []string {
 			args << flag.format() or { continue }
 		}
 	}
-	return args.filter(it != '')
+	return uniq_non_empty(args)
 }
 
 pub fn (cflags []CFlag) defines_others_libs() ([]string, []string, []string) {
@@ -137,6 +137,10 @@ pub fn (cflags []CFlag) defines_others_libs() ([]string, []string, []string) {
 	mut others := []string{}
 	mut libs := []string{}
 	for copt in copts_without_obj_files {
+		if copt.ends_with('@START_LIBS') {
+			libs.insert(0, copt.all_before('@START_LIBS'))
+			continue
+		}
 		if copt.starts_with('-l') {
 			libs << copt
 			continue
@@ -145,11 +149,34 @@ pub fn (cflags []CFlag) defines_others_libs() ([]string, []string, []string) {
 			libs << '"${copt}"'
 			continue
 		}
+
+		if copt.ends_with('@START_DEFINES') {
+			defines.insert(0, copt.all_before('@START_DEFINES'))
+			continue
+		}
 		if copt.starts_with('-D') {
 			defines << copt
 			continue
 		}
+
+		if copt.ends_with('@START_OTHERS') {
+			others.insert(0, copt.all_before('@START_OTHERS'))
+			continue
+		}
 		others << copt
 	}
-	return defines, others, libs
+	return uniq_non_empty(defines), uniq_non_empty(others), uniq_non_empty(libs)
+}
+
+fn uniq_non_empty(args []string) []string {
+	mut uniq_args := []string{}
+	for a in args {
+		if a == '' {
+			continue
+		}
+		if a !in uniq_args {
+			uniq_args << a
+		}
+	}
+	return uniq_args
 }
