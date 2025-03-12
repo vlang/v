@@ -65,3 +65,40 @@ fn test_cubic_bezier_fa() {
 	assert math.cubic_bezier_fa(0.5, bx_fa, by_fa) == math.BezierPoint{0.35375, 0.5375}
 	assert math.cubic_bezier_fa(1.0, bx_fa, by_fa) == math.BezierPoint{bx_fa[3], by_fa[3]}
 }
+
+fn test_remap() {
+	assert math.remap(20, 1, 100, 50, 5000) == 1000
+	assert math.remap(20.0, 1, 100, 50, 5000) == 1000.0
+
+	assert math.remap(55, 1, 100, 52, 5000) == 2750
+	assert math.remap(55.0, 1, 100, 52, 5000) == 2750.909090909091
+
+	assert math.remap(25, 1, 100, 50, 5000) == 1250
+	assert math.remap(25, 1, 100, -50, -5000) == -1250
+	assert math.remap(25, 1, 100, 5000, 50) == 3800
+	assert math.remap(25, 1, 100, -5000, -50) == -3800
+	assert math.remap(25, 100, 1, 50, 5000) == 3800
+	assert math.remap(25, 100, 1, -50, -5000) == -3800
+	assert math.remap(25, 100, 1, 5000, 50) == 1250
+	assert math.remap(25, 100, 1, -5000, -50) == -1250
+}
+
+fn test_smoothstep() {
+	assert math.smoothstep(0.0, 1, 0) == 0
+	assert math.close(math.smoothstep(0.0, 1, 0.05), 0.00725)
+	assert math.close(math.smoothstep(0.0, 1, 0.1), 0.028)
+	assert math.smoothstep(0.0, 1, 0.5) == 0.5
+	assert math.close(math.smoothstep(0.0, 1, 0.9), 0.972)
+	assert math.close(math.smoothstep(0.0, 1, 0.95), 0.99275)
+	assert math.smoothstep(0.0, 1, 1) == 1
+}
+
+fn test_smootherstep() {
+	assert math.smootherstep(0.0, 1, 0) == 0
+	assert math.close(math.smootherstep(0.0, 1, 0.05), 0.001158125)
+	assert math.close(math.smootherstep(0.0, 1, 0.1), 0.00856)
+	assert math.smootherstep(0.0, 1, 0.5) == 0.5
+	assert math.close(math.smootherstep(0.0, 1, 0.9), 0.99144)
+	assert math.close(math.smootherstep(0.0, 1, 0.95), 0.998841875)
+	assert math.smootherstep(0.0, 1, 1) == 1
+}

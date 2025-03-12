@@ -24,3 +24,38 @@ pub fn clip[T](x T, min_value T, max_value T) T {
 		x
 	}
 }
+
+// remap the input `x`, from the range [`a`,`b`] to [`c`,`d`] .
+// Example: math.remap(20, 1, 100, 50, 5000) == 1000
+// Note: `a` should be != `b`.
+@[inline]
+pub fn remap[T](x T, a T, b T, c T, d T) T {
+	return c + (d - c) * (x - a) / (b - a)
+}
+
+// smoothstep smoothly maps a value between `edge0` and `edge1`. It returns:
+// 0 if `x` is less than or equal to the left `edge0`,
+// 1 if `x` is greater than or equal to the right `edge`,
+// and smoothly interpolates, using a Hermite polynomial, between 0 and 1 otherwise.
+// The gradient of the smoothstep function is zero at both edges. This is convenient
+// for creating a sequence of transitions using smoothstep to interpolate each segment
+// as an alternative to using more sophisticated or expensive interpolation techniques.
+// `smoothstep` is a 1st order smoothing function, using a 3rd order polynomial.
+// See also `smootherstep`, which is slower, but nicer looking.
+// See also https://en.wikipedia.org/wiki/Smoothstep
+@[inline]
+pub fn smoothstep[T](edge0 T, edge1 T, x T) T {
+	v := clip((x - edge0) / (edge1 - edge0), 0, 1)
+	return v * v * (3 - 2 * v)
+}
+
+// smootherstep smoothly maps a value between `edge0` and `edge1`.
+// smootherstep is a 2nd order smoothing function, using a 5th order polynomial.
+// The 1st and 2nd order derivatives of the smootherstep function are 0 at both edges.
+// See also `smoothstep`, which is faster, but has just its gradient being 0 at both edges.
+// See also https://en.wikipedia.org/wiki/Smoothstep
+@[inline]
+pub fn smootherstep[T](edge0 T, edge1 T, x T) T {
+	v := clip((x - edge0) / (edge1 - edge0), 0, 1)
+	return v * v * v * (x * (6 * x - 15) + 10)
+}

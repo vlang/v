@@ -42,6 +42,12 @@ pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / pi)
 }
 
+// radians converts an angle in degrees to a corresponding angle in radians.
+@[inline]
+pub fn radians(degrees f64) f64 {
+	return degrees * (pi / 180.0)
+}
+
 // angle_diff calculates the difference between angles in radians
 @[inline]
 pub fn angle_diff(radian_a f64, radian_b f64) f64 {
@@ -152,12 +158,6 @@ pub fn sign(n f64) f64 {
 @[inline]
 pub fn signi(n f64) int {
 	return int(copysign(1.0, n))
-}
-
-// radians converts an angle in degrees to a corresponding angle in radians.
-@[inline]
-pub fn radians(degrees f64) f64 {
-	return degrees * (pi / 180.0)
 }
 
 // signbit returns a value with the boolean representation of the sign for x
