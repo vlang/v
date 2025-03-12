@@ -38,10 +38,11 @@ fn new_span(kind BTokenKind, mut span []u8) Token {
 	return t
 }
 
-fn lex(s string) ![]Token {
+fn lex(original string) ![]Token {
 	mut res := []Token{}
-	mut span := []u8{cap: s.len}
+	mut span := []u8{cap: original.len}
 	mut op := []u8{}
+	s := original.all_before('//')
 	for c in s {
 		match c {
 			` `, `\t`, `\n` {}

@@ -229,6 +229,10 @@ fn setup_vbuild_env_vars(prefs &pref.Preferences) {
 	sdefines := prefs.compile_defines_all.join(',')
 	os.setenv('VBUILD_DEFINES', sdefines, true)
 
+	$if trace_vbuild ? {
+		eprintln('> VBUILD_FACTS: ${sfacts}')
+		eprintln('> VBUILD_DEFINES: ${sdefines}')
+	}
 	unsafe { sdefines.free() }
 	unsafe { sfacts.free() }
 	unsafe { github_job.free() }
