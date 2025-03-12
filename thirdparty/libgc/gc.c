@@ -38712,6 +38712,7 @@ GC_INNER void GC_init_parallel(void)
         ptr_t bs_hi = GC_save_regs_in_stack();
         /* TODO: regs saving already done by GC_with_callee_saves_pushed */
 #   endif
+	if(NULL == me) { exit(12); }
     GC_stack_context_t crtn = me -> crtn;
 
     GC_ASSERT(I_HOLD_READER_LOCK());
@@ -38849,11 +38850,12 @@ GC_API void GC_CALL GC_set_stackbottom(void *gc_thread_handle,
       return;
     }
 
-    GC_ASSERT(I_HOLD_READER_LOCK());
     if (NULL == t) /* current thread? */
+    GC_ASSERT(I_HOLD_READER_LOCK());
       t = GC_self_thread_inner();
     GC_ASSERT(!KNOWN_FINISHED(t));
-    crtn = t -> crtn;
+    if(NULL == t) exit(11);
+	crtn = t -> crtn;
     GC_ASSERT((t -> flags & DO_BLOCKING) == 0
               && NULL == crtn -> traced_stack_sect); /* for now */
 
@@ -38876,7 +38878,9 @@ GC_API void * GC_CALL GC_get_my_stackbottom(struct GC_stack_base *sb)
 
     READER_LOCK();
     me = GC_self_thread_inner();
+    if(NULL == me) exit(13);
     /* The thread is assumed to be registered.  */
+
     crtn = me -> crtn;
     sb -> mem_base = crtn -> stack_end;
 #   ifdef E2K
@@ -39012,6 +39016,7 @@ STATIC void GC_unregister_my_thread_inner(GC_thread me)
 #     if defined(GC_HAVE_PTHREAD_EXIT) || !defined(GC_NO_PTHREAD_CANCEL)
         /* Handle DISABLED_GC flag which is set by the  */
         /* intercepted pthread_cancel or pthread_exit.  */
+   	    if(NULL == me) exit(14);
         if ((me -> flags & DISABLED_GC) != 0) {
           GC_dont_gc--;
         }
