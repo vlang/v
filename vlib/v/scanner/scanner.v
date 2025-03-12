@@ -1506,10 +1506,7 @@ fn trim_slash_line_break(s string) string {
 	mut ret_str := s
 	for {
 		// find the position of the first `\` followed by a newline, after `start`:
-		idx := ret_str.index_after('\\\n', start)
-		if idx == -1 {
-			break
-		}
+		idx := ret_str.index_after('\\\n', start) or { break }
 		start = idx
 		// Here, ret_str[idx] is \, and ret_str[idx+1] is newline.
 		// Depending on the number of backslashes before the newline, we should either

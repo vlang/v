@@ -707,7 +707,7 @@ pub fn (s string) replace_each(vals []string) string {
 		with_ = with_
 
 		for {
-			idx = s_.index_after(rep, idx)
+			idx = s_.index_after_(rep, idx)
 			if idx == -1 {
 				break
 			}
@@ -817,7 +817,37 @@ pub fn (s string) trim_space() string {
 	return res
 }
 
-pub fn (s string) index_after(p string, start int) int {
+pub fn (s string) index_after(p string, start int) ?int {
+	if p.len > s.len {
+		return none
+	}
+
+	mut strt := start
+	if start < 0 {
+		strt = 0
+	}
+	if start >= s.len {
+		return none
+	}
+	mut i := strt
+
+	for i < s.len {
+		mut j := 0
+		mut ii := i
+		for j < p.len && s[ii] == p[j] {
+			j++
+			ii++
+		}
+
+		if j == p.len {
+			return i
+		}
+		i++
+	}
+	return none
+}
+
+pub fn (s string) index_after_(p string, start int) int {
 	if p.len > s.len {
 		return -1
 	}

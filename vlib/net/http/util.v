@@ -8,9 +8,6 @@ module http
 // "GET / HTTP/1.1" => ["GET" "/" "HTTP/1.1"]
 fn fast_request_words(line string) (int, int) {
 	space1 := line.index(' ') or { return 0, 0 }
-	space2 := line.index_after(' ', space1 + 1)
-	if space2 == -1 {
-		return 0, 0
-	}
+	space2 := line.index_after(' ', space1 + 1) or { return 0, 0 }
 	return space1, space2
 }

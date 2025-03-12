@@ -311,7 +311,7 @@ fn (l Line) write_at_category(txt string) ?string {
 	title := category_map[l.category]
 	title_pos := txt.index(title)?
 	// Find the position of the ### category title
-	pos := txt.index_after('\n', title_pos + 1)
+	pos := txt.index_after('\n', title_pos + 1) or { return none }
 	first_half := txt[..pos]
 	second_half := txt[pos..]
 	if txt.contains(l.text) {

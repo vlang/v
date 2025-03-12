@@ -392,7 +392,7 @@ pub fn (s string) replace(rep string, with string) string {
 	}
 	mut idx := 0
 	for {
-		idx = s.index_after(rep, idx)
+		idx = s.index_after_(rep, idx)
 		if idx == -1 {
 			break
 		}
@@ -463,7 +463,7 @@ pub fn (s string) replace_each(vals []string) string {
 		with := vals[rep_i + 1]
 
 		for {
-			idx = s_.index_after(rep, idx)
+			idx = s_.index_after_(rep, idx)
 			if idx == -1 {
 				break
 			}
@@ -1352,7 +1352,36 @@ fn (s string) index_last_(p string) int {
 
 // index_after returns the position of the input string, starting search from `start` position.
 @[direct_array_access]
-pub fn (s string) index_after(p string, start int) int {
+pub fn (s string) index_after(p string, start int) ?int {
+	if p.len > s.len {
+		return none
+	}
+	mut strt := start
+	if start < 0 {
+		strt = 0
+	}
+	if start >= s.len {
+		return none
+	}
+	mut i := strt
+	for i < s.len {
+		mut j := 0
+		mut ii := i
+		for j < p.len && unsafe { s.str[ii] == p.str[j] } {
+			j++
+			ii++
+		}
+		if j == p.len {
+			return i
+		}
+		i++
+	}
+	return none
+}
+
+// index_after_ returns the position of the input string, starting search from `start` position.
+@[direct_array_access]
+pub fn (s string) index_after_(p string, start int) int {
 	if p.len > s.len {
 		return -1
 	}
@@ -1429,7 +1458,7 @@ pub fn (s string) count(substr string) int {
 
 	mut i := 0
 	for {
-		i = s.index_after(substr, i)
+		i = s.index_after_(substr, i)
 		if i == -1 {
 			return n
 		}

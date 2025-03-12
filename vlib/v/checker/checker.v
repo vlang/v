@@ -3367,15 +3367,17 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 	c.check_any_type(to_type, to_sym, node.pos)
 
-	if (to_sym.is_number() && from_sym.name == 'JS.Number')
-		|| (to_sym.is_number() && from_sym.name == 'JS.BigInt')
-		|| (to_sym.is_string() && from_sym.name == 'JS.String')
-		|| (to_type.is_bool() && from_sym.name == 'JS.Boolean')
-		|| (from_type.is_bool() && to_sym.name == 'JS.Boolean')
-		|| (from_sym.is_number() && to_sym.name == 'JS.Number')
-		|| (from_sym.is_number() && to_sym.name == 'JS.BigInt')
-		|| (from_sym.is_string() && to_sym.name == 'JS.String') {
-		return to_type
+	if c.pref.backend.is_js() {
+		if (to_sym.is_number() && from_sym.name == 'JS.Number')
+			|| (to_sym.is_number() && from_sym.name == 'JS.BigInt')
+			|| (to_sym.is_string() && from_sym.name == 'JS.String')
+			|| (to_type.is_bool() && from_sym.name == 'JS.Boolean')
+			|| (from_type.is_bool() && to_sym.name == 'JS.Boolean')
+			|| (from_sym.is_number() && to_sym.name == 'JS.Number')
+			|| (from_sym.is_number() && to_sym.name == 'JS.BigInt')
+			|| (from_sym.is_string() && to_sym.name == 'JS.String') {
+			return to_type
+		}
 	}
 
 	if !c.expected_type.has_flag(.generic) && to_sym.name.len == 1
