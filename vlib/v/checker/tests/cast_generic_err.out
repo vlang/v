@@ -1,0 +1,6 @@
+vlib/v/checker/tests/cast_generic_err.vv:2:7: error: cannot cast literal value to [2]u8 type
+    1 | fn decode[T]() {
+    2 |     _ := T(0)
+      |          ~~~~
+    3 | }
+    4 |
