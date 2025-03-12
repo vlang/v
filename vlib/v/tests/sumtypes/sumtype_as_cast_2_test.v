@@ -1,3 +1,4 @@
+// vtest build: !msvc // error: cannot support compound statement expression ({expr; expr; expr;})
 type Numbers = int | string
 
 struct Values {

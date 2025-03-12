@@ -1,3 +1,4 @@
+// vtest build: present_sqlite3?
 import db.sqlite
 
 struct VieterDb {

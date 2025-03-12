@@ -1,3 +1,4 @@
+// vtest build: present_node?
 import strings.textscanner
 
 fn test_remaining() {

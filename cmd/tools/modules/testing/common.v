@@ -45,6 +45,14 @@ pub const is_node_present = os.execute('node --version').exit_code == 0
 
 pub const is_go_present = os.execute('go version').exit_code == 0
 
+pub const is_ruby_present = os.execute('ruby --version').exit_code == 0
+
+pub const is_python_present = os.execute('python --version').exit_code == 0
+
+pub const is_sqlite3_present = os.execute('sqlite3 --version').exit_code == 0
+
+pub const is_openssl_present = os.execute('openssl --version').exit_code == 0
+
 pub const all_processes = get_all_processes()
 
 pub const header_bytes_to_search_for_module_main = 500
@@ -101,6 +109,7 @@ pub mut:
 	exec_mode ActionMode = .compile // .compile_and_run only for `v test`
 
 	build_environment build_constraint.Environment // see the documentation in v.build_constraint
+	custom_defines    []string                     // for adding custom defines, known only to the individual runners
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -219,107 +228,14 @@ pub fn (mut ts TestSession) print_messages() {
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
 	if will_compile {
-		// Skip the call_v_from_* files. They need special instructions for compilation.
-		// Check the README.md for detailed information.
-		skip_files << 'examples/call_v_from_c/v_test_print.v'
-		skip_files << 'examples/call_v_from_c/v_test_math.v'
-		skip_files << 'examples/call_v_from_python/test.v' // the example only makes sense to be compiled, when python is installed
-		skip_files << 'examples/call_v_from_ruby/test.v' // the example only makes sense to be compiled, when ruby is installed
-		// Skip the compilation of the coroutines example for now, since the Photon wrapper
-		// is only available on macos for now, and it is not yet trivial enough to
-		// build/install on the CI:
-		skip_files << 'examples/coroutines/simple_coroutines.v'
-		skip_files << 'examples/coroutines/coroutines_bench.v'
-		$if msvc {
-			skip_files << 'vlib/v/tests/consts/const_comptime_eval_before_vinit_test.v' // _constructor used
-		}
-		$if solaris {
-			skip_files << 'examples/pico/pico.v'
-			skip_files << 'examples/pico/raw_callback.v'
-			skip_files << 'examples/sokol/fonts.v'
-			skip_files << 'examples/sokol/drawing.v'
-		}
-		$if macos {
-			skip_files << 'examples/database/mysql.v'
-			skip_files << 'examples/database/orm.v'
-			skip_files << 'examples/database/psql/customer.v'
-		}
 		$if windows {
-			skip_files << 'examples/vanilla_http_server' // requires epoll
-			skip_files << 'examples/1brc/solution/main.v' // requires mmap
-			skip_files << 'examples/database/mysql.v'
-			skip_files << 'examples/database/orm.v'
-			skip_files << 'examples/smtp/mail.v' // requires OpenSSL
-			skip_files << 'examples/websocket/ping.v' // requires OpenSSL
-			skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
-			skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
-			skip_files << 'examples/minimal_c_like_program_using_puts.v' // declares its own `main` function, while on windows it needs to be `wWinMain` ... although only for gcc for some reason ¯\_(ツ)_/¯
-			skip_files << 'vlib/v/tests/websocket_logger_interface_should_compile_test.v' // requires OpenSSL
-			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
-			skip_files << 'vlib/crypto/ecdsa/util_test.v' // requires OpenSSL
-			skip_files << 'vlib/crypto/ecdsa/example/ecdsa_seed_test.v' // requires OpenSSL
-			skip_files << 'vlib/crypto/ecdsa/example/ensure_compatibility_with_net_openssl_test.v' // requires OpenSSL
-			$if tinyc {
-				skip_files << 'examples/database/orm.v' // try fix it
-			}
-		}
-		$if windows {
-			// TODO: remove when closures on windows are supported...
-			skip_files << 'examples/pendulum-simulation/animation.v'
-			skip_files << 'examples/pendulum-simulation/full.v'
-			skip_files << 'examples/pendulum-simulation/parallel.v'
-			skip_files << 'examples/pendulum-simulation/parallel_with_iw.v'
-			skip_files << 'examples/pendulum-simulation/sequential.v'
-			if github_job == 'tcc-windows' {
-				// TODO: fix these by adding declarations for the missing functions in the prebuilt tcc
-				skip_files << 'vlib/net/mbedtls/mbedtls_compiles_test.v'
-				skip_files << 'vlib/net/ssl/ssl_compiles_test.v'
-			}
+			skip_files << 'examples/vanilla_http_server' // requires epoll // TODO: find a way to support `// vtest build:` for project folders too...
 		}
 		if runner_os != 'Linux' || !github_job.starts_with('tcc-') {
 			if !os.exists('/usr/local/include/wkhtmltox/pdf.h') {
 				skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 			}
-			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes `sqlite3.h`
-			skip_files << 'vlib/veb/tests/veb_app_test.v' // imports the `sqlite` module, which in turn includes `sqlite3.h`
 		}
-		$if !macos {
-			skip_files << 'examples/macos_tray/tray.v'
-		}
-		if github_job == 'docker-ubuntu-musl' {
-			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
-			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
-			skip_files << 'vlib/crypto/ecdsa/util_test.v' // requires OpenSSL
-			skip_files << 'vlib/crypto/ecdsa/example/ecdsa_seed_test.v' // requires OpenSSL
-			skip_files << 'vlib/crypto/ecdsa/example/ensure_compatibility_with_net_openssl_test.v' // requires OpenSSL
-			skip_files << 'vlib/x/ttf/ttf_test.v'
-			skip_files << 'vlib/encoding/iconv/iconv_test.v' // needs libiconv to be installed
-		}
-		if github_job == 'sanitize-memory-clang' {
-			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
-			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
-			skip_files << 'vlib/crypto/ecdsa/util_test.v' // requires OpenSSL
-			skip_files << 'vlib/crypto/ecdsa/example/ecdsa_seed_test.v' // requires OpenSSL
-			skip_files << 'vlib/crypto/ecdsa/example/ensure_compatibility_with_net_openssl_test.v' // requires OpenSSL
-			// Fails compilation with: `/usr/bin/ld: /lib/x86_64-linux-gnu/libpthread.so.0: error adding symbols: DSO missing from command line`
-			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
-			skip_files << 'examples/sokol/sounds/simple_sin_tone_using_audio_push.v'
-		}
-		if github_job != 'misc-tooling' {
-			// These examples need .h files that are produced from the supplied .glsl files,
-			// using by the shader compiler tools in https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
-			skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.v'
-			skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
-			skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
-			skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
-			skip_files << 'examples/sokol/07_simple_shader_glsl/simple_shader.v'
-			skip_files << 'examples/sokol/08_sdf/sdf.v'
-			// Skip obj_viewer code in the CI
-			skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
-		}
-		// requires special compilation flags: `-b wasm -os browser`, skip it for now:
-		skip_files << 'examples/wasm/mandelbrot/mandelbrot.wasm.v'
-		skip_files << 'examples/wasm/change_color_by_id/change_color_by_id.wasm.v'
 	}
 	skip_files = skip_files.map(os.abs_path)
 	vargs := _vargs.replace('-progress', '')
@@ -394,25 +310,9 @@ pub fn (mut ts TestSession) test() {
 	mut remaining_files := []string{}
 	for dot_relative_file in ts.files {
 		file := os.real_path(dot_relative_file)
-		$if windows {
-			if file.contains('sqlite') || file.contains('httpbin') {
-				continue
-			}
-		}
-		$if !macos {
-			if file.contains('customer') {
-				continue
-			}
-		}
-		$if msvc {
-			if file.contains('asm') {
-				continue
-			}
-		}
 		if ts.build_tools && dot_relative_file.ends_with('_test.v') {
 			continue
 		}
-
 		// Skip OS-specific tests if we are not running that OS
 		// Special case for android_outside_termux because of its
 		// underscores
@@ -447,7 +347,7 @@ pub fn (mut ts TestSession) test() {
 	pool_of_test_runners.set_shared_context(ts)
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
 
-	ts.build_environment = get_build_environment()
+	ts.setup_build_environment()
 
 	// all the testing happens here:
 	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
@@ -974,8 +874,44 @@ fn get_max_header_len() int {
 	return cols
 }
 
-fn get_build_environment() &build_constraint.Environment {
+// is_started_mysqld is true, when the test runner determines that there is a running mysql server
+pub const is_started_mysqld = find_started_process('mysqld') or { '' }
+
+// is_started_postgres is true, when the test runner determines that there is a running postgres server
+pub const is_started_postgres = find_started_process('postgres') or { '' }
+
+pub fn (mut ts TestSession) setup_build_environment() {
 	facts := os.getenv('VBUILD_FACTS').split_any(',')
-	defines := os.getenv('VBUILD_DEFINES').split_any(',')
-	return build_constraint.new_environment(facts, defines)
+	mut defines := os.getenv('VBUILD_DEFINES').split_any(',')
+	// add the runtime information, that the test runner has already determined by checking once:
+	if is_started_mysqld != '' {
+		defines << 'started_mysqld'
+	}
+	if is_started_postgres != '' {
+		defines << 'started_postgres'
+	}
+	if is_node_present {
+		defines << 'present_node'
+	}
+	if is_python_present {
+		defines << 'present_python'
+	}
+	if is_ruby_present {
+		defines << 'present_ruby'
+	}
+	if is_go_present {
+		defines << 'present_go'
+	}
+	if is_sqlite3_present {
+		defines << 'present_sqlite3'
+	}
+	if is_openssl_present {
+		defines << 'present_openssl'
+	}
+	defines << ts.custom_defines
+	$if trace_vbuild ? {
+		eprintln('>>> testing.get_build_environment facts: ${facts}')
+		eprintln('>>> testing.get_build_environment defines: ${defines}')
+	}
+	ts.build_environment = build_constraint.new_environment(facts, defines)
 }

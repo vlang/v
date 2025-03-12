@@ -1,3 +1,4 @@
+// vtest build: present_node?
 // Not real external functions, so we won't call them
 // We just want to make sure they compile
 

@@ -1,5 +1,6 @@
 // vtest flaky: true
 // vtest retry: 3
+// vtest build: present_node?
 import rand
 
 const strings = unique_strings(200, 10)

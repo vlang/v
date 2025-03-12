@@ -1,3 +1,4 @@
+// vtest build: !windows
 import io
 import json
 import time

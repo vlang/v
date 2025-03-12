@@ -1,6 +1,5 @@
-// Simple windows-less application that shows a icon button
-// on Mac OS tray.
-//
+// vtest build: macos
+// Simple windows-less application that shows a icon button on Mac OS tray.
 // Tested on Mac OS Monterey (12.3).
 
 module main

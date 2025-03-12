@@ -1,3 +1,4 @@
+// vtest build: false // requires special compilation flags: `-b wasm -os browser`
 fn JS.canvas_x() int
 fn JS.canvas_y() int
 fn JS.setpixel(x int, y int, c f64)

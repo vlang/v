@@ -1,3 +1,4 @@
+// vtest build: !msvc
 import v.slow_tests.assembly.util
 
 fn test_inline_asm() {

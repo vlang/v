@@ -1,3 +1,4 @@
+// vtest build: present_node?
 import strings
 
 type MyInt = int

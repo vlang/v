@@ -1,3 +1,4 @@
+// vtest build: !windows
 import db.sqlite
 
 @[table: 'Users']

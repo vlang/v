@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 module main
 
 import time

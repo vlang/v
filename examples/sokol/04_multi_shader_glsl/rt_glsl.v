@@ -1,3 +1,4 @@
+// vtest build: misc-tooling // needs .h files that are produced by `v shader`
 /**********************************************************************
 * Sokol 3d cube multishader demo
 * Copyright (c) 2024 Dario Deledda. All rights reserved.

@@ -97,21 +97,7 @@ const essential_list = [
 	'vlib/v/slow_tests/inout/compiler_test.v',
 	'vlib/x/json2/tests/json2_test.v',
 ]
-const skip_test_files = [
-	'do_not_remove',
-	'cmd/tools/vdoc/vdoc_test.v', // markdown not installed
-	'vlib/context/deadline_test.v', // sometimes blocks
-	'vlib/context/onecontext/onecontext_test.v', // backtrace_symbols is missing
-	'vlib/db/mysql/mysql_orm_test.v', // mysql not installed
-	'vlib/db/mysql/mysql_test.v', // mysql not installed
-	'vlib/db/mysql/prepared_stmt_test.v', // mysql not installed
-	'vlib/db/pg/pg_orm_test.v', // pg not installed
-	'vlib/db/pg/pg_test.v', // pg not installed
-	'vlib/db/pg/pg_double_test.v', // pg not installed
-	'vlib/net/ftp/ftp_test.v', // currently broken
-]
-// These tests are too slow to be run in the CI on each PR/commit
-// in the sanitized modes:
+// These tests are too slow to be run in the CI on each PR/commit in the sanitized modes:
 const skip_fsanitize_too_slow = [
 	'do_not_remove',
 	'vlib/v/compiler_errors_test.v',
@@ -225,33 +211,10 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_update_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 ]
-const skip_with_werror = [
-	'do_not_remove',
-	'vlib/v/embed_file/tests/embed_file_test.v',
-]
-const skip_with_asan_compiler = [
-	'do_not_remove',
-]
-const skip_with_msan_compiler = [
-	'do_not_remove',
-]
-const skip_with_ubsan_compiler = [
-	'do_not_remove',
-]
-const skip_on_musl = [
-	'do_not_remove',
-	'vlib/v/slow_tests/profile/profile_test.v',
-	'vlib/gg/draw_fns_api_test.v',
-	'vlib/v/tests/skip_unused/gg_code.vv',
-	'vlib/v/tests/c_struct_with_reserved_field_name_test.v',
-	'vlib/arrays/parallel/parallel_test.v',
-]
 const skip_on_ubuntu_musl = [
 	'do_not_remove',
 	'vlib/arrays/parallel/parallel_test.v',
-	//'vlib/v/gen/js/jsgen_test.v',
-	'vlib/net/http/cookie_test.v',
-	'vlib/net/http/status_test.v',
+	'vlib/builtin/js/array_test.js.v',
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_comptime_field_test.v',
@@ -289,91 +252,22 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/orm_update_test.v',
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
+	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
+	'vlib/v/tests/fns/fn_literal_type_test.v',
 	'vlib/clipboard/clipboard_test.v',
 	'vlib/vweb/tests/vweb_test.v',
 	'vlib/vweb/csrf/csrf_test.v',
-	'vlib/net/http/request_test.v',
 	'vlib/vweb/route_test.v',
+	'vlib/net/http/request_test.v',
 	'vlib/net/websocket/websocket_test.v',
 	'vlib/net/http/header_test.v',
 	'vlib/net/http/server_test.v',
 	'vlib/net/http/response_test.v',
-	'vlib/builtin/js/array_test.js.v',
 	'vlib/net/smtp/smtp_test.v',
-	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
-	'vlib/v/tests/fns/fn_literal_type_test.v',
+	'vlib/net/http/cookie_test.v',
+	'vlib/net/http/status_test.v',
 	'vlib/x/sessions/tests/db_store_test.v',
 	'vlib/veb/tests/veb_app_test.v',
-]
-const skip_on_linux = [
-	'do_not_remove',
-]
-const skip_on_non_linux = [
-	'do_not_remove',
-]
-const skip_on_windows_msvc = [
-	'do_not_remove',
-	'vlib/v/tests/consts/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
-	'vlib/v/tests/consts/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
-	'vlib/v/tests/sumtypes/sumtype_as_cast_1_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
-	'vlib/v/tests/sumtypes/sumtype_as_cast_2_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
-	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // TODO
-]
-const skip_on_windows = [
-	'do_not_remove',
-	'vlib/orm/orm_test.v',
-	'vlib/v/tests/orm_sub_struct_test.v',
-	'vlib/v/tests/orm_joined_tables_select_test.v',
-	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
-	'vlib/net/websocket/websocket_test.v',
-	'vlib/net/openssl/openssl_compiles_test.c.v',
-	'vlib/net/http/request_test.v',
-	'vlib/net/smtp/smtp_test.v',
-	'vlib/net/ssl/ssl_compiles_test.v',
-	'vlib/net/mbedtls/mbedtls_compiles_test.v',
-	'vlib/vweb/tests/vweb_test.v',
-	'vlib/vweb/route_test.v',
-	'vlib/sync/many_times_test.v',
-	'vlib/sync/once_test.v',
-	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
-	'vlib/v/tests/fns/fn_literal_type_test.v',
-]
-const skip_on_non_windows = [
-	'do_not_remove',
-]
-const skip_on_macos = [
-	'do_not_remove',
-]
-const skip_on_non_macos = [
-	'do_not_remove',
-]
-const skip_on_amd64 = [
-	'do_not_remove',
-]
-const skip_on_arm64 = [
-	'do_not_remove',
-]
-const skip_on_non_amd64_or_arm64 = [
-	'do_not_remove',
-	// closures aren't implemented yet:
-	'vlib/v/tests/fns/closure_test.v',
-	// native aren't implemented:
-	'vlib/v/gen/native/tests/native_test.v',
-	'vlib/context/cancel_test.v',
-	'vlib/context/deadline_test.v',
-	'vlib/context/empty_test.v',
-	'vlib/context/value_test.v',
-	'vlib/context/onecontext/onecontext_test.v',
-	'vlib/sync/once_test.v',
-	'vlib/sync/many_times_test.v',
-	'do_not_remove',
-]
-const skip_on_sandboxed_packaging = [
-	'do_not_remove',
-	'vlib/v/slow_tests/inout/compiler_test.v',
-	'vlib/v/gen/native/tests/native_test.v',
-	'vlib/v/compiler_errors_test.v',
-	'vlib/v/gen/c/coutput_test.v',
 ]
 
 fn Config.init(vargs []string, targs []string) !Config {
@@ -455,90 +349,42 @@ fn main() {
 	mut tsession := testing.new_test_session(vargs.join(' '), true)
 	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
-	tsession.skip_files << skip_test_files
-	if !testing.is_go_present {
-		tsession.skip_files << 'vlib/v/gen/golang/tests/golang_test.v'
-	}
-	testing.find_started_process('mysqld') or {
-		tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'
-		tsession.skip_files << 'vlib/db/mysql/mysql_test.v'
-	}
-	testing.find_started_process('postgres') or {
-		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
-		tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
-	}
-	$if windows && tinyc {
-		tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
-	}
 	if !cfg.run_slow_sanitize
 		&& ((cfg.sanitize_undefined || cfg.sanitize_memory || cfg.sanitize_address)
 		|| (cfg.is_msan_compiler || cfg.is_asan_compiler || cfg.is_ubsan_compiler)) {
 		tsession.skip_files << skip_fsanitize_too_slow
+		tsession.custom_defines << 'self_sanitize_too_slow'
 	}
 	if cfg.werror {
-		tsession.skip_files << skip_with_werror
+		tsession.custom_defines << 'self_werror'
 	}
 	if cfg.sanitize_memory {
 		tsession.skip_files << skip_with_fsanitize_memory
+		tsession.custom_defines << 'self_sanitize_memory'
 	}
 	if cfg.sanitize_address {
 		tsession.skip_files << skip_with_fsanitize_address
+		tsession.custom_defines << 'self_sanitize_address'
 	}
 	if cfg.sanitize_undefined {
 		tsession.skip_files << skip_with_fsanitize_undefined
+		tsession.custom_defines << 'self_sanitize_undefined'
 	}
 	if cfg.is_asan_compiler {
-		tsession.skip_files << skip_with_asan_compiler
+		tsession.custom_defines << 'self_asan_compiler'
 	}
 	if cfg.is_msan_compiler {
-		tsession.skip_files << skip_with_msan_compiler
+		tsession.custom_defines << 'self_msan_compiler'
 	}
 	if cfg.is_ubsan_compiler {
-		tsession.skip_files << skip_with_ubsan_compiler
+		tsession.custom_defines << 'self_ubsan_compiler'
 	}
-	if cfg.is_musl_ci {
-		tsession.skip_files << skip_on_musl
+	if cfg.is_sandboxed_packaging {
+		tsession.custom_defines << 'self_sandboxed_packaging'
 	}
 	if cfg.is_ubuntu_musl_ci {
 		tsession.skip_files << skip_on_ubuntu_musl
-	}
-	if cfg.is_sandboxed_packaging {
-		tsession.skip_files << skip_on_sandboxed_packaging
-	}
-	$if !amd64 && !arm64 {
-		tsession.skip_files << skip_on_non_amd64_or_arm64
-	}
-	$if amd64 {
-		tsession.skip_files << skip_on_amd64
-	}
-	$if arm64 {
-		tsession.skip_files << skip_on_arm64
-	}
-	$if !linux {
-		tsession.skip_files << skip_on_non_linux
-	}
-	$if linux {
-		tsession.skip_files << skip_on_linux
-	}
-	$if windows {
-		tsession.skip_files << skip_on_windows
-		$if msvc {
-			tsession.skip_files << skip_on_windows_msvc
-		}
-	}
-	$if !windows {
-		tsession.skip_files << skip_on_non_windows
-	}
-	$if macos {
-		$if arm64 {
-			if cfg.github_job.starts_with('clang-') {
-				tsession.skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
-			}
-		}
-		tsession.skip_files << skip_on_macos
-	}
-	$if !macos {
-		tsession.skip_files << skip_on_non_macos
+		tsession.custom_defines << 'self_ubuntu_musl_ci'
 	}
 	// dump(tsession.skip_files)
 	mut unavailable_files := tsession.files.filter(!os.exists(it))

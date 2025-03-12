@@ -1,4 +1,5 @@
 const const_file = $embed_file('v.png')
+// vtest build: !self_werror?
 
 const src = $embed_file('embed_file_test.v').to_string()
 

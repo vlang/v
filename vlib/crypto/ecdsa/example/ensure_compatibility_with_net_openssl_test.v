@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !(sanitize-memory-clang? || docker-ubuntu-musl?)
 import net.openssl
 import crypto.ecdsa
 

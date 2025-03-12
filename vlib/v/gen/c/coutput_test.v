@@ -1,3 +1,4 @@
+// vtest build: !self_sandboxed_packaging?
 import os
 import time
 import term

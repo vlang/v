@@ -1,3 +1,4 @@
+// vtest build: !musl?
 import os
 import time
 

@@ -1,3 +1,4 @@
+// vtest build: !(macos || windows)
 import db.mysql
 
 fn main() {

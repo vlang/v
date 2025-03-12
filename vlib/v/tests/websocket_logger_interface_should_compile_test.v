@@ -1,3 +1,4 @@
+// vtest build: !windows && present_openssl?
 import net.websocket as ws
 
 pub type RawMessage = ws.Message

@@ -1,3 +1,4 @@
+// vtest build: !sanitize-memory-clang // Fails compilation with: `ld: /lib/x86_64-linux-gnu/libpthread.so.0: error adding symbols: DSO missing from command line`
 import time
 import math
 import sokol.audio

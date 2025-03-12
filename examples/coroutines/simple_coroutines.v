@@ -1,6 +1,5 @@
-// Build with
-// v -use-coroutines simple_coroutines.v
-//
+// vtest build: false // This should be build with: v -use-coroutines simple_coroutines.v
+// Note: the Photon wrapper is not yet trivial enough to build/install on the CI.
 import coroutines
 import time
 import os

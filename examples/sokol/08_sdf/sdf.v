@@ -1,5 +1,6 @@
 // A Signed Distance Field rendering demo, ported from https://github.com/floooh/sokol-samples/blob/master/sapp/sdf-sapp.c
 // which in turn is based on https://iquilezles.org/articles/mandelbulb/ and https://www.shadertoy.com/view/ltfSWn
+// vtest build: misc-tooling // needs .h files that are produced by `v shader`
 import sokol.sapp
 import sokol.gfx
 

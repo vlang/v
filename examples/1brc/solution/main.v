@@ -1,3 +1,4 @@
+// vtest build: !windows // requires mmap
 import flag
 import math
 import os

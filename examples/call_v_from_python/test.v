@@ -1,3 +1,4 @@
+// vtest build: present_python? // the example only makes sense to be compiled, when python is installed
 module test
 
 // Note: compile this with `v -d no_backtrace -shared test.v`

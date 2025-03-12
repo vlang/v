@@ -1,3 +1,4 @@
+// vtest build: !windows
 import os
 import net
 import net.websocket

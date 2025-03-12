@@ -1,5 +1,6 @@
 // vtest flaky: true
 // vtest retry: 3
+// vtest build: present_node?
 
 const a = 3
 const u = u64(1)

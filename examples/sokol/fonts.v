@@ -1,3 +1,4 @@
+// vtest build: !solaris
 import sokol.sapp
 import sokol.gfx
 import sokol.sgl

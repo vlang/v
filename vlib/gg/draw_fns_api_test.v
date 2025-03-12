@@ -1,3 +1,4 @@
+// vtest build: !musl?
 import os
 
 fn test_all_samples_can_be_compiled() {
