@@ -1,3 +1,4 @@
+// vtest build: !solaris
 import json
 import picoev
 import picohttpparser

@@ -1,3 +1,4 @@
+// vtest build: !musl?
 import arrays.parallel
 import rand
 import time

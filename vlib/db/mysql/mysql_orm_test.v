@@ -1,3 +1,4 @@
+// vtest build: started_mysqld?
 import orm
 import db.mysql
 import time

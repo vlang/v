@@ -73,7 +73,6 @@ fn set_output_type_from_str(format string) OutputType {
 		'md', 'markdown' { .markdown }
 		'json' { .json }
 		'text' { .plaintext }
-		'ansi' { .ansi }
 		else { .ansi }
 	}
 }

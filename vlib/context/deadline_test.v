@@ -1,3 +1,4 @@
+// vtest build: false // TODO: it sometimes blocks, investigate why
 import context
 import time
 

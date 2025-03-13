@@ -1,3 +1,4 @@
+// vtest build: !docker-ubuntu-musl // needs libiconv to be installed
 import encoding.iconv
 import os
 

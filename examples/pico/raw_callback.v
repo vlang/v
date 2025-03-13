@@ -1,3 +1,4 @@
+// vtest build: !solaris
 module main
 
 import net

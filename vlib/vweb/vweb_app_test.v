@@ -1,3 +1,4 @@
+// vtest build: present_sqlite3? // imports db.sqlite
 module main
 
 import vweb

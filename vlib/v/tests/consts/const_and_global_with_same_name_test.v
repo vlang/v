@@ -1,3 +1,4 @@
+// vtest build: !msvc // error C2099: initializer is not a constant
 @[has_globals]
 module main
 

@@ -1,3 +1,4 @@
+// vtest build: false // requires special compilation flags: `-b wasm -os browser`
 fn JS.change_color_by_id(ptr u8, len int, color_ptr u8, color_len int)
 
 // `main` must be public!

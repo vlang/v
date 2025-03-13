@@ -1,3 +1,4 @@
+// vtest build: !(macos || windows)
 import os
 import db.sqlite
 import db.mysql

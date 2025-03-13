@@ -1,3 +1,4 @@
+// vtest build: !self_sandboxed_packaging?
 // .out file:
 // To test a panic, remove everything after the long `===` line
 // You can also remove the line with 'line:' e.g. for a builtin fn

@@ -1,3 +1,4 @@
+// vtest build: !docker-ubuntu-musl
 import x.ttf
 import os
 import strings

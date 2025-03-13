@@ -1,3 +1,4 @@
+// vtest build: present_go?
 import os
 import benchmark
 import term

@@ -1,3 +1,4 @@
+// vtest build: !(windows && gcc) // it declares its own `main` function, but on windows && gcc, it needs to be `wWinMain`
 module no_main
 
 // Compile with:

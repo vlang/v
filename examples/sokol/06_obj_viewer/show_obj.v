@@ -1,3 +1,4 @@
+// vtest build: misc-tooling // needs .h files that are produced by `v shader`
 /**********************************************************************
 *
 * .obj viewer

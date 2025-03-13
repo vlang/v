@@ -1,5 +1,6 @@
 // Copyright(C) 2022 Lars Pontoppidan. All rights reserved.
 // Use of this source code is governed by an MIT license file distributed with this software package
+// vtest build: misc-tooling // needs .h files that are produced by `v shader`
 module main
 
 // Example shader triangle adapted to V from https://github.com/floooh/sokol-samples/blob/1f2ad36/sapp/triangle-sapp.c

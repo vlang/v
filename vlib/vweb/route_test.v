@@ -1,3 +1,4 @@
+// vtest build: !windows
 module vweb
 
 struct RoutePair {

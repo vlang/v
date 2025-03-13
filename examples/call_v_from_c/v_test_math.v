@@ -1,3 +1,4 @@
+// vtest build: false // Check the README.md for detailed information; this file needs special compilation options
 module test_math
 
 import math

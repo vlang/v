@@ -1,3 +1,4 @@
+// vtest build: (amd64 || arm64) && !self_sandboxed_packaging?
 import os
 import time
 import benchmark

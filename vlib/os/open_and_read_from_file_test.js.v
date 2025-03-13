@@ -1,3 +1,4 @@
+// vtest build: present_node?
 import os
 
 fn test_read_from_file() {

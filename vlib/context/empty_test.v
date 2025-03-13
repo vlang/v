@@ -1,3 +1,4 @@
+// vtest build: amd64 || arm64
 module context
 
 fn test_background() {

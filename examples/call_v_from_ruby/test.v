@@ -1,3 +1,4 @@
+// vtest build: present_ruby? // the example only makes sense to be compiled, when ruby is installed
 module test
 
 import math

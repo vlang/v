@@ -1,3 +1,4 @@
+// vtest build: started_mysqld?
 import db.mysql
 
 fn test_prep() {

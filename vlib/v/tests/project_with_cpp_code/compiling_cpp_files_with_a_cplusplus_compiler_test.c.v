@@ -1,3 +1,4 @@
+// vtest build: !(windows && tinyc|| msvc) // TODO
 module main
 
 #flag @VMODROOT/implementation.o

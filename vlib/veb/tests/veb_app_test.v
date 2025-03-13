@@ -1,3 +1,4 @@
+// vtest build: present_sqlite3? // imports db.sqlite
 import veb
 import time
 import db.sqlite

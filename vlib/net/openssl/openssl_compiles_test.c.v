@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 import net.openssl as _
 
 struct Abc {
