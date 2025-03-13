@@ -262,14 +262,13 @@ pub fn (pv PrivateKey) seed() ![]u8 {
 
 // public_key gets the PublicKey from private key.
 pub fn (pv PrivateKey) public_key() !PublicKey {
-	bo := C.BIO_new(C.BIO_s_mem())
-	n := C.i2d_PUBKEY_bio(bo, pv.evpkey)
-	assert n != 0
-	// stores this bio as another key
-	pbkey := C.d2i_PUBKEY_bio(bo, 0)
-
-	C.BIO_free_all(bo)
-
+	// Using duplicate key and removes (clears out) priv key
+	pbkey := C.EVP_PKEY_dup(pv.evpkey)
+	bn := C.BN_new()
+	n := C.EVP_PKEY_set_bn_param(pbkey, c'priv', bn)
+	assert n == 1
+	// cleansup
+	C.BN_free(bn)
 	return PublicKey{
 		evpkey: pbkey
 	}

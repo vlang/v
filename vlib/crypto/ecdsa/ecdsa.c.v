@@ -44,6 +44,8 @@ fn C.EVP_PKEY_size(key &C.EVP_PKEY) int
 fn C.EVP_PKEY_eq(a &C.EVP_PKEY, b &C.EVP_PKEY) int
 fn C.EVP_PKEY_check(ctx &C.EVP_PKEY_CTX) int
 fn C.EVP_PKEY_public_check(ctx &C.EVP_PKEY_CTX) int
+fn C.EVP_PKEY_dup(key &C.EVP_PKEY) &C.EVP_PKEY
+fn C.EVP_PKEY_set_bn_param(pkey &C.EVP_PKEY, key_name &char, bn &C.BIGNUM) int
 
 fn C.EVP_PKEY_get_group_name(pkey &C.EVP_PKEY, gname &u8, gname_sz u32, gname_len &usize) int
 fn C.EVP_PKEY_get1_encoded_public_key(pkey &C.EVP_PKEY, ppub &&u8) int
@@ -101,6 +103,7 @@ fn C.BIO_s_mem() &C.BIO_METHOD
 fn C.BIO_write(b &C.BIO, buf &u8, length int) int
 fn C.PEM_read_bio_PrivateKey(bp &C.BIO, x &&C.EVP_PKEY, cb int, u &voidptr) &C.EVP_PKEY
 fn C.PEM_read_bio_PUBKEY(bp &C.BIO, x &&C.EVP_PKEY, cb int, u &voidptr) &C.EVP_PKEY
+fn C.PEM_write_bio_PUBKEY(bp &C.BIO, x &C.EVP_PKEY) int
 fn C.d2i_PUBKEY(k &&C.EVP_PKEY, pp &&u8, length u32) &C.EVP_PKEY
 fn C.i2d_PUBKEY_bio(bo &C.BIO, pkey &C.EVP_PKEY) int
 fn C.d2i_PUBKEY_bio(bo &C.BIO, key &&C.EVP_PKEY) &C.EVP_PKEY
