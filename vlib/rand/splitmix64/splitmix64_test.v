@@ -155,7 +155,7 @@ fn test_splitmix64_u64_in_range() {
 
 fn test_splitmix64_int31() {
 	max_u31 := int(0x7FFFFFFF)
-	sign_mask := int(0x80000000)
+	sign_mask := int(u32(0x80000000))
 	for seed in seeds {
 		mut rng := &rand.PRNG(&splitmix64.SplitMix64RNG{})
 		rng.seed(seed)
@@ -171,7 +171,7 @@ fn test_splitmix64_int31() {
 
 fn test_splitmix64_int63() {
 	max_u63 := i64(0x7FFFFFFFFFFFFFFF)
-	sign_mask := i64(0x8000000000000000)
+	sign_mask := i64(u64(0x8000000000000000))
 	for seed in seeds {
 		mut rng := &rand.PRNG(&splitmix64.SplitMix64RNG{})
 		rng.seed(seed)

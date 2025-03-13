@@ -102,9 +102,9 @@ fn (mut c Arm64) sub_sp(v i32) {
 	}
 	// this is for 0x20 only
 	if v < 0 {
-		c.g.write32(i32(u32(0x910083ff))) // add sp, X
+		c.g.write32(i32(0x910083ff)) // add sp, X
 	} else {
-		c.g.write32(i32(u32(0xd10083ff))) // sub sp, X
+		c.g.write32(i32(0xd10083ff)) // sub sp, X
 	}
 }
 

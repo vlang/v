@@ -3660,11 +3660,12 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				node.expr.val
 			}
 		}
+		mut is_overflowed := false
 		v, e := strconv.common_parse_uint2(value_string, 0, bit_size)
 		match e {
 			0 {}
 			-3 {
-				c.error('value `${node.expr.val}` overflows `${tt}`', node.pos)
+				is_overflowed = true
 			}
 			else {
 				c.error('cannot cast value `${node.expr.val}` to `${tt}`', node.pos)
@@ -3673,30 +3674,40 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 		// checks if integer literal's most significant bit
 		// alters sign bit when casting to signed integer
-		if to_type.is_signed() {
-			signed_min := match to_type.idx() {
-				ast.i8_type_idx {
+		if !is_overflowed && to_type.is_signed() {
+			signed_one := match to_type.idx() {
+				ast.char_type_idx, ast.i8_type_idx {
 					u64(0xff)
 				}
 				ast.i16_type_idx {
 					u64(0xffff)
 				}
-				ast.i32_type_idx {
+				ast.int_type_idx, ast.i32_type_idx {
 					u64(0xffffffff)
 				}
 				ast.i64_type_idx {
 					u64(0xffffffffffffffff)
 				}
+				ast.isize_type_idx {
+					$if x64 {
+						u64(0xffffffffffffffff)
+					} $else {
+						u64(0xffffffff)
+					}
+				}
 				else {
-					u64(0xffffffffffffffff)
+					c.error('ICE: Not a valid signed type', node.pos)
+					0
 				}
 			}
-			signed_max := signed_min ^ (1 << (bit_size - 1))
+			max_signed := (u64(1) << (bit_size - 1)) - 1
 
-			if (signed && (v - 2 == signed_max || v == signed_min))
-				|| (!signed && (v == signed_min || v == (1 << (bit_size - 1)))) {
-				c.error('value `${node.expr.val} overflows `${tt}`', node.pos)
-			}
+			is_overflowed = v == signed_one || (signed && v - 2 == max_signed)
+				|| (!signed && v - 1 == max_signed)
+		}
+
+		if is_overflowed {
+			c.error('value `${node.expr.val}` overflows `${tt}`', node.pos)
 		}
 	} else if to_type.is_float() && mut node.expr is ast.FloatLiteral {
 		tt := c.table.type_to_str(to_type)

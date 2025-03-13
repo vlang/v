@@ -121,7 +121,7 @@ fn test_rand_i64_in_range() {
 
 fn test_rand_int31() {
 	max_u31 := int(0x7FFFFFFF)
-	sign_mask := int(0x80000000)
+	sign_mask := int(u32(0x80000000))
 	for _ in 0 .. rnd_count {
 		value := rand.int31()
 		assert value >= 0
@@ -133,7 +133,7 @@ fn test_rand_int31() {
 
 fn test_rand_int63() {
 	max_u63 := i64(0x7FFFFFFFFFFFFFFF)
-	sign_mask := i64(0x8000000000000000)
+	sign_mask := i64(u64(0x8000000000000000))
 	for _ in 0 .. rnd_count {
 		value := rand.int63()
 		assert value >= 0
