@@ -3593,6 +3593,25 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		|| c.file.is_translated) && !c.check_matching_function_symbols(final_from_sym, final_to_sym) {
 		c.error('casting a function value from one function signature, to another function signature, should be done inside `unsafe{}` blocks',
 			node.pos)
+	} else if final_to_sym.kind == .function && final_from_sym.kind != .function {
+		if to_type.has_flag(.option) && node.expr !is ast.None {
+			c.error('casting number to Option function is not allowed, only compatible function or `none`',
+				node.pos)
+		} else if !(c.inside_unsafe || c.file.is_translated) {
+			if node.expr is ast.IntegerLiteral {
+				c.warn('casting number to function value should be done inside `unsafe{}` blocks',
+					node.pos)
+			} else if node.expr is ast.Nil {
+				c.warn('casting `nil` to function value should be done inside `unsafe{}` blocks',
+					node.pos)
+			} else if node.expr is ast.None {
+				if from_type.has_flag(.option) {
+					c.warn('cannot pass `none` to a non Option function type', node.pos)
+				}
+			} else if final_from_sym.kind != .voidptr {
+				c.error('invalid casting value to function', node.pos)
+			}
+		}
 	}
 	if to_type.is_ptr() && to_sym.kind == .alias && from_sym.kind == .map {
 		c.error('cannot cast to alias pointer `${c.table.type_to_str(to_type)}` because `${c.table.type_to_str(from_type)}` is a value',
