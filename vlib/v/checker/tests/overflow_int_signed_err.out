@@ -26,7 +26,7 @@ vlib/v/checker/tests/overflow_int_signed_err.vv:5:2: error: value `-0xff` overfl
     6 | ]
     7 |
 vlib/v/checker/tests/overflow_int_signed_err.vv:9:2: error: value `0xffff` overflows `i16`
-    7 |
+    7 | 
     8 | i16s := [
     9 |     i16(0xffff), // converted to -1
       |     ~~~~~~~~~~~
@@ -53,36 +53,36 @@ vlib/v/checker/tests/overflow_int_signed_err.vv:12:2: error: value `-0xffff` ove
       |     ~~~~~~~~~~~~
    13 | ]
    14 |
-vlib/v/checker/tests/overflow_int_signed_err.vv:16:5: error: value `0xffffffff` overflows `int`
-   14 |
+vlib/v/checker/tests/overflow_int_signed_err.vv:16:2: error: value `0xffffffff` overflows `int`
+   14 | 
    15 | ints := [
-   16 |     int(0xffffffff)  // converted to -1
+   16 |     int(0xffffffff), // converted to -1
       |     ~~~~~~~~~~~~~~~
-   17 |     int(2147483648)  // converted to -2147483648 (overflow in 32-bit int)
-   18 |     int(-2147483649) // converted to +2147483647 (overflow)
-vlib/v/checker/tests/overflow_int_signed_err.vv:17:5: error: value `2147483648` overflows `int`
+   17 |     int(2147483648), // converted to -2147483648 (overflow in 32-bit int)
+   18 |     int(-2147483649), // converted to +2147483647 (overflow)
+vlib/v/checker/tests/overflow_int_signed_err.vv:17:2: error: value `2147483648` overflows `int`
    15 | ints := [
-   16 |     int(0xffffffff)  // converted to -1
-   17 |     int(2147483648)  // converted to -2147483648 (overflow in 32-bit int)
+   16 |     int(0xffffffff), // converted to -1
+   17 |     int(2147483648), // converted to -2147483648 (overflow in 32-bit int)
       |     ~~~~~~~~~~~~~~~
-   18 |     int(-2147483649) // converted to +2147483647 (overflow)
-   19 |     int(-0xffffffff) // converted to +1
-vlib/v/checker/tests/overflow_int_signed_err.vv:18:5: error: value `-2147483649` overflows `int`
-   16 |     int(0xffffffff)  // converted to -1
-   17 |     int(2147483648)  // converted to -2147483648 (overflow in 32-bit int)
-   18 |     int(-2147483649) // converted to +2147483647 (overflow)
+   18 |     int(-2147483649), // converted to +2147483647 (overflow)
+   19 |     int(-0xffffffff), // converted to +1
+vlib/v/checker/tests/overflow_int_signed_err.vv:18:2: error: value `-2147483649` overflows `int`
+   16 |     int(0xffffffff), // converted to -1
+   17 |     int(2147483648), // converted to -2147483648 (overflow in 32-bit int)
+   18 |     int(-2147483649), // converted to +2147483647 (overflow)
       |     ~~~~~~~~~~~~~~~~
-   19 |     int(-0xffffffff) // converted to +1
+   19 |     int(-0xffffffff), // converted to +1
    20 | ]
-vlib/v/checker/tests/overflow_int_signed_err.vv:19:5: error: value `-0xffffffff` overflows `int`
-   17 |     int(2147483648)  // converted to -2147483648 (overflow in 32-bit int)
-   18 |     int(-2147483649) // converted to +2147483647 (overflow)
-   19 |     int(-0xffffffff) // converted to +1
+vlib/v/checker/tests/overflow_int_signed_err.vv:19:2: error: value `-0xffffffff` overflows `int`
+   17 |     int(2147483648), // converted to -2147483648 (overflow in 32-bit int)
+   18 |     int(-2147483649), // converted to +2147483647 (overflow)
+   19 |     int(-0xffffffff), // converted to +1
       |     ~~~~~~~~~~~~~~~~
    20 | ]
    21 |
 vlib/v/checker/tests/overflow_int_signed_err.vv:23:2: error: value `0xffffffff` overflows `i32`
-   21 |
+   21 | 
    22 | i32s := [
    23 |     i32(0xffffffff), // converted to -1
       |     ~~~~~~~~~~~~~~~
@@ -110,7 +110,7 @@ vlib/v/checker/tests/overflow_int_signed_err.vv:26:2: error: value `-0xffffffff`
    27 | ]
    28 |
 vlib/v/checker/tests/overflow_int_signed_err.vv:30:2: error: value `0xffffffffffffffff` overflows `i64`
-   28 |
+   28 | 
    29 | i64s := [
    30 |     i64(0xffffffffffffffff), // converted to -1
       |     ~~~~~~~~~~~~~~~~~~~~~~~
