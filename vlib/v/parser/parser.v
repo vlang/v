@@ -109,7 +109,8 @@ mut:
 	left_comments            []ast.Comment
 	script_mode              bool
 	script_mode_start_token  token.Token
-	generic_type_level       int // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
+	generic_type_level       int  // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
+	main_already_defined     bool // TODO move to checker
 pub mut:
 	scanner &scanner.Scanner = unsafe { nil }
 	table   &ast.Table       = unsafe { nil }
@@ -861,7 +862,7 @@ fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
 		p.script_mode = true
 		p.script_mode_start_token = p.tok
 
-		if p.table.known_fn('main.main') {
+		if p.main_already_defined {
 			p.error('function `main` is already defined, put your script statements inside it')
 		}
 
@@ -2591,6 +2592,7 @@ fn (mut p Parser) is_generic_cast() bool {
 
 fn (mut p Parser) alias_array_type() ast.Type {
 	full_name := p.prepend_mod(p.tok.lit)
+
 	if idx := p.table.type_idxs[full_name] {
 		if idx == 0 {
 			return ast.void_type

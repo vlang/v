@@ -477,6 +477,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	end_pos := p.prev_tok.pos()
 	short_fn_name := name
 	is_main := short_fn_name == 'main' && p.mod == 'main'
+	if is_main {
+		p.main_already_defined = true
+	}
 	is_test := (!is_method && params.len == 0) && p.inside_test_file
 		&& (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
 	file_mode := p.file_backend_mode
