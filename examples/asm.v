@@ -1,3 +1,4 @@
+// vtest build: !msvc
 fn main() {
 	a := 100
 	b := 20
