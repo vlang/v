@@ -3665,6 +3665,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		match e {
 			0 {}
 			-3 {
+				// FIXME: Once integer literal is considered as hard error, remove this warn and migrate to later error
+				c.error('value `${node.expr.val}` overflows `${tt}`', node.pos)
 				is_overflowed = true
 			}
 			else {
@@ -3704,11 +3706,17 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 			is_overflowed = v == signed_one || (signed && v - 2 == max_signed)
 				|| (!signed && v - 1 == max_signed)
+			// FIXME: Once integer literal is considered as hard error, remove this warn and migrate to later error
+			if is_overflowed {
+				c.warn('value `${node.expr.val}` overflows `${tt}`, this will be considered hard error soon',
+					node.pos)
+			}
 		}
 
-		if is_overflowed {
-			c.error('value `${node.expr.val}` overflows `${tt}`', node.pos)
-		}
+		// FIXME: Once integer literal is considered as hard error, uncomment this
+		// if is_overflowed {
+		// 	c.error('value `${node.expr.val}` overflows `${tt}`', node.pos)
+		// }
 	} else if to_type.is_float() && mut node.expr is ast.FloatLiteral {
 		tt := c.table.type_to_str(to_type)
 		strconv.atof64(node.expr.val) or {
