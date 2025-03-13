@@ -569,8 +569,8 @@ fn pe_idt_offsetof(field PeImportDirectoryTableField) i64 {
 
 fn default_pe_idt() PeImportDirectoryTable {
 	return PeImportDirectoryTable{
-		forwarder_chain: i32(0xffffffff)
-		time_date_stamp: i32(0xffffffff)
+		forwarder_chain: i32(u32(0xffffffff))
+		time_date_stamp: i32(u32(0xffffffff))
 	}
 }
 

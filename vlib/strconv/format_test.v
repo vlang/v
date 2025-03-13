@@ -32,7 +32,7 @@ fn test_format() {
 	assert tmp_str == temp_s
 
 	a1 := u8(0xff)
-	b1 := i16(0xffff)
+	b1 := i16(u16(0xffff))
 	c1 := u32(0xffff_ffff)
 	d1 := u64(-1)
 	sc2 := '%hhu %hu %u %lu'

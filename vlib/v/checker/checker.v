@@ -3672,6 +3672,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		tsize, _ := c.table.type_size(to_type.idx_type())
 		bit_size := tsize * 8
+		signed := node.expr.val[0] == `-`
 		value_string := match node.expr.val[0] {
 			`-`, `+` {
 				node.expr.val[1..]
@@ -3680,16 +3681,63 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				node.expr.val
 			}
 		}
-		_, e := strconv.common_parse_uint2(value_string, 0, bit_size)
+		mut is_overflowed := false
+		v, e := strconv.common_parse_uint2(value_string, 0, bit_size)
 		match e {
 			0 {}
 			-3 {
+				// FIXME: Once integer literal is considered as hard error, remove this warn and migrate to later error
 				c.error('value `${node.expr.val}` overflows `${tt}`', node.pos)
+				is_overflowed = true
 			}
 			else {
 				c.error('cannot cast value `${node.expr.val}` to `${tt}`', node.pos)
 			}
 		}
+
+		// checks if integer literal's most significant bit
+		// alters sign bit when casting to signed integer
+		if !is_overflowed && to_type.is_signed() {
+			signed_one := match to_type.idx() {
+				ast.char_type_idx, ast.i8_type_idx {
+					u64(0xff)
+				}
+				ast.i16_type_idx {
+					u64(0xffff)
+				}
+				ast.int_type_idx, ast.i32_type_idx {
+					u64(0xffffffff)
+				}
+				ast.i64_type_idx {
+					u64(0xffffffffffffffff)
+				}
+				ast.isize_type_idx {
+					$if x64 {
+						u64(0xffffffffffffffff)
+					} $else {
+						u64(0xffffffff)
+					}
+				}
+				else {
+					c.error('ICE: Not a valid signed type', node.pos)
+					0
+				}
+			}
+			max_signed := (u64(1) << (bit_size - 1)) - 1
+
+			is_overflowed = v == signed_one || (signed && v - 2 == max_signed)
+				|| (!signed && v - 1 == max_signed)
+			// FIXME: Once integer literal is considered as hard error, remove this warn and migrate to later error
+			if is_overflowed {
+				c.warn('value `${node.expr.val}` overflows `${tt}`, this will be considered hard error soon',
+					node.pos)
+			}
+		}
+
+		// FIXME: Once integer literal is considered as hard error, uncomment this
+		// if is_overflowed {
+		// 	c.error('value `${node.expr.val}` overflows `${tt}`', node.pos)
+		// }
 	} else if to_type.is_float() && mut node.expr is ast.FloatLiteral {
 		tt := c.table.type_to_str(to_type)
 		strconv.atof64(node.expr.val) or {

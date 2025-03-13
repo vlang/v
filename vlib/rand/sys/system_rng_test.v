@@ -253,7 +253,7 @@ fn test_sys_rng_i64_in_range() {
 
 fn test_sys_rng_int31() {
 	max_u31 := int(0x7FFFFFFF)
-	sign_mask := int(0x80000000)
+	sign_mask := int(u32(0x80000000))
 	for seed in seeds {
 		seed_data := [seed]
 		mut rng := &rand.PRNG(&sys.SysRNG{})
@@ -270,7 +270,7 @@ fn test_sys_rng_int31() {
 
 fn test_sys_rng_int63() {
 	max_u63 := i64(0x7FFFFFFFFFFFFFFF)
-	sign_mask := i64(0x8000000000000000)
+	sign_mask := i64(u64(0x8000000000000000))
 	for seed in seeds {
 		seed_data := [seed]
 		mut rng := &rand.PRNG(&sys.SysRNG{})
