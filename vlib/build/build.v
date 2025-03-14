@@ -4,13 +4,19 @@ import os
 
 @[noinit]
 pub struct BuildContext {
+mut:
+	// should_run caches the result of should_run from tasks.
+	should_run map[string]bool
+	tasks      []Task
 pub mut:
-	tasks []Task
+	// default is the default task to run when no others are provided.
+	default ?string
 }
 
 @[noinit]
 pub struct Task {
-	run fn () ! @[required]
+	run        fn (Task) ! @[required]
+	should_run fn (Task) !bool @[required]
 pub:
 	name    string
 	help    string
@@ -18,33 +24,69 @@ pub:
 }
 
 @[params]
-pub struct TaskConfig {
+pub struct BuildContextParams {
 pub:
-	name    string @[required]
-	help    string
-	depends []string
-	run     fn () ! @[required]
+	default ?string
+}
+
+@[params]
+pub struct TaskParams {
+pub:
+	name       string @[required]
+	help       string
+	depends    []string
+	should_run fn (Task) !bool = |self| true
+	run        fn (Task) ! @[required]
+}
+
+@[params]
+pub struct ArtifactParams {
+pub:
+	name       string @[required]
+	help       string
+	depends    []string
+	should_run fn (Task) !bool = |self| !os.exists(self.name)
+	run        fn (Task) ! @[required]
 }
 
 // context creates an empty BuildContext.
-pub fn context() BuildContext {
-	return BuildContext{}
+pub fn context(params BuildContextParams) BuildContext {
+	return BuildContext{
+		default: params.default
+	}
 }
 
 // task creates a task for the given context.
-pub fn (mut context BuildContext) task(config TaskConfig) {
+pub fn (mut context BuildContext) task(config TaskParams) {
 	if context.get_task(config.name) != none {
 		eprintln('error: task already exists with name `${config.name}`')
 		exit(1)
 	}
 	context.tasks << Task{
-		run:     config.run
-		name:    config.name
-		help:    config.help
-		depends: config.depends
+		should_run: config.should_run
+		run:        config.run
+		name:       config.name
+		help:       config.help
+		depends:    config.depends
 	}
 }
 
+// artifact creates an artifact task for the given context.
+pub fn (mut context BuildContext) artifact(config ArtifactParams) {
+	if context.get_task(config.name) != none {
+		eprintln('error: task already exists with name `${config.name}`')
+		exit(1)
+	}
+	context.tasks << Task{
+		should_run: config.should_run
+		run:        config.run
+		name:       config.name
+		help:       config.help
+		depends:    config.depends
+	}
+}
+
+// get_task gets the task with the given name.
 pub fn (context &BuildContext) get_task(name string) ?Task {
 	for task in context.tasks {
 		if task.name == name {
@@ -55,9 +97,9 @@ pub fn (context &BuildContext) get_task(name string) ?Task {
 }
 
 // exec executes the task with the given name in the context.
-pub fn (context &BuildContext) exec(name string) {
+pub fn (mut context BuildContext) exec(name string) {
 	if task := context.get_task(name) {
-		task.exec(context)
+		task.exec(mut context)
 	} else {
 		eprintln('error: no such task: ${name}')
 		exit(1)
@@ -65,7 +107,18 @@ pub fn (context &BuildContext) exec(name string) {
 }
 
 // exec runs the given task and its dependencies
-pub fn (task &Task) exec(context &BuildContext) {
+pub fn (task &Task) exec(mut context BuildContext) {
+	if task.name !in context.should_run {
+		context.should_run[task.name] = task.should_run(task) or {
+			eprintln('error: failed to call should_run for task `${task.name}`: ${err}')
+			exit(1)
+		}
+	}
+
+	if !context.should_run[task.name] {
+		return
+	}
+
 	for dep in task.depends {
 		if dep == task.name {
 			eprintln('error: cyclic task dependency detected, `${task.name}` depends on itself')
@@ -75,19 +128,18 @@ pub fn (task &Task) exec(context &BuildContext) {
 		context.exec(dep)
 	}
 	println(': ${task.name}')
-	task.run() or {
+	task.run(task) or {
 		eprintln('error: failed to run task `${task.name}`: ${err}')
 		exit(1)
 	}
 }
 
 // run executes all tasks provided through os.args.
-pub fn (context &BuildContext) run() {
-	if os.args.len == 1 {
-		eprintln('error: no task provided, run with `--tasks` for a list of each')
-		exit(1)
-	}
+pub fn (mut context BuildContext) run() {
+	// filter out options
+	mut tasks := os.args[1..].filter(|it| !it.starts_with('-'))
 
+	// check options
 	if '--tasks' in os.args || '-tasks' in os.args {
 		println('Tasks:')
 		for _, task in context.tasks {
@@ -96,11 +148,17 @@ pub fn (context &BuildContext) run() {
 		return
 	}
 
-	for arg in os.args[1..] {
-		// Skip flags
-		if arg.starts_with('-') {
-			continue
+	if tasks.len == 0 {
+		if context.default != none {
+			tasks << context.default
+		} else {
+			eprintln('error: no task provided, run with `--tasks` for a list')
+			exit(1)
 		}
+	}
+
+	// execute tasks
+	for arg in tasks {
 		context.exec(arg)
 	}
 }
