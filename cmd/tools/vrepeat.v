@@ -79,7 +79,8 @@ mut:
 	ignore_failed           bool // ignore commands that exit with != 0 exit code
 	no_vexe_setenv          bool // do not change the VEXE variable
 
-	fail_count map[string]int // how many times a command has failed so far. Only the first failure output is shown.
+	fail_count   map[string]int // how many times a command has failed so far. Only the first failure output is shown.
+	repeat_timer time.StopWatch = time.new_stopwatch()
 }
 
 fn new_aints(ovals []i64, extreme_mins int, extreme_maxs int) Aints {
@@ -198,7 +199,7 @@ fn (mut context Context) run() {
 			}
 			if context.warmup > 0 {
 				for i in 0 .. context.warmup {
-					flushed_print('${line_prefix}, warm up run: ${i + 1:4}/${context.warmup:-4} took ${f64(duration) / 1000:6.1f}ms ...')
+					flushed_print('${line_prefix}, warm up run: ${i + 1:4}/${context.warmup:-4}, took: ${f64(duration) / 1000:6.1f}ms ...')
 					mut sw := time.new_stopwatch()
 					res := os.execute(cmd)
 					duration = i64(sw.elapsed().microseconds())
@@ -212,7 +213,7 @@ fn (mut context Context) run() {
 					if should_show_fail_output {
 						eprintln('\nCommand exited with exit code: ${res.exit_code} in ${f64(duration) / 1000:6.1f}ms .')
 						eprintln('Use -e or --ignore to ignore the failed commands.')
-						eprintln('The failed cmd was: `${cmd}` ; cmd output:')
+						eprintln('The failed cmd was: `${c(tred, cmd)}` ; cmd output:')
 						show_failure_output(res.output)
 					}
 				}
@@ -233,7 +234,7 @@ fn (mut context Context) run() {
 				runs++
 				avg = (f64(sum) / f64(i + 1))
 				cavg := '${avg / 1000:9.3f}ms'
-				flushed_print('${line_prefix}, current average: ${c(tgreen, cavg)}, run ${i + 1:4}/${context.run_count:-4} took ${f64(duration) / 1000:6} ms')
+				flushed_print('${line_prefix}, current average: ${c(tgreen, cavg)}, run ${i + 1:4}/${context.run_count:-4}, took: ${f64(duration) / 1000:6} ms')
 				if context.show_output {
 					flushed_print(' | result: ${oldres:s}')
 				}
@@ -332,7 +333,7 @@ fn (mut context Context) show_diff_summary() {
 	mut first_marker := ''
 	if context.results.len == 1 {
 		gcmd := c(tgreen, context.results[0].cmd)
-		context.show_summary_title('${context.results[0].atiming}, ${context.series} series, ${context.run_count} runs for ${gcmd:-57s}')
+		context.show_summary_title('${context.results[0].atiming}, ${context.series} series, ${context.run_count} runs for ${gcmd}')
 	} else {
 		context.show_summary_title('Summary after ${context.series} series x ${context.run_count} runs (%s are relative to first command, or `base`)')
 		for i, r in context.results {
@@ -398,7 +399,8 @@ fn (mut context Context) show_summary_title(line string) {
 		msg << 'discard maxs: ${context.nmaxs:2}'
 	}
 	if context.repeats_count > 1 {
-		msg << 'repeat: ${context.current_run:2}'
+		msg << 'repeat: ${context.current_run}/${context.repeats_count}, took: ${f64(context.repeat_timer.elapsed().microseconds()) / 1000:8.3f} ms'
+		context.repeat_timer.restart()
 	}
 	println(msg.join(', '))
 }
