@@ -245,7 +245,6 @@ pub fn (mut b Builder) parse_imports() {
 	}
 	b.resolve_deps()
 
-	b.show_parsed_files()
 	if b.pref.print_v_files {
 		b.show_parsed_files()
 		exit(0)
