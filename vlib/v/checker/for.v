@@ -157,9 +157,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.kind = sym.kind
 			node.val_type = val_type
 			if node.val_type.has_flag(.generic) {
-				c.add_error_detail('type parameters defined by `next()` method should be bounded by method owner type')
-				c.error('cannot infer from generic type `${c.table.get_type_name(node.val_type)}`',
-					node.vv_pos)
+				if c.table.sym(c.unwrap_generic(node.val_type)).kind == .any {
+					c.add_error_detail('type parameters defined by `next()` method should be bounded by method owner type')
+					c.error('cannot infer from generic type `${c.table.get_type_name(c.unwrap_generic(node.val_type))}`',
+						node.vv_pos)
+				}
 			}
 			node.scope.update_var_type(node.val_var, val_type)
 
