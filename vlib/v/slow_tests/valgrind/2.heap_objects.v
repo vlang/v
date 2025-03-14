@@ -5,6 +5,7 @@ struct User {
 
 fn simple() {
 	user := &User{'Bob', 31}
+	println(user.name)
 	println('done')
 }
 
