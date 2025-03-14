@@ -599,6 +599,9 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 }
 
 pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
+	if node == unsafe { nil } {
+		return
+	}
 	if node.language == .c {
 		w.mark_fn_as_used(node.fkey())
 		return
@@ -616,6 +619,9 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 }
 
 pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
+	if node == unsafe { nil } {
+		return
+	}
 	for arg in node.args {
 		w.expr(arg.expr)
 	}
