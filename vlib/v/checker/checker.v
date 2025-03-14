@@ -154,6 +154,11 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 	$if time_checking ? {
 		timers_should_print = true
 	}
+	v_current_commit_hash := if pref_.building_v {
+		version.githash(pref_.vroot) or { vcurrent_hash() }
+	} else {
+		vcurrent_hash()
+	}
 	mut checker := &Checker{
 		table:                         table
 		pref:                          pref_
@@ -162,8 +167,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 			label:        'checker'
 		)
 		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
-		v_current_commit_hash:         if pref_.building_v { version.githash(pref_.vroot) or {
-				@VCURRENTHASH} } else { @VCURRENTHASH }
+		v_current_commit_hash:         v_current_commit_hash
 	}
 	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
 	checker.comptime = &checker.type_resolver.info

@@ -289,7 +289,7 @@ fn (e &Eval) error(msg string) {
 
 fn (e &Eval) panic(s string) {
 	eprintln('V panic: ${s}')
-	eprintln('V hash: ${@VCURRENTHASH}')
+	eprintln('V hash: ${vcurrent_hash()}')
 	e.print_backtrace()
 	exit(1)
 }

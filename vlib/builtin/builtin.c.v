@@ -71,7 +71,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprint('  message: '); eprintln(s)
 		eprint('     file: '); eprint(file); eprint(':');
 		C.fprintf(C.stderr, c'%d\n', line_no)
-		eprint('   v hash: '); eprintln(@VCURRENTHASH)
+		eprint('   v hash: '); eprintln(vcurrent_hash())
 		eprintln('=========================================')
 		// vfmt on
 		$if native {
@@ -117,6 +117,10 @@ pub fn panic_result_not_set(s string) {
 	panic('result not set (' + s + ')')
 }
 
+pub fn vcurrent_hash() string {
+	return @VCURRENTHASH
+}
+
 // panic prints a nice error message, then exits the process with exit code of 1.
 // It also shows a backtrace on most platforms.
 @[noreturn]
@@ -128,7 +132,7 @@ pub fn panic(s string) {
 		eprint('V panic: ')
 		eprintln(s)
 		eprint('v hash: ')
-		eprintln(@VCURRENTHASH)
+		eprintln(vcurrent_hash())
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {

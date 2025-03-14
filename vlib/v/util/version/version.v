@@ -6,11 +6,10 @@ pub const v_version = '0.4.9'
 
 pub fn full_hash() string {
 	build_hash := vhash()
-	current_hash := @VCURRENTHASH
-	if build_hash == current_hash {
+	if build_hash == vcurrent_hash() {
 		return build_hash
 	}
-	return '${build_hash}.${current_hash}'
+	return '${build_hash}.${vcurrent_hash()}'
 }
 
 // full_v_version() returns the full version of the V compiler
@@ -18,7 +17,7 @@ pub fn full_v_version(is_verbose bool) string {
 	if is_verbose {
 		return 'V ${v_version} ${full_hash()}'
 	}
-	return 'V ${v_version} ${@VCURRENTHASH}'
+	return 'V ${v_version} ${vcurrent_hash()}'
 }
 
 // githash tries to find the current git commit hash for the specified
