@@ -3585,6 +3585,12 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.error('cannot cast type `${ft}` to `${tt}`', node.pos)
 	}
 
+	// T(0) where T is array or map
+	if node.typ.has_flag(.generic) && to_sym.kind in [.array, .map, .array_fixed]
+		&& node.expr.is_literal() {
+		c.error('cannot cast literal value to ${to_sym.name} type', node.pos)
+	}
+
 	if to_sym.kind == .enum && !(c.inside_unsafe || c.file.is_translated) && from_sym.is_int() {
 		c.error('casting numbers to enums, should be done inside `unsafe{}` blocks', node.pos)
 	}
