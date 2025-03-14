@@ -8,7 +8,7 @@ import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
 pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&ast.File) {
-	mut all_fns, all_consts, all_globals := all_fn_const_and_global(ast_files)
+	mut all_fns, all_consts, all_globals, all_fields := all_global_decl(ast_files)
 	util.timing_start('MARKUSED')
 	defer {
 		util.timing_measure('MARKUSED')
@@ -464,11 +464,13 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		all_fns:     all_fns
 		all_consts:  all_consts
 		all_globals: all_globals
+		all_fields:  all_fields
 		pref:        pref_
 	)
 	walker.mark_markused_consts() // tagged with `@[markused]`
 	walker.mark_markused_globals() // tagged with `@[markused]`
 	walker.mark_markused_fns() // tagged with `@[markused]`, `@[export]` and veb actions
+	walker.mark_struct_field_default_expr()
 
 	for k, _ in table.used_features.comptime_calls {
 		walker.fn_by_name(k)
@@ -553,7 +555,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 }
 
-fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField, map[string]ast.GlobalField) {
+fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField, map[string]ast.GlobalField, map[string]ast.StructField) {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
@@ -561,6 +563,7 @@ fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[st
 	mut all_fns := map[string]ast.FnDecl{}
 	mut all_consts := map[string]ast.ConstField{}
 	mut all_globals := map[string]ast.GlobalField{}
+	mut all_fields := map[string]ast.StructField{}
 	for i in 0 .. ast_files.len {
 		for node in ast_files[i].stmts {
 			match node {
@@ -582,11 +585,17 @@ fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[st
 						all_globals[gkey] = gfield
 					}
 				}
+				ast.StructDecl {
+					for sfield in node.fields {
+						sfkey := sfield.sfkey()
+						all_fields[sfkey] = sfield
+					}
+				}
 				else {}
 			}
 		}
 	}
-	return all_fns, all_consts, all_globals
+	return all_fns, all_consts, all_globals, all_fields
 }
 
 fn mark_all_methods_used(mut table ast.Table, mut all_fn_root_names []string, typ ast.Type) {

@@ -1,0 +1,15 @@
+module main
+
+import flag
+
+const c_default_port = u16(12345)
+
+struct Options {
+	headless bool
+	port     u16 = c_default_port @[short: p]
+}
+
+fn main() {
+	args := arguments()
+	_, _ := flag.to_struct[Options](args, style: .v, skip: 1)!
+}

@@ -22,6 +22,7 @@ mut:
 	all_fns     map[string]ast.FnDecl
 	all_consts  map[string]ast.ConstField
 	all_globals map[string]ast.GlobalField
+	all_fields  map[string]ast.StructField
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -145,6 +146,17 @@ pub fn (mut w Walker) mark_markused_globals() {
 				println('>>>> walking markused global: ${gkey}')
 			}
 			w.mark_global_as_used(gkey)
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_struct_field_default_expr() {
+	for sfkey, mut structfield in w.all_fields {
+		$if trace_skip_unused_roots ? {
+			println('>>>> walking struct field: ${sfkey} ...')
+		}
+		if structfield.has_default_expr {
+			w.expr(structfield.default_expr)
 		}
 	}
 }
