@@ -1,4 +1,3 @@
-import os
 import strings
 
 // This program is built and run via Valgrind to ensure there are no leaks with -autofree
@@ -9,11 +8,13 @@ fn simple() {
 	println(nums_copy)
 	name := 'Peter' // string literals mustn't be freed
 	str_inter := 'hello, ${name}' // concatenated strings must be freed
+	println(str_inter)
 	// nums.free() // this should result in a double free and a CI error
 	if true {
 		// test the freeing of local vars in a new scope
 		nums2 := [4, 5, 6]
 		str_inter2 := 'hello, ${name}'
+		println(str_inter2)
 		println(nums2)
 	}
 	arr := return_array([])
@@ -119,6 +120,9 @@ fn reassign_str() {
 	mut s := 'a' + 'b'
 	s = 'x' + 'y' // 'a' + 'b' must be freed before the re-assignment
 	s = s + '!' // old s ref must be copied and freed after the assignment, since s is still used in the right expr
+	println(z)
+	println(x)
+	println(s)
 }
 
 struct Foo2 {
@@ -133,8 +137,11 @@ fn reassign_arr() {
 	mut foo := Foo2{[10, 20, 30]}
 	foo.nums = [40, 50, 60] // same with struct fields
 	foo.nums = [70, 80, 90]
+	println(x)
 	// TODO: remove this once structs are freed automatically
-	foo.nums.free()
+	unsafe {
+		foo.nums.free()
+	}
 }
 
 fn match_expr() string {
@@ -173,6 +180,7 @@ fn option_str() {
 		p = opt('query:${q}') or { break }
 		break
 	}
+	println(p)
 }
 
 fn return_error_with_freed_expr() !string {
@@ -236,6 +244,7 @@ fn loop_map() {
 
 fn free_map() {
 	nums := [1, 2, 3]
+	println(nums)
 	/*
 	nums2 := nums.map(it + handle_strings('a' + 'b', 'c'))
 	println(nums2)
@@ -247,6 +256,7 @@ fn free_inside_opt_block() {
 		get_string('c' + 'd') // c+d must be freed before a+b
 		return
 	}
+	println(x)
 }
 
 fn free_before_return() {
@@ -265,12 +275,15 @@ fn free_before_return_bool() bool {
 
 fn free_before_break() {
 	s := 'a' + 'b'
+	println(s)
 	for {
 		q := [1, 2, 3]
+		println(q)
 		break
 	}
 	for {
 		aa := [1, 2, 3]
+		println(aa)
 		if true {
 			// breaking should free only vars in the closest for loop's scope
 			// `qq`, not `s`
@@ -279,12 +292,14 @@ fn free_before_break() {
 		// nested 1
 		for {
 			bb := [4, 5, 6]
+			println(bb)
 			if true {
 				break
 			}
 			// nested 2
 			for {
 				cc := [7, 8, 9]
+				println(cc)
 				if true {
 					if true {
 						break
@@ -298,6 +313,7 @@ fn free_before_break() {
 	for {
 		i++
 		qq := [1, 2, 3]
+		println(qq)
 		if i > 10 {
 			break
 		}
@@ -336,6 +352,7 @@ fn get_user2() User {
 fn string_array_get() {
 	s := ['a', 'b', 'c']
 	x := s[0]
+	println(x)
 	println(s)
 }
 
@@ -379,6 +396,7 @@ fn parse_header1(s string) !string {
 fn advanced_options() {
 	s := parse_header0('foo:bar') or { return }
 	s2 := parse_header1('foo:bar') or { return }
+	_ := s.len + s2.len // avoid warning for unused variables
 	// TODO: fix -autofree, so that it adds this free automatically:
 	unsafe { s2.free() }
 }
@@ -400,13 +418,16 @@ fn main() {
 	if_cond()
 	addition_with_tmp_expr()
 	q := if_expr()
+	println(q)
 	s := return_if_expr()
+	println(s)
 	free_inside_opt_block()
 	comptime_if()
 	free_before_return()
 	free_before_return_bool()
 	free_before_break()
 	s2 := return_sb_str()
+	println(s2)
 	// free_map()
 	// loop_map()
 	advanced_options()
