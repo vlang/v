@@ -19,6 +19,14 @@ fn c(cfn fn (string) string, s string) string {
 	return term.colorize(cfn, s)
 }
 
+const hline = '-'.repeat(80)
+
+fn show_failure_output(output string) {
+	eprintln(hline)
+	eprint(output)
+	eprintln(hline)
+}
+
 const max_fail_percent = 100 * 1000
 const max_time = 60 * 1000 // ms
 
@@ -70,6 +78,8 @@ mut:
 	nmaxs                   int  // number of maximums to discard
 	ignore_failed           bool // ignore commands that exit with != 0 exit code
 	no_vexe_setenv          bool // do not change the VEXE variable
+
+	fail_count map[string]int // how many times a command has failed so far. Only the first failure output is shown.
 }
 
 fn new_aints(ovals []i64, extreme_mins int, extreme_maxs int) Aints {
@@ -192,13 +202,18 @@ fn (mut context Context) run() {
 					mut sw := time.new_stopwatch()
 					res := os.execute(cmd)
 					duration = i64(sw.elapsed().microseconds())
+					mut should_show_fail_output := false
 					if res.exit_code != 0 && !context.ignore_failed {
-						eprintln('')
-						eprintln('Command exited with exit code: ${res.exit_code} in ${f64(duration) / 1000:6.1f}ms .')
-						eprintln('The failed command was: `${cmd}` .')
+						if context.fail_count[cmd] == 0 {
+							should_show_fail_output = true
+						}
+						context.fail_count[cmd]++
+					}
+					if should_show_fail_output {
+						eprintln('\nCommand exited with exit code: ${res.exit_code} in ${f64(duration) / 1000:6.1f}ms .')
 						eprintln('Use -e or --ignore to ignore the failed commands.')
-						eprintln('')
-						continue
+						eprintln('The failed cmd was: `${cmd}` ; cmd output:')
+						show_failure_output(res.output)
 					}
 				}
 			}
@@ -207,9 +222,12 @@ fn (mut context Context) run() {
 				res := os.execute(cmd)
 				duration = i64(sw.elapsed().microseconds())
 				//
+				mut should_show_fail_output := false
 				if res.exit_code != 0 && !context.ignore_failed {
-					eprintln('${i + 1:10} non 0 exit code for cmd: ${cmd}')
-					continue
+					if context.fail_count[cmd] == 0 {
+						should_show_fail_output = true
+					}
+					context.fail_count[cmd]++
 				}
 				sum += duration
 				runs++
@@ -227,6 +245,10 @@ fn (mut context Context) run() {
 				}
 				context.results[icmd].timings << duration
 				oldres = res.output.replace('\n', ' ')
+				if should_show_fail_output {
+					eprintln('\n${i + 1:10} non 0 exit code for cmd: ${cmd}; cmd output:')
+					show_failure_output(res.output)
+				}
 			}
 			context.results[icmd].cmd = cmd
 			context.results[icmd].icmd = icmd
