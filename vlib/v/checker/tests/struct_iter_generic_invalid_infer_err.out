@@ -1,0 +1,8 @@
+vlib/v/checker/tests/struct_iter_generic_invalid_infer_err.vv:25:6: error: cannot infer from generic type `K`
+   23 |     }
+   24 | 
+   25 |     for squared in iter {
+      |         ~~~~~~~
+   26 |         println(squared)
+   27 |     }
+Details: type parameters defined by `next()` method should be bounded by method owner type
