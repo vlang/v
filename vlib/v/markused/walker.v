@@ -151,7 +151,7 @@ pub fn (mut w Walker) mark_markused_globals() {
 }
 
 pub fn (mut w Walker) mark_struct_field_default_expr() {
-	for sfkey, mut structfield in w.all_fields {
+	for _, mut structfield in w.all_fields {
 		if structfield.has_default_expr {
 			w.expr(structfield.default_expr)
 		}
