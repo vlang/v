@@ -2,7 +2,7 @@ module build
 
 import os
 
-@[noinit; heap]
+@[heap; noinit]
 pub struct BuildContext {
 mut:
 	// should_run caches the result of should_run from tasks.
@@ -13,9 +13,9 @@ pub mut:
 	default ?string
 }
 
-@[noinit; heap]
+@[heap; noinit]
 pub struct Task {
-	run        fn (Task) ! @[required]
+	run        fn (Task) !     @[required]
 	should_run fn (Task) !bool @[required]
 	// repeatable controls whether or not this task can run multiple times per build cycle
 	repeatable bool
