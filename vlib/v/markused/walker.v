@@ -380,9 +380,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 
 				w.features.used_arrays++
 			} else if sym.kind == .string {
-				w.mark_builtin_array_method_as_used('slice')
-
 				if node.index is ast.RangeExpr {
+					w.mark_builtin_array_method_as_used('slice')
 					w.features.range_index = true
 				}
 			}
