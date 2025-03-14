@@ -2,7 +2,7 @@ module build
 
 import os
 
-@[noinit]
+@[noinit; heap]
 pub struct BuildContext {
 mut:
 	// should_run caches the result of should_run from tasks.
@@ -13,14 +13,18 @@ pub mut:
 	default ?string
 }
 
-@[noinit]
+@[noinit; heap]
 pub struct Task {
 	run        fn (Task) ! @[required]
 	should_run fn (Task) !bool @[required]
+	// repeatable controls whether or not this task can run multiple times per build cycle
+	repeatable bool
 pub:
 	name    string
 	help    string
 	depends []string
+mut:
+	did_run bool
 }
 
 @[params]
@@ -37,6 +41,8 @@ pub:
 	depends    []string
 	should_run fn (Task) !bool = |self| true
 	run        fn (Task) ! @[required]
+	// repeatable controls whether or not this task can run multiple times per build cycle
+	repeatable bool
 }
 
 @[params]
@@ -47,6 +53,8 @@ pub:
 	depends    []string
 	should_run fn (Task) !bool = |self| !os.exists(self.name)
 	run        fn (Task) ! @[required]
+	// repeatable controls whether or not this task can run multiple times per build cycle
+	repeatable bool
 }
 
 // context creates an empty BuildContext.
@@ -83,14 +91,15 @@ pub fn (mut context BuildContext) artifact(config ArtifactParams) {
 		name:       config.name
 		help:       config.help
 		depends:    config.depends
+		repeatable: config.repeatable
 	}
 }
 
 // get_task gets the task with the given name.
-pub fn (context &BuildContext) get_task(name string) ?Task {
-	for task in context.tasks {
+pub fn (mut context BuildContext) get_task(name string) ?&Task {
+	for mut task in context.tasks {
 		if task.name == name {
-			return task
+			return mut task
 		}
 	}
 	return none
@@ -98,7 +107,7 @@ pub fn (context &BuildContext) get_task(name string) ?Task {
 
 // exec executes the task with the given name in the context.
 pub fn (mut context BuildContext) exec(name string) {
-	if task := context.get_task(name) {
+	if mut task := context.get_task(name) {
 		task.exec(mut context)
 	} else {
 		eprintln('error: no such task: ${name}')
@@ -107,7 +116,12 @@ pub fn (mut context BuildContext) exec(name string) {
 }
 
 // exec runs the given task and its dependencies
-pub fn (task &Task) exec(mut context BuildContext) {
+pub fn (mut task Task) exec(mut context BuildContext) {
+	if task.did_run && !task.repeatable {
+		println(': ${task.name} (skipped)')
+		return
+	}
+
 	if task.name !in context.should_run {
 		context.should_run[task.name] = task.should_run(task) or {
 			eprintln('error: failed to call should_run for task `${task.name}`: ${err}')
@@ -116,6 +130,7 @@ pub fn (task &Task) exec(mut context BuildContext) {
 	}
 
 	if !context.should_run[task.name] {
+		println(': ${task.name} (skipped)')
 		return
 	}
 
@@ -128,6 +143,7 @@ pub fn (task &Task) exec(mut context BuildContext) {
 		context.exec(dep)
 	}
 	println(': ${task.name}')
+	task.did_run = true
 	task.run(task) or {
 		eprintln('error: failed to run task `${task.name}`: ${err}')
 		exit(1)
