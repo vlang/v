@@ -364,11 +364,24 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			sym := w.table.final_sym(node.left_type)
 			if sym.kind == .map {
+				if node.is_setter {
+					w.mark_builtin_map_method_as_used('set')
+				} else {
+					w.mark_builtin_map_method_as_used('get')
+				}
+
 				w.features.used_maps++
 			} else if sym.kind == .array {
+				if node.is_setter {
+					w.mark_builtin_array_method_as_used('set')
+				} else {
+					w.mark_builtin_array_method_as_used('get')
+				}
+
 				w.features.used_arrays++
 			} else if sym.kind == .string {
 				if node.index is ast.RangeExpr {
+					w.mark_builtin_array_method_as_used('slice')
 					w.features.range_index = true
 				}
 			}
