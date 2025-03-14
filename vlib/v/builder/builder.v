@@ -244,13 +244,10 @@ pub fn (mut b Builder) parse_imports() {
 		}
 	}
 	b.resolve_deps()
+
+	b.show_parsed_files()
 	if b.pref.print_v_files {
-		for p in b.parsed_files {
-			if p.is_parse_text {
-				println(p.path + ':parse_text')
-			}
-			println(p.path)
-		}
+		b.show_parsed_files()
 		exit(0)
 	}
 	if b.pref.print_watched_files {
@@ -659,4 +656,13 @@ pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors
 @[noreturn]
 pub fn verror(s string) {
 	util.verror('builder error', s)
+}
+
+pub fn (mut b Builder) show_parsed_files() {
+	for p in b.parsed_files {
+		if p.is_parse_text {
+			println(p.path + ':parse_text')
+		}
+		println(p.path)
+	}
 }
