@@ -15,7 +15,7 @@ fn main() {
 	mut c := &constant
 	c.value = 200
 	c = &constant
-	ic := &constant // ok
+	ic := &constant
 	_ = ic
 
 	mut mf := f
