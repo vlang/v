@@ -995,8 +995,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			unwrapped_ret_typ := g.unwrap_generic(node.return_type_generic)
 			if !unwrapped_ret_typ.has_flag(.generic) {
 				ret_sym := g.table.sym(unwrapped_ret_typ)
-				if g.table.type_kind(node.return_type_generic) == .array
-					&& ret_sym.info is ast.Array {
+				if ret_sym.info is ast.Array && g.table.sym(node.return_type_generic).kind == .array {
+					// Make []T returns T type when array was supplied to T
 					if g.table.type_to_str(node.return_type_generic).count('[]') < g.table.type_to_str(unwrapped_ret_typ).count('[]') {
 						ret_typ = g.unwrap_generic(ret_sym.info.elem_type).derive(unwrapped_ret_typ)
 					}
