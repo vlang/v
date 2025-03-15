@@ -991,7 +991,7 @@ pub fn (t &Table) array_fixed_name(elem_type Type, size int, size_expr Expr) str
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
 	opt := if elem_type.has_flag(.option) { '?' } else { '' }
 	res := if elem_type.has_flag(.result) { '!' } else { '' }
-	size_str := if size_expr is EmptyExpr || size != 987654321 {
+	size_str := if size_expr is EmptyExpr || size !in [0, 987654321] {
 		size.str()
 	} else {
 		size_expr.str()
