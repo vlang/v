@@ -59,11 +59,6 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
-	inside_array_lit := p.inside_array_lit
-	p.inside_array_lit = false
-	defer {
-		p.inside_array_lit = inside_array_lit
-	}
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_atomic, .key_static, .key_volatile {
@@ -539,7 +534,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		}
 	}
 
-	if inside_array_lit {
+	if p.inside_array_lit {
 		if p.tok.kind in [.minus, .mul, .amp, .arrow] && p.tok.pos + 1 == p.peek_tok.pos
 			&& p.prev_tok.pos + p.prev_tok.len + 1 != p.peek_tok.pos {
 			return node
@@ -568,7 +563,8 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 	for precedence < p.tok.kind.precedence() {
 		if p.tok.kind == .dot {
 			// no spaces or line break before dot in map_init
-			if p.inside_map_init && p.tok.pos - p.prev_tok.pos > p.prev_tok.len {
+			if (p.inside_map_init || p.inside_array_lit)
+				&& p.tok.pos - p.prev_tok.pos > p.prev_tok.len {
 				return node
 			}
 			node = p.dot_expr(node)

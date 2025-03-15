@@ -83,6 +83,8 @@ mut:
 	is_translated            bool              // `@[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
 	attrs                    []ast.Attr        // attributes before next decl stmt
 	expr_mod                 string            // for constructing full type names in parse_type()
+	last_enum_name           string            // saves the last enum name on an array initialization
+	last_enum_mod            string            // saves the last enum mod name on an array initialization
 	imports                  map[string]string // alias => mod_name
 	ast_imports              []ast.Import      // mod_names
 	used_imports             []string          // alias
@@ -3067,6 +3069,8 @@ fn (mut p Parser) enum_val_expr(mod string) ast.EnumVal {
 	p.check(.dot)
 	val := p.check_name()
 	p.expr_mod = ''
+	p.last_enum_name = enum_name
+	p.last_enum_mod = mod
 	return ast.EnumVal{
 		enum_name: enum_name
 		val:       val
@@ -3293,12 +3297,24 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 }
 
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
+	prev_line := p.prev_tok.pos().line_nr
 	p.next()
 	if p.tok.kind == .dollar {
 		return p.comptime_selector(left)
 	}
 	is_generic_call := p.is_generic_call()
 	name_pos := p.tok.pos()
+	// array initialization with enum shortcut [Enum.foo .bar]
+	if !is_generic_call && p.tok.kind == .name && p.inside_array_lit && p.last_enum_name != ''
+		&& prev_line != name_pos.line_nr {
+		p.name_error = true
+		return ast.EnumVal{
+			enum_name: p.last_enum_name
+			val:       p.check_name()
+			pos:       p.tok.pos()
+			mod:       p.last_enum_mod
+		}
+	}
 	mut field_name := ''
 	// check if the name is on the same line as the dot
 	if p.prev_tok.pos().line_nr == name_pos.line_nr || p.tok.kind != .name {

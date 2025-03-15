@@ -56,7 +56,11 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 		} else {
 			// [1,2,3] or [const]u8
 			old_inside_array_lit := p.inside_array_lit
+			old_last_enum_name := p.last_enum_name
+			old_last_enum_mod := p.last_enum_mod
 			p.inside_array_lit = true
+			p.last_enum_name = ''
+			p.last_enum_mod = ''
 			pre_cmnts = p.eat_comments()
 			for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 				exprs << p.expr(0)
@@ -67,6 +71,8 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 				ecmnts.last() << p.eat_comments()
 			}
 			p.inside_array_lit = old_inside_array_lit
+			p.last_enum_name = old_last_enum_name
+			p.last_enum_mod = old_last_enum_mod
 			line_nr := p.tok.line_nr
 			last_pos = p.tok.pos()
 			p.check(.rsbr)
