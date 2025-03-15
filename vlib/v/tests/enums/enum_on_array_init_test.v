@@ -24,6 +24,8 @@ fn test_main() {
 
 	array := [Animal.cat, .dog, .rabbit]
 	assert array.str() == '[cat, dog, rabbit]'
-	array_1 := [Animal.cat, .dog, .rabbit]
+	// vfmt off
+	array_1 := [Animal.cat .dog .rabbit]
+	// vfmt on
 	assert array_1.str() == '[cat, dog, rabbit]'
 }
