@@ -12,6 +12,13 @@ vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:12:1
       |               ~~~~~~~~~~~~~~
    13 |     println(a)
    14 |     println(b)
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:10:11: error: cannot have mutable reference to const `a_char`
+    8 | 
+    9 | fn foo() {
+   10 |     mut a := &(a_char)
+      |              ^
+   11 |     mut b := &((a_char))
+   12 |     mut c := &((((a_char))))
 vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:10:11: error: `a_char` is immutable, cannot have a mutable reference to it
     8 | 
     9 | fn foo() {
@@ -19,6 +26,13 @@ vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:10:1
       |              ^
    11 |     mut b := &((a_char))
    12 |     mut c := &((((a_char))))
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:11:11: error: cannot have mutable reference to const `a_char`
+    9 | fn foo() {
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+      |              ^
+   12 |     mut c := &((((a_char))))
+   13 |     println(a)
 vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:11:11: error: `a_char` is immutable, cannot have a mutable reference to it
     9 | fn foo() {
    10 |     mut a := &(a_char)
@@ -26,6 +40,13 @@ vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:11:1
       |              ^
    12 |     mut c := &((((a_char))))
    13 |     println(a)
+vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:12:11: error: cannot have mutable reference to const `a_char`
+   10 |     mut a := &(a_char)
+   11 |     mut b := &((a_char))
+   12 |     mut c := &((((a_char))))
+      |              ^
+   13 |     println(a)
+   14 |     println(b)
 vlib/v/checker/tests/assign_immutable_reference_var_with_parenthesis_err.vv:12:11: error: `a_char` is immutable, cannot have a mutable reference to it
    10 |     mut a := &(a_char)
    11 |     mut b := &((a_char))
