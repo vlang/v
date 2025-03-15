@@ -18,7 +18,7 @@ mut:
 	is_print         bool
 	is_terse         bool
 	is_skip_defaults bool
-	is_skip_checker  bool
+	check            bool
 	hide_names       map[string]bool
 }
 
@@ -45,7 +45,7 @@ fn main() {
 	ctx.is_compile = fp.bool('compile', `c`, false, 'watch the .v file for changes, rewrite the .json file, *AND* generate a .c file too on any change')
 	ctx.is_terse = fp.bool('terse', `t`, false, 'terse output, only with tree node names (AST structure), no details')
 	ctx.is_skip_defaults = fp.bool('skip-defaults', `s`, false, 'skip properties that have default values like false, 0, "", etc')
-	ctx.is_skip_checker = fp.bool('skip-checker', `t`, false, 'skip v.checker, as it will modify the AST tree')
+	ctx.check = fp.bool('check', `k`, false, 'run v.checker as well (it may modify the AST)')
 	hfields := fp.string_multi('hide', 0, 'hide the specified fields. You can give several, by separating them with `,`').join(',')
 	for hf in hfields.split(',') {
 		ctx.hide_names[hf] = true
@@ -175,7 +175,7 @@ fn json(file string) string {
 	// parse file with comment
 	mut ast_file := parser.parse_file(file, mut t.table, .parse_comments, t.pref)
 
-	if !context.is_skip_checker {
+	if context.check {
 		mut the_checker := checker.new_checker(t.table, pref_)
 		the_checker.check(mut ast_file)
 	}
