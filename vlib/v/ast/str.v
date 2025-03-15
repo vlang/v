@@ -51,6 +51,12 @@ pub fn (node &FnDecl) fkey() string {
 	return node.name
 }
 
+// sfkey returns a unique name of the struct field.
+// it is used in v.markused.
+pub fn (node &StructField) sfkey() string {
+	return '${int(node.container_typ)}.${node.name}}'
+}
+
 pub fn (node &Fn) fkey() string {
 	if node.is_method {
 		return '${int(node.receiver_type)}.${node.name}'

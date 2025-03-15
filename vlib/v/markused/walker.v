@@ -15,6 +15,7 @@ pub mut:
 	used_consts  map[string]bool // used_consts['os.args'] == true
 	used_globals map[string]bool
 	used_structs map[string]bool
+	used_fields  map[string]bool
 	n_asserts    int
 	pref         &pref.Preferences = unsafe { nil }
 mut:
@@ -22,6 +23,7 @@ mut:
 	all_fns     map[string]ast.FnDecl
 	all_consts  map[string]ast.ConstField
 	all_globals map[string]ast.GlobalField
+	all_fields  map[string]ast.StructField
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -90,6 +92,16 @@ pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	}
 }
 
+pub fn (mut w Walker) mark_struct_field_default_expr_as_used(sfkey string) {
+	if w.used_fields[sfkey] {
+		return
+	}
+	w.used_fields[sfkey] = true
+	sfield := w.all_fields[sfkey] or { return }
+
+	w.expr(sfield.default_expr)
+}
+
 pub fn (mut w Walker) mark_markused_fns() {
 	for _, mut func in w.all_fns {
 		// @[export]
@@ -145,6 +157,14 @@ pub fn (mut w Walker) mark_markused_globals() {
 				println('>>>> walking markused global: ${gkey}')
 			}
 			w.mark_global_as_used(gkey)
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_struct_field_default_expr() {
+	for sfkey, mut structfield in w.all_fields {
+		if structfield.has_default_expr {
+			w.mark_struct_field_default_expr_as_used(sfkey)
 		}
 	}
 }
