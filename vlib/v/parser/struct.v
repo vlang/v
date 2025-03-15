@@ -212,6 +212,11 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			mut field_pos := token.Pos{}
 			mut option_pos := token.Pos{}
 
+			if p.tok.kind == .rcbr {
+				ast_fields.last().next_comments << pre_field_comments
+				break
+			}
+
 			if is_embed {
 				// struct embedding
 				type_pos = p.tok.pos()
