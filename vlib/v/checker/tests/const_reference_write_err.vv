@@ -1,0 +1,23 @@
+const a_string = ''
+const a_struct = A1{}
+
+struct A1 {
+	a_string string
+}
+
+fn main() {
+	f := '123'
+	a := A1{
+		a_string: f
+	}
+	unsafe {
+		ptr := &a_string
+		*ptr = f
+
+		ptr2 := &a_struct
+		*ptr2 = a
+	}
+	println('f: ${f} vs. a_string: ${a_string} vs. a_struct.a_string: ${a_struct.a_string}')
+	println('f == a_string : ${a_string == f}')
+	println('f == a_struct.a_string : ${a_struct.a_string == f}')
+}
