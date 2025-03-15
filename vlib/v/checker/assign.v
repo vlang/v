@@ -921,7 +921,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						v := expr.obj
 						right_first_type = v.typ
 					}
-					if is_amp && expr.obj is ast.ConstField {
+					if is_amp && !node.left[0].is_blank_ident() && expr.obj is ast.ConstField {
 						c.error('cannot have mutable reference to const `${expr.name}`',
 							right_node.pos)
 					}
