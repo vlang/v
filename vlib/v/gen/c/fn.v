@@ -991,6 +991,14 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			if unaliased_type.has_option_or_result() {
 				ret_typ = unaliased_type
 			}
+		} else if node.return_type_generic != 0 && node.raw_concrete_types.len == 0 {
+			unwrapped_ret_typ := g.unwrap_generic(node.return_type_generic)
+			if !unwrapped_ret_typ.has_flag(.generic) {
+				ret_sym := g.table.sym(unwrapped_ret_typ)
+				if g.table.sym(node.return_type_generic).kind == .array && ret_sym.info is ast.Array {
+					ret_typ = g.unwrap_generic(ret_sym.info.elem_type).derive(unwrapped_ret_typ)
+				}
+			}
 		}
 		mut styp := g.styp(ret_typ)
 		if gen_or && !is_gen_or_and_assign_rhs {
