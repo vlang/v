@@ -100,9 +100,9 @@ fn (ctx Context) skip_empty(child &Node) bool {
 
 fn (ctx Context) write_file_or_print(file string) {
 	if ctx.is_print {
-		println(ctx.json(file))
+		println(json(file))
 	} else {
-		println('${time.now()}: AST written to: ' + ctx.json_file(file))
+		println('${time.now()}: AST written to: ' + json_file(file))
 	}
 }
 
@@ -148,8 +148,8 @@ fn check_file(file string) {
 }
 
 // generate json file with the same file name
-fn (ctx Context) json_file(file string) string {
-	ast_json := ctx.json(file)
+fn json_file(file string) string {
+	ast_json := json(file)
 	// support .v and .vsh file
 	file_name := file[0..(file.len - os.file_ext(file).len)]
 	json_file := file_name + '.json'
@@ -158,7 +158,7 @@ fn (ctx Context) json_file(file string) string {
 }
 
 // generate json string
-fn (ctx Context) json(file string) string {
+fn json(file string) string {
 	// use as permissive preferences as possible, so that `v ast`
 	// can print the AST of arbitrary V files, even .vsh or ones
 	// that require globals:
@@ -175,7 +175,7 @@ fn (ctx Context) json(file string) string {
 	// parse file with comment
 	mut ast_file := parser.parse_file(file, mut t.table, .parse_comments, t.pref)
 
-	if !ctx.is_skip_checker {
+	if !context.is_skip_checker {
 		mut the_checker := checker.new_checker(t.table, pref_)
 		the_checker.check(mut ast_file)
 	}
