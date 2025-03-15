@@ -21,6 +21,9 @@ fn test_main() {
 		'conejo': .rabbit
 	}
 	assert map_2.str() == "{'gato': cat, 'perro': dog, 'conejo': rabbit}"
+
 	array := [Animal.cat, .dog, .rabbit]
 	assert array.str() == '[cat, dog, rabbit]'
+	array_1 := [Animal.cat, .dog, .rabbit]
+	assert array_1.str() == '[cat, dog, rabbit]'
 }
