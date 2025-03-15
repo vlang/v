@@ -8,6 +8,7 @@ import v.parser
 import v.ast
 import v.pref
 import v.errors
+import v.checker
 import strings
 
 struct Context {
@@ -17,6 +18,7 @@ mut:
 	is_print         bool
 	is_terse         bool
 	is_skip_defaults bool
+	is_skip_checker  bool
 	hide_names       map[string]bool
 }
 
@@ -43,6 +45,7 @@ fn main() {
 	ctx.is_compile = fp.bool('compile', `c`, false, 'watch the .v file for changes, rewrite the .json file, *AND* generate a .c file too on any change')
 	ctx.is_terse = fp.bool('terse', `t`, false, 'terse output, only with tree node names (AST structure), no details')
 	ctx.is_skip_defaults = fp.bool('skip-defaults', `s`, false, 'skip properties that have default values like false, 0, "", etc')
+	ctx.is_skip_checker = fp.bool('skip-checker', `t`, false, 'skip v.checker, as it will modify the AST tree')
 	hfields := fp.string_multi('hide', 0, 'hide the specified fields. You can give several, by separating them with `,`').join(',')
 	for hf in hfields.split(',') {
 		ctx.hide_names[hf] = true
@@ -97,9 +100,9 @@ fn (ctx Context) skip_empty(child &Node) bool {
 
 fn (ctx Context) write_file_or_print(file string) {
 	if ctx.is_print {
-		println(json(file))
+		println(ctx.json(file))
 	} else {
-		println('${time.now()}: AST written to: ' + json_file(file))
+		println('${time.now()}: AST written to: ' + ctx.json_file(file))
 	}
 }
 
@@ -145,8 +148,8 @@ fn check_file(file string) {
 }
 
 // generate json file with the same file name
-fn json_file(file string) string {
-	ast_json := json(file)
+fn (ctx Context) json_file(file string) string {
+	ast_json := ctx.json(file)
 	// support .v and .vsh file
 	file_name := file[0..(file.len - os.file_ext(file).len)]
 	json_file := file_name + '.json'
@@ -155,7 +158,7 @@ fn json_file(file string) string {
 }
 
 // generate json string
-fn json(file string) string {
+fn (ctx Context) json(file string) string {
 	// use as permissive preferences as possible, so that `v ast`
 	// can print the AST of arbitrary V files, even .vsh or ones
 	// that require globals:
@@ -170,7 +173,12 @@ fn json(file string) string {
 		pref:  pref_
 	}
 	// parse file with comment
-	ast_file := parser.parse_file(file, mut t.table, .parse_comments, t.pref)
+	mut ast_file := parser.parse_file(file, mut t.table, .parse_comments, t.pref)
+
+	if !ctx.is_skip_checker {
+		mut the_checker := checker.new_checker(t.table, pref_)
+		the_checker.check(mut ast_file)
+	}
 	t.root = t.ast_file(ast_file)
 	// generate the ast string
 	s := json_print(mut t.root)
