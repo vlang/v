@@ -965,6 +965,8 @@ fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.E
 			if right_ct_var != .no_comptime {
 				left.obj.ct_type_var = right_ct_var
 			}
+		} else if right is ast.StructInit && right.unresolved && right.typ.has_flag(.generic) {
+			left.obj.ct_type_var = .generic_param
 		} else if right is ast.IndexExpr && c.comptime.is_comptime(right) {
 			right_ct_var := c.comptime.get_ct_type_var(right.left)
 			if right_ct_var != .no_comptime {
