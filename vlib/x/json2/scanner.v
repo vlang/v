@@ -127,14 +127,18 @@ fn (mut s Scanner) text_scan() Token {
 			break
 		}
 		ch := s.text[s.pos]
-		if (s.pos - 1 >= 0 && s.text[s.pos - 1] != `\\`) && ch == `"` {
+		if ch == `"` {
 			has_closed = true
 			break
-		} else if (s.pos - 1 >= 0 && s.text[s.pos - 1] != `\\`) && ch in important_escapable_chars {
-			return s.error('character must be escaped with a backslash')
-		} else if (s.pos == s.text.len - 1 && ch == `\\`) || ch == u8(0) {
-			return s.error('invalid backslash escape')
-		} else if s.pos + 1 < s.text.len && ch == `\\` {
+		} else if ch in important_escapable_chars {
+			return s.error('character must be escaped with a backslash, replace with: \\${valid_unicode_escapes[important_escapable_chars.index(ch)]}')
+		} else if ch < 0x20 {
+			return s.error('character must be escaped with a unicode escape, replace with: \\u${ch:04x}')
+		} else if ch == `\\` {
+			if s.pos == s.text.len - 1 {
+				return s.error('incomplete backslash escape at end of JSON input')
+			}
+
 			peek := s.text[s.pos + 1]
 			if peek in valid_unicode_escapes {
 				chrs << unicode_transform_escapes[int(peek)]
