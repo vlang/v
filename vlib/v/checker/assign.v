@@ -899,6 +899,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 	// Check `x := &y` and `mut x := <-ch`
 	if mut right_first is ast.PrefixExpr {
 		mut right_node := right_first
+		is_amp := right_first.op == .amp
 		left_first := node.left[0]
 		if left_first is ast.Ident {
 			assigned_var := left_first
@@ -919,6 +920,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					if mut expr.obj is ast.Var {
 						v := expr.obj
 						right_first_type = v.typ
+					}
+					if is_amp && !node.left[0].is_blank_ident() && expr.obj is ast.ConstField {
+						c.error('cannot have mutable reference to const `${expr.name}`',
+							right_node.pos)
 					}
 					if !c.inside_unsafe && assigned_var.is_mut() && !expr.is_mut() {
 						c.error('`${expr.name}` is immutable, cannot have a mutable reference to it',
