@@ -39,6 +39,11 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	}
 }
 
+fn (mut g Gen) comptime_selector_str(expr ast.ComptimeSelector) string {
+	arrow_or_dot := if expr.left_type.is_ptr() { '->' } else { '.' }
+	return '${expr.left.str()}${arrow_or_dot}${g.comptime.comptime_for_field_value.name}'
+}
+
 fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 	if node.is_embed {
 		// $embed_file('/path/to/file')
