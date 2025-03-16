@@ -1,0 +1,11 @@
+module main
+
+pub struct CSDL_GamepadBinding {
+pub mut:
+	output_type u8
+	// TODO: BELONGS ABOVE // union {
+	//  SDL_GamepadButton button; struct {
+	//  SDL_GamepadAxis axis; int axis_min; int axis_max; } axis; } output
+}
+
+pub type GamepadBinding = CSDL_GamepadBinding
