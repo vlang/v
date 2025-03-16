@@ -163,7 +163,7 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 		}
 		g.expr(expr)
 		if expr is ast.ComptimeSelector {
-			return g.comptime_selector_str(expr)
+			return g.gen_comptime_selector(expr)
 		} else {
 			return expr.str()
 		}
