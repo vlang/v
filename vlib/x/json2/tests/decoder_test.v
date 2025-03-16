@@ -6,7 +6,7 @@ fn test_raw_decode_string() {
 }
 
 fn test_raw_decode_string_escape() {
-	jstr := json.raw_decode('"\u001b"')!
+	jstr := json.raw_decode('"\\u001b"')!
 	str := jstr.str()
 	assert str.len == 1
 	assert str[0] == 27

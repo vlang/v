@@ -46,7 +46,21 @@ fn test_str_invalid_must_be_escape() {
 		}
 		tok := sc.scan()
 		assert tok.kind == .error
-		assert tok.lit.bytestr() == 'character must be escaped with a backslash'
+		assert tok.lit.bytestr() == 'character must be escaped with a backslash, replace with: \\${valid_unicode_escapes[important_escapable_chars.index(ch)]}'
+	}
+}
+
+fn test_str_control_must_be_escape() {
+	for ch := u8(0); ch < 0x20; ch++ {
+		if ch in important_escapable_chars {
+			continue
+		}
+		mut sc := Scanner{
+			text: [u8(`"`), `t`, ch, `"`]
+		}
+		tok := sc.scan()
+		assert tok.kind == .error
+		assert tok.lit.bytestr() == 'character must be escaped with a unicode escape, replace with: \\u${ch:04x}'
 	}
 }
 
