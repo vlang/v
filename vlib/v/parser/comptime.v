@@ -361,6 +361,11 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	mut typ_pos := p.tok.pos()
 	lang := p.parse_language()
 	mut typ := ast.void_type
+
+	if p.tok.lit.len == 0 {
+		p.error('invalid expr, use `${p.peek_tok.lit}` instead')
+		return ast.ComptimeFor{}
+	}
 	if p.tok.lit[0].is_capital() || p.tok.lit in p.imports {
 		typ = p.parse_any_type(lang, false, true, false)
 	} else {
