@@ -899,9 +899,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 			mut expr_left := expr.left
 			if mut expr.left is ast.Ident {
 				if mut expr.left.obj is ast.Var {
-					if expr.left.obj.ct_type_var != .generic_param {
-						c.fail_if_immutable(mut expr_left)
-					}
+					c.fail_if_immutable(mut expr_left)
 				}
 			}
 			return '', expr.pos

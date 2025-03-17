@@ -3728,7 +3728,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				mut is_unwrapped := true
 				if mut node.expr is ast.ComptimeSelector && node.expr.left is ast.Ident {
 					// val.$(field.name)?
-					expr_str = '${node.expr.left.str()}.${g.comptime.comptime_for_field_value.name}'
+					expr_str = g.gen_comptime_selector(node.expr)
 				} else if mut node.expr is ast.Ident && node.expr.ct_expr {
 					// val?
 					expr_str = node.expr.name
