@@ -351,7 +351,6 @@ pub:
 	option_pos       token.Pos
 	pre_comments     []Comment
 	comments         []Comment
-	next_comments    []Comment
 	i                int
 	has_default_expr bool
 	has_prev_newline bool
@@ -365,6 +364,7 @@ pub:
 	is_deprecated    bool
 	is_embed         bool
 pub mut:
+	next_comments    []Comment
 	is_recursive     bool
 	is_part_of_union bool
 	container_typ    Type
