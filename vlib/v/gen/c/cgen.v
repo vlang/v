@@ -1082,6 +1082,9 @@ pub fn (mut g Gen) finish() {
 	g.handle_embedded_files_finish()
 	if g.pref.is_test {
 		g.gen_c_main_for_tests()
+	} else if (g.pref.is_shared || g.pref.is_liveshared) && g.pref.os == .windows {
+		// create DllMain() for windows .dll
+		g.gen_dll_main()
 	} else {
 		g.gen_c_main()
 	}

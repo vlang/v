@@ -392,3 +392,33 @@ pub fn (mut g Gen) gen_c_main_trace_calls_hook() {
 	should_trace_c_main := g.pref.should_trace_fn_name('C.main')
 	g.writeln('\tu8 bottom_of_stack = 0; g_stack_base = &bottom_of_stack; v__trace_calls__on_c_main(${should_trace_c_main});')
 }
+
+// gen_dll_main create DllMain() for windows .dll
+pub fn (mut g Gen) gen_dll_main() {
+	g.writeln('VV_EXPORTED_SYMBOL BOOL DllMain(HINSTANCE hinst,DWORD fdwReason,LPVOID lpvReserved) {
+	switch (fdwReason) {
+		case DLL_PROCESS_ATTACH : {
+#if defined(_VGCBOEHM)
+			GC_set_pages_executable(0);
+			GC_INIT();
+#endif
+			_vinit_caller();
+			break;
+		}
+		case DLL_THREAD_ATTACH : {
+			break;
+		}
+		case DLL_THREAD_DETACH : {
+			break;
+		}
+		case DLL_PROCESS_DETACH : {
+			_vcleanup_caller();
+			break;
+		}
+		default:
+			return false;
+	}
+	return true;
+}
+	')
+}
