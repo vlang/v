@@ -364,7 +364,7 @@ fn sign_digest(key &C.EVP_PKEY, digest []u8) ![]u8 {
 	// was called with NULL signature buffer, siglen will tell maximum size of signature.
 	siglen := usize(C.EVP_PKEY_size(key))
 	sig := []u8{len: int(siglen)}
-	
+
 	// calls directly with sign
 	do := C.EVP_PKEY_sign(ctx, sig.data, &siglen, digest.data, digest.len)
 	if do <= 0 {
