@@ -13,6 +13,6 @@ fn t[T](a T) string {
 }
 
 fn test_main() {
-	assert t(map[u8]string{}) == 'map[u8]string\n11 | u8 | 11 | u8\n21 | string | 21 | string\n105 | int | 105 | int'
+	assert t(map[u8]string{}) == 'map[u8]string\n11 | u8 | 11 | u8\n21 | string | 21 | string\n111 | int | 111 | int'
 	assert t([]rune{}) == '[]rune >> 22 | rune | 22 | rune'
 }
