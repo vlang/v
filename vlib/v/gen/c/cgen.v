@@ -3971,7 +3971,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					g.type_name(name_type)
 					return
 				} else if node.field_name in ['idx', 'unaliased_typ'] {
-					// `typeof(expr).idx`, // `typeof(expr).unalised_typ`
+					// `T.idx`, `T.unaliased_typ`, `typeof(expr).idx`, `typeof(expr).unalised_typ`
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {
 						name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr.expr,
@@ -3980,6 +3980,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					} else {
 						g.write(int(g.unwrap_generic(name_type)).str())
 					}
+					return
+				} else if node.field_name in ['key_type', 'value_type', 'element_type'] {
+					// `T.<field_name>`, `typeof(expr).<field_name>`
+					mut name_type := node.name_type
+					name_type = g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(node.expr,
+						name_type), node.field_name)
+					g.write(int(name_type).str())
 					return
 				} else if node.field_name == 'indirections' {
 					mut name_type := node.name_type
