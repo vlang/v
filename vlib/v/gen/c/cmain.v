@@ -402,7 +402,7 @@ pub fn (mut g Gen) gen_dll_main() {
 			GC_set_pages_executable(0);
 			GC_INIT();
 #endif
-			_vinit(0, (voidptr)0);
+			_vinit_caller();
 			break;
 		}
 		case DLL_THREAD_ATTACH : {
@@ -412,7 +412,7 @@ pub fn (mut g Gen) gen_dll_main() {
 			break;
 		}
 		case DLL_PROCESS_DETACH : {
-			_vcleanup();
+			_vcleanup_caller();
 			break;
 		}
 		default:
