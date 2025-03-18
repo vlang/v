@@ -9,6 +9,7 @@ struct App {
 mut:
 	report_lines   []string
 	cached_cpuinfo map[string]string
+	vexe           string
 }
 
 fn (mut a App) println(s string) {
@@ -112,11 +113,11 @@ fn (mut a App) collect_info() {
 	}
 
 	a.line('', '')
-	mut vexe := os.getenv('VEXE')
-	mut vroot := os.dir(vexe)
-	mut vmodules := os.vmodules_dir()
-	mut vtmp_dir := os.vtmp_dir()
-	mut getwd := os.getwd()
+	vexe := a.vexe
+	vroot := os.dir(vexe)
+	vmodules := os.vmodules_dir()
+	vtmp_dir := os.vtmp_dir()
+	getwd := os.getwd()
 	os.chdir(vroot) or {}
 	a.line('V executable', vexe)
 	a.line('V last modified time', time.unix(os.file_last_mod_unix(vexe)).str())
@@ -262,7 +263,7 @@ fn (mut a App) cpu_info(key string) string {
 fn (mut a App) git_info() string {
 	mut out := a.cmd(command: 'git -C . describe --abbrev=8 --dirty --always --tags').trim_space()
 	os.execute('git -C . remote add V_REPO https://github.com/vlang/v') // ignore failure (i.e. remote exists)
-	os.execute('git -C . fetch V_REPO')
+	os.execute('${os.quoted_path(a.vexe)} timeout 5.1 "git -C . fetch V_REPO"') // usually takes ~0.6s; 5 seconds should be enough for even the slowest networks
 	commit_count := a.cmd(command: 'git rev-list @{0}...V_REPO/master --right-only --count').int()
 	if commit_count > 0 {
 		out += ' (${commit_count} commit(s) behind V master)'
@@ -322,6 +323,7 @@ fn diagnose_dir(path string) string {
 
 fn main() {
 	mut app := App{}
+	app.vexe = os.getenv('VEXE')
 	app.collect_info()
 	app.report_info()
 }
