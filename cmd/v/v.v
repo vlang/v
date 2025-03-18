@@ -49,6 +49,7 @@ const external_tools = [
 	'test-parser',
 	'test-self',
 	'time',
+	'timeout',
 	'tracev',
 	'up',
 	'vet',
