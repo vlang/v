@@ -797,19 +797,27 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			if left_sym.kind == .struct && (left_sym.info as ast.Struct).generic_types.len > 0 {
 				continue
 			}
-			if method := left_sym.find_method(extracted_op) {
+			if method := left_sym.find_method_with_generic_parent(extracted_op) {
 				if method.return_type != left_type_unwrapped {
 					c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 						node.pos)
 				}
 			} else {
-				if !parent_sym.is_primitive() {
-					if left_name == right_name {
-						c.error('undefined operation `${left_name}` ${extracted_op} `${right_name}`',
+				if method := parent_sym.find_method_with_generic_parent(extracted_op) {
+					if parent_sym.kind == .alias
+						&& (parent_sym.info as ast.Alias).parent_type != method.return_type {
+						c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 							node.pos)
-					} else {
-						c.error('mismatched types `${left_name}` and `${right_name}`',
-							node.pos)
+					}
+				} else {
+					if !parent_sym.is_primitive() {
+						if left_name == right_name {
+							c.error('undefined operation `${left_name}` ${extracted_op} `${right_name}`',
+								node.pos)
+						} else {
+							c.error('mismatched types `${left_name}` and `${right_name}`',
+								node.pos)
+						}
 					}
 				}
 			}
