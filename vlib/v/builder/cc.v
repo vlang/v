@@ -1125,11 +1125,20 @@ fn (mut c Builder) cc_windows_cross() {
 	// add the thirdparty .o files, produced by all the #flag directives:
 	args << cflags.c_options_only_object_files()
 	args << os.quoted_path(c.out_name_c)
+
+	mut c_options_after_target := []string{}
 	if c.pref.ccompiler == 'msvc' {
-		args << cflags.c_options_after_target_msvc()
+		c_options_after_target << cflags.c_options_after_target_msvc()
 	} else {
-		args << cflags.c_options_after_target()
+		c_options_after_target << cflags.c_options_after_target()
 	}
+	for lf in c.ccoptions.linker_flags {
+		if lf in c_options_after_target {
+			continue
+		}
+		c_options_after_target << lf
+	}
+	args << c_options_after_target
 
 	if current_os !in ['macos', 'linux', 'termux'] {
 		println(current_os)
@@ -1145,9 +1154,7 @@ fn (mut c Builder) cc_windows_cross() {
 
 	all_args << args
 	all_args << c.get_subsystem_flag()
-	// Note: c.ccoptions.linker_flags was already in cflags.c_options_after_target(), which is in args, so no need to add it again here
 	all_args << c.pref.ldflags
-
 	c.dump_c_options(all_args)
 	mut cmd := cross_compiler_name_path + ' ' + all_args.join(' ')
 	// cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
