@@ -36,9 +36,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		mut const_name := '_const_' + name
 		if g.pref.translated && !g.is_builtin_mod
 			&& !util.module_is_builtin(field.name.all_before_last('.')) {
-			mut x := util.no_dots(field.name)
-			if x.starts_with('main__') {
-				const_name = x['main__'.len..]
+			if name.starts_with('main__') {
+				const_name = name.all_after_first('main__')
 			}
 		}
 		if !g.is_builtin_mod {
@@ -55,7 +54,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					&& (!g.is_cc_msvc || field.expr.elem_type != ast.string_type) && elems_are_const {
 					styp := g.styp(field.expr.typ)
 					val := g.expr_string(field.expr)
-					g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+					// eprintln('> const_name: ${const_name} | name: ${name} | styp: ${styp} | val: ${val}')
+					g.global_const_defs[name] = GlobalConstDef{
 						mod:       field.mod
 						def:       '${g.static_non_parallel}${styp} ${const_name} = ${val}; // fixed array const'
 						dep_names: g.table.dependent_names_in_expr(field_expr)
@@ -72,7 +72,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.StringLiteral {
 				val := g.expr_string(field.expr)
 				typ := if field.expr.language == .c { 'char*' } else { 'string' }
-				g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+				g.global_const_defs[name] = GlobalConstDef{
 					mod:   field.mod
 					def:   '${typ} ${const_name}; // a string literal, inited later'
 					init:  '\t${const_name} = ${val};'
@@ -121,7 +121,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 						if field.expr.expr.is_fixed && g.pref.build_mode != .build_module {
 							styp := g.styp(field.expr.typ)
 							val := g.expr_string(field.expr.expr)
-							g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+							g.global_const_defs[name] = GlobalConstDef{
 								mod:       field.mod
 								def:       '${g.static_non_parallel}${styp} ${const_name} = ${val}; // fixed array const'
 								dep_names: g.table.dependent_names_in_expr(field_expr)
@@ -435,6 +435,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		attributes += '__attribute__ ((section ("${attr.arg}"))) '
 	}
 	for field in node.fields {
+		name := c_name(field.name)
 		if g.pref.skip_unused {
 			if field.name !in g.table.used_features.used_globals {
 				$if trace_skip_unused_globals ? {
@@ -462,7 +463,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		def_builder.write_string('${extern}${visibility_kw}${modifier}${styp} ${attributes}${field.name}')
 		if cextern {
 			def_builder.writeln('; // global 2')
-			g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+			g.global_const_defs[name] = GlobalConstDef{
 				mod:   node.mod
 				def:   def_builder.str()
 				order: -1
@@ -515,7 +516,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			}
 		}
 		def_builder.writeln('; // global 6')
-		g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+		g.global_const_defs[name] = GlobalConstDef{
 			mod:       node.mod
 			def:       def_builder.str()
 			init:      init
