@@ -12,7 +12,6 @@ fn C._vinit(argc int, argv &&char)
 
 fn C._vcleanup()
 
-@[markused]
 fn v_segmentation_fault_handler(signal_number i32) {
 	$if freestanding {
 		eprintln('signal 11: segmentation fault')

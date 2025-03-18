@@ -52,10 +52,11 @@ fn test_out_files() {
 		alloptions := '-o ${os.quoted_path(pexe)} ${file_options.vflags}'
 		label := mj('v', file_options.vflags, 'run', relpath) + ' == ${mm(out_relpath)} '
 		//
+		compile_cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
 		sw_compile := time.new_stopwatch()
-		compilation := os.execute('${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}')
+		compilation := os.execute(compile_cmd)
 		compile_ms := sw_compile.elapsed().milliseconds()
-		ensure_compilation_succeeded(compilation)
+		ensure_compilation_succeeded(compilation, compile_cmd)
 		//
 		sw_run := time.new_stopwatch()
 		res := os.execute(os.quoted_path(pexe))
@@ -129,12 +130,12 @@ fn test_c_must_have_files() {
 		}
 		file_options := get_file_options(path)
 		alloptions := '-o - ${file_options.vflags}'
-		description := mj('v', alloptions, relpath) + ' matches ${mm(must_have_relpath)} '
+		mut description := mj('v', alloptions, relpath) + ' matches ${mm(must_have_relpath)} '
 		cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
 		sw_compile := time.new_stopwatch()
 		compilation := os.execute(cmd)
 		compile_ms := sw_compile.elapsed().milliseconds()
-		ensure_compilation_succeeded(compilation)
+		ensure_compilation_succeeded(compilation, cmd)
 		expected_lines := os.read_lines(must_have_path) or { [] }
 		generated_c_lines := compilation.output.split_into_lines()
 		mut nmatches := 0
@@ -145,6 +146,7 @@ fn test_c_must_have_files() {
 				// eprintln('> testing: $must_have_path has line: $eline')
 			} else {
 				failed_patterns << eline
+				description += '\n failed pattern: `${eline}`'
 				println('${term.red('FAIL')} C:${compile_ms:5}ms ${description}')
 				eprintln('${must_have_path}:${idx_expected_line + 1}: expected match error:')
 				eprintln('`${cmd}` did NOT produce expected line:')
@@ -207,11 +209,13 @@ fn vroot_relative(opath string) string {
 	return npath.replace(nvroot, '')
 }
 
-fn ensure_compilation_succeeded(compilation os.Result) {
+fn ensure_compilation_succeeded(compilation os.Result, cmd string) {
 	if compilation.exit_code < 0 {
+		eprintln('> cmd exit_code < 0, cmd: ${cmd}')
 		panic(compilation.output)
 	}
 	if compilation.exit_code != 0 {
+		eprintln('> cmd exit_code != 0, cmd: ${cmd}')
 		panic('compilation failed: ${compilation.output}')
 	}
 }

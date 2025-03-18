@@ -86,6 +86,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if pref_.autofree {
 			core_fns << string_idx_str + '.clone_static'
+			core_fns << string_idx_str + '.option_clone_static'
 		}
 		if table.used_features.auto_str || pref_.is_shared {
 			include_panic_deps = true
@@ -242,6 +243,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				'v_fixed_index',
 				charptr_idx_str + '.vstring_literal',
 			]
+		}
+		if pref_.should_use_segfault_handler() {
+			core_fns << 'v_segmentation_fault_handler'
 		}
 		all_fn_root_names << core_fns
 	}
@@ -512,24 +516,24 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
-	if trace_skip_unused_fn_names {
-		for key, _ in walker.used_fns {
-			println('> used fn key: ${key}')
-		}
-	}
-
 	for kcon, con in all_consts {
 		if pref_.is_shared && con.is_pub {
-			walker.mark_const_as_used(kcon)
-			continue
-		}
-		if !pref_.is_shared && con.is_pub && con.name.starts_with('main.') {
 			walker.mark_const_as_used(kcon)
 			continue
 		}
 		if pref_.translated && con.attrs.any(it.name == 'export') {
 			walker.mark_const_as_used(kcon)
 			continue
+		}
+	}
+
+	if walker.used_none > 0 || table.used_features.auto_str {
+		walker.mark_fn_as_used('_option_none')
+	}
+
+	if trace_skip_unused_fn_names {
+		for key, _ in walker.used_fns {
+			println('> used fn key: ${key}')
 		}
 	}
 

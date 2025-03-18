@@ -332,7 +332,7 @@ fn (a string) clone_static() string {
 
 // option_clone_static returns an independent copy of a given array when lhs is an option type.
 // It should be used only in -autofree generated code.
-@[inline; markused]
+@[inline]
 fn (a string) option_clone_static() ?string {
 	return ?string(a.clone())
 }

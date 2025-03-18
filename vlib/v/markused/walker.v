@@ -16,6 +16,7 @@ pub mut:
 	used_globals map[string]bool
 	used_structs map[string]bool
 	used_fields  map[string]bool
+	used_none    int
 	n_asserts    int
 	pref         &pref.Preferences = unsafe { nil }
 mut:
@@ -364,6 +365,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.SpawnExpr {
 			w.expr(node.call_expr)
+			w.fn_by_name('tos3')
 			if w.pref.os == .windows {
 				w.fn_by_name('panic_lasterr')
 				w.fn_by_name('winapi_lasterr_str')
@@ -482,7 +484,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.stmts(b.stmts)
 			}
 		}
-		ast.None {}
+		ast.None {
+			w.used_none++
+		}
 		ast.Nil {}
 		ast.ParExpr {
 			w.expr(node.expr)

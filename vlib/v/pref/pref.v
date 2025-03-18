@@ -1280,3 +1280,8 @@ pub fn supported_test_runners_list() string {
 pub fn (pref &Preferences) should_trace_fn_name(fname string) bool {
 	return pref.trace_fns.any(fname.match_glob(it))
 }
+
+pub fn (pref &Preferences) should_use_segfault_handler() bool {
+	return !('no_segfault_handler' in pref.compile_defines
+		|| pref.os in [.wasm32, .wasm32_emscripten])
+}
