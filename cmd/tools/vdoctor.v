@@ -263,7 +263,9 @@ fn (mut a App) cpu_info(key string) string {
 fn (mut a App) git_info() string {
 	mut out := a.cmd(command: 'git -C . describe --abbrev=8 --dirty --always --tags').trim_space()
 	os.execute('git -C . remote add V_REPO https://github.com/vlang/v') // ignore failure (i.e. remote exists)
-	os.execute('${os.quoted_path(a.vexe)} timeout 5.1 "git -C . fetch V_REPO"') // usually takes ~0.6s; 5 seconds should be enough for even the slowest networks
+	if '-skip-github' !in os.args {
+		os.execute('${os.quoted_path(a.vexe)} timeout 5.1 "git -C . fetch V_REPO"') // usually takes ~0.6s; 5 seconds should be enough for even the slowest networks
+	}
 	commit_count := a.cmd(command: 'git rev-list @{0}...V_REPO/master --right-only --count').int()
 	if commit_count > 0 {
 		out += ' (${commit_count} commit(s) behind V master)'
