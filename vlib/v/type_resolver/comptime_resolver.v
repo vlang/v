@@ -79,11 +79,20 @@ pub fn (mut t TypeResolver) typeof_type(node ast.Expr, default_type ast.Type) as
 		if f := t.table.find_field_with_embeds(sym, node.field_name) {
 			return f.typ
 		}
+	} else if node is ast.SelectorExpr && node.name_type != 0 {
+		if node.field_name in ['value_type', 'element_type'] {
+			return t.table.value_type(t.resolver.unwrap_generic(node.name_type))
+		} else if node.field_name == 'key_type' {
+			sym := t.table.sym(t.resolver.unwrap_generic(node.name_type))
+			if sym.info is ast.Map {
+				return t.resolver.unwrap_generic(sym.info.key_type)
+			}
+		}
 	}
 	return default_type
 }
 
-// typeof_field_type resolves the typeof[T]().<field_name> type
+// typeof_field_type resolves the T.<field_name> and typeof[T]().<field_name> type
 pub fn (mut t TypeResolver) typeof_field_type(typ ast.Type, field_name string) ast.Type {
 	match field_name {
 		'name' {
@@ -97,6 +106,16 @@ pub fn (mut t TypeResolver) typeof_field_type(typ ast.Type, field_name string) a
 		}
 		'indirections' {
 			return ast.int_type
+		}
+		'key_type' {
+			sym := t.table.final_sym(t.resolver.unwrap_generic(typ))
+			if sym.info is ast.Map {
+				return t.resolver.unwrap_generic(sym.info.key_type)
+			}
+			return ast.no_type
+		}
+		'value_type', 'element_type' {
+			return t.table.value_type(t.resolver.unwrap_generic(typ))
 		}
 		else {
 			return typ
