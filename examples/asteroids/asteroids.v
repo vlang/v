@@ -16,10 +16,6 @@ fn rads(degrees f32) f32 {
 	return f32(math.radians(degrees))
 }
 
-fn (a V2) + (b V2) V2 {
-	return a.add(b)
-}
-
 fn (a V2) offset(angle f32, scale f32) V2 {
 	return a + V2{math.cosf(angle) * scale, math.sinf(angle) * scale}
 }
