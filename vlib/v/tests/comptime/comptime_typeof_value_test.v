@@ -2,17 +2,17 @@ fn t[T](a T) string {
 	$if a is $map {
 		mut s := ''
 		s += '${typeof[T]().name}\n'
-		s += '${T.key_type} | ${typeof(T.key_type).name} | ${typeof[T]().key_type} | ${typeof(typeof[T]().key_type).name}\n'
-		s += '${T.value_type} | ${typeof(T.value_type).name} | ${typeof[T]().value_type} | ${typeof(typeof[T]().value_type).name}\n'
-		s += '${T.idx} | ${typeof(T.idx).name} | ${typeof[T]().idx} | ${typeof(typeof[T]().idx).name}'
+		s += '${T.key_type == typeof[u8]().idx} | ${typeof(T.key_type).name} | ${typeof[T]().key_type == typeof[u8]().idx} | ${typeof(typeof[T]().key_type).name}\n'
+		s += '${T.value_type == typeof[string]().idx} | ${typeof(T.value_type).name} | ${typeof[T]().value_type == typeof[string]().idx} | ${typeof(typeof[T]().value_type).name}\n'
+		s += '${T.idx == typeof[T]().idx} | ${typeof(T.idx).name} | ${typeof(typeof[T]().idx).name}'
 		return s
 	} $else $if a is $array {
-		return '${typeof[T]().name} >> ${T.element_type} | ${typeof(T.element_type).name} | ${typeof[T]().element_type} | ${typeof(typeof[T]().element_type).name}'
+		return '${typeof[T]().name} >> ${T.element_type == typeof[rune]().idx} | ${typeof(T.element_type).name} | ${typeof[T]().element_type == typeof[rune]().idx} | ${typeof(typeof[T]().element_type).name}'
 	}
 	return ''
 }
 
 fn test_main() {
-	assert t(map[u8]string{}) == 'map[u8]string\n11 | u8 | 11 | u8\n21 | string | 21 | string\n111 | int | 111 | int'
-	assert t([]rune{}) == '[]rune >> 22 | rune | 22 | rune'
+	assert t(map[u8]string{}) == 'map[u8]string\ntrue | u8 | true | u8\ntrue | string | true | string\ntrue | int | int'
+	assert t([]rune{}) == '[]rune >> true | rune | true | rune'
 }
