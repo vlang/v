@@ -2,19 +2,40 @@ module mysql
 
 // Values for the capabilities flag bitmask used by the MySQL protocol.
 // See more on https://dev.mysql.com/doc/dev/mysql-server/latest/group__group__cs__capabilities__flags.html#details
+@[flag]
 pub enum ConnectionFlag {
-	client_compress         = C.CLIENT_COMPRESS
-	client_found_rows       = C.CLIENT_FOUND_ROWS
-	client_ignore_sigpipe   = C.CLIENT_IGNORE_SIGPIPE
-	client_ignore_space     = C.CLIENT_IGNORE_SPACE
-	client_interactive      = C.CLIENT_INTERACTIVE
-	client_local_files      = C.CLIENT_LOCAL_FILES
-	client_multi_results    = C.CLIENT_MULTI_RESULTS
-	client_multi_statements = C.CLIENT_MULTI_STATEMENTS
-	client_no_schema        = C.CLIENT_NO_SCHEMA
-	client_odbc             = C.CLIENT_ODBC
-	client_ssl              = C.CLIENT_SSL
-	client_remember_options = C.CLIENT_REMEMBER_OPTIONS
+	client_long_password                  // (1 <<  0) Use the improved version of Old Password Authentication
+	client_found_rows                     // (1 <<  1) Send found rows instead of affected rows in EOF_Packet
+	client_long_flag                      // (1 <<  2) Get all column flags
+	client_connect_with_db                // (1 <<  3) Database (schema) name can be specified on connect in Handshake Response Packet
+	client_no_schema                      // (1 <<  4) DEPRECATED: Don't allow database.table.column
+	client_compress                       // (1 <<  5) Compression protocol supported
+	client_odbc                           // (1 <<  6) Special handling of ODBC behavior
+	client_local_files                    // (1 <<  7) Can use LOAD DATA LOCAL
+	client_ignore_space                   // (1 <<  8) Ignore spaces before '('
+	client_protocol_41                    // (1 <<  9) New 4.1 protocol
+	client_interactive                    // (1 << 10) This is an interactive client
+	client_ssl                            // (1 << 11) Use SSL encryption for the session
+	client_ignore_sigpipe                 // (1 << 12) Client only flag
+	client_transactions                   // (1 << 13) Client knows about transactions
+	client_reserved                       // (1 << 14) DEPRECATED: Old flag for 4.1 protocol
+	client_reserved2                      // (1 << 15) DEPRECATED: Old flag for 4.1 authentication \ CLIENT_SECURE_CONNECTION
+	client_multi_statements               // (1 << 16) Enable/disable multi-stmt support
+	client_multi_results                  // (1 << 17) Enable/disable multi-results
+	client_ps_multi_results               // (1 << 18) Multi-results and OUT parameters in PS-protocol
+	client_plugin_auth                    // (1 << 19) Client supports plugin authentication
+	client_connect_attrs                  // (1 << 20) Client supports connection attributes
+	client_plugin_auth_lenenc_client_data // (1 << 21) Enable authentication response packet to be larger than 255 bytes
+	client_can_handle_expired_passwords   // (1 << 22) Don't close the connection for a user account with expired password
+	client_session_track                  // (1 << 23) Capable of handling server state change information
+	client_deprecate_eof                  // (1 << 24) Client no longer needs EOF_Packet and will use OK_Packet instead
+	client_optional_resultset_metadata    // (1 << 25) The client can handle optional metadata information in the resultset
+	client_zstd_compression_algorithm     // (1 << 26) Compression protocol extended to support zstd compression method
+	client_query_attributes               // (1 << 27) Support optional extension for query parameters into the COM_QUERY and COM_STMT_EXECUTE packets
+	multi_factor_authentication           // (1 << 28) Support Multi factor authentication
+	client_capability_extension           // (1 << 29) This flag will be reserved to extend the 32bit capabilities structure to 64bits
+	client_ssl_verify_server_cert         // (1 << 30) Verify server certificate
+	client_remember_options               // (1 << 31) Don't reset the options after an unsuccessful connect
 }
 
 struct SQLError {
@@ -35,12 +56,37 @@ pub mut:
 	password string
 	dbname   string
 	flag     ConnectionFlag
+
+	// SSL params, only valid when set .client_ssl
+	ssl_key    string
+	ssl_cert   string
+	ssl_ca     string
+	ssl_capath string
+	ssl_cipher string
 }
 
 // connect attempts to establish a connection to a MySQL server.
 pub fn connect(config Config) !DB {
 	mut db := DB{
 		conn: C.mysql_init(0)
+	}
+
+	if config.flag.has(.client_ssl) {
+		if config.ssl_key.len > 0 {
+			db.set_option(C.MYSQL_OPT_SSL_KEY, config.ssl_key.str)
+		}
+		if config.ssl_cert.len > 0 {
+			db.set_option(C.MYSQL_OPT_SSL_CERT, config.ssl_cert.str)
+		}
+		if config.ssl_ca.len > 0 {
+			db.set_option(C.MYSQL_OPT_SSL_CA, config.ssl_ca.str)
+		}
+		if config.ssl_capath.len > 0 {
+			db.set_option(C.MYSQL_OPT_SSL_CAPATH, config.ssl_capath.str)
+		}
+		if config.ssl_cipher.len > 0 {
+			db.set_option(C.MYSQL_OPT_SSL_CIPHER, config.ssl_cipher.str)
+		}
 	}
 
 	connection := C.mysql_real_connect(db.conn, config.host.str, config.username.str,
