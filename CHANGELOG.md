@@ -1,5 +1,5 @@
 ## V 0.4.10
-*22 Dec 2024*
+*20 Mar 2025*
 
 #### Improvements in the language
 - Implement assignable anonymous struct (fix #23855) (#23857)
