@@ -59,11 +59,6 @@ pub fn (mut b Builder) write_runes(runes []rune) {
 	}
 }
 
-// clear clears the buffer contents
-pub fn (mut b Builder) clear() {
-	b = []u8{cap: b.cap}
-}
-
 // write_u8 appends a single `data` byte to the accumulated buffer
 @[inline]
 pub fn (mut b Builder) write_u8(data u8) {
@@ -246,7 +241,7 @@ pub fn (mut b Builder) str() string {
 	b << u8(0)
 	bcopy := unsafe { &u8(memdup_noscan(b.data, b.len)) }
 	s := unsafe { bcopy.vstring_with_len(b.len - 1) }
-	b.trim(0)
+	b.clear()
 	return s
 }
 
