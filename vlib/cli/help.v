@@ -114,7 +114,7 @@ pub fn (cmd &Command) help_message() string {
 			base_indent := ' '.repeat(base_indent_len)
 			description_indent := ' '.repeat(name_len - command.name.len)
 			help += '${base_indent}${command.name}${description_indent}' +
-				pretty_description(command.description, name_len) + '\n'
+				pretty_description(command.description, base_indent_len + name_len) + '\n'
 		}
 	}
 	return help
