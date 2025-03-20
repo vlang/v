@@ -2615,6 +2615,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
+	old_expected_arg_mut := g.expected_arg_mut
+	g.expected_arg_mut = arg.is_mut
+	defer {
+		g.expected_arg_mut = old_expected_arg_mut
+	}
 	exp_sym := g.table.sym(expected_type)
 	mut needs_closing := false
 	old_inside_smartcast := g.inside_smartcast

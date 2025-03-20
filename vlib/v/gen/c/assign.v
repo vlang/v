@@ -127,8 +127,8 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 				if ret_sym.kind == .sum_type {
 					exp_sym := g.table.sym(expr_typ)
 					fname := g.get_sumtype_casting_fn(expr_typ, ret_typ)
-					g.call_cfn_for_casting_expr(fname, expr, ret_typ, ret_sym.cname, expr_typ.is_ptr(),
-						exp_sym.kind == .function, g.styp(expr_typ))
+					g.call_cfn_for_casting_expr(fname, expr, ret_typ, expr_typ, ret_sym.cname,
+						expr_typ.is_ptr(), exp_sym.kind == .function, g.styp(expr_typ))
 				} else {
 					g.write('*((${g.base_type(expr_typ)}*)')
 					g.expr(expr)

@@ -240,6 +240,7 @@ mut:
 	referenced_fns      shared map[string]bool // functions that have been referenced
 	nr_closures         int
 	expected_cast_type  ast.Type // for match expr of sumtypes
+	expected_arg_mut    bool     // generating a mutable fn parameter
 	or_expr_return_type ast.Type // or { 0, 1 } return type
 	anon_fn             bool
 	tests_inited        bool
@@ -2750,15 +2751,23 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	g.auto_fn_definitions << sb.str()
 }
 
-fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, exp_styp string,
+fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, got ast.Type, exp_styp string,
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
+	mut passing_mutable := false
 	is_comptime_variant := expr is ast.Ident && g.comptime.is_comptime_variant_var(expr)
 	if exp.is_ptr() {
-		g.write('HEAP(${exp_styp}, ')
-		rparen_n++
+		if g.expected_arg_mut && expr is ast.Ident {
+			g.write('&(${exp_styp.trim_right('*')}){._typ=${got.idx()}, ._${got_styp.trim_right('*')}=')
+			rparen_n = 0
+			passing_mutable = true
+		} else {
+			g.write('HEAP(${exp_styp}, ${fname}(')
+			rparen_n++
+		}
+	} else {
+		g.write('${fname}(')
 	}
-	g.write('${fname}(')
 	if !got_is_ptr && !got_is_fn {
 		is_cast_fixed_array_init := expr is ast.CastExpr
 			&& (expr.expr is ast.ArrayInit && expr.expr.is_fixed)
@@ -2796,6 +2805,9 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		g.left_is_opt = !exp.has_flag(.option)
 		g.expr(expr)
 		g.left_is_opt = old_left_is_opt
+	}
+	if passing_mutable {
+		g.write('}')
 	}
 	g.write(')'.repeat(rparen_n))
 }
@@ -2889,8 +2901,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			if exp_sym.info.is_generic {
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
 			}
-			g.call_cfn_for_casting_expr(fname, expr, expected_type, exp_styp, true, false,
-				got_styp)
+			g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp,
+				true, false, got_styp)
 			g.inside_cast_in_heap--
 		} else {
 			got_styp := g.cc_type(got_type, true)
@@ -2916,8 +2928,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					return
 				}
 			}
-			g.call_cfn_for_casting_expr(fname, expr, expected_type, exp_styp, got_is_ptr,
-				false, got_styp)
+			g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type, exp_styp,
+				got_is_ptr, false, got_styp)
 		}
 		return
 	}
@@ -2981,8 +2993,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					g.write('${fname}(&${tmp_var})')
 					return
 				} else {
-					g.call_cfn_for_casting_expr(fname, expr, expected_type, unwrapped_exp_sym.cname,
-						got_is_ptr, got_is_fn, got_styp)
+					g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type,
+						unwrapped_exp_sym.cname, got_is_ptr, got_is_fn, got_styp)
 				}
 			}
 			return
