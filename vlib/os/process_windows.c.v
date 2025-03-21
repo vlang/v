@@ -124,8 +124,38 @@ fn (mut p Process) win_spawn_process() int {
 		to_be_freed << work_folder_ptr
 	}
 
+	mut env_block := []u16{}
+	if p.env.len > 0 {
+		mut env_ptr := &u16(unsafe { nil })
+
+		for e in p.env {
+			// e should in `ABC=123` format
+			env_ptr = e.to_wide()
+			if isnil(env_ptr) {
+				continue
+			}
+			mut i := 0
+			for {
+				character := unsafe { env_ptr[i] }
+				if character == 0 {
+					break
+				}
+				env_block << character
+				i++
+			}
+			env_block << u16(0)
+			to_be_freed << env_ptr
+		}
+		env_block << u16(0)
+		creation_flags |= C.CREATE_UNICODE_ENVIRONMENT
+		defer {
+			unsafe { env_block.free() }
+		}
+	}
+
 	create_process_ok := C.CreateProcessW(0, voidptr(&wdata.command_line[0]), 0, 0, C.TRUE,
-		creation_flags, 0, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
+		creation_flags, if env_block.len > 0 { env_block.data } else { 0 }, work_folder_ptr,
+		voidptr(&start_info), voidptr(&wdata.proc_info))
 	failed_cfn_report_error(create_process_ok, 'CreateProcess')
 	if p.use_stdio_ctl {
 		close_valid_handle(&wdata.child_stdout_write)
