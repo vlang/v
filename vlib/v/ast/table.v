@@ -94,7 +94,7 @@ pub mut:
 	builtin_pub_fns   map[string]bool
 	pointer_size      int
 	// cache for type_to_str_using_aliases
-	cached_type_to_str map[u64]string
+	cached_type_to_str shared map[u64]string
 	// counters and maps for anon structs and unions, to avoid name conflicts.
 	anon_struct_names   map[string]int // anon struct name -> struct sym idx
 	anon_struct_counter int
