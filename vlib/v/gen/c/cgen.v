@@ -2755,8 +2755,12 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
 	mut passing_mutable := false
-	is_sumtype_cast := !got_is_ptr && !got_is_fn && fname.contains('_to_sumtype_')
-	is_comptime_variant := expr is ast.Ident && g.comptime.is_comptime_variant_var(expr)
+
+	is_not_ptr_and_fn := !got_is_ptr && !got_is_fn
+	is_sumtype_cast := is_not_ptr_and_fn && fname.contains('_to_sumtype_')
+	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
+		&& g.comptime.is_comptime_variant_var(expr)
+
 	if exp.is_ptr() {
 		if is_sumtype_cast && g.expected_arg_mut && expr is ast.Ident {
 			g.write('&(${exp_styp.trim_right('*')}){._typ=${got.idx()}, ._${got_styp.trim_right('*')}=')
@@ -2769,9 +2773,10 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	} else {
 		g.write('${fname}(')
 	}
-	if !got_is_ptr && !got_is_fn {
+	if is_not_ptr_and_fn {
 		is_cast_fixed_array_init := expr is ast.CastExpr
 			&& (expr.expr is ast.ArrayInit && expr.expr.is_fixed)
+
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr.is_lvalue()
 			|| (expr is ast.Ident && expr.obj.is_simple_define_const())) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
