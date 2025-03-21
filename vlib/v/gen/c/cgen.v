@@ -7605,75 +7605,71 @@ fn (mut g Gen) interface_table() string {
 			}
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
-			if isym.name != 'vweb.DbInterface' { // TODO: remove this
-				sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype}* x);')
-				mut cast_struct := strings.new_builder(100)
-				cast_struct.writeln('(${interface_name}) {')
-				cast_struct.writeln('\t\t._${cctype} = x,')
-				cast_struct.writeln('\t\t._typ = ${interface_index_name},')
-				for field in inter_info.fields {
-					cname := c_name(field.name)
-					field_styp := g.styp(field.typ)
-					if _ := st_sym.find_field(field.name) {
-						cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname})),')
-					} else if st_sym.kind == .array
-						&& field.name in ['element_size', 'data', 'offset', 'len', 'cap', 'flags'] {
-						// Manually checking, we already knows array contains above fields
-						cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname})),')
-					} else {
-						// the field is embedded in another struct
-						cast_struct.write_string('\t\t.${cname} = (${field_styp}*)((char*)x')
-						if st != ast.voidptr_type && st != ast.nil_type {
-							if st_sym.kind == .struct {
-								if _, embeds := g.table.find_field_from_embeds(st_sym,
-									field.name)
-								{
-									mut typ_name := ''
-									for i, embed in embeds {
-										esym := g.table.sym(embed)
-										if i == 0 {
-											cast_struct.write_string(' + __offsetof_ptr(x, ${cctype}, ${esym.embed_name()})')
-										} else {
-											cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${esym.embed_name()})')
-										}
-										typ_name = esym.cname
+			sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype}* x);')
+			mut cast_struct := strings.new_builder(100)
+			cast_struct.writeln('(${interface_name}) {')
+			cast_struct.writeln('\t\t._${cctype} = x,')
+			cast_struct.writeln('\t\t._typ = ${interface_index_name},')
+			for field in inter_info.fields {
+				cname := c_name(field.name)
+				field_styp := g.styp(field.typ)
+				if _ := st_sym.find_field(field.name) {
+					cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname})),')
+				} else if st_sym.kind == .array
+					&& field.name in ['element_size', 'data', 'offset', 'len', 'cap', 'flags'] {
+					// Manually checking, we already knows array contains above fields
+					cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname})),')
+				} else {
+					// the field is embedded in another struct
+					cast_struct.write_string('\t\t.${cname} = (${field_styp}*)((char*)x')
+					if st != ast.voidptr_type && st != ast.nil_type {
+						if st_sym.kind == .struct {
+							if _, embeds := g.table.find_field_from_embeds(st_sym, field.name) {
+								mut typ_name := ''
+								for i, embed in embeds {
+									esym := g.table.sym(embed)
+									if i == 0 {
+										cast_struct.write_string(' + __offsetof_ptr(x, ${cctype}, ${esym.embed_name()})')
+									} else {
+										cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${esym.embed_name()})')
 									}
-									if embeds.len > 0 {
-										cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${cname})')
-									}
+									typ_name = esym.cname
+								}
+								if embeds.len > 0 {
+									cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${cname})')
 								}
 							}
 						}
-						cast_struct.writeln('),')
 					}
+					cast_struct.writeln('),')
 				}
-				cast_struct.write_string('\t}')
-				cast_struct_str := cast_struct.str()
+			}
+			cast_struct.write_string('\t}')
+			cast_struct_str := cast_struct.str()
 
-				cast_functions.writeln('
+			cast_functions.writeln('
 // Casting functions for converting "${cctype}" to interface "${interface_name}"
 static inline ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype}* x) {
-	return ${cast_struct_str};
+return ${cast_struct_str};
 }')
 
-				shared_fn_name := 'I___shared__${cctype}_to_shared_Interface___shared__${interface_name}'
-				// Avoid undefined types errors by only generating the converters that are referenced:
-				if g.has_been_referenced(shared_fn_name) {
-					mut cast_shared_struct := strings.new_builder(100)
-					cast_shared_struct.writeln('(__shared__${interface_name}) {')
-					cast_shared_struct.writeln('\t\t.mtx = {0},')
-					cast_shared_struct.writeln('\t\t.val = {')
-					cast_shared_struct.writeln('\t\t\t._${cctype} = &x->val,')
-					cast_shared_struct.writeln('\t\t\t._typ = ${interface_index_name},')
-					cast_shared_struct.writeln('\t\t}')
-					cast_shared_struct.write_string('\t}')
-					cast_shared_struct_str := cast_shared_struct.str()
-					cast_functions.writeln('
+			shared_fn_name := 'I___shared__${cctype}_to_shared_Interface___shared__${interface_name}'
+			// Avoid undefined types errors by only generating the converters that are referenced:
+			if g.has_been_referenced(shared_fn_name) {
+				mut cast_shared_struct := strings.new_builder(100)
+				cast_shared_struct.writeln('(__shared__${interface_name}) {')
+				cast_shared_struct.writeln('\t\t.mtx = {0},')
+				cast_shared_struct.writeln('\t\t.val = {')
+				cast_shared_struct.writeln('\t\t\t._${cctype} = &x->val,')
+				cast_shared_struct.writeln('\t\t\t._typ = ${interface_index_name},')
+				cast_shared_struct.writeln('\t\t}')
+				cast_shared_struct.write_string('\t}')
+				cast_shared_struct_str := cast_shared_struct.str()
+				cast_functions.writeln('
 // Casting functions for converting "__shared__${cctype}" to interface "__shared__${interface_name}"
 static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}* x) {
-	return ${cast_shared_struct_str};
+return ${cast_shared_struct_str};
 }')
-				}
 			}
 
 			if g.pref.build_mode != .build_module {
