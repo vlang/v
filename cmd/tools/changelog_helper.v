@@ -442,6 +442,7 @@ fn is_js_backend(text string) bool {
 const internal_strings = [
 	'scanner:',
 	'transformer:',
+	'markused:',
 	'builder:',
 	'pref:',
 	'v.util',

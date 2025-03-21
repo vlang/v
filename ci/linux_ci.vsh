@@ -83,6 +83,7 @@ fn test_pure_v_math_module_tcc() {
 }
 
 fn self_tests_tcc() {
+	exec('v -keepc -cc tcc -g self')
 	self_tests()
 }
 

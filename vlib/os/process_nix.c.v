@@ -154,6 +154,10 @@ fn (mut p Process) win_read_string(_idx int, _maxbytes int) (string, int) {
 	return '', 0
 }
 
+fn (mut p Process) win_is_pending(idx int) bool {
+	return false
+}
+
 fn (mut p Process) win_slurp(_idx int) string {
 	return ''
 }

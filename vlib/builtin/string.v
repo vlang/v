@@ -2382,7 +2382,7 @@ pub fn (a []string) join(sep string) string {
 	return res
 }
 
-// join joins a string array into a string using a `\n` newline delimiter.
+// join_lines joins a string array into a string using a `\n` newline delimiter.
 @[inline]
 pub fn (s []string) join_lines() string {
 	return s.join('\n')

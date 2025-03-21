@@ -4545,6 +4545,8 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 							'&'
 						} else if !str_method_expects_ptr && obj.typ.is_ptr() {
 							'*'.repeat(obj.typ.nr_muls())
+						} else if !str_method_expects_ptr && obj_sym.is_heap() {
+							'*'
 						} else if obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
 							'*'
 						} else if !obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
