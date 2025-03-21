@@ -95,7 +95,7 @@ pub fn (mut c UdpConn) write_to_string(addr Addr, s string) !int {
 }
 
 // read_ptr reads from the socket into `buf_ptr` up to `len` bytes, returning the number of bytes read and the `Addr` read from.
-pub fn (mut c UdpConn) read_ptr(buf_ptr &u8, len int) !(int, Addr) {
+pub fn (c &UdpConn) read_ptr(buf_ptr &u8, len int) !(int, Addr) {
 	mut addr := Addr{
 		addr: AddrData{
 			Ip6: Ip6{}
@@ -165,7 +165,7 @@ pub fn (mut c UdpConn) set_write_timeout(t time.Duration) {
 }
 
 @[inline]
-pub fn (mut c UdpConn) wait_for_read() ! {
+pub fn (c &UdpConn) wait_for_read() ! {
 	return wait_for_read(c.sock.handle, c.read_deadline, c.read_timeout)
 }
 
