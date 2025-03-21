@@ -1,5 +1,3 @@
-// vtest flaky: true
-// vtest retry: 3
 import os
 import time
 
@@ -63,8 +61,22 @@ fn test_set_work_folder() {
 	assert new_parent_work_folder != child_work_folder
 }
 
-fn test_done() {
-	exit(0)
+fn test_set_environment() {
+	mut p := os.new_process(test_os_process)
+	p.set_args(['-show_env', '-target', 'stdout'])
+	p.set_environment({
+		'V_OS_TEST_PORT': '1234567890'
+	})
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.code == 0
+	output := p.stdout_slurp().trim_space()
+	p.close()
+	$if trace_process_output ? {
+		eprintln('p output: "${output}"')
+	}
+	dump(output)
+	assert output.contains('V_OS_TEST_PORT=1234567890')
 }
 
 fn test_run() {
