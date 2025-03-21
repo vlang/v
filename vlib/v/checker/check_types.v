@@ -710,6 +710,10 @@ fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 	} else if left_type.has_flag(.option) != right_type.has_flag(.option) {
 		// incompatible
 		return ast.void_type
+	} else if (left_type == ast.void_type && right_type != ast.void_type)
+		|| (right_type == ast.void_type && left_type != ast.void_type) {
+		// incompatible as well
+		return ast.void_type
 	} else {
 		return left_type // default to left if not automatic promotion possible
 	}

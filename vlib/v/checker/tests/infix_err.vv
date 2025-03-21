@@ -11,7 +11,7 @@ _ = f() + ''
 _ = f() + f()
 
 _ = 4 + g()
-_ = int(0) + g() // FIXME: not detected
+_ = int(0) + g()
 _ = g() + int(3)
 _ = g() + 3
 
@@ -22,3 +22,4 @@ _ = true || 2
 // boolean expressions
 _ = 1 == 1 && 2 == 2 || 3 == 3
 _ = 1 == 1 && 2 == 2 || 3 == 3 && 4 == 4
+_ = 1 + println('')
