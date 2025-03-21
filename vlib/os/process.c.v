@@ -248,7 +248,7 @@ fn (mut p Process) _write_to(pkind ChildProcessPipeKind, s string) {
 // _is_pending should be called only from is_pending()
 fn (mut p Process) _is_pending(pkind ChildProcessPipeKind) bool {
 	$if windows {
-		// TODO
+		return p.win_is_pending(int(pkind))
 	} $else {
 		return fd_is_pending(p.stdio_fd[pkind])
 	}
