@@ -2755,9 +2755,10 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
 	mut passing_mutable := false
+	is_sumtype_cast := !got_is_ptr && !got_is_fn && fname.contains('_to_sumtype_')
 	is_comptime_variant := expr is ast.Ident && g.comptime.is_comptime_variant_var(expr)
 	if exp.is_ptr() {
-		if g.expected_arg_mut && expr is ast.Ident {
+		if is_sumtype_cast && g.expected_arg_mut && expr is ast.Ident {
 			g.write('&(${exp_styp.trim_right('*')}){._typ=${got.idx()}, ._${got_styp.trim_right('*')}=')
 			rparen_n = 0
 			passing_mutable = true
@@ -2786,7 +2787,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 					g.inside_smartcast = old_inside_smartcast
 				}
 			} else {
-				promotion_macro_name := if fname.contains('_to_sumtype_') { 'ADDR' } else { 'HEAP' }
+				promotion_macro_name := if is_sumtype_cast { 'ADDR' } else { 'HEAP' }
 				g.write('${promotion_macro_name}(${got_styp}, (')
 				rparen_n += 2
 			}
