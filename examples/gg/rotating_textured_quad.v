@@ -3,6 +3,12 @@ import gx
 import os.asset
 import sokol.sgl
 
+// If you have emscripten (see https://emscripten.org/docs/getting_started/index.html), you can compile this program to WASM, using:
+// `v -os wasm32_emscripten -o examples/gg/rotating_textured_quad.html examples/gg/rotating_textured_quad.v`, and later check with:
+// `emrun examples/gg/rotating_textured_quad.html` .
+#flag wasm32_emscripten --embed-file @VEXEROOT/examples/assets/logo.png@/assets/logo.png
+#flag wasm32_emscripten --embed-file @VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf@/assets/RobotoMono-Regular.ttf
+
 pub struct Window {
 pub mut:
 	ctx &gg.Context = unsafe { nil }
@@ -19,7 +25,7 @@ pub fn (mut window Window) draw() {
 	window.ctx.begin()
 	sgl.load_pipeline(window.ctx.pipeline.alpha)
 
-	sgl.translate(400, 400, 0) // center of the screen
+	sgl.translate(250, 250, 0) // center of the screen
 	sgl.rotate(angle, 0.0, 0.0, 1.0) // rotate around the Z axis pointing towards the camera
 
 	sgl.enable_texture()
@@ -40,11 +46,12 @@ fn main() {
 	window.ctx = gg.new_context(
 		window_title: 'Rotating V logo'
 		bg_color:     gx.light_green
-		width:        800
-		height:       800
+		width:        500
+		height:       500
 		user_data:    window
 		init_fn:      window.init
 		frame_fn:     window.draw
+		font_path:    asset.get_path('../assets', 'RobotoMono-Regular.ttf')
 	)
 	window.ctx.run()
 }
