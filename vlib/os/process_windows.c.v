@@ -88,13 +88,13 @@ fn (mut p Process) win_spawn_process() int {
 		sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 		sa.b_inherit_handle = true
 		create_pipe_ok1 := C.CreatePipe(voidptr(&wdata.child_stdout_read), voidptr(&wdata.child_stdout_write),
-			voidptr(&sa), 0)
+			voidptr(&sa), 65536)
 		failed_cfn_report_error(create_pipe_ok1, 'CreatePipe stdout')
 		set_handle_info_ok1 := C.SetHandleInformation(wdata.child_stdout_read, C.HANDLE_FLAG_INHERIT,
 			0)
 		failed_cfn_report_error(set_handle_info_ok1, 'SetHandleInformation')
 		create_pipe_ok2 := C.CreatePipe(voidptr(&wdata.child_stderr_read), voidptr(&wdata.child_stderr_write),
-			voidptr(&sa), 0)
+			voidptr(&sa), 65536)
 		failed_cfn_report_error(create_pipe_ok2, 'CreatePipe stderr')
 		set_handle_info_ok2 := C.SetHandleInformation(wdata.child_stderr_read, C.HANDLE_FLAG_INHERIT,
 			0)
@@ -231,6 +231,28 @@ fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {
 		C.ReadFile(rhandle, &buf[0], buf.cap, voidptr(&bytes_read), 0)
 	}
 	return buf[..bytes_read].bytestr(), bytes_read
+}
+
+fn (mut p Process) win_is_pending(idx int) bool {
+	mut wdata := unsafe { &WProcess(p.wdata) }
+	if unsafe { wdata == 0 } {
+		return false
+	}
+	mut rhandle := &u32(0)
+	if idx == 1 {
+		rhandle = wdata.child_stdout_read
+	}
+	if idx == 2 {
+		rhandle = wdata.child_stderr_read
+	}
+	if rhandle == 0 {
+		return false
+	}
+	mut bytes_avail := int(0)
+	if C.PeekNamedPipe(rhandle, 0, 0, 0, &bytes_avail, 0) {
+		return bytes_avail > 0
+	}
+	return false
 }
 
 fn (mut p Process) win_slurp(idx int) string {
