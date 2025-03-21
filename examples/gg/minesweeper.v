@@ -3,6 +3,7 @@ module main
 import gg
 import gx
 import rand
+import os.asset
 
 const header_size = 30
 
@@ -101,7 +102,7 @@ fn (mut g Game) restart() {
 	g.mines_flagged = 0
 }
 
-fn (mut g Game) on_event(e &gg.Event, _ voidptr) {
+fn on_event(e &gg.Event, mut g Game) {
 	if e.typ == .key_down {
 		match e.key_code {
 			.escape { g.ctx.quit() }
@@ -190,7 +191,7 @@ fn (mut g Game) draw_cell(y int, x int) {
 	g.ctx.draw_rect_empty(rect_x, o + rect_y, g.csize, g.csize, gx.black)
 }
 
-fn (mut g Game) frame(_ voidptr) {
+fn on_frame(mut g Game) {
 	g.ctx.begin()
 	for y in 0 .. g.size {
 		for x in 0 .. g.size {
@@ -211,8 +212,9 @@ fn main() {
 		height:       header_size + g.size * g.csize
 		window_title: 'V Minesweeper'
 		user_data:    g
-		frame_fn:     g.frame
-		event_fn:     g.on_event
+		frame_fn:     on_frame
+		event_fn:     on_event
+		font_path:    asset.get_path('../assets', 'fonts/RobotoMono-Regular.ttf')
 	)
 	g.ctx.run()
 }
