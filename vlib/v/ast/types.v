@@ -1417,8 +1417,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	mut res := sym.name
 	mut mt := unsafe { &Table(t) }
 	defer {
-		// Note, that this relies on `res = value return res` if you want to return early!
-		mt.cached_type_to_str[cache_key] = res
+		lock mt.cached_type_to_str {
+			// Note, that this relies on `res = value return res` if you want to return early!
+			mt.cached_type_to_str[cache_key] = res
+		}
 	}
 	// Note, that the duplication of code in some of the match branches here
 	// is VERY deliberate. DO NOT be tempted to use `else {}` instead, because
