@@ -317,7 +317,7 @@ pub fn (mut a array) reverse_in_place() {
 
 pub fn (mut a array) clear() {
 	#a.val.arr.make_copy()
-	#a.val.arr.arr.clear()
+	#a.val.arr.arr.length = 0
 }
 
 // reduce executes a given reducer function on each element of the array,
