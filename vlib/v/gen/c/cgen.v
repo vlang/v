@@ -2754,7 +2754,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, got ast.Type, exp_styp string,
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
-	mut passing_mutable := false
+	mut mutable_idx := 0
 
 	is_not_ptr_and_fn := !got_is_ptr && !got_is_fn
 	is_sumtype_cast := is_not_ptr_and_fn && fname.contains('_to_sumtype_')
@@ -2763,9 +2763,9 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 
 	if exp.is_ptr() {
 		if is_sumtype_cast && g.expected_arg_mut && expr is ast.Ident {
-			g.write('&(${exp_styp.trim_right('*')}){._typ=${got.idx()}, ._${got_styp.trim_right('*')}=')
+			g.write('&(${exp_styp.trim_right('*')}){._${got_styp.trim_right('*')}=')
 			rparen_n = 0
-			passing_mutable = true
+			mutable_idx = got.idx()
 		} else {
 			g.write('HEAP(${exp_styp}, ${fname}(')
 			rparen_n++
@@ -2812,8 +2812,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		g.expr(expr)
 		g.left_is_opt = old_left_is_opt
 	}
-	if passing_mutable {
-		g.write('}')
+	if mutable_idx != 0 {
+		g.write(', ._typ=${mutable_idx}}')
 	}
 	g.write(')'.repeat(rparen_n))
 }
