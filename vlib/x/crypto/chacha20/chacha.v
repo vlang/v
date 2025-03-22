@@ -18,8 +18,6 @@ pub const x_nonce_size = 24
 // internal block size ChaCha20 operates on, in bytes
 const block_size = 64
 
-// vfmt off
-
 // four constants of ChaCha20 state.
 const cc0 = u32(0x61707865) // expa
 const cc1 = u32(0x3320646e) // nd 3
@@ -36,15 +34,16 @@ mut:
 	counter  u32
 	overflow bool
 	// internal buffer for storing key stream results
-	block []u8 = []u8{len: chacha20.block_size}
-	length int 
+	block  []u8 = []u8{len: block_size}
+	length int
 	// additional fields, follow the go version
+	// vfmt off
 	precomp bool
 	p1  u32 p5  u32 p9  u32 p13 u32
 	p2  u32 p6  u32 p10 u32 p14 u32
 	p3  u32 p7  u32 p11 u32 p15 u32
+	// vfmt on
 }
-// vfmt on
 
 // new_cipher creates a new ChaCha20 stream cipher with the given 32 bytes key, a 12 or 24 bytes nonce.
 // If 24 bytes of nonce was provided, the XChaCha20 construction will be used.
@@ -73,7 +72,7 @@ pub fn decrypt(key []u8, nonce []u8, ciphertext []u8) ![]u8 {
 
 // xor_key_stream xors each byte in the given slice in the src with a byte from the
 // cipher's key stream. It fulfills `cipher.Stream` interface. It encrypts the plaintext message
-// in src and stores the ciphertext result in dst in a single run of encryption.
+// in src and stores the ciphertext result in dst in a key stream fashion.
 // You must never use the same (key, nonce) pair more than once for encryption.
 // This would void any confidentiality guarantees for the messages encrypted with the same nonce and key.
 @[direct_array_access]
@@ -88,11 +87,13 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 		panic('chacha20: invalid buffer overlap')
 	}
 
-	// We adapt and ports the go version here
-	// First, drain any remaining key stream
 	mut idx := 0
 	mut src_len := src.len
+
+	// We adapt and ports the go version here
+	// First, drain any remaining key stream
 	if c.length != 0 {
+		// remaining keystream on internal buffer
 		mut kstream := c.block[block_size - c.length..]
 		if src_len < kstream.len {
 			kstream = unsafe { kstream[..src_len] }
@@ -101,6 +102,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 		for i, b in kstream {
 			dst[idx + i] = src[idx + i] ^ b
 		}
+		// updates the idx for dst and src
 		c.length -= kstream.len
 		idx += kstream.len
 		src_len -= kstream.len
@@ -109,6 +111,15 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 		return
 	}
 
+	// check for counter overflow
+	num_blocks := (u64(src_len) + block_size - 1) / block_size
+	if c.overflow || u64(c.counter) + num_blocks > max_u32 {
+		panic('chacha20: counter overflow')
+	} else if u64(c.counter) + num_blocks == max_u32 {
+		c.overflow = true
+	}
+
+	// we dont supports for bufsize that multiples size of block_size
 	full := src_len - src_len % block_size
 	if full > 0 {
 		c.chacha20_block_generic(mut dst[idx..idx + full], src[idx..idx + full])
@@ -116,7 +127,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	idx += full
 	src_len -= full
 
-	// we dont support this
+	// we dont support bufsize
 	if u64(c.counter) + 1 > max_u32 {
 		c.block = []u8{len: block_size}
 		numblocks := (src_len + block_size - 1) / block_size
@@ -130,17 +141,59 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	// If we have a partial block, pad it for chacha20_block_generic, and
 	// keep the leftover keystream for the next invocation.
 	if src_len > 0 {
-		c.block = []u8{len: block_size}
+		// copy the last src block to internal buffer, and performs
+		// chacha20_block_generic on this buffer, and stores into remaining dst
 		_ := copy(mut c.block, src[idx..])
 		c.chacha20_block_generic(mut c.block, c.block)
-		x := copy(mut dst[idx..], c.block)
-		c.length = block_size - x
+		n := copy(mut dst[idx..], c.block)
+		// the length of remaining bytes of unprocessed keystream
+		c.length = block_size - n
+	}
+}
+
+// encrypt encrypts src and stores into dst buffer. It works like `xor_key_stream` except
+// its ignore key streaming process by ignoring remaining key stream in the internal buffer,
+// so, its works in one shot of fashion.
+// Its added to allow `chacha20poly1305` modules to work without key stream fashion.
+// TODO: integrates it with the rest
+pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) {
+	if src.len == 0 {
+		return
+	}
+	if dst.len < src.len {
+		panic('chacha20/chacha: dst buffer is to small')
+	}
+	if subtle.inexact_overlap(dst, src) {
+		panic('chacha20: invalid buffer overlap')
+	}
+
+	nr_blocks := src.len / block_size
+	for i := 0; i < nr_blocks; i++ {
+		// get current src block to be xor-ed
+		block := unsafe { src[i * block_size..(i + 1) * block_size] }
+		// build keystream, xor-ed with the block and stores into dst
+		c.chacha20_block_generic(mut dst[i * block_size..(i + 1) * block_size], block)
+	}
+	// process for partial block
+	if src.len % block_size != 0 {
+		// get the remaining last partial block
+		block := unsafe { src[nr_blocks * block_size..] }
+		// pad it into block_size, and then performs chacha20_block_generic
+		// on this src_block
+		mut src_block := []u8{len: block_size}
+		_ := copy(mut src_block, block)
+		c.chacha20_block_generic(mut src_block, src_block)
+
+		// copy the src_block key stream result into desired dst
+		n := copy(mut dst[nr_blocks * block_size..], src_block)
+		assert n == block.len
 	}
 }
 
 // chacha20_block_generic generates ChaCha20 generic keystream
 @[direct_array_access]
 fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
+	// Makes sure its works for size of multiple of block_size
 	if dst.len != src.len || dst.len % block_size != 0 {
 		panic('chacha20: internal error: wrong dst and/or src length')
 	}
@@ -152,19 +205,11 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 	//
 	// where c=constant k=key b=blockcounter n=nonce
 	c0, c1, c2, c3 := cc0, cc1, cc2, cc3
-	c4 := c.key[0]
-	c5 := c.key[1]
-	c6 := c.key[2]
-	c7 := c.key[3]
-	c8 := c.key[4]
-	c9 := c.key[5]
-	c10 := c.key[6]
-	c11 := c.key[7]
+	c4, c5, c6, c7 := c.key[0], c.key[1], c.key[2], c.key[3]
+	c8, c9, c10, c11 := c.key[4], c.key[5], c.key[6], c.key[7]
 
 	_ := c.counter
-	c13 := c.nonce[0]
-	c14 := c.nonce[1]
-	c15 := c.nonce[2]
+	c13, c14, c15 := c.nonce[0], c.nonce[1], c.nonce[2]
 
 	// precomputes three first column rounds that do not depend on counter
 	if !c.precomp {
@@ -244,6 +289,7 @@ pub fn (mut c Cipher) reset() {
 		_ := vmemset(&c.nonce, 0, 12)
 		c.block.reset()
 	}
+	c.length = 0
 	c.counter = u32(0)
 	c.overflow = false
 	c.precomp = false
@@ -266,7 +312,7 @@ pub fn (mut c Cipher) reset() {
 
 // set_counter sets Cipher's counter
 pub fn (mut c Cipher) set_counter(ctr u32) {
-	if ctr >= max_u32 {
+	if u64(ctr) >= max_u32 {
 		c.overflow = true
 	}
 	if c.overflow {
@@ -388,7 +434,7 @@ fn chacha20_encrypt_with_counter(key []u8, nonce []u8, ctr u32, plaintext []u8) 
 	c.set_counter(ctr)
 	mut out := []u8{len: plaintext.len}
 
-	c.xor_key_stream(mut out, plaintext)
+	c.encrypt(mut out, plaintext)
 
 	return out
 }

@@ -127,13 +127,13 @@ fn (c Chacha20Poly1305) encrypt_generic(plaintext []u8, nonce []u8, ad []u8) ![]
 	// see https://datatracker.ietf.org/doc/html/rfc8439#section-2.6
 	mut polykey := []u8{len: key_size}
 	mut s := chacha20.new_cipher(c.key, nonce)!
-	s.xor_key_stream(mut polykey, polykey)
+	s.encrypt(mut polykey, polykey)
 
 	// Next, the ChaCha20 encryption function is called to encrypt the plaintext,
 	// using the same key and nonce, and with the initial ChaCha20 counter set to 1.
 	mut ciphertext := []u8{len: plaintext.len}
 	s.set_counter(1)
-	s.xor_key_stream(mut ciphertext, plaintext)
+	s.encrypt(mut ciphertext, plaintext)
 
 	// Finally, the Poly1305 function is called with the generated Poly1305 one-time key
 	// calculated above, and a message constructed as described in
@@ -177,7 +177,7 @@ fn (c Chacha20Poly1305) decrypt_generic(ciphertext []u8, nonce []u8, ad []u8) ![
 	// generates poly1305 one-time key for later calculation
 	mut polykey := []u8{len: key_size}
 	mut s := chacha20.new_cipher(c.key, nonce)!
-	s.xor_key_stream(mut polykey, polykey)
+	s.encrypt(mut polykey, polykey)
 
 	// Remember, ciphertext is concatenation of associated cipher output plus tag (mac) bytes
 	encrypted := ciphertext[0..ciphertext.len - c.overhead()]
@@ -186,7 +186,7 @@ fn (c Chacha20Poly1305) decrypt_generic(ciphertext []u8, nonce []u8, ad []u8) ![
 	mut plaintext := []u8{len: encrypted.len}
 	s.set_counter(1)
 	// doing reverse encrypt on cipher output part produces plaintext
-	s.xor_key_stream(mut plaintext, encrypted)
+	s.encrypt(mut plaintext, encrypted)
 
 	// authenticated messages part
 	mut constructed_msg := []u8{}
