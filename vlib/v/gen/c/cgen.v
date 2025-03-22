@@ -2703,9 +2703,9 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		is_anon_fn = true
 	}
 	if !is_anon_fn {
-		// g.definitions.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x);//OK')
+		// g.definitions.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x);')
 		// sb.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x) {')
-		g.definitions.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x);//OK')
+		g.definitions.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x);')
 		sb.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x) {')
 		sb.writeln('\t${got_cname}* ptr = memdup(x, sizeof(${got_cname}));')
 	}
