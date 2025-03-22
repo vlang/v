@@ -22,10 +22,6 @@ pub fn (mut b Builder) write_byte(data u8) {
 	b << data
 }
 
-pub fn (mut b Builder) clear() {
-	b = []u8{cap: b.cap}
-}
-
 pub fn (mut b Builder) write_u8(data u8) {
 	b << data
 }
@@ -67,7 +63,7 @@ pub fn (mut b Builder) str() string {
 
 	#for (const c of b.val.arr.arr)
 	#s.str += String.fromCharCode(+c)
-	b.trim(0)
+	b.clear()
 	return s
 }
 
