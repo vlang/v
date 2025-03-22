@@ -5487,6 +5487,16 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 				}
 			}
 		}
+		.chan {
+			if sym.info is ast.Chan {
+				if !c.ensure_type_exists((sym.info as ast.Chan).elem_type, token.Pos{
+					...pos
+					col: pos.col + 5
+				}) {
+					return false
+				}
+			}
+		}
 		else {}
 	}
 	return true

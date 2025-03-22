@@ -1,0 +1,7 @@
+vlib/v/checker/tests/chan_unknown_err.vv:7:11: error: unknown type `DoesNotExist`.
+Did you mean `DoesNotExists`?
+    5 | struct ChanBug {
+    6 | pub mut:
+    7 |     bug chan DoesNotExist
+      |              ~~~~~~~~~~~~
+    8 | }

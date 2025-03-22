@@ -1,0 +1,8 @@
+module main
+
+struct DoesNotExists {}
+
+struct ChanBug {
+pub mut:
+	bug chan DoesNotExist
+}
