@@ -51,6 +51,7 @@ fn do_timeout(c &Context) {
 }
 
 fn main() {
+	unbuffer_stdout()
 	mut ctx := Context{}
 	args := os.args[1..]
 	if '-h' in args || '--help' in args {
