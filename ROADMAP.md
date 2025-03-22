@@ -22,13 +22,13 @@ For a list of all features and fixes, check out the changelog.
 
 ## [Version 0.4]
 
-- [x] [Coroutines](https://github.com/vlang/v/discussions/11582)
+- [ ] [Coroutines](https://github.com/vlang/v/discussions/11582)
 - [x] vfmt: add missing imports (like goimports)
 - [x] Recursive structs via options: `struct Node { next ?Node }`
 - [x] First class Option type
 - [x] Optional function struct fields
 - [x] Handle function pointers safely, remove `if function == 0 {`
-- [x] Bundle OpenSSL like GC
+- [ ] Bundle OpenSSL like GC
 - [x] Anonymous structs
 - [x] Improve vweb: allow separation of logic via "controllers", lots of other fixes
 - [x] New VPM site
