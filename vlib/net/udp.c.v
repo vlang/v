@@ -274,18 +274,21 @@ pub fn (mut s UdpSocket) set_dualstack(on bool) ! {
 		sizeof(int)))!
 }
 
-fn (mut s UdpSocket) close() ! {
+// close shuts down and closes the socket for communication.
+pub fn (mut s UdpSocket) close() ! {
 	shutdown(s.handle)
 	return close(s.handle)
 }
 
-fn (mut s UdpSocket) select(test Select, timeout time.Duration) !bool {
+// select waits for no more than `timeout` for the IO operation, defined by `test`, to be available.
+pub fn (mut s UdpSocket) select(test Select, timeout time.Duration) !bool {
 	return select(s.handle, test, timeout)
 }
 
-fn (s &UdpSocket) remote() !Addr {
+// remote returns the remote `Addr` address of the socket or `none` if no remote is has been resolved.
+pub fn (s &UdpSocket) remote() ?Addr {
 	if s.has_r {
 		return s.r
 	}
-	return error('none')
+	return none
 }
