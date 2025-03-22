@@ -259,9 +259,9 @@ fn C.ZSTD_CCtx_setParameter(voidptr, CParameter, int) usize
 fn C.ZSTD_CCtx_setPledgedSrcSize(voidptr, u64) usize
 
 pub enum ResetDirective {
-	zstd_reset_session_only           = 1
-	zstd_reset_parameters             = 2
-	zstd_reset_session_and_parameters = 3
+	session_only           = 1
+	parameters             = 2
+	session_and_parameters = 3
 }
 
 fn C.ZSTD_CCtx_reset(voidptr, ResetDirective) usize
