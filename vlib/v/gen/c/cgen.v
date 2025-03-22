@@ -2762,7 +2762,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		&& g.comptime.is_comptime_variant_var(expr)
 
 	if exp.is_ptr() {
-		if is_sumtype_cast && g.expected_arg_mut && expr is ast.Ident {
+		if $d('mutable_sumtype', false) && is_sumtype_cast && g.expected_arg_mut
+			&& expr is ast.Ident {
 			g.write('&(${exp_styp.trim_right('*')}){._${got_styp.trim_right('*')}=')
 			rparen_n = 0
 			mutable_idx = got.idx()
