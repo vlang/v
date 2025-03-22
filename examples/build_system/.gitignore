@@ -1,0 +1,6 @@
+# Files and directories made by build.vsh:
+/target/
+/test.txt
+
+# Pre-compiled build.vsh
+/build
