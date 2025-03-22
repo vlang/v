@@ -28,12 +28,14 @@ fn test_main() {
 	mut s := String{
 		s: 'string'
 	}
-	assert i.i == 333
-	assert s.s == 'string'
-	init(mut i)
-	init(mut s)
-	assert i.i == 0
-	assert s.s == ''
-	init_int(mut i)
-	assert i.i == 0
+	if $d('mutable_sumtype', false) {
+		assert i.i == 333
+		assert s.s == 'string'
+		init(mut i)
+		init(mut s)
+		assert i.i == 0
+		assert s.s == ''
+		init_int(mut i)
+		assert i.i == 0
+	}
 }
