@@ -648,7 +648,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					if arr.exprs.len == 0 && arr.typ == ast.void_type {
 						elem_type_str := c.table.type_to_str(left_value_type)
 						// compile error suggesting explicit typing
-						c.error('cannot infer type for empty array literal `[]`. Use `${elem_type_str}{} instead`.', right_pos)
+						c.error('cannot infer type for empty array literal `[]`. Use `${elem_type_str}{}` instead.', right_pos)
 					}
 				}
 				if !left_value_type.has_flag(.option) && right_type.has_flag(.option) {
