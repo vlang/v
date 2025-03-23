@@ -1266,6 +1266,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	for p.tok.kind !in [.semicolon, .rcbr, .eof] {
 		template_pos := p.tok.pos()
 		mut name := ''
+		mut comments := []ast.Comment{}
 		if p.tok.kind == .name && arch == .amd64 && p.tok.lit in ['rex', 'vex', 'xop'] {
 			name += p.tok.lit
 			p.next()
@@ -1297,6 +1298,10 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		} else if p.tok.kind == .number {
 			name += p.tok.lit
 			p.next()
+		} else if p.tok.kind == .comment {
+			for p.tok.kind == .comment {
+				comments << p.comment()
+			}
 		} else {
 			name += p.tok.lit
 			p.check(.name)
@@ -1405,7 +1410,6 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			// 	break
 			// }
 		}
-		mut comments := []ast.Comment{}
 		for p.tok.kind == .comment {
 			comments << p.comment()
 		}
