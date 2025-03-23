@@ -2757,7 +2757,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	mut mutable_idx := 0
 
 	is_not_ptr_and_fn := !got_is_ptr && !got_is_fn
-	is_sumtype_cast := is_not_ptr_and_fn && fname.contains('_to_sumtype_')
+	is_sumtype_cast := !got_is_fn && fname.contains('_to_sumtype_')
 	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
 		&& g.comptime.is_comptime_variant_var(expr)
 
