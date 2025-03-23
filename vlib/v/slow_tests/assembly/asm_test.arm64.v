@@ -16,7 +16,8 @@ fn test_inline_asm() {
 		mov x0, 5
 		mov c, x0
 		; +r (c)
-		; ; x0
+		;
+		; x0
 	}
 	assert c == 5
 
@@ -30,13 +31,12 @@ fn test_inline_asm() {
 		; +r (f) // output
 		; r (d)
 		  r (e) // input
-		; x0
-		  x1
+		; x0 x1
 	}
 	assert d == 10
 	assert e == 2
 	assert f == 17
-	/*
+
 	mut j := 0
 	// do 5*3
 	// adding three, five times
@@ -45,14 +45,15 @@ fn test_inline_asm() {
 		mov x1, 0
 		loop_start:
 		add x1, x1, 3
-		cmp x0, 5
-		b.lt loop_start
-		mov j, x0
+		sub x0, x0, 1
+		cmp x0, 0
+		b.gt loop_start
+		mov j, x1
 		; +r (j)
 		; ; x0 x1
 	}
 	assert j == 5 * 3
-
+/*
 	// not marked as mut because we dereference m to change l
 	l := 5
 	m := &l
@@ -72,9 +73,8 @@ fn test_inline_asm() {
 		  =r (manu.id_aa64mmfr0_el1) as x2
 	}
 	manu.str()
-	*/
+*/
 }
-
 /*
 @[packed]
 struct Manu {
@@ -108,10 +108,13 @@ fn generic_asm[T](var &T) T {
 	mut ret := T(14)
 	unsafe {
 		asm volatile arm64 {
-			add var, ret
+			mov x0, ret
+			mov x1, var
+			add x1, x0, 0
+			mov var, x1
 			; +m (var[0]) as var
 			  +r (ret)
-			; ; memory
+			; ; memory x0 x1
 		}
 	}
 	return ret

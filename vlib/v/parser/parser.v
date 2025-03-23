@@ -1301,8 +1301,8 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			name += p.tok.lit
 			p.check(.name)
 		}
-		// dots are part of instructions for some riscv extensions and webassembly
-		if arch in [.rv32, .rv64, .wasm32] {
+		// dots are part of instructions for some riscv extensions and webassembly, arm64
+		if arch in [.rv32, .rv64, .wasm32, .arm64] {
 			for p.tok.kind == .dot {
 				name += '.'
 				p.next()
