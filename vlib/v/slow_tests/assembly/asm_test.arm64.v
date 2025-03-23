@@ -16,8 +16,7 @@ fn test_inline_asm() {
 		mov x0, 5
 		mov c, x0
 		; +r (c)
-		;
-		; x0
+		; ; x0
 	}
 	assert c == 5
 
@@ -31,7 +30,8 @@ fn test_inline_asm() {
 		; +r (f) // output
 		; r (d)
 		  r (e) // input
-		; x0 x1
+		; x0
+		  x1
 	}
 	assert d == 10
 	assert e == 2
@@ -50,10 +50,11 @@ fn test_inline_asm() {
 		b.gt loop_start
 		mov j, x1
 		; +r (j)
-		; ; x0 x1
+		; ; x0
+		  x1
 	}
 	assert j == 5 * 3
-/*
+	/*
 	// not marked as mut because we dereference m to change l
 	l := 5
 	m := &l
@@ -73,8 +74,9 @@ fn test_inline_asm() {
 		  =r (manu.id_aa64mmfr0_el1) as x2
 	}
 	manu.str()
-*/
+	*/
 }
+
 /*
 @[packed]
 struct Manu {
