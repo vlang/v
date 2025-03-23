@@ -535,7 +535,7 @@ pub fn decode[T](val string) !T {
 
 	mut result := T{}
 	decoder.current_node = decoder.values_info.head
-	decoder.decode_value(mut &result)!
+	decoder.decode_value(mut result)!
 	unsafe {
 		decoder.values_info.free()
 	}
