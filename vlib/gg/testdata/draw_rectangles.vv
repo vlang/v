@@ -1,0 +1,24 @@
+module main
+
+import gg
+import gx
+
+gg.start(
+	bg_color:     gx.white
+	window_title: 'Rectangles'
+	width:        250
+	height:       100
+	frame_fn:     fn (ctx &gg.Context) {
+		ctx.begin()
+		ctx.draw_rect_filled(10, 10, 10, 10, gx.blue)
+		ctx.draw_rect_empty(30, 10, 10, 10, gx.red)
+		ctx.draw_rect_filled(50, 10, 30, 10, gx.green)
+		ctx.draw_rect_empty(100, 10, 30, 10, gx.black)
+
+		ctx.draw_rect_empty(10, 50, 10, 10, gx.blue)
+		ctx.draw_rect_filled(30, 50, 10, 10, gx.red)
+		ctx.draw_rect_empty(50, 50, 30, 10, gx.green)
+		ctx.draw_rect_filled(100, 50, 30, 10, gx.black)
+		ctx.end()
+	}
+)
