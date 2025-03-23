@@ -119,7 +119,9 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 		c.overflow = true
 	}
 
-	// we dont supports for bufsize that multiples size of block_size
+	// take the most full bytes of multiples block_size from the src,
+	// build the keystream from the cipher's state and stores the result
+	// into dst
 	full := src_len - src_len % block_size
 	if full > 0 {
 		c.chacha20_block_generic(mut dst[idx..idx + full], src[idx..idx + full])
@@ -129,7 +131,6 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 
 	// we dont support bufsize
 	if u64(c.counter) + 1 > max_u32 {
-		c.block = []u8{len: block_size}
 		numblocks := (src_len + block_size - 1) / block_size
 		mut buf := c.block[block_size - numblocks * block_size..]
 		_ := copy(mut buf, src[idx..])
@@ -156,6 +157,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 // so, its works in one shot of fashion.
 // Its added to allow `chacha20poly1305` modules to work without key stream fashion.
 // TODO: integrates it with the rest
+@[direct_array_access]
 pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) {
 	if src.len == 0 {
 		return
@@ -245,23 +247,39 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 			x3, x4, x9, x14 = quarter_round(x3, x4, x9, x14)
 		}
 
-		// add back to initial state, xor-ing with the src and stores to dst
-		add_n_xor(mut dst[idx + 0..idx + 4], src[idx + 0..idx + 4], x0, c0)
-		add_n_xor(mut dst[idx + 4..idx + 8], src[idx + 4..idx + 8], x1, c1)
-		add_n_xor(mut dst[idx + 8..idx + 12], src[idx + 8..idx + 12], x2, c2)
-		add_n_xor(mut dst[idx + 12..idx + 16], src[idx + 12..idx + 16], x3, c3)
-		add_n_xor(mut dst[idx + 16..idx + 20], src[idx + 16..idx + 20], x4, c4)
-		add_n_xor(mut dst[idx + 20..idx + 24], src[idx + 20..idx + 24], x5, c5)
-		add_n_xor(mut dst[idx + 24..idx + 28], src[idx + 24..idx + 28], x6, c6)
-		add_n_xor(mut dst[idx + 28..idx + 32], src[idx + 28..idx + 32], x7, c7)
-		add_n_xor(mut dst[idx + 32..idx + 36], src[idx + 32..idx + 36], x8, c8)
-		add_n_xor(mut dst[idx + 36..idx + 40], src[idx + 36..idx + 40], x9, c9)
-		add_n_xor(mut dst[idx + 40..idx + 44], src[idx + 40..idx + 44], x10, c10)
-		add_n_xor(mut dst[idx + 44..idx + 48], src[idx + 44..idx + 48], x11, c11)
-		add_n_xor(mut dst[idx + 48..idx + 52], src[idx + 48..idx + 52], x12, c.counter)
-		add_n_xor(mut dst[idx + 52..idx + 56], src[idx + 52..idx + 56], x13, c13)
-		add_n_xor(mut dst[idx + 56..idx + 60], src[idx + 56..idx + 60], x14, c14)
-		add_n_xor(mut dst[idx + 60..idx + 64], src[idx + 60..idx + 64], x15, c15)
+		// add back keystream result to initial state, xor-ing with the src and stores into dst
+		binary.little_endian_put_u32(mut dst[idx + 0..idx + 4], binary.little_endian_u32(src[idx + 0..
+			idx + 4]) ^ (x0 + c0))
+		binary.little_endian_put_u32(mut dst[idx + 4..idx + 8], binary.little_endian_u32(src[idx + 4..
+			idx + 8]) ^ (x1 + c1))
+		binary.little_endian_put_u32(mut dst[idx + 8..idx + 12], binary.little_endian_u32(src[idx +
+			8..idx + 12]) ^ (x2 + c2))
+		binary.little_endian_put_u32(mut dst[idx + 12..idx + 16], binary.little_endian_u32(src[
+			idx + 12..idx + 16]) ^ (x3 + c3))
+		binary.little_endian_put_u32(mut dst[idx + 16..idx + 20], binary.little_endian_u32(src[
+			idx + 16..idx + 20]) ^ (x4 + c4))
+		binary.little_endian_put_u32(mut dst[idx + 20..idx + 24], binary.little_endian_u32(src[
+			idx + 20..idx + 24]) ^ (x5 + c5))
+		binary.little_endian_put_u32(mut dst[idx + 24..idx + 28], binary.little_endian_u32(src[
+			idx + 24..idx + 28]) ^ (x6 + c6))
+		binary.little_endian_put_u32(mut dst[idx + 28..idx + 32], binary.little_endian_u32(src[
+			idx + 28..idx + 32]) ^ (x7 + c7))
+		binary.little_endian_put_u32(mut dst[idx + 32..idx + 36], binary.little_endian_u32(src[
+			idx + 32..idx + 36]) ^ (x8 + c8))
+		binary.little_endian_put_u32(mut dst[idx + 36..idx + 40], binary.little_endian_u32(src[
+			idx + 36..idx + 40]) ^ (x9 + c9))
+		binary.little_endian_put_u32(mut dst[idx + 40..idx + 44], binary.little_endian_u32(src[
+			idx + 40..idx + 44]) ^ (x10 + c10))
+		binary.little_endian_put_u32(mut dst[idx + 44..idx + 48], binary.little_endian_u32(src[
+			idx + 44..idx + 48]) ^ (x11 + c11))
+		binary.little_endian_put_u32(mut dst[idx + 48..idx + 52], binary.little_endian_u32(src[
+			idx + 48..idx + 52]) ^ (x12 + c.counter))
+		binary.little_endian_put_u32(mut dst[idx + 52..idx + 56], binary.little_endian_u32(src[
+			idx + 52..idx + 56]) ^ (x13 + c13))
+		binary.little_endian_put_u32(mut dst[idx + 56..idx + 60], binary.little_endian_u32(src[
+			idx + 56..idx + 60]) ^ (x14 + c14))
+		binary.little_endian_put_u32(mut dst[idx + 60..idx + 64], binary.little_endian_u32(src[
+			idx + 60..idx + 64]) ^ (x15 + c15))
 
 		c.counter += 1
 
@@ -437,11 +455,4 @@ fn chacha20_encrypt_with_counter(key []u8, nonce []u8, ctr u32, plaintext []u8) 
 	c.encrypt(mut out, plaintext)
 
 	return out
-}
-
-// add_n_xor adds a+b, xor it with src and stores into dst
-fn add_n_xor(mut dst []u8, src []u8, a u32, b u32) {
-	_, _ = dst[3], src[3]
-	v := binary.little_endian_u32(src[0..4]) ^ (a + b)
-	binary.little_endian_put_u32(mut dst[0..4], v)
 }
