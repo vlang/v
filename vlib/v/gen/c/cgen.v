@@ -3130,8 +3130,8 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		} else {
 			g.write(' ')
 		}
-		// swap destination and operands for att syntax only for amd64
-		if template.args.len != 0 && !template.is_directive && stmt.arch == .amd64 {
+		// swap destination and operands for att syntax, not for arm64
+		if template.args.len != 0 && !template.is_directive && stmt.arch != .arm64 {
 			template.args.prepend(template.args.last())
 			template.args.delete(template.args.len - 1)
 		}
