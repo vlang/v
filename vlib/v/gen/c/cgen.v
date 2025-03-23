@@ -3130,8 +3130,8 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		} else {
 			g.write(' ')
 		}
-		// swap destination and operands for att syntax
-		if template.args.len != 0 && !template.is_directive {
+		// swap destination and operands for att syntax, not for arm64
+		if template.args.len != 0 && !template.is_directive && stmt.arch != .arm64 {
 			template.args.prepend(template.args.last())
 			template.args.delete(template.args.len - 1)
 		}
@@ -3206,7 +3206,11 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write("'${arg.val}'")
 		}
 		ast.IntegerLiteral {
-			g.write('\$${arg.val}')
+			if stmt.arch == .arm64 {
+				g.write('#${arg.val}')
+			} else {
+				g.write('\$${arg.val}')
+			}
 		}
 		ast.FloatLiteral {
 			if g.pref.nofloat {
