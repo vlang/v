@@ -1499,9 +1499,13 @@ pub fn (t &Table) known_type_names() []string {
 	for _, idx in t.type_idxs {
 		typ := idx_to_type(idx)
 		// Skip `int_literal_type_idx` and `float_literal_type_idx` because they shouldn't be visible to the User.
-		if idx !in [0, int_literal_type_idx, float_literal_type_idx] && t.known_type_idx(typ)
-			&& t.sym(typ).kind != .function {
-			res << t.type_to_str(typ)
+		if idx !in [0, int_literal_type_idx, float_literal_type_idx] && t.known_type_idx(typ) {
+			tsym := t.sym(typ)
+			if tsym.kind !in [.function, .chan] {
+				res << t.type_to_str(typ)
+			} else if tsym.info is Chan && t.sym(tsym.info.elem_type).kind != .placeholder {
+				res << t.type_to_str(tsym.info.elem_type)
+			}
 		}
 	}
 	return res
