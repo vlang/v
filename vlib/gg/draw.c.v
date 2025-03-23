@@ -190,13 +190,29 @@ pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c gx.Color) {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-
-	sgl.begin_line_strip()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
-	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
-	sgl.v2f(x * ctx.scale, (y - 1) * ctx.scale)
+	// The small offsets here, are to make sure, that the start and end points will be
+	// inside pixels, and not on their borders. That in turn, makes it much more likely
+	// that different OpenGL implementations will render them identically, for example
+	// Mesa, with `LIBGL_ALWAYS_SOFTWARE=1` renders the same as HD4000.
+	mut toffset := f32(0.1)
+	mut boffset := f32(-0.1)
+	tleft_x := toffset + x * ctx.scale
+	tleft_y := toffset + y * ctx.scale
+	bright_x := boffset + (x + w) * ctx.scale
+	bright_y := boffset + (y + h) * ctx.scale
+	sgl.begin_lines() // more predictable, compared to sgl.begin_line_strip, at the price of more vertexes send
+	// top:
+	sgl.v2f(tleft_x, tleft_y)
+	sgl.v2f(bright_x, tleft_y)
+	// left:
+	sgl.v2f(tleft_x, tleft_y)
+	sgl.v2f(tleft_x, bright_y)
+	// right:
+	sgl.v2f(bright_x, tleft_y)
+	sgl.v2f(bright_x, bright_y)
+	// bottom:
+	sgl.v2f(tleft_x, bright_y)
+	sgl.v2f(bright_x, bright_y)
 	sgl.end()
 }
 
