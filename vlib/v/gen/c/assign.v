@@ -234,6 +234,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				// we can't just do `.str` since we need the extra data from the string struct
 				// doing `&string` is also not an option since the stack memory with the data will be overwritten
 				g.expr(left0) // node.left[0])
+				if first_left_type.has_flag(.shared_f) {
+					g.write('->val')
+				}
 				g.writeln('); // free ${type_to_free} on re-assignment2')
 				defer {
 					if af {
