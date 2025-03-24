@@ -13,7 +13,7 @@ pub struct PoolProcessor {
 mut:
 	njobs           int
 	items           []voidptr
-	results         []voidptr
+	results         shared []voidptr
 	ntask           u32 // reading/writing to this should be atomic
 	waitgroup       sync.WaitGroup
 	shared_context  voidptr
@@ -88,7 +88,9 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 	}
 	unsafe {
 		pool.thread_contexts = []voidptr{len: items.len}
-		pool.results = []voidptr{len: items.len}
+		lock pool.results {
+			pool.results = []voidptr{len: items.len}
+		}
 		pool.items = []voidptr{cap: items.len}
 		pool.items << items
 		pool.waitgroup.add(njobs)
@@ -115,7 +117,9 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 		if idx >= ilen {
 			break
 		}
-		pool.results[idx] = cb(mut pool, idx, task_id)
+		lock pool.results {
+			pool.results[idx] = cb(mut pool, idx, task_id)
+		}
 	}
 	pool.waitgroup.done()
 }
@@ -129,14 +133,18 @@ pub fn (pool &PoolProcessor) get_item[T](idx int) T {
 // get_result - called by the main thread to get a specific result.
 // Retrieves a type safe instance of the produced result.
 pub fn (pool &PoolProcessor) get_result[T](idx int) T {
-	return unsafe { *(&T(pool.results[idx])) }
+	rlock pool.results {
+		return unsafe { *(&T(pool.results[idx])) }
+	}
 }
 
 // get_results - get a list of type safe results in the main thread.
 pub fn (pool &PoolProcessor) get_results[T]() []T {
 	mut res := []T{cap: pool.results.len}
 	for i in 0 .. pool.results.len {
-		res << unsafe { *(&T(pool.results[i])) }
+		rlock pool.results {
+			res << unsafe { *(&T(pool.results[i])) }
+		}
 	}
 	return res
 }
@@ -145,7 +153,9 @@ pub fn (pool &PoolProcessor) get_results[T]() []T {
 pub fn (pool &PoolProcessor) get_results_ref[T]() []&T {
 	mut res := []&T{cap: pool.results.len}
 	for i in 0 .. pool.results.len {
-		res << unsafe { &T(pool.results[i]) }
+		rlock pool.results {
+			res << unsafe { &T(pool.results[i]) }
+		}
 	}
 	return res
 }
