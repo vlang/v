@@ -1056,6 +1056,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		}
 	}
 
+	// Disable parallel checker on arm64 windows and linux for now
+	$if linux || windows {
+		$if arm64 {
+			res.no_parallel = true
+		}
+	}
+
 	if res.out_name.ends_with('.o') {
 		res.is_o = true
 	}

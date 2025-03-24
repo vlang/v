@@ -186,6 +186,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				&& ((left.info as ast.IdentVar).share == .shared_t || left_type.has_flag(.shared_f))
 				&& c.table.sym(left_type).kind in [.array, .map, .struct]
 		}
+
 		if c.comptime.comptime_for_field_var != '' && mut left is ast.ComptimeSelector {
 			if c.comptime.has_different_types && node.right[i].is_literal()
 				&& !c.comptime.inside_comptime_if {
@@ -545,6 +546,19 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('use `${mut_str}array2 ${node.op.str()} array1.clone()` instead of `${mut_str}array2 ${node.op.str()} array1` (or use `unsafe`)',
 				node.pos)
 		}
+
+		// Do not allow auto (de)reference in PrefixExpr
+		// e.g. `*ptr1 = ptr2`
+		if mut left is ast.PrefixExpr && left.op == .mul {
+			if left_type.nr_muls() != right_type.nr_muls() && !left_type.is_voidptr()
+				&& !right_type.is_voidptr() && right_type != ast.nil_type {
+				r := right_sym.str_with_correct_nr_muls(right_type.nr_muls())
+				l := left_sym.str_with_correct_nr_muls(left_type.nr_muls())
+				c.error('cannot use `${r}` (right side) as `${l}` (left side) in assignment',
+					node.pos)
+			}
+		}
+
 		if left_sym.kind == .array && right_sym.kind == .array {
 			right_info := right_sym.info as ast.Array
 			right_elem_type := c.table.unaliased_type(right_info.elem_type)

@@ -30,13 +30,8 @@ fn failed_cfn_report_error(ok bool, label string) {
 	exit(1)
 }
 
-type PU32 = &u32
-
-// TODO: the PU32 alias is used to compensate for the wrong number of &/*
-// that V does when doing: `h := &&u32(p)`, which should have casted
-// p to a double pointer.
 fn close_valid_handle(p voidptr) {
-	h := &PU32(p)
+	h := &&u32(p)
 	if *h != &u32(0) {
 		C.CloseHandle(*h)
 		unsafe {

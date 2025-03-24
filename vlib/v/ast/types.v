@@ -844,6 +844,12 @@ pub fn (t &TypeSymbol) str() string {
 	return t.name
 }
 
+// TODO why is this needed? str() returns incorrect amount of &
+pub fn (t &TypeSymbol) str_with_correct_nr_muls(n int) string {
+	prefix := strings.repeat(`&`, n)
+	return prefix + t.name
+}
+
 @[noreturn]
 fn (t &TypeSymbol) no_info_panic(fname string) {
 	panic('${fname}: no info for type: ${t.name}')

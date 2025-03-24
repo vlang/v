@@ -848,7 +848,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 		if existing_idx == string_type_idx {
 			// existing_type := t.type_symbols[existing_idx]
 			unsafe {
-				*existing_symbol = &TypeSymbol{
+				*existing_symbol = TypeSymbol{
 					...typ
 					kind:       existing_symbol.kind
 					idx:        existing_idx
