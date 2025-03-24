@@ -601,6 +601,20 @@ fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
 						}
 					}
 				}
+				ast.InfixExpr {
+					// last stmt has infix expr with CallExpr: foo()? + 'a'
+					mut left_expr := last_stmt.expr.left
+					for {
+						if mut left_expr is ast.InfixExpr {
+							left_expr = left_expr.left
+							continue
+						}
+						if mut left_expr is ast.CallExpr {
+							left_expr.is_return_used = true
+						}
+						break
+					}
+				}
 				else {}
 			}
 		}
