@@ -38,8 +38,7 @@ fn test_xchacha20_encrypt_vector_test_a321() ! {
 	nonce_bytes := hex.decode(nonce)!
 	ciphertext_bytes := hex.decode(ciphertext)!
 
-	encrypted_message := xchacha20_encrypt_with_counter(key_bytes, nonce_bytes, counter,
-		plaintext_bytes) or { return }
+	encrypted_message := encrypt(key_bytes, nonce_bytes, plaintext_bytes) or { return }
 
 	assert encrypted_message == ciphertext_bytes
 }
@@ -60,8 +59,11 @@ fn test_xchach20_encrypt_vector_test_a322() ! {
 	nonce_bytes := hex.decode(nonce)!
 	ciphertext_bytes := hex.decode(ciphertext)!
 
-	encrypted_message := xchacha20_encrypt_with_counter(key_bytes, nonce_bytes, counter,
-		plaintext_bytes) or { return }
+	mut c := new_cipher(key_bytes, nonce_bytes)!
+	c.set_counter(counter)
+
+	mut encrypted_message := []u8{len: plaintext_bytes.len}
+	c.encrypt(mut encrypted_message, plaintext_bytes)
 
 	assert encrypted_message == ciphertext_bytes
 }
