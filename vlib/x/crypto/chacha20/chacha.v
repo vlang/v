@@ -9,12 +9,14 @@ import math.bits
 import crypto.internal.subtle
 import encoding.binary
 
-// size of ChaCha20 key, ie 256 bits size, in bytes
+// The size of ChaCha20 key, ie 256 bits size, in bytes
 pub const key_size = 32
-// size of ietf ChaCha20 nonce, ie 96 bits size, in bytes
+// The size of standard IETF ChaCha20 nonce, ie 96 bits size, in bytes
 pub const nonce_size = 12
-// size of extended ChaCha20 nonce, called XChaCha20, 192 bits
+// The size of extended variant of standard ChaCha20 (XChaCha20) nonce, 192 bits
 pub const x_nonce_size = 24
+// The size of original ChaCha20 nonce, 64 bits
+pub const orig_nonce_size = 8
 // internal block size ChaCha20 operates on, in bytes
 const block_size = 64
 
@@ -24,19 +26,39 @@ const cc1 = u32(0x3320646e) // nd 3
 const cc2 = u32(0x79622d32) // 2-by
 const cc3 = u32(0x6b206574) // te k
 
+// CipherMode was enumeration of ChaCha20 supported variant.
+enum CipherMode {
+	// The standard IETF ChaCha20 (and XChaCha20), with 32-bit internal counter.
+	standard
+	// The original ChaCha20 with 64-bit internal counter.
+	original
+}
+
 // Cipher represents ChaCha20 stream cipher instances.
 pub struct Cipher {
+	// The mode of ChaCha20 cipher, set on cipher's creation.
+	mode CipherMode = .standard
 mut:
-	// internal's of ChaCha20 states, ie, 16 of u32 words, 4 of ChaCha20 constants,
-	// 8 word (32 bytes) of keys, 3 word (24 bytes) of nonces and 1 word of counter
-	key      [8]u32
-	nonce    [3]u32
-	counter  u32
+	// The internal's of ChaCha20 states contains 512 bits (64 bytes), contains of
+	// 4 words (16 bytes) of ChaCha20 constants,
+	// 8 words (32 bytes) of ChaCha20 keys,
+	// 4 words (16 bytes) of raw nonces, with internal counter, support for 32 and 64 bit counters.
+	key   [8]u32
+	nonce [4]u32
+
+	// Flag indicates whether this cipher's counter has reached the limit
 	overflow bool
+	// Flag that tells whether this cipher was an extended XChaCha20 standard variant.
+	// only make sense when mode == .standard
+	extended bool
+
 	// internal buffer for storing key stream results
-	block  []u8 = []u8{len: block_size}
+	block []u8 = []u8{len: block_size}
+	// The last length of leftover unprocessed keystream from internal buffer
 	length int
-	// additional fields, follow the go version
+
+	// Additional fields, follows the go version. Its mainly used to optimize
+	// standard IETF ciphers operations by pre-chache some quarter_round step.
 	// vfmt off
 	precomp bool
 	p1  u32 p5  u32 p9  u32 p13 u32
@@ -45,11 +67,37 @@ mut:
 	// vfmt on
 }
 
-// new_cipher creates a new ChaCha20 stream cipher with the given 32 bytes key, a 12 or 24 bytes nonce.
+// new_cipher creates a new ChaCha20 stream cipher with the given 32 bytes key
+// and bytes of nonce with supported size, ie, 8, 12 or 24 bytes nonce.
+// Standard IETF variant use 12 bytes nonce's, if you want create original ChaCha20 cipher
+// with support for 64-bit counter, use 8 bytes length nonce's instead
 // If 24 bytes of nonce was provided, the XChaCha20 construction will be used.
 // It returns new ChaCha20 cipher instance or an error if key or nonce have any other length.
+@[direct_array_access]
 pub fn new_cipher(key []u8, nonce []u8) !&Cipher {
-	mut c := &Cipher{}
+	if key.len != key_size {
+		return error('Bad key size provided')
+	}
+	mut mode := CipherMode.standard
+	mut extended := false
+	match nonce.len {
+		nonce_size {}
+		x_nonce_size {
+			extended = true
+		}
+		orig_nonce_size {
+			mode = .original
+			// TODO: removes this when its getting fully supported
+			return error('Original mode currently was not supported')
+		}
+		else {
+			return error('Unsupported nonce size')
+		}
+	}
+	mut c := &Cipher{
+		mode:     mode
+		extended: extended
+	}
 	// we dont need reset on new cipher instance
 	c.do_rekey(key, nonce)!
 
@@ -123,9 +171,9 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 
 	// check for counter overflow
 	num_blocks := (u64(src_len) + block_size - 1) / block_size
-	if c.overflow || u64(c.counter) + num_blocks > max_u32 {
+	if c.overflow || u64(c.nonce[0]) + num_blocks > max_u32 {
 		panic('chacha20: counter overflow')
-	} else if u64(c.counter) + num_blocks == max_u32 {
+	} else if u64(c.nonce[0]) + num_blocks == max_u32 {
 		c.overflow = true
 	}
 
@@ -140,7 +188,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	src_len -= full
 
 	// we dont support bufsize
-	if u64(c.counter) + 1 > max_u32 {
+	if u64(c.nonce[0]) + 1 > max_u32 {
 		numblocks := (src_len + block_size - 1) / block_size
 		mut buf := c.block[block_size - numblocks * block_size..]
 		_ := copy(mut buf, src[idx..])
@@ -219,6 +267,13 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 	if dst.len != src.len || dst.len % block_size != 0 {
 		panic('chacha20: internal error: wrong dst and/or src length')
 	}
+	// Safety checks to make sure increasing current cipher's counter
+	// by nr_block was not overflowing internal counter.
+	num_block := u64((src.len + block_size - 1) / block_size)
+	if u64(c.nonce[0]) + num_block > max_u32 {
+		panic('Adding num_block to the current counter lead to overflow')
+	}
+
 	// initializes ChaCha20 state
 	//      0:cccccccc   1:cccccccc   2:cccccccc   3:cccccccc
 	//      4:kkkkkkkk   5:kkkkkkkk   6:kkkkkkkk   7:kkkkkkkk
@@ -230,8 +285,8 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 	c4, c5, c6, c7 := c.key[0], c.key[1], c.key[2], c.key[3]
 	c8, c9, c10, c11 := c.key[4], c.key[5], c.key[6], c.key[7]
 
-	_ := c.counter
-	c13, c14, c15 := c.nonce[0], c.nonce[1], c.nonce[2]
+	mut c12 := c.nonce[0]
+	c13, c14, c15 := c.nonce[1], c.nonce[2], c.nonce[3]
 
 	// precomputes three first column rounds that do not depend on counter
 	if !c.precomp {
@@ -244,7 +299,7 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 	mut src_len := src.len
 	for src_len >= block_size {
 		// remaining first column round
-		fcr0, fcr4, fcr8, fcr12 := quarter_round(c0, c4, c8, c.counter)
+		fcr0, fcr4, fcr8, fcr12 := quarter_round(c0, c4, c8, c12)
 
 		// The second diagonal round.
 		mut x0, mut x5, mut x10, mut x15 := quarter_round(fcr0, c.p5, c.p10, c.p15)
@@ -293,7 +348,7 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 		binary.little_endian_put_u32(mut dst[idx + 44..idx + 48], binary.little_endian_u32(src[
 			idx + 44..idx + 48]) ^ (x11 + c11))
 		binary.little_endian_put_u32(mut dst[idx + 48..idx + 52], binary.little_endian_u32(src[
-			idx + 48..idx + 52]) ^ (x12 + c.counter))
+			idx + 48..idx + 52]) ^ (x12 + c12))
 		binary.little_endian_put_u32(mut dst[idx + 52..idx + 56], binary.little_endian_u32(src[
 			idx + 52..idx + 56]) ^ (x13 + c13))
 		binary.little_endian_put_u32(mut dst[idx + 56..idx + 60], binary.little_endian_u32(src[
@@ -301,7 +356,9 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 		binary.little_endian_put_u32(mut dst[idx + 60..idx + 64], binary.little_endian_u32(src[
 			idx + 60..idx + 64]) ^ (x15 + c15))
 
-		c.counter += 1
+		// Its safe to update internal counter, its already checked before.
+		c12 += 1
+		c.nonce[0] = c12
 
 		idx += block_size
 		src_len -= block_size
@@ -324,28 +381,16 @@ pub fn (mut c Cipher) free() {
 pub fn (mut c Cipher) reset() {
 	unsafe {
 		_ := vmemset(&c.key, 0, 32)
-		_ := vmemset(&c.nonce, 0, 12)
+		_ := vmemset(&c.nonce, 0, 16)
 		c.block.reset()
 	}
 	c.length = 0
-	c.counter = u32(0)
 	c.overflow = false
 	c.precomp = false
 
-	c.p1 = u32(0)
-	c.p5 = u32(0)
-	c.p9 = u32(0)
-	c.p13 = u32(0)
-
-	c.p2 = u32(0)
-	c.p6 = u32(0)
-	c.p10 = u32(0)
-	c.p14 = u32(0)
-
-	c.p3 = u32(0)
-	c.p7 = u32(0)
-	c.p11 = u32(0)
-	c.p15 = u32(0)
+	c.p1, c.p5, c.p9, c.p13 = u32(0), u32(0), u32(0), u32(0)
+	c.p2, c.p6, c.p10, c.p14 = u32(0), u32(0), u32(0), u32(0)
+	c.p3, c.p7, c.p11, c.p15 = u32(0), u32(0), u32(0), u32(0)
 }
 
 // set_counter sets Cipher's counter
@@ -356,26 +401,41 @@ pub fn (mut c Cipher) set_counter(ctr u32) {
 	if c.overflow {
 		panic('counter would overflow')
 	}
-	c.counter = ctr
+	c.nonce[0] = ctr
 }
 
 // rekey resets internal Cipher's state and reinitializes state with the provided key and nonce
 pub fn (mut c Cipher) rekey(key []u8, nonce []u8) ! {
+	// Original mode was not supported
+	// TODO: removes this when its getting fully supported
+	if nonce.len == orig_nonce_size {
+		return error('Original mode was not supported')
+	}
 	unsafe { c.reset() }
+	// this routine was publicly accesible to user, so we add a check here
+	// to ensure the supplied key and nonce has the correct size.
+	if key.len != key_size {
+		return error('Bad key size provided for rekey')
+	}
+	// For the standard cipher, allowed nonce size was nonce_size or x_nonce_size
+	if c.mode == .standard {
+		if nonce.len != x_nonce_size && nonce.len != nonce_size {
+			return error('Bad nonce size for standard cipher, use 12 or 24 bytes length nonce')
+		}
+		if c.extended && nonce.len != x_nonce_size {
+			return error('Bad nonce size provided for extended variant cipher')
+		}
+	}
+	// in the original variant, nonce should be orig_nonce_size length (8 bytes)
+	if c.mode == .original && nonce.len != orig_nonce_size {
+		return error('Bad nonce size provided for original mode')
+	}
 	c.do_rekey(key, nonce)!
 }
 
 // do_rekey reinitializes ChaCha20 instance with the provided key and nonce.
 @[direct_array_access]
 fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
-	// check for correctness of key and nonce length
-	if key.len != key_size {
-		return error('chacha20: bad key size provided ')
-	}
-	// check for nonce's length is 12 or 24
-	if nonce.len != nonce_size && nonce.len != x_nonce_size {
-		return error('chacha20: bad nonce size provided')
-	}
 	mut nonces := nonce.clone()
 	mut keys := key.clone()
 
@@ -400,10 +460,12 @@ fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 	c.key[6] = binary.little_endian_u32(keys[24..28])
 	c.key[7] = binary.little_endian_u32(keys[28..32])
 
+	// internal counter
+	c.nonce[0] = 0
 	// setup ChaCha20 cipher nonce
-	c.nonce[0] = binary.little_endian_u32(nonces[0..4])
-	c.nonce[1] = binary.little_endian_u32(nonces[4..8])
-	c.nonce[2] = binary.little_endian_u32(nonces[8..12])
+	c.nonce[1] = binary.little_endian_u32(nonces[0..4])
+	c.nonce[2] = binary.little_endian_u32(nonces[4..8])
+	c.nonce[3] = binary.little_endian_u32(nonces[8..12])
 }
 
 // Helper and core function for ChaCha20
