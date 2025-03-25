@@ -117,8 +117,9 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 		if idx >= ilen {
 			break
 		}
+		res := cb(mut pool, idx, task_id)
 		lock pool.results {
-			pool.results[idx] = cb(mut pool, idx, task_id)
+			pool.results[idx] = res
 		}
 	}
 	pool.waitgroup.done()
