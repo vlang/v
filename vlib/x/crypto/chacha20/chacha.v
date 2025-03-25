@@ -141,12 +141,14 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	if dst.len < src.len {
 		panic('chacha20/chacha: dst buffer is to small')
 	}
-	if subtle.inexact_overlap(dst, src) {
-		panic('chacha20: invalid buffer overlap')
-	}
 
 	mut idx := 0
 	mut src_len := src.len
+	dst = unsafe { dst[..src_len] }
+
+	if subtle.inexact_overlap(dst, src) {
+		panic('chacha20: invalid buffer overlap')
+	}
 
 	// We adapt and ports the go version here
 	// First, drain any remaining key stream
@@ -188,7 +190,9 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	src_len -= full
 
 	// we dont support bufsize
+	// FIXME: instead generates once block keystream again, i think we can panic here
 	if u64(c.nonce[0]) + 1 > max_u32 {
+		c.block = []u8{len: block_size}
 		numblocks := (src_len + block_size - 1) / block_size
 		mut buf := c.block[block_size - numblocks * block_size..]
 		_ := copy(mut buf, src[idx..])
@@ -200,6 +204,10 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	// If we have a partial block, pad it for chacha20_block_generic, and
 	// keep the leftover keystream for the next invocation.
 	if src_len > 0 {
+		// Make sure, internal buffer cleared with the new one
+		// or the old garbaged data from previous call still there
+		// See https://github.com/vlang/v/issues/24043
+		c.block = []u8{len: block_size}
 		// copy the last src block to internal buffer, and performs
 		// chacha20_block_generic on this buffer, and stores into remaining dst
 		_ := copy(mut c.block, src[idx..])
