@@ -74,22 +74,3 @@ fn xchacha20(key []u8, nonce []u8) ![]u8 {
 
 	return out
 }
-
-// eXtended ChaCha20 (XChaCha20) encrypt function
-// see https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03#section-2.3.1
-fn xchacha20_encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
-	return xchacha20_encrypt_with_counter(key, nonce, u32(0), plaintext)
-}
-
-fn xchacha20_encrypt_with_counter(key []u8, nonce []u8, ctr u32, plaintext []u8) ![]u8 {
-	// bound check elimination
-	_ = nonce[x_nonce_size - 1]
-	subkey := xchacha20(key, nonce[0..16])!
-	mut cnonce := nonce[16..24].clone()
-
-	cnonce.prepend([u8(0x00), 0x00, 0x00, 0x00])
-
-	ciphertext := chacha20_encrypt_with_counter(subkey, cnonce, ctr, plaintext)!
-
-	return ciphertext
-}

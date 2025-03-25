@@ -21,7 +21,7 @@ fn worker_fetch(mut p pool.PoolProcessor, cursor int, worker_id int) voidptr {
 		// println(resp.body)
 		return pool.no_result
 	}
-	println('# ${cursor}) ${story.title} | ${story.url}')
+	println('# ${cursor + 1}) ${story.title} | ${story.url}')
 	return pool.no_result
 }
 
@@ -38,7 +38,7 @@ fn main() {
 		return
 	}#[0..10]
 	*/
-	ids := resp.body.replace_once('[', '').replace_once(']', '').split(',').map(it.int())#[0..10]
+	ids := resp.body.replace_once('[', '').replace_once(']', '').split(',').map(it.int())#[0..30]
 	mut fetcher_pool := pool.new_pool_processor(
 		callback: worker_fetch
 	)

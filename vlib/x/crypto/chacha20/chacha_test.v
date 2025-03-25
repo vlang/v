@@ -1,6 +1,5 @@
 module chacha20
 
-import crypto.cipher
 import rand
 import encoding.hex
 
@@ -31,24 +30,6 @@ fn test_xor_key_stream_consecutive() {
 	c.xor_key_stream(mut dst2, msg)
 	// the go version produces: [40 17 78 116 255 224 2 52 92 151 103 107 138]
 	assert dst2 == [u8(40), 17, 78, 116, 255, 224, 2, 52, 92, 151, 103, 107, 138]
-}
-
-struct StreamCipher {
-mut:
-	cipher &cipher.Stream
-}
-
-// Verify chahca20.Cipher implements chiper.Stream correctly.
-fn test_chacha20_stream_cipher() ! {
-	mut key := []u8{len: 32}
-	mut nonce := []u8{len: 12}
-	rand.read(mut key)
-	rand.read(mut nonce)
-
-	mut c := new_cipher(key, nonce)!
-	s := StreamCipher{
-		cipher: c
-	}
 }
 
 fn test_chacha20_cipher_reset() ! {

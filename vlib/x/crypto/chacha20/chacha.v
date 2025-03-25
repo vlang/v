@@ -61,13 +61,23 @@ pub fn new_cipher(key []u8, nonce []u8) !&Cipher {
 // and XChaCha20 with 192 bits nonce. Internally, encrypt start with 0's counter value.
 // If you want more control, use Cipher instance and setup the counter by your self.
 pub fn encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
-	return encrypt_with_counter(key, nonce, u32(0), plaintext)
+	mut c := new_cipher(key, nonce)!
+	mut out := []u8{len: plaintext.len}
+
+	c.encrypt(mut out, plaintext)
+	unsafe { c.reset() }
+	return out
 }
 
 // decrypt does reverse of encrypt operation by decrypting ciphertext with ChaCha20 cipher
 // instance with provided key and nonce.
 pub fn decrypt(key []u8, nonce []u8, ciphertext []u8) ![]u8 {
-	return encrypt_with_counter(key, nonce, u32(0), ciphertext)
+	mut c := new_cipher(key, nonce)!
+	mut out := []u8{len: ciphertext.len}
+
+	c.encrypt(mut out, ciphertext)
+	unsafe { c.reset() }
+	return out
 }
 
 // xor_key_stream xors each byte in the given slice in the src with a byte from the
@@ -192,9 +202,19 @@ pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) {
 	}
 }
 
-// chacha20_block_generic generates ChaCha20 generic keystream
+// chacha20_block_generic generates a generic ChaCha20  keystream.
+// This is main building block for ChaCha20 keystream generator.
+// This routine was intended to work only for msg source with multiples of block_size in size.
 @[direct_array_access]
 fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
+	// ChaCha20 keystream generator was relatively easy to understand.
+	// Its contains steps:
+	// - Loads current ChaCha20 into temporary state, used for later.
+	// - Performs quarter_round function on this state and returns some new state.
+	// - Adds back the new state with the old state.
+	// - Performs xor-ing between src bytes (loaded as little endian number) with result from previous step.
+	// - Serializes, in little endian form, this xor-ed state into destination buffer.
+	//
 	// Makes sure its works for size of multiple of block_size
 	if dst.len != src.len || dst.len % block_size != 0 {
 		panic('chacha20: internal error: wrong dst and/or src length')
@@ -370,10 +390,6 @@ fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 		return error('chacha20: wrong nonce size')
 	}
 
-	// bounds check elimination hint
-	_ = keys[key_size - 1]
-	_ = nonces[nonce_size - 1]
-
 	// setup ChaCha20 cipher key
 	c.key[0] = binary.little_endian_u32(keys[0..4])
 	c.key[1] = binary.little_endian_u32(keys[4..8])
@@ -425,34 +441,4 @@ fn quarter_round(a u32, b u32, c u32, d u32) (u32, u32, u32, u32) {
 	bx = bits.rotate_left_32(bx, 7)
 
 	return ax, bx, cx, dx
-}
-
-// encrypt_with_counter encrypts plaintext with internal counter set to ctr
-fn encrypt_with_counter(key []u8, nonce []u8, ctr u32, plaintext []u8) ![]u8 {
-	if key.len != key_size {
-		return error('bad key size')
-	}
-	if nonce.len == x_nonce_size {
-		ciphertext := xchacha20_encrypt_with_counter(key, nonce, ctr, plaintext)!
-		return ciphertext
-	}
-	if nonce.len == nonce_size {
-		ciphertext := chacha20_encrypt_with_counter(key, nonce, ctr, plaintext)!
-		return ciphertext
-	}
-	return error('Wrong nonce size')
-}
-
-fn chacha20_encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
-	return chacha20_encrypt_with_counter(key, nonce, u32(0), plaintext)
-}
-
-fn chacha20_encrypt_with_counter(key []u8, nonce []u8, ctr u32, plaintext []u8) ![]u8 {
-	mut c := new_cipher(key, nonce)!
-	c.set_counter(ctr)
-	mut out := []u8{len: plaintext.len}
-
-	c.encrypt(mut out, plaintext)
-
-	return out
 }
