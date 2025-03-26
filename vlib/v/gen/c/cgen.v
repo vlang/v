@@ -2090,13 +2090,27 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.writeln(';')
 						} else {
 							// on assignment or struct field initialization
-							ret_typ := if g.inside_struct_init || g.inside_assign {
+							inside_assign_context := g.inside_struct_init
+								|| g.inside_assign
+								|| (!g.inside_return && g.inside_match_option)
+							ret_expr_typ := if inside_assign_context {
+								stmt.typ
+							} else {
+								g.fn_decl.return_type
+							}
+							ret_typ := if inside_assign_context {
 								stmt.typ
 							} else {
 								g.fn_decl.return_type.clear_flag(.option)
 							}
 							styp = g.base_type(ret_typ)
 							if stmt.expr is ast.CallExpr && stmt.expr.is_noreturn {
+								g.writeln(';')
+							} else if !ret_expr_typ.has_option_or_result()
+								&& !stmt.typ.has_option_or_result() && g.last_if_option_type != 0
+								&& !g.last_if_option_type.has_option_or_result() {
+								g.write('${tmp_var} = ')
+								g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
 								g.writeln(';')
 							} else {
 								g.write('_option_ok(&(${styp}[]) { ')
