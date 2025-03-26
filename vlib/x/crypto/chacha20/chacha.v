@@ -88,7 +88,7 @@ pub fn new_cipher(key []u8, nonce []u8) !&Cipher {
 		orig_nonce_size {
 			mode = .original
 			// TODO: removes this when its getting fully supported
-			return error('Original mode currently was not supported')
+			// return error('Original mode currently was not supported')
 		}
 		else {
 			return error('Unsupported nonce size')
@@ -133,6 +133,9 @@ pub fn decrypt(key []u8, nonce []u8, ciphertext []u8) ![]u8 {
 // in src and stores the ciphertext result in dst in a key stream fashion.
 // You must never use the same (key, nonce) pair more than once for encryption.
 // This would void any confidentiality guarantees for the messages encrypted with the same nonce and key.
+// Note:
+// Currently `xor_key_stream` still not working with 64-bit counter style, use `.encrypt` method instead
+// if you want encrypt messages with ciphers with 64-bit counter.
 @[direct_array_access]
 pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	if src.len == 0 {
@@ -158,7 +161,6 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 		if src_len < kstream.len {
 			kstream = unsafe { kstream[..src_len] }
 		}
-		_ = src[kstream.len - 1] // bounds check elimination hint
 		for i, b in kstream {
 			dst[idx + i] = src[idx + i] ^ b
 		}
@@ -318,11 +320,11 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 	mut idx := 0
 	mut src_len := src.len
 
-	// creates storages for result of operations
-	mut x0, mut x1, mut x2, mut x3 := u32(0), u32(0), u32(0), u32(0)
-	mut x4, mut x5, mut x6, mut x7 := u32(0), u32(0), u32(0), u32(0)
-	mut x8, mut x9, mut x10, mut x11 := u32(0), u32(0), u32(0), u32(0)
-	mut x12, mut x13, mut x14, mut x15 := u32(0), u32(0), u32(0), u32(0)
+	// copy current cipher's states into temporary states
+	mut x0, mut x1, mut x2, mut x3 := c0, c1, c2, c3
+	mut x4, mut x5, mut x6, mut x7 := c4, c5, c6, c7
+	mut x8, mut x9, mut x10, mut x11 := c8, c9, c10, c11
+	mut x12, mut x13, mut x14, mut x15 := c12, c13, c14, c15
 
 	for src_len >= block_size {
 		if c.mode == .standard {
@@ -465,11 +467,6 @@ pub fn (mut c Cipher) set_counter(ctr u64) {
 
 // rekey resets internal Cipher's state and reinitializes state with the provided key and nonce
 pub fn (mut c Cipher) rekey(key []u8, nonce []u8) ! {
-	// Original mode was not supported
-	// TODO: removes this when its getting fully supported
-	if nonce.len == orig_nonce_size {
-		return error('Original mode was not supported')
-	}
 	unsafe { c.reset() }
 	// this routine was publicly accesible to user, so we add a check here
 	// to ensure the supplied key and nonce has the correct size.
