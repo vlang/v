@@ -173,9 +173,11 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 
 	// check for counter overflow
 	num_blocks := (u64(src_len) + block_size - 1) / block_size
-	if c.overflow || u64(c.nonce[0]) + num_blocks > max_u32 {
+	ctr := c.load_ctr()
+	max := c.max_ctr_value()
+	if c.overflow || ctr + num_blocks > max {
 		panic('chacha20: counter overflow')
-	} else if u64(c.nonce[0]) + num_blocks == max_u32 {
+	} else if ctr + num_blocks == max {
 		c.overflow = true
 	}
 
@@ -191,7 +193,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 
 	// we dont support bufsize
 	// FIXME: instead generates once block keystream again, i think we can panic here
-	if u64(c.nonce[0]) + 1 > max_u32 {
+	if ctr + 1 > max {
 		c.block = []u8{len: block_size}
 		numblocks := (src_len + block_size - 1) / block_size
 		mut buf := c.block[block_size - numblocks * block_size..]
@@ -277,8 +279,11 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 	}
 	// Safety checks to make sure increasing current cipher's counter
 	// by nr_block was not overflowing internal counter.
+	ctr := c.load_ctr()
+	max := c.max_ctr_value()
 	num_block := u64((src.len + block_size - 1) / block_size)
-	if u64(c.nonce[0]) + num_block > max_u32 {
+	// FIXME: i think its can wrap
+	if ctr + num_block > max {
 		panic('Adding num_block to the current counter lead to overflow')
 	}
 
@@ -293,37 +298,64 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 	c4, c5, c6, c7 := c.key[0], c.key[1], c.key[2], c.key[3]
 	c8, c9, c10, c11 := c.key[4], c.key[5], c.key[6], c.key[7]
 
+	// internal cipher's counter
 	mut c12 := c.nonce[0]
-	c13, c14, c15 := c.nonce[1], c.nonce[2], c.nonce[3]
+	mut c13 := c.nonce[1]
 
-	// precomputes three first column rounds that do not depend on counter
-	if !c.precomp {
-		c.p1, c.p5, c.p9, c.p13 = quarter_round(c1, c5, c9, c13)
-		c.p2, c.p6, c.p10, c.p14 = quarter_round(c2, c6, c10, c14)
-		c.p3, c.p7, c.p11, c.p15 = quarter_round(c3, c7, c11, c15)
-		c.precomp = true
+	c14, c15 := c.nonce[2], c.nonce[3]
+
+	// this only for standard mode
+	if c.mode == .standard {
+		// precomputes three first column rounds that do not depend on counter
+		if !c.precomp {
+			c.p1, c.p5, c.p9, c.p13 = quarter_round(c1, c5, c9, c13)
+			c.p2, c.p6, c.p10, c.p14 = quarter_round(c2, c6, c10, c14)
+			c.p3, c.p7, c.p11, c.p15 = quarter_round(c3, c7, c11, c15)
+			c.precomp = true
+		}
 	}
+
 	mut idx := 0
 	mut src_len := src.len
+
+	// creates storages for result of operations
+	mut x0, mut x1, mut x2, mut x3 := u32(0), u32(0), u32(0), u32(0)
+	mut x4, mut x5, mut x6, mut x7 := u32(0), u32(0), u32(0), u32(0)
+	mut x8, mut x9, mut x10, mut x11 := u32(0), u32(0), u32(0), u32(0)
+	mut x12, mut x13, mut x14, mut x15 := u32(0), u32(0), u32(0), u32(0)
+
 	for src_len >= block_size {
-		// remaining first column round
-		fcr0, fcr4, fcr8, fcr12 := quarter_round(c0, c4, c8, c12)
+		if c.mode == .standard {
+			// this for standard mode
+			// remaining first column round
+			fcr0, fcr4, fcr8, fcr12 := quarter_round(c0, c4, c8, c12)
 
-		// The second diagonal round.
-		mut x0, mut x5, mut x10, mut x15 := quarter_round(fcr0, c.p5, c.p10, c.p15)
-		mut x1, mut x6, mut x11, mut x12 := quarter_round(c.p1, c.p6, c.p11, fcr12)
-		mut x2, mut x7, mut x8, mut x13 := quarter_round(c.p2, c.p7, fcr8, c.p13)
-		mut x3, mut x4, mut x9, mut x14 := quarter_round(c.p3, fcr4, c.p9, c.p14)
+			// The second diagonal round.
+			x0, x5, x10, x15 = quarter_round(fcr0, c.p5, c.p10, c.p15)
+			x1, x6, x11, x12 = quarter_round(c.p1, c.p6, c.p11, fcr12)
+			x2, x7, x8, x13 = quarter_round(c.p2, c.p7, fcr8, c.p13)
+			x3, x4, x9, x14 = quarter_round(c.p3, fcr4, c.p9, c.p14)
+		}
 
-		// The remaining 18 rounds.
-		for i := 0; i < 9; i++ {
+		// The remaining rounds, for standard its already precomputed,
+		// for original, its use full quarter round
+		n := if c.mode == .standard { 9 } else { 10 }
+		for i := 0; i < n; i++ {
 			// Column round.
+			//  0 |  1 |  2 |  3
+			//  4 |  5 |  6 |  7
+			//  8 |  9 | 10 | 11
+			// 12 | 13 | 14 | 15
 			x0, x4, x8, x12 = quarter_round(x0, x4, x8, x12)
 			x1, x5, x9, x13 = quarter_round(x1, x5, x9, x13)
 			x2, x6, x10, x14 = quarter_round(x2, x6, x10, x14)
 			x3, x7, x11, x15 = quarter_round(x3, x7, x11, x15)
 
 			// Diagonal round.
+			//   0 \  1 \  2 \  3
+			//   5 \  6 \  7 \  4
+			//  10 \ 11 \  8 \  9
+			//  15 \ 12 \ 13 \ 14
 			x0, x5, x10, x15 = quarter_round(x0, x5, x10, x15)
 			x1, x6, x11, x12 = quarter_round(x1, x6, x11, x12)
 			x2, x7, x8, x13 = quarter_round(x2, x7, x8, x13)
@@ -364,9 +396,19 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 		binary.little_endian_put_u32(mut dst[idx + 60..idx + 64], binary.little_endian_u32(src[
 			idx + 60..idx + 64]) ^ (x15 + c15))
 
+		// Updates internal counter
+		//
 		// Its safe to update internal counter, its already checked before.
-		c12 += 1
-		c.nonce[0] = c12
+		if c.mode == .original {
+			mut curr_ctr := u64(c13) << 32 | u64(c12)
+			curr_ctr += 1
+			// stores back the counter
+			c.nonce[0] = u32(curr_ctr)
+			c.nonce[1] = u32(curr_ctr >> 32)
+		} else {
+			c12 += 1
+			c.nonce[0] = c12
+		}
 
 		idx += block_size
 		src_len -= block_size
@@ -402,14 +444,23 @@ pub fn (mut c Cipher) reset() {
 }
 
 // set_counter sets Cipher's counter
-pub fn (mut c Cipher) set_counter(ctr u32) {
-	if u64(ctr) >= max_u32 {
+pub fn (mut c Cipher) set_counter(ctr u64) {
+	max_ctr := c.max_ctr_value()
+
+	if c.overflow || ctr > max_ctr {
+		panic('counter overflow')
+	} else if ctr == max_ctr {
 		c.overflow = true
 	}
-	if c.overflow {
-		panic('counter would overflow')
+	match c.mode {
+		.original {
+			c.nonce[0] = u32(ctr)
+			c.nonce[1] = u32(ctr >> 32)
+		}
+		.standard {
+			c.nonce[0] = u32(ctr)
+		}
 	}
-	c.nonce[0] = ctr
 }
 
 // rekey resets internal Cipher's state and reinitializes state with the provided key and nonce
@@ -447,18 +498,14 @@ fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 	mut nonces := nonce.clone()
 	mut keys := key.clone()
 
-	// if nonce's length is 24 bytes, we derive a new key and nonce with xchacha20 function
-	// and supplied to setup process.
-	if nonces.len == x_nonce_size {
-		keys = xchacha20(keys, nonces[0..16])!
-		mut cnonce := []u8{len: nonce_size}
-		_ := copy(mut cnonce[4..12], nonces[16..24])
-		nonces = cnonce.clone()
-	} else if nonces.len != nonce_size {
-		return error('chacha20: wrong nonce size')
+	// Its now awares of the new flag, mode and extended
+	// If this cipher was standard mode with extended flag, derives a new key and nonce
+	// for later setup 	operation
+	if c.mode == .standard && c.extended {
+		keys, nonces = derive_xchacha20_key_nonce(key, nonce)!
 	}
 
-	// setup ChaCha20 cipher key
+	// Its shared the same cipher key setup on the both of mode.
 	c.key[0] = binary.little_endian_u32(keys[0..4])
 	c.key[1] = binary.little_endian_u32(keys[4..8])
 	c.key[2] = binary.little_endian_u32(keys[8..12])
@@ -468,12 +515,21 @@ fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 	c.key[6] = binary.little_endian_u32(keys[24..28])
 	c.key[7] = binary.little_endian_u32(keys[28..32])
 
-	// internal counter
+	// first counter value
 	c.nonce[0] = 0
-	// setup ChaCha20 cipher nonce
-	c.nonce[1] = binary.little_endian_u32(nonces[0..4])
-	c.nonce[2] = binary.little_endian_u32(nonces[4..8])
-	c.nonce[3] = binary.little_endian_u32(nonces[8..12])
+	if c.mode == .standard {
+		c.nonce[1] = binary.little_endian_u32(nonces[0..4])
+		c.nonce[2] = binary.little_endian_u32(nonces[4..8])
+		c.nonce[3] = binary.little_endian_u32(nonces[8..12])
+	} else {
+		// original mode
+		// second of 64-bit counter value
+		c.nonce[1] = 0
+
+		// nonce size on original mode was 64 bits
+		c.nonce[2] = binary.little_endian_u32(nonces[0..4])
+		c.nonce[3] = binary.little_endian_u32(nonces[4..8])
+	}
 }
 
 // Helper and core function for ChaCha20
@@ -511,4 +567,52 @@ fn quarter_round(a u32, b u32, c u32, d u32) (u32, u32, u32, u32) {
 	bx = bits.rotate_left_32(bx, 7)
 
 	return ax, bx, cx, dx
+}
+
+// Cipher's counter handling routine
+//
+// We define counter limit to simplify the access
+const max_64bit_counter = u64(1 << 63) - 1 // not fully max_u64
+const max_32bit_counter = u64(max_u32)
+
+// load_ctr loads underlying cipher's counter as u64 value.
+fn (c Cipher) load_ctr() u64 {
+	match c.mode {
+		// In the original mode, counter was 64-bit size
+		// stored on c.nonce[0], and c.nonce[1]
+		.original {
+			return u64(c.nonce[1]) << 32 | u64(c.nonce[0])
+		}
+		.standard {
+			// in standard mode, counter was 32-bit value, stored on c.nonce[0]
+			return u64(c.nonce[0])
+		}
+	}
+}
+
+// max_ctr_value returns maximum value of cipher's counter.
+fn (c Cipher) max_ctr_value() u64 {
+	match c.mode {
+		.original { return max_64bit_counter }
+		.standard { return max_32bit_counter }
+	}
+}
+
+// derive_xchacha20_key_nonce derives a new key and nonces for extended
+// variant of standard mode. Its separated for simplify the access.
+@[direct_array_access; inline]
+fn derive_xchacha20_key_nonce(key []u8, nonce []u8) !([]u8, []u8) {
+	// Its only for x_nonce_size
+	if nonce.len != x_nonce_size {
+		return error('Bad nonce size for derive_xchacha20_key_nonce')
+	}
+	// derives a new key based on xchacha20 construction
+	// first 16 bytes of nonce used to derive the key
+	new_key := xchacha20(key, nonce[0..16])!
+	mut new_nonce := []u8{len: nonce_size}
+	// and the last of 8 bytes of nonce copied into new_nonce to build
+	// nonce_size length of new_nonce
+	_ := copy(mut new_nonce[4..12], nonce[16..24])
+
+	return new_key, new_nonce
 }
