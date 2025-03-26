@@ -36,11 +36,7 @@ fn (s State) to_bytes() []u8 {
 	for y in 0 .. 5 {
 		for x in 0 .. 5 {
 			unsafe {
-				$if little_endian {
-					binary.little_endian_put_u64_at(mut byte_array, s.a[x][y], index)
-				} $else {
-					binary.big_endian_put_u64_at(mut byte_array, s.a[x][y], index)
-				}
+				binary.little_endian_put_u64_at(mut byte_array, s.a[x][y], index)
 			}
 			index += 8
 		}
@@ -61,11 +57,7 @@ fn (mut s State) from_bytes(byte_array []u8) {
 
 	for y in 0 .. 5 {
 		for x in 0 .. 5 {
-			$if little_endian {
-				s.a[x][y] = binary.little_endian_u64_at(byte_array, index)
-			} $else {
-				s.a[x][y] = binary.big_endian_u64_at(byte_array, index)
-			}
+			s.a[x][y] = binary.little_endian_u64_at(byte_array, index)
 			index += 8
 		}
 	}
@@ -87,11 +79,7 @@ fn (mut s State) xor_bytes(byte_array []u8, rate int) {
 
 	for y in 0 .. 5 {
 		for x in 0 .. 5 {
-			$if little_endian {
-				s.a[x][y] ^= binary.little_endian_u64_at(byte_array, index)
-			} $else {
-				s.a[x][y] ^= binary.big_endian_u64_at(byte_array, index)
-			}
+			s.a[x][y] ^= binary.little_endian_u64_at(byte_array, index)
 			index += 8
 
 			if index >= rate {
