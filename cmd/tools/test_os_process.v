@@ -88,9 +88,11 @@ fn main() {
 		}
 	}
 	spawn do_timeout(&ctx)
+	ctx.println('start')
 	for i := 1; true; i++ {
 		ctx.println('${i}')
 		time.sleep(ctx.period_ms * time.millisecond)
 	}
+	ctx.println('done')
 	time.sleep(100 * time.second)
 }
