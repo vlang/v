@@ -574,6 +574,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	b.write_string2('\n // V preincludes:\n', g.preincludes.str())
 	b.write_string2('\n// V cheaders:\n', g.cheaders.str())
 	if g.pcs_declarations.len > 0 {
+		g.pcs_declarations.writeln('double prof_measured_time = 0.0;') // does not work for multithreaded
 		b.write_string2('\n// V profile counters:\n', g.pcs_declarations.str())
 	}
 	b.write_string2('\n// V includes:\n', g.includes.str())
