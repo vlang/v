@@ -12,6 +12,7 @@ enum Number {
 struct Counter {
 	id     int @[primary; sql: serial]
 	number Number
+	f      f64
 }
 
 fn test_orm_enum() {
@@ -24,7 +25,9 @@ fn test_orm_enum() {
 	x := sql db {
 		select from Counter
 	} or {
-		println(math.pi) // this should compile
-		[]Counter{}
+		[Counter{
+			f: math.pi
+		}]
 	}
+	assert x[0].f == math.pi
 }
