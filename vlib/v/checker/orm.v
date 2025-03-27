@@ -406,7 +406,9 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 			continue
 		}
 		field_sym := c.table.sym(field.typ)
-		is_primitive := field.typ.is_string() || field.typ.is_bool() || field.typ.is_number()
+		final_field_typ := c.table.final_type(field.typ)
+		is_primitive := final_field_typ.is_string() || final_field_typ.is_bool()
+			|| final_field_typ.is_number()
 		is_struct := field_sym.kind == .struct
 		is_array := field_sym.kind == .array
 		is_enum := field_sym.kind == .enum
