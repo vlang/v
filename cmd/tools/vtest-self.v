@@ -171,6 +171,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/orm_update_test.v',
+	'vlib/v/tests/orm_or_test.v',
 	'vlib/vweb/tests/vweb_test.v',
 	'vlib/vweb/csrf/csrf_test.v',
 	'vlib/net/http/request_test.v',
@@ -196,6 +197,7 @@ const skip_with_fsanitize_address = [
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/orm_update_test.v',
+	'vlib/v/tests/orm_or_test.v',
 ]
 const skip_with_fsanitize_undefined = [
 	'do_not_remove',
@@ -209,6 +211,7 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/orm_update_test.v',
+	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 ]
 const skip_on_ubuntu_musl = [
@@ -251,6 +254,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/orm_update_test.v',
+	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fns/fn_literal_type_test.v',
