@@ -177,9 +177,11 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 				for attr in field.attrs {
 					g.write('(VAttribute){')
 					g.indent++
-					g.write(' .name = _SLIT("${attr.name}"),')
+					g.write(' .name = _SLIT("${cescape_nonascii(util.smart_quote(attr.name,
+						false))}"),')
 					g.write(' .has_arg = ${attr.has_arg},')
-					g.write(' .arg = _SLIT("${attr.arg}"),')
+					g.write(' .arg = _SLIT("${cescape_nonascii(util.smart_quote(attr.arg,
+						false))}"),')
 					g.write(' .kind = ${int(attr.kind)},')
 					g.indent--
 					g.write('},')
