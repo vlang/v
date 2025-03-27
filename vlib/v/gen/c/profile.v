@@ -33,12 +33,12 @@ fn (mut g Gen) profile_fn(fn_decl ast.FnDecl) {
 		}
 		g.writeln('\tdouble _PROF_FN_START = ${measure_fn_name}();')
 		g.writeln('\tdouble _PROF_PREV_MEASURED_TIME = prof_measured_time;')
-		g.writeln('\tif(v__profile_enabled) { ${fn_profile_counter_name_calls}++; } // ${fn_name}')
+		g.writeln('if(v__profile_enabled) { ${fn_profile_counter_name_calls}++; } // ${fn_name}')
 		g.writeln('')
-		g.defer_profile_code = '\tif(v__profile_enabled) { double _PROF_ELAPSED = ${measure_fn_name}() - _PROF_FN_START; '
-		g.defer_profile_code += '${fn_profile_counter_name} += _PROF_ELAPSED; '
-		g.defer_profile_code += '${fn_profile_counter_name}_only_current += _PROF_ELAPSED - (prof_measured_time - _PROF_PREV_MEASURED_TIME); '
-		g.defer_profile_code += 'prof_measured_time = _PROF_PREV_MEASURED_TIME + _PROF_ELAPSED; }'
+		g.defer_profile_code = '\tif(v__profile_enabled) { \n\t\tdouble _PROF_ELAPSED = ${measure_fn_name}() - _PROF_FN_START;\n'
+		g.defer_profile_code += '\t\t${fn_profile_counter_name} += _PROF_ELAPSED;\n'
+		g.defer_profile_code += '\t\t${fn_profile_counter_name}_only_current += _PROF_ELAPSED - (prof_measured_time - _PROF_PREV_MEASURED_TIME);\n'
+		g.defer_profile_code += '\t\tprof_measured_time = _PROF_PREV_MEASURED_TIME + _PROF_ELAPSED;\n\t}'
 		if should_restore_v__profile_enabled {
 			g.defer_profile_code += '\n\t\tv__profile_enabled = _prev_v__profile_enabled;'
 		}
