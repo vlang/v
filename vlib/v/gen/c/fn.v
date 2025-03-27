@@ -2577,7 +2577,7 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 		// evaluation order is preserved
 		expected_type := node.expected_arg_types[i]
 		typ_sym := g.table.sym(expected_type)
-		typ := typ_sym.cname
+		typ := g.styp(expected_type)
 		if typ_sym.kind != .array_fixed {
 			g.write('${typ} __tmp_arg_${tmp_cnt_save + i} = ')
 			g.ref_or_deref_arg(arg, expected_type, node.language, false)
