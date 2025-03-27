@@ -2,41 +2,97 @@ module chacha20
 
 import encoding.hex
 
-// Verified with the this simple golang script that support 64-bit counter
+// Golang script to generates output for ciphers that support 64-bit counter
 //
 // package main
 //
 // import (
-//	"bytes"
-//	"encoding/hex"
 //	"fmt"
 //	"gitlab.com/yawning/chacha20.git"
 //	"log"
 // )
 //
 // func main() {
+//	 key := []byte{225, 2, 1, 178, 238, 127, 187, 188, 27, 237, 18, 62, 181, 65, 67, 152, 13, 247,
+//		147, 148, 101, 220, 185, 120, 234, 58, 144, 173, 3, 218, 193, 130}
+//   nonce := []byte{153, 221, 244, 134, 99, 135, 243, 247}
 //
-//	for _, item := range ch20_64bitctr_testdata {
-//		key, _ := hex.DecodeString(item.key)
-//		nonce, _ := hex.DecodeString(item.nonce)
-//		plaintext, _ := hex.DecodeString(item.plaintext)
-//		ciphertext, _ := hex.DecodeString(item.ciphertext)
-
-//		c, err := chacha20.New(key, nonce)
-//		if err != nil {
-//			log.Fatal(err)
-//		}
-//		dst := make([]byte, len(plaintext))
-//		c.XORKeyStream(dst, plaintext)
-//		v := bytes.Equal(ciphertext, dst)
-//		fmt.Println(v) // All true
+//   series_of_msg := [][]byte{
+//		{231, 121, 9, 28},
+//		{178, 221, 62, 9, 153, 189, 106, 12, 117, 47, 192, 81, 65, 112, 85, 57},
+//		{155, 202, 56, 16},
+//		{227, 47, 226, 137},
+//		{162, 77, 218, 52},
+//		{42, 250, 184, 196},
+//		{2, 129, 13, 136, 6, 12, 235, 183, 38, 178, 151, 243, 27, 88, 97, 40},
+//		{248, 170, 168, 206},
+//		{181, 220, 223, 139},
+//		{95, 108, 201, 227},
+//		{38, 221, 147, 230},
+//		{98, 229, 5, 130, 13, 103, 248, 159, 240, 246, 56, 119, 160, 130, 82, 222},
+//		[]byte("hello hello hello"),
+//		[]byte("me me me"),
+//	 }
+//
+//	 c, err := chacha20.New(key, nonce)
+//	 if err != nil {
+//		log.Fatal(err)
+//	 }
+//	 for _, msg := range series_of_msg {
+//		xored := make([]byte, len(msg))
+//		c.XORKeyStream(xored, msg)
+//		fmt.Println(xored)
 //	 }
 // }
-// The go version results in all true values
-//
 
-// Current time only test for `.encrypt()` methods.
-// TODO: fix to work with `.xor_key_stream` methods
+// This test `xor_key_stream` for cipher with 64-bit counter
+// This samples data, was generated with above golang script
+fn test_chacha20_xor_key_stream_with_64bit_counter() ! {
+	key := [u8(225), 2, 1, 178, 238, 127, 187, 188, 27, 237, 18, 62, 181, 65, 67, 152, 13, 247,
+		147, 148, 101, 220, 185, 120, 234, 58, 144, 173, 3, 218, 193, 130]
+	nonce := [u8(153), 221, 244, 134, 99, 135, 243, 247]
+
+	// creates original 64-bit counter ciphers
+	mut c := new_cipher(key, nonce)!
+
+	series_of_msg := [[u8(231), 121, 9, 28],
+		[u8(178), 221, 62, 9, 153, 189, 106, 12, 117, 47, 192, 81, 65, 112, 85, 57],
+		[u8(155), 202, 56, 16], [u8(227), 47, 226, 137], [u8(162), 77, 218, 52],
+		[u8(42), 250, 184, 196],
+		[u8(2), 129, 13, 136, 6, 12, 235, 183, 38, 178, 151, 243, 27, 88,
+			97, 40],
+		[u8(248), 170, 168, 206], [u8(181), 220, 223, 139], [u8(95), 108, 201, 227],
+		[u8(38), 221, 147, 230],
+		[u8(98), 229, 5, 130, 13, 103, 248, 159, 240, 246, 56, 119, 160,
+			130, 82, 222],
+		'hello hello hello'.bytes(), 'me me me'.bytes()]
+
+	expected_output := [
+		[u8(14), 153, 137, 166],
+		[u8(132), 202, 57, 24, 78, 201, 133, 147, 175, 207, 224, 48, 197, 188, 230, 120],
+		[u8(243), 129, 27, 186],
+		[u8(103), 184, 201, 233],
+		[u8(99), 236, 76, 148],
+		[u8(12), 206, 236, 195],
+		[u8(72), 82, 44, 56, 164, 43, 98, 29, 182, 98, 48, 235, 189, 181, 216, 152],
+		[u8(229), 19, 86, 45],
+		[u8(109), 199, 143, 155],
+		[u8(2), 33, 39, 189],
+		[u8(170), 82, 98, 126],
+		[u8(29), 236, 210, 171, 117, 132, 115, 18, 7, 18, 248, 97, 165, 21, 147, 241],
+		[u8(211), 17, 84, 145, 207, 106, 145, 1, 245, 189, 8, 45, 71, 248, 44, 15, 201],
+		[u8(124), 195, 175, 137, 33, 119, 236, 120],
+	]
+	for i := 0; i < series_of_msg.len; i++ {
+		msg := series_of_msg[i]
+		exp := expected_output[i]
+		mut dst := []u8{len: msg.len}
+		c.xor_key_stream(mut dst, msg)
+		assert dst == exp
+	}
+}
+
+// Test for ciphers `.encrypt()` methods
 fn test_chacha20_encrypt_with_64bit_counter() ! {
 	for item in ch20_64bitctr_testdata {
 		key := hex.decode(item.key)!
@@ -46,8 +102,6 @@ fn test_chacha20_encrypt_with_64bit_counter() ! {
 
 		mut c := new_cipher(key, nonce)!
 		mut dst := []u8{len: plaintext.len}
-		// TODO: fix for make it working with `xor_key_stream`
-		// c.xor_key_stream(mut dst, plaintext) // still fails
 		c.encrypt(mut dst, plaintext)
 		assert dst == ciphertext
 
