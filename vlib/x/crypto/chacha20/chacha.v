@@ -87,8 +87,6 @@ pub fn new_cipher(key []u8, nonce []u8) !&Cipher {
 		}
 		orig_nonce_size {
 			mode = .original
-			// TODO: removes this when its getting fully supported
-			// return error('Original mode currently was not supported')
 		}
 		else {
 			return error('Unsupported nonce size')

@@ -2,51 +2,8 @@ module chacha20
 
 import encoding.hex
 
-// Golang script to generates output for ciphers that support 64-bit counter
-//
-// package main
-//
-// import (
-//	"fmt"
-//	"gitlab.com/yawning/chacha20.git"
-//	"log"
-// )
-//
-// func main() {
-//	 key := []byte{225, 2, 1, 178, 238, 127, 187, 188, 27, 237, 18, 62, 181, 65, 67, 152, 13, 247,
-//		147, 148, 101, 220, 185, 120, 234, 58, 144, 173, 3, 218, 193, 130}
-//   nonce := []byte{153, 221, 244, 134, 99, 135, 243, 247}
-//
-//   series_of_msg := [][]byte{
-//		{231, 121, 9, 28},
-//		{178, 221, 62, 9, 153, 189, 106, 12, 117, 47, 192, 81, 65, 112, 85, 57},
-//		{155, 202, 56, 16},
-//		{227, 47, 226, 137},
-//		{162, 77, 218, 52},
-//		{42, 250, 184, 196},
-//		{2, 129, 13, 136, 6, 12, 235, 183, 38, 178, 151, 243, 27, 88, 97, 40},
-//		{248, 170, 168, 206},
-//		{181, 220, 223, 139},
-//		{95, 108, 201, 227},
-//		{38, 221, 147, 230},
-//		{98, 229, 5, 130, 13, 103, 248, 159, 240, 246, 56, 119, 160, 130, 82, 222},
-//		[]byte("hello hello hello"),
-//		[]byte("me me me"),
-//	 }
-//
-//	 c, err := chacha20.New(key, nonce)
-//	 if err != nil {
-//		log.Fatal(err)
-//	 }
-//	 for _, msg := range series_of_msg {
-//		xored := make([]byte, len(msg))
-//		c.XORKeyStream(xored, msg)
-//		fmt.Println(xored)
-//	 }
-// }
-
 // This test `xor_key_stream` for cipher with 64-bit counter
-// This samples data, was generated with above golang script
+// This samples data, was generated with golang script shared at https://go.dev/play/p/MWKBO5dNcTq
 fn test_chacha20_xor_key_stream_with_64bit_counter() ! {
 	key := [u8(225), 2, 1, 178, 238, 127, 187, 188, 27, 237, 18, 62, 181, 65, 67, 152, 13, 247,
 		147, 148, 101, 220, 185, 120, 234, 58, 144, 173, 3, 218, 193, 130]
@@ -124,40 +81,7 @@ struct Test64BitCounter {
 // This samples of data was generated with modified python script from
 // https://cryptography.io/en/stable/_downloads/ec675a611e2a7e02dcaaa050e0fa3f10/generate_chacha20_overflow.py
 // Its modified to use pycryptodome module.
-//
-// import binascii
-// import struct
-//
-// from Crypto.Cipher import ChaCha20
-// from Crypto.Random import get_random_bytes
-//
-//_N_BLOCKS = [1, 1.5, 2, 2.5, 3]
-//
-// def _build_vectors():
-//     count = 0
-//     output = []
-//     for blocks in _N_BLOCKS:
-//         for i in range(0,5):
-//             key = get_random_bytes(32)
-//             nonce = get_random_bytes(8)
-//             plaintext = get_random_bytes(int(128 * blocks))
-//
-//             cipher = ChaCha20.new(key=key, nonce=nonce)
-//
-//             output.append(f"\ncount : {count}")
-//             count += 1
-//             output.append(f"key : {binascii.hexlify(key)}")
-//             output.append(f"nonce : {binascii.hexlify(nonce)}")
-//             output.append(f"plaintext : {binascii.hexlify(plaintext)}")
-//             output.append(
-//                 f"ciphertext : {binascii.hexlify(cipher.encrypt(plaintext))}"
-//            )
-//     return "\n".join(output)
-//
-//
-// def _write_file(data, filename):
-//     with open(filename, "w") as f:
-//         f.write(data)
+// The script availables at [gist-python](https://gist.github.com/blackshirt/427e2c7b027701d2cb9e468aabc1c284)
 
 const ch20_64bitctr_testdata = [
 	Test64BitCounter{
