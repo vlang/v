@@ -46,8 +46,6 @@ mut:
 	key   [8]u32
 	nonce [4]u32
 
-	// Flag indicates whether this cipher's counter has reached the limit
-	overflow bool
 	// Flag that tells whether this cipher was an extended XChaCha20 standard variant.
 	// only make sense when mode == .standard
 	extended bool
@@ -110,7 +108,7 @@ pub fn encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
 	mut c := new_cipher(key, nonce)!
 	mut out := []u8{len: plaintext.len}
 
-	c.encrypt(mut out, plaintext)
+	c.encrypt(mut out, plaintext)!
 	unsafe { c.reset() }
 	return out
 }
@@ -121,7 +119,7 @@ pub fn decrypt(key []u8, nonce []u8, ciphertext []u8) ![]u8 {
 	mut c := new_cipher(key, nonce)!
 	mut out := []u8{len: ciphertext.len}
 
-	c.encrypt(mut out, ciphertext)
+	c.encrypt(mut out, ciphertext)!
 	unsafe { c.reset() }
 	return out
 }
@@ -169,13 +167,8 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	}
 
 	// check for counter overflow
-	num_blocks := (u64(src_len) + block_size - 1) / block_size
-	ctr := c.load_ctr()
-	max := c.max_ctr_value()
-	if c.overflow || ctr + num_blocks > max {
-		panic('chacha20: counter overflow')
-	} else if ctr + num_blocks == max {
-		c.overflow = true
+	if c.check_for_ctr_overflow((u64(src_len) + block_size - 1) / block_size) {
+		panic('chacha20: internal counter overflow')
 	}
 
 	// take the most full bytes of multiples block_size from the src,
@@ -183,23 +176,11 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	// into dst
 	full := src_len - src_len % block_size
 	if full > 0 {
-		c.chacha20_block_generic(mut dst[idx..idx + full], src[idx..idx + full])
+		c.chacha20_block_generic(mut dst[idx..idx + full], src[idx..idx + full]) or { panic(err) }
 	}
 	idx += full
 	src_len -= full
 
-	// we dont support bufsize
-	// FIXME: instead generates once block keystream again, i think we can panic here
-	if ctr + 1 > max {
-		c.block = []u8{len: block_size}
-		numblocks := (src_len + block_size - 1) / block_size
-		mut buf := c.block[block_size - numblocks * block_size..]
-		_ := copy(mut buf, src[idx..])
-		c.chacha20_block_generic(mut buf, buf)
-		m := copy(mut dst[idx..], buf)
-		c.length = buf.len - m
-		return
-	}
 	// If we have a partial block, pad it for chacha20_block_generic, and
 	// keep the leftover keystream for the next invocation.
 	if src_len > 0 {
@@ -210,7 +191,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 		// copy the last src block to internal buffer, and performs
 		// chacha20_block_generic on this buffer, and stores into remaining dst
 		_ := copy(mut c.block, src[idx..])
-		c.chacha20_block_generic(mut c.block, c.block)
+		c.chacha20_block_generic(mut c.block, c.block) or { panic(err) }
 		n := copy(mut dst[idx..], c.block)
 		// the length of remaining bytes of unprocessed keystream
 		c.length = block_size - n
@@ -223,15 +204,15 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 // Its added to allow `chacha20poly1305` modules to work without key stream fashion.
 // TODO: integrates it with the rest
 @[direct_array_access]
-pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) {
+pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) ! {
 	if src.len == 0 {
 		return
 	}
 	if dst.len < src.len {
-		panic('chacha20/chacha: dst buffer is to small')
+		return error('chacha20/chacha: dst buffer is to small')
 	}
 	if subtle.inexact_overlap(dst, src) {
-		panic('chacha20: invalid buffer overlap')
+		return error('chacha20: invalid buffer overlap')
 	}
 
 	nr_blocks := src.len / block_size
@@ -239,7 +220,7 @@ pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) {
 		// get current src block to be xor-ed
 		block := unsafe { src[i * block_size..(i + 1) * block_size] }
 		// build keystream, xor-ed with the block and stores into dst
-		c.chacha20_block_generic(mut dst[i * block_size..(i + 1) * block_size], block)
+		c.chacha20_block_generic(mut dst[i * block_size..(i + 1) * block_size], block)!
 	}
 	// process for partial block
 	if src.len % block_size != 0 {
@@ -249,7 +230,7 @@ pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) {
 		// on this src_block
 		mut src_block := []u8{len: block_size}
 		_ := copy(mut src_block, block)
-		c.chacha20_block_generic(mut src_block, src_block)
+		c.chacha20_block_generic(mut src_block, src_block)!
 
 		// copy the src_block key stream result into desired dst
 		n := copy(mut dst[nr_blocks * block_size..], src_block)
@@ -261,7 +242,7 @@ pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) {
 // This is main building block for ChaCha20 keystream generator.
 // This routine was intended to work only for msg source with multiples of block_size in size.
 @[direct_array_access]
-fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
+fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) ! {
 	// ChaCha20 keystream generator was relatively easy to understand.
 	// Its contains steps:
 	// - Loads current ChaCha20 into temporary state, used for later.
@@ -272,16 +253,11 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 	//
 	// Makes sure its works for size of multiple of block_size
 	if dst.len != src.len || dst.len % block_size != 0 {
-		panic('chacha20: internal error: wrong dst and/or src length')
+		return error('chacha20: internal error: wrong dst and/or src length')
 	}
-	// Safety checks to make sure increasing current cipher's counter
-	// by nr_block was not overflowing internal counter.
-	ctr := c.load_ctr()
-	max := c.max_ctr_value()
-	num_block := u64((src.len + block_size - 1) / block_size)
-	// FIXME: i think its can wrap
-	if ctr + num_block > max {
-		panic('Adding num_block to the current counter lead to overflow')
+	// check for counter overflow
+	if c.check_for_ctr_overflow(u64((src.len + block_size - 1) / block_size)) {
+		return error('chacha20: internal counter overflow')
 	}
 
 	// initializes ChaCha20 state
@@ -431,7 +407,6 @@ pub fn (mut c Cipher) reset() {
 		c.block.reset()
 	}
 	c.length = 0
-	c.overflow = false
 	c.precomp = false
 
 	c.p1, c.p5, c.p9, c.p13 = u32(0), u32(0), u32(0), u32(0)
@@ -440,14 +415,8 @@ pub fn (mut c Cipher) reset() {
 }
 
 // set_counter sets Cipher's counter
+@[direct_array_access; inline]
 pub fn (mut c Cipher) set_counter(ctr u64) {
-	max_ctr := c.max_ctr_value()
-
-	if c.overflow || ctr > max_ctr {
-		panic('counter overflow')
-	} else if ctr == max_ctr {
-		c.overflow = true
-	}
 	match c.mode {
 		.original {
 			c.nonce[0] = u32(ctr)
@@ -563,10 +532,11 @@ fn quarter_round(a u32, b u32, c u32, d u32) (u32, u32, u32, u32) {
 // Cipher's counter handling routine
 //
 // We define counter limit to simplify the access
-const max_64bit_counter = u64(1 << 63) - 1 // not fully max_u64
+const max_64bit_counter = max_u64
 const max_32bit_counter = u64(max_u32)
 
 // load_ctr loads underlying cipher's counter as u64 value.
+@[direct_array_access; inline]
 fn (c Cipher) load_ctr() u64 {
 	match c.mode {
 		// In the original mode, counter was 64-bit size
@@ -582,6 +552,7 @@ fn (c Cipher) load_ctr() u64 {
 }
 
 // max_ctr_value returns maximum value of cipher's counter.
+@[inline]
 fn (c Cipher) max_ctr_value() u64 {
 	match c.mode {
 		.original { return max_64bit_counter }
@@ -606,4 +577,16 @@ fn derive_xchacha20_key_nonce(key []u8, nonce []u8) !([]u8, []u8) {
 	_ := copy(mut new_nonce[4..12], nonce[16..24])
 
 	return new_key, new_nonce
+}
+
+@[direct_array_access; inline]
+fn (c Cipher) check_for_ctr_overflow(add_value u64) bool {
+	// check for counter overflow
+	ctr := c.load_ctr()
+	sum := ctr + add_value
+	max := c.max_ctr_value()
+	if sum < ctr || sum < add_value || sum > max {
+		return true
+	}
+	return false
 }
