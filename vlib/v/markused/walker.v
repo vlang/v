@@ -251,6 +251,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 		}
 		ast.SqlStmt {
 			w.expr(node.db_expr)
+			w.expr(node.or_expr)
 			for line in node.lines {
 				w.expr(line.where_expr)
 				w.exprs(line.update_exprs)
@@ -522,6 +523,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.SqlExpr {
 			w.expr(node.db_expr)
+			w.expr(node.or_expr)
 			w.expr(node.offset_expr)
 			w.expr(node.order_expr)
 			w.expr(node.limit_expr)
