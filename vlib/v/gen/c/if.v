@@ -217,6 +217,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			}
 			g.inside_if_result = true
 			styp = styp.replace('*', '_ptr')
+		} else {
+			g.last_if_option_type = node.typ
+			defer {
+				g.last_if_option_type = tmp_if_option_type
+			}
 		}
 		cur_line = g.go_before_last_stmt()
 		g.empty_line = true
