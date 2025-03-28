@@ -17,9 +17,9 @@ pub struct Status {
 // status returns a new Status struct with the given message, status, and code
 pub fn status(msg string, status http.Status) Status {
 	return Status{
-		msg: msg,
-		resp: status.str(),
-		code: status.int(),
-		status: 'success',
+		msg:    msg
+		resp:   status.str()
+		code:   status.int()
+		status: 'success'
 	}
 }
