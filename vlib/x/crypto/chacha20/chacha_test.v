@@ -136,7 +136,7 @@ fn test_chacha20_block_function() ! {
 		mut cs := new_cipher(key_bytes, nonce_bytes)!
 		cs.set_counter(val.counter)
 		mut block := []u8{len: block_size}
-		cs.chacha20_block_generic(mut block, block)!
+		cs.chacha20_block_generic(mut block, block)
 		exp_bytes := hex.decode(val.output)!
 
 		assert block == exp_bytes
@@ -153,7 +153,7 @@ fn test_chacha20_simple_block_function() ! {
 	mut block := []u8{len: block_size}
 	mut cs := new_cipher(key_bytes, nonce_bytes)!
 	cs.set_counter(u32(1))
-	cs.chacha20_block_generic(mut block, block)!
+	cs.chacha20_block_generic(mut block, block)
 
 	expected_raw_bytes := '10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e'
 	exp_bytes := hex.decode(expected_raw_bytes)!

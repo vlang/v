@@ -63,7 +63,7 @@ fn test_xchach20_encrypt_vector_test_a322() ! {
 	c.set_counter(counter)
 
 	mut encrypted_message := []u8{len: plaintext_bytes.len}
-	c.encrypt(mut encrypted_message, plaintext_bytes)!
+	c.encrypt(mut encrypted_message, plaintext_bytes)
 
 	assert encrypted_message == ciphertext_bytes
 }

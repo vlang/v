@@ -108,7 +108,7 @@ pub fn encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
 	mut c := new_cipher(key, nonce)!
 	mut out := []u8{len: plaintext.len}
 
-	c.encrypt(mut out, plaintext)!
+	c.encrypt(mut out, plaintext)
 	unsafe { c.reset() }
 	return out
 }
@@ -119,7 +119,7 @@ pub fn decrypt(key []u8, nonce []u8, ciphertext []u8) ![]u8 {
 	mut c := new_cipher(key, nonce)!
 	mut out := []u8{len: ciphertext.len}
 
-	c.encrypt(mut out, ciphertext)!
+	c.encrypt(mut out, ciphertext)
 	unsafe { c.reset() }
 	return out
 }
@@ -176,7 +176,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	// into dst
 	full := src_len - src_len % block_size
 	if full > 0 {
-		c.chacha20_block_generic(mut dst[idx..idx + full], src[idx..idx + full]) or { panic(err) }
+		c.chacha20_block_generic(mut dst[idx..idx + full], src[idx..idx + full])
 	}
 	idx += full
 	src_len -= full
@@ -191,7 +191,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 		// copy the last src block to internal buffer, and performs
 		// chacha20_block_generic on this buffer, and stores into remaining dst
 		_ := copy(mut c.block, src[idx..])
-		c.chacha20_block_generic(mut c.block, c.block) or { panic(err) }
+		c.chacha20_block_generic(mut c.block, c.block)
 		n := copy(mut dst[idx..], c.block)
 		// the length of remaining bytes of unprocessed keystream
 		c.length = block_size - n
@@ -204,15 +204,15 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 // Its added to allow `chacha20poly1305` modules to work without key stream fashion.
 // TODO: integrates it with the rest
 @[direct_array_access]
-pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) ! {
+pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) {
 	if src.len == 0 {
 		return
 	}
 	if dst.len < src.len {
-		return error('chacha20/chacha: dst buffer is to small')
+		panic('chacha20/chacha: dst buffer is to small')
 	}
 	if subtle.inexact_overlap(dst, src) {
-		return error('chacha20: invalid buffer overlap')
+		panic('chacha20: invalid buffer overlap')
 	}
 
 	nr_blocks := src.len / block_size
@@ -220,7 +220,7 @@ pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) ! {
 		// get current src block to be xor-ed
 		block := unsafe { src[i * block_size..(i + 1) * block_size] }
 		// build keystream, xor-ed with the block and stores into dst
-		c.chacha20_block_generic(mut dst[i * block_size..(i + 1) * block_size], block)!
+		c.chacha20_block_generic(mut dst[i * block_size..(i + 1) * block_size], block)
 	}
 	// process for partial block
 	if src.len % block_size != 0 {
@@ -230,7 +230,7 @@ pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) ! {
 		// on this src_block
 		mut src_block := []u8{len: block_size}
 		_ := copy(mut src_block, block)
-		c.chacha20_block_generic(mut src_block, src_block)!
+		c.chacha20_block_generic(mut src_block, src_block)
 
 		// copy the src_block key stream result into desired dst
 		n := copy(mut dst[nr_blocks * block_size..], src_block)
@@ -242,7 +242,7 @@ pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) ! {
 // This is main building block for ChaCha20 keystream generator.
 // This routine was intended to work only for msg source with multiples of block_size in size.
 @[direct_array_access]
-fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) ! {
+fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 	// ChaCha20 keystream generator was relatively easy to understand.
 	// Its contains steps:
 	// - Loads current ChaCha20 into temporary state, used for later.
@@ -253,11 +253,11 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) ! {
 	//
 	// Makes sure its works for size of multiple of block_size
 	if dst.len != src.len || dst.len % block_size != 0 {
-		return error('chacha20: internal error: wrong dst and/or src length')
+		panic('chacha20: internal error: wrong dst and/or src length')
 	}
 	// check for counter overflow
 	if c.check_for_ctr_overflow(u64((src.len + block_size - 1) / block_size)) {
-		return error('chacha20: internal counter overflow')
+		panic('chacha20: internal counter overflow')
 	}
 
 	// initializes ChaCha20 state
