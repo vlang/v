@@ -32,13 +32,17 @@ fn (mut g Gen) profile_fn(fn_decl ast.FnDecl) {
 			g.writeln('\tv__profile_enabled = true;')
 		}
 		g.writeln('\tdouble _PROF_FN_START = ${measure_fn_name}();')
+		g.writeln('\tdouble _PROF_PREV_MEASURED_TIME = prof_measured_time;')
 		g.writeln('\tif(v__profile_enabled) { ${fn_profile_counter_name_calls}++; } // ${fn_name}')
 		g.writeln('')
-		g.defer_profile_code = '\tif(v__profile_enabled) { ${fn_profile_counter_name} += ${measure_fn_name}() - _PROF_FN_START; }'
+		g.defer_profile_code = '\tif(v__profile_enabled) { double _PROF_ELAPSED = ${measure_fn_name}() - _PROF_FN_START; '
+		g.defer_profile_code += '${fn_profile_counter_name} += _PROF_ELAPSED; '
+		g.defer_profile_code += '${fn_profile_counter_name}_only_current += _PROF_ELAPSED - (prof_measured_time - _PROF_PREV_MEASURED_TIME); '
+		g.defer_profile_code += 'prof_measured_time = _PROF_PREV_MEASURED_TIME + _PROF_ELAPSED; }'
 		if should_restore_v__profile_enabled {
 			g.defer_profile_code += '\n\t\tv__profile_enabled = _prev_v__profile_enabled;'
 		}
-		g.pcs_declarations.writeln('double ${fn_profile_counter_name} = 0.0; u64 ${fn_profile_counter_name_calls} = 0;')
+		g.pcs_declarations.writeln('double ${fn_profile_counter_name} = 0.0; double ${fn_profile_counter_name}_only_current = 0.0; u64 ${fn_profile_counter_name_calls} = 0;')
 		g.pcs << ProfileCounterMeta{
 			fn_name:   cfn_name
 			vpc_name:  fn_profile_counter_name
@@ -49,7 +53,7 @@ fn (mut g Gen) profile_fn(fn_decl ast.FnDecl) {
 
 pub fn (mut g Gen) gen_vprint_profile_stats() {
 	g.pcs_declarations.writeln('void vprint_profile_stats(){')
-	fstring := '"%14llu %14.3fms %14.0fns %s \\n"'
+	fstring := '"%14llu %14.3fms %14.3fms %14.0fns %s \\n"'
 	g.pcs_declarations.writeln('\tf64 f = 1.0;')
 	if g.pref.os == .windows {
 		// QueryPerformanceCounter() / QueryPerformanceFrequency()
@@ -60,13 +64,13 @@ pub fn (mut g Gen) gen_vprint_profile_stats() {
 	}
 	if g.pref.profile_file == '-' {
 		for pc_meta in g.pcs {
-			g.pcs_declarations.writeln('\tif (${pc_meta.vpc_calls}) printf(${fstring}, ${pc_meta.vpc_calls}, (${pc_meta.vpc_name}*f)/1000000.0, (${pc_meta.vpc_name}*f)/${pc_meta.vpc_calls}, "${pc_meta.fn_name}" );')
+			g.pcs_declarations.writeln('\tif (${pc_meta.vpc_calls}) printf(${fstring}, ${pc_meta.vpc_calls}, (${pc_meta.vpc_name}*f)/1000000.0, (${pc_meta.vpc_name}_only_current*f)/1000000.0, (${pc_meta.vpc_name}*f)/${pc_meta.vpc_calls}, "${pc_meta.fn_name}" );')
 		}
 	} else {
 		g.pcs_declarations.writeln('\tFILE * fp;')
 		g.pcs_declarations.writeln('\tfp = fopen ("${g.pref.profile_file}", "w+");')
 		for pc_meta in g.pcs {
-			g.pcs_declarations.writeln('\tif (${pc_meta.vpc_calls}) fprintf(fp, ${fstring}, ${pc_meta.vpc_calls}, (${pc_meta.vpc_name}*f)/1000000.0, (${pc_meta.vpc_name}*f)/${pc_meta.vpc_calls}, "${pc_meta.fn_name}" );')
+			g.pcs_declarations.writeln('\tif (${pc_meta.vpc_calls}) fprintf(fp, ${fstring}, ${pc_meta.vpc_calls}, (${pc_meta.vpc_name}*f)/1000000.0, (${pc_meta.vpc_name}_only_current*f)/1000000.0, (${pc_meta.vpc_name}*f)/${pc_meta.vpc_calls}, "${pc_meta.fn_name}" );')
 		}
 		g.pcs_declarations.writeln('\tfclose(fp);')
 	}
