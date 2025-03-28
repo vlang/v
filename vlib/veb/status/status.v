@@ -1,107 +1,25 @@
 module status
 
+import net.http
+
+// Status is a struct that contains the message, status, code, and status of the request
 pub struct Status {
+	// msg is the message that will be returned to the user
 	msg string
+	// resp is the status that will be returned to the user
 	resp string
+	// code is the status code that will be returned to the user
 	code int
+	// status is the status of the request
 	status string
 }
 
-pub fn ok(msg string) Status {
+// status returns a new Status struct with the given message, status, and code
+pub fn status(msg string, status http.Status) Status {
 	return Status{
 		msg: msg,
-		resp: 'OK',
-		code: 200,
+		resp: status.str(),
+		code: status.int(),
 		status: 'success',
-	}
-}
-
-pub fn created(msg string) Status {
-	return Status{
-		msg: msg,
-		resp: 'Created',
-		code: 201,
-		status: 'success',
-	}
-}
-
-pub fn no_content(msg string) Status {
-	return Status{
-		msg: msg,
-		resp: 'No Content',
-		code: 204,
-		status: 'success',
-	}
-}
-
-pub fn accepted(msg string) Status {
-	return Status{
-		msg: msg,
-		resp: 'Accepted',
-		code: 202,
-		status: 'success',
-	}
-}
-
-pub fn not_modified(msg string) Status {
-	return Status{
-		msg: msg,
-		resp: 'Not Modified',
-		code: 304,
-		status: 'success',
-	}
-}
-
-pub fn bad_request(msg string) Status {
-	return Status{
-		msg: msg,
-		resp: 'Bad Request',
-		code: 400,
-		status: 'error',
-	}
-}
-
-pub fn not_found(msg string) Status {
-	return Status{
-		msg: msg
-		resp: 'Not Found',
-		code: 404,
-		status: 'error',
-	}
-}
-
-pub fn internal_server_error(msg string) Status {
-	return Status{
-		msg: msg,
-		resp: 'Internal Server Error',
-		code: 500,
-		status: 'error',
-	}
-}
-
-pub fn forbidden(msg string) Status {
-	return Status{
-		msg: msg,
-		resp: 'Forbidden',
-		code: 403,
-		status: 'error',
-	}
-}
-
-pub fn unauthorized(msg string) Status {
-	return Status{
-		msg: msg
-		resp: 'Unauthorized',
-		code: 401,
-		status: 'error',
-	}
-}
-
-pub fn conflict(msg string) Status {
-	return Status{
-		msg: msg,
-		resp: 'Conflict',
-		code: 409,
-		status: 'error',
 	}
 }
