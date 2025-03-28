@@ -167,7 +167,8 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	}
 
 	// check for counter overflow
-	if c.check_for_ctr_overflow((u64(src_len) + block_size - 1) / block_size) {
+	num_blocks := (u64(src_len) + block_size - 1) / block_size
+	if c.check_for_ctr_overflow(num_blocks) {
 		panic('chacha20: internal counter overflow')
 	}
 
@@ -256,7 +257,8 @@ fn (mut c Cipher) chacha20_block_generic(mut dst []u8, src []u8) {
 		panic('chacha20: internal error: wrong dst and/or src length')
 	}
 	// check for counter overflow
-	if c.check_for_ctr_overflow(u64((src.len + block_size - 1) / block_size)) {
+	num_blocks := u64((src.len + block_size - 1) / block_size)
+	if c.check_for_ctr_overflow(num_blocks) {
 		panic('chacha20: internal counter overflow')
 	}
 
