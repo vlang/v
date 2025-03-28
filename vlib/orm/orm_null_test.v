@@ -103,13 +103,13 @@ struct Foo {
 mut:
 	id u64 @[primary; sql: serial]
 	a  string
-	//	b  string  [default: '"yes"']
-	c ?string
-	d ?string = 'hi'
-	e int
-	//	f  int     [default: 33]
-	g ?int
-	h ?int = 55
+	b  string @[default: '"yes"']
+	c  ?string
+	d  ?string = 'hi'
+	e  int
+	f  int @[default: 33]
+	g  ?int
+	h  ?int = 55
 }
 
 fn test_option_struct_fields_and_none() {
@@ -118,12 +118,12 @@ fn test_option_struct_fields_and_none() {
 	sql db {
 		create table Foo
 	}!
-	assert db.st.last == 'CREATE TABLE IF NOT EXISTS `foo` (`id` serial-type NOT NULL, `a` string-type NOT NULL, `c` string-type, `d` string-type, `e` int-type NOT NULL, `g` int-type, `h` int-type, PRIMARY KEY(`id`));'
+	assert db.st.last == 'CREATE TABLE IF NOT EXISTS `foo` (`id` serial-type NOT NULL, `a` string-type NOT NULL, `b` string-type DEFAULT "yes" NOT NULL, `c` string-type, `d` string-type, `e` int-type NOT NULL, `f` int-type DEFAULT 33 NOT NULL, `g` int-type, `h` int-type, PRIMARY KEY(`id`));'
 
 	_ := sql db {
 		select from Foo where e > 5 && c is none && c !is none && h == 2
 	}!
-	assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g`, `h` FROM `foo` WHERE `e` > ? AND `c` IS NULL AND `c` IS NOT NULL AND `h` = ?;'
+	assert db.st.last == 'SELECT `id`, `a`, `b`, `c`, `d`, `e`, `f`, `g`, `h` FROM `foo` WHERE `e` > ? AND `c` IS NULL AND `c` IS NOT NULL AND `h` = ?;'
 	assert db.st.data.len == 0
 	assert db.st.where.len == 2
 	assert db.st.where == [orm.Primitive(int(5)), orm.Primitive(int(2))]
@@ -141,7 +141,7 @@ fn test_option_struct_fields_and_none() {
 	res1 := sql db {
 		select from Foo where id == id
 	}!
-	assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g`, `h` FROM `foo` WHERE `id` = ?;'
+	assert db.st.last == 'SELECT `id`, `a`, `b`, `c`, `d`, `e`, `f`, `g`, `h` FROM `foo` WHERE `id` = ?;'
 	assert db.st.data.len == 0
 	assert db.st.where.len == 1
 	assert db.st.where == [orm.Primitive(int(id))]
@@ -149,9 +149,11 @@ fn test_option_struct_fields_and_none() {
 	assert res1[0] == Foo{
 		id: 1
 		a:  ''
+		b:  'yes'
 		c:  none
 		d:  'hi'
 		e:  0
+		f:  33
 		g:  none
 		h:  55
 	}
@@ -168,7 +170,7 @@ fn test_option_struct_fields_and_none() {
 	res2 := sql db {
 		select from Foo where id == id
 	}!
-	assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g`, `h` FROM `foo` WHERE `id` = ?;'
+	assert db.st.last == 'SELECT `id`, `a`, `b`, `c`, `d`, `e`, `f`, `g`, `h` FROM `foo` WHERE `id` = ?;'
 	assert db.st.data.len == 0
 	assert db.st.where.len == 1
 	assert db.st.where == [orm.Primitive(int(id))]
@@ -176,9 +178,11 @@ fn test_option_struct_fields_and_none() {
 	assert res2[0] == Foo{
 		id: 1
 		a:  ''
+		b:  'yes'
 		c:  'yo'
 		d:  none
 		e:  0
+		f:  33
 		g:  44
 		h:  none
 	}
@@ -187,8 +191,14 @@ fn test_option_struct_fields_and_none() {
 		select count from Foo where a == 'yo'
 	}! == 0
 	assert sql db {
+		select count from Foo where b == 'yes'
+	}! == 1
+	assert sql db {
 		select count from Foo where d == 'yo'
 	}! == 0
+	assert sql db {
+		select count from Foo where f == 33
+	}! == 1
 	assert sql db {
 		select count from Foo where c == 'yo'
 	}! == 1
