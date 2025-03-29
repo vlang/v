@@ -6948,7 +6948,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								return_wrapped = true
 							} else if expr_stmt.expr is ast.CallExpr {
 								if expr_stmt.expr.is_return_used {
-									g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+									g.write('*(${cast_typ}*) ${cvar_name}${tmp_op}data = ')
 								}
 							} else if g.inside_opt_or_res && return_is_option && g.inside_assign {
 								g.write('_option_ok(&(${cast_typ}[]) { ')
