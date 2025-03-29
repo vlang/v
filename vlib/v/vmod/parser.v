@@ -22,12 +22,12 @@ enum TokenKind {
 pub struct Manifest {
 pub mut:
 	name         string
-	version      string
 	description  string
-	dependencies []string
+	version      string
 	license      string
 	repo_url     string
 	author       string
+	dependencies []string
 	unknown      map[string][]string
 }
 
