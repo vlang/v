@@ -10,7 +10,7 @@ It is compatible with front-end servers written in other programming languages.
 ```v
 import os
 import veb
-import veb.status { Status, status }
+import veb.status { Status, new_status }
 
 pub struct RespStatus {
 	Status
@@ -28,7 +28,7 @@ pub struct Context {
 @['/'; get]
 pub fn (mut app App) status_handle() veb.Result {
 	resp := RespStatus{
-		Status: status('Success.', .ok)
+		Status: new_status('Success.', .ok)
 	}
 	return ctx.json(resp)
 }
