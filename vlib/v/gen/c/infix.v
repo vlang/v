@@ -823,6 +823,9 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 					g.expr(left)
 				}
 				g.write(' == ')
+				if elem_sym.kind == .array_fixed {
+					g.write('(${g.styp(right.elem_type)})')
+				}
 				g.expr(array_expr)
 			}
 		}
