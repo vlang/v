@@ -32,22 +32,14 @@ fn encode_array(mut b strings.Builder, input []string) {
 pub fn encode(manifest Manifest) string {
 	mut b := strings.new_builder(512)
 	b.writeln('Module {')
-	if manifest.name != '' {
-		b.write_string('\tname: ')
-		b.writeln(quote(manifest.name))
-	}
-	if manifest.description != '' {
-		b.write_string('\tdescription: ')
-		b.writeln(quote(manifest.description))
-	}
-	if manifest.version != '' {
-		b.write_string('\tversion: ')
-		b.writeln(quote(manifest.version))
-	}
-	if manifest.license != '' {
-		b.write_string('\tlicense: ')
-		b.writeln(quote(manifest.license))
-	}
+	b.write_string('\tname: ')
+	b.writeln(quote(manifest.name))
+	b.write_string('\tdescription: ')
+	b.writeln(quote(manifest.description))
+	b.write_string('\tversion: ')
+	b.writeln(quote(manifest.version))
+	b.write_string('\tlicense: ')
+	b.writeln(quote(manifest.license))
 	if manifest.repo_url != '' {
 		b.write_string('\trepo_url: ')
 		b.writeln(quote(manifest.repo_url))
