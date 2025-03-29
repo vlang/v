@@ -6936,6 +6936,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					mut is_array_fixed := false
 					mut return_wrapped := false
 					mut return_is_option := is_option && return_type.has_option_or_result()
+					tmp_op := if g.tmp_var_is_ptr { '->' } else { '.' }
 					if is_option {
 						is_array_fixed = g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
@@ -6956,14 +6957,14 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								g.indent--
 								return
 							} else {
-								g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+								g.write('*(${cast_typ}*) ${cvar_name}${tmp_op}data = ')
 							}
 						}
 					} else {
 						g.write('${cvar_name} = ')
 					}
 					if is_array_fixed {
-						g.write('memcpy(${cvar_name}.data, (${cast_typ})')
+						g.write('memcpy(${cvar_name}${tmp_op}data, (${cast_typ})')
 					}
 					// return expr or { fn_returns_option() }
 					if is_option && g.inside_return && expr_stmt.expr is ast.CallExpr
