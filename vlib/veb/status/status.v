@@ -31,6 +31,8 @@ pub fn (s Status) resp_code() string {
 	return '${s.code} ${s.resp}'
 }
 
+// is_success returns true if the status is a success
+// this is used to check if the request was successful
 pub fn (s Status) is_success() bool {
 	if s.status.is_success() {
 		return true
@@ -39,6 +41,8 @@ pub fn (s Status) is_success() bool {
 	}
 }
 
+// is_ok returns true if the status is a success
+// this is used to check if the request was successful
 pub fn (s Status) is_ok() bool {
 	if s.status.is_success() {
 		return true
@@ -47,6 +51,8 @@ pub fn (s Status) is_ok() bool {
 	}
 }
 
+// is_error returns true if the status is an error
+// this is used to check if the request was an error
 pub fn (s Status) is_error() bool {
 	if s.status.is_error() {
 		return true
@@ -55,6 +61,8 @@ pub fn (s Status) is_error() bool {
 	}
 }
 
+// is_valid returns true if the status is valid
+// this is used to check if the request was valid
 pub fn (s Status) is_valid() bool {
 	if s.status.is_valid() {
 		return true
