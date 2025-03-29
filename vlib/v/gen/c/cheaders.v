@@ -371,18 +371,6 @@ const c_common_macros = '
 
 #define OPTION_CAST(x) (x)
 
-#ifndef V64_PRINTFORMAT
-	#ifdef PRIx64
-		#define V64_PRINTFORMAT "0x%"PRIx64
-	#elif defined(__WIN32__)
-		#define V64_PRINTFORMAT "0x%I64x"
-	#elif defined(__linux__) && defined(__LP64__)
-		#define V64_PRINTFORMAT "0x%lx"
-	#else
-		#define V64_PRINTFORMAT "0x%llx"
-	#endif
-#endif
-
 #if defined(_WIN32) || defined(__CYGWIN__)
 	#define VV_EXPORTED_SYMBOL extern __declspec(dllexport)
 	#define VV_LOCAL_SYMBOL static
