@@ -1,4 +1,4 @@
-// vtest build: present_sqlite3?
+// vtest build: present_sqlite3? && !sanitize-memory-clang?
 module main
 
 import db.sqlite
