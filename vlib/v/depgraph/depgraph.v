@@ -118,10 +118,8 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 		node_names.add(node.name, node.deps)
 		node_deps.add(node.name, node.deps)
 	}
-	mut iterations := 0
 	mut resolved := new_dep_graph()
 	for node_deps.size() != 0 {
-		iterations++
 		mut ready_set := []string{}
 		for name in node_deps.keys {
 			deps := node_deps.get(name)
@@ -130,12 +128,11 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 			}
 		}
 		if ready_set.len == 0 {
-			mut g := new_dep_graph()
-			g.acyclic = false
+			resolved.acyclic = false
 			for name in node_deps.keys {
-				g.add_with_value(name, node_names.get(name), graph.values[name])
+				resolved.add_with_value(name, node_names.get(name), graph.values[name])
 			}
-			return g
+			return resolved
 		}
 		for name in ready_set {
 			node_deps.delete(name)
@@ -156,8 +153,12 @@ pub fn (graph &DepGraph) last_node() DepGraphNode {
 pub fn (graph &DepGraph) display() string {
 	mut out := []string{}
 	for node in graph.nodes {
-		for dep in node.deps {
-			out << ' * ${node.name} -> ${dep}'
+		if node.deps.len == 0 {
+			out << ' * ${node.name}'
+		} else {
+			for dep in node.deps {
+				out << ' * ${node.name} -> ${dep}'
+			}
 		}
 	}
 	return out.join('\n')
