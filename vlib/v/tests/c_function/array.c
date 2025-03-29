@@ -43,7 +43,7 @@ array_string_new(int array_len, int string_len)
     array_ptr[i] = (char*) malloc(string_len * sizeof(char));
   }
 
-  array_t *array = (array_t*) malloc(sizeof(array_t*));
+  array_t *array = (array_t*) malloc(sizeof(array_t));
   array->array_ptr = array_ptr;
   array->array_len = array_len;
   array->string_len = string_len;
@@ -105,6 +105,7 @@ struct_array get_struct_array() {
   for(i = 0; i < array_string_len(array); i++) {
     ret.arr[i] = *array;
   };
+  free(array);
   
   return ret;
 }
