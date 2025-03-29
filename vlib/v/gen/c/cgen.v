@@ -4082,8 +4082,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		if is_ptr {
 			g.write('*(')
 		}
+		needs_addr := is_option_unwrap && node.expr !in [ast.Ident, ast.PrefixExpr]
 		if is_option_unwrap {
-			g.write('&')
+			if !needs_addr {
+				g.write('&')
+			} else {
+				g.write('ADDR(${styp}, ')
+			}
 		}
 		g.expr(node.expr)
 		for i, embed in node.from_embed_types {
@@ -4108,6 +4113,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 		g.write(field_name)
 		if is_ptr {
+			g.write(')')
+		}
+		if needs_addr {
 			g.write(')')
 		}
 
