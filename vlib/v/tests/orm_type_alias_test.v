@@ -1,3 +1,4 @@
+// vtest build: present_sqlite3?
 module main
 
 import db.sqlite
