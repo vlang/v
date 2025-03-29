@@ -1,0 +1,12 @@
+fn not_unused() int {
+	mut used := 0
+	update_used := fn [mut used] () {
+		used += 1
+	}
+	update_used()
+	return used
+}
+
+fn main() {
+	println(not_unused())
+}

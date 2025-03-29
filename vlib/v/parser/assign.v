@@ -296,6 +296,10 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 	}
 	pos.update_last_line(p.prev_tok.line_nr)
 	p.expr_mod = ''
+	if op != .decl_assign && left[0] is ast.Ident && left[0].is_mut() {
+		var := left[0] as ast.Ident
+		p.scope.mark_var_as_used(var.name)
+	}
 	return ast.AssignStmt{
 		op:            op
 		left:          left
