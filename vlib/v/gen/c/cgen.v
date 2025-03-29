@@ -118,7 +118,7 @@ mut:
 	chan_pop_options          map[string]string // types for `x := <-ch or {...}`
 	chan_push_options         map[string]string // types for `ch <- x or {...}`
 	mtxs                      string            // array of mutexes if the `lock` has multiple variables
-	tmp_var_is_ptr            bool              // indicates if the tmp var passed to or_block() is a ptr
+	tmp_var_ptr               map[string]bool   // indicates if the tmp var passed to or_block() is a ptr
 	labeled_loops             map[string]&ast.Stmt
 	contains_ptr_cache        map[ast.Type]bool
 	inner_loop                &ast.Stmt = unsafe { nil }
@@ -4118,10 +4118,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		if needs_addr {
 			g.write(')')
 		}
-
-		g.tmp_var_is_ptr = is_option_unwrap
+		if is_option_unwrap {
+			g.tmp_var_ptr[tmp_var] = true
+		}
 		g.or_block(tmp_var, node.or_block, node.typ)
-		g.tmp_var_is_ptr = false
+		if is_option_unwrap {
+			g.tmp_var_ptr.delete(tmp_var)
+		}
 		g.write2(stmt_str, ' ')
 		unwrapped_typ := node.typ.clear_option_and_result()
 		unwrapped_styp := g.styp(unwrapped_typ)
@@ -6944,7 +6947,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					mut is_array_fixed := false
 					mut return_wrapped := false
 					mut return_is_option := is_option && return_type.has_option_or_result()
-					tmp_op := if g.tmp_var_is_ptr { '->' } else { '.' }
+					tmp_op := if cvar_name in g.tmp_var_ptr { '->' } else { '.' }
 					if is_option {
 						is_array_fixed = g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
@@ -7008,7 +7011,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 // Returns the type of the last stmt
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Type) {
 	cvar_name := c_name(var_name)
-	tmp_op := if g.tmp_var_is_ptr { '->' } else { '.' }
+	tmp_op := if var_name in g.tmp_var_ptr { '->' } else { '.' }
 	if or_block.kind == .block && or_block.stmts.len == 0 {
 		// generate nothing, block is empty
 		g.write(';\n${util.tabs(g.indent)}(void)${cvar_name};')
