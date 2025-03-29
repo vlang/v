@@ -1,19 +1,27 @@
+# WebAssembly Module Builder in V
+
 ## Description
 
-The `wasm` module is a pure V implementation of the WebAssembly bytecode module format,
-available in the form of a builder.
+The `wasm` module is a pure V implementation of the WebAssembly bytecode format,
+designed as a builder API. It enables developers to create, manipulate, and
+compile WebAssembly modules entirely within V, without external dependencies like Binaryen.
+The module supports the full WebAssembly core specification, including:
 
-It allows users to generate WebAssembly modules in memory.
+- Function definitions with locals and control flow
+- Multiple memories and tables
+- Global variables (local and imported)
+- Data and element segments
+- Reference types (`funcref` and `externref`)
+- Debug information via custom sections
 
-With the V wasm module, users can create functions, opcodes, and utilize the entire wasm
-specification without the need for a large dependency like binaryen. All of this
-functionality is available within V itself, making the module a valuable resource for
-V developers seeking to build high-performance web applications.
+The module generates a `[]u8` binary that can be written to a `.wasm` file or executed in memory,
+making it ideal for high-performance web applications, embedded systems, or experimentation within V.
 
-The module is designed to generate a `[]u8`, which can be written to a `.wasm` file
-or executed in memory.
+Examples are available in `examples/wasm_codegen`.
 
-Examples are present in `examples/wasm_codegen`.
+## Usage Examples
+
+Here’s an example that demonstrates creating a module with a function:
 
 ```v
 import wasm
@@ -21,19 +29,22 @@ import os
 
 fn main() {
 	mut m := wasm.Module{}
-	mut func := m.new_function('add', [.i32_t, .i32_t], [.i32_t])
-	{
-		func.local_get(0) // | local.get 0
-		func.local_get(1) // | local.get 1
-		func.add(.i32_t) // | i32.add
-	}
-	m.commit(func, true) // `export: true`
 
-	mod := m.compile() // []u8
+    // Define a function that adds two numbers and returns the result
+    mut func := m.new_function('add', [.i32_t, .i32_t], [.i32_t])
+    {
+        func.local_get(0) // Push first parameter
+        func.local_get(1) // Push second parameter
+        func.add(.i32_t)  // Add them
+    }
+    m.commit(func, true) // Export as "add"
 
-	os.write_file_array('add.wasm', mod)!
+    // Compile the module to a binary
+    mod := m.compile() // []u8
+
+    os.write_file_array('add.wasm', mod) or { panic('Write failed: ${err}') }
 }
 ```
 
-This module does not perform verification of the WebAssembly output.
+This module does not perform verification of the WebAssembly output, yet.
 Use a tool like `wasm-validate` to validate, and `wasm-dis` to show a decompiled form.
