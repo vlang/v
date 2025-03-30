@@ -275,7 +275,8 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 			arg_sym := t.table.final_sym(call_arg.typ)
 			param_sym := t.table.sym(param_typ)
 			if arg_sym.kind == .array && param_sym.kind == .array {
-				comptime_args[k] = t.get_generic_array_element_type(arg_sym.info as ast.Array)
+				comptime_sym := t.table.sym(comptime_args[k])
+				comptime_args[k] = t.get_generic_array_element_type(comptime_sym.info as ast.Array)
 			} else if arg_sym.info is ast.Map && param_sym.info is ast.Map {
 				comptime_sym := t.table.sym(comptime_args[k])
 				if comptime_sym.info is ast.Map {
