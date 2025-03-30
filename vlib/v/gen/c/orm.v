@@ -1140,7 +1140,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 						g.writeln('\t${field_var}.state = 0;')
 						g.writeln('\t*(${g.base_type(field.typ)}*)${field_var}.data = *(${g.base_type(field.typ)}*)${sub_result_var}.data;')
 					} else {
-						g.writeln('\t${field_var} = *(${unwrapped_c_typ}*)${sub_result_var}.data;')
+						g.writeln('\t${field_var} = *(${g.base_type(field.typ)}*)${sub_result_var}.data;')
 					}
 					g.writeln('}')
 				}
