@@ -173,6 +173,19 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 									ctyp = t.resolver.unwrap_generic(arg_sym.info.value_type)
 								}
 							}
+						} else if arg_sym.kind == .any {
+							cparam_type_sym := t.table.sym(t.resolver.unwrap_generic(ctyp))
+							if param_sym.info is ast.Map && cparam_type_sym.info is ast.Map {
+								if param_sym.info.key_type.has_flag(.generic) {
+									comptime_args[k] = cparam_type_sym.info.key_type
+									if param_sym.info.value_type.has_flag(.generic) {
+										k++
+										ctyp = cparam_type_sym.info.value_type
+									}
+								} else if param_sym.info.value_type.has_flag(.generic) {
+									ctyp = cparam_type_sym.info.value_type
+								}
+							}
 						}
 						comptime_args[k] = ctyp
 					}
