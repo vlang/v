@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_array_push.vv:13:5: error: cannot push to Option array that was not unwrapped first
+   11 | fn my_func(args Struct2) {
+   12 |     mut s1 := args.Struct1
+   13 |     s1.strings << ['hi']
+      |        ~~~~~~~
+   14 | }
+   15 |
