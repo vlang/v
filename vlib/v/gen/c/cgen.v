@@ -118,6 +118,7 @@ mut:
 	chan_pop_options          map[string]string // types for `x := <-ch or {...}`
 	chan_push_options         map[string]string // types for `ch <- x or {...}`
 	mtxs                      string            // array of mutexes if the `lock` has multiple variables
+	tmp_var_ptr               map[string]bool   // indicates if the tmp var passed to or_block() is a ptr
 	labeled_loops             map[string]&ast.Stmt
 	contains_ptr_cache        map[ast.Type]bool
 	inner_loop                &ast.Stmt = unsafe { nil }
@@ -4071,10 +4072,23 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		stmt_str := g.go_before_last_stmt().trim_space()
 		styp := g.styp(g.unwrap_generic(node.typ))
 		g.empty_line = true
+		is_option_unwrap := node.typ.has_flag(.option)
 		tmp_var := g.new_tmp_var()
-		g.write('${styp} ${tmp_var} = ')
+		g.write('${styp} ')
+		if is_option_unwrap {
+			g.write('*')
+		}
+		g.write('${tmp_var} = ')
 		if is_ptr {
 			g.write('*(')
+		}
+		needs_addr := is_option_unwrap && node.expr !in [ast.Ident, ast.PrefixExpr]
+		if is_option_unwrap {
+			if !needs_addr {
+				g.write('&')
+			} else {
+				g.write('ADDR(${styp}, ')
+			}
 		}
 		g.expr(node.expr)
 		for i, embed in node.from_embed_types {
@@ -4101,11 +4115,20 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		if is_ptr {
 			g.write(')')
 		}
+		if needs_addr {
+			g.write(')')
+		}
+		if is_option_unwrap {
+			g.tmp_var_ptr[tmp_var] = true
+		}
 		g.or_block(tmp_var, node.or_block, node.typ)
+		if is_option_unwrap {
+			g.tmp_var_ptr.delete(tmp_var)
+		}
 		g.write2(stmt_str, ' ')
 		unwrapped_typ := node.typ.clear_option_and_result()
 		unwrapped_styp := g.styp(unwrapped_typ)
-		g.write('(*(${unwrapped_styp}*)${tmp_var}.data)')
+		g.write('(*(${unwrapped_styp}*)${tmp_var}->data)')
 		return
 	}
 
@@ -6924,6 +6947,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					mut is_array_fixed := false
 					mut return_wrapped := false
 					mut return_is_option := is_option && return_type.has_option_or_result()
+					tmp_op := if cvar_name in g.tmp_var_ptr { '->' } else { '.' }
 					if is_option {
 						is_array_fixed = g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
@@ -6935,7 +6959,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								return_wrapped = true
 							} else if expr_stmt.expr is ast.CallExpr {
 								if expr_stmt.expr.is_return_used {
-									g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+									g.write('*(${cast_typ}*) ${cvar_name}${tmp_op}data = ')
 								}
 							} else if g.inside_opt_or_res && return_is_option && g.inside_assign {
 								g.write('_option_ok(&(${cast_typ}[]) { ')
@@ -6944,14 +6968,14 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								g.indent--
 								return
 							} else {
-								g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+								g.write('*(${cast_typ}*) ${cvar_name}${tmp_op}data = ')
 							}
 						}
 					} else {
 						g.write('${cvar_name} = ')
 					}
 					if is_array_fixed {
-						g.write('memcpy(${cvar_name}.data, (${cast_typ})')
+						g.write('memcpy(${cvar_name}${tmp_op}data, (${cast_typ})')
 					}
 					// return expr or { fn_returns_option() }
 					if is_option && g.inside_return && expr_stmt.expr is ast.CallExpr
@@ -6987,6 +7011,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 // Returns the type of the last stmt
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Type) {
 	cvar_name := c_name(var_name)
+	tmp_op := if var_name in g.tmp_var_ptr { '->' } else { '.' }
 	if or_block.kind == .block && or_block.stmts.len == 0 {
 		// generate nothing, block is empty
 		g.write(';\n${util.tabs(g.indent)}(void)${cvar_name};')
@@ -6996,20 +7021,20 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 	is_none_ok := return_type == ast.ovoid_type
 	g.writeln(';')
 	if is_none_ok {
-		g.writeln('if (${cvar_name}.state != 0) {')
+		g.writeln('if (${cvar_name}${tmp_op}state != 0) {')
 	} else {
 		if return_type != 0 && g.table.sym(return_type).kind == .function {
 			mr_styp = 'voidptr'
 		}
 		if return_type.has_flag(.result) {
-			g.writeln('if (${cvar_name}.is_error) {')
+			g.writeln('if (${cvar_name}${tmp_op}is_error) {')
 		} else {
-			g.writeln('if (${cvar_name}.state != 0) {')
+			g.writeln('if (${cvar_name}${tmp_op}state != 0) {')
 		}
 	}
 	if or_block.kind == .block {
 		g.or_expr_return_type = return_type.clear_option_and_result()
-		g.writeln('\tIError err = ${cvar_name}.err;')
+		g.writeln('\tIError err = ${cvar_name}${tmp_op}err;')
 
 		g.inside_or_block = true
 		defer {
@@ -7029,7 +7054,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		|| (or_block.kind == .propagate_option && return_type.has_flag(.result)) {
 		if g.file.mod.name == 'main' && (g.fn_decl == unsafe { nil } || g.fn_decl.is_main) {
 			// In main(), an `opt()!` call is sugar for `opt() or { panic(err) }`
-			err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
+			err_msg := 'IError_name_table[${cvar_name}${tmp_op}err._typ]._method_msg(${cvar_name}${tmp_op}err._object)'
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('panic_debug(${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"), ${err_msg});')
@@ -7057,7 +7082,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 	} else if or_block.kind == .propagate_option {
 		if g.file.mod.name == 'main' && (g.fn_decl == unsafe { nil } || g.fn_decl.is_main) {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
-			err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
+			err_msg := 'IError_name_table[${cvar_name}${tmp_op}err._typ]._method_msg(${cvar_name}${tmp_op}err._object)'
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('panic_debug(${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"), ${err_msg}.len == 0 ? _SLIT("option not set ()") : ${err_msg});')
