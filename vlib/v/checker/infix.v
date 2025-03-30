@@ -57,6 +57,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// `arr << if n > 0 { 10 } else { 11 }` set the right c.expected_type
 	if node.op == .left_shift && c.table.sym(left_type).kind == .array {
+		if left_type.has_flag(.option) {
+			c.error('cannot push to Option array that was not unwrapped first', node.left.pos())
+		}
 		c.markused_infiexpr(!c.is_builtin_mod && c.mod != 'strings')
 		if mut node.right is ast.IfExpr {
 			if node.right.is_expr && node.right.branches.len > 0 {
