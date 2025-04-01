@@ -6,7 +6,7 @@ fn decode[T]() !T {
 	return decode_map(T{})!
 }
 
-fn test_main() {
+fn test_main() ! {
 	x_str_str := decode[map[string]string]()!
 	x_str_int := decode[map[string]int]()!
 
