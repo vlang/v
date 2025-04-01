@@ -46,7 +46,7 @@ pub enum Kind {
 
 Example
 -------
-```v
+```v cgen
 import x.crypto.slhdsa
 
 fn main() {
