@@ -207,11 +207,7 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			g.write(ctoslit(expr_str))
 		}
 		ast.IndexExpr {
-			if expr.index is ast.RangeExpr {
-				g.write(ctoslit(expr_str))
-			} else {
-				g.gen_expr_to_string(expr, typ)
-			}
+			g.gen_expr_to_string(expr, typ)
 		}
 		ast.PrefixExpr {
 			if expr.right is ast.CastExpr {
