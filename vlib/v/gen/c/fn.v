@@ -980,6 +980,16 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 						ret_typ = g.unwrap_generic(ret_sym.info.elem_type).derive(unwrapped_ret_typ)
 					}
 				}
+			} else {
+				r_typ := g.resolve_return_type(node)
+				if r_typ != ast.void_type && !r_typ.has_flag(.generic) {
+					// restore result/option flag, as `resolve_return_type` may clean them
+					if node.return_type.has_flag(.result) {
+						ret_typ = r_typ.set_flag(.result)
+					} else {
+						ret_typ = r_typ.set_flag(.option)
+					}
+				}
 			}
 		}
 		mut styp := g.styp(ret_typ)
