@@ -982,7 +982,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				}
 			} else {
 				r_typ := g.resolve_return_type(node)
-				if r_typ != ast.void_type {
+				if r_typ != ast.void_type && !r_typ.has_flag(.generic) {
 					// restore result/option flag, as `resolve_return_type` may clean them
 					if node.return_type.has_flag(.result) {
 						ret_typ = r_typ.set_flag(.result)
