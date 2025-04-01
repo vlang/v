@@ -3,7 +3,8 @@ fn test_main() {
 	if arr == none {
 		arr = []int{}
 	} else {
-		unwrap(arr)
+		ret := unwrap(arr)
+		assert ret == arr
 	}
 	assert arr?.len == 0
 }
