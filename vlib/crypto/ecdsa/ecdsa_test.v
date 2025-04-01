@@ -1,4 +1,4 @@
-// vtest build: present_openssl? && !(sanitize-memory-clang? || docker-ubuntu-musl?)
+// vtest build: present_openssl? && !(sanitize-memory-clang || docker-ubuntu-musl)
 module ecdsa
 
 fn test_ecdsa() {
