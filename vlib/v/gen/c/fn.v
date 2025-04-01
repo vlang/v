@@ -981,7 +981,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 					}
 				}
 			} else {
-				ret_typ = g.resolve_return_type(node).set_flag(.result)
+				r_typ := g.resolve_return_type(node)
+				if r_typ != ast.void_type {
+					ret_typ = r_typ.set_flag(.result)
+				}
 			}
 		}
 		mut styp := g.styp(ret_typ)
