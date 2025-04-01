@@ -510,4 +510,11 @@ fn test_encode_decode_complex() {
 	c_complex := decode_binary[ComplexStruct](b_complex)!
 
 	assert a_complex == c_complex
+
+	// big endian test
+	b_complex_big_endian := encode_binary(a_complex, big_endian: true)!
+	c_complex_big_endian := decode_binary[ComplexStruct](b_complex_big_endian, big_endian: true)!
+
+	assert b_complex != b_complex_big_endian
+	assert a_complex == c_complex_big_endian
 }

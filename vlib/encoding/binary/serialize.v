@@ -18,7 +18,7 @@ pub mut:
 }
 
 // encode_binary encode a T type data into u8 array.
-// for encoding struct, you can use @[serialize: '-'] to skip field.
+// for encoding struct, you can use `@[serialize: '-']` to skip field.
 pub fn encode_binary[T](obj T, config EncodeConfig) ![]u8 {
 	mut s := EncodeState{
 		b:          []u8{cap: config.buffer_len}
@@ -72,6 +72,17 @@ fn encode_struct[T](mut s EncodeState, obj T) ! {
 	}
 }
 
+// help unions for bypass `-cstrict`/ `-Wstrict-aliasing` check.
+union U32_F32 {
+	u u32
+	f f32
+}
+
+union U64_F64 {
+	u u64
+	f f64
+}
+
 fn encode_primitive[T](mut s EncodeState, value T) ! {
 	$if T is int {
 		// NOTE: `int` always use 64bit
@@ -93,9 +104,9 @@ fn encode_primitive[T](mut s EncodeState, value T) ! {
 	} $else $if T is i64 {
 		s.put_u64(u64(value))
 	} $else $if T is f32 {
-		unsafe { s.put_u32(*(&u32(&value))) }
+		unsafe { s.put_u32(U32_F32{ f: value }.u) }
 	} $else $if T is f64 {
-		unsafe { s.put_u64(*(&u64(&value))) }
+		unsafe { s.put_u64(U64_F64{ f: value }.u) }
 	} $else $if T is bool {
 		s.put_u8(u8(value))
 	} $else $if T is rune {
@@ -123,15 +134,20 @@ fn encode_primitive[T](mut s EncodeState, value T) ! {
 fn encode_array[T](mut s EncodeState, arr []T) ! {
 	s.put_u64(u64(arr.len))
 
-	for element in arr {
-		$if T is $string {
-			encode_string(mut s, element)!
-		} $else $if T is $struct {
-			encode_struct(mut s, element)!
-		} $else $if T is $map {
-			encode_map(mut s, element)!
-		} $else {
-			encode_primitive(mut s, element)!
+	$if T is u8 {
+		// optimization for `[]u8`
+		s.b << arr
+	} $else {
+		for element in arr {
+			$if T is $string {
+				encode_string(mut s, element)!
+			} $else $if T is $struct {
+				encode_struct(mut s, element)!
+			} $else $if T is $map {
+				encode_map(mut s, element)!
+			} $else {
+				encode_primitive(mut s, element)!
+			}
 		}
 	}
 }
@@ -184,7 +200,7 @@ pub mut:
 }
 
 // decode_binary decode a u8 array into T type data.
-// for decoding struct, you can use @[serialize: '-'] to skip field.
+// for decoding struct, you can use `@[serialize: '-']` to skip field.
 pub fn decode_binary[T](b []u8, config DecodeConfig) !T {
 	mut s := DecodeState{
 		b:          b
@@ -261,10 +277,18 @@ fn decode_primitive[T](mut s DecodeState, value T) !T {
 		return T(s.get_u64()!)
 	} $else $if T is f32 {
 		v := s.get_u32()!
-		return unsafe { *(&f32(&v)) }
+		return unsafe {
+			U32_F32{
+				u: v
+			}.f
+		}
 	} $else $if T is f64 {
 		v := s.get_u64()!
-		return unsafe { *(&f64(&v)) }
+		return unsafe {
+			U64_F64{
+				u: v
+			}.f
+		}
 	} $else $if T is bool {
 		return s.get_u8()! != 0
 	} $else $if T is rune {
@@ -291,44 +315,52 @@ fn decode_primitive[T](mut s DecodeState, value T) !T {
 }
 
 fn decode_array[T](mut s DecodeState, _ []T) ![]T {
-	len := s.get_u64()!
-	mut arr := []T{cap: int(len)}
-	for _ in 0 .. int(len) {
-		if s.offset >= s.b.len {
-			return error('unexpected end of data')
-		}
-		$if T is $array {
-			arr << decode_array(mut s, T{})!
-		} $else $if T is $string {
-			arr << decode_string(mut s)!
-		} $else $if T is $struct {
-			arr << decode_struct(mut s, T{})!
-		} $else $if T is $map {
-			arr << decode_map(mut s, T{})!
-		} $else {
-			arr << decode_primitive(mut s, unsafe { T(0) })!
+	len := int(s.get_u64()!)
+	if len <= 0 || s.offset + len > s.b.len {
+		return error('invalid array length decode from stream')
+	}
+	mut arr := []T{cap: len}
+	$if T is u8 {
+		// optimization for `[]u8`
+		arr << s.b[s.offset..s.offset + len]
+		s.offset += len
+	} $else {
+		for _ in 0 .. len {
+			if s.offset >= s.b.len {
+				return error('unexpected end of data')
+			}
+			$if T is $array {
+				arr << decode_array(mut s, T{})!
+			} $else $if T is $string {
+				arr << decode_string(mut s)!
+			} $else $if T is $struct {
+				arr << decode_struct(mut s, T{})!
+			} $else $if T is $map {
+				arr << decode_map(mut s, T{})!
+			} $else {
+				arr << decode_primitive(mut s, unsafe { T(0) })!
+			}
 		}
 	}
 	return arr
 }
 
 fn decode_string(mut s DecodeState) !string {
-	len := s.get_u64()!
-	if int(len) < 0 || s.offset + int(len) > s.b.len {
-		return error('invalid string length')
+	len := int(s.get_u64()!)
+	if len <= 0 || s.offset + len > s.b.len {
+		return error('invalid string length decode from stream')
 	}
-	str := unsafe { s.b[s.offset..s.offset + int(len)].bytestr() }
-	s.offset += int(len)
+	str := unsafe { s.b[s.offset..s.offset + len].bytestr() }
+	s.offset += len
 	return str
 }
 
 // `Any` is a sum type that lists the possible types to be decoded and used.
-type Any = []Any
+type Any = int
 	| bool
 	| f64
 	| f32
 	| i64
-	| int
 	| i32
 	| i16
 	| i8
@@ -342,13 +374,17 @@ type Any = []Any
 	| rune
 	| isize
 	| usize
+	| []Any
 
 fn decode_map[K, V](mut s DecodeState, _ map[K]V) !map[K]V {
-	len := s.get_u64()!
+	len := int(s.get_u64()!)
+	if len <= 0 || s.offset + len > s.b.len {
+		return error('invalid map length decode from stream')
+	}
 
 	mut m := map[K]V{}
 
-	for _ in 0 .. int(len) {
+	for _ in 0 .. len {
 		// decode key first
 		// Maps can have keys of type string, rune, integer, float or voidptr.
 		mut k := Any(0)

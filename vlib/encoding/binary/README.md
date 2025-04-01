@@ -30,6 +30,7 @@ For generic `T` data encoding/decoding, you can use `encode_binary[T]()` and `de
 
 ```v
 module main
+
 import encoding.binary
 
 struct MyStruct {
