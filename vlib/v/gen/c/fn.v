@@ -971,6 +971,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				ret_typ = unaliased_type
 			}
 		} else if node.return_type_generic != 0 && node.raw_concrete_types.len == 0 {
+			ret_typ = g.fn_decl.return_type
 			unwrapped_ret_typ := g.unwrap_generic(node.return_type_generic)
 			if !unwrapped_ret_typ.has_flag(.generic) {
 				ret_sym := g.table.sym(unwrapped_ret_typ)
