@@ -971,7 +971,6 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				ret_typ = unaliased_type
 			}
 		} else if node.return_type_generic != 0 && node.raw_concrete_types.len == 0 {
-			ret_typ = g.resolve_return_type(node).set_flag(.result)
 			unwrapped_ret_typ := g.unwrap_generic(node.return_type_generic)
 			if !unwrapped_ret_typ.has_flag(.generic) {
 				ret_sym := g.table.sym(unwrapped_ret_typ)
@@ -981,6 +980,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 						ret_typ = g.unwrap_generic(ret_sym.info.elem_type).derive(unwrapped_ret_typ)
 					}
 				}
+			} else {
+				ret_typ = g.resolve_return_type(node).set_flag(.result)
 			}
 		}
 		mut styp := g.styp(ret_typ)
