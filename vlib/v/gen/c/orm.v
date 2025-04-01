@@ -155,18 +155,19 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 
 		for field in node.fields {
 			g.writeln('// `${table_name}`.`${field.name}`')
-			sym := g.table.sym(field.typ)
+			final_field_typ := g.table.final_type(field.typ)
+			sym := g.table.sym(final_field_typ)
 			typ := match true {
 				sym.name == 'time.Time' { '_const_orm__time_' }
 				sym.kind == .enum { '_const_orm__enum_' }
-				else { field.typ.idx().str() }
+				else { final_field_typ.idx().str() }
 			}
 			g.writeln('(orm__TableField){')
 			g.indent++
 			g.writeln('.name = _SLIT("${field.name}"),')
 			g.writeln('.typ = ${typ}, // `${sym.name}`')
 			g.writeln('.is_arr = ${sym.kind == .array}, ')
-			g.writeln('.nullable = ${field.typ.has_flag(.option)},')
+			g.writeln('.nullable = ${final_field_typ.has_flag(.option)},')
 			g.writeln('.default_val = (string){ .str = (byteptr) "${field.default_val}", .is_lit = 1 },')
 			g.writeln('.attrs = new_array_from_c_array(${field.attrs.len}, ${field.attrs.len}, sizeof(VAttribute),')
 			g.indent++
@@ -308,11 +309,16 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	mut opt_fields := []int{}
 
 	for field in node.fields {
-		sym := g.table.sym(field.typ)
+		final_field_typ := g.table.final_type(field.typ)
+		sym := g.table.sym(final_field_typ)
 		if sym.kind == .struct && sym.name != 'time.Time' {
-			subs << unsafe { node.sub_structs[int(field.typ)] }
-			unwrapped_c_typ := g.styp(field.typ.clear_flag(.option))
-			subs_unwrapped_c_typ << if field.typ.has_flag(.option) { unwrapped_c_typ } else { '' }
+			subs << unsafe { node.sub_structs[int(final_field_typ)] }
+			unwrapped_c_typ := g.styp(final_field_typ.clear_flag(.option))
+			subs_unwrapped_c_typ << if final_field_typ.has_flag(.option) {
+				unwrapped_c_typ
+			} else {
+				''
+			}
 		} else if sym.kind == .array {
 			// Handle foreign keys
 			if attr := field.attrs.find_first('fkey') {
@@ -320,11 +326,11 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			} else {
 				verror('missing fkey attribute')
 			}
-			if field.typ.has_flag(.option) {
+			if final_field_typ.has_flag(.option) {
 				opt_fields << arrs.len
 			}
 			if node.sub_structs.len > 0 {
-				arrs << unsafe { node.sub_structs[int(field.typ)] }
+				arrs << unsafe { node.sub_structs[int(final_field_typ)] }
 			}
 			field_names << field.name
 		}
@@ -407,7 +413,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				g.writeln('${pid}, ')
 				continue
 			}
-			mut sym := g.table.sym(field.typ)
+			final_field_typ := g.table.final_type(field.typ)
+			mut sym := g.table.sym(final_field_typ)
 			mut typ := sym.cname
 			mut ctyp := sym.cname
 			if sym.kind == .struct && typ != 'time__Time' {
@@ -420,10 +427,10 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				ctyp = 'time__Time'
 				typ = 'time'
 			} else if sym.kind == .enum {
-				typ = g.table.sym(g.table.final_type(field.typ)).cname
+				typ = g.table.sym(final_field_typ).cname
 			}
 			var := '${node.object_var}${member_access_type}${c_name(field.name)}'
-			if field.typ.has_flag(.option) {
+			if final_field_typ.has_flag(.option) {
 				g.writeln('${var}.state == 2? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${var}.data)),')
 			} else if inserting_object_sym.kind == .sum_type {
 				table_sym := g.table.sym(node.table_expr.typ)
@@ -570,7 +577,8 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 	if t == 0 {
 		verror('${g.file.path}:${expr.pos().line_nr + 1}: ORM: unknown type t == 0\nexpr: ${expr}\nlast SQL stmt:\n${g.out.after(g.sql_last_stmt_out_len)}')
 	}
-	mut sym := g.table.sym(t)
+	final_field_typ := g.table.final_type(t)
+	mut sym := g.table.sym(final_field_typ)
 	mut typ := sym.cname
 	if typ == 'orm__Primitive' {
 		g.expr(expr)
@@ -912,7 +920,8 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.indent++
 		for field in select_fields {
 			g.writeln('_SLIT("${g.get_orm_column_name_from_struct_field(field)}"),')
-			sym := g.table.sym(field.typ)
+			final_field_typ := g.table.final_type(field.typ)
+			sym := g.table.sym(final_field_typ)
 			if sym.name == 'time.Time' {
 				types << '_const_orm__time_'
 				continue
@@ -924,7 +933,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				types << '_const_orm__enum_'
 				continue
 			}
-			types << field.typ.idx().str()
+			types << final_field_typ.idx().str()
 		}
 		g.indent--
 		g.writeln('})')
@@ -1052,11 +1061,12 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		mut fields_idx := 0
 		for field in fields {
 			array_get_call_code := '(*(orm__Primitive*) array_get((*(Array_orm__Primitive*) array_get(${select_unwrapped_result_var_name}, ${idx})), ${fields_idx}))'
-			sym := g.table.sym(field.typ)
+			final_field_typ := g.table.final_type(field.typ)
+			sym := g.table.sym(final_field_typ)
 			field_var := '${tmp}.${c_name(field.name)}'
-			field_c_typ := g.styp(field.typ)
+			field_c_typ := g.styp(final_field_typ)
 			if sym.kind == .struct && sym.name != 'time.Time' {
-				mut sub := node.sub_structs[int(field.typ)]
+				mut sub := node.sub_structs[int(final_field_typ)]
 				mut where_expr := sub.where_expr as ast.InfixExpr
 				mut ident := where_expr.right as ast.Ident
 				primitive_type_index := g.table.find_type('orm.Primitive')
@@ -1075,8 +1085,8 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				sub_result_c_typ := g.styp(sub.typ)
 				g.writeln('${sub_result_c_typ} ${sub_result_var};')
 				g.write_orm_select(sub, connection_var_name, sub_result_var)
-				if field.typ.has_flag(.option) {
-					unwrapped_field_c_typ := g.styp(field.typ.clear_flag(.option))
+				if final_field_typ.has_flag(.option) {
+					unwrapped_field_c_typ := g.styp(final_field_typ.clear_flag(.option))
 					g.writeln('if (!${sub_result_var}.is_error)')
 					g.writeln('\t_option_ok(${sub_result_var}.data, (_option *)&${field_var}, sizeof(${unwrapped_field_c_typ}));')
 					g.writeln('else')
@@ -1093,7 +1103,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				} else {
 					verror('missing fkey attribute')
 				}
-				sub := node.sub_structs[field.typ]
+				sub := node.sub_structs[final_field_typ]
 				if sub.has_where {
 					mut where_expr := sub.where_expr as ast.InfixExpr
 					mut left_where_expr := where_expr.left as ast.Ident
@@ -1112,7 +1122,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 					}
 
 					mut sql_expr_select_array := ast.SqlExpr{
-						typ:          field.typ.set_flag(.result)
+						typ:          final_field_typ.set_flag(.result)
 						is_count:     sub.is_count
 						db_expr:      sub.db_expr
 						has_where:    sub.has_where
@@ -1136,15 +1146,15 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 					g.writeln('${sub_result_c_typ} ${sub_result_var};')
 					g.write_orm_select(sql_expr_select_array, connection_var_name, sub_result_var)
 					g.writeln('if (!${sub_result_var}.is_error) {')
-					if field.typ.has_flag(.option) {
+					if final_field_typ.has_flag(.option) {
 						g.writeln('\t${field_var}.state = 0;')
-						g.writeln('\t*(${g.base_type(field.typ)}*)${field_var}.data = *(${g.base_type(field.typ)}*)${sub_result_var}.data;')
+						g.writeln('\t*(${g.base_type(final_field_typ)}*)${field_var}.data = *(${g.base_type(final_field_typ)}*)${sub_result_var}.data;')
 					} else {
 						g.writeln('\t${field_var} = *(${g.base_type(field.typ)}*)${sub_result_var}.data;')
 					}
 					g.writeln('}')
 				}
-			} else if field.typ.has_flag(.option) {
+			} else if final_field_typ.has_flag(.option) {
 				prim_var := g.new_tmp_var()
 				g.writeln('orm__Primitive *${prim_var} = &${array_get_call_code};')
 				g.writeln('if (${prim_var}->_typ == ${g.table.find_type_idx('orm.Null')})')
@@ -1265,7 +1275,8 @@ fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string 
 		}
 	}
 
-	sym := g.table.sym(field.typ)
+	final_field_typ := g.table.final_type(field.typ)
+	sym := g.table.sym(final_field_typ)
 	if sym.kind == .struct && sym.name != 'time.Time' {
 		name = '${name}_id'
 	}
