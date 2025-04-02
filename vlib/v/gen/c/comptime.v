@@ -1280,6 +1280,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		'rv64', 'riscv64' {
 			return '__V_rv64'
 		}
+		's390x' {
+			return '__V_s390x'
+		}
 		// bitness:
 		'x64' {
 			return 'TARGET_IS_64BIT'

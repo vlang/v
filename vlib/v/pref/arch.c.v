@@ -8,6 +8,7 @@ pub enum Arch {
 	rv64  // 64-bit risc-v
 	rv32  // 32-bit risc-v
 	i386
+	s390x
 	js_node
 	js_browser
 	js_freestanding
@@ -47,6 +48,9 @@ pub fn arch_from_string(arch_str string) !Arch {
 		}
 		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // i386 recommended
 			return .i386
+		}
+		's390x' {
+			return .s390x
 		}
 		'js', 'js_node' {
 			return .js_node

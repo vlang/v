@@ -143,6 +143,17 @@ static char __CLOSURE_GET_DATA_BYTES[] = {
 	0x03, 0xA5, 0x0F, 0x00,  // lw    a0, 0(t6)
 	0x67, 0x80, 0x00, 0x00   // ret
 };
+#elif defined (__V_s390x)
+static char __closure_thunk[] = {
+	0xC0, 0x30, 0xFF, 0xFF, 0xE0, 0x00,  // larl %r3, -16384
+	0xE3, 0x40, 0x30, 0x00, 0x00, 0x04,  // lg   %r4, 0(%r3)
+	0xE3, 0x30, 0x30, 0x08, 0x00, 0x04,  // lg   %r3, 8(%r3)
+	0x07, 0xF3,			     // br   %r3
+};
+static char __CLOSURE_GET_DATA_BYTES[] = {
+	0xB9, 0x04, 0x00, 0x24,		     // lgr  %r2, %r4
+	0x07, 0xFE,			     // br   %r14
+};
 #endif
 
 static void*(*__CLOSURE_GET_DATA)(void) = 0;
@@ -299,6 +310,12 @@ const c_common_macros = '
 	#define __V_x86    1
 	#undef __V_architecture
 	#define __V_architecture 6
+#endif
+
+#if defined(__s390x__)
+	#define __V_s390x  1
+	#undef __V_architecture
+	#define __V_architecture 7
 #endif
 
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
@@ -658,7 +675,7 @@ static void* g_live_info = NULL;
 
 const c_builtin_types = '
 //================================== builtin types ================================*/
-#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64)
+#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64) || defined(__s390x__)
 typedef int64_t vint_t;
 #else
 typedef int32_t vint_t;
