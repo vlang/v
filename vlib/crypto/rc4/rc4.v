@@ -31,11 +31,11 @@ pub fn (mut c Cipher) free() {
 
 // new_cipher creates and returns a new Cipher. The key argument should be the
 // RC4 key, at least 1 byte and at most 256 bytes.
-pub fn new_cipher(key []u8) !Cipher {
+pub fn new_cipher(key []u8) !&Cipher {
 	if key.len < 1 || key.len > 256 {
 		return error('crypto.rc4: invalid key size ' + key.len.str())
 	}
-	mut c := Cipher{
+	mut c := &Cipher{
 		s: []u32{len: (256)}
 	}
 	for i in 0 .. 256 {
