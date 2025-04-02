@@ -1030,13 +1030,22 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			elem_sym := g.table.final_sym(array_info.elem_type)
 			elem_is_array_var := elem_sym.kind in [.array, .array_fixed] && node.right is ast.Ident
 			g.write('array_push${noscan}((array*)')
+			mut needs_addr := false
 			if !left.typ.is_ptr()
 				|| (node.left_type.has_flag(.shared_f) && !node.left_type.deref().is_ptr()) {
-				g.write('&')
+				if node.left is ast.CallExpr {
+					g.write('ADDR(${g.styp(node.left_type)}, ')
+					needs_addr = true
+				} else {
+					g.write('&')
+				}
 			}
 			g.expr(node.left)
 			if node.left_type.has_flag(.shared_f) {
 				g.write('->val')
+			}
+			if needs_addr {
+				g.write(')')
 			}
 			if elem_sym.kind == .function {
 				g.write(', _MOV((voidptr[]){ ')

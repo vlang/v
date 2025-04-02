@@ -2614,7 +2614,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 @[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language, is_smartcast bool) {
-	arg_typ := if arg.ct_expr {
+	mut arg_typ := if arg.ct_expr {
 		g.unwrap_generic(g.type_resolver.get_type(arg.expr))
 	} else {
 		g.unwrap_generic(arg.typ)
@@ -2754,6 +2754,13 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		if (arg_sym.info is ast.Alias || exp_sym.info is ast.Alias) && expected_type != arg_typ {
 			g.expr_opt_with_alias(arg.expr, arg_typ, expected_type)
 		} else {
+			if arg.expr is ast.Ident {
+				if arg.expr.obj is ast.Var {
+					if arg.expr.obj.smartcasts.len > 0 {
+						arg_typ = arg.expr.obj.smartcasts.last()
+					}
+				}
+			}
 			g.expr_with_opt(arg.expr, arg_typ, expected_type)
 		}
 		return
