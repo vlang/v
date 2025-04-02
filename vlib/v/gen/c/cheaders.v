@@ -56,7 +56,7 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 
 fn c_closure_helpers(pref_ &pref.Preferences) string {
 	mut builder := strings.new_builder(2048)
-	if pref_.os != .windows {
+	if pref_.os != .windows && pref_.is_bare == false {
 		builder.writeln('#include <sys/mman.h>')
 	}
 
@@ -174,6 +174,10 @@ static SRWLOCK _closure_mtx;
 #define _closure_mtx_init() InitializeSRWLock(&_closure_mtx)
 #define _closure_mtx_lock() AcquireSRWLockExclusive(&_closure_mtx)
 #define _closure_mtx_unlock() ReleaseSRWLockExclusive(&_closure_mtx)
+#elif defined(_VFREESTANDING)
+#define _closure_mtx_init()
+#define _closure_mtx_lock()
+#define _closure_mtx_unlock()
 #else
 static pthread_mutex_t _closure_mtx;
 #define _closure_mtx_init() pthread_mutex_init(&_closure_mtx, 0)
@@ -196,6 +200,9 @@ static void __closure_alloc(void) {
 #ifdef _WIN32
 	char* p = VirtualAlloc(NULL, _V_page_size * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (p == NULL) return;
+#elif defined(_VFREESTANDING)
+	char *p = malloc(_V_page_size * 2);
+	if (p == NULL) return;
 #else
 	char* p = mmap(0, _V_page_size * 2, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 	if (p == MAP_FAILED) return;
@@ -212,6 +219,7 @@ static void __closure_alloc(void) {
 #ifdef _WIN32
 	DWORD _tmp;
 	VirtualProtect(_closure_ptr, _V_page_size, PAGE_EXECUTE_READ, &_tmp);
+#elif defined(_VFREESTANDING)
 #else
 	mprotect(_closure_ptr, _V_page_size, PROT_READ | PROT_EXEC);
 #endif
@@ -234,13 +242,21 @@ void __closure_init() {
 }
 #else
 ${static_non_parallel}void __closure_init() {
+#ifndef _VFREESTANDING
 	uint32_t page_size = sysconf(_SC_PAGESIZE);
+#else
+	uint32_t page_size = 0x4000;
+#endif
 	page_size = page_size * (((ASSUMED_PAGE_SIZE - 1) / page_size) + 1);
 	_V_page_size = page_size;
 	__closure_alloc();
+#ifndef _VFREESTANDING
 	mprotect(_closure_ptr, page_size, PROT_READ | PROT_WRITE);
+#endif
 	memcpy(_closure_ptr, __CLOSURE_GET_DATA_BYTES, sizeof(__CLOSURE_GET_DATA_BYTES));
+#ifndef _VFREESTANDING
 	mprotect(_closure_ptr, page_size, PROT_READ | PROT_EXEC);
+#endif
 	__CLOSURE_GET_DATA = (void*)_closure_ptr;
 	_closure_ptr += _CLOSURE_SIZE;
 	_closure_cap--;
