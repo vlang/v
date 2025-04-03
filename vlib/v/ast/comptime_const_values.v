@@ -329,5 +329,8 @@ pub fn (obj ScopeObject) is_simple_define_const() bool {
 	if obj is ConstField {
 		return obj.is_simple_define_const()
 	}
-	return obj.typ.is_number()
+	if obj is Var {
+		return obj.is_index_var
+	}
+	return false
 }
