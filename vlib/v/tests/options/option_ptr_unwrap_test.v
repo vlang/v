@@ -27,9 +27,9 @@ fn (mut li LinkedList[T]) add[T](data T) ? {
 		node.prev = node
 	} else {
 		node.next = li.head
-		node.prev = li.head?.prev
+		node.prev = li.head.prev
 		node.prev?.next = node
-		li.head?.prev = node
+		li.head.prev = node
 	}
 
 	li.size += 1
