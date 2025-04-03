@@ -2957,7 +2957,6 @@ fn (mut c Checker) check_predicate_param(is_map bool, elem_typ ast.Type, node as
 		// Finish early so that it doesn't fail later
 		return
 	}
-	elem_sym := c.table.sym(elem_typ)
 	arg_expr := node.args[0].expr
 	match arg_expr {
 		ast.AnonFn {
@@ -2969,11 +2968,11 @@ fn (mut c Checker) check_predicate_param(is_map bool, elem_typ ast.Type, node as
 				c.error('function needs exactly 1 argument', arg_expr.decl.pos)
 			} else if is_map && (arg_expr.decl.return_type == ast.void_type
 				|| arg_expr.decl.params[0].typ != elem_typ) {
-				c.error('type mismatch, should use `fn(a ${elem_sym.name}) T {...}`',
+				c.error('type mismatch, should use `fn(a ${c.table.type_to_str(elem_typ)}) T {...}`',
 					arg_expr.decl.pos)
 			} else if !is_map && (arg_expr.decl.return_type != ast.bool_type
 				|| arg_expr.decl.params[0].typ != elem_typ) {
-				c.error('type mismatch, should use `fn(a ${elem_sym.name}) bool {...}`',
+				c.error('type mismatch, should use `fn(a ${c.table.type_to_str(elem_typ)}) bool {...}`',
 					arg_expr.decl.pos)
 			}
 		}
@@ -2991,11 +2990,11 @@ fn (mut c Checker) check_predicate_param(is_map bool, elem_typ ast.Type, node as
 					c.error('function needs exactly 1 argument', node.pos)
 				} else if is_map
 					&& (func.return_type == ast.void_type || func.params[0].typ != elem_typ) {
-					c.error('type mismatch, should use `fn(a ${elem_sym.name}) T {...}`',
+					c.error('type mismatch, should use `fn(a ${c.table.type_to_str(elem_typ)}) T {...}`',
 						arg_expr.pos)
 				} else if !is_map
 					&& (func.return_type != ast.bool_type || func.params[0].typ != elem_typ) {
-					c.error('type mismatch, should use `fn(a ${elem_sym.name}) bool {...}`',
+					c.error('type mismatch, should use `fn(a ${c.table.type_to_str(elem_typ)}) bool {...}`',
 						arg_expr.pos)
 				}
 			} else if arg_expr.kind == .variable {
@@ -3011,11 +3010,11 @@ fn (mut c Checker) check_predicate_param(is_map bool, elem_typ ast.Type, node as
 							c.error('function needs exactly 1 argument', expr.decl.pos)
 						} else if is_map && (expr.decl.return_type == ast.void_type
 							|| expr.decl.params[0].typ != elem_typ) {
-							c.error('type mismatch, should use `fn(a ${elem_sym.name}) T {...}`',
+							c.error('type mismatch, should use `fn(a ${c.table.type_to_str(elem_typ)}) T {...}`',
 								expr.decl.pos)
 						} else if !is_map && (expr.decl.return_type != ast.bool_type
 							|| expr.decl.params[0].typ != elem_typ) {
-							c.error('type mismatch, should use `fn(a ${elem_sym.name}) bool {...}`',
+							c.error('type mismatch, should use `fn(a ${c.table.type_to_str(elem_typ)}) bool {...}`',
 								expr.decl.pos)
 						}
 						return
