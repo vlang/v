@@ -39,7 +39,7 @@ fn test_out_files() {
 		eprintln('no `.out` tests found in ${testdata_folder}')
 		return
 	}
-	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder)
+	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder).sorted()
 	mut total_errors := 0
 	for out_path in paths {
 		basename, path, relpath, out_relpath := target2paths(out_path, '.out')
@@ -120,7 +120,7 @@ fn test_c_must_have_files() {
 		eprintln('no `.c.must_have` files found in ${testdata_folder}')
 		return
 	}
-	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder)
+	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder).sorted()
 	mut total_errors := 0
 	mut failed_descriptions := []string{cap: paths.len}
 	for must_have_path in paths {
