@@ -2640,7 +2640,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 		}
 		.s390x {
 			s390x := gen_all_registers(mut t, s390x_no_number_register_list, s390x_with_number_register_list,
-				 64)
+				64)
 			for k, v in s390x {
 				res[k] = v
 			}
