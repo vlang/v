@@ -4185,7 +4185,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					for i, typ in field.smartcasts {
 						if i == 0 && (is_option_unwrap || nested_unwrap) {
 							deref := if g.inside_selector {
-								if is_iface_or_sumtype {
+								if is_iface_or_sumtype || (field.orig_type.is_ptr() && g.left_is_opt
+									&& is_option_unwrap) {
 									'*'.repeat(field.smartcasts.last().nr_muls())
 								} else {
 									'*'.repeat(field.smartcasts.last().nr_muls() + 1)

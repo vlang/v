@@ -75,6 +75,11 @@ pub fn (mut t TypeResolver) typeof_type(node ast.Expr, default_type ast.Type) as
 		if node.expr is ast.Ident && node.is_field_typ {
 			return t.get_type_from_comptime_var(node.expr)
 		}
+		if field := node.scope.find_struct_field(node.expr.str(), node.expr_type, node.field_name) {
+			if field.smartcasts.len > 0 {
+				return field.smartcasts.last()
+			}
+		}
 		sym := t.table.sym(t.resolver.unwrap_generic(node.expr_type))
 		if f := t.table.find_field_with_embeds(sym, node.field_name) {
 			return f.typ

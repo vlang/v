@@ -31,7 +31,7 @@ pub fn (mut l LinkedList) pop() int {
 		l.head = none
 		l.tail = none
 	} else { // multiple elements
-		mut prev := tail.prev or { panic('prev cannot be none at this point') }
+		mut prev := tail.prev
 		prev.next = none
 		l.tail = prev
 	}
