@@ -308,7 +308,11 @@ fn data_pointers_to_primitives(data_pointers []&u8, types []int, field_types []F
 					}
 					.type_datetime, .type_timestamp {
 						string_time := unsafe { cstring_to_vstring(&char(data)) }
-						primitive = time.parse(string_time)!
+						if string_time == '' {
+							primitive = orm.Null{}
+						} else {
+							primitive = time.parse(string_time)!
+						}
 					}
 					else {}
 				}
