@@ -21,7 +21,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 	metadata := stmt.gen_metadata()
 	fields := stmt.fetch_fields(metadata)
 	num_fields := stmt.get_field_count()
-	mut data_pointers := []&u8{}
+	mut data_pointers := []&u8{cap: int(num_fields)}
 
 	// Allocate memory for each column.
 	for i in 0 .. num_fields {
@@ -71,25 +71,18 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		field_type := unsafe { FieldType(field.type) }
 		field_types << field_type
 
-		match types[i] {
-			orm.type_string {
+		match field_type {
+			.type_string, .type_var_string, .type_blob, .type_tiny_blob, .type_medium_blob,
+			.type_long_blob {
 				string_binds_map[i] = mysql_bind
 			}
-			orm.time_ {
-				match field_type {
-					.type_long {
-						mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
-					}
-					.type_time, .type_date, .type_datetime, .type_timestamp {
-						// FIXME: Allocate memory for blobs dynamically.
-						mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
-						mysql_bind.buffer_length = FieldType.type_blob.get_len()
-					}
-					.type_string, .type_blob {}
-					else {
-						return error('Unknown type ${field.type}')
-					}
-				}
+			.type_long {
+				mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
+			}
+			.type_time, .type_date, .type_datetime, .type_timestamp {
+				// FIXME: Allocate memory for blobs dynamically.
+				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
+				mysql_bind.buffer_length = FieldType.type_blob.get_len()
 			}
 			else {}
 		}
