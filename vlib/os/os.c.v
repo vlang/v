@@ -9,6 +9,11 @@ $if freebsd || openbsd {
 	#include <sys/sysctl.h>
 }
 
+$if windows {
+	#include <windows.h>
+
+}
+
 pub const args = arguments()
 
 fn C.readdir(voidptr) &C.dirent
@@ -40,6 +45,8 @@ fn C.chown(&char, int, int) int
 fn C.ftruncate(voidptr, u64) int
 
 fn C._chsize_s(voidptr, u64) int
+
+
 
 // read_bytes returns all bytes read from file in `path`.
 @[manualfree]
@@ -901,7 +908,7 @@ pub fn fork() int {
 		pid = C.fork()
 	}
 	$if windows {
-		panic('os.fork not supported in windows') // TODO
+		pid = C.GetCurrentProcessId()
 	}
 	return pid
 }
