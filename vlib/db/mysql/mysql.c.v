@@ -448,6 +448,7 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 			buffer:        param.str
 			buffer_length: u32(param.len)
 			length:        0
+			is_null:       0
 		}
 		bind_params << bind
 	}
@@ -470,6 +471,7 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 	}
 	num_cols := C.mysql_num_fields(query_metadata)
 	mut length := []u32{len: num_cols}
+	mut is_null := []bool{len: num_cols}
 
 	mut binds := []C.MYSQL_BIND{}
 	for i in 0 .. num_cols {
@@ -478,6 +480,7 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 			buffer:        0
 			buffer_length: 0
 			length:        unsafe { &length[i] }
+			is_null:       unsafe { &is_null[i] }
 		}
 		binds << bind
 	}

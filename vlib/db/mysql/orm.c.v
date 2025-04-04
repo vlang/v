@@ -53,8 +53,9 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		}
 	}
 
-	lengths := []u32{len: int(num_fields), init: 0}
-	stmt.bind_res(fields, data_pointers, lengths, num_fields)
+	mut lengths := []u32{len: int(num_fields), init: 0}
+	mut is_null := []bool{len: int(num_fields)}
+	stmt.bind_res(fields, data_pointers, lengths, is_null, num_fields)
 
 	mut types := config.types.clone()
 	mut field_types := []FieldType{}
@@ -112,7 +113,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			stmt.fetch_column(bind, index)!
 		}
 
-		result << data_pointers_to_primitives(data_pointers, types, field_types)!
+		result << data_pointers_to_primitives(is_null, data_pointers, types, field_types)!
 	}
 
 	stmt.close()!
@@ -251,71 +252,70 @@ fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 
 // data_pointers_to_primitives returns an array of `Primitive`
 // cast from `data_pointers` using `types`.
-fn data_pointers_to_primitives(data_pointers []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
+fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
 	mut result := []orm.Primitive{}
 
 	for i, data in data_pointers {
 		mut primitive := orm.Primitive(0)
-		match types[i] {
-			orm.type_idx['i8'] {
-				primitive = *(unsafe { &i8(data) })
-			}
-			orm.type_idx['i16'] {
-				primitive = *(unsafe { &i16(data) })
-			}
-			orm.type_idx['int'], orm.serial {
-				primitive = *(unsafe { &int(data) })
-			}
-			orm.type_idx['i64'] {
-				primitive = *(unsafe { &i64(data) })
-			}
-			orm.type_idx['u8'] {
-				primitive = *(unsafe { &u8(data) })
-			}
-			orm.type_idx['u16'] {
-				primitive = *(unsafe { &u16(data) })
-			}
-			orm.type_idx['u32'] {
-				primitive = *(unsafe { &u32(data) })
-			}
-			orm.type_idx['u64'] {
-				primitive = *(unsafe { &u64(data) })
-			}
-			orm.type_idx['f32'] {
-				primitive = *(unsafe { &f32(data) })
-			}
-			orm.type_idx['f64'] {
-				primitive = *(unsafe { &f64(data) })
-			}
-			orm.type_idx['bool'] {
-				primitive = *(unsafe { &bool(data) })
-			}
-			orm.type_string {
-				primitive = unsafe { cstring_to_vstring(&char(data)) }
-			}
-			orm.time_ {
-				match field_types[i] {
-					.type_long {
-						timestamp := *(unsafe { &int(data) })
-						primitive = time.unix(timestamp)
-					}
-					.type_datetime, .type_timestamp {
-						string_time := unsafe { cstring_to_vstring(&char(data)) }
-						if string_time == '' {
-							primitive = orm.Null{}
-						} else {
-							primitive = time.parse(string_time)!
+		if !is_null[i] {
+			match types[i] {
+				orm.type_idx['i8'] {
+					primitive = *(unsafe { &i8(data) })
+				}
+				orm.type_idx['i16'] {
+					primitive = *(unsafe { &i16(data) })
+				}
+				orm.type_idx['int'], orm.serial {
+					primitive = *(unsafe { &int(data) })
+				}
+				orm.type_idx['i64'] {
+					primitive = *(unsafe { &i64(data) })
+				}
+				orm.type_idx['u8'] {
+					primitive = *(unsafe { &u8(data) })
+				}
+				orm.type_idx['u16'] {
+					primitive = *(unsafe { &u16(data) })
+				}
+				orm.type_idx['u32'] {
+					primitive = *(unsafe { &u32(data) })
+				}
+				orm.type_idx['u64'] {
+					primitive = *(unsafe { &u64(data) })
+				}
+				orm.type_idx['f32'] {
+					primitive = *(unsafe { &f32(data) })
+				}
+				orm.type_idx['f64'] {
+					primitive = *(unsafe { &f64(data) })
+				}
+				orm.type_idx['bool'] {
+					primitive = *(unsafe { &bool(data) })
+				}
+				orm.type_string {
+					primitive = unsafe { cstring_to_vstring(&char(data)) }
+				}
+				orm.time_ {
+					match field_types[i] {
+						.type_long {
+							timestamp := *(unsafe { &int(data) })
+							primitive = time.unix(timestamp)
 						}
+						.type_datetime, .type_timestamp {
+							primitive = time.parse(unsafe { cstring_to_vstring(&char(data)) })!
+						}
+						else {}
 					}
-					else {}
+				}
+				orm.enum_ {
+					primitive = *(unsafe { &i64(data) })
+				}
+				else {
+					return error('Unknown type ${types[i]}')
 				}
 			}
-			orm.enum_ {
-				primitive = *(unsafe { &i64(data) })
-			}
-			else {
-				return error('Unknown type ${types[i]}')
-			}
+		} else {
+			primitive = orm.Null{}
 		}
 		result << primitive
 	}
