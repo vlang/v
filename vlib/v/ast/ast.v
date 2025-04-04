@@ -1826,6 +1826,13 @@ pub const riscv_with_number_register_list = {
 	'a#': 8
 }
 
+pub const s390x_no_number_register_list = []string{}
+pub const s390x_with_number_register_list = {
+	'f#': 16
+	'r#': 16
+	'v#': 32
+}
+
 pub struct DebuggerStmt {
 pub:
 	pos token.Pos
@@ -2628,6 +2635,13 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			rv64 := gen_all_registers(mut t, riscv_no_number_register_list, riscv_with_number_register_list,
 				64)
 			for k, v in rv64 {
+				res[k] = v
+			}
+		}
+		.s390x {
+			s390x := gen_all_registers(mut t, s390x_no_number_register_list, s390x_with_number_register_list,
+				64)
+			for k, v in s390x {
 				res[k] = v
 			}
 		}
