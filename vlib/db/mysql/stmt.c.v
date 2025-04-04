@@ -13,6 +13,7 @@ mut:
 	buffer        voidptr
 	buffer_length u32
 	length        &u32
+	is_null       &bool
 }
 
 const mysql_type_decimal = C.MYSQL_TYPE_DECIMAL
@@ -250,6 +251,7 @@ pub fn (mut stmt Stmt) bind_null() {
 	stmt.binds << C.MYSQL_BIND{
 		buffer_type: mysql_type_null
 		length:      0
+		is_null:     0
 	}
 }
 
@@ -261,16 +263,18 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 		buffer:        buffer
 		buffer_length: buf_len
 		length:        0
+		is_null:       0
 	}
 }
 
 // bind_res will store one result in the statement `stmt`
-pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []u32, num_fields int) {
+pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []u32, is_null []bool, num_fields int) {
 	for i in 0 .. num_fields {
 		stmt.res << C.MYSQL_BIND{
 			buffer_type: unsafe { fields[i].type }
 			buffer:      dataptr[i]
 			length:      &lengths[i]
+			is_null:     &is_null[i]
 		}
 	}
 }
