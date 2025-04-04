@@ -905,7 +905,7 @@ pub fn fork() int {
 		pid = C.fork()
 	}
 	$if windows {
-		pid = C.GetCurrentProcessId()
+		pid = C.GetCurrentProcessId().str().int()
 	}
 	return pid
 }
