@@ -125,12 +125,10 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if exp_idx == got_idx {
 		return true
 	}
-	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.nil_type_idx
-		|| exp_idx == ast.byteptr_type_idx
-		|| (exp_is_ptr && expected.deref().idx() == ast.u8_type_idx) {
-		if got_is_any_kind_of_pointer {
-			return true
-		}
+	if got_is_any_kind_of_pointer && (exp_idx == ast.voidptr_type_idx
+		|| exp_idx == ast.nil_type_idx || exp_idx == ast.byteptr_type_idx
+		|| (exp_is_ptr && expected.deref().idx() == ast.u8_type_idx)) {
+		return true
 	}
 
 	if (exp_idx == ast.nil_type_idx && got_idx == ast.string_type_idx)
