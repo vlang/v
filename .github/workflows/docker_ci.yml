@@ -73,6 +73,8 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: Add dependencies
+        run: apt install libsqlite3-dev
       - name: All code is formatted
         run: ./v -silent test-cleancode
       - name: Test V fixed tests
