@@ -11,6 +11,11 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if got == expected {
 		return true
 	}
+	exp_idx := expected.idx()
+	got_idx := got.idx()
+	if exp_idx == got_idx {
+		return true
+	}
 	got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
 
@@ -115,15 +120,8 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			}
 		}
 	}
-	if got_is_ptr && exp_is_ptr {
-		if got.nr_muls() != expected.nr_muls() {
-			return false
-		}
-	}
-	exp_idx := expected.idx()
-	got_idx := got.idx()
-	if exp_idx == got_idx {
-		return true
+	if got_is_ptr && exp_is_ptr && got.nr_muls() != expected.nr_muls() {
+		return false
 	}
 	if got_is_any_kind_of_pointer && (exp_idx == ast.voidptr_type_idx
 		|| exp_idx == ast.nil_type_idx || exp_idx == ast.byteptr_type_idx
@@ -174,9 +172,8 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		return false
 	}
 	if got.is_number() && expected.is_number() {
-		if got == ast.rune_type && expected == ast.u8_type {
-			return true
-		} else if expected == ast.rune_type && got == ast.u8_type {
+		if (got == ast.rune_type && expected == ast.u8_type)
+			|| (expected == ast.rune_type && got == ast.u8_type) {
 			return true
 		}
 		if c.promote_num(expected, got) != expected {
