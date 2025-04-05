@@ -644,6 +644,17 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				node.auto_locked, _ = c.fail_if_immutable(mut node.left)
 				left_value_type := c.table.value_type(c.unwrap_generic(left_type))
 				left_value_sym := c.table.sym(c.unwrap_generic(left_value_type))
+				if node.right is ast.ArrayInit {
+					// `array << []` # note: this should be removed with improved compiler type inference
+					arr := node.right as ast.ArrayInit
+					// check if node.right is an empty array literal
+					if arr.exprs.len == 0 && arr.typ == ast.void_type {
+						elem_type_str := c.table.type_to_str(left_value_type)
+						// compile error suggesting explicit typing
+						c.error('cannot infer type for empty array literal `[]`. Use `${elem_type_str}{}` instead.',
+							right_pos)
+					}
+				}
 				if !left_value_type.has_flag(.option) && right_type.has_flag(.option) {
 					c.error('unwrapped Option cannot be used in an infix expression',
 						node.pos)
