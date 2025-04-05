@@ -112,12 +112,9 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			// Allow enums as numbers
 			return true
 		}
-		if got_is_ptr && exp_is_ptr {
-			// deref_sym := c.table.sym(expected.deref()) // set_nr_muls(0))
-			if expected_sym.is_number() && got_sym.is_number() {
-				// Allow `&&u8` used as `&&int` etc
-				return true
-			}
+		if got_is_ptr && exp_is_ptr && expected_sym.is_number() && got_sym.is_number() {
+			// Allow `&&u8` used as `&&int` etc
+			return true
 		}
 	}
 	if got_is_ptr && exp_is_ptr && got.nr_muls() != expected.nr_muls() {
