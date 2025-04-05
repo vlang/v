@@ -267,11 +267,12 @@ fn (mut p Parser) map_init() ast.MapInit {
 
 fn (mut p Parser) scope_register_index() {
 	p.scope.objects['index'] = ast.Var{ // override index variable if it already exist, else create index variable
-		name:    'index'
-		pos:     p.tok.pos()
-		typ:     ast.int_type
-		is_mut:  false
-		is_used: false
+		name:         'index'
+		pos:          p.tok.pos()
+		typ:          ast.int_type
+		is_mut:       false
+		is_used:      false
+		is_index_var: true
 	}
 	p.scope.objects['it'] = ast.Var{ // it is now deprecated, will be removed in future stable release
 		name:    'it'

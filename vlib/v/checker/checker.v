@@ -3490,7 +3490,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else if !from_type.has_option_or_result() && mut to_sym.info is ast.Interface {
 		if c.type_implements(from_type, to_type, node.pos) {
 			if !from_type.is_any_kind_of_pointer() && from_sym.kind != .interface
-				&& !c.inside_unsafe {
+				&& !c.inside_unsafe && !from_type.is_number() {
 				c.mark_as_referenced(mut &node.expr, true)
 			}
 			if to_sym.info.is_generic {
