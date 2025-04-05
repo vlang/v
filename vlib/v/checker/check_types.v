@@ -133,12 +133,11 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 
 	if (exp_idx == ast.nil_type_idx && got_idx == ast.string_type_idx)
 		|| (got_idx == ast.nil_type_idx && exp_idx == ast.string_type_idx) {
-		got_sym := c.table.sym(got)
-		exp_sym := c.table.sym(expected)
-
 		if expected.is_ptr() || got.is_ptr() {
 			return true
 		}
+		got_sym := c.table.sym(got)
+		exp_sym := c.table.sym(expected)
 		if got_sym.language != .c || exp_sym.language != .c {
 			return false
 		}
@@ -146,17 +145,13 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future options should be used for that
-	if exp_is_any_kind_of_pointer {
-		if got == ast.int_literal_type {
-			return true
-		}
+	if exp_is_any_kind_of_pointer && got == ast.int_literal_type {
+		return true
 	}
-	if got_idx == ast.voidptr_type_idx || got_idx == ast.nil_type_idx
-		|| got_idx == ast.byteptr_type_idx
-		|| (got_idx == ast.u8_type_idx && got_is_ptr) {
-		if exp_is_any_kind_of_pointer {
-			return true
-		}
+	if exp_is_any_kind_of_pointer && (got_idx == ast.voidptr_type_idx
+		|| got_idx == ast.nil_type_idx || got_idx == ast.byteptr_type_idx
+		|| (got_idx == ast.u8_type_idx && got_is_ptr)) {
+		return true
 	}
 	if expected == ast.charptr_type && got == ast.char_type.ref() {
 		return true
