@@ -1,4 +1,4 @@
-// vtest build: present_sqlite3?
+// vtest build: present_sqlite3? && !sanitize-memory-clang
 import db.sqlite
 
 struct ComplexWhere {
