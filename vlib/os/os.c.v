@@ -9,6 +9,10 @@ $if freebsd || openbsd {
 	#include <sys/sysctl.h>
 }
 
+$if windows {
+	#include <windows.h>
+}
+
 pub const args = arguments()
 
 fn C.readdir(voidptr) &C.dirent
@@ -901,7 +905,7 @@ pub fn fork() int {
 		pid = C.fork()
 	}
 	$if windows {
-		panic('os.fork not supported in windows') // TODO
+		pid = C.GetCurrentProcessId().str().int()
 	}
 	return pid
 }
