@@ -134,12 +134,12 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 
 				if c.table.final_sym(field.typ).kind == .voidptr
-					&& field.default_expr_typ !in [ast.nil_type, ast.voidptr_type]
+					&& field.default_expr_typ !in [ast.nil_type, ast.voidptr_type, ast.byteptr_type]
 					&& !field.default_expr_typ.is_ptr()
 					&& (field.default_expr !is ast.IntegerLiteral
 					|| (field.default_expr is ast.IntegerLiteral
 					&& field.default_expr.val.int() != 0)) {
-					c.note('you should cast it to voidptr (e.g. unsafe { voidptr(${field.default_expr.str()}) })',
+					c.note('voidptr variables may only be assigned voidptr values (e.g. unsafe { voidptr(${field.default_expr.str()}) })',
 						field.default_expr.pos())
 				}
 
@@ -730,11 +730,11 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					if got_type_sym.kind == .struct && !got_type.is_ptr() {
 						c.error('allocate `${got_type_sym.name}` on the heap for use in other functions',
 							init_field.pos)
-					} else if got_type !in [ast.nil_type, ast.voidptr_type] && !got_type.is_ptr()
-						&& (init_field.expr !is ast.IntegerLiteral
+					} else if got_type !in [ast.nil_type, ast.voidptr_type, ast.byteptr_type]
+						&& !got_type.is_ptr() && (init_field.expr !is ast.IntegerLiteral
 						|| (init_field.expr is ast.IntegerLiteral
 						&& init_field.expr.val.int() != 0)) {
-						c.note('you should cast it to voidptr (e.g. unsafe { voidptr(${init_field.expr.str()}) })',
+						c.note('voidptr variables may only be assigned voidptr values (e.g. unsafe { voidptr(${init_field.expr.str()}) })',
 							init_field.expr.pos())
 					}
 				}

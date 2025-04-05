@@ -1,4 +1,4 @@
-vlib/v/checker/tests/struct_voidptr_field_init_err.vv:7:12: notice: you should cast it to voidptr (e.g. unsafe { voidptr(get()) })
+vlib/v/checker/tests/struct_voidptr_field_init_err.vv:7:12: notice: voidptr variables may only be assigned voidptr values (e.g. unsafe { voidptr(get()) })
     5 | fn main() {
     6 |     println(Example{
     7 |         example: get()
