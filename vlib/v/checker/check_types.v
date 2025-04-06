@@ -11,6 +11,11 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if got == expected {
 		return true
 	}
+	exp_idx := expected.idx()
+	got_idx := got.idx()
+	if exp_idx == got_idx {
+		return true
+	}
 	got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
 
@@ -107,40 +112,27 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			// Allow enums as numbers
 			return true
 		}
-		if got_is_ptr && exp_is_ptr {
-			// deref_sym := c.table.sym(expected.deref()) // set_nr_muls(0))
-			if expected_sym.is_number() && got_sym.is_number() {
-				// Allow `&&u8` used as `&&int` etc
-				return true
-			}
-		}
-	}
-	if got_is_ptr && exp_is_ptr {
-		if got.nr_muls() != expected.nr_muls() {
-			return false
-		}
-	}
-	exp_idx := expected.idx()
-	got_idx := got.idx()
-	if exp_idx == got_idx {
-		return true
-	}
-	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.nil_type_idx
-		|| exp_idx == ast.byteptr_type_idx
-		|| (exp_is_ptr && expected.deref().idx() == ast.u8_type_idx) {
-		if got_is_any_kind_of_pointer {
+		if got_is_ptr && exp_is_ptr && expected_sym.is_number() && got_sym.is_number() {
+			// Allow `&&u8` used as `&&int` etc
 			return true
 		}
+	}
+	if got_is_ptr && exp_is_ptr && got.nr_muls() != expected.nr_muls() {
+		return false
+	}
+	if got_is_any_kind_of_pointer && (exp_idx == ast.voidptr_type_idx
+		|| exp_idx == ast.nil_type_idx || exp_idx == ast.byteptr_type_idx
+		|| (exp_is_ptr && expected.deref().idx() == ast.u8_type_idx)) {
+		return true
 	}
 
 	if (exp_idx == ast.nil_type_idx && got_idx == ast.string_type_idx)
 		|| (got_idx == ast.nil_type_idx && exp_idx == ast.string_type_idx) {
-		got_sym := c.table.sym(got)
-		exp_sym := c.table.sym(expected)
-
 		if expected.is_ptr() || got.is_ptr() {
 			return true
 		}
+		got_sym := c.table.sym(got)
+		exp_sym := c.table.sym(expected)
 		if got_sym.language != .c || exp_sym.language != .c {
 			return false
 		}
@@ -148,17 +140,13 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future options should be used for that
-	if exp_is_any_kind_of_pointer {
-		if got == ast.int_literal_type {
-			return true
-		}
+	if exp_is_any_kind_of_pointer && got == ast.int_literal_type {
+		return true
 	}
-	if got_idx == ast.voidptr_type_idx || got_idx == ast.nil_type_idx
-		|| got_idx == ast.byteptr_type_idx
-		|| (got_idx == ast.u8_type_idx && got_is_ptr) {
-		if exp_is_any_kind_of_pointer {
-			return true
-		}
+	if exp_is_any_kind_of_pointer && (got_idx == ast.voidptr_type_idx
+		|| got_idx == ast.nil_type_idx || got_idx == ast.byteptr_type_idx
+		|| (got_idx == ast.u8_type_idx && got_is_ptr)) {
+		return true
 	}
 	if expected == ast.charptr_type && got == ast.char_type.ref() {
 		return true
@@ -181,9 +169,8 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		return false
 	}
 	if got.is_number() && expected.is_number() {
-		if got == ast.rune_type && expected == ast.u8_type {
-			return true
-		} else if expected == ast.rune_type && got == ast.u8_type {
+		if (got == ast.rune_type && expected == ast.u8_type)
+			|| (expected == ast.rune_type && got == ast.u8_type) {
 			return true
 		}
 		if c.promote_num(expected, got) != expected {

@@ -863,6 +863,7 @@ fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
 fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	is_va_arg := node.name == 'C.va_arg'
 	is_json_decode := node.name == 'json.decode'
+	is_json_encode := node.name == 'json.encode'
 	mut fn_name := node.name
 	if node.is_static_method {
 		// resolve static call T.name()
@@ -1779,6 +1780,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					call_arg.pos)
 			}
 		}
+	}
+	if is_json_encode {
+		// json.encode param is set voidptr, we should bound the proper type here
+		node.expected_arg_types = [node.args[0].typ]
 	}
 	if func.generic_names.len != node.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation

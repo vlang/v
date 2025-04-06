@@ -2814,7 +2814,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 			&& (expr.expr is ast.ArrayInit && expr.expr.is_fixed)
 
 		if !is_cast_fixed_array_init && (is_comptime_variant || !expr.is_lvalue()
-			|| (expr is ast.Ident && expr.obj.is_simple_define_const())) {
+			|| (expr is ast.Ident && (expr.obj.is_simple_define_const()
+			|| (expr.obj is ast.Var && expr.obj.is_index_var)))) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
 			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
 			if expr.is_as_cast() {
@@ -3091,7 +3092,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			return
 		}
 	}
-	if exp_sym.kind == .function && !expected_type.has_option_or_result() {
+	if (exp_sym.kind == .function && !expected_type.has_option_or_result())
+		|| (g.inside_struct_init && expected_type == ast.voidptr_type
+		&& expected_type != got_type_raw) {
 		g.write('(voidptr)')
 	}
 	// no cast
