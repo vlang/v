@@ -18,20 +18,17 @@ fn test_from_to_rune() {
 }
 
 fn test_to_string() {
-	$if little_endian {
-		mut p := voidptr(little_serial_number.data)
-		assert unsafe { wchar.length_in_characters(p) } == swide_serial_number.len
-		s := unsafe { wchar.to_string(p) }
-		assert s == swide_serial_number
-	} $else {
-		mut p := voidptr(big_serial_number.data)
-		assert unsafe { wchar.length_in_characters(p) } == swide_serial_number.len
-		s := unsafe { wchar.to_string(p) }
-		assert s == swide_serial_number
+	mut p := voidptr(little_serial_number.data)
+	$if big_endian {
+		p = big_serial_number.data
 	}
 	$if windows {
 		p = wide_serial_number_windows.data
 	}
+	assert unsafe { wchar.length_in_characters(p) } == swide_serial_number.len
+	s := unsafe { wchar.to_string(p) }
+	dump(s)
+	assert s == swide_serial_number
 }
 
 fn test_from_string() {
