@@ -26,6 +26,7 @@ fn test_parse_valid_cflags() {
 		make_flag(no_os, no_name, '-m64'),
 		make_flag(no_os, '-I', '/usr/include'),
 		make_flag(no_os, no_name, '/v/thirdparty/tcc/lib/libgc.a'),
+		make_flag(no_os, '-I', '/usr/include/你好 my , @с интервали'),
 	]
 	parse_valid_flag(mut t, '-lmysqlclient')
 	parse_valid_flag(mut t, '-test')
@@ -38,6 +39,7 @@ fn test_parse_valid_cflags() {
 	parse_valid_flag(mut t, 'linux -I/usr/include/SDL2 -D_REENTRANT -L/usr/lib/x86_64-linux-gnu -lSDL2')
 	parse_valid_flag(mut t, '-I/usr/include/mysql -m64 -I/usr/include')
 	parse_valid_flag(mut t, '/v/thirdparty/tcc/lib/libgc.a')
+	parse_valid_flag(mut t, '-I/usr/include/你好 my , @с интервали')
 	assert t.cflags.len == expected_flags.len
 	for f in expected_flags {
 		assert t.has_cflag(f)

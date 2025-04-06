@@ -49,8 +49,8 @@ pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string)
 				}
 			}
 		}
-		// -I/usr/local/include -m64 -I/usr/include
-		index := flag.index(' ') or { -1 }
+		// -I/usr/local/a b c/include -m64 -I/usr/include
+		index := flag.index(' -') or { -1 }
 		if index > -1 {
 			value = flag[..index].trim_space()
 			flag = flag[index..].trim_space()
