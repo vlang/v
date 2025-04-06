@@ -8,6 +8,7 @@ module iconv
 
 #flag darwin -liconv
 #flag openbsd -L/usr/local/lib -liconv
+#flag termux -L/data/data/com.termux/files/usr/lib -liconv
 
 fn C.iconv_open(tocode charptr, fromcode charptr) voidptr
 fn C.iconv_close(cd voidptr) int
