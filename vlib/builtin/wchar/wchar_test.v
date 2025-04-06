@@ -1,9 +1,11 @@
 import builtin.wchar
 
-const wide_serial_number_unix = [u16(67), 0, 76, 0, 52, 0, 54, 0, 73, 0, 49, 0, 65, 0, 48, 0, 48,
+const little_serial_number = [u16(67), 0, 76, 0, 52, 0, 54, 0, 73, 0, 49, 0, 65, 0, 48, 0, 48,
+	0, 54, 0, 52, 0, 57, 0, 0, 0, 0]
+const big_serial_number = [u16(0), 67, 0, 76, 0, 52, 0, 54, 0, 73, 0, 49, 0, 65, 0, 48, 0, 48,
 	0, 54, 0, 52, 0, 57, 0, 0, 0, 0]
 
-const wide_serial_number_windows = wide_serial_number_unix.map(u8(it))
+const wide_serial_number_windows = little_serial_number.map(u8(it))
 
 const swide_serial_number = 'CL46I1A00649'
 
@@ -16,14 +18,20 @@ fn test_from_to_rune() {
 }
 
 fn test_to_string() {
-	mut p := voidptr(wide_serial_number_unix.data)
+	$if little_endian {
+		mut p := voidptr(little_serial_number.data)
+		assert unsafe { wchar.length_in_characters(p) } == swide_serial_number.len
+		s := unsafe { wchar.to_string(p) }
+		assert s == swide_serial_number
+	} $else {
+		mut p := voidptr(big_serial_number.data)
+		assert unsafe { wchar.length_in_characters(p) } == swide_serial_number.len
+		s := unsafe { wchar.to_string(p) }
+		assert s == swide_serial_number
+	}
 	$if windows {
 		p = wide_serial_number_windows.data
 	}
-	assert unsafe { wchar.length_in_characters(p) } == swide_serial_number.len
-	s := unsafe { wchar.to_string(p) }
-	dump(s)
-	assert s == swide_serial_number
 }
 
 fn test_from_string() {
