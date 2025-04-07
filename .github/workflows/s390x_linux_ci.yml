@@ -19,9 +19,13 @@ jobs:
           arch: s390x
           distro: ubuntu22.04
           base_image: --platform=linux/s390x s390x/ubuntu:22.04
-          # Set an output parameter `uname` for use in subsequent steps
+          install: |
+            apt-get update -q -y
+            apt-get install -q -y make gcc git
           run: |
             uname -a
+            make --version
+            gcc --version
             ls -la
             make
             ls -la ./v
