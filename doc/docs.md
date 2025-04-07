@@ -4673,9 +4673,13 @@ struct Abc {
 	x int
 }
 
-mut b := Abc{}
-ch2 := chan Abc{}
-res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2`
+fn main() {
+	mut b := Abc{}
+	ch := chan Abc{}
+	res := ch.try_pop(mut b) // try to perform `b = <-ch`
+	println(res)
+	println(b)
+}
 ```
 
 The `try_push/pop()` methods will return immediately with one of the results
