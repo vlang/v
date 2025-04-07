@@ -18,6 +18,7 @@ jobs:
         with:
           arch: s390x
           distro: ubuntu22.04
+          base_image: --platform=linux/s390x s390x/ubuntu:22.04
           # Set an output parameter `uname` for use in subsequent steps
           run: |
             uname -a
