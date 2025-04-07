@@ -1,9 +1,11 @@
 import builtin.wchar
 
-const wide_serial_number_unix = [u16(67), 0, 76, 0, 52, 0, 54, 0, 73, 0, 49, 0, 65, 0, 48, 0, 48,
+const little_serial_number = [u16(67), 0, 76, 0, 52, 0, 54, 0, 73, 0, 49, 0, 65, 0, 48, 0, 48,
+	0, 54, 0, 52, 0, 57, 0, 0, 0, 0]
+const big_serial_number = [u16(0), 67, 0, 76, 0, 52, 0, 54, 0, 73, 0, 49, 0, 65, 0, 48, 0, 48,
 	0, 54, 0, 52, 0, 57, 0, 0, 0, 0]
 
-const wide_serial_number_windows = wide_serial_number_unix.map(u8(it))
+const wide_serial_number_windows = little_serial_number.map(u8(it))
 
 const swide_serial_number = 'CL46I1A00649'
 
@@ -16,7 +18,10 @@ fn test_from_to_rune() {
 }
 
 fn test_to_string() {
-	mut p := voidptr(wide_serial_number_unix.data)
+	mut p := voidptr(little_serial_number.data)
+	$if big_endian {
+		p = big_serial_number.data
+	}
 	$if windows {
 		p = wide_serial_number_windows.data
 	}
