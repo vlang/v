@@ -101,6 +101,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 
 	if is_count {
 		typ = ast.int_type
+	} else if table_type.has_flag(.generic) {
+		typ = ast.new_type(p.table.find_or_register_array(table_type)).set_flag(.generic)
 	} else {
 		typ = ast.new_type(p.table.find_or_register_array(table_type))
 	}
