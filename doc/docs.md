@@ -4723,7 +4723,6 @@ fn main() {
 		println('Final value: ${counter.value}')
 	}
 }
-
 ```
 
 ### Difference Between Channels and Shared Objects
