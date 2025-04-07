@@ -19,6 +19,10 @@ jobs:
           arch: s390x
           distro: ubuntu22.04
           base_image: --platform=linux/s390x s390x/ubuntu:22.04
+          # The token tag here is not required, but speeds up builds,
+          # by allowing caching of the installed dependencies, which is ~2.5min:
+          githubToken: ${{ github.token }}
+          shell: /bin/bash
           install: |
             apt-get update -q -y
             apt-get install -q -y make gcc git
