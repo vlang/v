@@ -1125,7 +1125,8 @@ fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
 		field_sym := g.table.sym(field.typ)
 		if field_sym.kind in [.sum_type, .interface] {
 			if !prevent_sum_type_unwrapping_once {
-				if scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name) {
+				scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name)
+				if scope_field != unsafe { nil } {
 					return scope_field.smartcasts.last()
 				}
 			}

@@ -1794,7 +1794,8 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		if field_sym.kind in [.sum_type, .interface] || field.typ.has_flag(.option) {
 			if !prevent_sum_type_unwrapping_once {
-				if scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name) {
+				scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name)
+				if scope_field != unsafe { nil } {
 					return scope_field.smartcasts.last()
 				}
 			}
@@ -4379,7 +4380,8 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				}
 			}
 			expr_str := expr.expr.str()
-			if mut field := scope.find_struct_field(expr_str, expr.expr_type, expr.field_name) {
+			field := scope.find_struct_field(expr_str, expr.expr_type, expr.field_name)
+			if field != unsafe { nil } {
 				smartcasts << field.smartcasts
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given

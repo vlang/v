@@ -61,21 +61,23 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 }
 
 // selector_expr:  name.field_name
-pub fn (s &Scope) find_struct_field(name string, struct_type Type, field_name string) ?ScopeStructField {
+pub fn (s &Scope) find_struct_field(name string, struct_type Type, field_name string) &ScopeStructField {
 	if s == unsafe { nil } {
-		return none
+		return unsafe { nil }
 	}
 	for sc := unsafe { s }; true; sc = sc.parent {
 		if field := sc.struct_fields[name] {
 			if field.struct_type == struct_type && field.name == field_name {
-				return field
+				return &ScopeStructField{
+					...field
+				}
 			}
 		}
 		if sc.dont_lookup_parent() {
 			break
 		}
 	}
-	return none
+	return unsafe { nil }
 }
 
 pub fn (s &Scope) find_var(name string) ?&Var {

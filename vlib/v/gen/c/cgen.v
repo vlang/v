@@ -3008,7 +3008,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					}
 				}
 			} else if expr is ast.SelectorExpr {
-				if v := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
+				v := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name)
+				if v != unsafe { nil } {
 					if v.smartcasts.len > 0 && unwrapped_expected_type == v.orig_type {
 						is_already_sum_type = true
 					}
@@ -4178,7 +4179,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			if !prevent_sum_type_unwrapping_once {
 				// check first if field is sum type because scope searching is expensive
 				scope := g.file.scope.innermost(node.pos.pos)
-				if field := scope.find_struct_field(node.expr.str(), node.expr_type, node.field_name) {
+				field := scope.find_struct_field(node.expr.str(), node.expr_type, node.field_name)
+				if field != unsafe { nil } {
 					nested_unwrap := is_option && field.smartcasts.len > 1
 					is_option_unwrap = is_option && field.smartcasts.len > 0
 						&& field.typ.clear_flag(.option) == field.smartcasts.last()

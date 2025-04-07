@@ -234,9 +234,9 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 			// Struct[T] can have field with generic type
 			if struct_sym.info is ast.Struct && struct_sym.info.generic_types.len > 0 {
 				if field := t.table.find_field(struct_sym, node.field_name) {
-					if f_unwrap := node.scope.find_struct_field(ast.Expr(node.expr).str(),
+					f_unwrap := node.scope.find_struct_field(ast.Expr(node.expr).str(),
 						t.get_type_or_default(node.expr, node.expr_type), node.field_name)
-					{
+					if f_unwrap != unsafe { nil } {
 						return f_unwrap.smartcasts.last()
 					}
 					return field.typ

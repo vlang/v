@@ -2164,9 +2164,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			mut field_typ := field.typ
 			if field.typ.has_flag(.option) {
 				// unwrapped callback (if f.func != none {})
-				if scope_field := node.scope.find_struct_field(node.left.str(), node.left_type,
+				scope_field := node.scope.find_struct_field(node.left.str(), node.left_type,
 					method_name)
-				{
+				if scope_field != unsafe { nil } {
 					field_typ = scope_field.smartcasts.last()
 					node.is_unwrapped_fn_selector = true
 				} else {
