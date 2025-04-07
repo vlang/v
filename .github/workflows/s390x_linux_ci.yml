@@ -1,0 +1,32 @@
+name: s390 CI
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+jobs:
+  s390x_linux:
+    # The host should always be Linux
+    runs-on: ubuntu-22.04
+    name: Build on ubuntu-22.04 s390x
+    steps:
+      - uses: actions/checkout@v4
+      - uses: uraimo/run-on-arch-action@v3
+        name: Run commands
+        id: runcmd
+        with:
+          arch: s390x
+          distro: ubuntu22.04
+          # Set an output parameter `uname` for use in subsequent steps
+          run: |
+            uname -a
+            ls -la
+            make
+            ls -la ./v
+            file ./v
+            ./v test vlib/builtin
+            echo ::set-output name=uname::$(uname -a)
+      - name: Check output of run commands
+        # Echo the `uname` output parameter from the `runcmd` step
+        run: echo "The uname output was ${{ steps.runcmd.outputs.uname }}"
