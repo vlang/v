@@ -15,11 +15,43 @@ NSString* nsstring(string s) {
 }
 
 gg__Size gg_get_screen_size() {
-	NSScreen* screen = [NSScreen mainScreen];
-	NSDictionary* description = [screen deviceDescription];
+	NSScreen *currentScreen = nil;
+	NSWindow *mainWindow = [NSApp mainWindow];
+	// 1. Try screen containing the main window
+	if (mainWindow) {
+		currentScreen = [mainWindow screen];
+	}
+	// 2. If no main window, try the key window (might be different, e.g., a panel)
+	if (!currentScreen) {
+		NSWindow *keyWindow = [NSApp keyWindow];
+		if (keyWindow) {
+			currentScreen = [keyWindow screen];
+		}
+	}
+	// 3. If no relevant window, find the screen containing the mouse cursor
+	if (!currentScreen) {
+		// Get mouse location in global screen coordinates (bottom-left origin)
+		NSPoint mouseLocation = [NSEvent mouseLocation];
+		NSArray<NSScreen *> *screens = [NSScreen screens];
+		for (NSScreen *screen in screens) {
+			// Check if the mouse location is within the screen's frame
+			// Note: Both mouseLocation and screen.frame use bottom-left origin coordinates
+			if (NSMouseInRect(mouseLocation, [screen frame], NO)) {
+				currentScreen = screen;
+				break; // Found the screen with the mouse
+			}
+		}
+	}
+	// 4. As a last resort, fall back to the main screen
+	if (!currentScreen) {
+		NSLog(@"Warning: Could not determine current screen based on window or mouse. Falling back to mainScreen.");
+		currentScreen = [NSScreen mainScreen];
+	}
+	// Now get the size of the determined screen
+	NSDictionary *description = [currentScreen deviceDescription];
+	// Use NSDeviceSize to get pixel dimensions
 	NSSize displayPixelSize = [[description objectForKey:NSDeviceSize] sizeValue];
-	CGSize displayPhysicalSize =
-	    CGDisplayScreenSize([[description objectForKey:@"NSScreenNumber"] unsignedIntValue]);
+	// Create the V gg.Size object
 	gg__Size res;
 	res.width = displayPixelSize.width;
 	res.height = displayPixelSize.height;
