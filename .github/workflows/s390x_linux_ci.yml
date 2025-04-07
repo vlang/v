@@ -33,7 +33,6 @@ jobs:
             ls -la
             make
             ls -la ./v
-            file ./v
             ./v test vlib/builtin
             echo ::set-output name=uname::$(uname -a)
       - name: Check output of run commands
