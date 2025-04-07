@@ -25,7 +25,7 @@ jobs:
           shell: /bin/bash
           install: |
             apt-get update -q -y
-            apt-get install -q -y make gcc git file coreutils binutils
+            apt-get install -q -y --no-install-recommends make gcc git file coreutils binutils
           run: |
             uname -a
             make --version
