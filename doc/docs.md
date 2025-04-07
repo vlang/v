@@ -4693,7 +4693,7 @@ algorithms based on them are often subject to race conditions. Especially `.len`
 Use `or` branches, error propagation or `select` instead (see [Syntax and Usage](#syntax-and-usage)
 and [Channel Select](#channel-select) above).
 
-### Shared Objects (structs, arrays or maps)
+### Shared Objects
 
 Data can be exchanged between a thread and the calling thread via a shared variable.
 Such variables should be created as `shared` and passed to the thread as such, too.
