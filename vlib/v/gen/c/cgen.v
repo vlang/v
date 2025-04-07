@@ -5517,10 +5517,9 @@ fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 		g.write('(${styp}){')
 		for i, expr in node.vals {
 			g.write('.arg${i}=')
-			if types[i].has_flag(.option) && expr.is_literal() {
-				g.write('{.data=')
-				g.expr(expr)
-				g.write('}')
+			expr_typ := g.get_expr_type(expr)
+			if expr_typ != ast.void_type && types[i].has_flag(.option) {
+				g.expr_with_opt(expr, expr_typ, types[i])
 			} else {
 				old_left_is_opt := g.left_is_opt
 				g.left_is_opt = true
@@ -5942,7 +5941,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					multi_unpack += g.go_before_last_stmt()
 					g.write(line)
 					expr_styp := g.base_type(call_expr.return_type)
-					tmp = ('(*(${expr_styp}*)${tmp}.data)')
+					tmp = '(*(${expr_styp}*)${tmp}.data)'
 				}
 				expr_types := expr_sym.mr_info().types
 				for j, _ in expr_types {

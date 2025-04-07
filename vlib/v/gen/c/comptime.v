@@ -472,6 +472,21 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 				}
 			}
 		}
+		ast.IntegerLiteral {
+			return ast.int_type
+		}
+		ast.BoolLiteral {
+			return ast.bool_type
+		}
+		ast.StringLiteral {
+			return ast.string_type
+		}
+		ast.CharLiteral {
+			return ast.char_type
+		}
+		ast.FloatLiteral {
+			return ast.f64_type
+		}
 		else {
 			return ast.void_type
 		}
