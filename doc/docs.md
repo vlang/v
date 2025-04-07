@@ -4667,6 +4667,7 @@ println(ch.try_push(42)) // `.success` if pushed, `.not_ready` if full, `.closed
 println(ch.len) // Number of items in the buffer
 println(ch.cap) // Buffer capacity
 println(ch.closed) // Whether the channel is closed
+```
 
 ```v
 struct Abc {
@@ -4691,12 +4692,14 @@ algorithms based on them are often subject to race conditions. Especially `.len`
 Use `or` branches, error propagation or `select` instead (see [Syntax and Usage](#syntax-and-usage)
 and [Channel Select](#channel-select) above).
 
-### Shared Objects
+### Shared Objects (structs, arrays or maps)
 
 Data can be exchanged between a thread and the calling thread via a shared variable.
 Such variables should be created as `shared` and passed to the thread as such, too.
 The underlying `struct` contains a hidden *mutex* that allows locking concurrent access
 using `rlock` for read-only and `lock` for read/write access.
+
+Note: Shared variables must be structs, arrays or maps.
 
 #### Example of Shared Objects
 
