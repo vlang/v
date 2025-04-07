@@ -34,7 +34,7 @@ jobs:
             make
             file ./v
             ls -la ./v
-            ./v test vlib/builtin
+            ./v test vlib/builtin vlib/os vlib/encoding/binary
             echo ::set-output name=uname::$(uname -a)
       - name: Check output of run commands
         # Echo the `uname` output parameter from the `runcmd` step
