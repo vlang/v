@@ -42,7 +42,5 @@ pub fn (mut self Queue[T]) take() !Message[T] {
 struct Payload {}
 
 fn test_main() {
-	_ := new[Payload](
-		path: ':memory:'
-	) or { panic('Failed to create queue: ${err}') }
+	_ := new[Payload](path: ':memory:')!
 }
