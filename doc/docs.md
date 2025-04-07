@@ -4553,7 +4553,8 @@ fn main() {
 
 #### Buffered Channels
 
-Buffered channels allow you to push multiple items without blocking, as long as the buffer is not full:
+Buffered channels allow you to push multiple items without blocking,
+as long as the buffer is not full:
 
 ```v
 ch := chan string{cap: 2}
