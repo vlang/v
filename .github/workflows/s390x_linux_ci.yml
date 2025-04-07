@@ -25,13 +25,14 @@ jobs:
           shell: /bin/bash
           install: |
             apt-get update -q -y
-            apt-get install -q -y make gcc git
+            apt-get install -q -y make gcc git file coreutils binutils
           run: |
             uname -a
             make --version
             gcc --version
             ls -la
             make
+            file ./v
             ls -la ./v
             ./v test vlib/builtin
             echo ::set-output name=uname::$(uname -a)
