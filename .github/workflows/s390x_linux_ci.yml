@@ -3,7 +3,19 @@ name: s390 CI
 on:
   workflow_dispatch:
   push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/s390x_linux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/s390x_linux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
 
 jobs:
   s390x_linux:
