@@ -4528,7 +4528,7 @@ fn clock(ch chan int) {
 	for i in 0 .. 5 {
 		time.sleep(1 * time.second)
 		println('Clock tick')
-		ch <- i // push a value into the channel
+		ch <- i + 1000 // push a value into the channel
 	}
 	ch.close() // close the channel when done
 }
@@ -4539,14 +4539,11 @@ fn main() {
 	spawn clock(ch)
 
 	for {
-		if ch.closed {
-			break
-		}
-		value := <-ch or { // receive values from the channel
+		value := <-ch or { // receive/pop values from the channel
 			println('Channel closed')
 			break
 		}
-		println('Received: ${value}') // pop values from the channel
+		println('Received: ${value}')
 	}
 }
 ```
@@ -4675,13 +4672,18 @@ struct Abc {
 	x int
 }
 
-fn main() {
-	mut b := Abc{}
-	ch := chan Abc{}
-	res := ch.try_pop(mut b) // try to perform `b = <-ch`
-	println(res)
-	println(b)
-}
+a := 2.13
+ch := chan f64{}
+res := ch.try_push(a) // try to perform `ch <- a`
+println(res)
+l := ch.len // number of elements in queue
+c := ch.cap // maximum queue length
+is_closed := ch.closed // bool flag - has `ch` been closed
+println(l)
+println(c)
+mut b := Abc{}
+ch2 := chan Abc{}
+res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2`
 ```
 
 The `try_push/pop()` methods will return immediately with one of the results
