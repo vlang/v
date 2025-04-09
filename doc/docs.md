@@ -4528,7 +4528,7 @@ fn clock(ch chan int) {
 	for i in 0 .. 5 {
 		time.sleep(1 * time.second)
 		println('Clock tick')
-		ch <- i + 1000 // push a value into the channel
+		ch <- (i + 1000) // push a value into the channel
 	}
 	ch.close() // close the channel when done
 }
@@ -4537,7 +4537,6 @@ fn main() {
 	ch := chan int{cap: 5}
 	spawn worker(ch)
 	spawn clock(ch)
-
 	for {
 		value := <-ch or { // receive/pop values from the channel
 			println('Channel closed')
