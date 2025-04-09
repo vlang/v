@@ -4495,18 +4495,20 @@ fn main() {
 
 ### Channels
 
-Channels are the preferred way to communicate between threads. V's channels work basically like
-those in Go. You can push objects into a channel on one end and pop objects from the other end.
-Channels can be buffered or unbuffered and it is possible to `select` from multiple channels.
+Channels are the preferred way to communicate between threads. They allow threads to exchange data
+safely without requiring explicit locking. V's channels are similar to those in Go, enabling you
+to push objects into a channel on one end and pop objects from the other.
+Channels can be buffered or unbuffered, and you can use the `select` statement to monitor multiple
+channels simultaneously.
 
 #### Syntax and Usage
 
-Channels have the type `chan objtype`. An optional buffer length can be specified as the `cap` field
-in the declaration:
+Channels are declared with the type `chan objtype`.
+You can optionally specify a buffer length using the `cap` field:
 
 ```v
 ch := chan int{} // unbuffered - "synchronous"
-ch2 := chan f64{cap: 100} // buffer length 100
+ch2 := chan f64{cap: 100} // buffered with a capacity of 100
 ```
 
 Channels do not have to be declared as `mut`. The buffer length is not part of the type but
@@ -4514,32 +4516,53 @@ a field of the individual channel object. Channels can be passed to threads like
 variables:
 
 ```v
-fn f(ch chan int) {
-	// ...
+import time
+
+fn worker(ch chan int) {
+	for i in 0 .. 5 {
+		ch <- i // push values into the channel
+	}
+}
+
+fn clock(ch chan int) {
+	for i in 0 .. 5 {
+		time.sleep(1 * time.second)
+		println('Clock tick')
+		ch <- (i + 1000) // push a value into the channel
+	}
+	ch.close() // close the channel when done
 }
 
 fn main() {
-	ch := chan int{}
-	spawn f(ch)
-	// ...
+	ch := chan int{cap: 5}
+	spawn worker(ch)
+	spawn clock(ch)
+	for {
+		value := <-ch or { // receive/pop values from the channel
+			println('Channel closed')
+			break
+		}
+		println('Received: ${value}')
+	}
 }
 ```
 
-Objects can be pushed to channels using the arrow operator. The same operator can be used to
-pop objects from the other end:
+#### Buffered Channels
+
+Buffered channels allow you to push multiple items without blocking,
+as long as the buffer is not full:
 
 ```v
-// make buffered channels so pushing does not block (if there is room in the buffer)
-ch := chan int{cap: 1}
-ch2 := chan f64{cap: 1}
-n := 5
-// push
-ch <- n
-ch2 <- 7.3
-mut y := f64(0.0)
-m := <-ch // pop creating new variable
-y = <-ch2 // pop into existing variable
+ch := chan string{cap: 2}
+ch <- 'hello'
+ch <- 'world'
+// ch <- '!' // This would block because the buffer is full
+
+println(<-ch) // "hello"
+println(<-ch) // "world"
 ```
+
+#### Closing Channels
 
 A channel can be closed to indicate that no further objects can be pushed. Any attempt
 to do so will then result in a runtime panic (with the exception of `select` and
@@ -4636,6 +4659,14 @@ if select {
 For special purposes there are some builtin fields and methods:
 
 ```v
+ch := chan int{cap: 2}
+println(ch.try_push(42)) // `.success` if pushed, `.not_ready` if full, `.closed` if closed
+println(ch.len) // Number of items in the buffer
+println(ch.cap) // Buffer capacity
+println(ch.closed) // Whether the channel is closed
+```
+
+```v
 struct Abc {
 	x int
 }
@@ -4670,31 +4701,44 @@ Such variables should be created as `shared` and passed to the thread as such, t
 The underlying `struct` contains a hidden *mutex* that allows locking concurrent access
 using `rlock` for read-only and `lock` for read/write access.
 
+Note: Shared variables must be structs, arrays or maps.
+
+#### Example of Shared Objects
+
 ```v
-struct St {
+struct Counter {
 mut:
-	x int // data to be shared
+	value int
 }
 
-fn (shared b St) g() {
-	lock b {
-		// read/modify/write b.x
+fn (shared counter Counter) increment() {
+	lock counter {
+		counter.value += 1
+		println('Incremented to: ${counter.value}')
 	}
 }
 
 fn main() {
-	shared a := St{
-		x: 10
-	}
-	spawn a.g()
-	// ...
-	rlock a {
-		// read a.x
+	shared counter := Counter{}
+
+	spawn counter.increment()
+	spawn counter.increment()
+
+	rlock counter {
+		println('Final value: ${counter.value}')
 	}
 }
 ```
 
-Shared variables must be structs, arrays or maps.
+### Difference Between Channels and Shared Objects
+
+**Purpose**: 
+- Channels: Used for message passing between threads, ensuring safe communication.
+- Shared objects: Used for direct data sharing and modification between threads.
+
+**Synchronization**: 
+- Channels: Implicit (via channel operations) 
+- Shared objects:  Explicit (via `rlock`/`lock` blocks)
 
 ## JSON
 
