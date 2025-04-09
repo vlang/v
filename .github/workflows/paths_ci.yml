@@ -25,17 +25,21 @@ jobs:
           path: '你好 my $path, @с интервали'
       - name: Build V
         run: |
+          # shellcheck disable=SC2016
           echo '你好 my $path, @с интервали'
           ls -la
+          # shellcheck disable=SC2016
           cd '你好 my $path, @с интервали'
           ls -la
           make
       - name: v doctor
         run: |
+          # shellcheck disable=SC2016
           cd '你好 my $path, @с интервали'
           ./v doctor
       - name: v tests
         run: |
+          # shellcheck disable=SC2016
           cd '你好 my $path, @с интервали'
           ./v test vlib/builtin vlib/os
 
@@ -49,8 +53,10 @@ jobs:
           persist-credentials: false
       - name: Build V
         run: |
+          # shellcheck disable=SC2016
           echo '你好 my $path, @с интервали'
           ls -la
+          # shellcheck disable=SC2016
           cd '你好 my $path, @с интервали'
           ls -la
           make
@@ -59,10 +65,12 @@ jobs:
           ./v -b js run examples/hello_world.v
       - name: v doctor
         run: |
+          # shellcheck disable=SC2016
           cd '你好 my $path, @с интервали'
           ./v doctor
       - name: v tests
         run: |
+          # shellcheck disable=SC2016
           cd '你好 my $path, @с интервали'
           ./v test vlib/builtin vlib/os
 

@@ -61,7 +61,7 @@ jobs:
           mkdir apks
           for example in "${v_examples[@]}"; do
             safe_name=$(echo "$example" | sed 's%/%-%' | sed 's%\.%-%' )
-            vab examples/$example -o apks/$safe_name.apk
+            vab "examples/$example" -o "apks/$safe_name.apk"
           done
 
   v-compiles-os-android:

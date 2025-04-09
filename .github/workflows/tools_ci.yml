@@ -50,16 +50,16 @@ jobs:
           export VNATIVE_SKIP_LIBC_VV=1
           if [[ ${{ matrix.cc }} == "clang" ]]; then
             cmd="./v -silent -cc clang -cflags -fsanitize=undefined test-self -ubsan-compiler cmd"
-            echo $cmd && $cmd
+            echo "$cmd" && $cmd
             cmd="./v -silent -cc clang -cflags -fsanitize=memory    test-self -msan-compiler cmd"
-            echo $cmd && $cmd
+            echo "$cmd" && $cmd
           else
             cmd="./v -silent -cc gcc -cflags -fsanitize=thread test-self cmd"
-            echo $cmd && $cmd
+            echo "$cmd" && $cmd
             cmd="./v -silent -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self -asan-compiler cmd/tools"
-            echo $cmd && $cmd
+            echo "$cmd" && $cmd
             ## cmd="./v -silent -cc gcc -cflags -fsanitize=kernel-address test-self -asan-compiler cmd"
-            ## echo $cmd && $cmd
+            ## echo "$cmd" && $cmd
           fi
 
   tools-macos:

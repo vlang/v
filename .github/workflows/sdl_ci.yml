@@ -45,7 +45,7 @@ jobs:
           v retry 'git clone --filter=blob:none https://github.com/vlang/sdl'
           cd sdl
           mkdir -p ~/.vmodules
-          ln -s $(pwd) ~/.vmodules/sdl
+          ln -s "$(pwd)" ~/.vmodules/sdl
 
       - name: Ensure SDL setup works
         run: ./v ~/.vmodules/sdl/setup.vsh

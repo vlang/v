@@ -35,7 +35,7 @@ jobs:
           v run hi.v
       - name: Unlink
         run: |
-          rm $(which v)
+          rm "$(which v)"
           v --version && exit 1 || exit 0
       - name: Symlink (sudo)
         run: |
@@ -46,7 +46,7 @@ jobs:
           v run hi.v
       - name: Unlink
         run: |
-          rm $(which v)
+          rm "$(which v)"
           v --version && exit 1 || exit 0
       - name: Symlink (-githubci)
         run: ./v symlink -githubci

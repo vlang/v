@@ -54,4 +54,5 @@ jobs:
 
       - name: Check against parent commit
         run: |
+          # shellcheck disable=SC2086
           ./v missdoc $MOPTIONS pv/vlib vlib

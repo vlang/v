@@ -64,8 +64,8 @@ jobs:
           ./v -prod -cc msvc -o cmd/vprod.exe cmd/v
           ./v -prod -cc msvc cmd/tools/vup.v
           ./v -prod -cc msvc cmd/tools/vdoctor.v
-          del *.exe
-          del *.tmp.obj
+          del ./*.exe
+          del ./*.tmp.obj
           move cmd/vprod.exe v.exe
       - name: Prepare artifact
         shell: bash
