@@ -70,6 +70,7 @@ jobs:
       - name: Show diagnostics for wine
         run: |
           which wine
+          # shellcheck disable=SC2046
           ls -la $(realpath $(which wine))
 
       - name: v.c can be compiled and run with -os cross

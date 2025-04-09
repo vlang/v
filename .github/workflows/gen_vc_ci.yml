@@ -39,15 +39,13 @@ jobs:
           git config --global user.email "vlang-bot@users.noreply.github.com"
           git config --global user.name "vlang-bot"
 
-          COMMIT_HASH=$(git rev-parse HEAD)
-          COMMIT_MSG=$(git log -1 --oneline --pretty='%s' HEAD)
+          COMMIT_HASH="$(git rev-parse HEAD)"
+          COMMIT_MSG="$(git log -1 --oneline --pretty='%s' HEAD)"
 
           rm -rf vc
-          ./v retry -- git clone --depth=1 \
-            https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/vc.git
+          ./v retry -- git clone --depth=1 "https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/vc.git"
 
           rm -rf vc/v.c vc/v_win.c
-
           ./v -o vc/v.c     -cross               cmd/v
           ./v -o vc/v_win.c -os windows -cc msvc cmd/v
 
@@ -58,9 +56,9 @@ jobs:
           grep 'Turned ON custom defines: no_backtrace,cross'  vc/v.c
           grep '#define CUSTOM_DEFINE_cross' vc/v.c
 
-          # ensure the C files are over 5000 lines long, as a safety measure
-          [ $(wc -l < vc/v.c) -gt 5000 ]
-          [ $(wc -l < vc/v_win.c) -gt 5000 ]
+          # ensure the generated C files for the compiler, are over 5000 lines long, as a safety measure
+          [ "$(wc -l < vc/v.c)" -gt 5000 ]
+          [ "$(wc -l < vc/v_win.c)" -gt 5000 ]
 
           git -C vc add v.c v_win.c
           git -C vc commit -m "[v:master] $COMMIT_HASH - $COMMIT_MSG"

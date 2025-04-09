@@ -50,36 +50,36 @@ jobs:
 
       - name: Extract ZIP 1, no changes
         run: |
-          rm -rf $VDIR && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release $VDIR
-          cd $VDIR/v
+          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          cd "$VDIR/v"
           ./v version
           ./v up
           echo "Updated ./v version: $(./v version) | Current   v version: $(v version)"
 
       - name: Extract ZIP 2, with local changes
         run: |
-          rm -rf $VDIR && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release $VDIR
-          touch $VDIR/v/vlib/v/pref/local_file_not_present_in_master.c.v && rm $VDIR/v/examples/hello_world.v
-          cd $VDIR/v
+          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          touch "$VDIR/v/vlib/v/pref/local_file_not_present_in_master.c.v" && rm "$VDIR/v/examples/hello_world.v"
+          cd "$VDIR/v"
           ./v version
           ./v up
           echo "Updated ./v version: $(./v version) | Current   v version: $(v version)"
 
       - name: Extract ZIP 3, with current vup.v in the extract
         run: |
-          rm -rf $VDIR && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release $VDIR
-          rm -rf $VDIR/v/cmd/tools/vup && cp cmd/tools/vup.v $VDIR/v/cmd/tools/vup.v
-          cd $VDIR/v
+          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          rm -rf "$VDIR/v/cmd/tools/vup" && cp cmd/tools/vup.v "$VDIR/v/cmd/tools/vup.v"
+          cd "$VDIR/v"
           ./v version
           ./v up
           echo "Updated ./v version: $(./v version) | Current   v version: $(v version)"
 
       - name: Extract ZIP 4, with local changes, and with current vup.v
         run: |
-          rm -rf $VDIR && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release $VDIR
-          rm -rf $VDIR/v/cmd/tools/vup && cp cmd/tools/vup.v $VDIR/v/cmd/tools/vup.v
-          touch $VDIR/v/vlib/v/pref/local_file_not_present_in_master.c.v && rm $VDIR/v/examples/hello_world.v
-          cd $VDIR/v
+          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          rm -rf "$VDIR/v/cmd/tools/vup" && cp cmd/tools/vup.v "$VDIR/v/cmd/tools/vup.v"
+          touch "$VDIR/v/vlib/v/pref/local_file_not_present_in_master.c.v" && rm "$VDIR/v/examples/hello_world.v"
+          cd "$VDIR/v"
           ./v version
           ./v up
           echo "Updated ./v version: $(./v version) | Current   v version: $(v version)"

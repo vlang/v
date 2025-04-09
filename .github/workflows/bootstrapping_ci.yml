@@ -48,6 +48,7 @@ jobs:
         run: |
           ls -la v vc/v.c
           ./v -os cross -o vc/v.c cmd/v
+          # shellcheck disable=SC2086
           cc -o v_from_vc vc/v.c $B_LFLAGS
           ls -lart v_from_vc
           ./v_from_vc version
@@ -59,6 +60,7 @@ jobs:
           ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
           ./v_from_vc_produced_native_v -os cross -o vc/v.c cmd/v
           ### do it a second time, just in case:
+          # shellcheck disable=SC2086
           clang -o v_from_vc2 vc/v.c $B_LFLAGS
           ls -lart v_from_vc2
           ./v_from_vc2 version
@@ -84,8 +86,8 @@ jobs:
             | jq -r '.workflow_runs[4].head_sha')
           echo "recent_good_commit=$recent_good_commit"
           # Build oldv at recent_good_commit.
-          ./v run cmd/tools/oldv.v -v $recent_good_commit
-          cd ~/.cache/oldv/v_at_$recent_good_commit
+          ./v run cmd/tools/oldv.v -v "$recent_good_commit"
+          cd "$HOME/.cache/oldv/v_at_$recent_good_commit"
           # Test updating
           ./v version && ./v -v up && ./v version
           ./v -o v2 cmd/v && ./v2 -o v3 cmd/v

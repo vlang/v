@@ -33,10 +33,10 @@ jobs:
       - name: generate tags conditionally
         id: gen_tags
         run: |
-          if [[ ${{ matrix.os }} == 'debian' ]]; then
-            echo 'TAGS=thevlang/vlang:latest,thevlang/vlang:${{ matrix.os }}' >> $GITHUB_OUTPUT
+          if [[ "${{ matrix.os }}" == 'debian' ]]; then
+            echo 'TAGS=thevlang/vlang:latest,thevlang/vlang:${{ matrix.os }}' >> "$GITHUB_OUTPUT"
           else
-            echo 'TAGS=thevlang/vlang:${{ matrix.os }}' >> $GITHUB_OUTPUT
+            echo 'TAGS=thevlang/vlang:${{ matrix.os }}' >> "$GITHUB_OUTPUT"
           fi
 
       - uses: docker/build-push-action@v6

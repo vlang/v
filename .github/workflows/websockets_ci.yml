@@ -30,8 +30,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build v
         run: |
-          echo $VFLAGS
-          sudo ln -s $PWD/thirdparty/tcc/tcc.exe /usr/local/bin/tcc ## TODO: remove
+          echo "$VFLAGS"
+          sudo ln -s "$PWD/thirdparty/tcc/tcc.exe" /usr/local/bin/tcc ## TODO: remove
           make -j4 && ./v symlink
           ./v -g -o v cmd/v
       - name: Install dependencies

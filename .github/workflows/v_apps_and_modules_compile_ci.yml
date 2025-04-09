@@ -37,7 +37,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if [ $RUNNER_OS == 'Linux' ]; then
+          if [ "$RUNNER_OS" == 'Linux' ]; then
             v retry -- sudo apt -qq update
             v retry -- sudo apt -qq install libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
             v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base
