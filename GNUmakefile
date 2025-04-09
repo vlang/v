@@ -50,6 +50,7 @@ LDFLAGS += -lexecinfo
 endif
 
 ifeq ($(_SYS),NetBSD)
+NETBSD := 1
 TCCOS := netbsd
 LDFLAGS += -lexecinfo
 endif
@@ -111,8 +112,17 @@ ifdef LEGACY
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
 	$(CC) $(CFLAGS) -std=gnu99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+ifdef NETBSD
+	paxctl +m v1$(EXE_EXT)
+endif
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(VFLAGS) cmd/v
+ifdef NETBSD
+	paxctl +m v2$(EXE_EXT)
+endif
 	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(VFLAGS) cmd/v
+ifdef NETBSD
+	paxctl +m $(VEXE)$(EXE_EXT)
+endif
 	rm -rf v1$(EXE_EXT) v2$(EXE_EXT)
 endif
 	@$(VEXE)$(EXE_EXT) run cmd/tools/detect_tcc.v
