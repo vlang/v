@@ -43,7 +43,8 @@ jobs:
             make --version
             gcc --version
             ls -la
-            LDFLAGS=-latomic make
+            export LDFLAGS="-latomic"
+            make
             file ./v
             ls -la ./v
             ./v test vlib/builtin vlib/os vlib/encoding/binary
