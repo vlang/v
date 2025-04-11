@@ -1071,11 +1071,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln_cond(show_output && !res.is_quiet, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
 		eprintln_cond(show_output && !res.is_quiet, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
 	}
-	if res.os in [.browser, .wasi] && res.backend != .wasm {
+	if res.os in [.browser, .wasi, .pure_wasm] && res.backend != .wasm {
 		eprintln_exit('OS `${res.os}` forbidden for backends other than wasm')
 	}
-	if res.backend == .wasm && res.os !in [.browser, .wasi, ._auto] {
-		eprintln_exit('Native WebAssembly backend OS must be `browser` or `wasi`')
+	if res.backend == .wasm && res.os !in [.browser, .wasi, .pure_wasm, ._auto] {
+		eprintln_exit('Native WebAssembly backend OS must be `browser`, `wasi`, or `pure_wasm`')
 	}
 
 	if command != 'doc' && res.out_name.ends_with('.v') {

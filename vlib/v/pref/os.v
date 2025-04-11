@@ -29,8 +29,9 @@ pub enum OS {
 	wasm32
 	wasm32_emscripten
 	wasm32_wasi
-	browser // -b wasm -os browser
-	wasi    // -b wasm -os wasi
+	browser   // -b wasm -os browser
+	wasi      // -b wasm -os wasi
+	pure_wasm // -b wasm -os pure_wasm
 	raw
 	all
 }
@@ -125,6 +126,9 @@ pub fn os_from_string(os_str string) !OS {
 		'wasi' {
 			return .wasi
 		}
+		'pure_wasm' {
+			return .pure_wasm
+		}
 		else {
 			return error('bad OS ${os_str}')
 		}
@@ -162,6 +166,7 @@ pub fn (o OS) lower() string {
 		.wasm32_emscripten { 'wasm32_emscripten' }
 		.browser { 'browser' }
 		.wasi { 'wasi' }
+		.pure_wasm { 'pure_wasm' }
 		.all { 'all' }
 	}
 }
@@ -199,6 +204,7 @@ pub fn (o OS) str() string {
 		.wasm32_wasi { return 'WebAssembly(WASI)' }
 		.browser { return 'browser' }
 		.wasi { return 'wasi' }
+		.pure_wasm { return 'pure_wasm' }
 		.raw { return 'Raw' }
 		.all { return 'all' }
 	}

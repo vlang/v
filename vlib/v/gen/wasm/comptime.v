@@ -85,6 +85,9 @@ pub fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) bo
 		'wasm' {
 			return true
 		}
+		'pure_wasm' {
+			g.pref.os == .pure_wasm
+		}
 		//
 		'debug' {
 			return g.pref.is_debug

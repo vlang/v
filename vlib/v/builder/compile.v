@@ -246,14 +246,19 @@ pub fn (v Builder) get_builtin_files() []string {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
 					'js'))
 			} else if v.pref.backend == .wasm {
-				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
-					'wasm'))
-				if v.pref.os == .browser {
+				if v.pref.os == .pure_wasm {
 					builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
-						'wasm', 'browser'))
+						'pure_wasm'))
 				} else {
 					builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
-						'wasm', 'wasi'))
+						'wasm'))
+					if v.pref.os == .browser {
+						builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+							'wasm', 'browser'))
+					} else if v.pref.os == .wasi {
+						builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+							'wasm', 'wasi'))
+					}
 				}
 			} else {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin'))
