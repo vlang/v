@@ -146,7 +146,7 @@ latest_vc:
 endif
 
 check_for_working_tcc:
-	$(TMPTCC)/tcc.exe --version > /dev/null 2> /dev/null || echo "The executable '$(TMPTCC)/tcc.exe' does not work."
+	@$(TMPTCC)/tcc.exe --version > /dev/null 2> /dev/null || echo "The executable '$(TMPTCC)/tcc.exe' does not work."
 
 fresh_vc:
 	rm -rf $(VC)
