@@ -44,6 +44,7 @@ jobs:
             gcc --version
             ls -la
             export LDFLAGS="-latomic"
+            export VFLAGS="-gc none -no-retry-compilation -cc cc"
             make
             file ./v
             ls -la ./v
