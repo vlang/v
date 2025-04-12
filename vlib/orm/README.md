@@ -284,7 +284,7 @@ struct User {
     defer { db.close() or {} }
 ```
 
-3. Create a `QueryObject`​​ (which also completes struct mapping):
+3. Create a `QueryBuilder`​​ (which also completes struct mapping):
 
 ```v ignore
 	mut qb := orm.new_query[User](db)
