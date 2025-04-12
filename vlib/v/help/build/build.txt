@@ -48,7 +48,7 @@ NB: the build flags are shared with the run command too:
     * `native`            - V outputs a native executable directly.
 	                        (see -arch x64|arm64 and -os linux|macos) (EXPERIMENTAL).
     * `wasm`              - V outputs a WebAssembly module directly
-	                        (see -os wasi|browser|pure_wasm) (EXPERIMENTAL).
+	                        (see -os wasi|browser) (EXPERIMENTAL).
 
   -d <flag>[=<value>], -define <flag>[=<value>]
     Define the provided flag.

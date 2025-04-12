@@ -16,8 +16,11 @@ For more general build help, see also `v help build`.
       Overrides the default stack_top value used by the WebAssembly compiler.
       Useful for some platforms with unusual memory requirements.
 
-   -os <browser|wasi|pure_wasm>, -target-os <browser|wasi|pure_wasm>
-      Change the target WebAssembly execution environment that V compiles for.
+   -d no_imports
+      Removes the default imports from the builtins. Useful for embedded targets where
+      you can't control the imports.
+
+   -os <browser|wasi>, -target-os <browser|wasi>
 
       The `wasi` target is the default execution environment.
         When targeting WASI, the generated WebAssembly module can be run in a variety
@@ -30,6 +33,3 @@ For more general build help, see also `v help build`.
 	    builtin, for use in browsers. The produced WebAssembly module will have functions
 		exported that are `pub` and inside the `module main`. See `examples/wasm/mandelbrot`
 		for an example.
-
-      The `pure_wasm` target is an experimental environment that compiles for a stripped down
-        builtin, for use in embedded runtimes that don't use any standard library.
