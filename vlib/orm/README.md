@@ -39,7 +39,7 @@ struct Foo {
 
 ## Usage
 > [!NOTE]
-> If you want to use the function call APIs for `orm`, please check [`Function Call API`](#function-call-api).
+> For using the Function Call API for `orm`, please check [`Function Call API`](#function-call-api).
 
 Here are a couple example structs showing most of the features outlined above.
 
@@ -255,7 +255,8 @@ capability to dynamically construct SQL statements. The Function Call API
 supports common operations such as `Create Table`/`Drop Table`/`Insert`/`Delete`/`Update`/`Select`,
 and offers convenient yet powerful features for constructing `WHERE` clauses,
 `SET` clauses, `SELECT` clauses, and more.
-A complete example demonstrating the usage of this interface is available in `vlib/orm/orm_func_test.v`.
+
+A complete example is available in `vlib/orm/orm_func_test.v`.
 
 Below, we illustrate its usage through several examples.
 
@@ -347,5 +348,6 @@ The API includes a built-in parser to handle intricate `WHERE` clause conditions
 	where('created_at IS NULL && ((salary > ? && age < ?) || (role LIKE ?))', 2000, 30, '%employee%')
 ```
 
-Note the use of placeholders `?`. The conditional expressions support logical operators including `AND`, `OR`, `||`, and `&&`.
+Note the use of placeholders `?`.
+The conditional expressions support logical operators including `AND`, `OR`, `||`, and `&&`.
 
