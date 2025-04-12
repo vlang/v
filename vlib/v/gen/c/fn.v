@@ -256,18 +256,6 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 
 	mut name := g.c_fn_name(node)
 	type_name := g.ret_styp(g.unwrap_generic(node.return_type))
-	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') && !node.is_main
-		&& node.name != 'str' {
-		mut key := node.name
-		if node.is_method {
-			sym := g.table.sym(node.receiver.typ)
-			key = sym.name + '.' + node.name
-		}
-		g.writeln('/* obf: ${key} */')
-		name = g.obf_table[key] or {
-			panic('cgen: fn_decl: obf name "${key}" not found, this should never happen')
-		}
-	}
 	// Live functions are protected by a mutex, because otherwise they
 	// can be changed by the live reload thread, *while* they are
 	// running, with unpredictable results (usually just crashing).
@@ -1668,15 +1656,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if left_sym.kind == .chan && node.name in ['close', 'try_pop', 'try_push'] {
 		name = 'sync__Channel_${node.name}'
 	}
-	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
-		&& node.name != 'str' {
-		sym := g.table.sym(node.receiver_type)
-		key := sym.name + '.' + node.name
-		g.write('/* obf method call: ${key} */')
-		name = g.obf_table[key] or {
-			panic('cgen: obf name "${key}" not found, this should never happen')
-		}
-	}
 	mut is_range_slice := false
 	if node.receiver_type.is_ptr() && !left_type.is_ptr() {
 		if node.left is ast.IndexExpr {
@@ -2017,14 +1996,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if cattr := f.attrs.find_first('c') {
 				name = cattr.arg
 			}
-		}
-	}
-	// Obfuscate only functions in the main module for now
-	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
-		key := node.name
-		g.write('/* obf call: ${key} */')
-		name = g.obf_table[key] or {
-			panic('cgen: obf name "${key}" not found, this should never happen')
 		}
 	}
 	if !is_selector_call {

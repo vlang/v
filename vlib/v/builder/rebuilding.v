@@ -190,6 +190,7 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) {
 	$if trace_v_build_module ? {
 		eprintln('> Builder.v_build_module: ${rebuild_cmd}')
 	}
+	// eprintln('> Builder.v_build_module: ${rebuild_cmd}')
 	os.system(rebuild_cmd)
 }
 

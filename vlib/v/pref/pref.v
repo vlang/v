@@ -137,7 +137,7 @@ pub mut:
 	profile_fns        []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
 	translated         bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	translated_go      bool = true // Are we running V code translated from Go? Allow err shadowing
-	obfuscate          bool // `v -obf program.v`, renames functions to "f_XXX"
+	obfuscate_removed  bool // `v -obf program.v`, renames functions to "f_XXX". REMOVED. Use `strip` instead
 	hide_auto_str      bool // `v -hide-auto-str program.v`, doesn't generate str() with struct data
 	// Note: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
@@ -688,7 +688,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.is_stats = true
 			}
 			'-obf', '-obfuscate' {
-				res.obfuscate = true
+				println('obfuscation has been removed; use `strip` on the resulting binary instead')
+				res.obfuscate_removed = true
 			}
 			'-hide-auto-str' {
 				res.hide_auto_str = true

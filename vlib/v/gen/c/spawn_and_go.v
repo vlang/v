@@ -71,17 +71,6 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		}
 	}
 	name = util.no_dots(name)
-	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
-		mut key := expr.name
-		if expr.is_method {
-			sym := g.table.sym(expr.receiver_type)
-			key = sym.name + '.' + expr.name
-		}
-		g.write('/* obf go: ${key} */')
-		name = g.obf_table[key] or {
-			panic('cgen: obf name "${key}" not found, this should never happen')
-		}
-	}
 	g.empty_line = true
 	g.writeln('// start go')
 	wrapper_struct_name := 'thread_arg_' + name
