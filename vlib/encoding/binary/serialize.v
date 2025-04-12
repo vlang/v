@@ -395,17 +395,19 @@ fn decode_map[K, V](mut s DecodeState, _ map[K]V) !map[K]V {
 		}
 
 		// decode value
-		mut v := Any(0)
-		$if V is $string {
-			v = decode_string(mut s)!
-		} $else $if V is $struct {
-			v = decode_struct(mut s, V{})!
+		$if V is $struct {
+			v := decode_struct(mut s, V{})!
+			m[k as K] = v
 		} $else $if V is $map {
-			v = decode_map(mut s, V{})!
+			v := decode_map(mut s, V{})!
+			m[k as K] = v
+		} $else $if V is $string {
+			v := decode_string(mut s)!
+			m[k as K] = v
 		} $else {
-			v = decode_primitive(mut s, unsafe { V(0) })!
+			v := decode_primitive(mut s, unsafe { V(0) })!
+			m[k as K] = v
 		}
-		m[k as K] = v as V
 	}
 	return m
 }
