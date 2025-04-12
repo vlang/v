@@ -277,7 +277,7 @@ pub:
 	header           string          // produced output for out.h (-parallel-cc)
 	res_builder      strings.Builder // produced output (complete)
 	out_str          string          // produced output from g.out
-	out0_str         string          // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)	
+	out0_str         string          // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)
 	extern_str       string          // extern chunk for (-parallel-cc)
 	out_fn_start_pos []int           // fn decl positions
 }
@@ -355,15 +355,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 
 	global_g.type_resolver = type_resolver.TypeResolver.new(table, global_g)
 	global_g.comptime = &global_g.type_resolver.info
-	/*
-	global_g.out_parallel = []strings.Builder{len: nr_cpus}
-	for i in 0 .. nr_cpus {
-		global_g.out_parallel[i] = strings.new_builder(100000)
-		global_g.out_parallel[i].writeln('#include "out.h"\n')
-	}
-	println('LEN=')
-	println(global_g.out_parallel.len)
-	*/
 	// anon fn may include assert and thus this needs
 	// to be included before any test contents are written
 	if pref_.is_test {
@@ -516,18 +507,27 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
+		is_toml := g.pref.path.contains('/toml')
 		for idx, sym in g.table.type_symbols {
 			if idx in [0, 31] {
 				continue
 			}
-			g.definitions.writeln('int _v_type_idx_${sym.cname}();')
+			if is_toml && sym.cname.contains('map[string]') {
+				// Temporary hack to make toml work with -usecache TODO remove
+				continue
+			}
+			g.definitions.writeln('int _v_type_idx_${sym.cname}(); // 1build module ${g.pref.path}')
 		}
 	} else if g.pref.use_cache {
+		is_toml := g.pref.path.contains('/toml')
 		for idx, sym in g.table.type_symbols {
 			if idx in [0, 31] {
 				continue
 			}
-			g.definitions.writeln('int _v_type_idx_${sym.cname}() { return ${idx}; };')
+			if is_toml && sym.cname.contains('map[string]') {
+				continue
+			}
+			g.definitions.writeln('int _v_type_idx_${sym.cname}() { return ${idx}; }; //lol ${g.pref.path}')
 		}
 	}
 
@@ -1058,29 +1058,6 @@ pub fn (mut g Gen) init() {
 	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloading_declarations()
-	}
-	// Obfuscate only functions in the main module for now.
-	// Generate the obf_ast.
-	if g.pref.obfuscate {
-		mut i := 0
-		// fns
-		for key, f in g.table.fns {
-			if f.mod != 'main' && key != 'main' {
-				continue
-			}
-			g.obf_table[key] = '_f${i}'
-			i++
-		}
-		// methods
-		for type_sym in g.table.type_symbols {
-			if type_sym.mod != 'main' {
-				continue
-			}
-			for method in type_sym.methods {
-				g.obf_table[type_sym.name + '.' + method.name] = '_f${i}'
-				i++
-			}
-		}
 	}
 	// we know that this is being called before the multi-threading starts
 	// and this is being called in the main thread, so we can mutate the table
@@ -5355,14 +5332,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 				}
 			} else if node.concrete_types.len > 0 {
 				name = g.generic_fn_name(node.concrete_types, name)
-			}
-		}
-
-		if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
-			key := node.name
-			g.write('/* obf identfn: ${key} */')
-			name = g.obf_table[key] or {
-				panic('cgen: obf name "${key}" not found, this should never happen')
 			}
 		}
 	}
