@@ -256,7 +256,7 @@ supports common operations such as `Create Table`/`Drop Table`/`Insert`/`Delete`
 and offers convenient yet powerful features for constructing `WHERE` clauses,
 `SET` clauses, `SELECT` clauses, and more.
 
-A complete example is available in `vlib/orm/orm_func_test.v`.
+A complete example is available [here](https://github.com/vlang/v/blob/master/vlib/orm/orm_func_test.v).
 
 Below, we illustrate its usage through several examples.
 
