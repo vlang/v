@@ -215,6 +215,9 @@ fn test_orm_func_stmts() {
 		.insert_many(users)
 		.set('name = ?', 'haha').where('name = ?', 'Tom').update()
 		.where('age >= ?', 30).delete()
+		.order(.asc, 'age')
+		.limit(100)
 		.query()
 	assert final_users.len == 5
+	assert final_users[0].age == 18
 }
