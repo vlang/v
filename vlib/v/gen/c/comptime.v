@@ -292,7 +292,11 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 		// we currently don't quote 'arg' (otherwise we could just use `s := attr.str()`)
 		mut s := attr.name
 		if attr.arg.len > 0 {
-			s += ': ${attr.arg}'
+			if attr.kind == .string {
+				s += ': "${attr.arg}"'
+			} else {
+				s += ': ${attr.arg}'
+			}
 		}
 		if attr.kind == .string {
 			s = escape_quotes(s)
