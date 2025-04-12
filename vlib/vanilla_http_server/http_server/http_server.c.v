@@ -274,6 +274,8 @@ fn process_events(mut server Server, epoll_fd int) {
 	}
 }
 
+// run starts the HTTP server and handles incoming connections.
+// This method uses epoll for efficient event-driven I/O handling.
 pub fn (mut server Server) run() {
 	$if windows {
 		eprintln('Windows is not supported yet. Please, use WSL or Linux.')

@@ -7,7 +7,8 @@
 - **Modular**: Compatible with any HTTP parser.
 - **Memory Safety**: No race conditions.
 - **No Magic**: Transparent and straightforward.
-- **E2E Testing**: Allows end-to-end testing and scripting without running the server. Simply pass the raw request to `handle_request()`.
+- **E2E Testing**: Allows end-to-end testing and scripting without running the server.
+  Simply pass the raw request to `handle_request()`.
 - **SSE Friendly**: Server-Sent Events support.
 - **Graceful Shutdown**: Work in Progress (W.I.P.).
 

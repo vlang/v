@@ -56,6 +56,8 @@ fn parse_http1_request_line(mut req HttpRequest) ! {
 	}
 }
 
+// decode_http_request decodes an HTTP request from a byte buffer.
+// It parses the request line and populates the HttpRequest struct with method, path, and version.
 pub fn decode_http_request(buffer []u8) !HttpRequest {
 	mut req := HttpRequest{
 		buffer: buffer
@@ -71,6 +73,8 @@ pub fn slice_to_string(buffer []u8, s Slice) string {
 	return buffer[s.start..s.start + s.len].bytestr()
 }
 
+// get_header_value_slice retrieves the value of a header from the HTTP request buffer.
+// It searches for the header name in the request buffer and returns its value as a Slice.
 @[direct_array_access]
 pub fn (req HttpRequest) get_header_value_slice(name string) ?Slice {
 	mut pos := req.version.start + req.version.len + 2 // Start after request line (CRLF)
