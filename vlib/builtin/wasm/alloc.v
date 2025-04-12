@@ -13,7 +13,7 @@ __global g_heap_base = usize(vwasm_heap_base())
 pub fn malloc(n isize) &u8 {
 	if n <= 0 {
 		$if no_imports ? {
-			return &u8(0)
+			return unsafe { nil }
 		} $else {
 			panic('malloc(n <= 0)')
 		}

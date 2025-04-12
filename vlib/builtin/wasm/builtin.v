@@ -44,12 +44,10 @@ pub fn vwasm_memory_grow(size int) int {
 pub fn vcalloc(n isize) &u8 {
 	if n <= 0 {
 		$if no_imports ? {
-			return &u8(0)
+			return unsafe { nil }
 		} $else {
 			panic('valloc(n <= 0)')
 		}
-	} else if n == 0 {
-		return &u8(0)
 	}
 
 	res := unsafe { malloc(n) }

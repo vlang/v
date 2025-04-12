@@ -47,6 +47,9 @@ pub fn (mut g Gen) comptime_cond(cond ast.Expr, pkg_exists bool) bool {
 		ast.ComptimeCall {
 			return pkg_exists // more documentation needed here...
 		}
+		ast.PostfixExpr {
+			return g.comptime_if_to_ifdef((cond.expr as ast.Ident).name, true)
+		}
 		else {}
 	}
 	g.w_error('wasm.comptime_cond(): unhandled node: ' + cond.type_name())
@@ -118,6 +121,14 @@ pub fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) bo
 			return false
 		}
 		else {
+			// note: this works but there might be some things missing from what I saw in the other platforms
+			//		 but it is better than nothing
+			if name in g.pref.compile_defines {
+				return true
+			} else {
+				return false
+			}
+
 			// taken from JS: what does it do??
 			/*
 			if is_comptime_option

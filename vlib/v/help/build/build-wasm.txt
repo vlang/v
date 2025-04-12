@@ -21,6 +21,7 @@ For more general build help, see also `v help build`.
       you can't control the imports.
 
    -os <browser|wasi>, -target-os <browser|wasi>
+      Change the target WebAssembly execution environment that V compiles for.
 
       The `wasi` target is the default execution environment.
         When targeting WASI, the generated WebAssembly module can be run in a variety

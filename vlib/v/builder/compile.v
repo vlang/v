@@ -251,7 +251,7 @@ pub fn (v Builder) get_builtin_files() []string {
 				if v.pref.os == .browser {
 					builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
 						'wasm', 'browser'))
-				} else if v.pref.os == .wasi {
+				} else {
 					builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
 						'wasm', 'wasi'))
 				}
