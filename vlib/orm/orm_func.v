@@ -63,16 +63,16 @@ fn type_from(value string) int {
 // valid token in the `condition` include: `field's names`, `operator`, `(`, `)`, `?`, `AND`, `OR`, `||`, `&&`,
 // valid `operator` incldue: `=`, `!=`, `<>`, `>=`, `<=`, `>`, `<`, `LIKE`, `ILIKE`, `IS NULL`, `IS NOT NULL`
 // example: `where('(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))', a, b, c, x, y)`
-pub fn (qb_ &QueryBuilder[T]) where(condition string, params ...Primitive) &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) where(condition string, params ...Primitive) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
-	qb.parse_conditions(condition, params)
+	qb.parse_conditions(condition, params)!
 	qb.config.has_where = true
 	return qb
 }
 
-fn parse_error(msg string, pos int, conds string) {
+fn parse_error(msg string, pos int, conds string) ! {
 	mut m := msg + '\n' + '\t' + conds + '\n\t' + ' '.repeat(pos) + '^\n'
-	panic(m)
+	return error(m)
 }
 
 enum ParserState {
@@ -134,16 +134,16 @@ fn (mut ss MyTextScanner) next_tok() string {
 }
 
 // parse_conditions update `qb` by parsing the `conds` string
-fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) {
+fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 	// conditions: '(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))'
 	mut qb := unsafe { qb_ }
 	if conds.len == 0 {
-		panic('${@FN}(): empty condition')
+		return error('${@FN}(): empty condition')
 	}
 	required_params := conds.count('?')
 	if required_params != params.len {
 		parse_error('${@FN}(): condition requires `${required_params}` params but got `${params.len}`',
-			0, conds)
+			0, conds)!
 	}
 
 	mut s := MyTextScanner{
@@ -171,13 +171,13 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) {
 					paren_stack << qb.where.fields.len
 				} else if tok == ')' {
 					if paren_stack.len == 0 {
-						parse_error('${@FN}: unexpected `)`', s.last_tok_start, conds)
+						parse_error('${@FN}: unexpected `)`', s.last_tok_start, conds)!
 					}
 					start_pos := paren_stack.pop()
 					qb.where.parentheses << [start_pos, qb.where.fields.len - 1]
 				} else {
 					parse_error("${@FN}: table `${qb.config.table}` has no field's name: `${tok}`",
-						s.last_tok_start, conds)
+						s.last_tok_start, conds)!
 				}
 			}
 			.op {
@@ -217,7 +217,7 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) {
 					}
 					else {
 						parse_error('${@FN}(): unsupported operator: `${tok}`', s.last_tok_start,
-							conds)
+							conds)!
 						OperationKind.eq
 					}
 				}
@@ -248,7 +248,7 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) {
 					i++
 				} else if tok == ')' {
 					if paren_stack.len == 0 {
-						parse_error('${@FN}: unexpected `)`', s.last_tok_start, conds)
+						parse_error('${@FN}: unexpected `)`', s.last_tok_start, conds)!
 					}
 					start_pos := paren_stack.pop()
 					qb.where.parentheses << [start_pos, qb.where.fields.len - 1]
@@ -266,7 +266,7 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) {
 					state = .field
 				} else {
 					parse_error('${@FN}(): unexpected `${tok}`, maybe `AND`,`OR`', s.last_tok_start,
-						conds)
+						conds)!
 				}
 			}
 		}
@@ -274,50 +274,50 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) {
 }
 
 // order create a `order` clause
-pub fn (qb_ &QueryBuilder[T]) order(order_type OrderType, field string) &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) order(order_type OrderType, field string) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	if field in qb.valid_sql_field_names {
 		qb.config.has_order = true
 		qb.config.order = field
 		qb.config.order_type = order_type
 	} else {
-		panic("${@FN}(): table `${qb.config.table}` has no field's name: `${field}`")
+		return error("${@FN}(): table `${qb.config.table}` has no field's name: `${field}`")
 	}
 	return qb
 }
 
 // limit create a `limit` clause
-pub fn (qb_ &QueryBuilder[T]) limit(limit int) &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) limit(limit int) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	if limit > 0 {
 		qb.config.has_limit = true
 		qb.data.data << Primitive(limit)
 		qb.data.types << type_idx['int']
 	} else {
-		panic('${@FN}(): `limit` should be a positive integer')
+		return error('${@FN}(): `limit` should be a positive integer')
 	}
 	return qb
 }
 
 // offset create a `offset` clause
-pub fn (qb_ &QueryBuilder[T]) offset(offset int) &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) offset(offset int) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	if offset >= 0 {
 		qb.config.has_offset = true
 		qb.data.data << Primitive(offset)
 		qb.data.types << type_idx['int']
 	} else {
-		panic('${@FN}(): `offset` should be a integer > 0')
+		return error('${@FN}(): `offset` should be a integer > 0')
 	}
 	return qb
 }
 
 // select create a `select` clause
-pub fn (qb_ &QueryBuilder[T]) select(fields ...string) &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) select(fields ...string) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	for f in fields {
 		if f !in qb.valid_sql_field_names {
-			panic("${@FN}(): table `${qb.config.table}` has no field's name: `${f}`")
+			return error("${@FN}(): table `${qb.config.table}` has no field's name: `${f}`")
 		}
 	}
 	qb.config.fields = fields
@@ -325,28 +325,28 @@ pub fn (qb_ &QueryBuilder[T]) select(fields ...string) &QueryBuilder[T] {
 }
 
 // set create a `set` clause for `update`
-pub fn (qb_ &QueryBuilder[T]) set(assign string, values ...Primitive) &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) set(assign string, values ...Primitive) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	if assign.len == 0 {
-		panic('${@FN}(): empty `set`')
+		return error('${@FN}(): empty `set`')
 	}
 	required_params := assign.count('?')
 	if required_params != values.len {
-		panic('${@FN}(): `set` requires `${required_params}` params but got `${values.len}`')
+		return error('${@FN}(): `set` requires `${required_params}` params but got `${values.len}`')
 	}
 	mut fields := []string{}
 	assign_splits := assign.split_any(',')
 	for assign_split in assign_splits {
 		f := assign_split.split_any('=')
 		if f.len != 2 {
-			panic('${@FN}(): `set` syntax error, it should look like : `a=?,b=?`')
+			return error('${@FN}(): `set` syntax error, it should look like : `a=?,b=?`')
 		}
 		if f[1].trim_space() != '?' {
-			panic('${@FN}(): `set` syntax error, it should look like : `a=?,b=?`')
+			return error('${@FN}(): `set` syntax error, it should look like : `a=?,b=?`')
 		}
 		field := f[0].trim_space()
 		if field !in qb.valid_sql_field_names {
-			panic("${@FN}(): table `${qb.config.table}` has no field's name: `${field}`")
+			return error("${@FN}(): table `${qb.config.table}` has no field's name: `${field}`")
 		}
 		fields << field
 	}
@@ -427,7 +427,7 @@ fn struct_meta[T]() []TableField {
 }
 
 // map_row map a row result into a struct
-fn (qb &QueryBuilder[T]) map_row(row []Primitive) T {
+fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 	mut instance := T{}
 
 	$for field in T.fields {
@@ -471,7 +471,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) T {
 					if m.typ == time_ {
 						instance.$(field.name) = value as time.Time
 					} else if m.typ == type_string {
-						instance.$(field.name) = time.parse(value as string) or { panic(err) }
+						instance.$(field.name) = time.parse(value as string)!
 					}
 				}
 			}
@@ -481,13 +481,13 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) T {
 }
 
 // prepare QueryBuilder, ready for gen SQL
-fn (qb_ &QueryBuilder[T]) prepare() {
+fn (qb_ &QueryBuilder[T]) prepare() ! {
 	mut qb := unsafe { qb_ }
 
 	// check for mismatch `(` and `)`
 	for p in qb.where.parentheses {
 		if p[1] == -1 {
-			panic('${@FN}(): missing `)`')
+			return error('${@FN}(): missing `)`')
 		}
 	}
 
@@ -511,22 +511,22 @@ fn (qb_ &QueryBuilder[T]) prepare() {
 }
 
 // query start a query and return result in struct `T`
-pub fn (qb_ &QueryBuilder[T]) query() []T {
+pub fn (qb_ &QueryBuilder[T]) query() ![]T {
 	mut qb := unsafe { qb_ }
 	defer {
 		qb.reset()
 	}
-	qb.prepare()
-	rows := qb.conn.select(qb.config, qb.data, qb.where) or { panic(err) }
+	qb.prepare()!
+	rows := qb.conn.select(qb.config, qb.data, qb.where)!
 	mut result := []T{cap: rows.len}
 	for row in rows {
-		result << qb.map_row[T](row)
+		result << qb.map_row[T](row)!
 	}
 	return result
 }
 
 // count start a count query and return result
-pub fn (qb_ &QueryBuilder[T]) count() int {
+pub fn (qb_ &QueryBuilder[T]) count() !int {
 	mut qb := unsafe { qb_ }
 	defer {
 		qb.reset()
@@ -534,8 +534,8 @@ pub fn (qb_ &QueryBuilder[T]) count() int {
 	mut count_config := qb.config
 	count_config.is_count = true
 	count_config.fields = []
-	qb.prepare()
-	result := qb.conn.select(count_config, qb.data, qb.where) or { panic(err) }
+	qb.prepare()!
+	result := qb.conn.select(count_config, qb.data, qb.where)!
 
 	if result.len == 0 || result[0].len == 0 {
 		return 0
@@ -545,33 +545,33 @@ pub fn (qb_ &QueryBuilder[T]) count() int {
 		int { count_val }
 		i64 { int(count_val) }
 		u64 { int(count_val) }
-		else { panic('${@FN}(): invalid count result type') }
+		else { return error('${@FN}(): invalid count result type') }
 	}
 }
 
 // insert insert a record into the database
-pub fn (qb_ &QueryBuilder[T]) insert[T](value T) &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) insert[T](value T) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	defer {
 		qb.reset()
 	}
-	qb.insert_many([value])
+	qb.insert_many([value])!
 	return qb
 }
 
 // insert_many insert records into the database
-pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	defer {
 		qb.reset()
 	}
-	qb.prepare()
+	qb.prepare()!
 	if values.len == 0 {
-		panic('${@FN}(): `insert` need at least one record')
+		return error('${@FN}(): `insert` need at least one record')
 	}
 	for value in values {
 		new_qb := fill_data_with_struct[T](value, qb.meta)
-		qb.conn.insert(qb.config.table, new_qb) or { panic(err) }
+		qb.conn.insert(qb.config.table, new_qb)!
 	}
 	return qb
 }
@@ -674,47 +674,47 @@ fn fill_data_with_struct[T](value T, meta []TableField) QueryData {
 }
 
 // update update record(s) in the database
-pub fn (qb_ &QueryBuilder[T]) update() &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	defer {
 		qb.reset()
 	}
-	qb.prepare()
+	qb.prepare()!
 	if qb.data.fields.len == 0 {
-		panic('${@FN}(): `update` need at least one `set` clause')
+		return error('${@FN}(): `update` need at least one `set` clause')
 	}
-	qb.conn.update(qb.config.table, qb.data, qb.where) or { panic(err) }
+	qb.conn.update(qb.config.table, qb.data, qb.where)!
 	return qb
 }
 
 // delete delete record(s) in the database
-pub fn (qb_ &QueryBuilder[T]) delete() &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) delete() !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	defer {
 		qb.reset()
 	}
-	qb.prepare()
-	qb.conn.delete(qb.config.table, qb.where) or { panic(err) }
+	qb.prepare()!
+	qb.conn.delete(qb.config.table, qb.where)!
 	return qb
 }
 
 // create create a table
-pub fn (qb_ &QueryBuilder[T]) create() &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) create() !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	defer {
 		qb.reset()
 	}
-	qb.conn.create(qb.config.table, qb.meta) or { panic(err) }
+	qb.conn.create(qb.config.table, qb.meta)!
 	return qb
 }
 
 // drop drop a table
-pub fn (qb_ &QueryBuilder[T]) drop() &QueryBuilder[T] {
+pub fn (qb_ &QueryBuilder[T]) drop() !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	defer {
 		qb.reset()
 	}
-	qb.conn.drop(qb.config.table) or { panic(err) }
+	qb.conn.drop(qb.config.table)!
 	return qb
 }
 

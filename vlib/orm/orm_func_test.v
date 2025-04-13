@@ -22,14 +22,14 @@ fn test_orm_func_where() {
 
 	// single_condition
 	qb.reset()
-	qb.where('age > ?', 25)
+	qb.where('age > ?', 25)!
 	assert qb.where.fields == ['age']
 	assert qb.where.kinds == [.gt]
 	assert qb.where.data == [25]
 
 	// chain_condition
 	qb.reset()
-	qb.where('age > ?', 25).where('salary < ?', 1000)
+	qb.where('age > ?', 25)!.where('salary < ?', 1000)!
 	assert qb.where.fields == ['age', 'salary']
 	assert qb.where.kinds == [.gt, .lt]
 	assert qb.where.data == [25, 1000]
@@ -37,19 +37,19 @@ fn test_orm_func_where() {
 	// and_or_combination
 	qb.reset()
 	qb.where('name = ? AND status = ? OR role = ? || id = ? && title = ?', 'Alice', 1,
-		'admin', 1, 'st')
+		'admin', 1, 'st')!
 	assert qb.where.fields == ['name', 'status', 'role', 'id', 'title']
 	assert qb.where.kinds == [.eq, .eq, .eq, .eq, .eq]
 	assert qb.where.is_and == [true, false, false, true]
 
 	// nested_parentheses
 	qb.reset()
-	qb.where('(salary >= ? AND (age <= ? OR title LIKE ?))', 50000, 35, '%Manager%')
+	qb.where('(salary >= ? AND (age <= ? OR title LIKE ?))', 50000, 35, '%Manager%')!
 	assert qb.where.parentheses == [[1, 2], [0, 2]]
 
 	// complex_nesting
 	qb.reset()
-	qb.where('((age = ? OR (salary > ? AND id < ?)) AND (name LIKE ?))', 1, 2, 3, '%test%')
+	qb.where('((age = ? OR (salary > ? AND id < ?)) AND (name LIKE ?))', 1, 2, 3, '%test%')!
 	assert qb.where.parentheses == [[1, 2], [0, 2], [3, 3], [0, 3]]
 }
 
@@ -158,13 +158,13 @@ fn test_orm_func_stmts() {
 	mut qb := orm.new_query[User](db)
 
 	// create table
-	qb.create()
+	qb.create()!
 
 	// insert many records
-	qb.insert_many(users)
+	qb.insert_many(users)!
 
 	// select count(*)
-	mut count := qb.count()
+	mut count := qb.count()!
 
 	// last_id
 	mut last_id := qb.last_id()
@@ -172,14 +172,14 @@ fn test_orm_func_stmts() {
 	assert count == users.len
 
 	// insert a single record
-	qb.insert(users[0])
+	qb.insert(users[0])!
 
 	// select * from table
-	all_users := qb.query()
+	all_users := qb.query()!
 	assert all_users.len == users.len + 1
 
 	// select `name` from table
-	only_names := qb.select('name').query()
+	only_names := qb.select('name')!.query()!
 	assert only_names[0].name != ''
 	assert only_names[0].id == 0
 	assert only_names[0].age == 0
@@ -191,33 +191,33 @@ fn test_orm_func_stmts() {
 	assert only_names[0].created_at == none
 
 	// update
-	qb.set('age = ?, title = ?', 71, 'boss').where('name = ?', 'John').update()
-	john := qb.where('name = ?', 'John').query()
+	qb.set('age = ?, title = ?', 71, 'boss')!.where('name = ?', 'John')!.update()!
+	john := qb.where('name = ?', 'John')!.query()!
 	assert john[0].name == 'John'
 	assert john[0].age == 71
 	assert john[0].title == 'boss'
 
 	// delete
-	qb.where('name = ?', 'John').delete()
-	no_john := qb.where('name = ?', 'John').query()
+	qb.where('name = ?', 'John')!.delete()!
+	no_john := qb.where('name = ?', 'John')!.query()!
 	assert no_john.len == 0
 
 	// complex select
 	selected_users := qb.where('created_at IS NULL && ((salary > ? && age < ?) || (role LIKE ?))',
-		2000, 30, '%employee%').query()
+		2000, 30, '%employee%')!.query()!
 	assert selected_users[0].name == 'Silly'
 	assert selected_users.len == 1
 
 	// chain calls
 	final_users := qb
-		.drop()
-		.create()
-		.insert_many(users)
-		.set('name = ?', 'haha').where('name = ?', 'Tom').update()
-		.where('age >= ?', 30).delete()
-		.order(.asc, 'age')
-		.limit(100)
-		.query()
+		.drop()!
+		.create()!
+		.insert_many(users)!
+		.set('name = ?', 'haha')!.where('name = ?', 'Tom')!.update()!
+		.where('age >= ?', 30)!.delete()!
+		.order(.asc, 'age')!
+		.limit(100)!
+		.query()!
 	assert final_users.len == 5
 	assert final_users[0].age == 18
 }
