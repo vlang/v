@@ -4953,6 +4953,11 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 				typ_sym = unsafe { unwrapped_sym }
 			}
 		}
+		.string {
+			if node.is_gated && c.mod != 'strings' {
+				c.table.used_features.range_index = true
+			}
+		}
 		else {}
 	}
 	if !c.is_builtin_mod && c.mod !in ['strings', 'math.bits'] {
