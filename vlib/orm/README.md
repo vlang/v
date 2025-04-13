@@ -293,38 +293,38 @@ struct User {
 4. Create a database table​​:
 
 ```v ignore
-	qb.create()
+	qb.create()!
 ```
 
 5. Insert multiple records​​ into the table:
 
 ```v ignore
-	qb.insert_many(users)
+	qb.insert_many(users)!
 ```
 
 6. Delete records​​ (note: `delete()` must follow `where()`):
 
 ```v ignore
-	qb.where('name = ?','John').delete()
+	qb.where('name = ?','John')!.delete()!
 ```
 
 7. Query records​​ (you can specify fields of interest via `select`):
 
 ```v ignore
 // Returns []User with only 'name' populated; other fields are zero values.
-	only_names := qb.select('name').query()
+	only_names := qb.select('name')!.query()!
 ```
 
 8. Update records​​ (note: `update()` must be placed last):
 
 ```v ignore
-	qb.set('age = ?, title = ?', 71, 'boss').where('name = ?','John').update()
+	qb.set('age = ?, title = ?', 71, 'boss')!.where('name = ?','John')!.update()!
 ```
 
 9. Drop the table​​:
 
 ```v ignore
-	qb.drop()
+	qb.drop()!
 ```
 
 10. Chainable method calls​​:
@@ -333,19 +333,19 @@ Most Function Call API support chainable calls, allowing easy method chaining:
 ```v ignore
 	final_users :=
 	qb
-		.drop()
-		.create()
-		.insert_many(users)
-		.set('name = ?', 'haha').where('name = ?', 'Tom').update()
-		.where('age >= ?', 30).delete()
-		.query()
+		.drop()!
+		.create()!
+		.insert_many(users)!
+		.set('name = ?', 'haha')!.where('name = ?', 'Tom')!.update()!
+		.where('age >= ?', 30)!.delete()!
+		.query()!
 ```
 
 11. Writing complex nested `WHERE` clauses​​:
 The API includes a built-in parser to handle intricate `WHERE` clause conditions. For example:
 
 ```v ignore
-	where('created_at IS NULL && ((salary > ? && age < ?) || (role LIKE ?))', 2000, 30, '%employee%')
+	where('created_at IS NULL && ((salary > ? && age < ?) || (role LIKE ?))', 2000, 30, '%employee%')!
 ```
 
 Note the use of placeholders `?`.
