@@ -128,3 +128,8 @@ pub fn (l Set[T]) subset(r Set[T]) bool {
 	}
 	return true
 }
+
+// array returns an array representation of the set
+pub fn (l Set[T]) array() []T {
+	return l.elements.keys()
+}
