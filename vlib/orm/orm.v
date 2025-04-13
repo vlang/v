@@ -131,7 +131,7 @@ fn (kind OrderType) to_str() string {
 // parentheses defines which fields will be inside ()
 // auto_fields are indexes of fields where db should generate a value when absent in an insert
 pub struct QueryData {
-pub:
+pub mut:
 	fields      []string
 	data        []Primitive
 	types       []int
@@ -149,7 +149,7 @@ pub:
 }
 
 pub struct TableField {
-pub:
+pub mut:
 	name        string
 	typ         int
 	nullable    bool
@@ -170,7 +170,7 @@ pub:
 // fields - Fields to select
 // types - Types to select
 pub struct SelectConfig {
-pub:
+pub mut:
 	table      string
 	is_count   bool
 	has_where  bool
