@@ -200,7 +200,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	}
 
 	// align
-	if fmt_pad_ch == 0 {
+	if fmt_pad_ch == 0 || pad_ch == `0` {
 		match align {
 			0 { bf.align = .left }
 			1 { bf.align = .right }
