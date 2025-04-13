@@ -131,3 +131,9 @@ fn test_subset() {
 	subset.add_all(['b', 'c'])
 	assert set.subset(subset)
 }
+
+fn test_array() {
+	mut set := Set[string]{}
+	set.add_all(['a', 'b', 'c'])
+	assert set.array().len == 3
+}
