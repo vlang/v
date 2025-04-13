@@ -254,7 +254,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
 				right := '((${styp}*)${cond_var}${op_field}data)[${i}]'
 				g.writeln('\t${styp} ${c_name(node.val_var)};')
-				g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${right}, sizeof(${styp}));')
+				g.writeln('\tmemcpy(&${c_name(node.val_var)}, ${right}, sizeof(${styp}));')
 			} else {
 				needs_memcpy := !node.val_type.is_ptr()
 					&& g.table.final_sym(node.val_type).kind == .array_fixed
