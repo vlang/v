@@ -311,7 +311,7 @@ fn decode_primitive[T](mut s DecodeState, value T) !T {
 		// TODO: `any` type support?
 		return error('${@FN}(): unsupported type ${typeof(value).name}')
 	}
-	return error('${@FN}(): impossiable error')
+	return error('${@FN}(): impossible error')
 }
 
 fn decode_array[T](mut s DecodeState, _ []T) ![]T {
