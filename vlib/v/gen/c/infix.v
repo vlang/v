@@ -1047,13 +1047,19 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			if needs_addr {
 				g.write(')')
 			}
+			mut must_close_braces := false
 			if elem_sym.kind == .function {
 				g.write(', _MOV((voidptr[]){ ')
+				must_close_braces = true
 			} else if elem_is_array_var {
 				addr := if elem_sym.kind == .array_fixed { '' } else { '&' }
 				g.write(', ${addr}')
 			} else {
-				g.write(', _MOV((${elem_type_str}[]){ ')
+				g.write(', _MOV((${elem_type_str}[])')
+				if !(elem_sym.info is ast.ArrayFixed && node.right is ast.ArrayInit) {
+					g.write('{ ')
+					must_close_braces = true
+				}
 			}
 			if array_info.elem_type.has_flag(.option) {
 				g.expr_with_opt(node.right, right.typ, array_info.elem_type)
@@ -1082,7 +1088,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			if elem_is_array_var {
 				g.write(')')
 			} else {
-				g.write(' }))')
+				if must_close_braces {
+					g.write(' }))')
+				} else {
+					g.write('))')
+				}
 			}
 		}
 	} else {
