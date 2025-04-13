@@ -127,7 +127,7 @@ fn encode_primitive[T](mut s EncodeState, value T) ! {
 		s.put_u64(u64(value))
 	} $else {
 		// TODO: `any` type support?
-		return error('${@FN}unsupported type ${typeof(value).name}')
+		return error('${@FN}(): unsupported type ${typeof(value).name}')
 	}
 }
 
@@ -309,15 +309,15 @@ fn decode_primitive[T](mut s DecodeState, value T) !T {
 		return T(s.get_u64()!)
 	} $else {
 		// TODO: `any` type support?
-		return error('${@FN}unsupported type ${typeof(value).name}')
+		return error('${@FN}(): unsupported type ${typeof(value).name}')
 	}
-	return error('impossiable error')
+	return error('${@FN}(): impossible error')
 }
 
 fn decode_array[T](mut s DecodeState, _ []T) ![]T {
 	len := int(s.get_u64()!)
 	if len <= 0 || s.offset + len > s.b.len {
-		return error('invalid array length decode from stream')
+		return error('${@FN}(): invalid array length decode from stream')
 	}
 	mut arr := []T{cap: len}
 	$if T is u8 {
@@ -327,7 +327,7 @@ fn decode_array[T](mut s DecodeState, _ []T) ![]T {
 	} $else {
 		for _ in 0 .. len {
 			if s.offset >= s.b.len {
-				return error('unexpected end of data')
+				return error('${@FN}(): unexpected end of data')
 			}
 			$if T is $array {
 				arr << decode_array(mut s, T{})!
@@ -348,7 +348,7 @@ fn decode_array[T](mut s DecodeState, _ []T) ![]T {
 fn decode_string(mut s DecodeState) !string {
 	len := int(s.get_u64()!)
 	if len <= 0 || s.offset + len > s.b.len {
-		return error('invalid string length decode from stream')
+		return error('${@FN}(): invalid string length decode from stream')
 	}
 	str := unsafe { s.b[s.offset..s.offset + len].bytestr() }
 	s.offset += len
@@ -379,7 +379,7 @@ type Any = int
 fn decode_map[K, V](mut s DecodeState, _ map[K]V) !map[K]V {
 	len := int(s.get_u64()!)
 	if len <= 0 || s.offset + len > s.b.len {
-		return error('invalid map length decode from stream')
+		return error('${@FN}(): invalid map length decode from stream')
 	}
 
 	mut m := map[K]V{}
@@ -395,17 +395,19 @@ fn decode_map[K, V](mut s DecodeState, _ map[K]V) !map[K]V {
 		}
 
 		// decode value
-		mut v := Any(0)
-		$if V is $string {
-			v = decode_string(mut s)!
-		} $else $if V is $struct {
-			v = decode_struct(mut s, V{})!
+		$if V is $struct {
+			v := decode_struct(mut s, V{})!
+			m[k as K] = v
 		} $else $if V is $map {
-			v = decode_map(mut s, V{})!
+			v := decode_map(mut s, V{})!
+			m[k as K] = v
+		} $else $if V is $string {
+			v := decode_string(mut s)!
+			m[k as K] = v
 		} $else {
-			v = decode_primitive(mut s, unsafe { V(0) })!
+			v := decode_primitive(mut s, unsafe { V(0) })!
+			m[k as K] = v
 		}
-		m[k as K] = v as V
 	}
 	return m
 }
@@ -413,7 +415,7 @@ fn decode_map[K, V](mut s DecodeState, _ map[K]V) !map[K]V {
 @[inline]
 fn (mut s DecodeState) get_u64() !u64 {
 	if s.offset + 8 > s.b.len {
-		return error('bytes length is not enough for u64')
+		return error('${@FN}(): bytes length is not enough for u64')
 	}
 	defer {
 		s.offset += 8
@@ -428,7 +430,7 @@ fn (mut s DecodeState) get_u64() !u64 {
 @[inline]
 fn (mut s DecodeState) get_u32() !u32 {
 	if s.offset + 4 > s.b.len {
-		return error('bytes length is not enough for u32')
+		return error('${@FN}(): bytes length is not enough for u32')
 	}
 	defer {
 		s.offset += 4
@@ -443,7 +445,7 @@ fn (mut s DecodeState) get_u32() !u32 {
 @[inline]
 fn (mut s DecodeState) get_u16() !u16 {
 	if s.offset + 2 > s.b.len {
-		return error('bytes length is not enough for u16')
+		return error('${@FN}(): bytes length is not enough for u16')
 	}
 	defer {
 		s.offset += 2
@@ -458,7 +460,7 @@ fn (mut s DecodeState) get_u16() !u16 {
 @[inline]
 fn (mut s DecodeState) get_u8() !u8 {
 	if s.offset + 1 > s.b.len {
-		return error('bytes length is not enough for u8')
+		return error('${@FN}(): bytes length is not enough for u8')
 	}
 	defer {
 		s.offset += 1

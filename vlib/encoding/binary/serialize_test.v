@@ -192,6 +192,10 @@ fn test_encode_decode_array() {
 	}
 }
 
+struct St {
+	i int
+}
+
 fn test_encode_decode_map() {
 	a_map_string_string := {
 		'abc': 'def'
@@ -242,6 +246,10 @@ fn test_encode_decode_map() {
 		'abc': usize(432211)
 	}
 
+	a_map_string_struct := {
+		's': St{1}
+	}
+
 	b_map_string_string := encode_binary(a_map_string_string)!
 	b_map_string_int := encode_binary(a_map_string_int)!
 	b_map_string_u8 := encode_binary(a_map_string_u8)!
@@ -258,6 +266,7 @@ fn test_encode_decode_map() {
 	b_map_string_rune := encode_binary(a_map_string_rune)!
 	b_map_string_isize := encode_binary(a_map_string_isize)!
 	b_map_string_usize := encode_binary(a_map_string_usize)!
+	b_map_string_struct := encode_binary(a_map_string_struct)!
 
 	c_map_string_string := decode_binary[map[string]string](b_map_string_string)!
 	c_map_string_int := decode_binary[map[string]int](b_map_string_int)!
@@ -275,6 +284,7 @@ fn test_encode_decode_map() {
 	c_map_string_rune := decode_binary[map[string]rune](b_map_string_rune)!
 	c_map_string_isize := decode_binary[map[string]isize](b_map_string_isize)!
 	c_map_string_usize := decode_binary[map[string]usize](b_map_string_usize)!
+	c_map_string_struct := decode_binary[map[string]St](b_map_string_struct)!
 
 	assert a_map_string_string == c_map_string_string
 	assert a_map_string_int == c_map_string_int
@@ -291,6 +301,7 @@ fn test_encode_decode_map() {
 	assert a_map_string_rune == c_map_string_rune
 	assert a_map_string_isize == c_map_string_isize
 	assert a_map_string_usize == c_map_string_usize
+	assert a_map_string_struct == c_map_string_struct
 
 	assert b_map_string_string == [u8(1), 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 97, 98,
 		99, 3, 0, 0, 0, 0, 0, 0, 0, 100, 101, 102]
@@ -331,6 +342,8 @@ fn test_encode_decode_map() {
 		assert b_map_string_usize == [u8(1), 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 97, 98,
 			99, 83, 152, 6, 0]
 	}
+	assert b_map_string_struct == [u8(1), 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 115, 1,
+		0, 0, 0, 0, 0, 0, 0]
 }
 
 struct MyStruct {
