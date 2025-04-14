@@ -2522,8 +2522,10 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					}
 				} else {
 					// passing variadic arg to another call which expects same array type
-					if args.len == 1 && args[arg_nr].typ.has_flag(.variadic)
-						&& args[arg_nr].typ == varg_type {
+					if args.len == 1
+						&& ((args[arg_nr].typ.has_flag(.variadic) && args[arg_nr].typ == varg_type)
+						|| (varg_type.has_flag(.variadic)
+						&& args[arg_nr].typ == varg_type.clear_flag(.variadic))) {
 						g.ref_or_deref_arg(args[arg_nr], arr_info.elem_type, node.language,
 							false)
 					} else {
