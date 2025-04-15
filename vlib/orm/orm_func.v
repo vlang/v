@@ -434,8 +434,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 
 				$if field.typ is $option {
 					if value == Primitive(Null{}) {
-						// ?? we can set any type of option field = ?i16(none)???
-						instance.$(field.name) = ?i16(none)
+						instance.$(field.name) = none
 					}
 				}
 				if value != Primitive(Null{}) {
