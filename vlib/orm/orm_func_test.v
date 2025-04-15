@@ -45,10 +45,12 @@ struct User {
 // a `null` value in database, will map to default value of the require field in struct
 @[table: 'sys_users']
 struct UserPart {
-	id         int @[primary; serial]
-	name       string
-	created_at time.Time @[sql_type: 'TIMESTAMP']
-	updated_at time.Time @[sql_type: 'TIMESTAMP']
+	id            int @[primary; serial]
+	name          string
+	created_at    time.Time @[sql_type: 'TIMESTAMP']
+	updated_at    time.Time @[sql_type: 'TIMESTAMP']
+	option_i8     ?i8     = 13 // option with default test
+	option_string ?string = 'this is not none'
 }
 
 fn test_orm_func_where() {
@@ -232,38 +234,38 @@ fn test_orm_func_stmts() {
 			option_string: 'hello'
 		},
 		User{
-			name:          'Silly'
-			age:           27
-			role:          'employer'
-			status:        5
-			salary:        2500
-			title:         'doctor'
-			score:         81
-			updated_at:    time.now()
-			type_i8:       1
-			type_i16:      2
-			type_int:      3
-			type_i64:      4
-			type_u8:       5
-			type_u16:      6
-			type_u32:      7
-			type_u64:      8
-			type_f32:      1.1
-			type_f64:      2.2
-			type_bool:     true
-			type_string:   'hello'
-			option_i8:     1
-			option_i16:    2
-			option_int:    3
-			option_i64:    4
-			option_u8:     5
-			option_u16:    6
-			option_u32:    7
-			option_u64:    8
-			option_f32:    1.1
-			option_f64:    2.2
-			option_bool:   true
-			option_string: 'hello'
+			name:        'Silly'
+			age:         27
+			role:        'employer'
+			status:      5
+			salary:      2500
+			title:       'doctor'
+			score:       81
+			updated_at:  time.now()
+			type_i8:     1
+			type_i16:    2
+			type_int:    3
+			type_i64:    4
+			type_u8:     5
+			type_u16:    6
+			type_u32:    7
+			type_u64:    8
+			type_f32:    1.1
+			type_f64:    2.2
+			type_bool:   true
+			type_string: 'hello'
+			option_i8:   1
+			option_i16:  2
+			option_int:  3
+			option_i64:  4
+			option_u8:   5
+			option_u16:  6
+			option_u32:  7
+			option_u64:  8
+			option_f32:  1.1
+			option_f64:  2.2
+			option_bool: true
+			// option_string: 'hello'	// option with default test
 		},
 		User{
 			name:          'Smith'
@@ -336,28 +338,28 @@ fn test_orm_func_stmts() {
 			option_string: 'hello'
 		},
 		User{
-			name:          'Peter'
-			age:           29
-			role:          'employer'
-			status:        1
-			salary:        3500
-			title:         'doctor'
-			score:         80
-			created_at:    time.now()
-			updated_at:    time.now()
-			type_i8:       1
-			type_i16:      2
-			type_int:      3
-			type_i64:      4
-			type_u8:       5
-			type_u16:      6
-			type_u32:      7
-			type_u64:      8
-			type_f32:      1.1
-			type_f64:      2.2
-			type_bool:     true
-			type_string:   'hello'
-			option_i8:     1
+			name:        'Peter'
+			age:         29
+			role:        'employer'
+			status:      1
+			salary:      3500
+			title:       'doctor'
+			score:       80
+			created_at:  time.now()
+			updated_at:  time.now()
+			type_i8:     1
+			type_i16:    2
+			type_int:    3
+			type_i64:    4
+			type_u8:     5
+			type_u16:    6
+			type_u32:    7
+			type_u64:    8
+			type_f32:    1.1
+			type_f64:    2.2
+			type_bool:   true
+			type_string: 'hello'
+			// option_i8:     1	// option with default test
 			option_i16:    2
 			option_int:    3
 			option_i64:    4

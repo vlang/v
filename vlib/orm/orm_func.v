@@ -432,9 +432,12 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 			if index >= 0 {
 				value := row[index]
 
-				if value == Primitive(Null{}) {
-					// set to none by default
-				} else {
+				$if field.typ is $option {
+					if value == Primitive(Null{}) {
+						instance.$(field.name) = none
+					}
+				}
+				if value != Primitive(Null{}) {
 					$if field.typ is i8 || field.typ is ?i8 {
 						instance.$(field.name) = match value {
 							i8 { i8(value) }
