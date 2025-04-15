@@ -24,8 +24,8 @@ fn init_and_check() ! {
 	os.chdir(test_path)!
 
 	// Keep track of the last modified time of the main file to ensure it is not modified if it already exists.
-	main_exists := os.exists('src/main.v')
-	main_last_modified := if main_exists { os.file_last_mod_unix('src/main.v') } else { 0 }
+	main_exists := os.exists('main.v')
+	main_last_modified := if main_exists { os.file_last_mod_unix('main.v') } else { 0 }
 
 	// Initialize project.
 	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
@@ -34,9 +34,9 @@ fn init_and_check() ! {
 	assert x.output.trim_space() == 'Hello World!'
 
 	if main_exists {
-		assert main_last_modified == os.file_last_mod_unix('src/main.v')
+		assert main_last_modified == os.file_last_mod_unix('main.v')
 	} else {
-		assert os.read_file('src/main.v')! == [
+		assert os.read_file('main.v')! == [
 			'module main\n',
 			'fn main() {',
 			"	println('Hello World!')",
