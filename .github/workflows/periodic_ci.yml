@@ -37,4 +37,4 @@ jobs:
         if: runner.os == 'Windows'
         run: ./make.bat -msvc && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
       - name: Test
-        run: ./v -d network -silent test-self vlib/net
+        run: ./v -d use_openssl -d network -silent test-self vlib/net
