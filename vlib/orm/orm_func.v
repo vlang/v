@@ -432,7 +432,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 			if index >= 0 {
 				value := row[index]
 
-				if value == Primitive(Null{}) && m.nullable {
+				if value == Primitive(Null{}) {
 					// set to none by default
 				} else {
 					$if field.typ is i8 || field.typ is ?i8 {

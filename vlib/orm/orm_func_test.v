@@ -40,6 +40,17 @@ struct User {
 	option_string ?string
 }
 
+// UserPart is part of User, so we can access only part of the `sys_users` table
+// note: for test, we modify `created_at` field from option to require
+// a `null` value in database, will map to default value of the require field in struct
+@[table: 'sys_users']
+struct UserPart {
+	id         int @[primary; serial]
+	name       string
+	created_at time.Time @[sql_type: 'TIMESTAMP']
+	updated_at time.Time @[sql_type: 'TIMESTAMP']
+}
+
 fn test_orm_func_where() {
 	mut db := sqlite.connect(':memory:')!
 	defer { db.close() or {} }
@@ -495,4 +506,11 @@ fn test_orm_func_stmts() {
 		.query()!
 	assert final_users.len == 5
 	assert final_users[0].age == 18
+
+	// access only part of the table
+	mut part := orm.new_query[UserPart](db)
+	part_user := part.query()!
+	// a `null` value in database, will map to default value of the require field in struct
+	assert part_user.filter(it.name == 'Silly')[0].created_at == time.Time{}
+	assert part_user.len == 5
 }
