@@ -3869,7 +3869,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	pos_t := p.tok.pos()
 	if import_pos.line_nr == pos_t.line_nr {
-		if p.tok.kind !in [.lcbr, .eof, .comment, .semicolon] {
+		if p.tok.kind !in [.lcbr, .eof, .comment, .semicolon, .key_import] {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
 			return import_node
 		}
