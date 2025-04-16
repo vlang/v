@@ -66,7 +66,10 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 				f.write(arg.segment)
 				f.write(':')
 			}
-			f.write('[')
+			if arg.mode != ast.AddressingMode.displacement_with_base
+				&& arg.mode != ast.AddressingMode.composite_displacement_with_base {
+				f.write('[')
+			}
 			base := arg.base
 			index := arg.index
 			displacement := arg.displacement
@@ -107,11 +110,28 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 					f.write(' + ')
 					f.asm_arg(displacement)
 				}
+				.displacement_with_base {
+					f.asm_arg(displacement)
+					f.write('(')
+					f.asm_arg(base)
+					f.write(')')
+				}
+				.composite_displacement_with_base {
+					f.write('(')
+					f.asm_arg(displacement)
+					f.write(')')
+					f.write('(')
+					f.asm_arg(base)
+					f.write(')')
+				}
 				.invalid {
 					panic('fmt: invalid addressing mode')
 				}
 			}
-			f.write(']')
+			if arg.mode != ast.AddressingMode.displacement_with_base
+				&& arg.mode != ast.AddressingMode.composite_displacement_with_base {
+				f.write(']')
+			}
 		}
 		ast.AsmDisp {
 			if arg.val.len >= 2 && arg.val[arg.val.len - 1] in [`b`, `f`]

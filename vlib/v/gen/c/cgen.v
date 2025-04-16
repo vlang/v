@@ -3317,6 +3317,20 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 					g.asm_arg(base, stmt)
 					g.write(')')
 				}
+				.displacement_with_base {
+					g.asm_arg(displacement, stmt)
+					g.write('(')
+					g.asm_arg(base, stmt)
+					g.write(')')
+				}
+				.composite_displacement_with_base {
+					g.write('(')
+					g.asm_arg(displacement, stmt)
+					g.write(')')
+					g.write('(')
+					g.asm_arg(base, stmt)
+					g.write(')')
+				}
 				.invalid {
 					g.error('invalid addressing mode', arg.pos)
 				}

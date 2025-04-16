@@ -1,0 +1,57 @@
+// vtest vflags: -cc riscv64-linux-gnu-gcc -gc none
+// vtest runner: qemu-riscv64
+// vtest runner_flags: -L /usr/riscv64-linux-gnu/
+
+@[packed]
+struct SomeStruct {
+	element_0 u64
+	element_1 u64
+}
+
+fn main() {
+	if check_displacement_with_base() == true && check_composite_displacement_with_base() == true {
+		println('pass')
+	} else {
+		println('fail')
+	}
+}
+
+fn check_displacement_with_base() bool {
+	mut s := SomeStruct{}
+	mut tmp := u64(0)
+
+	asm rv64 {
+		li tmp, 0xcafe
+		sd tmp, (0 * 8)(structure_base)
+		li tmp, 0xd00d
+		sd tmp, (1 * 8)(structure_base)
+		; +r (tmp)
+		; r (&s) as structure_base
+	}
+
+	if s.element_0 == 0xcafe && s.element_1 == 0xd00d {
+		return true
+	} else {
+		return false
+	}
+}
+
+fn check_composite_displacement_with_base() bool {
+	mut s := SomeStruct{}
+	mut tmp := u64(0)
+
+	asm rv64 {
+		li tmp, 0xcafe
+		sd tmp, 0(structure_base)
+		li tmp, 0xbabe
+		sd tmp, 8(structure_base)
+		; +r (tmp)
+		; r (&s) as structure_base
+	}
+
+	if s.element_0 == 0xcafe && s.element_1 == 0xbabe {
+		return true
+	} else {
+		return false
+	}
+}
