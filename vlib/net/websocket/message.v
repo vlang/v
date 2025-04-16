@@ -179,7 +179,7 @@ pub fn (mut ws Client) read_next_message() !Message {
 	return error('none')
 }
 
-// payload_from_fragments returns the whole paylaod from fragmented message
+// payload_from_fragments returns the whole payload from fragmented message
 fn (ws &Client) payload_from_fragments(fin_payload []u8) ![]u8 {
 	mut total_size := 0
 	for f in ws.fragments {
