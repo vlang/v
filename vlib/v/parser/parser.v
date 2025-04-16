@@ -1373,8 +1373,23 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 										pos: number_lit.pos
 									}
 								} else {
-									args << ast.IntegerLiteral{
-										...number_lit
+									if p.peek_token(0).kind == .lpar && arch == .rv64 {
+										displacement := ast.AsmDisp{
+											val: number_lit.val
+											pos: number_lit.pos
+										}
+										p.next()
+										args << ast.AsmAddressing{
+											mode:         .displacement_with_base
+											base:         p.reg_or_alias()
+											displacement: displacement
+											pos:          p.tok.pos()
+										}
+										p.check(.rpar)
+									} else {
+										args << ast.IntegerLiteral{
+											...number_lit
+										}
 									}
 								}
 							}
@@ -1409,6 +1424,63 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 					}
 					.semicolon {
 						break
+					}
+					.lpar {
+						if arch == .rv64 {
+							if p.peek_token(1).kind == .number && p.peek_token(3).kind == .number
+								&& p.peek_token(4).kind == .rpar {
+								p.next()
+								first_number_lit := p.parse_number_literal()
+								mut first_number_lit_pos := token.Pos{}
+								mut displacement_val := ''
+								match first_number_lit {
+									ast.IntegerLiteral {
+										displacement_val += first_number_lit.val
+										first_number_lit_pos = first_number_lit.pos
+									}
+									else {
+										p.error('p.parse_number_literal() invalid output: `${first_number_lit}`')
+									}
+								}
+								displacement_val += ' ' + match p.tok.kind {
+									.plus {
+										'+'
+									}
+									.minus {
+										'-'
+									}
+									.mul {
+										'*'
+									}
+									else {
+										''
+									}
+								}
+								p.next()
+								second_number_lit := p.parse_number_literal()
+								match second_number_lit {
+									ast.IntegerLiteral {
+										displacement_val += ' ' + second_number_lit.val
+									}
+									else {
+										p.error('p.parse_number_literal() invalid output: `${second_number_lit}`')
+									}
+								}
+								p.check(.rpar)
+								p.check(.lpar)
+								displacement := ast.AsmDisp{
+									val: displacement_val
+									pos: first_number_lit_pos
+								}
+								args << ast.AsmAddressing{
+									mode:         .composite_displacement_with_base
+									base:         p.reg_or_alias()
+									displacement: displacement
+									pos:          p.tok.pos()
+								}
+								p.check(.rpar)
+							}
+						}
 					}
 					else {
 						p.error('invalid token in assembly block')
@@ -1625,6 +1697,18 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 // 		pos: pos.extend(p.prev_tok.pos())
 // 	}
 // }
+
+fn (mut p Parser) asm_addressing_rv64_composite_displacement_with_base(displacement ast.AsmDisp) ast.AsmAddressing {
+	pos := p.tok.pos()
+	base := p.reg_or_alias()
+	p.check(.rpar)
+	return ast.AsmAddressing{
+		mode:         .composite_displacement_with_base
+		base:         base
+		displacement: displacement
+		pos:          pos.extend(p.prev_tok.pos())
+	}
+}
 
 fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 	pos := p.tok.pos()

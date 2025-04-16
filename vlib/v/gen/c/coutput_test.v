@@ -65,7 +65,7 @@ fn test_out_files() {
 		compile_ms := sw_compile.elapsed().milliseconds()
 		ensure_compilation_succeeded(compilation, compile_cmd)
 		//
-		mut execute_cmd := ""
+		mut execute_cmd := ''
 		if runner := file_options.runner {
 			if !os.exists_in_system_path(runner) {
 				eprintln('> skipping ${relpath}, it needs ${runner}, which is not detected')
@@ -251,8 +251,8 @@ fn target2paths(target_path string, postfix string) (string, string, string, str
 
 struct FileOptions {
 mut:
-	vflags string
-	runner ?string
+	vflags       string
+	runner       ?string
 	runner_flags ?string
 }
 

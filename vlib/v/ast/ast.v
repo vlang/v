@@ -1728,6 +1728,8 @@ pub enum AddressingMode {
 	base_plus_index_plus_displacement             // base + (index ∗ scale) + displacement
 	base_plus_index_times_scale_plus_displacement // base + index + displacement
 	rip_plus_displacement                         // rip + displacement
+	displacement_with_base                        // displacement(base)
+	composite_displacement_with_base              // (a [+,-,*] b)(base)
 }
 
 pub struct AsmClobbered {
