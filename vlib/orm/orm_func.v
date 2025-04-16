@@ -43,12 +43,28 @@ pub fn (qb_ &QueryBuilder[T]) reset() &QueryBuilder[T] {
 	return qb
 }
 
-// where create a `where` clause
+// where create a `where` clause, it will `AND` with previous `where` clause.
 // valid token in the `condition` include: `field's names`, `operator`, `(`, `)`, `?`, `AND`, `OR`, `||`, `&&`,
 // valid `operator` incldue: `=`, `!=`, `<>`, `>=`, `<=`, `>`, `<`, `LIKE`, `ILIKE`, `IS NULL`, `IS NOT NULL`
 // example: `where('(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))', a, b, c, x, y)`
 pub fn (qb_ &QueryBuilder[T]) where(condition string, params ...Primitive) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
+	if qb.where.fields.len > 0 {
+		// skip first field
+		qb.where.is_and << true // and
+	}
+	qb.parse_conditions(condition, params)!
+	qb.config.has_where = true
+	return qb
+}
+
+// or_where create a `where` clause, it will `OR` with previous `where` clause.
+pub fn (qb_ &QueryBuilder[T]) or_where(condition string, params ...Primitive) !&QueryBuilder[T] {
+	mut qb := unsafe { qb_ }
+	if qb.where.fields.len > 0 {
+		// skip first field
+		qb.where.is_and << false // or
+	}
 	qb.parse_conditions(condition, params)!
 	qb.config.has_where = true
 	return qb
