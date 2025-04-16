@@ -498,8 +498,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				if utyp.has_flag(.option) {
 					dec.writeln('\t\t\t\t${prefix}res.state = 0;')
 					tmp_time_var := g.new_tmp_var()
-					dec.writeln('\t\t\t${variant_typ} ${tmp_time_var} = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp})')
-					dec.writeln('\t\t\t\tvmemcpy(&${prefix}res.data, &${tmp_time_var}, sizeof(${variant_typ}));')
+					dec.writeln('\t\t\t\t${g.base_type(utyp)} ${tmp_time_var} = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp});')
+					dec.writeln('\t\t\t\tvmemcpy(&${prefix}res.data, ${tmp_time_var}._time__Time, sizeof(${variant_typ}));')
 				} else {
 					dec.writeln('\t\t\t\t${prefix}res = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp});')
 				}
