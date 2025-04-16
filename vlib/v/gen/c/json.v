@@ -497,7 +497,9 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				dec.writeln('\t\t\t\t${variant_typ} ${tmp} = time__unix(${js_dec_name('i64')}(jsonroot_${tmp}));')
 				if utyp.has_flag(.option) {
 					dec.writeln('\t\t\t\t${prefix}res.state = 0;')
-					dec.writeln('\t\t\t\tvmemcpy(&${prefix}res.data, &${variant_typ}_to_sumtype_${sym.cname}(&${tmp}), sizeof(${variant_typ}));')
+					tmp_time_var := g.new_tmp_var()
+					dec.writeln('\t\t\t${variant_typ} ${tmp_time_var} = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp})')
+					dec.writeln('\t\t\t\tvmemcpy(&${prefix}res.data, &${tmp_time_var}, sizeof(${variant_typ}));')
 				} else {
 					dec.writeln('\t\t\t\t${prefix}res = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp});')
 				}
@@ -779,7 +781,9 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				if field.typ.has_flag(.option) {
 					dec.writeln('\t\tif (!(cJSON_IsNull(jsonroot_${tmp}))) {\n')
 					dec.writeln('\t\t\t${prefix}${op}${c_name(field.name)}.state = 0;\n')
-					dec.writeln('\t\t\tvmemcpy(&${prefix}${op}${c_name(field.name)}.data, &(time__unix(json__decode_u64(jsonroot_${tmp}))), sizeof(${g.base_type(field.typ)}));')
+					tmp_time_var := g.new_tmp_var()
+					dec.writeln('\t\t\t${g.base_type(field.typ)} ${tmp_time_var} = time__unix(json__decode_u64(jsonroot_${tmp}));\n')
+					dec.writeln('\t\t\tvmemcpy(&${prefix}${op}${c_name(field.name)}.data, &${tmp_time_var}, sizeof(${g.base_type(field.typ)}));')
 					dec.writeln('\t\t}\n')
 				} else {
 					dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = time__unix(json__decode_u64(jsonroot_${tmp}));')
