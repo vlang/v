@@ -206,46 +206,22 @@ fn (app &App) parse(config string, sep string) map[string]string {
 }
 
 fn (mut a App) get_linux_os_name() string {
-	mut os_details := ''
-	linux_os_methods := ['os-release', 'lsb_release', 'kernel', 'uname']
-	for m in linux_os_methods {
-		match m {
-			'os-release' {
-				if !os.is_file('/etc/os-release') {
-					continue
-				}
-				lines := os.read_file('/etc/os-release') or { continue }
-				vals := a.parse(lines, '=')
-				if vals['PRETTY_NAME'] == '' {
-					continue
-				}
-				os_details = vals['PRETTY_NAME']
-				break
+	if os.is_file('/etc/os-release') {
+		if lines := os.read_file('/etc/os-release') {
+			vals := a.parse(lines, '=')
+			if vals['PRETTY_NAME'] != '' {
+				return vals['PRETTY_NAME']
 			}
-			'lsb_release' {
-				exists := a.cmd(command: 'type lsb_release')
-				if exists.starts_with('Error') {
-					continue
-				}
-				os_details = a.cmd(command: 'lsb_release -d -s')
-				break
-			}
-			'kernel' {
-				if !os.is_file('/proc/version') {
-					continue
-				}
-				os_details = a.cmd(command: 'cat /proc/version')
-				break
-			}
-			'uname' {
-				ouname := os.uname()
-				os_details = '${ouname.release}, ${ouname.version}'
-				break
-			}
-			else {}
 		}
 	}
-	return os_details
+	if !a.cmd(command: 'type lsb_release').starts_with('Error') {
+		return a.cmd(command: 'lsb_release -d -s')
+	}
+	if os.is_file('/proc/version') {
+		return a.cmd(command: 'cat /proc/version')
+	}
+	ouname := os.uname()
+	return '${ouname.release}, ${ouname.version}'
 }
 
 fn (mut a App) cpu_info(key string) string {
