@@ -496,6 +496,12 @@ fn test_orm_func_stmts() {
 	assert selected_users[0].name == 'Silly'
 	assert selected_users.len == 1
 
+	// chain where
+	and_where := qb.where('salary > ?', 2000)!.where('age > ?', 40)!.query()!
+	assert and_where.len == 1
+	or_where := qb.where('salary > ?', 2000)!.or_where('age > ? OR score > ?', 40, 85)!.query()!
+	assert or_where.len == 9
+
 	// chain calls
 	final_users := qb
 		.drop()!
