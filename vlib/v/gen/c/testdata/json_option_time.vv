@@ -1,0 +1,62 @@
+import json
+import time
+
+const default_time = time.parse('2025-04-16 12:00:00') or {time.now()}
+
+type Any = string | []map[string]?Any | time.Time
+
+struct Users {
+mut:
+	id         string
+	created_at time.Time
+}
+
+struct EmbeddedStruct {
+	v int
+}
+
+struct MyStruct {
+	a       int
+	opt_a   ?int
+	s       string
+	opt_s   ?string
+	t       time.Time = default_time
+	opt_v   ?EmbeddedStruct
+	opt_t   ?time.Time
+	opt_u64 ?u64
+}
+
+data_all := [Users{
+	id:         '123'
+	created_at: default_time
+}, Users{
+	id:         'asd'
+	created_at: default_time
+}]
+
+mut result := []map[string]?Any{}
+for raw in data_all {
+	mut data := map[string]?Any{}
+	data['id'] = raw.id
+	data['time'] = raw.created_at
+	result << data
+}
+
+println(result)
+
+msg := json.encode(result)
+println(msg)
+
+x := MyStruct{
+	a: 1
+	s: 'hello'
+	t: default_time
+	// opt_t : default_time
+	opt_u64: 123456
+}
+
+y := json.encode(x)
+println(y)
+
+k := json.decode(MyStruct, y)!
+println(k)

@@ -47,7 +47,7 @@ const mysql_type_geometry = C.MYSQL_TYPE_GEOMETRY
 const mysql_no_data = C.MYSQL_NO_DATA
 
 fn C.mysql_stmt_init(&C.MYSQL) &C.MYSQL_STMT
-fn C.mysql_stmt_prepare(&C.MYSQL_STMT, &char, u32) int
+fn C.mysql_stmt_prepare(&C.MYSQL_STMT, const_query charptr, u32) int
 fn C.mysql_stmt_bind_param(&C.MYSQL_STMT, &C.MYSQL_BIND) bool
 fn C.mysql_stmt_execute(&C.MYSQL_STMT) int
 fn C.mysql_stmt_close(&C.MYSQL_STMT) bool
@@ -86,7 +86,7 @@ pub fn (db DB) init_stmt(query string) Stmt {
 
 // prepare a statement for execution.
 pub fn (stmt Stmt) prepare() ! {
-	result := C.mysql_stmt_prepare(stmt.stmt, stmt.query.str, stmt.query.len)
+	result := C.mysql_stmt_prepare(stmt.stmt, charptr(stmt.query.str), stmt.query.len)
 
 	if result != 0 && stmt.get_error_msg() != '' {
 		return stmt.error(result)

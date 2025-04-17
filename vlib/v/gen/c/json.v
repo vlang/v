@@ -495,7 +495,14 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				dec.writeln('\t\t\tif (strcmp("Time", ${type_var}) == 0) {')
 				gen_js_get(ret_styp, tmp, 'value', mut dec, true)
 				dec.writeln('\t\t\t\t${variant_typ} ${tmp} = time__unix(${js_dec_name('i64')}(jsonroot_${tmp}));')
-				dec.writeln('\t\t\t\t${prefix}res = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp});')
+				if utyp.has_flag(.option) {
+					dec.writeln('\t\t\t\t${prefix}res.state = 0;')
+					tmp_time_var := g.new_tmp_var()
+					dec.writeln('\t\t\t\t${g.base_type(utyp)} ${tmp_time_var} = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp});')
+					dec.writeln('\t\t\t\tvmemcpy(&${prefix}res.data, ${tmp_time_var}._time__Time, sizeof(${variant_typ}));')
+				} else {
+					dec.writeln('\t\t\t\t${prefix}res = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp});')
+				}
 				dec.writeln('\t\t\t}')
 			} else if !is_js_prim(variant_typ) && variant_sym.kind != .enum {
 				dec.writeln('\t\t\tif (strcmp("${unmangled_variant_name}", ${type_var}) == 0 && ${variant_sym.kind == .array} == cJSON_IsArray(root)) {')
@@ -771,11 +778,20 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				tmp := g.new_tmp_var()
 				gen_js_get(styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_${tmp}) {')
-				dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = time__unix(json__decode_u64(jsonroot_${tmp}));')
-				if field.has_default_expr {
-					dec.writeln('\t} else {')
-					dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${g.expr_string_opt(field.typ,
-						field.default_expr)};')
+				if field.typ.has_flag(.option) {
+					dec.writeln('\t\tif (!(cJSON_IsNull(jsonroot_${tmp}))) {\n')
+					dec.writeln('\t\t\t${prefix}${op}${c_name(field.name)}.state = 0;\n')
+					tmp_time_var := g.new_tmp_var()
+					dec.writeln('\t\t\t${g.base_type(field.typ)} ${tmp_time_var} = time__unix(json__decode_u64(jsonroot_${tmp}));\n')
+					dec.writeln('\t\t\tvmemcpy(&${prefix}${op}${c_name(field.name)}.data, &${tmp_time_var}, sizeof(${g.base_type(field.typ)}));')
+					dec.writeln('\t\t}\n')
+				} else {
+					dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = time__unix(json__decode_u64(jsonroot_${tmp}));')
+					if field.has_default_expr {
+						dec.writeln('\t} else {')
+						dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${g.expr_string_opt(field.typ,
+							field.default_expr)};')
+					}
 				}
 				dec.writeln('\t}')
 			} else if field_sym.kind == .alias {
@@ -937,7 +953,11 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			if field_sym.name == 'time.Time' {
 				// time struct requires special treatment
 				// it has to be encoded as a unix timestamp number
-				enc.writeln('${indent}cJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}.__v_unix));')
+				if is_option {
+					enc.writeln('${indent}cJSON_AddItemToObject(o, "${name}", json__encode_u64((*(${g.base_type(field.typ)}*)(${prefix_enc}${op}${c_name(field.name)}.data)).__v_unix));')
+				} else {
+					enc.writeln('${indent}cJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}.__v_unix));')
+				}
 			} else {
 				if !field.typ.is_any_kind_of_pointer() {
 					if field_sym.kind == .alias && field.typ.has_flag(.option) {

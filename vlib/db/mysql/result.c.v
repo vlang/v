@@ -34,7 +34,7 @@ pub struct Field {
 }
 
 // fetch_row fetches the next row from a result.
-pub fn (r Result) fetch_row() &&u8 {
+pub fn (r Result) fetch_row() &charptr {
 	return C.mysql_fetch_row(r.result)
 }
 
