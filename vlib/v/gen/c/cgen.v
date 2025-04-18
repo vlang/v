@@ -1183,7 +1183,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
 					continue
 				}
-				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
+				styp := g.styp(t).replace('*', '')
+				g.writeln('\tif (sidx == _${sym.cname}_${styp}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
 			g.definitions.writeln('int v_typeof_interface_idx_${sym.cname}(int sidx);')
@@ -1196,7 +1197,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
 					continue
 				}
-				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${int(t.set_nr_muls(0))};')
+				styp := g.styp(t).replace('*', '')
+				g.writeln('\tif (sidx == _${sym.cname}_${styp}_index) return ${int(t.set_nr_muls(0))};')
 			}
 			g.writeln2('\treturn ${int(ityp)};', '}')
 		}
@@ -1852,8 +1854,8 @@ pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 		if mk_typ != variant && mk_typ in info.types {
 			continue
 		}
-		vcname := g.table.sym(mk_typ).cname
-		g.type_definitions.writeln('\t\t${vcname}* _${vcname};')
+		vcstyp := g.styp(mk_typ).replace('*', '')
+		g.type_definitions.writeln('\t\t${vcstyp}* _${vcstyp};')
 	}
 	g.type_definitions.writeln('\t};')
 	g.type_definitions.writeln('\tint _typ;')
@@ -7659,12 +7661,13 @@ fn (mut g Gen) interface_table() string {
 			st_sym := g.table.sym(ast.mktyp(st))
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
-			cctype := g.cc_type(ast.mktyp(st), true)
+			index_cstyp := g.styp(ast.mktyp(st)).replace('*', '')
+			cctype := g.cc_type(ast.mktyp(st), false)
 			$if debug_interface_table ? {
 				eprintln('>> interface name: ${isym.name} | concrete type: ${st.debug()} | st symname: ${st_sym.name}')
 			}
 			// Speaker_Cat_index = 0
-			interface_index_name := '_${interface_name}_${cctype}_index'
+			interface_index_name := '_${interface_name}_${index_cstyp}_index'
 			if already_generated_mwrappers[interface_index_name] > 0 {
 				continue
 			}
