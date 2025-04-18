@@ -6,7 +6,7 @@ pub const v_version = '0.4.10'
 
 pub fn full_hash() string {
 	build_hash := vhash()
-	if build_hash == vcurrent_hash() {
+	if vcurrent_hash() == '' || build_hash == vcurrent_hash() {
 		return build_hash
 	}
 	return '${build_hash}.${vcurrent_hash()}'
