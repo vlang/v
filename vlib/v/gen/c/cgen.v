@@ -7662,7 +7662,7 @@ fn (mut g Gen) interface_table() string {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			index_cstyp := g.styp(ast.mktyp(st)).replace('*', '')
-			cctype := g.cc_type(ast.mktyp(st), false)
+			cctype := g.cc_type(ast.mktyp(st), true)
 			$if debug_interface_table ? {
 				eprintln('>> interface name: ${isym.name} | concrete type: ${st.debug()} | st symname: ${st_sym.name}')
 			}
