@@ -3249,10 +3249,14 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write('\$${arg.val.str()}')
 		}
 		ast.AsmRegister {
-			if !stmt.is_basic {
-				g.write('%') // escape percent with percent in extended assembly
+			if stmt.arch == .rv64 {
+				g.write('${arg.name}')
+			} else {
+				if !stmt.is_basic {
+					g.write('%') // escape percent with percent in extended assembly
+				}
+				g.write('%${arg.name}')
 			}
-			g.write('%${arg.name}')
 		}
 		ast.AsmAddressing {
 			if arg.segment != '' {
