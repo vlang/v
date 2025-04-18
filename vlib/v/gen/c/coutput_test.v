@@ -1,4 +1,5 @@
 // vtest build: !self_sandboxed_packaging?
+import arrays
 import os
 import time
 import term
@@ -49,6 +50,12 @@ fn test_out_files() {
 		pexe := os.join_path(output_path, '${basename}.exe')
 		//
 		file_options := get_file_options(path)
+		if cc := cc_present(file_options) {
+			if !os.exists_in_system_path(cc) {
+				eprintln('> skipping ${relpath}, it needs ${cc}, which is not detected')
+				continue
+			}
+		}
 		alloptions := '-o ${os.quoted_path(pexe)} ${file_options.vflags}'
 		label := mj('v', file_options.vflags, 'run', relpath) + ' == ${mm(out_relpath)} '
 		//
@@ -58,8 +65,21 @@ fn test_out_files() {
 		compile_ms := sw_compile.elapsed().milliseconds()
 		ensure_compilation_succeeded(compilation, compile_cmd)
 		//
+		mut execute_cmd := ""
+		if runner := file_options.runner {
+			if !os.exists_in_system_path(runner) {
+				eprintln('> skipping ${relpath}, it needs ${runner}, which is not detected')
+				continue
+			} else {
+				execute_cmd += runner
+			}
+		}
+		if runner_flags := file_options.runner_flags {
+			execute_cmd += ' ' + runner_flags
+		}
+		execute_cmd += ' ${os.quoted_path(pexe)}'
 		sw_run := time.new_stopwatch()
-		res := os.execute(os.quoted_path(pexe))
+		res := os.execute(execute_cmd)
 		run_ms := sw_run.elapsed().milliseconds()
 		//
 		if res.exit_code < 0 {
@@ -232,6 +252,8 @@ fn target2paths(target_path string, postfix string) (string, string, string, str
 struct FileOptions {
 mut:
 	vflags string
+	runner ?string
+	runner_flags ?string
 }
 
 pub fn get_file_options(file string) FileOptions {
@@ -240,6 +262,12 @@ pub fn get_file_options(file string) FileOptions {
 	for line in lines {
 		if line.starts_with('// vtest vflags:') {
 			res.vflags = line.all_after(':').trim_space()
+		}
+		if line.starts_with('// vtest runner:') {
+			res.runner = line.all_after(':').trim_space()
+		}
+		if line.starts_with('// vtest runner_flags:') {
+			res.runner_flags = line.all_after(':').trim_space()
 		}
 	}
 	return res
@@ -280,4 +308,15 @@ fn should_skip(relpath string) bool {
 		}
 	}
 	return false
+}
+
+fn cc_present(file_options FileOptions) ?string {
+	if file_options.vflags.contains('-cc') {
+		items := file_options.vflags.split_by_space()
+		cc_index := arrays.index_of_first(items, fn (index int, value string) bool {
+			return value == '-cc'
+		})
+		return items[cc_index + 1]
+	}
+	return none
 }
