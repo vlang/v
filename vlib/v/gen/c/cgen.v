@@ -3148,9 +3148,9 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		} else {
 			g.write(' ')
 		}
-		// swap destination and operands for att syntax, not for arm64
+		// swap destination and operands for att syntax (but exclude arm64, s390 and rv64)
 		if template.args.len != 0 && !template.is_directive && stmt.arch != .arm64
-			&& stmt.arch != .s390x && stmt.arch != .ppc64le {
+			&& stmt.arch != .s390x && stmt.arch != .ppc64le && stmt.arch != .rv64 {
 			template.args.prepend(template.args.last())
 			template.args.delete(template.args.len - 1)
 		}
