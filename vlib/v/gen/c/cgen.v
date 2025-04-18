@@ -3232,6 +3232,8 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 				g.write('#${arg.val}')
 			} else if stmt.arch == .s390x {
 				g.write('${arg.val}')
+			} else if stmt.arch == .rv64 {
+				g.write('${arg.val}')
 			} else {
 				g.write('\$${arg.val}')
 			}
