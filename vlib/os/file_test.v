@@ -357,6 +357,12 @@ fn test_tell() {
 		mut f := os.open_file(tfile, 'r')!
 		f.seek(-5, .end)!
 		pos := f.tell()!
+		f.seek(0, .start)!
+		c1 := f.tell()!
+		_ := f.read_bytes(8)
+		c2 := f.tell()!
+		assert c1 == 0
+		assert c2 == 8
 		f.close()
 		// dump(pos)
 		assert pos == size - 5
