@@ -1179,11 +1179,12 @@ pub fn (mut g Gen) write_typeof_functions() {
 			}
 			g.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(int sidx) {')
 			for t in inter_info.types {
-				sub_sym := g.table.sym(ast.mktyp(t))
+				i_typ := ast.mktyp(t)
+				sub_sym := g.table.sym(i_typ)
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
 					continue
 				}
-				styp := g.styp(t).replace('*', '')
+				styp := g.styp(i_typ).replace('*', '')
 				g.writeln('\tif (sidx == _${sym.cname}_${styp}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
@@ -1193,11 +1194,12 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.extern_out.writeln('extern int v_typeof_interface_idx_${sym.cname}(int sidx);')
 			}
 			for t in inter_info.types {
-				sub_sym := g.table.sym(ast.mktyp(t))
+				i_typ := ast.mktyp(t)
+				sub_sym := g.table.sym(i_typ)
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
 					continue
 				}
-				styp := g.styp(t).replace('*', '')
+				styp := g.styp(i_typ).replace('*', '')
 				g.writeln('\tif (sidx == _${sym.cname}_${styp}_index) return ${int(t.set_nr_muls(0))};')
 			}
 			g.writeln2('\treturn ${int(ityp)};', '}')
