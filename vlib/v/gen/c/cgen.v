@@ -1184,7 +1184,11 @@ pub fn (mut g Gen) write_typeof_functions() {
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
 					continue
 				}
-				styp := g.styp(i_typ).replace('*', '')
+				styp := if !i_typ.has_flag(.shared_f) {
+					sub_sym.cname
+				} else {
+					'__shared__${sub_sym.cname}'
+				}
 				g.writeln('\tif (sidx == _${sym.cname}_${styp}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
@@ -1199,7 +1203,11 @@ pub fn (mut g Gen) write_typeof_functions() {
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
 					continue
 				}
-				styp := g.styp(i_typ).replace('*', '')
+				styp := if !i_typ.has_flag(.shared_f) {
+					sub_sym.cname
+				} else {
+					'__shared__${sub_sym.cname}'
+				}
 				g.writeln('\tif (sidx == _${sym.cname}_${styp}_index) return ${int(t.set_nr_muls(0))};')
 			}
 			g.writeln2('\treturn ${int(ityp)};', '}')
@@ -7666,7 +7674,11 @@ fn (mut g Gen) interface_table() string {
 			st_sym := g.table.sym(ast.mktyp(st))
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
-			index_cstyp := g.styp(ast.mktyp(st)).replace('*', '')
+			index_cstyp := if !st.has_flag(.shared_f) {
+				st_sym.cname
+			} else {
+				'__shared__${st_sym.cname}'
+			}
 			cctype := g.cc_type(ast.mktyp(st), true)
 			$if debug_interface_table ? {
 				eprintln('>> interface name: ${isym.name} | concrete type: ${st.debug()} | st symname: ${st_sym.name}')
@@ -7733,7 +7745,7 @@ return ${cast_struct_str};
 				cast_shared_struct.writeln('(__shared__${interface_name}) {')
 				cast_shared_struct.writeln('\t\t.mtx = {0},')
 				cast_shared_struct.writeln('\t\t.val = {')
-				cast_shared_struct.writeln('\t\t\t._${cctype} = &x->val,')
+				cast_shared_struct.writeln('\t\t\t._${index_cstyp} = &x->val,')
 				cast_shared_struct.writeln('\t\t\t._typ = ${interface_index_name},')
 				cast_shared_struct.writeln('\t\t}')
 				cast_shared_struct.write_string('\t}')
