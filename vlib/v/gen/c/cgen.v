@@ -1856,8 +1856,11 @@ pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 		if mk_typ != variant && mk_typ in info.types {
 			continue
 		}
-		vcstyp := g.styp(mk_typ).replace('*', '')
-		g.type_definitions.writeln('\t\t${vcstyp}* _${vcstyp};')
+		mut styp := g.table.sym(mk_typ).cname
+		if mk_typ.has_flag(.shared_f) {
+			styp = '__shared__${styp}'
+		}
+		g.type_definitions.writeln('\t\t${styp}* _${styp};')
 	}
 	g.type_definitions.writeln('\t};')
 	g.type_definitions.writeln('\tint _typ;')
