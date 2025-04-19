@@ -141,7 +141,6 @@ fn test_log_time_format() {
 	l.set_local_time(false)
 	l.info('${@FN} time log in utc time')
 	assert !l.get_local_time()
-	assert false
 	println(@FN + ' end')
 }
 
