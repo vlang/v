@@ -507,7 +507,6 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				c.error('cannot use Result type as map value type', node.pos)
 			}
 			val_sym := c.table.sym(info.value_type)
-			c.check_any_type(info.value_type, val_sym, node.pos)
 			if val_sym.kind == .struct {
 				val_info := val_sym.info as ast.Struct
 				if val_info.generic_types.len > 0 && val_info.concrete_types.len == 0
@@ -532,8 +531,12 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		c.ensure_type_exists(info.value_type, node.pos)
 		node.key_type = info.key_type
 		node.value_type = info.value_type
-		key_sym := c.table.sym(node.key_type)
-		c.check_any_type(info.value_type, key_sym, node.pos)
+		if (c.table.sym(info.key_type).language == .v && info.key_type == ast.any_type)
+			|| (c.table.sym(info.value_type).language == .v && info.value_type == ast.any_type) {
+			c.note('the `any` type is deprecated and will be removed soon - either use an empty interface, or a sum type',
+				node.pos)
+			c.error('cannot use type `any` here', node.pos)
+		}
 		return node.typ
 	}
 
