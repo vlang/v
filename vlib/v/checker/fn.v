@@ -280,7 +280,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('result type arguments are not supported', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
-			if node.language == .v && param.typ == ast.any_type {
+			if c.file.mod.name != 'builtin' && arg_typ_sym.language == .v
+				&& param.typ == ast.any_type {
 				c.note('the `any` type is deprecated and will be removed soon - either use an empty interface, or a sum type',
 					param.pos)
 			}
