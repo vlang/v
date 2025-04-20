@@ -5594,6 +5594,11 @@ fn (mut c Checker) fail_if_stack_struct_action_outside_unsafe(mut ident ast.Iden
 			sym := c.table.sym(obj.typ.set_nr_muls(0))
 			is_heap := sym.is_heap()
 			if (!is_heap || !obj.typ.is_ptr()) && !c.pref.translated && !c.file.is_translated {
+				is_mut_param := c.table.cur_fn != unsafe { nil }
+					&& c.table.cur_fn.params.filter(it.name == ident.name && it.is_mut).len > 0
+				if is_mut_param {
+					return
+				}
 				suggestion := if !is_heap && sym.kind == .struct {
 					'declaring `${sym.name}` as `@[heap]`'
 				} else if !is_heap {
