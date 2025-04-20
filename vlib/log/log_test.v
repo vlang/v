@@ -134,6 +134,13 @@ fn test_log_time_format() {
 	assert TimeFormat.tf_custom_format == l.get_time_format()
 	l.info('${@FN} custom like January 1st 22 AD 13:45:33 PM')
 	assert true
+	l.set_time_format(.tf_default)
+	l.set_local_time(true)
+	l.info('${@FN} time log in local time')
+	assert l.get_local_time()
+	l.set_local_time(false)
+	l.info('${@FN} time log in utc time')
+	assert !l.get_local_time()
 	println(@FN + ' end')
 }
 
