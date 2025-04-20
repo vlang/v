@@ -18,7 +18,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
-
+			c.check_any_type(node.elem_type, elem_sym, node.pos)
 			if node.typ.has_flag(.option) && (node.has_cap || node.has_len) {
 				c.error('Option array `${elem_sym.name}` cannot have initializers', node.pos)
 			}
@@ -507,6 +507,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				c.error('cannot use Result type as map value type', node.pos)
 			}
 			val_sym := c.table.sym(info.value_type)
+			c.check_any_type(info.value_type, val_sym, node.pos)
 			if val_sym.kind == .struct {
 				val_info := val_sym.info as ast.Struct
 				if val_info.generic_types.len > 0 && val_info.concrete_types.len == 0
@@ -531,6 +532,8 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		c.ensure_type_exists(info.value_type, node.pos)
 		node.key_type = info.key_type
 		node.value_type = info.value_type
+		key_sym := c.table.sym(node.key_type)
+		c.check_any_type(info.value_type, key_sym, node.pos)
 		return node.typ
 	}
 
