@@ -218,7 +218,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			}
 
 			if is_embed {
-				if p.peek_tok.kind == .dot && p.peek_token(3).kind == .name {
+				if p.peek_tok.kind == .dot && p.peek_tok.line_nr == p.peek_token(3).line_nr
+					&& p.peek_token(3).kind == .name {
 					p.error_with_pos('invalid field name', p.tok.pos())
 					return ast.StructDecl{}
 				}
