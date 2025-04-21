@@ -1,0 +1,19 @@
+vlib/v/checker/tests/recursive_struct_inited_array_err.vv:10:2: warning: unused variable: `buggy`
+    8 | 
+    9 | fn main() {
+   10 |     buggy := Node{}
+      |     ~~~~~
+   11 |     normal := BetterNode{}
+   12 | }
+vlib/v/checker/tests/recursive_struct_inited_array_err.vv:11:2: warning: unused variable: `normal`
+    9 | fn main() {
+   10 |     buggy := Node{}
+   11 |     normal := BetterNode{}
+      |     ~~~~~~
+   12 | }
+vlib/v/checker/tests/recursive_struct_inited_array_err.vv:2:2: error: cannot initialize array of same struct type that is being defined (recursion detected)
+    1 | struct Node {
+    2 |     next []Node = []Node{len: 1}
+      |     ~~~~~~~~~~~
+    3 | }
+    4 |
