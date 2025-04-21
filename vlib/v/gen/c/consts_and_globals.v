@@ -129,7 +129,9 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 							continue
 						}
 					}
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
+					should_surround := field.expr.expr is ast.CallExpr
+						&& field.expr.expr.or_block.kind != .absent
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, should_surround)
 				} else if field.expr is ast.InfixExpr {
 					mut has_unwrap_opt_res := false
 					if field.expr.left is ast.CallExpr {
