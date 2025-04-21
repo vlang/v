@@ -4,6 +4,8 @@ module main
 import os
 import arrays
 
+const vexe_path = @VEXE
+const vexe_ = os.quoted_path(vexe_path)
 const tpath = os.join_path(os.vtmp_dir(), 'vod_test_module')
 
 fn testsuite_begin() {
@@ -103,4 +105,29 @@ fn test_get_module_list() {
 	}
 	// `delta` only contains a `_test.v` file.
 	assert !mod_list.any(it.contains(os.join_path(tpath, 'delta')))
+}
+
+fn test_get_readme_md_src() {
+	// a special testcase for `src` dir get_readme
+	// https://github.com/vlang/v/issues/24232
+
+	os.mkdir('src')!
+	os.write_file('v.mod', "Module {
+        name: 'foobar'
+        description: 'foobar'
+        version: '0.0.0'
+        license: 'MIT'
+        dependencies: []
+}
+")!
+	os.write_file('src/foobar.v', 'module foobar
+
+// square calculates the second power of `x`
+pub fn square(x int) int {
+        return x * x
+}
+')!
+	res := os.execute_opt('${vexe_} doc -m src/ -v') or { panic(err) }
+	assert res.exit_code == 0
+	assert res.output.contains('square')
 }
