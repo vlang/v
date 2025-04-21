@@ -1299,6 +1299,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		's390x' {
 			return '__V_s390x'
 		}
+		'ppc64le' {
+			return '__V_ppc64le'
+		}
 		// bitness:
 		'x64' {
 			return 'TARGET_IS_64BIT'

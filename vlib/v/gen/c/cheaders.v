@@ -154,6 +154,22 @@ static char __CLOSURE_GET_DATA_BYTES[] = {
 	0xB9, 0x04, 0x00, 0x24,		     // lgr  %r2, %r4
 	0x07, 0xFE,			     // br   %r14
 };
+#elif defined (__V_ppc64le)
+static char __closure_thunk[] = {
+	0xa6, 0x02, 0x08, 0x7c,	// mflr   %r0
+	0x05, 0x00, 0x00, 0x48,	// bl     here
+	0xa6, 0x02, 0xc8, 0x7d,	// here:  mflr %r14
+	0xf8, 0xbf, 0xce, 0x39,	// addi   %r14, %r14, -16392
+	0x00, 0x00, 0xce, 0xc9,	// lfd    %f14, 0(%r14)
+	0x08, 0x00, 0xce, 0xe9,	// ld     %r14, 8(%r14)
+	0xa6, 0x03, 0x08, 0x7c,	// mtlr   %r0
+	0xa6, 0x03, 0xc9, 0x7d,	// mtctr  %r14
+	0x20, 0x04, 0x80, 0x4e,	// bctr
+};
+static char __CLOSURE_GET_DATA_BYTES[] = {
+	0x66, 0x00, 0xc3, 0x7d,	// mfvsrd %r3, %f14
+	0x20, 0x00, 0x80, 0x4e,	// blr
+};
 #endif
 
 static void*(*__CLOSURE_GET_DATA)(void) = 0;
@@ -332,6 +348,12 @@ const c_common_macros = '
 	#define __V_s390x  1
 	#undef __V_architecture
 	#define __V_architecture 7
+#endif
+
+#if defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)
+	#define __V_ppc64le  1
+	#undef __V_architecture
+	#define __V_architecture 8
 #endif
 
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
@@ -691,7 +713,7 @@ static void* g_live_info = NULL;
 
 const c_builtin_types = '
 //================================== builtin types ================================*/
-#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64) || defined(__s390x__)
+#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64) || defined(__s390x__) || (defined(__powerpc64__) && defined(__LITTLE_ENDIAN__))
 typedef int64_t vint_t;
 #else
 typedef int32_t vint_t;
