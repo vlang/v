@@ -10,10 +10,10 @@ fn C.flock(int, int) int
 @[unsafe]
 pub fn (mut l FileLock) unlink() {
 	if l.fd != -1 {
-		C.close(l.fd)
+		_ := C.close(l.fd)
 		l.fd = -1
 	}
-	C.unlink(&char(l.name.str))
+	_ := C.unlink(&char(l.name.str))
 }
 
 // acquire acquire the lock file.
@@ -26,7 +26,7 @@ pub fn (mut l FileLock) acquire() ! {
 		return error_with_code('cannot create lock file ${l.name}', -1)
 	}
 	if C.flock(fd, C.LOCK_EX) == -1 {
-		C.close(fd)
+		_ := C.close(fd)
 		return error_with_code('cannot lock', -2)
 	}
 	l.fd = fd
@@ -50,7 +50,7 @@ pub fn (mut l FileLock) try_acquire() bool {
 	if fd != -1 {
 		err := C.flock(fd, C.LOCK_EX | C.LOCK_NB)
 		if err == -1 {
-			C.close(fd)
+			_ := C.close(fd)
 			return false
 		}
 		l.fd = fd

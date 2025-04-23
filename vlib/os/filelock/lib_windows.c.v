@@ -7,11 +7,11 @@ fn C.CloseHandle(voidptr) bool
 // unlink unlink the lock file and release it.
 pub fn (mut l FileLock) unlink() {
 	if !isnil(l.cfile) {
-		C.CloseHandle(l.cfile)
+		_ := C.CloseHandle(l.cfile)
 		l.cfile = unsafe { nil }
 	}
 	t_wide := l.name.to_wide()
-	C.DeleteFileW(t_wide)
+	_ := C.DeleteFileW(t_wide)
 }
 
 // acquire acquire the lock file.
