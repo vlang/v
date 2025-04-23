@@ -55,3 +55,13 @@ pub fn (mut l FileLock) try_acquire() bool {
 	}
 	return false
 }
+
+pub fn (mut l FileLock) release() bool {
+	if l.fd != -1 {
+		unsafe {
+			l.unlink()
+		}
+		return true
+	}
+	return false
+}

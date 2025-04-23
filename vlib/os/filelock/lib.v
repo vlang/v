@@ -5,13 +5,15 @@ import time
 pub struct FileLock {
 	name string
 mut:
-	fd int
+	cfile voidptr // Using void* instead of FILE*
+	fd    int
 }
 
 pub fn new(fileName string) FileLock {
 	return FileLock{
-		name: fileName
-		fd:   -1
+		name:  fileName
+		fd:    -1
+		cfile: unsafe { nil }
 	}
 }
 
@@ -22,16 +24,6 @@ pub fn (mut l FileLock) wait_acquire(timeout time.Duration) bool {
 			return true
 		}
 		time.sleep(1 * time.millisecond)
-	}
-	return false
-}
-
-pub fn (mut l FileLock) release() bool {
-	if l.fd != -1 {
-		unsafe {
-			l.unlink()
-		}
-		return true
 	}
 	return false
 }
