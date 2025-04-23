@@ -34,8 +34,11 @@ jobs:
       - name: Build
         run: |
           gcc --version
+          which openssl
           .\make.bat -gcc
           .\v.exe symlink
+      - name: Test v binaries
+        run: v -silent build-vbinaries
       - name: All code is formatted
         run: v -silent test-cleancode
       - name: Test new v.c
@@ -64,8 +67,6 @@ jobs:
         run: v -autofree vlib/v/tests/options/option_test.c.v
       - name: Test v->js
         run: v -o hi.js examples/js_hello_world.v && node hi.js
-      - name: Test v binaries
-        run: v -silent build-vbinaries
       - name: Build examples
         run: v -silent build-examples
       - name: v2 self compilation
