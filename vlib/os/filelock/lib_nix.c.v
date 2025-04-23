@@ -6,6 +6,7 @@ fn C.unlink(&char) int
 fn C.open(&char, int, int) int
 fn C.flock(int, int) int
 
+// unlink unlink the lock file and release it.
 @[unsafe]
 pub fn (mut l FileLock) unlink() {
 	if l.fd != -1 {
@@ -15,6 +16,7 @@ pub fn (mut l FileLock) unlink() {
 	C.unlink(&char(l.name.str))
 }
 
+// acquire acquire the lock file.
 pub fn (mut l FileLock) acquire() ! {
 	if l.fd != -1 {
 		return error_with_code('lock already acquired by this instance', 1)
@@ -39,6 +41,7 @@ fn open_lockfile(f string) int {
 	return fd
 }
 
+// try_acquire try acquire the lock file, it will return `true` if success.
 pub fn (mut l FileLock) try_acquire() bool {
 	if l.fd != -1 {
 		return true
@@ -56,6 +59,7 @@ pub fn (mut l FileLock) try_acquire() bool {
 	return false
 }
 
+// release release the lock file and unlink it.
 pub fn (mut l FileLock) release() bool {
 	if l.fd != -1 {
 		unsafe {

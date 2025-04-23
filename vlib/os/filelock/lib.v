@@ -9,6 +9,7 @@ mut:
 	fd    int
 }
 
+// new create a new lock file object, it will not create the lock file until `acquire` it.
 pub fn new(fileName string) FileLock {
 	return FileLock{
 		name:  fileName
@@ -17,6 +18,7 @@ pub fn new(fileName string) FileLock {
 	}
 }
 
+// wait_acquire try acquire the lock file within a `timeout`.
 pub fn (mut l FileLock) wait_acquire(timeout time.Duration) bool {
 	fin := time.now().add(timeout)
 	for time.now() < fin {

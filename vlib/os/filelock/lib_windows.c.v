@@ -4,6 +4,7 @@ fn C.DeleteFileW(&u16) bool
 fn C.CreateFileW(&u16, u32, u32, voidptr, u32, u32, voidptr) voidptr
 fn C.CloseHandle(voidptr) bool
 
+// unlink unlink the lock file and release it.
 pub fn (mut l FileLock) unlink() {
 	if !isnil(l.cfile) {
 		C.CloseHandle(l.cfile)
@@ -13,6 +14,7 @@ pub fn (mut l FileLock) unlink() {
 	C.DeleteFileW(t_wide)
 }
 
+// acquire acquire the lock file.
 pub fn (mut l FileLock) acquire() ! {
 	if !isnil(l.cfile) {
 		return error_with_code('lock already acquired by this instance', 1)
@@ -32,6 +34,7 @@ fn open(f string) voidptr {
 	return cfile
 }
 
+// try_acquire try acquire the lock file, it will return true if success.
 pub fn (mut l FileLock) try_acquire() bool {
 	if !isnil(l.cfile) {
 		// lock already acquired by this instance
@@ -45,6 +48,7 @@ pub fn (mut l FileLock) try_acquire() bool {
 	return true
 }
 
+// release release the lock file and unlink it.
 pub fn (mut l FileLock) release() bool {
 	if !isnil(l.cfile) {
 		unsafe {
