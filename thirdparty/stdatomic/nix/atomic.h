@@ -268,6 +268,8 @@ static inline unsigned char atomic_fetch_xor_byte(unsigned char* x, unsigned cha
 
 #ifdef __aarch64__
 // must has an `extern` to link with libatomic.a
+
+// acq_rel version
 extern inline _Bool __aarch64_cas1_acq_rel(unsigned char*ptr, unsigned char*expected, unsigned char desired) {
     return __atomic_compare_exchange_1(
         ptr,
@@ -474,6 +476,215 @@ extern inline unsigned long long __aarch64_ldeor8_acq_rel(unsigned long long*ptr
         short*:        __aarch64_cas2_acq_rel,  \
         int*:          __aarch64_cas4_acq_rel,  \
         long long*:    __aarch64_cas8_acq_rel   \
+    )(ptr, expected, desired)
+
+// relax version
+extern inline _Bool __aarch64_cas1_relax(unsigned char*ptr, unsigned char*expected, unsigned char desired) {
+    return __atomic_compare_exchange_1(
+        ptr,
+        expected,
+        desired,
+		memory_order_relaxed,
+		memory_order_relaxed
+    );
+}
+
+extern inline _Bool __aarch64_cas2_relax(unsigned short*ptr, unsigned short*expected, unsigned short desired) {
+    return __atomic_compare_exchange_2(
+        ptr,
+        expected,
+        desired,
+		memory_order_relaxed,
+		memory_order_relaxed
+    );
+}
+
+extern inline _Bool __aarch64_cas4_relax(unsigned int*ptr, unsigned int*expected, unsigned int desired) {
+    return __atomic_compare_exchange_4(
+        ptr,
+        expected,
+        desired,
+        memory_order_relaxed,
+        memory_order_relaxed
+    );
+}
+
+extern inline _Bool __aarch64_cas8_relax(unsigned long long*ptr, unsigned long long*expected, unsigned long long desired) {
+    return __atomic_compare_exchange_8(
+        ptr,
+        expected,
+        desired,
+        memory_order_relaxed,
+        memory_order_relaxed
+    );
+}
+
+extern inline char __aarch64_ldadd1_relax(char*ptr, char value) {
+    return __atomic_fetch_add_1(
+        (unsigned char*)ptr,
+        (unsigned char)value,
+        memory_order_relaxed
+    );
+}
+
+extern inline short __aarch64_ldadd2_relax(short*ptr, short value) {
+    return __atomic_fetch_add_2(
+        (unsigned short*)ptr,
+        (unsigned short)value,
+        memory_order_relaxed
+    );
+}
+
+extern inline int __aarch64_ldadd4_relax(int*ptr, int value) {
+    return __atomic_fetch_add_4(
+        (unsigned int*)ptr,
+        (unsigned int)value,
+        memory_order_relaxed
+    );
+}
+
+extern inline long long __aarch64_ldadd8_relax(long long*ptr, long long value) {
+    return __atomic_fetch_add_8(
+        (unsigned long long*)ptr,
+        (unsigned long long)value,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned char __aarch64_swp1_relax(unsigned char*ptr, unsigned char newval) {
+    return __atomic_exchange_1(
+        ptr,
+        newval,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned short __aarch64_swp2_relax(unsigned short*ptr, unsigned short newval) {
+    return __atomic_exchange_2(
+        ptr,
+        newval,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned int __aarch64_swp4_relax(unsigned int*ptr, unsigned int newval) {
+    return __atomic_exchange_4(
+        ptr,
+        newval,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned long long __aarch64_swp8_relax(unsigned long long*ptr, unsigned long long newval) {
+    return __atomic_exchange_8(
+        ptr,
+        newval,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned char __aarch64_ldclr1_relax(unsigned char*ptr, unsigned char mask) {
+    return __atomic_fetch_and_1(
+        ptr,
+        ~mask,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned short __aarch64_ldclr2_relax(unsigned short*ptr, unsigned short mask) {
+    return __atomic_fetch_and_2(
+        ptr,
+        ~mask,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned int __aarch64_ldclr4_relax(unsigned int*ptr, unsigned int mask) {
+    return __atomic_fetch_and_4(
+        ptr,
+        ~mask,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned long long __aarch64_ldclr8_relax(unsigned long long*ptr, unsigned long long mask) {
+    return __atomic_fetch_and_8(
+        ptr,
+        ~mask,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned char __aarch64_ldset1_relax(unsigned char*ptr, unsigned char mask) {
+    return __atomic_fetch_or_1(
+        ptr,
+        mask,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned short __aarch64_ldset2_relax(unsigned short*ptr, unsigned short mask) {
+    return __atomic_fetch_or_2(
+        ptr,
+        mask,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned int __aarch64_ldset4_relax(unsigned int*ptr, unsigned int mask) {
+    return __atomic_fetch_or_4(
+        ptr,
+        mask,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned long long __aarch64_ldset8_relax(unsigned long long*ptr, unsigned long long mask) {
+    return __atomic_fetch_or_8(
+        ptr,
+        mask,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned char __aarch64_ldeor1_relax(unsigned char*ptr, unsigned char mask) {
+    return __atomic_fetch_xor_1(
+        ptr,
+        mask,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned short __aarch64_ldeor2_relax(unsigned short*ptr, unsigned short mask) {
+    return __atomic_fetch_xor_2(
+        ptr,
+        mask,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned int __aarch64_ldeor4_relax(unsigned int*ptr, unsigned int mask) {
+    return __atomic_fetch_xor_4(
+        ptr,
+        mask,
+        memory_order_relaxed
+    );
+}
+
+extern inline unsigned long long __aarch64_ldeor8_relax(unsigned long long*ptr, unsigned long long mask) {
+    return __atomic_fetch_xor_8(
+        ptr,
+        mask,
+        memory_order_relaxed
+    );
+}
+
+#define aarch64_cas_relax(ptr, expected, desired)      \
+    _Generic((ptr),                                      \
+        char*:         __aarch64_cas1_relax,  \
+        short*:        __aarch64_cas2_relax,  \
+        int*:          __aarch64_cas4_relax,  \
+        long long*:    __aarch64_cas8_relax   \
     )(ptr, expected, desired)
 
 #endif // __aarch64__
