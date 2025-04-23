@@ -6,11 +6,11 @@ fn C.CloseHandle(voidptr) bool
 
 pub fn (mut l FileLock) unlink() {
 	if !isnil(l.cfile) {
-		ret := C.CloseHandle(l.cfile)
+		C.CloseHandle(l.cfile)
 		l.cfile = unsafe { nil }
 	}
 	t_wide := l.name.to_wide()
-	ret := C.DeleteFileW(t_wide)
+	C.DeleteFileW(t_wide)
 }
 
 pub fn (mut l FileLock) acquire() ! {
