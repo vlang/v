@@ -31,10 +31,17 @@ jobs:
       VFLAGS: -cc gcc
     steps:
       - uses: actions/checkout@v4
-      - name: Build
+      - name: Show tool versions
         run: |
           gcc --version
-          which openssl
+          pkg-config --version
+          openssl version
+          echo "Flags for openssl:"
+          pkg-config openssl --cflags
+           echo "Flags for openssl libs:"
+          pkg-config openssl --libs
+      - name: Build
+        run: |
           .\make.bat -gcc
           .\v.exe symlink
       - name: Test v binaries
