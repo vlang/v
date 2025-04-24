@@ -701,7 +701,7 @@ pub fn read(mut buf []u8) {
 }
 
 const english_letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-const hex_chars = 'abcdef0123456789'
+const hex_chars = '0123456789abcdef'
 const ascii_chars = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
 
 // ulid generates an unique lexicographically sortable identifier.

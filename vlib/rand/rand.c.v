@@ -1,5 +1,7 @@
 module rand
 
+import time
+
 const clock_seq_hi_and_reserved_valid_values = [`8`, `9`, `a`, `b`]!
 
 // uuid_v4 generates a random (v4) UUID
@@ -52,6 +54,99 @@ fn internal_uuid_v4(mut rng PRNG) string {
 		buf[buflen] = 0 // ensure the string will be 0 terminated, just in case
 		// for i in 0..37 { println('i: ${i:2} | ${buf[i].ascii_str()} | ${buf[i].hex()} | ${buf[i]:08b}') }
 		return buf.vstring_with_len(buflen)
+	}
+}
+
+// uuid_v7 generates a time-ordered (v7) UUID
+// See https://datatracker.ietf.org/doc/html/rfc9562#name-uuid-version-7
+pub fn uuid_v7() string {
+	return internal_uuid_v7(mut default_rng)
+}
+
+@[direct_array_access]
+fn internal_uuid_v7(mut rng PRNG) string {
+	// 0                   1                   2                   3
+	// 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	// |                           unix_ts_ms                          |
+	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	// |          unix_ts_ms           |  ver  |       rand_a          |
+	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	// |var|                        rand_b                             |
+	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	// |                            rand_b                             |
+	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+	// 1. Construct timestamp field (48 bits)
+	now := time.now()
+	timestamp := u64(now.unix_milli())
+
+	// 2. Generate random field (74 bits)
+	rand_a := rng.u16() // 16 bits (only use low 12 bits)
+	rand_b := rng.u64() // 64 bits (only use low 62 bits)
+
+	// 3. Construct fields with little-endian handling
+	mut parts := [5]u16{}
+	// 48-bit big-endian timestamp
+	parts[0] = u16(timestamp >> 32)
+	parts[1] = u16(timestamp >> 16)
+	parts[2] = u16(timestamp)
+
+	// 16 bits (version + rand_a)
+	parts[3] = (rand_a & 0x0FFF) | 0x7000 // version(7)
+
+	// 16 bits (variant bits + rand_b)
+	parts[4] = u16(rand_b >> 48) & 0x3FFF // 16 bits
+	parts[4] |= 0x8000 // Set variant bits 0b10
+
+	// 4. Format output buffer (8-4-4-4-12)
+	buflen := 36
+	mut buf := unsafe { malloc_noscan(37) }
+
+	// Timestamp section (first 12 chars)
+	format_part(mut buf, parts[0], 0)
+	format_part(mut buf, parts[1], 4)
+	unsafe {
+		buf[8] = `-`
+	}
+	format_part(mut buf, parts[2], 9)
+	unsafe {
+		buf[13] = `-`
+	}
+	// Random section with version bits
+	format_part(mut buf, parts[3], 14)
+	unsafe {
+		buf[18] = `-`
+	}
+	// Random section with variant bits
+	format_part(mut buf, parts[4], 19)
+	unsafe {
+		buf[23] = `-`
+	}
+	// Fill remaining random bytes (12 chars)
+	mut offset := 28
+	for i in 0 .. 6 {
+		byte_val := u8((rand_b >> (40 - i * 8)) & 0xFF)
+		unsafe {
+			buf[offset + i * 2] = hex_chars[(byte_val >> 4) & 0x0F]
+			buf[offset + i * 2 + 1] = hex_chars[byte_val & 0x0F]
+		}
+	}
+
+	unsafe {
+		buf[buflen] = 0 // Null terminator
+		return buf.vstring_with_len(buflen)
+	}
+}
+
+// Formats 16-bit value into buffer segment
+@[direct_array_access; inline]
+fn format_part(mut buf &u8, val u16, start int) {
+	unsafe {
+		buf[start] = hex_chars[(val >> 12) & 0xF]
+		buf[start + 1] = hex_chars[(val >> 8) & 0xF]
+		buf[start + 2] = hex_chars[(val >> 4) & 0xF]
+		buf[start + 3] = hex_chars[val & 0xF]
 	}
 }
 

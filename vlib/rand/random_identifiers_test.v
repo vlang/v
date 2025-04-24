@@ -21,6 +21,26 @@ fn test_rand_uuid_v4() {
 	}
 }
 
+// uuid_v7:
+fn test_rand_uuid_v7() {
+	uuid1 := rand.uuid_v7()
+	uuid2 := rand.uuid_v7()
+	uuid3 := rand.uuid_v7()
+	assert uuid1 != uuid2
+	assert uuid1 != uuid3
+	assert uuid2 != uuid3
+	assert uuid1.len == 36
+	assert uuid2.len == 36
+	assert uuid3.len == 36
+	for i in 0 .. 1000 {
+		x := rand.uuid_v7()
+		// check the version field is always 7:
+		assert x[14] == `7`
+		// and variant field is always 0b10:
+		assert x[19] in [`8`, `9`, `a`, `b`]
+	}
+}
+
 // ulids:
 fn test_ulids_are_unique() {
 	ulid1 := rand.ulid()
