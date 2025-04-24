@@ -15,8 +15,13 @@ module openssl
 #flag freebsd -I/usr/local/include
 #flag freebsd -L/usr/local/lib
 
+// Installed through choco:
 #flag windows -IC:/Program Files/OpenSSL-Win64/include
 #flag windows -LC:/Program Files/OpenSSL-Win64/lib/VC/x64/MD
+
+// Installed on the CI:
+#flag windows -IC:/Program Files/OpenSSL/include
+#flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
 
 $if $pkgconfig('openssl') {
 	#pkgconfig --cflags --libs openssl
