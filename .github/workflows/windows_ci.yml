@@ -42,7 +42,7 @@ jobs:
           pkg-config openssl --libs
           .github/workflows/find_openssl.bat
           echo "Files:"
-          where /R "C:\Program Files\OpenSSL" *.*
+          where.exe /R "C:\Program Files\OpenSSL" *.*
           echo "Installing openssl with choco..."
           choco install -y openssl
           .github/workflows/find_openssl.bat
