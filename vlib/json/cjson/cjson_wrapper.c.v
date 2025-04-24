@@ -12,6 +12,15 @@ module cjson
 #flag @VEXEROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
 
+// As cJSON use `libm`, we need to link it.
+$if windows {
+	$if tinyc {
+		#flag @VEXEROOT/thirdparty/tcc/lib/openlibm.o
+	}
+} $else {
+	#flag -lm
+}
+
 @[flag]
 pub enum CJsonType {
 	t_false

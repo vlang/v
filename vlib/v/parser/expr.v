@@ -804,7 +804,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 			right = ast.RangeExpr{
 				low:      right
 				has_low:  true
-				high:     p.expr(0)
+				high:     p.expr(int(token.Precedence.in_as))
 				has_high: true
 				pos:      pos_high
 				is_gated: false

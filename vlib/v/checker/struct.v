@@ -96,7 +96,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 							symfield.is_recursive = true
 						} else {
 							c.error('recursive struct is only possible with optional pointer (e.g. ?&${c.table.type_to_str(field.typ.clear_flag(.option))})',
-								node.pos)
+								field.pos)
 						}
 					}
 				}
@@ -247,6 +247,13 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 							c.error('cannot initialize a fixed size array field that uses `\$d()` as size quantifier since the size may change via -d',
 								field.default_expr.pos())
 						}
+					}
+				}
+				if field.default_expr is ast.ArrayInit {
+					if c.table.final_sym(field.default_expr_typ).kind in [.array, .array_fixed]
+						&& c.table.value_type(field.default_expr_typ) == struct_typ_idx {
+						c.error('cannot initialize array of same struct type that is being defined (recursion detected)',
+							field.pos)
 					}
 				}
 				interface_implemented := sym.kind == .interface

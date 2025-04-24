@@ -1,0 +1,4 @@
+type Struct = struct {
+	field_One int
+	field_two int
+}

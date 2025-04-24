@@ -18,7 +18,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
-
+			c.check_any_type(node.elem_type, elem_sym, node.pos)
 			if node.typ.has_flag(.option) && (node.has_cap || node.has_len) {
 				c.error('Option array `${elem_sym.name}` cannot have initializers', node.pos)
 			}
@@ -531,6 +531,12 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		c.ensure_type_exists(info.value_type, node.pos)
 		node.key_type = info.key_type
 		node.value_type = info.value_type
+		if (c.table.sym(info.key_type).language == .v && info.key_type == ast.any_type)
+			|| (c.table.sym(info.value_type).language == .v && info.value_type == ast.any_type) {
+			c.note('the `any` type is deprecated and will be removed soon - either use an empty interface, or a sum type',
+				node.pos)
+			c.error('cannot use type `any` here', node.pos)
+		}
 		return node.typ
 	}
 

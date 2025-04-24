@@ -602,12 +602,17 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 				}
 				if parent_typ_sym.info.is_anon {
 					for field in parent_typ_sym.info.fields {
+						mut is_embed := false
 						field_sym := c.table.sym(field.typ)
 						if field_sym.info is ast.Alias {
 							if c.table.sym(field_sym.info.parent_type).kind != .struct {
 								c.error('cannot embed non-struct `${field_sym.name}`',
 									field.type_pos)
+								is_embed = true
 							}
+						}
+						if !is_embed {
+							c.check_valid_snake_case(field.name, 'field name', field.pos)
 						}
 					}
 				}

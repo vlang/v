@@ -59,6 +59,16 @@ const external_tools = [
 ]
 const list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 
+@[unsafe]
+fn timers_pointer(p &util.Timers) &util.Timers {
+	// TODO: the static variable here is used as a workaround for the current incompatibility of -usecache and globals in the main module:
+	mut static ptimers := unsafe { &util.Timers(nil) }
+	if p != unsafe { nil } {
+		ptimers = p
+	}
+	return ptimers
+}
+
 fn main() {
 	unbuffer_stdout()
 	mut timers_should_print := false
@@ -68,12 +78,18 @@ fn main() {
 	if '-show-timings' in os.args {
 		timers_should_print = true
 	}
-	mut timers := util.new_timers(should_print: timers_should_print, label: 'main')
+	mut timers := unsafe {
+		timers_pointer(util.new_timers(
+			should_print: timers_should_print
+			label:        'main'
+		))
+	}
 	timers.start('v start')
 	timers.show('v start')
 	timers.start('TOTAL')
 	// use at_exit here, instead of defer, since some code paths later do early exit(0) or exit(1), for showing errors, or after `v run`
-	at_exit(fn [mut timers] () {
+	at_exit(fn () {
+		mut timers := unsafe { timers_pointer(nil) }
 		timers.show('TOTAL')
 	})!
 	timers.start('v parsing CLI args')

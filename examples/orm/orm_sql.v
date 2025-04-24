@@ -2,7 +2,6 @@ module main
 
 import db.sqlite
 import time
-import orm
 
 @[table: 'sys_users']
 struct User {

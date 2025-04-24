@@ -234,7 +234,10 @@ fn (vd &VDoc) get_readme(path string) Readme {
 	}
 	if fname == '' {
 		if path.all_after_last(os.path_separator) == 'src' {
-			return vd.get_readme(path.all_before_last(os.path_separator))
+			next_path := path.all_before_last(os.path_separator)
+			if next_path != '' && path != next_path && os.is_dir(next_path) {
+				return vd.get_readme(next_path)
+			}
 		}
 		return Readme{}
 	}
