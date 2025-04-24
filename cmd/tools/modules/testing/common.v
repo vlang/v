@@ -46,12 +46,16 @@ pub const is_node_present = os.execute('node --version').exit_code == 0
 pub const is_go_present = os.execute('go version').exit_code == 0
 
 pub const is_ruby_present = os.execute('ruby --version').exit_code == 0
+	&& os.execute('pkg-config ruby --libs').exit_code == 0
 
 pub const is_python_present = os.execute('python --version').exit_code == 0
+	&& os.execute('pkg-config python3 --libs').exit_code == 0
 
 pub const is_sqlite3_present = os.execute('sqlite3 --version').exit_code == 0
+	&& os.execute('pkg-config sqlite3 --libs').exit_code == 0
 
 pub const is_openssl_present = os.execute('openssl --version').exit_code == 0
+	&& os.execute('pkg-config openssl --libs').exit_code == 0
 
 pub const all_processes = get_all_processes()
 
