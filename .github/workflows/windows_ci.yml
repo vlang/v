@@ -38,9 +38,12 @@ jobs:
           openssl version
           echo "Flags for openssl:"
           pkg-config openssl --cflags
-           echo "Flags for openssl libs:"
+          echo "Flags for openssl libs:"
           pkg-config openssl --libs
-          choco uninstall -y openssl
+          echo "Include files for openssl:"
+          dir "c:/Program Files/OpenSSL-Win64/include"
+          echo "Lib Include files for openssl:"
+          dir "c:/Program Files/OpenSSL-Win64/lib/VC/x64/"
       - name: Build
         run: |
           .\make.bat -gcc

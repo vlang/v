@@ -15,6 +15,9 @@ module ecdsa
 #flag linux -I/usr/local/include/openssl
 #flag linux -L/usr/local/lib64/
 
+#flag windows -IC:/Program Files/OpenSSL-Win64/include
+#flag windows -LC:/Program Files/OpenSSL-Win64/lib/VC/x64/MD
+  
 #flag -I/usr/include/openssl
 
 #flag -lcrypto
