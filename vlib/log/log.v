@@ -38,6 +38,7 @@ mut:
 	time_format        TimeFormat = .tf_rfc3339_micro
 	custom_time_format string     = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
 	short_tag          bool
+	local_time         bool // use local time or utc time in log
 	always_flush       bool // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
 	output_stream      io.Writer = stderr
 pub mut:
@@ -119,7 +120,7 @@ pub fn (mut l Log) reopen() ! {
 
 // log_file writes log line `s` with `level` to the log file.
 fn (mut l Log) log_file(s string, level Level) {
-	timestamp := l.time_format(time.utc())
+	timestamp := l.time_format(if l.local_time { time.now() } else { time.utc() })
 	e := tag_to_file(level, l.short_tag)
 
 	unsafe {
@@ -142,7 +143,7 @@ fn (mut l Log) log_file(s string, level Level) {
 
 // log_stream writes log line `s` with `level` to stderr or stderr depending on set output stream.
 fn (mut l Log) log_stream(s string, level Level) {
-	timestamp := l.time_format(time.utc())
+	timestamp := l.time_format(if l.local_time { time.now() } else { time.utc() })
 	tag := tag_to_console(level, l.short_tag)
 	msg := '${timestamp} [${tag}] ${s}\n'
 	arr := msg.bytes()
@@ -311,6 +312,16 @@ pub fn (mut l Log) set_short_tag(enabled bool) {
 // get_short_tag will get the log short tag enable state
 pub fn (l Log) get_short_tag() bool {
 	return l.short_tag
+}
+
+// set_local_time will set the log using local time
+pub fn (mut l Log) set_local_time(enabled bool) {
+	l.local_time = enabled
+}
+
+// get_local_time will get the log using local time state
+pub fn (l Log) get_local_time() bool {
+	return l.local_time
 }
 
 // use_stdout will restore the old behaviour of logging to stdout, instead of stderr.

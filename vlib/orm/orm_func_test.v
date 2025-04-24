@@ -4,15 +4,53 @@ import time
 
 @[table: 'sys_users']
 struct User {
-	id         int @[primary; serial]
-	name       string
-	age        int
-	role       string
-	status     int
-	salary     int
-	title      string
-	score      int
-	created_at ?time.Time @[sql_type: 'TIMESTAMP']
+	id            int @[primary; serial]
+	name          string
+	age           int
+	role          string
+	status        int
+	salary        int
+	title         string
+	score         int
+	created_at    ?time.Time @[sql_type: 'TIMESTAMP']
+	updated_at    time.Time  @[sql_type: 'TIMESTAMP']
+	type_i8       i8
+	type_i16      i16
+	type_int      int
+	type_i64      i64
+	type_u8       u8
+	type_u16      u16
+	type_u32      u32
+	type_u64      u64
+	type_f32      f32
+	type_f64      f64
+	type_bool     bool
+	type_string   string
+	option_i8     ?i8
+	option_i16    ?i16
+	option_int    ?int
+	option_i64    ?i64
+	option_u8     ?u8
+	option_u16    ?u16
+	option_u32    ?u32
+	option_u64    ?u64
+	option_f32    ?f32
+	option_f64    ?f64
+	option_bool   ?bool
+	option_string ?string
+}
+
+// UserPart is part of User, so we can access only part of the `sys_users` table
+// note: for test, we modify `created_at` field from option to require
+// a `null` value in database, will map to default value of the require field in struct
+@[table: 'sys_users']
+struct UserPart {
+	id            int @[primary; serial]
+	name          string
+	created_at    time.Time @[sql_type: 'TIMESTAMP']
+	updated_at    time.Time @[sql_type: 'TIMESTAMP']
+	option_i8     ?i8     = 13 // option with default test
+	option_string ?string = 'this is not none'
 }
 
 fn test_orm_func_where() {
@@ -56,101 +94,351 @@ fn test_orm_func_where() {
 fn test_orm_func_stmts() {
 	users := [
 		User{
-			name:       'Tom'
-			age:        30
-			role:       'admin'
-			status:     1
-			salary:     5000
-			title:      'manager'
-			score:      90
-			created_at: time.now()
+			name:          'Tom'
+			age:           30
+			role:          'admin'
+			status:        1
+			salary:        5000
+			title:         'manager'
+			score:         90
+			created_at:    time.now()
+			updated_at:    time.now()
+			type_i8:       1
+			type_i16:      2
+			type_int:      3
+			type_i64:      4
+			type_u8:       5
+			type_u16:      6
+			type_u32:      7
+			type_u64:      8
+			type_f32:      1.1
+			type_f64:      2.2
+			type_bool:     true
+			type_string:   'hello'
+			option_i8:     1
+			option_i16:    2
+			option_int:    3
+			option_i64:    4
+			option_u8:     5
+			option_u16:    6
+			option_u32:    7
+			option_u64:    8
+			option_f32:    1.1
+			option_f64:    2.2
+			option_bool:   true
+			option_string: 'hello'
 		},
 		User{
-			name:       'Alice'
-			age:        20
-			role:       'employee'
-			status:     2
-			salary:     2000
-			title:      'doctor'
-			score:      95
-			created_at: time.now()
+			name:          'Alice'
+			age:           20
+			role:          'employee'
+			status:        2
+			salary:        2000
+			title:         'doctor'
+			score:         95
+			created_at:    time.now()
+			updated_at:    time.now()
+			type_i8:       1
+			type_i16:      2
+			type_int:      3
+			type_i64:      4
+			type_u8:       5
+			type_u16:      6
+			type_u32:      7
+			type_u64:      8
+			type_f32:      1.1
+			type_f64:      2.2
+			type_bool:     true
+			type_string:   'hello'
+			option_i8:     1
+			option_i16:    2
+			option_int:    3
+			option_i64:    4
+			option_u8:     5
+			option_u16:    6
+			option_u32:    7
+			option_u64:    8
+			option_f32:    1.1
+			option_f64:    2.2
+			option_bool:   true
+			option_string: 'hello'
 		},
 		User{
-			name:       'Mars'
-			age:        40
-			role:       'employer'
-			status:     3
-			salary:     1000
-			title:      'doctor'
-			score:      85
-			created_at: time.now()
+			name:          'Mars'
+			age:           40
+			role:          'employer'
+			status:        3
+			salary:        1000
+			title:         'doctor'
+			score:         85
+			created_at:    time.now()
+			updated_at:    time.now()
+			type_i8:       1
+			type_i16:      2
+			type_int:      3
+			type_i64:      4
+			type_u8:       5
+			type_u16:      6
+			type_u32:      7
+			type_u64:      8
+			type_f32:      1.1
+			type_f64:      2.2
+			type_bool:     true
+			type_string:   'hello'
+			option_i8:     1
+			option_i16:    2
+			option_int:    3
+			option_i64:    4
+			option_u8:     5
+			option_u16:    6
+			option_u32:    7
+			option_u64:    8
+			option_f32:    1.1
+			option_f64:    2.2
+			option_bool:   true
+			option_string: 'hello'
 		},
 		User{
-			name:       'Kitty'
-			age:        18
-			role:       'employer'
-			status:     1
-			salary:     1500
-			title:      'doctor'
-			score:      87
-			created_at: time.now()
+			name:          'Kitty'
+			age:           18
+			role:          'employer'
+			status:        1
+			salary:        1500
+			title:         'doctor'
+			score:         87
+			created_at:    time.now()
+			updated_at:    time.now()
+			type_i8:       1
+			type_i16:      2
+			type_int:      3
+			type_i64:      4
+			type_u8:       5
+			type_u16:      6
+			type_u32:      7
+			type_u64:      8
+			type_f32:      1.1
+			type_f64:      2.2
+			type_bool:     true
+			type_string:   'hello'
+			option_i8:     1
+			option_i16:    2
+			option_int:    3
+			option_i64:    4
+			option_u8:     5
+			option_u16:    6
+			option_u32:    7
+			option_u64:    8
+			option_f32:    1.1
+			option_f64:    2.2
+			option_bool:   true
+			option_string: 'hello'
 		},
 		User{
-			name:   'Silly'
-			age:    27
-			role:   'employer'
-			status: 5
-			salary: 2500
-			title:  'doctor'
-			score:  81
+			name:        'Silly'
+			age:         27
+			role:        'employer'
+			status:      5
+			salary:      2500
+			title:       'doctor'
+			score:       81
+			updated_at:  time.now()
+			type_i8:     1
+			type_i16:    2
+			type_int:    3
+			type_i64:    4
+			type_u8:     5
+			type_u16:    6
+			type_u32:    7
+			type_u64:    8
+			type_f32:    1.1
+			type_f64:    2.2
+			type_bool:   true
+			type_string: 'hello'
+			option_i8:   1
+			option_i16:  2
+			option_int:  3
+			option_i64:  4
+			option_u8:   5
+			option_u16:  6
+			option_u32:  7
+			option_u64:  8
+			option_f32:  1.1
+			option_f64:  2.2
+			option_bool: true
+			// option_string: 'hello'	// option with default test
 		},
 		User{
-			name:       'Smith'
-			age:        37
-			role:       'employer'
-			status:     1
-			salary:     4500
-			title:      'doctor'
-			score:      89
-			created_at: time.now()
+			name:          'Smith'
+			age:           37
+			role:          'employer'
+			status:        1
+			salary:        4500
+			title:         'doctor'
+			score:         89
+			created_at:    time.now()
+			updated_at:    time.now()
+			type_i8:       1
+			type_i16:      2
+			type_int:      3
+			type_i64:      4
+			type_u8:       5
+			type_u16:      6
+			type_u32:      7
+			type_u64:      8
+			type_f32:      1.1
+			type_f64:      2.2
+			type_bool:     true
+			type_string:   'hello'
+			option_i8:     1
+			option_i16:    2
+			option_int:    3
+			option_i64:    4
+			option_u8:     5
+			option_u16:    6
+			option_u32:    7
+			option_u64:    8
+			option_f32:    1.1
+			option_f64:    2.2
+			option_bool:   true
+			option_string: 'hello'
 		},
 		User{
-			name:       'Bob'
-			age:        26
-			role:       'employer'
-			status:     2
-			salary:     6500
-			title:      'doctor'
-			score:      81
-			created_at: time.now()
+			name:          'Bob'
+			age:           26
+			role:          'employer'
+			status:        2
+			salary:        6500
+			title:         'doctor'
+			score:         81
+			created_at:    time.now()
+			updated_at:    time.now()
+			type_i8:       1
+			type_i16:      2
+			type_int:      3
+			type_i64:      4
+			type_u8:       5
+			type_u16:      6
+			type_u32:      7
+			type_u64:      8
+			type_f32:      1.1
+			type_f64:      2.2
+			type_bool:     true
+			type_string:   'hello'
+			option_i8:     1
+			option_i16:    2
+			option_int:    3
+			option_i64:    4
+			option_u8:     5
+			option_u16:    6
+			option_u32:    7
+			option_u64:    8
+			option_f32:    1.1
+			option_f64:    2.2
+			option_bool:   true
+			option_string: 'hello'
 		},
 		User{
-			name:       'Peter'
-			age:        29
-			role:       'employer'
-			status:     1
-			salary:     3500
-			title:      'doctor'
-			score:      80
-			created_at: time.now()
+			name:        'Peter'
+			age:         29
+			role:        'employer'
+			status:      1
+			salary:      3500
+			title:       'doctor'
+			score:       80
+			created_at:  time.now()
+			updated_at:  time.now()
+			type_i8:     1
+			type_i16:    2
+			type_int:    3
+			type_i64:    4
+			type_u8:     5
+			type_u16:    6
+			type_u32:    7
+			type_u64:    8
+			type_f32:    1.1
+			type_f64:    2.2
+			type_bool:   true
+			type_string: 'hello'
+			// option_i8:     1	// option with default test
+			option_i16:    2
+			option_int:    3
+			option_i64:    4
+			option_u8:     5
+			option_u16:    6
+			option_u32:    7
+			option_u64:    8
+			option_f32:    1.1
+			option_f64:    2.2
+			option_bool:   true
+			option_string: 'hello'
 		},
 		User{
-			name:   'See'
-			age:    45
-			role:   'employer'
-			status: 2
-			salary: 8500
-			title:  'doctor'
-			score:  82
+			name:          'See'
+			age:           45
+			role:          'employer'
+			status:        2
+			salary:        8500
+			title:         'doctor'
+			score:         82
+			updated_at:    time.now()
+			type_i8:       1
+			type_i16:      2
+			type_int:      3
+			type_i64:      4
+			type_u8:       5
+			type_u16:      6
+			type_u32:      7
+			type_u64:      8
+			type_f32:      1.1
+			type_f64:      2.2
+			type_bool:     true
+			type_string:   'hello'
+			option_i8:     1
+			option_i16:    2
+			option_int:    3
+			option_i64:    4
+			option_u8:     5
+			option_u16:    6
+			option_u32:    7
+			option_u64:    8
+			option_f32:    1.1
+			option_f64:    2.2
+			option_bool:   true
+			option_string: 'hello'
 		},
 		User{
-			name:   'John'
-			age:    42
-			role:   'employer'
-			status: 1
-			salary: 10000
-			title:  'doctor'
-			score:  88
+			name:          'John'
+			age:           42
+			role:          'employer'
+			status:        1
+			salary:        10000
+			title:         'doctor'
+			score:         88
+			updated_at:    time.now()
+			type_i8:       1
+			type_i16:      2
+			type_int:      3
+			type_i64:      4
+			type_u8:       5
+			type_u16:      6
+			type_u32:      7
+			type_u64:      8
+			type_f32:      1.1
+			type_f64:      2.2
+			type_bool:     true
+			type_string:   'hello'
+			option_i8:     1
+			option_i16:    2
+			option_int:    3
+			option_i64:    4
+			option_u8:     5
+			option_u16:    6
+			option_u32:    7
+			option_u64:    8
+			option_f32:    1.1
+			option_f64:    2.2
+			option_bool:   true
+			option_string: 'hello'
 		},
 	]
 	mut db := sqlite.connect(':memory:')!
@@ -208,6 +496,12 @@ fn test_orm_func_stmts() {
 	assert selected_users[0].name == 'Silly'
 	assert selected_users.len == 1
 
+	// chain where
+	and_where := qb.where('salary > ?', 2000)!.where('age > ?', 40)!.query()!
+	assert and_where.len == 1
+	or_where := qb.where('salary > ?', 2000)!.or_where('age > ? OR score > ?', 40, 85)!.query()!
+	assert or_where.len == 9
+
 	// chain calls
 	final_users := qb
 		.drop()!
@@ -220,4 +514,11 @@ fn test_orm_func_stmts() {
 		.query()!
 	assert final_users.len == 5
 	assert final_users[0].age == 18
+
+	// access only part of the table
+	mut part := orm.new_query[UserPart](db)
+	part_user := part.query()!
+	// a `null` value in database, will map to default value of the require field in struct
+	assert part_user.filter(it.name == 'Silly')[0].created_at == time.Time{}
+	assert part_user.len == 5
 }

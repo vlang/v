@@ -1059,7 +1059,7 @@ fn (mut fm FlagMapper) map_v(flag_ctx FlagContext, field StructField) !bool {
 
 	if flag_name == field.match_name || flag_name == field.short {
 		if field.hints.has(.is_array) {
-			trace_println('${@FN}: found match for (V style multiple occurences) ${fm.dbg_match(flag_ctx,
+			trace_println('${@FN}: found match for (V style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
 			fm.array_field_map_flag[field.name] << FlagData{
 				raw:        flag_raw
@@ -1123,7 +1123,7 @@ fn (mut fm FlagMapper) map_v_flag_parser_short(flag_ctx FlagContext, field Struc
 
 	if flag_name == field.match_name || flag_name == field.short {
 		if field.hints.has(.is_array) {
-			trace_println('${@FN}: found match for V (`flag.FlagParser` (short) style multiple occurences) ${fm.dbg_match(flag_ctx,
+			trace_println('${@FN}: found match for V (`flag.FlagParser` (short) style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
 			fm.array_field_map_flag[field.name] << FlagData{
 				raw:        flag_raw
@@ -1183,7 +1183,7 @@ fn (mut fm FlagMapper) map_v_flag_parser_long(flag_ctx FlagContext, field Struct
 
 	if flag_name == field.match_name || flag_name == field.short {
 		if field.hints.has(.is_array) {
-			trace_println('${@FN}: found match for (V `flag.FlagParser` (long) style multiple occurences) ${fm.dbg_match(flag_ctx,
+			trace_println('${@FN}: found match for (V `flag.FlagParser` (long) style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
 			fm.array_field_map_flag[field.name] << FlagData{
 				raw:        flag_raw
@@ -1243,7 +1243,7 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 
 	if flag_name == field.match_name || flag_name == field.short {
 		if field.hints.has(.is_array) {
-			trace_println('${@FN}: found match for (GO short style multiple occurences) ${fm.dbg_match(flag_ctx,
+			trace_println('${@FN}: found match for (GO short style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
 			fm.array_field_map_flag[field.name] << FlagData{
 				raw:        flag_raw
@@ -1308,7 +1308,7 @@ fn (mut fm FlagMapper) map_go_flag_long(flag_ctx FlagContext, field StructField)
 
 		arg := if flag_raw.contains('=') { flag_raw.all_after('=') } else { '' }
 		if field.hints.has(.is_array) {
-			trace_println('${@FN}: found match for (GO `flag` style multiple occurences) ${fm.dbg_match(flag_ctx,
+			trace_println('${@FN}: found match for (GO `flag` style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, arg, '')}')
 			fm.array_field_map_flag[field.name] << FlagData{
 				raw:        flag_raw
@@ -1370,7 +1370,7 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 
 		arg := if flag_raw.contains('=') { flag_raw.all_after('=') } else { '' }
 		if field.hints.has(.is_array) {
-			trace_println('${@FN}: found match for (GNU style multiple occurences) ${fm.dbg_match(flag_ctx,
+			trace_println('${@FN}: found match for (GNU style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, arg, '')}')
 			fm.array_field_map_flag[field.name] << FlagData{
 				raw:        flag_raw
@@ -1593,7 +1593,7 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 			if next == '' {
 				return error('flag "${flag_raw}" expects an argument')
 			}
-			trace_println('${@FN}: found match for (multiple occurences) ${fm.dbg_match(flag_ctx,
+			trace_println('${@FN}: found match for (multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
 
 			fm.array_field_map_flag[field.name] << FlagData{
@@ -1703,7 +1703,7 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 		}
 		// Not sure original CMD.EXE flags supported multiple flags with same name??
 		if field.hints.has(.is_array) {
-			trace_println('${@FN}: found match for (CMD.EXE style multiple occurences) ${fm.dbg_match(flag_ctx,
+			trace_println('${@FN}: found match for (CMD.EXE style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
 			fm.array_field_map_flag[field.name] << FlagData{
 				raw:        flag_raw
@@ -1748,7 +1748,7 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 
 			// Not sure original CMD.EXE flags supported multiple flags with same name??
 			if field.hints.has(.is_array) {
-				trace_println('${@FN}: found match for (CMD.EXE style multiple occurences) ${fm.dbg_match(flag_ctx,
+				trace_println('${@FN}: found match for (CMD.EXE style multiple occurrences) ${fm.dbg_match(flag_ctx,
 					field, next, '')}')
 				fm.array_field_map_flag[field.name] << FlagData{
 					raw:        flag_raw

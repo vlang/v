@@ -2200,8 +2200,9 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				}
 			}
 			g.stmt(stmt)
-			if (g.inside_if_option || g.inside_if_result || g.inside_match_option
-				|| g.inside_match_result) && stmt is ast.ExprStmt {
+			if stmt is ast.ExprStmt && (g.inside_if_option || g.inside_if_result
+				|| g.inside_match_option || g.inside_match_result
+				|| (stmt.expr is ast.IndexExpr && stmt.expr.or_expr.kind != .absent)) {
 				g.writeln(';')
 			}
 		}

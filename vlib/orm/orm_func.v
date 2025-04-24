@@ -43,28 +43,28 @@ pub fn (qb_ &QueryBuilder[T]) reset() &QueryBuilder[T] {
 	return qb
 }
 
-// from vlib/v/gen/c/orm.v write_orm_select()
-fn type_from(value string) int {
-	if ret_type := type_idx[value] {
-		return ret_type
-	} else {
-		if value.contains('time.Time') {
-			return time_
-		} else if value.contains('struct') {
-			return type_idx['int']
-		} else if value.contains('enum') {
-			return enum_
-		}
-	}
-	return 0
-}
-
-// where create a `where` clause
+// where create a `where` clause, it will `AND` with previous `where` clause.
 // valid token in the `condition` include: `field's names`, `operator`, `(`, `)`, `?`, `AND`, `OR`, `||`, `&&`,
 // valid `operator` incldue: `=`, `!=`, `<>`, `>=`, `<=`, `>`, `<`, `LIKE`, `ILIKE`, `IS NULL`, `IS NOT NULL`
 // example: `where('(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))', a, b, c, x, y)`
 pub fn (qb_ &QueryBuilder[T]) where(condition string, params ...Primitive) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
+	if qb.where.fields.len > 0 {
+		// skip first field
+		qb.where.is_and << true // and
+	}
+	qb.parse_conditions(condition, params)!
+	qb.config.has_where = true
+	return qb
+}
+
+// or_where create a `where` clause, it will `OR` with previous `where` clause.
+pub fn (qb_ &QueryBuilder[T]) or_where(condition string, params ...Primitive) !&QueryBuilder[T] {
+	mut qb := unsafe { qb_ }
+	if qb.where.fields.len > 0 {
+		// skip first field
+		qb.where.is_and << false // or
+	}
 	qb.parse_conditions(condition, params)!
 	qb.config.has_where = true
 	return qb
@@ -414,10 +414,19 @@ fn struct_meta[T]() []TableField {
 			}
 		}
 
+		mut field_type := field.typ
+		if typeof(field).name.contains('time.Time') {
+			field_type = time_
+		} else if field.is_struct {
+			field_type = type_idx['int']
+		} else if field.is_enum {
+			field_type = enum_
+		}
+
 		if !is_skip {
 			meta << TableField{
 				name:     field.name
-				typ:      type_from(typeof(field).name)
+				typ:      field_type
 				nullable: field.is_option
 				attrs:    attrs
 			}
@@ -435,43 +444,167 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 		mm := qb.meta.filter(it.name == field.name)
 		if mm.len != 0 {
 			m = mm[0]
-		}
-		index := qb.config.fields.index(field.name)
-		if index >= 0 {
-			value := row[index]
+			index := qb.config.fields.index(sql_field_name(m))
+			if index >= 0 {
+				value := row[index]
 
-			if value == Primitive(Null{}) && m.nullable {
-				// set to none by default
-			} else {
-				$if field.typ is i8 || field.typ is ?i8 {
-					instance.$(field.name) = value as i8
-				} $else $if field.typ is i16 || field.typ is ?i16 {
-					instance.$(field.name) = value as i16
-				} $else $if field.typ is int || field.typ is ?int {
-					instance.$(field.name) = value as int
-				} $else $if field.typ is i64 || field.typ is ?i64 {
-					instance.$(field.name) = value as i64
-				} $else $if field.typ is u8 || field.typ is ?u8 {
-					instance.$(field.name) = value as u8
-				} $else $if field.typ is u16 || field.typ is ?u16 {
-					instance.$(field.name) = value as u16
-				} $else $if field.typ is u32 || field.typ is ?u32 {
-					instance.$(field.name) = value as u32
-				} $else $if field.typ is u64 || field.typ is ?u64 {
-					instance.$(field.name) = value as u64
-				} $else $if field.typ is f32 || field.typ is ?f32 {
-					instance.$(field.name) = value as f32
-				} $else $if field.typ is f64 || field.typ is ?f64 {
-					instance.$(field.name) = value as f64
-				} $else $if field.typ is bool || field.typ is ?bool {
-					instance.$(field.name) = value as bool
-				} $else $if field.typ is string || field.typ is ?string {
-					instance.$(field.name) = value as string
-				} $else $if field.typ is time.Time || field.typ is ?time.Time {
-					if m.typ == time_ {
-						instance.$(field.name) = value as time.Time
-					} else if m.typ == type_string {
-						instance.$(field.name) = time.parse(value as string)!
+				$if field.typ is $option {
+					if value == Primitive(Null{}) {
+						instance.$(field.name) = none
+					}
+				}
+				if value != Primitive(Null{}) {
+					$if field.typ is i8 || field.typ is ?i8 {
+						instance.$(field.name) = match value {
+							i8 { i8(value) }
+							i16 { i8(value) }
+							int { i8(value) }
+							i64 { i8(value) }
+							u8 { i8(value) }
+							u16 { i8(value) }
+							u32 { i8(value) }
+							u64 { i8(value) }
+							bool { i8(value) }
+							else { 0 }
+						}
+					} $else $if field.typ is i16 || field.typ is ?i16 {
+						instance.$(field.name) = match value {
+							i8 { i16(value) }
+							i16 { i16(value) }
+							int { i16(value) }
+							i64 { i16(value) }
+							u8 { i16(value) }
+							u16 { i16(value) }
+							u32 { i16(value) }
+							u64 { i16(value) }
+							bool { i16(value) }
+							else { 0 }
+						}
+					} $else $if field.typ is int || field.typ is ?int {
+						instance.$(field.name) = match value {
+							i8 { int(value) }
+							i16 { int(value) }
+							int { int(value) }
+							i64 { int(value) }
+							u8 { int(value) }
+							u16 { int(value) }
+							u32 { int(value) }
+							u64 { int(value) }
+							bool { int(value) }
+							else { 0 }
+						}
+					} $else $if field.typ is i64 || field.typ is ?i64 {
+						instance.$(field.name) = match value {
+							i8 { i64(value) }
+							i16 { i64(value) }
+							int { i64(value) }
+							i64 { i64(value) }
+							u8 { i64(value) }
+							u16 { i64(value) }
+							u32 { i64(value) }
+							u64 { i64(value) }
+							bool { i64(value) }
+							else { 0 }
+						}
+					} $else $if field.typ is u8 || field.typ is ?u8 {
+						instance.$(field.name) = match value {
+							i8 { u8(value) }
+							i16 { u8(value) }
+							int { u8(value) }
+							i64 { u8(value) }
+							u8 { u8(value) }
+							u16 { u8(value) }
+							u32 { u8(value) }
+							u64 { u8(value) }
+							bool { u8(value) }
+							else { 0 }
+						}
+					} $else $if field.typ is u16 || field.typ is ?u16 {
+						instance.$(field.name) = match value {
+							i8 { u16(value) }
+							i16 { u16(value) }
+							int { u16(value) }
+							i64 { u16(value) }
+							u8 { u16(value) }
+							u16 { u16(value) }
+							u32 { u16(value) }
+							u64 { u16(value) }
+							bool { u16(value) }
+							else { 0 }
+						}
+					} $else $if field.typ is u32 || field.typ is ?u32 {
+						instance.$(field.name) = match value {
+							i8 { u32(value) }
+							i16 { u32(value) }
+							int { u32(value) }
+							i64 { u32(value) }
+							u8 { u32(value) }
+							u16 { u32(value) }
+							u32 { u32(value) }
+							u64 { u32(value) }
+							bool { u32(value) }
+							else { 0 }
+						}
+					} $else $if field.typ is u64 || field.typ is ?u64 {
+						instance.$(field.name) = match value {
+							i8 { u64(value) }
+							i16 { u64(value) }
+							int { u64(value) }
+							i64 { u64(value) }
+							u8 { u64(value) }
+							u16 { u64(value) }
+							u32 { u64(value) }
+							u64 { u64(value) }
+							bool { u64(value) }
+							else { 0 }
+						}
+					} $else $if field.typ is f32 || field.typ is ?f32 {
+						instance.$(field.name) = match value {
+							i8 { f32(value) }
+							i16 { f32(value) }
+							int { f32(value) }
+							i64 { f32(value) }
+							u8 { f32(value) }
+							u16 { f32(value) }
+							u32 { f32(value) }
+							u64 { f32(value) }
+							bool { f32(value) }
+							else { 0 }
+						}
+					} $else $if field.typ is f64 || field.typ is ?f64 {
+						instance.$(field.name) = match value {
+							i8 { f64(value) }
+							i16 { f64(value) }
+							int { f64(value) }
+							i64 { f64(value) }
+							u8 { f64(value) }
+							u16 { f64(value) }
+							u32 { f64(value) }
+							u64 { f64(value) }
+							bool { f64(value) }
+							else { 0 }
+						}
+					} $else $if field.typ is bool || field.typ is ?bool {
+						instance.$(field.name) = match value {
+							i8 { value != 0 }
+							i16 { value != 0 }
+							int { value != 0 }
+							i64 { value != 0 }
+							u8 { value != 0 }
+							u16 { value != 0 }
+							u32 { value != 0 }
+							u64 { value != 0 }
+							bool { value }
+							else { false }
+						}
+					} $else $if field.typ is string || field.typ is ?string {
+						instance.$(field.name) = value as string
+					} $else $if field.typ is time.Time || field.typ is ?time.Time {
+						if m.typ == time_ {
+							instance.$(field.name) = value as time.Time
+						} else if m.typ == type_string {
+							instance.$(field.name) = time.parse(value as string)!
+						}
 					}
 				}
 			}

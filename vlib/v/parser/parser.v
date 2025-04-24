@@ -2762,7 +2762,8 @@ fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.peek_tok.kind == .string && !p.inside_str_interp && p.peek_token(2).kind != .colon {
+	if p.peek_tok.kind == .string && p.tok.line_nr == p.peek_tok.line_nr && !p.inside_str_interp
+		&& p.peek_token(2).kind != .colon {
 		if p.tok.kind == .name && p.tok.lit in ['r', 'c', 'js'] {
 			return p.string_expr()
 		} else {
@@ -3869,7 +3870,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	pos_t := p.tok.pos()
 	if import_pos.line_nr == pos_t.line_nr {
-		if p.tok.kind !in [.lcbr, .eof, .comment, .semicolon] {
+		if p.tok.kind !in [.lcbr, .eof, .comment, .semicolon, .key_import] {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
 			return import_node
 		}

@@ -46,12 +46,16 @@ pub const is_node_present = os.execute('node --version').exit_code == 0
 pub const is_go_present = os.execute('go version').exit_code == 0
 
 pub const is_ruby_present = os.execute('ruby --version').exit_code == 0
+	&& os.execute('pkg-config ruby --libs').exit_code == 0
 
 pub const is_python_present = os.execute('python --version').exit_code == 0
+	&& os.execute('pkg-config python3 --libs').exit_code == 0
 
 pub const is_sqlite3_present = os.execute('sqlite3 --version').exit_code == 0
+	&& os.execute('pkg-config sqlite3 --libs').exit_code == 0
 
 pub const is_openssl_present = os.execute('openssl --version').exit_code == 0
+	&& os.execute('pkg-config openssl --libs').exit_code == 0
 
 pub const all_processes = get_all_processes()
 
@@ -908,6 +912,23 @@ pub fn (mut ts TestSession) setup_build_environment() {
 	if is_openssl_present {
 		defines << 'present_openssl'
 	}
+
+	// detect the linux distribution as well when possible:
+	if os.is_file('/etc/os-release') {
+		mut distro_kind := ''
+		if lines := os.read_lines('/etc/os-release') {
+			for line in lines {
+				if line.starts_with('ID=') {
+					distro_kind = line.all_after('ID=')
+					break
+				}
+			}
+		}
+		if distro_kind != '' {
+			defines << 'os_id_${distro_kind}' // os_id_alpine, os_id_freebsd, os_id_ubuntu, os_id_debian etc
+		}
+	}
+
 	defines << ts.custom_defines
 	$if trace_vbuild ? {
 		eprintln('>>> testing.get_build_environment facts: ${facts}')

@@ -602,12 +602,17 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 				}
 				if parent_typ_sym.info.is_anon {
 					for field in parent_typ_sym.info.fields {
+						mut is_embed := false
 						field_sym := c.table.sym(field.typ)
 						if field_sym.info is ast.Alias {
 							if c.table.sym(field_sym.info.parent_type).kind != .struct {
 								c.error('cannot embed non-struct `${field_sym.name}`',
 									field.type_pos)
+								is_embed = true
 							}
+						}
+						if !is_embed {
+							c.check_valid_snake_case(field.name, 'field name', field.pos)
 						}
 					}
 				}
@@ -5594,6 +5599,11 @@ fn (mut c Checker) fail_if_stack_struct_action_outside_unsafe(mut ident ast.Iden
 			sym := c.table.sym(obj.typ.set_nr_muls(0))
 			is_heap := sym.is_heap()
 			if (!is_heap || !obj.typ.is_ptr()) && !c.pref.translated && !c.file.is_translated {
+				is_mut_param := c.table.cur_fn != unsafe { nil }
+					&& c.table.cur_fn.params.filter(it.name == ident.name && it.is_mut).len > 0
+				if is_mut_param {
+					return
+				}
 				suggestion := if !is_heap && sym.kind == .struct {
 					'declaring `${sym.name}` as `@[heap]`'
 				} else if !is_heap {

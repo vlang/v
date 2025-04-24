@@ -21,15 +21,15 @@ pub fn (mut l FileLock) acquire() ! {
 	if fd == -1 {
 		return error_with_code('cannot create lock file ${l.name}', -1)
 	}
-	l.fd = int(fd)
+	l.fd = fd
 }
 
-fn open(f string) voidptr {
+fn open(f string) i64 {
 	f_wide := f.to_wide()
 	// locking it
 	fd := C.CreateFileW(f_wide, C.GENERIC_READ | C.GENERIC_WRITE, 0, 0, C.OPEN_ALWAYS,
 		C.FILE_ATTRIBUTE_NORMAL, 0)
-	return fd
+	return i64(fd)
 }
 
 pub fn (mut l FileLock) try_acquire() bool {
@@ -41,6 +41,6 @@ pub fn (mut l FileLock) try_acquire() bool {
 	if fd == -1 {
 		return false
 	}
-	l.fd = int(fd)
+	l.fd = fd
 	return true
 }

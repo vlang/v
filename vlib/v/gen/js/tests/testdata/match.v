@@ -10,6 +10,7 @@ struct Vec3d {
 }
 
 type Vec = Vec2d | Vec3d
+type SumType = int | string | Vec2d | []Vec2d
 
 fn match_vec(v Vec) {
 	match v {
@@ -63,10 +64,31 @@ fn match_bool_cond() {
 	})
 }
 
+fn match_sum_type(sum SumType) {
+	match sum {
+		int {
+			println('sum is int')
+		}
+		string {
+			println('sum is string')
+		}
+		Vec2d {
+			println('sum is Vec2d')
+		}
+		[]Vec2d {
+			println('sum is []Vec2d')
+		}
+	}
+}
+
 fn main() {
 	match_vec(Vec2d{42, 43})
 	match_vec(Vec3d{46, 74, 21})
 	match_classic_num()
 	match_classic_string()
 	match_bool_cond()
+	match_sum_type(42)
+	match_sum_type('everything')
+	match_sum_type(Vec2d{7, 11})
+	match_sum_type([Vec2d{7, 11}, Vec2d{13, 17}])
 }

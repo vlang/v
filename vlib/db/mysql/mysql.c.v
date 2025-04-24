@@ -108,7 +108,7 @@ pub fn connect(config Config) !DB {
 // It cannot be used for statements that contain binary data;
 // Use `real_query()` instead.
 pub fn (db &DB) query(q string) !Result {
-	if C.mysql_query(db.conn, q.str) != 0 {
+	if C.mysql_query(db.conn, charptr(q.str)) != 0 {
 		db.throw_mysql_error()!
 	}
 
@@ -369,7 +369,7 @@ pub fn (db &DB) exec_one(query string) !Row {
 
 	mut row := Row{}
 	for i in 0 .. num_cols {
-		if unsafe { row_vals == &u8(0) } || unsafe { row_vals[i] == nil } {
+		if unsafe { row_vals[i] == nil } {
 			row.vals << ''
 		} else {
 			row.vals << mystring(unsafe { &u8(row_vals[i]) })

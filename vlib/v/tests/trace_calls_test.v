@@ -1,3 +1,4 @@
+// vtest build: !(os_id_ubuntu? && musl?)
 import os
 
 const vexe = @VEXE

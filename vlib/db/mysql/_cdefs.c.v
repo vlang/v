@@ -40,7 +40,7 @@ fn C.mysql_real_connect(mysql &C.MYSQL, host &char, user &char, passwd &char, db
 	client_flag ConnectionFlag) &C.MYSQL
 
 // C.mysql_query executes the SQL statement pointed to by the null-terminated string `stmt_str`.
-fn C.mysql_query(mysql &C.MYSQL, q &u8) int
+fn C.mysql_query(mysql &C.MYSQL, const_q charptr) int
 
 // C.mysql_use_result initiates a result set retrieval but does not actually read
 // the result set into the client like `mysql_store_result()` does.
@@ -102,7 +102,7 @@ fn C.mysql_ping(mysql &C.MYSQL) int
 fn C.mysql_store_result(mysql &C.MYSQL) &C.MYSQL_RES
 
 // C.mysql_fetch_row retrieves the next row of a result set.
-fn C.mysql_fetch_row(res &C.MYSQL_RES) &&u8
+fn C.mysql_fetch_row(res &C.MYSQL_RES) &charptr
 
 // C.mysql_fetch_fields returns an array of all `MYSQL_FIELD` structures for a result set.
 // Each structure provides the field definition for one column of the result set.

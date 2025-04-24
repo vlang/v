@@ -6,5 +6,9 @@ fn test_main() {
 
 	asu8 = &[myu16]! // look this
 
-	assert unsafe { asu8.vbytes(int(size_of_u16)) } == [u8(50), 0]
+	$if little_endian {
+		assert unsafe { asu8.vbytes(int(size_of_u16)) } == [u8(50), 0]
+	} $else {
+		assert unsafe { asu8.vbytes(int(size_of_u16)) } == [u8(0), 50]
+	}
 }

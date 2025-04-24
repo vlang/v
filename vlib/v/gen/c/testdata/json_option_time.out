@@ -1,0 +1,13 @@
+[{'id': Option(Any('123')), 'time': Option(Any(2025-04-16 12:00:00))}, {'id': Option(Any('asd')), 'time': Option(Any(2025-04-16 12:00:00))}]
+[{"id":"123","time":{"_type":"Time","value":1744804800}},{"id":"asd","time":{"_type":"Time","value":1744804800}}]
+{"a":1,"s":"hello","t":1744804800,"opt_u64":123456}
+MyStruct{
+    a: 1
+    opt_a: Option(none)
+    s: 'hello'
+    opt_s: Option(none)
+    t: 2025-04-16 12:00:00
+    opt_v: Option(none)
+    opt_t: Option(none)
+    opt_u64: Option(123456)
+}

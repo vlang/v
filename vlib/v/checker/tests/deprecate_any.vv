@@ -1,0 +1,7 @@
+fn foo(a any) {}
+
+fn main() {
+	_ := []any{}
+	_ := map[int]any{}
+	_ := map[any]int{}
+}

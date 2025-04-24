@@ -531,8 +531,6 @@ f32 f64
 isize, usize // platform-dependent, the size is how many bytes it takes to reference any location in memory
 
 voidptr // this one is mostly used for [C interoperability](#v-and-c)
-
-any // similar to C's void* and Go's interface{}
 ```
 
 > [!NOTE]
@@ -1506,7 +1504,7 @@ Maps are ordered by insertion, like dictionaries in Python. The order is a
 guaranteed language feature. This may change in the future.
 
 See all methods of
-[map](https://modules.vlang.io/index.html#map)
+[map](https://modules.vlang.io/builtin.html#map)
 and
 [maps](https://modules.vlang.io/maps.html).
 
