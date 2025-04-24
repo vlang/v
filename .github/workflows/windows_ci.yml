@@ -40,10 +40,12 @@ jobs:
           pkg-config openssl --cflags
            echo "Flags for openssl libs:"
           pkg-config openssl --libs
+          choco uninstall -y openssl
       - name: Build
         run: |
           .\make.bat -gcc
           .\v.exe symlink
+          v -stats vlib/crypto/ecdsa/ecdsa_test.v
       - name: Test v binaries
         run: v -silent build-vbinaries
       - name: All code is formatted
