@@ -5,7 +5,7 @@ import time
 pub struct FileLock {
 	name string
 mut:
-	fd int
+	fd i64
 }
 
 pub fn new(fileName string) FileLock {

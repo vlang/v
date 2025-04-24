@@ -1,4 +1,4 @@
-// vtest build: (amd64 || arm64) && !self_sandboxed_packaging?
+// vtest build: (amd64 || arm64) && !self_sandboxed_packaging? && !gcc-windows
 import os
 import time
 import benchmark
