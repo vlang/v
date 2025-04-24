@@ -51,7 +51,7 @@ jobs:
         run: |
           .\make.bat -gcc
           .\v.exe symlink
-          v -stats vlib/crypto/ecdsa/ecdsa_test.v
+          .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
       - name: Test v binaries
         run: v -silent build-vbinaries
       - name: All code is formatted
