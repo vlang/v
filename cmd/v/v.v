@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+@[has_globals]
 module main
 
 import os
@@ -59,6 +60,8 @@ const external_tools = [
 ]
 const list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 
+__global timers = &util.Timers(unsafe { nil })
+
 fn main() {
 	unbuffer_stdout()
 	mut timers_should_print := false
@@ -68,12 +71,12 @@ fn main() {
 	if '-show-timings' in os.args {
 		timers_should_print = true
 	}
-	mut timers := util.new_timers(should_print: timers_should_print, label: 'main')
+	timers = util.new_timers(should_print: timers_should_print, label: 'main')
 	timers.start('v start')
 	timers.show('v start')
 	timers.start('TOTAL')
 	// use at_exit here, instead of defer, since some code paths later do early exit(0) or exit(1), for showing errors, or after `v run`
-	at_exit(fn [mut timers] () {
+	at_exit(fn () {
 		timers.show('TOTAL')
 	})!
 	timers.start('v parsing CLI args')
