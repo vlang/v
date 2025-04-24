@@ -25,17 +25,35 @@ concurrency:
 
 jobs:
   gcc-windows:
-    runs-on: windows-2019
+    runs-on: windows-2025
     timeout-minutes: 90
     env:
       VFLAGS: -cc gcc
     steps:
       - uses: actions/checkout@v4
-      - name: Build
+      - name: Show tool versions
         run: |
           gcc --version
+          pkg-config --version
+          openssl version
+          echo "Flags for openssl:"
+          pkg-config openssl --cflags
+          echo "Flags for openssl libs:"
+          pkg-config openssl --libs
+          .github/workflows/find_openssl.bat
+          echo "OpenSSL files:"
+          where.exe /R "C:\Program Files\OpenSSL" *.*
+          echo "Include files for openssl:"
+          dir "c:/Program Files/OpenSSL/include"
+          echo "Lib Include files for openssl:"
+          dir "c:/Program Files/OpenSSL/lib/VC/x64/"
+      - name: Build
+        run: |
           .\make.bat -gcc
           .\v.exe symlink
+          .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
+      - name: Test v binaries
+        run: v -silent build-vbinaries
       - name: All code is formatted
         run: v -silent test-cleancode
       - name: Test new v.c
@@ -64,8 +82,6 @@ jobs:
         run: v -autofree vlib/v/tests/options/option_test.c.v
       - name: Test v->js
         run: v -o hi.js examples/js_hello_world.v && node hi.js
-      - name: Test v binaries
-        run: v -silent build-vbinaries
       - name: Build examples
         run: v -silent build-examples
       - name: v2 self compilation
