@@ -40,6 +40,9 @@ jobs:
           pkg-config openssl --cflags
           echo "Flags for openssl libs:"
           pkg-config openssl --libs
+          .github/workflows/find_openssl.bat
+          choco install -y openssl
+          .github/workflows/find_openssl.bat
           echo "Include files for openssl:"
           dir "c:/Program Files/OpenSSL-Win64/include"
           echo "Lib Include files for openssl:"
