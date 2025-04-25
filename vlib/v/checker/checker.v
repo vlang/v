@@ -4683,7 +4683,7 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 					match type_sym.kind {
 						.struct {
 							info := type_sym.info as ast.Struct
-							if !info.is_heap {
+							if !info.is_heap && !node.obj.is_inherited {
 								node.obj.is_auto_heap = true
 							}
 						}
