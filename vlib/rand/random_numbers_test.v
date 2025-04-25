@@ -302,20 +302,20 @@ fn test_rand_string() {
 fn test_rand_hex() {
 	rand.seed([u32(0), 1])
 	outputs := [
-		'847b633d9f9765c1a84d38035',
-		'efdef342641958db89cfdb4e1',
-		'704ee34204d29e9e99aca0ae0',
-		'0c8e1fd5472f65fc4b9668adf',
-		'3349538378c2023ef7f14dfbe',
-		'ae4080a0cb4cbb0693c68037b',
-		'90e3a7be588b3dfeb3663c97f',
-		'f25a82eb559ab6f0288bd8590',
-		'649f579cb93e9f414d9f40539',
-		'553a210a52bcbfbafb0783850',
-		'3daef80b45ef518d30c6db6db',
-		'56a187106e6e5fb88761024a5',
-		'b5cd8b7a24054d7dc66e62f88',
-		'306eed0c4207d8db185f04afd',
+		'ead1c993f5fdcb270ea39e69b',
+		'453459a8ca7fbe31ef2531a47',
+		'd6a449a86a38f4f4ff0206046',
+		'62e4753bad85cb52a1fcce035',
+		'99afb9e9de2868945d57a3514',
+		'04a6e60621a2116cf92ce69d1',
+		'f6490d14bee1935419cc92fd5',
+		'58b0e841bbf01c568ee13ebf6',
+		'caf5bdf21f94f5a7a3f5a6b9f',
+		'bb908760b8121510516de9eb6',
+		'93045e61ab45b7e3962c31c31',
+		'bc07ed76c4c4b51eedc768a0b',
+		'1b23e1d08a6ba3d32cc4c85ee',
+		'96c44362a86d3e317eb56a053',
 	]
 	for output in outputs {
 		assert rand.hex(25) == output
