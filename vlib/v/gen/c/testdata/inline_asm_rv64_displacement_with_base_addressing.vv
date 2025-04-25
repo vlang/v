@@ -9,10 +9,15 @@ struct SomeStruct {
 }
 
 fn main() {
-	if check_displacement_with_base() == true && check_composite_displacement_with_base() == true {
-		println('pass')
+	if check_displacement_with_base() {
+		println('pass displacement_with_base')
 	} else {
-		println('fail')
+		println('fail displacement_with_base')
+	}
+	if check_composite_displacement_with_base() {
+		println('pass composite_displacement_with_base')
+	} else {
+		println('fail composite_displacement_with_base')
 	}
 }
 
