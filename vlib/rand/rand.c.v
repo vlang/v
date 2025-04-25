@@ -38,7 +38,7 @@ fn internal_uuid(version u8, rand_1 u64, rand_2 u64) string {
 	parts[3] = (parts[3] & 0x0FFF) | (u16(version) << 12) // set version
 	parts[4] = (parts[4] & 0x3FFF) | 0x8000 // set variant = 0b10
 
-	mut buf := unsafe { malloc_noscan(37) }
+	mut buf := unsafe { malloc_noscan(36) }
 	mut start := 0
 	unsafe {
 		for i in 0 .. 8 {
@@ -54,8 +54,8 @@ fn internal_uuid(version u8, rand_1 u64, rand_2 u64) string {
 				start++
 			}
 		}
-		buf[36] = 0
-		return buf.vstring_with_len(36)
+		buf[35] = 0
+		return buf.vstring_with_len(35)
 	}
 }
 
