@@ -1,3 +1,4 @@
+// vtest build: !msvc
 import time
 // 41s.
 
