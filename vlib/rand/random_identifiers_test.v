@@ -9,9 +9,9 @@ fn test_rand_uuid_v4() {
 	assert uuid1 != uuid2
 	assert uuid1 != uuid3
 	assert uuid2 != uuid3
-	assert uuid1.len == 35
-	assert uuid2.len == 35
-	assert uuid3.len == 35
+	assert uuid1.len == 36
+	assert uuid2.len == 36
+	assert uuid3.len == 36
 	for i in 0 .. 1000 {
 		x := rand.uuid_v4()
 		// check the version field is always 4:
@@ -29,9 +29,9 @@ fn test_rand_uuid_v7() {
 	assert uuid1 != uuid2
 	assert uuid1 != uuid3
 	assert uuid2 != uuid3
-	assert uuid1.len == 35
-	assert uuid2.len == 35
-	assert uuid3.len == 35
+	assert uuid1.len == 36
+	assert uuid2.len == 36
+	assert uuid3.len == 36
 	for i in 0 .. 1000 {
 		x := rand.uuid_v7()
 		// check the version field is always 7:
@@ -50,9 +50,9 @@ fn test_rand_uuid_v7_session() {
 	assert uuid1 != uuid2
 	assert uuid1 != uuid3
 	assert uuid2 != uuid3
-	assert uuid1.len == 35
-	assert uuid2.len == 35
-	assert uuid3.len == 35
+	assert uuid1.len == 36
+	assert uuid2.len == 36
+	assert uuid3.len == 36
 	mut prev_counter := `3`
 	for i in 0 .. 1000 {
 		x := u.next()
