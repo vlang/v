@@ -1834,6 +1834,12 @@ pub const s390x_with_number_register_list = {
 	'v#': 32
 }
 
+pub const ppc64le_no_number_register_list = []string{}
+pub const ppc64le_with_number_register_list = {
+	'f#': 32
+	'r#': 32
+}
+
 pub struct DebuggerStmt {
 pub:
 	pos token.Pos
@@ -2643,6 +2649,13 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			s390x := gen_all_registers(mut t, s390x_no_number_register_list, s390x_with_number_register_list,
 				64)
 			for k, v in s390x {
+				res[k] = v
+			}
+		}
+		.ppc64le {
+			ppc64le := gen_all_registers(mut t, ppc64le_no_number_register_list, ppc64le_with_number_register_list,
+				64)
+			for k, v in ppc64le {
 				res[k] = v
 			}
 		}
