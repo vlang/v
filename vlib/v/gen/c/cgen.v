@@ -5930,6 +5930,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				line := g.go_before_last_stmt().trim_space()
 				expr_styp := g.styp(node.types[i])
 				g.write('memcpy(&${tmpvar}.arg${arg_idx}, ')
+				if expr is ast.StructInit {
+					g.write('(${expr_styp})')
+				}
 				g.expr(expr)
 				g.writeln(', sizeof(${expr_styp}));')
 				final_assignments += g.go_before_last_stmt() + '\t'
