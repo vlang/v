@@ -153,6 +153,7 @@ mut:
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
 	inside_cast               bool
 	inside_selector           bool
+	inside_selector_deref     bool // indicates if the inside selector was already dereferenced
 	inside_memset             bool
 	inside_const              bool
 	inside_array_item         bool
@@ -4173,9 +4174,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							deref := if g.inside_selector {
 								if is_iface_or_sumtype || (field.orig_type.is_ptr() && g.left_is_opt
 									&& is_option_unwrap) {
-									'*'.repeat(field.smartcasts.last().nr_muls())
+									'*'.repeat(typ.nr_muls())
 								} else {
-									'*'.repeat(field.smartcasts.last().nr_muls() + 1)
+									'*'.repeat(typ.nr_muls() + 1)
 								}
 							} else if sym.kind == .interface && !typ.is_ptr()
 								&& field.orig_type.has_flag(.option) {
@@ -4183,7 +4184,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							} else {
 								'*'
 							}
-							g.write('(${deref}(${g.styp(typ)}*)')
+							suffix := if g.inside_selector && field.orig_type.has_flag(.option)
+								&& field.orig_type.is_ptr() && g.is_assign_lhs {
+								''
+							} else {
+								'*'
+							}
+							g.inside_selector_deref = suffix == '' && deref.len > 0
+							g.write('(${deref}(${g.styp(typ)}${suffix})')
 						}
 						if i == 0 || !nested_unwrap {
 							g.write('(')
@@ -4289,6 +4297,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('((${g.base_type(field_typ)})')
 	}
 	old_inside_selector := g.inside_selector
+	old_inside_selector_deref := g.inside_selector_deref
 	g.inside_selector = node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
 	n_ptr := node.expr_type.nr_muls() - 1
 	if n_ptr > 0 {
@@ -4298,7 +4307,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	} else {
 		g.expr(node.expr)
 	}
+	mut opt_ptr_already_deref := g.inside_selector_deref
 	g.inside_selector = old_inside_selector
+	g.inside_selector_deref = old_inside_selector_deref
 	if field_is_opt {
 		g.write(')')
 	}
@@ -4350,7 +4361,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		|| (((!is_dereferenced && unwrapped_expr_type.is_ptr()) || sym.kind == .chan
 		|| alias_to_ptr) && node.from_embed_types.len == 0)
 		|| (node.expr.is_as_cast() && g.inside_smartcast)
-	if !has_embed && left_is_ptr {
+	if !has_embed && left_is_ptr && !(opt_ptr_already_deref && !g.inside_selector) {
 		g.write('->')
 	} else {
 		g.write('.')
