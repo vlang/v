@@ -200,9 +200,11 @@ fn test_closure_return_${styp}_${i}() ! {
 	full_path_to_target := os.join_path(wrkdir, 'closure_return_test.v')
 	os.write_file(full_path_to_target, code)!
 	vexe := os.getenv('VEXE')
-	cmd := '${os.quoted_path(vexe)} -keepc -cg -showcc ${full_path_to_target}'
+	mut cmd := '${os.quoted_path(vexe)} -cc gcc -keepc -cg -showcc ${full_path_to_target}'
 	res := os.execute(cmd)
-	if res.exit_code != 0 {
+	cmd = '${os.quoted_path(vexe)} -cc clang -keepc -cg -showcc ${full_path_to_target}'
+	res2 := os.execute(cmd)
+	if res.exit_code != 0 || res2.exit_code != 0 {
 		eprintln(res.output)
 		eprintln('> failed exit code: ${res.exit_code} | cmd:\n${cmd}')
 		assert false
