@@ -1441,6 +1441,9 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 	eltyp := g.table.sym(thread_ret_type).cname
 	fn_name := g.register_thread_array_wait_call(eltyp)
 	g.write('${fn_name}(')
+	if node.left_type.is_ptr() {
+		g.write('*')
+	}
 	g.expr(node.left)
 	g.write(')')
 }
