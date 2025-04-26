@@ -92,5 +92,4 @@ fn test_multiline_string() {
 	assert tok.lit.contains('abc')
 	assert tok.lit.contains('def')
 	assert tok.lit.contains('123')
-	assert false
 }
