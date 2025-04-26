@@ -4147,11 +4147,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	mut field_typ := ast.void_type
 	mut is_option_unwrap := false
 	is_iface_or_sumtype := sym.kind in [.interface, .sum_type]
+	mut deref_count := 0
 	if f := g.table.find_field_with_embeds(sym, node.field_name) {
 		field_sym := g.table.sym(f.typ)
 		field_typ = f.typ
 		if is_iface_or_sumtype {
 			g.write('(*(')
+			deref_count++
 		}
 		is_option := field_typ.has_flag(.option)
 		if field_sym.kind in [.sum_type, .interface] || is_option {
@@ -4168,6 +4170,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					}
 					if nested_unwrap && field_sym.kind == .sum_type {
 						g.write('*(')
+						deref_count++
 					}
 					for i, typ in field.smartcasts {
 						if i == 0 && (is_option_unwrap || nested_unwrap) {
@@ -4184,14 +4187,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							} else {
 								'*'
 							}
-							suffix := if g.inside_selector && field.orig_type.has_flag(.option)
-								&& field.orig_type.is_ptr() && g.is_assign_lhs {
-								''
-							} else {
-								'*'
-							}
-							g.inside_selector_deref = suffix == '' && deref.len > 0
-							g.write('(${deref}(${g.styp(typ)}${suffix})')
+							deref_count += deref.len
+							g.inside_selector_deref = deref_count > typ.nr_muls()
+							g.write('(${deref}(${g.styp(typ)}*)')
 						}
 						if i == 0 || !nested_unwrap {
 							g.write('(')
@@ -4361,7 +4359,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		|| (((!is_dereferenced && unwrapped_expr_type.is_ptr()) || sym.kind == .chan
 		|| alias_to_ptr) && node.from_embed_types.len == 0)
 		|| (node.expr.is_as_cast() && g.inside_smartcast)
-	if !has_embed && left_is_ptr && !(opt_ptr_already_deref && !g.inside_selector) {
+		|| (!opt_ptr_already_deref && unwrapped_expr_type.is_ptr())
+	if !has_embed && left_is_ptr {
 		g.write('->')
 	} else {
 		g.write('.')
