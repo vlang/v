@@ -491,7 +491,7 @@ fn (c &Checker) check_quoted_escapes(q ast.Quoted) ! {
 							}
 						}
 					}
-					if next_ch in [`\t`, `\n`, ` `] {
+					if next_ch in [`\t`, `\r`, `\n`, ` `] {
 						s.next()
 						continue
 					}
