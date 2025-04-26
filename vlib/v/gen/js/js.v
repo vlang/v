@@ -1945,6 +1945,8 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 
 				if field.has_default_expr {
 					g.expr(field.default_expr)
+				} else if field.typ.has_flag(.option) {
+					g.write('none__')
 				} else {
 					g.write('${g.to_js_typ_val(field.typ)}')
 				}
