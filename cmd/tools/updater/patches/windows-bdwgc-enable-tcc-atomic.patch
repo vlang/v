@@ -1,0 +1,15 @@
+diff --git a/extra/amalgamated_gc.c b/extra/amalgamated_gc.c
+index 3e53af5a..223a6443 100644
+--- a/extra/amalgamated_gc.c
++++ b/extra/amalgamated_gc.c
+@@ -7636,6 +7636,10 @@ EXTERN_C_END
+ #ifndef GC_ATOMIC_OPS_H
+ #define GC_ATOMIC_OPS_H
+ 
++#if defined(__TINYC__)
++#include <stdatomic.h>
++#endif
++
+ #ifdef GC_BUILTIN_ATOMIC
+ 
+ 

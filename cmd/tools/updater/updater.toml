@@ -1,0 +1,207 @@
+# This is config file for tcc/bdwgc updater
+
+# Tested on:
+# 1. Windows 10 LTSC
+# 2. Ubuntu 24.04.2 LTS amd64
+# 3. OpenBSD 7.6 amd64
+# 4. FreeBSD 14.2 amd64
+# 5. Ubuntu 22.04.5 LTS aarch64
+
+# ${vtmp} will be replaced by `os.vtmp_dir()`
+# ${work_dir_tcc} will be replaced by `work_dir+'/tcc'`
+# ${work_dir_bdwgc} will be replaced by `work_dir+'/bdwgc'`
+# ${amalgamate} will be replaced by `@VEXEROOT/cmd/tools/amalgamate`
+# ${tcc} will be replaced by `@VEXEROOT/thirdparty/tcc/tcc.exe`
+# ${machine} will be replaced by `machine`, like `x86_64`, `aarch64`
+
+title = "tcc/bdwgc updater config"
+
+[global]
+log_level = 4
+log_to = 'terminal'             # 'terminal' or 'file'
+log_file = 'log.txt'
+work_dir = '${vtmp}/builder'
+skip_git = true                 # if true, will skip `git clone` if target dir exist
+clean_up = false                # clean up after update
+
+[tools_need]
+nix = 	[
+			['git', 'git --version', 'git version'],
+			['gmake', 'gmake -v', 'Make'],
+			['cc', 'cc -v', ' version'],
+		]
+windows = [
+		['git', 'git --version', 'git version'],
+		['nmake', 'nmake / ?', 'Microsoft Corporation'],
+		['vs studio', 'cl', 'Microsoft Corporation'],
+]
+
+[download]
+tcc = "git://repo.or.cz/tinycc.git"
+bdwgc = "https://github.com/ivmai/bdwgc/"
+commit_tcc = 'mob'
+commit_bdwgc = 'master'
+
+
+[windows]
+# if true, `updater` we scan all .v/.c/.h for Windows API reference, 
+# and write only used Windows functions to `.def` files.
+opt_def = true
+
+# we will use `tcc` generate `.def` for these system dlls
+# if `opt_def` is `true`, then only part of functions' names will be written to `.def`.
+system_dlls = [
+	"advapi32.dll",
+	"dbghelp.dll",
+	"gdi32.dll",
+	"kernel32.dll",
+	"msvcrt.dll",
+	"psapi.dll",
+	"user32.dll",
+	"ws2_32.dll"
+	]
+
+# copy windows specified files to tcc directory
+copy_file_list = [
+		["include","tcc/include"],
+		["openlibm.o","tcc/lib/openlibm.o"],	# we need a pre-build `openlibm.o` here
+	]
+
+# use `msvc` build `tcc`
+config_tcc = "build-tcc.bat -c cl -i ${work_dir_tcc}/build"
+
+# on Windows, we can't use `msvc` build the `bdwgc`, for `tcc` can't link with `.lib` now.
+config_bdwgc = """${tcc} \
+	-DGC_BUILTIN_ATOMIC \
+	-DALL_INTERIOR_POINTERS \
+	-DENABLE_DISCLAIM \
+	-DGC_ATOMIC_UNCOLLECTABLE \
+	-DGC_NOT_DLL \
+	-DGC_GCJ_SUPPORT \
+	-DGC_REQUIRE_WCSDUP \
+	-DGC_THREADS \
+	-DTHREAD_LOCAL_ALLOC \
+	-DPARALLEL_MARK \
+	-DJAVA_FINALIZATION \
+	-DNO_EXECUTE_PERMISSION \
+	-DUSE_MUNMAP \
+	-DUSE_MMAP \
+	-D__GNUC__ \
+	-I ${work_dir_bdwgc}/include \
+	-c ${work_dir_bdwgc}/extra/amalgamated_gc.c \
+	-o ${work_dir_bdwgc}/extra/amalgamated_gc.o
+"""
+
+[default]
+config_tcc = """
+			./configure \
+			--prefix=${work_dir_tcc}/build \
+			--bindir=${work_dir_tcc}/build \
+			--crtprefix=${work_dir_tcc}/build/lib:/usr/lib/${machine}-linux-gnu:/usr/lib64:/usr/lib:/lib/${machine}-linux-gnu:/lib \
+			--libpaths=${work_dir_tcc}/build/lib/tcc:${work_dir_tcc}/build/lib:/usr/lib/${machine}-linux-gnu:/usr/lib64:/usr/lib:/lib/${machine}-linux-gnu:/lib:/usr/local/lib/${machine}-linux-gnu:/usr/local/lib \
+			--cc=cc \
+			--extra-cflags=-O3 \
+			--config-bcheck=yes \
+			--config-backtrace=yes \
+			--debug
+			"""
+
+config_bdwgc = """
+				CC=cc CFLAGS='-Os -mtune=generic -fPIC' LDFLAGS='-Os -fPIC' \
+				./configure \
+				--disable-dependency-tracking \
+				--disable-docs \
+				--enable-handle-fork=yes \
+				--enable-rwlock \
+				--enable-threads=pthreads \
+				--enable-static \
+				--enable-shared=no \
+				--enable-parallel-mark \
+				--enable-single-obj-compilation \
+				--enable-gc-debug \
+				--with-libatomic-ops=none \
+				--enable-sigrt-signals
+				"""
+amalgamate_bdwgc = """
+		${amalgamate} -o ${work_dir_bdwgc}/extra/amalgamated_gc.c \
+        -b atomic_ops.h \
+        -b gc/gc.h \
+        -b gc/gc_backptr.h \
+        -b gc/gc_disclaim.h \
+        -b gc/gc_gcj.h \
+        -b gc/gc_inline.h \
+        -b gc/gc_mark.h \
+        -b gc/gc_pthread_redirects.h \
+        -b gc/gc_tiny_fl.h \
+        -b gc/gc_typed.h \
+        -b gc/javaxfc.h \
+        -b il/PCR_IL.h \
+        -b mm/PCR_MM.h \
+        -b psp2-support.h \
+        -b stubinfo.h \
+        -b th/PCR_ThCtl.h \
+        -b vd/PCR_VD.h \
+        -s include \
+        -s include/private \
+        extra/gc.c
+		"""
+
+[openbsd]
+#--disable-sigrt-signals: should disable sigrt signals
+config_bdwgc = """
+				CC=cc CFLAGS='-Os -mtune=generic -fPIC' LDFLAGS='-Os -fPIC' \
+				./configure \
+				--disable-dependency-tracking \
+				--disable-docs \
+				--enable-handle-fork=yes \
+				--enable-rwlock \
+				--enable-threads=pthreads \
+				--enable-static \
+				--enable-shared=no \
+				--enable-parallel-mark \
+				--enable-single-obj-compilation \
+				--enable-gc-debug \
+				--with-libatomic-ops=none \
+				--disable-sigrt-signals
+				"""
+[aarch64]
+#--disable-thread-local-alloc: tcc for aarch64 can't link with thread local symbols
+config_bdwgc = """
+				CC=cc CFLAGS='-Os -mtune=generic -fPIC'  LDFLAGS='-Os -fPIC' \
+				./configure \
+				--disable-dependency-tracking \
+				--disable-docs \
+				--enable-handle-fork=yes \
+				--enable-rwlock \
+				--enable-threads=pthreads \
+				--enable-static \
+				--enable-shared=no \
+				--enable-parallel-mark \
+				--enable-single-obj-compilation \
+				--enable-gc-debug \
+				--with-libatomic-ops=none \
+				--enable-sigrt-signals \
+				--disable-thread-local-alloc
+				"""
+
+[macos]
+# not tested yet
+config_tcc = """
+			./configure \
+			--prefix=${work_dir_tcc}/build \
+			--bindir=${work_dir_tcc}/build \
+			--tccdir=${work_dir_tcc}/build/lib
+			--includedir=${work_dir_tcc}/include \
+			--crtprefix=${work_dir_tcc}/build/lib:/usr/lib/${machine}-linux-gnu:/usr/lib64:/usr/lib:/lib/${machine}-linux-gnu:/lib \
+			--sysincludepaths=${work_dir_tcc}/include:${work_dir_tcc}/lib/include:/usr/local/include:/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include:/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include \
+			--libpaths=${work_dir_tcc}/build/lib/tcc:${work_dir_tcc}/build/lib:/usr/lib/${machine}-linux-gnu:/usr/lib64:/usr/lib:/lib/${machine}-linux-gnu:/lib:/usr/local/lib/${machine}-linux-gnu:/usr/local/lib \
+			--config-new_macho=yes \
+			--config-codesign \
+			--cc=cc \
+			--extra-cflags=-O3 \
+			--config-bcheck=yes \
+			--config-backtrace=yes \
+			--enable-static \
+			--dwarf=5 \
+			--debug
+			"""

@@ -1,0 +1,13 @@
+diff --git a/win32/build-tcc.bat b/win32/build-tcc.bat
+index 9c66327a..92c0c3ad 100644
+--- a/win32/build-tcc.bat
++++ b/win32/build-tcc.bat
+@@ -131,6 +131,8 @@ if %TX%==64 echo>> ..\config.h #ifdef TCC_TARGET_X86_64
+ if %TX%==32 echo>> ..\config.h #ifdef TCC_TARGET_I386
+ echo>> ..\config.h #define CONFIG_TCC_CROSSPREFIX "%PX%-"
+ echo>> ..\config.h #endif
++echo>> ..\config.h #define CONFIG_TCC_BACKTRACE 1
++echo>> ..\config.h #define CONFIG_TCC_BCHECK 1
+ 
+ for %%f in (*tcc.exe *tcc.dll) do @del %%f
+ 
