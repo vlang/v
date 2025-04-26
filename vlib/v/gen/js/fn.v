@@ -391,7 +391,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	if it.should_be_skipped {
 		return
 	}
-	if it.is_method && g.table.sym(it.receiver_type).name.starts_with('JS.') {
+	if it.is_method && (it.is_field || g.table.sym(it.receiver_type).name.starts_with('JS.')) {
 		g.js_method_call(it)
 		return
 	} else if it.name.starts_with('JS.') {
