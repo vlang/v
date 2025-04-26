@@ -21,10 +21,12 @@ v run updater.v
 
 ## Config
 
-There is a config file `updater.toml`, it provide a easy way develop config for different platform/system.
+There is a config file `updater.toml`, it provide a easy way develop 
+config for different platform/system.
 
 1. [global] provide global config for the `updater`.
 2. [tools_need] config tools need for different system(`nix` or `windows`).
 3. [download] provide the git url and commit settings.
-4. Then different platform/system configs. Such as [windows] is for `windows`, [aarch64] is for `aarch64` platforms.
+4. Then different platform/system configs. Such as [windows] is for `windows`, 
+   [aarch64] is for `aarch64` platforms.
 
