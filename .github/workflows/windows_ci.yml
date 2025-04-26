@@ -92,7 +92,7 @@ jobs:
         run: v -showcc -prod cmd/tools/vup.v
 
   msvc-windows:
-    runs-on: windows-2025
+    runs-on: windows-2019
     timeout-minutes: 60
     env:
       VFLAGS: -cc msvc
@@ -138,7 +138,7 @@ jobs:
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   tcc-windows:
-    runs-on: windows-2025
+    runs-on: windows-2019
     timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
