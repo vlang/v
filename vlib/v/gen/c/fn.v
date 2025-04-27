@@ -1048,7 +1048,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 					g.write('\n ${cur_line}')
 				}
 			} else {
-				if !g.inside_or_block && g.last_tmp_call_var.len > 0 {
+				if !g.inside_or_block && g.last_tmp_call_var.len > 0 && !cur_line.contains(' = ') {
 					g.write('\n\t*(${unwrapped_styp}*)${g.last_tmp_call_var.pop()}.data = ${cur_line}(*(${unwrapped_styp}*)${tmp_opt}.data)')
 				} else {
 					g.write('\n ${cur_line}(*(${unwrapped_styp}*)${tmp_opt}.data)')
