@@ -171,6 +171,17 @@ static char __CLOSURE_GET_DATA_BYTES[] = {
 	0x66, 0x00, 0xc3, 0x7d,	// mfvsrd %r3, %f14
 	0x20, 0x00, 0x80, 0x4e,	// blr
 };
+#elif defined (__V_loongarch64)
+static char __closure_thunk[] = {
+	0x92, 0xFF, 0xFF, 0x1D,  // pcaddu12i t6, -4
+	0x48, 0x02, 0x80, 0x2B,  // fld.d     f8, t6, 0
+	0x51, 0x22, 0xC0, 0x28,  // ld.d      t5, t6, 8
+	0x20, 0x02, 0x00, 0x4C,  // jr        t5
+};
+static char __CLOSURE_GET_DATA_BYTES[] = {
+	0x04, 0xB9, 0x14, 0x01,  // movfr2gr.d a0, f8
+	0x20, 0x00, 0x00, 0x4C,  // ret
+};
 #endif
 
 static void*(*__CLOSURE_GET_DATA)(void) = 0;
@@ -355,6 +366,12 @@ const c_common_macros = '
 	#define __V_ppc64le  1
 	#undef __V_architecture
 	#define __V_architecture 8
+#endif
+
+#if defined(__loongarch64)
+	#define __V_loongarch64  1
+	#undef __V_architecture
+	#define __V_architecture 9
 #endif
 
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
@@ -714,7 +731,7 @@ static void* g_live_info = NULL;
 
 const c_builtin_types = '
 //================================== builtin types ================================*/
-#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64) || defined(__s390x__) || (defined(__powerpc64__) && defined(__LITTLE_ENDIAN__))
+#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64) || defined(__s390x__) || (defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)) || defined(__loongarch64)
 typedef int64_t vint_t;
 #else
 typedef int32_t vint_t;

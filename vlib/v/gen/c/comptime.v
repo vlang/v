@@ -1302,6 +1302,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		'ppc64le' {
 			return '__V_ppc64le'
 		}
+		'loongarch64' {
+			return '__V_loongarch64'
+		}
 		// bitness:
 		'x64' {
 			return 'TARGET_IS_64BIT'
