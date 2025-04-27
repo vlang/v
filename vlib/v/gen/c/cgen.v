@@ -4070,8 +4070,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		if needs_deref {
 			g.write('*(')
 		} else if is_option_unwrap && !is_ptr {
-			needs_addr = !node.typ.is_ptr()
-				&& node.expr !in [ast.Ident, ast.SelectorExpr, ast.PrefixExpr]
+			needs_addr = node.expr !in [ast.Ident, ast.PrefixExpr]
 			if !needs_addr {
 				g.write('&')
 			} else {
