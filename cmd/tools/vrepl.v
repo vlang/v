@@ -23,20 +23,20 @@ mut:
 	folder       string // the folder in which the repl will write its temporary source files
 	last_output  string // the last repl output
 
-	modules         map[string][]string	// all the import modules
-	alias           map[string]string 	// all the alias used in the import
-	includes        []string          	// all the #include statements
-	functions       []string          	// all the user function declarations
-	functions_name  []string          	// all the user function names
-	structs         []string          	// all the struct definitions
-	enums           []string          	// all the enum definitions
-	consts          []string          	// all the const definitions
-	types           []string          	// all the type definitions
-	interfaces      []string          	// all the interface definitions
-	lines           []string          	// all the other lines/statements
-	temp_lines      []string          	// all the temporary expressions/printlns
-	vstartup_lines  []string          	// lines in the `VSTARTUP` file
-	eval_func_lines []string          	// same line of the `VSTARTUP` file, but used to test fn type
+	modules         map[string][]string // all the import modules
+	alias           map[string]string   // all the alias used in the import
+	includes        []string            // all the #include statements
+	functions       []string            // all the user function declarations
+	functions_name  []string            // all the user function names
+	structs         []string            // all the struct definitions
+	enums           []string            // all the enum definitions
+	consts          []string            // all the const definitions
+	types           []string            // all the type definitions
+	interfaces      []string            // all the interface definitions
+	lines           []string            // all the other lines/statements
+	temp_lines      []string            // all the temporary expressions/printlns
+	vstartup_lines  []string            // lines in the `VSTARTUP` file
+	eval_func_lines []string            // same line of the `VSTARTUP` file, but used to test fn type
 }
 
 const is_stdin_a_pipe = os.is_atty(0) == 0
@@ -91,7 +91,11 @@ fn new_repl(folder string) Repl {
 			skip_empty: true
 		}
 		folder:         folder
-		modules:        {'os': [], 'time': [], 'math': []}
+		modules:        {
+			'os':   []
+			'time': []
+			'math': []
+		}
 		vstartup_lines: vstartup_source
 		// Test file used to check if a function as a void return or a value return.
 		eval_func_lines: vstartup_source
