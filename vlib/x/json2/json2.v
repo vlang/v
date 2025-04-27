@@ -101,11 +101,47 @@ pub fn (f Any) u8() u8 {
 		u8 {
 			return f
 		}
-		u16, u32, i8, i16, i32, int, i64, f32, f64, bool {
+		u16, u32, u64, i8, i16, i32, int, i64, f32, f64, bool {
 			return u8(u16(f))
 		}
 		string {
 			return f.u8()
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+// u16 uses `Any` as a 16-bit unsigned integer.
+pub fn (f Any) u16() u16 {
+	match f {
+		u16 {
+			return f
+		}
+		u8, u32, u64, i8, i16, i32, int, i64, f32, f64, bool {
+			return u16(f)
+		}
+		string {
+			return f.u16()
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+// u32 uses `Any` as a 32-bit unsigned integer.
+pub fn (f Any) u32() u32 {
+	match f {
+		u32 {
+			return f
+		}
+		u8, u16, u64, i8, i16, i32, int, i64, f32, f64, bool {
+			return u32(f)
+		}
+		string {
+			return f.u32()
 		}
 		else {
 			return 0
