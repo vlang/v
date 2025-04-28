@@ -38,6 +38,13 @@ pub enum ConnectionFlag {
 	client_remember_options               // (1 << 31) Don't reset the options after an unsuccessful connect
 }
 
+pub enum MySQLTransactionLevel {
+	read_uncommitted
+	read_committed
+	repeatable_read
+	serializable
+}
+
 struct SQLError {
 	MessageError
 }
@@ -133,7 +140,7 @@ pub fn (db &DB) use_result() {
 // (Binary data may contain the `\0` character, which `query()`
 // interprets as the end of the statement string). In addition,
 // `real_query()` is faster than `query()`.
-pub fn (mut db DB) real_query(q string) !Result {
+pub fn (db &DB) real_query(q string) !Result {
 	if C.mysql_real_query(db.conn, q.str, q.len) != 0 {
 		db.throw_mysql_error()!
 	}
@@ -178,7 +185,7 @@ pub fn (db &DB) affected_rows() u64 {
 
 // autocommit turns on/off the auto-committing mode for the connection.
 // When it is on, then each query is committed right away.
-pub fn (mut db DB) autocommit(mode bool) ! {
+pub fn (db &DB) autocommit(mode bool) ! {
 	db.check_connection_is_established()!
 	result := C.mysql_autocommit(db.conn, mode)
 
@@ -192,6 +199,71 @@ pub fn (db &DB) commit() ! {
 	db.check_connection_is_established()!
 	result := C.mysql_commit(db.conn)
 
+	if result != 0 {
+		db.throw_mysql_error()!
+	}
+}
+
+@[params]
+pub struct MySQLTransactionParam {
+	transaction_level MySQLTransactionLevel = .repeatable_read
+}
+
+// begin begins a new transaction.
+pub fn (db &DB) begin(param MySQLTransactionParam) ! {
+	db.check_connection_is_established()!
+	db.set_transaction_level(param.transaction_level)!
+	result := db.exec_none('START TRANSACTION')
+	if result != 0 {
+		db.throw_mysql_error()!
+	}
+}
+
+// set_transaction_level set level for the transaction
+pub fn (db &DB) set_transaction_level(level MySQLTransactionLevel) ! {
+	db.check_connection_is_established()!
+	mut sql_stmt := 'SET TRANSACTION ISOLATION LEVEL '
+	match level {
+		.read_uncommitted { sql_stmt += 'READ UNCOMMITTED' }
+		.read_committed { sql_stmt += 'READ COMMITTED' }
+		.repeatable_read { sql_stmt += 'REPEATABLE READ' }
+		.serializable { sql_stmt += 'SERIALIZABLE' }
+	}
+	result := db.exec_none(sql_stmt)
+	if result != 0 {
+		db.throw_mysql_error()!
+	}
+}
+
+// rollback rollbacks the current transaction.
+pub fn (db &DB) rollback() ! {
+	db.check_connection_is_established()!
+	result := C.mysql_rollback(db.conn)
+
+	if result != 0 {
+		db.throw_mysql_error()!
+	}
+}
+
+// rollback_to rollbacks to a specified savepoint.
+pub fn (db &DB) rollback_to(savepoint string) ! {
+	if !savepoint.is_identifier() {
+		return error('savepoint should be a identifier string')
+	}
+	db.check_connection_is_established()!
+	result := db.exec_none('ROLLBACK TO SAVEPOINT ${savepoint}')
+	if result != 0 {
+		db.throw_mysql_error()!
+	}
+}
+
+// savepoint create a new savepoint.
+pub fn (db &DB) savepoint(savepoint string) ! {
+	if !savepoint.is_identifier() {
+		return error('savepoint should be a identifier string')
+	}
+	db.check_connection_is_established()!
+	result := db.exec_none('SAVEPOINT ${savepoint}')
 	if result != 0 {
 		db.throw_mysql_error()!
 	}
@@ -500,8 +572,11 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 			binds[i].buffer = data
 			binds[i].buffer_length = l
 			code = C.mysql_stmt_fetch_column(stmt.stmt, unsafe { &binds[i] }, i, 0)
-
-			row.vals << unsafe { data.vstring() }
+			if *(binds[i].is_null) {
+				row.vals << ''
+			} else {
+				row.vals << unsafe { data.vstring() }
+			}
 		}
 		rows << row
 	}

@@ -2,16 +2,16 @@
 import db.mysql
 
 fn test_mysql() {
-	$if !network ? {
-		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
-		eprintln('> This test requires a working mysql server running on localhost.')
-		return
-	}
+	//$if !network ? {
+	//	eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+	//	eprintln('> This test requires a working mysql server running on localhost.')
+	//	return
+	//}
 	config := mysql.Config{
 		host:     '127.0.0.1'
 		port:     3306
 		username: 'root'
-		password: ''
+		password: '12345678'
 		dbname:   'mysql'
 	}
 
@@ -87,4 +87,45 @@ fn test_mysql() {
 	assert response[0] == mysql.Row{
 		vals: ['4', 'blaze', '']
 	}
+
+	// transaction test
+	// turn off `autocommit` first
+	db.autocommit(false)!
+	// begin a new transaction
+	db.begin()!
+	result_code = db.exec_none('insert into users (username) values ("tom")')
+	assert result_code == 0
+	// make a savepoint
+	db.savepoint('savepoint1')!
+	result_code = db.exec_none('insert into users (username) values ("kitty")')
+	assert result_code == 0
+	// rollback to `savepoint1`
+	db.rollback_to('savepoint1')!
+	result_code = db.exec_none('insert into users (username) values ("mars")')
+	assert result_code == 0
+	db.commit()!
+	response = db.exec_param_many('select * from users', [''])!
+	assert response == [
+		mysql.Row{
+			vals: ['1', 'jackson', '']
+		},
+		mysql.Row{
+			vals: ['2', 'shannon', '']
+		},
+		mysql.Row{
+			vals: ['3', 'bailey', '']
+		},
+		mysql.Row{
+			vals: ['4', 'blaze', '']
+		},
+		mysql.Row{
+			vals: ['5', 'Hi', '']
+		},
+		mysql.Row{
+			vals: ['6', 'tom', '']
+		},
+		mysql.Row{
+			vals: ['8', 'mars', '']
+		},
+	]
 }
