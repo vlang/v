@@ -48,9 +48,9 @@ fn internal_uuid(version u8, rand_1 u64, rand_2 u64) string {
 			buf[start + 2] = hex_chars[(val >> 4) & 0xF]
 			buf[start + 3] = hex_chars[val & 0xF]
 			start += 4
-			// insert `_` at specified locations
+			// insert `-` at specified locations
 			if start in [8, 13, 18, 23]! {
-				buf[start] = `_`
+				buf[start] = `-`
 				start++
 			}
 		}
