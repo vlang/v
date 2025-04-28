@@ -15,7 +15,7 @@ fn test_mysql() {
 		dbname:   'mysql'
 	}
 
-	db := mysql.connect(config)!
+	mut db := mysql.connect(config)!
 
 	mut response := db.exec('drop table if exists users')!
 	assert response == []mysql.Row{}

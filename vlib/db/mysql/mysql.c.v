@@ -140,7 +140,7 @@ pub fn (db &DB) use_result() {
 // (Binary data may contain the `\0` character, which `query()`
 // interprets as the end of the statement string). In addition,
 // `real_query()` is faster than `query()`.
-pub fn (db &DB) real_query(q string) !Result {
+pub fn (mut db DB) real_query(q string) !Result {
 	if C.mysql_real_query(db.conn, q.str, q.len) != 0 {
 		db.throw_mysql_error()!
 	}
@@ -185,7 +185,7 @@ pub fn (db &DB) affected_rows() u64 {
 
 // autocommit turns on/off the auto-committing mode for the connection.
 // When it is on, then each query is committed right away.
-pub fn (db &DB) autocommit(mode bool) ! {
+pub fn (mut db DB) autocommit(mode bool) ! {
 	db.check_connection_is_established()!
 	result := C.mysql_autocommit(db.conn, mode)
 
@@ -195,7 +195,7 @@ pub fn (db &DB) autocommit(mode bool) ! {
 }
 
 // commit commits the current transaction.
-pub fn (db &DB) commit() ! {
+pub fn (mut db DB) commit() ! {
 	db.check_connection_is_established()!
 	result := C.mysql_commit(db.conn)
 
@@ -210,7 +210,7 @@ pub struct MySQLTransactionParam {
 }
 
 // begin begins a new transaction.
-pub fn (db &DB) begin(param MySQLTransactionParam) ! {
+pub fn (mut db DB) begin(param MySQLTransactionParam) ! {
 	db.check_connection_is_established()!
 	db.set_transaction_level(param.transaction_level)!
 	result := db.exec_none('START TRANSACTION')
@@ -220,7 +220,7 @@ pub fn (db &DB) begin(param MySQLTransactionParam) ! {
 }
 
 // set_transaction_level set level for the transaction
-pub fn (db &DB) set_transaction_level(level MySQLTransactionLevel) ! {
+pub fn (mut db DB) set_transaction_level(level MySQLTransactionLevel) ! {
 	db.check_connection_is_established()!
 	mut sql_stmt := 'SET TRANSACTION ISOLATION LEVEL '
 	match level {
@@ -236,7 +236,7 @@ pub fn (db &DB) set_transaction_level(level MySQLTransactionLevel) ! {
 }
 
 // rollback rollbacks the current transaction.
-pub fn (db &DB) rollback() ! {
+pub fn (mut db DB) rollback() ! {
 	db.check_connection_is_established()!
 	result := C.mysql_rollback(db.conn)
 
@@ -246,7 +246,7 @@ pub fn (db &DB) rollback() ! {
 }
 
 // rollback_to rollbacks to a specified savepoint.
-pub fn (db &DB) rollback_to(savepoint string) ! {
+pub fn (mut db DB) rollback_to(savepoint string) ! {
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
 	}
@@ -258,7 +258,7 @@ pub fn (db &DB) rollback_to(savepoint string) ! {
 }
 
 // savepoint create a new savepoint.
-pub fn (db &DB) savepoint(savepoint string) ! {
+pub fn (mut db DB) savepoint(savepoint string) ! {
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
 	}
