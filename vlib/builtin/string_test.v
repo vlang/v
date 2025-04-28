@@ -1564,6 +1564,7 @@ fn test_string_is_identifier() {
 	assert '9'.is_identifier() == false
 	assert '_9'.is_identifier() == true
 	assert 'a 9'.is_identifier() == false
+	assert 't'.is_identifier() == true
 }
 
 fn test_string_with_zero_byte_escape() {

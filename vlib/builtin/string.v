@@ -2787,7 +2787,7 @@ pub fn (s string) is_identifier() bool {
 	if !(s[0].is_letter() || s[0] == `_`) {
 		return false
 	}
-	for i := 0; i < s.len; i++ {
+	for i := 1; i < s.len; i++ {
 		c := s[i]
 		if !(c.is_letter() || c.is_digit() || c == `_`) {
 			return false
