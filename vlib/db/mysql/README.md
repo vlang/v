@@ -42,11 +42,11 @@ import db.mysql
 
 // Create connection
 config := mysql.Config{
-        host:     '127.0.0.1'
-        port:     3306
-        username: 'root'
-        password: '12345678'
-        dbname:   'mysql'
+	host:     '127.0.0.1'
+	port:     3306
+	username: 'root'
+	password: '12345678'
+	dbname:   'mysql'
 }
 
 // Connect to server
@@ -55,7 +55,7 @@ mut db := mysql.connect(config)!
 res := db.query('select * from users')!
 rows := res.rows()
 for row in rows {
-        println(row.vals)
+	println(row.vals)
 }
 // Close the connection if needed
 db.close()
@@ -68,11 +68,11 @@ import db.mysql
 
 // Create connection
 config := mysql.Config{
-        host:     '127.0.0.1'
-        port:     3306
-        username: 'root'
-        password: '12345678'
-        dbname:   'mysql'
+	host:     '127.0.0.1'
+	port:     3306
+	username: 'root'
+	password: '12345678'
+	dbname:   'mysql'
 }
 
 mut db := mysql.connect(config)!
