@@ -4065,11 +4065,12 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write('*')
 		}
 		g.write('${tmp_var} = ')
-		if is_ptr {
+		mut needs_addr := false
+		needs_deref := is_ptr && !is_option_unwrap
+		if needs_deref {
 			g.write('*(')
-		}
-		needs_addr := is_option_unwrap && node.expr !in [ast.Ident, ast.PrefixExpr]
-		if is_option_unwrap {
+		} else if is_option_unwrap && !is_ptr {
+			needs_addr = node.expr !in [ast.Ident, ast.PrefixExpr]
 			if !needs_addr {
 				g.write('&')
 			} else {
@@ -4098,7 +4099,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write('.')
 		}
 		g.write(field_name)
-		if is_ptr {
+		if needs_deref {
 			g.write(')')
 		}
 		if needs_addr {
