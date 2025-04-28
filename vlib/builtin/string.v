@@ -2767,11 +2767,29 @@ pub fn (name string) match_glob(pattern string) bool {
 	return true
 }
 
-// is_ascii returns true  if all characters belong to the US-ASCII set ([` `..`~`])
-@[inline]
+// is_ascii returns true if all characters belong to the US-ASCII set ([` `..`~`])
+@[direct_array_access; inline]
 pub fn (s string) is_ascii() bool {
 	for i := 0; i < s.len; i++ {
 		if s[i] < u8(` `) || s[i] > u8(`~`) {
+			return false
+		}
+	}
+	return true
+}
+
+// is_identifier checks if a string is a valid identifier (starts with letter/underscore, followed by letters, digits, or underscores)
+@[direct_array_access]
+pub fn (s string) is_identifier() bool {
+	if s.len == 0 {
+		return false
+	}
+	if !(s[0].is_letter() || s[0] == `_`) {
+		return false
+	}
+	for i := 1; i < s.len; i++ {
+		c := s[i]
+		if !(c.is_letter() || c.is_digit() || c == `_`) {
 			return false
 		}
 	}
