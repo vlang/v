@@ -1,12 +1,17 @@
 name: hub_docker_ci
 
-# trigger on new release tag, and on weekly tag:
+## Trigger on both new release tags, and on weekly tags.
+## Allow for manual override too:
 on:
   workflow_dispatch:
   push:
     tags:
       - '[0-9].[0-9]+.[0-9]+'
       - 'weekly.*'
+
+concurrency:
+  group: 'hub_docker_ci-${{ github.ref }}'
+  cancel-in-progress: true
 
 jobs:
   publish-new-docker-images:
@@ -31,6 +36,11 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Create & bootstrap persistent builder
+        run: |
+          docker buildx create --name gh-builder --driver docker-container --use
+          docker buildx inspect --bootstrap
+
       - name: generate tags conditionally
         id: gen_tags
         run: |
@@ -43,6 +53,7 @@ jobs:
       - uses: docker/build-push-action@v6
         name: Build and deploy v image
         with:
+          builder: gh-builder
           context: .
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.gen_tags.outputs.TAGS }}
@@ -55,6 +66,7 @@ jobs:
       - uses: docker/build-push-action@v6
         name: Build and deploy developer build
         with:
+          builder: gh-builder
           context: .
           platforms: linux/amd64,linux/arm64
           tags: thevlang/vlang:${{ matrix.os }}-dev
