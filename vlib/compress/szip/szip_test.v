@@ -170,3 +170,11 @@ fn test_zip_folder_omit_empty_directories() {
 	assert (os.read_file(fpath5)!) == '5'
 	assert (os.read_file(fpath6)!) == '6'
 }
+
+fn test_zip_folder_empty_file() {
+	cleanup()
+	os.mkdir_all(test_path)!
+	os.write_file('${test_path}/test.txt', '')! // Empty file
+	szip.zip_folder(test_path, test_dir_zip)!
+	assert os.exists(test_dir_zip)
+}
