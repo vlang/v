@@ -1,11 +1,12 @@
 name: hub_docker_ci
 
+# trigger on new release tag, and on weekly tag:
 on:
   workflow_dispatch:
   push:
     tags:
-      - '[0-9].[0-9]+.[0-9]+' # trigger on new release tag
-      - 'weekly.*' # trigger on weekly tag
+      - '[0-9].[0-9]+.[0-9]+'
+      - 'weekly.*'
 
 jobs:
   publish-new-docker-images:
@@ -48,8 +49,8 @@ jobs:
           file: docker/vlang/Dockerfile.${{ matrix.os }}
           push: true
           build-args: 'USER=thevlang'
-          cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache
-          cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache,mode=max
+      ##          cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache
+      ##          cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache,mode=max
 
       - uses: docker/build-push-action@v6
         name: Build and deploy developer build
@@ -58,7 +59,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: thevlang/vlang:${{ matrix.os }}-dev
           file: docker/vlang/Dockerfile.${{ matrix.os }}.dev-full
-          build-args: 'USER=thevlang'
           push: true
-          cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache
-          cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache,mode=max
+          build-args: 'USER=thevlang'
+##          cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache
+##          cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache,mode=max
