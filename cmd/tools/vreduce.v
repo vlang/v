@@ -1,6 +1,7 @@
 import os
 import v.vmod
 import flag
+import time
 import math
 import log
 
@@ -21,6 +22,7 @@ fn main() {
 	error_msg := fp.string('error_msg', `e`, default_error_msg, 'the error message you want to reproduce, default: \'${default_error_msg}\'')
 	mut command := fp.string('command', `c`, default_command, 'the command used to try to reproduce the error, default: \'${default_command}\', will replace PATH with the path of the folder where it is run')
 	copy_project := fp.bool('cp', `p`, false, 'if used v reduce will copy the whole folder of the project')
+	timeout := fp.int('to', `t`, 0, 'sets a timeout for the command, default=0 : no timeout')
 	do_fmt := fp.bool('fmt', `w`, false, 'enable v fmt for the output (rpdc_file_name.v)')
 	file_paths := fp.finalize() or {
 		eprintln(err)
@@ -76,12 +78,12 @@ fn main() {
 
 	// start tests
 	tmp_code := create_code(parse(content))
-	warn_on_false(string_reproduces(tmp_code, error_msg, command, path, true), 'string_reproduces',
+	warn_on_false(string_reproduces(tmp_code, error_msg, command, path, true, timeout), 'string_reproduces',
 		@LOCATION)
 	show_code_stats(tmp_code, label: 'Code size without comments')
 
 	// reduce the code
-	reduce_scope(content, error_msg, command, do_fmt, path)
+	reduce_scope(content, error_msg, command, do_fmt, path, timeout)
 	
 	// cleanse
 	if os.exists(tmp_folder) {
@@ -90,19 +92,59 @@ fn main() {
 }
 
 // Return true if the command ran on the file produces the pattern
-fn string_reproduces(file string, pattern string, command string, path string, debug bool) bool {
+fn string_reproduces(file string, pattern string, command string, path string, debug bool, timeout int) bool {
 	if !os.exists(tmp_folder) {
 		os.mkdir(tmp_folder) or { panic(err) }
 	}
 	os.write_file(path, file) or { panic(err) }
-	res := os.execute(command)
-	if res.output.contains(pattern) {
+	mut output := ''
+	if timeout == 0 {
+		res := os.execute(command)
+		output = res.output
+	} else {
+		split := command.split(' ')
+		mut prog := os.new_process(split[0])
+		prog.set_args(split[1..])
+		prog.set_redirect_stdio()
+		prog.run()
+		mut sw := time.new_stopwatch()
+		sw.start()
+		for prog.is_alive() {
+			// check if there is any input from the user (it does not block, if there is not):
+			time.sleep(1 * time.millisecond)
+			mut b := true
+			for b {
+				b = false
+				if oline := prog.pipe_read(.stdout) {
+					if  oline != '' {
+						output += oline
+						b = true
+					}
+				}
+				if eline := prog.pipe_read(.stderr) {
+					if  eline != '' {
+						output += eline
+						b = true
+					}
+				}
+			}
+			if sw.elapsed().seconds() > f32(timeout) {
+				if debug {
+					println('Timeout')
+				}
+				return false
+			}
+		}
+		prog.close()
+		prog.wait()
+	}
+	if output.contains(pattern) {
 		// println('reproduces')
 		return true
 	} else {
 		// println('does not reproduce')
 		if debug {
-			println(res.output)
+			println(output)
 			println('executed command: ${command}')
 		}
 		return false
@@ -252,7 +294,7 @@ fn create_code(sc Scope) string {
 }
 
 // Reduces the code contained in the scope tree and writes the reduced code to `rpdc_file_name.v`
-fn reduce_scope(content string, error_msg string, command string, do_fmt bool, path string) {
+fn reduce_scope(content string, error_msg string, command string, do_fmt bool, path string, timeout int) {
 	mut sc := parse('') // will get filled in the start of the loop
 	log.info('Cleaning the scopes')
 	mut text_code := content
@@ -268,17 +310,21 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 			for i in 0 .. sc.children.len {
 				stack << &sc.children[i]
 			}
+			mut item_nb := 0
 			for stack.len > 0 { // traverse the tree and disable (ignore) scopes that are not needed for reproduction
 				mut item := stack.pop()
+				item_nb += 1
+				eprint('\ritem n: ${item_nb}')
 				if mut item is Scope {
 					if !item.ignored {
 						item.tmp_ignored = true // try to ignore it
 						code := create_code(sc)
 						item.tmp_ignored = false // dont need it anymore
-						if string_reproduces(code, error_msg, command, path, false) {
+						if string_reproduces(code, error_msg, command, path, false, timeout) {
 							item.ignored = true
 							modified_smth = true
 							outer_modified_smth = true
+							println('')
 							show_code_stats(code)
 						} else { // if can remove it, no need to go though it's children
 							for i in 0 .. item.children.len {
@@ -289,6 +335,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 				}
 			}
 		}
+		println('')
 
 		text_code = create_code(sc)
 
@@ -322,7 +369,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 
 		// Traverse the tree and prune the useless lines / line groups for the reproduction
 		mut line_tree := *line_stack[0]
-		warn_on_false(string_reproduces(create_code(line_tree), error_msg, command, path, true), 'string_reproduces',
+		warn_on_false(string_reproduces(create_code(line_tree), error_msg, command, path, true, timeout), 'string_reproduces',
 			@LOCATION) // should be the same
 		log.info('Pruning the lines/line groups')
 		modified_smth = true
@@ -333,17 +380,21 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 			for i in 0 .. line_tree.children.len {
 				stack << &line_tree.children[i]
 			}
+			mut item_nb := 0
 			for stack.len > 0 { // traverse the binary tree (of the lines)
 				mut item := stack.pop()
+				item_nb += 1
+				eprint('\ritem n: ${item_nb}')
 				if mut item is Scope {
 					if !item.ignored {
 						item.tmp_ignored = true
 						code := create_code(line_tree)
 						item.tmp_ignored = false // dont need it anymore
-						if string_reproduces(code, error_msg, command, path, false) {
+						if string_reproduces(code, error_msg, command, path, false, timeout) {
 							item.ignored = true
 							modified_smth = true
 							outer_modified_smth = true
+							println('')
 							show_code_stats(code)
 						} else { // if can remove it, can remove it's children
 							for i in 0 .. item.children.len {
@@ -354,10 +405,11 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 				}
 			}
 		}
+		println('')
 		text_code = create_code(line_tree)
 	}
 
-	warn_on_false(string_reproduces(text_code, error_msg, command, path, true), 'string_reproduces',
+	warn_on_false(string_reproduces(text_code, error_msg, command, path, true, timeout), 'string_reproduces',
 		@LOCATION)
 	rpdc_file_path := 'rpdc_${os.file_name(path)#[..-2]}.v'
 	os.write_file(rpdc_file_path, text_code) or { panic(err) }
