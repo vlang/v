@@ -5490,7 +5490,7 @@ The generated profile.txt file will have lines with 4 columns:
 1. How many times a function was called.
 2. How much time in total a function took (in ms).
 3. How much time on average, a call to a function took (in ns).
-4. How much time in total a function took (in ms), more reliable for multithreaded programs than the other (use gcc or clang, tcc does not support it).
+4. Same as 2 but more reliable for multithreaded programs (tcc does not support it).
 5. The name of the v function.
 
 You can sort on column 3 (average time per function) using:
