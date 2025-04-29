@@ -316,10 +316,11 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					update_expr_sym := g.table.final_sym(field.typ)
 					if update_expr_sym.info is ast.ArrayFixed {
 						is_arr_fixed = true
+						// workaround for tcc bug, is_auto_deref_var := ... issue #24331
+						is_auto_deref_var := node.update_expr.is_auto_deref_var()
 						g.fixed_array_update_expr_field(g.expr_string(node.update_expr),
-							node.update_expr_type, field.name, node.update_expr.is_auto_deref_var(),
-							update_expr_sym.info.elem_type, update_expr_sym.info.size,
-							node.is_update_embed)
+							node.update_expr_type, field.name, is_auto_deref_var, update_expr_sym.info.elem_type,
+							update_expr_sym.info.size, node.is_update_embed)
 					} else {
 						g.write('(')
 						g.expr(node.update_expr)
