@@ -480,8 +480,10 @@ pub fn rmdir(path string) ! {
 		rc := C.RemoveDirectory(path.to_wide())
 		if !rc {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 == false, is failure
+			code := int(C.GetLastError())
 			return error_win32(
-				msg: 'Failed to remove "${path}": ' + get_error_msg(int(C.GetLastError()))
+				msg:  'Failed to remove "${path}": ' + get_error_msg(code)
+				code: code
 			)
 		}
 	} $else {
