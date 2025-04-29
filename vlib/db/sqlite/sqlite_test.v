@@ -5,8 +5,9 @@ type Connection = sqlite.DB
 
 struct User {
 pub:
-	id   int @[primary; sql: serial]
-	name string
+	id        int @[primary; sql: serial]
+	name      string
+	last_name ?string
 }
 
 type Content = []u8 | string
@@ -37,7 +38,7 @@ fn test_sqlite() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	assert db.is_open
 	db.exec('drop table if exists users')!
-	db.exec("create table users (id integer primary key, name text default '');")!
+	db.exec("create table users (id integer primary key, name text default '', last_name text null default null);")!
 	db.exec("insert into users (name) values ('Sam')")!
 	assert db.last_insert_rowid() == 1
 	assert db.get_affected_rows_count() == 1
@@ -55,16 +56,17 @@ fn test_sqlite() {
 	assert username[0].vals[0] == 'Sam'
 
 	// this insert will be rejected due to duplicated id
-	db.exec("insert into users (id,name) values (1,'Sam')")!
+	db.exec("insert into users (id,name) values (1,'Silly')")!
 	assert db.get_affected_rows_count() == 0
 
-	users := db.exec('select * from users')!
+	mut users := db.exec('select * from users')!
+	dump(users)
 	assert users.len == 4
 	code := db.exec_none('vacuum')
 	assert code == 101
 	user := db.exec_one('select * from users where id = 3') or { panic(err) }
-	println(user)
-	assert user.vals.len == 2
+	dump(user)
+	assert user.vals.len == 3
 
 	db.exec("update users set name='zzzz' where name='qqqq'")!
 	assert db.get_affected_rows_count() == 0
@@ -79,6 +81,21 @@ fn test_sqlite() {
 
 	db.exec("delete from users where name='Sam'")!
 	assert db.get_affected_rows_count() == 1
+
+	// transaction test
+	db.begin()!
+	db.exec("insert into users (name) values ('John')")!
+	assert db.last_insert_rowid() == 5
+	db.savepoint('new_savepoint')!
+	db.exec("insert into users (name) values ('Kitty')")!
+	assert db.last_insert_rowid() == 6
+	db.rollback_to('new_savepoint')!
+	db.exec("insert into users (name) values ('Mars')")!
+	assert db.last_insert_rowid() == 6
+	db.commit()!
+	users = db.exec('select * from users')!
+	dump(users)
+	assert users.len == 5
 
 	db.close() or { panic(err) }
 	assert !db.is_open

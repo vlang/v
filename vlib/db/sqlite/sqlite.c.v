@@ -42,6 +42,12 @@ pub enum SyncMode {
 	full
 }
 
+pub enum Sqlite3TransactionLevel {
+	deferred
+	immediate
+	exclusive
+}
+
 pub enum JournalMode {
 	off
 	delete
@@ -402,7 +408,7 @@ pub fn (db &DB) exec_param(query string, param string) ![]Row {
 // create_table issues a "create table if not exists" command to the db.
 // It creates the table named 'table_name', with columns generated from 'columns' array.
 // The default columns type will be TEXT.
-pub fn (db &DB) create_table(table_name string, columns []string) ! {
+pub fn (mut db DB) create_table(table_name string, columns []string) ! {
 	db.exec('create table if not exists ${table_name} (' + columns.join(',\n') + ')')!
 }
 
@@ -451,4 +457,46 @@ pub fn (db &DB) journal_mode(journal_mode JournalMode) ! {
 	} else {
 		db.exec('pragma journal_mode = MEMORY;')!
 	}
+}
+
+@[params]
+pub struct Sqlite3TransactionParam {
+	transaction_level Sqlite3TransactionLevel = .deferred
+}
+
+// begin begins a new transaction.
+pub fn (mut db DB) begin(param Sqlite3TransactionParam) ! {
+	mut sql_stmt := 'BEGIN '
+	match param.transaction_level {
+		.deferred { sql_stmt += 'DEFERRED;' }
+		.immediate { sql_stmt += 'IMMEDIATE;' }
+		.exclusive { sql_stmt += 'EXCLUSIVE;' }
+	}
+	db.exec(sql_stmt)!
+}
+
+// savepoint create a new savepoint.
+pub fn (mut db DB) savepoint(savepoint string) ! {
+	if !savepoint.is_identifier() {
+		return error('savepoint should be a identifier string')
+	}
+	db.exec('SAVEPOINT ${savepoint};')!
+}
+
+// commit commits the current transaction.
+pub fn (mut db DB) commit() ! {
+	db.exec('COMMIT;')!
+}
+
+// rollback rollbacks the current transaction.
+pub fn (mut db DB) rollback() ! {
+	db.exec('ROLLBACK;')!
+}
+
+// rollback_to rollbacks to a specified savepoint.
+pub fn (mut db DB) rollback_to(savepoint string) ! {
+	if !savepoint.is_identifier() {
+		return error('savepoint should be a identifier string')
+	}
+	db.exec('ROLLBACK TO ${savepoint};')!
 }
