@@ -66,7 +66,9 @@ fn main() {
 		project_folder := vmod_cacher.get_by_file(file_path).vmod_folder
 		os.cp_all('${project_folder}/.', tmp_folder + '/', true)!
 		// the path of the target file from the project folder
-		file_path = os.walk_ext(project_folder, os.file_name(file_path))[0] or { panic('File not found in the project folder') }
+		file_path = os.walk_ext(project_folder, os.file_name(file_path))[0] or {
+			panic('File not found in the project folder')
+		}
 		file_path = file_path[project_folder.len + 1..] // will remove the / too
 	}
 	path := '${tmp_folder}/${file_path}'
@@ -78,13 +80,13 @@ fn main() {
 
 	// start tests
 	tmp_code := create_code(parse(content))
-	warn_on_false(string_reproduces(tmp_code, error_msg, command, path, true, timeout), 'string_reproduces',
-		@LOCATION)
+	warn_on_false(string_reproduces(tmp_code, error_msg, command, path, true, timeout),
+		'string_reproduces', @LOCATION)
 	show_code_stats(tmp_code, label: 'Code size without comments')
 
 	// reduce the code
 	reduce_scope(content, error_msg, command, do_fmt, path, timeout)
-	
+
 	// cleanse
 	if os.exists(tmp_folder) {
 		os.rmdir_all(tmp_folder)!
@@ -116,13 +118,13 @@ fn string_reproduces(file string, pattern string, command string, path string, d
 			for b {
 				b = false
 				if oline := prog.pipe_read(.stdout) {
-					if  oline != '' {
+					if oline != '' {
 						output += oline
 						b = true
 					}
 				}
 				if eline := prog.pipe_read(.stderr) {
-					if  eline != '' {
+					if eline != '' {
 						output += eline
 						b = true
 					}
@@ -369,8 +371,8 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 
 		// Traverse the tree and prune the useless lines / line groups for the reproduction
 		mut line_tree := *line_stack[0]
-		warn_on_false(string_reproduces(create_code(line_tree), error_msg, command, path, true, timeout), 'string_reproduces',
-			@LOCATION) // should be the same
+		warn_on_false(string_reproduces(create_code(line_tree), error_msg, command, path,
+			true, timeout), 'string_reproduces', @LOCATION) // should be the same
 		log.info('Pruning the lines/line groups')
 		modified_smth = true
 		for modified_smth {
@@ -409,8 +411,8 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 		text_code = create_code(line_tree)
 	}
 
-	warn_on_false(string_reproduces(text_code, error_msg, command, path, true, timeout), 'string_reproduces',
-		@LOCATION)
+	warn_on_false(string_reproduces(text_code, error_msg, command, path, true, timeout),
+		'string_reproduces', @LOCATION)
 	rpdc_file_path := 'rpdc_${os.file_name(path)#[..-2]}.v'
 	os.write_file(rpdc_file_path, text_code) or { panic(err) }
 	if do_fmt {
