@@ -10,7 +10,7 @@ mut:
 }
 
 fn main() {
-	mut fp := flag.new_flag_parser(os.args)
+	mut fp := flag.new_flag_parser(os.args[1..])
 	fp.application('v timeout')
 	fp.version('0.0.2')
 	fp.description('Run a command with a time limit. Example: `v timeout 0.3 v run examples/hello_world.v`')
