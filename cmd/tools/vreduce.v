@@ -94,11 +94,11 @@ fn main() {
 }
 
 // Return true if the command ran on the file produces the pattern
-fn string_reproduces(file string, pattern string, command string, path string, debug bool, timeout int) bool {
+fn string_reproduces(file_content string, pattern string, command string, dir string, debug bool, timeout int) bool {
 	if !os.exists(tmp_folder) {
 		os.mkdir(tmp_folder) or { panic(err) }
 	}
-	os.write_file(path, file) or { panic(err) }
+	os.write_file(dir, file_content) or { panic(err) }
 	mut output := ''
 	if timeout == 0 {
 		res := os.execute(command)
@@ -330,7 +330,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 							show_code_stats(code)
 						} else { // if can remove it, no need to go though it's children
 							for i in 0 .. item.children.len {
-								stack << &item.children[i]
+								stack.insert(0, &item.children[i]) // breadth first search
 							}
 						}
 					}
