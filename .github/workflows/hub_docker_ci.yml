@@ -1,5 +1,8 @@
 name: hub_docker_ci
 
+### NB: avoid caching things here, since the action is rare (once per week),
+### and the potential benefits are less than the complexity of debugging
+### cache invalidation issues...
 ## Trigger on both new release tags, and on weekly tags.
 ## Allow for manual override too:
 on:
@@ -60,8 +63,8 @@ jobs:
           file: docker/vlang/Dockerfile.${{ matrix.os }}
           push: true
           build-args: 'USER=thevlang'
-          cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache
-          cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache,mode=max
+          ## cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache
+          ## cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache,mode=max
 
       - uses: docker/build-push-action@v6
         name: Build and deploy developer build
@@ -73,5 +76,5 @@ jobs:
           file: docker/vlang/Dockerfile.${{ matrix.os }}.dev-full
           push: true
           build-args: 'USER=thevlang'
-          cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache
-          cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache,mode=max
+          ## cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache
+          ## cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache,mode=max
