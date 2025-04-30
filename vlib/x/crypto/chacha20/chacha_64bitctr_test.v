@@ -109,7 +109,7 @@ fn test_chacha20_encrypt_with_64bit_counter() ! {
 }
 
 struct Test64BitCounter {
-	count      int
+	count      u64
 	key        string
 	nonce      string
 	plaintext  string
