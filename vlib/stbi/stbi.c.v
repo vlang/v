@@ -210,6 +210,7 @@ fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &u8, quality 
 
 // stbi_write_png write on path a PNG file
 // row_stride_in_bytes is usually equal to: w * comp
+// comp is the number of channels
 pub fn stbi_write_png(path string, w int, h int, comp int, buf &u8, row_stride_in_bytes int) ! {
 	if 0 == C.stbi_write_png(&char(path.str), w, h, comp, buf, row_stride_in_bytes) {
 		return error('stbi_image failed to write png file to "${path}"')
@@ -217,6 +218,7 @@ pub fn stbi_write_png(path string, w int, h int, comp int, buf &u8, row_stride_i
 }
 
 // stbi_write_png write on path a BMP file
+// comp is the number of channels
 pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &u8) ! {
 	if 0 == C.stbi_write_bmp(&char(path.str), w, h, comp, buf) {
 		return error('stbi_image failed to write bmp file to "${path}"')
@@ -224,6 +226,7 @@ pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &u8) ! {
 }
 
 // stbi_write_png write on path a TGA file
+// comp is the number of channels
 pub fn stbi_write_tga(path string, w int, h int, comp int, buf &u8) ! {
 	if 0 == C.stbi_write_tga(&char(path.str), w, h, comp, buf) {
 		return error('stbi_image failed to write tga file to "${path}"')
@@ -233,6 +236,7 @@ pub fn stbi_write_tga(path string, w int, h int, comp int, buf &u8) ! {
 // stbi_write_png write on path a JPG file
 // quality select the compression quality of the JPG
 // quality is between 1 and 100. Higher quality looks better but results in a bigger image.
+// comp is the number of channels
 pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &u8, quality int) ! {
 	if 0 == C.stbi_write_jpg(&char(path.str), w, h, comp, buf, quality) {
 		return error('stbi_image failed to write jpg file to "${path}"')
