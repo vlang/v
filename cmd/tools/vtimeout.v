@@ -46,7 +46,7 @@ fn main() {
 
 	child_exit := chan int{}
 
-	go fn (mut p os.Process, ch chan int) {
+	spawn fn (mut p os.Process, ch chan int) {
 		p.wait()
 		ch <- p.code
 		ch.close()
