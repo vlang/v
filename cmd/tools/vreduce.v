@@ -71,21 +71,21 @@ fn main() {
 		}
 		file_path = file_path[project_folder.len + 1..] // will remove the / too
 	}
-	path := '${tmp_folder}/${file_path}'
+	full_file_path := '${tmp_folder}/${file_path}'
 	if command == default_command {
-		command = '${default_command} ${path}'
+		command = '${default_command} ${full_file_path}'
 	} else {
 		command = command.replace('PATH', '${tmp_folder}/')
 	}
 
 	// start tests
 	tmp_code := create_code(parse(content))
-	warn_on_false(string_reproduces(tmp_code, error_msg, command, path, true, timeout),
-		'string_reproduces', @LOCATION)
+	warn_on_false(string_reproduces(tmp_code, error_msg, command, full_file_path, true,
+		timeout), 'string_reproduces', @LOCATION)
 	show_code_stats(tmp_code, label: 'Code size without comments')
 
 	// reduce the code
-	reduce_scope(content, error_msg, command, do_fmt, path, timeout)
+	reduce_scope(content, error_msg, command, do_fmt, full_file_path, timeout)
 
 	// cleanse
 	if os.exists(tmp_folder) {
@@ -94,11 +94,11 @@ fn main() {
 }
 
 // Return true if the command ran on the file produces the pattern
-fn string_reproduces(file_content string, pattern string, command string, dir string, debug bool, timeout int) bool {
+fn string_reproduces(file_content string, pattern string, command string, file_path string, debug bool, timeout int) bool {
 	if !os.exists(tmp_folder) {
 		os.mkdir(tmp_folder) or { panic(err) }
 	}
-	os.write_file(dir, file_content) or { panic(err) }
+	os.write_file(file_path, file_content) or { panic(err) }
 	mut output := ''
 	if timeout == 0 {
 		res := os.execute(command)
@@ -165,24 +165,24 @@ mut:
 }
 
 // Parse a V file and create a scope tree to represent it
-fn parse(file string) Scope { // The parser is surely incomplete for the V syntax, but should work for most of the cases, if not, please open an issue or submit a PR
+fn parse(file_content string) Scope { // The parser is surely incomplete for the V syntax, but should work for most of the cases, if not, please open an issue or submit a PR
 	mut stack := []&Scope{} // add the last parent to the stack
 	stack << &Scope{}
 	mut top := stack[0] // stores stack[stack.len-1] (the element on the top of the stack)
-	mut scope_level := 0 // Counts the scope depth of the current position in the file
-	mut i := 0 // index of the current char in the file
+	mut scope_level := 0 // Counts the scope depth of the current position in the file_content
+	mut i := 0 // index of the current char in the file_content
 	mut current_string := ''
-	for i < file.len {
+	for i < file_content.len {
 		top = stack[stack.len - 1] // the element on the top of the stack
-		if file[i] == `/` && file[i + 1] == `/` {
-			for file[i] != `\n` { // comment -> skip until newline
+		if file_content[i] == `/` && file_content[i + 1] == `/` {
+			for file_content[i] != `\n` { // comment -> skip until newline
 				i++
 			}
-		} else if file[i] == `\n` && file[i - 1] == `\n` {
+		} else if file_content[i] == `\n` && file_content[i - 1] == `\n` {
 			i++ // remove excess newlines
-		} else if file[i] == `\t` {
+		} else if file_content[i] == `\t` {
 			i++ // remove tabs for easier processing
-		} else if file[i] == `f` && file[i + 1] == `n` && file[i + 2] == ` ` && file[i - 1] or {
+		} else if file_content[i] == `f` && file_content[i + 1] == `n` && file_content[i + 2] == ` ` && file_content[i - 1] or {
 			`\n`
 		} == `\n` {
 			top.children << current_string
@@ -192,54 +192,57 @@ fn parse(file string) Scope { // The parser is surely incomplete for the V synta
 				fn_scope: true
 			}
 			stack << &(top.children[top.children.len - 1] as Scope)
-			current_string += file[i].ascii_str() // f
+			current_string += file_content[i].ascii_str() // f
 			i++
-			current_string += file[i].ascii_str() // n
+			current_string += file_content[i].ascii_str() // n
 			i++
-		} else if file[i] == `/` && file[i + 1] == `*` {
+		} else if file_content[i] == `/` && file_content[i + 1] == `*` {
 			i++
 			i++
 			i++
-			for !(file[i - 1] == `*` && file[i] == `/`) { // multiline comment -> skip next multiline end sequence
+			for !(file_content[i - 1] == `*` && file_content[i] == `/`) { // multiline comment -> skip next multiline end sequence
 				i++
 			}
 			i++
-		} else if file[i] == `\`` && file[i - 1] != `\\` {
-			current_string += file[i].ascii_str()
+		} else if file_content[i] == `\`` && file_content[i - 1] != `\\` {
+			current_string += file_content[i].ascii_str()
 			i++
-			for file[i] != `\`` || (file[i - 1] == `\\` && file[i - 2] != `\\`) { // string -> skip until next `
-				current_string += file[i].ascii_str()
+			for file_content[i] != `\``
+				|| (file_content[i - 1] == `\\` && file_content[i - 2] != `\\`) { // string -> skip until next `
+				current_string += file_content[i].ascii_str()
 				i++
 			}
-			current_string += file[i].ascii_str() // `
+			current_string += file_content[i].ascii_str() // `
 			i++
-		} else if file[i] == `'` {
-			current_string += file[i].ascii_str() // '
+		} else if file_content[i] == `'` {
+			current_string += file_content[i].ascii_str() // '
 			i++
-			for file[i] != `'` || (file[i - 1] == `\\` && file[i - 2] != `\\`) { // string -> skip until next '
-				current_string += file[i].ascii_str()
+			for file_content[i] != `'`
+				|| (file_content[i - 1] == `\\` && file_content[i - 2] != `\\`) { // string -> skip until next '
+				current_string += file_content[i].ascii_str()
 				i++
 			}
-			current_string += file[i].ascii_str() // '
+			current_string += file_content[i].ascii_str() // '
 			i++
-		} else if file[i] == `"` {
-			current_string += file[i].ascii_str() // "
+		} else if file_content[i] == `"` {
+			current_string += file_content[i].ascii_str() // "
 			i++
-			for file[i] != `"` || (file[i - 1] == `\\` && file[i - 2] != `\\`) { // string -> skip until next "
-				current_string += file[i].ascii_str()
+			for file_content[i] != `"`
+				|| (file_content[i - 1] == `\\` && file_content[i - 2] != `\\`) { // string -> skip until next "
+				current_string += file_content[i].ascii_str()
 				i++
 			}
-			current_string += file[i].ascii_str() // "
+			current_string += file_content[i].ascii_str() // "
 			i++
-		} else if file[i] == `{` {
-			current_string += file[i].ascii_str()
+		} else if file_content[i] == `{` {
+			current_string += file_content[i].ascii_str()
 			i++
 			top.children << current_string
 			scope_level += 1
 			current_string = ''
 			top.children << &Scope{}
 			stack << &(top.children[top.children.len - 1] as Scope)
-		} else if file[i] == `}` {
+		} else if file_content[i] == `}` {
 			scope_level -= 1
 			assert scope_level >= 0, 'The scopes are not well detected ${stack[0]}'
 			if current_string != '' {
@@ -251,7 +254,7 @@ fn parse(file string) Scope { // The parser is surely incomplete for the V synta
 			stack.pop()
 			top = stack[stack.len - 1]
 			current_string = ''
-			current_string += file[i].ascii_str() // }
+			current_string += file_content[i].ascii_str() // }
 			i++
 			if scope_level == 0 && stack.len == 2 { // the function and the body scope
 				top.children << current_string
@@ -260,7 +263,7 @@ fn parse(file string) Scope { // The parser is surely incomplete for the V synta
 				current_string = ''
 			}
 		} else {
-			current_string += file[i].ascii_str()
+			current_string += file_content[i].ascii_str()
 			i++
 		}
 		// nothing here: to avoid complexity, no need to predict what happened before in the ifs, everything will be handled properly by the ifs
@@ -296,7 +299,7 @@ fn create_code(sc Scope) string {
 }
 
 // Reduces the code contained in the scope tree and writes the reduced code to `rpdc_file_name.v`
-fn reduce_scope(content string, error_msg string, command string, do_fmt bool, path string, timeout int) {
+fn reduce_scope(content string, error_msg string, command string, do_fmt bool, file_path string, timeout int) {
 	mut sc := parse('') // will get filled in the start of the loop
 	log.info('Cleaning the scopes')
 	mut text_code := content
@@ -322,7 +325,9 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 						item.tmp_ignored = true // try to ignore it
 						code := create_code(sc)
 						item.tmp_ignored = false // dont need it anymore
-						if string_reproduces(code, error_msg, command, path, false, timeout) {
+						if string_reproduces(code, error_msg, command, file_path, false,
+							timeout)
+						{
 							item.ignored = true
 							modified_smth = true
 							outer_modified_smth = true
@@ -371,7 +376,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 
 		// Traverse the tree and prune the useless lines / line groups for the reproduction
 		mut line_tree := *line_stack[0]
-		warn_on_false(string_reproduces(create_code(line_tree), error_msg, command, path,
+		warn_on_false(string_reproduces(create_code(line_tree), error_msg, command, file_path,
 			true, timeout), 'string_reproduces', @LOCATION) // should be the same
 		log.info('Pruning the lines/line groups')
 		modified_smth = true
@@ -392,7 +397,9 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 						item.tmp_ignored = true
 						code := create_code(line_tree)
 						item.tmp_ignored = false // dont need it anymore
-						if string_reproduces(code, error_msg, command, path, false, timeout) {
+						if string_reproduces(code, error_msg, command, file_path, false,
+							timeout)
+						{
 							item.ignored = true
 							modified_smth = true
 							outer_modified_smth = true
@@ -411,9 +418,9 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, p
 		text_code = create_code(line_tree)
 	}
 
-	warn_on_false(string_reproduces(text_code, error_msg, command, path, true, timeout),
+	warn_on_false(string_reproduces(text_code, error_msg, command, file_path, true, timeout),
 		'string_reproduces', @LOCATION)
-	rpdc_file_path := 'rpdc_${os.file_name(path)#[..-2]}.v'
+	rpdc_file_path := 'rpdc_${os.file_name(file_path)#[..-2]}.v'
 	os.write_file(rpdc_file_path, text_code) or { panic(err) }
 	if do_fmt {
 		os.execute('v fmt -w ${rpdc_file_path}')
