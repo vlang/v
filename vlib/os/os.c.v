@@ -1107,20 +1107,20 @@ pub fn error_posix(e SystemError) IError {
 // error_win32 returns a Win32 API error:
 // example:
 // ```
-//   // save error code immediately, or it will be overwritten by other API
-//   // function calls, even by `str_intp`.
-//   code := int(C.GetLastError())
-//	 error_win32(
-//		msg : 'some error'
-//		code : code
-//	)
+//    // save error code immediately, or it will be overwritten by other API
+//    // function calls, even by `str_intp`.
+//    code := int(C.GetLastError())
+//    error_win32(
+//       msg : 'some error'
+//       code : code
+//    )
 // ```
 // wrong usage:
 // ```
-//	 error_win32(
-//		msg : 'some error ${path}'		// this will overwrite error code
-//		code : int(C.GetLastError())
-//	)
+//    error_win32(
+//        msg : 'some error ${path}'		// this will overwrite error code
+//        code : int(C.GetLastError())
+//    )
 // ```
 // Message defaults to Win 32 API error message for the error code
 @[inline; manualfree]
