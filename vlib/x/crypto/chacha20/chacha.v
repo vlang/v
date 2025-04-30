@@ -425,6 +425,10 @@ pub fn (mut c Cipher) set_counter(ctr u64) {
 			c.nonce[1] = u32(ctr >> 32)
 		}
 		.standard {
+			// check for ctr value that may exceed the counter limit
+			if ctr > max_32bit_counter {
+				panic('set_counter: counter value exceed the limit ')
+			}
 			c.nonce[0] = u32(ctr)
 		}
 	}
