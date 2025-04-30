@@ -226,7 +226,12 @@ pub fn cp(src string, dst string) ! {
 		w_src := src.replace('/', '\\')
 		w_dst := dst.replace('/', '\\')
 		if C.CopyFile(w_src.to_wide(), w_dst.to_wide(), false) == 0 {
-			return error_win32(msg: 'failed to copy ${src} to ${dst}')
+			// we must save error immediately, or it will be overwritten by other API function calls.
+			code := int(C.GetLastError())
+			return error_win32(
+				msg:  'failed to copy ${src} to ${dst}'
+				code: code
+			)
 		}
 	} $else {
 		fp_from := C.open(&char(src.str), C.O_RDONLY, 0)
@@ -480,9 +485,10 @@ pub fn rmdir(path string) ! {
 		rc := C.RemoveDirectory(path.to_wide())
 		if !rc {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 == false, is failure
+			// we must save error immediately, or it will be overwritten by other API function calls.
 			code := int(C.GetLastError())
 			return error_win32(
-				msg:  'Failed to remove "${path}": ' + get_error_msg(code)
+				msg:  'Failed to remove "${path}"'
 				code: code
 			)
 		}
@@ -1079,7 +1085,7 @@ pub fn last_error() IError {
 }
 
 // Magic constant because zero is used explicitly at times
-pub const error_code_not_set = int(0x7EFEFEFE)
+pub const error_code_not_set = int(-1)
 
 @[params]
 pub struct SystemError {
@@ -1088,7 +1094,7 @@ pub:
 	code int = error_code_not_set
 }
 
-// Return a POSIX error:
+// error_posix returns a POSIX error:
 // Code defaults to last error (from C.errno)
 // Message defaults to POSIX error message for the error code
 @[inline; manualfree]
@@ -1098,15 +1104,33 @@ pub fn error_posix(e SystemError) IError {
 	return error_with_code(message, code)
 }
 
-// Return a Win32 API error:
-// Code defaults to last error (calling C.GetLastError())
+// error_win32 returns a Win32 API error:
+// example:
+// ```
+//   // save error code immediately, or it will be overwritten by other API
+//   // function calls, even by `str_intp`.
+//   code := int(C.GetLastError())
+//	 error_win32(
+//		msg : 'some error'
+//		code : code
+//	)
+// ```
+// wrong usage:
+// ```
+//	 error_win32(
+//		msg : 'some error ${path}'		// this will overwrite error code
+//		code : int(C.GetLastError())
+//	)
+// ```
 // Message defaults to Win 32 API error message for the error code
 @[inline; manualfree]
 pub fn error_win32(e SystemError) IError {
 	$if windows {
-		code := if e.code == error_code_not_set { int(C.GetLastError()) } else { e.code }
-		message := if e.msg == '' { get_error_msg(code) } else { e.msg }
-		return error_with_code(message, code)
+		if e.code == error_code_not_set {
+			panic('before calling `error_win32`, you must set `e.code` first.')
+		}
+		message := if e.msg == '' { get_error_msg(e.code) } else { e.msg }
+		return error_with_code(message, e.code)
 	} $else {
 		panic('Win32 API not available on this platform.')
 	}
