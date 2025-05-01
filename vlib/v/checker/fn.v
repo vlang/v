@@ -709,6 +709,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	old_inside_fn_arg := c.inside_fn_arg
 	c.inside_fn_arg = true
 	mut continue_check := true
+	node.left_type = left_type
 	// Now call `method_call` or `fn_call` for specific checks.
 	typ := if node.is_method {
 		c.method_call(mut node, mut continue_check)
@@ -1020,7 +1021,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if node.left is ast.AnonFn {
 		// it was set to anon for checker errors, clear for gen
 		node.name = ''
-		c.expr(mut node.left)
 		left := node.left as ast.AnonFn
 		if left.typ != ast.no_type {
 			anon_fn_sym := c.table.sym(left.typ)
@@ -1039,7 +1039,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	if !found && node.left is ast.IndexExpr {
-		c.expr(mut node.left)
 		left := node.left as ast.IndexExpr
 		sym := c.table.final_sym(left.left_type)
 		if sym.info is ast.Array {
@@ -1077,7 +1076,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	if !found && node.left is ast.CallExpr {
-		c.expr(mut node.left)
 		left := node.left as ast.CallExpr
 		if left.return_type != 0 {
 			sym := c.table.sym(left.return_type)
@@ -1984,7 +1982,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 		}
 	}
-	left_type := c.expr(mut node.left)
+	left_type := node.left_type
 	if left_type == ast.void_type {
 		// c.error('cannot call a method using an invalid expression', node.pos)
 		continue_check = false
