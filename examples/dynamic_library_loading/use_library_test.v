@@ -1,6 +1,5 @@
 module main
 
-// vtest flaky: true
 // vtest retry: 3
 import os
 import dl

@@ -1,4 +1,3 @@
-// vtest flaky: true
 // vtest retry: 3
 
 // Instructions for developers:

@@ -1,4 +1,3 @@
-// vtest flaky: true
 // vtest retry: 3
 import v.tests.project_with_c_code.mod1
 
