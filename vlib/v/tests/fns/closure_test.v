@@ -1,4 +1,3 @@
-// vtest build: amd64 || arm64 // closures aren't implemented yet
 fn test_decl_assignment() {
 	my_var := 12
 	c1 := fn [my_var] () int {
