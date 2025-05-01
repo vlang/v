@@ -424,9 +424,7 @@ const c_common_macros = '
 	#undef TCCSKIP
 	#define TCCSKIP(x)
 	// #include <byteswap.h>
-	#ifndef _WIN32
-		int tcc_backtrace(const char *fmt, ...);
-	#endif
+	int tcc_backtrace(const char *fmt, ...);
 #endif
 
 // Use __offsetof_ptr instead of __offset_of, when you *do* have a valid pointer, to avoid UB:
