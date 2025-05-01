@@ -49,3 +49,4 @@ jobs:
             file ./v
             ls -la ./v
             ./v test vlib/builtin vlib/os vlib/encoding/binary
+            VTEST_ONLY=closure ./v test vlib/v/tests
