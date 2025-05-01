@@ -88,7 +88,9 @@ fn test_install_from_git_url_with_version_tag() {
 	res = cmd_fail(@LOCATION, '${vexe} install -f ${url}@${tag}')
 	// Install invalid version verbose.
 	res = cmd_fail(@LOCATION, '${vexe} install -f -v ${url}@${tag}')
-	assert res.output.contains('Could not find remote branch ${tag} to clone.'), res.output
+	not_found := res.output.contains('Could not find remote branch ${tag} to clone.')
+		|| res.output.contains('Remote branch ${tag} not found')
+	assert not_found, res.output
 	// Install from GitLab.
 	url = 'https://gitlab.com/tobealive/webview'
 	tag = 'v0.6.0'
