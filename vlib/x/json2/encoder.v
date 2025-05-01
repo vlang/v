@@ -186,8 +186,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 	} $else $if T is $enum {
 		str_int := int(val).str()
 		unsafe { buf.push_many(str_int.str, str_int.len) }
-	} $else $if T is $int || T is bool || T is i32 {
-		// bug? `i32` not in `$int`?
+	} $else $if T is $int || T is bool {
 		str_int := val.str()
 		unsafe { buf.push_many(str_int.str, str_int.len) }
 	} $else $if T is $float {
