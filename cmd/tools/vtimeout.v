@@ -36,7 +36,12 @@ fn main() {
 		cmd_args: args[1..].clone()
 	}
 
-	mut p := os.new_process(ctx.cmd_args[0])
+	mut cmd := ctx.cmd_args[0]
+	if !os.exists(cmd) {
+		cmd = os.find_abs_path_of_executable(cmd) or { cmd }
+	}
+
+	mut p := os.new_process(cmd)
 	p.set_args(ctx.cmd_args[1..])
 	p.run()
 	if p.err != '' {
