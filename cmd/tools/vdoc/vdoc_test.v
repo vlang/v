@@ -1,3 +1,4 @@
+// vtest retry: 2
 // vtest build: !windows
 module main
 

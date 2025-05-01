@@ -1,3 +1,4 @@
+// vtest retry: 2
 import os
 
 const vexe = @VEXE
