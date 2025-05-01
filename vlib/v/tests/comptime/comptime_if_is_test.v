@@ -26,3 +26,10 @@ fn test_is_or() {
 	assert g(i8(1)) == 1
 	assert g(1) == 2
 }
+
+fn test_i32_is_int() {
+	a := i32(33)
+	$if a !is $int {
+		assert false
+	}
+}
