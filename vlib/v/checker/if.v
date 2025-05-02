@@ -286,6 +286,14 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 									}
 								}
 							}
+						} else if comptime_field_name == c.comptime.comptime_for_method_var {
+							if left.field_name == 'return_type' {
+								skip_state = if c.unwrap_generic(c.comptime.comptime_for_method_ret_type).idx() == right.val.i64() {
+									ComptimeBranchSkipState.eval
+								} else {
+									ComptimeBranchSkipState.skip
+								}
+							}
 						} else if left.expr is ast.TypeOf {
 							skip_state = if left.expr.typ.nr_muls() == right.val.i64() {
 								ComptimeBranchSkipState.eval
