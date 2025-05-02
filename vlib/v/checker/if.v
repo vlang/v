@@ -182,11 +182,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								} else {
 									.skip
 								}
-							} else if comptime_field_name == c.comptime.comptime_for_method_var {
-								if left.field_name == 'return_type' {
-									skip_state = c.check_compatible_types(c.unwrap_generic(c.comptime.comptime_for_method_ret_type),
-										right as ast.TypeNode)
-								}
+							} else if comptime_field_name == c.comptime.comptime_for_method_var
+								&& left.field_name == 'return_type' {
+								skip_state = c.check_compatible_types(c.unwrap_generic(c.comptime.comptime_for_method_ret_type),
+									right as ast.TypeNode)
 							} else if comptime_field_name in [
 								c.comptime.comptime_for_variant_var,
 								c.comptime.comptime_for_enum_var,
