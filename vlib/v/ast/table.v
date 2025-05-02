@@ -966,7 +966,11 @@ pub fn (t &Table) array_name(elem_type Type) string {
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
 	opt := if elem_type.has_flag(.option) { '?' } else { '' }
 	res := if elem_type.has_flag(.result) { '!' } else { '' }
-	return '[]${opt}${res}${ptr}${elem_type_sym.name}'
+	mut name := elem_type_sym.name
+	if elem_type_sym.info is Struct && elem_type_sym.info.scoped_name != '' {
+		name = elem_type_sym.info.scoped_name
+	}
+	return '[]${opt}${res}${ptr}${name}'
 }
 
 @[inline]
