@@ -1599,11 +1599,11 @@ println('Your OS is ${current_os}.')
 > This section is valid when .v files are not in the project's root directory.
 
 Modules names in .v files, must match the name of their directory.
- 
-A .v file `./abc/source.v` must start with `module abc`. All .v files in this directory 
+
+A .v file `./abc/source.v` must start with `module abc`. All .v files in this directory
 belong to the same module `abc`. They should also start with `module abc`.
 
-If you have `abc/def/`, and .v files in both folders, you can `import abc`, but you will have 
+If you have `abc/def/`, and .v files in both folders, you can `import abc`, but you will have
 to `import abc.def` too, to get to the symbols in the subfolder. It is independent.
 
 In `module name` statement, name never repeats directory's hierarchy, but only its directory.
@@ -1637,7 +1637,7 @@ fn main() {
 
 A function, located in `abc/def/source.v`, is called with `def.func()`, not `abc.def.func()`
 
-This always implies a *single prefix*, whatever sub-module depth. This behavior flattens 
+This always implies a *single prefix*, whatever sub-module depth. This behavior flattens
 modules/sub-modules hierarchy. Should you have two modules with the same name in different
 directories, then you should use Module import aliasing (see below).
 
@@ -1963,7 +1963,7 @@ println(typ)
 ```
 
 A match statement also can match the variant types of a `sumtype`. Note that
-in that case, the match is exhaustive, since all variant types are mentioned 
+in that case, the match is exhaustive, since all variant types are mentioned
 explicitly, so there is no need for an `else{}` branch.
 
 ```v nofmt
@@ -4730,12 +4730,12 @@ fn main() {
 
 ### Difference Between Channels and Shared Objects
 
-**Purpose**: 
+**Purpose**:
 - Channels: Used for message passing between threads, ensuring safe communication.
 - Shared objects: Used for direct data sharing and modification between threads.
 
-**Synchronization**: 
-- Channels: Implicit (via channel operations) 
+**Synchronization**:
+- Channels: Implicit (via channel operations)
 - Shared objects:  Explicit (via `rlock`/`lock` blocks)
 
 ## JSON
@@ -5836,20 +5836,20 @@ pub mut:
 
 Function/method deprecations:
 
-Functions are deprecated before they are finally removed to give users time to migrate their code. 
-Adding a date is preferable in most cases. An immediate change, without a deprecation date, may be 
-used for functions that are found to be conceptually broken and obsoleted by much better 
-functionality. Other than that setting a date is advisable to grant users a grace period. 
+Functions are deprecated before they are finally removed to give users time to migrate their code.
+Adding a date is preferable in most cases. An immediate change, without a deprecation date, may be
+used for functions that are found to be conceptually broken and obsoleted by much better
+functionality. Other than that setting a date is advisable to grant users a grace period.
 
-Deprecated functions cause warnings, which cause errors if built with `-prod`. To avoid immediate 
-CI breakage, it is advisable to set a future date, ahead of the date when the code is merged. This 
-gives people who actively developed V projects, the chance to see the deprecation notice at least 
-once and fix the uses. Setting a date in the next 30 days, assumes they would have compiled their 
+Deprecated functions cause warnings, which cause errors if built with `-prod`. To avoid immediate
+CI breakage, it is advisable to set a future date, ahead of the date when the code is merged. This
+gives people who actively developed V projects, the chance to see the deprecation notice at least
+once and fix the uses. Setting a date in the next 30 days, assumes they would have compiled their
 projects manually at least once, within that time. For small changes, this should be plenty
-of time. For complex changes, this time may need to be longer. 
+of time. For complex changes, this time may need to be longer.
 
-Different V projects and maintainers may reasonably choose different deprecation policies. 
-Depending on the type and impact of the change, you may want to consult with them first, before 
+Different V projects and maintainers may reasonably choose different deprecation policies.
+Depending on the type and impact of the change, you may want to consult with them first, before
 deprecating a function.
 
 
@@ -7710,7 +7710,7 @@ fn main() {
 	C.sqlite3_finalize(stmt)
 	println('There are ${nr_users} users in the database.')
 
-	error_msg := &char(0)
+	error_msg := &char(unsafe { nil })
 	query_all_users := 'select * from users'
 	rc := C.sqlite3_exec(db, &char(query_all_users.str), my_callback, voidptr(7), &error_msg)
 	if rc != C.SQLITE_OK {
@@ -8193,7 +8193,7 @@ exists the file will be overridden. If you want to rebuild each time and not kee
 instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 Note: there is a small shell script `cmd/tools/vrun`, that can be useful for systems, that have an
-env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox). 
+env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox).
 See https://github.com/vlang/v/blob/master/cmd/tools/vrun for more details.
 
 # Appendices

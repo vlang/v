@@ -293,9 +293,9 @@ pub fn execute(cmd string) Result {
 // user provided escape sequences.
 @[unsafe]
 pub fn raw_execute(cmd string) Result {
-	mut child_stdin := &u32(0)
-	mut child_stdout_read := &u32(0)
-	mut child_stdout_write := &u32(0)
+	mut child_stdin := &u32(unsafe { nil })
+	mut child_stdout_read := &u32(unsafe { nil })
+	mut child_stdout_write := &u32(unsafe { nil })
 	mut sa := SecurityAttributes{}
 	sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 	sa.b_inherit_handle = true
@@ -609,8 +609,8 @@ pub fn disk_usage(path string) !DiskUsage {
 	mut available := u64(0)
 	mut ret := false
 	if path == '.' || path == '' {
-		ret = C.GetDiskFreeSpaceExA(&char(0), &free_bytes_available_to_caller, &total,
-			&available)
+		ret = C.GetDiskFreeSpaceExA(&char(unsafe { nil }), &free_bytes_available_to_caller,
+			&total, &available)
 	} else {
 		ret = C.GetDiskFreeSpaceExA(&char(path.str), &free_bytes_available_to_caller,
 			&total, &available)

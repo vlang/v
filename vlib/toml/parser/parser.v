@@ -914,7 +914,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 	first := DottedKey([dotted_key[0]]) // The array that holds the entries
 	last := DottedKey([dotted_key[1]]) // The key the parsed array data should be added to
 
-	mut t_arr := &[]ast.Value(0)
+	mut t_arr := &[]ast.Value(unsafe { nil })
 	mut t_map := ast.Value(ast.Null{})
 
 	unsafe {

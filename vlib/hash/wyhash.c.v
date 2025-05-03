@@ -9,7 +9,7 @@ fn C.wyhash64(u64, u64) u64
 // wyhash_c returns a hash given a byte string `key`, its `len`, and a `seed`.
 @[inline]
 pub fn wyhash_c(key &u8, len u64, seed u64) u64 {
-	return C.wyhash(key, len, seed, &u64(C._wyp))
+	return C.wyhash(key, len, seed, &u64(voidptr(C._wyp)))
 }
 
 // wyhash64_c returns a hash given two u64 values `a` and `b`.

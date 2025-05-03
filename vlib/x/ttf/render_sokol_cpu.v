@@ -131,7 +131,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 		height:      h
 		num_mipmaps: 0
 		// usage: .dynamic
-		label:         &char(0)
+		label:         &char(unsafe { nil })
 		d3d11_texture: 0
 	}
 	// comment for dynamic

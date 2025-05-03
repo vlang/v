@@ -307,7 +307,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 					return
 				}
 				if img.width == 0 {
-					println('w=0')
+					println('gg: draw_image() width=0')
 					return
 				}
 				if !os.exists(img.path) {

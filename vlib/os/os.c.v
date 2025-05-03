@@ -579,7 +579,7 @@ pub fn get_raw_line() string {
 		}
 	} $else {
 		max := usize(0)
-		buf := unsafe { &u8(0) }
+		buf := &u8(unsafe { nil })
 		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
 		str := unsafe { tos(buf, if nr_chars < 0 { 0 } else { nr_chars }) }
 		ret := str.clone()
@@ -624,7 +624,7 @@ pub fn get_raw_stdin() []u8 {
 		}
 	} $else {
 		max := usize(0)
-		buf := unsafe { &u8(0) }
+		buf := &u8(unsafe { nil })
 		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
 		return array{
 			element_size: 1
@@ -995,7 +995,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ! {
 	for i in 0 .. cmdargs.len {
 		cargs << &char(cmdargs[i].str)
 	}
-	cargs << &char(0)
+	cargs << &char(unsafe { nil })
 	mut res := int(0)
 	$if windows {
 		res = C._execvp(&char(cmdpath.str), cargs.data)
@@ -1026,8 +1026,8 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	for i in 0 .. envs.len {
 		cenvs << &char(envs[i].str)
 	}
-	cargv << &char(0)
-	cenvs << &char(0)
+	cargv << &char(unsafe { nil })
+	cenvs << &char(unsafe { nil })
 	mut res := int(0)
 	$if windows {
 		res = C._execve(&char(cmdpath.str), cargv.data, cenvs.data)

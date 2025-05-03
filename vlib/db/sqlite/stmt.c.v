@@ -71,7 +71,7 @@ fn (stmt &Stmt) get_text(idx int) ?string {
 		return none
 	} else {
 		b := &char(C.sqlite3_column_text(stmt.stmt, idx))
-		if b == &char(0) {
+		if b == &char(unsafe { nil }) {
 			return ''
 		}
 		return unsafe { b.vstring() }

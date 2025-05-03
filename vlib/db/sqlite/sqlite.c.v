@@ -224,7 +224,7 @@ pub fn (db &DB) q_string(query string) !string {
 		return db.error_message(code, query)
 	}
 	val := unsafe { &u8(C.sqlite3_column_text(stmt, 0)) }
-	return if val != &u8(0) { unsafe { tos_clone(val) } } else { '' }
+	return if val != &u8(unsafe { nil }) { unsafe { tos_clone(val) } } else { '' }
 }
 
 // exec_map executes the query on the given `db`, and returns an array of maps of strings, or an error on failure
@@ -254,7 +254,7 @@ pub fn (db &DB) exec_map(query string) ![]map[string]string {
 			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
 			col_char := unsafe { &u8(C.sqlite3_column_name(stmt, i)) }
 			col := unsafe { col_char.vstring() }
-			if val == &u8(0) {
+			if val == &u8(unsafe { nil }) {
 				row[col] = ''
 			} else {
 				row[col] = unsafe { tos_clone(val) }
@@ -294,7 +294,7 @@ pub fn (db &DB) exec(query string) ![]Row {
 		mut row := Row{}
 		for i in 0 .. nr_cols {
 			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
-			if val == &u8(0) {
+			if val == &u8(unsafe { nil }) {
 				row.vals << ''
 			} else {
 				row.vals << unsafe { val.vstring() }
@@ -388,7 +388,7 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 		mut row := Row{}
 		for i in 0 .. nr_cols {
 			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
-			if val == &u8(0) {
+			if val == &u8(unsafe { nil }) {
 				row.vals << ''
 			} else {
 				row.vals << unsafe { val.vstring() }

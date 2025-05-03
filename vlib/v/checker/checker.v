@@ -3594,6 +3594,17 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.error('cannot cast type `${ft}` to `${tt}`', node.pos)
 	}
 
+	// if from_type == ast.voidptr_type_idx && !c.inside_unsafe && !c.pref.translated
+	// Do not allow `&u8(unsafe { nil })` etc, force nil or voidptr cast
+	if from_type.is_number() && to_type.is_ptr() && !c.inside_unsafe && !c.pref.translated
+		&& !c.file.is_translated {
+		if from_sym.language != .c {
+			// TODO make an error
+			c.warn('cannot cast a number to a type reference, use `nil` or a voidptr cast first: `&Type(voidptr(123))`',
+				node.pos)
+		}
+	}
+
 	// T(0) where T is array or map
 	if node.typ.has_flag(.generic) && to_sym.kind in [.array, .map, .array_fixed]
 		&& node.expr.is_literal() {

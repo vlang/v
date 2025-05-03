@@ -29,7 +29,7 @@ pub fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 		// usage: .dynamic
 		// wrap_u: .clamp_to_edge
 		// wrap_v: .clamp_to_edge
-		label:         &char(0)
+		label:         &char(unsafe { nil })
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled

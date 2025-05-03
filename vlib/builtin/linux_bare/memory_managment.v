@@ -10,7 +10,8 @@ fn mm_alloc(size u64) (&u8, Errno) {
 	map_flags := unsafe { MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous)) }
 	// END CONSTS
 
-	a, e := sys_mmap(&u8(0), size + sizeof(u64), mem_prot, map_flags, -1, 0)
+	a, e := sys_mmap(&u8(unsafe { nil }), size + sizeof(u64), mem_prot, map_flags, -1,
+		0)
 	if e == .enoerror {
 		unsafe {
 			mut ap := &u64(a)
@@ -19,7 +20,7 @@ fn mm_alloc(size u64) (&u8, Errno) {
 			return x2, e
 		}
 	}
-	return &u8(0), e
+	return &u8(unsafe { nil }), e
 }
 
 fn mm_free(addr &u8) Errno {
@@ -38,7 +39,7 @@ fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
 	map_flags := unsafe { MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous)) }
 	// END CONSTS
 
-	a, e := sys_mmap(&u8(0), u64(size), mem_prot, map_flags, -1, 0)
+	a, e := sys_mmap(&u8(unsafe { nil }), u64(size), mem_prot, map_flags, -1, 0)
 
 	if e == .enoerror {
 		return a, size, 0

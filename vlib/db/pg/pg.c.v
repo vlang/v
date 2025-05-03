@@ -392,14 +392,14 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 			}
 		}
 
-		code := C.PQputCopyEnd(db.conn, &char(0))
+		code := C.PQputCopyEnd(db.conn, &char(unsafe { nil }))
 
 		if code != 1 {
 			return error('pg copy error: Failed to finish copy command, code: ${code}')
 		}
 	} else if status == .copy_out {
 		for {
-			address := &char(0)
+			address := &char(unsafe { nil })
 			n_bytes := C.PQgetCopyData(db.conn, &address, 0)
 			if n_bytes > 0 {
 				mut local_buf := []u8{len: n_bytes}

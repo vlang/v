@@ -72,7 +72,7 @@ fn main() {
 	error_code := C.wkhtmltopdf_http_error_code(converter)
 	println('wkhtmltopdf_http_error_code: ${error_code}')
 	if result {
-		pdata := &char(0)
+		pdata := &char(unsafe { nil })
 		ppdata := &pdata
 		size := C.wkhtmltopdf_get_output(converter, voidptr(ppdata))
 		println('wkhtmltopdf_get_output: ${size} bytes')
