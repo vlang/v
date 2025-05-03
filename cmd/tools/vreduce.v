@@ -106,6 +106,7 @@ fn string_reproduces(file_content string, pattern string, command string, file_p
 	} else {
 		split := command.split(' ')
 		mut prog := os.new_process(split[0])
+		prog.use_pgroup = true
 		prog.set_args(split[1..])
 		prog.set_redirect_stdio()
 		prog.run()
@@ -129,14 +130,21 @@ fn string_reproduces(file_content string, pattern string, command string, file_p
 						b = true
 					}
 				}
+				if sw.elapsed().seconds() > f32(timeout) {
+					break
+				}
 			}
 			if sw.elapsed().seconds() > f32(timeout) {
 				if debug {
 					println('Timeout')
 				}
+				prog.signal_pgkill()
+				prog.close()
+				prog.wait()
 				return false
 			}
 		}
+		prog.signal_pgkill()
 		prog.close()
 		prog.wait()
 	}
