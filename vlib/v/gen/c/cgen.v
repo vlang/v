@@ -2295,6 +2295,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			g.writeln('${g.styp(ret_typ)} ${tmp_var};')
 		}
 		mut expr_is_fixed_array_var := false
+		mut fn_option_clone := false
 		if ret_typ_is_option {
 			if expr_typ_is_option && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
 				simple_assign = expr is ast.StructInit
@@ -2328,6 +2329,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 							g.write('(')
 							g.write_fn_ptr_decl(&final_ret_sym.info, '')
 							g.write(')')
+							fn_option_clone = expr is ast.SelectorExpr && expr_typ.has_flag(.option)
 						}
 					}
 				}
@@ -2339,6 +2341,9 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			g.write('_result_ok(&(${styp}[]) { ')
 		}
 		g.expr_with_cast(expr, expr_typ, ret_typ)
+		if fn_option_clone {
+			g.write('.data')
+		}
 		if ret_typ_is_option {
 			if simple_assign {
 				g.writeln(';')
