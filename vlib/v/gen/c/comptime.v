@@ -655,6 +655,21 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 									g.write('0')
 								}
 								return is_true, true
+							} else if g.comptime.comptime_for_method_var != ''
+								&& cond.left.expr is ast.Ident
+								&& cond.left.expr.name == g.comptime.comptime_for_method_var
+								&& cond.left.field_name == 'return_type' {
+								is_true := match cond.op {
+									.eq { g.comptime.comptime_for_method_ret_type.idx() == cond.right.val.i64() }
+									.ne { g.comptime.comptime_for_method_ret_type.idx() != cond.right.val.i64() }
+									else { false }
+								}
+								if is_true {
+									g.write('1')
+								} else {
+									g.write('0')
+								}
+								return is_true, true
 							}
 						}
 					}
