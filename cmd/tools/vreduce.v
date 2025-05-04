@@ -106,6 +106,7 @@ fn string_reproduces(file_content string, pattern string, command string, file_p
 	} else {
 		split := command.split(' ')
 		mut prog := os.new_process(split[0])
+		prog.use_pgroup = true
 		prog.set_args(split[1..])
 		prog.set_redirect_stdio()
 		prog.run()
@@ -129,14 +130,21 @@ fn string_reproduces(file_content string, pattern string, command string, file_p
 						b = true
 					}
 				}
+				if sw.elapsed().seconds() > f32(timeout) {
+					break
+				}
 			}
 			if sw.elapsed().seconds() > f32(timeout) {
 				if debug {
 					println('Timeout')
 				}
+				prog.signal_pgkill()
+				prog.close()
+				prog.wait()
 				return false
 			}
 		}
+		prog.signal_pgkill()
 		prog.close()
 		prog.wait()
 	}
@@ -304,6 +312,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 	log.info('Cleaning the scopes')
 	mut text_code := content
 	mut outer_modified_smth := true
+	rpdc_file_path := 'rpdc_${os.file_name(file_path)#[..-2]}.v'
 	for outer_modified_smth {
 		sc = parse(text_code)
 		outer_modified_smth = false
@@ -341,10 +350,17 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 					}
 				}
 			}
-		}
-		println('')
+			println('')
 
-		text_code = create_code(sc)
+			text_code = create_code(sc)
+			os.write_file(rpdc_file_path, text_code) or { panic(err) }
+			if do_fmt {
+				os.execute('v fmt -w ${rpdc_file_path}')
+				final_content := os.read_file(rpdc_file_path) or { panic(err) }
+				show_code_stats(final_content, label: 'Code size after formatting')
+			}
+			println('The WIP reduced code is now in ${rpdc_file_path}')
+		}
 
 		log.info('Processing remaining lines')
 		split_code := text_code.split_into_lines() // dont forget to add back the \n
@@ -413,14 +429,20 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 					}
 				}
 			}
+			println('')
+			text_code = create_code(line_tree)
+			os.write_file(rpdc_file_path, text_code) or { panic(err) }
+			if do_fmt {
+				os.execute('v fmt -w ${rpdc_file_path}')
+				final_content := os.read_file(rpdc_file_path) or { panic(err) }
+				show_code_stats(final_content, label: 'Code size after formatting')
+			}
+			println('The WIP reduced code is now in ${rpdc_file_path}')
 		}
-		println('')
-		text_code = create_code(line_tree)
 	}
 
 	warn_on_false(string_reproduces(text_code, error_msg, command, file_path, true, timeout),
 		'string_reproduces', @LOCATION)
-	rpdc_file_path := 'rpdc_${os.file_name(file_path)#[..-2]}.v'
 	os.write_file(rpdc_file_path, text_code) or { panic(err) }
 	if do_fmt {
 		os.execute('v fmt -w ${rpdc_file_path}')
