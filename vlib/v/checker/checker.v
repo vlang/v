@@ -3599,9 +3599,12 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if from_type.is_number() && to_type.is_ptr() && !c.inside_unsafe && !c.pref.translated
 		&& !c.file.is_translated {
 		if from_sym.language != .c {
-			// TODO make an error
-			c.warn('cannot cast a number to a type reference, use `nil` or a voidptr cast first: `&Type(voidptr(123))`',
-				node.pos)
+			ne_name := node.expr.str()
+			if !ne_name.starts_with('C.') {
+				// TODO make an error
+				c.warn('cannot cast a number to a type reference, use `nil` or a voidptr cast first: `&Type(voidptr(123))`',
+					node.pos)
+			}
 		}
 	}
 
