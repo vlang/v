@@ -213,7 +213,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			mut option_pos := token.Pos{}
 
 			if p.tok.kind == .rcbr {
-				ast_fields.last().next_comments << pre_field_comments
+				if ast_fields.len > 0 {
+					ast_fields.last().next_comments << pre_field_comments
+				}
 				break
 			}
 
