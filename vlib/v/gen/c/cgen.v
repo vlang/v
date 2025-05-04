@@ -5264,11 +5264,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
 						if obj_sym.kind == .interface && cast_sym.kind == .interface {
-							ptr := '*'.repeat(node.obj.typ.nr_muls())
 							if cast_sym.cname != obj_sym.cname {
+								ptr := '*'.repeat(node.obj.typ.nr_muls())
 								g.write('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${node.name})')
 							} else {
-								g.write(node.name)
+								ptr := '*'.repeat(node.obj.typ.nr_muls() - 1)
+								g.write('${ptr}${node.name}')
 							}
 						} else {
 							mut is_ptr := false
