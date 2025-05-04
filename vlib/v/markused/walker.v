@@ -705,7 +705,8 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	w.expr(node.left)
 	w.or_block(node.or_block)
 
-	fn_name := node.fkey()
+	mut fn_name := node.fkey()
+	mut receiver_typ := node.receiver_type
 	if w.used_fns[fn_name] {
 		return
 	}
@@ -735,12 +736,13 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		&& !node.receiver_concrete_type.has_flag(.generic) {
 		// if receiver is generic, then cgen requires `node.receiver_type` to be T.
 		// We therefore need to get the concrete type from `node.receiver_concrete_type`.
-		fkey := '${int(node.receiver_concrete_type)}.${node.name}'
-		w.mark_fn_as_used(fkey)
+		fn_name = '${int(node.receiver_concrete_type)}.${node.name}'
+		receiver_typ = node.receiver_concrete_type
+		w.mark_fn_as_used(fn_name)
 	}
 	stmt := w.all_fns[fn_name] or { return }
 	if stmt.name == node.name {
-		if !node.is_method || node.receiver_type == stmt.receiver.typ {
+		if !node.is_method || receiver_typ == stmt.receiver.typ {
 			w.stmts(stmt.stmts)
 		}
 	}
