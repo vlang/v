@@ -1217,6 +1217,8 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	}
 	is_ctemp_fixed_ret := node.op in [.eq, .ne] && node.left is ast.CTempVar
 		&& node.left.is_fixed_ret
+	is_nil_cmp := node.right is ast.UnsafeExpr && node.right.expr is ast.Nil
+		&& g.table.final_sym(node.left_type).kind == .interface
 	if is_ctemp_fixed_ret {
 		if node.op == .eq {
 			g.write('!')
@@ -1224,9 +1226,9 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.write('memcmp(')
 	}
 	g.expr(node.left)
-	if !is_ctemp_fixed_ret {
+	if !is_ctemp_fixed_ret && !is_nil_cmp {
 		g.write(' ${node.op.str()} ')
-	} else {
+	} else if !is_nil_cmp {
 		g.write(', ')
 	}
 
@@ -1237,7 +1239,12 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.write('*')
 		g.expr(node.right)
 	} else {
-		g.expr_with_cast(node.right, node.right_type, node.left_type)
+		if is_nil_cmp {
+			sym := g.table.final_sym(node.left_type)
+			g.write('->_typ == _${sym.cname}_voidptr_index')
+		} else {
+			g.expr_with_cast(node.right, node.right_type, node.left_type)
+		}
 	}
 	if is_ctemp_fixed_ret {
 		g.write(', sizeof(${g.styp(node.right_type)}))')
