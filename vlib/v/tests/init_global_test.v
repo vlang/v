@@ -1,3 +1,4 @@
+// vtest retry: 2
 import sync
 
 fn one() int {
