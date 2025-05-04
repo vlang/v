@@ -618,7 +618,7 @@ pre code {
 	hyphens: none;
 	display: block;
 	overflow-x: auto;
-	padding: 1rem;
+	padding: 5px;
 }
 code {
 	padding: 0 0.2rem;
