@@ -237,6 +237,11 @@ fn (mut a App) cpu_info(key string) string {
 }
 
 fn (mut a App) git_info() string {
+	// Check if in a Git repository
+	x := os.execute('git rev-parse --is-inside-work-tree')
+	if x.exit_code != 0 || x.output.trim_space() != 'true' {
+		return 'N/A'
+	}
 	mut out := a.cmd(command: 'git -C . describe --abbrev=8 --dirty --always --tags').trim_space()
 	os.execute('git -C . remote add V_REPO https://github.com/vlang/v') // ignore failure (i.e. remote exists)
 	if '-skip-github' !in os.args {
