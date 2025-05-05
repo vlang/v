@@ -251,9 +251,9 @@ fn test_opt_ptr() {
 	else {
 	}
 	a := 3
-	mut r := opt_ptr(&a) or { &int(0) }
+	mut r := opt_ptr(&a) or { unsafe { &int(0) } }
 	assert r == &a
-	r = opt_ptr(&int(0)) or { return }
+	r = opt_ptr(unsafe { &int(0) }) or { return }
 	assert false
 }
 
