@@ -880,15 +880,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						field_type := c.unwrap_generic(c.comptime.comptime_for_field_type)
 						field_sym := c.table.sym(field_type)
 
-						// disallow invalid `t.$(field.name)` type assignment
-						if !c.check_types(field_type, right_type) {
-							c.error('cannot assign to `${left}`: ${c.expected_msg(right_type,
-								field_type)}', right.pos())
-						}
-
 						// allow `t.$(field.name) = 0` where `t.$(field.name)` is a enum
 						if field_sym.kind == .enum && !right_type.is_int() {
 							c.error('enums can only be assigned `int` values', right.pos())
+						}
+						// disallow invalid `t.$(field.name)` type assignment
+						if !c.check_types(field_type, right_type) && !(c.inside_x_matches_type
+							|| field_sym.kind == .enum) {
+							c.error('cannot assign to `${left}`: ${c.expected_msg(right_type,
+								field_type)}', right.pos())
 						}
 					} else {
 						if right_type_unwrapped != ast.void_type {
