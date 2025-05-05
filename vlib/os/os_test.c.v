@@ -967,6 +967,16 @@ fn test_execute_with_linefeeds() {
 	assert result2.exit_code == 1
 }
 
+fn test_execute_fc_get_output() {
+	if os.user_os() != 'windows' {
+		return
+	}
+	result := os.execute('c:\\windows\\system32\\fc.exe /?')
+	dump(result)
+	assert result.output.contains('filename')
+	assert result.exit_code == -1
+}
+
 fn test_command() {
 	if os.user_os() == 'windows' {
 		eprintln('>>> os.Command is not implemented fully on Windows yet')
