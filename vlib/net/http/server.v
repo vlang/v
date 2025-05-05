@@ -30,7 +30,6 @@ mut:
 	state ServerStatus = .closed
 pub mut:
 	addr               string        = ':${default_server_port}'
-	port               int           = default_server_port @[deprecated: 'use addr']
 	handler            Handler       = DebugHandler{}
 	read_timeout       time.Duration = 30 * time.second
 	write_timeout      time.Duration = 30 * time.second
@@ -51,12 +50,6 @@ pub mut:
 pub fn (mut s Server) listen_and_serve() {
 	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
-	}
-
-	// remove when s.port is removed
-	addr := s.addr.split(':')
-	if addr.len > 1 && s.port != default_server_port {
-		s.addr = '${addr[0]}:${s.port}'
 	}
 
 	mut l := s.listener.addr() or {

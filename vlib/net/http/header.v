@@ -490,55 +490,6 @@ pub fn (mut h Header) delete_custom(key string) {
 	*/
 }
 
-@[params]
-pub struct HeaderCoerceConfig {
-pub:
-	canonicalize bool
-}
-
-// coerce coerces data in the Header by joining keys that match
-// case-insensitively into one entry.
-//[deprecated: 'no need to call this method anymore, keys are automatically coerced']
-pub fn (mut h Header) coerce(flags HeaderCoerceConfig) {
-	keys := h.keys()
-	// for k in keys {
-	// println('${k} => ${h.get_custom(k, exact: true) or { continue }}')
-	//}
-	new_keys := arrays.distinct(h.keys().map(it.to_lower()))
-	if keys.len == new_keys.len {
-		return
-	}
-	mut new_data := [max_headers]HeaderKV{}
-	mut i := 0
-	for _, key in new_keys {
-		for _, old_key in keys {
-			if old_key.to_lower() == key {
-				new_data[i] = HeaderKV{key, h.get_custom(old_key, exact: true) or { continue }}
-				i++
-			}
-		}
-		/*
-		master_key := if flags.canonicalize { canonicalize(kl) } else { data_keys[0] }
-
-		// save master data
-		master_data := h.data[master_key]
-		h.data.delete(master_key)
-
-		for key in data_keys {
-			if key == master_key {
-				h.data[master_key] << master_data
-				continue
-			}
-			h.data[master_key] << h.data[key]
-			h.data.delete(key)
-		}
-		h.keys[kl] = [master_key]
-		*/
-	}
-	h.data = new_data
-	h.cur_pos = i
-}
-
 // contains returns whether the header key exists in the map.
 pub fn (h Header) contains(key CommonHeader) bool {
 	if h.cur_pos == 0 {

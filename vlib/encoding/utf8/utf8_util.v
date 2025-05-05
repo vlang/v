@@ -27,13 +27,6 @@ pub fn len(s string) int {
 	return count
 }
 
-// get_uchar convert a UTF-8 unicode codepoint in string[index] into a UTF-32 encoded int unicode char
-@[deprecated: 'use `.get_rune(s string, index int)` instead']
-@[deprecated_after: '2024-11-17']
-pub fn get_uchar(s string, index int) int {
-	return int(get_rune(s, index))
-}
-
 // get_rune convert a UTF-8 unicode codepoint in string[index] into a UTF-32 encoded rune
 pub fn get_rune(s string, index int) rune {
 	mut res := 0
@@ -181,13 +174,6 @@ pub fn is_number(r rune) bool {
 	return is_excluding_latin(number_table, r)
 }
 
-// is_uchar_punct return true if the input unicode is a western unicode punctuation
-@[deprecated: 'use `.is_rune_punct(r rune)` instead']
-@[deprecated_after: '2024-11-17']
-pub fn is_uchar_punct(uchar int) bool {
-	return is_rune_punct(rune(uchar))
-}
-
 // is_rune_punct return true if the input unicode is a western unicode punctuation
 pub fn is_rune_punct(r rune) bool {
 	return find_punct_in_table(r, unicode_punct_western) != rune(-1)
@@ -198,13 +184,6 @@ pub fn is_rune_punct(r rune) bool {
 // is_global_punct return true if the string[index] byte of is the start of a global unicode punctuation
 pub fn is_global_punct(s string, index int) bool {
 	return is_rune_global_punct(get_rune(s, index))
-}
-
-// is_uchar_global_punct return true if the input unicode is a global unicode punctuation
-@[deprecated: 'use `.is_rune_global_punct(r rune)` instead']
-@[deprecated_after: '2024-11-17']
-pub fn is_uchar_global_punct(uchar int) bool {
-	return is_rune_global_punct(rune(uchar))
 }
 
 // is_rune_global_punct return true if the input unicode is a global unicode punctuation

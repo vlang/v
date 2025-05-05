@@ -154,30 +154,12 @@ fn test_custom_values() {
 	assert h.custom_values('HELLO', exact: true) == []
 }
 
-fn test_coerce() {
-	mut h := new_header()
-	h.add_custom('accept', 'foo')!
-	h.add(.accept, 'bar')
-	assert h.values(.accept) == ['foo', 'bar']
-	assert h.keys().len == 2
-
-	h.coerce()
-	assert h.values(.accept) == ['foo', 'bar']
-	assert h.keys() == ['accept'] // takes the first occurrence
-}
-
 fn test_coerce_canonicalize() {
 	mut h := new_header()
 	h.add_custom('accept', 'foo')!
 	h.add(.accept, 'bar')
 	assert h.values(.accept) == ['foo', 'bar']
 	assert h.keys().len == 2
-
-	/*
-	h.coerce(canonicalize: true)
-	assert h.values(.accept) == ['foo', 'bar']
-	assert h.keys() == ['Accept'] // canonicalize header
-	*/
 }
 
 fn test_coerce_custom() {
@@ -187,11 +169,6 @@ fn test_coerce_custom() {
 	h.add_custom('HELLO', 'baz')!
 	assert h.custom_values('hello') == ['foo', 'bar', 'baz']
 	assert h.keys().len == 3
-
-	h.coerce()
-	assert h.custom_values('hello') == ['foo', 'bar', 'baz']
-	// assert h.keys() == ['Hello'] // takes the first occurrence XTODO
-	assert h.keys() == ['hello'] // takes the first occurrence
 }
 
 fn test_coerce_canonicalize_custom() {
@@ -200,12 +177,6 @@ fn test_coerce_canonicalize_custom() {
 	h.add_custom('FOO-bar', 'bar')!
 	assert h.custom_values('foo-bar') == ['foo', 'bar']
 	assert h.keys().len == 2
-
-	/*
-	h.coerce(canonicalize: true)
-	assert h.custom_values('foo-bar') == ['foo', 'bar']
-	assert h.keys() == ['Foo-Bar'] // capitalizes the header
-	*/
 }
 
 fn test_render_version() {
