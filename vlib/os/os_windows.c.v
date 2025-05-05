@@ -343,8 +343,8 @@ pub fn raw_execute(cmd string) Result {
 	}
 	command_line := [32768]u16{}
 	C.ExpandEnvironmentStringsW(pcmd.to_wide(), voidptr(&command_line), 32768)
-	create_process_ok := C.CreateProcessW(0, &command_line[0], 0, 0, C.TRUE, 0, 0, 0,
-		voidptr(&start_info), voidptr(&proc_info))
+	create_process_ok := C.CreateProcessW(0, &command_line[0], 0, 0, C.TRUE, C.CREATE_NO_WINDOW,
+		0, 0, voidptr(&start_info), voidptr(&proc_info))
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
