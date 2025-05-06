@@ -1079,3 +1079,188 @@ fn panic_on_negative_cap(cap int) {
 		panic_n('negative .cap:', cap)
 	}
 }
+
+// diff_string returns the difference of two strings.
+pub fn diff_string(a string, b string) []DiffChange {
+	return diff(a.runes(), b.runes())
+}
+
+// diff returns the difference of two arrays.
+pub fn diff[T](a []T, b []T) []DiffChange {
+	mut c := DiffContext[T]{
+		a: a
+		b: b
+	}
+	c.flags = if a.len > b.len { []u8{len: a.len} } else { []u8{len: b.len} }
+	c.max = a.len + b.len + 1
+	c.forward = []int{len: 2 * c.max}
+	c.reverse = []int{len: 2 * c.max}
+	c.compare(0, 0, a.len, b.len)
+	return c.result(a.len, b.len)
+}
+
+// print_diff prints colorful diff of two arrays.
+@[direct_array_access]
+pub fn print_diff[T](src []T, dst []T) {
+	mut entries := diff[T](src, dst)
+	mut prev_a := 0
+	for _, v in entries {
+		if prev_a < v.a {
+			println('\033[39m  ${src[prev_a..v.a].str()}\033[39m  ')
+		}
+		if v.del > 0 {
+			println('\033[31m- ${src[v.a..v.a + v.del].str()}\033[39m  ')
+		}
+		if v.ins > 0 {
+			println('\033[32m+ ${dst[v.b..v.b + v.ins].str()}\033[39m  ')
+		}
+		prev_a = v.a + v.del
+	}
+	if prev_a < src.len {
+		println('\033[39m  ${src[prev_a..].str()}\033[39m  ')
+	}
+}
+
+// A Change contains one or more deletions or inserts
+// at one position in two arrays.
+pub struct DiffChange {
+pub mut:
+	a   int // position in input a []T
+	b   int // position in input b []T
+	del int // delete Del elements from input a
+	ins int // insert Ins elements from input b
+}
+
+struct DiffContext[T] {
+mut:
+	a     []T
+	b     []T
+	flags []u8 // element bits 1 delete, 2 insert
+	max   int
+	// forward and reverse d-path endpoint x components
+	forward []int
+	reverse []int
+}
+
+// A directly conversion from https://github.com/covrom/diff
+// Fast diff library for Myers algorithm.
+// The algorithm is described in "An O(ND) Difference Algorithm and its Variations", Eugene Myers, Algorithmica Vol. 1 No. 2, 1986, pp. 251-266
+@[direct_array_access]
+fn (mut c DiffContext[T]) compare(mut_aoffset int, mut_boffset int, mut_alimit int, mut_blimit int) {
+	mut aoffset := mut_aoffset
+	mut boffset := mut_boffset
+	mut alimit := mut_alimit
+	mut blimit := mut_blimit
+	// eat common prefix
+	for aoffset < alimit && boffset < blimit && c.a[aoffset] == c.b[boffset] {
+		aoffset++
+		boffset++
+	}
+	// eat common suffix
+	for alimit > aoffset && blimit > boffset && c.a[alimit - 1] == c.b[blimit - 1] {
+		alimit--
+		blimit--
+	}
+	// both equal or b inserts
+	if aoffset == alimit {
+		for boffset < blimit {
+			c.flags[boffset] |= u8(2)
+			boffset++
+		}
+		return
+	}
+	// a deletes
+	if boffset == blimit {
+		for aoffset < alimit {
+			c.flags[aoffset] |= u8(1)
+			aoffset++
+		}
+		return
+	}
+	mut x, y := c.find_middle_snake(aoffset, boffset, alimit, blimit)
+	c.compare(aoffset, boffset, x, y)
+	c.compare(x, y, alimit, blimit)
+}
+
+@[direct_array_access]
+fn (mut c DiffContext[T]) find_middle_snake(aoffset int, boffset int, alimit int, blimit int) (int, int) {
+	// midpoints
+	mut fmid := aoffset - boffset
+	mut rmid := alimit - blimit
+	// correct offset in d-path slices
+	mut foff := c.max - fmid
+	mut roff := c.max - rmid
+	mut isodd := (rmid - fmid) & 1 != 0
+	mut maxd := (alimit - aoffset + blimit - boffset + 2) / 2
+	c.forward[c.max + 1] = aoffset
+	c.reverse[c.max - 1] = alimit
+	mut x, mut y := 0, 0
+	for d := 0; d <= maxd; d++ {
+		// forward search
+		for k := fmid - d; k <= fmid + d; k += 2 {
+			if k == fmid - d || (k != fmid + d && c.forward[foff + k + 1] > c.forward[foff + k - 1]) {
+				x = c.forward[foff + k + 1] // down
+			} else {
+				x = c.forward[foff + k - 1] + 1 // right
+			}
+			y = x - k
+			for x < alimit && y < blimit && c.a[x] == c.b[y] {
+				x++
+				y++
+			}
+			c.forward[foff + k] = x
+			if isodd && k > rmid - d && k < rmid + d {
+				if c.reverse[roff + k] <= c.forward[foff + k] {
+					return x, x - k
+				}
+			}
+		}
+		// reverse search x,y correspond to u,v
+		for k := rmid - d; k <= rmid + d; k += 2 {
+			if k == rmid + d || (k != rmid - d && c.reverse[roff + k - 1] < c.reverse[roff + k + 1]) {
+				x = c.reverse[roff + k - 1] // up
+			} else {
+				x = c.reverse[roff + k + 1] - 1 // left
+			}
+			y = x - k
+			for x > aoffset && y > boffset && c.a[x - 1] == c.b[y - 1] {
+				x--
+				y--
+			}
+			c.reverse[roff + k] = x
+			if !isodd && k >= fmid - d && k <= fmid + d {
+				if c.reverse[roff + k] <= c.forward[foff + k] {
+					// lookup opposite end
+					x = c.forward[foff + k]
+					return x, x - k
+				}
+			}
+		}
+	}
+	panic('diff.find_middle_snake: should never be reached')
+}
+
+@[direct_array_access]
+fn (c DiffContext[T]) result(n int, m int) []DiffChange {
+	mut x, mut y := 0, 0
+	mut res := []DiffChange{}
+	for x < n || y < m {
+		if x < n && y < m && c.flags[x] & u8(1) == u8(0) && c.flags[y] & u8(2) == u8(0) {
+			x++
+			y++
+		} else {
+			mut a := x
+			mut b := y
+			for x < n && (y >= m || c.flags[x] & u8(1) != u8(0)) {
+				x++
+			}
+			for y < m && (x >= n || c.flags[y] & u8(2) != u8(0)) {
+				y++
+			}
+			if a < x || b < y {
+				res << DiffChange{a, b, x - a, y - b}
+			}
+		}
+	}
+	return res
+}

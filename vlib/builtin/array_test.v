@@ -1777,3 +1777,65 @@ fn test_sorted_with_compare() {
 	assert aa == ['hi', '1', '5', '3'], 'aa should stay unmodified'
 	assert bb == ['1', '3', '5', 'hi'], 'bb should be sorted, according to the custom comparison callback fn'
 }
+
+fn test_diff() {
+	mut aa := ['hi', '1', '5', '3']
+	mut bb := aa.clone()
+	assert diff(aa, bb) == []
+	bb.insert(2, 'max')
+	// aa := ['hi', '1', '5', '3']
+	// bb := ['hi', '1', 'max', '5', '3']
+	assert diff(aa, bb) == [DiffChange{
+		a:   2
+		b:   2
+		del: 0
+		ins: 1
+	}]
+
+	bb.delete(4)
+	// aa := ['hi', '1', '5', '3']
+	// bb := ['hi', '1', 'max', '5']
+	assert diff(aa, bb) == [DiffChange{
+		a:   2
+		b:   2
+		del: 0
+		ins: 1
+	}, DiffChange{
+		a:   3
+		b:   4
+		del: 1
+		ins: 0
+	}]
+
+	print_diff(aa, bb)
+	/*
+['hi', '1']
++ ['max']
+  ['5']
+- ['3']
+	*/
+
+	a_str := '1234567890abcdef'
+	b_str := 'x1234567890acdef'
+	assert diff_string(a_str, b_str) == [
+		DiffChange{
+			a:   0
+			b:   0
+			del: 0
+			ins: 1
+		},
+		DiffChange{
+			a:   11
+			b:   12
+			del: 1
+			ins: 0
+		},
+	]
+	print_diff(a_str.runes(), b_str.runes())
+	/*
++ [`x`]
+  [`1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `0`, `a`]
+- [`b`]
+  [`c`, `d`, `e`, `f`]
+	*/
+}
