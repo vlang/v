@@ -2052,8 +2052,8 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('(function(length) {')
 		g.inc_indent()
 		g.writeln('const ${t1} = [];')
-		g.write('for (let it = 0; it < length')
-		g.writeln('; it++) {')
+		g.write('for (let it = 0, index = 0; index < length')
+		g.writeln('; it++, index++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
 		if it.has_init {
