@@ -1128,36 +1128,3 @@ fn test_disk_usage() {
 	assert usage.available > 0
 	assert usage.used > 0
 }
-
-fn test_diff_files() {
-	f1 := "Module{
-	name: 'Foo'
-	description: 'Awesome V module.'
-	version: '0.0.0'
-	dependencies: []
-}
-"
-	f2 := "Module{
-	name: 'foo'
-	description: 'Awesome V module.'
-	version: '0.1.0'
-	license: 'MIT'
-	dependencies: []
-}
-"
-	p1 := os.join_path(tfolder, '${@FN}_f1.txt')
-	p2 := os.join_path(tfolder, '${@FN}_f2.txt')
-	dump(p1)
-	dump(p2)
-	os.write_file(p1, f1)!
-	os.write_file(p2, f2)!
-
-	mut str := os.diff_files(p1, p2)!
-	assert str.starts_with('@@ -1,7 +1,8 @@')
-	assert str.contains("-	name: 'Foo'")
-
-	str = os.diff_files(p1, p2, colorful: true)!
-	esc := rune(27)
-	// \033[31m-${line}\033[0m
-	assert str.contains("${esc}[31m-	name: 'Foo'${esc}[0m"), str
-}

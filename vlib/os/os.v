@@ -4,7 +4,6 @@
 module os
 
 import strings
-import arrays.diff
 
 pub const max_path_len = 4096
 
@@ -1159,14 +1158,4 @@ pub:
 	atime i64 // Last access (seconds since UNIX epoch)
 	mtime i64 // Last modified (seconds since UNIX epoch)
 	ctime i64 // Last status change (seconds since UNIX epoch)
-}
-
-// diff_file returns the difference of two files.
-pub fn diff_files(src_file string, dst_file string, param diff.DiffGenStrParam) !string {
-	src := read_lines(src_file)!
-	dst := read_lines(dst_file)!
-	mut ctx := diff.diff(src, dst)
-	mut param_new := param
-	param_new.block_header = true
-	return ctx.gen_str(param_new)
 }
