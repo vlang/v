@@ -1778,14 +1778,14 @@ fn test_sorted_with_compare() {
 	assert bb == ['1', '3', '5', 'hi'], 'bb should be sorted, according to the custom comparison callback fn'
 }
 
-fn test_diff() {
+fn test_diff_array() {
 	mut aa := ['hi', '1', '5', '3']
 	mut bb := aa.clone()
-	assert diff(aa, bb) == []
+	assert diff_array(aa, bb) == []
 	bb.insert(2, 'max')
 	// aa := ['hi', '1', '5', '3']
 	// bb := ['hi', '1', 'max', '5', '3']
-	assert diff(aa, bb) == [DiffChange{
+	assert diff_array(aa, bb) == [DiffChange{
 		a:   2
 		b:   2
 		del: 0
@@ -1795,7 +1795,7 @@ fn test_diff() {
 	bb.delete(4)
 	// aa := ['hi', '1', '5', '3']
 	// bb := ['hi', '1', 'max', '5']
-	assert diff(aa, bb) == [DiffChange{
+	assert diff_array(aa, bb) == [DiffChange{
 		a:   2
 		b:   2
 		del: 0

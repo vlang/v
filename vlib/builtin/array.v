@@ -1082,11 +1082,11 @@ fn panic_on_negative_cap(cap int) {
 
 // diff_string returns the difference of two strings.
 pub fn diff_string(a string, b string) []DiffChange {
-	return diff(a.runes(), b.runes())
+	return diff_array(a.runes(), b.runes())
 }
 
-// diff returns the difference of two arrays.
-pub fn diff[T](a []T, b []T) []DiffChange {
+// diff_array returns the difference of two arrays.
+pub fn diff_array[T](a []T, b []T) []DiffChange {
 	mut c := DiffContext[T]{
 		a: a
 		b: b
@@ -1102,7 +1102,7 @@ pub fn diff[T](a []T, b []T) []DiffChange {
 // print_diff prints colorful diff of two arrays.
 @[direct_array_access]
 pub fn print_diff[T](src []T, dst []T) {
-	mut entries := diff[T](src, dst)
+	mut entries := diff_array[T](src, dst)
 	mut prev_a := 0
 	for _, v in entries {
 		if prev_a < v.a {
