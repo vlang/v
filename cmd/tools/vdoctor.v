@@ -149,7 +149,7 @@ fn (mut a App) collect_info() {
 	}
 	a.report_tcc_version('thirdparty/tcc')
 	a.line('emcc version', a.cmd(command: 'emcc --version'))
-	if os_kind != 'openbsd' {
+	if os_kind != 'openbsd' && os_kind != 'freebsd' {
 		a.line('glibc version', a.cmd(command: 'ldd --version'))
 	} else {
 		a.line('glibc version', 'N/A')
