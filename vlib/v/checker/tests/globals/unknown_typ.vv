@@ -1,4 +1,4 @@
-__global x foo
+__global global_x foo
 __global (
-	y = float(5.0)
+	global_y = float(5.0)
 )

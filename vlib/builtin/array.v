@@ -1177,7 +1177,7 @@ fn (mut c DiffContext[T]) compare(mut_aoffset int, mut_boffset int, mut_alimit i
 		}
 		return
 	}
-	mut x, y := c.find_middle_snake(aoffset, boffset, alimit, blimit)
+	x, y := c.find_middle_snake(aoffset, boffset, alimit, blimit)
 	c.compare(aoffset, boffset, x, y)
 	c.compare(x, y, alimit, blimit)
 }
