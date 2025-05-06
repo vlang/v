@@ -2786,6 +2786,9 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 			g.write('&(${exp_styp.trim_right('*')}){._${got_styp.trim_right('*')}=')
 			rparen_n = 0
 			mutable_idx = got.idx()
+		} else if expr is ast.UnsafeExpr && expr.expr is ast.Nil {
+			g.write('(void*)0')
+			return
 		} else {
 			g.write('HEAP(${exp_styp}, ${fname}(')
 			rparen_n++

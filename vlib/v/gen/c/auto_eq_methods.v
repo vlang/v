@@ -258,7 +258,13 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 				&& (!field.typ.has_flag(.option) || !field.typ.is_ptr()) {
 				ptr := if field.typ.is_ptr() { '*'.repeat(field.typ.nr_muls()) } else { '' }
 				eq_fn := g.gen_interface_equality_fn(field.typ)
+				if ptr != '' {
+					fn_builder.write_string('((${left_arg} == (void*)0 && ${right_arg} == (void*)0) || (${left_arg} != (void*)0 && ${right_arg} != (void*)0 && ')
+				}
 				fn_builder.write_string('${eq_fn}_interface_eq(${ptr}${left_arg}, ${ptr}${right_arg})')
+				if ptr != '' {
+					fn_builder.write_string('))')
+				}
 			} else if field.typ.has_flag(.option) {
 				fn_builder.write_string('!memcmp(&${left_arg}.data, &${right_arg}.data, sizeof(${g.base_type(field.typ)}))')
 			} else {
