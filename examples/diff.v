@@ -3,6 +3,15 @@ module main
 import arrays.diff
 import os
 
+// diff_files generate diff for two files.
+fn diff_files(src_file string, dst_file string) !string {
+	src := os.read_lines(src_file)!
+	dst := os.read_lines(dst_file)!
+
+	mut ctx := diff.diff(src, dst)
+	return ctx.gen_str(colorful: true, block_header: true)
+}
+
 fn main() {
 	f1 := "Module{
 	name: 'Foo'
@@ -24,11 +33,7 @@ fn main() {
 	os.write_file(p1, f1)!
 	os.write_file(p2, f2)!
 
-	src := os.read_lines(p1)!
-	dst := os.read_lines(p2)!
-
-	mut ctx := diff.diff(src, dst)
-	str := ctx.gen_str(colorful: true, block_header: true)
+	str := diff_files(p1, p2)!
 	println(str)
 
 	os.rm(p1)!
