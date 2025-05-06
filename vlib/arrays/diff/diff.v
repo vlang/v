@@ -243,6 +243,7 @@ pub fn (mut c DiffContext[T]) gen_str(param DiffGenStrParam) string {
 	return sb.str()
 }
 
+@[direct_array_access]
 fn (c DiffContext[T]) write_context(mut sb strings.Builder,
 	start int, end int,
 	param DiffGenStrParam) {
@@ -261,6 +262,7 @@ fn (c DiffContext[T]) write_context(mut sb strings.Builder,
 	}
 }
 
+@[direct_array_access]
 fn (c DiffContext[T]) write_diff(mut sb strings.Builder,
 	diff DiffChange,
 	param DiffGenStrParam) {
