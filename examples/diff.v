@@ -9,7 +9,7 @@ fn diff_files(src_file string, dst_file string) !string {
 	dst := os.read_lines(dst_file)!
 
 	mut ctx := diff.diff(src, dst)
-	return ctx.gen_str(colorful: true, block_header: true)
+	return ctx.generate_patch(colorful: true, block_header: true)
 }
 
 fn main() {
