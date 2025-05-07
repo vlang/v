@@ -85,7 +85,7 @@ hi
 
 fn test_diff_runes() {
 	mut aa := 'brown fox jumps over the lazy dog'.runes()
-	mut bb := 'brwn faax junps ovver the lay dag'.runes()
+	mut bb := 'brwn faax junps ovver the lay daog'.runes()
 	mut ctx := diff.diff(aa, bb)
 
 	str1 := ctx.generate_patch()
@@ -120,11 +120,11 @@ a
 -y
 - 
 -d
--o
 +y
 + 
 +d
 +a
+o
 g
 '
 }
