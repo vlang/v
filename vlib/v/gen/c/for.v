@@ -154,6 +154,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 
 		node.cond_type = unwrapped_typ
 		node.val_type = g.table.value_type(unwrapped_typ)
+		if node.val_is_mut {
+			node.val_type = node.val_type.ref()
+		}
 		node.scope.update_var_type(node.val_var, node.val_type)
 		node.kind = unwrapped_sym.kind
 

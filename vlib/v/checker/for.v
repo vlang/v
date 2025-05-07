@@ -200,8 +200,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 			}
 
-			value_type := c.table.value_type(unwrapped_typ)
+			mut value_type := c.table.value_type(unwrapped_typ)
+			if node.val_is_mut {
+				value_type = value_type.ref()
+			}
 			node.scope.update_var_type(node.val_var, value_type)
+			node.val_type = value_type
 
 			if is_comptime {
 				c.type_resolver.update_ct_type(node.val_var, value_type)
