@@ -4,12 +4,12 @@ fn test_diff_array() {
 	mut aa := ['hi', '1', '5', '3']
 	mut bb := aa.clone()
 	mut ctx := diff.diff(aa, bb)
-	assert ctx.diffs.len == 0
+	assert ctx.changes.len == 0
 	bb.insert(2, 'max')
 	// aa := ['hi', '1', '5', '3']
 	// bb := ['hi', '1', 'max', '5', '3']
 	ctx = diff.diff(aa, bb)
-	assert ctx.diffs == [
+	assert ctx.changes == [
 		diff.DiffChange{
 			a:   2
 			b:   2
@@ -22,7 +22,7 @@ fn test_diff_array() {
 	// aa := ['hi', '1', '5', '3']
 	// bb := ['hi', '1', 'max', '5']
 	ctx = diff.diff(aa, bb)
-	assert ctx.diffs == [
+	assert ctx.changes == [
 		diff.DiffChange{
 			a:   2
 			b:   2

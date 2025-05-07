@@ -22,7 +22,7 @@ mut:
 	forward []int
 	reverse []int
 pub mut:
-	diffs []DiffChange
+	changes []DiffChange
 }
 
 // diff returns the difference of two arrays.
@@ -36,7 +36,7 @@ pub fn diff[T](a []T, b []T) &DiffContext[T] {
 	c.forward = []int{len: 2 * c.max}
 	c.reverse = []int{len: 2 * c.max}
 	c.compare(0, 0, a.len, b.len)
-	c.diffs = c.result(a.len, b.len)
+	c.changes = c.result(a.len, b.len)
 	return c
 }
 
@@ -163,19 +163,19 @@ fn (c DiffContext[T]) result(n int, m int) []DiffChange {
 	return res
 }
 
-// merge_diffs merges neighboring changes smaller than the specified context_lines.
+// merge_changes merges neighboring changes smaller than the specified context_lines.
 // The changes must be ordered by ascending positions.
 @[direct_array_access]
-fn (mut c DiffContext[T]) merge_diffs(context_lines int) {
-	if c.diffs.len == 0 {
+fn (mut c DiffContext[T]) merge_changes(context_lines int) {
+	if c.changes.len == 0 {
 		return
 	}
 
 	mut merged := []DiffChange{}
-	mut current := c.diffs[0]
+	mut current := c.changes[0]
 
-	for i in 1 .. c.diffs.len {
-		next := c.diffs[i]
+	for i in 1 .. c.changes.len {
+		next := c.changes[i]
 		if next.a <= current.a + current.del + context_lines {
 			current = DiffChange{
 				a:   current.a
@@ -189,7 +189,7 @@ fn (mut c DiffContext[T]) merge_diffs(context_lines int) {
 		}
 	}
 	merged << current
-	c.diffs = merged
+	c.changes = merged
 }
 
 @[params]
@@ -208,19 +208,19 @@ pub fn (mut c DiffContext[T]) gen_str(param DiffGenStrParam) string {
 
 	mut unified := if param.unified < 0 { 0 } else { param.unified }
 
-	c.merge_diffs(unified)
-	if c.diffs.len == 0 {
+	c.merge_changes(unified)
+	if c.changes.len == 0 {
 		return ''
 	}
 
 	mut prev_a_end := 0
 	mut prev_b_end := 0
 
-	for diff in c.diffs {
-		ctx_start_a := max(prev_a_end, diff.a - unified)
-		ctx_end_a := diff.a + diff.del + unified
-		ctx_start_b := max(prev_b_end, diff.b - unified)
-		ctx_end_b := diff.b + diff.ins + unified
+	for change in c.changes {
+		ctx_start_a := max(prev_a_end, change.a - unified)
+		ctx_end_a := change.a + change.del + unified
+		ctx_start_b := max(prev_b_end, change.b - unified)
+		ctx_end_b := change.b + change.ins + unified
 
 		if param.block_header {
 			if param.colorful {
@@ -232,9 +232,9 @@ pub fn (mut c DiffContext[T]) gen_str(param DiffGenStrParam) string {
 			}
 		}
 
-		c.write_context(mut sb, ctx_start_b, diff.b, param)
-		c.write_diff(mut sb, diff, param)
-		c.write_context(mut sb, diff.b + diff.ins, ctx_end_b, param)
+		c.write_context(mut sb, ctx_start_b, change.b, param)
+		c.write_change(mut sb, change, param)
+		c.write_context(mut sb, change.b + change.ins, ctx_end_b, param)
 
 		prev_a_end = ctx_end_a
 		prev_b_end = ctx_end_b
@@ -263,10 +263,10 @@ fn (c DiffContext[T]) write_context(mut sb strings.Builder,
 }
 
 @[direct_array_access]
-fn (c DiffContext[T]) write_diff(mut sb strings.Builder,
-	diff DiffChange,
+fn (c DiffContext[T]) write_change(mut sb strings.Builder,
+	change DiffChange,
 	param DiffGenStrParam) {
-	for i in diff.a .. diff.a + diff.del {
+	for i in change.a .. change.a + change.del {
 		line := c.a[i].str()
 		if param.colorful {
 			sb.writeln('\033[31m-${line}\033[0m')
@@ -275,7 +275,7 @@ fn (c DiffContext[T]) write_diff(mut sb strings.Builder,
 		}
 	}
 
-	for i in diff.b .. diff.b + diff.ins {
+	for i in change.b .. change.b + change.ins {
 		line := c.b[i].str()
 		if param.colorful {
 			sb.writeln('\033[32m+${line}\033[0m')
