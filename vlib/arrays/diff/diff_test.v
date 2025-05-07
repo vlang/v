@@ -37,7 +37,7 @@ fn test_diff_array() {
 		},
 	]
 
-	str1 := ctx.gen_str()
+	str1 := ctx.generate_patch()
 	assert str1 == 'hi
 1
 -5
@@ -46,7 +46,7 @@ fn test_diff_array() {
 +5
 '
 
-	str2 := ctx.gen_str(block_header: true)
+	str2 := ctx.generate_patch(block_header: true)
 	assert str2 == '@@ -1,7 +1,7 @@
 hi
 1
@@ -56,7 +56,7 @@ hi
 +5
 '
 
-	str3 := ctx.gen_str(block_header: true, unified: 1)
+	str3 := ctx.generate_patch(block_header: true, unified: 1)
 	assert str3 == '@@ -2,4 +2,4 @@
 1
 -5
@@ -64,7 +64,7 @@ hi
 +max
 +5
 '
-	str4 := ctx.gen_str(block_header: true, unified: 10)
+	str4 := ctx.generate_patch(block_header: true, unified: 10)
 	assert str4 == '@@ -1,14 +1,14 @@
 hi
 1
@@ -74,11 +74,60 @@ hi
 +5
 '
 
-	str5 := ctx.gen_str(block_header: true, unified: -1)
+	str5 := ctx.generate_patch(block_header: true, unified: -1)
 	assert str5 == '@@ -3,2 +3,2 @@
 -5
 -3
 +max
 +5
+'
+}
+
+fn test_diff_runes() {
+	mut aa := 'brown fox jumps over the lazy dog'.runes()
+	mut bb := 'brwn faax junps ovver the lay dago'.runes()
+	mut ctx := diff.diff(aa, bb)
+
+	str1 := ctx.generate_patch()
+	assert str1 == 'b
+r
+-o
+w
+n
+ 
+f
+-o
++a
++a
+x
+ 
+j
+u
+-m
++n
+p
+s
+ 
+o
+v
++v
+e
+r
+ 
+ 
+l
+a
+-z
+-y
+- 
+-d
+-o
+-g
++y
++ 
++d
++a
++g
++o
 '
 }

@@ -12,11 +12,17 @@ pub mut:
 	ins int // insert Ins elements from input b
 }
 
+@[flag]
+enum DiffContextFlag {
+	delete
+	insert
+}
+
 pub struct DiffContext[T] {
 mut:
 	a     []T
 	b     []T
-	flags []u8 // element bits 1 delete, 2 insert
+	flags []DiffContextFlag
 	max   int
 	// forward and reverse d-path endpoint x components
 	forward []int
@@ -31,7 +37,11 @@ pub fn diff[T](a []T, b []T) &DiffContext[T] {
 		a: a
 		b: b
 	}
-	c.flags = if a.len > b.len { []u8{len: a.len} } else { []u8{len: b.len} }
+	c.flags = if a.len > b.len {
+		[]DiffContextFlag{len: a.len}
+	} else {
+		[]DiffContextFlag{len: b.len}
+	}
 	c.max = a.len + b.len + 1
 	c.forward = []int{len: 2 * c.max}
 	c.reverse = []int{len: 2 * c.max}
@@ -62,7 +72,7 @@ fn (mut c DiffContext[T]) compare(mut_aoffset int, mut_boffset int, mut_alimit i
 	// both equal or b inserts
 	if aoffset == alimit {
 		for boffset < blimit {
-			c.flags[boffset] |= u8(2)
+			c.flags[boffset].set(.insert)
 			boffset++
 		}
 		return
@@ -70,7 +80,7 @@ fn (mut c DiffContext[T]) compare(mut_aoffset int, mut_boffset int, mut_alimit i
 	// a deletes
 	if boffset == blimit {
 		for aoffset < alimit {
-			c.flags[aoffset] |= u8(1)
+			c.flags[aoffset].set(.delete)
 			aoffset++
 		}
 		return
@@ -143,16 +153,16 @@ fn (c DiffContext[T]) result(n int, m int) []DiffChange {
 	mut x, mut y := 0, 0
 	mut res := []DiffChange{}
 	for x < n || y < m {
-		if x < n && y < m && c.flags[x] & u8(1) == u8(0) && c.flags[y] & u8(2) == u8(0) {
+		if x < n && y < m && !c.flags[x].has(.delete) && !c.flags[y].has(.insert) {
 			x++
 			y++
 		} else {
 			mut a := x
 			mut b := y
-			for x < n && (y >= m || c.flags[x] & u8(1) != u8(0)) {
+			for x < n && (y >= m || c.flags[x].has(.delete)) {
 				x++
 			}
-			for y < m && (x >= n || c.flags[y] & u8(2) != u8(0)) {
+			for y < m && (x >= n || c.flags[y].has(.insert)) {
 				y++
 			}
 			if a < x || b < y {
@@ -200,9 +210,9 @@ pub mut:
 	block_header bool // output `@@ -3,4 +3,5 @@` or not
 }
 
-// gen_str generate a colorful diff string of two arrays.
+// generate_patch generate a diff string of two arrays.
 @[direct_array_access]
-pub fn (mut c DiffContext[T]) gen_str(param DiffGenStrParam) string {
+pub fn (mut c DiffContext[T]) generate_patch(param DiffGenStrParam) string {
 	mut sb := strings.new_builder(100)
 	defer { unsafe { sb.free() } }
 
@@ -217,9 +227,9 @@ pub fn (mut c DiffContext[T]) gen_str(param DiffGenStrParam) string {
 	mut prev_b_end := 0
 
 	for change in c.changes {
-		ctx_start_a := max(prev_a_end, change.a - unified)
+		ctx_start_a := int_max(prev_a_end, change.a - unified)
 		ctx_end_a := change.a + change.del + unified
-		ctx_start_b := max(prev_b_end, change.b - unified)
+		ctx_start_b := int_max(prev_b_end, change.b - unified)
 		ctx_end_b := change.b + change.ins + unified
 
 		if param.block_header {
@@ -283,14 +293,4 @@ fn (c DiffContext[T]) write_change(mut sb strings.Builder,
 			sb.writeln('+${line}')
 		}
 	}
-}
-
-@[inline]
-fn max(a int, b int) int {
-	return if a > b { a } else { b }
-}
-
-@[inline]
-fn min(a int, b int) int {
-	return if a > b { b } else { a }
 }
