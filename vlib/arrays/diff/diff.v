@@ -2,7 +2,7 @@ module diff
 
 import strings
 
-// A Change contains one or more deletions or inserts
+// DiffChange contains one or more deletions or inserts
 // at one position in two arrays.
 pub struct DiffChange {
 pub mut:
