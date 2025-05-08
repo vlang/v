@@ -329,6 +329,19 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
 	g.writeln('function ${c.typ_name}__eq(self,other) { return ${c.eq}; } ')
 }
 
+fn (mut g JsGen) gen_nil_const() {
+	g.writeln('const nil__ = new \$ref(new string("&nil"));')
+	g.gen_builtin_prototype(
+		typ_name:      'nil'
+		default_value: 'null'
+		constructor:   ''
+		value_of:      'null'
+		to_string:     '"&nil"'
+		eq:            'new bool(self.valueOf() === other.valueOf())'
+		to_jsval:      'null'
+	)
+}
+
 // generate builtin type definitions, used for casting and methods.
 fn (mut g JsGen) gen_builtin_type_defs() {
 	g.inc_indent()
