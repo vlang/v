@@ -24,6 +24,7 @@ const external_tools = [
 	'complete',
 	'compress',
 	'cover',
+	'diff',
 	'doc',
 	'doctor',
 	'download',
