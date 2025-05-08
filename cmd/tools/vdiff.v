@@ -1,6 +1,7 @@
 import os
-import arrays.diff
 import flag
+import term
+import arrays.diff
 
 fn main() {
 	mut fp := flag.new_flag_parser(os.args[1..])
@@ -24,6 +25,13 @@ fn main() {
 	src := os.read_lines(args[0])!
 	dst := os.read_lines(args[1])!
 	mut ctx := diff.diff(src, dst)
-	println(ctx.generate_patch(colorful: false, block_header: true, unified: 3))
-	exit(0)
+	patch := ctx.generate_patch(
+		colorful:     term.can_show_color_on_stdout()
+		block_header: true
+		unified:      3
+	)
+	if patch.len > 0 {
+		print(patch)
+		exit(1)
+	}
 }
