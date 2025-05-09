@@ -57,12 +57,6 @@ pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 		}
 	}
 	read := copy(mut buf, r.buf[r.offset..r.len])
-	if read == 0 {
-		return NotExpected{
-			cause: 'invalid copy of buffer'
-			code:  -1
-		}
-	}
 	r.offset += read
 	r.total_read += read
 	return read
