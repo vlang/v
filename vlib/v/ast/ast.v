@@ -1839,6 +1839,12 @@ pub const ppc64le_with_number_register_list = {
 	'r#': 32
 }
 
+pub const loongarch64_no_number_register_list = []string{}
+pub const loongarch64_with_number_register_list = {
+	'f#': 32
+	'r#': 32
+}
+
 pub struct DebuggerStmt {
 pub:
 	pos token.Pos
@@ -2655,6 +2661,13 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			ppc64le := gen_all_registers(mut t, ppc64le_no_number_register_list, ppc64le_with_number_register_list,
 				64)
 			for k, v in ppc64le {
+				res[k] = v
+			}
+		}
+		.loongarch64 {
+			loongarch64 := gen_all_registers(mut t, loongarch64_no_number_register_list,
+				loongarch64_with_number_register_list, 64)
+			for k, v in loongarch64 {
 				res[k] = v
 			}
 		}
