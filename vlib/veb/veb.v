@@ -72,7 +72,7 @@ pub:
 	// use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 	family               net.AddrFamily = .ip6
 	host                 string
-	port                 int  = 8080
+	port                 int  = default_port
 	show_startup_message bool = true
 	timeout_in_seconds   int  = 30
 }
@@ -378,7 +378,6 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			// same limit that apache handles
 			eprintln('[veb] error parsing request: too large')
 			fast_send_resp(mut conn, http_413) or {}
-
 			pv.close_conn(fd)
 			params.incomplete_requests[fd] = http.Request{}
 			return

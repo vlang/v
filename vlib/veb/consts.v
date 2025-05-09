@@ -3,16 +3,16 @@ module veb
 import net.http
 
 // max read and write limits in bytes
-const max_read = 8096
-const max_write = 8096 * 2
+const max_read = int($d('veb_max_read_bytes', 8192))
+const max_write = int($d('veb_max_write_bytes', 16384))
 
-pub const max_http_post_size = 1024 * 1024
-pub const default_port = 8080
+pub const max_http_post_size = $d('veb_max_http_post_size_bytes', 1048576)
+pub const default_port = int($d('veb_default_port', 8080))
 pub const methods_with_form = [http.Method.post, .put, .patch]
 
 pub const headers_close = http.new_custom_header_from_map({
 	'Server': 'veb'
-}) or { panic('should never fail') }
+})!
 
 pub const http_302 = http.new_response(
 	status: .found
