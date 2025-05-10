@@ -1,0 +1,20 @@
+vlib/v/checker/tests/decompose_interface_err.vv:3:8: warning: module 'arrays' is imported but never used
+    1 | module main
+    2 | 
+    3 | import arrays
+      |        ~~~~~~
+    4 | 
+    5 | interface Value {}
+vlib/v/checker/tests/decompose_interface_err.vv:17:2: warning: unused variable: `region_id`
+   15 |         'AF',
+   16 |     ]
+   17 |     region_id := 'something'
+      |     ~~~~~~~~~
+   18 |     some_function(...country_ids)
+   19 | }
+vlib/v/checker/tests/decompose_interface_err.vv:18:16: error: cannot use `string` as `Value` in argument 1 to `some_function`
+   16 |     ]
+   17 |     region_id := 'something'
+   18 |     some_function(...country_ids)
+      |                   ~~~~~~~~~~~~~~
+   19 | }
