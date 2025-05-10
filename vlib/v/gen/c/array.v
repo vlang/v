@@ -45,12 +45,12 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 			g.writeln('')
 			g.write('\t\t')
 		}
-		is_sumtype := elem_sym.kind == .sum_type
+		is_iface_or_sumtype := elem_sym.kind in [.sum_type, .interface]
 		for i, expr in node.exprs {
 			expr_type := if node.expr_types.len > i { node.expr_types[i] } else { node.elem_type }
 			if expr_type == ast.string_type
 				&& expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral, ast.InfixExpr] {
-				if is_sumtype {
+				if is_iface_or_sumtype {
 					g.expr_with_cast(expr, expr_type, node.elem_type)
 				} else {
 					g.write('string_clone(')
