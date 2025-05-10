@@ -1846,6 +1846,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 							c.handle_generic_lambda_arg(node, mut call_arg.expr)
 							continue
 						}
+						// passing []?T to []T
+						if unwrap_sym.kind == .array
+							&& c.table.value_type(utyp).clear_flag(.option) == c.table.value_type(unwrap_typ) {
+							continue
+						}
 						c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
 					}
 				}
@@ -2600,6 +2605,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					&& param_elem_type == arg_elem_type {
 					continue
 				}
+			}
+			// passing []?T to []T
+			if param_typ_sym.kind == .array
+				&& c.table.value_type(got_arg_typ).clear_flag(.option) == c.table.value_type(exp_arg_typ) {
+				continue
 			}
 			c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
 				arg.pos)
