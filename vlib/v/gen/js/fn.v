@@ -437,7 +437,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	name = g.generic_fn_name(node.concrete_types, name)
 	g.expr(it.left)
 
-	g.write('${name}(')
+	g.write(name)
+	if it.fn_var_type.is_ptr() {
+		g.write('.val')
+	}
+	g.write('(')
 	for i, arg in it.args {
 		g.expr(arg.expr)
 		if i != it.args.len - 1 {
