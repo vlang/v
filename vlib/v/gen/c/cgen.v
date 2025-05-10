@@ -2700,7 +2700,6 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	mut got_cname, exp_cname := g.get_sumtype_variant_type_name(got, got_sym), exp_sym.cname
 	mut type_idx := g.type_sidx(got)
 	mut sb := strings.new_builder(128)
-	mut is_anon_fn := false
 	mut variant_name := g.get_sumtype_variant_name(got, got_sym)
 	if got_sym.info is ast.FnType {
 		got_name := 'fn ${g.table.fn_type_source_signature(got_sym.info.func)}'
@@ -2720,9 +2719,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		}
 		sb.writeln('static inline ${exp_cname} ${fun.fn_name}(${got_cname} x) {')
 		sb.writeln('\t${got_cname} ptr = x;')
-		is_anon_fn = true
-	}
-	if !is_anon_fn {
+	} else {
 		// g.definitions.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x);')
 		// sb.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x) {')
 		g.definitions.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x);')
