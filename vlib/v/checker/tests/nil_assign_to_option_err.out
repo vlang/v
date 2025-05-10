@@ -1,0 +1,14 @@
+vlib/v/checker/tests/nil_assign_to_option_err.vv:9:9: error: cannot assign `nil` to struct field `name` with type `?&string` (use `none` instead)
+    7 | fn main() {
+    8 |     _ := Foo{
+    9 |         name: unsafe { nil }
+      |               ~~~~~~~~~~~~
+   10 |     }
+   11 |
+vlib/v/checker/tests/nil_assign_to_option_err.vv:14:12: error: cannot assin `nil` to Option type (use `none` instead`)
+   12 |     mut foo := Foo{}
+   13 |     unsafe {
+   14 |         foo.name = nil
+      |                  ^
+   15 |     }
+   16 | }
