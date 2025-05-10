@@ -1,5 +1,4 @@
-// vtest flaky: true
-// vtest retry: 15
+// vtest retry: 5
 
 // This test case runs concurrent 3 instances of `do_select` that
 // communicate with 6 other threads doing send and receive operations.

@@ -1,4 +1,3 @@
-// vtest flaky: true
 // vtest retry: 3
 // vtest build: !windows
 // import db.mysql
