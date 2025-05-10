@@ -1612,6 +1612,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
 					call_arg.pos)
 			}
+			if call_arg.expr is ast.ArrayDecompose && arg_typ.idx() != final_param_typ.idx() {
+				expected_type_str := c.table.type_to_str(param.typ)
+				got_type_str := c.table.type_to_str(arg_typ)
+				c.error('cannot use `${got_type_str}` as `${expected_type_str}` in argument ${i + 1} to `${fn_name}`',
+					call_arg.pos)
+			}
 			continue
 		}
 		if param.typ.is_ptr() && !param.is_mut && !call_arg.typ.is_any_kind_of_pointer()
