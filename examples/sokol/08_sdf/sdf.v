@@ -29,7 +29,7 @@ fn init(mut state State) {
 	fsq_verts := [f32(-1.0), -3.0, 3.0, 1.0, -1.0, 1.0]!
 	state.bind.vertex_buffers[0] = gfx.make_buffer(gfx.BufferDesc{
 		label: c'fsq vertices'
-		data:  unsafe { gfx.Range{&fsq_verts[0], sizeof(fsq_verts)} }
+		data:  gfx.Range{&fsq_verts[0], sizeof(fsq_verts)}
 	})
 
 	mut pipeline := gfx.PipelineDesc{}
@@ -48,7 +48,7 @@ fn frame(mut state State) {
 	gfx.begin_pass(sapp.create_default_pass(state.paction))
 	gfx.apply_pipeline(state.pip)
 	gfx.apply_bindings(state.bind)
-	gfx.apply_uniforms(.vs, C.SLOT_vs_params, unsafe { gfx.Range{&state.params, sizeof(state.params)} })
+	gfx.apply_uniforms(.vs, C.SLOT_vs_params, gfx.Range{&state.params, sizeof(state.params)})
 	gfx.draw(0, 3, 1)
 	gfx.end_pass()
 	gfx.commit()
