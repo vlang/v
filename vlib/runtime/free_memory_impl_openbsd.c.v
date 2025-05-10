@@ -18,7 +18,7 @@ fn free_memory_impl() usize {
 			mut uvm := C.uvmexp{0, 0}
 			mut len := sizeof(C.uvmexp)
 			unsafe { C.sysctl(&mib[0], mib.len, &uvm, &len, C.NULL, 0) }
-			return usize(uvm.pagesize * uvm.free)
+			return usize(uvm.pagesize) * usize(uvm.free)
 		}
 	}
 	return 1
