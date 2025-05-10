@@ -885,8 +885,7 @@ pub const is_started_mysqld = find_started_process('mysqld') or { '' }
 pub const is_started_postgres = find_started_process('postgres') or { '' }
 
 pub fn (mut ts TestSession) setup_build_environment() {
-	facts := os.getenv('VBUILD_FACTS').split_any(',')
-	mut defines := os.getenv('VBUILD_DEFINES').split_any(',')
+	facts, mut defines := pref.get_build_facts_and_defines()
 	// add the runtime information, that the test runner has already determined by checking once:
 	if is_started_mysqld != '' {
 		defines << 'started_mysqld'
