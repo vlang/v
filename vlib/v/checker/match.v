@@ -417,6 +417,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			match mut expr {
 				ast.TypeNode {
 					key = c.table.type_to_str(expr.typ)
+					c.inside_x_matches_type = true
 					expr_types << expr
 				}
 				ast.EnumVal {
