@@ -969,6 +969,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					defer {
 						g.is_option_auto_heap = old_is_auto_heap
 					}
+					if val is ast.Ident && val.is_mut() && var_type.is_ptr() {
+						if var_type.nr_muls() < val_type.nr_muls() {
+							g.write('*'.repeat(var_type.nr_muls()))
+						}
+					}
 					g.is_option_auto_heap = val_type.has_flag(.option) && val is ast.PrefixExpr
 						&& val.right is ast.Ident && (val.right as ast.Ident).is_auto_heap()
 					if var_type.has_flag(.option) || gen_or {
