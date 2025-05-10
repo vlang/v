@@ -26,9 +26,22 @@ vlib/v/checker/tests/nil_to_option_err.vv:8:6: error: cannot assign `nil` to opt
       |         ~~~~~~
     9 | 
    10 |     mut b := Test{}
+vlib/v/checker/tests/nil_to_option_err.vv:8:4: error: cannot assin `nil` to Option type (use `none` instead`)
+    6 | fn main() {
+    7 |     mut a := ?int(none)
+    8 |     a = unsafe { nil }
+      |       ^
+    9 | 
+   10 |     mut b := Test{}
 vlib/v/checker/tests/nil_to_option_err.vv:11:8: error: cannot assign `nil` to option value
     9 | 
    10 |     mut b := Test{}
    11 |     b.a = unsafe { nil }
       |           ~~~~~~
+   12 | }
+vlib/v/checker/tests/nil_to_option_err.vv:11:6: error: cannot assin `nil` to Option type (use `none` instead`)
+    9 | 
+   10 |     mut b := Test{}
+   11 |     b.a = unsafe { nil }
+      |         ^
    12 | }

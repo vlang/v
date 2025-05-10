@@ -1,0 +1,16 @@
+// Example 1
+struct Foo {
+mut:
+	name ?&string
+}
+
+fn main() {
+	_ := Foo{
+		name: unsafe { nil }
+	}
+
+	mut foo := Foo{}
+	unsafe {
+		foo.name = nil
+	}
+}

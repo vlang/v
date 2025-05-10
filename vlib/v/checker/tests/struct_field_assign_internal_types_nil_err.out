@@ -19,7 +19,7 @@ vlib/v/checker/tests/struct_field_assign_internal_types_nil_err.vv:16:11: error:
       |              ~~~~~~~~~~~~
    17 |     name2:   unsafe { nil }
    18 |     arr:     unsafe { nil }
-vlib/v/checker/tests/struct_field_assign_internal_types_nil_err.vv:17:11: error: cannot assign `nil` to struct field `name2` with type `string`
+vlib/v/checker/tests/struct_field_assign_internal_types_nil_err.vv:17:11: error: cannot assign `nil` to struct field `name2` with type `String`
    15 |     name:    unsafe { nil }
    16 |     bar:     unsafe { nil }
    17 |     name2:   unsafe { nil }

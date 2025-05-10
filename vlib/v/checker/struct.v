@@ -851,10 +851,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				}
 				expected_type_sym := c.table.final_sym(init_field.expected_type)
+				expected_is_option := init_field.expected_type.has_option_or_result()
 				if expected_type_sym.kind in [.string, .array, .map, .array_fixed, .chan, .struct]
-					&& init_field.expr.is_nil() && !init_field.expected_type.is_ptr()
+					&& init_field.expr.is_nil()
+					&& (!init_field.expected_type.is_ptr() || expected_is_option)
 					&& mut init_field.expr is ast.UnsafeExpr {
-					c.error('cannot assign `nil` to struct field `${init_field.name}` with type `${expected_type_sym.name}`',
+					opt_msg := if expected_is_option { ' (use `none` instead)' } else { '' }
+					c.error('cannot assign `nil` to struct field `${init_field.name}` with type `${c.table.type_to_str(init_field.expected_type)}`${opt_msg}',
 						init_field.expr.pos.extend(init_field.expr.expr.pos()))
 				}
 			}
