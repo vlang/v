@@ -139,7 +139,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		}
 		return
 	}
-	sym := g.table.sym(g.unwrap_generic(node.left_type))
+	left_type := g.unwrap_generic(node.left_type)
+	sym := g.table.sym(left_type)
 	g.trace_autofree('// \$method call. sym="${sym.name}"')
 	if node.method_name == 'method' {
 		// `app.$method()`
@@ -187,7 +188,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 		// TODO: check argument types
-		g.write('${util.no_dots(sym.name)}_${g.comptime.comptime_for_method.name}(')
+		g.write('${g.cc_type(left_type, false)}_${g.comptime.comptime_for_method.name}(')
 
 		// try to see if we need to pass a pointer
 		if mut node.left is ast.Ident {
@@ -279,7 +280,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 			g.write('if (string__eq(${node.method_name}, _SLIT("${method.name}"))) ')
 		}
-		g.write('${util.no_dots(sym.name)}_${method.name}(${amp} ')
+		g.write('${g.cc_type(left_type, false)}_${method.name}(${amp} ')
 		g.expr(node.left)
 		g.writeln(');')
 		j++
