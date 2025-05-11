@@ -561,7 +561,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 
 		if right_type == ast.nil_type && left_type.has_option_or_result() {
-			c.error('cannot assin `nil` to Option type (use `none` instead`)', node.pos)
+			c.error('cannot assign `nil` to Option type (use `none` instead`)', node.pos)
 		}
 
 		if left_sym.kind == .array && right_sym.kind == .array {
