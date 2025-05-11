@@ -1847,8 +1847,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 							continue
 						}
 						// passing []?T to []T
-						if unwrap_sym.kind == .array
-							&& c.table.value_type(utyp).clear_flag(.option) == c.table.value_type(unwrap_typ) {
+						if !unwrap_typ.has_flag(.variadic) && unwrap_sym.kind == .array
+							&& c.table.final_sym(utyp).kind == .array
+							&& c.check_basic(c.table.value_type(utyp).clear_flag(.option), c.table.value_type(unwrap_typ)) {
 							continue
 						}
 						c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
@@ -2607,7 +2608,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 			}
 			// passing []?T to []T
-			if param_typ_sym.kind == .array
+			if !exp_arg_typ.has_flag(.variadic) && param_typ_sym.kind == .array
+				&& c.table.final_sym(got_arg_typ).kind == .array
 				&& c.table.value_type(got_arg_typ).clear_flag(.option) == c.table.value_type(exp_arg_typ) {
 				continue
 			}
