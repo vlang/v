@@ -29,6 +29,7 @@ mut:
 	titles    []string
 	levels    []string
 	moves     int
+	pushes    int
 	ctx       &gg.Context = unsafe { nil }
 	//
 	id_box            int
@@ -129,6 +130,7 @@ fn (mut g Game) move_player(dir Direction) {
 			}
 		}
 		g.boxes[target_box_index] = target_after
+		g.pushes++
 	}
 	g.player = target
 	g.moves++
@@ -232,8 +234,9 @@ fn (g &Game) draw_frame(_ voidptr) {
 		}
 	}
 	g.ctx.draw_rect_filled(0, 0, ws.width, 40, gx.black)
-	g.ctx.draw_text(5, 0, 'Level: ${g.level + 1:02}', color: gx.green, size: 40)
+	g.ctx.draw_text(30, 0, 'Level: ${g.level + 1:02}', color: gx.green, size: 40)
 	g.ctx.draw_text(ws.width - 225, 0, 'Moves: ${g.moves:04}', color: gx.green, size: 40)
+	g.ctx.draw_text(ws.width / 2 - 110, 0, 'Pushes: ${g.pushes:04}', color: gx.green, size: 40)
 	g.ctx.end()
 }
 
