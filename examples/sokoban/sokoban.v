@@ -1,3 +1,4 @@
+import os
 import os.asset
 import gg
 import gx
@@ -55,16 +56,19 @@ fn (mut g Game) parse_level(lnumber int) ! {
 		mut row := []rune{}
 		for x, c in line {
 			match c {
-				`#`, ` `, `@` {
+				`#`, ` ` {
 					row << c
 				}
-				`b` { // a normal box
+				`b`, `$` { // a normal box
 					row << ` `
 					boxes << Pos{x, y}
 				}
-				`p` { // a normal player
+				`p`, `@` { // a normal player
 					row << ` `
 					player = Pos{x, y}
+				}
+				`.` { // storage
+					row << `@`
 				}
 				`B` { // box on storage
 					row << `@`
@@ -247,8 +251,12 @@ fn (mut g Game) iid(name string) !int {
 
 fn main() {
 	mut g := &Game{}
-	all_level_names := asset.read_text('/', '_all_levels.txt')!.split_into_lines()
-	g.levels = all_level_names.map(asset.read_text('/', it)!)
+	if os.args.len > 1 {
+		g.levels = os.args[1..].map(os.read_file(it)!)
+	} else {
+		all_level_names := asset.read_text('/', '_all_levels.txt')!.split_into_lines()
+		g.levels = all_level_names.map(asset.read_text('/', it)!)
+	}
 	g.parse_level(0)!
 	g.ctx = gg.new_context(
 		width:        800
