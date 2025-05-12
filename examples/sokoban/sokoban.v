@@ -70,11 +70,11 @@ fn (mut g Game) parse_level(lnumber int) ! {
 				`.` { // storage
 					row << `@`
 				}
-				`B` { // box on storage
+				`*` { // box on storage
 					row << `@`
 					boxes << Pos{x, y}
 				}
-				`P` { // player on storage
+				`+` { // player on storage
 					row << `@`
 					player = Pos{x, y}
 				}
@@ -235,8 +235,9 @@ fn (g &Game) draw_frame(_ voidptr) {
 		g.ctext(ws, -15, 'Press `space` to continue.', 20, gx.gray)
 	} else {
 		for idx, title in g.titles {
-			g.ctext(ws, -60 + (idx * 20), title, 22, gx.white)
+			g.ctext(ws, -65 + (idx * 20), title, 22, gx.white)
 		}
+		g.ctext(ws, -65 + (g.titles.len * 20), 'Boxes: ${g.boxes.len:04}', 16, gx.gray)
 	}
 	g.ctx.draw_rect_filled(0, 0, ws.width, 40, gx.black)
 	g.ctx.draw_text(30, 0, 'Level: ${g.level + 1:02}', color: gx.green, size: 40)
@@ -260,7 +261,7 @@ fn main() {
 	g.parse_level(0)!
 	g.ctx = gg.new_context(
 		width:        800
-		height:       480
+		height:       640
 		window_title: 'V Sokoban'
 		user_data:    g
 		frame_fn:     g.draw_frame
