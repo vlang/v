@@ -9,7 +9,6 @@ pub fn decode[T](val string) !T {
 
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T.unaliased_typ is $array {
-		// checking wrongly. `decode_array` think that `[]?int` is `[]int`
 		decoder.decode_array(mut val)!
 		return
 	} $else $if T.unaliased_typ is $struct {
