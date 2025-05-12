@@ -417,7 +417,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		cmd_options << ' -enable-globals'
 	}
 	if ts.root_relative {
-		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
+		relative_file = relative_file.replace_once(ts.vroot + os.path_separator, '')
 	}
 	file := os.real_path(relative_file)
 	mtc := MessageThreadContext{
