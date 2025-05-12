@@ -191,3 +191,21 @@ fn test_grow_len() {
 	assert sb.len == 25
 	assert sb.cap == 35
 }
+
+fn test_write_color() {
+	mut sb := strings.new_builder(100)
+	sb.writeln_color('hello')
+	sb.writeln_color('hello', fg: .red)
+	sb.writeln_color('hello', bg: .cyan)
+	sb.writeln_color('hello', styles: [.bold, .italic, .underline], fg: .red, bg: .cyan)
+	sb.writeln_color('hello', custom: '38;5;214')
+
+	output := sb.str()
+	println(output)
+
+	assert output.contains('\x1b[0m')
+	assert output.contains('\x1b[31m')
+	assert output.contains('\x1b[46m')
+	assert output.contains('\x1b[1;3;4;31;46m')
+	assert output.contains('\x1b[38;5;214m')
+}

@@ -292,3 +292,77 @@ pub fn (mut b Builder) free() {
 		}
 	}
 }
+
+pub enum TextStyle {
+	bold      = 1
+	dim       = 2
+	italic    = 3
+	underline = 4
+	blink     = 5
+	reverse   = 7
+}
+
+pub enum FgColor {
+	black   = 30
+	red     = 31
+	green   = 32
+	yellow  = 33
+	blue    = 34
+	magenta = 35
+	cyan    = 36
+	white   = 37
+}
+
+pub enum BgColor {
+	black   = 40
+	red     = 41
+	green   = 42
+	yellow  = 43
+	blue    = 44
+	magenta = 45
+	cyan    = 46
+	white   = 47
+}
+
+@[params]
+pub struct ColorConfig {
+pub mut:
+	styles []TextStyle
+	fg     ?FgColor
+	bg     ?BgColor
+	custom string
+}
+
+// write_color appends the ANSI colorful string `s` to the buffer.
+pub fn (mut b Builder) write_color(s string, config ColorConfig) {
+	mut codes := []string{cap: 3}
+
+	for style in config.styles {
+		codes << int(style).str()
+	}
+
+	if fg := config.fg {
+		codes << int(fg).str()
+	}
+
+	if bg := config.bg {
+		codes << int(bg).str()
+	}
+
+	if config.custom != '' {
+		codes << config.custom
+	}
+
+	if codes.len > 0 {
+		code_str := codes.join(';')
+		b.write_string('\x1b[${code_str}m${s}\x1b[0m')
+	} else {
+		b.write_string(s)
+	}
+}
+
+// writeln_color appends the ANSI colorful string `s`, and then a newline character.
+pub fn (mut b Builder) writeln_color(s string, color ColorConfig) {
+	b.write_color(s, color)
+	b.writeln('')
+}
