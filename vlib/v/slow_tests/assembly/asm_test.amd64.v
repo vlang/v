@@ -123,7 +123,7 @@ mut:
 fn (m &Manu) str() string {
 	return unsafe {
 		string{
-			str:    m
+			str:    &u8(m)
 			len:    12
 			is_lit: 1
 		}
