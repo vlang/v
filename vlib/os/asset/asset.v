@@ -25,3 +25,10 @@ pub fn read_bytes(base_folder string, relative_path string) ![]u8 {
 		return os.read_bytes(get_path(base_folder, relative_path))
 	}
 }
+
+// read_text will return the full content of the given asset as a string.
+// See also read_bytes.
+pub fn read_text(base_folder string, relative_path string) !string {
+	res := read_bytes(base_folder, relative_path)!
+	return res.bytestr()
+}

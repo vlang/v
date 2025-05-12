@@ -89,6 +89,7 @@ fn (mut g Game) parse_level(lnumber int) ! {
 	g.player = player
 	g.boxes = boxes
 	g.moves = 0
+	g.pushes = 0
 	g.win = false
 }
 
@@ -246,8 +247,8 @@ fn (mut g Game) iid(name string) !int {
 
 fn main() {
 	mut g := &Game{}
-	all_level_names := asset.read_bytes('/', '_all_levels.txt')!.bytestr().split_into_lines()
-	g.levels = all_level_names.map(asset.read_bytes('/', it)!.bytestr())
+	all_level_names := asset.read_text('/', '_all_levels.txt')!.split_into_lines()
+	g.levels = all_level_names.map(asset.read_text('/', it)!)
 	g.parse_level(0)!
 	g.ctx = gg.new_context(
 		width:        800
