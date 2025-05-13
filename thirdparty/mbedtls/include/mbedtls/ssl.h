@@ -1417,7 +1417,7 @@ struct mbedtls_ssl_config
 #if defined(MBEDTLS_X509_CRT_PARSE_C)
     /** Callback to customize X.509 certificate chain verification          */
     int (*MBEDTLS_PRIVATE(f_vrfy))(void *, mbedtls_x509_crt *, int, uint32_t *);
-    void *MBEDTLS_PRIVATE(p_vrfy);                   /*!< context for X.509 verify calllback */
+    void *MBEDTLS_PRIVATE(p_vrfy);                   /*!< context for X.509 verify callback */
 #endif
 
 #if defined(MBEDTLS_SSL_HANDSHAKE_WITH_PSK_ENABLED)

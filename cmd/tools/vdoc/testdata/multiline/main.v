@@ -18,38 +18,38 @@ pub fn a3() {
 
 // This should be merged
 // into one paragraph.
-// Note: this should be it's own paragraph.
+// Note: this should be its own paragraph.
 pub fn a4() {
 	println('hi')
 }
 
 // This should be its own paragraph.
 // NOTE: this should also be it own paragraph
-// note: this should be it's own paragraph.
+// note: this should be its own paragraph.
 pub fn a5() {
 	println('hi')
 }
 
 // A comment
-// Fixme: this should be it's own paragraph.
-// fixme: this should be it's own paragraph.
-// FIXME: this should be it's own paragraph.
+// Fixme: this should be its own paragraph.
+// fixme: this should be its own paragraph.
+// FIXME: this should be its own paragraph.
 pub fn a6() {
 	println('hi')
 }
 
 // A comment
-// TODO: this should be it's own paragraph.
-// todo: this should be it's own paragraph.
-// Todo: this should be it's own paragraph.
+// TODO: this should be its own paragraph.
+// todo: this should be its own paragraph.
+// Todo: this should be its own paragraph.
 pub fn a7() {
 	println('hi')
 }
 
 // A comment
-// TODO: this should be it's own paragraph.
-// NOTE: this should be it's own paragraph.
-// FIXME: this should be it's own paragraph.
+// TODO: this should be its own paragraph.
+// NOTE: this should be its own paragraph.
+// FIXME: this should be its own paragraph.
 pub fn a8() {
 	println('hi')
 }

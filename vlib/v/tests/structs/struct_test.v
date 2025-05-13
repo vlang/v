@@ -211,7 +211,7 @@ mut:
 	b int // private mutable
 	c int // (you can list multiple fields with the same access modifier)
 pub:
-	d int // public immmutable (readonly)
+	d int // public immutable (readonly)
 pub mut:
 	e int // public, but mutable only in parent module
 	f int // public and mutable both inside and outside parent module

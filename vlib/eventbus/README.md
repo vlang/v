@@ -108,7 +108,7 @@ fn do_work() {
 
 ### Notes:
 
-1. Each `EventBus` instance has it's own registry (i.e. there is no global event registry
+1. Each `EventBus` instance has its own registry (i.e. there is no global event registry
     so you can't just subscribe to an event wherever you are.
 2. Each `EventBus` has a `Subscriber` instance which will need to be either exposed or you can make
     small public helper functions specific to your module like (`onPress`, `onError`) and etc.

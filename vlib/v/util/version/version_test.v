@@ -3,7 +3,7 @@ import os
 
 fn test_githash() {
 	if os.getenv('GITHUB_JOB') == '' {
-		eprintln('> skipping test, since it needs GITHUB_JOB to be defined (it is flaky on development machines, with changing repos and v compiled with `./v self` from uncommited changes).')
+		eprintln('> skipping test, since it needs GITHUB_JOB to be defined (it is flaky on development machines, with changing repos and v compiled with `./v self` from uncommitted changes).')
 		return
 	}
 	if !os.exists(os.join_path(@VMODROOT, '.git')) {

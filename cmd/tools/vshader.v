@@ -5,7 +5,7 @@
 // vshader aids in generating special shader code C headers via sokol-shdc's 'annotated GLSL' format to any
 // supported target formats that sokol_gfx supports internally.
 //
-// vshader bootstraps itself by downloading it's own dependencies to a system cache directory on first run.
+// vshader bootstraps itself by downloading its own dependencies to a system cache directory on first run.
 //
 // Please see https://github.com/floooh/sokol-tools/blob/master/docs/sokol-shdc.md#feature-overview
 // for a more in-depth overview of the specific tool in use.
