@@ -743,6 +743,17 @@ pub fn (a Integer) bitwise_not() Integer {
 	}
 }
 
+// bitwise_com returns "bitwise complement" of integer `a`.
+//
+// Note: this function consider the sign of the input.
+pub fn (a Integer) bitwise_com() Integer {
+	return if a.signum == -1 {
+		a.abs() - one_int
+	} else {
+		(a + one_int).neg()
+	}
+}
+
 // bitwise_xor returns the "bitwise exclusive or" of the integers `|a|` and `|b|`.
 //
 // Note: both operands are treated as absolute values.

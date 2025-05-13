@@ -813,6 +813,12 @@ fn test_bitwise_ops() {
 	assert b.bitwise_or(b) == b
 	assert b.bitwise_and(b) == b
 	assert b.bitwise_not() == big.zero_int
+	assert big.three_int.neg().bitwise_com() == big.two_int
+	assert big.two_int.neg().bitwise_com() == big.one_int
+	assert big.one_int.neg().bitwise_com() == big.zero_int
+	assert big.zero_int.bitwise_com() == big.one_int.neg()
+	assert big.one_int.bitwise_com() == big.two_int.neg()
+	assert big.two_int.bitwise_com() == big.three_int.neg()
 }
 
 fn test_get_bit() {
