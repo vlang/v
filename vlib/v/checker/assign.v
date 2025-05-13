@@ -885,8 +885,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							c.error('enums can only be assigned `int` values', right.pos())
 						}
 						// disallow invalid `t.$(field.name)` type assignment
-						if !c.check_types(field_type, right_type) && !(c.inside_x_matches_type
-							|| field_sym.kind == .enum) {
+						if !c.check_types(field_type, right_type) && field_sym.kind != .enum {
 							c.error('cannot assign to `${left}`: ${c.expected_msg(right_type,
 								field_type)}', right.pos())
 						}
