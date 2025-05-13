@@ -148,7 +148,7 @@ pub fn (t &ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
 	return .no_comptime
 }
 
-// get_type_from_comptime_var retrives the comptime type related to $for variable
+// get_type_from_comptime_var retrieves the comptime type related to $for variable
 @[inline]
 pub fn (t &TypeResolver) get_type_from_comptime_var(var ast.Ident) ast.Type {
 	match var.name {

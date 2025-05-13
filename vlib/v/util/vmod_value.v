@@ -6,7 +6,7 @@ module util
 import os
 import v.vmod
 
-// resolve_vmodroot replaces all occurences of `@VMODROOT` in `str`, with an absolute path,
+// resolve_vmodroot replaces all occurrences of `@VMODROOT` in `str`, with an absolute path,
 // formed by resolving, where the nearest `v.mod` is, given the folder `dir`.
 pub fn resolve_vmodroot(str string, dir string) !string {
 	mut mcache := vmod.get_cache()

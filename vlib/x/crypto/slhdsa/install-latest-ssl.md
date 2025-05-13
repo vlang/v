@@ -1,6 +1,6 @@
 This `slhdsa` module requires latest OpenSSL library and development headers.
 It required minimum of OpenSLL 3.5 version.
-Likely most of the linux (unix) distros does not ships with this version on this time 
+Likely most of the linux (unix) distros do not ship with this version on this time 
 of writing, at March, 2025.
 
 You can manually download and install OpenSSL library by your self. This documents acts as a simple
@@ -23,7 +23,7 @@ $ ./Configure --prefix=/opt/ssl --openssldir=/opt/ssl
 $ make
 $ sudo make install
 ```
-By succesfully this step, the latest OpenSSL has been built and installed onto 
+By successfully completing this step, the latest OpenSSL has been built and installed onto 
 configured path. You need to tell the system to add this path. <br>
 
 4. Add `/opt/ssl/lib64` entry onto `/etc/ld.so.conf.d/libcrypto.conf`

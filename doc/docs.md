@@ -6072,7 +6072,7 @@ that are substituted at compile time:
 - `@BUILD_TIME` => replaced with the build time, for example '12:32:07' .
 - `@BUILD_TIMESTAMP` => replaced with the build timestamp, for example '1726219885' .
 Note: `@BUILD_DATE`, `@BUILD_TIME`, `@BUILD_TIMESTAMP` represent times in the UTC timezone.
-By default, they are based on the current time of the compilation/build. They can be overriden
+By default, they are based on the current time of the compilation/build. They can be overridden
 by setting the environment variable `SOURCE_DATE_EPOCH`. That is also useful while making
 releases, since you can use the equivalent of this in your build system/script:
 `export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) ;` , and then use `@BUILD_DATE` etc.,

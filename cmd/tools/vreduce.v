@@ -342,7 +342,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 							outer_modified_smth = true
 							println('')
 							show_code_stats(code)
-						} else { // if can remove it, no need to go though it's children
+						} else { // if can remove it, no need to go through its children
 							for i in 0 .. item.children.len {
 								stack.insert(0, &item.children[i]) // breadth first search
 							}
@@ -421,7 +421,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 							outer_modified_smth = true
 							println('')
 							show_code_stats(code)
-						} else { // if can remove it, can remove it's children
+						} else { // if can remove it, can remove its children
 							for i in 0 .. item.children.len {
 								stack << &item.children[i]
 							}

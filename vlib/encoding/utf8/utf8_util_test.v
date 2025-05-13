@@ -62,7 +62,7 @@ fn test_raw_indexing() {
 	assert utf8.raw_index(a, 7) == 'g'
 	assert utf8.raw_index(a, 8) == '!'
 
-	// test differnt utf8 byte lenghts
+	// test differnt utf8 byte lengths
 	c := 'a©★🚀'
 	assert utf8.raw_index(c, 0) == 'a' // 1 byte
 	assert utf8.raw_index(c, 1) == '©' // 2 bytes

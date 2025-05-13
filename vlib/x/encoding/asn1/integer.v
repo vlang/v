@@ -197,7 +197,7 @@ pub fn (v Integer) payload() ![]u8 {
 // 	- 	The integer value contains the encoded integer if it is positive, or its two's complement if it is negative.
 // 	- 	If the integer is positive but the high order bit is set to 1, a leading 0x00 is added to the content
 // 		to indicate that the number is not negative.
-// 	-	If the number is negative after applying two's-complement rules, and the the most-significant-bit of the
+// 	-	If the number is negative after applying two's-complement rules, and the most-significant-bit of the
 // 		the high order bit of the bytes results isn't set, pad it with 0xff in order to keep the number negative.
 fn (v Integer) pack_into_twoscomplement_form() !([]u8, int) {
 	match v.value {
@@ -226,7 +226,7 @@ fn (v Integer) pack_into_twoscomplement_form() !([]u8, int) {
 				}
 				-1 {
 					// A negative number has to be converted to two's-complement form.
-					// by invert the number and and then subtract it with big(1), or with other mean
+					// by invert the number and then subtract it with big(1), or with other mean
 					// Flip all of the bits in the value and then add one to the resulting value.
 					// If the most-significant-bit isn't set then we'll need to pad the
 					// beginning with 0xff in order to keep the number negative.
