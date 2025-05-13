@@ -18,10 +18,6 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.expected_expr_type = ast.void_type
 		}
 	}
-	old_inside_x_matches_type := c.inside_x_matches_type
-	defer {
-		c.inside_x_matches_type = old_inside_x_matches_type
-	}
 	cond_type := c.expr(mut node.cond)
 	// we setting this here rather than at the end of the method
 	// since it is used in c.match_exprs() it saves checking twice
