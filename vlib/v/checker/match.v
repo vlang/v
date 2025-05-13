@@ -414,6 +414,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				}
 				continue
 			}
+			is_type_node := expr is ast.TypeNode
 			match mut expr {
 				ast.TypeNode {
 					key = c.table.type_to_str(expr.typ)
@@ -438,7 +439,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				c.error('match case `${key}` is handled more than once', branch.pos)
 			}
 			c.expected_type = node.cond_type
+			mut old_inside_x_matches_type := c.inside_x_matches_type
+			if is_type_node {
+				c.inside_x_matches_type = true
+				old_inside_x_matches_type = c.inside_x_matches_type
+			}
 			expr_type := c.expr(mut expr)
+			if is_type_node {
+				c.inside_x_matches_type = old_inside_x_matches_type
+			}
 			if expr_type.idx() == 0 {
 				// parser failed, stop checking
 				return
