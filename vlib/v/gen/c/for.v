@@ -252,7 +252,8 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		if node.val_var != '_' {
 			if mut val_sym.info is ast.FnType {
 				g.write('\t')
-				g.write_fn_ptr_decl(&val_sym.info, c_name(node.val_var))
+				x := c_name(node.val_var)
+				g.write_fn_ptr_decl(&val_sym.info, x)
 				g.writeln(' = ((voidptr*)${cond_var}${op_field}data)[${i}];')
 			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
 				right := '((${styp}*)${cond_var}${op_field}data)[${i}]'
