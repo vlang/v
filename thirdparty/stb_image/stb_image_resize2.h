@@ -254,7 +254,7 @@
          using the stbir_set_filter_callbacks function.
 
       PROGRESS
-         For interactive use with slow resize operations, you can use the
+         For interactive use with slow resize operations, you can use the the
          scanline callbacks in the extended API. It would have to be a *very* large
          image resample to need progress though - we're very fast.
 
