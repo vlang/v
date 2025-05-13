@@ -437,7 +437,7 @@ pub fn (mut c Cipher) set_counter(ctr u64) {
 // rekey resets internal Cipher's state and reinitializes state with the provided key and nonce
 pub fn (mut c Cipher) rekey(key []u8, nonce []u8) ! {
 	unsafe { c.reset() }
-	// this routine was publicly accesible to user, so we add a check here
+	// this routine was publicly accessible to user, so we add a check here
 	// to ensure the supplied key and nonce has the correct size.
 	if key.len != key_size {
 		return error('Bad key size provided for rekey')

@@ -25,7 +25,7 @@ pub fn debugger_present() bool {
 					// no external debugger
 					exit(0)
 				} else {
-					// an error occured, a external debugger must be present
+					// an error occurred, a external debugger must be present
 					exit(1)
 				}
 			} else {
