@@ -408,7 +408,13 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	} else if elem.sym.kind == .function {
 		fn_builder.writeln('\t\tif (*((voidptr*)((byte*)${left_data}+(i*${left_elem}))) != *((voidptr*)((byte*)${right_data}+(i*${right_elem})))) {')
 	} else {
-		fn_builder.writeln('\t\tif (*((${ptr_elem_styp}*)((byte*)${left_data}+(i*${left_elem}))) != *((${ptr_elem_styp}*)((byte*)${right_data}+(i*${right_elem})))) {')
+		if elem.typ.has_flag(.option) {
+			fn_builder.writeln('\t\t${ptr_elem_styp}* left = ((${ptr_elem_styp}*)${left_data})+(i*${left_elem});')
+			fn_builder.writeln('\t\t${ptr_elem_styp}* right = ((${ptr_elem_styp}*)${right_data})+(i*${right_elem});')
+			fn_builder.writeln('\t\tif (!(left->state == 2 && left->state == right->state) && memcmp(left->data, right->data, sizeof(${g.base_type(elem.typ)}))) {')
+		} else {
+			fn_builder.writeln('\t\tif (*((${ptr_elem_styp}*)((byte*)${left_data}+(i*${left_elem}))) != *((${ptr_elem_styp}*)((byte*)${right_data}+(i*${right_elem})))) {')
+		}
 	}
 	fn_builder.writeln('\t\t\treturn false;')
 	fn_builder.writeln('\t\t}')
