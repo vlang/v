@@ -59,7 +59,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	prev_inside_anon_fn := c.inside_anon_fn
 	prev_returns := c.returns
 	prev_stmt_level := c.stmt_level
-	prev_inside_x_matches_type := c.inside_x_matches_type
 	c.fn_level++
 	c.in_for_count = 0
 	c.inside_defer = false
@@ -74,7 +73,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.inside_defer = prev_inside_defer
 		c.in_for_count = prev_in_for_count
 		c.fn_scope = prev_fn_scope
-		c.inside_x_matches_type = prev_inside_x_matches_type
 	}
 	// Check generics fn/method without generic type parameters
 	mut need_generic_names := false

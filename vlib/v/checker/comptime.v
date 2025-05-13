@@ -274,6 +274,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			has_different_types := fields.len > 1
 				&& !fields.all(c.check_basic(it.typ, fields[0].typ))
 			for field in fields {
+				prev_inside_x_matches_type := c.inside_x_matches_type
 				c.push_new_comptime_info()
 				c.comptime.inside_comptime_for = true
 				c.table.used_features.comptime_for = true
@@ -301,6 +302,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					}
 				}
 				c.pop_comptime_info()
+				c.inside_x_matches_type = prev_inside_x_matches_type
 			}
 		} else if node.typ != ast.void_type && c.table.generic_type_names(node.typ).len == 0
 			&& sym.kind != .placeholder {
