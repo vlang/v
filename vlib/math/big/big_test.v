@@ -598,6 +598,16 @@ fn test_addition() {
 	}
 }
 
+fn test_add_sign() {
+	for a in -10 .. 10 {
+		for b in -10 .. 10 {
+			big_a := big.integer_from_int(a)
+			big_b := big.integer_from_int(b)
+			assert (big_a + big_b).str() == (a + b).str()
+		}
+	}
+}
+
 fn test_subtraction() {
 	for t in sub_test_data {
 		assert t.minuend.parse() - t.subtrahend.parse() == t.difference.parse(), 't.minuend: ${t.minuend}  - t.subtrahend: ${t.subtrahend}'
