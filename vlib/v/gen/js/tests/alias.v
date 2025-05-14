@@ -14,7 +14,7 @@ fn main() {
 	// checks alias types
 	assert foo.field_0 == ''
 
-	// checks enum types
+	// checks sum types
 	if foo.field_1 is int {
 		assert foo.field_1 == 0
 	} else {
