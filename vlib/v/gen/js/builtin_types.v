@@ -22,9 +22,12 @@ fn (mut g JsGen) copy_val(t ast.Type, tmp string) string {
 }
 
 fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
-	sym := g.table.sym(t)
+	sym := g.table.sym(g.table.unaliased_type(t))
 	mut styp := ''
 	mut prefix := 'new '
+	if sym.info is ast.SumType {
+		return g.to_js_typ_val(sym.info.variants[0])
+	}
 	match sym.kind {
 		.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal, .float_literal {
 			styp = '${prefix}${g.sym_to_js_typ(sym)}(0)'
