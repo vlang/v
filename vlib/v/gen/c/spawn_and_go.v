@@ -336,10 +336,8 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 		}
 		g.gowrappers.writeln(');')
-		if call_ret_type != ast.void_type {
-			if g.pref.os != .windows {
-				g.gowrappers.write_string('\t*ret_ptr = ${tcc_bug_tmp_var};\n')
-			}
+		if g.pref.os != .windows && call_ret_type != ast.void_type {
+			g.gowrappers.writeln('\t*ret_ptr = ${tcc_bug_tmp_var};')
 		}
 		if is_spawn {
 			g.gowrappers.writeln('\t_v_free(arg);')
