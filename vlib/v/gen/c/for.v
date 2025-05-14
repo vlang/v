@@ -252,8 +252,8 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		if node.val_var != '_' {
 			if mut val_sym.info is ast.FnType {
 				g.write('\t')
-				x := c_name(node.val_var)
-				g.write_fn_ptr_decl(&val_sym.info, x)
+				tcc_bug := c_name(node.val_var)
+				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
 				g.writeln(' = ((voidptr*)${cond_var}${op_field}data)[${i}];')
 			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
 				right := '((${styp}*)${cond_var}${op_field}data)[${i}]'
@@ -315,7 +315,8 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
 			if val_sym.info is ast.FnType {
 				g.write('\t')
-				g.write_fn_ptr_decl(&val_sym.info, c_name(node.val_var))
+				tcc_bug := c_name(node.val_var)
+				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
 			} else if is_fixed_array {
 				styp := g.styp(node.val_type)
 				g.writeln('\t${styp} ${c_name(node.val_var)};')
@@ -381,7 +382,8 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
 			if val_sym.info is ast.FnType {
-				g.write_fn_ptr_decl(&val_sym.info, c_name(node.val_var))
+				tcc_bug := c_name(node.val_var)
+				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
 				g.write(' = (*(voidptr*)')
 				g.writeln('DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}));')
 			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
