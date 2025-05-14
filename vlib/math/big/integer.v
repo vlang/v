@@ -316,18 +316,12 @@ pub fn (augend Integer) + (addend Integer) Integer {
 	if augend.signum == addend.signum {
 		return augend.add(addend)
 	}
-	// Unequal signs, left is negative:
-	if augend.signum == -1 {
-		// -1 + 5 == 5 - 1
-		return addend.subtract(augend)
+	// Unequal signs
+	if augend.abs_cmp(addend) < 0 {
+		return augend.subtract(addend).neg()
+	} else {
+		return augend.subtract(addend)
 	}
-	// Unequal signs, left is positive:
-	res := augend.subtract(addend)
-	cmp := augend.abs_cmp(addend)
-	if cmp < 0 {
-		return res.neg()
-	}
-	return res
 }
 
 // - returns the difference of the integers `minuend` and `subtrahend`
