@@ -21,7 +21,7 @@ fn main() {
 		assert false
 	}
 
-	// checks enum types
+	// checks sum types
 	if foo.field_2 is string {
 		assert foo.field_2 == ''
 	} else {
