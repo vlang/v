@@ -107,8 +107,8 @@ fn test_install_from_hg_url_with_version_tag() ! {
 		return
 	}
 
-	hg_version := cmd_ok(@LOCATION, 'hg version')
-	dump(hg_version)
+	hg_version := cmd_ok(@LOCATION, 'hg version -q')
+	dump(hg_version.output.trim_space())
 
 	test_module_path := os.join_path(os.temp_dir(), rand.ulid(), 'hg_test_module')
 	defer {
@@ -117,23 +117,36 @@ fn test_install_from_hg_url_with_version_tag() ! {
 	mut res := cmd_ok(@LOCATION, 'hg init ${test_module_path}')
 	os.chdir(test_module_path)!
 
+	println('> writing .hg/hgrc to the new mercurial repo ...')
+	os.mkdir_all('.hg')!
+	os.write_file('.hg/hgrc', '[ui]\nusername = v_ci <v_ci@example.net>\nverbose = False\n')!
+	println('> writing .hg/hgrc done.')
+
+	println('> writing v.mod file ...')
 	os.write_file('v.mod', "Module{
 	name: 'my_awesome_v_module'
 	version: '0.1.0'
 }")!
+	println('> writing v.mod file done.')
+
 	cmd_ok(@LOCATION, 'hg add')
-	cmd_ok(@LOCATION, 'hg --config ui.username=v_ci commit -m "initial commit"')
+	cmd_ok(@LOCATION, 'hg commit -m "initial commit"')
+	println('> writing README.md file ...')
 	os.write_file('README.md', 'Hello World!')!
+	println('> writing README.md file done.')
 	cmd_ok(@LOCATION, 'hg add')
-	cmd_ok(@LOCATION, 'hg --config ui.username=v_ci commit -m "add readme"')
+	cmd_ok(@LOCATION, 'hg commit -m "add readme"')
 	cmd_ok(@LOCATION, 'hg tag v0.1.0')
 
+	println('> rewriting v.mod ...')
 	os.write_file('v.mod', "Module{
 	name: 'my_awesome_v_module'
 	version: '0.2.0'
 }")!
+	println('> rewriting v.mod done.')
+
 	cmd_ok(@LOCATION, 'hg add')
-	cmd_ok(@LOCATION, 'hg --config ui.username=v_ci commit -m "bump version to v0.2.0"')
+	cmd_ok(@LOCATION, 'hg commit -m "bump version to v0.2.0"')
 
 	mut p, port := test_utils.hg_serve(hg_path, test_module_path)
 	res = os.execute('${vexe} install -v --hg http://127.0.0.1:${port}@v0.1.0')
