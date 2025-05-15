@@ -148,7 +148,7 @@ fn test_install_from_hg_url_with_version_tag() ! {
 	cmd_ok(@LOCATION, 'hg add')
 	cmd_ok(@LOCATION, 'hg commit -m "bump version to v0.2.0"')
 
-	mut p, port := test_utils.hg_serve(hg_path, test_module_path)
+	mut p, port := test_utils.hg_serve(hg_path, test_module_path, 4000)
 	res = os.execute('${vexe} install -v --hg http://127.0.0.1:${port}@v0.1.0')
 	p.signal_kill()
 	if res.exit_code != 0 {
