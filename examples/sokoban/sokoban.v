@@ -253,7 +253,19 @@ fn (mut g Game) iid(name string) !int {
 fn main() {
 	mut g := &Game{}
 	if os.args.len > 1 {
-		g.levels = os.args[1..].map(os.read_file(it)!)
+		for fpath in os.args[1..] {
+			content := os.read_file(fpath)!
+			if content.starts_with(';') {
+				// many levels in the same file:
+				parts := content.trim_space().split('\n\n')
+				for part in parts {
+					g.levels << '${fpath}${part}'
+				}
+			} else {
+				// a single level:
+				g.levels << content
+			}
+		}
 	} else {
 		all_level_names := asset.read_text('/', '_all_levels.txt')!.split_into_lines()
 		g.levels = all_level_names.map(asset.read_text('/', it)!)
