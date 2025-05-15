@@ -639,6 +639,19 @@ fn test_mod() {
 	}
 }
 
+fn test_mod_sign() {
+	for a in -10 .. 10 {
+		for b in -10 .. 10 {
+			if b == 0 {
+				continue
+			}
+			big_a := big.integer_from_int(a)
+			big_b := big.integer_from_int(b)
+			assert (big_a % big_b).str() == (a % b).str()
+		}
+	}
+}
+
 fn test_div_mod() {
 	for t in div_mod_test_data {
 		a := t.dividend.parse()
