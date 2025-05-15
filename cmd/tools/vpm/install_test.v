@@ -177,6 +177,12 @@ fn test_install_from_hg_url() ! {
 	}
 	// Initialize project without manifest file.
 	mut res := cmd_ok(@LOCATION, 'hg init ${test_module_path}')
+
+	println('> writing .hg/hgrc to the new mercurial repo ...')
+	os.mkdir_all(os.join_path(test_module_path, '.hg'))!
+	os.write_file(os.join_path(test_module_path, '.hg/hgrc'), '[ui]\nusername = v_ci <v_ci@example.net>\nverbose = False\n')!
+	println('> writing .hg/hgrc done.')
+
 	mut p, mut port := test_utils.hg_serve(hg_path, test_module_path)
 	// Trying to install it should fail.
 	res = os.execute('${vexe} install --hg http://127.0.0.1:${port}')
@@ -191,7 +197,7 @@ fn test_install_from_hg_url() ! {
 }")!
 	os.chdir(test_module_path)!
 	cmd_ok(@LOCATION, 'hg add')
-	cmd_ok(@LOCATION, 'hg --config ui.username=v_ci commit -m "add v.mod"')
+	cmd_ok(@LOCATION, 'hg commit -m "add v.mod"')
 	p, port = test_utils.hg_serve(hg_path, test_module_path)
 	// Trying to install the module should work now.
 	res = cmd_ok(@LOCATION, '${vexe} install --hg http://127.0.0.1:${port}')
