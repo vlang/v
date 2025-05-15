@@ -472,6 +472,10 @@ pub fn (dividend Integer) / (divisor Integer) Integer {
 // returns a Result refer to `mod_checked`.
 @[inline]
 pub fn (dividend Integer) % (divisor Integer) Integer {
+	if dividend.signum == -1 {
+		_, r := dividend.neg().div_mod(divisor)
+		return r.neg()
+	}
 	_, r := dividend.div_mod(divisor)
 	return r
 }
