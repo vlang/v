@@ -21,7 +21,7 @@ fn test_cli_programs() {
 		}
 		expected_out := os.read_file(out_path)!.replace('\r\n', '\n')
 		test_out := os.execute('${vexe} run ${test}').output.replace('\r\n', '\n')
-		diff_ := diff.compare_text(expected_out, test_out)!
+		diff_ := diff.compare_text(expected_out, test_out)
 		if diff_ != '' {
 			println(term.red('FAIL'))
 			eprintln(diff_)

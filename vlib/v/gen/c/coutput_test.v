@@ -88,7 +88,8 @@ fn test_out_files() {
 		}
 		if expected != found {
 			println('${term.red('FAIL')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')
-			if diff_ := diff.compare_text(expected, found) {
+			diff_ := diff.compare_text(expected, found)
+			if diff_ != '' {
 				println(term.header('difference:', '-'))
 				println(diff_)
 			} else {

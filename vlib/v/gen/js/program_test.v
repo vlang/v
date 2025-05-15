@@ -7,13 +7,7 @@ const vexe = @VEXE
 
 const vroot = @VMODROOT
 
-const diff_cmd = find_diff_cmd()
-
 const github_job = os.getenv('GITHUB_JOB')
-
-fn find_diff_cmd() string {
-	return diff.find_working_diff_command() or { '' }
-}
 
 @[noreturn]
 fn exit_because(msg string) {
@@ -74,7 +68,8 @@ fn check_path(dir string, tests []string) !int {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			if diff_ := diff.compare_text(expected, found) {
+			diff_ := diff.compare_text(expected, found)
+			if diff_ != '' {
 				println('diff:')
 				println(diff_)
 			} else {

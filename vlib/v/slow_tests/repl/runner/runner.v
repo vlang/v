@@ -124,7 +124,8 @@ pub fn new_prod_options() RunnerOptions {
 
 fn diff_error(file string, expected string, found string) IError {
 	header := 'Difference found in REPL file: ${file}'
-	details := if diff_ := diff.compare_text(expected, found) {
+	diff_ := diff.compare_text(expected, found)
+	details := if diff_ != '' {
 		'
 ====> Diff     :
 ${diff_}

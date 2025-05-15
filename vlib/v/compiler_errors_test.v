@@ -416,10 +416,11 @@ fn chunka(s []u8, chunk_size int) string {
 
 fn diff_content(expected string, found string) {
 	println(term.bold(term.yellow('diff: ')))
-	if diff_ := diff.compare_text(expected, found) {
+	diff_ := diff.compare_text(expected, found)
+	if diff_ != '' {
 		println(diff_)
 	} else {
-		println('>>>> `${err}`; dumping bytes instead...')
+		println('>>>> dumping bytes instead...')
 		println('expected bytes:\n${chunka(expected.bytes(), 25)}')
 		println('   found bytes:\n${chunka(found.bytes(), 25)}')
 		println('============')

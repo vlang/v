@@ -23,7 +23,6 @@ fn test_all() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or {}
-	diff_cmd := diff.find_working_diff_command() or { '' }
 	dir := 'vlib/v/slow_tests/inout'
 	mut files := os.ls(dir) or { panic(err) }
 	files.sort()
@@ -97,11 +96,11 @@ fn test_all() {
 		}
 		if expected != found {
 			println(term.red('FAIL'))
-			if diff_ := diff.compare_text(expected, found) {
+			diff_ := diff.compare_text(expected, found)
+			if diff_ != '' {
 				println(term.header('difference:', '-'))
 				println(diff_)
 			} else {
-				println(err)
 				println(term.header('expected:', '-'))
 				println(expected)
 				println(term.header('found:', '-'))
