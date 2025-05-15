@@ -119,7 +119,8 @@ fn test_out_path() {
 fn print_compare(expected string, found string) {
 	println(term.red('FAIL'))
 	println('============')
-	if diff_ := diff.compare_text(expected, found) {
+	diff_ := diff.compare_text(expected, found)
+	if diff_ != '' {
 		println('diff:')
 		println(diff_)
 		println('============\n')

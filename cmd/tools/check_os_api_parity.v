@@ -49,7 +49,7 @@ fn main() {
 			diff_modules[m] = true
 			summary := 'Different APIs found for module: `${m}`, between OS base: `${base_os}` and OS: `${other_os}`'
 			eprintln(term.header(summary, '-'))
-			diff_ := diff.compare_text(api_base, api_os) or { continue }
+			diff_ := diff.compare_text(api_base, api_os)
 			println(diff_)
 			eprintln(term.h_divider('-'))
 		}

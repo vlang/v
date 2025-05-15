@@ -53,7 +53,8 @@ fn check_path(vexe string, dir string, tests []string) int {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			if diff_ := diff.compare_text(expected, found) {
+			diff_ := diff.compare_text(expected, found)
+			if diff_ != '' {
 				println('diff:')
 				println(diff_)
 			} else {
