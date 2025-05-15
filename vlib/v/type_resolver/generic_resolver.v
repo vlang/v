@@ -224,7 +224,13 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 						} else if arg_sym.kind == .any {
 							cparam_type_sym := t.table.sym(t.resolver.unwrap_generic(ctyp))
 							if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
-								comptime_args[k] = cparam_type_sym.info.elem_type
+								ctyp = ctyp.set_nr_muls(0)
+								if t.table.final_sym(ctyp).kind == .array {
+									// T is already an array where []T is expected
+									comptime_args[k] = t.table.value_type(ctyp)
+								} else {
+									comptime_args[k] = cparam_type_sym.info.elem_type
+								}
 							} else if param_typ_sym.info is ast.Map
 								&& cparam_type_sym.info is ast.Map {
 								if param_typ_sym.info.key_type.has_flag(.generic) {

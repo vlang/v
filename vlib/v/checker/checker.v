@@ -3094,7 +3094,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 						true)
 				}
 			}
-			type_cname := if node.expr_type.has_flag(.option) {
+			type_cname := if unwrapped_expr_type.has_flag(.option) {
 				'_option_${tsym.cname}'
 			} else {
 				tsym.cname

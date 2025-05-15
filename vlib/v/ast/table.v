@@ -1724,7 +1724,12 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 		if typ.has_flag(.generic) {
 			return typ.derive_add_muls(generic_type).set_flag(.generic)
 		} else {
-			return typ.derive_add_muls(generic_type).clear_flag(.generic)
+			if !typ.has_flag(.option) {
+				return typ.derive_add_muls(generic_type).clear_flag(.generic)
+			} else {
+				// Option concrete type where T is expected
+				return typ.derive_add_muls(generic_type).clear_flag(.generic).set_flag(.option)
+			}
 		}
 	}
 	match mut sym.info {

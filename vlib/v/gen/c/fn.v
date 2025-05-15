@@ -754,6 +754,10 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		}
 		param_type_sym := g.table.sym(typ)
 		mut param_type_name := g.styp(typ).replace_each(c_fn_name_escape_seq)
+		if param.is_mut && param.typ.has_flag(.generic) && typ.has_flag(.option) && typ.is_ptr() {
+			// mut T parameter for option -- use _option_type* instead of _ptr suffix
+			param_type_name = '_option_${g.styp(typ.clear_flag(.option).set_nr_muls(1))}'
+		}
 		if param_type_sym.kind == .function && !typ.has_flag(.option) {
 			info := param_type_sym.info as ast.FnType
 			func := info.func
@@ -2645,6 +2649,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				g.write('&')
 				g.expr(arg.expr)
 				return
+			} else if expected_type.has_flag(.option) {
+				g.write('&')
+				g.expr(arg.expr)
+				return
 			}
 		}
 		if !g.is_json_fn {
@@ -2723,9 +2731,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.expr(arg.expr)
 		g.write('->val')
 		return
-	} else if expected_type.has_flag(.option) {
+	} else if expected_type.has_flag(.option) || arg_typ.has_option_or_result() {
 		if (arg_sym.info is ast.Alias || exp_sym.info is ast.Alias) && expected_type != arg_typ {
 			g.expr_opt_with_alias(arg.expr, arg_typ, expected_type)
+			return
 		} else {
 			if arg.expr is ast.Ident {
 				if arg.expr.obj is ast.Var {
@@ -2734,9 +2743,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					}
 				}
 			}
-			g.expr_with_opt(arg.expr, arg_typ, expected_type)
+			// skip option unwrapped arg_typ
+			if expected_type.has_flag(.option) || arg_typ.has_option_or_result() {
+				g.expr_with_opt(arg.expr, arg_typ, expected_type.set_flag(.option))
+				return
+			}
 		}
-		return
 	} else if arg.expr is ast.ArrayInit {
 		if arg.expr.is_fixed {
 			if !arg.expr.has_index {

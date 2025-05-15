@@ -2619,6 +2619,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				&& c.check_basic(c.table.value_type(got_arg_typ).clear_flag(.option), c.table.value_type(exp_arg_typ)) {
 				continue
 			}
+
+			// passing []T, []?T to T
+			if !exp_arg_typ.has_flag(.variadic) && param_typ_sym.kind == .any
+				&& c.table.final_sym(got_arg_typ).kind == .array {
+				continue
+			}
 			c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
 				arg.pos)
 		}

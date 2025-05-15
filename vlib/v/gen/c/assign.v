@@ -444,7 +444,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			g.assign_ct_type = val_type
 		}
-		mut styp := g.styp(var_type)
+		mut styp := g.styp(g.unwrap_generic(var_type))
 		mut is_fixed_array_init := false
 		mut has_val := false
 		match val {
@@ -983,7 +983,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else {
 						if op_overloaded {
 							g.op_arg(val, op_expected_right, val_type)
-						} else {
+						} else if val !is ast.None {
 							exp_type := if var_type.is_ptr()
 								&& (left.is_auto_deref_var() || var_type.has_flag(.shared_f)) {
 								var_type.deref()
@@ -991,6 +991,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								var_type
 							}.clear_flag(.shared_f) // don't reset the mutex, just change the value
 							g.expr_with_cast(val, val_type, exp_type)
+						} else {
+							// var = none (where var is T option)
+							g.gen_option_error(g.unwrap_generic(var_type).set_nr_muls(0),
+								val)
 						}
 					}
 				}
