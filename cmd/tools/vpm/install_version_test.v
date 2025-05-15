@@ -106,6 +106,10 @@ fn test_install_from_hg_url_with_version_tag() ! {
 		eprintln('skipping test, since `hg` is not executable.')
 		return
 	}
+
+	hg_version := cmd_ok(@LOCATION, 'hg version')
+	dump(hg_version)
+
 	test_module_path := os.join_path(os.temp_dir(), rand.ulid(), 'hg_test_module')
 	defer {
 		os.rmdir_all(test_module_path) or {}
