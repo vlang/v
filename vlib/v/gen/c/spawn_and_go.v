@@ -241,13 +241,16 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		thread_ret_type := if g.pref.os == .windows { 'u32' } else { 'void*' }
 		g.waiter_fn_definitions.writeln('${g.static_non_parallel}${thread_ret_type} ${wrapper_fn_name}(${wrapper_struct_name} *arg);')
 		g.gowrappers.writeln('${thread_ret_type} ${wrapper_fn_name}(${wrapper_struct_name} *arg) {')
-		tcc_bug_tmp_var := g.new_tmp_var()
 		if call_ret_type != ast.void_type {
 			if g.pref.os == .windows {
 				g.gowrappers.write_string('\t*((${s_ret_typ}*)(arg->ret_ptr)) = ')
 			} else {
 				g.gowrappers.writeln('\t${s_ret_typ}* ret_ptr = (${s_ret_typ}*) _v_malloc(sizeof(${s_ret_typ}));')
-				g.gowrappers.write_string('\t${s_ret_typ} ${tcc_bug_tmp_var} = ')
+				$if tinyc && arm64 {
+					g.gowrappers.write_string('\t${s_ret_typ} tcc_bug_tmp_var = ')
+				} $else {
+					g.gowrappers.write_string('\t*ret_ptr = ')
+				}
 			}
 		} else {
 			g.gowrappers.write_string('\t')
@@ -336,8 +339,10 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 		}
 		g.gowrappers.writeln(');')
-		if g.pref.os != .windows && call_ret_type != ast.void_type {
-			g.gowrappers.writeln('\t*ret_ptr = ${tcc_bug_tmp_var};')
+		$if tinyc && arm64 {
+			if g.pref.os != .windows && call_ret_type != ast.void_type {
+				g.gowrappers.writeln('\t*ret_ptr = tcc_bug_tmp_var;')
+			}
 		}
 		if is_spawn {
 			g.gowrappers.writeln('\t_v_free(arg);')
