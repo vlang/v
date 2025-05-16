@@ -14,10 +14,7 @@ pub fn compare_files(path1 string, path2 string, _ CompareOptions) !string {
 		block_header: true
 		unified:      3
 	)
-	if patch != '' {
-		return patch
-	}
-	return error('same content') // for compatible
+	return patch
 }
 
 // compare_text returns a string displaying the differences between two strings.
@@ -30,10 +27,7 @@ pub fn compare_text(text1 string, text2 string, _ CompareTextOptions) !string {
 		block_header: true
 		unified:      3
 	)
-	if patch != '' {
-		return patch
-	}
-	return error('same content') // for compatible
+	return patch
 }
 
 // deprecated code :
@@ -81,13 +75,13 @@ pub fn find_working_diff_command() !string {
 // color_compare_files returns a colored diff between two files.
 @[deprecated: 'use compare_files instead']
 @[deprecated_after: '2025-12-31']
-pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
+pub fn color_compare_files(_ string, path1 string, path2 string) string {
 	return compare_files(path1, path2) or { '' }
 }
 
 // color_compare_strings returns a colored diff between two strings.
 @[deprecated: 'use compare_text instead']
 @[deprecated_after: '2025-12-31']
-pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected string, found string) string {
+pub fn color_compare_strings(_ string, _ string, expected string, found string) string {
 	return compare_text(expected, found) or { '' }
 }

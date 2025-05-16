@@ -419,7 +419,7 @@ fn diff_content(expected string, found string) {
 	if diff_ := diff.compare_text(expected, found) {
 		println(diff_)
 	} else {
-		println('>>>> dumping bytes instead...')
+		println('>>>> `${err}`; dumping bytes instead...')
 		println('expected bytes:\n${chunka(expected.bytes(), 25)}')
 		println('   found bytes:\n${chunka(found.bytes(), 25)}')
 		println('============')
