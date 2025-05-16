@@ -122,14 +122,6 @@ $if gcboehm_leak ? {
 	#flag -DGC_DEBUG=1
 }
 
-$if windows && msvc {
-	$if prod {
-		#flag ucrt.lib
-	} $else {
-		#flag ucrtd.lib
-	}
-}
-
 #include <gc.h>
 
 // #include <gc/gc_mark.h>
