@@ -343,9 +343,16 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					} else {
 						branch.cond.vars[0].name
 					}
-					g.write('\t${base_type} ${cond_var_name} = ')
-					g.expr(branch.cond.expr)
-					g.writeln(';')
+					if g.table.sym(branch.cond.expr_type).kind == .array_fixed {
+						g.writeln('\t${base_type} ${cond_var_name} = {0};')
+						g.write('\tmemcpy((${base_type}*)${cond_var_name}, &')
+						g.expr(branch.cond.expr)
+						g.writeln(', sizeof(${base_type}));')
+					} else {
+						g.write('\t${base_type} ${cond_var_name} = ')
+						g.expr(branch.cond.expr)
+						g.writeln(';')
+					}
 				} else {
 					mut is_auto_heap := false
 					if branch.stmts.len > 0 {

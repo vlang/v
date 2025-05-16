@@ -546,7 +546,11 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			opt_val_type := g.styp(val_type.set_flag(.option))
 			g.writeln('${opt_val_type} ${tmp_opt} = {0};')
 			g.writeln('if (${tmp_opt_ptr}) {')
-			g.writeln('\t*((${val_type_str}*)&${tmp_opt}.data) = *((${val_type_str}*)${tmp_opt_ptr});')
+			if val_sym.kind == .array_fixed {
+				g.writeln('\tmemcpy((${val_type_str}*)${tmp_opt}.data, (${val_type_str}*)${tmp_opt_ptr}, sizeof(${val_type_str}));')
+			} else {
+				g.writeln('\t*((${val_type_str}*)&${tmp_opt}.data) = *((${val_type_str}*)${tmp_opt_ptr});')
+			}
 			g.writeln('} else {')
 			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = _v_error(_SLIT("map key does not exist"));')
 			g.writeln('}')
