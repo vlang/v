@@ -100,6 +100,7 @@ fn test_all() {
 				println(term.header('difference:', '-'))
 				println(diff_)
 			} else {
+				println(err)
 				println(term.header('expected:', '-'))
 				println(expected)
 				println(term.header('found:', '-'))
