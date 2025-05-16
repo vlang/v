@@ -7,13 +7,7 @@ const vexe = @VEXE
 
 const vroot = @VMODROOT
 
-const diff_cmd = find_diff_cmd()
-
 const github_job = os.getenv('GITHUB_JOB')
-
-fn find_diff_cmd() string {
-	return diff.find_working_diff_command() or { '' }
-}
 
 @[noreturn]
 fn exit_because(msg string) {

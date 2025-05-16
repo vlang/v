@@ -23,7 +23,6 @@ fn test_all() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or {}
-	diff_cmd := diff.find_working_diff_command() or { '' }
 	dir := 'vlib/v/slow_tests/inout'
 	mut files := os.ls(dir) or { panic(err) }
 	files.sort()
