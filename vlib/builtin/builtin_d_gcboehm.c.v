@@ -123,7 +123,11 @@ $if gcboehm_leak ? {
 }
 
 $if windows && msvc {
-	#flag ucrtd.lib
+	$if prod {
+		#flag ucrt.lib
+	} $else {
+		#flag ucrtd.lib
+	}
 }
 
 #include <gc.h>
