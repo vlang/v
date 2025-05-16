@@ -45,7 +45,7 @@ fn test_compare_files() {
 }
 
 fn test_compare_string() {
-	mut res := diff.compare_text('abc', 'abcd')
+	mut res := diff.compare_text('abc', 'abcd')!
 	println(res)
 	assert res.contains('-abc'), res
 	assert res.contains('+abcd'), res

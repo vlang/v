@@ -96,8 +96,7 @@ fn test_all() {
 		}
 		if expected != found {
 			println(term.red('FAIL'))
-			diff_ := diff.compare_text(expected, found)
-			if diff_ != '' {
+			if diff_ := diff.compare_text(expected, found) {
 				println(term.header('difference:', '-'))
 				println(diff_)
 			} else {

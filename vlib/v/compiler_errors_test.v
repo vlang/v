@@ -416,8 +416,7 @@ fn chunka(s []u8, chunk_size int) string {
 
 fn diff_content(expected string, found string) {
 	println(term.bold(term.yellow('diff: ')))
-	diff_ := diff.compare_text(expected, found)
-	if diff_ != '' {
+	if diff_ := diff.compare_text(expected, found) {
 		println(diff_)
 	} else {
 		println('>>>> dumping bytes instead...')

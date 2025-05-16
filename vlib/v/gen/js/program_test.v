@@ -68,8 +68,7 @@ fn check_path(dir string, tests []string) !int {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			diff_ := diff.compare_text(expected, found)
-			if diff_ != '' {
+			if diff_ := diff.compare_text(expected, found) {
 				println('diff:')
 				println(diff_)
 			} else {
