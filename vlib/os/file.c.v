@@ -855,8 +855,7 @@ pub fn (mut f File) seek(pos i64, mode SeekMode) ! {
 
 @[typedef]
 pub struct C.fpos_t {
-	__pos   i64
-	__state i64
+	__pos i64
 }
 
 // tell will return the current offset of the file cursor measured from
