@@ -943,7 +943,10 @@ pub fn local_bin_dir() string {
 
 // temp_dir returns the path to a folder, that is suitable for storing temporary files.
 pub fn temp_dir() string {
-	mut path := getenv('TMPDIR')
+	mut path := getenv('XDG_RUNTIME_DIR')
+	if path == '' {
+		path = getenv('TMPDIR')
+	}
 	$if windows {
 		if path == '' {
 			// TODO: see Qt's implementation?
