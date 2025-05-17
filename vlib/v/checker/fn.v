@@ -1867,7 +1867,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 
 	// resolve return generics struct to concrete type
 	if func.generic_names.len > 0 && func.return_type.has_flag(.generic)
-		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
+		&& c.table.cur_fn != unsafe { nil } && c.needs_unwrap_generic_type(func.return_type) {
 		node.return_type = c.table.unwrap_generic_type(func.return_type, func.generic_names,
 			concrete_types)
 	} else {
