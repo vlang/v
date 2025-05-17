@@ -2776,14 +2776,13 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	is_sumtype_cast := !got_is_fn && fname.contains('_to_sumtype_')
 	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
 		&& g.comptime.is_comptime_variant_var(expr)
-
 	if exp.is_ptr() {
 		if $d('mutable_sumtype', false) && is_sumtype_cast && g.expected_arg_mut
 			&& expr is ast.Ident {
 			g.write('&(${exp_styp.trim_right('*')}){._${got_styp.trim_right('*')}=')
 			rparen_n = 0
 			mutable_idx = got.idx()
-		} else if expr is ast.UnsafeExpr && expr.expr is ast.Nil {
+		} else if (expr is ast.UnsafeExpr && expr.expr is ast.Nil) || got == ast.nil_type {
 			g.write('(void*)0')
 			return
 		} else {
