@@ -863,7 +863,9 @@ pub fn (f &File) tell() !i64 {
 	}
 	mut pos := isize(0)
 	$if windows {
-		pos = isize(C._ftelli64(f.cfile))
+		mut pos_i64 := i64(0)
+		_ := C.fgetpos(f.cfile, &pos_i64)
+		pos = isize(pos_i64)
 	} $else {
 		pos = C.ftell(f.cfile)
 	}

@@ -148,7 +148,7 @@ fn C.rename(old_filename &char, new_filename &char) int
 
 fn C.fgets(str &char, n int, stream &C.FILE) int
 
-fn C._ftelli64(&C.FILE) i64
+fn C.fgetpos(&C.FILE, &i64) int
 
 @[trusted]
 fn C.sigemptyset() int
