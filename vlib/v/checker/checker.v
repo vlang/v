@@ -3239,7 +3239,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			}
 			return ret_type
 		}
-		ast.SizeOf {
+		ast.AlignOf, ast.SizeOf {
 			if !node.is_type {
 				node.typ = c.expr(mut node.expr)
 			}

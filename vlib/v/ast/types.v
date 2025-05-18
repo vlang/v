@@ -1303,6 +1303,13 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 	return size, align
 }
 
+// type_align returns the alignment (in bytes) of `typ`, just like C's alignof().
+pub fn (t &Table) type_align(typ Type) int {
+	// we only care about the second (alignment) return value
+	_, align := t.type_size(typ)
+	return align
+}
+
 // round_up rounds the number `n` up to the next multiple `multiple`.
 // Note: `multiple` must be a power of 2.
 @[inline]

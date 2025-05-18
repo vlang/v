@@ -33,6 +33,7 @@ pub const int_type_name = $if new_int ? {
 }
 
 pub type Expr = NodeError
+	| AlignOf
 	| AnonFn
 	| ArrayDecompose
 	| ArrayInit
@@ -1912,6 +1913,16 @@ pub mut:
 	scope &Scope = unsafe { nil }
 }
 
+pub struct AlignOf {
+pub:
+	guessed_type bool // a legacy `alignof( GuessedType )` => a deprecation notice, suggesting `v fmt -w .` => `alignof[ Type ]()`
+	is_type      bool
+	pos          token.Pos
+pub mut:
+	expr Expr // checker uses this to set typ, when !is_type
+	typ  Type
+}
+
 pub struct SizeOf {
 pub:
 	guessed_type bool // a legacy `sizeof( GuessedType )` => a deprecation notice, suggesting `v fmt -w .` => `sizeof[ Type ]()`
@@ -2218,11 +2229,11 @@ pub fn (expr Expr) pos() token.Pos {
 			// println('compiler bug, unhandled EmptyExpr pos()')
 			token.Pos{}
 		}
-		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr,
-		CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector,
-		EnumVal, DumpExpr, FloatLiteral, GoExpr, SpawnExpr, Ident, IfExpr, IntegerLiteral,
-		IsRefType, Likely, LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr,
-		PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr,
+		NodeError, AlignOf, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral,
+		CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall,
+		ComptimeSelector, EnumVal, DumpExpr, FloatLiteral, GoExpr, SpawnExpr, Ident, IfExpr,
+		IntegerLiteral, IsRefType, Likely, LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr,
+		ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr,
 		StringInterLiteral, StringLiteral, StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType,
 		LambdaExpr, Nil {
 			expr.pos
@@ -2729,7 +2740,7 @@ pub fn (expr Expr) is_literal() bool {
 			!expr.has_arg && expr.expr.is_literal() && (expr.typ.is_any_kind_of_pointer()
 				|| expr.typ in [i8_type, i16_type, int_type, i64_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
 		}
-		SizeOf, IsRefType {
+		AlignOf, SizeOf, IsRefType {
 			expr.is_type || expr.expr.is_literal()
 		}
 		else {

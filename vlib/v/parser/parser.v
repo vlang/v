@@ -4127,7 +4127,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 				ast.FloatLiteral {
 					typ = ast.f64_type
 				}
-				ast.IntegerLiteral, ast.SizeOf {
+				ast.AlignOf, ast.IntegerLiteral, ast.SizeOf {
 					typ = ast.int_type
 				}
 				ast.StringLiteral, ast.StringInterLiteral {
