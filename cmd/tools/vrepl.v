@@ -533,7 +533,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			if s.output.len > r.last_output.len {
 				cur_line_output := s.output[r.last_output.len..]
 				print_output(cur_line_output)
-				if s.exit_code == 0 {
+				if s.exit_code == 0 && !cur_line_output.contains('warning:') {
 					r.last_output = s.output.clone()
 					r.lines << r.line
 				}
@@ -583,8 +583,10 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 					if s.output.len > r.last_output.len {
 						cur_line_output := s.output[r.last_output.len..]
 						print_output(cur_line_output)
-						r.last_output = s.output.clone()
-						r.lines << print_line
+						if !cur_line_output.contains('warning:') {
+							r.last_output = s.output.clone()
+							r.lines << print_line
+						}
 					}
 					continue
 				} else {
