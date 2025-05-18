@@ -3,6 +3,7 @@ module main
 import os
 import v.util.version
 import v.util.recompilation
+import time
 
 const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
@@ -134,9 +135,14 @@ fn (app App) show_current_v_version() {
 		mut vversion := vout.output.trim_space()
 		if vout.exit_code == 0 {
 			latest_v_commit := vversion.split(' ').last().all_after('.')
-			latest_v_commit_time := os.execute('git show -s --format=%ci ${latest_v_commit}')
+			latest_v_commit_time := os.execute('git show -s --format=%cI ${latest_v_commit}')
 			if latest_v_commit_time.exit_code == 0 {
-				vversion += ', timestamp: ' + latest_v_commit_time.output.trim_space()
+				parsed_time := if t := time.parse_iso8601(latest_v_commit_time.output.trim_space()) {
+					t.as_utc().utc_to_local().custom_format('YYYY-MM-DD HH:mm:ss ZZ')
+				} else {
+					latest_v_commit_time.output.trim_space()
+				}
+				vversion += ', timestamp: ' + parsed_time
 			}
 		}
 		println('Current V version: ${vversion}')
