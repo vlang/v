@@ -500,7 +500,6 @@ mut:
 	b []Test2
 }
 
-
 fn (t Test2) str() string {
 	return '{${t.one} ${t.two}}'
 }
@@ -564,7 +563,7 @@ fn test_multi() {
 	assert a[0][0] == 1
 	assert a[0][2] == 3
 	assert a[1][2] == 6
-	b :=  [ [[1,2,3],[4,5,6]], [[1,2]] ]
+	b := [[[1, 2, 3], [4, 5, 6]], [[1, 2]]]
 	assert b[0][0][0] == 1
 }
 
