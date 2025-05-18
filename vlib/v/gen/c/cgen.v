@@ -477,6 +477,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.file = file
 			global_g.gen_file()
 			global_g.cleanups[file.mod.name].drain_builder(mut global_g.cleanup, 100)
+			global_g.global_tmp_count = 0
+			global_g.tmp_count = 0
 		}
 		util.timing_measure('cgen serial processing')
 
