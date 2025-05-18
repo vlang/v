@@ -6,20 +6,21 @@ module http
 import net.ssl
 import strings
 
-fn (req &Request) ssl_do(port int, method Method, host_name string, path string) !Response {
+fn (req &Request) ssl_do(port int, method Method, host_name string, path string, read_timeout i64) !Response {
 	$if windows && !no_vschannel ? {
 		return vschannel_ssl_do(req, port, method, host_name, path)
 	}
-	return net_ssl_do(req, port, method, host_name, path)
+	return net_ssl_do(req, port, method, host_name, path, read_timeout)
 }
 
-fn net_ssl_do(req &Request, port int, method Method, host_name string, path string) !Response {
+fn net_ssl_do(req &Request, port int, method Method, host_name string, path string, read_timeout i64) !Response {
 	mut ssl_conn := ssl.new_ssl_conn(
 		verify:                 req.verify
 		cert:                   req.cert
 		cert_key:               req.cert_key
 		validate:               req.validate
 		in_memory_verification: req.in_memory_verification
+		read_timeout:           read_timeout
 	)!
 	mut retries := 0
 	for {

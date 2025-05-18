@@ -102,7 +102,7 @@ pub fn (req &Request) do() !Response {
 		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
 		}
-		qresp := req.method_and_url_to_response(req.method, rurl)!
+		qresp := req.method_and_url_to_response(req.method, rurl, req.read_timeout)!
 		resp = qresp
 		if !req.allow_redirect {
 			break
@@ -131,7 +131,7 @@ pub fn (req &Request) do() !Response {
 	return resp
 }
 
-fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Response {
+fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, read_timeout i64) !Response {
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.escaped_path().trim_left('/')
@@ -149,7 +149,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 	if scheme == 'https' && req.proxy == unsafe { nil } {
 		// println('ssl_do( $nport, $method, $host_name, $path )')
 		for i in 0 .. req.max_retries {
-			res := req.ssl_do(nport, method, host_name, path) or {
+			res := req.ssl_do(nport, method, host_name, path, read_timeout) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
