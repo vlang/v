@@ -399,7 +399,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 				return val
 			}
 		}
-		ast.SizeOf {
+		ast.AlignOf, ast.SizeOf {
 			s, _ := c.table.type_size(expr.typ)
 			return i64(s)
 		}

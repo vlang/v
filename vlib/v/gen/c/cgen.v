@@ -3516,6 +3516,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 		ast.EmptyExpr {
 			g.error('g.expr(): unhandled EmptyExpr', token.Pos{})
 		}
+		ast.AlignOf {
+			g.align_of(node)
+		}
 		ast.AnonFn {
 			g.gen_anon_fn(mut node)
 		}
@@ -7419,6 +7422,17 @@ fn (g &Gen) get_all_test_function_names() []string {
 @[inline]
 fn (mut g Gen) get_type(typ ast.Type) ast.Type {
 	return if typ == g.field_data_type { g.comptime.comptime_for_field_value.typ } else { typ }
+}
+
+fn (mut g Gen) align_of(node ast.AlignOf) {
+	typ := g.type_resolver.typeof_type(node.expr, g.get_type(node.typ))
+	node_typ := g.unwrap_generic(typ)
+	sym := g.table.sym(node_typ)
+	if sym.language == .v && sym.kind in [.placeholder, .any] {
+		g.error('unknown type `${sym.name}`', node.pos)
+	}
+	styp := g.styp(node_typ)
+	g.write('alignof(${util.no_dots(styp)})')
 }
 
 fn (mut g Gen) size_of(node ast.SizeOf) {

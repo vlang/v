@@ -4,6 +4,7 @@
 #### Improvements in the language
 - Implement assignable anonymous struct (fix #23855) (#23857)
 - Remove ancient deprecations (#23479)
+- Add `alignof` builtin to get type alignment.
 
 #### Breaking changes
 - Make old `[attr]` syntax an error (`@[attr]` has to be used instead)

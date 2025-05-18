@@ -616,6 +616,9 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 	match mut node {
 		ast.NodeError {}
 		ast.EmptyExpr {}
+		ast.AlignOf {
+			f.align_of(node)
+		}
 		ast.AnonFn {
 			f.anon_fn(node)
 		}
@@ -3041,6 +3044,26 @@ pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
 	f.write('.')
 	f.write(node.field_name)
 	f.or_expr(node.or_block)
+}
+
+pub fn (mut f Fmt) align_of(node ast.AlignOf) {
+	f.write('alignof')
+	if node.is_type && !node.guessed_type {
+		// the new form was explicitly written in the source code; keep it:
+		f.write('[')
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		f.write(']()')
+		return
+	}
+	if node.is_type {
+		f.write('(')
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		f.write(')')
+	} else {
+		f.write('(')
+		f.expr(node.expr)
+		f.write(')')
+	}
 }
 
 pub fn (mut f Fmt) size_of(node ast.SizeOf) {

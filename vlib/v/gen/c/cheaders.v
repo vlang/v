@@ -595,6 +595,7 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <string.h>
 
 #include <stdarg.h> // for va_list
+#include <stdalign.h> // for alignof
 
 //================================== GLOBALS =================================*/
 int load_so(byteptr);

@@ -413,6 +413,12 @@ pub fn (x &Expr) str() string {
 		stdatomic.sub_i64(&nested_expr_str_calls, 1)
 	}
 	match x {
+		AlignOf {
+			if x.is_type {
+				return 'alignof(${global_table.type_to_str(x.typ)})'
+			}
+			return 'alignof(${x.expr.str()})'
+		}
 		AnonFn {
 			return 'anon_fn'
 		}
