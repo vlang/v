@@ -117,8 +117,7 @@ pub mut:
 	opened    bool
 	ip        string
 
-	owns_socket  bool
-	read_timeout i64
+	owns_socket bool
 }
 
 // SSLListener listens on a TCP port and accepts connection secured with TLS
@@ -133,7 +132,6 @@ mut:
 	opened    bool
 	// handle		int
 	// duration	time.Duration
-	read_timeout i64
 }
 
 // create a new SSLListener binding to `saddr`
@@ -181,7 +179,8 @@ fn (mut l SSLListener) init() ! {
 	$if trace_mbedtls_timeouts ? {
 		dump(l.read_timeout)
 	}
-	C.mbedtls_ssl_conf_read_timeout(&l.conf, l.read_timeout)
+
+	C.mbedtls_ssl_conf_read_timeout(&l.conf, l.config.read_timeout)
 	l.certs = &SSLCerts{}
 	C.mbedtls_x509_crt_init(&l.certs.client_cert)
 	C.mbedtls_pk_init(&l.certs.client_key)
@@ -314,9 +313,9 @@ pub:
 
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 
-	get_certificate ?fn (mut SSLListener, string) !&SSLCerts
+	get_certificate ?fn (mut SSLListener, string) !&SSLCerts // Callback for Server Name Indication (SNI)
 
-	read_timeout i64 = 2000
+	read_timeout i64 = 500 // Set the read timeout period in ms
 }
 
 // new_ssl_conn returns a new SSLConn with the given config.
@@ -381,7 +380,7 @@ fn (mut s SSLConn) init() ! {
 	$if trace_mbedtls_timeouts ? {
 		dump(s.read_timeout)
 	}
-	C.mbedtls_ssl_conf_read_timeout(&s.conf, s.read_timeout)
+	C.mbedtls_ssl_conf_read_timeout(&s.conf, s.config.read_timeout)
 
 	unsafe {
 		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &ctr_drbg)
