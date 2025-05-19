@@ -152,3 +152,22 @@ fn (mut app ServerApp) exit_gracefully() {
 	time.sleep(100 * time.millisecond)
 	exit(0)
 }
+
+pub fn (mut app ServerApp) large_response(mut ctx ServerContext) veb.Result {
+	struct Tick {
+		date_time string
+		timestamp i64
+		value     f64
+	}
+
+	mut arr := []Tick{}
+	for i in 0 .. 16000 {
+		arr << Tick{
+			date_time: i.str()
+			timestamp: i
+			value:     i
+		}
+	}
+
+	return ctx.json(arr)
+}

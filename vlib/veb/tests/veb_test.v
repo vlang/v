@@ -376,3 +376,10 @@ fn test_empty_querypath() {
 	x = http.get('http://${localserver}///') or { panic(err) }
 	assert x.body == 'Welcome to veb'
 }
+
+fn test_large_response() {
+	received := simple_tcp_client(path: '/large_response') or { panic(err) }
+	assert_common_headers(received)
+	assert received.ends_with('}]')
+	assert received.len == 830778
+}
