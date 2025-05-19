@@ -239,6 +239,9 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 			}
 			if sent < 0 {
 				code := error_code()
+				$if trace_tcp_send_failures ? {
+					eprintln('>>> TcpConn.write_ptr | send_failure, data.len: ${len:6}, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x}, c.write_timeout: ${c.write_timeout:3} => sent: ${sent:6}, error code: ${code:3}')
+				}
 				if code in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 					c.wait_for_write()!
 					continue
