@@ -4,7 +4,7 @@ import net.http
 
 // max read and write limits in bytes
 const max_read = int($d('veb_max_read_bytes', 8192))
-const max_write = int($d('veb_max_write_bytes', 16384))
+const max_write = int($d('veb_max_write_bytes', 4096))
 
 pub const max_http_post_size = $d('veb_max_http_post_size_bytes', 1048576)
 pub const default_port = int($d('veb_default_port', 8080))
