@@ -872,8 +872,8 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			g.gen_array_init_expr(node)
 		}
 		ast.AsCast {
-			// skip: JS has no types, so no need to cast
 			// TODO: Is jsdoc needed here for TS support?
+			g.expr(node.expr)
 		}
 		ast.Assoc {
 			// TODO
