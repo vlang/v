@@ -853,11 +853,6 @@ pub fn (mut f File) seek(pos i64, mode SeekMode) ! {
 	}
 }
 
-@[typedef]
-pub struct C.fpos_t {
-	__pos i64
-}
-
 // tell will return the current offset of the file cursor measured from
 // the start of the file, in bytes. It is complementary to seek, i.e.
 // you can use the return value as the `pos` parameter to .seek( pos, .start ),
@@ -872,11 +867,9 @@ pub fn (f &File) tell() !i64 {
 	$if windows {
 		ret = C.fgetpos(f.cfile, &pos)
 	} $else {
-		mut fpos := C.fpos_t{}
-		ret = C.fgetpos(f.cfile, &fpos)
-		pos = fpos.__pos
+		pos = i64(C.ftell(f.cfile))
 	}
-	if ret == -1 {
+	if ret == -1 || pos == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
 	return pos
