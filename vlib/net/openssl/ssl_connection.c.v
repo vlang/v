@@ -15,8 +15,7 @@ pub mut:
 	handle   int
 	duration time.Duration
 
-	owns_socket  bool
-	read_timeout i64
+	owns_socket bool
 }
 
 @[params]
