@@ -707,7 +707,6 @@ pub mut:
 	is_conditional     bool     // true for `[if abc]fn(){}`
 	ctdefine_idx       int      // the index of the attribute, containing the compile time define [if mytag]
 	from_embedded_type Type     // for interface only, fn from the embedded interface
-	from_embeded_type  Type @[deprecated: 'use from_embedded_type instead'; deprecated_after: '2024-03-31']
 	//
 	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some $x $y')`,
 	// when that call, should be expanded to `b.f('some '); b.f(x); b.f(' '); b.f(y);`
@@ -1834,6 +1833,18 @@ pub const s390x_with_number_register_list = {
 	'v#': 32
 }
 
+pub const ppc64le_no_number_register_list = []string{}
+pub const ppc64le_with_number_register_list = {
+	'f#': 32
+	'r#': 32
+}
+
+pub const loongarch64_no_number_register_list = []string{}
+pub const loongarch64_with_number_register_list = {
+	'f#': 32
+	'r#': 32
+}
+
 pub struct DebuggerStmt {
 pub:
 	pos token.Pos
@@ -2643,6 +2654,20 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			s390x := gen_all_registers(mut t, s390x_no_number_register_list, s390x_with_number_register_list,
 				64)
 			for k, v in s390x {
+				res[k] = v
+			}
+		}
+		.ppc64le {
+			ppc64le := gen_all_registers(mut t, ppc64le_no_number_register_list, ppc64le_with_number_register_list,
+				64)
+			for k, v in ppc64le {
+				res[k] = v
+			}
+		}
+		.loongarch64 {
+			loongarch64 := gen_all_registers(mut t, loongarch64_no_number_register_list,
+				loongarch64_with_number_register_list, 64)
+			for k, v in loongarch64 {
 				res[k] = v
 			}
 		}

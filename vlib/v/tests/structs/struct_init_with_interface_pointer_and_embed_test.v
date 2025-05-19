@@ -24,6 +24,6 @@ fn test_struct_with_both_an_embed_and_a_pointer_to_interface_value_fields__initi
 	assert si.contains('Embed: Embed{')
 	assert si.contains('foo: 0')
 	assert si.contains('id: 0')
-	assert si.contains('parent: &Node(0x0)')
+	assert si.contains('parent: &nil')
 	assert si.contains('}')
 }

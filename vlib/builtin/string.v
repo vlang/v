@@ -840,9 +840,8 @@ fn (s string) plus_two(a string, b string) string {
 }
 
 // split_any splits the string to an array by any of the `delim` chars.
-// Example: "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
-// Split a string using the chars in the delimiter string as delimiters chars.
 // If the delimiter string is empty then `.split()` is used.
+// Example: "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
 @[direct_array_access]
 pub fn (s string) split_any(delim string) []string {
 	mut res := []string{}
@@ -870,9 +869,8 @@ pub fn (s string) split_any(delim string) []string {
 }
 
 // rsplit_any splits the string to an array by any of the `delim` chars in reverse order.
-// Example: "first row\nsecond row".rsplit_any(" \n") == ['row', 'second', 'row', 'first']
-// Split a string using the chars in the delimiter string as delimiters chars.
 // If the delimiter string is empty then `.rsplit()` is used.
+// Example: "first row\nsecond row".rsplit_any(" \n") == ['row', 'second', 'row', 'first']
 @[direct_array_access]
 pub fn (s string) rsplit_any(delim string) []string {
 	mut res := []string{}
@@ -900,18 +898,18 @@ pub fn (s string) rsplit_any(delim string) []string {
 }
 
 // split splits the string into an array of strings at the given delimiter.
-// Example: assert 'A B C'.split(' ') == ['A','B','C']
 // If `delim` is empty the string is split by it's characters.
 // Example: assert 'DEF'.split('') == ['D','E','F']
+// Example: assert 'A B C'.split(' ') == ['A','B','C']
 @[inline]
 pub fn (s string) split(delim string) []string {
 	return s.split_nth(delim, 0)
 }
 
 // rsplit splits the string into an array of strings at the given delimiter, starting from the right.
-// Example: assert 'A B C'.rsplit(' ') == ['C','B','A']
 // If `delim` is empty the string is split by it's characters.
 // Example: assert 'DEF'.rsplit('') == ['F','E','D']
+// Example: assert 'A B C'.rsplit(' ') == ['C','B','A']
 @[inline]
 pub fn (s string) rsplit(delim string) []string {
 	return s.rsplit_nth(delim, 0)
@@ -934,13 +932,13 @@ pub fn (s string) split_once(delim string) ?(string, string) {
 }
 
 // rsplit_once splits the string into a pair of strings at the given delimiter, starting from the right.
+// NOTE: rsplit_once returns the string at the left side of the delimiter as first part of the pair.
 // Example:
 // ```v
 // path, ext := 'file.ts.dts'.rsplit_once('.')?
 // assert path == 'file.ts'
 // assert ext == 'dts'
 // ```
-// NOTE: rsplit_once returns the string at the left side of the delimiter as first part of the pair.
 pub fn (s string) rsplit_once(delim string) ?(string, string) {
 	result := s.rsplit_nth(delim, 2)
 
@@ -2767,11 +2765,29 @@ pub fn (name string) match_glob(pattern string) bool {
 	return true
 }
 
-// is_ascii returns true  if all characters belong to the US-ASCII set ([` `..`~`])
-@[inline]
+// is_ascii returns true if all characters belong to the US-ASCII set ([` `..`~`])
+@[direct_array_access; inline]
 pub fn (s string) is_ascii() bool {
 	for i := 0; i < s.len; i++ {
 		if s[i] < u8(` `) || s[i] > u8(`~`) {
+			return false
+		}
+	}
+	return true
+}
+
+// is_identifier checks if a string is a valid identifier (starts with letter/underscore, followed by letters, digits, or underscores)
+@[direct_array_access]
+pub fn (s string) is_identifier() bool {
+	if s.len == 0 {
+		return false
+	}
+	if !(s[0].is_letter() || s[0] == `_`) {
+		return false
+	}
+	for i := 1; i < s.len; i++ {
+		c := s[i]
+		if !(c.is_letter() || c.is_digit() || c == `_`) {
 			return false
 		}
 	}

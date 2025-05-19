@@ -89,6 +89,7 @@ pub mut:
 	inside_fn_arg               bool        // `a`, `b` in `a.f(b)`
 	inside_ct_attr              bool        // true inside `[if expr]`
 	inside_x_is_type            bool        // true inside the Type expression of `if x is Type {`
+	inside_x_matches_type       bool        // true inside the match branch of `match x.type { Type {} }`
 	anon_struct_should_be_mut   bool        // true when `mut var := struct { ... }` is used
 	inside_generic_struct_init  bool
 	inside_integer_literal_cast bool // true inside `int(123)`
@@ -192,6 +193,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.inside_fn_arg = false
 	c.inside_ct_attr = false
 	c.inside_x_is_type = false
+	c.inside_x_matches_type = false
 	c.inside_integer_literal_cast = false
 	c.skip_flags = false
 	c.fn_level = 0
@@ -3594,6 +3596,20 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.error('cannot cast type `${ft}` to `${tt}`', node.pos)
 	}
 
+	// if from_type == ast.voidptr_type_idx && !c.inside_unsafe && !c.pref.translated
+	// Do not allow `&u8(unsafe { nil })` etc, force nil or voidptr cast
+	if from_type.is_number() && to_type.is_ptr() && !c.inside_unsafe && !c.pref.translated
+		&& !c.file.is_translated {
+		if from_sym.language != .c {
+			ne_name := node.expr.str()
+			if !ne_name.starts_with('C.') {
+				// TODO make an error
+				c.warn('cannot cast a number to a type reference, use `nil` or a voidptr cast first: `&Type(voidptr(123))`',
+					node.pos)
+			}
+		}
+	}
+
 	// T(0) where T is array or map
 	if node.typ.has_flag(.generic) && to_sym.kind in [.array, .map, .array_fixed]
 		&& node.expr.is_literal() {
@@ -4683,7 +4699,7 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 					match type_sym.kind {
 						.struct {
 							info := type_sym.info as ast.Struct
-							if !info.is_heap {
+							if !info.is_heap && !node.obj.is_inherited {
 								node.obj.is_auto_heap = true
 							}
 						}

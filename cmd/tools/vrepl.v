@@ -23,20 +23,20 @@ mut:
 	folder       string // the folder in which the repl will write its temporary source files
 	last_output  string // the last repl output
 
-	modules         []string          // all the import modules
-	alias           map[string]string // all the alias used in the import
-	includes        []string          // all the #include statements
-	functions       []string          // all the user function declarations
-	functions_name  []string          // all the user function names
-	structs         []string          // all the struct definitions
-	enums           []string          // all the enum definitions
-	consts          []string          // all the const definitions
-	types           []string          // all the type definitions
-	interfaces      []string          // all the interface definitions
-	lines           []string          // all the other lines/statements
-	temp_lines      []string          // all the temporary expressions/printlns
-	vstartup_lines  []string          // lines in the `VSTARTUP` file
-	eval_func_lines []string          // same line of the `VSTARTUP` file, but used to test fn type
+	modules         map[string][]string // all the import modules
+	alias           map[string]string   // all the alias used in the import
+	includes        []string            // all the #include statements
+	functions       []string            // all the user function declarations
+	functions_name  []string            // all the user function names
+	structs         []string            // all the struct definitions
+	enums           []string            // all the enum definitions
+	consts          []string            // all the const definitions
+	types           []string            // all the type definitions
+	interfaces      []string            // all the interface definitions
+	lines           []string            // all the other lines/statements
+	temp_lines      []string            // all the temporary expressions/printlns
+	vstartup_lines  []string            // lines in the `VSTARTUP` file
+	eval_func_lines []string            // same line of the `VSTARTUP` file, but used to test fn type
 }
 
 const is_stdin_a_pipe = os.is_atty(0) == 0
@@ -91,7 +91,11 @@ fn new_repl(folder string) Repl {
 			skip_empty: true
 		}
 		folder:         folder
-		modules:        ['os', 'time', 'math']
+		modules:        {
+			'os':   []
+			'time': []
+			'math': []
+		}
 		vstartup_lines: vstartup_source
 		// Test file used to check if a function as a void return or a value return.
 		eval_func_lines: vstartup_source
@@ -205,10 +209,17 @@ fn (r &Repl) is_function_call(line string) bool {
 // to a sequence of V source code lines
 fn (r &Repl) import_to_source_code() []string {
 	mut imports_line := []string{}
-	for mod in r.modules {
+	for mod, value in r.modules {
 		mut import_str := 'import ${mod}'
 		if mod in r.alias {
 			import_str += ' as ${r.alias[mod]}'
+		}
+		if value.len > 0 {
+			import_str += '{ '
+			for val in value {
+				import_str += '${val}, '
+			}
+			import_str += '}'
 		}
 		imports_line << endline_if_missed(import_str)
 	}
@@ -312,15 +323,23 @@ fn (mut r Repl) parse_import(line string) {
 	tokens := r.line.fields()
 	// module name
 	mod := tokens[1]
-	if mod !in r.modules {
-		r.modules << mod
-	}
-	// Check if the import contains an alias
-	// import mod_name as alias_mod
+	// set alias
 	if line.contains('as ') && tokens.len >= 4 {
 		alias := tokens[3]
 		if mod !in r.alias {
 			r.alias[mod] = alias
+		}
+	}
+
+	// set value
+	if line.contains('{') && line.contains('}') {
+		values := line.split('{')[1].split('}')[0]
+		for value in values.split(',') {
+			r.modules[mod] << value
+		}
+	} else {
+		if mod !in r.modules {
+			r.modules[mod] = []string{}
 		}
 	}
 }

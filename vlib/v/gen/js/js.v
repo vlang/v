@@ -143,6 +143,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) stri
 		graph.add(g.file.mod.name, imports)
 		// builtin types
 		if g.file.mod.name == 'builtin' && !g.generated_builtin {
+			g.gen_nil_const()
 			g.gen_builtin_type_defs()
 			g.writeln('Object.defineProperty(array.prototype,"len", { get: function() {return new int(this.arr.arr.length);}, set: function(l) { this.arr.arr.length = l.valueOf(); } }); ')
 			g.writeln('Object.defineProperty(map.prototype,"len", { get: function() {return new int(this.length);}, set: function(l) { } }); ')
@@ -965,7 +966,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			g.gen_lock_expr(node)
 		}
 		ast.Nil {
-			g.write('null')
+			g.write('nil__')
 		}
 		ast.NodeError {}
 		ast.None {
@@ -1345,7 +1346,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				g.expr(left)
 			}
 
-			is_ptr := stmt.op == .assign && stmt.left_types[i].is_ptr() && !array_set
+			is_ptr := stmt.op == .assign && stmt.right_types[i].is_ptr() && !array_set
 			if is_ptr {
 				g.write('.val')
 			}
@@ -1945,6 +1946,8 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 
 				if field.has_default_expr {
 					g.expr(field.default_expr)
+				} else if field.typ.has_flag(.option) {
+					g.write('none__')
 				} else {
 					g.write('${g.to_js_typ_val(field.typ)}')
 				}
@@ -2050,8 +2053,8 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('(function(length) {')
 		g.inc_indent()
 		g.writeln('const ${t1} = [];')
-		g.write('for (let it = 0; it < length')
-		g.writeln('; it++) {')
+		g.write('for (let it = 0, index = 0; index < length')
+		g.writeln('; it++, index++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
 		if it.has_init {

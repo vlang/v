@@ -12,8 +12,8 @@ pub fn set_test_env(test_path string) {
 	unbuffer_stdout()
 }
 
-pub fn hg_serve(hg_path string, path string) (&os.Process, int) {
-	mut port := 8000
+pub fn hg_serve(hg_path string, path string, start_port int) (&os.Process, int) {
+	mut port := start_port
 	for {
 		if mut l := net.listen_tcp(.ip6, ':${port}') {
 			l.close() or { panic(err) }

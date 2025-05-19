@@ -1,5 +1,6 @@
 import os
 import term
+import strings
 
 fn test_get_terminal_size() {
 	cols, _ := term.get_terminal_size()
@@ -113,14 +114,32 @@ fn test_set_tab_title() {
 }
 
 fn test_strip_ansi() {
-	strings := [
+	string_list := [
 		'abc',
 		term.bold('abc'),
 		term.yellow('abc'),
 		term.bold(term.red('abc')),
 		term.strikethrough(term.inverse(term.dim(term.bold(term.bright_bg_blue('abc'))))),
 	]
-	for s in strings {
+	for s in string_list {
 		assert term.strip_ansi(s) == 'abc'
 	}
+}
+
+fn test_write_color() {
+	mut sb := strings.new_builder(100)
+	term.writeln_color(mut sb, 'hello')
+	term.writeln_color(mut sb, 'hello', fg: .red)
+	term.writeln_color(mut sb, 'hello', bg: .cyan)
+	term.writeln_color(mut sb, 'hello', styles: [.bold, .italic, .underline], fg: .red, bg: .cyan)
+	term.writeln_color(mut sb, 'hello', custom: '38;5;214')
+
+	output := sb.str()
+	println(output)
+
+	assert output.contains('\x1b[0m')
+	assert output.contains('\x1b[31m')
+	assert output.contains('\x1b[46m')
+	assert output.contains('\x1b[1;3;4;31;46m')
+	assert output.contains('\x1b[38;5;214m')
 }

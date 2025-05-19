@@ -553,15 +553,15 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		string_info := decoder.current_node.value
 
 		if string_info.value_kind == .string_ {
-			buffer_lenght, escape_positions := decoder.calculate_string_space_and_escapes()!
+			buffer_length, escape_positions := decoder.calculate_string_space_and_escapes()!
 
-			string_buffer := []u8{cap: buffer_lenght}
+			string_buffer := []u8{cap: buffer_length}
 
 			if escape_positions.len == 0 {
 				if string_info.length != 0 {
 					unsafe {
 						string_buffer.push_many(decoder.json.str + string_info.position + 1,
-							buffer_lenght)
+							buffer_length)
 					}
 				}
 			} else {
@@ -618,6 +618,9 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		decoder.decode_map(mut val)!
 		return
 	} $else $if T.unaliased_typ is $array {
+		unsafe {
+			val.len = 0
+		}
 		decoder.decode_array(mut val)!
 		// return to avoid the next increment of the current node
 		// this is because the current node is already incremented in the decode_array function

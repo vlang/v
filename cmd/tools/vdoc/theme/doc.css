@@ -426,7 +426,7 @@ hr {
 	font-size: 0.85rem;
 }
 .doc-content > .doc-node {
-	padding: 5rem 0 2rem 0;
+	padding: 0.5rem 0 0.5rem 0;
 	margin-top: -4rem;
 	overflow: hidden;
 	word-break: break-word;
@@ -618,7 +618,7 @@ pre code {
 	hyphens: none;
 	display: block;
 	overflow-x: auto;
-	padding: 1rem;
+	padding: 5px;
 }
 code {
 	padding: 0 0.2rem;
@@ -785,7 +785,7 @@ button.copy {
 		padding-top: 0;
 	}
 	.doc-content > .doc-node.const:not(:last-child) {
-		padding-bottom: 1rem;
+		padding-bottom: 5px;
 	}
 	.doc-container {
 		margin-left: 300px;

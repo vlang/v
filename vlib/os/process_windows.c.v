@@ -32,10 +32,10 @@ fn failed_cfn_report_error(ok bool, label string) {
 
 fn close_valid_handle(p voidptr) {
 	h := &&u32(p)
-	if *h != &u32(0) {
+	if *h != &u32(unsafe { nil }) {
 		C.CloseHandle(*h)
 		unsafe {
-			*h = &u32(0)
+			*h = &u32(nil)
 		}
 	}
 }
@@ -231,7 +231,7 @@ fn (mut p Process) win_read_string(idx int, _maxbytes int) (string, int) {
 	if unsafe { wdata == 0 } {
 		return '', 0
 	}
-	mut rhandle := &u32(0)
+	mut rhandle := &u32(unsafe { nil })
 	if idx == 1 {
 		rhandle = wdata.child_stdout_read
 	}
@@ -263,7 +263,7 @@ fn (mut p Process) win_is_pending(idx int) bool {
 	if unsafe { wdata == 0 } {
 		return false
 	}
-	mut rhandle := &u32(0)
+	mut rhandle := &u32(unsafe { nil })
 	if idx == 1 {
 		rhandle = wdata.child_stdout_read
 	}
@@ -285,7 +285,7 @@ fn (mut p Process) win_slurp(idx int) string {
 	if unsafe { wdata == 0 } {
 		return ''
 	}
-	mut rhandle := &u32(0)
+	mut rhandle := &u32(unsafe { nil })
 	if idx == 1 {
 		rhandle = wdata.child_stdout_read
 	}

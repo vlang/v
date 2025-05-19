@@ -149,7 +149,7 @@ fn (mut a App) collect_info() {
 	}
 	a.report_tcc_version('thirdparty/tcc')
 	a.line('emcc version', a.cmd(command: 'emcc --version'))
-	if os_kind != 'openbsd' {
+	if os_kind != 'openbsd' && os_kind != 'freebsd' {
 		a.line('glibc version', a.cmd(command: 'ldd --version'))
 	} else {
 		a.line('glibc version', 'N/A')
@@ -237,6 +237,11 @@ fn (mut a App) cpu_info(key string) string {
 }
 
 fn (mut a App) git_info() string {
+	// Check if in a Git repository
+	x := os.execute('git rev-parse --is-inside-work-tree')
+	if x.exit_code != 0 || x.output.trim_space() != 'true' {
+		return 'N/A'
+	}
 	mut out := a.cmd(command: 'git -C . describe --abbrev=8 --dirty --always --tags').trim_space()
 	os.execute('git -C . remote add V_REPO https://github.com/vlang/v') // ignore failure (i.e. remote exists)
 	if '-skip-github' !in os.args {

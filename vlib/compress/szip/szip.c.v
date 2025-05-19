@@ -183,7 +183,7 @@ pub fn (mut zentry Zip) crc32() u32 {
 
 // write_entry compresses an input buffer for the current zip entry.
 pub fn (mut zentry Zip) write_entry(data []u8) ! {
-	if int(data[0] & 0xff) == -1 {
+	if data.len > 0 && int(data[0] & 0xff) == -1 {
 		return error('szip: cannot write entry')
 	}
 	res := C.zip_entry_write(zentry, data.data, data.len)
@@ -205,7 +205,7 @@ pub fn (mut zentry Zip) create_entry(name string) ! {
 // NOTE: remember to release the memory allocated for an output buffer.
 // for large entries, please take a look at zip_entry_extract function.
 pub fn (mut zentry Zip) read_entry() !voidptr {
-	mut buf := &u8(0)
+	mut buf := &u8(unsafe { nil })
 	mut bsize := usize(0)
 	res := C.zip_entry_read(zentry, unsafe { &voidptr(&buf) }, &bsize)
 	if res == -1 {

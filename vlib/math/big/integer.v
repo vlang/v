@@ -316,18 +316,12 @@ pub fn (augend Integer) + (addend Integer) Integer {
 	if augend.signum == addend.signum {
 		return augend.add(addend)
 	}
-	// Unequal signs, left is negative:
-	if augend.signum == -1 {
-		// -1 + 5 == 5 - 1
-		return addend.subtract(augend)
+	// Unequal signs
+	if augend.abs_cmp(addend) < 0 {
+		return augend.subtract(addend).neg()
+	} else {
+		return augend.subtract(addend)
 	}
-	// Unequal signs, left is positive:
-	res := augend.subtract(addend)
-	cmp := augend.abs_cmp(addend)
-	if cmp < 0 {
-		return res.neg()
-	}
-	return res
 }
 
 // - returns the difference of the integers `minuend` and `subtrahend`
@@ -478,6 +472,10 @@ pub fn (dividend Integer) / (divisor Integer) Integer {
 // returns a Result refer to `mod_checked`.
 @[inline]
 pub fn (dividend Integer) % (divisor Integer) Integer {
+	if dividend.signum == -1 {
+		_, r := dividend.neg().div_mod(divisor)
+		return r.neg()
+	}
 	_, r := dividend.div_mod(divisor)
 	return r
 }
@@ -740,6 +738,17 @@ pub fn (a Integer) bitwise_not() Integer {
 	return Integer{
 		digits: result
 		signum: if result.len == 0 { 0 } else { 1 }
+	}
+}
+
+// bitwise_com returns "bitwise complement" of integer `a`.
+//
+// Note: this function consider the sign of the input.
+pub fn (a Integer) bitwise_com() Integer {
+	return if a.signum == -1 {
+		a.abs() - one_int
+	} else {
+		(a + one_int).neg()
 	}
 }
 

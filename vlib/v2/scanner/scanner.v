@@ -124,7 +124,7 @@ pub fn (mut s Scanner) scan() token.Token {
 		s.offset++
 		// NOTE: I have made `@[` a token instead of using `@` and `[` because `@`
 		// is not currently used as a token, and it is also easier to parse this way.
-		// if/when `@` becomes used as a token of it's own, then I may change this.
+		// if/when `@` becomes used as a token of its own, then I may change this.
 		if c == `@` && s.src[s.offset] == `[` {
 			s.offset++
 			return .attribute

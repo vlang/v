@@ -88,7 +88,9 @@ fn test_install_from_git_url_with_version_tag() {
 	res = cmd_fail(@LOCATION, '${vexe} install -f ${url}@${tag}')
 	// Install invalid version verbose.
 	res = cmd_fail(@LOCATION, '${vexe} install -f -v ${url}@${tag}')
-	assert res.output.contains('Could not find remote branch ${tag} to clone.'), res.output
+	not_found := res.output.contains('Could not find remote branch ${tag} to clone.')
+		|| res.output.contains('Remote branch ${tag} not found')
+	assert not_found, res.output
 	// Install from GitLab.
 	url = 'https://gitlab.com/tobealive/webview'
 	tag = 'v0.6.0'
@@ -104,6 +106,10 @@ fn test_install_from_hg_url_with_version_tag() ! {
 		eprintln('skipping test, since `hg` is not executable.')
 		return
 	}
+
+	hg_version := cmd_ok(@LOCATION, 'hg version -q')
+	dump(hg_version.output.trim_space())
+
 	test_module_path := os.join_path(os.temp_dir(), rand.ulid(), 'hg_test_module')
 	defer {
 		os.rmdir_all(test_module_path) or {}
@@ -111,25 +117,38 @@ fn test_install_from_hg_url_with_version_tag() ! {
 	mut res := cmd_ok(@LOCATION, 'hg init ${test_module_path}')
 	os.chdir(test_module_path)!
 
+	println('> writing .hg/hgrc to the new mercurial repo ...')
+	os.mkdir_all('.hg')!
+	os.write_file('.hg/hgrc', '[ui]\nusername = v_ci <v_ci@example.net>\nverbose = False\n')!
+	println('> writing .hg/hgrc done.')
+
+	println('> writing v.mod file ...')
 	os.write_file('v.mod', "Module{
 	name: 'my_awesome_v_module'
 	version: '0.1.0'
 }")!
+	println('> writing v.mod file done.')
+
 	cmd_ok(@LOCATION, 'hg add')
-	cmd_ok(@LOCATION, 'hg --config ui.username=v_ci commit -m "initial commit"')
+	cmd_ok(@LOCATION, 'hg commit -m "initial commit"')
+	println('> writing README.md file ...')
 	os.write_file('README.md', 'Hello World!')!
+	println('> writing README.md file done.')
 	cmd_ok(@LOCATION, 'hg add')
-	cmd_ok(@LOCATION, 'hg --config ui.username=v_ci commit -m "add readme"')
+	cmd_ok(@LOCATION, 'hg commit -m "add readme"')
 	cmd_ok(@LOCATION, 'hg tag v0.1.0')
 
+	println('> rewriting v.mod ...')
 	os.write_file('v.mod', "Module{
 	name: 'my_awesome_v_module'
 	version: '0.2.0'
 }")!
-	cmd_ok(@LOCATION, 'hg add')
-	cmd_ok(@LOCATION, 'hg --config ui.username=v_ci commit -m "bump version to v0.2.0"')
+	println('> rewriting v.mod done.')
 
-	mut p, port := test_utils.hg_serve(hg_path, test_module_path)
+	cmd_ok(@LOCATION, 'hg add')
+	cmd_ok(@LOCATION, 'hg commit -m "bump version to v0.2.0"')
+
+	mut p, port := test_utils.hg_serve(hg_path, test_module_path, 4000)
 	res = os.execute('${vexe} install -v --hg http://127.0.0.1:${port}@v0.1.0')
 	p.signal_kill()
 	if res.exit_code != 0 {

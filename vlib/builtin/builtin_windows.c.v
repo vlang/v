@@ -172,7 +172,7 @@ pub fn winapi_lasterr_str() string {
 		// handle this case special since `FormatMessageW()` might not work anymore
 		return 'insufficient memory'
 	}
-	mut msgbuf := &u16(0)
+	mut msgbuf := &u16(unsafe { nil })
 	res := C.FormatMessageW(format_message_allocate_buffer | format_message_from_system | format_message_ignore_inserts,
 		0, err_msg_id, 0, voidptr(&msgbuf), 0, 0)
 	err_msg := if res == 0 {

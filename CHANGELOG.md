@@ -284,7 +284,7 @@
 - Fix msvc build filename, remove temp files (#23890)
 - Improve the stability of generated code for auto string methods
 - Fix codegen for array of anon struct (fix #23896) (#23907)
-- Make sure to call the overriden `pub fn (mut a []string) free() {` method, NOT the generic `fn (a &array) free() {` one. (#23911)
+- Make sure to call the overridden `pub fn (mut a []string) free() {` method, NOT the generic `fn (a &array) free() {` one. (#23911)
 - Fix generic container init (fix #23910) (#23912)
 - Fix codegen for generic structinit and generic array return (fix #23916) (#23943)
 - Implement alias operator overloading for generic struct parent type (fix #23965) (#23967)
@@ -1188,7 +1188,7 @@
 - net.http:  implement http.download_file_with_progress/2, saving each chunk, as it is received, without growing the memory usage (#21633)
 - veb: update import name in docs (#21668)
 - Add `m3u8` MIME type `application/vnd.apple.mpegurl` for multimedia playlists (#21688)
-- veb.auth: use constant time comparision in compare_password_with_hash (#21693)
+- veb.auth: use constant time comparison in compare_password_with_hash (#21693)
 - net.http: correct `Response.status()` method comment, to indicate returning of a `Status` enum field, instead of struct (#21735)
 - net: fix TcpConn.peer_ip/0 to only return the ip address, without the port number (#21831)
 - Add mime type `text/x-vlang`, for `.v` and `.vsh` file extensions (#21851)

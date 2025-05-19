@@ -500,19 +500,6 @@ mut:
 	b []Test2
 }
 
-// TODO: default array/struct str methods
-fn (ta []Test2) str() string {
-	mut s := '['
-	for i, t in ta {
-		s += t.str()
-		if i < ta.len - 1 {
-			s += ', '
-		}
-	}
-	s += ']'
-	return s
-}
-
 fn (t Test2) str() string {
 	return '{${t.one} ${t.two}}'
 }
@@ -576,9 +563,8 @@ fn test_multi() {
 	assert a[0][0] == 1
 	assert a[0][2] == 3
 	assert a[1][2] == 6
-	// TODO
-	// b :=  [ [[1,2,3],[4,5,6]], [[1,2]] ]
-	// assert b[0][0][0] == 1
+	b := [[[1, 2, 3], [4, 5, 6]], [[1, 2]]]
+	assert b[0][0][0] == 1
 }
 
 fn test_in() {
@@ -629,8 +615,6 @@ fn test_filter() {
 	assert mut_arr.len == 3
 	assert a.filter(filter_test_helper_1) == [4, 5, 6]
 	assert [1, 5, 10].filter(filter_test_helper_1) == [5, 10]
-	// TODO
-	// assert arr.filter(arr % 2).len == 5
 }
 
 fn test_anon_fn_filter() {
@@ -746,8 +730,7 @@ fn test_array_str() {
 	println(numbers2)
 	assert true
 	assert numbers.str() == '[1, 2, 3]'
-	// QTODO
-	// assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
+	assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
 }
 
 struct User {

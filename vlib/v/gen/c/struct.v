@@ -316,10 +316,11 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					update_expr_sym := g.table.final_sym(field.typ)
 					if update_expr_sym.info is ast.ArrayFixed {
 						is_arr_fixed = true
+						// workaround for tcc bug, is_auto_deref_var := ... issue #24331
+						is_auto_deref_var := node.update_expr.is_auto_deref_var()
 						g.fixed_array_update_expr_field(g.expr_string(node.update_expr),
-							node.update_expr_type, field.name, node.update_expr.is_auto_deref_var(),
-							update_expr_sym.info.elem_type, update_expr_sym.info.size,
-							node.is_update_embed)
+							node.update_expr_type, field.name, is_auto_deref_var, update_expr_sym.info.elem_type,
+							update_expr_sym.info.size, node.is_update_embed)
 					} else {
 						g.write('(')
 						g.expr(node.update_expr)
@@ -741,21 +742,21 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 						g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
 							field_unwrap_sym.info.size)
 					} else {
-						g.struct_init_field_default(field_unwrap_typ, sfield)
+						g.struct_init_field_default(field_unwrap_typ, sfield, field_unwrap_sym)
 					}
 				}
 				else {
-					g.struct_init_field_default(field_unwrap_typ, sfield)
+					g.struct_init_field_default(field_unwrap_typ, sfield, field_unwrap_sym)
 				}
 			}
 		} else {
-			g.struct_init_field_default(field_unwrap_typ, sfield)
+			g.struct_init_field_default(field_unwrap_typ, sfield, field_unwrap_sym)
 		}
 		g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
 	}
 }
 
-fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.StructInitField) {
+fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.StructInitField, field_unwrap_sym ast.TypeSymbol) {
 	if field_unwrap_typ != ast.voidptr_type && field_unwrap_typ != ast.nil_type
 		&& (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))
 		&& !sfield.expected_type.has_flag(.option) && !field_unwrap_typ.is_any_kind_of_pointer()
@@ -768,6 +769,9 @@ fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.
 		g.expr_with_opt(sfield.expr, field_unwrap_typ, sfield.expected_type)
 	} else if sfield.expr is ast.LambdaExpr && sfield.expected_type.has_flag(.option) {
 		g.expr_opt_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
+	} else if field_unwrap_sym.kind == .function && sfield.expected_type.has_flag(.option) {
+		tmp_out_var := g.new_tmp_var()
+		g.expr_with_tmp_var(sfield.expr, field_unwrap_typ, sfield.expected_type, tmp_out_var)
 	} else {
 		g.left_is_opt = true
 		g.expr_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)

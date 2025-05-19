@@ -1,3 +1,4 @@
+import os
 import os.asset
 import gg
 import gx
@@ -29,6 +30,7 @@ mut:
 	titles    []string
 	levels    []string
 	moves     int
+	pushes    int
 	ctx       &gg.Context = unsafe { nil }
 	//
 	id_box            int
@@ -54,22 +56,25 @@ fn (mut g Game) parse_level(lnumber int) ! {
 		mut row := []rune{}
 		for x, c in line {
 			match c {
-				`#`, ` `, `@` {
+				`#`, ` ` {
 					row << c
 				}
-				`b` { // a normal box
+				`b`, `$` { // a normal box
 					row << ` `
 					boxes << Pos{x, y}
 				}
-				`p` { // a normal player
+				`p`, `@` { // a normal player
 					row << ` `
 					player = Pos{x, y}
 				}
-				`B` { // box on storage
+				`.` { // storage
+					row << `@`
+				}
+				`*` { // box on storage
 					row << `@`
 					boxes << Pos{x, y}
 				}
-				`P` { // player on storage
+				`+` { // player on storage
 					row << `@`
 					player = Pos{x, y}
 				}
@@ -88,6 +93,7 @@ fn (mut g Game) parse_level(lnumber int) ! {
 	g.player = player
 	g.boxes = boxes
 	g.moves = 0
+	g.pushes = 0
 	g.win = false
 }
 
@@ -129,6 +135,7 @@ fn (mut g Game) move_player(dir Direction) {
 			}
 		}
 		g.boxes[target_box_index] = target_after
+		g.pushes++
 	}
 	g.player = target
 	g.moves++
@@ -228,12 +235,14 @@ fn (g &Game) draw_frame(_ voidptr) {
 		g.ctext(ws, -15, 'Press `space` to continue.', 20, gx.gray)
 	} else {
 		for idx, title in g.titles {
-			g.ctext(ws, -60 + (idx * 20), title, 22, gx.white)
+			g.ctext(ws, -65 + (idx * 20), title, 22, gx.white)
 		}
+		g.ctext(ws, -65 + (g.titles.len * 20), 'Boxes: ${g.boxes.len:04}', 16, gx.gray)
 	}
 	g.ctx.draw_rect_filled(0, 0, ws.width, 40, gx.black)
-	g.ctx.draw_text(5, 0, 'Level: ${g.level + 1:02}', color: gx.green, size: 40)
+	g.ctx.draw_text(30, 0, 'Level: ${g.level + 1:02}', color: gx.green, size: 40)
 	g.ctx.draw_text(ws.width - 225, 0, 'Moves: ${g.moves:04}', color: gx.green, size: 40)
+	g.ctx.draw_text(ws.width / 2 - 110, 0, 'Pushes: ${g.pushes:04}', color: gx.green, size: 40)
 	g.ctx.end()
 }
 
@@ -243,12 +252,28 @@ fn (mut g Game) iid(name string) !int {
 
 fn main() {
 	mut g := &Game{}
-	all_level_names := asset.read_bytes('/', '_all_levels.txt')!.bytestr().split_into_lines()
-	g.levels = all_level_names.map(asset.read_bytes('/', it)!.bytestr())
+	if os.args.len > 1 {
+		for fpath in os.args[1..] {
+			content := os.read_file(fpath)!
+			if content.starts_with(';') {
+				// many levels in the same file:
+				parts := content.trim_space().split('\n\n')
+				for part in parts {
+					g.levels << '${fpath}${part}'
+				}
+			} else {
+				// a single level:
+				g.levels << content
+			}
+		}
+	} else {
+		all_level_names := asset.read_text('/', '_all_levels.txt')!.split_into_lines()
+		g.levels = all_level_names.map(asset.read_text('/', it)!)
+	}
 	g.parse_level(0)!
 	g.ctx = gg.new_context(
 		width:        800
-		height:       480
+		height:       640
 		window_title: 'V Sokoban'
 		user_data:    g
 		frame_fn:     g.draw_frame

@@ -1553,6 +1553,20 @@ fn test_string_is_ascii() {
 	assert 'a👋bc'.is_ascii() == false
 }
 
+fn test_string_is_identifier() {
+	assert ''.is_identifier() == false
+	assert ' '.is_identifier() == false
+	assert '~~'.is_identifier() == false
+	assert '_Az~'.is_identifier() == false
+	assert '_Aö~'.is_identifier() == false
+	assert '👋'.is_identifier() == false
+	assert 'a👋bc'.is_identifier() == false
+	assert '9'.is_identifier() == false
+	assert '_9'.is_identifier() == true
+	assert 'a 9'.is_identifier() == false
+	assert 't'.is_identifier() == true
+}
+
 fn test_string_with_zero_byte_escape() {
 	assert '\x00'.bytes() == [u8(0)]
 }

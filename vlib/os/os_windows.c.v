@@ -293,9 +293,9 @@ pub fn execute(cmd string) Result {
 // user provided escape sequences.
 @[unsafe]
 pub fn raw_execute(cmd string) Result {
-	mut child_stdin := &u32(0)
-	mut child_stdout_read := &u32(0)
-	mut child_stdout_write := &u32(0)
+	mut child_stdin := &u32(unsafe { nil })
+	mut child_stdout_read := &u32(unsafe { nil })
+	mut child_stdout_write := &u32(unsafe { nil })
 	mut sa := SecurityAttributes{}
 	sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 	sa.b_inherit_handle = true
@@ -343,8 +343,8 @@ pub fn raw_execute(cmd string) Result {
 	}
 	command_line := [32768]u16{}
 	C.ExpandEnvironmentStringsW(pcmd.to_wide(), voidptr(&command_line), 32768)
-	create_process_ok := C.CreateProcessW(0, &command_line[0], 0, 0, C.TRUE, 0, 0, 0,
-		voidptr(&start_info), voidptr(&proc_info))
+	create_process_ok := C.CreateProcessW(0, &command_line[0], 0, 0, C.TRUE, C.CREATE_NO_WINDOW,
+		0, 0, voidptr(&start_info), voidptr(&proc_info))
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
@@ -609,8 +609,8 @@ pub fn disk_usage(path string) !DiskUsage {
 	mut available := u64(0)
 	mut ret := false
 	if path == '.' || path == '' {
-		ret = C.GetDiskFreeSpaceExA(&char(0), &free_bytes_available_to_caller, &total,
-			&available)
+		ret = C.GetDiskFreeSpaceExA(&char(unsafe { nil }), &free_bytes_available_to_caller,
+			&total, &available)
 	} else {
 		ret = C.GetDiskFreeSpaceExA(&char(path.str), &free_bytes_available_to_caller,
 			&total, &available)

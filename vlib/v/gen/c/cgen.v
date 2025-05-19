@@ -96,7 +96,7 @@ mut:
 	is_assign_lhs             bool // inside left part of assign expr (for array_set(), etc)
 	is_void_expr_stmt         bool // ExprStmt whose result is discarded
 	is_arraymap_set           bool // map or array set value state
-	is_amp                    bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&u8(0)` etc
+	is_amp                    bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&u8(unsafe { nil })` etc
 	is_sql                    bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared                 bool // for initialization of hidden mutex in `[rw]shared` literals
 	is_vlines_enabled         bool // is it safe to generate #line directives when -g is passed
@@ -153,6 +153,7 @@ mut:
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
 	inside_cast               bool
 	inside_selector           bool
+	inside_selector_deref     bool // indicates if the inside selector was already dereferenced
 	inside_memset             bool
 	inside_const              bool
 	inside_array_item         bool
@@ -476,6 +477,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.file = file
 			global_g.gen_file()
 			global_g.cleanups[file.mod.name].drain_builder(mut global_g.cleanup, 100)
+			global_g.global_tmp_count = 0
+			global_g.tmp_count = 0
 		}
 		util.timing_measure('cgen serial processing')
 
@@ -2294,6 +2297,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			g.writeln('${g.styp(ret_typ)} ${tmp_var};')
 		}
 		mut expr_is_fixed_array_var := false
+		mut fn_option_clone := false
 		if ret_typ_is_option {
 			if expr_typ_is_option && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
 				simple_assign = expr is ast.StructInit
@@ -2327,10 +2331,12 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 							g.write('(')
 							g.write_fn_ptr_decl(&final_ret_sym.info, '')
 							g.write(')')
+							fn_option_clone = expr is ast.SelectorExpr && expr_typ.has_flag(.option)
 						}
 					}
 				}
-				if ret_typ.nr_muls() > expr_typ.nr_muls() {
+				if !expr.is_literal() && expr_typ != ast.nil_type
+					&& ret_typ.nr_muls() > expr_typ.nr_muls() {
 					g.write('&'.repeat(ret_typ.nr_muls() - expr_typ.nr_muls()))
 				}
 			}
@@ -2338,6 +2344,9 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			g.write('_result_ok(&(${styp}[]) { ')
 		}
 		g.expr_with_cast(expr, expr_typ, ret_typ)
+		if fn_option_clone {
+			g.write('.data')
+		}
 		if ret_typ_is_option {
 			if simple_assign {
 				g.writeln(';')
@@ -2694,7 +2703,6 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	mut got_cname, exp_cname := g.get_sumtype_variant_type_name(got, got_sym), exp_sym.cname
 	mut type_idx := g.type_sidx(got)
 	mut sb := strings.new_builder(128)
-	mut is_anon_fn := false
 	mut variant_name := g.get_sumtype_variant_name(got, got_sym)
 	if got_sym.info is ast.FnType {
 		got_name := 'fn ${g.table.fn_type_source_signature(got_sym.info.func)}'
@@ -2714,9 +2722,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		}
 		sb.writeln('static inline ${exp_cname} ${fun.fn_name}(${got_cname} x) {')
 		sb.writeln('\t${got_cname} ptr = x;')
-		is_anon_fn = true
-	}
-	if !is_anon_fn {
+	} else {
 		// g.definitions.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x);')
 		// sb.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x) {')
 		g.definitions.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x);')
@@ -2773,13 +2779,15 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	is_sumtype_cast := !got_is_fn && fname.contains('_to_sumtype_')
 	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
 		&& g.comptime.is_comptime_variant_var(expr)
-
 	if exp.is_ptr() {
 		if $d('mutable_sumtype', false) && is_sumtype_cast && g.expected_arg_mut
 			&& expr is ast.Ident {
 			g.write('&(${exp_styp.trim_right('*')}){._${got_styp.trim_right('*')}=')
 			rparen_n = 0
 			mutable_idx = got.idx()
+		} else if (expr is ast.UnsafeExpr && expr.expr is ast.Nil) || got == ast.nil_type {
+			g.write('(void*)0')
+			return
 		} else {
 			g.write('HEAP(${exp_styp}, ${fname}(')
 			rparen_n++
@@ -3149,7 +3157,7 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		}
 		// swap destination and operands for att syntax, not for arm64
 		if template.args.len != 0 && !template.is_directive && stmt.arch != .arm64
-			&& stmt.arch != .s390x {
+			&& stmt.arch != .s390x && stmt.arch != .ppc64le && stmt.arch != .loongarch64 {
 			template.args.prepend(template.args.last())
 			template.args.delete(template.args.len - 1)
 		}
@@ -3226,7 +3234,7 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.IntegerLiteral {
 			if stmt.arch == .arm64 {
 				g.write('#${arg.val}')
-			} else if stmt.arch == .s390x {
+			} else if stmt.arch == .s390x || stmt.arch == .ppc64le || stmt.arch == .loongarch64 {
 				g.write('${arg.val}')
 			} else {
 				g.write('\$${arg.val}')
@@ -3243,10 +3251,14 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write('\$${arg.val.str()}')
 		}
 		ast.AsmRegister {
-			if !stmt.is_basic {
-				g.write('%') // escape percent with percent in extended assembly
+			if stmt.arch == .loongarch64 {
+				g.write('$${arg.name}')
+			} else {
+				if !stmt.is_basic {
+					g.write('%') // escape percent with percent in extended assembly
+				}
+				g.write('%${arg.name}')
 			}
-			g.write('%${arg.name}')
 		}
 		ast.AsmAddressing {
 			if arg.segment != '' {
@@ -4064,11 +4076,12 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write('*')
 		}
 		g.write('${tmp_var} = ')
-		if is_ptr {
+		mut needs_addr := false
+		needs_deref := is_ptr && !is_option_unwrap
+		if needs_deref {
 			g.write('*(')
-		}
-		needs_addr := is_option_unwrap && node.expr !in [ast.Ident, ast.PrefixExpr]
-		if is_option_unwrap {
+		} else if is_option_unwrap && !is_ptr {
+			needs_addr = node.expr !in [ast.Ident, ast.PrefixExpr]
 			if !needs_addr {
 				g.write('&')
 			} else {
@@ -4097,7 +4110,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write('.')
 		}
 		g.write(field_name)
-		if is_ptr {
+		if needs_deref {
 			g.write(')')
 		}
 		if needs_addr {
@@ -4146,11 +4159,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	mut field_typ := ast.void_type
 	mut is_option_unwrap := false
 	is_iface_or_sumtype := sym.kind in [.interface, .sum_type]
+	mut deref_count := 0
 	if f := g.table.find_field_with_embeds(sym, node.field_name) {
 		field_sym := g.table.sym(f.typ)
 		field_typ = f.typ
 		if is_iface_or_sumtype {
 			g.write('(*(')
+			deref_count++
 		}
 		is_option := field_typ.has_flag(.option)
 		if field_sym.kind in [.sum_type, .interface] || is_option {
@@ -4167,15 +4182,16 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					}
 					if nested_unwrap && field_sym.kind == .sum_type {
 						g.write('*(')
+						deref_count++
 					}
 					for i, typ in field.smartcasts {
 						if i == 0 && (is_option_unwrap || nested_unwrap) {
 							deref := if g.inside_selector {
 								if is_iface_or_sumtype || (field.orig_type.is_ptr() && g.left_is_opt
 									&& is_option_unwrap) {
-									'*'.repeat(field.smartcasts.last().nr_muls())
+									'*'.repeat(typ.nr_muls())
 								} else {
-									'*'.repeat(field.smartcasts.last().nr_muls() + 1)
+									'*'.repeat(typ.nr_muls() + 1)
 								}
 							} else if sym.kind == .interface && !typ.is_ptr()
 								&& field.orig_type.has_flag(.option) {
@@ -4183,6 +4199,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							} else {
 								'*'
 							}
+							deref_count += deref.len
+							g.inside_selector_deref = deref_count > typ.nr_muls()
 							g.write('(${deref}(${g.styp(typ)}*)')
 						}
 						if i == 0 || !nested_unwrap {
@@ -4289,6 +4307,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('((${g.base_type(field_typ)})')
 	}
 	old_inside_selector := g.inside_selector
+	old_inside_selector_deref := g.inside_selector_deref
 	g.inside_selector = node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
 	n_ptr := node.expr_type.nr_muls() - 1
 	if n_ptr > 0 {
@@ -4298,7 +4317,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	} else {
 		g.expr(node.expr)
 	}
+	mut opt_ptr_already_deref := g.inside_selector_deref
 	g.inside_selector = old_inside_selector
+	g.inside_selector_deref = old_inside_selector_deref
 	if field_is_opt {
 		g.write(')')
 	}
@@ -4350,6 +4371,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		|| (((!is_dereferenced && unwrapped_expr_type.is_ptr()) || sym.kind == .chan
 		|| alias_to_ptr) && node.from_embed_types.len == 0)
 		|| (node.expr.is_as_cast() && g.inside_smartcast)
+		|| (!opt_ptr_already_deref && unwrapped_expr_type.is_ptr())
 	if !has_embed && left_is_ptr {
 		g.write('->')
 	} else {
@@ -5253,8 +5275,17 @@ fn (mut g Gen) ident(node ast.Ident) {
 						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
 						if obj_sym.kind == .interface && cast_sym.kind == .interface {
-							ptr := '*'.repeat(node.obj.typ.nr_muls())
-							g.write('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${node.name})')
+							if cast_sym.cname != obj_sym.cname {
+								ptr := '*'.repeat(node.obj.typ.nr_muls())
+								g.write('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${node.name})')
+							} else {
+								ptr := if is_option {
+									''
+								} else {
+									'*'.repeat(node.obj.typ.nr_muls())
+								}
+								g.write('${ptr}${node.name}')
+							}
 						} else {
 							mut is_ptr := false
 							if i == 0 {
@@ -5930,6 +5961,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				line := g.go_before_last_stmt().trim_space()
 				expr_styp := g.styp(node.types[i])
 				g.write('memcpy(&${tmpvar}.arg${arg_idx}, ')
+				if expr is ast.StructInit {
+					g.write('(${expr_styp})')
+				}
 				g.expr(expr)
 				g.writeln(', sizeof(${expr_styp}));')
 				final_assignments += g.go_before_last_stmt() + '\t'

@@ -45,7 +45,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			.type_string, .type_var_string, .type_blob, .type_tiny_blob, .type_medium_blob,
 			.type_long_blob {
 				// Memory will be allocated later dynamically depending on the length of the value.
-				data_pointers << &u8(0)
+				data_pointers << &u8(unsafe { nil })
 			}
 			else {
 				return error('\'${unsafe { FieldType(field.type) }}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')

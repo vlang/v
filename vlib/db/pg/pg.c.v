@@ -124,6 +124,8 @@ fn C.PQconnectdb(const_conninfo &char) &C.PGconn
 
 fn C.PQstatus(const_conn &C.PGconn) int
 
+fn C.PQtransactionStatus(const_conn &C.PGconn) int
+
 fn C.PQerrorMessage(const_conn &C.PGconn) &char
 
 fn C.PQexec(res &C.PGconn, const_query &char) &C.PGresult
@@ -390,14 +392,14 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 			}
 		}
 
-		code := C.PQputCopyEnd(db.conn, &char(0))
+		code := C.PQputCopyEnd(db.conn, &char(unsafe { nil }))
 
 		if code != 1 {
 			return error('pg copy error: Failed to finish copy command, code: ${code}')
 		}
 	} else if status == .copy_out {
 		for {
-			address := &char(0)
+			address := &char(unsafe { nil })
 			n_bytes := C.PQgetCopyData(db.conn, &address, 0)
 			if n_bytes > 0 {
 				mut local_buf := []u8{len: n_bytes}
@@ -435,4 +437,76 @@ fn pg_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) 
 	res := C.PQexecParams(db.conn, &char(query.str), param_vals.len, param_types.data,
 		param_vals.data, param_lens.data, param_formats.data, 0) // here, the last 0 means require text results, 1 - binary results
 	return db.handle_error_or_result(res, 'orm_stmt_worker')
+}
+
+pub enum PQTransactionLevel {
+	read_uncommitted
+	read_committed
+	repeatable_read
+	serializable
+}
+
+@[params]
+pub struct PQTransactionParam {
+	transaction_level PQTransactionLevel = .repeatable_read
+}
+
+// begin begins a new transaction.
+pub fn (db DB) begin(param PQTransactionParam) ! {
+	mut sql_stmt := 'BEGIN TRANSACTION ISOLATION LEVEL '
+	match param.transaction_level {
+		.read_uncommitted { sql_stmt += 'READ UNCOMMITTED' }
+		.read_committed { sql_stmt += 'READ COMMITTED' }
+		.repeatable_read { sql_stmt += 'REPEATABLE READ' }
+		.serializable { sql_stmt += 'SERIALIZABLE' }
+	}
+	_ := C.PQexec(db.conn, &char(sql_stmt.str))
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		return error('pg exec error: "${e}"')
+	}
+}
+
+// commit commits the current transaction.
+pub fn (db DB) commit() ! {
+	_ := C.PQexec(db.conn, c'COMMIT;')
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		return error('pg exec error: "${e}"')
+	}
+}
+
+// rollback rollbacks the current transaction.
+pub fn (db DB) rollback() ! {
+	_ := C.PQexec(db.conn, c'ROLLBACK;')
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		return error('pg exec error: "${e}"')
+	}
+}
+
+// rollback_to rollbacks to a specified savepoint.
+pub fn (db DB) rollback_to(savepoint string) ! {
+	if !savepoint.is_identifier() {
+		return error('savepoint should be a identifier string')
+	}
+	sql_stmt := 'ROLLBACK TO SAVEPOINT ${savepoint};'
+	_ := C.PQexec(db.conn, &char(sql_stmt.str))
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		return error('pg exec error: "${e}"')
+	}
+}
+
+// savepoint create a new savepoint.
+pub fn (db DB) savepoint(savepoint string) ! {
+	if !savepoint.is_identifier() {
+		return error('savepoint should be a identifier string')
+	}
+	sql_stmt := 'SAVEPOINT ${savepoint};'
+	_ := C.PQexec(db.conn, &char(sql_stmt.str))
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		return error('pg exec error: "${e}"')
+	}
 }

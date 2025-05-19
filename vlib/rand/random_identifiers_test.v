@@ -1,23 +1,85 @@
 import time
 import rand
 
+fn validate_separators(uuid string) {
+	assert uuid[8] == `-`
+	assert uuid[13] == `-`
+	assert uuid[18] == `-`
+	assert uuid[23] == `-`
+	assert uuid.len == 36
+}
+
 // uuid_v4:
 fn test_rand_uuid_v4() {
 	uuid1 := rand.uuid_v4()
 	uuid2 := rand.uuid_v4()
 	uuid3 := rand.uuid_v4()
+	validate_separators(uuid1)
+	validate_separators(uuid2)
+	validate_separators(uuid3)
 	assert uuid1 != uuid2
 	assert uuid1 != uuid3
 	assert uuid2 != uuid3
-	assert uuid1.len == 36
-	assert uuid2.len == 36
-	assert uuid3.len == 36
 	for i in 0 .. 1000 {
 		x := rand.uuid_v4()
 		// check the version field is always 4:
 		assert x[14] == `4`
 		// and the clock_seq_hi_and_reserved field is valid too:
 		assert x[19] in [`8`, `9`, `a`, `b`]
+		validate_separators(x)
+	}
+}
+
+// uuid_v7:
+fn test_rand_uuid_v7() {
+	uuid1 := rand.uuid_v7()
+	uuid2 := rand.uuid_v7()
+	uuid3 := rand.uuid_v7()
+	validate_separators(uuid1)
+	validate_separators(uuid2)
+	validate_separators(uuid3)
+	assert uuid1 != uuid2
+	assert uuid1 != uuid3
+	assert uuid2 != uuid3
+	for i in 0 .. 1000 {
+		x := rand.uuid_v7()
+		// check the version field is always 7:
+		assert x[14] == `7`
+		// and variant field is always 0b10:
+		assert x[19] in [`8`, `9`, `a`, `b`]
+		validate_separators(x)
+	}
+}
+
+// uuid_v7_session:
+fn test_rand_uuid_v7_session() {
+	mut u := rand.new_uuid_v7_session()
+	uuid1 := u.next()
+	uuid2 := u.next()
+	uuid3 := u.next()
+	assert uuid1 != uuid2
+	assert uuid1 != uuid3
+	assert uuid2 != uuid3
+	assert uuid1.len == 36
+	assert uuid2.len == 36
+	assert uuid3.len == 36
+	mut prev_counter := `3`
+	for i in 0 .. 1000 {
+		x := u.next()
+		// check the version field is always 7:
+		assert x[14] == `7`
+		// and variant field is always 0b10:
+		assert x[19] in [`8`, `9`, `a`, `b`]
+
+		// verify counter increase
+		assert x[17] == prev_counter
+		if prev_counter == `9` {
+			prev_counter = `a`
+		} else if prev_counter == `f` {
+			prev_counter = `0`
+		} else {
+			prev_counter++
+		}
 	}
 }
 

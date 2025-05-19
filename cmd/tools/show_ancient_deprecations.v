@@ -55,7 +55,7 @@ fn main() {
 		}
 		lines := file_content.split_into_lines()
 		for line_num := lines.len - 1; line_num > 0; line_num-- {
-			line := lines[line_num]
+			line := lines[line_num].all_before('//')
 			mut is_deprecation_line := false
 			if line.contains('\tif ') {
 				continue

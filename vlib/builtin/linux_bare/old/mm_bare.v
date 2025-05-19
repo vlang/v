@@ -19,7 +19,7 @@ pub fn mm_alloc(size u64) (&u8, Errno) {
 		*ap = pages
 		return &u8(a + 4), e
 	}
-	return &u8(0), e
+	return &u8(unsafe { nil }), e
 }
 
 pub fn mm_free(addr &u8) Errno {

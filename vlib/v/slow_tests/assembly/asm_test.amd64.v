@@ -100,7 +100,7 @@ fn test_inline_asm() {
 
 	assert util.add(8, 9, 34, 7) == 58 // test .amd64.v imported files
 
-	mut o := Manu{}
+	mut o := &Manu{}
 	asm amd64 {
 		mov eax, 0
 		cpuid
@@ -108,7 +108,7 @@ fn test_inline_asm() {
 		  =d (o.edx) as edx0
 		  =c (o.ecx) as ecx0
 	}
-	o.str()
+	assert o.str()[0].is_capital()
 }
 
 @[packed]
@@ -120,11 +120,11 @@ mut:
 	zero u8 // for string
 }
 
-fn (m Manu) str() string {
+fn (m &Manu) str() string {
 	return unsafe {
 		string{
-			str:    &u8(&m)
-			len:    24
+			str:    &u8(m)
+			len:    12
 			is_lit: 1
 		}
 	}

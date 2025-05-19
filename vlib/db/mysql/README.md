@@ -41,23 +41,59 @@ more user friendly errors for that situation.
 import db.mysql
 
 // Create connection
-mut connection := mysql.Connection{
+config := mysql.Config{
+	host:     '127.0.0.1'
+	port:     3306
 	username: 'root'
+	password: '12345678'
 	dbname:   'mysql'
 }
+
 // Connect to server
-connection.connect()?
-// Change the default database
-connection.select_db('db_users')?
+mut db := mysql.connect(config)!
 // Do a query
-get_users_query_result := connection.query('SELECT * FROM users')?
-// Get the result as maps
-for user in get_users_query_result.maps() {
-	// Access the name of user
-	println(user['name'])
+res := db.query('select * from users')!
+rows := res.rows()
+for row in rows {
+	println(row.vals)
 }
-// Free the query result
-get_users_query_result.free()
 // Close the connection if needed
-connection.close()
+db.close()
+```
+
+## Transaction
+
+```v oksyntax
+import db.mysql
+
+// Create connection
+config := mysql.Config{
+	host:     '127.0.0.1'
+	port:     3306
+	username: 'root'
+	password: '12345678'
+	dbname:   'mysql'
+}
+
+mut db := mysql.connect(config)!
+// turn off `autocommit` first
+db.autocommit(false)!
+// begin a new transaction
+db.begin()!
+mut result_code := db.exec_none('insert into users (username) values ("tom")')
+assert result_code == 0
+// make a savepoint
+db.savepoint('savepoint1')!
+result_code = db.exec_none('insert into users (username) values ("kitty")')
+assert result_code == 0
+// rollback to `savepoint1`
+db.rollback_to('savepoint1')!
+result_code = db.exec_none('insert into users (username) values ("mars")')
+assert result_code == 0
+db.commit()!
+res := db.query('select * from users')!
+rows := res.rows()
+dump(rows)
+// Close the connection if needed
+db.close()
 ```

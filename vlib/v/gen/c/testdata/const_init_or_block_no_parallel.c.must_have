@@ -1,0 +1,11 @@
+{
+_option_bool _t2 = main__t1();
+if (_t2.state != 0) {
+IError err = _t2.err;
+_v_panic(IError_str(err));
+VUNREACHABLE();
+;
+}
+
+_const_main__barz = (((*(bool*)_t2.data)));
+}

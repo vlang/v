@@ -709,6 +709,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	old_inside_fn_arg := c.inside_fn_arg
 	c.inside_fn_arg = true
 	mut continue_check := true
+	node.left_type = left_type
 	// Now call `method_call` or `fn_call` for specific checks.
 	typ := if node.is_method {
 		c.method_call(mut node, mut continue_check)
@@ -1020,7 +1021,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if node.left is ast.AnonFn {
 		// it was set to anon for checker errors, clear for gen
 		node.name = ''
-		c.expr(mut node.left)
 		left := node.left as ast.AnonFn
 		if left.typ != ast.no_type {
 			anon_fn_sym := c.table.sym(left.typ)
@@ -1039,7 +1039,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	if !found && node.left is ast.IndexExpr {
-		c.expr(mut node.left)
 		left := node.left as ast.IndexExpr
 		sym := c.table.final_sym(left.left_type)
 		if sym.info is ast.Array {
@@ -1077,7 +1076,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	if !found && node.left is ast.CallExpr {
-		c.expr(mut node.left)
 		left := node.left as ast.CallExpr
 		if left.return_type != 0 {
 			sym := c.table.sym(left.return_type)
@@ -1614,6 +1612,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
 					call_arg.pos)
 			}
+			if call_arg.expr is ast.ArrayDecompose && arg_typ.idx() != final_param_typ.idx() {
+				expected_type_str := c.table.type_to_str(param.typ)
+				got_type_str := c.table.type_to_str(arg_typ)
+				c.error('cannot use `${got_type_str}` as `${expected_type_str}` in argument ${i + 1} to `${fn_name}`',
+					call_arg.pos)
+			}
 			continue
 		}
 		if param.typ.is_ptr() && !param.is_mut && !call_arg.typ.is_any_kind_of_pointer()
@@ -1848,6 +1852,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 							c.handle_generic_lambda_arg(node, mut call_arg.expr)
 							continue
 						}
+						// passing []?T to []T
+						if !unwrap_typ.has_flag(.variadic) && unwrap_sym.kind == .array
+							&& c.table.final_sym(utyp).kind == .array
+							&& c.check_basic(c.table.value_type(utyp).clear_flag(.option), c.table.value_type(unwrap_typ)) {
+							continue
+						}
 						c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
 					}
 				}
@@ -1857,7 +1867,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 
 	// resolve return generics struct to concrete type
 	if func.generic_names.len > 0 && func.return_type.has_flag(.generic)
-		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
+		&& c.table.cur_fn != unsafe { nil } && c.needs_unwrap_generic_type(func.return_type) {
 		node.return_type = c.table.unwrap_generic_type(func.return_type, func.generic_names,
 			concrete_types)
 	} else {
@@ -1984,7 +1994,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 		}
 	}
-	left_type := c.expr(mut node.left)
+	left_type := node.left_type
 	if left_type == ast.void_type {
 		// c.error('cannot call a method using an invalid expression', node.pos)
 		continue_check = false
@@ -2602,6 +2612,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					&& param_elem_type == arg_elem_type {
 					continue
 				}
+			}
+			// passing []?T to []T
+			if !exp_arg_typ.has_flag(.variadic) && param_typ_sym.kind == .array
+				&& c.table.final_sym(got_arg_typ).kind == .array
+				&& c.check_basic(c.table.value_type(got_arg_typ).clear_flag(.option), c.table.value_type(exp_arg_typ)) {
+				continue
 			}
 			c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
 				arg.pos)

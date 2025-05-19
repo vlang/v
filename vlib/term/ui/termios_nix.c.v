@@ -168,6 +168,9 @@ fn get_cursor_position() (int, int) {
 		buf[len] = 0
 		s = tos(buf, len)
 	}
+	if s.len == 0 {
+		return -1, -1
+	}
 	a := s[2..].split(';')
 	if a.len != 2 {
 		return -1, -1

@@ -80,3 +80,16 @@ fn test_reset() {
 	s.reset()
 	assert s.next() == `a`
 }
+
+const multiline_string_input = input.Config{
+	text: '"""abc\r\ndef\n123"""'
+}
+
+fn test_multiline_string() {
+	mut s := scanner.new_scanner(input: multiline_string_input) or { panic(err) }
+	tok := s.scan()!
+	assert tok.kind == .quoted
+	assert tok.lit.contains('abc')
+	assert tok.lit.contains('def')
+	assert tok.lit.contains('123')
+}

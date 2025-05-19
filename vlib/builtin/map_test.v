@@ -213,8 +213,8 @@ fn test_various_map_value() {
 	m14['test'] = unsafe { nil }
 	assert unsafe { m14['test'] } == unsafe { nil }
 	mut m15 := map[string]&u8{}
-	m15['test'] = &u8(0)
-	assert unsafe { m15['test'] } == &u8(0)
+	m15['test'] = &u8(unsafe { nil })
+	assert unsafe { m15['test'] } == &u8(unsafe { nil })
 	mut m16 := map[string]i64{}
 	m16['test'] = i64(0)
 	assert m16['test'] == i64(0)

@@ -598,6 +598,16 @@ fn test_addition() {
 	}
 }
 
+fn test_add_sign() {
+	for a in -10 .. 10 {
+		for b in -10 .. 10 {
+			big_a := big.integer_from_int(a)
+			big_b := big.integer_from_int(b)
+			assert (big_a + big_b).str() == (a + b).str()
+		}
+	}
+}
+
 fn test_subtraction() {
 	for t in sub_test_data {
 		assert t.minuend.parse() - t.subtrahend.parse() == t.difference.parse(), 't.minuend: ${t.minuend}  - t.subtrahend: ${t.subtrahend}'
@@ -626,6 +636,19 @@ fn test_div() {
 fn test_mod() {
 	for t in div_mod_test_data {
 		assert t.dividend.parse() % t.divisor.parse() == t.remainder.parse()
+	}
+}
+
+fn test_mod_sign() {
+	for a in -10 .. 10 {
+		for b in -10 .. 10 {
+			if b == 0 {
+				continue
+			}
+			big_a := big.integer_from_int(a)
+			big_b := big.integer_from_int(b)
+			assert (big_a % big_b).str() == (a % b).str()
+		}
 	}
 }
 
@@ -813,6 +836,12 @@ fn test_bitwise_ops() {
 	assert b.bitwise_or(b) == b
 	assert b.bitwise_and(b) == b
 	assert b.bitwise_not() == big.zero_int
+	assert big.three_int.neg().bitwise_com() == big.two_int
+	assert big.two_int.neg().bitwise_com() == big.one_int
+	assert big.one_int.neg().bitwise_com() == big.zero_int
+	assert big.zero_int.bitwise_com() == big.one_int.neg()
+	assert big.one_int.bitwise_com() == big.two_int.neg()
+	assert big.two_int.bitwise_com() == big.three_int.neg()
 }
 
 fn test_get_bit() {

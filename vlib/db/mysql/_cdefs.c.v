@@ -86,6 +86,9 @@ fn C.mysql_autocommit(mysql &C.MYSQL, mode bool) int
 // C.mysql_commit commits the current transaction.
 fn C.mysql_commit(mysql &C.MYSQL) int
 
+// C.mysql_rollback rollback the current transaction.
+fn C.mysql_rollback(mysql &C.MYSQL) int
+
 // C.mysql_refresh flush tables or caches, or resets replication server information.
 fn C.mysql_refresh(mysql &C.MYSQL, options u32) int
 

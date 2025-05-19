@@ -1599,11 +1599,11 @@ println('Your OS is ${current_os}.')
 > This section is valid when .v files are not in the project's root directory.
 
 Modules names in .v files, must match the name of their directory.
- 
-A .v file `./abc/source.v` must start with `module abc`. All .v files in this directory 
+
+A .v file `./abc/source.v` must start with `module abc`. All .v files in this directory
 belong to the same module `abc`. They should also start with `module abc`.
 
-If you have `abc/def/`, and .v files in both folders, you can `import abc`, but you will have 
+If you have `abc/def/`, and .v files in both folders, you can `import abc`, but you will have
 to `import abc.def` too, to get to the symbols in the subfolder. It is independent.
 
 In `module name` statement, name never repeats directory's hierarchy, but only its directory.
@@ -1637,7 +1637,7 @@ fn main() {
 
 A function, located in `abc/def/source.v`, is called with `def.func()`, not `abc.def.func()`
 
-This always implies a *single prefix*, whatever sub-module depth. This behavior flattens 
+This always implies a *single prefix*, whatever sub-module depth. This behavior flattens
 modules/sub-modules hierarchy. Should you have two modules with the same name in different
 directories, then you should use Module import aliasing (see below).
 
@@ -1963,7 +1963,7 @@ println(typ)
 ```
 
 A match statement also can match the variant types of a `sumtype`. Note that
-in that case, the match is exhaustive, since all variant types are mentioned 
+in that case, the match is exhaustive, since all variant types are mentioned
 explicitly, so there is no need for an `else{}` branch.
 
 ```v nofmt
@@ -4730,12 +4730,12 @@ fn main() {
 
 ### Difference Between Channels and Shared Objects
 
-**Purpose**: 
+**Purpose**:
 - Channels: Used for message passing between threads, ensuring safe communication.
 - Shared objects: Used for direct data sharing and modification between threads.
 
-**Synchronization**: 
-- Channels: Implicit (via channel operations) 
+**Synchronization**:
+- Channels: Implicit (via channel operations)
 - Shared objects:  Explicit (via `rlock`/`lock` blocks)
 
 ## JSON
@@ -5531,8 +5531,10 @@ The generated profile.txt file will have lines with 4 columns:
 
 1. How many times a function was called.
 2. How much time in total a function took (in ms).
-3. How much time on average, a call to a function took (in ns).
-4. The name of the v function.
+3. How much time a function took (in ms), on its own, without the calls inside it.
+   It is reliable for multithreaded programs, when tcc is not used.
+4. How much time on average, a call to a function took (in ns).
+5. The name of the v function.
 
 You can sort on column 3 (average time per function) using:
 `sort -n -k3 profile.txt|tail`
@@ -5834,20 +5836,20 @@ pub mut:
 
 Function/method deprecations:
 
-Functions are deprecated before they are finally removed to give users time to migrate their code. 
-Adding a date is preferable in most cases. An immediate change, without a deprecation date, may be 
-used for functions that are found to be conceptually broken and obsoleted by much better 
-functionality. Other than that setting a date is advisable to grant users a grace period. 
+Functions are deprecated before they are finally removed to give users time to migrate their code.
+Adding a date is preferable in most cases. An immediate change, without a deprecation date, may be
+used for functions that are found to be conceptually broken and obsoleted by much better
+functionality. Other than that setting a date is advisable to grant users a grace period.
 
-Deprecated functions cause warnings, which cause errors if built with `-prod`. To avoid immediate 
-CI breakage, it is advisable to set a future date, ahead of the date when the code is merged. This 
-gives people who actively developed V projects, the chance to see the deprecation notice at least 
-once and fix the uses. Setting a date in the next 30 days, assumes they would have compiled their 
+Deprecated functions cause warnings, which cause errors if built with `-prod`. To avoid immediate
+CI breakage, it is advisable to set a future date, ahead of the date when the code is merged. This
+gives people who actively developed V projects, the chance to see the deprecation notice at least
+once and fix the uses. Setting a date in the next 30 days, assumes they would have compiled their
 projects manually at least once, within that time. For small changes, this should be plenty
-of time. For complex changes, this time may need to be longer. 
+of time. For complex changes, this time may need to be longer.
 
-Different V projects and maintainers may reasonably choose different deprecation policies. 
-Depending on the type and impact of the change, you may want to consult with them first, before 
+Different V projects and maintainers may reasonably choose different deprecation policies.
+Depending on the type and impact of the change, you may want to consult with them first, before
 deprecating a function.
 
 
@@ -6070,7 +6072,7 @@ that are substituted at compile time:
 - `@BUILD_TIME` => replaced with the build time, for example '12:32:07' .
 - `@BUILD_TIMESTAMP` => replaced with the build timestamp, for example '1726219885' .
 Note: `@BUILD_DATE`, `@BUILD_TIME`, `@BUILD_TIMESTAMP` represent times in the UTC timezone.
-By default, they are based on the current time of the compilation/build. They can be overriden
+By default, they are based on the current time of the compilation/build. They can be overridden
 by setting the environment variable `SOURCE_DATE_EPOCH`. That is also useful while making
 releases, since you can use the equivalent of this in your build system/script:
 `export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) ;` , and then use `@BUILD_DATE` etc.,
@@ -6329,9 +6331,9 @@ Full list of builtin options:
 | `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64`, `aarch64`   | `debug`, `prod`, `test`                       |
 | `darwin`, `ios`, `bsd`         | `clang`, `mingw` | `i386`, `arm32`               | `js`, `glibc`, `prealloc`                     |
 | `freebsd`, `openbsd`, `netbsd` | `msvc`           | `rv64`, `rv32`, `s390x`       | `no_bounds_checking`, `freestanding`          |
-| `android`, `mach`, `dragonfly` | `cplusplus`      | `x64`, `x32`                  | `no_segfault_handler`, `no_backtrace`         |
-| `gnu`, `hpux`, `haiku`, `qnx`  |                  | `little_endian`, `big_endian` | `no_main`, `fast_math`, `apk`, `threads`      |
-| `solaris`, `termux`            |                  |                               | `js_node`, `js_browser`, `js_freestanding`    |
+| `android`, `mach`, `dragonfly` | `cplusplus`      | `ppc64le`                     | `no_segfault_handler`, `no_backtrace`         |
+| `gnu`, `hpux`, `haiku`, `qnx`  |                  | `x64`, `x32`                  | `no_main`, `fast_math`, `apk`, `threads`      |
+| `solaris`, `termux`            |                  | `little_endian`, `big_endian` | `js_node`, `js_browser`, `js_freestanding`    |
 | `serenity`, `vinix`, `plan9`   |                  |                               | `interpreter`, `es5`, `profile`, `wasm32`     |
 |                                |                  |                               | `wasm32_emscripten`, `wasm32_wasi`            |
 |                                |                  |                               | `native`, `autofree`                          |
@@ -7708,7 +7710,7 @@ fn main() {
 	C.sqlite3_finalize(stmt)
 	println('There are ${nr_users} users in the database.')
 
-	error_msg := &char(0)
+	error_msg := &char(unsafe { nil })
 	query_all_users := 'select * from users'
 	rc := C.sqlite3_exec(db, &char(query_all_users.str), my_callback, voidptr(7), &error_msg)
 	if rc != C.SQLITE_OK {
@@ -8191,7 +8193,7 @@ exists the file will be overridden. If you want to rebuild each time and not kee
 instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 Note: there is a small shell script `cmd/tools/vrun`, that can be useful for systems, that have an
-env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox). 
+env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox).
 See https://github.com/vlang/v/blob/master/cmd/tools/vrun for more details.
 
 # Appendices

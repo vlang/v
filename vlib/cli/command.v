@@ -21,9 +21,6 @@ pub mut:
 	pre_execute     FnCommandCallback = unsafe { nil }
 	execute         FnCommandCallback = unsafe { nil }
 	post_execute    FnCommandCallback = unsafe { nil }
-	disable_help    bool @[deprecated: 'use defaults.help instead'; deprecated_after: '2024-06-31']
-	disable_man     bool @[deprecated: 'use defaults.man instead'; deprecated_after: '2024-06-31']
-	disable_version bool @[deprecated: 'use defaults.version instead'; deprecated_after: '2024-06-31']
 	disable_flags   bool
 	sort_flags      bool
 	sort_commands   bool
@@ -65,10 +62,7 @@ pub fn (cmd &Command) str() string {
 	res << '	version: "${cmd.version}"'
 	res << '	description: "${cmd.description}"'
 	res << '	man_description: "${cmd.man_description}"'
-	res << '	disable_help: ${cmd.disable_help}'
-	res << '	disable_man: ${cmd.disable_man}'
 	res << '	disable_flags: ${cmd.disable_flags}'
-	res << '	disable_version: ${cmd.disable_version}'
 	res << '	sort_flags: ${cmd.sort_flags}'
 	res << '	sort_commands: ${cmd.sort_commands}'
 	res << '	cb execute: ${cmd.execute}'
@@ -182,41 +176,24 @@ pub fn (mut cmd Command) add_flag(flag Flag) {
 fn (mut cmd Command) parse_defaults() {
 	// Help
 	if cmd.defaults.help is bool {
-		// If `defaults.help` has the default value `true` and
-		// `disable_help` is also set, fall back to `disable_help`.
-		if cmd.defaults.help && cmd.disable_help {
-			cmd.defaults.parsed.help.flag = false
-			cmd.defaults.parsed.help.command = false
-		} else {
-			cmd.defaults.parsed.help.flag = cmd.defaults.help
-			cmd.defaults.parsed.help.command = cmd.defaults.help
-		}
+		cmd.defaults.parsed.help.flag = cmd.defaults.help
+		cmd.defaults.parsed.help.command = cmd.defaults.help
 	} else if cmd.defaults.help is CommandFlag {
 		cmd.defaults.parsed.help.flag = cmd.defaults.help.flag
 		cmd.defaults.parsed.help.command = cmd.defaults.help.command
 	}
 	// Version
 	if cmd.defaults.version is bool {
-		if cmd.defaults.version && cmd.disable_version {
-			cmd.defaults.parsed.version.flag = false
-			cmd.defaults.parsed.version.command = false
-		} else {
-			cmd.defaults.parsed.version.flag = cmd.defaults.version
-			cmd.defaults.parsed.version.command = cmd.defaults.version
-		}
+		cmd.defaults.parsed.version.flag = cmd.defaults.version
+		cmd.defaults.parsed.version.command = cmd.defaults.version
 	} else if cmd.defaults.version is CommandFlag {
 		cmd.defaults.parsed.version.flag = cmd.defaults.version.flag
 		cmd.defaults.parsed.version.command = cmd.defaults.version.command
 	}
 	// Man
 	if cmd.defaults.man is bool {
-		if cmd.defaults.man && cmd.disable_man {
-			cmd.defaults.parsed.man.flag = false
-			cmd.defaults.parsed.man.command = false
-		} else {
-			cmd.defaults.parsed.man.flag = cmd.defaults.man
-			cmd.defaults.parsed.man.command = cmd.defaults.man
-		}
+		cmd.defaults.parsed.man.flag = cmd.defaults.man
+		cmd.defaults.parsed.man.command = cmd.defaults.man
 	} else if cmd.defaults.man is CommandFlag {
 		cmd.defaults.parsed.man.flag = cmd.defaults.man.flag
 		cmd.defaults.parsed.man.command = cmd.defaults.man.command

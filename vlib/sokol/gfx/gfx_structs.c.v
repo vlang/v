@@ -49,7 +49,7 @@ pub mut:
 	sample_count              int
 	blend_color               Color
 	alpha_to_coverage_enabled bool
-	label                     &char = &char(0)
+	label                     &char = &char(unsafe { nil })
 }
 
 pub type PipelineDesc = C.sg_pipeline_desc

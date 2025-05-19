@@ -1,43 +1,76 @@
 import os
 import time
 import flag
+import strconv
 
 struct Context {
 mut:
-	show_help     bool
-	cmd_line_opts []string
-	full_cmd      string
-	timeout       f64
+	timeout  f64
+	cmd_args []string
 }
 
 fn main() {
-	mut ctx := Context{}
-	args := arguments()
-	mut fp := flag.new_flag_parser(args#[1..])
+	mut fp := flag.new_flag_parser(os.args[1..])
 	fp.application('v timeout')
-	fp.version('0.0.1')
+	fp.version('0.0.2')
 	fp.description('Run a command with a time limit. Example: `v timeout 0.3 v run examples/hello_world.v`')
 	fp.arguments_description('timeout_in_seconds CMD [ARGS]')
 	fp.skip_executable()
 	fp.limit_free_args_to_at_least(2)!
-	ctx.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
-	if ctx.show_help {
+
+	if fp.bool('help', `h`, false, 'Show this help screen.') {
 		println(fp.usage())
 		exit(0)
 	}
-	ctx.cmd_line_opts = fp.finalize() or {
-		eprintln('> error: ${err}')
+
+	args := fp.finalize() or {
+		eprintln('Argument error: ${err}')
 		exit(125) // mimic the exit codes of `timeout` in coreutils
 	}
-	ctx.timeout = ctx.cmd_line_opts[0].f64()
-	ctx.cmd_line_opts = ctx.cmd_line_opts#[1..]
-	ctx.full_cmd = ctx.cmd_line_opts.join(' ')
-	spawn fn (ctx Context) {
-		tperiod := time.Duration(i64(ctx.timeout * time.second))
-		time.sleep(tperiod)
-		// eprintln('> error: timeout of ${tperiod.seconds():5.3f}s reached, before command finished; command was: `${ctx.full_cmd}`')
-		exit(124)
-	}(ctx)
-	ecode := os.system(ctx.full_cmd)
-	exit(ecode)
+
+	ctx := Context{
+		timeout:  strconv.atof64(args[0]) or {
+			eprintln('Invalid timeout: ${args[0]}')
+			exit(125)
+		}
+		cmd_args: args[1..].clone()
+	}
+
+	mut cmd := ctx.cmd_args[0]
+	if !os.exists(cmd) {
+		cmd = os.find_abs_path_of_executable(cmd) or { cmd }
+	}
+
+	mut p := os.new_process(cmd)
+	p.set_args(ctx.cmd_args[1..])
+	p.run()
+	if p.err != '' {
+		eprintln('Cannot execute: ${ctx.cmd_args.join(' ')}')
+		exit(if os.exists(ctx.cmd_args[0]) { 126 } else { 127 })
+	}
+
+	child_exit := chan int{}
+
+	spawn fn (mut p os.Process, ch chan int) {
+		p.wait()
+		ch <- p.code
+		ch.close()
+	}(mut p, child_exit)
+
+	mut exit_code := 0
+	select {
+		i64(ctx.timeout * time.second) {
+			p.signal_term()
+			time.sleep(2 * time.millisecond)
+			if p.is_alive() {
+				p.signal_kill()
+			}
+			p.wait()
+			exit_code = 124 // timeout
+		}
+		code := <-child_exit {
+			exit_code = code
+		}
+	}
+	exit(exit_code)
 }

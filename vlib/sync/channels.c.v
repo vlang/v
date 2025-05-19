@@ -69,8 +69,8 @@ pub fn new_channel[T](n u32) &Channel {
 fn new_channel_st(n u32, st u32) &Channel {
 	wsem := if n > 0 { n } else { 1 }
 	rsem := if n > 0 { u32(0) } else { 1 }
-	rbuf := if n > 0 { unsafe { malloc(int(n * st)) } } else { &u8(0) }
-	sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(0) }
+	rbuf := if n > 0 { unsafe { malloc(int(n * st)) } } else { &u8(unsafe { nil }) }
+	sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(unsafe { nil }) }
 	mut ch := Channel{
 		objsize:          st
 		cap:              n
@@ -92,8 +92,8 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 	$if gcboehm_opt ? {
 		wsem := if n > 0 { n } else { 1 }
 		rsem := if n > 0 { u32(0) } else { 1 }
-		rbuf := if n > 0 { unsafe { malloc_noscan(int(n * st)) } } else { &u8(0) }
-		sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(0) }
+		rbuf := if n > 0 { unsafe { malloc_noscan(int(n * st)) } } else { &u8(unsafe { nil }) }
+		sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(unsafe { nil }) }
 		mut ch := Channel{
 			objsize:          st
 			cap:              n

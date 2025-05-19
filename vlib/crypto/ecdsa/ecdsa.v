@@ -7,7 +7,7 @@ import hash
 
 // NID constants
 //
-// NIST P-256 is refered to as secp256r1 and prime256v1, defined as #define NID_X9_62_prime256v1 415
+// NIST P-256 is referred to as secp256r1 and prime256v1, defined as #define NID_X9_62_prime256v1 415
 // Different names, but they are all the same.
 // https://www.rfc-editor.org/rfc/rfc4492.html#appendix-A
 const nid_prime256v1 = C.NID_X9_62_prime256v1

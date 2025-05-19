@@ -62,7 +62,7 @@ fn main() {
 		exit(0)
 	} else {
 		// The process supervisor should NOT crash/panic, unlike the workers.
-		// It's job, is to:
+		// Its job, is to:
 		// 1) start workers
 		// 2) accumulate results
 		// 3) produce a summary at the end

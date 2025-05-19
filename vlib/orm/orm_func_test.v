@@ -1,3 +1,4 @@
+// vtest retry: 2
 import orm
 import db.sqlite
 import time

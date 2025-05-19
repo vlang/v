@@ -11,10 +11,6 @@ fn get_max_params() int {
 }
 
 fn get_max_string_params() int {
-	$if macos || (clang && arm64) {
-		return 9
-	}
-
 	return 16
 }
 

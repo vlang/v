@@ -18,6 +18,10 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string, string) {
 		attr := x[i]
 		attru := attr.to_upper()
 		m := http.method_from_str(attru)
+		if attru == 'UNSAFE' {
+			x.delete(i)
+			continue
+		}
 		if attru == 'GET' || m != .get {
 			methods << m
 			x.delete(i)

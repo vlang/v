@@ -1,0 +1,4 @@
+import json { encode }
+encode('123')
+===output===
+"123"

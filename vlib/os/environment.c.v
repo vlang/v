@@ -85,6 +85,9 @@ pub fn unsetenv(name string) int {
 // See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
 // os.environ returns a map of all the current environment variables
 
+// TODO how to declare Virtual C globals?
+// const C.environ &&char
+
 pub fn environ() map[string]string {
 	mut res := map[string]string{}
 	$if windows {
@@ -102,7 +105,7 @@ pub fn environ() map[string]string {
 		}
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
-		start := &&char(C.environ)
+		start := &&char(voidptr(C.environ))
 		mut i := 0
 		for {
 			x := unsafe { start[i] }

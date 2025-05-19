@@ -24,6 +24,7 @@ const external_tools = [
 	'complete',
 	'compress',
 	'cover',
+	'diff',
 	'doc',
 	'doctor',
 	'download',
@@ -240,18 +241,7 @@ fn setup_vbuild_env_vars(prefs &pref.Preferences) {
 	if github_job != '' {
 		facts << github_job
 	}
-	sfacts := facts.join(',')
-	os.setenv('VBUILD_FACTS', sfacts, true)
-
-	sdefines := prefs.compile_defines_all.join(',')
-	os.setenv('VBUILD_DEFINES', sdefines, true)
-
-	$if trace_vbuild ? {
-		eprintln('> VBUILD_FACTS: ${sfacts}')
-		eprintln('> VBUILD_DEFINES: ${sdefines}')
-	}
-	unsafe { sdefines.free() }
-	unsafe { sfacts.free() }
+	pref.set_build_flags_and_defines(facts, prefs.compile_defines_all)
 	unsafe { github_job.free() }
 	unsafe { facts.free() }
 }

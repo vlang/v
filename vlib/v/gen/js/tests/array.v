@@ -20,6 +20,17 @@ fn vararg_test() {
 fn main() {
 	vararg_test()
 
+	// index initializations
+	list1 := []string{len: 3, init: 'Item ${index}'}
+	list2 := []string{len: 3, init: 'Item ${it}'}
+	list3 := []int{len: 3, init: index}
+	list4 := []string{len: 4, init: '${index}:${it * 2}'}
+	println(list1)
+	println(list2)
+	println(list1 == list2)
+	println(list3)
+	println(list4)
+
 	arr1 := ['Hello', 'JS', 'Backend']
 	mut arr2 := [1, 2, 3, 4, 5]
 

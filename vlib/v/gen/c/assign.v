@@ -938,7 +938,17 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							|| gen_or {
 							g.expr_with_opt_or_block(val, val_type, left, var_type, is_option_auto_heap)
 						} else if val is ast.ArrayInit {
-							g.array_init(val, c_name(ident.name))
+							cvar_name := c_name(ident.name)
+							if val.is_fixed && ident.name in g.defer_vars {
+								g.go_before_last_stmt()
+								g.empty_line = true
+								g.write('memcpy(${cvar_name}, ')
+								g.write('(${styp})')
+								g.array_init(val, cvar_name)
+								g.write(', sizeof(${styp}))')
+							} else {
+								g.array_init(val, cvar_name)
+							}
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
 						} else if val in [ast.MatchExpr, ast.IfExpr]
@@ -958,6 +968,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					old_is_auto_heap := g.is_option_auto_heap
 					defer {
 						g.is_option_auto_heap = old_is_auto_heap
+					}
+					if val is ast.Ident && val.is_mut() && var_type.is_ptr() {
+						if var_type.nr_muls() < val_type.nr_muls() {
+							g.write('*'.repeat(var_type.nr_muls()))
+						}
 					}
 					g.is_option_auto_heap = val_type.has_flag(.option) && val is ast.PrefixExpr
 						&& val.right is ast.Ident && (val.right as ast.Ident).is_auto_heap()

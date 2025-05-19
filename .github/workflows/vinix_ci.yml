@@ -32,14 +32,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install build-essential -y
+          v retry -- sudo apt update
+          v retry -- sudo apt install build-essential -y
 
       - name: Clone current Vinix
-        run: ./v retry -- git clone --depth=1 https://github.com/vlang/vinix.git
+        run: v retry -- git clone --depth=1 https://github.com/vlang/vinix.git
 
       - name: Download Vinix kernel dependencies
-        run: cd vinix/kernel && ./get-deps
+        run: cd vinix/kernel && v retry -- ./get-deps
 
       - name: Attempt to build the Vinix kernel (debug)
         run: |

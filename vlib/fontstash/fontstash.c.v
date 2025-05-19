@@ -204,7 +204,7 @@ pub fn (s &Context) set_font(font_id int) {
 // The function returns the `x` coordinate of the resulting render.
 @[inline]
 pub fn (s &Context) draw_text(x f32, y f32, text string) f32 {
-	return C.fonsDrawText(s, x, y, &char(text.str), &char(0))
+	return C.fonsDrawText(s, x, y, &char(text.str), &char(unsafe { nil }))
 }
 
 // text_bounds fills the `bounds` argument with the pixel dimensions
@@ -218,7 +218,7 @@ pub fn (s &Context) draw_text(x f32, y f32, text string) f32 {
 // `bounds[3]` is the `y` coordinate of the bottom-right point.
 @[inline]
 pub fn (s &Context) text_bounds(x f32, y f32, text string, bounds &f32) f32 {
-	return C.fonsTextBounds(s, x, y, &char(text.str), &char(0), bounds)
+	return C.fonsTextBounds(s, x, y, &char(text.str), &char(unsafe { nil }), bounds)
 }
 
 // line_bounds fills `miny` and `maxy` with the values of the `minimum`

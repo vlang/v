@@ -486,6 +486,9 @@ fn (mut s Scanner) extract_multiline_string() !string {
 		c := u8(s.at())
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `${c.ascii_str()}` / ${c} (quote type: ${quote}/${quote.ascii_str()})')
 
+		if c == `\r` {
+			continue
+		}
 		if c == `\n` {
 			s.inc_line_number()
 			lit += c.ascii_str()

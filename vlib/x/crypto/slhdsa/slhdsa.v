@@ -100,7 +100,7 @@ pub fn (pv PrivateKey) dump_key() !string {
 	return output
 }
 
-// public_key gets the the public part of this private key as a PublicKey.
+// public_key gets the public part of this private key as a PublicKey.
 pub fn (pv PrivateKey) public_key() !PublicKey {
 	pbkey := C.EVP_PKEY_dup(pv.key)
 	// we clears out the private bits from the key

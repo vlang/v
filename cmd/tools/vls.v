@@ -212,7 +212,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 	}
 
 	if has_last_updated_at && !upd.is_force && asset_last_updated_at <= last_updated_at {
-		upd.log("VLS was already updated to it's latest version.")
+		upd.log('VLS was already updated to its latest version.')
 		return
 	}
 
@@ -265,7 +265,7 @@ fn (upd VlsUpdater) compile_from_source() ! {
 		upd.log('Updating VLS repo...')
 		pull_result := os.execute('${os.quoted_path(vexe)} retry -- ${git} -C ${vls_src_folder} pull')
 		if !upd.is_force && pull_result.output.trim_space() == 'Already up to date.' {
-			upd.log("VLS was already updated to it's latest version.")
+			upd.log('VLS was already updated to its latest version.')
 			return
 		}
 	}

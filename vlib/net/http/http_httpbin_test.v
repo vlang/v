@@ -1,4 +1,4 @@
-// vtest retry: 9
+// vtest retry: 3
 module http
 
 // internal tests have access to *everything in the module*
@@ -16,7 +16,7 @@ struct HttpbinResponseBody {
 }
 
 fn http_fetch_mock(_methods []string, _config FetchConfig) ![]Response {
-	url := 'https://httpbin.org/'
+	url := 'https://url4e.com/httpbin/'
 	methods := if _methods.len == 0 { ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] } else { _methods }
 	mut config := _config
 	mut result := []Response{}
