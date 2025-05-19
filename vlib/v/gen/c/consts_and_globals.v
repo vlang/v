@@ -340,10 +340,15 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 		func := (expr_sym.info as ast.FnType).func
 		def = g.fn_var_signature(func.return_type, func.params.map(it.typ), cname)
 	}
+	init_str := init.str().trim_right('\n')
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 		mod:       mod
 		def:       '${def}; // inited later'
-		init:      init.str().trim_right('\n')
+		init:      if init_str.count('\n') > 1 {
+			'{\n${init_str}\n}'
+		} else {
+			init_str
+		}
 		dep_names: g.table.dependent_names_in_expr(expr)
 	}
 	if g.is_autofree {
