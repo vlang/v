@@ -308,13 +308,13 @@ fn (c &Chunk) mmapped() bool {
 fn (c &Chunk) next() &Chunk {
 	mut me := usize(c)
 	me = me + c.size()
-	return &Chunk(me)
+	return unsafe { &Chunk(me) }
 }
 
 fn (c &Chunk) prev() &Chunk {
 	mut me := usize(c)
 	me = me + c.prev_foot
-	return &Chunk(me)
+	return unsafe { &Chunk(me) }
 }
 
 fn (c &Chunk) cinuse() bool {
@@ -366,11 +366,11 @@ fn (c &Chunk) set_foot(size usize) {
 }
 
 fn (c &Chunk) plus_offset(offset usize) &Chunk {
-	return &Chunk((usize(c) + offset))
+	return unsafe { &Chunk((usize(c) + offset)) }
 }
 
 fn (c &Chunk) minus_offset(offset usize) &Chunk {
-	return &Chunk(usize(c) - offset)
+	return unsafe { &Chunk(usize(c) - offset) }
 }
 
 fn (c &Chunk) to_mem() voidptr {
@@ -379,7 +379,7 @@ fn (c &Chunk) to_mem() voidptr {
 
 fn chunk_from_mem(mem_ voidptr) &Chunk {
 	mem := usize(mem_)
-	return &Chunk((mem - chunk_mem_offset()))
+	return unsafe { &Chunk((mem - chunk_mem_offset())) }
 }
 
 fn (tree &TreeChunk) leftmost_child() &TreeChunk {
