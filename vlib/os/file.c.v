@@ -861,13 +861,15 @@ pub fn (f &File) tell() !i64 {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	mut pos := isize(0)
+
+	mut pos := i64(0)
+	mut ret := 0
 	$if windows {
-		pos = C._telli64(f.fd)
+		ret = C.fgetpos(f.cfile, &pos)
 	} $else {
-		pos = C.ftell(f.cfile)
+		pos = i64(C.ftell(f.cfile))
 	}
-	if pos == -1 {
+	if ret == -1 || pos == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
 	return pos
