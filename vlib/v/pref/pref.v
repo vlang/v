@@ -1052,8 +1052,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 
 	if res.os != .wasm32_emscripten {
 		if res.out_name.ends_with('.js') {
-			res.backend = .js_node
-			res.output_cross_c = true
+			if !res.build_options.any(it.starts_with('-backend') || it.starts_with('b')) {
+				res.backend = .js_node
+				res.output_cross_c = true
+			}
 		}
 	}
 
