@@ -126,12 +126,12 @@ fn (mut a App) collect_info() {
 	a.line2('VMODULES', diagnose_dir(vmodules), vmodules)
 	a.line2('VTMP', diagnose_dir(vtmp_dir), vtmp_dir)
 	a.line2('Current working dir', diagnose_dir(getwd), getwd)
-	vflags := os.getenv('VFLAGS')
 	a.line('', '')
-	if vflags != '' {
-		a.line('env VFLAGS', '"${vflags}"')
-		a.line('', '')
-	}
+
+	a.line_env('VFLAGS')
+	a.line_env('CFLAGS')
+	a.line_env('LDFLAGS')
+
 	a.line('Git version', a.cmd(command: 'git --version'))
 	a.line('V git status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
@@ -186,6 +186,13 @@ fn (mut a App) line(label string, value string) {
 fn (mut a App) line2(label string, value string, value2 string) {
 	a.println('|${label:-20}|${term.colorize(term.bold, value)}, value: ${term.colorize(term.bold,
 		value2)}')
+}
+
+fn (mut a App) line_env(env_var string) {
+	value := os.getenv(env_var)
+	if value != '' {
+		a.line('env ${env_var}', '"${value}"')
+	}
 }
 
 fn (app &App) parse(config string, sep string) map[string]string {
