@@ -14,6 +14,6 @@ fn test_isnil_charptr() {
 }
 
 fn test_isnil_intptr() {
-	pi := &int(0)
+	pi := &int(unsafe { nil })
 	assert isnil(pi)
 }
