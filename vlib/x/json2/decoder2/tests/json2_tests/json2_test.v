@@ -17,12 +17,12 @@ pub mut:
 
 fn test_fast_raw_decode() {
 	s := '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
-	o := json2.fast_raw_decode(s) or {
+	o := json2.decode[json2.Any](s) or {
 		assert false
 		json2.Any('')
 	}
 	str := o.str()
-	assert str == '{"name":"Peter","age":"28","salary":"95000.5","title":"2"}'
+	assert str == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
 }
 
 struct StructType[T] {
