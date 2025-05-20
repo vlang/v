@@ -21,41 +21,15 @@ fn basic_assertion() {
 
 fn struct_with_default_values() {
 	foo := Foo{}
-
 	assert foo.field_0 == ''
-
-	if foo.field_1 is int {
-		assert foo.field_1 == 0
-	} else {
-		assert false
-	}
-
-	if foo.field_2 is string {
-		assert foo.field_2 == ''
-	} else {
-		assert false
-	}
-
-	if foo.field_3 is Type0 {
-		assert foo.field_3 == ''
-		assert foo.field_3 == Type0('')
-	} else {
-		assert false
-	}
+	assert foo.field_1 is int && foo.field_1 == 0
+	assert foo.field_2 is string && foo.field_2 == ''
+	assert foo.field_3 is Type0 && foo.field_3 == ''
+	assert foo.field_3 is Type0 && foo.field_3 == Type0('')
 
 	// TODO: uncomment until the C backend is improved
-	// if foo.field_4 is Type3 {
-	// 	assert foo.field_4 == Type3(Type0(''))
-	// } else {
-	// 	assert false
-	// }
-
-	// TODO: uncomment until the C backend is improved
-	// if foo.field_5 is Type4 {
-	// 	assert foo.field_4 == Type4(Type3(Type0('')))
-	// } else {
-	// 	assert false
-	// }
+	// assert foo.field_4 is Type3 && foo.field_4 == Type3(Type0(''))
+	// assert foo.field_5 is Type4 && foo.field_4 == Type4(Type3(Type0('')))
 }
 
 fn struct_with_values() {
@@ -68,56 +42,20 @@ fn struct_with_values() {
 		field_4: f32(3.14)
 		field_5: true
 	}
-
 	assert f0.field_0 == 'hello'
-
-	if f0.field_1 is string {
-		assert f0.field_1 == 'world'
-	} else {
-		assert false
-	}
-
-	if f0.field_2 is int {
-		assert f0.field_2 == 100
-	} else {
-		assert false
-	}
-
-	if f0.field_3 is int {
-		assert f0.field_3 == 200
-	} else {
-		assert false
-	}
-
-	if f0.field_4 is f32 {
-		assert f0.field_4 == 3.14
-	} else {
-		assert false
-	}
-
-	if f0.field_5 is bool {
-		assert f0.field_5
-	} else {
-		assert false
-	}
+	assert f0.field_1 is string && f0.field_1 == 'world'
+	assert f0.field_2 is int && f0.field_2 == 100
+	assert f0.field_3 is int && f0.field_3 == 200
+	assert f0.field_4 is f32 && f0.field_4 == 3.14
+	assert f0.field_5 is bool && f0.field_5
 
 	// test 1
 	f1 := Foo{
 		field_4: Type3(100)
 		field_5: Type4(Type3(Type0('hello')))
 	}
-
-	if f1.field_4 is Type3 {
-		assert f1.field_4 == Type3(100)
-	} else {
-		assert false
-	}
-
-	if f1.field_5 is Type4 {
-		assert f1.field_5 == Type4(Type3(Type0('hello')))
-	} else {
-		assert false
-	}
+	assert f1.field_4 is Type3 && f1.field_4 == Type3(100)
+	assert f1.field_5 is Type4 && f1.field_5 == Type4(Type3(Type0('hello')))
 }
 
 fn main() {
