@@ -2,6 +2,7 @@ module js
 
 import v.ast
 import strings
+import arrays
 
 fn (mut g JsGen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
@@ -19,9 +20,19 @@ fn (mut g JsGen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tlet aProto = Object.getPrototypeOf(a);')
 	fn_builder.writeln('\tlet bProto = Object.getPrototypeOf(b);')
 	fn_builder.writeln('\tif (aProto !== bProto) { return new bool(false); }')
+	mut variants := []Type{}
 	for typ in info.variants {
 		variant := g.unwrap(typ)
-		fn_builder.writeln('\tif (aProto == ${g.js_name(variant.sym.name)}) {')
+		if variant.unaliased_sym.info is ast.SumType {
+			variants << g.unwrap_sum_type(typ)
+		} else {
+			variants << variant
+		}
+	}
+	variants = arrays.distinct(variants)
+	for variant in variants {
+		typ := variant.typ
+		fn_builder.writeln('\tif (aProto == ${g.js_name(variant.unaliased_sym.name)}.prototype) {')
 		if variant.sym.kind == .string {
 			fn_builder.writeln('\t\treturn new bool(a.str == b.str);')
 		} else if variant.sym.kind == .sum_type && !typ.is_ptr() {

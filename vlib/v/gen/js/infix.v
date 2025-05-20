@@ -337,12 +337,27 @@ fn (mut g JsGen) infix_in_not_in_op(node ast.InfixExpr) {
 }
 
 fn (mut g JsGen) infix_is_not_is_op(node ast.InfixExpr) {
-	g.expr(node.left)
-	rsym := g.table.sym(g.unwrap(node.right_type).typ)
+	rsym := g.unwrap(node.right_type).unaliased_sym
 
-	g.gen_deref_ptr(node.left_type)
-	g.write(' instanceof ')
-	g.write(g.js_name(rsym.name))
+	if rsym.info is ast.SumType {
+		g.write('[')
+		variants := g.unwrap_sum_type(node.right_type)
+		for i, v in variants {
+			g.write(g.js_name(v.unaliased_sym.name))
+			if i < variants.len - 1 {
+				g.write(', ')
+			}
+		}
+		g.write('].some(t => ')
+		g.expr(node.left)
+		g.gen_deref_ptr(node.left_type)
+		g.write(' instanceof t.valueOf())')
+	} else {
+		g.expr(node.left)
+		g.gen_deref_ptr(node.left_type)
+		g.write(' instanceof ')
+		g.write(g.js_name(rsym.name))
+	}
 }
 
 fn (mut g JsGen) infix_expr(node ast.InfixExpr) {
