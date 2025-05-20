@@ -1051,8 +1051,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	res.show_asserts = res.show_asserts || res.is_stats || os.getenv('VTEST_SHOW_ASSERTS') != ''
 
 	if res.os != .wasm32_emscripten {
-		if !res.build_options.any(it.starts_with('-backend') || it.starts_with('b')) {
-			if res.out_name.ends_with('.js') {
+		if res.out_name.ends_with('.js') {
+			if !res.build_options.any(it.starts_with('-backend') || it.starts_with('b')) {
 				res.backend = .js_node
 				res.output_cross_c = true
 			}
