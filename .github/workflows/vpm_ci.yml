@@ -68,5 +68,8 @@ jobs:
           key: ${{ runner.os }}-${{ github.sha }}
       - name: Show git version
         run: git version
-      - name: Test
-        run: cd vlang && ./v -cc ${{ matrix.cc }} -d network test cmd/tools/vpm
+      - name: Build and test VPM
+        run: |
+          cd vlang
+          ./v -W -N cmd/tools/vpm
+          ./v -cc ${{ matrix.cc }} -d network test cmd/tools/vpm
