@@ -246,7 +246,6 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 			ast_import.mod
 		}
 		for j in 0 .. i {
-			eprintln('import[${j}] ${ast_file.imports[j].mod} ("${ast_file.imports[j].alias}")')
 			if cmp_mod_name == if ast_file.imports[j].mod != ast_file.imports[j].alias
 				&& ast_file.imports[j].alias != '_' {
 				ast_file.imports[j].alias
