@@ -11,6 +11,16 @@ pub fn mix[T](start T, end T, t T) T {
 	return start * (1 - t) + end * t
 }
 
+// exp_decay returns a frame independent exponential decay value between `a` and `b` using `delta_time_seconds`.
+// `decay` is supposed to be useful in the range 1.0 to 25.0. From slow to fast.
+// The function is a frame rate independent (approximation) of the well-known `lerp` or `mix` (linear interpolation) function.
+// It is ported to V from the pseudo code shown towards the end of the video https://youtu.be/LSNQuFEDOyQ?t=2977
+// NOTE: Thanks to Freya Holmér for the function and the work done in this field.
+@[inline]
+pub fn exp_decay[T](a T, b T, decay f64, delta_time_seconds f64) T {
+	return T(f64(b) + (f64(a) - f64(b)) * exp(-decay * delta_time_seconds))
+}
+
 // clip constrain the given value `x`, to lie between two further values `min_value` and `max_value`.
 // See: https://registry.khronos.org/OpenGL-Refpages/gl4/html/clamp.xhtml
 // Also: https://en.wikipedia.org/wiki/Clamp_(function)
