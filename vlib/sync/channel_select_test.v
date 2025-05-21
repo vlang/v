@@ -1,7 +1,6 @@
 module sync
 
-// vtest flaky: true
-// vtest retry: 6
+// vtest retry: 3
 
 // ATTENTION! Do not use this file as an example!
 // For that, please look at `channel_select_2_test.v` or `channel_select_3_test.v`
