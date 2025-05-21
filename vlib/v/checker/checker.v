@@ -239,16 +239,22 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 					sym.pos)
 			}
 		}
+
+		cmp_mod_name := if ast_import.mod != ast_import.alias && ast_import.alias != '_' {
+			ast_import.alias
+		} else {
+			ast_import.mod
+		}
 		for j in 0 .. i {
-			if ast_import.mod == ast_file.imports[j].mod {
-				c.error('`${ast_import.mod}` was already imported on line ${
-					ast_file.imports[j].mod_pos.line_nr + 1}', ast_import.mod_pos)
-			} else if ast_import.mod == ast_file.imports[j].alias {
-				c.error('`${ast_file.imports[j].mod}` was already imported as `${ast_import.alias}` on line ${
-					ast_file.imports[j].mod_pos.line_nr + 1}', ast_import.mod_pos)
-			} else if ast_import.alias != '_' && ast_import.alias == ast_file.imports[j].alias {
-				c.error('`${ast_file.imports[j].mod}` was already imported on line ${
-					ast_file.imports[j].alias_pos.line_nr + 1}', ast_import.alias_pos)
+			eprintln('import[${j}] ${ast_file.imports[j].mod} ("${ast_file.imports[j].alias}")')
+			if cmp_mod_name == if ast_file.imports[j].mod != ast_file.imports[j].alias
+				&& ast_file.imports[j].alias != '_' {
+				ast_file.imports[j].alias
+			} else {
+				ast_file.imports[j].mod
+			} {
+				c.error('2 A module `${cmp_mod_name}` was already imported on line ${
+					ast_file.imports[j].mod_pos.line_nr + 1}`.', ast_import.mod_pos)
 			}
 		}
 	}
