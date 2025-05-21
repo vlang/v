@@ -26,6 +26,12 @@ fn test_exp_decay() {
 
 	assert math.exp_decay(100.0, 500.0, decay, 0.0) == 100.0
 	assert math.exp_decay(100.0, 500.0, decay, 1.0) == 500.0
+
+	assert math.exp_decay(0, 100, decay, 0.0) == 0
+	assert math.exp_decay(0, 100, decay, 1.0) == 100
+
+	assert math.exp_decay(100, 500, decay, 0.0) == 100
+	assert math.exp_decay(100, 500, decay, 1.0) == 500
 }
 
 fn test_clip() {
