@@ -113,7 +113,7 @@ fn get_all_modules() []string {
 		// get the index of the end of module entry
 		end_index := s.index_after(end_token, start_index) or { break }
 		m := s[start_index..end_index]
-		modules << s[start_index..end_index]
+		modules << m
 		read_len = end_index
 		if read_len >= s.len {
 			break
