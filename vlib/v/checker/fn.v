@@ -1783,7 +1783,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			else if param.typ == ast.voidptr_type && func.language == .v
 				&& arg_typ !in [ast.voidptr_type, ast.nil_type] && arg_typ.nr_muls() == 0
 				&& func.name !in ['isnil', 'ptr_str'] && !func.name.starts_with('json.')
-				&& arg_typ_sym.kind !in [.float_literal, .int_literal, .charptr]
+				&& arg_typ_sym.kind !in [.float_literal, .int_literal, .charptr, .function]
 				&& !c.pref.backend.is_js() {
 				c.warn('automatic ${arg_typ_sym.name} referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`',
 					call_arg.pos)
