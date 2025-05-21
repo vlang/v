@@ -222,8 +222,8 @@ fn test_various_map_value() {
 	m17['test'] = u64(0)
 	assert m17['test'] == u64(0)
 	mut m18 := map[string]&int{}
-	m18['test'] = &int(0)
-	assert unsafe { m18['test'] } == &int(0)
+	m18['test'] = &int(unsafe { nil })
+	assert unsafe { m18['test'] } == &int(unsafe { nil })
 }
 
 fn test_string_arr() {
