@@ -90,6 +90,15 @@ fn test_multiply_karatsuba_02() {
 	assert c == expected.digits
 }
 
+fn test_multiply_karatsuba_03() {
+	a := integer_from_string('9729117383001812976929423642') or { panic(err) }
+	b := integer_from_string('36889625830') or { panic(err) }
+	mut c := []u32{len: a.digits.len + b.digits.len + 1, init: 0}
+	karatsuba_multiply_digit_array(a.digits, b.digits, mut c)
+	expected := integer_from_string('358903499915085682930564860470935872860') or { panic(err) }
+	assert c == expected.digits
+}
+
 fn test_newton_divide_03() {
 	a := [u32(0), 4]
 	b := [u32(0), 1]
