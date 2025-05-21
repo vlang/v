@@ -1,5 +1,7 @@
 import math
 
+const decay = 100
+
 fn test_mix() {
 	assert math.mix(0.0, 100.0, 0.0) == 0.0
 	assert math.mix(0.0, 100.0, 0.1) == 10.0
@@ -16,6 +18,20 @@ fn test_mix() {
 	assert math.mix(100.0, 500.0, 0.8) == 420.0
 	assert math.mix(100.0, 500.0, 0.9) == 460.0
 	assert math.mix(100.0, 500.0, 1.0) == 500.0
+}
+
+fn test_exp_decay() {
+	assert math.exp_decay(0.0, 100.0, decay, 0.0) == 0.0
+	assert math.exp_decay(0.0, 100.0, decay, 1.0) == 100.0
+
+	assert math.exp_decay(100.0, 500.0, decay, 0.0) == 100.0
+	assert math.exp_decay(100.0, 500.0, decay, 1.0) == 500.0
+
+	assert math.exp_decay(0, 100, decay, 0.0) == 0
+	assert math.exp_decay(0, 100, decay, 1.0) == 100
+
+	assert math.exp_decay(100, 500, decay, 0.0) == 100
+	assert math.exp_decay(100, 500, decay, 1.0) == 500
 }
 
 fn test_clip() {
