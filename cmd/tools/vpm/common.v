@@ -88,7 +88,7 @@ fn normalize_mod_path(path string) string {
 }
 
 fn get_all_modules() []string {
-	url := get_working_server_url()
+	url := get_working_server_url() + '/search'
 	r := http.get(url) or {
 		vpm_error(err.msg(), verbose: true)
 		exit(1)
@@ -101,21 +101,18 @@ fn get_all_modules() []string {
 	mut read_len := 0
 	mut modules := []string{}
 	for read_len < s.len {
-		mut start_token := "<a href='/mod"
-		end_token := '</a>'
+		mut start_token := '<a class="package-card__title hover:underline cursor-pointer" href="/packages/'
+		end_token := '">'
 		// get the start index of the module entry
 		mut start_index := s.index_after(start_token, read_len) or { -1 }
 		if start_index == -1 {
-			start_token = '<a href="/mod'
-			start_index = s.index_after(start_token, read_len) or { break }
+			break
 		}
-		// get the index of the end of anchor (a) opening tag
-		// we use the previous start_index to make sure we are getting a module and not just a random 'a' tag
-		start_token = '>'
-		start_index = s.index_after(start_token, start_index) or { break } + start_token.len
+		start_index += start_token.len
 
 		// get the index of the end of module entry
 		end_index := s.index_after(end_token, start_index) or { break }
+		m := s[start_index..end_index]
 		modules << s[start_index..end_index]
 		read_len = end_index
 		if read_len >= s.len {
