@@ -987,7 +987,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						dyld_fallback_paths := os.getenv('DYLD_FALLBACK_LIBRARY_PATH')
 						so_dir := os.dir(so_path)
 						if !dyld_fallback_paths.contains(so_dir) {
-							env := [dyld_fallback_paths, so_dir].filter(it.len).join(':')
+							env := [dyld_fallback_paths, so_dir].filter(it.len != 0).join(':')
 							os.setenv('DYLD_FALLBACK_LIBRARY_PATH', env, true)
 						}
 					}
