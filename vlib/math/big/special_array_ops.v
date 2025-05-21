@@ -298,6 +298,9 @@ fn add_in_place(mut a []u32, b []u32) {
 			carry = u32(partial >> 32)
 		}
 	}
+	if carry > 0 {
+		a << u32(carry)
+	}
 }
 
 // a := a - b supposed a >= b
