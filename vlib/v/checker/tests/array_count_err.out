@@ -1,3 +1,10 @@
+vlib/v/checker/tests/array_count_err.vv:3:10: error: invalid expression, expected infix expr, lambda or function
+    1 | fn main() {
+    2 |     a := []int{}
+    3 |     a.count(1)
+      |             ^
+    4 |     a.count(1, 2)
+    5 |     a.count('')
 vlib/v/checker/tests/array_count_err.vv:4:4: error: expected 1 argument, but got 2
     2 |     a := []int{}
     3 |     a.count(1)
