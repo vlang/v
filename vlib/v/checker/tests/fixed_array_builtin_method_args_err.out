@@ -33,6 +33,13 @@ vlib/v/checker/tests/fixed_array_builtin_method_args_err.vv:8:11: error: `.any` 
       |              ~~~~~
     9 |     _ := arr.any(22)
    10 |     _ := arr.all()
+vlib/v/checker/tests/fixed_array_builtin_method_args_err.vv:9:15: error: invalid expression, expected infix expr, lambda or function
+    7 |     _ := arr.contains('hello')
+    8 |     _ := arr.any()
+    9 |     _ := arr.any(22)
+      |                  ~~
+   10 |     _ := arr.all()
+   11 |     _ := arr.all('hello')
 vlib/v/checker/tests/fixed_array_builtin_method_args_err.vv:10:11: error: `.all` expected 1 argument, but got 0
     8 |     _ := arr.any()
     9 |     _ := arr.any(22)
