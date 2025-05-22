@@ -250,5 +250,5 @@ fn (r BenchmarkResult) alloced_bytes_per_op() i64 {
 
 // print - all measurements
 fn (r BenchmarkResult) print() {
-	println('Iterations: ${r.n}\t\tTotal Duration: ${r.t}\tns/op: ${r.ns_per_op()}\tB/op: ${r.alloced_bytes_per_op()}\tallocs/op: ${r.allocs_per_op()}')
+	println('Iterations: ${r.n:10}\t\tTotal Duration: ${r.t:10}\tns/op: ${r.ns_per_op():10}\tB/op: ${r.alloced_bytes_per_op():6}\tallocs/op: ${r.allocs_per_op():6}')
 }
