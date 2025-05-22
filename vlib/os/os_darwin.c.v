@@ -10,3 +10,7 @@ pub const sys_mkdir = 136
 pub const sys_creat = 8
 pub const sys_open_nocancel = 398
 pub const sys_stat64 = 338
+
+#include <libproc.h>
+
+fn C.proc_pidpath(int, voidptr, int) int
