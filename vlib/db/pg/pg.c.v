@@ -224,7 +224,7 @@ fn res_to_rows(res voidptr) []Row {
 }
 
 // close frees the underlying resource allocated by the database connection
-pub fn (db DB) close() {
+pub fn (db &DB) close() {
 	C.PQfinish(db.conn)
 }
 
@@ -232,7 +232,7 @@ pub fn (db DB) close() {
 // returns an the first field in the first tuple
 // converted to an int. If no row is found or on
 // command failure, an error is returned
-pub fn (db DB) q_int(query string) !int {
+pub fn (db &DB) q_int(query string) !int {
 	rows := db.exec(query)!
 	if rows.len == 0 {
 		return error('q_int "${query}" not found')
@@ -249,7 +249,7 @@ pub fn (db DB) q_int(query string) !int {
 // returns an the first field in the first tuple
 // as a string. If no row is found or on
 // command failure, an error is returned
-pub fn (db DB) q_string(query string) !string {
+pub fn (db &DB) q_string(query string) !string {
 	rows := db.exec(query)!
 	if rows.len == 0 {
 		return error('q_string "${query}" not found')
@@ -264,12 +264,12 @@ pub fn (db DB) q_string(query string) !string {
 
 // q_strings submit a command to the database server and
 // returns the resulting row set. Alias of `exec`
-pub fn (db DB) q_strings(query string) ![]Row {
+pub fn (db &DB) q_strings(query string) ![]Row {
 	return db.exec(query)
 }
 
 // exec submits a command to the database server and wait for the result, returning an error on failure and a row set on success
-pub fn (db DB) exec(query string) ![]Row {
+pub fn (db &DB) exec(query string) ![]Row {
 	res := C.PQexec(db.conn, &char(query.str))
 	return db.handle_error_or_result(res, 'exec')
 }
@@ -282,7 +282,7 @@ fn rows_first_or_empty(rows []Row) !Row {
 }
 
 // exec_one executes a query and returns its first row as a result, or an error on failure
-pub fn (db DB) exec_one(query string) !Row {
+pub fn (db &DB) exec_one(query string) !Row {
 	res := C.PQexec(db.conn, &char(query.str))
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
@@ -293,7 +293,7 @@ pub fn (db DB) exec_one(query string) !Row {
 }
 
 // exec_param_many executes a query with the parameters provided as ($1), ($2), ($n)
-pub fn (db DB) exec_param_many(query string, params []string) ![]Row {
+pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 	unsafe {
 		mut param_vals := []&char{len: params.len}
 		for i in 0 .. params.len {
@@ -307,24 +307,24 @@ pub fn (db DB) exec_param_many(query string, params []string) ![]Row {
 }
 
 // exec_param executes a query with 1 parameter ($1), and returns either an error on failure, or the full result set on success
-pub fn (db DB) exec_param(query string, param string) ![]Row {
+pub fn (db &DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])
 }
 
 // exec_param2 executes a query with 2 parameters ($1) and ($2), and returns either an error on failure, or the full result set on success
-pub fn (db DB) exec_param2(query string, param string, param2 string) ![]Row {
+pub fn (db &DB) exec_param2(query string, param string, param2 string) ![]Row {
 	return db.exec_param_many(query, [param, param2])
 }
 
 // prepare submits a request to create a prepared statement with the given parameters, and waits for completion. You must provide the number of parameters (`$1, $2, $3 ...`) used in the statement
-pub fn (db DB) prepare(name string, query string, num_params int) ! {
+pub fn (db &DB) prepare(name string, query string, num_params int) ! {
 	res := C.PQprepare(db.conn, &char(name.str), &char(query.str), num_params, 0) // defining param types is optional
 
 	return db.handle_error(res, 'prepare')
 }
 
 // exec_prepared sends a request to execute a prepared statement with given parameters, and waits for the result. The number of parameters must match with the parameters declared in the prepared statement.
-pub fn (db DB) exec_prepared(name string, params []string) ![]Row {
+pub fn (db &DB) exec_prepared(name string, params []string) ![]Row {
 	unsafe {
 		mut param_vals := []&char{len: params.len}
 		for i in 0 .. params.len {
@@ -337,7 +337,7 @@ pub fn (db DB) exec_prepared(name string, params []string) ![]Row {
 	}
 }
 
-fn (db DB) handle_error_or_result(res voidptr, elabel string) ![]Row {
+fn (db &DB) handle_error_or_result(res voidptr, elabel string) ![]Row {
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
@@ -349,7 +349,7 @@ fn (db DB) handle_error_or_result(res voidptr, elabel string) ![]Row {
 	return res_to_rows(res)
 }
 
-fn (db DB) handle_error(res voidptr, elabel string) ! {
+fn (db &DB) handle_error(res voidptr, elabel string) ! {
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
@@ -362,7 +362,7 @@ fn (db DB) handle_error(res voidptr, elabel string) ! {
 
 // copy_expert executes COPY command
 // https://www.postgresql.org/docs/9.5/libpq-copy.html
-pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
+pub fn (db &DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 	mut res := C.PQexec(db.conn, &char(query.str))
 	status := unsafe { ExecStatusType(C.PQresultStatus(res)) }
 	defer {
@@ -423,7 +423,7 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 	return 0
 }
 
-fn pg_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) ![]Row {
+fn pg_stmt_worker(db &DB, query string, data orm.QueryData, where orm.QueryData) ![]Row {
 	mut param_types := []u32{}
 	mut param_vals := []&char{}
 	mut param_lens := []int{}
@@ -452,7 +452,7 @@ pub struct PQTransactionParam {
 }
 
 // begin begins a new transaction.
-pub fn (db DB) begin(param PQTransactionParam) ! {
+pub fn (db &DB) begin(param PQTransactionParam) ! {
 	mut sql_stmt := 'BEGIN TRANSACTION ISOLATION LEVEL '
 	match param.transaction_level {
 		.read_uncommitted { sql_stmt += 'READ UNCOMMITTED' }
@@ -468,7 +468,7 @@ pub fn (db DB) begin(param PQTransactionParam) ! {
 }
 
 // commit commits the current transaction.
-pub fn (db DB) commit() ! {
+pub fn (db &DB) commit() ! {
 	_ := C.PQexec(db.conn, c'COMMIT;')
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
@@ -477,7 +477,7 @@ pub fn (db DB) commit() ! {
 }
 
 // rollback rollbacks the current transaction.
-pub fn (db DB) rollback() ! {
+pub fn (db &DB) rollback() ! {
 	_ := C.PQexec(db.conn, c'ROLLBACK;')
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
@@ -486,7 +486,7 @@ pub fn (db DB) rollback() ! {
 }
 
 // rollback_to rollbacks to a specified savepoint.
-pub fn (db DB) rollback_to(savepoint string) ! {
+pub fn (db &DB) rollback_to(savepoint string) ! {
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
 	}
@@ -499,7 +499,7 @@ pub fn (db DB) rollback_to(savepoint string) ! {
 }
 
 // savepoint create a new savepoint.
-pub fn (db DB) savepoint(savepoint string) ! {
+pub fn (db &DB) savepoint(savepoint string) ! {
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
 	}
