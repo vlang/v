@@ -72,6 +72,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			}
+		} else if mut node.right is ast.ArrayInit {
+			if node.right.exprs.len == 0 {
+				// handle arr << [] where [] is empty
+				info := c.table.sym(left_type).array_info()
+				node.right.elem_type = info.elem_type
+				c.expected_type = info.elem_type
+			}
 		}
 	}
 	mut right_type := c.expr(mut node.right)
