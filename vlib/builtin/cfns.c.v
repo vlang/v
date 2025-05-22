@@ -37,7 +37,7 @@ fn C.isdigit(c int) bool
 fn C.popen(c &char, t &char) voidptr
 
 // <libproc.h>
-pub fn proc_pidpath(int, voidptr, int) int
+fn C.proc_pidpath(int, voidptr, int) int
 
 fn C.realpath(const_path &char, resolved_path &char) &char
 
@@ -52,7 +52,7 @@ fn C.snprintf(str &char, size usize, const_format &char, opt ...voidptr) int
 fn C.wprintf(const_format &u16, opt ...voidptr) int
 
 // used by Android for (e)println to output to the Android log system / logcat
-pub fn C.android_print(fstream voidptr, format &char, opt ...voidptr)
+fn C.android_print(fstream voidptr, format &char, opt ...voidptr)
 
 fn C.sscanf(str &char, const_format &char, opt ...voidptr) int
 fn C.scanf(const_format &char, opt ...voidptr) int
