@@ -223,6 +223,7 @@ fn (mut s SSLConn) complete_connect() ! {
 	}
 
 	if s.config.validate {
+		mut pcert := &C.X509(unsafe { nil })
 		for {
 			mut res := C.SSL_do_handshake(voidptr(s.ssl))
 			if res == 1 {
@@ -239,7 +240,11 @@ fn (mut s SSLConn) complete_connect() ! {
 			}
 			return error('Could not validate SSL certificate. (${err_res}),err')
 		}
-		pcert := C.SSL_get1_peer_certificate(voidptr(s.ssl))
+		$if openbsd {
+			pcert = C.SSL_get_peer_certificate(voidptr(s.ssl))
+		} $else {
+			pcert = C.SSL_get1_peer_certificate(voidptr(s.ssl))
+		}
 		defer {
 			if pcert != 0 {
 				C.X509_free(pcert)
