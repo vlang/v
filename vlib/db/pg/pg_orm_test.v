@@ -45,13 +45,14 @@ fn test_pg_orm() {
 	mut db := pg.connect(
 		host:     'localhost'
 		user:     'postgres'
-		password: 'password'
-		dbname:   'postgres'
+		password: '12345678'
+		dbname:   'test'
 	) or { panic(err) }
 
 	defer {
 		db.close()
 	}
+	db.drop('Test')!
 
 	db.create('Test', [
 		orm.TableField{
@@ -140,6 +141,9 @@ fn test_pg_orm() {
 	/** test orm sql type
 	* - verify if all type create by attribute sql_type has created
 	*/
+	sql db {
+		drop table TestCustomSqlType
+	}!
 
 	sql db {
 		create table TestCustomSqlType
@@ -157,14 +161,11 @@ fn test_pg_orm() {
 	mut information_schema_data_types_results := []string{}
 	information_schema_custom_sql := ['integer', 'text', 'character varying',
 		'timestamp without time zone', 'uuid']
+
 	for data_type in result_custom_sql {
-		x := data_type.vals[0]!
+		x := data_type.vals[0]
 		information_schema_data_types_results << x?
 	}
-
-	sql db {
-		drop table TestCustomSqlType
-	}!
 
 	assert information_schema_data_types_results == information_schema_custom_sql
 
@@ -224,8 +225,8 @@ fn test_pg_orm() {
 	mut information_schema_defaults_results := []string{}
 
 	for defaults in result_defaults {
-		x := defaults.vals[0]!
-		information_schema_defaults_results << x?
+		x := defaults.vals[0]
+		information_schema_defaults_results << x or { '' }
 	}
 	sql db {
 		drop table TestDefaultAttribute
