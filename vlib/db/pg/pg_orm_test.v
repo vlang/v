@@ -1,3 +1,4 @@
+// vtest build: started_postgres?
 module main
 
 import orm
@@ -206,9 +207,6 @@ fn test_pg_orm() {
 	assert results[0].updated_at == model.updated_at
 	assert results[0].deleted_at == model.deleted_at
 
-	sql db {
-		drop table TestDefaultAttribute
-	} or {}
 	/** test default attribute
 	*/
 	sql db {
