@@ -1,6 +1,6 @@
 import os
 import time
-import json
+import x.json2 as json
 import net
 import net.http
 import io
