@@ -219,12 +219,12 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
 		// Imports with the same path and name (self-imports and module name conflicts with builtin module imports)
-		if c.mod == ast_import.mod {
+		if c.mod == ast_import.mod && c.mod !in ast_file.auto_imports {
 			c.error('cannot import `${ast_import.mod}` into a module with the same name',
 				ast_import.mod_pos)
 		}
 		// Duplicates of regular imports with the default alias (modname) and `as` imports with a custom alias
-		if c.mod == ast_import.alias {
+		if c.mod == ast_import.alias && c.mod !in ast_file.auto_imports {
 			if c.mod == ast_import.mod.all_after_last('.') {
 				c.error('cannot import `${ast_import.mod}` into a module with the same name',
 					ast_import.mod_pos)
