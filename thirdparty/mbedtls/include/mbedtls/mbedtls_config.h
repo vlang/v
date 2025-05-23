@@ -3820,3 +3820,9 @@
 #undef MBEDTLS_AESNI_C
 #undef MBEDTLS_PADLOCK_C
 #endif
+
+#if ( defined(__TINYC__) && defined(__OpenBSD__) )
+#undef MBEDTLS_HAVE_ASM
+#undef MBEDTLS_AESNI_C
+#undef MBEDTLS_PADLOCK_C
+#endif
