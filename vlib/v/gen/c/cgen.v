@@ -2128,7 +2128,12 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				g.skip_stmt_pos = true
 				if stmt is ast.ExprStmt {
 					if stmt.typ == ast.error_type_idx {
-						g.writeln('${tmp_var}.is_error = true;')
+						// Check if this is a result type or option type
+						if g.fn_decl.return_type.has_flag(.result) {
+							g.writeln('${tmp_var}.is_error = true;')
+						} else if g.fn_decl.return_type.has_flag(.option) {
+							g.writeln('${tmp_var}.state = 2;')
+						}
 						g.write('${tmp_var}.err = ')
 						g.expr(stmt.expr)
 						g.writeln(';')
@@ -7087,7 +7092,14 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			} else {
 				styp := g.styp(g.fn_decl.return_type)
 				err_obj := g.new_tmp_var()
-				g.writeln2('\t${styp} ${err_obj};', '\tmemcpy(&${err_obj}, &${cvar_name}, sizeof(${result_name}));')
+				g.writeln('\t${styp} ${err_obj} = {0};')
+				if g.fn_decl.return_type.has_flag(.result) {
+					g.writeln('\t${err_obj}.is_error = true;')
+				} else if g.fn_decl.return_type.has_flag(.option) {
+					g.writeln('\t${err_obj}.state = 2;')
+				}
+				g.writeln('\t${err_obj}.err = ${cvar_name}${tmp_op}err;')
+				// Optionally zero data: memset(&${err_obj}.data, 0, sizeof(${styp}) - offsetof(${styp}, data));
 				g.writeln('\treturn ${err_obj};')
 			}
 		}
