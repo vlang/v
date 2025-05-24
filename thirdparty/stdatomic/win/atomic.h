@@ -296,9 +296,9 @@ static inline int atomic_compare_exchange_strong_u32(unsigned volatile * object,
 
 #define InterlockedExchangeAdd16 ManualInterlockedExchangeAdd16
 
-__CRT_INLINE SHORT ManualInterlockedExchangeAdd16(SHORT volatile *Addend, SHORT Value)
+static inline unsigned short ManualInterlockedExchangeAdd16(unsigned short volatile *Addend, unsigned short Value)
 {
-    SHORT Old;
+    unsigned short Old;
     do
     {
         Old = *Addend;
