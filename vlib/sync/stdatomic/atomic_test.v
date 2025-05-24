@@ -95,7 +95,7 @@ fn count_one_cycle_without_sync(mut counter Counter, mut group sync.WaitGroup) {
 }
 
 fn test_atomic_vals() {
-	mut v_bool := stdatomic.new_atomic(bool(false))
+	mut v_bool := stdatomic.new_atomic(false)
 	v_bool.store(true)
 	assert v_bool.load() == true
 	v_bool.store(false)
