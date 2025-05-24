@@ -62,26 +62,26 @@ pub fn load_i64(ptr &i64) i64 {
 }
 
 @[heap]
-pub struct AtomicStruct[T] {
+pub struct AtomicVal[T] {
 	val T
 }
 
 // new_atomic creates a new atomic value of `T` type
 @[inline]
-pub fn new_atomic[T](val T) &AtomicStruct[T] {
+pub fn new_atomic[T](val T) &AtomicVal[T] {
 	$if windows && (T is bool || T is u8 || T is i8) {
 		// windows does't support 8bits data types ? so use 16bits instead
 		$if T is bool || T is u8 {
-			return &AtomicStruct[T]{
+			return &AtomicVal[T]{
 				val: u16(val)
 			}
 		} $else $if T is i8 {
-			return &AtomicStruct[T]{
+			return &AtomicVal[T]{
 				val: i16(val)
 			}
 		}
 	} $else $if T is $int || T is bool {
-		return &AtomicStruct[T]{
+		return &AtomicVal[T]{
 			val: val
 		}
 	} $else {
@@ -92,7 +92,7 @@ pub fn new_atomic[T](val T) &AtomicStruct[T] {
 
 // load returns current value of the atomic value
 @[inline]
-pub fn (mut a AtomicStruct[T]) load() T {
+pub fn (mut a AtomicVal[T]) load() T {
 	$if windows && (T is bool || T is u8 || T is i8) {
 		// windows does't support 8bits data types ? so use 16bits instead
 		$if T is bool {
@@ -130,7 +130,7 @@ pub fn (mut a AtomicStruct[T]) load() T {
 
 // store updates the atomic value with `val`
 @[inline]
-pub fn (mut a AtomicStruct[T]) store(val T) {
+pub fn (mut a AtomicVal[T]) store(val T) {
 	$if windows && (T is bool || T is u8 || T is i8) {
 		// windows does't support 8bits data types ? so use 16bits instead
 		C.atomic_store_u16(voidptr(&a.val), val)
@@ -163,7 +163,7 @@ pub fn (mut a AtomicStruct[T]) store(val T) {
 
 // add adds the atomic value with `delta`
 @[inline]
-pub fn (mut a AtomicStruct[T]) add(delta T) T {
+pub fn (mut a AtomicVal[T]) add(delta T) T {
 	$if T is bool {
 		panic('atomic: can not add() a bool type')
 	} $else $if windows && (T is u8 || T is i8) {
@@ -197,7 +197,7 @@ pub fn (mut a AtomicStruct[T]) add(delta T) T {
 
 // sub subs the atomic value with `delta`
 @[inline]
-pub fn (mut a AtomicStruct[T]) sub(delta T) T {
+pub fn (mut a AtomicVal[T]) sub(delta T) T {
 	$if T is bool {
 		panic('atomic: can not sub() a bool type')
 	} $else $if windows && (T is u8 || T is i8) {
