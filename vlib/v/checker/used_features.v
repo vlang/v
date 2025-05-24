@@ -151,7 +151,11 @@ fn (mut c Checker) markused_method_call(mut node ast.CallExpr, mut left_expr ast
 			c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
 		}
 	} else if left_type.has_flag(.generic) {
-		c.table.used_features.comptime_calls['${int(c.unwrap_generic(left_type))}.${node.name}'] = true
+		unwrapped_left := c.unwrap_generic(left_type)
+		c.table.used_features.comptime_calls['${int(unwrapped_left)}.${node.name}'] = true
+		if !unwrapped_left.is_ptr() && left_expr is ast.Ident && left_expr.is_mut() {
+			c.table.used_features.comptime_calls['${int(unwrapped_left.ref())}.${node.name}'] = true
+		}
 	}
 }
 
