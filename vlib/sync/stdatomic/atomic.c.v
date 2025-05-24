@@ -61,6 +61,7 @@ pub fn load_i64(ptr &i64) i64 {
 	return i64(C.atomic_load_u64(voidptr(ptr)))
 }
 
+@[heap]
 pub struct AtomicStruct[T] {
 	val T
 }
