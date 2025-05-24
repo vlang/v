@@ -561,6 +561,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 
 	if node.generic_names.len > 0 {
 		name = g.generic_fn_name(g.cur_concrete_types, name)
+		name = name.replace_each(c_fn_name_escape_seq)
 	}
 
 	if g.pref.translated || g.file.is_translated || node.is_file_translated {
@@ -2012,6 +2013,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					}
 				}
 				name = g.generic_fn_name(concrete_types, name)
+				name = name.replace_each(c_fn_name_escape_seq)
 			}
 		}
 	}
