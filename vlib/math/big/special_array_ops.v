@@ -304,32 +304,33 @@ fn add_in_place(mut a []u32, b []u32) {
 }
 
 // a := a - b supposed a >= b
-@[direct_array_access]
+@[direct_array_access; inline]
 fn subtract_in_place(mut a []u32, b []u32) {
 	len_a := a.len
 	len_b := b.len
 	max := imax(len_a, len_b)
 	min := imin(len_a, len_b)
-	mut carry := u32(0)
-	mut new_carry := u32(0)
+
+	mut borrow := false
 	for index in 0 .. min {
-		new_carry = if a[index] < (b[index] + carry) {
-			u32(1)
-		} else {
-			u32(0)
+		mut a_digit := u64(a[index])
+		b_digit := b[index] + if borrow { u64(1) } else { u64(0) }
+		borrow = a_digit < b_digit
+		if borrow {
+			a_digit += 0x100000000
 		}
-		a[index] -= (b[index] + carry)
-		carry = new_carry
+		a[index] = u32(a_digit - b_digit)
 	}
+
 	if len_a >= len_b {
 		for index in min .. max {
-			new_carry = if a[index] < carry {
-				u32(1)
-			} else {
-				u32(0)
+			mut a_digit := u64(a[index])
+			b_digit := if borrow { u64(1) } else { u64(0) }
+			borrow = a_digit < b_digit
+			if borrow {
+				a_digit += 0x100000000
 			}
-			a[index] -= carry
-			carry = new_carry
+			a[index] = u32(a_digit - b_digit)
 		}
 	} else { // if len.b > len.a return zero
 		a.clear()
