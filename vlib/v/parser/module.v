@@ -43,6 +43,9 @@ fn (mut p Parser) register_used_import_for_symbol_name(sym_name string) {
 }
 
 fn (mut p Parser) register_auto_import(alias string) {
+	if p.mod == alias {
+		return
+	}
 	if alias !in p.imports {
 		p.imports[alias] = alias
 		p.table.imports << alias
