@@ -113,16 +113,6 @@ __CRT_INLINE LONG _InterlockedExchangeAdd(LONG volatile *Addend, LONG Value)
     return Old;
 }
 
-__CRT_INLINE SHORT _InterlockedExchangeAdd16(SHORT volatile *Addend, SHORT Value)
-{
-    SHORT Old;
-    do
-    {
-        Old = *Addend;
-    } while (InterlockedCompareExchange16(Addend, Old + Value, Old) != Old);
-    return Old;
-}
-
 #define InterlockedIncrement64 _InterlockedExchangeAdd64
 
 #endif
