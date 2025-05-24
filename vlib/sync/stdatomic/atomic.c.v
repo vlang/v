@@ -69,7 +69,18 @@ pub struct AtomicStruct[T] {
 // new_atomic creates a new atomic value of `T` type
 @[inline]
 pub fn new_atomic[T](val T) &AtomicStruct[T] {
-	$if T is $int || T is bool {
+	$if windows && (T is bool || T is u8 || T is i8) {
+		// windows does't support 8bits data types ? so use 16bits instead
+		$if T is bool || T is u8 {
+			return &AtomicStruct[T]{
+				val: u16(val)
+			}
+		} $else $if T is i8 {
+			return &AtomicStruct[T]{
+				val: i16(val)
+			}
+		}
+	} $else $if T is $int || T is bool {
 		return &AtomicStruct[T]{
 			val: val
 		}
@@ -82,7 +93,14 @@ pub fn new_atomic[T](val T) &AtomicStruct[T] {
 // load returns current value of the atomic value
 @[inline]
 pub fn (mut a AtomicStruct[T]) load() T {
-	$if T is bool {
+	$if windows && (T is bool || T is u8 || T is i8) {
+		// windows does't support 8bits data types ? so use 16bits instead
+		$if T is bool {
+			return C.atomic_load_u16(voidptr(&a.val)) != 0
+		} $else {
+			return T(C.atomic_load_u16(voidptr(&a.val)))
+		}
+	} $else $if T is bool {
 		return C.atomic_load_byte(voidptr(&a.val)) != 0
 	} $else $if T is u8 || T is i8 {
 		return T(C.atomic_load_byte(voidptr(&a.val)))
@@ -113,7 +131,10 @@ pub fn (mut a AtomicStruct[T]) load() T {
 // store updates the atomic value with `val`
 @[inline]
 pub fn (mut a AtomicStruct[T]) store(val T) {
-	$if T is bool {
+	$if windows && (T is bool || T is u8 || T is i8) {
+		// windows does't support 8bits data types ? so use 16bits instead
+		C.atomic_store_u16(voidptr(&a.val), val)
+	} $else $if T is bool {
 		C.atomic_store_byte(voidptr(&a.val), val)
 	} $else $if T is u8 || T is i8 {
 		C.atomic_store_byte(voidptr(&a.val), val)
@@ -145,6 +166,9 @@ pub fn (mut a AtomicStruct[T]) store(val T) {
 pub fn (mut a AtomicStruct[T]) add(delta T) T {
 	$if T is bool {
 		panic('atomic: can not add() a bool type')
+	} $else $if windows && (T is u8 || T is i8) {
+		// windows does't support 8bits data types ? so use 16bits instead
+		C.atomic_fetch_add_u16(voidptr(&a.val), delta)
 	} $else $if T is u8 || T is i8 {
 		C.atomic_fetch_add_byte(voidptr(&a.val), delta)
 	} $else $if T is u16 || T is i16 {
@@ -168,7 +192,7 @@ pub fn (mut a AtomicStruct[T]) add(delta T) T {
 			C.atomic_fetch_add_u64(voidptr(&a.val), delta)
 		}
 	}
-	return a.val
+	return T(a.val)
 }
 
 // sub subs the atomic value with `delta`
@@ -176,6 +200,9 @@ pub fn (mut a AtomicStruct[T]) add(delta T) T {
 pub fn (mut a AtomicStruct[T]) sub(delta T) T {
 	$if T is bool {
 		panic('atomic: can not sub() a bool type')
+	} $else $if windows && (T is u8 || T is i8) {
+		// windows does't support 8bits data types ? so use 16bits instead
+		C.atomic_fetch_sub_u16(voidptr(&a.val), delta)
 	} $else $if T is u8 || T is i8 {
 		C.atomic_fetch_sub_byte(voidptr(&a.val), delta)
 	} $else $if T is u16 || T is i16 {
@@ -199,5 +226,5 @@ pub fn (mut a AtomicStruct[T]) sub(delta T) T {
 			C.atomic_fetch_sub_u64(voidptr(&a.val), delta)
 		}
 	}
-	return a.val
+	return T(a.val)
 }

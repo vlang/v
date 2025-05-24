@@ -110,6 +110,8 @@ __CRT_INLINE LONG _InterlockedExchangeAdd(LONG volatile *Addend, LONG Value)
     return Old;
 }
 
+#define InterlockedExchangeAdd16 _InterlockedExchangeAdd16
+
 __CRT_INLINE SHORT _InterlockedExchangeAdd16(SHORT volatile *Addend, SHORT Value)
 {
     SHORT Old;
