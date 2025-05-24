@@ -49,8 +49,6 @@
 
 #define atomic_is_lock_free(obj) 0
 
-#define InterlockedExchangeAdd16 _InterlockedExchangeAdd16
-
 typedef intptr_t atomic_flag;
 typedef _Atomic bool                    atomic_bool;
 typedef _Atomic char                    atomic_char;
@@ -300,7 +298,19 @@ static inline int atomic_compare_exchange_strong_u32(unsigned volatile * object,
 #define atomic_fetch_and_u32(object, operand) \
     InterlockedAnd(object, operand)
 
+#define InterlockedExchangeAdd16 _InterlockedExchangeAdd16
 
+#ifndef _MSC_VER
+__CRT_INLINE SHORT _InterlockedExchangeAdd16(SHORT volatile *Addend, SHORT Value)
+{
+    SHORT Old;
+    do
+    {
+        Old = *Addend;
+    } while (InterlockedCompareExchange16(Addend, Old + Value, Old) != Old);
+    return Old;
+}
+#endif
 
 static inline void atomic_store_u16(unsigned short volatile * object, unsigned short desired) {
     do {
