@@ -228,19 +228,18 @@ fn divide_array_by_digit(operand_a []u32, divisor u32, mut quotient []u32, mut r
 	}
 	// Dividend has more digits
 	mut rem := u64(0)
+	mut qtemp := []u32{len: quotient.cap}
 	divisor64 := u64(divisor)
-	// Pad quotient to contain sufficient space
-	for _ in 0 .. operand_a.len {
-		quotient << 0
-	}
+
 	// Perform division step by step
 	for index := operand_a.len - 1; index >= 0; index-- {
 		dividend := (rem << 32) + operand_a[index]
-		quotient[index] = u32(dividend / divisor64)
+		qtemp[index] = u32(dividend / divisor64)
 		rem = dividend % divisor64
 	}
 	// Remove leading zeros from quotient
-	shrink_tail_zeros(mut quotient)
+	shrink_tail_zeros(mut qtemp)
+	quotient << qtemp
 	remainder << u32(rem)
 	shrink_tail_zeros(mut remainder)
 }
