@@ -85,21 +85,23 @@ fn (mut r BufferedReader) fill_buffer() bool {
 	}
 	r.offset = 0
 	r.len = 0
-	r.len = r.reader.read(mut r.buf) or {
-		// end of stream was reached
-		r.end_of_stream = true
-		return false
-	}
-	if r.len == 0 {
-		r.fails++
-	} else {
-		r.fails = 0
-	}
-	if r.fails >= r.mfails {
-		// When reading 0 bytes several times in a row, assume the stream has ended.
-		// This prevents infinite loops ¯\_(ツ)_/¯ ...
-		r.end_of_stream = true
-		return false
+	for r.len == 0 {
+		r.len = r.reader.read(mut r.buf) or {
+			// end of stream was reached
+			r.end_of_stream = true
+			return false
+		}
+		if r.len == 0 {
+			r.fails++
+			if r.fails == r.mfails {
+				// When reading 0 bytes several times in a row, assume the stream has ended.
+				// This prevents infinite loops ¯\_(ツ)_/¯ ...
+				r.end_of_stream = true
+				return false
+			}
+		} else {
+			r.fails = 0
+		}
 	}
 	// we got some data
 	return true
