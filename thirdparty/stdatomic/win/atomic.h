@@ -288,10 +288,15 @@ static inline int atomic_compare_exchange_strong_u32(unsigned volatile * object,
 #define atomic_fetch_and_u32(object, operand) \
     InterlockedAnd(object, operand)
 
+#ifdef _MSC_VER
+
 #define InterlockedExchangeAdd16 _InterlockedExchangeAdd16
 
-#ifndef _MSC_VER
-__CRT_INLINE SHORT _InterlockedExchangeAdd16(SHORT volatile *Addend, SHORT Value)
+#else
+
+#define InterlockedExchangeAdd16 ManualInterlockedExchangeAdd16
+
+__CRT_INLINE SHORT ManualInterlockedExchangeAdd16(SHORT volatile *Addend, SHORT Value)
 {
     SHORT Old;
     do
