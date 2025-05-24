@@ -1,7 +1,7 @@
 // vtest flaky: true
 // vtest retry: 3
 import db.sqlite
-import json
+import x.json2 as json
 import os
 import time
 import x.sessions
