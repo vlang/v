@@ -77,6 +77,14 @@ fn C.atomic_exchange_ptr(voidptr, voidptr) voidptr
 fn C.atomic_fetch_add_ptr(voidptr, voidptr) voidptr
 fn C.atomic_fetch_sub_ptr(voidptr, voidptr) voidptr
 
+fn C.atomic_load_byte(voidptr) u8
+fn C.atomic_store_byte(voidptr, u8)
+fn C.atomic_compare_exchange_weak_byte(voidptr, voidptr, u8) bool
+fn C.atomic_compare_exchange_strong_byte(voidptr, voidptr, u8) bool
+fn C.atomic_exchange_byte(voidptr, u8) u8
+fn C.atomic_fetch_add_byte(voidptr, u8) u8
+fn C.atomic_fetch_sub_byte(voidptr, u8) u8
+
 fn C.atomic_load_u16(voidptr) u16
 fn C.atomic_store_u16(voidptr, u16)
 fn C.atomic_compare_exchange_weak_u16(voidptr, voidptr, u16) bool
