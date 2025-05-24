@@ -296,14 +296,13 @@ static inline int atomic_compare_exchange_strong_u32(unsigned volatile * object,
 
 #define InterlockedExchangeAdd16 ManualInterlockedExchangeAdd16
 
-static inline unsigned short ManualInterlockedExchangeAdd16(unsigned short volatile *Addend, unsigned short Value)
-{
-    unsigned short Old;
-    do
-    {
-        Old = *Addend;
-    } while (InterlockedCompareExchange16(Addend, Old + Value, Old) != Old);
-    return Old;
+static inline unsigned short ManualInterlockedExchangeAdd16(unsigned short volatile* Addend, unsigned short Value) {
+    __asm__ __volatile__ (
+        "lock xaddw %w[value], %[mem]"
+        : [mem] "+m" (*Addend), [value] "+r" (Value)
+        : : "memory"
+    );
+    return Value;
 }
 #endif
 
