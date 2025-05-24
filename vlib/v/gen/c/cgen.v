@@ -7087,7 +7087,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			} else {
 				styp := g.styp(g.fn_decl.return_type)
 				err_obj := g.new_tmp_var()
-				g.writeln2('\t${styp} ${err_obj};', '\tmemcpy(&${err_obj}, &${cvar_name}, sizeof(${result_name}));')
+				g.writeln2('\t${styp} ${err_obj};', '\tmemcpy(&${err_obj}, &${cvar_name}, sizeof(${styp}));')
 				g.writeln('\treturn ${err_obj};')
 			}
 		}
