@@ -47,6 +47,8 @@
 
 #define atomic_is_lock_free(obj) 0
 
+#define InterlockedExchangeAdd16 _InterlockedExchangeAdd16
+
 typedef intptr_t atomic_flag;
 typedef intptr_t atomic_bool;
 typedef intptr_t atomic_char;
@@ -90,6 +92,7 @@ typedef intptr_t atomic_uintmax_t;
     fake it (works the same) with InterlockedCompareExchange64 until it
     succeeds
 */
+
 __CRT_INLINE LONGLONG _InterlockedExchangeAdd64(LONGLONG volatile *Addend, LONGLONG Value)
 {
     LONGLONG Old;
@@ -109,8 +112,6 @@ __CRT_INLINE LONG _InterlockedExchangeAdd(LONG volatile *Addend, LONG Value)
     } while (InterlockedCompareExchange(Addend, Old + Value, Old) != Old);
     return Old;
 }
-
-#define InterlockedExchangeAdd16 _InterlockedExchangeAdd16
 
 __CRT_INLINE SHORT _InterlockedExchangeAdd16(SHORT volatile *Addend, SHORT Value)
 {
