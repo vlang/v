@@ -69,18 +69,7 @@ pub struct AtomicVal[T] {
 // new_atomic creates a new atomic value of `T` type
 @[inline]
 pub fn new_atomic[T](val T) &AtomicVal[T] {
-	$if windows && (T is bool || T is u8 || T is i8) {
-		// windows does't support 8bits data types ? so use 16bits instead
-		$if T is bool || T is u8 {
-			return &AtomicVal[T]{
-				val: u16(val)
-			}
-		} $else $if T is i8 {
-			return &AtomicVal[T]{
-				val: i16(val)
-			}
-		}
-	} $else $if T is $int || T is bool {
+	$if T is $int || T is bool {
 		return &AtomicVal[T]{
 			val: val
 		}
@@ -93,14 +82,7 @@ pub fn new_atomic[T](val T) &AtomicVal[T] {
 // load returns current value of the atomic value
 @[inline]
 pub fn (mut a AtomicVal[T]) load() T {
-	$if windows && (T is bool || T is u8 || T is i8) {
-		// windows does't support 8bits data types ? so use 16bits instead
-		$if T is bool {
-			return C.atomic_load_u16(voidptr(&a.val)) != 0
-		} $else {
-			return T(C.atomic_load_u16(voidptr(&a.val)))
-		}
-	} $else $if T is bool {
+	$if T is bool {
 		return C.atomic_load_byte(voidptr(&a.val)) != 0
 	} $else $if T is u8 || T is i8 {
 		return T(C.atomic_load_byte(voidptr(&a.val)))
@@ -131,10 +113,7 @@ pub fn (mut a AtomicVal[T]) load() T {
 // store updates the atomic value with `val`
 @[inline]
 pub fn (mut a AtomicVal[T]) store(val T) {
-	$if windows && (T is bool || T is u8 || T is i8) {
-		// windows does't support 8bits data types ? so use 16bits instead
-		C.atomic_store_u16(voidptr(&a.val), val)
-	} $else $if T is bool {
+	$if T is bool {
 		C.atomic_store_byte(voidptr(&a.val), val)
 	} $else $if T is u8 || T is i8 {
 		C.atomic_store_byte(voidptr(&a.val), val)
@@ -166,9 +145,6 @@ pub fn (mut a AtomicVal[T]) store(val T) {
 pub fn (mut a AtomicVal[T]) add(delta T) T {
 	$if T is bool {
 		panic('atomic: can not add() a bool type')
-	} $else $if windows && (T is u8 || T is i8) {
-		// windows does't support 8bits data types ? so use 16bits instead
-		C.atomic_fetch_add_u16(voidptr(&a.val), delta)
 	} $else $if T is u8 || T is i8 {
 		C.atomic_fetch_add_byte(voidptr(&a.val), delta)
 	} $else $if T is u16 || T is i16 {
@@ -200,9 +176,6 @@ pub fn (mut a AtomicVal[T]) add(delta T) T {
 pub fn (mut a AtomicVal[T]) sub(delta T) T {
 	$if T is bool {
 		panic('atomic: can not sub() a bool type')
-	} $else $if windows && (T is u8 || T is i8) {
-		// windows does't support 8bits data types ? so use 16bits instead
-		C.atomic_fetch_sub_u16(voidptr(&a.val), delta)
 	} $else $if T is u8 || T is i8 {
 		C.atomic_fetch_sub_byte(voidptr(&a.val), delta)
 	} $else $if T is u16 || T is i16 {
