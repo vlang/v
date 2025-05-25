@@ -15,10 +15,12 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.left_type = c.expr(mut node.left)
 	}
 	if node.method_name == 'compile_error' {
-		c.error(node.args_var, node.pos)
+		// TODO: due to `$if T is int {` resolve to `.unknown`, this move to cgen
+		// c.error(node.args_var, node.pos)
 		return ast.void_type
 	} else if node.method_name == 'compile_warn' {
-		c.warn(node.args_var, node.pos)
+		// TODO: due to `$if T is int {` resolve to `.unknown`, this move to cgen
+		// c.warn(node.args_var, node.pos)
 		return ast.void_type
 	}
 	if node.is_env {
@@ -795,14 +797,14 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 				.key_is, .not_is {
 					if cond.left is ast.TypeNode && mut cond.right is ast.TypeNode {
 						// `$if Foo is Interface {`
-						// `$if T is int {`
-						mut left_type := (cond.left as ast.TypeNode).typ
 						sym := c.table.sym(cond.right.typ)
 						if sym.kind != .interface {
-							left_type = c.expr(mut cond.left)
+							c.expr(mut cond.left)
+						} else {
+							return c.check_compatible_types((cond.left as ast.TypeNode).typ,
+								cond.right)
 						}
-						checked_type := c.unwrap_generic(left_type)
-						return c.check_compatible_types(checked_type, cond.right)
+						return .unknown
 					} else if cond.left is ast.TypeNode && mut cond.right is ast.ComptimeType {
 						left := cond.left as ast.TypeNode
 						checked_type := c.unwrap_generic(left.typ)

@@ -11,5 +11,5 @@ fn foo[T](val T) {
 }
 
 fn test_main() {
-	foo(123)
+	foo('123')
 }

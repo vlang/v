@@ -1,1 +1,7 @@
-bool || $int
+comptime_if_is_type_test.vv:7:3: cgen error: only support bool and num type
+    5 |         println('bool || \$int')
+    6 |     } $else {
+    7 |         $compile_error('only support bool and num type')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    8 |     }
+    9 |

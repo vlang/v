@@ -6315,6 +6315,10 @@ fn (g &Gen) error(s string, pos token.Pos) {
 	exit(1)
 }
 
+fn (g &Gen) warn(s string, pos token.Pos) {
+	util.show_compiler_message('cgen warning:', pos: pos, file_path: g.file.path, message: s)
+}
+
 fn (g &Gen) checker_bug(s string, pos token.Pos) {
 	g.error('checker bug; ${s}', pos)
 }

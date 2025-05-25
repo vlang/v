@@ -50,6 +50,15 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		g.gen_embed_file_init(mut node)
 		return
 	}
+	if node.method_name == 'compile_error' {
+		// TODO: move this to checker
+		g.error(node.args_var, node.pos)
+		return
+	} else if node.method_name == 'compile_warn' {
+		// TODO: move this to checker
+		g.warn(node.args_var, node.pos)
+		return
+	}
 	if node.method_name == 'env' {
 		// $env('ENV_VAR_NAME')
 		// TODO: deprecate after support for $d() is stable
