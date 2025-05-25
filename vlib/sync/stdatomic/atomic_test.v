@@ -93,3 +93,99 @@ fn count_one_cycle_without_sync(mut counter Counter, mut group sync.WaitGroup) {
 	}
 	group.done()
 }
+
+fn test_atomic_vals() {
+	mut v_bool := stdatomic.new_atomic(false)
+	v_bool.store(true)
+	assert v_bool.load() == true
+	v_bool.store(false)
+	assert v_bool.load() == false
+
+	mut v_i8 := stdatomic.new_atomic(i8(-33))
+	v_i8.store(-34)
+	assert v_i8.load() == -34
+	v_i8.add(10)
+	assert v_i8.load() == -24
+	v_i8.sub(7)
+	assert v_i8.load() == -31
+
+	mut v_u8 := stdatomic.new_atomic(u8(33))
+	v_u8.store(34)
+	assert v_u8.load() == 34
+	v_u8.add(10)
+	assert v_u8.load() == 44
+	v_u8.sub(7)
+	assert v_u8.load() == 37
+
+	mut v_i16 := stdatomic.new_atomic(i16(-333))
+	v_i16.store(-334)
+	assert v_i16.load() == -334
+	v_i16.add(10)
+	assert v_i16.load() == -324
+	v_i16.sub(7)
+	assert v_i16.load() == -331
+
+	mut v_u16 := stdatomic.new_atomic(u16(333))
+	v_u16.store(334)
+	assert v_u16.load() == 334
+	v_u16.add(10)
+	assert v_u16.load() == 344
+	v_u16.sub(7)
+	assert v_u16.load() == 337
+
+	mut v_i32 := stdatomic.new_atomic(i32(-3333))
+	v_i32.store(-3334)
+	assert v_i32.load() == -3334
+	v_i32.add(10)
+	assert v_i32.load() == -3324
+	v_i32.sub(7)
+	assert v_i32.load() == -3331
+
+	mut v_u32 := stdatomic.new_atomic(u32(3333))
+	v_u32.store(3334)
+	assert v_u32.load() == 3334
+	v_u32.add(10)
+	assert v_u32.load() == 3344
+	v_u32.sub(7)
+	assert v_u32.load() == 3337
+
+	mut v_i64 := stdatomic.new_atomic(i64(-33333))
+	v_i64.store(-33334)
+	assert v_i64.load() == -33334
+	v_i64.add(10)
+	assert v_i64.load() == -33324
+	v_i64.sub(7)
+	assert v_i64.load() == -33331
+
+	mut v_u64 := stdatomic.new_atomic(u64(33333))
+	v_u64.store(33334)
+	assert v_u64.load() == 33334
+	v_u64.add(10)
+	assert v_u64.load() == 33344
+	v_u64.sub(7)
+	assert v_u64.load() == 33337
+
+	mut v_int := stdatomic.new_atomic(int(-44))
+	v_int.store(-45)
+	assert v_int.load() == -45
+	v_int.add(10)
+	assert v_int.load() == -35
+	v_int.sub(7)
+	assert v_int.load() == -42
+
+	mut v_isize := stdatomic.new_atomic(isize(-55))
+	v_isize.store(-56)
+	assert v_isize.load() == -56
+	v_isize.add(10)
+	assert v_isize.load() == -46
+	v_isize.sub(7)
+	assert v_isize.load() == -53
+
+	mut v_usize := stdatomic.new_atomic(usize(55))
+	v_usize.store(56)
+	assert v_usize.load() == 56
+	v_usize.add(10)
+	assert v_usize.load() == 66
+	v_usize.sub(7)
+	assert v_usize.load() == 59
+}

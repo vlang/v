@@ -40,7 +40,9 @@
 #define kill_dependency(y) ((void)0)
 
 #define atomic_thread_fence(order) \
-    MemoryBarrier();
+    ((order) == memory_order_seq_cst ? MemoryBarrier() : \
+     (order) == memory_order_release ? WriteBarrier() : \
+     (order) == memory_order_acquire ? ReadBarrier() : (void)0);
 
 #define atomic_signal_fence(order) \
     ((void)0)
@@ -48,18 +50,18 @@
 #define atomic_is_lock_free(obj) 0
 
 typedef intptr_t atomic_flag;
-typedef intptr_t atomic_bool;
-typedef intptr_t atomic_char;
-typedef intptr_t atomic_schar;
-typedef intptr_t atomic_uchar;
-typedef intptr_t atomic_short;
-typedef intptr_t atomic_ushort;
-typedef intptr_t atomic_int;
-typedef intptr_t atomic_uint;
-typedef intptr_t atomic_long;
-typedef intptr_t atomic_ulong;
-typedef intptr_t atomic_llong;
-typedef intptr_t atomic_ullong;
+typedef _Atomic bool                    atomic_bool;
+typedef _Atomic char                    atomic_char;
+typedef _Atomic signed char             atomic_schar;
+typedef _Atomic unsigned char           atomic_uchar;
+typedef _Atomic short                   atomic_short;
+typedef _Atomic unsigned short          atomic_ushort;
+typedef _Atomic int                     atomic_int;
+typedef _Atomic unsigned int            atomic_uint;
+typedef _Atomic long                    atomic_long;
+typedef _Atomic unsigned long           atomic_ulong;
+typedef _Atomic long long               atomic_llong;
+typedef _Atomic unsigned long long      atomic_ullong;
 typedef intptr_t atomic_wchar_t;
 typedef intptr_t atomic_int_least8_t;
 typedef intptr_t atomic_uint_least8_t;
@@ -77,9 +79,9 @@ typedef intptr_t atomic_int_fast32_t;
 typedef intptr_t atomic_uint_fast32_t;
 typedef intptr_t atomic_int_fast64_t;
 typedef intptr_t atomic_uint_fast64_t;
-typedef intptr_t atomic_intptr_t;
-typedef intptr_t atomic_uintptr_t;
-typedef intptr_t atomic_size_t;
+typedef _Atomic intptr_t                atomic_intptr_t;
+typedef _Atomic uintptr_t               atomic_uintptr_t;
+typedef _Atomic size_t                  atomic_size_t;
 typedef intptr_t atomic_ptrdiff_t;
 typedef intptr_t atomic_intmax_t;
 typedef intptr_t atomic_uintmax_t;
@@ -90,6 +92,7 @@ typedef intptr_t atomic_uintmax_t;
     fake it (works the same) with InterlockedCompareExchange64 until it
     succeeds
 */
+
 __CRT_INLINE LONGLONG _InterlockedExchangeAdd64(LONGLONG volatile *Addend, LONGLONG Value)
 {
     LONGLONG Old;
@@ -110,16 +113,6 @@ __CRT_INLINE LONG _InterlockedExchangeAdd(LONG volatile *Addend, LONG Value)
     return Old;
 }
 
-__CRT_INLINE SHORT _InterlockedExchangeAdd16(SHORT volatile *Addend, SHORT Value)
-{
-    SHORT Old;
-    do
-    {
-        Old = *Addend;
-    } while (InterlockedCompareExchange16(Addend, Old + Value, Old) != Old);
-    return Old;
-}
-
 #define InterlockedIncrement64 _InterlockedExchangeAdd64
 
 #endif
@@ -127,6 +120,7 @@ __CRT_INLINE SHORT _InterlockedExchangeAdd16(SHORT volatile *Addend, SHORT Value
 #define atomic_store(object, desired) \
     do                                \
     {                                 \
+        MemoryBarrier();              \
         *(object) = (desired);        \
         MemoryBarrier();              \
     } while (0)
@@ -146,7 +140,7 @@ __CRT_INLINE SHORT _InterlockedExchangeAdd16(SHORT volatile *Addend, SHORT Value
 #define atomic_exchange_explicit(object, desired, order) \
     atomic_exchange(object, desired)
 
-static inline int atomic_compare_exchange_strong(intptr_t *object, intptr_t *expected,
+static inline int atomic_compare_exchange_strong(intptr_t volatile *object, intptr_t volatile *expected,
                                                  intptr_t desired)
 {
     intptr_t old = *expected;
@@ -210,21 +204,22 @@ static inline int atomic_compare_exchange_strong(intptr_t *object, intptr_t *exp
 #define atomic_fetch_or_ptr atomic_fetch_or
 #define atomic_fetch_xor_ptr atomic_fetch_xor
 
-static inline void atomic_store_u64(unsigned long long* object, unsigned long long desired) {
+static inline void atomic_store_u64(unsigned long long volatile * object, unsigned long long desired) {
     do {
+        MemoryBarrier();
         *(object) = (desired);
         MemoryBarrier();
     } while (0);
 }
 
-static inline unsigned long long atomic_load_u64(unsigned long long* object) {
+static inline unsigned long long atomic_load_u64(unsigned long long volatile * object) {
     return (MemoryBarrier(), *(object));
 }
 
 #define atomic_exchange_u64(object, desired) \
     InterlockedExchange64(object, desired)
 
-static inline int atomic_compare_exchange_strong_u64(unsigned long long* object, unsigned long long* expected,
+static inline int atomic_compare_exchange_strong_u64(unsigned long long volatile * object, unsigned long long volatile * expected,
                                                  unsigned long long desired)
 {
 	unsigned long long old = *expected;
@@ -252,21 +247,22 @@ static inline int atomic_compare_exchange_strong_u64(unsigned long long* object,
 
 
 
-static inline void atomic_store_u32(unsigned* object, unsigned desired) {
+static inline void atomic_store_u32(unsigned volatile * object, unsigned desired) {
     do {
+        MemoryBarrier();
         *(object) = (desired);
         MemoryBarrier();
     } while (0);
 }
 
-static inline unsigned atomic_load_u32(unsigned* object) {
+static inline unsigned atomic_load_u32(unsigned volatile * object) {
     return (MemoryBarrier(), *(object));
 }
 
 #define atomic_exchange_u32(object, desired) \
     InterlockedExchange(object, desired)
 
-static inline int atomic_compare_exchange_strong_u32(unsigned* object, unsigned* expected,
+static inline int atomic_compare_exchange_strong_u32(unsigned volatile * object, unsigned volatile * expected,
                                                  unsigned desired)
 {
 	unsigned old = *expected;
@@ -292,23 +288,40 @@ static inline int atomic_compare_exchange_strong_u32(unsigned* object, unsigned*
 #define atomic_fetch_and_u32(object, operand) \
     InterlockedAnd(object, operand)
 
+#ifdef _MSC_VER
 
+#define InterlockedExchangeAdd16 _InterlockedExchangeAdd16
 
-static inline void atomic_store_u16(unsigned short* object, unsigned short desired) {
+#else
+
+#define InterlockedExchangeAdd16 ManualInterlockedExchangeAdd16
+
+static inline unsigned short ManualInterlockedExchangeAdd16(unsigned short volatile* Addend, unsigned short Value) {
+    __asm__ __volatile__ (
+        "lock xaddw %w[value], %[mem]"
+        : [mem] "+m" (*Addend), [value] "+r" (Value)
+        : : "memory"
+    );
+    return Value;
+}
+#endif
+
+static inline void atomic_store_u16(unsigned short volatile * object, unsigned short desired) {
     do {
+        MemoryBarrier();
         *(object) = (desired);
         MemoryBarrier();
     } while (0);
 }
 
-static inline unsigned short atomic_load_u16(unsigned short* object) {
+static inline unsigned short atomic_load_u16(unsigned short volatile * object) {
     return (MemoryBarrier(), *(object));
 }
 
 #define atomic_exchange_u16(object, desired) \
     InterlockedExchange16(object, desired)
 
-static inline int atomic_compare_exchange_strong_u16(unsigned short* object, unsigned short* expected,
+static inline int atomic_compare_exchange_strong_u16(unsigned short volatile * object, unsigned short volatile * expected,
                                                  unsigned short desired)
 {
 	unsigned short old = *expected;
@@ -333,7 +346,6 @@ static inline int atomic_compare_exchange_strong_u16(unsigned short* object, uns
 
 #define atomic_fetch_and_u16(object, operand) \
     InterlockedAnd16(object, operand)
-
 
 
 #define atomic_fetch_add_explicit(object, operand, order) \
@@ -362,5 +374,109 @@ static inline int atomic_compare_exchange_strong_u16(unsigned short* object, uns
 
 #define atomic_flag_clear_explicit(object, order) \
     atomic_flag_clear(object)
+
+#ifdef _MSC_VER
+
+#define InterlockedCompareExchange8 _InterlockedCompareExchange8
+#define InterlockedExchangeAdd8 _InterlockedExchangeAdd8
+#define InterlockedOr8 _InterlockedOr8
+#define InterlockedXor8 _InterlockedXor8
+#define InterlockedAnd8 _InterlockedAnd8
+
+#else
+
+#define InterlockedCompareExchange8 ManualInterlockedCompareExchange8
+#define InterlockedExchangeAdd8 ManualInterlockedExchangeAdd8
+#define InterlockedOr8 ManualInterlockedOr8
+#define InterlockedXor8 ManualInterlockedXor8
+#define InterlockedAnd8 ManualInterlockedAnd8
+
+static inline unsigned char ManualInterlockedCompareExchange8(unsigned char volatile * dest, unsigned char exchange, unsigned char comparand) {
+   unsigned char result;
+
+    __asm__ volatile (
+      "lock cmpxchgb %[exchange], %[dest]"
+      : "=a" (result), [dest] "+m" (*dest)
+      : [exchange] "q" (exchange), "a" (comparand)
+      : "memory"
+    );
+
+    return result;
+}
+
+static inline unsigned char ManualInterlockedExchangeAdd8(unsigned char volatile * dest, unsigned char value) {
+    unsigned char oldValue;
+    unsigned char newValue;
+    do {
+        oldValue = *dest;
+    } while (ManualInterlockedCompareExchange8(dest, oldValue + value, oldValue) != oldValue);
+    return oldValue;
+}
+
+static inline unsigned char ManualInterlockedOr8(unsigned char volatile * dest, unsigned char value) {
+    unsigned char oldValue;
+    do {
+        oldValue = *dest;
+    } while (ManualInterlockedCompareExchange8(dest, oldValue | value, oldValue) != oldValue);
+    return oldValue;
+}
+
+static inline unsigned char ManualInterlockedXor8(unsigned char volatile * dest, unsigned char value) {
+    unsigned char oldValue;
+    do {
+        oldValue = *dest;
+    } while (ManualInterlockedCompareExchange8(dest, oldValue ^ value, oldValue) != oldValue);
+    return oldValue;
+}
+
+static inline unsigned char ManualInterlockedAnd8(unsigned char volatile * dest, unsigned char value) {
+    unsigned char oldValue;
+    do {
+        oldValue = *dest;
+    } while (ManualInterlockedCompareExchange8(dest, oldValue & value, oldValue) != oldValue);
+    return oldValue;
+}
+#endif
+
+static inline void atomic_store_byte(unsigned char volatile * object, unsigned char desired) {
+    do {
+        MemoryBarrier();
+        *(object) = (desired);
+        MemoryBarrier();
+    } while (0);
+}
+
+static inline unsigned char atomic_load_byte(unsigned char volatile * object) {
+    return (MemoryBarrier(), *(object));
+}
+
+#define atomic_exchange_byte(object, desired) \
+    InterlockedExchange8(object, desired)
+
+static inline int atomic_compare_exchange_strong_byte(unsigned char volatile * object, unsigned char volatile * expected,
+                                                 unsigned char desired)
+{
+	unsigned char old = *expected;
+    *expected = InterlockedCompareExchange8(object, desired, old);
+    return *expected == old;
+}
+
+#define atomic_compare_exchange_weak_byte(object, expected, desired) \
+    atomic_compare_exchange_strong_byte(object, expected, desired)
+
+#define atomic_fetch_add_byte(object, operand) \
+    InterlockedExchangeAdd8(object, operand)
+
+#define atomic_fetch_sub_byte(object, operand) \
+    InterlockedExchangeAdd8(object, -(operand))
+
+#define atomic_fetch_or_byte(object, operand) \
+    InterlockedOr8(object, operand)
+
+#define atomic_fetch_xor_byte(object, operand) \
+    InterlockedXor8(object, operand)
+
+#define atomic_fetch_and_byte(object, operand) \
+    InterlockedAnd8(object, operand)
 
 #endif /* COMPAT_ATOMICS_WIN32_STDATOMIC_H */
