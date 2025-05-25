@@ -795,14 +795,14 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 				.key_is, .not_is {
 					if cond.left is ast.TypeNode && mut cond.right is ast.TypeNode {
 						// `$if Foo is Interface {`
+						// `$if T is int {`
+						mut left_type := (cond.left as ast.TypeNode).typ
 						sym := c.table.sym(cond.right.typ)
 						if sym.kind != .interface {
-							c.expr(mut cond.left)
-						} else {
-							return c.check_compatible_types((cond.left as ast.TypeNode).typ,
-								cond.right)
+							left_type = c.expr(mut cond.left)
 						}
-						return .unknown
+						checked_type := c.unwrap_generic(left_type)
+						return c.check_compatible_types(checked_type, cond.right)
 					} else if cond.left is ast.TypeNode && mut cond.right is ast.ComptimeType {
 						left := cond.left as ast.TypeNode
 						checked_type := c.unwrap_generic(left.typ)

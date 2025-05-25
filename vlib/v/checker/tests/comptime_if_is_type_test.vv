@@ -1,0 +1,15 @@
+module main
+
+fn foo[T](val T) {
+	$if T is bool || T is $int {
+		println('bool || \$int')
+	} $else {
+		$compile_error('only support bool and num type')
+	}
+
+
+}
+
+fn test_main() {
+	foo(123)
+}
