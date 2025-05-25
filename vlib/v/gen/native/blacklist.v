@@ -30,6 +30,7 @@ already compiling functions:
 // true: blacklist function
 const whitelist = {
 	'main.main': false
+	'exit': false
 }
 
 fn (g &Gen) is_blacklisted(name string, is_builtin bool) bool {
