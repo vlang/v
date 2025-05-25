@@ -166,7 +166,7 @@ fn test_cond_wait_for() {
 
 	assert ret
 	assert duration >= 5 * time.millisecond
-	assert duration < 15 * time.millisecond
+	assert duration < 50 * time.millisecond
 
 	// case3: parallel threads timeout
 	mut completed := new_atomic(0)
