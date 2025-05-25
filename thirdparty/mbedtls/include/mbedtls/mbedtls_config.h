@@ -1903,7 +1903,7 @@
  *
  * Uncomment this to enable pthread mutexes.
  */
-#if ( defined(__linux__) || defined(__FreeBSD__) )
+#if ( defined(__linux__) || defined(__FreeBSD__) ) || defined (__OpenBSD__)
 #define MBEDTLS_THREADING_PTHREAD
 #endif
 
@@ -3285,7 +3285,7 @@
  *
  * Enable this layer to allow use of mutexes within mbed TLS
  */
-#if ( defined(__linux__) || defined(__FreeBSD__) )
+#if ( defined(__linux__) || defined(__FreeBSD__) ) || defined (__OpenBSD__)
 #define MBEDTLS_THREADING_C
 #endif
 
