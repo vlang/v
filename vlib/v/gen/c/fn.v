@@ -2016,9 +2016,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					}
 				}
 				name = g.generic_fn_name(concrete_types, name)
-				if concrete_types.len > 0 {
-					name = name.replace_each(c_fn_name_escape_seq)
-				}
+				name = name.replace_each(c_fn_name_escape_seq)
 			}
 		}
 	}
