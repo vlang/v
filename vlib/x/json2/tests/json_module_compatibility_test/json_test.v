@@ -85,7 +85,7 @@ fn test_parse_user() {
 	// assert u.nums[1] == 2
 	// assert u.nums[2] == 3
 	assert u.typ == 1
-	assert u.pets == '{"name": "Bob", "animal": "Dog"}'
+	assert u.pets == '{"name":"Bob","animal":"Dog"}'
 }
 
 fn test_encode_decode_time() {
@@ -133,7 +133,7 @@ fn test_raw_json_field() {
 		assert false
 		Color{}
 	}
-	assert color.point == '{"Y": 123}'
+	assert color.point == '{"Y":123}'
 	assert color.space == 'YCbCr'
 }
 
