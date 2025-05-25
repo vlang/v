@@ -7087,7 +7087,13 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			} else {
 				styp := g.styp(g.fn_decl.return_type)
 				err_obj := g.new_tmp_var()
-				g.writeln('\t${styp} ${err_obj} = (${styp}){.is_error=true, .err=${cvar_name}${tmp_op}err, .data={EMPTY_STRUCT_INITIALIZATION}};')
+				g.write('\t${styp} ${err_obj} = (${styp}){')
+				if g.fn_decl.return_type.has_flag(.result) {
+					g.write('.is_error=true, ')
+				} else if g.fn_decl.return_type.has_flag(.option) {
+					g.write('.state=2, ')
+				}
+				g.writeln('.err=${cvar_name}${tmp_op}err, .data={EMPTY_STRUCT_INITIALIZATION}};')
 				g.writeln('\treturn ${err_obj};')
 			}
 		}
