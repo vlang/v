@@ -1758,7 +1758,7 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	name := node.name
 	mut n := name
 	if !n.contains('.') && n !in c.g.fn_addr.keys() { // if the name is in keys, it is a function from builtin
-		n = 'main.${n}' 
+		n = 'main.${n}'
 	}
 	if node.is_method {
 		n = '${c.g.table.get_type_name(node.receiver_type)}.${node.name}'
