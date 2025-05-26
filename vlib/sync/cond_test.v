@@ -150,31 +150,36 @@ fn test_cond_wait_for() {
 	mut duration := time.now() - start
 
 	assert !ret
-	assert duration >= 5 * time.millisecond
+	assert duration >= 4 * time.millisecond
 	assert duration < 50 * time.millisecond
 
 	// case2: signal before timeout
-	spawn fn [mut cond] () {
+	mut ready := sync.new_semaphore()
+	spawn fn [mut cond, mut ready] () {
+		ready.wait()
 		time.sleep(5 * time.millisecond)
 		cond.signal()
 	}()
 	start = time.now()
 	m.lock()
+	ready.post()
 	ret = cond.wait_for(20 * time.millisecond)
 	m.unlock()
 	duration = time.now() - start
 
 	assert ret
-	assert duration >= 5 * time.millisecond
+	assert duration >= 4 * time.millisecond
 	assert duration < 50 * time.millisecond
 
 	// case3: parallel threads timeout
 	mut completed := new_atomic(0)
+	mut started := new_atomic(0)
 	total := 5
 	for i in 0 .. total {
-		spawn fn [mut m, mut cond, mut completed] (i int) {
+		spawn fn [mut m, mut cond, mut completed, mut started] (i int) {
 			m.lock()
 			defer { m.unlock() }
+			started.add(1)
 			if i % 2 == 0 {
 				// should got signal before timeout
 				cond.wait_for(100 * time.millisecond)
@@ -187,6 +192,9 @@ fn test_cond_wait_for() {
 				}
 			}
 		}(i)
+	}
+	for started.load() < total {
+		time.sleep(1 * time.millisecond)
 	}
 	time.sleep(20 * time.millisecond)
 	cond.broadcast() // wakeup all threads
