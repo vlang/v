@@ -32,6 +32,7 @@ pub mut:
 	map_update       bool            // {...foo}
 	interpolation    bool            // '${foo} ${bar}'
 	option_or_result bool            // has panic call
+	waiter           bool            // has thread waiter
 	print_types      map[int]bool    // print() idx types
 	used_fns         map[string]bool // filled in by markused
 	used_consts      map[string]bool // filled in by markused
