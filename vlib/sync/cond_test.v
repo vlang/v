@@ -143,11 +143,11 @@ fn test_cond_wait_for() {
 	mut cond := sync.new_cond(m)
 
 	// case1: timeout test
-	mut start := time.now()
 	m.lock()
+	mut start := time.now()
 	mut ret := cond.wait_for(5 * time.millisecond)
-	m.unlock()
 	mut duration := time.now() - start
+	m.unlock()
 
 	assert !ret
 	assert duration >= 4 * time.millisecond
@@ -160,12 +160,12 @@ fn test_cond_wait_for() {
 		time.sleep(5 * time.millisecond)
 		cond.signal()
 	}()
-	start = time.now()
 	m.lock()
 	ready.post()
+	start = time.now()
 	ret = cond.wait_for(20 * time.millisecond)
-	m.unlock()
 	duration = time.now() - start
+	m.unlock()
 
 	assert ret
 	assert duration >= 4 * time.millisecond
