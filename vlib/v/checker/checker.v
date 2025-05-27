@@ -4767,9 +4767,9 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if expr is ast.Nil {
 			c.error('invalid operation: cannot take address of nil', expr.pos())
 		}
-		if mut expr is ast.PrefixExpr {
-			if expr.op == .amp {
-				c.error('unexpected `&`, expecting expression', expr.pos)
+		if mut node.right is ast.PrefixExpr {
+			if node.right.op == .amp {
+				c.error('unexpected `&`, expecting expression', node.right.pos)
 			}
 		} else if mut expr is ast.PrefixExpr {
 			if expr.op == .amp {
