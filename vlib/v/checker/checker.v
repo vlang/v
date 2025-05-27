@@ -4764,62 +4764,62 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		expr = expr.expr
 	}
 	if node.op == .amp {
-		if node.right is ast.Nil {
-			c.error('invalid operation: cannot take address of nil', node.right.pos())
+		if expr is ast.Nil {
+			c.error('invalid operation: cannot take address of nil', expr.pos())
 		}
-		if mut node.right is ast.PrefixExpr {
-			if node.right.op == .amp {
-				c.error('unexpected `&`, expecting expression', node.right.pos)
+		if mut expr is ast.PrefixExpr {
+			if expr.op == .amp {
+				c.error('unexpected `&`, expecting expression', expr.pos)
 			}
 		} else if mut expr is ast.PrefixExpr {
 			if expr.op == .amp {
 				c.error('cannot take the address of this expression', expr.pos)
 			}
-		} else if mut node.right is ast.SelectorExpr {
-			if node.right.expr.is_literal() {
-				c.error('cannot take the address of a literal value', node.pos.extend(node.right.pos))
-			} else if node.right.expr is ast.StructInit {
+		} else if mut expr is ast.SelectorExpr {
+			if expr.expr.is_literal() {
+				c.error('cannot take the address of a literal value', node.pos.extend(expr.pos))
+			} else if expr.expr is ast.StructInit {
 				c.error('should not create object instance on the heap to simply access a member',
-					node.pos.extend(node.right.pos))
+					node.pos.extend(expr.pos))
 			}
 			right_sym := c.table.sym(right_type)
-			expr_sym := c.table.sym(node.right.expr_type)
+			expr_sym := c.table.sym(expr.expr_type)
 			if expr_sym.kind == .struct && (expr_sym.info as ast.Struct).is_minify
-				&& (node.right.typ == ast.bool_type_idx || (right_sym.kind == .enum
+				&& (expr.typ == ast.bool_type_idx || (right_sym.kind == .enum
 				&& !(right_sym.info as ast.Enum).is_flag
 				&& !(right_sym.info as ast.Enum).uses_exprs)) {
-				c.error('cannot take the address of field in struct `${c.table.type_to_str(node.right.expr_type)}`, which is tagged as `@[minify]`',
-					node.pos.extend(node.right.pos))
+				c.error('cannot take the address of field in struct `${c.table.type_to_str(expr.expr_type)}`, which is tagged as `@[minify]`',
+					node.pos.extend(expr.pos))
 			}
 
-			if node.right.typ.has_flag(.option) {
-				c.error('cannot take the address of an Option field', node.pos.extend(node.right.pos))
+			if expr.typ.has_flag(.option) {
+				c.error('cannot take the address of an Option field', node.pos.extend(expr.pos))
 			}
 		}
 	}
 	// TODO: testing ref/deref strategy
 	right_is_ptr := right_type.is_ptr()
-	if node.op == .amp && (!right_is_ptr || (right_is_ptr && node.right is ast.CallExpr)) {
+	if node.op == .amp && (!right_is_ptr || (right_is_ptr && expr is ast.CallExpr)) {
 		if expr in [ast.BoolLiteral, ast.CallExpr, ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral,
 			ast.InfixExpr, ast.StringLiteral, ast.StringInterLiteral] {
 			c.error('cannot take the address of ${expr}', node.pos)
 		}
-		if mut node.right is ast.Ident {
-			if node.right.kind == .constant && !c.inside_unsafe && c.pref.experimental {
-				c.warn('cannot take the address of const outside `unsafe`', node.right.pos)
+		if mut expr is ast.Ident {
+			if expr.kind == .constant && !c.inside_unsafe && c.pref.experimental {
+				c.warn('cannot take the address of const outside `unsafe`', expr.pos)
 			}
 		}
-		if node.right is ast.SelectorExpr {
+		if expr is ast.SelectorExpr {
 			typ_sym := c.table.sym(right_type)
 			if typ_sym.kind == .map && !c.inside_unsafe {
 				c.error('cannot take the address of map values outside `unsafe`', node.pos)
 			}
 		}
-		if mut node.right is ast.IndexExpr {
-			typ_sym := c.table.sym(node.right.left_type)
+		if mut expr is ast.IndexExpr {
+			typ_sym := c.table.sym(expr.left_type)
 			mut is_mut := false
-			if mut node.right.left is ast.Ident {
-				ident := node.right.left
+			if mut expr.left is ast.Ident {
+				ident := expr.left
 				// TODO: temporary, remove this
 				ident_obj := ident.obj
 				if ident_obj is ast.Var {
@@ -4827,24 +4827,24 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 				}
 			}
 			if typ_sym.kind == .map {
-				c.error('cannot take the address of map values', node.right.pos)
+				c.error('cannot take the address of map values', expr.pos)
 			}
 			if !c.inside_unsafe {
 				if typ_sym.kind == .array && is_mut {
 					c.error('cannot take the address of mutable array elements outside unsafe blocks',
-						node.right.pos)
+						expr.pos)
 				}
 			}
 		}
 		if !c.inside_fn_arg && !c.inside_unsafe {
-			c.mark_as_referenced(mut &node.right, false)
+			c.mark_as_referenced(mut &expr, false)
 		}
 		return right_type.ref()
-	} else if node.op == .amp && node.right !is ast.CastExpr {
+	} else if node.op == .amp && expr !is ast.CastExpr {
 		if !c.inside_fn_arg && !c.inside_unsafe {
-			c.mark_as_referenced(mut &node.right, false)
+			c.mark_as_referenced(mut &expr, false)
 		}
-		if node.right.is_auto_deref_var() {
+		if expr.is_auto_deref_var() {
 			return right_type
 		} else {
 			return right_type.ref()
@@ -4854,7 +4854,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	if node.op == .mul {
 		if right_type.has_flag(.option) {
 			c.error('type `?${right_sym.name}` is an Option, it must be unwrapped first; use `*var?` to do it',
-				node.right.pos())
+				expr.pos())
 		}
 		if right_type.is_ptr() {
 			return right_type.deref()
@@ -4867,11 +4867,11 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if right_type.is_voidptr() {
 			c.error('cannot dereference to void', node.pos)
 		}
-		if mut node.right is ast.Ident {
-			if var := node.right.scope.find_var('${node.right.name}') {
+		if mut expr is ast.Ident {
+			if var := expr.scope.find_var('${expr.name}') {
 				if var.expr is ast.UnsafeExpr {
 					if var.expr.expr is ast.Nil {
-						c.error('cannot deference a `nil` pointer', node.right.pos)
+						c.error('cannot deference a `nil` pointer', expr.pos)
 					}
 				}
 			}
