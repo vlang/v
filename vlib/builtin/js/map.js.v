@@ -47,6 +47,20 @@ pub fn (mut m map) delete(key JS.Any) {
 
 pub fn (m &map) free() {}
 
+pub fn (m map) keys() array {
+	ret := JS.makeEmptyArray()
+	#for (var key in m.map) array_push(ret,new string(`${key}`),false);
+
+	return ret
+}
+
+pub fn (m map) values() array {
+	ret := JS.makeEmptyArray()
+	#for (var key in m.map) array_push(ret,m.map[key],false);
+
+	return ret
+}
+
 //#Object.defineProperty(map.prototype,"len",{get: function() { return this.map.size; }})
 #map.prototype.toString = function () {
 #function fmtKey(key) { return typeof key == 'string' ? '\'' + key + '\'' : key}
