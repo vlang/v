@@ -50,6 +50,12 @@
 /* TODO: Can't amalgamate ASM function */
 #define ZSTD_DISABLE_ASM 1
 
+#if defined(__TINYC__) && defined(_WIN32)
+#undef ZSTD_MULTITHREAD
+#define ZSTD_NO_INTRINSICS
+#endif
+
+
 /* Include zstd_deps.h first with all the options we need enabled. */
 #define ZSTD_DEPS_NEED_MALLOC
 #define ZSTD_DEPS_NEED_MATH64
