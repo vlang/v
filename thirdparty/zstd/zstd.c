@@ -93,7 +93,7 @@
  */
 #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__gnu_linux__) || \
     defined(__CYGWIN__) || defined(__MSYS__)
-#if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
+#if !defined(_GNU_SOURCE) && !defined(__ANDROID__) && !defined(__MUSL__ ) /* NDK doesn't ship qsort_r(). */
 #define _GNU_SOURCE
 #endif
 #endif
