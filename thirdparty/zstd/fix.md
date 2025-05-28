@@ -6,4 +6,4 @@
 #define ZSTD_NO_INTRINSICS
 #endif
 
-3. add !defined(__MUSL__) , it will use `qsort` instead of `qsort_r`
+3. replace `qsort_r` with `qsort`, as there is no way detect __MUSL__ macro

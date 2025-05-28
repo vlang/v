@@ -93,7 +93,7 @@
  */
 #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__gnu_linux__) || \
     defined(__CYGWIN__) || defined(__MSYS__)
-#if !defined(_GNU_SOURCE) && !defined(__ANDROID__) && !defined(__MUSL__ ) /* NDK doesn't ship qsort_r(). */
+#if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
 #define _GNU_SOURCE
 #endif
 #endif
@@ -47492,10 +47492,6 @@ static void stableSort(COVER_ctx_t *ctx)
     qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
             ctx,
             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
-#elif (ZDICT_QSORT == ZDICT_QSORT_GNU)
-    qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
-            (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp),
-            ctx);
 #elif (ZDICT_QSORT == ZDICT_QSORT_MSVC)
     qsort_s(ctx->suffix, ctx->suffixSize, sizeof(U32),
             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp),
