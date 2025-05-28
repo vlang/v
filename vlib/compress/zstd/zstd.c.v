@@ -123,6 +123,18 @@ pub enum CParameter {
 	// resulting in stronger and slower compression.
 	// Special: value 0 means "use default strategy".
 	strategy = 107
+	// v1.5.6+
+	// Attempts to fit compressed block size into approximately targetCBlockSize.
+	// Bound by ZSTD_TARGETCBLOCKSIZE_MIN and ZSTD_TARGETCBLOCKSIZE_MAX.
+	// Note that it's not a guarantee, just a convergence target (default:0).
+	// No target when targetCBlockSize == 0.
+	// This is helpful in low bandwidth streaming environments to improve end-to-end latency,
+	// when a client can make use of partial documents (a prominent example being Chrome).
+	// Note: this parameter is stable since v1.5.6.
+	// It was present as an experimental parameter in earlier versions,
+	// but it's not recommended using it with earlier library versions
+	// due to massive performance regressions.
+	target_c_block_size = 130
 	// LDM mode parameters
 	// Enable long distance matching.
 	// This parameter is designed to improve compression ratio
@@ -226,12 +238,12 @@ pub enum CParameter {
 	// note : never ever use experimentalParam? names directly;
 	//        also, the enums values themselves are unstable and can still change.
 	//
-	experimental_param1  = 500
-	experimental_param2  = 10
-	experimental_param3  = 1000
-	experimental_param4  = 1001
-	experimental_param5  = 1002
-	experimental_param6  = 1003
+	experimental_param1 = 500
+	experimental_param2 = 10
+	experimental_param3 = 1000
+	experimental_param4 = 1001
+	experimental_param5 = 1002
+	// experimental_param6  = 1003 is now ZSTD_c_targetCBlockSize
 	experimental_param7  = 1004
 	experimental_param8  = 1005
 	experimental_param9  = 1006
@@ -245,6 +257,7 @@ pub enum CParameter {
 	experimental_param17 = 1014
 	experimental_param18 = 1015
 	experimental_param19 = 1016
+	experimental_param20 = 1017
 }
 
 pub struct Bounds {
@@ -290,6 +303,7 @@ pub enum DParameter {
 	experimental_param3 = 1002
 	experimental_param4 = 1003
 	experimental_param5 = 1004
+	experimental_param6 = 1005
 }
 
 fn C.ZSTD_dParam_getBounds(DParameter) Bounds
@@ -346,12 +360,12 @@ fn C.ZSTD_decompressStream(voidptr, &OutBuffer, &InBuffer) usize
 fn C.ZSTD_DStreamInSize() usize
 fn C.ZSTD_DStreamOutSize() usize
 
-// version_number return runtime library version, the value is (MAJOR*100*100 + MINOR*100 + RELEASE).
+// version_number returns runtime library version, the value is (MAJOR*100*100 + MINOR*100 + RELEASE).
 pub fn version_number() u32 {
 	return C.ZSTD_versionNumber()
 }
 
-// version_string return runtime library version, like "1.5.5".
+// version_string returns runtime library version, like "1.5.8".
 pub fn version_string() string {
 	return unsafe { tos_clone(C.ZSTD_versionString()) }
 }
@@ -366,24 +380,24 @@ pub fn get_error_name(code usize) string {
 	return unsafe { tos_clone(C.ZSTD_getErrorName(code)) }
 }
 
-// check_zstd check the zstd error code, and return a error string.
+// check_zstd checks the zstd error code, and return a error string.
 pub fn check_error(code usize) ! {
 	if is_error(code) {
 		return error(get_error_name(code))
 	}
 }
 
-// min_c_level return minimum negative compression level allowed.
+// min_c_level returns minimum negative compression level allowed.
 pub fn min_c_level() int {
 	return C.ZSTD_minCLevel()
 }
 
-// max_c_level return maximum compression level available.
+// max_c_level returns maximum compression level available.
 pub fn max_c_level() int {
 	return C.ZSTD_maxCLevel()
 }
 
-// default_c_level return default compression level.
+// default_c_level returns default compression level.
 pub fn default_c_level() int {
 	return C.ZSTD_defaultCLevel()
 }
@@ -492,7 +506,7 @@ mut:
 	ctx &C.ZSTD_DCtx
 }
 
-// new_dctx create a decompression context
+// new_dctx creates a decompression context
 // extra decompression parameters can be set by `params`
 pub fn new_dctx(params DecompressParams) !&DCtx {
 	mut ctx := C.ZSTD_createDCtx()
@@ -504,7 +518,7 @@ pub fn new_dctx(params DecompressParams) !&DCtx {
 	return dctx
 }
 
-// set_parameter set decompression parameter `d_param` to value `val`
+// set_parameter sets decompression parameter `d_param` to value `val`
 pub fn (mut d DCtx) set(d_param DParameter, val int) ! {
 	check_error(C.ZSTD_DCtx_setParameter(d.ctx, d_param, val))!
 }
