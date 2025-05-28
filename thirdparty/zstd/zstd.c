@@ -47403,10 +47403,8 @@ typedef struct {
   int displayLevel;
 } COVER_ctx_t;
 
-#if ZDICT_QSORT == ZDICT_QSORT_C90
 /* Use global context for non-reentrant sort functions */
 static COVER_ctx_t *g_coverCtx = NULL;
-#endif
 
 /*-*************************************
 *  Helper functions
