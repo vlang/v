@@ -69,12 +69,18 @@ pub struct AtomicVal[T] {
 // new_atomic creates a new atomic value of `T` type
 @[inline]
 pub fn new_atomic[T](val T) &AtomicVal[T] {
-	$if T is $int || T is bool {
+	// can't use `$if T is $int || T is bool` with $compile_error() now
+	// see issue #24562
+	$if T is $int {
+		return &AtomicVal[T]{
+			val: val
+		}
+	} $else $if T is bool {
 		return &AtomicVal[T]{
 			val: val
 		}
 	} $else {
-		panic('atomic: only support number and bool types')
+		$compile_error('atomic: only support number and bool types')
 	}
 	return unsafe { nil }
 }
