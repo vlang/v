@@ -27,6 +27,7 @@ pub fn new_cond(m &Mutex) &Cond {
 //     cond.wait()
 // }
 // mutex.unlock()
+@[direct_array_access]
 pub fn (mut c Cond) wait() {
 	// Create a channel for this waiting operation with capacity 1
 	ch := chan bool{cap: 1}
@@ -56,6 +57,7 @@ pub fn (mut c Cond) wait() {
 }
 
 // signal wakes one waiting thread
+@[direct_array_access]
 pub fn (mut c Cond) signal() {
 	c.inner_mutex.lock()
 	defer { c.inner_mutex.unlock() }
@@ -70,6 +72,7 @@ pub fn (mut c Cond) signal() {
 }
 
 // broadcast wakes all waiting threads
+@[direct_array_access]
 pub fn (mut c Cond) broadcast() {
 	c.inner_mutex.lock()
 	defer { c.inner_mutex.unlock() }
