@@ -1,0 +1,46 @@
+/* uncomment when floats are supported
+println(f32_abs(32.32))
+println(f32_abs(-32.32))
+println(f32_max(32.32, -32.32))
+println(f32_max(-32.32, 32.32))
+println(f32_min(32.32, -32.32))
+println(f32_min(-32.32, 32.32))
+println(f64_abs(32.32))
+println(f64_abs(-32.32))
+println(f64_max(32.32, -32.32))
+println(f64_max(-32.32, 32.32))
+println(f64_min(32.32, -32.32))
+println(f64_min(-32.32, 32.32))
+*/
+/* uncomment when C variables are working like C.stdout
+flush_stderr()
+flush_stdout()
+*/
+
+gc_is_enabled() // not yet enabled so only calling it 
+
+println(int_max(32, -32))
+println(int_max(-32, 32))
+println(int_min(32, -32))
+println(int_min(-32, 32))
+
+// print_character(`a`) enable when C vars will work
+
+assert u8(`a`).is_alnum()
+assert !u8(`_`).is_alnum()
+assert u8(`0`).is_bin_digit()
+assert !u8(`3`).is_bin_digit()
+assert u8(`A`).is_capital()
+assert !u8(`a`).is_capital()
+assert u8(`0`).is_digit()
+assert !u8(`a`).is_digit()
+assert u8(`A`).is_hex_digit()
+assert !u8(`G`).is_hex_digit()
+assert u8(`c`).is_letter()
+assert !u8(`2`).is_letter()
+assert u8(`7`).is_oct_digit()
+assert !u8(`8`).is_oct_digit()
+assert u8(` `).is_space()
+assert !u8(`_`).is_space()
+
+exit(0)

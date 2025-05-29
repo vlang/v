@@ -1174,6 +1174,7 @@ fn (mut g Gen) println(comment string) {
 
 @[noreturn]
 pub fn (mut g Gen) n_error(s string) {
+	print_backtrace()
 	util.verror('native error', s)
 }
 

@@ -27,9 +27,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 				'C.syscall' {
 					g.code_gen.gen_syscall(node)
 				}
-				'exit' {
-					g.code_gen.gen_exit(node.args[0].expr)
-				}
 				'println', 'print', 'eprintln', 'eprint' {
 					expr := node.args[0].expr
 					typ := node.args[0].typ

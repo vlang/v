@@ -1757,7 +1757,7 @@ fn (mut c Amd64) sar8(r Amd64Register, val u8) {
 pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	name := node.name
 	mut n := name
-	if !n.contains('.') {
+	if !n.contains('.') && n !in c.g.fn_addr.keys() { // if the name is in keys, it is a function from builtin
 		n = 'main.${n}'
 	}
 	if node.is_method {
