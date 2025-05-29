@@ -561,6 +561,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 
 	if node.generic_names.len > 0 {
 		name = g.generic_fn_name(g.cur_concrete_types, name)
+		name = name.replace_each(c_fn_name_escape_seq)
 	}
 
 	if g.pref.translated || g.file.is_translated || node.is_file_translated {
@@ -753,7 +754,10 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
 		param_type_sym := g.table.sym(typ)
-		mut param_type_name := g.styp(typ).replace_each(c_fn_name_escape_seq)
+		mut param_type_name := g.styp(typ)
+		if param.typ.has_flag(.generic) {
+			param_type_name = param_type_name.replace_each(c_fn_name_escape_seq)
+		}
 		if param_type_sym.kind == .function && !typ.has_flag(.option) {
 			info := param_type_sym.info as ast.FnType
 			func := info.func
@@ -2012,6 +2016,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					}
 				}
 				name = g.generic_fn_name(concrete_types, name)
+				name = name.replace_each(c_fn_name_escape_seq)
 			}
 		}
 	}
