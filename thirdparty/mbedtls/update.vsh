@@ -27,6 +27,14 @@ fn fix_config(config_file string) ! {
 #undef MBEDTLS_AESNI_C
 #endif
 #endif // __TINYC__
+
+#if ( defined(__linux__) || defined(__FreeBSD__) ) || defined (__OpenBSD__)
+#define MBEDTLS_THREADING_PTHREAD
+#define MBEDTLS_THREADING_C
+#else
+#undef MBEDTLS_THREADING_PTHREAD
+#undef MBEDTLS_THREADING_C
+#endif
 '
 	os.write_file(config_file, content)!
 }
