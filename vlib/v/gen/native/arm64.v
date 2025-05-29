@@ -531,6 +531,14 @@ pub fn (mut c Arm64) add(r Register, val i32) {
 	panic('Arm64.add() not implemented')
 }
 
+pub fn (mut c Arm64) add_reg2(r Register, r2 Register) {
+	panic('Arm64.add_reg2() not implemented')
+}
+
+fn (mut c Arm64) allocate_string(typ ast.Type, name string, str string) {
+	panic('Arm64.add_reg2() not implemented')
+}
+
 fn (mut c Arm64) mov_deref(reg Register, regptr Register, typ ast.Type) {
 	panic('Arm64.mov_deref() not implemented')
 }
