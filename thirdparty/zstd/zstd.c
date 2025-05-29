@@ -50,14 +50,13 @@
 /* TODO: Can't amalgamate ASM function */
 #define ZSTD_DISABLE_ASM 1
 
-#if defined(__TINYC__) 
-#if defined(_WIN32)
+#if defined(__TINYC__) && defined(_WIN32)
 #undef ZSTD_MULTITHREAD
 #define ZSTD_NO_INTRINSICS
 #endif
+
 #if defined(__arm__) || defined(__aarch64__)
 #define NO_PREFETCH
-#endif
 #endif
 
 #ifndef ZDICT_QSORT
