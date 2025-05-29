@@ -28,3 +28,42 @@
 # endif
 #endif
 ```
+
+4. fix compilation with tcc on OpenBSD
+  * disable prefetch (define `NO_PREFTECH`)
+  * fix for `DONT_VECTORIZE` define
+  * don't use ASM in `ZSTD_compressBlock_lazy_generic` and `ZSTD_decompressSequences_body` functions.
+```c
+/* Disable prefetch on OpenBSD with tcc */
+#if defined(__OpenBSD__) && defined(__TINYC__)
+#define NO_PREFETCH
+#endif
+(...)
+/* vectorization
+ * older GCC (pre gcc-4.3 picked as the cutoff) uses a different syntax,
+ * and some compilers, like Intel ICC and MCST LCC, do not support it at all.
+ */
+#if !(defined(__OpenBSD__) && defined(__TINYC__)) && !defined(__INTEL_COMPILER) && !defined(__clang__) && defined(__GNUC__) && !defined(__LCC__)
+#  if (__GNUC__ == 4 && __GNUC_MINOR__ > 3) || (__GNUC__ >= 5)
+#    define DONT_VECTORIZE __attribute__((optimize("no-tree-vectorize")))
+#  else
+#    define DONT_VECTORIZE _Pragma("GCC optimize(\"no-tree-vectorize\")")
+#  endif
+#else
+#  define DONT_VECTORIZE
+#endif
+(...)
+/* Match Loop */
+#if !(defined(__OpenBSD__) && defined(__TINYC__)) && defined(__GNUC__) && defined(__x86_64__)
+      /* I've measured random a 5% speed loss on levels 5 & 6 (greedy) when the
+       * code alignment is perturbed. To fix the instability align the loop on 32-bytes.
+       */
+      __asm__(".p2align 5");
+#endif
+(...)
+#if !(defined(__OpenBSD__) && defined(__TINYC__)) && defined(__GNUC__) && defined(__x86_64__)
+              __asm__(".p2align 6");
+              __asm__("nop");
+#  if __GNUC__ >= 7
+(...)
+```
