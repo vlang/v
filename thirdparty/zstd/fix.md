@@ -1,17 +1,19 @@
 1. replace all `abs64` with `zstd_abs64`.
 
 2. add following at header of the file:
-#if defined(__TINYC__)
-#if defined(_WIN32)
+```c
+#if defined(__TINYC__) && defined(_WIN32)
 #undef ZSTD_MULTITHREAD
 #define ZSTD_NO_INTRINSICS
 #endif
+
 #if defined(__arm__) || defined(__aarch64__)
 #define NO_PREFETCH
 #endif
-#endif
+```
 
-3. replace `qsort_r` with `qsort`, as there is no way detect __MUSL__ macro. add following at header of the file:
+3. replace `qsort_r` with `qsort`, as there is no way detect `__MUSL__` macro. add following at header of the file:
+```c
 #ifndef ZDICT_QSORT
 # if defined(__APPLE__)
 #   define ZDICT_QSORT ZDICT_QSORT_APPLE /* uses qsort_r() with a different order for parameters */
@@ -25,4 +27,4 @@
 #   define ZDICT_QSORT ZDICT_QSORT_C90 /* uses standard qsort() which is not re-entrant (requires global variable) */
 # endif
 #endif
-
+```
