@@ -83,7 +83,6 @@ mut:
 	add(r Register, val i32)
 	add_reg2(r Register, r2 Register)
 	address_size() i32
-	allocate_string(typ ast.Type, name string, str string)
 	adr(r Arm64Register, delta i32) // Note: Temporary!
 	allocate_var(name string, size i32, initial_val Number) i32
 	assign_stmt(node ast.AssignStmt) // TODO: make platform-independent
@@ -100,6 +99,7 @@ mut:
 	convert_bool_to_string(r Register)
 	convert_int_to_string(a Register, b Register)
 	convert_rune_to_string(r Register, buffer i32, var Var, config VarConfig)
+	create_string_struct(typ ast.Type, name string, str string)
 	dec_var(var Var, config VarConfig)
 	fn_decl(node ast.FnDecl)
 	gen_asm_stmt(asm_node ast.AsmStmt)

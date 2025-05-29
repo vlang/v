@@ -535,7 +535,7 @@ pub fn (mut c Arm64) add_reg2(r Register, r2 Register) {
 	panic('Arm64.add_reg2() not implemented')
 }
 
-fn (mut c Arm64) allocate_string(typ ast.Type, name string, str string) {
+fn (mut c Arm64) create_string_struct(typ ast.Type, name string, str string) {
 	panic('Arm64.add_reg2() not implemented')
 }
 

@@ -2203,7 +2203,7 @@ fn (mut c Amd64) mov_float_xmm0_var(reg Amd64Register, var_type ast.Type) {
 	}
 }
 
-fn (mut c Amd64) allocate_string(typ ast.Type, name string, str string) {
+fn (mut c Amd64) create_string_struct(typ ast.Type, name string, str string) {
 	dest := c.allocate_var(name, c.g.get_type_size(typ), i64(0))
 	c.learel(Amd64Register.rsi, c.g.allocate_string(str, 3, .rel32))
 	c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
@@ -2242,7 +2242,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 		ast.StringLiteral {
 			ie := right as ast.StringLiteral
 			str := c.g.eval_str_lit_escape_codes(ie)
-			c.allocate_string(node.right_types[0], name, str)
+			c.create_string_struct(node.right_types[0], name, str)
 		}
 		ast.StructInit {
 			match node.op {
