@@ -470,6 +470,8 @@ pub fn (dividend Integer) / (divisor Integer) Integer {
 //
 // WARNING: this method will panic if `divisor == 0`. For a modular division method that
 // returns a Result refer to `mod_checked`.
+// Note: in V, `assert big.integer_from_i64(-10) % big.integer_from_i64(7) == big.integer_from_i64(-3)` passes.
+// In other words, the result is negative 3, and is NOT positive 4.
 @[inline]
 pub fn (dividend Integer) % (divisor Integer) Integer {
 	if dividend.signum == -1 {

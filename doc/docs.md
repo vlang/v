@@ -8293,6 +8293,8 @@ Assignment Operators
 &&= ||=
 ```
 
+Note: in V, `assert -10 % 7 == -3` passes. The result is negative 3, and is NOT positive 4.
+
 ## Other online resources
 
 ### [V contributing guide](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
