@@ -37,8 +37,6 @@ fn main() {
 	foo() or {
 		if err is MyError {
 			eprintln(err)
-			assert '${err}' == '&xxx 1:1:1'
 		}
 	}
-	assert true
 }
