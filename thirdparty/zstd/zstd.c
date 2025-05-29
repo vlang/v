@@ -50,11 +50,29 @@
 /* TODO: Can't amalgamate ASM function */
 #define ZSTD_DISABLE_ASM 1
 
-#if defined(__TINYC__) && defined(_WIN32)
+#if defined(__TINYC__) 
+#if defined(_WIN32)
 #undef ZSTD_MULTITHREAD
 #define ZSTD_NO_INTRINSICS
 #endif
+#if defined(__arm__) || defined(__aarch64__)
+#define NO_PREFETCH
+#endif
+#endif
 
+#ifndef ZDICT_QSORT
+# if defined(__APPLE__)
+#   define ZDICT_QSORT ZDICT_QSORT_APPLE /* uses qsort_r() with a different order for parameters */
+# elif defined(__GLIBC__)
+#   define ZDICT_QSORT ZDICT_QSORT_GNU /* uses qsort_r() */
+# elif defined(_WIN32) && defined(_MSC_VER)
+#   define ZDICT_QSORT ZDICT_QSORT_MSVC /* uses qsort_s() with a different order for parameters */
+# elif defined(STDC_LIB_EXT1) && (STDC_LIB_EXT1 > 0) /* C11 Annex K */
+#   define ZDICT_QSORT ZDICT_QSORT_C11 /* uses qsort_s() */
+# else
+#   define ZDICT_QSORT ZDICT_QSORT_C90 /* uses standard qsort() which is not re-entrant (requires global variable) */
+# endif
+#endif
 
 /* Include zstd_deps.h first with all the options we need enabled. */
 #define ZSTD_DEPS_NEED_MALLOC
@@ -47403,8 +47421,10 @@ typedef struct {
   int displayLevel;
 } COVER_ctx_t;
 
+#if ZDICT_QSORT == ZDICT_QSORT_C90
 /* Use global context for non-reentrant sort functions */
 static COVER_ctx_t *g_coverCtx = NULL;
+#endif
 
 /*-*************************************
 *  Helper functions
@@ -47490,6 +47510,10 @@ static void stableSort(COVER_ctx_t *ctx)
     qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
             ctx,
             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
+#elif (ZDICT_QSORT == ZDICT_QSORT_GNU)
+    qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
+            (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp),
+            ctx);
 #elif (ZDICT_QSORT == ZDICT_QSORT_MSVC)
     qsort_s(ctx->suffix, ctx->suffixSize, sizeof(U32),
             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp),

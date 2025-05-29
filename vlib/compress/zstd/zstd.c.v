@@ -377,7 +377,7 @@ pub fn is_error(code usize) bool {
 
 // get_error_name provides readable string from an error code.
 pub fn get_error_name(code usize) string {
-	return unsafe { tos_clone(C.ZSTD_getErrorName(code)) }
+	return unsafe { tos_clone(&u8(C.ZSTD_getErrorName(code))) }
 }
 
 // check_zstd checks the zstd error code, and return a error string.
