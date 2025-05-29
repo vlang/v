@@ -4559,8 +4559,8 @@ int mbedtls_ssl_handshake_step(mbedtls_ssl_context *ssl)
 {
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
 
-    if (ssl            == NULL                       ||
-        ssl->conf      == NULL                       ||
+    if( NULL == ssl ) return( MBEDTLS_ERR_SSL_BAD_INPUT_DATA );
+    if (ssl->conf      == NULL                       ||
         ssl->handshake == NULL                       ||
         ssl->state == MBEDTLS_SSL_HANDSHAKE_OVER) {
         return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
