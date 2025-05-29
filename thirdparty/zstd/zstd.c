@@ -73,6 +73,11 @@
 # endif
 #endif
 
+/* Disable prefetch on OpenBSD with tcc */
+#if defined(__OpenBSD__) && defined(__TINYC__)
+#define NO_PREFETCH
+#endif
+
 /* Include zstd_deps.h first with all the options we need enabled. */
 #define ZSTD_DEPS_NEED_MALLOC
 #define ZSTD_DEPS_NEED_MATH64
@@ -740,7 +745,7 @@ int g_debuglevel = DEBUGLEVEL;
 /* vectorization
  * older GCC (pre gcc-4.3 picked as the cutoff) uses a different syntax,
  * and some compilers, like Intel ICC and MCST LCC, do not support it at all. */
-#if !defined(__INTEL_COMPILER) && !defined(__clang__) && defined(__GNUC__) && !defined(__LCC__)
+#if !(defined(__OpenBSD__) && defined(__TINYC__)) && !defined(__INTEL_COMPILER) && !defined(__clang__) && defined(__GNUC__) && !defined(__LCC__)
 #  if (__GNUC__ == 4 && __GNUC_MINOR__ > 3) || (__GNUC__ >= 5)
 #    define DONT_VECTORIZE __attribute__((optimize("no-tree-vectorize")))
 #  else
@@ -34343,7 +34348,7 @@ size_t ZSTD_compressBlock_lazy_generic(
     }
 
     /* Match Loop */
-#if defined(__GNUC__) && defined(__x86_64__)
+#if !(defined(__OpenBSD__) && defined(__TINYC__)) && defined(__GNUC__) && defined(__x86_64__)
     /* I've measured random a 5% speed loss on levels 5 & 6 (greedy) when the
      * code alignment is perturbed. To fix the instability align the loop on 32-bytes.
      */
@@ -45950,7 +45955,7 @@ ZSTD_decompressSequences_body(ZSTD_DCtx* dctx,
         ZSTD_initFseState(&seqState.stateML, &seqState.DStream, dctx->MLTptr);
         assert(dst != NULL);
 
-#if defined(__GNUC__) && defined(__x86_64__)
+#if !(defined(__OpenBSD__) && defined(__TINYC__)) && defined(__GNUC__) && defined(__x86_64__)
             __asm__(".p2align 6");
             __asm__("nop");
 #  if __GNUC__ >= 7
