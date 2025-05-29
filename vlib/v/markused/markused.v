@@ -168,6 +168,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				builderptr_idx + '.write_rune',
 			]
 		}
+		if table.used_features.waiter {
+			core_fns << 'free'
+		}
 		if !table.used_features.arr_init {
 			table.used_features.arr_init = table.used_features.print_types.keys().any(table.type_to_str(it).contains('[]'))
 		}
