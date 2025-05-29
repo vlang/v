@@ -73,6 +73,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprint('   v hash: '); eprintln(vcurrent_hash())
 		eprintln('=========================================')
 		// vfmt on
+		flush_stdout()
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {
@@ -132,6 +133,7 @@ pub fn panic(s string) {
 		eprintln(s)
 		eprint('v hash: ')
 		eprintln(vcurrent_hash())
+		flush_stdout()
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {
