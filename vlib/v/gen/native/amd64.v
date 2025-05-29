@@ -291,7 +291,7 @@ fn (mut c Amd64) cmp_zero(reg Register) {
 
 fn (mut c Amd64) cmp_var_reg(var Var, reg Register, config VarConfig) {
 	if reg as Amd64Register != .rax {
-		c.g.n_error('@LOCATION register not supported for cmp_var_reg')
+		c.g.n_error('${@LOCATION} register ${reg} is not supported')
 	}
 	match var {
 		ast.Ident {
