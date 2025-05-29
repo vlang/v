@@ -916,8 +916,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
 		} else if update_type != node.typ {
-			from_sym := c.table.sym(update_type)
-			to_sym := c.table.sym(node.typ)
+			from_sym := c.table.final_sym(update_type)
+			to_sym := c.table.final_sym(node.typ)
 			from_info := from_sym.info as ast.Struct
 			to_info := to_sym.info as ast.Struct
 			// TODO: this check is too strict
