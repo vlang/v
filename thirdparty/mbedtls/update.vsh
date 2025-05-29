@@ -13,19 +13,13 @@ fn fix_config(config_file string) ! {
 	mut content := os.read_file(config_file)!
 	content += '\n
 #if defined(__TINYC__)
-#undef MBEDTLS_AESNI_C
-
-#if defined(__arm__) || defined(__aarch64__)
 #undef MBEDTLS_HAVE_ASM
-#else
-#define MBEDTLS_HAVE_ASM
-#endif
-#else // __TINYC__
-#if defined(__x86_64__)
-#define MBEDTLS_AESNI_C
-#else
 #undef MBEDTLS_AESNI_C
-#endif
+#undef MBEDTLS_PADLOCK_C
+#else // __TINYC__
+#define MBEDTLS_HAVE_ASM
+#define MBEDTLS_AESNI_C
+#define MBEDTLS_PADLOCK_C
 #endif // __TINYC__
 
 #if ( defined(__linux__) || defined(__FreeBSD__) ) || defined (__OpenBSD__)
