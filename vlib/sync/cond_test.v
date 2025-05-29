@@ -1,204 +1,191 @@
 import sync
 import sync.stdatomic { new_atomic }
-import time
 
-// Test single thread wake-up
+// Test single thread wake-up scenario for condition variable
 fn test_single_thread_wakeup() {
 	mut mutex := sync.new_mutex()
 	mut cond := sync.new_cond(mutex)
 	mut done := new_atomic(false)
 	mut wake_count := new_atomic(0)
+	ready_ch := chan bool{cap: 1}
+	done_ch := chan bool{cap: 1}
+	defer {
+		ready_ch.close()
+		done_ch.close()
+	}
 
-	spawn fn [mut done, mut wake_count, mut cond, mut mutex] () {
+	// Spawn waiting thread
+	spawn fn [mut done, mut wake_count, mut cond, mut mutex, ready_ch, done_ch] () {
 		mutex.lock()
 		defer {
 			mutex.unlock()
 		}
+		ready_ch <- true // Notify main thread of readiness
 
+		// Wait loop for conditional signals
 		for !done.load() {
-			cond.wait() // Wait for signal
+			cond.wait()
 			wake_count.add(1)
 		}
+		done_ch <- true // Notify completion
 	}()
 
-	// Ensure waiter has entered waiting state
-	time.sleep(100 * time.millisecond)
+	// Wait for the worker to enter waiting state
+	_ := <-ready_ch
 
-	// Send signal
+	// Trigger signaling sequence
 	mutex.lock()
-	cond.signal()
-	done.store(true)
-	cond.signal() // signal again to ensure thread exit
+	cond.signal() // Wake the waiting thread
+	done.store(true) // Terminate worker loop
+	cond.signal() // Extra signal for loop exit
 	mutex.unlock()
 
-	// Wait for result
-	time.sleep(100 * time.millisecond)
-	assert wake_count.load() == 1, 'Should wake 1 thread'
+	// Verify result
+	_ := <-done_ch
+	assert wake_count.load() == 1, 'Should wake exactly 1 thread'
 }
 
-// Test broadcast wake-up of multiple waiters
+// Test broadcast wake-up of multiple waiting threads
 fn test_broadcast_wakeup() {
 	mut mutex := sync.new_mutex()
 	mut cond := sync.new_cond(mutex)
 	num_threads := 5
 	mut wake_counter := new_atomic(0)
+	ready_ch := chan bool{cap: num_threads}
+	done_ch := chan bool{cap: num_threads}
+	defer {
+		ready_ch.close()
+		done_ch.close()
+	}
 
-	// Start multiple waiters
+	// Spawn multiple waiting threads
 	for _ in 0 .. num_threads {
-		spawn fn [mut wake_counter, mut cond, mut mutex] () {
+		spawn fn [mut wake_counter, mut cond, mut mutex, ready_ch, done_ch] () {
 			mutex.lock()
 			defer {
 				mutex.unlock()
 			}
-			cond.wait()
+			ready_ch <- true // Notify readiness
+			cond.wait() // Wait for broadcast
 			wake_counter.add(1)
+			done_ch <- true // Notify completion
 		}()
 	}
 
 	// Wait for all threads to enter waiting state
-	time.sleep(300 * time.millisecond)
+	for _ in 0 .. num_threads {
+		_ := <-ready_ch
+	}
 
-	// Broadcast wake-up
+	// Trigger broadcast wake-up
 	mutex.lock()
 	cond.broadcast()
 	mutex.unlock()
 
-	// Verify results
-	time.sleep(500 * time.millisecond)
+	// Verify all threads completed
+	for _ in 0 .. num_threads {
+		_ := <-done_ch
+	}
 	assert wake_counter.load() == num_threads, 'Should wake all threads'
 }
 
-// Test multiple consecutive signals
+// Test consecutive signal delivery sequencing
 fn test_multiple_signals() {
 	mut mutex := sync.new_mutex()
 	mut cond := sync.new_cond(mutex)
 	mut counter := new_atomic(0)
 	num_signals := 3
+	ready_ch := chan bool{cap: 1}
+	wait_sync_ch := chan bool{cap: 1} // Synchronization for wait-sequence tracking
+	done_ch := chan bool{cap: 1}
+	defer {
+		ready_ch.close()
+		wait_sync_ch.close()
+		done_ch.close()
+	}
 
-	spawn fn [num_signals, mut counter, mut cond, mut mutex] () {
+	spawn fn [num_signals, mut counter, mut cond, mut mutex, ready_ch, wait_sync_ch, done_ch] () {
 		mutex.lock()
 		defer {
 			mutex.unlock()
 		}
 
+		ready_ch <- true // Initial readiness notification
+
+		// Process multiple signals sequentially
 		for _ in 0 .. num_signals {
 			cond.wait()
 			counter.add(1)
+			wait_sync_ch <- true // Signal processing complete
 		}
+		done_ch <- true
 	}()
 
-	time.sleep(100 * time.millisecond)
+	// Wait for initial setup
+	_ := <-ready_ch
 
-	// Send multiple signals
-	for _ in 0 .. num_signals {
+	// Send first signal
+	mutex.lock()
+	cond.signal()
+	mutex.unlock()
+
+	// Send subsequent signals with synchronization
+	for _ in 1 .. num_signals {
+		_ := <-wait_sync_ch // Wait for previous signal processing
 		mutex.lock()
 		cond.signal()
 		mutex.unlock()
-		time.sleep(50 * time.millisecond)
 	}
 
-	time.sleep(300 * time.millisecond)
-	assert counter.load() == num_signals, 'Should match signal count'
+	_ := <-done_ch
+	assert counter.load() == num_signals, 'Signal count should match counter value'
 }
 
-// Test lock reacquisition correctness
-fn test_lock_reaquire() {
+// Test lock reacquisition mechanics after wait()
+fn test_lock_reacquire() {
 	mut mutex := sync.new_mutex()
 	mut cond := sync.new_cond(mutex)
 	mut lock_held := new_atomic(false)
+	ready_ch := chan bool{cap: 1}
+	done_ch := chan bool{cap: 1}
+	defer {
+		ready_ch.close()
+		done_ch.close()
+	}
 
-	spawn fn [mut lock_held, mut cond, mut mutex] () {
+	spawn fn [mut lock_held, mut cond, mut mutex, ready_ch, done_ch] () {
 		mutex.lock()
+		defer {
+			mutex.unlock()
+		}
+		ready_ch <- true
+
 		cond.wait()
-		lock_held.store(!mutex.try_lock()) // Test lock state
-		mutex.unlock()
+		// Test lock state after wakeup
+		lock_held.store(!mutex.try_lock()) // Should fail -> store true
+		done_ch <- true
 	}()
 
-	time.sleep(100 * time.millisecond)
+	_ := <-ready_ch
 
 	mutex.lock()
 	cond.signal()
 	mutex.unlock()
 
-	time.sleep(100 * time.millisecond)
-	assert lock_held.load(), 'Lock should be properly reacquired'
+	_ := <-done_ch
+	assert lock_held.load(), 'Mutex should be reacquired automatically after wait()'
 }
 
-// Test signaling without waiters
+// Test empty signal/broadcast scenario
 fn test_signal_without_waiters() {
 	mut mutex := sync.new_mutex()
 	mut cond := sync.new_cond(mutex)
 
-	// Empty signals should not crash
+	// Verify no panic occurs
 	mutex.lock()
-	cond.signal()
-	cond.broadcast()
+	cond.signal() // No-op with no waiters
+	cond.broadcast() // No-op with no waiters
 	mutex.unlock()
 
-	assert true, 'Should handle empty signal gracefully'
-}
-
-fn test_cond_wait_for() {
-	mut m := sync.new_mutex()
-	mut cond := sync.new_cond(m)
-
-	// case1: timeout test
-	m.lock()
-	mut start := time.now()
-	mut ret := cond.wait_for(5 * time.millisecond)
-	mut duration := time.now() - start
-	m.unlock()
-
-	assert !ret
-	assert duration >= 4 * time.millisecond
-	assert duration < 50 * time.millisecond
-
-	// case2: signal before timeout
-	mut ready := sync.new_semaphore()
-	spawn fn [mut cond, mut ready] () {
-		ready.wait()
-		time.sleep(5 * time.millisecond)
-		cond.signal()
-	}()
-	m.lock()
-	ready.post()
-	start = time.now()
-	ret = cond.wait_for(20 * time.millisecond)
-	duration = time.now() - start
-	m.unlock()
-
-	assert ret
-	assert duration >= 4 * time.millisecond
-	assert duration < 50 * time.millisecond
-
-	// case3: parallel threads timeout
-	mut completed := new_atomic(0)
-	mut started := new_atomic(0)
-	total := 5
-	for i in 0 .. total {
-		spawn fn [mut m, mut cond, mut completed, mut started] (i int) {
-			m.lock()
-			defer { m.unlock() }
-			started.add(1)
-			if i % 2 == 0 {
-				// should got signal before timeout
-				cond.wait_for(100 * time.millisecond)
-				completed.add(1)
-			} else {
-				// should timeout
-				ret := cond.wait_for(10 * time.millisecond)
-				if !ret {
-					completed.add(1)
-				}
-			}
-		}(i)
-	}
-	for started.load() < total {
-		time.sleep(1 * time.millisecond)
-	}
-	time.sleep(20 * time.millisecond)
-	cond.broadcast() // wakeup all threads
-	time.sleep(50 * time.millisecond)
-
-	assert completed.load() == total
+	assert true, 'Should handle empty signal operations safely'
 }

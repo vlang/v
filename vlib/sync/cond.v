@@ -1,7 +1,5 @@
 module sync
 
-import time
-
 @[heap]
 pub struct Cond {
 mut:
@@ -22,47 +20,6 @@ pub fn new_cond(m &Mutex) &Cond {
 	}
 }
 
-// wait_for waits for the condition to be signaled with a `timeout`,
-// returning true if notified before the timeout expires, or false otherwise
-pub fn (mut c Cond) wait_for(timeout time.Duration) bool {
-	// Create a channel for this waiting operation with capacity 1
-	mut ch := chan bool{cap: 1}
-	// Ensure the channel is closed when exiting the function to prevent resource leaks
-	defer {
-		ch.close()
-	}
-
-	// Add this channel to the waiters queue
-	c.inner_mutex.lock()
-	c.waiters << ch
-	c.inner_mutex.unlock()
-
-	// Release external lock and suspend, allowing other threads to access the shared resource
-	c.mutex.unlock()
-	mut ret_val := false
-	select {
-		// Case 1: Received signal from the channel (awakened by signal/broadcast)
-		_ := <-ch {
-			ret_val = true
-		}
-		// Case 2: Timeout reached before receiving a signal
-		timeout.nanoseconds() {
-			ret_val = false
-		}
-	}
-	c.inner_mutex.lock()
-	for i := c.waiters.len - 1; i >= 0; i-- {
-		if c.waiters[i] == ch {
-			c.waiters.delete(i)
-			break
-		}
-	}
-	c.inner_mutex.unlock()
-	// Re-acquire external lock before returning
-	c.mutex.lock()
-	return ret_val
-}
-
 // wait waits for condition notification
 // NOTE: Spurious wakeups are possible; always use in a loop:
 // mutex.lock()
@@ -72,7 +29,7 @@ pub fn (mut c Cond) wait_for(timeout time.Duration) bool {
 // mutex.unlock()
 pub fn (mut c Cond) wait() {
 	// Create a channel for this waiting operation with capacity 1
-	mut ch := chan bool{cap: 1}
+	ch := chan bool{cap: 1}
 	defer {
 		ch.close()
 	}
