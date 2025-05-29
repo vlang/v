@@ -1,6 +1,6 @@
 // vtest build: !windows
 import io
-import json
+import x.json2 as json
 import time
 import net
 import net.http
@@ -150,7 +150,7 @@ fn test_http_client_json_post() {
 	}
 	assert x.header.get(.content_type)! == 'application/json'
 	assert x.body == json_for_ouser
-	nuser := json.decode(User, x.body) or { User{} }
+	nuser := json.decode[User](x.body) or { User{} }
 	assert '${ouser}' == '${nuser}'
 
 	x = http.post_json('http://${localserver}/json', json_for_ouser) or { panic(err) }
@@ -159,7 +159,7 @@ fn test_http_client_json_post() {
 	}
 	assert x.header.get(.content_type)! == 'application/json'
 	assert x.body == json_for_ouser
-	nuser2 := json.decode(User, x.body) or { User{} }
+	nuser2 := json.decode[User](x.body) or { User{} }
 	assert '${ouser}' == '${nuser2}'
 }
 

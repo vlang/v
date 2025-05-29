@@ -1,4 +1,4 @@
-import x.json2.decoder2 as json2
+import x.json2.decoder2 as json
 
 const data = '
 {
@@ -42,7 +42,7 @@ mut:
 }
 
 fn test_main() {
-	mut root := json2.decode[Comments](data)!
+	mut root := json.decode[Comments](data)!
 	assert root.comments.len == 3
 	assert root.comments['26788945']!.id == '26788945'
 	assert root.comments['26788946']!.id == '26788946'

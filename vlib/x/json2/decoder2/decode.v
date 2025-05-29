@@ -546,6 +546,13 @@ pub fn decode[T](val string) !T {
 @[manualfree]
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T is $option {
+		value_info := decoder.current_node.value
+
+		if value_info.value_kind == .null {
+			decoder.current_node = decoder.current_node.next
+			// val = none // Is this line needed?
+			return
+		}
 		mut unwrapped_val := create_value_from_optional(val.$(field.name))
 		decoder.decode_value(mut unwrapped_val)!
 		val.$(field.name) = unwrapped_val
