@@ -267,8 +267,11 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 	left_sym := g.table.sym(node.left_type)
 	final_left_sym := g.table.final_sym(node.left_type)
 
-	if final_left_sym.kind == .array {
-		if final_left_sym.kind == .array && it.name in ['map', 'filter'] {
+	if final_left_sym.kind == .map && it.name in special_map_methods {
+		g.gen_map_method_call(it)
+		return
+	} else if final_left_sym.kind == .array {
+		if it.name in ['map', 'filter'] {
 			g.expr(it.left)
 			mut ltyp := it.left_type
 			for ltyp.is_ptr() {
@@ -310,18 +313,17 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 			return
 		}
 
-		if final_left_sym.kind == .array {
-			if it.name in special_array_methods {
-				g.gen_array_method_call(it)
-				return
-			}
+		if it.name in special_array_methods {
+			g.gen_array_method_call(it)
+			return
 		}
-	}
-	if final_left_sym.kind == .array
-		&& node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
-		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
-			// `array_Xyz_clone` => `array_clone`
-			receiver_type_name = 'array'
+
+		if node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last',
+			'pop', 'clone', 'reverse', 'slice', 'pointers'] {
+			if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
+				// `array_Xyz_clone` => `array_clone`
+				receiver_type_name = 'array'
+			}
 		}
 	}
 
