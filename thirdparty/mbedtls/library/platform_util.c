@@ -107,7 +107,8 @@ void mbedtls_platform_zeroize(void *buf, size_t len)
 #endif
 #elif defined(__STDC_LIB_EXT1__) && !defined(__IAR_SYSTEMS_ICC__)
         memset_s(buf, len, 0, len);
-#elif defined(_WIN32)
+#elif defined(_WIN32) && !defined(__TINYC__)
+        /* tcc has a bad implementation of `SecureZeroMemory` */
         SecureZeroMemory(buf, len);
 #else
         memset_func(buf, 0, len);

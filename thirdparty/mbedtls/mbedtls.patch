@@ -1,6 +1,6 @@
 diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/mbedtls_config.h
---- mbedtls.orig/include/mbedtls/mbedtls_config.h	2025-05-30 13:03:24.244977374 +0800
-+++ mbedtls/include/mbedtls/mbedtls_config.h	2025-05-30 19:05:09.451853941 +0800
+--- mbedtls.orig/include/mbedtls/mbedtls_config.h	2025-05-30 20:08:11.694258682 +0800
++++ mbedtls/include/mbedtls/mbedtls_config.h	2025-05-30 21:57:34.966792755 +0800
 @@ -4364,3 +4364,22 @@
  //#define MBEDTLS_X509_MAX_FILE_PATH_LEN     512 /**< Maximum length of a path/filename string in bytes including the null terminator character ('\0'). */
  
@@ -25,8 +25,8 @@ diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/m
 +#undef MBEDTLS_THREADING_C
 +#endif
 diff -ur mbedtls.orig/library/entropy_poll.c mbedtls/library/entropy_poll.c
---- mbedtls.orig/library/entropy_poll.c	2025-05-30 13:03:24.247977387 +0800
-+++ mbedtls/library/entropy_poll.c	2025-05-30 19:07:45.360907522 +0800
+--- mbedtls.orig/library/entropy_poll.c	2025-05-30 20:08:21.307293058 +0800
++++ mbedtls/library/entropy_poll.c	2025-05-30 21:57:34.979793067 +0800
 @@ -38,35 +38,36 @@
  
  #if defined(_WIN32) && !defined(EFIX64) && !defined(EFI32)
@@ -85,8 +85,8 @@ diff -ur mbedtls.orig/library/entropy_poll.c mbedtls/library/entropy_poll.c
  #else /* _WIN32 && !EFIX64 && !EFI32 */
  
 diff -ur mbedtls.orig/library/pk.c mbedtls/library/pk.c
---- mbedtls.orig/library/pk.c	2025-05-30 13:03:24.248977391 +0800
-+++ mbedtls/library/pk.c	2025-05-30 19:05:09.468854064 +0800
+--- mbedtls.orig/library/pk.c	2025-05-30 20:08:21.308293062 +0800
++++ mbedtls/library/pk.c	2025-05-30 21:57:34.982793139 +0800
 @@ -1237,6 +1237,7 @@
          return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
      }
@@ -95,9 +95,22 @@ diff -ur mbedtls.orig/library/pk.c mbedtls/library/pk.c
      if (ctx->pk_info == NULL || pk_hashlen_helper(md_alg, &hash_len) != 0) {
          return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
      }
+diff -ur mbedtls.orig/library/platform_util.c mbedtls/library/platform_util.c
+--- mbedtls.orig/library/platform_util.c	2025-05-30 20:08:21.308293062 +0800
++++ mbedtls/library/platform_util.c	2025-05-30 22:09:07.302365700 +0800
+@@ -107,7 +107,8 @@
+ #endif
+ #elif defined(__STDC_LIB_EXT1__) && !defined(__IAR_SYSTEMS_ICC__)
+         memset_s(buf, len, 0, len);
+-#elif defined(_WIN32)
++#elif defined(_WIN32) && !defined(__TINYC__)
++        /* tcc has a bad implementation of `SecureZeroMemory` */
+         SecureZeroMemory(buf, len);
+ #else
+         memset_func(buf, 0, len);
 diff -ur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
---- mbedtls.orig/library/ssl_misc.h	2025-05-30 13:03:24.249977395 +0800
-+++ mbedtls/library/ssl_misc.h	2025-05-30 19:05:09.476854122 +0800
+--- mbedtls.orig/library/ssl_misc.h	2025-05-30 20:08:21.311293073 +0800
++++ mbedtls/library/ssl_misc.h	2025-05-30 21:57:34.989793307 +0800
 @@ -1652,26 +1652,30 @@
  {
      mbedtls_ssl_key_cert *key_cert;
@@ -134,8 +147,8 @@ diff -ur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
  
  /*
 diff -ur mbedtls.orig/library/ssl_tls.c mbedtls/library/ssl_tls.c
---- mbedtls.orig/library/ssl_tls.c	2025-05-30 13:03:24.250977400 +0800
-+++ mbedtls/library/ssl_tls.c	2025-05-30 19:05:09.478854137 +0800
+--- mbedtls.orig/library/ssl_tls.c	2025-05-30 20:08:21.311293073 +0800
++++ mbedtls/library/ssl_tls.c	2025-05-30 21:57:34.991793356 +0800
 @@ -4559,8 +4559,8 @@
  {
      int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
