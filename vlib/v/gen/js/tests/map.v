@@ -208,10 +208,29 @@ fn test_direct_map_access() {
 	assert items_2['three'] == 3
 }
 
+fn test_map_len() {
+	// testing on the fly maps
+	items_1 := {
+		'one': 1
+		'two': 2
+	}
+	assert items_1.len == 2
+
+	// testing empty map length
+	mut items_2 := map[string]int{}
+	assert items_2.len == 0
+
+	// testing dynamic addition map length
+	items_2['one'] = 1
+	items_2['two'] = 2
+	assert items_2.len == 2
+}
+
 fn main() {
 	test_values_method()
 	test_values_method_with_generic_constraints()
 	test_keys_method()
 	test_keys_method_with_generic_constraints()
 	test_direct_map_access()
+	test_map_len()
 }
