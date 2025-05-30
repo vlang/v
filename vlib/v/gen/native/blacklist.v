@@ -46,7 +46,12 @@ const whitelist = {
 	'string.is_capital':    false
 	'string.is_ascii':      false
 	'string.is_identifier': false
-	//	'string.is_blank':      false need for in
+	'string.is_blank':      false
+	'string.indent_width':  false
+	'string.index_u8':      false
+	'string.last_index':    true
+	'string.last_index_u8': false
+	'string.contains_u8':   false
 }
 
 fn (g &Gen) is_blacklisted(name string, is_builtin bool) bool {

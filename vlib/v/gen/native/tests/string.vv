@@ -35,6 +35,14 @@ fn test_for_i_in_len() {
 	}
 }
 
+fn test_for_c_in_string() {
+	s := 'abc'
+	for i, c in s {
+		println(i)
+		println(int(c))
+	}
+}
+
 fn test_escape_codes() {
 	star1 := '\xe2\x98\x85'
 	println(star1)
@@ -82,6 +90,7 @@ fn main() {
 	test_string_len()
 	test_string_index()
 	test_for_i_in_len()
+	test_for_c_in_string()
 	test_escape_codes()
 	test_raw_string()
 	test_runes()
