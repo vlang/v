@@ -28,6 +28,8 @@
 +#ifndef ZDICT_QSORT
 +# if defined(__APPLE__)
 +#   define ZDICT_QSORT ZDICT_QSORT_APPLE /* uses qsort_r() with a different order for parameters */
++# elif defined(__GLIBC__) && !defined(__musl__) && !defined(__MUSL__) && !defined(__MUSL_GLIBC__) && !defined(__MUSL_GLIBC_MINOR__)
++#   define ZDICT_QSORT ZDICT_QSORT_GNU /* uses qsort_r() */
 +# elif defined(_WIN32) && defined(_MSC_VER)
 +#   define ZDICT_QSORT ZDICT_QSORT_MSVC /* uses qsort_s() with a different order for parameters */
 +# elif defined(STDC_LIB_EXT1) && (STDC_LIB_EXT1 > 0) /* C11 Annex K */
