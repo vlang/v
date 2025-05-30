@@ -74,7 +74,7 @@
 #ifndef ZDICT_QSORT
 # if defined(__APPLE__)
 #   define ZDICT_QSORT ZDICT_QSORT_APPLE /* uses qsort_r() with a different order for parameters */
-# elif defined(__GLIBC__)
+# elif defined(__GLIBC__) && (__GLIBC__ >= 2) && (__GLIBC_MINOR__ >= 8)
 #   define ZDICT_QSORT ZDICT_QSORT_GNU /* uses qsort_r() */
 # elif defined(_WIN32) && defined(_MSC_VER)
 #   define ZDICT_QSORT ZDICT_QSORT_MSVC /* uses qsort_s() with a different order for parameters */
