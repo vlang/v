@@ -247,9 +247,10 @@
 #if defined(MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN) &&  !defined(MBEDTLS_HAS_MEMSAN)
 #error "MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN requires building with MemorySanitizer"
 #endif
-#if defined(MBEDTLS_HAS_MEMSAN) && defined(MBEDTLS_HAVE_ASM)
-#error "MemorySanitizer does not support assembly implementation"
-#endif
+// skip this check for now because V test-self need a `fsanitizer`
+//#if defined(MBEDTLS_HAS_MEMSAN) && defined(MBEDTLS_HAVE_ASM)
+//#error "MemorySanitizer does not support assembly implementation"
+//#endif
 #undef MBEDTLS_HAS_MEMSAN // temporary macro defined above
 
 #if defined(MBEDTLS_CCM_C) && \

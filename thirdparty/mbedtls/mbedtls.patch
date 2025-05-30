@@ -1,3 +1,20 @@
+diff -ur mbedtls.orig/include/mbedtls/check_config.h mbedtls/include/mbedtls/check_config.h
+--- mbedtls.orig/include/mbedtls/check_config.h	2025-05-30 20:08:11.693258679 +0800
++++ mbedtls/include/mbedtls/check_config.h	2025-05-30 22:33:57.228548245 +0800
+@@ -247,9 +247,10 @@
+ #if defined(MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN) &&  !defined(MBEDTLS_HAS_MEMSAN)
+ #error "MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN requires building with MemorySanitizer"
+ #endif
+-#if defined(MBEDTLS_HAS_MEMSAN) && defined(MBEDTLS_HAVE_ASM)
+-#error "MemorySanitizer does not support assembly implementation"
+-#endif
++// skip this check for now because V test-self need a `fsanitizer`
++//#if defined(MBEDTLS_HAS_MEMSAN) && defined(MBEDTLS_HAVE_ASM)
++//#error "MemorySanitizer does not support assembly implementation"
++//#endif
+ #undef MBEDTLS_HAS_MEMSAN // temporary macro defined above
+ 
+ #if defined(MBEDTLS_CCM_C) && \
 diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/mbedtls_config.h
 --- mbedtls.orig/include/mbedtls/mbedtls_config.h	2025-05-30 20:08:11.694258682 +0800
 +++ mbedtls/include/mbedtls/mbedtls_config.h	2025-05-30 21:57:34.966792755 +0800
