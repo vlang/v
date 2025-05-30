@@ -8293,6 +8293,9 @@ Assignment Operators
 &&= ||=
 ```
 
+Note: in V, `assert -10 % 7 == -3` passes. In programming, the sign of the remainder
+depends upon the signs of divisor and dividend.
+
 ## Other online resources
 
 ### [V contributing guide](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
