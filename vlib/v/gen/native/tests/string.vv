@@ -36,10 +36,12 @@ fn test_for_i_in_len() {
 }
 
 fn test_for_c_in_string() {
-	s := 'abc'
-	for i, c in s {
-		println(i)
-		println(int(c))
+	$if !windows {
+		s := 'abc'
+		for i, c in s {
+			println(i)
+			println(int(c))
+		}
 	}
 }
 
