@@ -1224,7 +1224,7 @@ pub fn (x Integer) is_power_of_2() bool {
 			return false
 		}
 	}
-	n := u32(x.digits.last())
+	n := x.digits.last()
 	return n & (n - u32(1)) == 0
 }
 
