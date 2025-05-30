@@ -114,7 +114,16 @@ diff -ur mbedtls.orig/library/pk.c mbedtls/library/pk.c
      }
 diff -ur mbedtls.orig/library/platform_util.c mbedtls/library/platform_util.c
 --- mbedtls.orig/library/platform_util.c	2025-05-30 20:08:21.308293062 +0800
-+++ mbedtls/library/platform_util.c	2025-05-30 22:09:07.302365700 +0800
++++ mbedtls/library/platform_util.c	2025-05-30 22:44:12.752658283 +0800
+@@ -87,7 +87,7 @@
+  */
+ #if !defined(MBEDTLS_PLATFORM_HAS_EXPLICIT_BZERO) && !(defined(__STDC_LIB_EXT1__) && \
+     !defined(__IAR_SYSTEMS_ICC__)) \
+-    && !defined(_WIN32)
++    && !(defined(_WIN32) && !defined(__TINYC__))
+ static void *(*const volatile memset_func)(void *, int, size_t) = memset;
+ #endif
+ 
 @@ -107,7 +107,8 @@
  #endif
  #elif defined(__STDC_LIB_EXT1__) && !defined(__IAR_SYSTEMS_ICC__)
