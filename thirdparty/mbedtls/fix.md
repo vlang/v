@@ -10,4 +10,4 @@ find thirdparty/mbedtls/ -name '*.txt' -or -name '*.inc' -or -name '.gitignore' 
 ```
 3. In `thirdparty/mbedtls/`, apply patch by `patch -p1 < ./mbedtls.patch`
 
-BTW, you can generate a new patch by `diff -Naur mbedtls.orig mbedtls > mbedtls.patch`
+BTW, you can generate a new patch by `diff -ur mbedtls.orig mbedtls > mbedtls.patch`

@@ -1,6 +1,6 @@
-diff -Naur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/mbedtls_config.h
+diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/mbedtls_config.h
 --- mbedtls.orig/include/mbedtls/mbedtls_config.h	2025-05-30 13:03:24.244977374 +0800
-+++ mbedtls/include/mbedtls/mbedtls_config.h	2025-05-30 16:47:00.132317483 +0800
++++ mbedtls/include/mbedtls/mbedtls_config.h	2025-05-30 19:05:09.451853941 +0800
 @@ -4364,3 +4364,22 @@
  //#define MBEDTLS_X509_MAX_FILE_PATH_LEN     512 /**< Maximum length of a path/filename string in bytes including the null terminator character ('\0'). */
  
@@ -24,9 +24,69 @@ diff -Naur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls
 +#undef MBEDTLS_THREADING_PTHREAD
 +#undef MBEDTLS_THREADING_C
 +#endif
-diff -Naur mbedtls.orig/library/pk.c mbedtls/library/pk.c
+diff -ur mbedtls.orig/library/entropy_poll.c mbedtls/library/entropy_poll.c
+--- mbedtls.orig/library/entropy_poll.c	2025-05-30 13:03:24.247977387 +0800
++++ mbedtls/library/entropy_poll.c	2025-05-30 19:07:45.360907522 +0800
+@@ -38,35 +38,36 @@
+ 
+ #if defined(_WIN32) && !defined(EFIX64) && !defined(EFI32)
+ 
++// fallback to 3.3.0 implmentation, as 3.6.3.1 need a high version of Windows SDK
++#if !defined(_WIN32_WINNT)
++#define _WIN32_WINNT 0x0400
++#endif
+ #include <windows.h>
+-#include <bcrypt.h>
+-#include <intsafe.h>
++#include <wincrypt.h>
+ 
+-int mbedtls_platform_entropy_poll(void *data, unsigned char *output, size_t len,
+-                                  size_t *olen)
++int mbedtls_platform_entropy_poll( void *data, unsigned char *output, size_t len,
++                           size_t *olen )
+ {
++    HCRYPTPROV provider;
+     ((void) data);
+     *olen = 0;
+ 
+-    /*
+-     * BCryptGenRandom takes ULONG for size, which is smaller than size_t on
+-     * 64-bit Windows platforms. Extract entropy in chunks of len (dependent
+-     * on ULONG_MAX) size.
+-     */
+-    while (len != 0) {
+-        unsigned long ulong_bytes =
+-            (len > ULONG_MAX) ? ULONG_MAX : (unsigned long) len;
+-
+-        if (!BCRYPT_SUCCESS(BCryptGenRandom(NULL, output, ulong_bytes,
+-                                            BCRYPT_USE_SYSTEM_PREFERRED_RNG))) {
+-            return MBEDTLS_ERR_ENTROPY_SOURCE_FAILED;
+-        }
++    if( CryptAcquireContext( &provider, NULL, NULL,
++                              PROV_RSA_FULL, CRYPT_VERIFYCONTEXT ) == FALSE )
++    {
++        return( MBEDTLS_ERR_ENTROPY_SOURCE_FAILED );
++    }
+ 
+-        *olen += ulong_bytes;
+-        len -= ulong_bytes;
++    if( CryptGenRandom( provider, (DWORD) len, output ) == FALSE )
++    {
++        CryptReleaseContext( provider, 0 );
++        return( MBEDTLS_ERR_ENTROPY_SOURCE_FAILED );
+     }
+ 
+-    return 0;
++    CryptReleaseContext( provider, 0 );
++    *olen = len;
++
++    return( 0 );
+ }
+ #else /* _WIN32 && !EFIX64 && !EFI32 */
+ 
+diff -ur mbedtls.orig/library/pk.c mbedtls/library/pk.c
 --- mbedtls.orig/library/pk.c	2025-05-30 13:03:24.248977391 +0800
-+++ mbedtls/library/pk.c	2025-05-30 16:47:33.853673849 +0800
++++ mbedtls/library/pk.c	2025-05-30 19:05:09.468854064 +0800
 @@ -1237,6 +1237,7 @@
          return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
      }
@@ -35,9 +95,9 @@ diff -Naur mbedtls.orig/library/pk.c mbedtls/library/pk.c
      if (ctx->pk_info == NULL || pk_hashlen_helper(md_alg, &hash_len) != 0) {
          return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
      }
-diff -Naur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
+diff -ur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
 --- mbedtls.orig/library/ssl_misc.h	2025-05-30 13:03:24.249977395 +0800
-+++ mbedtls/library/ssl_misc.h	2025-05-30 16:47:28.298616232 +0800
++++ mbedtls/library/ssl_misc.h	2025-05-30 19:05:09.476854122 +0800
 @@ -1652,26 +1652,30 @@
  {
      mbedtls_ssl_key_cert *key_cert;
@@ -73,9 +133,9 @@ diff -Naur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
  }
  
  /*
-diff -Naur mbedtls.orig/library/ssl_tls.c mbedtls/library/ssl_tls.c
+diff -ur mbedtls.orig/library/ssl_tls.c mbedtls/library/ssl_tls.c
 --- mbedtls.orig/library/ssl_tls.c	2025-05-30 13:03:24.250977400 +0800
-+++ mbedtls/library/ssl_tls.c	2025-05-30 16:48:35.578286927 +0800
++++ mbedtls/library/ssl_tls.c	2025-05-30 19:05:09.478854137 +0800
 @@ -4559,8 +4559,8 @@
  {
      int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
