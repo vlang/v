@@ -747,7 +747,7 @@ fn impl_walk_ext(path string, ext string, mut out []string, opts WalkParams) {
 	mut files := ls(path) or { return }
 	separator := if path.ends_with(path_separator) { '' } else { path_separator }
 	for file in files {
-		if file.starts_with('.') && !opts.hiddens{
+		if file.starts_with('.') && !opts.hiddens {
 			continue
 		}
 		p := path + separator + file
