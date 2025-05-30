@@ -24,8 +24,8 @@ fn map_any[T](items []T, cb fn (item T) bool) bool {
 	return false
 }
 
-fn test_map_values_method() {
-	// testing map[int]stirng
+fn test_values_method() {
+	// testing map[int]string
 	items_1 := {
 		1: 'item_1'
 		2: 'item_2'
@@ -84,7 +84,7 @@ fn test_map_values_method() {
 	})
 }
 
-fn test_map_values_method_with_generic_constraints() {
+fn test_values_method_with_generic_constraints() {
 	// test with string constraint
 	string_map := {
 		'first':  'hello'
@@ -106,7 +106,17 @@ fn test_map_values_method_with_generic_constraints() {
 	assert int_result.contains(2)
 }
 
-fn test_map_keys_method() {
+fn test_keys_method() {
+	// testing map[int]string keys
+	items_1 := {
+		1: 'item_1'
+		2: 'item_2'
+		3: 'item_3'
+	}
+	for key in items_1.keys() {
+		assert 'item_${key}' == items_1[key]
+	}
+
 	// testing map[string]int keys
 	items_2 := {
 		'item_1': 1
@@ -147,7 +157,7 @@ fn test_map_keys_method() {
 	assert point_keys.contains('unit_y')
 }
 
-fn test_map_keys_method_with_generic_constraints() {
+fn test_keys_method_with_generic_constraints() {
 	// test with string values
 	string_map := {
 		'first':  'hello'
@@ -176,9 +186,32 @@ fn test_map_keys_method_with_generic_constraints() {
 	assert empty_keys.len == 0
 }
 
+fn test_direct_map_access() {
+	// testing map[int]string
+	items_1 := {
+		1: 'one'
+		2: 'two'
+		3: 'three'
+	}
+	assert items_1[1] == 'one'
+	assert items_1[2] == 'two'
+	assert items_1[3] == 'three'
+
+	// testing map[string]int
+	items_2 := {
+		'one':   1
+		'two':   2
+		'three': 3
+	}
+	assert items_2['one'] == 1
+	assert items_2['two'] == 2
+	assert items_2['three'] == 3
+}
+
 fn main() {
-	test_map_values_method()
-	test_map_values_method_with_generic_constraints()
-	test_map_keys_method()
-	test_map_keys_method_with_generic_constraints()
+	test_values_method()
+	test_values_method_with_generic_constraints()
+	test_keys_method()
+	test_keys_method_with_generic_constraints()
+	test_direct_map_access()
 }

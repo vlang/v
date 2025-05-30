@@ -8,11 +8,11 @@ pub:
 
 fn (mut m map) internal_set(key JS.Any, val JS.Any) {
 	//$if es5 {
-	#if ('$toJS' in key) key = key.$toJS();
+	#if (key.hasOwnProperty('$toJS')) key = key.$toJS();
 	#if (!(key in m.val.map)) m.val.length++;
 	#m.val.map[key] = val
 	/*} $else {
-		# if ('$toJS' in key) key = key.$toJS();
+		# if (key.hasOwnProperty('$toJS')) key = key.$toJS();
 		# m.val.m.set(key,val);
 	}*/
 	_ := key
@@ -22,10 +22,10 @@ fn (mut m map) internal_set(key JS.Any, val JS.Any) {
 fn (mut m map) internal_get(key JS.Any) JS.Any {
 	mut val := JS.Any(unsafe { nil })
 	//$if es5 {
-	#if (typeof key != "string" && '$toJS' in key) key = key.$toJS();
+	#if (typeof key != "string" && key.hasOwnProperty('$toJS')) key = key.$toJS();
 	#val =  m.val.map[key]
 	/*} $else {
-		# if ('$toJS' in key) key = key.$toJS();
+		# if (key.hasOwnProperty('$toJS')) key = key.$toJS();
 		# val = m.val.m.get(key)
 	}*/
 	_ := key
@@ -34,11 +34,11 @@ fn (mut m map) internal_get(key JS.Any) JS.Any {
 
 #map.prototype.get = function (key) { return map_internal_get(this,key); }
 #map.prototype.set = function(key,val) { map_internal_set(this,key,val); }
-#map.prototype.has = function (key) { if (typeof key != "string" && '$toJS' in key) { key = key.$toJS() } return key in this.map; }
+#map.prototype.has = function (key) { if (typeof key != "string" && key.hasOwnProperty('$toJS')) { key = key.$toJS() } return key in this.map; }
 // Removes the mapping of a particular key from the map.
 @[unsafe]
 pub fn (mut m map) delete(key JS.Any) {
-	#let k = '$toJS' in key ? key.$toJS() : key;
+	#let k = key.hasOwnProperty('$toJS') ? key.$toJS() : key;
 
 	#if (delete m.val.map[k]) { m.val.length--; };
 
