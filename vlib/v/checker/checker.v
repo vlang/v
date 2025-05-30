@@ -5334,10 +5334,7 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 
 	sym := c.table.final_sym(typ)
 	if c.ensure_generic_type_level > 38 {
-		dump(typ)
-		dump(sym.kind)
-		dump(pos)
-		dump(c.ensure_generic_type_level)
+		eprintln('>> c.ensure_generic_type_level: ${c.ensure_generic_type_level} > 38, in ${@METHOD}, typ: ${typ}, sym.kind: ${sym.kind}, pos: ${pos}')
 	}
 	match sym.kind {
 		.function {
