@@ -4559,7 +4559,7 @@ int mbedtls_ssl_handshake_step(mbedtls_ssl_context *ssl)
 {
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
 
-    if( NULL == ssl ) return( MBEDTLS_ERR_SSL_BAD_INPUT_DATA );
+    if (ssl == NULL) return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
     if (ssl->conf      == NULL                       ||
         ssl->handshake == NULL                       ||
         ssl->state == MBEDTLS_SSL_HANDSHAKE_OVER) {
@@ -4649,10 +4649,8 @@ int mbedtls_ssl_handshake(mbedtls_ssl_context *ssl)
     int ret = 0;
 
     /* Sanity checks */
-
-    if (ssl == NULL || ssl->conf == NULL) {
-        return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
-    }
+    if (ssl == NULL) return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+    if (ssl->conf == NULL) return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
 
 #if defined(MBEDTLS_SSL_PROTO_DTLS)
     if (ssl->conf->transport == MBEDTLS_SSL_TRANSPORT_DATAGRAM &&

@@ -1650,32 +1650,32 @@ static inline mbedtls_ssl_srtp_profile mbedtls_ssl_check_srtp_profile_value
 #if defined(MBEDTLS_X509_CRT_PARSE_C)
 static inline mbedtls_pk_context *mbedtls_ssl_own_key(mbedtls_ssl_context *ssl)
 {
-    if( NULL == ssl) return NULL;
     mbedtls_ssl_key_cert *key_cert;
 
+    if (ssl == NULL) return NULL;
     if (ssl->handshake != NULL && ssl->handshake->key_cert != NULL) {
         key_cert = ssl->handshake->key_cert;
     } else {
-        if( NULL == ssl->conf ) return NULL;
+        if (ssl->conf == NULL) return NULL;
         key_cert = ssl->conf->key_cert;
     }
-
-    return key_cert == NULL ? NULL : key_cert->key;
+    if (key_cert == NULL) return NULL;
+    return key_cert->key;
 }
 
 static inline mbedtls_x509_crt *mbedtls_ssl_own_cert(mbedtls_ssl_context *ssl)
 {
-    if( NULL == ssl) return NULL;
     mbedtls_ssl_key_cert *key_cert;
 
+    if (ssl == NULL) return NULL;
     if (ssl->handshake != NULL && ssl->handshake->key_cert != NULL) {
         key_cert = ssl->handshake->key_cert;
     } else {
-        if( NULL == ssl->conf ) return NULL;
+        if (ssl->conf == NULL) return NULL;
         key_cert = ssl->conf->key_cert;
     }
-
-    return key_cert == NULL ? NULL : key_cert->cert;
+    if (key_cert == NULL) return NULL;
+    return key_cert->cert;
 }
 
 /*

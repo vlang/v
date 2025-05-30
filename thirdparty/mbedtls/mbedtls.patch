@@ -1,0 +1,102 @@
+diff -Naur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/mbedtls_config.h
+--- mbedtls.orig/include/mbedtls/mbedtls_config.h	2025-05-30 13:03:24.244977374 +0800
++++ mbedtls/include/mbedtls/mbedtls_config.h	2025-05-30 16:47:00.132317483 +0800
+@@ -4364,3 +4364,22 @@
+ //#define MBEDTLS_X509_MAX_FILE_PATH_LEN     512 /**< Maximum length of a path/filename string in bytes including the null terminator character ('\0'). */
+ 
+ /** \} name SECTION: Module configuration options */
++
++
++#if defined(__TINYC__)
++#undef MBEDTLS_HAVE_ASM
++#undef MBEDTLS_AESNI_C
++#undef MBEDTLS_PADLOCK_C
++#else // __TINYC__
++#define MBEDTLS_HAVE_ASM
++#define MBEDTLS_AESNI_C
++#define MBEDTLS_PADLOCK_C
++#endif // __TINYC__
++
++#if ( defined(__linux__) || defined(__FreeBSD__) ) || defined (__OpenBSD__)
++#define MBEDTLS_THREADING_PTHREAD
++#define MBEDTLS_THREADING_C
++#else
++#undef MBEDTLS_THREADING_PTHREAD
++#undef MBEDTLS_THREADING_C
++#endif
+diff -Naur mbedtls.orig/library/pk.c mbedtls/library/pk.c
+--- mbedtls.orig/library/pk.c	2025-05-30 13:03:24.248977391 +0800
++++ mbedtls/library/pk.c	2025-05-30 16:47:33.853673849 +0800
+@@ -1237,6 +1237,7 @@
+         return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
+     }
+ 
++    if (ctx == NULL) return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
+     if (ctx->pk_info == NULL || pk_hashlen_helper(md_alg, &hash_len) != 0) {
+         return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
+     }
+diff -Naur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
+--- mbedtls.orig/library/ssl_misc.h	2025-05-30 13:03:24.249977395 +0800
++++ mbedtls/library/ssl_misc.h	2025-05-30 16:47:28.298616232 +0800
+@@ -1652,26 +1652,30 @@
+ {
+     mbedtls_ssl_key_cert *key_cert;
+ 
++    if (ssl == NULL) return NULL;
+     if (ssl->handshake != NULL && ssl->handshake->key_cert != NULL) {
+         key_cert = ssl->handshake->key_cert;
+     } else {
++        if (ssl->conf == NULL) return NULL;
+         key_cert = ssl->conf->key_cert;
+     }
+-
+-    return key_cert == NULL ? NULL : key_cert->key;
++    if (key_cert == NULL) return NULL;
++    return key_cert->key;
+ }
+ 
+ static inline mbedtls_x509_crt *mbedtls_ssl_own_cert(mbedtls_ssl_context *ssl)
+ {
+     mbedtls_ssl_key_cert *key_cert;
+ 
++    if (ssl == NULL) return NULL;
+     if (ssl->handshake != NULL && ssl->handshake->key_cert != NULL) {
+         key_cert = ssl->handshake->key_cert;
+     } else {
++        if (ssl->conf == NULL) return NULL;
+         key_cert = ssl->conf->key_cert;
+     }
+-
+-    return key_cert == NULL ? NULL : key_cert->cert;
++    if (key_cert == NULL) return NULL;
++    return key_cert->cert;
+ }
+ 
+ /*
+diff -Naur mbedtls.orig/library/ssl_tls.c mbedtls/library/ssl_tls.c
+--- mbedtls.orig/library/ssl_tls.c	2025-05-30 13:03:24.250977400 +0800
++++ mbedtls/library/ssl_tls.c	2025-05-30 16:48:35.578286927 +0800
+@@ -4559,8 +4559,8 @@
+ {
+     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+ 
+-    if (ssl            == NULL                       ||
+-        ssl->conf      == NULL                       ||
++    if (ssl == NULL) return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
++    if (ssl->conf      == NULL                       ||
+         ssl->handshake == NULL                       ||
+         ssl->state == MBEDTLS_SSL_HANDSHAKE_OVER) {
+         return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+@@ -4649,10 +4649,8 @@
+     int ret = 0;
+ 
+     /* Sanity checks */
+-
+-    if (ssl == NULL || ssl->conf == NULL) {
+-        return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+-    }
++    if (ssl == NULL) return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
++    if (ssl->conf == NULL) return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+ 
+ #if defined(MBEDTLS_SSL_PROTO_DTLS)
+     if (ssl->conf->transport == MBEDTLS_SSL_TRANSPORT_DATAGRAM &&

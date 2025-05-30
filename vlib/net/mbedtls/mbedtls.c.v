@@ -120,10 +120,9 @@ $if prod && opt_size ? {
 #flag @VEXEROOT/thirdparty/mbedtls/library/x509write.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/x509write_crt.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/x509write_csr.o
-//#flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/everest.o
-//#flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/Hacl_Curve25519.o
-//#flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/Hacl_Curve25519_joined.o
-//#flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/x25519.o
+#flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/Hacl_Curve25519_joined.o
+#flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/everest.o
+#flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/x25519.o
 
 #include <mbedtls/net_sockets.h>
 #include <mbedtls/ssl.h>
