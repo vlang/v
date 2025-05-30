@@ -7,13 +7,10 @@ pub:
 }
 
 pub fn (s string) runes() []rune {
-	mut runes := []rune{}
-	for i := 0; i < s.len; i++ {
-		mut r := rune(`0`)
-		#r = new rune(s.str[i.val].charCodeAt())
-		runes << r
-	}
-	return runes
+	ret := JS.makeEmptyArray()
+	#for (r of s.str) array_push(ret,new rune(r),false);
+
+	return ret
 }
 
 pub fn (s string) slice(a int, b int) string {
