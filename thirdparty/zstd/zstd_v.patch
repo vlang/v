@@ -1,5 +1,5 @@
 --- zstd-1.5.7.c	2025-05-30 16:39:46.374765970 +0800
-+++ zstd.c	2025-05-30 20:52:04.907764386 +0800
++++ zstd.c	2025-05-30 21:02:30.710831777 +0800
 @@ -50,6 +50,27 @@
  /* TODO: Can't amalgamate ASM function */
  #define ZSTD_DISABLE_ASM 1
@@ -28,19 +28,6 @@
  /* Include zstd_deps.h first with all the options we need enabled. */
  #define ZSTD_DEPS_NEED_MALLOC
  #define ZSTD_DEPS_NEED_MATH64
-@@ -87,9 +108,9 @@
-  */
- #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__gnu_linux__) || \
-     defined(__CYGWIN__) || defined(__MSYS__)
--#if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
--#define _GNU_SOURCE
--#endif
-+# if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
-+#   define _GNU_SOURCE
-+# endif
- #endif
- 
- #include <limits.h>
 @@ -22353,7 +22374,7 @@
  ZSTD_GEN_RECORD_FINGERPRINT(43, 8)
  
