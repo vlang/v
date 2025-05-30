@@ -29,19 +29,24 @@ already compiling functions:
 // false: whitelist function
 // true: blacklist function
 const whitelist = {
-	'main.main':       false
-	'exit':            false
-	'gc_is_enabled':   false
-	'int_max':         false
-	'int_min':         false
-	'u8.is_alnum':     false
-	'u8.is_bin_digit': false
-	'u8.is_capital':   false
-	'u8.is_digit':     false
-	'u8.is_hex_digit': false
-	'u8.is_letter':    false
-	'u8.is_oct_digit': false
-	'u8.is_space':     false
+	'main.main':            false
+	'c_error_number_str':   false
+	'exit':                 false
+	'gc_is_enabled':        false
+	'int_max':              false
+	'int_min':              false
+	'u8.is_alnum':          false
+	'u8.is_bin_digit':      false
+	'u8.is_capital':        false
+	'u8.is_digit':          false
+	'u8.is_hex_digit':      false
+	'u8.is_letter':         false
+	'u8.is_oct_digit':      false
+	'u8.is_space':          false
+	'string.is_capital':    false
+	'string.is_ascii':      false
+	'string.is_identifier': false
+	//	'string.is_blank':      false need for in
 }
 
 fn (g &Gen) is_blacklisted(name string, is_builtin bool) bool {

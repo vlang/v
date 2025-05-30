@@ -290,6 +290,9 @@ fn (mut c Amd64) cmp_zero(reg Register) {
 }
 
 fn (mut c Amd64) cmp_var_reg(var Var, reg Register, config VarConfig) {
+	if reg as Amd64Register != .rax {
+		c.g.n_error('${@LOCATION} register ${reg} is not supported')
+	}
 	match var {
 		ast.Ident {
 			var_object := c.g.get_var_from_ident(var)
@@ -1668,6 +1671,12 @@ fn (mut c Amd64) sub_reg(a Amd64Register, b Amd64Register) {
 	c.g.println('sub ${a}, ${b}')
 }
 
+fn (mut c Amd64) add_reg2(a_reg Register, b_reg Register) {
+	a := a_reg as Amd64Register
+	b := b_reg as Amd64Register
+	c.add_reg(a, b)
+}
+
 fn (mut c Amd64) add_reg(a Amd64Register, b Amd64Register) {
 	if i32(a) <= i32(Amd64Register.r15) && i32(b) <= i32(Amd64Register.r15) {
 		c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
@@ -1757,7 +1766,7 @@ fn (mut c Amd64) sar8(r Amd64Register, val u8) {
 pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	name := node.name
 	mut n := name
-	if !n.contains('.') && n !in c.g.fn_addr.keys() { // if the name is in keys, it is a function from builtin
+	if !n.contains('.') && n !in c.g.fn_names { // if the name is in keys, it is a function from builtin
 		n = 'main.${n}'
 	}
 	if node.is_method {
@@ -1847,7 +1856,8 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 			continue
 		}
 		c.g.expr(args[i].expr)
-		if c.g.table.sym(args[i].typ).kind == .struct && !args[i].typ.is_ptr() {
+		if (c.g.table.sym(args[i].typ).kind == .struct || args[i].typ.is_string())
+			&& !args[i].typ.is_ptr() {
 			match args_size[i] {
 				1...8 {
 					c.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.i64_type_idx)
@@ -2193,6 +2203,14 @@ fn (mut c Amd64) mov_float_xmm0_var(reg Amd64Register, var_type ast.Type) {
 	}
 }
 
+fn (mut c Amd64) create_string_struct(typ ast.Type, name string, str string) {
+	dest := c.allocate_var(name, c.g.get_type_size(typ), i64(0))
+	c.learel(Amd64Register.rsi, c.g.allocate_string(str, 3, .rel32))
+	c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
+	offset := c.g.get_field_offset(typ, 'len')
+	c.mov_int_to_var(LocalVar{dest, ast.i32_type_idx, name}, i32(str.len), offset: offset)
+}
+
 fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.Expr, name string, ident ast.Ident) {
 	match right {
 		ast.IntegerLiteral {
@@ -2222,11 +2240,9 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 			c.assign_float(node, i, right, ident)
 		}
 		ast.StringLiteral {
-			dest := c.allocate_var(name, 8, i64(0))
 			ie := right as ast.StringLiteral
 			str := c.g.eval_str_lit_escape_codes(ie)
-			c.learel(Amd64Register.rsi, c.g.allocate_string(str, 3, .rel32))
-			c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
+			c.create_string_struct(node.right_types[0], name, str)
 		}
 		ast.StructInit {
 			match node.op {
@@ -3394,7 +3410,7 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 		}
 	}
 
-	params << node.params
+	params << node.params // also the var of the method
 
 	args_size := params.map(c.g.get_type_size(it.typ))
 	is_floats := params.map(it.typ.is_pure_float())

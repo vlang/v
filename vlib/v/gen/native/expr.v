@@ -78,7 +78,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {
 			str := g.eval_str_lit_escape_codes(node)
-			g.allocate_string(str, 3, .rel32)
+			g.code_gen.create_string_struct(ast.string_type_idx, 'string_lit', str)
 		}
 		ast.CharLiteral {
 			bytes := g.eval_escape_codes(node.val)
@@ -127,6 +127,19 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.SizeOf {
 			g.gen_sizeof_expr(node)
+		}
+		ast.IndexExpr {
+			if node.left_type.is_string() {
+				g.expr(node.index)
+				g.code_gen.mov_var_to_reg(Amd64Register.rdx, node.left as ast.Ident) // load address of string
+				g.code_gen.add_reg2(Amd64Register.rdx, Amd64Register.rax) // add the offset to the address
+				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rdx, ast.u8_type_idx)
+			} else if node.left_type.is_pointer() {
+				dump(node)
+				g.n_error('${@LOCATION} expr: unhandled node type: Index expr is not applied on string')
+			} else {
+				g.n_error('${@LOCATION} expr: unhandled node type: Index expr is not applied on string')
+			}
 		}
 		else {
 			g.n_error('${@LOCATION} expr: unhandled node type: ${node.type_name()}')

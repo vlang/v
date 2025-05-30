@@ -37,6 +37,7 @@ mut:
 	linker_libs               []string
 	extern_fn_calls           map[i64]string
 	fn_addr                   map[string]i64
+	fn_names                  []string
 	var_offset                map[string]i32 // local var stack offset
 	var_alloc_size            map[string]i32 // local var allocation size
 	stack_var_pos             i32
@@ -80,6 +81,7 @@ interface CodeGen {
 mut:
 	g &Gen
 	add(r Register, val i32)
+	add_reg2(r Register, r2 Register)
 	address_size() i32
 	adr(r Arm64Register, delta i32) // Note: Temporary!
 	allocate_var(name string, size i32, initial_val Number) i32
@@ -97,6 +99,7 @@ mut:
 	convert_bool_to_string(r Register)
 	convert_int_to_string(a Register, b Register)
 	convert_rune_to_string(r Register, buffer i32, var Var, config VarConfig)
+	create_string_struct(typ ast.Type, name string, str string)
 	dec_var(var Var, config VarConfig)
 	fn_decl(node ast.FnDecl)
 	gen_asm_stmt(asm_node ast.AsmStmt)
@@ -1126,6 +1129,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.stack_var_pos = 0
 	g.stack_depth = 0
 	g.register_function_address(name)
+	g.fn_names << name
 	g.labels = &LabelTable{}
 	g.defer_stmts.clear()
 	g.return_type = node.return_type

@@ -133,8 +133,16 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 			ast.InfixExpr {
 				match cond.left {
 					ast.Ident {
-						lit := cond.right as ast.IntegerLiteral
-						g.code_gen.cmp_var(cond.left as ast.Ident, i32(lit.val.int()))
+						match cond.right {
+							ast.IntegerLiteral {
+								lit := cond.right as ast.IntegerLiteral
+								g.code_gen.cmp_var(cond.left as ast.Ident, i32(lit.val.int()))
+							}
+							else {
+								g.expr(cond.right)
+								g.code_gen.cmp_var_reg(cond.left as ast.Ident, Amd64Register.rax)
+							}
+						}
 						match cond.op {
 							.gt {
 								jump_addr = g.code_gen.cjmp(.jle)
