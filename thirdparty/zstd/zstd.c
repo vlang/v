@@ -108,9 +108,9 @@
  */
 #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__gnu_linux__) || \
     defined(__CYGWIN__) || defined(__MSYS__)
-#if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
-#define _GNU_SOURCE
-#endif
+# if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
+#   define _GNU_SOURCE
+# endif
 #endif
 
 #include <limits.h>
@@ -47339,8 +47339,9 @@ typedef struct {
   unsigned d;
 } COVER_ctx_t;
 
-#if !defined(_GNU_SOURCE) && !defined(__APPLE__) && !defined(_MSC_VER)
-/* C90 only offers qsort() that needs a global context. */
+#if defined(ZSTD_USE_C90_QSORT) \
+  || (!defined(_GNU_SOURCE) && !defined(__APPLE__) && !defined(_MSC_VER))
+/* Use global context for non-reentrant sort functions */
 static COVER_ctx_t *g_coverCtx = NULL;
 #endif
 
@@ -47426,7 +47427,7 @@ static void stableSort(COVER_ctx_t *ctx) {
     qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
             ctx,
             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
-#elif defined(_GNU_SOURCE)
+#elif defined(_GNU_SOURCE) && !defined(ZSTD_USE_C90_QSORT)
     qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp),
             ctx);
@@ -47440,7 +47441,7 @@ static void stableSort(COVER_ctx_t *ctx) {
           (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
 #else /* C90 fallback.*/
     g_coverCtx = ctx;
-    /* TODO(cavalcanti): implement a reentrant qsort() when is not available. */
+    /* TODO(cavalcanti): implement a reentrant qsort() when _r is not available. */
     qsort(ctx->suffix, ctx->suffixSize, sizeof(U32),
           (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
 #endif

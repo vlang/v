@@ -1,6 +1,6 @@
---- zstd-1.5.7.c	2025-05-30 08:31:56.986105804 +0800
-+++ zstd-1.5.7.c	2025-05-30 12:23:08.490951108 +0800
-@@ -50,6 +50,42 @@
+--- zstd-1.5.7.c	2025-05-30 16:39:46.374765970 +0800
++++ zstd.c	2025-05-30 20:52:04.907764386 +0800
+@@ -50,6 +50,27 @@
  /* TODO: Can't amalgamate ASM function */
  #define ZSTD_DISABLE_ASM 1
  
@@ -28,7 +28,20 @@
  /* Include zstd_deps.h first with all the options we need enabled. */
  #define ZSTD_DEPS_NEED_MALLOC
  #define ZSTD_DEPS_NEED_MATH64
-@@ -22353,7 +22389,7 @@
+@@ -87,9 +108,9 @@
+  */
+ #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__gnu_linux__) || \
+     defined(__CYGWIN__) || defined(__MSYS__)
+-#if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
+-#define _GNU_SOURCE
+-#endif
++# if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
++#   define _GNU_SOURCE
++# endif
+ #endif
+ 
+ #include <limits.h>
+@@ -22353,7 +22374,7 @@
  ZSTD_GEN_RECORD_FINGERPRINT(43, 8)
  
  
@@ -37,7 +50,7 @@
  
  static U64 fpDistance(const Fingerprint* fp1, const Fingerprint* fp2, unsigned hashLog)
  {
-@@ -22362,7 +22398,7 @@
+@@ -22362,7 +22383,7 @@
      assert(hashLog <= HASHLOG_MAX);
      for (n = 0; n < ((size_t)1 << hashLog); n++) {
          distance +=
@@ -46,7 +59,7 @@
      }
      return distance;
  }
-@@ -22482,7 +22518,7 @@
+@@ -22482,7 +22503,7 @@
      {   U64 const distFromBegin = fpDistance(&fpstats->pastEvents, middleEvents, 8);
          U64 const distFromEnd = fpDistance(&fpstats->newEvents, middleEvents, 8);
          U64 const minDistance = SEGMENT_SIZE * SEGMENT_SIZE / 3;
@@ -55,3 +68,33 @@
              return 64 KB;
          return (distFromBegin > distFromEnd) ? 32 KB : 96 KB;
      }
+@@ -47318,8 +47339,9 @@
+   unsigned d;
+ } COVER_ctx_t;
+ 
+-#if !defined(_GNU_SOURCE) && !defined(__APPLE__) && !defined(_MSC_VER)
+-/* C90 only offers qsort() that needs a global context. */
++#if defined(ZSTD_USE_C90_QSORT) \
++  || (!defined(_GNU_SOURCE) && !defined(__APPLE__) && !defined(_MSC_VER))
++/* Use global context for non-reentrant sort functions */
+ static COVER_ctx_t *g_coverCtx = NULL;
+ #endif
+ 
+@@ -47405,7 +47427,7 @@
+     qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
+             ctx,
+             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
+-#elif defined(_GNU_SOURCE)
++#elif defined(_GNU_SOURCE) && !defined(ZSTD_USE_C90_QSORT)
+     qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
+             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp),
+             ctx);
+@@ -47419,7 +47441,7 @@
+           (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
+ #else /* C90 fallback.*/
+     g_coverCtx = ctx;
+-    /* TODO(cavalcanti): implement a reentrant qsort() when is not available. */
++    /* TODO(cavalcanti): implement a reentrant qsort() when _r is not available. */
+     qsort(ctx->suffix, ctx->suffixSize, sizeof(U32),
+           (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
+ #endif
