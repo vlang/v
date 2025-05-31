@@ -162,6 +162,8 @@ pub enum ComptimeTypeKind {
 	function
 	option
 	string
+	pointer
+	voidptr
 }
 
 pub struct ComptimeType {
@@ -187,6 +189,8 @@ pub fn (cty ComptimeType) str() string {
 		.function { '\$function' }
 		.option { '\$option' }
 		.string { '\$string' }
+		.pointer { '\$pointer' }
+		.voidptr { '\$voidptr' }
 	}
 }
 
