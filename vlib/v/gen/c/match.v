@@ -281,12 +281,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 
 fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, cond_fsym ast.TypeSymbol) {
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
-	cname := '${cond_fsym.cname}__'
 
-	mut covered_enum_cap := 0
-	if cond_fsym.info is ast.Enum {
-		covered_enum_cap = cond_fsym.info.vals.len
-	}
+	covered_enum_cap := if cond_fsym.info is ast.Enum { cond_fsym.info.vals.len } else { 0 }
 	mut covered_enum := []string{cap: covered_enum_cap} // collects missing enum variant branches to avoid cstrict errors
 
 	// A branch that has a RangeExpr condition, cannot be emitted as a switch case branch;
@@ -300,16 +296,17 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 	for branch in node.branches {
 		if branch.is_else {
 			if cond_fsym.info is ast.Enum {
+				cname := '${cond_fsym.cname}__'
 				for val in cond_fsym.info.vals {
 					if val !in covered_enum {
 						g.writeln('case ${cname}${val}:')
 					}
 				}
 			}
-			g.write('default: ')
+			g.writeln('default: {')
 			default_generated = true
+			g.indent++
 			if range_branches.len > 0 {
-				g.indent++
 				for range_branch in range_branches {
 					g.write('if (')
 					for i, expr in range_branch.exprs {
@@ -339,7 +336,6 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 					}
 					g.writeln('}')
 				}
-				g.indent--
 			}
 		} else {
 			if branch.exprs.any(it is ast.RangeExpr) {
@@ -352,14 +348,9 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 				}
 				g.write('case ')
 				g.expr(expr)
-				if branch.stmts.len > 0 {
-					g.write(': ')
-				} else {
-					g.writeln(': ')
-				}
+				g.write(': ')
 			}
 		}
-		g.indent++
 		g.writeln('{')
 		if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
 			g.expected_cast_type = node.return_type
@@ -369,12 +360,12 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 		if !ends_with_return {
 			g.writeln('\tbreak;')
 		}
-		g.indent--
 		g.writeln('}')
 	}
 	if range_branches.len > 0 && !default_generated {
-		g.write('default: ')
+		g.writeln('default: {')
 		g.indent++
+		default_generated = true
 		for range_branch in range_branches {
 			g.write('if (')
 			for i, expr in range_branch.exprs {
@@ -404,7 +395,10 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 			}
 			g.writeln('}')
 		}
+	}
+	if default_generated {
 		g.indent--
+		g.writeln('}')
 	}
 	g.indent--
 	g.writeln('}')
