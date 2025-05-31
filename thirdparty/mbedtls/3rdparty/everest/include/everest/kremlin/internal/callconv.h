@@ -27,8 +27,10 @@
 /* Since KreMLin emits the inline keyword unconditionally, we follow the
  * guidelines at https://gcc.gnu.org/onlinedocs/gcc/Inline.html and make this
  * __inline__ to ensure the code compiles with -std=c90 and earlier. */
-#ifdef __GNUC__
+#if defined(__GNUC__)
 #  define inline __inline__
+#elif defined(_MSC_VER)
+#  define inline __inline
 #endif
 
 /* GCC-specific attribute syntax; everyone else gets the standard C inline

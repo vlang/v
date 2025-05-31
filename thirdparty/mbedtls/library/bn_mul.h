@@ -5,19 +5,7 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
- *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 /*
  *      Multiply source vector [s] with b, add result
@@ -47,44 +35,41 @@
  */
 #if defined(MBEDTLS_HAVE_INT32)
 
-#define MBEDTLS_BYTES_TO_T_UINT_4( a, b, c, d )               \
-    ( (mbedtls_mpi_uint) (a) <<  0 ) |                        \
-    ( (mbedtls_mpi_uint) (b) <<  8 ) |                        \
-    ( (mbedtls_mpi_uint) (c) << 16 ) |                        \
-    ( (mbedtls_mpi_uint) (d) << 24 )
+#define MBEDTLS_BYTES_TO_T_UINT_4(a, b, c, d)               \
+    ((mbedtls_mpi_uint) (a) <<  0) |                        \
+    ((mbedtls_mpi_uint) (b) <<  8) |                        \
+    ((mbedtls_mpi_uint) (c) << 16) |                        \
+    ((mbedtls_mpi_uint) (d) << 24)
 
-#define MBEDTLS_BYTES_TO_T_UINT_2( a, b )                   \
-    MBEDTLS_BYTES_TO_T_UINT_4( a, b, 0, 0 )
+#define MBEDTLS_BYTES_TO_T_UINT_2(a, b)                   \
+    MBEDTLS_BYTES_TO_T_UINT_4(a, b, 0, 0)
 
-#define MBEDTLS_BYTES_TO_T_UINT_8( a, b, c, d, e, f, g, h ) \
-    MBEDTLS_BYTES_TO_T_UINT_4( a, b, c, d ),                \
-    MBEDTLS_BYTES_TO_T_UINT_4( e, f, g, h )
+#define MBEDTLS_BYTES_TO_T_UINT_8(a, b, c, d, e, f, g, h) \
+    MBEDTLS_BYTES_TO_T_UINT_4(a, b, c, d),                \
+    MBEDTLS_BYTES_TO_T_UINT_4(e, f, g, h)
 
 #else /* 64-bits */
 
-#define MBEDTLS_BYTES_TO_T_UINT_8( a, b, c, d, e, f, g, h )   \
-    ( (mbedtls_mpi_uint) (a) <<  0 ) |                        \
-    ( (mbedtls_mpi_uint) (b) <<  8 ) |                        \
-    ( (mbedtls_mpi_uint) (c) << 16 ) |                        \
-    ( (mbedtls_mpi_uint) (d) << 24 ) |                        \
-    ( (mbedtls_mpi_uint) (e) << 32 ) |                        \
-    ( (mbedtls_mpi_uint) (f) << 40 ) |                        \
-    ( (mbedtls_mpi_uint) (g) << 48 ) |                        \
-    ( (mbedtls_mpi_uint) (h) << 56 )
+#define MBEDTLS_BYTES_TO_T_UINT_8(a, b, c, d, e, f, g, h)   \
+    ((mbedtls_mpi_uint) (a) <<  0) |                        \
+    ((mbedtls_mpi_uint) (b) <<  8) |                        \
+    ((mbedtls_mpi_uint) (c) << 16) |                        \
+    ((mbedtls_mpi_uint) (d) << 24) |                        \
+    ((mbedtls_mpi_uint) (e) << 32) |                        \
+    ((mbedtls_mpi_uint) (f) << 40) |                        \
+    ((mbedtls_mpi_uint) (g) << 48) |                        \
+    ((mbedtls_mpi_uint) (h) << 56)
 
-#define MBEDTLS_BYTES_TO_T_UINT_4( a, b, c, d )             \
-    MBEDTLS_BYTES_TO_T_UINT_8( a, b, c, d, 0, 0, 0, 0 )
+#define MBEDTLS_BYTES_TO_T_UINT_4(a, b, c, d)             \
+    MBEDTLS_BYTES_TO_T_UINT_8(a, b, c, d, 0, 0, 0, 0)
 
-#define MBEDTLS_BYTES_TO_T_UINT_2( a, b )                   \
-    MBEDTLS_BYTES_TO_T_UINT_8( a, b, 0, 0, 0, 0, 0, 0 )
+#define MBEDTLS_BYTES_TO_T_UINT_2(a, b)                   \
+    MBEDTLS_BYTES_TO_T_UINT_8(a, b, 0, 0, 0, 0, 0, 0)
 
 #endif /* bits in mbedtls_mpi_uint */
 
+/* *INDENT-OFF* */
 #if defined(MBEDTLS_HAVE_ASM)
-
-#ifndef asm
-#define asm __asm
-#endif
 
 /* armcc5 --gnu defines __GNUC__ but doesn't support GNU's extended asm */
 #if defined(__GNUC__) && \
@@ -251,27 +236,39 @@
 
 #endif /* AMD64 */
 
-#if defined(__aarch64__)
+// The following assembly code assumes that a pointer will fit in a 64-bit register
+// (including ILP32 __aarch64__ ABIs such as on watchOS, hence the 2^32 - 1)
+#if defined(__aarch64__) && (UINTPTR_MAX == 0xfffffffful || UINTPTR_MAX == 0xfffffffffffffffful)
 
+/*
+ * There are some issues around different compilers requiring different constraint
+ * syntax for updating pointers from assembly code (see notes for
+ * MBEDTLS_ASM_AARCH64_PTR_CONSTRAINT in common.h), especially on aarch64_32 (aka ILP32).
+ *
+ * For this reason we cast the pointers to/from uintptr_t here.
+ */
 #define MULADDC_X1_INIT             \
-    asm(
+    do { uintptr_t muladdc_d = (uintptr_t) d, muladdc_s = (uintptr_t) s; asm(
 
 #define MULADDC_X1_CORE             \
-        "ldr x4, [%2], #8   \n\t"   \
-        "ldr x5, [%1]       \n\t"   \
+        "ldr x4, [%x2], #8  \n\t"   \
+        "ldr x5, [%x1]      \n\t"   \
         "mul x6, x4, %4     \n\t"   \
         "umulh x7, x4, %4   \n\t"   \
         "adds x5, x5, x6    \n\t"   \
         "adc x7, x7, xzr    \n\t"   \
         "adds x5, x5, %0    \n\t"   \
         "adc %0, x7, xzr    \n\t"   \
-        "str x5, [%1], #8   \n\t"
+        "str x5, [%x1], #8  \n\t"
 
 #define MULADDC_X1_STOP                                                 \
-         : "+r" (c),  "+r" (d), "+r" (s), "+m" (*(uint64_t (*)[16]) d)  \
+         : "+r" (c),                                                    \
+           "+r" (muladdc_d),                                            \
+           "+r" (muladdc_s),                                            \
+           "+m" (*(uint64_t (*)[16]) d)                                 \
          : "r" (b), "m" (*(const uint64_t (*)[16]) s)                   \
          : "x4", "x5", "x6", "x7", "cc"                                 \
-    );
+    ); d = (mbedtls_mpi_uint *)muladdc_d; s = (mbedtls_mpi_uint *)muladdc_s; } while (0);
 
 #endif /* Aarch64 */
 
@@ -661,6 +658,16 @@
 
 #endif /* TriCore */
 
+#if defined(__arm__)
+
+#if defined(__thumb__) && !defined(__thumb2__)
+#if defined(MBEDTLS_COMPILER_IS_GCC)
+/*
+ * Thumb 1 ISA. This code path has only been tested successfully on gcc;
+ * it does not compile on clang or armclang.
+ */
+
+#if !defined(__OPTIMIZE__) && defined(__GNUC__)
 /*
  * Note, gcc -O0 by default uses r7 for the frame pointer, so it complains about
  * our use of r7 below, unless -fomit-frame-pointer is passed.
@@ -669,32 +676,39 @@
  * x !=0, which we can detect using __OPTIMIZE__ (which is also defined by
  * clang and armcc5 under the same conditions).
  *
- * So, only use the optimized assembly below for optimized build, which avoids
- * the build error and is pretty reasonable anyway.
+ * If gcc needs to use r7, we use r1 as a scratch register and have a few extra
+ * instructions to preserve/restore it; otherwise, we can use r7 and avoid
+ * the preserve/restore overhead.
  */
-#if defined(__GNUC__) && !defined(__OPTIMIZE__)
-#define MULADDC_CANNOT_USE_R7
-#endif
-
-#if defined(__arm__) && !defined(MULADDC_CANNOT_USE_R7)
-
-#if defined(__thumb__) && !defined(__thumb2__)
+#define MULADDC_SCRATCH              "RS .req r1         \n\t"
+#define MULADDC_PRESERVE_SCRATCH     "mov    r10, r1     \n\t"
+#define MULADDC_RESTORE_SCRATCH      "mov    r1, r10     \n\t"
+#define MULADDC_SCRATCH_CLOBBER      "r10"
+#else /* !defined(__OPTIMIZE__) && defined(__GNUC__) */
+#define MULADDC_SCRATCH              "RS .req r7         \n\t"
+#define MULADDC_PRESERVE_SCRATCH     ""
+#define MULADDC_RESTORE_SCRATCH      ""
+#define MULADDC_SCRATCH_CLOBBER      "r7"
+#endif /* !defined(__OPTIMIZE__) && defined(__GNUC__) */
 
 #define MULADDC_X1_INIT                                 \
     asm(                                                \
+    MULADDC_SCRATCH                                     \
             "ldr    r0, %3                      \n\t"   \
             "ldr    r1, %4                      \n\t"   \
             "ldr    r2, %5                      \n\t"   \
             "ldr    r3, %6                      \n\t"   \
-            "lsr    r7, r3, #16                 \n\t"   \
-            "mov    r9, r7                      \n\t"   \
-            "lsl    r7, r3, #16                 \n\t"   \
-            "lsr    r7, r7, #16                 \n\t"   \
-            "mov    r8, r7                      \n\t"
+            "lsr    r4, r3, #16                 \n\t"   \
+            "mov    r9, r4                      \n\t"   \
+            "lsl    r4, r3, #16                 \n\t"   \
+            "lsr    r4, r4, #16                 \n\t"   \
+            "mov    r8, r4                      \n\t"   \
+
 
 #define MULADDC_X1_CORE                                 \
+            MULADDC_PRESERVE_SCRATCH                    \
             "ldmia  r0!, {r6}                   \n\t"   \
-            "lsr    r7, r6, #16                 \n\t"   \
+            "lsr    RS, r6, #16                 \n\t"   \
             "lsl    r6, r6, #16                 \n\t"   \
             "lsr    r6, r6, #16                 \n\t"   \
             "mov    r4, r8                      \n\t"   \
@@ -702,12 +716,12 @@
             "mov    r3, r9                      \n\t"   \
             "mul    r6, r3                      \n\t"   \
             "mov    r5, r9                      \n\t"   \
-            "mul    r5, r7                      \n\t"   \
+            "mul    r5, RS                      \n\t"   \
             "mov    r3, r8                      \n\t"   \
-            "mul    r7, r3                      \n\t"   \
+            "mul    RS, r3                      \n\t"   \
             "lsr    r3, r6, #16                 \n\t"   \
             "add    r5, r5, r3                  \n\t"   \
-            "lsr    r3, r7, #16                 \n\t"   \
+            "lsr    r3, RS, #16                 \n\t"   \
             "add    r5, r5, r3                  \n\t"   \
             "add    r4, r4, r2                  \n\t"   \
             "mov    r2, #0                      \n\t"   \
@@ -715,9 +729,10 @@
             "lsl    r3, r6, #16                 \n\t"   \
             "add    r4, r4, r3                  \n\t"   \
             "adc    r5, r2                      \n\t"   \
-            "lsl    r3, r7, #16                 \n\t"   \
+            "lsl    r3, RS, #16                 \n\t"   \
             "add    r4, r4, r3                  \n\t"   \
             "adc    r5, r2                      \n\t"   \
+            MULADDC_RESTORE_SCRATCH                     \
             "ldr    r3, [r1]                    \n\t"   \
             "add    r4, r4, r3                  \n\t"   \
             "adc    r2, r5                      \n\t"   \
@@ -730,11 +745,15 @@
          : "=m" (c),  "=m" (d), "=m" (s)        \
          : "m" (s), "m" (d), "m" (c), "m" (b)   \
          : "r0", "r1", "r2", "r3", "r4", "r5",  \
-           "r6", "r7", "r8", "r9", "cc"         \
+           "r6", MULADDC_SCRATCH_CLOBBER, "r8", "r9", "cc" \
          );
+#endif /* !defined(__ARMCC_VERSION) && !defined(__clang__) */
 
 #elif (__ARM_ARCH >= 6) && \
     defined (__ARM_FEATURE_DSP) && (__ARM_FEATURE_DSP == 1)
+/* Armv6-M (or later) with DSP Instruction Set Extensions.
+ * Requires support for either Thumb 2 or Arm ISA.
+ */
 
 #define MULADDC_X1_INIT                            \
     {                                              \
@@ -799,7 +818,7 @@
         );                                                   \
     }
 
-#else
+#else /* Thumb 2 or Arm ISA, without DSP extensions */
 
 #define MULADDC_X1_INIT                                 \
     asm(                                                \
@@ -813,9 +832,9 @@
             "mov    r5, #0                      \n\t"   \
             "ldr    r6, [r1]                    \n\t"   \
             "umlal  r2, r5, r3, r4              \n\t"   \
-            "adds   r7, r6, r2                  \n\t"   \
+            "adds   r4, r6, r2                  \n\t"   \
             "adc    r2, r5, #0                  \n\t"   \
-            "str    r7, [r1], #4                \n\t"
+            "str    r4, [r1], #4                \n\t"
 
 #define MULADDC_X1_STOP                                 \
             "str    r2, %0                      \n\t"   \
@@ -824,12 +843,12 @@
          : "=m" (c),  "=m" (d), "=m" (s)        \
          : "m" (s), "m" (d), "m" (c), "m" (b)   \
          : "r0", "r1", "r2", "r3", "r4", "r5",  \
-           "r6", "r7", "cc"                     \
+           "r6", "cc"                     \
          );
 
-#endif /* Thumb */
+#endif /* ISA codepath selection */
 
-#endif /* ARMv3 */
+#endif /* defined(__arm__) */
 
 #if defined(__alpha__)
 
@@ -1071,4 +1090,5 @@
 #define MULADDC_X8_CORE MULADDC_X4_CORE MULADDC_X4_CORE
 #endif /* MULADDC_X8_CORE */
 
+/* *INDENT-ON* */
 #endif /* bn_mul.h */

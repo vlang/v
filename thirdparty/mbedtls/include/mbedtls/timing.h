@@ -5,19 +5,7 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
- *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 #ifndef MBEDTLS_TIMING_H
 #define MBEDTLS_TIMING_H
@@ -38,16 +26,14 @@ extern "C" {
 /**
  * \brief          timer structure
  */
-struct mbedtls_timing_hr_time
-{
-    unsigned char MBEDTLS_PRIVATE(opaque)[32];
+struct mbedtls_timing_hr_time {
+    uint64_t MBEDTLS_PRIVATE(opaque)[4];
 };
 
 /**
  * \brief          Context for mbedtls_timing_set/get_delay()
  */
-typedef struct mbedtls_timing_delay_context
-{
+typedef struct mbedtls_timing_delay_context {
     struct mbedtls_timing_hr_time   MBEDTLS_PRIVATE(timer);
     uint32_t                        MBEDTLS_PRIVATE(int_ms);
     uint32_t                        MBEDTLS_PRIVATE(fin_ms);
@@ -58,7 +44,7 @@ typedef struct mbedtls_timing_delay_context
 #endif /* MBEDTLS_TIMING_ALT */
 
 /* Internal use */
-unsigned long mbedtls_timing_get_timer( struct mbedtls_timing_hr_time *val, int reset );
+unsigned long mbedtls_timing_get_timer(struct mbedtls_timing_hr_time *val, int reset);
 
 /**
  * \brief          Set a pair of delays to watch
@@ -74,7 +60,7 @@ unsigned long mbedtls_timing_get_timer( struct mbedtls_timing_hr_time *val, int 
  * \note           To set a single delay, either use \c mbedtls_timing_set_timer
  *                 directly or use this function with int_ms == fin_ms.
  */
-void mbedtls_timing_set_delay( void *data, uint32_t int_ms, uint32_t fin_ms );
+void mbedtls_timing_set_delay(void *data, uint32_t int_ms, uint32_t fin_ms);
 
 /**
  * \brief          Get the status of delays
@@ -88,7 +74,7 @@ void mbedtls_timing_set_delay( void *data, uint32_t int_ms, uint32_t fin_ms );
  *                  1 if only the intermediate delay is passed,
  *                  2 if the final delay is passed.
  */
-int mbedtls_timing_get_delay( void *data );
+int mbedtls_timing_get_delay(void *data);
 
 /**
  * \brief          Get the final timing delay
@@ -99,7 +85,7 @@ int mbedtls_timing_get_delay( void *data );
  * \return         Final timing delay in milliseconds.
  */
 uint32_t mbedtls_timing_get_final_delay(
-                                     const mbedtls_timing_delay_context *data );
+    const mbedtls_timing_delay_context *data);
 
 #ifdef __cplusplus
 }
