@@ -50,29 +50,26 @@
 /* TODO: Can't amalgamate ASM function */
 #define ZSTD_DISABLE_ASM 1
 
-#if defined(__TINYC__) 
+/* >> v_patch start */
+#if defined(__TINYC__)
+
 #if defined(_WIN32)
 #undef ZSTD_MULTITHREAD
 #define ZSTD_NO_INTRINSICS
 #endif
+
+/* tcc doesn't support ARM asm */
 #if defined(__arm__) || defined(__aarch64__)
 #define NO_PREFETCH
 #endif
+
+#if defined(__FreeBSD__) || defined(__OpenBSD__)
+/* tcc on FreeBSD/OpenBSD define __GNUC__, but it can't work here */
+#undef __GNUC__
 #endif
 
-#ifndef ZDICT_QSORT
-# if defined(__APPLE__)
-#   define ZDICT_QSORT ZDICT_QSORT_APPLE /* uses qsort_r() with a different order for parameters */
-# elif defined(__GLIBC__)
-#   define ZDICT_QSORT ZDICT_QSORT_GNU /* uses qsort_r() */
-# elif defined(_WIN32) && defined(_MSC_VER)
-#   define ZDICT_QSORT ZDICT_QSORT_MSVC /* uses qsort_s() with a different order for parameters */
-# elif defined(STDC_LIB_EXT1) && (STDC_LIB_EXT1 > 0) /* C11 Annex K */
-#   define ZDICT_QSORT ZDICT_QSORT_C11 /* uses qsort_s() */
-# else
-#   define ZDICT_QSORT ZDICT_QSORT_C90 /* uses standard qsort() which is not re-entrant (requires global variable) */
-# endif
-#endif
+#endif /* __TINYC__ */
+/* << v_patch end */
 
 /* Include zstd_deps.h first with all the options we need enabled. */
 #define ZSTD_DEPS_NEED_MALLOC
@@ -566,25 +563,6 @@ int g_debuglevel = DEBUGLEVEL;
 # define ZSTD_CET_ENDBRANCH
 #endif
 
-/**
- * ZSTD_IS_DETERMINISTIC_BUILD must be set to 0 if any compilation macro is
- * active that impacts the compressed output.
- *
- * NOTE: ZSTD_MULTITHREAD is allowed to be set or unset.
- */
-#if defined(ZSTD_CLEVEL_DEFAULT) \
-    || defined(ZSTD_EXCLUDE_DFAST_BLOCK_COMPRESSOR) \
-    || defined(ZSTD_EXCLUDE_GREEDY_BLOCK_COMPRESSOR) \
-    || defined(ZSTD_EXCLUDE_LAZY_BLOCK_COMPRESSOR) \
-    || defined(ZSTD_EXCLUDE_LAZY2_BLOCK_COMPRESSOR) \
-    || defined(ZSTD_EXCLUDE_BTLAZY2_BLOCK_COMPRESSOR) \
-    || defined(ZSTD_EXCLUDE_BTOPT_BLOCK_COMPRESSOR) \
-    || defined(ZSTD_EXCLUDE_BTULTRA_BLOCK_COMPRESSOR)
-# define ZSTD_IS_DETERMINISTIC_BUILD 0
-#else
-# define ZSTD_IS_DETERMINISTIC_BUILD 1
-#endif
-
 #endif /* ZSTD_PORTABILITY_MACROS_H */
 /**** ended inlining portability_macros.h ****/
 
@@ -930,9 +908,9 @@ ptrdiff_t ZSTD_wrappedPtrDiff(unsigned char const* lhs, unsigned char const* rhs
  */
 MEM_STATIC
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
-const void* ZSTD_wrappedPtrAdd(const void* ptr, ptrdiff_t add)
+unsigned char const* ZSTD_wrappedPtrAdd(unsigned char const* ptr, ptrdiff_t add)
 {
-    return (const char*)ptr + add;
+    return ptr + add;
 }
 
 /**
@@ -943,9 +921,9 @@ const void* ZSTD_wrappedPtrAdd(const void* ptr, ptrdiff_t add)
  */
 MEM_STATIC
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
-const void* ZSTD_wrappedPtrSub(const void* ptr, ptrdiff_t sub)
+unsigned char const* ZSTD_wrappedPtrSub(unsigned char const* ptr, ptrdiff_t sub)
 {
-    return (const char*)ptr - sub;
+    return ptr - sub;
 }
 
 /**
@@ -955,9 +933,9 @@ const void* ZSTD_wrappedPtrSub(const void* ptr, ptrdiff_t sub)
  * @returns `ptr + add` except it defines `NULL + 0 == NULL`.
  */
 MEM_STATIC
-void* ZSTD_maybeNullPtrAdd(void* ptr, ptrdiff_t add)
+unsigned char* ZSTD_maybeNullPtrAdd(unsigned char* ptr, ptrdiff_t add)
 {
-    return add > 0 ? (char*)ptr + add : ptr;
+    return add > 0 ? ptr + add : ptr;
 }
 
 /* Issue #3240 reports an ASAN failure on an llvm-mingw build. Out of an
@@ -1993,7 +1971,7 @@ MEM_STATIC unsigned ZSTD_countTrailingZeros32_fallback(U32 val)
                                                 30, 22, 20, 15, 25, 17, 4, 8,
                                                 31, 27, 13, 23, 21, 19, 16, 7,
                                                 26, 12, 18, 6, 11, 5, 10, 9};
-        return DeBruijnBytePos[((U32) ((val & (0-val)) * 0x077CB531U)) >> 27];
+        return DeBruijnBytePos[((U32) ((val & -(S32) val) * 0x077CB531U)) >> 27];
     }
 }
 
@@ -4452,7 +4430,7 @@ extern "C" {
 /*------   Version   ------*/
 #define ZSTD_VERSION_MAJOR    1
 #define ZSTD_VERSION_MINOR    5
-#define ZSTD_VERSION_RELEASE  8
+#define ZSTD_VERSION_RELEASE  7
 #define ZSTD_VERSION_NUMBER  (ZSTD_VERSION_MAJOR *100*100 + ZSTD_VERSION_MINOR *100 + ZSTD_VERSION_RELEASE)
 
 /*! ZSTD_versionNumber() :
@@ -6209,13 +6187,14 @@ ZSTDLIB_STATIC_API const ZSTD_DDict* ZSTD_initStaticDDict(
 typedef void* (*ZSTD_allocFunction) (void* opaque, size_t size);
 typedef void  (*ZSTD_freeFunction) (void* opaque, void* address);
 typedef struct { ZSTD_allocFunction customAlloc; ZSTD_freeFunction customFree; void* opaque; } ZSTD_customMem;
-#if defined(__clang__) && __clang_major__ >= 5
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wzero-as-null-pointer-constant"
-#endif
 static
 #ifdef __GNUC__
 __attribute__((__unused__))
+#endif
+
+#if defined(__clang__) && __clang_major__ >= 5
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wzero-as-null-pointer-constant"
 #endif
 ZSTD_customMem const ZSTD_defaultCMem = { NULL, NULL, NULL };  /**< this constant defers to stdlib's functions */
 #if defined(__clang__) && __clang_major__ >= 5
@@ -7477,18 +7456,6 @@ typedef enum { ZSTDnit_frameHeader, ZSTDnit_blockHeader, ZSTDnit_block, ZSTDnit_
 ZSTDLIB_STATIC_API ZSTD_nextInputType_e ZSTD_nextInputType(ZSTD_DCtx* dctx);
 
 
-
-/*! ZSTD_isDeterministicBuild() :
- * Returns 1 if the library is built using standard compilation flags,
- * and participates in determinism guarantees with other builds of the
- * same version.
- * If this function returns 0, it means the library was compiled with
- * non-standard compilation flags that change the output of the
- * compressor.
- * This is mainly used for Zstd's determinism test suite, which is only
- * run when this function returns 1.
- */
-ZSTDLIB_API int ZSTD_isDeterministicBuild(void);
 
 
 /* ========================================= */
@@ -15763,7 +15730,7 @@ typedef enum {
  *           The src buffer must be before the dst buffer.
  */
 MEM_STATIC FORCE_INLINE_ATTR
-void ZSTD_wildcopy(void* dst, const void* src, size_t length, ZSTD_overlap_e const ovtype)
+void ZSTD_wildcopy(void* dst, const void* src, ptrdiff_t length, ZSTD_overlap_e const ovtype)
 {
     ptrdiff_t diff = (BYTE*)dst - (const BYTE*)src;
     const BYTE* ip = (const BYTE*)src;
@@ -15903,15 +15870,6 @@ ZSTD_ErrorCode ZSTD_getErrorCode(size_t code) { return ERR_getErrorCode(code); }
 /*! ZSTD_getErrorString() :
  *  provides error code string from enum */
 const char* ZSTD_getErrorString(ZSTD_ErrorCode code) { return ERR_getErrorString(code); }
-
-int ZSTD_isDeterministicBuild(void)
-{
-#if ZSTD_IS_DETERMINISTIC_BUILD
-    return 1;
-#else
-    return 0;
-#endif
-}
 /**** ended inlining common/zstd_common.c ****/
 
 /**** start inlining compress/fse_compress.c ****/
@@ -17245,7 +17203,6 @@ static U32 HUF_setMaxHeight(nodeElt* huffNode, U32 lastNonNull, U32 targetNbBits
                  * gain back half the rank.
                  */
                 U32 nBitsToDecrease = ZSTD_highbit32((U32)totalCost) + 1;
-                assert(nBitsToDecrease <= HUF_TABLELOG_MAX+1);
                 for ( ; nBitsToDecrease > 1; nBitsToDecrease--) {
                     U32 const highPos = rankLast[nBitsToDecrease];
                     U32 const lowPos = rankLast[nBitsToDecrease-1];
@@ -19925,7 +19882,7 @@ ZSTD_safecopyLiterals(BYTE* op, BYTE const* ip, BYTE const* const iend, BYTE con
 {
     assert(iend > ilimit_w);
     if (ip <= ilimit_w) {
-        ZSTD_wildcopy(op, ip, (size_t)(ilimit_w - ip), ZSTD_no_overlap);
+        ZSTD_wildcopy(op, ip, ilimit_w - ip, ZSTD_no_overlap);
         op += ilimit_w - ip;
         ip = ilimit_w;
     }
@@ -20018,7 +19975,7 @@ ZSTD_storeSeq(SeqStore_t* seqStorePtr,
         ZSTD_STATIC_ASSERT(WILDCOPY_OVERLENGTH >= 16);
         ZSTD_copy16(seqStorePtr->lit, literals);
         if (litLength > 16) {
-            ZSTD_wildcopy(seqStorePtr->lit+16, literals+16, litLength-16, ZSTD_no_overlap);
+            ZSTD_wildcopy(seqStorePtr->lit+16, literals+16, (ptrdiff_t)litLength-16, ZSTD_no_overlap);
         }
     } else {
         ZSTD_safecopyLiterals(seqStorePtr->lit, literals, litEnd, litLimit_w);
@@ -20741,7 +20698,7 @@ typedef struct {
 /* for benchmark */
 size_t ZSTD_convertBlockSequences(ZSTD_CCtx* cctx,
                         const ZSTD_Sequence* const inSeqs, size_t nbSequences,
-                        int repcodeResolution);
+                        int const repcodeResolution);
 
 typedef struct {
     size_t nbSequences;
@@ -23255,18 +23212,10 @@ static int ZSTD_rowMatchFinderUsed(const ZSTD_strategy strategy, const ZSTD_Para
 /* Returns row matchfinder usage given an initial mode and cParams */
 static ZSTD_ParamSwitch_e ZSTD_resolveRowMatchFinderMode(ZSTD_ParamSwitch_e mode,
                                                          const ZSTD_compressionParameters* const cParams) {
-#ifdef ZSTD_LINUX_KERNEL
-    /* The Linux Kernel does not use SIMD, and 128KB is a very common size, e.g. in BtrFS.
-     * The row match finder is slower for this size without SIMD, so disable it.
-     */
-    const unsigned kWindowLogLowerBound = 17;
-#else
-    const unsigned kWindowLogLowerBound = 14;
-#endif
     if (mode != ZSTD_ps_auto) return mode; /* if requested enabled, but no SIMD, we still will use row matchfinder */
     mode = ZSTD_ps_disable;
     if (!ZSTD_rowMatchFinderSupported(cParams->strategy)) return mode;
-    if (cParams->windowLog > kWindowLogLowerBound) mode = ZSTD_ps_enable;
+    if (cParams->windowLog > 14) mode = ZSTD_ps_enable;
     return mode;
 }
 
@@ -39353,7 +39302,6 @@ size_t ZSTDMT_compressStream_generic(ZSTDMT_CCtx* mtctx,
 /* **************************************************************
 *  Dependencies
 ****************************************************************/
-#include <stddef.h>               /* size_t */
 /**** skipping file: ../common/zstd_deps.h ****/
 /**** skipping file: ../common/compiler.h ****/
 /**** skipping file: ../common/bitstream.h ****/
@@ -39534,7 +39482,7 @@ static size_t HUF_DecompressFastArgs_init(HUF_DecompressFastArgs* args, void* ds
 
     const BYTE* const istart = (const BYTE*)src;
 
-    BYTE* const oend = (BYTE*)ZSTD_maybeNullPtrAdd(dst, (ptrdiff_t)dstSize);
+    BYTE* const oend = ZSTD_maybeNullPtrAdd((BYTE*)dst, dstSize);
 
     /* The fast decoding loop assumes 64-bit little-endian.
      * This condition is false on x32.
@@ -39917,7 +39865,7 @@ HUF_decompress1X1_usingDTable_internal_body(
     const HUF_DTable* DTable)
 {
     BYTE* op = (BYTE*)dst;
-    BYTE* const oend = (BYTE*)ZSTD_maybeNullPtrAdd(op, (ptrdiff_t)dstSize);
+    BYTE* const oend = ZSTD_maybeNullPtrAdd(op, dstSize);
     const void* dtPtr = DTable + 1;
     const HUF_DEltX1* const dt = (const HUF_DEltX1*)dtPtr;
     BIT_DStream_t bitD;
@@ -40184,7 +40132,7 @@ HUF_decompress4X1_usingDTable_internal_fast(
 {
     void const* dt = DTable + 1;
     BYTE const* const ilowest = (BYTE const*)cSrc;
-    BYTE* const oend = (BYTE*)ZSTD_maybeNullPtrAdd(dst, (ptrdiff_t)dstSize);
+    BYTE* const oend = ZSTD_maybeNullPtrAdd((BYTE*)dst, dstSize);
     HUF_DecompressFastArgs args;
     {   size_t const ret = HUF_DecompressFastArgs_init(&args, dst, dstSize, cSrc, cSrcSize, DTable);
         FORWARD_IF_ERROR(ret, "Failed to init fast loop args");
@@ -40701,7 +40649,7 @@ HUF_decompress1X2_usingDTable_internal_body(
 
     /* decode */
     {   BYTE* const ostart = (BYTE*) dst;
-        BYTE* const oend = (BYTE*)ZSTD_maybeNullPtrAdd(ostart, (ptrdiff_t)dstSize);
+        BYTE* const oend = ZSTD_maybeNullPtrAdd(ostart, dstSize);
         const void* const dtPtr = DTable+1;   /* force compiler to not use strict-aliasing */
         const HUF_DEltX2* const dt = (const HUF_DEltX2*)dtPtr;
         DTableDesc const dtd = HUF_getDTableDesc(DTable);
@@ -41010,7 +40958,7 @@ HUF_decompress4X2_usingDTable_internal_fast(
     HUF_DecompressFastLoopFn loopFn) {
     void const* dt = DTable + 1;
     const BYTE* const ilowest = (const BYTE*)cSrc;
-    BYTE* const oend = (BYTE*)ZSTD_maybeNullPtrAdd(dst, (ptrdiff_t)dstSize);
+    BYTE* const oend = ZSTD_maybeNullPtrAdd((BYTE*)dst, dstSize);
     HUF_DecompressFastArgs args;
     {
         size_t const ret = HUF_DecompressFastArgs_init(&args, dst, dstSize, cSrc, cSrcSize, DTable);
@@ -44319,13 +44267,14 @@ size_t ZSTD_decompressStream_simpleArgs (
 *********************************************************/
 /**** skipping file: ../common/zstd_deps.h ****/
 /**** skipping file: ../common/compiler.h ****/
+/**** skipping file: ../common/cpu.h ****/
 /**** skipping file: ../common/mem.h ****/
-#include <stddef.h>
 #define FSE_STATIC_LINKING_ONLY
 /**** skipping file: ../common/fse.h ****/
 /**** skipping file: ../common/huf.h ****/
 /**** skipping file: ../common/zstd_internal.h ****/
 /**** skipping file: zstd_decompress_internal.h ****/
+/**** skipping file: zstd_ddict.h ****/
 /**** skipping file: zstd_decompress_block.h ****/
 /**** skipping file: ../common/bits.h ****/
 
@@ -45036,10 +44985,9 @@ size_t ZSTD_decodeSeqHeaders(ZSTD_DCtx* dctx, int* nbSeqPtr,
         ip++;
 
         /* Build DTables */
-        assert(ip <= iend);
         {   size_t const llhSize = ZSTD_buildSeqTable(dctx->entropy.LLTable, &dctx->LLTptr,
                                                       LLtype, MaxLL, LLFSELog,
-                                                      ip, (size_t)(iend-ip),
+                                                      ip, iend-ip,
                                                       LL_base, LL_bits,
                                                       LL_defaultDTable, dctx->fseEntropy,
                                                       dctx->ddictIsCold, nbSeq,
@@ -45049,10 +44997,9 @@ size_t ZSTD_decodeSeqHeaders(ZSTD_DCtx* dctx, int* nbSeqPtr,
             ip += llhSize;
         }
 
-        assert(ip <= iend);
         {   size_t const ofhSize = ZSTD_buildSeqTable(dctx->entropy.OFTable, &dctx->OFTptr,
                                                       OFtype, MaxOff, OffFSELog,
-                                                      ip, (size_t)(iend-ip),
+                                                      ip, iend-ip,
                                                       OF_base, OF_bits,
                                                       OF_defaultDTable, dctx->fseEntropy,
                                                       dctx->ddictIsCold, nbSeq,
@@ -45062,10 +45009,9 @@ size_t ZSTD_decodeSeqHeaders(ZSTD_DCtx* dctx, int* nbSeqPtr,
             ip += ofhSize;
         }
 
-        assert(ip <= iend);
         {   size_t const mlhSize = ZSTD_buildSeqTable(dctx->entropy.MLTable, &dctx->MLTptr,
                                                       MLtype, MaxML, MLFSELog,
-                                                      ip, (size_t)(iend-ip),
+                                                      ip, iend-ip,
                                                       ML_base, ML_bits,
                                                       ML_defaultDTable, dctx->fseEntropy,
                                                       dctx->ddictIsCold, nbSeq,
@@ -45076,7 +45022,7 @@ size_t ZSTD_decodeSeqHeaders(ZSTD_DCtx* dctx, int* nbSeqPtr,
         }
     }
 
-    return (size_t)(ip-istart);
+    return ip-istart;
 }
 
 
@@ -45106,8 +45052,7 @@ typedef struct {
  *  Precondition: *ip <= *op
  *  Postcondition: *op - *op >= 8
  */
-HINT_INLINE void ZSTD_overlapCopy8(BYTE** op, BYTE const** ip, size_t offset)
-{
+HINT_INLINE void ZSTD_overlapCopy8(BYTE** op, BYTE const** ip, size_t offset) {
     assert(*ip <= *op);
     if (offset < 8) {
         /* close range match, overlap */
@@ -45140,9 +45085,7 @@ HINT_INLINE void ZSTD_overlapCopy8(BYTE** op, BYTE const** ip, size_t offset)
  *         - ZSTD_overlap_src_before_dst: The src and dst may overlap and may be any distance apart.
  *           The src buffer must be before the dst buffer.
  */
-static void
-ZSTD_safecopy(BYTE* op, const BYTE* const oend_w, BYTE const* ip, size_t length, ZSTD_overlap_e ovtype)
-{
+static void ZSTD_safecopy(BYTE* op, const BYTE* const oend_w, BYTE const* ip, ptrdiff_t length, ZSTD_overlap_e ovtype) {
     ptrdiff_t const diff = op - ip;
     BYTE* const oend = op + length;
 
@@ -45157,8 +45100,7 @@ ZSTD_safecopy(BYTE* op, const BYTE* const oend_w, BYTE const* ip, size_t length,
     if (ovtype == ZSTD_overlap_src_before_dst) {
         /* Copy 8 bytes and ensure the offset >= 8 when there can be overlap. */
         assert(length >= 8);
-        assert(diff > 0);
-        ZSTD_overlapCopy8(&op, &ip, (size_t)diff);
+        ZSTD_overlapCopy8(&op, &ip, diff);
         length -= 8;
         assert(op - ip >= 8);
         assert(op <= oend);
@@ -45172,7 +45114,7 @@ ZSTD_safecopy(BYTE* op, const BYTE* const oend_w, BYTE const* ip, size_t length,
     if (op <= oend_w) {
         /* Wildcopy until we get close to the end. */
         assert(oend > oend_w);
-        ZSTD_wildcopy(op, ip, (size_t)(oend_w - op), ovtype);
+        ZSTD_wildcopy(op, ip, oend_w - op, ovtype);
         ip += oend_w - op;
         op += oend_w - op;
     }
@@ -45183,8 +45125,7 @@ ZSTD_safecopy(BYTE* op, const BYTE* const oend_w, BYTE const* ip, size_t length,
 /* ZSTD_safecopyDstBeforeSrc():
  * This version allows overlap with dst before src, or handles the non-overlap case with dst after src
  * Kept separate from more common ZSTD_safecopy case to avoid performance impact to the safecopy common case */
-static void ZSTD_safecopyDstBeforeSrc(BYTE* op, const BYTE* ip, size_t length)
-{
+static void ZSTD_safecopyDstBeforeSrc(BYTE* op, const BYTE* ip, ptrdiff_t length) {
     ptrdiff_t const diff = op - ip;
     BYTE* const oend = op + length;
 
@@ -45195,7 +45136,7 @@ static void ZSTD_safecopyDstBeforeSrc(BYTE* op, const BYTE* ip, size_t length)
     }
 
     if (op <= oend - WILDCOPY_OVERLENGTH && diff < -WILDCOPY_VECLEN) {
-        ZSTD_wildcopy(op, ip, (size_t)(oend - WILDCOPY_OVERLENGTH - op), ZSTD_no_overlap);
+        ZSTD_wildcopy(op, ip, oend - WILDCOPY_OVERLENGTH - op, ZSTD_no_overlap);
         ip += oend - WILDCOPY_OVERLENGTH - op;
         op += oend - WILDCOPY_OVERLENGTH - op;
     }
@@ -45246,11 +45187,11 @@ size_t ZSTD_execSequenceEnd(BYTE* op,
             return sequenceLength;
         }
         /* span extDict & currentPrefixSegment */
-        {   size_t const length1 = (size_t)(dictEnd - match);
-            ZSTD_memmove(oLitEnd, match, length1);
-            op = oLitEnd + length1;
-            sequence.matchLength -= length1;
-            match = prefixStart;
+        {   size_t const length1 = dictEnd - match;
+        ZSTD_memmove(oLitEnd, match, length1);
+        op = oLitEnd + length1;
+        sequence.matchLength -= length1;
+        match = prefixStart;
         }
     }
     ZSTD_safecopy(op, oend_w, match, sequence.matchLength, ZSTD_overlap_src_before_dst);
@@ -45295,11 +45236,11 @@ size_t ZSTD_execSequenceEndSplitLitBuffer(BYTE* op,
             return sequenceLength;
         }
         /* span extDict & currentPrefixSegment */
-        {   size_t const length1 = (size_t)(dictEnd - match);
-            ZSTD_memmove(oLitEnd, match, length1);
-            op = oLitEnd + length1;
-            sequence.matchLength -= length1;
-            match = prefixStart;
+        {   size_t const length1 = dictEnd - match;
+        ZSTD_memmove(oLitEnd, match, length1);
+        op = oLitEnd + length1;
+        sequence.matchLength -= length1;
+        match = prefixStart;
         }
     }
     ZSTD_safecopy(op, oend_w, match, sequence.matchLength, ZSTD_overlap_src_before_dst);
@@ -45368,11 +45309,11 @@ size_t ZSTD_execSequence(BYTE* op,
             return sequenceLength;
         }
         /* span extDict & currentPrefixSegment */
-        {   size_t const length1 = (size_t)(dictEnd - match);
-            ZSTD_memmove(oLitEnd, match, length1);
-            op = oLitEnd + length1;
-            sequence.matchLength -= length1;
-            match = prefixStart;
+        {   size_t const length1 = dictEnd - match;
+        ZSTD_memmove(oLitEnd, match, length1);
+        op = oLitEnd + length1;
+        sequence.matchLength -= length1;
+        match = prefixStart;
         }
     }
     /* Match within prefix of 1 or more bytes */
@@ -45389,7 +45330,7 @@ size_t ZSTD_execSequence(BYTE* op,
          * longer than literals (in general). In silesia, ~10% of matches are longer
          * than 16 bytes.
          */
-        ZSTD_wildcopy(op, match, sequence.matchLength, ZSTD_no_overlap);
+        ZSTD_wildcopy(op, match, (ptrdiff_t)sequence.matchLength, ZSTD_no_overlap);
         return sequenceLength;
     }
     assert(sequence.offset < WILDCOPY_VECLEN);
@@ -45400,7 +45341,7 @@ size_t ZSTD_execSequence(BYTE* op,
     /* If the match length is > 8 bytes, then continue with the wildcopy. */
     if (sequence.matchLength > 8) {
         assert(op < oMatchEnd);
-        ZSTD_wildcopy(op, match, sequence.matchLength - 8, ZSTD_overlap_src_before_dst);
+        ZSTD_wildcopy(op, match, (ptrdiff_t)sequence.matchLength - 8, ZSTD_overlap_src_before_dst);
     }
     return sequenceLength;
 }
@@ -45461,7 +45402,7 @@ size_t ZSTD_execSequenceSplitLitBuffer(BYTE* op,
             return sequenceLength;
         }
         /* span extDict & currentPrefixSegment */
-        {   size_t const length1 = (size_t)(dictEnd - match);
+        {   size_t const length1 = dictEnd - match;
             ZSTD_memmove(oLitEnd, match, length1);
             op = oLitEnd + length1;
             sequence.matchLength -= length1;
@@ -45481,7 +45422,7 @@ size_t ZSTD_execSequenceSplitLitBuffer(BYTE* op,
          * longer than literals (in general). In silesia, ~10% of matches are longer
          * than 16 bytes.
          */
-        ZSTD_wildcopy(op, match, sequence.matchLength, ZSTD_no_overlap);
+        ZSTD_wildcopy(op, match, (ptrdiff_t)sequence.matchLength, ZSTD_no_overlap);
         return sequenceLength;
     }
     assert(sequence.offset < WILDCOPY_VECLEN);
@@ -45492,7 +45433,7 @@ size_t ZSTD_execSequenceSplitLitBuffer(BYTE* op,
     /* If the match length is > 8 bytes, then continue with the wildcopy. */
     if (sequence.matchLength > 8) {
         assert(op < oMatchEnd);
-        ZSTD_wildcopy(op, match, sequence.matchLength-8, ZSTD_overlap_src_before_dst);
+        ZSTD_wildcopy(op, match, (ptrdiff_t)sequence.matchLength-8, ZSTD_overlap_src_before_dst);
     }
     return sequenceLength;
 }
@@ -45715,8 +45656,10 @@ ZSTD_decompressSequences_bodySplitLitBuffer( ZSTD_DCtx* dctx,
                          const void* seqStart, size_t seqSize, int nbSeq,
                          const ZSTD_longOffset_e isLongOffset)
 {
+    const BYTE* ip = (const BYTE*)seqStart;
+    const BYTE* const iend = ip + seqSize;
     BYTE* const ostart = (BYTE*)dst;
-    BYTE* const oend = (BYTE*)ZSTD_maybeNullPtrAdd(ostart, (ptrdiff_t)maxDstSize);
+    BYTE* const oend = ZSTD_maybeNullPtrAdd(ostart, maxDstSize);
     BYTE* op = ostart;
     const BYTE* litPtr = dctx->litPtr;
     const BYTE* litBufferEnd = dctx->litBufferEnd;
@@ -45731,7 +45674,7 @@ ZSTD_decompressSequences_bodySplitLitBuffer( ZSTD_DCtx* dctx,
         dctx->fseEntropy = 1;
         { U32 i; for (i=0; i<ZSTD_REP_NUM; i++) seqState.prevOffset[i] = dctx->entropy.rep[i]; }
         RETURN_ERROR_IF(
-            ERR_isError(BIT_initDStream(&seqState.DStream, seqStart, seqSize)),
+            ERR_isError(BIT_initDStream(&seqState.DStream, ip, iend-ip)),
             corruption_detected, "");
         ZSTD_initFseState(&seqState.stateLL, &seqState.DStream, dctx->LLTptr);
         ZSTD_initFseState(&seqState.stateOffb, &seqState.DStream, dctx->OFTptr);
@@ -45823,8 +45766,7 @@ ZSTD_decompressSequences_bodySplitLitBuffer( ZSTD_DCtx* dctx,
 
             /* If there are more sequences, they will need to read literals from litExtraBuffer; copy over the remainder from dst and update litPtr and litEnd */
             if (nbSeq > 0) {
-                const size_t leftoverLit = (size_t)(dctx->litBufferEnd - litPtr);
-                assert(dctx->litBufferEnd >= litPtr);
+                const size_t leftoverLit = dctx->litBufferEnd - litPtr;
                 DEBUGLOG(6, "There are %i sequences left, and %zu/%zu literals left in buffer", nbSeq, leftoverLit, sequence.litLength);
                 if (leftoverLit) {
                     RETURN_ERROR_IF(leftoverLit > (size_t)(oend - op), dstSize_tooSmall, "remaining lit must fit within dstBuffer");
@@ -45926,10 +45868,10 @@ ZSTD_decompressSequences_body(ZSTD_DCtx* dctx,
     const void* seqStart, size_t seqSize, int nbSeq,
     const ZSTD_longOffset_e isLongOffset)
 {
+    const BYTE* ip = (const BYTE*)seqStart;
+    const BYTE* const iend = ip + seqSize;
     BYTE* const ostart = (BYTE*)dst;
-    BYTE* const oend = (dctx->litBufferLocation == ZSTD_not_in_dst) ?
-                        (BYTE*)ZSTD_maybeNullPtrAdd(ostart, (ptrdiff_t)maxDstSize) :
-                        dctx->litBuffer;
+    BYTE* const oend = dctx->litBufferLocation == ZSTD_not_in_dst ? ZSTD_maybeNullPtrAdd(ostart, maxDstSize) : dctx->litBuffer;
     BYTE* op = ostart;
     const BYTE* litPtr = dctx->litPtr;
     const BYTE* const litEnd = litPtr + dctx->litSize;
@@ -45944,7 +45886,7 @@ ZSTD_decompressSequences_body(ZSTD_DCtx* dctx,
         dctx->fseEntropy = 1;
         { U32 i; for (i = 0; i < ZSTD_REP_NUM; i++) seqState.prevOffset[i] = dctx->entropy.rep[i]; }
         RETURN_ERROR_IF(
-            ERR_isError(BIT_initDStream(&seqState.DStream, seqStart, seqSize)),
+            ERR_isError(BIT_initDStream(&seqState.DStream, ip, iend - ip)),
             corruption_detected, "");
         ZSTD_initFseState(&seqState.stateLL, &seqState.DStream, dctx->LLTptr);
         ZSTD_initFseState(&seqState.stateOffb, &seqState.DStream, dctx->OFTptr);
@@ -46028,8 +45970,8 @@ size_t ZSTD_prefetchMatch(size_t prefetchPos, seq_t const sequence,
     {   const BYTE* const matchBase = (sequence.offset > prefetchPos) ? dictEnd : prefixStart;
         /* note : this operation can overflow when seq.offset is really too large, which can only happen when input is corrupted.
          * No consequence though : memory address is only used for prefetching, not for dereferencing */
-        const BYTE* const match = (const BYTE*)ZSTD_wrappedPtrSub(ZSTD_wrappedPtrAdd(matchBase, (ptrdiff_t)prefetchPos), (ptrdiff_t)sequence.offset);
-        PREFETCH_L1(match); PREFETCH_L1(ZSTD_wrappedPtrAdd(match, CACHELINE_SIZE));   /* note : it's safe to invoke PREFETCH() on any memory address, including invalid ones */
+        const BYTE* const match = ZSTD_wrappedPtrSub(ZSTD_wrappedPtrAdd(matchBase, prefetchPos), sequence.offset);
+        PREFETCH_L1(match); PREFETCH_L1(match+CACHELINE_SIZE);   /* note : it's safe to invoke PREFETCH() on any memory address, including invalid ones */
     }
     return prefetchPos + sequence.matchLength;
 }
@@ -46045,10 +45987,10 @@ ZSTD_decompressSequencesLong_body(
                          const void* seqStart, size_t seqSize, int nbSeq,
                          const ZSTD_longOffset_e isLongOffset)
 {
+    const BYTE* ip = (const BYTE*)seqStart;
+    const BYTE* const iend = ip + seqSize;
     BYTE* const ostart = (BYTE*)dst;
-    BYTE* const oend = (dctx->litBufferLocation == ZSTD_in_dst) ?
-                        dctx->litBuffer :
-                        (BYTE*)ZSTD_maybeNullPtrAdd(ostart, (ptrdiff_t)maxDstSize);
+    BYTE* const oend = dctx->litBufferLocation == ZSTD_in_dst ? dctx->litBuffer : ZSTD_maybeNullPtrAdd(ostart, maxDstSize);
     BYTE* op = ostart;
     const BYTE* litPtr = dctx->litPtr;
     const BYTE* litBufferEnd = dctx->litBufferEnd;
@@ -46070,8 +46012,9 @@ ZSTD_decompressSequencesLong_body(
         dctx->fseEntropy = 1;
         { int i; for (i=0; i<ZSTD_REP_NUM; i++) seqState.prevOffset[i] = dctx->entropy.rep[i]; }
         assert(dst != NULL);
+        assert(iend >= ip);
         RETURN_ERROR_IF(
-            ERR_isError(BIT_initDStream(&seqState.DStream, seqStart, seqSize)),
+            ERR_isError(BIT_initDStream(&seqState.DStream, ip, iend-ip)),
             corruption_detected, "");
         ZSTD_initFseState(&seqState.stateLL, &seqState.DStream, dctx->LLTptr);
         ZSTD_initFseState(&seqState.stateOffb, &seqState.DStream, dctx->OFTptr);
@@ -46090,9 +46033,9 @@ ZSTD_decompressSequencesLong_body(
 
             if (dctx->litBufferLocation == ZSTD_split && litPtr + sequences[(seqNb - ADVANCED_SEQS) & STORED_SEQS_MASK].litLength > dctx->litBufferEnd) {
                 /* lit buffer is reaching split point, empty out the first buffer and transition to litExtraBuffer */
-                const size_t leftoverLit = (size_t)(dctx->litBufferEnd - litPtr);
-                assert(dctx->litBufferEnd >= litPtr);
-                if (leftoverLit) {
+                const size_t leftoverLit = dctx->litBufferEnd - litPtr;
+                if (leftoverLit)
+                {
                     RETURN_ERROR_IF(leftoverLit > (size_t)(oend - op), dstSize_tooSmall, "remaining lit must fit within dstBuffer");
                     ZSTD_safecopyDstBeforeSrc(op, litPtr, leftoverLit);
                     sequences[(seqNb - ADVANCED_SEQS) & STORED_SEQS_MASK].litLength -= leftoverLit;
@@ -46136,8 +46079,7 @@ ZSTD_decompressSequencesLong_body(
         for ( ; seqNb<nbSeq ; seqNb++) {
             seq_t *sequence = &(sequences[seqNb&STORED_SEQS_MASK]);
             if (dctx->litBufferLocation == ZSTD_split && litPtr + sequence->litLength > dctx->litBufferEnd) {
-                const size_t leftoverLit = (size_t)(dctx->litBufferEnd - litPtr);
-                assert(dctx->litBufferEnd >= litPtr);
+                const size_t leftoverLit = dctx->litBufferEnd - litPtr;
                 if (leftoverLit) {
                     RETURN_ERROR_IF(leftoverLit > (size_t)(oend - op), dstSize_tooSmall, "remaining lit must fit within dstBuffer");
                     ZSTD_safecopyDstBeforeSrc(op, litPtr, leftoverLit);
@@ -46176,8 +46118,7 @@ ZSTD_decompressSequencesLong_body(
 
     /* last literal segment */
     if (dctx->litBufferLocation == ZSTD_split) { /* first deplete literal buffer in dst, then copy litExtraBuffer */
-        size_t const lastLLSize = (size_t)(litBufferEnd - litPtr);
-        assert(litBufferEnd >= litPtr);
+        size_t const lastLLSize = litBufferEnd - litPtr;
         RETURN_ERROR_IF(lastLLSize > (size_t)(oend - op), dstSize_tooSmall, "");
         if (op != NULL) {
             ZSTD_memmove(op, litPtr, lastLLSize);
@@ -46186,8 +46127,7 @@ ZSTD_decompressSequencesLong_body(
         litPtr = dctx->litExtraBuffer;
         litBufferEnd = dctx->litExtraBuffer + ZSTD_LITBUFFEREXTRASIZE;
     }
-    {   size_t const lastLLSize = (size_t)(litBufferEnd - litPtr);
-        assert(litBufferEnd >= litPtr);
+    {   size_t const lastLLSize = litBufferEnd - litPtr;
         RETURN_ERROR_IF(lastLLSize > (size_t)(oend-op), dstSize_tooSmall, "");
         if (op != NULL) {
             ZSTD_memmove(op, litPtr, lastLLSize);
@@ -46304,9 +46244,9 @@ ZSTD_decompressSequencesLong(ZSTD_DCtx* dctx,
  * both the prefix and the extDict. At @p op any offset larger than this
  * is invalid.
  */
-static size_t ZSTD_totalHistorySize(void* curPtr, const void* virtualStart)
+static size_t ZSTD_totalHistorySize(BYTE* op, BYTE const* virtualStart)
 {
-    return (size_t)((char*)curPtr - (const char*)virtualStart);
+    return (size_t)(op - virtualStart);
 }
 
 typedef struct {
@@ -46405,7 +46345,7 @@ ZSTD_decompressBlock_internal(ZSTD_DCtx* dctx,
          * Additionally, take the min with dstCapacity to ensure that the totalHistorySize fits in a size_t.
          */
         size_t const blockSizeMax = MIN(dstCapacity, ZSTD_blockSizeMax(dctx));
-        size_t const totalHistorySize = ZSTD_totalHistorySize(ZSTD_maybeNullPtrAdd(dst, (ptrdiff_t)blockSizeMax), (BYTE const*)dctx->virtualStart);
+        size_t const totalHistorySize = ZSTD_totalHistorySize(ZSTD_maybeNullPtrAdd((BYTE*)dst, blockSizeMax), (BYTE const*)dctx->virtualStart);
         /* isLongOffset must be true if there are long offsets.
          * Offsets are long if they are larger than ZSTD_maxShortOffset().
          * We don't expect that to be the case in 64-bit mode.
@@ -46547,12 +46487,10 @@ size_t ZSTD_decompressBlock(ZSTD_DCtx* dctx,
 /* qsort_r is an extension. */
 #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__gnu_linux__) || \
     defined(__CYGWIN__) || defined(__MSYS__)
-# if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
-#   define _GNU_SOURCE
-# endif
+#if !defined(_GNU_SOURCE) && !defined(__ANDROID__) /* NDK doesn't ship qsort_r(). */
+#define _GNU_SOURCE
 #endif
-
-#define __STDC_WANT_LIB_EXT1__ 1 /* request C11 Annex K, which includes qsort_s() */
+#endif
 
 #include <stdio.h>  /* fprintf */
 #include <stdlib.h> /* malloc, free, qsort_r */
@@ -46564,7 +46502,6 @@ size_t ZSTD_decompressBlock(ZSTD_DCtx* dctx,
 #  define ZDICT_STATIC_LINKING_ONLY
 #endif
 
-/**** skipping file: ../common/debug.h ****/
 /**** skipping file: ../common/mem.h ****/
 /**** skipping file: ../common/pool.h ****/
 /**** skipping file: ../common/threading.h ****/
@@ -47221,58 +47158,40 @@ void COVER_dictSelectionFree(COVER_dictSelection_t selection);
 #define COVER_MAX_SAMPLES_SIZE (sizeof(size_t) == 8 ? ((unsigned)-1) : ((unsigned)1 GB))
 #define COVER_DEFAULT_SPLITPOINT 1.0
 
-/**
- * Select the qsort() variant used by cover
- */
-#define ZDICT_QSORT_MIN 0
-#define ZDICT_QSORT_C90 ZDICT_QSORT_MIN
-#define ZDICT_QSORT_GNU 1
-#define ZDICT_QSORT_APPLE 2
-#define ZDICT_QSORT_MSVC 3
-#define ZDICT_QSORT_C11 ZDICT_QSORT_MAX
-#define ZDICT_QSORT_MAX 4
-
-#ifndef ZDICT_QSORT
-# if defined(__APPLE__)
-#   define ZDICT_QSORT ZDICT_QSORT_APPLE /* uses qsort_r() with a different order for parameters */
-# elif defined(_GNU_SOURCE)
-#   define ZDICT_QSORT ZDICT_QSORT_GNU /* uses qsort_r() */
-# elif defined(_WIN32) && defined(_MSC_VER)
-#   define ZDICT_QSORT ZDICT_QSORT_MSVC /* uses qsort_s() with a different order for parameters */
-# elif defined(STDC_LIB_EXT1) && (STDC_LIB_EXT1 > 0) /* C11 Annex K */
-#   define ZDICT_QSORT ZDICT_QSORT_C11 /* uses qsort_s() */
-# else
-#   define ZDICT_QSORT ZDICT_QSORT_C90 /* uses standard qsort() which is not re-entrant (requires global variable) */
-# endif
-#endif
-
-
 /*-*************************************
 *  Console display
-*
-* Captures the `displayLevel` variable in the local scope.
 ***************************************/
+#ifndef LOCALDISPLAYLEVEL
+static int g_displayLevel = 0;
+#endif
 #undef  DISPLAY
 #define DISPLAY(...)                                                           \
   {                                                                            \
     fprintf(stderr, __VA_ARGS__);                                              \
     fflush(stderr);                                                            \
   }
-#undef  DISPLAYLEVEL
-#define DISPLAYLEVEL(l, ...)                                                   \
+#undef  LOCALDISPLAYLEVEL
+#define LOCALDISPLAYLEVEL(displayLevel, l, ...)                                \
   if (displayLevel >= l) {                                                     \
     DISPLAY(__VA_ARGS__);                                                      \
   } /* 0 : no display;   1: errors;   2: default;  3: details;  4: debug */
+#undef  DISPLAYLEVEL
+#define DISPLAYLEVEL(l, ...) LOCALDISPLAYLEVEL(g_displayLevel, l, __VA_ARGS__)
 
-#undef  DISPLAYUPDATE
-#define DISPLAYUPDATE(lastUpdateTime, l, ...)                                  \
+#ifndef LOCALDISPLAYUPDATE
+static const clock_t g_refreshRate = CLOCKS_PER_SEC * 15 / 100;
+static clock_t g_time = 0;
+#endif
+#undef  LOCALDISPLAYUPDATE
+#define LOCALDISPLAYUPDATE(displayLevel, l, ...)                               \
   if (displayLevel >= l) {                                                     \
-    const clock_t refreshRate = CLOCKS_PER_SEC * 15 / 100;                     \
-    if ((clock() - lastUpdateTime > refreshRate) || (displayLevel >= 4)) {     \
-      lastUpdateTime = clock();                                                \
+    if ((clock() - g_time > g_refreshRate) || (displayLevel >= 4)) {           \
+      g_time = clock();                                                        \
       DISPLAY(__VA_ARGS__);                                                    \
     }                                                                          \
   }
+#undef  DISPLAYUPDATE
+#define DISPLAYUPDATE(l, ...) LOCALDISPLAYUPDATE(g_displayLevel, l, __VA_ARGS__)
 
 /*-*************************************
 * Hash table
@@ -47367,7 +47286,7 @@ static U32 *COVER_map_at(COVER_map_t *map, U32 key) {
  */
 static void COVER_map_remove(COVER_map_t *map, U32 key) {
   U32 i = COVER_map_index(map, key);
-  COVER_map_pair_t* del = &map->data[i];
+  COVER_map_pair_t *del = &map->data[i];
   U32 shift = 1;
   if (del->value == MAP_EMPTY_VALUE) {
     return;
@@ -47418,10 +47337,10 @@ typedef struct {
   U32 *freqs;
   U32 *dmerAt;
   unsigned d;
-  int displayLevel;
 } COVER_ctx_t;
 
-#if ZDICT_QSORT == ZDICT_QSORT_C90
+#if defined(ZSTD_USE_C90_QSORT) \
+  || (!defined(_GNU_SOURCE) && !defined(__APPLE__) && !defined(_MSC_VER))
 /* Use global context for non-reentrant sort functions */
 static COVER_ctx_t *g_coverCtx = NULL;
 #endif
@@ -47468,9 +47387,9 @@ static int COVER_cmp8(COVER_ctx_t *ctx, const void *lp, const void *rp) {
 /**
  * Same as COVER_cmp() except ties are broken by pointer value
  */
-#if (ZDICT_QSORT == ZDICT_QSORT_MSVC) || (ZDICT_QSORT == ZDICT_QSORT_APPLE)
+#if (defined(_WIN32) && defined(_MSC_VER)) || defined(__APPLE__)
 static int WIN_CDECL COVER_strict_cmp(void* g_coverCtx, const void* lp, const void* rp) {
-#elif (ZDICT_QSORT == ZDICT_QSORT_GNU) || (ZDICT_QSORT == ZDICT_QSORT_C11)
+#elif defined(_GNU_SOURCE)
 static int COVER_strict_cmp(const void *lp, const void *rp, void *g_coverCtx) {
 #else /* C90 fallback.*/
 static int COVER_strict_cmp(const void *lp, const void *rp) {
@@ -47484,9 +47403,9 @@ static int COVER_strict_cmp(const void *lp, const void *rp) {
 /**
  * Faster version for d <= 8.
  */
-#if (ZDICT_QSORT == ZDICT_QSORT_MSVC) || (ZDICT_QSORT == ZDICT_QSORT_APPLE)
+#if (defined(_WIN32) && defined(_MSC_VER)) || defined(__APPLE__)
 static int WIN_CDECL COVER_strict_cmp8(void* g_coverCtx, const void* lp, const void* rp) {
-#elif (ZDICT_QSORT == ZDICT_QSORT_GNU) || (ZDICT_QSORT == ZDICT_QSORT_C11)
+#elif defined(_GNU_SOURCE)
 static int COVER_strict_cmp8(const void *lp, const void *rp, void *g_coverCtx) {
 #else /* C90 fallback.*/
 static int COVER_strict_cmp8(const void *lp, const void *rp) {
@@ -47503,25 +47422,23 @@ static int COVER_strict_cmp8(const void *lp, const void *rp) {
  * Hopefully when C11 become the norm, we will be able
  * to clean it up.
  */
-static void stableSort(COVER_ctx_t *ctx)
-{
-    DEBUG_STATIC_ASSERT(ZDICT_QSORT_MIN <= ZDICT_QSORT && ZDICT_QSORT <= ZDICT_QSORT_MAX);
-#if (ZDICT_QSORT == ZDICT_QSORT_APPLE)
+static void stableSort(COVER_ctx_t *ctx) {
+#if defined(__APPLE__)
     qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
             ctx,
             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
-#elif (ZDICT_QSORT == ZDICT_QSORT_GNU)
+#elif defined(_GNU_SOURCE) && !defined(ZSTD_USE_C90_QSORT)
     qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp),
             ctx);
-#elif (ZDICT_QSORT == ZDICT_QSORT_MSVC)
+#elif defined(_WIN32) && defined(_MSC_VER)
     qsort_s(ctx->suffix, ctx->suffixSize, sizeof(U32),
             (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp),
             ctx);
-#elif (ZDICT_QSORT == ZDICT_QSORT_C11)
-    qsort_s(ctx->suffix, ctx->suffixSize, sizeof(U32),
-            (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp),
-            ctx);
+#elif defined(__OpenBSD__)
+    g_coverCtx = ctx;
+    mergesort(ctx->suffix, ctx->suffixSize, sizeof(U32),
+          (ctx->d <= 8 ? &COVER_strict_cmp8 : &COVER_strict_cmp));
 #else /* C90 fallback.*/
     g_coverCtx = ctx;
     /* TODO(cavalcanti): implement a reentrant qsort() when _r is not available. */
@@ -47783,7 +47700,7 @@ static void COVER_ctx_destroy(COVER_ctx_t *ctx) {
  */
 static size_t COVER_ctx_init(COVER_ctx_t *ctx, const void *samplesBuffer,
                           const size_t *samplesSizes, unsigned nbSamples,
-                          unsigned d, double splitPoint, int displayLevel)
+                          unsigned d, double splitPoint)
 {
   const BYTE *const samples = (const BYTE *)samplesBuffer;
   const size_t totalSamplesSize = COVER_sum(samplesSizes, nbSamples);
@@ -47792,7 +47709,6 @@ static size_t COVER_ctx_init(COVER_ctx_t *ctx, const void *samplesBuffer,
   const unsigned nbTestSamples = splitPoint < 1.0 ? nbSamples - nbTrainSamples : nbSamples;
   const size_t trainingSamplesSize = splitPoint < 1.0 ? COVER_sum(samplesSizes, nbTrainSamples) : totalSamplesSize;
   const size_t testSamplesSize = splitPoint < 1.0 ? COVER_sum(samplesSizes + nbTrainSamples, nbTestSamples) : totalSamplesSize;
-  ctx->displayLevel = displayLevel;
   /* Checks */
   if (totalSamplesSize < MAX(d, sizeof(U64)) ||
       totalSamplesSize >= (size_t)COVER_MAX_SAMPLES_SIZE) {
@@ -47877,14 +47793,14 @@ void COVER_warnOnSmallCorpus(size_t maxDictSize, size_t nbDmers, int displayLeve
   if (ratio >= 10) {
       return;
   }
-  DISPLAYLEVEL(1,
-               "WARNING: The maximum dictionary size %u is too large "
-               "compared to the source size %u! "
-               "size(source)/size(dictionary) = %f, but it should be >= "
-               "10! This may lead to a subpar dictionary! We recommend "
-               "training on sources at least 10x, and preferably 100x "
-               "the size of the dictionary! \n", (U32)maxDictSize,
-               (U32)nbDmers, ratio);
+  LOCALDISPLAYLEVEL(displayLevel, 1,
+                    "WARNING: The maximum dictionary size %u is too large "
+                    "compared to the source size %u! "
+                    "size(source)/size(dictionary) = %f, but it should be >= "
+                    "10! This may lead to a subpar dictionary! We recommend "
+                    "training on sources at least 10x, and preferably 100x "
+                    "the size of the dictionary! \n", (U32)maxDictSize,
+                    (U32)nbDmers, ratio);
 }
 
 COVER_epoch_info_t COVER_computeEpochs(U32 maxDictSize,
@@ -47919,8 +47835,6 @@ static size_t COVER_buildDictionary(const COVER_ctx_t *ctx, U32 *freqs,
   const size_t maxZeroScoreRun = MAX(10, MIN(100, epochs.num >> 3));
   size_t zeroScoreRun = 0;
   size_t epoch;
-  clock_t lastUpdateTime = 0;
-  const int displayLevel = ctx->displayLevel;
   DISPLAYLEVEL(2, "Breaking content into %u epochs of size %u\n",
                 (U32)epochs.num, (U32)epochs.size);
   /* Loop through the epochs until there are no more segments or the dictionary
@@ -47954,7 +47868,6 @@ static size_t COVER_buildDictionary(const COVER_ctx_t *ctx, U32 *freqs,
     tail -= segmentSize;
     memcpy(dict + tail, ctx->samples + segment.begin, segmentSize);
     DISPLAYUPDATE(
-        lastUpdateTime,
         2, "\r%u%%       ",
         (unsigned)(((dictBufferCapacity - tail) * 100) / dictBufferCapacity));
   }
@@ -47970,8 +47883,9 @@ ZDICTLIB_STATIC_API size_t ZDICT_trainFromBuffer_cover(
   BYTE* const dict = (BYTE*)dictBuffer;
   COVER_ctx_t ctx;
   COVER_map_t activeDmers;
-  const int displayLevel = (int)parameters.zParams.notificationLevel;
   parameters.splitPoint = 1.0;
+  /* Initialize global data */
+  g_displayLevel = (int)parameters.zParams.notificationLevel;
   /* Checks */
   if (!COVER_checkParameters(parameters, dictBufferCapacity)) {
     DISPLAYLEVEL(1, "Cover parameters incorrect\n");
@@ -47989,12 +47903,12 @@ ZDICTLIB_STATIC_API size_t ZDICT_trainFromBuffer_cover(
   /* Initialize context and activeDmers */
   {
     size_t const initVal = COVER_ctx_init(&ctx, samplesBuffer, samplesSizes, nbSamples,
-                      parameters.d, parameters.splitPoint, displayLevel);
+                      parameters.d, parameters.splitPoint);
     if (ZSTD_isError(initVal)) {
       return initVal;
     }
   }
-  COVER_warnOnSmallCorpus(dictBufferCapacity, ctx.suffixSize, displayLevel);
+  COVER_warnOnSmallCorpus(dictBufferCapacity, ctx.suffixSize, g_displayLevel);
   if (!COVER_map_init(&activeDmers, parameters.k - parameters.d + 1)) {
     DISPLAYLEVEL(1, "Failed to allocate dmer map: out of memory\n");
     COVER_ctx_destroy(&ctx);
@@ -48317,7 +48231,6 @@ static void COVER_tryParameters(void *opaque)
   BYTE* const dict = (BYTE*)malloc(dictBufferCapacity);
   COVER_dictSelection_t selection = COVER_dictSelectionError(ERROR(GENERIC));
   U32* const freqs = (U32*)malloc(ctx->suffixSize * sizeof(U32));
-  const int displayLevel = ctx->displayLevel;
   if (!COVER_map_init(&activeDmers, parameters.k - parameters.d + 1)) {
     DISPLAYLEVEL(1, "Failed to allocate dmer map: out of memory\n");
     goto _cleanup;
@@ -48369,22 +48282,21 @@ ZDICTLIB_STATIC_API size_t ZDICT_optimizeTrainFromBuffer_cover(
       (1 + (kMaxD - kMinD) / 2) * (1 + (kMaxK - kMinK) / kStepSize);
   const unsigned shrinkDict = 0;
   /* Local variables */
-  int displayLevel = (int)parameters->zParams.notificationLevel;
+  const int displayLevel = parameters->zParams.notificationLevel;
   unsigned iteration = 1;
   unsigned d;
   unsigned k;
   COVER_best_t best;
   POOL_ctx *pool = NULL;
   int warned = 0;
-  clock_t lastUpdateTime = 0;
 
   /* Checks */
   if (splitPoint <= 0 || splitPoint > 1) {
-    DISPLAYLEVEL(1, "Incorrect parameters\n");
+    LOCALDISPLAYLEVEL(displayLevel, 1, "Incorrect parameters\n");
     return ERROR(parameter_outOfBound);
   }
   if (kMinK < kMaxD || kMaxK < kMinK) {
-    DISPLAYLEVEL(1, "Incorrect parameters\n");
+    LOCALDISPLAYLEVEL(displayLevel, 1, "Incorrect parameters\n");
     return ERROR(parameter_outOfBound);
   }
   if (nbSamples == 0) {
@@ -48404,19 +48316,19 @@ ZDICTLIB_STATIC_API size_t ZDICT_optimizeTrainFromBuffer_cover(
   }
   /* Initialization */
   COVER_best_init(&best);
+  /* Turn down global display level to clean up display at level 2 and below */
+  g_displayLevel = displayLevel == 0 ? 0 : displayLevel - 1;
   /* Loop through d first because each new value needs a new context */
-  DISPLAYLEVEL(2, "Trying %u different sets of parameters\n",
+  LOCALDISPLAYLEVEL(displayLevel, 2, "Trying %u different sets of parameters\n",
                     kIterations);
   for (d = kMinD; d <= kMaxD; d += 2) {
     /* Initialize the context for this value of d */
     COVER_ctx_t ctx;
-    DISPLAYLEVEL(3, "d=%u\n", d);
+    LOCALDISPLAYLEVEL(displayLevel, 3, "d=%u\n", d);
     {
-      /* Turn down global display level to clean up display at level 2 and below */
-      const int childDisplayLevel = (displayLevel == 0) ? 0 : displayLevel - 1;
-      const size_t initVal = COVER_ctx_init(&ctx, samplesBuffer, samplesSizes, nbSamples, d, splitPoint, childDisplayLevel);
+      const size_t initVal = COVER_ctx_init(&ctx, samplesBuffer, samplesSizes, nbSamples, d, splitPoint);
       if (ZSTD_isError(initVal)) {
-        DISPLAYLEVEL(1, "Failed to initialize context\n");
+        LOCALDISPLAYLEVEL(displayLevel, 1, "Failed to initialize context\n");
         COVER_best_destroy(&best);
         POOL_free(pool);
         return initVal;
@@ -48431,9 +48343,9 @@ ZDICTLIB_STATIC_API size_t ZDICT_optimizeTrainFromBuffer_cover(
       /* Prepare the arguments */
       COVER_tryParameters_data_t *data = (COVER_tryParameters_data_t *)malloc(
           sizeof(COVER_tryParameters_data_t));
-      DISPLAYLEVEL(3, "k=%u\n", k);
+      LOCALDISPLAYLEVEL(displayLevel, 3, "k=%u\n", k);
       if (!data) {
-        DISPLAYLEVEL(1, "Failed to allocate parameters\n");
+        LOCALDISPLAYLEVEL(displayLevel, 1, "Failed to allocate parameters\n");
         COVER_best_destroy(&best);
         COVER_ctx_destroy(&ctx);
         POOL_free(pool);
@@ -48448,7 +48360,7 @@ ZDICTLIB_STATIC_API size_t ZDICT_optimizeTrainFromBuffer_cover(
       data->parameters.splitPoint = splitPoint;
       data->parameters.steps = kSteps;
       data->parameters.shrinkDict = shrinkDict;
-      data->parameters.zParams.notificationLevel = (unsigned)ctx.displayLevel;
+      data->parameters.zParams.notificationLevel = g_displayLevel;
       /* Check the parameters */
       if (!COVER_checkParameters(data->parameters, dictBufferCapacity)) {
         DISPLAYLEVEL(1, "Cover parameters incorrect\n");
@@ -48463,14 +48375,14 @@ ZDICTLIB_STATIC_API size_t ZDICT_optimizeTrainFromBuffer_cover(
         COVER_tryParameters(data);
       }
       /* Print status */
-      DISPLAYUPDATE(lastUpdateTime, 2, "\r%u%%       ",
-                    (unsigned)((iteration * 100) / kIterations));
+      LOCALDISPLAYUPDATE(displayLevel, 2, "\r%u%%       ",
+                         (unsigned)((iteration * 100) / kIterations));
       ++iteration;
     }
     COVER_best_wait(&best);
     COVER_ctx_destroy(&ctx);
   }
-  DISPLAYLEVEL(2, "\r%79s\r", "");
+  LOCALDISPLAYLEVEL(displayLevel, 2, "\r%79s\r", "");
   /* Fill the output buffer and parameters with output of the best parameters */
   {
     const size_t dictSize = best.dictSize;
@@ -48748,8 +48660,8 @@ ss_isqrt(int x) {
   int y, e;
 
   if(x >= (SS_BLOCKSIZE * SS_BLOCKSIZE)) { return SS_BLOCKSIZE; }
-  e = ((unsigned)x & 0xffff0000) ?
-        (((unsigned)x & 0xff000000) ?
+  e = (x & 0xffff0000) ?
+        ((x & 0xff000000) ?
           24 + lg_table[(x >> 24) & 0xff] :
           16 + lg_table[(x >> 16) & 0xff]) :
         ((x & 0x0000ff00) ?
@@ -49458,8 +49370,8 @@ sssort(const unsigned char *T, const int *PA,
 static INLINE
 int
 tr_ilg(int n) {
-  return ((unsigned)n & 0xffff0000) ?
-          (((unsigned)n & 0xff000000) ?
+  return (n & 0xffff0000) ?
+          ((n & 0xff000000) ?
             24 + lg_table[(n >> 24) & 0xff] :
             16 + lg_table[(n >> 16) & 0xff]) :
           ((n & 0x0000ff00) ?
@@ -50513,30 +50425,38 @@ divbwt(const unsigned char *T, unsigned char *U, int *A, int n, unsigned char * 
 
 /*-*************************************
 *  Console display
-*
-* Captures the `displayLevel` variable in the local scope.
 ***************************************/
+#ifndef LOCALDISPLAYLEVEL
+static int g_displayLevel = 0;
+#endif
 #undef  DISPLAY
 #define DISPLAY(...)                                                           \
   {                                                                            \
     fprintf(stderr, __VA_ARGS__);                                              \
     fflush(stderr);                                                            \
   }
-#undef  DISPLAYLEVEL
-#define DISPLAYLEVEL(l, ...)                                                   \
+#undef  LOCALDISPLAYLEVEL
+#define LOCALDISPLAYLEVEL(displayLevel, l, ...)                                \
   if (displayLevel >= l) {                                                     \
     DISPLAY(__VA_ARGS__);                                                      \
   } /* 0 : no display;   1: errors;   2: default;  3: details;  4: debug */
+#undef  DISPLAYLEVEL
+#define DISPLAYLEVEL(l, ...) LOCALDISPLAYLEVEL(g_displayLevel, l, __VA_ARGS__)
 
-#undef  DISPLAYUPDATE
-#define DISPLAYUPDATE(lastUpdateTime, l, ...)                                  \
+#ifndef LOCALDISPLAYUPDATE
+static const clock_t g_refreshRate = CLOCKS_PER_SEC * 15 / 100;
+static clock_t g_time = 0;
+#endif
+#undef  LOCALDISPLAYUPDATE
+#define LOCALDISPLAYUPDATE(displayLevel, l, ...)                               \
   if (displayLevel >= l) {                                                     \
-    const clock_t refreshRate = CLOCKS_PER_SEC * 15 / 100;                     \
-    if ((clock() - lastUpdateTime > refreshRate) || (displayLevel >= 4)) {     \
-      lastUpdateTime = clock();                                                \
+    if ((clock() - g_time > g_refreshRate) || (displayLevel >= 4)) {             \
+      g_time = clock();                                                        \
       DISPLAY(__VA_ARGS__);                                                    \
     }                                                                          \
   }
+#undef  DISPLAYUPDATE
+#define DISPLAYUPDATE(l, ...) LOCALDISPLAYUPDATE(g_displayLevel, l, __VA_ARGS__)
 
 
 /*-*************************************
@@ -50592,7 +50512,6 @@ typedef struct {
   unsigned d;
   unsigned f;
   FASTCOVER_accel_t accelParams;
-  int displayLevel;
 } FASTCOVER_ctx_t;
 
 
@@ -50771,8 +50690,7 @@ FASTCOVER_ctx_init(FASTCOVER_ctx_t* ctx,
                    const void* samplesBuffer,
                    const size_t* samplesSizes, unsigned nbSamples,
                    unsigned d, double splitPoint, unsigned f,
-                   FASTCOVER_accel_t accelParams,
-                   int displayLevel)
+                   FASTCOVER_accel_t accelParams)
 {
     const BYTE* const samples = (const BYTE*)samplesBuffer;
     const size_t totalSamplesSize = COVER_sum(samplesSizes, nbSamples);
@@ -50781,7 +50699,6 @@ FASTCOVER_ctx_init(FASTCOVER_ctx_t* ctx,
     const unsigned nbTestSamples = splitPoint < 1.0 ? nbSamples - nbTrainSamples : nbSamples;
     const size_t trainingSamplesSize = splitPoint < 1.0 ? COVER_sum(samplesSizes, nbTrainSamples) : totalSamplesSize;
     const size_t testSamplesSize = splitPoint < 1.0 ? COVER_sum(samplesSizes + nbTrainSamples, nbTestSamples) : totalSamplesSize;
-    ctx->displayLevel = displayLevel;
 
     /* Checks */
     if (totalSamplesSize < MAX(d, sizeof(U64)) ||
@@ -50868,9 +50785,7 @@ FASTCOVER_buildDictionary(const FASTCOVER_ctx_t* ctx,
   const COVER_epoch_info_t epochs = COVER_computeEpochs(
       (U32)dictBufferCapacity, (U32)ctx->nbDmers, parameters.k, 1);
   const size_t maxZeroScoreRun = 10;
-  const int displayLevel = ctx->displayLevel;
   size_t zeroScoreRun = 0;
-  clock_t lastUpdateTime = 0;
   size_t epoch;
   DISPLAYLEVEL(2, "Breaking content into %u epochs of size %u\n",
                 (U32)epochs.num, (U32)epochs.size);
@@ -50908,7 +50823,6 @@ FASTCOVER_buildDictionary(const FASTCOVER_ctx_t* ctx,
     tail -= segmentSize;
     memcpy(dict + tail, ctx->samples + segment.begin, segmentSize);
     DISPLAYUPDATE(
-        lastUpdateTime,
         2, "\r%u%%       ",
         (unsigned)(((dictBufferCapacity - tail) * 100) / dictBufferCapacity));
   }
@@ -50946,7 +50860,6 @@ static void FASTCOVER_tryParameters(void* opaque)
   BYTE *const dict = (BYTE*)malloc(dictBufferCapacity);
   COVER_dictSelection_t selection = COVER_dictSelectionError(ERROR(GENERIC));
   U32* freqs = (U32*) malloc(((U64)1 << ctx->f) * sizeof(U32));
-  const int displayLevel = ctx->displayLevel;
   if (!segmentFreqs || !dict || !freqs) {
     DISPLAYLEVEL(1, "Failed to allocate buffers: out of memory\n");
     goto _cleanup;
@@ -51018,7 +50931,8 @@ ZDICT_trainFromBuffer_fastCover(void* dictBuffer, size_t dictBufferCapacity,
     FASTCOVER_ctx_t ctx;
     ZDICT_cover_params_t coverParams;
     FASTCOVER_accel_t accelParams;
-    const int displayLevel = (int)parameters.zParams.notificationLevel;
+    /* Initialize global data */
+    g_displayLevel = (int)parameters.zParams.notificationLevel;
     /* Assign splitPoint and f if not provided */
     parameters.splitPoint = 1.0;
     parameters.f = parameters.f == 0 ? DEFAULT_F : parameters.f;
@@ -51047,13 +50961,13 @@ ZDICT_trainFromBuffer_fastCover(void* dictBuffer, size_t dictBufferCapacity,
     {
       size_t const initVal = FASTCOVER_ctx_init(&ctx, samplesBuffer, samplesSizes, nbSamples,
                             coverParams.d, parameters.splitPoint, parameters.f,
-                            accelParams, displayLevel);
+                            accelParams);
       if (ZSTD_isError(initVal)) {
         DISPLAYLEVEL(1, "Failed to initialize context\n");
         return initVal;
       }
     }
-    COVER_warnOnSmallCorpus(dictBufferCapacity, ctx.nbDmers, displayLevel);
+    COVER_warnOnSmallCorpus(dictBufferCapacity, ctx.nbDmers, g_displayLevel);
     /* Build the dictionary */
     DISPLAYLEVEL(2, "Building dictionary\n");
     {
@@ -51108,26 +51022,25 @@ ZDICT_optimizeTrainFromBuffer_fastCover(
     COVER_best_t best;
     POOL_ctx *pool = NULL;
     int warned = 0;
-    clock_t lastUpdateTime = 0;
     /* Checks */
     if (splitPoint <= 0 || splitPoint > 1) {
-      DISPLAYLEVEL(1, "Incorrect splitPoint\n");
+      LOCALDISPLAYLEVEL(displayLevel, 1, "Incorrect splitPoint\n");
       return ERROR(parameter_outOfBound);
     }
     if (accel == 0 || accel > FASTCOVER_MAX_ACCEL) {
-      DISPLAYLEVEL(1, "Incorrect accel\n");
+      LOCALDISPLAYLEVEL(displayLevel, 1, "Incorrect accel\n");
       return ERROR(parameter_outOfBound);
     }
     if (kMinK < kMaxD || kMaxK < kMinK) {
-      DISPLAYLEVEL(1, "Incorrect k\n");
+      LOCALDISPLAYLEVEL(displayLevel, 1, "Incorrect k\n");
       return ERROR(parameter_outOfBound);
     }
     if (nbSamples == 0) {
-      DISPLAYLEVEL(1, "FASTCOVER must have at least one input file\n");
+      LOCALDISPLAYLEVEL(displayLevel, 1, "FASTCOVER must have at least one input file\n");
       return ERROR(srcSize_wrong);
     }
     if (dictBufferCapacity < ZDICT_DICTSIZE_MIN) {
-      DISPLAYLEVEL(1, "dictBufferCapacity must be at least %u\n",
+      LOCALDISPLAYLEVEL(displayLevel, 1, "dictBufferCapacity must be at least %u\n",
                    ZDICT_DICTSIZE_MIN);
       return ERROR(dstSize_tooSmall);
     }
@@ -51142,18 +51055,19 @@ ZDICT_optimizeTrainFromBuffer_fastCover(
     memset(&coverParams, 0 , sizeof(coverParams));
     FASTCOVER_convertToCoverParams(*parameters, &coverParams);
     accelParams = FASTCOVER_defaultAccelParameters[accel];
+    /* Turn down global display level to clean up display at level 2 and below */
+    g_displayLevel = displayLevel == 0 ? 0 : displayLevel - 1;
     /* Loop through d first because each new value needs a new context */
-    DISPLAYLEVEL(2, "Trying %u different sets of parameters\n", kIterations);
+    LOCALDISPLAYLEVEL(displayLevel, 2, "Trying %u different sets of parameters\n",
+                      kIterations);
     for (d = kMinD; d <= kMaxD; d += 2) {
       /* Initialize the context for this value of d */
       FASTCOVER_ctx_t ctx;
-      DISPLAYLEVEL(3, "d=%u\n", d);
+      LOCALDISPLAYLEVEL(displayLevel, 3, "d=%u\n", d);
       {
-        /* Turn down global display level to clean up display at level 2 and below */
-        const int childDisplayLevel = displayLevel == 0 ? 0 : displayLevel - 1;
-        size_t const initVal = FASTCOVER_ctx_init(&ctx, samplesBuffer, samplesSizes, nbSamples, d, splitPoint, f, accelParams, childDisplayLevel);
+        size_t const initVal = FASTCOVER_ctx_init(&ctx, samplesBuffer, samplesSizes, nbSamples, d, splitPoint, f, accelParams);
         if (ZSTD_isError(initVal)) {
-          DISPLAYLEVEL(1, "Failed to initialize context\n");
+          LOCALDISPLAYLEVEL(displayLevel, 1, "Failed to initialize context\n");
           COVER_best_destroy(&best);
           POOL_free(pool);
           return initVal;
@@ -51168,9 +51082,9 @@ ZDICT_optimizeTrainFromBuffer_fastCover(
         /* Prepare the arguments */
         FASTCOVER_tryParameters_data_t *data = (FASTCOVER_tryParameters_data_t *)malloc(
             sizeof(FASTCOVER_tryParameters_data_t));
-        DISPLAYLEVEL(3, "k=%u\n", k);
+        LOCALDISPLAYLEVEL(displayLevel, 3, "k=%u\n", k);
         if (!data) {
-          DISPLAYLEVEL(1, "Failed to allocate parameters\n");
+          LOCALDISPLAYLEVEL(displayLevel, 1, "Failed to allocate parameters\n");
           COVER_best_destroy(&best);
           FASTCOVER_ctx_destroy(&ctx);
           POOL_free(pool);
@@ -51185,7 +51099,7 @@ ZDICT_optimizeTrainFromBuffer_fastCover(
         data->parameters.splitPoint = splitPoint;
         data->parameters.steps = kSteps;
         data->parameters.shrinkDict = shrinkDict;
-        data->parameters.zParams.notificationLevel = (unsigned)ctx.displayLevel;
+        data->parameters.zParams.notificationLevel = (unsigned)g_displayLevel;
         /* Check the parameters */
         if (!FASTCOVER_checkParameters(data->parameters, dictBufferCapacity,
                                        data->ctx->f, accel)) {
@@ -51201,15 +51115,14 @@ ZDICT_optimizeTrainFromBuffer_fastCover(
           FASTCOVER_tryParameters(data);
         }
         /* Print status */
-        DISPLAYUPDATE(lastUpdateTime,
-                      2, "\r%u%%       ",
-                      (unsigned)((iteration * 100) / kIterations));
+        LOCALDISPLAYUPDATE(displayLevel, 2, "\r%u%%       ",
+                           (unsigned)((iteration * 100) / kIterations));
         ++iteration;
       }
       COVER_best_wait(&best);
       FASTCOVER_ctx_destroy(&ctx);
     }
-    DISPLAYLEVEL(2, "\r%79s\r", "");
+    LOCALDISPLAYLEVEL(displayLevel, 2, "\r%79s\r", "");
     /* Fill the output buffer and parameters with output of the best parameters */
     {
       const size_t dictSize = best.dictSize;
@@ -51399,7 +51312,7 @@ static void ZDICT_initDictItem(dictItem* d)
 #define MINMATCHLENGTH 7   /* heuristic determined experimentally */
 static dictItem ZDICT_analyzePos(
                        BYTE* doneMarks,
-                       const unsigned* suffix, U32 start,
+                       const int* suffix, U32 start,
                        const void* buffer, U32 minRatio, U32 notificationLevel)
 {
     U32 lengthList[LLIMIT] = {0};
@@ -51524,10 +51437,8 @@ static dictItem ZDICT_analyzePos(
         for (i=(int)(maxLength-2); i>=0; i--)
             cumulLength[i] = cumulLength[i+1] + lengthList[i];
 
-        {   unsigned u;
-            for (u=LLIMIT-1; u>=MINMATCHLENGTH; u--) if (cumulLength[u]>=minRatio) break;
-            maxLength = u;
-        }
+        for (i=LLIMIT-1; i>=MINMATCHLENGTH; i--) if (cumulLength[i]>=minRatio) break;
+        maxLength = i;
 
         /* reduce maxLength in case of final into repetitive data */
         {   U32 l = (U32)maxLength;
@@ -51539,10 +51450,8 @@ static dictItem ZDICT_analyzePos(
 
         /* calculate savings */
         savings[5] = 0;
-        {   unsigned u;
-            for (u=MINMATCHLENGTH; u<=maxLength; u++)
-                savings[u] = savings[u-1] + (lengthList[u] * (u-3));
-        }
+        for (i=MINMATCHLENGTH; i<=(int)maxLength; i++)
+            savings[i] = savings[i-1] + (lengthList[i] * (i-3));
 
         DISPLAYLEVEL(4, "Selected dict at position %u, of length %u : saves %u (ratio: %.2f)  \n",
                      (unsigned)pos, (unsigned)maxLength, (unsigned)savings[maxLength], (double)savings[maxLength] / (double)maxLength);
@@ -51618,11 +51527,11 @@ static U32 ZDICT_tryMerge(dictItem* table, dictItem elt, U32 eltNbToSkip, const 
 
         if ((table[u].pos + table[u].length >= elt.pos) && (table[u].pos < elt.pos)) {  /* overlap, existing < new */
             /* append */
-            int const addedLength = (int)eltEnd - (int)(table[u].pos + table[u].length); /* note: can be negative */
+            int const addedLength = (int)eltEnd - (int)(table[u].pos + table[u].length);
             table[u].savings += elt.length / 8;    /* rough approx bonus */
             if (addedLength > 0) {   /* otherwise, elt fully included into existing */
-                table[u].length += (unsigned)addedLength;
-                table[u].savings += elt.savings * (unsigned)addedLength / elt.length;   /* rough approx */
+                table[u].length += addedLength;
+                table[u].savings += elt.savings * addedLength / elt.length;   /* rough approx */
             }
             /* sort : improve rank */
             elt = table[u];
@@ -51634,7 +51543,7 @@ static U32 ZDICT_tryMerge(dictItem* table, dictItem elt, U32 eltNbToSkip, const 
 
         if (MEM_read64(buf + table[u].pos) == MEM_read64(buf + elt.pos + 1)) {
             if (isIncluded(buf + table[u].pos, buf + elt.pos + 1, table[u].length)) {
-                size_t const addedLength = MAX( elt.length - table[u].length , 1 );
+                size_t const addedLength = MAX( (int)elt.length - (int)table[u].length , 1 );
                 table[u].pos = elt.pos;
                 table[u].savings += (U32)(elt.savings * addedLength / elt.length);
                 table[u].length = MIN(elt.length, table[u].length + 1);
@@ -51702,8 +51611,8 @@ static size_t ZDICT_trainBuffer_legacy(dictItem* dictList, U32 dictListSize,
                             const size_t* fileSizes, unsigned nbFiles,
                             unsigned minRatio, U32 notificationLevel)
 {
-    unsigned* const suffix0 = (unsigned*)malloc((bufferSize+2)*sizeof(*suffix0));
-    unsigned* const suffix = suffix0+1;
+    int* const suffix0 = (int*)malloc((bufferSize+2)*sizeof(*suffix0));
+    int* const suffix = suffix0+1;
     U32* reverseSuffix = (U32*)malloc((bufferSize)*sizeof(*reverseSuffix));
     BYTE* doneMarks = (BYTE*)malloc((bufferSize+16)*sizeof(*doneMarks));   /* +16 for overflow security */
     U32* filePos = (U32*)malloc(nbFiles * sizeof(*filePos));
@@ -51738,11 +51647,11 @@ static size_t ZDICT_trainBuffer_legacy(dictItem* dictList, U32 dictListSize,
 
     /* sort */
     DISPLAYLEVEL(2, "sorting %u files of total size %u MB ...\n", nbFiles, (unsigned)(bufferSize>>20));
-    {   int const divSuftSortResult = divsufsort((const unsigned char*)buffer, (int*)suffix, (int)bufferSize, 0);
+    {   int const divSuftSortResult = divsufsort((const unsigned char*)buffer, suffix, (int)bufferSize, 0);
         if (divSuftSortResult != 0) { result = ERROR(GENERIC); goto _cleanup; }
     }
-    suffix[bufferSize] = (unsigned)bufferSize;   /* leads into noise */
-    suffix0[0] = (unsigned)bufferSize;           /* leads into noise */
+    suffix[bufferSize] = (int)bufferSize;   /* leads into noise */
+    suffix0[0] = (int)bufferSize;           /* leads into noise */
     /* build reverse suffix sort */
     {   size_t pos;
         for (pos=0; pos < bufferSize; pos++)

@@ -365,7 +365,7 @@ pub fn version_number() u32 {
 	return C.ZSTD_versionNumber()
 }
 
-// version_string returns runtime library version, like "1.5.8".
+// version_string returns runtime library version, like "1.5.7".
 pub fn version_string() string {
 	return unsafe { tos_clone(C.ZSTD_versionString()) }
 }
