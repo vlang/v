@@ -11,7 +11,7 @@ fn print_t1(node ?&Node[int]) {
 	println(node)
 }
 
-fn print_t2(mut node ?&Node[int]) {
+fn print_t2(mut node ?Node[int]) {
 	n := node or { return }
 	println(n)
 }

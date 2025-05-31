@@ -330,7 +330,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write('if (${var_name} = ')
 				g.expr(branch.cond.expr)
 				if branch.cond.expr_type.has_flag(.option) {
-					g.writeln(', ${var_name}.state == 0) {')
+					if branch.cond.expr_type.has_flag(.option_mut_param_t) {
+						g.writeln(', (${'*'.repeat(branch.cond.expr_type.nr_muls())}${var_name}).state == 0) {')
+					} else {
+						g.writeln(', ${var_name}.state == 0) {')
+					}
 				} else if branch.cond.expr_type.has_flag(.result) {
 					g.writeln(', !${var_name}.is_error) {')
 				}
@@ -366,7 +370,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						if is_auto_heap {
 							g.writeln('\t${base_type}* ${left_var_name} = HEAP(${base_type}, *(${base_type}*)${var_name}.data);')
 						} else {
-							g.writeln('\t${base_type} ${left_var_name} = *(${base_type}*)${var_name}.data;')
+							if branch.cond.expr_type.has_flag(.option_mut_param_t) {
+								g.writeln('\t${base_type} ${left_var_name} = ${var_name};')
+							} else {
+								g.writeln('\t${base_type} ${left_var_name} = *(${base_type}*)${var_name}.data;')
+							}
 						}
 					} else if branch.cond.vars.len > 1 {
 						sym := g.table.sym(branch.cond.expr_type)

@@ -1323,7 +1323,7 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 	} else {
 		styp = '${option_name}_${base}'
 	}
-	if t.has_flag(.generic) || t.is_ptr() {
+	if t.has_flag(.generic) || (t.is_ptr() && !t.has_flag(.option_mut_param_t)) {
 		styp = styp.replace('*', '_ptr')
 	}
 	return styp, base
@@ -1396,6 +1396,9 @@ fn (g &Gen) result_type_text(styp string, base string) string {
 fn (mut g Gen) register_option(t ast.Type) string {
 	styp, base := g.option_type_name(t)
 	g.options[base] = styp
+	if t.has_flag(.option_mut_param_t) {
+		g.options[base.replace('*', '')] = styp.replace('*', '')
+	}
 	return styp
 }
 
@@ -1411,7 +1414,7 @@ fn (mut g Gen) write_options() {
 		done = g.done_options.clone()
 	}
 	for base, styp in g.options {
-		if base in done {
+		if base in done || styp.ends_with('*') {
 			continue
 		}
 		done << base
@@ -2294,7 +2297,13 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			ret_styp := g.styp(unwrapped_ret_typ).replace('*', '_ptr')
 			g.writeln('${ret_styp} ${tmp_var};')
 		} else {
-			g.writeln('${g.styp(ret_typ)} ${tmp_var};')
+			if ret_typ.has_flag(.option_mut_param_t) {
+				styp = styp.replace('*', '')
+				ret_styp := g.styp(ret_typ).replace('*', '')
+				g.writeln('${ret_styp} ${tmp_var};')
+			} else {
+				g.writeln('${g.styp(ret_typ)} ${tmp_var};')
+			}
 		}
 		mut expr_is_fixed_array_var := false
 		mut fn_option_clone := false
@@ -2336,7 +2345,8 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					}
 				}
 				if !expr.is_literal() && expr_typ != ast.nil_type
-					&& ret_typ.nr_muls() > expr_typ.nr_muls() {
+					&& ret_typ.nr_muls() > expr_typ.nr_muls()
+					&& !ret_typ.has_flag(.option_mut_param_t)  {
 					g.write('&'.repeat(ret_typ.nr_muls() - expr_typ.nr_muls()))
 				}
 			}

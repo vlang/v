@@ -134,6 +134,7 @@ pub enum TypeFlag as u32 {
 	generic  = 1 << 27
 	shared_f = 1 << 28
 	atomic_f = 1 << 29
+	option_mut_param_t = 1<<30
 }
 
 /*
@@ -1611,7 +1612,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		nr_muls--
 		res = 'atomic ' + res
 	}
-	if nr_muls > 0 && !typ.has_flag(.variadic) {
+	if nr_muls > 0 && !typ.has_flag(.variadic) && !typ.has_flag(.option_mut_param_t) {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
 	if typ.has_flag(.option) {
