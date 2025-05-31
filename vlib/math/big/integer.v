@@ -1214,7 +1214,7 @@ pub fn (x Integer) is_odd() bool {
 // is_power_of_2 returns true when the integer `x` satisfies `2^n`, where `n >= 0`
 @[direct_array_access; inline]
 pub fn (x Integer) is_power_of_2() bool {
-	if x.signum == 0 {
+	if x.signum <= 0 {
 		return false
 	}
 
