@@ -249,6 +249,12 @@ pub fn (t &TypeResolver) is_comptime_type(x ast.Type, y ast.ComptimeType) bool {
 		.string {
 			return x_kind == .string
 		}
+		.voidptr {
+			return x.is_voidptr()
+		}
+		.pointer {
+			return x.is_any_kind_of_pointer()
+		}
 		.int {
 			return x_kind in [.i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .usize, .isize,
 				.int_literal]
