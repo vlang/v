@@ -256,12 +256,6 @@ fn build_modules_gcc() {
 	exec('v build-module vlib/os/cmdline')
 }
 
-fn native_machine_code_generation_gcc() {
-	exec('v -o vprod -prod cmd/v')
-	exec('cd cmd/tools && ../../vprod gen1m.v && ./gen1m > 1m.v')
-	exec('cd cmd/tools && ../../vprod -backend native -o 1m 1m.v && ./1m && ls')
-}
-
 fn compile_vdoctor_prod_gcc() {
 	exec('v -showcc -cc gcc -prod cmd/tools/vdoctor.v')
 }
@@ -355,10 +349,18 @@ fn build_modules_clang() {
 	exec('v build-module vlib/os/cmdline')
 }
 
-fn native_machine_code_generation_clang() {
+fn native_machine_code_generation_common() {
 	exec('v -o vprod -prod cmd/v')
 	exec('cd cmd/tools && ../../vprod gen1m.v && ./gen1m > 1m.v')
-	exec('cd cmd/tools && ../../vprod -backend native -o 1m 1m.v && ./1m && ls')
+	exec('cd cmd/tools && ../../vprod -backend native -o 1m 1m.v && ./1m && ls -larS 1m*')
+}
+
+fn native_machine_code_generation_gcc() {
+	native_machine_code_generation_common()
+}
+
+fn native_machine_code_generation_clang() {
+	native_machine_code_generation_common()
 }
 
 //
