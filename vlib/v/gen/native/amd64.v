@@ -631,7 +631,7 @@ fn (mut c Amd64) mov_deref(r Register, rptr Register, typ ast.Type) {
 		})
 	}
 	c.g.write8(i32(reg) % 8 * 8 + i32(regptr) % 8)
-	c.g.println('mov ${reg}, [${regptr}]')
+	c.g.println('mov ${reg}, [${regptr}]; size ${size}')
 }
 
 fn (mut c Amd64) mov_store(regptr Amd64Register, reg Amd64Register, size Size) {
@@ -1887,7 +1887,7 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 						c.bitand_reg(.rdx, .rbx)
 					}
 				}
-				else {}
+				else {} // handled below
 			}
 		}
 		if is_floats[i] {
@@ -3702,15 +3702,47 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 				field := ts.find_field(f.name) or {
 					c.g.n_error('${@LOCATION} Could not find field `${f.name}` on init (${ts.info})')
 				}
-				offset := c.g.structs[typ.idx()].offsets[field.i]
+				f_offset := c.g.structs[typ.idx()].offsets[field.i]
+				f_ts := c.g.table.sym(field.typ)
 
 				c.g.expr(f.expr)
-				// TODO: expr not on rax
-				c.mov_reg_to_var(var, Amd64Register.rax, offset: offset, typ: field.typ)
+				if f_ts.info is ast.Struct {
+					c.copy_struct_to_struct(field, f_offset, var)
+				} else {
+					// TODO: expr not on rax -> may be done
+					c.mov_reg_to_var(var, Amd64Register.rax, offset: f_offset, typ: field.typ)
+				}
 			}
 		}
 		GlobalVar {
 			c.g.n_error('${@LOCATION} GlobalVar not implemented for ast.StructInit')
+		}
+	}
+}
+
+// f_offset is the offset of the field in the root struct
+// needs rax to hold the address of the root field data
+fn (mut c Amd64) copy_struct_to_struct(field ast.StructField, f_offset i32, var LocalVar) {
+	f_typ_idx := field.typ.idx()
+	f_ts := c.g.table.sym(field.typ)
+
+	for f_f in (f_ts.info as ast.Struct).fields {
+		f_field := f_ts.find_field(f_f.name) or {
+			c.g.n_error('${@LOCATION} Could not find field `${f_f.name}` on init (${f_ts.info})')
+		}
+		f_f_offset := c.g.structs[f_typ_idx].offsets[f_field.i]
+		f_f_ts := c.g.table.sym(f_field.typ)
+
+		if f_f_ts.info is ast.Struct {
+			c.copy_struct_to_struct(f_field, f_offset + f_f_offset, var)
+		} else {
+			c.mov_reg(Amd64Register.rdx, Amd64Register.rax)
+			c.add(Amd64Register.rdx, f_offset + f_f_offset)
+			c.mov_deref(Amd64Register.rdx, Amd64Register.rdx, f_field.typ)
+			c.mov_reg_to_var(var, Amd64Register.rdx,
+				offset: f_offset + f_f_offset
+				typ:    f_field.typ
+			)
 		}
 	}
 }

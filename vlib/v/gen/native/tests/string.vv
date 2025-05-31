@@ -16,6 +16,10 @@ fn test_string_len() {
 	println(d.len)
 }
 
+struct Idx {
+        a string
+}
+
 fn test_string_index() {
 	a := '1234'
 	assert a[0] == `1`
@@ -26,6 +30,10 @@ fn test_string_index() {
 	assert a[1] != `0`
 	assert a[2] != `0`
 	assert a[3] != `0`
+	
+	x := Idx{'abc'}
+	assert x.a[1] == `b`
+	assert x.a[2] != `b`
 }
 
 fn test_for_i_in_len() {

@@ -78,7 +78,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {
 			str := g.eval_str_lit_escape_codes(node)
-			pos := g.code_gen.create_string_struct(ast.string_type_idx, 'string_lit', str)
+			pos := g.code_gen.create_string_struct(ast.string_type_idx, 'str_lit', str)
 			g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), pos)
 		}
 		ast.CharLiteral {
@@ -132,9 +132,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.IndexExpr {
 			if node.left_type.is_string() {
 				g.expr(node.index)
-				g.code_gen.mov_var_to_reg(Amd64Register.rdx, node.left as ast.Ident) // load address of string
-				g.code_gen.add_reg2(Amd64Register.rdx, Amd64Register.rax) // add the offset to the address
-				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rdx, ast.u8_type_idx)
+				g.code_gen.push(Amd64Register.rax)
+
+				g.expr(node.left) // load address of string struct
+				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u64_type_idx) // load value of the str pointer
+
+				g.code_gen.pop2(Amd64Register.rdx) // index
+				g.code_gen.add_reg2(Amd64Register.rax, Amd64Register.rdx) // add the offset to the address
+				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u8_type_idx)
 			} else if node.left_type.is_pointer() {
 				dump(node)
 				g.n_error('${@LOCATION} expr: unhandled node type: Index expr is not applied on string')
@@ -465,9 +470,12 @@ fn (mut g Gen) gen_selector_expr(expr ast.SelectorExpr) {
 		g.code_gen.add(main_reg, offset)
 	}
 	if expr.next_token != .dot { // the deref needs to be on the last selector (that has no . after it)
-		g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+		ts := g.table.sym(expr.typ)
+		if ts.info !is ast.Struct {
+			g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+		}
 	}
-	g.println('; .${expr.field_name} {')
+	g.println('; .${expr.field_name} }')
 }
 
 fn (mut g Gen) gen_left_value(node ast.Expr) {
