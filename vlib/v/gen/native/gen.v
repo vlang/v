@@ -100,7 +100,7 @@ mut:
 	convert_bool_to_string(r Register)
 	convert_int_to_string(a Register, b Register)
 	convert_rune_to_string(r Register, buffer i32, var Var, config VarConfig)
-	create_string_struct(typ ast.Type, name string, str string)
+	create_string_struct(typ ast.Type, name string, str string) i32
 	dec_var(var Var, config VarConfig)
 	fn_decl(node ast.FnDecl)
 	gen_asm_stmt(asm_node ast.AsmStmt)

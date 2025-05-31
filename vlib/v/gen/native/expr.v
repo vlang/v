@@ -78,7 +78,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {
 			str := g.eval_str_lit_escape_codes(node)
-			g.code_gen.create_string_struct(ast.string_type_idx, 'string_lit', str)
+			pos := g.code_gen.create_string_struct(ast.string_type_idx, 'string_lit', str)
+			g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), pos)
 		}
 		ast.CharLiteral {
 			bytes := g.eval_escape_codes(node.val)

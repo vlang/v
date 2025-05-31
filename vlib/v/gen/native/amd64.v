@@ -2214,12 +2214,13 @@ fn (mut c Amd64) mov_float_xmm0_var(reg Amd64Register, var_type ast.Type) {
 	}
 }
 
-fn (mut c Amd64) create_string_struct(typ ast.Type, name string, str string) {
+fn (mut c Amd64) create_string_struct(typ ast.Type, name string, str string) i32 {
 	dest := c.allocate_var(name, c.g.get_type_size(typ), i64(0))
 	c.learel(Amd64Register.rsi, c.g.allocate_string(str, 3, .rel32))
 	c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
 	offset := c.g.get_field_offset(typ, 'len')
 	c.mov_int_to_var(LocalVar{dest, ast.i32_type_idx, name}, i32(str.len), offset: offset)
+	return dest
 }
 
 fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.Expr, name string, ident ast.Ident) {
