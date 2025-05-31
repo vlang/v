@@ -633,6 +633,9 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 		ast.SelectorExpr {
 			f.selector_expr(node)
 		}
+		ast.AlignOf {
+			f.align_of(node)
+		}
 		ast.SizeOf {
 			f.size_of(node)
 		}
@@ -2147,6 +2150,16 @@ pub fn (mut f Gen) selector_expr(node ast.SelectorExpr) {
 	f.expr(node.expr)
 	f.write('.')
 	f.write(node.field_name)
+}
+
+pub fn (mut f Gen) align_of(node ast.AlignOf) {
+	f.write('alignof(')
+	if node.is_type {
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+	} else {
+		f.expr(node.expr)
+	}
+	f.write(')')
 }
 
 pub fn (mut f Gen) size_of(node ast.SizeOf) {
