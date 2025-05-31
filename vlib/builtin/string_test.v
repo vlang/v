@@ -1612,7 +1612,7 @@ fn test_last_index() {
 	assert 'Zabcabca'.last_index('Z')? == 0
 	x := 'Zabcabca'.last_index('Y')
 	assert x == none
-	// TODO: `assert 'Zabcabca'.index_last('Y') == none` is a cgen error, 2023/12/04
+	assert 'Zabcabca'.last_index('Y') == none
 }
 
 fn test_last_index_u8() {

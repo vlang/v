@@ -194,6 +194,5 @@ fn test_kind_function() {
 	assert_function(test_kind_function)
 	assert_not_function(123)
 	assert_function('abc'.contains)
-	i := 5
-	assert_function(i.str) // TODO: 5.str currently leads to a cgen error
+	assert_function(5.str)
 }
