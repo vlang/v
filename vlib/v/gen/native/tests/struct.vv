@@ -196,9 +196,45 @@ fn assign_fields() {
 	assert f.a == 2
 }
 
+struct Nest {
+        a string
+}
+
+struct Nest2 {
+	a Nest
+}
+
+struct Nest3 {
+	a Nest2
+}
+
+struct Int {
+        a int
+}
+
+struct NestMixed {
+        s string
+        b Int
+}
+
+fn nested_test() {
+	x := Nest{'abc'}
+	assert x.a[1] == `b`
+
+	x2 := Nest2{Nest{'def'}}
+	assert x2.a.a[2] == `f`
+
+	x3 := Nest3{Nest2{Nest{'ghi'}}}
+	assert x3.a.a.a[1] == `h`
+
+	x4 := NestMixed{'abc', Int{3}}
+	assert x4.b.a == 3
+}
+
 fn main() {
 	struct_test()
 	return_test()
 	alias_test()
 	assign_fields()
+	nested_test()
 }
