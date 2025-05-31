@@ -3699,6 +3699,7 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 				else {}
 			}
 			for f in init.init_fields {
+				c.g.println('; ${var.name}.${f.name}')
 				field := ts.find_field(f.name) or {
 					c.g.n_error('${@LOCATION} Could not find field `${f.name}` on init (${ts.info})')
 				}
@@ -3707,7 +3708,7 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 
 				c.g.expr(f.expr)
 				if f_ts.info is ast.Struct {
-					c.copy_struct_to_struct(field, f_offset, var)
+					c.copy_struct_to_struct(field, f_offset, 0, var)
 				} else {
 					// TODO: expr not on rax -> may be done
 					c.mov_reg_to_var(var, Amd64Register.rax, offset: f_offset, typ: field.typ)
@@ -3721,12 +3722,14 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 }
 
 // f_offset is the offset of the field in the root struct
+// data_offset is the offset to add to rax to find the data
 // needs rax to hold the address of the root field data
-fn (mut c Amd64) copy_struct_to_struct(field ast.StructField, f_offset i32, var LocalVar) {
+fn (mut c Amd64) copy_struct_to_struct(field ast.StructField, f_offset i32, data_offset i32, var LocalVar) {
 	f_typ_idx := field.typ.idx()
 	f_ts := c.g.table.sym(field.typ)
 
 	for f_f in (f_ts.info as ast.Struct).fields {
+		c.g.println('; ${var.name}. ... .${f_f.name}')
 		f_field := f_ts.find_field(f_f.name) or {
 			c.g.n_error('${@LOCATION} Could not find field `${f_f.name}` on init (${f_ts.info})')
 		}
@@ -3734,10 +3737,11 @@ fn (mut c Amd64) copy_struct_to_struct(field ast.StructField, f_offset i32, var 
 		f_f_ts := c.g.table.sym(f_field.typ)
 
 		if f_f_ts.info is ast.Struct {
-			c.copy_struct_to_struct(f_field, f_offset + f_f_offset, var)
+			c.copy_struct_to_struct(f_field, f_offset + f_f_offset, data_offset + f_f_offset,
+				var)
 		} else {
 			c.mov_reg(Amd64Register.rdx, Amd64Register.rax)
-			c.add(Amd64Register.rdx, f_offset + f_f_offset)
+			c.add(Amd64Register.rdx, data_offset + f_f_offset)
 			c.mov_deref(Amd64Register.rdx, Amd64Register.rdx, f_field.typ)
 			c.mov_reg_to_var(var, Amd64Register.rdx,
 				offset: f_offset + f_f_offset
