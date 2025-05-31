@@ -3728,24 +3728,24 @@ fn (mut c Amd64) copy_struct_to_struct(field ast.StructField, f_offset i32, data
 	f_typ_idx := field.typ.idx()
 	f_ts := c.g.table.sym(field.typ)
 
-	for f_f in (f_ts.info as ast.Struct).fields {
-		c.g.println('; ${var.name}. ... .${f_f.name}')
-		f_field := f_ts.find_field(f_f.name) or {
-			c.g.n_error('${@LOCATION} Could not find field `${f_f.name}` on init (${f_ts.info})')
+	for f2 in (f_ts.info as ast.Struct).fields {
+		c.g.println('; ${var.name}. ... .${f2.name}')
+		field2 := f_ts.find_field(f2.name) or {
+			c.g.n_error('${@LOCATION} Could not find field `${f2.name}` on init (${f_ts.info})')
 		}
-		f_f_offset := c.g.structs[f_typ_idx].offsets[f_field.i]
-		f_f_ts := c.g.table.sym(f_field.typ)
+		f2_offset := c.g.structs[f_typ_idx].offsets[field2.i]
+		f2_ts := c.g.table.sym(field2.typ)
 
-		if f_f_ts.info is ast.Struct {
-			c.copy_struct_to_struct(f_field, f_offset + f_f_offset, data_offset + f_f_offset,
+		if f2_ts.info is ast.Struct {
+			c.copy_struct_to_struct(field2, f_offset + f2_offset, data_offset + f2_offset,
 				var)
 		} else {
 			c.mov_reg(Amd64Register.rdx, Amd64Register.rax)
-			c.add(Amd64Register.rdx, data_offset + f_f_offset)
-			c.mov_deref(Amd64Register.rdx, Amd64Register.rdx, f_field.typ)
+			c.add(Amd64Register.rdx, data_offset + f2_offset)
+			c.mov_deref(Amd64Register.rdx, Amd64Register.rdx, field2.typ)
 			c.mov_reg_to_var(var, Amd64Register.rdx,
-				offset: f_offset + f_f_offset
-				typ:    f_field.typ
+				offset: f_offset + f2_offset
+				typ:    field2.typ
 			)
 		}
 	}
