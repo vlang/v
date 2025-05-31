@@ -726,27 +726,33 @@ fn normalize_path_in_builder(mut sb strings.Builder) {
 	}
 }
 
+@[params]
+pub struct WalkParams {
+pub:
+	hiddens bool
+}
+
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
 // For listing only one level deep, see: `os.ls`
-pub fn walk_ext(path string, ext string) []string {
+pub fn walk_ext(path string, ext string, opts WalkParams) []string {
 	mut res := []string{}
-	impl_walk_ext(path, ext, mut res)
+	impl_walk_ext(path, ext, mut res, opts)
 	return res
 }
 
-fn impl_walk_ext(path string, ext string, mut out []string) {
+fn impl_walk_ext(path string, ext string, mut out []string, opts WalkParams) {
 	if !is_dir(path) {
 		return
 	}
 	mut files := ls(path) or { return }
 	separator := if path.ends_with(path_separator) { '' } else { path_separator }
 	for file in files {
-		if file.starts_with('.') {
+		if file.starts_with('.') && !opts.hiddens {
 			continue
 		}
 		p := path + separator + file
 		if is_dir(p) && !is_link(p) {
-			impl_walk_ext(p, ext, mut out)
+			impl_walk_ext(p, ext, mut out, opts)
 		} else if file.ends_with(ext) {
 			out << p
 		}
