@@ -1,0 +1,10 @@
+// vtest vflags: -shared
+module gdi
+
+pub type Get_proc_address = fn (&i8) &Function_ptr
+
+pub type Set_proc_address = fn (&Function_ptr2)
+
+pub type Function_ptr = fn ()
+
+pub type Function_ptr2 = fn ()

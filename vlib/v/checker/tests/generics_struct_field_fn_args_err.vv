@@ -6,7 +6,7 @@ fn dub_int(i int) int {
 	return i * 2
 }
 
-struct Fun<F> {
+struct Fun[F] {
 mut:
 	call F
 }
@@ -14,14 +14,14 @@ mut:
 type FunZero = fn () int
 
 fn main() {
-	fun0 := Fun<FunZero>{
+	fun0 := Fun[FunZero]{
 		call: get_int
 	}
 	println(fun0.call())
 	println(fun0.call(1234))
 	println(fun0.call(1234, 5678))
 
-	fun1 := Fun<fn (int) int>{
+	fun1 := Fun[fn (int) int]{
 		call: dub_int
 	}
 

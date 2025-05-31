@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2004-2011 Hewlett-Packard Development Company, L.P.
+ * Copyright (c) 2012-2021 Ivan Maidanski
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,13 +23,15 @@
 
 /* For 64-bit systems, we expect the double type to hold two int64's.   */
 
-#if ((defined(__x86_64__) && defined(AO_GCC_ATOMIC_TEST_AND_SET)) \
-     || defined(__aarch64__)) && !defined(__ILP32__)
+#if (((defined(__x86_64__) && defined(AO_GCC_ATOMIC_TEST_AND_SET)) \
+      || defined(__aarch64__)) && !defined(__ILP32__)) \
+    || (defined(__e2k__) && __SIZEOF_SIZE_T__ == 8) \
+    || (defined(__riscv) && __riscv_xlen == 64)
   /* x86-64: __m128 is not applicable to atomic intrinsics.     */
 # if AO_GNUC_PREREQ(4, 7) || AO_CLANG_PREREQ(3, 6)
 #   pragma GCC diagnostic push
     /* Suppress warning about __int128 type.      */
-#   if defined(__clang__) || AO_GNUC_PREREQ(6, 4)
+#   if defined(__clang__) || AO_GNUC_PREREQ(6, 0)
 #     pragma GCC diagnostic ignored "-Wpedantic"
 #   else
       /* GCC before ~4.8 does not accept "-Wpedantic" quietly.  */
@@ -39,6 +42,9 @@
 # else /* pragma diagnostic is not supported */
     typedef unsigned __int128 double_ptr_storage;
 # endif
+#elif defined(_M_ARM64) && defined(_MSC_VER)
+  /* __int128 does not seem to be available.    */
+  typedef __declspec(align(16)) unsigned __int64 double_ptr_storage[2];
 #elif ((defined(__x86_64__) && AO_GNUC_PREREQ(4, 0)) || defined(_WIN64)) \
       && !defined(__ILP32__)
   /* x86-64 (except for x32): __m128 serves as a placeholder which also */

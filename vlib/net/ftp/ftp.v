@@ -20,19 +20,17 @@ basic ftp module
 import net
 import io
 
-const (
-	connected             = 220
-	specify_password      = 331
-	logged_in             = 230
-	login_first           = 503
-	anonymous             = 530
-	open_data_connection  = 150
-	close_data_connection = 226
-	command_ok            = 200
-	denied                = 550
-	passive_mode          = 227
-	complete              = 226
-)
+const connected = 220
+const specify_password = 331
+const logged_in = 230
+const login_first = 503
+const anonymous = 530
+const open_data_connection = 150
+const close_data_connection = 226
+const command_ok = 200
+const denied = 550
+const passive_mode = 227
+const complete = 226
 
 struct DTP {
 mut:
@@ -69,7 +67,7 @@ mut:
 // new returns an `FTP` instance.
 pub fn new() FTP {
 	mut f := FTP{
-		conn: 0
+		conn: unsafe { nil }
 	}
 	f.buffer_size = 1024
 	return f
@@ -102,12 +100,12 @@ fn (mut zftp FTP) read() !(int, string) {
 	return code, data
 }
 
-// connect establishes an FTP connection to the host at `ip` port 21.
-pub fn (mut zftp FTP) connect(ip string) !bool {
-	zftp.conn = net.dial_tcp('${ip}:21')!
+// connect establishes an FTP connection to the host at `oaddress` (ip:port).
+pub fn (mut zftp FTP) connect(oaddress string) !bool {
+	zftp.conn = net.dial_tcp(oaddress)!
 	zftp.reader = io.new_buffered_reader(reader: zftp.conn)
 	code, _ := zftp.read()!
-	if code == ftp.connected {
+	if code == connected {
 		return true
 	}
 	return false
@@ -122,10 +120,10 @@ pub fn (mut zftp FTP) login(user string, passwd string) !bool {
 		return false
 	}
 	mut code, _ := zftp.read()!
-	if code == ftp.logged_in {
+	if code == logged_in {
 		return true
 	}
-	if code != ftp.specify_password {
+	if code != specify_password {
 		return false
 	}
 	zftp.write('PASS ${passwd}') or {
@@ -135,7 +133,7 @@ pub fn (mut zftp FTP) login(user string, passwd string) !bool {
 		return false
 	}
 	code, _ = zftp.read()!
-	if code == ftp.logged_in {
+	if code == logged_in {
 		return true
 	}
 	return false
@@ -163,12 +161,12 @@ pub fn (mut zftp FTP) cd(dir string) ! {
 	zftp.write('CWD ${dir}') or { return }
 	mut code, mut data := zftp.read()!
 	match int(code) {
-		ftp.denied {
+		denied {
 			$if debug {
 				println('CD ${dir} denied!')
 			}
 		}
-		ftp.complete {
+		complete {
 			code, data = zftp.read()!
 		}
 		else {}
@@ -184,9 +182,9 @@ fn new_dtp(msg string) !&DTP {
 	}
 	ip, port := get_host_ip_from_dtp_message(msg)
 	mut dtp := &DTP{
-		ip: ip
+		ip:   ip
 		port: port
-		conn: 0
+		conn: unsafe { nil }
 	}
 	conn := net.dial_tcp('${ip}:${port}') or { return error('Cannot connect to the data channel') }
 	dtp.conn = conn
@@ -200,7 +198,7 @@ fn (mut zftp FTP) pasv() !&DTP {
 	$if debug {
 		println('pass: ${data}')
 	}
-	if code != ftp.passive_mode {
+	if code != passive_mode {
 		return error('passive mode not allowed')
 	}
 	dtp := new_dtp(data)!
@@ -212,15 +210,15 @@ pub fn (mut zftp FTP) dir() ![]string {
 	mut dtp := zftp.pasv() or { return error('Cannot establish data connection') }
 	zftp.write('LIST')!
 	code, _ := zftp.read()!
-	if code == ftp.denied {
+	if code == denied {
 		return error('`LIST` denied')
 	}
-	if code != ftp.open_data_connection {
+	if code != open_data_connection {
 		return error('Data channel empty')
 	}
 	list_dir := dtp.read()!
 	result, _ := zftp.read()!
-	if result != ftp.close_data_connection {
+	if result != close_data_connection {
 		println('`LIST` not ok')
 	}
 	dtp.close()
@@ -245,10 +243,10 @@ pub fn (mut zftp FTP) get(file string) ![]u8 {
 	mut dtp := zftp.pasv() or { return error('Cannot stablish data connection') }
 	zftp.write('RETR ${file}')!
 	code, _ := zftp.read()!
-	if code == ftp.denied {
+	if code == denied {
 		return error('Permission denied')
 	}
-	if code != ftp.open_data_connection {
+	if code != open_data_connection {
 		return error('Data connection not ready')
 	}
 	blob := dtp.read()!

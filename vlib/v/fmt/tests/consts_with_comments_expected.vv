@@ -1,12 +1,10 @@
 // leave
 const one = 1 // leave
-
-// move
+// leave
 
 const two = 2
 
-/*
-move
+/* move
 */
 
 const three = 3 // rewrite and leave

@@ -19,6 +19,6 @@ fn main() {
 	}
 
 	if x := maybe() {
-		println('$x')
+		println('${x}')
 	}
 }

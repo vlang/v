@@ -6,9 +6,7 @@ struct Right[T] {
 	inner T
 }
 
-type Either[T, E] =
-	Left[E] |
-	Right[T]
+type Either[T, E] = Left[E] | Right[T]
 
 fn works(v []Either[int, int]) {
 	first := v[0]

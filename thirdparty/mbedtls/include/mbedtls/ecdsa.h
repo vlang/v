@@ -12,19 +12,7 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
- *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 
 #ifndef MBEDTLS_ECDSA_H
@@ -53,13 +41,13 @@
  *
  * For each of r and s, the value (V) may include an extra initial "0" bit.
  */
-#define MBEDTLS_ECDSA_MAX_SIG_LEN( bits )                               \
-    ( /*T,L of SEQUENCE*/ ( ( bits ) >= 61 * 8 ? 3 : 2 ) +              \
-      /*T,L of r,s*/        2 * ( ( ( bits ) >= 127 * 8 ? 3 : 2 ) +     \
-      /*V of r,s*/                ( ( bits ) + 8 ) / 8 ) )
+#define MBEDTLS_ECDSA_MAX_SIG_LEN(bits)                               \
+    (/*T,L of SEQUENCE*/ ((bits) >= 61 * 8 ? 3 : 2) +              \
+     /*T,L of r,s*/ 2 * (((bits) >= 127 * 8 ? 3 : 2) +     \
+                         /*V of r,s*/ ((bits) + 8) / 8))
 
 /** The maximal size of an ECDSA signature in Bytes. */
-#define MBEDTLS_ECDSA_MAX_LEN  MBEDTLS_ECDSA_MAX_SIG_LEN( MBEDTLS_ECP_MAX_BITS )
+#define MBEDTLS_ECDSA_MAX_LEN  MBEDTLS_ECDSA_MAX_SIG_LEN(MBEDTLS_ECP_MAX_BITS)
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,6 +59,11 @@ extern "C" {
  * \warning         Performing multiple operations concurrently on the same
  *                  ECDSA context is not supported; objects of this type
  *                  should not be shared between multiple threads.
+ *
+ * \note            pk_wrap module assumes that "ecdsa_context" is identical
+ *                  to "ecp_keypair" (see for example structure
+ *                  "mbedtls_eckey_info" where ECDSA sign/verify functions
+ *                  are used also for EC key)
  */
 typedef mbedtls_ecp_keypair mbedtls_ecdsa_context;
 
@@ -102,10 +95,9 @@ typedef struct mbedtls_ecdsa_restart_det mbedtls_ecdsa_restart_det_ctx;
 /**
  * \brief           General context for resuming ECDSA operations
  */
-typedef struct
-{
+typedef struct {
     mbedtls_ecp_restart_ctx MBEDTLS_PRIVATE(ecp);        /*!<  base context for ECP restart and
-                                              shared administrative info    */
+                                                            shared administrative info    */
     mbedtls_ecdsa_restart_ver_ctx *MBEDTLS_PRIVATE(ver); /*!<  ecdsa_verify() sub-context    */
     mbedtls_ecdsa_restart_sig_ctx *MBEDTLS_PRIVATE(sig); /*!<  ecdsa_sign() sub-context      */
 #if defined(MBEDTLS_ECDSA_DETERMINISTIC)
@@ -128,7 +120,7 @@ typedef void mbedtls_ecdsa_restart_ctx;
  *
  * \return         \c 1 if the group can be used, \c 0 otherwise
  */
-int mbedtls_ecdsa_can_do( mbedtls_ecp_group_id gid );
+int mbedtls_ecdsa_can_do(mbedtls_ecp_group_id gid);
 
 /**
  * \brief           This function computes the ECDSA signature of a
@@ -166,9 +158,9 @@ int mbedtls_ecdsa_can_do( mbedtls_ecp_group_id gid );
  * \return          An \c MBEDTLS_ERR_ECP_XXX
  *                  or \c MBEDTLS_MPI_XXX error code on failure.
  */
-int mbedtls_ecdsa_sign( mbedtls_ecp_group *grp, mbedtls_mpi *r, mbedtls_mpi *s,
-                const mbedtls_mpi *d, const unsigned char *buf, size_t blen,
-                int (*f_rng)(void *, unsigned char *, size_t), void *p_rng );
+int mbedtls_ecdsa_sign(mbedtls_ecp_group *grp, mbedtls_mpi *r, mbedtls_mpi *s,
+                       const mbedtls_mpi *d, const unsigned char *buf, size_t blen,
+                       int (*f_rng)(void *, unsigned char *, size_t), void *p_rng);
 
 #if defined(MBEDTLS_ECDSA_DETERMINISTIC)
 /**
@@ -203,19 +195,149 @@ int mbedtls_ecdsa_sign( mbedtls_ecp_group *grp, mbedtls_mpi *r, mbedtls_mpi *s,
  * \param md_alg        The hash algorithm used to hash the original data.
  * \param f_rng_blind   The RNG function used for blinding. This must not be
  *                      \c NULL.
- * \param p_rng_blind   The RNG context to be passed to \p f_rng. This may be
- *                      \c NULL if \p f_rng doesn't need a context parameter.
+ * \param p_rng_blind   The RNG context to be passed to \p f_rng_blind. This
+ *                      may be \c NULL if \p f_rng_blind doesn't need a context
+ *                      parameter.
  *
  * \return          \c 0 on success.
  * \return          An \c MBEDTLS_ERR_ECP_XXX or \c MBEDTLS_MPI_XXX
  *                  error code on failure.
  */
-int mbedtls_ecdsa_sign_det_ext( mbedtls_ecp_group *grp, mbedtls_mpi *r,
-                            mbedtls_mpi *s, const mbedtls_mpi *d,
-                            const unsigned char *buf, size_t blen,
-                            mbedtls_md_type_t md_alg,
-                            int (*f_rng_blind)(void *, unsigned char *, size_t),
-                            void *p_rng_blind );
+int mbedtls_ecdsa_sign_det_ext(mbedtls_ecp_group *grp, mbedtls_mpi *r,
+                               mbedtls_mpi *s, const mbedtls_mpi *d,
+                               const unsigned char *buf, size_t blen,
+                               mbedtls_md_type_t md_alg,
+                               int (*f_rng_blind)(void *, unsigned char *, size_t),
+                               void *p_rng_blind);
+#endif /* MBEDTLS_ECDSA_DETERMINISTIC */
+
+#if !defined(MBEDTLS_ECDSA_SIGN_ALT)
+/**
+ * \brief               This function computes the ECDSA signature of a
+ *                      previously-hashed message, in a restartable way.
+ *
+ * \note                The deterministic version implemented in
+ *                      mbedtls_ecdsa_sign_det_restartable() is usually
+ *                      preferred.
+ *
+ * \note                This function is like \c mbedtls_ecdsa_sign() but
+ *                      it can return early and restart according to the
+ *                      limit set with \c mbedtls_ecp_set_max_ops() to
+ *                      reduce blocking.
+ *
+ * \note                If the bitlength of the message hash is larger
+ *                      than the bitlength of the group order, then the
+ *                      hash is truncated as defined in <em>Standards for
+ *                      Efficient Cryptography Group (SECG): SEC1 Elliptic
+ *                      Curve Cryptography</em>, section 4.1.3, step 5.
+ *
+ * \see                 ecp.h
+ *
+ * \param grp           The context for the elliptic curve to use.
+ *                      This must be initialized and have group parameters
+ *                      set, for example through mbedtls_ecp_group_load().
+ * \param r             The MPI context in which to store the first part
+ *                      the signature. This must be initialized.
+ * \param s             The MPI context in which to store the second part
+ *                      the signature. This must be initialized.
+ * \param d             The private signing key. This must be initialized
+ *                      and setup, for example through
+ *                      mbedtls_ecp_gen_privkey().
+ * \param buf           The hashed content to be signed. This must be a readable
+ *                      buffer of length \p blen Bytes. It may be \c NULL if
+ *                      \p blen is zero.
+ * \param blen          The length of \p buf in Bytes.
+ * \param f_rng         The RNG function. This must not be \c NULL.
+ * \param p_rng         The RNG context to be passed to \p f_rng. This may be
+ *                      \c NULL if \p f_rng doesn't need a context parameter.
+ * \param f_rng_blind   The RNG function used for blinding. This must not be
+ *                      \c NULL.
+ * \param p_rng_blind   The RNG context to be passed to \p f_rng. This may be
+ *                      \c NULL if \p f_rng doesn't need a context parameter.
+ * \param rs_ctx        The restart context to use. This may be \c NULL
+ *                      to disable restarting. If it is not \c NULL, it
+ *                      must point to an initialized restart context.
+ *
+ * \return              \c 0 on success.
+ * \return              #MBEDTLS_ERR_ECP_IN_PROGRESS if maximum number of
+ *                      operations was reached: see \c
+ *                      mbedtls_ecp_set_max_ops().
+ * \return              Another \c MBEDTLS_ERR_ECP_XXX, \c
+ *                      MBEDTLS_ERR_MPI_XXX or \c MBEDTLS_ERR_ASN1_XXX
+ *                      error code on failure.
+ */
+int mbedtls_ecdsa_sign_restartable(
+    mbedtls_ecp_group *grp,
+    mbedtls_mpi *r, mbedtls_mpi *s,
+    const mbedtls_mpi *d,
+    const unsigned char *buf, size_t blen,
+    int (*f_rng)(void *, unsigned char *, size_t),
+    void *p_rng,
+    int (*f_rng_blind)(void *, unsigned char *, size_t),
+    void *p_rng_blind,
+    mbedtls_ecdsa_restart_ctx *rs_ctx);
+
+#endif /* !MBEDTLS_ECDSA_SIGN_ALT */
+
+#if defined(MBEDTLS_ECDSA_DETERMINISTIC)
+
+/**
+ * \brief               This function computes the ECDSA signature of a
+ *                      previously-hashed message, in a restartable way.
+ *
+ * \note                This function is like \c
+ *                      mbedtls_ecdsa_sign_det_ext() but it can return
+ *                      early and restart according to the limit set with
+ *                      \c mbedtls_ecp_set_max_ops() to reduce blocking.
+ *
+ * \note                If the bitlength of the message hash is larger
+ *                      than the bitlength of the group order, then the
+ *                      hash is truncated as defined in <em>Standards for
+ *                      Efficient Cryptography Group (SECG): SEC1 Elliptic
+ *                      Curve Cryptography</em>, section 4.1.3, step 5.
+ *
+ * \see                 ecp.h
+ *
+ * \param grp           The context for the elliptic curve to use.
+ *                      This must be initialized and have group parameters
+ *                      set, for example through mbedtls_ecp_group_load().
+ * \param r             The MPI context in which to store the first part
+ *                      the signature. This must be initialized.
+ * \param s             The MPI context in which to store the second part
+ *                      the signature. This must be initialized.
+ * \param d             The private signing key. This must be initialized
+ *                      and setup, for example through
+ *                      mbedtls_ecp_gen_privkey().
+ * \param buf           The hashed content to be signed. This must be a readable
+ *                      buffer of length \p blen Bytes. It may be \c NULL if
+ *                      \p blen is zero.
+ * \param blen          The length of \p buf in Bytes.
+ * \param md_alg        The hash algorithm used to hash the original data.
+ * \param f_rng_blind   The RNG function used for blinding. This must not be
+ *                      \c NULL.
+ * \param p_rng_blind   The RNG context to be passed to \p f_rng_blind. This may be
+ *                      \c NULL if \p f_rng_blind doesn't need a context parameter.
+ * \param rs_ctx        The restart context to use. This may be \c NULL
+ *                      to disable restarting. If it is not \c NULL, it
+ *                      must point to an initialized restart context.
+ *
+ * \return              \c 0 on success.
+ * \return              #MBEDTLS_ERR_ECP_IN_PROGRESS if maximum number of
+ *                      operations was reached: see \c
+ *                      mbedtls_ecp_set_max_ops().
+ * \return              Another \c MBEDTLS_ERR_ECP_XXX, \c
+ *                      MBEDTLS_ERR_MPI_XXX or \c MBEDTLS_ERR_ASN1_XXX
+ *                      error code on failure.
+ */
+int mbedtls_ecdsa_sign_det_restartable(
+    mbedtls_ecp_group *grp,
+    mbedtls_mpi *r, mbedtls_mpi *s,
+    const mbedtls_mpi *d, const unsigned char *buf, size_t blen,
+    mbedtls_md_type_t md_alg,
+    int (*f_rng_blind)(void *, unsigned char *, size_t),
+    void *p_rng_blind,
+    mbedtls_ecdsa_restart_ctx *rs_ctx);
+
 #endif /* MBEDTLS_ECDSA_DETERMINISTIC */
 
 /**
@@ -245,15 +367,58 @@ int mbedtls_ecdsa_sign_det_ext( mbedtls_ecp_group *grp, mbedtls_mpi *r,
  *                  This must be initialized.
  *
  * \return          \c 0 on success.
- * \return          #MBEDTLS_ERR_ECP_BAD_INPUT_DATA if the signature
- *                  is invalid.
  * \return          An \c MBEDTLS_ERR_ECP_XXX or \c MBEDTLS_MPI_XXX
- *                  error code on failure for any other reason.
+ *                  error code on failure.
  */
-int mbedtls_ecdsa_verify( mbedtls_ecp_group *grp,
-                          const unsigned char *buf, size_t blen,
-                          const mbedtls_ecp_point *Q, const mbedtls_mpi *r,
-                          const mbedtls_mpi *s);
+int mbedtls_ecdsa_verify(mbedtls_ecp_group *grp,
+                         const unsigned char *buf, size_t blen,
+                         const mbedtls_ecp_point *Q, const mbedtls_mpi *r,
+                         const mbedtls_mpi *s);
+
+#if !defined(MBEDTLS_ECDSA_VERIFY_ALT)
+/**
+ * \brief           This function verifies the ECDSA signature of a
+ *                  previously-hashed message, in a restartable manner
+ *
+ * \note            If the bitlength of the message hash is larger than the
+ *                  bitlength of the group order, then the hash is truncated as
+ *                  defined in <em>Standards for Efficient Cryptography Group
+ *                  (SECG): SEC1 Elliptic Curve Cryptography</em>, section
+ *                  4.1.4, step 3.
+ *
+ * \see             ecp.h
+ *
+ * \param grp       The ECP group to use.
+ *                  This must be initialized and have group parameters
+ *                  set, for example through mbedtls_ecp_group_load().
+ * \param buf       The hashed content that was signed. This must be a readable
+ *                  buffer of length \p blen Bytes. It may be \c NULL if
+ *                  \p blen is zero.
+ * \param blen      The length of \p buf in Bytes.
+ * \param Q         The public key to use for verification. This must be
+ *                  initialized and setup.
+ * \param r         The first integer of the signature.
+ *                  This must be initialized.
+ * \param s         The second integer of the signature.
+ *                  This must be initialized.
+ * \param rs_ctx    The restart context to use. This may be \c NULL to disable
+ *                  restarting. If it is not \c NULL, it must point to an
+ *                  initialized restart context.
+ *
+ * \return          \c 0 on success.
+ * \return          #MBEDTLS_ERR_ECP_IN_PROGRESS if maximum number of
+ *                  operations was reached: see \c mbedtls_ecp_set_max_ops().
+ * \return          An \c MBEDTLS_ERR_ECP_XXX or \c MBEDTLS_MPI_XXX
+ *                  error code on failure.
+ */
+int mbedtls_ecdsa_verify_restartable(mbedtls_ecp_group *grp,
+                                     const unsigned char *buf, size_t blen,
+                                     const mbedtls_ecp_point *Q,
+                                     const mbedtls_mpi *r,
+                                     const mbedtls_mpi *s,
+                                     mbedtls_ecdsa_restart_ctx *rs_ctx);
+
+#endif /* !MBEDTLS_ECDSA_VERIFY_ALT */
 
 /**
  * \brief           This function computes the ECDSA signature and writes it
@@ -283,7 +448,7 @@ int mbedtls_ecdsa_verify( mbedtls_ecp_group *grp,
  *                  via mbedtls_ecdsa_genkey() or mbedtls_ecdsa_from_keypair().
  * \param md_alg    The message digest that was used to hash the message.
  * \param hash      The message hash to be signed. This must be a readable
- *                  buffer of length \p blen Bytes.
+ *                  buffer of length \p hlen Bytes.
  * \param hlen      The length of the hash \p hash in Bytes.
  * \param sig       The buffer to which to write the signature. This must be a
  *                  writable buffer of length at least twice as large as the
@@ -304,12 +469,12 @@ int mbedtls_ecdsa_verify( mbedtls_ecp_group *grp,
  * \return          An \c MBEDTLS_ERR_ECP_XXX, \c MBEDTLS_ERR_MPI_XXX or
  *                  \c MBEDTLS_ERR_ASN1_XXX error code on failure.
  */
-int mbedtls_ecdsa_write_signature( mbedtls_ecdsa_context *ctx,
-                                   mbedtls_md_type_t md_alg,
-                           const unsigned char *hash, size_t hlen,
-                           unsigned char *sig, size_t sig_size, size_t *slen,
-                           int (*f_rng)(void *, unsigned char *, size_t),
-                           void *p_rng );
+int mbedtls_ecdsa_write_signature(mbedtls_ecdsa_context *ctx,
+                                  mbedtls_md_type_t md_alg,
+                                  const unsigned char *hash, size_t hlen,
+                                  unsigned char *sig, size_t sig_size, size_t *slen,
+                                  int (*f_rng)(void *, unsigned char *, size_t),
+                                  void *p_rng);
 
 /**
  * \brief           This function computes the ECDSA signature and writes it
@@ -326,7 +491,7 @@ int mbedtls_ecdsa_write_signature( mbedtls_ecdsa_context *ctx,
  *                  via mbedtls_ecdsa_genkey() or mbedtls_ecdsa_from_keypair().
  * \param md_alg    The message digest that was used to hash the message.
  * \param hash      The message hash to be signed. This must be a readable
- *                  buffer of length \p blen Bytes.
+ *                  buffer of length \p hlen Bytes.
  * \param hlen      The length of the hash \p hash in Bytes.
  * \param sig       The buffer to which to write the signature. This must be a
  *                  writable buffer of length at least twice as large as the
@@ -351,13 +516,13 @@ int mbedtls_ecdsa_write_signature( mbedtls_ecdsa_context *ctx,
  * \return          Another \c MBEDTLS_ERR_ECP_XXX, \c MBEDTLS_ERR_MPI_XXX or
  *                  \c MBEDTLS_ERR_ASN1_XXX error code on failure.
  */
-int mbedtls_ecdsa_write_signature_restartable( mbedtls_ecdsa_context *ctx,
-                           mbedtls_md_type_t md_alg,
-                           const unsigned char *hash, size_t hlen,
-                           unsigned char *sig, size_t sig_size, size_t *slen,
-                           int (*f_rng)(void *, unsigned char *, size_t),
-                           void *p_rng,
-                           mbedtls_ecdsa_restart_ctx *rs_ctx );
+int mbedtls_ecdsa_write_signature_restartable(mbedtls_ecdsa_context *ctx,
+                                              mbedtls_md_type_t md_alg,
+                                              const unsigned char *hash, size_t hlen,
+                                              unsigned char *sig, size_t sig_size, size_t *slen,
+                                              int (*f_rng)(void *, unsigned char *, size_t),
+                                              void *p_rng,
+                                              mbedtls_ecdsa_restart_ctx *rs_ctx);
 
 /**
  * \brief           This function reads and verifies an ECDSA signature.
@@ -373,7 +538,7 @@ int mbedtls_ecdsa_write_signature_restartable( mbedtls_ecdsa_context *ctx,
  * \param ctx       The ECDSA context to use. This must be initialized
  *                  and have a group and public key bound to it.
  * \param hash      The message hash that was signed. This must be a readable
- *                  buffer of length \p size Bytes.
+ *                  buffer of length \p hlen Bytes.
  * \param hlen      The size of the hash \p hash.
  * \param sig       The signature to read and verify. This must be a readable
  *                  buffer of length \p slen Bytes.
@@ -386,9 +551,9 @@ int mbedtls_ecdsa_write_signature_restartable( mbedtls_ecdsa_context *ctx,
  * \return          An \c MBEDTLS_ERR_ECP_XXX or \c MBEDTLS_ERR_MPI_XXX
  *                  error code on failure for any other reason.
  */
-int mbedtls_ecdsa_read_signature( mbedtls_ecdsa_context *ctx,
-                          const unsigned char *hash, size_t hlen,
-                          const unsigned char *sig, size_t slen );
+int mbedtls_ecdsa_read_signature(mbedtls_ecdsa_context *ctx,
+                                 const unsigned char *hash, size_t hlen,
+                                 const unsigned char *sig, size_t slen);
 
 /**
  * \brief           This function reads and verifies an ECDSA signature,
@@ -403,7 +568,7 @@ int mbedtls_ecdsa_read_signature( mbedtls_ecdsa_context *ctx,
  * \param ctx       The ECDSA context to use. This must be initialized
  *                  and have a group and public key bound to it.
  * \param hash      The message hash that was signed. This must be a readable
- *                  buffer of length \p size Bytes.
+ *                  buffer of length \p hlen Bytes.
  * \param hlen      The size of the hash \p hash.
  * \param sig       The signature to read and verify. This must be a readable
  *                  buffer of length \p slen Bytes.
@@ -421,10 +586,10 @@ int mbedtls_ecdsa_read_signature( mbedtls_ecdsa_context *ctx,
  * \return          Another \c MBEDTLS_ERR_ECP_XXX or \c MBEDTLS_ERR_MPI_XXX
  *                  error code on failure for any other reason.
  */
-int mbedtls_ecdsa_read_signature_restartable( mbedtls_ecdsa_context *ctx,
-                          const unsigned char *hash, size_t hlen,
-                          const unsigned char *sig, size_t slen,
-                          mbedtls_ecdsa_restart_ctx *rs_ctx );
+int mbedtls_ecdsa_read_signature_restartable(mbedtls_ecdsa_context *ctx,
+                                             const unsigned char *hash, size_t hlen,
+                                             const unsigned char *sig, size_t slen,
+                                             mbedtls_ecdsa_restart_ctx *rs_ctx);
 
 /**
  * \brief          This function generates an ECDSA keypair on the given curve.
@@ -442,8 +607,8 @@ int mbedtls_ecdsa_read_signature_restartable( mbedtls_ecdsa_context *ctx,
  * \return         \c 0 on success.
  * \return         An \c MBEDTLS_ERR_ECP_XXX code on failure.
  */
-int mbedtls_ecdsa_genkey( mbedtls_ecdsa_context *ctx, mbedtls_ecp_group_id gid,
-                  int (*f_rng)(void *, unsigned char *, size_t), void *p_rng );
+int mbedtls_ecdsa_genkey(mbedtls_ecdsa_context *ctx, mbedtls_ecp_group_id gid,
+                         int (*f_rng)(void *, unsigned char *, size_t), void *p_rng);
 
 /**
  * \brief           This function sets up an ECDSA context from an EC key pair.
@@ -460,8 +625,8 @@ int mbedtls_ecdsa_genkey( mbedtls_ecdsa_context *ctx, mbedtls_ecp_group_id gid,
  * \return          \c 0 on success.
  * \return          An \c MBEDTLS_ERR_ECP_XXX code on failure.
  */
-int mbedtls_ecdsa_from_keypair( mbedtls_ecdsa_context *ctx,
-                                const mbedtls_ecp_keypair *key );
+int mbedtls_ecdsa_from_keypair(mbedtls_ecdsa_context *ctx,
+                               const mbedtls_ecp_keypair *key);
 
 /**
  * \brief           This function initializes an ECDSA context.
@@ -469,7 +634,7 @@ int mbedtls_ecdsa_from_keypair( mbedtls_ecdsa_context *ctx,
  * \param ctx       The ECDSA context to initialize.
  *                  This must not be \c NULL.
  */
-void mbedtls_ecdsa_init( mbedtls_ecdsa_context *ctx );
+void mbedtls_ecdsa_init(mbedtls_ecdsa_context *ctx);
 
 /**
  * \brief           This function frees an ECDSA context.
@@ -478,7 +643,7 @@ void mbedtls_ecdsa_init( mbedtls_ecdsa_context *ctx );
  *                  in which case this function does nothing. If it
  *                  is not \c NULL, it must be initialized.
  */
-void mbedtls_ecdsa_free( mbedtls_ecdsa_context *ctx );
+void mbedtls_ecdsa_free(mbedtls_ecdsa_context *ctx);
 
 #if defined(MBEDTLS_ECP_RESTARTABLE)
 /**
@@ -487,7 +652,7 @@ void mbedtls_ecdsa_free( mbedtls_ecdsa_context *ctx );
  * \param ctx       The restart context to initialize.
  *                  This must not be \c NULL.
  */
-void mbedtls_ecdsa_restart_init( mbedtls_ecdsa_restart_ctx *ctx );
+void mbedtls_ecdsa_restart_init(mbedtls_ecdsa_restart_ctx *ctx);
 
 /**
  * \brief           Free the components of a restart context.
@@ -496,7 +661,7 @@ void mbedtls_ecdsa_restart_init( mbedtls_ecdsa_restart_ctx *ctx );
  *                  in which case this function does nothing. If it
  *                  is not \c NULL, it must be initialized.
  */
-void mbedtls_ecdsa_restart_free( mbedtls_ecdsa_restart_ctx *ctx );
+void mbedtls_ecdsa_restart_free(mbedtls_ecdsa_restart_ctx *ctx);
 #endif /* MBEDTLS_ECP_RESTARTABLE */
 
 #ifdef __cplusplus

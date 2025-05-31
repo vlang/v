@@ -1,7 +1,3 @@
-const (
-	foo = 'abc'
-)
+const foo = 'abc'
 
-__global (
-	foo = 123
-)
+__global foo = 123

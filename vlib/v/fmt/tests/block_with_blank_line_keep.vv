@@ -1,0 +1,8 @@
+fn main() {
+	{
+		println('(1/3) My first small scope')
+		//
+	}
+
+	println('hello')
+}

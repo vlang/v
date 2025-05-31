@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Directed acyclic graph
@@ -55,12 +55,14 @@ pub fn (o &OrderedDepMap) get(name string) []string {
 	return res
 }
 
+@[direct_array_access]
 pub fn (mut o OrderedDepMap) delete(name string) {
 	if name !in o.data {
 		panic('delete: no such key: ${name}')
 	}
 	for i, _ in o.keys {
-		if o.keys[i] == name {
+		item := o.keys[i]
+		if item.len == name.len && item == name {
 			o.keys.delete(i)
 			break
 		}
@@ -86,7 +88,7 @@ pub fn (o &OrderedDepMap) size() int {
 pub fn new_dep_graph() &DepGraph {
 	return &DepGraph{
 		acyclic: true
-		nodes: []DepGraphNode{cap: 1024}
+		nodes:   []DepGraphNode{cap: 1024}
 	}
 }
 
@@ -101,9 +103,9 @@ pub fn (mut graph DepGraph) add(mod string, deps []string) {
 
 pub fn (mut graph DepGraph) add_with_value(mod string, deps []string, value i64) {
 	new_node := DepGraphNode{
-		name: mod
+		name:  mod
 		value: value
-		deps: deps.clone()
+		deps:  deps.clone()
 	}
 	graph.nodes << new_node
 	graph.values[mod] = value
@@ -116,10 +118,8 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 		node_names.add(node.name, node.deps)
 		node_deps.add(node.name, node.deps)
 	}
-	mut iterations := 0
 	mut resolved := new_dep_graph()
 	for node_deps.size() != 0 {
-		iterations++
 		mut ready_set := []string{}
 		for name in node_deps.keys {
 			deps := node_deps.get(name)
@@ -128,12 +128,11 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 			}
 		}
 		if ready_set.len == 0 {
-			mut g := new_dep_graph()
-			g.acyclic = false
+			resolved.acyclic = false
 			for name in node_deps.keys {
-				g.add_with_value(name, node_names.get(name), graph.values[name])
+				resolved.add_with_value(name, node_names.get(name), graph.values[name])
 			}
-			return g
+			return resolved
 		}
 		for name in ready_set {
 			node_deps.delete(name)
@@ -154,8 +153,12 @@ pub fn (graph &DepGraph) last_node() DepGraphNode {
 pub fn (graph &DepGraph) display() string {
 	mut out := []string{}
 	for node in graph.nodes {
-		for dep in node.deps {
-			out << ' * ${node.name} -> ${dep}'
+		if node.deps.len == 0 {
+			out << ' * ${node.name}'
+		} else {
+			for dep in node.deps {
+				out << ' * ${node.name} -> ${dep}'
+			}
 		}
 	}
 	return out.join('\n')

@@ -1,57 +1,274 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
 
 import strings
 
+// int_to_byte_array_no_pad fulfill buffer by part
+// it doesn't pad with leading zeros for performance reasons
+@[direct_array_access]
+fn int_to_byte_array_no_pad(value int, mut arr []u8, size int) {
+	mut num := value
+	if size <= 0 || num < 0 {
+		return
+	}
+
+	// Start from the end of the array
+	mut i := size - 1
+
+	// Convert each digit to a character and store it in the array
+	for num > 0 && i >= 0 {
+		arr[i] = (num % 10) + `0`
+		num /= 10
+		i--
+	}
+}
+
 // format returns a date string in "YYYY-MM-DD HH:mm" format (24h).
+@[manualfree]
 pub fn (t Time) format() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
+		`0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.year, mut buf, 4)
+	int_to_byte_array_no_pad(t.month, mut buf, 7)
+	int_to_byte_array_no_pad(t.day, mut buf, 10)
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 13)
+	int_to_byte_array_no_pad(t.minute, mut buf, 16)
+
+	return buf.bytestr()
 }
 
 // format_ss returns a date string in "YYYY-MM-DD HH:mm:ss" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.year, mut buf, 4)
+	int_to_byte_array_no_pad(t.month, mut buf, 7)
+	int_to_byte_array_no_pad(t.day, mut buf, 10)
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 13)
+	int_to_byte_array_no_pad(t.minute, mut buf, 16)
+	int_to_byte_array_no_pad(t.second, mut buf, 19)
+
+	return buf.bytestr()
 }
 
 // format_ss_milli returns a date string in "YYYY-MM-DD HH:mm:ss.123" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss_milli() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000_000):03d}'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.year, mut buf, 4)
+	int_to_byte_array_no_pad(t.month, mut buf, 7)
+	int_to_byte_array_no_pad(t.day, mut buf, 10)
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 13)
+	int_to_byte_array_no_pad(t.minute, mut buf, 16)
+	int_to_byte_array_no_pad(t.second, mut buf, 19)
+
+	// Extract and format milliseconds
+	millis := t.nanosecond / 1_000_000
+	int_to_byte_array_no_pad(millis, mut buf, 23)
+
+	return buf.bytestr()
 }
 
 // format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss_micro() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000):06d}'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.year, mut buf, 4)
+	int_to_byte_array_no_pad(t.month, mut buf, 7)
+	int_to_byte_array_no_pad(t.day, mut buf, 10)
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 13)
+	int_to_byte_array_no_pad(t.minute, mut buf, 16)
+	int_to_byte_array_no_pad(t.second, mut buf, 19)
+
+	// Extract and format microseconds
+	micros := t.nanosecond / 1_000
+	int_to_byte_array_no_pad(micros, mut buf, 26)
+
+	return buf.bytestr()
 }
 
 // format_ss_nano returns a date string in "YYYY-MM-DD HH:mm:ss.123456789" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss_nano() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.nanosecond:09d}'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.year, mut buf, 4)
+	int_to_byte_array_no_pad(t.month, mut buf, 7)
+	int_to_byte_array_no_pad(t.day, mut buf, 10)
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 13)
+	int_to_byte_array_no_pad(t.minute, mut buf, 16)
+	int_to_byte_array_no_pad(t.second, mut buf, 19)
+
+	int_to_byte_array_no_pad(t.nanosecond, mut buf, 29) // Adjusted index for 9 digits
+
+	return buf.bytestr()
 }
 
 // format_rfc3339 returns a date string in "YYYY-MM-DDTHH:mm:ss.123Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 // RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
 // It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
+@[manualfree]
 pub fn (t Time) format_rfc3339() string {
-	u := t.local_to_utc()
-	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.nanosecond / 1_000_000):03d}Z'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `Z`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	t_ := time_with_unix(t)
+	if t_.is_local {
+		utc_time := t_.local_to_utc()
+		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
+		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
+		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
+		int_to_byte_array_no_pad(utc_time.hour, mut buf, 13)
+		int_to_byte_array_no_pad(utc_time.minute, mut buf, 16)
+		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
+		int_to_byte_array_no_pad(utc_time.nanosecond / 1_000_000, mut buf, 23)
+	} else {
+		int_to_byte_array_no_pad(t_.year, mut buf, 4)
+		int_to_byte_array_no_pad(t_.month, mut buf, 7)
+		int_to_byte_array_no_pad(t_.day, mut buf, 10)
+		int_to_byte_array_no_pad(t_.hour, mut buf, 13)
+		int_to_byte_array_no_pad(t_.minute, mut buf, 16)
+		int_to_byte_array_no_pad(t_.second, mut buf, 19)
+		int_to_byte_array_no_pad(t_.nanosecond / 1_000_000, mut buf, 23)
+	}
+
+	return buf.bytestr()
+}
+
+// format_rfc3339_micro returns a date string in "YYYY-MM-DDTHH:mm:ss.123456Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+@[manualfree]
+pub fn (t Time) format_rfc3339_micro() string {
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	t_ := time_with_unix(t)
+	if t_.is_local {
+		utc_time := t_.local_to_utc()
+		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
+		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
+		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
+		int_to_byte_array_no_pad(utc_time.hour, mut buf, 13)
+		int_to_byte_array_no_pad(utc_time.minute, mut buf, 16)
+		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
+		int_to_byte_array_no_pad(utc_time.nanosecond / 1000, mut buf, 26)
+	} else {
+		int_to_byte_array_no_pad(t_.year, mut buf, 4)
+		int_to_byte_array_no_pad(t_.month, mut buf, 7)
+		int_to_byte_array_no_pad(t_.day, mut buf, 10)
+		int_to_byte_array_no_pad(t_.hour, mut buf, 13)
+		int_to_byte_array_no_pad(t_.minute, mut buf, 16)
+		int_to_byte_array_no_pad(t_.second, mut buf, 19)
+		int_to_byte_array_no_pad(t_.nanosecond / 1000, mut buf, 26)
+	}
+
+	return buf.bytestr()
 }
 
 // format_rfc3339_nano returns a date string in "YYYY-MM-DDTHH:mm:ss.123456789Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+@[manualfree]
 pub fn (t Time) format_rfc3339_nano() string {
-	u := t.local_to_utc()
-	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.nanosecond):09d}Z'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	t_ := time_with_unix(t)
+	if t_.is_local {
+		utc_time := t_.local_to_utc()
+		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
+		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
+		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
+		int_to_byte_array_no_pad(utc_time.hour, mut buf, 13)
+		int_to_byte_array_no_pad(utc_time.minute, mut buf, 16)
+		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
+		int_to_byte_array_no_pad(utc_time.nanosecond, mut buf, 29)
+	} else {
+		int_to_byte_array_no_pad(t_.year, mut buf, 4)
+		int_to_byte_array_no_pad(t_.month, mut buf, 7)
+		int_to_byte_array_no_pad(t_.day, mut buf, 10)
+		int_to_byte_array_no_pad(t_.hour, mut buf, 13)
+		int_to_byte_array_no_pad(t_.minute, mut buf, 16)
+		int_to_byte_array_no_pad(t_.second, mut buf, 19)
+		int_to_byte_array_no_pad(t_.nanosecond, mut buf, 29)
+	}
+
+	return buf.bytestr()
 }
 
 // hhmm returns a date string in "HH:mm" format (24h).
+@[manualfree]
 pub fn (t Time) hhmm() string {
-	return '${t.hour:02d}:${t.minute:02d}'
+	mut buf := [u8(`0`), `0`, `:`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 2)
+	int_to_byte_array_no_pad(t.minute, mut buf, 5)
+
+	return buf.bytestr()
 }
 
 // hhmmss returns a date string in "HH:mm:ss" format (24h).
+@[manualfree]
 pub fn (t Time) hhmmss() string {
-	return '${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
+	mut buf := [u8(`0`), `0`, `:`, `0`, `0`, `:`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 2)
+	int_to_byte_array_no_pad(t.minute, mut buf, 5)
+	int_to_byte_array_no_pad(t.second, mut buf, 8)
+
+	return buf.bytestr()
 }
 
 // hhmm12 returns a date string in "hh:mm" format (12h).
@@ -74,6 +291,7 @@ pub fn (t Time) md() string {
 	return t.get_fmt_date_str(.space, .mmmd)
 }
 
+// TODO: test, improve performance
 // appends ordinal suffix to a number
 fn ordinal_suffix(n int) string {
 	if n > 3 && n < 21 {
@@ -95,46 +313,44 @@ fn ordinal_suffix(n int) string {
 	}
 }
 
-const (
-	tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ii', 'ZZ', 'dd',
-		'Qo', 'QQ', 'wo', 'ww']
-	tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
-	tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
-)
+const tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ii', 'ZZ',
+	'dd', 'Qo', 'QQ', 'wo', 'ww']
+const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
+const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 
 // custom_format returns a date with custom format
 //
-// |                  | Token | Output                                 |
-// |-----------------:|:------|:---------------------------------------|
-// |        **Month** | M     | 1 2 ... 11 12                          |
+// | Category         | Token | Output                                 |
+// |:-----------------|:------|:---------------------------------------|
+// |          Era     | N     | BC AD                                  |
+// |                  | NN    | Before Christ, Anno Domini             |
+// |         Year     | YY    | 70 71 ... 29 30                        |
+// |                  | YYYY  | 1970 1971 ... 2029 2030                |
+// |      Quarter     | Q     | 1 2 3 4                                |
+// |                  | QQ    | 01 02 03 04                            |
+// |                  | Qo    | 1st 2nd 3rd 4th                        |
+// |        Month     | M     | 1 2 ... 11 12                          |
 // |                  | Mo    | 1st 2nd ... 11th 12th                  |
 // |                  | MM    | 01 02 ... 11 12                        |
 // |                  | MMM   | Jan Feb ... Nov Dec                    |
 // |                  | MMMM  | January February ... November December |
-// |      **Quarter** | Q     | 1 2 3 4                                |
-// |                  | QQ    | 01 02 03 04                            |
-// |                  | Qo    | 1st 2nd 3rd 4th                        |
-// | **Day of Month** | D     | 1 2 ... 30 31                          |
+// | Week of Year     | w     | 1 2 ... 52 53                          |
+// |                  | wo    | 1st 2nd ... 52nd 53rd                  |
+// |                  | ww    | 01 02 ... 52 53                        |
+// | Day of Month     | D     | 1 2 ... 30 31                          |
 // |                  | Do    | 1st 2nd ... 30th 31st                  |
 // |                  | DD    | 01 02 ... 30 31                        |
-// |  **Day of Year** | DDD   | 1 2 ... 364 365                        |
+// |  Day of Year     | DDD   | 1 2 ... 364 365                        |
 // |                  | DDDo  | 1st 2nd ... 364th 365th                |
 // |                  | DDDD  | 001 002 ... 364 365                    |
-// |  **Day of Week** | d     | 0 1 ... 5 6 (Sun-Sat)                  |
+// |  Day of Week     | d     | 0 1 ... 5 6 (Sun-Sat)                  |
 // |                  | c     | 1 2 ... 6 7 (Mon-Sun)                  |
 // |                  | dd    | Su Mo ... Fr Sa                        |
 // |                  | ddd   | Sun Mon ... Fri Sat                    |
 // |                  | dddd  | Sunday Monday ... Friday Saturday      |
-// | **Week of Year** | w     | 1 2 ... 52 53                          |
-// |                  | wo    | 1st 2nd ... 52nd 53rd                  |
-// |                  | ww    | 01 02 ... 52 53                        |
-// |         **Year** | YY    | 70 71 ... 29 30                        |
-// |                  | YYYY  | 1970 1971 ... 2029 2030                |
-// |          **Era** | N     | BC AD                                  |
-// |                  | NN    | Before Christ, Anno Domini             |
-// |        **AM/PM** | A     | AM PM                                  |
+// |        AM/PM     | A     | AM PM                                  |
 // |                  | a     | am pm                                  |
-// |         **Hour** | H     | 0 1 ... 22 23                          |
+// |         Hour     | H     | 0 1 ... 22 23                          |
 // |                  | HH    | 00 01 ... 22 23                        |
 // |                  | h     | 1 2 ... 11 12                          |
 // |                  | hh    | 01 02 ... 11 12                        |
@@ -142,11 +358,11 @@ const (
 // |                  | ii    | 00 01 ... 11 12 01 ... 11              |
 // |                  | k     | 1 2 ... 23 24                          |
 // |                  | kk    | 01 02 ... 23 24                        |
-// |       **Minute** | m     | 0 1 ... 58 59                          |
+// |       Minute     | m     | 0 1 ... 58 59                          |
 // |                  | mm    | 00 01 ... 58 59                        |
-// |       **Second** | s     | 0 1 ... 58 59                          |
+// |       Second     | s     | 0 1 ... 58 59                          |
 // |                  | ss    | 00 01 ... 58 59                        |
-// |       **Offset** | Z     | -7 -6 ... +5 +6                        |
+// |       Offset     | Z     | -7 -6 ... +5 +6                        |
 // |                  | ZZ    | -0700 -0600 ... +0500 +0600            |
 // |                  | ZZZ   | -07:00 -06:00 ... +05:00 +06:00        |
 //
@@ -161,9 +377,9 @@ pub fn (t Time) custom_format(s string) string {
 			if i > s.len - j {
 				continue
 			}
-			if j == 1 || (j == 2 && s[i..i + j] in time.tokens_2)
-				|| (j == 3 && s[i..i + j] in time.tokens_3)
-				|| (j == 4 && s[i..i + j] in time.tokens_4) {
+			if j == 1 || (j == 2 && s[i..i + j] in tokens_2)
+				|| (j == 3 && s[i..i + j] in tokens_3)
+				|| (j == 4 && s[i..i + j] in tokens_4) {
 				tokens << s[i..i + j]
 				i += (j - 1)
 				break
@@ -200,17 +416,16 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(ordinal_suffix(t.day))
 			}
 			'DDD' {
-				sb.write_string((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))).str())
+				sb.write_string((t.year_day()).str())
 			}
 			'DDDD' {
-				sb.write_string('${t.day + days_before[t.month - 1] + int(is_leap_year(t.year)):03}')
+				sb.write_string('${t.year_day():03}')
 			}
 			'DDDo' {
-				sb.write_string(ordinal_suffix(t.day + days_before[t.month - 1] +
-					int(is_leap_year(t.year))))
+				sb.write_string(ordinal_suffix(t.year_day()))
 			}
 			'd' {
-				sb.write_string(t.day_of_week().str())
+				sb.write_string('${t.day_of_week() % 7}')
 			}
 			'dd' {
 				sb.write_string(long_days[t.day_of_week() - 1][0..2])
@@ -268,16 +483,13 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${(t.hour + 1):02}')
 			}
 			'w' {
-				sb.write_string('${mceil((t.day + days_before[t.month - 1] +
-					int(is_leap_year(t.year))) / 7):.0}')
+				sb.write_string('${t.week_of_year():.0}')
 			}
 			'ww' {
-				sb.write_string('${mceil((t.day + days_before[t.month - 1] +
-					int(is_leap_year(t.year))) / 7):02.0}')
+				sb.write_string('${t.week_of_year():02.0}')
 			}
 			'wo' {
-				sb.write_string(ordinal_suffix(int(mceil((t.day + days_before[t.month - 1] +
-					int(is_leap_year(t.year))) / 7))))
+				sb.write_string(ordinal_suffix(t.week_of_year()))
 			}
 			'Q' {
 				sb.write_string('${(t.month % 4) + 1}')
@@ -289,14 +501,14 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(ordinal_suffix((t.month % 4) + 1))
 			}
 			'c' {
-				sb.write_string('${t.day_of_week() + 1}')
+				sb.write_string('${t.day_of_week()}')
 			}
 			'N' {
-				// TODO integrate BC
+				// TODO: integrate BC
 				sb.write_string('AD')
 			}
 			'NN' {
-				// TODO integrate Before Christ
+				// TODO: integrate Before Christ
 				sb.write_string('Anno Domini')
 			}
 			'Z' {
@@ -309,7 +521,7 @@ pub fn (t Time) custom_format(s string) string {
 				}
 			}
 			'ZZ' {
-				// TODO update if minute differs?
+				// TODO: update if minute differs?
 				mut hours := offset() / seconds_per_hour
 				if hours >= 0 {
 					sb.write_string('+${hours:02}00')
@@ -319,7 +531,7 @@ pub fn (t Time) custom_format(s string) string {
 				}
 			}
 			'ZZZ' {
-				// TODO update if minute differs?
+				// TODO: update if minute differs?
 				mut hours := offset() / seconds_per_hour
 				if hours >= 0 {
 					sb.write_string('+${hours:02}:00')
@@ -469,6 +681,32 @@ pub fn (t Time) utc_string() string {
 	month_str := t.smonth()
 	utc_string := '${day_str}, ${t.day} ${month_str} ${t.year} ${t.hour:02d}:${t.minute:02d}:${t.second:02d} UTC'
 	return utc_string
+}
+
+// http_header_string returns a date string in the format used in HTTP headers, as defined in RFC 2616.
+// e.g. "Sun, 06 Nov 1994 08:49:37 GMT"
+@[manualfree]
+pub fn (t Time) http_header_string() string {
+	day_str := t.weekday_str()
+	month_str := t.smonth()
+
+	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, month_str[0], month_str[1],
+		month_str[2], ` `, `0`, `0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `,
+		`G`, `M`, `T`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.day, mut buf, 7)
+	int_to_byte_array_no_pad(t.year, mut buf, 16)
+	int_to_byte_array_no_pad(t.hour, mut buf, 19)
+	int_to_byte_array_no_pad(t.minute, mut buf, 22)
+	int_to_byte_array_no_pad(t.second, mut buf, 25)
+
+	http_header_string := buf.bytestr()
+
+	return http_header_string
 }
 
 // mceil returns the least integer value greater than or equal to x.

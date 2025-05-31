@@ -1,0 +1,36 @@
+import veb
+import x.json2
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {
+	veb.Middleware[Context]
+}
+
+@['/'; POST]
+fn (app &App) index(mut ctx Context) veb.Result {
+	j := json2.raw_decode(ctx.req.data) or { return ctx.request_error('error') }
+
+	m := j.as_map()
+	myarr := m['myarr'] or { panic(error) }
+	m2 := myarr.arr()
+
+	for mc in m2 {
+		parts := mc.arr()
+
+		// Compiler error occurs here -->
+		first := parts[0].str()
+		second := parts[1].str()
+		third := parts[2].str()
+
+		println('1. ${first}, 2. ${second}, 3. ${third}')
+	}
+
+	return ctx.ok('ok')
+}
+
+fn main() {
+	_ := &App{}
+}

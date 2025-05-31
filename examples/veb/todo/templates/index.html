@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My TODO App</title>
+    <!-- include our css from the assets folder -->
+    @css '/assets/main.css'
+</head>
+<body>
+
+<header>
+    <h1>List of all my todos</h1>
+</header>
+
+<main>
+    <!-- Display a message when a new TODO is created -->
+    @if ctx.created_todo
+    <p class="form-success">Created a new todo!</p>
+    @endif
+
+    <section class="todos">
+        <div class="todo-list">
+        @if todos.len == 0
+            <p>Nothing to see here...</p>
+        @endif
+        <!-- Loop over all the current todo's -->
+        @for todo in todos
+            <div class="todo">
+                <p class="name"><span class="todo-id">(id: @{todo.id})</span>@{todo.name}</p>
+                @if !todo.completed
+                    <!-- We can also call methods of properties inside a template -->
+                    <p class="time">Created at: <span class="time">@{todo.created.hhmmss()}</span></p>
+                    <!-- Pass the id of the TODO as a route parameter to '/complete/:id' -->
+                    <form action="/todo/@{todo.id}/complete" method="post">
+                        <button class="success" type="submit">Complete</button>
+                    </form>
+                @else
+                 <p class="time">Completed at: <span class="time">@{todo.updated.hhmmss()}</span></p>
+                    <p class="completed">✔️</p>
+                    <!-- Pass the id of the TODO as a route parameter to '/complete/:id' -->
+                    <form action="/todo/@{todo.id}/delete" method="post">
+                        <button class="error" type="submit">Delete</button>
+                    </form>
+                @endif
+            </div>
+        @endfor
+      
+        </div>
+    </section>
+
+    <section class="create-todo">
+        <h2>Create a new TODO item</h2>
+        <form action="/" method="post">
+            <label for="task-name">Name:</label>
+            <input autofocus id="task-name" type="text" name="name">
+            <button class="primary" type="submit">Create</button>
+            <p class="form-error">@{ctx.form_error}</p>
+        </form>
+    </section>
+</main>    
+
+</body>
+</html>

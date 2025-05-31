@@ -19,7 +19,7 @@ pub fn check_v_commit_timestamp_before_self_rebuilding(v_timestamp u64) {
 }
 
 pub fn validate_commit_exists(commit string) {
-	if commit.len == 0 {
+	if commit != '' {
 		return
 	}
 	cmd := 'git cat-file -t "${commit}" ' // windows's cmd.exe does not support ' for quoting
@@ -45,6 +45,23 @@ fn get_current_folder_commit_hash() string {
 	return v_commithash
 }
 
+@[noreturn]
+fn fatal_error(error IError, label string) {
+	eprintln('error: ${label}')
+	eprintln(error)
+	exit(1)
+}
+
+@[noreturn]
+fn co_fail(error IError, commit string) {
+	fatal_error(error, 'git could not checkout `${commit}`')
+}
+
+@[noreturn]
+fn net_fail(error IError, what string) {
+	fatal_error(error, 'git failed at `${what}`')
+}
+
 pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, string, u64) {
 	scripting.chdir(cdir)
 	// Building a historic v with the latest vc is not always possible ...
@@ -55,8 +72,8 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 	scripting.verbose_trace(@FN, 'v_timestamp: ${v_timestamp} | v_commithash: ${v_commithash}')
 	check_v_commit_timestamp_before_self_rebuilding(v_timestamp)
 	scripting.chdir(vcdir)
-	scripting.run('git checkout --quiet master')
-	//
+	scripting.frun('git checkout --quiet master') or { co_fail(err, 'master') }
+
 	mut vccommit := ''
 	mut partial_hash := v_commithash[0..7]
 	if '5b7a1e8'.starts_with(partial_hash) {
@@ -73,7 +90,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 		_, vccommit = line_to_timestamp_and_commit(vcbefore)
 	}
 	scripting.verbose_trace(@FN, 'vccommit: ${vccommit}')
-	scripting.run('git checkout --quiet "${vccommit}" ')
+	scripting.frun('git checkout --quiet "${vccommit}" ') or { co_fail(err, vccommit) }
 	scripting.run('wc *.c')
 	scripting.chdir(cdir)
 	return v_commithash, vccommit, v_timestamp
@@ -83,21 +100,27 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 	// Note: after clone_or_pull, the current repo branch is === HEAD === master
 	if os.is_dir(local_worktree_path) && os.is_dir(os.join_path_single(local_worktree_path, '.git')) {
 		// Already existing ... Just pulling in this case is faster usually.
-		scripting.run('git -C "${local_worktree_path}"  checkout --quiet master')
-		scripting.run('git -C "${local_worktree_path}"  pull     --quiet ')
+		scripting.frun('git -C "${local_worktree_path}" checkout --quiet master') or {
+			co_fail(err, 'master')
+		}
+		scripting.frun('git -C "${local_worktree_path}" pull --quiet ') or {
+			net_fail(err, 'pulling')
+		}
 	} else {
 		// Clone a fresh local tree.
 		if remote_git_url.starts_with('http') {
 			// cloning an https remote with --filter=blob:none is usually much less bandwidth intensive, at the
 			// expense of doing small network ops later when using checkouts.
-			scripting.run('git clone --filter=blob:none --quiet "${remote_git_url}"  "${local_worktree_path}" ')
+			scripting.frun('git clone --filter=blob:none --quiet "${remote_git_url}" "${local_worktree_path}" ') or {
+				net_fail(err, 'cloning')
+			}
 			return
 		}
 		mut is_blobless_clone := false
 		remote_git_config_path := os.join_path(remote_git_url, '.git', 'config')
 		if os.is_dir(remote_git_url) && os.is_file(remote_git_config_path) {
 			lines := os.read_lines(remote_git_config_path) or { [] }
-			is_blobless_clone = lines.filter(it.contains('partialclonefilter = blob:none')).len > 0
+			is_blobless_clone = lines.any(it.contains('partialclonefilter = blob:none'))
 		}
 		if is_blobless_clone {
 			// Note:
@@ -112,17 +135,22 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 			// at the expense of a little more space usage, which will make the new tree in local_worktree_path,
 			// exactly 1:1 the same, as the one in remote_git_url, just independent from it .
 			copy_cmd := if os.user_os() == 'windows' { 'robocopy /MIR' } else { 'rsync -a' }
-			scripting.run('${copy_cmd} "${remote_git_url}/"  "${local_worktree_path}/"')
+			scripting.frun('${copy_cmd} "${remote_git_url}/" "${local_worktree_path}/"') or {
+				fatal_error(err, 'copying to ${local_worktree_path}')
+			}
 			return
 		}
-		scripting.run('git clone --quiet "${remote_git_url}"  "${local_worktree_path}" ')
+		scripting.frun('git clone --quiet "${remote_git_url}"  "${local_worktree_path}" ') or {
+			net_fail(err, 'cloning')
+		}
 	}
 }
 
 pub struct VGitContext {
 pub:
-	cc          string = 'cc' // what compiler to use
-	workdir     string = '/tmp' // the base working folder
+	cc          string = 'cc' // what C compiler to use for bootstrapping
+	cc_options  string // what additional C compiler options to use for bootstrapping
+	workdir     string = '/tmp'   // the base working folder
 	commit_v    string = 'master' // the commit-ish that needs to be prepared
 	path_v      string // where is the local working copy v repo
 	path_vc     string // where is the local working copy vc repo
@@ -137,12 +165,14 @@ pub mut:
 	vexepath       string // the full absolute path to the prepared v/v.exe
 	vvlocation     string // v.v or compiler/ or cmd/v, depending on v version
 	make_fresh_tcc bool   // whether to do 'make fresh_tcc' before compiling an old V.
+	show_vccommit  bool   // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
 }
 
 pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	vgit_context.vexepath = os.real_path(os.join_path_single(vgit_context.path_v, vgit_context.vexename))
-	if os.is_dir(vgit_context.path_v) && os.is_executable(vgit_context.vexepath) {
+	if os.is_dir(vgit_context.path_v) && os.is_executable(vgit_context.vexepath)
+		&& !vgit_context.show_vccommit {
 		// already compiled, no need to compile that specific v executable again
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()
 		return
@@ -151,8 +181,11 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	clone_or_pull(vgit_context.v_repo_url, vgit_context.path_v)
 	clone_or_pull(vgit_context.vc_repo_url, vgit_context.path_vc)
 	scripting.chdir(vgit_context.path_v)
-	scripting.run('git checkout --quiet ${vgit_context.commit_v}')
-	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath) {
+	scripting.frun('git checkout --quiet ${vgit_context.commit_v}') or {
+		co_fail(err, vgit_context.commit_v)
+	}
+	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath)
+		&& !vgit_context.show_vccommit {
 		// already compiled, so no need to compile v again
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()
 		return
@@ -162,6 +195,13 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.commit_v__hash = v_commithash
 	vgit_context.commit_v__ts = v_timestamp
 	vgit_context.commit_vc_hash = vccommit_before
+
+	if vgit_context.show_vccommit {
+		println('VHASH=${vgit_context.commit_v__hash}')
+		println('VCHASH=${vgit_context.commit_vc_hash}')
+		exit(0)
+	}
+
 	if os.exists('cmd/v') {
 		vgit_context.vvlocation = 'cmd/v'
 	} else {
@@ -185,6 +225,17 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	mut c_flags := '-std=gnu11 -I ./thirdparty/stdatomic/nix -w'
 	mut c_ldflags := '-lm -lpthread'
 	mut vc_source_file_location := os.join_path_single(vgit_context.path_vc, 'v.c')
+	mut vc_v_cpermissive_flags := '${vgit_context.cc_options} -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration -Wno-error=int-conversion -fpermissive'
+	// after 85b58b0 2021-09-28, -no-parallel is supported, and can be used to force the cgen stage to be single threaded, which increases the chances of successful bootstraps
+	mut vc_v_bootstrap_flags := ''
+	if vgit_context.commit_v__ts >= 1632778086 {
+		vc_v_bootstrap_flags += ' -no-parallel'
+	}
+	vc_v_bootstrap_flags = vc_v_bootstrap_flags.trim_space()
+	scripting.verbose_trace(@FN, 'vc_v_bootstrap_flags: ${vc_v_bootstrap_flags}')
+	scripting.verbose_trace(@FN, 'vc_v_cpermissive_flags: ${vc_v_cpermissive_flags}')
+	scripting.verbose_trace(@FN, 'vgit_context.commit_v__ts: ${vgit_context.commit_v__ts}')
+
 	if 'windows' == os.user_os() {
 		c_flags = '-std=c99 -I ./thirdparty/stdatomic/win -w'
 		c_ldflags = ''
@@ -198,11 +249,15 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 			// after 53ffee1 2020-05-18, gcc builds on windows do need `-municode`
 			c_flags += '-municode'
 		}
-		command_for_building_v_from_c_source = '${vgit_context.cc} ${c_flags} -o cv.exe  "${vc_source_file_location}" ${c_ldflags}'
-		command_for_selfbuilding = '.\\cv.exe -o ${vgit_context.vexename} {SOURCE}'
+		// after 2023-11-07, windows builds need linking to ws2_32:
+		if vgit_context.commit_v__ts >= 1699341818 && !vgit_context.cc.contains('msvc') {
+			c_flags += '-lws2_32'
+		}
+		command_for_building_v_from_c_source = c(vgit_context.cc, '${vc_v_cpermissive_flags} ${c_flags} -o cv.exe "${vc_source_file_location}" ${c_ldflags}')
+		command_for_selfbuilding = c('.\\cv.exe', '${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" -o ${vgit_context.vexename} {SOURCE}')
 	} else {
-		command_for_building_v_from_c_source = '${vgit_context.cc} ${c_flags} -o cv "${vc_source_file_location}"  ${c_ldflags}'
-		command_for_selfbuilding = './cv -o ${vgit_context.vexename} {SOURCE}'
+		command_for_building_v_from_c_source = c(vgit_context.cc, '${vc_v_cpermissive_flags} ${c_flags} -o cv "${vc_source_file_location}" ${c_ldflags}')
+		command_for_selfbuilding = c('./cv', '${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" -o ${vgit_context.vexename} {SOURCE}')
 	}
 
 	scripting.run(command_for_building_v_from_c_source)
@@ -210,6 +265,11 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	scripting.run(build_cmd)
 	// At this point, there exists a file vgit_context.vexepath
 	// which should be a valid working V executable.
+}
+
+fn c(cmd string, params string) string {
+	// compose a command, while reducing the potential whitespaces, due to all the interpolations of optional flags above
+	return '${cmd} ${params.trim_space()}'
 }
 
 pub struct VGitOptions {

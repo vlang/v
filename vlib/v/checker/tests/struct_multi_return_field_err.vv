@@ -1,4 +1,4 @@
-struct Tuple{
+struct Tuple {
 	data (int, int)
 }
 

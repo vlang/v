@@ -5,7 +5,7 @@ module math
 // sqrt(±0) = ±0
 // sqrt(x < 0) = nan
 // sqrt(nan) = nan
-[inline]
+@[inline]
 pub fn sqrt(a f64) f64 {
 	mut x := a
 	if x == 0.0 || is_nan(x) || is_inf(x, 1) {
@@ -31,7 +31,7 @@ pub fn sqrt(a f64) f64 {
 }
 
 // sqrtf calculates square-root of the provided value. (float32)
-[inline]
+@[inline]
 pub fn sqrtf(a f32) f32 {
 	return f32(sqrt(a))
 }

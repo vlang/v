@@ -1,5 +1,0 @@
-vlib/v/checker/tests/string_escape_u_err_a.vv:2:15: error: `\u` incomplete unicode character value
-    1 | fn main() {
-    2 |     println('\u')
-      |               ^
-    3 | }

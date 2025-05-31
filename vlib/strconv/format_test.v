@@ -32,7 +32,7 @@ fn test_format() {
 	assert tmp_str == temp_s
 
 	a1 := u8(0xff)
-	b1 := i16(0xffff)
+	b1 := i16(u16(0xffff))
 	c1 := u32(0xffff_ffff)
 	d1 := u64(-1)
 	sc2 := '%hhu %hu %u %lu'
@@ -118,4 +118,30 @@ fn test_sprintf_with_escape() {
 	n := 69
 	s := unsafe { strconv.v_sprintf('%d is 100%% awesome', n) }
 	assert s == '69 is 100% awesome'
+}
+
+fn test_remove_tail_zeros() {
+	assert strconv.remove_tail_zeros('1.234000000000') == '1.234'
+	assert strconv.remove_tail_zeros('1.0000000') == '1'
+	assert strconv.remove_tail_zeros('1234') == '1234'
+	assert strconv.remove_tail_zeros('1.00000000007') == '1.00000000007'
+}
+
+fn test_g_format() {
+	a := 1234.56789000e10
+	assert '${a:1.0g}' == '1e+13'
+	assert '${a:1.1g}' == '1e+13'
+	assert '${a:1.2g}' == '1.2e+13'
+	assert '${a:1.3g}' == '1.23e+13'
+	assert '${a:1.4g}' == '1.235e+13'
+	assert '${a:1.5g}' == '1.2346e+13'
+	assert '${a:1.6g}' == '1.23457e+13'
+	assert '${a:1.7g}' == '1.234568e+13'
+	assert '${a:1.8g}' == '1.2345679e+13'
+	assert '${a:1.9g}' == '1.23456789e+13'
+	assert '${a:1.10g}' == '1.23456789e+13'
+	assert '${a:1.11g}' == '1.23456789e+13'
+	assert '${a:1.12g}' == '1.23456789e+13'
+
+	// TODO: e format not support due to issue #22429
 }

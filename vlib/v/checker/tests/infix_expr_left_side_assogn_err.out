@@ -1,0 +1,13 @@
+vlib/v/checker/tests/infix_expr_left_side_assogn_err.vv:4:4: error: cannot use infix expression on the left side of `=`
+    2 |     a := 69
+    3 |     b := 420
+    4 |     a + b = a + b
+      |       ^
+    5 |     (a + b) = a + b
+    6 | }
+vlib/v/checker/tests/infix_expr_left_side_assogn_err.vv:5:5: error: cannot use infix expression on the left side of `=`
+    3 |     b := 420
+    4 |     a + b = a + b
+    5 |     (a + b) = a + b
+      |        ^
+    6 | }

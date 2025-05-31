@@ -19,7 +19,7 @@ fn test_dl_loader() ! {
 
 fn get_or_create_loader(name string, paths []string) !&loader.DynamicLibLoader {
 	return loader.get_or_create_dynamic_lib_loader(
-		key: name
+		key:   name
 		paths: paths
 		flags: dl.rtld_now
 	)

@@ -1,0 +1,43 @@
+name: More extensive but slower tests
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/more_extensive_but_slower_tests_ci.yml'
+      - 'examples/**'
+      - 'cmd/tools/**'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/more_extensive_but_slower_tests_ci.yml'
+      - 'examples/**'
+      - 'cmd/tools/**'
+
+concurrency:
+  group: slower_tests-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  more-tests:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 121
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build V
+        if: runner.os != 'Windows'
+        run: make -j4 && ./v symlink
+      - name: Build V (Windows)
+        if: runner.os == 'Windows'
+        run: ./make.bat && ./v symlink
+
+      - name: Run additional crypto tests
+        run: |
+          v retry -- git clone --depth 1 https://github.com/vlang/hash_validation_tests
+          v test hash_validation_tests/

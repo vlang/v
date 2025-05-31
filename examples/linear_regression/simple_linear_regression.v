@@ -39,11 +39,11 @@ fn linearrelationship(independent_variable []int, dependent_variable []int) Line
 	// R2 = n(∑xy) - (∑x)(∑y) / sqrt([n(∑x²)-(∑x)²][n(∑y²)-(∑y)²]
 	r2_value := f64((independent_variable.len * sum_xy) - (sum_x * sum_y)) / math.sqrt(f64((sum_r2_x * independent_variable.len) - (sum_x * sum_x)) * f64((sum_r2_y * dependent_variable.len) - (sum_y * sum_y)))
 	return LinearResult{
-		r2: r2_value
-		intercept: intercept_value
-		slope: slope_value
+		r2:                         r2_value
+		intercept:                  intercept_value
+		slope:                      slope_value
 		independent_variable_means: x_means
-		dependent_variable_means: y_means
+		dependent_variable_means:   y_means
 	}
 }
 

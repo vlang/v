@@ -1,12 +1,12 @@
 module builtin
 
 pub interface JS.Promise {
-	then(onFullfilled JS.Any, onRejected JS.Any)
+	then(onFullfiled JS.Any, onRejected JS.Any)
 	catch(onCatch JS.Any) JS.Promise
 	finally(callback JS.Any) JS.Promise
 }
 
-[use_new]
+@[use_new]
 pub fn JS.Promise.prototype.constructor(JS.Any) JS.Promise
 pub fn JS.Promise.reject(JS.Any) JS.Promise
 pub fn JS.Promise.resolve(JS.Any) JS.Promise
@@ -16,7 +16,7 @@ pub fn JS.Promise.race(JS.Array) JS.Promise
 // of an asynchronous operation and its resulting value.
 pub struct Promise[T] {
 mut:
-	promise JS.Promise [noinit]
+	promise JS.Promise @[noinit]
 }
 
 pub fn promise_new[T](executor fn (resolve fn (T), reject fn (JS.Any))) Promise[T] {
@@ -24,8 +24,8 @@ pub fn promise_new[T](executor fn (resolve fn (T), reject fn (JS.Any))) Promise[
 	return Promise[T]{promise}
 }
 
-pub fn (p Promise[T]) then(on_fullfilled fn (T), on_rejected fn (JS.Any)) {
-	p.promise.then(on_fullfilled, on_rejected)
+pub fn (p Promise[T]) then(on_fulfilled fn (T), on_rejected fn (JS.Any)) {
+	p.promise.then(on_fulfilled, on_rejected)
 }
 
 // catch method returns a Promise and deals with rejected cases only.

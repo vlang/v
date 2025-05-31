@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module csv
@@ -50,8 +50,9 @@ mut:
 	row_pos           int
 }
 
-[params]
+@[params]
 pub struct ReaderConfig {
+pub:
 	delimiter u8 = `,`
 	comment   u8 = `#`
 }
@@ -60,9 +61,9 @@ pub struct ReaderConfig {
 // optionally, a custom delimiter.
 pub fn new_reader(data string, config ReaderConfig) &Reader {
 	return &Reader{
-		data: data
+		data:      data
 		delimiter: config.delimiter
-		comment: config.comment
+		comment:   config.comment
 	}
 }
 
@@ -90,15 +91,15 @@ pub fn (mut r Reader) read() ![]string {
 // }
 fn (mut r Reader) read_line() !string {
 	// last record
-	if r.row_pos == r.data.len {
+	if r.row_pos >= r.data.len {
 		return &EndOfFileError{}
 	}
 	le := if r.is_mac_pre_osx_le { '\r' } else { '\n' }
-	mut i := r.data.index_after(le, r.row_pos)
+	mut i := r.data.index_after(le, r.row_pos) or { -1 }
 	if i == -1 {
 		if r.row_pos == 0 {
 			// check for pre osx mac line endings
-			i = r.data.index_after('\r', r.row_pos)
+			i = r.data.index_after('\r', r.row_pos) or { -1 }
 			if i != -1 {
 				r.is_mac_pre_osx_le = true
 			} else {
@@ -107,7 +108,7 @@ fn (mut r Reader) read_line() !string {
 			}
 		} else {
 			// No line ending on file
-			i = r.data.len - 1
+			i = r.data.len
 		}
 	}
 	mut line := r.data[r.row_pos..i]

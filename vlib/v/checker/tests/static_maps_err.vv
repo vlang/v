@@ -1,0 +1,11 @@
+@[unsafe]
+fn foo() map[string]int {
+	mut static x := map[string]int{}
+	return x
+}
+
+fn main() {
+	unsafe {
+		foo()
+	}
+}

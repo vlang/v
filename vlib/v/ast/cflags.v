@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -49,34 +49,23 @@ pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string)
 				}
 			}
 		}
-		mut index := flag.index(' -') or { -1 }
-		for index > -1 {
-			mut has_next := false
-			for f in allowed_flags {
-				i := index + 2 + f.len
-				if i <= flag.len && f == flag[index + 2..i] {
-					value = flag[..index + 1].trim_space()
-					flag = flag[index + 1..].trim_space()
-					has_next = true
-					break
-				}
-			}
-			if has_next {
-				break
-			}
-			index = flag.index_after(' -', index + 1)
+		// -I/usr/local/a b c/include -m64 -I/usr/include
+		index := flag.index(' -') or { -1 }
+		if index > -1 {
+			value = flag[..index].trim_space()
+			flag = flag[index..].trim_space()
+		} else {
+			value = flag
 		}
-		if index == -1 {
-			value = flag.trim_space()
-		}
+
 		if name in ['-I', '-l', '-L'] && value == '' {
 			hint := if name == '-l' { 'library name' } else { 'path' }
 			return error('bad #flag `${flag_orig}`: missing ${hint} after `${name}`')
 		}
 		cf := cflag.CFlag{
-			mod: mod
-			os: fos
-			name: name
+			mod:   mod
+			os:    fos
+			name:  name
 			value: value
 		}
 		if !t.has_cflag(cf) {

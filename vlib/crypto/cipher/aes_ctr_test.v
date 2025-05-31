@@ -18,12 +18,12 @@ fn test_aes_ctr() {
 
 fn aes_ctr_en(mut src []u8, key []u8, iv []u8) {
 	block := aes.new_cipher(key)
-	mode := cipher.new_ctr(block, iv)
+	mut mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
 fn aes_ctr_de(mut src []u8, key []u8, iv []u8) {
 	block := aes.new_cipher(key)
-	mode := cipher.new_ctr(block, iv)
+	mut mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }

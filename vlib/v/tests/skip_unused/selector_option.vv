@@ -1,0 +1,15 @@
+module main
+
+struct GameObject {
+mut:
+	id     int = 1
+	parent ?&GameObject
+}
+
+fn main() {
+	mut gameobject := GameObject{}
+	gameobject.parent = &GameObject{
+		id: 2
+	}
+	println('${gameobject.parent?.id}')
+}

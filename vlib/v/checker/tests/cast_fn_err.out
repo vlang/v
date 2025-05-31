@@ -1,0 +1,69 @@
+vlib/v/checker/tests/cast_fn_err.vv:24:7: warning: casting `nil` to function value should be done inside `unsafe{}` blocks
+   22 |     // wrong ones
+   23 |     _ := FnType(foo)
+   24 |     _ := FnType(nil)
+      |          ~~~~~~~~~~~
+   25 |     _ := FnType(0)
+   26 |     _ := FnType('foo')
+vlib/v/checker/tests/cast_fn_err.vv:25:7: warning: casting number to function value should be done inside `unsafe{}` blocks
+   23 |     _ := FnType(foo)
+   24 |     _ := FnType(nil)
+   25 |     _ := FnType(0)
+      |          ~~~~~~~~~
+   26 |     _ := FnType('foo')
+   27 |     _ := FnType(none)
+vlib/v/checker/tests/cast_fn_err.vv:23:7: error: casting a function value from one function signature, to another function signature, should be done inside `unsafe{}` blocks
+   21 | 
+   22 |     // wrong ones
+   23 |     _ := FnType(foo)
+      |          ~~~~~~~~~~~
+   24 |     _ := FnType(nil)
+   25 |     _ := FnType(0)
+vlib/v/checker/tests/cast_fn_err.vv:24:14: error: `nil` is only allowed in `unsafe` code
+   22 |     // wrong ones
+   23 |     _ := FnType(foo)
+   24 |     _ := FnType(nil)
+      |                 ~~~
+   25 |     _ := FnType(0)
+   26 |     _ := FnType('foo')
+vlib/v/checker/tests/cast_fn_err.vv:26:7: error: invalid casting value to function
+   24 |     _ := FnType(nil)
+   25 |     _ := FnType(0)
+   26 |     _ := FnType('foo')
+      |          ~~~~~~~~~~~~~
+   27 |     _ := FnType(none)
+   28 |     _ := ?FnType(0)
+vlib/v/checker/tests/cast_fn_err.vv:27:7: error: cannot cast `none` to `fn () bool`
+   25 |     _ := FnType(0)
+   26 |     _ := FnType('foo')
+   27 |     _ := FnType(none)
+      |          ~~~~~~~~~~~~
+   28 |     _ := ?FnType(0)
+   29 |     _ := ?FnType(nil)
+vlib/v/checker/tests/cast_fn_err.vv:28:8: error: casting number to Option function is not allowed, only compatible function or `none`
+   26 |     _ := FnType('foo')
+   27 |     _ := FnType(none)
+   28 |     _ := ?FnType(0)
+      |           ~~~~~~~~~
+   29 |     _ := ?FnType(nil)
+   30 |     _ := ?FnType(foo)
+vlib/v/checker/tests/cast_fn_err.vv:29:15: error: `nil` is only allowed in `unsafe` code
+   27 |     _ := FnType(none)
+   28 |     _ := ?FnType(0)
+   29 |     _ := ?FnType(nil)
+      |                  ~~~
+   30 |     _ := ?FnType(foo)
+   31 | }
+vlib/v/checker/tests/cast_fn_err.vv:29:8: error: casting number to Option function is not allowed, only compatible function or `none`
+   27 |     _ := FnType(none)
+   28 |     _ := ?FnType(0)
+   29 |     _ := ?FnType(nil)
+      |           ~~~~~~~~~~~
+   30 |     _ := ?FnType(foo)
+   31 | }
+vlib/v/checker/tests/cast_fn_err.vv:30:8: error: casting a function value from one function signature, to another function signature, should be done inside `unsafe{}` blocks
+   28 |     _ := ?FnType(0)
+   29 |     _ := ?FnType(nil)
+   30 |     _ := ?FnType(foo)
+      |           ~~~~~~~~~~~
+   31 | }

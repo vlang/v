@@ -4,11 +4,10 @@
 // -0.169059907
 import math
 
-const (
-	solar_mass    = 39.47841760435743197 // 4.0 * math.Pi * math.Pi
-	days_per_year = 365.24
-	c_n           = 5
-)
+const solar_mass = 39.47841760435743197 // 4.0 * math.Pi * math.Pi
+
+const days_per_year = 365.24
+const c_n = 5
 
 struct Position {
 pub mut:

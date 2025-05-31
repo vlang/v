@@ -3,17 +3,13 @@ import rand
 import rand.mt19937
 import rand.seed
 
-const (
-	range_limit = 40
-	value_count = 1000
-	seeds       = [[u32(0xcafebabe), u32(0xdeadbeef)], [u32(0xc0de), u32(0xfeed)]]
-)
+const range_limit = 40
+const value_count = 1000
+const seeds = [[u32(0xcafebabe), u32(0xdeadbeef)], [u32(0xc0de), u32(0xfeed)]]
 
-const (
-	sample_size   = 1000
-	stats_epsilon = 0.05
-	inv_sqrt_12   = 1.0 / math.sqrt(12)
-)
+const sample_size = 1000
+const stats_epsilon = 0.05
+const inv_sqrt_12 = 1.0 / math.sqrt(12)
 
 fn mt19937_basic_test() {
 	mut rng := &rand.PRNG(&mt19937.MT19937RNG{})
@@ -170,7 +166,7 @@ fn test_mt19937_u64_in_range() {
 
 fn test_mt19937_int31() {
 	max_u31 := int(0x7FFFFFFF)
-	sign_mask := int(0x80000000)
+	sign_mask := int(u32(0x80000000))
 	for seed in seeds {
 		mut rng := &rand.PRNG(&mt19937.MT19937RNG{})
 		rng.seed(seed)
@@ -186,7 +182,7 @@ fn test_mt19937_int31() {
 
 fn test_mt19937_int63() {
 	max_u63 := i64(0x7FFFFFFFFFFFFFFF)
-	sign_mask := i64(0x8000000000000000)
+	sign_mask := i64(u64(0x8000000000000000))
 	for seed in seeds {
 		mut rng := &rand.PRNG(&mt19937.MT19937RNG{})
 		rng.seed(seed)

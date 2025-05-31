@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module os
@@ -18,7 +18,7 @@ pub fn getenv(key string) string {
 
 // `getenv_opt` returns the value of a given environment variable.
 // Returns `none` if the environment variable does not exist.
-[manualfree]
+@[manualfree]
 pub fn getenv_opt(key string) ?string {
 	unsafe {
 		$if windows {
@@ -45,15 +45,18 @@ pub fn getenv_opt(key string) ?string {
 // os.setenv sets the value of an environment variable with `name` to `value`.
 pub fn setenv(name string, value string, overwrite bool) int {
 	$if windows {
-		format := '${name}=${value}'
+		format := '${name}=${value}'.to_wide()
+		defer {
+			unsafe { free(voidptr(format)) }
+		}
 		if overwrite {
 			unsafe {
-				return C._putenv(&char(format.str))
+				return C._wputenv(format)
 			}
 		} else {
 			if getenv(name).len == 0 {
 				unsafe {
-					return C._putenv(&char(format.str))
+					return C._wputenv(format)
 				}
 			}
 		}
@@ -68,8 +71,11 @@ pub fn setenv(name string, value string, overwrite bool) int {
 // os.unsetenv clears an environment variable with `name`.
 pub fn unsetenv(name string) int {
 	$if windows {
-		format := '${name}='
-		return C._putenv(&char(format.str))
+		format := '${name}='.to_wide()
+		defer {
+			unsafe { free(voidptr(format)) }
+		}
+		return C._wputenv(format)
 	} $else {
 		return C.unsetenv(&char(name.str))
 	}
@@ -78,6 +84,9 @@ pub fn unsetenv(name string) int {
 // See: https://linux.die.net/man/5/environ for unix platforms.
 // See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
 // os.environ returns a map of all the current environment variables
+
+// TODO how to declare Virtual C globals?
+// const C.environ &&char
 
 pub fn environ() map[string]string {
 	mut res := map[string]string{}
@@ -96,7 +105,7 @@ pub fn environ() map[string]string {
 		}
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
-		start := &&char(C.environ)
+		start := &&char(voidptr(C.environ))
 		mut i := 0
 		for {
 			x := unsafe { start[i] }

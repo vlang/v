@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module strings
@@ -18,12 +18,8 @@ pub fn new_builder(initial_size int) Builder {
 	return []u8{cap: initial_size}
 }
 
-pub fn (mut b Builder) write_byte(data byte) {
+pub fn (mut b Builder) write_byte(data u8) {
 	b << data
-}
-
-pub fn (mut b Builder) clear() {
-	b = []u8{cap: b.cap}
 }
 
 pub fn (mut b Builder) write_u8(data u8) {
@@ -45,7 +41,7 @@ pub fn (b &Builder) byte_at(n int) u8 {
 }
 
 pub fn (mut b Builder) write_string(s string) {
-	if s.len == 0 {
+	if s == '' {
 		return
 	}
 
@@ -55,7 +51,7 @@ pub fn (mut b Builder) write_string(s string) {
 }
 
 pub fn (mut b Builder) writeln(s string) {
-	if s.len > 0 {
+	if s != '' {
 		b.write_string(s)
 	}
 
@@ -67,13 +63,13 @@ pub fn (mut b Builder) str() string {
 
 	#for (const c of b.val.arr.arr)
 	#s.str += String.fromCharCode(+c)
-	b.trim(0)
+	b.clear()
 	return s
 }
 
 pub fn (mut b Builder) cut_last(n int) string {
 	cut_pos := b.len - n
-	x := b[cut_pos..]
+	x := unsafe { b[cut_pos..] }
 	res := x.bytestr()
 	b.trim(cut_pos)
 	return res
@@ -113,17 +109,17 @@ pub fn (mut b Builder) after(n int) string {
 		return ''
 	}
 
-	x := b.slice(n, b.len)
+	x := unsafe { b[n..b.len] }
 	return x.bytestr()
 }
 
 // last_n(5) returns 'world'
 // buf == 'hello world'
-pub fn (b &Builder) last_n(n int) string {
+pub fn (mut b Builder) last_n(n int) string {
 	if n >= b.len {
 		return ''
 	}
 
-	x := b.slice(b.len - n, b.len)
+	x := unsafe { b[b.len - n..b.len] }
 	return x.bytestr()
 }

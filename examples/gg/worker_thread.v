@@ -9,12 +9,10 @@ import gx
 import math
 import time
 
-const (
-	win_width   = 600
-	win_height  = 700
-	bg_color    = gx.white
-	count_color = gx.black
-)
+const win_width = 600
+const win_height = 700
+const bg_color = gx.white
+const count_color = gx.black
 
 struct App {
 mut:
@@ -24,18 +22,16 @@ mut:
 }
 
 fn main() {
-	mut app := &App{
-		gg: 0
-	}
+	mut app := &App{}
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'Counter'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: frame
-		init_fn: init
+		window_title:  'Counter'
+		user_data:     app
+		bg_color:      bg_color
+		frame_fn:      frame
+		init_fn:       init
 	)
 	app.gg.run()
 }

@@ -87,7 +87,7 @@ fn integer_match_test() { // from match_test.v
 	}
 	assert a == 3
 	a = 0
-/*	match 1 {
+	/*	match 1 {
 		0 {
 			a = 1
 		}

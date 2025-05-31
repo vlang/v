@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_arr_mut_field_arr_assign_err.vv:10:6: error: cannot assign a const array to mut struct field, call `clone` method (or use `unsafe`)
+    8 | fn main() {
+    9 |     mut muta := Muta{
+   10 |         a: arr
+      |            ~~~
+   11 |     }
+   12 |     muta.a[0] = 52

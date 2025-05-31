@@ -34,14 +34,25 @@ pub mut:
 	k2cpath map[string]string // key -> filesystem cache path for the object
 }
 
-pub fn new_cache_manager(opts []string) CacheManager {
-	mut vcache_basepath := os.getenv('VCACHE')
-	if vcache_basepath == '' {
-		vcache_basepath = os.join_path(os.vmodules_dir(), 'cache')
+fn remove_old_cache_folder() {
+	// TODO: remove this after bootstrapping the new .cache location, i.e. after 2024-12-01
+	old_cache_folder := os.join_path(os.vmodules_dir(), 'cache')
+	if os.exists(old_cache_folder) {
+		old_readme_file := os.join_path(old_cache_folder, 'README.md')
+		if os.file_size(old_readme_file) == 254 {
+			os.rmdir_all(old_cache_folder) or {}
+			dlog(@FN, 'old_cache_folder: ${old_cache_folder}')
+		}
 	}
+}
+
+pub fn new_cache_manager(opts []string) CacheManager {
+	// use a path, that would not conflict with a user installable module. `import .cache` is not valid, => better than just `cache`:
+	vcache_basepath := os.getenv_opt('VCACHE') or { os.join_path(os.vmodules_dir(), '.cache') }
 	nlog(@FN, 'vcache_basepath: ${vcache_basepath}\n         opts: ${opts}\n      os.args: ${os.args.join(' ')}')
 	dlog(@FN, 'vcache_basepath: ${vcache_basepath} | opts:\n     ${opts}')
 	if !os.is_dir(vcache_basepath) {
+		remove_old_cache_folder()
 		os.mkdir_all(vcache_basepath, mode: 0o700) or { panic(err) } // keep directory private
 		dlog(@FN, 'created folder:\n    ${vcache_basepath}')
 	}
@@ -64,8 +75,8 @@ pub fn new_cache_manager(opts []string) CacheManager {
 	// Note: the current approach of filtering the gcboehm keys may interfere with (potential) other gc modes.
 	original_vopts := deduped_opts_keys.join('|')
 	return CacheManager{
-		basepath: vcache_basepath
-		vopts: original_vopts
+		basepath:       vcache_basepath
+		vopts:          original_vopts
 		original_vopts: original_vopts
 	}
 }
@@ -173,12 +184,12 @@ pub fn (mut cm CacheManager) mod_load(mod string, postfix string, key string) !s
 	return content
 }
 
-[if trace_usecache ?]
+@[if trace_usecache ?]
 pub fn dlog(fname string, s string) {
 	xlog(fname, s)
 }
 
-[if trace_usecache_n ?]
+@[if trace_usecache_n ?]
 fn nlog(fname string, s string) {
 	xlog(fname, s)
 }
@@ -192,7 +203,7 @@ fn xlog(fname string, s string) {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn mypid() int {
 	mut static pid := 0
 	if pid == 0 {

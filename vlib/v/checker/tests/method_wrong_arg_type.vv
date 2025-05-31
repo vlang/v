@@ -1,8 +1,18 @@
-enum MyEnum { x y z }
-pub fn (e MyEnum) str() string { return int(e).str() }
+enum MyEnum {
+	x
+	y
+	z
+}
 
-struct Sss { }
-fn (s Sss) info(msg string) { println(msg) }
+pub fn (e MyEnum) str() string {
+	return int(e).str()
+}
+
+struct Sss {}
+
+fn (s Sss) info(msg string) {
+	println(msg)
+}
 
 fn enum_str() {
 	e := MyEnum.x

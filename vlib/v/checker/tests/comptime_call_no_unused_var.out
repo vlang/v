@@ -19,6 +19,13 @@ vlib/v/checker/tests/comptime_call_no_unused_var.vv:15:8: error: todo: not a str
       |           ^
    16 |     s2 := 'x'
    17 |     test.$s2()
+vlib/v/checker/tests/comptime_call_no_unused_var.vv:15:8: error: could not find method ``
+   13 |     test.$v()
+   14 |     s := 'x' + 'y'
+   15 |     test.$s()
+      |           ^
+   16 |     s2 := 'x'
+   17 |     test.$s2()
 vlib/v/checker/tests/comptime_call_no_unused_var.vv:17:8: error: could not find method `x`
    15 |     test.$s()
    16 |     s2 := 'x'

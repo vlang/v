@@ -1,0 +1,10 @@
+v time 0.0.1
+-----------------------------------------------
+Usage: v time [options] CMD [ARGS]
+
+Description: Start a command, and report how much time it took to run, and what its exit code was.
+
+The arguments should be at least 1 in number.
+
+Options:
+  -h, --help                Show this help screen.

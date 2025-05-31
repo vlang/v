@@ -1,35 +1,35 @@
 struct Person {
 mut:
-    name string
-    age int
+	name string
+	age  int
 }
 
 struct Pet {
 mut:
-    name string
-    color int
+	name  string
+	color int
 }
 
 struct Programmer {
 mut:
 	pers Person
-	pe shared Pet
+	pe   shared Pet
 }
 
 struct Pro {
 mut:
 	pers Person
-	pe Pet
+	pe   Pet
 }
 
 fn main() {
 	mut pr := Programmer{
 		pers: Person{
 			name: 'Qwe'
-			age: 44
+			age:  44
 		}
-		pe: Pet{
-			name: 'Ghj'
+		pe:   Pet{
+			name:  'Ghj'
 			color: 7
 		}
 	}

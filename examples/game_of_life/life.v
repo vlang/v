@@ -2,15 +2,13 @@ import term
 import rand
 import time
 
-const (
-	cell     = '█'
-	nothing  = ' '
-	switches = {
-		cell:    nothing
-		nothing: cell
-	}
-	transformers = [nothing, cell]
-)
+const cell = '█'
+const nothing = ' '
+const switches = {
+	cell:    nothing
+	nothing: cell
+}
+const transformers = [nothing, cell]
 
 struct Game {
 mut:

@@ -4,23 +4,32 @@ fn main() {
 	L1: for {
 		i++
 		for {
-			if i < 7 {continue L2}
-			else {break L2}
+			if i < 7 {
+				continue L2
+			} else {
+				break L2
+			}
 		}
 	}
 	// check branching to an earlier loop
-	L2: for e in [1,2,3,4] {
+	L2: for e in [1, 2, 3, 4] {
 		i = e
 		for {
-			if i < 3 {continue L1}
-			else {break L1}
+			if i < 3 {
+				continue L1
+			} else {
+				break L1
+			}
 		}
 	}
 	// check nested loops (not supported ATM)
-	L3: for ;; i++ {
+	L3: for ; true; i++ {
 		L4: for {
-			if i < 17 {continue L3}
-			else {break L3}
+			if i < 17 {
+				continue L3
+			} else {
+				break L3
+			}
 		}
 	}
 }

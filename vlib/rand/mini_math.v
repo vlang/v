@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module rand
@@ -14,7 +14,7 @@ module rand
 
 const sqrt2 = 1.41421356237309504880168872420969807856967187537694807317667974
 
-[inline]
+@[inline]
 fn msqrt(a f64) f64 {
 	if a == 0 {
 		return a
@@ -26,7 +26,7 @@ fn msqrt(a f64) f64 {
 	// relative error of approximation = 7.47e-3
 	x = 4.173075996388649989089e-1 + 5.9016206709064458299663e-1 * z // adjust for odd powers of 2
 	if (ex & 1) != 0 {
-		x *= rand.sqrt2
+		x *= sqrt2
 	}
 	x = scalbn(x, ex >> 1)
 	// newton iterations
@@ -49,7 +49,7 @@ fn mlog(a f64) f64 {
 	l7 := 0.1479819860511658591
 	x := a
 	mut f1, mut ki := frexp(x)
-	if f1 < rand.sqrt2 / 2 {
+	if f1 < sqrt2 / 2 {
 		f1 *= 2
 		ki--
 	}
@@ -119,12 +119,12 @@ fn scalbn(x f64, n_ int) f64 {
 	return y * f64_from_bits(u64((0x3ff + n)) << 52)
 }
 
-[inline]
+@[inline]
 fn f64_from_bits(b u64) f64 {
 	return *unsafe { &f64(&b) }
 }
 
-[inline]
+@[inline]
 fn f64_bits(f f64) u64 {
 	return *unsafe { &u64(&f) }
 }

@@ -21,9 +21,6 @@ pub mut:
 	pre_execute     FnCommandCallback = unsafe { nil }
 	execute         FnCommandCallback = unsafe { nil }
 	post_execute    FnCommandCallback = unsafe { nil }
-	disable_help    bool
-	disable_man     bool
-	disable_version bool
 	disable_flags   bool
 	sort_flags      bool
 	sort_commands   bool
@@ -33,10 +30,31 @@ pub mut:
 	required_args   int
 	args            []string
 	posix_mode      bool
+	defaults        struct {
+	pub:
+		help    Defaults = true
+		man     Defaults = true
+		version Defaults = true
+	mut:
+		parsed struct {
+		mut:
+			help    CommandFlag
+			version CommandFlag
+			man     CommandFlag
+		}
+	}
 }
 
+pub struct CommandFlag {
+pub mut:
+	command bool = true
+	flag    bool = true
+}
+
+type Defaults = CommandFlag | bool
+
 // str returns the `string` representation of the `Command`.
-pub fn (cmd Command) str() string {
+pub fn (cmd &Command) str() string {
 	mut res := []string{}
 	res << 'Command{'
 	res << '	name: "${cmd.name}"'
@@ -44,10 +62,7 @@ pub fn (cmd Command) str() string {
 	res << '	version: "${cmd.version}"'
 	res << '	description: "${cmd.description}"'
 	res << '	man_description: "${cmd.man_description}"'
-	res << '	disable_help: ${cmd.disable_help}'
-	res << '	disable_man: ${cmd.disable_man}'
 	res << '	disable_flags: ${cmd.disable_flags}'
-	res << '	disable_version: ${cmd.disable_version}'
 	res << '	sort_flags: ${cmd.sort_flags}'
 	res << '	sort_commands: ${cmd.sort_commands}'
 	res << '	cb execute: ${cmd.execute}'
@@ -62,25 +77,53 @@ pub fn (cmd Command) str() string {
 	res << '	flags: ${cmd.flags}'
 	res << '	required_args: ${cmd.required_args}'
 	res << '	args: ${cmd.args}'
+	res << '	posix_mode: ${cmd.posix_mode}'
+	match cmd.defaults.help {
+		bool {
+			res << '	defaults.help: ${cmd.defaults.help}'
+		}
+		CommandFlag {
+			res << '	defaults.help.command: ${cmd.defaults.help.command}'
+			res << '	defaults.help.flag: ${cmd.defaults.help.flag}'
+		}
+	}
+	match cmd.defaults.man {
+		bool {
+			res << '	defaults.man: ${cmd.defaults.man}'
+		}
+		CommandFlag {
+			res << '	defaults.man.command: ${cmd.defaults.man.command}'
+			res << '	defaults.man.flag: ${cmd.defaults.man.flag}'
+		}
+	}
+	match cmd.defaults.version {
+		bool {
+			res << '	defaults.version: ${cmd.defaults.version}'
+		}
+		CommandFlag {
+			res << '	defaults.version.command: ${cmd.defaults.version.command}'
+			res << '	defaults.version.flag: ${cmd.defaults.version.flag}'
+		}
+	}
 	res << '}'
 	return res.join('\n')
 }
 
 // is_root returns `true` if this `Command` has no parents.
-pub fn (cmd Command) is_root() bool {
+pub fn (cmd &Command) is_root() bool {
 	return isnil(cmd.parent)
 }
 
 // root returns the root `Command` of the command chain.
-pub fn (cmd Command) root() Command {
+pub fn (cmd &Command) root() Command {
 	if cmd.is_root() {
-		return cmd
+		return *cmd
 	}
 	return cmd.parent.root()
 }
 
 // full_name returns the full `string` representation of all commands int the chain.
-pub fn (cmd Command) full_name() string {
+pub fn (cmd &Command) full_name() string {
 	if cmd.is_root() {
 		return cmd.name
 	}
@@ -129,12 +172,43 @@ pub fn (mut cmd Command) add_flag(flag Flag) {
 	cmd.flags << flag
 }
 
-// parse parses `args` into this structured `Command`.
-pub fn (mut cmd Command) parse(args []string) {
+// TODO: remove deprecated `disable_<>` switches after deprecation period.
+fn (mut cmd Command) parse_defaults() {
+	// Help
+	if cmd.defaults.help is bool {
+		cmd.defaults.parsed.help.flag = cmd.defaults.help
+		cmd.defaults.parsed.help.command = cmd.defaults.help
+	} else if cmd.defaults.help is CommandFlag {
+		cmd.defaults.parsed.help.flag = cmd.defaults.help.flag
+		cmd.defaults.parsed.help.command = cmd.defaults.help.command
+	}
+	// Version
+	if cmd.defaults.version is bool {
+		cmd.defaults.parsed.version.flag = cmd.defaults.version
+		cmd.defaults.parsed.version.command = cmd.defaults.version
+	} else if cmd.defaults.version is CommandFlag {
+		cmd.defaults.parsed.version.flag = cmd.defaults.version.flag
+		cmd.defaults.parsed.version.command = cmd.defaults.version.command
+	}
+	// Man
+	if cmd.defaults.man is bool {
+		cmd.defaults.parsed.man.flag = cmd.defaults.man
+		cmd.defaults.parsed.man.command = cmd.defaults.man
+	} else if cmd.defaults.man is CommandFlag {
+		cmd.defaults.parsed.man.flag = cmd.defaults.man.flag
+		cmd.defaults.parsed.man.command = cmd.defaults.man.command
+	}
+	// Add Flags
 	if !cmd.disable_flags {
 		cmd.add_default_flags()
 	}
+	// Add Commands
 	cmd.add_default_commands()
+}
+
+// parse parses the flags and commands from the given `args` into the `Command`.
+pub fn (mut cmd Command) parse(args []string) {
+	cmd.parse_defaults()
 	if cmd.sort_flags {
 		cmd.flags.sort(a.name < b.name)
 	}
@@ -148,53 +222,51 @@ pub fn (mut cmd Command) parse(args []string) {
 	cmd.parse_commands()
 }
 
-// add_default_flags adds the commonly used `-h`/`--help` and
+// add_default_flags adds the commonly used `-h`/`--help`, `--man`,  and
 // `-v`/`--version` flags to the `Command`.
 fn (mut cmd Command) add_default_flags() {
-	if !cmd.disable_help && !cmd.flags.contains('help') {
+	if cmd.defaults.parsed.help.flag && !cmd.flags.contains('help') {
 		use_help_abbrev := !cmd.flags.contains('h') && cmd.posix_mode
 		cmd.add_flag(help_flag(use_help_abbrev))
 	}
-	if !cmd.disable_version && cmd.version != '' && !cmd.flags.contains('version') {
+	if cmd.defaults.parsed.version.flag && cmd.version != '' && !cmd.flags.contains('version') {
 		use_version_abbrev := !cmd.flags.contains('v') && cmd.posix_mode
 		cmd.add_flag(version_flag(use_version_abbrev))
 	}
-	if !cmd.disable_man && !cmd.flags.contains('man') {
+	if cmd.defaults.parsed.man.flag && !cmd.flags.contains('man') {
 		cmd.add_flag(man_flag())
 	}
 }
 
-// add_default_commands adds the command functions of the
-// commonly used `help` and `version` flags to the `Command`.
+// add_default_commands adds the command functions of the commonly
+// used `help`, `man`, and `version` subcommands to the `Command`.
 fn (mut cmd Command) add_default_commands() {
-	if !cmd.disable_help && !cmd.commands.contains('help') && cmd.is_root() {
+	if cmd.defaults.parsed.help.command && !cmd.commands.contains('help') && cmd.is_root() {
 		cmd.add_command(help_cmd())
 	}
-	if !cmd.disable_version && cmd.version != '' && !cmd.commands.contains('version') {
+	if cmd.defaults.parsed.version.command && cmd.version != '' && !cmd.commands.contains('version') {
 		cmd.add_command(version_cmd())
 	}
-	if !cmd.disable_man && !cmd.commands.contains('man') && cmd.is_root() {
+	if cmd.defaults.parsed.man.command && !cmd.commands.contains('man') && cmd.is_root() {
 		cmd.add_command(man_cmd())
 	}
 }
 
 fn (mut cmd Command) parse_flags() {
-	for {
-		if cmd.args.len < 1 || !cmd.args[0].starts_with('-') {
-			break
+	for cmd.args.len > 0 {
+		if !cmd.args[0].starts_with('-') {
+			return
 		}
 		mut found := false
-		for i in 0 .. cmd.flags.len {
-			unsafe {
-				mut flag := &cmd.flags[i]
-				if flag.matches(cmd.args, cmd.posix_mode) {
-					found = true
-					flag.found = true
-					cmd.args = flag.parse(cmd.args, cmd.posix_mode) or {
-						eprintln_exit('Failed to parse flag `${cmd.args[0]}`: ${err}')
-					}
-					break
+		for mut flag in cmd.flags {
+			if flag.matches(cmd.args[0], cmd.posix_mode) {
+				found = true
+				flag.found = true
+				// Eat flag and its values, continue with reduced args.
+				cmd.args = flag.parse(cmd.args, cmd.posix_mode) or {
+					eprintln_exit('Failed to parse flag `${cmd.args[0]}`: ${err}')
 				}
+				break
 			}
 		}
 		if !found {
@@ -222,7 +294,7 @@ fn (mut cmd Command) parse_commands() {
 		}
 	}
 	if cmd.is_root() && isnil(cmd.execute) {
-		if !cmd.disable_help {
+		if cmd.defaults.parsed.help.command {
 			cmd.execute_help()
 			return
 		}
@@ -230,7 +302,8 @@ fn (mut cmd Command) parse_commands() {
 	// if no further command was found, execute current command
 	if cmd.required_args > 0 {
 		if cmd.required_args > cmd.args.len {
-			eprintln_exit('Command `${cmd.name}` needs at least ${cmd.required_args} arguments')
+			descriptor := if cmd.required_args == 1 { 'argument' } else { 'arguments' }
+			eprintln_exit('Command `${cmd.name}` needs at least ${cmd.required_args} ${descriptor}')
 		}
 	}
 	cmd.check_required_flags()
@@ -249,8 +322,8 @@ fn (mut cmd Command) handle_cb(cb FnCommandCallback, label string) {
 	}
 }
 
-fn (cmd Command) check_help_flag() {
-	if !cmd.disable_help && cmd.flags.contains('help') {
+fn (cmd &Command) check_help_flag() {
+	if cmd.defaults.parsed.help.flag && cmd.flags.contains('help') {
 		help_flag := cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
 		if help_flag {
 			cmd.execute_help()
@@ -259,8 +332,8 @@ fn (cmd Command) check_help_flag() {
 	}
 }
 
-fn (cmd Command) check_man_flag() {
-	if !cmd.disable_man && cmd.flags.contains('man') {
+fn (cmd &Command) check_man_flag() {
+	if cmd.defaults.parsed.man.flag && cmd.flags.contains('man') {
 		man_flag := cmd.flags.get_bool('man') or { return } // ignore error and handle command normally
 		if man_flag {
 			cmd.execute_man()
@@ -269,18 +342,17 @@ fn (cmd Command) check_man_flag() {
 	}
 }
 
-fn (cmd Command) check_version_flag() {
-	if !cmd.disable_version && cmd.version != '' && cmd.flags.contains('version') {
+fn (cmd &Command) check_version_flag() {
+	if cmd.defaults.parsed.version.flag && cmd.version != '' && cmd.flags.contains('version') {
 		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
-			version_cmd := cmd.commands.get('version') or { return } // ignore error and handle command normally
-			version_cmd.execute(version_cmd) or { panic(err) }
+			print_version_for_command(cmd) or { panic(err) }
 			exit(0)
 		}
 	}
 }
 
-fn (cmd Command) check_required_flags() {
+fn (cmd &Command) check_required_flags() {
 	for flag in cmd.flags {
 		if flag.required && flag.value.len == 0 {
 			full_name := cmd.full_name()
@@ -291,7 +363,7 @@ fn (cmd Command) check_required_flags() {
 
 // execute_help executes the callback registered
 // for the `-h`/`--help` flag option.
-pub fn (cmd Command) execute_help() {
+pub fn (cmd &Command) execute_help() {
 	if cmd.commands.contains('help') {
 		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
 		if !isnil(help_cmd.execute) {
@@ -302,9 +374,9 @@ pub fn (cmd Command) execute_help() {
 	print(cmd.help_message())
 }
 
-// execute_help executes the callback registered
+// execute_man executes the callback registered
 // for the `-man` flag option.
-pub fn (cmd Command) execute_man() {
+pub fn (cmd &Command) execute_man() {
 	if cmd.commands.contains('man') {
 		man_cmd := cmd.commands.get('man') or { return }
 		man_cmd.execute(man_cmd) or { panic(err) }
@@ -331,7 +403,7 @@ fn (cmds []Command) contains(name string) bool {
 	return false
 }
 
-[noreturn]
+@[noreturn]
 fn eprintln_exit(message string) {
 	eprintln(message)
 	exit(1)

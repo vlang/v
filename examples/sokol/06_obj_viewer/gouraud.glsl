@@ -7,7 +7,7 @@ uniform vs_params {
 	mat4 u_MVPMatrix;      // A constant representing the combined model/view/projection matrix.
 	mat4 u_NMatrix;        // A constant representing the Normal Matrix
 };
- 
+
 in vec4 a_Position;     // Per-vertex position information we will pass in.
 in vec3 a_Normal;       // Per-vertex normal information we will pass in.
 //in vec4 a_Color;        // Per-vertex color information we will pass in.
@@ -30,9 +30,9 @@ void main()
 	v_Normal = vec3(u_NMatrix * vec4(a_Normal, 1.0));
 	// texture coord
 	uv = a_Texcoord0;
-	
+
 	v_Normal1 = normalize(vec3(u_MVMatrix * vec4(a_Normal, 1.0)));
-	
+
 	// gl_Position is a special variable used to store the final position.
 	// Multiply the vertex by the matrix to get the final point in normalized screen coordinates.
 	gl_Position = u_MVPMatrix * a_Position;
@@ -42,13 +42,14 @@ void main()
 
 #pragma sokol @fs fs
 //precision mediump float;       // Set the default precision to medium. We don't need as high of a precision in the fragment shader
-uniform sampler2D tex;
+uniform texture2D tex;
+uniform sampler smp;
 uniform fs_params {
 	vec4 u_LightPos;       // The position of the light in eye space.
 	vec4 ambientColor;
 	vec4 diffuseColor;
 	vec4 specularColor;
-	
+
 };
 in vec3 v_Position;       // Interpolated position for this fragment.
 //in vec4 v_Color;          // This is the color from the vertex shader interpolated across the triangle per fragment.
@@ -78,7 +79,7 @@ vec4 getPhong(in vec4 diffuseColor) {
   vec3 n = normalize(v_Normal);
 
   vec3 luminance = ambientColor.rgb * 0.5;
-  
+
   float illuminance = dot(lightDir, n);
   if(illuminance > 0.0) {
 		// we save specular shiness in specularColor.a
@@ -89,19 +90,19 @@ vec4 getPhong(in vec4 diffuseColor) {
   vec4 outColor = vec4(luminance,1.0);
   return outColor;
 }
-          
+
 // The entry point for our fragment shader.
 void main()
 {
-	vec4 txt = texture(tex, uv);
- 
+	vec4 txt = texture(sampler2D(tex, smp), uv);
+
 	// Directional light
 	float directional = dot(normalize(v_Normal1), normalize(vec3(0,0.5,1))) ;
 	directional = directional * 0.15;
-	 
-  // Multiply the color by the diffuse illumination level to get final output color.	
+
+  // Multiply the color by the diffuse illumination level to get final output color.
 	frag_color = vec4(clamp(directional + txt.rgb * getPhong(diffuseColor).rgb,0,1), txt.a * diffuseColor.a);
-	
+
 }
 #pragma sokol @end
 

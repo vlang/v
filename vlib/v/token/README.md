@@ -1,9 +1,10 @@
-## Description:
+## Description
 
 `v.token` is a module providing the basic building blocks of the V
 syntax - the tokens, as well as utilities for working with them.
 
-## KeywordsMatcherTrie 
+## KeywordsMatcherTrie
+
 KeywordsMatcherTrie provides a faster way of determining whether a given name is a reserved
 word (belongs to a given set of previously known words `R`). It works by exploiting the fact,
 that the set of reserved words is small, and the words short.
@@ -22,6 +23,7 @@ any given prefix, belonging to `R`.
 For example, if we have added the word `asm` to the trie T3, its tree (its nodes) may look
 like this (note that the 0 pointers in children, mean that there was no word in `R`, that had
 that corresponding letter at that specific index):
+
 ```
 TrieNode 0:  a b c d e f g h i j k l m n o p q r s t u v w x y z ... |
 | children:  1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ... | children[`a`] = 1 -> TrieNode 1
@@ -45,13 +47,13 @@ Matching any given `word` in the trie, after you have prepared it, is then simpl
 just read each character of the `word`, and follow the corresponding pointer from
 the `children` array (indexed by character). When the pointer is nil, there was NO
 match, and the word is rejected, which happens very often, and early for most words
-that are not in the set of the previously added reserved words. One significant 
+that are not in the set of the previously added reserved words. One significant
 benefit compared to just comparing the checked `word` against a linear list of all
 known words, is that once you have found that a word is not a match at any given
 level/trie node, then you know that it is not a match to *any* of them.
 
-Note: benchmarking shows that it is ~300% to 400% faster, compared to just using 
+Note: benchmarking shows that it is ~300% to 400% faster, compared to just using
 `token.keywords[name]` on average, when there is a match, but it can be 17x faster
 in the case, where there is a length mismatch. After changes to KeywordsMatcherTrie,
-please do `v -prod run vlib/v/tests/bench/bench_compare_tokens.v` to verify, 
+please do `v -prod run vlib/v/tests/bench/bench_compare_tokens.v` to verify,
 that there is no performance regression.

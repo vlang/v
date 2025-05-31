@@ -1,28 +1,310 @@
 import strconv
 
-fn test_atoi() {
-	assert strconv.atoi('16')! == 16
-	assert strconv.atoi('+16')! == 16
-	assert strconv.atoi('-16')! == -16
+struct StrInt { // test struct
+	str_value string
+	int_value int
+}
 
-	// invalid strings
-	if x := strconv.atoi('str') {
-		println(x)
-		assert false
-	} else {
-		assert true
+// test what should be caught by atoi_common_check
+fn test_common_check() {
+	// Parsing of these strings should fail on all types.
+	ko := [
+		'', // Empty string
+		'-', // Only sign
+		'+', // Only sign
+		'_', // Only Underscore
+		'_10', // Start with underscore
+		'+_10', // Start with underscore after sign.
+		'-_16', // Start with underscore after sign.
+		'123_', // End with underscore
+	]
+
+	for v in ko {
+		if r := strconv.atoi(v) {
+			// These conversions should fail so force assertion !
+			assert false, 'The string "${v}" should not succeed or be considered as valid ${r}).'
+		} else {
+			// println('Parsing fails as it should for : "${v}')
+			assert true
+		}
 	}
-	if x := strconv.atoi('string_longer_than_10_chars') {
-		println(x)
-		assert false
-	} else {
-		assert true
+}
+
+// Test things accepted, and rejected in atoi_common function.
+fn test_atoi_common() {
+	// Parsing of theses value should succeed on all types.
+	ok := [
+		StrInt{'1', 1},
+		StrInt{'-1', -1},
+		StrInt{'0', 0},
+		StrInt{'+0', 0},
+		StrInt{'-0', 0},
+		StrInt{'-0_00', 0},
+		StrInt{'+0_00', 0},
+		StrInt{'+1', 1},
+		StrInt{'+123', 123},
+		StrInt{'-1_2_1', -121},
+		StrInt{'00000006', 6},
+		StrInt{'0_0_0_0_0_0_0_6', 6},
+	]
+
+	// Check that extracted int value matches its string.
+	for v in ok {
+		// println('Parsing ${v.str_value} should equals ${v.int_value}')
+		assert strconv.atoi(v.str_value)! == v.int_value
 	}
-	if x := strconv.atoi('') {
-		println(x)
-		assert false
-	} else {
-		assert true
+
+	ko := [// Parsing of these strings should fail on all types.
+		'-3__1', // Two consecutives underscore.
+		'-3_1A', // Non radix 10 char.
+		'A42', // Non radix 10 char.
+	]
+
+	for v in ko {
+		if r := strconv.atoi(v) {
+			// These conversions should fail so force assertion !
+			assert false, 'The string ${v} int extraction should not succeed or be considered as valid ${r}).'
+		} else {
+			// println('Parsing fails as it should for : "${v}')
+			assert true
+		}
+	}
+}
+
+// performs numeric (bounds) tests over int type.
+fn test_atoi() {
+	ok := [
+		StrInt{'1', 1},
+		StrInt{'-1', -1},
+		StrInt{'0', 0},
+		StrInt{'+3_14159', 314159},
+		StrInt{'-1_00_1', -1001},
+		StrInt{'-1_024', -1024},
+		StrInt{'123_456_789', 123456789},
+		StrInt{'00000006', 6},
+		StrInt{'0_0_0_0_0_0_0_6', 6},
+		StrInt{'2147483647', max_int},
+		StrInt{'-2147483648', min_int},
+	]
+
+	// Check that extracted int value matches its string.
+	for v in ok {
+		// println('Parsing ${v.str_value} should equals ${v.int_value}')
+		assert strconv.atoi(v.str_value)! == v.int_value
+	}
+
+	// Parsing of these values should fail !
+	ko := [
+		'-2147483649', // 32bits underflow by 1.
+		'+2147483648', // 32 bit overflow by 1.
+		'+3147483648', // 32 bit overflow by a lot.
+		'-2147244836470', // Large underflow.
+		'+86842255899621148766244',
+	]
+
+	for v in ko {
+		if r := strconv.atoi(v) {
+			// These conversions should fail so force assertion !
+			assert false, 'The string ${v} int extraction should not succeed or be considered as valid ${r}).'
+		} else {
+			// println('Parsing fails as it should for : "${v}')
+			assert true
+		}
+	}
+}
+
+// performs numeric (bounds) tests over i8 type.
+fn test_atoi8() {
+	struct StrI8 { // Inner test struct
+		str_value string
+		int_value i8
+	}
+
+	ok := [
+		StrI8{'0', 0}, // All kind of zeroes
+		StrI8{'+0', 0},
+		StrI8{'-0', 0},
+		StrI8{'-0_00', 0},
+		StrI8{'+0_00', 0},
+		StrI8{'1', 1},
+		StrI8{'+1', 1},
+		StrI8{'-1', -1},
+		StrI8{'+123', 123},
+		StrI8{'-1_2_1', -121},
+		StrI8{'0_0_0_0_0_0_0_6', 6},
+		StrI8{'127', max_i8},
+		StrI8{'-128', min_i8},
+	]
+
+	// Check that extracted int value matches its string.
+	for v in ok {
+		// println('Parsing ${v.str_value} should equals ${v.int_value}')
+		assert strconv.atoi8(v.str_value)! == v.int_value
+	}
+
+	// Parsing of these values should fail !
+	ko := [
+		'-129', // i8 bits underflow by 1.
+		'+128', // i8 bit overflow by 1.
+		'+256', // i8 overflow with value equal to max u8.
+		'+3147483648', // i8 bit overflow by a lot.
+		'-4836470', // Large i8 underflow.
+	]
+
+	for v in ko {
+		if r := strconv.atoi8(v) {
+			// These conversions should fail so force assertion !
+			assert false, 'The string ${v} int extraction should not succeed or be considered as valid ${r}).'
+		} else {
+			// println('Parsing fails as it should for : "${v}')
+			assert true
+		}
+	}
+}
+
+// performs numeric (bounds) tests over i16 type.
+fn test_atoi16() {
+	struct StrI16 { // Inner test struct
+		str_value string
+		int_value i16
+	}
+
+	ok := [
+		StrI16{'0', 0}, // All kind of zeroes
+		StrI16{'+0', 0},
+		StrI16{'-0', 0},
+		StrI16{'-0_00', 0},
+		StrI16{'+0_00', 0},
+		StrI16{'1', 1},
+		StrI16{'+1', 1},
+		StrI16{'-1', -1},
+		StrI16{'+123', 123},
+		StrI16{'-1_2_1', -121},
+		StrI16{'0_0_0_0_0_0_0_6', 6},
+		StrI16{'32767', max_i16},
+		StrI16{'-32768', min_i16},
+	]
+
+	// Check that extracted int value matches its string.
+	for v in ok {
+		// println('Parsing ${v.str_value} should equals ${v.int_value}')
+		assert strconv.atoi16(v.str_value)! == v.int_value
+	}
+
+	// Parsing of these values should fail !
+	ko := [
+		'-32769', // i16 bits underflow by 1.
+		'+32768', // i16 bit overflow by 1.
+		'+45_000', // i16 bit overflow by a lot.
+		'65536', // i16 overflow with value equal to u16 max.
+		'-483_647_909', // Large i16 underflow.
+	]
+
+	for v in ko {
+		if r := strconv.atoi16(v) {
+			// These conversions should fail so force assertion !
+			assert false, 'The string ${v} int extraction should not succeed or be considered as valid ${r}).'
+		} else {
+			// println('Parsing fails as it should for : "${v}')
+			assert true
+		}
+	}
+}
+
+// performs numeric (bounds) tests over i32 type. This test is redundant with atoi
+// which performs same on int (actually 32bits). In the future, int COULD be mapped
+// on arch with (e.g 64bits). That's why this test exists.
+fn test_atoi32() {
+	struct StrI32 { // Inner test struct
+		str_value string
+		int_value i32
+	}
+
+	ok := [
+		StrI32{'0', 0}, // All kind of zeroes
+		StrI32{'+0', 0},
+		StrI32{'-0', 0},
+		StrI32{'-0_00', 0},
+		StrI32{'+0_00', 0},
+		StrI32{'1', 1},
+		StrI32{'+1', 1},
+		StrI32{'-1', -1},
+		StrI32{'+123', 123},
+		StrI32{'-1_2_1', -121},
+		StrI32{'0_0_0_0_0_0_0_6', 6},
+		StrI32{'2147483647', max_i32},
+		StrI32{'-2147483648', min_i32},
+	]
+
+	// Check that extracted int value matches its string.
+	for v in ok {
+		// println('Parsing ${v.str_value} should equals ${v.int_value}')
+		assert strconv.atoi32(v.str_value)! == v.int_value
+	}
+
+	// Parsing of these values should fail !
+	ko := [
+		'-2147483649', // i32 bits underflow by 1.
+		'+2147483648', // i32 bit overflow by 1.
+		'+4294967295', // Large Overflow but equal to u32 max.
+		'-483_647_909_912_754', // Large i32 underflow.
+	]
+
+	for v in ko {
+		if r := strconv.atoi32(v) {
+			// These conversions should fail so force assertion !
+			assert false, 'The string ${v} int extraction should not succeed or be considered as valid ${r}).'
+		} else {
+			// println('Parsing fails as it should for : "${v}')
+			assert true
+		}
+	}
+}
+
+fn test_atoi64() {
+	struct StrI64 { // Inner test struct
+		str_value string
+		int_value i64
+	}
+
+	ok := [
+		StrI64{'0', 0}, // All kind of zeroes
+		StrI64{'+0', 0},
+		StrI64{'-0', 0},
+		StrI64{'-0_00', 0},
+		StrI64{'+0_00', 0},
+		StrI64{'1', 1},
+		StrI64{'+1', 1},
+		StrI64{'-1', -1},
+		StrI64{'+123', 123},
+		StrI64{'-1_2_1', -121},
+		StrI64{'0_0_0_0_0_0_0_6', 6},
+		StrI64{'9223372036854775807', max_i64},
+		StrI64{'-9223372036854775808', min_i64},
+	]
+
+	// Check that extracted int value matches its string.
+	for v in ok {
+		// println('Parsing ${v.str_value} should equals ${v.int_value}')
+		assert strconv.atoi64(v.str_value)! == v.int_value
+	}
+
+	// Parsing of these values should fail !
+	ko := [
+		'-9223372036854775809', // i64 bits underflow by 1.
+		'+9223372036854775808', // i64 bit overflow by 1.
+		'+18446744073709551615', // Large Overflow but equal to u64 max.
+		'-483647909912754123456789', // Large i64 underflow.
+	]
+
+	for v in ko {
+		if r := strconv.atoi64(v) {
+			// These conversions should fail so force assertion !
+			assert false, 'The string ${v} int extraction should not succeed or be considered as valid ${r}).'
+		} else {
+			// println('Parsing fails as it should for : "${v}')
+			assert true
+		}
 	}
 }
 

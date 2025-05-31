@@ -16,40 +16,36 @@ import sokol.gfx
 import sokol.sgl
 import sokol.sapp
 import stbi
-import szip
+import compress.szip
 import strings
 
 // Help text
-const (
-	help_text_rows = [
-		'Image Viewer 0.9 help.',
-		'',
-		'ESC/q - Quit',
-		'cur. right - Next image',
-		'cur. left  - Previous image',
-		'cur. up    - Next folder',
-		'cur. down  - Previous folder',
-		'F - Toggle full screen',
-		'R - Rotate image of 90 degree',
-		'I - Toggle the info text',
-		'',
-		'mouse wheel - next/previous images',
-		'keep pressed left  Mouse button - Pan on the image',
-		'keep pressed right Mouse button - Zoom on the image',
-	]
-)
+const help_text_rows = [
+	'Image Viewer 0.9 help.',
+	'',
+	'ESC/q - Quit',
+	'cur. right - Next image',
+	'cur. left  - Previous image',
+	'cur. up    - Next folder',
+	'cur. down  - Previous folder',
+	'F - Toggle full screen',
+	'R - Rotate image of 90 degree',
+	'I - Toggle the info text',
+	'',
+	'mouse wheel - next/previous images',
+	'keep pressed left  Mouse button - Pan on the image',
+	'keep pressed right Mouse button - Zoom on the image',
+]
 
-const (
-	win_width       = 800
-	win_height      = 800
-	bg_color        = gx.black
-	pi_2            = 3.14159265359 / 2.0
-	uv              = [f32(0), 0, 1, 0, 1, 1, 0, 1]! // used for zoom icon during rotations
+const win_width = 800
+const win_height = 800
+const bg_color = gx.black
+const pi_2 = 3.14159265359 / 2.0
+const uv = [f32(0), 0, 1, 0, 1, 1, 0, 1]! // used for zoom icon during rotations
 
-	text_drop_files = 'Drop here some images/folder/zip to navigate in the pics'
-	text_scanning   = 'Scanning...'
-	text_loading    = 'Loading...'
-)
+const text_drop_files = 'Drop here some images/folder/zip to navigate in the pics'
+const text_scanning = 'Scanning...'
+const text_loading = 'Loading...'
 
 enum Viewer_state {
 	loading
@@ -60,14 +56,14 @@ enum Viewer_state {
 
 struct App {
 mut:
-	gg          &gg.Context = unsafe { nil }
-	pip_viewer  sgl.Pipeline
-	texture     gfx.Image
-	init_flag   bool
-	frame_count int
-	mouse_x     int = -1
-	mouse_y     int = -1
-	scroll_y    int
+	gg         &gg.Context = unsafe { nil }
+	pip_viewer sgl.Pipeline
+	texture    gfx.Image
+	sampler    gfx.Sampler
+	init_flag  bool
+	mouse_x    int = -1
+	mouse_y    int = -1
+	scroll_y   int
 
 	state Viewer_state = .scanning
 	// translation
@@ -94,7 +90,7 @@ mut:
 	show_help_flag bool
 	// zip container
 	zip       &szip.Zip = unsafe { nil } // pointer to the szip structure
-	zip_index int       = -1 // index of the zip container item
+	zip_index int       = -1             // index of the zip container item
 	// memory buffer
 	mem_buf      voidptr // buffer used to load items from files/containers
 	mem_buf_size int     // size of the buffer
@@ -103,6 +99,7 @@ mut:
 	// logo
 	logo_path    string // path of the temp font logo
 	logo_texture gfx.Image
+	logo_sampler gfx.Sampler
 	logo_w       int
 	logo_h       int
 	logo_ratio   f32 = 1.0
@@ -115,28 +112,33 @@ mut:
 * Texture functions
 *
 ******************************************************************************/
-fn create_texture(w int, h int, buf &u8) gfx.Image {
+fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
-		width: w
-		height: h
+		width:       w
+		height:      h
 		num_mipmaps: 0
-		min_filter: .linear
-		mag_filter: .linear
 		// usage: .dynamic
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
-		label: &u8(0)
+		label:         &u8(unsafe { nil })
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
 	img_desc.data.subimage[0][0] = gfx.Range{
-		ptr: buf
+		ptr:  buf
 		size: usize(sz)
 	}
 
 	sg_img := gfx.make_image(&img_desc)
-	return sg_img
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u:     .clamp_to_edge
+		wrap_v:     .clamp_to_edge
+	}
+
+	sg_smp := gfx.make_sampler(&smp_desc)
+	return sg_img, sg_smp
 }
 
 fn destroy_texture(sg_img gfx.Image) {
@@ -148,7 +150,7 @@ fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 	sz := w * h * 4
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{
-		ptr: buf
+		ptr:  buf
 		size: usize(sz)
 	}
 	gfx.update_image(sg_img, &tmp_sbc)
@@ -159,7 +161,7 @@ fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 * Memory buffer
 *
 ******************************************************************************/
-[inline]
+@[inline]
 fn (mut app App) resize_buf_if_needed(in_size int) {
 	// manage the memory buffer
 	if app.mem_buf_size < in_size {
@@ -184,7 +186,7 @@ fn (mut app App) resize_buf_if_needed(in_size int) {
 *
 ******************************************************************************/
 // read_bytes from file in `path` in the memory buffer of app.
-[manualfree]
+@[manualfree]
 fn (mut app App) read_bytes(path string) bool {
 	mut fp := os.vfopen(path, 'rb') or {
 		eprintln('ERROR: Can not open the file [${path}].')
@@ -219,28 +221,28 @@ fn (mut app App) read_bytes(path string) bool {
 pub fn read_bytes_from_file(file_path string) []u8 {
 	mut buffer := []u8{}
 	buffer = os.read_bytes(file_path) or {
-		eprintln('ERROR: Texure file: [${file_path}] NOT FOUND.')
+		eprintln('ERROR: Texture file: [${file_path}] NOT FOUND.')
 		exit(0)
 	}
 	return buffer
 }
 
-fn (mut app App) load_texture_from_buffer(buf voidptr, buf_len int) (gfx.Image, int, int) {
+fn (mut app App) load_texture_from_buffer(buf voidptr, buf_len int) (gfx.Image, gfx.Sampler, int, int) {
 	// load image
 	stbi.set_flip_vertically_on_load(true)
 	img := stbi.load_from_memory(buf, buf_len) or {
 		eprintln('ERROR: Can not load image from buffer, file: [${app.item_list.lst[app.item_list.item_index]}].')
-		return app.logo_texture, app.logo_w, app.logo_h
+		return app.logo_texture, app.sampler, app.logo_w, app.logo_h
 		// exit(1)
 	}
-	res := create_texture(int(img.width), int(img.height), img.data)
+	sg_img, sg_smp := create_texture(int(img.width), int(img.height), img.data)
 	unsafe {
 		img.free()
 	}
-	return res, int(img.width), int(img.height)
+	return sg_img, sg_smp, int(img.width), int(img.height)
 }
 
-pub fn (mut app App) load_texture_from_file(file_name string) (gfx.Image, int, int) {
+pub fn (mut app App) load_texture_from_file(file_name string) (gfx.Image, gfx.Sampler, int, int) {
 	app.read_bytes(file_name)
 	return app.load_texture_from_buffer(app.mem_buf, app.mem_buf_size)
 }
@@ -249,8 +251,10 @@ pub fn show_logo(mut app App) {
 	clear_modifier_params(mut app)
 	if app.texture != app.logo_texture {
 		destroy_texture(app.texture)
+		gfx.destroy_sampler(app.sampler)
 	}
 	app.texture = app.logo_texture
+	app.sampler = app.logo_sampler
 	app.img_w = app.logo_w
 	app.img_h = app.logo_h
 	app.img_ratio = f32(app.img_w) / f32(app.img_h)
@@ -268,11 +272,12 @@ pub fn load_image(mut app App) {
 	// destroy the texture, avoid to destroy the logo
 	if app.texture != app.logo_texture {
 		destroy_texture(app.texture)
+		gfx.destroy_sampler(app.sampler)
 	}
 
 	// load from .ZIP file
 	if app.item_list.is_inside_a_container() == true {
-		app.texture, app.img_w, app.img_h = app.load_texture_from_zip() or {
+		app.texture, app.sampler, app.img_w, app.img_h = app.load_texture_from_zip() or {
 			eprintln('ERROR: Can not load image from .ZIP file [${app.item_list.lst[app.item_list.item_index]}].')
 			show_logo(mut app)
 			app.state = .show
@@ -291,13 +296,14 @@ pub fn load_image(mut app App) {
 	}
 
 	file_path := app.item_list.get_file_path()
-	if file_path.len > 0 {
+	if file_path != '' {
 		// println("${app.item_list.lst[app.item_list.item_index]} $file_path ${app.item_list.lst.len}")
-		app.texture, app.img_w, app.img_h = app.load_texture_from_file(file_path)
+		app.texture, app.sampler, app.img_w, app.img_h = app.load_texture_from_file(file_path)
 		app.img_ratio = f32(app.img_w) / f32(app.img_h)
 		// println("texture: [${app.img_w},${app.img_h}] ratio: ${app.img_ratio}")
 	} else {
 		app.texture = app.logo_texture
+		app.sampler = app.logo_sampler
 		app.img_w = app.logo_w
 		app.img_h = app.logo_h
 		app.img_ratio = f32(app.img_w) / f32(app.img_h)
@@ -318,9 +324,9 @@ fn app_init(mut app App) {
 	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
+	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
-			enabled: true
+			enabled:        true
 			src_factor_rgb: .src_alpha
 			dst_factor_rgb: .one_minus_src_alpha
 		}
@@ -329,19 +335,20 @@ fn app_init(mut app App) {
 
 	pipdesc.depth = gfx.DepthState{
 		write_enabled: true
-		compare: .less_equal
+		compare:       .less_equal
 	}
 	pipdesc.cull_mode = .back
 	app.pip_viewer = sgl.make_pipeline(&pipdesc)
 
 	// load logo
-	app.logo_texture, app.logo_w, app.logo_h = app.load_texture_from_file(app.logo_path)
+	app.logo_texture, app.logo_sampler, app.logo_w, app.logo_h = app.load_texture_from_file(app.logo_path)
 	app.logo_ratio = f32(app.img_w) / f32(app.img_h)
 
 	app.img_w = app.logo_w
 	app.img_h = app.logo_h
 	app.img_ratio = app.logo_ratio
 	app.texture = app.logo_texture
+	app.sampler = app.logo_sampler
 
 	println('INIT DONE!')
 
@@ -363,7 +370,7 @@ fn cleanup(mut app App) {
 * Draw functions
 *
 ******************************************************************************/
-[manualfree]
+@[manualfree]
 fn frame(mut app App) {
 	ws := gg.window_size_real_pixels()
 	if ws.width <= 0 || ws.height <= 0 {
@@ -383,7 +390,7 @@ fn frame(mut app App) {
 	// enable our pipeline
 	sgl.load_pipeline(app.pip_viewer)
 	sgl.enable_texture()
-	sgl.texture(app.texture)
+	sgl.texture(app.texture, app.sampler)
 
 	// translation
 	tr_x := app.tr_x / app.img_w
@@ -555,7 +562,6 @@ fn frame(mut app App) {
 	}
 
 	app.gg.end()
-	app.frame_count++
 }
 
 // draw readable text
@@ -566,12 +572,12 @@ fn draw_text(mut app App, in_txt string, in_x int, in_y int, fnt_sz f32) {
 	mut txt_conf_c0 := gx.TextCfg{
 		color: gx.white // gx.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
 		align: .left
-		size: font_size
+		size:  font_size
 	}
 	mut txt_conf_c1 := gx.TextCfg{
 		color: gx.black // gx.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
 		align: .left
-		size: font_size
+		size:  font_size
 	}
 
 	x := int(in_x * scale)
@@ -793,10 +799,10 @@ fn main() {
 
 	// App init
 	mut app := &App{
-		gg: 0
+		gg: unsafe { nil }
 		// zip fields
-		zip: 0
-		item_list: 0
+		zip:       unsafe { nil }
+		item_list: unsafe { nil }
 	}
 
 	app.state = .scanning
@@ -809,19 +815,19 @@ fn main() {
 	load_and_show(os.args[1..], mut app)
 
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
-		create_window: true
-		window_title: 'V Image viewer 0.8'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: frame
-		init_fn: app_init
-		cleanup_fn: cleanup
-		event_fn: my_event_manager
-		font_path: font_path
-		enable_dragndrop: true
-		max_dropped_files: 64
+		width:                        win_width
+		height:                       win_height
+		create_window:                true
+		window_title:                 'V Image viewer 0.8'
+		user_data:                    app
+		bg_color:                     bg_color
+		frame_fn:                     frame
+		init_fn:                      app_init
+		cleanup_fn:                   cleanup
+		event_fn:                     my_event_manager
+		font_path:                    font_path
+		enable_dragndrop:             true
+		max_dropped_files:            64
 		max_dropped_file_path_length: 2048
 		// ui_mode: true
 	)

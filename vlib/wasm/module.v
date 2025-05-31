@@ -41,23 +41,23 @@ pub enum NumType as u8 {
 }
 
 pub enum ValType as u8 {
-	i32_t = 0x7f
-	i64_t = 0x7e
-	f32_t = 0x7d
-	f64_t = 0x7c
-	v128_t = 0x7b
-	funcref_t = 0x70
+	i32_t       = 0x7f
+	i64_t       = 0x7e
+	f32_t       = 0x7d
+	f64_t       = 0x7c
+	v128_t      = 0x7b
+	funcref_t   = 0x70
 	externref_t = 0x6f
 }
 
 pub enum RefType as u8 {
-	funcref_t = 0x70
+	funcref_t   = 0x70
 	externref_t = 0x6f
 }
 
 // Module contains the WebAssembly module.
 // Use the `compile` method to compile the module into a pure byte array.
-[heap]
+@[heap]
 pub struct Module {
 mut:
 	buf            []u8
@@ -140,10 +140,10 @@ pub fn (mut mod Module) new_function(name string, parameters []ValType, results 
 	tidx := mod.new_functype(FuncType{parameters, results, none})
 
 	return Function{
-		name: name
-		tidx: tidx
-		idx: idx
-		mod: mod
+		name:   name
+		tidx:   tidx
+		idx:    idx
+		mod:    mod
 		locals: parameters.map(FunctionLocal{}) // specifying it's ValType doesn't matter
 	}
 }
@@ -158,10 +158,10 @@ pub fn (mut mod Module) new_debug_function(name string, typ FuncType, argument_n
 	tidx := mod.new_functype(typ)
 
 	return Function{
-		name: name
-		tidx: tidx
-		idx: idx
-		mod: mod
+		name:   name
+		tidx:   tidx
+		idx:    idx
+		mod:    mod
 		locals: argument_names.map(FunctionLocal{ name: it }) // specifying it's ValType doesn't matter
 	}
 }
@@ -175,10 +175,10 @@ pub fn (mut mod Module) enable_debug(mod_name ?string) {
 // assign_memory assigns memory to the current module.
 pub fn (mut mod Module) assign_memory(name string, export bool, min u32, max ?u32) {
 	mod.memory = Memory{
-		name: name
+		name:   name
 		export: export
-		min: min
-		max: max
+		min:    min
+		max:    max
 	}
 }
 
@@ -194,7 +194,7 @@ pub fn (mut mod Module) new_function_import(modn string, name string, parameters
 	tidx := mod.new_functype(FuncType{parameters, results, none})
 
 	mod.fn_imports << FunctionImport{
-		mod: modn
+		mod:  modn
 		name: name
 		tidx: tidx
 	}
@@ -207,7 +207,7 @@ pub fn (mut mod Module) new_function_import_debug(modn string, name string, typ 
 	tidx := mod.new_functype(typ)
 
 	mod.fn_imports << FunctionImport{
-		mod: modn
+		mod:  modn
 		name: name
 		tidx: tidx
 	}
@@ -228,7 +228,7 @@ pub fn (mut mod Module) commit(func Function, export bool) {
 pub fn (mut mod Module) new_data_segment(name ?string, pos int, data []u8) DataSegmentIndex {
 	len := mod.segments.len
 	mod.segments << DataSegment{
-		idx: pos
+		idx:  pos
 		data: data
 		name: name
 	}
@@ -249,11 +249,11 @@ pub fn (mut mod Module) new_passive_data_segment(name ?string, data []u8) {
 pub fn (mut mod Module) new_global(name string, export bool, typ ValType, is_mut bool, init ConstExpression) GlobalIndex {
 	len := mod.globals.len
 	mod.globals << Global{
-		typ: typ
+		typ:    typ
 		is_mut: is_mut
-		name: name
+		name:   name
 		export: export
-		init: init
+		init:   init
 	}
 	return len
 }
@@ -265,9 +265,9 @@ pub fn (mut mod Module) new_global_import(modn string, name string, typ ValType,
 
 	len := mod.global_imports.len
 	mod.global_imports << GlobalImport{
-		mod: modn
-		name: name
-		typ: typ
+		mod:    modn
+		name:   name
+		typ:    typ
 		is_mut: is_mut
 	}
 	return len

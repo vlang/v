@@ -1,0 +1,9 @@
+a := 'Tom'
+b := 'Hello ${a}'
+c := &a
+println(b)
+println('C->${c}')
+
+f := 1.24
+f_p := &f
+println('${f_p}')

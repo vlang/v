@@ -1,6 +1,6 @@
 *> trace * C.main*
 *> trace * _vinit*
-*> trace * os os.init_os_args*
+*> trace * builtin arguments/0*
 *> trace * main main.main/0*
 *> trace * main main.f1/0*
 *> trace * main main.f2/0*

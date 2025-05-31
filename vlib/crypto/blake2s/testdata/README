@@ -1,0 +1,12 @@
+These test vectors are extracted from
+https://github.com/BLAKE2/BLAKE2/blob/master/testvectors/blake2-kat.json
+
+All json objects that contain '"hash": "blake2s"' have been extracted and
+saved in blake2s_test_vectors.json.
+
+Using the blake2s.awk program on blake2s_test_vectors.json, we can
+generate v code that can initialize an array of TestVector structures.
+
+awk -f blake2s.awk blake2s_test_vectors.json >test_vectors.v
+
+Copy the contents of test_vectors.v into ../blake2s_test.v

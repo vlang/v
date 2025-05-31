@@ -7,14 +7,12 @@ const empty_toml_document = toml.Doc{
 	ast: &ast.Root(unsafe { nil })
 }
 
-const (
-	toml_text_with_utf8_bom  = os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdata',
-		'toml_with_utf8_bom' + '.toml'))) or { panic(err) }
-	toml_text_with_utf16_bom = os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdata',
-		'toml_with_utf16_bom' + '.toml'))) or { panic(err) }
-	toml_text_with_utf32_bom = os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdata',
-		'toml_with_utf32_bom' + '.toml'))) or { panic(err) }
-)
+const toml_text_with_utf8_bom = os.read_file(os.real_path(os.join_path(os.dir(@FILE),
+	'testdata', 'toml_with_utf8_bom' + '.toml'))) or { panic(err) }
+const toml_text_with_utf16_bom = os.read_file(os.real_path(os.join_path(os.dir(@FILE),
+	'testdata', 'toml_with_utf16_bom' + '.toml'))) or { panic(err) }
+const toml_text_with_utf32_bom = os.read_file(os.real_path(os.join_path(os.dir(@FILE),
+	'testdata', 'toml_with_utf32_bom' + '.toml'))) or { panic(err) }
 
 fn test_toml_with_bom() {
 	toml_doc := toml.parse_text(toml_text_with_utf8_bom) or { panic(err) }

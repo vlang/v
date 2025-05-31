@@ -1,0 +1,37 @@
+interface IA {
+	a int
+	fa()
+}
+
+interface IB[T] {
+	a int
+	b T
+	fa()
+}
+
+struct Foo1[T] implements IA, IB {
+	a int
+	b T
+}
+
+struct Foo2[T] implements IA, IB[Y] {
+	a int
+	b T
+}
+
+struct Foo3[T] implements IA, IB[T,Y] {
+	a int
+	b T
+}
+
+fn (foo Foo1[T]) fa() {
+	println(foo.b)
+}
+
+fn (foo Foo2[T]) fa() {
+	println(foo.b)
+}
+
+fn (foo Foo3[T]) fa() {
+	println(foo.b)
+}

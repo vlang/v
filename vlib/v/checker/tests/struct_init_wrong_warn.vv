@@ -10,12 +10,12 @@ mut:
 
 fn new_outer() &Outer {
 	return &Outer{
-		ptr: vcalloc(0)
+		ptr:  vcalloc(0)
 		size: 1
 	}
 }
 
-fn main () {
+fn main() {
 	outer := new_outer()
 	println(outer)
 }

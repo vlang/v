@@ -1,6 +1,5 @@
-vlib/v/checker/tests/globals_error.vv:2:1: error: use `v -enable-globals ...` to enable globals
-    1 |
-    2 | __global ( rfcnt int )
+vlib/v/checker/tests/globals_error.vv:1:1: error: use `v -enable-globals ...` to enable globals
+    1 | __global (
       | ~~~~~~~~
-    3 |
-    4 | fn abc(){
+    2 |     rfcnt int
+    3 | )

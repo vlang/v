@@ -1,8 +1,8 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
-// TODO Windows version needs to be implemented.
+// TODO: Windows version needs to be implemented.
 // Will serve as more advanced input method
 // based on the work of https://github.com/AmokHuginnsson/replxx
 //
@@ -52,7 +52,7 @@ pub fn tcsetattr(fd int, optional_actions int, mut termios_p Termios) int {
 
 // ioctl is an unsafe wrapper around C.ioctl and keeps its semantic
 // It is only implemented for Unix like OSes
-[inline]
+@[inline]
 pub fn ioctl(fd int, request u64, arg voidptr) int {
 	return -1
 }

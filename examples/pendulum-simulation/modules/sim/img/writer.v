@@ -23,9 +23,9 @@ pub fn new_image_writer(mut writer PPMWriter, settings ImageSettings) &ImageWrit
 		valid: false
 	}}
 	return &ImageWriter{
-		writer: writer
+		writer:   writer
 		settings: settings
-		buffer: buffer
+		buffer:   buffer
 	}
 }
 

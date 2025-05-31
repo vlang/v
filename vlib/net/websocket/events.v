@@ -69,8 +69,8 @@ pub fn (mut s Server) on_message(fun SocketMessageFn) {
 pub fn (mut s Server) on_message_ref(fun SocketMessageFn2, ref voidptr) {
 	s.message_callbacks << MessageEventHandler{
 		handler2: fun
-		ref: ref
-		is_ref: true
+		ref:      ref
+		is_ref:   true
 	}
 }
 
@@ -85,8 +85,8 @@ pub fn (mut s Server) on_close(fun SocketCloseFn) {
 pub fn (mut s Server) on_close_ref(fun SocketCloseFn2, ref voidptr) {
 	s.close_callbacks << CloseEventHandler{
 		handler2: fun
-		ref: ref
-		is_ref: true
+		ref:      ref
+		is_ref:   true
 	}
 }
 
@@ -101,8 +101,8 @@ pub fn (mut ws Client) on_message(fun SocketMessageFn) {
 pub fn (mut ws Client) on_message_ref(fun SocketMessageFn2, ref voidptr) {
 	ws.message_callbacks << MessageEventHandler{
 		handler2: fun
-		ref: ref
-		is_ref: true
+		ref:      ref
+		is_ref:   true
 	}
 }
 
@@ -117,8 +117,8 @@ pub fn (mut ws Client) on_error(fun SocketErrorFn) {
 pub fn (mut ws Client) on_error_ref(fun SocketErrorFn2, ref voidptr) {
 	ws.error_callbacks << ErrorEventHandler{
 		handler2: fun
-		ref: ref
-		is_ref: true
+		ref:      ref
+		is_ref:   true
 	}
 }
 
@@ -134,8 +134,8 @@ pub fn (mut ws Client) on_open(fun SocketOpenFn) {
 pub fn (mut ws Client) on_open_ref(fun SocketOpenFn2, ref voidptr) {
 	ws.open_callbacks << OpenEventHandler{
 		handler2: fun
-		ref: ref
-		is_ref: true
+		ref:      ref
+		is_ref:   true
 	}
 }
 
@@ -150,8 +150,8 @@ pub fn (mut ws Client) on_close(fun SocketCloseFn) {
 pub fn (mut ws Client) on_close_ref(fun SocketCloseFn2, ref voidptr) {
 	ws.close_callbacks << CloseEventHandler{
 		handler2: fun
-		ref: ref
-		is_ref: true
+		ref:      ref
+		is_ref:   true
 	}
 }
 

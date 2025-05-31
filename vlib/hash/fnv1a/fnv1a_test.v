@@ -24,7 +24,7 @@ fn test_fnv1a_sum32() {
 	assert b.hex() == ahash
 	assert c.hex() == ahash
 	assert d.hex() == ahash
-	//
+
 	mut aa := Abc{}
 	x := fnv1a.sum32_struct(aa)
 	aa.a[3] = 5
@@ -51,7 +51,7 @@ fn test_fnv1a_sum64() {
 	assert b.hex() == ahash
 	assert c.hex() == ahash
 	assert d.hex() == ahash
-	//
+
 	mut aa := Abc{}
 	x := fnv1a.sum64_struct(aa)
 	aa.a[3] = 5

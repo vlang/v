@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -12,61 +12,88 @@ import v.util.version
 import v.builder
 import v.builder.cbuilder
 
-const (
-	external_tools                      = [
-		'ast',
-		'bin2v',
-		'bug',
-		'build-examples',
-		'build-tools',
-		'build-vbinaries',
-		'bump',
-		'check-md',
-		'complete',
-		'compress',
-		'doc',
-		'doctor',
-		'fmt',
-		'gret',
-		'ls',
-		'missdoc',
-		'repl',
-		'self',
-		'setup-freetype',
-		'shader',
-		'share',
-		'should-compile-all',
-		'symlink',
-		'scan',
-		'test',
-		'test-all', // runs most of the tests and other checking tools, that will be run by the CI
-		'test-cleancode',
-		'test-fmt',
-		'test-parser',
-		'test-self',
-		'tracev',
-		'up',
-		'vet',
-		'wipe-cache',
-		'watch',
-		'where',
-	]
-	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
-)
+const external_tools = [
+	'ast',
+	'bin2v',
+	'bug',
+	'build-examples',
+	'build-tools',
+	'build-vbinaries',
+	'bump',
+	'check-md',
+	'complete',
+	'compress',
+	'cover',
+	'diff',
+	'doc',
+	'doctor',
+	'download',
+	'fmt',
+	'gret',
+	'ls',
+	'missdoc',
+	'reduce',
+	'repl',
+	'repeat',
+	'retry',
+	'self',
+	'setup-freetype',
+	'shader',
+	'share',
+	'should-compile-all',
+	'symlink',
+	'scan',
+	'test',
+	'test-all', // runs most of the tests and other checking tools, that will be run by the CI
+	'test-cleancode',
+	'test-fmt',
+	'test-parser',
+	'test-self',
+	'time',
+	'timeout',
+	'tracev',
+	'up',
+	'vet',
+	'wipe-cache',
+	'watch',
+	'where',
+]
+const list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
+
+@[unsafe]
+fn timers_pointer(p &util.Timers) &util.Timers {
+	// TODO: the static variable here is used as a workaround for the current incompatibility of -usecache and globals in the main module:
+	mut static ptimers := unsafe { &util.Timers(nil) }
+	if p != unsafe { nil } {
+		ptimers = p
+	}
+	return ptimers
+}
 
 fn main() {
+	unbuffer_stdout()
 	mut timers_should_print := false
 	$if time_v ? {
 		timers_should_print = true
 	}
-	mut timers := util.new_timers(should_print: timers_should_print, label: 'main')
-	timers.start('v total')
-	defer {
-		timers.show('v total')
+	if '-show-timings' in os.args {
+		timers_should_print = true
+	}
+	mut timers := unsafe {
+		timers_pointer(util.new_timers(
+			should_print: timers_should_print
+			label:        'main'
+		))
 	}
 	timers.start('v start')
 	timers.show('v start')
-	timers.start('parse_CLI_args')
+	timers.start('TOTAL')
+	// use at_exit here, instead of defer, since some code paths later do early exit(0) or exit(1), for showing errors, or after `v run`
+	at_exit(fn () {
+		mut timers := unsafe { timers_pointer(nil) }
+		timers.show('TOTAL')
+	})!
+	timers.start('v parsing CLI args')
 	args := os.args[1..]
 
 	if args.len == 0 || args[0] in ['-', 'repl'] {
@@ -88,7 +115,10 @@ fn main() {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
 	}
-	timers.show('parse_CLI_args')
+	timers.show('v parsing CLI args')
+
+	setup_vbuild_env_vars(prefs)
+
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in external_tools {
@@ -151,7 +181,7 @@ fn main() {
 	all_commands << external_tools
 	all_commands << other_commands
 	all_commands.sort()
-	eprintln(util.new_suggestion(command, all_commands).say('v: unknown command `${command}`'))
+	eprintln(util.new_suggestion(command, all_commands, similarity_threshold: 0.2).say('v: unknown command `${command}`'))
 	eprintln('Run ${term.highlight_command('v help')} for usage.')
 	exit(1)
 }
@@ -196,4 +226,22 @@ fn rebuild(prefs &pref.Preferences) {
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])
 		}
 	}
+}
+
+@[manualfree]
+fn setup_vbuild_env_vars(prefs &pref.Preferences) {
+	mut facts := []string{cap: 10}
+	facts << prefs.os.lower()
+	facts << prefs.ccompiler_type.str()
+	facts << prefs.arch.str()
+	if prefs.is_prod {
+		facts << 'prod'
+	}
+	github_job := os.getenv('GITHUB_JOB')
+	if github_job != '' {
+		facts << github_job
+	}
+	pref.set_build_flags_and_defines(facts, prefs.compile_defines_all)
+	unsafe { github_job.free() }
+	unsafe { facts.free() }
 }

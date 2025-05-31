@@ -6,7 +6,7 @@ enum Test {
 	baz
 }
 
-// TODO Remove `fn main` once vet supports scripts
+// TODO: Remove `fn main` once vet supports scripts
 fn main() {
 	mut a := hello.Ccc.a
 	a = .b

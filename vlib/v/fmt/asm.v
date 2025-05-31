@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
@@ -12,7 +12,12 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	} else if stmt.is_goto {
 		f.write('goto ')
 	}
-	f.writeln('${stmt.arch} {')
+	lit_arch := if stmt.arch == .wasm32 {
+		'wasm'
+	} else {
+		stmt.arch.str()
+	}
+	f.writeln('${lit_arch} {')
 	f.indent++
 
 	f.asm_templates(stmt.templates)
@@ -54,7 +59,7 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 			f.write(arg.val.str())
 		}
 		string {
-			f.write(arg)
+			f.string_literal(ast.StringLiteral{ val: arg })
 		}
 		ast.AsmAddressing {
 			if arg.segment != '' {

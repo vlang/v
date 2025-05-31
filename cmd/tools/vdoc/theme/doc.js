@@ -1,5 +1,5 @@
 (function () {
-	const docnav = document.querySelector('.doc-nav');
+	const docnav = document.querySelector('header.doc-nav');
 	const active = docnav.querySelector('li.active');
 	active?.scrollIntoView({ block: 'center', inline: 'nearest' });
 	setupMobileToggle();
@@ -7,11 +7,15 @@
 	setupScrollSpy();
 	setupSearch();
 	setupCollapse();
+	setupCodeCopy();
 })();
 
 function setupScrollSpy() {
 	const mainContent = document.querySelector('#main-content');
 	const toc = mainContent.querySelector('.doc-toc');
+	if (!toc) {
+		return;
+	}
 	const sections = mainContent.querySelectorAll('section');
 	const sectionPositions = Array.from(sections).map((section) => section.offsetTop);
 	let lastActive = null;
@@ -56,13 +60,13 @@ function setupScrollSpy() {
 			a.classList.add('active');
 			lastActive = a;
 			clickedScroll = true;
-		})
+		}),
 	);
 }
 
 function setupMobileToggle() {
 	document.getElementById('toggle-menu').addEventListener('click', () => {
-		const docNav = document.querySelector('.doc-nav');
+		const docNav = document.querySelector('header.doc-nav');
 		const isHidden = docNav.classList.contains('hidden');
 		docNav.classList.toggle('hidden');
 		const search = docNav.querySelector('.search');
@@ -90,10 +94,9 @@ function setupDarkMode() {
 }
 
 function setupSearch() {
-	const searchInput = document.getElementById('search');
 	const onInputChange = debounce((e) => {
 		const searchValue = e.target.value.toLowerCase();
-		const docNav = document.querySelector('.doc-nav');
+		const docNav = document.querySelector('header.doc-nav');
 		const menu = docNav.querySelector('.content');
 		const search = docNav.querySelector('.search');
 		if (searchValue === '') {
@@ -160,13 +163,30 @@ function setupSearch() {
 			});
 		}
 	});
-	searchInput.addEventListener('input', onInputChange);
+	const searchInput = document.querySelector('#search input');
+	const url = document.location.toString();
+	if (url.includes('?')) {
+		const query =
+			url
+				.split('?')
+				.slice(1)
+				.filter((p) => p.startsWith('q='))
+				.map((p) => p.replace(/^q=/, ''))[0] || '';
+		if (query) {
+			searchInput.value = query;
+			searchInput.focus();
+			onInputChange({ target: { value: query } });
+		}
+	}
+	const searchInputDiv = document.getElementById('search');
+	searchInputDiv.addEventListener('input', onInputChange);
 	setupSearchKeymaps();
 }
 
 function setupSearchKeymaps() {
 	const searchInput = document.querySelector('#search input');
 	const mainContent = document.querySelector('#main-content');
+	const docnav = document.querySelector('header.doc-nav');
 	// Keyboard shortcut indicator
 	const searchKeys = document.createElement('div');
 	const modifierKeyPrefix = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl';
@@ -226,6 +246,7 @@ function setupSearchKeymaps() {
 				}
 				break;
 			default:
+				docnav.scroll(0, 0);
 				selectedIdx = -1;
 		}
 	});
@@ -279,4 +300,28 @@ function debounce(func, timeout) {
 		}
 		timer = setTimeout(next, timeout > 0 ? timeout : 300);
 	};
+}
+
+function setupCodeCopy() {
+	const pres = document.querySelectorAll('pre:not(.signature)');
+	pres.forEach((pre) => {
+		const tempDiv = document.createElement('button');
+		tempDiv.className = 'copy';
+		tempDiv.innerHTML =
+			'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="rgba(173,184,194,1)"><path d="M6.9998 6V3C6.9998 2.44772 7.44752 2 7.9998 2H19.9998C20.5521 2 20.9998 2.44772 20.9998 3V17C20.9998 17.5523 20.5521 18 19.9998 18H16.9998V20.9991C16.9998 21.5519 16.5499 22 15.993 22H4.00666C3.45059 22 3 21.5554 3 20.9991L3.0026 7.00087C3.0027 6.44811 3.45264 6 4.00942 6H6.9998ZM5.00242 8L5.00019 20H14.9998V8H5.00242ZM8.9998 6H16.9998V16H18.9998V4H8.9998V6Z"></path></svg>';
+		tempDiv.addEventListener('click', (e) => {
+			const parent = e.target;
+			var code = tempDiv.parentElement.querySelector('code');
+			let i = Array.from(code.childNodes)
+				.map((r) => r.textContent)
+				.join('');
+			navigator.clipboard.writeText(i);
+			var tmp = tempDiv.innerHTML;
+			tempDiv.innerHTML = 'Copied';
+			window.setTimeout(function () {
+				tempDiv.innerHTML = tmp;
+			}, 1000);
+		});
+		pre.insertAdjacentElement('afterbegin', tempDiv);
+	});
 }

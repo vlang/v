@@ -1,0 +1,14 @@
+vlib/v/checker/tests/wrong_return_type_err.vv:9:10: error: cannot use `Error` as type `int` in return argument
+    7 | fn double_positive(num int) int {
+    8 |     if num <= 0 {
+    9 |         return Error{}
+      |                ~~~~~~~
+   10 |     }
+   11 |     return num * 2
+vlib/v/checker/tests/wrong_return_type_err.vv:16:10: error: cannot use `Error` as type `Val` in return argument
+   14 | fn new_val(num int) Val {
+   15 |     if num <= 0 {
+   16 |         return Error{}
+      |                ~~~~~~~
+   17 |     }
+   18 |     return Val{

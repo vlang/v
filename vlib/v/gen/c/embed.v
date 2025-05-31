@@ -34,7 +34,7 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 		if node.embed_file.compression_type == 'none' {
 			node.embed_file.bytes = file_bytes
 		} else {
-			cache_dir := os.join_path(os.vmodules_dir(), 'cache', 'embed_file')
+			cache_dir := os.join_path(os.vmodules_dir(), '.cache', 'embed_file')
 			cache_key := rand.ulid()
 			// cache_key := md5.hexhash(node.embed_file.apath)
 			if !os.exists(cache_dir) {
@@ -85,6 +85,9 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 // into a single generated function _v_embed_file_metadata, that accepts a hash of the absolute path of the embedded
 // files.
 fn (mut g Gen) gen_embedded_metadata() {
+	if g.pref.parallel_cc {
+		g.extern_out.writeln('extern v__embed_file__EmbedFileData _v_embed_file_metadata(u64 ef_hash);')
+	}
 	g.embedded_data.writeln('v__embed_file__EmbedFileData _v_embed_file_metadata(u64 ef_hash) {')
 	g.embedded_data.writeln('\tv__embed_file__EmbedFileData res;')
 	g.embedded_data.writeln('\tmemset(&res, 0, sizeof(res));')

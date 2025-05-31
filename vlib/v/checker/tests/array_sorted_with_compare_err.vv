@@ -1,0 +1,17 @@
+fn main() {
+	names := ['aaa', 'bbb', 'ccc']
+
+	name1 := names.sorted_with_compare(sort_by_file_base)
+	println(name1)
+
+	name2 := names.sorted_with_compare(22)
+	println(name2)
+
+	name3 := names.sorted_with_compare(sort_by_file_base, 22)
+	println(name3)
+
+}
+
+fn sort_by_file_base(a string, b string) int {
+	return int(a > b)
+}

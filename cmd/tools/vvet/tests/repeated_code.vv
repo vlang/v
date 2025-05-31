@@ -1,0 +1,16 @@
+// vtest vflags: -r
+fn main() {
+	mut a := [0, 2, 4, 6]
+	if a[0] {
+		dump(a[0])
+		dump(a[0] + a[0])
+		if a[0] {
+			dump(a[0])
+			dump(a[0] + a[0])
+		}
+		if a[0] {
+			dump(a[0])
+			dump(a[0] + a[0])
+		}
+	}
+}

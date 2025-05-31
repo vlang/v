@@ -1,9 +1,9 @@
-Installation Management Utilities:
+Installation management tools:
 
-  self     Rebuild V with the passed options.
-
-  symlink  Add a symlink for the V compiler executable.
-
-  up       Update the V compiler to the latest version from https://github.com/vlang/v.
-
-  version  Print the version of V installed
+  v up         Update the V installation to its latest version.
+  v self       Rebuild the V executable. Try for example: `v -prod self`.
+  v version    Print the version of the V executable.
+  v symlink    Add a global symlink to the V executable.
+  
+You can also `v download -RD URL` to download, and then run arbitrary
+self contained `.v` or `.vsh` scripts/programs.

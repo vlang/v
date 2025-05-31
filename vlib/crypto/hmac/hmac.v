@@ -4,11 +4,10 @@ module hmac
 
 import crypto.internal.subtle
 
-const (
-	ipad = []u8{len: 256, init: 0x36} // TODO is 256 enough??
-	opad = []u8{len: 256, init: 0x5C}
-	npad = []u8{len: 256, init: 0}
-)
+const ipad = []u8{len: 256, init: 0x36} // TODO: is 256 enough??
+
+const opad = []u8{len: 256, init: 0x5C}
+const npad = []u8{len: 256, init: 0}
 
 // new returns a HMAC byte array, depending on the hash algorithm used.
 pub fn new(key []u8, data []u8, hash_func fn ([]u8) []u8, blocksize int) []u8 {
@@ -19,16 +18,16 @@ pub fn new(key []u8, data []u8, hash_func fn ([]u8) []u8, blocksize int) []u8 {
 		b_key = hash_func(key)
 	}
 	if b_key.len < blocksize {
-		b_key << hmac.npad[..blocksize - b_key.len]
+		b_key << npad[..blocksize - b_key.len]
 	}
 	mut inner := []u8{}
-	for i, b in hmac.ipad[..blocksize] {
+	for i, b in ipad[..blocksize] {
 		inner << b_key[i] ^ b
 	}
 	inner << data
 	inner_hash := hash_func(inner)
 	mut outer := []u8{cap: b_key.len}
-	for i, b in hmac.opad[..blocksize] {
+	for i, b in opad[..blocksize] {
 		outer << b_key[i] ^ b
 	}
 	outer << inner_hash

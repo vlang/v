@@ -1,6 +1,6 @@
 import sync
 
-struct St{
+struct St {
 mut:
 	n int
 }

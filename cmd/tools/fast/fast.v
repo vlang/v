@@ -1,23 +1,25 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import os
 import time
 import arrays
+import log
 
+const args = arguments()
 const warmup_samples = 2
 
-const max_samples = 10
+const max_samples = 20
 
-const discard_highest_samples = 6
+const discard_highest_samples = 16
 
 const voptions = ' -skip-unused -show-timings -stats '
 
-const fast_dir = os.dir(@FILE)
+const fast_dir = os.real_path(os.dir(@FILE))
 
-const fast_log_path = os.join_path(fast_dir, 'fast.log')
+const fast_log_path = os.real_path(os.join_path(fast_dir, 'fast.log'))
 
-const vdir = os.dir(os.dir(os.dir(fast_dir)))
+const vdir = os.real_path(os.dir(os.dir(os.dir(fast_dir))))
 
 fn elog(msg string) {
 	line := '${time.now().format_ss_micro()} ${msg}\n'
@@ -25,7 +27,7 @@ fn elog(msg string) {
 		f.write_string(line) or {}
 		f.close()
 	}
-	eprint(line)
+	log.info(msg)
 }
 
 fn lsystem(cmd string) int {
@@ -35,21 +37,25 @@ fn lsystem(cmd string) int {
 
 fn lexec(cmd string) string {
 	elog('  lexec: ${cmd}')
-	return os.execute_or_exit(cmd).output.trim_right('\r\n')
+	return os.execute(cmd).output.trim_right('\r\n')
 }
 
 fn main() {
+	// ensure all log messages will be visible to the observers, even if the program panics
+	log.use_stdout()
+	log.set_always_flush(true)
+
 	total_sw := time.new_stopwatch()
 	elog('fast.html generator start')
 	defer {
 		elog('fast.html generator end, total: ${total_sw.elapsed().milliseconds():6} ms')
 	}
-	//
+
 	mut ccompiler_path := 'tcc'
 	if vdir.contains('/tmp/cirrus-ci-build') {
 		ccompiler_path = 'clang'
 	}
-	if os.args.contains('-clang') {
+	if args.contains('-clang') {
 		ccompiler_path = 'clang'
 	}
 	elog('fast_dir: ${fast_dir} | vdir: ${vdir} | compiler: ${ccompiler_path}')
@@ -63,7 +69,7 @@ fn main() {
 		os.create('table.html')!
 	}
 
-	if !os.args.contains('-noupdate') {
+	if !args.contains('-noupdate') {
 		elog('Fetching updates...')
 		ret := lsystem('${vdir}/v up')
 		if ret != 0 {
@@ -74,11 +80,11 @@ fn main() {
 
 	// fetch the last commit's hash
 	commit := lexec('git rev-parse HEAD')[..8]
-	if os.exists('website/index.html') {
-		uploaded_index := os.read_file('website/index.html')!
+	if os.exists('fast.vlang.io/index.html') {
+		uploaded_index := os.read_file('fast.vlang.io/index.html')!
 		if uploaded_index.contains('>${commit}<') {
 			elog('NOTE: commit ${commit} had been benchmarked already.')
-			if !os.args.contains('-force') {
+			if !args.contains('-force') {
 				elog('nothing more to do')
 				return
 			}
@@ -93,21 +99,21 @@ fn main() {
 	elog('Benchmarking commit ${commit} , with commit message: "${message}", commit_date: ${commit_date}, date: ${date}')
 
 	// build an optimized V
-	if os.args.contains('-do-not-rebuild-vprod') {
+	if args.contains('-do-not-rebuild-vprod') {
 		if !os.exists('vprod') {
 			elog('Exiting, since if you use `-do-not-rebuild-vprod`, you should already have a `${vdir}/vprod` executable, but it is missing!')
 			return
 		}
 	} else {
 		elog('  Building vprod...')
-		if os.args.contains('-noprod') {
+		if args.contains('-noprod') {
 			lexec('./v -o vprod cmd/v') // for faster debugging
 		} else {
 			lexec('./v -o vprod -prod -prealloc cmd/v')
 		}
 	}
 
-	if !os.args.contains('-do-not-rebuild-caches') {
+	if !args.contains('-do-not-rebuild-caches') {
 		elog('clearing caches...')
 		// cache vlib modules
 		lexec('${vdir}/v wipe-cache')
@@ -158,14 +164,42 @@ fn main() {
 	res.close()
 
 	// upload the result to github pages
-	if os.args.contains('-upload') {
-		elog('uploading...')
-		os.chdir('website')!
+	if args.contains('-upload') {
+		$if freebsd {
+			// Note: tcc currently can not compile vpm on FreeBSD, due to its dependence on net.ssl and net.mbedtls, so force using clang instead:
+			elog('FreeBSD: compiling the VPM tool with clang...')
+			lexec('${vdir}/vprod -cc clang ${vdir}/cmd/tools/vpm/')
+			os.chdir('${fast_dir}/docs.vlang.io/docs_generator/')!
+			elog('FreeBSD: installing the dependencies for the docs generator...')
+			lexec('${vdir}/vprod install')
+			os.chdir(fast_dir)!
+		}
+
+		os.chdir('${fast_dir}/fast.vlang.io/')!
+		elog('Uploading to fast.vlang.io/ ...')
 		lexec('git checkout gh-pages')
 		os.mv('../index.html', 'index.html')!
-		lsystem('git commit -am "update benchmark"')
-		lsystem('git push origin gh-pages')
-		elog('uploading done')
+		elog('   adding changes...')
+		lexec('git commit -am "update fast.vlang.io for commit ${commit}"')
+		elog('   pushing...')
+		lexec('git push origin gh-pages')
+		elog('   uploading to fast.vlang.io/ done')
+		os.chdir(fast_dir)!
+
+		os.chdir('${fast_dir}/docs.vlang.io/')!
+		elog('Uploading to docs.vlang.io/ ...')
+		elog('   pulling upstream changes...')
+		lexec('git pull')
+		elog('   running build.vsh...')
+		lexec('${vdir}/vprod run build.vsh')
+		elog('   adding new docs...')
+		lexec('git add .')
+		elog('   commiting...')
+		lexec('git commit -am "update docs for commit ${commit}"')
+		elog('   pushing...')
+		lexec('git push')
+		elog('   uploading to fast.vlang.io/ done')
+		os.chdir(fast_dir)!
 	}
 }
 
@@ -173,12 +207,12 @@ fn main() {
 fn measure(cmd string, description string) int {
 	elog('  Measuring ${description}, warmups: ${warmup_samples}, samples: ${max_samples}, discard: ${discard_highest_samples}, with cmd: `${cmd}`')
 	for _ in 0 .. warmup_samples {
-		os.execute_or_exit(cmd)
+		os.system(cmd)
 	}
 	mut runs := []int{}
 	for r in 0 .. max_samples {
 		sw := time.new_stopwatch()
-		os.execute_or_exit(cmd)
+		os.execute(cmd)
 		sample := int(sw.elapsed().milliseconds())
 		runs << sample
 		elog('  Sample ${r + 1:2}/${max_samples:2} ... ${sample} ms')
@@ -214,7 +248,7 @@ fn measure_steps_minimal(vdir string) !(int, int, int, int, int) {
 
 fn measure_steps_one_sample(vdir string) (int, int, int, int, int, string) {
 	cmd := '${vdir}/vprod ${voptions} -o v.c cmd/v'
-	resp := os.execute_or_exit(cmd)
+	resp := os.execute(cmd)
 
 	mut scan, mut parse, mut check, mut cgen, mut vlines := 0, 0, 0, 0, 0
 	lines := resp.output.split_into_lines()

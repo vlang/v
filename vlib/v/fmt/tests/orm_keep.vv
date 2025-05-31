@@ -43,7 +43,7 @@ fn main() {
 	println('${customer.id} - ${customer.name}')
 	// insert a new customer
 	new_customer := Customer{
-		name: 'Bob'
+		name:      'Bob'
 		nr_orders: 10
 	}
 	sql db {

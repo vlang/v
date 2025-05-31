@@ -13,7 +13,7 @@ import v.gen.wasm.serialise
 import wasm
 import os
 
-[heap; minify]
+@[heap; minify]
 pub struct Gen {
 	out_name string
 	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
@@ -25,7 +25,7 @@ mut:
 	table     &ast.Table = unsafe { nil }
 	eval      eval.Eval
 	enum_vals map[string]Enum
-	//
+
 	mod                    wasm.Module
 	pool                   serialise.Pool
 	func                   wasm.Function
@@ -40,7 +40,7 @@ mut:
 	heap_base              ?wasm.GlobalIndex
 	fn_local_idx_end       int
 	fn_name                string
-	stack_frame            int             // Size of the current stack frame, if needed
+	stack_frame            int // Size of the current stack frame, if needed
 	is_leaf_function       bool = true
 	loop_breakpoint_stack  []LoopBreakpoint
 	stack_top              int // position in linear memory
@@ -62,7 +62,11 @@ pub struct LoopBreakpoint {
 	name       string
 }
 
+@[noreturn]
 pub fn (mut g Gen) v_error(s string, pos token.Pos) {
+	util.show_compiler_message('error:', pos: pos, file_path: g.file_path, message: s)
+	exit(1)
+	/*
 	if g.pref.output_mode == .stdout {
 		util.show_compiler_message('error:', pos: pos, file_path: g.file_path, message: s)
 		exit(1)
@@ -70,10 +74,11 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 		g.errors << errors.Error{
 			file_path: g.file_path
 			pos: pos
-			reporter: .gen
+			reporter: .gen			
 			message: s
 		}
 	}
+	*/
 }
 
 pub fn (mut g Gen) warning(s string, pos token.Pos) {
@@ -82,14 +87,14 @@ pub fn (mut g Gen) warning(s string, pos token.Pos) {
 	} else {
 		g.warnings << errors.Warning{
 			file_path: g.file_path
-			pos: pos
-			reporter: .gen
-			message: s
+			pos:       pos
+			reporter:  .gen
+			message:   s
 		}
 	}
 }
 
-[noreturn]
+@[noreturn]
 pub fn (mut g Gen) w_error(s string) {
 	if g.pref.is_verbose {
 		print_backtrace()
@@ -97,7 +102,7 @@ pub fn (mut g Gen) w_error(s string) {
 	util.verror('wasm error', s)
 }
 
-pub fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
+pub fn (g &Gen) unpack_type(typ ast.Type) []ast.Type {
 	ts := g.table.sym(typ)
 	return match ts.info {
 		ast.MultiReturn {
@@ -109,7 +114,7 @@ pub fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
 	}
 }
 
-pub fn (g Gen) is_param_type(typ ast.Type) bool {
+pub fn (g &Gen) is_param_type(typ ast.Type) bool {
 	return !typ.is_ptr() && !g.is_pure_type(typ)
 }
 
@@ -142,7 +147,7 @@ pub fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 	if node.language == .js && g.pref.os == .wasi {
 		g.v_error('javascript interop functions are not allowed in a `wasi` build', node.pos)
 	}
-	if node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
+	if node.return_type.has_option_or_result() {
 		g.v_error('interop functions must not return option or result', node.pos)
 	}
 
@@ -171,6 +176,11 @@ pub fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.language in [.js, .wasm] {
 		g.fn_external_import(node)
+		return
+	}
+
+	if node.attrs.contains('flag_enum_fn') {
+		// TODO: remove, when support for fn results is done
 		return
 	}
 
@@ -219,8 +229,8 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 					paramdbg << g.dbg_type_name('__rval(${g.ret_rvars.len})', t)
 					paraml << wtyp
 					g.ret_rvars << Var{
-						typ: t
-						idx: g.ret_rvars.len
+						typ:        t
+						idx:        g.ret_rvars.len
 						is_address: true
 					}
 				} else {
@@ -240,7 +250,7 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 					paramdbg << g.dbg_type_name('__rval(0)', rt)
 					paraml << wtyp
 					g.ret_rvars << Var{
-						typ: rt
+						typ:        rt
 						is_address: true
 					}
 				} else {
@@ -261,9 +271,9 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		typ := g.get_wasm_type_int_literal(p.typ)
 		ntyp := unpack_literal_int(p.typ)
 		g.local_vars << Var{
-			name: p.name
-			typ: ntyp
-			idx: g.local_vars.len + g.ret_rvars.len
+			name:       p.name
+			typ:        ntyp
+			idx:        g.local_vars.len + g.ret_rvars.len
 			is_address: !g.is_pure_type(p.typ)
 		}
 		paramdbg << g.dbg_type_name(p.name, p.typ)
@@ -315,10 +325,10 @@ pub fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 	// stack pointer is perfectly acceptable.
 	//
 	if g.stack_frame != 0 {
-		prolouge := g.func.patch_pos()
+		prologue := g.func.patch_pos()
 		{
 			g.func.global_get(g.sp())
-			g.func.i32_const(g.stack_frame)
+			g.func.i32_const(i32(g.stack_frame))
 			g.func.sub(.i32_t)
 			if !g.is_leaf_function {
 				g.func.local_tee(g.bp())
@@ -327,10 +337,10 @@ pub fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 				g.func.local_set(g.bp())
 			}
 		}
-		g.func.patch(func_start, prolouge)
+		g.func.patch(func_start, prologue)
 		if !g.is_leaf_function {
 			g.func.global_get(g.sp())
-			g.func.i32_const(g.stack_frame)
+			g.func.i32_const(i32(g.stack_frame))
 			g.func.add(.i32_t)
 			g.func.global_set(g.sp())
 		}
@@ -351,7 +361,7 @@ pub fn (mut g Gen) bare_function_end() {
 
 pub fn (mut g Gen) literalint(val i64, expected ast.Type) {
 	match g.get_wasm_type(expected) {
-		.i32_t { g.func.i32_const(val) }
+		.i32_t { g.func.i32_const(i32(val)) }
 		.i64_t { g.func.i64_const(val) }
 		.f32_t { g.func.f32_const(f32(val)) }
 		.f64_t { g.func.f64_const(f64(val)) }
@@ -361,7 +371,7 @@ pub fn (mut g Gen) literalint(val i64, expected ast.Type) {
 
 pub fn (mut g Gen) literal(val string, expected ast.Type) {
 	match g.get_wasm_type(expected) {
-		.i32_t { g.func.i32_const(val.int()) }
+		.i32_t { g.func.i32_const(i32(val.int())) }
 		.i64_t { g.func.i64_const(val.i64()) }
 		.f32_t { g.func.f32_const(val.f32()) }
 		.f64_t { g.func.f64_const(val.f64()) }
@@ -396,7 +406,7 @@ pub fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected
 pub fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 	if typ.is_ptr() {
 		size, _ := g.pool.type_size(typ)
-		g.func.i32_const(size)
+		g.func.i32_const(i32(size))
 		g.func.mul(.i32_t)
 	}
 }
@@ -442,50 +452,6 @@ pub fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 		node.left_type
 	}
 	g.func.cast(g.as_numtype(g.get_wasm_type(res_typ)), res_typ.is_signed(), g.as_numtype(g.get_wasm_type(expected)))
-}
-
-pub fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
-	for idx, arg in node.args {
-		g.expr(arg.expr, node.expected_arg_types[idx])
-	}
-
-	match name {
-		'__memory_grow' {
-			g.func.memory_grow()
-		}
-		'__memory_fill' {
-			g.func.memory_fill()
-		}
-		'__memory_copy' {
-			g.func.memory_copy()
-		}
-		'__memory_size' {
-			g.func.memory_size()
-		}
-		'__heap_base' {
-			if hp := g.heap_base {
-				g.func.global_get(hp)
-			}
-			hp := g.mod.new_global('__heap_base', false, .i32_t, false, wasm.constexpr_value(0))
-			g.func.global_get(hp)
-			g.heap_base = hp
-		}
-		'__reinterpret_f32_u32' {
-			g.func.reinterpret(.f32_t)
-		}
-		'__reinterpret_u32_f32' {
-			g.func.reinterpret(.i32_t)
-		}
-		'__reinterpret_f64_u64' {
-			g.func.reinterpret(.f64_t)
-		}
-		'__reinterpret_u64_f64' {
-			g.func.reinterpret(.i64_t)
-		}
-		else {
-			panic('unreachable')
-		}
-	}
 }
 
 pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
@@ -550,7 +516,8 @@ pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	}
 }
 
-pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx int, existing_rvars []Var) {
+pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx int,
+	existing_rvars []Var) {
 	curr := ifexpr.branches[idx]
 
 	g.expr(curr.cond, ast.bool_type)
@@ -571,6 +538,11 @@ pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_para
 }
 
 pub fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type, existing_rvars []Var) {
+	if ifexpr.is_comptime {
+		g.comptime_if_expr(ifexpr, expected, existing_rvars)
+		return
+	}
+
 	params := if expected == ast.void_type {
 		[]wasm.ValType{}
 	} else if existing_rvars.len == 0 {
@@ -587,19 +559,12 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 
 	is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
 
-	if name in ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size', '__heap_base',
-		'__reinterpret_f32_u32', '__reinterpret_u32_f32', '__reinterpret_f64_u64',
-		'__reinterpret_u64_f64'] {
-		g.wasm_builtin(node.name, node)
-		return
-	}
-
 	if node.is_method {
 		name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
 	}
 
 	if node.language in [.js, .wasm] {
-		cfn_attrs := g.table.fns[node.name].attrs
+		cfn_attrs := unsafe { g.table.fns[node.name].attrs }
 
 		short_name := if node.language == .js {
 			node.name.all_after_last('JS.')
@@ -638,7 +603,7 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	if node.is_method {
 		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
 			ast.Expr(ast.PrefixExpr{
-				op: .amp
+				op:    .amp
 				right: node.left
 			})
 		} else {
@@ -666,12 +631,13 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 			}
 
 			expr = ast.CallExpr{
-				name: 'str'
-				left: expr
-				left_type: typ
-				receiver_type: typ
-				return_type: ast.string_type
-				is_method: true
+				name:           'str'
+				left:           expr
+				left_type:      typ
+				receiver_type:  typ
+				return_type:    ast.string_type
+				is_method:      true
+				is_return_used: true
 			}
 		}
 
@@ -734,7 +700,7 @@ pub fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 pub fn (mut g Gen) field_offset(typ ast.Type, name string) {
 	offset := g.get_field_offset(typ, name)
 	if offset != 0 {
-		g.func.i32_const(offset)
+		g.func.i32_const(i32(offset))
 		g.func.add(.i32_t)
 	}
 }
@@ -816,7 +782,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 					g.func.local_get(tmp_voidptr_var)
 					g.load_field(ast.string_type, ast.int_type, 'len')
 				} else if ts.info is ast.ArrayFixed {
-					g.func.i32_const(ts.info.size)
+					g.func.i32_const(i32(ts.info.size))
 				} else {
 					panic('unreachable')
 				}
@@ -893,7 +859,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		}
 		ast.OffsetOf {
 			styp := g.table.sym(node.struct_type)
-			if styp.kind != .struct_ {
+			if styp.kind != .struct {
 				g.v_error('__offsetof expects a struct Type as first argument', node.pos)
 			}
 			off := g.get_field_offset(node.struct_type, node.field)
@@ -944,7 +910,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		}
 		ast.CharLiteral {
 			rns := serialise.eval_escape_codes_raw(node.val) or { panic('unreachable') }.runes()[0]
-			g.func.i32_const(rns)
+			g.func.i32_const(i32(rns))
 		}
 		ast.Ident {
 			v := g.get_var_from_ident(node)
@@ -1016,8 +982,8 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				{
 					g.loop_breakpoint_stack << LoopBreakpoint{
 						c_continue: loop
-						c_break: block
-						name: node.label
+						c_break:    block
+						name:       node.label
 					}
 
 					if !node.is_inf {
@@ -1045,8 +1011,8 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				{
 					g.loop_breakpoint_stack << LoopBreakpoint{
 						c_continue: loop
-						c_break: block
-						name: node.label
+						c_break:    block
+						name:       node.label
 					}
 
 					if node.has_cond {
@@ -1247,6 +1213,10 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				}
 			}
 		}
+		ast.AsmStmt {
+			// assumed expected == void
+			g.asm_stmt(node)
+		}
 		else {
 			g.w_error('wasm.expr_stmt(): unhandled node: ' + node.type_name())
 		}
@@ -1320,14 +1290,14 @@ pub fn (mut g Gen) calculate_enum_fields() {
 	}
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Preferences) {
+pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref.Preferences) {
 	stack_top := w_pref.wasm_stack_top
 	mut g := &Gen{
-		table: table
-		pref: w_pref
-		files: files
-		eval: eval.new_eval(table, w_pref)
-		pool: serialise.new_pool(table, store_relocs: true, null_terminated: false)
+		table:     table
+		pref:      w_pref
+		files:     files
+		eval:      eval.new_eval(table, w_pref)
+		pool:      serialise.new_pool(table, store_relocs: true, null_terminated: false)
 		stack_top: stack_top
 		data_base: calc_align(stack_top + 1, 16)
 	}

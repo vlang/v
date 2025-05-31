@@ -2,42 +2,43 @@ module orm
 
 import time
 
-pub const (
-	num64       = [typeof[i64]().idx, typeof[u64]().idx]
-	nums        = [
-		typeof[i8]().idx,
-		typeof[i16]().idx,
-		typeof[int]().idx,
-		typeof[u8]().idx,
-		typeof[u16]().idx,
-		typeof[u32]().idx,
-		typeof[bool]().idx,
-	]
-	float       = [
-		typeof[f32]().idx,
-		typeof[f64]().idx,
-	]
-	type_string = typeof[string]().idx
-	time        = -2
-	serial      = -1
-	type_idx    = {
-		'i8':     typeof[i8]().idx
-		'i16':    typeof[i16]().idx
-		'int':    typeof[int]().idx
-		'i64':    typeof[i64]().idx
-		'u8':     typeof[u8]().idx
-		'u16':    typeof[u16]().idx
-		'u32':    typeof[u32]().idx
-		'u64':    typeof[u64]().idx
-		'f32':    typeof[f32]().idx
-		'f64':    typeof[f64]().idx
-		'bool':   typeof[bool]().idx
-		'string': typeof[string]().idx
-	}
-	string_max_len = 2048
-)
+pub const num64 = [typeof[i64]().idx, typeof[u64]().idx]
+pub const nums = [
+	typeof[i8]().idx,
+	typeof[i16]().idx,
+	typeof[int]().idx,
+	typeof[u8]().idx,
+	typeof[u16]().idx,
+	typeof[u32]().idx,
+	typeof[bool]().idx,
+]
+pub const float = [
+	typeof[f32]().idx,
+	typeof[f64]().idx,
+]
+pub const type_string = typeof[string]().idx
+pub const serial = -1
+pub const time_ = -2
+pub const enum_ = -3
+pub const type_idx = {
+	'i8':     typeof[i8]().idx
+	'i16':    typeof[i16]().idx
+	'int':    typeof[int]().idx
+	'i64':    typeof[i64]().idx
+	'u8':     typeof[u8]().idx
+	'u16':    typeof[u16]().idx
+	'u32':    typeof[u32]().idx
+	'u64':    typeof[u64]().idx
+	'f32':    typeof[f32]().idx
+	'f64':    typeof[f64]().idx
+	'bool':   typeof[bool]().idx
+	'string': typeof[string]().idx
+}
+pub const string_max_len = 2048
+pub const null_primitive = Primitive(Null{})
 
 pub type Primitive = InfixType
+	| Null
 	| bool
 	| f32
 	| f64
@@ -52,14 +53,19 @@ pub type Primitive = InfixType
 	| u64
 	| u8
 
+pub struct Null {}
+
 pub enum OperationKind {
-	neq // !=
-	eq // ==
-	gt // >
-	lt // <
-	ge // >=
-	le // <=
-	orm_like // LIKE
+	neq         // !=
+	eq          // ==
+	gt          // >
+	lt          // <
+	ge          // >=
+	le          // <=
+	orm_like    // LIKE
+	orm_ilike   // ILIKE
+	is_null     // IS NULL
+	is_not_null // IS NOT NULL
 }
 
 pub enum MathOperationKind {
@@ -87,15 +93,24 @@ pub enum SQLDialect {
 
 fn (kind OperationKind) to_str() string {
 	str := match kind {
-		.neq { '!=' }
+		// While most SQL databases support "!=" for not equal, "<>" is the standard
+		// operator.
+		.neq { '<>' }
 		.eq { '=' }
 		.gt { '>' }
 		.lt { '<' }
 		.ge { '>=' }
 		.le { '<=' }
 		.orm_like { 'LIKE' }
+		.orm_ilike { 'ILIKE' }
+		.is_null { 'IS NULL' }
+		.is_not_null { 'IS NOT NULL' }
 	}
 	return str
+}
+
+fn (kind OperationKind) is_unary() bool {
+	return kind in [.is_null, .is_not_null]
 }
 
 fn (kind OrderType) to_str() string {
@@ -114,15 +129,16 @@ fn (kind OrderType) to_str() string {
 // Every field, data, type & kind of operation in the expr share the same index in the arrays
 // is_and defines how they're addicted to each other either and or or
 // parentheses defines which fields will be inside ()
+// auto_fields are indexes of fields where db should generate a value when absent in an insert
 pub struct QueryData {
-pub:
-	fields              []string
-	data                []Primitive
-	types               []int
-	parentheses         [][]int
-	kinds               []OperationKind
-	primary_column_name string
-	is_and              []bool
+pub mut:
+	fields      []string
+	data        []Primitive
+	types       []int
+	parentheses [][]int
+	kinds       []OperationKind
+	auto_fields []int
+	is_and      []bool
 }
 
 pub struct InfixType {
@@ -133,13 +149,13 @@ pub:
 }
 
 pub struct TableField {
-pub:
+pub mut:
 	name        string
 	typ         int
-	is_time     bool
+	nullable    bool
 	default_val string
+	attrs       []VAttribute
 	is_arr      bool
-	attrs       []StructAttribute
 }
 
 // table - Table name
@@ -154,7 +170,7 @@ pub:
 // fields - Fields to select
 // types - Types to select
 pub struct SelectConfig {
-pub:
+pub mut:
 	table      string
 	is_count   bool
 	has_where  bool
@@ -177,7 +193,8 @@ pub:
 // Every function without last_id() returns an optional, which returns an error if present
 // last_id returns the last inserted id of the db
 pub interface Connection {
-	@select(config SelectConfig, data QueryData, where QueryData) ![][]Primitive
+mut:
+	select(config SelectConfig, data QueryData, where QueryData) ![][]Primitive
 	insert(table string, data QueryData) !
 	update(table string, data QueryData, where QueryData) !
 	delete(table string, where QueryData) !
@@ -189,9 +206,10 @@ pub interface Connection {
 // Generates an sql stmt, from universal parameter
 // q - The quotes character, which can be different in every type, so it's variable
 // num - Stmt uses nums at prepared statements (? or ?1)
-// qm - Character for prepared statement, qm because of quotation mark like in sqlite
+// qm - Character for prepared statement (qm for question mark, as in sqlite)
 // start_pos - When num is true, it's the start position of the counter
-pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKind, num bool, qm string, start_pos int, data QueryData, where QueryData) (string, QueryData) {
+pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKind, num bool, qm string,
+	start_pos int, data QueryData, where QueryData) (string, QueryData) {
 	mut str := ''
 	mut c := start_pos
 	mut data_fields := []string{}
@@ -204,37 +222,28 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 
 			for i in 0 .. data.fields.len {
 				column_name := data.fields[i]
-				is_primary_column := column_name == data.primary_column_name
+				is_auto_field := i in data.auto_fields
 
 				if data.data.len > 0 {
-					// Allow the database to insert an automatically generated primary key
-					// under the hood if it is not passed by the user.
-					tidx := data.data[i].type_idx()
-					if is_primary_column && (tidx in orm.nums || tidx in orm.num64) {
-						x := data.data[i]
-						match x {
-							i8, i16, int, i64, u8, u16, u32, u64 {
-								if i64(x) == 0 {
-									continue
-								}
-							}
-							else {}
+					// skip fields and allow the database to insert default and
+					// serial (auto-increment) values where a default (or no)
+					// value was provided
+					if is_auto_field {
+						mut x := data.data[i]
+						skip_auto_field := match mut x {
+							Null { true }
+							string { x == '' }
+							i8, i16, int, i64, u8, u16, u32, u64 { u64(x) == 0 }
+							f32, f64 { f64(x) == 0 }
+							time.Time { x == time.Time{} }
+							bool { !x }
+							else { false }
+						}
+						if skip_auto_field {
+							continue
 						}
 					}
 
-					match data.data[i].type_name() {
-						'string' {
-							if (data.data[i] as string).len == 0 {
-								continue
-							}
-						}
-						'time.Time' {
-							if (data.data[i] as time.Time).unix == 0 {
-								continue
-							}
-						}
-						else {}
-					}
 					data_data << data.data[i]
 				}
 				select_fields << '${q}${column_name}${q}'
@@ -299,35 +308,9 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 			str += 'DELETE FROM ${q}${table}${q} WHERE '
 		}
 	}
+	// where
 	if kind == .update || kind == .delete {
-		for i, field in where.fields {
-			mut pre_par := false
-			mut post_par := false
-			for par in where.parentheses {
-				if i in par {
-					pre_par = par[0] == i
-					post_par = par[1] == i
-				}
-			}
-			if pre_par {
-				str += '('
-			}
-			str += '${q}${field}${q} ${where.kinds[i].to_str()} ${qm}'
-			if num {
-				str += '${c}'
-				c++
-			}
-			if post_par {
-				str += ')'
-			}
-			if i < where.fields.len - 1 {
-				if where.is_and[i] {
-					str += ' AND '
-				} else {
-					str += ' OR '
-				}
-			}
-		}
+		str += gen_where_clause(where, q, qm, num, mut &c)
 	}
 	str += ';'
 	$if trace_orm_stmt ? {
@@ -339,9 +322,9 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 
 	return str, QueryData{
 		fields: data_fields
-		data: data_data
-		types: data.types
-		kinds: data.kinds
+		data:   data_data
+		types:  data.types
+		kinds:  data.kinds
 		is_and: data.is_and
 	}
 }
@@ -370,34 +353,7 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 
 	if cfg.has_where {
 		str += ' WHERE '
-		for i, field in where.fields {
-			mut pre_par := false
-			mut post_par := false
-			for par in where.parentheses {
-				if i in par {
-					pre_par = par[0] == i
-					post_par = par[1] == i
-				}
-			}
-			if pre_par {
-				str += '('
-			}
-			str += '${q}${field}${q} ${where.kinds[i].to_str()} ${qm}'
-			if num {
-				str += '${c}'
-				c++
-			}
-			if post_par {
-				str += ')'
-			}
-			if i < where.fields.len - 1 {
-				if where.is_and[i] {
-					str += ' AND '
-				} else {
-					str += ' OR '
-				}
-			}
-		}
+		str += gen_where_clause(where, q, qm, num, mut &c)
 	}
 
 	// Note: do not order, if the user did not want it explicitly,
@@ -434,6 +390,38 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 	return str
 }
 
+fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) string {
+	mut str := ''
+
+	for i, field in where.fields {
+		current_pre_par := where.parentheses.count(it[0] == i)
+		current_post_par := where.parentheses.count(it[1] == i)
+
+		if current_pre_par > 0 {
+			str += ' ( '.repeat(current_pre_par)
+		}
+		str += '${q}${field}${q} ${where.kinds[i].to_str()}'
+		if !where.kinds[i].is_unary() {
+			str += ' ${qm}'
+			if num {
+				str += '${c}'
+				c++
+			}
+		}
+		if current_post_par > 0 {
+			str += ' ) '.repeat(current_post_par)
+		}
+		if i < where.fields.len - 1 {
+			if where.is_and[i] {
+				str += ' AND '
+			} else {
+				str += ' OR '
+			}
+		}
+	}
+	return str
+}
+
 // Generates an sql table stmt, from universal parameter
 // table - Table name
 // q - see orm_stmt_gen
@@ -442,7 +430,8 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 // fields - See TableField
 // sql_from_v - Function which maps type indices to sql type names
 // alternative - Needed for msdb
-pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string, alternative bool) !string {
+pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string,
+	alternative bool) !string {
 	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table}${q} ('
 
 	if alternative {
@@ -453,20 +442,23 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 	mut unique_fields := []string{}
 	mut unique := map[string][]string{}
 	mut primary := ''
+	mut primary_typ := 0
 
 	for field in fields {
 		if field.is_arr {
 			continue
 		}
 		mut default_val := field.default_val
-		mut no_null := false
+		mut nullable := field.nullable
 		mut is_unique := false
 		mut is_skip := false
 		mut unique_len := 0
+		mut references_table := ''
+		mut references_field := ''
 		mut field_name := sql_field_name(field)
-		mut ctyp := sql_from_v(sql_field_type(field)) or {
+		mut col_typ := sql_from_v(sql_field_type(field)) or {
 			field_name = '${field_name}_id'
-			sql_from_v(7)!
+			sql_from_v(primary_typ)!
 		}
 		for attr in field.attrs {
 			match attr.name {
@@ -477,7 +469,8 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 					}
 				}
 				'primary' {
-					primary = field.name
+					primary = field_name
+					primary_typ = field.typ
 				}
 				'unique' {
 					if attr.arg != '' {
@@ -492,24 +485,41 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 					}
 					is_unique = true
 				}
-				'nonull' {
-					no_null = true
-				}
 				'skip' {
 					is_skip = true
 				}
 				'sql_type' {
-					if attr.kind != .string {
-						return error("sql_type attribute needs to be string. Try [sql_type: '${attr.arg}'] instead of [sql_type: ${attr.arg}]")
-					}
-					ctyp = attr.arg
+					col_typ = attr.arg.str()
 				}
 				'default' {
-					if attr.kind != .string {
-						return error("default attribute needs to be string. Try [default: '${attr.arg}'] instead of [default: ${attr.arg}]")
-					}
 					if default_val == '' {
-						default_val = attr.arg
+						default_val = attr.arg.str()
+					}
+				}
+				'references' {
+					if attr.arg == '' {
+						if field.name.ends_with('_id') {
+							references_table = field.name.trim_right('_id')
+							references_field = 'id'
+						} else {
+							return error("references attribute can only be implicit if the field name ends with '_id'")
+						}
+					} else {
+						if attr.arg.trim(' ') == '' {
+							return error("references attribute needs to be in the format [references], [references: 'tablename'], or [references: 'tablename(field_id)']")
+						}
+						if attr.arg.contains('(') {
+							if ref_table, ref_field := attr.arg.split_once('(') {
+								if !ref_field.ends_with(')') {
+									return error("explicit references attribute should be written as [references: 'tablename(field_id)']")
+								}
+								references_table = ref_table
+								references_field = ref_field[..ref_field.len - 1]
+							}
+						} else {
+							references_table = attr.arg
+							references_field = 'id'
+						}
 					}
 				}
 				else {}
@@ -519,19 +529,19 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			continue
 		}
 		mut stmt := ''
-		if ctyp == '' {
+		if col_typ == '' {
 			return error('Unknown type (${field.typ}) for field ${field.name} in struct ${table}')
 		}
-		stmt = '${q}${field_name}${q} ${ctyp}'
+		stmt = '${q}${field_name}${q} ${col_typ}'
 		if defaults && default_val != '' {
 			stmt += ' DEFAULT ${default_val}'
 		}
-		if no_null {
+		if !nullable {
 			stmt += ' NOT NULL'
 		}
 		if is_unique {
 			mut f := 'UNIQUE(${q}${field_name}${q}'
-			if ctyp == 'TEXT' && def_unique_len > 0 {
+			if col_typ == 'TEXT' && def_unique_len > 0 {
 				if unique_len > 0 {
 					f += '(${unique_len})'
 				} else {
@@ -540,6 +550,9 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			}
 			f += ')'
 			unique_fields << f
+		}
+		if references_table != '' {
+			stmt += ' REFERENCES ${q}${references_table}${q}(${q}${references_field}${q})'
 		}
 		fs << stmt
 	}
@@ -574,16 +587,20 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 // Get's the sql field type
 fn sql_field_type(field TableField) int {
 	mut typ := field.typ
-	if field.is_time {
-		return -2
-	}
 	for attr in field.attrs {
+		// @[serial]
+		if attr.name == 'serial' && attr.kind == .plain && !attr.has_arg {
+			typ = serial
+			break
+		}
+
 		if attr.kind == .plain && attr.name == 'sql' && attr.arg != '' {
+			// @[sql: serial]
 			if attr.arg.to_lower() == 'serial' {
-				typ = -1
+				typ = serial
 				break
 			}
-			typ = orm.type_idx[attr.arg]
+			typ = type_idx[attr.arg]
 			break
 		}
 	}
@@ -604,69 +621,129 @@ fn sql_field_name(field TableField) string {
 
 // needed for backend functions
 
-pub fn bool_to_primitive(b bool) Primitive {
+fn bool_to_primitive(b bool) Primitive {
 	return Primitive(b)
 }
 
-pub fn f32_to_primitive(b f32) Primitive {
+fn option_bool_to_primitive(b ?bool) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn f32_to_primitive(b f32) Primitive {
 	return Primitive(b)
 }
 
-pub fn f64_to_primitive(b f64) Primitive {
+fn option_f32_to_primitive(b ?f32) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn f64_to_primitive(b f64) Primitive {
 	return Primitive(b)
 }
 
-pub fn i8_to_primitive(b i8) Primitive {
+fn option_f64_to_primitive(b ?f64) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn i8_to_primitive(b i8) Primitive {
 	return Primitive(b)
 }
 
-pub fn i16_to_primitive(b i16) Primitive {
+fn option_i8_to_primitive(b ?i8) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn i16_to_primitive(b i16) Primitive {
 	return Primitive(b)
 }
 
-pub fn int_to_primitive(b int) Primitive {
+fn option_i16_to_primitive(b ?i16) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn int_to_primitive(b int) Primitive {
 	return Primitive(b)
+}
+
+fn option_int_to_primitive(b ?int) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 // int_literal_to_primitive handles int literal value
-pub fn int_literal_to_primitive(b int) Primitive {
+fn int_literal_to_primitive(b int) Primitive {
 	return Primitive(b)
+}
+
+fn option_int_literal_to_primitive(b ?int) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 // float_literal_to_primitive handles float literal value
-pub fn float_literal_to_primitive(b f64) Primitive {
+fn float_literal_to_primitive(b f64) Primitive {
 	return Primitive(b)
 }
 
-pub fn i64_to_primitive(b i64) Primitive {
+fn option_float_literal_to_primitive(b ?f64) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn i64_to_primitive(b i64) Primitive {
 	return Primitive(b)
 }
 
-pub fn u8_to_primitive(b u8) Primitive {
+fn option_i64_to_primitive(b ?i64) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn u8_to_primitive(b u8) Primitive {
 	return Primitive(b)
 }
 
-pub fn u16_to_primitive(b u16) Primitive {
+fn option_u8_to_primitive(b ?u8) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn u16_to_primitive(b u16) Primitive {
 	return Primitive(b)
 }
 
-pub fn u32_to_primitive(b u32) Primitive {
+fn option_u16_to_primitive(b ?u16) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn u32_to_primitive(b u32) Primitive {
 	return Primitive(b)
 }
 
-pub fn u64_to_primitive(b u64) Primitive {
+fn option_u32_to_primitive(b ?u32) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn u64_to_primitive(b u64) Primitive {
 	return Primitive(b)
 }
 
-pub fn string_to_primitive(b string) Primitive {
+fn option_u64_to_primitive(b ?u64) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn string_to_primitive(b string) Primitive {
 	return Primitive(b)
 }
 
-pub fn time_to_primitive(b time.Time) Primitive {
+fn option_string_to_primitive(b ?string) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn time_to_primitive(b time.Time) Primitive {
 	return Primitive(b)
 }
 
-pub fn infix_to_primitive(b InfixType) Primitive {
+fn option_time_to_primitive(b ?time.Time) Primitive {
+	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn infix_to_primitive(b InfixType) Primitive {
 	return Primitive(b)
 }
 

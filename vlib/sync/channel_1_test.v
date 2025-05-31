@@ -1,6 +1,4 @@
-const (
-	num_iterations = 10000
-)
+const num_iterations = 10000
 
 fn do_send(ch chan int) {
 	for i in 0 .. num_iterations {

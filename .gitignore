@@ -35,13 +35,21 @@ a.out
 /vold.exe
 /vnew
 /vnew.exe
+/vprod
+/vprod_gcc
+/vprod_clang
+/vprod.exe
+/vprod_gcc.exe
+/vprod_clang.exe
+/vprod_msvc.exe
 .vrepl_temp.v
 fns.txt
 .noprefix.vrepl_temp.v
 
-# ignore temp directories
-/temp
-/tmp
+# ignore temp and cache directories
+temp/
+tmp/
+cache/
 
 # unignore special files without extension
 !.github/PULL_REQUEST_TEMPLATE
@@ -128,3 +136,23 @@ vls.log
 .idea/
 /*.iml
 wasm.v
+TAGS
+tags
+
+# ignore large GTK *.gir files
+Gtk-4.0.gir
+*.gir
+
+vlib/builtin/js/*.js
+vlib/v/tests/*.js
+
+# ignore the old regexp based v.ctags file (people using universal ctags < 6.1.0, can still benefit from them)
+.ctags.d/v.ctags
+
+# ignore .NET7.0 Assembly Files
+bench/vectors/bin
+bench/vectors/obj
+
+autofuzz.log
+.project.gf
+.aider*

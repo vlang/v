@@ -1,0 +1,9 @@
+#!/usr/bin/env expect
+source "common.tcl"
+
+expect "Break on * interface_var in ${test_file}:14\r\n"
+expect "${test_file}:14 vdbg> "
+send "p a\n"
+expect "a = Test{\r\n    a: MySum(true)"
+send "q\n"
+expect eof

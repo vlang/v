@@ -1,20 +1,19 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // This is the generic version with no architecture optimizations.
 // In its own file so that an architecture
-// optimized verision can be substituted
+// optimized version can be substituted
 module sha1
 
 import math.bits
 
-const (
-	_k0 = 0x5A827999
-	_k1 = 0x6ED9EBA1
-	_k2 = u32(0x8F1BBCDC)
-	_k3 = u32(0xCA62C1D6)
-)
+const _k0 = u32(0x5A827999)
+const _k1 = u32(0x6ED9EBA1)
+const _k2 = u32(0x8F1BBCDC)
+const _k3 = u32(0xCA62C1D6)
 
+@[direct_array_access]
 fn block_generic(mut dig Digest, p_ []u8) {
 	unsafe {
 		mut p := p_
@@ -42,7 +41,7 @@ fn block_generic(mut dig Digest, p_ []u8) {
 			mut i := 0
 			for i < 16 {
 				f := b & c | (~b) & d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(sha1._k0)
+				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k0)
 				e = d
 				d = c
 				c = bits.rotate_left_32(b, 30)
@@ -54,7 +53,7 @@ fn block_generic(mut dig Digest, p_ []u8) {
 				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := b & c | (~b) & d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(sha1._k0)
+				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k0)
 				e = d
 				d = c
 				c = bits.rotate_left_32(b, 30)
@@ -66,7 +65,7 @@ fn block_generic(mut dig Digest, p_ []u8) {
 				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := b ^ c ^ d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(sha1._k1)
+				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k1)
 				e = d
 				d = c
 				c = bits.rotate_left_32(b, 30)
@@ -78,7 +77,7 @@ fn block_generic(mut dig Digest, p_ []u8) {
 				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := ((b | c) & d) | (b & c)
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(sha1._k2)
+				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k2)
 				e = d
 				d = c
 				c = bits.rotate_left_32(b, 30)
@@ -90,7 +89,7 @@ fn block_generic(mut dig Digest, p_ []u8) {
 				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := b ^ c ^ d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(sha1._k3)
+				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k3)
 				e = d
 				d = c
 				c = bits.rotate_left_32(b, 30)

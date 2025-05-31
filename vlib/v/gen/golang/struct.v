@@ -1,11 +1,10 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module golang
 
 // import strings
 import v.ast
-import v.mathutil as mu
 
 pub fn (mut f Gen) struct_decl(node ast.StructDecl) {
 	f.attrs(node.attrs)
@@ -64,7 +63,7 @@ pub fn (mut f Gen) struct_decl(node ast.StructDecl) {
 			// keep one empty line between fields (exclude one after mut:, pub:, ...)
 			mut before_last_line := node.fields[i - 1].pos.line_nr
 			if node.fields[i - 1].has_default_expr {
-				before_last_line = mu.max(before_last_line, node.fields[i - 1].default_expr.pos().last_line)
+				before_last_line = int_max(before_last_line, node.fields[i - 1].default_expr.pos().last_line)
 			}
 
 			mut next_first_line := field.pos.line_nr
@@ -111,7 +110,7 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name
 	if !name.starts_with('C.') && !name.starts_with('JS.') {
-		name = f.no_cur_mod(f.short_module(type_sym.name)) // TODO f.type_to_str?
+		name = f.no_cur_mod(f.short_module(type_sym.name)) // TODO: f.type_to_str?
 	}
 	if name == 'void' {
 		name = ''

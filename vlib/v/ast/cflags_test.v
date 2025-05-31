@@ -1,13 +1,11 @@
 import v.ast
 import v.cflag
 
-const (
-	module_name = 'main'
-	cdefines    = []string{}
-	no_name     = ''
-	no_flag     = ''
-	no_os       = ''
-)
+const module_name = 'main'
+const cdefines = []string{}
+const no_name = ''
+const no_flag = ''
+const no_os = ''
 
 fn test_parse_valid_cflags() {
 	mut t := ast.new_table()
@@ -24,6 +22,11 @@ fn test_parse_valid_cflags() {
 		make_flag('linux', '-D', '_REENTRANT'),
 		make_flag('linux', '-L', '/usr/lib/x86_64-linux-gnu'),
 		make_flag('linux', '-l', 'SDL2'),
+		make_flag(no_os, '-I', '/usr/include/mysql'),
+		make_flag(no_os, no_name, '-m64'),
+		make_flag(no_os, '-I', '/usr/include'),
+		make_flag(no_os, no_name, '/v/thirdparty/tcc/lib/libgc.a'),
+		make_flag(no_os, '-I', '/usr/include/你好 my , @с интервали'),
 	]
 	parse_valid_flag(mut t, '-lmysqlclient')
 	parse_valid_flag(mut t, '-test')
@@ -34,6 +37,9 @@ fn test_parse_valid_cflags() {
 	parse_valid_flag(mut t, 'solaris -L/opt/local/lib')
 	parse_valid_flag(mut t, 'windows -lgdi32')
 	parse_valid_flag(mut t, 'linux -I/usr/include/SDL2 -D_REENTRANT -L/usr/lib/x86_64-linux-gnu -lSDL2')
+	parse_valid_flag(mut t, '-I/usr/include/mysql -m64 -I/usr/include')
+	parse_valid_flag(mut t, '/v/thirdparty/tcc/lib/libgc.a')
+	parse_valid_flag(mut t, '-I/usr/include/你好 my , @с интервали')
 	assert t.cflags.len == expected_flags.len
 	for f in expected_flags {
 		assert t.has_cflag(f)
@@ -69,9 +75,9 @@ fn assert_parse_invalid_flag(mut t ast.Table, flag string) {
 
 fn make_flag(os string, name string, value string) cflag.CFlag {
 	return cflag.CFlag{
-		mod: module_name
-		os: os
-		name: name
+		mod:   module_name
+		os:    os
+		name:  name
 		value: value
 	}
 }

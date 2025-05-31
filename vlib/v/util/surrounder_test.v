@@ -6,7 +6,7 @@ fn test_creation() {
 	mut sr0 := new_surrounder(0)
 	assert sr0.befores.cap == 0
 	assert sr0.afters.cap == 0
-	//
+
 	mut sr10 := new_surrounder(10)
 	assert sr10.befores.cap == 10
 	assert sr10.afters.cap == 10

@@ -1,3 +1,4 @@
+// vtest build: !self_sandboxed_packaging?
 // .out file:
 // To test a panic, remove everything after the long `===` line
 // You can also remove the line with 'line:' e.g. for a builtin fn
@@ -7,6 +8,7 @@ import term
 import v.util.diff
 import v.util.vtest
 
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 const v_ci_ubuntu_musl = os.getenv('V_CI_UBUNTU_MUSL').len > 0
@@ -21,7 +23,6 @@ fn test_all() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or {}
-	diff_cmd := diff.find_working_diff_command() or { '' }
 	dir := 'vlib/v/slow_tests/inout'
 	mut files := os.ls(dir) or { panic(err) }
 	files.sort()
@@ -95,16 +96,17 @@ fn test_all() {
 		}
 		if expected != found {
 			println(term.red('FAIL'))
-			println(term.header('expected:', '-'))
-			println(expected)
-			println(term.header('found:', '-'))
-			println(found)
-			if diff_cmd != '' {
+			if diff_ := diff.compare_text(expected, found) {
 				println(term.header('difference:', '-'))
-				println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
+				println(diff_)
 			} else {
-				println(term.h_divider('-'))
+				println(err)
+				println(term.header('expected:', '-'))
+				println(expected)
+				println(term.header('found:', '-'))
+				println(found)
 			}
+			println(term.h_divider('-'))
 			total_errors++
 		} else {
 			println(term.green('OK'))

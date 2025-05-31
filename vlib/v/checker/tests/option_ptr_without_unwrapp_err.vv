@@ -3,9 +3,7 @@ struct Node {
 }
 
 fn set_trace(n Node) {
-	if n.parent != none {
-		set_trace(n.parent)
-	}
+	set_trace(n.parent)
 }
 
 fn main() {

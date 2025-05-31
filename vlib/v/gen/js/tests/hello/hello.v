@@ -2,9 +2,7 @@ module hello
 
 import v.gen.js.tests.hello.hello1
 
-pub const (
-	hello = 'Hello'
-)
+pub const hello = 'Hello'
 
 pub struct Aaa {
 pub mut:
@@ -25,7 +23,7 @@ pub enum Ccc {
 
 pub fn debugger() string {
 	v := Bbb{}
-	return hello.hello
+	return hello
 }
 
 pub fn excited() string {

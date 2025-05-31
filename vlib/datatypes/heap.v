@@ -20,6 +20,13 @@ pub fn (mut heap MinHeap[T]) insert(item T) {
 	}
 }
 
+// insert array of elements to the heap.
+pub fn (mut heap MinHeap[T]) insert_many(elements []T) {
+	for v in elements {
+		heap.insert(v)
+	}
+}
+
 // pop removes the top-most element from the heap.
 pub fn (mut heap MinHeap[T]) pop() !T {
 	if heap.data.len == 0 {

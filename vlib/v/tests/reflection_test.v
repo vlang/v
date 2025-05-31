@@ -19,8 +19,9 @@ fn (u User) get_name() string {
 
 fn test2(arg []string) {}
 
-[noreturn]
+@[noreturn]
 fn test3(a reflection.Function) {
+	panic('foo')
 }
 
 fn test_module_existing() {
@@ -37,22 +38,22 @@ fn test_func_name() {
 
 fn test_type_name() {
 	ret_typ := reflection.get_funcs().filter(it.name == 'test3')[0].return_typ
-	assert reflection.type_name(ret_typ) == 'void'
-	assert reflection.get_type(ret_typ)?.name == 'void'
-	assert reflection.get_type_symbol(ret_typ)?.name == 'void'
-	assert reflection.type_name(reflection.get_funcs().filter(it.name == 'test3')[0].args[0].typ) == 'Function'
+	assert reflection.type_name(int(ret_typ)) == 'void'
+	assert reflection.get_type(int(ret_typ))?.name == 'void'
+	assert reflection.get_type_symbol(int(ret_typ))?.name == 'void'
+	assert reflection.type_name(int(reflection.get_funcs().filter(it.name == 'test3')[0].args[0].typ)) == 'Function'
 }
 
 fn test_type_symbol() {
 	ret_typ := reflection.get_funcs().filter(it.name == 'test3')[0].return_typ
-	assert reflection.get_type_symbol(ret_typ)?.language == .v
+	assert reflection.get_type_symbol(int(ret_typ))?.language == .v
 }
 
 fn test_method() {
 	method := reflection.get_funcs().filter(it.name == 'get_name')[0]
-	assert reflection.type_name(method.return_typ) == 'string'
-	println(reflection.get_type(method.receiver_typ)?.name)
-	assert reflection.get_type(method.receiver_typ)?.name == 'User'
+	assert reflection.type_name(int(method.return_typ)) == 'string'
+	println(reflection.get_type(int(method.receiver_typ))?.name)
+	assert reflection.get_type(int(method.receiver_typ))?.name == 'User'
 }
 
 fn test_enum() {
@@ -85,4 +86,11 @@ fn test_enum_fields() {
 fn test_get_string_by_idx() {
 	file_idx := reflection.get_funcs().filter(it.name == 'all_after_last')[0].file_idx
 	assert reflection.get_string_by_idx(file_idx).ends_with('string.v')
+}
+
+fn test_ref() {
+	cstr := c'abc' // &u8
+	assert reflection.type_of(cstr).str().contains("name: 'u8'")
+	ptr_user := &User{}
+	assert reflection.type_of(ptr_user).str().contains("name: 'User'")
 }

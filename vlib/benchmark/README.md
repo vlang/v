@@ -1,8 +1,8 @@
-## Description:
+## Description
 
 `benchmark` provides tools for measuring and reporting on the performance of code.
 
-## Example 1:
+## Example 1
 
 ```v
 import benchmark
@@ -29,7 +29,7 @@ intended to be used in combination. Their goal is to make
 benchmarking of small snippets of code as _short_, easy to
 write, and easy to read and analyze as possible.
 
-## Example 2:
+## Example 2
 
 ```v
 import time

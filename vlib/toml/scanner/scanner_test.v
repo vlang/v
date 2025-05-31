@@ -50,7 +50,7 @@ fn test_at() {
 	assert s.at() == `a`
 	assert s.at() == `a`
 	assert s.at() == `a`
-	//
+
 	assert s.next() == `a`
 	assert s.next() == `b`
 	assert s.next() == `c`
@@ -64,7 +64,7 @@ fn test_peek() {
 	assert s.peek(2) == `c`
 	assert s.peek(3) == scanner.end_of_text
 	assert s.peek(4) == scanner.end_of_text
-	//
+
 	assert s.next() == `a`
 	assert s.next() == `b`
 	assert s.next() == `c`
@@ -79,4 +79,17 @@ fn test_reset() {
 	assert s.next() == scanner.end_of_text
 	s.reset()
 	assert s.next() == `a`
+}
+
+const multiline_string_input = input.Config{
+	text: '"""abc\r\ndef\n123"""'
+}
+
+fn test_multiline_string() {
+	mut s := scanner.new_scanner(input: multiline_string_input) or { panic(err) }
+	tok := s.scan()!
+	assert tok.kind == .quoted
+	assert tok.lit.contains('abc')
+	assert tok.lit.contains('def')
+	assert tok.lit.contains('123')
 }

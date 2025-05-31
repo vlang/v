@@ -1,12 +1,12 @@
-## Description:
+## Description
 
 `cli` is a command line option parser, that supports
-declarative subcommands, each having separate set of options.
+declarative subcommands, each having a separate set of options.
 
 See also the `flag` module, for a simpler command line option parser,
 that supports only options.
 
-## Example:
+## Example
 
 ```v
 module main
@@ -16,15 +16,15 @@ import cli
 
 fn main() {
 	mut app := cli.Command{
-		name: 'example-app'
+		name:        'example-app'
 		description: 'example-app'
-		execute: fn (cmd cli.Command) ! {
+		execute:     fn (cmd cli.Command) ! {
 			println('hello app')
 			return
 		}
-		commands: [
+		commands:    [
 			cli.Command{
-				name: 'sub'
+				name:    'sub'
 				execute: fn (cmd cli.Command) ! {
 					println('hello subcommand')
 					return

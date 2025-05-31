@@ -1,0 +1,66 @@
+module main
+
+import v.debug
+
+// vtest vflags: -d callstack
+
+struct Test {}
+
+fn (t Test) test_method() {
+	fn_test4()
+}
+
+fn Test.test_static_method() {
+	fn_test3()
+}
+
+fn fn_test2() ? {
+	a := 1
+	// debug.dump_callstack()
+	print(a)
+	assert debug.callstack(1)?.line == 43
+	assert debug.callstack(0)?.line == 51
+}
+
+fn fn_test3() ? {
+	// debug.dump_callstack()
+	assert debug.callstack(3)?.line == 8
+	assert debug.callstack(1)?.line == 41
+	assert debug.callstack(0)?.line == 51
+	return
+}
+
+fn fn_test4() ? {
+	// debug.dump_callstack()
+	assert debug.callstack(1)?.line == 10
+}
+
+fn fn_test_anon(cb fn ()) {
+	cb()
+}
+
+fn fn_test() ? {
+	fn_test2()
+	print('enter')
+	fn_test3()
+	assert debug.callstack(0)?.line == 51
+}
+
+fn main() {
+	print(12)
+	fn_test()
+	// debug.dump_callstack()
+	// dump(debug.callstack(0))
+	mut ret := debug.callstack(0)
+	Test{}.test_method()
+	Test.test_static_method()
+	fn_test_anon(fn () {
+		// debug.dump_callstack()
+		ret := debug.callstack(3) or { return }
+		res := ret.name.starts_with('anon_fn')
+		assert res
+	})
+
+	ret = debug.callstack(0)
+	assert ret == none
+}

@@ -1,0 +1,15 @@
+// vtest vflags: -prod -skip-unused
+// See https://github.com/vlang/v/issues/20923
+module main
+
+import os
+import io
+
+fn main() {
+	mut file := os.open_file(@FILE, 'r')!
+	mut buff_reader := io.new_buffered_reader(reader: file)
+	for {
+		a := buff_reader.read_line() or { break }
+		println(a)
+	}
+}

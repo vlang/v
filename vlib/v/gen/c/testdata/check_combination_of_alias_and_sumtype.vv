@@ -1,4 +1,4 @@
-type ParseRes = Result<[]Token, ParseErr>
+type ParseRes = Result[[]Token, ParseErr]
 
 struct Token {}
 
@@ -26,7 +26,7 @@ fn main() {
 	r := Opt[ParseRes](None[ParseRes]{})
 	match r {
 		Some[ParseRes] {
-			// make possible cast fo the same type!
+			// make possible cast of the same type!
 			rx := Result[[]Token, ParseErr](r.value)
 		}
 		None[ParseRes] {}

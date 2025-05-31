@@ -1,15 +1,15 @@
 struct Foo {
-	foo u8 [required]
-	bar u8 [required]
+	foo u8 @[required]
+	bar u8 @[required]
 }
 
 struct Bar {
 	Foo
-	foo u8 [required]
+	foo u8 @[required]
 }
 
 fn main() {
-	b := Bar {
+	b := Bar{
 		foo: 1
 	}
 	println(b)

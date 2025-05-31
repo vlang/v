@@ -3,9 +3,7 @@ module main
 import vweb
 import databases
 
-const (
-	http_port = 8081
-)
+const http_port = 8081
 
 struct App {
 	vweb.Context
@@ -33,7 +31,7 @@ fn new_app() &App {
 	return app
 }
 
-['/'; get]
+@['/'; get]
 pub fn (mut app App) ping() ?vweb.Result {
 	return app.text('ping')
 }

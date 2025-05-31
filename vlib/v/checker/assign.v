@@ -1,15 +1,19 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
 import v.ast
-import v.pref
 
-// TODO 600 line function
+// TODO: 600 line function
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	prev_inside_assign := c.inside_assign
 	c.inside_assign = true
-	c.expected_type = ast.none_type // TODO a hack to make `x := if ... work`
+	if node.attr.name != '' {
+		c.assign_stmt_attr = node.attr.name
+	} else {
+		c.assign_stmt_attr = ''
+	}
+	c.expected_type = ast.none_type // TODO: a hack to make `x := if ... work`
 	defer {
 		c.expected_type = ast.void_type
 		c.inside_assign = prev_inside_assign
@@ -19,9 +23,16 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	node.left_types = []
 	mut right_len := node.right.len
 	mut right_first_type := ast.void_type
+	old_recheck := c.inside_recheck
+
+	// check if we are rechecking an already checked expression on generic rechecking
+	c.inside_recheck = old_recheck || node.right_types.len > 0
+	defer {
+		c.inside_recheck = old_recheck
+	}
 	for i, mut right in node.right {
 		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr,
-			ast.SelectorExpr, ast.ParExpr] {
+			ast.SelectorExpr, ast.ParExpr, ast.ComptimeCall] {
 			if right in [ast.IfExpr, ast.MatchExpr] && node.left.len == node.right.len && !is_decl
 				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
 				mut expr := node.left[i]
@@ -33,11 +44,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			right_type_sym := c.table.sym(right_type)
 			// fixed array returns an struct, but when assigning it must be the array type
-			right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+			if right_type_sym.info is ast.ArrayFixed {
+				right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+			}
 			if i == 0 {
 				right_first_type = right_type
 				node.right_types = [
-					c.check_expr_opt_call(right, right_first_type),
+					c.check_expr_option_or_result_call(right, right_first_type),
 				]
 			}
 			if right_type_sym.kind == .multi_return {
@@ -45,16 +58,40 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.error('cannot use multi-value ${right_type_sym.name} in single-value context',
 						right.pos())
 				}
-				node.right_types = right_type_sym.mr_info().types
+				node.right_types = right_type_sym.mr_info().types.map(c.cast_fixed_array_ret(it,
+					c.table.sym(it)))
 				right_len = node.right_types.len
 			} else if right_type == ast.void_type {
 				right_len = 0
+				if mut right is ast.IfExpr {
+					last_branch := right.branches.last()
+					last_stmts := last_branch.stmts.filter(it is ast.ExprStmt)
+					if last_stmts.any((it as ast.ExprStmt).typ.has_flag(.generic)) {
+						right_len = last_branch.stmts.len
+						node.right_types = last_stmts.map((it as ast.ExprStmt).typ)
+					}
+				}
 			}
-		}
-		if mut right is ast.InfixExpr {
+		} else if mut right is ast.InfixExpr {
 			if right.op == .arrow {
 				c.error('cannot use `<-` on the right-hand side of an assignment, as it does not return any values',
 					right.pos)
+			} else if c.inside_recheck {
+				if i < node.right_types.len {
+					c.expected_type = node.right_types[i]
+				}
+				mut right_type := c.expr(mut right)
+				right_type_sym := c.table.sym(right_type)
+				// fixed array returns an struct, but when assigning it must be the array type
+				if right_type_sym.info is ast.ArrayFixed {
+					right_type = c.cast_fixed_array_ret(right_type, right_type_sym)
+				}
+				if i == 0 {
+					right_first_type = right_type
+					node.right_types = [
+						c.check_expr_option_or_result_call(right, right_first_type),
+					]
+				}
 			}
 		}
 		if mut right is ast.Ident {
@@ -83,7 +120,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				// If it's a void type, it's an unknown variable, already had an error earlier.
 				return
 			}
-			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.get_name()}()` returns ${right_len} value(s)',
+			str_variables := if node.left.len == 1 { 'variable' } else { 'variables' }
+			str_values := if right_len == 1 { 'value' } else { 'values' }
+			c.error('assignment mismatch: ${node.left.len} ${str_variables} but `${right_first.get_name()}()` returns ${right_len} ${str_values}',
 				node.pos)
 		} else if mut right_first is ast.ParExpr {
 			mut right_next := right_first
@@ -101,7 +140,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		} else {
-			c.error('assignment mismatch: ${node.left.len} variable(s) ${right_len} value(s)',
+			str_variables := if node.left.len == 1 { 'variable' } else { 'variables' }
+			str_values := if right_len == 1 { 'value' } else { 'values' }
+			c.error('assignment mismatch: ${node.left.len} ${str_variables} ${right_len} ${str_values}',
 				node.pos)
 		}
 		return
@@ -123,10 +164,15 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('cannot reassign using range expression on the left side of an assignment',
 					left.pos)
 			}
+		} else if mut left is ast.Ident && node.op == .decl_assign {
+			if left.name in c.global_names {
+				c.note('the global variable named `${left.name}` already exists', left.pos)
+			}
 		}
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := ast.void_type
 		mut var_option := false
+		mut is_shared_re_assign := false
 		if !is_decl && !is_blank_ident {
 			if left in [ast.Ident, ast.SelectorExpr] {
 				c.prevent_sum_type_unwrapping_once = true
@@ -137,9 +183,18 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			left_type = c.expr(mut left)
 			c.is_index_assign = false
 			c.expected_type = c.unwrap_generic(left_type)
+			is_shared_re_assign = left is ast.Ident && left.info is ast.IdentVar
+				&& ((left.info as ast.IdentVar).share == .shared_t || left_type.has_flag(.shared_f))
+				&& c.table.sym(left_type).kind in [.array, .map, .struct]
 		}
-		if c.inside_comptime_for_field && mut left is ast.ComptimeSelector {
-			left_type = c.comptime_fields_default_type
+
+		if c.comptime.comptime_for_field_var != '' && mut left is ast.ComptimeSelector {
+			if c.comptime.has_different_types && node.right[i].is_literal()
+				&& !c.comptime.inside_comptime_if {
+				c.error('mismatched types: check field type with \$if to avoid this problem',
+					node.right[i].pos())
+			}
+			left_type = c.comptime.comptime_for_field_type
 			c.expected_type = c.unwrap_generic(left_type)
 		}
 		if node.right_types.len < node.left.len { // first type or multi return types added above
@@ -151,17 +206,32 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			c.inside_decl_rhs = is_decl
 			mut expr := node.right[i]
+			if left is ast.Ident && left.is_mut() && expr is ast.StructInit && expr.is_anon {
+				c.anon_struct_should_be_mut = true
+				defer {
+					c.anon_struct_should_be_mut = false
+				}
+			}
 			right_type := c.expr(mut expr)
 			c.inside_decl_rhs = false
 			c.inside_ref_lit = old_inside_ref_lit
 			if node.right_types.len == i {
-				node.right_types << c.check_expr_opt_call(node.right[i], right_type)
+				node.right_types << c.check_expr_option_or_result_call(node.right[i],
+					right_type)
+			}
+		} else if c.inside_recheck {
+			// on generic recheck phase it might be needed to resolve the rhs again
+			if i < node.right.len && c.comptime.has_comptime_expr(node.right[i]) {
+				mut expr := mut node.right[i]
+				right_type := c.expr(mut expr)
+				node.right_types[i] = c.check_expr_option_or_result_call(node.right[i],
+					right_type)
 			}
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
 		if mut right is ast.Ident {
-			// resolve shared right vairable
+			// resolve shared right variable
 			if right_type.has_flag(.shared_f) {
 				if c.fail_if_unreadable(right, right_type, 'right-hand side of assignment') {
 					return
@@ -179,13 +249,17 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				right_type = right_type.clear_flag(.option)
 			}
 		} else if right is ast.ComptimeSelector {
-			right_type = c.comptime_fields_default_type
+			right_type = c.comptime.comptime_for_field_type
 		}
-		if is_decl {
+		if is_decl && left is ast.Ident && left.info is ast.IdentVar
+			&& (left.info as ast.IdentVar).share == .shared_t && c.table.sym(right_type).kind !in [.array, .map, .struct] {
+			c.fatal('shared variables must be structs, arrays or maps', right.pos())
+		}
+		if is_decl || is_shared_re_assign {
 			// check generic struct init and return unwrap generic struct type
 			if mut right is ast.StructInit {
+				c.expr(mut right)
 				if right.typ.has_flag(.generic) {
-					c.expr(mut right)
 					right_type = right.typ
 				}
 			} else if mut right is ast.PrefixExpr {
@@ -207,22 +281,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			if left_type == ast.int_type {
 				if mut right is ast.IntegerLiteral {
-					mut is_large := right.val.len > 13
-					if !is_large && right.val.len > 8 {
-						val := right.val.i64()
-						is_large = val > int_max || val < int_min
-					}
-					if is_large {
+					val := right.val.i64()
+					if overflows_i32(val) {
 						c.error('overflow in implicit type `int`, use explicit type casting instead',
 							right.pos)
 					}
-				}
-			}
-			if mut left is ast.Ident && mut right is ast.Ident {
-				if !c.inside_unsafe && left_type.is_ptr() && left.is_mut() && right_type.is_ptr()
-					&& !right.is_mut() {
-					c.error('`${right.name}` is immutable, cannot have a mutable reference to an immutable object',
-						right.pos)
 				}
 			}
 		} else {
@@ -237,6 +300,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// 	println(left_type)
 			// 	c.error('cannot assign a `none` value to a non-option variable', right.pos())
 			// }
+		}
+		if !c.inside_unsafe && !is_blank_ident && node.op in [.decl_assign, .assign]
+			&& left is ast.Ident && left.is_mut() {
+			// check if right-side is a immutable reference
+			c.fail_if_immutable_to_mutable(left_type, right_type, right)
 		}
 		if mut left is ast.Ident && left.info is ast.IdentVar && right is ast.Ident
 			&& right.name in c.global_names {
@@ -262,6 +330,20 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 		node.left_types << left_type
+
+		if right is ast.StructInit {
+			right_sym := c.table.sym(right_type)
+			c.check_any_type(right_type, right_sym, right.pos())
+		}
+
+		if left is ast.ParExpr && is_decl {
+			c.error('parentheses are not supported on the left side of `:=`', left.pos())
+		}
+
+		for left is ast.ParExpr {
+			left = (left as ast.ParExpr).expr
+		}
+		is_assign := node.op in [.assign, .decl_assign]
 		match mut left {
 			ast.Ident {
 				if (is_decl || left.kind == .blank_ident) && left_type.is_ptr()
@@ -275,9 +357,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							right.right.pos)
 					}
 				} else if left.kind == .blank_ident {
+					if !is_decl && mut right is ast.None {
+						c.error('cannot assign a `none` value to blank `_` identifier',
+							right.pos)
+					}
 					left_type = right_type
 					node.left_types[i] = right_type
-					if node.op !in [.assign, .decl_assign] {
+					if !is_assign {
 						c.error('cannot modify blank `_` identifier', left.pos)
 					}
 				} else if left.info !is ast.IdentVar {
@@ -289,28 +375,31 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('invalid use of reserved type `${left.name}` as a variable name',
 								left.pos)
 						}
-						if right is ast.Nil && !c.inside_unsafe {
-							// `x := unsafe { nil }` is allowed,
-							// as well as:
-							// `unsafe {
-							//    x := nil
-							//    println(x)
-							// }`
-							c.error('use of untyped nil in assignment (use `unsafe` | ${c.inside_unsafe})',
-								right.pos())
-						}
+					}
+					if (is_decl || is_shared_re_assign) && right is ast.Nil && !c.inside_unsafe {
+						// `x := unsafe { nil }` is allowed,
+						// as well as:
+						// `unsafe {
+						//    x := nil
+						//    println(x)
+						// }`
+						c.error('use of untyped nil in assignment (use `unsafe` | ${c.inside_unsafe})',
+							right.pos())
 					}
 					mut ident_var_info := left.info as ast.IdentVar
-					if ident_var_info.share == .shared_t {
+					if ident_var_info.share == .shared_t || is_shared_re_assign {
 						left_type = left_type.set_flag(.shared_f)
-						if is_decl {
+						if is_decl || is_shared_re_assign {
 							if left_type.nr_muls() > 1 {
 								c.error('shared cannot be multi level reference', left.pos)
 							}
 							left_type = left_type.set_nr_muls(1)
 						}
 					} else if left_type.has_flag(.shared_f) {
-						left_type = left_type.clear_flag(.shared_f).deref()
+						left_type = left_type.clear_flag(.shared_f)
+						if left_type.is_ptr() {
+							left_type = left_type.deref()
+						}
 					}
 					if ident_var_info.share == .atomic_t {
 						left_type = left_type.set_flag(.atomic_f)
@@ -341,24 +430,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										}
 									}
 								}
-								if right is ast.ComptimeSelector {
-									if is_decl {
-										left.obj.ct_type_var = .field_var
-										left.obj.typ = c.comptime_fields_default_type
-									}
-								} else if mut right is ast.Ident && right.obj is ast.Var
-									&& right.or_expr.kind == .absent {
-									if (right.obj as ast.Var).ct_type_var != .no_comptime {
-										ctyp := c.get_comptime_var_type(right)
-										if ctyp != ast.void_type {
-											left.obj.ct_type_var = (right.obj as ast.Var).ct_type_var
-											left.obj.typ = ctyp
-										}
-									}
-								} else if right is ast.DumpExpr
-									&& right.expr is ast.ComptimeSelector {
-									left.obj.ct_type_var = .field_var
-									left.obj.typ = c.comptime_fields_default_type
+								// flag the variable as comptime/generic related on its declaration
+								if is_decl {
+									c.change_flags_if_comptime_expr(mut left, right)
 								}
 							}
 							ast.GlobalField {
@@ -369,19 +443,20 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 					if is_decl {
 						full_name := '${left.mod}.${left.name}'
-						if obj := c.file.global_scope.find(full_name) {
-							if obj is ast.ConstField {
-								c.warn('duplicate of a const name `${full_name}`', left.pos)
-							}
+						if _ := c.file.global_scope.find_const(full_name) {
+							c.warn('duplicate of a const name `${full_name}`', left.pos)
 						}
 						if left.name == left.mod && left.name != 'main' {
-							c.add_error_detail('Module name duplicates will become errors after 2023/10/31.')
-							c.note('duplicate of a module name `${left.name}`', left.pos)
+							c.error('duplicate of a module name `${left.name}`', left.pos)
 						}
 						// Check if variable name is already registered as imported module symbol
 						if c.check_import_sym_conflict(left.name) {
 							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
+					}
+					if node.op == .assign && left_type.has_flag(.option) && right is ast.UnsafeExpr
+						&& right.expr.is_nil() {
+						c.error('cannot assign `nil` to option value', right.pos())
 					}
 				}
 			}
@@ -421,13 +496,21 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						}
 					}
 				}
+				if left_type.has_flag(.option) && right is ast.UnsafeExpr && right.expr.is_nil() {
+					c.error('cannot assign `nil` to option value', right.pos())
+				}
 			}
 			else {
 				if mut left is ast.IndexExpr {
 					// eprintln('>>> left.is_setter: ${left.is_setter:10} | left.is_map: ${left.is_map:10} | left.is_array: ${left.is_array:10}')
-					if left.is_map && left.is_setter {
+					if (left.is_map || left.is_farray) && left.is_setter {
 						left.recursive_mapset_is_setter(true)
 					}
+					right_type = c.type_resolver.get_type_or_default(right, right_type)
+				}
+				if mut left is ast.InfixExpr {
+					c.error('cannot use infix expression on the left side of `${node.op}`',
+						left.pos)
 				}
 				if is_decl {
 					c.error('non-name `${left}` on left side of `:=`', left.pos())
@@ -445,8 +528,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			continue
 		}
 		if c.pref.translated || c.file.is_translated {
-			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
-			// TODO replace all c.pref.translated checks with `$if !translated` for performance
+			// TODO: fix this in C2V instead, for example cast enums to int before using `|` on them.
+			// TODO: replace all c.pref.translated checks with `$if !translated` for performance
 			continue
 		}
 		if left_type_unwrapped == 0 {
@@ -455,27 +538,28 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		left_sym := c.table.sym(left_type_unwrapped)
 		right_sym := c.table.sym(right_type_unwrapped)
 
-		old_assign_error_condition := left_sym.kind == .array && !c.inside_unsafe
-			&& node.op in [.assign, .decl_assign] && right_sym.kind == .array && left is ast.Ident
-			&& !left.is_blank_ident() && right is ast.Ident
-		if old_assign_error_condition {
-			// Do not allow `a = b`, only `a = b.clone()`
-			c.error('use `array2 ${node.op.str()} array1.clone()` instead of `array2 ${node.op.str()} array1` (or use `unsafe`)',
-				node.pos)
-		}
-		// Do not allow `a = val.array_field`, only `a = val.array_field.clone()`
-		// TODO: turn this warning into an error after 2022/09/24
-		// TODO: and remove the less strict check from above.
 		if left_sym.kind == .array && !c.inside_unsafe && right_sym.kind == .array
 			&& left is ast.Ident && !left.is_blank_ident() && right in [ast.Ident, ast.SelectorExpr]
 			&& ((node.op == .decl_assign && left.is_mut) || node.op == .assign) {
-			// no point to show the notice, if the old error was already shown:
-			if !old_assign_error_condition {
-				mut_str := if node.op == .decl_assign { 'mut ' } else { '' }
-				c.warn('use `${mut_str}array2 ${node.op.str()} array1.clone()` instead of `${mut_str}array2 ${node.op.str()} array1` (or use `unsafe`)',
+			// Do not allow direct array assignments outside unsafe.
+			// E.g.: `a2 = a1` wants `a2 = a1.clone()`, `a = val.arr_field` wants `a = val.arr_field.clone()`
+			mut_str := if node.op == .decl_assign { 'mut ' } else { '' }
+			c.error('use `${mut_str}array2 ${node.op.str()} array1.clone()` instead of `${mut_str}array2 ${node.op.str()} array1` (or use `unsafe`)',
+				node.pos)
+		}
+
+		// Do not allow auto (de)reference in PrefixExpr
+		// e.g. `*ptr1 = ptr2`
+		if mut left is ast.PrefixExpr && left.op == .mul {
+			if left_type.nr_muls() != right_type.nr_muls() && !left_type.is_voidptr()
+				&& !right_type.is_voidptr() && right_type != ast.nil_type {
+				r := right_sym.str_with_correct_nr_muls(right_type.nr_muls())
+				l := left_sym.str_with_correct_nr_muls(left_type.nr_muls())
+				c.error('cannot use `${r}` (right side) as `${l}` (left side) in assignment',
 					node.pos)
 			}
 		}
+
 		if left_sym.kind == .array && right_sym.kind == .array {
 			right_info := right_sym.info as ast.Array
 			right_elem_type := c.table.unaliased_type(right_info.elem_type)
@@ -490,7 +574,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								if r is ast.Ident {
 									obj := r.obj
 									if obj is ast.Var && !obj.is_mut {
-										c.warn('cannot add a referenece to an immutable object to a mutable array',
+										c.warn('cannot add a reference to an immutable object to a mutable array',
 											elem_expr.pos)
 									}
 								}
@@ -499,23 +583,23 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				} else if mut left is ast.Ident && left.kind != .blank_ident
 					&& right is ast.IndexExpr {
-					if (right as ast.IndexExpr).left is ast.Ident
-						&& (right as ast.IndexExpr).index is ast.RangeExpr
-						&& ((right as ast.IndexExpr).left.is_mut() || left.is_mut())
-						&& !c.inside_unsafe {
+					right_index_expr := right as ast.IndexExpr
+					if right_index_expr.left is ast.Ident && right_index_expr.index is ast.RangeExpr
+						&& (right_index_expr.left.is_mut() || left.is_mut()) && !c.inside_unsafe {
 						// `mut a := arr[..]` auto add clone() -> `mut a := arr[..].clone()`
 						c.add_error_detail_with_pos('To silence this notice, use either an explicit `a[..].clone()`,
 or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							right.pos())
 						c.note('an implicit clone of the slice was done here', right.pos())
 						right = ast.CallExpr{
-							name: 'clone'
-							left: right
-							left_type: left_type
-							is_method: true
-							receiver_type: left_type
-							return_type: left_type
-							scope: c.fn_scope
+							name:           'clone'
+							left:           right
+							left_type:      left_type
+							is_method:      true
+							receiver_type:  left_type
+							return_type:    left_type
+							scope:          c.fn_scope
+							is_return_used: true
 						}
 						right_type = c.expr(mut right)
 						node.right[i] = right
@@ -524,7 +608,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 			if node.op == .assign {
 				// `mut arr := [u8(1),2,3]`
-				// `arr = [byte(4),5,6]`
+				// `arr = [u8(4),5,6]`
 				left_info := left_sym.info as ast.Array
 				left_elem_type := c.table.unaliased_type(left_info.elem_type)
 				if left_type_unwrapped.nr_muls() == right_type_unwrapped.nr_muls()
@@ -533,7 +617,24 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
-		if left_sym.kind == .array_fixed && !c.inside_unsafe && node.op in [.assign, .decl_assign]
+		if left_sym.kind == .map && is_assign && right_sym.kind == .map && !left.is_blank_ident()
+			&& right.is_lvalue() && right !is ast.ComptimeSelector
+			&& (!right_type.is_ptr() || (right is ast.Ident && right.is_auto_deref_var())) {
+			// Do not allow `a = b`
+			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
+				right.pos())
+		}
+		if left_sym.kind == .function && right_sym.info is ast.FnType {
+			return_sym := c.table.sym(right_sym.info.func.return_type)
+			if return_sym.kind == .placeholder {
+				c.error('unknown return type: cannot assign `${right}` as a function variable',
+					right.pos())
+			} else if (!right_sym.info.is_anon && return_sym.kind == .any)
+				|| (return_sym.info is ast.Struct && return_sym.info.is_generic) {
+				c.error('cannot assign `${right}` as a generic function variable', right.pos())
+			}
+		}
+		if left_sym.kind == .array_fixed && !c.inside_unsafe && is_assign
 			&& right_sym.kind == .array_fixed && left is ast.Ident && !left.is_blank_ident()
 			&& right is ast.Ident {
 			if right_sym.info is ast.ArrayFixed {
@@ -543,27 +644,12 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
-		if left_sym.kind == .map && node.op in [.assign, .decl_assign] && right_sym.kind == .map
-			&& !left.is_blank_ident() && right.is_lvalue() && right !is ast.ComptimeSelector
-			&& (!right_type.is_ptr() || (right is ast.Ident && right.is_auto_deref_var())) {
-			// Do not allow `a = b`
-			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
-				right.pos())
-		}
-		if left_sym.kind == .function && right_sym.info is ast.FnType {
-			return_sym := c.table.sym(right_sym.info.func.return_type)
-			if return_sym.kind == .placeholder {
-				c.error('unkown return type: cannot assign `${right}` as a function variable',
-					right.pos())
-			} else if (!right_sym.info.is_anon && return_sym.kind == .any)
-				|| (return_sym.info is ast.Struct && return_sym.info.is_generic) {
-				c.error('cannot assign `${right}` as a generic function variable', right.pos())
-			}
-		}
 		if left_type.is_any_kind_of_pointer() && !left.is_auto_deref_var() {
 			if !c.inside_unsafe && node.op !in [.assign, .decl_assign] {
 				// ptr op=
-				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
+				if !c.pref.translated && !c.file.is_translated {
+					c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
+				}
 			}
 			right_is_ptr := right_type.is_any_kind_of_pointer()
 			if !right_is_ptr && node.op == .assign && right_type_unwrapped.is_number() {
@@ -583,11 +669,24 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
+		if mut left is ast.Ident {
+			if mut left.info is ast.IdentVar {
+				if left.info.is_static && right_sym.kind == .map {
+					c.error('maps cannot be static', left.pos)
+				}
+			}
+		}
 		// Single side check
 		match node.op {
 			.assign {} // No need to do single side check for =. But here put it first for speed.
 			.plus_assign, .minus_assign {
-				if left_type == ast.string_type {
+				// allow literal values to auto deref var (e.g.`for mut v in values { v += 1.0 }`)
+				left_deref := if left.is_auto_deref_var() {
+					left_type.deref()
+				} else {
+					left_type
+				}
+				if left_deref == ast.string_type {
 					if node.op != .plus_assign {
 						c.error('operator `${node.op}` not defined on left operand type `${left_sym.name}`',
 							left.pos())
@@ -597,22 +696,22 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							right.pos())
 					}
 				} else if !left_sym.is_number()
-					&& left_sym.kind !in [.byteptr, .charptr, .struct_, .alias] {
+					&& left_sym.kind !in [.byteptr, .charptr, .struct, .alias] {
 					c.error('operator `${node.op}` not defined on left operand type `${left_sym.name}`',
 						left.pos())
 				} else if !right_sym.is_number()
-					&& left_sym.kind !in [.byteptr, .charptr, .struct_, .alias] {
+					&& left_sym.kind !in [.byteptr, .charptr, .struct, .alias] {
 					c.error('invalid right operand: ${left_sym.name} ${node.op} ${right_sym.name}',
 						right.pos())
 				}
 			}
 			.mult_assign, .div_assign {
 				if !left_sym.is_number() && !c.table.final_sym(left_type_unwrapped).is_int()
-					&& left_sym.kind !in [.struct_, .alias] {
+					&& left_sym.kind !in [.struct, .alias] {
 					c.error('operator ${node.op.str()} not defined on left operand type `${left_sym.name}`',
 						left.pos())
 				} else if !right_sym.is_number() && !c.table.final_sym(left_type_unwrapped).is_int()
-					&& left_sym.kind !in [.struct_, .alias] {
+					&& left_sym.kind !in [.struct, .alias] {
 					c.error('operator ${node.op.str()} not defined on right operand type `${right_sym.name}`',
 						right.pos())
 				}
@@ -627,6 +726,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						right.pos())
 				}
 			}
+			.boolean_and_assign, .boolean_or_assign {
+				if c.table.final_sym(left_type_unwrapped).kind != .bool {
+					c.error('operator ${node.op.str()} not defined on left operand type `${left_sym.name}`',
+						left.pos())
+				} else if c.table.final_sym(right_type_unwrapped).kind != .bool {
+					c.error('operator ${node.op.str()} not defined on right operand type `${right_sym.name}`',
+						right.pos())
+				}
+			}
 			.unsigned_right_shift_assign {
 				if node.left.len != 1 || node.right.len != 1 {
 					c.error('unsupported operation: unable to lower expression for unsigned shift assignment.',
@@ -636,10 +744,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				modified_left_type := if !left_type.is_int() {
 					c.error('invalid operation: shift on type `${c.table.sym(left_type).name}`',
 						node.pos)
-					ast.void_type_idx
+					ast.void_type
 				} else if left_type.is_int_literal() {
 					// int literal => i64
-					ast.u32_type_idx
+					ast.u32_type
 				} else if left_type.is_unsigned() {
 					left_type
 				} else {
@@ -650,43 +758,41 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					// i64  	=> u64
 					// isize	=> usize
 					// i128 	=> u128 NOT IMPLEMENTED YET
-					left_type.idx() + ast.u32_type_idx - ast.int_type_idx
+					ast.idx_to_type(left_type.idx() + ast.u32_type_idx - ast.int_type_idx)
 				}
 
 				node = ast.AssignStmt{
-					op: .assign
-					pos: node.pos
-					comments: node.comments
-					end_comments: node.end_comments
-					left: node.left
-					right: [
+					op:            .assign
+					pos:           node.pos
+					end_comments:  node.end_comments
+					left:          node.left
+					right:         [
 						ast.Expr(ast.InfixExpr{
-							left: ast.CastExpr{
-								expr: node.left[0]
-								typ: modified_left_type
-								typname: c.table.type_str(modified_left_type)
+							left:       ast.CastExpr{
+								expr:      node.left[0]
+								typ:       modified_left_type
+								typname:   c.table.type_str(modified_left_type)
 								expr_type: left_type
-								pos: node.pos
+								pos:       node.pos
 							}
-							op: .right_shift
-							right: node.right[0]
-							left_type: modified_left_type
+							op:         .right_shift
+							right:      node.right[0]
+							left_type:  modified_left_type
 							right_type: right_type
-							pos: node.pos
+							pos:        node.pos
 						}),
 					]
-					left_types: node.left_types
-					right_types: node.right_types
-					is_static: node.is_static
-					is_simple: node.is_simple
+					left_types:    node.left_types
+					right_types:   node.right_types
+					is_static:     node.is_static
+					is_simple:     node.is_simple
 					has_cross_var: node.has_cross_var
 				}
 			}
 			else {}
 		}
 		if node.op in [.plus_assign, .minus_assign, .mod_assign, .mult_assign, .div_assign]
-			&& (left_sym.kind == .alias || (left_sym.kind == .struct_
-			&& right_sym.kind == .struct_)) {
+			&& (left_sym.kind == .alias || (left_sym.kind == .struct && right_sym.kind == .struct)) {
 			left_name := c.table.type_to_str(left_type_unwrapped)
 			right_name := c.table.type_to_str(right_type_unwrapped)
 			parent_sym := c.table.final_sym(left_type_unwrapped)
@@ -703,28 +809,45 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				.mult_assign { '*' }
 				else { 'unknown op' }
 			}
-			if left_sym.kind == .struct_ && (left_sym.info as ast.Struct).generic_types.len > 0 {
+			if left_sym.kind == .struct && (left_sym.info as ast.Struct).generic_types.len > 0 {
 				continue
 			}
-			if method := left_sym.find_method(extracted_op) {
+			if method := left_sym.find_method_with_generic_parent(extracted_op) {
 				if method.return_type != left_type_unwrapped {
 					c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 						node.pos)
 				}
 			} else {
-				if !parent_sym.is_primitive() {
-					if left_name == right_name {
-						c.error('undefined operation `${left_name}` ${extracted_op} `${right_name}`',
+				if method := parent_sym.find_method_with_generic_parent(extracted_op) {
+					if parent_sym.kind == .alias
+						&& (parent_sym.info as ast.Alias).parent_type != method.return_type {
+						c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 							node.pos)
-					} else {
-						c.error('mismatched types `${left_name}` and `${right_name}`',
-							node.pos)
+					}
+				} else {
+					if !parent_sym.is_primitive() {
+						if left_name == right_name {
+							c.error('undefined operation `${left_name}` ${extracted_op} `${right_name}`',
+								node.pos)
+						} else {
+							c.error('mismatched types `${left_name}` and `${right_name}`',
+								node.pos)
+						}
 					}
 				}
 			}
 		}
-		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_
-			&& !right_type.has_flag(.generic) && !left_type.has_flag(.generic) {
+		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface
+			&& ((!right_type.has_flag(.generic) && !left_type.has_flag(.generic))
+			|| right_sym.kind != left_sym.kind) {
+			// Disallow `array = voidptr` assign
+			if left_sym.kind in [.array, .array_fixed]
+				&& (right_type_unwrapped.is_voidptr() || right.is_nil()) {
+				left_str := c.table.type_to_str(left_type_unwrapped)
+				right_str := c.table.type_to_str(right_type_unwrapped)
+				c.error('cannot assign to `${left}`: expected `${left_str}`, not `${right_str}`',
+					right.pos())
+			}
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)
@@ -753,24 +876,41 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							node.pos)
 					}
 				} else {
-					// allow `t.$(field.name) = 0` where `t.$(field.name)` is a enum
-					if c.inside_comptime_for_field && left is ast.ComptimeSelector {
-						field_sym := c.table.sym(c.unwrap_generic(c.comptime_fields_default_type))
+					if c.comptime.comptime_for_field_var != '' && left is ast.ComptimeSelector {
+						field_type := c.unwrap_generic(c.comptime.comptime_for_field_type)
+						field_sym := c.table.sym(field_type)
 
-						if field_sym.kind == .enum_ && !right_type.is_int() {
+						// allow `t.$(field.name) = 0` where `t.$(field.name)` is a enum
+						if field_sym.kind == .enum && !right_type.is_int() {
 							c.error('enums can only be assigned `int` values', right.pos())
 						}
+						// disallow invalid `t.$(field.name)` type assignment
+						if !c.check_types(field_type, right_type) && !(c.inside_x_matches_type
+							|| field_sym.kind == .enum) {
+							c.error('cannot assign to `${left}`: ${c.expected_msg(right_type,
+								field_type)}', right.pos())
+						}
 					} else {
-						if !var_option || (var_option && right_type_unwrapped != ast.none_type) {
-							c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+						if right_type_unwrapped != ast.void_type {
+							if !var_option || (var_option && right_type_unwrapped != ast.none_type) {
+								if left_sym.kind == .array_fixed && right_sym.kind == .array
+									&& right is ast.ArrayInit {
+									c.add_error_detail('try `${left} = ${right}!` instead (with `!` after the array literal)')
+									c.error('cannot assign to `${left}`: ${err.msg()}',
+										right.pos())
+								} else {
+									c.error('cannot assign to `${left}`: ${err.msg()}',
+										right.pos())
+								}
+							}
 						}
 					}
 				}
 			}
 		}
-		if left_sym.kind == .interface_ {
+		if left_sym.kind == .interface {
 			if c.type_implements(right_type, left_type, right.pos()) {
-				if !right_type.is_any_kind_of_pointer() && right_sym.kind != .interface_
+				if !right_type.is_any_kind_of_pointer() && right_sym.kind != .interface
 					&& !c.inside_unsafe {
 					c.mark_as_referenced(mut &node.right[i], true)
 				}
@@ -781,7 +921,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			c.error('cannot assign anonymous `struct` to a typed `struct`', right.pos())
 		}
 		if right_sym.kind == .alias && right_sym.name == 'byte' {
-			c.warn('byte is deprecated, use u8 instead', right.pos())
+			c.error('byte is deprecated, use u8 instead', right.pos())
 		}
 	}
 	// this needs to run after the assign stmt left exprs have been run through checker
@@ -789,6 +929,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 	// Check `x := &y` and `mut x := <-ch`
 	if mut right_first is ast.PrefixExpr {
 		mut right_node := right_first
+		is_amp := right_first.op == .amp
 		left_first := node.left[0]
 		if left_first is ast.Ident {
 			assigned_var := left_first
@@ -809,6 +950,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					if mut expr.obj is ast.Var {
 						v := expr.obj
 						right_first_type = v.typ
+					}
+					if is_amp && !node.left[0].is_blank_ident() && expr.obj is ast.ConstField {
+						c.error('cannot have mutable reference to const `${expr.name}`',
+							right_node.pos)
 					}
 					if !c.inside_unsafe && assigned_var.is_mut() && !expr.is_mut() {
 						c.error('`${expr.name}` is immutable, cannot have a mutable reference to it',
@@ -832,5 +977,68 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 	}
 	if node.left_types.len != node.left.len {
 		c.error('assign statement left type number mismatch', node.pos)
+	}
+}
+
+// change_flags_if_comptime_expr changes the flags of the left variable if the right expression is comptime/generic expr
+fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.Expr) {
+	if mut left.obj is ast.Var {
+		if right is ast.ComptimeSelector {
+			left.obj.typ = c.comptime.comptime_for_field_type
+			if right.or_block.kind == .propagate_option {
+				left.obj.typ = left.obj.typ.clear_flag(.option)
+				left.obj.ct_type_unwrapped = true
+			}
+			left.obj.ct_type_var = .field_var
+		} else if right is ast.InfixExpr {
+			right_ct_var := c.comptime.get_ct_type_var(right.left)
+			if right_ct_var != .no_comptime {
+				left.obj.ct_type_var = right_ct_var
+			}
+		} else if right is ast.StructInit && right.unresolved && right.typ.has_flag(.generic) {
+			left.obj.ct_type_var = .generic_param
+		} else if right is ast.IndexExpr && c.comptime.is_comptime(right) {
+			right_ct_var := c.comptime.get_ct_type_var(right.left)
+			if right_ct_var != .no_comptime {
+				left.obj.ct_type_var = right_ct_var
+			}
+		} else if right is ast.Ident && right.obj is ast.Var && right.or_expr.kind == .absent {
+			right_obj_var := right.obj as ast.Var
+			if right_obj_var.ct_type_var != .no_comptime {
+				ctyp := c.type_resolver.get_type(right)
+				if ctyp != ast.void_type {
+					left.obj.ct_type_var = right_obj_var.ct_type_var
+					left.obj.typ = ctyp
+				}
+			}
+		} else if right is ast.DumpExpr && right.expr is ast.ComptimeSelector {
+			left.obj.ct_type_var = .field_var
+			left.obj.typ = c.comptime.comptime_for_field_type
+		} else if right is ast.CallExpr {
+			if right.left_type != 0 && c.table.type_kind(right.left_type) == .array
+				&& right.name == 'map' && right.args.len > 0 && right.args[0].expr is ast.AsCast
+				&& right.args[0].expr.typ.has_flag(.generic) {
+				left.obj.ct_type_var = .generic_var
+			} else if left.obj.ct_type_var in [.generic_var, .no_comptime]
+				&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len != 0
+				&& !right.comptime_ret_val && c.type_resolver.is_generic_expr(right) {
+				// mark variable as generic var because its type changes according to fn return generic resolution type
+				left.obj.ct_type_var = .generic_var
+			}
+		} else if right is ast.PostfixExpr && right.op == .question {
+			if right.expr is ast.Ident && right.expr.ct_expr {
+				right_obj_var := right.expr.obj as ast.Var
+				ctyp := c.type_resolver.get_type(right)
+				if ctyp != ast.void_type {
+					left.obj.ct_type_unwrapped = true
+					left.obj.ct_type_var = right_obj_var.ct_type_var
+					left.obj.typ = ctyp.clear_flag(.option)
+				}
+			} else if right.expr is ast.ComptimeSelector {
+				left.obj.ct_type_unwrapped = true
+				left.obj.ct_type_var = .field_var
+				left.obj.typ = c.comptime.comptime_for_field_type.clear_flag(.option)
+			}
+		}
 	}
 }

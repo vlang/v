@@ -1,0 +1,13 @@
+struct C.Ptr[T] {
+	ptr &T
+}
+
+fn C.alloc[T]() &T
+
+fn JS.encode[T](data string) T
+
+struct JS.Some[T] {
+	i T
+}
+
+fn main() {}

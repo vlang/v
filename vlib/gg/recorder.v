@@ -1,6 +1,6 @@
 module gg
 
-[heap]
+@[heap]
 pub struct SSRecorderSettings {
 pub mut:
 	stop_at_frame     i64 = -1

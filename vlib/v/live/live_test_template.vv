@@ -9,11 +9,11 @@ const some_constant = f64(5.5)
 
 fn append_to_file(fname string, s string) {
 	mut f := os.open_append(fname) or {
-		println('>>>> could not open file $fname for appending, err: $err ')
+		println('>>>> could not open file ${fname} for appending, err: ${err} ')
 		return
 	}
 	f.writeln(s) or {
-		println('>>>> could not write to $fname, err: $err ')
+		println('>>>> could not write to ${fname}, err: ${err} ')
 		return
 	}
 	// info := live.info()
@@ -27,9 +27,9 @@ fn myprintln(s string) {
 	os.flush()
 }
 
-[live]
+@[live]
 fn pmessage() string {
-	_ := mymodule.some_constant * math.sin(2.0 * math.pi * f64(time.ticks() % 6000) / 6000)
+	_ := some_constant * math.sin(2.0 * math.pi * f64(time.ticks() % 6000) / 6000)
 	return 'ORIGINAL'
 }
 
@@ -51,7 +51,7 @@ pub fn mymain() {
 		if s == 'STOP' {
 			break
 		}
-		time.sleep(mymodule.delay * time.millisecond)
+		time.sleep(delay * time.millisecond)
 	}
 	pmessage()
 	pmessage()

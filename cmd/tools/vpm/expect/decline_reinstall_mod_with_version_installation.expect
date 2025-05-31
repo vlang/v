@@ -1,0 +1,17 @@
+#!/usr/bin/env expect
+
+set timeout 10
+
+set vexe [lindex $argv 0]
+set mod [lindex $argv 1]
+set cur_tag [lindex $argv 2]
+set new_tag [lindex $argv 3]
+set install_path [lindex $argv 4]
+
+spawn $vexe install $mod@$new_tag
+
+expect "Scanning `$mod@$new_tag`..." {} timeout { exit 1 }
+expect "Module `$mod@$cur_tag` is already installed at" {} timeout { exit 1 }
+expect "Replace it with `$mod@$new_tag`? \\\[Y/n\\\]: " { send "n\r" } timeout { exit 1 }
+
+expect eof

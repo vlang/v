@@ -147,6 +147,22 @@ fn test_chunk() {
 	assert chunk[int]([]int{}, 2) == [][]int{}
 }
 
+fn test_chunk_while() {
+	assert chunk_while([0, 9, 2, 2, 3, 2, 7, 5, 9, 5], fn (x int, y int) bool {
+		return x == y
+	}) == [[0], [9], [2, 2], [3], [2], [7], [5], [9], [5]]
+
+	assert chunk_while([0, 9, 2, 2, 3, 2, 7, 5, 9, 5], fn (x int, y int) bool {
+		return x <= y
+	}) == [[0, 9], [2, 2, 3], [2, 7], [5, 9], [5]]
+
+	assert chunk_while('aaaabbbcca'.runes(), fn (x rune, y rune) bool {
+		return x == y
+	}).map({
+		it[0]: it.len
+	}).str() == '[{`a`: 4}, {`b`: 3}, {`c`: 2}, {`a`: 1}]'
+}
+
 fn test_window() {
 	x := [1, 2, 3, 4, 5, 6]
 
@@ -156,14 +172,43 @@ fn test_window() {
 	assert window[int]([]int{}, size: 2) == [][]int{}
 }
 
-fn test_sum() {
-	x := [1, 2, 3, 4, 5]
+/////////////////////////////
+type MyAlias = i64
 
-	assert sum[int](x) or { 0 } == 15
-	assert sum[f64]([1.0, 2.5, 3.5, 4.0]) or { 0 } == 11.0
-	assert sum[int]([]int{}) or { 0 } == 0
+fn (a MyAlias) + (b MyAlias) MyAlias {
+	return MyAlias(i64(a) * 10 + i64(b) * 10)
 }
 
+struct MyStruct {
+	x int = 5
+}
+
+fn (a MyStruct) + (b MyStruct) MyStruct {
+	return MyStruct{
+		x: a.x + b.x
+	}
+}
+
+fn test_sum() {
+	assert sum([1, 2, 3, 4, 5]) or { 0 } == 15
+	assert sum([1.0, 2.5, 3.5, 4.0]) or { 0.0 } == 11.0
+	assert sum([]int{}) or { 0 } == 0
+	// test summing of a struct, with an overloaded + operator:
+	s := [MyStruct{
+		x: 30
+	}, MyStruct{
+		x: 20
+	}, MyStruct{
+		x: 10
+	}]
+	assert sum(s)! == MyStruct{
+		x: 60
+	}
+	// test summing of a number type alias with an overloaded + operator:
+	assert sum([MyAlias(5), MyAlias(7), MyAlias(3)])! == MyAlias((5 * 10 + 7 * 10) * 10 + 3 * 10)
+}
+
+/////////////////////////////
 fn test_reduce() {
 	x := [1, 2, 3, 4, 5]
 
@@ -391,7 +436,7 @@ fn test_map_of_indexes() {
 	assert arrays.map_of_indexes([1, 2, 3, 999]) == {1: [0], 2: [1], 3: [2], 999: [3]}
 	assert arrays.map_of_indexes([999, 1, 2, 3]) == {1: [1], 2: [2], 3: [3], 999: [0]}
 	assert arrays.map_of_indexes([1, 2, 3, 4, 4, 2, 1, 4, 4, 999]) == {1: [0, 6], 2: [1, 5], 3: [2], 4: [3, 4, 7, 8], 999: [9]}
-	//
+
 	assert arrays.map_of_indexes([]string{}) == {}
 	assert arrays.map_of_indexes(['abc']) == {'abc': [0]}
 	assert arrays.map_of_indexes(['abc', 'abc']) == {'abc': [0, 1]}
@@ -406,7 +451,7 @@ fn test_map_of_counts() {
 	assert map_of_counts([1, 2, 3, 999]) == {1: 1, 2: 1, 3: 1, 999: 1}
 	assert map_of_counts([999, 1, 2, 3]) == {1: 1, 2: 1, 3: 1, 999: 1}
 	assert map_of_counts([1, 2, 3, 4, 4, 2, 1, 4, 4, 999]) == {1: 2, 2: 2, 3: 1, 4: 4, 999: 1}
-	//
+
 	assert map_of_counts([]string{}) == {}
 	assert map_of_counts(['abc']) == {'abc': 1}
 	assert map_of_counts(['abc', 'abc']) == {'abc': 2}
@@ -430,13 +475,13 @@ fn test_find_first() {
 	})? == 3, 'find element couldnt find the right element'
 
 	// find struct
-	find_by_name := find_first(arrays.test_structs, fn (arr FindTest) bool {
+	find_by_name := find_first(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'one'
 	})?
 	assert find_by_name == FindTest{'one', 1}
 
 	// not found
-	if _ := find_first(arrays.test_structs, fn (arr FindTest) bool {
+	if _ := find_first(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'nothing'
 	})
 	{
@@ -454,13 +499,13 @@ fn test_find_last() {
 	})? == 3, 'find element couldnt find the right element'
 
 	// find struct
-	find_by_name := find_last(arrays.test_structs, fn (arr FindTest) bool {
+	find_by_name := find_last(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'one'
 	})?
 	assert find_by_name == FindTest{'one', 4}
 
 	// not found
-	if _ := find_last(arrays.test_structs, fn (arr FindTest) bool {
+	if _ := find_last(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'nothing'
 	})
 	{
@@ -471,13 +516,73 @@ fn test_find_last() {
 }
 
 fn test_join_to_string() {
-	assert join_to_string[FindTest](arrays.test_structs, ':', fn (it FindTest) string {
+	assert join_to_string[FindTest](test_structs, ':', fn (it FindTest) string {
 		return it.name
 	}) == 'one:two:three:one'
-	assert join_to_string[FindTest](arrays.test_structs, '', fn (it FindTest) string {
+	assert join_to_string[FindTest](test_structs, '', fn (it FindTest) string {
 		return it.name
 	}) == 'onetwothreeone'
 	assert join_to_string[int]([]int{}, ':', fn (it int) string {
 		return '1'
 	}) == ''
+}
+
+fn test_partition() {
+	a := [1, 2, 3, 4, 5, 6, 7, 8]
+	lower, upper := partition(a, fn (it int) bool {
+		return it < 5
+	})
+	assert lower.len == 4
+	assert upper.len == 4
+	assert lower == [1, 2, 3, 4]
+	assert upper == [5, 6, 7, 8]
+
+	lower2, upper2 := partition(a, fn (it int) bool {
+		return it < 1
+	})
+	assert lower2.len == 0
+	assert upper2.len == 8
+}
+
+fn test_each() {
+	a := [99, 1, 2, 3, 4, 5, 6, 7, 8, 1001]
+	mut control_sum := 0
+	for x in a {
+		control_sum += x
+	}
+
+	each(a, fn (x int) {
+		println(x)
+	})
+	mut sum := 0
+	mut psum := &sum
+	each(a, fn [mut psum] (x int) {
+		unsafe {
+			*psum += x
+		}
+	})
+	assert control_sum == sum
+}
+
+fn test_each_indexed() {
+	a := [99, 1, 2, 3, 4, 5, 6, 7, 8, 1001]
+	mut control_sum := 0
+	f := fn (idx int, x int) int {
+		return (idx + 1) * 1000_000 + x
+	}
+	for idx, x in a {
+		control_sum += f(idx, x)
+	}
+
+	each_indexed(a, fn (idx int, x int) {
+		println('idx: ${idx}, x: ${x}')
+	})
+	mut sum := 0
+	mut psum := &sum
+	each_indexed(a, fn [mut psum, f] (idx int, x int) {
+		unsafe {
+			*psum += f(idx, x)
+		}
+	})
+	assert control_sum == sum
 }

@@ -1,0 +1,3 @@
+struct ABC { // size: 0x1=1 (source) (123 45 67) 20B
+	ff [0x20]u8
+}

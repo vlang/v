@@ -1,0 +1,7 @@
+Usage:  [flags] [commands]
+
+Flags:
+  -version            Prints version information.
+
+Commands:
+  help                Prints help information.

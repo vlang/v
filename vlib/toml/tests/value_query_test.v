@@ -1,8 +1,7 @@
 import toml
 import strconv
 
-const (
-	toml_text = '
+const toml_text = '
 modules = [ "ui", "toml" ]
 errors = []
 
@@ -38,7 +37,7 @@ colors = [
 ]
 '
 
-	toml_text_2 = "
+const toml_text_2 = "
 [defaults]
   run.flags = ['-f 1']
 
@@ -47,7 +46,6 @@ colors = [
     'RUN_TIME' = 5
     'TEST_PATH' = '/tmp/test'
 "
-)
 
 fn test_value_query_in_array() {
 	toml_doc := toml.parse_text(toml_text) or { panic(err) }

@@ -1,0 +1,45 @@
+pub struct EventBus[T] {
+mut:
+	subscribers map[string][]Subscriber[T]
+}
+
+type EventType = string
+type Subscriber[T] = fn (T)
+
+pub fn new_event_bus[T]() &EventBus[T] {
+	return &EventBus[T]{
+		subscribers: map[string][]Subscriber[T]{}
+	}
+}
+
+fn (shared eb EventBus[T]) subscribe(event_type EventType, subscriber Subscriber[T]) {
+	lock eb {
+		if event_type !in eb.subscribers {
+			eb.subscribers[event_type] = []Subscriber[T]{}
+		}
+
+		eb.subscribers[event_type] << subscriber
+	}
+}
+
+fn (shared eb EventBus[T]) publish(event_type EventType, data T) {
+	lock eb {
+		for _, subscriber in eb.subscribers[event_type] {
+			subscriber(data)
+		}
+	}
+}
+
+fn main() {
+	shared eb_string := new_event_bus[string]()
+	eb_string.subscribe('test', fn (data string) {
+		println(data)
+	})
+	eb_string.publish('test', 'hello')
+
+	shared eb_int := new_event_bus[int]()
+	eb_int.subscribe('test', fn (data int) {
+		println(data)
+	})
+	eb_int.publish('test', 22)
+}

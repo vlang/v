@@ -1,5 +1,6 @@
 module time
 
+// now returns the current local time.
 pub fn now() Time {
 	mut res := Time{}
 	#let date = new Date()
@@ -15,6 +16,7 @@ pub fn now() Time {
 	return res
 }
 
+// utc returns the current UTC time.
 pub fn utc() Time {
 	mut res := Time{}
 	#let date = new Date()
@@ -44,8 +46,7 @@ pub fn sleep(dur Duration) {
 	#while (new Date().getTime() < now + Number(toWait)) {}
 }
 
-// new_time returns a time struct with the calculated Unix time.
-pub fn new_time(t Time) Time {
+fn time_with_unix(t Time) Time {
 	if t.unix != 0 {
 		return t
 	}
@@ -62,6 +63,8 @@ pub fn new_time(t Time) Time {
 	return res
 }
 
+// ticks returns the number of milliseconds since the UNIX epoch.
+// // On Windows ticks returns the number of milliseconds elapsed since system start.
 pub fn ticks() i64 {
 	t := i64(0)
 	#t.val = BigInt(new Date().getTime())

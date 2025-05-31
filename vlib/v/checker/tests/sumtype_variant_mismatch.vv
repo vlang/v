@@ -1,0 +1,10 @@
+type Any = ?int | string
+type Any2 = ?int | ?string
+
+_ := ?Any(?string('baz'))
+_ := ?Any(string('baz'))
+_ := ?Any('baz')
+
+_ := ?Any2(?string('baz'))
+_ := ?Any2(string('baz'))
+_ := ?Any2('baz')

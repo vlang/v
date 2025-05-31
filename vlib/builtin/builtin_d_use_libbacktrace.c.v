@@ -1,12 +1,12 @@
-[has_globals]
+@[has_globals]
 module builtin
 
 #flag -I@VEXEROOT/thirdparty/libbacktrace
 #flag @VEXEROOT/thirdparty/libbacktrace/backtrace.o
 #include <backtrace.h>
 
-// NOTE: Don't mark this as a [typedef] or it may cause compiler errors!
-struct C.backtrace_state {
+// NOTE: Don't mark this as a @[typedef] or it may cause compiler errors!
+pub struct C.backtrace_state {
 	// filename &char
 }
 
@@ -15,7 +15,8 @@ type BacktraceErrorCallback = fn (data voidptr, msg &char, errnum int) voidptr
 type BacktraceFullCallback = fn (data voidptr, pc voidptr, filename &char, lineno int, func &char) &int
 
 fn C.backtrace_create_state(filename &char, threaded int, error_callback BacktraceErrorCallback, data voidptr) &C.backtrace_state
-fn C.backtrace_full(state &C.backtrace_state, skip int, cb BacktraceFullCallback, err_cb BacktraceErrorCallback, data voidptr) int
+fn C.backtrace_full(state &C.backtrace_state, skip int, cb BacktraceFullCallback, err_cb BacktraceErrorCallback,
+	data voidptr) int
 
 __global bt_state = init_bt_state()
 
@@ -85,7 +86,7 @@ fn bt_error_handler(data voidptr, msg &char, errnum int) {
 	exit(1)
 }
 
-[noinline]
+@[noinline]
 fn print_libbacktrace(frames_to_skip int) {
 	$if no_backtrace ? {
 		return
@@ -94,7 +95,7 @@ fn print_libbacktrace(frames_to_skip int) {
 	C.backtrace_full(bt_state, frames_to_skip, bt_print_callback, bt_error_callback, data)
 }
 
-[noinline]
+@[noinline]
 fn eprint_libbacktrace(frames_to_skip int) {
 	$if no_backtrace ? {
 		return

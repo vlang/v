@@ -18,12 +18,12 @@ fn (a Item) == (b Item) bool {
 }
 */
 
-fn  main() {
+fn main() {
 	min_heap()
 }
 
 fn min_heap() {
-	mut heap := datatypes.MinHeap<Item>{}
+	mut heap := datatypes.MinHeap[Item]{}
 
 	heap.insert(Item{10})
 

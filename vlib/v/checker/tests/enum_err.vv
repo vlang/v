@@ -1,11 +1,11 @@
 module main
 
 enum Color {
-    green = 'green'
-    yellow
-    blue
+	green = 'green'
+	yellow
+	blue
 }
 
-fn main(){
+fn main() {
 	println('hello')
 }

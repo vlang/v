@@ -7,7 +7,7 @@ flappy learning implemented by vlang
 v run game.v
 ```
 
-![flappy.png](img/flappy.png)
+![flappy.png](assets/img/flappy.png)
 
 ## thanks
 https://github.com/xviniette/FlappyLearning

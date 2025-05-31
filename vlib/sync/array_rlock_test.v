@@ -17,7 +17,7 @@ fn test_shared_modification() {
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn test_shared_direct_modification() {
 	shared foo := &[2, 0, 5]
 	lock foo {

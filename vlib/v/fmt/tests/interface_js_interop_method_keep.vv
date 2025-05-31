@@ -1,0 +1,11 @@
+pub interface JS.CanvasRenderingContext2D {
+	setLineDash(JS.Array)
+}
+
+pub fn (ctx JS.CanvasRenderingContext2D) set_line_dash(arr []f64) {
+	tmp := JS.Array.prototype.constructor()
+	for x in arr {
+		tmp.push(JS.Number(x))
+	}
+	ctx.setLineDash(tmp)
+}

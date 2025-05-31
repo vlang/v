@@ -1,15 +1,15 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
 
 import net.urllib
 
-const (
-	max_redirects        = 4
-	content_type_default = 'text/plain'
-	bufsize              = 1536
-)
+const max_redirects = 16 // safari max - other browsers allow up to 20
+
+const content_type_default = 'text/plain'
+
+const bufsize = 64 * 1024
 
 // FetchConfig holds configuration data for the fetch function.
 pub struct FetchConfig {
@@ -23,17 +23,23 @@ pub mut:
 	user_agent string  = 'v.http'
 	user_ptr   voidptr = unsafe { nil }
 	verbose    bool
-	//
+	proxy      &HttpProxy = unsafe { nil }
+
 	validate               bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
 	verify                 string // the path to a rootca.pem file, containing trusted CA certificate(s)
 	cert                   string // the path to a cert.pem file, containing client certificate(s) for the request
 	cert_key               string // the path to a key.pem file, containing private keys for the client certificate(s)
 	in_memory_verification bool   // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
-	// callbacks to allow custom reporting code to run, while the request is running
-	on_redirect RequestRedirectFn = unsafe { nil }
-	on_progress RequestProgressFn = unsafe { nil }
-	on_finish   RequestFinishFn   = unsafe { nil }
+	max_retries            int  = 5    // maximum number of retries required when an underlying socket error occurs
+	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
+	on_redirect      RequestRedirectFn     = unsafe { nil }
+	on_progress      RequestProgressFn     = unsafe { nil }
+	on_progress_body RequestProgressBodyFn = unsafe { nil }
+	on_finish        RequestFinishFn       = unsafe { nil }
+
+	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
+	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
 }
 
 // new_request creates a new Request given the request `method`, `url_`, and
@@ -43,8 +49,8 @@ pub fn new_request(method Method, url_ string, data string) Request {
 	// println('new req() method=$method url="$url" dta="$data"')
 	return Request{
 		method: method
-		url: url
-		data: data
+		url:    url
+		data:   data
 		/*
 		headers: {
 			'Accept-Encoding': 'compress'
@@ -62,9 +68,9 @@ pub fn get(url string) !Response {
 pub fn post(url string, data string) !Response {
 	return fetch(
 		method: .post
-		url: url
-		data: data
-		header: new_header(key: .content_type, value: http.content_type_default)
+		url:    url
+		data:   data
+		header: new_header(key: .content_type, value: content_type_default)
 	)
 }
 
@@ -72,8 +78,8 @@ pub fn post(url string, data string) !Response {
 pub fn post_json(url string, data string) !Response {
 	return fetch(
 		method: .post
-		url: url
-		data: data
+		url:    url
+		data:   data
 		header: new_header(key: .content_type, value: 'application/json')
 	)
 }
@@ -83,13 +89,23 @@ pub fn post_json(url string, data string) !Response {
 pub fn post_form(url string, data map[string]string) !Response {
 	return fetch(
 		method: .post
-		url: url
+		url:    url
 		header: new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
-		data: url_encode_form_data(data)
+		data:   url_encode_form_data(data)
 	)
 }
 
-[params]
+pub fn post_form_with_cookies(url string, data map[string]string, cookies map[string]string) !Response {
+	return fetch(
+		method:  .post
+		url:     url
+		header:  new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
+		data:    url_encode_form_data(data)
+		cookies: cookies
+	)
+}
+
+@[params]
 pub struct PostMultipartFormConfig {
 pub mut:
 	form   map[string]string
@@ -101,13 +117,14 @@ pub mut:
 // request to the given `url`.
 pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 	body, boundary := multipart_form_body(conf.form, conf.files)
+	println(conf.header)
 	mut header := conf.header
 	header.set(.content_type, 'multipart/form-data; boundary="${boundary}"')
 	return fetch(
 		method: .post
-		url: url
+		url:    url
 		header: header
-		data: body
+		data:   body
 	)
 }
 
@@ -115,9 +132,9 @@ pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 pub fn put(url string, data string) !Response {
 	return fetch(
 		method: .put
-		url: url
-		data: data
-		header: new_header(key: .content_type, value: http.content_type_default)
+		url:    url
+		data:   data
+		header: new_header(key: .content_type, value: content_type_default)
 	)
 }
 
@@ -125,9 +142,9 @@ pub fn put(url string, data string) !Response {
 pub fn patch(url string, data string) !Response {
 	return fetch(
 		method: .patch
-		url: url
-		data: data
-		header: new_header(key: .content_type, value: http.content_type_default)
+		url:    url
+		data:   data
+		header: new_header(key: .content_type, value: content_type_default)
 	)
 }
 
@@ -141,33 +158,47 @@ pub fn delete(url string) !Response {
 	return fetch(method: .delete, url: url)
 }
 
-// fetch sends an HTTP request to the `url` with the given method and configuration.
-pub fn fetch(config FetchConfig) !Response {
+// prepare prepares a new request for fetching, but does not call its .do() method.
+// It is useful, if you want to reuse request objects, for several requests in a row,
+// modifying the request each time, then calling .do() to get the new response.
+pub fn prepare(config FetchConfig) !Request {
 	if config.url == '' {
 		return error('http.fetch: empty url')
 	}
 	url := build_url_from_fetch(config) or { return error('http.fetch: invalid url ${config.url}') }
 	req := Request{
-		method: config.method
-		url: url
-		data: config.data
-		header: config.header
-		cookies: config.cookies
-		user_agent: config.user_agent
-		user_ptr: config.user_ptr
-		verbose: config.verbose
-		validate: config.validate
-		verify: config.verify
-		cert: config.cert
-		cert_key: config.cert_key
+		method:                 config.method
+		url:                    url
+		data:                   config.data
+		header:                 config.header
+		cookies:                config.cookies
+		user_agent:             config.user_agent
+		user_ptr:               config.user_ptr
+		verbose:                config.verbose
+		validate:               config.validate
+		verify:                 config.verify
+		cert:                   config.cert
+		proxy:                  config.proxy
+		cert_key:               config.cert_key
 		in_memory_verification: config.in_memory_verification
-		allow_redirect: config.allow_redirect
-		on_progress: config.on_progress
-		on_redirect: config.on_redirect
-		on_finish: config.on_finish
+		allow_redirect:         config.allow_redirect
+		max_retries:            config.max_retries
+		on_progress:            config.on_progress
+		on_progress_body:       config.on_progress_body
+		on_redirect:            config.on_redirect
+		on_finish:              config.on_finish
+		stop_copying_limit:     config.stop_copying_limit
+		stop_receiving_limit:   config.stop_receiving_limit
 	}
-	res := req.do()!
-	return res
+	return req
+}
+
+// TODO: @[noinline] attribute is used for temporary fix the 'get_text()' intermittent segfault / nil value when compiling with GCC 13.2.x and -prod option ( Issue #20506 )
+// fetch sends an HTTP request to the `url` with the given method and configuration.
+@[noinline]
+pub fn fetch(config FetchConfig) !Response {
+	req := prepare(config)!
+	return req.do()!
 }
 
 // get_text sends an HTTP GET request to the given `url` and returns the text content of the response.

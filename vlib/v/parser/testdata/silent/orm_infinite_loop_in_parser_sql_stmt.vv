@@ -1,0 +1,68 @@
+module main
+
+import db.sqlite
+
+@[table: 'modules']
+struct Module {
+	id           int    @[primary; sql: serial]
+	name         string
+	nr_downloads int    @[sql: u64]
+	creator      User
+}
+
+struct User {
+	id             int    @[primary; sql: serial]
+	age            u32    @[unique: 'user']
+	name           string @[sql: 'username'; sql_type: 'VARCHAR(200)'; unique]
+	is_customer    bool   @[sql: 'abc'; unique: 'user']
+	skipped_string string @[skip]
+}
+
+struct Parent {
+	id       int     @[primary; sql: serial]
+	name     string
+	children []Child @[fkey: 'parent_id']
+}
+
+struct Child {
+	id        int    @[primary; sql: serial]
+	parent_id int
+	name      string
+}
+
+fn main() {
+	eprintln('------------ ${@METHOD} -----------------')
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		sql db {
+			drop table Parent
+			drop table Child
+		} or {}
+		db.close() or {}
+	}
+
+	sql db {
+		create table Parent
+	}!
+	sql db {
+		create table Child
+	}!
+	par := Parent{
+		name: 'test'
+		children: [
+			Child{
+				name: 'abc'
+			},
+			Child{
+				name: 'def'
+			},
+		]
+	}
+	sql db {
+		insert par into Parent
+	}!
+	sql db {
+		select from Parent where id == 1 & name == "whatever"
+	}!
+	eprintln(parent)
+}

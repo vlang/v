@@ -28,7 +28,7 @@ fn test_map_of_map_to_struct() {
 	mut foos := map[string]map[string]Foo{}
 	foos['zza']['zzb'] = Foo{'bar'}
 	assert foos['zza']['zzb'].name == 'bar'
-	//
+
 	foos['zza']['zzb'].name = 'baz'
 	assert foos['zza']['zzb'].name == 'baz'
 }

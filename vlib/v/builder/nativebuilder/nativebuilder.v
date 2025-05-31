@@ -16,7 +16,10 @@ pub fn compile_native(mut b builder.Builder) {
 	if b.pref.is_verbose {
 		println('all .v files before:')
 	}
-	mut files := b.get_builtin_files()
+	mut files := []string{}
+	if !b.pref.no_builtin {
+		files << b.get_builtin_files()
+	}
 	files << b.get_user_files()
 	b.set_module_lookup_paths()
 	if b.pref.is_verbose {
@@ -55,6 +58,6 @@ pub fn build_native(mut b builder.Builder, v_files []string, out_file string) {
 			eprintln('Error: Only arm64 and amd64 are supported by V')
 		}
 	}
-	b.stats_lines, b.stats_bytes = native.gen(b.parsed_files, b.table, out_file, b.pref)
+	b.stats_lines, b.stats_bytes = native.gen(b.parsed_files, mut b.table, out_file, b.pref)
 	util.timing_measure('Native GEN')
 }

@@ -1,21 +1,21 @@
 pub struct Foo {
-    val Bar
+	val Bar
 }
 
 pub struct Bar {
-    number int
+	number int
 }
 
 fn test_get() {
-    
 }
 
-[cinit]
+@[cinit]
 __global (
-    baz = Foo{Bar{number: 5}}
+	baz = Foo{Bar{
+		number: 5
+	}}
 )
 
-
 fn main() {
-    print(baz)
+	print(baz)
 }

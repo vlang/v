@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 // Creator: nedimf (07/2020)
 import os
 import net.smtp
@@ -19,17 +20,17 @@ fn main() {
 	subject := os.input('Subject: ')
 	body := os.input('Body: ')
 	client_cfg := smtp.Client{
-		server: mailserver
-		from: from
-		port: mailport
+		server:   mailserver
+		from:     from
+		port:     mailport
 		username: username
 		password: password
 	}
 	send_cfg := smtp.Mail{
-		to: to
-		subject: subject
+		to:        to
+		subject:   subject
 		body_type: .html
-		body: body
+		body:      body
 	}
 	mut client := smtp.new_client(client_cfg) or { panic('Error with configuring smtp: ${err}') }
 	client.send(send_cfg) or { panic('Error resolving email address: ${err}') }

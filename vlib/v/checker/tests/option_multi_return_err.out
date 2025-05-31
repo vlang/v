@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_multi_return_err.vv:6:14: error: split() returns `?(string, string)`, so it should have either an `or {}` block, or `?` at the end
+    4 | 
+    5 | fn main() {
+    6 |     foo, bar := split('foo/bar')
+      |                 ~~~~~~~~~~~~~~~~
+    7 |     println('${foo}.${bar}')
+    8 | }

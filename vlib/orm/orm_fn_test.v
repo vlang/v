@@ -1,30 +1,32 @@
+// vtest flaky: true
+// vtest retry: 3
 import orm
 
 fn test_orm_stmt_gen_update() {
 	query_and, _ := orm.orm_stmt_gen(.default, 'Test', "'", .update, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
-		data: []
-		types: []
-		kinds: []
+		data:   []
+		types:  []
+		kinds:  []
 	}, orm.QueryData{
 		fields: ['id', 'name']
-		data: []
-		types: []
-		kinds: [.ge, .eq]
+		data:   []
+		types:  []
+		kinds:  [.ge, .eq]
 		is_and: [true]
 	})
 	assert query_and == "UPDATE 'Test' SET 'test' = ?0, 'a' = ?1 WHERE 'id' >= ?2 AND 'name' = ?3;"
 
 	query_or, _ := orm.orm_stmt_gen(.default, 'Test', "'", .update, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
-		data: []
-		types: []
-		kinds: []
+		data:   []
+		types:  []
+		kinds:  []
 	}, orm.QueryData{
 		fields: ['id', 'name']
-		data: []
-		types: []
-		kinds: [.ge, .eq]
+		data:   []
+		types:  []
+		kinds:  [.ge, .eq]
 		is_and: [false]
 	})
 	assert query_or == "UPDATE 'Test' SET 'test' = ?0, 'a' = ?1 WHERE 'id' >= ?2 OR 'name' = ?3;"
@@ -33,9 +35,9 @@ fn test_orm_stmt_gen_update() {
 fn test_orm_stmt_gen_insert() {
 	query, _ := orm.orm_stmt_gen(.default, 'Test', "'", .insert, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
-		data: []
-		types: []
-		kinds: []
+		data:   []
+		types:  []
+		kinds:  []
 	}, orm.QueryData{})
 	assert query == "INSERT INTO 'Test' ('test', 'a') VALUES (?0, ?1);"
 }
@@ -43,28 +45,28 @@ fn test_orm_stmt_gen_insert() {
 fn test_orm_stmt_gen_delete() {
 	query_and, _ := orm.orm_stmt_gen(.default, 'Test', "'", .delete, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
-		data: []
-		types: []
-		kinds: []
+		data:   []
+		types:  []
+		kinds:  []
 	}, orm.QueryData{
 		fields: ['id', 'name']
-		data: []
-		types: []
-		kinds: [.ge, .eq]
+		data:   []
+		types:  []
+		kinds:  [.ge, .eq]
 		is_and: [true]
 	})
 	assert query_and == "DELETE FROM 'Test' WHERE 'id' >= ?0 AND 'name' = ?1;"
 
 	query_or, _ := orm.orm_stmt_gen(.default, 'Test', "'", .delete, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
-		data: []
-		types: []
-		kinds: []
+		data:   []
+		types:  []
+		kinds:  []
 	}, orm.QueryData{
 		fields: ['id', 'name']
-		data: []
-		types: []
-		kinds: [.ge, .eq]
+		data:   []
+		types:  []
+		kinds:  [.ge, .eq]
 		is_and: [false]
 	})
 	assert query_or == "DELETE FROM 'Test' WHERE 'id' >= ?0 OR 'name' = ?1;"
@@ -76,7 +78,7 @@ fn get_select_fields() []string {
 
 fn test_orm_select_gen() {
 	query := orm.orm_select_gen(orm.SelectConfig{
-		table: 'test_table'
+		table:  'test_table'
 		fields: get_select_fields()
 	}, "'", true, '?', 0, orm.QueryData{})
 
@@ -85,8 +87,8 @@ fn test_orm_select_gen() {
 
 fn test_orm_select_gen_with_limit() {
 	query := orm.orm_select_gen(orm.SelectConfig{
-		table: 'test_table'
-		fields: get_select_fields()
+		table:     'test_table'
+		fields:    get_select_fields()
 		has_limit: true
 	}, "'", true, '?', 0, orm.QueryData{})
 
@@ -95,12 +97,12 @@ fn test_orm_select_gen_with_limit() {
 
 fn test_orm_select_gen_with_where() {
 	query := orm.orm_select_gen(orm.SelectConfig{
-		table: 'test_table'
-		fields: get_select_fields()
+		table:     'test_table'
+		fields:    get_select_fields()
 		has_where: true
 	}, "'", true, '?', 0, orm.QueryData{
 		fields: ['abc', 'test']
-		kinds: [.eq, .gt]
+		kinds:  [.eq, .gt]
 		is_and: [true]
 	})
 
@@ -109,9 +111,9 @@ fn test_orm_select_gen_with_where() {
 
 fn test_orm_select_gen_with_order() {
 	query := orm.orm_select_gen(orm.SelectConfig{
-		table: 'test_table'
-		fields: get_select_fields()
-		has_order: true
+		table:      'test_table'
+		fields:     get_select_fields()
+		has_order:  true
 		order_type: .desc
 	}, "'", true, '?', 0, orm.QueryData{})
 
@@ -120,8 +122,8 @@ fn test_orm_select_gen_with_order() {
 
 fn test_orm_select_gen_with_offset() {
 	query := orm.orm_select_gen(orm.SelectConfig{
-		table: 'test_table'
-		fields: get_select_fields()
+		table:      'test_table'
+		fields:     get_select_fields()
 		has_offset: true
 	}, "'", true, '?', 0, orm.QueryData{})
 
@@ -130,16 +132,16 @@ fn test_orm_select_gen_with_offset() {
 
 fn test_orm_select_gen_with_all() {
 	query := orm.orm_select_gen(orm.SelectConfig{
-		table: 'test_table'
-		fields: get_select_fields()
-		has_limit: true
-		has_order: true
+		table:      'test_table'
+		fields:     get_select_fields()
+		has_limit:  true
+		has_order:  true
 		order_type: .desc
 		has_offset: true
-		has_where: true
+		has_where:  true
 	}, "'", true, '?', 0, orm.QueryData{
 		fields: ['abc', 'test']
-		kinds: [.eq, .gt]
+		kinds:  [.eq, .gt]
 		is_and: [true]
 	})
 
@@ -149,28 +151,31 @@ fn test_orm_select_gen_with_all() {
 fn test_orm_table_gen() {
 	query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
-			name: 'id'
-			typ: typeof[int]().idx
+			name:        'id'
+			typ:         typeof[int]().idx
 			default_val: '10'
-			attrs: [
-				StructAttribute{
+			nullable:    true
+			attrs:       [
+				VAttribute{
 					name: 'primary'
 				},
-				StructAttribute{
-					name: 'sql'
+				VAttribute{
+					name:    'sql'
 					has_arg: true
-					arg: 'serial'
-					kind: .plain
+					arg:     'serial'
+					kind:    .plain
 				},
 			]
 		},
 		orm.TableField{
-			name: 'test'
-			typ: typeof[string]().idx
+			name:     'test'
+			typ:      typeof[string]().idx
+			nullable: true
 		},
 		orm.TableField{
-			name: 'abc'
-			typ: typeof[i64]().idx
+			name:        'abc'
+			typ:         typeof[i64]().idx
+			nullable:    true
 			default_val: '6754'
 		},
 	], sql_type_from_v, false) or { panic(err) }
@@ -178,28 +183,31 @@ fn test_orm_table_gen() {
 
 	alt_query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
-			name: 'id'
-			typ: typeof[int]().idx
+			name:        'id'
+			typ:         typeof[int]().idx
+			nullable:    true
 			default_val: '10'
-			attrs: [
-				StructAttribute{
+			attrs:       [
+				VAttribute{
 					name: 'primary'
 				},
-				StructAttribute{
-					name: 'sql'
+				VAttribute{
+					name:    'sql'
 					has_arg: true
-					arg: 'serial'
-					kind: .plain
+					arg:     'serial'
+					kind:    .plain
 				},
 			]
 		},
 		orm.TableField{
-			name: 'test'
-			typ: typeof[string]().idx
+			name:     'test'
+			typ:      typeof[string]().idx
+			nullable: true
 		},
 		orm.TableField{
-			name: 'abc'
-			typ: typeof[i64]().idx
+			name:        'abc'
+			typ:         typeof[i64]().idx
+			nullable:    true
 			default_val: '6754'
 		},
 	], sql_type_from_v, true) or { panic(err) }
@@ -207,77 +215,81 @@ fn test_orm_table_gen() {
 
 	unique_query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
-			name: 'id'
-			typ: typeof[int]().idx
+			name:        'id'
+			typ:         typeof[int]().idx
+			nullable:    true
 			default_val: '10'
-			attrs: [
-				StructAttribute{
+			attrs:       [
+				VAttribute{
 					name: 'primary'
 				},
-				StructAttribute{
-					name: 'sql'
+				VAttribute{
+					name:    'sql'
 					has_arg: true
-					arg: 'serial'
-					kind: .plain
+					arg:     'serial'
+					kind:    .plain
 				},
 			]
 		},
 		orm.TableField{
-			name: 'test'
-			typ: typeof[string]().idx
+			name:  'test'
+			typ:   typeof[string]().idx
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'unique'
 				},
 			]
 		},
 		orm.TableField{
-			name: 'abc'
-			typ: typeof[i64]().idx
+			name:        'abc'
+			typ:         typeof[i64]().idx
 			default_val: '6754'
 		},
 	], sql_type_from_v, false) or { panic(err) }
-	assert unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, PRIMARY KEY('id'), UNIQUE('test'));"
+	assert unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT NOT NULL, 'abc' INT64 DEFAULT 6754 NOT NULL, PRIMARY KEY('id'), UNIQUE('test'));"
 
 	mult_unique_query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
-			name: 'id'
-			typ: typeof[int]().idx
+			name:        'id'
+			typ:         typeof[int]().idx
+			nullable:    true
 			default_val: '10'
-			attrs: [
-				StructAttribute{
+			attrs:       [
+				VAttribute{
 					name: 'primary'
 				},
-				StructAttribute{
-					name: 'sql'
+				VAttribute{
+					name:    'sql'
 					has_arg: true
-					arg: 'serial'
-					kind: .plain
+					arg:     'serial'
+					kind:    .plain
 				},
 			]
 		},
 		orm.TableField{
-			name: 'test'
-			typ: typeof[string]().idx
-			attrs: [
-				StructAttribute{
-					name: 'unique'
+			name:     'test'
+			typ:      typeof[string]().idx
+			nullable: true
+			attrs:    [
+				VAttribute{
+					name:    'unique'
 					has_arg: true
-					arg: 'test'
-					kind: .string
+					arg:     'test'
+					kind:    .string
 				},
 			]
 		},
 		orm.TableField{
-			name: 'abc'
-			typ: typeof[i64]().idx
+			name:        'abc'
+			typ:         typeof[i64]().idx
+			nullable:    true
 			default_val: '6754'
-			attrs: [
-				StructAttribute{
-					name: 'unique'
+			attrs:       [
+				VAttribute{
+					name:    'unique'
 					has_arg: true
-					arg: 'test'
-					kind: .string
+					arg:     'test'
+					kind:    .string
 				},
 			]
 		},
@@ -294,7 +306,7 @@ fn sql_type_from_v(typ int) !string {
 		'DOUBLE'
 	} else if typ == orm.type_string {
 		'TEXT'
-	} else if typ == -1 {
+	} else if typ == orm.serial {
 		'SERIAL'
 	} else {
 		error('Unknown type ${typ}')

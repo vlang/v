@@ -7,7 +7,7 @@ import time
 /*
 The goal of this test, is to simulate a developer, that has run a program, compiled with -live flag.
 
-It does so by writing a new generated program containing a [live] fn pmessage() string {...} function,
+It does so by writing a new generated program containing a @[live] fn pmessage() string {...} function,
 (that program is in `vlib/v/live/live_test_template.vv`)
 then runs the generated program at the start *in the background*,
 waits some time, so that the program could run a few iterations, then modifies its source
@@ -22,7 +22,7 @@ If everything works fine, the output of the generated program would have changed
 which then is detected by the test program (the histogram checks).
 
 Since this test program is sensitive to coordination (or lack of) of several processes,
-it tries to sidestep the coordination issue by polling the file system for the existance
+it tries to sidestep the coordination issue by polling the file system for the existence
 of files, ORIGINAL.txt ... STOP.txt , which are appended to by the generated program.
 
 Note: That approach of monitoring the state of the running generated program, is clearly not ideal,
@@ -31,24 +31,22 @@ not very flaky way.
 
 TODO: Cleanup this when/if v has better process control/communication primitives.
 */
-const (
-	vexe                = os.getenv('VEXE')
-	vtmp_folder         = os.join_path(os.vtmp_dir(), 'v', 'tests', 'live')
-	main_source_file    = os.join_path(vtmp_folder, 'main.v')
-	tmp_file            = os.join_path(vtmp_folder, 'mymodule', 'generated_live_module.tmp')
-	source_file         = os.join_path(vtmp_folder, 'mymodule', 'mymodule.v')
-	genexe_file         = os.join_path(vtmp_folder, 'generated_live_program')
-	output_file         = os.join_path(vtmp_folder, 'generated_live_program.output.txt')
-	res_original_file   = os.join_path(vtmp_folder, 'ORIGINAL.txt')
-	res_changed_file    = os.join_path(vtmp_folder, 'CHANGED.txt')
-	res_another_file    = os.join_path(vtmp_folder, 'ANOTHER.txt')
-	res_stop_file       = os.join_path(vtmp_folder, 'STOP.txt')
-	live_program_source = get_source_template()
-)
+const vexe = os.getenv('VEXE')
+const vtmp_folder = os.join_path(os.vtmp_dir(), 'live_tests')
+const main_source_file = os.join_path(vtmp_folder, 'main.v')
+const tmp_file = os.join_path(vtmp_folder, 'mymodule', 'generated_live_module.tmp')
+const source_file = os.join_path(vtmp_folder, 'mymodule', 'mymodule.v')
+const genexe_file = os.join_path(vtmp_folder, 'generated_live_program.exe')
+const output_file = os.join_path(vtmp_folder, 'generated_live_program.output.txt')
+const res_original_file = os.join_path(vtmp_folder, 'ORIGINAL.txt')
+const res_changed_file = os.join_path(vtmp_folder, 'CHANGED.txt')
+const res_another_file = os.join_path(vtmp_folder, 'ANOTHER.txt')
+const res_stop_file = os.join_path(vtmp_folder, 'STOP.txt')
+const live_program_source = get_source_template()
 
 fn get_source_template() string {
 	src := os.read_file(os.join_path(os.dir(@FILE), 'live_test_template.vv')) or { panic(err) }
-	return src.replace('#OUTPUT_FILE#', output_file)
+	return src.replace('#OUTPUT_FILE#', output_file.replace('\\', '\\\\'))
 }
 
 fn atomic_write_source(source string) {
@@ -104,7 +102,7 @@ fn watchdog() {
 	}
 }
 
-[debuglivetest]
+@[debuglivetest]
 fn vprintln(s string) {
 	eprintln(s)
 }
@@ -170,19 +168,30 @@ fn setup_cycles_environment() {
 	os.setenv('WAIT_CYCLES', '${max_wait_cycles}', true)
 }
 
-//
+fn run_in_background(cmd string) {
+	spawn fn (cmd string) {
+		res := os.execute(cmd)
+		if res.exit_code != 0 {
+			eprintln('----------------------- background command failed: --------------------------')
+			eprintln('----- exit_code: ${res.exit_code}, cmd: ${cmd}, output:')
+			eprintln(res.output)
+			eprintln('-----------------------------------------------------------------------------')
+		}
+		assert res.exit_code == 0
+	}(cmd)
+	time.sleep(1000 * time.millisecond)
+	eprintln('... run_in_background, cmd: ${cmd}')
+}
+
 fn test_live_program_can_be_compiled() {
 	setup_cycles_environment()
 	eprintln('Compiling...')
 	compile_cmd := '${os.quoted_path(vexe)} -cg -keepc -nocolor -live -o ${os.quoted_path(genexe_file)} ${os.quoted_path(main_source_file)}'
 	eprintln('> compile_cmd: ${compile_cmd}')
-	os.system(compile_cmd)
-	//
-	cmd := '${os.quoted_path(genexe_file)} > /dev/null &'
-	eprintln('Running with: ${cmd}')
-	res := os.system(cmd)
-	assert res == 0
-	eprintln('... running in the background')
+	time.sleep(1000 * time.millisecond) // improve chances of working on windows
+	compile_res := os.system(compile_cmd)
+	assert compile_res == 0
+	run_in_background('${os.quoted_path(genexe_file)}')
 	wait_for_file('ORIGINAL')
 }
 

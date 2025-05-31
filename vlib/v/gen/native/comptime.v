@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module native
@@ -9,19 +9,13 @@ fn (mut g Gen) comptime_at(node ast.AtExpr) string {
 	return node.val
 }
 
-fn (mut g Gen) comptime_conditional(node ast.IfExpr) ?[]ast.Stmt {
-	if node.branches.len == 0 {
-		return none
-	}
+fn (mut g Gen) comptime_conditional(node ast.IfExpr) ?ast.IfBranch {
+	return node.branches.filter((node.has_else && it == node.branches.last())
+		|| g.comptime_is_truthy(it.cond))[0] or { return none }
+}
 
-	for i, branch in node.branches {
-		// handle $else branch, which does not have a condition
-		if (node.has_else && i + 1 == node.branches.len) || g.comptime_is_truthy(branch.cond) {
-			return branch.stmts
-		}
-	}
-
-	return none
+fn (mut g Gen) should_emit_hash_stmt(node ast.HashStmt) bool {
+	return node.ct_conds.all(g.comptime_is_truthy(it))
 }
 
 fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
@@ -58,6 +52,10 @@ fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
 				}
 				.ne {
 					return g.comptime_is_truthy(cond.left) != g.comptime_is_truthy(cond.right)
+				}
+				.key_is {
+					// TODO: implement properly, to support @[flag_enum_fn] functions
+					return true
 				}
 				else {
 					g.n_error('Compile time infix expr `${cond}` is not handled by the native backend.')
@@ -98,6 +96,9 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		'serenity' {
 			g.pref.os == .serenity
 		}
+		'plan9' {
+			g.pref.os == .plan9
+		}
 		'vinix' {
 			g.pref.os == .vinix
 		}
@@ -127,6 +128,9 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		}
 		'haiku' {
 			g.pref.os == .haiku
+		}
+		'qnx' {
+			g.pref.os == .qnx
 		}
 		//
 		// C compilers, these will probably always be false
@@ -158,7 +162,7 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		'arm64' {
 			g.pref.arch == .arm64
 		}
-		'x86' {
+		'x86', 'x32' {
 			false // native only supports 64-bit systems
 		}
 		'little_endian' {
@@ -167,9 +171,15 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		'big_endian' {
 			false // all systems targeted by native should be little-endian
 		}
+		'autofree' {
+			false
+		}
 		//
 		// Other
 		//
+		'native' {
+			true
+		}
 		'debug' {
 			g.pref.is_debug
 		}

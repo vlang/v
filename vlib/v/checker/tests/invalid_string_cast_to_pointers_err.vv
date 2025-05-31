@@ -1,0 +1,4 @@
+test := 'test'
+println(voidptr(test))
+println(byteptr(test))
+println(charptr(test))

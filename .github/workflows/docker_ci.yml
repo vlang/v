@@ -1,0 +1,81 @@
+name: Docker CI
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/docker_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/docker_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+env:
+  V_CI_MUSL: 1
+
+jobs:
+  docker-alpine-musl-gcc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 241
+    container:
+      image: thevlang/vlang:alpine-build
+      env:
+        VFLAGS: -cc gcc
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Show Environment
+        run: |
+          echo "PWD:"
+          pwd
+          echo "ENVIRONMENT:"
+          env
+          echo "C Compiler:"
+          gcc --version
+      - name: Add dependencies
+        run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
+      - name: Build V
+        run: CC=gcc make
+      - name: All code is formatted
+        run: ./v -silent test-cleancode
+      - name: Run only essential tests
+        run: VTEST_JUST_ESSENTIAL=1 ./v -silent test-self
+
+  docker-ubuntu-musl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 121
+    container:
+      image: thevlang/vlang:ubuntu-build
+      env:
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc -gc none
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build V
+        run: echo "$VFLAGS" && make -j4 && ./v -cg -o v cmd/v
+      - name: Verify `v test` works
+        run: |
+          echo "$VFLAGS"
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Add dependencies
+        run: apt install libsqlite3-dev
+      - name: All code is formatted
+        run: ./v -silent test-cleancode
+      - name: Test V fixed tests
+        run: ./v -silent test-self vlib

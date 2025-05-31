@@ -1,0 +1,4 @@
+vlib/v/scanner/tests/invalid_unicode_32_err.vv:1:17: error: invalid unicode point `\U0000D8FF`
+    1 | a := '\U0000D8FF'
+      |                 ^
+    2 | println(a)

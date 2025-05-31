@@ -30,19 +30,19 @@ mut:
 fn main() {
 	mut m := []Main{}
 	m << Sub1{
-		val: 123
+		val:  123
 		name: 'integer'
 	}
 	m << Sub2{
-		val: 3.14
+		val:  3.14
 		name: 'float'
 	}
 	m << Sub3{
-		val: 9_876_543_210
+		val:  9_876_543_210
 		name: '64bit integer'
 	}
 	m << Sub4{
-		val: 'abcd'
+		val:  'abcd'
 		name: 'string'
 	}
 	println(m)

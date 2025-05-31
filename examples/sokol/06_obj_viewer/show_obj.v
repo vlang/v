@@ -1,3 +1,4 @@
+// vtest build: misc-tooling // needs .h files that are produced by `v shader`
 /**********************************************************************
 *
 * .obj viewer
@@ -32,21 +33,19 @@ import obj
 
 // GLSL Include and functions
 
-#flag -I @VMODROOT/.
-#include "gouraud.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
+#include "@VMODROOT/gouraud.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
 fn C.gouraud_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
-const (
-	win_width  = 600
-	win_height = 600
-	bg_color   = gx.white
-)
+const win_width = 600
+const win_height = 600
+const bg_color = gx.white
 
 struct App {
 mut:
 	gg          &gg.Context = unsafe { nil }
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 
@@ -56,7 +55,7 @@ mut:
 	// time
 	ticks i64
 	// model
-	obj_part &obj.ObjPart
+	obj_part &obj.ObjPart = unsafe { nil }
 	n_vertex u32
 	// init parameters
 	file_name            string
@@ -66,7 +65,7 @@ mut:
 /******************************************************************************
 * Draw functions
 ******************************************************************************/
-[inline]
+@[inline]
 fn vec4(x f32, y f32, z f32, w f32) m4.Vec4 {
 	return m4.Vec4{
 		e: [x, y, z, w]!
@@ -92,9 +91,9 @@ fn calc_matrices(w f32, h f32, rx f32, ry f32, in_scale f32, pos m4.Vec4) obj.Ma
 	mvp := mv * view_proj // model view projection
 
 	return obj.Mats{
-		mv: mv
+		mv:  mv
 		mvp: mvp
-		nm: nm
+		nm:  nm
 	}
 }
 
@@ -121,9 +120,9 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 	mats := calc_matrices(dw, dh, rot[0], rot[1], zoom_scale, model_pos)
 
 	mut tmp_vs_param := obj.Tmp_vs_param{
-		mv: mats.mv
+		mv:  mats.mv
 		mvp: mats.mvp
-		nm: mats.nm
+		nm:  mats.nm
 	}
 
 	// *** fragment shader uniforms ***
@@ -137,21 +136,19 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 
 	sd := obj.Shader_data{
 		vs_data: unsafe { &tmp_vs_param }
-		vs_len: int(sizeof(tmp_vs_param))
+		vs_len:  int(sizeof(tmp_vs_param))
 		fs_data: unsafe { &tmp_fs_params }
-		fs_len: int(sizeof(tmp_fs_params))
+		fs_len:  int(sizeof(tmp_fs_params))
 	}
 
 	return app.obj_part.bind_and_draw_all(sd)
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size_real_pixels()
-
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
-		action: .clear
-		value: gfx.Color{
+		load_action: .clear
+		clear_value: gfx.Color{
 			r: 0.0
 			g: 0.0
 			b: 0.0
@@ -161,7 +158,8 @@ fn frame(mut app App) {
 
 	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
-	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
+	pass := sapp.create_default_pass(pass_action)
+	gfx.begin_pass(&pass)
 
 	// render the data
 	draw_start_glsl(app)
@@ -224,11 +222,11 @@ fn my_init(mut app App) {
 		tmp_txt[1] = u8(0xFF)
 		tmp_txt[2] = u8(0xFF)
 		tmp_txt[3] = u8(0xFF)
-		app.texture = obj.create_texture(1, 1, tmp_txt)
+		app.texture, app.sampler = obj.create_texture(1, 1, tmp_txt)
 		free(tmp_txt)
 	}
 	// glsl
-	app.obj_part.init_render_data(app.texture)
+	app.obj_part.init_render_data(app.texture, app.sampler)
 	app.init_flag = true
 }
 
@@ -262,31 +260,25 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 }
 
-/******************************************************************************
-* Main
-******************************************************************************/
 fn main() {
 	/*
 	obj.tst()
 	exit(0)
 	*/
-
 	// App init
-	mut app := &App{
-		gg: 0
-		obj_part: 0
-	}
+	mut app := &App{}
 
-	app.file_name = 'v.obj_' // default object is the v logo
+	// app.file_name = 'v.obj' // default object is the v logo
+	app.file_name = 'utahTeapot.obj' // default object is the v logo
 
 	app.single_material_flag = false
 	$if !android {
 		if os.args.len > 3 || (os.args.len >= 2 && os.args[1] in ['-h', '--help', '\\?', '-?']) {
 			eprintln('Usage:\nshow_obj [file_name:string] [single_material_flag:(true|false)]\n')
-			eprintln('file_name           : name of the .obj file, it must be in the folder "assets/models"')
-			eprintln('                      if no file name is passed the default V logo will be showed.')
-			eprintln('                      if you want custom models you can put them in the folder "assets/models".')
-			eprintln("single_material_flag: if true the viewer use for all the model's parts the default material\n")
+			eprintln('file_name           : name of the .obj file.')
+			eprintln('                      If no file name is passed the default V logo will be showed.')
+			eprintln('                      Try one of the .obj files in the "assets/models/" folder.')
+			eprintln("single_material_flag: if true the viewer use for all the model's parts the default material")
 			exit(0)
 		}
 
@@ -301,16 +293,16 @@ fn main() {
 	}
 
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'V Wavefront OBJ viewer - Use the mouse wheel to zoom'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: frame
-		init_fn: my_init
-		cleanup_fn: cleanup
-		event_fn: my_event_manager
+		window_title:  'V Wavefront OBJ viewer - Use the mouse wheel to zoom'
+		user_data:     app
+		bg_color:      bg_color
+		frame_fn:      frame
+		init_fn:       my_init
+		cleanup_fn:    cleanup
+		event_fn:      my_event_manager
 	)
 
 	app.ticks = time.ticks()

@@ -1,0 +1,14 @@
+`vweb` has been deprecated. Please use the more stable and fast `veb` instead.
+vlib/v/checker/tests/comptime_veb_vweb_call_err.vv:5:2: error: `$veb.html()` must be called inside a web method, e.g. `fn (mut app App) foo(mut ctx Context) veb.Result { return $veb.html('index.html') }`
+    3 | 
+    4 | fn main() {
+    5 |     $veb.html('./templates/empty.html')
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    6 |     $vweb.html('./templates/empty.html')
+    7 | }
+vlib/v/checker/tests/comptime_veb_vweb_call_err.vv:6:2: error: `$vweb.html()` must be called inside a web method, e.g. `fn (mut app App) foo(mut ctx Context) vweb.Result { return $vweb.html('index.html') }`
+    4 | fn main() {
+    5 |     $veb.html('./templates/empty.html')
+    6 |     $vweb.html('./templates/empty.html')
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 | }

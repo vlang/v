@@ -1,0 +1,18 @@
+interface Foo {
+	a()
+	b()
+}
+
+struct Bar implements Foo {
+}
+
+fn (b Bar) b() {}
+
+fn (b Bar) a() {}
+
+struct Baz implements Foo {
+}
+
+fn (b Baz) b() {}
+
+fn (b Baz) a() {}

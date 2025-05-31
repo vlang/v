@@ -1,0 +1,68 @@
+name: wasm backend CI
+
+on:
+  push:
+    paths:
+      - 'cmd/tools/builders/**.v'
+      - 'vlib/builtin/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/builder/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/markused/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/gen/wasm/**.v'
+      - 'vlib/v/gen/wasm/tests/**.v'
+      - '**/wasm_backend_ci.yml'
+  pull_request:
+    paths:
+      - 'cmd/tools/builders/**.v'
+      - 'vlib/builtin/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/builder/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/markused/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/gen/wasm/**.v'
+      - 'vlib/v/gen/wasm/tests/**.v'
+      - '**/wasm_backend_ci.yml'
+
+concurrency:
+  group: wasm-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wasm-backend:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+      fail-fast: false
+    timeout-minutes: 10
+    env:
+      VTEST_ONLY: wasm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        if: runner.os != 'Windows'
+        run: make -j4
+      - name: Build V (Windows)
+        if: runner.os == 'Windows'
+        run: ./make.bat
+      - name: Build examples
+        run: ./v -silent build-examples
+      - name: Setup Wasmer
+        uses: wasmerio/setup-wasmer@v3.1
+      - name: Test the WASM backend
+        run: ./v -silent test vlib/v/gen/wasm/tests/

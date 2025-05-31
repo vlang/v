@@ -1,16 +1,16 @@
 import rand
 import os
 
-const (
-	help_text = ' Usage:\t./VCasino\n
+const help_text = ' Usage:\t./VCasino\n
  Description:\n  VCasino is a little game only made to learn V.\n'
-	g_desc = "  The object of Roulette is to pick the number where the spinning ball will land on the wheel.
+
+const g_desc = "  The object of Roulette is to pick the number where the spinning ball will land on the wheel.
    If your number is the good one, you'll get your bet x3.
    If your number is the same color as the ball one, you'll get your bet /2.
    Otherwise, you will lose your bet.\n"
-	odd  = 'red'
-	even = 'black'
-)
+
+const odd = 'red'
+const even = 'black'
 
 struct Options {
 	long_opt  string
@@ -47,7 +47,7 @@ fn get_bet_nbr() int {
 		println('Reminder: odd numbers are red and even are black.')
 		println('Type the number you want to bet on (between 0 and 49):')
 		line := os.get_line().trim_space()
-		if line.len < 1 {
+		if line == '' {
 			println('error: empty line.')
 			continue
 		}
@@ -70,7 +70,7 @@ fn get_bet(money int) int {
 	for bet <= 0 || bet > money {
 		println('You have ${money} V. Type in the amount of your bet:')
 		line := os.get_line().trim_space()
-		if line.len < 1 {
+		if line == '' {
 			println('error: empty line.')
 			continue
 		}

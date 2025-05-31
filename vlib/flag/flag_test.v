@@ -194,6 +194,76 @@ fn test_if_no_options_given_usage_message_does_not_contain_options() {
 	assert !fp.usage().contains('Options:')
 }
 
+fn test_default_val_descriptions_for_bools() {
+	mut fp := flag.new_flag_parser([])
+	fp.bool('a_bool', `b`, true, '')
+
+	// by default, boolean flags contain no value description
+	assert !fp.usage().contains('<bool>')
+}
+
+fn test_custom_val_descriptions_for_bools() {
+	mut fp := flag.new_flag_parser([])
+	fp.bool('a_bool', `b`, true, '', val_desc: '<custom bool>')
+
+	// a custom boolean value description will be output
+	assert fp.usage().contains('<custom bool>')
+}
+
+fn test_default_val_descriptions_for_ints() {
+	mut fp := flag.new_flag_parser([])
+	fp.int_multi('a_int', `a`, '')
+	fp.int('b_int', `i`, 0, '')
+
+	assert fp.usage().contains('<multiple ints>')
+	assert fp.usage().contains('<int>')
+}
+
+fn test_custom_val_descriptions_for_ints() {
+	mut fp := flag.new_flag_parser([])
+	fp.int_multi('a_int', `a`, '', val_desc: '<multi custom int>')
+	fp.int('b_int', `i`, 0, '', val_desc: '<custom int>')
+
+	assert fp.usage().contains('<multi custom int>')
+	assert fp.usage().contains('<custom int>')
+}
+
+fn test_default_val_descriptions_for_floats() {
+	mut fp := flag.new_flag_parser([])
+	fp.float_multi('a_float', `a`, '')
+	fp.float('b_float', `f`, 0.0, '')
+
+	assert fp.usage().contains('<multiple floats>')
+	assert fp.usage().contains('<float>')
+}
+
+fn test_custom_val_descriptions_for_floats() {
+	mut fp := flag.new_flag_parser([])
+	fp.float_multi('a_float', `a`, '', val_desc: '<multi custom float>')
+	fp.float('b_float', `f`, 0.0, '', val_desc: '<custom float>')
+
+	assert fp.usage().contains('<multi custom float>')
+	assert fp.usage().contains('<custom float>')
+}
+
+fn test_default_val_descriptions_for_strings() {
+	mut fp := flag.new_flag_parser([])
+	fp.string_multi('a_string', `a`, '')
+	fp.string('b_string', `s`, '', '')
+
+	assert fp.usage().contains('<multiple strings>')
+	assert fp.usage().contains('<string>')
+}
+
+fn test_custom_val_descriptions_for_strings() {
+	mut fp := flag.new_flag_parser([])
+	fp.string_multi('a_string', `a`, '', val_desc: '<multi custom string>')
+	fp.string('b_string', `s`, '', '', val_desc: '<custom string>')
+
+	assert fp.usage().contains('<multi custom string>')
+	assert fp.usage().contains('<custom string>')
+}
+
 fn test_free_args_could_be_limited() {
 	mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
 	fp1.limit_free_args(1, 4)!
@@ -204,6 +274,14 @@ fn test_free_args_could_be_limited() {
 	assert args[0] == 'a'
 	assert args[1] == 'b'
 	assert args[2] == 'c'
+
+	mut fp2 := flag.new_flag_parser(['--', 'a'])
+	fp2.limit_free_args_to_at_least(1)!
+	args2 := fp2.finalize() or {
+		assert false
+		return
+	}
+	assert args2[0] == 'a'
 }
 
 fn test_error_for_to_few_free_args() {
@@ -236,7 +314,7 @@ fn test_could_expect_no_free_args() {
 	assert args.len < 0 // expect an error and need to use args
 }
 
-fn test_allow_abreviations() {
+fn test_allow_abbreviations() {
 	mut fp := flag.new_flag_parser(['-v', '-o', 'some_file', '-i', '42', '-f', '2.0'])
 	v := fp.bool('version', `v`, false, '')
 	o := fp.string('output', `o`, 'empty', '')
@@ -321,7 +399,7 @@ fn test_multiple_arguments() {
 		'-c',
 		'3.45',
 	])
-	// TODO Move to array comparison once it's implemented
+	// TODO: Move to array comparison once it's implemented
 	// assert fp.int_multi('some-flag', `a`, '') == [2, 3, 5] &&
 	//	fp.string_multi('some-flag', `b`, '') == ['a', 'c', 'b'] &&
 	//	fp.float_multi('some-flag', `c`, '') == [1.23, 2.34, 3.45]
@@ -413,6 +491,19 @@ fn test_empty_string_with_flag() {
 
 fn test_finalize_with_multi_shortargs() {
 	mut fp := flag.new_flag_parser(['-ab', '-c'])
+	a_bool := fp.bool('a_bool', `a`, false, '')
+	assert a_bool
+	b_bool := fp.bool('b_bool', `b`, false, '')
+	assert b_bool
+	c_bool := fp.bool('c_bool', `c`, false, '')
+	assert c_bool
+	additional_args := fp.finalize()!
+	println(additional_args.join_lines())
+	assert additional_args == []
+}
+
+fn test_finalize_with_multi_shortargs_different_order() {
+	mut fp := flag.new_flag_parser(['-ba', '-c'])
 	a_bool := fp.bool('a_bool', `a`, false, '')
 	assert a_bool
 	b_bool := fp.bool('b_bool', `b`, false, '')

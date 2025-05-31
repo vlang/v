@@ -1,15 +1,15 @@
 import hash.crc32
 
 struct Point {
-	x   int
-	y   int
-	z   int
-}
-
-struct Vector {
 	x int
 	y int
 	z int
+}
+
+struct Vector {
+	x   int
+	y   int
+	z   int
 	ccc crc32.Crc33
 }
 
@@ -23,9 +23,13 @@ fn (p Point) identity() Point {
 
 fn main() {
 	p := Point{1, 2, 3}
-	v := Vector{x: 5, y: 5, z: 10}
+	v := Vector{
+		x: 5
+		y: 5
+		z: 10
+	}
 	z := p.tranzlate(v)
-	println('p: $p')
-	println('v: $v')
-	println('z: $z')
+	println('p: ${p}')
+	println('v: ${v}')
+	println('z: ${z}')
 }

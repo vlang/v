@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_last_branch_only_casted.vv:6:10: error: the type of the last expression of the first match branch was `int literal`, which is not compatible with `u64`
+    4 |         'a' { 10 }
+    5 |         'b' { 500 }
+    6 |         else { u64(345454) }
+      |                ~~~~~~~~~~~
+    7 |     }
+    8 |

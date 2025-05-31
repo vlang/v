@@ -1,0 +1,85 @@
+name: Upgrading from a previous release with v up works
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '**.vv'
+      - '**.out'
+      - '!**/vup_works.yml'
+      - '!cmd/tools/vup.v'
+      - 'cmd/tools/vrepl.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '**.vv'
+      - '**.out'
+      - '!**/vup_works.yml'
+      - '!cmd/tools/vup.v'
+      - 'cmd/tools/vrepl.v'
+
+concurrency:
+  group: vup-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  v-up-works-nix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            zip: v_linux.zip
+          - os: macos-13
+            zip: v_macos_x86_64.zip
+          - os: macos-14
+            zip: v_macos_arm64.zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      VDIR: /tmp/v_from_release_zip
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build v
+        run: make && ./v symlink && ./v version
+
+      - name: Download latest release ZIP
+        run: ./v retry -- ./v download --sha256 https://github.com/vlang/v/releases/latest/download/${{ matrix.zip }}
+
+      - name: Extract ZIP 1, no changes
+        run: |
+          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          cd "$VDIR/v"
+          ./v version
+          ./v up
+          echo "Updated ./v version: $(./v version) | Current   v version: $(v version)"
+
+      - name: Extract ZIP 2, with local changes
+        run: |
+          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          touch "$VDIR/v/vlib/v/pref/local_file_not_present_in_master.c.v" && rm "$VDIR/v/examples/hello_world.v"
+          cd "$VDIR/v"
+          ./v version
+          ./v up
+          echo "Updated ./v version: $(./v version) | Current   v version: $(v version)"
+
+      - name: Extract ZIP 3, with current vup.v in the extract
+        run: |
+          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          rm -rf "$VDIR/v/cmd/tools/vup" && cp cmd/tools/vup.v "$VDIR/v/cmd/tools/vup.v"
+          cd "$VDIR/v"
+          ./v version
+          ./v up
+          echo "Updated ./v version: $(./v version) | Current   v version: $(v version)"
+
+      - name: Extract ZIP 4, with local changes, and with current vup.v
+        run: |
+          rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
+          rm -rf "$VDIR/v/cmd/tools/vup" && cp cmd/tools/vup.v "$VDIR/v/cmd/tools/vup.v"
+          touch "$VDIR/v/vlib/v/pref/local_file_not_present_in_master.c.v" && rm "$VDIR/v/examples/hello_world.v"
+          cd "$VDIR/v"
+          ./v version
+          ./v up
+          echo "Updated ./v version: $(./v version) | Current   v version: $(v version)"

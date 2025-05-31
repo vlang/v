@@ -1,39 +1,61 @@
+// vtest build: (amd64 || arm64) && !self_sandboxed_packaging? && !gcc-windows
 import os
 import time
 import benchmark
 import term
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
+const user_os = os.user_os()
+const wrkdir = os.join_path(os.vtmp_dir(), 'native_tests')
 
-// TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
+fn testsuite_begin() {
+	os.mkdir_all(wrkdir) or {}
+	os.chdir(wrkdir) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(wrkdir) or {}
+}
+
+// TODO: some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_native() {
 	$if arm64 {
 		eprintln('>> skipping testing on ARM for now')
 		return
 	}
-	$if freebsd {
-		eprintln('>> skipping testing on FreeBSD for now')
+	if user_os in ['freebsd', 'openbsd'] {
+		eprintln('>> skipping testing on FreeBSD/OpenBSD for now')
 		return
 	}
+
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	dir := os.join_path(vroot, 'vlib', 'v', 'gen', 'native', 'tests')
 	files := os.ls(dir) or { panic(err) }
-	//
-	wrkdir := os.join_path(os.vtmp_dir(), 'v', 'tests', 'native')
-	os.mkdir_all(wrkdir) or { panic(err) }
-	defer {
-		os.rmdir_all(wrkdir) or {}
-	}
-	os.chdir(wrkdir) or {}
-	tests := files.filter(it.ends_with('.vv'))
+
+	tests := files.filter(it.ends_with('.vv')).sorted()
 	if tests.len == 0 {
 		println('no native tests found')
 		assert false
 	}
+
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
+		if test == 'libc.vv' {
+			// TODO: remove the skip here, when the native backend is more advanced
+			if os.getenv('VNATIVE_SKIP_LIBC_VV') != '' {
+				println('>>> SKIPPING ${test} since VNATIVE_SKIP_LIBC_VV is defined')
+				continue
+			}
+		}
+		if test == 'fibonacci_native.vv' || test.contains('linux') {
+			if user_os == 'windows' {
+				println('>>> SKIPPING ${test} on windows for now')
+				continue
+			}
+		}
+
 		bench.step()
 		full_test_path := os.real_path(os.join_path(dir, test))
 		test_file_name := os.file_name(test)
@@ -41,7 +63,7 @@ fn test_native() {
 		work_test_path := os.join_path(wrkdir, test_file_name)
 		exe_test_path := os.join_path(wrkdir, test_file_name + '.exe')
 		tmperrfile := os.join_path(dir, test + '.tmperr')
-		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native -skip-unused ${os.quoted_path(full_test_path)} -d custom_define 2> ${os.quoted_path(tmperrfile)}'
+		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native ${os.quoted_path(full_test_path)} -d no_backtrace -d custom_define 2> ${os.quoted_path(tmperrfile)}'
 		if is_verbose {
 			println(cmd)
 		}
@@ -57,7 +79,6 @@ fn test_native() {
 				err := os.read_file(tmperrfile) or { panic(err) }
 				eprintln(err)
 			}
-
 			continue
 		}
 
@@ -73,6 +94,7 @@ fn test_native() {
 			eprintln('------------------------------------------------')
 			eprintln('> tmperrfile: ${tmperrfile}, exists: ${os.exists(tmperrfile)}, content:')
 			errstr := os.read_file(tmperrfile) or { '' }
+			eprintln('------------------------------------------------')
 			eprintln(errstr)
 			eprintln('------------------------------------------------')
 			eprintln('')
@@ -87,6 +109,7 @@ fn test_native() {
 			errstr := os.read_file(tmperrfile) or {
 				panic('${err}: ${os.quoted_path(exe_test_path)} 2> ${os.quoted_path(tmperrfile)}')
 			}
+
 			mut err_found := errstr.trim_right('\r\n').replace('\r\n', '\n')
 			if err_expected != err_found {
 				println(term.red('FAIL'))
@@ -99,12 +122,13 @@ fn test_native() {
 				continue
 			}
 		}
+
 		os.rm(tmperrfile) or {}
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
 		found = found.trim_space()
 		if expected != found {
-			println(term.red('FAIL'))
+			eprintln(bench.step_message_fail('${full_test_path} did not match expected output: '))
 			println('============')
 			println('expected: "${expected}" len=${expected.len}')
 			println('============')
@@ -115,11 +139,19 @@ fn test_native() {
 		}
 		bench.ok()
 		eprintln(bench.step_message_ok('${relative_test_path:-45} , took ${compile_time_ms:4}ms to compile, ${runtime_ms:4}ms to run'))
-	}
+	} // for loop
+
 	bench.stop()
 	eprintln(term.h_divider('-'))
 	eprintln(bench.total_message('native'))
 	if bench.nfail > 0 {
 		exit(1)
 	}
+}
+
+fn test_prevent_could_not_find_symbols_regression() {
+	res := os.execute('${os.quoted_path(@VEXE)} -b native ${os.quoted_path(os.join_path(@VROOT,
+		'examples/hello_world.v'))}')
+	assert !res.output.contains('CaptureStackBackTrace'), 'Test failed system unable to find symbol: CaptureStackBackTrace'
+	assert !res.output.contains('__debugbreak'), 'Test failed system unable to find symbol: __debugbreak'
 }

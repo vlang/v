@@ -9,19 +9,7 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
- *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 #ifndef MBEDTLS_PADLOCK_H
 #define MBEDTLS_PADLOCK_H
@@ -38,13 +26,16 @@
 #endif
 #endif
 
-/* Some versions of ASan result in errors about not enough registers */
-#if defined(MBEDTLS_HAVE_ASM) && defined(__GNUC__) && defined(__i386__) && \
+/*
+ * - `padlock` is implements with GNUC assembly for x86 target.
+ * - Some versions of ASan result in errors about not enough registers.
+ */
+#if defined(MBEDTLS_PADLOCK_C) && \
+    defined(__GNUC__) && defined(MBEDTLS_ARCH_IS_X86) && \
+    defined(MBEDTLS_HAVE_ASM) && \
     !defined(MBEDTLS_HAVE_ASAN)
 
-#ifndef MBEDTLS_HAVE_X86
-#define MBEDTLS_HAVE_X86
-#endif
+#define MBEDTLS_VIA_PADLOCK_HAVE_CODE
 
 #include <stdint.h>
 
@@ -69,7 +60,7 @@ extern "C" {
  *
  * \return         non-zero if CPU has support for the feature, 0 otherwise
  */
-int mbedtls_padlock_has_support( int feature );
+int mbedtls_padlock_has_support(int feature);
 
 /**
  * \brief          Internal PadLock AES-ECB block en(de)cryption
@@ -84,10 +75,10 @@ int mbedtls_padlock_has_support( int feature );
  *
  * \return         0 if success, 1 if operation failed
  */
-int mbedtls_padlock_xcryptecb( mbedtls_aes_context *ctx,
-                               int mode,
-                               const unsigned char input[16],
-                               unsigned char output[16] );
+int mbedtls_padlock_xcryptecb(mbedtls_aes_context *ctx,
+                              int mode,
+                              const unsigned char input[16],
+                              unsigned char output[16]);
 
 /**
  * \brief          Internal PadLock AES-CBC buffer en(de)cryption
@@ -104,12 +95,12 @@ int mbedtls_padlock_xcryptecb( mbedtls_aes_context *ctx,
  *
  * \return         0 if success, 1 if operation failed
  */
-int mbedtls_padlock_xcryptcbc( mbedtls_aes_context *ctx,
-                               int mode,
-                               size_t length,
-                               unsigned char iv[16],
-                               const unsigned char *input,
-                               unsigned char *output );
+int mbedtls_padlock_xcryptcbc(mbedtls_aes_context *ctx,
+                              int mode,
+                              size_t length,
+                              unsigned char iv[16],
+                              const unsigned char *input,
+                              unsigned char *output);
 
 #ifdef __cplusplus
 }

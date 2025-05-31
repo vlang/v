@@ -15,14 +15,15 @@ mut:
 
 type LoopType = SelectLoop
 
-// create_select_loop creates a `SelectLoop` struct with `id`
+// create_select_loop creates a new `SelectLoop` struct with the given `id`
 pub fn create_select_loop(id int) !&SelectLoop {
 	return &SelectLoop{
 		id: id
 	}
 }
 
-[direct_array_access]
+// updates the events associated with a file descriptor in the event loop
+@[direct_array_access]
 fn (mut pv Picoev) update_events(fd int, events int) int {
 	// check if fd is in range
 	assert fd < max_fds
@@ -31,8 +32,10 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 	return 0
 }
 
-[direct_array_access]
-fn (mut pv Picoev) poll_once(max_wait int) int {
+// performs a single iteration of the select-based event loop
+@[direct_array_access]
+fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
+	// Initializes sets for read, write, and error events
 	readfds, writefds, errorfds := C.fd_set{}, C.fd_set{}, C.fd_set{}
 
 	// setup
@@ -42,7 +45,7 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 
 	mut maxfd := 0
 
-	// find the maximum socket for `select` and add sockets to the fd_sets
+	// finds the maximum file descriptor and adds sockets to the sets `fd_sets`.
 	for target in pv.file_descriptors {
 		if target.loop_id == pv.loop.id {
 			if target.events & picoev_read != 0 {
@@ -62,34 +65,31 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 
 	// select and handle sockets if any
 	tv := C.timeval{
-		tv_sec: u64(max_wait)
+		tv_sec:  u64(max_wait_in_sec)
 		tv_usec: 0
 	}
-	r := C.@select(maxfd + 1, &readfds, &writefds, &errorfds, &tv)
+	r := C.select(maxfd + 1, &readfds, &writefds, &errorfds, &tv)
 	if r == -1 {
 		// timeout
 		return -1
 	} else if r > 0 {
+		// Iterates through file descriptors and calls their callbacks for triggered events
 		for target in pv.file_descriptors {
 			if target.loop_id == pv.loop.id {
-				// vfmt off
-				read_events := (
-					(if C.FD_ISSET(target.fd, &readfds) { picoev_read } else { 0 })
-						|
-					(if C.FD_ISSET(target.fd, &writefds) { picoev_write } else { 0 })
-				)
-				// vfmt on
+				mut read_events := 0
+				if C.FD_ISSET(target.fd, &readfds) != 0 {
+					read_events |= picoev_read
+				}
+				if C.FD_ISSET(target.fd, &writefds) != 0 {
+					read_events |= picoev_write
+				}
 				if read_events != 0 {
-					$if trace_fd ? {
-						eprintln('do callback ${target.fd}')
-					}
-
+					trace_fd('do callback ${target.fd}')
 					// do callback!
 					unsafe { target.cb(target.fd, read_events, &pv) }
 				}
 			}
 		}
 	}
-
 	return 0
 }

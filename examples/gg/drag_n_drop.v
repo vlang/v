@@ -1,39 +1,31 @@
 module main
 
-import os
 import gg
 import gx
 import sokol.sapp
 
-const (
-	max_files = 12
-	text      = 'Drag&Drop here max ${max_files} files.'
-	text_size = 16
-)
+const max_files = 12
+const text_size = 16
 
 struct App {
 mut:
 	gg                &gg.Context = unsafe { nil }
-	dropped_file_list []string    = []string{}
+	dropped_file_list []string
 }
 
 fn main() {
-	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	mut app := &App{
-		gg: 0
-	}
+	mut app := &App{}
 	app.gg = gg.new_context(
-		bg_color: gx.rgb(174, 198, 255)
-		width: 600
-		height: 400
+		bg_color:     gx.rgb(174, 198, 255)
+		width:        600
+		height:       400
 		window_title: 'Drag and drop'
-		frame_fn: frame
-		font_path: font_path
-		user_data: app
-		event_fn: my_event_manager
+		frame_fn:     frame
+		user_data:    app
+		event_fn:     my_event_manager
 		// drag & drop
-		enable_dragndrop: true
-		max_dropped_files: max_files
+		enable_dragndrop:             true
+		max_dropped_files:            max_files
 		max_dropped_file_path_length: 2048
 	)
 	app.gg.run()
@@ -56,9 +48,9 @@ fn frame(mut app App) {
 	mut txt_conf := gx.TextCfg{
 		color: gx.black
 		align: .left
-		size: int(text_size * app.gg.scale + 0.5)
+		size:  int(text_size * app.gg.scale + 0.5)
 	}
-	app.gg.draw_text(12, 12, text, txt_conf)
+	app.gg.draw_text(12, 12, 'Drag&Drop here max ${max_files} files.', txt_conf)
 
 	mut y := 40
 	for c, f in app.dropped_file_list {

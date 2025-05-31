@@ -1,4 +1,4 @@
-struct Calc<S> {
+struct Calc[S] {
 mut:
 	typ S
 }
@@ -7,7 +7,7 @@ struct TypeA {}
 
 struct TypeB {}
 
-fn (mut c Calc<S>) next[T](input T) f64 {
+fn (mut c Calc[S]) next[T](input T) f64 {
 	$if S is TypeA || S is TypeB {
 		return c.typ.next(input)
 	} $else {
@@ -33,7 +33,7 @@ fn new[S]() Calc[S] {
 			typ: TypeB{}
 		}
 	} $else {
-		panic('unknown type $S.name')
+		panic('unknown type ${S.name}')
 	}
 }
 

@@ -1,3 +1,4 @@
+// vtest build: started_postgres?
 module main
 
 import orm
@@ -5,110 +6,116 @@ import db.pg
 import time
 
 struct TestCustomSqlType {
-	id      int    [primary; sql: serial]
-	custom  string [sql_type: 'TEXT']
-	custom1 string [sql_type: 'VARCHAR(191)']
-	custom2 string [sql_type: 'TIMESTAMP']
-	custom3 string [sql_type: 'uuid']
+	id      int    @[primary; sql: serial]
+	custom  string @[sql_type: 'TEXT']
+	custom1 string @[sql_type: 'VARCHAR(191)']
+	custom2 string @[sql_type: 'TIMESTAMP']
+	custom3 string @[sql_type: 'uuid']
 }
 
 struct TestCustomWrongSqlType {
-	id      int    [primary; sql: serial]
+	id      int @[primary; sql: serial]
 	custom  string
-	custom1 string [sql_type: 'VARCHAR']
-	custom2 string [sql_type: 'money']
-	custom3 string [sql_type: 'xml']
+	custom1 string @[sql_type: 'VARCHAR']
+	custom2 string @[sql_type: 'money']
+	custom3 string @[sql_type: 'xml']
 }
 
 struct TestTimeType {
 mut:
-	id         int       [primary; sql: serial]
+	id         int @[primary; sql: serial]
 	username   string
-	created_at time.Time [sql_type: 'TIMESTAMP']
-	updated_at string    [sql_type: 'TIMESTAMP']
+	created_at time.Time @[sql_type: 'TIMESTAMP']
+	updated_at string    @[sql_type: 'TIMESTAMP']
 	deleted_at time.Time
 }
 
-struct TestDefaultAtribute {
-	id         string [default: 'gen_random_uuid()'; primary; sql_type: 'uuid']
+struct TestDefaultAttribute {
+	id         string @[default: 'gen_random_uuid()'; primary; sql_type: 'uuid']
 	name       string
-	created_at string [default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
 fn test_pg_orm() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working postgres server running on localhost.')
+		return
+	}
 	mut db := pg.connect(
-		host: 'localhost'
-		user: 'postgres'
-		password: 'password'
-		dbname: 'postgres'
+		host:     'localhost'
+		user:     'postgres'
+		password: '12345678'
+		dbname:   'test'
 	) or { panic(err) }
 
 	defer {
 		db.close()
 	}
+	db.drop('Test')!
 
 	db.create('Test', [
 		orm.TableField{
 			name: 'id'
-			typ: typeof[string]().idx
-			is_time: false
+			typ:  typeof[string]().idx
+			//			is_time: false
 			default_val: ''
-			is_arr: false
-			attrs: [
-				StructAttribute{
-					name: 'primary'
+			is_arr:      false
+			attrs:       [
+				VAttribute{
+					name:    'primary'
 					has_arg: false
-					arg: ''
-					kind: .plain
+					arg:     ''
+					kind:    .plain
 				},
-				StructAttribute{
-					name: 'sql'
+				VAttribute{
+					name:    'sql'
 					has_arg: true
-					arg: 'serial'
-					kind: .plain
+					arg:     'serial'
+					kind:    .plain
 				},
 			]
 		},
 		orm.TableField{
 			name: 'name'
-			typ: typeof[string]().idx
-			is_time: false
+			typ:  typeof[string]().idx
+			//			is_time: false
 			default_val: ''
-			is_arr: false
-			attrs: []
+			is_arr:      false
+			attrs:       []
 		},
 		orm.TableField{
 			name: 'age'
-			typ: typeof[i64]().idx
-			is_time: false
+			typ:  typeof[i64]().idx
+			//			is_time: false
 			default_val: ''
-			is_arr: false
-			attrs: []
+			is_arr:      false
+			attrs:       []
 		},
 	]) or { panic(err) }
 
 	db.insert('Test', orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
+		data:   [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
 	}) or { panic(err) }
 
-	res := db.@select(orm.SelectConfig{
-		table: 'Test'
-		is_count: false
-		has_where: true
-		has_order: false
-		order: ''
+	res := db.select(orm.SelectConfig{
+		table:      'Test'
+		is_count:   false
+		has_where:  true
+		has_order:  false
+		order:      ''
 		order_type: .asc
-		has_limit: false
-		primary: 'id'
+		has_limit:  false
+		primary:    'id'
 		has_offset: false
-		fields: ['id', 'name', 'age']
-		types: [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
+		fields:     ['id', 'name', 'age']
+		types:      [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.Primitive('Louis'), orm.Primitive(101)]
-		types: []
-		kinds: [.eq, .eq]
+		data:   [orm.Primitive('Louis'), orm.Primitive(101)]
+		types:  []
+		kinds:  [.eq, .eq]
 		is_and: [true]
 	}) or { panic(err) }
 
@@ -134,6 +141,9 @@ fn test_pg_orm() {
 	/** test orm sql type
 	* - verify if all type create by attribute sql_type has created
 	*/
+	sql db {
+		drop table TestCustomSqlType
+	}!
 
 	sql db {
 		create table TestCustomSqlType
@@ -151,13 +161,11 @@ fn test_pg_orm() {
 	mut information_schema_data_types_results := []string{}
 	information_schema_custom_sql := ['integer', 'text', 'character varying',
 		'timestamp without time zone', 'uuid']
-	for data_type in result_custom_sql {
-		information_schema_data_types_results << data_type.vals[0]
-	}
 
-	sql db {
-		drop table TestCustomSqlType
-	}!
+	for data_type in result_custom_sql {
+		x := data_type.vals[0]
+		information_schema_data_types_results << x?
+	}
 
 	assert information_schema_data_types_results == information_schema_custom_sql
 
@@ -172,7 +180,7 @@ fn test_pg_orm() {
 	}
 
 	model := TestTimeType{
-		username: 'hitalo'
+		username:   'hitalo'
 		created_at: today
 		updated_at: today.str()
 		deleted_at: today
@@ -202,13 +210,13 @@ fn test_pg_orm() {
 	/** test default attribute
 	*/
 	sql db {
-		create table TestDefaultAtribute
+		create table TestDefaultAttribute
 	}!
 
 	mut result_defaults := db.exec("
 		SELECT column_default
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestDefaultAtribute'
+		WHERE TABLE_NAME = 'TestDefaultAttribute'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		println(err)
@@ -217,10 +225,11 @@ fn test_pg_orm() {
 	mut information_schema_defaults_results := []string{}
 
 	for defaults in result_defaults {
-		information_schema_defaults_results << defaults.vals[0]
+		x := defaults.vals[0]
+		information_schema_defaults_results << x or { '' }
 	}
 	sql db {
-		drop table TestDefaultAtribute
+		drop table TestDefaultAttribute
 	}!
 	assert ['gen_random_uuid()', '', 'CURRENT_TIMESTAMP'] == information_schema_defaults_results
 }

@@ -27,9 +27,20 @@ fn test_first() {
 	assert false
 }
 
+fn test_push_many() {
+	mut list := LinkedList[int]{}
+	x := [1, 2, 3, 4, 5]
+	list.push_many(x)
+	assert list.first()! == 1
+	list = LinkedList[int]{}
+	list.first() or { return }
+	assert false
+}
+
 fn test_last() {
 	mut list := LinkedList[int]{}
 	list.push(1)
+	assert list.first()! == 1
 	assert list.last()! == 1
 	list.push(2)
 	assert list.last()! == 2
@@ -45,6 +56,7 @@ fn test_index() {
 	list.push(2)
 	assert list.index(1)! == 2
 	list.pop()!
+	assert list.index(0)! == 1
 	list.index(1) or { return }
 	assert false
 }
@@ -93,6 +105,11 @@ fn test_insert() {
 	list.push(2)
 	list.push(3)
 	list.insert(1, 111) or { return }
+	assert list.index(0)! == 1
+	assert list.index(1)! == 111
+	assert list.index(2)! == 2
+	list.insert(4, 222) or { return }
+	assert list.last()! == 222
 	assert true
 }
 
@@ -103,6 +120,7 @@ fn test_prepend() {
 	list.push(3)
 	list.prepend(111)
 	assert list.first()! == 111
+	assert list.index(1)! == 1
 }
 
 fn test_str() {

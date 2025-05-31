@@ -1,25 +1,29 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
 import gx
-import sokol
-import sokol.sgl
 import math
+import sokol.sgl
+
+@[params]
+pub struct DrawPixelConfig {
+pub mut:
+	size f32 = 1.0
+}
 
 // draw_pixel draws one pixel on the screen.
 //
 // NOTE calling this function frequently is very *inefficient*,
 // for drawing shapes it's recommended to draw whole primitives with
 // functions like `draw_rect_empty` or `draw_triangle_empty` etc.
-[inline]
-pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color) {
+pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color, params DrawPixelConfig) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-
 	sgl.begin_points()
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.point_size(params.size)
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.end()
 }
@@ -29,8 +33,8 @@ pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color) {
 // NOTE calling this function frequently is very *inefficient*,
 // for drawing shapes it's recommended to draw whole primitives with
 // functions like `draw_rect_empty` or `draw_triangle_empty` etc.
-[direct_array_access; inline]
-pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color) {
+@[direct_array_access]
+pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color, params DrawPixelConfig) {
 	if points.len % 2 != 0 {
 		return
 	}
@@ -39,9 +43,9 @@ pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-
 	sgl.begin_points()
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.point_size(params.size)
 	for i in 0 .. len {
 		x, y := points[i * 2], points[i * 2 + 1]
 		sgl.v2f(x * ctx.scale, y * ctx.scale)
@@ -54,6 +58,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	$if macos {
 		if ctx.native_rendering {
 			// Make the line more clear on hi dpi screens: draw a rectangle
+			// TODO this is broken if the line's x1 != x2
 			mut width := math.abs(x2 - x)
 			mut height := math.abs(y2 - y)
 			if width == 0 {
@@ -185,13 +190,29 @@ pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c gx.Color) {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-
-	sgl.begin_line_strip()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
-	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
-	sgl.v2f(x * ctx.scale, (y - 1) * ctx.scale)
+	// The small offsets here, are to make sure, that the start and end points will be
+	// inside pixels, and not on their borders. That in turn, makes it much more likely
+	// that different OpenGL implementations will render them identically, for example
+	// Mesa, with `LIBGL_ALWAYS_SOFTWARE=1` renders the same as HD4000.
+	mut toffset := f32(0.1)
+	mut boffset := f32(-0.1)
+	tleft_x := toffset + x * ctx.scale
+	tleft_y := toffset + y * ctx.scale
+	bright_x := boffset + (x + w) * ctx.scale
+	bright_y := boffset + (y + h) * ctx.scale
+	sgl.begin_lines() // more predictable, compared to sgl.begin_line_strip, at the price of more vertexes send
+	// top:
+	sgl.v2f(tleft_x, tleft_y)
+	sgl.v2f(bright_x, tleft_y)
+	// left:
+	sgl.v2f(tleft_x, tleft_y)
+	sgl.v2f(tleft_x, bright_y)
+	// right:
+	sgl.v2f(bright_x, tleft_y)
+	sgl.v2f(bright_x, bright_y)
+	// bottom:
+	sgl.v2f(tleft_x, bright_y)
+	sgl.v2f(bright_x, bright_y)
 	sgl.end()
 }
 
@@ -219,13 +240,14 @@ pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c gx.Color) {
 	sgl.end()
 }
 
-enum PaintStyle {
+pub enum PaintStyle {
 	fill
 	stroke
 }
 
-[params]
+@[params]
 pub struct DrawRectParams {
+pub:
 	x          f32
 	y          f32
 	w          f32
@@ -343,11 +365,14 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	sgl.v2f(rtx + r, rty)
 	sgl.v2f(rtx + r, rby)
 	// bottom
-	sgl.v2f(lbx, lby + r)
-	sgl.v2f(rbx, rby + r)
+	// Note: test on native windows, macos, and linux if you need to change the offset literal here,
+	// with `v run vlib/gg/testdata/draw_rounded_rect_empty.vv` . Using 1 here, looks good on windows,
+	// and on linux with LIBGL_ALWAYS_SOFTWARE=true, but misaligned on native macos and linux.
+	sgl.v2f(lbx, lby + r - 0.5)
+	sgl.v2f(rbx, rby + r - 0.5)
 	// left
-	sgl.v2f(sx, lty)
-	sgl.v2f(sx, lby)
+	sgl.v2f(sx + 1, lty)
+	sgl.v2f(sx + 1, lby)
 	sgl.end()
 }
 
@@ -502,7 +527,7 @@ pub fn (ctx &Context) draw_triangle_filled(x f32, y f32, x2 f32, y2 f32, x3 f32,
 // `x`,`y` is the top-left corner of the square.
 // `s` is the length of each side of the square.
 // `c` is the color of the outline.
-[inline]
+@[inline]
 pub fn (ctx &Context) draw_square_empty(x f32, y f32, s f32, c gx.Color) {
 	ctx.draw_rect_empty(x, y, s, s, c)
 }
@@ -511,7 +536,7 @@ pub fn (ctx &Context) draw_square_empty(x f32, y f32, s f32, c gx.Color) {
 // `x`,`y` is the top-left corner of the square.
 // `s` is the length of each side of the square.
 // `c` is the fill color.
-[inline]
+@[inline]
 pub fn (ctx &Context) draw_square_filled(x f32, y f32, s f32, c gx.Color) {
 	ctx.draw_rect_filled(x, y, s, s, c)
 }
@@ -520,12 +545,12 @@ pub fn (ctx &Context) draw_square_filled(x f32, y f32, s f32, c gx.Color) {
 // and then choosing the most circle-ish drawing with the minimum number of segments.
 const small_circle_segments = [0, 2, 4, 6, 6, 8, 8, 13, 10, 18, 12, 12, 10, 13, 16, 15, 16]!
 
-[direct_array_access]
+@[direct_array_access]
 fn radius_to_segments(r f32) int {
 	if r < 30 {
 		ir := int(math.ceil(r))
-		if ir > 0 && ir < gg.small_circle_segments.len {
-			return gg.small_circle_segments[ir]
+		if ir > 0 && ir < small_circle_segments.len {
+			return small_circle_segments[ir]
 		}
 		return ir
 	}
@@ -537,6 +562,13 @@ fn radius_to_segments(r f32) int {
 // `radius` defines the radius of the circle.
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c gx.Color) {
+	$if macos {
+		if ctx.native_rendering {
+			C.darwin_draw_circle_empty(x - radius + 1, ctx.height - (y + radius + 3),
+				radius, c)
+			return
+		}
+	}
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
@@ -659,7 +691,8 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, radius int, segments int, c
 }
 
 // draw_slice_empty draws the outline of a circle slice/pie
-pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int,
+	c gx.Color) {
 	if segments <= 0 || radius <= 0 {
 		return
 	}
@@ -695,7 +728,8 @@ pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32
 // `end_angle` is the angle in radians at which the slice ends.
 // `segments` affects how smooth/round the slice is.
 // `c` is the fill color.
-pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int,
+	c gx.Color) {
 	if segments <= 0 || radius < 0 {
 		return
 	}
@@ -724,9 +758,7 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f3
 		xx *= rad_factor
 		yy *= rad_factor
 		sgl.v2f(xx + nx, yy + ny)
-		if i & 1 == 0 {
-			sgl.v2f(nx, ny)
-		}
+		sgl.v2f(nx, ny)
 	}
 	sgl.end()
 }
@@ -738,7 +770,8 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f3
 // `end_angle` is the angle in radians at which the arc ends.
 // `segments` affects how smooth/round the arc is.
 // `c` is the color of the arc/outline.
-pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int,
+	c gx.Color) {
 	if segments <= 0 || radius < 0 {
 		return
 	}
@@ -785,7 +818,8 @@ pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, en
 // `end_angle` is the angle in radians at which the arc ends.
 // `segments` affects how smooth/round the arc is.
 // `c` is the color of the arc outline.
-pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32,
+	segments int, c gx.Color) {
 	outer_radius := inner_radius + thickness
 	if segments <= 0 || outer_radius < 0 {
 		return
@@ -848,7 +882,8 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 // `end_angle` is the angle in radians at which the arc ends.
 // `segments` affects how smooth/round the arc is.
 // `c` is the fill color of the arc.
-pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32,
+	segments int, c gx.Color) {
 	outer_radius := inner_radius + thickness
 	if segments <= 0 || outer_radius < 0 {
 		return
@@ -920,7 +955,7 @@ pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c gx.Colo
 	sgl.end()
 }
 
-// draw_ellipse_filled draws an opaque elipse.
+// draw_ellipse_filled draws an opaque ellipse.
 // `x`,`y` defines the center of the ellipse.
 // `rw` defines the *width* radius of the ellipse.
 // `rh` defines the *height* radius of the ellipse.
@@ -955,7 +990,7 @@ pub fn (ctx &Context) draw_cubic_bezier(points []f32, c gx.Color) {
 // The four points is provided as one `points` array which contains a stream of point pairs (x and y coordinates).
 // Thus a cubic Bézier could be declared as: `points := [x1, y1, control_x1, control_y1, control_x2, control_y2, x2, y2]`.
 pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c gx.Color) {
-	if steps <= 0 || points.len != 8 {
+	if steps <= 0 || steps >= 20000 || points.len != 8 {
 		return
 	}
 	if c.a != 255 {

@@ -1,0 +1,66 @@
+struct Foo {
+	m map[string]string
+}
+
+struct Bar {
+	m map[string]int
+}
+
+fn main() {
+	a := Bar{
+		m: {
+			'a': 5
+			'b': 6
+		} // ok
+	}
+	b := Bar{
+		m: {
+			'a': '5'
+			'b': '6'
+		} // bad
+	}
+	c := Bar{
+		m: {
+			...a.m
+		} // ok
+	}
+	d := Bar{
+		m: {
+			...a.m
+			'c': 7
+		} // ok
+	}
+	e := Bar{
+		m: {
+			...a.m
+			'c': '7'
+		} // bad values
+	}
+
+	x := Foo{}
+	f := Bar{
+		m: {
+			...x.m
+		} // bad update
+	}
+	g := Bar{
+		m: {
+			...x.m
+			'c': 7
+		} // bad update, ok values
+	}
+	h := Bar{
+		m: {
+			...x.m
+			'c': '7'
+		} // bad update, bad values
+	}
+	println(a)
+	println(b)
+	println(c)
+	println(d)
+	println(e)
+	println(f)
+	println(g)
+	println(h)
+}

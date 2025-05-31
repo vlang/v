@@ -1,8 +1,8 @@
-fn main(){
+fn main() {
 	mut array := [3]int{}
 	mut arrayptr := &int(array)
 
-	for _ in 0..3 {
+	for _ in 0 .. 3 {
 		unsafe {
 			*(arrayptr++) = 0
 		}

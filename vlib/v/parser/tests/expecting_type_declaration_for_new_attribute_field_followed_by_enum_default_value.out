@@ -1,0 +1,6 @@
+vlib/v/parser/tests/expecting_type_declaration_for_new_attribute_field_followed_by_enum_default_value.vv:9:23: error: expecting type declaration
+    7 |     s string
+    8 |     i int
+    9 |     e MyEnum @[required] = .a
+      |                          ^
+   10 | }

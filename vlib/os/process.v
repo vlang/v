@@ -15,15 +15,13 @@ pub enum ProcessState {
 	closed
 }
 
-[heap]
+@[heap]
 pub struct Process {
 pub mut:
-	filename string // the process's command file path
-	pid      int    // the PID of the process
-	code     int = -1
-	// the exit code of the process, != -1 *only* when status is .exited *and* the process was not aborted
-	status ProcessState = .not_started
-	// the current status of the process
+	filename         string // the process's command file path
+	pid              int    // the PID of the process
+	code             int          = -1           // the exit code of the process, != -1 *only* when status is .exited *and* the process was not aborted
+	status           ProcessState = .not_started // the current status of the process
 	err              string   // if the process fails, contains the reason why
 	args             []string // the arguments that the command takes
 	work_folder      string   // the initial working folder of the process. When '', reuse the same folder as the parent process.

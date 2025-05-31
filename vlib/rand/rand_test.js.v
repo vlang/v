@@ -1,3 +1,4 @@
+// vtest build: present_node?
 import rand
 
 fn test_string() {

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_mut_struct_index_err.vv:7:3: error: type `mut Heap` does not support slicing
+    5 | 
+    6 | fn (mut h Heap[T]) insert(mut element T, pos int) {
+    7 |     h[pos] = element
+      |      ~~~~~
+    8 | }
+    9 |

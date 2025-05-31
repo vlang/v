@@ -1,0 +1,5 @@
+module foo
+
+#!/usr/bin/env -S v
+
+import os

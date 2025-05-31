@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2003 Hewlett-Packard Development Company, L.P.
- * Copyright (c) 2009-2017 Ivan Maidanski
+ * Copyright (c) 2009-2021 Ivan Maidanski
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -21,20 +21,19 @@
  * SOFTWARE.
  */
 
-#ifndef AO_ASSUME_WINDOWS98
-  /* CAS is always available */
-# define AO_ASSUME_WINDOWS98
-#endif
-#include "common32_defs.h"
-
-#include "../test_and_set_t_is_ao_t.h"
-/* AO_test_and_set_full() is emulated using CAS.                        */
-
 /* Some ARM slide set, if it has been read correctly, claims that Loads */
 /* followed by either a Load or a Store are ordered, but nothing else.  */
 /* It is assumed that Windows interrupt handlers clear the LL/SC flag.  */
 /* Unaligned accesses are not guaranteed to be atomic.                  */
 #include "../all_aligned_atomic_load_store.h"
+
+#define AO_T_IS_INT
+
+#ifndef AO_ASSUME_WINDOWS98
+  /* CAS is always available */
+# define AO_ASSUME_WINDOWS98
+#endif
+#include "common32_defs.h"
 
 /* If only a single processor is used, we can define AO_UNIPROCESSOR.   */
 #ifdef AO_UNIPROCESSOR
@@ -47,16 +46,67 @@
   /* AO_nop_full() is emulated using AO_test_and_set_full().            */
 #endif
 
-#if _M_ARM >= 6
-/* ARMv6 is the first architecture providing support for simple LL/SC.  */
+#ifndef AO_HAVE_test_and_set_full
+# include "../test_and_set_t_is_ao_t.h"
+  /* AO_test_and_set_full() is emulated. */
+#endif
 
-/* #include "../standard_ao_double_t.h" */
-/* TODO: implement double-wide operations (similar to x86).     */
+#if _M_ARM >= 7 && !defined(AO_NO_DOUBLE_CAS)
 
-#else /* _M_ARM < 6 */
+# include "../standard_ao_double_t.h"
 
-/* TODO: implement AO_test_and_set_full using SWP.      */
+/* These intrinsics are supposed to use LDREXD/STREXD.  */
+# pragma intrinsic (_InterlockedCompareExchange64)
+# pragma intrinsic (_InterlockedCompareExchange64_acq)
+# pragma intrinsic (_InterlockedCompareExchange64_nf)
+# pragma intrinsic (_InterlockedCompareExchange64_rel)
 
-#endif /* _M_ARM < 6 */
+  AO_INLINE int
+  AO_double_compare_and_swap(volatile AO_double_t *addr,
+                             AO_double_t old_val, AO_double_t new_val)
+  {
+    AO_ASSERT_ADDR_ALIGNED(addr);
+    return (double_ptr_storage)_InterlockedCompareExchange64_nf(
+                                        (__int64 volatile *)addr,
+                                        new_val.AO_whole /* exchange */,
+                                        old_val.AO_whole) == old_val.AO_whole;
+  }
+# define AO_HAVE_double_compare_and_swap
 
-#define AO_T_IS_INT
+  AO_INLINE int
+  AO_double_compare_and_swap_acquire(volatile AO_double_t *addr,
+                                     AO_double_t old_val, AO_double_t new_val)
+  {
+    AO_ASSERT_ADDR_ALIGNED(addr);
+    return (double_ptr_storage)_InterlockedCompareExchange64_acq(
+                                        (__int64 volatile *)addr,
+                                        new_val.AO_whole /* exchange */,
+                                        old_val.AO_whole) == old_val.AO_whole;
+  }
+# define AO_HAVE_double_compare_and_swap_acquire
+
+  AO_INLINE int
+  AO_double_compare_and_swap_release(volatile AO_double_t *addr,
+                                     AO_double_t old_val, AO_double_t new_val)
+  {
+    AO_ASSERT_ADDR_ALIGNED(addr);
+    return (double_ptr_storage)_InterlockedCompareExchange64_rel(
+                                        (__int64 volatile *)addr,
+                                        new_val.AO_whole /* exchange */,
+                                        old_val.AO_whole) == old_val.AO_whole;
+  }
+# define AO_HAVE_double_compare_and_swap_release
+
+  AO_INLINE int
+  AO_double_compare_and_swap_full(volatile AO_double_t *addr,
+                                  AO_double_t old_val, AO_double_t new_val)
+  {
+    AO_ASSERT_ADDR_ALIGNED(addr);
+    return (double_ptr_storage)_InterlockedCompareExchange64(
+                                        (__int64 volatile *)addr,
+                                        new_val.AO_whole /* exchange */,
+                                        old_val.AO_whole) == old_val.AO_whole;
+  }
+# define AO_HAVE_double_compare_and_swap_full
+
+#endif /* _M_ARM >= 7 && !AO_NO_DOUBLE_CAS */

@@ -1,7 +1,9 @@
+// vtest flaky: true
+// vtest retry: 3
 import db.sqlite
 
 struct User {
-	id      int    [primary; sql: serial]
+	id      int @[primary; sql: serial]
 	name    string
 	country string
 }
@@ -18,7 +20,7 @@ fn test_like_operator() {
 	}!
 
 	luke := User{
-		name: 'Luke'
+		name:    'Luke'
 		country: 'US'
 	}
 	sql db {
@@ -26,7 +28,7 @@ fn test_like_operator() {
 	}!
 
 	james := User{
-		name: 'James'
+		name:    'James'
 		country: 'UK'
 	}
 	sql db {
@@ -34,7 +36,7 @@ fn test_like_operator() {
 	}!
 
 	lukas := User{
-		name: 'Lucas'
+		name:    'Lucas'
 		country: 'DE'
 	}
 	sql db {

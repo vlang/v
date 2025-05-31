@@ -91,7 +91,7 @@ pub fn uniq_only_repeated[T](a []T) []T {
 					// found the right border of the repeated elements
 					if j - i > 1 {
 						res << a[i]
-						i = j
+						i = j - 1
 						continue loop
 					}
 				}
@@ -132,7 +132,7 @@ pub fn uniq_all_repeated[T](a []T) []T {
 			for j := i + 1; j < a.len; j++ {
 				if a[i] != a[j] && j - i > 0 {
 					// found the right border of the repeated elements
-					i = j
+					i = j - 1
 					continue loop
 				}
 				res << a[i]

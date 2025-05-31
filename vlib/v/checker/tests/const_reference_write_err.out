@@ -1,0 +1,14 @@
+vlib/v/checker/tests/const_reference_write_err.vv:14:10: error: cannot have mutable reference to const `a_string`
+   12 |     }
+   13 |     unsafe {
+   14 |         ptr := &a_string
+      |                ^
+   15 |         *ptr = f
+   16 |
+vlib/v/checker/tests/const_reference_write_err.vv:17:11: error: cannot have mutable reference to const `a_struct`
+   15 |         *ptr = f
+   16 | 
+   17 |         ptr2 := &a_struct
+      |                 ^
+   18 |         *ptr2 = a
+   19 |     }

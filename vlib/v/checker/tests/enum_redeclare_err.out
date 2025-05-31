@@ -1,0 +1,7 @@
+vlib/v/checker/tests/enum_redeclare_err.vv:7:1: error: cannot register enum `Enum`, another type with this name exists
+    5 | 
+    6 | @[flag]
+    7 | pub enum Enum {
+      | ~~~~~~~~~~~~~
+    8 |     a
+    9 | }

@@ -3,21 +3,16 @@
 module main
 
 import time
-import sokol
 import sokol.sapp
 import sokol.gfx
 import sokol.sgl
 import particle
 
-const (
-	used_import = sokol.used_import
-)
-
 fn main() {
 	mut app := &App{
-		width: 800
-		height: 400
-		pass_action: gfx.create_clear_pass(0.1, 0.1, 0.1, 1.0)
+		width:       800
+		height:      400
+		pass_action: gfx.create_clear_pass_action(0.1, 0.1, 0.1, 1.0)
 	}
 	app.init()
 	app.run()
@@ -38,7 +33,7 @@ fn (mut a App) init() {
 	a.frame = 0
 	a.last = time.ticks()
 	a.ps = particle.System{
-		width: a.width
+		width:  a.width
 		height: a.height
 	}
 	a.ps.init(particle.SystemConfig{
@@ -55,14 +50,14 @@ fn (mut a App) cleanup() {
 fn (mut a App) run() {
 	title := 'V Particle Example'
 	desc := sapp.Desc{
-		width: a.width
-		height: a.height
-		user_data: a
-		init_userdata_cb: init
-		frame_userdata_cb: frame
-		event_userdata_cb: event
-		window_title: title.str
-		html5_canvas_name: title.str
+		width:               a.width
+		height:              a.height
+		user_data:           a
+		init_userdata_cb:    init
+		frame_userdata_cb:   frame
+		event_userdata_cb:   event
+		window_title:        &char(title.str)
+		html5_canvas_name:   &char(title.str)
 		cleanup_userdata_cb: cleanup
 	}
 	sapp.run(&desc)
@@ -83,9 +78,9 @@ fn init(mut app App) {
 	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
+	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
-			enabled: true
+			enabled:        true
 			src_factor_rgb: .src_alpha
 			dst_factor_rgb: .one_minus_src_alpha
 		}
@@ -107,7 +102,8 @@ fn frame(mut app App) {
 	dt := f64(t - app.last) / 1000.0
 	app.ps.update(dt)
 	draw(app)
-	gfx.begin_default_pass(&app.pass_action, app.width, app.height)
+	pass := sapp.create_default_pass(app.pass_action)
+	gfx.begin_pass(&pass)
 	sgl.default_pipeline()
 	sgl.draw()
 	gfx.end_pass()
@@ -117,26 +113,26 @@ fn frame(mut app App) {
 }
 
 fn event(ev &sapp.Event, mut app App) {
-	if ev.@type == .mouse_move {
+	if ev.type == .mouse_move {
 		app.ps.explode(ev.mouse_x, ev.mouse_y)
 	}
-	if ev.@type == .mouse_up || ev.@type == .mouse_down {
+	if ev.type == .mouse_up || ev.type == .mouse_down {
 		if ev.mouse_button == .left {
-			is_pressed := ev.@type == .mouse_down
+			is_pressed := ev.type == .mouse_down
 			if is_pressed {
 				app.ps.explode(ev.mouse_x, ev.mouse_y)
 			}
 		}
 	}
-	if ev.@type == .key_up || ev.@type == .key_down {
+	if ev.type == .key_up || ev.type == .key_down {
 		if ev.key_code == .r {
-			is_pressed := ev.@type == .key_down
+			is_pressed := ev.type == .key_down
 			if is_pressed {
 				app.ps.reset()
 			}
 		}
 	}
-	if ev.@type == .touches_began || ev.@type == .touches_moved {
+	if ev.type == .touches_began || ev.type == .touches_moved {
 		if ev.num_touches > 0 {
 			touch_point := ev.touches[0]
 			app.ps.explode(touch_point.pos_x, touch_point.pos_y)

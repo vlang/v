@@ -1,44 +1,42 @@
 module time
 
-pub const (
-	days_string        = 'MonTueWedThuFriSatSun'
-	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-		'Sunday']
-	month_days         = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-	months_string      = 'JanFebMarAprMayJunJulAugSepOctNovDec'
-	long_months        = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
-		'September', 'October', 'November', 'December']
-	// The unsigned zero year for internal calculations.
-	// Must be 1 mod 400, and times before it will not compute correctly,
-	// but otherwise can be changed at will.
-	absolute_zero_year = i64(-292277022399)
-	seconds_per_minute = 60
-	seconds_per_hour   = 60 * seconds_per_minute
-	seconds_per_day    = 24 * seconds_per_hour
-	seconds_per_week   = 7 * seconds_per_day
-	days_per_400_years = days_in_year * 400 + 97
-	days_per_100_years = days_in_year * 100 + 24
-	days_per_4_years   = days_in_year * 4 + 1
-	days_in_year       = 365
-	days_before        = [
-		0,
-		31,
-		31 + 28,
-		31 + 28 + 31,
-		31 + 28 + 31 + 30,
-		31 + 28 + 31 + 30 + 31,
-		31 + 28 + 31 + 30 + 31 + 30,
-		31 + 28 + 31 + 30 + 31 + 30 + 31,
-		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
-		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
-		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
-		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
-		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
-	]
-)
+pub const days_string = 'MonTueWedThuFriSatSun'
+pub const long_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']!
+pub const month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]!
+pub const months_string = 'JanFebMarAprMayJunJulAugSepOctNovDec'
+pub const long_months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+	'September', 'October', 'November', 'December']
+// The unsigned zero year for internal calculations.
+// Must be 1 mod 400, and times before it will not compute correctly,
+// but otherwise can be changed at will.
+pub const absolute_zero_year = i64(-292277022399)
+pub const seconds_per_minute = 60
+pub const seconds_per_hour = 60 * seconds_per_minute
+pub const seconds_per_day = 24 * seconds_per_hour
+pub const seconds_per_week = 7 * seconds_per_day
+pub const days_per_400_years = days_in_year * 400 + 97
+pub const days_per_100_years = days_in_year * 100 + 24
+pub const days_per_4_years = days_in_year * 4 + 1
+pub const days_in_year = 365
+pub const days_before = [
+	0,
+	31,
+	31 + 28,
+	31 + 28 + 31,
+	31 + 28 + 31 + 30,
+	31 + 28 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
+]!
 
 // Time contains various time units for a point in time.
 pub struct Time {
+	unix i64
 pub:
 	year       int
 	month      int
@@ -47,10 +45,7 @@ pub:
 	minute     int
 	second     int
 	nanosecond int
-	unix       i64
 	is_local   bool // used to make time.now().local().local() == time.now().local()
-	//
-	microsecond int [deprecated: 'use t.nanosecond / 1000 instead'; deprecated_after: '2023-08-05']
 }
 
 // FormatDelimiter contains different time formats.
@@ -89,8 +84,14 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
+// Time.new static method returns a time struct with the calculated Unix time.
 pub fn Time.new(t Time) Time {
-	return new_time(t)
+	return time_with_unix(t)
+}
+
+// new returns a time struct with the calculated Unix time.
+pub fn new(t Time) Time {
+	return time_with_unix(t)
 }
 
 // smonth returns the month name abbreviation.
@@ -99,61 +100,59 @@ pub fn (t Time) smonth() string {
 		return '---'
 	}
 	i := t.month - 1
-	return time.months_string[i * 3..(i + 1) * 3]
+	return months_string[i * 3..(i + 1) * 3]
 }
 
-// unix_time returns the UNIX time with second resolution.
-[inline]
-pub fn (t Time) unix_time() i64 {
-	return t.unix
+// unix returns the UNIX time with second resolution.
+@[inline]
+pub fn (t Time) unix() i64 {
+	return time_with_unix(t).unix
 }
 
-// unix_time_milli returns the UNIX time with millisecond resolution.
-[inline]
-pub fn (t Time) unix_time_milli() i64 {
-	return t.unix * 1_000 + (i64(t.nanosecond) / 1_000_000)
+// unix_milli returns the UNIX time with millisecond resolution.
+@[inline]
+pub fn (t Time) unix_milli() i64 {
+	return t.unix() * 1_000 + (i64(t.nanosecond) / 1_000_000)
 }
 
-// unix_time_micro returns the UNIX time with microsecond resolution.
-[inline]
-pub fn (t Time) unix_time_micro() i64 {
-	return t.unix * 1_000_000 + (i64(t.nanosecond) / 1_000)
+// unix_micro returns the UNIX time with microsecond resolution.
+@[inline]
+pub fn (t Time) unix_micro() i64 {
+	return t.unix() * 1_000_000 + (i64(t.nanosecond) / 1_000)
 }
 
-// unix_time_nano returns the UNIX time with nanosecond resolution.
-[inline]
-pub fn (t Time) unix_time_nano() i64 {
+// unix_nano returns the UNIX time with nanosecond resolution.
+@[inline]
+pub fn (t Time) unix_nano() i64 {
 	// TODO: use i128 here, when V supports it, since the following expression overflows for years like 3001:
-	return t.unix * 1_000_000_000 + i64(t.nanosecond)
+	return t.unix() * 1_000_000_000 + i64(t.nanosecond)
 }
 
 // add returns a new time with the given duration added.
-pub fn (t Time) add(d Duration) Time {
+pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 	// This expression overflows i64 for big years (and we do not have i128 yet):
 	// nanos := t.unix * 1_000_000_000 + i64(t.nanosecond) <-
 	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
-	mut unixs := t.unix
-	mut nanos := i64(t.nanosecond) + d.nanoseconds()
-	unixs += nanos / time.second
-	nanos = nanos % time.second
-	if nanos < 0 {
-		unixs--
-		nanos += time.second
+	mut increased_time_nanosecond := i64(t.nanosecond) + duration_in_nanosecond.nanoseconds()
+	// increased_time_second
+	mut increased_time_second := t.unix() + (increased_time_nanosecond / second)
+	increased_time_nanosecond = increased_time_nanosecond % second
+	if increased_time_nanosecond < 0 {
+		increased_time_second--
+		increased_time_nanosecond += second
 	}
-	if t.is_local {
-		return unix_nanosecond(unixs, int(nanos)).as_local()
-	}
-	return unix_nanosecond(unixs, int(nanos))
+	res := unix_nanosecond(increased_time_second, int(increased_time_nanosecond))
+	return if t.is_local { res.as_local() } else { res }
 }
 
 // add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
-	return t.add(seconds * time.second)
+	return time_with_unix(t).add(seconds * second)
 }
 
 // add_days returns a new time struct with an added number of days.
 pub fn (t Time) add_days(days int) Time {
-	return t.add(days * 24 * time.hour)
+	return time_with_unix(t).add(days * 24 * hour)
 }
 
 // since returns the time duration elapsed since a given time.
@@ -178,7 +177,7 @@ pub fn since(t Time) Duration {
 // ```
 pub fn (t Time) relative() string {
 	znow := now()
-	mut secs := znow.unix - t.unix
+	mut secs := znow.unix - t.unix()
 	mut prefix := ''
 	mut suffix := ''
 	if secs < 0 {
@@ -187,44 +186,44 @@ pub fn (t Time) relative() string {
 	} else {
 		suffix = ' ago'
 	}
-	if secs < time.seconds_per_minute / 2 {
+	if secs < seconds_per_minute / 2 {
 		return 'now'
 	}
-	if secs < time.seconds_per_hour {
-		m := secs / time.seconds_per_minute
+	if secs < seconds_per_hour {
+		m := secs / seconds_per_minute
 		if m == 1 {
 			return '${prefix}1 minute${suffix}'
 		}
 		return '${prefix}${m} minutes${suffix}'
 	}
-	if secs < time.seconds_per_hour * 24 {
-		h := secs / time.seconds_per_hour
+	if secs < seconds_per_hour * 24 {
+		h := secs / seconds_per_hour
 		if h == 1 {
 			return '${prefix}1 hour${suffix}'
 		}
 		return '${prefix}${h} hours${suffix}'
 	}
-	if secs < time.seconds_per_hour * 24 * 7 {
-		d := secs / time.seconds_per_hour / 24
+	if secs < seconds_per_hour * 24 * 7 {
+		d := secs / seconds_per_hour / 24
 		if d == 1 {
 			return '${prefix}1 day${suffix}'
 		}
 		return '${prefix}${d} days${suffix}'
 	}
-	if secs < time.seconds_per_hour * 24 * time.days_in_year {
+	if secs < seconds_per_hour * 24 * days_in_year {
 		if prefix == 'in ' {
 			return 'on ${t.md()}'
 		}
 		return 'last ${t.md()}'
 	}
-	y := secs / time.seconds_per_hour / 24 / time.days_in_year
+	y := secs / seconds_per_hour / 24 / days_in_year
 	if y == 1 {
 		return '${prefix}1 year${suffix}'
 	}
 	return '${prefix}${y} years${suffix}'
 }
 
-// relative_short returns a string saying how long ago a time occured as follows:
+// relative_short returns a string saying how long ago a time occurred as follows:
 // 0-30 seconds: `"now"`; 30-60 seconds: `"1m"`; anything else is rounded to the
 // nearest minute, hour, day, or year
 //
@@ -240,7 +239,7 @@ pub fn (t Time) relative() string {
 // ```
 pub fn (t Time) relative_short() string {
 	znow := now()
-	mut secs := znow.unix - t.unix
+	mut secs := znow.unix - t.unix()
 	mut prefix := ''
 	mut suffix := ''
 	if secs < 0 {
@@ -249,31 +248,31 @@ pub fn (t Time) relative_short() string {
 	} else {
 		suffix = ' ago'
 	}
-	if secs < time.seconds_per_minute / 2 {
+	if secs < seconds_per_minute / 2 {
 		return 'now'
 	}
-	if secs < time.seconds_per_hour {
-		m := secs / time.seconds_per_minute
+	if secs < seconds_per_hour {
+		m := secs / seconds_per_minute
 		if m == 1 {
 			return '${prefix}1m${suffix}'
 		}
 		return '${prefix}${m}m${suffix}'
 	}
-	if secs < time.seconds_per_hour * 24 {
-		h := secs / time.seconds_per_hour
+	if secs < seconds_per_hour * 24 {
+		h := secs / seconds_per_hour
 		if h == 1 {
 			return '${prefix}1h${suffix}'
 		}
 		return '${prefix}${h}h${suffix}'
 	}
-	if secs < time.seconds_per_hour * 24 * time.days_in_year {
-		d := secs / time.seconds_per_hour / 24
+	if secs < seconds_per_hour * 24 * days_in_year {
+		d := secs / seconds_per_hour / 24
 		if d == 1 {
 			return '${prefix}1d${suffix}'
 		}
 		return '${prefix}${d}d${suffix}'
 	}
-	y := secs / time.seconds_per_hour / 24 / time.days_in_year
+	y := secs / seconds_per_hour / 24 / days_in_year
 	if y == 1 {
 		return '${prefix}1y${suffix}'
 	}
@@ -298,10 +297,41 @@ pub fn (t Time) day_of_week() int {
 	return day_of_week(t.year, t.month, t.day)
 }
 
+// week_of_year returns the current week of year as an integer.
+// follow ISO 8601 standard
+pub fn (t Time) week_of_year() int {
+	// ISO 8601 Week of Year Rules:
+	// --------------------------------------------
+	// 1. Week Definition:
+	//    - A week starts on ​**Monday**​ (Day 1) and ends on ​**Sunday**​ (Day 7).
+	// 2. First Week of the Year:
+	//    - The first week is the one containing the year's ​**first Thursday**.
+	//    - Equivalently, the week with January 4th always belongs to Week 1.
+	// 3. Year Assignment:
+	//    - Dates in December/January may belong to the previous/next ISO year,
+	//      depending on the week's Thursday.
+	// 4. Week Number Format:
+	//    - Expressed as `YYYY-Www` (e.g., `2026-W01` for the first week of 2026).
+	// --------------------------------------------
+	// Algorithm Steps:
+	// 1. Find the Thursday of the current week:
+	//    - If date is Monday-Wednesday, add days to reach Thursday.
+	//    - If date is Thursday-Sunday, subtract days to reach Thursday.
+	// 2. The ISO year is the calendar year of this Thursday.
+	// 3. Compute the week number as:
+	//    week_number = (thursday's day_of_year - 1) / 7 + 1
+	day_of_week := t.day_of_week()
+	days_to_thursday := 4 - day_of_week
+	thursday_date := t.add_days(days_to_thursday)
+	thursday_day_of_year := thursday_date.year_day()
+	week_number := (thursday_day_of_year - 1) / 7 + 1
+	return week_number
+}
+
 // year_day returns the current day of the year as an integer.
 // See also #Time.custom_format .
 pub fn (t Time) year_day() int {
-	yday := t.day + time.days_before[t.month - 1]
+	yday := t.day + days_before[t.month - 1]
 	if is_leap_year(t.year) && t.month > 2 {
 		return yday + 1
 	}
@@ -311,13 +341,13 @@ pub fn (t Time) year_day() int {
 // weekday_str returns the current day as a string 3 letter abbreviation.
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
-	return time.long_days[i][0..3]
+	return long_days[i][0..3]
 }
 
 // long_weekday_str returns the current day as a string.
 pub fn (t Time) long_weekday_str() string {
 	i := t.day_of_week() - 1
-	return time.long_days[i]
+	return long_days[i]
 }
 
 // is_leap_year checks if a given a year is a leap year.
@@ -331,138 +361,13 @@ pub fn days_in_month(month int, year int) !int {
 		return error('Invalid month: ${month}')
 	}
 	extra := if month == 2 && is_leap_year(year) { 1 } else { 0 }
-	res := time.month_days[month - 1] + extra
+	res := month_days[month - 1] + extra
 	return res
 }
 
 // debug returns detailed breakdown of time (`Time{ year: YYYY month: MM day: dd hour: HH: minute: mm second: ss nanosecond: nanos unix: unix }`)
 pub fn (t Time) debug() string {
 	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} nanosecond: ${t.nanosecond:09} unix: ${t.unix:07} }'
-}
-
-// A lot of these are taken from the Go library.
-pub type Duration = i64
-
-pub const (
-	nanosecond  = Duration(1)
-	microsecond = Duration(1000 * nanosecond)
-	millisecond = Duration(1000 * microsecond)
-	second      = Duration(1000 * millisecond)
-	minute      = Duration(60 * second)
-	hour        = Duration(60 * minute)
-	//	day         = Duration(24 * hour)
-	infinite    = Duration(i64(9223372036854775807))
-)
-
-// nanoseconds returns the duration as an integer number of nanoseconds.
-pub fn (d Duration) nanoseconds() i64 {
-	return i64(d)
-}
-
-// microseconds returns the duration as an integer number of microseconds.
-pub fn (d Duration) microseconds() i64 {
-	return i64(d) / time.microsecond
-}
-
-// milliseconds returns the duration as an integer number of milliseconds.
-pub fn (d Duration) milliseconds() i64 {
-	return i64(d) / time.millisecond
-}
-
-// The following functions return floating point numbers because it's common to
-// consider all of them in sub-one intervals
-// seconds returns the duration as a floating point number of seconds.
-pub fn (d Duration) seconds() f64 {
-	return f64(d) / f64(time.second)
-}
-
-// minutes returns the duration as a floating point number of minutes.
-pub fn (d Duration) minutes() f64 {
-	return f64(d) / f64(time.minute)
-}
-
-// hours returns the duration as a floating point number of hours.
-pub fn (d Duration) hours() f64 {
-	return f64(d) / f64(time.hour)
-}
-
-// days returns the duration as a floating point number of days.
-pub fn (d Duration) days() f64 {
-	return f64(d) / f64(time.hour * 24)
-}
-
-// str pretty prints the duration
-//
-// ```
-// h:m:s      // 5:02:33
-// m:s.mi<s>  // 2:33.015
-// s.mi<s>    // 33.015s
-// mi.mc<ms>  // 15.007ms
-// mc.ns<ns>  // 7.234us
-// ns<ns>     // 234ns
-// ```
-pub fn (d Duration) str() string {
-	if d == time.infinite {
-		return 'inf'
-	}
-	mut t := i64(d)
-	hr := t / time.hour
-	t -= hr * time.hour
-	min := t / time.minute
-	t -= min * time.minute
-	sec := t / time.second
-	t -= sec * time.second
-	ms := t / time.millisecond
-	t -= ms * time.millisecond
-	us := t / time.microsecond
-	t -= us * time.microsecond
-	ns := t
-
-	if hr > 0 {
-		return '${hr}:${min:02}:${sec:02}'
-	}
-	if min > 0 {
-		return '${min}:${sec:02}.${ms:03}'
-	}
-	if sec > 0 {
-		return '${sec}.${ms:03}s'
-	}
-	if ms > 0 {
-		return '${ms}.${us:03}ms'
-	}
-	if us > 0 {
-		return '${us}.${ns:03}us'
-	}
-	return '${ns}ns'
-}
-
-// debug returns a detailed breakdown of the Duration, as: 'Duration: - 50days, 4h, 3m, 7s, 541ms, 78us, 9ns'
-pub fn (d Duration) debug() string {
-	mut res := []string{}
-	mut x := i64(d)
-	mut sign := ''
-	if x < 0 {
-		sign = '- '
-		x = -x
-	}
-	for label, v in {
-		'days': 24 * time.hour
-		'h':    time.hour
-		'm':    time.minute
-		's':    time.second
-		'ms':   time.millisecond
-		'us':   time.microsecond
-	} {
-		if x > v {
-			xx := x / v
-			x = x % v
-			res << xx.str() + label
-		}
-	}
-	if x > 0 {
-		res << '${x}ns'
-	}
-	return 'Duration: ${sign}${res.join(', ')}'
 }
 
 // offset returns time zone UTC offset in seconds.
@@ -479,7 +384,7 @@ pub fn (t Time) local_to_utc() Time {
 		return t
 	}
 	return Time{
-		...t.add(-offset() * time.second)
+		...t.add(-offset() * second)
 		is_local: false
 	}
 }
@@ -491,7 +396,7 @@ pub fn (u Time) utc_to_local() Time {
 		return u
 	}
 	return Time{
-		...u.add(offset() * time.second)
+		...u.add(offset() * second)
 		is_local: true
 	}
 }

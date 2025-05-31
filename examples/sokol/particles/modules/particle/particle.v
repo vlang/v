@@ -5,20 +5,18 @@ module particle
 import math.vec
 import sokol.sgl
 
-const (
-	default_life_time = 1000
-	default_v_color   = Color{93, 136, 193, 255}
-)
+const default_life_time = 1000
+const default_v_color = Color{93, 136, 193, 255}
 
 // * Module public
 pub fn new(location vec.Vec2[f64]) &Particle {
 	p := &Particle{
-		location: location
-		velocity: vec.Vec2[f64]{0, 0}
-		acceleration: vec.Vec2[f64]{0, 0}
-		color: particle.default_v_color
-		life_time: particle.default_life_time
-		life_time_init: particle.default_life_time
+		location:       location
+		velocity:       vec.Vec2[f64]{0, 0}
+		acceleration:   vec.Vec2[f64]{0, 0}
+		color:          default_v_color
+		life_time:      default_life_time
+		life_time_init: default_life_time
 	}
 	return p
 }
@@ -29,7 +27,7 @@ fn remap(v f64, min f64, max f64, new_min f64, new_max f64) f64 {
 
 // Particle
 pub struct Particle {
-mut:
+pub mut:
 	location       vec.Vec2[f64]
 	velocity       vec.Vec2[f64]
 	acceleration   vec.Vec2[f64]
@@ -75,7 +73,7 @@ pub fn (mut p Particle) reset() {
 	p.acceleration.zero()
 	p.velocity.zero()
 	// p.color = Color{93, 136, 193, 255}
-	p.color = particle.default_v_color
-	p.life_time = particle.default_life_time
+	p.color = default_v_color
+	p.life_time = default_life_time
 	p.life_time_init = p.life_time
 }

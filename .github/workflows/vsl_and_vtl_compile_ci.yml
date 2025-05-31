@@ -1,0 +1,87 @@
+name: VSL and VTL
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/vsl_and_vtl_compile_ci.yml'
+      - 'examples/**'
+      - 'cmd/tools/vrepl.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/vsl_and_vtl_compile_ci.yml'
+      - 'examples/**'
+      - 'cmd/tools/vrepl.v'
+
+concurrency:
+  group: vsl-vtl-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vsl-compiles:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      VFLAGS: -no-parallel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        id: build
+        run: make && sudo ./v symlink
+      - name: Install dependencies
+        run: |
+          if [ "$RUNNER_OS" == 'Linux' ]; then
+          v retry -- sudo apt -qq update
+          v retry -- sudo apt -qq install \
+            libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev \
+            opencl-headers libxcursor-dev libxi-dev libxrandr-dev libhdf5-cpp-103-1t64 libhdf5-dev libhdf5-mpi-dev hdf5-tools
+          else
+            v retry brew install coreutils hdf5 open-mpi openblas lapack opencl-headers
+          fi
+      - name: Install vsl
+        run: v retry -- v install vsl
+      - name: Test with Pure V Backend
+        run: ~/.vmodules/vsl/bin/test
+      - name: Test with Pure V Backend and Pure V Math
+        run: ~/.vmodules/vsl/bin/test --use-cblas
+
+  vtl-compiles:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      VFLAGS: -no-parallel
+      # Fixes complaints about $TERM not being set when running the vtl test script
+      # (a warning on Linux, but an error on macOS).
+      TERM: xterm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        id: build
+        run: make && sudo ./v symlink
+      - name: Install dependencies
+        run: |
+          if [ "$RUNNER_OS" == 'Linux' ]; then
+            v retry -- sudo apt -qq update
+            v retry -- sudo apt -qq install \
+              libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev
+          else
+            v retry brew install coreutils hdf5 open-mpi openblas lapack opencl-headers
+          fi
+          v retry v install vsl
+      - name: Install vtl
+        run: v retry v install vtl
+      - name: Test with Pure V Backend
+        run: ~/.vmodules/vtl/bin/test
+      - name: Test with Pure V Backend and Pure V Math
+        run: ~/.vmodules/vtl/bin/test --use-cblas

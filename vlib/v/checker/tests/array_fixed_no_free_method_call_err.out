@@ -1,0 +1,7 @@
+vlib/v/checker/tests/array_fixed_no_free_method_call_err.vv:5:19: error: unknown method or field: [24]u8.free()
+    3 |         `0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `Z`]!
+    4 |     defer {
+    5 |         unsafe { buffer.free() }
+      |                         ~~~~~~
+    6 |     }
+    7 | }

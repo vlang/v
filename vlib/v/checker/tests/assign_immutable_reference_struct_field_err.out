@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_immutable_reference_struct_field_err.vv:14:12: notice: `parent` is immutable, cannot have a mutable reference to an immutable object
+   12 |     // taking a reference of `parent` and putting it under a `mut:` struct field
+   13 |     mut child := Tree{
+   14 |         parent: &parent
+      |                  ~~~~~~
+   15 |     }
+   16 |

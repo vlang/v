@@ -5,7 +5,7 @@ pub:
 	id u16
 }
 
-pub struct Position {  // other components ie Velocity
+pub struct Position { // other components ie Velocity
 pub mut:
 	x f64
 	y f64
@@ -28,14 +28,14 @@ pub fn (mut cs ComponentStore[T]) add(e Entity, value T) {
 	//	cs.instances[index] = value
 }
 
-[heap]
+@[heap]
 struct Registry {
 pub mut:
 	data map[string]IComponentStore
 }
 
 pub fn registry() &Registry {
-	mut r := &Registry {
+	mut r := &Registry{
 		data: map[string]IComponentStore{}
 	}
 	return r

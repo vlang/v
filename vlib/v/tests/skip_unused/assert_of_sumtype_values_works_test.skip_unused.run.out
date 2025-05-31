@@ -1,0 +1,9 @@
+vlib/v/tests/skip_unused/assert_of_sumtype_values_works_test.vv:5: fn test_ab
+   > assert a == b
+     Left value (len: 6): `Sum(1)`
+    Right value (len: 6): `Sum(2)`
+
+vlib/v/tests/skip_unused/assert_of_sumtype_values_works_test.vv:9: fn test_sumtype_literals
+   > assert Sum(1) == Sum(2)
+     Left value (len: 6): `Sum(1)`
+    Right value (len: 6): `Sum(2)`

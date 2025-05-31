@@ -1,0 +1,63 @@
+import math as m
+import term
+import strings
+import time { sleep }
+
+const alt = '.,-~:;=!*#$@'
+
+fn rd(cs int, ls int, a f64,
+	b f64) {
+	tt_spacing, p_spacing := 0.07, 0.02
+	r1, r2, k2 := 1, 2, 5
+	k1 := cs * k2 * 2 / (20 * (r1 + r2))
+	c_a, s_a := m.cos(a), m.sin(a)
+	c_b, s_b := m.cos(b), m.sin(b)
+	mut o := [][]rune{len: cs, init: []rune{len: ls, init: ` `}}
+	mut z_buffer := [][]f64{len: cs, init: []f64{len: ls, init: 0}}
+	for tt := f64(0); tt < 2 * m.pi; tt += tt_spacing {
+		c_tt, s_tt := m.cos(tt), m.sin(tt)
+		for phi := f64(0); phi < 2 * m.pi; phi += p_spacing {
+			c_p, s_p := m.cos(phi), m.sin(phi)
+			c_x, c_y := r2 + r1 * c_tt, r1 * s_tt
+			x := c_x * (c_b * c_p + s_a * s_b * s_p) - c_y * c_a * s_b
+			y := c_x * (s_b * c_p - s_a * c_b * s_p) + c_y * c_a * c_b
+			z := k2 + c_a * c_x * s_p + c_y * s_a
+			ooz := 1 / z
+			xp := int(cs / 2 + k1 * ooz * x)
+			yp := int(ls / 2 - k1 * ooz * y)
+			l := c_p * c_tt * s_b - c_a * c_tt * s_p - s_a * s_tt +
+				c_b * (c_a * s_tt - c_tt * s_a * s_p)
+			if l > 0 {
+				if xp < 0 || yp < 0 || xp >= cs || yp >= ls {
+					continue
+				}
+				if ooz > z_buffer[int(xp)][int(yp)] {
+					z_buffer[xp][yp] = ooz
+					lui := int(l * 8)
+					o[xp][yp] = alt[lui]
+				}
+			}
+		}
+	}
+	mut sb := strings.new_builder(ls * cs)
+	print('\x1b[H')
+	for j := 0; j < ls; j++ {
+		for i := 0; i < cs; i++ {
+			sb.write_rune(o[i][j])
+		}
+		sb.write_rune(`\n`)
+	}
+	print(sb.str())
+}
+
+fn main() {
+	term.clear()
+	cs, ls := 80, 25
+	mut a, mut b := f64(0), f64(0)
+	for {
+		rd(cs, ls, a, b)
+		a += 0.05
+		b += 0.07
+		sleep(15 * time.millisecond)
+	}
+}

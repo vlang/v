@@ -3,7 +3,7 @@ module main
 import math
 import benchmark
 
-const max_iter = 1000
+const max_iter = 100_000
 
 fn test_benchmark_acos() {
 	mut x := 0.0

@@ -3,7 +3,7 @@ mut:
 	value int
 }
 
-const constant = Foo{ 100 }
+const constant = Foo{100}
 
 fn main() {
 	f := Foo{}
@@ -15,9 +15,9 @@ fn main() {
 	mut c := &constant
 	c.value = 200
 	c = &constant
-	ic := &constant // ok
-	_=ic
-	
+	ic := &constant
+	_ = ic
+
 	mut mf := f
 	pf = &mf // ok
 	_ = pf

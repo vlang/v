@@ -1,6 +1,7 @@
 type Stmt = Decl | Expr
 
 struct Decl {}
+
 struct Expr {}
 
 struct File {

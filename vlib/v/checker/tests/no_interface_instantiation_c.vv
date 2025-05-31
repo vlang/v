@@ -1,11 +1,11 @@
 interface Speaker {
-    speak()
+	speak()
 }
 
 fn my_fn(s Speaker) {}
 
 fn main() {
-    my_fn(
-        speak: 1
-    )
+	my_fn(
+		speak: 1
+	)
 }

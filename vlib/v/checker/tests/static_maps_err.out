@@ -1,0 +1,7 @@
+vlib/v/checker/tests/static_maps_err.vv:3:13: error: maps cannot be static
+    1 | @[unsafe]
+    2 | fn foo() map[string]int {
+    3 |     mut static x := map[string]int{}
+      |                ^
+    4 |     return x
+    5 | }

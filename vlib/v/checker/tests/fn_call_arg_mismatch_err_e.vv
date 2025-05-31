@@ -1,0 +1,9 @@
+fn f(x int) {
+	println(x)
+}
+
+fn main() {
+	x := u32(2251797157)
+	println(x)
+	f(x)
+}

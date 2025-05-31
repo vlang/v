@@ -1,0 +1,49 @@
+vlib/v/checker/tests/orm_op_with_option_and_none.vv:11:30: warning: comparison with Option value probably isn't intended; use "is none" and "!is none" to select by NULL
+    9 |     db := sqlite.connect(':memory:')!
+   10 |     _ := sql db {
+   11 |         select from Foo where name == val
+      |                                    ~~
+   12 |     }!
+   13 | }
+vlib/v/checker/tests/orm_op_with_option_and_none.vv:25:30: warning: comparison with none probably isn't intended; use "is none" and "!is none" to select by NULL
+   23 | 
+   24 |     _ := sql db {
+   25 |         select from Foo where name == none
+      |                                    ~~
+   26 |     }!
+   27 |
+vlib/v/checker/tests/orm_op_with_option_and_none.vv:29:30: warning: comparison with none probably isn't intended; use "is none" and "!is none" to select by NULL
+   27 | 
+   28 |     _ := sql db {
+   29 |         select from Foo where name != none
+      |                                    ~~
+   30 |     }!
+   31 |
+vlib/v/checker/tests/orm_op_with_option_and_none.vv:33:30: warning: comparison with none probably isn't intended; use "is none" and "!is none" to select by NULL
+   31 | 
+   32 |     _ := sql db {
+   33 |         select from Foo where name < none
+      |                                    ^
+   34 |     }!
+   35 |
+vlib/v/checker/tests/orm_op_with_option_and_none.vv:37:30: warning: comparison with none probably isn't intended; use "is none" and "!is none" to select by NULL
+   35 | 
+   36 |     _ := sql db {
+   37 |         select from Foo where name > none
+      |                                    ^
+   38 |     }!
+   39 |
+vlib/v/checker/tests/orm_op_with_option_and_none.vv:41:30: warning: comparison with none probably isn't intended; use "is none" and "!is none" to select by NULL
+   39 | 
+   40 |     _ := sql db {
+   41 |         select from Foo where name <= none
+      |                                    ~~
+   42 |     }!
+   43 |
+vlib/v/checker/tests/orm_op_with_option_and_none.vv:45:30: warning: comparison with none probably isn't intended; use "is none" and "!is none" to select by NULL
+   43 | 
+   44 |     _ := sql db {
+   45 |         select from Foo where name >= none
+      |                                    ~~
+   46 |     }!
+   47 |

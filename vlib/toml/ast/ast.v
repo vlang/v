@@ -6,7 +6,7 @@ module ast
 import toml.input
 
 // Root represents the root structure of any parsed TOML text snippet or file.
-[heap]
+@[heap]
 pub struct Root {
 pub:
 	input input.Config // User input configuration

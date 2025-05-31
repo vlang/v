@@ -1,6 +1,6 @@
-module main 
+module main
 
-fn test_main(){
+fn test_main() {
 	a := -1
 	ztest(a)
 	ztest2(-1)
@@ -9,8 +9,22 @@ fn test_main(){
 	ztest5(-1)
 }
 
-fn ztest(len u64){println(len)}
-fn ztest2(len u8){println(len)}
-fn ztest3(len u16){println(len)}
-fn ztest4(len u32){println(len)}
-fn ztest5(len usize){println(len)}
+fn ztest(len u64) {
+	println(len)
+}
+
+fn ztest2(len u8) {
+	println(len)
+}
+
+fn ztest3(len u16) {
+	println(len)
+}
+
+fn ztest4(len u32) {
+	println(len)
+}
+
+fn ztest5(len usize) {
+	println(len)
+}

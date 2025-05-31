@@ -2,12 +2,10 @@ import os
 import net.unix
 import net
 
-// ensure that `net` is used, i.e. no warnings
-const use_net = net.no_timeout
+const use_net = net.no_timeout // ensure that `net` is used, i.e. no warnings
 
-const tfolder = os.join_path(os.vtmp_dir(), 'v', 'net_and_unix_together')
-
-const test_port = os.join_path(tfolder, 'unix_domain_socket')
+const tfolder = os.join_path(os.temp_dir(), 'nuut_${os.getpid()}')
+const test_port = os.join_path(tfolder, 'domain_socket')
 
 fn testsuite_begin() {
 	os.mkdir_all(tfolder) or {}
@@ -23,12 +21,12 @@ fn test_that_net_and_net_unix_can_be_imported_together_without_conflicts() {
 	defer {
 		l.close() or {}
 	}
-	//
+
 	mut c := unix.connect_stream(test_port)!
 	defer {
 		c.close() or {}
 	}
-	//
+
 	data := 'Hello from vlib/net!'
 	c.write_string(data)!
 	mut buf := []u8{len: 100}

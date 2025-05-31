@@ -1,4 +1,4 @@
-fn test_resolve_generic_params() {
+fn test_unwrap_generic_params() {
 	assert encode(true) == []
 	assert encode([true]) == ['[]bool']
 	assert encode(1) == []

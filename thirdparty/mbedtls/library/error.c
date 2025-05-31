@@ -2,19 +2,7 @@
  *  Error message information
  *
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
- *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 
 #include "common.h"
@@ -25,11 +13,7 @@
 
 #if defined(MBEDTLS_ERROR_C)
 
-#if defined(MBEDTLS_PLATFORM_C)
 #include "mbedtls/platform.h"
-#else
-#define mbedtls_snprintf snprintf
-#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -114,6 +98,10 @@
 #include "mbedtls/hmac_drbg.h"
 #endif
 
+#if defined(MBEDTLS_LMS_C)
+#include "mbedtls/lms.h"
+#endif
+
 #if defined(MBEDTLS_MD_C)
 #include "mbedtls/md.h"
 #endif
@@ -142,6 +130,10 @@
 #include "mbedtls/pkcs5.h"
 #endif
 
+#if defined(MBEDTLS_PKCS7_C)
+#include "mbedtls/pkcs7.h"
+#endif
+
 #if defined(MBEDTLS_POLY1305_C)
 #include "mbedtls/poly1305.h"
 #endif
@@ -156,6 +148,10 @@
 
 #if defined(MBEDTLS_SHA256_C)
 #include "mbedtls/sha256.h"
+#endif
+
+#if defined(MBEDTLS_SHA3_C)
+#include "mbedtls/sha3.h"
 #endif
 
 #if defined(MBEDTLS_SHA512_C)
@@ -175,20 +171,20 @@
 #endif
 
 
-const char * mbedtls_high_level_strerr( int error_code )
+const char *mbedtls_high_level_strerr(int error_code)
 {
     int high_level_error_code;
 
-    if( error_code < 0 )
+    if (error_code < 0) {
         error_code = -error_code;
+    }
 
     /* Extract the high-level part from the error code. */
     high_level_error_code = error_code & 0xFF80;
 
-    switch( high_level_error_code )
-    {
-        /* Begin Auto-Generated Code. */
-#if defined(MBEDTLS_CIPHER_C)
+    switch (high_level_error_code) {
+    /* Begin Auto-Generated Code. */
+    #if defined(MBEDTLS_CIPHER_C)
         case -(MBEDTLS_ERR_CIPHER_FEATURE_UNAVAILABLE):
             return( "CIPHER - The selected feature is not available" );
         case -(MBEDTLS_ERR_CIPHER_BAD_INPUT_DATA):
@@ -336,6 +332,33 @@ const char * mbedtls_high_level_strerr( int error_code )
             return( "PKCS5 - Given private key password does not allow for correct decryption" );
 #endif /* MBEDTLS_PKCS5_C */
 
+#if defined(MBEDTLS_PKCS7_C)
+        case -(MBEDTLS_ERR_PKCS7_INVALID_FORMAT):
+            return( "PKCS7 - The format is invalid, e.g. different type expected" );
+        case -(MBEDTLS_ERR_PKCS7_FEATURE_UNAVAILABLE):
+            return( "PKCS7 - Unavailable feature, e.g. anything other than signed data" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_VERSION):
+            return( "PKCS7 - The PKCS #7 version element is invalid or cannot be parsed" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_CONTENT_INFO):
+            return( "PKCS7 - The PKCS #7 content info is invalid or cannot be parsed" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_ALG):
+            return( "PKCS7 - The algorithm tag or value is invalid or cannot be parsed" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_CERT):
+            return( "PKCS7 - The certificate tag or value is invalid or cannot be parsed" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_SIGNATURE):
+            return( "PKCS7 - Error parsing the signature" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_SIGNER_INFO):
+            return( "PKCS7 - Error parsing the signer's info" );
+        case -(MBEDTLS_ERR_PKCS7_BAD_INPUT_DATA):
+            return( "PKCS7 - Input invalid" );
+        case -(MBEDTLS_ERR_PKCS7_ALLOC_FAILED):
+            return( "PKCS7 - Allocation of memory failed" );
+        case -(MBEDTLS_ERR_PKCS7_VERIFY_FAIL):
+            return( "PKCS7 - Verification Failed" );
+        case -(MBEDTLS_ERR_PKCS7_CERT_DATE_INVALID):
+            return( "PKCS7 - The PKCS #7 date issued/expired dates are invalid" );
+#endif /* MBEDTLS_PKCS7_C */
+
 #if defined(MBEDTLS_RSA_C)
         case -(MBEDTLS_ERR_RSA_BAD_INPUT_DATA):
             return( "RSA - Bad input parameters to function" );
@@ -394,6 +417,16 @@ const char * mbedtls_high_level_strerr( int error_code )
             return( "SSL - The peer notified us that the connection is going to be closed" );
         case -(MBEDTLS_ERR_SSL_BAD_CERTIFICATE):
             return( "SSL - Processing of the Certificate handshake message failed" );
+        case -(MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET):
+            return( "SSL - A TLS 1.3 NewSessionTicket message has been received" );
+        case -(MBEDTLS_ERR_SSL_CANNOT_READ_EARLY_DATA):
+            return( "SSL - Not possible to read early data" );
+        case -(MBEDTLS_ERR_SSL_RECEIVED_EARLY_DATA):
+            return( "SSL - * Early data has been received as part of an on-going handshake. This error code can be returned only on server side if and only if early data has been enabled by means of the mbedtls_ssl_conf_early_data() API. This error code can then be returned by mbedtls_ssl_handshake(), mbedtls_ssl_handshake_step(), mbedtls_ssl_read() or mbedtls_ssl_write() if early data has been received as part of the handshake sequence they triggered. To read the early data, call mbedtls_ssl_read_early_data()" );
+        case -(MBEDTLS_ERR_SSL_CANNOT_WRITE_EARLY_DATA):
+            return( "SSL - Not possible to write early data" );
+        case -(MBEDTLS_ERR_SSL_CACHE_ENTRY_NOT_FOUND):
+            return( "SSL - Cache entry not found" );
         case -(MBEDTLS_ERR_SSL_ALLOC_FAILED):
             return( "SSL - Memory allocation failed" );
         case -(MBEDTLS_ERR_SSL_HW_ACCEL_FAILED):
@@ -446,6 +479,8 @@ const char * mbedtls_high_level_strerr( int error_code )
             return( "SSL - An operation failed due to an unexpected version or configuration" );
         case -(MBEDTLS_ERR_SSL_BAD_CONFIG):
             return( "SSL - Invalid value in SSL config" );
+        case -(MBEDTLS_ERR_SSL_CERTIFICATE_VERIFICATION_WITHOUT_HOSTNAME):
+            return( "SSL - Attempt to verify a certificate without an expected hostname. This is usually insecure.  In TLS clients, when a client authenticates a server through its certificate, the client normally checks three things: - the certificate chain must be valid; - the chain must start from a trusted CA; - the certificate must cover the server name that is expected by the client.  Omitting any of these checks is generally insecure, and can allow a malicious server to impersonate a legitimate server.  The third check may be safely skipped in some unusual scenarios, such as networks where eavesdropping is a risk but not active attacks, or a private PKI where the client equally trusts all servers that are accredited by the root CA.  You should call mbedtls_ssl_set_hostname() with the expected server name before starting a TLS handshake on a client (unless the client is set up to only use PSK-based authentication, which does not rely on the host name). If you have determined that server name verification is not required for security in your scenario, call mbedtls_ssl_set_hostname() with \\p NULL as the server name.  This error is raised if all of the following conditions are met:  - A TLS client is configured with the authentication mode #MBEDTLS_SSL_VERIFY_REQUIRED (default). - Certificate authentication is enabled. - The client does not call mbedtls_ssl_set_hostname(). - The configuration option #MBEDTLS_SSL_CLI_ALLOW_WEAK_CERTIFICATE_VERIFICATION_WITHOUT_HOSTNAME is not enabled" );
 #endif /* MBEDTLS_SSL_TLS_C */
 
 #if defined(MBEDTLS_X509_USE_C) || defined(MBEDTLS_X509_CREATE_C)
@@ -496,23 +531,23 @@ const char * mbedtls_high_level_strerr( int error_code )
             break;
     }
 
-    return( NULL );
+    return NULL;
 }
 
-const char * mbedtls_low_level_strerr( int error_code )
+const char *mbedtls_low_level_strerr(int error_code)
 {
     int low_level_error_code;
 
-    if( error_code < 0 )
+    if (error_code < 0) {
         error_code = -error_code;
+    }
 
     /* Extract the low-level part from the error code. */
     low_level_error_code = error_code & ~0xFF80;
 
-    switch( low_level_error_code )
-    {
-        /* Begin Auto-Generated Code. */
-#if defined(MBEDTLS_AES_C)
+    switch (low_level_error_code) {
+    /* Begin Auto-Generated Code. */
+    #if defined(MBEDTLS_AES_C)
         case -(MBEDTLS_ERR_AES_INVALID_KEY_LENGTH):
             return( "AES - Invalid key length" );
         case -(MBEDTLS_ERR_AES_INVALID_INPUT_LENGTH):
@@ -665,6 +700,19 @@ const char * mbedtls_low_level_strerr( int error_code )
             return( "HMAC_DRBG - The entropy source failed" );
 #endif /* MBEDTLS_HMAC_DRBG_C */
 
+#if defined(MBEDTLS_LMS_C)
+        case -(MBEDTLS_ERR_LMS_BAD_INPUT_DATA):
+            return( "LMS - Bad data has been input to an LMS function" );
+        case -(MBEDTLS_ERR_LMS_OUT_OF_PRIVATE_KEYS):
+            return( "LMS - Specified LMS key has utilised all of its private keys" );
+        case -(MBEDTLS_ERR_LMS_VERIFY_FAILED):
+            return( "LMS - LMS signature verification failed" );
+        case -(MBEDTLS_ERR_LMS_ALLOC_FAILED):
+            return( "LMS - LMS failed to allocate space for a private key" );
+        case -(MBEDTLS_ERR_LMS_BUFFER_TOO_SMALL):
+            return( "LMS - Input/output buffer is too small to contain requited data" );
+#endif /* MBEDTLS_LMS_C */
+
 #if defined(MBEDTLS_NET_C)
         case -(MBEDTLS_ERR_NET_SOCKET_FAILED):
             return( "NET - Failed to open a socket" );
@@ -716,6 +764,11 @@ const char * mbedtls_low_level_strerr( int error_code )
             return( "SHA256 - SHA-256 input data was malformed" );
 #endif /* MBEDTLS_SHA256_C */
 
+#if defined(MBEDTLS_SHA3_C)
+        case -(MBEDTLS_ERR_SHA3_BAD_INPUT_DATA):
+            return( "SHA3 - SHA-3 input data was malformed" );
+#endif /* MBEDTLS_SHA3_C */
+
 #if defined(MBEDTLS_SHA512_C)
         case -(MBEDTLS_ERR_SHA512_BAD_INPUT_DATA):
             return( "SHA512 - SHA-512 input data was malformed" );
@@ -733,91 +786,93 @@ const char * mbedtls_low_level_strerr( int error_code )
             break;
     }
 
-    return( NULL );
+    return NULL;
 }
 
-void mbedtls_strerror( int ret, char *buf, size_t buflen )
+void mbedtls_strerror(int ret, char *buf, size_t buflen)
 {
     size_t len;
     int use_ret;
-    const char * high_level_error_description = NULL;
-    const char * low_level_error_description = NULL;
+    const char *high_level_error_description = NULL;
+    const char *low_level_error_description = NULL;
 
-    if( buflen == 0 )
+    if (buflen == 0) {
         return;
+    }
 
-    memset( buf, 0x00, buflen );
+    memset(buf, 0x00, buflen);
 
-    if( ret < 0 )
+    if (ret < 0) {
         ret = -ret;
+    }
 
-    if( ret & 0xFF80 )
-    {
+    if (ret & 0xFF80) {
         use_ret = ret & 0xFF80;
 
         // Translate high level error code.
-        high_level_error_description = mbedtls_high_level_strerr( ret );
+        high_level_error_description = mbedtls_high_level_strerr(ret);
 
-        if( high_level_error_description == NULL )
-            mbedtls_snprintf( buf, buflen, "UNKNOWN ERROR CODE (%04X)", (unsigned int) use_ret );
-        else
-            mbedtls_snprintf( buf, buflen, "%s", high_level_error_description );
+        if (high_level_error_description == NULL) {
+            mbedtls_snprintf(buf, buflen, "UNKNOWN ERROR CODE (%04X)", (unsigned int) use_ret);
+        } else {
+            mbedtls_snprintf(buf, buflen, "%s", high_level_error_description);
+        }
 
 #if defined(MBEDTLS_SSL_TLS_C)
         // Early return in case of a fatal error - do not try to translate low
         // level code.
-        if(use_ret == -(MBEDTLS_ERR_SSL_FATAL_ALERT_MESSAGE))
+        if (use_ret == -(MBEDTLS_ERR_SSL_FATAL_ALERT_MESSAGE)) {
             return;
+        }
 #endif /* MBEDTLS_SSL_TLS_C */
     }
 
     use_ret = ret & ~0xFF80;
 
-    if( use_ret == 0 )
+    if (use_ret == 0) {
         return;
+    }
 
     // If high level code is present, make a concatenation between both
     // error strings.
     //
-    len = strlen( buf );
+    len = strlen(buf);
 
-    if( len > 0 )
-    {
-        if( buflen - len < 5 )
+    if (len > 0) {
+        if (buflen - len < 5) {
             return;
+        }
 
-        mbedtls_snprintf( buf + len, buflen - len, " : " );
+        mbedtls_snprintf(buf + len, buflen - len, " : ");
 
         buf += len + 3;
         buflen -= len + 3;
     }
 
     // Translate low level error code.
-    low_level_error_description = mbedtls_low_level_strerr( ret );
+    low_level_error_description = mbedtls_low_level_strerr(ret);
 
-    if( low_level_error_description == NULL )
-        mbedtls_snprintf( buf, buflen, "UNKNOWN ERROR CODE (%04X)", (unsigned int) use_ret );
-    else
-        mbedtls_snprintf( buf, buflen, "%s", low_level_error_description );
+    if (low_level_error_description == NULL) {
+        mbedtls_snprintf(buf, buflen, "UNKNOWN ERROR CODE (%04X)", (unsigned int) use_ret);
+    } else {
+        mbedtls_snprintf(buf, buflen, "%s", low_level_error_description);
+    }
 }
 
 #else /* MBEDTLS_ERROR_C */
 
 /*
- * Provide an non-function in case MBEDTLS_ERROR_C is not defined
+ * Provide a dummy implementation when MBEDTLS_ERROR_C is not defined
  */
-void mbedtls_strerror( int ret, char *buf, size_t buflen )
+void mbedtls_strerror(int ret, char *buf, size_t buflen)
 {
     ((void) ret);
 
-    if( buflen > 0 )
+    if (buflen > 0) {
         buf[0] = '\0';
+    }
 }
 
 #endif /* MBEDTLS_ERROR_C */
-
-#if defined(MBEDTLS_TEST_HOOKS)
-void (*mbedtls_test_hook_error_add)( int, int, const char *, int );
-#endif
 
 #endif /* MBEDTLS_ERROR_C || MBEDTLS_ERROR_STRERROR_DUMMY */

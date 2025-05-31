@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -22,15 +22,15 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		stmts := p.parse_block_no_scope(false)
 		pos.update_last_line(p.prev_tok.line_nr)
 		for_stmt := ast.ForStmt{
-			stmts: stmts
-			pos: pos
+			stmts:    stmts
+			pos:      pos
 			comments: comments
-			is_inf: true
-			scope: p.scope
+			is_inf:   true
+			scope:    p.scope
 		}
 		p.close_scope()
 		return for_stmt
-	} else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon]
+	} else if p.peek_tok.kind == .semicolon
 		|| (p.peek_tok.kind in [.inc, .dec] && p.peek_token(2).kind in [.semicolon, .comma])
 		|| p.peek_tok.kind.is_assign() || p.tok.kind == .semicolon
 		|| (p.peek_tok.kind == .comma && p.peek_token(2).kind != .key_mut
@@ -47,7 +47,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		mut has_inc := false
 		mut is_multi := p.peek_tok.kind == .comma && p.peek_token(2).kind != .key_mut
 			&& p.peek_token(3).kind != .key_in
-		if p.peek_tok.kind in [.assign, .decl_assign] || p.peek_tok.kind.is_assign() || is_multi {
+		if p.peek_tok.kind.is_assign() || is_multi {
 			init = p.assign_stmt()
 			has_init = true
 		} else if p.peek_tok.kind in [.inc, .dec] {
@@ -82,17 +82,17 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		stmts := p.parse_block_no_scope(false)
 		pos.update_last_line(p.prev_tok.line_nr)
 		for_c_stmt := ast.ForCStmt{
-			stmts: stmts
+			stmts:    stmts
 			has_init: has_init
 			has_cond: has_cond
-			has_inc: has_inc
+			has_inc:  has_inc
 			is_multi: is_multi
-			init: init
-			cond: cond
-			inc: inc
-			pos: pos
+			init:     init
+			cond:     cond
+			inc:      inc
+			pos:      pos
 			comments: comments
-			scope: p.scope
+			scope:    p.scope
 		}
 		p.close_scope()
 		return for_c_stmt
@@ -134,10 +134,10 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 					val_var_pos)
 			}
 			p.scope.register(ast.Var{
-				name: key_var_name
-				typ: ast.int_type
-				pos: key_var_pos
-				is_tmp: true
+				name:         key_var_name
+				typ:          ast.int_type
+				pos:          key_var_pos
+				is_tmp:       true
 				is_stack_obj: true
 			})
 		} else if p.scope.known_var(val_var_name) {
@@ -146,15 +146,14 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		comments << p.eat_comments()
 		p.check(.key_in)
-		if p.tok.kind == .name && p.tok.lit in [key_var_name, val_var_name] {
-			return p.error('in a `for x in array` loop, the key or value iteration variable `${p.tok.lit}` can not be the same as the array variable')
-		}
 		comments << p.eat_comments()
 		// arr_expr
+		p.inside_for_expr = true
 		cond := p.expr(0)
+		p.inside_for_expr = false
 		// 0 .. 10
 		// start := p.tok.lit.int()
-		// TODO use RangeExpr
+		// TODO: use RangeExpr
 		mut high_expr := ast.empty_expr
 		mut is_range := false
 		if p.tok.kind == .ellipsis {
@@ -165,13 +164,13 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			p.next()
 			high_expr = p.expr(0)
 			p.scope.register(ast.Var{
-				name: val_var_name
-				typ: ast.int_type
-				pos: val_var_pos
-				is_tmp: true
+				name:         val_var_name
+				typ:          ast.int_type
+				pos:          val_var_pos
+				is_tmp:       true
 				is_stack_obj: true
 			})
-			if key_var_name.len > 0 {
+			if key_var_name != '' {
 				return p.error_with_pos('cannot declare index variable with range `for`',
 					key_var_pos)
 			}
@@ -181,12 +180,12 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		} else {
 			// this type will be set in checker
 			p.scope.register(ast.Var{
-				name: val_var_name
-				pos: val_var_pos
-				is_mut: val_is_mut
+				name:          val_var_name
+				pos:           val_var_pos
+				is_mut:        val_is_mut
 				is_auto_deref: val_is_mut
-				is_tmp: true
-				is_stack_obj: true
+				is_tmp:        true
+				is_stack_obj:  true
 			})
 		}
 		comments << p.eat_comments()
@@ -195,17 +194,18 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		pos.update_last_line(p.prev_tok.line_nr)
 		// println('nr stmts=$stmts.len')
 		for_in_stmt := ast.ForInStmt{
-			stmts: stmts
-			cond: cond
-			key_var: key_var_name
-			val_var: val_var_name
-			high: high_expr
-			is_range: is_range
-			pos: pos
-			kv_pos: key_var_pos
-			comments: comments
+			stmts:      stmts
+			cond:       cond
+			key_var:    key_var_name
+			val_var:    val_var_name
+			high:       high_expr
+			is_range:   is_range
+			pos:        pos
+			kv_pos:     key_var_pos
+			vv_pos:     val_var_pos
+			comments:   comments
 			val_is_mut: val_is_mut
-			scope: p.scope
+			scope:      p.scope
 		}
 		p.close_scope()
 		return for_in_stmt
@@ -218,9 +218,9 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	stmts := p.parse_block_no_scope(false)
 	pos.update_last_line(p.prev_tok.line_nr)
 	for_stmt := ast.ForStmt{
-		cond: cond
+		cond:  cond
 		stmts: stmts
-		pos: pos
+		pos:   pos
 		scope: p.scope
 	}
 	p.close_scope()

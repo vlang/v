@@ -31,6 +31,15 @@ fn test_skip() {
 	s.skip()
 	assert s.next() == `c`
 	assert s.next() == -1
+
+	s.reset()
+	assert s.peek() == `a`
+	s.skip()
+	assert s.peek() == `b`
+	s.skip()
+	assert s.peek() == `c`
+	s.skip()
+	assert s.peek() == -1
 }
 
 fn test_skip_n() {
@@ -38,6 +47,23 @@ fn test_skip_n() {
 	s.skip_n(2)
 	assert s.next() == `c`
 	assert s.next() == -1
+
+	s.reset()
+	assert s.peek() == `a`
+	s.skip_n(2)
+	assert s.peek() == `c`
+	s.skip_n(2)
+	assert s.peek() == -1
+
+	s.reset()
+	assert s.peek() == `a`
+	s.skip_n(3)
+	assert s.peek() == -1
+
+	s.reset()
+	assert s.peek() == `a`
+	s.skip_n(4)
+	assert s.peek() == -1
 }
 
 fn test_peek() {
@@ -45,7 +71,7 @@ fn test_peek() {
 	assert s.peek() == `a`
 	assert s.peek() == `a`
 	assert s.peek() == `a`
-	//
+
 	assert s.next() == `a`
 	assert s.next() == `b`
 	assert s.next() == `c`
@@ -59,7 +85,7 @@ fn test_peek_n() {
 	assert s.peek_n(2) == `c`
 	assert s.peek_n(3) == -1
 	assert s.peek_n(4) == -1
-	//
+
 	assert s.next() == `a`
 	assert s.next() == `b`
 	assert s.next() == `c`
@@ -156,4 +182,35 @@ fn test_goto_end() {
 	mut s := textscanner.new('abc')
 	s.goto_end()
 	assert s.current() == `c`
+}
+
+fn test_skip_whitespace() {
+	mut s := textscanner.new('abc   d  \n   xyz')
+	assert s.current() == -1
+	assert s.next() == `a`
+	assert s.next() == `b`
+	assert s.next() == `c`
+	s.skip_whitespace()
+	assert s.next() == `d`
+	s.skip_whitespace()
+	assert s.next() == `x`
+	assert s.next() == `y`
+	assert s.next() == `z`
+}
+
+fn test_peek_u8() {
+	mut s := textscanner.new('abc')
+	assert s.peek_u8() == `a`
+	assert !s.peek_u8().is_digit()
+	assert s.next() == `a`
+	assert s.peek_u8() == `b`
+}
+
+fn test_peek_n_u8() {
+	mut s := textscanner.new('abc')
+	assert s.peek_n_u8(0) == `a`
+	assert s.peek_n_u8(1) == `b`
+	assert s.peek_n_u8(2) == `c`
+	assert s.peek_n_u8(3) == 0
+	assert s.peek_n_u8(4) == 0
 }

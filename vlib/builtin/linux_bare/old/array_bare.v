@@ -11,10 +11,10 @@ pub:
 // for now off the stack
 fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array {
 	arr := array{
-		len: len
-		cap: cap
+		len:          len
+		cap:          cap
 		element_size: elm_size
-		data: c_array
+		data:         c_array
 	}
 	return arr
 }
@@ -41,10 +41,10 @@ pub fn (a array) repeat(nr_repeats int) array {
 	assert nr_repeats >= 0
 
 	arr := array{
-		len: nr_repeats * a.len
-		cap: nr_repeats * a.len
+		len:          nr_repeats * a.len
+		cap:          nr_repeats * a.len
 		element_size: a.element_size
-		data: malloc(nr_repeats * a.len * a.element_size)
+		data:         malloc(nr_repeats * a.len * a.element_size)
 	}
 	for i in 0 .. nr_repeats {
 		mem_copy(arr.data + i * a.len * a.element_size, a.data, a.len * a.element_size)

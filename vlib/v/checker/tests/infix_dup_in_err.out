@@ -1,0 +1,12 @@
+vlib/v/checker/tests/infix_dup_in_err.vv:1:16: notice: item `2` is duplicated in the list
+    1 | if 1 in [1, 2, 2, 2] { println('ok') }
+      |                ^
+    2 | 
+    3 | a := `a`
+vlib/v/checker/tests/infix_dup_in_err.vv:4:20: notice: item `a` is duplicated in the list
+    2 | 
+    3 | a := `a`
+    4 | if `a` in [`c`, a, a] { println('ok') }
+      |                    ^
+    5 | 
+    6 | println('done')

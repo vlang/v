@@ -10,13 +10,13 @@ fn get_info(a int, b string, c Config) string {
 fn main() {
 	ret1 := get_info(11, 'aaaaabbbbb',
 		name: 'john'
-		age: 11
+		age:  11
 	)
 	println(ret1)
 
 	ret2 := get_info(22, 'aaaaabbbbbcccccdddddeeeeefffffggggghhhhhiiiiijjjjjkkkkklllllmmmmm',
 		name: 'bob'
-		age: 22
+		age:  22
 	)
 	println(ret2)
 }

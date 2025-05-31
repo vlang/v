@@ -2,7 +2,7 @@ module os
 
 pub type FN_SA_Handler = fn (sig int)
 
-struct C.sigaction {
+pub struct C.sigaction {
 mut:
 	sa_mask      int
 	sa_sigaction int

@@ -9,7 +9,7 @@ import encoding.hex
 const github_job = os.getenv('GITHUB_JOB')
 
 fn testsuite_begin() {
-	if edwards25519.github_job != '' {
+	if github_job != '' {
 		// ensure that the CI does not run flaky tests:
 		rand.seed([u32(0xffff24), 0xabcd])
 	}
@@ -23,70 +23,68 @@ const mask_low_52_bits = (u64(1) << 52) - 1
 
 fn generate_field_element() Element {
 	return Element{
-		l0: rand.u64() & edwards25519.mask_low_52_bits
-		l1: rand.u64() & edwards25519.mask_low_52_bits
-		l2: rand.u64() & edwards25519.mask_low_52_bits
-		l3: rand.u64() & edwards25519.mask_low_52_bits
-		l4: rand.u64() & edwards25519.mask_low_52_bits
+		l0: rand.u64() & mask_low_52_bits
+		l1: rand.u64() & mask_low_52_bits
+		l2: rand.u64() & mask_low_52_bits
+		l3: rand.u64() & mask_low_52_bits
+		l4: rand.u64() & mask_low_52_bits
 	}
 }
 
 // weirdLimbs can be combined to generate a range of edge-case edwards25519 elements.
 // 0 and -1 are intentionally more weighted, as they combine well.
-const (
-	two_to_51      = u64(1) << 51
-	two_to_52      = u64(1) << 52
-	weird_limbs_51 = [
-		u64(0),
-		0,
-		0,
-		0,
-		1,
-		19 - 1,
-		19,
-		0x2aaaaaaaaaaaa,
-		0x5555555555555,
-		two_to_51 - 20,
-		two_to_51 - 19,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-	]
-	weird_limbs_52 = [
-		u64(0),
-		0,
-		0,
-		0,
-		0,
-		0,
-		1,
-		19 - 1,
-		19,
-		0x2aaaaaaaaaaaa,
-		0x5555555555555,
-		two_to_51 - 20,
-		two_to_51 - 19,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51,
-		two_to_51 + 1,
-		two_to_52 - 19,
-		two_to_52 - 1,
-	]
-)
+const two_to_51 = u64(1) << 51
+const two_to_52 = u64(1) << 52
+const weird_limbs_51 = [
+	u64(0),
+	0,
+	0,
+	0,
+	1,
+	19 - 1,
+	19,
+	0x2aaaaaaaaaaaa,
+	0x5555555555555,
+	two_to_51 - 20,
+	two_to_51 - 19,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+]
+const weird_limbs_52 = [
+	u64(0),
+	0,
+	0,
+	0,
+	0,
+	0,
+	1,
+	19 - 1,
+	19,
+	0x2aaaaaaaaaaaa,
+	0x5555555555555,
+	two_to_51 - 20,
+	two_to_51 - 19,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51,
+	two_to_51 + 1,
+	two_to_52 - 19,
+	two_to_52 - 1,
+]
 
 fn generate_weird_field_element() Element {
 	return Element{
-		l0: edwards25519.weird_limbs_52[rand.intn(edwards25519.weird_limbs_52.len) or { 0 }]
-		l1: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
-		l2: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
-		l3: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
-		l4: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
+		l0: weird_limbs_52[rand.intn(weird_limbs_52.len) or { 0 }]
+		l1: weird_limbs_51[rand.intn(weird_limbs_51.len) or { 0 }]
+		l2: weird_limbs_51[rand.intn(weird_limbs_51.len) or { 0 }]
+		l3: weird_limbs_51[rand.intn(weird_limbs_51.len) or { 0 }]
+		l4: weird_limbs_51[rand.intn(weird_limbs_51.len) or { 0 }]
 	}
 }
 
@@ -237,12 +235,12 @@ fn test_set_bytes_from_dalek_test_vectors() {
 	mut tests := [
 		FeRTTest{
 			fe: Element{358744748052810, 1691584618240980, 977650209285361, 1429865912637724, 560044844278676}
-			b: [u8(74), 209, 69, 197, 70, 70, 161, 222, 56, 226, 229, 19, 112, 60, 25, 92, 187,
+			b:  [u8(74), 209, 69, 197, 70, 70, 161, 222, 56, 226, 229, 19, 112, 60, 25, 92, 187,
 				74, 222, 56, 50, 153, 51, 233, 40, 74, 57, 6, 160, 185, 213, 31]
 		},
 		FeRTTest{
 			fe: Element{84926274344903, 473620666599931, 365590438845504, 1028470286882429, 2146499180330972}
-			b: [u8(199), 23, 106, 112, 61, 77, 216, 79, 186, 60, 11, 118, 13, 16, 103, 15, 42,
+			b:  [u8(199), 23, 106, 112, 61, 77, 216, 79, 186, 60, 11, 118, 13, 16, 103, 15, 42,
 				32, 83, 250, 44, 57, 204, 198, 78, 199, 253, 119, 146, 172, 3, 122]
 		},
 	]

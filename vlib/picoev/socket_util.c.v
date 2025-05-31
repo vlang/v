@@ -1,7 +1,6 @@
 module picoev
 
 import net
-import net.conv
 import picohttpparser
 
 #include <errno.h>
@@ -18,23 +17,20 @@ $if windows {
 	#include <sys/resource.h>
 }
 
-[inline]
+@[inline]
 fn get_time() i64 {
 	// time.now() is slow
 	return i64(C.time(C.NULL))
 }
 
-[inline]
+@[inline]
 fn accept(fd int) int {
 	return C.accept(fd, 0, 0)
 }
 
-[inline]
+@[inline]
 fn close_socket(fd int) {
-	$if trace_fd ? {
-		eprintln('close ${fd}')
-	}
-
+	trace_fd('close ${fd}')
 	$if windows {
 		C.closesocket(fd)
 	} $else {
@@ -42,14 +38,12 @@ fn close_socket(fd int) {
 	}
 }
 
-[inline]
+@[inline]
 fn setup_sock(fd int) ! {
 	flag := 1
-
 	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(int)) < 0 {
 		return error('setup_sock.setup_sock failed')
 	}
-
 	$if freebsd {
 		if C.fcntl(fd, C.F_SETFL, C.SOCK_NONBLOCK) != 0 {
 			return error('fcntl failed')
@@ -67,12 +61,10 @@ fn setup_sock(fd int) ! {
 	}
 }
 
-[inline]
-fn req_read(fd int, b &u8, max_len int, idx int) int {
+@[inline]
+fn req_read(fd int, buffer &u8, max_len int, offset int) int {
 	// use `recv` instead of `read` for windows compatibility
-	unsafe {
-		return C.recv(fd, b + idx, max_len - idx, 0)
-	}
+	return unsafe { C.recv(fd, buffer + offset, max_len - offset, 0) }
 }
 
 fn fatal_socket_error(fd int) bool {
@@ -91,67 +83,51 @@ fn fatal_socket_error(fd int) bool {
 			return false
 		}
 	}
-
-	$if trace_fd ? {
-		eprintln('fatal error ${fd}: ${C.errno}')
-	}
-
+	trace_fd('fatal error ${fd}: ${C.errno}')
 	return true
 }
 
-// listen creates a listening tcp socket and returns its file decriptor
-fn listen(config Config) int {
+// listen creates a listening tcp socket and returns its file descriptor
+fn listen(config Config) !int {
 	// not using the `net` modules sockets, because not all socket options are defined
-	fd := C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
-	assert fd != -1
-
-	$if trace_fd ? {
-		eprintln('listen: ${fd}')
+	fd := C.socket(config.family, net.SocketType.tcp, 0)
+	if fd == -1 {
+		return error('Failed to create socket')
 	}
-
+	trace_fd('listen: ${fd}')
 	// Setting flags for socket
 	flag := 1
-	assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)) == 0
-
-	$if linux {
+	flag_zero := 0
+	net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)))!
+	if config.family == .ip6 {
+		// set socket to dualstack so connections to both ipv4 and ipv6 addresses
+		// can be accepted
+		net.socket_error(C.setsockopt(fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, &flag_zero, sizeof(int)))!
+	}
+	$if linux || termux {
 		// epoll socket options
-		assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)) == 0
-		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(int)) == 0
-		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &config.timeout_secs,
-			sizeof(int)) == 0
-		queue_len := max_queue
-		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len, sizeof(int)) == 0
+		net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)))!
+		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(int)))!
+		$if !support_wsl1 ? {
+			net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &config.timeout_secs,
+				sizeof(int)))!
+			queue_len := max_queue
+			net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len,
+				sizeof(int)))!
+		}
 	}
-
 	// addr settings
-
-	sin_port := $if tinyc {
-		conv.hton16(u16(config.port))
-	} $else {
-		C.htons(config.port)
+	saddr := '${config.host}:${config.port}'
+	addrs := net.resolve_addrs(saddr, config.family, .tcp) or {
+		panic('Error while resolving `${saddr}`, err: ${err}')
 	}
-
-	sin_addr := $if tinyc {
-		conv.hton32(u32(C.INADDR_ANY))
-	} $else {
-		C.htonl(C.INADDR_ANY)
-	}
-
-	mut addr := C.sockaddr_in{
-		sin_family: u8(C.AF_INET)
-		sin_port: sin_port
-		sin_addr: sin_addr
-	}
-	size := sizeof(C.sockaddr_in)
-	bind_res := C.bind(fd, voidptr(unsafe { &net.Addr(&addr) }), size)
-	assert bind_res == 0
-
-	listen_res := C.listen(fd, C.SOMAXCONN)
-	assert listen_res == 0
+	addr := addrs[0]
+	alen := addr.len()
+	net.socket_error_message(C.bind(fd, voidptr(&addr), alen), 'binding to ${saddr} failed')!
+	net.socket_error_message(C.listen(fd, C.SOMAXCONN), 'listening on ${saddr} with maximum backlog pending queue of ${C.SOMAXCONN}, failed')!
 	setup_sock(fd) or {
 		config.err_cb(config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
 			err)
 	}
-
 	return fd
 }

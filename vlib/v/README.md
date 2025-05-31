@@ -51,7 +51,7 @@ and a new scope is created:
 import v.ast
 
 scope := ast.Scope{
-	parent: 0
+	parent: unsafe { nil }
 }
 ```
 after that, you can parse your files.

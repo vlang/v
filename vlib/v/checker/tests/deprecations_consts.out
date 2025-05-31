@@ -1,0 +1,6 @@
+vlib/v/checker/tests/deprecations_consts.vv:4:25: error: const `deprecated_consts.a_deprecated_const` has been deprecated since 2023-12-31; use built-in constant min_i8 instead
+    2 | 
+    3 | fn main() {
+    4 |     dump(deprecated_consts.a_deprecated_const)
+      |                            ~~~~~~~~~~~~~~~~~~
+    5 | }

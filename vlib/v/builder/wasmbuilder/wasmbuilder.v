@@ -31,6 +31,6 @@ pub fn compile_wasm(mut b builder.Builder) {
 pub fn build_wasm(mut b builder.Builder, v_files []string, out_file string) {
 	b.front_and_middle_stages(v_files) or { return }
 	util.timing_start('WebAssembly GEN')
-	wasm.gen(b.parsed_files, b.table, out_file, b.pref)
+	wasm.gen(b.parsed_files, mut b.table, out_file, b.pref)
 	util.timing_measure('WebAssembly GEN')
 }

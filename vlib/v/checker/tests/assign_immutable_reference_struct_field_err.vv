@@ -1,0 +1,21 @@
+struct Tree {
+mut:
+	garbage int
+	parent  ?&Tree
+}
+
+fn main() {
+	// `parent` is not declared as mutable!
+	parent := Tree{
+		garbage: 11
+	}
+	// taking a reference of `parent` and putting it under a `mut:` struct field
+	mut child := Tree{
+		parent: &parent
+	}
+
+	// unwrap the reference of `parent`, but declare it as `mut`
+	mut inner_parent := child.parent?
+	inner_parent.garbage = 777 // !we can mutate `parent` freely!
+	println(parent.garbage) // 777
+}

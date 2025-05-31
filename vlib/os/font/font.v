@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 
 module font
@@ -13,7 +13,7 @@ pub enum Variant {
 	italic
 }
 
-[if debug_font ?]
+@[if debug_font ?]
 fn debug_font_println(s string) {
 	println(s)
 }
@@ -28,6 +28,10 @@ pub fn default() string {
 		return env_font
 	}
 	$if windows {
+		if os.exists('C:\\Windows\\Fonts\\segoeui.ttf') {
+			debug_font_println('Using font "C:\\Windows\\Fonts\\segoeui.ttf"')
+			return 'C:\\Windows\\Fonts\\segoeui.ttf'
+		}
 		debug_font_println('Using font "C:\\Windows\\Fonts\\arial.ttf"')
 		return 'C:\\Windows\\Fonts\\arial.ttf'
 	}
@@ -131,5 +135,5 @@ pub fn get_path_variant(font_path string, variant Variant) string {
 			}
 		}
 	}
-	return fpath + file + '.ttf'
+	return '${fpath}${file}.ttf'
 }

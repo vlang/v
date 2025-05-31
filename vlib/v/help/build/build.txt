@@ -9,7 +9,7 @@ to be a .v source file or folder containing .v source files.
 Everything after that, is assumed to be flags, that V will ignore itself,
 but will pass to the executable after it is compiled.
 
-This enables you to do for example: `v -cc gcc -g myfile.v run -param1 abcde`
+This enables you to do for example: `v -cc gcc -g run myfile.v -param1 abcde`
 ... which means for V: "compile using gcc, produce debugging information,
 then run `./myfile -param1 abcde` and exit with its exit code".
 
@@ -20,7 +20,7 @@ named after the build target. ('v abc.v' and 'v abc/' both write either 'abc' or
 The '.exe' suffix is added automatically, when writing a Windows executable.
 By default, the executable is stored in the same directory as the compiled source code.
 
-The -o flag forces V to write the resulting executable or object to the d output file or directory,
+The -o flag forces V to write the resulting executable or object to the output file or directory,
 instead of the default behavior described in the last two paragraphs.
 
 You can put common options inside an environment variable named VFLAGS, so that
@@ -52,10 +52,14 @@ NB: the build flags are shared with the run command too:
 
   -d <flag>[=<value>], -define <flag>[=<value>]
     Define the provided flag.
-    If value is not provided, it is assumed to be set to `true`.
-    `value` should be `1` or `0` to indicate `true` and `false` respectively otherwise.
+    If `value` is not provided, it is assumed to be set to `true`.
+    `value` can be any pure literal like `32` (i64),`34.98` (f64), `false` (bool),
+    `v` (char) or `"V rocks"` (string).
+    In V code you can use `value := $d('<flag>', <default value>)` to retrieve the
+    value assigned to `<flag>`.
+    If no flag identifier (or value) is assigned, `$d()` will return the passed `<default value>`.
 
-  -g
+  -g, -debug
     Compile the executable in debug mode, allowing code to be debugged more easily.
 
   -o <output>, -output <output>
@@ -92,7 +96,16 @@ NB: the build flags are shared with the run command too:
     Compile the executable in production mode, where most optimizations are enabled.
     Note that most V warnings turn to errors, if you pass -prod, so you will have
     to fix them first.
-	  
+
+  -no-prod-options
+    Useful in combination with -prod and -cflags, for allowing more complete customisation,
+    of what flags will be used for the C compiler, for example:
+       `v -prod -no-prod-options -cflags "-Os" program.v`
+    will compile the program, without passing `-O3` and `-flto`, that would otherwise
+    have been used, but passing `-Os` instead. Note, since `-prod` is used, the V compiler
+    itself will still compile your potential `$if prod {` branches, and it will still do the
+    optimisations on the V side, that -prod enables.
+
   -no-bounds-checking
     Programs compiled with this option, will do no runtime checking of array access operations.
     Note that the performance impact of the bounds checking is usually below 3%, so in most
@@ -107,7 +120,7 @@ NB: the build flags are shared with the run command too:
       b) how much *nanoseconds in total* it took
       c) an average for each function (i.e. (b) / (a) )
       d) the function name
-         
+
     NB: you can also combine this command with `run` command.
         For example - `v -prof prof.txt run main.v`
 
@@ -149,6 +162,12 @@ NB: the build flags are shared with the run command too:
   -profile-no-inline
     Skip [inline] functions when profiling.
 
+  -skip-running
+    Skip the automatic running of a _test.v or .vsh file. Useful for debugging and testing.
+    V's testing program `v test` uses that option, to measure and report independently the
+    duration of each _test.v comptime, and then the duration of its runtime.
+    Note: the same effect can be achieved by setting the environment variable VNORUN to 1.
+
   -skip-unused
     Skip generating C/JS code for functions, that are provably not used by your project.
     This speeds up compilation, and reduces the generated output size.
@@ -165,6 +184,14 @@ NB: the build flags are shared with the run command too:
 
   -translated
     Enable features that are discouraged in regular V code but required for translated V code.
+
+  -q
+    Tell V to be quieter, and to not show many otherwise helpful messages, that only get in your
+    way once you have read them a few dozen times. One example is the notice message, usually
+    shown for `v -prod run file.v`, that says that -prod should not be used with run .
+    Note, this option *does not affect* errors/warnings/notices, just messages that V prints in
+    order to be more user friendly, in common situations, that are error prone for new users, and
+    that just needlessly take vertical space, once you are well aware of them.
 
   -v
     Enable verbosity in the V compiler while compiling
@@ -206,6 +233,12 @@ NB: the build flags are shared with the run command too:
     The instrumented version will print detailed timing stats while processing
     each .v file.
 
+  -n
+    Hide all notices.
+
+  -N
+    Treat *all V notices* as errors.
+
   -w
     Hide all warnings.
 
@@ -221,6 +254,12 @@ NB: the build flags are shared with the run command too:
     These should be moved in .c.v and .js.v .
     NB: in the future, this will be turned ON by default,
     and will become an error, after vlib modules are cleaned up.
+
+  -check-return
+    Note about all calls, that ignore the return value of
+    the corresponding fn/method.
+    NB: this is still experimental, the rules for it will
+    change, it may be dropped completely, or it may become the default.
 
 For C-specific build flags, use `v help build-c`.
 For JS-specific build flags, use `v help build-js`.

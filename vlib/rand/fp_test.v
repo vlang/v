@@ -6,12 +6,10 @@ mut:
 	ct int
 }
 
-const (
-	// The sample size to be used; keep cpu time less than 5 seconds
-	count = 9100100
-	// Two sets of seeds
-	seeds = [[u32(2742798260), 2159764996], [u32(2135051596), 958016781]]
-)
+// The sample size to be used; keep cpu time less than 5 seconds
+const count = 9100100
+// Two sets of seeds
+const seeds = [[u32(2742798260), 2159764996], [u32(2135051596), 958016781]]
 
 fn test_f32() {
 	mut histo := []Histo{}

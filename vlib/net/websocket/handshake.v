@@ -90,9 +90,9 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 	server_handshake := 'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${seckey}\r\n\r\n'
 	server_client := &ServerClient{
 		resource_name: get_tokens[1]
-		client_key: key
-		client: unsafe { c }
-		server: unsafe { s }
+		client_key:    key
+		client:        unsafe { c }
+		server:        unsafe { s }
 	}
 	return server_handshake, server_client
 }

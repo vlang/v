@@ -1,0 +1,8 @@
+fn main() {
+	mut i := 0
+	i++
+	$if abc ? {
+		println(i)
+	}
+	println('done')
+}

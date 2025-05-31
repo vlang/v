@@ -59,21 +59,21 @@ pub fn create(path string) !File {
 
 pub fn stdin() File {
 	return File{
-		fd: 0
+		fd:        0
 		is_opened: true
 	}
 }
 
 pub fn stdout() File {
 	return File{
-		fd: 1
+		fd:        1
 		is_opened: true
 	}
 }
 
 pub fn stderr() File {
 	return File{
-		fd: 2
+		fd:        2
 		is_opened: true
 	}
 }
@@ -84,9 +84,10 @@ pub fn (f &File) read(mut buf []u8) !int {
 	}
 	mut nbytes := 0
 	#try {
-	#let buffer = $fs.readFileSync(f.val.fd.valueOf());
+	#let readBuffer = Buffer.alloc(buf.val.len.valueOf());
+	#nbytes = $fs.readSync(f.val.fd.valueOf(), readBuffer, 0, buf.val.len.valueOf(), null);
 	#
-	#for (const val of buffer.values()) { buf.arr[nbytes++] = val; }
+	#for (let i = 0; i < nbytes; i++) { buf.val.arr.arr[i] = new u8(readBuffer[i]); }
 	#}
 	#catch (e) { return error('' + e); }
 

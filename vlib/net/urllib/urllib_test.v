@@ -1,21 +1,7 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import net.urllib
-
-fn test_net_urllib() {
-	test_query := 'Hellö Wörld@vlang'
-	assert urllib.query_escape(test_query) == 'Hell%C3%B6+W%C3%B6rld%40vlang'
-
-	test_url := 'https://joe:pass@www.mydomain.com:8080/som/url?param1=test1&param2=test2&foo=bar#testfragment'
-	u := urllib.parse(test_url) or {
-		assert false
-		return
-	}
-	assert u.scheme == 'https' && u.hostname() == 'www.mydomain.com' && u.port() == '8080'
-		&& u.path == '/som/url' && u.fragment == 'testfragment' && u.user.username == 'joe'
-		&& u.user.password == 'pass'
-}
 
 fn test_str() {
 	url := urllib.parse('https://en.wikipedia.org/wiki/Brazil_(1985_film)') or {
@@ -25,13 +11,16 @@ fn test_str() {
 }
 
 fn test_escape_unescape() {
-	original := 'те ст: т\\%'
-	escaped := urllib.query_escape(original)
+	mut original := 'те ст: т\\%'
+	mut escaped := urllib.query_escape(original)
 	assert escaped == '%D1%82%D0%B5+%D1%81%D1%82%3A+%D1%82%5C%25'
-	unescaped := urllib.query_unescape(escaped) or {
-		assert false
-		return
-	}
+	mut unescaped := urllib.query_unescape(escaped)!
+	assert unescaped == original
+
+	original = 'Hellö Wörld@vlang'
+	escaped = urllib.query_escape(original)
+	assert escaped == 'Hell%C3%B6+W%C3%B6rld%40vlang'
+	unescaped = urllib.query_unescape(escaped)!
 	assert unescaped == original
 }
 
@@ -113,12 +102,40 @@ fn test_parse() {
 		'foo://example.com:8042/over/there?name=ferret#nose',
 		'ftp://2001:0db8:85a3:0000:0000:8a2e:0370:7334/path/file.txt',
 		'ws://[2001:0db8:85a3:0000:0000:8a2e:0370:7334]:4000',
+		'/2000k/hls/mixed.m3u8',
+		'2000k/hls/mixed.m3u8',
+		'./2000k:hls/mixed.m3u8',
 	]
 	for url in urls {
-		_ := urllib.parse(url) or {
-			eprintln(err)
-			assert false
-			return
-		}
+		urllib.parse(url)!
 	}
+
+	test_url := 'https://joe:pass@www.mydomain.com:8080/som/url?param1=test1&param2=test2&foo=bar#testfragment'
+	u := urllib.parse(test_url)!
+	assert u.scheme == 'https' && u.hostname() == 'www.mydomain.com' && u.port() == '8080'
+		&& u.path == '/som/url' && u.fragment == 'testfragment' && u.user.username == 'joe'
+		&& u.user.password == 'pass'
+
+	v := urllib.parse('https://vip.ffzy-online4.com/20230205/6094_d2720761/index.m3u8')!.resolve_reference(urllib.parse('2000k/hls/mixed.m3u8')!)!
+	assert v.str() == 'https://vip.ffzy-online4.com/20230205/6094_d2720761/2000k/hls/mixed.m3u8'
+}
+
+fn test_parse_authority() {
+	test_urls := {
+		'ftp://webmaster@www.google.com/':            ['webmaster', '']
+		'http://j@ne:password@google.com':            ['j@ne', 'password']
+		'http://jane:p@ssword@google.com/p@th?q=@go': ['jane', 'p@ssword']
+	}
+
+	for url, expected in test_urls {
+		u := urllib.parse(url)!
+		assert u.user.username == expected[0]
+		assert u.user.password == expected[1]
+	}
+}
+
+fn test_parse_slashes() {
+	assert urllib.parse('/')!.str() == '/'
+	assert urllib.parse('//')!.str() == '//'
+	assert urllib.parse('///')!.str() == '///'
 }

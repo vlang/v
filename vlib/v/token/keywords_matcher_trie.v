@@ -1,9 +1,9 @@
 module token
 
-// KeywordsMatcherTrie provides a faster way of determinining whether a given name
+// KeywordsMatcherTrie provides a faster way of determining whether a given name
 // is a reserved word (belongs to a given set of previously known words `R`).
 // See the module description for more details.
-[heap]
+@[heap]
 pub struct KeywordsMatcherTrie {
 pub mut:
 	nodes   []&TrieNode
@@ -22,13 +22,10 @@ pub mut:
 // to the KeywordsMatcherTrie instance. It returns -1 if the word was NOT found
 // there at all. If the word was found, find will return the `value` (value => 0),
 // associated with the word, when it was added.
-[direct_array_access]
+@[direct_array_access]
 pub fn (km &KeywordsMatcherTrie) find(word string) int {
 	wlen := word.len
-	if wlen < km.min_len {
-		return -1
-	}
-	if wlen > km.max_len {
+	if wlen < km.min_len || wlen > km.max_len {
 		return -1
 	}
 	node := km.nodes[wlen]
@@ -39,14 +36,14 @@ pub fn (km &KeywordsMatcherTrie) find(word string) int {
 }
 
 // matches returns true when the word was already added, i.e. when it was found.
-[inline]
+@[inline]
 pub fn (km &KeywordsMatcherTrie) matches(word string) bool {
 	return km.find(word) != -1
 }
 
 // add_word adds the given word to the KeywordsMatcherTrie instance. It associates a non
 // negative integer value to it, so later `find` could return the value, when it succeeds.
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut km KeywordsMatcherTrie) add_word(word string, value int) {
 	wlen := word.len
 	if km.max_len < wlen {
@@ -125,6 +122,7 @@ pub fn (node &TrieNode) show(level int) {
 
 // add_word adds another `word` and `value` pair into the trie, starting from `node` (recursively).
 // `word_idx` is just used as an accumulator, and starts from 0 at the root of the tree.
+@[direct_array_access]
 pub fn (mut node TrieNode) add_word(word string, value int, word_idx int) {
 	first := u8(word[word_idx] or {
 		node.value = value
@@ -142,7 +140,7 @@ pub fn (mut node TrieNode) add_word(word string, value int, word_idx int) {
 // find tries to find a match for `word` to the trie (the set of all previously added words).
 // It returns -1 if there is no match, or the value associated with the previously added
 // matching word by `add_word`.
-[direct_array_access]
+@[direct_array_access]
 pub fn (root &TrieNode) find(word string) int {
 	wlen := word.len
 	mut node := unsafe { &TrieNode(root) }
@@ -162,7 +160,7 @@ pub fn (root &TrieNode) find(word string) int {
 		if child == unsafe { nil } {
 			return -1
 		}
-		node = child
+		node = unsafe { child }
 		idx++
 	}
 	return -1

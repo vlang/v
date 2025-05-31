@@ -1,0 +1,201 @@
+diff -ur mbedtls.orig/include/mbedtls/check_config.h mbedtls/include/mbedtls/check_config.h
+--- mbedtls.orig/include/mbedtls/check_config.h	2025-05-30 20:08:11.693258679 +0800
++++ mbedtls/include/mbedtls/check_config.h	2025-05-30 22:33:57.228548245 +0800
+@@ -247,9 +247,10 @@
+ #if defined(MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN) &&  !defined(MBEDTLS_HAS_MEMSAN)
+ #error "MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN requires building with MemorySanitizer"
+ #endif
+-#if defined(MBEDTLS_HAS_MEMSAN) && defined(MBEDTLS_HAVE_ASM)
+-#error "MemorySanitizer does not support assembly implementation"
+-#endif
++// skip this check for now because V test-self need a `fsanitizer`
++//#if defined(MBEDTLS_HAS_MEMSAN) && defined(MBEDTLS_HAVE_ASM)
++//#error "MemorySanitizer does not support assembly implementation"
++//#endif
+ #undef MBEDTLS_HAS_MEMSAN // temporary macro defined above
+ 
+ #if defined(MBEDTLS_CCM_C) && \
+diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/mbedtls_config.h
+--- mbedtls.orig/include/mbedtls/mbedtls_config.h	2025-05-30 20:08:11.694258682 +0800
++++ mbedtls/include/mbedtls/mbedtls_config.h	2025-05-30 21:57:34.966792755 +0800
+@@ -4364,3 +4364,22 @@
+ //#define MBEDTLS_X509_MAX_FILE_PATH_LEN     512 /**< Maximum length of a path/filename string in bytes including the null terminator character ('\0'). */
+ 
+ /** \} name SECTION: Module configuration options */
++
++
++#if defined(__TINYC__)
++#undef MBEDTLS_HAVE_ASM
++#undef MBEDTLS_AESNI_C
++#undef MBEDTLS_PADLOCK_C
++#else // __TINYC__
++#define MBEDTLS_HAVE_ASM
++#define MBEDTLS_AESNI_C
++#define MBEDTLS_PADLOCK_C
++#endif // __TINYC__
++
++#if ( defined(__linux__) || defined(__FreeBSD__) ) || defined (__OpenBSD__)
++#define MBEDTLS_THREADING_PTHREAD
++#define MBEDTLS_THREADING_C
++#else
++#undef MBEDTLS_THREADING_PTHREAD
++#undef MBEDTLS_THREADING_C
++#endif
+diff -ur mbedtls.orig/library/entropy_poll.c mbedtls/library/entropy_poll.c
+--- mbedtls.orig/library/entropy_poll.c	2025-05-30 20:08:21.307293058 +0800
++++ mbedtls/library/entropy_poll.c	2025-05-30 21:57:34.979793067 +0800
+@@ -38,35 +38,36 @@
+ 
+ #if defined(_WIN32) && !defined(EFIX64) && !defined(EFI32)
+ 
++// fallback to 3.3.0 implmentation, as 3.6.3.1 need a high version of Windows SDK
++#if !defined(_WIN32_WINNT)
++#define _WIN32_WINNT 0x0400
++#endif
+ #include <windows.h>
+-#include <bcrypt.h>
+-#include <intsafe.h>
++#include <wincrypt.h>
+ 
+-int mbedtls_platform_entropy_poll(void *data, unsigned char *output, size_t len,
+-                                  size_t *olen)
++int mbedtls_platform_entropy_poll( void *data, unsigned char *output, size_t len,
++                           size_t *olen )
+ {
++    HCRYPTPROV provider;
+     ((void) data);
+     *olen = 0;
+ 
+-    /*
+-     * BCryptGenRandom takes ULONG for size, which is smaller than size_t on
+-     * 64-bit Windows platforms. Extract entropy in chunks of len (dependent
+-     * on ULONG_MAX) size.
+-     */
+-    while (len != 0) {
+-        unsigned long ulong_bytes =
+-            (len > ULONG_MAX) ? ULONG_MAX : (unsigned long) len;
+-
+-        if (!BCRYPT_SUCCESS(BCryptGenRandom(NULL, output, ulong_bytes,
+-                                            BCRYPT_USE_SYSTEM_PREFERRED_RNG))) {
+-            return MBEDTLS_ERR_ENTROPY_SOURCE_FAILED;
+-        }
++    if( CryptAcquireContext( &provider, NULL, NULL,
++                              PROV_RSA_FULL, CRYPT_VERIFYCONTEXT ) == FALSE )
++    {
++        return( MBEDTLS_ERR_ENTROPY_SOURCE_FAILED );
++    }
+ 
+-        *olen += ulong_bytes;
+-        len -= ulong_bytes;
++    if( CryptGenRandom( provider, (DWORD) len, output ) == FALSE )
++    {
++        CryptReleaseContext( provider, 0 );
++        return( MBEDTLS_ERR_ENTROPY_SOURCE_FAILED );
+     }
+ 
+-    return 0;
++    CryptReleaseContext( provider, 0 );
++    *olen = len;
++
++    return( 0 );
+ }
+ #else /* _WIN32 && !EFIX64 && !EFI32 */
+ 
+diff -ur mbedtls.orig/library/pk.c mbedtls/library/pk.c
+--- mbedtls.orig/library/pk.c	2025-05-30 20:08:21.308293062 +0800
++++ mbedtls/library/pk.c	2025-05-30 21:57:34.982793139 +0800
+@@ -1237,6 +1237,7 @@
+         return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
+     }
+ 
++    if (ctx == NULL) return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
+     if (ctx->pk_info == NULL || pk_hashlen_helper(md_alg, &hash_len) != 0) {
+         return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
+     }
+diff -ur mbedtls.orig/library/platform_util.c mbedtls/library/platform_util.c
+--- mbedtls.orig/library/platform_util.c	2025-05-30 20:08:21.308293062 +0800
++++ mbedtls/library/platform_util.c	2025-05-30 22:44:12.752658283 +0800
+@@ -87,7 +87,7 @@
+  */
+ #if !defined(MBEDTLS_PLATFORM_HAS_EXPLICIT_BZERO) && !(defined(__STDC_LIB_EXT1__) && \
+     !defined(__IAR_SYSTEMS_ICC__)) \
+-    && !defined(_WIN32)
++    && !(defined(_WIN32) && !defined(__TINYC__))
+ static void *(*const volatile memset_func)(void *, int, size_t) = memset;
+ #endif
+ 
+@@ -107,7 +107,8 @@
+ #endif
+ #elif defined(__STDC_LIB_EXT1__) && !defined(__IAR_SYSTEMS_ICC__)
+         memset_s(buf, len, 0, len);
+-#elif defined(_WIN32)
++#elif defined(_WIN32) && !defined(__TINYC__)
++        /* tcc has a bad implementation of `SecureZeroMemory` */
+         SecureZeroMemory(buf, len);
+ #else
+         memset_func(buf, 0, len);
+diff -ur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
+--- mbedtls.orig/library/ssl_misc.h	2025-05-30 20:08:21.311293073 +0800
++++ mbedtls/library/ssl_misc.h	2025-05-30 21:57:34.989793307 +0800
+@@ -1652,26 +1652,30 @@
+ {
+     mbedtls_ssl_key_cert *key_cert;
+ 
++    if (ssl == NULL) return NULL;
+     if (ssl->handshake != NULL && ssl->handshake->key_cert != NULL) {
+         key_cert = ssl->handshake->key_cert;
+     } else {
++        if (ssl->conf == NULL) return NULL;
+         key_cert = ssl->conf->key_cert;
+     }
+-
+-    return key_cert == NULL ? NULL : key_cert->key;
++    if (key_cert == NULL) return NULL;
++    return key_cert->key;
+ }
+ 
+ static inline mbedtls_x509_crt *mbedtls_ssl_own_cert(mbedtls_ssl_context *ssl)
+ {
+     mbedtls_ssl_key_cert *key_cert;
+ 
++    if (ssl == NULL) return NULL;
+     if (ssl->handshake != NULL && ssl->handshake->key_cert != NULL) {
+         key_cert = ssl->handshake->key_cert;
+     } else {
++        if (ssl->conf == NULL) return NULL;
+         key_cert = ssl->conf->key_cert;
+     }
+-
+-    return key_cert == NULL ? NULL : key_cert->cert;
++    if (key_cert == NULL) return NULL;
++    return key_cert->cert;
+ }
+ 
+ /*
+diff -ur mbedtls.orig/library/ssl_tls.c mbedtls/library/ssl_tls.c
+--- mbedtls.orig/library/ssl_tls.c	2025-05-30 20:08:21.311293073 +0800
++++ mbedtls/library/ssl_tls.c	2025-05-30 21:57:34.991793356 +0800
+@@ -4559,8 +4559,8 @@
+ {
+     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+ 
+-    if (ssl            == NULL                       ||
+-        ssl->conf      == NULL                       ||
++    if (ssl == NULL) return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
++    if (ssl->conf      == NULL                       ||
+         ssl->handshake == NULL                       ||
+         ssl->state == MBEDTLS_SSL_HANDSHAKE_OVER) {
+         return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+@@ -4649,10 +4649,8 @@
+     int ret = 0;
+ 
+     /* Sanity checks */
+-
+-    if (ssl == NULL || ssl->conf == NULL) {
+-        return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+-    }
++    if (ssl == NULL) return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
++    if (ssl->conf == NULL) return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+ 
+ #if defined(MBEDTLS_SSL_PROTO_DTLS)
+     if (ssl->conf->transport == MBEDTLS_SSL_TRANSPORT_DATAGRAM &&

@@ -127,7 +127,7 @@ fn test_map() {
 	peter := users['1']
 	assert peter.name == 'Peter'
 	mut a := Aaa{
-		m: map[string]int{}
+		m:     map[string]int{}
 		users: map[string]User{}
 	}
 	a.users['Bob'] = User{'Bob'}
@@ -211,10 +211,10 @@ fn test_various_map_value() {
 	// assert m13['test'] == rune(0)
 	mut m14 := map[string]voidptr{}
 	m14['test'] = unsafe { nil }
-	assert m14['test'] == unsafe { nil }
+	assert unsafe { m14['test'] } == unsafe { nil }
 	mut m15 := map[string]&u8{}
-	m15['test'] = &u8(0)
-	assert m15['test'] == &u8(0)
+	m15['test'] = &u8(unsafe { nil })
+	assert unsafe { m15['test'] } == &u8(unsafe { nil })
 	mut m16 := map[string]i64{}
 	m16['test'] = i64(0)
 	assert m16['test'] == i64(0)
@@ -222,8 +222,8 @@ fn test_various_map_value() {
 	m17['test'] = u64(0)
 	assert m17['test'] == u64(0)
 	mut m18 := map[string]&int{}
-	m18['test'] = &int(0)
-	assert m18['test'] == &int(0)
+	m18['test'] = &int(unsafe { nil })
+	assert unsafe { m18['test'] } == &int(unsafe { nil })
 }
 
 fn test_string_arr() {
@@ -668,8 +668,8 @@ fn test_voidptr_values() {
 	v := 5
 	m['var'] = &v
 	m['map'] = &m
-	assert m['var'] == &v
-	assert m['map'] == &m
+	assert unsafe { m['var'] } == &v
+	assert unsafe { m['map'] } == &m
 	assert m.values().len == 2
 }
 

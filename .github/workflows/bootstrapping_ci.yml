@@ -1,0 +1,93 @@
+name: Bootstrapping CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.yml'
+      - '**.md'
+      - '**.vv'
+      - '**.out'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+      - '!cmd/tools/vup.v'
+      - '!**/bootstrapping_ci.yml'
+  pull_request:
+    paths-ignore:
+      - '**.yml'
+      - '**.md'
+      - '**.vv'
+      - '**.out'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+      - '!cmd/tools/vup.v'
+      - '!**/bootstrapping_ci.yml'
+
+concurrency:
+  group: bootstrapping-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bootstrap-v:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      VFLAGS: -no-parallel
+      B_LFLAGS: -lm -lpthread
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build V
+        run: make -j4
+      - name: Test bootstrapping (v.c can be compiled and run with -os cross)
+        run: |
+          ls -la v vc/v.c
+          ./v -os cross -o vc/v.c cmd/v
+          # shellcheck disable=SC2086
+          cc -o v_from_vc vc/v.c $B_LFLAGS
+          ls -lart v_from_vc
+          ./v_from_vc version
+          ./v_from_vc run examples/hello_world.v
+          ./v_from_vc -o v_from_vc_produced_native_v cmd/v
+          ./v_from_vc_produced_native_v run examples/hello_world.v
+          ### the next make invocation will simulate building V from scratch
+          make local=1
+          ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
+          ./v_from_vc_produced_native_v -os cross -o vc/v.c cmd/v
+          ### do it a second time, just in case:
+          # shellcheck disable=SC2086
+          clang -o v_from_vc2 vc/v.c $B_LFLAGS
+          ls -lart v_from_vc2
+          ./v_from_vc2 version
+          ./v_from_vc2 run examples/hello_world.v
+          ./v_from_vc2 -o v_from_vc_produced_native_v2 cmd/v
+          ./v_from_vc_produced_native_v2 run examples/hello_world.v
+          make local=1
+          ls -la v vc/v.c
+          ls -la v_from_vc v_from_vc_produced_native_v
+          ls -la v_from_vc2 v_from_vc_produced_native_v2
+      - name: Ensure V master is available
+        if: github.ref_name != 'master'
+        run: git branch master remotes/origin/master
+      - name: Test `v up`
+        run: |
+          # Derive a commit sha from an older successful fast workflow on master that was able to build V.
+          # The workflow used below is `Path Testing CI` (18477644).
+          recent_good_commit=$(curl -L \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/vlang/v/actions/workflows/18477644/runs?branch=master&status=success&event=push&per_page=5&page=2" \
+            | jq -r '.workflow_runs[4].head_sha')
+          echo "recent_good_commit=$recent_good_commit"
+          # Build oldv at recent_good_commit.
+          ./v run cmd/tools/oldv.v -v "$recent_good_commit"
+          cd "$HOME/.cache/oldv/v_at_$recent_good_commit"
+          # Test updating
+          ./v version && ./v -v up && ./v version
+          ./v -o v2 cmd/v && ./v2 -o v3 cmd/v

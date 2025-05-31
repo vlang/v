@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module seed
@@ -6,7 +6,7 @@ module seed
 import time
 
 // nr_next returns a next value based on the previous value `prev`.
-[inline]
+@[inline]
 fn nr_next(prev u32) u32 {
 	return prev * 1664525 + 1013904223
 }
@@ -24,7 +24,7 @@ pub fn time_seed_array(count int) []u32 {
 }
 
 // time_seed_32 returns a 32-bit seed generated from system time.
-[manualfree]
+@[manualfree]
 pub fn time_seed_32() u32 {
 	sa := time_seed_array(1)
 	res := sa[0]
@@ -33,7 +33,7 @@ pub fn time_seed_32() u32 {
 }
 
 // time_seed_64 returns a 64-bit seed generated from system time.
-[manualfree]
+@[manualfree]
 pub fn time_seed_64() u64 {
 	seed_data := time_seed_array(2)
 	lower := u64(seed_data[0])

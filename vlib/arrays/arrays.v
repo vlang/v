@@ -11,6 +11,7 @@ import strings
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
 // - group - merge two arrays by interleaving e.g. arrays.group([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
 // - flatten - reduce dimensionality of array by one. e.g. arrays.flatten([[1,2],[3,4],[5,6]]) => [1,2,3,4,5,6]
+// - each - call a callback fn, for each element of the array, similar to a.map(), but unlike it, the callback should not return anything
 
 // min returns the minimum value in the array
 // Example: arrays.min([1, 2, 3, 0, 9])! // => 0
@@ -78,13 +79,13 @@ pub fn idx_max[T](array []T) !int {
 
 // merge two sorted arrays (ascending) and maintain sorted order
 // Example: arrays.merge([1, 3, 5, 7], [2, 4, 6, 8]) // => [1, 2, 3, 4, 5, 6, 7, 8]
-[direct_array_access]
+@[direct_array_access]
 pub fn merge[T](a []T, b []T) []T {
 	mut m := []T{len: a.len + b.len}
 	mut ia := 0
 	mut ib := 0
 	mut j := 0
-	// TODO efficient approach to merge_desc where: a[ia] >= b[ib]
+	// TODO: efficient approach to merge_desc where: a[ia] >= b[ib]
 	for ia < a.len && ib < b.len {
 		if a[ia] <= b[ib] {
 			m[j] = a[ia]
@@ -180,7 +181,39 @@ pub fn chunk[T](array []T, size int) [][]T {
 	return chunks
 }
 
+// chunk_while splits the input array `a` into chunks of varying length,
+// using the `predicate`, passing to it pairs of adjacent elements `before` and `after`.
+// Each chunk, will contain all ajdacent elements, for which the `predicate` returned true.
+// The chunks are split *between* the `before` and `after` elements, for which the `predicate` returned false.
+// Example: assert arrays.chunk_while([0,9,2,2,3,2,7,5,9,5],fn(x int,y int)bool{return x<=y})==[[0,9],[2,2,3],[2,7],[5,9],[5]]
+// Example: assert arrays.chunk_while('aaaabbbcca'.runes(),fn(x rune,y rune)bool{return x==y})==[[`a`,`a`,`a`,`a`],[`b`,`b`,`b`],[`c`,`c`],[`a`]]
+// Example: assert arrays.chunk_while('aaaabbbcca'.runes(),fn(x rune,y rune)bool{return x==y}).map({it[0]:it.len})==[{`a`:4},{`b`:3},{`c`:2},{`a`:1}]
+pub fn chunk_while[T](a []T, predicate fn (before T, after T) bool) [][]T {
+	if a.len == 0 {
+		return []
+	}
+	mut chunks := [][]T{}
+	mut chunk := [a[0]]
+	mut i := 0
+	for i = 1; i < a.len; i++ {
+		// eprintln('> i: ${i} | a[i]: ${a[i]} | predicate: ${predicate(a[i-1], a[i]):10} | chunk: ${chunk}')
+		if predicate(a[i - 1], a[i]) {
+			chunk << a[i]
+			continue
+		}
+		if chunk.len > 0 {
+			chunks << chunk
+		}
+		chunk = [a[i]]
+	}
+	if chunk.len > 0 {
+		chunks << chunk
+	}
+	return chunks
+}
+
 pub struct WindowAttribute {
+pub:
 	size int
 	step int = 1
 }
@@ -192,6 +225,9 @@ pub struct WindowAttribute {
 // Example: arrays.window([1, 2, 3, 4], size: 2) // => [[1, 2], [2, 3], [3, 4]]
 // Example: arrays.window([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], size: 3, step: 2) // => [[1, 2, 3], [3, 4, 5], [5, 6, 7], [7, 8, 9]]
 pub fn window[T](array []T, attr WindowAttribute) [][]T {
+	if array.len == 0 {
+		return [][]T{}
+	}
 	// allocate snapshot array
 	mut windows := [][]T{cap: array.len - attr.size + 1}
 
@@ -208,24 +244,16 @@ pub fn window[T](array []T, attr WindowAttribute) [][]T {
 	return windows
 }
 
-// sum up array, return nothing when array has no elements
-//
-// NOTICE: currently V has bug that cannot make sum function takes custom struct with + operator overloaded
-// which means you can only pass array of numbers for now.
-// TODO: Fix generic operator overloading detection issue.
-// Example: arrays.sum[int]([1, 2, 3, 4, 5])! // => 15
+// sum up array, return an error, when the array has no elements
+// Example: arrays.sum([1, 2, 3, 4, 5])! // => 15
 pub fn sum[T](array []T) !T {
 	if array.len == 0 {
 		return error('Cannot sum up array of nothing.')
 	} else {
 		mut head := array[0]
 
-		for i, e in array {
-			if i == 0 {
-				continue
-			} else {
-				head += e
-			}
+		for e in array[1..] {
+			head += e
 		}
 
 		return head
@@ -243,12 +271,8 @@ pub fn reduce[T](array []T, reduce_op fn (acc T, elem T) T) !T {
 	} else {
 		mut value := array[0]
 
-		for i, e in array {
-			if i == 0 {
-				continue
-			} else {
-				value = reduce_op(value, e)
-			}
+		for e in array[1..] {
+			value = reduce_op(value, e)
 		}
 
 		return value
@@ -302,7 +326,12 @@ pub fn filter_indexed[T](array []T, predicate fn (idx int, elem T) bool) []T {
 // assert r == 5
 // ```
 pub fn fold[T, R](array []T, init R, fold_op fn (acc R, elem T) R) R {
-	mut value := init
+	mut value := R{}
+	$if R is $array {
+		value = init.clone()
+	} $else {
+		value = init
+	}
 
 	for e in array {
 		value = fold_op(value, e)
@@ -521,7 +550,7 @@ pub fn rotate_right[T](mut array []T, k int) {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn ptr_rotate[T](left_ int, mid &T, right_ int) {
 	sz := usize(sizeof(T))
 	mut left := usize(left_)
@@ -580,23 +609,23 @@ const extra_size = 32 * isize(sizeof(usize))
 
 fn raw_array_cap[T]() isize {
 	size := isize(sizeof(T))
-	if size > arrays.extra_size {
+	if size > extra_size {
 		return 1
 	} else {
-		return arrays.extra_size / size
+		return extra_size / size
 	}
 }
 
 fn raw_array_malloc_size[T]() isize {
 	size := isize(sizeof(T))
-	if size > arrays.extra_size {
+	if size > extra_size {
 		return size * 2
 	} else {
-		return arrays.extra_size
+		return extra_size
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn memswap(x voidptr, y voidptr, len usize) {
 	block_size := isize(sizeof(Block))
 
@@ -628,7 +657,7 @@ fn memswap(x voidptr, y voidptr, len usize) {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn swap_nonoverlapping[T](x_ &T, y_ &T, count int) {
 	x := voidptr(x_)
 	y := voidptr(y_)
@@ -671,7 +700,7 @@ fn can_copy_bits[T]() bool {
 
 // carray_to_varray copies a C byte array into a V array of type `T`.
 // See also: `cstring_to_vstring`
-[unsafe]
+@[unsafe]
 pub fn carray_to_varray[T](c_array_data voidptr, items int) []T {
 	mut v_array := []T{len: items}
 	total_size := items * isize(sizeof(T))
@@ -712,7 +741,7 @@ pub fn find_last[T](array []T, predicate fn (elem T) bool) ?T {
 
 // join_to_string takes in a custom transform function and joins all elements into a string with
 // the specified separator
-[manualfree]
+@[manualfree]
 pub fn join_to_string[T](array []T, separator string, transform fn (elem T) string) string {
 	mut sb := strings.new_builder(array.len * 2)
 	defer {
@@ -727,4 +756,34 @@ pub fn join_to_string[T](array []T, separator string, transform fn (elem T) stri
 		}
 	}
 	return sb.str()
+}
+
+// partition splits the original array into pair of lists,
+// where first list contains elements for which predicate yielded true,
+// while second list contains elements for which predicate yielded false
+pub fn partition[T](array []T, predicate fn (elem T) bool) ([]T, []T) {
+	mut matching, mut non_matching := []T{}, []T{}
+	for item in array {
+		if predicate(item) {
+			matching << item
+		} else {
+			non_matching << item
+		}
+	}
+	return matching, non_matching
+}
+
+// each calls the callback fn `cb`, for each element of the given array `a`
+pub fn each[T](a []T, cb fn (elem T)) {
+	for item in a {
+		cb(item)
+	}
+}
+
+// each_indexed calls the callback fn `cb`, for each element of the given array `a`,
+// passing it both the index of the current element, and the element itself
+pub fn each_indexed[T](a []T, cb fn (i int, e T)) {
+	for idx, item in a {
+		cb(idx, item)
+	}
 }

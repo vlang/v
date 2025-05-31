@@ -1,3 +1,4 @@
+// vtest build: present_sqlite3? // imports db.sqlite
 module main
 
 import vweb
@@ -18,18 +19,18 @@ struct Article {
 }
 
 fn test_a_vweb_application_compiles() {
-	spawn fn () {
-		time.sleep(2 * time.second)
-		exit(0)
-	}()
 	vweb.run(&App{}, 18081)
+}
+
+pub fn (mut app App) before_accept_loop() {
+	exit(0)
 }
 
 pub fn (mut app App) before_request() {
 	app.user_id = app.get_cookie('id') or { '0' }
 }
 
-['/new_article'; post]
+@['/new_article'; post]
 pub fn (mut app App) new_article() vweb.Result {
 	title := app.form['title']
 	text := app.form['text']
@@ -38,7 +39,7 @@ pub fn (mut app App) new_article() vweb.Result {
 	}
 	article := Article{
 		title: title
-		text: text
+		text:  text
 	}
 	println('posting article')
 	println(article)
@@ -49,18 +50,18 @@ pub fn (mut app App) new_article() vweb.Result {
 	return app.redirect('/')
 }
 
-fn (mut app App) time() {
-	app.text(time.now().format())
+fn (mut app App) time() vweb.Result {
+	return app.text(time.now().format())
 }
 
-fn (mut app App) time_json() {
-	app.json({
+fn (mut app App) time_json() vweb.Result {
+	return app.json({
 		'time': time.now().format()
 	})
 }
 
-fn (mut app App) time_json_pretty() {
-	app.json_pretty({
+fn (mut app App) time_json_pretty() vweb.Result {
+	return app.json_pretty({
 		'time': time.now().format()
 	})
 }
@@ -73,7 +74,7 @@ struct ApiSuccessResponse[T] {
 fn (mut app App) json_success[T](result T) vweb.Result {
 	response := ApiSuccessResponse[T]{
 		success: true
-		result: result
+		result:  result
 	}
 
 	return app.json(response)
@@ -83,7 +84,7 @@ fn (mut app App) json_success[T](result T) vweb.Result {
 fn (mut app App) some_helper[T](result T) ApiSuccessResponse[T] {
 	response := ApiSuccessResponse[T]{
 		success: true
-		result: result
+		result:  result
 	}
 	return response
 }

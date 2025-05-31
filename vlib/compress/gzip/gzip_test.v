@@ -123,7 +123,7 @@ fn test_gzip_with_invalid_length() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
 	compressed[compressed.len - 1] += 1
-	assert_decompress_error(compressed, 'length verification failed, got 12, expected 13')!
+	assert_decompress_error(compressed, 'length verification failed, got 12, expected 16777228')!
 }
 
 fn test_gzip_with_invalid_flags() {

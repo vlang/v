@@ -25,37 +25,37 @@ vlib/v/checker/tests/prefix_err.vv:8:6: error: cannot take the address of get() 
     8 | _ := &(get() + 1)
       |      ^
     9 | _ := &10
-   10 | _ := &"Hi"
+   10 | _ := &'Hi'
 vlib/v/checker/tests/prefix_err.vv:9:6: error: cannot take the address of 10
     7 | _ := &(get())
     8 | _ := &(get() + 1)
     9 | _ := &10
       |      ^
-   10 | _ := &"Hi"
-   11 | _ := &"${b}"
+   10 | _ := &'Hi'
+   11 | _ := &'${b}'
 vlib/v/checker/tests/prefix_err.vv:10:6: error: cannot take the address of 'Hi'
     8 | _ := &(get() + 1)
     9 | _ := &10
-   10 | _ := &"Hi"
+   10 | _ := &'Hi'
       |      ^
-   11 | _ := &"${b}"
+   11 | _ := &'${b}'
    12 | _ := &`c`
 vlib/v/checker/tests/prefix_err.vv:11:6: error: cannot take the address of '$b'
     9 | _ := &10
-   10 | _ := &"Hi"
-   11 | _ := &"${b}"
+   10 | _ := &'Hi'
+   11 | _ := &'${b}'
       |      ^
    12 | _ := &`c`
    13 | _ := &1.2
 vlib/v/checker/tests/prefix_err.vv:12:6: error: cannot take the address of `c`
-   10 | _ := &"Hi"
-   11 | _ := &"${b}"
+   10 | _ := &'Hi'
+   11 | _ := &'${b}'
    12 | _ := &`c`
       |      ^
    13 | _ := &1.2
    14 | _ := &(1 + 2)
 vlib/v/checker/tests/prefix_err.vv:13:6: error: cannot take the address of 1.2
-   11 | _ := &"${b}"
+   11 | _ := &'${b}'
    12 | _ := &`c`
    13 | _ := &1.2
       |      ^

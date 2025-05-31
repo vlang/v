@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_incorrect_cast_branch_err.vv:5:9: error: the type of the last expression in the first match branch was an explicit `u8`, not `u16`
+    3 |     nb := match name {
+    4 |         'a' { u8(10) }
+    5 |         'b' { u16(500) }
+      |               ~~~~~~~~
+    6 |         else { u8(0) }
+    7 |     }

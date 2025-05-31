@@ -7,26 +7,24 @@ import strings.textscanner
 // The following functions handle paths depending on the operating system,
 // therefore results may be different for certain operating systems.
 
-const (
-	fslash     = `/`
-	bslash     = `\\`
-	dot        = `.`
-	qmark      = `?`
-	fslash_str = '/'
-	dot_dot    = '..'
-	empty_str  = ''
-	dot_str    = '.'
-)
+const fslash = `/`
+const bslash = `\\`
+const dot = `.`
+const qmark = `?`
+const fslash_str = '/'
+const dot_dot = '..'
+const empty_str = ''
+const dot_str = '.'
 
 // is_abs_path returns `true` if the given `path` is absolute.
 pub fn is_abs_path(path string) bool {
-	if path.len == 0 {
+	if path == '' {
 		return false
 	}
 	$if windows {
 		return is_unc_path(path) || is_drive_rooted(path) || is_normal_path(path)
 	}
-	return path[0] == os.fslash
+	return path[0] == fslash
 }
 
 // abs_path joins the current working directory
@@ -34,11 +32,11 @@ pub fn is_abs_path(path string) bool {
 // and returns the absolute path representation.
 pub fn abs_path(path string) string {
 	wd := getwd()
-	if path.len == 0 {
+	if path == '' {
 		return wd
 	}
 	npath := norm_path(path)
-	if npath == os.dot_str {
+	if npath == dot_str {
 		return wd
 	}
 	if !is_abs_path(npath) {
@@ -57,25 +55,25 @@ pub fn abs_path(path string) string {
 // - references to current directories (.)
 // - redundant path separators
 // - the last path separator
-[direct_array_access]
+@[direct_array_access]
 pub fn norm_path(path string) string {
-	if path.len == 0 {
-		return os.dot_str
+	if path == '' {
+		return dot_str
 	}
 	rooted := is_abs_path(path)
 	// get the volume name from the path
 	// if the current operating system is Windows
 	volume_len := win_volume_len(path)
 	mut volume := path[..volume_len]
-	if volume_len != 0 && volume.contains(os.fslash_str) {
-		volume = volume.replace(os.fslash_str, path_separator)
+	if volume_len != 0 && volume.contains(fslash_str) {
+		volume = volume.replace(fslash_str, path_separator)
 	}
 	cpath := clean_path(path[volume_len..])
-	if cpath.len == 0 && volume_len == 0 {
-		return os.dot_str
+	if cpath == '' && volume_len == 0 {
+		return dot_str
 	}
 	spath := cpath.split(path_separator)
-	if os.dot_dot !in spath {
+	if dot_dot !in spath {
 		return if volume_len != 0 { volume + cpath } else { cpath }
 	}
 	// resolve backlinks (..)
@@ -88,10 +86,10 @@ pub fn norm_path(path string) string {
 	mut backlink_count := 0
 	for i := spath_len - 1; i >= 0; i-- {
 		part := spath[i]
-		if part == os.empty_str {
+		if part == empty_str {
 			continue
 		}
-		if part == os.dot_dot {
+		if part == dot_dot {
 			backlink_count++
 			continue
 		}
@@ -105,7 +103,7 @@ pub fn norm_path(path string) string {
 	// is not possible and the given path is not rooted
 	if backlink_count != 0 && !rooted {
 		for i in 0 .. backlink_count {
-			sb.write_string(os.dot_dot)
+			sb.write_string(dot_dot)
 			if new_path.len == 0 && i == backlink_count - 1 {
 				break
 			}
@@ -119,7 +117,7 @@ pub fn norm_path(path string) string {
 			return volume
 		}
 		if !rooted {
-			return os.dot_str
+			return dot_str
 		}
 		return path_separator
 	}
@@ -133,7 +131,7 @@ pub fn norm_path(path string) string {
 // An error is returned if there is no existing part of the given `path`.
 pub fn existing_path(path string) !string {
 	err := error('path does not exist')
-	if path.len == 0 {
+	if path == '' {
 		return err
 	}
 	if exists(path) {
@@ -166,7 +164,7 @@ pub fn existing_path(path string) !string {
 				recent_path = curr_path
 				continue
 			}
-			if recent_path.len == 0 {
+			if recent_path == '' {
 				break
 			}
 			return recent_path
@@ -182,8 +180,8 @@ pub fn existing_path(path string) !string {
 // - redundant separators
 // - the last path separator
 fn clean_path(path string) string {
-	if path.len == 0 {
-		return os.empty_str
+	if path == '' {
+		return empty_str
 	}
 	mut sb := strings.new_builder(path.len)
 	mut sc := textscanner.new(path)
@@ -203,10 +201,10 @@ fn clean_path(path string) string {
 			}
 			continue
 		}
-		// turn foward slash into a back slash on a Windows system
+		// turn forward slash into a back slash on a Windows system
 		$if windows {
-			if curr == os.fslash {
-				sb.write_u8(os.bslash)
+			if curr == fslash {
+				sb.write_u8(bslash)
 				continue
 			}
 		}
@@ -273,9 +271,9 @@ fn win_volume_len(path string) int {
 
 fn is_slash(b u8) bool {
 	$if windows {
-		return b == os.bslash || b == os.fslash
+		return b == bslash || b == fslash
 	}
-	return b == os.fslash
+	return b == fslash
 }
 
 fn is_unc_path(path string) bool {
@@ -309,7 +307,7 @@ fn is_normal_path(path string) bool {
 // a reference to a current directory (.).
 // NOTE: a negative integer means that no byte is present
 fn is_curr_dir_ref(byte_one int, byte_two int, byte_three int) bool {
-	if u8(byte_two) != os.dot {
+	if u8(byte_two) != dot {
 		return false
 	}
 	return (byte_one < 0 || is_slash(u8(byte_one))) && (byte_three < 0 || is_slash(u8(byte_three)))

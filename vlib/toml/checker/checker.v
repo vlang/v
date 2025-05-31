@@ -17,18 +17,27 @@ pub const allowed_basic_escape_chars = [`u`, `U`, `b`, `t`, `n`, `f`, `r`, `"`, 
 // utf8_max is the largest inclusive value of the Unicodes scalar value ranges.
 const utf8_max = 0x10FFFF
 
+fn toml_parse_time(s string) !time.Time {
+	if s.len > 3 && s[2] == `:` {
+		// complete the partial time, with an arbitrary date:
+		return time.parse_rfc3339('0001-01-01T' + s)
+	}
+	return time.parse_rfc3339(s)!
+}
+
 // Checker checks a tree of TOML `ast.Value`'s for common errors.
 pub struct Checker {
+pub:
 	scanner &scanner.Scanner = unsafe { nil }
 }
 
 // check checks the `ast.Value` and all it's children
 // for common errors.
-pub fn (c Checker) check(n &ast.Value) ! {
+pub fn (c &Checker) check(n &ast.Value) ! {
 	walker.walk(c, n)!
 }
 
-fn (c Checker) visit(value &ast.Value) ! {
+fn (c &Checker) visit(value &ast.Value) ! {
 	match value {
 		ast.Bool {
 			c.check_boolean(value)!
@@ -53,7 +62,7 @@ fn (c Checker) visit(value &ast.Value) ! {
 }
 
 // excerpt returns a string of the token's surroundings
-fn (c Checker) excerpt(tp token.Pos) string {
+fn (c &Checker) excerpt(tp token.Pos) string {
 	return c.scanner.excerpt(tp.pos, 10)
 }
 
@@ -81,7 +90,7 @@ fn has_repeating(str string, repeats []rune) bool {
 }
 
 // check_number returns an error if `num` is not a valid TOML number.
-fn (c Checker) check_number(num ast.Number) ! {
+fn (c &Checker) check_number(num ast.Number) ! {
 	lit := num.text
 	lit_lower_case := lit.to_lower()
 	if lit in ['0', '0.0', '+0', '-0', '+0.0', '-0.0', '0e0', '+0e0', '-0e0', '0e00'] {
@@ -228,7 +237,7 @@ fn (c Checker) check_number(num ast.Number) ! {
 }
 
 // is_valid_binary_literal returns true if `num` is valid TOML binary literal.
-fn (c Checker) is_valid_binary_literal(num string) bool {
+fn (c &Checker) is_valid_binary_literal(num string) bool {
 	for ch in num {
 		if ch == `_` {
 			continue
@@ -241,7 +250,7 @@ fn (c Checker) is_valid_binary_literal(num string) bool {
 }
 
 // is_valid_octal_literal returns true if `num` is valid TOML octal literal.
-fn (c Checker) is_valid_octal_literal(num string) bool {
+fn (c &Checker) is_valid_octal_literal(num string) bool {
 	for ch in num {
 		if ch == `_` {
 			continue
@@ -254,7 +263,7 @@ fn (c Checker) is_valid_octal_literal(num string) bool {
 }
 
 // is_valid_hex_literal returns true if `num` is valid TOML hexadecimal literal.
-fn (c Checker) is_valid_hex_literal(num string) bool {
+fn (c &Checker) is_valid_hex_literal(num string) bool {
 	for ch in num {
 		if ch == `_` {
 			continue
@@ -267,7 +276,7 @@ fn (c Checker) is_valid_hex_literal(num string) bool {
 }
 
 // check_boolean returns an error if `b` is not a valid TOML boolean.
-fn (c Checker) check_boolean(b ast.Bool) ! {
+fn (c &Checker) check_boolean(b ast.Bool) ! {
 	lit := b.text
 	if lit in ['true', 'false'] {
 		return
@@ -279,7 +288,7 @@ fn (c Checker) check_boolean(b ast.Bool) ! {
 // check_date_time returns an error if `dt` is not a valid TOML date-time string (RFC 3339).
 // See also https://ijmacd.github.io/rfc3339-iso8601 for a more
 // visual representation of the RFC 3339 format.
-fn (c Checker) check_date_time(dt ast.DateTime) ! {
+fn (c &Checker) check_date_time(dt ast.DateTime) ! {
 	lit := dt.text
 	mut split := []string{}
 	// RFC 3339 Date-Times can be split via 4 separators (` `, `_`, `T` and `t`).
@@ -301,24 +310,37 @@ fn (c Checker) check_date_time(dt ast.DateTime) ! {
 		// Re-use date and time validation code for detailed testing of each part
 		c.check_date(ast.Date{
 			text: split[0]
-			pos: token.Pos{
-				len: split[0].len
+			pos:  token.Pos{
+				len:     split[0].len
 				line_nr: dt.pos.line_nr
-				pos: dt.pos.pos
-				col: dt.pos.col
+				pos:     dt.pos.pos
+				col:     dt.pos.col
 			}
 		})!
 		c.check_time(ast.Time{
 			text: split[1]
-			pos: token.Pos{
-				len: split[1].len
+			pos:  token.Pos{
+				len:     split[1].len
 				line_nr: dt.pos.line_nr
-				pos: dt.pos.pos + split[0].len
-				col: dt.pos.col + split[0].len
+				pos:     dt.pos.pos + split[0].len
+				col:     dt.pos.col + split[0].len
 			}
 		})!
-		// Use V's builtin functionality to validate the string
-		time.parse_rfc3339(lit) or {
+		// Simulate a time offset if it's missing then it can be checked. Already toml supports local time and rfc3339 don't.
+		mut has_time_offset := false
+		for ch in lit#[19..] {
+			if ch in [u8(`-`), `+`, `Z`] {
+				has_time_offset = true
+				break
+			}
+		}
+
+		mut lit_with_offset := lit
+		if !has_time_offset {
+			lit_with_offset += 'Z'
+		}
+
+		toml_parse_time(lit_with_offset) or {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' "${lit}" is not a valid RFC 3339 Date-Time format string "${err}". In ...${c.excerpt(dt.pos)}...')
 		}
@@ -329,7 +351,7 @@ fn (c Checker) check_date_time(dt ast.DateTime) ! {
 }
 
 // check_time returns an error if `date` is not a valid TOML date string (RFC 3339).
-fn (c Checker) check_date(date ast.Date) ! {
+fn (c &Checker) check_date(date ast.Date) ! {
 	lit := date.text
 	parts := lit.split('-')
 	if parts.len != 3 {
@@ -351,15 +373,14 @@ fn (c Checker) check_date(date ast.Date) ! {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" does not have a valid RFC 3339 day indication in ...${c.excerpt(date.pos)}...')
 	}
-	// Use V's builtin functionality to validate the string
-	time.parse_rfc3339(lit) or {
+	toml_parse_time(lit) or {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" is not a valid RFC 3339 Date format string "${err}". In ...${c.excerpt(date.pos)}...')
 	}
 }
 
 // check_time returns an error if `t` is not a valid TOML time string (RFC 3339).
-fn (c Checker) check_time(t ast.Time) ! {
+fn (c &Checker) check_time(t ast.Time) ! {
 	lit := t.text
 	// Split any offsets from the time
 	mut offset_splitter := if lit.contains('+') { '+' } else { '-' }
@@ -379,15 +400,29 @@ fn (c Checker) check_time(t ast.Time) ! {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" is not a valid RFC 3339 Time format string in ...${c.excerpt(t.pos)}...')
 	}
-	// Use V's builtin functionality to validate the time string
-	time.parse_rfc3339(parts[0]) or {
+
+	// Simulate a time offset if it's missing then it can be checked. Already toml supports local time and rfc3339 don't.
+	mut has_time_offset := false
+	for ch in parts[0]#[8..] {
+		if ch in [u8(`-`), `+`, `Z`] {
+			has_time_offset = true
+			break
+		}
+	}
+
+	mut part_with_offset := parts[0]
+	if !has_time_offset {
+		part_with_offset += 'Z'
+	}
+
+	toml_parse_time(part_with_offset) or {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" is not a valid RFC 3339 Time format string "${err}". In ...${c.excerpt(t.pos)}...')
 	}
 }
 
 // check_quoted returns an error if `q` is not a valid quoted TOML string.
-pub fn (c Checker) check_quoted(q ast.Quoted) ! {
+pub fn (c &Checker) check_quoted(q ast.Quoted) ! {
 	lit := q.text
 	quote := q.quote.ascii_str()
 	triple_quote := quote + quote + quote
@@ -413,7 +448,7 @@ pub fn (c Checker) check_quoted(q ast.Quoted) ! {
 // \\         - backslash       (U+005C)
 // \uXXXX     - Unicode         (U+XXXX)
 // \UXXXXXXXX - Unicode         (U+XXXXXXXX)
-fn (c Checker) check_quoted_escapes(q ast.Quoted) ! {
+fn (c &Checker) check_quoted_escapes(q ast.Quoted) ! {
 	// Setup a scanner in stack memory for easier navigation.
 	mut s := scanner.new_simple_text(q.text)!
 
@@ -456,12 +491,12 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ! {
 							}
 						}
 					}
-					if next_ch in [`\t`, `\n`, ` `] {
+					if next_ch in [`\t`, `\r`, `\n`, ` `] {
 						s.next()
 						continue
 					}
 				}
-				if next_ch !in checker.allowed_basic_escape_chars {
+				if next_ch !in allowed_basic_escape_chars {
 					st := s.state()
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' unknown basic string escape character `${next_ch.ascii_str()}` in `${escape}` (${st.line_nr},${st.col}) in ...${c.excerpt(q.pos)}...')
@@ -493,7 +528,7 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ! {
 }
 
 // check_utf8_string returns an error if `str` is not valid UTF-8.
-fn (c Checker) check_utf8_validity(q ast.Quoted) ! {
+fn (c &Checker) check_utf8_validity(q ast.Quoted) ! {
 	lit := q.text
 	if !utf8.validate_str(lit) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -506,11 +541,11 @@ fn (c Checker) check_utf8_validity(q ast.Quoted) ! {
 // Any preludes or prefixes like `0x` could pontentially yield wrong results.
 fn validate_utf8_codepoint_string(str string) ! {
 	int_val := strconv.parse_int(str, 16, 64) or { i64(-1) }
-	if int_val > checker.utf8_max || int_val < 0 {
+	if int_val > utf8_max || int_val < 0 {
 		return error('Unicode code point `${str}` is outside the valid Unicode scalar value ranges.')
 	}
 	// Check if the Unicode value is actually in the valid Unicode scalar value ranges.
-	// TODO should probably be transferred / implemented in `utf8.validate(...)` also?
+	// TODO: should probably be transferred / implemented in `utf8.validate(...)` also?
 	if !((int_val >= 0x0000 && int_val <= 0xD7FF) || (int_val >= 0xE000 && int_val <= 0x10FFFF)) {
 		return error('Unicode code point `${str}` is not a valid Unicode scalar value.')
 	}
@@ -523,7 +558,7 @@ fn validate_utf8_codepoint_string(str string) ! {
 // check_unicode_escape returns an error if `esc_unicode` is not
 // a valid Unicode escape sequence. `esc_unicode` is expected to be
 // prefixed with either `u` or `U`.
-fn (c Checker) check_unicode_escape(esc_unicode string) ! {
+fn (c &Checker) check_unicode_escape(esc_unicode string) ! {
 	if esc_unicode.len < 5 || !esc_unicode.to_lower().starts_with('u') {
 		// Makes sure the input to this function is actually valid.
 		return error('`${esc_unicode}` is not a valid escaped Unicode sequence.')
@@ -535,7 +570,7 @@ fn (c Checker) check_unicode_escape(esc_unicode string) ! {
 		return error('Unicode escape sequence `${esc_unicode}` should be at least ${hex_digits_len} in length.')
 	}
 	sequence = sequence[..hex_digits_len]
-	// TODO not enforced in BurnSushi testsuite??
+	// TODO: not enforced in BurnSushi testsuite??
 	// if !sequence.is_upper() {
 	//	return error('Unicode escape sequence `$esc_unicode` is not in all uppercase.')
 	//}
@@ -549,7 +584,7 @@ fn (c Checker) check_unicode_escape(esc_unicode string) ! {
 
 // check_comment returns an error if the contents of `comment` isn't
 // a valid TOML comment.
-pub fn (c Checker) check_comment(comment ast.Comment) ! {
+pub fn (c &Checker) check_comment(comment ast.Comment) ! {
 	lit := comment.text
 	// Setup a scanner in stack memory for easier navigation.
 	mut s := scanner.new_simple_text(lit)!
@@ -559,11 +594,11 @@ pub fn (c Checker) check_comment(comment ast.Comment) ! {
 			break
 		}
 		ch_byte := u8(ch)
-		// Check for carrige return
+		// Check for carriage return
 		if ch_byte == 0x0D {
 			st := s.state()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' carrige return character `${ch_byte.hex()}` is not allowed in comments (${st.line_nr},${st.col}).')
+				' carriage return character `${ch_byte.hex()}` is not allowed in comments (${st.line_nr},${st.col}).')
 		}
 		// Check for control characters (allow TAB)
 		if util.is_illegal_ascii_control_character(ch_byte) {

@@ -1,7 +1,5 @@
-const (
-	a = 3
-	u = u64(1)
-)
+const a = 3
+const u = u64(1)
 
 fn test_const() {
 	b := (true && true) || false
@@ -19,7 +17,7 @@ fn test_str_methods() {
 	assert int(1).str() == '1'
 	assert int(-1).str() == '-1'
 	assert int(2147483647).str() == '2147483647'
-	assert int(2147483648).str() == '-2147483648'
+	assert int(u32(2147483648)).str() == '-2147483648'
 	assert int(-2147483648).str() == '-2147483648'
 	assert i64(1).str() == '1'
 	assert i64(-1).str() == '-1'
@@ -31,15 +29,15 @@ fn test_str_methods() {
 	assert u64(-1).str() == '18446744073709551615'
 	assert voidptr(-1).str() == '0xffffffffffffffff'
 	assert voidptr(1).str() == '0x1'
-	assert (&u8(-1)).str() == 'ffffffffffffffff'
-	assert (&u8(1)).str() == '1'
+	assert (&u8(voidptr(-1))).str() == 'ffffffffffffffff'
+	assert (&u8(voidptr(1))).str() == '1'
 	assert byteptr(-1).str() == '0xffffffffffffffff'
 	assert byteptr(1).str() == '0x1'
 	assert charptr(-1).str() == '0xffffffffffffffff'
 	assert charptr(1).str() == '0x1'
 }
 
-fn test_and_precendence() {
+fn test_and_precedence() {
 	assert (2 & 0 == 0) == ((2 & 0) == 0)
 	assert (2 & 0 != 0) == ((2 & 0) != 0)
 	assert (0 & 0 >= 0) == ((0 & 0) >= 0)
@@ -48,7 +46,7 @@ fn test_and_precendence() {
 	assert (1 & 2 > 0) == ((1 & 2) > 0)
 }
 
-fn test_or_precendence() {
+fn test_or_precedence() {
 	assert (1 | 0 == 0) == ((1 | 0) == 0)
 	assert (1 | 0 != 1) == ((1 | 0) != 1)
 	assert (1 | 0 >= 2) == ((1 | 0) >= 2)
@@ -57,7 +55,7 @@ fn test_or_precendence() {
 	assert (1 | 0 > 1) == ((1 | 0) > 1)
 }
 
-fn test_xor_precendence() {
+fn test_xor_precedence() {
 	assert (1 ^ 0 == 2) == ((1 ^ 0) == 2)
 	assert (1 ^ 0 != 2) == ((1 ^ 0) != 2)
 	assert (1 ^ 0 >= 0) == ((1 ^ 0) >= 0)
@@ -66,12 +64,12 @@ fn test_xor_precendence() {
 	assert (1 ^ 0 > 1) == ((1 ^ 0) > 1)
 }
 
-fn test_left_shift_precendence() {
+fn test_left_shift_precedence() {
 	assert (2 << 4 | 3) == ((2 << 4) | 3)
 	assert (2 << 4 | 3) != (2 << (4 | 3))
 }
 
-fn test_right_shift_precendence() {
+fn test_right_shift_precedence() {
 	assert (256 >> 4 | 3) == ((256 >> 4) | 3)
 	assert (256 >> 4 | 3) != (256 >> (4 | 3))
 }
@@ -247,4 +245,26 @@ fn test_repeat() {
 	assert b.repeat(5) == 'VVVVV'
 	assert b.repeat(1) == b.ascii_str()
 	assert b.repeat(0) == ''
+}
+
+fn test_int_min() {
+	assert int_min(1, 2) == 1
+	assert int_min(2, 1) == 1
+	assert int_min(-2, -1) == -2
+	assert int_min(-1, -2) == -2
+	assert int_min(0, 5) == 0
+	assert int_min(5, 0) == 0
+	assert int_min(-5, 5) == -5
+	assert int_min(5, -5) == -5
+}
+
+fn test_int_max() {
+	assert int_max(1, 2) == 2
+	assert int_max(2, 1) == 2
+	assert int_max(-2, -1) == -1
+	assert int_max(-1, -2) == -1
+	assert int_max(0, 5) == 5
+	assert int_max(5, 0) == 5
+	assert int_max(-5, 5) == 5
+	assert int_max(5, -5) == 5
 }

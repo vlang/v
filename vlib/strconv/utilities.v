@@ -5,14 +5,14 @@ import math.bits
 // general utilities
 
 // General Utilities
-[if debug_strconv ?]
+@[if debug_strconv ?]
 fn assert1(t bool, msg string) {
 	if !t {
 		panic(msg)
 	}
 }
 
-[inline]
+@[inline]
 fn bool_to_int(b bool) int {
 	if b {
 		return 1
@@ -20,7 +20,7 @@ fn bool_to_int(b bool) int {
 	return 0
 }
 
-[inline]
+@[inline]
 fn bool_to_u32(b bool) u32 {
 	if b {
 		return u32(1)
@@ -28,7 +28,7 @@ fn bool_to_u32(b bool) u32 {
 	return u32(0)
 }
 
-[inline]
+@[inline]
 fn bool_to_u64(b bool) u64 {
 	if b {
 		return u64(1)
@@ -67,11 +67,15 @@ fn mul_shift_32(m u32, mul u64, ishift int) u32 {
 	return u32(shifted_sum)
 }
 
+@[direct_array_access; inline]
 fn mul_pow5_invdiv_pow2(m u32, q u32, j int) u32 {
+	assert1(q < pow5_inv_split_32.len, 'q < pow5_inv_split_32.len')
 	return mul_shift_32(m, pow5_inv_split_32[q], j)
 }
 
+@[direct_array_access; inline]
 fn mul_pow5_div_pow2(m u32, i u32, j int) u32 {
+	assert1(i < pow5_split_32.len, 'i < pow5_split_32.len')
 	return mul_shift_32(m, pow5_split_32[i], j)
 }
 

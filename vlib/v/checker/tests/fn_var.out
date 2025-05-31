@@ -22,6 +22,12 @@ vlib/v/checker/tests/fn_var.vv:9:10: error: undefined ident: `i`
     9 |     println(i)
       |             ^
    10 | }
+vlib/v/checker/tests/fn_var.vv:9:2: error: `println` can not print void expressions
+    7 | println(i)
+    8 | f = fn (mut a []int) {
+    9 |     println(i)
+      |     ~~~~~~~~~~
+   10 | }
 vlib/v/checker/tests/fn_var.vv:8:5: error: cannot assign to `f`: expected `fn (int) u8`, not `fn (mut []int)`
     6 | i := 0
     7 | println(i)

@@ -28,15 +28,16 @@ fn system_page_size(_ voidptr) usize {
 	return 4096
 }
 
+// get_system_allocator returns an allocator that uses the system allocator.
 pub fn get_system_allocator() Allocator {
 	return Allocator{
-		alloc: system_alloc
-		remap: system_remap
-		free_part: system_free_part
-		free_: system_free
+		alloc:            system_alloc
+		remap:            system_remap
+		free_part:        system_free_part
+		free_:            system_free
 		can_release_part: system_can_release_part
-		allocates_zeros: system_allocates_zeros
-		page_size: system_page_size
-		data: unsafe { nil }
+		allocates_zeros:  system_allocates_zeros
+		page_size:        system_page_size
+		data:             unsafe { nil }
 	}
 }

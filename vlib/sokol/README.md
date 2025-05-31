@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `sokol` is a thin wrapper around [sokol](https://github.com/floooh/sokol),
 which in turn is a library of "Simple STB-style cross-platform libraries
@@ -9,19 +9,17 @@ Each `.h` file in the sokol source code is well-documented as can be seen here:
 
 [sokol_audio.h](https://github.com/floooh/sokol/blob/master/sokol_audio.h)
 
-## Example from `@VROOTDIR/examples/sokol/sounds/simple_sin_tones.v`:
+## Example from `@VROOTDIR/examples/sokol/sounds/simple_sin_tones.v`
 
 ```v cgen
 import time
 import math
 import sokol.audio
 
-const (
-	sw          = time.new_stopwatch()
-	sw_start_ms = sw.elapsed().milliseconds()
-)
+const sw = time.new_stopwatch()
+const sw_start_ms = sw.elapsed().milliseconds()
 
-[inline]
+@[inline]
 fn sintone(periods int, frame int, num_frames int) f32 {
 	return math.sinf(f32(periods) * (2 * math.pi) * f32(frame) / f32(num_frames))
 }
@@ -55,3 +53,29 @@ fn main() {
 	audio.shutdown()
 }
 ```
+
+## Troubleshooting sokol apps
+
+A common problem, if you draw a lot of primitive elements in the same frame,
+is that there is a chance that your program can exceed the maximum
+allowed amount of vertices and commands, imposed by `sokol`.
+
+The symptom is that your frame will be suddenly black, after it
+becomes more complex.
+
+Sokol's default for vertices is 131072.
+Sokol's default for commands is 32768.
+
+To solve that, you can try adding these lines at the top of your program:
+`#flag -D_SGL_DEFAULT_MAX_VERTICES=4194304`
+`#flag -D_SGL_DEFAULT_MAX_COMMANDS=65536`
+You can see an example of that in:
+https://github.com/vlang/v/blob/master/examples/gg/examples/gg/many_thousands_of_circles_overriding_max_vertices.v
+
+Another approach to that problem, is to draw everything yourself in a streaming
+texture, then upload that streaming texture as a single draw command to the GPU.
+You can see an example of that done in:
+https://github.com/vlang/v/blob/master/examples/gg/random.v
+
+A third approach, is to only upload your changing inputs to the GPU, and do all
+the calculations and drawing there in shaders.

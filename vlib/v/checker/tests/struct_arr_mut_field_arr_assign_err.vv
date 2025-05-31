@@ -1,0 +1,14 @@
+const arr = [1, 2, 3]
+
+struct Muta {
+mut:
+	a []int
+}
+
+fn main() {
+	mut muta := Muta{
+		a: arr
+	}
+	muta.a[0] = 52
+	println(arr) // [52, 2, 3]
+}

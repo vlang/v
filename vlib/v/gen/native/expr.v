@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module native
@@ -8,24 +8,24 @@ import v.util
 
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
+		ast.AtExpr {
+			g.allocate_string(g.comptime_at(node), 3, .rel32)
+		}
 		ast.ParExpr {
 			g.expr(node.expr)
 		}
 		ast.ArrayInit {
-			pos := g.allocate_array('_anonarray', 8, node.exprs.len)
+			pos := g.allocate_array('_anonarray', 8, i32(node.exprs.len))
 			g.code_gen.init_array(LocalVar{ offset: pos, typ: node.typ }, node)
 			g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), pos)
 		}
 		ast.BoolLiteral {
-			g.code_gen.mov64(g.code_gen.main_reg(), int(node.val))
+			g.code_gen.mov64(g.code_gen.main_reg(), i64(node.val))
 		}
 		ast.CallExpr {
 			match node.name {
 				'C.syscall' {
 					g.code_gen.gen_syscall(node)
-				}
-				'exit' {
-					g.code_gen.gen_exit(node.args[0].expr)
 				}
 				'println', 'print', 'eprintln', 'eprint' {
 					expr := node.args[0].expr
@@ -48,7 +48,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.local_var_ident(node, var)
 				}
 				else {
-					g.n_error('Unsupported variable kind')
+					g.n_error('${@LOCATION} Unsupported variable kind')
 				}
 			}
 		}
@@ -59,10 +59,16 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.code_gen.infix_expr(node)
 		}
 		ast.IntegerLiteral {
-			g.code_gen.mov64(g.code_gen.main_reg(), i64(node.val.u64()))
+			// Integer literal stores both signed and unsigned integers, some unsigned integers are too big for i64 but not for u64
+			// println(node.val)
+			if node.val.len > 0 && node.val[0] == `-` { // if the number is negative
+				g.code_gen.mov64(g.code_gen.main_reg(), node.val.i64())
+			} else {
+				g.code_gen.mov64(g.code_gen.main_reg(), node.val.u64())
+			}
 		}
 		ast.Nil {
-			g.code_gen.mov64(g.code_gen.main_reg(), 0)
+			g.code_gen.mov64(g.code_gen.main_reg(), i64(0))
 		}
 		ast.PostfixExpr {
 			g.postfix_expr(node)
@@ -72,7 +78,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {
 			str := g.eval_str_lit_escape_codes(node)
-			g.allocate_string(str, 3, .rel32)
+			g.code_gen.create_string_struct(ast.string_type_idx, 'string_lit', str)
 		}
 		ast.CharLiteral {
 			bytes := g.eval_escape_codes(node.val)
@@ -81,7 +87,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			for i, v in bytes {
 				val |= v << (i * 8)
 				if i >= sizeof(rune) {
-					g.n_error('runes are only 4 bytes wide')
+					g.n_error('${@LOCATION} runes are only 4 bytes wide')
 				}
 			}
 			g.code_gen.movabs(g.code_gen.main_reg(), i64(val))
@@ -105,7 +111,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.EnumVal {
 			type_name := g.table.get_type_name(node.typ)
-			g.code_gen.mov(g.code_gen.main_reg(), g.enum_vals[type_name].fields[node.val])
+			val := g.enum_vals[type_name].fields[node.val] or {
+				g.n_error('${@LOCATION} enum field not found ${node.val}')
+			}
+			g.code_gen.mov64(g.code_gen.main_reg(), val)
 		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)
@@ -119,8 +128,21 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.SizeOf {
 			g.gen_sizeof_expr(node)
 		}
+		ast.IndexExpr {
+			if node.left_type.is_string() {
+				g.expr(node.index)
+				g.code_gen.mov_var_to_reg(Amd64Register.rdx, node.left as ast.Ident) // load address of string
+				g.code_gen.add_reg2(Amd64Register.rdx, Amd64Register.rax) // add the offset to the address
+				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rdx, ast.u8_type_idx)
+			} else if node.left_type.is_pointer() {
+				dump(node)
+				g.n_error('${@LOCATION} expr: unhandled node type: Index expr is not applied on string')
+			} else {
+				g.n_error('${@LOCATION} expr: unhandled node type: Index expr is not applied on string')
+			}
+		}
 		else {
-			g.n_error('expr: unhandled node type: ${node.type_name()}')
+			g.n_error('${@LOCATION} expr: unhandled node type: ${node.type_name()}')
 		}
 	}
 }
@@ -137,34 +159,33 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 				g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), g.get_var_offset(ident.name))
 			}
 			ast.Enum {
-				g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident,
-					typ: ast.int_type_idx
-				)
+				g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
 			}
 			else {
-				g.n_error('Unsupported variable type')
+				g.n_error('${@LOCATION} Unsupported variable type')
 			}
 		}
 	}
 }
 
-fn (mut g Gen) condition(expr ast.Expr, neg bool) int {
+fn (mut g Gen) condition(expr ast.Expr, neg bool) i32 {
+	g.println('; condition cjmp if ${neg}:')
 	g.expr(expr)
-	g.code_gen.cmp_zero(g.code_gen.main_reg())
+	g.code_gen.cmp_zero(g.code_gen.main_reg()) // 0 is false
 	return g.code_gen.cjmp(if neg { .jne } else { .je })
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if node.is_comptime {
-		if stmts := g.comptime_conditional(node) {
-			g.stmts(stmts)
+		if branch := g.comptime_conditional(node) {
+			g.stmts(branch.stmts)
 		}
 		return
 	}
 	if node.branches.len == 0 {
 		return
 	}
-	mut endif_label := 0
+	mut endif_label := i32(0)
 	has_endif := node.branches.len > 1
 	if has_endif {
 		endif_label = g.labels.new_label()
@@ -184,7 +205,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			label := g.labels.new_label()
 			cjmp_addr := g.condition(expr, false)
 			g.labels.patches << LabelPatch{
-				id: label
+				id:  label
 				pos: cjmp_addr
 			}
 			g.println('; jump to label ${label}')
@@ -192,10 +213,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			if has_endif {
 				jump_addr := g.code_gen.jmp(0)
 				g.labels.patches << LabelPatch{
-					id: endif_label
+					id:  endif_label
 					pos: jump_addr
 				}
-				g.println('; jump to label ${endif_label}')
+				g.println('; jump to label ${int(endif_label)}')
 			}
 			// println('after if g.pos=$g.pos() jneaddr=$cjmp_addr')
 			g.labels.addrs[label] = g.pos()
@@ -203,8 +224,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 	}
 	if has_endif {
-		g.labels.addrs[endif_label] = g.pos()
-		g.println('; label ${endif_label}')
+		g.labels.addrs[int(endif_label)] = g.pos()
+		g.println('; label ${int(endif_label)}')
 	}
 }
 
@@ -233,6 +254,9 @@ fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 		if i > 0 {
 			fn_str += ', '
 		}
+		if arg.typ.has_flag(.option) {
+			fn_str += '?'
+		}
 		fn_str += util.strip_main_name(g.table.get_type_name(arg.typ))
 	}
 	fn_str += ')'
@@ -260,7 +284,7 @@ fn (mut g Gen) gen_typeof_expr(node ast.TypeOf, newline bool) {
 
 	match ts.kind {
 		.sum_type {
-			g.n_error('`typeof()` is not implemented for sum types yet')
+			g.n_error('${@LOCATION} `typeof()` is not implemented for sum types yet')
 		}
 		.array_fixed {
 			fixed_info := ts.info as ast.ArrayFixed
@@ -291,12 +315,12 @@ fn (mut g Gen) gen_sizeof_expr(node ast.SizeOf) {
 	if ts.language == .v && ts.kind in [.placeholder, .any] {
 		g.v_error('unknown type `${ts.name}`', node.pos)
 	}
-	g.code_gen.mov64(g.code_gen.main_reg(), g.get_type_size(node.typ))
+	g.code_gen.mov64(g.code_gen.main_reg(), i64(g.get_type_size(node.typ)))
 }
 
 fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 	newline := name in ['println', 'eprintln']
-	fd := if name in ['eprint', 'eprintln'] { 2 } else { 1 }
+	fd := if name in ['eprint', 'eprintln'] { i32(2) } else { i32(1) }
 	match expr {
 		ast.StringLiteral {
 			str := g.eval_str_lit_escape_codes(expr)
@@ -345,7 +369,7 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 		}
 		ast.BoolLiteral {
 			// register 'true' and 'false' strings // g.expr(expr)
-			// XXX mov64 shuoldnt be used for addressing
+			// XXX mov64 shouldn't be used for addressing
 			nl := if newline { '\n' } else { '' }
 
 			if expr.val {
@@ -363,9 +387,9 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 			}
 		}
 		ast.OffsetOf {
-			styp := g.typ(expr.struct_type)
+			styp := g.styp(expr.struct_type)
 			field_name := expr.field
-			if styp.kind == .struct_ {
+			if styp.kind == .struct {
 				off := g.get_field_offset(expr.struct_type, field_name)
 				if newline {
 					g.code_gen.gen_print('${off}\n', fd)
@@ -405,19 +429,19 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 		}
 		ast.IfExpr {
 			if expr.is_comptime {
-				if stmts := g.comptime_conditional(expr) {
-					for i, stmt in stmts {
-						if i + 1 == stmts.len && stmt is ast.ExprStmt {
+				if branch := g.comptime_conditional(expr) {
+					for i, stmt in branch.stmts {
+						if i + 1 == branch.stmts.len && stmt is ast.ExprStmt {
 							g.gen_print_from_expr(stmt.expr, stmt.typ, name)
 						} else {
 							g.stmt(stmt)
 						}
 					}
 				} else {
-					g.n_error('nothing to print')
+					g.n_error('${@LOCATION} nothing to print')
 				}
 			} else {
-				g.n_error('non-comptime conditionals are not implemented yet.')
+				g.n_error('${@LOCATION} non-comptime conditionals are not implemented yet.')
 			}
 		}
 		else {
@@ -432,11 +456,17 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 }
 
 fn (mut g Gen) gen_selector_expr(expr ast.SelectorExpr) {
+	g.println('; .${expr.field_name} {')
 	main_reg := g.code_gen.main_reg()
 	g.expr(expr.expr)
 	offset := g.get_field_offset(expr.expr_type, expr.field_name)
-	g.code_gen.add(main_reg, offset)
-	g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+	if offset != 0 {
+		g.code_gen.add(main_reg, offset)
+	}
+	if expr.next_token != .dot { // the deref needs to be on the last selector (that has no . after it)
+		g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+	}
+	g.println('; .${expr.field_name} {')
 }
 
 fn (mut g Gen) gen_left_value(node ast.Expr) {
@@ -452,18 +482,23 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 				g.code_gen.add(Amd64Register.rax, offset)
 			}
 		}
-		ast.StructInit, ast.ArrayInit {
+		ast.StructInit {
 			g.expr(node)
 		}
-		ast.IndexExpr {} // TODO
+		ast.ArrayInit {
+			g.expr(node) // TODO: add a test that uses this
+		}
+		ast.IndexExpr { // TODO
+			g.n_error('${@LOCATION} Unsupported IndexExpr left value')
+		}
 		ast.PrefixExpr {
 			if node.op != .mul {
-				g.n_error('Unsupported left value')
+				g.n_error('${@LOCATION} Unsupported left value')
 			}
 			g.expr(node.right)
 		}
 		else {
-			g.n_error('Unsupported left value')
+			g.n_error('${@LOCATION} Unsupported left value')
 		}
 	}
 }

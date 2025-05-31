@@ -5,7 +5,7 @@ fn test_str() {
 		text: '"test"'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .str_
+	assert tok.kind == .str
 	assert tok.lit.len == 4
 	assert tok.lit.bytestr() == 'test'
 }
@@ -15,7 +15,7 @@ fn test_str_valid_unicode_escape() {
 		text: r'"\u0048"'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .str_
+	assert tok.kind == .str
 	assert tok.lit.len == 1
 	assert tok.lit.bytestr() == 'H'
 }
@@ -25,7 +25,7 @@ fn test_str_valid_unicode_escape_2() {
 		text: r'"\u2714"'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .str_
+	assert tok.kind == .str
 	assert tok.lit.len == 3
 	assert tok.lit.bytestr() == '✔'
 }
@@ -46,7 +46,21 @@ fn test_str_invalid_must_be_escape() {
 		}
 		tok := sc.scan()
 		assert tok.kind == .error
-		assert tok.lit.bytestr() == 'character must be escaped with a backslash'
+		assert tok.lit.bytestr() == 'character must be escaped with a backslash, replace with: \\${valid_unicode_escapes[important_escapable_chars.index(ch)]}'
+	}
+}
+
+fn test_str_control_must_be_escape() {
+	for ch := u8(0); ch < 0x20; ch++ {
+		if ch in important_escapable_chars {
+			continue
+		}
+		mut sc := Scanner{
+			text: [u8(`"`), `t`, ch, `"`]
+		}
+		tok := sc.scan()
+		assert tok.kind == .error
+		assert tok.lit.bytestr() == 'character must be escaped with a unicode escape, replace with: \\u${ch:04x}'
 	}
 }
 
@@ -91,7 +105,7 @@ fn test_int() {
 		text: '10'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 2
 	assert tok.lit.bytestr() == '10'
 }
@@ -101,7 +115,7 @@ fn test_int_negative() {
 		text: '-10'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 3
 	assert tok.lit.bytestr() == '-10'
 }
@@ -131,7 +145,7 @@ fn test_int_exp() {
 		text: '1E22'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 4
 	assert tok.lit.bytestr() == '1E22'
 }
@@ -141,7 +155,7 @@ fn test_int_exp_negative() {
 		text: '1E-2'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 4
 	assert tok.lit.bytestr() == '1E-2'
 }
@@ -151,7 +165,7 @@ fn test_int_exp_positive() {
 		text: '1E+2'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 4
 	assert tok.lit.bytestr() == '1E+2'
 }
@@ -191,7 +205,7 @@ fn test_number_with_space() {
 		text: ' 4'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 1
 	assert tok.lit.bytestr() == '4'
 }
@@ -314,7 +328,7 @@ fn test_bool_true() {
 		text: 'true'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .bool_
+	assert tok.kind == .bool
 	assert tok.lit.len == 4
 	assert tok.lit.bytestr() == 'true'
 }
@@ -324,7 +338,7 @@ fn test_bool_false() {
 		text: 'false'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .bool_
+	assert tok.kind == .bool
 	assert tok.lit.len == 5
 	assert tok.lit.bytestr() == 'false'
 }

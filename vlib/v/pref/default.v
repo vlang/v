@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
@@ -21,7 +21,7 @@ fn (mut p Preferences) expand_lookup_paths() {
 	}
 	p.vlib = os.join_path(p.vroot, 'vlib')
 	p.vmodules_paths = os.vmodules_paths()
-	//
+
 	if p.lookup_path.len == 0 {
 		p.lookup_path = ['@vlib', '@vmodules']
 	}
@@ -30,7 +30,7 @@ fn (mut p Preferences) expand_lookup_paths() {
 		match path {
 			'@vlib' { expanded_paths << p.vlib }
 			'@vmodules' { expanded_paths << p.vmodules_paths }
-			else { expanded_paths << path }
+			else { expanded_paths << path.replace('@vroot', p.vroot) }
 		}
 	}
 	p.lookup_path = expanded_paths
@@ -53,16 +53,60 @@ fn (mut p Preferences) expand_exclude_paths() {
 	p.exclude = res
 }
 
-pub fn (mut p Preferences) fill_with_defaults() {
+fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
+	if p.os == .wasm32_emscripten {
+		// TODO: remove after `$if wasm32_emscripten {` works
+		p.parse_define('emscripten')
+	}
+	host_os := if p.backend == .wasm { OS.wasi } else { get_host_os() }
+	if p.os == ._auto {
+		p.os = host_os
+		p.build_options << '-os ${host_os.lower()}'
+	}
+
+	if !p.output_cross_c {
+		if p.os != host_os {
+			// TODO: generalise this not only for macos->linux, after considering the consequences for vab/Android:
+			if host_os == .macos && p.os == .linux {
+				// Cross compilation from macos -> linux; assume AMD64 as the target architecture for now
+				if p.arch == ._auto {
+					p.arch = .amd64
+					p.build_options << '-arch amd64'
+				}
+				p.parse_define('use_bundled_libgc')
+			}
+		}
+	}
 	if p.arch == ._auto {
 		p.arch = get_host_arch()
+		p.build_options << '-arch ${p.arch}'
 	}
+}
+
+pub fn (mut p Preferences) defines_map_unique_keys() string {
+	mut defines_map := map[string]bool{}
+	for d in p.compile_defines {
+		defines_map[d] = true
+	}
+	for d in p.compile_defines_all {
+		defines_map[d] = true
+	}
+	keys := defines_map.keys()
+	skeys := keys.sorted()
+	return skeys.join(',')
+}
+
+pub fn (mut p Preferences) fill_with_defaults() {
+	p.setup_os_and_arch_when_not_explicitly_set()
 	p.expand_lookup_paths()
 	p.expand_exclude_paths()
 	rpath := os.real_path(p.path)
 	if p.out_name == '' {
 		filename := os.file_name(rpath).trim_space()
 		mut base := filename.all_before_last('.')
+		if os.file_ext(base) in ['.c', '.js', '.wasm'] {
+			base = base.all_before_last('.')
+		}
 		if base == '' {
 			// The file name is just `.v` or `.vsh` or `.*`
 			base = filename
@@ -94,7 +138,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// compilers.
 		//
 		// If you do decide to break it, please *at the very least*, test it
-		// extensively, and make a PR about it, instead of commiting directly
+		// extensively, and make a PR about it, instead of committing directly
 		// and breaking the CI, VC, and users doing `v up`.
 		if rpath == '${p.vroot}/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running
@@ -107,6 +151,19 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	rpath_name := os.file_name(rpath)
 	p.building_v = !p.is_repl && (rpath_name == 'v' || rpath_name == 'vfmt.v')
+	if p.os == .linux {
+		$if !linux {
+			p.parse_define('cross_compile')
+		}
+	}
+	if p.output_cross_c {
+		// avoid linking any GC related code, since the target may not have an usable GC system
+		p.gc_mode = .no_gc
+		p.use_cache = false
+		p.skip_unused = false
+		p.parse_define('no_backtrace') // the target may not have usable backtrace() and backtrace_symbols()
+		p.parse_define('cross') // TODO: remove when `$if cross {` works
+	}
 	if p.gc_mode == .unknown {
 		if p.backend != .c || p.building_v || p.is_bare || p.ccompiler == 'msvc' {
 			p.gc_mode = .no_gc
@@ -124,15 +181,6 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.is_debug {
 		p.parse_define('debug')
 	}
-	if p.os == .wasm32_emscripten {
-		// TODO: remove after `$if wasm32_emscripten {` works
-		p.parse_define('emscripten')
-	}
-	if p.os == ._auto {
-		// No OS specifed? Use current system
-		p.os = if p.backend != .wasm { get_host_os() } else { .wasi }
-	}
-	//
 	p.try_to_use_tcc_by_default()
 	if p.ccompiler == '' {
 		p.default_c_compiler()
@@ -154,17 +202,20 @@ pub fn (mut p Preferences) fill_with_defaults() {
 			}
 		}
 	}
+
+	final_os := p.os.lower()
+	p.parse_define(final_os)
+
 	// Prepare the cache manager. All options that can affect the generated cached .c files
 	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
 	vhash := @VHASH
 	p.cache_manager = vcache.new_cache_manager([
 		vhash,
 		// ensure that different v versions use separate build artefacts
-		'${p.backend} | ${p.os} | ${p.ccompiler} | ${p.is_prod} | ${p.sanitize}',
+		'${p.backend} | ${final_os} | ${p.ccompiler} | ${p.is_prod} | ${p.sanitize}',
+		p.defines_map_unique_keys(),
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),
-		p.compile_defines_all.str(),
-		p.compile_defines.str(),
 		p.lookup_path.str(),
 	])
 	// eprintln('prefs.cache_manager: $p')
@@ -239,7 +290,7 @@ pub fn default_tcc_compiler() string {
 }
 
 pub fn (mut p Preferences) default_c_compiler() {
-	// TODO fix $if after 'string'
+	// TODO: fix $if after 'string'
 	$if windows {
 		p.ccompiler = 'gcc'
 		return
@@ -295,18 +346,38 @@ pub fn vexe_path() string {
 	return real_vexe_path
 }
 
+pub fn (p &Preferences) vcross_linker_name() string {
+	vlname := os.getenv('VCROSS_LINKER_NAME')
+	if vlname != '' {
+		return vlname
+	}
+	$if macos {
+		return '/opt/homebrew/opt/llvm/bin/ld.lld'
+	}
+	$if windows {
+		return 'ld.lld.exe'
+	}
+	return 'ld.lld'
+}
+
 pub fn (p &Preferences) vcross_compiler_name() string {
 	vccname := os.getenv('VCROSS_COMPILER_NAME')
 	if vccname != '' {
 		return vccname
 	}
 	if p.os == .windows {
+		if p.os == .freebsd {
+			return 'clang'
+		}
 		if p.m64 {
 			return 'x86_64-w64-mingw32-gcc'
 		}
 		return 'i686-w64-mingw32-gcc'
 	}
 	if p.os == .linux {
+		return 'clang'
+	}
+	if p.os == .freebsd {
 		return 'clang'
 	}
 	if p.os == .wasm32_emscripten {
@@ -316,9 +387,17 @@ pub fn (p &Preferences) vcross_compiler_name() string {
 		return 'emcc'
 	}
 	if p.backend == .c && !p.out_name.ends_with('.c') {
-		eprintln('Note: V can only cross compile to windows and linux for now by default.')
+		eprintln('Note: V can only cross compile to Windows and Linux for now by default.')
 		eprintln('It will use `cc` as a cross compiler for now, although that will probably fail.')
 		eprintln('Set `VCROSS_COMPILER_NAME` to the name of your cross compiler, for your target OS: ${p.os} .')
 	}
 	return 'cc'
+}
+
+// vroot_file reads the given file, given a path relative to @VROOT .
+// Its goal is to give all backends a shared infrastructure to read their own static preludes (like C headers etc),
+// without each having to implement their own way of lookup/embedding/caching them.
+pub fn (mut p Preferences) vroot_file(path string) string {
+	full_path := os.join_path(p.vroot, path)
+	return os.read_file(full_path) or { '/* missing vroot content of path: ${full_path} */' }
 }

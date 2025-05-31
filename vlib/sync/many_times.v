@@ -27,7 +27,7 @@ pub fn (mut m ManyTimes) do(f fn ()) {
 }
 
 fn (mut m ManyTimes) do_slow(f fn ()) {
-	m.m.@lock()
+	m.m.lock()
 	if m.count < m.times {
 		stdatomic.store_u64(&m.count, m.count + 1)
 		f()

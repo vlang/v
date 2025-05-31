@@ -1,8 +1,8 @@
 fn test_arr(i int) string {
-  return '${i}'
+	return '${i}'
 }
 
 fn main() {
-  var := []f64{}
-  test_arr(...var)
+	var := []f64{}
+	test_arr(...var)
 }

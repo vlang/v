@@ -1,8 +1,7 @@
 import os
 import toml
 
-const (
-	toml_multiline_text_1 = 'multi1 = """one"""
+const toml_multiline_text_1 = 'multi1 = """one"""
 multi2 = """one
 two"""
 multi3 = """
@@ -15,7 +14,8 @@ two
 three
 four
 """'
-	toml_multiline_text_2 = "multi1 = '''one'''
+
+const toml_multiline_text_2 = "multi1 = '''one'''
 multi2 = '''one
 two'''
 multi3 = '''
@@ -28,9 +28,9 @@ two
 three
 four
 '''"
-	toml_unicode_escapes = r'short = "\u03B4"
+
+const toml_unicode_escapes = r'short = "\u03B4"
 long = "\U000003B4"'
-)
 
 fn test_multiline_strings() {
 	mut toml_doc := toml.parse_text(toml_multiline_text_1) or { panic(err) }

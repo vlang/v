@@ -116,7 +116,7 @@ You can also write (and all other for condition syntaxes that are allowed in V):
 
 The include directive is for including other html files (which will be processed as well)
 and consists of two parts, the `@include` tag and a following `'<path>'` string.
-The path parameter is relative to the `/templates` directory in the corresponding project.
+The path parameter is relative to the template file being called.
 
 ### Example for the folder structure of a project using templates:
 
@@ -138,6 +138,7 @@ Project root
 > Note that there shouldn't be a file suffix,
 > it is automatically appended and only allows `html` files.
 
+
 ## js
 
 The js directive consists of two parts, the `@js` tag and `'<path>'` string,
@@ -157,3 +158,8 @@ where you can insert your src
 
 All variables, which are declared before the $tmpl can be used through the `@{my_var}` syntax.
 It's also possible to use properties of structs here like `@{my_struct.prop}`.
+
+# Escaping
+
+The `@` symbol starts a template directive. If you need to use `@` as a regular 
+character within a template, escape it by using a double `@` like this: `@@`.

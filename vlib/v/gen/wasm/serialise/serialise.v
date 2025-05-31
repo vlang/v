@@ -8,7 +8,7 @@ import v.ast
 import math.bits
 import strconv
 
-[noinit]
+@[noinit]
 pub struct Pool {
 mut:
 	table &ast.Table
@@ -101,8 +101,9 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 	return size, align
 }
 
-[params]
+@[params]
 pub struct PoolOpts {
+pub:
 	null_terminated bool = true
 	intern_strings  bool = true
 	store_relocs    bool = true
@@ -110,10 +111,10 @@ pub struct PoolOpts {
 
 pub fn new_pool(table &ast.Table, opts PoolOpts) Pool {
 	return Pool{
-		table: table
+		table:           table
 		null_terminated: opts.null_terminated
-		intern_strings: opts.intern_strings
-		store_relocs: opts.store_relocs
+		intern_strings:  opts.intern_strings
+		store_relocs:    opts.store_relocs
 	}
 }
 
@@ -425,7 +426,7 @@ fn (mut p Pool) ptr(offset int) int {
 
 	if p.store_relocs {
 		p.relocs << Reloc{
-			pos: pos
+			pos:    pos
 			offset: offset
 		}
 	}

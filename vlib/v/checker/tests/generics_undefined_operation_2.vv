@@ -12,7 +12,7 @@ mut:
 pub fn create_iheap[T](capacity int) &IHeap[T] {
 	mut h := &IHeap[T]{
 		array: []&T{cap: capacity}
-		size: 0
+		size:  0
 	}
 	h.array << &T(unsafe { nil })
 	return h

@@ -1,0 +1,121 @@
+name: Release CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/release_ci.yml'
+  push:
+    paths:
+      - '.github/workflows/release_ci.yml'
+    tags:
+      - weekly.**
+      - 0.**
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: write
+
+jobs:
+  release-build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, macos-13, macos-14, windows-latest]
+        include:
+          - os: ubuntu-22.04
+            cc: gcc
+          - os: ubuntu-22.04
+            target: linux
+            artifact: v_linux.zip
+          - os: macos-13
+            cc: clang
+          - os: macos-13
+            target: macos_x86_64
+            artifact: v_macos_x86_64.zip
+          - os: macos-14
+            cc: clang
+          - os: macos-14
+            target: macos_arm64
+            artifact: v_macos_arm64.zip
+          - os: macos-14
+            cflags: -cflags "-target arm64-apple-darwin"
+          - os: windows-latest
+            cc: msvc
+            target: windows
+            artifact: v_windows.zip
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile release binaries
+        if: runner.os != 'Windows'
+        run: |
+          make
+          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -prod -o v cmd/v
+          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -prod cmd/tools/vup.v
+          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -prod cmd/tools/vdoctor.v
+      - name: Compile release binaries (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          ./make.bat -msvc
+          ./v -prod -cc msvc -o cmd/vprod.exe cmd/v
+          ./v -prod -cc msvc cmd/tools/vup.v
+          ./v -prod -cc msvc cmd/tools/vdoctor.v
+          del ./*.exe
+          del ./*.tmp.obj
+          move cmd/vprod.exe v.exe
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          if [[ ${{ matrix.os }} == 'macos-14' ]]; then
+            rm -rf thirdparty/tcc
+            git clone --branch thirdparty-macos-arm64 --depth=1 https://github.com/vlang/tccbin thirdparty/tcc
+          fi
+          # Remove excluded
+          if [[ $RUNNER_OS == 'Windows' ]]; then
+            find . -type f \( -name "*.ilk" -o -name "*.pdb" \) -exec rm -rf {} +
+            rm -rf v_old.exe
+          fi
+          find . -type d -name ".git" -exec rm -rf {} +
+          rm -rf vc/
+          rm -rf v_old
+          rm -rf vlib/v/tests/bench/gcboehm/*.svg.xz
+      - name: Create ZIP archive
+        shell: bash
+        run: |
+          cd ..
+          if [[ $RUNNER_OS == 'Windows' ]]; then
+            7z a -tzip ${{ matrix.artifact }} v/
+          else
+            zip -r9 --symlinks ${{ matrix.artifact }} v/
+          fi
+          zipinfo ${{ matrix.artifact }}
+          mv ${{ matrix.artifact }} v/
+          cd v/
+      - name: Create artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ matrix.artifact }}
+
+  release-publish:
+    if: github.ref_type == 'tag'
+    needs: release-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: |
+            ~/work/v/v/windows/v_windows.zip
+            ~/work/v/v/linux/v_linux.zip
+            ~/work/v/v/macos_arm64/v_macos_arm64.zip
+            ~/work/v/v/macos_x86_64/v_macos_x86_64.zip
+          tag: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false

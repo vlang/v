@@ -1,0 +1,11 @@
+enum Info {
+	aa = 1 // aa
+	bbb // bbb
+
+	cccc  = 5 /* cccc
+	--- cccc
+	*/
+	ddddd = 10 // ddddd
+}
+
+fn main() {}

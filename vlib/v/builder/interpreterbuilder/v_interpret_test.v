@@ -9,12 +9,12 @@ fn interpreter_wrap(a string) string {
 }
 
 fn interp_test(expression string, expected string) ! {
-	tmpdir := os.join_path(os.vtmp_dir(), 'v', 'interpret_test_${rand.ulid()}')
+	tmpdir := os.join_path(os.vtmp_dir(), 'interpret_test_${rand.ulid()}')
 	os.mkdir_all(tmpdir) or {}
 	defer {
 		os.rmdir_all(tmpdir) or {}
 	}
-	//
+
 	tmpfile := os.join_path(tmpdir, 'input.v')
 	outfile := os.join_path(tmpdir, 'output.txt')
 	os.write_file(tmpfile, interpreter_wrap(expression))!

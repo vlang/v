@@ -1,15 +1,18 @@
 module term
 
 import os
+import time
 
-[typedef]
+#include <conio.h>
+
+@[typedef]
 pub struct C.COORD {
 mut:
 	X i16
 	Y i16
 }
 
-[typedef]
+@[typedef]
 pub struct C.SMALL_RECT {
 mut:
 	Left   u16
@@ -20,7 +23,7 @@ mut:
 
 // win: CONSOLE_SCREEN_BUFFER_INFO
 // https://docs.microsoft.com/en-us/windows/console/console-screen-buffer-info-str
-[typedef]
+@[typedef]
 pub struct C.CONSOLE_SCREEN_BUFFER_INFO {
 mut:
 	dwSize              C.COORD
@@ -36,7 +39,7 @@ mut:
 	AsciiChar   u8
 }
 
-[typedef]
+@[typedef]
 pub struct C.CHAR_INFO {
 mut:
 	Char       C.uChar
@@ -53,7 +56,8 @@ fn C.SetConsoleTitle(title &u16) bool
 fn C.SetConsoleCursorPosition(handle C.HANDLE, coord C.COORD) bool
 
 // ref - https://docs.microsoft.com/en-us/windows/console/scrollconsolescreenbuffer
-fn C.ScrollConsoleScreenBuffer(output C.HANDLE, scroll_rect &C.SMALL_RECT, clip_rect &C.SMALL_RECT, des C.COORD, fill &C.CHAR_INFO) bool
+fn C.ScrollConsoleScreenBuffer(output C.HANDLE, scroll_rect &C.SMALL_RECT, clip_rect &C.SMALL_RECT, des C.COORD,
+	fill &C.CHAR_INFO) bool
 
 // get_terminal_size returns a number of columns and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
@@ -131,4 +135,78 @@ pub fn clear() bool {
 
 	C.SetConsoleCursorPosition(hconsole, csbi.dwCursorPosition)
 	return true
+}
+
+// supports_sixel returns `true` if the terminal supports Sixel graphics
+//
+// For more info on the sixel format:
+// See https://en.wikipedia.org/wiki/Sixel
+// See https://www.digiater.nl/openvms/decus/vax90b1/krypton-nasa/all-about-sixels.text
+// For more info on terminal support:
+// See https://www.arewesixelyet.com
+pub fn supports_sixel() bool {
+	// According to (2024) https://www.arewesixelyet.com/#windows-console there's no support
+	return false
+}
+
+// graphics_num_colors returns the number of color registers the terminal
+// graphic attribute is set to use. This can be useful to know if the terminal
+// is configured to support Sixel graphics.
+//
+// See "CSI ? Pi ; Pa ; Pv S" from https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+pub fn graphics_num_colors() u16 {
+	// Since this call is related to sixel terminal graphics and Windows Console and Terminal
+	// does not have support for querying the graphics setup this call returns 0
+	return 0
+}
+
+// enable_echo enable/disable echo input characters
+pub fn enable_echo(enable bool) {
+	// no need under windows, use key_pressed func's echo
+}
+
+fn C.kbhit() bool
+fn C._getch() int
+fn C._getche() int
+
+// KeyPressedParams contains the optional parameters that you can pass to key_pressed.
+@[params]
+pub struct KeyPressedParams {
+pub mut:
+	blocking bool // whether to wait for a pressed key
+	echo     bool // whether to output the pressed key to stdout
+}
+
+// key_pressed gives back a single character, read from the standard input.
+// It returns -1 on error or no character in non-blocking mode
+pub fn key_pressed(params KeyPressedParams) i64 {
+	for {
+		if C.kbhit() {
+			res := if params.echo {
+				C._getche()
+			} else {
+				C._getch()
+			}
+			// see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/getche-getwche?view=msvc-170
+			// > When _getche or _getwche reads a function key or an arrow key, the function must be called twice;
+			// > the first call returns 0 or 0xE0, and the second call returns the actual key code.
+			if res in [0, 0xe0] {
+				if C.kbhit() {
+					res2 := if params.echo {
+						C._getche()
+					} else {
+						C._getch()
+					}
+					return i64(u32(0xe0) << 16 | u32(res2))
+				}
+			}
+			return i64(res)
+		}
+		if !params.blocking {
+			// in non-blocking mode, we need to return immediately
+			return -1
+		}
+		time.sleep(1 * time.millisecond)
+	}
+	return 0
 }

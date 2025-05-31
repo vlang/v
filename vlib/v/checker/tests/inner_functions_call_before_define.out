@@ -10,4 +10,4 @@ vlib/v/checker/tests/inner_functions_call_before_define.vv:3:5: error: unknown f
     3 |     go f()
       |        ~~~
     4 | 
-    5 |     f := fn () string { return "hello" }
+    5 |     f := fn () string {

@@ -1,0 +1,5 @@
+vlib/v/checker/tests/wrong_option_type.vv:1:10: error: wrong syntax, it must be ?int, not int?
+    1 | fn foo() int?{
+      |          ~~~
+    2 |     return 0
+    3 | }

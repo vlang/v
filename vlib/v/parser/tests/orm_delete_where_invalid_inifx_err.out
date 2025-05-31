@@ -1,0 +1,7 @@
+vlib/v/parser/tests/orm_delete_where_invalid_inifx_err.vv:23:49: error: undefined variable: `client_id`
+   21 |     }!
+   22 |     sql db {
+   23 |         delete from ParameterTable where client_id == client_id && name == name
+      |                                                       ~~~~~~~~~
+   24 |     } or { panic(err) }    
+   25 | }

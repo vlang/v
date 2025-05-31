@@ -1,0 +1,3 @@
+fn load(mut filepaths ...string) {
+	println(filepaths[0])
+}

@@ -1,3 +1,4 @@
+// vtest build: !windows && (amd64 || arm64)
 import sync
 
 struct Counter {

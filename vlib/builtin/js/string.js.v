@@ -7,13 +7,10 @@ pub:
 }
 
 pub fn (s string) runes() []rune {
-	mut runes := []rune{}
-	for i := 0; i < s.len; i++ {
-		mut r := rune(`0`)
-		#r = new rune(s.str[i.val].charCodeAt())
-		runes << r
-	}
-	return runes
+	ret := JS.makeEmptyArray()
+	#for (r of s.str) array_push(ret,new rune(r),false);
+
+	return ret
 }
 
 pub fn (s string) slice(a int, b int) string {
@@ -81,6 +78,46 @@ pub fn (s string) split(dot string) []string {
 	_ := tmparr
 	mut arr := []string{}
 	#arr = new array(new array_buffer({arr: tmparr,index_start: new int(0),len: new int(tmparr.length)}))
+
+	return arr
+}
+
+pub fn (s string) split_any(delim string) []string {
+	if delim.len == 0 {
+		return s.split(delim)
+	}
+
+	mut pattern := delim
+
+	// we use a regex with a bracket expression to match any of the characters in delim
+	// so we need to prevent the caller from escaping the regex
+	// to do this we escape any `]`, and remove all `\` while adding an escaped `\\`
+	// back if the original string contained any
+	if pattern.contains('\\') {
+		pattern = pattern.replace('\\', '')
+		pattern = '${pattern}\\\\'
+	}
+	pattern = pattern.replace(']', '\\]')
+
+	mut regexp := JS.RegExp{}
+	#regexp = new RegExp('[' + pattern.str + ']', 'g')
+
+	tmparr := s.str.split(regexp).map(fn (it JS.Any) JS.Any {
+		res := ''
+		#res.str = it
+
+		return res
+	})
+	_ := tmparr
+
+	mut arr := []string{}
+	#arr = new array(new array_buffer({arr: tmparr,index_start: new int(0),len: new int(tmparr.length)}))
+
+	// FIXME: ugly hack to handle edge case where the last character in the string is
+	// one of the delimiters to match V behavior
+	#if (s.len > 0 && pattern.str.includes(s.str[s.len - 1])) {
+	arr.pop()
+	#}
 
 	return arr
 }
@@ -285,8 +322,9 @@ pub fn (s string) u8() u64 {
 
 // trim_right strips any of the characters given in `cutset` from the right of the string.
 // Example: assert ' Hello V d'.trim_right(' d') == ' Hello V'
+@[direct_array_access]
 pub fn (s string) trim_right(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 
@@ -314,9 +352,9 @@ pub fn (s string) trim_right(cutset string) string {
 
 // trim_left strips any of the characters given in `cutset` from the left of the string.
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) trim_left(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	mut pos := 0
@@ -432,12 +470,12 @@ pub fn (mut s []string) sort() {
 	s.sort_with_compare(compare_strings)
 }
 
-// sort_ignore_case sorts the string array using case insesitive comparing.
+// sort_ignore_case sorts the string array using case insensitive comparing.
 pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
 }
 
-// sort_by_len sorts the the string array by each string's `.len` length.
+// sort_by_len sorts the string array by each string's `.len` length.
 pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
@@ -484,7 +522,7 @@ pub fn (s string) repeat(count int) string {
 
 // TODO: Make these functions actually work.
 // strip_margin allows multi-line strings to be formatted in a way that removes white-space
-// before a delimeter. by default `|` is used.
+// before a delimiter. By default `|` is used.
 // Note: the delimiter has to be a byte at this time. That means surrounding
 // the value in ``.
 //
@@ -501,7 +539,7 @@ pub fn (s string) strip_margin() string {
 }
 
 // strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
 	if sep.is_space() {
@@ -557,7 +595,7 @@ pub fn (s string) strip_margin_custom(del u8) string {
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
 	mut i := 0
@@ -634,7 +672,7 @@ struct RepIndex {
 
 // replace_each replaces all occurrences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
 	if s.len == 0 || vals.len == 0 {
 		return s.clone()
@@ -666,7 +704,7 @@ pub fn (s string) replace_each(vals []string) string {
 		with_ = with_
 
 		for {
-			idx = s_.index_after(rep, idx)
+			idx = s_.index_after_(rep, idx)
 			if idx == -1 {
 				break
 			}
@@ -678,7 +716,7 @@ pub fn (s string) replace_each(vals []string) string {
 			}
 
 			rep_idx := RepIndex{
-				idx: 0
+				idx:     0
 				val_idx: 0
 			}
 			// todo: primitives should always be copied
@@ -730,7 +768,7 @@ pub fn (s string) replace_each(vals []string) string {
 }
 
 // last_index returns the position of the last occurrence of the input string.
-fn (s string) last_index_(p string) int {
+fn (s string) index_last_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}
@@ -748,13 +786,25 @@ fn (s string) last_index_(p string) int {
 	return -1
 }
 
-// last_index returns the position of the last occurrence of the input string.
-pub fn (s string) last_index(p string) ?int {
-	idx := s.last_index_(p)
+// last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+@[inline]
+pub fn (s string) last_index(needle string) ?int {
+	idx := s.index_last_(needle)
 	if idx == -1 {
 		return none
 	}
 	return idx
+}
+
+// last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.
+@[direct_array_access]
+pub fn (s string) last_index_u8(c u8) int {
+	for i := s.len - 1; i >= 0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
 }
 
 pub fn (s string) trim_space() string {
@@ -764,7 +814,37 @@ pub fn (s string) trim_space() string {
 	return res
 }
 
-pub fn (s string) index_after(p string, start int) int {
+pub fn (s string) index_after(p string, start int) ?int {
+	if p.len > s.len {
+		return none
+	}
+
+	mut strt := start
+	if start < 0 {
+		strt = 0
+	}
+	if start >= s.len {
+		return none
+	}
+	mut i := strt
+
+	for i < s.len {
+		mut j := 0
+		mut ii := i
+		for j < p.len && s[ii] == p[j] {
+			j++
+			ii++
+		}
+
+		if j == p.len {
+			return i
+		}
+		i++
+	}
+	return none
+}
+
+pub fn (s string) index_after_(p string, start int) int {
 	if p.len > s.len {
 		return -1
 	}
@@ -865,7 +945,7 @@ pub fn (s string) is_title() bool {
 // is a capital letter, and the rest are NOT.
 // Example: assert 'Hello'.is_capital() == true
 // Example: assert 'HelloWorld'.is_capital() == false
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) is_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
@@ -882,9 +962,9 @@ pub fn (s string) is_capital() bool {
 // is a capital letter, even if the rest are not.
 // Example: assert 'Hello'.starts_with_capital() == true
 // Example: assert 'Hello. World.'.starts_with_capital() == true
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) starts_with_capital() bool {
-	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
+	if s.len == 0 || !s[0].is_capital() {
 		return false
 	}
 	return true
@@ -916,7 +996,7 @@ pub fn (s string) reverse() string {
 }
 
 pub fn (s string) trim(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	mut pos_left := 0

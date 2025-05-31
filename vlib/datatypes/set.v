@@ -46,12 +46,6 @@ pub fn (mut set Set[T]) clear() {
 	set.elements = map[T]u8{}
 }
 
-// equal checks whether the two given sets are equal (i.e. contain all and only the same elements).
-[deprecated: 'use set1[T] == set2[T] instead']
-pub fn (l Set[T]) equal(r Set[T]) bool {
-	return l == r
-}
-
 // == checks whether the two given sets are equal (i.e. contain all and only the same elements).
 pub fn (l Set[T]) == (r Set[T]) bool {
 	if l.elements.len != r.elements.len {
@@ -91,7 +85,7 @@ pub fn (mut set Set[T]) add_all(elements []T) {
 
 // @union returns the union of the two sets.
 pub fn (l Set[T]) @union(r Set[T]) Set[T] {
-	mut set := l
+	mut set := l.copy()
 	for e, _ in r.elements {
 		set.add(e)
 	}
@@ -100,7 +94,7 @@ pub fn (l Set[T]) @union(r Set[T]) Set[T] {
 
 // intersection returns the intersection of sets.
 pub fn (l Set[T]) intersection(r Set[T]) Set[T] {
-	mut set := l
+	mut set := l.copy()
 	for e, _ in l.elements {
 		if !r.exists(e) {
 			set.remove(e)
@@ -114,15 +108,9 @@ pub fn (l Set[T]) intersection(r Set[T]) Set[T] {
 	return set
 }
 
-// difference returns the difference of sets.
-[deprecated: 'use set1[T] - set2[T] instead']
-pub fn (l Set[T]) difference(r Set[T]) Set[T] {
-	return l - r
-}
-
 // - returns the difference of sets.
 pub fn (l Set[T]) - (r Set[T]) Set[T] {
-	mut set := l
+	mut set := l.copy()
 	for e, _ in l.elements {
 		if r.exists(e) {
 			set.remove(e)
@@ -139,4 +127,9 @@ pub fn (l Set[T]) subset(r Set[T]) bool {
 		}
 	}
 	return true
+}
+
+// array returns an array representation of the set
+pub fn (l Set[T]) array() []T {
+	return l.elements.keys()
 }

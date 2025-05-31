@@ -1,4 +1,4 @@
 fn main() {
-  zzz := 123 + 456
-  println(zzz)
+	zzz := 123 + 456
+	println(zzz)
 }

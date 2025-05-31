@@ -1,0 +1,52 @@
+name: riscv64 CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/riscv64_linux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/riscv64_linux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+jobs:
+  riscv64_linux:
+    # The host should always be Linux
+    runs-on: ubuntu-24.04
+    name: Build on ubuntu-24.04 riscv64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: uraimo/run-on-arch-action@v3
+        name: Run commands
+        id: runcmd
+        with:
+          arch: riscv64
+          distro: ubuntu24.04
+          base_image: --platform=linux/riscv64 riscv64/ubuntu:24.04
+          # The token tag here is not required, but speeds up builds,
+          # by allowing caching of the installed dependencies, which is ~2.5min:
+          githubToken: ${{ github.token }}
+          shell: /bin/bash
+          install: |
+            apt-get update -q -y
+            apt-get install -q -y make gcc git file coreutils binutils
+          run: |
+            uname -a
+            make --version
+            gcc --version
+            ls -la
+            export LDFLAGS="-latomic"
+            export VFLAGS="-gc none -no-retry-compilation -cc cc"
+            make
+            file ./v
+            ls -la ./v
+            ./v test vlib/builtin vlib/os vlib/encoding/binary
+            VTEST_ONLY=closure ./v test vlib/v/tests

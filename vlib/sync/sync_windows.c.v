@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module sync
@@ -22,22 +22,29 @@ type MHANDLE = voidptr
 // Semaphore HANDLE
 type SHANDLE = voidptr
 
+@[typedef]
+pub struct C.SRWLOCK {}
+
+@[typedef]
+pub struct C.CONDITION_VARIABLE {}
+
 //[init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 
-// `SRWLOCK` is much more performant that `Mutex` on Windows, so use that in both cases since we don't want to share with other processes
-[heap]
+// `SRWLOCK` is much more performant that `Mutex` on Windows, so use that in both cases since we don't
+// want to share with other processes
+@[heap]
 pub struct Mutex {
 mut:
 	mx C.SRWLOCK // mutex handle
 }
 
-[heap]
+@[heap]
 pub struct RwMutex {
 mut:
 	mx C.SRWLOCK // mutex handle
 }
 
-[heap]
+@[heap]
 pub struct Semaphore {
 	mtx  C.SRWLOCK
 	cond C.CONDITION_VARIABLE
@@ -65,8 +72,21 @@ pub fn (mut m RwMutex) init() {
 	C.InitializeSRWLock(&m.mx)
 }
 
-pub fn (mut m Mutex) @lock() {
+pub fn (mut m Mutex) lock() {
 	C.AcquireSRWLockExclusive(&m.mx)
+}
+
+// try_lock try to lock the mutex instance and return immediately.
+// If the mutex was already locked, it will return false.
+// NOTE: try_lock require Windows 7 or later. Before Windows 7, it will always return false.
+// NOTE: To enable try_lock , you should compile your project with `-d windows_7`, like `v . -d windows_7`
+// https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-tryacquiresrwlockexclusive
+pub fn (mut m Mutex) try_lock() bool {
+	$if windows_7 ? {
+		return C.TryAcquireSRWLockExclusive(&m.mx) != 0
+	} $else {
+		return false
+	}
 }
 
 pub fn (mut m Mutex) unlock() {
@@ -74,12 +94,38 @@ pub fn (mut m Mutex) unlock() {
 }
 
 // RwMutex has separate read- and write locks
-pub fn (mut m RwMutex) @rlock() {
+pub fn (mut m RwMutex) rlock() {
 	C.AcquireSRWLockShared(&m.mx)
 }
 
-pub fn (mut m RwMutex) @lock() {
+pub fn (mut m RwMutex) lock() {
 	C.AcquireSRWLockExclusive(&m.mx)
+}
+
+// try_rlock try to lock the given RwMutex instance for reading and return immediately.
+// If the mutex was already locked, it will return false.
+// NOTE: try_rlock require Windows 7 or later. Before Windows 7, it will always return false.
+// NOTE: To enable try_rlock , you should compile your project with `-d windows_7`, like `v . -d windows_7`
+// https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-tryacquiresrwlockshared
+pub fn (mut m RwMutex) try_rlock() bool {
+	$if windows_7 ? {
+		return C.TryAcquireSRWLockShared(&m.mx) != 0
+	} $else {
+		return false
+	}
+}
+
+// try_wlock try to lock the given RwMutex instance for writing and return immediately.
+// If the mutex was already locked, it will return false.
+// NOTE: try_wlock require Windows 7 or later. Before Windows 7, it will always return false.
+// NOTE: To enable try_wlock , you should compile your project with `-d windows_7`, like `v . -d windows_7`
+// https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-tryacquiresrwlockexclusive
+pub fn (mut m RwMutex) try_wlock() bool {
+	$if windows_7 ? {
+		return C.TryAcquireSRWLockExclusive(&m.mx) != 0
+	} $else {
+		return false
+	}
 }
 
 // Windows SRWLocks have different function to unlock
@@ -92,7 +138,7 @@ pub fn (mut m RwMutex) unlock() {
 	C.ReleaseSRWLockExclusive(&m.mx)
 }
 
-[inline]
+@[inline]
 pub fn new_semaphore() &Semaphore {
 	return new_semaphore_init(0)
 }
@@ -117,7 +163,7 @@ pub fn (mut sem Semaphore) post() {
 		}
 	}
 	C.AcquireSRWLockExclusive(&sem.mtx)
-	c = C.atomic_fetch_add_u32(&sem.count, 1)
+	c = C.atomic_fetch_add_u32(voidptr(&sem.count), 1)
 	if c == 0 {
 		C.WakeConditionVariable(&sem.cond)
 	}

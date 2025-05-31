@@ -48,11 +48,12 @@ pub mut:
 	vt []m4.Vec4 // textures
 
 	name          string
-	part          []Part               // parts of the ObjPart
-	mat           []Material           // list of the materials of the ObjPart
-	mat_map       map[string]int       // mapping material name to its material index
-	texture       map[string]gfx.Image // GPU loaded texture map
-	material_file string // .mtl file name for the .obj
+	part          []Part                 // parts of the ObjPart
+	mat           []Material             // list of the materials of the ObjPart
+	mat_map       map[string]int         // mapping material name to its material index
+	texture       map[string]gfx.Image   // GPU loaded texture map
+	sampler       map[string]gfx.Sampler // GPU loaded sampler
+	material_file string                 // .mtl file name for the .obj
 
 	rend_data []Render_data // render data used for the rendering
 
@@ -87,10 +88,10 @@ pub mut:
 	ka    m4.Vec4 = m4.Vec4{
 		e: [f32(0.1), 0.0, 0.0, 1.0]!
 	}
-	kd m4.Vec4 = m4.Vec4{
+	kd    m4.Vec4 = m4.Vec4{
 		e: [f32(0.5), 0.5, 0.5, 1.0]!
 	}
-	ks m4.Vec4 = m4.Vec4{
+	ks    m4.Vec4 = m4.Vec4{
 		e: [f32(1.0), 1.0, 1.0, 1.0]!
 	}
 }

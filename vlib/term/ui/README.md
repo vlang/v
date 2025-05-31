@@ -34,9 +34,9 @@ fn frame(x voidptr) {
 fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
-		user_data: app
-		event_fn: event
-		frame_fn: frame
+		user_data:   app
+		event_fn:    event
+		frame_fn:    frame
 		hide_cursor: true
 	)
 	app.tui.run()!

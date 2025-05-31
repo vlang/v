@@ -43,6 +43,11 @@ mut:
 * TTF_File structs
 *
 ******************************************************************************/
+// TTF_File represents the data contents of a complete `*.ttf` file.
+// The struct is usually initialized by reading raw TTF data into the `buf` member field
+// for example by doing: `ttf_font.buf = os.read_bytes("arial.ttf") or { panic(err) }`,
+// and then run the `init/0` method, for example: `ttf_font.init()`
+
 pub struct TTF_File {
 pub mut:
 	buf                     []u8
@@ -96,6 +101,7 @@ pub mut:
 	width_scale f32 = 1.0
 }
 
+// init initializes essential `TTF_File` fields from the contents of `buf`.
 pub fn (mut tf TTF_File) init() {
 	tf.read_offset_tables()
 	tf.read_head_table()
@@ -117,6 +123,7 @@ pub fn (mut tf TTF_File) init() {
 * TTF_File Glyph Structs
 *
 ******************************************************************************/
+// Point represents a 2D point
 pub struct Point {
 pub mut:
 	x        int
@@ -130,14 +137,14 @@ mut:
 }
 
 // type of glyph
-const (
-	g_type_simple  = u16(1) // simple type
-	g_type_complex = u16(2) // compound type
-)
+const g_type_simple = u16(1) // simple type
 
+const g_type_complex = u16(2)
+
+// Glyph represents a single renderable unit ("a character") of the TTF.
 pub struct Glyph {
 pub mut:
-	g_type             u16 = ttf.g_type_simple
+	g_type             u16 = g_type_simple
 	contour_ends       []u16
 	number_of_contours i16
 	points             []Point
@@ -154,6 +161,8 @@ pub mut:
 * TTF_File metrics and glyph
 *
 ******************************************************************************/
+// get_horizontal_metrics returns the horizontal metrics `advance_width` and `left_side_bearing`
+// for the glyph at index `glyph_index`.
 pub fn (mut tf TTF_File) get_horizontal_metrics(glyph_index u16) (int, int) {
 	assert 'hmtx' in tf.tables
 	old_pos := tf.pos
@@ -207,6 +216,7 @@ fn (mut tf TTF_File) get_glyph_offset(index u32) u32 {
 	return offset + tf.tables['glyf'].offset
 }
 
+// glyph_count returns the number of glyphs available in the TTF.
 pub fn (mut tf TTF_File) glyph_count() u16 {
 	assert 'maxp' in tf.tables
 	old_pos := tf.pos
@@ -216,6 +226,7 @@ pub fn (mut tf TTF_File) glyph_count() u16 {
 	return count
 }
 
+// read_glyph_dim returns glyph dimension data in the form `x_min`, `x_max`, `y_min` and `y_max`.
 pub fn (mut tf TTF_File) read_glyph_dim(index u16) (int, int, int, int) {
 	offset := tf.get_glyph_offset(index)
 	// dprintln("offset: $offset")
@@ -240,6 +251,7 @@ pub fn (mut tf TTF_File) read_glyph_dim(index u16) (int, int, int, int) {
 	return x_min, x_max, y_min, y_max
 }
 
+// get_ttf_widths returns all possible widths of the TTF.
 pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 	mut space_cw, _ := tf.get_horizontal_metrics(u16(` `))
 	// div_space_cw := int((f32(space_cw) * 0.3))
@@ -292,6 +304,7 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 	return widths, min_code, max_code
 }
 
+// read_glyph returns `Glyph` data for the glyph at `index`.
 pub fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 	index_int := int(index) // index.str()
 	if index_int in tf.glyph_cache {
@@ -348,14 +361,12 @@ pub fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 	return tmp_glyph
 }
 
-const (
-	tfk_on_curve  = 1
-	tfk_x_is_byte = 2
-	tfk_y_is_byte = 4
-	tfk_repeat    = 8
-	tfk_x_delta   = 16
-	tfk_y_delta   = 32
-)
+const tfk_on_curve = 1
+const tfk_x_is_byte = 2
+const tfk_y_is_byte = 4
+const tfk_repeat = 8
+const tfk_x_delta = 16
+const tfk_y_delta = 32
 
 fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 	if in_glyph.number_of_contours == 0 {
@@ -366,7 +377,7 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 		in_glyph.contour_ends << tf.get_u16()
 	}
 
-	// skip over intructions
+	// skip over instructions
 	tf.pos = tf.get_u16() + tf.pos
 
 	mut num_points := 0
@@ -383,20 +394,20 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 		flag := tf.get_u8()
 		flags << flag
 		in_glyph.points << Point{
-			x: 0
-			y: 0
-			on_curve: (flag & ttf.tfk_on_curve) > 0
+			x:        0
+			y:        0
+			on_curve: (flag & tfk_on_curve) > 0
 		}
-		if (flag & ttf.tfk_repeat) > 0 {
+		if (flag & tfk_repeat) > 0 {
 			mut repeat_count := tf.get_u8()
 			assert repeat_count > 0
 			i += repeat_count
 			for repeat_count > 0 {
 				flags << flag
 				in_glyph.points << Point{
-					x: 0
-					y: 0
-					on_curve: (flag & ttf.tfk_on_curve) > 0
+					x:        0
+					y:        0
+					on_curve: (flag & tfk_on_curve) > 0
 				}
 				repeat_count--
 			}
@@ -408,13 +419,13 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 	mut value := 0
 	for i_x in 0 .. num_points {
 		flag_x := flags[i_x]
-		if (flag_x & ttf.tfk_x_is_byte) > 0 {
-			if (flag_x & ttf.tfk_x_delta) > 0 {
+		if (flag_x & tfk_x_is_byte) > 0 {
+			if (flag_x & tfk_x_delta) > 0 {
 				value += tf.get_u8()
 			} else {
 				value -= tf.get_u8()
 			}
-		} else if (~flag_x & ttf.tfk_x_delta) > 0 {
+		} else if (~flag_x & tfk_x_delta) > 0 {
 			value += tf.get_i16()
 		} else {
 			// value is unchanged
@@ -427,13 +438,13 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 	value = 0
 	for i_y in 0 .. num_points {
 		flag_y := flags[i_y]
-		if (flag_y & ttf.tfk_y_is_byte) > 0 {
-			if (flag_y & ttf.tfk_y_delta) > 0 {
+		if (flag_y & tfk_y_is_byte) > 0 {
+			if (flag_y & tfk_y_delta) > 0 {
 				value += tf.get_u8()
 			} else {
 				value -= tf.get_u8()
 			}
-		} else if (~flag_y & ttf.tfk_y_delta) > 0 {
+		} else if (~flag_y & tfk_y_delta) > 0 {
 			value += tf.get_i16()
 		} else {
 			// value is unchanged
@@ -446,19 +457,17 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 	in_glyph.valid_glyph = true
 }
 
-const (
-	tfkc_arg_1_and_2_are_words    = 1
-	tfkc_args_are_xy_values       = 2
-	tfkc_round_xy_to_grid         = 4
-	tfkc_we_have_a_scale          = 8
-	// reserved                   = 16
-	tfkc_more_components          = 32
-	tfkc_we_have_an_x_and_y_scale = 64
-	tfkc_we_have_a_two_by_two     = 128
-	tfkc_we_have_instructions     = 256
-	tfkc_use_my_metrics           = 512
-	tfkc_overlap_component        = 1024
-)
+const tfkc_arg_1_and_2_are_words = 1
+const tfkc_args_are_xy_values = 2
+const tfkc_round_xy_to_grid = 4
+const tfkc_we_have_a_scale = 8
+// reserved                   = 16
+const tfkc_more_components = 32
+const tfkc_we_have_an_x_and_y_scale = 64
+const tfkc_we_have_a_two_by_two = 128
+const tfkc_we_have_instructions = 256
+const tfkc_use_my_metrics = 512
+const tfkc_overlap_component = 1024
 
 struct Component {
 mut:
@@ -469,10 +478,10 @@ mut:
 }
 
 fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
-	in_glyph.g_type = ttf.g_type_complex
+	in_glyph.g_type = g_type_complex
 	mut component := Component{}
-	mut flags := ttf.tfkc_more_components
-	for (flags & ttf.tfkc_more_components) > 0 {
+	mut flags := tfkc_more_components
+	for (flags & tfkc_more_components) > 0 {
 		mut arg1 := i16(0)
 		mut arg2 := i16(0)
 
@@ -480,7 +489,7 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 
 		component.glyph_index = tf.get_u16()
 
-		if (flags & ttf.tfkc_arg_1_and_2_are_words) > 0 {
+		if (flags & tfkc_arg_1_and_2_are_words) > 0 {
 			arg1 = tf.get_i16()
 			arg2 = tf.get_i16()
 		} else {
@@ -488,7 +497,7 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 			arg2 = tf.get_u8()
 		}
 
-		if (flags & ttf.tfkc_args_are_xy_values) > 0 {
+		if (flags & tfkc_args_are_xy_values) > 0 {
 			component.matrix[4] = arg1
 			component.matrix[5] = arg2
 		} else {
@@ -496,13 +505,13 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 			component.src_point_index = arg2
 		}
 
-		if (flags & ttf.tfkc_we_have_a_scale) > 0 {
+		if (flags & tfkc_we_have_a_scale) > 0 {
 			component.matrix[0] = tf.get_2dot14()
 			component.matrix[3] = component.matrix[0]
-		} else if (flags & ttf.tfkc_we_have_an_x_and_y_scale) > 0 {
+		} else if (flags & tfkc_we_have_an_x_and_y_scale) > 0 {
 			component.matrix[0] = tf.get_2dot14()
 			component.matrix[3] = tf.get_2dot14()
-		} else if (flags & ttf.tfkc_we_have_a_two_by_two) > 0 {
+		} else if (flags & tfkc_we_have_a_two_by_two) > 0 {
 			component.matrix[0] = tf.get_2dot14()
 			component.matrix[1] = tf.get_2dot14()
 			component.matrix[2] = tf.get_2dot14()
@@ -526,8 +535,8 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 				x = component.matrix[0] * x + component.matrix[1] * y + component.matrix[4]
 				y = component.matrix[2] * x + component.matrix[3] * y + component.matrix[5]
 				in_glyph.points << Point{
-					x: int(x)
-					y: int(y)
+					x:        int(x)
+					y:        int(y)
 					on_curve: p.on_curve
 				}
 			}
@@ -537,7 +546,7 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 
 	in_glyph.number_of_contours = i16(in_glyph.contour_ends.len)
 
-	if (flags & ttf.tfkc_we_have_instructions) > 0 {
+	if (flags & tfkc_we_have_instructions) > 0 {
 		tf.pos = tf.get_u16() + tf.pos
 	}
 	// ok we have a valid glyph
@@ -686,8 +695,8 @@ fn (mut tf TTF_File) read_offset_tables() {
 		tag := tf.get_string(4)
 		tf.tables[tag] = Offset_Table{
 			checksum: tf.get_u32()
-			offset: tf.get_u32()
-			length: tf.get_u32()
+			offset:   tf.get_u32()
+			length:   tf.get_u32()
 		}
 		dprintln('Table: [${tag}]')
 		// dprintln("${tf.tables[tag]}")
@@ -839,6 +848,8 @@ fn (mut tf TTF_File) read_cmap(offset u32) {
 * CMAPS 0/4
 *
 ******************************************************************************/
+// map_code returns the glyph index for the `char_code` character code.
+// map_code returns `0` if the character code could not be found.
 pub fn (mut tf TTF_File) map_code(char_code int) u16 {
 	mut index := 0
 	for i in 0 .. tf.cmaps.len {
@@ -1024,8 +1035,8 @@ fn (mut tf TTF_File) create_kern_table0(vertical bool, cross bool) Kern0Table {
 	dprintln('n_pairs: ${n_pairs} search_range: ${search_range} entry_selector: ${entry_selector} range_shift: ${range_shift}')
 
 	mut kt0 := Kern0Table{
-		swap: (vertical && !cross) || (!vertical && cross)
-		offset: offset
+		swap:    (vertical && !cross) || (!vertical && cross)
+		offset:  offset
 		n_pairs: n_pairs
 	}
 
@@ -1074,12 +1085,14 @@ fn (mut tf TTF_File) read_kern_table() {
 	}
 }
 
+// reset_kern resets the internal kerning table data.
 pub fn (mut tf TTF_File) reset_kern() {
 	for i in 0 .. tf.kern.len {
 		tf.kern[i].reset()
 	}
 }
 
+// next_kern returns the next `x`, `y` kerning for the glyph at index `glyph_index`.
 pub fn (mut tf TTF_File) next_kern(glyph_index int) (int, int) {
 	mut x := 0
 	mut y := 0
@@ -1106,7 +1119,7 @@ fn (mut tf TTF_File) read_panose_table() {
 	// dprintln('READING! PANOSE offset:${tf.tables['OS/2']}')
 	version := tf.get_u16()
 	dprintln('Panose version: ${version:04x}')
-	tf.pos += 2 * 14 // move to Panose class + 10 byte array	
+	tf.pos += 2 * 14 // move to Panose class + 10 byte array
 	mut count := 0
 
 	// get family
@@ -1133,6 +1146,7 @@ fn (mut tf TTF_File) read_panose_table() {
 * TTF_File Utility
 *
 ******************************************************************************/
+// get_info_string returns a string with various information about the TTF.
 pub fn (tf TTF_File) get_info_string() string {
 	txt := '----- Font Info -----
 font_family     : ${tf.font_family}

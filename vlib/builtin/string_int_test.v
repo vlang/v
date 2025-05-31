@@ -267,7 +267,6 @@ fn test_interpolation_of_negative_numbers_padding_and_width() {
 	assert '-000000000000000004d' == '${a:020x}'
 	assert '-0000000000001001101' == '${a:020b}'
 
-	//
 	assert '     -77' == '${a:8}'
 	assert '     -77' == '${a:8d}'
 	assert '     -4d' == '${a:8x}'
@@ -278,7 +277,6 @@ fn test_interpolation_of_negative_numbers_padding_and_width() {
 	assert '-1001101' == '${a:08b}'
 	assert '-000004d' == '${a:08x}'
 
-	//
 	assert ' -77' == '${a:4}'
 	assert ' -77' == '${a:4d}'
 	assert '-1001101' == '${a:4b}'
@@ -289,7 +287,6 @@ fn test_interpolation_of_negative_numbers_padding_and_width() {
 	assert '-1001101' == '${a:04b}'
 	assert '-04d' == '${a:04x}'
 
-	//
 	assert '-77' == '${a:2}'
 	assert '-77' == '${a:2d}'
 	assert '-1001101' == '${a:2b}'
@@ -300,14 +297,12 @@ fn test_interpolation_of_negative_numbers_padding_and_width() {
 	assert '-1001101' == '${a:02b}'
 	assert '-4d' == '${a:02x}'
 
-	//
 	bin0 := ~6
 	assert bin0 == -7
 	assert '-0000111' == '${bin0:08b}' // a minimum of 8 characters for the whole number, including the padding and the sign
 	assert '-0000111' == '${~6:08b}'
 	assert '    -111' == '${~6:8b}'
 
-	//
 	assert '-0000110' == '${-6:08b}'
 	assert '    -110' == '${-6:8b}'
 }
@@ -335,8 +330,8 @@ fn test_parse() {
 }
 
 fn test_interpolate_binary_literals() {
-	assert ' 1 ${i64(0b1000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000)}' == ' 1 -9223372036854775808'
-	assert ' 2 ${i64(0b1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111)}' == ' 2 -1'
+	assert ' 1 ${i64(u64(0b1000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000))}' == ' 1 -9223372036854775808'
+	assert ' 2 ${i64(u64(0b1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111))}' == ' 2 -1'
 	assert ' 3 ${i64(0b0111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111)}' == ' 3 9223372036854775807'
 	assert ' 4 ${u64(0b1000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000)}' == ' 4 9223372036854775808'
 	assert ' 5 ${u64(0b1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111)}' == ' 5 18446744073709551615'
@@ -349,4 +344,18 @@ fn test_interpolate_literal_limits() {
 	assert ' 9 ${u64(0xFF_FF_FF_FF_FF_FF_FF_FF)}' == ' 9 18446744073709551615'
 	assert '10 ${u32(0o377777_77777)}' == '10 4294967295'
 	assert '11 ${i64(-2147483647)}' == '11 -2147483647'
+}
+
+fn test_string_repetition() {
+	a := 'pippo'
+	assert '${'pera':r}' == ''
+	assert '${'pera':R}' == ''
+	assert '${'pera':0r}' == ''
+	assert '${'pera':0R}' == ''
+	assert '${'pera':1r}' == 'pera'
+	assert '${'pera':1R}' == 'PERA'
+	assert '${'pera':2r}' == 'perapera'
+	assert '${'pera':2R}' == 'PERAPERA'
+	assert '${a:2r}' == 'pippopippo'
+	assert '${a:2R}' == 'PIPPOPIPPO'
 }

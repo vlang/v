@@ -1,0 +1,1 @@
+Array_fixed_int_literal_ptr1_8 weapon_keys = {&_const_main__key_weapon1, &_const_main__key_weapon2, &_const_main__key_weapon3, &_const_main__key_weapon4, &_const_main__key_weapon5, &_const_main__key_weapon6, &_const_main__key_weapon7, &_const_main__key_weapon8}; // fixed array const

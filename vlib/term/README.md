@@ -41,13 +41,14 @@ This simple program covers many of the principal aspects of the `term ` module.
 
 ## API
 
-Here are some functions you should be aware of in the `term `module:
+Here are some of the main functions of the `term `module:
 
-```v oksyntax
+```v
 import term
 
 // returns the height and the width of the terminal
 width, height := term.get_terminal_size()
+println('width: ${width}, height: ${height}')
 // returns the string as green text to be printed on stdout
 term.ok_message('cool')
 // returns the string as red text to be printed on stdout
@@ -56,9 +57,15 @@ term.fail_message('oh, no')
 term.warn_message('be warned')
 // clears the entire terminal and leaves a blank one
 term.clear()
-// colors the output of the output, the available colors are:
-// black,blue,yellow,green,cyan,gray,bright_blue,bright_green,bright_red,bright_black,bright_cyan
+
+// Set the color output of the output.
+// The available colors are:
+// black, white, blue, yellow,
+// green, red, cyan, magenta,
+// bright_black, bright_white, bright_blue, bright_yellow,
+// bright_green, bright_red, bright_cyan, bright_magenta,
 term.yellow('submarine')
+
 // transforms the given string into bold text
 term.bold('and beautiful')
 // puts a strikethrough into the given string
@@ -71,15 +78,15 @@ term.bg_green('field')
 // sets the position of the cursor at a given place in the terminal
 term.set_cursor_position(x: 5, y: 10)
 // moves the cursor up
-term.cursor_up()
+term.cursor_up(1)
 // moves the cursor down
-term.cursor_down()
+term.cursor_down(1)
 // moves the cursor to the right
-term.cursor_forward()
+term.cursor_forward(2)
 // moves the cursor to the left
-term.cursor_back()
-// shows the cursor
-term.show_cursor()
+term.cursor_back(2)
 // hides the cursor
 term.hide_cursor()
+// shows the cursor
+term.show_cursor()
 ```

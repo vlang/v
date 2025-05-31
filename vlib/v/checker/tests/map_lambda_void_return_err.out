@@ -1,0 +1,4 @@
+vlib/v/checker/tests/map_lambda_void_return_err.vv:2:13: error: type mismatch, `println` does not return anything
+    1 | arr := ['a', 'b', 'c']
+    2 | arr.map(|x| println(x))
+      |             ~~~~~~~~~~

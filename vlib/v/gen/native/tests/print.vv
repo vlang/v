@@ -104,6 +104,36 @@ fn test_interpolated() {
 	println('num: ${num}; bool: ${boool}')
 }
 
+fn test_intermediate() {
+	c := 0
+	a := 'a'
+	println(c)
+}
+
+fn test_for_range() {
+	for i in 0 .. 10 {
+		println(i)
+	}
+}
+
+fn test_for_range2() {
+	for i in 7 .. 9 {
+		println(i)
+	}
+}
+
+fn test_for_range3() {
+	for i in -2 .. 3 {
+		println(i)
+	}
+}
+
+fn test_2_in_a_row() {
+	a := 12345
+	println(a)
+	println(a)
+}
+
 fn main() {
 	test_stdout()
 	test_stderr()
@@ -113,4 +143,9 @@ fn main() {
 	test_exprs()
 	test_sizeof()
 	test_interpolated()
+	test_intermediate()
+	test_for_range()
+	test_for_range2()
+	test_for_range3()
+	test_2_in_a_row()
 }

@@ -1,0 +1,10 @@
+module no_main
+
+#postinclude "@VEXEROOT/vlib/v/gen/c/testdata/postinclude_header.h"
+
+@[markused]
+pub fn f(p int) int {
+	assert p == 42
+	C.printf(c'Hi from V, p: %d\n', p)
+	return 987
+}

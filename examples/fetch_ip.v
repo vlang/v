@@ -28,7 +28,7 @@ struct UserAgent {
 
 url := 'http://ifconfig.co/json'
 resp := http.fetch(
-	url: url
+	url:        url
 	user_agent: 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/117.0'
 ) or {
 	eprintln('failed to fetch data from the server, error: ${err}')

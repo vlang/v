@@ -1,207 +1,17 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module json2
 
-import strings
 import time
 
-// Decodes a JSON string into an `Any` type. Returns an option.
-pub fn raw_decode(src string) !Any {
-	mut p := new_parser(src, true)
-	return p.decode()
-}
-
-// Same with `raw_decode`, but skips the type conversion for certain types when decoding a certain value.
-pub fn fast_raw_decode(src string) !Any {
-	mut p := new_parser(src, false)
-	return p.decode()
-}
-
-// decode is a generic function that decodes a JSON string into the target type.
-pub fn decode[T](src string) !T {
-	mut typ := T{}
-	res := raw_decode(src)!.as_map()
-	$if T is $struct {
-		$for field in T.fields {
-			mut json_name := field.name
-			for attr in field.attrs {
-				if attr.contains('json: ') {
-					json_name = attr.replace('json: ', '')
-					break
-				}
-			}
-
-			$if field.is_enum {
-				typ.$(field.name) = if key := res[field.name] {
-					key.int()
-				} else {
-					res[json_name]!.int()
-				}
-			} $else $if field.typ is u8 {
-				typ.$(field.name) = res[json_name]!.u64()
-			} $else $if field.typ is u16 {
-				typ.$(field.name) = res[json_name]!.u64()
-			} $else $if field.typ is u32 {
-				typ.$(field.name) = res[json_name]!.u64()
-			} $else $if field.typ is u64 {
-				typ.$(field.name) = res[json_name]!.u64()
-			} $else $if field.typ is int {
-				typ.$(field.name) = res[json_name]!.int()
-			} $else $if field.typ is i8 {
-				typ.$(field.name) = res[json_name]!.int()
-			} $else $if field.typ is i16 {
-				typ.$(field.name) = res[json_name]!.int()
-			} $else $if field.typ is i32 {
-				typ.$(field.name) = i32(res[field.name]!.int())
-			} $else $if field.typ is i64 {
-				typ.$(field.name) = res[json_name]!.i64()
-			} $else $if field.typ is ?u8 {
-				if json_name in res {
-					typ.$(field.name) = ?u8(res[json_name]!.i64())
-				}
-			} $else $if field.typ is ?i8 {
-				if json_name in res {
-					typ.$(field.name) = ?i8(res[json_name]!.i64())
-				}
-			} $else $if field.typ is ?u16 {
-				if json_name in res {
-					typ.$(field.name) = ?u16(res[json_name]!.i64())
-				}
-			} $else $if field.typ is ?i16 {
-				if json_name in res {
-					typ.$(field.name) = ?i16(res[json_name]!.i64())
-				}
-			} $else $if field.typ is ?u32 {
-				if json_name in res {
-					typ.$(field.name) = ?u32(res[json_name]!.i64())
-				}
-			} $else $if field.typ is ?i32 {
-				if json_name in res {
-					typ.$(field.name) = ?i32(res[json_name]!.i64())
-				}
-			} $else $if field.typ is ?u64 {
-				if json_name in res {
-					typ.$(field.name) = ?u64(res[json_name]!.i64())
-				}
-			} $else $if field.typ is ?i64 {
-				if json_name in res {
-					typ.$(field.name) = ?i64(res[json_name]!.i64())
-				}
-			} $else $if field.typ is ?int {
-				if json_name in res {
-					typ.$(field.name) = ?int(res[json_name]!.i64())
-				}
-			} $else $if field.typ is f32 {
-				typ.$(field.name) = res[json_name]!.f32()
-			} $else $if field.typ is ?f32 {
-				if json_name in res {
-					typ.$(field.name) = res[json_name]!.f32()
-				}
-			} $else $if field.typ is f64 {
-				typ.$(field.name) = res[json_name]!.f64()
-			} $else $if field.typ is ?f64 {
-				if json_name in res {
-					typ.$(field.name) = res[json_name]!.f64()
-				}
-			} $else $if field.typ is bool {
-				typ.$(field.name) = res[json_name]!.bool()
-			} $else $if field.typ is ?bool {
-				if json_name in res {
-					typ.$(field.name) = res[json_name]!.bool()
-				}
-			} $else $if field.typ is string {
-				typ.$(field.name) = res[json_name]!.str()
-			} $else $if field.typ is ?string {
-				if json_name in res {
-					typ.$(field.name) = res[json_name]!.str()
-				}
-			} $else $if field.typ is time.Time {
-				typ.$(field.name) = res[json_name]!.to_time()!
-			} $else $if field.typ is ?time.Time {
-				if json_name in res {
-					typ.$(field.name) = res[json_name]!.to_time()!
-				}
-			} $else $if field.is_array {
-				// typ.$(field.name) = res[field.name]!.arr()
-			} $else $if field.is_struct {
-			} $else $if field.is_alias {
-			} $else $if field.is_map {
-			} $else {
-				return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
-			}
-		}
-	} $else $if T is $map {
-		for k, v in res {
-			// // TODO - make this work to decode types like `map[string]StructType[bool]`
-			// $if typeof(typ[k]).idx is string {
-			// 	typ[k] = v.str()
-			// } $else $if typeof(typ[k]).idx is $struct {
-
-			// }
-			match v {
-				string {
-					typ[k] = v.str()
-				}
-				else {}
-			}
-		}
-	} $else {
-		return error("The type `${T.name}` can't be decoded.")
-	}
-	return typ
-}
-
-// encode is a generic function that encodes a type into a JSON string.
-pub fn encode[T](val T) string {
-	$if T is $array {
-		return encode_array(val)
-	} $else {
-		mut sb := strings.new_builder(64)
-
-		defer {
-			unsafe { sb.free() }
-		}
-
-		default_encoder.encode_value(val, mut sb) or {
-			println(err)
-			default_encoder.encode_value[Null](null, mut sb) or {}
-		}
-
-		return sb.str()
-	}
-}
-
-// encode_array is a generic function that encodes a array into a JSON string.
-fn encode_array[T](val []T) string {
-	mut sb := strings.new_builder(64)
-
-	defer {
-		unsafe { sb.free() }
-	}
-
-	default_encoder.encode_array(val, 1, mut sb) or {
-		println(err)
-		default_encoder.encode_value[Null](null, mut sb) or {}
-	}
-
-	return sb.str()
-}
-
-// encode_pretty ...
-pub fn encode_pretty[T](typed_data T) string {
-	encoded := encode(typed_data)
-	raw_decoded := raw_decode(encoded) or { 0 }
-	return raw_decoded.prettify_json_str()
-}
-
-// i8 - TODO
+// i8 uses `Any` as a 16-bit integer.
 pub fn (f Any) i8() i8 {
 	match f {
 		i8 {
 			return f
 		}
-		i16, int, i64, u8, u16, u32, u64, f32, f64, bool {
+		i16, i32, int, i64, u8, u16, u32, u64, f32, f64, bool {
 			return i8(f)
 		}
 		string {
@@ -213,13 +23,13 @@ pub fn (f Any) i8() i8 {
 	}
 }
 
-// i16 - TODO
+// i16 uses `Any` as a 16-bit integer.
 pub fn (f Any) i16() i16 {
 	match f {
 		i16 {
 			return f
 		}
-		i8, int, i64, u8, u16, u32, u64, f32, f64, bool {
+		i8, i32, int, i64, u8, u16, u32, u64, f32, f64, bool {
 			return i16(f)
 		}
 		string {
@@ -237,11 +47,29 @@ pub fn (f Any) int() int {
 		int {
 			return f
 		}
-		i8, i16, i64, u8, u16, u32, u64, f32, f64, bool {
+		i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool {
 			return int(f)
 		}
 		string {
 			return f.int()
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+// i32 uses `Any` as a 32-bit integer.
+pub fn (f Any) i32() i32 {
+	match f {
+		i32 {
+			return f
+		}
+		i8, i16, int, i64, u8, u16, u32, u64, f32, f64, bool {
+			return i32(f)
+		}
+		string {
+			return f.i32()
 		}
 		else {
 			return 0
@@ -255,11 +83,65 @@ pub fn (f Any) i64() i64 {
 		i64 {
 			return f
 		}
-		i8, i16, int, u8, u16, u32, u64, f32, f64, bool {
+		i8, i16, i32, int, u8, u16, u32, u64, f32, f64, bool {
 			return i64(f)
 		}
 		string {
 			return f.i64()
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+// u8 uses `Any` as a 8-bit unsigned integer.
+pub fn (f Any) u8() u8 {
+	match f {
+		u8 {
+			return f
+		}
+		u16, u32, u64, i8, i16, i32, int, i64, f32, f64, bool {
+			return u8(u16(f))
+		}
+		string {
+			return f.u8()
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+// u16 uses `Any` as a 16-bit unsigned integer.
+pub fn (f Any) u16() u16 {
+	match f {
+		u16 {
+			return f
+		}
+		u8, u32, u64, i8, i16, i32, int, i64, f32, f64, bool {
+			return u16(f)
+		}
+		string {
+			return f.u16()
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+// u32 uses `Any` as a 32-bit unsigned integer.
+pub fn (f Any) u32() u32 {
+	match f {
+		u32 {
+			return f
+		}
+		u8, u16, u64, i8, i16, i32, int, i64, f32, f64, bool {
+			return u32(f)
+		}
+		string {
+			return f.u32()
 		}
 		else {
 			return 0
@@ -273,7 +155,7 @@ pub fn (f Any) u64() u64 {
 		u64 {
 			return f
 		}
-		u8, u16, u32, i8, i16, int, i64, f32, f64, bool {
+		u8, u16, u32, i8, i16, i32, int, i64, f32, f64, bool {
 			return u64(f)
 		}
 		string {
@@ -291,7 +173,7 @@ pub fn (f Any) f32() f32 {
 		f32 {
 			return f
 		}
-		bool, i8, i16, int, i64, u8, u16, u32, u64, f64 {
+		bool, i8, i16, i32, int, i64, u8, u16, u32, u64, f64 {
 			return f32(f)
 		}
 		string {
@@ -309,7 +191,7 @@ pub fn (f Any) f64() f64 {
 		f64 {
 			return f
 		}
-		i8, i16, int, i64, u8, u16, u32, u64, f32 {
+		i8, i16, i32, int, i64, u8, u16, u32, u64, f32 {
 			return f64(f)
 		}
 		string {
@@ -340,7 +222,7 @@ pub fn (f Any) bool() bool {
 				return false
 			}
 		}
-		i8, i16, int, i64 {
+		i8, i16, i32, int, i64 {
 			return i64(f) != 0
 		}
 		u8, u16, u32, u64 {
@@ -385,6 +267,26 @@ pub fn (f Any) as_map() map[string]Any {
 	}
 }
 
+pub fn (f Any) as_map_of_strings() map[string]string {
+	if f is map[string]Any {
+		mut ms := map[string]string{}
+		for k, v in f {
+			ms[k] = v.str()
+		}
+		return ms
+	}
+	if f is []Any {
+		mut ms := map[string]string{}
+		for i, fi in f {
+			ms['${i}'] = fi.str()
+		}
+		return ms
+	}
+	return {
+		'0': f.str()
+	}
+}
+
 // to_time uses `Any` as a time.Time.
 pub fn (f Any) to_time() !time.Time {
 	match f {
@@ -414,8 +316,8 @@ pub fn (f Any) to_time() !time.Time {
 			if is_unix_timestamp {
 				return time.unix(f.i64())
 			}
-			// TODO - parse_iso8601
-			// TODO - parse_rfc2822
+			// TODO: parse_iso8601
+			// TODO: parse_rfc2822
 			return time.parse(f)!
 		}
 		else {
@@ -424,19 +326,24 @@ pub fn (f Any) to_time() !time.Time {
 	}
 }
 
-fn map_from[T](t T) map[string]Any {
+// map_from convert a struct to map of Any
+pub fn map_from[T](t T) map[string]Any {
 	mut m := map[string]Any{}
 	$if T is $struct {
 		$for field in T.fields {
 			value := t.$(field.name)
 
 			$if field.is_array {
-				mut arr := []Any{}
-				for variable in value {
-					arr << Any(variable)
+				mut top_arr := unsafe { []Any{len: t.$(field.name).len} }
+				for idx, variable in value {
+					$if variable is $array {
+						top_arr[idx] = flatten_array(variable)
+					} $else {
+						top_arr[idx] = variable
+					}
 				}
-				m[field.name] = arr
-				arr.clear()
+				m[field.name] = top_arr
+				top_arr.clear()
 			} $else $if field.is_struct {
 				m[field.name] = map_from(value)
 			} $else $if field.is_map {
@@ -446,31 +353,33 @@ fn map_from[T](t T) map[string]Any {
 			} $else $if field.is_option {
 				// TODO
 			} $else {
-				// TODO improve memory usage when convert
+				// TODO: simplify check of type & improve memory usage when convert
 				$if field.typ is string {
-					m[field.name] = value.str()
+					m[field.name] = value
 				} $else $if field.typ is bool {
-					m[field.name] = t.$(field.name).str().bool()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is i8 {
-					m[field.name] = t.$(field.name).str().i8()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is i16 {
-					m[field.name] = t.$(field.name).str().i16()
+					m[field.name] = t.$(field.name)
+				} $else $if field.typ is i32 {
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is int {
-					m[field.name] = t.$(field.name).str().int()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is i64 {
-					m[field.name] = t.$(field.name).str().i64()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is f32 {
-					m[field.name] = t.$(field.name).str().f32()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is f64 {
-					m[field.name] = t.$(field.name).str().f64()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is u8 {
-					m[field.name] = t.$(field.name).str().u8()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is u16 {
-					m[field.name] = t.$(field.name).str().u16()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is u32 {
-					m[field.name] = t.$(field.name).str().u32()
+					m[field.name] = t.$(field.name)
 				} $else $if field.typ is u64 {
-					m[field.name] = t.$(field.name).str().u64()
+					m[field.name] = t.$(field.name)
 				} $else {
 					// return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
 				}
@@ -478,4 +387,22 @@ fn map_from[T](t T) map[string]Any {
 		}
 	}
 	return m
+}
+
+// flatten_array convert a array of values to array of Any
+@[inline]
+fn flatten_array[T](t []T) []Any {
+	$if t !is $array {
+		return Any(t)
+	} $else {
+		mut arr := []Any{}
+		for variable in t {
+			$if variable is $array {
+				arr << flatten_array(variable)
+			} $else {
+				arr << Any(variable)
+			}
+		}
+		return arr
+	}
 }

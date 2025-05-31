@@ -1,3 +1,5 @@
+const enable_debug = $if debug { true } $else { false }
+
 mut pre_built_str := ''
 $if prebuilt ? {
 	the_date := if $env('DATE') != '' { $env('DATE') } else { '##DATE##' }

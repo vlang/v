@@ -39,7 +39,7 @@
 
 /* We define only the full barrier variants, and count on the           */
 /* generalization section below to fill in the rest.                    */
-extern pthread_mutex_t AO_pt_lock;
+AO_API pthread_mutex_t AO_pt_lock;
 
 #ifdef __cplusplus
   } /* extern "C" */

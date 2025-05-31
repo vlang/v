@@ -1,5 +1,7 @@
 struct Abc {}
+
 struct Xyz {}
+
 type Alphabet = Abc | Xyz
 
 struct Test {

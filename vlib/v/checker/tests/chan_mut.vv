@@ -1,4 +1,4 @@
-struct St{
+struct St {
 mut:
 	n int
 }
@@ -12,7 +12,9 @@ fn f(ch chan mut St) {
 	ch <- x
 	mut y := St{}
 	ch <- y
-	mut z := &St{n: 7}
+	mut z := &St{
+		n: 7
+	}
 	// this works
 	ch <- z
 }

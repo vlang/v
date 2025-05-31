@@ -3,7 +3,7 @@ module main
 type Any = string | u8
 
 fn test(args ...Any) {
-	println('args $args')
+	println('args ${args}')
 }
 
 fn main() {

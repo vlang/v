@@ -1,3 +1,2 @@
-[Vweb] Running app on http://localhost:38090/
-[Vweb] We have 1 workers
+`vweb` has been deprecated. Please use the more stable and fast `veb` instead.
 done

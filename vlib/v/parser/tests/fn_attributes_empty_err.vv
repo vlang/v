@@ -1,4 +1,4 @@
-[] fn tt() {
+@[] fn tt() {
 	println('text')
 }
 fn main() {

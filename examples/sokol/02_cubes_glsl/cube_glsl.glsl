@@ -26,7 +26,10 @@ void main() {
 #pragma sokol @end
 
 #pragma sokol @fs fs
-uniform sampler2D tex;
+
+uniform texture2D tex;
+uniform sampler smp;
+
 uniform fs_params {
 	vec2 text_res;
 	float iTime;
@@ -65,7 +68,7 @@ vec3 background(float t, vec3 rd)
 vec4 mainImage(vec2 fragCoord)
 {
  vec2 uv = (fragCoord-vec2(0.4,0.4))*2.0;
- 
+
  //vec2 uv  = (-1.0 + 2.0*fc.xy / text_res.xy) * vec2(text_res.x/text_res.y, 1.0);
  vec3 ro    = vec3(0.0, 0.0, -3.0);
  vec3 rd    = normalize(vec3(uv, 1.0));
@@ -83,7 +86,7 @@ vec4 mainImage(vec2 fragCoord)
 
 void main() {
 		vec4 c = color;
-    vec4 txt = texture(tex, uv/4.0);
+		vec4 txt = texture(sampler2D(tex, smp), uv/4.0);
 		c = txt * c;
 		vec4 col_ray = mainImage(uv);
 		float txt_mix = mod(iTime,5);

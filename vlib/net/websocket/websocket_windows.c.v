@@ -7,6 +7,4 @@ fn error_code() int {
 	return C.WSAGetLastError()
 }
 
-const (
-	error_ewouldblock = net.WsaError.wsaewouldblock // blocking error code
-)
+const error_ewouldblock = net.WsaError.wsaewouldblock

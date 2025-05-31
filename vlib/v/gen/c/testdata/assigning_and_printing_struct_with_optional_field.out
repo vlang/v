@@ -1,0 +1,5 @@
+autofree is on
+SomeStruct{
+    val: 0
+    arg: Option('xyz')
+}

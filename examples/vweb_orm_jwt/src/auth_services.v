@@ -60,9 +60,9 @@ fn make_token(user User) string {
 
 	jwt_header := JwtHeader{'HS256', 'JWT'}
 	jwt_payload := JwtPayload{
-		sub: '${user.id}'
+		sub:  '${user.id}'
 		name: '${user.username}'
-		iat: time.now()
+		iat:  time.now()
 	}
 
 	header := base64.url_encode(json.encode(jwt_header).bytes())

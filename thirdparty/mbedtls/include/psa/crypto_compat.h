@@ -5,26 +5,14 @@
  *
  * This header declares alternative names for macro and functions.
  * New application code should not use these names.
- * These names may be removed in a future version of Mbed Crypto.
+ * These names may be removed in a future version of Mbed TLS.
  *
  * \note This file may not be included directly. Applications must
  * include psa/crypto.h.
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
- *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 
 #ifndef PSA_CRYPTO_COMPAT_H
@@ -44,15 +32,15 @@ typedef mbedtls_svc_key_id_t psa_key_handle_t;
 
 #define PSA_KEY_HANDLE_INIT MBEDTLS_SVC_KEY_ID_INIT
 
-/** Check whether an handle is null.
+/** Check whether a handle is null.
  *
  * \param handle  Handle
  *
  * \return Non-zero if the handle is null, zero otherwise.
  */
-static inline int psa_key_handle_is_null( psa_key_handle_t handle )
+static inline int psa_key_handle_is_null(psa_key_handle_t handle)
 {
-    return( mbedtls_svc_key_id_is_null( handle ) );
+    return mbedtls_svc_key_id_is_null(handle);
 }
 
 /** Open a handle to an existing persistent key.
@@ -105,18 +93,18 @@ static inline int psa_key_handle_is_null( psa_key_handle_t handle )
  *         permission to access it. Note that this specification does not
  *         define any way to create such a key, but it may be possible
  *         through implementation-specific means.
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
- * \retval #PSA_ERROR_STORAGE_FAILURE
- * \retval #PSA_ERROR_DATA_INVALID
- * \retval #PSA_ERROR_DATA_CORRUPT
+ * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
+ * \retval #PSA_ERROR_STORAGE_FAILURE \emptydescription
+ * \retval #PSA_ERROR_DATA_INVALID \emptydescription
+ * \retval #PSA_ERROR_DATA_CORRUPT \emptydescription
  * \retval #PSA_ERROR_BAD_STATE
  *         The library has not been previously initialized by psa_crypto_init().
  *         It is implementation-dependent whether a failure to initialize
  *         results in this error code.
  */
-psa_status_t psa_open_key( mbedtls_svc_key_id_t key,
-                           psa_key_handle_t *handle );
+psa_status_t psa_open_key(mbedtls_svc_key_id_t key,
+                          psa_key_handle_t *handle);
 
 /** Close a key handle.
  *
@@ -149,14 +137,91 @@ psa_status_t psa_open_key( mbedtls_svc_key_id_t key,
  *         \p handle was a valid handle or \c 0. It is now closed.
  * \retval #PSA_ERROR_INVALID_HANDLE
  *         \p handle is not a valid handle nor \c 0.
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
  * \retval #PSA_ERROR_BAD_STATE
  *         The library has not been previously initialized by psa_crypto_init().
  *         It is implementation-dependent whether a failure to initialize
  *         results in this error code.
  */
 psa_status_t psa_close_key(psa_key_handle_t handle);
+
+/** \addtogroup attributes
+ * @{
+ */
+
+#if !defined(MBEDTLS_DEPRECATED_REMOVED)
+/** Custom Diffie-Hellman group.
+ *
+ * Mbed TLS does not support custom DH groups.
+ *
+ * \deprecated This value is not useful, so this macro will be removed in
+ *             a future version of the library.
+ */
+#define PSA_DH_FAMILY_CUSTOM                                            \
+    ((psa_dh_family_t) MBEDTLS_DEPRECATED_NUMERIC_CONSTANT(0x7e))
+
+/**
+ * \brief Set domain parameters for a key.
+ *
+ * \deprecated  Mbed TLS no longer supports any domain parameters.
+ *              This function only does the equivalent of
+ *              psa_set_key_type() and will be removed in a future version
+ *              of the library.
+ *
+ * \param[in,out] attributes    Attribute structure where \p type will be set.
+ * \param type                  Key type (a \c PSA_KEY_TYPE_XXX value).
+ * \param[in] data              Ignored.
+ * \param data_length           Must be 0.
+ *
+ * \retval #PSA_SUCCESS \emptydescription
+ * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
+ */
+static inline psa_status_t MBEDTLS_DEPRECATED psa_set_key_domain_parameters(
+    psa_key_attributes_t *attributes,
+    psa_key_type_t type, const uint8_t *data, size_t data_length)
+{
+    (void) data;
+    if (data_length != 0) {
+        return PSA_ERROR_NOT_SUPPORTED;
+    }
+    psa_set_key_type(attributes, type);
+    return PSA_SUCCESS;
+}
+
+/**
+ * \brief Get domain parameters for a key.
+ *
+ * \deprecated  Mbed TLS no longer supports any domain parameters.
+ *              This function alwaya has an empty output and will be
+ *              removed in a future version of the library.
+
+ * \param[in] attributes        Ignored.
+ * \param[out] data             Ignored.
+ * \param data_size             Ignored.
+ * \param[out] data_length      Set to 0.
+ *
+ * \retval #PSA_SUCCESS \emptydescription
+ */
+static inline psa_status_t MBEDTLS_DEPRECATED psa_get_key_domain_parameters(
+    const psa_key_attributes_t *attributes,
+    uint8_t *data, size_t data_size, size_t *data_length)
+{
+    (void) attributes;
+    (void) data;
+    (void) data_size;
+    *data_length = 0;
+    return PSA_SUCCESS;
+}
+
+/** Safe output buffer size for psa_get_key_domain_parameters().
+ *
+ */
+#define PSA_KEY_DOMAIN_PARAMETERS_SIZE(key_type, key_bits)      \
+    MBEDTLS_DEPRECATED_NUMERIC_CONSTANT(1u)
+#endif /* MBEDTLS_DEPRECATED_REMOVED */
+
+/**@}*/
 
 #ifdef __cplusplus
 }

@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `crypto` is a module that exposes cryptographic algorithms to V programs.
 
@@ -13,9 +13,10 @@ to create a destination buffer of the correct size to receive the decrypted data
 
 The implementations here are loosely based on [Go's crypto package](https://pkg.go.dev/crypto).
 
-## Examples:
+## Examples
 
-### AES:
+### AES
+
 ```v
 import crypto.aes
 import crypto.rand
@@ -45,7 +46,8 @@ fn main() {
 }
 ```
 
-### JWT:
+### JWT
+
 ```v
 import crypto.hmac
 import crypto.sha256
@@ -69,9 +71,11 @@ fn main() {
 	secret := 'your-256-bit-secret'
 	token := make_token(secret)
 	ok := auth_verify(secret, token)
+	pl := decode_payload(token) or { panic(err) }
 	dt := sw.elapsed().microseconds()
 	println('token: ${token}')
 	println('auth_verify(secret, token): ${ok}')
+	println('decode_payload(token): ${pl}')
 	println('Elapsed time: ${dt} uS')
 }
 
@@ -90,5 +94,11 @@ fn auth_verify(secret string, token string) bool {
 		sha256.sum, sha256.block_size)
 	signature_from_token := base64.url_decode(token_split[2])
 	return hmac.equal(signature_from_token, signature_mirror)
+}
+
+fn decode_payload(token string) !JwtPayload {
+	token_split := token.split('.')
+	payload := json.decode(JwtPayload, base64.url_decode_str(token_split[1]))!
+	return payload
 }
 ```

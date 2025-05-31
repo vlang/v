@@ -10,7 +10,7 @@ mut:
 fn new_date_time_parser(datetime string, format string) DateTimeParser {
 	return DateTimeParser{
 		datetime: datetime
-		format: format
+		format:   format
 	}
 }
 
@@ -72,7 +72,7 @@ fn (mut p DateTimeParser) must_be_string_one_of(oneof []string) !string {
 			return must
 		}
 	}
-	return error('invalid string: must be one of ${oneof}, at ${p.current_pos_datetime}')
+	return error('invalid string: must be one of ${oneof}, at: ${p.current_pos_datetime}')
 }
 
 fn (mut p DateTimeParser) must_be_valid_month() !int {
@@ -85,30 +85,59 @@ fn (mut p DateTimeParser) must_be_valid_month() !int {
 			}
 		}
 	}
-	return error_invalid_time(0, 'invalid month name')
+	return error_invalid_time(0, 'invalid month name, at: ${p.current_pos_datetime}')
 }
 
 fn (mut p DateTimeParser) must_be_valid_three_letter_month() !int {
-	for month_number := 1; month_number < long_months.len; month_number++ {
-		if p.current_pos_datetime + 3 < p.datetime.len {
-			month_three_letters := p.datetime[p.current_pos_datetime..p.current_pos_datetime + 3]
-			if months_string[(month_number - 1) * 3..month_number * 3] == month_three_letters {
+	if p.current_pos_datetime + 3 < p.datetime.len {
+		letters := p.datetime[p.current_pos_datetime..p.current_pos_datetime + 3]
+		for m := 1; m <= long_months.len; m++ {
+			if months_string[(m - 1) * 3..m * 3] == letters {
 				p.current_pos_datetime += 3
-				return month_number
+				return m
 			}
 		}
 	}
-	return error_invalid_time(0, 'invalid month three letters')
+	return error_invalid_time(0, 'invalid three letter month, at: ${p.current_pos_datetime}')
 }
 
-fn (mut p DateTimeParser) must_be_valid_week_day(letters int) !string {
-	val := p.next(letters)!
+fn (mut p DateTimeParser) must_be_valid_week_day() !string {
 	for v in long_days {
-		if v[0..letters] == val {
-			return v
+		if p.current_pos_datetime + v.len < p.datetime.len {
+			weekday := p.datetime[p.current_pos_datetime..p.current_pos_datetime + v.len]
+			if v == weekday {
+				p.current_pos_datetime += v.len
+				return weekday
+			}
 		}
 	}
-	return error_invalid_time(0, 'invalid month name')
+	return error_invalid_time(0, 'invalid weekday, at: ${p.current_pos_datetime}')
+}
+
+fn (mut p DateTimeParser) must_be_valid_two_letter_week_day() !int {
+	if p.current_pos_datetime + 2 < p.datetime.len {
+		letters := p.datetime[p.current_pos_datetime..p.current_pos_datetime + 2]
+		for d := 1; d <= long_days.len; d++ {
+			if days_string[(d - 1) * 3..d * 3 - 1] == letters {
+				p.current_pos_datetime += 2
+				return d
+			}
+		}
+	}
+	return error_invalid_time(0, 'invalid two letter weekday, at: ${p.current_pos_datetime}')
+}
+
+fn (mut p DateTimeParser) must_be_valid_three_letter_week_day() !int {
+	if p.current_pos_datetime + 3 < p.datetime.len {
+		letters := p.datetime[p.current_pos_datetime..p.current_pos_datetime + 3]
+		for d := 1; d <= long_days.len; d++ {
+			if days_string[(d - 1) * 3..d * 3] == letters {
+				p.current_pos_datetime += 3
+				return d
+			}
+		}
+	}
+	return error_invalid_time(0, 'invalid three letter weekday, at: ${p.current_pos_datetime}')
 }
 
 fn extract_tokens(s string) ![]string {
@@ -133,9 +162,15 @@ fn extract_tokens(s string) ![]string {
 // YY - 2 digit year, 00..99
 // M - month, 1..12
 // MM - month, 2 digits, 01..12
+// MMM - month, three letters, Jan..Dec
 // MMMM - name of month
 // D - day of the month, 1..31
 // DD - day of the month, 01..31
+// d - day of week, 0..6
+// c - day of week, 1..7
+// dd - day of week, Su..Sa
+// ddd - day of week, Sun..Sat
+// dddd - day of week, Sunday..Saturday
 // H - hour, 0..23
 // HH - hour, 00..23
 // h - hour, 0..23
@@ -205,6 +240,21 @@ fn (mut p DateTimeParser) parse() !Time {
 				if day_in_month < 1 || day_in_month > 31 {
 					return error_invalid_time(0, 'day must be  between 01 and 31')
 				}
+			}
+			'd' {
+				p.must_be_int(1) or { return err }
+			}
+			'c' {
+				p.must_be_int(1) or { return err }
+			}
+			'dd' {
+				p.must_be_valid_two_letter_week_day() or { return err }
+			}
+			'ddd' {
+				p.must_be_valid_three_letter_week_day() or { return err }
+			}
+			'dddd' {
+				p.must_be_valid_week_day() or { return err }
 			}
 			'H' {
 				hour_ = p.must_be_int_with_minimum_length(1, 2, true) or {
@@ -304,11 +354,11 @@ fn (mut p DateTimeParser) parse() !Time {
 		return error_invalid_time(0, '${month_name} has only 30 days')
 	}
 
-	return new_time(
-		year: year_
-		month: month_
-		day: day_in_month
-		hour: hour_
+	return new(
+		year:   year_
+		month:  month_
+		day:    day_in_month
+		hour:   hour_
 		minute: minute_
 		second: second_
 	)

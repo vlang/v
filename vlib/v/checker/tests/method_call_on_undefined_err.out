@@ -1,0 +1,65 @@
+vlib/v/checker/tests/method_call_on_undefined_err.vv:6:10: error: undefined ident: `input`
+    4 | fn foo() !string {
+    5 |     // without next error does not occurs
+    6 |     a, b := input.split_once('%') or { '', 'empty' }
+      |             ~~~~~
+    7 |     if b == '' {
+    8 |         return error('')
+vlib/v/checker/tests/method_call_on_undefined_err.vv:6:32: error: unexpected `or` block, the function `split_once` does not return an Option or a Result
+    4 | fn foo() !string {
+    5 |     // without next error does not occurs
+    6 |     a, b := input.split_once('%') or { '', 'empty' }
+      |                                   ~~~~~~~~~~~~~~~~~~
+    7 |     if b == '' {
+    8 |         return error('')
+vlib/v/checker/tests/method_call_on_undefined_err.vv:6:7: error: assignment mismatch: 2 variables but `split_once()` returns 0 values
+    4 | fn foo() !string {
+    5 |     // without next error does not occurs
+    6 |     a, b := input.split_once('%') or { '', 'empty' }
+      |          ~~
+    7 |     if b == '' {
+    8 |         return error('')
+vlib/v/checker/tests/method_call_on_undefined_err.vv:7:5: error: invalid variable `b`
+    5 |     // without next error does not occurs
+    6 |     a, b := input.split_once('%') or { '', 'empty' }
+    7 |     if b == '' {
+      |        ^
+    8 |         return error('')
+    9 |     }
+vlib/v/checker/tests/method_call_on_undefined_err.vv:7:5: error: non-bool type `void` used as if condition
+    5 |     // without next error does not occurs
+    6 |     a, b := input.split_once('%') or { '', 'empty' }
+    7 |     if b == '' {
+      |        ~~~~~~~
+    8 |         return error('')
+    9 |     }
+vlib/v/checker/tests/method_call_on_undefined_err.vv:10:9: error: invalid variable `a`
+    8 |         return error('')
+    9 |     }
+   10 |     return a
+      |            ^
+   11 | }
+   12 |
+vlib/v/checker/tests/method_call_on_undefined_err.vv:10:2: error: `a` used as value
+    8 |         return error('')
+    9 |     }
+   10 |     return a
+      |     ~~~~~~~~
+   11 | }
+   12 |
+vlib/v/checker/tests/method_call_on_undefined_err.vv:14:13: error: expected 0 arguments, but got 1
+   12 | 
+   13 | fn main() {
+   14 |     res := foo('fe80::1234%ne0') or {
+      |                ~~~~~~~~~~~~~~~~
+   15 |         eprintln(err)
+   16 |         exit(1)
+Details: have (string)
+         want ()
+vlib/v/checker/tests/method_call_on_undefined_err.vv:14:31: error: unexpected `or` block, the function `foo` does not return an Option or a Result
+   12 | 
+   13 | fn main() {
+   14 |     res := foo('fe80::1234%ne0') or {
+      |                                  ~~~~
+   15 |         eprintln(err)
+   16 |         exit(1)

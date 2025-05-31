@@ -1,8 +1,3 @@
-const ()
-
-const (
-)
-
 struct Bar {}
 
 struct Bar2 {
@@ -36,8 +31,6 @@ fn main() {
 	for false {
 	}
 	defer {}
-	defer {
-	}
 	unsafe {}
 	unsafe {
 	}

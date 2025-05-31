@@ -32,9 +32,9 @@ fn (mut g JsGen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write('new string((')
 		g.expr(expr)
 		g.write(').valueOf()? "true" : "false")')
-	} else if sym.kind == .none_ {
+	} else if sym.kind == .none {
 		g.write('new string("<none>")')
-	} else if sym.kind == .enum_ {
+	} else if sym.kind == .enum {
 		if expr !is ast.EnumVal {
 			str_fn_name := g.gen_str_for_type(typ)
 			g.write('${str_fn_name}(')
@@ -46,7 +46,7 @@ fn (mut g JsGen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('")')
 		}
 	} else if sym_has_str_method
-		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
+		|| sym.kind in [.array, .array_fixed, .map, .struct, .multi_return, .sum_type, .interface] {
 		is_ptr := typ.is_ptr()
 		str_fn_name := g.gen_str_for_type(typ)
 		g.write('${str_fn_name}(')
@@ -87,7 +87,7 @@ fn (mut g JsGen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		parent_sym := g.table.sym(sym.info.parent_type)
 		if parent_sym.has_method('str') {
 			typ = sym.info.parent_type
-			sym = parent_sym
+			sym = unsafe { parent_sym }
 		}
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
@@ -101,9 +101,9 @@ fn (mut g JsGen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else if typ == ast.bool_type {
 		g.expr(expr)
 		g.write('.valueOf()? new string("true") : new string("false")')
-	} else if sym.kind == .none_ {
+	} else if sym.kind == .none {
 		g.write('new string("<none>")')
-	} else if sym.kind == .enum_ {
+	} else if sym.kind == .enum {
 		if expr !is ast.EnumVal {
 			str_fn_name := g.get_str_fn(typ)
 			g.write('${str_fn_name}(')
@@ -115,16 +115,24 @@ fn (mut g JsGen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('")')
 		}
 	} else if sym_has_str_method
-		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
+		|| sym.kind in [.array, .array_fixed, .map, .struct, .multi_return, .sum_type, .interface] {
 		is_ptr := typ.is_ptr()
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
+
 		if str_method_expects_ptr && !is_ptr {
 			g.write('new \$ref(')
 		}
+		if typ == ast.u32_type && expr is ast.CastExpr {
+			g.write('new u32(')
+		}
 
 		g.expr(expr)
+
+		if typ == ast.u32_type && expr is ast.CastExpr {
+			g.write(')')
+		}
 		if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 			g.write('.val')
 		}

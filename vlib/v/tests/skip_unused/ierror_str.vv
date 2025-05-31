@@ -1,0 +1,6 @@
+import os
+
+fn main() {
+	mut proc := os.Process{}
+	proc.run()
+}

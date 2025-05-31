@@ -1,4 +1,4 @@
-#!/usr/local/bin/bash
+#!/usr/bin/env bash
 
 ## should be run in V's main repo folder!
 
@@ -7,7 +7,7 @@ rm -rf thirdparty/tcc/
 
 pushd .
 
-git clone git://repo.or.cz/tinycc.git
+.github/workflows/retry.sh git clone git://repo.or.cz/tinycc.git
 cd tinycc
 
 export CC=clang

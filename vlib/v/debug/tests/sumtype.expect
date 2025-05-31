@@ -1,0 +1,13 @@
+#!/usr/bin/env expect
+source "common.tcl"
+
+expect "Break on * sumtype in ${test_file}:17"
+expect "${test_file}:17 vdbg> "
+send "p a\n"
+expect "a = Test{\r\n    a: MySum(false)\r\n} (main.Test)"
+send "c\n"
+expect "${test_file}:26 vdbg> "
+send "p b\n"
+expect "b = Test{\r\n    a: MySum(1)\r\n} (main.Test)"
+send "q\n"
+expect eof

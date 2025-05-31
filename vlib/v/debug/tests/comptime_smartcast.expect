@@ -1,0 +1,13 @@
+#!/usr/bin/env expect
+source "common.tcl"
+
+expect "Break on * comptime_smartcast in ${test_file}:3\r\n"
+expect "${test_file}:3 vdbg> "
+send "p v\n"
+expect "v = 1 (int)"
+send "c\n"
+expect "${test_file}:5 vdbg> "
+send "p v\n"
+expect "v = true (bool)"
+send "q\n"
+expect eof

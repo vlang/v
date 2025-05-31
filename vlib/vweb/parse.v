@@ -75,11 +75,11 @@ fn parse_form_from_request(request http.Request) !(map[string]string, map[string
 	}
 	ct := request.header.get(.content_type) or { '' }.split(';').map(it.trim_left(' \t'))
 	if 'multipart/form-data' in ct {
-		boundaries := ct.filter(it.starts_with(vweb.boundary_start))
+		boundaries := ct.filter(it.starts_with(boundary_start))
 		if boundaries.len != 1 {
 			return error('detected more that one form-data boundary')
 		}
-		boundary := boundaries[0].all_after(vweb.boundary_start)
+		boundary := boundaries[0].all_after(boundary_start)
 		if boundary.len > 0 && boundary[0] == `"` {
 			// quotes are send by our http.post_multipart_form/2:
 			return http.parse_multipart_form(request.data, boundary.trim('"'))

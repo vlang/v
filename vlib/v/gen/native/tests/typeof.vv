@@ -1,9 +1,9 @@
 type IntegerAlias = int
 
 struct Test {
-	a int = 0
-	b voidptr = voidptr(0)
-	c &Test = unsafe { 0 }
+	a int               = 0
+	b voidptr           = unsafe { nil }
+	c &Test             = unsafe { 0 }
 	d map[int][3]string = {}
 }
 
@@ -24,7 +24,7 @@ fn main() {
 	test_alias(0)
 
 	// pointers
-	t5 := typeof(voidptr(0))
+	t5 := typeof(unsafe { nil })
 	println(t5)
 	t6 := typeof(charptr(0))
 	println(t6)
@@ -46,19 +46,19 @@ fn main() {
 	println(t12)
 
 	// maps
-	t13 := typeof(map[int]string)
+	t13 := typeof(map[int]string{})
 	println(t13)
-	t14 := typeof(map[int][2]int)
+	t14 := typeof(map[int][2]int{})
 	println(t14)
 
 	// options, results
 	t15 := typeof(result_func)
-	println(t15)	
+	println(t15)
 	t16 := typeof(result_func())
 	println(t16)
-	t17 := typeof(opt_func)	
+	t17 := typeof(opt_func)
 	println(t17)
-	t18 := typeof(opt_func())	
+	t18 := typeof(opt_func())
 	println(t18)
 
 	// structs

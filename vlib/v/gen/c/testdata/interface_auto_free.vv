@@ -1,0 +1,20 @@
+// vtest vflags: -autofree
+module main
+
+interface IFoo {
+	free()
+}
+
+struct Bar {
+	a int
+}
+
+struct Foo implements IFoo {
+	Bar
+}
+
+fn (f &Foo) free() {}
+
+fn main() {
+	a := IFoo(Foo{})
+}

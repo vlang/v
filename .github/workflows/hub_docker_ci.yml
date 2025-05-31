@@ -1,0 +1,80 @@
+name: hub_docker_ci
+
+### NB: avoid caching things here, since the action is rare (once per week),
+### and the potential benefits are less than the complexity of debugging
+### cache invalidation issues...
+## Trigger on both new release tags, and on weekly tags.
+## Allow for manual override too:
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '[0-9].[0-9]+.[0-9]+'
+      - 'weekly.*'
+
+concurrency:
+  group: 'hub_docker_ci-${{ github.ref }}'
+  cancel-in-progress: true
+
+jobs:
+  publish-new-docker-images:
+    strategy:
+      matrix:
+        os: [debian, alpine]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: 'vlang/docker'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to hub.docker.com
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Create & bootstrap persistent builder
+        run: |
+          docker buildx create --name gh-builder --driver docker-container --use
+          docker buildx inspect --bootstrap
+
+      - name: generate tags conditionally
+        id: gen_tags
+        run: |
+          if [[ "${{ matrix.os }}" == 'debian' ]]; then
+            echo 'TAGS=thevlang/vlang:latest,thevlang/vlang:${{ matrix.os }}' >> "$GITHUB_OUTPUT"
+          else
+            echo 'TAGS=thevlang/vlang:${{ matrix.os }}' >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/build-push-action@v6
+        name: Build and deploy v image
+        with:
+          builder: gh-builder
+          context: .
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.gen_tags.outputs.TAGS }}
+          file: docker/vlang/Dockerfile.${{ matrix.os }}
+          push: true
+          build-args: 'USER=thevlang'
+          ## cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache
+          ## cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache,mode=max
+
+      - uses: docker/build-push-action@v6
+        name: Build and deploy developer build
+        with:
+          builder: gh-builder
+          context: .
+          platforms: linux/amd64,linux/arm64
+          tags: thevlang/vlang:${{ matrix.os }}-dev
+          file: docker/vlang/Dockerfile.${{ matrix.os }}.dev-full
+          push: true
+          build-args: 'USER=thevlang'
+          ## cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache
+          ## cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache,mode=max

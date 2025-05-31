@@ -1,14 +1,12 @@
 module filelock
 
-import time
-
 fn C.DeleteFileW(&u16) bool
 fn C.CreateFileW(&u16, u32, u32, voidptr, u32, u32, voidptr) voidptr
 fn C.CloseHandle(voidptr) bool
 
 pub fn (mut l FileLock) unlink() {
 	if l.fd != -1 {
-		C.CloseHandle(l.fd)
+		C.CloseHandle(voidptr(l.fd))
 		l.fd = -1
 	}
 	t_wide := l.name.to_wide()
@@ -26,34 +24,12 @@ pub fn (mut l FileLock) acquire() ! {
 	l.fd = fd
 }
 
-pub fn (mut l FileLock) release() bool {
-	if l.fd != -1 {
-		C.CloseHandle(l.fd)
-		l.fd = -1
-		t_wide := l.name.to_wide()
-		C.DeleteFileW(t_wide)
-		return true
-	}
-	return false
-}
-
-pub fn (mut l FileLock) wait_acquire(s int) bool {
-	fin := time.now().add(s)
-	for time.now() < fin {
-		if l.try_acquire() {
-			return true
-		}
-		time.sleep(1 * time.millisecond)
-	}
-	return false
-}
-
-fn open(f string) voidptr {
+fn open(f string) i64 {
 	f_wide := f.to_wide()
 	// locking it
 	fd := C.CreateFileW(f_wide, C.GENERIC_READ | C.GENERIC_WRITE, 0, 0, C.OPEN_ALWAYS,
 		C.FILE_ATTRIBUTE_NORMAL, 0)
-	return fd
+	return i64(fd)
 }
 
 pub fn (mut l FileLock) try_acquire() bool {

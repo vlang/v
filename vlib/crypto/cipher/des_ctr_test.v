@@ -1,11 +1,9 @@
 import crypto.des
 import crypto.cipher
 
-const (
-	key = '123456789012345678901234'.bytes()
-	iv  = 'abcdegfh'.bytes()
-	str = '73c86d43a9d700a253a96c85b0f6b03ac9792e0e757f869cca306bd3cba1c62b'
-)
+const key = '123456789012345678901234'.bytes()
+const iv = 'abcdegfh'.bytes()
+const str = '73c86d43a9d700a253a96c85b0f6b03ac9792e0e757f869cca306bd3cba1c62b'
 
 fn test_triple_des_ctr() {
 	mut src := str.bytes()
@@ -31,24 +29,24 @@ fn test_des_ctr() {
 
 fn des_ctr_en(mut src []u8, key []u8, iv []u8) {
 	block := des.new_cipher(key)
-	mode := cipher.new_ctr(block, iv)
+	mut mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
 fn des_ctr_de(mut src []u8, key []u8, iv []u8) {
 	block := des.new_cipher(key)
-	mode := cipher.new_ctr(block, iv)
+	mut mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
 fn triple_des_ctr_en(mut src []u8, key []u8, iv []u8) {
 	block := des.new_triple_des_cipher(key)
-	mode := cipher.new_ctr(block, iv)
+	mut mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
 fn triple_des_ctr_de(mut src []u8, key []u8, iv []u8) {
 	block := des.new_triple_des_cipher(key)
-	mode := cipher.new_ctr(block, iv)
+	mut mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }

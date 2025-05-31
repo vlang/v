@@ -1,0 +1,22 @@
+module main
+
+import json
+
+struct Data {
+mut:
+	a_token ?[]string
+	dfv     ?[]struct {
+		key string
+	}
+}
+
+fn main() {
+	j := '{
+	"a_token2": ["one", "two"],
+	"a_email2": {
+		"email": "email@email.ru"
+		}
+	}'
+	d := json.decode(Data, j)!
+	println(d)
+}

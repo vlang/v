@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module eval
@@ -11,7 +11,7 @@ import v.builder
 pub fn new_eval(table &ast.Table, pref_ &pref.Preferences) Eval {
 	return Eval{
 		table: table
-		pref: pref_
+		pref:  pref_
 	}
 }
 
@@ -51,6 +51,7 @@ pub fn (mut e Eval) run(expression string, args ...Object) ![]Object {
 type Symbol = Object | ast.EmptyStmt | ast.FnDecl
 
 pub struct Eval {
+pub:
 	pref &pref.Preferences = unsafe { nil }
 pub mut:
 	table                  &ast.Table = unsafe { nil }
@@ -65,7 +66,7 @@ pub mut:
 	return_values          []Object
 	cur_mod                string
 	cur_file               string
-	//
+
 	trace_file_paths     []string
 	trace_function_names []string
 	back_trace           []EvalTrace
@@ -83,9 +84,13 @@ pub fn (mut e Eval) eval(mut files []&ast.File) {
 	e.run_func(e.mods['main']['main'] or { ast.FnDecl{} } as ast.FnDecl)
 }
 
-// first arg is reciever (if method)
+// first arg is receiver (if method)
 pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
-	e.back_trace << EvalTrace{func.idx, func.source_file.idx, func.pos.line_nr}
+	e.back_trace << EvalTrace{func.idx, if unsafe { func.source_file != 0 } {
+		func.source_file.idx
+	} else {
+		0
+	}, func.pos.line_nr}
 	old_mod := e.cur_mod
 	old_file := e.cur_file
 	e.cur_mod = func.mod
@@ -96,7 +101,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 		e.back_trace.pop()
 	}
 	is_main := func.name == 'main.main'
-	//
+
 	mut args := _args.clone()
 	if !is_main && func.params.len != args.len && !func.is_variadic {
 		e.error('mismatched parameter length for ${func.name}: got `${args.len}`, expected `${func.params.len}`')
@@ -134,7 +139,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 			for i, arg in args__ {
 				var_name := (func.params[i]).name
 				e.local_vars[var_name] = Var{
-					val: arg
+					val:       arg
 					scope_idx: e.scope_idx
 				}
 			}
@@ -143,7 +148,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 			print(e.back_trace)
 			println(func.receiver.typ.set_nr_muls(0))
 			e.local_vars[func.receiver.name] = Var{
-				val: args[0]
+				val:       args[0]
 				scope_idx: e.scope_idx
 			}
 		}
@@ -194,6 +199,38 @@ pub fn (mut e Eval) register_symbol_stmts(stmts []ast.Stmt, mod string, file str
 	}
 }
 
+pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident {
+			match cond.name {
+				'native' {
+					return false
+				}
+				'windows' {
+					return e.pref.os == .windows
+				}
+				else {
+					e.error('unknown compile time if')
+				}
+			}
+		}
+		ast.PrefixExpr {
+			match cond.op {
+				.not {
+					return !e.comptime_cond(cond.right)
+				}
+				else {
+					e.error('unsupported prefix expression')
+				}
+			}
+		}
+		else {
+			e.error('unsupported expression')
+		}
+	}
+	return false
+}
+
 pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 	match stmt {
 		ast.Module {
@@ -226,28 +263,9 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 						e.error('only comptime ifs are allowed in top level')
 					}
 					for i, branch in x.branches {
-						mut do_if := false
-						println('branch:${branch}')
-						cond := branch.cond
-						match cond {
-							ast.Ident {
-								match cond.name {
-									'windows' {
-										do_if = e.pref.os == .windows
-									}
-									else {
-										e.error('unknown compile time if')
-									}
-								}
-								do_if = do_if || x.branches.len == i + 1
-								if do_if {
-									e.register_symbol_stmts(branch.stmts, mod, file)
-									break
-								}
-							}
-							else {
-								e.error('unsupported expression')
-							}
+						if e.comptime_cond(branch.cond) || x.branches.len == i + 1 {
+							e.register_symbol_stmts(branch.stmts, mod, file)
+							break
 						}
 					}
 				}
@@ -262,21 +280,21 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 	}
 }
 
-fn (e Eval) error(msg string) {
-	eprintln('> V interpeter backtrace:')
+@[noreturn]
+fn (e &Eval) error(msg string) {
+	eprintln('> V interpreter backtrace:')
 	e.print_backtrace()
 	util.verror('interpreter', msg)
 }
 
-fn (e Eval) panic(s string) {
-	commithash := unsafe { tos5(&char(C.V_CURRENT_COMMIT_HASH)) }
+fn (e &Eval) panic(s string) {
 	eprintln('V panic: ${s}')
-	eprintln('V hash: ${commithash}')
+	eprintln('V hash: ${vcurrent_hash()}')
 	e.print_backtrace()
 	exit(1)
 }
 
-fn (e Eval) print_backtrace() {
+fn (e &Eval) print_backtrace() {
 	for i := e.back_trace.len - 1; i >= 0; i-- {
 		t := e.back_trace[i]
 		file_path := if path := e.trace_file_paths[t.file_idx] {

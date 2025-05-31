@@ -1,3 +1,4 @@
+// vtest build: present_sqlite3?
 import db.sqlite
 
 struct VieterDb {
@@ -6,17 +7,17 @@ struct VieterDb {
 
 pub struct GitRepoArch {
 pub:
-	id      int [primary; sql: serial]
-	repo_id int [nonull]
+	id      int @[primary; sql: serial]
+	repo_id int @[nonull]
 	// repo string
-	value string [nonull]
+	value string @[nonull]
 }
 
 pub struct GitRepo {
 pub mut:
-	id   int           [optional; primary; sql: serial]
-	repo string        [nonull]
-	arch []GitRepoArch [fkey: 'repo_id']
+	id   int           @[optional; primary; sql: serial]
+	repo string        @[nonull]
+	arch []GitRepoArch @[fkey: 'repo_id']
 }
 
 pub fn (db &VieterDb) get_git_repos() ![]GitRepo {

@@ -5,7 +5,7 @@ import js.promise
 pub fn JS.fetch(input JS.String, init JS.Object) JS.Promise
 
 pub interface JS.Body {
-	body JS.Uint8Array
+	body    JS.Uint8Array
 	bodyUse JS.Boolean
 	blob() JS.Promise
 	json() JS.Promise
@@ -14,11 +14,11 @@ pub interface JS.Body {
 
 pub interface JS.Response {
 	JS.Body
-	ok JS.Boolean
+	ok         JS.Boolean
 	redirected JS.Boolean
-	status JS.Number
+	status     JS.Number
 	statusText JS.String
-	url JS.String
+	url        JS.String
 	clone() JS.Response
 }
 

@@ -6,7 +6,12 @@ module mysql
 $if $pkgconfig('mysqlclient') {
 	#pkgconfig mysqlclient
 	#include <mysql.h> # Please install the libmysqlclient-dev development headers
-} $else {
+} $else $if $pkgconfig('mariadb') {
 	#pkgconfig mariadb
 	#include <mysql.h> # Please install the libmariadb-dev development headers
+} $else $if $pkgconfig('libmariadb') {
+	#pkgconfig libmariadb
+	#include <mysql.h> # Please install the mariadb client
+} $else {
+	#include <mysql.h> # Please install the mysql headers
 }

@@ -1,0 +1,7 @@
+num := 10
+p := &num
+x := 5 * p
+y := 5 / p
+dump(x)
+dump(p)
+dump(y)

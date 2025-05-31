@@ -1,39 +1,37 @@
 module edwards25519
 
-const (
-	// d is a constant in the curve equation.
-	d_bytes   = [u8(0xa3), 0x78, 0x59, 0x13, 0xca, 0x4d, 0xeb, 0x75, 0xab, 0xd8, 0x41, 0x41, 0x4d,
-		0x0a, 0x70, 0x00, 0x98, 0xe8, 0x79, 0x77, 0x79, 0x40, 0xc7, 0x8c, 0x73, 0xfe, 0x6f, 0x2b,
-		0xee, 0x6c, 0x03, 0x52]
-	id_bytes  = [u8(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0]
-	gen_bytes = [u8(0x58), 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66,
-		0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66,
-		0x66, 0x66, 0x66, 0x66]
-	d_const   = d_const_generate() or { panic(err) }
-	d2_const  = d2_const_generate() or { panic(err) }
-	// id_point is the point at infinity.
-	id_point  = id_point_generate() or { panic(err) }
-	// generator point
-	gen_point = generator() or { panic(err) }
-)
+// d is a constant in the curve equation.
+const d_bytes = [u8(0xa3), 0x78, 0x59, 0x13, 0xca, 0x4d, 0xeb, 0x75, 0xab, 0xd8, 0x41, 0x41, 0x4d,
+	0x0a, 0x70, 0x00, 0x98, 0xe8, 0x79, 0x77, 0x79, 0x40, 0xc7, 0x8c, 0x73, 0xfe, 0x6f, 0x2b, 0xee,
+	0x6c, 0x03, 0x52]
+const id_bytes = [u8(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0]
+const gen_bytes = [u8(0x58), 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66,
+	0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66,
+	0x66, 0x66, 0x66, 0x66]
+const d_const = d_const_generate() or { panic(err) }
+const d2_const = d2_const_generate() or { panic(err) }
+// id_point is the point at infinity.
+const id_point = id_point_generate() or { panic(err) }
+// generator point
+const gen_point = generator() or { panic(err) }
 
 fn d_const_generate() !Element {
 	mut v := Element{}
-	v.set_bytes(edwards25519.d_bytes)!
+	v.set_bytes(d_bytes)!
 	return v
 }
 
 fn d2_const_generate() !Element {
 	mut v := Element{}
-	v.add(edwards25519.d_const, edwards25519.d_const)
+	v.add(d_const, d_const)
 	return v
 }
 
 // id_point_generate is the point at infinity.
 fn id_point_generate() !Point {
 	mut p := Point{}
-	p.set_bytes(edwards25519.id_bytes)!
+	p.set_bytes(id_bytes)!
 	return p
 }
 
@@ -41,7 +39,7 @@ fn id_point_generate() !Point {
 // correspondence of this encoding with the values in RFC 8032.
 fn generator() !Point {
 	mut p := Point{}
-	p.set_bytes(edwards25519.gen_bytes)!
+	p.set_bytes(gen_bytes)!
 	return p
 }
 
@@ -141,7 +139,7 @@ pub fn (mut v Point) set_bytes(x []u8) !Point {
 
 	// v = dy² + 1
 	mut el3 := Element{}
-	mut vv := el3.multiply(y2, edwards25519.d_const)
+	mut vv := el3.multiply(y2, d_const)
 	vv = vv.add(vv, fe_one)
 
 	// x = +√(u/v)
@@ -173,13 +171,13 @@ pub fn (mut v Point) set(u Point) Point {
 // new_identity_point returns a new Point set to the identity.
 pub fn new_identity_point() Point {
 	mut p := Point{}
-	return p.set(edwards25519.id_point)
+	return p.set(id_point)
 }
 
 // new_generator_point returns a new Point set to the canonical generator.
 pub fn new_generator_point() Point {
 	mut p := Point{}
-	return p.set(edwards25519.gen_point)
+	return p.set(gen_point)
 }
 
 fn (mut v ProjectiveCached) zero() ProjectiveCached {
@@ -278,14 +276,14 @@ fn (mut v ProjectiveCached) from_p3(p Point) ProjectiveCached {
 	v.ypx.add(p.y, p.x)
 	v.ymx.subtract(p.y, p.x)
 	v.z.set(p.z)
-	v.t2d.multiply(p.t, edwards25519.d2_const)
+	v.t2d.multiply(p.t, d2_const)
 	return v
 }
 
 fn (mut v AffineCached) from_p3(p Point) AffineCached {
 	v.ypx.add(p.y, p.x)
 	v.ymx.subtract(p.y, p.x)
-	v.t2d.multiply(p.t, edwards25519.d2_const)
+	v.t2d.multiply(p.t, d2_const)
 
 	mut invz := Element{}
 	invz.invert(p.z)
@@ -355,8 +353,8 @@ fn (mut v ProjectiveP1) sub(p Point, q ProjectiveCached) ProjectiveP1 {
 	ypx.add(p.y, p.x)
 	ymx.subtract(p.y, p.x)
 
-	pp.multiply(&ypx, q.ymx) // flipped sign
-	mm.multiply(&ymx, q.ypx) // flipped sign
+	pp.multiply(ypx, q.ymx) // flipped sign
+	mm.multiply(ymx, q.ypx) // flipped sign
 	tt2d.multiply(p.t, q.t2d)
 	zz2.multiply(p.z, q.z)
 
@@ -380,8 +378,8 @@ fn (mut v ProjectiveP1) add_affine(p Point, q AffineCached) ProjectiveP1 {
 	ypx.add(p.y, p.x)
 	ymx.subtract(p.y, p.x)
 
-	pp.multiply(&ypx, q.ypx)
-	mm.multiply(&ymx, q.ymx)
+	pp.multiply(ypx, q.ypx)
+	mm.multiply(ymx, q.ymx)
 	tt2d.multiply(p.t, q.t2d)
 
 	z2.add(p.z, p.z)
@@ -523,7 +521,7 @@ fn check_on_curve(points ...Point) bool {
 		mut rhs := Element{}
 		lhs.subtract(yy, xx)
 		lhs.multiply(lhs, zz)
-		rhs.multiply(edwards25519.d_const, xx)
+		rhs.multiply(d_const, xx)
 		rhs.multiply(rhs, yy)
 		rhs.add(rhs, zzzz)
 

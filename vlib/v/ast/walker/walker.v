@@ -11,7 +11,7 @@ mut:
 pub type InspectorFn = fn (node &ast.Node, data voidptr) bool
 
 fn empty_callback(node &ast.Node, data voidptr) bool {
-	panic('empty ast.walker')
+	panic('empty ast.walker, node: ${voidptr(node)}, data: ${voidptr(data)}')
 }
 
 struct Inspector {

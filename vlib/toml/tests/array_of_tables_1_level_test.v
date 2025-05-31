@@ -2,8 +2,7 @@ import os
 import toml
 import toml.to
 
-const (
-	toml_table_text = '
+const toml_table_text = '
 [[products]]
 name = "Hammer"
 sku = 738594937
@@ -15,7 +14,6 @@ name = "Nail"
 sku = 284758393
 
 color = "gray"'
-)
 
 fn test_tables() {
 	mut toml_doc := toml.parse_text(toml_table_text) or { panic(err) }

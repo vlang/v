@@ -1,9 +1,8 @@
 import rand
 
-const (
-	gen_len = 1000 // how many random numbers to generate
-	gen_max = 10000 // max of the generated numbers
-)
+const gen_len = 1000 // how many random numbers to generate
+
+const gen_max = 10000
 
 fn main() {
 	mut arr := []int{}

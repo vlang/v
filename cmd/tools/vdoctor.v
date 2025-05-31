@@ -3,11 +3,13 @@ import time
 import term
 import v.util.version
 import runtime
+import encoding.iconv
 
 struct App {
 mut:
 	report_lines   []string
 	cached_cpuinfo map[string]string
+	vexe           string
 }
 
 fn (mut a App) println(s string) {
@@ -16,7 +18,8 @@ fn (mut a App) println(s string) {
 
 fn (mut a App) collect_info() {
 	a.line('V full version', version.full_v_version(true))
-	//
+	a.line(':-------------------', ':-------------------')
+
 	mut os_kind := os.user_os()
 	mut arch_details := []string{}
 	arch_details << '${runtime.nr_cpus()} cpus'
@@ -51,10 +54,10 @@ fn (mut a App) collect_info() {
 	if os_kind == 'windows' {
 		arch_details << a.cmd(
 			command: 'wmic cpu get name /format:table'
-			line: 1
+			line:    2
 		)
 	}
-	//
+
 	mut os_details := ''
 	wsl_check := a.cmd(command: 'cat /proc/sys/kernel/osrelease')
 	if os_kind == 'linux' {
@@ -87,44 +90,70 @@ fn (mut a App) collect_info() {
 	} else if os_kind == 'windows' {
 		wmic_info := a.cmd(
 			command: 'wmic os get * /format:value'
-			line: -1
+			line:    -1
 		)
 		p := a.parse(wmic_info, '=')
-		caption, build_number, os_arch := p['caption'], p['buildnumber'], p['osarchitecture']
-		os_details = '${caption} v${build_number} ${os_arch}'
+		mut caption, mut build_number, mut os_arch := p['caption'], p['buildnumber'], p['osarchitecture']
+		caption = iconv.encoding_to_vstring(caption.bytes(), 'ANSI') or { caption }
+		build_number = iconv.encoding_to_vstring(build_number.bytes(), 'ANSI') or { build_number }
+		os_arch = iconv.encoding_to_vstring(os_arch.bytes(), 'ANSI') or { os_arch }
+		os_details = '${caption} ${build_number} ${os_arch}'
 	} else {
 		ouname := os.uname()
 		os_details = '${ouname.release}, ${ouname.version}'
 	}
 	a.line('OS', '${os_kind}, ${os_details}')
 	a.line('Processor', arch_details.join(', '))
-	a.println('')
-	getwd := os.getwd()
+	total_memory := f32(runtime.total_memory()) / (1024.0 * 1024.0 * 1024.0)
+	free_memory := f32(runtime.free_memory()) / (1024.0 * 1024.0 * 1024.0)
+	if total_memory != 0 && free_memory != 0 {
+		a.line('Memory', '${free_memory:.2}GB/${total_memory:.2}GB')
+	} else {
+		a.line('Memory', 'N/A')
+	}
+
+	a.line('', '')
+	vexe := a.vexe
+	vroot := os.dir(vexe)
 	vmodules := os.vmodules_dir()
 	vtmp_dir := os.vtmp_dir()
-	vexe := os.getenv('VEXE')
-	vroot := os.dir(vexe)
+	getwd := os.getwd()
 	os.chdir(vroot) or {}
-	a.line('getwd', getwd)
-	a.line('vexe', vexe)
-	a.line('vexe mtime', time.unix(os.file_last_mod_unix(vexe)).str())
-	a.println('')
-	a.line2('vroot', diagnose_dir(vroot), vroot)
+	a.line('V executable', vexe)
+	a.line('V last modified time', time.unix(os.file_last_mod_unix(vexe)).str())
+	a.line('', '')
+	a.line2('V home dir', diagnose_dir(vroot), vroot)
 	a.line2('VMODULES', diagnose_dir(vmodules), vmodules)
 	a.line2('VTMP', diagnose_dir(vtmp_dir), vtmp_dir)
-	vflags := os.getenv('VFLAGS')
-	a.println('')
-	if vflags != '' {
-		a.line('env VFLAGS', '"${vflags}"')
-		a.println('')
-	}
+	a.line2('Current working dir', diagnose_dir(getwd), getwd)
+	a.line('', '')
+
+	a.line_env('VFLAGS')
+	a.line_env('CFLAGS')
+	a.line_env('LDFLAGS')
+
 	a.line('Git version', a.cmd(command: 'git --version'))
-	a.line('Git vroot status', a.git_info())
+	a.line('V git status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
-	a.println('')
-	//
-	a.line('CC version', a.cmd(command: 'cc --version'))
+	a.line('', '')
+	a.line('cc version', a.cmd(command: 'cc --version'))
+	if os_kind == 'openbsd' {
+		a.line('gcc version', a.cmd(command: 'egcc --version'))
+	} else {
+		a.line('gcc version', a.cmd(command: 'gcc --version'))
+	}
+	a.line('clang version', a.cmd(command: 'clang --version'))
+	if os_kind == 'windows' {
+		// Check for MSVC on windows
+		a.line('msvc version', a.cmd(command: 'cl'))
+	}
 	a.report_tcc_version('thirdparty/tcc')
+	a.line('emcc version', a.cmd(command: 'emcc --version'))
+	if os_kind != 'openbsd' && os_kind != 'freebsd' {
+		a.line('glibc version', a.cmd(command: 'ldd --version'))
+	} else {
+		a.line('glibc version', 'N/A')
+	}
 }
 
 struct CmdConfig {
@@ -134,7 +163,8 @@ struct CmdConfig {
 
 fn (mut a App) cmd(c CmdConfig) string {
 	x := os.execute(c.command)
-	if x.exit_code < 0 {
+	os_kind := os.user_os()
+	if x.exit_code < 0 || x.exit_code == 127 || (os_kind == 'windows' && x.exit_code == 1) {
 		return 'N/A'
 	}
 	if x.exit_code == 0 {
@@ -150,12 +180,19 @@ fn (mut a App) cmd(c CmdConfig) string {
 }
 
 fn (mut a App) line(label string, value string) {
-	a.println('${label}: ${term.colorize(term.bold, value)}')
+	a.println('|${label:-20}|${term.colorize(term.bold, value)}')
 }
 
 fn (mut a App) line2(label string, value string, value2 string) {
-	a.println('${label}: ${term.colorize(term.bold, value)}, value: ${term.colorize(term.bold,
+	a.println('|${label:-20}|${term.colorize(term.bold, value)}, value: ${term.colorize(term.bold,
 		value2)}')
+}
+
+fn (mut a App) line_env(env_var string) {
+	value := os.getenv(env_var)
+	if value != '' {
+		a.line('env ${env_var}', '"${value}"')
+	}
 }
 
 fn (app &App) parse(config string, sep string) map[string]string {
@@ -176,46 +213,22 @@ fn (app &App) parse(config string, sep string) map[string]string {
 }
 
 fn (mut a App) get_linux_os_name() string {
-	mut os_details := ''
-	linux_os_methods := ['os-release', 'lsb_release', 'kernel', 'uname']
-	for m in linux_os_methods {
-		match m {
-			'os-release' {
-				if !os.is_file('/etc/os-release') {
-					continue
-				}
-				lines := os.read_file('/etc/os-release') or { continue }
-				vals := a.parse(lines, '=')
-				if vals['PRETTY_NAME'] == '' {
-					continue
-				}
-				os_details = vals['PRETTY_NAME']
-				break
+	if os.is_file('/etc/os-release') {
+		if lines := os.read_file('/etc/os-release') {
+			vals := a.parse(lines, '=')
+			if vals['PRETTY_NAME'] != '' {
+				return vals['PRETTY_NAME']
 			}
-			'lsb_release' {
-				exists := a.cmd(command: 'type lsb_release')
-				if exists.starts_with('Error') {
-					continue
-				}
-				os_details = a.cmd(command: 'lsb_release -d -s')
-				break
-			}
-			'kernel' {
-				if !os.is_file('/proc/version') {
-					continue
-				}
-				os_details = a.cmd(command: 'cat /proc/version')
-				break
-			}
-			'uname' {
-				ouname := os.uname()
-				os_details = '${ouname.release}, ${ouname.version}'
-				break
-			}
-			else {}
 		}
 	}
-	return os_details
+	if !a.cmd(command: 'type lsb_release').starts_with('Error') {
+		return a.cmd(command: 'lsb_release -d -s')
+	}
+	if os.is_file('/proc/version') {
+		return a.cmd(command: 'cat /proc/version')
+	}
+	ouname := os.uname()
+	return '${ouname.release}, ${ouname.version}'
 }
 
 fn (mut a App) cpu_info(key string) string {
@@ -231,9 +244,16 @@ fn (mut a App) cpu_info(key string) string {
 }
 
 fn (mut a App) git_info() string {
+	// Check if in a Git repository
+	x := os.execute('git rev-parse --is-inside-work-tree')
+	if x.exit_code != 0 || x.output.trim_space() != 'true' {
+		return 'N/A'
+	}
 	mut out := a.cmd(command: 'git -C . describe --abbrev=8 --dirty --always --tags').trim_space()
 	os.execute('git -C . remote add V_REPO https://github.com/vlang/v') // ignore failure (i.e. remote exists)
-	os.execute('git -C . fetch V_REPO')
+	if '-skip-github' !in os.args {
+		os.execute('${os.quoted_path(a.vexe)} timeout 5.1 "git -C . fetch V_REPO"') // usually takes ~0.6s; 5 seconds should be enough for even the slowest networks
+	}
 	commit_count := a.cmd(command: 'git rev-list @{0}...V_REPO/master --right-only --count').int()
 	if commit_count > 0 {
 		out += ' (${commit_count} commit(s) behind V master)'
@@ -242,17 +262,24 @@ fn (mut a App) git_info() string {
 }
 
 fn (mut a App) report_tcc_version(tccfolder string) {
-	if !os.is_file(os.join_path(tccfolder, '.git', 'config')) {
-		a.line(tccfolder, 'N/A')
-		return
+	cmd := os.join_path(tccfolder, 'tcc.exe') + ' -v'
+	x := os.execute(cmd)
+	if x.exit_code == 0 {
+		a.line('tcc version', '${x.output.trim_space()}')
+	} else {
+		a.line('tcc version', 'N/A')
 	}
-	tcc_branch_name := a.cmd(
-		command: 'git -C ${os.quoted_path(tccfolder)} rev-parse --abbrev-ref HEAD'
-	)
-	tcc_commit := a.cmd(
-		command: 'git -C ${os.quoted_path(tccfolder)} describe --abbrev=8 --dirty --always --tags'
-	)
-	a.line('${tccfolder} status', '${tcc_branch_name} ${tcc_commit}')
+	if !os.is_file(os.join_path(tccfolder, '.git', 'config')) {
+		a.line('tcc git status', 'N/A')
+	} else {
+		tcc_branch_name := a.cmd(
+			command: 'git -C ${os.quoted_path(tccfolder)} rev-parse --abbrev-ref HEAD'
+		)
+		tcc_commit := a.cmd(
+			command: 'git -C ${os.quoted_path(tccfolder)} describe --abbrev=8 --dirty --always --tags'
+		)
+		a.line('tcc git status', '${tcc_branch_name} ${tcc_commit}')
+	}
 }
 
 fn (mut a App) report_info() {
@@ -286,6 +313,7 @@ fn diagnose_dir(path string) string {
 
 fn main() {
 	mut app := App{}
+	app.vexe = os.getenv('VEXE')
 	app.collect_info()
 	app.report_info()
 }

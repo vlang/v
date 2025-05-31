@@ -4,3 +4,8 @@ Did you mean `os.read_file`?
     2 | 
     3 | dump(os.read_fil('abc'))
       |         ~~~~~~~~~~~~~~~
+vlib/v/checker/tests/misspelled_mod_fn_name_should_have_suggestion.vv:3:9: error: dump expression can not be void
+    1 | import os
+    2 | 
+    3 | dump(os.read_fil('abc'))
+      |         ~~~~~~~~~~~~~~~

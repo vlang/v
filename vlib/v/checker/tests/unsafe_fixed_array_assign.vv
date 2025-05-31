@@ -3,7 +3,9 @@ mut:
 	num int
 }
 
-mut box := Box { num: 10 }
+mut box := Box{
+	num: 10
+}
 a := [&box]!
 mut b := a
 b[0].num = 0

@@ -1,0 +1,8 @@
+fn split(str string) ?(string, string) {
+	return none
+}
+
+fn main() {
+	foo, bar := split('foo/bar')
+	println('${foo}.${bar}')
+}

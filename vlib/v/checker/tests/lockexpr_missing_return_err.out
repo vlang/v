@@ -1,0 +1,7 @@
+vlib/v/checker/tests/lockexpr_missing_return_err.vv:4:1: error: missing return at end of function `baz`
+    2 | }
+    3 | 
+    4 | fn baz(shared foo Foo) int {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    5 |     lock foo {
+    6 |     }

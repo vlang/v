@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -7,15 +7,16 @@ module time
 
 // C.timeval represents a C time value.
 pub struct C.timeval {
+pub:
 	tv_sec  u64
 	tv_usec u64
 }
 
-fn C.localtime(t &C.time_t) &C.tm
-fn C.localtime_r(t &C.time_t, tm &C.tm)
+type C.time_t = i64
 
 fn C.time(t &C.time_t) C.time_t
-
+fn C.localtime(t &C.time_t) &C.tm
+fn C.localtime_r(t &C.time_t, tm &C.tm)
 fn C.gmtime(t &C.time_t) &C.tm
 fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
 fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usize
@@ -55,17 +56,16 @@ pub fn utc() Time {
 	return linux_utc()
 }
 
-// new_time returns a time struct with the calculated Unix time.
-pub fn new_time(t Time) Time {
+fn time_with_unix(t Time) Time {
 	if t.unix != 0 {
 		return t
 	}
 	tt := C.tm{
-		tm_sec: t.second
-		tm_min: t.minute
+		tm_sec:  t.second
+		tm_min:  t.minute
 		tm_hour: t.hour
 		tm_mday: t.day
-		tm_mon: t.month - 1
+		tm_mon:  t.month - 1
 		tm_year: t.year - 1900
 	}
 	utime := make_unix_time(tt)
@@ -92,7 +92,7 @@ pub fn ticks() i64 {
 
 // str returns the time in the same format as `parse` expects ("YYYY-MM-DD HH:mm:ss").
 pub fn (t Time) str() string {
-	// TODO Define common default format for
+	// TODO: Define common default format for
 	// `str` and `parse` and use it in both ways
 	return t.format_ss()
 }
@@ -100,14 +100,14 @@ pub fn (t Time) str() string {
 // convert_ctime converts a C time to V time.
 fn convert_ctime(t C.tm, nanosecond int) Time {
 	return Time{
-		year: t.tm_year + 1900
-		month: t.tm_mon + 1
-		day: t.tm_mday
-		hour: t.tm_hour
-		minute: t.tm_min
-		second: t.tm_sec
+		year:       t.tm_year + 1900
+		month:      t.tm_mon + 1
+		day:        t.tm_mday
+		hour:       t.tm_hour
+		minute:     t.tm_min
+		second:     t.tm_sec
 		nanosecond: nanosecond
-		unix: make_unix_time(t)
+		unix:       make_unix_time(t)
 		// for the actual code base when we
 		// call convert_ctime, it is always
 		// when we manage the local time.

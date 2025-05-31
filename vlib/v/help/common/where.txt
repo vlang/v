@@ -22,7 +22,7 @@ symbol_name can be:
   regexp
 
 Options:
-  -mod  [mod_name]    Restrict to search recursively only within of the given
+  -mod  [mod_name]    Restrict to search recursively only within the given
                       module, if not provided search in entire v scope
                       (use -mod main to search inside all your project).
   -dir  [dir_path]    Restrict to search non recursively within the given

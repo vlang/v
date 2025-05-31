@@ -3,23 +3,23 @@ module html
 import encoding.hex
 import strconv
 
-[params]
+@[params]
 pub struct EscapeConfig {
+pub:
 	quote bool = true
 }
 
-[params]
+@[params]
 pub struct UnescapeConfig {
 	EscapeConfig
+pub:
 	all bool
 }
 
-const (
-	escape_seq         = ['&', '&amp;', '<', '&lt;', '>', '&gt;']
-	escape_quote_seq   = ['"', '&#34;', "'", '&#39;']
-	unescape_seq       = ['&amp;', '&', '&lt;', '<', '&gt;', '>']
-	unescape_quote_seq = ['&#34;', '"', '&#39;', "'"]
-)
+const escape_seq = ['&', '&amp;', '<', '&lt;', '>', '&gt;']
+const escape_quote_seq = ['"', '&#34;', "'", '&#39;']
+const unescape_seq = ['&amp;', '&', '&lt;', '<', '&gt;', '>']
+const unescape_quote_seq = ['&#34;', '"', '&#39;', "'"]
 
 // escape converts special characters in the input, specifically "<", ">", and "&"
 // to HTML-safe sequences. If `quote` is set to true (which is default), quotes in
@@ -28,9 +28,9 @@ const (
 // support through `string` is robust enough to deal with these cases.
 pub fn escape(input string, config EscapeConfig) string {
 	return if config.quote {
-		input.replace_each(html.escape_seq).replace_each(html.escape_quote_seq)
+		input.replace_each(escape_seq).replace_each(escape_quote_seq)
 	} else {
-		input.replace_each(html.escape_seq)
+		input.replace_each(escape_seq)
 	}
 }
 
@@ -41,9 +41,9 @@ pub fn unescape(input string, config UnescapeConfig) string {
 	return if config.all {
 		unescape_all(input)
 	} else if config.quote {
-		input.replace_each(html.unescape_seq).replace_each(html.unescape_quote_seq)
+		input.replace_each(unescape_seq).replace_each(unescape_quote_seq)
 	} else {
-		input.replace_each(html.unescape_seq)
+		input.replace_each(unescape_seq)
 	}
 }
 

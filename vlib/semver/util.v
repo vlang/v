@@ -1,19 +1,19 @@
 module semver
 
 // * Private functions.
-[inline]
+@[inline]
 fn is_version_valid(input string) bool {
 	raw_ver := parse(input)
 	return raw_ver.is_valid()
 }
 
-[inline]
+@[inline]
 fn coerce_version(input string) !Version {
 	raw_ver := parse(input)
 	return raw_ver.coerce() or { return error('Invalid version for input "${input}"') }
 }
 
-[inline]
+@[inline]
 fn increment_version(ver Version, typ Increment) Version {
 	mut major := ver.major
 	mut minor := ver.minor

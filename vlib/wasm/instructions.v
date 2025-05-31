@@ -22,7 +22,7 @@ fn (mut func Function) blocktype(typ FuncType) {
 
 	// encode full type
 	tidx := func.mod.new_functype(typ)
-	func.code << leb128.encode_i32(tidx)
+	func.code << leb128.encode_i32(i32(tidx))
 }
 
 pub type PatchPos = int
@@ -101,7 +101,7 @@ pub fn (mut func Function) new_local(v ValType) LocalIndex {
 pub fn (mut func Function) new_local_named(v ValType, name string) LocalIndex {
 	ret := func.locals.len
 	func.locals << FunctionLocal{
-		typ: v
+		typ:  v
 		name: name
 	}
 	return ret
@@ -707,9 +707,9 @@ pub fn (mut func Function) sign_extend16(typ ValType) {
 }
 
 // sign_extend32_i64 extends the value of a 32-bit integer of type i64.
-// WebAssembly instruction: `i64.extend64_s`.
-pub fn (mut func Function) sign_extend32_i64() {
-	func.code << 0xC4 // i64.extend64_s
+// WebAssembly instruction: `i64.extend32_s`.
+pub fn (mut func Function) sign_extend32() {
+	func.code << 0xC4 // i64.extend32_s
 }
 
 // cast casts a value of type `a` with respect to `is_signed`, to type `b`.
@@ -831,29 +831,57 @@ pub fn (mut func Function) cast(a NumType, is_signed bool, b NumType) {
 // - See function `cast` for the rest.
 pub fn (mut func Function) cast_trapping(a NumType, is_signed bool, b NumType) {
 	if a in [.f32_t, .f64_t] {
-		if a == .f32_t {
-			match b {
-				.i32_t {
-					func.code << 0xA8 // i32.trunc_f32_s
-					return
+		if is_signed {
+			if a == .f32_t {
+				match b {
+					.i32_t {
+						func.code << 0xA8 // i32.trunc_f32_s
+						return
+					}
+					.i64_t {
+						func.code << 0xAE // i64.trunc_f32_s
+						return
+					}
+					else {}
 				}
-				.i64_t {
-					func.code << 0xAE // i64.trunc_f32_s
-					return
+			} else {
+				match b {
+					.i32_t {
+						func.code << 0xAA // i32.trunc_f64_s
+						return
+					}
+					.i64_t {
+						func.code << 0xB0 // i64.trunc_f64_s
+						return
+					}
+					else {}
 				}
-				else {}
 			}
 		} else {
-			match b {
-				.i32_t {
-					func.code << 0xAA // i32.trunc_f64_s
-					return
+			if a == .f32_t {
+				match b {
+					.i32_t {
+						func.code << 0xA9 // i32.trunc_f32_u
+						return
+					}
+					.i64_t {
+						func.code << 0xAF // i64.trunc_f32_u
+						return
+					}
+					else {}
 				}
-				.i64_t {
-					func.code << 0xB0 // i64.trunc_f64_s
-					return
+			} else {
+				match b {
+					.i32_t {
+						func.code << 0xAB // i32.trunc_f64_u
+						return
+					}
+					.i64_t {
+						func.code << 0xB1 // i64.trunc_f64_u
+						return
+					}
+					else {}
 				}
-				else {}
 			}
 		}
 	}
@@ -963,7 +991,7 @@ pub fn (mut func Function) call(name string) {
 	func.code << 0x10 // call
 	func.patches << CallPatch(FunctionCallPatch{
 		name: name
-		pos: func.code.len
+		pos:  func.code.len
 	})
 }
 
@@ -973,9 +1001,9 @@ pub fn (mut func Function) call(name string) {
 pub fn (mut func Function) call_import(mod string, name string) {
 	func.code << 0x10 // call
 	func.patches << CallPatch(ImportCallPatch{
-		mod: mod
+		mod:  mod
 		name: name
-		pos: func.code.len
+		pos:  func.code.len
 	})
 }
 
@@ -1170,7 +1198,7 @@ pub fn (mut func Function) ref_func(name string) {
 	func.code << 0xD2 // ref.func
 	func.patches << CallPatch(FunctionCallPatch{
 		name: name
-		pos: func.code.len
+		pos:  func.code.len
 	})
 }
 
@@ -1180,8 +1208,8 @@ pub fn (mut func Function) ref_func(name string) {
 pub fn (mut func Function) ref_func_import(mod string, name string) {
 	func.code << 0xD2 // ref.func
 	func.patches << CallPatch(ImportCallPatch{
-		mod: mod
+		mod:  mod
 		name: name
-		pos: func.code.len
+		pos:  func.code.len
 	})
 }

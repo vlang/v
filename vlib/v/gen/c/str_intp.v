@@ -1,7 +1,7 @@
 /*
 str_intp.v
 
-Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -13,7 +13,7 @@ import v.ast
 import v.util
 
 fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
-	if ftyp.has_flag(.option) || ftyp.has_flag(.result) {
+	if ftyp.has_option_or_result() {
 		return `s`
 	} else if typ.is_float() {
 		return `g`
@@ -37,8 +37,8 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 			return `s`
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
-			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .interface_, .none_]
-			|| ftyp.has_flag(.option) || ftyp.has_flag(.result) || sym.has_method('str') {
+			|| sym.kind in [.enum, .array, .array_fixed, .struct, .map, .multi_return, .sum_type, .interface, .none]
+			|| ftyp.has_option_or_result() || sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`
@@ -48,20 +48,15 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 
 fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, string) {
 	mut base := 0 // numeric base
-	mut upper_case := false // set upercase for the result string
+	mut upper_case := false // set uppercase for the result string
 	mut typ := g.unwrap_generic(node.expr_types[i])
 	if node.exprs[i].is_auto_deref_var() {
 		typ = typ.deref()
 	}
-	sym := g.table.sym(typ)
-
-	if sym.kind == .alias {
-		typ = (sym.info as ast.Alias).parent_type
-	}
+	typ = g.table.final_type(typ)
 	mut remove_tail_zeros := false
 	fspec := fmts[i]
 	mut fmt_type := StrIntpType.si_no_str
-	g.write('/*${fspec} ${sym}*/')
 	// upper cases
 	if (fspec - `A`) <= (`Z` - `A`) {
 		upper_case = true
@@ -76,6 +71,8 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 		}
 		*/
 		fmt_type = .si_s
+	} else if fspec in [`r`, `R`] {
+		fmt_type = .si_r
 	} else if typ.is_float() {
 		if fspec in [`g`, `G`] {
 			match typ {
@@ -155,7 +152,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	}
 	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i], remove_tail_zeros,
 		node.pluss[i], u8(pad_ch), base, upper_case)
-	//
+
 	return res, fmt_type.str()
 }
 
@@ -164,9 +161,9 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	fmt := fmts[i]
 	typ := g.unwrap_generic(node.expr_types[i])
 	typ_sym := g.table.sym(typ)
-	if typ == ast.string_type && g.comptime_for_method.len == 0 {
+	if typ == ast.string_type && g.comptime.comptime_for_method == unsafe { nil } {
 		if g.inside_vweb_tmpl {
-			g.write('vweb__filter(')
+			g.write('${g.vweb_filter_fn_name}(')
 			if expr.is_auto_deref_var() && fmt != `p` {
 				g.write('*')
 			}
@@ -178,22 +175,21 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			}
 			g.expr(expr)
 		}
-	} else if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {
+	} else if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method('str') {
 		rec_type_name := util.no_dots(g.cc_type(typ, false))
 		g.write('${c_name(rec_type_name)}_name_table[')
 		g.expr(expr)
 		dot := if typ.is_ptr() { '->' } else { '.' }
 		g.write('${dot}_typ]._method_str(')
 		g.expr(expr)
-		g.write('${dot}_object')
-		g.write(')')
+		g.write2('${dot}_object', ')')
 	} else if fmt == `s` || typ.has_flag(.variadic) {
 		mut exp_typ := typ
 		if expr is ast.Ident {
-			if expr.obj is ast.Var {
-				if g.comptime_var_type_map.len > 0 || g.comptime_for_method.len > 0 {
-					exp_typ = expr.obj.typ
-				} else if expr.obj.smartcasts.len > 0 {
+			if g.comptime.get_ct_type_var(expr) == .smartcast {
+				exp_typ = g.type_resolver.get_type(expr)
+			} else if expr.obj is ast.Var {
+				if expr.obj.smartcasts.len > 0 {
 					exp_typ = g.unwrap_generic(expr.obj.smartcasts.last())
 					cast_sym := g.table.sym(exp_typ)
 					if cast_sym.info is ast.Aggregate {
@@ -235,12 +231,16 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 }
 
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
-	// fn (mut g Gen) str_int2(node ast.StringInterLiteral) {
+	inside_interface_deref_old := g.inside_interface_deref
+	g.inside_interface_deref = true
+	defer {
+		g.inside_interface_deref = inside_interface_deref_old
+	}
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
-		if g.is_comptime_var(expr) {
-			ctyp := g.get_comptime_var_type(expr)
+		if g.comptime.is_comptime(expr) {
+			ctyp := g.type_resolver.get_type_or_default(expr, node_.expr_types[i])
 			if ctyp != ast.void_type {
 				node_.expr_types[i] = ctyp
 				if node_.fmts[i] == `_` {
@@ -255,13 +255,15 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		}
 	}
-	g.write(' str_intp(${node.vals.len}, ')
-	g.write('_MOV((StrIntpData[]){')
+	g.write2('str_intp(', node.vals.len.str())
+	g.write(', _MOV((StrIntpData[]){')
 	for i, val in node.vals {
-		escaped_val := util.smart_quote(val, false)
+		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
+		escaped_val = escaped_val.replace('\0', '\\0')
 
 		if escaped_val.len > 0 {
-			g.write('{_SLIT("${escaped_val}"), ')
+			g.write2('{_SLIT("', escaped_val)
+			g.write('"), ')
 		} else {
 			g.write('{_SLIT0, ')
 		}
@@ -273,7 +275,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 
 		ft_u64, ft_str := g.str_format(node, i, fmts)
-		g.write('0x${ft_u64.hex()}, {.d_${ft_str} = ')
+		g.write2('0x', ft_u64.hex())
+		g.write2(', {.d_', ft_str)
+		g.write(' = ')
 
 		// for pointers we need a void* cast
 		if unsafe { ft_str.str[0] } == `p` {

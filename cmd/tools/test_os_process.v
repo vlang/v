@@ -51,6 +51,7 @@ fn do_timeout(c &Context) {
 }
 
 fn main() {
+	unbuffer_stdout()
 	mut ctx := Context{}
 	args := os.args[1..]
 	if '-h' in args || '--help' in args {
@@ -59,7 +60,7 @@ fn main() {
 		Prints lines periodically (-period_ms), to stdout/stderr (-target).
 		After a while (-timeout_ms), exit with (-exitcode).
 		This program is useful for platform independent testing
-		of child process/standart input/output control.
+		of child process/standard input/output control.
 		It is used in V's `os` module tests.
 ")
 		return
@@ -87,9 +88,11 @@ fn main() {
 		}
 	}
 	spawn do_timeout(&ctx)
+	ctx.println('start')
 	for i := 1; true; i++ {
 		ctx.println('${i}')
 		time.sleep(ctx.period_ms * time.millisecond)
 	}
+	ctx.println('done')
 	time.sleep(100 * time.second)
 }

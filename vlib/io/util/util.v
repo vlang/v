@@ -3,12 +3,11 @@ module util
 import os
 import rand
 
-const (
-	retries = 10000
-)
+const retries = 10000
 
-[params]
+@[params]
 pub struct TempFileOptions {
+pub:
 	path    string = os.temp_dir()
 	pattern string
 }
@@ -25,7 +24,7 @@ pub fn temp_file(tfo TempFileOptions) !(os.File, string) {
 	}
 	d = d.trim_right(os.path_separator)
 	prefix, suffix := prefix_and_suffix(tfo.pattern) or { return error(@FN + ' ${err.msg()}') }
-	for retry := 0; retry < util.retries; retry++ {
+	for retry := 0; retry < retries; retry++ {
 		path := os.join_path(d, prefix + random_number() + suffix)
 		mut mode := 'rw+'
 		$if windows {
@@ -37,11 +36,12 @@ pub fn temp_file(tfo TempFileOptions) !(os.File, string) {
 		}
 	}
 	return error(@FN +
-		' could not create temporary file in "${d}". Retry limit (${util.retries}) exhausted. Please ensure write permissions.')
+		' could not create temporary file in "${d}". Retry limit (${retries}) exhausted. Please ensure write permissions.')
 }
 
-[params]
+@[params]
 pub struct TempDirOptions {
+pub:
 	path    string = os.temp_dir()
 	pattern string
 }
@@ -59,7 +59,7 @@ pub fn temp_dir(tdo TempFileOptions) !string {
 	os.ensure_folder_is_writable(d) or { return error_for_temporary_folder(@FN, d) }
 	d = d.trim_right(os.path_separator)
 	prefix, suffix := prefix_and_suffix(tdo.pattern) or { return error(@FN + ' ${err.msg()}') }
-	for retry := 0; retry < util.retries; retry++ {
+	for retry := 0; retry < retries; retry++ {
 		path := os.join_path(d, prefix + random_number() + suffix)
 		os.mkdir_all(path) or { continue }
 		if os.is_dir(path) && os.exists(path) {
@@ -67,7 +67,7 @@ pub fn temp_dir(tdo TempFileOptions) !string {
 			return path
 		}
 	}
-	return error('${@FN} could not create temporary directory "${d}". Retry limit (${util.retries}) exhausted.')
+	return error('${@FN} could not create temporary directory "${d}". Retry limit (${retries}) exhausted.')
 }
 
 // * Utility functions
@@ -77,18 +77,9 @@ fn random_number() string {
 }
 
 fn prefix_and_suffix(pattern string) !(string, string) {
-	mut pat := pattern
-	if pat.contains(os.path_separator) {
+	if pattern.contains(os.path_separator) {
 		return error('pattern cannot contain path separators (${os.path_separator}).')
 	}
-	pos := pat.last_index('*') or { -1 }
-	mut prefix := ''
-	mut suffix := ''
-	if pos != -1 {
-		prefix = pat.substr(0, pos)
-		suffix = pat.substr(pos + 1, pat.len)
-	} else {
-		prefix = pat
-	}
+	prefix, suffix := pattern.rsplit_once('*') or { pattern, '' }
 	return prefix, suffix
 }

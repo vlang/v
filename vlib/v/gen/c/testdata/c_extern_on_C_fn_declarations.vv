@@ -1,0 +1,16 @@
+// Note: there is NO #include here.
+// The V compiler will generate an `extern` declaration for the C function itself.
+// If you want to compile it, you need to have installed `libgif-dev` on your system.
+// After installing that package (or its equivalent), try for example:
+// `./v -cc gcc -cstrict run vlib/v/gen/c/testdata/c_extern_on_C_fn_declarations.vv`
+// There should be no error, and you should see a list of error messages, that the library ligif provides.
+
+#flag -lgif
+
+@[c_extern]
+fn C.GifErrorString(ecode int) &char
+
+println('hi')
+for i in 1 .. 10 {
+	unsafe { dump(cstring_to_vstring(C.GifErrorString(i))) }
+}

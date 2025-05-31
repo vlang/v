@@ -24,7 +24,7 @@ fn main() {
 	}
 	bgenerating.measure('generating strings')
 	println('Hashing each of the generated strings...')
-	//
+
 	mut bhashing_1 := benchmark.start()
 	start_pos = 0
 	checksum = 0

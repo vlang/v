@@ -11,5 +11,6 @@ mut:
 	debug(s string)
 	// utility methods:
 	set_level(level Level)
+	set_always_flush(should_flush bool)
 	free()
 }

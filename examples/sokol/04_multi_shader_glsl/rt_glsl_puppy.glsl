@@ -26,7 +26,9 @@ void main() {
 #pragma sokol @end
 
 #pragma sokol @fs fs_p
-uniform sampler2D tex;
+uniform texture2D tex;
+uniform sampler smp;
+
 uniform fs_params_p {
 	vec2 iResolution;
 	vec2 iMouse;
@@ -38,7 +40,7 @@ in vec4 color;
 in vec2 uv;
 out vec4 frag_color;
 
-// change to 0 to 4 to increment the AntiAliasing, 
+// change to 0 to 4 to increment the AntiAliasing,
 // increase AA will SLOW the rendering!!
 #define AA 1
 
@@ -47,9 +49,9 @@ out vec4 frag_color;
 // original code from: https://www.shadertoy.com/view/Xds3zN
 //*********************************************************
 // Created by inigo quilez - iq/2019
-// I share this piece (art and code) here in Shadertoy and through its Public API, only for educational purposes. 
+// I share this piece (art and code) here in Shadertoy and through its Public API, only for educational purposes.
 // You cannot use, share or host this piece or modifications of it as part of your own commercial or non-commercial product, website or project.
-// You can share a link to it or an unmodified screenshot of it provided you attribute "by Inigo Quilez, @iquilezles and iquilezles.org". 
+// You can share a link to it or an unmodified screenshot of it provided you attribute "by Inigo Quilez, @iquilezles and iquilezles.org".
 // If you are a teacher, lecturer, educator or similar and these conditions are too restrictive for your needs, please contact me and we'll work it out.
 
 
@@ -127,7 +129,7 @@ float hsha;
 vec4 map( in vec3 pos, float atime )
 {
     hsha = 1.0;
-    
+
     float t1 = fract(atime);
     float t4 = abs(fract(atime*0.5)-0.5)/0.5;
 
@@ -141,7 +143,7 @@ vec4 map( in vec3 pos, float atime )
     // body
     vec2 uu = normalize(vec2( 1.0, -pp ));
     vec2 vv = vec2(-uu.y, uu.x);
-    
+
     float sy = 0.5 + 0.5*p;
     float compress = 1.0-smoothstep(0.0,0.4,p);
     sy = sy*(1.0-compress) + compress;
@@ -155,7 +157,7 @@ vec4 map( in vec3 pos, float atime )
     vec3 r = q;
 	href = q.y;
     q.yz = vec2( dot(uu,q.yz), dot(vv,q.yz) );
-    
+
     vec4 res = vec4( sdEllipsoid( q, vec3(0.25, 0.25*sy, 0.25*sz) ), 2.0, 0.0, 1.0 );
 
     if( res.x-1.0 < pos.y ) // bounding volume
@@ -176,19 +178,19 @@ vec4 map( in vec3 pos, float atime )
 	float d2 = sdEllipsoid( h-vec3(0.0,0.21,-0.1), vec3(0.20,0.2,0.20) );
 	d = smin( d, d2, 0.1 );
     res.x = smin( res.x, d, 0.1 );
-    
+
     // belly wrinkles
     {
     float yy = r.y-0.02-2.5*r.x*r.x;
     res.x += 0.001*sin(yy*120.0)*(1.0-smoothstep(0.0,0.1,abs(yy)));
     }
-        
+
     // arms
     {
     vec2 arms = sdStick( sq, vec3(0.18-0.06*hr*sign(r.x),0.2,-0.05), vec3(0.3+0.1*p2,-0.2+0.3*p2,-0.15), 0.03, 0.06 );
     res.xz = smin( res.xz, arms, 0.01+0.04*(1.0-arms.y)*(1.0-arms.y)*(1.0-arms.y) );
     }
-        
+
     // ears
     {
     float t3 = fract(atime+0.9);
@@ -196,7 +198,7 @@ vec4 map( in vec3 pos, float atime )
     vec2 ear = sdStick( hq, vec3(0.15,0.32,-0.05), vec3(0.2+0.05*p3,0.2+0.2*p3,-0.07), 0.01, 0.04 );
     res.xz = smin( res.xz, ear, 0.01 );
     }
-    
+
     // mouth
     {
 	d = sdEllipsoid( h-vec3(0.0,0.15+4.0*hq.x*hq.x,0.15), vec3(0.1,0.04,0.2) );
@@ -213,13 +215,13 @@ vec4 map( in vec3 pos, float atime )
     vec2 legs = sdStick( sq, base, base + vec3(0.2,-ccc,sss)*0.2, 0.04, 0.07 );
     res.xz = smin( res.xz, legs, 0.07 );
     }
-        
+
     // eye
     {
     float blink = pow(0.5+0.5*sin(2.1*iTime),20.0);
     float eyeball = sdSphere(hq-vec3(0.08,0.27,0.06),0.065+0.02*blink);
     res.x = smin( res.x, eyeball, 0.03 );
-    
+
     vec3 cq = hq-vec3(0.1,0.34,0.08);
     cq.xy = mat2x2(0.8,0.6,-0.6,0.8)*cq.xy;
     d = sdEllipsoid( cq, vec3(0.06,0.03,0.03) );
@@ -230,19 +232,19 @@ vec4 map( in vec3 pos, float atime )
     res = opU( res, vec4(sdSphere(hq-vec3(0.075,0.28,0.102),0.0395),4.0,0.0,1.0));
     }
 	}
-    
+
     // ground
     float fh = -0.1 - 0.05*(sin(pos.x*2.0)+sin(pos.z*2.0));
     float t5f = fract(atime+0.05);
-    float t5i = floor(atime+0.05); 
+    float t5i = floor(atime+0.05);
     float bt4 = abs(fract(t5i*0.5)-0.5)/0.5;
     vec2  bcen = vec2( 0.5*(-1.0+2.0*bt4),t5i+pow(t5f,0.7)-1.0 );
-    
+
     float k = length(pos.xz-bcen);
     float tt = t5f*15.0-6.2831 - k*3.0;
     fh -= 0.1*exp(-k*k)*sin(tt)*exp(-max(tt,0.0)/2.0)*smoothstep(0.0,0.01,t5f);
     float d = pos.y - fh;
-    
+
     // bubbles
     {
     vec3 vp = vec3( mod(abs(pos.x),3.0)-1.5,pos.y,mod(pos.z+1.5,3.0)-1.5);
@@ -251,10 +253,10 @@ vec4 map( in vec3 pos, float atime )
     float fy = fract(fid*1.312+atime*0.1);
     float y = -1.0+4.0*fy;
     vec3  rad = vec3(0.7,1.0+0.5*sin(fid),0.7);
-    rad -= 0.1*(sin(pos.x*3.0)+sin(pos.y*4.0)+sin(pos.z*5.0));    
+    rad -= 0.1*(sin(pos.x*3.0)+sin(pos.y*4.0)+sin(pos.z*5.0));
     float siz = 4.0*fy*(1.0-fy);
     float d2 = sdEllipsoid( vp-vec3(0.5,y,0.0), siz*rad );
-    
+
     d2 -= 0.03*smoothstep(-1.0,1.0,sin(18.0*pos.x)+sin(18.0*pos.y)+sin(18.0*pos.z));
     d2 *= 0.6;
     d2 = min(d2,2.0);
@@ -275,7 +277,7 @@ vec4 map( in vec3 pos, float atime )
     d = sdSphere( vp, 0.35*ra )/fs;
     if( d<res.x ) res = vec4(d,5.0,qos.y,1.0);
     }
-    
+
     return res;
 }
 
@@ -285,26 +287,26 @@ vec4 raycast( in vec3 ro, in vec3 rd, float time )
 
     float tmin = 0.5;
     float tmax = 20.0;
-    
+
 	#if 1
     // raytrace bounding plane
     float tp = (3.5-ro.y)/rd.y;
     if( tp>0.0 ) tmax = min( tmax, tp );
-	#endif    
-    
+	#endif
+
     // raymarch scene
     float t = tmin;
     for( int i=0; i<256 && t<tmax; i++ )
     {
         vec4 h = map( ro+rd*t, time );
         if( abs(h.x)<(0.0005*t) )
-        { 
-            res = vec4(t,h.yzw); 
+        {
+            res = vec4(t,h.yzw);
             break;
         }
         t += h.x;
     }
-    
+
     return res;
 }
 
@@ -317,8 +319,8 @@ float calcSoftshadow( in vec3 ro, in vec3 rd, float time )
     #if 1
     float tp = (3.5-ro.y)/rd.y; // raytrace bounding plane
     if( tp>0.0 ) tmax = min( tmax, tp );
-	#endif    
-    
+	#endif
+
     float t = 0.02;
     for( int i=0; i<50; i++ )
     {
@@ -333,12 +335,12 @@ float calcSoftshadow( in vec3 ro, in vec3 rd, float time )
 // http://iquilezles.org/www/articles/normalsSDF/normalsSDF.htm
 vec3 calcNormal( in vec3 pos, float time )
 {
-    
+
 #if 0
     vec2 e = vec2(1.0,-1.0)*0.5773*0.001;
-    return normalize( e.xyy*map( pos + e.xyy, time ).x + 
-					  e.yyx*map( pos + e.yyx, time ).x + 
-					  e.yxy*map( pos + e.yxy, time ).x + 
+    return normalize( e.xyy*map( pos + e.xyy, time ).x +
+					  e.yyx*map( pos + e.yyx, time ).x +
+					  e.yxy*map( pos + e.yxy, time ).x +
 					  e.xxx*map( pos + e.xxx, time ).x );
 #else
     // inspired by tdhooper and klems - a way to prevent the compiler from inlining map() 4 times
@@ -349,7 +351,7 @@ vec3 calcNormal( in vec3 pos, float time )
         n += e*map(pos+0.001*e,time).x;
     }
     return normalize(n);
-#endif    
+#endif
 }
 
 float calcOcclusion( in vec3 pos, in vec3 nor, float time )
@@ -368,7 +370,7 @@ float calcOcclusion( in vec3 pos, in vec3 nor, float time )
 }
 
 vec3 render( in vec3 ro, in vec3 rd, float time )
-{ 
+{
     // sky dome
     vec3 col = vec3(0.5, 0.8, 0.9) - max(rd.y,0.0)*0.5;
     // sky clouds
@@ -377,8 +379,8 @@ vec3 render( in vec3 ro, in vec3 rd, float time )
           cl += 0.5*(sin(uv.x)+sin(uv.y));
     col += 0.1*(-1.0+2.0*smoothstep(-0.1,0.1,cl-0.4));
     // sky horizon
-	col = mix( col, vec3(0.5, 0.7, .9), exp(-10.0*max(rd.y,0.0)) );    
-    
+	col = mix( col, vec3(0.5, 0.7, .9), exp(-10.0*max(rd.y,0.0)) );
+
 
     // scene geometry
     vec4 res = raycast(ro,rd, time);
@@ -389,52 +391,52 @@ vec3 render( in vec3 ro, in vec3 rd, float time )
         vec3 nor = calcNormal( pos, time );
         vec3 ref = reflect( rd, nor );
         float focc = res.w;
-        
-        // material        
+
+        // material
 		col = vec3(0.2);
         float ks = 1.0;
 
         if( res.y>4.5 )  // candy
-        { 
-             col = vec3(0.14,0.048,0.0); 
+        {
+             col = vec3(0.14,0.048,0.0);
              vec2 id = floor(5.0*pos.xz+0.5);
 		     col += 0.036*cos((id.x*11.1+id.y*37.341) + vec3(0.0,1.0,2.0) );
              col = max(col,0.0);
              focc = clamp(4.0*res.z,0.0,1.0);
         }
         else if( res.y>3.5 ) // eyeball
-        { 
+        {
             col = vec3(0.0);
-        } 
+        }
         else if( res.y>2.5 ) // iris
-        { 
+        {
             col = vec3(0.4);
-        } 
+        }
         else if( res.y>1.5 ) // body
-        { 
+        {
             col = mix(vec3(0.144,0.09,0.0036),vec3(0.36,0.1,0.04),res.z*res.z);
             col = mix(col,vec3(0.14,0.09,0.06)*2.0, (1.0-res.z)*smoothstep(-0.15, 0.15, -href));
         }
 		else // terrain
         {
-            // base green            
+            // base green
             col = vec3(0.05,0.09,0.02);
             float f = 0.2*(-1.0+2.0*smoothstep(-0.2,0.2,sin(18.0*pos.x)+sin(18.0*pos.y)+sin(18.0*pos.z)));
             col += f*vec3(0.06,0.06,0.02);
             ks = 0.5 + pos.y*0.15;
-            
-			// footprints            
+
+			// footprints
             vec2 mp = vec2(pos.x-0.5*(mod(floor(pos.z+0.5),2.0)*2.0-1.0), fract(pos.z+0.5)-0.5 );
             float mark = 1.0-smoothstep(0.1, 0.5, length(mp));
             mark *= smoothstep(0.0, 0.1, floor(time) - floor(pos.z+0.5) );
             col *= mix( vec3(1.0), vec3(0.5,0.5,0.4), mark );
             ks *= 1.0-0.5*mark;
         }
-        
+
         // lighting (sun, sky, bounce, back, sss)
         float occ = calcOcclusion( pos, nor, time )*focc;
         float fre = clamp(1.0+dot(nor,rd),0.0,1.0);
-        
+
         vec3  sun_lig = normalize( vec3(0.6, 0.35, 0.5) );
         float sun_dif = clamp(dot( nor, sun_lig ), 0.0, 1.0 );
         vec3  sun_hal = normalize( sun_lig-rd );
@@ -455,9 +457,9 @@ vec3 render( in vec3 ro, in vec3 rd, float time )
 		col = col*lin;
 		col += sun_spe*vec3(9.90,8.10,6.30)*sun_sha;
         col += sky_spe*vec3(0.20,0.30,0.65)*occ*occ;
-	
+
         col = pow(col,vec3(0.8,0.9,1.0) );
-        
+
         // fog
         col = mix( col, vec3(0.5,0.7,0.9), 1.0-exp( -0.0001*t*t*t ) );
     }
@@ -488,22 +490,22 @@ vec4 mainImage( vec2 fragCoord )
         // time coordinate (motion blurred, shutter=0.5)
         float d = 0.5+0.5*sin(fragCoord.x*147.0)*sin(fragCoord.y*131.0);
         float time = iTime - 0.5*(1.0/24.0)*(float(m*AA+n)+d)/float(AA*AA);
-#else    
+#else
         vec2 p = (-iResolution.xy + 2.0*fragCoord)/iResolution.y;
         float time = iTime;
 #endif
         time += -2.6;
         time *= 0.9;
-        
-        // camera	
+
+        // camera
         float cl = sin(0.5*time);
         float an = 1.57 + 0.7*sin(0.15*time);
         vec3  ta = vec3( 0.0, 0.65, -0.6+time*1.0 - 0.4*cl);
         vec3  ro = ta + vec3( 1.3*cos(an), -0.250, 1.3*sin(an) );
         float ti = fract(time-0.15);
-        ti = 4.0*ti*(1.0-ti);        
+        ti = 4.0*ti*(1.0-ti);
         ta.y += 0.15*ti*ti*(3.0-2.0*ti)*smoothstep(0.4,0.9,cl);
-        
+
         // camera bounce
         float t4 = abs(fract(time*0.5)-0.5)/0.5;
         float bou = -1.0 + 2.0*t4;
@@ -514,16 +516,16 @@ vec4 mainImage( vec2 fragCoord )
 
         // ray direction
         vec3 rd = ca * normalize( vec3(p,1.8) );
-        
-        // render	
+
+        // render
         vec3 col = render( ro, rd, time );
 
         // color grading
         col = col*vec3(1.11,0.89,0.79);
 
-        // compress        
+        // compress
         col = 1.35*col/(1.0+col);
-        
+
         // gamma
         col = pow( col, vec3(0.4545) );
 
@@ -533,15 +535,15 @@ vec4 mainImage( vec2 fragCoord )
     tot /= float(AA*AA);
 #endif
 
-    // s-surve    
+    // s-surve
     tot = clamp(tot,0.0,1.0);
     tot = tot*tot*(3.0-2.0*tot);
 
-    // vignetting        
+    // vignetting
     vec2 q = fragCoord/iResolution.xy;
     tot *= 0.5 + 0.5*pow(16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y),0.25);
 
-    // output    
+    // output
     //fragColor = vec4( tot, 1.0 );
 		return vec4( tot, 1.0 );
 }
@@ -552,14 +554,14 @@ vec4 mainImage( vec2 fragCoord )
 
 void main() {
 	vec4 c = color;
-	vec4 txt = texture(tex, uv);
+	vec4 txt = texture(sampler2D(tex, smp), uv);
 	c = txt * c;
 	vec2 uv1 = uv * iResolution;
 	vec4 col_ray = mainImage(uv1);
-	
+
 	// use this to mix the chessboart texture with the ray marching
 	//frag_color = clamp(c*iMouse.y/512.0,0.0,1.0) *	col_ray	;
-	
+
 	frag_color = c*0.00001 +	col_ray	;
 }
 

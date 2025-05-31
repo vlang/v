@@ -1,0 +1,10 @@
+// vtest vflags: -translated
+@[translated]
+module main
+
+const ssf = [1, 2, 3]!
+
+fn main() {
+	assert ssf[0] == 1
+	println('ok')
+}

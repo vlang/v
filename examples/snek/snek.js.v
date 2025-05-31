@@ -5,13 +5,11 @@ import time
 import rand
 
 // constants
-const (
-	top_height   = 100
-	canvas_size  = 700
-	game_size    = 17
-	tile_size    = canvas_size / game_size
-	tick_rate_ms = 100
-)
+const top_height = 100
+const canvas_size = 700
+const game_size = 17
+const tile_size = canvas_size / game_size
+const tick_rate_ms = 100
 
 // types
 struct Pos {
@@ -154,10 +152,10 @@ fn on_frame(mut app App) {
 	// drawing top
 	app.gg.draw_rect(0, 0, canvas_size, top_height, gx.black)
 	app.gg.draw_text(350, top_height / 2, 'Score: ${app.score}', gx.TextCfg{
-		color: gx.white
-		align: .center
+		color:          gx.white
+		align:          .center
 		vertical_align: .middle
-		size: 80
+		size:           80
 	})
 
 	// checking if snake bit itself
@@ -181,15 +179,15 @@ fn main() {
 	app.reset_game()
 
 	app.gg = gg.new_context(
-		bg_color: gx.white
-		frame_fn: on_frame
-		keydown_fn: on_keydown
-		user_data: &app
-		width: canvas_size
-		height: top_height + canvas_size
-		create_window: true
-		resizable: false
-		window_title: 'snek'
+		bg_color:          gx.white
+		frame_fn:          on_frame
+		keydown_fn:        on_keydown
+		user_data:         &app
+		width:             canvas_size
+		height:            top_height + canvas_size
+		create_window:     true
+		resizable:         false
+		window_title:      'snek'
 		html5_canvas_name: 'canvas'
 	)
 

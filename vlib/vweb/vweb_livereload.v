@@ -19,16 +19,16 @@ const vweb_livereload_server_start = time.ticks().str()
 
 // handle_vweb_livereload_current serves a small text file, containing the
 // timestamp/ticks corresponding to when the vweb server process was started
-[if vweb_livereload ?]
+@[if vweb_livereload ?]
 fn (mut ctx Context) handle_vweb_livereload_current() {
-	ctx.send_response_to_client('text/plain', vweb.vweb_livereload_server_start)
+	ctx.send_response_to_client('text/plain', vweb_livereload_server_start)
 }
 
 // handle_vweb_livereload_script serves a small dynamically generated .js file,
 // that contains code for polling the vweb server, and reloading the page, if it
 // detects that the vweb server is newer than the vweb server, that served the
 // .js file originally.
-[if vweb_livereload ?]
+@[if vweb_livereload ?]
 fn (mut ctx Context) handle_vweb_livereload_script() {
 	res := '"use strict";
 function vweb_livereload_checker_fn(started_at) {
@@ -42,7 +42,7 @@ function vweb_livereload_checker_fn(started_at) {
             }
         });
 }
-const vweb_livereload_checker = setInterval(vweb_livereload_checker_fn, ${ctx.livereload_poll_interval_ms}, "${vweb.vweb_livereload_server_start}");
+const vweb_livereload_checker = setInterval(vweb_livereload_checker_fn, ${ctx.livereload_poll_interval_ms}, "${vweb_livereload_server_start}");
 '
 	ctx.send_response_to_client('text/javascript', res)
 }

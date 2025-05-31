@@ -1,11 +1,11 @@
 struct S1 {}
 
-[unsafe]
-fn (s S1) f(){}
+@[unsafe]
+fn (s S1) f() {}
 
 fn test_funcs() {
-    s := S1{}
-    s.f()
+	s := S1{}
+	s.f()
 }
 
 fn test_ptr_index(mut a []string) {
@@ -15,7 +15,7 @@ fn test_ptr_index(mut a []string) {
 	c := &b
 	_ = c[0]
 
-    v := 4
-    p := &v
-    _ = p[0]
+	v := 4
+	p := &v
+	_ = p[0]
 }

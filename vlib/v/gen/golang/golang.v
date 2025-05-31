@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module golang
@@ -12,9 +12,9 @@ import os
 const bs = '\\'
 
 pub struct Gen {
+	pref &pref.Preferences = unsafe { nil }
 pub mut:
-	table &ast.Table        = unsafe { nil }
-	pref  &pref.Preferences = unsafe { nil }
+	table &ast.Table = unsafe { nil }
 	// is_debug           bool
 	out                strings.Builder
 	out_imports        strings.Builder
@@ -45,12 +45,12 @@ pub mut:
 	nlines             int
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
+pub fn gen(files []&ast.File, mut table ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
 	mut g := Gen{
 		table: table
-		pref: pref_
+		pref:  pref_
 		// is_debug: is_debug
-		out: strings.new_builder(1000)
+		out:         strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
 	for file in files {
@@ -92,7 +92,7 @@ pub fn (mut f Gen) write(s string) {
 }
 
 pub fn (mut f Gen) writeln(s string) {
-	if f.indent > 0 && f.empty_line && s.len > 0 {
+	if f.indent > 0 && f.empty_line && s != '' {
 		f.write_indent()
 	}
 	f.out.writeln(s)
@@ -124,8 +124,9 @@ pub fn (mut f Gen) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	return true
 }
 
-[params]
+@[params]
 pub struct RemoveNewLineConfig {
+pub:
 	imports_buffer bool // Work on f.out_imports instead of f.out
 }
 
@@ -278,7 +279,7 @@ pub fn (mut f Gen) imports(imports []ast.Import) {
 
 	for imp in imports {
 		if imp.mod !in f.used_imports {
-			// TODO bring back once only unused imports are removed
+			// TODO: bring back once only unused imports are removed
 			// continue
 		}
 		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
@@ -386,10 +387,10 @@ pub fn (mut f Gen) node_str(node ast.Node) string {
 //=== General Stmt-related methods and helpers ===//
 
 pub fn (mut f Gen) stmts(stmts []ast.Stmt) {
-	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt }
+	mut prev_stmt := ast.empty_stmt
 	f.indent++
-	for stmt in stmts {
-		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
+	for i, stmt in stmts {
+		if i > 0 && f.should_insert_newline_before_node(stmt, prev_stmt) {
 			f.out.writeln('')
 		}
 		f.stmt(stmt)
@@ -425,6 +426,7 @@ pub fn (mut f Gen) stmt(node ast.Stmt) {
 		ast.ConstDecl {
 			f.const_decl(node)
 		}
+		ast.DebuggerStmt {}
 		ast.DeferStmt {
 			f.defer_stmt(node)
 		}
@@ -471,6 +473,9 @@ pub fn (mut f Gen) stmt(node ast.Stmt) {
 		}
 		ast.Return {
 			f.return_stmt(node)
+		}
+		ast.SemicolonStmt {
+			f.writeln(';')
 		}
 		ast.SqlStmt {
 			f.sql_stmt(node)
@@ -584,6 +589,9 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 		ast.IntegerLiteral {
 			f.write(node.val)
 		}
+		ast.LambdaExpr {
+			eprintln('> TODO: implement ast.LambdaExpr in the Go backend')
+		}
 		ast.Likely {
 			f.likely(node)
 		}
@@ -654,17 +662,21 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 		}
 		ast.ComptimeType {
 			match node.kind {
+				.unknown { f.write('\$unknown') }
 				.array { f.write('\$array') }
-				.struct_ { f.write('\$struct') }
+				.array_dynamic { f.write('\$array_dynamic') }
+				.array_fixed { f.write('\$array_fixed') }
+				.struct { f.write('\$struct') }
 				.iface { f.write('\$interface') }
-				.map_ { f.write('\$map') }
+				.map { f.write('\$map') }
 				.int { f.write('\$int') }
 				.float { f.write('\$float') }
 				.sum_type { f.write('\$sumtype') }
-				.enum_ { f.write('\$enum') }
+				.enum { f.write('\$enum') }
 				.alias { f.write('\$alias') }
 				.function { f.write('\$function') }
 				.option { f.write('\$option') }
+				.string { f.write('\$string') }
 			}
 		}
 	}
@@ -893,7 +905,8 @@ pub fn (mut f Gen) enum_decl(node ast.EnumDecl) {
 
 pub fn (mut f Gen) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
-	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias).replace('fn ', 'func '))
+	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias, false).replace('fn ',
+		'func '))
 	f.fn_body(node)
 }
 
@@ -1123,7 +1136,7 @@ pub fn (mut f Gen) interface_field(field ast.StructField) {
 
 pub fn (mut f Gen) interface_method(method ast.FnDecl) {
 	f.write('\t')
-	f.write(f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias).after('fn '))
+	f.write(f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).after('fn '))
 	f.writeln('')
 	for param in method.params {
 		f.mark_types_import_as_used(param.typ)
@@ -1180,7 +1193,7 @@ pub fn (mut f Gen) sql_stmt_line(node ast.SqlStmtLine) {
 	f.write('\t')
 	match node.kind {
 		.insert {
-			f.writeln('insert ${node.object_var_name} into ${table_name}')
+			f.writeln('insert ${node.object_var} into ${table_name}')
 		}
 		.update {
 			f.write('update ${table_name} set ')
@@ -1326,20 +1339,20 @@ pub fn (mut f Gen) array_init(node ast.ArrayInit) {
 		if node.has_len {
 			f.write('len: ')
 			f.expr(node.len_expr)
-			if node.has_cap || node.has_default {
+			if node.has_cap || node.has_init {
 				f.write(', ')
 			}
 		}
 		if node.has_cap {
 			f.write('cap: ')
 			f.expr(node.cap_expr)
-			if node.has_default {
+			if node.has_init {
 				f.write(', ')
 			}
 		}
-		if node.has_default {
+		if node.has_init {
 			f.write('init: ')
-			f.expr(node.default_expr)
+			f.expr(node.init_expr)
 		}
 		f.write('}')
 		return
@@ -1368,9 +1381,9 @@ pub fn (mut f Gen) array_init(node ast.ArrayInit) {
 			return
 		}
 		f.write(f.table.type_to_str_using_aliases(node.elem_type, f.mod2alias))
-		if node.has_default {
+		if node.has_init {
 			f.write('{init: ')
-			f.expr(node.default_expr)
+			f.expr(node.init_expr)
 			f.write('}')
 		} else {
 			f.write('{}')
@@ -1406,7 +1419,7 @@ pub fn (mut f Gen) call_expr(node ast.CallExpr) {
 	// for arg in node.args {}
 	mut is_method_newline := false
 	if node.is_method {
-		if node.name in ['map', 'filter', 'all', 'any'] {
+		if node.name in ['map', 'filter', 'all', 'any', 'count'] {
 			f.in_lambda_depth++
 			defer {
 				f.in_lambda_depth--
@@ -2216,13 +2229,13 @@ pub fn (mut f Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
 		f.write('`${node.val}`')
 	} else {
-		unescaped_val := node.val.replace('${golang.bs}${golang.bs}', '\x01').replace_each([
-			"${golang.bs}'",
+		unescaped_val := node.val.replace('${bs}${bs}', '\x01').replace_each([
+			"${bs}'",
 			"'",
-			'${golang.bs}"',
+			'${bs}"',
 			'"',
 		])
-		s := unescaped_val.replace_each(['\x01', '${golang.bs}${golang.bs}', '"', '${golang.bs}"'])
+		s := unescaped_val.replace_each(['\x01', '${bs}${bs}', '"', '${bs}"'])
 		f.write('"${s}"')
 	}
 }
@@ -2234,7 +2247,7 @@ pub fn (mut f Gen) string_inter_literal(node ast.StringInterLiteral) {
 	//	work too different for the various exprs that are interpolated
 	f.write(quote)
 	for i, val in node.vals {
-		f.write(val.replace("${golang.bs}'", "'"))
+		f.write(val.replace("${bs}'", "'"))
 		if i >= node.exprs.len {
 			break
 		}

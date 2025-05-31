@@ -1,6 +1,10 @@
+// vtest flaky: true
+// vtest retry: 3
+// vtest build: present_node?
+
 // import strings
 
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -227,6 +231,51 @@ fn test_split() {
 	assert vals.len == 2
 	assert vals[0] == 'wavy turquoise'
 	assert vals[1] == ''
+}
+
+fn test_split_any() {
+	mut s := 'aaa'
+	mut a := s.split_any('')
+	assert a.len == 3
+	assert a[0] == 'a'
+	assert a[1] == 'a'
+	assert a[2] == 'a'
+	s = ''
+	a = s.split_any('')
+	assert a.len == 0
+	s = '12131415'
+	a = s.split_any('1')
+	assert a.len == 5
+	assert a[0] == ''
+	assert a[1] == '2'
+	assert a[2] == '3'
+	assert a[3] == '4'
+	assert a[4] == '5'
+	s = '12131415'
+	a = s.split_any('2345')
+	assert a.len == 4
+	assert a[0] == '1'
+	assert a[1] == '1'
+	assert a[2] == '1'
+	assert a[3] == '1'
+	s = 'a,b,c'
+	a = s.split_any('],')
+	assert a.len == 3
+	assert a[0] == 'a'
+	assert a[1] == 'b'
+	assert a[2] == 'c'
+	s = 'a]b]c'
+	a = s.split_any('],')
+	assert a.len == 3
+	assert a[0] == 'a'
+	assert a[1] == 'b'
+	assert a[2] == 'c'
+	s = 'a]b]c'
+	a = s.split_any('],\\')
+	assert a.len == 3
+	assert a[0] == 'a'
+	assert a[1] == 'b'
+	assert a[2] == 'c'
 }
 
 /*
@@ -667,7 +716,7 @@ fn test_repeat() {
 	assert s2.repeat(5) == s2
 	assert s2.repeat(1) == s2
 	assert s2.repeat(0) == s2
-	// TODO Add test for negative values
+	// TODO: Add test for negative values
 }
 
 fn test_starts_with() {

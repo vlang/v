@@ -2,41 +2,38 @@
 // This is a small V example that was based off of the fireworks example.
 // Written by Stefan Schroeder in 2021 for the v project examples.
 // See LICENSE for license information.
-import os
 import gg
 import gx
 import math
 import time
 
-const (
-	// All coordinates are designed for a clock size of this many pixel.
-	// You cannot change the size of the clock by adjusting this value.
-	design_size = 700
-	center      = 350
+// All coordinates are designed for a clock size of this many pixel.
+// You cannot change the size of the clock by adjusting this value.
+const design_size = 700
+const center = 350
 
-	// Half the width of a tic-mark.
-	tw          = 9
-	// Height of a minute tic-mark. (hour is twice, 3-hour is thrice)
-	th          = 25
-	// Padding of tic-mark to window border
-	tp          = 10
+// Half the width of a tic-mark.
+const tw = 9
+// Height of a minute tic-mark. (hour is twice, 3-hour is thrice)
+const th = 25
+// Padding of tic-mark to window border
+const tp = 10
 
-	tic_color   = gx.Color{
-		r: 50
-		g: 50
-		b: 50
-	}
-	hand_color        = gx.black
-	second_hand_color = gx.red
-)
+const tic_color = gx.Color{
+	r: 50
+	g: 50
+	b: 50
+}
+const hand_color = gx.black
+const second_hand_color = gx.red
 
 struct App {
 	minutes_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
 	tp + 1 * th, center - tw, tp + 1 * th]
-	hours_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 2 * th,
-	center - tw, tp + 2 * th]
-	hours3_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 3 * th,
-	center - tw, tp + 3 * th]
+	hours_tic   []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
+	tp + 2 * th, center - tw, tp + 2 * th]
+	hours3_tic  []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
+	tp + 3 * th, center - tw, tp + 3 * th]
 
 	hour_hand   []f32 = [f32(329), 161, 350, 140, 371, 161, 371, 413, 329, 413]
 	minute_hand []f32 = [f32(334.25), 40.25, 350, 24.5, 365.75, 40.25, 365.75, 427, 334.25, 427]
@@ -44,7 +41,7 @@ struct App {
 mut:
 	gg        &gg.Context = unsafe { nil }
 	draw_flag bool        = true
-	dpi_scale f32 = 1.0
+	dpi_scale f32         = 1.0
 }
 
 fn on_frame(mut app App) {
@@ -87,7 +84,7 @@ fn on_frame(mut app App) {
 }
 
 // Rotate a polygon round the centerpoint
-[manualfree]
+@[manualfree]
 fn draw_convex_poly_rotate(mut ctx gg.Context, dpi_scale f32, points []f32, c gx.Color, angle f32) {
 	sa := math.sin(math.pi * angle / 180.0)
 	ca := math.cos(math.pi * angle / 180.0)
@@ -149,24 +146,16 @@ fn on_init(mut app App) {
 
 fn main() {
 	println("Press 'q' to quit.")
-	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	$if android {
-		font_path = 'fonts/RobotoMono-Regular.ttf'
-	}
-
 	mut app := &App{}
-
 	app.gg = gg.new_context(
-		width: design_size
-		height: design_size
+		width:        design_size
+		height:       design_size
 		window_title: 'Clock!'
-		bg_color: gx.white
-		user_data: app
-		frame_fn: on_frame
-		event_fn: on_event
-		init_fn: on_init
-		font_path: font_path
+		bg_color:     gx.white
+		user_data:    app
+		frame_fn:     on_frame
+		event_fn:     on_event
+		init_fn:      on_init
 	)
-
 	app.gg.run()
 }

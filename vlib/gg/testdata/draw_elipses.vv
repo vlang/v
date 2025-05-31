@@ -7,7 +7,7 @@ fn main() {
 	mut context := gg.new_context(
 		width: 200
 		height: 200
-		window_title: 'Elipses'
+		window_title: 'Ellipses'
 		frame_fn: frame
 	)
 	context.run()

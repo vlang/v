@@ -1,1 +1,1 @@
-fn long_generic<Abc>() {}
+fn long_generic[Abc]() {}

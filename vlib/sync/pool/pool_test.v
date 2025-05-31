@@ -26,7 +26,7 @@ fn worker_i(mut p pool.PoolProcessor, idx int, worker_id int) &IResult {
 fn test_work_on_strings() {
 	mut pool_s := pool.new_pool_processor(
 		callback: worker_s
-		maxjobs: 8
+		maxjobs:  8
 	)
 
 	pool_s.work_on_items(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])

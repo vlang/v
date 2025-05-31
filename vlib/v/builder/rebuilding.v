@@ -8,6 +8,7 @@ import strings
 import v.util
 import v.pref
 import v.vcache
+import runtime
 
 pub fn (mut b Builder) rebuild_modules() {
 	if !b.pref.use_cache || b.pref.build_mode == .build_module {
@@ -34,7 +35,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 	mut new_hashes := map[string]string{}
 	mut old_hashes := map[string]string{}
 	mut sb_new_hashes := strings.new_builder(1024)
-	//
+
 	mut cm := vcache.new_cache_manager(all_files)
 	sold_hashes := cm.load('.hashes', 'all_files') or { ' ' }
 	// eprintln(sold_hashes)
@@ -189,6 +190,7 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) {
 	$if trace_v_build_module ? {
 		eprintln('> Builder.v_build_module: ${rebuild_cmd}')
 	}
+	// eprintln('> Builder.v_build_module: ${rebuild_cmd}')
 	os.system(rebuild_cmd)
 }
 
@@ -334,22 +336,25 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 	if b.pref.is_stats {
 		compilation_time_micros := 1 + sw.elapsed().microseconds()
 		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')
-		mut all_v_source_lines, mut all_v_source_bytes := 0, 0
+		mut all_v_source_lines, mut all_v_source_bytes, mut all_v_source_tokens := 0, 0, 0
 		for pf in b.parsed_files {
 			all_v_source_lines += pf.nr_lines
 			all_v_source_bytes += pf.nr_bytes
+			all_v_source_tokens += pf.nr_tokens
 		}
 		mut sall_v_source_lines := all_v_source_lines.str()
 		mut sall_v_source_bytes := all_v_source_bytes.str()
+		mut sall_v_source_tokens := all_v_source_tokens.str()
 		mut sall_v_types := b.table.type_symbols.len.str()
 		mut sall_v_modules := b.table.modules.len.str()
 		mut sall_v_files := b.parsed_files.len.str()
 		sall_v_source_lines = util.bold('${sall_v_source_lines:10s}')
 		sall_v_source_bytes = util.bold('${sall_v_source_bytes:10s}')
+		sall_v_source_tokens = util.bold('${sall_v_source_tokens:10s}')
 		sall_v_types = util.bold('${sall_v_types:5s}')
 		sall_v_modules = util.bold('${sall_v_modules:5s}')
 		sall_v_files = util.bold('${sall_v_files:5s}')
-		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_bytes} bytes, ${sall_v_types} types, ${sall_v_modules} modules, ${sall_v_files} files')
+		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_tokens} tokens, ${sall_v_source_bytes} bytes, ${sall_v_types} types, ${sall_v_modules} modules, ${sall_v_files} files')
 		//
 		mut slines := b.stats_lines.str()
 		mut sbytes := b.stats_bytes.str()
@@ -359,7 +364,8 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		//
 		vlines_per_second := int(1_000_000.0 * f64(all_v_source_lines) / f64(compilation_time_micros))
 		svlines_per_second := util.bold(vlines_per_second.str())
-		println('compilation took: ${scompilation_time_ms} ms, compilation speed: ${svlines_per_second} vlines/s')
+		used_cgen_threads := if b.pref.no_parallel { 1 } else { runtime.nr_jobs() }
+		println('compilation took: ${scompilation_time_ms} ms, compilation speed: ${svlines_per_second} vlines/s, cgen threads: ${used_cgen_threads}')
 	}
 }
 
@@ -367,7 +373,7 @@ pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) 
 	vtmp := os.vtmp_dir()
 	mut uniq := ''
 	if !b.pref.reuse_tmpc {
-		uniq = '.${rand.u64()}'
+		uniq = '.${rand.ulid()}'
 	}
 	fname := os.file_name(os.real_path(base_file_name)) + '${uniq}${postfix}'
 	return os.real_path(os.join_path(vtmp, fname))

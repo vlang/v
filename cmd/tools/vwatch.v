@@ -15,6 +15,8 @@ const scan_period_ms = 1000 / scan_frequency_hz
 
 const max_scan_cycles = scan_timeout_s * scan_frequency_hz
 
+const default_vweb_suffixes = '*.v,*.html,*.css,*.js,*.md'
+
 fn get_scan_timeout_seconds() int {
 	env_vw_timeout := os.getenv('VWATCH_TIMEOUT').int()
 	if env_vw_timeout == 0 {
@@ -64,7 +66,7 @@ struct VFileStat {
 	mtime i64
 }
 
-[unsafe]
+@[unsafe]
 fn (mut vfs VFileStat) free() {
 	unsafe { vfs.path.free() }
 }
@@ -98,7 +100,7 @@ mut:
 	only_watch      []string // If not empty, *all* files that trigger updates, should match *at least one* of these s.match_glob() patterns. This is also triggered for vweb apps, to monitor for just *.v,*.js,*.css,*.html in vweb projects.
 }
 
-[if debug_vwatch ?]
+@[if debug_vwatch ?]
 fn (mut context Context) elog(msg string) {
 	eprintln('> vwatch ${context.pid}, ${msg}')
 }
@@ -165,17 +167,17 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 
 		if is_vweb_found {
 			if !os.args.any(it.starts_with('--only-watch')) {
+				context.only_watch = default_vweb_suffixes.split_any(',')
 				// vweb is often used with SQLite .db or .sqlite3 files right next to the executable/source,
 				// that are updated by the vweb app, causing a restart of the app, which in turn causes the
 				// browser to reload the current page, that probably triggered the update in the first place.
 				// Note that the problem is not specific to SQLite, any database that stores its files in the
 				// current (project) folder, will also cause this.
 				println('`v watch` detected that you are compiling a vweb project.')
-				println('   Because of that, the `--only-watch=*.v,*.html,*.css,*.js` flag was also implied.')
+				println('   Because of that, the `--only-watch=${default_vweb_suffixes}` flag was also implied.')
 				println('   In result, `v watch` will ignore changes to other files.')
 				println('   Add your own --only-watch filter, if you wish to override that choice.')
 				println('')
-				context.only_watch = '*.v,*.html,*.css,*.js'.split_any(',')
 			}
 		}
 		context.affected_paths = apaths.keys()
@@ -361,9 +363,7 @@ fn (mut context Context) compilation_runner_loop() {
 	}
 }
 
-const ccontext = Context{
-	child_process: 0
-}
+const ccontext = Context{}
 
 fn main() {
 	mut context := unsafe { &Context(voidptr(&ccontext)) }

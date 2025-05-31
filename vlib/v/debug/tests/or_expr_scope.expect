@@ -1,0 +1,12 @@
+#!/usr/bin/env expect
+source "common.tcl"
+
+expect "Break on *main* in ${test_file}:7\r\n"
+
+expect "${test_file}:7 vdbg> "
+send "scope\n"
+expect "err = fail (IError)"
+
+expect "${test_file}:7 vdbg> "
+send "q\n"
+expect eof

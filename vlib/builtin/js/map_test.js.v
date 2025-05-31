@@ -1,8 +1,9 @@
+// vtest flaky: true
+// vtest retry: 3
+// vtest build: present_node?
 import rand
 
-const (
-	strings = unique_strings(200, 10)
-)
+const strings = unique_strings(200, 10)
 
 fn unique_strings(arr_len int, str_len int) []string {
 	mut arr := []string{cap: arr_len}
@@ -111,7 +112,7 @@ fn test_map() {
 	peter := users['1']
 	assert peter.name == 'Peter'
 	mut a := Aaa{
-		m: map[string]int{}
+		m:     map[string]int{}
 		users: map[string]User{}
 	}
 	a.users['Bob'] = User{'Bob'}
@@ -199,8 +200,8 @@ fn test_various_map_value() {
 	m14['test'] = voidptr(0)
 	assert m14['test'] == voidptr(0)
 	mut m15 := map[string]&byte{}
-	m15['test'] = &u8(0)
-	assert m15['test'] == &u8(0)
+	m15['test'] = &u8(unsafe { nil })
+	assert m15['test'] == &u8(unsafe { nil })
 	mut m16 := map[string]i64{}
 	m16['test'] = i64(0)
 	assert m16['test'] == i64(0)

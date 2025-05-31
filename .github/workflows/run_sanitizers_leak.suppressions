@@ -1,0 +1,13 @@
+# websocket tests
+leak:mbedtls_ssl_setup
+
+# sqlite tests
+leak:*sqlite*
+
+# v
+leak:v__*
+leak:os__*
+leak:string__plus
+leak:malloc_uncollectable
+leak:new_array_from_c_array
+leak:_vinit

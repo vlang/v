@@ -1,9 +1,10 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
 
 import v.ast
+import v.util
 
 fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 	g.loop_depth++
@@ -56,6 +57,8 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		if node.label.len > 0 {
 			g.writeln('${node.label}:')
 		}
+		g.set_current_pos_as_last_stmt_pos()
+		g.skip_stmt_pos = true
 		g.write('for (')
 		if !node.has_init {
 			g.write('; ')
@@ -93,6 +96,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			}
 		}
 		g.writeln(') {')
+		g.skip_stmt_pos = false
 		g.is_vlines_enabled = true
 		g.inside_for_c_stmt = false
 		g.stmts(node.stmts)
@@ -138,9 +142,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut node := unsafe { node_ }
 	mut is_comptime := false
 
-	if (node.cond is ast.Ident && g.is_comptime_var(node.cond)) || node.cond is ast.ComptimeSelector {
+	if (node.cond is ast.Ident && node.cond.ct_expr) || node.cond is ast.ComptimeSelector {
 		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
-		ctyp := g.get_comptime_var_type(node.cond)
+		ctyp := g.type_resolver.get_type(node.cond)
 		if ctyp != ast.void_type {
 			unwrapped_typ = g.unwrap_generic(ctyp)
 			is_comptime = true
@@ -150,15 +154,18 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 
 		node.cond_type = unwrapped_typ
 		node.val_type = g.table.value_type(unwrapped_typ)
+		if node.val_is_mut {
+			node.val_type = node.val_type.ref()
+		}
 		node.scope.update_var_type(node.val_var, node.val_type)
 		node.kind = unwrapped_sym.kind
 
 		if is_comptime {
-			g.comptime_var_type_map[node.val_var] = node.val_type
+			g.type_resolver.update_ct_type(node.val_var, node.val_type)
 			node.scope.update_ct_var_kind(node.val_var, .value_var)
 
 			defer {
-				g.comptime_var_type_map.delete(node.val_var)
+				g.type_resolver.type_map.delete(node.val_var)
 			}
 		}
 
@@ -171,11 +178,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			node.scope.update_var_type(node.key_var, key_type)
 
 			if is_comptime {
-				g.comptime_var_type_map[node.key_var] = node.key_type
+				g.type_resolver.update_ct_type(node.key_var, node.key_type)
 				node.scope.update_ct_var_kind(node.key_var, .key_var)
 
 				defer {
-					g.comptime_var_type_map.delete(node.key_var)
+					g.type_resolver.type_map.delete(node.key_var)
 				}
 			}
 		}
@@ -205,7 +212,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
 		val_typ := ast.mktyp(node.val_type)
-		g.write('for (${g.typ(val_typ)} ${i} = ')
+		g.write('for (${g.styp(val_typ)} ${i} = ')
 		g.expr(node.cond)
 		g.write('; ${i} < ')
 		g.expr(node.high)
@@ -213,32 +220,20 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	} else if node.kind == .array {
 		// `for num in nums {`
 		// g.writeln('// FOR IN array')
-		mut styp := g.typ(node.val_type)
+		mut styp := g.styp(node.val_type)
 		mut val_sym := g.table.sym(node.val_type)
 		op_field := g.dot_or_ptr(node.cond_type)
 
-		if is_comptime && g.is_comptime_var(node.cond) {
-			mut unwrapped_typ := g.unwrap_generic(node.cond_type)
-			ctyp := g.unwrap_generic(g.get_comptime_var_type(node.cond))
-			if ctyp != ast.void_type {
-				unwrapped_typ = ctyp
-			}
-			val_sym = g.table.sym(unwrapped_typ)
-			node.val_type = g.table.value_type(unwrapped_typ)
-			styp = g.typ(node.val_type)
-			node.scope.update_var_type(node.val_var, node.val_type)
-			node.cond_type = node.val_type
-		}
 		mut cond_var := ''
-		if (node.cond is ast.Ident && !node.cond_type.has_flag(.option))
-			|| node.cond is ast.SelectorExpr {
+		cond_is_option := node.cond_type.has_flag(.option)
+		if (node.cond is ast.Ident && !cond_is_option)
+			|| (node.cond is ast.SelectorExpr && node.cond.or_block.kind == .absent) {
 			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
-			g.write(g.typ(node.cond_type))
-			g.write(' ${cond_var} = ')
+			g.write2(g.styp(node.cond_type), ' ${cond_var} = ')
 			old_inside_opt_or_res := g.inside_opt_or_res
-			if node.cond_type.has_flag(.option) {
+			if cond_is_option {
 				g.inside_opt_or_res = true
 			}
 			g.expr(node.cond)
@@ -247,36 +242,46 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		g.empty_line = true
-		opt_expr := '(*(${g.typ(node.cond_type.clear_flag(.option))}*)${cond_var}${op_field}data)'
-		cond_expr := if node.cond_type.has_flag(.option) {
-			'/*opt*/ ${opt_expr}${op_field}len'
+		opt_expr := '(*(${g.styp(node.cond_type.clear_flag(.option))}*)${cond_var}${op_field}data)'
+		cond_expr := if cond_is_option {
+			'${opt_expr}${op_field}len'
 		} else {
 			'${cond_var}${op_field}len'
 		}
 		g.writeln('for (int ${i} = 0; ${i} < ${cond_expr}; ++${i}) {')
 		if node.val_var != '_' {
-			if val_sym.kind == .function {
+			if mut val_sym.info is ast.FnType {
 				g.write('\t')
-				g.write_fn_ptr_decl(val_sym.info as ast.FnType, c_name(node.val_var))
+				tcc_bug := c_name(node.val_var)
+				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
 				g.writeln(' = ((voidptr*)${cond_var}${op_field}data)[${i}];')
 			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
 				right := '((${styp}*)${cond_var}${op_field}data)[${i}]'
 				g.writeln('\t${styp} ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${right}, sizeof(${styp}));')
 			} else {
+				needs_memcpy := !node.val_type.is_ptr()
+					&& g.table.final_sym(node.val_type).kind == .array_fixed
 				// If val is mutable (pointer behind the scenes), we need to generate
 				// `int* val = ((int*)arr.data) + i;`
 				// instead of
 				// `int* val = ((int**)arr.data)[i];`
 				// right := if node.val_is_mut { styp } else { styp + '*' }
-				right := if node.cond_type.has_flag(.option) {
-					'/*opt*/ ((${styp}*)${opt_expr}${op_field}data)[${i}]'
+				right := if cond_is_option {
+					'((${styp}*)${opt_expr}${op_field}data)[${i}]'
 				} else if node.val_is_mut || node.val_is_ref {
 					'((${styp})${cond_var}${op_field}data) + ${i}'
+				} else if val_sym.kind == .array_fixed {
+					'((${styp}*)${cond_var}${op_field}data)[${i}]'
 				} else {
 					'((${styp}*)${cond_var}${op_field}data)[${i}]'
 				}
-				g.writeln('\t${styp} ${c_name(node.val_var)} = ${right};')
+				if !needs_memcpy {
+					g.writeln('\t${styp} ${c_name(node.val_var)} = ${right};')
+				} else {
+					g.writeln('\t${styp} ${c_name(node.val_var)} = {0};')
+					g.writeln('\tmemcpy(${c_name(node.val_var)}, ${right}, sizeof(${styp}));')
+				}
 			}
 		}
 	} else if node.kind == .array_fixed {
@@ -285,13 +290,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		cond_is_literal := node.cond is ast.ArrayInit
 		if cond_is_literal {
 			cond_var = g.new_tmp_var()
-			g.write(g.typ(node.cond_type))
-			g.write(' ${cond_var} = ')
+			g.write2(g.styp(node.cond_type), ' ${cond_var} = ')
 			g.expr(node.cond)
 			g.writeln(';')
 		} else if cond_type_is_ptr {
 			cond_var = g.new_tmp_var()
-			cond_var_type := g.typ(node.cond_type).trim('*')
+			cond_var_type := g.styp(node.cond_type).trim('*')
 			if !node.cond.is_lvalue() {
 				g.write('${cond_var_type} *${cond_var} = ((${cond_var_type})')
 			} else {
@@ -303,21 +307,22 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		cond_sym := g.table.sym(node.cond_type)
+		cond_sym := g.table.final_sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
 		g.writeln('for (int ${idx} = 0; ${idx} != ${info.size}; ++${idx}) {')
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
 			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
-			if val_sym.kind == .function {
+			if val_sym.info is ast.FnType {
 				g.write('\t')
-				g.write_fn_ptr_decl(val_sym.info as ast.FnType, c_name(node.val_var))
+				tcc_bug := c_name(node.val_var)
+				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
 			} else if is_fixed_array {
-				styp := g.typ(node.val_type)
+				styp := g.styp(node.val_type)
 				g.writeln('\t${styp} ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${cond_var}[${idx}], sizeof(${styp}));')
 			} else {
-				styp := g.typ(node.val_type)
+				styp := g.styp(node.val_type)
 				g.write('\t${styp} ${c_name(node.val_var)}')
 			}
 			if !is_fixed_array {
@@ -329,6 +334,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				} else {
 					g.write(' = ${addr}')
 					g.expr(node.cond)
+					if info.is_fn_ret {
+						g.write('.ret_arr')
+					}
 					g.writeln('[${idx}];')
 				}
 			}
@@ -341,8 +349,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
-			g.write(g.typ(node.cond_type))
-			g.write(' ${cond_var} = ')
+			g.write2(g.styp(node.cond_type), ' ${cond_var} = ')
 			g.expr(node.cond)
 			g.writeln(';')
 		}
@@ -364,9 +371,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('}')
 		g.writeln('if (!DenseArray_has_index(&${cond_var}${dot_or_ptr}key_values, ${idx})) {continue;}')
 		if node.key_var != '_' {
-			key_styp := g.typ(node.key_type)
+			key_styp := g.styp(node.key_type)
 			key := c_name(node.key_var)
-			g.writeln('${key_styp} ${key} = /*key*/ *(${key_styp}*)DenseArray_key(&${cond_var}${dot_or_ptr}key_values, ${idx});')
+			g.writeln('${key_styp} ${key} = *(${key_styp}*)DenseArray_key(&${cond_var}${dot_or_ptr}key_values, ${idx});')
 			// TODO: analyze whether node.key_type has a .clone() method and call .clone() for all types:
 			if node.key_type == ast.string_type {
 				g.writeln('${key} = string_clone(${key});')
@@ -374,16 +381,17 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
-			if val_sym.kind == .function {
-				g.write_fn_ptr_decl(val_sym.info as ast.FnType, c_name(node.val_var))
+			if val_sym.info is ast.FnType {
+				tcc_bug := c_name(node.val_var)
+				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
 				g.write(' = (*(voidptr*)')
 				g.writeln('DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}));')
 			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
-				val_styp := g.typ(node.val_type)
+				val_styp := g.styp(node.val_type)
 				g.writeln('${val_styp} ${c_name(node.val_var)};')
 				g.writeln('memcpy(*(${val_styp}*)${c_name(node.val_var)}, (byte*)DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}), sizeof(${val_styp}));')
 			} else {
-				val_styp := g.typ(node.val_type)
+				val_styp := g.styp(node.val_type)
 				if node.val_type.is_ptr() {
 					if node.val_is_mut || node.val_is_ref {
 						g.write('${val_styp} ${c_name(node.val_var)} = &(*(${val_styp})')
@@ -413,7 +421,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.expr(cond)
 			g.writeln('${field_accessor}str[${i}];')
 		}
-	} else if node.kind == .struct_ {
+	} else if node.kind in [.struct, .interface] {
 		cond_type_sym := g.table.sym(node.cond_type)
 		next_fn := cond_type_sym.find_method_with_generic_parent('next') or {
 			verror('`next` method not found')
@@ -421,7 +429,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		ret_typ := next_fn.return_type
 		t_expr := g.new_tmp_var()
-		g.write('${g.typ(node.cond_type)} ${t_expr} = ')
+		g.write('${g.styp(node.cond_type)} ${t_expr} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		if node.key_var in ['', '_'] {
@@ -431,27 +439,64 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		t_var := g.new_tmp_var()
 		receiver_typ := g.unwrap_generic(next_fn.params[0].typ)
-		receiver_styp := g.typ(receiver_typ)
+		receiver_styp := g.cc_type(receiver_typ, false)
 		mut fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
 		receiver_sym := g.table.sym(receiver_typ)
 		if receiver_sym.info is ast.Struct {
 			if receiver_sym.info.concrete_types.len > 0 {
 				fn_name = g.generic_fn_name(receiver_sym.info.concrete_types, fn_name)
 			}
+		} else if receiver_sym.info is ast.Interface {
+			left_cc_type := g.cc_type(g.table.unaliased_type(node.cond_type), false)
+			left_type_name := util.no_dots(left_cc_type)
+			fn_name = '${c_name(left_type_name)}_name_table[${t_expr}._typ]._method_next'
 		}
-		g.write('\t${g.typ(ret_typ)} ${t_var} = ${fn_name}(')
+		g.write('\t${g.styp(ret_typ)} ${t_var} = ${fn_name}(')
 		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
 			g.write('&')
 		}
-		g.writeln('${t_expr});')
+		if node.kind == .interface {
+			g.writeln('${t_expr}._object);')
+		} else {
+			g.writeln('${t_expr});')
+		}
 		g.writeln('\tif (${t_var}.state != 0) break;')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
-		val_styp := g.typ(node.val_type)
+		val_styp := g.styp(ret_typ.clear_option_and_result())
+		ret_is_fixed_array := g.table.sym(ret_typ).is_array_fixed()
 		if node.val_is_mut {
-			g.writeln('\t${val_styp} ${val} = (${val_styp})${t_var}.data;')
+			if ret_typ.has_flag(.option) {
+				g.writeln('\t${val_styp}* ${val} = (${val_styp}*)${t_var}.data;')
+			} else {
+				g.writeln('\t${val_styp} ${val} = (${val_styp})${t_var}.data;')
+			}
 		} else {
-			g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
+			if ret_is_fixed_array {
+				g.writeln('\t${val_styp} ${val} = {0};')
+				g.write('\tmemcpy(${val}, ${t_var}.data, sizeof(${val_styp}));')
+			} else {
+				g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
+			}
 		}
+	} else if node.kind == .aggregate {
+		for_type := (g.table.sym(node.cond_type).info as ast.Aggregate).types[g.aggregate_type_idx]
+		val_type := g.table.value_type(for_type)
+
+		node.scope.update_var_type(node.val_var, val_type)
+
+		g.for_in_stmt(ast.ForInStmt{
+			cond:       node.cond
+			cond_type:  for_type
+			kind:       g.table.sym(for_type).kind
+			stmts:      node.stmts
+			val_type:   val_type
+			val_var:    node.val_var
+			val_is_mut: node.val_is_mut
+			val_is_ref: node.val_is_ref
+		})
+
+		g.loop_depth--
+		return
 	} else {
 		typ_str := g.table.type_to_str(node.cond_type)
 		g.error('for in: unhandled symbol `${node.cond}` of type `${typ_str}`', node.pos)

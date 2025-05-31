@@ -1,7 +1,7 @@
 module point
 
 pub struct Point {
-mut:
+pub mut:
 	x int
 	y int
 }

@@ -21,11 +21,11 @@ pub mut:
 	name string
 	// Like short option
 	abbrev string
-	// Desciption of flag
+	// Description of flag
 	description string
 	// If the flag is added to this command and to all subcommands
 	global bool
-	// If flag is requierd
+	// If flag is required
 	required bool
 	// Default value if no value provide by command line
 	default_value []string = []
@@ -43,7 +43,7 @@ pub fn (flags []Flag) get_all_found() []Flag {
 
 // get_bool returns `true` if the flag is set.
 // get_bool returns an error if the `FlagType` is not boolean.
-pub fn (flag Flag) get_bool() !bool {
+pub fn (flag &Flag) get_bool() !bool {
 	if flag.flag != .bool {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `bool`')
 	}
@@ -62,7 +62,7 @@ pub fn (flags []Flag) get_bool(name string) !bool {
 
 // get_int returns the `int` value argument of the flag.
 // get_int returns an error if the `FlagType` is not integer.
-pub fn (flag Flag) get_int() !int {
+pub fn (flag &Flag) get_int() !int {
 	if flag.flag != .int {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `int`')
 	}
@@ -78,7 +78,7 @@ pub fn (flag Flag) get_int() !int {
 
 // get_ints returns the array of `int` value argument of the flag specified in `name`.
 // get_ints returns an error if the `FlagType` is not integer.
-pub fn (flag Flag) get_ints() ![]int {
+pub fn (flag &Flag) get_ints() ![]int {
 	if flag.flag != .int_array {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `int_array`')
 	}
@@ -114,7 +114,7 @@ pub fn (flags []Flag) get_ints(name string) ![]int {
 
 // get_float returns the `f64` value argument of the flag.
 // get_float returns an error if the `FlagType` is not floating point.
-pub fn (flag Flag) get_float() !f64 {
+pub fn (flag &Flag) get_float() !f64 {
 	if flag.flag != .float {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `float`')
 	}
@@ -130,7 +130,7 @@ pub fn (flag Flag) get_float() !f64 {
 
 // get_floats returns the `f64` value argument of the flag.
 // get_floats returns an error if the `FlagType` is not floating point.
-pub fn (flag Flag) get_floats() ![]f64 {
+pub fn (flag &Flag) get_floats() ![]f64 {
 	if flag.flag != .float_array {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `float_array`')
 	}
@@ -166,7 +166,7 @@ pub fn (flags []Flag) get_floats(name string) ![]f64 {
 
 // get_string returns the `string` value argument of the flag.
 // get_string returns an error if the `FlagType` is not string.
-pub fn (flag Flag) get_string() !string {
+pub fn (flag &Flag) get_string() !string {
 	if flag.flag != .string {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `string`')
 	}
@@ -182,7 +182,7 @@ pub fn (flag Flag) get_string() !string {
 
 // get_strings returns the array of `string` value argument of the flag.
 // get_strings returns an error if the `FlagType` is not string.
-pub fn (flag Flag) get_strings() ![]string {
+pub fn (flag &Flag) get_strings() ![]string {
 	if flag.flag != .string_array {
 		return error('${flag.name}: Invalid flag type `${flag.flag}`, expected `string_array`')
 	}
@@ -213,31 +213,29 @@ pub fn (flags []Flag) get_strings(name string) ![]string {
 // parse parses flag values from arguments and return
 // an array of arguments with all consumed elements removed.
 pub fn (mut flag Flag) parse(args []string, posix_mode bool) ![]string {
-	if flag.matches(args, posix_mode) {
-		if flag.flag == .bool {
-			new_args := flag.parse_bool(args)!
-			return new_args
-		} else {
-			if flag.value.len > 0 && flag.flag != .int_array && flag.flag != .float_array
-				&& flag.flag != .string_array {
-				return error('The argument `${flag.name}` accept only one value!')
-			}
-
-			new_args := flag.parse_raw(args)!
-			return new_args
+	return match true {
+		!flag.matches(args[0], posix_mode) {
+			args
 		}
-	} else {
-		return args
+		flag.flag == .bool {
+			flag.parse_bool(args)!
+		}
+		flag.value.len > 0 && flag.flag !in [.int_array, .float_array, .string_array] {
+			error('The argument `${flag.name}` accept only one value!')
+		}
+		else {
+			flag.parse_raw(args)!
+		}
 	}
 }
 
 // matches returns `true` if first arg in `args` matches this flag.
-fn (mut flag Flag) matches(args []string, posix_mode bool) bool {
+fn (mut flag Flag) matches(arg string, posix_mode bool) bool {
 	prefix := if posix_mode { '--' } else { '-' }
-	return (flag.name != '' && args[0] == '${prefix}${flag.name}')
-		|| (flag.name != '' && args[0].starts_with('${prefix}${flag.name}='))
-		|| (flag.abbrev != '' && args[0] == '-${flag.abbrev}')
-		|| (flag.abbrev != '' && args[0].starts_with('-${flag.abbrev}='))
+	return (flag.name != '' && arg == '${prefix}${flag.name}')
+		|| (flag.name != '' && arg.starts_with('${prefix}${flag.name}='))
+		|| (flag.abbrev != '' && arg == '-${flag.abbrev}')
+		|| (flag.abbrev != '' && arg.starts_with('-${flag.abbrev}='))
 }
 
 fn (mut flag Flag) parse_raw(args []string) ![]string {
@@ -287,7 +285,7 @@ fn (flags []Flag) contains(name string) bool {
 }
 
 // Check if value is set by command line option. If not, return default value.
-fn (flag Flag) get_value_or_default_value() []string {
+fn (flag &Flag) get_value_or_default_value() []string {
 	if flag.value.len == 0 && flag.default_value.len > 0 {
 		// If default value is set and no value provide, use default value.
 		return flag.default_value

@@ -1,7 +1,28 @@
-vlib/v/checker/tests/unreachable_code.vv:3:4: error: unreachable code
-    1 | fn foo() int {
-    2 |     return if 1 == 1 { 1 } else { 2 }
-    3 |     a := 1
+vlib/v/checker/tests/unreachable_code.vv:15:3: error: unreachable code
+   13 |         continue
+   14 |         // ...
+   15 |         eprintln('continue')
+      |         ~~~~~~~~~~~~~~~~~~~~
+   16 |     }
+   17 |     for _ in 0 .. 3 {
+vlib/v/checker/tests/unreachable_code.vv:21:4: error: unreachable code
+   19 |             break
+   20 |             // ...
+   21 |             eprintln('done')
+      |             ~~~~~~~~~~~~~~~~
+   22 |         }
+   23 |         break
+vlib/v/checker/tests/unreachable_code.vv:25:3: error: unreachable code
+   23 |         break
+   24 |         // ...
+   25 |         return 3
+      |         ~~~~~~~~
+   26 |     }
+   27 |     return if 1 == 1 { 1 } else { 2 }
+vlib/v/checker/tests/unreachable_code.vv:28:4: error: unreachable code
+   26 |     }
+   27 |     return if 1 == 1 { 1 } else { 2 }
+   28 |     a := 1
       |       ~~
-    4 |     println(a)
-    5 | }
+   29 |     println(a)
+   30 | }

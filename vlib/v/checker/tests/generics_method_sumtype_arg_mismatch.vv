@@ -7,7 +7,7 @@ pub type Maybe[T] = None | T
 pub fn (m Maybe[T]) str[T]() string {
 	return if m is T {
 		x := m as T
-		'Some($x)'
+		'Some(${x})'
 	} else {
 		'Noth'
 	}

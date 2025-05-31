@@ -134,7 +134,7 @@ pub fn split_capital(s string) []string {
 	mut res := []string{}
 	mut word_start := 0
 	for idx, c in s {
-		if c >= `A` && c <= `Z` {
+		if c.is_capital() {
 			if word_start != idx {
 				res << s#[word_start..idx]
 			}

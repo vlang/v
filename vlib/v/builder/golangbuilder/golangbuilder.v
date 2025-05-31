@@ -36,6 +36,6 @@ pub fn build_golang(mut b builder.Builder, v_files []string, out_file string) {
 	}
 	b.front_and_middle_stages(nvf) or { return }
 	util.timing_start('Golang GEN')
-	b.stats_lines, b.stats_bytes = golang.gen(b.parsed_files, b.table, out_file, b.pref)
+	b.stats_lines, b.stats_bytes = golang.gen(b.parsed_files, mut b.table, out_file, b.pref)
 	util.timing_measure('Golang GEN')
 }

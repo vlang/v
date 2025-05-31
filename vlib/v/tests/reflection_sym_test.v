@@ -1,9 +1,9 @@
 import v.reflection
 
-[test_struct]
+@[test_struct]
 struct Test {
-	m map[int]string [test]
-	n ?string        [test2; test3]
+	m map[int]string @[test]
+	n ?string        @[test2; test3]
 }
 
 enum Flags {
@@ -38,15 +38,15 @@ fn test_flag_result() {
 }
 
 fn test_array_sym() {
-	var := [1, 2]
+	var := ['abc', 'def']
 	typ := reflection.type_of(var)
 	assert typ.sym.kind == .array
 	assert typ.sym.language == .v
 	assert typ.sym.methods.len > 0
-	assert typ.sym.methods.filter(it.name == 'reduce').len > 0
-	assert typ.sym.name == '[]int'
+	assert typ.sym.methods.any(it.name == 'join')
+	assert typ.sym.name == '[]string'
 	assert (typ.sym.info as reflection.Array).nr_dims == 1
-	assert (typ.sym.info as reflection.Array).elem_type == typeof[int]().idx
+	assert (typ.sym.info as reflection.Array).elem_type == typeof[string]().idx
 }
 
 fn test_sumtype_sym() {
@@ -77,24 +77,27 @@ fn test_multi_return_sym() {
 	assert func.receiver_typ == 0
 	assert func.is_pub == false
 
-	typ := reflection.get_type(func.return_typ)?
+	typ := reflection.get_type(int(func.return_typ))?
 	assert typ.name == '(int, f64, string)'
+	assert typ.sym.mod == ''
 	assert typ.sym.language == .v
 	assert typ.sym.kind == .multi_return
 }
 
 fn test_enum_sym() {
 	var := reflection.type_of(Flags.foo)
-	assert var.sym.name == 'main.Flags'
+	assert var.sym.name == 'Flags'
+	assert var.sym.mod == 'main'
 	assert var.sym.parent_idx == 0
-	assert var.sym.kind == .enum_
+	assert var.sym.kind == .enum
 	assert var.sym.language == .v
 	assert (var.sym.info as reflection.Enum).vals == ['foo', 'bar']
 }
 
 fn test_struct_sym() {
 	var := reflection.type_of(Test{})
-	assert var.sym.kind == .struct_
+	assert var.sym.kind == .struct
+	assert var.sym.mod == 'main'
 	assert (var.sym.info as reflection.Struct).attrs.len == 1
 	assert (var.sym.info as reflection.Struct).attrs == ['test_struct']
 

@@ -13,7 +13,7 @@ fn main() {
 	match x {
 		RuneAlias {
 			if x in whitespace {
-				// doing `if x as RuneAlias in whitepsace` here
+				// doing `if x as RuneAlias in whitespace` here
 				// works but it should be doing that automatically
 				// since I'm inside the RuneAlias match condition.
 			}

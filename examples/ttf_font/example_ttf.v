@@ -7,15 +7,13 @@ import x.ttf
 import os
 
 // import math
-const (
-	win_width  = 600
-	win_height = 700
-	bg_color   = gx.white
-	font_paths = [
-		os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Imprima-Regular.ttf')),
-		os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Graduate-Regular.ttf')),
-	]
-)
+const win_width = 600
+const win_height = 700
+const bg_color = gx.white
+const font_paths = [
+	os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Imprima-Regular.ttf')),
+	os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Graduate-Regular.ttf')),
+]
 
 // UI
 struct App_data {
@@ -117,19 +115,17 @@ fn my_event_manager(mut ev gg.Event, mut app App_data) {
 }
 
 fn main() {
-	mut app := &App_data{
-		gg: 0
-	}
+	mut app := &App_data{}
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'Test TTF module'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: draw_frame
-		event_fn: my_event_manager
-		init_fn: my_init
+		window_title:  'Test TTF module'
+		user_data:     app
+		bg_color:      bg_color
+		frame_fn:      draw_frame
+		event_fn:      my_event_manager
+		init_fn:       my_init
 	)
 	// load TTF fonts
 	for font_path in font_paths {
@@ -143,10 +139,10 @@ fn main() {
 	// TTF render 0 Frame counter
 	app.ttf_render << &ttf.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
-			tf: &app.tf[0]
-			buf: unsafe { malloc_noscan(32000000) }
+			tf:       &app.tf[0]
+			buf:      unsafe { malloc_noscan(32000000) }
 			buf_size: (32000000)
-			color: 0xFF0000FF
+			color:    0xFF0000FF
 			// style: .raw
 			// use_font_metrics: true
 		}

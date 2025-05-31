@@ -4,6 +4,7 @@ import math
 
 // Vector3D is a 3D vector
 pub struct Vector3D {
+pub:
 	x f64
 	y f64
 	z f64

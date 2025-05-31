@@ -1,10 +1,12 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+@[has_globals]
 module ast
 
 import v.util
 import strings
+import sync.stdatomic
 
 // get_name returns the real name for the function declaration
 pub fn (f &FnDecl) get_name() string {
@@ -15,9 +17,14 @@ pub fn (f &FnDecl) get_name() string {
 	}
 }
 
+// get_anon_fn_name returns the unique anonymous function name, based on the prefix, the func signature and its position in the source code
+pub fn (table &Table) get_anon_fn_name(prefix string, func &Fn, pos int) string {
+	return 'anon_fn_${prefix}_${table.fn_type_signature(func)}_${pos}'
+}
+
 // get_name returns the real name for the function calling
 pub fn (f &CallExpr) get_name() string {
-	if f.name != '' && f.name.all_after_last('.')[0].is_capital() && f.name.contains('__static__') {
+	if f.is_static_method {
 		return f.name.replace('__static__', '.')
 	} else {
 		return f.name
@@ -42,6 +49,12 @@ pub fn (node &FnDecl) fkey() string {
 		return '${int(node.receiver.typ)}.${node.name}'
 	}
 	return node.name
+}
+
+// sfkey returns a unique name of the struct field.
+// it is used in v.markused.
+pub fn (node &StructField) sfkey() string {
+	return '${int(node.container_typ)}.${node.name}}'
 }
 
 pub fn (node &Fn) fkey() string {
@@ -83,7 +96,7 @@ pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[stri
 	return f.str()
 }
 
-pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string) string {
+pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string, needs_wrap bool) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write_string('pub ')
@@ -106,9 +119,6 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 		}
 		f.write_string(node.receiver.name + ' ')
 		styp = util.no_cur_mod(styp, cur_mod)
-		if node.params[0].is_auto_rec {
-			styp = styp.trim('&')
-		}
 		f.write_string(styp + ') ')
 	} else if node.is_static_type_method {
 		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
@@ -133,7 +143,6 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 
 fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string) {
 	mut add_para_types := true
-	mut is_wrap_needed := false
 	if node.generic_names.len > 0 {
 		if node.is_method {
 			sym := t.sym(node.params[0].typ)
@@ -147,9 +156,8 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		if add_para_types {
 			f.write_string('[')
 			for i, gname in node.generic_names {
-				is_last := i == node.generic_names.len - 1
 				f.write_string(gname)
-				if !is_last {
+				if i != node.generic_names.len - 1 {
 					f.write_string(', ')
 				}
 			}
@@ -157,6 +165,9 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		}
 	}
 	f.write_string('(')
+	mut old_pline := node.pos.line_nr
+	mut pline := node.pos.line_nr
+	mut nparams_on_pline := 0
 	for i, param in node.params {
 		// skip receiver
 		if node.is_method && i == 0 {
@@ -167,37 +178,33 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		}
 		is_last_param := i == node.params.len - 1
 		is_type_only := param.name == ''
-		should_add_type := true // is_last_param || is_type_only || node.params[i + 1].typ != param.typ ||
-		// (node.is_variadic && i == node.params.len - 2)
-		pre_comments := param.comments.filter(it.pos.pos < param.pos.pos)
-		if pre_comments.len > 0 {
-			if i == 0 {
-				is_wrap_needed = true
-				f.write_string('\n\t')
-			}
-			write_comments(pre_comments, mut f)
-			if !f.last_n(1)[0].is_space() {
-				f.write_string(' ')
-			}
+		if param.on_newline {
+			f.write_string('\n\t')
+			pline++
+			nparams_on_pline = 0
 		}
-		if is_wrap_needed {
-			f.write_string('\t')
+		if pline == old_pline && nparams_on_pline > 0 {
+			f.write_string(' ')
 		}
 		if param.is_mut {
 			f.write_string(param.typ.share().str() + ' ')
 		}
 		f.write_string(param.name)
 		param_sym := t.sym(param.typ)
-		if param_sym.kind == .struct_ && (param_sym.info as Struct).is_anon {
-			f.write_string(' struct {')
-			struct_ := param_sym.info as Struct
-			for field in struct_.fields {
+		if param_sym.info is Struct && param_sym.info.is_anon {
+			if param.typ.has_flag(.option) {
+				f.write_string(' ?')
+			} else {
+				f.write_string(' ')
+			}
+			f.write_string('struct {')
+			for field in param_sym.info.fields {
 				f.write_string(' ${field.name} ${t.type_to_str(field.typ)}')
 				if field.has_default_expr {
 					f.write_string(' = ${field.default_expr}')
 				}
 			}
-			if struct_.fields.len > 0 {
+			if param_sym.info.fields.len > 0 {
 				f.write_string(' ')
 			}
 			f.write_string('}')
@@ -205,25 +212,30 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			mut s := t.type_to_str(param.typ.clear_flag(.shared_f))
 			if param.is_mut {
 				if s.starts_with('&') && ((!param_sym.is_number() && param_sym.kind != .bool)
-					|| node.language != .v) {
+					|| node.language != .v
+					|| (param.typ.is_ptr() && param_sym.kind == .struct)) {
 					s = s[1..]
+				} else if param.typ.is_ptr() && param_sym.kind == .struct && !s.contains('[') {
+					s = t.type_to_str(param.typ.clear_flag(.shared_f).deref())
 				}
 			}
 			s = util.no_cur_mod(s, cur_mod)
 			s = shorten_full_name_based_on_aliases(s, m2a)
-			if should_add_type {
-				if !is_type_only {
-					f.write_string(' ')
-				}
-				if node.is_variadic && is_last_param {
-					f.write_string('...')
-				}
-				f.write_string(s)
+			if !is_type_only {
+				f.write_string(' ')
 			}
+			if node.is_variadic && is_last_param && !node.is_c_variadic {
+				f.write_string('...')
+			}
+			f.write_string(s)
 		}
 		if !is_last_param {
-			f.write_string(', ')
+			f.write_string(',')
+		} else if node.is_c_variadic {
+			f.write_string(', ...')
 		}
+		nparams_on_pline++
+		old_pline = pline
 	}
 	f.write_string(')')
 	if node.return_type != void_type {
@@ -289,15 +301,15 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 			continue
 		}
 		replacements << StringifyModReplacement{
-			mod: mod
-			alias: alias
+			mod:    mod
+			alias:  alias
 			weight: mod.count('.') * 100 + mod.len
 		}
 	}
 	if replacements.len == 0 {
 		return input
 	}
-	//
+
 	mut res := input
 	if replacements.len > 1 {
 		replacements.sort(a.weight > b.weight)
@@ -383,8 +395,23 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	return res.join(''), needs_braces
 }
 
+__global nested_expr_str_calls = i64(0)
+// too big values, risk stack overflow in `${expr}` (which uses `expr.str()`) calls
+const max_nested_expr_str_calls = 300
+
 // string representation of expr
-pub fn (x Expr) str() string {
+pub fn (x &Expr) str() string {
+	str_calls := stdatomic.add_i64(&nested_expr_str_calls, 1)
+	if str_calls > max_nested_expr_str_calls {
+		$if panic_on_deeply_nested_expr_str_calls ? {
+			eprintln('${@LOCATION}: too many nested Expr.str() calls: ${str_calls}, expr type: ${x.type_name()}')
+			exit(1)
+		}
+		return '{expression too deep}'
+	}
+	defer {
+		stdatomic.sub_i64(&nested_expr_str_calls, 1)
+	}
 	match x {
 		AnonFn {
 			return 'anon_fn'
@@ -403,8 +430,8 @@ pub fn (x Expr) str() string {
 			if x.has_cap {
 				fields << 'cap: ${x.cap_expr.str()}'
 			}
-			if x.has_default {
-				fields << 'init: ${x.default_expr.str()}'
+			if x.has_init {
+				fields << 'init: ${x.init_expr.str()}'
 			}
 			typ_str := global_table.type_to_str(x.elem_type)
 			if fields.len > 0 {
@@ -425,7 +452,7 @@ pub fn (x Expr) str() string {
 			return '${x.expr.str()} as ${global_table.type_to_str(x.typ)}'
 		}
 		AtExpr {
-			return '${x.val}'
+			return '${x.name}'
 		}
 		CTempVar {
 			return x.orig.str()
@@ -434,7 +461,8 @@ pub fn (x Expr) str() string {
 			return x.val.str()
 		}
 		CastExpr {
-			return '${x.typname}(${x.expr.str()})'
+			type_name := util.strip_main_name(global_table.type_to_str(x.typ))
+			return '${type_name}(${x.expr.str()})'
 		}
 		CallExpr {
 			sargs := args2str(x.args)
@@ -457,10 +485,14 @@ pub fn (x Expr) str() string {
 			if x.name.contains('.') {
 				return '${x.get_name()}(${sargs})${propagate_suffix}'
 			}
-			if x.name.contains('__static__') {
+			if x.is_static_method {
 				return '${x.mod}.${x.get_name()}(${sargs})${propagate_suffix}'
 			}
-			return '${x.mod}.${x.get_name()}(${sargs})${propagate_suffix}'
+			if x.mod == 'main' {
+				return '${x.get_name()}(${sargs})${propagate_suffix}'
+			} else {
+				return '${x.mod}.${x.get_name()}(${sargs})${propagate_suffix}'
+			}
 		}
 		CharLiteral {
 			return '`${x.val}`'
@@ -493,7 +525,13 @@ pub fn (x Expr) str() string {
 			return 'spawn ${x.call_expr}'
 		}
 		Ident {
-			return x.name.clone()
+			if x.cached_name != '' {
+				return x.cached_name
+			}
+			unsafe {
+				x.cached_name = util.strip_main_name(x.name.clone())
+			}
+			return x.cached_name
 		}
 		IfExpr {
 			mut parts := []string{}
@@ -525,6 +563,9 @@ pub fn (x Expr) str() string {
 			for ik, kv in x.keys {
 				mv := x.vals[ik].str()
 				pairs << '${kv}: ${mv}'
+			}
+			if x.has_update_expr {
+				return 'map{ ...${x.update_expr} ${pairs.join(' ')} }'
 			}
 			return 'map{ ${pairs.join(' ')} }'
 		}
@@ -601,13 +642,18 @@ pub fn (x Expr) str() string {
 			return "'${x.val}'"
 		}
 		TypeNode {
-			return 'TypeNode(${global_table.type_str(x.typ)})'
+			opt_prefix := if x.typ.has_flag(.option) { '?' } else { '' }
+			return 'TypeNode(${opt_prefix}${global_table.type_str(x.typ)})'
 		}
 		TypeOf {
 			if x.is_type {
 				return 'typeof[${global_table.type_to_str(x.typ)}]()'
 			}
 			return 'typeof(${x.expr.str()})'
+		}
+		LambdaExpr {
+			ilist := x.params.map(it.name).join(', ')
+			return '|${ilist}| ${x.expr.str()}'
 		}
 		Likely {
 			return '_likely_(${x.expr.str()})'
@@ -648,7 +694,7 @@ pub fn (x Expr) str() string {
 			return 'ast.ChanInit'
 		}
 		ComptimeCall {
-			return 'ast.ComptimeCall'
+			return x.expr_str()
 		}
 		EmptyExpr {
 			return 'ast.EmptyExpr'
@@ -723,12 +769,34 @@ pub fn (node Stmt) str() string {
 			}
 			return out
 		}
+		Block {
+			mut res := ''
+			res += '{'
+			for s in node.stmts {
+				res += s.str()
+				res += ';'
+			}
+			res += '}'
+			return res
+		}
 		BranchStmt {
 			return node.str()
 		}
 		ConstDecl {
-			fields := node.fields.map(field_to_string)
-			return 'const (${fields.join(' ')})'
+			return node.fields.map(field_to_string).join('')
+		}
+		DeferStmt {
+			mut res := ''
+			res += 'defer {'
+			for s in node.stmts {
+				res += s.str()
+				res += ';'
+			}
+			res += '}'
+			return res
+		}
+		EnumDecl {
+			return 'enum ${node.name} { ${node.fields.len} fields }'
 		}
 		ExprStmt {
 			return node.expr.str()
@@ -736,8 +804,32 @@ pub fn (node Stmt) str() string {
 		FnDecl {
 			return 'fn ${node.name}( ${node.params.len} params ) { ${node.stmts.len} stmts }'
 		}
-		EnumDecl {
-			return 'enum ${node.name} { ${node.fields.len} fields }'
+		ForInStmt {
+			mut res := ''
+			if node.label.len > 0 {
+				res += '${node.label}: '
+			}
+			res += 'for '
+			if node.key_var != '' {
+				res += node.key_var
+			}
+			if node.key_var != '' && node.val_var != '' {
+				res += ', '
+			}
+			if node.val_var != '' {
+				if node.val_is_mut {
+					res += 'mut '
+				}
+				res += node.val_var
+			}
+			res += ' in '
+			res += node.cond.str()
+			if node.is_range {
+				res += ' .. '
+				res += node.high.str()
+			}
+			res += ' {'
+			return res
 		}
 		ForStmt {
 			if node.is_inf {
@@ -745,8 +837,33 @@ pub fn (node Stmt) str() string {
 			}
 			return 'for ${node.cond} {'
 		}
-		Module {
-			return 'module ${node.name}'
+		GlobalDecl {
+			mut res := ''
+			if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
+				return '__global ()'
+			}
+			res += '__global '
+			if node.is_block {
+				res += '( '
+			}
+			for field in node.fields {
+				if field.is_volatile {
+					res += 'volatile '
+				}
+				res += field.name
+				res += ' '
+				if field.has_expr {
+					res += '= '
+					res += field.expr.str()
+				} else {
+					res += global_table.type_to_str(field.typ)
+				}
+				res += ';'
+			}
+			if node.is_block {
+				res += ' )'
+			}
+			return res
 		}
 		Import {
 			mut out := 'import ${node.mod}'
@@ -754,6 +871,9 @@ pub fn (node Stmt) str() string {
 				out += ' as ${node.alias}'
 			}
 			return out
+		}
+		Module {
+			return 'module ${node.name}'
 		}
 		Return {
 			mut out := 'return'
@@ -776,7 +896,7 @@ pub fn (node Stmt) str() string {
 
 fn field_to_string(f ConstField) string {
 	x := f.name.trim_string_left(f.mod + '.')
-	return '${x} = ${f.expr}'
+	return 'const ${x} = ${f.expr};'
 }
 
 pub fn (e ComptimeForKind) str() string {
@@ -785,5 +905,7 @@ pub fn (e ComptimeForKind) str() string {
 		.fields { return 'fields' }
 		.attributes { return 'attributes' }
 		.values { return 'values' }
+		.variants { return 'variants' }
+		.params { return 'params' }
 	}
 }

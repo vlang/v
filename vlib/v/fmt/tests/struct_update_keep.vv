@@ -8,7 +8,7 @@ struct Foo2 {}
 fn main() {
 	f := Foo{
 		name: 'test'
-		age: 18
+		age:  18
 	}
 	f2 := Foo{
 		...f

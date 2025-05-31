@@ -1,0 +1,6 @@
+vlib/v/checker/tests/struct_init_field_result_err.vv:14:12: error: time.parse() returns `!time.Time`, so it should have either an `or {}` block, or `!` at the end
+   12 | _ := Payload{
+   13 |     sub: '1234567890'
+   14 |     exp: time.parse('2019-01-01 00:00:00')
+      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   15 | }

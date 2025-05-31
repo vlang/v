@@ -1,0 +1,28 @@
+vlib/v/checker/tests/wrong_comptime_for_err.vv:26:7: warning: unused variable: `f`
+   24 |         }
+   25 |     }
+   26 |     $for f in a.variants {
+      |          ^
+   27 |     }
+   28 |     $for f in T.variants {
+vlib/v/checker/tests/wrong_comptime_for_err.vv:28:7: warning: unused variable: `f`
+   26 |     $for f in a.variants {
+   27 |     }
+   28 |     $for f in T.variants {
+      |          ^
+   29 |     }
+   30 | }
+vlib/v/checker/tests/wrong_comptime_for_err.vv:26:12: error: Foo is not Sum type to use with .variants
+   24 |         }
+   25 |     }
+   26 |     $for f in a.variants {
+      |               ^
+   27 |     }
+   28 |     $for f in T.variants {
+vlib/v/checker/tests/wrong_comptime_for_err.vv:28:12: error: $for expects a type name or variable name to be used here, but T is not a type or variable name
+   26 |     $for f in a.variants {
+   27 |     }
+   28 |     $for f in T.variants {
+      |               ^
+   29 |     }
+   30 | }

@@ -1,7 +1,7 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module util
 
 import os
@@ -9,7 +9,6 @@ import strings
 import term
 import v.errors
 import v.token
-import v.mathutil as mu
 
 // The filepath:line:col: format is the default C compiler error output format.
 // It allows editors and IDE's like emacs to quickly find the errors in the
@@ -19,18 +18,14 @@ import v.mathutil as mu
 // v itself.
 // error_context_before - how many lines of source context to print before the pointer line
 // error_context_after - ^^^ same, but after
-const (
-	error_context_before = 2
-	error_context_after  = 2
-)
+const error_context_before = 2
+const error_context_after = 2
 
 // emanager.support_color - should the error and other messages
 // have ANSI terminal escape color codes in them.
 // By default, v tries to autodetect, if the terminal supports colors.
 // Use -color and -nocolor options to override the detection decision.
-pub const (
-	emanager = new_error_manager()
-)
+pub const emanager = new_error_manager()
 
 pub struct EManager {
 mut:
@@ -51,14 +46,14 @@ pub fn (e &EManager) set_support_color(b bool) {
 }
 
 pub fn bold(msg string) string {
-	if !util.emanager.support_color {
+	if !emanager.support_color {
 		return msg
 	}
 	return term.bold(msg)
 }
 
 pub fn color(kind string, msg string) string {
-	if !util.emanager.support_color {
+	if !emanager.support_color {
 		return msg
 	}
 	if kind.contains('error') {
@@ -99,11 +94,11 @@ const verror_paths_absolute = os.getenv('VERROR_PATHS') == 'absolute'
 pub fn path_styled_for_error_messages(path string) string {
 	mut rpath := os.real_path(path)
 	rpath = rpath.replace('\\', '/')
-	if util.verror_paths_absolute {
+	if verror_paths_absolute {
 		return rpath
 	}
-	if rpath.starts_with(util.normalised_workdir) {
-		rpath = rpath.replace_once(util.normalised_workdir, '')
+	if rpath.starts_with(normalised_workdir) {
+		rpath = rpath.replace_once(normalised_workdir, '')
 	}
 	return rpath
 }
@@ -112,8 +107,8 @@ pub fn path_styled_for_error_messages(path string) string {
 pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos) string {
 	emsg := omsg.replace('main.', '')
 	path := path_styled_for_error_messages(filepath)
-	position := if filepath.len > 0 {
-		'${path}:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
+	position := if filepath != '' {
+		'${path}:${pos.line_nr + 1}:${int_max(1, pos.col + 1)}:'
 	} else {
 		''
 	}
@@ -126,7 +121,7 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos)
 	return '${final_position} ${final_kind} ${final_msg}${final_context}'.trim_space()
 }
 
-[heap]
+@[heap]
 struct LinesCache {
 mut:
 	lines map[string][]string
@@ -156,13 +151,13 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 	if source_lines.len == 0 {
 		return clines
 	}
-	bline := mu.max(0, pos.line_nr - util.error_context_before)
-	aline := mu.max(0, mu.min(source_lines.len - 1, pos.line_nr + util.error_context_after))
+	bline := int_max(0, pos.line_nr - error_context_before)
+	aline := int_max(0, int_min(source_lines.len - 1, pos.line_nr + error_context_after))
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
-		sline := source_lines[iline]
-		start_column := mu.max(0, mu.min(pos.col, sline.len))
-		end_column := mu.max(0, mu.min(pos.col + mu.max(0, pos.len), sline.len))
+		sline := source_lines[iline] or { '' }
+		start_column := int_max(0, int_min(pos.col, sline.len))
+		end_column := int_max(0, int_min(pos.col + int_max(0, pos.len), sline.len))
 		cline := if iline == pos.line_nr {
 			sline[..start_column] + color(kind, sline[start_column..end_column]) +
 				sline[end_column..]
@@ -183,7 +178,7 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 					i++
 				} else {
 					char_len := utf8_char_len(sline[i])
-					spaces := ' '.repeat(utf8_str_visible_length(sline[i..i + char_len]))
+					spaces := ' '.repeat(utf8_str_visible_length(sline#[i..i + char_len]))
 					pointerline_builder.write_string(spaces)
 					i += char_len
 				}
@@ -197,7 +192,7 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 	return clines
 }
 
-[noreturn]
+@[noreturn]
 pub fn verror(kind string, s string) {
 	final_kind := bold(color(kind, kind))
 	eprintln('${final_kind}: ${s}')
@@ -205,13 +200,6 @@ pub fn verror(kind string, s string) {
 }
 
 pub fn vlines_escape_path(path string, ccompiler string) string {
-	is_cc_tcc := ccompiler.contains('tcc')
-	if is_cc_tcc {
-		// tcc currently has a bug, causing all #line files,
-		// to be prefixed with the *same folder as the .tmp.c file*
-		// this ../../ escaping, is a temporary workaround for that
-		return '../../../../../..' + cescaped_path(os.real_path(path))
-	}
 	return cescaped_path(os.real_path(path))
 }
 

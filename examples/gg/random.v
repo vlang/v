@@ -14,7 +14,7 @@ mut:
 	pixels      [pheight][pwidth]u32
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut state AppState) update() {
 	mut rcolor := u64(state.gg.frame)
 	for {
@@ -50,13 +50,13 @@ fn graphics_frame(mut state AppState) {
 fn main() {
 	mut state := &AppState{}
 	state.gg = gg.new_context(
-		width: 800
-		height: 600
+		width:         800
+		height:        600
 		create_window: true
-		window_title: 'Random Static'
-		init_fn: graphics_init
-		frame_fn: graphics_frame
-		user_data: state
+		window_title:  'Random Static'
+		init_fn:       graphics_init
+		frame_fn:      graphics_frame
+		user_data:     state
 	)
 	spawn state.update()
 	state.gg.run()

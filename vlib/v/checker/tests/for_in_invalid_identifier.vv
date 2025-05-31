@@ -1,5 +1,5 @@
 fn main() {
 	for index, mut value in s.statements {
-		println('Hello $index $value')
+		println('Hello ${index} ${value}')
 	}
 }

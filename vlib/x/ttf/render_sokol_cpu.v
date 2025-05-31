@@ -17,13 +17,16 @@ import gg
 import sokol.sgl
 import sokol.gfx
 
+// TTF_render_Sokol is a structure containing data for rendering a TTF font
+// as a sokol texture
 pub struct TTF_render_Sokol {
 pub mut:
 	bmp &BitMap = unsafe { nil } // Base bitmap render
 	// rendering fields
-	sg_img       gfx.Image // sokol image
+	sg_img       gfx.Image   // sokol image
+	sg_smp       gfx.Sampler // sokol sampler
 	scale_reduct f32 = 2.0 // scale of the cpu texture for filtering
-	device_dpi   int = 72 // device DPI
+	device_dpi   int = 72  // device DPI
 }
 
 /******************************************************************************
@@ -31,17 +34,19 @@ pub mut:
 * Render functions
 *
 ******************************************************************************/
+// format_texture formats the BMP (bitmap).
 pub fn (mut tf_skl TTF_render_Sokol) format_texture() {
 	tf_skl.bmp.format_texture()
 }
 
+// create_text prepares the text `in_txt` in size `in_font_size` as a sokol texture.
 pub fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32) {
 	scale_reduct := tf_skl.scale_reduct
 	device_dpi := tf_skl.device_dpi
 	font_size := in_font_size //* scale_reduct
 
 	// Formula: (font_size * device dpi) / (72dpi * em_unit)
-	// scale := ((1.0  * devide_dpi )/ f32(72 * tf_skl.bmp.tf.units_per_em))* font_size
+	// scale := ((1.0  * device_dpi )/ f32(72 * tf_skl.bmp.tf.units_per_em))* font_size
 	scale := f32(font_size * device_dpi) / f32(72 * int(tf_skl.bmp.tf.units_per_em))
 	// dprintln("Scale: $scale")
 
@@ -71,12 +76,13 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32
 	tf_skl.format_texture()
 }
 
+// create_text_block prepares a block of text as a sokol texture.
 pub fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, in_h int, in_font_size f32) {
 	scale_reduct := tf_skl.scale_reduct
 	device_dpi := tf_skl.device_dpi
 	font_size := in_font_size //* scale_reduct
 	// Formula: (font_size * device dpi) / (72dpi * em_unit)
-	// scale := ((1.0  * devide_dpi )/ f32(72 * tf_skl.bmp.tf.units_per_em))* font_size
+	// scale := ((1.0  * device_dpi )/ f32(72 * tf_skl.bmp.tf.units_per_em))* font_size
 	scale := f32(font_size * device_dpi) / f32(72 * int(tf_skl.bmp.tf.units_per_em))
 	// dprintln("Scale: $scale")
 
@@ -115,48 +121,60 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, 
 * Sokol Render functions
 *
 ******************************************************************************/
+// create_texture creates the sokol texture from the internal buffer state.
 pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 	w := tf_skl.bmp.width
 	h := tf_skl.bmp.height
 	sz := tf_skl.bmp.width * tf_skl.bmp.height * tf_skl.bmp.bp
 	mut img_desc := gfx.ImageDesc{
-		width: w
-		height: h
+		width:       w
+		height:      h
 		num_mipmaps: 0
-		min_filter: .linear
-		mag_filter: .linear
 		// usage: .dynamic
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
-		label: &char(0)
+		label:         &char(unsafe { nil })
 		d3d11_texture: 0
 	}
 	// comment for dynamic
 	img_desc.data.subimage[0][0] = gfx.Range{
-		ptr: tf_skl.bmp.buf
+		ptr:  tf_skl.bmp.buf
 		size: usize(sz)
 	}
 
 	simg := gfx.make_image(&img_desc)
 	// free(tf_skl.bmp.buf)  // DONT FREE IF Dynamic
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u:     .clamp_to_edge
+		wrap_v:     .clamp_to_edge
+	}
+
+	ssmp := gfx.make_sampler(&smp_desc)
+
 	tf_skl.sg_img = simg
+	tf_skl.sg_smp = ssmp
 }
 
+// destroy_texture detroys the internal sokol texture.
 pub fn (tf_skl TTF_render_Sokol) destroy_texture() {
 	gfx.destroy_image(tf_skl.sg_img)
+	gfx.destroy_sampler(tf_skl.sg_smp)
 }
 
-// Use only if usage: .dynamic
+// update_text_texture updates the sokol texture with current internal state.
+// NOTE: Only use if `.dynamic` is set.
 pub fn (mut tf_skl TTF_render_Sokol) update_text_texture() {
 	sz := tf_skl.bmp.width * tf_skl.bmp.height * tf_skl.bmp.bp
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{
-		ptr: tf_skl.bmp.buf
+		ptr:  tf_skl.bmp.buf
 		size: usize(sz)
 	}
 	gfx.update_image(tf_skl.sg_img, &tmp_sbc)
 }
 
+// draw_text_bmp renders the internal state to the current sokol pipeline.
 pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 	// width  := tf_skl.bmp.width  >> 1
 	// height := tf_skl.bmp.height >> 1
@@ -195,10 +213,10 @@ pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 		1,
 	]
 	sgl.mult_matrix(m)
-	//
+
 	sgl.load_pipeline(ctx.pipeline.alpha)
 	sgl.enable_texture()
-	sgl.texture(tf_skl.sg_img)
+	sgl.texture(tf_skl.sg_img, tf_skl.sg_smp)
 	sgl.begin_quads()
 	sgl.c4b(255, 255, 255, 255)
 	sgl.v2f_t2f(x0, y0, u0, v0)

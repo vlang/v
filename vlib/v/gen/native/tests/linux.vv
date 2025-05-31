@@ -1,0 +1,21 @@
+
+fn test_for_c_in_string() {
+	$if windows {
+		println('0')
+		println('97')
+		println('1')
+		println('98')
+		println('2')
+		println('99')
+	} $else {
+		s := 'abc'
+		for i, c in s {
+			println(i)
+			println(int(c))
+		}
+	}
+}
+
+fn main() {
+	test_for_c_in_string()
+}

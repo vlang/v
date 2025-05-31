@@ -1,0 +1,13 @@
+pub enum HardwareAccelerationDevice as i64 {
+	@none       = 0
+	cpu         = (1 << 0)
+	gpu         = (1 << 1)
+	accelerator = (1 << 2)
+	default     = (1 << 0)
+	all         = 0xFFFFFFFF
+}
+
+fn main() {
+	device := HardwareAccelerationDevice.@none
+	println(device)
+}

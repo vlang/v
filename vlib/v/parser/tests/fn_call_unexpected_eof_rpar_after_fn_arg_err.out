@@ -1,0 +1,6 @@
+vlib/v/parser/tests/fn_call_unexpected_eof_rpar_after_fn_arg_err.vv:3:36: error: unexpected eof, expecting `)`
+    1 | import os
+    2 | 
+    3 | println(os.file_last_mod_unix('x.v')
+      |                                    ^
+    4 |

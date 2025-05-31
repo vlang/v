@@ -1,4 +1,4 @@
 enum color {
-    green
-    yellow
+	green
+	yellow
 }

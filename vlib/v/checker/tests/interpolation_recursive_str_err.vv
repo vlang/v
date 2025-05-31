@@ -5,7 +5,7 @@ struct Test {
 }
 
 fn (t Test) str() string {
-	_ = '$t'
+	_ = '${t}'
 	return 'test'
 }
 

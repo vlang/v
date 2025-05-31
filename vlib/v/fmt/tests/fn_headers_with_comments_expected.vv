@@ -7,6 +7,5 @@ fn C.Mix_LoadMUS3(file byteptr) voidptr // 1  2  3
 // Loads music
 fn C.Mix_LoadMUS4(file byteptr) voidptr
 
-/*
-Test
+/* Test
 */

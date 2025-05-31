@@ -1,3 +1,5 @@
+# DEPRECATED see instead [veb](https://github.com/vlang/v/tree/master/vlib/veb)
+
 # vweb - the V Web Server
 
 A simple yet powerful web server with built-in routing, parameter handling, templating, and other
@@ -7,7 +9,7 @@ The [gitly](https://gitly.org/) site is based on vweb.
 **_Some features may not be complete, and have some bugs._**
 
 ## Quick Start
-Just run **`v new <name> web`** in your terminal.
+Just run **`v new --web <name>`** in your terminal.
 
 Run your vweb app with a live reload via `v -d vweb_livereload watch run .`
 
@@ -20,10 +22,10 @@ in the browser. No need to quit the app, rebuild it, and refresh the page in the
 
 - **Very fast** performance of C on the web.
 - **Small binary** hello world website is <100 KB.
-- **Easy to deploy** just one binary file that also includes all templates. No need to install any
-  dependencies.
 - **Templates are precompiled** all errors are visible at compilation time, not at runtime.
 - **Multithreaded** by default
+- **Easy to deploy** just one binary file that also includes all templates. No need to install any
+  dependencies.
 
 ### Examples
 
@@ -67,9 +69,9 @@ fn new_app() &App {
 	return app
 }
 
-['/']
+@['/']
 pub fn (mut app App) page_home() vweb.Result {
-	// all this constants can be accessed by src/templates/page/home.html file.
+	// all these constants can be accessed by src/templates/page/home.html file.
 	page_title := 'V is the new V'
 	v_url := 'https://github.com/vlang/v'
 
@@ -182,7 +184,7 @@ fn (mut app App) hello() vweb.Result {
 }
 
 // This endpoint can be accessed via http://localhost:port/foo
-["/foo"]
+@["/foo"]
 fn (mut app App) world() vweb.Result {
 	return app.text('World')
 }
@@ -197,12 +199,12 @@ you can simply add the attribute before the function definition.
 **Example:**
 
 ```v ignore
-[post]
+@[post]
 fn (mut app App) world() vweb.Result {
 	return app.text('World')
 }
 
-['/product/create'; post]
+@['/product/create'; post]
 fn (mut app App) create_product() vweb.Result {
 	return app.text('product')
 }
@@ -210,8 +212,8 @@ fn (mut app App) create_product() vweb.Result {
 
 #### - Parameters
 
-Parameters are passed directly in endpoint route using colon sign `:` and received using the same
-name at function
+Parameters are passed directly in the endpoint route using a colon sign `:` and received
+using the same name in the function.
 To pass a parameter to an endpoint, you simply define it inside an attribute, e. g.
 `['/hello/:user]`.
 After it is defined in the attribute, you have to add it as a function parameter.
@@ -220,7 +222,7 @@ After it is defined in the attribute, you have to add it as a function parameter
 
 ```v ignore
           vvvv
-['/hello/:user']            vvvv
+@['/hello/:user']            vvvv
 fn (mut app App) hello_user(user string) vweb.Result {
 	return app.text('Hello $user')
 }
@@ -230,9 +232,9 @@ You have access to the raw request data such as headers
 or the request body by accessing `app` (which is `vweb.Context`).
 If you want to read the request body, you can do that by calling `app.req.data`.
 To read the request headers, you just call `app.req.header` and access the
-header you want example. `app.req.header.get(.content_type)`. See `struct Header`
+header you want, for example `app.req.header.get(.content_type)`. See `struct Header`
 for all available methods (`v doc net.http Header`).
-It has, too, fields for the `query`, `form`, `files`.
+It also has fields for the `query`, `form`, and `files`.
 
 #### - Parameter Arrays
 
@@ -245,7 +247,7 @@ This will match all routes after `'/'`. For example the url `/path/to/test` woul
 
 ```v ignore
         vvv
-['/:path...']             vvvv
+@['/:path...']             vvvv
 fn (mut app App) wildcard(path string) vweb.Result {
 	return app.text('URL path = "${path}"')
 }
@@ -269,7 +271,7 @@ fn main() {
 	vweb.run(&App{}, 8081)
 }
 
-['/user'; get]
+@['/user'; get]
 pub fn (mut app App) controller_get_user_by_id() vweb.Result {
 	// http://localhost:3000/user?q=vpm&order_by=desc => { 'q': 'vpm', 'order_by': 'desc' }
 	return app.text(app.query.str())
@@ -283,18 +285,18 @@ by adding a host to the "hosts" file of your device.
 **Example:**
 
 ```v ignore
-['/'; host: 'example.com']
+@['/'; host: 'example.com']
 pub fn (mut app App) hello_web() vweb.Result {
 	return app.text('Hello World')
 }
 
-['/'; host: 'api.example.org']
+@['/'; host: 'api.example.org']
 pub fn (mut app App) hello_api() vweb.Result {
 	return app.text('Hello API')
 }
 
 // define the handler without a host attribute last if you have conflicting paths.
-['/']
+@['/']
 pub fn (mut app App) hello_others() vweb.Result {
 	return app.text('Hello Others')
 }
@@ -323,7 +325,7 @@ executed when the url starts with the defined key.
 In the following example, if a user navigates to `/path/to/test` the middleware
 is executed in the following order: `middleware_func`, `other_func`, `global_middleware`.
 The middleware is executed in the same order as they are defined and if any function in
-the chain returns `false` the propogation is stopped.
+the chain returns `false` the propagation is stopped.
 
 **Example:**
 ```v
@@ -376,8 +378,8 @@ Middleware can also be added to route specific functions via attributes.
 
 **Example:**
 ```v ignore
-[middleware: check_auth]
-['/admin/data']
+@[middleware: check_auth]
+@['/admin/data']
 pub fn (mut app App) admin() vweb.Result {
 	// ...
 }
@@ -441,10 +443,10 @@ struct User {
 }
 
 fn get_session(mut ctx vweb.Context) bool {
-	// impelement your own logic to get the user
+	// implement your own logic to get the user
 	user := User{
 		session_id: '123456'
-		name: 'Vweb'
+		name:       'Vweb'
 	}
 
 	// set the user
@@ -478,7 +480,7 @@ fn change_user(mut ctx vweb.Context) bool {
 
 ### Redirect
 
-Used when you want be redirected to an url
+Used when you want to be redirected to an url
 
 **Examples:**
 
@@ -489,7 +491,7 @@ pub fn (mut app App) before_request() {
 ```
 
 ```v ignore
-['/articles'; get]
+@['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
 	if !app.token {
 		app.redirect('/login')
@@ -503,14 +505,14 @@ You can also combine middleware and redirect.
 **Example:**
 
 ```v ignore
-[middleware: with_auth]
-['/admin/secret']
+@[middleware: with_auth]
+@['/admin/secret']
 pub fn (mut app App) admin_secret() vweb.Result {
 	// this code should never be reached
 	return app.text('secret')
 }
 
-['/redirect']
+@['/redirect']
 pub fn (mut app App) with_auth() bool {
 	app.redirect('/auth/login')
 	return false
@@ -767,7 +769,7 @@ will simply be ignored.
 Any route inside a controller struct is treated as a relative route to its controller namespace.
 
 ```v ignore
-['/path']
+@['/path']
 pub fn (mut app Admin) path vweb.Result {
     return app.text('Admin')
 }
@@ -780,7 +782,7 @@ Vweb doesn't support fallback routes or duplicate routes, so if we add the follo
 route to the example the code will produce an error.
 
 ```v ignore
-['/admin/path']
+@['/admin/path']
 pub fn (mut app App) admin_path vweb.Result {
     return app.text('Admin overwrite')
 }
@@ -854,7 +856,7 @@ fn main() {
 	mut db := sqlite.connect('db')!
 
 	mut app := &App{
-		db: db
+		db:          db
 		controllers: [
 			vweb.controller('/admin', &Admin{
 				db: db
@@ -898,7 +900,7 @@ fn main() {
 	pool := vweb.database_pool(handler: get_database_connection)
 
 	mut app := &App{
-		db_handle: pool
+		db_handle:   pool
 		controllers: [
 			vweb.controller('/admin', &Admin{
 				db_handle: pool
@@ -916,7 +918,7 @@ Sets the response status
 **Example:**
 
 ```v ignore
-['/user/get_all'; get]
+@['/user/get_all'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
     token := app.get_header('token')
 
@@ -961,7 +963,7 @@ Response HTTP_OK with payload with content-type `application/json`
 **Examples:**
 
 ```v ignore
-['/articles'; get]
+@['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
     articles := app.find_all_articles()
     json_result := json.encode(articles)
@@ -970,7 +972,7 @@ pub fn (mut app App) articles() vweb.Result {
 ```
 
 ```v ignore
-['/user/create'; post]
+@['/user/create'; post]
 pub fn (mut app App) controller_create_user() vweb.Result {
     body := json.decode(User, app.req.data) or {
         app.set_status(400, '')
@@ -1009,7 +1011,7 @@ Response HTTP_OK with payload
 **Example:**
 
 ```v ignore
-['/form_echo'; post]
+@['/form_echo'; post]
 pub fn (mut app App) form_echo() vweb.Result {
     app.set_content_type(app.req.header.get(.content_type) or { '' })
     return app.ok(app.form['foo'])
@@ -1033,7 +1035,7 @@ Response HTTP_NOT_FOUND with payload
 **Example:**
 
 ```v ignore
-['/:user/:repo/settings']
+@['/:user/:repo/settings']
 pub fn (mut app App) user_repo_settings(username string, repository string) vweb.Result {
     if username !in known_users {
         return app.not_found()
@@ -1050,7 +1052,7 @@ Returns the header data from the key
 **Example:**
 
 ```v ignore
-['/user/get_all'; get]
+@['/user/get_all'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
     token := app.get_header('token')
     return app.text(token)
@@ -1074,7 +1076,7 @@ Adds an header to the response with key and val
 **Example:**
 
 ```v ignore
-['/upload'; post]
+@['/upload'; post]
 pub fn (mut app App) upload() vweb.Result {
     fdata := app.files['upfile']
 
@@ -1132,7 +1134,7 @@ Sets the response content type
 **Example:**
 
 ```v ignore
-['/form_echo'; post]
+@['/form_echo'; post]
 pub fn (mut app App) form_echo() vweb.Result {
     app.set_content_type(app.req.header.get(.content_type) or { '' })
     return app.ok(app.form['foo'])

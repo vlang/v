@@ -1,29 +1,30 @@
+// vtest build: present_sqlite3?
 import orm
 import db.sqlite
 import time
 
 struct TestCustomSqlType {
-	id      int       [primary; sql: serial]
-	custom  string    [sql_type: 'INTEGER']
-	custom1 string    [sql_type: 'TEXT']
-	custom2 string    [sql_type: 'REAL']
-	custom3 string    [sql_type: 'NUMERIC']
+	id      int    @[primary; sql: serial]
+	custom  string @[sql_type: 'INTEGER']
+	custom1 string @[sql_type: 'TEXT']
+	custom2 string @[sql_type: 'REAL']
+	custom3 string @[sql_type: 'NUMERIC']
 	custom4 string
 	custom5 int
 	custom6 time.Time
 }
 
-struct TestDefaultAtribute {
-	id          string [primary; sql: serial]
+struct TestDefaultAttribute {
+	id          string @[primary; sql: serial]
 	name        string
-	created_at  string [default: 'CURRENT_TIME']
-	created_at1 string [default: 'CURRENT_DATE']
-	created_at2 string [default: 'CURRENT_TIMESTAMP']
+	created_at  ?string @[default: 'CURRENT_TIME']
+	created_at1 ?string @[default: 'CURRENT_DATE']
+	created_at2 ?string @[default: 'CURRENT_TIMESTAMP']
 }
 
 struct EntityToTest {
-	id   int    [notnull; sql_type: 'INTEGER']
-	smth string [notnull; sql_type: 'TEXT']
+	id   int    @[notnull; sql_type: 'INTEGER']
+	smth string @[notnull; sql_type: 'TEXT']
 }
 
 fn test_sqlite_orm() {
@@ -33,47 +34,47 @@ fn test_sqlite_orm() {
 	}
 	db.create('Test', [
 		orm.TableField{
-			name: 'id'
-			typ: typeof[int]().idx
+			name:  'id'
+			typ:   typeof[int]().idx
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'primary'
 				},
-				StructAttribute{
-					name: 'sql'
+				VAttribute{
+					name:    'sql'
 					has_arg: true
-					kind: .plain
-					arg: 'serial'
+					kind:    .plain
+					arg:     'serial'
 				},
 			]
 		},
 		orm.TableField{
-			name: 'name'
-			typ: typeof[string]().idx
+			name:  'name'
+			typ:   typeof[string]().idx
 			attrs: []
 		},
 		orm.TableField{
 			name: 'age'
-			typ: typeof[i64]().idx
+			typ:  typeof[i64]().idx
 		},
 	]) or { panic(err) }
 
 	db.insert('Test', orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.string_to_primitive('Louis'), orm.i64_to_primitive(100)]
+		data:   [orm.string_to_primitive('Louis'), orm.i64_to_primitive(100)]
 	}) or { panic(err) }
 
-	res := db.@select(orm.SelectConfig{
-		table: 'Test'
+	res := db.select(orm.SelectConfig{
+		table:     'Test'
 		has_where: true
-		fields: ['id', 'name', 'age']
-		types: [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
+		fields:    ['id', 'name', 'age']
+		types:     [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.Primitive('Louis'), i64(100)]
-		types: [typeof[string]().idx, typeof[i64]().idx]
+		data:   [orm.Primitive('Louis'), i64(100)]
+		types:  [typeof[string]().idx, typeof[i64]().idx]
 		is_and: [true, true]
-		kinds: [.eq, .eq]
+		kinds:  [.eq, .eq]
 	}) or { panic(err) }
 
 	id := res[0][0]
@@ -124,11 +125,11 @@ fn test_sqlite_orm() {
 	*/
 
 	sql db {
-		create table TestDefaultAtribute
+		create table TestDefaultAttribute
 	}!
 
 	mut result_default_sql := db.exec('
-			pragma table_info(TestDefaultAtribute);
+			pragma table_info(TestDefaultAttribute);
 		')!
 
 	mut information_schema_data_types_results := []string{}
@@ -139,29 +140,29 @@ fn test_sqlite_orm() {
 	}
 	assert information_schema_data_types_results == information_schema_default_sql
 
-	test_default_atribute := TestDefaultAtribute{
+	test_default_attribute := TestDefaultAttribute{
 		name: 'Hitalo'
 	}
 
 	sql db {
-		insert test_default_atribute into TestDefaultAtribute
+		insert test_default_attribute into TestDefaultAttribute
 	}!
 
-	test_default_atributes := sql db {
-		select from TestDefaultAtribute limit 1
+	test_default_attributes := sql db {
+		select from TestDefaultAttribute limit 1
 	}!
 
-	result_test_default_atribute := test_default_atributes.first()
-	assert result_test_default_atribute.name == 'Hitalo'
-	assert test_default_atribute.created_at.len == 0
-	assert test_default_atribute.created_at1.len == 0
-	assert test_default_atribute.created_at2.len == 0
-	assert result_test_default_atribute.created_at.len == 8 // HH:MM:SS
-	assert result_test_default_atribute.created_at1.len == 10 // YYYY-MM-DD
-	assert result_test_default_atribute.created_at2.len == 19 // YYYY-MM-DD HH:MM:SS
+	result_test_default_attribute := test_default_attributes.first()
+	assert result_test_default_attribute.name == 'Hitalo'
+	assert test_default_attribute.created_at or { '' } == ''
+	assert test_default_attribute.created_at1 or { '' } == ''
+	assert test_default_attribute.created_at2 or { '' } == ''
+	assert result_test_default_attribute.created_at or { '' }.len == 8 // HH:MM:SS
+	assert result_test_default_attribute.created_at1 or { '' }.len == 10 // YYYY-MM-DD
+	assert result_test_default_attribute.created_at2 or { '' }.len == 19 // YYYY-MM-DD HH:MM:SS
 
 	sql db {
-		drop table TestDefaultAtribute
+		drop table TestDefaultAttribute
 	}!
 }
 
@@ -177,7 +178,7 @@ fn test_get_affected_rows_count() {
 	);')!
 
 	fst := EntityToTest{
-		id: 1
+		id:   1
 		smth: '1'
 	}
 
@@ -188,7 +189,7 @@ fn test_get_affected_rows_count() {
 	assert db.get_affected_rows_count() == 1
 
 	snd := EntityToTest{
-		id: 1
+		id:   1
 		smth: '2'
 	}
 

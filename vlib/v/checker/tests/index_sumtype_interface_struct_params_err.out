@@ -1,0 +1,34 @@
+vlib/v/checker/tests/index_sumtype_interface_struct_params_err.vv:8:9: error: type `Foo` does not support indexing
+    6 |
+    7 | fn sum_type_or_interface_as_parameters(mut foo Foo, mut bar Bar, mut st1 Struct, st2 &Struct, st3 Struct) {
+    8 |     _ = foo[0]
+      |            ~~~
+    9 |     _ = bar[0]
+   10 |
+vlib/v/checker/tests/index_sumtype_interface_struct_params_err.vv:9:9: error: type `Bar` does not support indexing
+    7 | fn sum_type_or_interface_as_parameters(mut foo Foo, mut bar Bar, mut st1 Struct, st2 &Struct, st3 Struct) {
+    8 |     _ = foo[0]
+    9 |     _ = bar[0]
+      |            ~~~
+   10 |
+   11 |     _ = st1[0]
+vlib/v/checker/tests/index_sumtype_interface_struct_params_err.vv:11:9: error: type `mut Struct` does not support slicing
+    9 |     _ = bar[0]
+   10 |
+   11 |     _ = st1[0]
+      |            ~~~
+   12 |     _ = st2[0]
+   13 |     _ = st3[0]
+vlib/v/checker/tests/index_sumtype_interface_struct_params_err.vv:12:9: error: pointer indexing is only allowed in `unsafe` blocks
+   10 |
+   11 |     _ = st1[0]
+   12 |     _ = st2[0]
+      |            ~~~
+   13 |     _ = st3[0]
+   14 | }
+vlib/v/checker/tests/index_sumtype_interface_struct_params_err.vv:13:9: error: type `Struct` does not support indexing
+   11 |     _ = st1[0]
+   12 |     _ = st2[0]
+   13 |     _ = st3[0]
+      |            ~~~
+   14 | }

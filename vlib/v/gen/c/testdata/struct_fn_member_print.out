@@ -1,0 +1,3 @@
+MyStruct{
+    func: fn (int)
+}

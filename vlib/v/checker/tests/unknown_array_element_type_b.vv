@@ -6,4 +6,3 @@ fn main() {
 	s := Aaa{}
 	println(s)
 }
-

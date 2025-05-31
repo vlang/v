@@ -5,7 +5,7 @@ struct App {
 }
 
 // actions must return results
-['/foo/:bar']
+@['/foo/:bar']
 pub fn (mut app App) foo(a string) {
 }
 

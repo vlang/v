@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -7,26 +7,28 @@ module time
 #include <time.h>
 #include <errno.h>
 
-struct C.tm {
-	tm_sec   int
-	tm_min   int
-	tm_hour  int
-	tm_mday  int
-	tm_mon   int
-	tm_year  int
-	tm_wday  int
-	tm_yday  int
-	tm_isdst int
+pub struct C.tm {
+pub mut:
+	tm_sec    int
+	tm_min    int
+	tm_hour   int
+	tm_mday   int
+	tm_mon    int
+	tm_year   int
+	tm_wday   int
+	tm_yday   int
+	tm_isdst  int
+	tm_gmtoff int
 }
 
 fn C.timegm(&C.tm) C.time_t
 
-// prefering localtime_r over the localtime because
+// preferring localtime_r over the localtime because
 // from docs localtime_r is thread safe,
 fn C.localtime_r(t &C.time_t, tm &C.tm)
 
 fn make_unix_time(t C.tm) i64 {
-	return i64(C.timegm(&t))
+	return unsafe { i64(C.timegm(&t)) }
 }
 
 // local returns t with the location set to local time.
@@ -35,19 +37,20 @@ pub fn (t Time) local() Time {
 		return t
 	}
 	loc_tm := C.tm{}
-	C.localtime_r(voidptr(&t.unix), &loc_tm)
+	t_ := t.unix()
+	C.localtime_r(voidptr(&t_), &loc_tm)
 	return convert_ctime(loc_tm, t.nanosecond)
 }
 
 // in most systems, these are __quad_t, which is an i64
 pub struct C.timespec {
-mut:
+pub mut:
 	tv_sec  i64
 	tv_nsec i64
 }
 
 // the first arg is defined in include/bits/types.h as `__S32_TYPE`, which is `int`
-fn C.clock_gettime(int, &C.timespec)
+fn C.clock_gettime(int, &C.timespec) int
 
 fn C.nanosleep(req &C.timespec, rem &C.timespec) int
 
@@ -64,7 +67,7 @@ pub fn sys_mono_now() u64 {
 
 // Note: vpc_now is used by `v -profile` .
 // It should NOT call *any other v function*, just C functions and casts.
-[inline]
+@[inline]
 fn vpc_now() u64 {
 	ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_MONOTONIC, &ts)

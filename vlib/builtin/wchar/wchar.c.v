@@ -4,8 +4,8 @@ import strings
 
 #include <wchar.h>
 
-[typedef]
-struct C.wchar_t {}
+@[typedef]
+pub struct C.wchar_t {}
 
 // Character is a type, that eases working with the platform dependent C.wchar_t type.
 // Note: the size of C.wchar_t varies between platforms, it is 2 bytes on windows,
@@ -22,19 +22,23 @@ pub fn (a Character) str() string {
 
 // == is an equality operator, to ease comparing Characters
 // TODO: the default == operator, that V generates, does not work for C.wchar_t .
-[inline]
+@[inline]
 pub fn (a Character) == (b Character) bool {
 	return u64(a) == u64(b)
 }
 
 // to_rune creates a V rune, given a Character
-[inline]
+@[inline]
 pub fn (c Character) to_rune() rune {
-	return unsafe { *(&rune(&c)) }
+	$if windows {
+		return unsafe { *(&rune(&c)) } & 0xFFFF
+	} $else {
+		return unsafe { *(&rune(&c)) }
+	}
 }
 
 // from_rune creates a Character, given a V rune
-[inline]
+@[inline]
 pub fn from_rune(r rune) Character {
 	return unsafe { *(&Character(&r)) }
 }
@@ -42,11 +46,11 @@ pub fn from_rune(r rune) Character {
 // length_in_characters returns the length of the given wchar_t* wide C style L"" string.
 // Example: assert unsafe { wchar.length_in_characters(wchar.from_string('abc')) } == 3
 // See also `length_in_bytes` .
-[unsafe]
+@[unsafe]
 pub fn length_in_characters(p voidptr) int {
 	mut len := 0
 	pc := &Character(p)
-	for unsafe { pc[len] != wchar.zero } {
+	for unsafe { pc[len] != zero } {
 		len++
 	}
 	return len
@@ -57,7 +61,7 @@ pub fn length_in_characters(p voidptr) int {
 // bytes for the same data converted from UTF-8 to a &Character buffer, will be different as well.
 // i.e. unsafe { wchar.length_in_bytes(wchar.from_string('abc')) } will be 12 on unix, but
 // 6 on windows.
-[unsafe]
+@[unsafe]
 pub fn length_in_bytes(p voidptr) int {
 	return unsafe { length_in_characters(p) } * int(sizeof(Character))
 }
@@ -70,7 +74,7 @@ pub fn length_in_bytes(p voidptr) int {
 // Unless you are interfacing with a C library, that does specifically use `wchar_t`,
 // consider using `string_from_wide` instead, which will always assume that the input
 // data is in an UTF-16 encoding, no matter what the platform is.
-[unsafe]
+@[unsafe]
 pub fn to_string(p voidptr) string {
 	unsafe {
 		len := length_in_characters(p)
@@ -84,7 +88,7 @@ pub fn to_string(p voidptr) string {
 // Unless you are interfacing with a C library, that does specifically use wchar_t,
 // consider using string_from_wide2 instead, which will always assume that the input
 // data is in an UTF-16 encoding, no matter what the platform is.
-[manualfree; unsafe]
+@[manualfree; unsafe]
 pub fn to_string2(p voidptr, len int) string {
 	pc := &Character(p)
 	mut sb := strings.new_builder(len)
@@ -102,7 +106,7 @@ pub fn to_string2(p voidptr, len int) string {
 // from_string converts the V string (in UTF-8 encoding), into a newly allocated
 // platform specific buffer of C.wchar_t .
 // The conversion is done by processing each rune of the input string 1 by 1.
-[manualfree]
+@[manualfree]
 pub fn from_string(s string) &Character {
 	srunes := s.runes()
 	unsafe {
@@ -110,7 +114,7 @@ pub fn from_string(s string) &Character {
 		for i, r in srunes {
 			result[i] = from_rune(r)
 		}
-		result[srunes.len] = wchar.zero
+		result[srunes.len] = zero
 		return result
 	}
 }

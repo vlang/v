@@ -7,6 +7,7 @@ import toml.ast
 import toml.input
 import toml.scanner
 import toml.parser
+import maps
 
 // Null is used in sumtype checks as a "default" value when nothing else is possible.
 pub struct Null {
@@ -23,54 +24,142 @@ pub fn decode[T](toml_txt string) !T {
 			return typ
 		}
 	}
+	$if T !is $struct {
+		return error('toml.decode: expected struct, found ${T.name}')
+	}
 	decode_struct[T](doc.to_any(), mut typ)
 	return typ
 }
 
 fn decode_struct[T](doc Any, mut typ T) {
 	$for field in T.fields {
-		value := doc.value(field.name)
-		$if field.is_enum {
-			typ.$(field.name) = value.int()
-		} $else $if field.typ is string {
-			typ.$(field.name) = value.string()
-		} $else $if field.typ is bool {
-			typ.$(field.name) = value.bool()
-		} $else $if field.typ is int {
-			typ.$(field.name) = value.int()
-		} $else $if field.typ is i64 {
-			typ.$(field.name) = value.i64()
-		} $else $if field.typ is u64 {
-			typ.$(field.name) = value.u64()
-		} $else $if field.typ is f32 {
-			typ.$(field.name) = value.f32()
-		} $else $if field.typ is f64 {
-			typ.$(field.name) = value.f64()
-		} $else $if field.typ is DateTime {
-			typ.$(field.name) = value.datetime()
-		} $else $if field.typ is Date {
-			typ.$(field.name) = value.date()
-		} $else $if field.typ is Time {
-			typ.$(field.name) = value.time()
-		} $else $if field.is_array {
-			arr := value.array()
-			match typeof(typ.$(field.name)).name {
-				'[]string' { typ.$(field.name) = arr.as_strings() }
-				'[]int' { typ.$(field.name) = arr.map(it.int()) }
-				'[]i64' { typ.$(field.name) = arr.map(it.i64()) }
-				'[]u64' { typ.$(field.name) = arr.map(it.u64()) }
-				'[]f32' { typ.$(field.name) = arr.map(it.f32()) }
-				'[]f64' { typ.$(field.name) = arr.map(it.f64()) }
-				'[]bool' { typ.$(field.name) = arr.map(it.bool()) }
-				'[]toml.DateTime' { typ.$(field.name) = arr.map(it.datetime()) }
-				'[]toml.Date' { typ.$(field.name) = arr.map(it.date()) }
-				'[]toml.Time' { typ.$(field.name) = arr.map(it.time()) }
-				else {}
+		mut field_name := field.name
+		mut skip := false
+		for attr in field.attrs {
+			if attr == 'skip' {
+				skip = true
+				break
 			}
-		} $else $if field.is_struct {
-			mut s := typ.$(field.name)
-			decode_struct(value, mut s)
-			typ.$(field.name) = s
+			if attr.starts_with('toml:') {
+				field_name = attr.all_after(':').trim_space()
+			}
+		}
+		value := doc.value(field_name)
+		// only set the field's value when value != null and !skip, else field got it's default value
+		if !skip && value != null {
+			$if field.is_enum {
+				typ.$(field.name) = value.int()
+			} $else $if field.typ is string {
+				typ.$(field.name) = value.string()
+			} $else $if field.typ is bool {
+				typ.$(field.name) = value.bool()
+			} $else $if field.typ is int {
+				typ.$(field.name) = value.int()
+			} $else $if field.typ is i64 {
+				typ.$(field.name) = value.i64()
+			} $else $if field.typ is u64 {
+				typ.$(field.name) = value.u64()
+			} $else $if field.typ is f32 {
+				typ.$(field.name) = value.f32()
+			} $else $if field.typ is f64 {
+				typ.$(field.name) = value.f64()
+			} $else $if field.typ is DateTime {
+				typ.$(field.name) = value.datetime()
+			} $else $if field.typ is Date {
+				typ.$(field.name) = value.date()
+			} $else $if field.typ is Time {
+				typ.$(field.name) = value.time()
+			} $else $if field.typ is Any {
+				typ.$(field.name) = value
+			} $else $if field.is_array {
+				arr := value.array()
+				match field.typ {
+					[]string { typ.$(field.name) = arr.as_strings() }
+					[]int { typ.$(field.name) = arr.map(it.int()) }
+					[]i64 { typ.$(field.name) = arr.map(it.i64()) }
+					[]u64 { typ.$(field.name) = arr.map(it.u64()) }
+					[]f32 { typ.$(field.name) = arr.map(it.f32()) }
+					[]f64 { typ.$(field.name) = arr.map(it.f64()) }
+					[]bool { typ.$(field.name) = arr.map(it.bool()) }
+					[]DateTime { typ.$(field.name) = arr.map(it.datetime()) }
+					[]Date { typ.$(field.name) = arr.map(it.date()) }
+					[]Time { typ.$(field.name) = arr.map(it.time()) }
+					[]Any { typ.$(field.name) = arr }
+					else {}
+				}
+			} $else $if field.is_map {
+				mut mmap := value.as_map()
+				match field.typ {
+					map[string]string {
+						typ.$(field.name) = mmap.as_strings()
+					}
+					// Should be cleaned up to use the more modern lambda syntax
+					// |k, v| k, v.int()
+					// Unfortunately lambdas have issues with multiple return at the time of writing
+					map[string]int {
+						typ.$(field.name) = maps.to_map[string, Any, string, int](mmap,
+							fn (k string, v Any) (string, int) {
+							return k, v.int()
+						})
+					}
+					map[string]i64 {
+						typ.$(field.name) = maps.to_map[string, Any, string, i64](mmap,
+							fn (k string, v Any) (string, i64) {
+							return k, v.i64()
+						})
+					}
+					map[string]u64 {
+						typ.$(field.name) = maps.to_map[string, Any, string, u64](mmap,
+							fn (k string, v Any) (string, u64) {
+							return k, v.u64()
+						})
+					}
+					map[string]f32 {
+						typ.$(field.name) = maps.to_map[string, Any, string, f32](mmap,
+							fn (k string, v Any) (string, f32) {
+							return k, v.f32()
+						})
+					}
+					map[string]f64 {
+						typ.$(field.name) = maps.to_map[string, Any, string, f64](mmap,
+							fn (k string, v Any) (string, f64) {
+							return k, v.f64()
+						})
+					}
+					map[string]bool {
+						typ.$(field.name) = maps.to_map[string, Any, string, bool](mmap,
+							fn (k string, v Any) (string, bool) {
+							return k, v.bool()
+						})
+					}
+					map[string]DateTime {
+						typ.$(field.name) = maps.to_map[string, Any, string, DateTime](mmap,
+							fn (k string, v Any) (string, DateTime) {
+							return k, v.datetime()
+						})
+					}
+					map[string]Date {
+						typ.$(field.name) = maps.to_map[string, Any, string, Date](mmap,
+							fn (k string, v Any) (string, Date) {
+							return k, v.date()
+						})
+					}
+					map[string]Time {
+						typ.$(field.name) = maps.to_map[string, Any, string, Time](mmap,
+							fn (k string, v Any) (string, Time) {
+							return k, v.time()
+						})
+					}
+					map[string]Any {
+						typ.$(field.name) = mmap.clone()
+					}
+					else {}
+				}
+			} $else $if field.is_struct {
+				mut s := typ.$(field.name)
+				decode_struct(value, mut s)
+				typ.$(field.name) = s
+			}
 		}
 	}
 }
@@ -78,38 +167,91 @@ fn decode_struct[T](doc Any, mut typ T) {
 // encode encodes the type `T` into a TOML string.
 // If `T` has a custom `.to_toml()` method, it will be used instead of the default.
 pub fn encode[T](typ T) string {
-	$for method in T.methods {
-		$if method.name == 'to_toml' {
-			return typ.$method()
+	$if T is $struct {
+		$for method in T.methods {
+			$if method.name == 'to_toml' {
+				return typ.$method()
+			}
 		}
+		mp := encode_struct[T](typ)
+		return mp.to_toml()
+	} $else {
+		$compile_error('Currently only type `struct` is supported for `T` to encode as TOML')
 	}
-	mp := encode_struct[T](typ)
-	return mp.to_toml()
+	return ''
 }
 
 fn encode_struct[T](typ T) map[string]Any {
 	mut mp := map[string]Any{}
 	$for field in T.fields {
-		value := typ.$(field.name)
-		$if field.is_enum {
-			mp[field.name] = Any(int(value))
-		} $else $if field.is_struct {
-			mp[field.name] = encode_struct(value)
-		} $else $if field.is_array {
-			mut arr := []Any{}
-			for v in value {
-				arr << Any(v)
+		mut skip := false
+		mut field_name := field.name
+		for attr in field.attrs {
+			if attr == 'skip' {
+				skip = true
+				break
 			}
-			mp[field.name] = arr
-		} $else {
-			mp[field.name] = Any(value)
+			if attr.starts_with('toml:') {
+				field_name = attr.all_after(':').trim_space()
+			}
+		}
+		if !skip {
+			mp[field_name] = to_any(typ.$(field.name))
 		}
 	}
 	return mp
 }
 
+fn to_any[T](value T) Any {
+	$if T is $enum {
+		return Any(int(value))
+	} $else $if T is Date {
+		return Any(value)
+	} $else $if T is Time {
+		return Any(value)
+	} $else $if T is Null {
+		return Any(value)
+	} $else $if T is bool {
+		return Any(value)
+	} $else $if T is $float {
+		return Any(value)
+	} $else $if T is i64 {
+		return Any(value)
+	} $else $if T is int {
+		return Any(value)
+	} $else $if T is u64 {
+		return Any(value)
+	} $else $if T is DateTime {
+		return Any(value)
+	} $else $if T is Any {
+		return value
+	} $else $if T is $struct {
+		$for method in T.methods {
+			$if method.name == 'to_toml' {
+				return Any(value.$method())
+			}
+		}
+		return encode_struct(value)
+	} $else $if T is $array {
+		mut arr := []Any{cap: value.len}
+		for v in value {
+			arr << to_any(v)
+		}
+		return arr
+	} $else $if T is $map {
+		mut mmap := map[string]Any{}
+		for key, val in value {
+			mmap['${key}'] = to_any(val)
+		}
+		return mmap
+	} $else {
+		return Any('${value}')
+	}
+}
+
 // DateTime is the representation of an RFC 3339 datetime string.
 pub struct DateTime {
+pub:
 	datetime string
 }
 
@@ -120,6 +262,7 @@ pub fn (dt DateTime) str() string {
 
 // Date is the representation of an RFC 3339 date-only string.
 pub struct Date {
+pub:
 	date string
 }
 
@@ -130,6 +273,7 @@ pub fn (d Date) str() string {
 
 // Time is the representation of an RFC 3339 time-only string.
 pub struct Time {
+pub:
 	time string
 }
 
@@ -249,6 +393,16 @@ fn parse_array_key(key string) (string, int) {
 	return k, index
 }
 
+// decode decodes a TOML `string` into the target struct type `T`.
+pub fn (d Doc) decode[T]() !T {
+	$if T !is $struct {
+		return error('Doc.decode: expected struct, found ${T.name}')
+	}
+	mut typ := T{}
+	decode_struct(d.to_any(), mut typ)
+	return typ
+}
+
 // to_any converts the `Doc` to toml.Any type.
 pub fn (d Doc) to_any() Any {
 	return ast_to_any(d.ast.table)
@@ -266,7 +420,7 @@ pub fn (d Doc) reflect[T]() T {
 // quoted keys are supported as `a."b.c"` or `a.'b.c'`.
 // Arrays can be queried with `a[0].b[1].[2]`.
 pub fn (d Doc) value(key string) Any {
-	key_split := parse_dotted_key(key) or { return toml.null }
+	key_split := parse_dotted_key(key) or { return null }
 	return d.value_(d.ast.table, key_split)
 }
 
@@ -286,21 +440,21 @@ pub fn (d Doc) value_opt(key string) !Any {
 // value_ returns the value found at `key` in the map `values` as `Any` type.
 fn (d Doc) value_(value ast.Value, key []string) Any {
 	if key.len == 0 {
-		return toml.null
+		return null
 	}
 	mut ast_value := ast.Value(ast.Null{})
 	k, index := parse_array_key(key[0])
 
 	if k == '' {
 		a := value as []ast.Value
-		ast_value = a[index] or { return toml.null }
+		ast_value = a[index] or { return null }
 	}
 
 	if value is map[string]ast.Value {
-		ast_value = value[k] or { return toml.null }
+		ast_value = value[k] or { return null }
 		if index > -1 {
 			a := ast_value as []ast.Value
-			ast_value = a[index] or { return toml.null }
+			ast_value = a[index] or { return null }
 		}
 	}
 
@@ -378,12 +532,12 @@ pub fn ast_to_any(value ast.Value) Any {
 			return aa
 		}
 		else {
-			return toml.null
+			return null
 		}
 	}
 
-	return toml.null
-	// TODO decide this
+	return null
+	// TODO: decide this
 	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "$value"')
 	// return Any('')
 }

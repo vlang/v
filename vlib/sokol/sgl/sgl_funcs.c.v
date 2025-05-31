@@ -3,8 +3,8 @@ module sgl
 // setup/shutdown/misc
 fn C.sgl_setup(desc &C.sgl_desc_t)
 fn C.sgl_shutdown()
-fn C.sgl_error() C.sgl_error_t
-fn C.sgl_context_error(ctx C.sgl_context) C.sgl_error_t
+fn C.sgl_error() SglError
+fn C.sgl_context_error(ctx C.sgl_context) SglError
 fn C.sgl_rad(deg f32) f32
 fn C.sgl_deg(rad f32) f32
 
@@ -28,7 +28,7 @@ fn C.sgl_scissor_rect(x int, y int, w int, h int, origin_top_left bool)
 fn C.sgl_scissor_rectf(x f32, y f32, w f32, h f32, origin_top_left bool)
 fn C.sgl_enable_texture()
 fn C.sgl_disable_texture()
-fn C.sgl_texture(img C.sg_image)
+fn C.sgl_texture(img C.sg_image, sampler C.sg_sampler)
 
 // pipeline stack functions
 fn C.sgl_load_default_pipeline()
@@ -51,7 +51,8 @@ fn C.sgl_translate(x f32, y f32, z f32)
 fn C.sgl_frustum(l f32, r f32, b f32, t f32, n f32, f f32)
 fn C.sgl_ortho(l f32, r f32, b f32, t f32, n f32, f f32)
 fn C.sgl_perspective(fov_y f32, aspect f32, z_near f32, z_far f32)
-fn C.sgl_lookat(eye_x f32, eye_y f32, eye_z f32, center_x f32, center_y f32, center_z f32, up_x f32, up_y f32, up_z f32)
+fn C.sgl_lookat(eye_x f32, eye_y f32, eye_z f32, center_x f32, center_y f32, center_z f32, up_x f32, up_y f32,
+	up_z f32)
 fn C.sgl_push_matrix()
 fn C.sgl_pop_matrix()
 

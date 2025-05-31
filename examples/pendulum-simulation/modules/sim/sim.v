@@ -1,7 +1,7 @@
 module sim
 
 pub struct SimState {
-mut:
+pub mut:
 	position Vector3D
 	velocity Vector3D
 	accel    Vector3D

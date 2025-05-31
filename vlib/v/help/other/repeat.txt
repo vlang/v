@@ -1,0 +1,30 @@
+vrepeat 0.0.3
+-----------------------------------------------
+Usage: vrepeat [options] CMD1 CMD2 ...
+
+Description: Repeat command(s) and collect statistics.
+Note: quote each command (argument), when it contains spaces.
+
+The arguments should be at least 1 in number.
+
+Options:
+  -h, --help                Show this help screen.
+  -r, --runs <int>          Run count. Default: 10
+  -R, --repeats <int>       Repeats count (it repeats everything, including reporting). Default: 1
+  -w, --warmup <int>        Warmup run count. These are done *at the start* of each series, and the timings are ignored. Default: 2
+  -s, --series <int>        Series count. `-s 2 -r 4 a b` => aaaabbbbaaaabbbb, while `-s 3 -r 2 a b` => aabbaabbaabb. Default: 1
+  -e, --ignore              Ignore failed commands (returning a non 0 exit code).
+  -N, --no_vexe_reset       Do not reset the VEXE env variable at the start. 
+                            By default, VEXE will be set to "", to allow for measuring different V executables. Use this option to override it
+  -n, --newline             Use \n, do not overwrite the last line. Produces more output, but easier to diagnose.
+  -O, --output              Show command stdout/stderr in the progress indicator for each command. Note: slower, for verbose commands.
+  -v, --verbose             Be more verbose.
+  -m, --max_time <int>      Fail with exit code 2, when first cmd takes above M milliseconds (regression). Default: 60000
+  -f, --fail_percent <int>  Fail with exit code 3, when first cmd is X% slower than the rest (regression). Default: 100000
+  -t, --template <string>   Command template. {T} will be substituted with the current command. Default: {T}. 
+                            Here is an example, that will produce and run 24 permutations = (3 for opt) x (2 for source) x (4 = v names):
+                               v repeat -p opt=-check-syntax,-check,"-o x.c" -p source=examples/hello_world.v,examples/hanoi.v --template "./{T} {opt} {source}" vold vnew vold_prod vnew_prod
+  -p, --parameter <multiple strings>
+                            A parameter substitution list. `pp=val1,val2,val2` means that {pp} in the template, will be substituted with *each* of val1, val2, val3.
+  -i, --nmins <int>         Ignore the BOTTOM X results (minimum execution time). Makes the results more robust to performance flukes. Default: 0
+  -a, --nmaxs <int>         Ignore the TOP X results (maximum execution time). Makes the results more robust to performance flukes. Default: 0

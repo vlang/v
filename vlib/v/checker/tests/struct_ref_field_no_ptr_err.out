@@ -1,0 +1,6 @@
+vlib/v/checker/tests/struct_ref_field_no_ptr_err.vv:2:13: error: reference field must be initialized with reference
+    1 | struct Foo {
+    2 |     bar &Bar = Bar{}
+      |                ~~~~~
+    3 | }
+    4 |

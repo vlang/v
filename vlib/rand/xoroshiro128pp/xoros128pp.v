@@ -37,7 +37,7 @@ pub fn (mut rng XOROS128PPRNG) seed(seed_data []u32) {
 }
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned `byte`.
-[inline]
+@[inline]
 pub fn (mut rng XOROS128PPRNG) u8() u8 {
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
@@ -53,7 +53,7 @@ pub fn (mut rng XOROS128PPRNG) u8() u8 {
 }
 
 // u16 returns a pseudorandom 16-bit unsigned integer (`u16`).
-[inline]
+@[inline]
 pub fn (mut rng XOROS128PPRNG) u16() u16 {
 	if rng.bytes_left >= 2 {
 		rng.bytes_left -= 2
@@ -68,7 +68,7 @@ pub fn (mut rng XOROS128PPRNG) u16() u16 {
 }
 
 // u32 returns a pseudorandom unsigned `u32`.
-[inline]
+@[inline]
 pub fn (mut rng XOROS128PPRNG) u32() u32 {
 	if rng.bytes_left >= 4 {
 		rng.bytes_left -= 4
@@ -83,7 +83,7 @@ pub fn (mut rng XOROS128PPRNG) u32() u32 {
 }
 
 // u64 returns a pseudorandom 64-bit unsigned `u64`.
-[inline]
+@[inline]
 pub fn (mut rng XOROS128PPRNG) u64() u64 {
 	oldstate0 := rng.state0
 	mut oldstate1 := rng.state1
@@ -95,13 +95,13 @@ pub fn (mut rng XOROS128PPRNG) u64() u64 {
 }
 
 // block_size returns the number of bits that the RNG can produce in a single iteration.
-[inline]
+@[inline]
 pub fn (mut rng XOROS128PPRNG) block_size() int {
 	return 64
 }
 
 // free should be called when the generator is no longer needed
-[unsafe]
+@[unsafe]
 pub fn (mut rng XOROS128PPRNG) free() {
 	unsafe { free(rng) }
 }

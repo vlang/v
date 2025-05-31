@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -14,37 +14,46 @@ pub type RequestRedirectFn = fn (request &Request, nredirects int, new_url strin
 
 pub type RequestProgressFn = fn (request &Request, chunk []u8, read_so_far u64) !
 
+pub type RequestProgressBodyFn = fn (request &Request, chunk []u8, body_read_so_far u64, body_expected_size u64, status_code int) !
+
 pub type RequestFinishFn = fn (request &Request, final_size u64) !
 
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
 pub struct Request {
+mut:
+	cookies map[string]string
 pub mut:
 	version    Version = .v1_1
 	method     Method  = .get
 	header     Header
 	host       string
-	cookies    map[string]string
 	data       string
 	url        string
 	user_agent string = 'v.http'
 	verbose    bool
 	user_ptr   voidptr
+	proxy      &HttpProxy = unsafe { nil }
 	// NOT implemented for ssl connections
 	// time = -1 for no timeout
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
-	//
+
 	validate               bool // when true, certificate failures will stop further processing
 	verify                 string
 	cert                   string
 	cert_key               string
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
-	// callbacks to allow custom reporting code to run, while the request is running
-	on_redirect RequestRedirectFn = unsafe { nil }
-	on_progress RequestProgressFn = unsafe { nil }
-	on_finish   RequestFinishFn   = unsafe { nil }
+	max_retries            int  = 5    // maximum number of retries required when an underlying socket error occurs
+	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
+	on_redirect      RequestRedirectFn     = unsafe { nil }
+	on_progress      RequestProgressFn     = unsafe { nil }
+	on_progress_body RequestProgressBodyFn = unsafe { nil }
+	on_finish        RequestFinishFn       = unsafe { nil }
+
+	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
+	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
 }
 
 fn (mut req Request) free() {
@@ -61,6 +70,26 @@ pub fn (mut req Request) add_header(key CommonHeader, val string) {
 // This method may fail if the key contains characters that are not permitted
 pub fn (mut req Request) add_custom_header(key string, val string) ! {
 	return req.header.add_custom(key, val)
+}
+
+// add_cookie adds a cookie to the request.
+pub fn (mut req Request) add_cookie(c Cookie) {
+	req.cookies[c.name] = c.value
+}
+
+// cookie returns the named cookie provided in the request or `none` if not found.
+// If multiple cookies match the given name, only one cookie will be returned.
+pub fn (req &Request) cookie(name string) ?Cookie {
+	// TODO(alex) this should work once Cookie is used
+	// return req.cookies[name] or { none }
+
+	if value := req.cookies[name] {
+		return Cookie{
+			name:  name
+			value: value
+		}
+	}
+	return none
 }
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is received
@@ -117,71 +146,138 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 		}
 	}
 	// println('fetch $method, $scheme, $host_name, $nport, $path ')
-	if scheme == 'https' {
+	if scheme == 'https' && req.proxy == unsafe { nil } {
 		// println('ssl_do( $nport, $method, $host_name, $path )')
-		res := req.ssl_do(nport, method, host_name, path)!
-		return res
-	} else if scheme == 'http' {
+		for i in 0 .. req.max_retries {
+			res := req.ssl_do(nport, method, host_name, path) or {
+				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
+					return err
+				}
+				continue
+			}
+			return res
+		}
+	} else if scheme == 'http' && req.proxy == unsafe { nil } {
 		// println('http_do( $nport, $method, $host_name, $path )')
-		res := req.http_do('${host_name}:${nport}', method, path)!
-		return res
+		for i in 0 .. req.max_retries {
+			res := req.http_do('${host_name}:${nport}', method, path) or {
+				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
+					return err
+				}
+				continue
+			}
+			return res
+		}
+	} else if req.proxy != unsafe { nil } {
+		for i in 0 .. req.max_retries {
+			res := req.proxy.http_do(url, method, path, req) or {
+				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
+					return err
+				}
+				continue
+			}
+			return res
+		}
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "${scheme}"')
 }
 
-fn (req &Request) build_request_headers(method Method, host_name string, path string) string {
-	ua := req.user_agent
-	mut uheaders := []string{}
+fn (req &Request) build_request_headers(method Method, host_name string, port int, path string) string {
+	mut sb := strings.new_builder(4096)
+	version := if req.version == .unknown { Version.v1_1 } else { req.version }
+	sb.write_string(method.str())
+	sb.write_string(' ')
+	sb.write_string(path)
+	sb.write_string(' ')
+	sb.write_string(version.str())
+	sb.write_string('\r\n')
 	if !req.header.contains(.host) {
-		uheaders << 'Host: ${host_name}\r\n'
+		sb.write_string('Host: ')
+		if port != 80 && port != 443 && port != 0 {
+			sb.write_string('${host_name}:${port}')
+		} else {
+			sb.write_string(host_name)
+		}
+		sb.write_string('\r\n')
 	}
 	if !req.header.contains(.user_agent) {
-		uheaders << 'User-Agent: ${ua}\r\n'
+		ua := req.user_agent
+		sb.write_string('User-Agent: ')
+		sb.write_string(ua)
+		sb.write_string('\r\n')
 	}
 	if req.data.len > 0 && !req.header.contains(.content_length) {
-		uheaders << 'Content-Length: ${req.data.len}\r\n'
+		sb.write_string('Content-Length: ')
+		sb.write_string(req.data.len.str())
+		sb.write_string('\r\n')
 	}
+	chkey := CommonHeader.cookie.str()
 	for key in req.header.keys() {
-		if key == CommonHeader.cookie.str() {
+		if key == chkey {
 			continue
 		}
 		val := req.header.custom_values(key).join('; ')
-		uheaders << '${key}: ${val}\r\n'
+		sb.write_string(key)
+		sb.write_string(': ')
+		sb.write_string(val)
+		sb.write_string('\r\n')
 	}
-	uheaders << req.build_request_cookies_header()
-	version := if req.version == .unknown { Version.v1_1 } else { req.version }
-	return '${method} ${path} ${version}\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' +
-		req.data
+	sb.write_string(req.build_request_cookies_header())
+	sb.write_string('Connection: close\r\n')
+	sb.write_string('\r\n')
+	sb.write_string(req.data)
+	return sb.str()
 }
 
 fn (req &Request) build_request_cookies_header() string {
-	if req.cookies.keys().len < 1 {
+	if req.cookies.len < 1 {
 		return ''
 	}
-	mut cookie := []string{}
+	mut sb_cookie := strings.new_builder(1024)
+	hvcookies := req.header.values(.cookie)
+	total_cookies := req.cookies.len + hvcookies.len
+	sb_cookie.write_string('Cookie: ')
+	mut idx := 0
 	for key, val in req.cookies {
-		cookie << '${key}=${val}'
+		sb_cookie.write_string(key)
+		sb_cookie.write_string('=')
+		sb_cookie.write_string(val)
+		if idx < total_cookies - 1 {
+			sb_cookie.write_string('; ')
+		}
+		idx++
 	}
-	cookie << req.header.values(.cookie)
-	return 'Cookie: ' + cookie.join('; ') + '\r\n'
+	for c in hvcookies {
+		sb_cookie.write_string(c)
+		if idx < total_cookies - 1 {
+			sb_cookie.write_string('; ')
+		}
+		idx++
+	}
+	sb_cookie.write_string('\r\n')
+	return sb_cookie.str()
 }
 
 fn (req &Request) http_do(host string, method Method, path string) !Response {
-	host_name, _ := net.split_address(host)!
-	s := req.build_request_headers(method, host_name, path)
+	host_name, port := net.split_address(host)!
+	s := req.build_request_headers(method, host_name, port, path)
 	mut client := net.dial_tcp(host)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
-	// TODO this really needs to be exposed somehow
+	// TODO: this really needs to be exposed somehow
 	client.write(s.bytes())!
 	$if trace_http_request ? {
-		eprintln('> ${s}')
+		eprint('> ')
+		eprint(s)
+		eprintln('')
 	}
 	mut bytes := req.read_all_from_client_connection(client)!
 	client.close()!
 	response_text := bytes.bytestr()
 	$if trace_http_response ? {
-		eprintln('< ${response_text}')
+		eprint('< ')
+		eprint(response_text)
+		eprintln('')
 	}
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(response_text.len))!
@@ -189,21 +285,81 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 	return parse_response(response_text)
 }
 
-fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
-	mut read := i64(0)
-	mut b := []u8{len: 32768}
+// abstract over reading the whole content from TCP or SSL connections:
+type FnReceiveChunk = fn (con voidptr, buf &u8, bufsize int) !int
+
+fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) ! {
+	mut buff := [bufsize]u8{}
+	bp := unsafe { &buff[0] }
+	mut readcounter := 0
+	mut body_pos := u64(0)
+	mut old_len := u64(0)
+	mut new_len := u64(0)
+	mut expected_size := u64(0)
+	mut status_code := -1
 	for {
-		old_read := read
-		new_read := r.read(mut b[read..]) or { break }
-		read += new_read
+		readcounter++
+		len := receive_chunk_cb(con, bp, bufsize) or { break }
+		$if debug_http ? {
+			eprintln('ssl_do, read ${readcounter:4d} | len: ${len}')
+			eprintln('-'.repeat(20))
+			eprintln(unsafe { tos(bp, len) })
+			eprintln('-'.repeat(20))
+		}
+		if len <= 0 {
+			break
+		}
+		new_len = old_len + u64(len)
+		// Note: `schunk` and `bchunk` are used as convenient stack located views to the currently filled part of `buff`:
+		schunk := unsafe { bp.vstring_literal_with_len(len) }
+		mut bchunk := unsafe { bp.vbytes(len) }
+		if readcounter == 1 {
+			http_line := schunk.all_before('\r\n')
+			status_code = http_line.all_after(' ').all_before(' ').int()
+		}
 		if req.on_progress != unsafe { nil } {
-			req.on_progress(req, b[old_read..read], u64(read))!
+			req.on_progress(req, bchunk, u64(new_len))!
 		}
-		for b.len <= read {
-			unsafe { b.grow_len(4096) }
+		if body_pos == 0 {
+			bidx := schunk.index('\r\n\r\n') or { -1 }
+			if bidx > 0 {
+				body_buffer_offset := bidx + 4
+				bchunk = unsafe { (&u8(bchunk.data) + body_buffer_offset).vbytes(len - body_buffer_offset) }
+				body_pos = u64(old_len) + u64(body_buffer_offset)
+			}
 		}
+		body_so_far := u64(new_len) - body_pos
+		if req.on_progress_body != unsafe { nil } {
+			if expected_size == 0 {
+				lidx := schunk.index('Content-Length: ') or { -1 }
+				if lidx > 0 {
+					esize := schunk[lidx..].all_before('\r\n').all_after(': ').u64()
+					if esize > 0 {
+						expected_size = esize
+					}
+				}
+			}
+			req.on_progress_body(req, bchunk, body_so_far, expected_size, status_code)!
+		}
+		if !(req.stop_copying_limit > 0 && new_len > req.stop_copying_limit) {
+			unsafe { content.write_ptr(bp, len) }
+		}
+		if req.stop_receiving_limit > 0 && new_len > req.stop_receiving_limit {
+			break
+		}
+		old_len = new_len
 	}
-	return b[..read]
+}
+
+fn read_from_tcp_connection_cb(con voidptr, buf &u8, bufsize int) !int {
+	mut r := unsafe { &net.TcpConn(con) }
+	return r.read_ptr(buf, bufsize)
+}
+
+fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
+	mut content := strings.new_builder(4096)
+	req.receive_all_data_from_cb_in_builder(mut content, voidptr(r), read_from_tcp_connection_cb)!
+	return content
 }
 
 // referer returns 'Referer' header value of the given request
@@ -243,39 +399,60 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 	mut header := new_header()
 	line = reader.read_line()!
 	for line != '' {
-		key, value := parse_header(line)!
+		// key, value := parse_header(line)!
+		mut pos := parse_header_fast(line)!
+		key := line.substr_unsafe(0, pos)
+		for pos < line.len - 1 && line[pos + 1].is_space() {
+			if line[pos + 1].is_space() {
+				// Skip space or tab in value name
+				pos++
+			}
+		}
+		value := line.substr_unsafe(pos + 1, line.len)
+		_, _ = key, value
+		// println('key,value=${key},${value}')
 		header.add_custom(key, value)!
 		line = reader.read_line()!
 	}
-	header.coerce(canonicalize: true)
+	// header.coerce(canonicalize: true)
 
 	mut request_cookies := map[string]string{}
-	for _, cookie in read_cookies(header.data, '') {
+	for _, cookie in read_cookies(header, '') {
 		request_cookies[cookie.name] = cookie.value
 	}
 
 	return Request{
-		method: method
-		url: target.str()
-		header: header
-		host: header.get(.host) or { '' }
+		method:  method
+		url:     target.str()
+		header:  header
+		host:    header.get(.host) or { '' }
 		version: version
 		cookies: request_cookies
 	}
 }
 
 fn parse_request_line(s string) !(Method, urllib.URL, Version) {
-	words := s.split(' ')
-	if words.len != 3 {
+	// println('S=${s}')
+	// words := s.split(' ')
+	// println(words)
+	space1, space2 := fast_request_words(s)
+	// if words.len != 3 {
+	if space1 == 0 || space2 == 0 {
 		return error('malformed request line')
 	}
-	method := method_from_str(words[0])
-	target := urllib.parse(words[1])!
-	version := version_from_str(words[2])
+	method_str := s.substr_unsafe(0, space1)
+	target_str := s.substr_unsafe(space1 + 1, space2)
+	version_str := s.substr_unsafe(space2 + 1, s.len)
+	// println('${method_str}!${target_str}!${version_str}')
+	// method := method_from_str(words[0])
+	// target := urllib.parse(words[1])!
+	// version := version_from_str(words[2])
+	method := method_from_str(method_str)
+	target := urllib.parse(target_str)!
+	version := version_from_str(version_str)
 	if version == .unknown {
 		return error('unsupported version')
 	}
-
 	return method, target, version
 }
 
@@ -318,6 +495,7 @@ pub:
 
 pub struct UnexpectedExtraAttributeError {
 	Error
+pub:
 	attributes []string
 }
 
@@ -429,9 +607,9 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 			// dump(data.limit(20).bytes())
 			// dump(data.len)
 			files[name] << FileData{
-				filename: filename
+				filename:     filename
 				content_type: content_type
-				data: data
+				data:         data
 			}
 			continue
 		}
@@ -462,4 +640,13 @@ fn parse_disposition(line string) map[string]string {
 		}
 	}
 	return data
+}
+
+fn is_no_need_retry_error(err_code int) bool {
+	return err_code in [
+		net.err_port_out_of_range.code(),
+		net.err_no_udp_remote.code(),
+		net.err_connect_timed_out.code(),
+		net.err_timed_out_code,
+	]
 }

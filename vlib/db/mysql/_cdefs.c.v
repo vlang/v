@@ -1,15 +1,15 @@
 module mysql
 
-[typedef]
-struct C.MYSQL {
+@[typedef]
+pub struct C.MYSQL {
 }
 
-[typedef]
-struct C.MYSQL_RES {
+@[typedef]
+pub struct C.MYSQL_RES {
 }
 
-[typedef]
-struct C.MYSQL_FIELD {
+@[typedef]
+pub struct C.MYSQL_FIELD {
 	name             &u8 // Name of column
 	org_name         &u8 // Original column name, if an alias
 	table            &u8 // Table of column if column was a field
@@ -29,17 +29,18 @@ struct C.MYSQL_FIELD {
 	flags            u32 // Bit-flags that describe the field
 	decimals         u32 // Number of decimals in field
 	charsetnr        u32 // Character set
-	@type            int // Type of field. See enums.v for types
+	type             int // Type of field. See enums.v for types
 }
 
 // C.mysql_init allocates or initializes a MYSQL object suitable for `mysql_real_connect()`.
 fn C.mysql_init(mysql &C.MYSQL) &C.MYSQL
 
 // C.mysql_real_connect attempts to establish a connection to a MySQL server running on `host`.
-fn C.mysql_real_connect(mysql &C.MYSQL, host &char, user &char, passwd &char, db &char, port u32, unix_socket &char, client_flag ConnectionFlag) &C.MYSQL
+fn C.mysql_real_connect(mysql &C.MYSQL, host &char, user &char, passwd &char, db &char, port u32, unix_socket &char,
+	client_flag ConnectionFlag) &C.MYSQL
 
 // C.mysql_query executes the SQL statement pointed to by the null-terminated string `stmt_str`.
-fn C.mysql_query(mysql &C.MYSQL, q &u8) int
+fn C.mysql_query(mysql &C.MYSQL, const_q charptr) int
 
 // C.mysql_use_result initiates a result set retrieval but does not actually read
 // the result set into the client like `mysql_store_result()` does.
@@ -85,6 +86,9 @@ fn C.mysql_autocommit(mysql &C.MYSQL, mode bool) int
 // C.mysql_commit commits the current transaction.
 fn C.mysql_commit(mysql &C.MYSQL) int
 
+// C.mysql_rollback rollback the current transaction.
+fn C.mysql_rollback(mysql &C.MYSQL) int
+
 // C.mysql_refresh flush tables or caches, or resets replication server information.
 fn C.mysql_refresh(mysql &C.MYSQL, options u32) int
 
@@ -101,7 +105,7 @@ fn C.mysql_ping(mysql &C.MYSQL) int
 fn C.mysql_store_result(mysql &C.MYSQL) &C.MYSQL_RES
 
 // C.mysql_fetch_row retrieves the next row of a result set.
-fn C.mysql_fetch_row(res &C.MYSQL_RES) &&u8
+fn C.mysql_fetch_row(res &C.MYSQL_RES) &charptr
 
 // C.mysql_fetch_fields returns an array of all `MYSQL_FIELD` structures for a result set.
 // Each structure provides the field definition for one column of the result set.

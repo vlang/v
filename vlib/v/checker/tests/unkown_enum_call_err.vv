@@ -1,0 +1,9 @@
+enum HashFn {
+	sha1
+	sha256
+	sha512
+}
+
+fn test_main() {
+	assert HashFnX.from_string('sha256') or { HashFn.sha1 } == HashFn.sha256
+}

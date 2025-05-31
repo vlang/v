@@ -1,5 +1,7 @@
 fn main() {
-	mut m := {11: 22}
+	mut m := {
+		11: 22
+	}
 
 	a1 := m.clone(11)
 	println(a1)

@@ -29,10 +29,10 @@ mut:
 	lexical_attributes LexicalAttributes = LexicalAttributes{
 		current_tag: &Tag{}
 	}
-	filename    string = 'direct-parse'
-	initialized bool
-	tags        []&Tag
-	debug_file  os.File
+	filename           string = 'direct-parse'
+	initialized        bool
+	tags               []&Tag
+	debug_file         os.File
 }
 
 // This function is used to add a tag for the parser ignore it's content.
@@ -46,12 +46,12 @@ pub fn (mut parser Parser) add_code_tag(name string) {
 	parser.lexical_attributes.code_tags[name] = true
 }
 
-[inline]
+@[inline]
 fn (parser Parser) builder_str() string {
 	return parser.lexical_attributes.lexeme_builder.after(0)
 }
 
-[if debug_html ?]
+@[if debug_html ?]
 fn (mut parser Parser) print_debug(data string) {
 	if data.len > 0 {
 		parser.debug_file.writeln(data) or { panic(err) }
@@ -86,7 +86,7 @@ fn (mut parser Parser) init() {
 	}
 	parser.dom = DocumentObjectModel{
 		debug_file: parser.debug_file
-		root: &Tag{}
+		root:       &Tag{}
 	}
 	parser.add_code_tag('')
 	parser.tags = []&Tag{}
@@ -100,7 +100,7 @@ fn (mut parser Parser) generate_tag() {
 	if parser.lexical_attributes.open_tag {
 		return
 	}
-	if parser.lexical_attributes.current_tag.name.len > 0
+	if parser.lexical_attributes.current_tag.name != ''
 		|| parser.lexical_attributes.current_tag.content.len > 0 {
 		parser.tags << parser.lexical_attributes.current_tag
 	}
@@ -232,7 +232,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 
 			if parser.lexical_attributes.text_after_tag == true {
 				parser.tags << &Tag{
-					name: 'text'
+					name:    'text'
 					content: temp_string
 				}
 				parser.lexical_attributes.text_after_tag = false
@@ -248,7 +248,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 
 		if parser.tags.len == 0 {
 			parser.tags << &Tag{
-				name: 'text'
+				name:    'text'
 				content: temp_string
 			}
 		} else if parser.tags.len == 1 {
@@ -277,7 +277,7 @@ pub fn (mut parser Parser) parse_html(data string) {
 }
 
 // finalize finishes the parsing stage .
-[inline]
+@[inline]
 pub fn (mut parser Parser) finalize() {
 	parser.generate_tag()
 }

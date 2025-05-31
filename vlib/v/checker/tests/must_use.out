@@ -1,0 +1,14 @@
+vlib/v/checker/tests/must_use.vv:22:2: warning: return value must be used, function `f` was tagged with `@[must_use]`
+   20 | 
+   21 | fn main() {
+   22 |     f()
+      |     ~~~
+   23 |     g()
+   24 |     h()
+vlib/v/checker/tests/must_use.vv:29:4: warning: return value must be used, method `m` was tagged with `@[must_use]`
+   27 |     println(h())
+   28 |     a := Abc(5)
+   29 |     a.m()
+      |       ~~~
+   30 |     println(a.m())
+   31 | }

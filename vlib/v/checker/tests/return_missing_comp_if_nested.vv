@@ -1,17 +1,15 @@
 fn main() {}
 
 fn foo() string {
-    $if windows {
-        if true {
-
-        } else {
-            return ''
-        }
-    } $else {
-        if true {
-
-        } else {
-            return ''
-        }
-    }
+	$if windows {
+		if true {
+		} else {
+			return ''
+		}
+	} $else {
+		if true {
+		} else {
+			return ''
+		}
+	}
 }

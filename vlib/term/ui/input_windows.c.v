@@ -1,6 +1,7 @@
-// Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
+// Copyright (c) 2020-2024 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+@[has_globals]
 module ui
 
 import os
@@ -8,9 +9,9 @@ import time
 
 const buf_size = 64
 
-const ctx_ptr = &Context(unsafe { nil })
+__global ctx_ptr = &Context(unsafe { nil })
 
-const stdin_at_startup = u32(0)
+__global stdin_at_startup = u32(0)
 
 struct ExtraContext {
 mut:
@@ -21,14 +22,14 @@ mut:
 }
 
 fn restore_terminal_state() {
-	if unsafe { ui.ctx_ptr != 0 } {
-		if ui.ctx_ptr.cfg.use_alternate_buffer {
+	if unsafe { ctx_ptr != 0 } {
+		if ctx_ptr.cfg.use_alternate_buffer {
 			// clear the terminal and set the cursor to the origin
 			print('\x1b[2J\x1b[3J')
 			print('\x1b[?1049l')
 			flush_stdout()
 		}
-		C.SetConsoleMode(ui.ctx_ptr.stdin_handle, ui.stdin_at_startup)
+		C.SetConsoleMode(ctx_ptr.stdin_handle, stdin_at_startup)
 	}
 	load_title()
 	os.flush()
@@ -46,7 +47,7 @@ pub fn init(cfg Config) &Context {
 		panic('could not get stdin handle')
 	}
 	// save the current input mode, to be restored on exit
-	if !C.GetConsoleMode(stdin_handle, &ui.stdin_at_startup) {
+	if !C.GetConsoleMode(stdin_handle, &stdin_at_startup) {
 		panic('could not get stdin console mode')
 	}
 
@@ -80,14 +81,11 @@ pub fn init(cfg Config) &Context {
 		flush_stdout()
 	}
 
-	unsafe {
-		x := &ui.ctx_ptr
-		*x = ctx
-	}
-	C.atexit(restore_terminal_state)
+	ctx_ptr = ctx
+	at_exit(restore_terminal_state) or {}
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
-			mut c := unsafe { ui.ctx_ptr }
+			mut c := ctx_ptr
 			if unsafe { c != 0 } {
 				c.cleanup()
 			}
@@ -116,7 +114,7 @@ pub fn (mut ctx Context) run() ! {
 		}
 		if !ctx.paused {
 			sw.restart()
-			if ctx.cfg.event_fn != unsafe { nil } {
+			if ctx.cfg.event_fn != none {
 				ctx.parse_events()
 			}
 			ctx.frame()
@@ -138,7 +136,7 @@ fn (mut ctx Context) parse_events() {
 	}
 
 	// print('$nr_events | ')
-	if !C.ReadConsoleInput(ctx.stdin_handle, &ctx.read_buf[0], ui.buf_size, &nr_events) {
+	if !C.ReadConsoleInput(ctx.stdin_handle, &ctx.read_buf[0], buf_size, &nr_events) {
 		panic('could not read from stdin')
 	}
 	for i in 0 .. nr_events {
@@ -174,7 +172,7 @@ fn (mut ctx Context) parse_events() {
 					else { unsafe { KeyCode(ascii) } }
 				}
 
-				mut modifiers := Modifiers.ctrl
+				mut modifiers := unsafe { Modifiers(0) }
 				if e.dwControlKeyState & (0x1 | 0x2) != 0 {
 					modifiers.set(.alt)
 				}
@@ -186,13 +184,13 @@ fn (mut ctx Context) parse_events() {
 				}
 
 				mut event := &Event{
-					typ: .key_down
+					typ:       .key_down
 					modifiers: modifiers
-					code: code
-					ascii: ascii
-					width: int(e.dwControlKeyState)
-					height: int(e.wVirtualKeyCode)
-					utf8: unsafe { e.uChar.UnicodeChar.str() }
+					code:      code
+					ascii:     ascii
+					width:     int(e.dwControlKeyState)
+					height:    int(e.wVirtualKeyCode)
+					utf8:      unsafe { e.uChar.UnicodeChar.str() }
 				}
 				ctx.event(event)
 			}
@@ -204,7 +202,7 @@ fn (mut ctx Context) parse_events() {
 				}
 				x := e.dwMousePosition.X + 1
 				y := int(e.dwMousePosition.Y) - sb_info.srWindow.Top + 1
-				mut modifiers := Modifiers.ctrl
+				mut modifiers := unsafe { Modifiers(0) }
 				if e.dwControlKeyState & (0x1 | 0x2) != 0 {
 					modifiers.set(.alt)
 				}
@@ -235,36 +233,36 @@ fn (mut ctx Context) parse_events() {
 							EventType.mouse_drag
 						}
 						ctx.event(&Event{
-							typ: typ
-							x: x
-							y: y
-							button: button
+							typ:       typ
+							x:         x
+							y:         y
+							button:    button
 							modifiers: modifiers
 						})
 					}
 					C.MOUSE_WHEELED {
 						ctx.event(&Event{
-							typ: .mouse_scroll
+							typ:       .mouse_scroll
 							direction: if i16(e.dwButtonState >> 16) < 0 {
 								Direction.up
 							} else {
 								Direction.down
 							}
-							x: x
-							y: y
+							x:         x
+							y:         y
 							modifiers: modifiers
 						})
 					}
 					0x0008 { // C.MOUSE_HWHEELED
 						ctx.event(&Event{
-							typ: .mouse_scroll
+							typ:       .mouse_scroll
 							direction: if i16(e.dwButtonState >> 16) < 0 {
 								Direction.right
 							} else {
 								Direction.left
 							}
-							x: x
-							y: y
+							x:         x
+							y:         y
 							modifiers: modifiers
 						})
 					}
@@ -277,10 +275,10 @@ fn (mut ctx Context) parse_events() {
 						}
 						ctx.mouse_down = button
 						ctx.event(&Event{
-							typ: .mouse_down
-							x: x
-							y: y
-							button: button
+							typ:       .mouse_down
+							x:         x
+							y:         y
+							button:    button
 							modifiers: modifiers
 						})
 					}
@@ -299,10 +297,10 @@ fn (mut ctx Context) parse_events() {
 				if w != ctx.window_width || h != ctx.window_height {
 					ctx.window_width, ctx.window_height = w, h
 					mut event := &Event{
-						typ: .resized
-						width: ctx.window_width
+						typ:    .resized
+						width:  ctx.window_width
 						height: ctx.window_height
-						utf8: utf8
+						utf8:   utf8
 					}
 					ctx.event(event)
 				}
@@ -318,14 +316,14 @@ fn (mut ctx Context) parse_events() {
 	}
 }
 
-[inline]
+@[inline]
 fn save_title() {
 	// restore the previously saved terminal title
 	print('\x1b[22;0t')
 	flush_stdout()
 }
 
-[inline]
+@[inline]
 fn load_title() {
 	// restore the previously saved terminal title
 	print('\x1b[23;0t')

@@ -16,7 +16,7 @@ fn run_test(cc_used string) {
 		else { '' }
 	}
 
-	assert os.system('${os.quoted_path(@VEXE)} ${cc_flag} -o create_win_${cc_used}.dll -shared create_win_dll.v') == 0
+	assert os.system('${os.quoted_path(@VEXE)} ${cc_flag} -o create_win_${cc_used}.dll -shared create_win_dll.c.v') == 0
 	assert os.exists('create_win_${cc_used}.dll')
 	handle := dl.open('create_win_${cc_used}.dll', 0)
 	assert handle != 0
@@ -54,7 +54,7 @@ fn test_create_and_dllmain() {
 				run_test('clang32')
 			}
 			$if msvc {
-				// run_test('msvc32')  // something wrong as it passes when it should fail
+				run_test('msvc32')
 			}
 		}
 	}

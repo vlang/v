@@ -1,0 +1,1 @@
+cmd/tools/vvet/tests/prog_without_main_fn.vv:1: notice: Use a fixed array instead of a dynamic one

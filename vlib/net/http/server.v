@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -8,34 +8,41 @@ import net
 import time
 import runtime
 // ServerStatus is the current status of the server.
-// .running means that the server is active and serving.
-// .stopped means that the server is not active but still listening.
-// .closed means that the server is completely inactive.
+// .closed means that the server is completely inactive (the default on creation, and after calling .close()).
+// .running means that the server is active and serving (after .listen_and_serve()).
+// .stopped means that the server is not active but still listening (after .stop() ).
 
 pub enum ServerStatus {
+	closed
 	running
 	stopped
-	closed
 }
 
-interface Handler {
+pub interface Handler {
 mut:
 	handle(Request) Response
 }
+
+pub const default_server_port = 9009
 
 pub struct Server {
 mut:
 	state ServerStatus = .closed
 pub mut:
-	addr               string = ':8080' // change to ':8080' when port is removed
-	port               int             [deprecated: 'use addr'] = 8080
+	addr               string        = ':${default_server_port}'
 	handler            Handler       = DebugHandler{}
 	read_timeout       time.Duration = 30 * time.second
 	write_timeout      time.Duration = 30 * time.second
 	accept_timeout     time.Duration = 30 * time.second
-	pool_channel_slots int = 1024
-	worker_num         int = runtime.nr_jobs()
+	pool_channel_slots int           = 1024
+	worker_num         int           = runtime.nr_jobs()
 	listener           net.TcpListener
+
+	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.
+	on_stopped fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .stopped state.
+	on_closed  fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .closed state.
+
+	show_startup_message bool = true // set to false, to remove the default `Listening on ...` message.
 }
 
 // listen_and_serve listens on the server port `s.port` over TCP network and
@@ -45,23 +52,20 @@ pub fn (mut s Server) listen_and_serve() {
 		eprintln('Server handler not set, using debug handler')
 	}
 
-	// remove when s.port is removed
-	addr := s.addr.split(':')
-	if addr.len > 1 && s.port != 8080 {
-		s.addr = '${addr[0]}:${s.port}'
-	}
-
 	mut l := s.listener.addr() or {
-		eprintln('Failed getting listener address')
+		eprintln('Failed getting listener address, err: ${err}')
 		return
 	}
 	if l.family() == net.AddrFamily.unspec {
-		s.listener = net.listen_tcp(.ip6, '${s.addr}') or {
-			eprintln('Listening on ${s.addr} failed')
+		listening_address := if s.addr == '' || s.addr == ':0' { 'localhost:0' } else { s.addr }
+		listen_family := net.AddrFamily.ip
+		// listen_family := $if windows { net.AddrFamily.ip } $else { net.AddrFamily.ip6 }
+		s.listener = net.listen_tcp(listen_family, listening_address) or {
+			eprintln('Listening on ${s.addr} failed, err: ${err}')
 			return
 		}
 		l = s.listener.addr() or {
-			eprintln('Failed getting listener address')
+			eprintln('Failed getting listener address 2, err: ${err}')
 			return
 		}
 	}
@@ -70,23 +74,26 @@ pub fn (mut s Server) listen_and_serve() {
 
 	// Create tcp connection channel
 	ch := chan &net.TcpConn{cap: s.pool_channel_slots}
-
 	// Create workers
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
 		ws << new_handler_worker(wid, ch, s.handler)
 	}
 
-	eprintln('Listening on ${s.addr}')
+	if s.show_startup_message {
+		println('Listening on http://${s.addr}/')
+		flush_stdout()
+	}
+
+	time.sleep(20 * time.millisecond)
 	s.state = .running
-	for {
-		// break if we have a stop signal
-		if s.state != .running {
-			break
-		}
+	if s.on_running != unsafe { nil } {
+		s.on_running(mut s)
+	}
+	for s.state == .running {
 		mut conn := s.listener.accept() or {
 			if err.code() == net.err_timed_out_code {
-				// just skip network timeouts, they are normal
+				// Skip network timeouts, they are normal
 				continue
 			}
 			eprintln('accept() failed, reason: ${err}; skipping')
@@ -102,22 +109,53 @@ pub fn (mut s Server) listen_and_serve() {
 }
 
 // stop signals the server that it should not respond anymore.
-[inline]
+@[inline]
 pub fn (mut s Server) stop() {
 	s.state = .stopped
+	if s.on_stopped != unsafe { nil } {
+		s.on_stopped(mut s)
+	}
 }
 
 // close immediately closes the port and signals the server that it has been closed.
-[inline]
+@[inline]
 pub fn (mut s Server) close() {
 	s.state = .closed
 	s.listener.close() or { return }
+	if s.on_closed != unsafe { nil } {
+		s.on_closed(mut s)
+	}
 }
 
 // status indicates whether the server is running, stopped, or closed.
-[inline]
+@[inline]
 pub fn (s &Server) status() ServerStatus {
 	return s.state
+}
+
+// WaitTillRunningParams allows for parametrising the calls to s.wait_till_running()
+@[params]
+pub struct WaitTillRunningParams {
+pub:
+	max_retries     int = 100 // how many times to check for the status, for each single s.wait_till_running() call
+	retry_period_ms int = 10  // how much time to wait between each check for the status, in milliseconds
+}
+
+// wait_till_running allows you to synchronise your calling (main) thread, with the state of the server
+// (when the server is running in another thread).
+// It returns an error, after params.max_retries * params.retry_period_ms
+// milliseconds have passed, without that expected server transition.
+pub fn (mut s Server) wait_till_running(params WaitTillRunningParams) !int {
+	mut i := 0
+	for s.status() != .running && i < params.max_retries {
+		time.sleep(params.retry_period_ms * time.millisecond)
+		i++
+	}
+	if i >= params.max_retries {
+		return error('maximum retries reached')
+	}
+	time.sleep(params.retry_period_ms)
+	return i
 }
 
 struct HandlerWorker {
@@ -129,8 +167,8 @@ pub mut:
 
 fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler) thread {
 	mut w := &HandlerWorker{
-		id: wid
-		ch: ch
+		id:      wid
+		ch:      ch
 		handler: handler
 	}
 	return spawn w.process_requests()
@@ -162,7 +200,7 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		return
 	}
 
-	remote_ip := conn.peer_ip() or { '' }
+	remote_ip := conn.peer_ip() or { '0.0.0.0' }
 	req.header.add_custom('Remote-Addr', remote_ip) or {}
 
 	mut resp := w.handler.handle(req)
@@ -189,7 +227,7 @@ fn (d DebugHandler) handle(req Request) Response {
 		eprintln('[${time.now()}] ${req.method} ${req.url} - 200')
 	}
 	mut r := Response{
-		body: req.data
+		body:   req.data
 		header: req.header
 	}
 	r.set_status(.ok)

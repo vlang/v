@@ -16,13 +16,13 @@ mut:
 	fname        string
 	plan_tests   int
 	test_counter int
-	//
+
 	file_test_info   VTestFileMetaInfo
 	fn_test_info     VTestFnMetaInfo
 	fn_assert_passes u64
 	fn_passes        u64
 	fn_fails         u64
-	//
+
 	total_assert_passes u64
 	total_assert_fails  u64
 }

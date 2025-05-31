@@ -1,17 +1,21 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
 
 import v.ast
+import v.util
 
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
-		if g.table.sym(node.return_type).kind in [.sum_type, .multi_return]
-			|| node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
+		if g.inside_struct_init {
 			return true
 		}
-		if g.table.final_sym(node.cond_type).kind == .enum_ && node.branches.len > 5 {
+		if g.table.sym(node.return_type).kind in [.sum_type, .multi_return]
+			|| node.return_type.has_option_or_result() {
+			return true
+		}
+		if g.table.final_sym(node.cond_type).kind == .enum && node.branches.len > 5 {
 			return true
 		}
 		if g.need_tmp_var_in_expr(node.cond) {
@@ -24,6 +28,9 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 			if branch.stmts.len == 1 {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
+					if stmt.expr is ast.ArrayInit && stmt.expr.is_fixed {
+						return true
+					}
 					if g.need_tmp_var_in_expr(stmt.expr) {
 						return true
 					}
@@ -76,12 +83,12 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	} else {
 		line := if is_expr {
 			g.empty_line = true
-			g.go_before_last_stmt()
+			g.go_before_last_stmt().trim_left('\t')
 		} else {
 			''
 		}
 		cond_var = g.new_tmp_var()
-		g.write('${g.typ(node.cond_type)} /*A*/ ${cond_var} = ')
+		g.write('${g.styp(node.cond_type)} ${cond_var} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		g.set_current_pos_as_last_stmt_pos()
@@ -92,18 +99,18 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		cur_line = g.go_before_last_stmt().trim_left(' \t')
 		tmp_var = g.new_tmp_var()
 		mut func_decl := ''
-		if g.table.final_sym(node.return_type).kind == .function {
-			func_sym := g.table.final_sym(node.return_type)
-			if func_sym.info is ast.FnType {
-				def := g.fn_var_signature(func_sym.info.func.return_type, func_sym.info.func.params.map(it.typ),
+		ret_final_sym := g.table.final_sym(node.return_type)
+		if !node.return_type.has_option_or_result() && ret_final_sym.kind == .function {
+			if ret_final_sym.info is ast.FnType {
+				def := g.fn_var_signature(ret_final_sym.info.func.return_type, ret_final_sym.info.func.params.map(it.typ),
 					tmp_var)
-				func_decl = '${def} = &${g.typ(node.return_type)};'
+				func_decl = '${def} = &${g.styp(node.return_type)};'
 			}
 		}
-		if func_decl.len > 0 {
+		if func_decl != '' {
 			g.writeln(func_decl) // func, anon func declaration
 		} else {
-			g.writeln('${g.typ(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
+			g.writeln('${g.styp(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
 		}
 		g.empty_line = true
 		if g.infix_left_var_name.len > 0 {
@@ -140,7 +147,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		if can_be_a_switch && !is_expr && g.loop_depth == 0 && g.fn_decl != unsafe { nil }
 			&& cond_fsym.is_int() {
 			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
-		} else if cond_fsym.kind == .enum_ && g.loop_depth == 0 && node.branches.len > 5
+		} else if cond_fsym.kind == .enum && g.loop_depth == 0 && node.branches.len > 5
 			&& g.fn_decl != unsafe { nil } {
 			// do not optimize while in top-level
 			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
@@ -159,7 +166,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	g.write(cur_line)
 	if need_tmp_var {
-		g.write('${tmp_var}')
+		g.write(tmp_var)
 	}
 	if is_expr && !need_tmp_var {
 		g.write(')')
@@ -169,7 +176,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 
 fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
 	dot_or_ptr := g.dot_or_ptr(node.cond_type)
-	use_ternary := is_expr && tmp_var.len == 0
+	use_ternary := is_expr && tmp_var == ''
 	cond_sym := g.table.sym(node.cond_type)
 	for j, branch in node.branches {
 		mut sumtype_index := 0
@@ -179,11 +186,11 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			is_last := j == node.branches.len - 1 && sumtype_index == branch.exprs.len - 1
 			if branch.is_else || (use_ternary && is_last) {
 				if use_ternary {
-					// TODO too many branches. maybe separate ?: matches
+					// TODO: too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
 					g.writeln('')
-					g.write_v_source_line_info(branch.pos)
+					g.write_v_source_line_info(branch)
 					g.writeln('else {')
 				}
 			} else {
@@ -191,7 +198,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					if use_ternary {
 						g.write(' : ')
 					} else {
-						g.write_v_source_line_info(branch.pos)
+						g.write_v_source_line_info(branch)
 						g.write('else ')
 					}
 				}
@@ -201,19 +208,29 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					if j == 0 && sumtype_index == 0 {
 						g.empty_line = true
 					}
-					g.write_v_source_line_info(branch.pos)
+					g.write_v_source_line_info(branch)
 					g.write('if (')
 				}
+				need_deref := node.cond_type.nr_muls() > 1
+				if need_deref {
+					g.write2('(', '*'.repeat(node.cond_type.nr_muls() - 1))
+				}
 				g.write(cond_var)
+				if need_deref {
+					g.write(')')
+				}
 				cur_expr := unsafe { &branch.exprs[sumtype_index] }
 				if cond_sym.kind == .sum_type {
+					if cur_expr is ast.TypeNode {
+						g.type_resolver.update_ct_type(cond_var, cur_expr.typ)
+					}
 					g.write('${dot_or_ptr}_typ == ')
 					if cur_expr is ast.None {
 						g.write('${ast.none_type.idx()} /* none */')
 					} else {
 						g.expr(cur_expr)
 					}
-				} else if cond_sym.kind == .interface_ {
+				} else if cond_sym.kind == .interface {
 					if cur_expr is ast.TypeNode {
 						branch_sym := g.table.sym(g.unwrap_generic(cur_expr.typ))
 						g.write('${dot_or_ptr}_typ == _${cond_sym.cname}_${branch_sym.cname}_index')
@@ -230,7 +247,23 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
 				g.expected_cast_type = node.return_type
 			}
+			inside_interface_deref_old := g.inside_interface_deref
+			if is_expr && branch.stmts.len > 0 {
+				mut stmt := branch.stmts.last()
+				if mut stmt is ast.ExprStmt {
+					if mut stmt.expr is ast.Ident && stmt.expr.obj is ast.Var
+						&& g.table.is_interface_var(stmt.expr.obj) {
+						g.inside_interface_deref = true
+					} else if mut stmt.expr is ast.PrefixExpr && stmt.expr.right is ast.Ident {
+						ident := stmt.expr.right as ast.Ident
+						if ident.obj is ast.Var && g.table.is_interface_var(ident.obj) {
+							g.inside_interface_deref = true
+						}
+					}
+				}
+			}
 			g.stmts_with_tmp_var(branch.stmts, tmp_var)
+			g.inside_interface_deref = inside_interface_deref_old
 			g.expected_cast_type = 0
 			if g.inside_ternary == 0 {
 				g.writeln('}')
@@ -248,12 +281,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 
 fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, cond_fsym ast.TypeSymbol) {
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
-	cname := '${cond_fsym.cname}__'
 
-	mut covered_enum_cap := 0
-	if cond_fsym.info is ast.Enum {
-		covered_enum_cap = cond_fsym.info.vals.len
-	}
+	covered_enum_cap := if cond_fsym.info is ast.Enum { cond_fsym.info.vals.len } else { 0 }
 	mut covered_enum := []string{cap: covered_enum_cap} // collects missing enum variant branches to avoid cstrict errors
 
 	// A branch that has a RangeExpr condition, cannot be emitted as a switch case branch;
@@ -267,16 +296,17 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 	for branch in node.branches {
 		if branch.is_else {
 			if cond_fsym.info is ast.Enum {
+				cname := '${cond_fsym.cname}__'
 				for val in cond_fsym.info.vals {
 					if val !in covered_enum {
 						g.writeln('case ${cname}${val}:')
 					}
 				}
 			}
-			g.write('default: ')
+			g.writeln('default: {')
 			default_generated = true
+			g.indent++
 			if range_branches.len > 0 {
-				g.indent++
 				for range_branch in range_branches {
 					g.write('if (')
 					for i, expr in range_branch.exprs {
@@ -306,7 +336,6 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 					}
 					g.writeln('}')
 				}
-				g.indent--
 			}
 		} else {
 			if branch.exprs.any(it is ast.RangeExpr) {
@@ -319,14 +348,9 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 				}
 				g.write('case ')
 				g.expr(expr)
-				if branch.stmts.len > 0 {
-					g.write(': ')
-				} else {
-					g.writeln(': ')
-				}
+				g.write(': ')
 			}
 		}
-		g.indent++
 		g.writeln('{')
 		if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
 			g.expected_cast_type = node.return_type
@@ -336,12 +360,12 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 		if !ends_with_return {
 			g.writeln('\tbreak;')
 		}
-		g.indent--
 		g.writeln('}')
 	}
 	if range_branches.len > 0 && !default_generated {
-		g.write('default: ')
+		g.writeln('default: {')
 		g.indent++
+		default_generated = true
 		for range_branch in range_branches {
 			g.write('if (')
 			for i, expr in range_branch.exprs {
@@ -371,7 +395,10 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 			}
 			g.writeln('}')
 		}
+	}
+	if default_generated {
 		g.indent--
+		g.writeln('}')
 	}
 	g.indent--
 	g.writeln('}')
@@ -387,7 +414,8 @@ fn (mut g Gen) should_check_low_bound_in_range_expr(expr ast.RangeExpr, node_con
 				should_check_low_bound = false
 			}
 		} else if expr.low is ast.Ident {
-			if mut obj := g.table.global_scope.find_const(expr.low.name) {
+			mut elow := unsafe { expr.low }
+			if mut obj := g.table.global_scope.find_const(elow.full_name()) {
 				if mut obj.expr is ast.IntegerLiteral {
 					if obj.expr.val == '0' {
 						should_check_low_bound = false
@@ -401,18 +429,20 @@ fn (mut g Gen) should_check_low_bound_in_range_expr(expr ast.RangeExpr, node_con
 
 fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
-	type_sym := g.table.sym(node.cond_type)
-	use_ternary := is_expr && tmp_var.len == 0
+	type_sym := g.table.final_sym(node.cond_type)
+	use_ternary := is_expr && tmp_var == ''
+	mut reset_if := false
+	mut has_goto := false
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1
 		if branch.is_else || (use_ternary && is_last) {
 			if node.branches.len > 1 {
 				if use_ternary {
-					// TODO too many branches. maybe separate ?: matches
+					// TODO: too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
 					g.writeln('')
-					g.write_v_source_line_info(branch.pos)
+					g.write_v_source_line_info(branch)
 					g.writeln('else {')
 				}
 			}
@@ -422,8 +452,12 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write(' : ')
 				} else {
 					g.writeln('')
-					g.write_v_source_line_info(branch.pos)
-					g.write('else ')
+					g.write_v_source_line_info(branch)
+					if !reset_if {
+						g.write('else ')
+					} else {
+						reset_if = false
+					}
 				}
 			}
 			if use_ternary {
@@ -432,9 +466,10 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				if j == 0 {
 					g.writeln('')
 				}
-				g.write_v_source_line_info(branch.pos)
+				g.write_v_source_line_info(branch)
 				g.write('if (')
 			}
+			reset_if = branch.exprs.any(g.match_must_reset_if(it))
 			for i, expr in branch.exprs {
 				if i > 0 {
 					g.write(' || ')
@@ -457,6 +492,9 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					.array_fixed {
 						ptr_typ := g.equality_fn(node.cond_type)
 						g.write('${ptr_typ}_arr_eq(${cond_var}, ')
+						if expr is ast.ArrayInit {
+							g.write('(${g.styp(node.cond_type)})')
+						}
 						g.expr(expr)
 						g.write(')')
 					}
@@ -467,11 +505,21 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 						g.write(')')
 					}
 					.string {
-						g.write('string__eq(${cond_var}, ')
-						g.expr(expr)
-						g.write(')')
+						if expr is ast.StringLiteral {
+							slit := cescape_nonascii(util.smart_quote(expr.val, expr.is_raw))
+							if node.cond_type.is_ptr() {
+								g.write('_SLIT_EQ(${cond_var}->str, ${cond_var}->len, "${slit}")')
+							} else {
+								g.write('_SLIT_EQ(${cond_var}.str, ${cond_var}.len, "${slit}")')
+							}
+						} else {
+							ptr_str := if node.cond_type.is_ptr() { '*' } else { '' }
+							g.write('fast_string_eq(${ptr_str}${cond_var}, ')
+							g.expr(expr)
+							g.write(')')
+						}
 					}
-					.struct_ {
+					.struct {
 						derefs_expr := '*'.repeat(g.get_expr_type(expr).nr_muls())
 						derefs_ctype := '*'.repeat(node.cond_type.nr_muls())
 						ptr_typ := g.equality_fn(node.cond_type)
@@ -516,7 +564,32 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.expected_cast_type = 0
 		if g.inside_ternary == 0 && node.branches.len >= 1 {
-			g.write('}')
+			if reset_if {
+				has_goto = true
+				g.writeln2('\tgoto end_block_${node.pos.line_nr};', '}')
+				g.set_current_pos_as_last_stmt_pos()
+			} else {
+				g.write('}')
+			}
+		}
+	}
+	if has_goto {
+		g.writeln('end_block_${node.pos.line_nr}: {}')
+		g.set_current_pos_as_last_stmt_pos()
+	}
+}
+
+// match_must_reset_if checks if codegen must break the if-elseif sequence in another if expr
+fn (mut g Gen) match_must_reset_if(node ast.Expr) bool {
+	return match node {
+		ast.CallExpr {
+			node.or_block.kind != .absent
+		}
+		ast.InfixExpr {
+			g.match_must_reset_if(node.left) || g.match_must_reset_if(node.right)
+		}
+		else {
+			false
 		}
 	}
 }

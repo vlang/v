@@ -1,0 +1,13 @@
+#include <stdio.h>
+
+struct Foo {}
+
+fn (unused_receiver Foo) method(unused_param int) {}
+
+fn func(unused_param int) {}
+
+fn func2(_ int) {}
+
+pub fn pub_func(unused_param int) {}
+
+fn C.puts(unused_c_param &char) int

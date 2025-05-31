@@ -5,18 +5,18 @@ struct Struct {
 
 fn main() {
 	unsafe {
-		pb := &byte(0)
-		ppb := &&byte(0)
-		pppb := &&&byte(0)
-		ppppb := &&&&byte(0)
+		pb := &u8(0)
+		ppb := &&u8(0)
+		pppb := &&&u8(0)
+		ppppb := &&&&u8(0)
 		dump(voidptr(pb))
 		dump(voidptr(ppb))
 		dump(voidptr(pppb))
 		dump(voidptr(ppppb))
-		pc := &char(0)
-		ppc := &&char(0)
-		pppc := &&&char(0)
-		ppppc := &&&&char(0)
+		pc := &char(nil)
+		ppc := &&char(nil)
+		pppc := &&&char(nil)
+		ppppc := &&&&char(nil)
 		dump(voidptr(pc))
 		dump(voidptr(ppc))
 		dump(voidptr(pppc))
@@ -32,7 +32,7 @@ fn main() {
 	}
 	ss := &Struct{
 		name: 'abc'
-		x: 123
+		x:    123
 	}
 	dump(ss)
 	pss := voidptr(ss)

@@ -1,17 +1,28 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
 
 import strings
+import arrays
+
+struct HeaderKV {
+	key   string
+	value string
+}
+
+pub const max_headers = 50
 
 // Header represents the key-value pairs in an HTTP header
 pub struct Header {
+pub mut:
+	// data map[string][]string
+	data [max_headers]HeaderKV
 mut:
-	data map[string][]string
+	cur_pos int
 	// map of lowercase header keys to their original keys
 	// in order of appearance
-	keys map[string][]string
+	// keys map[string][]string
 }
 
 // CommonHeader is an enum of the most common HTTP headers
@@ -93,6 +104,7 @@ pub enum CommonHeader {
 	sec_fetch_site
 	sec_fetch_user
 	sec_websocket_accept
+	sec_websocket_key
 	server
 	server_timing
 	set_cookie
@@ -199,6 +211,7 @@ pub fn (h CommonHeader) str() string {
 		.sec_fetch_site { 'Sec-Fetch-Site' }
 		.sec_fetch_user { 'Sec-Fetch-User' }
 		.sec_websocket_accept { 'Sec-WebSocket-Accept' }
+		.sec_websocket_key { 'Sec-WebSocket-Key' }
 		.server { 'Server' }
 		.server_timing { 'Server-Timing' }
 		.set_cookie { 'Set-Cookie' }
@@ -304,6 +317,7 @@ const common_header_map = {
 	'sec-fetch-site':                      .sec_fetch_site
 	'sec-fetch-user':                      .sec_fetch_user
 	'sec-websocket-accept':                .sec_websocket_accept
+	'sec_websocket_key':                   .sec_websocket_key
 	'server':                              .server
 	'server-timing':                       .server_timing
 	'set-cookie':                          .set_cookie
@@ -333,12 +347,13 @@ const common_header_map = {
 
 pub fn (mut h Header) free() {
 	unsafe {
-		h.data.free()
-		h.keys.free()
+		// h.data.free()
+		// h.keys.free()
 	}
 }
 
 pub struct HeaderConfig {
+pub:
 	key   CommonHeader
 	value string
 }
@@ -346,11 +361,13 @@ pub struct HeaderConfig {
 // Create a new Header object
 pub fn new_header(kvs ...HeaderConfig) Header {
 	mut h := Header{
-		data: map[string][]string{}
+		// data: map[string][]string{}
 	}
-	for kv in kvs {
-		h.add(kv.key, kv.value)
+	for i, kv in kvs {
+		h.data[i] = HeaderKV{kv.key.str(), kv.value}
+		// h.add(kv.key, kv.value)
 	}
+	h.cur_pos = kvs.len
 	return h
 }
 
@@ -371,16 +388,20 @@ pub fn new_custom_header_from_map(kvs map[string]string) !Header {
 // add appends a value to the header key.
 pub fn (mut h Header) add(key CommonHeader, value string) {
 	k := key.str()
-	h.data[k] << value
-	h.add_key(k)
+	// h.data[k] << value
+	h.data[h.cur_pos] = HeaderKV{k, value}
+	h.cur_pos++
+	// h.add_key(k)
 }
 
 // add_custom appends a value to a custom header key. This function will
 // return an error if the key contains invalid header characters.
 pub fn (mut h Header) add_custom(key string, value string) ! {
 	is_valid(key)!
-	h.data[key] << value
-	h.add_key(key)
+	// h.data[key] << value
+	h.data[h.cur_pos] = HeaderKV{key, value}
+	h.cur_pos++
+	// h.add_key(key)
 }
 
 // add_map appends the value for each header key.
@@ -400,9 +421,21 @@ pub fn (mut h Header) add_custom_map(kvs map[string]string) ! {
 // set sets the key-value pair. This function will clear any other values
 // that exist for the CommonHeader.
 pub fn (mut h Header) set(key CommonHeader, value string) {
-	k := key.str()
-	h.data[k] = [value]
-	h.add_key(k)
+	key_str := key.str()
+
+	// for i, kv in h.data {
+	for i := 0; i < h.cur_pos; i++ {
+		if h.data[i].key == key_str {
+			h.data[i] = HeaderKV{key_str, value}
+			return
+		}
+	}
+	// Not updated, add a new one
+	h.data[h.cur_pos] = HeaderKV{key_str, value}
+	h.cur_pos++
+
+	// h.data[k] = [value]
+	// h.add_key(k)
 }
 
 // set_custom sets the key-value pair for a custom header key. This
@@ -411,8 +444,27 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 // characters.
 pub fn (mut h Header) set_custom(key string, value string) ! {
 	is_valid(key)!
-	h.data[key] = [value]
-	h.add_key(key)
+	mut set := false
+	for i, kv in h.data {
+		if kv.key == key {
+			if !set {
+				h.data[i] = HeaderKV{key, value}
+				set = true
+			} else {
+				// Remove old duplicates
+				h.data[i] = HeaderKV{key, ''}
+			}
+			// return
+		}
+	}
+	if set {
+		return
+	}
+	// Not updated, add a new one
+	h.data[h.cur_pos] = HeaderKV{key, value}
+	h.cur_pos++
+	// h.data[key] = [value]
+	// h.add_key(key)
 }
 
 // delete deletes all values for a key.
@@ -422,58 +474,63 @@ pub fn (mut h Header) delete(key CommonHeader) {
 
 // delete_custom deletes all values for a custom header key.
 pub fn (mut h Header) delete_custom(key string) {
-	h.data.delete(key)
+	for i := 0; i < h.cur_pos; i++ {
+		if h.data[i].key == key {
+			h.data[i] = HeaderKV{key, ''}
+		}
+	}
+	// h.data.delete(key)
 
 	// remove key from keys metadata
+	/*
 	kl := key.to_lower()
 	if kl in h.keys {
 		h.keys[kl] = h.keys[kl].filter(it != key)
 	}
-}
-
-[params]
-pub struct HeaderCoerceConfig {
-	canonicalize bool
-}
-
-// coerce coerces data in the Header by joining keys that match
-// case-insensitively into one entry.
-pub fn (mut h Header) coerce(flags HeaderCoerceConfig) {
-	for kl, data_keys in h.keys {
-		master_key := if flags.canonicalize { canonicalize(kl) } else { data_keys[0] }
-
-		// save master data
-		master_data := h.data[master_key]
-		h.data.delete(master_key)
-
-		for key in data_keys {
-			if key == master_key {
-				h.data[master_key] << master_data
-				continue
-			}
-			h.data[master_key] << h.data[key]
-			h.data.delete(key)
-		}
-		h.keys[kl] = [master_key]
-	}
+	*/
 }
 
 // contains returns whether the header key exists in the map.
 pub fn (h Header) contains(key CommonHeader) bool {
-	return h.contains_custom(key.str())
+	if h.cur_pos == 0 {
+		return false
+	}
+	key_str := key.str()
+	for i := 0; i < h.cur_pos; i++ {
+		if h.data[i].key == key_str {
+			return true
+		}
+	}
+	return false
+	// return h.contains_custom(key.str())
 }
 
-[params]
+@[params]
 pub struct HeaderQueryConfig {
+pub:
 	exact bool
 }
 
 // contains_custom returns whether the custom header key exists in the map.
 pub fn (h Header) contains_custom(key string, flags HeaderQueryConfig) bool {
 	if flags.exact {
-		return key in h.data
+		for i := 0; i < h.cur_pos; i++ {
+			kv := h.data[i]
+			if kv.key == key {
+				return true
+			}
+		}
+		return false
+	} else {
+		lower_key := key.to_lower()
+		for i := 0; i < h.cur_pos; i++ {
+			kv := h.data[i]
+			if kv.key.to_lower() == lower_key {
+				return true
+			}
+		}
+		return false
 	}
-	return key.to_lower() in h.keys
 }
 
 // get gets the first value for the CommonHeader, or none if the key
@@ -485,27 +542,34 @@ pub fn (h Header) get(key CommonHeader) !string {
 // get_custom gets the first value for the custom header, or none if
 // the key does not exist.
 pub fn (h Header) get_custom(key string, flags HeaderQueryConfig) !string {
-	mut data_key := key
-	if !flags.exact {
-		// get the first key from key metadata
-		k := key.to_lower()
-		if h.keys[k].len == 0 {
-			return error('none')
+	if flags.exact {
+		for i := 0; i < h.cur_pos; i++ {
+			// for kv in h.data {
+			kv := h.data[i]
+			// println('${kv.key} => ${kv.value}')
+			if kv.key == key {
+				return kv.value
+			}
 		}
-		data_key = h.keys[k][0]
+	} else {
+		lower_key := key.to_lower()
+		// for kv in h.data {
+		for i := 0; i < h.cur_pos; i++ {
+			kv := h.data[i]
+			if kv.key.to_lower() == lower_key {
+				return kv.value
+			}
+		}
 	}
-	if h.data[data_key].len == 0 {
-		return error('none')
-	}
-	return h.data[data_key][0]
+	return error('none')
 }
 
 // starting_with gets the first header starting with key, or none if
 // the key does not exist.
 pub fn (h Header) starting_with(key string) !string {
-	for k, _ in h.data {
-		if k.starts_with(key) {
-			return k
+	for _, kv in h.data {
+		if kv.key.starts_with(key) {
+			return kv.key
 		}
 	}
 	return error('none')
@@ -518,24 +582,46 @@ pub fn (h Header) values(key CommonHeader) []string {
 
 // custom_values gets all values for the custom header.
 pub fn (h Header) custom_values(key string, flags HeaderQueryConfig) []string {
+	if h.cur_pos == 0 {
+		return []
+	}
+	mut res := []string{cap: 2}
 	if flags.exact {
-		return h.data[key]
+		for i := 0; i < h.cur_pos; i++ {
+			kv := h.data[i]
+			if kv.key == key && kv.value != '' { // empty value means a deleted header
+				res << kv.value
+			}
+		}
+		return res
+	} else {
+		lower_key := key.to_lower()
+		for i := 0; i < h.cur_pos; i++ {
+			kv := h.data[i]
+			if kv.key.to_lower() == lower_key && kv.value != '' { // empty value means a deleted header
+				res << kv.value
+			}
+		}
+		return res
 	}
-	// case insensitive lookup
-	mut values := []string{cap: 10}
-	for k in h.keys[key.to_lower()] {
-		values << h.data[k]
-	}
-	return values
 }
 
 // keys gets all header keys as strings
 pub fn (h Header) keys() []string {
-	return h.data.keys()
+	mut res := []string{cap: h.cur_pos}
+	for i := 0; i < h.cur_pos; i++ {
+		if h.data[i].value == '' {
+			continue
+		}
+		res << h.data[i].key
+	}
+	// Make sure keys are lower case and unique
+	return arrays.uniq(res)
 }
 
-[params]
+@[params]
 pub struct HeaderRenderConfig {
+pub:
 	version      Version
 	coerce       bool
 	canonicalize bool
@@ -543,10 +629,20 @@ pub struct HeaderRenderConfig {
 
 // render renders the Header into a string for use in sending HTTP
 // requests. All header lines will end in `\r\n`
-[manualfree]
+@[manualfree]
 pub fn (h Header) render(flags HeaderRenderConfig) string {
 	// estimate ~48 bytes per header
 	mut sb := strings.new_builder(h.data.len * 48)
+	h.render_into_sb(mut sb, flags)
+	res := sb.str()
+	unsafe { sb.free() }
+	return res
+}
+
+// render_into_sb works like render, but uses a preallocated string builder instead.
+// This method should be used only for performance critical applications.
+pub fn (h Header) render_into_sb(mut sb strings.Builder, flags HeaderRenderConfig) {
+	/*
 	if flags.coerce {
 		for kl, data_keys in h.keys {
 			key := if flags.version == .v2_0 {
@@ -566,38 +662,39 @@ pub fn (h Header) render(flags HeaderRenderConfig) string {
 			}
 		}
 	} else {
-		for k, vs in h.data {
-			key := if flags.version == .v2_0 {
-				k.to_lower()
-			} else if flags.canonicalize {
-				canonicalize(k.to_lower())
-			} else {
-				k
-			}
-			for v in vs {
-				sb.write_string(key)
-				sb.write_string(': ')
-				sb.write_string(v)
-				sb.write_string('\r\n')
-			}
+	*/
+	// for _, kv in h.data {
+	for i := 0; i < h.cur_pos; i++ {
+		kv := h.data[i]
+		key := if flags.version == .v2_0 {
+			kv.key.to_lower()
+		} else if flags.canonicalize {
+			canonicalize(kv.key.to_lower())
+		} else {
+			kv.key
 		}
+		// XTODO  handle []string ? or doesn't matter?
+		// for v in vs {
+		sb.write_string(key)
+		sb.write_string(': ')
+		sb.write_string(kv.value)
+		sb.write_string('\r\n')
+		//}
 	}
-	res := sb.str()
-	unsafe { sb.free() }
-	return res
+	//}
 }
 
 // join combines two Header structs into a new Header struct
 pub fn (h Header) join(other Header) Header {
 	mut combined := Header{
-		data: h.data.clone()
-		keys: h.keys.clone()
+		data:    h.data // h.data.clone()
+		cur_pos: h.cur_pos
 	}
 	for k in other.keys() {
 		for v in other.custom_values(k, exact: true) {
 			combined.add_custom(k, v) or {
 				// panic because this should never fail
-				panic('unexpected error: ${err}')
+				panic('unexpected error: ' + err.str())
 			}
 		}
 	}
@@ -608,21 +705,23 @@ pub fn (h Header) join(other Header) Header {
 // Common headers are determined by the common_header_map
 // Custom headers are capitalized on the first letter and any letter after a '-'
 // NOTE: Assumes sl is lowercase, since the caller usually already has the lowercase key
-fn canonicalize(sl string) string {
+fn canonicalize(name string) string {
 	// check if we have a common header
-	if sl in http.common_header_map {
-		return http.common_header_map[sl].str()
+	if name in common_header_map {
+		return common_header_map[name].str()
 	}
-	return sl.split('-').map(it.capitalize()).join('-')
+	return name.split('-').map(it.capitalize()).join('-')
 }
 
 // Helper function to add a key to the keys map
+/*
 fn (mut h Header) add_key(key string) {
 	kl := key.to_lower()
 	if !h.keys[kl].contains(key) {
 		h.keys[kl] << key
 	}
 }
+*/
 
 // Custom error struct for invalid header tokens
 struct HeaderKeyError {
@@ -645,16 +744,16 @@ fn is_valid(header string) ! {
 	for _, c in header {
 		if int(c) >= 128 || !is_token(c) {
 			return HeaderKeyError{
-				code: 1
-				header: header
+				code:         1
+				header:       header
 				invalid_char: c
 			}
 		}
 	}
 	if header.len == 0 {
 		return HeaderKeyError{
-			code: 2
-			header: header
+			code:         2
+			header:       header
 			invalid_char: 0
 		}
 	}
@@ -703,4 +802,9 @@ fn parse_header(s string) !(string, string) {
 	words := s.split_nth(':', 2)
 	// TODO: parse quoted text according to the RFC
 	return words[0], words[1].trim(' \t')
+}
+
+fn parse_header_fast(s string) !int {
+	pos := s.index(':') or { return error('missing colon in header') }
+	return pos
 }

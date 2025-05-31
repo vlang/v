@@ -22,9 +22,12 @@ fn (mut g JsGen) copy_val(t ast.Type, tmp string) string {
 }
 
 fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
-	sym := g.table.sym(t)
+	sym := g.table.sym(g.table.unaliased_type(t))
 	mut styp := ''
 	mut prefix := 'new '
+	if sym.info is ast.SumType {
+		return g.to_js_typ_val(sym.info.variants[0])
+	}
 	match sym.kind {
 		.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal, .float_literal {
 			styp = '${prefix}${g.sym_to_js_typ(sym)}(0)'
@@ -41,7 +44,7 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 		.array {
 			styp = 'empty_array()'
 		}
-		.struct_ {
+		.struct {
 			styp = 'new ${g.js_name(sym.name)}(${g.to_js_typ_def_val(sym.name)})'
 		}
 		.voidptr {
@@ -133,7 +136,7 @@ fn (mut g JsGen) base_type(_t ast.Type) string {
 	return styp
 }
 
-pub fn (mut g JsGen) typ(t ast.Type) string {
+pub fn (mut g JsGen) styp(t ast.Type) string {
 	sym := g.table.final_sym(t)
 	if sym.kind == .voidptr {
 		return 'voidptr'
@@ -161,14 +164,14 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 		.byteptr, .charptr {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
-		.i8, .i16, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .int_literal,
-		.float_literal {
+		.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64,
+		.int_literal, .float_literal {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
 		.bool {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
-		.none_ {
+		.none {
 			styp = 'undefined'
 		}
 		.string, .char {
@@ -177,11 +180,11 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 		// 'array_array_int' => 'number[][]'
 		.array {
 			info := sym.info as ast.Array
-			styp = '${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
+			styp = '${g.sym_to_js_typ(sym)}(${g.styp(info.elem_type)})'
 		}
 		.array_fixed {
 			info := sym.info as ast.ArrayFixed
-			styp = '${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
+			styp = '${g.sym_to_js_typ(sym)}(${g.styp(info.elem_type)})'
 		}
 		.chan {
 			styp = 'chan'
@@ -189,22 +192,22 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 		// 'map[string]int' => 'Map<string, number>'
 		.map {
 			info := sym.info as ast.Map
-			key := g.typ(info.key_type)
-			val := g.typ(info.value_type)
+			key := g.styp(info.key_type)
+			val := g.styp(info.value_type)
 			styp = 'Map<${key}, ${val}>'
 		}
 		.any {
 			styp = 'any'
 		}
 		// ns.Foo => alias["Foo"]["prototype"]
-		.struct_ {
+		.struct {
 			styp = g.struct_typ(sym.name)
 		}
 		.generic_inst {}
 		// 'multi_return_int_int' => '[number, number]'
 		.multi_return {
 			info := sym.info as ast.MultiReturn
-			types := info.types.map(g.typ(it))
+			types := info.types.map(g.styp(it))
 			joined := types.join(', ')
 			styp = '[${joined}]'
 		}
@@ -217,7 +220,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 			name := g.js_name(fsym.name)
 			styp += '${name}'
 		}
-		.enum_ {
+		.enum {
 			// Note: We could declare them as TypeScript enums but TS doesn't like
 			// our namespacing so these break if declared in a different module.
 			// Until this is fixed, We need to use the type of an enum's members
@@ -229,7 +232,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 			info := sym.info as ast.FnType
 			styp = g.fn_typ(info.func.params, info.func.return_type)
 		}
-		.interface_ {
+		.interface {
 			styp = g.js_name(sym.name)
 		}
 		.rune {
@@ -257,12 +260,12 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 fn (mut g JsGen) fn_typ(args []ast.Param, return_type ast.Type) string {
 	mut res := '('
 	for i, arg in args {
-		res += '${arg.name}: ${g.typ(arg.typ)}'
+		res += '${arg.name}: ${g.styp(arg.typ)}'
 		if i < args.len - 1 {
 			res += ', '
 		}
 	}
-	return res + ') => ' + g.typ(return_type)
+	return res + ') => ' + g.styp(return_type)
 }
 
 fn (mut g JsGen) struct_typ(s string) string {
@@ -329,170 +332,209 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
 	g.writeln('function ${c.typ_name}__eq(self,other) { return ${c.eq}; } ')
 }
 
+fn (mut g JsGen) gen_nil_const() {
+	g.writeln('const nil__ = new \$ref(new nil());')
+	g.gen_builtin_prototype(
+		typ_name:      'nil'
+		val_name:      'str'
+		default_value: 'new String("&nil")'
+		constructor:   'this.str = str.toString(); this.len = this.str.length'
+		value_of:      'null'
+		to_string:     '"&nil"'
+		eq:            'new bool(self.valueOf() === other.valueOf())'
+		to_jsval:      'null'
+	)
+}
+
 // generate builtin type definitions, used for casting and methods.
 fn (mut g JsGen) gen_builtin_type_defs() {
 	g.inc_indent()
 	for typ_name in v_types {
 		// TODO: JsDoc
 		match typ_name {
-			'i8', 'i16', 'int', 'u16', 'u32', 'int_literal' {
+			'i8', 'i16', 'int', 'int_literal' {
 				// TODO: Bounds checking
 				g.gen_builtin_prototype(
-					typ_name: typ_name
+					typ_name:      typ_name
 					default_value: 'new Number(0)'
 					// mask <=32 bit numbers with 0xffffffff
 					constructor: 'this.val = Math.floor(Number(val) & 0xffffffff) '
-					value_of: 'Number(this.val)'
-					to_string: 'this.valueOf().toString()'
-					eq: 'new bool(self.valueOf() === other.valueOf())'
-					to_jsval: '+this'
+					value_of:    'Number(this.val)'
+					to_string:   'this.valueOf().toString()'
+					eq:          'new bool(self.valueOf() === other.valueOf())'
+					to_jsval:    '+this'
+				)
+			}
+			// u16 and u32 requires special handling in JavaScript to correctly represent it.
+			// u16, '>>> 0' combined with a mask of 0xffff limits it to the 0 to 2^16-1 range, correctly handling values as unsigned 16-bit integers.
+			'u16' {
+				g.gen_builtin_prototype(
+					typ_name:      typ_name
+					default_value: 'new Number(0)'
+					constructor:   'this.val = Math.floor(Number(val) & 0xffff) >>> 0'
+					value_of:      'Number(this.val)'
+					to_string:     'this.valueOf().toString()'
+					eq:            'new bool(self.valueOf() === other.valueOf())'
+					to_jsval:      '+this'
+				)
+			}
+			// u32 '>>> 0' combined with a mask of 0xffffffff limits it to the 0 to 2^32-1 range, correctly handling values as unsigned 32-bit integers.
+			'u32' {
+				g.gen_builtin_prototype(
+					typ_name:      typ_name
+					default_value: 'new Number(0)'
+					constructor:   'this.val = Math.floor(Number(val) & 0xffffffff) >>> 0'
+					value_of:      'Number(this.val)'
+					to_string:     'this.valueOf().toString()'
+					eq:            'new bool(self.valueOf() === other.valueOf())'
+					to_jsval:      '+this'
 				)
 			}
 			// u64 and i64 are so big that their values do not fit into JS number so we use BigInt.
 			'u64' {
 				if g.pref.output_es5 {
 					g.gen_builtin_prototype(
-						typ_name: typ_name
+						typ_name:      typ_name
 						default_value: '0'
-						constructor: 'this.val =val.floor() >> 0'
-						value_of: 'this.val'
-						to_string: 'this.val.toString()'
-						eq: 'new bool(self.valueOf() === other.valueOf())'
-						to_jsval: 'this.val'
+						constructor:   'this.val =val.floor() >> 0'
+						value_of:      'this.val'
+						to_string:     'this.val.toString()'
+						eq:            'new bool(self.valueOf() === other.valueOf())'
+						to_jsval:      'this.val'
 					)
 				} else {
 					g.gen_builtin_prototype(
-						typ_name: typ_name
+						typ_name:      typ_name
 						default_value: 'BigInt(0)'
-						constructor: 'this.val = BigInt.asUintN(64,BigInt(val))'
-						value_of: 'this.val'
-						to_string: 'this.val.toString()'
-						eq: 'new bool(self.valueOf() === other.valueOf())'
-						to_jsval: 'this.val'
+						constructor:   'this.val = BigInt.asUintN(64,BigInt(val))'
+						value_of:      'this.val'
+						to_string:     'this.val.toString()'
+						eq:            'new bool(self.valueOf() === other.valueOf())'
+						to_jsval:      'this.val'
 					)
 				}
 			}
 			'i64' {
 				if g.pref.output_es5 {
 					g.gen_builtin_prototype(
-						typ_name: typ_name
+						typ_name:      typ_name
 						default_value: '0'
-						constructor: 'this.val =val.floor() >> 0'
-						value_of: 'this.val'
-						to_string: 'this.val.toString()'
-						eq: 'new bool(self.valueOf() === other.valueOf())'
-						to_jsval: 'this.val'
+						constructor:   'this.val =val.floor() >> 0'
+						value_of:      'this.val'
+						to_string:     'this.val.toString()'
+						eq:            'new bool(self.valueOf() === other.valueOf())'
+						to_jsval:      'this.val'
 					)
 				} else {
 					g.gen_builtin_prototype(
-						typ_name: typ_name
+						typ_name:      typ_name
 						default_value: 'BigInt(0)'
-						constructor: 'this.val = BigInt.asIntN(64,BigInt(val))'
-						value_of: 'this.val'
-						to_string: 'this.val.toString()'
-						eq: 'new bool(self.valueOf() === other.valueOf())'
-						to_jsval: 'this.val'
+						constructor:   'this.val = BigInt.asIntN(64,BigInt(val))'
+						value_of:      'this.val'
+						to_string:     'this.val.toString()'
+						eq:            'new bool(self.valueOf() === other.valueOf())'
+						to_jsval:      'this.val'
 					)
 				}
 			}
 			'u8' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
+					typ_name:      typ_name
 					default_value: 'new Number(0)'
-					constructor: 'if (typeof(val) == "string") { this.val = val.charCodeAt() } else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  Math.round(Number(val)) }'
-					value_of: 'this.val | 0'
-					to_string: 'new string(this.val + "")'
-					eq: 'new bool(self.valueOf() === other.valueOf())'
-					to_jsval: '+this'
+					constructor:   'if (typeof(val) == "string") { this.val = val.charCodeAt() } else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  Math.round(Number(val)) }'
+					value_of:      'this.val | 0'
+					to_string:     'new string(this.val + "")'
+					eq:            'new bool(self.valueOf() === other.valueOf())'
+					to_jsval:      '+this'
 				)
 			}
 			'rune' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
+					typ_name:      typ_name
 					default_value: 'new Number(0)'
-					constructor: 'val = val.valueOf(); if (typeof val == "string") {this.val = val.charCodeAt();}  else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  val | 0 }'
-					value_of: 'this.val | 0'
-					to_string: 'new string(this.val + "")'
-					eq: 'new bool(self.valueOf() === other.valueOf())'
-					to_jsval: '+this'
+					constructor:   'val = val.valueOf(); if (typeof val == "string") {this.val = val.charCodeAt();}  else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  val | 0 }'
+					value_of:      'this.val | 0'
+					to_string:     'new string(this.val + "")'
+					eq:            'new bool(self.valueOf() === other.valueOf())'
+					to_jsval:      '+this'
 				)
 			}
 			'f32', 'f64', 'float_literal' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					constructor: 'this.val = Number(val)'
+					typ_name:      typ_name
+					constructor:   'this.val = Number(val)'
 					default_value: 'new Number(0)'
-					to_jsval: '+this'
+					to_jsval:      '+this'
 				)
 			}
 			'bool' {
 				g.gen_builtin_prototype(
-					constructor: 'this.val = val instanceof bool ? val.val : +val !== 0'
-					typ_name: typ_name
+					constructor:   'this.val = val instanceof bool ? val.val : +val !== 0'
+					typ_name:      typ_name
 					default_value: 'new Boolean(false)'
-					to_jsval: '+this != 0'
-					eq: 'new bool(self.val === other.valueOf())'
+					to_jsval:      '+this != 0'
+					eq:            'new bool(self.val === other.valueOf())'
 				)
 			}
 			'string' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					val_name: 'str'
+					typ_name:      typ_name
+					val_name:      'str'
 					default_value: 'new String("")'
-					constructor: 'this.str = str.toString(); this.len = this.str.length'
-					value_of: 'this.str'
-					to_string: 'this.str'
-					eq: 'new bool(self.str === other.str)'
-					has_strfn: false
-					to_jsval: 'this.str'
+					constructor:   'this.str = str.toString(); this.len = this.str.length'
+					value_of:      'this.str'
+					to_string:     'this.str'
+					eq:            'new bool(self.str === other.str)'
+					has_strfn:     false
+					to_jsval:      'this.str'
 				)
 			}
 			'map' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					val_name: 'map'
+					typ_name:      typ_name
+					val_name:      'map'
 					default_value: 'new map({})'
-					constructor: 'this.map = map; this.length = 0;'
-					value_of: 'this'
-					to_string: 'this.map.toString()'
-					eq: 'new bool(vEq(self, other))'
-					to_jsval: 'this.map'
+					constructor:   'this.map = map; this.length = Object.keys(this.map).length;'
+					value_of:      'this'
+					to_string:     'this.map.toString()'
+					eq:            'new bool(vEq(self, other))'
+					to_jsval:      'this.map'
 				)
 			}
 			'array' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					val_name: 'arr'
+					typ_name:      typ_name
+					val_name:      'arr'
 					default_value: 'new array_buffer({})'
-					constructor: 'this.arr = arr\nif (arr.index_start.val != 0 || arr.has_slice.val) { v_makeSlice(this); } '
-					value_of: 'this'
-					to_string: 'JSON.stringify(this.arr.map(it => it.valueOf()))'
-					eq: 'new bool(vEq(self, other))'
-					to_jsval: 'this.arr'
+					constructor:   'this.arr = arr\nif (arr.index_start.val != 0 || arr.has_slice.val) { v_makeSlice(this); } '
+					value_of:      'this'
+					to_string:     'JSON.stringify(this.arr.map(it => it.valueOf()))'
+					eq:            'new bool(vEq(self, other))'
+					to_jsval:      'this.arr'
 				)
 			}
 			'voidptr' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					val_name: 'val'
+					typ_name:      typ_name
+					val_name:      'val'
 					default_value: 'null'
-					constructor: 'this.val = val;'
-					value_of: 'this'
-					to_string: '"voidptr(" + this.val + ")"'
-					eq: 'this.val === other.val'
-					to_jsval: 'this.val'
+					constructor:   'this.val = val;'
+					value_of:      'this'
+					to_string:     '"voidptr(" + this.val + ")"'
+					eq:            'this.val === other.val'
+					to_jsval:      'this.val'
 				)
 			}
 			'any' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					val_name: 'any'
+					typ_name:      typ_name
+					val_name:      'any'
 					default_value: 'null'
-					constructor: 'this.val = any'
-					value_of: 'this.val'
-					to_string: '"&" + this.val'
-					eq: 'new bool(self == other)' // compare by ptr
-					to_jsval: 'this.val.\$toJS()'
+					constructor:   'this.val = any'
+					value_of:      'this.val'
+					to_string:     '"&" + this.val'
+					eq:            'new bool(self == other)' // compare by ptr
+					to_jsval:      'this.val.\$toJS()'
 				)
 			}
 			else {}

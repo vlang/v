@@ -29,19 +29,22 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	if !c.ensure_type_exists(node.cond_type, node.pos) {
 		return ast.void_type
 	}
-	c.check_expr_opt_call(node.cond, cond_type)
+	c.check_expr_option_or_result_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)
 	cond_is_option := cond_type.has_flag(.option)
-	node.is_sum_type = cond_type_sym.kind in [.interface_, .sum_type]
+	node.is_sum_type = cond_type_sym.kind in [.interface, .sum_type]
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
 	mut first_iteration := true
+	mut infer_cast_type := ast.void_type
+	mut need_explicit_cast := false
 	mut ret_type := ast.void_type
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
+	mut must_be_option := false
 	for mut branch in node.branches {
 		if node.is_expr {
-			c.stmts_ending_with_expression(mut branch.stmts)
+			c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
 		} else {
 			c.stmts(mut branch.stmts)
 		}
@@ -53,47 +56,176 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					branch.branch_pos)
 			}
 		}
+		if !branch.is_else && cond_is_option && branch.exprs.any(it !is ast.None) {
+			c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
+				branch.pos)
+		}
+		if cond_type_sym.kind == .none {
+			c.error('`none` cannot be a match condition', node.pos)
+		}
 		// If the last statement is an expression, return its type
-		if branch.stmts.len > 0 {
+		if branch.stmts.len > 0 && node.is_expr {
 			mut stmt := branch.stmts.last()
 			if mut stmt is ast.ExprStmt {
-				if node.is_expr {
-					c.expected_type = node.expected_type
+				c.expected_type = if c.expected_expr_type != ast.void_type {
+					c.expected_expr_type
+				} else {
+					node.expected_type
 				}
-				expr_type := c.expr(mut stmt.expr)
-				if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
-					c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
-						branch.pos)
-				}
+				expr_type := c.unwrap_generic(if stmt.expr is ast.CallExpr {
+					stmt.typ
+				} else {
+					c.expr(mut stmt.expr)
+				})
+				unwrapped_expected_type := c.unwrap_generic(node.expected_type)
+				must_be_option = must_be_option || expr_type == ast.none_type
 				stmt.typ = expr_type
 				if first_iteration {
-					if node.is_expr && (node.expected_type.has_flag(.option)
-						|| node.expected_type.has_flag(.result)
-						|| c.table.type_kind(node.expected_type) in [.sum_type, .multi_return]) {
-						c.check_match_branch_last_stmt(stmt, node.expected_type, expr_type)
+					if unwrapped_expected_type.has_option_or_result()
+						|| c.table.type_kind(unwrapped_expected_type) in [.sum_type, .multi_return] {
+						c.check_match_branch_last_stmt(stmt, unwrapped_expected_type,
+							expr_type)
 						ret_type = node.expected_type
 					} else {
 						ret_type = expr_type
-					}
-				} else if node.is_expr && ret_type.idx() != expr_type.idx() {
-					if (node.expected_type.has_flag(.option)
-						|| node.expected_type.has_flag(.result))
-						&& c.table.sym(stmt.typ).kind == .struct_
-						&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
-						stmt.expr = ast.CastExpr{
-							expr: stmt.expr
-							typname: 'IError'
-							typ: ast.error_type
-							expr_type: stmt.typ
-							pos: node.pos
+						if expr_type.is_ptr() {
+							if stmt.expr is ast.Ident && stmt.expr.obj is ast.Var
+								&& c.table.is_interface_var(stmt.expr.obj) {
+								ret_type = expr_type.deref()
+							} else if mut stmt.expr is ast.PrefixExpr
+								&& stmt.expr.right is ast.Ident {
+								ident := stmt.expr.right as ast.Ident
+								if ident.obj is ast.Var && c.table.is_interface_var(ident.obj) {
+									ret_type = expr_type.deref()
+								}
+							}
 						}
-						stmt.typ = ast.error_type
-					} else {
-						c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+						c.expected_expr_type = expr_type
+					}
+					infer_cast_type = stmt.typ
+					if mut stmt.expr is ast.CastExpr {
+						need_explicit_cast = true
+						infer_cast_type = stmt.expr.typ
+					}
+				} else {
+					if ret_type.idx() != expr_type.idx() {
+						if unwrapped_expected_type.has_option_or_result()
+							&& c.table.sym(stmt.typ).kind == .struct
+							&& !c.check_types(expr_type, c.unwrap_generic(ret_type))
+							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
+							stmt.expr = ast.CastExpr{
+								expr:      stmt.expr
+								typname:   'IError'
+								typ:       ast.error_type
+								expr_type: stmt.typ
+								pos:       node.pos
+							}
+							stmt.typ = ast.error_type
+						} else {
+							c.check_match_branch_last_stmt(stmt, c.unwrap_generic(ret_type),
+								expr_type)
+							if ret_type.is_number() && expr_type.is_number() && !c.inside_return {
+								ret_type = c.promote_num(ret_type, expr_type)
+							}
+						}
+					}
+					if must_be_option && ret_type == ast.none_type && expr_type != ret_type {
+						ret_type = expr_type.set_flag(.option)
+					}
+					if stmt.typ != ast.error_type && !is_noreturn_callexpr(stmt.expr) {
+						ret_sym := c.table.sym(ret_type)
+						stmt_sym := c.table.sym(stmt.typ)
+						if ret_sym.kind !in [.sum_type, .interface]
+							&& stmt_sym.kind in [.sum_type, .interface] {
+							c.error('return type mismatch, it should be `${ret_sym.name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
+								stmt.pos)
+						}
+						if ret_type.nr_muls() != stmt.typ.nr_muls()
+							&& stmt.typ.idx() !in [ast.voidptr_type_idx, ast.nil_type_idx] {
+							type_name := '&'.repeat(ret_type.nr_muls()) + ret_sym.name
+							c.error('return type mismatch, it should be `${type_name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
+								stmt.pos)
+						}
+					}
+					if !node.is_sum_type {
+						if mut stmt.expr is ast.CastExpr {
+							expr_typ_sym := c.table.sym(stmt.expr.typ)
+							if need_explicit_cast {
+								if infer_cast_type != stmt.expr.typ
+									&& expr_typ_sym.kind !in [.interface, .sum_type] {
+									c.error('the type of the last expression in the first match branch was an explicit `${c.table.type_to_str(infer_cast_type)}`, not `${c.table.type_to_str(stmt.expr.typ)}`',
+										stmt.pos)
+								}
+							} else {
+								if infer_cast_type != stmt.expr.typ
+									&& expr_typ_sym.kind !in [.interface, .sum_type]
+									&& c.promote_num(stmt.expr.typ, ast.int_type) != ast.int_type {
+									c.error('the type of the last expression of the first match branch was `${c.table.type_to_str(infer_cast_type)}`, which is not compatible with `${c.table.type_to_str(stmt.expr.typ)}`',
+										stmt.pos)
+								}
+							}
+						} else {
+							if mut stmt.expr is ast.IntegerLiteral {
+								cast_type_sym := c.table.sym(infer_cast_type)
+								num := stmt.expr.val.i64()
+								mut needs_explicit_cast := false
+
+								match cast_type_sym.kind {
+									.u8 {
+										if !(num >= min_u8 && num <= max_u8) {
+											needs_explicit_cast = true
+										}
+									}
+									.u16 {
+										if !(num >= min_u16 && num <= max_u16) {
+											needs_explicit_cast = true
+										}
+									}
+									.u32 {
+										if !(num >= min_u32 && num <= max_u32) {
+											needs_explicit_cast = true
+										}
+									}
+									.u64 {
+										if !(num >= min_u64 && num <= max_u64) {
+											needs_explicit_cast = true
+										}
+									}
+									.i8 {
+										if !(num >= min_i32 && num <= max_i32) {
+											needs_explicit_cast = true
+										}
+									}
+									.i16 {
+										if !(num >= min_i16 && num <= max_i16) {
+											needs_explicit_cast = true
+										}
+									}
+									.i32, .int {
+										if !(num >= min_i32 && num <= max_i32) {
+											needs_explicit_cast = true
+										}
+									}
+									.i64 {
+										if !(num >= min_i64 && num <= max_i64) {
+											needs_explicit_cast = true
+										}
+									}
+									.int_literal {
+										needs_explicit_cast = false
+									}
+									else {}
+								}
+								if needs_explicit_cast {
+									c.error('${num} does not fit the range of `${c.table.type_to_str(infer_cast_type)}`',
+										stmt.pos)
+								}
+							}
+						}
 					}
 				}
 			} else if stmt !in [ast.Return, ast.BranchStmt] {
-				if node.is_expr && ret_type != ast.void_type {
+				if ret_type != ast.void_type {
 					c.error('`match` expression requires an expression as the last statement of every branch',
 						stmt.pos)
 				}
@@ -118,7 +250,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.returns = false
 		}
 	}
-	node.return_type = ret_type
+	if ret_type == ast.none_type {
+		c.error('invalid match expression, must supply at least one value other than `none`',
+			node.pos)
+	}
+	node.return_type = if must_be_option { ret_type.set_flag(.option) } else { ret_type }
 	cond_var := c.get_base_name(&node.cond)
 	if cond_var != '' {
 		mut cond_is_auto_heap := false
@@ -137,7 +273,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			}
 		}
 	}
-	return ret_type
+	return node.return_type
 }
 
 fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type ast.Type, expr_type ast.Type) {
@@ -154,8 +290,14 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 					return
 				}
 			}
-			c.error('return type mismatch, it should be `${ret_sym.name}`', last_stmt.pos)
+			if expr_type != ast.none_type && ret_type != ast.none_type {
+				c.error('return type mismatch, it should be `${ret_sym.name}`, but it is instead `${c.table.type_to_str(expr_type)}`',
+					last_stmt.pos)
+			}
 		}
+	} else if expr_type == ast.void_type && ret_type.idx() == ast.void_type_idx
+		&& ret_type.has_option_or_result() {
+		c.error('`${last_stmt.expr}` used as value', last_stmt.pos)
 	}
 }
 
@@ -166,11 +308,13 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 	if mut expr is ast.IntegerLiteral {
 		return expr.val.i64()
 	}
+	if mut expr is ast.CastExpr {
+		if mut expr.expr is ast.IntegerLiteral {
+			return expr.expr.val.i64()
+		}
+	}
 	if mut expr is ast.Ident {
-		has_expr_mod_in_name := expr.name.contains('.')
-		expr_name := if has_expr_mod_in_name { expr.name } else { '${expr.mod}.${expr.name}' }
-
-		if mut obj := c.table.global_scope.find_const(expr_name) {
+		if mut obj := c.table.global_scope.find_const(expr.full_name()) {
 			if obj.typ == 0 {
 				obj.typ = c.expr(mut obj.expr)
 			}
@@ -183,6 +327,7 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol) {
 	c.expected_type = node.expected_type
 	cond_sym := c.table.sym(node.cond_type)
+	mut enum_ref_checked := false
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
@@ -196,18 +341,26 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
 				_ := c.expr(mut expr)
 			}
-			if expr is ast.TypeNode && cond_sym.kind == .struct_ {
+			if expr is ast.TypeNode && cond_sym.kind == .struct {
 				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
 					branch.pos)
 			}
-			if mut expr is ast.TypeNode && cond_sym.is_primitive() {
+			mut is_comptime := false
+			if c.comptime.inside_comptime_for {
+				// it is a compile-time field.typ checking
+				if mut node.cond is ast.SelectorExpr {
+					is_comptime = node.cond.expr_type == c.field_data_type
+						&& node.cond.field_name == 'typ'
+				}
+			}
+			if mut expr is ast.TypeNode && cond_sym.is_primitive() && !is_comptime {
 				c.error('matching by type can only be done for sum types, generics, interfaces, `${node.cond}` is none of those',
 					branch.pos)
 			}
 			if mut expr is ast.RangeExpr {
 				// Allow for `match enum_value { 4..5 { } }`, even though usually int and enum values,
 				// are considered incompatible outside unsafe{}, and are not allowed to be compared directly
-				if cond_sym.kind != .enum_ && !c.check_types(expr.typ, node.cond_type) {
+				if cond_sym.kind != .enum && !c.check_types(expr.typ, node.cond_type) {
 					mcstype := c.table.type_to_str(node.cond_type)
 					brstype := c.table.type_to_str(expr.typ)
 					c.add_error_detail('')
@@ -247,7 +400,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				if both_low_and_high_are_known {
 					high_low_cutoff := 1000
 					if high - low > high_low_cutoff {
-						c.warn('more than ${high_low_cutoff} possibilities (${low} ... ${high}) in match range',
+						c.note('more than ${high_low_cutoff} possibilities (${low} ... ${high}) in match range may affect compile time',
 							branch.pos)
 					}
 					for i in low .. high + 1 {
@@ -261,6 +414,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				}
 				continue
 			}
+			is_type_node := expr is ast.TypeNode
 			match mut expr {
 				ast.TypeNode {
 					key = c.table.type_to_str(expr.typ)
@@ -268,6 +422,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				}
 				ast.EnumVal {
 					key = expr.val
+					if !enum_ref_checked {
+						enum_ref_checked = true
+						if node.cond_type.is_ptr() {
+							c.error('missing `*` dereferencing `${node.cond}` in match statement',
+								node.cond.pos())
+						}
+					}
 				}
 				else {
 					key = (*expr).str()
@@ -278,13 +439,16 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				c.error('match case `${key}` is handled more than once', branch.pos)
 			}
 			c.expected_type = node.cond_type
+			if is_type_node {
+				c.inside_x_matches_type = true
+			}
 			expr_type := c.expr(mut expr)
 			if expr_type.idx() == 0 {
 				// parser failed, stop checking
 				return
 			}
 			expr_type_sym := c.table.sym(expr_type)
-			if cond_type_sym.kind == .interface_ {
+			if cond_type_sym.kind == .interface {
 				// TODO
 				// This generates a memory issue with TCC
 				// Needs to be checked later when TCC errors are fixed
@@ -293,7 +457,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				expr_pos := expr.pos()
 				if c.type_implements(expr_type, c.expected_type, expr_pos) {
 					if !expr_type.is_any_kind_of_pointer() && !c.inside_unsafe {
-						if expr_type_sym.kind != .interface_ {
+						if expr_type_sym.kind != .interface {
 							c.mark_as_referenced(mut &branch.exprs[k], true)
 						}
 					}
@@ -313,7 +477,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				expect_str := c.table.type_to_str(node.cond_type)
 				c.error('cannot match alias type `${expect_str}` with `${expr_str}`',
 					expr.pos())
-			} else if !c.check_types(expr_type, node.cond_type) {
+			} else if !c.check_types(expr_type, node.cond_type) && !is_comptime {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
 				c.error('cannot match `${expect_str}` with `${expr_str}`', expr.pos())
@@ -322,8 +486,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		}
 		// when match is type matching, then register smart cast for every branch
 		if expr_types.len > 0 {
-			if cond_type_sym.kind in [.sum_type, .interface_] {
-				mut expr_type := ast.Type(0)
+			if cond_type_sym.kind in [.sum_type, .interface] {
+				mut expr_type := ast.no_type
 				if expr_types.len > 1 {
 					mut agg_name := strings.new_builder(20)
 					mut agg_cname := strings.new_builder(20)
@@ -345,13 +509,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						expr_type = existing_idx
 					} else {
 						expr_type = c.table.register_sym(ast.TypeSymbol{
-							name: name
+							name:  name
 							cname: agg_cname.str()
-							kind: .aggregate
-							mod: c.mod
-							info: ast.Aggregate{
+							kind:  .aggregate
+							mod:   c.mod
+							info:  ast.Aggregate{
 								sum_type: node.cond_type
-								types: expr_types.map(it.typ)
+								types:    expr_types.map(it.typ)
 							}
 						})
 					}
@@ -359,7 +523,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expr_type = expr_types[0].typ
 				}
 
-				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope)
+				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope,
+					false, false)
 			}
 		}
 	}
@@ -396,22 +561,36 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						unhandled << '`.${v}`'
 					}
 				}
+				if cond_type_sym.info.is_flag {
+					is_exhaustive = false
+				}
 			}
 			else {
 				is_exhaustive = false
 			}
 		}
 	}
+	if node.branches.len == 0 {
+		c.error('`match` must have at least two branches including `else`, or an exhaustive set of branches',
+			node.pos)
+		return
+	}
 	mut else_branch := node.branches.last()
-	mut has_else := else_branch.is_else
-	if !has_else {
-		for i, branch in node.branches {
-			if branch.is_else && i != node.branches.len - 1 {
-				c.error('`else` must be the last branch of `match`', branch.pos)
-				else_branch = branch
-				has_else = true
+	mut has_else, mut has_non_else := else_branch.is_else, !else_branch.is_else
+	for branch in node.branches[..node.branches.len - 1] {
+		if branch.is_else {
+			if has_else {
+				c.error('`match` can have only one `else` branch', branch.pos)
 			}
+			c.error('`else` must be the last branch of `match`', branch.pos)
+			else_branch = branch
+			has_else = true
+		} else {
+			has_non_else = true
 		}
+	}
+	if !has_non_else {
+		c.error('`match` must have at least one non `else` branch', else_branch.pos)
 	}
 	if is_exhaustive {
 		if has_else && !c.pref.translated && !c.file.is_translated {

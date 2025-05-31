@@ -38,7 +38,7 @@ fn (m Integer) montgomery() MontgomeryContext {
 // and then exponentiating the value using the sliding window method and montgomery multiplication
 // -----
 // assumes a, x > 1 and m is odd
-[direct_array_access]
+@[direct_array_access]
 fn (a Integer) mont_odd(x Integer, m Integer) Integer {
 	$if debug {
 		assert a > one_int && x > one_int
@@ -156,7 +156,7 @@ fn (a Integer) mont_odd(x Integer, m Integer) Integer {
 // (https://cetinkayakoc.net/docs/j34.pdf)
 // -----
 // assumes a, x > 1 and m is even
-[direct_array_access]
+@[direct_array_access]
 fn (a Integer) mont_even(x Integer, m Integer) Integer {
 	$if debug {
 		assert a > one_int && x > one_int
@@ -198,7 +198,7 @@ fn (a Integer) mont_even(x Integer, m Integer) Integer {
 // exp_binary calculates `a^x (mod m)`, where m is a power of 2
 // -----
 // assumes a, x > 1 and m = 2^n
-[direct_array_access]
+@[direct_array_access]
 fn (a Integer) exp_binary(x Integer, m Integer) Integer {
 	$if debug {
 		assert a > one_int && x > one_int
@@ -286,7 +286,7 @@ fn (a Integer) exp_binary(x Integer, m Integer) Integer {
 //
 // according to the paper on montgomery multiplication by Shay Gueron, for the
 // case of the exponent being 512 bits a window size of 5 is considered optimal
-[inline]
+@[inline]
 fn get_window_size(n u32) int {
 	return if n > 768 {
 		6

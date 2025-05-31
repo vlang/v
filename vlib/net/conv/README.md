@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `net.conv` provides a convenient way to convert number values *to*,
 and *from* the network byte order format (which is always big endian).

@@ -1,6 +1,6 @@
 module os
 
-struct C.utsname {
+pub struct C.utsname {
 mut:
 	sysname  &char
 	nodename &char
@@ -9,7 +9,7 @@ mut:
 	machine  &char
 }
 
-struct C.utimbuf {
+pub struct C.utimbuf {
 	actime  int
 	modtime int
 }

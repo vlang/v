@@ -1,0 +1,11 @@
+module main
+
+struct Post {
+	title string @[alias]
+}
+
+fn main() {
+	$for field in Post.fields {
+		println(field.attrs)
+	}
+}

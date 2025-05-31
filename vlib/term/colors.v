@@ -1,7 +1,9 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module term
+
+import strings
 
 // format_esc produces an ANSI escape code, for selecting the graphics rendition of the following
 // text. Each of the attributes that can be passed in `code`, separated by `;`, will be in effect,
@@ -44,14 +46,14 @@ pub fn bg_rgb(r int, g int, b int, msg string) string {
 // For example, `rgb(255, 'hi')` returns the `'hi'` string in
 // blue color, which is `(0, 0, 255)` in RGB.
 pub fn hex(hex int, msg string) string {
-	return format_rgb(hex >> 16, hex >> 8 & 0xFF, hex & 0xFF, msg, '38', '39')
+	return format_rgb(hex >> 16, (hex >> 8) & 0xFF, hex & 0xFF, msg, '38', '39')
 }
 
 // hex returns the `msg` with the background in the specified `hex` color
 // For example, `bg_rgb(255, 'hi')` returns the `'hi'` string in
 // a background of blue color, which is `(0, 0, 255)` in RGB.
 pub fn bg_hex(hex int, msg string) string {
-	return format_rgb(hex >> 16, hex >> 8 & 0xFF, hex & 0xFF, msg, '48', '49')
+	return format_rgb(hex >> 16, (hex >> 8) & 0xFF, hex & 0xFF, msg, '48', '49')
 }
 
 // reset resets all formatting for `msg`.
@@ -274,4 +276,78 @@ pub fn bright_bg_white(msg string) string {
 // to make CLI commands immediately recognizable.
 pub fn highlight_command(command string) string {
 	return bright_white(bg_cyan(' ${command} '))
+}
+
+pub enum TextStyle {
+	bold      = 1
+	dim       = 2
+	italic    = 3
+	underline = 4
+	blink     = 5
+	reverse   = 7
+}
+
+pub enum FgColor {
+	black   = 30
+	red     = 31
+	green   = 32
+	yellow  = 33
+	blue    = 34
+	magenta = 35
+	cyan    = 36
+	white   = 37
+}
+
+pub enum BgColor {
+	black   = 40
+	red     = 41
+	green   = 42
+	yellow  = 43
+	blue    = 44
+	magenta = 45
+	cyan    = 46
+	white   = 47
+}
+
+@[params]
+pub struct ColorConfig {
+pub mut:
+	styles []TextStyle
+	fg     ?FgColor
+	bg     ?BgColor
+	custom string
+}
+
+// write_color appends the ANSI colorful string `s` to the buffer.
+pub fn write_color(mut b strings.Builder, s string, config ColorConfig) {
+	mut codes := []string{cap: 3}
+
+	for style in config.styles {
+		codes << int(style).str()
+	}
+
+	if fg := config.fg {
+		codes << int(fg).str()
+	}
+
+	if bg := config.bg {
+		codes << int(bg).str()
+	}
+
+	if config.custom != '' {
+		codes << config.custom
+	}
+
+	if codes.len > 0 {
+		code_str := codes.join(';')
+		b.write_string('\x1b[${code_str}m${s}\x1b[0m')
+	} else {
+		b.write_string(s)
+	}
+}
+
+// writeln_color appends the ANSI colorful string `s`, and then a newline character.
+pub fn writeln_color(mut b strings.Builder, s string, color ColorConfig) {
+	write_color(mut b, s, color)
+	b.writeln('')
 }

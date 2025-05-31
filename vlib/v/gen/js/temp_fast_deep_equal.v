@@ -1,8 +1,7 @@
 module js
 
 // TODO: Fix msvc bug that's preventing $embed_file('fast_deep_equal.js')
-const (
-	fast_deep_eq_fn = "// https://www.npmjs.com/package/fast-deep-equal - 3/3/2021
+const fast_deep_eq_fn = "// https://www.npmjs.com/package/fast-deep-equal - 3/3/2021
 const envHasBigInt64Array = typeof BigInt64Array !== 'undefined';
 function vEq(a, b) {
 	if (a === b) return true;
@@ -89,4 +88,3 @@ return 0;
 
 }
 "
-)

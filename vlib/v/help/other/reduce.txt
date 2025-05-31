@@ -1,0 +1,17 @@
+Description: `v reduce file.v` will try to minimise the given source 
+code `file.v`, to its smallest version, that still leads to a V compiler
+error. The result of the reduction, will be stored in a file named
+`rpdc.v` in the current folder.
+
+Usage: v reduce path/to/file_to_reduce.v [options] [ARGS]
+
+Options:
+  -e, --error_msg <string>  the error message you want to reproduce, 
+                            default: 'C compilation error'
+							
+  -c, --command <string>    the command used to try to reproduce the error,
+                            default: `'/home/delian/code/v/v' -no-skip-unused`
+
+  -w, --fmt                 run `v fmt -w rpdc.v`, after the reduction is done
+  -h, --help                display this help and exit
+  --version                 output version information and exit

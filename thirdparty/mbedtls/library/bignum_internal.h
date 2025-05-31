@@ -1,50 +1,50 @@
 /**
- *  Internal bignum functions
+ * \file bignum_internal.h
  *
- *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
+ * \brief Internal-only bignum public-key cryptosystem API.
  *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * This file declares bignum-related functions that are to be used
+ * only from within the Mbed TLS library itself.
  *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
  */
-
+/*
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ */
 #ifndef MBEDTLS_BIGNUM_INTERNAL_H
 #define MBEDTLS_BIGNUM_INTERNAL_H
 
-#include "common.h"
-
-#if defined(MBEDTLS_BIGNUM_C)
-#include "mbedtls/bignum.h"
-#endif
-
-/** Perform a known-size multiply accumulate operation
+/**
+ * \brief          Perform a modular exponentiation: X = A^E mod N
  *
- * Add \p b * \p s to \p d.
+ * \warning        This function is not constant time with respect to \p E (the exponent).
  *
- * \param[in,out] d     The pointer to the (little-endian) array
- *                      representing the bignum to accumulate onto.
- * \param d_len         The number of limbs of \p d. This must be
- *                      at least \p s_len.
- * \param[in] s         The pointer to the (little-endian) array
- *                      representing the bignum to multiply with.
- *                      This may be the same as \p d. Otherwise,
- *                      it must be disjoint from \p d.
- * \param s_len         The number of limbs of \p s.
- * \param b             A scalar to multiply with.
+ * \param X        The destination MPI. This must point to an initialized MPI.
+ *                 This must not alias E or N.
+ * \param A        The base of the exponentiation.
+ *                 This must point to an initialized MPI.
+ * \param E        The exponent MPI. This must point to an initialized MPI.
+ * \param N        The base for the modular reduction. This must point to an
+ *                 initialized MPI.
+ * \param prec_RR  A helper MPI depending solely on \p N which can be used to
+ *                 speed-up multiple modular exponentiations for the same value
+ *                 of \p N. This may be \c NULL. If it is not \c NULL, it must
+ *                 point to an initialized MPI. If it hasn't been used after
+ *                 the call to mbedtls_mpi_init(), this function will compute
+ *                 the helper value and store it in \p prec_RR for reuse on
+ *                 subsequent calls to this function. Otherwise, the function
+ *                 will assume that \p prec_RR holds the helper value set by a
+ *                 previous call to mbedtls_mpi_exp_mod(), and reuse it.
  *
- * \return c            The carry at the end of the operation.
+ * \return         \c 0 if successful.
+ * \return         #MBEDTLS_ERR_MPI_ALLOC_FAILED if a memory allocation failed.
+ * \return         #MBEDTLS_ERR_MPI_BAD_INPUT_DATA if \c N is negative or
+ *                 even, or if \c E is negative.
+ * \return         Another negative error code on different kinds of failures.
+ *
  */
-mbedtls_mpi_uint mbedtls_mpi_core_mla( mbedtls_mpi_uint *d, size_t d_len ,
-                                       const mbedtls_mpi_uint *s, size_t s_len,
-                                       mbedtls_mpi_uint b );
+int mbedtls_mpi_exp_mod_unsafe(mbedtls_mpi *X, const mbedtls_mpi *A,
+                               const mbedtls_mpi *E, const mbedtls_mpi *N,
+                               mbedtls_mpi *prec_RR);
 
-#endif /* MBEDTLS_BIGNUM_INTERNAL_H */
+#endif /* bignum_internal.h */

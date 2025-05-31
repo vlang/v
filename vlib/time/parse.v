@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -17,7 +17,7 @@ pub fn (err TimeParseError) msg() string {
 
 fn error_invalid_time(code int, message string) IError {
 	return TimeParseError{
-		code: code
+		code:    code
 		message: message
 	}
 }

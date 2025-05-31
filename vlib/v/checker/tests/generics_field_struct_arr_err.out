@@ -1,0 +1,20 @@
+vlib/v/checker/tests/generics_field_struct_arr_err.vv:26:7: error: `Callback` type is generic sumtype, must specify the generic type names, e.g. Callback[T], Callback[int]
+   24 |     v    T
+   25 |     prev T
+   26 |     cb   []Callback // sumtype
+      |          ~~~~~~~~~~
+   27 |     cb2  []CBvret2  // alias
+   28 |     cb3  []Test     // struct
+vlib/v/checker/tests/generics_field_struct_arr_err.vv:27:7: error: `CBvret2` type is generic fn type, must specify the generic type names, e.g. CBvret2[T], CBvret2[int]
+   25 |     prev T
+   26 |     cb   []Callback // sumtype
+   27 |     cb2  []CBvret2  // alias
+      |          ~~~~~~~~~
+   28 |     cb3  []Test     // struct
+   29 | }
+vlib/v/checker/tests/generics_field_struct_arr_err.vv:28:7: error: `Test` type is generic struct, must specify the generic type names, e.g. Test[T], Test[int]
+   26 |     cb   []Callback // sumtype
+   27 |     cb2  []CBvret2  // alias
+   28 |     cb3  []Test     // struct
+      |          ~~~~~~
+   29 | }

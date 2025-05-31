@@ -3,36 +3,13 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
- *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 
 #ifndef PSA_CRYPTO_HASH_H
 #define PSA_CRYPTO_HASH_H
 
 #include <psa/crypto.h>
-
-#include "md_wrap.h"
-
-/** Get Mbed TLS MD information of a hash algorithm given its PSA identifier
- *
- * \param[in] alg  PSA hash algorithm identifier
- *
- * \return  The Mbed TLS MD information of the hash algorithm. \c NULL if the
- *          PSA hash algorithm is not supported.
- */
-const mbedtls_md_info_t *mbedtls_md_info_from_psa( psa_algorithm_t alg );
 
 /** Calculate the hash (digest) of a message using Mbed TLS routines.
  *
@@ -57,8 +34,8 @@ const mbedtls_md_info_t *mbedtls_md_info_from_psa( psa_algorithm_t alg );
  *         \p alg is not supported
  * \retval #PSA_ERROR_BUFFER_TOO_SMALL
  *         \p hash_size is too small
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
  */
 psa_status_t mbedtls_psa_hash_compute(
     psa_algorithm_t alg,
@@ -97,12 +74,12 @@ psa_status_t mbedtls_psa_hash_compute(
  *         \p alg is not supported
  * \retval #PSA_ERROR_BAD_STATE
  *         The operation state is not valid (it must be inactive).
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
  */
 psa_status_t mbedtls_psa_hash_setup(
     mbedtls_psa_hash_operation_t *operation,
-    psa_algorithm_t alg );
+    psa_algorithm_t alg);
 
 /** Clone an Mbed TLS hash operation.
  *
@@ -124,17 +101,17 @@ psa_status_t mbedtls_psa_hash_setup(
  * \param[in,out] target_operation  The operation object to set up.
  *                                  It must be initialized but not active.
  *
- * \retval #PSA_SUCCESS
+ * \retval #PSA_SUCCESS \emptydescription
  * \retval #PSA_ERROR_BAD_STATE
  *         The \p source_operation state is not valid (it must be active).
  * \retval #PSA_ERROR_BAD_STATE
  *         The \p target_operation state is not valid (it must be inactive).
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
  */
 psa_status_t mbedtls_psa_hash_clone(
     const mbedtls_psa_hash_operation_t *source_operation,
-    mbedtls_psa_hash_operation_t *target_operation );
+    mbedtls_psa_hash_operation_t *target_operation);
 
 /** Add a message fragment to a multipart Mbed TLS hash operation.
  *
@@ -156,13 +133,13 @@ psa_status_t mbedtls_psa_hash_clone(
  *         Success.
  * \retval #PSA_ERROR_BAD_STATE
  *         The operation state is not valid (it must be active).
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
  */
 psa_status_t mbedtls_psa_hash_update(
     mbedtls_psa_hash_operation_t *operation,
     const uint8_t *input,
-    size_t input_length );
+    size_t input_length);
 
 /** Finish the calculation of the Mbed TLS-calculated hash of a message.
  *
@@ -195,14 +172,14 @@ psa_status_t mbedtls_psa_hash_update(
  *         The size of the \p hash buffer is too small. You can determine a
  *         sufficient buffer size by calling #PSA_HASH_LENGTH(\c alg)
  *         where \c alg is the hash algorithm that is calculated.
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
  */
 psa_status_t mbedtls_psa_hash_finish(
     mbedtls_psa_hash_operation_t *operation,
     uint8_t *hash,
     size_t hash_size,
-    size_t *hash_length );
+    size_t *hash_length);
 
 /** Abort an Mbed TLS hash operation.
  *
@@ -225,10 +202,10 @@ psa_status_t mbedtls_psa_hash_finish(
  *
  * \param[in,out] operation     Initialized hash operation.
  *
- * \retval #PSA_SUCCESS
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_SUCCESS \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
  */
 psa_status_t mbedtls_psa_hash_abort(
-    mbedtls_psa_hash_operation_t *operation );
+    mbedtls_psa_hash_operation_t *operation);
 
 #endif /* PSA_CRYPTO_HASH_H */

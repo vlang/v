@@ -4,31 +4,32 @@ pub enum Linux_mem {
 	page_size = 4096
 }
 
-pub const (
-	wp_sys_wnohang     = u64(0x00000001)
-	wp_sys_wuntraced   = u64(0x00000002)
-	wp_sys_wstopped    = u64(0x00000002)
-	wp_sys_wexited     = u64(0x00000004)
-	wp_sys_wcontinued  = u64(0x00000008)
-	wp_sys_wnowait     = u64(0x01000000) // don't reap, just poll status.
-	wp_sys___wnothread = u64(0x20000000) // don't wait on children of other threads in this group
-	wp_sys___wall      = u64(0x40000000) // wait on all children, regardless of type
-	wp_sys___wclone    = u64(0x80000000) // wait only on non-sigchld children
-)
+pub const wp_sys_wnohang = u64(0x00000001)
+pub const wp_sys_wuntraced = u64(0x00000002)
+pub const wp_sys_wstopped = u64(0x00000002)
+pub const wp_sys_wexited = u64(0x00000004)
+pub const wp_sys_wcontinued = u64(0x00000008)
+pub const wp_sys_wnowait = u64(0x01000000) // don't reap, just poll status.
+
+pub const wp_sys___wnothread = u64(0x20000000) // don't wait on children of other threads in this group
+
+pub const wp_sys___wall = u64(0x40000000) // wait on all children, regardless of type
+
+pub const wp_sys___wclone = u64(0x80000000)
 
 // First argument to waitid:
 pub enum Wi_which {
-	p_all = 0
-	p_pid = 1
+	p_all  = 0
+	p_pid  = 1
 	p_pgid = 2
 }
 
 pub enum Wi_si_code {
-	cld_exited = 1 // child has exited
-	cld_killed = 2 // child was killed
-	cld_dumped = 3 // child terminated abnormally
-	cld_trapped = 4 // traced child has trapped
-	cld_stopped = 5 // child has stopped
+	cld_exited    = 1 // child has exited
+	cld_killed    = 2 // child was killed
+	cld_dumped    = 3 // child terminated abnormally
+	cld_trapped   = 4 // traced child has trapped
+	cld_stopped   = 5 // child has stopped
 	cld_continued = 6 // stopped child has continued
 }
 
@@ -66,163 +67,161 @@ Paraphrased from "man 2 waitid" on Linux
 */
 
 pub enum Sig_index {
-	si_signo = 0x00
-	si_code = 0x02
-	si_pid = 0x04
-	si_uid = 0x05
+	si_signo  = 0x00
+	si_code   = 0x02
+	si_pid    = 0x04
+	si_uid    = 0x05
 	si_status = 0x06
-	si_size = 0x80
+	si_size   = 0x80
 }
 
 pub enum Signo {
-	sighup = 1 // Hangup.
-	sigint = 2 // Interactive attention signal.
-	sigquit = 3 // Quit.
-	sigill = 4 // Illegal instruction.
-	sigtrap = 5 // Trace/breakpoint trap.
-	sigabrt = 6 // Abnormal termination.
-	sigbus = 7
-	sigfpe = 8 // Erroneous arithmetic operation.
-	sigkill = 9 // Killed.
-	sigusr1 = 10
-	sigsegv = 11 // Invalid access to storage.
-	sigusr2 = 12
-	sigpipe = 13 // Broken pipe.
-	sigalrm = 14 // Alarm clock.
-	sigterm = 15 // Termination request.
+	sighup    = 1 // Hangup.
+	sigint    = 2 // Interactive attention signal.
+	sigquit   = 3 // Quit.
+	sigill    = 4 // Illegal instruction.
+	sigtrap   = 5 // Trace/breakpoint trap.
+	sigabrt   = 6 // Abnormal termination.
+	sigbus    = 7
+	sigfpe    = 8 // Erroneous arithmetic operation.
+	sigkill   = 9 // Killed.
+	sigusr1   = 10
+	sigsegv   = 11 // Invalid access to storage.
+	sigusr2   = 12
+	sigpipe   = 13 // Broken pipe.
+	sigalrm   = 14 // Alarm clock.
+	sigterm   = 15 // Termination request.
 	sigstkflt = 16
-	sigchld = 17
-	sigcont = 18
-	sigstop = 19
-	sigtstp = 20
-	sigttin = 21 // Background read from control terminal.
-	sigttou = 22 // Background write to control terminal.
-	sigurg = 23
-	sigxcpu = 24 // CPU time limit exceeded.
-	sigxfsz = 25 // File size limit exceeded.
+	sigchld   = 17
+	sigcont   = 18
+	sigstop   = 19
+	sigtstp   = 20
+	sigttin   = 21 // Background read from control terminal.
+	sigttou   = 22 // Background write to control terminal.
+	sigurg    = 23
+	sigxcpu   = 24 // CPU time limit exceeded.
+	sigxfsz   = 25 // File size limit exceeded.
 	sigvtalrm = 26 // Virtual timer expired.
-	sigprof = 27 // Profiling timer expired.
-	sigwinch = 28
-	sigpoll = 29
-	sigsys = 31
+	sigprof   = 27 // Profiling timer expired.
+	sigwinch  = 28
+	sigpoll   = 29
+	sigsys    = 31
 }
 
-pub const (
-	fcntlf_dupfd         = 0x00000000
-	fcntlf_exlck         = 0x00000004
-	fcntlf_getfd         = 0x00000001
-	fcntlf_getfl         = 0x00000003
-	fcntlf_getlk         = 0x00000005
-	fcntlf_getlk64       = 0x0000000c
-	fcntlf_getown        = 0x00000009
-	fcntlf_getowner_uids = 0x00000011
-	fcntlf_getown_ex     = 0x00000010
-	fcntlf_getsig        = 0x0000000b
-	fcntlf_ofd_getlk     = 0x00000024
-	fcntlf_ofd_setlk     = 0x00000025
-	fcntlf_ofd_setlkw    = 0x00000026
-	fcntlf_owner_pgrp    = 0x00000002
-	fcntlf_owner_pid     = 0x00000001
-	fcntlf_owner_tid     = 0x00000000
-	fcntlf_rdlck         = 0x00000000
-	fcntlf_setfd         = 0x00000002
-	fcntlf_setfl         = 0x00000004
-	fcntlf_setlk         = 0x00000006
-	fcntlf_setlk64       = 0x0000000d
-	fcntlf_setlkw        = 0x00000007
-	fcntlf_setlkw64      = 0x0000000e
-	fcntlf_setown        = 0x00000008
-	fcntlf_setown_ex     = 0x0000000f
-	fcntlf_setsig        = 0x0000000a
-	fcntlf_shlck         = 0x00000008
-	fcntlf_unlck         = 0x00000002
-	fcntlf_wrlck         = 0x00000001
-	fcntllock_ex         = 0x00000002
-	fcntllock_mand       = 0x00000020
-	fcntllock_nb         = 0x00000004
-	fcntllock_read       = 0x00000040
-	fcntllock_rw         = 0x000000c0
-	fcntllock_sh         = 0x00000001
-	fcntllock_un         = 0x00000008
-	fcntllock_write      = 0x00000080
-	fcntlo_accmode       = 0x00000003
-	fcntlo_append        = 0x00000400
-	fcntlo_cloexec       = 0x00080000
-	fcntlo_creat         = 0x00000040
-	fcntlo_direct        = 0x00004000
-	fcntlo_directory     = 0x00010000
-	fcntlo_dsync         = 0x00001000
-	fcntlo_excl          = 0x00000080
-	fcntlo_largefile     = 0x00008000
-	fcntlo_ndelay        = 0x00000800
-	fcntlo_noatime       = 0x00040000
-	fcntlo_noctty        = 0x00000100
-	fcntlo_nofollow      = 0x00020000
-	fcntlo_nonblock      = 0x00000800
-	fcntlo_path          = 0x00200000
-	fcntlo_rdonly        = 0x00000000
-	fcntlo_rdwr          = 0x00000002
-	fcntlo_trunc         = 0x00000200
-	fcntlo_wronly        = 0x00000001
-)
+pub const fcntlf_dupfd = 0x00000000
+pub const fcntlf_exlck = 0x00000004
+pub const fcntlf_getfd = 0x00000001
+pub const fcntlf_getfl = 0x00000003
+pub const fcntlf_getlk = 0x00000005
+pub const fcntlf_getlk64 = 0x0000000c
+pub const fcntlf_getown = 0x00000009
+pub const fcntlf_getowner_uids = 0x00000011
+pub const fcntlf_getown_ex = 0x00000010
+pub const fcntlf_getsig = 0x0000000b
+pub const fcntlf_ofd_getlk = 0x00000024
+pub const fcntlf_ofd_setlk = 0x00000025
+pub const fcntlf_ofd_setlkw = 0x00000026
+pub const fcntlf_owner_pgrp = 0x00000002
+pub const fcntlf_owner_pid = 0x00000001
+pub const fcntlf_owner_tid = 0x00000000
+pub const fcntlf_rdlck = 0x00000000
+pub const fcntlf_setfd = 0x00000002
+pub const fcntlf_setfl = 0x00000004
+pub const fcntlf_setlk = 0x00000006
+pub const fcntlf_setlk64 = 0x0000000d
+pub const fcntlf_setlkw = 0x00000007
+pub const fcntlf_setlkw64 = 0x0000000e
+pub const fcntlf_setown = 0x00000008
+pub const fcntlf_setown_ex = 0x0000000f
+pub const fcntlf_setsig = 0x0000000a
+pub const fcntlf_shlck = 0x00000008
+pub const fcntlf_unlck = 0x00000002
+pub const fcntlf_wrlck = 0x00000001
+pub const fcntllock_ex = 0x00000002
+pub const fcntllock_mand = 0x00000020
+pub const fcntllock_nb = 0x00000004
+pub const fcntllock_read = 0x00000040
+pub const fcntllock_rw = 0x000000c0
+pub const fcntllock_sh = 0x00000001
+pub const fcntllock_un = 0x00000008
+pub const fcntllock_write = 0x00000080
+pub const fcntlo_accmode = 0x00000003
+pub const fcntlo_append = 0x00000400
+pub const fcntlo_cloexec = 0x00080000
+pub const fcntlo_creat = 0x00000040
+pub const fcntlo_direct = 0x00004000
+pub const fcntlo_directory = 0x00010000
+pub const fcntlo_dsync = 0x00001000
+pub const fcntlo_excl = 0x00000080
+pub const fcntlo_largefile = 0x00008000
+pub const fcntlo_ndelay = 0x00000800
+pub const fcntlo_noatime = 0x00040000
+pub const fcntlo_noctty = 0x00000100
+pub const fcntlo_nofollow = 0x00020000
+pub const fcntlo_nonblock = 0x00000800
+pub const fcntlo_path = 0x00200000
+pub const fcntlo_rdonly = 0x00000000
+pub const fcntlo_rdwr = 0x00000002
+pub const fcntlo_trunc = 0x00000200
+pub const fcntlo_wronly = 0x00000001
 
 pub enum Errno {
 	enoerror = 0x00000000
-	e2big = 0x00000007
-	eacces = 0x0000000d
-	eagain = 0x0000000b
-	ebadf = 0x00000009
-	ebusy = 0x00000010
-	echild = 0x0000000a
-	edom = 0x00000021
-	eexist = 0x00000011
-	efault = 0x0000000e
-	efbig = 0x0000001b
-	eintr = 0x00000004
-	einval = 0x00000016
-	eio = 0x00000005
-	eisdir = 0x00000015
-	emfile = 0x00000018
-	emlink = 0x0000001f
-	enfile = 0x00000017
-	enodev = 0x00000013
-	enoent = 0x00000002
-	enoexec = 0x00000008
-	enomem = 0x0000000c
-	enospc = 0x0000001c
-	enotblk = 0x0000000f
-	enotdir = 0x00000014
-	enotty = 0x00000019
-	enxio = 0x00000006
-	eperm = 0x00000001
-	epipe = 0x00000020
-	erange = 0x00000022
-	erofs = 0x0000001e
-	espipe = 0x0000001d
-	esrch = 0x00000003
-	etxtbsy = 0x0000001a
-	exdev = 0x00000012
+	e2big    = 0x00000007
+	eacces   = 0x0000000d
+	eagain   = 0x0000000b
+	ebadf    = 0x00000009
+	ebusy    = 0x00000010
+	echild   = 0x0000000a
+	edom     = 0x00000021
+	eexist   = 0x00000011
+	efault   = 0x0000000e
+	efbig    = 0x0000001b
+	eintr    = 0x00000004
+	einval   = 0x00000016
+	eio      = 0x00000005
+	eisdir   = 0x00000015
+	emfile   = 0x00000018
+	emlink   = 0x0000001f
+	enfile   = 0x00000017
+	enodev   = 0x00000013
+	enoent   = 0x00000002
+	enoexec  = 0x00000008
+	enomem   = 0x0000000c
+	enospc   = 0x0000001c
+	enotblk  = 0x0000000f
+	enotdir  = 0x00000014
+	enotty   = 0x00000019
+	enxio    = 0x00000006
+	eperm    = 0x00000001
+	epipe    = 0x00000020
+	erange   = 0x00000022
+	erofs    = 0x0000001e
+	espipe   = 0x0000001d
+	esrch    = 0x00000003
+	etxtbsy  = 0x0000001a
+	exdev    = 0x00000012
 }
 
 pub enum Mm_prot {
-	prot_read = 0x1
-	prot_write = 0x2
-	prot_exec = 0x4
-	prot_none = 0x0
+	prot_read      = 0x1
+	prot_write     = 0x2
+	prot_exec      = 0x4
+	prot_none      = 0x0
 	prot_growsdown = 0x01000000
-	prot_growsup = 0x02000000
+	prot_growsup   = 0x02000000
 }
 
 pub enum Map_flags {
-	map_shared = 0x01
-	map_private = 0x02
+	map_shared          = 0x01
+	map_private         = 0x02
 	map_shared_validate = 0x03
-	map_type = 0x0f
-	map_fixed = 0x10
-	map_file = 0x00
-	map_anonymous = 0x20
-	map_huge_shift = 26
-	map_huge_mask = 0x3f
+	map_type            = 0x0f
+	map_fixed           = 0x10
+	map_file            = 0x00
+	map_anonymous       = 0x20
+	map_huge_shift      = 26
+	map_huge_mask       = 0x3f
 }
 
 fn sys_call0(scn u64) u64 {
@@ -337,16 +336,16 @@ fn split_int_errno(rc_in u64) (i64, Errno) {
 }
 
 // 0 sys_read unsigned int fd char *buf size_t count
-pub fn sys_read(fd i64, buf &byte, count u64) (i64, Errno) {
+pub fn sys_read(fd i64, buf &u8, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(0, u64(fd), u64(buf), count))
 }
 
 // 1 sys_write unsigned int fd, const char *buf, size_t count
-pub fn sys_write(fd i64, buf &byte, count u64) (i64, Errno) {
+pub fn sys_write(fd i64, buf &u8, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(1, u64(fd), u64(buf), count))
 }
 
-pub fn sys_open(filename &byte, flags i64, mode int) (i64, Errno) {
+pub fn sys_open(filename &u8, flags i64, mode int) (i64, Errno) {
 	// 2 sys_open  const char *filename  int flags int mode
 	return split_int_errno(sys_call3(2, u64(filename), u64(flags), u64(mode)))
 }
@@ -357,7 +356,7 @@ pub fn sys_close(fd i64) Errno {
 }
 
 // 9 sys_mmap unsigned long addr  unsigned long len unsigned long prot  unsigned long flags unsigned long fd  unsigned long off
-pub fn sys_mmap(addr &byte, len u64, prot Mm_prot, flags Map_flags, fildes u64, off u64) (&byte, Errno) {
+pub fn sys_mmap(addr &u8, len u64, prot Mm_prot, flags Map_flags, fildes u64, off u64) (&u8, Errno) {
 	rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
 	a, e := split_int_errno(rc)
 	return &u8(a), e
@@ -669,7 +668,7 @@ https://blog.rchapman.org/posts/Linux_System_Call_Table_for_x86_64/
 239 sys_get_mempolicy int *policy unsigned long *nmask  unsigned long maxnode unsigned long addr  unsigned long flags
 240 sys_mq_open const char *u_name  int oflag mode_t mode struct mq_attr *u_attr
 241 sys_mq_unlink const char *u_name
-242 sys_mq_timedsend  mqd_t mqdes const char *u_msg_ptr size_t msg_len  unsigned int msg_prio const stuct timespec *u_abs_timeout
+242 sys_mq_timedsend  mqd_t mqdes const char *u_msg_ptr size_t msg_len  unsigned int msg_prio const struct timespec *u_abs_timeout
 243 sys_mq_timedreceive mqd_t mqdes char *u_msg_ptr size_t msg_len  unsigned int *u_msg_prio  const struct timespec *u_abs_timeout
 244 sys_mq_notify mqd_t mqdes const struct sigevent *u_notification
 245 sys_mq_getsetattr mqd_t mqdes const struct mq_attr *u_mqstat  struct mq_attr *u_omqstat

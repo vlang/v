@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module sync
@@ -9,17 +9,19 @@ import time
 #include <semaphore.h>
 #include <sys/errno.h>
 
-[trusted]
+@[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) int
 fn C.pthread_mutex_lock(voidptr) int
+fn C.pthread_mutex_trylock(voidptr) int
 fn C.pthread_mutex_unlock(voidptr) int
 fn C.pthread_mutex_destroy(voidptr) int
 fn C.pthread_rwlockattr_init(voidptr) int
 fn C.pthread_rwlockattr_setkind_np(voidptr, int) int
-fn C.pthread_rwlockattr_setpshared(voidptr, int) int
 fn C.pthread_rwlock_init(voidptr, voidptr) int
 fn C.pthread_rwlock_rdlock(voidptr) int
 fn C.pthread_rwlock_wrlock(voidptr) int
+fn C.pthread_rwlock_tryrdlock(voidptr) int
+fn C.pthread_rwlock_trywrlock(voidptr) int
 fn C.pthread_rwlock_unlock(voidptr) int
 fn C.pthread_rwlock_destroy(voidptr) int
 fn C.pthread_condattr_init(voidptr) int
@@ -31,28 +33,28 @@ fn C.pthread_cond_wait(voidptr, voidptr) int
 fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
 fn C.pthread_cond_destroy(voidptr) int
 
-[typedef]
-struct C.pthread_mutex_t {}
+@[typedef]
+pub struct C.pthread_mutex_t {}
 
-[typedef]
-struct C.pthread_cond_t {}
+@[typedef]
+pub struct C.pthread_cond_t {}
 
-[typedef]
-struct C.pthread_rwlock_t {}
+@[typedef]
+pub struct C.pthread_rwlock_t {}
 
-[typedef]
-struct C.pthread_rwlockattr_t {}
+@[typedef]
+pub struct C.pthread_rwlockattr_t {}
 
-[typedef]
-struct C.sem_t {}
+@[typedef]
+pub struct C.sem_t {}
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
-[heap]
+@[heap]
 pub struct Mutex {
 	mutex C.pthread_mutex_t
 }
 
-[heap]
+@[heap]
 pub struct RwMutex {
 	mutex C.pthread_rwlock_t
 }
@@ -60,6 +62,9 @@ pub struct RwMutex {
 struct RwMutexAttr {
 	attr C.pthread_rwlockattr_t
 }
+
+@[typedef]
+pub struct C.pthread_condattr_t {}
 
 struct CondAttr {
 	attr C.pthread_condattr_t
@@ -69,7 +74,7 @@ struct CondAttr {
 MacOSX has no unnamed semaphores and no `timed_wait()` at all
    so we emulate the behaviour with other devices
 */
-[heap]
+@[heap]
 pub struct Semaphore {
 	mtx  C.pthread_mutex_t
 	cond C.pthread_cond_t
@@ -86,9 +91,8 @@ pub fn new_mutex() &Mutex {
 
 // init initialises the mutex. It should be called once before the mutex is used,
 // since it creates the associated resources needed for the mutex to work properly.
-[inline]
 pub fn (mut m Mutex) init() {
-	C.pthread_mutex_init(&m.mutex, C.NULL)
+	should_be_zero(C.pthread_mutex_init(&m.mutex, C.NULL))
 }
 
 // new_rwmutex creates a new read/write mutex instance on the heap, and returns a pointer to it.
@@ -102,67 +106,79 @@ pub fn new_rwmutex() &RwMutex {
 // since it creates the associated resources needed for the mutex to work properly.
 pub fn (mut m RwMutex) init() {
 	a := RwMutexAttr{}
-	C.pthread_rwlockattr_init(&a.attr)
+	should_be_zero(C.pthread_rwlockattr_init(&a.attr))
 	// Give writer priority over readers
 	C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
-	C.pthread_rwlockattr_setpshared(&a.attr, C.PTHREAD_PROCESS_PRIVATE)
-	C.pthread_rwlock_init(&m.mutex, &a.attr)
+	should_be_zero(C.pthread_rwlock_init(&m.mutex, &a.attr))
 }
 
-// @lock locks the mutex instance (`lock` is a keyword).
+// lock locks the mutex instance (`lock` is a keyword).
 // If the mutex was already locked, it will block, till it is unlocked.
-[inline]
-pub fn (mut m Mutex) @lock() {
+@[inline]
+pub fn (mut m Mutex) lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
+// try_lock try to lock the mutex instance and return immediately.
+// If the mutex was already locked, it will return false.
+@[inline]
+pub fn (mut m Mutex) try_lock() bool {
+	return C.pthread_mutex_trylock(&m.mutex) == 0
+}
+
 // unlock unlocks the mutex instance. The mutex is released, and one of
-// the other threads, that were blocked, because they called @lock can continue.
-[inline]
+// the other threads, that were blocked, because they called lock can continue.
+@[inline]
 pub fn (mut m Mutex) unlock() {
 	C.pthread_mutex_unlock(&m.mutex)
 }
 
 // destroy frees the resources associated with the mutex instance.
 // Note: the mutex itself is not freed.
-[inline]
 pub fn (mut m Mutex) destroy() {
-	res := C.pthread_mutex_destroy(&m.mutex)
-	if res != 0 {
-		cpanic(res)
-	}
+	should_be_zero(C.pthread_mutex_destroy(&m.mutex))
 }
 
-// @rlock locks the given RwMutex instance for reading.
+// rlock locks the given RwMutex instance for reading.
 // If the mutex was already locked, it will block, and will try to get the lock,
 // once the lock is released by another thread calling unlock.
 // Once it succeds, it returns.
 // Note: there may be several threads that are waiting for the same lock.
 // Note: RwMutex has separate read and write locks.
-[inline]
-pub fn (mut m RwMutex) @rlock() {
+@[inline]
+pub fn (mut m RwMutex) rlock() {
 	C.pthread_rwlock_rdlock(&m.mutex)
 }
 
-// @lock locks the given RwMutex instance for writing.
+// lock locks the given RwMutex instance for writing.
 // If the mutex was already locked, it will block, till it is unlocked,
 // then it will try to get the lock, and if it can, it will return, otherwise
 // it will continue waiting for the mutex to become unlocked.
 // Note: there may be several threads that are waiting for the same lock.
 // Note: RwMutex has separate read and write locks.
-[inline]
-pub fn (mut m RwMutex) @lock() {
+@[inline]
+pub fn (mut m RwMutex) lock() {
 	C.pthread_rwlock_wrlock(&m.mutex)
+}
+
+// try_rlock try to lock the given RwMutex instance for reading and return immediately.
+// If the mutex was already locked, it will return false.
+@[inline]
+pub fn (mut m RwMutex) try_rlock() bool {
+	return C.pthread_rwlock_tryrdlock(&m.mutex) == 0
+}
+
+// try_wlock try to lock the given RwMutex instance for writing and return immediately.
+// If the mutex was already locked, it will return false.
+@[inline]
+pub fn (mut m RwMutex) try_wlock() bool {
+	return C.pthread_rwlock_trywrlock(&m.mutex) == 0
 }
 
 // destroy frees the resources associated with the rwmutex instance.
 // Note: the mutex itself is not freed.
-[inline]
 pub fn (mut m RwMutex) destroy() {
-	res := C.pthread_rwlock_destroy(&m.mutex)
-	if res != 0 {
-		cpanic(res)
-	}
+	should_be_zero(C.pthread_rwlock_destroy(&m.mutex))
 }
 
 // runlock unlocks the RwMutex instance, locked for reading.
@@ -170,7 +186,7 @@ pub fn (mut m RwMutex) destroy() {
 // To have a common portable API, there are two methods for
 // unlocking here as well, even though that they do the same
 // on !windows platforms.
-[inline]
+@[inline]
 pub fn (mut m RwMutex) runlock() {
 	C.pthread_rwlock_unlock(&m.mutex)
 }
@@ -180,14 +196,13 @@ pub fn (mut m RwMutex) runlock() {
 // To have a common portable API, there are two methods for
 // unlocking here as well, even though that they do the same
 // on !windows platforms.
-[inline]
+@[inline]
 pub fn (mut m RwMutex) unlock() {
 	C.pthread_rwlock_unlock(&m.mutex)
 }
 
 // new_semaphore creates a new initialised Semaphore instance on the heap, and returns a pointer to it.
 // The initial counter value of the semaphore is 0.
-[inline]
 pub fn new_semaphore() &Semaphore {
 	return new_semaphore_init(0)
 }
@@ -205,9 +220,9 @@ pub fn new_semaphore_init(n u32) &Semaphore {
 // resources needed for the semaphore to work properly.
 pub fn (mut sem Semaphore) init(n u32) {
 	C.atomic_store_u32(&sem.count, n)
-	C.pthread_mutex_init(&sem.mtx, C.NULL)
+	should_be_zero(C.pthread_mutex_init(&sem.mtx, C.NULL))
 	attr := CondAttr{}
-	C.pthread_condattr_init(&attr.attr)
+	should_be_zero(C.pthread_condattr_init(&attr.attr))
 	C.pthread_condattr_setpshared(&attr.attr, C.PTHREAD_PROCESS_PRIVATE)
 	C.pthread_cond_init(&sem.cond, &attr.attr)
 	C.pthread_condattr_destroy(&attr.attr)
@@ -317,12 +332,6 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 // destroy frees the resources associated with the Semaphore instance.
 // Note: the semaphore instance itself is not freed.
 pub fn (mut sem Semaphore) destroy() {
-	mut res := C.pthread_cond_destroy(&sem.cond)
-	if res != 0 {
-		cpanic(res)
-	}
-	res = C.pthread_mutex_destroy(&sem.mtx)
-	if res != 0 {
-		cpanic(res)
-	}
+	should_be_zero(C.pthread_cond_destroy(&sem.cond))
+	should_be_zero(C.pthread_mutex_destroy(&sem.mtx))
 }

@@ -11,6 +11,6 @@ fn generic[T]() {}
 
 fn main() {
 	_ := Duration(10) // keep cast type
-	assert *(&f64(&byte(&num) + __offsetof(Complex, re))) == 1.0
+	assert *(&f64(&u8(&num) + __offsetof(Complex, re))) == 1.0
 	generic[Test]()
 }

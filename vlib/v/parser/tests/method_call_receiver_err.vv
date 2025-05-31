@@ -1,6 +1,6 @@
 module main
 
-struct S1{}
+struct S1 {}
 
 fn main() {
 	s1 := S1{}

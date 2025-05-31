@@ -1,3 +1,4 @@
+// vtest build: amd64 || arm64
 import context
 
 const not_found_value = &Value{

@@ -11,8 +11,8 @@ fn unwrap_generic[T](ptr voidptr) T {
 }
 
 pub fn main() {
-	foo1 := unwrap_concrete(voidptr(0))
-	foo2 := unwrap_generic[Foo](voidptr(0))
+	foo1 := unwrap_concrete(unsafe { nil })
+	foo2 := unwrap_generic[Foo](unsafe { nil })
 
 	println(foo1)
 	println(foo2)

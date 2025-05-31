@@ -1,0 +1,8 @@
+import net.html
+
+fn main() {
+	mut doc := html.parse('<body><div class="Box-footer"><div class="Truncate">abc</div></div></body>')
+	footer := doc.get_tags_by_class_name('Box-footer')[0]
+	invalid := footer.get_tag_by_class_name('invalid')
+	println(invalid.str())
+}

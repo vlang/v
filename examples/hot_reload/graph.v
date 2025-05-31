@@ -5,10 +5,8 @@ import gg
 import time
 import math
 
-const (
-	size  = 700
-	scale = 50.0
-)
+const size = 700
+const scale = 50.0
 
 struct Context {
 mut:
@@ -16,19 +14,17 @@ mut:
 }
 
 fn main() {
-	mut context := &Context{
-		gg: 0
-	}
+	mut context := &Context{}
 	context.gg = gg.new_context(
-		width: size
-		height: size
-		font_size: 20
-		user_data: context
-		window_title: 'Graph builder'
+		width:         size
+		height:        size
+		font_size:     20
+		user_data:     context
+		window_title:  'Graph builder'
 		create_window: true
-		frame_fn: frame
-		resizable: true
-		bg_color: gx.white
+		frame_fn:      frame
+		resizable:     true
+		bg_color:      gx.white
 	)
 	context.gg.run()
 }
@@ -39,7 +35,7 @@ fn frame(mut ctx Context) {
 	ctx.gg.end()
 }
 
-[live]
+@[live]
 fn (ctx &Context) draw() {
 	s := gg.window_size()
 	mut w := s.width

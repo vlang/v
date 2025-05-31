@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -14,12 +14,10 @@ module builtin
 // The number for `degree` has been picked through vigor-
 // ous benchmarking but can be changed to any number > 1.
 // `degree` determines the maximum length of each node.
-const (
-	degree         = 6
-	mid_index      = degree - 1
-	max_len        = 2 * degree - 1
-	children_bytes = sizeof(voidptr) * (max_len + 1)
-)
+const degree = 6
+const mid_index = degree - 1
+const max_len = 2 * degree - 1
+const children_bytes = sizeof(voidptr) * (max_len + 1)
 
 pub struct SortedMap {
 	value_bytes int
@@ -40,8 +38,8 @@ mut:
 fn new_sorted_map(n int, value_bytes int) SortedMap { // TODO: Remove `n`
 	return SortedMap{
 		value_bytes: value_bytes
-		root: new_node()
-		len: 0
+		root:        new_node()
+		len:         0
 	}
 }
 
@@ -61,7 +59,7 @@ fn new_sorted_map_init(n int, value_bytes int, keys &string, values voidptr) Sor
 fn new_node() &mapnode {
 	return &mapnode{
 		children: unsafe { nil }
-		len: 0
+		len:      0
 	}
 }
 
@@ -160,6 +158,7 @@ fn (mut n mapnode) split_child(child_index int, mut y mapnode) {
 	n.len++
 }
 
+@[direct_array_access]
 fn (m SortedMap) get(key string, out voidptr) bool {
 	mut node := m.root
 	for {

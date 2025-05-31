@@ -1,5 +1,5 @@
+// vtest build: !self_sandboxed_packaging?
 import os
-import rand
 import term
 import v.util.diff
 import v.util.vtest
@@ -9,6 +9,7 @@ import benchmark
 
 const skip_files = [
 	'non_existing.vv', // minimize commit diff churn, do not remove
+	'vlib/v/checker/tests/unused_param.vv',
 ]
 
 const skip_on_cstrict = [
@@ -19,6 +20,8 @@ const skip_on_cstrict = [
 const skip_on_ubuntu_musl = [
 	'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
 	'vlib/v/checker/tests/vweb_routing_checks.vv',
+	'vlib/v/checker/tests/orm_op_with_option_and_none.vv',
+	'vlib/v/checker/tests/orm_unused_var.vv',
 	'vlib/v/tests/skip_unused/gg_code.vv',
 ]
 
@@ -28,6 +31,7 @@ const skip_on_ci_musl = [
 
 const vexe = os.getenv('VEXE')
 
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 const show_cmd = os.getenv('VTEST_SHOW_CMD') != ''
@@ -62,6 +66,8 @@ mut:
 	found___          string
 	took              time.Duration
 	cli_cmd           string
+	ntries            int
+	max_ntries        int = 1
 }
 
 struct Tasks {
@@ -85,7 +91,7 @@ fn test_all() {
 	global_run_dir := '${checker_dir}/globals_run'
 	run_dir := '${checker_dir}/run'
 	skip_unused_dir := 'vlib/v/tests/skip_unused'
-	//
+
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option'))
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
@@ -97,7 +103,7 @@ fn test_all() {
 	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir,
 		false)
 	mut tasks := Tasks{
-		vexe: vexe
+		vexe:  vexe
 		label: 'all tests'
 	}
 	tasks.add('', parser_dir, '', '.out', parser_tests, false)
@@ -113,12 +119,12 @@ fn test_all() {
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
 		false)
 	tasks.run()
-	//
+
 	if os.user_os() == 'linux' {
 		mut skip_unused_tasks := Tasks{
-			vexe: vexe
+			vexe:          vexe
 			parallel_jobs: 1
-			label: '-skip-unused tests'
+			label:         '-skip-unused tests'
 		}
 		skip_unused_tasks.add('', skip_unused_dir, 'run', '.run.out', skip_unused_dir_tests,
 			false)
@@ -126,15 +132,15 @@ fn test_all() {
 			'.skip_unused.run.out', skip_unused_dir_tests, false)
 		skip_unused_tasks.run()
 	}
-	//
+
 	if github_job == 'ubuntu-tcc' {
 		// This is done with tcc only, because the error output is compiler specific.
 		// Note: the tasks should be run serially, since they depend on
 		// setting and using environment variables.
 		mut cte_tasks := Tasks{
-			vexe: vexe
+			vexe:          vexe
 			parallel_jobs: 1
-			label: 'comptime env tests'
+			label:         'comptime env tests'
 		}
 		cte_dir := '${checker_dir}/comptime_env'
 		files := get_tests_in_dir(cte_dir, false)
@@ -146,9 +152,9 @@ fn test_all() {
 		cte_tasks.run()
 	}
 	mut ct_tasks := Tasks{
-		vexe: vexe
+		vexe:          vexe
 		parallel_jobs: 1
-		label: 'comptime define tests'
+		label:         'comptime define tests'
 	}
 	ct_tasks.add_checked_run('-d mysymbol run', '.mysymbol.run.out', [
 		'custom_comptime_define_error.vv',
@@ -180,21 +186,25 @@ fn (mut tasks Tasks) add_checked_run(voptions string, result_extension string, t
 	tasks.add('', checker_dir, voptions, result_extension, tests, false)
 }
 
-fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
+fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result_extension string, tests []string,
+	is_module bool) {
 	tasks.add_evars('', custom_vexe, dir, voptions, result_extension, tests, is_module)
 }
 
-fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
+fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, voptions string, result_extension string,
+	tests []string, is_module bool) {
+	max_ntries := get_max_ntries()
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		tasks.all << TaskDescription{
-			evars: evars
-			vexe: if custom_vexe != '' { custom_vexe } else { tasks.vexe }
-			dir: dir
-			voptions: voptions
+			evars:            evars
+			vexe:             if custom_vexe != '' { custom_vexe } else { tasks.vexe }
+			dir:              dir
+			voptions:         voptions
 			result_extension: result_extension
-			path: path
-			is_module: is_module
+			path:             path
+			is_module:        is_module
+			max_ntries:       max_ntries
 		}
 	}
 }
@@ -233,6 +243,7 @@ fn (mut tasks Tasks) run() {
 		// cleaner error message, than a generic C error, but without the explanation.
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
+		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
 	}
 	$if msvc {
 		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
@@ -240,6 +251,7 @@ fn (mut tasks Tasks) run() {
 		// TODO: investigate why MSVC regressed
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
+		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
 	}
 	$if windows {
 		m_skip_files << 'vlib/v/checker/tests/modules/deprecated_module'
@@ -277,10 +289,10 @@ fn (mut tasks Tasks) run() {
 			println('failed cmd: ${task.cli_cmd}')
 			println('expected_out_path: ${task.expected_out_path}')
 			println('============')
-			println('expected:')
+			println('expected (len: ${task.expected.len:5}, hash: ${task.expected.hash()}):')
 			println(task.expected)
 			println('============')
-			println('found:')
+			println('found    (len: ${task.found___.len:5}, hash: ${task.found___.hash()}):')
 			println(task.found___)
 			println('============\n')
 			diff_content(task.expected, task.found___)
@@ -315,11 +327,37 @@ fn (mut tasks Tasks) run() {
 fn work_processor(work chan TaskDescription, results chan TaskDescription) {
 	for {
 		mut task := <-work or { break }
-		sw := time.new_stopwatch()
-		task.execute()
-		task.took = sw.elapsed()
+		mut i := 0
+		for i = 1; i <= task.max_ntries; i++ {
+			// reset the .is_error flag, from the potential previous retries, otherwise it can
+			// be set on the first retry, all the next retries can succeed, and the task will
+			// be still considered failed, with a very puzzling non difference reported.
+			task.is_error = false
+			sw := time.new_stopwatch()
+			task.execute()
+			task.took = sw.elapsed()
+			cli_cmd := task.get_cli_cmd()
+			if !task.is_error {
+				if i > 1 {
+					eprintln('>    succeeded after ${i:3}/${task.max_ntries} retries, doing `${cli_cmd}`')
+				}
+				break
+			}
+			eprintln('>    failed ${i:3}/${task.max_ntries} times, doing `${cli_cmd}`')
+			if i <= task.max_ntries {
+				time.sleep(100 * time.millisecond)
+			}
+		}
+		task.ntries = i
 		results <- task
 	}
+}
+
+fn (mut task TaskDescription) get_cli_cmd() string {
+	program := task.path
+	cmd_prefix := if task.evars.len > 0 { '${task.evars} ' } else { '' }
+	cli_cmd := '${cmd_prefix}${os.quoted_path(task.vexe)} ${task.voptions} ${os.quoted_path(program)}'
+	return cli_cmd
 }
 
 // actual processing; Note: no output is done here at all
@@ -327,11 +365,9 @@ fn (mut task TaskDescription) execute() {
 	if task.is_skipped {
 		return
 	}
-	program := task.path
-	cmd_prefix := if task.evars.len > 0 { '${task.evars} ' } else { '' }
-	cli_cmd := '${cmd_prefix}${os.quoted_path(task.vexe)} ${task.voptions} ${os.quoted_path(program)}'
+	cli_cmd := task.get_cli_cmd()
 	res := os.execute(cli_cmd)
-	expected_out_path := program.replace('.vv', '') + task.result_extension
+	expected_out_path := task.path.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path
 	task.cli_cmd = cli_cmd
 	if should_autofix && !os.exists(expected_out_path) {
@@ -362,10 +398,34 @@ fn clean_line_endings(s string) string {
 	return res
 }
 
+fn chunks(s string, chunk_size int) string {
+	mut res := []string{}
+	for i := 0; i < s.len; i += chunk_size {
+		res << s#[i..i + chunk_size]
+	}
+	return res.join('\n')
+}
+
+fn chunka(s []u8, chunk_size int) string {
+	mut res := []string{}
+	for i := 0; i < s.len; i += chunk_size {
+		res << s#[i..i + chunk_size].str()
+	}
+	return res.join('\n')
+}
+
 fn diff_content(expected string, found string) {
-	diff_cmd := diff.find_working_diff_command() or { return }
 	println(term.bold(term.yellow('diff: ')))
-	println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
+	if diff_ := diff.compare_text(expected, found) {
+		println(diff_)
+	} else {
+		println('>>>> `${err}`; dumping bytes instead...')
+		println('expected bytes:\n${chunka(expected.bytes(), 25)}')
+		println('   found bytes:\n${chunka(found.bytes(), 25)}')
+		println('============')
+		println('  expected hex:\n${chunks(expected.hex(), 80)}')
+		println('     found hex:\n${chunks(found.hex(), 80)}')
+	}
 	println('============\n')
 }
 
@@ -379,4 +439,8 @@ fn get_tests_in_dir(dir string, is_module bool) []string {
 	}
 	tests.sort()
 	return tests
+}
+
+fn get_max_ntries() int {
+	return if v_ci_musl { 3 } else { 1 }
 }

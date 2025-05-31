@@ -1,0 +1,8 @@
+vlib/v/checker/tests/unsafe_generic_call_test.vv:8:15: warning: cannot cast a number to a type reference, use `nil` or a voidptr cast first: `&Type(voidptr(123))`
+    6 | 
+    7 | fn test_main() {
+    8 |     pointers := [&int(1234)]
+      |                  ~~~~~~~~~~
+    9 |     length := 1
+   10 |     array := unsafe { arrays.carray_to_varray[&Blah](pointers, length) }
+[&Blah{}]

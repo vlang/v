@@ -15,20 +15,20 @@ fn test_match_glob_on_x() {
 fn test_match_glob_on_abc() {
 	assert !'abc'.match_glob('')
 	assert 'abc'.match_glob('*')
-	//
+
 	assert !'abc'.match_glob('ab')
 	assert 'abc'.match_glob('abc')
 	assert 'abc'.match_glob('abc*')
-	//
+
 	assert 'abc'.match_glob('*c')
 	assert !'abc'.match_glob('*b')
 	assert 'abc'.match_glob('*bc')
 	assert 'abc'.match_glob('*abc')
-	//
+
 	assert 'abc'.match_glob('a*')
 	assert !'abc'.match_glob('b*')
 	assert 'abc'.match_glob('a*c')
-	//
+
 	assert 'abc'.match_glob('ab?')
 	assert 'abc'.match_glob('a??')
 	assert 'abc'.match_glob('???')
@@ -49,13 +49,13 @@ fn test_match_glob_with_any_charset_patterns() {
 	assert 'axbxcxdxe'.match_glob('*c[xyz]d*')
 	assert 'axbxcxdxe'.match_glob('*c[yxz]d*')
 	assert 'axbxcxdxe'.match_glob('*c[zyx]d*')
-	//
+
 	assert 'axbxcxdxe'.match_glob('*dx[QeW]')
 	assert 'axbxcxdxe'.match_glob('*dx[QeW]*')
-	//
+
 	assert !'axbxcxdxe'.match_glob('*bx[QcW]')
 	assert 'axbxcxdxe'.match_glob('*bx[QcW]*')
-	//
+
 	assert !'axbxcxdxe'.match_glob('*zx[QeW]')
 	assert !'axbxcxdxe'.match_glob('*zx[QeW]*')
 }

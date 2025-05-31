@@ -1,13 +1,14 @@
+// vtest build: present_ruby? // the example only makes sense to be compiled, when ruby is installed
 module test
 
 import math
 
-[export: 'square']
+@[export: 'square']
 fn square(i int) int {
 	return i * i
 }
 
-[export: 'sqrt_of_sum_of_squares']
+@[export: 'sqrt_of_sum_of_squares']
 fn sqrt_of_sum_of_squares(x f64, y f64) f64 {
 	return math.sqrt(x * x + y * y)
 }

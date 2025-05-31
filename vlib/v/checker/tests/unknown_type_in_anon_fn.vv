@@ -1,8 +1,8 @@
 module main
 
-struct Struc{
+struct Struc {
 mut:
-	f fn (s Another, i int)? [required]
+	f fn (s Another, i int) ? @[required]
 }
 
 fn main() {}

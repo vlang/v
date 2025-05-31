@@ -1,7 +1,7 @@
-vlib/v/checker/tests/sum_type_assign_non_variant_err.vv:11:6: error: cannot assign to `w`: expected `Stmt`, not `IfExpr`
-    9 | fn main() {
-   10 |     mut w := Stmt(AnotherThing{})
-   11 |     w = IfExpr{}
+vlib/v/checker/tests/sum_type_assign_non_variant_err.vv:15:6: error: cannot assign to `w`: expected `Stmt`, not `IfExpr`
+   13 | fn main() {
+   14 |     mut w := Stmt(AnotherThing{})
+   15 |     w = IfExpr{}
       |         ~~~~~~~~
-   12 |     _ = w
-   13 | }
+   16 |     _ = w
+   17 | }

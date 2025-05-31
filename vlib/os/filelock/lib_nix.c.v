@@ -1,14 +1,12 @@
 module filelock
 
-import time
-
 #include <sys/file.h>
 
 fn C.unlink(&char) int
 fn C.open(&char, int, int) int
 fn C.flock(int, int) int
 
-[unsafe]
+@[unsafe]
 pub fn (mut l FileLock) unlink() {
 	if l.fd != -1 {
 		C.close(l.fd)
@@ -30,27 +28,6 @@ pub fn (mut l FileLock) acquire() ! {
 		return error_with_code('cannot lock', -2)
 	}
 	l.fd = fd
-}
-
-pub fn (mut l FileLock) release() bool {
-	if l.fd != -1 {
-		unsafe {
-			l.unlink()
-		}
-		return true
-	}
-	return false
-}
-
-pub fn (mut l FileLock) wait_acquire(s int) bool {
-	fin := time.now().add(s)
-	for time.now() < fin {
-		if l.try_acquire() {
-			return true
-		}
-		C.usleep(1000)
-	}
-	return false
 }
 
 fn open_lockfile(f string) int {

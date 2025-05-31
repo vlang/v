@@ -18,7 +18,7 @@ fn (mut app App) service_add_user(username string, password string) ! {
 	user_model := User{
 		username: username
 		password: hashed_password
-		active: true
+		active:   true
 	}
 
 	mut insert_error := ''

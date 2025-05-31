@@ -1,0 +1,7 @@
+module testdata.basic
+
+const source_root = 'temp' // some const
+const another = int(5)
+const windowpos_undefined_mask = C.SDL_WINDOWPOS_UNDEFINED_MASK //   0x1FFF0000u
+const windowpos_undefined = C.SDL_WINDOWPOS_UNDEFINED
+fn funky()

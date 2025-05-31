@@ -5,11 +5,11 @@ import gx
 
 fn main() {
 	mut context := gg.new_context(
-		bg_color: gx.rgb(174, 198, 255)
-		width: 600
-		height: 400
+		bg_color:     gx.rgb(174, 198, 255)
+		width:        600
+		height:       400
 		window_title: 'Polygons'
-		frame_fn: frame
+		frame_fn:     frame
 	)
 	context.run()
 }

@@ -41,7 +41,7 @@ pub fn build_js(mut b builder.Builder, v_files []string, out_file string) {
 pub fn gen_js(mut b builder.Builder, v_files []string) string {
 	b.front_and_middle_stages(v_files) or { return '' }
 	util.timing_start('JS GEN')
-	res := js.gen(b.parsed_files, b.table, b.pref)
+	res := js.gen(b.parsed_files, mut b.table, b.pref)
 	util.timing_measure('JS GEN')
 	return res
 }

@@ -3,6 +3,7 @@ mut:
 	a int
 }
 
+@[markused]
 fn test_addr() {
 	mut a := 4
 	b := unsafe { __addr(a) }

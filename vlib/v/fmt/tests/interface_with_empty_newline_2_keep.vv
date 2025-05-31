@@ -1,0 +1,18 @@
+interface Foo {
+	// a
+	a string
+
+	bb  int
+	ccc bool
+
+	// m1, m2
+	m1() string
+	m2() int
+
+	// m3.1
+	// m3.2
+	m3() bool
+}
+
+fn main() {
+}

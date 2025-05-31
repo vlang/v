@@ -1,0 +1,38 @@
+pub type WindowResizeFn = fn (window &Window, w int, h int)
+
+@[heap]
+pub struct Window {
+	id string = '_window_'
+pub mut:
+	resize_fn WindowResizeFn = unsafe { nil }
+}
+
+@[params]
+pub struct WindowParams {
+pub:
+	on_resize WindowResizeFn = unsafe { nil }
+}
+
+fn window_resized(mut w &Window) {
+	window_width, window_height := 200, 100
+
+	if w.resize_fn != unsafe { WindowResizeFn(0) } {
+		println('fn present ${window_width} ${window_height}')
+		w.resize_fn(w, window_width, window_height)
+	}
+}
+
+fn on_event(mut w Window) {
+	window_resized(mut w)
+}
+
+fn on_resize(window &Window, w int, h int) {
+	println(' ${w} ${h}')
+}
+
+fn main() {
+	mut w := &Window{
+		resize_fn: on_resize
+	}
+	on_event(mut w)
+}

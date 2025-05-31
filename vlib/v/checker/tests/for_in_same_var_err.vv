@@ -1,0 +1,19 @@
+for x in x .. 10 {
+	dump(x)
+}
+
+for y in 0 .. y {
+	dump(y)
+}
+
+for z in z .. z {
+	dump(z)
+}
+
+for w in w {
+	dump(w)
+}
+
+for k, _ in k {
+	dump(k)
+}

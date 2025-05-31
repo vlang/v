@@ -1,0 +1,19 @@
+module main
+
+// note missing `input` argument in fn signature
+fn foo() !string {
+	// without next error does not occurs
+	a, b := input.split_once('%') or { '', 'empty' }
+	if b == '' {
+		return error('')
+	}
+	return a
+}
+
+fn main() {
+	res := foo('fe80::1234%ne0') or {
+		eprintln(err)
+		exit(1)
+	}
+	println(res)
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/auto_ref_voidptr.vv:9:9: warning: automatic Aa referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`
+    7 | fn main() {
+    8 |     a := Aa{}
+    9 |     foo(3, a)
+      |            ^
+   10 |     // foo2(a)
+   11 | }

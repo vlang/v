@@ -1,0 +1,22 @@
+pub enum KeyCode {
+	invalid       = 0
+	space         = 32
+	apostrophe    = 39  //'
+	comma         = 44  //,
+	minus         = 45  //-
+	period        = 46  //.
+	slash         = 47  ///
+	semicolon     = 59  //;
+	equal         = 61  //=
+	left_bracket  = 91  //[
+	backslash     = 92  //\
+	right_bracket = 93  //]
+	grave_accent  = 96  //`
+	world_1       = 161 // non-us #1
+	world_2       = 162 // non-us #2
+	escape        = 256
+	enter         = 257
+}
+
+fn main() {
+}

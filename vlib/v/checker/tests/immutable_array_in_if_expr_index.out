@@ -1,0 +1,14 @@
+vlib/v/checker/tests/immutable_array_in_if_expr_index.vv:4:13: error: `array_a` is immutable, declare it with `mut` to make it mutable
+    2 |     array_a := [1, 2, 3]
+    3 |     array_b := [4, 5, 6]
+    4 |     (if true { array_a } else { array_b })[0] = 999
+      |                ~~~~~~~
+    5 |     println(array_a)
+    6 | }
+vlib/v/checker/tests/immutable_array_in_if_expr_index.vv:4:30: error: `array_b` is immutable, declare it with `mut` to make it mutable
+    2 |     array_a := [1, 2, 3]
+    3 |     array_b := [4, 5, 6]
+    4 |     (if true { array_a } else { array_b })[0] = 999
+      |                                 ~~~~~~~
+    5 |     println(array_a)
+    6 | }

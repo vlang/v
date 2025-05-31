@@ -41,10 +41,10 @@ mut:
 
 fn new_mappings() Mappings {
 	return Mappings{
-		last: Mapping{
+		last:      Mapping{
 			GenPosition: GenPosition{
 				gen_column: 0
-				gen_line: 0
+				gen_line:   0
 			}
 		}
 		is_sorted: true
@@ -52,18 +52,19 @@ fn new_mappings() Mappings {
 }
 
 // Add the given source mapping
-fn (mut m Mappings) add_mapping(gen_line u32, gen_column u32, sources_ind u32, source_position SourcePositionType, names_ind NameIndexType) {
+fn (mut m Mappings) add_mapping(gen_line u32, gen_column u32, sources_ind u32, source_position SourcePositionType,
+	names_ind NameIndexType) {
 	if !(gen_line > m.last.gen_line
 		|| (gen_line == m.last.gen_line && gen_column >= m.last.gen_column)) {
 		m.is_sorted = false
 	}
 	m.values << Mapping{
-		GenPosition: GenPosition{
-			gen_line: gen_line
+		GenPosition:     GenPosition{
+			gen_line:   gen_line
 			gen_column: gen_column
 		}
-		sources_ind: sources_ind
-		names_ind: names_ind
+		sources_ind:     sources_ind
+		names_ind:       names_ind
 		source_position: source_position
 	}
 }

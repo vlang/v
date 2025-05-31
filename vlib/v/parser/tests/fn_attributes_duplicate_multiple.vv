@@ -1,5 +1,5 @@
-[inline]
-[inline]
+@[inline]
+@[inline]
 fn foo() {}
 
 fn main() {

@@ -13,7 +13,7 @@ fn my_print1() {
 }
 
 // 2MB  stack size
-[spawn_stack: 2097152]
+@[spawn_stack: 2097152]
 fn my_print2() {
 	println('ahoj svet')
 }

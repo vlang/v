@@ -10,9 +10,7 @@ pub fn (ra []rune) string() string {
 }
 
 pub fn (c rune) repeat(count int) string {
-	if count < 0 {
-		panic('rune.repeat: count is negative: ${count}')
-	} else if count == 0 {
+	if count <= 0 {
 		return ''
 	} else if count == 1 {
 		return c.str()

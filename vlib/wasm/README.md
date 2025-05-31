@@ -1,12 +1,12 @@
-## Description:
+## Description
 
-The `wasm` module is a pure V implementation of the WebAssembly bytecode module format, 
+The `wasm` module is a pure V implementation of the WebAssembly bytecode module format,
 available in the form of a builder.
 
-It allows users to generate WebAssembly modules in memory. 
+It allows users to generate WebAssembly modules in memory.
 
 With the V wasm module, users can create functions, opcodes, and utilize the entire wasm
-specification without the need for a large dependency like binaryen. All of this 
+specification without the need for a large dependency like binaryen. All of this
 functionality is available within V itself, making the module a valuable resource for
 V developers seeking to build high-performance web applications.
 

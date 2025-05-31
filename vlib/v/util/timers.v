@@ -1,25 +1,26 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module util
 
 import time
 
 __global g_timers = new_timers(should_print: false, label: 'g_timers')
 
-[heap]
+@[heap]
 pub struct Timers {
 	label string
 pub mut:
-	swatches     map[string]time.StopWatch
+	swatches     shared map[string]time.StopWatch
 	should_print bool
 	// already_shown records for which of the swatches .show() or .show_if_exists() had been called already
 	already_shown []string
 }
 
-[params]
+@[params]
 pub struct TimerParams {
+pub:
 	should_print bool
 	label        string
 }
@@ -29,9 +30,9 @@ pub fn new_timers(params TimerParams) &Timers {
 		eprintln('>>>> new_timers, should_print: ${params.should_print} | label: ${params.label}')
 	}
 	return &Timers{
-		label: params.label
-		swatches: map[string]time.StopWatch{}
-		should_print: params.should_print
+		label:         params.label
+		swatches:      map[string]time.StopWatch{}
+		should_print:  params.should_print
 		already_shown: []string{cap: 100}
 	}
 }
@@ -58,49 +59,43 @@ pub fn timing_set_should_print(should_print bool) {
 }
 
 pub fn (mut t Timers) start(name string) {
-	mut sw := t.swatches[name] or { time.new_stopwatch() }
+	mut sw := t.tsafe_get_sw(name) or { time.new_stopwatch() }
 	sw.start()
-	t.swatches[name] = sw
+	t.tsafe_set_sw(name, sw)
 }
 
 pub fn (mut t Timers) measure(name string) i64 {
-	if name !in t.swatches {
-		timer_keys := t.swatches.keys()
+	mut sw := t.tsafe_get_sw(name) or {
+		timer_keys := t.tsafe_get_keys()
 		eprintln('> Timer `${name}` was NOT started.')
 		eprintln('>   Available timers:')
 		eprintln('>   ${timer_keys}')
+		time.new_stopwatch()
 	}
-	ms := t.swatches[name].elapsed().microseconds()
+	ms := sw.elapsed().microseconds()
+	sw.pause()
+	t.tsafe_set_sw(name, sw)
 	return ms
 }
 
 pub fn (mut t Timers) measure_cumulative(name string) i64 {
 	ms := t.measure(name)
-	if name !in t.swatches {
-		return ms
-	}
-	mut sw := t.swatches[name]
+	mut sw := t.tsafe_get_sw(name) or { return ms }
 	sw.pause()
-	t.swatches[name] = sw
+	t.tsafe_set_sw(name, sw)
 	return ms
 }
 
 pub fn (mut t Timers) measure_pause(name string) {
-	if name !in t.swatches {
-		return
-	}
-	mut sw := t.swatches[name]
+	mut sw := t.tsafe_get_sw(name) or { return }
 	sw.pause()
-	t.swatches[name] = sw
+	t.tsafe_set_sw(name, sw)
 }
 
 pub fn (mut t Timers) measure_resume(name string) {
-	if name !in t.swatches {
-		return
-	}
-	mut sw := t.swatches[name]
+	mut sw := t.tsafe_get_sw(name) or { return }
 	sw.start()
-	t.swatches[name] = sw
+	t.tsafe_set_sw(name, sw)
 }
 
 pub fn (mut t Timers) message(name string) string {
@@ -111,23 +106,27 @@ pub fn (mut t Timers) message(name string) string {
 }
 
 pub fn (mut t Timers) show(label string) {
-	formatted_message := t.message(label)
+	if v_memory_panic {
+		// Showing timers uses string interpolation, and allocating in this case
+		// will just cause a second panic to be shown; it is better to just not show anything
+		return
+	}
 	if t.should_print {
+		formatted_message := t.message(label)
 		println(formatted_message)
 	}
 	t.already_shown << label
 }
 
 pub fn (mut t Timers) show_if_exists(label string) {
-	if label !in t.swatches {
-		return
-	}
+	t.tsafe_get_sw(label) or { return }
 	t.show(label)
 	t.already_shown << label
 }
 
 pub fn (mut t Timers) show_remaining() {
-	for k, _ in t.swatches {
+	keys := t.tsafe_get_keys()
+	for k in keys {
 		if k in t.already_shown {
 			continue
 		}
@@ -136,8 +135,34 @@ pub fn (mut t Timers) show_remaining() {
 }
 
 pub fn (mut t Timers) dump_all() {
-	for k, _ in t.swatches {
+	keys := t.tsafe_get_keys()
+	for k in keys {
 		elapsed := t.message(k)
 		println(elapsed)
 	}
+}
+
+//
+
+fn (mut t Timers) tsafe_get_keys() []string {
+	keys := rlock t.swatches {
+		t.swatches.keys()
+	}
+	return keys
+}
+
+fn (mut t Timers) tsafe_set_sw(name string, sw time.StopWatch) {
+	lock t.swatches {
+		t.swatches[name] = sw
+	}
+}
+
+fn (mut t Timers) tsafe_get_sw(name string) ?time.StopWatch {
+	rlock t.swatches {
+		if name !in t.swatches {
+			return none
+		}
+		return t.swatches[name]
+	}
+	return none
 }

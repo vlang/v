@@ -1,12 +1,13 @@
 struct Foo {
 	bar Bar
 }
+
 struct Bar {
 	egg Egg
 }
 
 struct Egg {
-	name string [required]
+	name string @[required]
 }
 
 fn main() {

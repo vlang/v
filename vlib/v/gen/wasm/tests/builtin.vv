@@ -30,4 +30,8 @@ fn main() {
 	assertions()
 
 	// panic('nooo!')
+
+	println('wasm builtins')
+	println(vwasm_memory_size())
+	println(vwasm_memory_grow(0))
 }

@@ -4,7 +4,7 @@ import os
 import log
 import flag
 import time
-import vweb
+import veb
 import net.urllib
 
 // This tool regenerates V's bootstrap .c files
@@ -22,60 +22,50 @@ import net.urllib
 // --force     force update even if already up to date
 
 // git credentials
-const (
-	git_username = os.getenv('GITUSER')
-	git_password = os.getenv('GITPASS')
-)
+const git_username = os.getenv('GITUSER')
+const git_password = os.getenv('GITPASS')
 
 // repository
-const (
-	// git repo
-	git_repo_v      = 'github.com/vlang/v'
-	git_repo_vc     = 'github.com/vlang/vc'
-	// local repo directories
-	git_repo_dir_v  = 'v'
-	git_repo_dir_vc = 'vc'
-)
+// git repo
+const git_repo_v = 'github.com/vlang/v'
+const git_repo_vc = 'github.com/vlang/vc'
+// local repo directories
+const git_repo_dir_v = 'v'
+const git_repo_dir_vc = 'vc'
 
 // gen_vc
-const (
-	// name
-	app_name             = 'gen_vc'
-	// version
-	app_version          = '0.1.3'
-	// description
-	app_description      = "This tool regenerates V's bootstrap .c files every time the V master branch is updated."
-	// assume something went wrong if file size less than this
-	too_short_file_limit = 5000
-	// create a .c file for these os's
-	vc_build_oses        = [
-		'nix',
-		// all nix based os
-		'windows',
-	]
-)
+// name
+const app_name = 'gen_vc'
+// version
+const app_version = '0.1.3'
+// description
+const app_description = "This tool regenerates V's bootstrap .c files every time the V master branch is updated."
+// assume something went wrong if file size less than this
+const too_short_file_limit = 5000
+// create a .c file for these os's
+const vc_build_oses = [
+	'nix',
+	// all nix based os
+	'windows',
+]
 
 // default options (overridden by flags)
-const (
-	// gen_vc working directory
-	work_dir    = '/tmp/gen_vc'
-	// dont push anything to remote repo
-	dry_run     = false
-	// server port
-	server_port = 7171
-	// log file
-	log_file    = '${work_dir}/log.txt'
-	// log_to is either 'file' or 'terminal'
-	log_to      = 'terminal'
-)
+// gen_vc working directory
+const work_dir = '/tmp/gen_vc'
+// dont push anything to remote repo
+const dry_run = false
+// server port
+const server_port = 7171
+// log file
+const log_file = '${work_dir}/log.txt'
+// log_to is either 'file' or 'terminal'
+const log_to = 'terminal'
 
 // errors
-const (
-	err_msg_build = 'error building'
-	err_msg_make  = 'make failed'
-	err_msg_gen_c = 'failed to generate .c file'
-	err_msg_cmd_x = 'error running cmd'
-)
+const err_msg_build = 'error building'
+const err_msg_make = 'make failed'
+const err_msg_gen_c = 'failed to generate .c file'
+const err_msg_cmd_x = 'error running cmd'
 
 struct GenVC {
 	// logger
@@ -89,9 +79,12 @@ mut:
 
 // webhook server
 struct WebhookServer {
-	vweb.Context
 mut:
 	gen_vc &GenVC = unsafe { nil } // initialized in init_server
+}
+
+struct Context {
+	veb.Context
 }
 
 // storage for flag options
@@ -107,6 +100,7 @@ struct FlagOptions {
 }
 
 fn main() {
+	log.use_stdout()
 	mut fp := flag.new_flag_parser(os.args.clone())
 	fp.application(app_name)
 	fp.version(app_version)
@@ -125,7 +119,8 @@ fn main() {
 	}
 	// webhook server mode
 	if flag_options.serve {
-		vweb.run[WebhookServer](&WebhookServer{}, flag_options.port)
+		mut server := &WebhookServer{}
+		veb.run_at[WebhookServer, Context](mut server, port: flag_options.port)!
 	} else {
 		// cmd mode
 		mut gen_vc := new_gen_vc(flag_options)
@@ -143,7 +138,7 @@ fn new_gen_vc(flag_options FlagOptions) &GenVC {
 	}
 	return &GenVC{
 		options: flag_options
-		logger: logger
+		logger:  logger
 	}
 }
 
@@ -161,7 +156,7 @@ pub fn (mut ws WebhookServer) index() {
 }
 
 // gen webhook
-pub fn (mut ws WebhookServer) genhook() {
+pub fn (mut ws WebhookServer) genhook() veb.Result {
 	// request data
 	// println(ws.vweb.req.data)
 	// TODO: parse request. json or urlencoded
@@ -169,10 +164,9 @@ pub fn (mut ws WebhookServer) genhook() {
 	ws.gen_vc.generate()
 	// error in generate
 	if ws.gen_vc.gen_error {
-		ws.json('{status: "failed"}')
-		return
+		return ctx.json('{status: "failed"}')
 	}
-	ws.json('{status: "ok"}')
+	return ctx.json('{status: "ok"}')
 }
 
 pub fn (ws &WebhookServer) reset() {
@@ -181,14 +175,14 @@ pub fn (ws &WebhookServer) reset() {
 // parse flags to FlagOptions struct
 fn parse_flags(mut fp flag.FlagParser) FlagOptions {
 	return FlagOptions{
-		serve: fp.bool('serve', 0, false, 'run in webhook server mode')
+		serve:    fp.bool('serve', 0, false, 'run in webhook server mode')
 		work_dir: fp.string('work-dir', 0, work_dir, 'gen_vc working directory')
-		purge: fp.bool('purge', 0, false, 'force purge the local repositories')
-		port: fp.int('port', 0, server_port, 'port for web server to listen on')
-		log_to: fp.string('log-to', 0, log_to, "log to is 'file' or 'terminal'")
+		purge:    fp.bool('purge', 0, false, 'force purge the local repositories')
+		port:     fp.int('port', 0, server_port, 'port for web server to listen on')
+		log_to:   fp.string('log-to', 0, log_to, "log to is 'file' or 'terminal'")
 		log_file: fp.string('log-file', 0, log_file, "log file to use when log-to is 'file'")
-		dry_run: fp.bool('dry-run', 0, dry_run, 'when specified dont push anything to remote repo')
-		force: fp.bool('force', 0, false, 'force update even if already up to date')
+		dry_run:  fp.bool('dry-run', 0, dry_run, 'when specified dont push anything to remote repo')
+		force:    fp.bool('force', 0, false, 'force update even if already up to date')
 	}
 }
 
@@ -207,7 +201,7 @@ fn (mut gen_vc GenVC) generate() {
 	if !os.is_dir(gen_vc.options.work_dir) {
 		// try create
 		os.mkdir(gen_vc.options.work_dir) or { panic(err) }
-		// still dosen't exist... we have a problem
+		// still doesn't exist... we have a problem
 		if !os.is_dir(gen_vc.options.work_dir) {
 			gen_vc.logger.error('error creating directory: ${gen_vc.options.work_dir}')
 			gen_vc.gen_error = true
@@ -219,7 +213,7 @@ fn (mut gen_vc GenVC) generate() {
 	// if we are not running with the --serve flag (webhook server)
 	// rather than deleting and re-downloading the repo each time
 	// first check to see if the local v repo is behind master
-	// if it isn't behind theres no point continuing further
+	// if it isn't behind there's no point continuing further
 	if !gen_vc.options.serve && os.is_dir(git_repo_dir_v) {
 		gen_vc.cmd_exec('git -C ${git_repo_dir_v} checkout master')
 		// fetch the remote repo just in case there are newer commits there

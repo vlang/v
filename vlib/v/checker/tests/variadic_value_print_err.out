@@ -1,0 +1,4 @@
+vlib/v/checker/tests/variadic_value_print_err.vv:2:1: error: `println` cannot print variadic values
+    1 | a := [1, 2, 3]
+    2 | println(...a)
+      | ~~~~~~~~~~~~~

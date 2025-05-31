@@ -1,0 +1,12 @@
+vlib/v/checker/tests/fn_return_fixed_array_sort_err.vv:6:14: error: the `sort()` method can be called only on mutable receivers, but `ret_array()` is a call expression
+    4 | 
+    5 | fn main() {
+    6 |     ret_array().sort()
+      |                 ~~~~~~
+    7 | }
+vlib/v/checker/tests/fn_return_fixed_array_sort_err.vv:6:2: error: cannot pass expression as `mut`
+    4 | 
+    5 | fn main() {
+    6 |     ret_array().sort()
+      |     ~~~~~~~~~~~
+    7 | }

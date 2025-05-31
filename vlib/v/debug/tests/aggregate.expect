@@ -1,0 +1,10 @@
+#!/usr/bin/env expect
+source "common.tcl"
+
+expect "*${test_file}:25* a.a: 123\r\n"
+expect "Break * in ${test_file}:26\r\n"
+expect "${test_file}:26 vdbg> "
+send "p a\n"
+expect "a = Test{\r\n    a: 123\r\n} ((main.main.Test | main.main.Test2))"
+send "q\n"
+expect eof

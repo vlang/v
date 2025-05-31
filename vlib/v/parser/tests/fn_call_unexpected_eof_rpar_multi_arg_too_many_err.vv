@@ -1,0 +1,6 @@
+import time
+
+fn foo(i i64, s string) {}
+
+foo(time.now(), 'foo',
+

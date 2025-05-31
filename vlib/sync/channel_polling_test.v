@@ -5,13 +5,11 @@
 //
 // The receive threads add all received numbers and send them to the
 // main thread where the total sum is compare to the expected value.
-const (
-	nsend           = 2
-	nrec            = 2
-	buflen          = 100
-	nobj            = 10000
-	objs_per_thread = 5000
-)
+const nsend = 2
+const nrec = 2
+const buflen = 100
+const nobj = 10000
+const objs_per_thread = 5000
 
 fn do_rec(ch chan int, resch chan i64, n int) {
 	mut sum := i64(0)

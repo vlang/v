@@ -1,17 +1,17 @@
-struct Response<U> {
+struct Response[U] {
 	result U
 }
 
-fn send_1<A, B>(res A, b B) string {
-	msg := Response<U>{
+fn send_1[A, B](res A, b B) string {
+	msg := Response[U]{
 		result: res
 	}
 	println(b)
 	return '$msg'
 }
 
-fn send_2<A, B>(res A, b B) string {
-	msg := Response<A, B>{
+fn send_2[A, B](res A, b B) string {
+	msg := Response[A, B]{
 		result: res
 	}
 	println(b)

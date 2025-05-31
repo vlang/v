@@ -1,0 +1,60 @@
+name: Shy and PV CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - 'cmd/tools/vshader.v'
+      - '**/puzzle_vibes_ci.yml'
+      - '!**.md'
+  pull_request:
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - 'cmd/tools/vshader.v'
+      - '**/puzzle_vibes_ci.yml'
+      - '!**.md'
+
+concurrency:
+  group: puzzle_vibes-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  v-compiles-puzzle-vibes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make && ./v symlink
+
+      - name: Install dependencies
+        run: |
+          v retry 'sudo apt update'
+          v retry 'sudo apt install -y libsdl2-dev libsdl2-ttf-dev'
+          v retry 'sudo apt install -y libsdl2-mixer-dev libsdl2-image-dev'
+
+      - name: Install & Setup SDL
+        run: v retry -- v install sdl && v ~/.vmodules/sdl/setup.vsh
+
+      - name: Install Shy
+        run: v retry -- v install https://github.com/larpon/shy
+
+      - name: Clone Puzzle Vibes
+        run: v retry -- git clone https://github.com/larpon/puzzle_vibes/
+
+      - name: Check PV compiles
+        run: cd puzzle_vibes && v .
+
+      - name: Check PV compiles with -g
+        run: cd puzzle_vibes && v -g .
+
+      - name: Check PV compiles with -prod
+        run: cd puzzle_vibes && v -prod .
+
+      - name: Check PV compiles with -prod and -g
+        run: cd puzzle_vibes && v -prod -g .

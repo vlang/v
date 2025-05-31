@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fn_call_or_block_err.vv:7:18: error: wrong return type `int literal` in the `or {}` block, expected `string`
+    5 | }
+    6 | 
+    7 | y := Aa(f() or { 2 })
+      |                  ^
+    8 | println(y)

@@ -1,15 +1,11 @@
-// vtest flaky: true
-// vtest retry: 3
 import os
 import time
 
-const (
-	vexe                   = os.getenv('VEXE')
-	vroot                  = os.dir(vexe)
-	tfolder                = os.join_path(os.vtmp_dir(), 'v', 'tests', 'os_process')
-	test_os_process        = os.join_path(tfolder, 'test_os_process.exe')
-	test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
-)
+const vexe = os.getenv('VEXE')
+const vroot = os.dir(vexe)
+const tfolder = os.join_path(os.vtmp_dir(), 'os_process_tests')
+const test_os_process = os.join_path(tfolder, 'test_os_process.exe')
+const test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
 
 fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}
@@ -31,12 +27,14 @@ fn testsuite_end() {
 }
 
 fn test_getpid() {
+	eprintln(@FN)
 	pid := os.getpid()
 	eprintln('current pid: ${pid}')
 	assert pid != 0
 }
 
 fn test_set_work_folder() {
+	eprintln(@FN)
 	new_work_folder := os.real_path(os.temp_dir())
 	parent_working_folder := os.getwd()
 	dump(new_work_folder)
@@ -65,11 +63,26 @@ fn test_set_work_folder() {
 	assert new_parent_work_folder != child_work_folder
 }
 
-fn test_done() {
-	exit(0)
+fn test_set_environment() {
+	eprintln(@FN)
+	mut p := os.new_process(test_os_process)
+	p.set_args(['-show_env', '-target', 'stdout'])
+	p.set_environment({
+		'V_OS_TEST_PORT': '1234567890'
+	})
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.code == 0
+	output := p.stdout_slurp().trim_space()
+	p.close()
+	$if trace_process_output ? {
+		eprintln('p output: "${output}"')
+	}
+	assert output.contains('V_OS_TEST_PORT=1234567890'), output
 }
 
 fn test_run() {
+	eprintln(@FN)
 	mut p := os.new_process(test_os_process)
 	p.set_args(['-timeout_ms', '150', '-period_ms', '50'])
 	p.run()
@@ -90,13 +103,14 @@ fn test_run() {
 	p.wait()
 	assert p.code == 0
 	assert p.status == .exited
-	//
+
 	eprintln('polling iterations: ${i}')
 	assert i < 50
 	p.close()
 }
 
 fn test_wait() {
+	eprintln(@FN)
 	mut p := os.new_process(test_os_process)
 	assert p.status != .exited
 	p.wait()
@@ -107,8 +121,9 @@ fn test_wait() {
 }
 
 fn test_slurping_output() {
+	eprintln(@FN)
 	mut p := os.new_process(test_os_process)
-	p.set_args(['-timeout_ms', '500', '-period_ms', '50'])
+	p.set_args(['-timeout_ms', '600', '-period_ms', '50'])
 	p.set_redirect_stdio()
 	assert p.status != .exited
 	p.wait()
@@ -123,15 +138,12 @@ fn test_slurping_output() {
 		eprintln('p errors: "${errors}"')
 		eprintln('---------------------------')
 	}
-	// dump(output)
-	assert output.contains('stdout, 1')
-	assert output.contains('stdout, 2')
-	assert output.contains('stdout, 3')
-	assert output.contains('stdout, 4')
-	//
-	// dump(errors)
-	assert errors.contains('stderr, 1')
-	assert errors.contains('stderr, 2')
-	assert errors.contains('stderr, 3')
-	assert errors.contains('stderr, 4')
+	assert output.contains('stdout, 1'), output
+	assert output.contains('stdout, 2'), output
+	assert output.contains('stdout, 3'), output
+	assert output.contains('stdout, 4'), output
+	assert errors.contains('stderr, 1'), errors
+	assert errors.contains('stderr, 2'), errors
+	assert errors.contains('stderr, 3'), errors
+	assert errors.contains('stderr, 4'), errors
 }

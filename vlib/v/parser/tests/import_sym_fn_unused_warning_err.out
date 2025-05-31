@@ -1,0 +1,5 @@
+vlib/v/parser/tests/import_sym_fn_unused_warning_err.vv:1:8: warning: module 'math' is imported but never used
+    1 | import math { sin, cos }
+      |        ~~~~
+    2 | 
+    3 | fn main() {}

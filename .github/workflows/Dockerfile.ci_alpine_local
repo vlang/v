@@ -1,0 +1,52 @@
+#######################################################################################
+## The goal of this file, is to provide an easy and reproducible way to check *locally*
+## the CI job `docker-alpine-musl-gcc`
+## Building the docker image:
+##    docker build -t ci_alpine_local - < .github/workflows/Dockerfile.ci_alpine_local
+## Running the docker image, after building it:
+##    docker run --rm -it -v .:/opt/vlang -w /opt/vlang ci_alpine_local
+## Once it is running, inside the container you can:
+##    make && v -e 'println(2+2)'
+## ... then do whatever you need to reproduce the CI test failure.
+## Note: after you are finished, and exit the container, run `make` again, otherwise 
+## you will be using V (and potentially V tools) that were compiled with musl.
+#######################################################################################
+FROM thevlang/vlang:alpine-build
+
+LABEL maintainer="spytheman <spytheman@bulsynt.org>"
+
+WORKDIR /opt/vlang
+
+ENV PATH /opt/vlang:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+## install development packages
+RUN apk --no-cache add \
+  musl-dev libc-dev libc6-compat gcompat \
+  libunwind-dev libunwind-static \
+  gc gc-dev \
+  binutils diffutils elfutils \
+  strace gdb \
+  pcre bash fzf fzf-vim tmux less file colordiff \
+  vim vim-editorconfig \
+  nano nano-syntax \
+  micro
+
+RUN git config --global --add safe.directory /opt/vlang &&\
+    git config --global --add safe.directory /opt/vlang/vc &&\
+    git config --global --add safe.directory /opt/vlang/thirdparty/tcc &&\
+    find /usr/share/nano/ -iname "*.nanorc" -exec echo include {} \; >> ~/.nanorc &&\
+    micro -plugin install detectindent &&\
+    micro -plugin install editorconfig &&\
+    micro -plugin install monokai-dark &&\
+    micro -plugin install quickfix &&\
+    micro -plugin install runit &&\
+    micro -plugin install cheat &&\
+    micro -plugin install jump &&\
+    true
+
+## setup runtime environment for v and bash:
+ENV VTMP     /tmp/v
+ENV VMODULES /tmp/vmodules
+ENV VFLAGS  "-d dynamic_boehm"
+
+CMD ["bash"]

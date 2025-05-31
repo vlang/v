@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Based off:   https://github.com/golang/go/blob/master/src/crypto/aes
@@ -8,24 +8,22 @@ module aes
 import crypto.cipher
 import crypto.internal.subtle
 
-pub const (
-	// The AES block size in bytes.
-	block_size = 16
-)
+// The AES block size in bytes.
+pub const block_size = 16
 
 // AesCipher represents an AES encryption using a particular key.
 // It follows the API of golang's `cipher.Block` and is designed to
 // handle only one block of data at a time. In most cases, you
 // probably want to encrypt and decrypt using [[AesCbc](#AesCbc)]
 struct AesCipher {
-	block_size int = aes.block_size
+	block_size int = block_size
 mut:
 	enc []u32
 	dec []u32
 }
 
 // free the resources taken by the AesCipher `c`
-[unsafe]
+@[unsafe]
 pub fn (mut c AesCipher) free() {
 	$if prealloc {
 		return
@@ -57,7 +55,7 @@ pub fn new_cipher(key []u8) cipher.Block {
 
 // block_size returns the block size of the checksum in bytes.
 pub fn (c &AesCipher) block_size() int {
-	return aes.block_size
+	return block_size
 }
 
 // encrypt encrypts the first block of data in `src` to `dst`.
@@ -65,14 +63,14 @@ pub fn (c &AesCipher) block_size() int {
 // NOTE: `dst` and `src` must both be pre-allocated to the correct length.
 // NOTE: `dst` and `src` may be the same (overlapping entirely).
 pub fn (c &AesCipher) encrypt(mut dst []u8, src []u8) {
-	if src.len < aes.block_size {
+	if src.len < block_size {
 		panic('crypto.aes: input not full block')
 	}
-	if dst.len < aes.block_size {
+	if dst.len < block_size {
 		panic('crypto.aes: output not full block')
 	}
 	// if subtle.inexact_overlap(dst[:block_size], src[:block_size]) {
-	if subtle.inexact_overlap(dst[..aes.block_size], src[..aes.block_size]) {
+	if subtle.inexact_overlap(dst[..block_size], src[..block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version
@@ -84,13 +82,13 @@ pub fn (c &AesCipher) encrypt(mut dst []u8, src []u8) {
 // NOTE: `dst` and `src` must both be pre-allocated to the correct length.
 // NOTE: `dst` and `src` may be the same (overlapping entirely).
 pub fn (c &AesCipher) decrypt(mut dst []u8, src []u8) {
-	if src.len < aes.block_size {
+	if src.len < block_size {
 		panic('crypto.aes: input not full block')
 	}
-	if dst.len < aes.block_size {
+	if dst.len < block_size {
 		panic('crypto.aes: output not full block')
 	}
-	if subtle.inexact_overlap(dst[..aes.block_size], src[..aes.block_size]) {
+	if subtle.inexact_overlap(dst[..block_size], src[..block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -6,7 +6,6 @@ module builder
 import os
 import v.pref
 import v.util
-import v.checker
 
 pub type FnBackend = fn (mut b Builder)
 
@@ -38,7 +37,7 @@ fn check_if_output_folder_is_writable(pref_ &pref.Preferences) {
 }
 
 // Temporary, will be done by -autofree
-[unsafe]
+@[unsafe]
 fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
@@ -134,26 +133,37 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		run_args << ['run', compiled_file]
 	}
 	run_args << b.pref.run_args
-	mut run_process := os.new_process(run_file)
-	run_process.set_args(run_args)
+
 	if b.pref.is_verbose {
-		println('running ${run_process.filename} with arguments ${run_process.args}')
+		println('running ${run_file} with arguments ${run_args.join(' ')}')
 	}
-	// Ignore sigint and sigquit while running the compiled file,
-	// so ^C doesn't prevent v from deleting the compiled file.
-	// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
-	prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
-	mut prev_quit_handler := os.SignalHandler(eshcb)
-	$if !windows { // There's no sigquit on windows
-		prev_quit_handler = os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
+	mut ret := 0
+	if b.pref.use_os_system_to_run {
+		command_to_run := os.quoted_path(run_file) + ' ' + run_args.join(' ')
+		ret = os.system(command_to_run)
+		// eprintln('> ret: ${ret:5} | command_to_run: ${command_to_run}')
+	} else {
+		mut run_process := os.new_process(run_file)
+		run_process.set_args(run_args)
+		// Ignore sigint and sigquit while running the compiled file,
+		// so ^C doesn't prevent v from deleting the compiled file.
+		// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
+		prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
+		mut prev_quit_handler := os.SignalHandler(eshcb)
+		$if !windows { // There's no sigquit on windows
+			prev_quit_handler = os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
+		}
+		run_process.wait()
+		os.signal_opt(.int, prev_int_handler) or { serror('restore .int', err) }
+		$if !windows {
+			os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
+		}
+		ret = run_process.code
+		if run_process.err != '' {
+			eprintln(run_process.err)
+		}
+		run_process.close()
 	}
-	run_process.wait()
-	os.signal_opt(.int, prev_int_handler) or { serror('restore .int', err) }
-	$if !windows {
-		os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
-	}
-	ret := run_process.code
-	run_process.close()
 	b.cleanup_run_executable_after_exit(compiled_file)
 	exit(ret)
 }
@@ -161,7 +171,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 fn eshcb(_ os.Signal) {
 }
 
-[noreturn]
+@[noreturn]
 fn serror(reason string, e IError) {
 	eprintln('could not ${reason} handler')
 	panic(e)
@@ -206,7 +216,14 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 	if v.pref.is_verbose {
 		println('x: "${x}"')
 	}
-	v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
+
+	if os.exists(os.join_path(v.compiled_dir, 'src/modules')) {
+		v.module_search_paths << os.join_path(v.compiled_dir, 'src/modules')
+	}
+	if os.exists(os.join_path(v.compiled_dir, 'modules')) {
+		v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
+	}
+
 	v.module_search_paths << v.pref.lookup_path
 	if v.pref.is_verbose {
 		v.log('v.module_search_paths:')
@@ -245,7 +262,7 @@ pub fn (v Builder) get_builtin_files() []string {
 				builtin_files << v.v_files_from_dir(v.pref.bare_builtin_dir)
 			}
 			if v.pref.backend == .c {
-				// TODO JavaScript backend doesn't handle os for now
+				// TODO: JavaScript backend doesn't handle os for now
 				if v.pref.is_vsh && os.exists(os.join_path(location, 'os')) {
 					builtin_files << v.v_files_from_dir(os.join_path(location, 'os'))
 				}
@@ -272,10 +289,9 @@ pub fn (v &Builder) get_user_files() []string {
 	// libs, but we dont know	which libs need to be added yet
 	mut user_files := []string{}
 	// See cmd/tools/preludes/README.md for more info about what preludes are
-	vroot := os.dir(pref.vexe_path())
-	mut preludes_path := os.join_path(vroot, 'vlib', 'v', 'preludes')
+	mut preludes_path := os.join_path(v.pref.vroot, 'vlib', 'v', 'preludes')
 	if v.pref.backend == .js_node {
-		preludes_path = os.join_path(vroot, 'vlib', 'v', 'preludes_js')
+		preludes_path = os.join_path(v.pref.vroot, 'vlib', 'v', 'preludes_js')
 	}
 	if v.pref.trace_calls {
 		user_files << os.join_path(preludes_path, 'trace_calls.v')
@@ -290,7 +306,11 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << os.join_path(preludes_path, 'live_shared.v')
 	}
 	if v.pref.is_test {
-		user_files << os.join_path(preludes_path, 'test_runner.v')
+		if v.pref.backend == .js_node {
+			user_files << os.join_path(preludes_path, 'test_runner.v')
+		} else {
+			user_files << os.join_path(preludes_path, 'test_runner.c.v')
+		}
 		//
 		mut v_test_runner_prelude := os.getenv('VTEST_RUNNER')
 		if v.pref.test_runner != '' {
@@ -309,11 +329,11 @@ pub fn (v &Builder) get_user_files() []string {
 		}
 		user_files << v_test_runner_prelude
 	}
-	if v.pref.is_test && v.pref.is_stats {
+	if v.pref.is_test && v.pref.show_asserts {
 		user_files << os.join_path(preludes_path, 'tests_with_stats.v')
-	}
-	if v.pref.backend.is_js() && v.pref.is_stats && v.pref.is_test {
-		user_files << os.join_path(preludes_path, 'stats_import.js.v')
+		if v.pref.backend.is_js() {
+			user_files << os.join_path(preludes_path, 'stats_import.js.v')
+		}
 	}
 	if v.pref.is_prof {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')

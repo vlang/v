@@ -191,6 +191,24 @@ fn test_prepend_many() {
 	assert a == [5, 6, 1, 2, 3, 4]
 }
 
+type Strings = []string
+
+fn test_aliases_of_array_insert() {
+	mut strs := Strings(['hi'])
+	strs.insert(0, '22')
+	assert strs == ['22', 'hi']
+	strs.insert(1, ['11'])
+	assert strs == ['22', '11', 'hi']
+}
+
+fn test_aliases_of_array_prepend() {
+	mut strs := Strings(['hi'])
+	strs.prepend('22')
+	assert strs == ['22', 'hi']
+	strs.prepend(['44', '33'])
+	assert strs == ['44', '33', '22', 'hi']
+}
+
 fn test_strings() {
 	a := ['a', 'b', 'c']
 	assert a.str() == "['a', 'b', 'c']"
@@ -352,9 +370,7 @@ fn test_reverse() {
 	assert f.len == 0
 }
 
-const (
-	c_n = 5
-)
+const c_n = 5
 
 struct Foooj {
 	a [5]int // c_n
@@ -484,19 +500,6 @@ mut:
 	b []Test2
 }
 
-// TODO: default array/struct str methods
-fn (ta []Test2) str() string {
-	mut s := '['
-	for i, t in ta {
-		s += t.str()
-		if i < ta.len - 1 {
-			s += ', '
-		}
-	}
-	s += ']'
-	return s
-}
-
 fn (t Test2) str() string {
 	return '{${t.one} ${t.two}}'
 }
@@ -560,9 +563,8 @@ fn test_multi() {
 	assert a[0][0] == 1
 	assert a[0][2] == 3
 	assert a[1][2] == 6
-	// TODO
-	// b :=  [ [[1,2,3],[4,5,6]], [[1,2]] ]
-	// assert b[0][0][0] == 1
+	b := [[[1, 2, 3], [4, 5, 6]], [[1, 2]]]
+	assert b[0][0][0] == 1
 }
 
 fn test_in() {
@@ -613,8 +615,6 @@ fn test_filter() {
 	assert mut_arr.len == 3
 	assert a.filter(filter_test_helper_1) == [4, 5, 6]
 	assert [1, 5, 10].filter(filter_test_helper_1) == [5, 10]
-	// TODO
-	// assert arr.filter(arr % 2).len == 5
 }
 
 fn test_anon_fn_filter() {
@@ -730,8 +730,7 @@ fn test_array_str() {
 	println(numbers2)
 	assert true
 	assert numbers.str() == '[1, 2, 3]'
-	// QTODO
-	// assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
+	assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
 }
 
 struct User {
@@ -743,10 +742,10 @@ fn test_eq() {
 	assert [5, 6, 7] != [6, 7]
 	assert [`a`, `b`] == [`a`, `b`]
 	assert [User{
-		age: 22
+		age:  22
 		name: 'bob'
 	}] == [User{
-		age: 22
+		age:  22
 		name: 'bob'
 	}]
 	assert [{
@@ -927,7 +926,7 @@ fn test_i64_sort() {
 fn test_sort_index_expr() {
 	mut f := [[i64(50), 48], [i64(15)], [i64(1)], [i64(79)], [i64(38)],
 		[i64(0)], [i64(27)]]
-	// TODO This currently gives "indexing pointer" error without unsafe
+	// TODO: This currently gives "indexing pointer" error without unsafe
 	unsafe {
 		f.sort(a[0] < b[0])
 	}
@@ -982,7 +981,7 @@ fn test_in_struct() {
 	assert baz.bar[0] == 3
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn test_direct_modification() {
 	mut foo := [2, 0, 5]
 	foo[1] = 3
@@ -1052,7 +1051,7 @@ fn test_trim() {
 	assert arr.last() == 2
 }
 
-[manualfree]
+@[manualfree]
 fn test_drop() {
 	mut a := [1, 2]
 	a << 3 // pushing assures reallocation; a.cap now should be bigger:
@@ -1095,7 +1094,7 @@ fn test_hex() {
 	assert st1.hex() == '41'.repeat(100)
 }
 
-fn test_left_shift_precendence() {
+fn test_left_shift_precedence() {
 	mut arr := []int{}
 	arr << 1 + 1
 	arr << 1 - 1
@@ -1246,7 +1245,7 @@ fn test_array_last() {
 	assert s.last().val == 'a'
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn test_direct_array_access() {
 	mut a := [11, 22, 33, 44]
 	assert a[0] == 11
@@ -1259,7 +1258,7 @@ fn test_direct_array_access() {
 	assert a == [21, 24, 14, 20]
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn test_direct_array_access_via_ptr() {
 	mut b := [11, 22, 33, 44]
 	unsafe {
@@ -1281,19 +1280,17 @@ fn test_push_arr_string_free() {
 	lines << s
 	// make sure the data in the array is valid after freeing the string
 	unsafe { s.free() }
-	//
+
 	println(lines)
 	assert lines.len == 2
 	assert lines[0] == 'hi'
 	assert lines[1] == 'ab'
 }
 
-const (
-	grid_size_1 = 2
-	grid_size_2 = 3
-	grid_size_3 = 4
-	cell_value  = 123
-)
+const grid_size_1 = 2
+const grid_size_2 = 3
+const grid_size_3 = 4
+const cell_value = 123
 
 fn test_multidimensional_array_initialization_with_consts() {
 	mut data := [][][]int{len: grid_size_1, init: [][]int{len: grid_size_2, init: []int{len: grid_size_3, init: cell_value}}}
@@ -1387,7 +1384,7 @@ fn test_struct_array_of_multi_type_in() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv:   {
 			'aaa': '111'
 		}
 	}
@@ -1395,14 +1392,14 @@ fn test_struct_array_of_multi_type_in() {
 		Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: {
+			kv:   {
 				'aaa': '111'
 			}
 		},
 		Person{
 			name: 'bob'
 			nums: [2]
-			kv: {
+			kv:   {
 				'bbb': '222'
 			}
 		},
@@ -1415,7 +1412,7 @@ fn test_struct_array_of_multi_type_index() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv:   {
 			'aaa': '111'
 		}
 	}
@@ -1423,14 +1420,14 @@ fn test_struct_array_of_multi_type_index() {
 		Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: {
+			kv:   {
 				'aaa': '111'
 			}
 		},
 		Person{
 			name: 'bob'
 			nums: [2]
-			kv: {
+			kv:   {
 				'bbb': '222'
 			}
 		},
@@ -1514,7 +1511,7 @@ struct Numbers {
 fn test_array_of_multi_filter() {
 	arr := [1, 2, 3, 4, 5]
 	nums := Numbers{
-		odds: arr.filter(it % 2 == 1)
+		odds:  arr.filter(it % 2 == 1)
 		evens: arr.filter(it % 2 == 0)
 	}
 	println(nums)
@@ -1525,7 +1522,7 @@ fn test_array_of_multi_filter() {
 fn test_array_of_multi_map() {
 	arr := [1, 3, 5]
 	nums := Numbers{
-		odds: arr.map(it + 2)
+		odds:  arr.map(it + 2)
 		evens: arr.map(it * 2)
 	}
 	println(nums)
@@ -1621,4 +1618,145 @@ fn test_array_of_struct_with_map_field() {
 	assert arr[2].sub_map == {
 		2: 2
 	}
+}
+
+fn test_reset() {
+	mut a := []int{len: 5, init: index * 10}
+	assert a == [0, 10, 20, 30, 40]
+	unsafe { a.reset() }
+	assert a == [0, 0, 0, 0, 0]
+
+	mut b := []f64{len: 5, init: f64(index) / 10.0}
+	assert b == [0.0, 0.1, 0.2, 0.3, 0.4]
+	unsafe { b.reset() }
+	assert b == [0.0, 0.0, 0.0, 0.0, 0.0]
+
+	mut s := []string{len: 5, init: index.str()}
+	assert s == ['0', '1', '2', '3', '4']
+	unsafe { s.reset() }
+	for e in s {
+		assert e.str == unsafe { nil }
+		assert e.len == 0
+	}
+}
+
+fn test_index_of_ints() {
+	ia := [1, 2, 3]
+	ii := ia.index(2)
+	dump(ii)
+	assert ii == 1
+}
+
+fn test_index_of_strings() {
+	sa := ['a', 'b', 'c']
+	si := sa.index('b')
+	dump(si)
+	assert si == 1
+}
+
+fn test_index_of_voidptrs() {
+	pa := [voidptr(123), voidptr(45), voidptr(99)]
+	pi := pa.index(voidptr(45))
+	dump(pi)
+	assert pi == 1
+}
+
+fn a() {}
+
+fn b() {}
+
+fn c() {}
+
+fn test_index_of_fns() {
+	fa := [a, b, c]
+	fi := fa.index(b)
+	dump(fi)
+	assert fi == 1
+}
+
+fn test_sorted_immutable_original_should_not_change() {
+	a := ['hi', '1', '5', '3']
+	b := a.sorted()
+	assert a == ['hi', '1', '5', '3']
+	assert b == ['1', '3', '5', 'hi']
+}
+
+fn test_sorted_mutable_original_should_not_change() {
+	mut a := ['hi', '1', '5', '3']
+	b := a.sorted()
+	assert a == ['hi', '1', '5', '3']
+	assert b == ['1', '3', '5', 'hi']
+}
+
+fn test_sorted_reversed() {
+	aa := ['hi', '1', '5', '3']
+	bb := aa.sorted(a > b)
+	assert aa == ['hi', '1', '5', '3']
+	assert bb == ['hi', '5', '3', '1']
+}
+
+fn test_sorted_by_len() {
+	a := ['hi', 'abc', 'a', 'zzzzz']
+	c := a.sorted(a.len < b.len)
+	assert c == ['a', 'hi', 'abc', 'zzzzz']
+}
+
+fn test_sorted_can_be_called_on_an_array_literals() {
+	b := [5, 1, 9].sorted()
+	assert b == [1, 5, 9]
+	assert [5.0, 1.2, 9.4].sorted() == [1.2, 5.0, 9.4]
+	assert ['a', '00', 'z', 'dd', 'xyz'].sorted(a > b) == ['z', 'xyz', 'dd', 'a', '00']
+	assert ['a', '00', 'zzzzz', 'dddd', 'xyz'].sorted(a.len > b.len) == ['zzzzz', 'dddd', 'xyz',
+		'00', 'a']
+	assert ['a', '00', 'zzzzz', 'dddd', 'xyz'].sorted(a.len < b.len) == ['a', '00', 'xyz', 'dddd',
+		'zzzzz']
+}
+
+fn iarr() []int {
+	return [5, 1, 9, 1, 2]
+}
+
+fn test_sorted_can_be_called_on_the_result_of_a_fn() {
+	assert iarr().sorted() == [1, 1, 2, 5, 9]
+	assert iarr().sorted(a > b) == [9, 5, 2, 1, 1]
+}
+
+fn test_sorting_2d_arrays() {
+	assert [[1, 2], [3, 4, 5], [2]].sorted(a.len > b.len) == [
+		[3, 4, 5],
+		[1, 2],
+		[2],
+	]
+	assert [[1, 2], [3, 4, 5], [2]].sorted(a.len < b.len) == [
+		[2],
+		[1, 2],
+		[3, 4, 5],
+	]
+	assert unsafe { [[1, 2], [3, 4, 5], [2]].sorted(a[0] > b[0]) } == [
+		[3, 4, 5],
+		[2],
+		[1, 2],
+	]
+	// assert [[1, 2], [3, 4, 5], [2]].sorted( a.reduce(sum) > b.reduce(sum) ) == ... // TODO
+}
+
+fn test_sorting_3d_arrays() {
+	assert [[][]int{}, [[2, 22], [2]], [[3, 33], [3333], [33, 34, 35]],
+		[[444]]].sorted(a.len > b.len) == [[[3, 33], [3333], [33, 34, 35]],
+		[[2, 22], [2]], [[444]], [][]int{}]
+}
+
+fn test_sorted_with_compare() {
+	aa := ['hi', '1', '5', '3']
+	bb := aa.sorted_with_compare(fn (a &string, b &string) int {
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
+		return 0
+	})
+	assert aa == ['hi', '1', '5', '3'], 'aa should stay unmodified'
+	assert bb == ['1', '3', '5', 'hi'], 'bb should be sorted, according to the custom comparison callback fn'
 }

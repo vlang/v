@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module sys
@@ -20,18 +20,16 @@ import rand.seed
 
 pub const seed_len = 1
 
-const (
-	rand_limit     = u64(C.RAND_MAX)
-	rand_bitsize   = bits.len_64(rand_limit)
-	rand_bytesize  = rand_bitsize / 8
-	u16_iter_count = calculate_iterations_for(16)
-	u32_iter_count = calculate_iterations_for(32)
-	u64_iter_count = calculate_iterations_for(64)
-)
+const rand_limit = u64(C.RAND_MAX)
+const rand_bitsize = bits.len_64(rand_limit)
+const rand_bytesize = rand_bitsize / 8
+const u16_iter_count = calculate_iterations_for(16)
+const u32_iter_count = calculate_iterations_for(32)
+const u64_iter_count = calculate_iterations_for(64)
 
 fn calculate_iterations_for(bits_ int) int {
-	base := bits_ / sys.rand_bitsize
-	extra := if bits_ % sys.rand_bitsize == 0 { 0 } else { 1 }
+	base := bits_ / rand_bitsize
+	extra := if bits_ % rand_bitsize == 0 { 0 } else { 1 }
 	return base + extra
 }
 
@@ -57,13 +55,13 @@ pub fn (mut r SysRNG) seed(seed_data []u32) {
 // b/w V and other languages using libc and not for regular use.
 // This is also a one-off feature of SysRNG, similar to the global seed
 // situation. Other generators will not have this.
-[inline]
+@[inline]
 pub fn (r SysRNG) default_rand() int {
 	return C.rand()
 }
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
-[inline]
+@[inline]
 pub fn (mut r SysRNG) u8() u8 {
 	if r.bytes_left >= 1 {
 		r.bytes_left -= 1
@@ -72,14 +70,14 @@ pub fn (mut r SysRNG) u8() u8 {
 		return value
 	}
 	r.buffer = u64(r.default_rand())
-	r.bytes_left = sys.rand_bytesize - 1
+	r.bytes_left = rand_bytesize - 1
 	value := u8(r.buffer)
 	r.buffer >>= 8
 	return value
 }
 
 // u16 returns a uniformly distributed pseudorandom 16-bit unsigned positive `u16`.
-[inline]
+@[inline]
 pub fn (mut r SysRNG) u16() u16 {
 	if r.bytes_left >= 2 {
 		r.bytes_left -= 2
@@ -88,40 +86,40 @@ pub fn (mut r SysRNG) u16() u16 {
 		return value
 	}
 	mut result := u16(C.rand())
-	for i in 1 .. sys.u16_iter_count {
-		result = result ^ (u16(C.rand()) << (sys.rand_bitsize * i))
+	for i in 1 .. u16_iter_count {
+		result = result ^ (u16(C.rand()) << (rand_bitsize * i))
 	}
 	return result
 }
 
 // u32 returns a uniformly distributed pseudorandom 32-bit unsigned positive `u32`.
-[inline]
+@[inline]
 pub fn (r SysRNG) u32() u32 {
 	mut result := u32(C.rand())
-	for i in 1 .. sys.u32_iter_count {
-		result = result ^ (u32(C.rand()) << (sys.rand_bitsize * i))
+	for i in 1 .. u32_iter_count {
+		result = result ^ (u32(C.rand()) << (rand_bitsize * i))
 	}
 	return result
 }
 
 // u64 returns a uniformly distributed pseudorandom 64-bit unsigned positive `u64`.
-[inline]
+@[inline]
 pub fn (r SysRNG) u64() u64 {
 	mut result := u64(C.rand())
-	for i in 1 .. sys.u64_iter_count {
-		result = result ^ (u64(C.rand()) << (sys.rand_bitsize * i))
+	for i in 1 .. u64_iter_count {
+		result = result ^ (u64(C.rand()) << (rand_bitsize * i))
 	}
 	return result
 }
 
 // block_size returns the number of bits that the RNG can produce in a single iteration.
-[inline]
+@[inline]
 pub fn (r SysRNG) block_size() int {
-	return sys.rand_bitsize
+	return rand_bitsize
 }
 
 // free should be called when the generator is no longer needed
-[unsafe]
+@[unsafe]
 pub fn (mut rng SysRNG) free() {
 	unsafe { free(rng) }
 }

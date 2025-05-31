@@ -5,35 +5,35 @@ import os
 
 fn main() {
 	mut cmd := Command{
-		name: 'cli'
+		name:        'cli'
 		description: 'An example of the cli library.'
-		version: '1.0.0'
+		version:     '1.0.0'
 	}
 	mut greet_cmd := Command{
-		name: 'greet'
-		description: 'Prints greeting in different languages.'
-		usage: '<name>'
+		name:          'greet'
+		description:   'Prints greeting in different languages.'
+		usage:         '<name>'
 		required_args: 1
-		pre_execute: greet_pre_func
-		execute: greet_func
-		post_execute: greet_post_func
+		pre_execute:   greet_pre_func
+		execute:       greet_func
+		post_execute:  greet_post_func
 	}
 	greet_cmd.add_flag(Flag{
-		flag: .string
-		required: true
-		name: 'language'
-		abbrev: 'l'
+		flag:        .string
+		required:    true
+		name:        'language'
+		abbrev:      'l'
 		description: 'Language of the message.'
 	})
 	greet_cmd.add_flag(Flag{
-		flag: .int
-		name: 'times'
+		flag:          .int
+		name:          'times'
 		default_value: ['3']
-		description: 'Number of times the message gets printed.'
+		description:   'Number of times the message gets printed.'
 	})
 	greet_cmd.add_flag(Flag{
-		flag: .string_array
-		name: 'fun'
+		flag:        .string_array
+		name:        'fun'
 		description: 'Just a dumby flags to show multiple.'
 	})
 	cmd.add_command(greet_cmd)

@@ -1,0 +1,11 @@
+vlib/v/checker/tests/unsafe_deref_assign_err.vv:4:7: error: modifying variables via dereferencing can only be done in `unsafe` blocks
+    2 | cref := &c
+    3 | 
+    4 | *cref = 1
+      |       ^
+    5 | (*cref) = 1
+vlib/v/checker/tests/unsafe_deref_assign_err.vv:5:9: error: modifying variables via dereferencing can only be done in `unsafe` blocks
+    3 | 
+    4 | *cref = 1
+    5 | (*cref) = 1
+      |         ^

@@ -1,0 +1,3 @@
+fn main() {
+	$vweb.html('index.html')
+}

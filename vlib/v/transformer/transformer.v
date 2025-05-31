@@ -13,6 +13,8 @@ pub mut:
 mut:
 	is_assert   bool
 	inside_dump bool
+	//
+	strings_builder_type ast.Type = ast.no_type
 }
 
 fn (mut t Transformer) trace[T](fbase string, x &T) {
@@ -23,7 +25,7 @@ fn (mut t Transformer) trace[T](fbase string, x &T) {
 
 pub fn new_transformer(pref_ &pref.Preferences) &Transformer {
 	return &Transformer{
-		pref: pref_
+		pref:  pref_
 		index: &IndexState{
 			saved_key_vals: [][]KeyVal{cap: 1000}
 			saved_disabled: []bool{cap: 1000}
@@ -38,6 +40,7 @@ pub fn new_transformer_with_table(table &ast.Table, pref_ &pref.Preferences) &Tr
 }
 
 pub fn (mut t Transformer) transform_files(ast_files []&ast.File) {
+	t.strings_builder_type = t.table.find_type('strings.Builder')
 	for i in 0 .. ast_files.len {
 		mut file := unsafe { ast_files[i] }
 		t.transform(mut file)
@@ -174,10 +177,16 @@ pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
 }
 
 pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
+	$if trace_transformer ? {
+		ntype := typeof(*node).replace('v.ast.', '')
+		eprintln('transformer: ${t.file.path:-50} | pos: ${node.pos.line_str():-39} | node: ${ntype:12} | ${node}')
+	}
+	mut onode := unsafe { node }
 	match mut node {
 		ast.EmptyStmt {}
 		ast.NodeError {}
 		ast.AsmStmt {}
+		ast.DebuggerStmt {}
 		ast.AssertStmt {
 			return t.assert_stmt(mut node)
 		}
@@ -219,7 +228,13 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 				stmt = t.stmt(mut stmt)
 			}
 		}
-		ast.EnumDecl {}
+		ast.EnumDecl {
+			for mut field in node.fields {
+				if field.has_expr {
+					field.expr = t.expr(mut field.expr)
+				}
+			}
+		}
 		ast.ExprStmt {
 			// TODO: check if this can be handled in `t.expr`
 			node.expr = match mut node.expr {
@@ -233,9 +248,14 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 					t.expr(mut node.expr)
 				}
 			}
+			if mut node.expr is ast.CallExpr && node.expr.is_expand_simple_interpolation {
+				t.simplify_nested_interpolation_in_sb(mut onode, mut node.expr, node.typ)
+			}
 		}
 		ast.FnDecl {
-			t.fn_decl(mut node)
+			if t.pref.trace_calls {
+				t.fn_decl_trace_calls(mut node)
+			}
 			t.index.indent(true)
 			for mut stmt in node.stmts {
 				stmt = t.stmt(mut stmt)
@@ -281,6 +301,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 				expr = t.expr(mut expr)
 			}
 		}
+		ast.SemicolonStmt {}
 		ast.SqlStmt {}
 		ast.StructDecl {
 			for mut field in node.fields {
@@ -466,7 +487,7 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 }
 
 pub fn (mut t Transformer) for_c_stmt(mut node ast.ForCStmt) ast.Stmt {
-	// TODO we do not optimise array access for multi init
+	// TODO: we do not optimise array access for multi init
 	// for a,b := 0,1; a < 10; a,b = a+b, a {...}
 
 	if node.has_init && !node.is_multi {
@@ -493,7 +514,7 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 	node.cond = t.expr(mut node.cond)
 	match node.cond {
 		ast.BoolLiteral {
-			if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eleminated
+			if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eliminated
 				return ast.empty_stmt
 			}
 		}
@@ -538,7 +559,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			}
 			node.len_expr = t.expr(mut node.len_expr)
 			node.cap_expr = t.expr(mut node.cap_expr)
-			node.default_expr = t.expr(mut node.default_expr)
+			node.init_expr = t.expr(mut node.init_expr)
 		}
 		ast.AsCast {
 			node.expr = t.expr(mut node.expr)
@@ -695,8 +716,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 				}
 				else {}
 			}
-		}
-		*/
+		}*/
 		else {}
 	}
 	return node
@@ -712,7 +732,11 @@ pub fn (mut t Transformer) call_expr(mut node ast.CallExpr) ast.Expr {
 fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
 	mut expr_ := expr
 	if mut expr_ is ast.Ident {
-		if mut obj := t.table.global_scope.find_const(expr_.mod + '.' + expr_.name) {
+		// if there is a local variable or a fn parameter, that has the same name as the constant, do not do the substitution:
+		if _ := expr_.scope.find_var(expr_.name) {
+			return
+		}
+		if mut obj := t.table.global_scope.find_const(expr_.full_name()) {
 			if mut obj.expr is ast.BoolLiteral {
 				expr = obj.expr
 			} else if mut obj.expr is ast.IntegerLiteral {
@@ -901,7 +925,7 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 							}
 							.left_shift {
 								return ast.IntegerLiteral{
-									val: (u32(left_val) << right_val).str()
+									val: (unsafe { left_val << right_val }).str()
 									pos: pos
 								}
 							}
@@ -913,7 +937,7 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 							}
 							.unsigned_right_shift {
 								return ast.IntegerLiteral{
-									val: (left_val >>> right_val).str()
+									val: (u64(left_val) >>> right_val).str()
 									pos: pos
 								}
 							}
@@ -1010,14 +1034,14 @@ pub fn (mut t Transformer) if_expr(mut node ast.IfExpr) ast.Expr {
 					match expr {
 						ast.IfExpr {
 							if expr.branches.len == 1 {
-								branch.stmts.pop()
+								branch.stmts.delete(branch.stmts.len - 1)
 								branch.stmts << expr.branches[0].stmts
 								break
 							}
 						}
 						ast.MatchExpr {
 							if expr.branches.len == 1 {
-								branch.stmts.pop()
+								branch.stmts.delete(branch.stmts.len - 1)
 								branch.stmts << expr.branches[0].stmts
 								break
 							}
@@ -1051,14 +1075,14 @@ pub fn (mut t Transformer) match_expr(mut node ast.MatchExpr) ast.Expr {
 					match expr {
 						ast.IfExpr {
 							if expr.branches.len == 1 {
-								branch.stmts.pop()
+								branch.stmts.delete(branch.stmts.len - 1)
 								branch.stmts << expr.branches[0].stmts
 								break
 							}
 						}
 						ast.MatchExpr {
 							if expr.branches.len == 1 {
-								branch.stmts.pop()
+								branch.stmts.delete(branch.stmts.len - 1)
 								branch.stmts << expr.branches[0].stmts
 								break
 							}
@@ -1096,43 +1120,129 @@ pub fn (mut t Transformer) sql_expr(mut node ast.SqlExpr) ast.Expr {
 	return node
 }
 
-// fn_decl mutates `node`.
-// if `pref.trace_calls` is true ast Nodes for `eprintln(...)` is prepended to the `FnDecl`'s
-// stmts list to let the gen backend generate the target specific code for the print.
-pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
-	if t.pref.trace_calls {
-		if node.no_body {
-			// Skip `C.fn()` calls
-			return
+pub fn (mut t Transformer) fn_decl_trace_calls(mut node ast.FnDecl) {
+	// Prepend ast Nodes for `eprintln(...)` to the `FnDecl`'s stmts list,
+	// to let the gen backend generate the target specific code for the print.
+	if node.no_body {
+		// Skip `C.fn()` calls
+		return
+	}
+	if node.name.starts_with('v.trace_calls.') {
+		// do not instrument the tracing functions, to avoid infinite regress
+		return
+	}
+	fname := if node.is_method {
+		receiver_name := global_table.type_to_str(node.receiver.typ)
+		'${node.mod} ${receiver_name}.${node.name}/${node.params.len}'
+	} else {
+		'${node.mod} ${node.name}/${node.params.len}'
+	}
+	if !t.pref.trace_fns.any(fname.match_glob(it)) {
+		return
+	}
+	expr_stmt := ast.ExprStmt{
+		expr: ast.CallExpr{
+			mod:      node.mod
+			pos:      node.pos
+			language: .v
+			scope:    node.scope
+			name:     'v.trace_calls.on_call'
+			args:     [
+				ast.CallArg{
+					expr: ast.StringLiteral{
+						val: fname
+					}
+					typ:  ast.string_type_idx
+				},
+			]
 		}
-		if node.name.starts_with('v.trace_calls.') {
-			// do not instrument the tracing functions, to avoid infinite regress
-			return
-		}
-		fname := if node.is_method {
-			receiver_name := global_table.type_to_str(node.receiver.typ)
-			'${node.mod} ${receiver_name}.${node.name}/${node.params.len}'
-		} else {
-			'${node.mod} ${node.name}/${node.params.len}'
-		}
+	}
+	node.stmts.prepend(expr_stmt)
+}
 
-		expr_stmt := ast.ExprStmt{
-			expr: ast.CallExpr{
-				mod: node.mod
-				pos: node.pos
-				language: .v
-				scope: node.scope
-				name: 'v.trace_calls.on_call'
+pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stmt, mut nexpr ast.CallExpr, ntype ast.Type) bool {
+	if t.pref.autofree {
+		return false
+	}
+	if nexpr.args[0].expr !is ast.StringInterLiteral {
+		return false
+	}
+	original := nexpr.args[0].expr as ast.StringInterLiteral
+	// only very simple string interpolations, without any formatting, like the following examples
+	// can be optimised to a list of simpler string builder calls, instead of using str_intp:
+	// >> sb.write_string('abc ${num}')
+	// >> sb.write_string('abc ${num} ${some_string} ${another_string} end')
+	for idx, w in original.fwidths {
+		if w != 0 {
+			return false
+		}
+		if original.precisions[idx] != 987698 {
+			return false
+		}
+		if original.need_fmts[idx] {
+			return false
+		}
+		// good ... no complex formatting found; now check the types (only strings and non float numbers are supported)
+		if original.expr_types[idx] == ast.string_type {
+			continue
+		}
+		if !original.expr_types[idx].is_int() {
+			return false
+		}
+	}
+
+	// first, insert all the statements, for writing the static strings, that were parts of the original string interpolation:
+	mut calls := []ast.Stmt{}
+	for val in original.vals {
+		if val == '' {
+			// there is no point in appending empty strings
+			// so instead, just emit an empty statement, to be ignored by the backend
+			calls << ast.EmptyStmt{}
+			continue
+		}
+		mut ncall := ast.ExprStmt{
+			expr: ast.Expr(ast.CallExpr{
+				...nexpr
 				args: [
 					ast.CallArg{
+						...nexpr.args[0]
 						expr: ast.StringLiteral{
-							val: fname
+							val: val
 						}
-						typ: ast.string_type_idx
 					},
 				]
+			})
+			typ:  ntype
+		}
+		calls << ncall
+	}
+	// now, insert the statements for writing the variable expressions between the static strings:
+	for idx, expr in original.exprs {
+		mut ncall := ast.ExprStmt{
+			typ:  ntype
+			expr: ast.Expr(ast.CallExpr{
+				...nexpr
+				args: [
+					ast.CallArg{
+						...nexpr.args[0]
+						expr: expr
+					},
+				]
+			})
+		}
+		etype := original.expr_types[idx]
+		if etype.is_int() {
+			if mut ncall.expr is ast.CallExpr {
+				ncall.expr.name = 'write_decimal'
 			}
 		}
-		node.stmts.prepend(expr_stmt)
+		calls.insert(1 + 2 * idx, ncall) // the new statements should be between the existing ones for static strings
 	}
+	// calls << ast.node
+	unsafe {
+		*onode = ast.Stmt(ast.Block{
+			stmts: calls
+		})
+	}
+	return true
 }

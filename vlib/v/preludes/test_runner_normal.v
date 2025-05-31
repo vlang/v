@@ -7,7 +7,7 @@ import term
 // This file gets compiled as part of the main program, for
 // each _test.v file. It implements the default/normal test
 // output for `v run file_test.v`
-// See also test_runner.v .
+// See also test_runner.c.v .
 ///////////////////////////////////////////////////////////
 
 fn vtest_init() {
@@ -20,14 +20,13 @@ pub mut:
 	use_color          bool
 	use_relative_paths bool
 	all_assertsions    []&VAssertMetaInfo
-	//
 mut:
 	file_test_info   VTestFileMetaInfo
 	fn_test_info     VTestFnMetaInfo
 	fn_assert_passes u64
 	fn_passes        u64
 	fn_fails         u64
-	//
+
 	total_assert_passes u64
 	total_assert_fails  u64
 }
@@ -132,10 +131,16 @@ fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
 	}
 	eprintln('${final_filepath} ${final_funcname}')
 	if i.op.len > 0 && i.op != 'call' {
-		mut lvtitle := '    Left value:'
-		mut rvtitle := '    Right value:'
-		mut slvalue := '${i.lvalue}'
-		mut srvalue := '${i.rvalue}'
+		mut lvtitle := '    Left value (len: ${i.lvalue.len}):'
+		mut rvtitle := '    Right value (len: ${i.rvalue.len}):'
+		mut slvalue := '`${i.lvalue}`'
+		mut srvalue := '`${i.rvalue}`'
+		// Do not print duplicate values to avoid confusion. In mosts tests the developer does
+		// `assert foo() == [1, 2, 3]`
+		// There's no need to print "[1, 2, 3]" again (left: [1,2,3,4]  right:[1,2,3])
+		// It makes it harded to understand what is what.
+		// So if "[1,2,3]" is already mentioned in the source, we don't print it.
+		need_to_print_right := !final_src.contains('== ' + srvalue)
 		if runner.use_color {
 			slvalue = term.yellow(slvalue)
 			srvalue = term.yellow(srvalue)
@@ -147,12 +152,16 @@ fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
 			eprintln('  > ${final_src}')
 			eprintln(lvtitle)
 			eprintln('      ${slvalue}')
-			eprintln(rvtitle)
-			eprintln('      ${srvalue}')
+			if need_to_print_right {
+				eprintln(rvtitle)
+				eprintln('      ${srvalue}')
+			}
 		} else {
 			eprintln('   > ${final_src}')
 			eprintln(' ${lvtitle} ${slvalue}')
-			eprintln('${rvtitle} ${srvalue}')
+			if need_to_print_right {
+				eprintln('${rvtitle} ${srvalue}')
+			}
 		}
 	} else {
 		eprintln('    ${final_src}')

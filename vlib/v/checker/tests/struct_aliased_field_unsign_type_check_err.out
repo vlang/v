@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_aliased_field_unsign_type_check_err.vv:9:9: error: cannot assign negative value to unsigned integer type
+    7 | fn main() {
+    8 |     app := App{
+    9 |         port: -1
+      |               ~~
+   10 |     }
+   11 |     println(app)

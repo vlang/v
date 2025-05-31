@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module js
 
@@ -25,7 +25,7 @@ fn (mut g JsGen) get_str_fn(typ ast.Type) string {
 	if typ.has_flag(.option) {
 		unwrapped.set_flag(.option)
 	}
-	styp := g.typ(unwrapped)
+	styp := g.styp(unwrapped)
 	mut sym := g.table.sym(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
 	if mut sym.info is ast.Alias {
@@ -35,7 +35,7 @@ fn (mut g JsGen) get_str_fn(typ ast.Type) string {
 		}
 	}
 	g.str_types << StrType{
-		typ: unwrapped
+		typ:  unwrapped
 		styp: styp
 	}
 	return str_fn_name
@@ -125,6 +125,7 @@ pub enum StrIntpType {
 	si_g64
 	si_s
 	si_p
+	si_r
 	si_vp
 }
 
@@ -148,6 +149,7 @@ pub fn type_to_str(x StrIntpType) string {
 		.si_e64 { return 'f64' } // e64 format use f64 data
 		.si_s { return 's' }
 		.si_p { return 'p' }
+		.si_r { return 'r' } // repeat string
 		.si_vp { return 'vp' }
 	}
 }
@@ -172,18 +174,17 @@ pub fn data_str(x StrIntpType) string {
 		.si_e64 { return 'd_f64' } // e64 format use f64 data
 		.si_s { return 'd_s' }
 		.si_p { return 'd_p' }
+		.si_r { return 'd_r' } // repeat string
 		.si_vp { return 'd_vp' }
 	}
 }
 
-const (
-	// BUG: this const is not released from the memory! use a const for now
-	// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
-	si_s_code = '0xfe10'
-)
+// BUG: this const is not released from the memory! use a const for now
+// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
+const si_s_code = '0xfe10'
 
 fn should_use_indent_func(kind ast.Kind) bool {
-	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
+	return kind in [.struct, .alias, .array, .array_fixed, .map, .sum_type, .interface]
 }
 
 fn (mut g JsGen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name string) {
@@ -302,7 +303,7 @@ fn (mut g JsGen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string
 	s := util.no_dots(styp)
 
 	g.definitions.writeln('function ${str_fn_name}(it) { /* gen_str_for_enum */')
-	// Enums tagged with `[flag]` are special in that they can be a combination of enum values
+	// Enums tagged with `@[flag]` are special in that they can be a combination of enum values
 	if info.is_flag {
 		clean_name := util.strip_main_name(styp.replace('__', '.'))
 		g.definitions.writeln('\tlet ret = new string("${clean_name}{");')
@@ -381,7 +382,7 @@ fn (mut g JsGen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_f
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('function indent_${str_fn_name}(x, indent_count) {')
 	for typ in info.variants {
-		typ_str := g.typ(typ)
+		typ_str := g.styp(typ)
 		mut func_name := g.get_str_fn(typ)
 		sym := g.table.sym(typ)
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
@@ -407,6 +408,9 @@ fn (mut g JsGen) fn_decl_str(info ast.FnType) string {
 		}
 		if i > 0 {
 			fn_str += ', '
+		}
+		if arg.typ.has_flag(.option) {
+			fn_str += '?'
 		}
 		fn_str += util.strip_main_name(g.table.get_type_name(g.unwrap_generic(arg.typ)))
 	}
@@ -442,7 +446,7 @@ fn (mut g JsGen) gen_str_for_thread(info ast.Thread, styp string, str_fn_name st
 	g.definitions.writeln('function ${str_fn_name}(_) { return new string("thread(${ret_type_name})");}')
 }
 
-[inline]
+@[inline]
 fn styp_to_str_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
 }
@@ -579,7 +583,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 		key_typ = key_sym.info.parent_type
 		key_sym = g.table.sym(key_typ)
 	}
-	key_styp := g.typ(key_typ)
+	key_styp := g.styp(key_typ)
 	key_str_fn_name := key_styp.replace('*', '') + '_str'
 	if !key_sym.has_method('str') {
 		g.get_str_fn(key_typ)
@@ -591,7 +595,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 		val_typ = val_sym.info.parent_type
 		val_sym = g.table.sym(val_typ)
 	}
-	val_styp := g.typ(val_typ)
+	val_styp := g.styp(val_typ)
 	elem_str_fn_name := val_styp.replace('*', '') + '_str'
 	if !val_sym.has_method('str') {
 		g.get_str_fn(val_typ)
@@ -661,8 +665,8 @@ fn (g &JsGen) type_to_fmt(typ ast.Type) StrIntpType {
 	sym := g.table.sym(typ)
 	if typ.is_int_valptr() || typ.is_float_valptr() {
 		return .si_s
-	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
-		.sum_type, .function, .alias, .chan] {
+	} else if sym.kind in [.struct, .array, .array_fixed, .map, .bool, .enum, .interface, .sum_type,
+		.function, .alias, .chan] {
 		return .si_s
 	} else if sym.kind == .string {
 		return .si_s
@@ -743,7 +747,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 
 		// custom methods management
 		has_custom_str := sym.has_method('str')
-		mut field_styp := g.typ(field.typ).replace('*', '')
+		mut field_styp := g.styp(field.typ).replace('*', '')
 		field_styp_fn_name := if has_custom_str {
 			'${field_styp}_str'
 		} else {
@@ -758,7 +762,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 			fn_builder.write_string('isnil(it.${g.js_name(field.name)})')
 			fn_builder.write_string(' ? new string("nil") : ')
 			// struct, floats and ints have a special case through the _str function
-			if sym.kind != .struct_ && !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
+			if sym.kind != .struct && !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
 				fn_builder.write_string('*')
 			}
 		}
@@ -770,7 +774,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 			if field.typ in ast.charptr_types {
 				fn_builder.write_string('tos4((byteptr)${func})')
 			} else {
-				if field.typ.is_ptr() && sym.kind == .struct_ {
+				if field.typ.is_ptr() && sym.kind == .struct {
 					fn_builder.write_string('(indent_count > 25)? new string("<probably circular>") : ')
 				}
 				fn_builder.write_string(func)
@@ -787,7 +791,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 
 fn struct_auto_str_func(mut g JsGen, sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string) string {
 	has_custom_str, expects_ptr, _ := sym.str_method_info()
-	if sym.kind == .enum_ {
+	if sym.kind == .enum {
 		return '${fn_name}(it.${g.js_name(field_name)})'
 	} else if should_use_indent_func(sym.kind) {
 		mut obj := 'it.${g.js_name(field_name)}'

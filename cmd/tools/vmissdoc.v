@@ -4,12 +4,10 @@
 import os
 import flag
 
-const (
-	tool_name        = 'v missdoc'
-	tool_version     = '0.1.0'
-	tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.'
-	work_dir_prefix  = normalise_path(os.real_path(os.wd_at_startup) + os.path_separator)
-)
+const tool_name = 'v missdoc'
+const tool_version = '0.1.0'
+const tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.'
+const work_dir_prefix = normalise_path(os.real_path(os.wd_at_startup) + os.path_separator)
 
 struct UndocumentedFN {
 	file      string
@@ -65,9 +63,10 @@ fn (opt &Options) collect_undocumented_functions_in_file(nfile string) []Undocum
 	mut comments := []string{}
 	mut tags := []string{}
 	for i, line in lines {
+		line_trimmed := line.trim_space()
 		if line.starts_with('//') {
 			comments << line
-		} else if line.trim_space().starts_with('[') {
+		} else if line_trimmed.starts_with('@[') || line_trimmed.starts_with('[') {
 			tags << collect_tags(line)
 		} else if line.starts_with('pub fn')
 			|| (opt.private && (line.starts_with('fn ') && !(line.starts_with('fn C.')
@@ -75,10 +74,10 @@ fn (opt &Options) collect_undocumented_functions_in_file(nfile string) []Undocum
 			if comments.len == 0 {
 				clean_line := line.all_before_last(' {')
 				list << UndocumentedFN{
-					line: i + 1
+					line:      i + 1
 					signature: clean_line
-					tags: tags
-					file: file
+					tags:      tags
+					file:      file
 				}
 			}
 			tags = []
@@ -102,12 +101,12 @@ fn (opt &Options) collect_undocumented_functions_in_path(path string) []Undocume
 }
 
 fn (opt &Options) report_undocumented_functions_in_path(path string) int {
-	mut list := opt.collect_undocumented_functions_in_path(path)
-	opt.report_undocumented_functions(list)
-	return list.len
+	list := opt.collect_undocumented_functions_in_path(path)
+	return opt.report_undocumented_functions(list)
 }
 
-fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
+fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) int {
+	mut nreports := 0
 	if list.len > 0 {
 		for undocumented_fn in list {
 			mut line_numbers := '${undocumented_fn.line}:0:'
@@ -127,6 +126,7 @@ fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
 			}
 			if opt.deprecated {
 				println('${ofile}:${line_numbers}${undocumented_fn.signature} ${tags_str}')
+				nreports++
 			} else {
 				mut has_deprecation_tag := false
 				for tag in undocumented_fn.tags {
@@ -137,10 +137,12 @@ fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
 				}
 				if !has_deprecation_tag {
 					println('${ofile}:${line_numbers}${undocumented_fn.signature} ${tags_str}')
+					nreports++
 				}
 			}
 		}
 	}
+	return nreports
 }
 
 fn (opt &Options) diff_undocumented_functions_in_paths(path_old string, path_new string) []UndocumentedFN {
@@ -213,7 +215,7 @@ fn collect(path string, mut l []string, f fn (string, mut []string)) {
 
 fn collect_tags(line string) []string {
 	mut cleaned := line.all_before('/')
-	cleaned = cleaned.replace_each(['[', '', ']', '', ' ', ''])
+	cleaned = cleaned.replace_each(['@[', '', '[', '', ']', '', ' ', ''])
 	return cleaned.split(',')
 }
 
@@ -227,16 +229,16 @@ fn main() {
 
 	// Collect tool options
 	mut opt := Options{
-		show_help: fp.bool('help', `h`, false, 'Show this help text.')
-		deprecated: fp.bool('deprecated', `d`, false, 'Include deprecated functions in output.')
-		private: fp.bool('private', `p`, false, 'Include private functions in output.')
-		js: fp.bool('js', 0, false, 'Include JavaScript functions in output.')
+		show_help:       fp.bool('help', `h`, false, 'Show this help text.')
+		deprecated:      fp.bool('deprecated', `d`, false, 'Include deprecated functions in output.')
+		private:         fp.bool('private', `p`, false, 'Include private functions in output.')
+		js:              fp.bool('js', 0, false, 'Include JavaScript functions in output.')
 		no_line_numbers: fp.bool('no-line-numbers', `n`, false, 'Exclude line numbers in output.')
-		collect_tags: fp.bool('tags', `t`, false, 'Also print function tags if any is found.')
-		exclude: fp.string_multi('exclude', `e`, '')
-		relative_paths: fp.bool('relative-paths', `r`, false, 'Use relative paths in output.')
-		diff: fp.bool('diff', 0, false, 'exit(1) and show difference between two PATH inputs, return 0 otherwise.')
-		verify: fp.bool('verify', 0, false, 'exit(1) if documentation is missing, 0 otherwise.')
+		collect_tags:    fp.bool('tags', `t`, false, 'Also print function tags if any is found.')
+		exclude:         fp.string_multi('exclude', `e`, '')
+		relative_paths:  fp.bool('relative-paths', `r`, false, 'Use relative paths in output.')
+		diff:            fp.bool('diff', 0, false, 'exit(1) and show difference between two PATH inputs, return 0 otherwise.')
+		verify:          fp.bool('verify', 0, false, 'exit(1) if documentation is missing, 0 otherwise.')
 	}
 
 	opt.additional_args = fp.finalize() or { panic(err) }
@@ -274,8 +276,8 @@ fn main() {
 			exit(1)
 		}
 		list := opt.diff_undocumented_functions_in_paths(path_old, path_new)
-		if list.len > 0 {
-			opt.report_undocumented_functions(list)
+		nreports := opt.report_undocumented_functions(list)
+		if nreports > 0 {
 			exit(1)
 		}
 		exit(0)

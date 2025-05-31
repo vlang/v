@@ -1,0 +1,3 @@
+import os as vos { Result }
+
+os := Result{}

@@ -1,7 +1,8 @@
 fn main() {}
 
 fn foo() string {
-    if true {
-        return ''
-    } else {}
+	if true {
+		return ''
+	} else {
+	}
 }

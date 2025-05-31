@@ -1,8 +1,9 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
 
+// utf8_char_len returns the length in bytes of a UTF-8 encoded codepoint that starts with the byte `b`
 pub fn utf8_char_len(b u8) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }
@@ -12,7 +13,7 @@ pub fn utf8_char_len(b u8) int {
 pub fn utf32_to_str(code u32) string {
 	unsafe {
 		mut buffer := malloc_noscan(5)
-		res := utf32_to_str_no_malloc(code, buffer)
+		res := utf32_to_str_no_malloc(code, mut buffer)
 		if res.len == 0 {
 			// the buffer was not used at all
 			free(buffer)
@@ -21,10 +22,10 @@ pub fn utf32_to_str(code u32) string {
 	}
 }
 
-[manualfree; unsafe]
-pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
+@[manualfree; unsafe]
+pub fn utf32_to_str_no_malloc(code u32, mut buf &u8) string {
 	unsafe {
-		len := utf32_decode_to_buffer(code, buf)
+		len := utf32_decode_to_buffer(code, mut buf)
 		if len == 0 {
 			return ''
 		}
@@ -33,8 +34,8 @@ pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
 	}
 }
 
-[manualfree; unsafe]
-pub fn utf32_decode_to_buffer(code u32, buf &u8) int {
+@[manualfree; unsafe]
+pub fn utf32_decode_to_buffer(code u32, mut buf &u8) int {
 	unsafe {
 		icode := int(code) // Prevents doing casts everywhere
 		mut buffer := &u8(buf)
@@ -77,14 +78,15 @@ pub fn utf32_decode_to_buffer(code u32, buf &u8) int {
 // it is used in vlib/builtin/string.v,
 // and also in vlib/v/gen/c/cgen.v
 pub fn (_rune string) utf32_code() int {
-	return int(_rune.bytes().utf8_to_utf32() or {
-		// error('more than one utf-8 rune found in this string')
-		rune(0)
-	})
+	if res := _rune.bytes().utf8_to_utf32() {
+		return int(res)
+	}
+	return 0
 }
 
 // convert array of utf8 bytes to single utf32 value
 // will error if more than 4 bytes are submitted
+@[direct_array_access]
 pub fn (_bytes []u8) utf8_to_utf32() !rune {
 	if _bytes.len == 0 {
 		return 0
@@ -183,4 +185,16 @@ pub fn utf8_str_visible_length(s string) int {
 		}
 	}
 	return l
+}
+
+// string_to_ansi_not_null_terminated returns an ANSI version of the string `_str`.
+// NOTE: This is most useful for converting a vstring to an ANSI string under Windows.
+// NOTE: The ANSI string return is not null-terminated, then you can use `os.write_file_array` write an ANSI file.
+pub fn string_to_ansi_not_null_terminated(_str string) []u8 {
+	wstr := _str.to_wide()
+	mut ansi := wide_to_ansi(wstr)
+	if ansi.len > 0 {
+		unsafe { ansi.len-- } // remove tailing zero
+	}
+	return ansi
 }

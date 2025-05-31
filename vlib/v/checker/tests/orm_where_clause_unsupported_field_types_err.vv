@@ -2,10 +2,10 @@ module main
 
 import db.pg
 
-[table: 'example']
+@[table: 'example']
 pub struct Example {
-	id      int  [primary; sql: serial]
-	example []u8 [sql_type: 'bytea'; unique]
+	id      int  @[primary; sql: serial]
+	example []u8 @[sql_type: 'bytea'; unique]
 }
 
 fn main() {

@@ -2,8 +2,7 @@ import os
 import toml
 import toml.to
 
-const (
-	toml_text = '[[albums]]
+const toml_text = '[[albums]]
 name = "Born to Run"
 
   [[albums.songs]]
@@ -20,7 +19,6 @@ name = "Born in the USA"
 
   [[albums.songs]]
   name = "Dancing in the Dark"'
-)
 
 const fprefix = os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))
 

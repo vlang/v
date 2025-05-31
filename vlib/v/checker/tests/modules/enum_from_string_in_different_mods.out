@@ -1,0 +1,33 @@
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:3:14: error: module `mod` type `MyEnum` is private
+    1 | module main
+    2 | 
+    3 | import mod { MyEnum, MyStruct }
+      |              ~~~~~~
+    4 | 
+    5 | fn main() {
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:6:7: error: module `mod` type `mod.MyEnum` is private
+    4 | 
+    5 | fn main() {
+    6 |     _ := MyEnum.from_string('item1')
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 |     _ := MyStruct.from_string('item1')
+    8 | }
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:6:4: error: assignment mismatch: 1 variable but `MyEnum.from_string()` returns 0 values
+    4 | 
+    5 | fn main() {
+    6 |     _ := MyEnum.from_string('item1')
+      |       ~~
+    7 |     _ := MyStruct.from_string('item1')
+    8 | }
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:7:7: error: expected enum, but `mod.MyStruct` is struct
+    5 | fn main() {
+    6 |     _ := MyEnum.from_string('item1')
+    7 |     _ := MyStruct.from_string('item1')
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    8 | }
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:7:4: error: assignment mismatch: 1 variable but `MyStruct.from_string()` returns 0 values
+    5 | fn main() {
+    6 |     _ := MyEnum.from_string('item1')
+    7 |     _ := MyStruct.from_string('item1')
+      |       ~~
+    8 | }

@@ -3,7 +3,7 @@ struct Zzz {
 }
 
 fn (z Zzz) str(x int) string {
-    return 'z: $z.x'
+	return 'z: ${z.x}'
 }
 
 fn main() {

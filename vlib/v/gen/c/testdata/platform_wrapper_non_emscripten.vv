@@ -1,0 +1,33 @@
+module main
+
+import platform_wrapper
+
+fn main() {
+	println('start')
+	$if windows {
+		assert platform_wrapper.fn_defined_on_windows() == 123
+	}
+	$if linux {
+		assert platform_wrapper.fn_defined_on_linux() == 456
+	}
+	$if macos {
+		assert platform_wrapper.fn_defined_on_macos() == 789
+	}
+	println('--- 1')
+	$if emscripten ? {
+		println('> inside then branch of if emscripten')
+		assert platform_wrapper.fn_defined_in_wasm32_emscripten() == 12345
+	} $else {
+		println('> inside else branch of if emscripten')
+	}
+	println('--- 2')
+	$if wasm32_emscripten {
+		println('> inside then branch of if wasm32_emscripten')
+		assert platform_wrapper.fn_defined_in_wasm32_emscripten() == 12345
+	} $else {
+		println('> inside else branch of if wasm32_emscripten')
+	}
+	println('--- 3')
+	platform_wrapper.abc()
+	println('done')
+}

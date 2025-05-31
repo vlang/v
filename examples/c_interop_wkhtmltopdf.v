@@ -13,11 +13,11 @@ import os
 #flag -lwkhtmltox
 #include "wkhtmltox/pdf.h" # You can install the C package for your system from the wkhtmltopdf.org/downloads.html page
 
-struct C.wkhtmltopdf_global_settings {}
+pub struct C.wkhtmltopdf_global_settings {}
 
-struct C.wkhtmltopdf_object_settings {}
+pub struct C.wkhtmltopdf_object_settings {}
 
-struct C.wkhtmltopdf_converter {}
+pub struct C.wkhtmltopdf_converter {}
 
 fn C.wkhtmltopdf_init(use_graphics bool) int
 
@@ -41,7 +41,8 @@ fn C.wkhtmltopdf_create_converter(global_settings &C.wkhtmltopdf_global_settings
 
 fn C.wkhtmltopdf_destroy_converter(converter &C.wkhtmltopdf_converter)
 
-fn C.wkhtmltopdf_add_object(converter &C.wkhtmltopdf_converter, object_settings &C.wkhtmltopdf_object_settings, data &char)
+fn C.wkhtmltopdf_add_object(converter &C.wkhtmltopdf_converter, object_settings &C.wkhtmltopdf_object_settings,
+	data &char)
 
 fn C.wkhtmltopdf_convert(converter &C.wkhtmltopdf_converter) bool
 
@@ -71,7 +72,7 @@ fn main() {
 	error_code := C.wkhtmltopdf_http_error_code(converter)
 	println('wkhtmltopdf_http_error_code: ${error_code}')
 	if result {
-		pdata := &char(0)
+		pdata := &char(unsafe { nil })
 		ppdata := &pdata
 		size := C.wkhtmltopdf_get_output(converter, voidptr(ppdata))
 		println('wkhtmltopdf_get_output: ${size} bytes')

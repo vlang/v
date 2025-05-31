@@ -1,4 +1,4 @@
-[noreturn]
+@[noreturn]
 fn another() {
 	eprintln(@FN)
 	// for{}
@@ -6,7 +6,7 @@ fn another() {
 	return
 }
 
-[noreturn]
+@[noreturn]
 fn abc() {
 	eprintln(@FN)
 	another()

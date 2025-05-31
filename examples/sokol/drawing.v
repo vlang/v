@@ -1,4 +1,4 @@
-import sokol
+// vtest build: !solaris
 import sokol.sapp
 import sokol.gfx
 import sokol.sgl
@@ -7,23 +7,19 @@ struct AppState {
 	pass_action gfx.PassAction
 }
 
-const (
-	used_import = sokol.used_import
-)
-
 fn main() {
 	state := &AppState{
-		pass_action: gfx.create_clear_pass(0.1, 0.1, 0.1, 1.0)
+		pass_action: gfx.create_clear_pass_action(0.1, 0.1, 0.1, 1.0)
 	}
 	title := 'Sokol Drawing Template'
 	desc := sapp.Desc{
-		width: 640
-		height: 480
-		user_data: state
-		init_userdata_cb: init
+		width:             640
+		height:            480
+		user_data:         state
+		init_userdata_cb:  init
 		frame_userdata_cb: frame
-		window_title: title.str
-		html5_canvas_name: title.str
+		window_title:      &char(title.str)
+		html5_canvas_name: &char(title.str)
 	}
 	sapp.run(&desc)
 }
@@ -38,7 +34,8 @@ fn init(user_data voidptr) {
 fn frame(state &AppState) {
 	// println('frame')
 	draw()
-	gfx.begin_default_pass(&state.pass_action, sapp.width(), sapp.height())
+	pass := sapp.create_default_pass(state.pass_action)
+	gfx.begin_pass(&pass)
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()

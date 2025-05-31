@@ -1,4 +1,3 @@
-import os
 import objects
 import gg
 import gx
@@ -94,24 +93,16 @@ fn (mut app App) resize() {
 }
 
 fn main() {
-	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	$if android {
-		font_path = 'fonts/RobotoMono-Regular.ttf'
-	}
-
 	mut app := &App{}
 	app.ui = objects.get_params()
-
 	app.gg = gg.new_context(
-		width: app.ui.width
-		height: app.ui.height
+		width:        app.ui.width
+		height:       app.ui.height
 		window_title: 'Fireworks!'
-		bg_color: gx.black
-		user_data: app
-		frame_fn: on_frame
-		event_fn: on_event
-		font_path: font_path
+		bg_color:     gx.black
+		user_data:    app
+		frame_fn:     on_frame
+		event_fn:     on_event
 	)
-
 	app.gg.run()
 }

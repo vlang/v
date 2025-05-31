@@ -1,7 +1,7 @@
 module subtle
 
 // constant_time_byte_eq returns 1 when x == y.
-pub fn constant_time_byte_eq(x byte, y byte) int {
+pub fn constant_time_byte_eq(x u8, y u8) int {
 	return int((u32(x ^ y) - 1) >> 31)
 }
 

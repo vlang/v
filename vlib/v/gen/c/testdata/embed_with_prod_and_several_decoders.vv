@@ -11,33 +11,33 @@ fn main() {
 		panic('s.len <= 0')
 	}
 	print(s)
-	
+
 	println('--------------------------------------')
-	print( my_source_2.to_string() )
+	print(my_source_2.to_string())
 	println('--------------------------------------')
 
 	mut my_uncompressed_source := $embed_file('embed.vv')
 	if my_uncompressed_source.len <= 0 {
 		panic('my_uncompressed_source.len <= 0')
 	}
-	us :=my_uncompressed_source.to_string()
+	us := my_uncompressed_source.to_string()
 	if us.len <= 0 {
 		panic('us.len <= 0')
 	}
 	print(us)
-	
+
 	//
 
 	if us != s {
 		println('us != s')
 	}
-	
+
 	//
 	mut my_uncompressed_source_2 := $embed_file('embed.vv')
 	if my_uncompressed_source.len != my_uncompressed_source_2.len {
 		panic('my_uncompressed_source.len != my_uncompressed_source_2.len')
 	}
-	
+
 	if my_source.len != my_source_2.len {
 		panic('my_source.len != my_source_2.len')
 	}

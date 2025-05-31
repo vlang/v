@@ -1,12 +1,11 @@
+@[has_globals]
 module term
 
 import os
 import strings.textscanner
 
-const (
-	default_columns_size = 80
-	default_rows_size    = 25
-)
+const default_columns_size = 80
+const default_rows_size = 25
 
 // Coord - used by term.get_cursor_position and term.set_cursor_position
 pub struct Coord {
@@ -15,16 +14,29 @@ pub mut:
 	y int
 }
 
+__global can_show_color_on_stdout_cache = ?bool(none)
+__global can_show_color_on_stderr_cache = ?bool(none)
+
 // can_show_color_on_stdout returns true if colors are allowed in stdout;
 // returns false otherwise.
 pub fn can_show_color_on_stdout() bool {
-	return supports_escape_sequences(1)
+	if status := can_show_color_on_stdout_cache {
+		return status
+	}
+	status := supports_escape_sequences(1)
+	can_show_color_on_stdout_cache = status
+	return status
 }
 
 // can_show_color_on_stderr returns true if colors are allowed in stderr;
 // returns false otherwise.
 pub fn can_show_color_on_stderr() bool {
-	return supports_escape_sequences(2)
+	if status := can_show_color_on_stderr_cache {
+		return status
+	}
+	status := supports_escape_sequences(2)
+	can_show_color_on_stderr_cache = status
+	return status
 }
 
 // failed returns a bold white on red version of the string `s`
@@ -165,8 +177,8 @@ pub fn header(text string, divider string) string {
 	} else {
 		cols - 3 - 2 * divider.len
 	})
-	tlimit_alligned := if (tlimit % 2) != (cols % 2) { tlimit + 1 } else { tlimit }
-	tstart := imax(0, (cols - tlimit_alligned) / 2)
+	tlimit_aligned := if (tlimit % 2) != (cols % 2) { tlimit + 1 } else { tlimit }
+	tstart := imax(0, (cols - tlimit_aligned) / 2)
 	mut ln := ''
 	if divider.len > 0 {
 		ln = divider.repeat(1 + cols / divider.len)[0..cols]
@@ -183,7 +195,7 @@ fn imax(x int, y int) int {
 	return if x > y { x } else { y }
 }
 
-[manualfree]
+@[manualfree]
 fn supports_escape_sequences(fd int) bool {
 	vcolors_override := os.getenv('VCOLORS')
 	defer {

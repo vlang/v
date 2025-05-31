@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module csv
@@ -12,8 +12,9 @@ mut:
 	sb strings.Builder
 }
 
-[params]
+@[params]
 pub struct WriterConfig {
+pub:
 	use_crlf  bool
 	delimiter u8 = `,`
 }
@@ -21,8 +22,8 @@ pub struct WriterConfig {
 // new_writer returns a reference to a Writer
 pub fn new_writer(config WriterConfig) &Writer {
 	return &Writer{
-		sb: strings.new_builder(200)
-		use_crlf: config.use_crlf
+		sb:        strings.new_builder(200)
+		use_crlf:  config.use_crlf
 		delimiter: config.delimiter
 	}
 }

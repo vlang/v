@@ -4,17 +4,24 @@ pub type EventHandlerFn = fn (receiver voidptr, from string, to string)
 
 pub type ConditionFn = fn (receiver voidptr, from string, to string) bool
 
+fn dummy_event_handler_fn(receiver voidptr, from string, to string) {
+}
+
+fn dummy_condition_fn(receiver voidptr, from string, to string) bool {
+	return true
+}
+
 struct State {
 mut:
-	entry_handler EventHandlerFn
-	run_handler   EventHandlerFn
-	exit_handler  EventHandlerFn
+	entry_handler EventHandlerFn = dummy_event_handler_fn
+	run_handler   EventHandlerFn = dummy_event_handler_fn
+	exit_handler  EventHandlerFn = dummy_event_handler_fn
 }
 
 struct Transition {
 mut:
 	to                string
-	condition_handler ConditionFn = unsafe { nil }
+	condition_handler ConditionFn = dummy_condition_fn
 }
 
 pub struct StateMachine {
@@ -24,10 +31,12 @@ mut:
 	current_state string
 }
 
+// StateMachine static method returns a new StateMachine instance.
 pub fn new() StateMachine {
 	return StateMachine{}
 }
 
+// set_state sets the current state of the state machine to the given state by `name`.
 pub fn (mut s StateMachine) set_state(name string) ! {
 	if name in s.states {
 		s.current_state = name
@@ -36,24 +45,29 @@ pub fn (mut s StateMachine) set_state(name string) ! {
 	}
 }
 
+// get_state returns the current state of the state machine.
 pub fn (mut s StateMachine) get_state() string {
 	return s.current_state
 }
 
+// add_state adds a new state to the state machine.
+// It takes the `name` of the state, and three event handlers: `entry`, `run`, and `exit`.
 pub fn (mut s StateMachine) add_state(name string, entry EventHandlerFn, run EventHandlerFn, exit EventHandlerFn) {
 	s.states[name] = State{
 		entry_handler: entry
-		run_handler: run
-		exit_handler: exit
+		run_handler:   run
+		exit_handler:  exit
 	}
 	if s.states.len == 1 {
 		s.current_state = name
 	}
 }
 
+// add_transition adds a new transition to the state machine.
+// It takes the `from` and `to` states, and a condition handler.
 pub fn (mut s StateMachine) add_transition(from string, to string, condition_handler ConditionFn) {
 	t := Transition{
-		to: to
+		to:                to
 		condition_handler: condition_handler
 	}
 	if from in s.transitions {
@@ -63,6 +77,7 @@ pub fn (mut s StateMachine) add_transition(from string, to string, condition_han
 	s.transitions[from] = [t]
 }
 
+// run runs the state machine. It takes a `receiver` argument that is passed to the event handlers.
 pub fn (mut s StateMachine) run(receiver voidptr) ! {
 	from_state := s.current_state
 	mut to_state := s.current_state

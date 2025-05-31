@@ -9,14 +9,14 @@ enum Mode {
 	game
 }
 
-const (
-	player_one = 1 // Human control this racket
-	player_two = 0 // Take over this AI controller
-	white      = ui.Color{255, 255, 255}
-	orange     = ui.Color{255, 140, 0}
-)
+const player_one = 1 // Human control this racket
 
-[heap]
+const player_two = 0 // Take over this AI controller
+
+const white = ui.Color{255, 255, 255}
+const orange = ui.Color{255, 140, 0}
+
+@[heap]
 struct App {
 mut:
 	tui    &ui.Context = unsafe { nil }
@@ -80,7 +80,7 @@ fn (mut a App) event(e &ui.Event) {
 			if a.mode != .game {
 				return
 			}
-			// TODO mouse movement for real Pong sharks
+			// TODO: mouse movement for real Pong sharks
 			// a.game.move_player(player_one, 0, -1)
 		}
 		.key_down {
@@ -167,18 +167,18 @@ fn (mut a App) draw_menu() {
 	y025 := int(f32(a.height) * 0.25)
 	y075 := int(f32(a.height) * 0.75)
 	cy := int(f32(a.height) * 0.5)
-	//
+
 	a.tui.set_color(white)
 	a.tui.bold()
 	a.tui.draw_text(cx - 2, y025, 'VONG')
 	a.tui.reset()
 	a.tui.draw_text(cx - 13, y025 + 1, '(A game of Pong written in V)')
-	//
+
 	a.tui.set_color(white)
 	a.tui.bold()
 	a.tui.draw_text(cx - 3, cy + 1, 'START')
 	a.tui.reset()
-	//
+
 	a.tui.draw_text(cx - 9, y075 + 1, 'Press SPACE to start')
 	a.tui.reset()
 	a.tui.draw_text(cx - 5, y075 + 3, 'ESC to Quit')
@@ -239,7 +239,7 @@ fn (mut b Ball) update(dt f32) {
 	b.pos.y += b.vel.y * b.acc.y * dt
 }
 
-[heap]
+@[heap]
 struct Game {
 mut:
 	app     &App = unsafe { nil }
@@ -344,7 +344,7 @@ fn (mut g Game) quit() {
 }
 
 fn (mut g Game) draw_big_digit(px f32, py f32, digit int) {
-	// TODO use draw_line or draw_point to fix tearing with non-monospaced terminal fonts
+	// TODO: use draw_line or draw_point to fix tearing with non-monospaced terminal fonts
 	mut gfx := g.app.tui
 	x, y := int(px), int(py)
 	match digit {
@@ -457,7 +457,7 @@ fn (mut g Game) free() {
 	g.players.clear()
 }
 
-// TODO Remove these wrapper functions when we can assign methods as callbacks
+// TODO: Remove these wrapper functions when we can assign methods as callbacks
 fn init(mut app App) {
 	app.init()
 }
@@ -480,18 +480,26 @@ fn event(e &ui.Event, mut app App) {
 	app.event(e)
 }
 
+type InitFn = fn (voidptr)
+
+type EventFn = fn (&ui.Event, voidptr)
+
+type FrameFn = fn (voidptr)
+
+type CleanupFn = fn (voidptr)
+
 fn main() {
 	mut app := &App{}
 	app.tui = ui.init(
-		user_data: app
-		init_fn: init
-		frame_fn: frame
-		cleanup_fn: cleanup
-		event_fn: event
-		fail_fn: fail
+		user_data:      app
+		init_fn:        InitFn(init)
+		frame_fn:       FrameFn(frame)
+		cleanup_fn:     CleanupFn(cleanup)
+		event_fn:       EventFn(event)
+		fail_fn:        fail
 		capture_events: true
-		hide_cursor: true
-		frame_rate: 60
+		hide_cursor:    true
+		frame_rate:     60
 	)
 	app.tui.run()!
 }

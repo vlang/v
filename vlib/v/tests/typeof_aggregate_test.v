@@ -41,6 +41,6 @@ fn test_typeof_aggregate() {
 
 	assert rets.len == 3
 	assert rets[0] == 'The type of `a` is `Foo`'
-	assert rets[1] == 'The type of `a` is `(Bar | Baz | Bazaar)` and its text says bar'
-	assert rets[2] == 'The type of `a` is `(Bar | Baz | Bazaar)` and its text says baz'
+	assert rets[1] == 'The type of `a` is `Bar` and its text says bar'
+	assert rets[2] == 'The type of `a` is `Baz` and its text says baz'
 }

@@ -11,11 +11,11 @@ fn main() {
 		println('done')
 		exit(0)
 	}()
+	time.sleep(10 * time.second)
 	vweb.run_at(&App{}, port: 38090, nr_workers: 1)!
-	//	vweb.run(&App{}, 38091)
 }
 
-['/']
+@['/']
 pub fn (mut app App) app_main() vweb.Result {
 	return app.text('Hello World')
 }

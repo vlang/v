@@ -3,13 +3,13 @@ module html
 import strings
 import datatypes
 
-enum CloseTagType {
+pub enum CloseTagType {
 	in_name
 	new_tag
 }
 
 // Tag holds the information of an HTML tag.
-[heap]
+@[heap]
 pub struct Tag {
 pub mut:
 	name               string
@@ -35,7 +35,7 @@ fn (mut tag Tag) add_child(t &Tag) int {
 }
 
 // text returns the text contents of the tag.
-pub fn (tag Tag) text() string {
+pub fn (tag &Tag) text() string {
 	if tag.name.len >= 2 && tag.name[..2] == 'br' {
 		return '\n'
 	}
@@ -52,7 +52,7 @@ pub fn (tag &Tag) str() string {
 	html_str.write_string('<${tag.name}')
 	for key, value in tag.attributes {
 		html_str.write_string(' ${key}')
-		if value.len > 0 {
+		if value != '' {
 			html_str.write_string('="${value}"')
 		}
 	}

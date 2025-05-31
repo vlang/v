@@ -7,6 +7,8 @@
 #include <string.h>
 #include <inttypes.h>
 
+#include "kremlin/internal/callconv.h"
+
 /******************************************************************************/
 /* Implementing C.fst (part 2: endian-ness macros)                            */
 /******************************************************************************/
