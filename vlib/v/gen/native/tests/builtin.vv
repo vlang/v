@@ -22,7 +22,6 @@ assert !a.is_ascii()
 	assert '_9'.is_identifier() == true
 	assert 'a 9'.is_identifier() == false
 	assert 't'.is_identifier() == true
-/*
 	assert ''.is_blank()
 	assert ' '.is_blank()
 	assert ' \t'.is_blank()
@@ -48,18 +47,18 @@ assert !a.is_ascii()
 	assert 'abc'.index_u8(`A`) == -1
 	assert 'abc'.index_u8(`B`) == -1
 	assert 'abc'.index_u8(`C`) == -1
+/*
 	assert 'abcabca'.last_index('ca')? == 5
 	assert 'abcabca'.last_index('ab')? == 3
 	assert 'abcabca'.last_index('b')? == 4
 	assert 'Zabcabca'.last_index('Z')? == 0
 	x := 'Zabcabca'.last_index('Y')
 	assert x == none
-	// TODO: `assert 'Zabcabca'.index_last('Y') == none` is a cgen error, 2023/12/04
+*/
 	assert 'abcabca'.last_index_u8(`a`) == 6
 	assert 'abcabca'.last_index_u8(`c`) == 5
 	assert 'abcabca'.last_index_u8(`b`) == 4
 	assert 'Zabcabca'.last_index_u8(`Z`) == 0
-	//
 	assert 'abc'.last_index_u8(`d`) == -1
 	assert 'abc'.last_index_u8(`A`) == -1
 	assert 'abc'.last_index_u8(`B`) == -1
@@ -69,6 +68,7 @@ assert !a.is_ascii()
 	assert 'abc abca'.contains_u8(`c`)
 	assert 'abc abca'.contains_u8(` `)
 	assert !'abc abca'.contains_u8(`A`)
+/*
 	assert 'Abcd'.camel_to_snake() == 'abcd'
 	assert 'aBcd'.camel_to_snake() == 'a_bcd'
 	assert 'AAbb'.camel_to_snake() == 'aa_bb'

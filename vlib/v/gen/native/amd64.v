@@ -212,6 +212,10 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 	c.g.println('cmp ${reg}, ${val}')
 }
 
+fn (mut c Amd64) cmp_reg2(reg Register, reg2 Register) {
+	c.cmp_reg(reg as Amd64Register, reg2 as Amd64Register)
+}
+
 // `cmp rax, rbx`
 fn (mut c Amd64) cmp_reg(reg Amd64Register, reg2 Amd64Register) {
 	match reg {
@@ -1101,8 +1105,12 @@ fn (mut c Amd64) push(r Register) {
 		c.g.write8(0x50 + i32(reg) - 8)
 	}
 	c.is_16bit_aligned = !c.is_16bit_aligned
-	c.g.println('push ${reg}')
 	c.g.stack_depth++
+	c.g.println('push ${reg}; stack_depth:${c.g.stack_depth}')
+}
+
+fn (mut c Amd64) pop2(r Register) {
+	c.pop(r as Amd64Register)
 }
 
 pub fn (mut c Amd64) pop(reg Amd64Register) {
@@ -1111,8 +1119,8 @@ pub fn (mut c Amd64) pop(reg Amd64Register) {
 	}
 	c.g.write8(0x58 + i32(reg) % 8)
 	c.is_16bit_aligned = !c.is_16bit_aligned
-	c.g.println('pop ${reg}')
 	c.g.stack_depth--
+	c.g.println('pop ${reg} ; stack_depth:${c.g.stack_depth}')
 }
 
 pub fn (mut c Amd64) sub8(reg Amd64Register, val i32) {
@@ -3620,7 +3628,7 @@ pub fn (mut c Amd64) allocate_var(name string, size i32, initial_val Number) i32
 	}
 
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
-	c.g.println('mov [rbp-${int(n).hex2()}], ${initial_val} ; Allocate var `${name}`')
+	c.g.println('mov [rbp-${int(n).hex2()}], ${initial_val} ; Allocate var `${name}` size: ${size}')
 	return c.g.stack_var_pos
 }
 

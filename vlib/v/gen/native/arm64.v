@@ -535,6 +535,14 @@ pub fn (mut c Arm64) add_reg2(r Register, r2 Register) {
 	panic('Arm64.add_reg2() not implemented')
 }
 
+fn (mut c Arm64) pop2(r Register) {
+	panic('Arm64.pop2() not implemented')
+}
+
+fn (mut c Arm64) cmp_reg2(reg Register, reg2 Register) {
+	panic('Arm64.add_reg2() not implemented')
+}
+
 fn (mut c Arm64) create_string_struct(typ ast.Type, name string, str string) {
 	panic('Arm64.add_reg2() not implemented')
 }

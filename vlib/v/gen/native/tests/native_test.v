@@ -49,7 +49,7 @@ fn test_native() {
 				continue
 			}
 		}
-		if test == 'fibonacci_native.vv' {
+		if test == 'fibonacci_native.vv' || test.contains('linux') {
 			if user_os == 'windows' {
 				println('>>> SKIPPING ${test} on windows for now')
 				continue
