@@ -247,6 +247,11 @@ fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 		orm.Null {
 			stmt.bind_null()
 		}
+		[]orm.Primitive {
+			for element in data {
+				pg_stmt_match(mut stmt, element)
+			}
+		}
 	}
 }
 

@@ -52,6 +52,7 @@ pub type Primitive = InfixType
 	| u32
 	| u64
 	| u8
+	| []Primitive
 
 pub struct Null {}
 
@@ -406,10 +407,24 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		}
 		str += '${q}${field}${q} ${where.kinds[i].to_str()}'
 		if !where.kinds[i].is_unary() {
-			str += ' ${qm}'
-			if num {
-				str += '${c}'
-				c++
+			data := where.data[i]
+			if data is []Primitive {
+				len := data.len
+				mut tmp := []string{len: len}
+				for j in 0 .. len {
+					tmp[j] = '${qm}'
+					if num {
+						tmp[j] += '${c}'
+						c++
+					}
+				}
+				str += ' (${tmp.join(', ')})'
+			} else {
+				str += ' ${qm}'
+				if num {
+					str += '${c}'
+					c++
+				}
 			}
 		}
 		if current_post_par > 0 {
@@ -633,12 +648,20 @@ fn option_bool_to_primitive(b ?bool) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
+fn array_bool_to_primitive(b []bool) Primitive {
+	return Primitive(b.map(bool_to_primitive(it)))
+}
+
 fn f32_to_primitive(b f32) Primitive {
 	return Primitive(b)
 }
 
 fn option_f32_to_primitive(b ?f32) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn array_f32_to_primitive(b []f32) Primitive {
+	return Primitive(b.map(f32_to_primitive(it)))
 }
 
 fn f64_to_primitive(b f64) Primitive {
@@ -649,12 +672,20 @@ fn option_f64_to_primitive(b ?f64) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
+fn array_f64_to_primitive(b []f64) Primitive {
+	return Primitive(b.map(f64_to_primitive(it)))
+}
+
 fn i8_to_primitive(b i8) Primitive {
 	return Primitive(b)
 }
 
 fn option_i8_to_primitive(b ?i8) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn array_i8_to_primitive(b []i8) Primitive {
+	return Primitive(b.map(i8_to_primitive(it)))
 }
 
 fn i16_to_primitive(b i16) Primitive {
@@ -665,12 +696,20 @@ fn option_i16_to_primitive(b ?i16) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
+fn array_i16_to_primitive(b []i16) Primitive {
+	return Primitive(b.map(i16_to_primitive(it)))
+}
+
 fn int_to_primitive(b int) Primitive {
 	return Primitive(b)
 }
 
 fn option_int_to_primitive(b ?int) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn array_int_to_primitive(b []int) Primitive {
+	return Primitive(b.map(int_to_primitive(it)))
 }
 
 // int_literal_to_primitive handles int literal value
@@ -682,6 +721,10 @@ fn option_int_literal_to_primitive(b ?int) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
+fn array_int_literal_to_primitive(b []int) Primitive {
+	return Primitive(b.map(int_literal_to_primitive(it)))
+}
+
 // float_literal_to_primitive handles float literal value
 fn float_literal_to_primitive(b f64) Primitive {
 	return Primitive(b)
@@ -689,6 +732,10 @@ fn float_literal_to_primitive(b f64) Primitive {
 
 fn option_float_literal_to_primitive(b ?f64) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn array_float_literal_to_primitive(b []f64) Primitive {
+	return Primitive(b.map(float_literal_to_primitive(it)))
 }
 
 fn i64_to_primitive(b i64) Primitive {
@@ -699,12 +746,20 @@ fn option_i64_to_primitive(b ?i64) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
+fn array_i64_to_primitive(b []i64) Primitive {
+	return Primitive(b.map(i64_to_primitive(it)))
+}
+
 fn u8_to_primitive(b u8) Primitive {
 	return Primitive(b)
 }
 
 fn option_u8_to_primitive(b ?u8) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn array_u8_to_primitive(b []u8) Primitive {
+	return Primitive(b.map(u8_to_primitive(it)))
 }
 
 fn u16_to_primitive(b u16) Primitive {
@@ -715,12 +770,20 @@ fn option_u16_to_primitive(b ?u16) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
+fn array_u16_to_primitive(b []u16) Primitive {
+	return Primitive(b.map(u16_to_primitive(it)))
+}
+
 fn u32_to_primitive(b u32) Primitive {
 	return Primitive(b)
 }
 
 fn option_u32_to_primitive(b ?u32) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn array_u32_to_primitive(b []u32) Primitive {
+	return Primitive(b.map(u32_to_primitive(it)))
 }
 
 fn u64_to_primitive(b u64) Primitive {
@@ -731,6 +794,10 @@ fn option_u64_to_primitive(b ?u64) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
+fn array_u64_to_primitive(b []u64) Primitive {
+	return Primitive(b.map(u64_to_primitive(it)))
+}
+
 fn string_to_primitive(b string) Primitive {
 	return Primitive(b)
 }
@@ -739,12 +806,20 @@ fn option_string_to_primitive(b ?string) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
+fn array_string_to_primitive(b []string) Primitive {
+	return Primitive(b.map(string_to_primitive(it)))
+}
+
 fn time_to_primitive(b time.Time) Primitive {
 	return Primitive(b)
 }
 
 fn option_time_to_primitive(b ?time.Time) Primitive {
 	return if b_ := b { Primitive(b_) } else { null_primitive }
+}
+
+fn array_time_to_primitive(b []time.Time) Primitive {
+	return Primitive(b.map(time_to_primitive(it)))
 }
 
 fn infix_to_primitive(b InfixType) Primitive {

@@ -45,4 +45,7 @@ fn test_orm_mut_db() {
 	not_in_users := get_users_not_in(mut db, ['second'])!
 
 	assert not_in_users.len == 1
+
+	all_users := get_users_in(mut db, ['first', 'second'])!
+	assert all_users.len == 2
 }

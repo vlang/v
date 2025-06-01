@@ -625,6 +625,8 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 			typ = 'option_${typ}'
 		} else if g.table.final_sym(t).kind == .enum {
 			typ = g.table.sym(g.table.final_type(t)).cname
+		} else if g.table.final_sym(t).kind == .array {
+			typ = g.table.sym(g.table.final_type(t)).cname.to_lower()
 		}
 		g.write('orm__${typ}_to_primitive(')
 		if expr is ast.CallExpr {
@@ -777,6 +779,12 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 				}
 				.not_is {
 					'orm__OperationKind__is_not_null'
+				}
+				.key_in {
+					'orm__OperationKind__in'
+				}
+				.not_in {
+					'orm__OperationKind__not_in'
 				}
 				else {
 					''
