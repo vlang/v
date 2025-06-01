@@ -729,7 +729,7 @@ fn normalize_path_in_builder(mut sb strings.Builder) {
 @[params]
 pub struct WalkParams {
 pub:
-	hiddens bool
+	hidden bool
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
