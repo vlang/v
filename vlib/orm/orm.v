@@ -66,6 +66,8 @@ pub enum OperationKind {
 	orm_ilike   // ILIKE
 	is_null     // IS NULL
 	is_not_null // IS NOT NULL
+	in          // IN
+	not_in      // NOT IN
 }
 
 pub enum MathOperationKind {
@@ -105,6 +107,8 @@ fn (kind OperationKind) to_str() string {
 		.orm_ilike { 'ILIKE' }
 		.is_null { 'IS NULL' }
 		.is_not_null { 'IS NOT NULL' }
+		.in { 'IN' }
+		.not_in { 'NOT IN' }
 	}
 	return str
 }
