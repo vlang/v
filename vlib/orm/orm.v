@@ -407,9 +407,8 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		}
 		str += '${q}${field}${q} ${where.kinds[i].to_str()}'
 		if !where.kinds[i].is_unary() {
-			data := where.data[i]
-			if data is []Primitive {
-				len := data.len
+			if where.data.len > i && where.data[i] is []Primitive {
+				len := (where.data[i] as []Primitive).len
 				mut tmp := []string{len: len}
 				for j in 0 .. len {
 					tmp[j] = '${qm}'
