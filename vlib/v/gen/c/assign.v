@@ -25,7 +25,9 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		} else {
 			'${expr}'
 		}
-		var_str := if expr_typ.has_flag(.option_mut_param_t) { '(${"*".repeat(expr_typ.nr_muls())}${c_name(expr_var)})' }  else {
+		var_str := if expr_typ.has_flag(.option_mut_param_t) {
+			'(${'*'.repeat(expr_typ.nr_muls())}${c_name(expr_var)})'
+		} else {
 			c_name(expr_var)
 		}
 		g.writeln('if (${var_str}.state != 0) { // assign')
@@ -835,7 +837,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					if op_overloaded {
 						g.op_arg(left, op_expected_left, var_type)
 					} else {
-						if !is_decl && !is_shared_re_assign && left.is_auto_deref_var() && !var_type.has_flag(.option) {
+						if !is_decl && !is_shared_re_assign && left.is_auto_deref_var()
+							&& !var_type.has_flag(.option) {
 							g.write('*')
 						}
 						if node_.op == .assign && var_type.has_flag(.option_mut_param_t) {
@@ -870,7 +873,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						continue
 					}
 				}
-			} else if  !var_type.has_flag(.option_mut_param_t) && cur_indexexpr == -1 && !str_add && !op_overloaded {
+			} else if !var_type.has_flag(.option_mut_param_t) && cur_indexexpr == -1 && !str_add
+				&& !op_overloaded {
 				g.write(' ${op} ')
 			} else if str_add || op_overloaded {
 				g.write(', ')

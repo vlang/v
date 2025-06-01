@@ -2346,7 +2346,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				}
 				if !expr.is_literal() && expr_typ != ast.nil_type
 					&& ret_typ.nr_muls() > expr_typ.nr_muls()
-					&& !ret_typ.has_flag(.option_mut_param_t)  {
+					&& !ret_typ.has_flag(.option_mut_param_t) {
 					g.write('&'.repeat(ret_typ.nr_muls() - expr_typ.nr_muls()))
 				}
 			}

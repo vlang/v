@@ -207,12 +207,16 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	// 	'**(${sym.cname}**)&'
 	deref := if typ.is_ptr() {
 		if !typ.has_flag(.option_mut_param_t) {
-			dot := if expects_ptr { '*'.repeat(typ.nr_muls()) } else { '*'.repeat(typ.nr_muls() + 1) }
+			dot := if expects_ptr {
+				'*'.repeat(typ.nr_muls())
+			} else {
+				'*'.repeat(typ.nr_muls() + 1)
+			}
 			'${dot}(${sym.cname}**)&'
 		} else {
-				'*(${sym.cname}*)'
+			'*(${sym.cname}*)'
 		}
-	} else if expects_ptr  {
+	} else if expects_ptr {
 		'(${sym.cname}*)'
 	} else {
 		'*(${sym.cname}*)'

@@ -128,13 +128,13 @@ pub mut:
 
 // max of 8
 pub enum TypeFlag as u32 {
-	option   = 1 << 24
-	result   = 1 << 25
-	variadic = 1 << 26
-	generic  = 1 << 27
-	shared_f = 1 << 28
-	atomic_f = 1 << 29
-	option_mut_param_t = 1<<30
+	option             = 1 << 24
+	result             = 1 << 25
+	variadic           = 1 << 26
+	generic            = 1 << 27
+	shared_f           = 1 << 28
+	atomic_f           = 1 << 29
+	option_mut_param_t = 1 << 30
 }
 
 /*
