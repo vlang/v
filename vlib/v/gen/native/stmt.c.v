@@ -255,6 +255,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 }
 
 fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
+	main_reg := g.code_gen.main_reg()
 	if node.is_range {
 		g.println('; for ${node.val_var} in range {')
 		// for a in node.cond .. node.high {
@@ -262,7 +263,6 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		i := g.code_gen.allocate_var(node.val_var, 8, i64(0)) // iterator variable
 		g.println('; evaluate node.cond for lower bound:')
 		g.expr(node.cond) // outputs the lower loop bound (initial value) to the main reg
-		main_reg := g.code_gen.main_reg()
 		g.println('; move the result to i')
 		g.code_gen.mov_reg_to_var(LocalVar{i, ast.i64_type_idx, node.val_var}, main_reg) // i = node.cond // initial value
 
@@ -299,11 +299,79 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		g.labels.addrs[end_label] = g.pos()
 		g.println('; label ${end_label} (end_label)')
 		g.println('; for ${node.val_var} in range }')
+	} else if node.kind == .string {
+		g.println('; for ${node.val_var} in string {')
+		// for c in my_string {
+
+		key_var := if node.key_var == '' { 'i' } else { node.key_var }
+		i := g.code_gen.allocate_var(key_var, 8, i64(0)) // iterator variable
+		c := g.code_gen.allocate_var(node.val_var, 1, i64(0)) // char variable
+
+		g.expr(node.cond) // get the address of the string variable
+		g.code_gen.mov_deref(Amd64Register.rdx, main_reg, ast.charptr_type)
+		g.println('; push address of the string chars')
+		g.code_gen.push(Amd64Register.rdx) // address of the string
+		g.code_gen.add(main_reg, g.get_field_offset(ast.string_type, 'len'))
+		g.println('; push address of the len:')
+		g.code_gen.push(main_reg) // address of the len
+
+		start := g.pos() // label-begin:
+
+		g.println('; check iterator against upper loop bound')
+		g.code_gen.mov_var_to_reg(main_reg, LocalVar{i, ast.i64_type_idx, key_var})
+		g.println('; pop address of the len:')
+		g.code_gen.pop2(Amd64Register.rdx)
+		g.println('; push address of the len:')
+		g.code_gen.push(Amd64Register.rdx) // len
+		g.code_gen.mov_deref(Amd64Register.rdx, Amd64Register.rdx, ast.int_type)
+		g.code_gen.cmp_reg2(main_reg, Amd64Register.rdx)
+		jump_addr := g.code_gen.cjmp(.jge) // leave loop i >= len
+
+		g.println('; pop address of the len:')
+		g.code_gen.pop2(Amd64Register.rdx) // len
+		g.println('; pop address of the string chars')
+		g.code_gen.pop2(Amd64Register.rax) // address of the string
+		g.println('; push address of the string chars')
+		g.code_gen.push(Amd64Register.rax)
+		g.println('; push address of the len:')
+		g.code_gen.push(Amd64Register.rdx) // len
+
+		g.code_gen.mov_var_to_reg(Amd64Register.rdx, LocalVar{i, ast.i64_type_idx, key_var})
+		g.code_gen.add_reg2(Amd64Register.rax, Amd64Register.rdx)
+		g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u8_type_idx)
+		g.code_gen.mov_reg_to_var(LocalVar{c, ast.u8_type_idx, node.val_var}, Amd64Register.rax) // store the char
+
+		end_label := g.labels.new_label()
+		g.labels.patches << LabelPatch{
+			id:  end_label
+			pos: jump_addr
+		}
+		g.println('; jump to label ${end_label} (end_label)')
+
+		start_label := g.labels.new_label() // used for continue
+		g.labels.branches << BranchLabel{
+			name:  node.label
+			start: start_label
+			end:   end_label
+		}
+		g.stmts(node.stmts) // writes the actual body of the loop
+
+		g.labels.addrs[start_label] = g.pos() // used for continue (continue: jump before the inc)
+		g.println('; label ${start_label} (continue_label)')
+
+		g.code_gen.inc_var(LocalVar{i, ast.i64_type_idx, key_var})
+		g.labels.branches.pop()
+		g.code_gen.jmp_back(start) // loops
+
+		g.labels.addrs[end_label] = g.pos()
+		g.code_gen.pop2(Amd64Register.rdx) // len
+		g.code_gen.pop2(Amd64Register.rax) // address of the string
+		g.println('; label ${end_label} (end_label)')
+		g.println('; for ${node.val_var} in string }')
 		/*
 	} else if node.kind == .array {
 	} else if node.kind == .array_fixed {
 	} else if node.kind == .map {
-	} else if node.kind == .string {
 	} else if node.kind == .struct {
 	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
 	} else if it.kind == .map {

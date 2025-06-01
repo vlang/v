@@ -212,6 +212,10 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 	c.g.println('cmp ${reg}, ${val}')
 }
 
+fn (mut c Amd64) cmp_reg2(reg Register, reg2 Register) {
+	c.cmp_reg(reg as Amd64Register, reg2 as Amd64Register)
+}
+
 // `cmp rax, rbx`
 fn (mut c Amd64) cmp_reg(reg Amd64Register, reg2 Amd64Register) {
 	match reg {
@@ -627,7 +631,7 @@ fn (mut c Amd64) mov_deref(r Register, rptr Register, typ ast.Type) {
 		})
 	}
 	c.g.write8(i32(reg) % 8 * 8 + i32(regptr) % 8)
-	c.g.println('mov ${reg}, [${regptr}]')
+	c.g.println('mov ${reg}, [${regptr}]; size ${size}')
 }
 
 fn (mut c Amd64) mov_store(regptr Amd64Register, reg Amd64Register, size Size) {
@@ -1010,6 +1014,9 @@ fn (mut c Amd64) extern_call(addr i32) {
 			c.g.write32(addr)
 			c.g.println('call QWORD [rip + 0xffffffff${int(addr).hex()}]')
 		}
+		.macos {
+			eprintln('## TODO, macos, extern_call, addr: ${addr}')
+		}
 		else {
 			c.g.n_error('${@LOCATION} extern calls not implemented for ${c.g.pref.os}')
 		}
@@ -1098,8 +1105,12 @@ fn (mut c Amd64) push(r Register) {
 		c.g.write8(0x50 + i32(reg) - 8)
 	}
 	c.is_16bit_aligned = !c.is_16bit_aligned
-	c.g.println('push ${reg}')
 	c.g.stack_depth++
+	c.g.println('push ${reg}; stack_depth:${c.g.stack_depth}')
+}
+
+fn (mut c Amd64) pop2(r Register) {
+	c.pop(r as Amd64Register)
 }
 
 pub fn (mut c Amd64) pop(reg Amd64Register) {
@@ -1108,8 +1119,8 @@ pub fn (mut c Amd64) pop(reg Amd64Register) {
 	}
 	c.g.write8(0x58 + i32(reg) % 8)
 	c.is_16bit_aligned = !c.is_16bit_aligned
-	c.g.println('pop ${reg}')
 	c.g.stack_depth--
+	c.g.println('pop ${reg} ; stack_depth:${c.g.stack_depth}')
 }
 
 pub fn (mut c Amd64) sub8(reg Amd64Register, val i32) {
@@ -1876,7 +1887,7 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 						c.bitand_reg(.rdx, .rbx)
 					}
 				}
-				else {}
+				else {} // handled below
 			}
 		}
 		if is_floats[i] {
@@ -2203,12 +2214,13 @@ fn (mut c Amd64) mov_float_xmm0_var(reg Amd64Register, var_type ast.Type) {
 	}
 }
 
-fn (mut c Amd64) create_string_struct(typ ast.Type, name string, str string) {
+fn (mut c Amd64) create_string_struct(typ ast.Type, name string, str string) i32 {
 	dest := c.allocate_var(name, c.g.get_type_size(typ), i64(0))
 	c.learel(Amd64Register.rsi, c.g.allocate_string(str, 3, .rel32))
 	c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, Amd64Register.rsi)
 	offset := c.g.get_field_offset(typ, 'len')
 	c.mov_int_to_var(LocalVar{dest, ast.i32_type_idx, name}, i32(str.len), offset: offset)
+	return dest
 }
 
 fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.Expr, name string, ident ast.Ident) {
@@ -3617,7 +3629,7 @@ pub fn (mut c Amd64) allocate_var(name string, size i32, initial_val Number) i32
 	}
 
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
-	c.g.println('mov [rbp-${int(n).hex2()}], ${initial_val} ; Allocate var `${name}`')
+	c.g.println('mov [rbp-${int(n).hex2()}], ${initial_val} ; Allocate var `${name}` size: ${size}')
 	return c.g.stack_var_pos
 }
 
@@ -3687,18 +3699,54 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 				else {}
 			}
 			for f in init.init_fields {
+				c.g.println('; ${var.name}.${f.name}')
 				field := ts.find_field(f.name) or {
 					c.g.n_error('${@LOCATION} Could not find field `${f.name}` on init (${ts.info})')
 				}
-				offset := c.g.structs[typ.idx()].offsets[field.i]
+				f_offset := c.g.structs[typ.idx()].offsets[field.i]
+				f_ts := c.g.table.sym(field.typ)
 
 				c.g.expr(f.expr)
-				// TODO: expr not on rax
-				c.mov_reg_to_var(var, Amd64Register.rax, offset: offset, typ: field.typ)
+				if f_ts.info is ast.Struct {
+					c.copy_struct_to_struct(field, f_offset, 0, var)
+				} else {
+					// TODO: expr not on rax -> may be done
+					c.mov_reg_to_var(var, Amd64Register.rax, offset: f_offset, typ: field.typ)
+				}
 			}
 		}
 		GlobalVar {
 			c.g.n_error('${@LOCATION} GlobalVar not implemented for ast.StructInit')
+		}
+	}
+}
+
+// f_offset is the offset of the field in the root struct
+// data_offset is the offset to add to rax to find the data
+// needs rax to hold the address of the root field data
+fn (mut c Amd64) copy_struct_to_struct(field ast.StructField, f_offset i32, data_offset i32, var LocalVar) {
+	f_typ_idx := field.typ.idx()
+	f_ts := c.g.table.sym(field.typ)
+
+	for f2 in (f_ts.info as ast.Struct).fields {
+		c.g.println('; ${var.name}. ... .${f2.name}')
+		field2 := f_ts.find_field(f2.name) or {
+			c.g.n_error('${@LOCATION} Could not find field `${f2.name}` on init (${f_ts.info})')
+		}
+		f2_offset := c.g.structs[f_typ_idx].offsets[field2.i]
+		f2_ts := c.g.table.sym(field2.typ)
+
+		if f2_ts.info is ast.Struct {
+			c.copy_struct_to_struct(field2, f_offset + f2_offset, data_offset + f2_offset,
+				var)
+		} else {
+			c.mov_reg(Amd64Register.rdx, Amd64Register.rax)
+			c.add(Amd64Register.rdx, data_offset + f2_offset)
+			c.mov_deref(Amd64Register.rdx, Amd64Register.rdx, field2.typ)
+			c.mov_reg_to_var(var, Amd64Register.rdx,
+				offset: f_offset + f2_offset
+				typ:    field2.typ
+			)
 		}
 	}
 }

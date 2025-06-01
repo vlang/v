@@ -494,7 +494,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					typ_name:      typ_name
 					val_name:      'map'
 					default_value: 'new map({})'
-					constructor:   'this.map = map; this.length = 0;'
+					constructor:   'this.map = map; this.length = Object.keys(this.map).length;'
 					value_of:      'this'
 					to_string:     'this.map.toString()'
 					eq:            'new bool(vEq(self, other))'

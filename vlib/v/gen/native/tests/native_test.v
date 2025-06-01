@@ -1,20 +1,36 @@
 // vtest build: (amd64 || arm64) && !self_sandboxed_packaging? && !gcc-windows
+@[has_globals]
+module main
+
 import os
 import time
 import benchmark
 import term
+import log
+import os.filelock
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 const user_os = os.user_os()
 const wrkdir = os.join_path(os.vtmp_dir(), 'native_tests')
 
+const flock_path = os.join_path(os.vtmp_dir(), 'native_tests.lock')
+
+__global flock_singleton = filelock.new(flock_path)
+
 fn testsuite_begin() {
+	log.info(@FN)
+	if !flock_singleton.try_acquire() {
+		log.info('>>>> skipping ${@FILE}, since it has been already started and ${flock_path} is present...')
+		exit(0)
+	}
 	os.mkdir_all(wrkdir) or {}
 	os.chdir(wrkdir) or {}
 }
 
 fn testsuite_end() {
 	os.rmdir_all(wrkdir) or {}
+	flock_singleton.release()
+	log.info(@FN)
 }
 
 // TODO: some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
@@ -49,7 +65,7 @@ fn test_native() {
 				continue
 			}
 		}
-		if test == 'fibonacci_native.vv' {
+		if test == 'fibonacci_native.vv' || test.contains('linux') {
 			if user_os == 'windows' {
 				println('>>> SKIPPING ${test} on windows for now')
 				continue

@@ -110,6 +110,7 @@ struct IsXTest {
 
 // vfmt off
 const is_power_of_2_test_data = [
+	IsXTest{ "-4", false },
 	IsXTest{ u32(0b110000000000), false },
 	IsXTest{ "537502395172353242345", false },
 	IsXTest{ "590295810358705700000", false },

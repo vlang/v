@@ -8,19 +8,7 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
- *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 #ifndef MBEDTLS_AESNI_H
 #define MBEDTLS_AESNI_H
@@ -32,13 +20,48 @@
 #define MBEDTLS_AESNI_AES      0x02000000u
 #define MBEDTLS_AESNI_CLMUL    0x00000002u
 
-#if defined(MBEDTLS_HAVE_ASM) && defined(__GNUC__) &&  \
-    ( defined(__amd64__) || defined(__x86_64__) )   &&  \
-    ! defined(MBEDTLS_HAVE_X86_64)
-#define MBEDTLS_HAVE_X86_64
+#if defined(MBEDTLS_AESNI_C) && \
+    (defined(MBEDTLS_ARCH_IS_X64) || defined(MBEDTLS_ARCH_IS_X86))
+
+/* Can we do AESNI with intrinsics?
+ * (Only implemented with certain compilers, only for certain targets.)
+ */
+#undef MBEDTLS_AESNI_HAVE_INTRINSICS
+#if defined(_MSC_VER) && !defined(__clang__)
+/* Visual Studio supports AESNI intrinsics since VS 2008 SP1. We only support
+ * VS 2013 and up for other reasons anyway, so no need to check the version. */
+#define MBEDTLS_AESNI_HAVE_INTRINSICS
+#endif
+/* GCC-like compilers: currently, we only support intrinsics if the requisite
+ * target flag is enabled when building the library (e.g. `gcc -mpclmul -msse2`
+ * or `clang -maes -mpclmul`). */
+#if (defined(__GNUC__) || defined(__clang__)) && defined(__AES__) && defined(__PCLMUL__)
+#define MBEDTLS_AESNI_HAVE_INTRINSICS
+#endif
+/* For 32-bit, we only support intrinsics */
+#if defined(MBEDTLS_ARCH_IS_X86) && (defined(__GNUC__) || defined(__clang__))
+#define MBEDTLS_AESNI_HAVE_INTRINSICS
 #endif
 
-#if defined(MBEDTLS_HAVE_X86_64)
+/* Choose the implementation of AESNI, if one is available.
+ *
+ * Favor the intrinsics-based implementation if it's available, for better
+ * maintainability.
+ * Performance is about the same (see #7380).
+ * In the long run, we will likely remove the assembly implementation. */
+#if defined(MBEDTLS_AESNI_HAVE_INTRINSICS)
+#define MBEDTLS_AESNI_HAVE_CODE 2 // via intrinsics
+#elif defined(MBEDTLS_HAVE_ASM) && \
+    (defined(__GNUC__) || defined(__clang__)) && defined(MBEDTLS_ARCH_IS_X64)
+/* Can we do AESNI with inline assembly?
+ * (Only implemented with gas syntax, only for 64-bit.)
+ */
+#define MBEDTLS_AESNI_HAVE_CODE 1 // via assembly
+#else
+#error "MBEDTLS_AESNI_C defined, but neither intrinsics nor assembly available"
+#endif
+
+#if defined(MBEDTLS_AESNI_HAVE_CODE)
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,7 +78,11 @@ extern "C" {
  *
  * \return         1 if CPU has support for the feature, 0 otherwise
  */
-int mbedtls_aesni_has_support( unsigned int what );
+#if !defined(MBEDTLS_AES_USE_HARDWARE_ONLY)
+int mbedtls_aesni_has_support(unsigned int what);
+#else
+#define mbedtls_aesni_has_support(what) 1
+#endif
 
 /**
  * \brief          Internal AES-NI AES-ECB block encryption and decryption
@@ -70,10 +97,10 @@ int mbedtls_aesni_has_support( unsigned int what );
  *
  * \return         0 on success (cannot fail)
  */
-int mbedtls_aesni_crypt_ecb( mbedtls_aes_context *ctx,
-                             int mode,
-                             const unsigned char input[16],
-                             unsigned char output[16] );
+int mbedtls_aesni_crypt_ecb(mbedtls_aes_context *ctx,
+                            int mode,
+                            const unsigned char input[16],
+                            unsigned char output[16]);
 
 /**
  * \brief          Internal GCM multiplication: c = a * b in GF(2^128)
@@ -88,10 +115,11 @@ int mbedtls_aesni_crypt_ecb( mbedtls_aes_context *ctx,
  * \note           Both operands and result are bit strings interpreted as
  *                 elements of GF(2^128) as per the GCM spec.
  */
-void mbedtls_aesni_gcm_mult( unsigned char c[16],
-                             const unsigned char a[16],
-                             const unsigned char b[16] );
+void mbedtls_aesni_gcm_mult(unsigned char c[16],
+                            const unsigned char a[16],
+                            const unsigned char b[16]);
 
+#if !defined(MBEDTLS_BLOCK_CIPHER_NO_DECRYPT)
 /**
  * \brief           Internal round key inversion. This function computes
  *                  decryption round keys from the encryption round keys.
@@ -103,9 +131,10 @@ void mbedtls_aesni_gcm_mult( unsigned char c[16],
  * \param fwdkey    Original round keys (for encryption)
  * \param nr        Number of rounds (that is, number of round keys minus one)
  */
-void mbedtls_aesni_inverse_key( unsigned char *invkey,
-                                const unsigned char *fwdkey,
-                                int nr );
+void mbedtls_aesni_inverse_key(unsigned char *invkey,
+                               const unsigned char *fwdkey,
+                               int nr);
+#endif /* !MBEDTLS_BLOCK_CIPHER_NO_DECRYPT */
 
 /**
  * \brief           Internal key expansion for encryption
@@ -119,14 +148,15 @@ void mbedtls_aesni_inverse_key( unsigned char *invkey,
  *
  * \return          0 if successful, or MBEDTLS_ERR_AES_INVALID_KEY_LENGTH
  */
-int mbedtls_aesni_setkey_enc( unsigned char *rk,
-                              const unsigned char *key,
-                              size_t bits );
+int mbedtls_aesni_setkey_enc(unsigned char *rk,
+                             const unsigned char *key,
+                             size_t bits);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* MBEDTLS_HAVE_X86_64 */
+#endif /* MBEDTLS_AESNI_HAVE_CODE */
+#endif  /* MBEDTLS_AESNI_C && (MBEDTLS_ARCH_IS_X64 || MBEDTLS_ARCH_IS_X86) */
 
 #endif /* MBEDTLS_AESNI_H */

@@ -677,6 +677,8 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 				.function { f.write('\$function') }
 				.option { f.write('\$option') }
 				.string { f.write('\$string') }
+				.pointer { f.write('\$pointer') }
+				.voidptr { f.write('\$voidptr') }
 			}
 		}
 	}
