@@ -850,7 +850,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 						&& cond.right in [ast.IntegerLiteral, ast.StringLiteral] {
 						// $if field.indirections == 1
 						// $if method.args.len == 1
-						if cond.left.name_type == 0
+						if cond.left.typ == 0 && cond.left.name_type == 0
 							&& (cond.left.expr is ast.Ident && cond.left.expr.name.len == 1) {
 							c.expr(mut cond.left)
 						}
@@ -912,7 +912,8 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 					}
 				}
 				.gt, .lt, .ge, .le {
-					if cond.left is ast.SelectorExpr && cond.left.name_type == 0
+					if cond.left is ast.SelectorExpr && cond.left.typ == 0
+						&& cond.left.name_type == 0
 						&& (cond.left.expr is ast.Ident && cond.left.expr.name.len == 1) {
 						c.expr(mut cond.left)
 					}
