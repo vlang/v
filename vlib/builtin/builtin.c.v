@@ -436,7 +436,6 @@ pub fn malloc(n isize) &u8 {
 		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	vplayground_mlimit(n)
 	if n < 0 {
 		_memory_panic(@FN, n)
 	} else if n == 0 {
@@ -474,7 +473,6 @@ pub fn malloc_noscan(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	vplayground_mlimit(n)
 	if n < 0 {
 		_memory_panic(@FN, n)
 	}
@@ -526,7 +524,6 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_uncollectable %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	vplayground_mlimit(n)
 	if n < 0 {
 		_memory_panic(@FN, n)
 	}
@@ -657,7 +654,6 @@ pub fn vcalloc_noscan(n isize) &u8 {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
 	}
-	vplayground_mlimit(n)
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
@@ -830,12 +826,3 @@ pub fn arguments() []string {
 	return res
 }
 
-@[if vplayground ?]
-fn vplayground_mlimit(n isize) {
-	if n > 10000 {
-		panic('allocating more than 10 KB at once is not allowed in the V playground')
-	}
-	if total_m > 50 * 1024 * 1024 {
-		panic('allocating more than 50 MB is not allowed in the V playground')
-	}
-}
