@@ -5193,7 +5193,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				} else {
 					if node.obj is ast.Var {
 						// mutable option var
-						if g.is_assign_lhs && node.obj.is_auto_deref {
+						if (g.is_assign_lhs || g.inside_struct_init) && node.obj.is_auto_deref {
 							g.write('*')
 						}
 						if node.obj.is_inherited {
