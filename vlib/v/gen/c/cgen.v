@@ -2296,7 +2296,6 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			g.writeln('${ret_styp} ${tmp_var};')
 		} else {
 			if ret_typ.has_flag(.option_mut_param_t) {
-				styp = styp.replace('*', '')
 				ret_styp := g.styp(ret_typ).replace('*', '')
 				g.writeln('${ret_styp} ${tmp_var};')
 			} else {
@@ -2346,8 +2345,18 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					&& ret_typ.nr_muls() > expr_typ.nr_muls()
 					&& !ret_typ.has_flag(.option_mut_param_t) {
 					g.write('&'.repeat(ret_typ.nr_muls() - expr_typ.nr_muls()))
-				} else if expr_typ.is_ptr() && ret_typ.has_flag(.option_mut_param_t) {
-					g.write('*')
+				} else if ret_typ.has_flag(.option_mut_param_t) {
+					if expr_typ.is_ptr() {
+						if ret_typ.nr_muls() < expr_typ.nr_muls() {
+							g.write('*')
+						}
+					} else {
+						if expr_typ.has_flag(.option) {
+							fn_option_clone = true
+							g.write('(${styp})')
+						}
+						g.write('&')
+					}
 				}
 			}
 		} else {

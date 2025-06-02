@@ -840,7 +840,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						if node_.op == .assign && var_type.has_flag(.option_mut_param_t) {
 							g.write('memcpy(&')
 							g.expr(left)
-							g.write('->data, &')
+							g.write('->data, *(${g.styp(val_type)}**)&')
 						} else if var_type.has_flag(.option_mut_param_t) {
 							g.expr(left)
 							g.write(' = ')
