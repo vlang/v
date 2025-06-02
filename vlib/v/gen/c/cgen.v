@@ -3788,6 +3788,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				cur_line := g.go_before_last_stmt().trim_space()
 				mut expr_str := ''
 				mut is_unwrapped := true
+				mut dot_or_ptr := '.'
 				if mut node.expr is ast.ComptimeSelector && node.expr.left is ast.Ident {
 					// val.$(field.name)?
 					expr_str = g.gen_comptime_selector(node.expr)
@@ -3795,8 +3796,13 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					// val?
 					expr_str = node.expr.name
 					is_unwrapped = !g.inside_assign
+					dot_or_ptr = if !(node.expr.obj is ast.Var && node.expr.obj.is_auto_deref) {
+						'.'
+					} else {
+						'->'
+					}
 				}
-				g.writeln('if (${expr_str}.state != 0) {')
+				g.writeln('if (${expr_str}${dot_or_ptr}state != 0) {')
 				g.writeln2('\tpanic_option_not_set(_SLIT("none"));', '}')
 				g.write(cur_line)
 				if is_unwrapped {
@@ -7039,7 +7045,11 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 // Returns the type of the last stmt
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Type) {
 	cvar_name := c_name(var_name)
-	tmp_op := if var_name in g.tmp_var_ptr { '->' } else { '.' }
+	tmp_op := if var_name in g.tmp_var_ptr || return_type.has_flag(.option_mut_param_t) {
+		'->'
+	} else {
+		'.'
+	}
 	if or_block.kind == .block && or_block.stmts.len == 0 {
 		// generate nothing, block is empty
 		g.write(';\n${util.tabs(g.indent)}(void)${cvar_name};')

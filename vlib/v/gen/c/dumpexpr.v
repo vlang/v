@@ -126,11 +126,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		} else {
 			if is_option {
 				str_dumparg_type += '_option_'
-				if typ.has_flag(.option_mut_param_t) {
-					ptr_asterisk = ptr_asterisk.replace('*', '')
-				} else {
-					ptr_asterisk = ptr_asterisk.replace('*', '_ptr')
-				}
+				ptr_asterisk = ptr_asterisk.replace('*', '_ptr')
 			}
 			str_dumparg_type += g.cc_type(typ, true) + ptr_asterisk
 		}

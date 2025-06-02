@@ -25,12 +25,8 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		} else {
 			'${expr}'
 		}
-		var_str := if expr_typ.has_flag(.option_mut_param_t) {
-			'(${'*'.repeat(expr_typ.nr_muls())}${c_name(expr_var)})'
-		} else {
-			c_name(expr_var)
-		}
-		g.writeln('if (${var_str}.state != 0) { // assign')
+		dot_or_ptr := if !expr_typ.has_flag(.option_mut_param_t) { '.' } else { '-> ' }
+		g.writeln('if (${c_name(expr_var)}${dot_or_ptr}state != 0) { // assign')
 		if expr is ast.Ident && expr.or_expr.kind == .propagate_option {
 			g.writeln('\tpanic_option_not_set(_SLIT("none"));')
 		} else {
