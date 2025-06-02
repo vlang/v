@@ -612,7 +612,8 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 				.eq, .ne {
 					// TODO: Implement `$if method.args.len == 1`
 					if cond.left is ast.SelectorExpr && (g.comptime.comptime_for_field_var.len > 0
-						|| g.comptime.comptime_for_method != unsafe { nil }) {
+						|| g.comptime.comptime_for_method != unsafe { nil }
+						|| cond.left.name_type != 0) {
 						if cond.right is ast.StringLiteral {
 							if cond.left.expr is ast.Ident && cond.left.field_name == 'name' {
 								if g.comptime.comptime_for_method_var.len > 0
@@ -645,9 +646,14 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							}
 						} else if cond.right is ast.IntegerLiteral {
 							if g.comptime.is_comptime_selector_field_name(cond.left, 'indirections') {
+								left_muls := if cond.left.name_type != 0 {
+									g.unwrap_generic(cond.left.name_type).nr_muls()
+								} else {
+									g.comptime.comptime_for_field_type.nr_muls()
+								}
 								is_true := match cond.op {
-									.eq { g.comptime.comptime_for_field_type.nr_muls() == cond.right.val.i64() }
-									.ne { g.comptime.comptime_for_field_type.nr_muls() != cond.right.val.i64() }
+									.eq { left_muls == cond.right.val.i64() }
+									.ne { left_muls != cond.right.val.i64() }
 									else { false }
 								}
 								if is_true {
@@ -723,11 +729,17 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 				.gt, .lt, .ge, .le {
 					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral
 						&& g.comptime.is_comptime_selector_field_name(cond.left, 'indirections') {
+						left := cond.left as ast.SelectorExpr
+						left_muls := if left.name_type != 0 {
+							g.unwrap_generic(left.name_type).nr_muls()
+						} else {
+							g.comptime.comptime_for_field_type.nr_muls()
+						}
 						is_true := match cond.op {
-							.gt { g.comptime.comptime_for_field_type.nr_muls() > cond.right.val.i64() }
-							.lt { g.comptime.comptime_for_field_type.nr_muls() < cond.right.val.i64() }
-							.ge { g.comptime.comptime_for_field_type.nr_muls() >= cond.right.val.i64() }
-							.le { g.comptime.comptime_for_field_type.nr_muls() <= cond.right.val.i64() }
+							.gt { left_muls > cond.right.val.i64() }
+							.lt { left_muls < cond.right.val.i64() }
+							.ge { left_muls >= cond.right.val.i64() }
+							.le { left_muls <= cond.right.val.i64() }
 							else { false }
 						}
 						if is_true {

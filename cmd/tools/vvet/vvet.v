@@ -404,8 +404,8 @@ fn (mut vt Vet) const_decl(stmt ast.ConstDecl) {
 fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {
 	if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral {
 		operand := (expr.left as ast.SelectorExpr) // TODO: remove as-casts when multiple conds can be smart-casted.
-		if operand.expr is ast.Ident && operand.expr.info.typ == ast.string_type_idx
-			&& operand.field_name == 'len' {
+		if operand.expr is ast.Ident && operand.field_name == 'len'
+			&& operand.expr.info.typ == ast.string_type_idx {
 			if expr.op != .lt && expr.right.val == '0' {
 				// Case: `var.len > 0`, `var.len == 0`, `var.len != 0`
 				op := if expr.op == .gt { '!=' } else { expr.op.str() }
