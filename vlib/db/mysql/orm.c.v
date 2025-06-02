@@ -247,6 +247,11 @@ fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 		orm.Null {
 			stmt.bind_null()
 		}
+		[]orm.Primitive {
+			for element in data {
+				stmt_bind_primitive(mut stmt, element)
+			}
+		}
 	}
 }
 
