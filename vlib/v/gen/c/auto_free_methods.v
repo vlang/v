@@ -84,7 +84,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 }
 
 fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, styp string, fn_name string) {
-	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it); // auto')
+	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it);')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
@@ -106,7 +106,7 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 }
 
 fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, fn_name string) {
-	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it); // auto')
+	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it);')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
@@ -176,7 +176,7 @@ fn (mut g Gen) gen_type_name_for_free_call(typ ast.Type) string {
 }
 
 fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
-	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it); // auto')
+	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it);')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
@@ -201,7 +201,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 }
 
 fn (mut g Gen) gen_free_for_map(typ ast.Type, styp string, fn_name string) {
-	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it); // auto')
+	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it);')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()

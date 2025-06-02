@@ -25,6 +25,6 @@ string v__embed_file__EmbedFileData_to_string(v__embed_file__EmbedFileData* orig
 v__embed_file__EmbedFileIndexEntry* v__embed_file__find_index_entry_by_path(voidptr start, string path, string algo) {
 
 v__embed_file__EmbedFileData my_source = _v_embed_file_metadata(
-res.path = _SLIT("embed.vv");
-res.apath = _SLIT("");
-res.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, _SLIT("embed.vv"), _SLIT("zlib"))->data;
+res.path = _S("embed.vv");
+res.apath = _S("");
+res.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, _S("embed.vv"), _S("zlib"))->data;

@@ -312,7 +312,7 @@ ${static_non_parallel}void* __closure_create(void* fn, void* data) {
 const c_common_macros = '
 #define EMPTY_VARG_INITIALIZATION 0
 #define EMPTY_STRUCT_DECLARATION
-#define EMPTY_STRUCT_INITIALIZATION
+#define E_STRUCT
 // Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
 #define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
 #define TCCSKIP(x) x
@@ -392,9 +392,9 @@ const c_common_macros = '
 #ifdef _MSC_VER
 	#undef __V_GCC__
 	#undef EMPTY_STRUCT_DECLARATION
-	#undef EMPTY_STRUCT_INITIALIZATION
+	#undef E_STRUCT
 	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
-	#define EMPTY_STRUCT_INITIALIZATION 0
+	#define E_STRUCT 0
 #endif
 
 #ifndef _WIN32
@@ -411,9 +411,9 @@ const c_common_macros = '
 #ifdef __TINYC__
 	#define _Atomic volatile
 	#undef EMPTY_STRUCT_DECLARATION
-	#undef EMPTY_STRUCT_INITIALIZATION
+	#undef E_STRUCT
 	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
-	#define EMPTY_STRUCT_INITIALIZATION 0
+	#define E_STRUCT 0
 	#undef EMPTY_ARRAY_OF_ELEMS
 	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 	#undef __NOINLINE
@@ -444,8 +444,8 @@ const c_common_macros = '
 #define OPTION_CAST(x) (x)
 
 #if defined(_WIN32) || defined(__CYGWIN__)
-	#define VV_EXPORTED_SYMBOL extern __declspec(dllexport)
-	#define VV_LOCAL_SYMBOL static
+	#define VV_EXP extern __declspec(dllexport)
+	#define VV_LOC static
 #else
 	// 4 < gcc < 5 is used by some older Ubuntu LTS and Centos versions,
 	// and does not support __has_attribute(visibility) ...
@@ -454,18 +454,18 @@ const c_common_macros = '
 	#endif
 	#if (defined(__GNUC__) && (__GNUC__ >= 4)) || (defined(__clang__) && __has_attribute(visibility))
 		#ifdef ARM
-			#define VV_EXPORTED_SYMBOL  extern __attribute__((externally_visible,visibility("default")))
+			#define VV_EXP  extern __attribute__((externally_visible,visibility("default")))
 		#else
-			#define VV_EXPORTED_SYMBOL  extern __attribute__((visibility("default")))
+			#define VV_EXP  extern __attribute__((visibility("default")))
 		#endif
 		#if defined(__clang__) && (defined(_VUSECACHE) || defined(_VBUILDMODULE))
-			#define VV_LOCAL_SYMBOL static
+			#define VV_LOC static
 		#else
-			#define VV_LOCAL_SYMBOL  __attribute__ ((visibility ("hidden")))
+			#define VV_LOC  __attribute__ ((visibility ("hidden")))
 		#endif
 	#else
-		#define VV_EXPORTED_SYMBOL extern
-		#define VV_LOCAL_SYMBOL static
+		#define VV_EXP extern
+		#define VV_LOC static
 	#endif
 #endif
 
@@ -569,7 +569,7 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 // _SLIT0 is used as NULL string for literal arguments
 // `"" s` is used to enforce a string literal argument
 #define _SLIT0 (string){.str=(byteptr)(""), .len=0, .is_lit=1}
-#define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
+#define _S(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
 #define _SLEN(s, n) ((string){.str=(byteptr)("" s), .len=n, .is_lit=1})
 // optimized way to compare literal strings
 #define _SLIT_EQ(sptr, slen, lit) (slen == sizeof("" lit)-1 && !vmemcmp(sptr, "" lit, slen))
@@ -603,8 +603,8 @@ void _vcleanup(void);
 #ifdef _WIN32
 	// workaround for windows, export _vinit_caller/_vcleanup_caller, let dl.open()/dl.close() call it
 	// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!
-	VV_EXPORTED_SYMBOL void _vinit_caller();
-	VV_EXPORTED_SYMBOL void _vcleanup_caller();
+	VV_EXP void _vinit_caller();
+	VV_EXP void _vcleanup_caller();
 #endif
 #define sigaction_size sizeof(sigaction);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )

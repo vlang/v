@@ -325,8 +325,8 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		testfn := unsafe { g.table.fns[tname] }
 		lnum := testfn.pos.line_nr + 1
 		g.writeln('\tmain__VTestFnMetaInfo_free(test_runner.fn_test_info);')
-		g.writeln('\tstring tcname_${tnumber} = _SLIT("${tcname}");')
-		g.writeln('\tstring tcmod_${tnumber}  = _SLIT("${testfn.mod}");')
+		g.writeln('\tstring tcname_${tnumber} = _S("${tcname}");')
+		g.writeln('\tstring tcmod_${tnumber}  = _S("${testfn.mod}");')
 		g.writeln('\tstring tcfile_${tnumber} = ${ctoslit(testfn.file)};')
 		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(tcname_${tnumber}, tcmod_${tnumber}, tcfile_${tnumber}, ${lnum});')
 		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')
@@ -397,7 +397,7 @@ pub fn (mut g Gen) gen_c_main_trace_calls_hook() {
 
 // gen_dll_main create DllMain() for windows .dll
 pub fn (mut g Gen) gen_dll_main() {
-	g.writeln('VV_EXPORTED_SYMBOL BOOL DllMain(HINSTANCE hinst,DWORD fdwReason,LPVOID lpvReserved) {
+	g.writeln('VV_EXP BOOL DllMain(HINSTANCE hinst,DWORD fdwReason,LPVOID lpvReserved) {
 	switch (fdwReason) {
 		case DLL_PROCESS_ATTACH : {
 #if defined(_VGCBOEHM)

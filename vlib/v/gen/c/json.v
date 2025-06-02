@@ -59,7 +59,7 @@ fn (mut g Gen) gen_jsons() {
 		mut init_styp := '${styp} res'
 		if utyp.has_flag(.option) {
 			none_str := g.expr_string(ast.None{})
-			init_styp += ' = (${styp}){ .state=2, .err=${none_str}, .data={EMPTY_STRUCT_INITIALIZATION} }'
+			init_styp += ' = (${styp}){ .state=2, .err=${none_str}, .data={E_STRUCT} }'
 		} else {
 			if !utyp.is_ptr() {
 				init_styp += ' = '
@@ -111,9 +111,9 @@ ${dec_fn_dec} {
 				vmemcpy(buf, prevline_ptr, (maxchars < maxcontext_chars ? maxchars : maxcontext_chars));
 			}
 			string msg;
-			msg = _SLIT("failed to decode JSON string");
+			msg = _S("failed to decode JSON string");
 			if (buf[0] != \'\\0\') {
-				msg = string__plus(msg, _SLIT(": "));
+				msg = string__plus(msg, _S(": "));
 			}
 			return (${result_name}_${ret_styp}){.is_error = true,.err = _v_error(string__plus(msg, tos2(buf))),.data = {0}};
 		}
@@ -222,9 +222,9 @@ fn (mut g Gen) gen_enum_to_str(utyp ast.Type, sym ast.TypeSymbol, enum_var strin
 			ast.Attr{}
 		}
 		if attr.has_arg {
-			enc.writeln('${result_var} = json__encode_string(_SLIT("${attr.arg}")); break;')
+			enc.writeln('${result_var} = json__encode_string(_S("${attr.arg}")); break;')
 		} else {
-			enc.writeln('${result_var} = json__encode_string(_SLIT("${val}")); break;')
+			enc.writeln('${result_var} = json__encode_string(_S("${val}")); break;')
 		}
 	}
 	enc.writeln('${ident}}')
@@ -241,12 +241,12 @@ fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string
 			ast.Attr{}
 		}
 		if k == 0 {
-			dec.write_string('${ident}if (string__eq(_SLIT("${val}"), ${val_var})')
+			dec.write_string('${ident}if (string__eq(_S("${val}"), ${val_var})')
 		} else {
-			dec.write_string('${ident}else if (string__eq(_SLIT("${val}"), ${val_var})')
+			dec.write_string('${ident}else if (string__eq(_S("${val}"), ${val_var})')
 		}
 		if attr.has_arg {
-			dec.write_string(' || string__eq(_SLIT("${attr.arg}"), ${val_var})')
+			dec.write_string(' || string__eq(_S("${attr.arg}"), ${val_var})')
 		}
 		dec.write_string(')\t')
 		if is_option {
@@ -642,7 +642,7 @@ fn (mut g Gen) gen_prim_type_validation(name string, typ ast.Type, tmp string, i
 		return
 	}
 	dec.writeln('\t\tif (!(${type_check})) {')
-	dec.writeln('\t\t\treturn (${ret_styp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("type mismatch for field \'${name}\', expecting `${g.table.type_to_str(typ)}` type, got: "), json__json_print(jsonroot_${tmp}))), .data = {0} };')
+	dec.writeln('\t\t\treturn (${ret_styp}){ .is_error = true, .err = _v_error(string__plus(_S("type mismatch for field \'${name}\', expecting `${g.table.type_to_str(typ)}` type, got: "), json__json_print(jsonroot_${tmp}))), .data = {0} };')
 	dec.writeln('\t\t}')
 }
 
@@ -994,7 +994,7 @@ fn gen_js_get(styp string, tmp string, name string, mut dec strings.Builder, is_
 	dec.writeln('\tcJSON *jsonroot_${tmp} = js_get(root, "${name}");')
 	if is_required {
 		dec.writeln('\tif (jsonroot_${tmp} == 0) {')
-		dec.writeln('\t\treturn (${result_name}_${styp}){ .is_error = true, .err = _v_error(_SLIT("expected field \'${name}\' is missing")), .data = {0} };')
+		dec.writeln('\t\treturn (${result_name}_${styp}){ .is_error = true, .err = _v_error(_S("expected field \'${name}\' is missing")), .data = {0} };')
 		dec.writeln('\t}')
 	}
 }
@@ -1098,7 +1098,7 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
-		return (${result_name}_${ret_styp}){.is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an array: "), json__json_print(root))), .data = {0}};
+		return (${result_name}_${ret_styp}){.is_error = true, .err = _v_error(string__plus(_S("Json element is not an array: "), json__json_print(root))), .data = {0}};
 	}
 	${res_str}
 	const cJSON *jsval = NULL;
@@ -1167,7 +1167,7 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 	if utyp.has_flag(.option) {
 		return '
 		if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-			return (${result_name}_${ustyp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an object: "), json__json_print(root))), .data = {0}};
+			return (${result_name}_${ustyp}){ .is_error = true, .err = _v_error(string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0}};
 		}
 		_option_ok(&(${g.base_type(utyp)}[]) { new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn}) }, (${option_name}*)&res, sizeof(${g.base_type(utyp)}));
 		cJSON *jsval = NULL;
@@ -1181,7 +1181,7 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 	} else {
 		return '
 		if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-			return (${result_name}_${ustyp}){ .is_error = true, .err = _v_error(string__plus(_SLIT("Json element is not an object: "), json__json_print(root))), .data = {0}};
+			return (${result_name}_${ustyp}){ .is_error = true, .err = _v_error(string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0}};
 		}
 		res = new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn});
 		cJSON *jsval = NULL;

@@ -27,7 +27,7 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		}
 		g.writeln('if (${c_name(expr_var)}.state != 0) { // assign')
 		if expr is ast.Ident && expr.or_expr.kind == .propagate_option {
-			g.writeln('\tpanic_option_not_set(_SLIT("none"));')
+			g.writeln('\tpanic_option_not_set(_S("none"));')
 		} else {
 			g.inside_or_block = true
 			defer {
@@ -63,7 +63,7 @@ fn (mut g Gen) expr_opt_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast
 
 	ret_var := g.new_tmp_var()
 	ret_styp := g.styp(ret_typ).replace('*', '_ptr')
-	g.writeln('${ret_styp} ${ret_var} = {.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}};')
+	g.writeln('${ret_styp} ${ret_var} = {.state=2, .err=_const_none__, .data={E_STRUCT}};')
 
 	if expr !is ast.None {
 		is_option_expr := expr_typ.has_flag(.option)

@@ -183,10 +183,10 @@ fn (mut g Gen) dump_expr_definitions() {
 		if dump_sym.kind == .function && !is_option {
 			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tstring_free(&value);')
 		} else if dump_sym.kind == .none {
-			surrounder.add('\tstring value = _SLIT("none");', '\tstring_free(&value);')
+			surrounder.add('\tstring value = _S("none");', '\tstring_free(&value);')
 		} else if is_ptr {
 			if typ.has_flag(.option) {
-				surrounder.add('\tstring value = isnil(&dump_arg.data) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
+				surrounder.add('\tstring value = isnil(&dump_arg.data) ? _S("nil") : ${to_string_fn_name}(${deref}dump_arg);',
 					'\tstring_free(&value);')
 			} else {
 				prefix := if dump_sym.is_c_struct() {
@@ -194,7 +194,7 @@ fn (mut g Gen) dump_expr_definitions() {
 				} else {
 					deref
 				}
-				surrounder.add('\tstring value = (dump_arg == NULL) ? _SLIT("nil") : ${to_string_fn_name}(${prefix}dump_arg);',
+				surrounder.add('\tstring value = (dump_arg == NULL) ? _S("nil") : ${to_string_fn_name}(${prefix}dump_arg);',
 					'\tstring_free(&value);')
 			}
 		} else {
@@ -236,7 +236,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		if is_fixed_arr_ret {
 			tmp_var := g.new_tmp_var()
 			init_str := if dump_sym.is_empty_struct_array() {
-				'{EMPTY_STRUCT_INITIALIZATION}'
+				'{E_STRUCT}'
 			} else {
 				'{0}'
 			}

@@ -378,7 +378,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		if nr_fields > 0 {
 			g.write('0')
 		} else {
-			g.write('EMPTY_STRUCT_INITIALIZATION')
+			g.write('E_STRUCT')
 		}
 	}
 

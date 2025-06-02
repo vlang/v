@@ -128,7 +128,7 @@ fn (mut g Gen) gen_embedded_metadata() {
 		g.embedded_data.writeln('\t\t\tbreak;')
 		g.embedded_data.writeln('\t\t} // case ${ef_idx}')
 	}
-	g.embedded_data.writeln('\t\tdefault: _v_panic(_SLIT("unknown embed file"));')
+	g.embedded_data.writeln('\t\tdefault: _v_panic(_S("unknown embed file"));')
 	g.embedded_data.writeln('\t} // switch')
 	g.embedded_data.writeln('\treturn res;')
 	g.embedded_data.writeln('}')

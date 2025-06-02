@@ -262,7 +262,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		escaped_val = escaped_val.replace('\0', '\\0')
 
 		if escaped_val.len > 0 {
-			g.write2('{_SLIT("', escaped_val)
+			g.write2('{_S("', escaped_val)
 			g.write('"), ')
 		} else {
 			g.write('{_SLIT0, ')

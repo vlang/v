@@ -54,14 +54,14 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		// $env('ENV_VAR_NAME')
 		// TODO: deprecate after support for $d() is stable
 		val := util.cescaped_path(os.getenv(node.args_var))
-		g.write('_SLIT("${val}")')
+		g.write('_S("${val}")')
 		return
 	}
 	if node.method_name == 'd' {
 		// $d('some_string',<default value>), affected by `-d some_string=actual_value`
 		val := util.cescaped_path(node.compile_value)
 		if node.result_type == ast.string_type {
-			g.write('_SLIT("${val}")')
+			g.write('_S("${val}")')
 		} else if node.result_type == ast.char_type {
 			g.write("'${val}'")
 		} else {
@@ -174,7 +174,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				if !has_decompose {
 					// do not generate anything if the argument lengths don't match
 					g.writeln('/* skipping ${sym.name}.${m.name} due to mismatched arguments list: node.args=${node.args.len} m.params=${m.params.len} */')
-					// Adding a println(_SLIT(...)) like this breaks options
+					// Adding a println(_S(...)) like this breaks options
 					return
 				}
 			}
@@ -278,7 +278,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			if j > 0 {
 				g.write(' else ')
 			}
-			g.write('if (string__eq(${node.method_name}, _SLIT("${method.name}"))) ')
+			g.write('if (string__eq(${node.method_name}, _S("${method.name}"))) ')
 		}
 		g.write('${g.cc_type(left_type, false)}_${method.name}(${amp} ')
 		g.expr(node.left)
@@ -298,7 +298,7 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 		if attr.kind == .string {
 			s = escape_quotes(s)
 		}
-		res << '_SLIT("${s}")'
+		res << '_S("${s}")'
 	}
 	return res
 }
@@ -306,10 +306,10 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 fn (mut g Gen) comptime_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
 		val := cescape_nonascii(util.smart_quote(node.val, false))
-		g.write('_SLIT("${val}")')
+		g.write('_S("${val}")')
 	} else {
 		val := node.val.replace('\\', '\\\\')
-		g.write('_SLIT("${val}")')
+		g.write('_S("${val}")')
 	}
 }
 
@@ -867,7 +867,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.comptime.comptime_for_method = unsafe { &method }
 			g.comptime.comptime_for_method_var = node.val_var
 			g.writeln('/* method ${i} */ {')
-			g.writeln('\t${node.val_var}.name = _SLIT("${method.name}");')
+			g.writeln('\t${node.val_var}.name = _S("${method.name}");')
 			if method.attrs.len == 0 {
 				g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
 			} else {
@@ -885,7 +885,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				// Skip receiver arg
 				for j, arg in method.params[1..] {
 					typ := arg.typ.idx()
-					g.write('{${typ.str()}, _SLIT("${arg.name}")}')
+					g.write('{${typ.str()}, _S("${arg.name}")}')
 					if j < len - 1 {
 						g.write(', ')
 					}
@@ -947,7 +947,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.comptime.comptime_for_field_value = field
 				g.comptime.comptime_for_field_type = field.typ
 				g.writeln('/* field ${i} */ {')
-				g.writeln('\t${node.val_var}.name = _SLIT("${field.name}");')
+				g.writeln('\t${node.val_var}.name = _S("${field.name}");')
 				if field.attrs.len == 0 {
 					g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
 				} else {
@@ -998,7 +998,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					g.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
 
 					g.writeln('/* enum vals ${i} */ {')
-					g.writeln('\t${node.val_var}.name = _SLIT("${val}");')
+					g.writeln('\t${node.val_var}.name = _S("${val}");')
 					g.write('\t${node.val_var}.value = ')
 					if g.pref.translated && node.typ.is_number() {
 						g.writeln('_const_main__${val};')
@@ -1028,10 +1028,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 
 			for attr in attrs {
 				g.writeln('/* attribute ${i} */ {')
-				g.writeln('\t${node.val_var}.name = _SLIT("${attr.name}");')
+				g.writeln('\t${node.val_var}.name = _S("${attr.name}");')
 				g.writeln('\t${node.val_var}.has_arg = ${attr.has_arg};')
-				g.writeln('\t${node.val_var}.arg = _SLIT("${util.smart_quote(attr.arg,
-					false)}");')
+				g.writeln('\t${node.val_var}.arg = _S("${util.smart_quote(attr.arg, false)}");')
 				g.writeln('\t${node.val_var}.kind = AttributeKind__${attr.kind};')
 				g.stmts(node.stmts)
 				g.writeln('}')
@@ -1071,7 +1070,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 
 			g.writeln('/* method param ${i} */ {')
 			g.writeln('\t${node.val_var}.typ = ${int(param.typ)};')
-			g.writeln('\t${node.val_var}.name = _SLIT("${param.name}");')
+			g.writeln('\t${node.val_var}.name = _S("${param.name}");')
 			g.stmts(node.stmts)
 			g.writeln('}')
 			i++

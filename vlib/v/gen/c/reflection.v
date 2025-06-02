@@ -19,7 +19,7 @@ fn (mut g Gen) reflection_string(str string) int {
 @[inline]
 fn (mut g Gen) gen_reflection_strings() {
 	for str, idx in g.reflection_strings {
-		g.writeln('\t${cprefix}add_string(_SLIT("${str}"), ${idx});')
+		g.writeln('\t${cprefix}add_string(_S("${str}"), ${idx});')
 	}
 }
 
@@ -37,7 +37,7 @@ fn (g &Gen) gen_functionarg_array(type_name string, node ast.Fn) string {
 	}
 	mut out := 'new_array_from_c_array(${node.params.len},${node.params.len},sizeof(${type_name}),'
 	out += '_MOV((${type_name}[${node.params.len}]){'
-	out += node.params.map('((${type_name}){.name=_SLIT("${it.name}"),.typ=${int(it.typ)},.is_mut=${it.is_mut}})').join(',')
+	out += node.params.map('((${type_name}){.name=_S("${it.name}"),.typ=${int(it.typ)},.is_mut=${it.is_mut}})').join(',')
 	out += '}))'
 	return out
 }
@@ -63,8 +63,8 @@ fn (mut g Gen) gen_function_array(nodes []ast.Fn) string {
 fn (mut g Gen) gen_reflection_fn(node ast.Fn) string {
 	mut arg_str := '((${cprefix}Function){'
 	v_name := node.name.all_after_last('.')
-	arg_str += '.mod_name=_SLIT("${node.mod}"),'
-	arg_str += '.name=_SLIT("${v_name}"),'
+	arg_str += '.mod_name=_S("${node.mod}"),'
+	arg_str += '.name=_S("${v_name}"),'
 	arg_str += '.args=${g.gen_functionarg_array(cprefix + 'FunctionArg', node)},'
 	arg_str += '.file_idx=${g.reflection_string(util.cescaped_path(node.file))},'
 	arg_str += '.line_start=${node.pos.line_nr},'
@@ -84,7 +84,7 @@ fn (mut g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	name := tsym.name.all_after_last('.')
 	info := g.gen_reflection_sym_info(tsym)
 	methods := g.gen_function_array(tsym.methods)
-	return '(${cprefix}TypeSymbol){.name=_SLIT("${name}"),.mod=_SLIT("${tsym.mod}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=${cprefix}VLanguage__${tsym.language},.kind=${cprefix}VKind__${kind_name},.info=${info},.methods=${methods}}'
+	return '(${cprefix}TypeSymbol){.name=_S("${name}"),.mod=_S("${tsym.mod}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=${cprefix}VLanguage__${tsym.language},.kind=${cprefix}VKind__${kind_name},.info=${info},.methods=${methods}}'
 }
 
 // gen_attrs_array generates C code for []Attr
@@ -96,9 +96,9 @@ fn (g &Gen) gen_attrs_array(attrs []ast.Attr) string {
 	mut out := 'new_array_from_c_array(${attrs.len},${attrs.len},sizeof(string),'
 	out += '_MOV((string[${attrs.len}]){'
 	out += attrs.map(if it.has_arg {
-		'_SLIT("${it.name}=${escape_quotes(it.arg)}")'
+		'_S("${it.name}=${escape_quotes(it.arg)}")'
 	} else {
-		'_SLIT("${it.name}")'
+		'_S("${it.name}")'
 	}).join(',')
 	out += '}))'
 	return out
@@ -112,7 +112,7 @@ fn (g &Gen) gen_fields_array(fields []ast.StructField) string {
 	}
 	mut out := 'new_array_from_c_array(${fields.len},${fields.len},sizeof(${cprefix}StructField),'
 	out += '_MOV((${cprefix}StructField[${fields.len}]){'
-	out += fields.map('((${cprefix}StructField){.name=_SLIT("${it.name}"),.typ=${int(it.typ)},.attrs=${g.gen_attrs_array(it.attrs)},.is_pub=${it.is_pub},.is_mut=${it.is_mut}})').join(',')
+	out += fields.map('((${cprefix}StructField){.name=_S("${it.name}"),.typ=${int(it.typ)},.attrs=${g.gen_attrs_array(it.attrs)},.is_pub=${it.is_pub},.is_mut=${it.is_mut}})').join(',')
 	out += '}))'
 	return out
 }
@@ -132,7 +132,7 @@ fn (g &Gen) gen_string_array(strs []string) string {
 	if strs.len == 0 {
 		return g.gen_empty_array('string')
 	}
-	items := strs.map('_SLIT("${it}")').join(',')
+	items := strs.map('_S("${it}")').join(',')
 	return 'new_array_from_c_array(${strs.len},${strs.len},sizeof(string),_MOV((string[${strs.len}]){${items}}))'
 }
 
@@ -183,7 +183,7 @@ fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 			info := tsym.info as ast.Interface
 			methods := g.gen_function_array(info.methods)
 			fields := g.gen_fields_array(info.fields)
-			s := 'ADDR(${cprefix}Interface,(((${cprefix}Interface){.name=_SLIT("${name}"),.methods=${methods},.fields=${fields},.is_generic=${info.is_generic}})))'
+			s := 'ADDR(${cprefix}Interface,(((${cprefix}Interface){.name=_S("${name}"),.methods=${methods},.fields=${fields},.is_generic=${info.is_generic}})))'
 			return '(${cprefix}TypeInfo){._${cprefix}Interface=memdup(${s},sizeof(${cprefix}Interface)),._typ=${g.table.find_type_idx('v.reflection.Interface')}}'
 		}
 		.alias {
@@ -207,7 +207,7 @@ fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 fn (mut g Gen) gen_reflection_data() {
 	// modules declaration
 	for mod_name in g.table.modules {
-		g.writeln('\t${cprefix}add_module(_SLIT("${mod_name}"));')
+		g.writeln('\t${cprefix}add_module(_S("${mod_name}"));')
 	}
 
 	// type symbols declaration
@@ -219,7 +219,7 @@ fn (mut g Gen) gen_reflection_data() {
 	// types declaration
 	for full_name, idx in g.table.type_idxs {
 		name := full_name.all_after_last('.')
-		g.writeln('\t${cprefix}add_type((${cprefix}Type){.name=_SLIT("${name}"),.idx=${idx}});')
+		g.writeln('\t${cprefix}add_type((${cprefix}Type){.name=_S("${name}"),.idx=${idx}});')
 	}
 
 	// func declaration (methods come from struct methods)
