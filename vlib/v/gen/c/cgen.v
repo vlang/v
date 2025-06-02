@@ -1323,7 +1323,7 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 	} else {
 		styp = '${option_name}_${base}'
 	}
-	if t.has_flag(.generic) || (t.is_ptr() && !t.has_flag(.option_mut_param_t)) {
+	if t.has_flag(.generic) || t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
 	return styp, base
@@ -1396,10 +1396,8 @@ fn (g &Gen) result_type_text(styp string, base string) string {
 fn (mut g Gen) register_option(t ast.Type) string {
 	styp, base := g.option_type_name(t)
 	g.options[base] = styp
-	if t.has_flag(.option_mut_param_t) {
-		g.options[base.replace('*', '')] = styp.replace('*', '')
-	}
-	return styp
+	suffix := if !t.has_flag(.option_mut_param_t) { '' } else { '*' }
+	return styp + suffix
 }
 
 fn (mut g Gen) register_result(t ast.Type) string {
@@ -5193,8 +5191,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if !g.is_assign_lhs && is_auto_heap {
 					g.write('(*${name})')
 				} else {
-					if node.obj is ast.Var && node.obj.is_inherited {
-						g.write(closure_ctx + '->')
+					if node.obj is ast.Var {
+						// mutable option var
+						if g.is_assign_lhs && node.obj.is_auto_deref {
+							g.write('*')
+						}
+						if node.obj.is_inherited {
+							g.write(closure_ctx + '->')
+						}
 					}
 					g.write(name)
 				}
