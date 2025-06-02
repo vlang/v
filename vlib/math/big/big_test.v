@@ -719,6 +719,16 @@ fn test_from_and_to_hex() {
 	}
 }
 
+fn test_radix() {
+	number := '1234567890123456789012345678901234567890'
+	a := big.integer_from_radix(number, 10)!
+	for radix in 2 .. 37 {
+		str := a.radix_str(radix)
+		b := big.integer_from_radix(str, radix)!
+		assert b.str() == number
+	}
+}
+
 fn test_str() {
 	for t in str_test_data {
 		assert t.value.parse().str() == t.expected
