@@ -203,8 +203,6 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('string indent_${str_fn_name}(${styp} it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
-	// deref := if typ.is_ptr() && !typ.has_flag(.option_mut_param_t) {
-	// 	'**(${sym.cname}**)&'
 	deref := if typ.is_ptr() {
 		if !typ.has_flag(.option_mut_param_t) {
 			dot := if expects_ptr {
