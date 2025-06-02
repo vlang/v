@@ -1002,15 +1002,13 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 					p.error_with_pos('generic object cannot be `atomic`or `shared`', pos)
 					return []ast.Param{}, false, false, false
 				}
-				if !param_type.has_flag(.option) {
-					if param_type.is_ptr() && p.table.sym(param_type).kind == .struct {
-						param_type = param_type.ref()
-					} else {
-						param_type = param_type.set_nr_muls(1)
-					}
+				if param_type.is_ptr() && p.table.sym(param_type).kind == .struct {
+					param_type = param_type.ref()
 				} else {
-					param_type = param_type.set_flag(.option_mut_param_t)
 					param_type = param_type.set_nr_muls(1)
+				}
+				if param_type.has_flag(.option) {
+					param_type = param_type.set_flag(.option_mut_param_t)
 				}
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
@@ -1139,15 +1137,13 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 						pos)
 					return []ast.Param{}, false, false, false
 				}
-				if !typ.has_flag(.option) {
-					if typ.is_ptr() && p.table.sym(typ).kind == .struct {
-						typ = typ.ref()
-					} else {
-						typ = typ.set_nr_muls(1)
-					}
+				if typ.is_ptr() && p.table.sym(typ).kind == .struct {
+					typ = typ.ref()
 				} else {
-					typ = typ.set_flag(.option_mut_param_t)
 					typ = typ.set_nr_muls(1)
+				}
+				if typ.has_flag(.option) {
+					typ = typ.set_flag(.option_mut_param_t)
 				}
 				if is_shared {
 					typ = typ.set_flag(.shared_f)
