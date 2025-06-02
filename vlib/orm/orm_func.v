@@ -3,7 +3,8 @@ module orm
 import time
 import strings.textscanner
 
-const operators = ['=', '!=', '<>', '>=', '<=', '>', '<', 'LIKE', 'ILIKE', 'IS NULL', 'IS NOT NULL']!
+const operators = ['=', '!=', '<>', '>=', '<=', '>', '<', 'LIKE', 'ILIKE', 'IS NULL', 'IS NOT NULL',
+	'IN', 'NOT IN']!
 
 @[heap]
 pub struct QueryBuilder[T] {
@@ -45,7 +46,7 @@ pub fn (qb_ &QueryBuilder[T]) reset() &QueryBuilder[T] {
 
 // where create a `where` clause, it will `AND` with previous `where` clause.
 // valid token in the `condition` include: `field's names`, `operator`, `(`, `)`, `?`, `AND`, `OR`, `||`, `&&`,
-// valid `operator` incldue: `=`, `!=`, `<>`, `>=`, `<=`, `>`, `<`, `LIKE`, `ILIKE`, `IS NULL`, `IS NOT NULL`
+// valid `operator` incldue: `=`, `!=`, `<>`, `>=`, `<=`, `>`, `<`, `LIKE`, `ILIKE`, `IS NULL`, `IS NOT NULL`, `IN`, `NOT IN`
 // example: `where('(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))', a, b, c, x, y)`
 pub fn (qb_ &QueryBuilder[T]) where(condition string, params ...Primitive) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
@@ -102,9 +103,13 @@ fn (mut ss MyTextScanner) next_tok() string {
 		ss.pos += 7
 		return 'IS NULL'
 	}
+	if ss.input[ss.pos..].starts_with('NOT IN') {
+		ss.pos += 6
+		return 'NOT IN'
+	}
 	if ss.remaining() >= 2 {
 		two_chars := ss.input[ss.pos..ss.pos + 2]
-		if two_chars in ['>=', '<=', '<>', '!=', '||', '&&'] {
+		if two_chars in ['>=', '<=', '<>', '!=', '||', '&&', 'IN'] {
 			ss.pos += 2
 			return two_chars
 		}
@@ -214,6 +219,12 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 					}
 					'IS NOT NULL' {
 						OperationKind.is_not_null
+					}
+					'IN' {
+						OperationKind.in
+					}
+					'NOT IN' {
+						OperationKind.not_in
 					}
 					else {
 						parse_error('${@FN}(): unsupported operator: `${tok}`', s.last_tok_start,
