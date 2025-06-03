@@ -1396,8 +1396,7 @@ fn (g &Gen) result_type_text(styp string, base string) string {
 fn (mut g Gen) register_option(t ast.Type) string {
 	styp, base := g.option_type_name(t)
 	g.options[base] = styp
-	suffix := if !t.has_flag(.option_mut_param_t) { '' } else { '*' }
-	return styp + suffix
+	return if !t.has_flag(.option_mut_param_t) { styp } else { '${styp}*' }
 }
 
 fn (mut g Gen) register_result(t ast.Type) string {
