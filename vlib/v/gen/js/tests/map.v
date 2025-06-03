@@ -226,6 +226,19 @@ fn test_map_len() {
 	assert items_2.len == 2
 }
 
+fn test_rune_keys() {
+	mut m := {
+		`!`: 2
+		`%`: 3
+	}
+	assert typeof(m).name == 'map[rune]int'
+	assert m[`!`] == 2
+	m[`@`] = 7
+	assert m.len == 3
+	println(m)
+	assert '${m}' == '{`!`: 2, `%`: 3, `@`: 7}'
+}
+
 fn main() {
 	test_values_method()
 	test_values_method_with_generic_constraints()
@@ -233,4 +246,5 @@ fn main() {
 	test_keys_method_with_generic_constraints()
 	test_direct_map_access()
 	test_map_len()
+	test_rune_keys()
 }

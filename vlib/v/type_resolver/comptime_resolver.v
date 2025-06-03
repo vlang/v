@@ -177,11 +177,12 @@ pub fn (mut t TypeResolver) get_comptime_selector_type(node ast.ComptimeSelector
 	return default_type
 }
 
-// is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable accessing specific field name provided by `field_name`
+// is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable or generic letter accessing specific field name provided by `field_name`
 @[inline]
 pub fn (t &ResolverInfo) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
-	return t.comptime_for_field_var != '' && node.expr is ast.Ident
-		&& node.expr.name == t.comptime_for_field_var && node.field_name == field_name
+	return ((t.comptime_for_field_var != '' && node.expr is ast.Ident
+		&& node.expr.name == t.comptime_for_field_var) || node.name_type != 0)
+		&& node.field_name == field_name
 }
 
 // is_comptime_selector_type checks if the SelectorExpr is related to $for variable accessing .typ field
@@ -248,6 +249,12 @@ pub fn (t &TypeResolver) is_comptime_type(x ast.Type, y ast.ComptimeType) bool {
 		}
 		.string {
 			return x_kind == .string
+		}
+		.voidptr {
+			return x.is_voidptr()
+		}
+		.pointer {
+			return x.is_any_kind_of_pointer()
 		}
 		.int {
 			return x_kind in [.i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .usize, .isize,

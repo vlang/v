@@ -145,7 +145,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_create(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
-	g.writeln('_SLIT("${table_name}"),')
+	g.writeln('_S("${table_name}"),')
 	g.writeln('new_array_from_c_array(${node.fields.len}, ${node.fields.len}, sizeof(orm__TableField),')
 	g.indent++
 
@@ -164,7 +164,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 			}
 			g.writeln('(orm__TableField){')
 			g.indent++
-			g.writeln('.name = _SLIT("${field.name}"),')
+			g.writeln('.name = _S("${field.name}"),')
 			g.writeln('.typ = ${typ}, // `${sym.name}`')
 			g.writeln('.is_arr = ${sym.kind == .array}, ')
 			g.writeln('.nullable = ${final_field_typ.has_flag(.option)},')
@@ -180,11 +180,11 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 					g.indent++
 					name1 := util.smart_quote(attr.name, false)
 					name := cescape_nonascii(name1)
-					g.write(' .name = _SLIT("${name}"),')
+					g.write(' .name = _S("${name}"),')
 					g.write(' .has_arg = ${attr.has_arg},')
 					arg1 := util.smart_quote(attr.arg, false)
 					arg := cescape_nonascii(arg1)
-					g.write(' .arg = _SLIT("${arg}"),')
+					g.write(' .arg = _S("${arg}"),')
 					g.write(' .kind = ${int(attr.kind)},')
 					g.indent--
 					g.write('},')
@@ -218,7 +218,7 @@ fn (mut g Gen) write_orm_drop_table(table_name string, connection_var_name strin
 	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_drop(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
-	g.writeln('_SLIT("${table_name}")')
+	g.writeln('_S("${table_name}")')
 	g.indent--
 	g.writeln(');')
 }
@@ -239,7 +239,7 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_update(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
-	g.writeln('_SLIT("${table_name}"),')
+	g.writeln('_S("${table_name}"),')
 	g.writeln('(orm__QueryData){')
 	g.indent++
 	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
@@ -253,7 +253,7 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 		g.writeln('_MOV((string[${node.updated_columns.len}]){')
 		g.indent++
 		for field in node.updated_columns {
-			g.writeln('_SLIT("${field}"),')
+			g.writeln('_S("${field}"),')
 		}
 		g.indent--
 		g.writeln('})')
@@ -290,7 +290,7 @@ fn (mut g Gen) write_orm_delete(node &ast.SqlStmtLine, table_name string, connec
 	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method__v_delete(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
-	g.writeln('_SLIT("${table_name}"),')
+	g.writeln('_S("${table_name}"),')
 	g.write_orm_where(node.where_expr)
 	g.indent--
 	g.writeln(');')
@@ -381,7 +381,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.writeln('${result_name}_void ${res} = orm__Connection_name_table[${connection_var_name}._typ]._method_insert(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
-	g.writeln('_SLIT("${table_name}"),')
+	g.writeln('_S("${table_name}"),')
 	g.writeln('(orm__QueryData){')
 	g.indent++
 	g.writeln('.fields = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
@@ -391,7 +391,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		g.writeln('_MOV((string[${fields.len}]){ ')
 		g.indent++
 		for f in fields {
-			g.writeln('_SLIT("${g.get_orm_column_name_from_struct_field(f)}"),')
+			g.writeln('_S("${g.get_orm_column_name_from_struct_field(f)}"),')
 		}
 		g.indent--
 		g.writeln('})')
@@ -593,7 +593,7 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 	if expr is ast.InfixExpr {
 		g.writeln('orm__infix_to_primitive((orm__InfixType){')
 		g.indent++
-		g.write('.name = _SLIT("${expr.left}"),')
+		g.write('.name = _S("${expr.left}"),')
 		mut kind := match expr.op {
 			.plus {
 				'orm__MathOperationKind__add'
@@ -625,6 +625,8 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 			typ = 'option_${typ}'
 		} else if g.table.final_sym(t).kind == .enum {
 			typ = g.table.sym(g.table.final_type(t)).cname
+		} else if g.table.final_sym(t).kind == .array {
+			typ = g.table.sym(g.table.final_type(t)).cname.to_lower()
 		}
 		g.write('orm__${typ}_to_primitive(')
 		if expr is ast.CallExpr {
@@ -659,7 +661,7 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 		g.writeln('_MOV((string[${fields.len}]){')
 		g.indent++
 		for field in fields {
-			g.writeln('_SLIT("${field}"),')
+			g.writeln('_S("${field}"),')
 		}
 		g.indent--
 		g.writeln('})')
@@ -778,6 +780,12 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 				.not_is {
 					'orm__OperationKind__is_not_null'
 				}
+				.key_in {
+					'orm__OperationKind__in'
+				}
+				.not_in {
+					'orm__OperationKind__not_in'
+				}
 				else {
 					''
 				}
@@ -881,13 +889,13 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.writeln('(orm__SelectConfig){')
 	g.indent++
-	g.writeln('.table = _SLIT("${escaped_table_name}"),')
+	g.writeln('.table = _S("${escaped_table_name}"),')
 	g.writeln('.is_count = ${node.is_count},')
 	g.writeln('.has_where = ${node.has_where},')
 	g.writeln('.has_order = ${node.has_order},')
 
 	if node.has_order {
-		g.write('.order = _SLIT("')
+		g.write('.order = _S("')
 		if node.order_expr is ast.Ident {
 			field := g.get_orm_current_table_field(node.order_expr.name) or {
 				verror('field "${node.order_expr.name}" does not exist on "${g.sql_table_name}"')
@@ -908,7 +916,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln('.has_offset = ${node.has_offset},')
 
 	if primary_field.name != '' {
-		g.writeln('.primary = _SLIT("${primary_field.name}"),')
+		g.writeln('.primary = _S("${primary_field.name}"),')
 	}
 
 	select_fields := fields.filter(g.table.sym(it.typ).kind != .array)
@@ -919,7 +927,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('_MOV((string[${select_fields.len}]){')
 		g.indent++
 		for field in select_fields {
-			g.writeln('_SLIT("${g.get_orm_column_name_from_struct_field(field)}"),')
+			g.writeln('_S("${g.get_orm_column_name_from_struct_field(field)}"),')
 			final_field_typ := g.table.final_type(field.typ)
 			sym := g.table.sym(final_field_typ)
 			if sym.name == 'time.Time' {
@@ -1027,7 +1035,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			typ_str = g.styp(info.elem_type)
 			base_typ := g.base_type(node.typ)
 			if node.typ.has_flag(.option) {
-				g.writeln('${unwrapped_c_typ} ${tmp}_array = { .state = 2, .err = _const_none__, .data = {EMPTY_STRUCT_INITIALIZATION} };')
+				g.writeln('${unwrapped_c_typ} ${tmp}_array = { .state = 2, .err = _const_none__, .data = {E_STRUCT} };')
 				g.writeln('_option_ok(&(${base_typ}[]) { __new_array(0, ${select_unwrapped_result_var_name}.len, sizeof(${typ_str})) }, (_option *)&${tmp}_array, sizeof(${base_typ}));')
 			} else {
 				g.writeln('${unwrapped_c_typ} ${tmp}_array = __new_array(0, ${select_unwrapped_result_var_name}.len, sizeof(${typ_str}));')
@@ -1090,7 +1098,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 					g.writeln('if (!${sub_result_var}.is_error)')
 					g.writeln('\t_option_ok(${sub_result_var}.data, (_option *)&${field_var}, sizeof(${unwrapped_field_c_typ}));')
 					g.writeln('else')
-					g.writeln('\t${field_var} = (${field_c_typ}){ .state = 2, .err = _const_none__, .data = {EMPTY_STRUCT_INITIALIZATION} };')
+					g.writeln('\t${field_var} = (${field_c_typ}){ .state = 2, .err = _const_none__, .data = {E_STRUCT} };')
 				} else {
 					g.writeln('if (!${sub_result_var}.is_error)')
 					g.writeln('\t${field_var} = *(${field_c_typ}*)${sub_result_var}.data;')
@@ -1158,7 +1166,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				prim_var := g.new_tmp_var()
 				g.writeln('orm__Primitive *${prim_var} = &${array_get_call_code};')
 				g.writeln('if (${prim_var}->_typ == ${g.table.find_type_idx('orm.Null')})')
-				g.writeln('\t${field_var} = (${field_c_typ}){ .state = 2, .err = _const_none__, .data = {EMPTY_STRUCT_INITIALIZATION} };')
+				g.writeln('\t${field_var} = (${field_c_typ}){ .state = 2, .err = _const_none__, .data = {E_STRUCT} };')
 
 				g.writeln('else')
 				g.writeln('\t_option_ok(${prim_var}->_${sym.cname}, (_option *)&${field_var}, sizeof(${sym.cname}));')

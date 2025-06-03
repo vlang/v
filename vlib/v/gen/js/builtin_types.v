@@ -456,7 +456,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					value_of:      'this.val | 0'
 					to_string:     'new string(this.val + "")'
 					eq:            'new bool(self.valueOf() === other.valueOf())'
-					to_jsval:      '+this'
+					to_jsval:      'String.fromCharCode(+this)'
 				)
 			}
 			'f32', 'f64', 'float_literal' {

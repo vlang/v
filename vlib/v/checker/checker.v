@@ -4694,8 +4694,8 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 					return
 				}
 				type_sym := c.table.sym(obj.typ.set_nr_muls(0))
-				if obj.is_stack_obj && !type_sym.is_heap() && !c.pref.translated
-					&& !c.file.is_translated {
+				if obj.is_stack_obj && !type_sym.is_heap() && !type_sym.is_int()
+					&& !c.pref.translated && !c.file.is_translated {
 					suggestion := if type_sym.kind == .struct {
 						'declaring `${type_sym.name}` as `@[heap]`'
 					} else {

@@ -1278,7 +1278,7 @@ fn (mut g Gen) expr_string(expr ast.Expr) string {
 fn (mut g Gen) expr_string_opt(typ ast.Type, expr ast.Expr) string {
 	expr_str := g.expr_string(expr)
 	if expr is ast.None {
-		return '(${g.styp(typ)}){.state=2, .err=${expr_str}, .data={EMPTY_STRUCT_INITIALIZATION}}'
+		return '(${g.styp(typ)}){.state=2, .err=${expr_str}, .data={E_STRUCT}}'
 	}
 	return expr_str
 }
@@ -1493,7 +1493,7 @@ fn (mut g Gen) register_thread_void_wait_call() {
 	} else {
 		g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)NULL);')
 	}
-	g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_SLIT("unable to join thread")); }')
+	g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_S("unable to join thread")); }')
 	if g.pref.os == .windows {
 		g.gowrappers.writeln('\tCloseHandle(thread);')
 	}
@@ -1609,7 +1609,7 @@ fn (mut g Gen) write_chan_pop_option_fns() {
 static inline ${opt_el_type} __Option_${styp}_popval(${styp} ch) {
 	${opt_el_type} _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
-		return (${opt_el_type}){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
+		return (${opt_el_type}){ .state = 2, .err = _v_error(_S("channel closed")), .data = {E_STRUCT} };
 	}
 	return _tmp;
 }')
@@ -1631,7 +1631,7 @@ fn (mut g Gen) write_chan_push_option_fns() {
 		g.channel_definitions.writeln('
 static inline ${option_name}_void __Option_${styp}_pushval(${styp} ch, ${el_type} e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		return (${option_name}_void){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
+		return (${option_name}_void){ .state = 2, .err = _v_error(_S("channel closed")), .data = {E_STRUCT} };
 	}
 	return (${option_name}_void){0};
 }')
@@ -2446,7 +2446,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if !node.is_unsafe {
 				g.writeln('{')
 			} else {
-				g.writeln('{ // Unsafe block')
+				if g.pref.is_prod {
+					g.writeln('{')
+				} else {
+					g.writeln('{ // Unsafe block')
+				}
 			}
 			g.stmts(node.stmts)
 			g.writeln('}')
@@ -2653,7 +2657,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 fn (mut g Gen) write_defer_stmts() {
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]
-		g.writeln2('// Defer begin', 'if (${g.defer_flag_var(defer_stmt)}) {')
+		if !g.pref.is_prod {
+			g.writeln('// Defer begin')
+		}
+		g.writeln('if (${g.defer_flag_var(defer_stmt)}) {')
+
 		//		g.indent++
 		if defer_stmt.ifdef.len > 0 {
 			g.writeln(defer_stmt.ifdef)
@@ -2663,7 +2671,10 @@ fn (mut g Gen) write_defer_stmts() {
 			g.stmts(defer_stmt.stmts)
 		}
 		//		g.indent--
-		g.writeln2('}', '// Defer end')
+		g.writeln('}')
+		if !g.pref.is_prod {
+			g.writeln('// Defer end')
+		}
 	}
 }
 
@@ -2843,7 +2854,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		}
 	}
 	if got_styp == 'none' && !g.cur_fn.return_type.has_flag(.option) {
-		g.write('(none){EMPTY_STRUCT_INITIALIZATION}')
+		g.write('(none){E_STRUCT}')
 	} else if is_comptime_variant {
 		ctyp := g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
 			ast.void_type)
@@ -3135,9 +3146,9 @@ fn cestring(s string) string {
 	return s.replace('\\', '\\\\').replace('"', "'")
 }
 
-// ctoslit returns a '_SLIT("$s")' call, where s is properly escaped.
+// ctoslit returns a '_S("$s")' call, where s is properly escaped.
 fn ctoslit(s string) string {
-	return '_SLIT("' + cescape_nonascii(cestring(s)) + '")'
+	return '_S("' + cescape_nonascii(cestring(s)) + '")'
 }
 
 fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
@@ -3937,7 +3948,10 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			typ := g.unwrap_generic(node.typ)
 			sym := g.table.sym(typ)
 			sidx := g.type_sidx(typ)
-			g.write('${sidx} /* ${sym.name} */')
+			g.write('${sidx}')
+			if !g.pref.is_prod {
+				g.write(' /* ${sym.name} */')
+			}
 		}
 		ast.TypeOf {
 			g.typeof_expr(node)
@@ -3986,7 +4000,7 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 	} else {
 		s = g.table.type_to_str(g.unwrap_generic(typ))
 	}
-	g.write('_SLIT("${util.strip_main_name(s)}")')
+	g.write('_S("${util.strip_main_name(s)}")')
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
@@ -4004,13 +4018,13 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	} else if sym.kind == .array_fixed {
 		fixed_info := sym.info as ast.ArrayFixed
 		typ_name := g.table.get_type_name(fixed_info.elem_type)
-		g.write('_SLIT("[${fixed_info.size}]${util.strip_main_name(typ_name)}")')
+		g.write('_S("[${fixed_info.size}]${util.strip_main_name(typ_name)}")')
 	} else if sym.kind == .function {
 		info := sym.info as ast.FnType
-		g.write('_SLIT("${g.fn_decl_str(info)}")')
+		g.write('_S("${g.fn_decl_str(info)}")')
 	} else if typ.has_flag(.variadic) {
 		varg_elem_type_sym := g.table.sym(g.table.value_type(typ))
-		g.write('_SLIT("...${util.strip_main_name(varg_elem_type_sym.name)}")')
+		g.write('_S("...${util.strip_main_name(varg_elem_type_sym.name)}")')
 	} else {
 		g.type_name(typ)
 	}
@@ -4553,7 +4567,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 				continue
 			}
 			if obj is ast.Var && g.check_var_scope(obj, node.pos.pos) {
-				keys.write_string('_SLIT("${obj.name}")')
+				keys.write_string('_S("${obj.name}")')
 				var_typ := if obj.ct_type_var != .no_comptime {
 					g.type_resolver.get_type(ast.Ident{ obj: obj })
 				} else if obj.smartcasts.len > 0 {
@@ -4561,7 +4575,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 				} else {
 					obj.typ
 				}
-				values.write_string('{.typ=_SLIT("${g.table.type_to_str(g.unwrap_generic(var_typ))}"),.value=')
+				values.write_string('{.typ=_S("${g.table.type_to_str(g.unwrap_generic(var_typ))}"),.value=')
 				obj_sym := g.table.sym(obj.typ)
 				cast_sym := g.table.sym(var_typ)
 
@@ -4674,7 +4688,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	g.writeln('}),')
 	g.write2('\t\t_MOV((v__debug__DebugContextVar[${vars.len}]){', values.str())
 	g.writeln('}));')
-	g.writeln('\tv__debug__Debugger_interact(&g_debugger, (v__debug__DebugContextInfo){.is_anon=${is_anon},.is_generic=${is_generic},.is_method=${is_method},.receiver_typ_name=_SLIT("${receiver_type}"),.line=${paline},.file=_SLIT("${pafile}"),.mod=_SLIT("${pamod}"),.fn_name=_SLIT("${pafn}"),.scope=_scope});')
+	g.writeln('\tv__debug__Debugger_interact(&g_debugger, (v__debug__DebugContextInfo){.is_anon=${is_anon},.is_generic=${is_generic},.is_method=${is_method},.receiver_typ_name=_S("${receiver_type}"),.line=${paline},.file=_S("${pafile}"),.mod=_S("${pamod}"),.fn_name=_S("${pafn}"),.scope=_scope});')
 	g.write('}')
 }
 
@@ -4741,7 +4755,11 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		} else {
 			cur_enum_expr
 		}
-		g.enum_typedefs.writeln(', // ${cur_value}')
+		if g.pref.is_prod {
+			g.enum_typedefs.writeln(',')
+		} else {
+			g.enum_typedefs.writeln(', // ${cur_value}')
+		}
 		cur_enum_offset++
 	}
 	packed_attribute := if !g.is_cc_msvc && node.typ != ast.int_type {
@@ -5580,7 +5598,7 @@ fn (mut g Gen) gen_result_error(target_type ast.Type, expr ast.Expr) {
 	styp := g.styp(g.unwrap_generic(target_type))
 	g.write('(${styp}){ .is_error=true, .err=')
 	g.expr(expr)
-	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
+	g.write(', .data={E_STRUCT} }')
 }
 
 // NB: remove this when option has no errors anymore
@@ -5592,7 +5610,7 @@ fn (mut g Gen) gen_option_error(target_type ast.Type, expr ast.Expr) {
 	} else {
 		g.expr(expr)
 	}
-	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
+	g.write(', .data={E_STRUCT} }')
 }
 
 fn (mut g Gen) hash_stmt_guarded_include(node ast.HashStmt) string {
@@ -6067,7 +6085,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					tmp_var := g.expr_with_fixed_array(expr0, type0, fn_ret_type)
 					g.writeln('${ret_typ} ${tmpvar} = ${tmp_var};')
 				} else {
-					g.writeln('${ret_typ} ${tmpvar} = (${ret_typ}){ .state=0, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} };')
+					g.writeln('${ret_typ} ${tmpvar} = (${ret_typ}){ .state=0, .err=_const_none__, .data={E_STRUCT} };')
 					if expr0 is ast.StructInit {
 						g.write('memcpy(${tmpvar}.data, ')
 						tmp_var := g.expr_with_opt(expr0, type0, fn_ret_type)
@@ -6403,7 +6421,7 @@ fn (mut g Gen) write_init_function() {
 	g.write_debug_calls_typeof_functions()
 
 	if g.pref.trace_calls && g.pref.should_trace_fn_name('_vinit') {
-		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
+		g.writeln('\tv__trace_calls__on_call(_S("_vinit"));')
 	}
 
 	if g.use_segfault_handler && !g.pref.is_shared {
@@ -6510,7 +6528,7 @@ fn (mut g Gen) write_init_function() {
 	fn_vcleanup_start_pos := g.out.len
 	g.writeln('void _vcleanup(void) {')
 	if g.pref.trace_calls && g.pref.should_trace_fn_name('_vcleanup') {
-		g.writeln('\tv__trace_calls__on_call(_SLIT("_vcleanup"));')
+		g.writeln('\tv__trace_calls__on_call(_S("_vcleanup"));')
 	}
 	if g.is_autofree {
 		// g.writeln('puts("cleaning up...");')
@@ -6670,17 +6688,20 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				}
 				struct_names[name] = true
 				g.typedefs.writeln('typedef struct ${name} ${name};')
-				g.type_definitions.writeln('')
-				g.type_definitions.writeln('// Union sum type ${name} = ')
 				mut idxs := []int{}
-				for variant in sym.info.variants {
-					if variant in idxs {
-						continue
+				if !g.pref.is_prod {
+					// Do not print union sum type coment in prod mode
+					g.type_definitions.writeln('')
+					g.type_definitions.writeln('// Union sum type ${name} = ')
+					for variant in sym.info.variants {
+						if variant in idxs {
+							continue
+						}
+						g.type_definitions.writeln('//          | ${variant:4d} = ${g.styp(variant.idx_type())}')
+						idxs << variant
 					}
-					g.type_definitions.writeln('//          | ${variant:4d} = ${g.styp(variant.idx_type())}')
-					idxs << variant
+					idxs.clear()
 				}
-				idxs.clear()
 				g.type_definitions.writeln('struct ${name} {')
 				g.type_definitions.writeln('\tunion {')
 				for variant in sym.info.variants {
@@ -7138,7 +7159,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			err_msg := 'IError_name_table[${cvar_name}${tmp_op}err._typ]._method_msg(${cvar_name}${tmp_op}err._object)'
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
-				g.writeln('panic_debug(${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"), ${err_msg}.len == 0 ? _SLIT("option not set ()") : ${err_msg});')
+				g.writeln('panic_debug(${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"), ${err_msg}.len == 0 ? _S("option not set ()") : ${err_msg});')
 			} else {
 				g.writeln('\tpanic_option_not_set( ${err_msg} );')
 			}
@@ -7189,16 +7210,16 @@ fn c_fn_name(name_ string) string {
 
 fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 	if typ_.has_flag(.option) {
-		return '(${g.styp(typ_)}){.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}}'
+		return '(${g.styp(typ_)}){.state=2, .err=_const_none__, .data={E_STRUCT}}'
 	}
 	first_typ := g.unwrap_generic((sym.info as ast.SumType).variants[0])
 	first_sym := g.table.sym(first_typ)
 	first_styp := g.styp(first_typ)
 	first_field := g.get_sumtype_variant_name(first_typ, first_sym)
 	default_str := if first_typ.has_flag(.option) {
-		'(${first_styp}){.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}}'
+		'(${first_styp}){.state=2, .err=_const_none__, .data={E_STRUCT}}'
 	} else if first_sym.info is ast.Struct && first_sym.info.is_empty_struct() {
-		'{EMPTY_STRUCT_INITIALIZATION}'
+		'{E_STRUCT}'
 	} else {
 		g.type_default_no_sumtype(first_typ)
 	}
@@ -7222,7 +7243,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 	typ := g.unwrap_generic(typ_)
 	if typ.has_flag(.option) {
-		return '(${g.styp(typ)}){.state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION}}'
+		return '(${g.styp(typ)}){.state=2, .err=_const_none__, .data={E_STRUCT}}'
 	}
 	if typ.has_flag(.result) {
 		return '{0}'
@@ -7242,7 +7263,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 		}
 		.array_fixed {
 			if sym.is_empty_struct_array() {
-				return '{EMPTY_STRUCT_INITIALIZATION}'
+				return '{E_STRUCT}'
 			}
 			return '{0}'
 		}
@@ -7375,7 +7396,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 						} else {
 							zero_str := if field_sym.language == .v && field_sym.info is ast.Struct
 								&& field_sym.info.is_empty_struct() {
-								'{EMPTY_STRUCT_INITIALIZATION}'
+								'{E_STRUCT}'
 							} else if field_sym.kind == .sum_type {
 								if decode_sumtype {
 									g.type_default_sumtype(field.typ, field_sym)
@@ -7648,14 +7669,14 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 fn (g &Gen) as_cast_name_table() string {
 	if g.as_cast_type_names.len == 0 {
-		return 'new_array_from_c_array(1, 1, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[1]){(VCastTypeIndexName){.tindex = 0,.tname = _SLIT("unknown")}}));\n'
+		return 'new_array_from_c_array(1, 1, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[1]){(VCastTypeIndexName){.tindex = 0,.tname = _S("unknown")}}));\n'
 	}
 	mut name_ast := strings.new_builder(1024)
 	casts_len := g.as_cast_type_names.len + 1
 	name_ast.writeln('new_array_from_c_array(${casts_len}, ${casts_len}, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[${casts_len}]){')
-	name_ast.writeln('\t\t  (VCastTypeIndexName){.tindex = 0, .tname = _SLIT("unknown")}')
+	name_ast.writeln('\t\t  (VCastTypeIndexName){.tindex = 0, .tname = _S("unknown")}')
 	for key, value in g.as_cast_type_names {
-		name_ast.writeln('\t\t, (VCastTypeIndexName){.tindex = ${key}, .tname = _SLIT("${value}")}')
+		name_ast.writeln('\t\t, (VCastTypeIndexName){.tindex = ${key}, .tname = _S("${value}")}')
 	}
 	name_ast.writeln('\t}));\n')
 	return name_ast.str()
@@ -7723,7 +7744,9 @@ fn (mut g Gen) interface_table() string {
 		}
 		mut cast_functions := strings.new_builder(100)
 		mut methods_wrapper := strings.new_builder(100)
-		methods_wrapper.writeln('// Methods wrapper for interface "${interface_name}"')
+		if !g.pref.is_prod {
+			methods_wrapper.writeln('// Methods wrapper for interface "${interface_name}"')
+		}
 		mut already_generated_mwrappers := map[string]int{}
 		iinidx_minimum_base := 1000 // Note: NOT 0, to avoid map entries set to 0 later, so `if already_generated_mwrappers[name] > 0 {` works.
 		mut current_iinidx := iinidx_minimum_base
@@ -7788,8 +7811,12 @@ fn (mut g Gen) interface_table() string {
 			cast_struct.write_string('\t}')
 			cast_struct_str := cast_struct.str()
 
+			if !g.pref.is_prod {
+				cast_functions.writeln('
+// Casting functions for converting "${cctype}" to interface "${interface_name}"')
+			}
+
 			cast_functions.writeln('
-// Casting functions for converting "${cctype}" to interface "${interface_name}"
 static inline ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype}* x) {
 return ${cast_struct_str};
 }')
@@ -8010,7 +8037,9 @@ return ${cast_shared_struct_str};
 			}
 			conversion_functions.writeln2('\treturn (${vsym.cname}){0};', '}')
 		}
-		sb.writeln('// ^^^ number of types for interface ${interface_name}: ${current_iinidx - iinidx_minimum_base}')
+		if !g.pref.is_prod {
+			sb.writeln('// ^^^ number of types for interface ${interface_name}: ${current_iinidx - iinidx_minimum_base}')
+		}
 		if iname_table_length == 0 {
 			methods_struct.writeln('')
 		} else {

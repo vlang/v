@@ -114,7 +114,7 @@ fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryDa
 // Binds all values of d in the prepared statement
 fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ! {
 	for data in d.data {
-		err := bind(stmt, c, data)
+		err := bind(stmt, mut c, data)
 
 		if err != 0 {
 			return stmt.db.error_message(err, query)
@@ -124,7 +124,7 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ! {
 }
 
 // Universal bind function
-fn bind(stmt Stmt, c &int, data orm.Primitive) int {
+fn bind(stmt Stmt, mut c &int, data orm.Primitive) int {
 	mut err := 0
 	match data {
 		i8, i16, int, u8, u16, u32, bool {
@@ -143,10 +143,20 @@ fn bind(stmt Stmt, c &int, data orm.Primitive) int {
 			err = stmt.bind_int(c, int(data.unix()))
 		}
 		orm.InfixType {
-			err = bind(stmt, c, data.right)
+			err = bind(stmt, mut c, data.right)
 		}
 		orm.Null {
 			err = stmt.bind_null(c)
+		}
+		[]orm.Primitive {
+			for element in data {
+				tmp_err := bind(stmt, mut c, element)
+				c++
+				if tmp_err != 0 {
+					err = tmp_err
+					break
+				}
+			}
 		}
 	}
 	return err

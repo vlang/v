@@ -102,8 +102,8 @@ no routing rules either:
 import veb
 import time
 
-fn (mut app App) time() veb.Result {
-	return app.text(time.now().format())
+fn (app &App) time(mut ctx Context) veb.Result {
+	return ctx.text(time.now().format())
 }
 ```
 
@@ -137,7 +137,7 @@ and update our `index()` action so that it returns the HTML view we just created
 
 ```v ignore
 // blog.v
-pub fn (mut app App) index() veb.Result {
+pub fn (app &App) index(mut ctx Context) veb.Result {
 	message := 'Hello, world from Vweb!'
 	return $veb.html()
 }
@@ -375,7 +375,7 @@ Next we need to add the HTML endpoint to our code like we did with `index.html`:
 
 ```v ignore
 @['/new']
-pub fn (mut app App) new() veb.Result {
+pub fn (app &App) new() veb.Result {
 	return $veb.html()
 }
 ```
@@ -392,9 +392,9 @@ in V is very simple:
 import veb
 
 @['/articles'; get]
-pub fn (mut app App) articles() veb.Result {
+pub fn (app &App) articles(mut ctx Context) veb.Result {
 	articles := app.find_all_articles()
-	return app.json(articles)
+	return ctx.json(articles)
 }
 ```
 

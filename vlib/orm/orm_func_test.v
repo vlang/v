@@ -90,6 +90,12 @@ fn test_orm_func_where() {
 	qb.reset()
 	qb.where('((age = ? OR (salary > ? AND id < ?)) AND (name LIKE ?))', 1, 2, 3, '%test%')!
 	assert qb.where.parentheses == [[1, 2], [0, 2], [3, 3], [0, 3]]
+
+	// in and not in
+	qb.reset()
+	qb.where('name IN ? AND age NOT IN ?', ['Tom'], [2])!
+	assert qb.where.fields == ['name', 'age']
+	assert qb.where.kinds == [.in, .not_in]
 }
 
 fn test_orm_func_stmts() {

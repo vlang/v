@@ -225,12 +225,12 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 		}
 		string {
 			escaped_val := util.smart_quote(ct_value, false)
-			// g.const_decl_write_precomputed(line_nr, styp, cname, '_SLIT("$escaped_val")')
+			// g.const_decl_write_precomputed(line_nr, styp, cname, '_S("$escaped_val")')
 			// TODO: ^ the above for strings, cause:
 			// `error C2099: initializer is not a constant` errors in MSVC,
 			// so fall back to the delayed initialisation scheme:
 			init := if typ == ast.string_type {
-				'_SLIT("${escaped_val}")'
+				'_S("${escaped_val}")'
 			} else {
 				'(${styp})"${escaped_val}"'
 			}
@@ -441,7 +441,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		attributes += 'VHIDDEN '
 	}
 	if node.attrs.contains('export') {
-		attributes += 'VV_EXPORTED_SYMBOL '
+		attributes += 'VV_EXP '
 	}
 	if attr := node.attrs.find_first('_linker_section') {
 		attributes += '__attribute__ ((section ("${attr.arg}"))) '
@@ -515,7 +515,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			default_initializer := g.type_default(field.typ)
 			if default_initializer == '{0}' && should_init {
 				def_builder.write_string(' = {0}')
-			} else if default_initializer == '{EMPTY_STRUCT_INITIALIZATION}' && should_init {
+			} else if default_initializer == '{E_STRUCT}' && should_init {
 				init = '\tmemcpy(${field.name}, (${styp}){${default_initializer}}, sizeof(${styp})); // global 4'
 			} else {
 				if field.name !in ['as_cast_type_indexes', 'g_memory_block', 'global_allocator'] {

@@ -421,10 +421,10 @@ fn (mut g Gen) create_waiter_handler(call_ret_type ast.Type, s_ret_typ string, g
 			g.gowrappers.writeln('\tret_ptr = thread.ret_ptr;')
 		}
 	} else {
-		g.gowrappers.writeln('\tif ((unsigned long int)thread == 0) { _v_panic(_SLIT("unable to join thread")); }')
+		g.gowrappers.writeln('\tif ((unsigned long int)thread == 0) { _v_panic(_S("unable to join thread")); }')
 		g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)${c_ret_ptr_ptr});')
 	}
-	g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_SLIT("unable to join thread")); }')
+	g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_S("unable to join thread")); }')
 	if g.pref.os == .windows {
 		if call_ret_type == ast.void_type {
 			g.gowrappers.writeln('\tCloseHandle(thread);')

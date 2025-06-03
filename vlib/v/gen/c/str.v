@@ -11,7 +11,7 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 		g.write2('"', escaped_val)
 		g.write('"')
 	} else {
-		g.write2('_SLIT("', escaped_val)
+		g.write2('_S("', escaped_val)
 		g.write('")')
 	}
 }
@@ -27,7 +27,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		escaped_val := cescape_nonascii(util.smart_quote(val, false))
 		g.write('strings__Builder_write_string(&')
 		g.expr(call_expr.left)
-		g.write2(', _SLIT("', escaped_val)
+		g.write2(', _S("', escaped_val)
 		g.writeln('"));')
 		if i >= node.exprs.len {
 			break
@@ -88,7 +88,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.expr(expr)
 	} else if typ == ast.bool_type {
 		g.expr(expr)
-		g.write(' ? _SLIT("true") : _SLIT("false")')
+		g.write(' ? _S("true") : _S("false")')
 	} else if sym.kind == .none || typ == ast.void_type.set_flag(.option) {
 		if expr is ast.CallExpr {
 			stmt_str := g.go_before_last_stmt()
@@ -96,7 +96,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.writeln(';')
 			g.write(stmt_str)
 		}
-		g.write('_SLIT("<none>")')
+		g.write('_S("<none>")')
 	} else if sym.kind == .enum {
 		if expr !is ast.EnumVal {
 			str_fn_name := g.get_str_fn(typ)
@@ -107,7 +107,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.enum_expr(expr)
 			g.write(')')
 		} else {
-			g.write('_SLIT("')
+			g.write('_S("')
 			g.enum_expr(expr)
 			g.write('")')
 		}
@@ -133,7 +133,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		if is_ptr && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
-			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("${ref_str}"), ${si_s_code} ,{.d_s = isnil(')
+			g.write('str_intp(1, _MOV((StrIntpData[]){{_S("${ref_str}"), ${si_s_code} ,{.d_s = isnil(')
 			if typ.has_flag(.option) {
 				g.write('*(${g.base_type(exp_typ)}*)&')
 				if temp_var_needed {
@@ -141,7 +141,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				} else {
 					g.expr(expr)
 				}
-				g.write('.data) ? _SLIT("Option(&nil)") : ')
+				g.write('.data) ? _S("Option(&nil)") : ')
 			} else {
 				inside_interface_deref_old := g.inside_interface_deref
 				g.inside_interface_deref = false
@@ -153,7 +153,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				} else {
 					g.expr(expr)
 				}
-				g.write(') ? _SLIT("nil") : ')
+				g.write(') ? _S("nil") : ')
 			}
 		}
 		g.write2(str_fn_name, '(')

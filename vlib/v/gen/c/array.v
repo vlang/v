@@ -338,7 +338,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 			g.write2('(${elem_styp}[]){', g.type_default(node.elem_type))
 			g.write('}[0], ${depth})')
 		} else if node.has_len && node.elem_type == ast.string_type {
-			g.write2('&(${elem_styp}[]){', '_SLIT("")')
+			g.write2('&(${elem_styp}[]){', '_S("")')
 			g.write('})')
 		} else if node.has_len && elem_type.unaliased_sym.kind in [.array, .map] {
 			g.write2('(voidptr)&(${elem_styp}[]){', g.type_default(node.elem_type))
@@ -447,7 +447,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
 		g.write(')')
 	} else if node.has_len && node.elem_type == ast.string_type {
-		g.write2('&(${elem_styp}[]){', '_SLIT("")')
+		g.write2('&(${elem_styp}[]){', '_S("")')
 		g.write('})')
 	} else if node.has_len && elem_type.unaliased_sym.kind in [.struct, .array, .map] {
 		g.write2('(voidptr)&(${elem_styp}[]){', g.type_default(node.elem_type))
@@ -743,7 +743,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		verror('.sort() is an array method or a fixed array method')
 	}
 	if g.pref.is_bare {
-		g.writeln('bare_panic(_SLIT("sort does not work with -freestanding"))')
+		g.writeln('bare_panic(_S("sort does not work with -freestanding"))')
 		return
 	}
 	left_is_array := rec_sym.kind == .array
@@ -825,7 +825,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	}
 
 	stype_arg := g.styp(elem_type)
-	g.sort_fn_definitions.writeln('VV_LOCAL_SYMBOL ${g.static_modifier} int ${compare_fn}(${stype_arg}* a, ${stype_arg}* b) {')
+	g.sort_fn_definitions.writeln('VV_LOC ${g.static_modifier} int ${compare_fn}(${stype_arg}* a, ${stype_arg}* b) {')
 	c_condition := if comparison_type.sym.has_method('<') {
 		'${g.styp(comparison_type.typ)}__lt(${left_expr}, ${right_expr})'
 	} else if comparison_type.unaliased_sym.has_method('<') {
@@ -1159,7 +1159,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 				left_type_str = 'Array_voidptr'
 				elem_type_str = 'voidptr'
 			}
-			g.type_definitions.writeln('${g.static_non_parallel}bool ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
+			g.type_definitions.writeln('${g.static_non_parallel}bool ${fn_name}(${left_type_str} a, ${elem_type_str} v);')
 			fn_builder.writeln('${g.static_non_parallel}bool ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
 			fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 			if elem_kind == .string {
@@ -1201,7 +1201,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 			if elem_kind == .function {
 				elem_type_str = 'voidptr'
 			}
-			g.type_definitions.writeln('${g.static_non_parallel}bool ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
+			g.type_definitions.writeln('${g.static_non_parallel}bool ${fn_name}(${left_type_str} a, ${elem_type_str} v);')
 			fn_builder.writeln('${g.static_non_parallel}bool ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
 			fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
 			if elem_kind == .string {
@@ -1307,7 +1307,7 @@ fn (mut g Gen) gen_array_index_methods() {
 				left_type_str = 'Array_voidptr'
 				elem_type_str = 'voidptr'
 			}
-			g.type_definitions.writeln('${g.static_non_parallel}int ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
+			g.type_definitions.writeln('${g.static_non_parallel}int ${fn_name}(${left_type_str} a, ${elem_type_str} v);')
 			fn_builder.writeln('${g.static_non_parallel}int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
 			fn_builder.writeln('\t${elem_type_str}* pelem = a.data;')
 			fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i, ++pelem) {')
@@ -1351,7 +1351,7 @@ fn (mut g Gen) gen_array_index_methods() {
 			if elem_sym.kind == .function {
 				elem_type_str = 'voidptr'
 			}
-			g.type_definitions.writeln('${g.static_non_parallel}int ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
+			g.type_definitions.writeln('${g.static_non_parallel}int ${fn_name}(${left_type_str} a, ${elem_type_str} v);')
 			fn_builder.writeln('${g.static_non_parallel}int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
 			fn_builder.writeln('\tfor (int i = 0; i < ${info.size}; ++i) {')
 			if elem_sym.kind == .string {

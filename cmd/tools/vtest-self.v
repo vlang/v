@@ -248,6 +248,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_serial_attribute_test.v',
 	'vlib/orm/orm_option_subselect_test.v',
 	'vlib/orm/orm_func_test.v',
+	'vlib/orm/orm_where_in_test.v',
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_struct_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',

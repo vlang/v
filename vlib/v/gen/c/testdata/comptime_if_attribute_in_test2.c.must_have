@@ -1,1 +1,1 @@
-println(_SLIT("this should be in the c code"));
+println(_S("this should be in the c code"));

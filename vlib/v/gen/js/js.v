@@ -900,11 +900,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			// TODO
 		}
 		ast.CharLiteral {
-			if !node.val.is_pure_ascii() {
-				g.write("new rune('${node.val}'.charCodeAt())")
-			} else {
-				g.write("new u8('${node.val}')")
-			}
+			g.write("new rune('${node.val}')")
 		}
 		ast.Comment {}
 		ast.ComptimeCall {
@@ -1712,8 +1708,12 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 
 			g.inc_indent()
 			g.writeln('let ${val} = ${tmp}.map[${tmp2}];')
-			g.writeln('let ${key} = ${tmp2};')
-
+			sym := g.table.sym(it.key_type)
+			if sym.is_number() {
+				g.writeln('let ${key} = new ${g.styp(it.key_type)}(+${tmp2})')
+			} else {
+				g.writeln('let ${key} = new ${g.styp(it.key_type)}(${tmp2})')
+			}
 			g.writeln('try { ')
 			g.inc_indent()
 			g.stmts(it.stmts)

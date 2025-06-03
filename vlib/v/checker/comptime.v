@@ -846,10 +846,14 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 					}
 				}
 				.eq, .ne {
-					if cond.left is ast.SelectorExpr
+					if mut cond.left is ast.SelectorExpr
 						&& cond.right in [ast.IntegerLiteral, ast.StringLiteral] {
 						// $if field.indirections == 1
 						// $if method.args.len == 1
+						if cond.left.typ == 0 && cond.left.name_type == 0
+							&& (cond.left.expr is ast.Ident && cond.left.expr.name.len == 1) {
+							c.expr(mut cond.left)
+						}
 						return .unknown
 					} else if cond.left is ast.SelectorExpr
 						&& c.comptime.check_comptime_is_field_selector_bool(cond.left) {
@@ -908,6 +912,11 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 					}
 				}
 				.gt, .lt, .ge, .le {
+					if cond.left is ast.SelectorExpr && cond.left.typ == 0
+						&& cond.left.name_type == 0
+						&& (cond.left.expr is ast.Ident && cond.left.expr.name.len == 1) {
+						c.expr(mut cond.left)
+					}
 					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral
 						&& c.comptime.is_comptime_selector_field_name(cond.left, 'indirections') {
 						return .unknown
