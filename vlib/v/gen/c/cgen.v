@@ -1412,7 +1412,7 @@ fn (mut g Gen) write_options() {
 		done = g.done_options.clone()
 	}
 	for base, styp in g.options {
-		if base in done || styp.ends_with('*') {
+		if base in done {
 			continue
 		}
 		done << base

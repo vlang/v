@@ -1010,10 +1010,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				if param_type.has_flag(.option) {
 					param_type = param_type.set_flag(.option_mut_param_t)
 				}
-				// if arg_type.is_ptr() {
-				// p.error('cannot mut')
-				// }
-				// arg_type = arg_type.ref()
 				if is_shared {
 					param_type = param_type.set_flag(.shared_f)
 				}
