@@ -3823,7 +3823,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					}
 				}
 				g.writeln('if (${expr_str}${dot_or_ptr}state != 0) {')
-				g.writeln2('\tpanic_option_not_set(_SLIT("none"));', '}')
+				g.writeln2('\tpanic_option_not_set(_S("none"));', '}')
 				g.write(cur_line)
 				if is_unwrapped {
 					typ := g.type_resolver.typeof_type(node.expr, node.typ)
