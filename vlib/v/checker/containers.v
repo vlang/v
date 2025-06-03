@@ -775,3 +775,67 @@ fn (mut c Checker) check_elements_initialized(typ ast.Type) ! {
 		else {}
 	}
 }
+
+fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, right_type ast.Type,
+	right_final_sym ast.TypeSymbol) ast.Type {
+	if !node.is_stmt {
+		c.error('array append cannot be used in an expression', node.pos)
+	}
+	if left_type.has_flag(.option) && node.left is ast.Ident && node.left.or_expr.kind == .absent {
+		c.error('unwrapped Option cannot be used in an infix expression', node.pos)
+	}
+	right_pos := node.right.pos()
+	mut right_sym := c.table.sym(right_type)
+	mut left_sym := c.table.sym(left_type)
+	// `array << elm`
+	c.check_expr_option_or_result_call(node.right, right_type)
+	node.auto_locked, _ = c.fail_if_immutable(mut node.left)
+	left_value_type := c.table.value_type(c.unwrap_generic(left_type))
+	left_value_sym := c.table.sym(c.unwrap_generic(left_value_type))
+	if !left_value_type.has_flag(.option) && right_type.has_flag(.option) {
+		c.error('unwrapped Option cannot be used in an infix expression', node.pos)
+	}
+	if left_value_sym.kind == .interface {
+		if right_final_sym.kind != .array {
+			// []Animal << Cat
+			if c.type_implements(right_type, left_value_type, right_pos) {
+				if !right_type.is_any_kind_of_pointer() && !c.inside_unsafe
+					&& right_sym.kind != .interface {
+					c.mark_as_referenced(mut &node.right, true)
+				}
+			}
+		} else {
+			// []Animal << []Cat
+			c.type_implements(c.table.value_type(right_type), left_value_type, right_pos)
+		}
+		return ast.void_type
+	} else if left_value_sym.kind == .sum_type {
+		if right_sym.kind != .array {
+			if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(c.unwrap_generic(right_type))) {
+				c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
+			}
+		} else {
+			right_value_type := c.table.value_type(c.unwrap_generic(right_type))
+			if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(right_value_type)) {
+				c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
+			}
+		}
+		return ast.void_type
+	}
+	// []T << T or []T << []T
+	unwrapped_right_type := c.unwrap_generic(right_type)
+	if c.check_types(unwrapped_right_type, left_value_type) {
+		// []&T << T is wrong: we check for that, !(T.is_ptr()) && ?(&T).is_ptr()
+		if !(!unwrapped_right_type.is_ptr() && left_value_type.is_ptr()
+			&& left_value_type.share() == .mut_t) {
+			return ast.void_type
+		}
+	} else if c.check_types(unwrapped_right_type, c.unwrap_generic(left_type)) {
+		return ast.void_type
+	}
+	if left_value_type.has_flag(.option) && right_type == ast.none_type {
+		return ast.void_type
+	}
+	c.error('cannot append `${right_sym.name}` to `${left_sym.name}`', right_pos)
+	return ast.void_type
+}
