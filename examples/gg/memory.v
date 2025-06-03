@@ -7,7 +7,7 @@ import time
 
 const cover = gx.rgba(85, 200, 85, 255)
 const csize = 120 // cell size in pixels
-const letters = 'AABBOOCCVVXXYYZZMMKKHHTT'.runes().map(it.str())
+const letters = 'AABBOOCCVVXXYYZZMMKKHHTT'.split('')
 const header_size = 30
 
 struct Cell {
@@ -43,8 +43,7 @@ fn (mut g Game) restart() {
 fn (mut g Game) draw_cell(i int, cell Cell) {
 	x, y := i % g.size, i / g.size
 	rect_x, rect_y := x * csize, header_size + y * csize
-	dt := g.sw.elapsed().milliseconds()
-	if g.cells[i].is_open || dt <= 1000 {
+	if g.cells[i].is_open || g.sw.elapsed().milliseconds() <= 1000 {
 		lsize := 96
 		g.ctx.draw_rect_empty(rect_x + 6, rect_y + 6, csize - 10, csize - 10, gx.light_gray)
 		g.ctx.draw_text(rect_x + csize / 2 - lsize / 3, rect_y + csize / 2 - lsize / 2,
@@ -62,8 +61,7 @@ fn on_frame(mut g Game) {
 	for i, cell in g.cells {
 		g.draw_cell(i, cell)
 	}
-	dt := g.revert_sw.elapsed().milliseconds()
-	if dt > 750 {
+	if g.revert_sw.elapsed().milliseconds() > 750 {
 		g.revert_sw = time.new_stopwatch(auto_start: false)
 		if g.card1_idx != none {
 			if g.card2_idx != none {
