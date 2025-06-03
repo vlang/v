@@ -1,4 +1,4 @@
-vlib/v/checker/tests/mut_map_get_value_address_err.vv:5:9: error: cannot take the address of map values
+vlib/v/checker/tests/mut_map_get_value_address_err.vv:5:9: error: cannot take the address of map values outside `unsafe`
     3 |         'key': 3
     4 |     }
     5 |     a := &m['key']
