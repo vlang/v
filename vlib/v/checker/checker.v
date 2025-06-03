@@ -4826,12 +4826,14 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 					is_mut = ident_obj.is_mut
 				}
 			}
-			if typ_sym.kind == .map {
-				c.error('cannot take the address of map values', expr.pos)
-			}
 			if !c.inside_unsafe {
 				if typ_sym.kind == .array && is_mut {
 					c.error('cannot take the address of mutable array elements outside unsafe blocks',
+						expr.pos)
+				}
+
+				if typ_sym.kind == .map {
+					c.error('cannot take the address of map values outside `unsafe`',
 						expr.pos)
 				}
 			}
