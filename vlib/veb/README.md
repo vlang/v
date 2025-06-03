@@ -175,7 +175,7 @@ pub fn (app &App) hello_user(mut ctx Context, user string) veb.Result {
               vv
 @['/document/:id']                              vv
 pub fn (app &App) get_document(mut ctx Context, id int) veb.Result {
-	return ctx.text('Hello ${user}')
+	return ctx.text('Document ${id}')
 }
 ```
 
