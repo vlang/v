@@ -1003,7 +1003,9 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 					return []ast.Param{}, false, false, false
 				}
 				if param_type.is_ptr() && p.table.sym(param_type).kind == .struct {
-					param_type = param_type.ref()
+					if !param_type.has_flag(.option) {
+						param_type = param_type.ref()
+					}
 				} else {
 					param_type = param_type.set_nr_muls(1)
 				}
@@ -1134,7 +1136,9 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 					return []ast.Param{}, false, false, false
 				}
 				if typ.is_ptr() && p.table.sym(typ).kind == .struct {
-					typ = typ.ref()
+					if !typ.has_flag(.option) {
+						typ = typ.ref()
+					}
 				} else {
 					typ = typ.set_nr_muls(1)
 				}
