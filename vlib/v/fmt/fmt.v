@@ -3039,6 +3039,15 @@ pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
 }
 
 pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
+	if node.expr is ast.StringLiteral && node.field_name == 'str' {
+		if f.file.language != .v {
+			f.write(f.file.language.str())
+		} else {
+			f.write('c')
+		}
+		f.expr(node.expr)
+		return
+	}
 	f.expr(node.expr)
 	f.write('.')
 	f.write(node.field_name)
