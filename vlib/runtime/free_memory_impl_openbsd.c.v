@@ -20,7 +20,7 @@ fn free_memory_impl() !usize {
 			retval := unsafe { C.sysctl(&mib[0], mib.len, &uvm, &len, C.NULL, 0) }
 			c_errno := C.errno
 			if retval == -1 {
-				return error('free_memory: error code = ${c_errno}')
+				return error('free_memory: `C.sysctl()` return error code = ${c_errno}')
 			}
 			return usize(uvm.pagesize) * usize(uvm.free)
 		}

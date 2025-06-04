@@ -18,6 +18,9 @@ pub struct C.vm_statistics64_data_t {
 @[typedef]
 pub struct C.host_t {}
 
+@[typedef]
+pub struct C.task_t {}
+
 fn C.mach_host_self() C.host_t
 fn C.mach_task_self() C.task_t
 fn C.mach_port_deallocate(task C.task_t, host C.host_t) int
@@ -35,9 +38,12 @@ fn free_memory_impl() !usize {
 		}
 		unsafe {
 			retval_1 := C.host_statistics64(host, C.HOST_VM_INFO64, &int(&hs), &vmsz)
+			if retval_1 != C.KERN_SUCCESS {
+				return error('free_memory: `C.host_statistics64()` return = ${retval_1}')
+			}
 			retval_2 := C.host_page_size(host, &C.vm_size_t(&hps))
-			if retval_1 != C.KERN_SUCCESS || retval_2 != C.KERN_SUCCESS {
-				return error('free_memory: error code = ${retval_1} ${retval_2}')
+			if retval_2 != C.KERN_SUCCESS {
+				return error('free_memory: `C.host_page_size()` return = ${retval_2}')
 			}
 		}
 		return usize(u64(hs.free_count) * u64(hps))
