@@ -47,6 +47,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				LocalVar {
 					g.local_var_ident(node, var)
 				}
+				ExternVar {
+					g.extern_var_ident(var)
+				}
 				else {
 					g.n_error('${@LOCATION} Unsupported variable kind')
 				}
@@ -171,6 +174,16 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 				g.n_error('${@LOCATION} Unsupported variable type')
 			}
 		}
+	}
+}
+
+fn (mut g Gen) extern_var_ident(var ExternVar) {
+	if g.pref.os == .linux {
+		g.extern_vars[g.pos()] = var.name
+		g.code_gen.mov64(Amd64Register.rax, Number(i64(0)))
+		g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u64_type_idx)
+	} else {
+		g.n_error('${@LOCATION} unsupported os')
 	}
 }
 

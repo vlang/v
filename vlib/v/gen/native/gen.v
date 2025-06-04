@@ -35,6 +35,7 @@ mut:
 	extern_symbols            []string
 	linker_include_paths      []string
 	linker_libs               []string
+	extern_vars               map[i64]string
 	extern_fn_calls           map[i64]string
 	fn_addr                   map[string]i64
 	fn_names                  []string
@@ -235,6 +236,11 @@ struct LocalVar {
 	name   string
 }
 
+struct ExternVar {
+	typ    ast.Type
+	name   string
+}
+
 struct GlobalVar {}
 
 @[params]
@@ -244,9 +250,9 @@ pub:
 	typ    ast.Type // type of the value you want to process e.g. struct fields.
 }
 
-type Var = GlobalVar | LocalVar | ast.Ident
+type Var = GlobalVar | ExternVar | LocalVar | ast.Ident
 
-type IdentVar = GlobalVar | LocalVar | Register
+type IdentVar = GlobalVar | ExternVar | LocalVar | Register
 
 enum JumpOp {
 	je
@@ -270,6 +276,9 @@ fn byt(n i32, s i32) u8 {
 }
 
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
+	if ident.name in g.extern_symbols {
+		return ExternVar { ident.info.typ, ident.name }
+	}
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
 		obj = ident.scope.find(ident.name) or {
@@ -302,6 +311,9 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 		GlobalVar {
 			g.n_error('${@LOCATION} cannot get type from GlobalVar yet')
 		}
+		else {
+			g.n_error('${@LOCATION} unsupported var type ${var}')
+		}	
 	}
 }
 
