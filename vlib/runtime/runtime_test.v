@@ -1,11 +1,17 @@
 import runtime
 
 fn test_physical_memory() {
-	total := runtime.total_memory() or { 1 }
-	free := runtime.free_memory() or { 1 }
-	println('total memory: ${total}')
-	println('free  memory: ${free}')
-	assert total > 0 && free > 0
+	$if windows || linux || darwin || freebsd || openbsd {
+		total := runtime.total_memory()!
+		free := runtime.free_memory()!
+		println('total memory: ${total}')
+		println('free  memory: ${free}')
+		assert total > 0 && free > 0
+	} $else {
+		total := runtime.total_memory()!
+		_ := runtime.free_memory() or { assert err.msg().contains('not implemented') }
+		assert total > 0
+	}
 }
 
 fn test_nr_cpus() {
