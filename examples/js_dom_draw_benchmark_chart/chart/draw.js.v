@@ -17,7 +17,7 @@ fn get_canvas(elem JS.HTMLElement) JS.HTMLCanvasElement {
 
 fn draw_line(mut context JS.CanvasRenderingContext2D, x1 int, y1 int, x2 int, y2 int) {
 	context.beginPath()
-	context.strokeStyle = 'black'.str
+	context.strokeStyle = js'black'
 	context.lineWidth = JS.Number(1)
 	context.moveTo(0, 0)
 	context.lineTo(100, 100)
@@ -69,13 +69,13 @@ fn main() {
 	mut canvas_elem := map[string]JS.HTMLElement{}
 	mut canvas := map[string]JS.HTMLCanvasElement{}
 
-	canvas_elem['insert'] = document.getElementById('canvas_insert_id'.str)?
+	canvas_elem['insert'] = document.getElementById(js'canvas_insert_id')?
 	JS.console.log('canvas_insert_id')
 
-	canvas_elem['select'] = document.getElementById('canvas_select_id'.str)?
+	canvas_elem['select'] = document.getElementById(js'canvas_select_id')?
 	JS.console.log('canvas_select_id')
 
-	canvas_elem['update'] = document.getElementById('canvas_update_id'.str)?
+	canvas_elem['update'] = document.getElementById(js'canvas_update_id')?
 	JS.console.log('canvas_update_id')
 
 	// for orm_stmt_kind in ["insert", "select", "update"]{
@@ -84,7 +84,7 @@ fn main() {
 
 		canvas[orm_stmt_kind] = get_canvas(canvas_elem[orm_stmt_kind])
 
-		ctx := canvas[orm_stmt_kind].getContext('2d'.str, js_undefined())?
+		ctx := canvas[orm_stmt_kind].getContext(js'2d', js_undefined())?
 
 		context := match ctx {
 			JS.CanvasRenderingContext2D {
@@ -97,9 +97,9 @@ fn main() {
 
 		mut state := DrawState{context, false, 0, 0}
 
-		mut inserts_from_framework := canvas_elem[orm_stmt_kind].getAttribute('inserts_from_framework'.str)?
+		mut inserts_from_framework := canvas_elem[orm_stmt_kind].getAttribute(js'inserts_from_framework')?
 
-		mut max_benchmark := canvas_elem[orm_stmt_kind].getAttribute('max_benchmark'.str)?
+		mut max_benchmark := canvas_elem[orm_stmt_kind].getAttribute(js'max_benchmark')?
 
 		// -----------------------------------------------------------------------------------------------------------------------------------------------------------------
 		mut obj := FrameworkPlatform{}
