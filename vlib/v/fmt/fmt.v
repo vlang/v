@@ -3169,6 +3169,8 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 		f.write('r')
 	} else if node.language == ast.Language.c {
 		f.write('c')
+	} else if node.language == ast.Language.js {
+		f.write('js')
 	}
 	if node.is_raw {
 		f.write('${quote}${node.val}${quote}')

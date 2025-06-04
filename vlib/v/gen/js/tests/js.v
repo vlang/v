@@ -28,6 +28,8 @@ fn class(extends string, instanceof int) {
 fn main() {
 	println('Hello from V.js!')
 	println(JS.Math.atan2(1, 0))
+	/*
+	TODO(StunxFS): uncomment when V supports `js"string literal"`
 	non := JS.eval(js"console.log('Hello!')")
 	if isnil(non) {
 		println('non=nil')
@@ -40,6 +42,7 @@ fn main() {
 	if res != '' {
 		println('res=${res}')
 	}
+	*/
 	mut a := 1
 	a *= 2
 	a += 3
