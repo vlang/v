@@ -1,9 +1,10 @@
 fn test_main() {
-	mut arr := []int{}
+	mut arr := [1, 2]
 	mut bbb := unwrap(mut arr)
-	bbb << 1
+	bbb << 3
 	dump(bbb)
-	assert bbb == [1]
+	assert bbb == [1, 2, 3]
+	assert arr == [1, 2]
 }
 
 fn unwrap[T](mut t ?&T) T {
