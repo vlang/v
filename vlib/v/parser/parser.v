@@ -342,7 +342,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		is_test:          p.inside_test_file
 		is_generated:     p.is_generated
 		is_translated:    p.is_translated
-		language:         p.language
+		language:         p.file_backend_mode
 		nr_lines:         p.scanner.line_nr
 		nr_bytes:         p.scanner.text.len
 		nr_tokens:        p.scanner.all_tokens.len
