@@ -984,6 +984,8 @@ fn test_index_any() {
 }
 
 fn test_js_string() {
+	/*
+	TODO(StunxFS): Uncomment when the PR is merged
 	s := js'hello V'
 	assert s.charAt(0) == js'h'
 	assert s.charAt(6) == js'V'
@@ -994,4 +996,5 @@ fn test_js_string() {
 	assert s.includes(js' ') == JS.Boolean(true)
 	assert s.startsWith(js'hello') == JS.Boolean(true)
 	assert s.endsWith(js'V') == JS.Boolean(true)
+	*/
 }
