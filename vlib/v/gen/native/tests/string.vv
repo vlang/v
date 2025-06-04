@@ -17,7 +17,7 @@ fn test_string_len() {
 }
 
 struct Idx {
-	a string
+        a string
 }
 
 fn test_string_index() {
@@ -30,7 +30,7 @@ fn test_string_index() {
 	assert a[1] != `0`
 	assert a[2] != `0`
 	assert a[3] != `0`
-
+	
 	x := Idx{'abc'}
 	assert x.a[1] == `b`
 	assert x.a[2] != `b`
