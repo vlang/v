@@ -133,6 +133,8 @@ pub fn (mut b Builder) middle_stages() ! {
 	if b.pref.dump_defines != '' {
 		b.dump_defines()
 	}
+	mut mcache := vmod.get_cache()
+	mcache.debug()
 	b.print_warnings_and_errors()
 	if b.checker.should_abort {
 		return error('too many errors/warnings/notices')

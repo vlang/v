@@ -44,24 +44,27 @@ pub struct ModFileCacher {
 mut:
 	cache map[string]ModFileAndFolder
 	// folder_files caches os.ls(key)
-	folder_files map[string][]string
+	folder_files     map[string][]string
+	hits             int
+	misses           int
+	get_files_hits   int
+	get_files_misses int
 }
 
 pub fn new_mod_file_cacher() &ModFileCacher {
 	return &ModFileCacher{}
 }
 
+@[if debug_mod_file_cacher ?]
 pub fn (mcache &ModFileCacher) debug() {
-	$if debug {
-		eprintln('ModFileCacher DUMP:')
-		eprintln('	 ModFileCacher.cache:')
-		for k, v in mcache.cache {
-			eprintln('	 K: ${k:-32s} | V: "${v.vmod_file:32s}" | "${v.vmod_folder:32s}" ')
-		}
-		eprintln('	 ModFileCacher.folder_files:')
-		for k, v in mcache.folder_files {
-			eprintln('	 K: ${k:-32s} | V: ${v.str()}')
-		}
+	eprintln('ModFileCacher hits: ${mcache.hits}, misses: ${mcache.misses} | get_files_hits: ${mcache.get_files_hits} | get_files_misses: ${mcache.get_files_misses}')
+	eprintln('	 ModFileCacher.cache.len: ${mcache.cache.len}')
+	for k, v in mcache.cache {
+		eprintln('	 K: ${k:-42s} | v.mod: ${v.vmod_file:-42s} | folder: `${v.vmod_folder}`')
+	}
+	eprintln('	 ModFileCacher.folder_files:')
+	for k, v in mcache.folder_files {
+		eprintln('	 K: ${k:-42s} | folder_files: ${v}')
 	}
 }
 
@@ -72,12 +75,14 @@ pub fn (mut mcache ModFileCacher) get_by_file(vfile string) ModFileAndFolder {
 pub fn (mut mcache ModFileCacher) get_by_folder(vfolder string) ModFileAndFolder {
 	mfolder := os.real_path(vfolder)
 	if mfolder in mcache.cache {
+		mcache.hits++
 		return mcache.cache[mfolder]
 	}
 	traversed_folders, res := mcache.traverse(mfolder)
 	for tfolder in traversed_folders {
 		mcache.add(tfolder, res)
 	}
+	mcache.misses++
 	return res
 }
 
@@ -97,6 +102,7 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 			break
 		}
 		if cfolder in mcache.cache {
+			mcache.hits++
 			res := mcache.cache[cfolder]
 			if res.vmod_file.len == 0 {
 				mcache.mark_folders_as_vmod_free(folders_so_far)
@@ -154,8 +160,10 @@ fn (mcache &ModFileCacher) check_for_stop(files []string) bool {
 
 fn (mut mcache ModFileCacher) get_files(cfolder string) []string {
 	if cfolder in mcache.folder_files {
+		mcache.get_files_hits++
 		return mcache.folder_files[cfolder]
 	}
+	mcache.get_files_misses++
 	mut files := []string{}
 	if os.exists(cfolder) && os.is_dir(cfolder) {
 		if listing := os.ls(cfolder) {
