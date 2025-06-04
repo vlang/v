@@ -982,3 +982,16 @@ fn test_index_any() {
 	assert x.index_any('ef') == 4
 	assert x.index_any('fe') == 4
 }
+
+fn test_js_string() {
+	s := js'hello V'
+	assert s.charAt(0) == js'h'
+	assert s.charAt(6) == js'V'
+	assert s.charCodeAt(0) == JS.Number(104)
+	assert s.toUpperCase() == js'HELLO V'
+	assert s.toLowerCase() == js'hello v'
+	assert s.concat(js' from JS') == js'hello V from JS'
+	assert s.includes(js' ') == JS.Boolean(true)
+	assert s.startsWith(js'hello') == JS.Boolean(true)
+	assert s.endsWith(js'V') == JS.Boolean(true)
+}
