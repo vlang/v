@@ -18,20 +18,28 @@ pub struct C.vm_statistics64_data_t {
 pub struct C.host_t {}
 
 fn C.mach_host_self() C.host_t
+fn C.mach_task_self() C.task_t
+fn C.mach_port_deallocate(task C.task_t, host C.host_t) int
 fn C.host_page_size(host C.host_t, out_page_size &C.vm_size_t) int
 fn C.host_statistics64(host C.host_t, flavor int, host_info_out &int, host_info_outCnt &u32) int
 
-fn free_memory_impl() usize {
+fn free_memory_impl() !usize {
 	$if macos {
 		mut hs := C.vm_statistics64_data_t{}
 		mut vmsz := u32(C.HOST_VM_INFO64_COUNT)
 		mut hps := u32(0)
 		mut host := C.mach_host_self()
+		defer {
+			_ := C.mach_port_deallocate(C.mach_task_self(), host)
+		}
 		unsafe {
-			C.host_statistics64(host, C.HOST_VM_INFO64, &int(&hs), &vmsz)
-			C.host_page_size(host, &C.vm_size_t(&hps))
+			retval_1 := C.host_statistics64(host, C.HOST_VM_INFO64, &int(&hs), &vmsz)
+			retval_2 := C.host_page_size(host, &C.vm_size_t(&hps))
+			if retval_1 != C.KERN_SUCCESS || retval_2 != C.KERN_SUCCESS {
+				return error('free_memory: error code = ${retval_1} ${retval_2}')
+			}
 		}
 		return usize(u64(hs.free_count) * u64(hps))
 	}
-	return 1
+	return error('free_memory: not implemented')
 }

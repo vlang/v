@@ -1,8 +1,8 @@
 import runtime
 
 fn test_physical_memory() {
-	total := runtime.total_memory()
-	free := runtime.free_memory()
+	total := runtime.total_memory() or { 1 }
+	free := runtime.free_memory() or { 1 }
 	println('total memory: ${total}')
 	println('free  memory: ${free}')
 	assert total > 0 && free > 0
