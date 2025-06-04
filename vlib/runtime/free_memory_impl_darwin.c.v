@@ -34,6 +34,17 @@ fn free_memory_impl() !usize {
 		mut hps := u32(0)
 		mut host := C.mach_host_self()
 		defer {
+			// Critical: Release send right for host port
+			// --------------------------------------------------
+			// Mach ports are system resources. Calling mach_host_self()
+			// increments the port's reference count. We must manually release
+			// to prevent resource leaks (port exhaustion can cause kernel failures).
+			// mach_port_deallocate decrements the reference count, allowing
+			// system resource reclamation when count reaches zero.
+			// Parameters:
+			//   C.mach_task_self() - Port for current task
+			//   host - Host port to release
+			// Return value ignored (_) since we only care about resource cleanup
 			_ := C.mach_port_deallocate(C.mach_task_self(), host)
 		}
 		unsafe {
