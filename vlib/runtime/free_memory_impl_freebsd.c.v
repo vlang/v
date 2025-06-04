@@ -12,13 +12,15 @@ fn free_memory_impl() !usize {
 			c_errno_1 := C.errno
 			mut mib := [4]int{}
 			mut len := usize(4)
-			retval_2 := unsafe { C.sysctlnametomib(c'vm.stats.vm.v_free_count', &mib[0],
-				&len) }
+			retval_2 := unsafe {
+				C.sysctlnametomib(c'vm.stats.vm.v_free_count', &mib[0], &len)
+			}
 			c_errno_2 := C.errno
 			mut free_pages := int(0)
 			bufsize := usize(4)
-			retval_3 := unsafe { C.sysctl(&mib[0], mib.len, &free_pages, &bufsize, 0,
-				0) }
+			retval_3 := unsafe {
+				C.sysctl(&mib[0], mib.len, &free_pages, &bufsize, 0, 0)
+			}
 			c_errno_3 := C.errno
 			if page_size == usize(-1) || retval_2 == -1 || retval_3 == -1 {
 				return error('free_memory: error code = ${c_errno_1} ${c_errno_2} ${c_errno_3}')
