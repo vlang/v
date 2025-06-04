@@ -3285,8 +3285,9 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 				if c.js_string != none {
 					return c.js_string
 				}
-				c.js_string = c.table.find_type('JS.String')
-				return c.js_string
+				res := c.table.find_type('JS.String')
+				c.js_string = res
+				return res
 			}
 			if node.is_raw {
 				// raw strings don't need any sort of checking related to unicode
