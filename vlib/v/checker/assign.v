@@ -4,7 +4,7 @@ module checker
 
 import v.ast
 
-// TODO: 600 line function
+// TODO: 980 line function
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	prev_inside_assign := c.inside_assign
 	c.inside_assign = true
