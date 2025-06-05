@@ -118,7 +118,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 			val := g.enum_vals[type_name].fields[node.val] or {
 				g.n_error('${@LOCATION} enum field not found ${node.val}')
 			}
-			g.code_gen.mov64(g.code_gen.main_reg(), val)
+			match val {
+				Number {
+					g.code_gen.mov64(g.code_gen.main_reg(), val)
+				}
+				ast.Expr {
+					g.expr(val)
+				}
+			}
 		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)

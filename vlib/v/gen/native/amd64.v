@@ -2288,11 +2288,19 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 			val := enum_info.fields[right.val] or {
 				c.g.n_error('${@LOCATION} enum field not found ${right.val}')
 			}
-			if node.op == .decl_assign {
-				c.allocate_var(ident.name, enum_info.size, val)
-			} else {
-				c.mov64(Amd64Register.rax, val)
-				c.mov_reg_to_var(ident, Amd64Register.rax)
+			match val {
+				Number {
+					if node.op == .decl_assign {
+						c.allocate_var(ident.name, enum_info.size, val)
+					} else {
+						c.mov64(Amd64Register.rax, val)
+						c.mov_reg_to_var(ident, Amd64Register.rax)
+					}
+				}
+				ast.Expr {
+					c.g.expr(val)
+					c.mov_reg_to_var(ident, Amd64Register.rax)
+				}
 			}
 		}
 		ast.FloatLiteral {

@@ -212,8 +212,10 @@ type Number = u64 | i64
 struct Enum {
 	size i32 // size of the type of the enum in bytes
 mut:
-	fields map[string]Number
+	fields map[string]EnumVal
 }
+
+type EnumVal = Number | ast.Expr
 
 struct MultiReturn {
 mut:
@@ -560,22 +562,33 @@ pub fn (mut g Gen) calculate_enum_fields() {
 			size: i32(enum_size)
 		}
 		mut value := Number(if decl.is_flag { i64(1) } else { i64(0) })
+		mut has_expr := false
 		for field in decl.fields {
 			if field.has_expr {
-				str_val := g.eval.expr(field.expr, ast.int_type_idx).string()
-				if str_val.len >= 0 && str_val[0] == `-` {
-					value = str_val.i64()
+				if field.expr.is_literal() { // does not depend on other declarations (C compile time csts)
+					str_val := g.eval.expr(field.expr, ast.int_type_idx).string()
+					if str_val.len >= 0 && str_val[0] == `-` {
+						value = str_val.i64()
+					} else {
+						value = str_val.u64()
+					}
 				} else {
-					value = str_val.u64()
+					enum_vals.fields[field.name] = field.expr
+					has_expr = true
+					continue
+				}
+			} else {
+				if has_expr {
+					g.n_error('${@LOCATION} unsupported auto incr after C consts')
 				}
 			}
 			match value {
 				// Dereferences the sumtype (it would get assigned by address and messed up)
 				i64 {
-					enum_vals.fields[field.name] = value as i64
+					enum_vals.fields[field.name] = Number(value as i64)
 				}
 				u64 {
-					enum_vals.fields[field.name] = value as u64
+					enum_vals.fields[field.name] = Number(value as u64)
 				}
 			}
 			if decl.is_flag {
