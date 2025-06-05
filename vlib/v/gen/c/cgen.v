@@ -1396,7 +1396,7 @@ fn (g &Gen) result_type_text(styp string, base string) string {
 fn (mut g Gen) register_option(t ast.Type) string {
 	styp, base := g.option_type_name(t)
 	g.options[base] = styp
-	return styp
+	return if !t.has_flag(.option_mut_param_t) { styp } else { '${styp}*' }
 }
 
 fn (mut g Gen) register_result(t ast.Type) string {
@@ -2294,7 +2294,12 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			ret_styp := g.styp(unwrapped_ret_typ).replace('*', '_ptr')
 			g.writeln('${ret_styp} ${tmp_var};')
 		} else {
-			g.writeln('${g.styp(ret_typ)} ${tmp_var};')
+			if ret_typ.has_flag(.option_mut_param_t) {
+				ret_styp := g.styp(ret_typ).replace('*', '')
+				g.writeln('${ret_styp} ${tmp_var};')
+			} else {
+				g.writeln('${g.styp(ret_typ)} ${tmp_var};')
+			}
 		}
 		mut expr_is_fixed_array_var := false
 		mut fn_option_clone := false
@@ -2336,8 +2341,21 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					}
 				}
 				if !expr.is_literal() && expr_typ != ast.nil_type
-					&& ret_typ.nr_muls() > expr_typ.nr_muls() {
+					&& ret_typ.nr_muls() > expr_typ.nr_muls()
+					&& !ret_typ.has_flag(.option_mut_param_t) {
 					g.write('&'.repeat(ret_typ.nr_muls() - expr_typ.nr_muls()))
+				} else if ret_typ.has_flag(.option_mut_param_t) {
+					if expr_typ.is_ptr() {
+						if ret_typ.nr_muls() < expr_typ.nr_muls() {
+							g.write('*')
+						}
+					} else {
+						if expr_typ.has_flag(.option) {
+							fn_option_clone = true
+							g.write('(${styp})')
+						}
+						g.write('&')
+					}
 				}
 			}
 		} else {
@@ -3789,6 +3807,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				cur_line := g.go_before_last_stmt().trim_space()
 				mut expr_str := ''
 				mut is_unwrapped := true
+				mut dot_or_ptr := '.'
 				if mut node.expr is ast.ComptimeSelector && node.expr.left is ast.Ident {
 					// val.$(field.name)?
 					expr_str = g.gen_comptime_selector(node.expr)
@@ -3796,8 +3815,13 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					// val?
 					expr_str = node.expr.name
 					is_unwrapped = !g.inside_assign
+					dot_or_ptr = if !(node.expr.obj is ast.Var && node.expr.obj.is_auto_deref) {
+						'.'
+					} else {
+						'->'
+					}
 				}
-				g.writeln('if (${expr_str}.state != 0) {')
+				g.writeln('if (${expr_str}${dot_or_ptr}state != 0) {')
 				g.writeln2('\tpanic_option_not_set(_S("none"));', '}')
 				g.write(cur_line)
 				if is_unwrapped {
@@ -5199,8 +5223,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if !g.is_assign_lhs && is_auto_heap {
 					g.write('(*${name})')
 				} else {
-					if node.obj is ast.Var && node.obj.is_inherited {
-						g.write(closure_ctx + '->')
+					if node.obj is ast.Var {
+						// mutable option var
+						if (g.is_assign_lhs || g.inside_struct_init) && node.obj.is_auto_deref {
+							g.write('*')
+						}
+						if node.obj.is_inherited {
+							g.write(closure_ctx + '->')
+						}
 					}
 					g.write(name)
 				}
@@ -5352,8 +5382,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 							}
 						}
 						if i == 0 && node.obj.ct_type_var != .smartcast && node.obj.is_unwrapped {
-							dot := if !node.obj.ct_type_unwrapped && !node.obj.orig_type.is_ptr()
-								&& obj_sym.is_heap() {
+							dot := if (!node.obj.ct_type_unwrapped && !node.obj.orig_type.is_ptr()
+								&& obj_sym.is_heap())
+								|| node.obj.orig_type.has_flag(.option_mut_param_t) {
 								'->'
 							} else {
 								'.'
@@ -7044,7 +7075,11 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 // Returns the type of the last stmt
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Type) {
 	cvar_name := c_name(var_name)
-	tmp_op := if var_name in g.tmp_var_ptr { '->' } else { '.' }
+	tmp_op := if var_name in g.tmp_var_ptr || return_type.has_flag(.option_mut_param_t) {
+		'->'
+	} else {
+		'.'
+	}
 	if or_block.kind == .block && or_block.stmts.len == 0 {
 		// generate nothing, block is empty
 		g.write(';\n${util.tabs(g.indent)}(void)${cvar_name};')

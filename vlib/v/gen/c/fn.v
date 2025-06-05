@@ -2631,7 +2631,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				if (arg.expr is ast.Ident && arg.expr.kind in [.global, .variable])
 					|| arg.expr is ast.SelectorExpr {
 					g.write('&')
-					g.expr(arg.expr)
+					if expected_type.has_flag(.option_mut_param_t) {
+						g.expr_with_opt(arg.expr, arg_typ, expected_type)
+					} else {
+						g.expr(arg.expr)
+					}
 				} else {
 					// Special case for mutable arrays. We can't `&` function
 					// results,	have to use `(array[]){ expr }[0]` hack.
@@ -2667,6 +2671,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				&& lang != .c {
 				if arg.expr.is_lvalue() {
 					if expected_type.has_flag(.option) {
+						if expected_type.has_flag(.option_mut_param_t) {
+							g.write('(${g.styp(expected_type)})&')
+						}
 						g.expr_with_opt(arg.expr, arg_typ, expected_type)
 						return
 					} else if arg.expr is ast.Ident && arg.expr.language == .c {
@@ -2729,6 +2736,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.write('->val')
 		return
 	} else if expected_type.has_flag(.option) {
+		if expected_type.has_flag(.option_mut_param_t)
+			&& arg_typ.nr_muls() <= expected_type.nr_muls() && !(arg.expr is ast.Ident
+			&& (arg.expr.obj is ast.Var && arg.expr.obj.is_inherited)) {
+			g.write('&')
+		}
 		if (arg_sym.info is ast.Alias || exp_sym.info is ast.Alias) && expected_type != arg_typ {
 			g.expr_opt_with_alias(arg.expr, arg_typ, expected_type)
 		} else {

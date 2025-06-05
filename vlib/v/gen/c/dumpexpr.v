@@ -82,6 +82,9 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	} else {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
+		if expr_type.has_flag(.option_mut_param_t) {
+			g.write('*')
+		}
 		g.expr(node.expr)
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}

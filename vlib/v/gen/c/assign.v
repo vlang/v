@@ -25,7 +25,8 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		} else {
 			'${expr}'
 		}
-		g.writeln('if (${c_name(expr_var)}.state != 0) { // assign')
+		dot_or_ptr := if !expr_typ.has_flag(.option_mut_param_t) { '.' } else { '-> ' }
+		g.writeln('if (${c_name(expr_var)}${dot_or_ptr}state != 0) { // assign')
 		if expr is ast.Ident && expr.or_expr.kind == .propagate_option {
 			g.writeln('\tpanic_option_not_set(_S("none"));')
 		} else {
@@ -832,10 +833,20 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					if op_overloaded {
 						g.op_arg(left, op_expected_left, var_type)
 					} else {
-						if !is_decl && !is_shared_re_assign && left.is_auto_deref_var() {
+						if !is_decl && !is_shared_re_assign && left.is_auto_deref_var()
+							&& !var_type.has_flag(.option) {
 							g.write('*')
 						}
-						g.expr(left)
+						if node_.op == .assign && var_type.has_flag(.option_mut_param_t) {
+							g.write('memcpy(&')
+							g.expr(left)
+							g.write('->data, *(${g.styp(val_type)}**)&')
+						} else if var_type.has_flag(.option_mut_param_t) {
+							g.expr(left)
+							g.write(' = ')
+						} else {
+							g.expr(left)
+						}
 						if !is_decl && var_type.has_flag(.shared_f) {
 							g.write('->val') // don't reset the mutex, just change the value
 						}
@@ -858,7 +869,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						continue
 					}
 				}
-			} else if cur_indexexpr == -1 && !str_add && !op_overloaded {
+			} else if !var_type.has_flag(.option_mut_param_t) && cur_indexexpr == -1 && !str_add
+				&& !op_overloaded {
 				g.write(' ${op} ')
 			} else if str_add || op_overloaded {
 				g.write(', ')
@@ -997,6 +1009,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if str_add || op_overloaded {
 				g.write(')')
+			}
+			if node_.op == .assign && var_type.has_flag(.option_mut_param_t) {
+				g.write('.data, sizeof(${g.base_type(val_type)}))')
 			}
 			if cur_indexexpr != -1 {
 				g.cur_indexexpr.delete(cur_indexexpr)
