@@ -879,7 +879,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.table.used_features.comptime_calls[fn_name] = true
 		}
 	}
-	if fn_name == 'main' {
+	if !c.file.is_test && fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', node.pos)
 	}
 	mut has_generic := false // foo[T]() instead of foo[int]()
