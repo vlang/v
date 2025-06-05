@@ -1487,6 +1487,7 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 					return
 				}
 				last_stmt_typ := c.expr(mut stmt.expr)
+				stmt.typ = last_stmt_typ
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr] {
 						expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
