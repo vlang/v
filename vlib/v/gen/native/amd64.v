@@ -2119,8 +2119,12 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 	size := c.g.get_type_size(typ)
 	if typ.is_pure_float() {
 		match var {
-			LocalVar { c.mov_ssereg_to_var(var as LocalVar, .xmm0) }
-			GlobalVar { c.mov_ssereg_to_var(var as GlobalVar, .xmm0) }
+			LocalVar {
+				c.mov_ssereg_to_var(var as LocalVar, .xmm0)
+			}
+			GlobalVar {
+				c.mov_ssereg_to_var(var as GlobalVar, .xmm0)
+			}
 			// Amd64Register { c.g.mov_ssereg(var as Amd64Register, .xmm0) }
 			else {
 				c.g.n_error('${@LOCATION} unsupported var type ${var}')
@@ -2131,9 +2135,15 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 		c.assign_struct_var(var, typ, size)
 	} else if int(size) in [1, 2, 4, 8] {
 		match var {
-			LocalVar { c.mov_reg_to_var(var as LocalVar, Amd64Register.rax) }
-			GlobalVar { c.mov_reg_to_var(var as GlobalVar, Amd64Register.rax) }
-			Register { c.mov_reg(var as Amd64Register, Amd64Register.rax) }
+			LocalVar {
+				c.mov_reg_to_var(var as LocalVar, Amd64Register.rax)
+			}
+			GlobalVar {
+				c.mov_reg_to_var(var as GlobalVar, Amd64Register.rax)
+			}
+			Register {
+				c.mov_reg(var as Amd64Register, Amd64Register.rax)
+			}
 			else {
 				c.g.n_error('${@LOCATION} unsupported var type ${var}')
 			}

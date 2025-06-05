@@ -848,8 +848,8 @@ pub fn (mut g Gen) gen_rela_section() {
 			g.symtab_get_index(g.symbol_table, symbol[2..]), elf_r_amd64_gotpcrelx, -4)
 	}
 	for var_pos, symbol in g.extern_vars {
-		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos + 2,
-			g.symtab_get_index(g.symbol_table, symbol[2..]), elf_r_amd64_64, 0)
+		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos + 2, g.symtab_get_index(g.symbol_table,
+			symbol[2..]), elf_r_amd64_64, 0)
 	}
 	g.elf_rela_section.data = relocations
 	g.gen_section_data([g.elf_rela_section])

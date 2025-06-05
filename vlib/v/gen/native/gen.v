@@ -239,8 +239,8 @@ struct LocalVar {
 }
 
 struct ExternVar {
-	typ    ast.Type
-	name   string
+	typ  ast.Type
+	name string
 }
 
 struct GlobalVar {}
@@ -279,7 +279,7 @@ fn byt(n i32, s i32) u8 {
 
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 	if ident.name in g.extern_symbols {
-		return ExternVar { ident.info.typ, ident.name }
+		return ExternVar{ident.info.typ, ident.name}
 	}
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
@@ -315,7 +315,7 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 		}
 		else {
 			g.n_error('${@LOCATION} unsupported var type ${var}')
-		}	
+		}
 	}
 }
 
