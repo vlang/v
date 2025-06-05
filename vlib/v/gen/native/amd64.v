@@ -2832,14 +2832,25 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 				c.pop(.rdx) // effective address of left expr
 				c.gen_type_promotion(node.right_types[0], var_type)
 
+				size := match c.g.get_type_size(var_type) {
+					1 { Size._8 }
+					2 { Size._16 }
+					4 { Size._32 }
+					else { Size._64 }
+				}
 				match node.op {
 					.decl_assign, .assign {
-						c.mov_store(.rdx, .rax, match c.g.get_type_size(var_type) {
-							1 { ._8 }
-							2 { ._16 }
-							4 { ._32 }
-							else { ._64 }
-						})
+						c.mov_store(.rdx, .rax, size)
+					}
+					.plus_assign {
+						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
+						c.add_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.minus_assign {
+						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
+						c.sub_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
 					}
 					else {
 						c.g.n_error('${@LOCATION} Unsupported assign instruction (${node.op})')
