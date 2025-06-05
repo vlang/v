@@ -567,9 +567,9 @@ fn (mut s Scanner) end_of_file() token.Token {
 		s.line_nr--
 		if s.file_path == internally_generated_v_code {
 			// show a bit more context for that case, since the source may not be easily visible by just inspecting a source file on the filesystem
-			dump(s.text#[0..50])
-			dump(s.text#[-50..])
-			dump(s.text.len)
+			eprintln('> internally_generated_v_code, start: ${s.text#[0..50]}')
+			eprintln('> internally_generated_v_code,   end: ${s.text#[-50..]}')
+			eprintln('> internally_generated_v_code,   len: ${s.text.len}')
 		}
 		panic(
 			'the end of file `${s.file_path}` has been reached ${s.max_eofs} times already, the v parser is probably stuck.\n' +
