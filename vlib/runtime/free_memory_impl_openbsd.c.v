@@ -8,18 +8,22 @@ struct C.uvmexp {
 	free     int
 }
 
-fn free_memory_impl() usize {
+fn free_memory_impl() !usize {
 	$if cross ? {
-		return 1
+		return error('free_memory: not implemented')
 	}
 	$if !cross ? {
 		$if openbsd {
 			mib := [C.CTL_VM, C.VM_UVMEXP]!
 			mut uvm := C.uvmexp{0, 0}
 			mut len := sizeof(C.uvmexp)
-			unsafe { C.sysctl(&mib[0], mib.len, &uvm, &len, C.NULL, 0) }
+			retval := unsafe { C.sysctl(&mib[0], mib.len, &uvm, &len, C.NULL, 0) }
+			c_errno := C.errno
+			if retval == -1 {
+				return error('free_memory: `C.sysctl()` return error code = ${c_errno}')
+			}
 			return usize(uvm.pagesize) * usize(uvm.free)
 		}
 	}
-	return 1
+	return error('free_memory: not implemented')
 }

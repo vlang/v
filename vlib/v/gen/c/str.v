@@ -167,7 +167,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('&')
 			}
 		} else if is_ptr && typ.has_flag(.option) {
-			g.write('*(${g.styp(typ)}*)&')
+			if typ.has_flag(.option_mut_param_t) {
+				g.write('*')
+			} else {
+				g.write('*(${g.styp(typ)}*)&')
+			}
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
 			if sym.is_c_struct() {
 				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))

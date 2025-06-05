@@ -23,14 +23,14 @@ pub fn nr_cpus() int {
 }
 
 // total_memory returns total physical memory found on the system.
-pub fn total_memory() usize {
+pub fn total_memory() !usize {
 	memory_status := C.MEMORYSTATUS{}
 	C.GlobalMemoryStatus(&memory_status)
 	return memory_status.dwTotalPhys
 }
 
 // free_memory returns free physical memory found on the system.
-pub fn free_memory() usize {
+pub fn free_memory() !usize {
 	memory_status := C.MEMORYSTATUS{}
 	C.GlobalMemoryStatus(&memory_status)
 	return memory_status.dwAvailPhys

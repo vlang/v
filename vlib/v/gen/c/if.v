@@ -330,7 +330,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write('if (${var_name} = ')
 				g.expr(branch.cond.expr)
 				if branch.cond.expr_type.has_flag(.option) {
-					g.writeln(', ${var_name}.state == 0) {')
+					dot_or_ptr := if !branch.cond.expr_type.has_flag(.option_mut_param_t) {
+						'.'
+					} else {
+						'-> '
+					}
+					g.writeln(', ${var_name}${dot_or_ptr}state == 0) {')
 				} else if branch.cond.expr_type.has_flag(.result) {
 					g.writeln(', !${var_name}.is_error) {')
 				}
@@ -366,7 +371,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						if is_auto_heap {
 							g.writeln('\t${base_type}* ${left_var_name} = HEAP(${base_type}, *(${base_type}*)${var_name}.data);')
 						} else {
-							g.writeln('\t${base_type} ${left_var_name} = *(${base_type}*)${var_name}.data;')
+							dot_or_ptr := if !branch.cond.expr_type.has_flag(.option_mut_param_t) {
+								'.'
+							} else {
+								'-> '
+							}
+							g.writeln('\t${base_type} ${left_var_name} = *(${base_type}*)${var_name}${dot_or_ptr}data;')
 						}
 					} else if branch.cond.vars.len > 1 {
 						sym := g.table.sym(branch.cond.expr_type)

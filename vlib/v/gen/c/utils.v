@@ -162,6 +162,8 @@ fn (mut g Gen) unwrap_option_type(typ ast.Type, name string, is_auto_heap bool) 
 			if parent_typ.has_flag(.option) {
 				g.write('.data)')
 			}
+		} else if typ.has_flag(.option_mut_param_t) {
+			g.write('(*(${styp}*)${name}->data)')
 		} else {
 			g.write('(*(${styp}*)${name}.data)')
 		}
