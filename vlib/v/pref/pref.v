@@ -87,11 +87,12 @@ pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump', 'teamcity
 @[heap; minify]
 pub struct Preferences {
 pub mut:
-	os          OS // the OS to compile for
-	backend     Backend
-	build_mode  BuildMode
-	arch        Arch
-	output_mode OutputMode = .stdout
+	os                  OS // the OS to compile for
+	backend             Backend
+	backend_set_by_flag bool // true when the compiler receives `-b`/`-backend`
+	build_mode          BuildMode
+	arch                Arch
+	output_mode         OutputMode = .stdout
 	// verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
@@ -919,6 +920,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					res.output_cross_c = true
 				}
 				res.backend = b
+				res.backend_set_by_flag = true
 				i++
 			}
 			'-es5' {
@@ -1051,11 +1053,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	res.show_asserts = res.show_asserts || res.is_stats || os.getenv('VTEST_SHOW_ASSERTS') != ''
 
 	if res.os != .wasm32_emscripten {
-		if res.out_name.ends_with('.js') {
-			if !res.build_options.any(it.starts_with('-backend') || it.starts_with('b')) {
-				res.backend = .js_node
-				res.output_cross_c = true
-			}
+		if res.out_name.ends_with('.js') && !res.backend_set_by_flag {
+			res.backend = .js_node
+			res.output_cross_c = true
 		}
 	}
 
