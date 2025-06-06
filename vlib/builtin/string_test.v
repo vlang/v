@@ -1019,7 +1019,7 @@ fn test_bytes_to_string() {
 }
 
 fn test_charptr() {
-	foo := &char(c'VLANG')
+	foo := &char('VLANG'.str)
 	assert typeof(foo).name == '&char'
 	assert unsafe { foo.vstring() } == 'VLANG'
 	assert unsafe { foo.vstring_with_len(3) } == 'VLA'

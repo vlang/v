@@ -34,7 +34,7 @@ fn (mut g Gen) lookup_system_dll(dll string) !SystemDll {
 	$if windows {
 		unsafe {
 			buffer := malloc(1024)
-			len := C.SearchPathA(nil, dll.str, c'.dll', 1024, buffer, nil)
+			len := C.SearchPathA(nil, dll.str, '.dll'.str, 1024, buffer, nil)
 			if len == 0 {
 				err_code := C.GetLastError()
 				err_msg := cstring_to_vstring(C.strerror(err_code))

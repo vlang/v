@@ -28,15 +28,15 @@ fn class(extends string, instanceof int) {
 fn main() {
 	println('Hello from V.js!')
 	println(JS.Math.atan2(1, 0))
-	non := JS.eval(js"console.log('Hello!')")
+	non := JS.eval("console.log('Hello!')".str)
 	if isnil(non) {
 		println('non=nil')
 	}
-	ren := int(JS.eval(js'3'))
+	ren := int(JS.eval('3'.str))
 	if ren != 0 {
 		println('ren=${ren}')
 	}
-	res := string(JS.eval(js'"3"'))
+	res := string(JS.eval('"3"'.str))
 	if res != '' {
 		println('res=${res}')
 	}

@@ -305,7 +305,7 @@ fn get_canvas(elem JS.HTMLElement) JS.HTMLCanvasElement {
 }
 
 fn get_context(canvas JS.HTMLCanvasElement) JS.CanvasRenderingContext2D {
-	ctx := canvas.getContext(js'2d', js_undefined()) or { panic('cannot get context') }
+	ctx := canvas.getContext('2d'.str, js_undefined()) or { panic('cannot get context') }
 	match ctx {
 		JS.CanvasRenderingContext2D {
 			return ctx
@@ -439,12 +439,12 @@ pub fn new_context(cfg Config) &Context {
 			else {}
 		}
 	}
-	g.canvas.addEventListener(js'mousedown', mouse_down_event_handler, JS.EventListenerOptions{})
-	dom.window().addEventListener(js'mouseup', mouse_up_event_handler, JS.EventListenerOptions{})
-	g.canvas.addEventListener(js'mousemove', mouse_move_event_handler, JS.EventListenerOptions{})
-	g.canvas.addEventListener(js'mouseleave', mouse_leave_event_handler, JS.EventListenerOptions{})
-	g.canvas.addEventListener(js'mouseenter', mouse_enter_event_handler, JS.EventListenerOptions{})
-	dom.document.addEventListener(js'keydown', keydown_event_handler, JS.EventListenerOptions{})
+	g.canvas.addEventListener('mousedown'.str, mouse_down_event_handler, JS.EventListenerOptions{})
+	dom.window().addEventListener('mouseup'.str, mouse_up_event_handler, JS.EventListenerOptions{})
+	g.canvas.addEventListener('mousemove'.str, mouse_move_event_handler, JS.EventListenerOptions{})
+	g.canvas.addEventListener('mouseleave'.str, mouse_leave_event_handler, JS.EventListenerOptions{})
+	g.canvas.addEventListener('mouseenter'.str, mouse_enter_event_handler, JS.EventListenerOptions{})
+	dom.document.addEventListener('keydown'.str, keydown_event_handler, JS.EventListenerOptions{})
 	return g
 }
 
