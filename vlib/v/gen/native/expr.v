@@ -160,9 +160,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		else {
 			util.show_compiler_message('error', errors.CompilerMessage{
-				message: 'detail'
+				message:   'detail'
 				file_path: g.current_file.path
-				pos: node.pos()
+				pos:       node.pos()
 			})
 			g.n_error('${@LOCATION} expr: unhandled node type: ${node.type_name()} ${node}')
 		}

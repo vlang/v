@@ -80,9 +80,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				'include' {}
 				'preinclude', 'postinclude', 'define', 'insert' {
 					util.show_compiler_message('notice', errors.CompilerMessage{
-						message: '#${node.kind} is not supported with the native backend'
+						message:   '#${node.kind} is not supported with the native backend'
 						file_path: node.source_file
-						pos: node.pos
+						pos:       node.pos
 					})
 				}
 				'flag' {
