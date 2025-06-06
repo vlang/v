@@ -3,7 +3,6 @@ module transformer
 import v.pref
 import v.ast
 import v.util
-import os
 
 pub struct Transformer {
 	pref &pref.Preferences
