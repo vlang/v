@@ -222,7 +222,7 @@ pub fn (mut p ConnectionPool) get() !&ConnectionPoolable {
 
 		// Try immediate acquisition
 		if conn := p.try_get() {
-			p.eviction_ch.try_push(.medium)
+			p.eviction_ch <- .medium
 			return conn
 		}
 
@@ -334,7 +334,7 @@ fn (mut p ConnectionPool) try_get() ?&ConnectionPoolable {
 	} else {
 		EvictionPriority.medium
 	}
-	p.eviction_ch.try_push(priority)
+	p.eviction_ch <- priority
 
 	// Process idle connections
 	for p.idle_pool.len > 0 {
@@ -414,7 +414,7 @@ pub fn (mut p ConnectionPool) put(conn &ConnectionPoolable) ! {
 
 		// Trigger eviction if needed
 		priority := if low_eviction { EvictionPriority.low } else { EvictionPriority.urgent }
-		p.eviction_ch.try_push(priority)
+		p.eviction_ch <- priority
 	} else {
 		// Handle unmanaged connection
 		conn_ptr.close_conn()!
@@ -691,17 +691,17 @@ pub fn (mut p ConnectionPool) update_config(config ConnectionPoolConfig) ! {
 	p.config_mutex.unlock()
 
 	// Trigger maintenance
-	p.eviction_ch.try_push(.high)
+	p.eviction_ch <- .high
 }
 
 // signal_recovery_event notifies the pool of recovery event
 pub fn (mut p ConnectionPool) signal_recovery_event() {
-	p.eviction_ch.try_push(.urgent)
+	p.eviction_ch <- .urgent
 }
 
 // send_eviction triggers a cleanup event
 pub fn (mut p ConnectionPool) send_eviction(priority EvictionPriority) {
-	p.eviction_ch.try_push(priority)
+	p.eviction_ch <- priority
 }
 
 // ConnectionPoolStats holds statistics about the pool
