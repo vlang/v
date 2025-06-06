@@ -674,7 +674,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		ast.SelectorExpr {
 			node.expr = t.expr(mut node.expr)
 			if mut node.expr is ast.StringLiteral {
-				if node.field_name == 'str' && t.file.language != .js {
+				if node.field_name == 'str' && !t.pref.backend.is_js() && t.file.language != .js {
 					return ast.StringLiteral{
 						...node.expr
 						language: if t.file.language != .v {
