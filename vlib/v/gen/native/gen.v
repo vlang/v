@@ -35,6 +35,7 @@ mut:
 	extern_symbols            []string
 	linker_include_paths      []string
 	linker_libs               []string
+	extern_vars               map[i64]string
 	extern_fn_calls           map[i64]string
 	fn_addr                   map[string]i64
 	fn_names                  []string
@@ -211,8 +212,10 @@ type Number = u64 | i64
 struct Enum {
 	size i32 // size of the type of the enum in bytes
 mut:
-	fields map[string]Number
+	fields map[string]EnumVal
 }
+
+type EnumVal = Number | ast.Expr
 
 struct MultiReturn {
 mut:
@@ -235,6 +238,11 @@ struct LocalVar {
 	name   string
 }
 
+struct ExternVar {
+	typ  ast.Type
+	name string
+}
+
 struct GlobalVar {}
 
 @[params]
@@ -244,9 +252,9 @@ pub:
 	typ    ast.Type // type of the value you want to process e.g. struct fields.
 }
 
-type Var = GlobalVar | LocalVar | ast.Ident
+type Var = GlobalVar | ExternVar | LocalVar | ast.Ident
 
-type IdentVar = GlobalVar | LocalVar | Register
+type IdentVar = GlobalVar | ExternVar | LocalVar | Register
 
 enum JumpOp {
 	je
@@ -270,6 +278,9 @@ fn byt(n i32, s i32) u8 {
 }
 
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
+	if ident.name in g.extern_symbols {
+		return ExternVar{ident.info.typ, ident.name}
+	}
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
 		obj = ident.scope.find(ident.name) or {
@@ -301,6 +312,9 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 		}
 		GlobalVar {
 			g.n_error('${@LOCATION} cannot get type from GlobalVar yet')
+		}
+		else {
+			g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
 }
@@ -548,22 +562,33 @@ pub fn (mut g Gen) calculate_enum_fields() {
 			size: i32(enum_size)
 		}
 		mut value := Number(if decl.is_flag { i64(1) } else { i64(0) })
+		mut has_expr := false
 		for field in decl.fields {
 			if field.has_expr {
-				str_val := g.eval.expr(field.expr, ast.int_type_idx).string()
-				if str_val.len >= 0 && str_val[0] == `-` {
-					value = str_val.i64()
+				if field.expr.is_literal() { // does not depend on other declarations (C compile time csts)
+					str_val := g.eval.expr(field.expr, ast.int_type_idx).string()
+					if str_val.len >= 0 && str_val[0] == `-` {
+						value = str_val.i64()
+					} else {
+						value = str_val.u64()
+					}
 				} else {
-					value = str_val.u64()
+					enum_vals.fields[field.name] = field.expr
+					has_expr = true
+					continue
+				}
+			} else {
+				if has_expr {
+					g.n_error('${@LOCATION} unsupported auto incr after C consts')
 				}
 			}
 			match value {
 				// Dereferences the sumtype (it would get assigned by address and messed up)
 				i64 {
-					enum_vals.fields[field.name] = value as i64
+					enum_vals.fields[field.name] = Number(value as i64)
 				}
 				u64 {
-					enum_vals.fields[field.name] = value as u64
+					enum_vals.fields[field.name] = Number(value as u64)
 				}
 			}
 			if decl.is_flag {

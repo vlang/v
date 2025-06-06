@@ -3,6 +3,26 @@ fn main() {
 	test_fp()
 	test_unsafe()
 	test_alias(100, 9)
+	test_plus_assign()
+	test_minus_assign()
+}
+
+fn test_minus_assign() {
+	mut a := 3
+	a -= 3
+	assert a == 0
+	n := 2300
+	a -= n
+	assert a == -2300
+}
+
+fn test_plus_assign() {
+	mut a := 3
+	a += 3
+	assert a == 6
+	n := 2300
+	a += n
+	assert a == 2306
 }
 
 fn test_int() {
