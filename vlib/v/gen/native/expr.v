@@ -197,7 +197,7 @@ fn (mut g Gen) extern_var_ident(var ExternVar) {
 		g.code_gen.mov64(main_reg, Number(i64(0)))
 		g.code_gen.mov_deref(main_reg, main_reg, ast.u64_type_idx)
 	} else {
-		g.n_error('${@LOCATION} unsupported os')
+		g.n_error('${@LOCATION} unsupported os for ${var}')
 	}
 }
 
