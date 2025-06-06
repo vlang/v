@@ -133,16 +133,16 @@ struct MyConnection {
 	// Your connection state
 }
 
-fn (mut c MyConnection) validate_conn() !bool {
+fn (mut c MyConnection) validate() !bool {
 	// Connection health check logic
 	return true
 }
 
-fn (mut c MyConnection) close_conn() ! {
+fn (mut c MyConnection) close() ! {
 	// Physical close logic
 }
 
-fn (mut c MyConnection) reset_conn() ! {
+fn (mut c MyConnection) reset() ! {
 	// Reset connection to initial state
 }
 ```

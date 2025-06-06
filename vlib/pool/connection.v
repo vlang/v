@@ -10,12 +10,12 @@ const eviction_ch_cap = 1000
 // ConnectionPoolable defines the interface for connection objects
 pub interface ConnectionPoolable {
 mut:
-	// validate_conn checks if the connection is still usable
-	validate_conn() !bool
-	// close_conn terminates the physical connection
-	close_conn() !
-	// reset_conn returns the connection to initial state for reuse
-	reset_conn() !
+	// validate checks if the connection is still usable
+	validate() !bool
+	// close terminates the physical connection
+	close() !
+	// reset returns the connection to initial state for reuse
+	reset() !
 }
 
 // ConnectionPoolConfig holds configuration settings for the connection pool
@@ -108,7 +108,7 @@ pub fn new_connection_pool(conn_factory fn () !&ConnectionPoolable, config Conne
 			// Cleanup if initialization fails
 			p.all_conns_mutex.lock()
 			for _, mut wrapper in p.all_conns {
-				wrapper.conn.close_conn() or {}
+				wrapper.conn.close() or {}
 			}
 			p.all_conns.clear()
 			p.all_conns_mutex.unlock()
@@ -174,8 +174,8 @@ fn (mut p ConnectionPool) create_conn_with_retry() !&ConnectionPoolable {
 		}
 
 		// Validate new connection
-		if !conn.validate_conn() or { false } {
-			conn.close_conn() or {}
+		if !conn.validate() or { false } {
+			conn.close() or {}
 			return error('New connection validation failed')
 		}
 		return conn
@@ -233,7 +233,7 @@ pub fn (mut p ConnectionPool) get() !&ConnectionPoolable {
 
 			// Final check before adding to pool
 			if p.is_closed.load() {
-				new_conn.close_conn()!
+				new_conn.close()!
 				return error('Connection pool closed')
 			}
 
@@ -258,7 +258,7 @@ pub fn (mut p ConnectionPool) get() !&ConnectionPoolable {
 			} else {
 				// Connection limit reached - close new connection
 				p.all_conns_mutex.unlock()
-				new_conn.close_conn()!
+				new_conn.close()!
 			}
 		}
 
@@ -341,12 +341,12 @@ fn (mut p ConnectionPool) try_get() ?&ConnectionPoolable {
 		mut wrapper := p.idle_pool.pop()
 
 		// Validate connection
-		if !wrapper.conn.validate_conn() or { false } {
+		if !wrapper.conn.validate() or { false } {
 			// Handle invalid connection
 			p.all_conns_mutex.lock()
 			p.all_conns.delete(wrapper.conn)
 			p.all_conns_mutex.unlock()
-			wrapper.conn.close_conn() or {}
+			wrapper.conn.close() or {}
 			continue
 		}
 
@@ -359,7 +359,7 @@ fn (mut p ConnectionPool) try_get() ?&ConnectionPoolable {
 			p.all_conns_mutex.lock()
 			p.all_conns.delete(wrapper.conn)
 			p.all_conns_mutex.unlock()
-			wrapper.conn.close_conn() or {}
+			wrapper.conn.close() or {}
 			continue
 		}
 
@@ -379,13 +379,13 @@ pub fn (mut p ConnectionPool) put(conn &ConnectionPoolable) ! {
 	mut conn_ptr := unsafe { conn }
 	// Handle closed pool case
 	if p.is_closed.load() {
-		conn_ptr.close_conn()!
+		conn_ptr.close()!
 		return
 	}
 
 	// Reset connection to initial state
-	conn_ptr.reset_conn() or {
-		conn_ptr.close_conn() or {}
+	conn_ptr.reset() or {
+		conn_ptr.close() or {}
 		p.all_conns_mutex.lock()
 		p.all_conns.delete(conn)
 		p.all_conns_mutex.unlock()
@@ -417,7 +417,7 @@ pub fn (mut p ConnectionPool) put(conn &ConnectionPoolable) ! {
 		p.eviction_ch <- priority
 	} else {
 		// Handle unmanaged connection
-		conn_ptr.close_conn()!
+		conn_ptr.close()!
 		return error('Unmanaged connection')
 	}
 }
@@ -438,7 +438,7 @@ pub fn (mut p ConnectionPool) close() {
 	p.idle_pool_mutex.lock()
 	p.all_conns_mutex.lock()
 	for _, mut wrapper in p.all_conns {
-		wrapper.conn.close_conn() or {}
+		wrapper.conn.close() or {}
 	}
 	p.all_conns.clear()
 	p.idle_pool.clear()
@@ -560,13 +560,11 @@ fn (mut p ConnectionPool) prune_connections() {
 		age := time.since(wrapper.created_at)
 		idle_time := time.since(wrapper.last_used_at)
 
-		if age > max_lifetime || idle_time > idle_timeout || !wrapper.conn.validate_conn() or {
-			false
-		} {
+		if age > max_lifetime || idle_time > idle_timeout || !wrapper.conn.validate() or { false } {
 			p.all_conns_mutex.lock()
 			p.all_conns.delete(wrapper.conn)
 			p.all_conns_mutex.unlock()
-			wrapper.conn.close_conn() or {}
+			wrapper.conn.close() or {}
 			p.idle_pool.delete(i)
 			p.evicted_count.add(1)
 		} else {
@@ -592,7 +590,7 @@ fn (mut p ConnectionPool) prune_connections() {
 	// Check if pool was closed during creation
 	if p.is_closed.load() {
 		for mut new_conn in new_conns {
-			new_conn.close_conn() or {}
+			new_conn.close() or {}
 		}
 		return
 	}
@@ -634,7 +632,7 @@ fn (mut p ConnectionPool) prune_connections() {
 
 	// Close any extra connections
 	for i in actual_to_add .. new_conns.len {
-		new_conns[i].close_conn() or {}
+		new_conns[i].close() or {}
 	}
 
 	// Wake clients if connections were added

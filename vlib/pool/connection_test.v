@@ -13,18 +13,18 @@ mut:
 	id         string
 }
 
-fn (mut c MockConn) validate_conn() !bool {
+fn (mut c MockConn) validate() !bool {
 	return c.healthy
 }
 
-fn (mut c MockConn) close_conn() ! {
+fn (mut c MockConn) close() ! {
 	if c.close_flag {
 		return error('simulated close error')
 	}
 	c.closed++
 }
 
-fn (mut c MockConn) reset_conn() ! {
+fn (mut c MockConn) reset() ! {
 	if c.reset_flag {
 		return error('simulated reset error')
 	}
