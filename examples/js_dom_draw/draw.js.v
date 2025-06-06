@@ -13,7 +13,7 @@ fn get_canvas(elem JS.HTMLElement) JS.HTMLCanvasElement {
 
 fn draw_line(mut context JS.CanvasRenderingContext2D, x1 int, y1 int, x2 int, y2 int) {
 	context.beginPath()
-	context.strokeStyle = js'black'
+	context.strokeStyle = 'black'.str
 	context.lineWidth = JS.Number(1)
 	context.moveTo(x1, y1)
 	context.lineTo(x2, y2)
@@ -32,10 +32,10 @@ mut:
 fn main() {
 	window := dom.window()
 	document := dom.document
-	clear_btn := document.getElementById(js'clearButton')?
-	canvas_elem := document.getElementById(js'canvas')?
+	clear_btn := document.getElementById('clearButton'.str)?
+	canvas_elem := document.getElementById('canvas'.str)?
 	canvas := get_canvas(canvas_elem)
-	ctx := canvas.getContext(js'2d', js_undefined())?
+	ctx := canvas.getContext('2d'.str, js_undefined())?
 	context := match ctx {
 		JS.CanvasRenderingContext2D {
 			ctx
@@ -46,7 +46,7 @@ fn main() {
 	}
 	mut state := DrawState{context, false, 0, 0}
 
-	canvas.addEventListener(js'mousedown', fn [mut state] (event JS.Event) {
+	canvas.addEventListener('mousedown'.str, fn [mut state] (event JS.Event) {
 		state.drawing = true
 		match event {
 			JS.MouseEvent {
@@ -56,7 +56,7 @@ fn main() {
 			else {}
 		}
 	}, JS.EventListenerOptions{})
-	canvas.addEventListener(js'mousemove', fn [mut state] (event JS.Event) {
+	canvas.addEventListener('mousemove'.str, fn [mut state] (event JS.Event) {
 		if state.drawing {
 			match event {
 				JS.MouseEvent {
@@ -70,7 +70,7 @@ fn main() {
 		}
 	}, JS.EventListenerOptions{})
 
-	window.addEventListener(js'mouseup', fn [mut state] (event JS.Event) {
+	window.addEventListener('mouseup'.str, fn [mut state] (event JS.Event) {
 		if state.drawing {
 			match event {
 				JS.MouseEvent {
@@ -84,7 +84,7 @@ fn main() {
 			state.drawing = false
 		}
 	}, JS.EventListenerOptions{})
-	clear_btn.addEventListener(js'click', fn [mut state, canvas] (_ JS.Event) {
+	clear_btn.addEventListener('click'.str, fn [mut state, canvas] (_ JS.Event) {
 		state.context.clearRect(0, 0, canvas.width, canvas.height)
 	}, JS.EventListenerOptions{})
 }

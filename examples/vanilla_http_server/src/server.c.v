@@ -112,7 +112,7 @@ fn create_server_socket(port int) int {
 	server_fd := C.socket(C.AF_INET, C.SOCK_STREAM, 0)
 	if server_fd < 0 {
 		eprintln(@LOCATION)
-		C.perror(c'Socket creation failed')
+		C.perror('Socket creation failed'.str)
 		return -1
 	}
 
@@ -122,7 +122,7 @@ fn create_server_socket(port int) int {
 	opt := 1
 	if C.setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEPORT, &opt, sizeof(opt)) < 0 {
 		eprintln(@LOCATION)
-		C.perror(c'setsockopt SO_REUSEPORT failed')
+		C.perror('setsockopt SO_REUSEPORT failed'.str)
 		close_socket(server_fd)
 		return -1
 	}
@@ -136,13 +136,13 @@ fn create_server_socket(port int) int {
 
 	if C.bind(server_fd, voidptr(&server_addr), sizeof(server_addr)) < 0 {
 		eprintln(@LOCATION)
-		C.perror(c'Bind failed')
+		C.perror('Bind failed'.str)
 		close_socket(server_fd)
 		return -1
 	}
 	if C.listen(server_fd, max_connection_size) < 0 {
 		eprintln(@LOCATION)
-		C.perror(c'Listen failed')
+		C.perror('Listen failed'.str)
 		close_socket(server_fd)
 		return -1
 	}
@@ -157,7 +157,7 @@ fn add_fd_to_epoll(epoll_fd int, fd int, events u32) int {
 	ev.data.fd = fd
 	if C.epoll_ctl(epoll_fd, C.EPOLL_CTL_ADD, fd, &ev) == -1 {
 		eprintln(@LOCATION)
-		C.perror(c'epoll_ctl')
+		C.perror('epoll_ctl'.str)
 		return -1
 	}
 	return 0
@@ -178,7 +178,7 @@ fn handle_accept_loop(mut server Server) {
 			}
 
 			eprintln(@LOCATION)
-			C.perror(c'Accept failed')
+			C.perror('Accept failed'.str)
 			return
 		}
 
@@ -263,7 +263,7 @@ fn (mut server Server) run() {
 	for i := 0; i < max_thread_pool_size; i++ {
 		server.epoll_fds[i] = C.epoll_create1(0)
 		if server.epoll_fds[i] < 0 {
-			C.perror(c'epoll_create1 failed')
+			C.perror('epoll_create1 failed'.str)
 			close_socket(server.socket_fd)
 			return
 		}

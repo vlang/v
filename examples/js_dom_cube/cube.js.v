@@ -197,10 +197,10 @@ const amortization = 0.95
 
 fn get_webgl() (JS.HTMLCanvasElement, JS.WebGLRenderingContext) {
 	JS.console.log(dom.document)
-	elem := dom.document.getElementById(js'myCanvas') or { panic('cannot get canvas') }
+	elem := dom.document.getElementById('myCanvas'.str) or { panic('cannot get canvas') }
 	match elem {
 		JS.HTMLCanvasElement {
-			webgl := elem.getContext(js'experimental-webgl', js_undefined()) or {
+			webgl := elem.getContext('experimental-webgl'.str, js_undefined()) or {
 				panic('context not found')
 			}
 			match webgl {
@@ -382,18 +382,18 @@ fn main() {
 		panic('unable to initialize the shader program: ${string(gl.getProgramInfoLog(shader_program))}')
 	}
 
-	pmatrix := gl.getUniformLocation(shader_program, js'Pmatrix')?
-	vmatrix := gl.getUniformLocation(shader_program, js'Vmatrix')?
-	mmatrix := gl.getUniformLocation(shader_program, js'Mmatrix')?
+	pmatrix := gl.getUniformLocation(shader_program, 'Pmatrix'.str)?
+	vmatrix := gl.getUniformLocation(shader_program, 'Vmatrix'.str)?
+	mmatrix := gl.getUniformLocation(shader_program, 'Mmatrix'.str)?
 
 	gl.bindBuffer(dom.gl_array_buffer(), vertex_buffer)
-	position := gl.getAttribLocation(shader_program, js'position')
+	position := gl.getAttribLocation(shader_program, 'position'.str)
 	gl.vertexAttribPointer(position, JS.Number(3), dom.gl_float(), JS.Boolean(false),
 		JS.Number(0), JS.Number(0))
 	gl.enableVertexAttribArray(position)
 
 	gl.bindBuffer(dom.gl_array_buffer(), color_buffer)
-	color := gl.getAttribLocation(shader_program, js'color')
+	color := gl.getAttribLocation(shader_program, 'color'.str)
 	gl.vertexAttribPointer(color, JS.Number(3), dom.gl_float(), JS.Boolean(false), JS.Number(0),
 		JS.Number(0))
 	gl.enableVertexAttribArray(color)
@@ -408,7 +408,7 @@ fn main() {
 
 	mut state := State{false, gl, canvas, 0, 0, 0, 0, 0, 0, 0, mo_matrix, view_matrix, proj_matrix, pmatrix, vmatrix, mmatrix, index_buffer}
 
-	canvas.addEventListener(js'mousedown', fn [mut state] (e JS.Event) {
+	canvas.addEventListener('mousedown'.str, fn [mut state] (e JS.Event) {
 		state.drag = true
 		match e {
 			JS.MouseEvent {
@@ -420,13 +420,13 @@ fn main() {
 		}
 	}, JS.EventListenerOptions{})
 
-	canvas.addEventListener(js'mouseup', fn [mut state] (e JS.Event) {
+	canvas.addEventListener('mouseup'.str, fn [mut state] (e JS.Event) {
 		state.drag = false
 	}, JS.EventListenerOptions{})
-	canvas.addEventListener(js'mouseout', fn [mut state] (e JS.Event) {
+	canvas.addEventListener('mouseout'.str, fn [mut state] (e JS.Event) {
 		state.drag = false
 	}, JS.EventListenerOptions{})
-	canvas.addEventListener(js'mousemove', fn [mut state] (e JS.Event) {
+	canvas.addEventListener('mousemove'.str, fn [mut state] (e JS.Event) {
 		if !state.drag {
 			return
 		}
