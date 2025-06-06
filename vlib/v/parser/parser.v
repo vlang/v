@@ -3547,8 +3547,7 @@ fn (mut p Parser) enum_val() ast.EnumVal {
 fn (mut p Parser) string_expr() ast.Expr {
 	is_raw := p.tok.kind == .name && p.tok.lit == 'r'
 	is_cstr := p.tok.kind == .name && p.tok.lit == 'c'
-	is_js_str := p.tok.kind == .name && p.tok.lit == 'js'
-	if is_raw || is_cstr || is_js_str {
+	if is_raw || is_cstr {
 		p.next()
 	}
 	mut node := ast.empty_expr
@@ -3560,11 +3559,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		node = ast.StringLiteral{
 			val:      val
 			is_raw:   is_raw
-			language: match true {
-				is_cstr { ast.Language.c }
-				is_js_str { ast.Language.js }
-				else { ast.Language.v }
-			}
+			language: if is_cstr { ast.Language.c } else { ast.Language.v }
 			pos:      pos
 		}
 		return node
