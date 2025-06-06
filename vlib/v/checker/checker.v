@@ -148,6 +148,8 @@ mut:
 
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
+
+	js_string ast.Type = ast.void_type // when `js"string literal"` is used, `js_string` will be equal to `JS.String`
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
@@ -3278,6 +3280,13 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			if node.language == .c {
 				// string literal starts with "c": `C.printf(c'hello')`
 				return ast.u8_type.set_nr_muls(1)
+			}
+			if node.language == .js {
+				// string literal starts with "js": `JS.console.log(js'hello')`
+				if c.js_string.is_void() {
+					c.js_string = c.table.find_type('JS.String')
+				}
+				return c.js_string
 			}
 			if node.is_raw {
 				// raw strings don't need any sort of checking related to unicode
