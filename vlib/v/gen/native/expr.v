@@ -5,6 +5,7 @@ module native
 
 import v.ast
 import v.util
+import v.errors
 
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
@@ -158,7 +159,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 		}
 		else {
-			g.n_error('${@LOCATION} expr: unhandled node type: ${node.type_name()}')
+			util.show_compiler_message('error', errors.CompilerMessage{
+				message: 'detail'
+				file_path: g.current_file.path
+				pos: node.pos()
+			})
+			g.n_error('${@LOCATION} expr: unhandled node type: ${node.type_name()} ${node}')
 		}
 	}
 }

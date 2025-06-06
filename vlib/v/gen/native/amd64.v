@@ -2145,7 +2145,7 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 				c.mov_reg(var as Amd64Register, Amd64Register.rax)
 			}
 			ExternVar {
-				c.mov_reg(var as ExternVar, Amd64Register.rax)
+				c.mov_reg_to_var(var as ExternVar, Amd64Register.rax)
 			}
 		}
 	} else {
@@ -2176,6 +2176,12 @@ fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.In
 			c.mov_var_to_reg(Amd64Register.rax, left)
 			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
 			c.div_reg(.rax, .rdx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.mod_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
+			c.mod_reg(.rax, .rdx)
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		.decl_assign {
@@ -2860,6 +2866,16 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 					.minus_assign {
 						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
 						c.sub_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.and_assign {
+						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
+						c.bitand_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.mod_assign {
+						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
+						c.mod_reg(.rax, .rcx)
 						c.mov_store(.rdx, .rax, size)
 					}
 					else {
@@ -3864,7 +3880,7 @@ fn (mut c Amd64) init_array(var Var, node ast.ArrayInit) {
 		GlobalVar {
 			c.g.n_error('${@LOCATION} GlobalVar not implemented for ast.ArrayInit')
 		}
-		Extern {
+		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -4191,7 +4207,7 @@ fn (mut c Amd64) mov_ssereg_to_var(var Var, reg Amd64SSERegister, config VarConf
 		GlobalVar {
 			// TODO
 		}
-		Extern {
+		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
