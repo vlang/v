@@ -681,11 +681,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 					&& !t.file.path.ends_with(os.join_path('v', 'gen', 'js', 'tests', 'js.v')) {
 					return ast.StringLiteral{
 						...node.expr
-						language: if t.file.language != .v {
-							t.file.language
-						} else {
-							.c
-						}
+						language: .c
 					}
 				} else if node.field_name == 'len' {
 					if !node.expr.val.contains('\\') || node.expr.is_raw {

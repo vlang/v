@@ -3045,11 +3045,7 @@ pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
 	if node.expr is ast.StringLiteral && node.field_name == 'str' && !f.pref.backend.is_js()
 		&& f.file.language != .js
 		&& !f.file.path.ends_with(os.join_path('v', 'gen', 'js', 'tests', 'js.v')) {
-		if f.file.language != .v {
-			f.write(f.file.language.str())
-		} else {
-			f.write('c')
-		}
+		f.write('c')
 		f.expr(node.expr)
 		return
 	}
