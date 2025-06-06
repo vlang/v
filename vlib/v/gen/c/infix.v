@@ -1174,14 +1174,16 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 		g.expr(node.left)
 		g.write(')')
 		g.inside_opt_or_res = old_inside_opt_or_res
-		g.write('.state')
+		dot_or_ptr := if !node.left_type.has_flag(.option_mut_param_t) { '.' } else { '->' }
+		g.write('${dot_or_ptr}state')
 	} else {
 		stmt_str := g.go_before_last_stmt().trim_space()
 		g.empty_line = true
 		left_var := g.expr_with_opt(node.left, node.left_type, node.left_type)
 		g.writeln(';')
 		g.write2(stmt_str, ' ')
-		g.write('${left_var}.state')
+		dot_or_ptr := if !node.left_type.has_flag(.option_mut_param_t) { '.' } else { '->' }
+		g.write('${left_var}${dot_or_ptr}state')
 	}
 	g.write(' ${node.op.str()} 2') // none state
 }

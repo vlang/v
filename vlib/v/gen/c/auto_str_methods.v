@@ -129,7 +129,8 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 		g.str_fn_names << str_fn_name
 	}
 	if typ.typ.has_flag(.option) {
-		g.gen_str_for_option(typ.typ, styp, str_fn_name)
+		opt_typ := if typ.typ.has_flag(.option_mut_param_t) { styp.replace('*', '') } else { styp }
+		g.gen_str_for_option(typ.typ, opt_typ, str_fn_name)
 		return
 	}
 	if typ.typ.has_flag(.result) {
@@ -202,9 +203,15 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('string indent_${str_fn_name}(${styp} it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
-	deref := if typ.is_ptr() {
-		dot := if expects_ptr { '*'.repeat(typ.nr_muls()) } else { '*'.repeat(typ.nr_muls() + 1) }
+	deref := if typ.is_ptr() && !typ.has_flag(.option_mut_param_t) {
+		dot := if expects_ptr {
+			'*'.repeat(typ.nr_muls())
+		} else {
+			'*'.repeat(typ.nr_muls() + 1)
+		}
 		'${dot}(${sym.cname}**)&'
+	} else if typ.has_flag(.option_mut_param_t) {
+		'*(${sym.cname}*)'
 	} else if expects_ptr {
 		'(${sym.cname}*)'
 	} else {

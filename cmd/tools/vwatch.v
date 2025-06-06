@@ -127,6 +127,10 @@ fn (mut context Context) is_ext_ignored(pf string, pf_ext string) bool {
 	if pf_ext == '.bak' {
 		return true
 	}
+	// ignore DB files (sqlite databases, that are likely to change during prototyping):
+	if pf_ext in ['.db', '.sqlite'] {
+		return true
+	}
 	if pf.starts_with('.#') {
 		return true
 	}
