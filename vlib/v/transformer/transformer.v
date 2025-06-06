@@ -3,6 +3,7 @@ module transformer
 import v.pref
 import v.ast
 import v.util
+import os
 
 pub struct Transformer {
 	pref &pref.Preferences
@@ -674,7 +675,10 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		ast.SelectorExpr {
 			node.expr = t.expr(mut node.expr)
 			if mut node.expr is ast.StringLiteral {
-				if node.field_name == 'str' && !t.pref.backend.is_js() && t.file.language != .js {
+				// TODO(StunxFS): Even though we ignored the JS backend, the `v/gen/js/tests/js.v`
+				// file was still formatted/transformed, so it is specifically ignored here. Fix this.
+				if node.field_name == 'str' && !t.pref.backend.is_js() && t.file.language != .js
+					&& !t.file.path.ends_with(os.join_path('v', 'gen', 'js', 'tests', 'js.v')) {
 					return ast.StringLiteral{
 						...node.expr
 						language: if t.file.language != .v {
