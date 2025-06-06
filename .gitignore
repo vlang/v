@@ -76,6 +76,10 @@ cache/
 .vscode/
 *.code-workspace
 *~
+~*
+.sesskey
+tmp*
+*.db
 *.swp
 *.swo
 *.swn
