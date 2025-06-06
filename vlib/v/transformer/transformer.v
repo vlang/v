@@ -674,21 +674,11 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		}
 		ast.SelectorExpr {
 			node.expr = t.expr(mut node.expr)
-			if mut node.expr is ast.StringLiteral {
-				// TODO(StunxFS): Even though we ignored the JS backend, the `v/gen/js/tests/js.v`
-				// file was still formatted/transformed, so it is specifically ignored here. Fix this.
-				if t.file.language != .js && node.field_name == 'str' && !t.pref.backend.is_js()
-					&& !t.file.path.ends_with(os.join_path('v', 'gen', 'js', 'tests', 'js.v')) {
-					return ast.StringLiteral{
-						...node.expr
-						language: .c
-					}
-				} else if node.field_name == 'len' {
-					if !node.expr.val.contains('\\') || node.expr.is_raw {
-						return ast.IntegerLiteral{
-							val: node.expr.val.len.str()
-							pos: node.pos
-						}
+			if mut node.expr is ast.StringLiteral && node.field_name == 'len' {
+				if !node.expr.val.contains('\\') || node.expr.is_raw {
+					return ast.IntegerLiteral{
+						val: node.expr.val.len.str()
+						pos: node.pos
 					}
 				}
 			}
