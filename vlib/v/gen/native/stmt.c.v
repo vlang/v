@@ -5,6 +5,7 @@ module native
 
 import v.ast
 import v.util
+import v.errors
 
 fn C.strtol(str &char, endptr &&char, base i32) i32
 
@@ -77,8 +78,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 
 			match node.kind {
 				'include', 'preinclude', 'postinclude', 'define', 'insert' {
-					g.v_error('#${node.kind} is not supported with the native backend',
-						node.pos)
+					util.show_compiler_message('notice', errors.CompilerMessage{
+						message: '#${node.kind} is not supported with the native backend'
+						file_path: node.source_file
+						pos: node.pos
+					})
 				}
 				'flag' {
 					// do nothing; flags are already handled when dispatching extern dependencies

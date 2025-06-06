@@ -127,10 +127,9 @@ println(f64_max(-32.32, 32.32))
 println(f64_min(32.32, -32.32))
 println(f64_min(-32.32, 32.32))
 */
-/* uncomment when C variables are working like C.stdout
+
 flush_stderr()
 flush_stdout()
-*/
 
 gc_is_enabled() // not yet enabled so only calling it 
 
@@ -139,7 +138,7 @@ println(int_max(-32, 32))
 println(int_min(32, -32))
 println(int_min(-32, 32))
 
-// print_character(`a`) enable when C vars will work
+print_character(`a`) enable when C vars will work
 
 // assert u8(`a`).ascii_str() == 'a' when ptr index will work
 // assert u8(`b`).ascii_str() != 'a'
