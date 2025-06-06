@@ -677,7 +677,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			if mut node.expr is ast.StringLiteral {
 				// TODO(StunxFS): Even though we ignored the JS backend, the `v/gen/js/tests/js.v`
 				// file was still formatted/transformed, so it is specifically ignored here. Fix this.
-				if node.field_name == 'str' && !t.pref.backend.is_js() && t.file.language != .js
+				if t.file.language != .js && node.field_name == 'str' && !t.pref.backend.is_js()
 					&& !t.file.path.ends_with(os.join_path('v', 'gen', 'js', 'tests', 'js.v')) {
 					return ast.StringLiteral{
 						...node.expr

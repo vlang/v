@@ -3042,8 +3042,8 @@ pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
 pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
 	// TODO(StunxFS): Even though we ignored the JS backend, the `v/gen/js/tests/js.v`
 	// file was still formatted/transformed, so it is specifically ignored here. Fix this.
-	if node.expr is ast.StringLiteral && node.field_name == 'str' && !f.pref.backend.is_js()
-		&& f.file.language != .js
+	if f.file.language != .js && node.expr is ast.StringLiteral && node.field_name == 'str'
+		&& !f.pref.backend.is_js()
 		&& !f.file.path.ends_with(os.join_path('v', 'gen', 'js', 'tests', 'js.v')) {
 		f.write('c')
 		f.expr(node.expr)
