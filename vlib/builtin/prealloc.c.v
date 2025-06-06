@@ -141,7 +141,7 @@ fn prealloc_vcleanup() {
 			path := $d('memdumpfile', 'memdump.bin')
 			C.fprintf(C.stderr, c'prealloc_vcleanup dumping process memory to path: %s\n',
 				path.str)
-			stream := C.fopen(path.str, 'wb'.str)
+			stream := C.fopen(path.str, c'wb')
 			mut mb := start
 			for {
 				used := u64(mb.current) - u64(mb.start)

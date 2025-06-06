@@ -230,7 +230,7 @@ pub fn parse_rfc3339(s string) !Time {
 			}
 
 			// Check if it is UTC time
-			if unsafe { vmemcmp(s.str + s.len - 5, '00:00'.str, 5) == 0 } {
+			if unsafe { vmemcmp(s.str + s.len - 5, c'00:00', 5) == 0 } {
 				return new(Time{
 					year:       year
 					month:      month
