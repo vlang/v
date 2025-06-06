@@ -23,4 +23,6 @@ fn test_c_extern_vars() {
 fn main() {
 	test_for_c_in_string()
 	test_c_extern_vars()
+	flush_stderr()
+	flush_stdout()
 }
