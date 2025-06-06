@@ -311,8 +311,8 @@ fn (mut c Amd64) cmp_var_reg(var Var, reg Register, config VarConfig) {
 					// TODO
 					// g.cmp()
 				}
-				else {
-					c.g.n_error('${@LOCATION} unsupported var type ${var_object}')
+				ExternVar {
+					c.cmp_var_reg(var_object as ExternVar, reg, config)
 				}
 			}
 		}
@@ -333,7 +333,7 @@ fn (mut c Amd64) cmp_var_reg(var Var, reg Register, config VarConfig) {
 		GlobalVar {
 			// TODO
 		}
-		else {
+		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -354,8 +354,8 @@ fn (mut c Amd64) cmp_var(var Var, val i32, config VarConfig) {
 					// TODO
 					// g.cmp()
 				}
-				else {
-					c.g.n_error('${@LOCATION} unsupported var type ${var_object}')
+				ExternVar {
+					c.cmp_var(var_object as ExternVar, val, config)
 				}
 			}
 		}
@@ -376,7 +376,7 @@ fn (mut c Amd64) cmp_var(var Var, val i32, config VarConfig) {
 		GlobalVar {
 			// TODO
 		}
-		else {
+		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -398,8 +398,8 @@ fn (mut c Amd64) dec_var(var Var, config VarConfig) {
 					// TODO
 					// g.dec()
 				}
-				else {
-					c.g.n_error('${@LOCATION} unsupported var type ${var_object}')
+				ExternVar {
+					c.dec_var(var_object as ExternVar, config)
 				}
 			}
 		}
@@ -420,7 +420,7 @@ fn (mut c Amd64) dec_var(var Var, config VarConfig) {
 		GlobalVar {
 			// TODO
 		}
-		else {
+		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -443,8 +443,8 @@ fn (mut c Amd64) inc_var(var Var, config VarConfig) {
 					// TODO
 					// g.inc()
 				}
-				else {
-					c.g.n_error('${@LOCATION} unsupported var type ${var_object}')
+				ExternVar {
+					c.inc_var(var_object as ExternVar, config)
 				}
 			}
 		}
@@ -489,7 +489,7 @@ fn (mut c Amd64) inc_var(var Var, config VarConfig) {
 			c.g.n_error('${@LOCATION} Global variables incrementation is not supported yet')
 			// TODO
 		}
-		else {
+		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -686,8 +686,8 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 					// TODO
 					c.g.n_error('${@LOCATION} unsupported Ident Register')
 				}
-				else {
-					c.g.n_error('${@LOCATION} unsupported var type ${var_object}')
+				ExternVar {
+					c.mov_reg_to_var(var_object as ExternVar, reg, config)
 				}
 			}
 		}
@@ -770,7 +770,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 			// TODO
 			c.g.n_error('${@LOCATION} Unsupported GlobalVar')
 		}
-		else {
+		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -790,8 +790,8 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 				Register {
 					// TODO
 				}
-				else {
-					c.g.n_error('${@LOCATION} unsupported var type ${var_object}')
+				ExternVar {
+					c.mov_int_to_var(var_object as ExternVar, integer, config)
 				}
 			}
 		}
@@ -855,7 +855,7 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 		GlobalVar {
 			// TODO
 		}
-		else {
+		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -904,8 +904,8 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 				Register {
 					// TODO
 				}
-				else {
-					c.g.n_error('${@LOCATION} unsupported var type ${var_object}')
+				ExternVar {
+					c.mov_var_to_reg(reg, var_object as ExternVar, config)
 				}
 			}
 		}
@@ -972,7 +972,7 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 		GlobalVar {
 			c.g.n_error('${@LOCATION} Unsupported GlobalVar')
 		}
-		else {
+		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -2144,8 +2144,8 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 			Register {
 				c.mov_reg(var as Amd64Register, Amd64Register.rax)
 			}
-			else {
-				c.g.n_error('${@LOCATION} unsupported var type ${var}')
+			ExternVar {
+				c.mov_reg(var as ExternVar, Amd64Register.rax)
 			}
 		}
 	} else {
@@ -3752,8 +3752,8 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 					// TODO
 					// c.g.cmp()
 				}
-				else {
-					c.g.n_error('${@LOCATION} unsupported var type ${var_object}')
+				ExternVar {
+					c.init_struct(var_object as ExternVar, init)
 				}
 			}
 		}
@@ -3797,7 +3797,7 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 		GlobalVar {
 			c.g.n_error('${@LOCATION} GlobalVar not implemented for ast.StructInit')
 		}
-		else {
+		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -3848,8 +3848,8 @@ fn (mut c Amd64) init_array(var Var, node ast.ArrayInit) {
 					// TODO
 					// c.g.cmp()
 				}
-				else {
-					c.g.n_error('${@LOCATION} unsupported var type ${var_object}')
+				ExternVar {
+					c.init_array(var_object as ExternVar, node)
 				}
 			}
 		}
@@ -3864,7 +3864,7 @@ fn (mut c Amd64) init_array(var Var, node ast.ArrayInit) {
 		GlobalVar {
 			c.g.n_error('${@LOCATION} GlobalVar not implemented for ast.ArrayInit')
 		}
-		else {
+		Extern {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -4163,8 +4163,8 @@ fn (mut c Amd64) mov_ssereg_to_var(var Var, reg Amd64SSERegister, config VarConf
 					c.mov_ssereg_to_var(var_object as GlobalVar, reg, config)
 				}
 				Register {}
-				else {
-					c.g.n_error('${@LOCATION} unsupported var type ${var_object}')
+				ExternVar {
+					c.mov_ssereg_to_var(var_object as ExternVar, reg, config)
 				}
 			}
 		}
@@ -4191,7 +4191,7 @@ fn (mut c Amd64) mov_ssereg_to_var(var Var, reg Amd64SSERegister, config VarConf
 		GlobalVar {
 			// TODO
 		}
-		else {
+		Extern {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -4213,8 +4213,8 @@ fn (mut c Amd64) mov_var_to_ssereg(reg Amd64SSERegister, var Var, config VarConf
 					c.mov_var_to_ssereg(reg, var_object as GlobalVar, config)
 				}
 				Register {}
-				else {
-					c.g.n_error('${@LOCATION} unsupported var type ${var_object}')
+				ExternVar {
+					c.mov_var_to_ssereg(reg, var_object as ExternVar, config)
 				}
 			}
 		}
@@ -4241,7 +4241,7 @@ fn (mut c Amd64) mov_var_to_ssereg(reg Amd64SSERegister, var Var, config VarConf
 		GlobalVar {
 			// TODO
 		}
-		else {
+		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}

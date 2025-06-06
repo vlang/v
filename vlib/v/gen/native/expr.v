@@ -186,9 +186,10 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 
 fn (mut g Gen) extern_var_ident(var ExternVar) {
 	if g.pref.os == .linux {
+		main_reg := g.code_gen.main_reg()
 		g.extern_vars[g.pos()] = var.name
-		g.code_gen.mov64(Amd64Register.rax, Number(i64(0)))
-		g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u64_type_idx)
+		g.code_gen.mov64(main_reg, Number(i64(0)))
+		g.code_gen.mov_deref(main_reg, main_reg, ast.u64_type_idx)
 	} else {
 		g.n_error('${@LOCATION} unsupported os')
 	}
