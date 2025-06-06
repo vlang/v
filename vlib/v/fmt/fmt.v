@@ -3039,7 +3039,7 @@ pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
 }
 
 pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
-	if node.expr is ast.StringLiteral && node.field_name == 'str' {
+	if node.expr is ast.StringLiteral && node.field_name == 'str' && f.file.language != .js {
 		if f.file.language != .v {
 			f.write(f.file.language.str())
 		} else {
