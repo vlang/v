@@ -855,9 +855,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 	f.write('assert ')
 	mut expr := node.expr
-	for mut expr is ast.ParExpr {
-		expr = expr.expr
-	}
+	expr = expr.remove_par()
 	f.expr(expr)
 	if node.extra !is ast.EmptyExpr {
 		f.write(', ')
@@ -2934,9 +2932,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 
 pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
 	mut expr := node.expr
-	for mut expr is ast.ParExpr {
-		expr = expr.expr
-	}
+	expr = expr.remove_par()
 	requires_paren := expr !is ast.Ident || node.comments.len > 0
 	if requires_paren {
 		f.par_level++

@@ -1983,9 +1983,7 @@ fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected
 fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	// `(if true { 'foo.bar' } else { 'foo.bar.baz' }).all_after('foo.')`
 	mut left_expr := node.left
-	for mut left_expr is ast.ParExpr {
-		left_expr = left_expr.expr
-	}
+	left_expr = left_expr.remove_par()
 	if mut left_expr is ast.IfExpr {
 		if left_expr.branches.len > 0 && left_expr.has_else {
 			mut last_stmt := left_expr.branches[0].stmts.last()

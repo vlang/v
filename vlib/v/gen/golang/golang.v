@@ -729,9 +729,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 pub fn (mut f Gen) assert_stmt(node ast.AssertStmt) {
 	f.write('assert ')
 	mut expr := node.expr
-	for mut expr is ast.ParExpr {
-		expr = expr.expr
-	}
+	expr = expr.remove_par()
 	f.expr(expr)
 	f.writeln('')
 }
@@ -2058,9 +2056,7 @@ pub fn (mut f Gen) par_expr(node ast.ParExpr) {
 		f.write('(')
 	}
 	mut expr := node.expr
-	for mut expr is ast.ParExpr {
-		expr = expr.expr
-	}
+	expr = expr.remove_par()
 	f.expr(expr)
 	if requires_paren {
 		f.par_level--
