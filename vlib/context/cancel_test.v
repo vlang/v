@@ -1,4 +1,3 @@
-// vtest flaky: true
 // vtest retry: 3
 // vtest build: amd64 || arm64
 import context
