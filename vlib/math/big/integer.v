@@ -5,6 +5,14 @@ import strings
 import strconv
 
 const digit_array = '0123456789abcdefghijklmnopqrstuvwxyz'.bytes()
+// vfmt off
+const radix_options = {
+	2: 31, 3: 20, 4: 15, 5: 13, 6: 12, 7: 11, 8: 10, 9: 10, 10: 9,
+	11: 9, 12: 8, 13: 8, 14: 8, 15: 8, 16: 7, 17: 7, 18: 7, 19: 7,
+	20: 7, 21: 7, 22: 7, 23: 7, 24: 6, 25: 6, 26: 6, 27: 6, 28: 6,
+	29: 6, 30: 6, 31: 6, 32: 6, 33: 6, 34: 6, 35: 6, 36: 6
+}
+// vfmt on
 
 // big.Integer
 // -----------
@@ -875,34 +883,59 @@ pub fn (integer Integer) radix_str(radix u32) string {
 			integer.hex()
 		}
 		else {
-			integer.general_radix_str(radix)
+			integer.general_radix_str(int(radix))
 		}
 	}
 }
 
-fn (integer Integer) general_radix_str(radix u32) string {
+fn (integer Integer) general_radix_str(radix int) string {
 	$if debug {
 		assert radix != 0
 	}
-	divisor := integer_from_u32(radix)
+	divisor := integer_from_int(radix).pow(u32(radix_options[radix]))
 
 	mut current := integer.abs()
 	mut new_current := zero_int
 	mut digit := zero_int
-	mut rune_array := []rune{cap: current.digits.len * 4}
+	mut sb := strings.new_builder(integer.digits.len * radix_options[radix])
+	mut st := []string{cap: integer.digits.len * radix_options[radix]}
 	for current.signum > 0 {
 		new_current, digit = current.div_mod_internal(divisor)
-		rune_array << digit_array[digit.int()]
-		unsafe { digit.free() }
-		unsafe { current.free() }
+		st << general_str(new_current, digit, radix)
 		current = new_current
 	}
 	if integer.signum == -1 {
-		rune_array << `-`
+		sb.write_string('-')
 	}
+	for st.len > 0 {
+		sb.write_string(st.pop())
+	}
+	return sb.str()
+}
 
-	rune_array.reverse_in_place()
-	return rune_array.string()
+fn general_str(quotient Integer, remainder Integer, radix int) string {
+	if quotient.signum == 0 && remainder.signum == 0 {
+		return '0'
+	}
+	divisor := integer_from_int(radix)
+
+	mut current := remainder.abs()
+	mut new_current := zero_int
+	mut digit := zero_int
+	mut sb := strings.new_builder(radix_options[radix])
+	mut st := []u8{cap: radix_options[radix]}
+	for current.signum > 0 {
+		new_current, digit = current.div_mod_internal(divisor)
+		st << digit_array[digit.int()]
+		current = new_current
+	}
+	if quotient.signum > 0 {
+		sb.write_string(strings.repeat(48, radix_options[radix] - st.len))
+	}
+	for st.len > 0 {
+		sb.write_u8(st.pop())
+	}
+	return sb.str()
 }
 
 // str returns the decimal string representation of the integer `a`.

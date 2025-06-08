@@ -4776,10 +4776,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	c.inside_ref_lit = old_inside_ref_lit
 	node.right_type = right_type
 	mut expr := node.right
-	// if ParExpr get the innermost expr
-	for mut expr is ast.ParExpr {
-		expr = expr.expr
-	}
+	expr = expr.remove_par()
 	if node.op == .amp {
 		if expr is ast.Nil {
 			c.error('invalid operation: cannot take address of nil', expr.pos())

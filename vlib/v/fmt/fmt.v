@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module fmt
 
+import os
 import strings
 import v.ast
 import v.util
@@ -855,9 +856,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 	f.write('assert ')
 	mut expr := node.expr
-	for mut expr is ast.ParExpr {
-		expr = expr.expr
-	}
+	expr = expr.remove_par()
 	f.expr(expr)
 	if node.extra !is ast.EmptyExpr {
 		f.write(', ')
@@ -2934,9 +2933,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 
 pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
 	mut expr := node.expr
-	for mut expr is ast.ParExpr {
-		expr = expr.expr
-	}
+	expr = expr.remove_par()
 	requires_paren := expr !is ast.Ident || node.comments.len > 0
 	if requires_paren {
 		f.par_level++
@@ -3039,6 +3036,15 @@ pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
 }
 
 pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
+	// TODO(StunxFS): Even though we ignored the JS backend, the `v/gen/js/tests/js.v`
+	// file was still formatted/transformed, so it is specifically ignored here. Fix this.
+	if f.file.language != .js && node.expr is ast.StringLiteral && node.field_name == 'str'
+		&& !f.pref.backend.is_js()
+		&& !f.file.path.ends_with(os.join_path('v', 'gen', 'js', 'tests', 'js.v')) {
+		f.write('c')
+		f.expr(node.expr)
+		return
+	}
 	f.expr(node.expr)
 	f.write('.')
 	f.write(node.field_name)
