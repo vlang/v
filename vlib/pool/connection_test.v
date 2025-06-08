@@ -219,11 +219,15 @@ fn test_pool_close() {
 	mut p := pool.new_connection_pool(factory, pool.ConnectionPoolConfig{})!
 	c := p.get()!
 	p.put(c)!
+	assert p.stats().active_conns == 0
+	assert p.stats().idle_conns == 5
 
 	p.close()
 
 	// Attempt to acquire connection after close
 	p.get() or { assert err.msg().contains('closed') }
+	assert p.stats().active_conns == 0
+	assert p.stats().idle_conns == 0
 
 	// Verify connection was closed
 	mock_conn := test_conns[0] as MockConn
@@ -239,12 +243,14 @@ fn test_config_update() {
 	defer {
 		p.close()
 	}
+	assert p.stats().idle_conns == 1
 
 	// Modify configuration
 	new_config := pool.ConnectionPoolConfig{
 		max_conns:      5
 		min_idle_conns: 3
 	}
+
 	p.update_config(new_config)!
 
 	// Trigger idle connection replenishment
@@ -260,11 +266,23 @@ fn test_error_handling() {
 	defer {
 		p.close()
 	}
+
+	// default configuration has 5 idle_conns
+	assert p.stats().idle_conns == 5
+
 	mut conn := p.get()! as MockConn
+	assert p.stats().active_conns == 1
+	assert p.stats().idle_conns == 4
 	conn.close_flag = true
 	p.put(conn) or { assert err.msg().contains('simulated close error') }
+	assert p.stats().active_conns == 0
+	// it depend on `background_maintenance` thread to keep 5 idle_conns
+	assert p.stats().idle_conns >= 4
 
 	// Test reset error handling
 	conn.reset_flag = true
 	p.put(conn) or { assert err.msg().contains('reset') }
+	assert p.stats().active_conns == 0
+	// it depend on `background_maintenance` thread to keep 5 idle_conns
+	assert p.stats().idle_conns >= 4
 }

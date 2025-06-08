@@ -340,6 +340,17 @@ fn (mut p ConnectionPool) try_get() ?&ConnectionPoolable {
 	for p.idle_pool.len > 0 {
 		mut wrapper := p.idle_pool.pop()
 
+		// Check connection lifetime
+		age := time.since(wrapper.created_at)
+		if age > max_lifetime {
+			// Close expired connection
+			p.all_conns_mutex.lock()
+			p.all_conns.delete(wrapper.conn)
+			p.all_conns_mutex.unlock()
+			wrapper.conn.close() or {}
+			continue
+		}
+
 		// Validate connection
 		if !wrapper.conn.validate() or { false } {
 			// Handle invalid connection
@@ -352,17 +363,6 @@ fn (mut p ConnectionPool) try_get() ?&ConnectionPoolable {
 
 		wrapper.last_valid_at = time.now()
 
-		// Check connection lifetime
-		age := time.since(wrapper.created_at)
-		if age > max_lifetime {
-			// Close expired connection
-			p.all_conns_mutex.lock()
-			p.all_conns.delete(wrapper.conn)
-			p.all_conns_mutex.unlock()
-			wrapper.conn.close() or {}
-			continue
-		}
-
 		// Mark connection as active
 		p.active_count.add(1)
 		wrapper.last_used_at = time.now()
@@ -374,7 +374,10 @@ fn (mut p ConnectionPool) try_get() ?&ConnectionPoolable {
 
 // put returns a connection to the pool
 pub fn (mut p ConnectionPool) put(conn &ConnectionPoolable) ! {
-	p.active_count.sub(1)
+	if p.active_count.load() > 0 {
+		// TODO: may need a atomic check here, compare_exchange?
+		p.active_count.sub(1)
+	}
 
 	mut conn_ptr := unsafe { conn }
 	// Handle closed pool case
