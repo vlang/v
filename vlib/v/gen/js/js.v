@@ -1516,7 +1516,7 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 		if field.has_expr && field.expr is ast.IntegerLiteral {
 			i = field.expr.val.int()
 		}
-		g.writeln('${i},')
+		g.writeln('new int(${i}),')
 		i++
 	}
 	g.dec_indent()
