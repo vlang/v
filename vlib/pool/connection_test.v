@@ -272,7 +272,8 @@ fn test_error_handling() {
 
 	mut conn := p.get()! as MockConn
 	assert p.stats().active_conns == 1
-	assert p.stats().idle_conns == 4
+	// it depend on `background_maintenance` thread to keep 5 idle_conns
+	assert p.stats().idle_conns >= 4
 	conn.close_flag = true
 	p.put(conn) or { assert err.msg().contains('simulated close error') }
 	assert p.stats().active_conns == 0
