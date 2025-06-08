@@ -99,7 +99,7 @@ pub fn new_connection_pool(conn_factory fn () !&ConnectionPoolable, config Conne
 		all_conns:        map[voidptr]&ConnectionWrapper{}
 	}
 
-	now := time.now()
+	now := time.utc()
 	p.created_at = now
 
 	// Initialize minimum idle connections
@@ -213,7 +213,7 @@ fn (mut p ConnectionPool) can_create() bool {
 
 // get acquires a connection from the pool with timeout
 pub fn (mut p ConnectionPool) get() !&ConnectionPoolable {
-	start_time := time.now()
+	start_time := time.utc()
 	for {
 		// Check if pool is closed
 		if p.is_closed.load() {
@@ -244,7 +244,7 @@ pub fn (mut p ConnectionPool) get() !&ConnectionPoolable {
 			p.all_conns_mutex.lock()
 			if p.all_conns.len < max_conns {
 				// Successfully create and add new connection
-				now := time.now()
+				now := time.utc()
 				wrapper := &ConnectionWrapper{
 					conn:          new_conn
 					created_at:    now
@@ -271,7 +271,7 @@ pub fn (mut p ConnectionPool) get() !&ConnectionPoolable {
 		p.config_mutex.rlock()
 		timeout := p.config.get_timeout
 		p.config_mutex.unlock()
-		elapsed := time.since(start_time)
+		elapsed := time.utc() - start_time
 		if elapsed > timeout {
 			return error('Connection acquisition timeout')
 		}
@@ -341,7 +341,7 @@ fn (mut p ConnectionPool) try_get() ?&ConnectionPoolable {
 		mut wrapper := p.idle_pool.pop()
 
 		// Check connection lifetime
-		age := time.since(wrapper.created_at)
+		age := time.utc() - wrapper.created_at
 		if age > max_lifetime {
 			// Close expired connection
 			p.all_conns_mutex.lock()
@@ -361,11 +361,11 @@ fn (mut p ConnectionPool) try_get() ?&ConnectionPoolable {
 			continue
 		}
 
-		wrapper.last_valid_at = time.now()
+		wrapper.last_valid_at = time.utc()
 
 		// Mark connection as active
 		p.active_count.add(1)
-		wrapper.last_used_at = time.now()
+		wrapper.last_used_at = time.utc()
 		wrapper.usage_count++
 		return wrapper.conn
 	}
@@ -404,7 +404,7 @@ pub fn (mut p ConnectionPool) put(conn &ConnectionPoolable) ! {
 
 	// Return connection to idle pool
 	if mut wrapper := p.all_conns[conn] {
-		wrapper.last_used_at = time.now()
+		wrapper.last_used_at = time.utc()
 		p.idle_pool << wrapper
 
 		// Determine if eviction is needed
@@ -560,8 +560,8 @@ fn (mut p ConnectionPool) prune_connections() {
 	// Remove stale connections
 	for i := p.idle_pool.len - 1; i >= 0; i-- {
 		mut wrapper := p.idle_pool[i]
-		age := time.since(wrapper.created_at)
-		idle_time := time.since(wrapper.last_used_at)
+		age := time.utc() - wrapper.created_at
+		idle_time := time.utc() - wrapper.last_used_at
 
 		if age > max_lifetime || idle_time > idle_timeout || !wrapper.conn.validate() or { false } {
 			p.all_conns_mutex.lock()
@@ -571,7 +571,7 @@ fn (mut p ConnectionPool) prune_connections() {
 			p.idle_pool.delete(i)
 			p.evicted_count.add(1)
 		} else {
-			wrapper.last_valid_at = time.now()
+			wrapper.last_valid_at = time.utc()
 		}
 	}
 	current_idle := p.idle_pool.len
@@ -622,7 +622,7 @@ fn (mut p ConnectionPool) prune_connections() {
 
 	// Create wrapper for each new connection
 	for i in 0 .. actual_to_add {
-		now := time.now()
+		now := time.utc()
 		wrapper := &ConnectionWrapper{
 			conn:          new_conns[i]
 			created_at:    now
