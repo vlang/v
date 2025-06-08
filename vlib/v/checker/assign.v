@@ -339,10 +339,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if left is ast.ParExpr && is_decl {
 			c.error('parentheses are not supported on the left side of `:=`', left.pos())
 		}
-
-		for left is ast.ParExpr {
-			left = (left as ast.ParExpr).expr
-		}
+		left = left.remove_par()
 		is_assign := node.op in [.assign, .decl_assign]
 		match mut left {
 			ast.Ident {
@@ -943,9 +940,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			c.inside_ref_lit = old_inside_ref_lit
 			if right_node.op == .amp {
 				mut expr := right_node.right
-				for mut expr is ast.ParExpr {
-					expr = expr.expr
-				}
+				expr = expr.remove_par()
 				if mut expr is ast.Ident {
 					if mut expr.obj is ast.Var {
 						v := expr.obj
