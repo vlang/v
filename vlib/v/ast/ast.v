@@ -996,6 +996,7 @@ pub:
 	is_test       bool // true for _test.v files
 	is_generated  bool // true for `@[generated] module xyz` files; turn off notices
 	is_translated bool // true for `@[translated] module xyz` files; turn off some checks
+	language      Language
 pub mut:
 	idx              int    // index in an external container; can be used to refer to the file in a more efficient way, just by its integer index
 	path             string // absolute path of the source file - '/projects/v/file.v'
