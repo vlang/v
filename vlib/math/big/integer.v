@@ -1,6 +1,5 @@
 module big
 
-import datatypes
 import math.bits
 import strings
 import strconv
@@ -899,17 +898,17 @@ fn (integer Integer) general_radix_str(radix int) string {
 	mut new_current := zero_int
 	mut digit := zero_int
 	mut sb := strings.new_builder(integer.digits.len * radix_options[radix])
-	mut st := datatypes.Stack[string]{}
+	mut st := []string{cap: integer.digits.len * radix_options[radix]}
 	for current.signum > 0 {
 		new_current, digit = current.div_mod_internal(divisor)
-		st.push(general_str(new_current, digit, radix))
+		st << general_str(new_current, digit, radix)
 		current = new_current
 	}
 	if integer.signum == -1 {
 		sb.write_string('-')
 	}
-	for {
-		sb.write_string(st.pop() or { break })
+	for st.len > 0 {
+		sb.write_string(st.pop())
 	}
 	return sb.str()
 }
@@ -924,17 +923,17 @@ fn general_str(quotient Integer, remainder Integer, radix int) string {
 	mut new_current := zero_int
 	mut digit := zero_int
 	mut sb := strings.new_builder(radix_options[radix])
-	mut st := datatypes.Stack[u8]{}
+	mut st := []u8{cap: radix_options[radix]}
 	for current.signum > 0 {
 		new_current, digit = current.div_mod_internal(divisor)
-		st.push(digit_array[digit.int()])
+		st << digit_array[digit.int()]
 		current = new_current
 	}
 	if quotient.signum > 0 {
-		sb.write_string(strings.repeat(48, radix_options[radix] - st.len()))
+		sb.write_string(strings.repeat(48, radix_options[radix] - st.len))
 	}
-	for {
-		sb.write_u8(st.pop() or { break })
+	for st.len > 0 {
+		sb.write_u8(st.pop())
 	}
 	return sb.str()
 }
