@@ -39,12 +39,12 @@ jobs:
           shell: sh
           sync_files: runner-to-vm
           run: |
-            sudo pkg install -y git sqlite3
+            sudo pkg install -y git sqlite3 gmake
             sudo hostname -s freebsd-ci
             echo "### OS infos"
             uname -a
             git config --global --add safe.directory .
-            make CFLAGS=
+            gmake CFLAGS=
             sudo ./v symlink
             ./v run ci/freebsd_ci.vsh all
 
