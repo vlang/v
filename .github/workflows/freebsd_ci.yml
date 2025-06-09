@@ -31,17 +31,21 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test in FreeBSD
         id: test-freebsd-14-2-runs-in-vm
-        uses: vmactions/freebsd-vm@v1
+        uses: cross-platform-actions/action@v0.28.0
         with:
-          release: '14.2'
-          mem: 4096
-          usesh: true
-          copyback: false
-          prepare: pkg install -y git sqlite3 bash
+          operating_system: freebsd
+          version: '14.2'
+          memory: 4G
+          shell: sh
+          sync_files: runner-to-vm
           run: |
+            sudo pkg install -y git sqlite3
+            sudo hostname -s freebsd-ci
+            echo "### OS infos"
+            uname -a
             git config --global --add safe.directory .
             make CFLAGS=
-            ./v symlink
+            sudo ./v symlink
             ./v run ci/freebsd_ci.vsh all
 
 ##### Run a FreeBSD 14 x86 VM:
