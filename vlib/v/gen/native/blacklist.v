@@ -84,9 +84,9 @@ const windows_blacklist = {
 }
 
 fn (g &Gen) is_blacklisted(name string, is_builtin bool) bool {
-	$if windows {
+	if g.pref.os == .windows {
 		return windows_blacklist[name] or { is_builtin }
-	} $else {
+	} else {
 		return blacklist[name] or { is_builtin }
 	}
 }
