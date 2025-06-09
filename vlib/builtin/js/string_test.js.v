@@ -985,11 +985,9 @@ fn test_index_any() {
 
 fn test_js_string() {
 	s := js'hello V'
-	assert s.charAt(0) == js'h'
-	assert s.charAt(6) == js'V'
-	// FIXME: This line of code causes a bug where V claims that `voidptr` was used to
-	// initialize a `JS.Number` value.
-	// assert s.charCodeAt(0) == JS.Number(104)
+	assert s.charAt(JS.Number(0)) == js'h'
+	assert s.charAt(JS.Number(6)) == js'V'
+	assert s.charCodeAt(JS.Number(0)) == JS.Number(104)
 	assert s.toUpperCase() == js'HELLO V'
 	assert s.toLowerCase() == js'hello v'
 	assert s.concat(js' from JS') == js'hello V from JS'
