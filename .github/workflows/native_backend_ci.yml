@@ -46,25 +46,30 @@ on:
 
 concurrency:
   group: native_backend-${{ github.workflow }}-${{ github.ref}}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  native-backend:
-    strategy:
-      matrix:
-        os: [ubuntu-24.04, windows-2022]
-    runs-on: ${{ matrix.os }}
+  native-backend-ubuntu:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        if: runner.os != 'Windows'
         run: make && ./v symlink
-      - name: Build V (Windows)
-        if: runner.os == 'Windows'
-        run: ./make.bat && ./v symlink
       - name: Install linker
-        if: runner.os == 'Linux'
         run: v retry -- sudo apt -qq install binutils
+      - name: Rebuild V with -g, for better stacktraces on compiler panics
+        run: v -g self
+      - name: Run the native backend tests serially with more details
+        run: |
+          v vlib/v/gen/native/macho_test.v
+          v vlib/v/gen/native/tests/native_test.v
+
+  native-backend-windows:
+    runs-on: windows-2019
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V (Windows)
+        run: ./make.bat && ./v symlink
       - name: Rebuild V with -g, for better stacktraces on compiler panics
         run: v -g self
       - name: Run the native backend tests serially with more details
