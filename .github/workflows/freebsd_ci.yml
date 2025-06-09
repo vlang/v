@@ -39,7 +39,7 @@ jobs:
           shell: sh
           sync_files: runner-to-vm
           run: |
-            sudo pkg install -y git sqlite3 gmake
+            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded
             sudo hostname -s freebsd-ci
             echo "### OS infos"
             uname -a
