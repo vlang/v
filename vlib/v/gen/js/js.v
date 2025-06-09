@@ -3345,7 +3345,9 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 
 fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 	text := it.val.replace("'", "'").replace('"', '\\"')
-	g.write('new string(')
+	if it.language != .js {
+		g.write('new string(')
+	}
 	if it.is_raw {
 		g.writeln('(function() { let s = String(); ')
 		for x in text {
@@ -3363,7 +3365,9 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 		}
 		g.write('"')
 	}
-	g.write(')')
+	if it.language != .js {
+		g.write(')')
+	}
 }
 
 fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
