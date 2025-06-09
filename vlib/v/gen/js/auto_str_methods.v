@@ -610,7 +610,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	g.definitions.writeln('\tlet keys = Object.keys(m.map);')
 	g.definitions.writeln('\tfor (let j = 0; j < keys.length;j++) {')
 	g.definitions.writeln('\t\tlet key = keys[j];')
-	g.definitions.writeln('\t\tlet value = m.map[key];')
+	g.definitions.writeln('\t\tlet value = m.map[key].val;')
 	g.definitions.writeln('\t\tkey = new ${key_styp}(key);')
 	if key_sym.kind == .string {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("\'" + key.str + "\'"));')

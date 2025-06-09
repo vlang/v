@@ -1328,7 +1328,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					g.expr(left.left)
 					g.write('.map[')
 					g.expr(left.index)
-					g.write('.\$toJS()] = ')
+					g.write('.\$toJS()] = { val: ')
 				} else {
 					g.write('.arr.set(')
 					g.write('new int(')
@@ -1426,6 +1426,11 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 			if array_set && !map_set {
 				g.write(')')
 			}
+			if left is ast.IndexExpr && left.is_map {
+				g.write(', key: ')
+				g.expr(left.index)
+				g.write(' }')
+			}
 			if semicolon {
 				if g.inside_loop {
 					g.write('; ')
@@ -1511,7 +1516,7 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 		if field.has_expr && field.expr is ast.IntegerLiteral {
 			i = field.expr.val.int()
 		}
-		g.writeln('${i},')
+		g.writeln('new int(${i}),')
 		i++
 	}
 	g.dec_indent()
@@ -1707,7 +1712,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			g.writeln('for (var ${tmp2} in ${tmp}.map) {')
 
 			g.inc_indent()
-			g.writeln('let ${val} = ${tmp}.map[${tmp2}];')
+			g.writeln('let ${val} = ${tmp}.map[${tmp2}].val;')
 			sym := g.table.sym(it.key_type)
 			if sym.is_number() {
 				g.writeln('let ${key} = new ${g.styp(it.key_type)}(+${tmp2})')
@@ -3216,8 +3221,11 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 			g.write('[')
 			g.expr(key)
 			g.write('.\$toJS()]')
-			g.write(': ')
+			g.write(': { val: ')
 			g.expr(val)
+			g.write(', key: ')
+			g.expr(key)
+			g.write(' }')
 			if i < it.keys.len - 1 {
 				g.write(',')
 			}
