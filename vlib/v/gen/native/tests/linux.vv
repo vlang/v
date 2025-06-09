@@ -16,6 +16,13 @@ fn test_for_c_in_string() {
 	}
 }
 
+fn test_c_extern_vars() {
+	C.fprintf(C.stdout, 'abc'.str, 3)
+}
+
 fn main() {
 	test_for_c_in_string()
+	test_c_extern_vars()
+	flush_stderr()
+	flush_stdout()
 }
