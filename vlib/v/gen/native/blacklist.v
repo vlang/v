@@ -28,7 +28,7 @@ already compiling functions:
 
 // false: whitelist function
 // true: blacklist function
-const whitelist = {
+const blacklist = {
 	'main.main':            false
 	'c_error_number_str':   false
 	'exit':                 false
@@ -57,6 +57,36 @@ const whitelist = {
 	'string.contains_u8':   false
 }
 
+const windows_blacklist = {
+	'main.main':            false
+	'c_error_number_str':   false
+	'exit':                 false
+	'gc_is_enabled':        false
+	'int_max':              false
+	'int_min':              false
+	'u8.is_alnum':          false
+	'u8.is_bin_digit':      false
+	'u8.is_capital':        false
+	'u8.is_digit':          false
+	'u8.is_hex_digit':      false
+	'u8.is_letter':         false
+	'u8.is_oct_digit':      false
+	'u8.is_space':          false
+	'string.is_capital':    false
+	'string.is_ascii':      false
+	'string.is_identifier': false
+	'string.is_blank':      false
+	'string.indent_width':  false
+	'string.index_u8':      false
+	'string.last_index':    true
+	'string.last_index_u8': false
+	'string.contains_u8':   false
+}
+
 fn (g &Gen) is_blacklisted(name string, is_builtin bool) bool {
-	return whitelist[name] or { is_builtin }
+	$if windows {
+		return windows_blacklist[name] or { is_builtin }
+	} $else {
+		return blacklist[name] or { is_builtin }
+	}
 }
