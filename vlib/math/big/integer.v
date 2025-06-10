@@ -1,5 +1,6 @@
 module big
 
+import math
 import math.bits
 import strings
 import strconv
@@ -272,19 +273,32 @@ fn integer_from_regular_string(characters string, radix u32) Integer {
 
 	mut result := zero_int
 	radix_int := integer_from_u32(radix)
-
-	for index := start_index; index < characters.len; index++ {
-		digit := characters[index]
-		value := digit_array.index(digit)
-
-		result *= radix_int
-		result += integer_from_int(value)
+	pow := radix_options[int(radix)]
+	radix_pow := radix_int.pow(u32(pow))
+	for i := start_index; i < characters.len; i += pow {
+		end := math.min(i + pow, characters.len)
+		num_str := characters[i..end]
+		if num_str.len == pow {
+			result *= radix_pow
+		} else {
+			result *= radix_int.pow(u32(num_str.len))
+		}
+		result += integer_from_u32(regular_string_to_radix(num_str, radix))
 	}
 
 	return Integer{
 		digits: result.digits.clone()
 		signum: result.signum * signum
 	}
+}
+
+fn regular_string_to_radix(characters string, radix u32) u32 {
+	mut result := u32(0)
+
+	for c in characters {
+		result = result * radix + u32(digit_array.index(c))
+	}
+	return result
 }
 
 // abs returns the absolute value of the integer `a`.

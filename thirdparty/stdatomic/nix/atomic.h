@@ -693,35 +693,35 @@ extern inline unsigned long long __aarch64_ldeor8_relax(unsigned long long*ptr, 
 
 // Since V might be confused with "generic" C functions either we provide special versions
 // for gcc/clang, too
-static inline unsigned long long atomic_load_u64(unsigned long long* x) {
-	return atomic_load_explicit((_Atomic (unsigned long long)*)x, memory_order_seq_cst);
+static inline unsigned long long atomic_load_u64(uint64_t* x) {
+	return atomic_load_explicit((_Atomic (uint64_t)*)x, memory_order_seq_cst);
 }
-static inline void atomic_store_u64(unsigned long long* x, unsigned long long y) {
-	atomic_store_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline void atomic_store_u64(uint64_t* x, uint64_t y) {
+	atomic_store_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_weak_u64(unsigned long long* x, unsigned long long* expected, unsigned long long y) {
-	return (int)atomic_compare_exchange_weak_explicit((_Atomic(unsigned long long)*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+static inline int atomic_compare_exchange_weak_u64(uint64_t* x, uint64_t* expected, uint64_t y) {
+	return (int)atomic_compare_exchange_weak_explicit((_Atomic(uint64_t)*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_strong_u64(unsigned long long* x, unsigned long long* expected, unsigned long long y) {
-	return (int)atomic_compare_exchange_strong_explicit((_Atomic(unsigned long long)*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+static inline int atomic_compare_exchange_strong_u64(uint64_t* x, uint64_t* expected, uint64_t y) {
+	return (int)atomic_compare_exchange_strong_explicit((_Atomic(uint64_t)*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_exchange_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_exchange_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_exchange_u64(uint64_t* x, uint64_t y) {
+	return atomic_exchange_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_fetch_add_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_fetch_add_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_fetch_add_u64(uint64_t* x, uint64_t y) {
+	return atomic_fetch_add_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_fetch_sub_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_fetch_sub_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_fetch_sub_u64(uint64_t* x, uint64_t y) {
+	return atomic_fetch_sub_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_fetch_and_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_fetch_and_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_fetch_and_u64(uint64_t* x, uint64_t y) {
+	return atomic_fetch_and_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_fetch_or_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_fetch_or_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_fetch_or_u64(uint64_t* x, uint64_t y) {
+	return atomic_fetch_or_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_fetch_xor_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_fetch_xor_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_fetch_xor_u64(uint64_t* x, uint64_t y) {
+	return atomic_fetch_xor_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
 
 

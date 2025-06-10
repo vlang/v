@@ -10,7 +10,7 @@ fn (mut m map) internal_set(key JS.Any, val JS.Any) {
 	//$if es5 {
 	#if (key.hasOwnProperty('$toJS')) key = key.$toJS();
 	#if (!(key in m.val.map)) m.val.length++;
-	#m.val.map[key] = val
+	#m.val.map[key].val = val
 	/*} $else {
 		# if (key.hasOwnProperty('$toJS')) key = key.$toJS();
 		# m.val.m.set(key,val);
@@ -23,7 +23,7 @@ fn (mut m map) internal_get(key JS.Any) JS.Any {
 	mut val := JS.Any(unsafe { nil })
 	//$if es5 {
 	#if (typeof key != "string" && key.hasOwnProperty('$toJS')) key = key.$toJS();
-	#val =  m.val.map[key]
+	#val =  m.val.map[key].val
 	/*} $else {
 		# if (key.hasOwnProperty('$toJS')) key = key.$toJS();
 		# val = m.val.m.get(key)
@@ -49,14 +49,14 @@ pub fn (m &map) free() {}
 
 pub fn (m map) keys() array {
 	ret := JS.makeEmptyArray()
-	#for (var key in m.map) array_push(ret,new string(`${key}`),false);
+	#for (var key in m.map) array_push(ret,m.map[key].key,false)
 
 	return ret
 }
 
 pub fn (m map) values() array {
 	ret := JS.makeEmptyArray()
-	#for (var key in m.map) array_push(ret,m.map[key],false);
+	#for (var key in m.map) array_push(ret,m.map[key].val,false);
 
 	return ret
 }

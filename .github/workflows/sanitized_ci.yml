@@ -165,7 +165,7 @@ jobs:
         run: ./v -silent build-examples
 
   sanitize-address-msvc:
-    runs-on: windows-2019
+    runs-on: windows-2025
     timeout-minutes: 30
     env:
       VFLAGS: -cc msvc

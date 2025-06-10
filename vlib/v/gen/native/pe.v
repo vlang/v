@@ -622,6 +622,13 @@ fn (mut g Gen) gen_pe_idata() {
 
 	g.linker_include_paths << '.'
 
+	// keep only the unique paths:
+	mut upaths := map[string]bool{}
+	for path in g.linker_include_paths {
+		upaths[path] = true
+	}
+	g.linker_include_paths = upaths.keys()
+
 	mut dll_files := ['kernel32.dll', 'user32.dll', 'msvcrt.dll']
 	dll_files << g.linker_libs.map(it + '.dll')
 	mut dlls := dll_files

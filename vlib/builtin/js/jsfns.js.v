@@ -122,7 +122,7 @@ fn (v JS.Map) toString() JS.String
 // Hack for "`[]JS.String` is not a struct" when returning arr.length or arr.len
 // TODO: Fix []JS.String not a struct error
 fn native_str_arr_len(arr []JS.String) int {
-	len := 0
+	mut len := 0
 	#len = arr.length
 
 	return len
