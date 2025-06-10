@@ -4259,9 +4259,6 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
 					}
-					if node.name == 'expr' && c.table.type_kind(typ) == .placeholder {
-						println('>>>2 ${ast.Expr(node)} ${c.table.type_kind(typ)}')
-					}
 					return typ
 				}
 				else {}
