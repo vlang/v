@@ -76,9 +76,24 @@
         } \
     } while (0)
 #else
-extern void atomic_thread_fence (int memory_order);
-extern void __atomic_thread_fence (int memory_order);
-#define atomic_thread_fence(order) __atomic_thread_fence (order)
+#define atomic_thread_fence(order) do { \
+    switch (order) { \
+        case memory_order_relaxed: \
+            break; \
+        case memory_order_acquire: \
+        case memory_order_consume: \
+        case memory_order_release: \
+        case memory_order_acq_rel: \
+            __asm__ __volatile__ ("" : : : "memory"); \
+            break; \
+        case memory_order_seq_cst: \
+            __asm__ __volatile__ ("mfence" : : : "memory"); \
+            break; \
+        default: \
+            __asm__ __volatile__ ("mfence" : : : "memory"); \
+            break; \
+    } \
+} while (0)
 #endif
 
 #define atomic_signal_fence(order) \
