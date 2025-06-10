@@ -271,4 +271,7 @@ fn test_atomic_vals() {
 	assert v_voidptr.swap(ptr_2) == ptr_1
 	assert v_voidptr.compare_and_swap(ptr_2, ptr_1) == true
 	assert v_voidptr.load() == ptr_1
+
+	// just for compile
+	C.atomic_thread_fence(C.memory_order_relaxed)
 }
