@@ -1,7 +1,7 @@
-vlib/sync/stdatomic/atomic.c.v:83:3: error: atomic: only support number and bool types
-   81 |         }
-   82 |     } $else {
-   83 |         $compile_error('atomic: only support number and bool types')
-      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   84 |     }
-   85 |     return unsafe { nil }
+vlib/sync/stdatomic/atomic.c.v:85:3: error: atomic: only support number, bool, and voidptr types
+   83 |         }
+   84 |     } $else {
+   85 |         $compile_error('atomic: only support number, bool, and voidptr types')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   86 |     }
+   87 |     return unsafe { nil }

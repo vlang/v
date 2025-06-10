@@ -294,7 +294,19 @@ static inline int atomic_compare_exchange_strong_u32(unsigned volatile * object,
 
 #else
 
+#define InterlockedExchange16 ManualInterlockedExchange16
 #define InterlockedExchangeAdd16 ManualInterlockedExchangeAdd16
+
+static inline uint16_t ManualInterlockedExchange16(volatile uint16_t* object, uint16_t desired) {
+    __asm__ __volatile__ (
+        "xchgw %0, %1"
+        : "+r" (desired),
+          "+m" (*object)
+        :
+        : "memory"
+    );
+    return desired;
+}
 
 static inline unsigned short ManualInterlockedExchangeAdd16(unsigned short volatile* Addend, unsigned short Value) {
     __asm__ __volatile__ (
@@ -385,11 +397,22 @@ static inline int atomic_compare_exchange_strong_u16(unsigned short volatile * o
 
 #else
 
+#define InterlockedExchange8 ManualInterlockedExchange8
 #define InterlockedCompareExchange8 ManualInterlockedCompareExchange8
 #define InterlockedExchangeAdd8 ManualInterlockedExchangeAdd8
 #define InterlockedOr8 ManualInterlockedOr8
 #define InterlockedXor8 ManualInterlockedXor8
 #define InterlockedAnd8 ManualInterlockedAnd8
+
+static inline char ManualInterlockedExchange8(char volatile* object, char desired) {
+    __asm__ __volatile__ (
+        "xchgb %0, %1"
+        : "+q" (desired), "+m" (*object)
+        :
+        : "memory"
+    );
+    return desired;
+}
 
 static inline unsigned char ManualInterlockedCompareExchange8(unsigned char volatile * dest, unsigned char exchange, unsigned char comparand) {
    unsigned char result;
