@@ -48,10 +48,36 @@
 #define memory_order_acq_rel 4
 #define memory_order_seq_cst 5
 
+#ifdef _MSC_VER
+#define atomic_thread_fence(order) \
+    do { \
+        switch (order) { \
+            case memory_order_release: \
+                _WriteBarrier(); \
+                _ReadWriteBarrier(); \
+                break; \
+            case memory_order_acquire: \
+                _ReadBarrier(); \
+                _ReadWriteBarrier(); \
+                break; \
+            case memory_order_acq_rel: \
+                _ReadBarrier(); \
+                _WriteBarrier(); \
+                _ReadWriteBarrier(); \
+                break; \
+            case memory_order_seq_cst: \
+                MemoryBarrier(); \
+                break; \
+            default: /* relaxed, consume */ \
+                break; \
+        } \
+    } while (0)
+#else
 #define atomic_thread_fence(order) \
     ((order) == memory_order_seq_cst ? MemoryBarrier() : \
      (order) == memory_order_release ? WriteBarrier() : \
      (order) == memory_order_acquire ? ReadBarrier() : (void)0);
+#endif
 
 #define atomic_signal_fence(order) \
     ((void)0)
