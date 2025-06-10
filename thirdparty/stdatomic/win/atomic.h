@@ -294,7 +294,19 @@ static inline int atomic_compare_exchange_strong_u32(unsigned volatile * object,
 
 #else
 
+#define InterlockedExchange16 ManualInterlockedExchange16
 #define InterlockedExchangeAdd16 ManualInterlockedExchangeAdd16
+
+static inline uint16_t ManualInterlockedExchange16(volatile uint16_t* object, uint16_t desired) {
+    __asm__ __volatile__ (
+        "xchgw %0, %1"
+        : "+r" (desired),
+          "+m" (*object)
+        :
+        : "memory"
+    );
+    return desired;
+}
 
 static inline unsigned short ManualInterlockedExchangeAdd16(unsigned short volatile* Addend, unsigned short Value) {
     __asm__ __volatile__ (
