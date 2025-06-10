@@ -4032,18 +4032,17 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		// used inside its initialisation like: `struct Abc { x &Abc } ... const a = [ Abc{0}, Abc{unsafe{&a[0]}} ]!`
 		// see vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v
 		if unsafe { c.const_var != 0 } && name == c.const_var.name {
-			if mut c.const_var.expr is ast.ArrayInit {
-				if c.const_var.expr.is_fixed && c.expected_type.nr_muls() > 0 {
-					elem_typ := c.expected_type.deref()
-					node.kind = .constant
-					node.name = c.const_var.name
-					node.info = ast.IdentVar{
-						typ: elem_typ
-					}
-					// c.const_var.typ = elem_typ
-					node.obj = c.const_var
-					return c.expected_type
+			if mut c.const_var.expr is ast.ArrayInit && c.const_var.expr.is_fixed
+				&& c.expected_type.nr_muls() > 0 {
+				elem_typ := c.expected_type.deref()
+				node.kind = .constant
+				node.name = c.const_var.name
+				node.info = ast.IdentVar{
+					typ: elem_typ
 				}
+				// c.const_var.typ = elem_typ
+				node.obj = c.const_var
+				return c.expected_type
 			}
 			c.error('cycle in constant `${c.const_var.name}`', node.pos)
 			return ast.void_type
@@ -4055,9 +4054,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			c.error('undefined ident: `_` (may only be used in assignments)', node.pos)
 		}
 		return ast.void_type
-	}
-	// second use
-	if node.kind in [.constant, .global, .variable] {
+	} else if node.kind in [.constant, .global, .variable] {
+		// second use
 		info := node.info as ast.IdentVar
 		typ := c.type_resolver.get_type_or_default(node, info.typ)
 		// Got a var with type T, return current generic type
@@ -4252,6 +4250,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
 					}
+					if node.name == 'expr' && c.table.type_kind(typ) == .placeholder {
+						println('>>>2 ${ast.Expr(node)} ${c.table.type_kind(typ)}')
+					}
 					return typ
 				}
 				else {}
@@ -4350,10 +4351,6 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 				c.error('undefined ident: `${node.name}`', node.pos)
 			}
 		}
-	}
-	if c.table.known_type(node.name) {
-		// e.g. `User`  in `json.decode(User, '...')`
-		return ast.void_type
 	}
 	return ast.void_type
 }
