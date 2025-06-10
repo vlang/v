@@ -110,3 +110,4 @@ fn C.atomic_fetch_add_u64(voidptr, u64) u64
 fn C.atomic_fetch_sub_u64(voidptr, u64) u64
 
 fn C.atomic_thread_fence(int)
+fn C.cpu_relax()

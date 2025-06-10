@@ -274,4 +274,5 @@ fn test_atomic_vals() {
 
 	// just for compile
 	C.atomic_thread_fence(C.memory_order_relaxed)
+	C.cpu_relax()
 }

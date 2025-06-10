@@ -15,6 +15,17 @@
 #include "atomic_cpp.h"
 #endif
 
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#define cpu_relax() __asm__ __volatile__ ("pause")
+#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
+#if defined(__TINYC__)
+// TODO: tinycc/aarch64 does not support __asm__ now
+#define cpu_relax()
+#else
+#define cpu_relax() __asm__ __volatile__ ("yield" ::: "memory")
+#endif
+#endif
+
 #ifdef __TINYC__
 
 typedef volatile long long atomic_llong;

@@ -24,7 +24,10 @@
 #include <stdint.h>
 #include <windows.h>
 
-#ifdef __TINYC__
+#ifdef _MSC_VER
+#define cpu_relax() _mm_pause()
+#else
+#define cpu_relax() __asm__ __volatile__ ("pause")
 #endif
 
 #define ATOMIC_FLAG_INIT 0
@@ -73,10 +76,9 @@
         } \
     } while (0)
 #else
-#define atomic_thread_fence(order) \
-    ((order) == memory_order_seq_cst ? MemoryBarrier() : \
-     (order) == memory_order_release ? WriteBarrier() : \
-     (order) == memory_order_acquire ? ReadBarrier() : (void)0);
+extern void atomic_thread_fence (memory_order);
+extern void __atomic_thread_fence (memory_order);
+#define atomic_thread_fence(order) __atomic_thread_fence (order)
 #endif
 
 #define atomic_signal_fence(order) \
