@@ -1,4 +1,3 @@
-
 fn test_for_c_in_string() {
 	$if windows {
 		println('0')
@@ -17,7 +16,8 @@ fn test_for_c_in_string() {
 }
 
 fn test_c_extern_vars() {
-	C.fprintf(C.stdout, 'abc'.str, 3)
+	s := 'abc\n'
+	C.fprintf(C.stdout, s.str, 3)
 }
 
 fn main() {
