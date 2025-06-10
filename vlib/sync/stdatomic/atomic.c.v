@@ -113,9 +113,10 @@ pub fn (mut a AtomicVal[T]) load() T {
 			return T(C.atomic_load_u64(voidptr(&a.val)))
 		}
 	} $else $if T is voidptr {
-		if sizeof(voidptr) == 4 {
+		// TODO: this should be $if sizeof(T) == 4
+		$if x32 {
 			return T(C.atomic_load_u32(voidptr(&a.val)))
-		} else {
+		} $else {
 			return T(C.atomic_load_u64(voidptr(&a.val)))
 		}
 	}
@@ -148,9 +149,10 @@ pub fn (mut a AtomicVal[T]) store(val T) {
 			C.atomic_store_u64(voidptr(&a.val), u64(val))
 		}
 	} $else $if T is voidptr {
-		if sizeof(voidptr) == 4 {
+		// TODO: this should be $if sizeof(T) == 4
+		$if x32 {
 			C.atomic_store_u32(voidptr(&a.val), u32(val))
-		} else {
+		} $else {
 			C.atomic_store_u64(voidptr(&a.val), u64(val))
 		}
 	}
@@ -269,10 +271,11 @@ pub fn (mut a AtomicVal[T]) swap(new T) T {
 			return T(old)
 		}
 	} $else $if T is voidptr {
-		if sizeof(voidptr) == 4 {
+		// TODO: this should be $if sizeof(T) == 4
+		$if x32 {
 			old := C.atomic_exchange_u32(voidptr(&a.val), u32(new))
 			return T(old)
-		} else {
+		} $else {
 			old := C.atomic_exchange_u64(voidptr(&a.val), u64(new))
 			return T(old)
 		}
@@ -317,10 +320,11 @@ pub fn (mut a AtomicVal[T]) compare_and_swap(expected T, new T) bool {
 			return C.atomic_compare_exchange_strong_u64(voidptr(&a.val), &exp, u64(new))
 		}
 	} $else $if T is voidptr {
-		if sizeof(voidptr) == 4 {
+		// TODO: this should be $if sizeof(T) == 4
+		$if x32 {
 			mut exp := u32(expected)
 			return C.atomic_compare_exchange_strong_u32(voidptr(&a.val), &exp, u32(new))
-		} else {
+		} $else {
 			mut exp := u64(expected)
 			return C.atomic_compare_exchange_strong_u64(voidptr(&a.val), &exp, u64(new))
 		}
