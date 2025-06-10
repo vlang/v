@@ -39,6 +39,15 @@
 
 #define kill_dependency(y) ((void)0)
 
+// memory order policies - we use "sequentially consistent" by default
+
+#define memory_order_relaxed 0
+#define memory_order_consume 1
+#define memory_order_acquire 2
+#define memory_order_release 3
+#define memory_order_acq_rel 4
+#define memory_order_seq_cst 5
+
 #define atomic_thread_fence(order) \
     ((order) == memory_order_seq_cst ? MemoryBarrier() : \
      (order) == memory_order_release ? WriteBarrier() : \
