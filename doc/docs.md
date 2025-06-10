@@ -1612,7 +1612,7 @@ So in `abc/def/source.v` the first line will be `module def`, and not `module ab
 `import module_name` statements must respect file hierarchy, you cannot `import def`, only
 `abc.def`
 
-Refering to a module symbol such as a function or const, only needs module name as prefix:
+Referring to a module symbol such as a function or const, only needs module name as prefix:
 
 ```v ignore
 module def
@@ -7636,7 +7636,7 @@ Hello world, value: 12345
 #0 10:42:33 /v/examples>
 ```
 
-Note, that the C function redeclarations look very simillar to the V ones, with some differences:
+Note, that the C function redeclarations look very similar to the V ones, with some differences:
 1) They lack a body (they are defined on the C side) .
 2) Their names start with `C.` .
 3) Their names can have capital letters (unlike V ones, that are required to use snake_case) .
