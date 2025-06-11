@@ -606,6 +606,10 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 			c.smartcast_if_conds(mut node.right, mut scope, control_expr)
 		} else if node.left in [ast.Ident, ast.SelectorExpr] && node.op == .ne
 			&& node.right is ast.None {
+			if (node.left is ast.Ident && node.left.is_mut)
+				|| (node.left is ast.SelectorExpr && node.left.is_mut) {
+				c.fail_if_immutable(mut node.left)
+			}
 			if node.left is ast.Ident && c.comptime.get_ct_type_var(node.left) == .smartcast {
 				node.left_type = c.type_resolver.get_type(node.left)
 				c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut

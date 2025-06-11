@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_mut_non_mut_err.vv:3:9: error: `option_1` is immutable, declare it with `mut` to make it mutable
+    1 | fn main() {
+    2 |     option_1 := ?int(10)
+    3 |     if mut option_1 != none {
+      |            ~~~~~~~~
+    4 |         option_1 = 11
+    5 |     }
