@@ -121,7 +121,7 @@ fn test_server_custom_handler() {
 	mut server := &http.Server{
 		accept_timeout: atimeout
 		handler:        handler
-		addr:           ':18197'
+		addr:           '127.0.0.1:18197'
 	}
 	t := spawn server.listen_and_serve()
 	server.wait_till_running()!
@@ -261,12 +261,13 @@ fn (mut handler MyCustomHttpHostHandler) handle(req http.Request) http.Response 
 }
 
 fn test_host_header_sent_to_server() {
+	ip := '127.0.0.1'
 	port := 54671
 	log.warn('${@FN} started')
 	defer { log.warn('${@FN} finished') }
 	mut server := &http.Server{
 		handler: MyCustomHttpHostHandler{}
-		addr:    ':${port}'
+		addr:    '${ip}:${port}'
 	}
 	t := spawn server.listen_and_serve()
 	server.wait_till_running()!
@@ -274,5 +275,5 @@ fn test_host_header_sent_to_server() {
 	dump(server.addr)
 	x := http.get('http://${server.addr}/')!
 	dump(x)
-	assert x.body.ends_with(':${port}')
+	assert x.body.ends_with('${ip}:${port}')
 }
