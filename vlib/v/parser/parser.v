@@ -113,6 +113,7 @@ mut:
 	script_mode_start_token  token.Token
 	generic_type_level       int  // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 	main_already_defined     bool // TODO move to checker
+	is_vls                   bool
 pub mut:
 	scanner &scanner.Scanner = unsafe { nil }
 	table   &ast.Table       = unsafe { nil }
@@ -177,6 +178,7 @@ pub fn parse_text(text string, path string, mut table ast.Table, comments_mode s
 		scanner:  scanner.new_scanner(text, comments_mode, pref_)
 		table:    table
 		pref:     pref_
+		is_vls:   pref_.is_vls
 		scope:    &ast.Scope{
 			start_pos: 0
 			parent:    table.global_scope
@@ -555,6 +557,10 @@ fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 			stmts << p.stmt(is_top_level)
 			count++
 			if count % 100000 == 0 {
+				if p.is_vls {
+					// Stuck in VLS mode, exit
+					return []
+				}
 				eprintln('parsed ${count} statements so far from fn ${p.cur_fn_name} ...')
 			}
 			if count > 1000000 {
@@ -1043,6 +1049,13 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					pos:  spos.extend(p.tok.pos())
 				}
 			} else if p.peek_tok.kind == .name {
+				if p.is_vls {
+					// So that a line with a simple `var_name` works
+					p.next()
+					return ast.ExprStmt{
+						expr: p.ident(.v)
+					}
+				}
 				return p.unexpected(got: 'name `${p.tok.lit}`')
 			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr
 				&& p.peek_tok.kind in [.rcbr, .eof] && !p.scope.mark_var_as_used(p.tok.lit) {
@@ -2125,7 +2138,7 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 		util.show_compiler_message(kind, pos: pos, file_path: p.file_path, message: s)
 		exit(1)
 	}
-	if p.pref.output_mode == .stdout && !p.pref.check_only {
+	if p.pref.output_mode == .stdout && !p.pref.check_only && !p.is_vls {
 		if p.pref.is_verbose {
 			print_backtrace()
 			kind = 'parser error:'
@@ -2278,7 +2291,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 				&& node !in [ast.CallExpr, ast.PostfixExpr, ast.ComptimeCall, ast.SelectorExpr, ast.DumpExpr] {
 				is_complex_infix_expr := node is ast.InfixExpr
 					&& node.op in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]
-				if !is_complex_infix_expr {
+				if !is_complex_infix_expr && !p.is_vls {
 					return p.error_with_pos('expression evaluated but not used', node.pos())
 				}
 			}
@@ -3338,6 +3351,16 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	mut field_name := ''
 	// check if the name is on the same line as the dot
 	if p.prev_tok.pos().line_nr == name_pos.line_nr || p.tok.kind != .name {
+		if p.is_vls {
+			if p.tok.kind in [.rpar, .rcbr] {
+				// Simplify the dot expression for VLS, so that the parser doesn't error
+				// `println(x.)` => `println(x)`
+				// `x. }` => `x }` etc
+				return left
+			} else if name_pos.line_nr != p.tok.line_nr {
+				return left
+			}
+		}
 		field_name = p.check_name()
 	} else {
 		p.name_error = true
