@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>SSE Notification Test</title>
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+  </head>
+  <body>
+    <script>
+      const eventSource = new EventSource("http://localhost:3001/sse");
+      eventSource.onmessage = function (event) {
+        console.log("Notification:", event.data);
+        document.body.innerHTML += `<p>${event.data}</p>`;
+      };
+    </script>
+  </body>
+</html>

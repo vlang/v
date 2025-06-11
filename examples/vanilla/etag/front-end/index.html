@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ETag Cache Demo</title>
+  </head>
+  <body>
+    <h1>ETag Cache Demo</h1>
+    <button id="getUserBtn">Get User (ID: 1)</button>
+    <div id="response"></div>
+
+    <script>
+      let cachedETag = null;
+
+      document
+        .getElementById("getUserBtn")
+        .addEventListener("click", async () => {
+          try {
+            const headers = {};
+
+            if (cachedETag) {
+              headers["If-None-Match"] = cachedETag;
+            }
+
+            const response = await fetch("http://localhost:3001/user/1", {
+              headers,
+            });
+
+            if (response.status === 304) {
+              document.getElementById("response").innerText =
+                "Content not modified (304)";
+              return;
+            }
+
+            cachedETag = response.headers.get("ETag") || cachedETag;
+            document.getElementById("response").innerText =
+              await response.text();
+          } catch (error) {
+            console.error("Error fetching user:", error);
+            document.getElementById("response").innerText =
+              "An error occurred.";
+          }
+        });
+    </script>
+  </body>
+</html>
