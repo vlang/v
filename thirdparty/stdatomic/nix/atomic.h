@@ -15,11 +15,45 @@
 #include "atomic_cpp.h"
 #endif
 
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+    /* x86 architecture: uses PAUSE instruction for efficient spinning */
+    #define cpu_relax() __asm__ __volatile__ ("pause")
+#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
+    #if defined(__TINYC__)
+        /* TCC compiler limitation: assembly not supported on ARM */
+        #define cpu_relax()
+    #else
+        /* ARM architecture: uses YIELD instruction for power-efficient spinning */
+        #define cpu_relax() __asm__ __volatile__ ("yield" ::: "memory")
+    #endif
+#elif defined(__riscv) && __riscv_xlen == 64
+    /* RISC-V 64-bit: no dedicated pause instruction, using alternative sequence */
+    #define cpu_relax() __asm__ __volatile__ ( \
+        "fence rw, rw\n\t"   /* Full memory barrier (read-write ordering) */ \
+        "andi a0, a0, 0\n\t" /* Dummy arithmetic instruction (always sets a0 = 0) */ \
+        ::: "memory", "a0")  /* Clobbers memory and a0 register to prevent optimizations */
+#elif defined(__powerpc64__) || defined(__ppc64__)
+    /* PowerPC 64-bit: use OR instruction for synchronization */
+    #define cpu_relax() __asm__ __volatile__ ("or 1,1,1\n\t" ::: "memory")
+#elif defined(__mips64)
+    /* MIPS 64-bit: use series of super-scalar NOPs */
+    #define cpu_relax() __asm__ __volatile__ ("ssnop\n\tssnop\n\tssnop\n\t" ::: "memory")
+#else
+    /* Fallback implementation for unsupported architectures */
+    #define cpu_relax() __asm__ __volatile__ ( \
+        "nop\n\t" "nop\n\t" "nop\n\t" "nop\n\t" /* Series of no-operation instructions */ \
+        ::: "memory") /* Memory clobber to prevent instruction reordering */
+#endif
+
 #ifdef __TINYC__
 
 typedef volatile long long atomic_llong;
 typedef volatile unsigned long long atomic_ullong;
 typedef volatile uintptr_t atomic_uintptr_t;
+
+extern void atomic_thread_fence (int memory_order);
+extern void __atomic_thread_fence (int memory_order);
+#define atomic_thread_fence(order) __atomic_thread_fence (order)
 
 // use functions for 64, 32 and 8 bit from libatomic directly
 // since tcc is not capible to use "generic" C functions

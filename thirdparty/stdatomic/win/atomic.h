@@ -24,7 +24,10 @@
 #include <stdint.h>
 #include <windows.h>
 
-#ifdef __TINYC__
+#ifdef _MSC_VER
+#define cpu_relax() _mm_pause()
+#else
+#define cpu_relax() __asm__ __volatile__ ("pause")
 #endif
 
 #define ATOMIC_FLAG_INIT 0
@@ -39,10 +42,59 @@
 
 #define kill_dependency(y) ((void)0)
 
+// memory order policies - we use "sequentially consistent" by default
+
+#define memory_order_relaxed 0
+#define memory_order_consume 1
+#define memory_order_acquire 2
+#define memory_order_release 3
+#define memory_order_acq_rel 4
+#define memory_order_seq_cst 5
+
+#ifdef _MSC_VER
 #define atomic_thread_fence(order) \
-    ((order) == memory_order_seq_cst ? MemoryBarrier() : \
-     (order) == memory_order_release ? WriteBarrier() : \
-     (order) == memory_order_acquire ? ReadBarrier() : (void)0);
+    do { \
+        switch (order) { \
+            case memory_order_release: \
+                _WriteBarrier(); \
+                _ReadWriteBarrier(); \
+                break; \
+            case memory_order_acquire: \
+                _ReadBarrier(); \
+                _ReadWriteBarrier(); \
+                break; \
+            case memory_order_acq_rel: \
+                _ReadBarrier(); \
+                _WriteBarrier(); \
+                _ReadWriteBarrier(); \
+                break; \
+            case memory_order_seq_cst: \
+                MemoryBarrier(); \
+                break; \
+            default: /* relaxed, consume */ \
+                break; \
+        } \
+    } while (0)
+#else
+#define atomic_thread_fence(order) do { \
+    switch (order) { \
+        case memory_order_relaxed: \
+            break; \
+        case memory_order_acquire: \
+        case memory_order_consume: \
+        case memory_order_release: \
+        case memory_order_acq_rel: \
+            __asm__ __volatile__ ("" : : : "memory"); \
+            break; \
+        case memory_order_seq_cst: \
+            __asm__ __volatile__ ("mfence" : : : "memory"); \
+            break; \
+        default: \
+            __asm__ __volatile__ ("mfence" : : : "memory"); \
+            break; \
+    } \
+} while (0)
+#endif
 
 #define atomic_signal_fence(order) \
     ((void)0)
