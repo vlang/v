@@ -16,14 +16,33 @@
 #endif
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
-#define cpu_relax() __asm__ __volatile__ ("pause")
+    /* x86 architecture: uses PAUSE instruction for efficient spinning */
+    #define cpu_relax() __asm__ __volatile__ ("pause")
 #elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
-#if defined(__TINYC__)
-// TODO: tinycc/aarch64 does not support __asm__ now
-#define cpu_relax()
+    #if defined(__TINYC__)
+        /* TCC compiler limitation: assembly not supported on ARM */
+        #define cpu_relax()
+    #else
+        /* ARM architecture: uses YIELD instruction for power-efficient spinning */
+        #define cpu_relax() __asm__ __volatile__ ("yield" ::: "memory")
+    #endif
+#elif defined(__riscv) && __riscv_xlen == 64
+    /* RISC-V 64-bit: no dedicated pause instruction, using alternative sequence */
+    #define cpu_relax() __asm__ __volatile__ ( \
+        "fence rw, rw\n\t"   /* Full memory barrier (read-write ordering) */ \
+        "andi a0, a0, 0\n\t" /* Dummy arithmetic instruction (always sets a0 = 0) */ \
+        ::: "memory", "a0")  /* Clobbers memory and a0 register to prevent optimizations */
+#elif defined(__powerpc64__) || defined(__ppc64__)
+    /* PowerPC 64-bit: use OR instruction for synchronization */
+    #define cpu_relax() __asm__ __volatile__ ("or 1,1,1\n\t" ::: "memory")
+#elif defined(__mips64)
+    /* MIPS 64-bit: use series of super-scalar NOPs */
+    #define cpu_relax() __asm__ __volatile__ ("ssnop\n\tssnop\n\tssnop\n\t" ::: "memory")
 #else
-#define cpu_relax() __asm__ __volatile__ ("yield" ::: "memory")
-#endif
+    /* Fallback implementation for unsupported architectures */
+    #define cpu_relax() __asm__ __volatile__ ( \
+        "nop\n\t" "nop\n\t" "nop\n\t" "nop\n\t" /* Series of no-operation instructions */ \
+        ::: "memory") /* Memory clobber to prevent instruction reordering */
 #endif
 
 #ifdef __TINYC__
