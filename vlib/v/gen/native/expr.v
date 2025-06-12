@@ -196,6 +196,8 @@ fn (mut g Gen) extern_var_ident(var ExternVar) {
 		g.extern_vars[g.pos()] = var.name
 		g.code_gen.mov64(main_reg, Number(i64(0)))
 		g.code_gen.mov_deref(main_reg, main_reg, ast.u64_type_idx)
+	} else if g.pref.os == .macos {
+		eprintln('## TODO, macos, extern_var_ident, var: ${var}')
 	} else {
 		g.n_error('${@LOCATION} unsupported os for ${var}')
 	}

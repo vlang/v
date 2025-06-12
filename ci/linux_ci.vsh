@@ -363,6 +363,12 @@ fn native_machine_code_generation_clang() {
 	native_machine_code_generation_common()
 }
 
+fn native_cross_compilation_to_macos() {
+	exec('v -os macos -experimental -b native -o hw.macos examples/hello_world.v')
+	common.file_size_greater_than('hw.macos', 8000)
+	exec('rm -f hw.macos')
+}
+
 //
 // Collect all tasks
 //
@@ -409,7 +415,6 @@ const all_tasks = {
 	'build_option_test_autofree_gcc':                    Task{build_option_test_autofree_gcc, 'Build option_test.c.v with -autofree (gcc)'}
 	'v_self_compilation_parallel_cc_gcc':                Task{v_self_compilation_parallel_cc_gcc, 'V self compilation with -parallel-cc (gcc)'}
 	'build_modules_gcc':                                 Task{build_modules_gcc, 'Build modules (gcc)'}
-	'native_machine_code_generation_gcc':                Task{native_machine_code_generation_gcc, 'native machine code generation (gcc)'}
 	'compile_vdoctor_prod_gcc':                          Task{compile_vdoctor_prod_gcc, 'compile vdoctor with -prod (gcc)'}
 	'compile_vup_prod_gcc':                              Task{compile_vup_prod_gcc, 'compile vup with -prod (gcc)'}
 	// clang tasks
@@ -429,6 +434,8 @@ const all_tasks = {
 	'build_examples_autofree_clang':                     Task{build_examples_autofree_clang, 'Build examples with -autofree (clang)'}
 	'build_modules_clang':                               Task{build_modules_clang, 'Build modules (clang)'}
 	'native_machine_code_generation_clang':              Task{native_machine_code_generation_clang, 'native machine code generation (clang)'}
+	'native_machine_code_generation_gcc':                Task{native_machine_code_generation_gcc, 'native machine code generation (gcc)'}
+	'native_cross_compilation_to_macos':                 Task{native_cross_compilation_to_macos, 'native cross compilation to macos'}
 }
 
 common.run(all_tasks)

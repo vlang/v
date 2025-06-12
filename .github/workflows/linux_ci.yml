@@ -75,6 +75,8 @@ jobs:
         run: v run ci/linux_ci.vsh test_leak_detector_tcc
       - name: Test leak detector not being active for normal compile
         run: v run ci/linux_ci.vsh test_leak_detector_not_active_tcc
+      - name: native cross compilation to macos
+        run: v run ci/linux_ci.vsh native_cross_compilation_to_macos
 
   gcc-linux:
     runs-on: ubuntu-24.04
@@ -121,6 +123,8 @@ jobs:
         run: v run ci/linux_ci.vsh build_modules_gcc
       - name: native machine code generation
         run: v run ci/linux_ci.vsh native_machine_code_generation_gcc
+      - name: native cross compilation to macos
+        run: v run ci/linux_ci.vsh native_cross_compilation_to_macos
       - name: compile vdoctor.v with -prod
         run: v run ci/linux_ci.vsh compile_vdoctor_prod_gcc
       - name: compile vup.v with -prod
@@ -167,3 +171,5 @@ jobs:
         run: v run ci/linux_ci.vsh build_modules_clang
       - name: native machine code generation
         run: v run ci/linux_ci.vsh native_machine_code_generation_clang
+      - name: native cross compilation to macos
+        run: v run ci/linux_ci.vsh native_cross_compilation_to_macos
