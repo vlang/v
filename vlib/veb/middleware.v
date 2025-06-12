@@ -220,12 +220,14 @@ pub fn (options &CorsOptions) set_headers(mut ctx Context) {
 		ctx.set_header(.access_control_allow_credentials, 'true')
 	}
 
-	if options.allowed_headers.len > 0 {
+	if options.allowed_headers.len > 0 && options.allowed_headers != ['*'] { // user-provided list
 		ctx.set_header(.access_control_allow_headers, options.allowed_headers.join(','))
 	} else if _ := ctx.req.header.get(.access_control_request_headers) {
 		// a server must respond with `Access-Control-Allow-Headers` if
 		// `Access-Control-Request-Headers` is present in a preflight request
 		ctx.set_header(.access_control_allow_headers, cors_safelisted_response_headers.join(','))
+	} else if options.allowed_headers == ['*'] { // default
+		ctx.set_header(.access_control_allow_headers, '*')
 	}
 
 	if options.allowed_methods.len > 0 {
