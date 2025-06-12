@@ -4639,7 +4639,7 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) !ast.Expr {
 	// TODO: remove once we have better type inference
 	mut name := ''
 	match obj {
-		ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister { name = obj.name }
+		ast.EmptyScopeObject, ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister { name = obj.name }
 	}
 	mut expr := ast.empty_expr
 	if obj is ast.Var {

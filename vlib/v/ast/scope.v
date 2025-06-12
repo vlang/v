@@ -111,8 +111,21 @@ pub fn (s &Scope) find_const(name string) ?&ConstField {
 }
 
 pub fn (s &Scope) known_var(name string) bool {
-	s.find_var(name) or { return false }
-	return true
+	if s == unsafe { nil } {
+		return false
+	}
+	for sc := unsafe { s }; true; sc = sc.parent {
+		if name in sc.objects {
+			obj := unsafe { sc.objects[name] or { empty_scope_object } }
+			if obj is Var {
+				return true
+			}
+		}
+		if sc.dont_lookup_parent() {
+			break
+		}
+	}
+	return false
 }
 
 pub fn (s &Scope) known_global(name string) bool {
