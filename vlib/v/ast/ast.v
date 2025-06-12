@@ -996,6 +996,7 @@ pub:
 	is_test       bool // true for _test.v files
 	is_generated  bool // true for `@[generated] module xyz` files; turn off notices
 	is_translated bool // true for `@[translated] module xyz` files; turn off some checks
+	language      Language
 pub mut:
 	idx              int    // index in an external container; can be used to refer to the file in a more efficient way, just by its integer index
 	path             string // absolute path of the source file - '/projects/v/file.v'
@@ -1570,7 +1571,7 @@ pub:
 	has_len       bool
 	has_cap       bool
 	has_init      bool
-	has_index     bool // true if temp variable index is used	
+	has_index     bool // true if temp variable index is used
 pub mut:
 	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	len_expr     Expr   // len: expr
@@ -2725,6 +2726,15 @@ pub fn (expr Expr) is_reference() bool {
 			false
 		}
 	}
+}
+
+// remove_par removes all parenthesis and gets the innermost Expr
+pub fn (mut expr Expr) remove_par() Expr {
+	mut e := expr
+	for mut e is ParExpr {
+		e = e.expr
+	}
+	return e
 }
 
 // is `expr` a literal, i.e. it does not depend on any other declarations (C compile time constant)

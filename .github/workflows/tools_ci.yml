@@ -82,7 +82,7 @@ jobs:
         run: ./v -silent -W -cstrict test-self cmd
 
   tools-windows:
-    runs-on: windows-2019
+    runs-on: windows-2025
     strategy:
       matrix:
         cc: [tcc, gcc, msvc]

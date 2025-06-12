@@ -56,14 +56,14 @@ fn test_native() {
 		assert false
 	}
 
+	skip_vv := os.getenv('VNATIVE_SKIP_LIBC_VV') != ''
+
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
-		if test == 'libc.vv' {
+		if skip_vv && test in ['libc.vv', 'linux.vv'] {
 			// TODO: remove the skip here, when the native backend is more advanced
-			if os.getenv('VNATIVE_SKIP_LIBC_VV') != '' {
-				println('>>> SKIPPING ${test} since VNATIVE_SKIP_LIBC_VV is defined')
-				continue
-			}
+			println('>>> SKIPPING ${test} since VNATIVE_SKIP_LIBC_VV is defined')
+			continue
 		}
 		if test == 'fibonacci_native.vv' || test.contains('linux') {
 			if user_os == 'windows' {

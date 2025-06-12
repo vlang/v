@@ -15,11 +15,45 @@
 #include "atomic_cpp.h"
 #endif
 
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+    /* x86 architecture: uses PAUSE instruction for efficient spinning */
+    #define cpu_relax() __asm__ __volatile__ ("pause")
+#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
+    #if defined(__TINYC__)
+        /* TCC compiler limitation: assembly not supported on ARM */
+        #define cpu_relax()
+    #else
+        /* ARM architecture: uses YIELD instruction for power-efficient spinning */
+        #define cpu_relax() __asm__ __volatile__ ("yield" ::: "memory")
+    #endif
+#elif defined(__riscv) && __riscv_xlen == 64
+    /* RISC-V 64-bit: no dedicated pause instruction, using alternative sequence */
+    #define cpu_relax() __asm__ __volatile__ ( \
+        "fence rw, rw\n\t"   /* Full memory barrier (read-write ordering) */ \
+        "andi a0, a0, 0\n\t" /* Dummy arithmetic instruction (always sets a0 = 0) */ \
+        ::: "memory", "a0")  /* Clobbers memory and a0 register to prevent optimizations */
+#elif defined(__powerpc64__) || defined(__ppc64__)
+    /* PowerPC 64-bit: use OR instruction for synchronization */
+    #define cpu_relax() __asm__ __volatile__ ("or 1,1,1\n\t" ::: "memory")
+#elif defined(__mips64)
+    /* MIPS 64-bit: use series of super-scalar NOPs */
+    #define cpu_relax() __asm__ __volatile__ ("ssnop\n\tssnop\n\tssnop\n\t" ::: "memory")
+#else
+    /* Fallback implementation for unsupported architectures */
+    #define cpu_relax() __asm__ __volatile__ ( \
+        "nop\n\t" "nop\n\t" "nop\n\t" "nop\n\t" /* Series of no-operation instructions */ \
+        ::: "memory") /* Memory clobber to prevent instruction reordering */
+#endif
+
 #ifdef __TINYC__
 
 typedef volatile long long atomic_llong;
 typedef volatile unsigned long long atomic_ullong;
 typedef volatile uintptr_t atomic_uintptr_t;
+
+extern void atomic_thread_fence (int memory_order);
+extern void __atomic_thread_fence (int memory_order);
+#define atomic_thread_fence(order) __atomic_thread_fence (order)
 
 // use functions for 64, 32 and 8 bit from libatomic directly
 // since tcc is not capible to use "generic" C functions
@@ -693,35 +727,35 @@ extern inline unsigned long long __aarch64_ldeor8_relax(unsigned long long*ptr, 
 
 // Since V might be confused with "generic" C functions either we provide special versions
 // for gcc/clang, too
-static inline unsigned long long atomic_load_u64(unsigned long long* x) {
-	return atomic_load_explicit((_Atomic (unsigned long long)*)x, memory_order_seq_cst);
+static inline unsigned long long atomic_load_u64(uint64_t* x) {
+	return atomic_load_explicit((_Atomic (uint64_t)*)x, memory_order_seq_cst);
 }
-static inline void atomic_store_u64(unsigned long long* x, unsigned long long y) {
-	atomic_store_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline void atomic_store_u64(uint64_t* x, uint64_t y) {
+	atomic_store_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_weak_u64(unsigned long long* x, unsigned long long* expected, unsigned long long y) {
-	return (int)atomic_compare_exchange_weak_explicit((_Atomic(unsigned long long)*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+static inline int atomic_compare_exchange_weak_u64(uint64_t* x, uint64_t* expected, uint64_t y) {
+	return (int)atomic_compare_exchange_weak_explicit((_Atomic(uint64_t)*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_strong_u64(unsigned long long* x, unsigned long long* expected, unsigned long long y) {
-	return (int)atomic_compare_exchange_strong_explicit((_Atomic(unsigned long long)*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+static inline int atomic_compare_exchange_strong_u64(uint64_t* x, uint64_t* expected, uint64_t y) {
+	return (int)atomic_compare_exchange_strong_explicit((_Atomic(uint64_t)*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_exchange_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_exchange_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_exchange_u64(uint64_t* x, uint64_t y) {
+	return atomic_exchange_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_fetch_add_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_fetch_add_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_fetch_add_u64(uint64_t* x, uint64_t y) {
+	return atomic_fetch_add_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_fetch_sub_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_fetch_sub_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_fetch_sub_u64(uint64_t* x, uint64_t y) {
+	return atomic_fetch_sub_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_fetch_and_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_fetch_and_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_fetch_and_u64(uint64_t* x, uint64_t y) {
+	return atomic_fetch_and_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_fetch_or_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_fetch_or_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_fetch_or_u64(uint64_t* x, uint64_t y) {
+	return atomic_fetch_or_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
-static inline unsigned long long atomic_fetch_xor_u64(unsigned long long* x, unsigned long long y) {
-	return atomic_fetch_xor_explicit((_Atomic(unsigned long long)*)x, y, memory_order_seq_cst);
+static inline unsigned long long atomic_fetch_xor_u64(uint64_t* x, uint64_t y) {
+	return atomic_fetch_xor_explicit((_Atomic(uint64_t)*)x, y, memory_order_seq_cst);
 }
 
 

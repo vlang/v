@@ -614,7 +614,7 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 
 				for rela in data {
 					g.write64(rela.offset)
-					g.fn_addr[rela.name] = rela.offset
+					g.fn_addr[rela.name] = rela.offset // that's wierd it's the call offset, not the fn
 					g.fn_names << rela.name
 					g.write64(rela.info)
 					g.write64(rela.addend)
@@ -686,7 +686,7 @@ pub fn (mut g Gen) symtab_get_index(symbols []SymbolTableSection, name string) i
 			return i32(i)
 		}
 	}
-	return 0
+	panic('sym not found')
 }
 
 pub fn (mut g Gen) generate_linkable_elf_header() {
@@ -846,6 +846,10 @@ pub fn (mut g Gen) gen_rela_section() {
 	for call_pos, symbol in g.extern_fn_calls {
 		relocations << g.create_rela_section(symbol, call_pos - g.code_start_pos + 2,
 			g.symtab_get_index(g.symbol_table, symbol[2..]), elf_r_amd64_gotpcrelx, -4)
+	}
+	for var_pos, symbol in g.extern_vars {
+		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos + 2, g.symtab_get_index(g.symbol_table,
+			symbol[2..]), elf_r_amd64_64, 0)
 	}
 	g.elf_rela_section.data = relocations
 	g.gen_section_data([g.elf_rela_section])

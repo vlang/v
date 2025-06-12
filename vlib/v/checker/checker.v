@@ -148,6 +148,8 @@ mut:
 
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
+
+	js_string ast.Type = ast.void_type // when `js"string literal"` is used, `js_string` will be equal to `JS.String`
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
@@ -3279,6 +3281,13 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 				// string literal starts with "c": `C.printf(c'hello')`
 				return ast.u8_type.set_nr_muls(1)
 			}
+			if node.language == .js {
+				// string literal starts with "js": `JS.console.log(js'hello')`
+				if c.js_string.is_void() {
+					c.js_string = c.table.find_type('JS.String')
+				}
+				return c.js_string
+			}
 			if node.is_raw {
 				// raw strings don't need any sort of checking related to unicode
 				return ast.string_type
@@ -4032,18 +4041,17 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		// used inside its initialisation like: `struct Abc { x &Abc } ... const a = [ Abc{0}, Abc{unsafe{&a[0]}} ]!`
 		// see vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v
 		if unsafe { c.const_var != 0 } && name == c.const_var.name {
-			if mut c.const_var.expr is ast.ArrayInit {
-				if c.const_var.expr.is_fixed && c.expected_type.nr_muls() > 0 {
-					elem_typ := c.expected_type.deref()
-					node.kind = .constant
-					node.name = c.const_var.name
-					node.info = ast.IdentVar{
-						typ: elem_typ
-					}
-					// c.const_var.typ = elem_typ
-					node.obj = c.const_var
-					return c.expected_type
+			if mut c.const_var.expr is ast.ArrayInit && c.const_var.expr.is_fixed
+				&& c.expected_type.nr_muls() > 0 {
+				elem_typ := c.expected_type.deref()
+				node.kind = .constant
+				node.name = c.const_var.name
+				node.info = ast.IdentVar{
+					typ: elem_typ
 				}
+				// c.const_var.typ = elem_typ
+				node.obj = c.const_var
+				return c.expected_type
 			}
 			c.error('cycle in constant `${c.const_var.name}`', node.pos)
 			return ast.void_type
@@ -4055,9 +4063,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			c.error('undefined ident: `_` (may only be used in assignments)', node.pos)
 		}
 		return ast.void_type
-	}
-	// second use
-	if node.kind in [.constant, .global, .variable] {
+	} else if node.kind in [.constant, .global, .variable] {
+		// second use
 		info := node.info as ast.IdentVar
 		typ := c.type_resolver.get_type_or_default(node, info.typ)
 		// Got a var with type T, return current generic type
@@ -4350,10 +4357,6 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 				c.error('undefined ident: `${node.name}`', node.pos)
 			}
 		}
-	}
-	if c.table.known_type(node.name) {
-		// e.g. `User`  in `json.decode(User, '...')`
-		return ast.void_type
 	}
 	return ast.void_type
 }
@@ -4767,10 +4770,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	c.inside_ref_lit = old_inside_ref_lit
 	node.right_type = right_type
 	mut expr := node.right
-	// if ParExpr get the innermost expr
-	for mut expr is ast.ParExpr {
-		expr = expr.expr
-	}
+	expr = expr.remove_par()
 	if node.op == .amp {
 		if expr is ast.Nil {
 			c.error('invalid operation: cannot take address of nil', expr.pos())

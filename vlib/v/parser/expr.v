@@ -790,9 +790,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	p.inside_assign_rhs = old_assign_rhs
 	if op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && mut right is ast.PrefixExpr {
 		mut right_expr := right.right
-		for mut right_expr is ast.ParExpr {
-			right_expr = right_expr.expr
-		}
+		right_expr = right_expr.remove_par()
 		if right.op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && right_expr.is_pure_literal() {
 			p.error_with_pos('invalid expression: unexpected token `${op}`', right_op_pos)
 		}

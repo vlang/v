@@ -14,6 +14,22 @@ pub fn exec(command string) {
 	}
 }
 
+pub fn file_size_greater_than(fpath string, min_fsize u64) {
+	log.info('path should exist `${fpath}` ...')
+	if !os.exists(fpath) {
+		exit(1)
+	}
+	log.info('path exists, and should be a file: `${fpath}` ...')
+	if !os.is_file(fpath) {
+		exit(2)
+	}
+	real_size := os.file_size(fpath)
+	log.info('actual file size of `${fpath}` is ${real_size}, wanted: ${min_fsize}, diff: ${real_size - min_fsize}.')
+	if real_size < min_fsize {
+		exit(3)
+	}
+}
+
 const self_command = 'v ' +
 	os.real_path(os.executable()).replace_once(os.real_path(@VROOT), '').trim_left('/\\') + '.vsh'
 

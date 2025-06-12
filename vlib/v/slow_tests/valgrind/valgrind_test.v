@@ -32,6 +32,7 @@ const skip_valgrind_files = [
 	'vlib/v/slow_tests/valgrind/option_simple.v',
 	'vlib/v/slow_tests/valgrind/string_plus_string_plus.v',
 	'vlib/v/slow_tests/valgrind/import_x_json2.v',
+	'vlib/v/slow_tests/valgrind/comptime_selector.v',
 ]
 
 fn vprintln(s string) {

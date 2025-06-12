@@ -58,7 +58,7 @@ jobs:
           v run hi.v
 
   symlink-windows:
-    runs-on: windows-2019
+    runs-on: windows-2025
     strategy:
       matrix:
         flags: ['', '-githubci']

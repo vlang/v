@@ -7,6 +7,7 @@ module iconv
 #include <iconv.h>
 
 #flag darwin -liconv
+#flag freebsd -L/usr/local/lib -liconv
 #flag openbsd -L/usr/local/lib -liconv
 #flag termux -L/data/data/com.termux/files/usr/lib -liconv
 

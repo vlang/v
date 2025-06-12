@@ -125,16 +125,16 @@ fn (mut l Log) log_file(s string, level Level) {
 
 	unsafe {
 		l.ofile.write_ptr(timestamp.str, timestamp.len)
-		l.ofile.write_ptr(' '.str, 1)
+		l.ofile.write_ptr(c' ', 1)
 
-		l.ofile.write_ptr('['.str, 1)
+		l.ofile.write_ptr(c'[', 1)
 		l.ofile.write_ptr(e.str, e.len)
-		l.ofile.write_ptr(']'.str, 1)
+		l.ofile.write_ptr(c']', 1)
 
-		l.ofile.write_ptr(' '.str, 1)
+		l.ofile.write_ptr(c' ', 1)
 		l.ofile.write_ptr(s.str, s.len)
 
-		l.ofile.write_ptr('\n'.str, 1)
+		l.ofile.write_ptr(c'\n', 1)
 	}
 	if l.always_flush {
 		l.flush()

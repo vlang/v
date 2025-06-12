@@ -16,7 +16,7 @@ fn free_memory_impl() !usize {
 		$if openbsd {
 			mib := [C.CTL_VM, C.VM_UVMEXP]!
 			mut uvm := C.uvmexp{0, 0}
-			mut len := sizeof(C.uvmexp)
+			mut len := usize(sizeof(C.uvmexp))
 			retval := unsafe { C.sysctl(&mib[0], mib.len, &uvm, &len, C.NULL, 0) }
 			c_errno := C.errno
 			if retval == -1 {

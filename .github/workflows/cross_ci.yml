@@ -100,7 +100,7 @@ jobs:
           ls -lart examples/2048/2048.exe
 
   cross-windows:
-    runs-on: windows-2019
+    runs-on: windows-2025
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4

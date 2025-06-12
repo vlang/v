@@ -1,6 +1,15 @@
+type T0 = int | string
+type T1 = T0 | rune
+
 struct Point {
 	x f64
 	y f64
+}
+
+enum Colors {
+	red = 1
+	green
+	blue
 }
 
 fn generic_map[T](items map[string]T) []T {
@@ -226,17 +235,111 @@ fn test_map_len() {
 	assert items_2.len == 2
 }
 
-fn test_rune_keys() {
-	mut m := {
+fn test_map_with_different_key_types() {
+	// map[int]string
+	mut items_1 := {
+		1: 'one'
+		2: 'two'
+		3: 'three'
+	}
+	assert typeof(items_1).name == 'map[int]string'
+	assert items_1[2] == 'two'
+	items_1[4] = 'four'
+	assert items_1[4].len == 4
+	keys_1 := items_1.keys()
+	assert keys_1.contains(1)
+	assert keys_1.contains(2)
+	assert keys_1.contains(3)
+	assert keys_1.contains(4)
+	assert '${items_1}' == "{1: 'one', 2: 'two', 3: 'three', 4: 'four'}"
+
+	// map[string]int
+	mut items_2 := {
+		'one':   1
+		'two':   2
+		'three': 3
+	}
+	assert typeof(items_2).name == 'map[string]int'
+	assert items_2['two'] == 2
+	items_2['four'] = 4
+	assert items_2['four'] == 4
+	keys_2 := items_2.keys()
+	assert keys_2.contains('one')
+	assert keys_2.contains('two')
+	assert keys_2.contains('three')
+	assert keys_2.contains('four')
+	assert '${items_2}' == "{'one': 1, 'two': 2, 'three': 3, 'four': 4}"
+
+	// map[f64]string
+	mut items_3 := {
+		1.1: 'one dot one'
+		2.2: 'two dot two'
+		3.3: 'three dot three'
+	}
+	assert typeof(items_3).name == 'map[f64]string'
+	assert items_3[2.2] == 'two dot two'
+	items_3[4.4] = 'four dot four'
+	assert items_3[4.4].len == 13
+	keys_3 := items_3.keys()
+	assert keys_3.contains(1.1)
+	assert keys_3.contains(2.2)
+	assert keys_3.contains(3.3)
+	assert keys_3.contains(4.4)
+	assert '${items_3}' == "{1.1: 'one dot one', 2.2: 'two dot two', 3.3: 'three dot three', 4.4: 'four dot four'}"
+
+	// map[u8]string
+	mut items_4 := {
+		u8(1): 'one'
+		2:     'two'
+	}
+	assert typeof(items_4).name == 'map[u8]string'
+	assert items_4[2] == 'two'
+	items_4[3] = 'three'
+	assert items_4[3].len == 5
+	keys_4 := items_4.keys()
+	assert keys_4.contains(1)
+	assert keys_4.contains(2)
+	assert keys_4.contains(3)
+	assert '${items_4}' == "{49: 'one', 50: 'two', 51: 'three'}"
+
+	// map[rune]int
+	mut items_5 := {
 		`!`: 2
 		`%`: 3
 	}
-	assert typeof(m).name == 'map[rune]int'
-	assert m[`!`] == 2
-	m[`@`] = 7
-	assert m.len == 3
-	println(m)
-	assert '${m}' == '{`!`: 2, `%`: 3, `@`: 7}'
+	assert typeof(items_5).name == 'map[rune]int'
+	assert items_5[`!`] == 2
+	items_5[`@`] = 7
+	assert items_5.len == 3
+	keys_5 := items_5.keys()
+	assert keys_5.contains(`!`)
+	assert keys_5.contains(`%`)
+	assert keys_5.contains(`@`)
+	assert '${items_5}' == '{`!`: 2, `%`: 3, `@`: 7}'
+
+	// map[sum-type]string
+	mut items_6 := {
+		T1(T0(1)): 'one'
+		T0('2'):   'two'
+	}
+	items_6[`!`] = 'exclamation'
+	assert items_6[`!`].len == 11
+	keys_6 := items_6.keys()
+	assert keys_6.contains(T0(1))
+	assert keys_6.contains(T0('2'))
+	assert keys_6.contains(`!`)
+
+	// map[enum-type]string
+	mut items_7 := {
+		Colors.red: 'red'
+		.green:     'green'
+	}
+	items_7[.blue] = 'blue'
+	assert items_7[.blue].len == 4
+	keys_7 := items_7.keys()
+	keys_7.contains(.red)
+	keys_7.contains(.green)
+	keys_7.contains(.blue)
 }
 
 fn main() {
@@ -246,5 +349,5 @@ fn main() {
 	test_keys_method_with_generic_constraints()
 	test_direct_map_access()
 	test_map_len()
-	test_rune_keys()
+	test_map_with_different_key_types()
 }
