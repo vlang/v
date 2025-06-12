@@ -111,6 +111,76 @@ v up
 > If you can't find your problem, please add it to an existing discussion if one exists for
 > your OS, or create a new one if a main discussion doesn't yet exist for your OS.
 
+### Void Linux
+
+```bash
+# xbps-install -Su base-devel
+# xbps-install libatomic-devel
+$ git clone --depth=1 https://github.com/vlang/v
+$ cd v
+$ make
+```
+
+### Docker
+
+```bash
+git clone --depth=1 https://github.com/vlang/v
+cd v
+docker build -t vlang .
+docker run --rm -it vlang:latest
+```
+
+### Docker with Alpine/musl
+
+```bash
+git clone --depth=1 https://github.com/vlang/v
+cd v
+docker build -t vlang_alpine - < Dockerfile.alpine
+alias with_alpine='docker run -u 1000:1000 --rm -it -v .:/src -w /src vlang_alpine:latest'
+```
+
+Compiling *static* executables, ready to be copied to a server, that is running
+another linux distro, without dependencies:
+```bash
+with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress examples/http_server.v
+with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress -gc none examples/hello_world.v
+ls -la examples/http_server examples/hello_world
+file   examples/http_server examples/hello_world
+examples/http_server: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no section header
+examples/hello_world: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no section header
+```
+
+You should see something like this:
+```
+-rwxr-xr-x 1 root root  16612 May 27 17:07 examples/hello_world
+-rwxr-xr-x 1 root root 335308 May 27 17:07 examples/http_server
+```
+
+### FreeBSD
+
+On FreeBSD, V needs `boehm-gc-threaded` package preinstalled. After installing it, you can use the
+same script, like on Linux/macos:
+
+```bash
+pkg install boehm-gc-threaded
+git clone --depth=1 https://github.com/vlang/v
+cd v
+make
+```
+
+### Termux/Android
+
+On Termux, V needs some packages preinstalled - a working C compiler, also `libexecinfo`,
+`libgc` and `libgc-static`. After installing them, you can use the same script, like on
+Linux/macos:
+
+```bash
+pkg install clang libexecinfo libgc libgc-static make git
+git clone --depth=1 https://github.com/vlang/v
+cd v
+make
+```
+
 ### C compiler
 
 The [Tiny C Compiler (tcc)](https://repo.or.cz/w/tinycc.git) is downloaded for you by `make` if
@@ -160,69 +230,6 @@ shell/editor after that, so that it can pick up the new PATH variable.
 > There is no need to run `v symlink` more than once - v will still be available, even after
 > `v up`, restarts, and so on. You only need to run it again if you decide to move the V repo
 > folder somewhere else.
-
-### Void Linux
-
-<details><summary>Expand Void Linux instructions</summary>
-
-```bash
-# xbps-install -Su base-devel
-# xbps-install libatomic-devel
-$ git clone --depth=1 https://github.com/vlang/v
-$ cd v
-$ make
-```
-
-</details>
-
-### Docker
-
-
-```bash
-git clone --depth=1 https://github.com/vlang/v
-cd v
-docker build -t vlang .
-docker run --rm -it vlang:latest
-```
-
-### Docker with Alpine/musl
-
-```bash
-git clone --depth=1 https://github.com/vlang/v
-cd v
-docker build -t vlang_alpine - < Dockerfile.alpine
-alias with_alpine='docker run -u 1000:1000 --rm -it -v .:/src -w /src vlang_alpine:latest'
-```
-
-Compiling *static* executables, ready to be copied to a server, that is running
-another linux distro, without dependencies:
-```bash
-with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress examples/http_server.v
-with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress -gc none examples/hello_world.v
-ls -la examples/http_server examples/hello_world
-file   examples/http_server examples/hello_world
-examples/http_server: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no section header
-examples/hello_world: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no section header
-```
-
-You should see something like this:
-```
--rwxr-xr-x 1 root root  16612 May 27 17:07 examples/hello_world
--rwxr-xr-x 1 root root 335308 May 27 17:07 examples/http_server
-```
-
-### Termux/Android
-
-On Termux, V needs some packages preinstalled - a working C compiler, also `libexecinfo`,
-`libgc` and `libgc-static`. After installing them, you can use the same script, like on
-Linux/macos:
-
-```bash
-pkg install clang libexecinfo libgc libgc-static make git
-git clone --depth=1 https://github.com/vlang/v
-cd v
-make
-```
 
 ## Editor/IDE Plugins
 
