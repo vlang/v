@@ -262,6 +262,10 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 	ctx.set_header(.access_control_allow_origin, origin)
 	ctx.set_header(.vary, 'Origin, Access-Control-Request-Headers')
 
+	if options.allow_credentials {
+		ctx.set_header(.access_control_allow_credentials, 'true')
+	}
+
 	// validate request method
 	if ctx.req.method !in options.allowed_methods {
 		ctx.res.set_status(.method_not_allowed)
@@ -314,11 +318,7 @@ pub fn cors[T](options CorsOptions) MiddlewareOptions[T] {
 				return false
 			} else {
 				// check if there is a cross-origin request
-				if options.validate_request(mut ctx.Context) == false {
-					return false
-				}
-				// no cross-origin request / valid cross-origin request
-				return true
+				return options.validate_request(mut ctx.Context)
 			}
 		}
 	}
