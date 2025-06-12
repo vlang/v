@@ -117,7 +117,13 @@ pub type Stmt = AsmStmt
 	| StructDecl
 	| TypeDecl
 
-pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
+pub struct EmptyScopeObject {
+pub mut:
+	name string
+	typ  Type
+}
+
+pub type ScopeObject = EmptyScopeObject | AsmRegister | ConstField | GlobalField | Var
 
 // TODO: replace Param
 pub type Node = CallArg
@@ -209,6 +215,7 @@ pub:
 pub const empty_expr = Expr(EmptyExpr(0))
 pub const empty_stmt = Stmt(EmptyStmt{})
 pub const empty_node = Node(EmptyNode{})
+pub const empty_scope_object = ScopeObject(EmptyScopeObject{'empty_scope_object', 0})
 pub const empty_comptime_const_value = ComptTimeConstValue(EmptyExpr(0))
 
 // `{stmts}` or `unsafe {stmts}`
@@ -1076,8 +1083,8 @@ pub:
 	mut_pos  token.Pos
 	comptime bool
 pub mut:
-	scope          &Scope = unsafe { nil }
-	obj            ScopeObject
+	scope          &Scope      = unsafe { nil }
+	obj            ScopeObject = empty_scope_object
 	mod            string
 	name           string
 	full_name      string
@@ -1115,7 +1122,7 @@ pub fn (i &Ident) is_auto_heap() bool {
 pub fn (i &Ident) is_mut() bool {
 	match i.obj {
 		Var { return i.obj.is_mut }
-		ConstField { return false }
+		ConstField, EmptyScopeObject { return false }
 		AsmRegister, GlobalField { return true }
 	}
 }
@@ -2403,7 +2410,7 @@ pub fn (node Node) pos() token.Pos {
 				ConstField, GlobalField, Var {
 					return node.pos
 				}
-				AsmRegister {
+				EmptyScopeObject, AsmRegister {
 					return token.Pos{
 						len:       -1
 						line_nr:   -1
@@ -2551,7 +2558,7 @@ pub fn (node Node) children() []Node {
 	} else if node is ScopeObject {
 		match node {
 			GlobalField, ConstField, Var { children << node.expr }
-			AsmRegister {}
+			AsmRegister, EmptyScopeObject {}
 		}
 	} else {
 		match node {

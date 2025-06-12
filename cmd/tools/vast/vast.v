@@ -385,8 +385,8 @@ fn (t Tree) objects(so map[string]ast.ScopeObject) &Node {
 }
 
 fn (t Tree) scope_object(node ast.ScopeObject) &Node {
-	mut obj := create_object()
-	match node {
+	obj := match node {
+		ast.EmptyScopeObject { create_object() }
 		ast.ConstField { t.const_field(node) }
 		ast.GlobalField { t.global_field(node) }
 		ast.Var { t.var(node) }

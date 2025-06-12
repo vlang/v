@@ -906,6 +906,7 @@ fn (mut g Gen) is_fp_type(typ ast.Type) bool {
 
 fn (mut g Gen) get_sizeof_ident(ident ast.Ident) i32 {
 	typ := match ident.obj {
+		ast.EmptyScopeObject { ident.obj.typ }
 		ast.AsmRegister { ast.i64_type }
 		ast.ConstField { ident.obj.typ }
 		ast.GlobalField { ident.obj.typ }
