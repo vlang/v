@@ -98,11 +98,14 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		g.write('_S("<none>")')
 	} else if sym.kind == .enum {
-		if expr !is ast.EnumVal {
+		if expr !is ast.EnumVal || sym.has_method('str') {
 			str_fn_name := g.get_str_fn(typ)
 			g.write('${str_fn_name}(')
 			if typ.nr_muls() > 0 {
 				g.write('*'.repeat(typ.nr_muls()))
+			}
+			if expr is ast.EnumVal {
+				g.write2(sym.cname, '__')
 			}
 			g.enum_expr(expr)
 			g.write(')')
