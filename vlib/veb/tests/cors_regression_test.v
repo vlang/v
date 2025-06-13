@@ -3,10 +3,14 @@ import net.http
 import time
 import os
 
-const port = 13012
-const localserver = 'http://localhost:${port}'
+const base_port = 13013
 const exit_after = time.second * 10
 const allowed_origin = 'https://vlang.io'
+
+fn get_port_and_url(test_number int) (int, string) {
+	p := base_port + test_number
+	return p, 'http://localhost:${p}'
+}
 
 pub struct Context {
 	veb.Context
@@ -26,11 +30,11 @@ pub fn (app &App) index(mut ctx Context) veb.Result {
 	return ctx.text('index')
 }
 
-fn setup(o veb.CorsOptions) ! {
+fn setup(port int, o veb.CorsOptions) ! {
 	os.chdir(os.dir(@FILE))!
 	go fn () {
 		time.sleep(exit_after)
-		assert true == false, 'timeout reached!'
+		assert false, 'timeout reached!'
 		exit(1)
 	}()
 
@@ -43,7 +47,8 @@ fn setup(o veb.CorsOptions) ! {
 }
 
 fn test_no_user_provided_allowed_headers() {
-	setup(veb.CorsOptions{
+	port, localserver := get_port_and_url(1)
+	setup(port, veb.CorsOptions{
 		origins: [allowed_origin]
 	})!
 
@@ -62,7 +67,8 @@ fn test_no_user_provided_allowed_headers() {
 }
 
 fn test_user_provided_allowed_header() {
-	setup(veb.CorsOptions{
+	port, localserver := get_port_and_url(2)
+	setup(port, veb.CorsOptions{
 		origins:         [allowed_origin]
 		allowed_headers: ['content-type']
 	})!
@@ -84,7 +90,8 @@ fn test_user_provided_allowed_header() {
 }
 
 fn test_user_provided_allowed_header_wildcard() {
-	setup(veb.CorsOptions{
+	port, localserver := get_port_and_url(3)
+	setup(port, veb.CorsOptions{
 		origins:         [allowed_origin]
 		allowed_headers: ['*']
 	})!
@@ -106,7 +113,8 @@ fn test_user_provided_allowed_header_wildcard() {
 }
 
 fn test_request_has_access_control_request_headers() {
-	setup(veb.CorsOptions{
+	port, localserver := get_port_and_url(4)
+	setup(port, veb.CorsOptions{
 		origins: [allowed_origin]
 	})!
 
@@ -128,7 +136,8 @@ fn test_request_has_access_control_request_headers() {
 }
 
 fn test_allow_credentials_non_preflight() {
-	setup(veb.CorsOptions{
+	port, localserver := get_port_and_url(5)
+	setup(port, veb.CorsOptions{
 		origins:           [allowed_origin]
 		allowed_methods:   [http.Method.get]
 		allow_credentials: true
