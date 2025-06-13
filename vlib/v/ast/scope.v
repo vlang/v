@@ -68,7 +68,7 @@ pub fn (s &Scope) find_struct_field(name string, struct_type Type, field_name st
 	k := '${name}.${field_name}'
 	for sc := unsafe { s }; true; sc = sc.parent {
 		if field := sc.struct_fields[k] {
-			if field.struct_type == struct_type && field.name == field_name {
+			if field.struct_type == struct_type {
 				return &ScopeStructField{
 					...field
 				}
@@ -167,7 +167,7 @@ pub fn (mut s Scope) update_smartcasts(name string, typ Type, is_unwrapped bool)
 pub fn (mut s Scope) register_struct_field(name string, field ScopeStructField) {
 	k := '${name}.${field.name}'
 	if f := s.struct_fields[k] {
-		if f.struct_type == field.struct_type && f.name == field.name {
+		if f.struct_type == field.struct_type {
 			return
 		}
 	}
