@@ -177,7 +177,7 @@ interface HasBeforeRequest {
 }
 
 pub const cors_safelisted_response_headers = [http.CommonHeader.cache_control, .content_language,
-	.content_length, .content_type, .expires, .last_modified, .pragma].map(it.str())
+	.content_length, .content_type, .expires, .last_modified, .pragma].map(it.str()).join(',')
 
 // CorsOptions is used to set CORS response headers.
 // See https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#the_http_response_headers
@@ -190,7 +190,7 @@ pub:
 	// ;`Access-Control-Allow-Credentials`
 	allow_credentials bool
 	// allowed HTTP headers for a cross-origin request; `Access-Control-Allow-Headers`
-	allowed_headers []string = ['*']
+	allowed_headers []string
 	// allowed HTTP methods for a cross-origin request; `Access-Control-Allow-Methods`
 	allowed_methods []http.Method
 	// indicate if clients are able to access other headers than the "CORS-safelisted"
@@ -225,7 +225,7 @@ pub fn (options &CorsOptions) set_headers(mut ctx Context) {
 	} else if _ := ctx.req.header.get(.access_control_request_headers) {
 		// a server must respond with `Access-Control-Allow-Headers` if
 		// `Access-Control-Request-Headers` is present in a preflight request
-		ctx.set_header(.access_control_allow_headers, cors_safelisted_response_headers.join(','))
+		ctx.set_header(.access_control_allow_headers, cors_safelisted_response_headers)
 	}
 
 	if options.allowed_methods.len > 0 {
@@ -259,6 +259,10 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 
 	ctx.set_header(.access_control_allow_origin, origin)
 	ctx.set_header(.vary, 'Origin, Access-Control-Request-Headers')
+
+	if options.allow_credentials {
+		ctx.set_header(.access_control_allow_credentials, 'true')
+	}
 
 	// validate request method
 	if ctx.req.method !in options.allowed_methods {
@@ -305,18 +309,12 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 pub fn cors[T](options CorsOptions) MiddlewareOptions[T] {
 	return MiddlewareOptions[T]{
 		handler: fn [options] [T](mut ctx T) bool {
-			if ctx.req.method == .options {
-				// preflight request
+			if ctx.req.method == .options { // preflight
 				options.set_headers(mut ctx.Context)
 				ctx.text('ok')
 				return false
 			} else {
-				// check if there is a cross-origin request
-				if options.validate_request(mut ctx.Context) == false {
-					return false
-				}
-				// no cross-origin request / valid cross-origin request
-				return true
+				return options.validate_request(mut ctx.Context)
 			}
 		}
 	}
