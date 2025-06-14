@@ -248,6 +248,20 @@ struct DivModTest {
 
 // vfmt off
 const div_mod_test_data = [
+	DivModTest{0, 7, 0, 0},
+	DivModTest{0, -7, 0, 0},
+	DivModTest{3, 7, 0, 3},
+	DivModTest{-3, -7, 0, -3},
+	DivModTest{-3, 7, 0, -3},
+	DivModTest{3, -7, 0, 3},
+	DivModTest{7, 3, 2, 1},
+	DivModTest{-7, -3, 2, -1},
+	DivModTest{-7, 3, -2, -1},
+	DivModTest{7, -3, -2, 1},
+	DivModTest{8, 2, 4, 0},
+	DivModTest{-8, -2, 4, 0},
+	DivModTest{-8, 2, -4, 0},
+	DivModTest{8, -2, -4, 0},
 	DivModTest{13, 10, 1, 3},
 	DivModTest{13, 9, 1, 4},
 	DivModTest{7, 5, 1, 2},
