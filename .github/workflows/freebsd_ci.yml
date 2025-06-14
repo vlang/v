@@ -47,4 +47,30 @@ jobs:
             gmake CFLAGS=
             sudo ./v symlink
             export VFLAGS='-cc tcc -no-retry-compilation'
-            ./v -showcc run ci/freebsd_ci.vsh all
+            ./v run ci/freebsd_ci.vsh all
+
+  clang-freebsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    name: Tests on FreeBSD with clang
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests on FreeBSD with clang
+        id: test-freebsd-clang
+        uses: cross-platform-actions/action@v0.28.0
+        with:
+          operating_system: freebsd
+          version: '14.2'
+          memory: 4G
+          shell: sh
+          sync_files: runner-to-vm
+          run: |
+            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+            sudo hostname -s freebsd-ci
+            echo "### OS infos"
+            uname -a
+            git config --global --add safe.directory .
+            gmake CFLAGS=
+            sudo ./v symlink
+            export VFLAGS='-cc clang'
+            ./v run ci/freebsd_ci.vsh all
