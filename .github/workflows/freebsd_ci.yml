@@ -26,11 +26,10 @@ jobs:
   tcc-freebsd:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    name: Tests on FreeBSD with tcc
     steps:
       - uses: actions/checkout@v4
       - name: Tests on FreeBSD with tcc
-        id: test-freebsd-tcc
+        id: tests-freebsd-tcc
         uses: cross-platform-actions/action@v0.28.0
         with:
           operating_system: freebsd
@@ -52,11 +51,10 @@ jobs:
   clang-freebsd:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    name: Tests on FreeBSD with clang
     steps:
       - uses: actions/checkout@v4
       - name: Tests on FreeBSD with clang
-        id: test-freebsd-clang
+        id: tests-freebsd-clang
         uses: cross-platform-actions/action@v0.28.0
         with:
           operating_system: freebsd
@@ -78,11 +76,10 @@ jobs:
   gcc-freebsd:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    name: Tests on FreeBSD with gcc
     steps:
       - uses: actions/checkout@v4
       - name: Tests on FreeBSD with gcc
-        id: test-freebsd-gcc
+        id: tests-freebsd-gcc
         uses: cross-platform-actions/action@v0.28.0
         with:
           operating_system: freebsd
