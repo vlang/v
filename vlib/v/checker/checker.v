@@ -4416,7 +4416,12 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = field.typ
 				}
 			}
-			expr_str := expr.expr.str()
+			mut expr_str := expr.expr.str()
+			if mut expr.expr is ast.ParExpr {
+				if mut expr.expr.expr is ast.AsCast {
+					expr_str = expr.expr.expr.expr.str()
+				}
+			}
 			field := scope.find_struct_field(expr_str, expr.expr_type, expr.field_name)
 			if field != unsafe { nil } {
 				smartcasts << field.smartcasts
