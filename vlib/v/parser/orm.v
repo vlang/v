@@ -359,10 +359,12 @@ fn (mut p Parser) check_sql_where_expr_has_no_undefined_variables(expr &ast.Expr
 			}
 		}
 	} else if expr is ast.InfixExpr {
-		if expr.left is ast.Ident && expr.right is ast.Ident {
-			return p.check_sql_where_expr_has_no_undefined_variables(expr.right, [
-				expr.left.name,
-			])
+		if expr.left is ast.Ident {
+			if expr.right is ast.Ident {
+				return p.check_sql_where_expr_has_no_undefined_variables(expr.right, [
+					expr.left.name,
+				])
+			}
 		}
 
 		left_check_result := p.check_sql_where_expr_has_no_undefined_variables(expr.left,
