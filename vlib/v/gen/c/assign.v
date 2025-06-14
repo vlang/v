@@ -346,7 +346,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						left.obj.typ = var_type
 						g.assign_ct_type = var_type
 					} else if val is ast.Ident && val.info is ast.IdentVar {
-						val_info := (val as ast.Ident).info
+						val_info := (val as ast.Ident).info as ast.IdentVar
 						gen_or = val.or_expr.kind != .absent
 						if val_info.is_option && gen_or {
 							var_type = val_type.clear_flag(.option)
