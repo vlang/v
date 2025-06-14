@@ -70,7 +70,7 @@ $if dynamic_boehm ? {
 		}
 		$if tinyc {
 			#flag -I/usr/local/include
-			#flag $first_existing("/usr/local/lib/libgc-threaded.a", "/usr/lib/libgc-threaded.a")
+			#flag $first_existing("@VEXEROOT/thirdparty/tcc/lib/libgc.a", "/usr/local/lib/libgc-threaded.a", "/usr/lib/libgc-threaded.a")
 			#flag -lgc-threaded
 		}
 		#flag -lpthread
