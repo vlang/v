@@ -389,6 +389,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 	g.init_builtins()
 	g.calculate_all_size_align()
 	g.calculate_enum_fields()
+	g.fn_names = g.table.fns.keys()
 	for file in g.files {
 		/*
 		if file.warnings.len > 0 {
@@ -1175,7 +1176,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.stack_var_pos = 0
 	g.stack_depth = 0
 	g.register_function_address(name)
-	g.fn_names << name
 	g.labels = &LabelTable{}
 	g.defer_stmts.clear()
 	g.return_type = node.return_type
@@ -1225,6 +1225,7 @@ fn (mut g Gen) println(comment string) {
 @[noreturn]
 pub fn (mut g Gen) n_error(s string) {
 	print_backtrace()
+	flush_stdout()
 	util.verror('native error', s)
 }
 

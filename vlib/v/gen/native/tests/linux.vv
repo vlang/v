@@ -20,10 +20,14 @@ fn test_c_extern_vars() {
 	C.fprintf(C.stdout, s.str, 3)
 }
 
+fn test_prints() {
+	print_character(`a`)
+}
+
 fn main() {
 	test_for_c_in_string()
 	test_c_extern_vars()
+	test_prints()
 	flush_stderr()
 	flush_stdout()
-	print_character(`a`)
 }

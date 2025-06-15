@@ -55,6 +55,13 @@ const blacklist = {
 	'string.last_index':    true
 	'string.last_index_u8': false
 	'string.contains_u8':   false
+	'malloc_noscan':        true
+	'vmemcpy':              false
+	'eprint':               false
+	'eprintln':             false
+	'_write_buf_to_fd':     false
+	'_writeln_to_fd':       false
+	'_memory_panic':        true
 }
 
 const windows_blacklist = {

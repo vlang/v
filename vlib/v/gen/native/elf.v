@@ -615,7 +615,6 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 				for rela in data {
 					g.write64(rela.offset)
 					g.fn_addr[rela.name] = rela.offset // that's wierd it's the call offset, not the fn
-					g.fn_names << rela.name
 					g.write64(rela.info)
 					g.write64(rela.addend)
 					g.println('; SHT_RELA `${rela.name}` (${rela.offset}, ${rela.info}, ${rela.addend})')
