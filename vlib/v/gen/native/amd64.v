@@ -3919,7 +3919,7 @@ fn (mut c Amd64) init_array(var Var, node ast.ArrayInit) {
 					c.init_array(var_object as ExternVar, node)
 				}
 				PreprocVar {
-					c.init_array(var_object as PreprocVar , node)
+					c.init_array(var_object as PreprocVar, node)
 				}
 			}
 		}
