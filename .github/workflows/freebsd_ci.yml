@@ -43,7 +43,7 @@ jobs:
             echo "### OS infos"
             uname -a
             git config --global --add safe.directory .
-            gmake CFLAGS=
+            gmake
             sudo ./v symlink
             export VFLAGS='-cc tcc -no-retry-compilation'
             ./v run ci/freebsd_ci.vsh all
@@ -68,7 +68,7 @@ jobs:
             echo "### OS infos"
             uname -a
             git config --global --add safe.directory .
-            gmake CFLAGS=
+            gmake
             sudo ./v symlink
             export VFLAGS='-cc clang'
             ./v run ci/freebsd_ci.vsh all
@@ -93,7 +93,7 @@ jobs:
             echo "### OS infos"
             uname -a
             git config --global --add safe.directory .
-            gmake CFLAGS=
+            gmake
             sudo ./v symlink
             export VFLAGS='-cc gcc'
             ./v run ci/freebsd_ci.vsh all
