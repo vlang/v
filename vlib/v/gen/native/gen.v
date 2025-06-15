@@ -15,6 +15,10 @@ import v.eval
 import term
 import strconv
 
+const c_preprocessed = {
+	'C.EOF': -1
+}
+
 @[heap; minify]
 pub struct Gen {
 	out_name string
@@ -243,6 +247,12 @@ struct ExternVar {
 	name string
 }
 
+struct PreprocVar {
+	typ  ast.Type
+	name string
+	val  i64
+}
+
 struct GlobalVar {}
 
 @[params]
@@ -252,9 +262,9 @@ pub:
 	typ    ast.Type // type of the value you want to process e.g. struct fields.
 }
 
-type Var = GlobalVar | ExternVar | LocalVar | ast.Ident
+type Var = GlobalVar | ExternVar | LocalVar | PreprocVar | ast.Ident
 
-type IdentVar = GlobalVar | ExternVar | LocalVar | Register
+type IdentVar = GlobalVar | ExternVar | LocalVar | Register | PreprocVar
 
 enum JumpOp {
 	je
@@ -280,6 +290,14 @@ fn byt(n i32, s i32) u8 {
 fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 	if ident.name in g.extern_symbols {
 		return ExternVar{ident.info.typ, ident.name}
+	}
+	mut is_preprocessed := true
+	mut preprocessed_val := c_preprocessed[ident.name] or {
+		is_preprocessed = false
+		0
+	}
+	if is_preprocessed {
+		return PreprocVar{ident.info.typ, ident.name, preprocessed_val}
 	}
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {

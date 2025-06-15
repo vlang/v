@@ -37,7 +37,7 @@ const blacklist = {
 	'int_min':              false
 	'flush_stdout':         false
 	'flush_stderr':         false
-	'print_character':      true
+	'print_character':      false
 	'u8.is_alnum':          false
 	'u8.is_bin_digit':      false
 	'u8.is_capital':        false
