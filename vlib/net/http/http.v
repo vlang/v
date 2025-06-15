@@ -38,8 +38,9 @@ pub mut:
 	on_progress_body RequestProgressBodyFn = unsafe { nil }
 	on_finish        RequestFinishFn       = unsafe { nil }
 
-	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
-	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
+	stop_copying_limit   i64 = -1   // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
+	stop_receiving_limit i64 = -1   // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
+	read_timeout         i64 = 1000 // Set the read timeout period in ms
 }
 
 // new_request creates a new Request given the request `method`, `url_`, and
@@ -189,6 +190,7 @@ pub fn prepare(config FetchConfig) !Request {
 		on_finish:              config.on_finish
 		stop_copying_limit:     config.stop_copying_limit
 		stop_receiving_limit:   config.stop_receiving_limit
+		read_timeout:           config.read_timeout
 	}
 	return req
 }
