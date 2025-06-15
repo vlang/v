@@ -25,4 +25,5 @@ fn main() {
 	test_c_extern_vars()
 	flush_stderr()
 	flush_stdout()
+	print_character(`a`)
 }

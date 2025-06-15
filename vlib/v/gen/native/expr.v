@@ -51,6 +51,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				ExternVar {
 					g.extern_var_ident(var)
 				}
+				PreprocVar {
+					g.preproc_var_ident(var)
+				}
 				else {
 					g.n_error('${@LOCATION} Unsupported variable kind')
 				}
@@ -201,6 +204,11 @@ fn (mut g Gen) extern_var_ident(var ExternVar) {
 	} else {
 		g.n_error('${@LOCATION} unsupported os for ${var}')
 	}
+}
+
+fn (mut g Gen) preproc_var_ident(var PreprocVar) {
+	main_reg := g.code_gen.main_reg()
+	g.code_gen.mov64(main_reg, var.val)
 }
 
 fn (mut g Gen) condition(expr ast.Expr, neg bool) i32 {
