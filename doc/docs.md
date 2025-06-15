@@ -190,7 +190,7 @@ by using any of the following commands in a terminal:
    		* [Trace](#trace)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Structs with reference fields](#structs-with-reference-fields)
-    * [sizeof and __offsetof](#sizeof-and-__offsetof)
+    * [sizeof, alignof and __offsetof](#sizeof-alignof-and-__offsetof)
     * [Limited operator overloading](#limited-operator-overloading)
     * [Performance tuning](#performance-tuning)
     * [Atomics](#atomics)
@@ -6909,9 +6909,10 @@ println(baz)
 println(qux)
 ```
 
-## sizeof and __offsetof
+## sizeof, alignof and __offsetof
 
 * `sizeof(Type)` gives the size of a type in bytes.
+* `alignof(Type)` gives the alignment of a type in bytes.
 * `__offsetof(Struct, field_name)` gives the offset in bytes of a struct field.
 
 ```v
@@ -6921,6 +6922,7 @@ struct Foo {
 }
 
 assert sizeof(Foo) == 8
+assert alignof[Foo]() == 4
 assert __offsetof(Foo, a) == 0
 assert __offsetof(Foo, b) == 4
 ```

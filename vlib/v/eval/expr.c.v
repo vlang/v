@@ -513,6 +513,9 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			// eprintln('unhandled struct init at line $expr.pos.line_nr')
 			return ''
 		}
+		ast.AlignOf {
+			return Uint{e.type_to_align(expr.typ), 64}
+		}
 		ast.SizeOf {
 			return Uint{e.type_to_size(expr.typ), 64}
 		}
@@ -620,6 +623,12 @@ fn (e &Eval) type_to_size(typ ast.Type) u64 {
 			return u64(-1)
 		}
 	}
+}
+
+// type_to_align returns the natural alignment (in bits) of `typ`.
+fn (e &Eval) type_to_align(typ ast.Type) u64 {
+	// on most ABIs the alignment of a type == its size
+	return e.type_to_size(typ)
 }
 
 fn (e &Eval) get_escape(r rune) rune {
