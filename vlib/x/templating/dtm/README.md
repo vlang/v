@@ -125,7 +125,7 @@ pub fn (mut app App) index(mut ctx Context) veb.Result {
 ```
 
 You have a ready-to-view demonstration available
-[here](https://github.com/vlang/v/tree/master/vlib/veb/tests/dynamic_template_manager_test_server).
+[here](https://github.com/vlang/v/tree/master/vlib/vweb/tests/dynamic_template_manager_test_server).
 
 ## Available Options
 
