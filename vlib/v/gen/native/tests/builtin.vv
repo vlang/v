@@ -135,8 +135,6 @@ println(int_max(-32, 32))
 println(int_min(32, -32))
 println(int_min(-32, 32))
 
-//print_character(`a`) enable when C vars will work
-
 // assert u8(`a`).ascii_str() == 'a' when ptr index will work
 // assert u8(`b`).ascii_str() != 'a'
 // assert u8(0x4F).hex() == '4F' when fixed array index will work

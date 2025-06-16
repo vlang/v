@@ -4416,7 +4416,12 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = field.typ
 				}
 			}
-			expr_str := expr.expr.str()
+			mut expr_str := expr.expr.str()
+			if mut expr.expr is ast.ParExpr {
+				if mut expr.expr.expr is ast.AsCast {
+					expr_str = expr.expr.expr.expr.str()
+				}
+			}
 			field := scope.find_struct_field(expr_str, expr.expr_type, expr.field_name)
 			if field != unsafe { nil } {
 				smartcasts << field.smartcasts
@@ -4639,7 +4644,7 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) !ast.Expr {
 	// TODO: remove once we have better type inference
 	mut name := ''
 	match obj {
-		ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister { name = obj.name }
+		ast.EmptyScopeObject, ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister { name = obj.name }
 	}
 	mut expr := ast.empty_expr
 	if obj is ast.Var {

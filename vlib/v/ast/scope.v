@@ -65,9 +65,10 @@ pub fn (s &Scope) find_struct_field(name string, struct_type Type, field_name st
 	if s == unsafe { nil } {
 		return unsafe { nil }
 	}
+	k := '${name}.${field_name}'
 	for sc := unsafe { s }; true; sc = sc.parent {
-		if field := sc.struct_fields[name] {
-			if field.struct_type == struct_type && field.name == field_name {
+		if field := sc.struct_fields[k] {
+			if field.struct_type == struct_type {
 				return &ScopeStructField{
 					...field
 				}
@@ -111,8 +112,21 @@ pub fn (s &Scope) find_const(name string) ?&ConstField {
 }
 
 pub fn (s &Scope) known_var(name string) bool {
-	s.find_var(name) or { return false }
-	return true
+	if s == unsafe { nil } {
+		return false
+	}
+	for sc := unsafe { s }; true; sc = sc.parent {
+		if name in sc.objects {
+			obj := unsafe { sc.objects[name] or { empty_scope_object } }
+			if obj is Var {
+				return true
+			}
+		}
+		if sc.dont_lookup_parent() {
+			break
+		}
+	}
+	return false
 }
 
 pub fn (s &Scope) known_global(name string) bool {
@@ -151,12 +165,13 @@ pub fn (mut s Scope) update_smartcasts(name string, typ Type, is_unwrapped bool)
 
 // selector_expr:  name.field_name
 pub fn (mut s Scope) register_struct_field(name string, field ScopeStructField) {
-	if f := s.struct_fields[name] {
-		if f.struct_type == field.struct_type && f.name == field.name {
+	k := '${name}.${field.name}'
+	if f := s.struct_fields[k] {
+		if f.struct_type == field.struct_type {
 			return
 		}
 	}
-	s.struct_fields[name] = field
+	s.struct_fields[k] = field
 }
 
 pub fn (mut s Scope) register(obj ScopeObject) {
