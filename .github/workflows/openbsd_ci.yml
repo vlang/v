@@ -1,0 +1,102 @@
+name: CI OpenBSD
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - 'cmd/tools/**'
+      - '!**/openbsd_ci.yml'
+      - '!ci/openbsd_ci.vsh'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - 'cmd/tools/**'
+      - '!**/openbsd_ci.yml'
+      - '!ci/openbsd_ci.vsh'
+      - '!cmd/tools/builders/**.v'
+
+### See https://github.com/cross-platform-actions/action
+### for a description of the used fields here
+
+jobs:
+  tcc-openbsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests on OpenBSD with tcc
+        id: tests-openbsd-tcc
+        uses: cross-platform-actions/action@v0.28.0
+        with:
+          operating_system: openbsd
+          version: '7.7'
+          memory: 4G
+          shell: sh
+          sync_files: runner-to-vm
+          run: |
+            sudo pkg_add git sqlite3 gmake boehm-gc libiconv
+            # Mandatory: hostname not set in VM => some tests fail
+            sudo hostname -s openbsd-ci
+            echo "### OS infos"
+            uname -a
+            git config --global --add safe.directory .
+            gmake
+            sudo ./v symlink
+            export VFLAGS='-cc tcc -no-retry-compilation'
+            ./v run ci/openbsd_ci.vsh all
+
+  clang-openbsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests on OpenBSD with clang
+        id: tests-openbsd-clang
+        uses: cross-platform-actions/action@v0.28.0
+        with:
+          operating_system: openbsd
+          version: '7.7'
+          memory: 4G
+          shell: sh
+          sync_files: runner-to-vm
+          run: |
+            sudo pkg_add git sqlite3 gmake boehm-gc libiconv
+            # Mandatory: hostname not set in VM => some tests fail
+            sudo hostname -s openbsd-ci
+            echo "### OS infos"
+            uname -a
+            git config --global --add safe.directory .
+            gmake
+            sudo ./v symlink
+            export VFLAGS='-cc clang'
+            ./v run ci/openbsd_ci.vsh all
+
+  gcc-openbsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests on OpenBSD with gcc
+        id: tests-openbsd-gcc
+        uses: cross-platform-actions/action@v0.28.0
+        with:
+          operating_system: openbsd
+          version: '7.7'
+          memory: 4G
+          shell: sh
+          sync_files: runner-to-vm
+          run: |
+            sudo pkg_add git sqlite3 gmake boehm-gc libiconv gcc-11.2.0p15
+            # Mandatory: hostname not set in VM => some tests fail
+            sudo hostname -s openbsd-ci
+            echo "### OS infos"
+            uname -a
+            git config --global --add safe.directory .
+            gmake
+            sudo ./v symlink
+            export VFLAGS='-cc egcc'
+            ./v run ci/openbsd_ci.vsh all
