@@ -364,7 +364,7 @@ fn (mut db DB) read_response_bulk_string() !RedisValue {
 		return error('`read_response_bulk_string()`: invalid data terminator')
 	}
 
-	return data_buf[0..data_length]
+	return data_buf[0..data_length].clone()
 }
 
 // read_response_i64 handles Redis integer responses (format: :<number>\r\n)

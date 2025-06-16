@@ -1,4 +1,4 @@
-///// vtest build: present_redis?
+// vtest build: present_redis?
 import db.redis
 import time
 
