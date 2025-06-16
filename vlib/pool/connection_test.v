@@ -270,7 +270,9 @@ fn test_error_handling() {
 	// default configuration has 5 idle_conns
 	assert p.stats().idle_conns == 5
 
-	mut conn := p.get()! as MockConn
+	// Bug Fix Needed! msvc generated wrong code for `mut conn := p.get()! as MockConn`
+	mut connx := p.get()!
+	mut conn := connx as MockConn
 	assert p.stats().active_conns == 1
 	// it depend on `background_maintenance` thread to keep 5 idle_conns
 	assert p.stats().idle_conns >= 4
