@@ -308,10 +308,8 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 	if mut expr is ast.IntegerLiteral {
 		return expr.val.i64()
 	}
-	if mut expr is ast.CastExpr {
-		if mut expr.expr is ast.IntegerLiteral {
-			return expr.expr.val.i64()
-		}
+	if mut expr is ast.CastExpr && expr.expr is ast.IntegerLiteral {
+		return expr.expr.val.i64()
 	}
 	if mut expr is ast.Ident {
 		if mut obj := c.table.global_scope.find_const(expr.full_name()) {

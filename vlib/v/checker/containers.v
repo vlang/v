@@ -799,10 +799,8 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 	right := node.right
 	if right is ast.PrefixExpr && right.op == .amp {
 		mut expr2 := right.right
-		if mut expr2 is ast.Ident {
-			if !node.left.is_blank_ident() && expr2.obj is ast.ConstField {
-				c.error('cannot have mutable reference to const `${expr2.name}`', expr2.pos)
-			}
+		if mut expr2 is ast.Ident && !node.left.is_blank_ident() && expr2.obj is ast.ConstField {
+			c.error('cannot have mutable reference to const `${expr2.name}`', expr2.pos)
 		}
 	}
 	if left_value_sym.kind == .interface {

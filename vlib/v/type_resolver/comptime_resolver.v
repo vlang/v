@@ -132,10 +132,8 @@ pub fn (mut t TypeResolver) typeof_field_type(typ ast.Type, field_name string) a
 // get_ct_type_var gets the comptime type of the variable (.generic_param, .key_var, etc)
 @[inline]
 pub fn (t &ResolverInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
-	if node is ast.Ident {
-		if node.obj is ast.Var {
-			return node.obj.ct_type_var
-		}
+	if node is ast.Ident && node.obj is ast.Var {
+		return node.obj.ct_type_var
 	} else if node is ast.IndexExpr {
 		return t.get_ct_type_var(node.left)
 	} else if node is ast.InfixExpr {

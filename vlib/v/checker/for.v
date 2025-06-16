@@ -318,13 +318,11 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 			c.error('non-bool used as for condition', node.pos)
 		}
 	}
-	if mut node.cond is ast.InfixExpr {
-		if node.cond.op == .key_is {
-			if node.cond.right is ast.TypeNode && node.cond.left in [ast.Ident, ast.SelectorExpr] {
-				if c.table.type_kind(node.cond.left_type) in [.sum_type, .interface] {
-					c.smartcast(mut node.cond.left, node.cond.left_type, node.cond.right_type, mut
-						node.scope, false, false)
-				}
+	if mut node.cond is ast.InfixExpr && node.cond.op == .key_is {
+		if node.cond.right is ast.TypeNode && node.cond.left in [ast.Ident, ast.SelectorExpr] {
+			if c.table.type_kind(node.cond.left_type) in [.sum_type, .interface] {
+				c.smartcast(mut node.cond.left, node.cond.left_type, node.cond.right_type, mut
+					node.scope, false, false)
 			}
 		}
 	}

@@ -82,10 +82,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			return
 		}
 		// Handle `return unsafe { none }`
-		if mut expr is ast.UnsafeExpr {
-			if mut expr.expr is ast.None {
-				c.error('cannot return `none` in unsafe block', expr.expr.pos)
-			}
+		if mut expr is ast.UnsafeExpr && expr.expr is ast.None {
+			c.error('cannot return `none` in unsafe block', expr.expr.pos)
 		}
 		if typ == ast.void_type {
 			c.error('`${expr}` used as value', node.pos)
@@ -102,18 +100,16 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				expr_idxs << i
 			}
 		} else {
-			if mut expr is ast.Ident {
-				if mut expr.obj is ast.Var {
-					if expr.obj.smartcasts.len > 0 {
-						typ = c.unwrap_generic(expr.obj.smartcasts.last())
-					}
-					if expr.obj.ct_type_var != .no_comptime {
-						typ = c.type_resolver.get_type_or_default(expr, typ)
-					}
-					if mut expr.obj.expr is ast.IfGuardExpr {
-						if var := expr.scope.find_var(expr.name) {
-							typ = var.typ
-						}
+			if mut expr is ast.Ident && expr.obj is ast.Var {
+				if expr.obj.smartcasts.len > 0 {
+					typ = c.unwrap_generic(expr.obj.smartcasts.last())
+				}
+				if expr.obj.ct_type_var != .no_comptime {
+					typ = c.type_resolver.get_type_or_default(expr, typ)
+				}
+				if mut expr.obj.expr is ast.IfGuardExpr {
+					if var := expr.scope.find_var(expr.name) {
+						typ = var.typ
 					}
 				}
 			}
