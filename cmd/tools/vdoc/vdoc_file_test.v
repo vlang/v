@@ -30,9 +30,10 @@ fn test_output() {
 		// test the main 3 different formats:
 		program_dir := os.quoted_path(if os.is_dir(path) { path } else { os.dir(path) })
 		for fmt in ['html', 'ansi', 'text'] {
-			fails += check_output('${vexe} doc -f ${fmt} -o - -html-only-contents -readme -comments ${program_dir}',
+			fails += check_output('${vexe} doc -no-timestamp -f ${fmt} -o - -html-only-contents -readme -comments ${program_dir}',
 				'${path_no_ext}.${fmt}')
 		}
+		fails += check_output('${vexe} doc -no-timestamp -f md -o - ${program_dir}', '${path_no_ext}.md')
 		if fails == 0 {
 			println(term.green('OK'))
 		} else {

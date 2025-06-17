@@ -28,16 +28,16 @@ fn (vd &VDoc) gen_markdown(d doc.Doc, with_toc bool) string {
 
 fn (vd &VDoc) write_markdown_content(contents []doc.DocNode, mut cw strings.Builder, mut hw strings.Builder,
 	indent int, with_toc bool) {
-	cfg := vd.cfg
 	for cn in contents {
 		if with_toc && cn.name != '' {
 			hw.writeln(' '.repeat(2 * indent) + '- [${slug(cn.name)}](#${cn.name})')
 			cw.writeln('## ${cn.name}')
 		}
 		if cn.content.len > 0 {
-			if cn.comments.len > 0 && cfg.include_comments {
+			cw.writeln('```v\n${cn.content}\n```\n')
+			if cn.comments.len > 0 {
 				comments := cn.merge_comments_without_examples()
-				cw.writeln('```v\n${cn.content}\n```\n${comments}\n')
+				cw.writeln('${comments}\n')
 			}
 			// Write examples if any found
 			examples := cn.examples()
