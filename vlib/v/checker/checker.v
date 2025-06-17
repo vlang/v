@@ -1115,6 +1115,9 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 			}
 			return '', expr.pos
 		}
+		ast.AsCast {
+			to_lock, pos = c.fail_if_immutable(mut expr.expr)
+		}
 		else {
 			if !expr.is_pure_literal() {
 				c.error('unexpected expression `${expr.type_name()}`', expr.pos())
