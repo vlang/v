@@ -91,6 +91,8 @@ pub enum OrderType {
 
 pub enum SQLDialect {
 	default
+	mysql
+	pg
 	sqlite
 }
 
@@ -153,6 +155,12 @@ pub:
 	right    Primitive
 }
 
+pub struct Table {
+pub mut:
+	name  string
+	attrs []VAttribute
+}
+
 pub struct TableField {
 pub mut:
 	name        string
@@ -163,7 +171,7 @@ pub mut:
 	is_arr      bool
 }
 
-// table - Table name
+// table - Table struct
 // is_count - Either the data will be returned or an integer with the count
 // has_where - Select all or use a where expr
 // has_order - Order the results
@@ -176,7 +184,7 @@ pub mut:
 // types - Types to select
 pub struct SelectConfig {
 pub mut:
-	table      string
+	table      Table
 	is_count   bool
 	has_where  bool
 	has_order  bool
@@ -200,11 +208,11 @@ pub mut:
 pub interface Connection {
 mut:
 	select(config SelectConfig, data QueryData, where QueryData) ![][]Primitive
-	insert(table string, data QueryData) !
-	update(table string, data QueryData, where QueryData) !
-	delete(table string, where QueryData) !
-	create(table string, fields []TableField) !
-	drop(table string) !
+	insert(table Table, data QueryData) !
+	update(table Table, data QueryData, where QueryData) !
+	delete(table Table, where QueryData) !
+	create(table Table, fields []TableField) !
+	drop(table Table) !
 	last_id() int
 }
 
@@ -213,7 +221,7 @@ mut:
 // num - Stmt uses nums at prepared statements (? or ?1)
 // qm - Character for prepared statement (qm for question mark, as in sqlite)
 // start_pos - When num is true, it's the start position of the counter
-pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKind, num bool, qm string,
+pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind, num bool, qm string,
 	start_pos int, data QueryData, where QueryData) (string, QueryData) {
 	mut str := ''
 	mut c := start_pos
@@ -257,7 +265,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 				c++
 			}
 
-			str += 'INSERT INTO ${q}${table}${q} '
+			str += 'INSERT INTO ${q}${table.name}${q} '
 
 			are_values_empty := values.len == 0
 
@@ -272,7 +280,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 			}
 		}
 		.update {
-			str += 'UPDATE ${q}${table}${q} SET '
+			str += 'UPDATE ${q}${table.name}${q} SET '
 			for i, field in data.fields {
 				str += '${q}${field}${q} = '
 				if data.data.len > i {
@@ -310,7 +318,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 			str += ' WHERE '
 		}
 		.delete {
-			str += 'DELETE FROM ${q}${table}${q} WHERE '
+			str += 'DELETE FROM ${q}${table.name}${q} WHERE '
 		}
 	}
 	// where
@@ -319,7 +327,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 	}
 	str += ';'
 	$if trace_orm_stmt ? {
-		eprintln('> orm_stmt sql_dialect: ${sql_dialect} | table: ${table} | kind: ${kind} | query: ${str}')
+		eprintln('> orm_stmt sql_dialect: ${sql_dialect} | table: ${table.name} | kind: ${kind} | query: ${str}')
 	}
 	$if trace_orm ? {
 		eprintln('> orm: ${str}')
@@ -352,7 +360,7 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 		}
 	}
 
-	str += ' FROM ${q}${cfg.table}${q}'
+	str += ' FROM ${q}${cfg.table.name}${q}'
 
 	mut c := start_pos
 
@@ -441,19 +449,19 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 }
 
 // Generates an sql table stmt, from universal parameter
-// table - Table name
+// table - Table struct
 // q - see orm_stmt_gen
 // defaults - enables default values in stmt
 // def_unique_len - sets default unique length for texts
 // fields - See TableField
 // sql_from_v - Function which maps type indices to sql type names
 // alternative - Needed for msdb
-pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string,
+pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string,
 	alternative bool) !string {
-	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table}${q} ('
+	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table.name}${q} ('
 
 	if alternative {
-		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=${q}${table}${q} and xtype=${q}U${q}) CREATE TABLE ${q}${table}${q} ('
+		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=${q}${table.name}${q} and xtype=${q}U${q}) CREATE TABLE ${q}${table.name}${q} ('
 	}
 
 	mut fs := []string{}
@@ -461,6 +469,19 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 	mut unique := map[string][]string{}
 	mut primary := ''
 	mut primary_typ := 0
+	mut table_comment := ''
+	mut field_comments := map[string]string{}
+
+	for attr in table.attrs {
+		match attr.name {
+			'comment' {
+				if attr.arg != '' && attr.kind == .string {
+					table_comment = attr.arg.replace('"', '\\"')
+				}
+			}
+			else {}
+		}
+	}
 
 	for field in fields {
 		if field.is_arr {
@@ -473,6 +494,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		mut unique_len := 0
 		mut references_table := ''
 		mut references_field := ''
+		mut field_comment := ''
 		mut field_name := sql_field_name(field)
 		mut col_typ := sql_from_v(sql_field_type(field)) or {
 			field_name = '${field_name}_id'
@@ -540,6 +562,12 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 						}
 					}
 				}
+				'comment' {
+					if attr.arg != '' && attr.kind == .string {
+						field_comment = attr.arg.replace("'", "\\'")
+						field_comments[field_name] = field_comment
+					}
+				}
 				else {}
 			}
 		}
@@ -548,11 +576,14 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		}
 		mut stmt := ''
 		if col_typ == '' {
-			return error('Unknown type (${field.typ}) for field ${field.name} in struct ${table}')
+			return error('Unknown type (${field.typ}) for field ${field.name} in struct ${table.name}')
 		}
 		stmt = '${q}${field_name}${q} ${col_typ}'
 		if defaults && default_val != '' {
 			stmt += ' DEFAULT ${default_val}'
+		}
+		if sql_dialect == .mysql && field_comment != '' {
+			stmt += " COMMENT '${field_comment}'"
 		}
 		if !nullable {
 			stmt += ' NOT NULL'
@@ -591,9 +622,22 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 
 	fs << unique_fields
 	str += fs.join(', ')
-	str += ');'
+	str += ')'
+	if sql_dialect == .mysql && table_comment != '' {
+		str += " COMMENT = '${table_comment}'"
+	}
+	str += ';'
+
+	if sql_dialect == .pg {
+		if table_comment != '' {
+			str += "\nCOMMENT ON TABLE \"${table.name}\" IS '${table_comment}';"
+		}
+		for f, c in field_comments {
+			str += "\nCOMMENT ON COLUMN \"${table.name}\".\"${f}\" IS '${c}';"
+		}
+	}
 	$if trace_orm_create ? {
-		eprintln('> orm_create table: ${table} | query: ${str}')
+		eprintln('> orm_create table: ${table.name} | query: ${str}')
 	}
 	$if trace_orm ? {
 		eprintln('> orm: ${str}')

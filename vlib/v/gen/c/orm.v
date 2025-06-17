@@ -48,6 +48,7 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 	connection_var_name := g.new_tmp_var()
 	g.write_orm_connection_init(connection_var_name, &node.db_expr)
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
+	table_attrs := g.get_table_attrs_by_struct_type(node.table_expr.typ)
 	result_var_name := g.new_tmp_var()
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
 
@@ -55,10 +56,11 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 	hack_stmt_line := ast.SqlStmtLine{
 		object_var: node.inserted_var
 		fields:     node.fields
+		table_expr: node.table_expr
 		// sub_structs: node.sub_structs
 	}
 	g.write_orm_insert(hack_stmt_line, table_name, connection_var_name, result_var_name,
-		node.or_expr)
+		node.or_expr, table_attrs)
 
 	g.write2(left, 'orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object)')
 }
@@ -93,6 +95,7 @@ fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name stri
 	g.sql_last_stmt_out_len = g.out.len
 	mut node := stmt_line
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
+	table_attrs := g.get_table_attrs_by_struct_type(node.table_expr.typ)
 	result_var_name := g.new_tmp_var()
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
 
@@ -101,15 +104,18 @@ fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name stri
 	}
 
 	if node.kind == .create {
-		g.write_orm_create_table(node, table_name, connection_var_name, result_var_name)
+		g.write_orm_create_table(node, table_name, connection_var_name, result_var_name,
+			table_attrs)
 	} else if node.kind == .drop {
-		g.write_orm_drop_table(table_name, connection_var_name, result_var_name)
+		g.write_orm_drop_table(node, table_name, connection_var_name, result_var_name,
+			table_attrs)
 	} else if node.kind == .insert {
-		g.write_orm_insert(node, table_name, connection_var_name, result_var_name, or_expr)
+		g.write_orm_insert(node, table_name, connection_var_name, result_var_name, or_expr,
+			table_attrs)
 	} else if node.kind == .update {
-		g.write_orm_update(node, table_name, connection_var_name, result_var_name)
+		g.write_orm_update(node, table_name, connection_var_name, result_var_name, table_attrs)
 	} else if node.kind == .delete {
-		g.write_orm_delete(node, table_name, connection_var_name, result_var_name)
+		g.write_orm_delete(node, table_name, connection_var_name, result_var_name, table_attrs)
 	}
 
 	g.or_block(result_var_name, or_expr, ast.int_type.set_flag(.result))
@@ -138,14 +144,54 @@ fn (mut g Gen) write_orm_connection_init(connection_var_name string, db_expr &as
 	}
 }
 
+// write_orm_table_struct writes C code for the orm.Table struct
+fn (mut g Gen) write_orm_table_struct(typ ast.Type) {
+	table_name := g.get_table_name_by_struct_type(typ)
+	table_attrs := g.get_table_attrs_by_struct_type(typ)
+
+	g.writeln('((orm__Table){')
+	g.indent++
+	g.writeln('.name = _S("${table_name}"),')
+	g.writeln('.attrs = new_array_from_c_array(${table_attrs.len}, ${table_attrs.len}, sizeof(VAttribute),')
+	g.indent++
+
+	if table_attrs.len > 0 {
+		g.write('_MOV((VAttribute[${table_attrs.len}]){')
+		g.indent++
+		for attr in table_attrs {
+			g.write('(VAttribute){')
+			g.indent++
+			name1 := util.smart_quote(attr.name, false)
+			name := cescape_nonascii(name1)
+			g.write(' .name = _S("${name}"),')
+			g.write(' .has_arg = ${attr.has_arg},')
+			arg1 := util.smart_quote(attr.arg, false)
+			arg := cescape_nonascii(arg1)
+			g.write(' .arg = _S("${arg}"),')
+			g.write(' .kind = ${int(attr.kind)},')
+			g.indent--
+			g.write('},')
+		}
+		g.indent--
+		g.writeln('})')
+	} else {
+		g.writeln('NULL // No attrs')
+	}
+	g.indent--
+	g.writeln(')')
+	g.indent--
+	g.write('})')
+}
+
 // write_orm_create_table writes C code that calls ORM functions for creating tables.
 fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, connection_var_name string,
-	result_var_name string) {
+	result_var_name string, table_attrs []ast.Attr) {
 	g.writeln('// sql { create table `${table_name}` }')
 	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_create(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
-	g.writeln('_S("${table_name}"),')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(',')
 	g.writeln('new_array_from_c_array(${node.fields.len}, ${node.fields.len}, sizeof(orm__TableField),')
 	g.indent++
 
@@ -213,19 +259,19 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 }
 
 // write_orm_drop_table writes C code that calls ORM functions for dropping tables.
-fn (mut g Gen) write_orm_drop_table(table_name string, connection_var_name string, result_var_name string) {
+fn (mut g Gen) write_orm_drop_table(node ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string, table_attrs []ast.Attr) {
 	g.writeln('// sql { drop table `${table_name}` }')
 	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_drop(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
-	g.writeln('_S("${table_name}")')
+	g.write_orm_table_struct(node.table_expr.typ)
 	g.indent--
 	g.writeln(');')
 }
 
 // write_orm_insert writes C code that calls ORM functions for inserting structs into a table.
 fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string,
-	or_expr &ast.OrExpr) {
+	or_expr &ast.OrExpr, table_attrs []ast.Attr) {
 	last_ids_variable_name := g.new_tmp_var()
 
 	g.writeln('Array_orm__Primitive ${last_ids_variable_name} = __new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
@@ -234,12 +280,13 @@ fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connec
 }
 
 // write_orm_update writes C code that calls ORM functions for updating rows.
-fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string) {
+fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string, table_attrs []ast.Attr) {
 	g.writeln('// sql { update `${table_name}` }')
 	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_update(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
-	g.writeln('_S("${table_name}"),')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(',')
 	g.writeln('(orm__QueryData){')
 	g.indent++
 	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
@@ -285,12 +332,13 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 }
 
 // write_orm_delete writes C code that calls ORM functions for deleting rows.
-fn (mut g Gen) write_orm_delete(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string) {
+fn (mut g Gen) write_orm_delete(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string, table_attrs []ast.Attr) {
 	g.writeln('// sql { delete from `${table_name}` }')
 	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method__v_delete(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
-	g.writeln('_S("${table_name}"),')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(',')
 	g.write_orm_where(node.where_expr)
 	g.indent--
 	g.writeln(');')
@@ -381,7 +429,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.writeln('${result_name}_void ${res} = orm__Connection_name_table[${connection_var_name}._typ]._method_insert(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
-	g.writeln('_S("${table_name}"),')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(',')
 	g.writeln('(orm__QueryData){')
 	g.indent++
 	g.writeln('.fields = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
@@ -880,7 +929,6 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 	select_result_var_name := g.new_tmp_var()
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
-	escaped_table_name := cescape_nonascii(util.smart_quote(table_name, false))
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
 
 	g.writeln('// sql { select from `${table_name}` }')
@@ -889,7 +937,9 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.writeln('(orm__SelectConfig){')
 	g.indent++
-	g.writeln('.table = _S("${escaped_table_name}"),')
+	g.writeln('.table = ')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(',')
 	g.writeln('.is_count = ${node.is_count},')
 	g.writeln('.has_where = ${node.has_where},')
 	g.writeln('.has_order = ${node.has_order},')
@@ -1244,6 +1294,13 @@ fn (g &Gen) get_db_expr_type(expr ast.Expr) ?ast.Type {
 	}
 
 	return none
+}
+
+// get_table_attrs_by_struct_type returns the struct attrs.
+fn (g &Gen) get_table_attrs_by_struct_type(typ ast.Type) []ast.Attr {
+	sym := g.table.sym(typ)
+	info := sym.struct_info()
+	return info.attrs
 }
 
 // get_table_name_by_struct_type converts the struct type to a table name.
