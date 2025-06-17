@@ -1312,8 +1312,8 @@ fn (g &Gen) get_table_name_by_struct_type(typ ast.Type) string {
 	if attr := info.attrs.find_first('table') {
 		table_name = attr.arg
 	}
-
-	return table_name
+	escaped_table_name := cescape_nonascii(util.smart_quote(table_name, false))
+	return escaped_table_name
 }
 
 // get_orm_current_table_field returns the current processing table's struct field by name.
