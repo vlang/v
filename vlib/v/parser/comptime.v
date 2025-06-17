@@ -466,6 +466,7 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@MOD' { token.AtKind.mod_name }
 		'@STRUCT' { token.AtKind.struct_name }
 		'@FILE' { token.AtKind.file_path }
+		'@DIR' { token.AtKind.file_dir }
 		'@LINE' { token.AtKind.line_nr }
 		'@FILE_LINE' { token.AtKind.file_path_line_nr }
 		'@LOCATION' { token.AtKind.location }

@@ -3915,6 +3915,9 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 		.file_path {
 			node.val = os.real_path(c.file.path)
 		}
+		.file_dir {
+			node.val = os.real_path(os.dir(c.file.path))
+		}
 		.line_nr {
 			node.val = (node.pos.line_nr + 1).str()
 		}

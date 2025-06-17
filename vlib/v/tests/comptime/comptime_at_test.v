@@ -83,6 +83,16 @@ fn test_at_file() {
 	assert f == 'comptime_at_test.v'
 }
 
+fn test_at_dir() {
+	// Test @DIR
+	f := os.file_name(@DIR)
+	assert f == 'comptime'
+	assert os.dir(@FILE) == @DIR
+	d := @DIR
+	assert d.len > 0
+	assert !d.ends_with('.v')
+}
+
 fn test_at_file_len() {
 	// Test @FILE_LINE
 	line1, line2 := '${@LINE}', '${@FILE_LINE}'

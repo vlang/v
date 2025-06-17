@@ -6052,6 +6052,7 @@ that are substituted at compile time:
 - `@MOD` => replaced with the name of the current V module.
 - `@STRUCT` => replaced with the name of the current V struct.
 - `@FILE` => replaced with the absolute path of the V source file.
+- `@DIR` => replaced with the absolute path of the *folder*, where the V source file is.
 - `@LINE` => replaced with the V line number where it appears (as a string).
 - `@FILE_LINE` => like `@FILE:@LINE`, but the file part is a relative path.
 - `@LOCATION` => file, line and name of the current type + method; suitable for logging.
