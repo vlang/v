@@ -1227,12 +1227,9 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			array_depth := g.get_array_depth(array_info.elem_type)
 			to_depth := if array_depth >= 0 { '_to_depth' } else { '' }
 			mut is_range_slice := false
-			if node.left is ast.IndexExpr {
-				if node.left.index is ast.RangeExpr {
-					if node.name == 'clone' {
-						is_range_slice = true
-					}
-				}
+			if node.left is ast.IndexExpr && node.left.index is ast.RangeExpr
+				&& node.name == 'clone' {
+				is_range_slice = true
 			}
 			to_static := if is_range_slice { '_static' } else { '' }
 			g.write('array_${node.name}${to_static}${to_depth}(')
@@ -2072,22 +2069,20 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 							typ = m.return_type
 						}
 					}
-				} else if expr is ast.Ident {
-					if expr.obj is ast.Var {
-						typ = expr.obj.typ
-						if expr.obj.smartcasts.len > 0 {
-							typ = g.unwrap_generic(expr.obj.smartcasts.last())
-							cast_sym := g.table.sym(typ)
-							if cast_sym.info is ast.Aggregate {
-								typ = cast_sym.info.types[g.aggregate_type_idx]
-							} else if expr.obj.ct_type_var == .smartcast {
-								typ = g.unwrap_generic(g.type_resolver.get_type(expr))
-							}
+				} else if expr is ast.Ident && expr.obj is ast.Var {
+					typ = expr.obj.typ
+					if expr.obj.smartcasts.len > 0 {
+						typ = g.unwrap_generic(expr.obj.smartcasts.last())
+						cast_sym := g.table.sym(typ)
+						if cast_sym.info is ast.Aggregate {
+							typ = cast_sym.info.types[g.aggregate_type_idx]
+						} else if expr.obj.ct_type_var == .smartcast {
+							typ = g.unwrap_generic(g.type_resolver.get_type(expr))
 						}
-						// handling println( var or { ... })
-						if typ.has_flag(.option) && expr.or_expr.kind != .absent {
-							typ = typ.clear_flag(.option)
-						}
+					}
+					// handling println( var or { ... })
+					if typ.has_flag(.option) && expr.or_expr.kind != .absent {
+						typ = typ.clear_flag(.option)
 					}
 				}
 				g.gen_expr_to_string(expr, typ)
@@ -2744,11 +2739,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		if (arg_sym.info is ast.Alias || exp_sym.info is ast.Alias) && expected_type != arg_typ {
 			g.expr_opt_with_alias(arg.expr, arg_typ, expected_type)
 		} else {
-			if arg.expr is ast.Ident {
-				if arg.expr.obj is ast.Var {
-					if arg.expr.obj.smartcasts.len > 0 {
-						arg_typ = arg.expr.obj.smartcasts.last()
-					}
+			if arg.expr is ast.Ident && arg.expr.obj is ast.Var {
+				if arg.expr.obj.smartcasts.len > 0 {
+					arg_typ = arg.expr.obj.smartcasts.last()
 				}
 			}
 			g.expr_with_opt(arg.expr, arg_typ, expected_type)

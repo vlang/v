@@ -1520,10 +1520,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 		node.args[i].typ = arg_typ
 		if c.comptime.comptime_for_field_var != '' {
-			if mut call_arg.expr is ast.Ident {
-				if mut call_arg.expr.obj is ast.Var {
-					node.args[i].typ = call_arg.expr.obj.typ
-				}
+			if mut call_arg.expr is ast.Ident && call_arg.expr.obj is ast.Var {
+				node.args[i].typ = call_arg.expr.obj.typ
 			}
 		}
 		arg_typ_sym := c.table.sym(arg_typ)

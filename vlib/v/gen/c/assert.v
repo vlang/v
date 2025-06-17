@@ -231,16 +231,13 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 				&& expr in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral] {
 				should_clone = false
 			}
-			if expr is ast.CTempVar {
-				if expr.orig is ast.CallExpr {
-					should_clone = false
-					if expr.orig.or_block.kind == .propagate_option {
-						should_clone = true
-					}
-					if expr.orig.is_method && expr.orig.args.len == 0
-						&& expr.orig.name == 'type_name' {
-						should_clone = true
-					}
+			if expr is ast.CTempVar && expr.orig is ast.CallExpr {
+				should_clone = false
+				if expr.orig.or_block.kind == .propagate_option {
+					should_clone = true
+				}
+				if expr.orig.is_method && expr.orig.args.len == 0 && expr.orig.name == 'type_name' {
+					should_clone = true
 				}
 			}
 			if should_clone {

@@ -103,10 +103,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('cannot assign a `none` value to a variable', right.pos)
 		}
 		// Handle `left_name := unsafe { none }`
-		if mut right is ast.UnsafeExpr {
-			if mut right.expr is ast.None {
-				c.error('cannot use `none` in `unsafe` blocks', right.expr.pos)
-			}
+		if mut right is ast.UnsafeExpr && right.expr is ast.None {
+			c.error('cannot use `none` in `unsafe` blocks', right.expr.pos)
 		}
 		if mut right is ast.AnonFn {
 			if right.decl.generic_names.len > 0 {
@@ -159,11 +157,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('cannot dereference a function call on the left side of an assignment, use a temporary variable',
 					left.pos)
 			}
-		} else if mut left is ast.IndexExpr {
-			if left.index is ast.RangeExpr {
-				c.error('cannot reassign using range expression on the left side of an assignment',
-					left.pos)
-			}
+		} else if mut left is ast.IndexExpr && left.index is ast.RangeExpr {
+			c.error('cannot reassign using range expression on the left side of an assignment',
+				left.pos)
 		} else if mut left is ast.Ident && node.op == .decl_assign {
 			if left.name in c.global_names {
 				c.note('the global variable named `${left.name}` already exists', left.pos)
@@ -199,10 +195,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		if node.right_types.len < node.left.len { // first type or multi return types added above
 			old_inside_ref_lit := c.inside_ref_lit
-			if mut left is ast.Ident {
-				if mut left.info is ast.IdentVar {
-					c.inside_ref_lit = c.inside_ref_lit || left.info.share == .shared_t
-				}
+			if mut left is ast.Ident && left.info is ast.IdentVar {
+				c.inside_ref_lit = c.inside_ref_lit || left.info.share == .shared_t
 			}
 			c.inside_decl_rhs = is_decl
 			mut expr := node.right[i]
@@ -666,11 +660,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
-		if mut left is ast.Ident {
-			if mut left.info is ast.IdentVar {
-				if left.info.is_static && right_sym.kind == .map {
-					c.error('maps cannot be static', left.pos)
-				}
+		if mut left is ast.Ident && left.info is ast.IdentVar {
+			if left.info.is_static && right_sym.kind == .map {
+				c.error('maps cannot be static', left.pos)
 			}
 		}
 		// Single side check

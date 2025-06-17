@@ -2594,10 +2594,8 @@ pub fn (mut lx IndexExpr) recursive_arraymap_set_is_setter() {
 	lx.is_setter = true
 	if mut lx.left is IndexExpr {
 		lx.left.recursive_arraymap_set_is_setter()
-	} else if mut lx.left is SelectorExpr {
-		if mut lx.left.expr is IndexExpr {
-			lx.left.expr.recursive_arraymap_set_is_setter()
-		}
+	} else if mut lx.left is SelectorExpr && lx.left.expr is IndexExpr {
+		lx.left.expr.recursive_arraymap_set_is_setter()
 	}
 }
 
