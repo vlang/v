@@ -37,7 +37,7 @@ struct TestDefaultAttribute {
 	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
-@[comment: 'This is a comment table']
+@[comment: 'This is a table comment']
 struct TestCommentAttribute {
 	id         string @[primary; sql: serial]
 	name       string @[comment: 'real user name']
@@ -45,11 +45,11 @@ struct TestCommentAttribute {
 }
 
 fn test_mysql_orm() {
-	//$if !network ? {
-	//	eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
-	//	eprintln('> This test requires a working mysql server running on localhost.')
-	//	return
-	//}
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
 	mut db := mysql.connect(
 		host:     '127.0.0.1'
 		port:     3306
@@ -324,7 +324,7 @@ fn test_mysql_orm() {
 
 	information_schema_table_comment_sql := [
 		{
-			'TABLE_COMMENT': 'This is a comment table'
+			'TABLE_COMMENT': 'This is a table comment'
 		},
 	]
 	assert information_schema_table_comment_sql == table_comment.maps()

@@ -36,7 +36,7 @@ struct TestDefaultAttribute {
 	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
-@[comment: 'This is a comment table']
+@[comment: 'This is a table comment']
 struct TestCommentAttribute {
 	id         string @[primary; sql: serial]
 	name       string @[comment: 'real user name']
@@ -44,11 +44,11 @@ struct TestCommentAttribute {
 }
 
 fn test_pg_orm() {
-	//$if !network ? {
-	//	eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
-	//	eprintln('> This test requires a working postgres server running on localhost.')
-	//	return
-	//}
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working postgres server running on localhost.')
+		return
+	}
 	mut db := pg.connect(
 		host:     'localhost'
 		user:     'postgres'
@@ -297,5 +297,5 @@ fn test_pg_orm() {
 		x := comment.vals[2]
 		information_schema_table_comment_result << x or { '' }
 	}
-	assert information_schema_table_comment_result == ['This is a comment table']
+	assert information_schema_table_comment_result == ['This is a table comment']
 }
