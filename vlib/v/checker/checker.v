@@ -2637,6 +2637,13 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		'include', 'insert', 'preinclude', 'postinclude' {
 			original_flag := node.main
 			mut flag := node.main
+			if flag.contains('@DIR') {
+				vdir := c.dir_path()
+				val := flag.replace('@DIR', vdir)
+				node.val = '${node.kind} ${val}'
+				node.main = val
+				flag = val
+			}
 			if flag.contains('@VROOT') {
 				// c.note(checker.vroot_is_deprecated_message, node.pos)
 				vroot := util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
@@ -2742,6 +2749,10 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 					c.error(err.msg(), node.pos)
 					return
 				}
+			}
+			if flag.contains('@DIR') {
+				// expand `@DIR` to its absolute path
+				flag = flag.replace('@DIR', c.dir_path())
 			}
 			if flag.contains('@VEXEROOT') {
 				// expand `@VEXEROOT` to its absolute path
@@ -5741,4 +5752,8 @@ pub fn (mut c Checker) update_unresolved_fixed_sizes() {
 			}
 		}
 	}
+}
+
+fn (mut c Checker) dir_path() string {
+	return os.real_path(os.dir(c.file.path))
 }
