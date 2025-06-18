@@ -1,3 +1,4 @@
+// vtest build: !msvc // msvc hung, maybe sync/atomic bug
 import time
 import sync
 import pool
