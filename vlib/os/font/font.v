@@ -57,14 +57,16 @@ pub fn default() string {
 			if os.is_file(xml_file) && os.is_readable(xml_file) {
 				xml := os.read_file(xml_file) or { continue }
 				lines := xml.split('\n')
-				unsafe { xml.free() }
 				mut candidate_font := ''
 				for line in lines {
 					if line.contains('<font') {
-						candidate_font = line.all_after('>').all_before('<').trim(' \n\t\r')
+						tmp1 := line.all_after('>')
+						tmp2 := tmp1.all_before('<')
+						tmp3 := tmp2.trim(' \n\t\r')
+						mut_assign(candidate_font, tmp3)
 						if candidate_font.contains('.ttf') {
 							for location in font_locations {
-								candidate_path := os.join_path(location, candidate_font)
+								candidate_path := os.join_path_single(location, candidate_font)
 								if os.is_file(candidate_path) && os.is_readable(candidate_path) {
 									debug_font_println('Using font "${candidate_path}"')
 									return candidate_path
@@ -72,9 +74,14 @@ pub fn default() string {
 								unsafe { candidate_path.free() }
 							}
 						}
+						unsafe { tmp3.free() }
+						unsafe { tmp2.free() }
+						unsafe { tmp1.free() }
 					}
 				}
 				unsafe { candidate_font.free() }
+				unsafe { lines.free() }
+				unsafe { xml.free() }
 			}
 		}
 		unsafe { font_locations.free() }
@@ -157,6 +164,7 @@ pub fn get_path_variant(font_path string, variant Variant) string {
 	return res
 }
 
+@[manualfree]
 fn mut_replace(s &string, find string, replacement string) {
 	new := (*s).replace(find, replacement)
 	unsafe { s.free() }
@@ -165,6 +173,7 @@ fn mut_replace(s &string, find string, replacement string) {
 	}
 }
 
+@[manualfree]
 fn mut_plus(s &string, tail string) {
 	new := (*s) + tail
 	unsafe { s.free() }
@@ -173,6 +182,7 @@ fn mut_plus(s &string, tail string) {
 	}
 }
 
+@[manualfree]
 fn mut_assign(s &string, value string) {
 	unsafe { s.free() }
 	unsafe {
