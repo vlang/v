@@ -4877,7 +4877,9 @@ inline int sg_append_buffer(sg_buffer buf_id, const sg_range& data) { return sg_
     #define GL_LUMINANCE 0x1909
     #endif
     #ifndef _SG_GL_CHECK_ERROR
-    #define _SG_GL_CHECK_ERROR() { SOKOL_ASSERT(glGetError() == GL_NO_ERROR); }
+	// __v_ start
+    #define _SG_GL_CHECK_ERROR() { int glerr = glGetError(); if(glerr){ fprintf(stderr, ">> glGetError: %d\n", glerr); }; SOKOL_ASSERT(glerr == GL_NO_ERROR); }
+	// __v_ end
     #endif
 #endif
 
