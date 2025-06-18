@@ -455,6 +455,9 @@ pub fn (s string) replace_each(vals []string) string {
 	// of the new string to do just one allocation.
 	mut new_len := s.len
 	mut idxs := []RepIndex{cap: 6}
+	defer {
+		unsafe { idxs.free() }
+	}
 	mut idx := 0
 	s_ := s.clone()
 	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
@@ -845,6 +848,8 @@ fn (s string) plus_two(a string, b string) string {
 @[direct_array_access]
 pub fn (s string) split_any(delim string) []string {
 	mut res := []string{}
+	unsafe { res.flags.set(.noslices) }
+	defer { unsafe { res.flags.clear(.noslices) } }
 	mut i := 0
 	// check empty source string
 	if s.len > 0 {
@@ -874,6 +879,8 @@ pub fn (s string) split_any(delim string) []string {
 @[direct_array_access]
 pub fn (s string) rsplit_any(delim string) []string {
 	mut res := []string{}
+	unsafe { res.flags.set(.noslices) }
+	defer { unsafe { res.flags.clear(.noslices) } }
 	mut i := s.len - 1
 	if s.len > 0 {
 		if delim.len <= 0 {
@@ -964,6 +971,8 @@ pub fn (s string) split_n(delim string, n int) []string {
 @[direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
+	unsafe { res.flags.set(.noslices) } // allow freeing of old data during <<
+	defer { unsafe { res.flags.clear(.noslices) } }
 
 	match delim.len {
 		0 {
@@ -1023,6 +1032,8 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 @[direct_array_access]
 pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	mut res := []string{}
+	unsafe { res.flags.set(.noslices) } // allow freeing of old data during <<
+	defer { unsafe { res.flags.clear(.noslices) } }
 
 	match delim.len {
 		0 {
@@ -1082,6 +1093,8 @@ pub fn (s string) split_into_lines() []string {
 	if s.len == 0 {
 		return res
 	}
+	unsafe { res.flags.set(.noslices) } // allow freeing of old data during <<
+	defer { unsafe { res.flags.clear(.noslices) } }
 	cr := `\r`
 	lf := `\n`
 	mut line_start := 0
@@ -1110,6 +1123,8 @@ pub fn (s string) split_into_lines() []string {
 // Repeated, trailing or leading whitespaces will be omitted.
 pub fn (s string) split_by_space() []string {
 	mut res := []string{}
+	unsafe { res.flags.set(.noslices) }
+	defer { unsafe { res.flags.clear(.noslices) } }
 	for word in s.split_any(' \n\t\v\f\r') {
 		if word != '' {
 			res << word
@@ -2466,6 +2481,8 @@ pub fn (s string) repeat(count int) string {
 // Example: assert '  sss   ssss'.fields() == ['sss', 'ssss']
 pub fn (s string) fields() []string {
 	mut res := []string{}
+	unsafe { res.flags.set(.noslices) }
+	defer { unsafe { res.flags.clear(.noslices) } }
 	mut word_start := 0
 	mut word_len := 0
 	mut is_in_word := false
