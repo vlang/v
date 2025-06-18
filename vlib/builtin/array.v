@@ -186,10 +186,10 @@ fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidp
 	return arr
 }
 
-// Private function. Increases the `cap` of an array to the
-// required value by copying the data to a new memory location
-// (creating a clone) unless `a.cap` is already large enough.
-fn (mut a array) ensure_cap(required int) {
+// ensure_cap increases the `cap` of an array to the required value
+// by copying the data to a new memory location (creating a clone),
+// unless `a.cap` is already large enough.
+pub fn (mut a array) ensure_cap(required int) {
 	if required <= a.cap {
 		return
 	}
