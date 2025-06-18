@@ -36,6 +36,13 @@ struct TestDefaultAttribute {
 	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
+@[comment: 'This is a table comment']
+struct TestCommentAttribute {
+	id         string @[primary; sql: serial]
+	name       string @[comment: 'real user name']
+	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+}
+
 fn test_pg_orm() {
 	$if !network ? {
 		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
@@ -46,15 +53,18 @@ fn test_pg_orm() {
 		host:     'localhost'
 		user:     'postgres'
 		password: '12345678'
-		dbname:   'test'
+		dbname:   'postgres'
 	) or { panic(err) }
 
 	defer {
 		db.close()
 	}
-	db.drop('Test')!
+	table := orm.Table{
+		name: 'Test'
+	}
+	db.drop(table) or {}
 
-	db.create('Test', [
+	db.create(table, [
 		orm.TableField{
 			name: 'id'
 			typ:  typeof[string]().idx
@@ -94,13 +104,13 @@ fn test_pg_orm() {
 		},
 	]) or { panic(err) }
 
-	db.insert('Test', orm.QueryData{
+	db.insert(table, orm.QueryData{
 		fields: ['name', 'age']
 		data:   [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
 	}) or { panic(err) }
 
 	res := db.select(orm.SelectConfig{
-		table:      'Test'
+		table:      table
 		is_count:   false
 		has_where:  true
 		has_order:  false
@@ -143,7 +153,7 @@ fn test_pg_orm() {
 	*/
 	sql db {
 		drop table TestCustomSqlType
-	}!
+	} or {}
 
 	sql db {
 		create table TestCustomSqlType
@@ -232,4 +242,60 @@ fn test_pg_orm() {
 		drop table TestDefaultAttribute
 	}!
 	assert ['gen_random_uuid()', '', 'CURRENT_TIMESTAMP'] == information_schema_defaults_results
+
+	/** test comment attribute
+	*/
+	sql db {
+		create table TestCommentAttribute
+	}!
+
+	mut column_comments := db.exec("
+		SELECT 
+		a.attname AS column_name,
+		col_description(a.attrelid, a.attnum) AS column_comment
+		FROM pg_attribute a
+		JOIN pg_class c ON c.oid = a.attrelid
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE c.relname = 'TestCommentAttribute' 
+		AND n.nspname = 'public'
+		AND a.attnum > 0
+		AND NOT a.attisdropped
+		ORDER BY a.attnum
+	") or {
+		println(err)
+		panic(err)
+	}
+
+	mut table_comment := db.exec("
+		SELECT 
+		nspname AS schema_name,
+		relname AS table_name,
+		obj_description(pc.oid) AS table_comment
+		FROM pg_class pc
+		JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+		WHERE pc.relkind = 'r' AND pc.relname = 'TestCommentAttribute'
+		ORDER BY schema_name, table_name
+	") or {
+		println(err)
+		panic(err)
+	}
+
+	sql db {
+		drop table TestCommentAttribute
+	}!
+
+	mut information_schema_column_comment_results := []string{}
+
+	for comment in column_comments {
+		x := comment.vals[1]
+		information_schema_column_comment_results << x or { '' }
+	}
+	assert information_schema_column_comment_results == ['', 'real user name', '']
+
+	mut information_schema_table_comment_result := []string{}
+	for comment in table_comment {
+		x := comment.vals[2]
+		information_schema_table_comment_result << x or { '' }
+	}
+	assert information_schema_table_comment_result == ['This is a table comment']
 }

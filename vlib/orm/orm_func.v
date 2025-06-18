@@ -25,7 +25,7 @@ pub fn new_query[T](conn Connection) &QueryBuilder[T] {
 		valid_sql_field_names: meta.map(sql_field_name(it))
 		conn:                  conn
 		config:                SelectConfig{
-			table: table_name_from_struct[T]()
+			table: table_from_struct[T]()
 		}
 		data:                  QueryData{}
 		where:                 QueryData{}
@@ -35,9 +35,9 @@ pub fn new_query[T](conn Connection) &QueryBuilder[T] {
 // reset reset a query object, but keep the connection and table name
 pub fn (qb_ &QueryBuilder[T]) reset() &QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
-	old_table_name := qb.config.table
+	old_table := qb.config.table
 	qb.config = SelectConfig{
-		table: old_table_name
+		table: old_table
 	}
 	qb.data = QueryData{}
 	qb.where = QueryData{}
@@ -366,15 +366,20 @@ pub fn (qb_ &QueryBuilder[T]) set(assign string, values ...Primitive) !&QueryBui
 	return qb
 }
 
-// table_name_from_struct get table name from struct
-fn table_name_from_struct[T]() string {
+// table_from_struct get table from struct
+fn table_from_struct[T]() Table {
 	mut table_name := T.name
+	mut attrs := []VAttribute{}
 	$for a in T.attributes {
 		$if a.name == 'table' && a.has_arg {
 			table_name = a.arg
 		}
+		attrs << a
 	}
-	return table_name
+	return Table{
+		name:  table_name
+		attrs: attrs
+	}
 }
 
 // struct_meta return a struct's fields info

@@ -31,7 +31,7 @@ fn (db MockDB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 	return db.db.select(config, data, where)
 }
 
-fn (db MockDB) insert(table string, data orm.QueryData) ! {
+fn (db MockDB) insert(table orm.Table, data orm.QueryData) ! {
 	mut st := db.st
 	last, qdata := orm.orm_stmt_gen(.sqlite, table, '`', .insert, false, '?', 1, data,
 		orm.QueryData{})
@@ -41,7 +41,7 @@ fn (db MockDB) insert(table string, data orm.QueryData) ! {
 	return db.db.insert(table, data)
 }
 
-fn (db MockDB) update(table string, data orm.QueryData, where orm.QueryData) ! {
+fn (db MockDB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
 	mut st := db.st
 	st.last, _ = orm.orm_stmt_gen(.sqlite, table, '`', .update, false, '?', 1, data, where)
 	st.data = data.data
@@ -49,7 +49,7 @@ fn (db MockDB) update(table string, data orm.QueryData, where orm.QueryData) ! {
 	return db.db.update(table, data, where)
 }
 
-fn (db MockDB) delete(table string, where orm.QueryData) ! {
+fn (db MockDB) delete(table orm.Table, where orm.QueryData) ! {
 	mut st := db.st
 	st.last, _ = orm.orm_stmt_gen(.sqlite, table, '`', .delete, false, '?', 1, orm.QueryData{},
 		where)
@@ -82,13 +82,14 @@ fn mock_type_from_v(typ int) !string {
 	}
 }
 
-fn (db MockDB) create(table string, fields []orm.TableField) ! {
+fn (db MockDB) create(table orm.Table, fields []orm.TableField) ! {
 	mut st := db.st
-	st.last = orm.orm_table_gen(table, '`', true, 0, fields, mock_type_from_v, false)!
+	st.last = orm.orm_table_gen(.sqlite, table, '`', true, 0, fields, mock_type_from_v,
+		false)!
 	return db.db.create(table, fields)
 }
 
-fn (db MockDB) drop(table string) ! {
+fn (db MockDB) drop(table orm.Table) ! {
 	return db.db.drop(table)
 }
 

@@ -37,6 +37,13 @@ struct TestDefaultAttribute {
 	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
+@[comment: 'This is a table comment']
+struct TestCommentAttribute {
+	id         string @[primary; sql: serial]
+	name       string @[comment: 'real user name']
+	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+}
+
 fn test_mysql_orm() {
 	$if !network ? {
 		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
@@ -47,13 +54,17 @@ fn test_mysql_orm() {
 		host:     '127.0.0.1'
 		port:     3306
 		username: 'root'
-		password: ''
+		password: '12345678'
 		dbname:   'mysql'
 	)!
 	defer {
 		db.close()
 	}
-	db.create('Test', [
+	table := orm.Table{
+		name: 'Test'
+	}
+	db.drop(table) or {}
+	db.create(table, [
 		orm.TableField{
 			name:  'id'
 			typ:   typeof[int]().idx
@@ -80,13 +91,13 @@ fn test_mysql_orm() {
 		},
 	]) or { panic(err) }
 
-	db.insert('Test', orm.QueryData{
+	db.insert(table, orm.QueryData{
 		fields: ['name', 'age']
 		data:   [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
 	}) or { panic(err) }
 
 	res := db.select(orm.SelectConfig{
-		table:     'Test'
+		table:     table
 		has_where: true
 		fields:    ['id', 'name', 'age']
 		types:     [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
@@ -272,4 +283,49 @@ fn test_mysql_orm() {
 		'COLUMN_DEFAULT': 'CURRENT_TIMESTAMP'
 	}]
 	assert information_schema_column_default_sql == result_defaults.maps()
+
+	/** test comment attribute
+	*/
+	sql db {
+		create table TestCommentAttribute
+	}!
+
+	mut column_comments := db.query("
+		SELECT COLUMN_COMMENT
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_NAME = 'TestCommentAttribute'
+		ORDER BY ORDINAL_POSITION
+	") or {
+		println(err)
+		panic(err)
+	}
+
+	mut table_comment := db.query("
+		SELECT TABLE_COMMENT
+		FROM INFORMATION_SCHEMA.TABLES
+		WHERE TABLE_NAME = 'TestCommentAttribute'
+	") or {
+		println(err)
+		panic(err)
+	}
+
+	sql db {
+		drop table TestCommentAttribute
+	}!
+
+	information_schema_column_comment_sql := [{
+		'COLUMN_COMMENT': ''
+	}, {
+		'COLUMN_COMMENT': 'real user name'
+	}, {
+		'COLUMN_COMMENT': ''
+	}]
+	assert information_schema_column_comment_sql == column_comments.maps()
+
+	information_schema_table_comment_sql := [
+		{
+			'TABLE_COMMENT': 'This is a table comment'
+		},
+	]
+	assert information_schema_table_comment_sql == table_comment.maps()
 }

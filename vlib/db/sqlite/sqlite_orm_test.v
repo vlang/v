@@ -32,7 +32,10 @@ fn test_sqlite_orm() {
 	defer {
 		db.close() or { panic(err) }
 	}
-	db.create('Test', [
+	table := orm.Table{
+		name: 'Test'
+	}
+	db.create(table, [
 		orm.TableField{
 			name:  'id'
 			typ:   typeof[int]().idx
@@ -59,13 +62,13 @@ fn test_sqlite_orm() {
 		},
 	]) or { panic(err) }
 
-	db.insert('Test', orm.QueryData{
+	db.insert(table, orm.QueryData{
 		fields: ['name', 'age']
 		data:   [orm.string_to_primitive('Louis'), orm.i64_to_primitive(100)]
 	}) or { panic(err) }
 
 	res := db.select(orm.SelectConfig{
-		table:     'Test'
+		table:     table
 		has_where: true
 		fields:    ['id', 'name', 'age']
 		types:     [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]

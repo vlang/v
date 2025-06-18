@@ -25,14 +25,14 @@ fn (mut db Database) select(config orm.SelectConfig, data orm.QueryData, where o
 }
 
 // insert is used internally by V's ORM for processing `INSERT` queries
-fn (mut db Database) insert(table string, data orm.QueryData) ! {
+fn (mut db Database) insert(table orm.Table, data orm.QueryData) ! {
 	query, _ := orm.orm_stmt_gen(.sqlite, table, '', .insert, false, '?', 1, data, orm.QueryData{})
 
 	db.query(query)!
 }
 
 // update is used internally by V's ORM for processing `UPDATE` queries
-fn (mut db Database) update(table string, data orm.QueryData, where orm.QueryData) ! {
+fn (mut db Database) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
 	mut query, _ := orm.orm_stmt_gen(.sqlite, table, '', .update, true, ':', 1, data,
 		where)
 
@@ -40,7 +40,7 @@ fn (mut db Database) update(table string, data orm.QueryData, where orm.QueryDat
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
-fn (mut db Database) delete(table string, where orm.QueryData) ! {
+fn (mut db Database) delete(table orm.Table, where orm.QueryData) ! {
 	query, converted := orm.orm_stmt_gen(.sqlite, table, '', .delete, true, ':', 1, orm.QueryData{},
 		where)
 
@@ -66,16 +66,15 @@ fn sqlite_type_from_v(typ int) !string {
 }
 
 // create is used internally by V's ORM for processing table creation queries (DDL)
-fn (mut db Database) create(table string, fields []orm.TableField) ! {
-	mut query := orm.orm_table_gen(table, '', true, 0, fields, sqlite_type_from_v, false) or {
-		return err
-	}
+fn (mut db Database) create(table orm.Table, fields []orm.TableField) ! {
+	mut query := orm.orm_table_gen(.sqlite, table, '', true, 0, fields, sqlite_type_from_v,
+		false) or { return err }
 	db.query(query)!
 }
 
 // drop is used internally by V's ORM for processing table destroying queries (DDL)
-fn (mut db Database) drop(table string) ! {
-	query := 'DROP TABLE ${table};'
+fn (mut db Database) drop(table orm.Table) ! {
+	query := 'DROP TABLE ${table.name};'
 	$if trace_orm ? {
 		eprintln('> vsql drop: ${query}')
 	}

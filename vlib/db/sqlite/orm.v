@@ -52,20 +52,20 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 // sql stmt
 
 // insert is used internally by V's ORM for processing `INSERT ` queries
-pub fn (db DB) insert(table string, data orm.QueryData) ! {
+pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
 	query, converted_data := orm.orm_stmt_gen(.sqlite, table, '`', .insert, true, '?',
 		1, data, orm.QueryData{})
 	sqlite_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
-pub fn (db DB) update(table string, data orm.QueryData, where orm.QueryData) ! {
+pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
 	query, _ := orm.orm_stmt_gen(.sqlite, table, '`', .update, true, '?', 1, data, where)
 	sqlite_stmt_worker(db, query, data, where)!
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
-pub fn (db DB) delete(table string, where orm.QueryData) ! {
+pub fn (db DB) delete(table orm.Table, where orm.QueryData) ! {
 	query, _ := orm.orm_stmt_gen(.sqlite, table, '`', .delete, true, '?', 1, orm.QueryData{},
 		where)
 	sqlite_stmt_worker(db, query, orm.QueryData{}, where)!
@@ -81,16 +81,15 @@ pub fn (db DB) last_id() int {
 // DDL (table creation/destroying etc)
 
 // create is used internally by V's ORM for processing table creation queries (DDL)
-pub fn (db DB) create(table string, fields []orm.TableField) ! {
-	query := orm.orm_table_gen(table, '`', true, 0, fields, sqlite_type_from_v, false) or {
-		return err
-	}
+pub fn (db DB) create(table orm.Table, fields []orm.TableField) ! {
+	query := orm.orm_table_gen(.sqlite, table, '`', true, 0, fields, sqlite_type_from_v,
+		false) or { return err }
 	sqlite_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
 // drop is used internally by V's ORM for processing table destroying queries (DDL)
-pub fn (db DB) drop(table string) ! {
-	query := 'DROP TABLE `${table}`;'
+pub fn (db DB) drop(table orm.Table) ! {
+	query := 'DROP TABLE `${table.name}`;'
 	sqlite_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
