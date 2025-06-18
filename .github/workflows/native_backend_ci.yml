@@ -45,7 +45,7 @@ on:
       - '.github/workflows/native_backend_ci.yml'
 
 concurrency:
-  group: native_backend-${{ github.workflow }}-${{ github.ref}}
+  group: native_backend-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
