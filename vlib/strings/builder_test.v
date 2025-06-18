@@ -183,7 +183,7 @@ fn test_grow_len() {
 	assert sb.len == 20
 	assert sb.cap == 20
 
-	unsafe { sb.ensure_cap(35) }
+	sb.ensure_cap(35)
 	assert sb.len == 20
 	assert sb.cap == 35
 
