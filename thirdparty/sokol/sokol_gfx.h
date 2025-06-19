@@ -4878,7 +4878,11 @@ inline int sg_append_buffer(sg_buffer buf_id, const sg_range& data) { return sg_
     #endif
     #ifndef _SG_GL_CHECK_ERROR
 	// __v_ start
+	#ifdef NDEBUG
+    #define _SG_GL_CHECK_ERROR() (void)(0)
+    #else 
     #define _SG_GL_CHECK_ERROR() { int glerr = glGetError(); if(glerr){ fprintf(stderr, ">> glGetError: %d\n", glerr); }; SOKOL_ASSERT(glerr == GL_NO_ERROR); }
+    #endif
 	// __v_ end
     #endif
 #endif
