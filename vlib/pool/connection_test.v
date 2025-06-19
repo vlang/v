@@ -1,4 +1,4 @@
-// vtest build: !msvc // msvc hung, maybe sync/atomic bug
+// vtest build: !windows // msvc hung, maybe sync/atomic bug, gcc on windows does too, although less frequently
 import time
 import sync
 import pool
