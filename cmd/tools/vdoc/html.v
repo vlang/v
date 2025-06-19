@@ -177,15 +177,16 @@ fn (vd &VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder)
 	} else {
 		os.file_name(cn.file_path)
 	}
-	src_link := get_src_link(vd.manifest.repo_url, file_path_name, cn.pos.line_nr + 1)
+	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name,
+		cn.pos.line_nr + 1)
 	if cn.content.len != 0 || cn.name == 'Constants' {
 		hw.write_string(doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
 		hw.write_string('\n')
 	}
 	for child in cn.children {
 		child_file_path_name := child.file_path.replace('${base_dir}/', '')
-		child_src_link := get_src_link(vd.manifest.repo_url, child_file_path_name,
-			child.pos.line_nr + 1)
+		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch,
+			child_file_path_name, child.pos.line_nr + 1)
 		hw.write_string(doc_node_html(child, child_src_link, false, cfg.include_examples,
 			d.table))
 		hw.write_string('\n')
@@ -324,15 +325,15 @@ ${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
 	return result
 }
 
-fn get_src_link(repo_url string, file_name string, line_nr int) string {
+fn get_src_link(repo_url string, repo_branch string, file_name string, line_nr int) string {
 	mut url := urllib.parse(repo_url) or { return '' }
 	if url.path.len <= 1 || file_name == '' {
 		return ''
 	}
 	url.path = url.path.trim_right('/') + match url.host {
-		'github.com' { '/blob/master/${file_name}' }
-		'gitlab.com' { '/-/blob/master/${file_name}' }
-		'git.sir.ht' { '/tree/master/${file_name}' }
+		'github.com' { '/blob/${repo_branch}/${file_name}' }
+		'gitlab.com' { '/-/blob/${repo_branch}/${file_name}' }
+		'git.sir.ht' { '/tree/${repo_branch}/${file_name}' }
 		else { '' }
 	}
 	if url.path == '/' {

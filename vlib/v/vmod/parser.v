@@ -26,6 +26,7 @@ pub mut:
 	version      string
 	license      string
 	repo_url     string
+	repo_branch  string = 'master'
 	author       string
 	dependencies []string
 	unknown      map[string][]string
@@ -229,6 +230,9 @@ fn (mut p Parser) parse() !Manifest {
 					}
 					'repo_url' {
 						mn.repo_url = field_value
+					}
+					'repo_branch' {
+						mn.repo_branch = field_value
 					}
 					'description' {
 						mn.description = field_value
