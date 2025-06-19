@@ -195,7 +195,7 @@ fn test_concurrent_access() {
 	defer {
 		p.close()
 	}
-	mut wg := &sync.WaitGroup{}
+	mut wg := sync.new_waitgroup()
 
 	for _ in 0 .. 20 {
 		wg.add(1)
