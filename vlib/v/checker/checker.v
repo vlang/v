@@ -511,7 +511,7 @@ fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos to
 	if !c.pref.is_vweb && name.len > 1 && (name[0] == `_` || name.contains('._')) {
 		c.error('${identifier} `${name}` cannot start with `_`', pos)
 	}
-	if !c.pref.experimental && util.contains_capital(name) {
+	if util.contains_capital(name) {
 		c.error('${identifier} `${name}` cannot contain uppercase letters, use snake_case instead',
 			pos)
 	}

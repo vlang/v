@@ -180,6 +180,8 @@ fn (mut app App) process_line(text string) ! {
 		category = .cgen
 	} else if is_js_backend(text) {
 		category = .js_backend
+	} else if is_comptime(text) {
+		category = .comptime
 	} else if is_db(text) {
 		category = .db
 	} else if is_stdlib(text) {
@@ -220,7 +222,7 @@ fn (mut app App) process_line(text string) ! {
 	// exit(0)
 	//}
 	if (semicolon_pos < 15
-		&& prefix in ['checker', 'cgen', 'parser', 'v.parser', 'ast', 'jsgen', 'v.gen.js', 'fmt', 'vfmt', 'tools', 'examples'])
+		&& prefix in ['checker', 'cgen', 'orm', 'parser', 'v.parser', 'native', 'ast', 'jsgen', 'v.gen.js', 'fmt', 'vfmt', 'tools', 'examples'])
 		|| (semicolon_pos < 30 && prefix.contains(', ')) {
 		s = '- ' + text[semicolon_pos + 2..].capitalize()
 	}
@@ -325,7 +327,7 @@ fn (l Line) write_at_category(txt string) ?string {
 	// Trim "prefix:" for some categories
 	// mut capitalized := false
 	mut has_prefix := true
-	if l.category in [.cgen, .checker, .improvements] {
+	if l.category in [.cgen, .checker, .improvements, .native, .orm] {
 		has_prefix = false
 		if semicolon_pos := line_text.index(': ') {
 			prefix := line_text[..semicolon_pos]
@@ -558,6 +560,10 @@ const os_support_strings = [
 
 fn is_os_support(text string) bool {
 	return is_xxx(text, os_support_strings)
+}
+
+fn is_comptime(text string) bool {
+	return text.contains('comptime:')
 }
 
 fn is_xxx(text string, words []string) bool {

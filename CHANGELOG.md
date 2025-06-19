@@ -1,3 +1,407 @@
+## V 0.4.11
+*19 Jun 2025*
+
+#### Improvements in the language
+- Support a new CPU architecture s390x (#24107)
+- Add initial support for ppc64le (#24287)
+- Add initial support for loongarch64 (#24343)
+- Support `js"string literal"` for JavaScript strings (#24653)
+- VLS mode in the parser for the new language server in pure V
+
+#### Breaking changes
+- Remove deprecations made before 2024-11-06
+- Add a deprecation note for `any` arg, prevent `any` from being used as map key,value or array type (#24277)
+
+#### Checker improvements/fixes
+- Fix chan element type validation with inexistent type (fix #23978) (#24008)
+- Do not allow auto (de)reference in PrefixExpr *
+- Fix check for pushing on an unwrapped option array (fix #24073) (#24093)
+- Fix wrong type hint on predicate arg type mismatch (fix #24122) (#24123)
+- Fix array generic return checking (fix #24104) (#24214)
+- Fix stack var outside usage when var is a mutable param (#24249)
+- Fix codegen for multi return with array fixed (fix #24280) (#24282)
+- Check anon struct field valid case (partial fix of #24284) (#24286)
+- Add check for recursive array init on struct (fix #21195) (#24278)
+- Fix inherited var turning in auto heap (fix #24306) (#24312)
+- Remove redundant callexpr `c.expr(mut node.left)` rechecks for `ast.CallExpr` (fix #24353) (#24380)
+- Do not allow &u8(0), force nil like we do with &Type(0)
+- Relax the new warning, allow for `pub const pname = &char(C.SDL_POINTER)` to fix the clean compilation of code using vlang/sdl3
+- Fix for with mut generic value (fix #24360) (#24426)
+- Add check for decomposing to interface (fix #24441) (#24453)
+- Fix generic option array arg passing to `[]T` (fix #24423) (#24457)
+- Fix resolver for returning struct generic (fix #24493) (#24506)
+- Reallow passing closures as voidptr parameters with no warning, to enable convenient interfacing with C libs
+- Disallow invalid expr for `filter`, `count`, `any`, `all` (fix #24508) (#24540)
+- Replace warning by notice for UTF8 strings validation (fix #24538) (#24543)
+- Revise logic for reporting import conflicts with module names (#24539)
+- Fix struct update expr checking, when an alias is used (fix #24581) (#24582)
+- Fix fn var resolver (fix #24525) (#24542)
+- Fix checking for int to array of interface (fix #24624) (#24625)
+- Cycle through all `ast.ParExpr` first in `prefix_expr` (fix #24584) (#24588)
+- Move `arr <<` logic to `check_append()`
+- Fix mutable const bug (fix #14916)
+- Allow for calling main() inside _test.v files
+- Fix missing type bounding to match expr on `or{}` expr (fix #24656) (#24658)
+- Add error for `if mut x != none {`, when `x` is an immutable option (fix #24692) (#24694)
+- Fix compound selector smartcasting/option unwrapping (fix #24662) (#24712)
+- Fix mutable option (fix #18818) (fix #24622) (fix #24101) (#19100)
+
+#### Parser improvements
+- Fix parse_cflag() support other flags between allowed_flags (fix #24121) (#24146)
+- Minimise allocations done for the common case in find_struct_field
+- Fix orm generic struct table type parsing (fix #24049) (#24149)
+- Fix mutiple imports at one line (#24241)
+- Fix range expr precedence on compound logical and operator (fix #24252) (#24275)
+- Fix invalid field name checking (fix #24279) (#24283)
+- Fix wrong string parsing (fix #24297) (#24298)
+- Fix panic for `struct Abc { pub mut: }` (fix #24404) (#24403)
+- Allow `mut static counter := 0` inside `unsafe {}` blocks (prepare for removing a `-translated` mode quirk)
+- Fix duplicate mod imports (fix #24552) (#24559)
+- Reduce memory usage of ast.ScopeObject and ast.Ident instances (#24704)
+
+#### Comptime
+- Support `$if T is $pointer {` and `$if T is $voidptr {`, to make it easier to implement a pure V dump(), without cgen specific code (#24628)
+- i32 is now `$int` too (fix #24346) (#24378)
+- Fix `$dbg` with `@[heap]` structs (fix #23979) (#23989)
+- Check invalid comptime field name assignment (fix #24415) (#24421)
+- Enable s390x + docs (#24114)
+
+#### Compiler internals
+- Remove closure usage from the compiler frontend (simplify bootstrapping/porting on more exotic platforms)
+- markused: support orm or expr (fix #24040) (#24059)
+- markused: fix for gated index range on string (fix #24187) (#24200)
+- v.util.version: fix output for V full version when VCURRENTHASH not defined (#24264)
+- markused: fix generic method call mark (fix #24395) (#24399)
+- v.pref: add get_build_facts_and_defines/0 and set_build_flags_and_defines/2
+- v.util.version: fix output for V full version (followup on issue #24263 and PR #24264) (#24478)
+- v.util: use internal diff (#24495)
+- v.pref: prevent overriding backend (fix #21758) (#24526)
+- markused: fix for generic ptr receiver on method call (fix #24555) (#24558)
+- markused: fix `x := t.wait()`, when `t := go fn () string {` (fix #24577) (#24580)
+- markused: fix printing smartcasted interface values (fix #24579) (#24583)
+- pref: avoid changing the backend with `.js.v` when `-backend` has already been used (fix #7840) (#24654)
+- Remove dump() calls inside the compiler itself (make bootstrapping of dump() implemented before cgen easier)
+
+#### Standard library
+- builtin: string.index_after() ?int
+- cli: account for initial indent on subcommands (#23985)
+- Remove `strings.Builder.clear()`, fix `array.clear()` not working in the JS backend (#23992)
+- gg: make draw_rect_empty/5 draw more exact borders, independent of the device, and fitting the draw_rect_filled/5 shapes (#24024)
+- sync: fix a helgrind false positive, for a data race, on PoolProcessor (#24023)
+- sync.pool: restore the parallel operation (surrounding the cb call in process_in_thread in a lock in 1b52538, effectively disabled parallelism)
+- x.crypto.chacha20: change internal cipher to support a 64 bit counter (related to #23904) (#24039)
+- os: fix swap_bytes_u64 (#24033)
+- x.crypto.chacha20: fix `xor_key_stream` failing after a while (fix #24043) (#24046)
+- crypto.sha3: be big-endian friendly (#24045)
+- x.crypto.chacha20: makes the underlying cipher routine aware of the 64-bit counter (#24050)
+- x.crypto.chacha20: enable support for 64-bit counter (fix #23904) (#24053)
+- x.crypto.slhdsa: add a SLH-DSA implementation, a stateless hash-based DSA, a post quantum cryptographic module (#24086)
+- encoding.binary: add encode_binary()/decode_binary() generic functions (#24106)
+- crypto.rc4: change the return type of `new_cipher` to be `!&Cipher` (#24113)
+- crypto: add a `crypto.ripemd160` module (#24119)
+- encoding.iconv: fix iconv on termux (fix #23597) (#24147)
+- sync: remove the call to C.pthread_rwlockattr_setpshared (not needed, since it is the default on POSIX) (#24166)
+- pkgconfig, termios: Support NetBSD (#24176)
+- encoding.binary: fix serialize map struct (fix #24190) (#24192)
+- builtin,v.gen.wasm: support `-b wasm -d no_imports` (#24188)
+- datatypes: add a Set.array/0 method to help get all the elements from a set as an array (#24206)
+- json: fix option time (fix #24242) (fix #24175) (#24243)
+- log: add local time / utc time selection support (#24268)
+- json: link with libm (fix #24272) (#24273)
+- rand: add uuid_v7(), session function, simplify uuid_v4() (#24313)
+- toml: fix handling of multiline string with CRLF (fix #24321) (#24322)
+- toml: fix crlf escape check (fix #24328) (#24329)
+- x.json2: add u16(),u32() (fix #24337) (#24342)
+- rand: fix uuid_v7 seperator (#24348)
+- rand: check the separators for the generated UUIDs in random_identifiers_test.v
+- builtin: add string.is_identifier() (#24350)
+- x.crypto.chacha20: add a check counter overflow to set_counter for standard mode (#24365)
+- comptime: fix `$if var.return_type == 1 {` (fix #24391) (#24393)
+- comptime: enable ppc64le, add docs (#24433)
+- toml: add compile error when passing `encode/1` types of T != struct (fix #24435) (#24443)
+- sync.stdatomic: workaround for libatomic.a indirect symbols tcc bug (fix #23924) (#24472)
+- math.big: fix the + operator for big.Integer for negative numbers, add test (#24487)
+- math.big: respect the sign of the dividend in % operator, add test (#24489)
+- os: add note for the availability of the debugger_present implementation (#24492)
+- term: add writeln_color() (#24463)
+- math.big: add missing assert for test_multiply_karatsuba_02 (#24534)
+- builtin: fix mix prod and debug ucrt lib (#24498)
+- math.big: fix Karatsuba's add_in_place() function, add carry handler on exit (#24541)
+- math: add `exp_decay` to `interpolation.v` (#24545)
+- math.big: optimize divide_array_by_digit() (#24566)
+- sync.stdatomic: add atomic types (#24561)
+- sync.stdatomic: turn panic() in new_atomic[T]() into a $compile_error() (#24573)
+- sync: add condition support (#24574)
+- builtin: flush stdout on panic (#24606)
+- Document the behaviour of % for negative numbers; in V: -10 % 7 == -3 (#24604)
+- math.big: remove unnecessary casting from Integer.is_power_of_2/0 (#24614)
+- math.big: make is_power_of_2() be false for negatives (it now matches Julia's ispow2/1) (#24619)
+- vlib: vanilla_http_server (#24202)
+- os: support `dotfiles := os.walk_ext('.', '', hidden: true)` (#24617)
+- builtin: remove playground related code (the current playground uses a container/sandbox) (#24632)
+- comptime: fix `T.indirections` comparison (fix #24630) (#24636)
+- math.big: add test for radix_str() and integer_from_radix() (#24644)
+- runtime: make free_memory() and total_memory() return Result types to allow for reporting errors (#24651)
+- math.big: improve the performance of radix_str() ~9 times (#24666)
+- math.big: speed up ~10x integer_from_radix() (#24674)
+- sync.stdatomic: fix bug with add() and sub() returning the new values, add voidptr support, add swap() and compare_and_swap() (#24685)
+- sync.stdatomic: add atomic_thread_fence(), cpu_relax() (#24690)
+- v: support `@DIR` (as a comptime equivalent to `os.dir(@FILE))` at runtime) (#24742)
+- thirdparty: print the glGetError() code on failure too in sokol_gfx.h, to make diagnostic easier
+- builtin: make array.ensure_cap/1 public
+- os.font: fixes for `-os android`
+- vlib: add a pool module (#24661)
+- zstd: make the api more V like
+- szip: fix panic on empty files (#24335)
+
+#### Web
+- net: add `read_ptr/2` (from `read/1`) to `UdpConn` for consistency with `TcpConn` (#24000)
+- net: make `close/0`, `select/2` and `remote/0` methods of `UdpSocket` `pub` (#24004)
+- Fix $dbg on function that uses veb comptimecall (fix #23999) (#24088)
+- veb: allow route methods, that are tagged with `@[unsafe]`
+- veb: support `-d veb_max_read_bytes=16384`, `-d veb_max_write_bytes=16384`, `-d veb_default_port=1234`, `-d veb_max_http_post_size_bytes=8388608`
+- net.http: support `v -http -d http_folder=vlib/_docs` (allow customizing the folder, port, and index file through CLI arguments to v -http)
+- thirdparty: upgrade to mbedtls v3.6.3.1, add a .patch file with the local changes (#24602)
+- veb: fix handling of default CorsOptions.allowed_headers (#24703)
+
+#### ORM
+- orm: fix default value quote (fix #24052) (#24057)
+- orm: fix type alias not supported in table columns (fix #15478) (#24062)
+- orm: fix gen sql complex where (fix #24136) (#24138)
+- orm: skip orm_complex_where_test.v for `sanitize-memory-clang` too
+- orm: add function call based builder API for dynamic queries (fix #24178) (#24196)
+- orm: set default value for require field if database value is null (fix #24221) (#24222)
+- orm: fix option field with default null value (fix #24222) (#24228)
+- orm: add or_where() method to the builder (fix #24244) (#24250)
+- orm: add IN and NOT IN (#24634)
+- orm: add `in` and `not in` to orm_func (fix #24639) (#24642)
+- breaking,orm: add table attrs; add table/field comment support for mysql and pg (#24744)
+
+#### Database drivers
+- db.mysql: use mysql datatype for alloc string_binds_map, not orm's (#24126)
+- db.mysql: fix handling of nullable timestamp (fix #24120) (#24125)
+- db.mysql: add null result support (fix #24130) (#24131)
+- db.mysql: use hardcoded const declare (fix #22086) (#24162)
+- db: connection pool (#24161)
+- db: mysql,pg,sqlite add transaction support (fix #24290) (#24352)
+- db.pg: fix incompatible fn signature (#24549)
+- db: add redis (#24730)
+
+#### Native backend
+- native: use builtin exit function (#24578)
+- native: improve string support (#24600)
+- native: implement `for in string` for amd64 (#24613)
+- native: support nested structs, improve support for right expr of IndexExpr (#24627)
+- native: leave only the unique paths in g.linker_include_paths, before doing lookups
+- native: support C constants (#24660)
+- native: add a temporary special case for `C.EOF` (#24724)
+
+#### C backend
+- Fix parallel cached_type_to_str access (fix #23980) (#23998)
+- Fix codegen to make mutable sumtype working (fix #23982, part 1, needed for bootstrapping) (#23988)
+- Fix arm64 asm operand position; fix arm64 asm imm; support arm64 dot instruction (#24017)
+- Fix mutable ptr sumtype  (#24021)
+- Fix asm comments of arm32 (#24025)
+- Allow asserts inside fns, called in const/global initialization, in test files (fix #24029) (#24031)
+- Fix codegen for option return unwrapping on last statement (fix #24026) (#24030)
+- Fix match option with case non option (fix #24047) (fix #24048) (#24051)
+- Support measuring programs, that use multiple threads in the new profiler column (turn `prof_measured_time` into a thread local, for the supported C compilers) (#24061)
+- Fix `@[keep_args_alive]` with ptr (fix #23973) (#24058)
+- Remove unused macro V64_PRINTFORMAT
+- Fix option array push on unwrapped array (fix #24073) (#24079)
+- Fix nested array support for the orm (fix #19327) (#24080)
+- Fix `x in [...]!` operator with fixed arrays (fix #24082) (#24083)
+- Fix codegen for comptime multiline attr (fix #23964) (#24087)
+- Fix codegen for selector with embed field option (fix #24084) (#24085)
+- Fix generic result return (fix #24097) (#24100)
+- Fix showing the expression, as literal value, in case of `assert s[x..y] == "literal"` (fix #24103) (#24105)
+- Fix codegen for option unwrapped var passed to generic option type (fix #23972) (#24096)
+- Fix selector option unwrapping on infix (fix #24108) (#24115)
+- Sort the paths, used in coutput_test.v
+- Skip emitting mman.h and pthreads related code, for freestanding builds (#24118)
+- Add s390x assembly support + test (#24129)
+- Parser,checker,cgen: fix wrong auto heap deref of auto `index` loop var (fix #24117) (#24124)
+- Fix non-voidptr to voidptr on `-cstrict` + notice about such usage (fix #24139) (#24143)
+- Fix multi return with option type (#24144)
+- Remove obfuscation (`strip` should be used instead); temporary fix for usecache + toml
+- Fix zero left padding (fix #24199) (#24201)
+- Fix variadic sumtype args passing (fix #24150) (#24207)
+- Fix codegen for const to c string (fix #24235) (#24248)
+- Fix codegen for fixed array init with init using structinit (#24269)
+- Fix missing braces for const init with castexpr from option unwrapping expr (#24276)
+- Fix codegen for index expr on for loop with branchstmt (fix #22760) (#24289)
+- Fix codegen for assigning fixed array on defer var (fix #24300) (#24305)
+- Fix codegen for multi return with aliased fixed array (fix #24280) (#24295)
+- Fix codegen for nested selector unwrapping on lhs (fix #24292) (#24293)
+- Add ppc64le assembly support + test (#24299)
+- Fix s390x closure thunk (use floating point register) (#24258)
+- Fix riscv64 closure thunk (use floating point register) (#24315)
+- Fix codegen for writing on unwrapped selector (fix #24316) (#24323)
+- Fix codegen for thread.call() on var auto heap (fix #24326) (#24327)
+- Fix codegen for handling multiple return result type on call (fix #24341) (#24344)
+- Fix codegen for nested selector option ptr (fix #24339) (#24345)
+- Fix arm64 closure + remove stub in test (#24332)
+- Workaround tcc aarch64 bug (fix #24331) (#24354)
+- Fix riscv32 closure (#24355)
+- Fix codegen for anon option fn struct field init (fix #24392) (#24400)
+- Fix `if mut var != none {` for optional interface values (fix #24351) (#24410)
+- Fix interface `unsafe {nil}` comparison and initialization (fix #24374) (#24411)
+- Ast,cgen,parser,pref: support loongarch64 inline assembly, add test (#24440)
+- Fix array init with interface element type (fix #24442) (#24454)
+- Fix const declaration dependant mapping when using update_expr (fix #24437) (#24455)
+- Fix comptimecall with map receiver (fix #24448) (#24449)
+- Fix assign from `for mut var in arr {` to pointer (fix #24432) (#24456)
+- Workaround tcc aarch64 fn call bug (fix #24473) (#24477)
+- Workaround tcc aarch64 spawn call bug (fix #24482) (#24483)
+- Fix map of fixed array value in if guard (fix #24488) (#24496)
+- Fix codegen for assigning `nil` or `0` to option ptr field (fix #24447) (fix #24500) (#24502)
+- Fix codegen for array of option element auto eq `a == [?int(none)]` (#24504)
+- Fix codegen inconsistency handling `nil` param to arg expecting ptr (fix #24491) (#24503)
+- Fix pattern generated by `const_init_or_block.vv` in `vlib/v/gen/c/coutput_test.v`, when VFLAGS=-no-parallel is used
+- Fix tmp var redeclaration on const inited later (fix #24521) (fix #24517) (#24524)
+- Fix generic name handling for struct generic (fix #24530) (#24565)
+- Fix initialize error object in or_block (fix #24529) (#24576)
+- Improve the readability of `switch() {` statements, generated by `match() {` ones (#24618)
+- Reduce v.c size by ~4% by removing comments and using shorter literals
+- Fix enumval str() call on stringinterliteral (fix #24702) (#24705)
+
+#### JavaScript backend
+- Fix array type checking in sum type match expressions (fix #24237 ) (#24259)
+- js: fix callbacks in structure parameters (fix #24260) (#24324)
+- Fix array initialization with "index" and "it" (fix #24397) (#24429)
+- Cannot assign unsafe nil values (fix #24407, #24436) (#24458)
+- Fix alias type initalization (fix #24475) (#24480)
+- Fix casting (fix #24512) (#24519)
+- Alias types are not properly resolved (fix #24486) (fix #24507) (#24514)
+- Implement Map.keys() and Map.values() methods (fix #24209) (#24608)
+- Fix string.runes method (fix #20500) (#24609)
+- Fix direct map key access and map.len (fix #24616, fix #24605) (#24620)
+- Fix map to string fails on rune keys (fix #24637) (#24638)
+- Fix maps being always constructed using string keys (fix #24607) (fix #24671) (#24673)
+- Fix slightly incorrect JS (esbuild was broken on master) (fix #23711) (#24676)
+
+#### vfmt
+- Convert `"hello".str` => `c"hello"` (fix #24635) (#24652)
+
+#### Tools
+- Let test_os_process.v use `unbuffer_stdout()` to make the output more reliable
+- os,tools: make easier analyzing process_test.v failures on the CI
+- ci: fix build conditions that had `sanitize-memory-clang?` instead of `sanitize-memory-clang`
+- ci: skip running the `s390 CI` job for simple doc/yml changes (#24160)
+- ci: fix shell script issues reported by actionlint (#24168)
+- Remove the `src` subdir from projects, created by `v new` (#24236)
+- Add support for `// vtest build: !os_id_ubuntu?` tags in the _test.v files, detected by `v test`
+- ci: fix `v -o v2 -usecache cmd/v` after ad5b829
+- Fix vrepl for `import mod { f }` (#24340)
+- ci: debug hub_docker_ci.yml issue (try 1, disable cache, run linters)
+- ci: debug hub_docker_ci.yml issue (try 2, add concurrency group, add a persistent single builder `gh-builder`)
+- ci: debug hub_docker_ci.yml issue (try 3, restore the cache-from:/cache-to: lines)
+- ci: fix hub_docker_ci.yml issue - comment out the cache-from:/cache-to: lines again
+- Support vreduce timeout, vreduce custom run command (#24359)
+- Rewrite `v timeout`, support killing the child process on timeout by default (#24367)
+- Use breadth first search in vreduce (#24369)
+- Vreduce fix var names (#24373)
+- Fix `v timeout 2 sleep 5`
+- Fix `./v -d network test cmd/tools/vpm`
+- ci: reduce false positives for cover_test.v and vdoc_test.v
+- Save the modified content more frequently in `v reduce`, fix timeout leaks (#24405)
+- Reduce padding for `v doc` produced html nodes too
+- ci: reduce the noise in check annotations for github PR reviews, due to the new warning in option_test.c.v
+- Improve show_ancient_deprecations.v, by ignoring false positives for deprecation tags in // comments
+- Check for Git repository in `v doctor` (packaged V versions often lack a .git/ folder) (fix #24419) (#24420)
+- vlib,tools: add an `arrays.diff` module, implement a simple platform independent tool `v diff file1.txt file2.txt` using it (#24428)
+- ci: bump creyD/prettier_action from 4.3 to 4.5 (#24439)
+- ci: use `v retry` to reduce the false positives for retrieving the dependencies for vinix too
+- ci: show `hg version` too, to ease the diagnosing of install_version_test.v failures
+- Let cmd/tools/vpm/install_test.v use a .hg/hgrc file too
+- repl: fix typeof(a) with warning (fix #24499) (#24515)
+- Make `v doctor` show CFLAGS and LDFLAGS too (if set)
+- Make `v search ui` work again through the vpm site (fix #23966) (#24535)
+- ci: fix unused var warning in cmd/tools/vpm/common.v
+- ci: prevent future changes to cmd/tools/vpm/common.v, that introduce warnings/notices to pass in PRs
+- x.benchmark: align the output of BenchmarkResult.print/0
+- Ease diagnosing CI failures of vtimeout_test.v
+- ci: make sure that only one copy of native_test.v is executed at once, when run through `v test vlib` (fix #24505)
+- Ignore .db and .sqlite files by default in `v watch` (such DB files are very likely to change during prototyping)
+- .gitignore: ignore .db and .sesskey files as well
+- ci: bump creyD/prettier_action from 4.5 to 4.6 (#24687)
+- Make  `v doc -f md module` output useful by default (#24737)
+- ci: fix native_backend_ci.yml concurrency group setting (prevent jobs for different commits on master to cancel each other)
+- Fix overflow detected in the sanitized runs on the CI (#24064)
+- ci: reduce code duplication in linux_ci.vsh
+
+#### Operating System support
+- os: implement Process.is_pending() on windows (fix #23990) (#23993)
+- os: support .set_environment() on windows too (fix #10628) (#23996)
+- thirdparty: update thirdparty-linux-amd64_tcc.sh, to also record its own full invocation command, and commit the changes automatically
+- thirdparty: add thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh
+- ci: reduce false positives for slow runs of the gcc-windows job
+- gg: fix screen_size() on macos with multiple displays
+- ci: add riscv64_linux_ci.yml (based on QEMU) as well (#24181)
+- ci: use `apt update` before `apt install` in cross_ci.yml, to make the linux job more robust
+- thirdparty: add thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh for compiling tcc on macos (first draft)
+- Simplify the implementation of get_linux_os_name in `v doctor`
+- os.filelock: compile without warnings with gcc on windows
+- ci: use windows-2025 for the gcc-windows job (since it has gcc 14.2.0) (#24304)
+- ci: skip option_ptr_unwrap_test.v on windows with msvc (#24320)
+- os: fix windows rmdir GetLastError() (fix #24356) (#24357)
+- Enable windows tcc_backtrace() support (#24377)
+- ci: reduce false positives for init_global_test.v on windows (retry it 2 times)
+- ci: reduce false positives for orm_func_test.v on windows (retry it 2 times)
+- os: force using `C.CREATE_NO_WINDOW` on windows in os.raw_execute/1 (fix #24390) (#24418)
+- Fix v doctor output on FreeBSD ; do not run ldd to get the glibc version (#24427)
+- runtime: improve free_memory implementation for OpenBSD, by getting the stats from its UVM system (#24431)
+- runtime: fix cast error in free_memory implementation for OpenBSD (#24445)
+- Use a `.hg/hgrc` file for install_version_test.v (workaround windows failure)
+- os: add debugger_present implementation for OpenBSD (fix #23603) (#24490)
+- veb: reduce veb_max_write_bytes from 16KB to 2KB (fix sending large dynamic responses from veb on macos/freebsd) (fix #24523) (#24522)
+- os: fix os.File's tell/0 method for windows (fix #24217) (#24218)
+- net.openssl: replace SSL_get1_peer_certificate by SSL_get_peer_certificate for OpenBSD (#24556)
+- net.mbedtls: disable AES-NI on OpenBSD with tcc (fix #22239) (#24560)
+- net.mbedtls: enable MBEDTLS_THREADING_C and MBEDTLS_THREADING_PTHREAD on OpenBSD (#24572)
+- thirdparty: add thirdparty/build_scripts/thirdparty-openbsd-amd64_tcc.sh for compiling tcc on OpenBSD (#24592)
+- v.builder: enable -fwrap for C compilation on OpenBSD too (#24585)
+- v.pkgconfig: add the default `/opt/local/lib/pkgconfig` for MacPorts on macos (#24626)
+- sync: increase retries for vlib/sync/select_close_test.v to 3, to reduce CI false positives in the gcc-windows job
+- ci: remove script to build tcc on FreeBSD (obsoleted by thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh) (#24681)
+- encoding.iconv: add path for iconv library on FreeBSD (#24682)
+- native: skip linux.vv too, for the sanitized jobs (similar to libc.vv)
+- ci: migrate from windows-2019 runner to windows-2025 runner in most jobs (github deprecated the 2019 runner) (#24672)
+- runtime: fix -cstrict compilation (use usize() cast in free_memory) on OpenBSD (#24696)
+- Remove specific case for FreeBSD in `cmd/tools/vtest_test.v` (#24707)
+- docs: add section in README for compilation on FreeBSD (#24706)
+- thirdparty: add script to build libgc on FreeBSD/amd64 (#24717)
+- builtin: use local static libgc for FreeBSD with tcc (fix #24710) (fix #24683) (#24720)
+- ci: update and improve FreeBSD CI (#24726)
+- ci: add CI for OpenBSD (#24732)
+- gg: fix .char event handling for backspace, delete, tab and enter for linux/x11 (send appropriate .char codes to the apps, similar to macos)
+- Add aarch64 atomics support in thirdparty/stdatomic/nix/atomic.h (fix #24294) (#24296)
+- v.trace_calls: now musl has gettid(), there is no need for the shim on newer Alpine etc (#24245)
+
+#### Examples
+- Fix `v -os wasm32_emscripten -o ms.html examples/gg/minesweeper.v` (use os.asset to load the font, avoid the implicit closures for the frame/event callbacks)'
+- Update rotating_textured_quad.v with instructions on how to compile/run it with emscripten and a browser
+- Add a small examples/gg/bouncing_balls.v simulation of falling balls
+- Fetch 30 stories instead of 10 in examples/news_fetcher.v
+- Add sync_pool.v for easier testing/diagnosing issues with the `sync.pool` implementation on different platforms
+- Add a `-profile` report column, to show only the func time, *excluding* the accumulated children calls time (usable through `./v -profile - run a.v |sort -nk3` for example) (#24056)
+- doc: improve Shared and Channels's topics, add more examples (#24155)
+- orm: fix option type, convert from int to i8, add examples, etc (fix #24211) (#24213)
+- Fix optional callback parameter and improve examples (fix #24325) (#24336)
+- Reduce padding for code examples, to fit more examples on the same screen without scrolling
+- Cleanup unsafe{} blocks that are not needed anymore in examples/sokol/08_sdf/sdf.v
+- Show the number of pushes in sokoban too
+- os.asset: add read_text/2 too, use it to simplify the sokoban example
+- Support directly loading sokoban level files by path
+- Add more Sokoban levels
+- Support boxoban style collections of levels files (from https://github.com/google-deepmind/boxoban-levels/)
+- Add a simple sudoku solver
+- Add primes.v, that shows how to get command line arguments, and use loops and functions
+- Add a small memory game (#24643)
+- Cleanup memory.v (reduce it to 135 lines)
+- builtin,os: enable no warnings for gg programs like `v -gc boehm_leak -cg -keepc run examples/gg/minimal.v` (part 1 - before the `gg` loop) (#24749)
+
+
 ## V 0.4.10
 *20 Mar 2025*
 
