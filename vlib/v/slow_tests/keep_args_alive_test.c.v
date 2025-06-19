@@ -1,4 +1,3 @@
-// vtest flaky: true
 // vtest retry: 4
 /*
 * To verify the effect of "[keep_args_alive]", this attribute may be commented out.

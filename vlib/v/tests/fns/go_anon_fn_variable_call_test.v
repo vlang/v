@@ -1,4 +1,3 @@
-// vtest flaky: true
 // vtest retry: 3
 
 fn sum1(a int, b int) int {
