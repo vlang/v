@@ -55,8 +55,10 @@ fn test_private_key() ! {
 	x1 := pv1.x25519(pb1.key)!
 	assert x0 == x1
 	// free the resources
-	pv0.free()
-	pv1.free()
+	unsafe {
+		pv0.free()
+		pv1.free()
+	}
 }
 
 // requirement: when receiving such an array, implementations of x25519 (but not x448) MUST

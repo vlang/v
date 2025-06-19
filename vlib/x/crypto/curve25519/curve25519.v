@@ -11,18 +11,18 @@ import crypto.internal.subtle
 import crypto.ed25519.internal.edwards25519
 
 // scalar_size is the size of the Curve25519 key
-pub const scalar_size = 32
+const scalar_size = 32
 
 // point_size is the size of the Curve25519 point
-pub const point_size = 32
+const point_size = 32
 
 // zero_point is point with 32 bytes length of zeros bytes
 const zero_point = []u8{len: 32, init: u8(0x00)}
 
 // base_point is the canonical Curve25519 generator, encoded as a byte with value 9,
 // followed by 31 zero bytes
-pub const base_point = [u8(9), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0]
+const base_point = [u8(9), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0]
 
 // PrivateKey represents Curve25519 private key
 @[noinit]
@@ -68,7 +68,7 @@ pub fn PrivateKey.new_from_seed(seed []u8) !&PrivateKey {
 	}
 }
 
-// public_key returns associated public key part of this PrivateKey.
+// public_key returns the associated public key part of the PrivateKey.
 @[direct_array_access]
 pub fn (mut pv PrivateKey) public_key() !&PublicKey {
 	if pv.done {
@@ -80,7 +80,7 @@ pub fn (mut pv PrivateKey) public_key() !&PublicKey {
 	}
 }
 
-// equal tells whether two's key was equal. Its compares internal bytes key.
+// equal returns whether two private keys are equal.
 @[direct_array_access]
 pub fn (pv PrivateKey) equal(oth PrivateKey) bool {
 	if pv.done || oth.done {
@@ -110,7 +110,7 @@ pub fn (mut pv PrivateKey) x25519(point []u8) ![]u8 {
 	return out
 }
 
-// bytes return the clone of underlying PrivateKey bytes.
+// bytes return a clone of the bytes of the underlying PrivateKey
 pub fn (pv PrivateKey) bytes() ![]u8 {
 	if pv.done {
 		return error('PrivateKey has been marked as freed')
@@ -134,7 +134,32 @@ mut:
 	key []u8
 }
 
-// equal tells whether two's public key was equal
+// new_from_bytes creates a new Curve25519 public key from provided bytes.
+pub fn PublicKey.new_from_bytes(bytes []u8) !&PublicKey {
+	if bytes.len != point_size {
+		return error('PublicKey.new: bad bytes length')
+	}
+	// Refers to the D.J. Bernstein, the designer of the curve25519, public key validation
+	// in curve25519 is generally not needed for Diffie-Hellman key exchange.
+	// See https://cr.yp.to/ecdh.html#validate
+	// But there are availables suggestion to do validation on them spreads on the internet, likes
+	// bytes return the clone of the bytes of the underlying PublicKey
+	// - check the shared value and to raise exception if it is zero.
+	// - You can also bind the exchanged public keys to the shared keys, i.e.,
+	//   instead of using H(abG) as the shared keys, you should use H(aG || bG || abG)
+	//
+	// We only, check for zeros public key
+	if is_zero(bytes) {
+		return error('PublicKey.new: get zeros bytes')
+	}
+
+	// otherwise, we can return it
+	return &PublicKey{
+		key: bytes
+	}
+}
+
+// equal tells whether two public keys are equal
 pub fn (pb PublicKey) equal(other PublicKey) bool {
 	// different length, should not happen
 	if pb.key.len != point_size || other.key.len != point_size {
@@ -143,7 +168,7 @@ pub fn (pb PublicKey) equal(other PublicKey) bool {
 	return subtle.constant_time_compare(pb.key, other.key) == 1
 }
 
-// bytes return the clone of underlying PublicKey bytes
+// bytes return the clone of the bytes of the underlying PublicKey
 pub fn (pb PublicKey) bytes() ![]u8 {
 	if pb.key.len != point_size {
 		return error('bad public key size')
@@ -151,8 +176,7 @@ pub fn (pb PublicKey) bytes() ![]u8 {
 	return pb.key.clone()
 }
 
-// SharedOpts was configuration options to `derive_shared_secret` routine
-// for driving shared secret creation.
+// SharedOpts is the configuration options to `derive_shared_secret` routine
 @[params]
 pub struct SharedOpts {
 pub mut:
@@ -161,7 +185,7 @@ pub mut:
 	drv_opts      DeriveOpts
 }
 
-// DeriveOpts was config to drive the Derivator's derive operation.
+// DeriveOpts is config to drive the Derivator's derive operation.
 @[params]
 pub struct DeriveOpts {}
 
@@ -218,7 +242,7 @@ pub fn derive_shared_secret(mut local PrivateKey, remote PublicKey, opt SharedOp
 // according to RFC 7748, Section 5. scalar, point and the return value are slices of 32 bytes.
 // The functions take a scalar and a `u-coordinate` as inputs and produce a `u-coordinate` as output.
 // Although the functions work internally with integers, the inputs and
-// outputs are 32-byte strings (for X25519)
+// outputs are 32-bytes length (for X25519).
 // scalar can be generated at random, for example with `crypto.rand` and point should
 // be either `base_point` or the output of another `x25519` call.
 @[direct_array_access]
@@ -270,7 +294,7 @@ fn scalar_mult(mut dst []u8, mut scalar []u8, point []u8) ! {
 	if point.len != point_size {
 		return error('point.lenght != 32')
 	}
-	// Note: we dont clamping scalar here, and responsible to the caller
+	// Note: we  dont clamping scalar here, and responsible to the caller
 	// to do the clamping. Its assumed scalar has been clamped.
 	mut x1 := edwards25519.Element{}
 	mut x2 := edwards25519.Element{}

@@ -1,7 +1,7 @@
 # curve25519
 ------------
 This module implement Diffie-Hellman key exchange mechanism (ECDHA) based on elliptic curve 
-known as Curve25519 in pure v.
+known as Curve25519 in pure V.
 
 ## About curve25519
 
@@ -22,27 +22,32 @@ Examples
 import x.crypto.curve25519
 
 fn main() {
-	// Lets for example, two peers, Alice and Bob want to create and share a shared secret together
+	// For example, two peers, Alice and Bob, want to create a shared secret together
 	//
-	// Alice generates own private key
+	// Alice generates a private key
 	mut alice_pvkey := curve25519.PrivateKey.new()!
-	// The Alice's PublicKey to be shared with Bob
+	// Alice's PublicKey to be shared with Bob
 	alice_pbkey := alice_pvkey.public_key()!
 
-	// The others peer Bob, has an own private key
+	// The other peer, Bob, has a different private key
 	mut bob_pvkey := curve25519.PrivateKey.new()!
-	// The Bob's public key to be shared with Alice
+	// Bob's public key to be shared with Alice
 	bob_pbkey := bob_pvkey.public_key()!
 
-	// Lets two peer has received and send their respective public key
+	// Let the two peers exchange their respective public keys
 	//
-	// Alice derives shared secret with her own private key with shared Bob's public key
+	// Alice derives the shared secret, using her own private key, and the public key that Bob shared
 	alice_shared_sec := curve25519.derive_shared_secret(mut alice_pvkey, bob_pbkey)!
 
-	// Bob derives shared secret with his own private key with Alice's public key
+	// Bob derives the shared secret, using his own private key, and the public key that Alice shared
 	bob_shared_sec := curve25519.derive_shared_secret(mut bob_pvkey, alice_pbkey)!
 
-	// two's shared secret should identical
+	// the two shared secrets (derived by Alice, and derived by Bob), should be the same
+	//
+	println(alice_shared_sec.hex()) // 49fd4a4d0637d2413cd501b20111fc50a592dc21460e45f451c03d1fd3cef900
+	println(bob_shared_sec.hex()) // 49fd4a4d0637d2413cd501b20111fc50a592dc21460e45f451c03d1fd3cef900
+	dump(alice_shared_sec == bob_shared_sec) // alice_shared_sec == bob_shared_sec: true
+
 	assert alice_shared_sec == bob_shared_sec
 }
 ```
