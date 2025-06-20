@@ -300,6 +300,21 @@ const div_test_data = [
 ]
 // vfmt on
 
+struct ModEuclidTest {
+	dividend TestInteger
+	divisor  TestInteger
+	modulus  TestInteger
+}
+
+// vfmt off
+const mod_euclid_test_data = [
+	ModEuclidTest{-7, 3, 2},
+	ModEuclidTest{7, 3, 1},
+	ModEuclidTest{7, -3, 1},
+	ModEuclidTest{-7, -3, 2},
+]
+// vfmt on
+
 enum Comparison {
 	less    = -1
 	equal   = 0
@@ -652,6 +667,12 @@ fn test_div() {
 fn test_mod() {
 	for t in div_mod_test_data {
 		assert t.dividend.parse() % t.divisor.parse() == t.remainder.parse()
+	}
+}
+
+fn test_mod_euclid() {
+	for t in mod_euclid_test_data {
+		assert t.dividend.parse().mod_euclid(t.divisor.parse()) == t.modulus.parse()
 	}
 }
 

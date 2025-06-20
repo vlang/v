@@ -513,6 +513,33 @@ pub fn (dividend Integer) mod_checked(divisor Integer) !Integer {
 	return r
 }
 
+// modulo_euclid returns the result of mathematical modulus.
+// The result is always non-negative for positive `divisor`.
+//
+// WARNING: this method will panic if `divisor == 0`.
+@[inline]
+pub fn (dividend Integer) mod_euclid(divisor Integer) Integer {
+	r := dividend % divisor
+	if r < zero_int {
+		return r + divisor.abs()
+	} else {
+		return r
+	}
+}
+
+// mod_euclid_checked returns the result of mathematical modulus.
+// The result is always non-negative for positive `divisor`
+// or an error if `divisor == 0`.
+@[inline]
+pub fn (dividend Integer) mod_euclid_checked(divisor Integer) !Integer {
+	r := dividend.mod_checked(divisor)!
+	if r < zero_int {
+		return r + divisor.abs()
+	} else {
+		return r
+	}
+}
+
 // mask_bits is the equivalent of `a % 2^n` (only when `a >= 0`), however doing a full division
 // run for this would be a lot of work when we can simply "cut off" all bits to the left of
 // the `n`th bit.
