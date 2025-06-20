@@ -473,10 +473,6 @@ pub fn (dividend Integer) div_mod_checked(divisor Integer) !(Integer, Integer) {
 // refer to `div_checked`.
 @[inline]
 pub fn (dividend Integer) / (divisor Integer) Integer {
-	if dividend.signum == -1 {
-		q, _ := dividend.neg().div_mod(divisor)
-		return q.neg()
-	}
 	q, _ := dividend.div_mod(divisor)
 	return q
 }
@@ -489,10 +485,6 @@ pub fn (dividend Integer) / (divisor Integer) Integer {
 // In other words, the result is negative 3, and is NOT positive 4.
 @[inline]
 pub fn (dividend Integer) % (divisor Integer) Integer {
-	if dividend.signum == -1 {
-		_, r := dividend.neg().div_mod(divisor)
-		return r.neg()
-	}
 	_, r := dividend.div_mod(divisor)
 	return r
 }
