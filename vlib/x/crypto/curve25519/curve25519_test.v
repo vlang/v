@@ -99,9 +99,10 @@ struct LowOrderPoint {
 }
 
 const loworder_points = [
+	// zeros point
 	LowOrderPoint{[u8(0x00), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00], error('bad input point: low order point')},
+		0x00, 0x00, 0x00, 0x00, 0x00], error('x25519: unallowed zeros/scalar point')},
 	LowOrderPoint{[u8(0x01), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00], error('bad input point: low order point')},
@@ -354,55 +355,3 @@ const tests_vectors = [
 			0x61, 0x96, 0x1e, 0xfc, 0xb]
 	},
 ]
-
-// Please be aware, this is long running times test, its loop until 1.000.000 times.
-// so, please be patient. See the detail of the type 2 test from rfc
-// see at https://datatracker.ietf.org/doc/html/rfc7748#section-5.2
-//
-// Currently, this test was disabled due to its takes long time to complete,
-// please uncomment it if you need run the test.
-// On my test machine, its pass successfully in 2225590.282 ms
-// ```v
-// ... (previous line)
-// ...
-// start i: 999995
-// start i: 999996
-// start i: 999997
-// start i: 999998
-// start i: 999999
-//
-//     OK   2225590.282 ms     3 asserts | curve25519.test_x25519_after_iteration_from_rfc_vector_type2()
-//     Summary for running V tests in "curve25519_test.v": 3 passed, 3 total. Elapsed time: 2225590 ms.
-// ```
-/*
-fn test_x25519_after_iteration_from_rfc_vector_type2() ! {
-	iteration1 := hex.decode('422c8e7a6227d7bca1350b3e2bb7279f7897b87bb6854b783c60e80311ae3079')!
-	iteration1000 := hex.decode('684cf59ba83309552800ef566f2f4d3c1c3887c49360e3875f2eb94d99532c51') !
-	iteration1000000 := hex.decode('7c3911e0ab2586fd864497297e575e6f3bc601c0883c30df5f4dd2d24f665424') !
-
-	// Initially, set k and u to be the following values
-	key := '0900000000000000000000000000000000000000000000000000000000000000'
-	mut k := hex.decode(key)!
-	mut u := k.clone()
-	mut r := []u8{len: 32}
-	
-	// For each iteration, set k to be the result of calling the function and u
-	// to be the old value of k.  The final result is the value left in k.
-	//
-	for i in 0..1000000 {
-		println("start i: $i")
-		tmp_k := k.clone()
-		r = x25519(mut k, u) !
-		unsafe {u = tmp_k}
-		unsafe {k = r}
-		if i == 0 {
-			assert k == iteration1
-		} else if i == 999 {
-			assert k == iteration1000
-		} else if i == 999999 {
-			assert k == iteration1000000
-		}
-		
-	}
-}
-*/
