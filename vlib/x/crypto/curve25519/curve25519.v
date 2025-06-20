@@ -101,6 +101,12 @@ pub fn (mut pv PrivateKey) x25519(point []u8) ![]u8 {
 	if point.len != point_size {
 		return error('bad point size, should be 32')
 	}
+	// We reject and disallow zero-bytes point to be passed
+	// and check it here as a quick exit before heavy math
+	// calculation on `x25519` call
+	if is_zero(point) {
+		return error('x25519: get zeros point')
+	}
 	// even technically its possible, but we limit to unallow it
 	if subtle.constant_time_compare(pv.key, point) == 1 {
 		return error('pv.key identical with point')
@@ -121,6 +127,12 @@ pub fn (pv PrivateKey) bytes() ![]u8 {
 // free releases underlying key. Dont use the key after calling .free
 @[unsafe]
 pub fn (mut pv PrivateKey) free() {
+	// when private key has been marked as done (freed),
+	// calling free on already freed key would lead to undefined behavior.
+	// so, we check it
+	if pv.done {
+		return
+	}
 	unsafe { pv.key.free() }
 	// sets flag to finish
 	pv.done = true
@@ -143,7 +155,7 @@ pub fn PublicKey.new_from_bytes(bytes []u8) !&PublicKey {
 	// in curve25519 is generally not needed for Diffie-Hellman key exchange.
 	// See https://cr.yp.to/ecdh.html#validate
 	// But there are availables suggestion to do validation on them spreads on the internet, likes
-	// bytes return the clone of the bytes of the underlying PublicKey
+	// - blacklisting the known bad public keys
 	// - check the shared value and to raise exception if it is zero.
 	// - You can also bind the exchanged public keys to the shared keys, i.e.,
 	//   instead of using H(abG) as the shared keys, you should use H(aG || bG || abG)
@@ -209,6 +221,7 @@ fn (rd RawDerivator) derive(sec []u8, opt DeriveOpts) ![]u8 {
 // 6.  Diffie-Hellman with Curve25519
 // See https://datatracker.ietf.org/doc/html/rfc7748#section-6
 pub fn derive_shared_secret(mut local PrivateKey, remote PublicKey, opt SharedOpts) ![]u8 {
+	// TODO: should this check be relaxed ?
 	// check for safety
 	local_pubkey := local.public_key()!
 	if local_pubkey.equal(remote) {
@@ -220,6 +233,8 @@ pub fn derive_shared_secret(mut local PrivateKey, remote PublicKey, opt SharedOp
 	// Both now share shared = X25519(local_privkey, remote_pubkey) = X25519(remote_privkey, local_pubkey)
 	// as a shared secret, which is then used as a key or input to a key derivation function.
 	sec := local.x25519(remote.key)!
+	// Internally, x25519 has builtin check for zeros result
+	// but only for non base point branch on x25519_generic routine
 	if is_zero(sec) {
 		return error('zeroes shared secret')
 	}
@@ -247,6 +262,11 @@ pub fn derive_shared_secret(mut local PrivateKey, remote PublicKey, opt SharedOp
 // be either `base_point` or the output of another `x25519` call.
 @[direct_array_access]
 pub fn x25519(mut scalar []u8, point []u8) ![]u8 {
+	// likes the previous comment, we add zeroes point check here
+	// and reject if it happen.
+	if is_zero(point) || is_zero(scalar) {
+		return error('x25519: unallowed zeros/scalar point')
+	}
 	mut dst := []u8{len: 32}
 	// we do bytes clamping here, to make sure scalar was ready to use
 	clamp(mut scalar)!
@@ -264,8 +284,8 @@ fn x25519_generic(mut dst []u8, mut scalar []u8, point []u8) ![]u8 {
 			return error('dst: get base_point')
 		}
 	} else {
-		// base := point.clone()
 		scalar_mult(mut dst, mut scalar, point)!
+		// check for zeros point result
 		if is_zero_point(dst) {
 			return error('bad input point: low order point')
 		}
