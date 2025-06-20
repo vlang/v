@@ -270,6 +270,11 @@ fn should_skip(relpath string) bool {
 		}
 	}
 	if relpath.contains('freestanding_module_import_') {
+		$if !amd64 {
+			// https://github.com/vlang/v/issues/23397
+			eprintln('> skipping ${relpath} on != amd64')
+			return true
+		}
 		if user_os != 'linux' {
 			eprintln('> skipping ${relpath} on != linux')
 			return true
