@@ -6,7 +6,6 @@
 //     SHA512ShortMsg.rsp
 import crypto.sha512
 import encoding.hex
-import os
 
 // This structure deals with short message tests
 struct SHA512TestCase {
