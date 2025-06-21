@@ -598,7 +598,7 @@ pub fn find_abs_path_of_executable(exe_name string) !string {
 	for suffix in executable_suffixes {
 		fexepath := exe_name + suffix
 		if is_abs_path(fexepath) {
-			return real_path(fexepath)
+			return fexepath
 		}
 		mut res := ''
 		path := getenv('PATH')
@@ -614,7 +614,7 @@ pub fn find_abs_path_of_executable(exe_name string) !string {
 			}
 		}
 		if res.len > 0 {
-			return real_path(res)
+			return abs_path(res)
 		}
 	}
 	return error_failed_to_find_executable()
