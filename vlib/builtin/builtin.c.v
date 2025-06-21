@@ -680,6 +680,9 @@ pub fn free(ptr voidptr) {
 	$if trace_free ? {
 		C.fprintf(C.stderr, c'free ptr: %p\n', ptr)
 	}
+	$if builtin_free_nop ? {
+		return
+	}
 	if ptr == unsafe { 0 } {
 		$if trace_free_nulls ? {
 			C.fprintf(C.stderr, c'free null ptr\n', ptr)
