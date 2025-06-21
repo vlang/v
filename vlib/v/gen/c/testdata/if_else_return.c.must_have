@@ -5,5 +5,5 @@ _result_ok(&(string[]) { s }, (_result*)(&_t2), sizeof(string));
 } else {
 return (_result_string){ .is_error=true, .err=_v_error(_S("empty")), .data={E_STRUCT} };
 }
-return _t1;
+return _t2;
 }
