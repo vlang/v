@@ -31,7 +31,7 @@ endif
 ifeq ($(_SYS),Linux)
 LINUX := 1
 TCCOS := linux
-ifneq ($(shell ldd /bin/ls | grep musl),)
+ifneq ($(shell ldd --version 2>&1 | grep -i musl),)
 TCCOS := linuxmusl
 endif
 endif
