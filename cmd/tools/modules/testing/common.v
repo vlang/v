@@ -824,6 +824,9 @@ pub mut:
 
 pub fn get_test_details(file string) TestDetails {
 	mut res := TestDetails{}
+	if !os.is_file(file) {
+		return res
+	}
 	lines := os.read_lines(file) or { [] }
 	for idx, line in lines {
 		if line.starts_with('// vtest retry:') {
