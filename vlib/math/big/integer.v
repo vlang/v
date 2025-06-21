@@ -855,7 +855,7 @@ pub fn (a Integer) right_shift(amount u32) Integer {
 	}
 	return Integer{
 		digits: new_array
-		signum: a.signum
+		signum: if new_array.len > 0 { a.signum } else { 0 }
 	}
 }
 

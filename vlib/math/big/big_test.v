@@ -528,6 +528,8 @@ const left_shift_test_data = [
 ]
 
 const right_shift_test_data = [
+	ShiftTest{ -8, 4, 0 },
+	ShiftTest{ -8, 40, 0 },
 	ShiftTest{ 45, 3, 5 },
 	ShiftTest{ 0x13374956, 16, 0x1337 },
 	ShiftTest{ [u8(1), 1, 1, 0, 0, 0, 0, 0, 0, 0], 56, [u8(1), 1, 1] },
