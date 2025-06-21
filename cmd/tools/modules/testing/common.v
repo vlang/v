@@ -54,9 +54,6 @@ pub const is_python_present = os.execute('python --version').exit_code == 0
 pub const is_sqlite3_present = os.execute('sqlite3 --version').exit_code == 0
 	&& os.execute('pkg-config sqlite3 --libs').exit_code == 0
 
-pub const is_openssl_present = os.execute('openssl --version').exit_code == 0
-	&& os.execute('pkg-config openssl --libs').exit_code == 0
-
 pub const all_processes = get_all_processes()
 
 pub const header_bytes_to_search_for_module_main = 500
@@ -880,6 +877,18 @@ fn get_max_header_len() int {
 	}
 	return cols
 }
+
+fn check_openssl_present() bool {
+	$if openbsd {
+		return os.execute('eopenssl34 --version').exit_code == 0
+			&& os.execute('pkg-config eopenssl34 --libs').exit_code == 0
+	} $else {
+		return os.execute('openssl --version').exit_code == 0
+			&& os.execute('pkg-config openssl --libs').exit_code == 0
+	}
+}
+
+pub const is_openssl_present = check_openssl_present()
 
 // is_started_mysqld is true, when the test runner determines that there is a running mysql server
 pub const is_started_mysqld = find_started_process('mysqld') or { '' }
