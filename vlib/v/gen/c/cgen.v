@@ -5287,8 +5287,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 				obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
 				if !prevent_sum_type_unwrapping_once {
 					nested_unwrap := node.obj.smartcasts.len > 1
-					if is_option && nested_unwrap && obj_sym.kind == .sum_type {
-						g.write('*(')
+					unwrap_sumtype := is_option && nested_unwrap && obj_sym.kind == .sum_type
+					if unwrap_sumtype {
+						g.write('(*(')
 					}
 					for i, typ in node.obj.smartcasts {
 						is_option_unwrap := i == 0 && is_option
@@ -5378,6 +5379,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 								} else if !is_option_unwrap
 									&& obj_sym.kind in [.sum_type, .interface] {
 									g.write('${dot}_${cast_sym.cname}')
+								}
+								if i != 0 && unwrap_sumtype {
+									g.write(')')
 								}
 							}
 						}
