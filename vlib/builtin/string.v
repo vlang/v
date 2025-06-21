@@ -2979,3 +2979,40 @@ fn data_to_hex_string(data &u8, len int) string {
 	hex[dst] = 0
 	return tos(hex, dst)
 }
+
+pub struct RunesIterator {
+mut:
+	s string
+	i int
+}
+
+// runes_iterator creates an iterator over all the runes in the given string `s`.
+// It can be used in `for r in s.runes_iterator() {`, as a direct substitute to
+// calling .runes(): `for r in s.runes() {`, which needs an intermediate allocation
+// of an array.
+pub fn (s string) runes_iterator() RunesIterator {
+	return RunesIterator{
+		s: s
+		i: 0
+	}
+}
+
+// next is the method that will be called for each iteration in `for r in s.runes_iterator() {`
+pub fn (mut ri RunesIterator) next() ?rune {
+	for ri.i >= ri.s.len {
+		return none
+	}
+	char_len := utf8_char_len(unsafe { ri.s.str[ri.i] })
+	if char_len == 1 {
+		res := unsafe { ri.s.str[ri.i] }
+		ri.i++
+		return res
+	}
+	start := &u8(unsafe { &ri.s.str[ri.i] })
+	len := if ri.s.len - 1 >= ri.i + char_len { char_len } else { ri.s.len - ri.i }
+	ri.i += char_len
+	if char_len > 4 {
+		return 0
+	}
+	return rune(impl_utf8_to_utf32(start, len))
+}
