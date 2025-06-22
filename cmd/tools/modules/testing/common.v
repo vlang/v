@@ -450,6 +450,11 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	} else {
 		fname_without_extension
 	}
+	mut details := get_test_details(file)
+	if details.vflags != '' && !is_fmt {
+		cmd_options << details.vflags
+	}
+
 	reproduce_options := cmd_options.clone()
 	generated_binary_fpath := os.join_path_single(test_folder_path, generated_binary_fname)
 	if produces_file_output {
@@ -475,7 +480,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	} else {
 		os.quoted_path(generated_binary_fpath)
 	}
-	mut details := get_test_details(file)
 	mut should_be_built := true
 	if details.vbuild != '' {
 		should_be_built = ts.build_environment.eval(details.vbuild) or {
@@ -817,6 +821,7 @@ pub mut:
 	hide_retries bool   // when true, all retry tries are silent; used by `vlib/v/tests/retry_test.v`
 	vbuild       string // could be `!(windows && tinyc)`
 	vbuild_line  int    // for more precise error reporting, if the `vbuild` expression is incorrect
+	vflags       string // custom compilation flags for the test (enables for example: `// vtest vflags: -w`, for tests that have known warnings, but should still pass with -W)
 }
 
 pub fn get_test_details(file string) TestDetails {
@@ -835,6 +840,9 @@ pub fn get_test_details(file string) TestDetails {
 		if line.starts_with('// vtest build:') {
 			res.vbuild = line.all_after(':').trim_space()
 			res.vbuild_line = idx + 1
+		}
+		if line.starts_with('// vtest vflags:') {
+			res.vflags = line.all_after(':').trim_space()
 		}
 		if line.starts_with('// vtest hide_retries') {
 			res.hide_retries = true

@@ -797,12 +797,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-w' {
 				res.skip_warnings = true
+				res.warns_are_errors = false
 			}
 			'-N' {
 				res.notes_are_errors = true
 			}
 			'-n' {
 				res.skip_notes = true
+				res.notes_are_errors = false
 			}
 			'-no-rsp' {
 				res.no_rsp = true
