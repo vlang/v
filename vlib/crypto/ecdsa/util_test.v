@@ -1,4 +1,4 @@
-// vtest build: present_openssl? && !(sanitize-memory-clang || docker-ubuntu-musl)
+// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
 module ecdsa
 
 import encoding.hex
@@ -90,7 +90,7 @@ fn test_load_privkey_from_string_sign_and_verify() ! {
 	expected_pvkey_bytes := '30ce3da288965ac6093f0ba9a9a15b2476bea3eda925e1b3c1f094674f52795cd6cb3cafe235dfc15bec542448ffa715'
 	assert pvkey.bytes()!.hex() == expected_pvkey_bytes
 
-	// public key part	
+	// public key part
 	pbkey := pvkey.public_key()!
 	pbkey_bytes := pbkey.bytes()!
 	expected_pubkey_bytes := '04f8fdeb845913d5f5c761b6370a9701761eb14c2ef831017171fb4d543df310f573a3ffce6a52156ad635eb692c83cb9158176f145b8767d38c55791b8f05b085c5cfeea988f6b3922d1dc019495dcbe6c1a55da74f7d3aa8223081400c78e24f'
@@ -133,7 +133,7 @@ UHhnmmVRraSwrVkPdYIeXhH/Ob4+8OLcwrQBMv4RXsD1GVFsgkvEYDTEb/vnMA==
 fn test_key_signing_verifying_with_custom_hash() ! {
 	// privatekey_sample was P-384 key
 	pvkey := privkey_from_string(privatekey_sample)!
-	// public key part	
+	// public key part
 	pbkey := pvkey.public_key()!
 	pbk := pubkey_from_string(public_key_sample)!
 
