@@ -3,7 +3,7 @@ module main
 import json
 
 struct Test {
-	id ?string = none
+	id ?string
 }
 
 fn test_main() {
