@@ -209,7 +209,7 @@ struct Example6 {
 }
 
 fn test_encode_for_exotic_types() {
-	assert toml.encode(Example6{ ptr: &voidptr(0), r: `🚀` }) == 'ptr = "0x0"\nr = "🚀"'
+	assert toml.encode(Example6{ ptr: unsafe { &voidptr(nil) }, r: `🚀` }) == 'ptr = "0x0"\nr = "🚀"'
 }
 
 fn test_array_encode_decode() {
