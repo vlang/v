@@ -1267,6 +1267,7 @@ pub mut:
 	cond_type     Type // type of `x` in `match x {`
 	expected_type Type // for debugging only
 	is_sum_type   bool
+	no_lcbr       bool // for match statements without {}
 }
 
 pub struct MatchBranch {

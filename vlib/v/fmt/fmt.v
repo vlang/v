@@ -2858,8 +2858,12 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	f.write('match ')
 	f.expr(node.cond)
-	f.writeln(' {')
-	f.indent++
+	if node.no_lcbr {
+		f.writeln('')
+	} else {
+		f.writeln(' {')
+		f.indent++
+	}
 	f.comments(node.comments)
 	mut single_line := true
 	for branch in node.branches {
@@ -2886,8 +2890,10 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	if else_idx >= 0 {
 		f.match_branch(node.branches[else_idx], single_line)
 	}
-	f.indent--
-	f.write('}')
+	if !node.no_lcbr {
+		f.indent--
+		f.write('}')
+	}
 }
 
 pub fn (mut f Fmt) offset_of(node ast.OffsetOf) {
