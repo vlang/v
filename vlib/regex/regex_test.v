@@ -202,7 +202,7 @@ const match_test_suite = [
     TestItem{"abcAAxyz", r"^abc\X4141xyz$", 0,8},
     TestItem{"abcALxyz", r"^abc\X414cxyz$", 0,8},
     TestItem{"abcALxyz", r"^abc\X414Cxyz$", 0,8},
-    TestItem{"abcBxyz", r"^abc\x41+xyz$", -1,3},    
+    TestItem{"abcBxyz", r"^abc\x41+xyz$", -1,3},
 ]
 
 struct TestItemRe {
@@ -817,8 +817,7 @@ struct Test_find_groups {
 }
 
 // vfmt off
-const (
-find_groups_test_suite = [
+const find_groups_test_suite = [
 	Test_find_groups{
 		"aabbbccccdd",
 		r"(b+)(c+)",
@@ -841,7 +840,6 @@ find_groups_test_suite = [
 		[2, 9, 2, 5, 9, 11],
 	},
 ]
-)
 // vfmt on
 
 fn test_groups_in_find() {
