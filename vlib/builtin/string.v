@@ -600,6 +600,34 @@ pub fn (s string) normalize_tabs(tab_len int) string {
 	return s.replace_char(`\t`, ` `, tab_len)
 }
 
+// expand_tabs replaces tab characters (\t) in the input string with spaces to achieve proper column alignment
+// Example: assert 'AB\tHello!'.expand_tabs(4) == 'AB  Hello!'
+pub fn (s string) expand_tabs(tab_len int) string {
+	if tab_len <= 0 {
+		return s.clone() // Handle invalid tab length
+	}
+	mut output := strings.new_builder(s.len)
+	mut column := 0
+	for r in s.runes_iterator() {
+		match r {
+			`\t` {
+				spaces := tab_len - (column % tab_len)
+				output.write_string(' '.repeat(spaces))
+				column += spaces
+			}
+			`\n`, `\r` {
+				output.write_rune(r)
+				column = 0 // Reset on any line break
+			}
+			else {
+				output.write_rune(r)
+				column++ // Valid for most chars; consider Unicode wide chars
+			}
+		}
+	}
+	return output.str()
+}
+
 // bool returns `true` if the string equals the word "true" it will return `false` otherwise.
 @[inline]
 pub fn (s string) bool() bool {
