@@ -270,6 +270,8 @@ mut:
 	defer_return_tmp_var string
 	vweb_filter_fn_name  string   // vweb__filter or x__vweb__filter, used by $vweb.html() for escaping strings in the templates, depending on which `vweb` import is used
 	export_funcs         []string // for .dll export function names
+	//
+	type_default_impl_level int
 }
 
 @[heap]
@@ -7245,6 +7247,16 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 }
 
 fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
+	g.type_default_impl_level++
+	defer {
+		g.type_default_impl_level--
+	}
+	if g.type_default_impl_level > 37 {
+		eprintln('>>> Gen.type_default_impl g.type_default_impl_level: ${g.type_default_impl_level} | typ_: ${typ_} | decode_sumtype: ${decode_sumtype}')
+	}
+	if g.type_default_impl_level > 40 {
+		verror('reached maximum levels of nesting for ${@LOCATION}')
+	}
 	typ := g.unwrap_generic(typ_)
 	if typ.has_flag(.option) {
 		return '(${g.styp(typ)}){.state=2, .err=_const_none__, .data={E_STRUCT}}'
