@@ -622,7 +622,7 @@ fn test_trim_space() {
 	assert a.trim_space_right() == ' a'
 
 	code := '
-	
+\t
 fn main() {
         println(2)
 }
@@ -632,7 +632,7 @@ fn main() {
         println(2)
 }'
 	code_trim_right := '
-	
+\t
 fn main() {
         println(2)
 }'

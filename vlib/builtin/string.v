@@ -604,11 +604,11 @@ pub fn (s string) normalize_tabs(tab_len int) string {
 // Example: assert 'AB\tHello!'.expand_tabs(4) == 'AB  Hello!'
 pub fn (s string) expand_tabs(tab_len int) string {
 	if tab_len <= 0 {
-		return s // Handle invalid tab length
+		return s.clone() // Handle invalid tab length
 	}
 	mut output := strings.new_builder(s.len)
 	mut column := 0
-	for r in s.runes() {
+	for r in s.runes_iterator() {
 		match r {
 			`\t` {
 				spaces := tab_len - (column % tab_len)
