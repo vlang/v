@@ -1,5 +1,4 @@
-module main
-
+// vtest build: !(macos || windows)
 import db.mysql
 import pool
 import time
