@@ -13,5 +13,5 @@ fn main() {
 	for row in res.rows() {
 		println(row.vals.join(', '))
 	}
-	conn.close()
+	conn.close()!
 }
