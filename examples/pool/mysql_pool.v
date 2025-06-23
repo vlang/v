@@ -1,12 +1,11 @@
-// vtest build: started_mysqld?
-import db.mysql
+module main
 
-fn test_mysql() {
-	$if !network ? {
-		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
-		eprintln('> This test requires a working mysql server running on localhost.')
-		return
-	}
+import db.mysql
+import pool
+import time
+
+// Define your connection factory function
+fn create_conn() !&pool.ConnectionPoolable {
 	config := mysql.Config{
 		host:     '127.0.0.1'
 		port:     3306
@@ -14,11 +13,36 @@ fn test_mysql() {
 		password: '12345678'
 		dbname:   'mysql'
 	}
+	db := mysql.connect(config)!
+	return &db
+}
 
-	mut db := mysql.connect(config)!
-	defer {
-		db.close() or {}
+fn main() {
+	// Configure pool parameters
+	config := pool.ConnectionPoolConfig{
+		max_conns:      50
+		min_idle_conns: 5
+		max_lifetime:   2 * time.hour
+		idle_timeout:   30 * time.minute
+		get_timeout:    5 * time.second
 	}
+
+	// Create connection pool
+	mut my_pool := pool.new_connection_pool(create_conn, config)!
+	defer {
+		// When application exits
+		my_pool.close()
+	}
+
+	// Acquire connection
+	mut conn := my_pool.get()!
+	defer {
+		// Return connection to pool
+		my_pool.put(conn) or { println(err) }
+	}
+
+	// Convert `conn` to a `mysql.DB` object
+	mut db := conn as mysql.DB
 
 	assert db.validate()!
 

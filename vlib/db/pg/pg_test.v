@@ -12,8 +12,10 @@ fn test_large_exec() {
 
 	db := pg.connect(pg.Config{ user: 'postgres', password: '12345678', dbname: 'postgres' })!
 	defer {
-		db.close()
+		db.close() or {}
 	}
+
+	assert db.validate()!
 
 	rows := db.exec('
 SELECT ischema.table_schema, c.relname, a.attname, t.typname, t.typalign, t.typlen
@@ -38,7 +40,7 @@ fn test_prepared() {
 	}
 	db := pg.connect(pg.Config{ user: 'postgres', password: '12345678', dbname: 'postgres' })!
 	defer {
-		db.close()
+		db.close() or {}
 	}
 
 	db.prepare('test_prepared', 'SELECT NOW(), $1 AS NAME', 1) or { panic(err) }
@@ -57,7 +59,7 @@ fn test_transaction() {
 
 	db := pg.connect(pg.Config{ user: 'postgres', password: '12345678', dbname: 'postgres' })!
 	defer {
-		db.close()
+		db.close() or {}
 	}
 	db.exec('drop table if exists users')!
 	db.exec('create table if not exists users (

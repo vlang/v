@@ -330,12 +330,10 @@ pub fn (mut db DB) refresh(options u32) !bool {
 }
 
 // reset resets the connection, and clear the session state.
-pub fn (mut db DB) reset() !bool {
+pub fn (mut db DB) reset() ! {
 	if C.mysql_reset_connection(db.conn) != 0 {
 		db.throw_mysql_error()!
 	}
-
-	return true
 }
 
 // ping pings a server connection, or tries to reconnect if the connection
@@ -348,8 +346,14 @@ pub fn (mut db DB) ping() !bool {
 	return true
 }
 
+// validate pings a server connection, or tries to reconnect if the connection
+// has gone down.
+pub fn (mut db DB) validate() !bool {
+	return db.ping()!
+}
+
 // close closes the connection.
-pub fn (mut db DB) close() {
+pub fn (mut db DB) close() ! {
 	C.mysql_close(db.conn)
 }
 
