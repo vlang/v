@@ -12,10 +12,6 @@ import v.errors
 import os
 import hash.fnv1a
 
-// https://www.felixcloutier.com/x86/lock
-const allowed_lock_prefix_ins = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg', 'cmpxchg8b',
-	'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd', 'xchg']
-
 @[minify]
 pub struct Parser {
 pub:

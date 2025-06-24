@@ -3,6 +3,10 @@ module parser
 import ast
 import v.pref
 
+// https://www.felixcloutier.com/x86/lock
+const allowed_lock_prefix_ins = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg', 'cmpxchg8b',
+	'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd', 'xchg']
+
 fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	p.inside_asm = true
 	p.inside_asm_template = true
