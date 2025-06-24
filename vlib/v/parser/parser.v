@@ -1,7 +1,6 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-@[has_globals]
 module parser
 
 import v.scanner
@@ -126,8 +125,6 @@ pub mut:
 	notices        []errors.Notice
 	template_paths []string // record all compiled $tmpl files; needed for `v watch run webserver.v`
 }
-
-__global codegen_files = unsafe { []&ast.File{} }
 
 // for tests
 pub fn parse_stmt(text string, mut table ast.Table, mut scope ast.Scope) ast.Stmt {
@@ -330,12 +327,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		notices << p.scanner.notices
 	}
 
-	// codegen
-	if p.codegen_text.len > 0 && !p.pref.is_fmt {
-		ptext := 'module ' + p.mod.all_after_last('.') + '\n' + p.codegen_text
-		codegen_files << parse_text(ptext, p.file_path, mut p.table, p.scanner.comments_mode,
-			p.pref)
-	}
+	p.handle_codegen_for_file()
 
 	ast_file := &ast.File{
 		path:             p.file_path
@@ -379,21 +371,9 @@ pub fn parse_files(paths []string, mut table ast.Table, pref_ &pref.Preferences)
 			files << parse_file(path, mut table, .skip_comments, pref_)
 			timers.show('parse_file ${path}')
 		}
-		if codegen_files.len > 0 {
-			files << codegen_files
-			codegen_files.clear()
-		}
+		handle_codegen_for_multiple_files(mut files)
 		return files
 	}
-}
-
-// codegen allows you to generate V code, so that it can be parsed,
-// checked, markused, cgen-ed etc further, just like user's V code.
-pub fn (mut p Parser) codegen(code string) {
-	$if debug_codegen ? {
-		eprintln('parser.codegen: ${code}')
-	}
-	p.codegen_text += code
 }
 
 fn (mut p Parser) init_parse_fns() {
