@@ -375,7 +375,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		len:     match_last_pos.pos - match_first_pos.pos + match_last_pos.len
 		col:     match_first_pos.col
 	}
-	if p.tok.kind == .rcbr && !no_lcbr {
+	if p.tok.kind == .rcbr {
 		p.check(.rcbr)
 	}
 	// return ast.StructInit{}
@@ -386,7 +386,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		is_sum_type: is_sum_type
 		pos:         pos
 		comments:    comments
-		no_lcbr:     no_lcbr
 	}
 }
 
