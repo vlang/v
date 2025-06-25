@@ -1,5 +1,7 @@
 module sync
 
+import time
+
 @[noreturn]
 fn cpanic(res int) {
 	panic(unsafe { tos_clone(&u8(C.strerror(res))) })
@@ -19,10 +21,10 @@ fn should_be_zero(res int) {
 // SpinLock is a mutual exclusion lock that busy-waits (spins) when locked.
 // When one thread holds the lock, any other thread attempting to acquire it
 // will loop repeatedly until the lock becomes available.
-// [Uses 1 byte of memory for lock state]
 pub struct SpinLock {
 mut:
-	locked u8 // Lock state: 0 = unlocked, 1 = locked
+	locked  u8     // Lock state: 0 = unlocked, 1 = locked
+	padding [63]u8 // Cache line padding (fills to 64 bytes total)
 }
 
 // new_spin_lock creates and returns a new SpinLock instance initialized to unlocked state
@@ -30,6 +32,7 @@ pub fn new_spin_lock() &SpinLock {
 	mut the_lock := &SpinLock{
 		locked: 0
 	}
+	// Ensure initialization visibility across threads
 	C.atomic_thread_fence(C.memory_order_release)
 	return the_lock
 }
@@ -40,25 +43,35 @@ pub fn new_spin_lock() &SpinLock {
 pub fn (s &SpinLock) lock() {
 	// Expected value starts as unlocked (0)
 	mut expected := u8(0)
+	mut spin_count := 0
+	max_spins := 100
+	base_delay := 100 // nanosecond
+	max_delay := 10000 // nanoseconds (10μs)
 
-	// Busy-wait loop continues until lock is successfully acquired
+	// Busy-wait until lock is acquired
 	for {
 		// Attempt atomic compare-and-swap:
-		// - If current value matches expected (0), swap to locked (1)
-		// - If swap succeeds, break out of loop and acquire lock
+		// Succeeds if current value matches expected (0),
+		// then swaps to locked (1)
 		if C.atomic_compare_exchange_weak_byte(&s.locked, &expected, 1) {
-			// Memory barrier: Prevents critical section operations
-			// from being reordered before this point
+			// Prevent critical section reordering
 			C.atomic_thread_fence(C.memory_order_acquire)
 			return
 		}
-		// Hint to CPU that we're in spin-wait loop
-		// - Reduces power consumption
-		// - Minimizes contention on bus/memory
-		C.cpu_relax()
-		// Reload current lock state before next attempt
-		// - Required to detect when lock becomes available
-		// - Updates expected value to latest observed state
+
+		spin_count++
+		// Exponential backoff after max_spins
+		if spin_count > max_spins {
+			// Calculate delay with cap: 100ns to 10μs
+			exponent := int_min(spin_count / max_spins, 10)
+			delay := int_min(base_delay * (1 << exponent), max_delay)
+			time.sleep(delay * time.nanosecond)
+		} else {
+			// Reduce power/bus contention during spinning
+			C.cpu_relax()
+		}
+
+		// Refresh lock state before next attempt
 		expected = C.atomic_load_byte(&s.locked)
 	}
 }
@@ -67,10 +80,9 @@ pub fn (s &SpinLock) lock() {
 // IMPORTANT: Must only be called by the thread that currently holds the lock.
 @[inline]
 pub fn (s &SpinLock) unlock() {
-	// Memory barrier: Ensures all critical section operations
-	// complete before lock is released
+	// Ensure critical section completes before release
 	C.atomic_thread_fence(C.memory_order_release)
 
-	// Atomically unlock by setting state to 0
+	// Atomically reset to unlocked state
 	C.atomic_store_byte(&s.locked, 0)
 }
