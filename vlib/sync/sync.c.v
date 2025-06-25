@@ -30,7 +30,7 @@ pub fn new_spin_lock() &SpinLock {
 	mut the_lock := &SpinLock{
 		locked: 0
 	}
-	// C.atomic_thread_fence(C.memory_order_release)
+	C.atomic_thread_fence(C.memory_order_release)
 	return the_lock
 }
 
