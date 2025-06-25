@@ -42,7 +42,7 @@ pub fn getenv_opt(key string) ?string {
 	}
 }
 
-// os.setenv sets the value of an environment variable with `name` to `value`.
+// setenv sets the value of an environment variable with `name` to `value`.
 pub fn setenv(name string, value string, overwrite bool) int {
 	$if windows {
 		format := '${name}=${value}'.to_wide()
@@ -68,7 +68,7 @@ pub fn setenv(name string, value string, overwrite bool) int {
 	}
 }
 
-// os.unsetenv clears an environment variable with `name`.
+// unsetenv clears an environment variable with `name`.
 pub fn unsetenv(name string) int {
 	$if windows {
 		format := '${name}='.to_wide()
@@ -83,7 +83,7 @@ pub fn unsetenv(name string) int {
 
 // See: https://linux.die.net/man/5/environ for unix platforms.
 // See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
-// os.environ returns a map of all the current environment variables
+// environ returns a map of all the current environment variables.
 
 // TODO how to declare Virtual C globals?
 // const C.environ &&char
