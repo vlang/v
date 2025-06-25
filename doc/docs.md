@@ -3033,7 +3033,7 @@ a.map(|x| x * 10)
 a.sort(|x, y| x > y)
 ```
 
-```v oksyntax
+```v
 // Lambda function can be used as callback
 fn f(cb fn (a int) int) int {
 	return cb(10)
