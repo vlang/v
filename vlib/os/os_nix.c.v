@@ -267,6 +267,8 @@ pub fn hostname() !string {
 	return error(posix_get_error_msg(C.errno))
 }
 
+// loginname returns the name of the user logged in on the controlling terminal
+// of the process or POSIX error message if the getlogin call fails.
 pub fn loginname() !string {
 	x := C.getlogin()
 	if !isnil(x) {
