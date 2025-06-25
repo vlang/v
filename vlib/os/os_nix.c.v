@@ -427,7 +427,7 @@ pub fn (mut c Command) close() ! {
 	}
 }
 
-// symlink creates a symbolic link named target which contains the string origin
+// symlink creates a symbolic link named target, which points to origin
 // or returns POSIX error message if symlink call fails.
 pub fn symlink(origin string, target string) ! {
 	res := C.symlink(&char(origin.str), &char(target.str))
