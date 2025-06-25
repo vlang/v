@@ -516,7 +516,7 @@ pub fn getegid() int {
 	return C.getegid()
 }
 
-// Turns the given bit on or off, depending on the `enable` parameter
+// Turns the given bit on or off, depending on the `enable` parameter.
 pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 	mut new_mode := u32(0)
 	if s := stat(path_s) {
@@ -549,7 +549,7 @@ struct C.statvfs {
 	f_bavail usize
 }
 
-// disk_usage returns disk usage of `path`
+// disk_usage returns disk usage of `path`.
 @[manualfree]
 pub fn disk_usage(path string) !DiskUsage {
 	mpath := if path == '' { '.' } else { path }

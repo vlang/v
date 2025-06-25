@@ -383,7 +383,7 @@ pub fn input(prompt string) string {
 	return res
 }
 
-// get_line returns a one-line string from stdin
+// get_line returns a one-line string from stdin.
 pub fn get_line() string {
 	str := get_raw_line()
 	$if windows {
@@ -441,7 +441,7 @@ pub fn get_raw_lines_joined() string {
 }
 
 // get_trimmed_lines reads *all* input lines from stdin, as an array of strings.
-// The ending new line characters \r and \n, are removed from each line.
+// The ending new line characters `\r` and `\n`, are removed from each line.
 // Note: unlike os.get_lines, empty lines will be present in the output as empty strings ''.
 // Reading is stopped, only on EOF of stdin.
 pub fn get_trimmed_lines() []string {
@@ -620,7 +620,7 @@ pub fn find_abs_path_of_executable(exe_name string) !string {
 	return error_failed_to_find_executable()
 }
 
-// exists_in_system_path returns `true` if `prog` exists in the system's PATH
+// exists_in_system_path returns `true` if `prog` exists in the system's PATH.
 pub fn exists_in_system_path(prog string) bool {
 	find_abs_path_of_executable(prog) or { return false }
 	return true
@@ -909,10 +909,10 @@ fn xdg_home_folder(ename string, lpath string) string {
 // See: https://specifications.freedesktop.org/basedir-spec/latest/ .
 // There is a single base directory relative to which user-specific non-essential
 // (cached) data should be written. This directory is defined by the environment
-// variable $XDG_CACHE_HOME.
-// $XDG_CACHE_HOME defines the base directory relative to which user specific
-// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
-// or empty, a default equal to $HOME/.cache should be used.
+// variable `$XDG_CACHE_HOME`.
+// `$XDG_CACHE_HOME` defines the base directory relative to which user specific
+// non-essential data files should be stored. If `$XDG_CACHE_HOME` is either not set
+// or empty, a default equal to `$HOME/.cache` should be used.
 pub fn cache_dir() string {
 	return xdg_home_folder('XDG_CACHE_HOME', '.cache')
 }
@@ -920,18 +920,20 @@ pub fn cache_dir() string {
 // data_dir returns the path to a *writable* user-specific folder, suitable for writing application data.
 // See: https://specifications.freedesktop.org/basedir-spec/latest/ .
 // There is a single base directory relative to which user-specific data files should be written.
-// This directory is defined by the environment variable $XDG_DATA_HOME.
-// If $XDG_DATA_HOME is either not set or empty, a default equal to $HOME/.local/share should be used.
+// This directory is defined by the environment variable `$XDG_DATA_HOME`.
+// If `$XDG_DATA_HOME` is either not set or empty, a default equal to
+// `$HOME/.local/share` should be used.
 pub fn data_dir() string {
 	return xdg_home_folder('XDG_DATA_HOME', '.local/share')
 }
 
 // state_dir returns a *writable* folder user-specific folder, suitable for storing state data,
 // that should persist between (application) restarts, but that is not important or portable
-// enough to the user that it should be stored in os.data_dir() .
+// enough to the user that it should be stored in os.data_dir().
 // See: https://specifications.freedesktop.org/basedir-spec/latest/ .
-// $XDG_STATE_HOME defines the base directory relative to which user-specific state files should be stored.
-// If $XDG_STATE_HOME is either not set or empty, a default equal to $HOME/.local/state should be used.
+// `$XDG_STATE_HOME` defines the base directory relative to which user-specific state files should be stored.
+// If `$XDG_STATE_HOME` is either not set or empty, a default equal to
+// `$HOME/.local/state should be used`.
 // It may contain:
 // * actions history (logs, history, recently used files, …)
 // * current state of the application that can be reused on a restart (view, layout, open files, undo history, …)
@@ -941,7 +943,7 @@ pub fn state_dir() string {
 
 // local_bin_dir returns `$HOME/.local/bin`, which is *guaranteed* to be in the PATH of the current user, for
 // distributions, following the XDG spec from https://specifications.freedesktop.org/basedir-spec/latest/ :
-// > User-specific executable files may be stored in $HOME/.local/bin .
+// > User-specific executable files may be stored in `$HOME/.local/bin`.
 // > Distributions should ensure this directory shows up in the UNIX $PATH environment variable, at an appropriate place.
 pub fn local_bin_dir() string {
 	return xdg_home_folder('LOCAL_BIN_DIR', '.local/bin') // provides a way to test by setting an env variable
@@ -1015,8 +1017,7 @@ pub fn vmodules_dir() string {
 }
 
 // vmodules_paths returns a list of paths, where v looks up for modules.
-// You can customize it through setting the environment variable VMODULES
-// [manualfree]
+// You can customize it through setting the environment variable `VMODULES`.
 pub fn vmodules_paths() []string {
 	mut path := getenv('VMODULES')
 	if path == '' {
@@ -1077,6 +1078,8 @@ pub mut:
 	machine  string
 }
 
+// execute_or_panic returns the os.Result of executing `cmd`, or panic with its
+// output on failure.
 pub fn execute_or_panic(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
@@ -1087,6 +1090,8 @@ pub fn execute_or_panic(cmd string) Result {
 	return res
 }
 
+// execute_or_exit returns the os.Result of executing `cmd`, or exit with its
+// output on failure.
 pub fn execute_or_exit(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
@@ -1121,11 +1126,11 @@ pub fn quoted_path(path string) string {
 }
 
 // config_dir returns the path to the user configuration directory (depending on the platform).
-// On windows, that is `%AppData%`.
-// On macos, that is `~/Library/Application Support`.
+// On Windows, that is `%AppData%`.
+// On macOS, that is `~/Library/Application Support`.
 // On the rest, that is `$XDG_CONFIG_HOME`, or if that is not available, `~/.config`.
 // If the path cannot be determined, it returns an error.
-// (for example, when $HOME on linux, or %AppData% on windows is not defined)
+// (for example, when `$HOME` on Linux, or `%AppData%` on Windows is not defined)
 pub fn config_dir() !string {
 	$if windows {
 		app_data := getenv('AppData')
