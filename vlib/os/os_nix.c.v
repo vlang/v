@@ -214,6 +214,9 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 	}
 }
 
+// utime changes the access and modification times of the inode specified by
+// path to the actime and modtime fields of times respectively, or returns POSIX
+// error message if utime call fails.
 pub fn utime(path string, actime int, modtime int) ! {
 	u := C.utimbuf{actime, modtime}
 	if C.utime(&char(path.str), &u) != 0 {
@@ -253,6 +256,8 @@ pub fn uname() Uname {
 	return u
 }
 
+// hostname returns the hostname (system's DNS name) or POSIX error message if
+// the hostname call fails.
 pub fn hostname() !string {
 	mut hstnme := ''
 	size := 256
@@ -265,6 +270,8 @@ pub fn hostname() !string {
 	return error(posix_get_error_msg(C.errno))
 }
 
+// loginname returns the name of the user logged in on the controlling terminal
+// of the process or POSIX error message if the getlogin call fails.
 pub fn loginname() !string {
 	x := C.getlogin()
 	if !isnil(x) {
@@ -420,6 +427,8 @@ pub fn (mut c Command) close() ! {
 	}
 }
 
+// symlink creates a symbolic link named target, which points to origin
+// or returns POSIX error message if symlink call fails.
 pub fn symlink(origin string, target string) ! {
 	res := C.symlink(&char(origin.str), &char(target.str))
 	if res == 0 {
@@ -428,6 +437,8 @@ pub fn symlink(origin string, target string) ! {
 	return error(posix_get_error_msg(C.errno))
 }
 
+// link creates a new link (also known as a hard link) to an existing file or
+// returns POSIX error message if link call fails.
 pub fn link(origin string, target string) ! {
 	res := C.link(&char(origin.str), &char(target.str))
 	if res == 0 {
@@ -476,37 +487,43 @@ pub fn ensure_folder_is_writable(folder string) ! {
 	rm(tmp_perm_check)!
 }
 
+// getpid returns the process ID (PID) of the calling process.
 @[inline]
 pub fn getpid() int {
 	return C.getpid()
 }
 
+// getppid returns the process ID of the parent of the calling process.
 @[inline]
 pub fn getppid() int {
 	return C.getppid()
 }
 
+// getuid returns the real user ID of the calling process.
 @[inline]
 pub fn getuid() int {
 	return C.getuid()
 }
 
+// geteuid returns the effective user ID of the calling process.
 @[inline]
 pub fn geteuid() int {
 	return C.geteuid()
 }
 
+// getgid returns the real group ID of the calling process.
 @[inline]
 pub fn getgid() int {
 	return C.getgid()
 }
 
+// getegid returns the effective group ID of the calling process.
 @[inline]
 pub fn getegid() int {
 	return C.getegid()
 }
 
-// Turns the given bit on or off, depending on the `enable` parameter
+// Turns the given bit on or off, depending on the `enable` parameter.
 pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 	mut new_mode := u32(0)
 	if s := stat(path_s) {
@@ -539,7 +556,7 @@ struct C.statvfs {
 	f_bavail usize
 }
 
-// disk_usage returns disk usage of `path`
+// disk_usage returns disk usage of `path`.
 @[manualfree]
 pub fn disk_usage(path string) !DiskUsage {
 	mpath := if path == '' { '.' } else { path }

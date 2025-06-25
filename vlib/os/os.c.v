@@ -334,7 +334,7 @@ fn posix_wait4_to_exit_status(waitret int) (int, bool) {
 	}
 }
 
-// posix_get_error_msg return error code representation in string.
+// posix_get_error_msg returns error code representation in string.
 pub fn posix_get_error_msg(code int) string {
 	ptr_text := C.strerror(code) // voidptr?
 	if ptr_text == 0 {
@@ -412,7 +412,7 @@ pub fn exists(path string) bool {
 
 // is_executable returns `true` if `path` is executable.
 // Warning: `is_executable()` is known to cause a TOCTOU vulnerability when used incorrectly
-// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md).
 pub fn is_executable(path string) bool {
 	$if windows {
 		// Note: https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/access-waccess?view=vs-2019
@@ -433,7 +433,7 @@ pub fn is_executable(path string) bool {
 
 // is_writable returns `true` if `path` is writable.
 // Warning: `is_writable()` is known to cause a TOCTOU vulnerability when used incorrectly
-// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md).
 @[manualfree]
 pub fn is_writable(path string) bool {
 	$if windows {
@@ -450,7 +450,7 @@ pub fn is_writable(path string) bool {
 
 // is_readable returns `true` if `path` is readable.
 // Warning: `is_readable()` is known to cause a TOCTOU vulnerability when used incorrectly
-// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md).
 @[manualfree]
 pub fn is_readable(path string) bool {
 	$if windows {
@@ -507,7 +507,7 @@ fn print_c_errno() {
 	eprintln('errno=${e} err=${se}')
 }
 
-// get_raw_line returns a one-line string from stdin along with '\n' if there is any.
+// get_raw_line returns a one-line string from stdin along with `\n` if there is any.
 @[manualfree]
 pub fn get_raw_line() string {
 	$if windows {
@@ -1041,7 +1041,8 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	}
 }
 
-// is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal
+// is_atty returns 1 if the `fd` file descriptor is open and refers to a
+// terminal.
 pub fn is_atty(fd int) int {
 	$if windows {
 		mut mode := u32(0)
@@ -1060,6 +1061,8 @@ pub fn write_file_array(path string, buffer array) ! {
 	f.close()
 }
 
+// glob function searches for all the pathnames matching patterns and returns a
+// sorted list of found pathnames.
 @[manualfree]
 pub fn glob(patterns ...string) ![]string {
 	mut matches := []string{}
@@ -1070,7 +1073,8 @@ pub fn glob(patterns ...string) ![]string {
 	return matches
 }
 
-// last_error returns a V error, formed by the last libc error (from GetLastError() on windows and from `errno` on !windows)
+// last_error returns a V error, formed by the last libc error (from
+// `GetLastError()` on windows and from `errno` on !windows).
 @[manualfree]
 pub fn last_error() IError {
 	$if windows {
