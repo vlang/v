@@ -348,6 +348,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			g.gowrappers.writeln('\t_v_free(arg);')
 		}
 		if g.pref.os != .windows && call_ret_type != ast.void_type {
+			g.gowrappers.writeln('\tpthread_exit((void*)ret_ptr);')
 			g.gowrappers.writeln('\treturn ret_ptr;')
 		} else {
 			g.gowrappers.writeln('\treturn 0;')
