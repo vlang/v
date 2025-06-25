@@ -3031,14 +3031,16 @@ a.map(|x| x * 10)
 
 // Sort list defining comparator with lambda function
 a.sort(|x, y| x > y)
+```
 
+```v oksyntax
 // Lambda function can be used as callback
 fn f(cb fn (a int) int) int {
-    return cb(10)
+	return cb(10)
 }
 
 fn main() {
-    println(f(|x| x + 4)) // prints 14
+	println(f(|x| x + 4)) // prints 14
 }
 ```
 
