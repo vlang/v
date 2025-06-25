@@ -476,31 +476,37 @@ pub fn ensure_folder_is_writable(folder string) ! {
 	rm(tmp_perm_check)!
 }
 
+// getpid returns the process ID (PID) of the calling process.
 @[inline]
 pub fn getpid() int {
 	return C.getpid()
 }
 
+// getppid returns the process ID of the parent of the calling process.
 @[inline]
 pub fn getppid() int {
 	return C.getppid()
 }
 
+// getuid returns the real user ID of the calling process.
 @[inline]
 pub fn getuid() int {
 	return C.getuid()
 }
 
+// geteuid returns the effective user ID of the calling process.
 @[inline]
 pub fn geteuid() int {
 	return C.geteuid()
 }
 
+// getgid returns the real group ID of the calling process.
 @[inline]
 pub fn getgid() int {
 	return C.getgid()
 }
 
+// getegid returns the effective group ID of the calling process.
 @[inline]
 pub fn getegid() int {
 	return C.getegid()
