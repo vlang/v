@@ -120,6 +120,7 @@ by using any of the following commands in a terminal:
     * [Mutable arguments](#mutable-arguments)
     * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
+    * [Lambda expressions](#lambda-expressions)
     * [Closures](#closures)
     * [Parameter evaluation order](#parameter-evaluation-order)
 * [References](#references)
@@ -3021,17 +3022,17 @@ fn main() {
 }
 ```
 
-### Lambda
+### Lambda expressions
 
-V supports lambdas, small anonymous functions, with `||` syntax.
+Lambda expressions in V are small anonymous functions, defined using
+the `|variables| expression` syntax. Note: this syntax is valid only inside calls to higher
+order functions.
 
-```v oksyntax
-// Sort list defining comparator with lambda function
-a.sort(|x, y| x > y)
-
-a := [1, 2, 3]
-b := a.map(|x| x * 10)
-println(b) // prints [10, 20, 30]
+Here are some examples:
+```v
+mut a := [1, 2, 3]
+a.sort(|x, y| x > y) // sorts the array, defining the comparator with a lambda expression
+println(a.map(|x| x * 10)) // prints [30, 20, 10]
 ```
 
 ```v
@@ -3040,9 +3041,7 @@ fn f(cb fn (a int) int) int {
 	return cb(10)
 }
 
-fn main() {
-	println(f(|x| x + 4)) // prints 14
-}
+println(f(|x| x + 4)) // prints 14
 ```
 
 ### Closures
