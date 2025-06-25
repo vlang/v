@@ -253,6 +253,8 @@ pub fn uname() Uname {
 	return u
 }
 
+// hostname returns the hostname (system's DNS name) or POSIX error message if
+// the hostname call fails.
 pub fn hostname() !string {
 	mut hstnme := ''
 	size := 256
