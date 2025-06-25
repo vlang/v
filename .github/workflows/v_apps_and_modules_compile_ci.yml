@@ -46,6 +46,13 @@ jobs:
             v retry brew install sassc libgit2
           fi
 
+      - name: Build docs generator
+        run: |
+          v retry -- v install markdown
+          v retry -- git clone https://github.com/vlang/docs --branch generator --depth 1
+          cd docs
+          v .
+
       - name: Test vtcc
         if: runner.os == 'Linux'
         run: .github/workflows/compile_v_with_vtcc.sh
