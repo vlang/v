@@ -1061,6 +1061,8 @@ pub fn write_file_array(path string, buffer array) ! {
 	f.close()
 }
 
+// glob function searches for all the pathnames matching patterns and returns a
+// sorted list of found pathnames.
 @[manualfree]
 pub fn glob(patterns ...string) ![]string {
 	mut matches := []string{}
