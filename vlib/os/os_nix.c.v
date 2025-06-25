@@ -424,6 +424,8 @@ pub fn (mut c Command) close() ! {
 	}
 }
 
+// symlink creates a symbolic link named target which contains the string origin
+// or returns POSIX error message if symlink call fails.
 pub fn symlink(origin string, target string) ! {
 	res := C.symlink(&char(origin.str), &char(target.str))
 	if res == 0 {
@@ -432,6 +434,8 @@ pub fn symlink(origin string, target string) ! {
 	return error(posix_get_error_msg(C.errno))
 }
 
+// link creates a new link (also known as a hard link) to an existing file or
+// returns POSIX error message if link call fails.
 pub fn link(origin string, target string) ! {
 	res := C.link(&char(origin.str), &char(target.str))
 	if res == 0 {
