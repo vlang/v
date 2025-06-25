@@ -3026,11 +3026,12 @@ fn main() {
 V supports lambdas, small anonymous functions, with `||` syntax.
 
 ```v oksyntax
-// Multiply by 10 each element of an array
-a.map(|x| x * 10)
-
 // Sort list defining comparator with lambda function
 a.sort(|x, y| x > y)
+
+a := [1, 2, 3]
+b := a.map(|x| x * 10)
+println(b) // prints [10, 20, 30]
 ```
 
 ```v
