@@ -27,7 +27,8 @@ mut:
 	padding [63]u8 // Cache line padding (fills to 64 bytes total)
 }
 
-// new_spin_lock creates and returns a new SpinLock instance initialized to unlocked state
+// new_spin_lock creates and returns a new SpinLock instance initialized to
+// unlocked state.
 pub fn new_spin_lock() &SpinLock {
 	mut the_lock := &SpinLock{
 		locked: 0
