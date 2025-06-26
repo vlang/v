@@ -81,14 +81,13 @@ pub fn unsetenv(name string) int {
 	}
 }
 
-// See: https://linux.die.net/man/5/environ for unix platforms.
-// See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
 // environ returns a map of all the current environment variables.
-
-// TODO how to declare Virtual C globals?
-// const C.environ &&char
-
+// See: https://linux.die.net/man/5/environ for Unix platforms.
+// See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
+// for Windows OS.
 pub fn environ() map[string]string {
+	// TODO how to declare Virtual C globals?
+	// const C.environ &&char
 	mut res := map[string]string{}
 	$if windows {
 		mut estrings := C.GetEnvironmentStringsW()
