@@ -82,3 +82,14 @@ pub fn (mut wg WaitGroup) wait() {
 	C.atomic_fetch_add_u32(voidptr(&wg.wait_count), 1)
 	wg.sem.wait() // blocks until task_count becomes 0
 }
+
+// go starts `f` in a new thread, arranging to call wg.add(1) before that,
+// and wg.done() in the same thread. The function `f` should not panic.
+// Calls to wg.go() should happen before the call to wg.wait().
+pub fn (mut wg WaitGroup) go(f fn ()) {
+	wg.add(1)
+	spawn fn (mut wg WaitGroup, f fn ()) {
+		f()
+		wg.done()
+	}(mut wg, f)
+}
