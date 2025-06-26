@@ -53,8 +53,12 @@ mut my_pool := pool.new_connection_pool(create_conn, config)!
 // Acquire connection
 mut conn := my_pool.get()!
 
-// Use connection
+// Convert `conn` to a `mysql.DB` object
+mut db := conn as mysql.DB
+
+// Use connection `db`
 // ... your operations ...
+// db.exec()
 
 // Return connection to pool
 my_pool.put(conn)!

@@ -19,7 +19,7 @@ fn test_float_field() {
 	conn := 'host=localhost user=postgres password=12345678' // insert own connection string
 	db := pg.connect_with_conninfo(conn)!
 	defer {
-		db.close()
+		db.close() or {}
 	}
 
 	sql db {

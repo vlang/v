@@ -33,6 +33,6 @@ pub fn (mut pool ConnectionPool) release(conn DB) {
 pub fn (mut pool ConnectionPool) close() {
 	for _ in 0 .. pool.connections.len {
 		conn := <-pool.connections or { break }
-		conn.close()
+		conn.close() or { break }
 	}
 }
