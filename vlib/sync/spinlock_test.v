@@ -5,6 +5,9 @@ import time
 fn test_spinlock() {
 	mut counter := 0
 	mut s := sync.new_spin_lock()
+	defer {
+		s.destroy()
+	}
 	num_threads := 10
 	iterations := 10
 	mut wg := sync.new_waitgroup()
@@ -28,6 +31,11 @@ fn test_spinlock() {
 		}(mut wg, s, &counter, iterations)
 	}
 	wg.wait()
-	s.destroy()
 	assert counter == num_threads * iterations
+
+	// test try_lock()
+	s.lock()
+	assert s.try_lock() == false
+	s.unlock()
+	assert s.try_lock() == true
 }

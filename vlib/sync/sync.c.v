@@ -89,6 +89,18 @@ pub fn (s &SpinLock) lock() {
 	}
 }
 
+// try_lock try to lock the spin lock instance and return immediately.
+// If the spin lock was already locked, it will return false.
+@[inline]
+pub fn (s &SpinLock) try_lock() bool {
+	mut expected := u8(0)
+	// First do a relaxed load to check if lock is free in order to prevent
+	// unnecessary cache misses if someone does while(!try_lock())
+	// TODO: make a `relaxed` load
+	return C.atomic_load_byte(&s.locked) == 0
+		&& C.atomic_compare_exchange_weak_byte(&s.locked, &expected, 1)
+}
+
 // unlock releases the spin lock, making it available to other threads.
 // IMPORTANT: Must only be called by the thread that currently holds the lock.
 @[inline]
