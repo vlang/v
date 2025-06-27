@@ -21,10 +21,11 @@ fn should_be_zero(res int) {
 // SpinLock is a mutual exclusion lock that busy-waits (spins) when locked.
 // When one thread holds the lock, any other thread attempting to acquire it
 // will loop repeatedly until the lock becomes available.
+@[noinit]
 pub struct SpinLock {
 mut:
 	locked      u8     // Lock state: 0 = unlocked, 1 = locked
-	initialized bool   // use for Valgrind tracking
+	initialized u8     // use for Valgrind tracking
 	padding     [62]u8 // Cache line padding (fills to 64 bytes total)
 }
 
@@ -32,7 +33,7 @@ mut:
 pub fn new_spin_lock() &SpinLock {
 	mut the_lock := &SpinLock{
 		locked:      0
-		initialized: true
+		initialized: 1
 	}
 	// Ensure initialization visibility across threads
 	C.atomic_thread_fence(C.memory_order_release)
@@ -47,7 +48,7 @@ pub fn new_spin_lock() &SpinLock {
 @[inline]
 pub fn (s &SpinLock) lock() {
 	$if valgrind ? {
-		if !s.initialized {
+		if s.initialized == 0 {
 			panic('SpinLock used without initialization')
 		}
 	}
@@ -94,7 +95,7 @@ pub fn (s &SpinLock) lock() {
 @[inline]
 pub fn (s &SpinLock) try_lock() bool {
 	$if valgrind ? {
-		if !s.initialized {
+		if s.initialized == 0 {
 			panic('SpinLock not initialized')
 		}
 	}
@@ -119,7 +120,7 @@ pub fn (s &SpinLock) try_lock() bool {
 @[inline]
 pub fn (s &SpinLock) unlock() {
 	$if valgrind ? {
-		if !s.initialized {
+		if s.initialized == 0 {
 			panic('SpinLock used without initialization')
 		}
 		C.ANNOTATE_RWLOCK_RELEASED(&s.locked, 1) // 1 = write lock
