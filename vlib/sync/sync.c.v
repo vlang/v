@@ -93,12 +93,23 @@ pub fn (s &SpinLock) lock() {
 // If the spin lock was already locked, it will return false.
 @[inline]
 pub fn (s &SpinLock) try_lock() bool {
-	mut expected := u8(0)
 	// First do a relaxed load to check if lock is free in order to prevent
 	// unnecessary cache misses if someone does while(!try_lock())
 	// TODO: make a `relaxed` load
-	return C.atomic_load_byte(&s.locked) == 0
-		&& C.atomic_compare_exchange_weak_byte(&s.locked, &expected, 1)
+	if C.atomic_load_byte(&s.locked) != 0 {
+		return false
+	}
+	mut expected := u8(0)
+	success := C.atomic_compare_exchange_weak_byte(&s.locked, &expected, 1)
+	$if valgrind ? {
+		if success {
+			C.ANNOTATE_RWLOCK_ACQUIRED(&s.locked, 1)
+		}
+	}
+	if success {
+		C.atomic_thread_fence(C.memory_order_acquire)
+	}
+	return success
 }
 
 // unlock releases the spin lock, making it available to other threads.
