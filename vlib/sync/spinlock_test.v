@@ -38,4 +38,5 @@ fn test_spinlock() {
 	assert s.try_lock() == false
 	s.unlock()
 	assert s.try_lock() == true
+	assert s.try_lock() == false
 }
