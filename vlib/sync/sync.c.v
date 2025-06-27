@@ -71,8 +71,7 @@ pub fn (s &SpinLock) lock() {
 			C.cpu_relax()
 		}
 
-		// Refresh lock state before next attempt
-		expected = C.atomic_load_byte(&s.locked)
+		expected = 0
 	}
 }
 
