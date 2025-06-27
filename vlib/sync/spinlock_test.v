@@ -28,5 +28,6 @@ fn test_spinlock() {
 		}(mut wg, s, &counter, iterations)
 	}
 	wg.wait()
+	s.destroy()
 	assert counter == num_threads * iterations
 }

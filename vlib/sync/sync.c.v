@@ -18,22 +18,37 @@ fn should_be_zero(res int) {
 	}
 }
 
+fn C.ANNOTATE_RWLOCK_CREATE(voidptr)
+fn C.ANNOTATE_RWLOCK_ACQUIRED(voidptr, int)
+fn C.ANNOTATE_RWLOCK_RELEASED(voidptr, int)
+fn C.ANNOTATE_RWLOCK_DESTROY(voidptr)
+
+$if valgrind ? {
+	#flag -I/usr/include/valgrind
+	#include <valgrind/helgrind.h>
+}
+
 // SpinLock is a mutual exclusion lock that busy-waits (spins) when locked.
 // When one thread holds the lock, any other thread attempting to acquire it
 // will loop repeatedly until the lock becomes available.
 pub struct SpinLock {
 mut:
-	locked  u8     // Lock state: 0 = unlocked, 1 = locked
-	padding [63]u8 // Cache line padding (fills to 64 bytes total)
+	locked      u8     // Lock state: 0 = unlocked, 1 = locked
+	initialized bool   // use for Valgrind tracking
+	padding     [62]u8 // Cache line padding (fills to 64 bytes total)
 }
 
 // new_spin_lock creates and returns a new SpinLock instance initialized to unlocked state.
 pub fn new_spin_lock() &SpinLock {
 	mut the_lock := &SpinLock{
-		locked: 0
+		locked:      0
+		initialized: true
 	}
 	// Ensure initialization visibility across threads
 	C.atomic_thread_fence(C.memory_order_release)
+	$if valgrind ? {
+		C.ANNOTATE_RWLOCK_CREATE(&the_lock.locked)
+	}
 	return the_lock
 }
 
@@ -41,6 +56,12 @@ pub fn new_spin_lock() &SpinLock {
 // this function will spin (busy-wait) until the lock becomes available.
 @[inline]
 pub fn (s &SpinLock) lock() {
+	$if valgrind ? {
+		if !s.initialized {
+			panic('SpinLock used without initialization')
+		}
+	}
+
 	// Expected value starts as unlocked (0)
 	mut expected := u8(0)
 	mut spin_count := 0
@@ -54,6 +75,9 @@ pub fn (s &SpinLock) lock() {
 		// Succeeds if current value matches expected (0),
 		// then swaps to locked (1)
 		if C.atomic_compare_exchange_weak_byte(&s.locked, &expected, 1) {
+			$if valgrind ? {
+				C.ANNOTATE_RWLOCK_ACQUIRED(&s.locked, 1) // 1 = write lock
+			}
 			// Prevent critical section reordering
 			C.atomic_thread_fence(C.memory_order_acquire)
 			return
@@ -79,9 +103,22 @@ pub fn (s &SpinLock) lock() {
 // IMPORTANT: Must only be called by the thread that currently holds the lock.
 @[inline]
 pub fn (s &SpinLock) unlock() {
+	$if valgrind ? {
+		if !s.initialized {
+			panic('SpinLock used without initialization')
+		}
+		C.ANNOTATE_RWLOCK_RELEASED(&s.locked, 1) // 1 = write lock
+	}
 	// Ensure critical section completes before release
 	C.atomic_thread_fence(C.memory_order_release)
 
 	// Atomically reset to unlocked state
 	C.atomic_store_byte(&s.locked, 0)
+}
+
+// destroy frees the resources associated with the spin lock instance.
+pub fn (s &SpinLock) destroy() {
+	$if valgrind ? {
+		C.ANNOTATE_RWLOCK_DESTROY(&s.locked)
+	}
 }
