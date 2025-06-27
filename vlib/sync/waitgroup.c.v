@@ -16,7 +16,7 @@ fn C.atomic_compare_exchange_weak_u32(voidptr, voidptr, u32) bool
 // Do not copy an instance of WaitGroup, use a ref instead.
 //
 // usage: in main thread:
-// `wg := sync.new_waitgroup()
+// `wg := sync.new_waitgroup()`
 // `wg.add(nr_jobs)` before starting jobs with `go ...`
 // `wg.wait()` to wait for all jobs to have finished
 //
@@ -32,12 +32,14 @@ mut:
 	sem        Semaphore // This blocks wait() until tast_countreleased by add()
 }
 
+// new_waitgroup creates a new WaitGroup.
 pub fn new_waitgroup() &WaitGroup {
 	mut wg := WaitGroup{}
 	wg.init()
 	return &wg
 }
 
+// init initializes a WaitGroup.
 pub fn (mut wg WaitGroup) init() {
 	wg.sem.init(0)
 }
@@ -67,12 +69,12 @@ pub fn (mut wg WaitGroup) add(delta int) {
 	}
 }
 
-// done is a convenience fn for add(-1)
+// done is a convenience fn for add(-1).
 pub fn (mut wg WaitGroup) done() {
 	wg.add(-1)
 }
 
-// wait blocks until all tasks are done (task count becomes zero)
+// wait blocks until all tasks are done (task count becomes zero).
 pub fn (mut wg WaitGroup) wait() {
 	nrjobs := int(C.atomic_load_u32(&wg.task_count))
 	if nrjobs == 0 {

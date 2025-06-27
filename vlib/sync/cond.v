@@ -20,7 +20,7 @@ pub fn new_cond(m &Mutex) &Cond {
 	}
 }
 
-// wait waits for condition notification
+// wait waits for condition notification.
 // NOTE: Spurious wakeups are possible; always use in a loop:
 // mutex.lock()
 // for !condition {
@@ -56,7 +56,7 @@ pub fn (mut c Cond) wait() {
 	c.mutex.lock()
 }
 
-// signal wakes one waiting thread
+// signal wakes one waiting thread.
 @[direct_array_access]
 pub fn (mut c Cond) signal() {
 	c.inner_mutex.lock()
@@ -71,7 +71,7 @@ pub fn (mut c Cond) signal() {
 	}
 }
 
-// broadcast wakes all waiting threads
+// broadcast wakes all waiting threads.
 @[direct_array_access]
 pub fn (mut c Cond) broadcast() {
 	c.inner_mutex.lock()
