@@ -24,16 +24,14 @@ fn should_be_zero(res int) {
 @[noinit]
 pub struct SpinLock {
 mut:
-	locked      u8     // Lock state: 0 = unlocked, 1 = locked
-	initialized u8     // use for Valgrind tracking
-	padding     [62]u8 // Cache line padding (fills to 64 bytes total)
+	locked  u8     // Lock state: 0 = unlocked, 1 = locked
+	padding [63]u8 // Cache line padding (fills to 64 bytes total)
 }
 
 // new_spin_lock creates and returns a new SpinLock instance initialized to unlocked state.
 pub fn new_spin_lock() &SpinLock {
 	mut the_lock := &SpinLock{
-		locked:      0
-		initialized: 1
+		locked: 0
 	}
 	// Ensure initialization visibility across threads
 	C.atomic_thread_fence(C.memory_order_release)
@@ -47,12 +45,6 @@ pub fn new_spin_lock() &SpinLock {
 // this function will spin (busy-wait) until the lock becomes available.
 @[inline]
 pub fn (s &SpinLock) lock() {
-	$if valgrind ? {
-		if s.initialized == 0 {
-			panic('SpinLock used without initialization')
-		}
-	}
-
 	// Expected value starts as unlocked (0)
 	mut expected := u8(0)
 	mut spin_count := 0
@@ -94,11 +86,6 @@ pub fn (s &SpinLock) lock() {
 // If the spin lock was already locked, it will return false.
 @[inline]
 pub fn (s &SpinLock) try_lock() bool {
-	$if valgrind ? {
-		if s.initialized == 0 {
-			panic('SpinLock not initialized')
-		}
-	}
 	// First do a relaxed load to check if lock is free in order to prevent
 	// unnecessary cache misses if someone does while(!try_lock())
 	// TODO: make a `relaxed` load
@@ -120,9 +107,6 @@ pub fn (s &SpinLock) try_lock() bool {
 @[inline]
 pub fn (s &SpinLock) unlock() {
 	$if valgrind ? {
-		if s.initialized == 0 {
-			panic('SpinLock used without initialization')
-		}
 		C.ANNOTATE_RWLOCK_RELEASED(&s.locked, 1) // 1 = write lock
 	}
 	// Ensure critical section completes before release
