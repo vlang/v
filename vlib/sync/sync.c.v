@@ -18,16 +18,6 @@ fn should_be_zero(res int) {
 	}
 }
 
-fn C.ANNOTATE_RWLOCK_CREATE(voidptr)
-fn C.ANNOTATE_RWLOCK_ACQUIRED(voidptr, int)
-fn C.ANNOTATE_RWLOCK_RELEASED(voidptr, int)
-fn C.ANNOTATE_RWLOCK_DESTROY(voidptr)
-
-$if valgrind ? {
-	#flag -I/usr/include/valgrind
-	#include <valgrind/helgrind.h>
-}
-
 // SpinLock is a mutual exclusion lock that busy-waits (spins) when locked.
 // When one thread holds the lock, any other thread attempting to acquire it
 // will loop repeatedly until the lock becomes available.
