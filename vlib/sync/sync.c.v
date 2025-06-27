@@ -100,16 +100,14 @@ pub fn (s &SpinLock) try_lock() bool {
 		return false
 	}
 	mut expected := u8(0)
-	success := C.atomic_compare_exchange_weak_byte(&s.locked, &expected, 1)
-	$if valgrind ? {
-		if success {
+	if C.atomic_compare_exchange_weak_byte(&s.locked, &expected, 1) {
+		$if valgrind ? {
 			C.ANNOTATE_RWLOCK_ACQUIRED(&s.locked, 1)
 		}
-	}
-	if success {
 		C.atomic_thread_fence(C.memory_order_acquire)
+		return true
 	}
-	return success
+	return false
 }
 
 // unlock releases the spin lock, making it available to other threads.
