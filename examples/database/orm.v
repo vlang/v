@@ -110,7 +110,7 @@ fn msql_array() ! {
 		sql db {
 			drop table Parent
 		} or {}
-		db.close()
+		db.close() or {}
 	}
 
 	db.query('drop table if exists Parent')!
@@ -144,7 +144,7 @@ fn psql_array() ! {
 	mut db := pg.connect(host: pg_host, user: pg_user, password: pg_pass, dbname: pg_db)!
 	defer {
 		db.exec_one('drop table if exists "Parent", "Child"') or { eprintln(err) }
-		db.close()
+		db.close() or {}
 	}
 	db.exec_one('drop table if exists "Parent", "Child"') or { eprintln(err) }
 
@@ -219,7 +219,7 @@ fn msql() ! {
 	defer {
 		conn.query('DROP TABLE IF EXISTS Module') or { eprintln(err) }
 		conn.query('DROP TABLE IF EXISTS User') or { eprintln(err) }
-		conn.close()
+		conn.close() or {}
 	}
 	conn.query('DROP TABLE IF EXISTS Module') or { eprintln(err) }
 	conn.query('DROP TABLE IF EXISTS User') or { eprintln(err) }
@@ -253,7 +253,7 @@ fn psql() ! {
 	mut db := pg.connect(host: pg_host, user: pg_user, password: pg_pass, dbname: pg_db)!
 	defer {
 		db.exec_one('drop table if exists "modules", "User"') or { eprintln(err) }
-		db.close()
+		db.close() or {}
 	}
 	db.exec_one('drop table if exists "modules", "User"') or { eprintln(err) }
 	sql db {

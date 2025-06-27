@@ -215,7 +215,7 @@ pub fn (mut sem Semaphore) init(n u32) {
 // post increases/unlocks the counter of the semaphore by 1.
 // If the resulting counter value is > 0, and if there is another thread waiting
 // on the semaphore, the waiting thread will decrement the counter by 1
-// (locking the semaphore), and then will continue running. See also .wait() .
+// (locking the semaphore), and then will continue running. See also .wait().
 @[inline]
 pub fn (mut sem Semaphore) post() {
 	C.sem_post(&sem.sem)
@@ -225,7 +225,7 @@ pub fn (mut sem Semaphore) post() {
 // It it was not positive, it will waits for the semaphore count to reach a positive number.
 // When that happens, it will decrease the semaphore count (lock the semaphore), and will return.
 // In effect, it allows you to block threads, until the semaphore, is posted by another thread.
-// See also .post() .
+// See also .post().
 pub fn (mut sem Semaphore) wait() {
 	for {
 		if C.sem_wait(&sem.sem) == 0 {
@@ -246,7 +246,7 @@ pub fn (mut sem Semaphore) wait() {
 // try_wait tries to decrease the semaphore count by 1, if it was positive.
 // If it succeeds in that, it returns true, otherwise it returns false.
 // try_wait should return as fast as possible so error handling is only
-// done when debugging
+// done when debugging.
 pub fn (mut sem Semaphore) try_wait() bool {
 	$if !debug {
 		return C.sem_trywait(&sem.sem) == 0

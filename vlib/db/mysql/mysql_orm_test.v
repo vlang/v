@@ -58,7 +58,7 @@ fn test_mysql_orm() {
 		dbname:   'mysql'
 	)!
 	defer {
-		db.close()
+		db.close() or {}
 	}
 	table := orm.Table{
 		name: 'Test'

@@ -183,7 +183,7 @@ pub fn create(path string) !File {
 	}
 }
 
-// stdin - return an os.File for stdin
+// stdin returns an os.File for stdin.
 pub fn stdin() File {
 	return File{
 		fd:        0
@@ -192,7 +192,7 @@ pub fn stdin() File {
 	}
 }
 
-// stdout - return an os.File for stdout
+// stdout returns an os.File for stdout.
 pub fn stdout() File {
 	return File{
 		fd:        1
@@ -201,7 +201,7 @@ pub fn stdout() File {
 	}
 }
 
-// stderr - return an os.File for stderr
+// stderr returns an os.File for stderr.
 pub fn stderr() File {
 	return File{
 		fd:        2
@@ -210,7 +210,7 @@ pub fn stderr() File {
 	}
 }
 
-// eof returns true, when the end of file has been reached
+// eof returns true, when the end of file has been reached.
 pub fn (f &File) eof() bool {
 	cfile := unsafe { &C.FILE(f.cfile) }
 	return C.feof(cfile) != 0
@@ -290,7 +290,7 @@ pub fn (mut f File) writeln(s string) !int {
 	return written + 1
 }
 
-// write_string writes the string `s` into the file
+// write_string writes the string `s` into the file.
 // It returns how many bytes were actually written.
 pub fn (mut f File) write_string(s string) !int {
 	unsafe { f.write_full_buffer(s.str, usize(s.len))! }
@@ -578,7 +578,7 @@ fn error_size_of_type_0() IError {
 	return &SizeOfTypeIs0Error{}
 }
 
-// read_struct reads a single struct of type `T`
+// read_struct reads a single struct of type `T`.
 pub fn (mut f File) read_struct[T](mut t T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -593,7 +593,7 @@ pub fn (mut f File) read_struct[T](mut t T) ! {
 	}
 }
 
-// read_struct_at reads a single struct of type `T` at position specified in file
+// read_struct_at reads a single struct of type `T` at position specified in file.
 pub fn (mut f File) read_struct_at[T](mut t T, pos u64) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -624,7 +624,7 @@ pub fn (mut f File) read_struct_at[T](mut t T, pos u64) ! {
 	}
 }
 
-// read_raw reads and returns a single instance of type `T`
+// read_raw reads and returns a single instance of type `T`.
 pub fn (mut f File) read_raw[T]() !T {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -641,7 +641,8 @@ pub fn (mut f File) read_raw[T]() !T {
 	return t
 }
 
-// read_raw_at reads and returns a single instance of type `T` starting at file byte offset `pos`
+// read_raw_at reads and returns a single instance of type `T` starting at file
+// byte offset `pos`.
 pub fn (mut f File) read_raw_at[T](pos u64) !T {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -687,7 +688,7 @@ pub fn (mut f File) read_raw_at[T](pos u64) !T {
 	return t
 }
 
-// write_struct writes a single struct of type `T`
+// write_struct writes a single struct of type `T`.
 pub fn (mut f File) write_struct[T](t &T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -743,7 +744,7 @@ pub fn (mut f File) write_struct_at[T](t &T, pos u64) ! {
 
 // TODO: `write_raw[_at]` implementations are copy-pasted from `write_struct[_at]`
 
-// write_raw writes a single instance of type `T`
+// write_raw writes a single instance of type `T`.
 pub fn (mut f File) write_raw[T](t &T) ! {
 	if !f.is_opened {
 		return error_file_not_opened()

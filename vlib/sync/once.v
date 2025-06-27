@@ -16,7 +16,7 @@ pub fn new_once() &Once {
 	return once
 }
 
-// do executes the function `f()` only once
+// do executes the function `f()` only once.
 pub fn (mut o Once) do(f fn ()) {
 	if stdatomic.load_u64(&o.count) < 1 {
 		o.do_slow(f)
@@ -32,7 +32,7 @@ fn (mut o Once) do_slow(f fn ()) {
 	o.m.unlock()
 }
 
-// do_with_param executes `f(param)` only once`
+// do_with_param executes `f(param)` only once.
 // This method can be used as a workaround for passing closures to once.do/1 on Windows
 // (they are not implemented there yet) - just pass your data explicitly.
 // i.e. instead of:
@@ -49,6 +49,7 @@ fn (mut o Once) do_slow(f fn ()) {
 //    }, o)
 // ```
 
+// do_with_param executes the function `f()` with parameter `param` only once.
 pub fn (mut o Once) do_with_param(f fn (voidptr), param voidptr) {
 	if stdatomic.load_u64(&o.count) < 1 {
 		o.do_slow_with_param(f, param)

@@ -224,7 +224,7 @@ fn res_to_rows(res voidptr) []Row {
 }
 
 // close frees the underlying resource allocated by the database connection
-pub fn (db &DB) close() {
+pub fn (db &DB) close() ! {
 	C.PQfinish(db.conn)
 }
 
@@ -509,4 +509,14 @@ pub fn (db &DB) savepoint(savepoint string) ! {
 	if e != '' {
 		return error('pg exec error: "${e}"')
 	}
+}
+
+// validate checks if the connection is still usable
+pub fn (db &DB) validate() !bool {
+	db.exec_one('SELECT 1')!
+	return true
+}
+
+// reset returns the connection to initial state for reuse
+pub fn (db &DB) reset() ! {
 }

@@ -120,6 +120,14 @@ using std::memory_order_consume;
 using std::memory_order_relaxed;
 using std::memory_order_release;
 using std::memory_order_seq_cst;
+
+#define memory_order_relaxed std::memory_order_relaxed
+#define memory_order_consume std::memory_order_consume
+#define memory_order_acquire std::memory_order_acquire
+#define memory_order_release std::memory_order_release
+#define memory_order_acq_rel std::memory_order_acq_rel
+#define memory_order_seq_cst std::memory_order_seq_cst
+
 #else /* <atomic> unavailable, possibly because this is C, not C++ */
 #include <sys/types.h>
 #include <stdbool.h>
@@ -266,6 +274,7 @@ typedef enum
     memory_order_acq_rel = __ATOMIC_ACQ_REL,
     memory_order_seq_cst = __ATOMIC_SEQ_CST
 } memory_order;
+
 /*
  * 7.17.4 Fences.
  */

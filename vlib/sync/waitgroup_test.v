@@ -39,3 +39,16 @@ fn test_waitgroup_no_use() {
 	wg.wait()
 	done = true
 }
+
+fn test_waitgroup_go() {
+	mut counter := 0
+	p := unsafe { &counter }
+	mut wg := new_waitgroup()
+	for i in 0 .. 10 {
+		wg.go(fn [p] () {
+			unsafe { (*p)++ }
+		})
+	}
+	wg.wait()
+	assert counter == 10
+}

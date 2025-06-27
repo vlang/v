@@ -109,3 +109,13 @@ fn C.atomic_fetch_sub_u64(voidptr, u64) u64
 
 fn C.atomic_thread_fence(int)
 fn C.cpu_relax()
+
+fn C.ANNOTATE_RWLOCK_CREATE(voidptr)
+fn C.ANNOTATE_RWLOCK_ACQUIRED(voidptr, int)
+fn C.ANNOTATE_RWLOCK_RELEASED(voidptr, int)
+fn C.ANNOTATE_RWLOCK_DESTROY(voidptr)
+
+$if valgrind ? {
+	#flag -I/usr/include/valgrind
+	#include <valgrind/helgrind.h>
+}

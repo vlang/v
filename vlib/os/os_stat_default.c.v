@@ -85,7 +85,7 @@ pub fn (st Stat) get_filetype() FileType {
 }
 
 // get_mode returns the file type and permissions (readable, writable, executable)
-// in owner/group/others format
+// in owner/group/others format.
 pub fn (st Stat) get_mode() FileMode {
 	return FileMode{
 		typ:    st.get_filetype()
@@ -115,13 +115,13 @@ pub fn is_dir(path string) bool {
 
 // is_link returns a boolean indicating whether `path` is a link.
 // Warning: `is_link()` is known to cause a TOCTOU vulnerability when used incorrectly
-// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md).
 pub fn is_link(path string) bool {
 	attr := lstat(path) or { return false }
 	return attr.get_filetype() == .symbolic_link
 }
 
-// kind_of_existing_path identifies whether path is a file, directory, or link
+// kind_of_existing_path identifies whether path is a file, directory, or link.
 fn kind_of_existing_path(path string) PathKind {
 	mut res := PathKind{}
 	attr := lstat(path) or { return res }

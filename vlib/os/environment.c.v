@@ -10,13 +10,13 @@ fn C.GetEnvironmentStringsW() &u16
 
 fn C.FreeEnvironmentStringsW(&u16) int
 
-// `getenv` returns the value of the environment variable named by the key.
+// getenv returns the value of the environment variable named by the key.
 // If there is not one found, it returns an empty string ''.
 pub fn getenv(key string) string {
 	return getenv_opt(key) or { '' }
 }
 
-// `getenv_opt` returns the value of a given environment variable.
+// getenv_opt returns the value of a given environment variable.
 // Returns `none` if the environment variable does not exist.
 @[manualfree]
 pub fn getenv_opt(key string) ?string {
@@ -42,7 +42,7 @@ pub fn getenv_opt(key string) ?string {
 	}
 }
 
-// os.setenv sets the value of an environment variable with `name` to `value`.
+// setenv sets the value of an environment variable with `name` to `value`.
 pub fn setenv(name string, value string, overwrite bool) int {
 	$if windows {
 		format := '${name}=${value}'.to_wide()
@@ -68,7 +68,7 @@ pub fn setenv(name string, value string, overwrite bool) int {
 	}
 }
 
-// os.unsetenv clears an environment variable with `name`.
+// unsetenv clears an environment variable with `name`.
 pub fn unsetenv(name string) int {
 	$if windows {
 		format := '${name}='.to_wide()
@@ -81,14 +81,13 @@ pub fn unsetenv(name string) int {
 	}
 }
 
-// See: https://linux.die.net/man/5/environ for unix platforms.
+// environ returns a map of all the current environment variables.
+// See: https://linux.die.net/man/5/environ for Unix platforms.
 // See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
-// os.environ returns a map of all the current environment variables
-
-// TODO how to declare Virtual C globals?
-// const C.environ &&char
-
+// for Windows OS.
 pub fn environ() map[string]string {
+	// TODO how to declare Virtual C globals?
+	// const C.environ &&char
 	mut res := map[string]string{}
 	$if windows {
 		mut estrings := C.GetEnvironmentStringsW()

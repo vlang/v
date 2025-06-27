@@ -150,7 +150,7 @@ pub fn connect(path string) !DB {
 // close Closes the DB.
 // TODO: For all functions, determine whether the connection is
 // closed first, and determine what to do if it is
-pub fn (mut db DB) close() !bool {
+pub fn (mut db DB) close() ! {
 	code := C.sqlite3_close(db.conn)
 	if code == 0 {
 		db.is_open = false
@@ -160,7 +160,6 @@ pub fn (mut db DB) close() !bool {
 			code: code
 		}
 	}
-	return true // successfully closed
 }
 
 // Only for V ORM
@@ -499,4 +498,13 @@ pub fn (mut db DB) rollback_to(savepoint string) ! {
 		return error('savepoint should be a identifier string')
 	}
 	db.exec('ROLLBACK TO ${savepoint};')!
+}
+
+// reset returns the connection to initial state for reuse
+pub fn (mut db DB) reset() ! {
+}
+
+// validate checks if the connection is still usable
+pub fn (mut db DB) validate() !bool {
+	return db.exec_none('SELECT 1') == 100
 }

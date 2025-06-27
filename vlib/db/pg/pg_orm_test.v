@@ -57,7 +57,7 @@ fn test_pg_orm() {
 	) or { panic(err) }
 
 	defer {
-		db.close()
+		db.close() or {}
 	}
 	table := orm.Table{
 		name: 'Test'
