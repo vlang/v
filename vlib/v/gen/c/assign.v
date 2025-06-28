@@ -189,9 +189,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	}
 	if node.is_volatile {
 		is_defer_var := node.left[0] is ast.Ident && node.left[0].name !in g.defer_vars
-		if is_defer_var && node.op == .decl_assign {
-			return
-		}
 		if !is_defer_var {
 			g.write('volatile ')
 		}
