@@ -35,6 +35,8 @@ pub mut:
 	is_inter_end                bool
 	is_enclosed_inter           bool
 	is_nested_enclosed_inter    bool
+	string_count                int
+	is_str_dollor_need_rcbr     []bool = []
 	line_comment                string
 	last_lt                     int = -1 // position of latest <
 	is_print_line_on_error      bool
@@ -797,6 +799,12 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.question, '?', 1)
 			}
 			single_quote, double_quote {
+				if s.string_count == 1 && s.is_str_dollor_need_rcbr.len == 0 {
+					s.string_count = 0
+					return s.new_token(.string, '', 1)
+				} else {
+					s.string_count++
+				}
 				start_line := s.line_nr
 				ident_string := s.ident_string()
 				return s.new_multiline_token(.string, ident_string, ident_string.len + 2,
@@ -823,10 +831,14 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				// Skip { in `${` in strings
 				if s.is_inside_string || s.is_enclosed_inter {
 					if s.text[s.pos - 1] == `$` {
+						s.is_str_dollor_need_rcbr << true
 						continue
 					} else {
+						s.is_str_dollor_need_rcbr << false
 						s.inter_cbr_count++
 					}
+				} else {
+					s.is_str_dollor_need_rcbr << false
 				}
 				return s.new_token(.lcbr, '', 1)
 			}
@@ -840,7 +852,12 @@ pub fn (mut s Scanner) text_scan() token.Token {
 			`}` {
 				// s = `hello $name !`
 				// s = `hello ${name} !`
-				if (s.is_enclosed_inter || s.is_nested_enclosed_inter) && s.inter_cbr_count == 0 {
+				if ((s.is_enclosed_inter || s.is_nested_enclosed_inter) && s.inter_cbr_count == 0)
+					|| (s.all_tokens.last().kind != .string && s.is_str_dollor_need_rcbr.len > 0
+					&& s.is_str_dollor_need_rcbr.last()) {
+					if s.is_str_dollor_need_rcbr.len > 0 {
+						s.is_str_dollor_need_rcbr.delete_last()
+					}
 					if s.pos < s.text.len - 1 {
 						s.pos++
 					} else {
@@ -854,6 +871,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 						} else {
 							s.is_enclosed_inter = false
 						}
+						s.string_count--
 						return s.new_token(.string, '', 1)
 					}
 					if s.is_nested_enclosed_inter {
@@ -865,6 +883,14 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					ident_string := s.ident_string()
 					return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
 				} else {
+					if s.is_str_dollor_need_rcbr.len > 0 {
+						if s.is_str_dollor_need_rcbr.last() {
+							s.is_str_dollor_need_rcbr.delete_last()
+							s.pos++
+							return s.new_token(.string, '', 1)
+						}
+						s.is_str_dollor_need_rcbr.delete_last()
+					}
 					if s.inter_cbr_count > 0 {
 						s.inter_cbr_count--
 					}
@@ -1255,9 +1281,14 @@ pub fn (mut s Scanner) ident_string() string {
 		// end of string
 		if c == s.quote && (is_raw || backslash_count & 1 == 0) {
 			// handle '123\\' backslash at the end
+			s.string_count--
 			break
 		}
 		if c == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter) {
+			s.string_count--
+			break
+		}
+		if c == s.quote && s.string_count == 0 {
 			break
 		}
 		if c == b_cr {
