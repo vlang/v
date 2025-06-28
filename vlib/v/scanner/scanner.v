@@ -36,7 +36,7 @@ pub mut:
 	is_enclosed_inter           bool
 	is_nested_enclosed_inter    bool
 	string_count                int
-	is_str_dollor_need_rcbr     []bool = []
+	str_dollar_needs_rcbr     []bool = []
 	line_comment                string
 	last_lt                     int = -1 // position of latest <
 	is_print_line_on_error      bool
