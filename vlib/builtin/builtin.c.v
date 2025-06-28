@@ -828,3 +828,55 @@ pub fn arguments() []string {
 	}
 	return res
 }
+
+// min returns the smallest `T` of inputs.
+// Example: assert min(1,2,3) == 1
+@[direct_array_access; inline]
+pub fn min[T](a ...T) T {
+	match a.len {
+		0 {
+			return T(0)
+		}
+		1 {
+			return a[0]
+		}
+		2 {
+			return if a[0] < a[1] { a[0] } else { a[1] }
+		}
+		else {
+			mut m := a[0]
+			for i in 1 .. a.len {
+				if a[i] < m {
+					m = a[i]
+				}
+			}
+			return m
+		}
+	}
+}
+
+// max returns the largest `T` of inputs.
+// Example: assert max(1,2,3) == 3
+@[direct_array_access; inline]
+pub fn max[T](a ...T) T {
+	match a.len {
+		0 {
+			return T(0)
+		}
+		1 {
+			return a[0]
+		}
+		2 {
+			return if a[0] < a[1] { a[1] } else { a[0] }
+		}
+		else {
+			mut m := a[0]
+			for i in 1 .. a.len {
+				if a[i] > m {
+					m = a[i]
+				}
+			}
+			return m
+		}
+	}
+}
