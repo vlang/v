@@ -784,6 +784,15 @@ fn test_write_file_array_bytes() {
 	// eprintln(rarr.str())
 }
 
+fn test_write_bytes() {
+	fpath := './wbytes.bin'
+	for arr in [[u8(65), 66, 67, 68, 69, 70], [u8(3), 2, 1], []u8{}] {
+		os.write_bytes(fpath, arr)!
+		rarr := os.read_bytes(fpath)!
+		assert arr == rarr
+	}
+}
+
 fn test_write_file_array_structs() {
 	fpath := './astructs.bin'
 	mut arr := []IntPoint{len: maxn}
