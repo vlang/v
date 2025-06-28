@@ -38,6 +38,10 @@ fn test_min() {
 
 	assert min(1, 2, 3, 4, 5, 6, 7, 8, 9) == 1
 	assert min(`a`, `b`, `c`, `d`, `e`) == `a`
+
+	// special case test
+	assert min[int]() == 0
+	assert min(1) == 1
 }
 
 fn test_max() {
@@ -59,4 +63,8 @@ fn test_max() {
 
 	assert max(1, 2, 3, 4, 5, 6, 7, 8, 9) == 9
 	assert max(`a`, `b`, `c`, `d`, `e`) == `e`
+
+	// special case test
+	assert max[int]() == 0
+	assert max(1) == 1
 }
