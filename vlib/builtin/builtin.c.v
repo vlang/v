@@ -835,6 +835,8 @@ pub fn arguments() []string {
 pub fn min[T](a ...T) T {
 	match a.len {
 		0 {
+			// TODO: return min value of type `T`.
+			// min[int]() == min_int
 			return T(0)
 		}
 		1 {
@@ -861,6 +863,8 @@ pub fn min[T](a ...T) T {
 pub fn max[T](a ...T) T {
 	match a.len {
 		0 {
+			// TODO: return max value of type `T`.
+			// max[int] == max_int
 			return T(0)
 		}
 		1 {
