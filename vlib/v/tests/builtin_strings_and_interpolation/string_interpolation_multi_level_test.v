@@ -6,11 +6,11 @@ fn test_string_interpolation_multi_level() {
 	x := 0
 
 	// vfmt off
-	assert '${if x == 0 { '${x}' } else { '${'${x + 1}'}' }}' == '1'
+	assert '${if x == 0 { '${x}' } else { '${'${x + 1}'}' }}' == '0'
 
 	assert '${foo() or { '${if x == 0 { '${x}' } else { '${x + 1}' }}' }}' == '0'
 
-	println('${match true { true { '${x}' } else { '${x + 1}' } }}' == '2')
+	println('${match true { true { '${x}' } else { '${x + 1}' } }}' == '0')
 
 	// codegen error
 	// assert '${match true { true { '${x}' } else { '${x + 1}' } }}' == '0'
