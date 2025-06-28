@@ -956,6 +956,8 @@ fn (t Tree) var(node ast.Var) &Node {
 	obj.add_terse('expr', t.expr(node.expr))
 	obj.add_terse('is_arg', t.bool_node(node.is_arg))
 	obj.add_terse('is_mut', t.bool_node(node.is_mut))
+	obj.add_terse('is_static', t.bool_node(node.is_static))
+	obj.add_terse('is_volatile', t.bool_node(node.is_volatile))
 	obj.add('is_used', t.bool_node(node.is_used))
 	obj.add('is_changed', t.bool_node(node.is_changed))
 	obj.add_terse('ct_type_var', t.enum_node(node.ct_type_var))
