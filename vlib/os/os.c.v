@@ -62,6 +62,12 @@ pub fn read_bytes(path string) ![]u8 {
 	return res
 }
 
+// write_bytes writes all the `bytes` to `path`.
+@[manualfree]
+pub fn write_bytes(path string, bytes []u8) ! {
+	write_file_array(path, bytes)!
+}
+
 fn find_cfile_size(fp &C.FILE) !int {
 	// NB: Musl's fseek returns -1 for virtual files, while Glibc's fseek returns 0
 	cseek := C.fseek(fp, 0, C.SEEK_END)
