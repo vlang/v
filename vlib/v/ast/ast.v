@@ -904,6 +904,8 @@ pub:
 	name            string
 	share           ShareType
 	is_mut          bool
+	is_static       bool
+	is_volatile     bool
 	is_autofree_tmp bool
 	is_inherited    bool
 	has_inherited   bool
