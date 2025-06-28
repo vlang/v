@@ -45,7 +45,10 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 	inside_interface_deref_save := c.inside_interface_deref
 	c.inside_interface_deref = true
 	for i, mut expr in node.exprs {
+		expected_type := c.expected_type
+		c.expected_type = ast.string_type
 		mut ftyp := c.expr(mut expr)
+		c.expected_type = expected_type
 		ftyp = c.type_resolver.get_type_or_default(expr, c.check_expr_option_or_result_call(expr,
 			ftyp))
 		if ftyp == ast.void_type || ftyp == 0 {
