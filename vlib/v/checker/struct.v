@@ -939,6 +939,16 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		} else if struct_sym.info.generic_types.len == struct_sym.info.concrete_types.len {
 			parent_type := struct_sym.info.parent_type
 			parent_sym := c.table.sym(parent_type)
+			if c.inside_generic_struct_init {
+				mut st := unsafe { struct_sym.info }
+				for mut field in st.fields {
+					sym := c.table.sym(field.typ)
+					if sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(sym.info) {
+						mut size_expr := unsafe { sym.info.size_expr }
+						field.typ = c.eval_array_fixed_sizes(mut size_expr, 0, sym.info.elem_type)
+					}
+				}
+			}
 			for method in parent_sym.methods {
 				generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
 				for i, param in method.params {
