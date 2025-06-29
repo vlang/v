@@ -34,7 +34,7 @@ mut:
 
 type LoopType = KqueueLoop
 
-// create_kqueue_loop creates a new kernel event queue with loop_id=`id`
+// create_kqueue_loop creates a new kernel event queue with loop_id=`id`.
 pub fn create_kqueue_loop(id int) !&KqueueLoop {
 	mut loop := &KqueueLoop{
 		id: id
@@ -48,7 +48,7 @@ pub fn create_kqueue_loop(id int) !&KqueueLoop {
 	return loop
 }
 
-// ev_set sets a new `kevent` with file descriptor `index`
+// ev_set sets a new `kevent` with file descriptor `index`.
 @[inline]
 pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 	mut filter := 0
@@ -65,7 +65,7 @@ pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 }
 
 // backend_build uses the lower 8 bits to store the old events and the higher 8
-// bits to store the next file descriptor in `Target.backend`
+// bits to store the next file descriptor in `Target.backend`.
 @[inline]
 fn backend_build(next_fd int, events u32) int {
 	return int((u32(next_fd) << 8) | (events & 0xff))
@@ -84,7 +84,7 @@ fn backend_get_next_fd(backend int) int {
 }
 
 // apply pending processes all changes for the file descriptors and updates `loop.changelist`
-// if `aplly_all` is `true` the changes are immediately applied
+// if `aplly_all` is `true` the changes are immediately applied.
 fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 	mut total, mut nevents := 0, 0
 
