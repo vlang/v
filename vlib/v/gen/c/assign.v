@@ -179,9 +179,15 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	mut node := unsafe { node_ }
 	if node.is_static {
-		g.write('static ')
+		is_defer_var := node.left[0] is ast.Ident && node.left[0].name in g.defer_vars
+		if is_defer_var && node.op == .decl_assign {
+			return
+		}
+		if !is_defer_var {
+			g.write('static ')
+		}
 	}
-	if node.is_volatile {
+	if node.is_volatile && node.left[0] is ast.Ident && node.left[0].name !in g.defer_vars {
 		g.write('volatile ')
 	}
 	mut return_type := ast.void_type

@@ -444,6 +444,12 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 					}
 					info := var.obj as ast.Var
 					if g.table.sym(info.typ).kind != .function {
+						if info.is_static {
+							g.write('static ')
+						}
+						if info.is_volatile {
+							g.write('volatile ')
+						}
 						g.writeln('${g.styp(info.typ)}${deref} ${c_name(var.name)};')
 					}
 				}
