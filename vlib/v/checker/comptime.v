@@ -402,7 +402,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			}
 		}
 		ast.SizeOf {
-			s, _ := c.table.type_size(expr.typ)
+			s, _ := c.table.type_size(c.unwrap_generic(expr.typ))
 			return i64(s)
 		}
 		ast.FloatLiteral {
