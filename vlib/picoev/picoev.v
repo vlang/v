@@ -4,29 +4,29 @@ import net
 import picohttpparser
 import time
 
-// maximum size of the event queue
+// maximum size of the event queue.
 pub const max_queue = 4096
 
-// event for incoming data ready to be read on a socket
+// event for incoming data ready to be read on a socket.
 pub const picoev_read = 1
 
-// event for socket ready for writing
+// event for socket ready for writing.
 pub const picoev_write = 2
 
-// event indicating a timeout has occurred
+// event indicating a timeout has occurred.
 pub const picoev_timeout = 4
 
-// flag for adding a file descriptor to the event loop
+// flag for adding a file descriptor to the event loop.
 pub const picoev_add = 0x40000000
 
-// flag for removing a file descriptor from the event loop
+// flag for removing a file descriptor from the event loop.
 pub const picoev_del = 0x20000000
 
-// event read/write
+// event read/write.
 pub const picoev_readwrite = 3
 
 // Target is a data representation of everything that needs to be associated with a single
-// file descriptor (connection)
+// file descriptor (connection).
 pub struct Target {
 pub mut:
 	fd      int // file descriptor
@@ -37,7 +37,7 @@ pub mut:
 	backend int
 }
 
-// Config configures the Picoev instance with server settings and callbacks
+// Config configures the Picoev instance with server settings and callbacks.
 pub struct Config {
 pub:
 	port         int = 8080
@@ -80,7 +80,7 @@ pub:
 	user_data voidptr = unsafe { nil }
 }
 
-// init fills the `file_descriptors` array
+// init fills the `file_descriptors` array.
 pub fn (mut pv Picoev) init() {
 	// assert max_fds > 0
 	pv.num_loops = 0
@@ -89,7 +89,7 @@ pub fn (mut pv Picoev) init() {
 	}
 }
 
-// add a file descriptor to the event loop
+// add a file descriptor to the event loop.
 @[direct_array_access]
 pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) int {
 	if pv == unsafe { nil } || fd < 0 || fd >= max_fds {
@@ -110,7 +110,7 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 	return 0
 }
 
-// remove a file descriptor from the event loop
+// remove a file descriptor from the event loop.
 @[direct_array_access]
 pub fn (mut pv Picoev) delete(fd int) int {
 	if fd < 0 || fd >= max_fds {
@@ -146,7 +146,7 @@ fn (mut pv Picoev) loop_once(max_wait_in_sec int) int {
 }
 
 // set_timeout sets the timeout in seconds for a file descriptor. If a timeout occurs
-// the file descriptors target callback is called with a timeout event
+// the file descriptors target callback is called with a timeout event.
 @[direct_array_access; inline]
 fn (mut pv Picoev) set_timeout(fd int, secs int) {
 	assert fd < max_fds
@@ -159,7 +159,7 @@ fn (mut pv Picoev) set_timeout(fd int, secs int) {
 
 // handle_timeout loops over all file descriptors and removes them from the loop
 // if they are timed out. Also the file descriptors target callback is called with a
-// timeout event
+// timeout event.
 @[direct_array_access; inline]
 fn (mut pv Picoev) handle_timeout() {
 	mut to_remove := []int{}
@@ -176,7 +176,7 @@ fn (mut pv Picoev) handle_timeout() {
 	}
 }
 
-// accept_callback accepts a new connection from `listen_fd` and adds it to the event loop
+// accept_callback accepts a new connection from `listen_fd` and adds it to the event loop.
 fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
 	mut pv := unsafe { &Picoev(cb_arg) }
 	accepted_fd := accept(listen_fd)
@@ -204,7 +204,7 @@ fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
 	pv.add(accepted_fd, picoev_read, pv.timeout_secs, raw_callback)
 }
 
-// close_conn closes the socket `fd` and removes it from the loop
+// close_conn closes the socket `fd` and removes it from the loop.
 @[inline]
 pub fn (mut pv Picoev) close_conn(fd int) {
 	if pv.delete(fd) != 0 {
@@ -213,7 +213,7 @@ pub fn (mut pv Picoev) close_conn(fd int) {
 	close_socket(fd)
 }
 
-// raw_callback handles raw events (read, write, timeout) for a file descriptor
+// raw_callback handles raw events (read, write, timeout) for a file descriptor.
 @[direct_array_access]
 fn raw_callback(fd int, events int, context voidptr) {
 	mut pv := unsafe { &Picoev(context) }
@@ -299,7 +299,7 @@ fn default_error_callback(data voidptr, req picohttpparser.Request, mut res pico
 	res.end()
 }
 
-// new creates a `Picoev` struct and initializes the main loop
+// new creates a `Picoev` struct and initializes the main loop.
 pub fn new(config Config) !&Picoev {
 	listening_socket_fd := listen(config) or {
 		elog('Error during listen: ${err}')
@@ -340,7 +340,7 @@ pub fn new(config Config) !&Picoev {
 	return pv
 }
 
-// serve starts the event loop for accepting new connections
+// serve starts the event loop for accepting new connections.
 // See also picoev.new().
 pub fn (mut pv Picoev) serve() {
 	spawn update_date_string(mut pv)
@@ -349,7 +349,7 @@ pub fn (mut pv Picoev) serve() {
 	}
 }
 
-// update_date updates the date field of the Picoev instance every second for HTTP headers
+// update_date updates the date field of the Picoev instance every second for HTTP headers.
 fn update_date_string(mut pv Picoev) {
 	for {
 		// get GMT (UTC) time for the HTTP Date header

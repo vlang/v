@@ -36,8 +36,8 @@ mut:
 
 type LoopType = EpollLoop
 
-// create_epoll_loop creates a new epoll instance for and returns an
-// `EpollLoop` struct with `id`
+// create_epoll_loop creates a new epoll instance and returns an
+// `EpollLoop` struct with `id`.
 pub fn create_epoll_loop(id int) !&EpollLoop {
 	mut loop := &EpollLoop{
 		id: id
@@ -51,6 +51,7 @@ pub fn create_epoll_loop(id int) !&EpollLoop {
 	return loop
 }
 
+// updates the events associated with a file descriptor in the event loop.
 @[direct_array_access]
 fn (mut pv Picoev) update_events(fd int, events int) int {
 	// check if fd is in range
@@ -103,6 +104,7 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 	return 0
 }
 
+// performs a single iteration of the select-based event loop.
 @[direct_array_access]
 fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 	nevents := C.epoll_wait(pv.loop.epoll_fd, &pv.loop.events[0], max_fds, max_wait_in_sec * 1000)
