@@ -4289,7 +4289,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					left_cc_type := g.cc_type(g.table.unaliased_type(node.expr_type),
 						false)
 					left_type_name := util.no_dots(left_cc_type)
-					g.write('${c_name(left_type_name)}_name_table[${node.expr.name}${g.dot_or_ptr(node.expr_type)}_typ]._method_${m.name}')
+					g.write('${c_name(left_type_name)}_name_table[${node.expr.name}${g.dot_or_ptr(node.expr_type)}_typ]/**/._method_${m.name}')
 				} else {
 					g.write('${g.styp(node.expr_type.idx_type())}_${m.name}')
 				}
@@ -4473,7 +4473,7 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 			method_name = g.generic_fn_name(rec_sym.info.concrete_types, m.name)
 		}
 	}
-	if rec_sym.info is ast.Interface {
+	if rec_sym.info is ast.Interface && rec_sym.info.get_methods().contains(method_name) {
 		left_cc_type := g.cc_type(g.table.unaliased_type(receiver.typ), false)
 		left_type_name := util.no_dots(left_cc_type)
 		sb.write_string('${c_name(left_type_name)}_name_table[a0->_typ]._method_${method_name}(')
