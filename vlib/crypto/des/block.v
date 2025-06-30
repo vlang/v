@@ -80,7 +80,7 @@ fn permute_initial_block(b u64) u64 {
 	block ^= b1 ^ b2 ^ b1 << 48 ^ b2 >> 48
 
 	// block = b1 b0 b5 b4 b3 b2 b7 b6
-	b1 = block >> 32 & 0xff00ff
+	b1 = (block >> 32) & 0xff00ff
 	b2 = (block & 0xff00ff00)
 	block ^= b1 << 32 ^ b2 ^ b1 << 8 ^ b2 << 24 // exchange b0 b4 with b3 b7
 
@@ -156,7 +156,7 @@ fn permute_final_block(b u64) u64 {
 	b2 = block & 0x0000f0f00000f0f0
 	block ^= b1 ^ b2 ^ b1 >> 12 ^ b2 << 12
 
-	b1 = block >> 32 & 0xff00ff
+	b1 = (block >> 32) & 0xff00ff
 	b2 = (block & 0xff00ff00)
 	block ^= b1 << 32 ^ b2 ^ b1 << 8 ^ b2 << 24
 
