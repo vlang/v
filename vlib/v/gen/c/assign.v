@@ -1083,8 +1083,11 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 				'${mr_var_name}.arg${i}'
 			}
 			if mr_types[i].has_flag(.option) {
+				old_left_is_opt := g.left_is_opt
+				g.left_is_opt = true
 				g.expr(lx)
-				g.write(' = ${tmp_var};')
+				g.writeln(' = ${tmp_var};')
+				g.left_is_opt = old_left_is_opt
 			} else {
 				g.write('_option_ok(&(${base_typ}[]) { ${tmp_var} }, (${option_name}*)(&')
 				tmp_left_is_opt := g.left_is_opt
