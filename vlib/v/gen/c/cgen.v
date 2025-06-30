@@ -4289,7 +4289,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					left_cc_type := g.cc_type(g.table.unaliased_type(node.expr_type),
 						false)
 					left_type_name := util.no_dots(left_cc_type)
-					g.write('${c_name(left_type_name)}_name_table[${node.expr.name}${g.dot_or_ptr(node.expr_type)}_typ]/**/._method_${m.name}')
+					g.write('${c_name(left_type_name)}_name_table[${node.expr.name}${g.dot_or_ptr(node.expr_type)}_typ]._method_${m.name}')
 				} else {
 					g.write('${g.styp(node.expr_type.idx_type())}_${m.name}')
 				}
