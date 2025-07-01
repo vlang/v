@@ -540,6 +540,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
+	table.used_features.used_none = walker.used_none
+	if walker.used_none == 0 {
+		walker.used_fns.delete('${int(ast.none_type)}.str')
+	}
 	table.used_features.used_fns = walker.used_fns.move()
 	table.used_features.used_consts = walker.used_consts.move()
 	table.used_features.used_globals = walker.used_globals.move()
