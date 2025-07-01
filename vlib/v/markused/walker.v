@@ -358,6 +358,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.is_vweb {
 				w.stmts(node.veb_tmpl.stmts)
 			}
+			if node.is_embed {
+				w.features.used_maps++
+			}
 		}
 		ast.DumpExpr {
 			w.expr(node.expr)
