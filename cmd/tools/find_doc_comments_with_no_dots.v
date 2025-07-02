@@ -22,7 +22,7 @@ fn main() {
 			continue
 		}
 	}
-	println('> Processed ${fpaths.len} .v files, found errors: ${ctx.errors} .')
+	println('> Processed ${fpaths.len} .v files, found errors: ${ctx.errors} , in ${ctx.pub_symbols} `pub` declarations, and ${ctx.pub_comment_lines} pub comment lines.')
 	if ctx.errors > 0 {
 		exit(1)
 	}
@@ -30,7 +30,10 @@ fn main() {
 
 struct Context {
 mut:
-	errors int
+	errors            int
+	pub_symbols       int
+	pub_comment_lines int
+	comments          int
 }
 
 fn (mut ctx Context) process_fpath(filepath string) ! {
@@ -38,6 +41,7 @@ fn (mut ctx Context) process_fpath(filepath string) ! {
 	mut prev := 0
 	for iline, line in lines {
 		if line.starts_with('pub ') {
+			ctx.pub_symbols++
 			mut comments := []CommentLine{}
 			mut i := 0
 			for i = int_max(0, iline - 1); i >= prev; i-- {
@@ -55,6 +59,7 @@ fn (mut ctx Context) process_fpath(filepath string) ! {
 				if !line.contains(fword) {
 					continue
 				}
+				ctx.pub_comment_lines += comments.len
 				if !cline.comment.ends_with('.') {
 					println('${filepath}:${cline.line}: ${cline.comment}')
 					ctx.errors++
