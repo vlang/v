@@ -2,7 +2,7 @@ module json2
 
 import time
 
-// `Any` is a sum type that lists the possible types to be decoded and used.
+// Any is a sum type that lists the possible types to be decoded and used.
 // `Any` priority order for numbers: floats -> signed integers -> unsigned integers
 // `Any` priority order for strings: string -> time.Time
 pub type Any = []Any
@@ -23,21 +23,22 @@ pub type Any = []Any
 	| u8
 	| Null
 
-// Decodable is an interface, that allows custom implementations for decoding structs from JSON encoded values
+// Decodable is an interface, that allows custom implementations for decoding structs from JSON encoded values.
 pub interface Decodable {
 	from_json(f Any)
 }
 
-// Decodable is an interface, that allows custom implementations for encoding structs to their string based JSON representations
+// Encodable is an interface, that allows custom implementations for encoding structs to their string based JSON representations.
 pub interface Encodable {
 	json_str() string
 }
 
-// `Null` struct is a simple representation of the `null` value in JSON.
+// Null is a simple representation of the `null` value in JSON.
 pub struct Null {
 	is_null bool = true
 }
 
+// null is an instance of the Null type, to ease comparisons with it.
 pub const null = Null{}
 
 // ValueKind enumerates the kinds of possible values of the Any sumtype.
@@ -49,7 +50,7 @@ pub enum ValueKind {
 	number
 }
 
-// str returns the string representation of the specific ValueKind
+// str returns the string representation of the specific ValueKind.
 pub fn (k ValueKind) str() string {
 	return match k {
 		.unknown { 'unknown' }

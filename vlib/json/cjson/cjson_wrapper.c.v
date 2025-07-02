@@ -107,7 +107,7 @@ fn C.cJSON_free(voidptr)
 
 //
 
-// version returns the version of cJSON as a string
+// version returns the version of cJSON as a string.
 pub fn version() string {
 	return unsafe { tos3(&char(C.cJSON_Version())) }
 }
