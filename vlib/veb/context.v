@@ -58,6 +58,10 @@ pub mut:
 	// use form_error to pass errors from the context to your frontend
 	form_error                  string
 	livereload_poll_interval_ms int = 250
+	// List of middleware functions
+	middlewares []fn (mut Context) Result
+	// The index of the currently executed middleware
+	middleware_index int
 }
 
 // returns the request header data from the key
@@ -256,6 +260,22 @@ pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 
 // before_request is always the first function that is executed and acts as middleware
 pub fn (mut ctx Context) before_request() Result {
+	// Initialize the middleware index
+	ctx.middleware_index = -1
+	// Start the middleware chain
+	return ctx.next()
+}
+
+// New next method - execute the next middleware in the chain
+pub fn (mut ctx Context) next() Result {
+	ctx.middleware_index++ // Move to the next middleware
+
+	// If there are still middlewares that have not been executed
+	if ctx.middleware_index < ctx.middlewares.len {
+		// Execute the middleware for the current index
+		return ctx.middlewares[ctx.middleware_index](mut ctx)
+	}
+	// After all middlewares are executed, return an empty result to continue routing processing
 	return Result{}
 }
 
