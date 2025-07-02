@@ -276,3 +276,7 @@ fn test_separators() {
 		assert with == without
 	}
 }
+
+fn test_new() {
+	assert unsigned.uint256_new(unsigned.uint128_max, unsigned.uint128_max) == unsigned.uint256_max
+}
