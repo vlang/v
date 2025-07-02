@@ -115,7 +115,7 @@ pub fn (mut context BuildContext) exec(name string) {
 	}
 }
 
-// exec runs the given task and its dependencies
+// exec runs the given task and its dependencies.
 pub fn (mut task Task) exec(mut context BuildContext) {
 	if task.did_run && !task.repeatable {
 		println(': ${task.name} (skipped)')
