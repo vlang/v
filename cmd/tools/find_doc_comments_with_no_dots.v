@@ -12,7 +12,8 @@ fn main() {
 			fpaths << filepath
 		}
 		if os.is_dir(filepath) {
-			fpaths << os.walk_ext(filepath, '.v')
+			fpaths << os.walk_ext(filepath, '.v').filter(!it.ends_with('_test.v')
+				&& !it.ends_with('_test.c.v'))
 		}
 	}
 	mut ctx := Context{}
