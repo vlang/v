@@ -186,8 +186,8 @@ fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidp
 	return arr
 }
 
-// ensure_cap increases the `cap` of an array to the required value
-// by copying the data to a new memory location (creating a clone),
+// ensure_cap increases the `cap` of an array to the required value, if needed.
+// It does so by copying the data to a new memory location (creating a clone),
 // unless `a.cap` is already large enough.
 pub fn (mut a array) ensure_cap(required int) {
 	if required <= a.cap {
@@ -916,8 +916,8 @@ pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 	}
 }
 
-// sorted_with_compare sorts a clone of the array, using the results of the
-// given function to determine sort order. The original array is not modified.
+// sorted_with_compare sorts a clone of the array. The original array is not modified.
+// It uses the results of the given function to determine sort order.
 // See also .sort_with_compare()
 pub fn (a &array) sorted_with_compare(callback fn (voidptr, voidptr) int) array {
 	$if freestanding {
@@ -930,15 +930,14 @@ pub fn (a &array) sorted_with_compare(callback fn (voidptr, voidptr) int) array 
 	return array{}
 }
 
-// contains determines whether an array includes a certain value among its elements
+// contains determines whether an array includes a certain value among its elements.
 // It will return `true` if the array contains an element with this value.
 // It is similar to `.any` but does not take an `it` expression.
 //
 // Example: [1, 2, 3].contains(4) == false
 pub fn (a array) contains(value voidptr) bool
 
-// index returns the first index at which a given element can be found in the array
-// or `-1` if the value is not found.
+// index returns the first index at which a given element can be found in the array or `-1` if the value is not found.
 pub fn (a array) index(value voidptr) int
 
 @[direct_array_access; unsafe]
@@ -955,7 +954,7 @@ pub fn (mut a []string) free() {
 // The following functions are type-specific functions that apply
 // to arrays of different types in different ways.
 
-// str returns a string representation of an array of strings
+// str returns a string representation of an array of strings.
 // Example: ['a', 'b', 'c'].str() // => "['a', 'b', 'c']".
 @[direct_array_access; manualfree]
 pub fn (a []string) str() string {

@@ -593,14 +593,14 @@ pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
 	}
 }
 
-// normalize_tabs replaces all tab characters with `tab_len` amount of spaces
+// normalize_tabs replaces all tab characters with `tab_len` amount of spaces.
 // Example: assert '\t\tpop rax\t; pop rax'.normalize_tabs(2) == '    pop rax  ; pop rax'
 @[inline]
 pub fn (s string) normalize_tabs(tab_len int) string {
 	return s.replace_char(`\t`, ` `, tab_len)
 }
 
-// expand_tabs replaces tab characters (\t) in the input string with spaces to achieve proper column alignment
+// expand_tabs replaces tab characters (\t) in the input string with spaces to achieve proper column alignment .
 // Example: assert 'AB\tHello!'.expand_tabs(4) == 'AB  Hello!'
 pub fn (s string) expand_tabs(tab_len int) string {
 	if tab_len <= 0 {
@@ -2503,7 +2503,7 @@ pub fn (s string) repeat(count int) string {
 	return unsafe { ret.vstring_with_len(new_len) }
 }
 
-// fields returns a string array of the string split by `\t` and ` `
+// fields returns a string array of the string split by `\t` and ` ` .
 // Example: assert '\t\tv = v'.fields() == ['v', '=', 'v']
 // Example: assert '  sss   ssss'.fields() == ['sss', 'ssss']
 pub fn (s string) fields() []string {
@@ -2954,7 +2954,7 @@ pub:
 	end   string = '\n'
 }
 
-// wrap wraps the string `s` when each line exceeds the width specified in `width`
+// wrap wraps the string `s` when each line exceeds the width specified in `width` .
 // (default value is 80), and will use `end` (default value is '\n') as a line break.
 // Example: `assert 'Hello, my name is Carl and I am a delivery'.wrap(width: 20) == 'Hello, my name is\nCarl and I am a\ndelivery'`
 pub fn (s string) wrap(config WrapConfig) string {
@@ -2983,7 +2983,7 @@ pub fn (s string) wrap(config WrapConfig) string {
 	return sb.str()
 }
 
-// hex returns a string with the hexadecimal representation of the bytes of the string `s`
+// hex returns a string with the hexadecimal representation of the bytes of the string `s` .
 pub fn (s string) hex() string {
 	if s == '' {
 		return ''
@@ -3024,7 +3024,7 @@ pub fn (s string) runes_iterator() RunesIterator {
 	}
 }
 
-// next is the method that will be called for each iteration in `for r in s.runes_iterator() {`
+// next is the method that will be called for each iteration in `for r in s.runes_iterator() {` .
 pub fn (mut ri RunesIterator) next() ?rune {
 	for ri.i >= ri.s.len {
 		return none

@@ -67,8 +67,7 @@ fn v_sort(mut arr array, comparator fn (voidptr, voidptr) int) {
 	}
 }
 
-// trim trims the array length to "index" without modifying the allocated data. If "index" is greater
-// than len nothing will be changed.
+// trim trims the array length to "index" without modifying the allocated data. If "index" is greater than len nothing will be changed.
 pub fn (mut a array) trim(index int) {
 	if index < a.len {
 		a.len = index
@@ -285,7 +284,7 @@ fn arr_copy(mut dst array, src array, count int) {
 	}
 }
 
-// delete_many deletes `size` elements beginning with index `i`
+// delete_many deletes `size` elements beginning with index `i`.
 pub fn (mut a array) delete_many(i int, size int) {
 	#a.val.arr.make_copy()
 	#a.val.arr.arr.splice(i.valueOf(),size.valueOf())
@@ -320,8 +319,7 @@ pub fn (mut a array) clear() {
 	#a.val.arr.arr.length = 0
 }
 
-// reduce executes a given reducer function on each element of the array,
-// resulting in a single output value.
+// reduce executes a given reducer function on each element of the array, resulting in a single output value.
 pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
 	mut accum_ := accum_start
 	/*#for (let i = 0;i < a.arr.length;i++)  {

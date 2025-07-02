@@ -176,8 +176,7 @@ pub fn (x u8) hex() string {
 	return res
 }
 
-// hex returns a string with the hexadecimal representation
-// of the byte elements of the array.
+// hex returns a string with the hexadecimal representation of the byte elements of the array.
 pub fn (b []u8) hex() string {
 	mut hex := ''
 	for i in b {

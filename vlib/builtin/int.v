@@ -9,23 +9,23 @@ pub struct VContext {
 
 pub type byte = u8
 
-// ptr_str returns the address of `ptr` as a `string`.
+// ptr_str returns a string with the address of `ptr`.
 pub fn ptr_str(ptr voidptr) string {
 	buf1 := u64(ptr).hex()
 	return buf1
 }
 
-// str returns string equivalent of x
+// str returns the string equivalent of x.
 pub fn (x isize) str() string {
 	return i64(x).str()
 }
 
-// str returns string equivalent of x
+// str returns the string equivalent of x.
 pub fn (x usize) str() string {
 	return u64(x).str()
 }
 
-// str returns string equivalent of cptr
+// str returns a string with the address stored in the pointer cptr.
 pub fn (cptr &char) str() string {
 	return u64(cptr).hex()
 }
@@ -63,10 +63,10 @@ pub const max_u32 = u32(4294967295)
 pub const min_u64 = u64(0)
 pub const max_u64 = u64(18446744073709551615)
 
-// This implementation is the quickest with gcc -O2
 // str_l returns the string representation of the integer nn with max chars.
 @[direct_array_access; inline]
 fn (nn int) str_l(max int) string {
+	// This implementation is the quickest with gcc -O2
 	unsafe {
 		mut n := i64(nn)
 		mut d := 0
@@ -554,10 +554,9 @@ pub fn (b []u8) bytestr() string {
 	}
 }
 
-// byterune attempts to decode a sequence of bytes
-// from utf8 to utf32 and return the result as a rune
-// it will produce an error if there are more than
-// four bytes in the array.
+// byterune attempts to decode a sequence of bytes, from utf8 to utf32.
+// It return the result as a rune.
+// It will produce an error, if there are more than four bytes in the array.
 pub fn (b []u8) byterune() !rune {
 	r := b.utf8_to_utf32()!
 	return rune(r)

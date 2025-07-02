@@ -480,7 +480,7 @@ pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
 
-// str returns a copy of the string
+// str returns a copy of the string.
 pub fn (s string) str() string {
 	return s.clone()
 }

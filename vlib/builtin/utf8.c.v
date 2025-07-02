@@ -92,8 +92,7 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 	}
 }
 
-// wide_to_ansi create an ANSI string, given a windows
-// style string, encoded in UTF-16.
+// wide_to_ansi create an ANSI string, given a windows style string, encoded in UTF-16.
 // It use CP_ACP, which is ANSI code page identifier, as dest encoding.
 // NOTE: It return a vstring(encoded in UTF-8) []u8 under Linux.
 pub fn wide_to_ansi(_wstr &u16) []u8 {

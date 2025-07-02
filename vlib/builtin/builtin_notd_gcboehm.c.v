@@ -39,8 +39,8 @@ pub fn gc_is_enabled() bool {
 // Note that gc_enable() is a NOP with `-gc none`.
 pub fn gc_enable() {}
 
-// gc_disable explicitly disables the GC. Do not forget to enable it again by calling gc_enable(),
-// when your program is otherwise idle, and can afford it.
+// gc_disable explicitly disables the GC.
+// Do not forget to enable it again by calling gc_enable(), when your program is otherwise idle, and can afford it.
 // See also gc_enable() and gc_collect().
 // Note that gc_disable() is a NOP with `-gc none`.
 pub fn gc_disable() {}

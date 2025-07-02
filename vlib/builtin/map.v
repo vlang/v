@@ -457,7 +457,7 @@ fn (mut m map) expand() {
 	}
 }
 
-// A rehash is the reconstruction of the hash table:
+// rehash reconstructs the hash table.
 // All the elements in the container are rearranged according
 // to their hash value into the newly sized key-value container.
 // Rehashes are performed when the load_factor is going to surpass
@@ -467,7 +467,7 @@ fn (mut m map) rehash() {
 	m.reserve(meta_bytes)
 }
 
-// reserve memory for the map meta data
+// reserve memory for the map meta data.
 pub fn (mut m map) reserve(meta_bytes u32) {
 	unsafe {
 		// TODO: use realloc_data here too
@@ -486,7 +486,7 @@ pub fn (mut m map) reserve(meta_bytes u32) {
 	}
 }
 
-// This method works like rehash. However, instead of rehashing the
+// cached_rehashd works like rehash. However, instead of rehashing the
 // key completely, it uses the bits cached in `metas`.
 fn (mut m map) cached_rehash(old_cap u32) {
 	old_metas := m.metas
@@ -509,7 +509,7 @@ fn (mut m map) cached_rehash(old_cap u32) {
 	unsafe { free(old_metas) }
 }
 
-// This method is used for assignment operators. If the argument-key
+// get_and_set is used for assignment operators. If the argument-key
 // does not exist in the map, it's added to the map along with the zero/default value.
 // If the key exists, its respective value is returned.
 fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
