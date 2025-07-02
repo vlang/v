@@ -350,52 +350,58 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							else {}
 						}
 					} else if left is ast.SizeOf && right is ast.IntegerLiteral {
-						s, _ := c.table.type_size(c.unwrap_generic(left.typ))
-						skip_state = match branch.cond.op {
-							.gt {
-								if s > right.val.i64() {
-									ComptimeBranchSkipState.eval
-								} else {
+						// TODO: support struct.fieldname
+						typ := c.unwrap_generic(left.typ)
+						if typ == 0 {
+							c.error('invalid `\$if` condition: expected a type', branch.cond.left.pos())
+						} else {
+							s, _ := c.table.type_size(c.unwrap_generic(typ))
+							skip_state = match branch.cond.op {
+								.gt {
+									if s > right.val.i64() {
+										ComptimeBranchSkipState.eval
+									} else {
+										ComptimeBranchSkipState.skip
+									}
+								}
+								.lt {
+									if s < right.val.i64() {
+										ComptimeBranchSkipState.eval
+									} else {
+										ComptimeBranchSkipState.skip
+									}
+								}
+								.ge {
+									if s >= right.val.i64() {
+										ComptimeBranchSkipState.eval
+									} else {
+										ComptimeBranchSkipState.skip
+									}
+								}
+								.le {
+									if s <= right.val.i64() {
+										ComptimeBranchSkipState.eval
+									} else {
+										ComptimeBranchSkipState.skip
+									}
+								}
+								.ne {
+									if s != right.val.i64() {
+										ComptimeBranchSkipState.eval
+									} else {
+										ComptimeBranchSkipState.skip
+									}
+								}
+								.eq {
+									if s == right.val.i64() {
+										ComptimeBranchSkipState.eval
+									} else {
+										ComptimeBranchSkipState.skip
+									}
+								}
+								else {
 									ComptimeBranchSkipState.skip
 								}
-							}
-							.lt {
-								if s < right.val.i64() {
-									ComptimeBranchSkipState.eval
-								} else {
-									ComptimeBranchSkipState.skip
-								}
-							}
-							.ge {
-								if s >= right.val.i64() {
-									ComptimeBranchSkipState.eval
-								} else {
-									ComptimeBranchSkipState.skip
-								}
-							}
-							.le {
-								if s <= right.val.i64() {
-									ComptimeBranchSkipState.eval
-								} else {
-									ComptimeBranchSkipState.skip
-								}
-							}
-							.ne {
-								if s != right.val.i64() {
-									ComptimeBranchSkipState.eval
-								} else {
-									ComptimeBranchSkipState.skip
-								}
-							}
-							.eq {
-								if s == right.val.i64() {
-									ComptimeBranchSkipState.eval
-								} else {
-									ComptimeBranchSkipState.skip
-								}
-							}
-							else {
-								ComptimeBranchSkipState.skip
 							}
 						}
 					}
