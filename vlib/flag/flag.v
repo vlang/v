@@ -49,7 +49,7 @@ fn (mut f Flag) free() {
 	}
 }
 
-// str returns a string representation of the given Flag
+// str returns a string representation of the given Flag.
 pub fn (f Flag) str() string {
 	return '    flag:
             name: ${f.name}
@@ -58,7 +58,7 @@ pub fn (f Flag) str() string {
             desc: ${f.val_desc}'
 }
 
-// str returns a string representation of the given array of Flags
+// str returns a string representation of the given array of Flags.
 pub fn (af []Flag) str() string {
 	mut res := []string{}
 	res << '\n  []Flag = ['
@@ -129,7 +129,7 @@ pub const space = '                            '
 pub const underline = '-----------------------------------------------'
 pub const max_args_number = 4048
 
-// new_flag_parser - create a new flag parser for the given args
+// new_flag_parser - create a new flag parser for the given args.
 pub fn new_flag_parser(args []string) &FlagParser {
 	original_args := args.clone()
 	idx_dashdash := args.index('--')
@@ -150,7 +150,7 @@ pub fn new_flag_parser(args []string) &FlagParser {
 	}
 }
 
-// usage_example - add an usage example
+// usage_example - add an usage example.
 // All examples will be listed in the help screen.
 // If you do not give any examples, then a default usage
 // will be shown, based on whether the application takes
@@ -175,8 +175,7 @@ pub fn (mut fs FlagParser) version(vers string) {
 	fs.application_version = vers
 }
 
-// description appends to the application description lines, shown
-// in the help/usage screen
+// description appends to the application description lines, shown in the help/usage screen.
 pub fn (mut fs FlagParser) description(desc string) {
 	if fs.application_description.len == 0 {
 		fs.application_description = desc
@@ -190,15 +189,14 @@ pub fn (mut fs FlagParser) skip_executable() {
 	fs.args.delete(0)
 }
 
-// allow_unknown_args - if your program has sub commands, that have
-// their own arguments, you can call .allow_unknown_args(), so that
-// the subcommand arguments (which generally are not known to your
-// parent program), will not cause the validation in .finalize() to fail.
+// allow_unknown_args - call this method, if your program has sub commands, that have their own arguments.
+// After calling it, the subcommand arguments (which generally are not known to your parent program),
+// will not cause the validation in .finalize() to fail.
 pub fn (mut fs FlagParser) allow_unknown_args() {
 	fs.allow_unknown_args = true
 }
 
-// private helper to register a flag
+// private helper to register a flag.
 // This version supports abbreviations.
 fn (mut fs FlagParser) add_flag(name string, abbr u8, usage string, desc string) {
 	fs.flags << Flag{
@@ -500,9 +498,8 @@ pub fn (mut fs FlagParser) string(name string, abbr u8, sdefault string, usage s
 	return value
 }
 
-// limit_free_args_to_at_least restricts the list of free arguments (non options) to be
-// at least `n` in length. If the user gives less free arguments to the program,
-// the parser will return an error.
+// limit_free_args_to_at_least restricts the list of free arguments (non options) to be at least `n` in length.
+// If the user gives less free arguments to the program, the parser will return an error.
 pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) ! {
 	if n > max_args_number {
 		return error('flag.limit_free_args_to_at_least expect n to be smaller than ${max_args_number}')
@@ -513,9 +510,8 @@ pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) ! {
 	fs.min_free_args = n
 }
 
-// limit_free_args_to_exactly restricts the list of free arguments (non options) to be
-// at exactly `n` in length. If the user gives more or less free arguments to the program,
-// the parser will return an error.
+// limit_free_args_to_exactly restricts the list of free arguments (non options) to be at exactly `n` in length.
+// If the user gives more or less free arguments to the program, the parser will return an error.
 pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) ! {
 	if n > max_args_number {
 		return error('flag.limit_free_args_to_exactly expect n to be smaller than ${max_args_number}')
@@ -527,9 +523,8 @@ pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) ! {
 	fs.max_free_args = n
 }
 
-// limit_free_args restricts the list of free arguments (non options) to be between
-// `min` and `max` in length. If the user gives more or less free arguments to the program,
-// the parser will return an error.
+// limit_free_args restricts the list of free arguments (non options) to be between `min` and `max` in length.
+// If the user gives more or less free arguments to the program, the parser will return an error.
 pub fn (mut fs FlagParser) limit_free_args(min int, max int) ! {
 	if min > max {
 		return error('flag.limit_free_args expect min < max, got ${min} >= ${max}')
@@ -544,8 +539,7 @@ pub fn (mut fs FlagParser) arguments_description(description string) {
 	fs.args_description = description
 }
 
-// usage returns a nicely formatted usage screen, containing all the
-// possible options, as well as the description for the program.
+// usage returns a nicely formatted usage screen, containing all the possible options, as well as the description for the program.
 // That screen is usually shown when the `--help` option is given to the program.
 pub fn (fs &FlagParser) usage() string {
 	positive_min_arg := (fs.min_free_args > 0)

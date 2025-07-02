@@ -25,8 +25,7 @@ pub const picoev_del = 0x20000000
 // event read/write.
 pub const picoev_readwrite = 3
 
-// Target is a data representation of everything that needs to be associated with a single
-// file descriptor (connection).
+// Target is a data representation of everything that needs to be associated with a single file descriptor (connection).
 pub struct Target {
 pub mut:
 	fd      int // file descriptor

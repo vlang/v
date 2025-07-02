@@ -395,7 +395,7 @@ pub fn (mut g Gen) gen_c_main_trace_calls_hook() {
 	g.writeln('\tu8 bottom_of_stack = 0; g_stack_base = &bottom_of_stack; v__trace_calls__on_c_main(${should_trace_c_main});')
 }
 
-// gen_dll_main create DllMain() for windows .dll
+// gen_dll_main create DllMain() for windows .dll.
 pub fn (mut g Gen) gen_dll_main() {
 	g.writeln('VV_EXP BOOL DllMain(HINSTANCE hinst,DWORD fdwReason,LPVOID lpvReserved) {
 	switch (fdwReason) {

@@ -24,7 +24,7 @@ const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_gen
 
 const generic_fn_postprocess_iterations_cutoff_limit = 1_000_000
 
-// array_builtin_methods contains a list of all methods on array, that return other typed arrays,
+// array_builtin_methods contains a list of all methods on array, that return other typed arrays.
 // i.e. that act as *pseudogeneric* methods, that need compiler support, so that the types of the results
 // are properly checked.
 // Note that methods that do not return anything, or that return known types, are not listed here, since they are just ordinary non generic methods.
@@ -5717,7 +5717,7 @@ fn (c &Checker) check_import_sym_conflict(ident string) bool {
 	return false
 }
 
-// update_unresolved_fixed_sizes updates the unresolved type symbols for array fixed return type and alias type
+// update_unresolved_fixed_sizes updates the unresolved type symbols for array fixed return type and alias type.
 pub fn (mut c Checker) update_unresolved_fixed_sizes() {
 	for mut stmt in c.unresolved_fixed_sizes {
 		if mut stmt is ast.FnDecl { // return types

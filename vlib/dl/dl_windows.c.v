@@ -33,10 +33,10 @@ pub fn sym(handle voidptr, symbol string) voidptr {
 	return C.GetProcAddress(handle, voidptr(symbol.str))
 }
 
-// dlerror provides a text error diagnostic message for functions in `dl`
-// it returns a human-readable string, describing the most recent error
+// dlerror provides a text error diagnostic message for functions in `dl`.
+// It returns a human-readable string, describing the most recent error
 // that occurred from a call to one of the `dl` functions, since the last
-// call to dlerror()
+// call to dlerror().
 pub fn dlerror() string {
 	// https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
 	// Unlike dlerror(), GetLastError returns just an error code, that is function specific.
