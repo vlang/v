@@ -685,6 +685,22 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 						g.write(' ${cond.op} ')
 						r, d2 := g.comptime_if_cond(cond.right, pkg_exist)
 						return if cond.op == .eq { l == r } else { l != r }, d1 && d1 == d2
+					}
+					if cond.left is ast.SizeOf || cond.right is ast.IntegerLiteral {
+						left := cond.left as ast.SizeOf
+						s, _ := g.table.type_size(g.unwrap_generic(left.typ))
+						right := cond.right as ast.IntegerLiteral
+						is_true := match cond.op {
+							.eq { s == right.val.i64() }
+							.ne { s != right.val.i64() }
+							else { false }
+						}
+						if is_true {
+							g.write('1')
+						} else {
+							g.write('0')
+						}
+						return is_true, true
 					} else {
 						g.write('1')
 						return true, true
@@ -740,6 +756,24 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							.lt { left_muls < cond.right.val.i64() }
 							.ge { left_muls >= cond.right.val.i64() }
 							.le { left_muls <= cond.right.val.i64() }
+							else { false }
+						}
+						if is_true {
+							g.write('1')
+						} else {
+							g.write('0')
+						}
+						return is_true, true
+					}
+					if cond.left is ast.SizeOf || cond.right is ast.IntegerLiteral {
+						left := cond.left as ast.SizeOf
+						s, _ := g.table.type_size(g.unwrap_generic(left.typ))
+						right := cond.right as ast.IntegerLiteral
+						is_true := match cond.op {
+							.gt { s > right.val.i64() }
+							.lt { s < right.val.i64() }
+							.ge { s >= right.val.i64() }
+							.le { s <= right.val.i64() }
 							else { false }
 						}
 						if is_true {

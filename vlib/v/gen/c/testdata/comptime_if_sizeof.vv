@@ -1,0 +1,49 @@
+struct MyStruct {
+	a u16
+	b u8
+	c u32
+	d u64
+}
+
+fn main() {
+	f[u16]()
+	g[MyStruct]()
+}
+
+fn f[T]() {
+	$if sizeof(T) == 2 {
+		assert true
+	} $else {
+		assert false
+	}
+	$if sizeof(T) < 4 {
+		assert true
+	} $else {
+		assert false
+	}
+	$if sizeof(T) > 1 {
+		assert true
+	} $else {
+		assert false
+	}
+	println('done f')
+}
+
+fn g[T]() {
+	$if sizeof(T) == 16 {
+		assert true
+	} $else {
+		assert false
+	}
+	$if sizeof(T) < 17 {
+		assert true
+	} $else {
+		assert false
+	}
+	$if sizeof(T) > 15 {
+		assert true
+	} $else {
+		assert false
+	}
+	println('done g')
+}
