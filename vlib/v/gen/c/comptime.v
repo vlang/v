@@ -686,7 +686,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 						r, d2 := g.comptime_if_cond(cond.right, pkg_exist)
 						return if cond.op == .eq { l == r } else { l != r }, d1 && d1 == d2
 					}
-					if cond.left is ast.SizeOf || cond.right is ast.IntegerLiteral {
+					if cond.left is ast.SizeOf && cond.right is ast.IntegerLiteral {
 						left := cond.left as ast.SizeOf
 						s, _ := g.table.type_size(g.unwrap_generic(left.typ))
 						right := cond.right as ast.IntegerLiteral
@@ -765,7 +765,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 						}
 						return is_true, true
 					}
-					if cond.left is ast.SizeOf || cond.right is ast.IntegerLiteral {
+					if cond.left is ast.SizeOf && cond.right is ast.IntegerLiteral {
 						left := cond.left as ast.SizeOf
 						s, _ := g.table.type_size(g.unwrap_generic(left.typ))
 						right := cond.right as ast.IntegerLiteral
