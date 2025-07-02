@@ -993,6 +993,9 @@ pub fn (mut g Gen) init() {
 			g.cheaders.writeln('#define VNOFLOAT 1')
 		}
 		g.cheaders.writeln(c_builtin_types)
+		if !g.pref.skip_unused || g.table.used_features.used_maps > 0 {
+			g.cheaders.writeln(c_mapfn_callback_types)
+		}
 		if g.pref.is_bare {
 			g.cheaders.writeln(c_bare_headers)
 		} else {
@@ -1752,6 +1755,9 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 				}
 			}
 			.map {
+				if g.pref.skip_unused && g.table.used_features.used_maps == 0 {
+					continue
+				}
 				g.type_definitions.writeln('typedef map ${sym.cname};')
 			}
 			else {
@@ -1885,7 +1891,6 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 	if !info.has_decl && (not_anon || is_fn_sig) && !func.return_type.has_flag(.generic)
 		&& !has_generic_arg {
 		fn_name := sym.cname
-
 		mut call_conv := ''
 		mut msvc_call_conv := ''
 		for attr in func.attrs {
@@ -6635,13 +6640,18 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		if sym.name.starts_with('C.') {
 			continue
 		}
-		if sym.kind == .none {
+		if sym.kind == .none && (!g.pref.skip_unused || g.table.used_features.used_none > 0) {
 			g.type_definitions.writeln('struct none {')
 			g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 			g.type_definitions.writeln('};')
 			g.typedefs.writeln('typedef struct none none;')
 		}
 		mut name := sym.scoped_cname()
+		if g.pref.skip_unused && g.table.used_features.used_maps == 0 {
+			if name in ['map', 'mapnode', 'SortedMap', 'MapMode', 'DenseArray'] {
+				continue
+			}
+		}
 		match sym.info {
 			ast.Struct {
 				if !struct_names[name] {

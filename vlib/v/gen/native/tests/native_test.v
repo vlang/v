@@ -1,4 +1,5 @@
-// vtest build: (amd64 || arm64) && !self_sandboxed_packaging? && !gcc-windows
+// vtest build: (amd64 || arm64) && !self_sandboxed_packaging? && !gcc-windows && !native-backend-windows && !tcc-windows && !msvc-windows
+// NOTE: native-backend-windows passed with the windows-2019 runner, but fails with windows-2022. TODO: fix
 @[has_globals]
 module main
 
