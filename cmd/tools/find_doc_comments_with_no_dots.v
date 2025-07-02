@@ -16,6 +16,7 @@ fn main() {
 				&& !it.ends_with('_test.c.v'))
 		}
 	}
+	fpaths.sort()
 	mut ctx := Context{}
 	for filepath in fpaths {
 		ctx.process_fpath(filepath) or {
