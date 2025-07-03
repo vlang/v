@@ -120,7 +120,7 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 
 	// Attempt to reserve space in the buffer
 	for !success && attempts < 10 {
-		old_head = rb.prod_head
+		old_head = C.atomic_load_u32(&rb.prod_head)
 
 		// Memory barrier for weak memory models
 		$if !x64 && !x32 {
@@ -128,7 +128,7 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 		}
 
 		// Calculate available space using unsigned arithmetic
-		free_entries := capacity + rb.cons_tail - old_head
+		free_entries := capacity + C.atomic_load_u32(&rb.cons_tail) - old_head
 
 		// Check if there's enough space
 		if n > free_entries {
@@ -179,7 +179,7 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 	mut backoff := 1
 	if !is_single_producer(rb.mode) {
 		mut attempts_wait := 1
-		for rb.prod_tail != old_head {
+		for C.atomic_load_u32(&rb.prod_tail) != old_head {
 			for _ in 0 .. backoff {
 				C.cpu_relax() // Low-latency pause instruction
 			}
@@ -196,7 +196,7 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 	$if valgrind ? {
 		C.ANNOTATE_HAPPENS_BEFORE(&rb.prod_tail)
 	}
-	rb.prod_tail = new_head
+	C.atomic_store_u32(&rb.prod_tail, new_head)
 	$if valgrind ? {
 		C.ANNOTATE_HAPPENS_AFTER(&rb.prod_tail)
 	}
@@ -233,14 +233,14 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 
 	// Attempt to reserve data for reading
 	for !success && attempts < 10 {
-		old_head = rb.cons_head
+		old_head = C.atomic_load_u32(&rb.cons_head)
 		// Memory barrier for weak memory models
 		$if !x64 && !x32 {
 			C.atomic_thread_fence(C.memory_order_acquire)
 		}
 
 		// Calculate available items to read
-		entries := rb.prod_tail - old_head
+		entries := C.atomic_load_u32(&rb.prod_tail) - old_head
 
 		// Check if enough data is available
 		if n > entries {
@@ -290,7 +290,7 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 	// For multiple consumers: wait for previous consumers to complete
 	if !is_single_consumer(rb.mode) {
 		mut attempts_wait := 1
-		for rb.cons_tail != old_head {
+		for C.atomic_load_u32(&rb.cons_tail) != old_head {
 			for _ in 0 .. backoff {
 				C.cpu_relax() // Low-latency pause instruction
 			}
@@ -307,7 +307,7 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 	$if valgrind ? {
 		C.ANNOTATE_HAPPENS_BEFORE(&rb.cons_tail)
 	}
-	rb.cons_tail = new_head
+	C.atomic_store_u32(&rb.cons_tail, new_head)
 	$if valgrind ? {
 		C.ANNOTATE_HAPPENS_AFTER(&rb.cons_tail)
 	}
