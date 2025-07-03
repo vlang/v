@@ -114,11 +114,13 @@ fn is_single_consumer(mode u32) bool {
 }
 
 // try_push tries to push a single item non-blocking.
+@[inline]
 pub fn (mut rb RingBuffer[T]) try_push(item T) bool {
 	return rb.try_push_many([item]) == 1
 }
 
 // try_push_many tries to push multiple items non-blocking.
+@[direct_array_access]
 pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 	n := u32(items.len)
 	if n == 0 {
@@ -211,6 +213,7 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 }
 
 // try_pop tries to pop a single item non-blocking.
+@[inline]
 pub fn (mut rb RingBuffer[T]) try_pop() ?T {
 	mut items := []T{len: 1}
 	if rb.try_pop_many(mut items) == 1 {
@@ -220,6 +223,7 @@ pub fn (mut rb RingBuffer[T]) try_pop() ?T {
 }
 
 // try_pop_many tries to pop multiple items non-blocking.
+@[direct_array_access]
 pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 	n := u32(items.len)
 	if n == 0 {
@@ -309,66 +313,89 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 }
 
 // push blocking push of a single item.
+@[inline]
 pub fn (mut rb RingBuffer[T]) push(item T) {
+	mut backoff := 1
 	// Retry until successful
 	for {
 		if rb.try_push(item) {
 			return
 		}
-		C.cpu_relax() // Pause before retry
+		for _ in 0 .. backoff {
+			C.cpu_relax() // Pause before retry
+		}
+		backoff = int_min(backoff * 2, 1024)
 	}
 }
 
 // pop blocking pop of a single item.
+@[inline]
 pub fn (mut rb RingBuffer[T]) pop() T {
+	mut backoff := 1
 	// Retry until successful
 	for {
 		if item := rb.try_pop() {
 			return item
 		}
-		C.cpu_relax() // Pause before retry
+		for _ in 0 .. backoff {
+			C.cpu_relax() // Pause before retry
+		}
+		backoff = int_min(backoff * 2, 1024)
 	}
 	return T(0) // Default value (should never be reached)
 }
 
 // push_many blocking push of multiple items.
+@[inline]
 pub fn (mut rb RingBuffer[T]) push_many(items []T) {
+	mut backoff := 1
 	for {
 		n := rb.try_push_many(items)
 		if n == items.len {
 			break
 		} else {
-			C.cpu_relax() // Pause when buffer is full
+			for _ in 0 .. backoff {
+				C.cpu_relax() // Pause when buffer is full
+			}
+			backoff = int_min(backoff * 2, 1024)
 		}
 	}
 }
 
 // pop_many blocking pop of multiple items.
+@[inline]
 pub fn (mut rb RingBuffer[T]) pop_many(n u32) []T {
 	mut result := []T{len: int(n)}
-
+	mut backoff := 1
 	for {
 		ret := rb.try_pop_many(mut result)
 		if ret == n {
 			break
 		} else {
-			C.cpu_relax() // Pause when buffer is empty
+			// Exponential backoff wait
+			for _ in 0 .. backoff {
+				C.cpu_relax() // Pause when buffer is empty
+			}
+			backoff = int_min(backoff * 2, 1024)
 		}
 	}
 	return result
 }
 
 // is_empty checks if the buffer is empty.
+@[inline]
 pub fn (rb RingBuffer[T]) is_empty() bool {
 	return rb.occupied() == 0
 }
 
 // is_full checks if the buffer is full.
+@[inline]
 pub fn (rb RingBuffer[T]) is_full() bool {
 	return rb.occupied() >= rb.capacity
 }
 
 // capacity returns the total capacity of the buffer.
+@[inline]
 pub fn (rb RingBuffer[T]) capacity() u32 {
 	return rb.capacity
 }
@@ -395,6 +422,7 @@ pub fn (rb RingBuffer[T]) occupied() u32 {
 }
 
 // remaining returns the number of free slots.
+@[inline]
 pub fn (rb RingBuffer[T]) remaining() u32 {
 	return rb.capacity - rb.occupied()
 }
