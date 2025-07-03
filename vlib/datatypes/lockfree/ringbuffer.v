@@ -366,8 +366,11 @@ pub fn (mut rb RingBuffer[T]) push_many(items []T) {
 
 // pop_many blocking pop of multiple items.
 @[inline]
-pub fn (mut rb RingBuffer[T]) pop_many(n u32) []T {
-	mut result := []T{len: int(n)}
+pub fn (mut rb RingBuffer[T]) pop_many(mut result []T) {
+	n := result.len
+	if n == 0 {
+		return
+	}
 	mut backoff := 1
 	for {
 		ret := rb.try_pop_many(mut result)
@@ -381,7 +384,6 @@ pub fn (mut rb RingBuffer[T]) pop_many(n u32) []T {
 			backoff = int_min(backoff * 2, 1024)
 		}
 	}
-	return result
 }
 
 // is_empty checks if the buffer is empty.

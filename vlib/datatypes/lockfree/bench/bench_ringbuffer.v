@@ -3,7 +3,6 @@ module main
 import datatypes.lockfree
 import time
 import sync
-import math
 import os
 import flag
 import runtime
@@ -178,8 +177,6 @@ fn producer_thread(mut rb lockfree.RingBuffer[int], id int, mut wg sync.WaitGrou
 	batch_size := 32
 	mut batch := []int{cap: batch_size}
 
-	// dump('producer_thread')
-
 	for i in start .. end {
 		batch << i
 		if batch.len == batch_size {
@@ -203,30 +200,53 @@ fn consumer_thread(mut rb lockfree.RingBuffer[int], id int, items_to_consume int
 	// Use batch consumption for better performance
 	batch_size := 32
 	mut count := 0
+	mut last_value := -1
+	mut batch_buffer := []int{len: batch_size} // Reusable buffer
 
-	for count < items_to_consume {
-		// Calculate current batch size
-		remaining := items_to_consume - count
-		current_batch := math.min(batch_size, remaining)
+	for count < items_to_consume - batch_size {
+		// Consume batch using pop_many
+		rb.pop_many(mut batch_buffer)
+		count += batch_size
 
-		// Consume batch and update count
-		items := rb.pop_many(u32(current_batch))
-		count += items.len
-		if count % 1000000 == 0 && debug {
+		// Debug output
+		if debug && count % 1000000 == 0 {
 			println('consume item count = ${count}')
 		}
 
-		// Validate sequence integrity
-		if items.len > 0 {
-			first := items[0]
-			last := items[items.len - 1]
-			if last - first != items.len - 1 {
-				eprintln('Thread ${id}: Sequence error! Expected ${first}..${first + items.len - 1}, got ${first}..${last}')
-			}
-		}
+		// Check sequence continuity
+		validate_batch_detailed(id, batch_buffer, last_value)
+		last_value = batch_buffer[batch_buffer.len - 1]
+	}
+
+	remaining := items_to_consume - count
+	if remaining > 0 {
+		mut batch := []int{len: remaining}
+		rb.pop_many(mut batch)
+		count += remaining
+
+		validate_batch_detailed(id, batch, last_value)
 	}
 
 	consumed_counts[id] = count
+}
+
+fn validate_batch_detailed(id int, batch []int, prev_last int) bool {
+	if batch.len == 0 {
+		return true
+	}
+
+	mut valid := true
+
+	mut expected := batch[0] + 1
+	for i in 1 .. batch.len {
+		if batch[i] != expected {
+			eprintln('[Thread ${id}] Sequence error: Position ${i} expected ${expected}, got ${batch[i]}')
+			valid = false
+		}
+		expected += 1
+	}
+
+	return valid
 }
 
 // Print formatted performance results
