@@ -1,31 +1,21 @@
 module lockfree
 
-// copy from vlib/sync/stdatomic/1.declarations.c.v, as we don't import `sync`
-fn C.atomic_load_u32(voidptr) u32
-fn C.atomic_store_u32(voidptr, u32)
-fn C.atomic_compare_exchange_weak_u32(voidptr, voidptr, u32) bool
-fn C.atomic_thread_fence(int)
-fn C.cpu_relax()
-
-fn C.ANNOTATE_RWLOCK_CREATE(voidptr)
-fn C.ANNOTATE_RWLOCK_ACQUIRED(voidptr, int)
-fn C.ANNOTATE_RWLOCK_RELEASED(voidptr, int)
-fn C.ANNOTATE_RWLOCK_DESTROY(voidptr)
-
-$if valgrind ? {
-	#flag -I/usr/include/valgrind
-	#include <valgrind/helgrind.h>
-}
-
-// Define cache line size to prevent false sharing between CPU cores
-const cache_line_size = 64
-
 // RingBufferMode Operation modes for the ring buffer
 pub enum RingBufferMode {
 	spsc = 0 // Single Producer, Single Consumer (optimized for single-threaded access)
 	spmc = 1 // Single Producer, Multiple Consumers (one writer, multiple readers)
 	mpsc = 2 // Multiple Producers, Single Consumer (multiple writers, one reader)
 	mpmc = 3 // Multiple Producers, Multiple Consumers (default, fully concurrent)
+}
+
+pub struct RingBufferStat {
+pub mut:
+	push_full_count      u32
+	push_fail_count      u32
+	push_wait_prev_count u32
+	pop_empty_count      u32
+	pop_fail_count       u32
+	pop_wait_prev_count  u32
 }
 
 // RingBufferParam Configuration parameters for ring buffer creation
@@ -59,7 +49,13 @@ mut:
 	pad4      [cache_line_size - 4]u8 // Cache line padding
 
 	// Data storage area
-	slots []T // Array holding actual data elements
+	slots                []T // Array holding actual data elements
+	push_full_count      u32
+	push_fail_count      u32
+	push_wait_prev_count u32
+	pop_empty_count      u32
+	pop_fail_count       u32
+	pop_wait_prev_count  u32
 }
 
 // new_ringbuffer creates a new lock-free ring buffer
@@ -83,22 +79,6 @@ pub fn new_ringbuffer[T](size u32, param RingBufferParam) &RingBuffer[T] {
 		C.VALGRIND_HG_DISABLE_CHECKING(rb, sizeof(RingBuffer[T]))
 	}
 	return rb
-}
-
-// next_power_of_two calculates the smallest power of two >= n
-@[inline]
-fn next_power_of_two(n u32) u32 {
-	if n == 0 {
-		return 1
-	}
-	mut x := n - 1
-	// Efficient bit manipulation to find next power of two
-	x |= x >> 1
-	x |= x >> 2
-	x |= x >> 4
-	x |= x >> 8
-	x |= x >> 16
-	return x + 1
 }
 
 // is_single_producer checks if current mode is single producer
@@ -152,6 +132,7 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 
 		// Check if there's enough space
 		if n > free_entries {
+			C.atomic_fetch_add_u32(&rb.push_full_count, 1)
 			return 0
 		}
 
@@ -176,6 +157,7 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 
 	// Exit if space reservation failed
 	if !success {
+		C.atomic_fetch_add_u32(&rb.push_fail_count, 1)
 		return 0
 	}
 
@@ -193,11 +175,20 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 	}
 
 	// For multiple producers: wait for previous producers to complete
+	mut add_once := true
+	mut backoff := 1
 	if !is_single_producer(rb.mode) {
 		mut attempts_wait := 1
 		for rb.prod_tail != old_head {
-			C.cpu_relax() // Low-latency pause instruction
+			for _ in 0 .. backoff {
+				C.cpu_relax() // Low-latency pause instruction
+			}
+			backoff = int_min(backoff * 2, 1024)
 			attempts_wait++
+			if attempts_wait > 100 && add_once {
+				C.atomic_fetch_add_u32(&rb.push_wait_prev_count, 1)
+				add_once = false
+			}
 		}
 	}
 
@@ -253,6 +244,7 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 
 		// Check if enough data is available
 		if n > entries {
+			C.atomic_fetch_add_u32(&rb.pop_empty_count, 1)
 			return 0
 		}
 
@@ -277,6 +269,7 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 
 	// Exit if data reservation failed
 	if !success {
+		C.atomic_fetch_add_u32(&rb.pop_fail_count, 1)
 		return 0
 	}
 
@@ -292,12 +285,21 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 		}
 	}
 
+	mut add_once := true
+	mut backoff := 1
 	// For multiple consumers: wait for previous consumers to complete
 	if !is_single_consumer(rb.mode) {
 		mut attempts_wait := 1
 		for rb.cons_tail != old_head {
-			C.cpu_relax() // Low-latency pause instruction
+			for _ in 0 .. backoff {
+				C.cpu_relax() // Low-latency pause instruction
+			}
+			backoff = int_min(backoff * 2, 1024)
 			attempts_wait++
+			if attempts_wait > 100 && add_once {
+				C.atomic_fetch_add_u32(&rb.pop_wait_prev_count, 1)
+				add_once = false
+			}
 		}
 	}
 
@@ -500,7 +502,33 @@ pub fn (mut rb RingBuffer[T]) clear() bool {
 	C.atomic_store_u32(&rb.cons_head, 0)
 	C.atomic_store_u32(&rb.cons_tail, 0)
 
+	C.atomic_store_u32(&rb.push_full_count, 0)
+	C.atomic_store_u32(&rb.push_fail_count, 0)
+	C.atomic_store_u32(&rb.push_wait_prev_count, 0)
+	C.atomic_store_u32(&rb.pop_empty_count, 0)
+	C.atomic_store_u32(&rb.pop_fail_count, 0)
+	C.atomic_store_u32(&rb.pop_wait_prev_count, 0)
 	// Release clear flag
 	C.atomic_store_u32(&rb.clear_flag, 0)
 	return true // Clear operation successful
+}
+
+// stat retrieves current performance statistics of the ring buffer.
+//
+// This method atomically fetches all recorded operation counters:
+// - push_full_count:   Times producers encountered full buffer
+// - push_fail_count:   Times producers failed to reserve space
+// - push_wait_prev_count: Times producers waited for predecessors
+// - pop_empty_count:   Times consumers found empty buffer
+// - pop_fail_count:    Times consumers failed to reserve items
+// - pop_wait_prev_count:  Times consumers waited for predecessors
+pub fn (rb RingBuffer[T]) stat() RingBufferStat {
+	return RingBufferStat{
+		push_full_count:      C.atomic_load_u32(&rb.push_full_count)
+		push_fail_count:      C.atomic_load_u32(&rb.push_fail_count)
+		push_wait_prev_count: C.atomic_load_u32(&rb.push_wait_prev_count)
+		pop_empty_count:      C.atomic_load_u32(&rb.pop_empty_count)
+		pop_fail_count:       C.atomic_load_u32(&rb.pop_fail_count)
+		pop_wait_prev_count:  C.atomic_load_u32(&rb.pop_wait_prev_count)
+	}
 }

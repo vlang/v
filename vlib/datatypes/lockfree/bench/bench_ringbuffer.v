@@ -4,6 +4,9 @@ import datatypes.lockfree
 import time
 import sync
 import math
+import os
+import flag
+import runtime
 
 // Test configuration parameters
 const buffer_size = 1024 // Size of the ring buffer
@@ -14,7 +17,7 @@ const warmup_runs = 3 // Number of warmup runs
 
 const test_runs = 5 // Number of test runs
 
-const max_threads = 8 // Maximum number of threads
+const max_threads = runtime.nr_cpus() // Maximum number of threads
 
 // Performance test results
 struct PerfResult {
@@ -27,31 +30,40 @@ struct PerfResult {
 fn main() {
 	println('Lock-Free Ring Buffer Performance Test')
 	println('======================================')
+	println('Maximum number of threads set to nr_cpus = ${max_threads}')
+	mut fp := flag.new_flag_parser(os.args.clone())
+	fp.skip_executable()
+	show_help := fp.bool('help', 0, false, 'Show this help screen\n')
+	debug := fp.bool('debug', 0, false, 'Show debug message, stat of ringbuffer')
+	if show_help {
+		println(fp.usage())
+		exit(0)
+	}
 
 	// Test different scenarios
 	mut results := []PerfResult{}
 
 	// Single Producer Single Consumer
-	results << test_scenario('SPSC', 1, 1)
+	results << test_scenario('SPSC', 1, 1, debug)
 
 	// Multiple Producers Single Consumer
 	for i in [2, 4, 8] {
 		if i <= max_threads {
-			results << test_scenario('MPSC (${i}P1C)', i, 1)
+			results << test_scenario('MPSC (${i}P1C)', i, 1, debug)
 		}
 	}
 
 	// Single Producer Multiple Consumers
 	for i in [2, 4] {
 		if i <= max_threads {
-			results << test_scenario('SPMC (1P${i}C)', 1, i)
+			results << test_scenario('SPMC (1P${i}C)', 1, i, debug)
 		}
 	}
 
 	// Multiple Producers Multiple Consumers
 	for i in [2, 4, 8] {
 		if i * 2 <= max_threads {
-			results << test_scenario('MPMC (${i}P${i}C)', i, i)
+			results << test_scenario('MPMC (${i}P${i}C)', i, i, debug)
 		}
 	}
 
@@ -60,7 +72,7 @@ fn main() {
 }
 
 // Test specific scenario with given producers/consumers
-fn test_scenario(scenario string, producers int, consumers int) PerfResult {
+fn test_scenario(scenario string, producers int, consumers int, debug bool) PerfResult {
 	println('\nTesting scenario: ${scenario}')
 
 	// Create ring buffer
@@ -68,7 +80,8 @@ fn test_scenario(scenario string, producers int, consumers int) PerfResult {
 
 	// Warmup runs
 	for _ in 0 .. warmup_runs {
-		run_test(mut rb, producers, consumers, false)
+		run_test(mut rb, producers, consumers, false, debug)
+		rb.clear()
 	}
 
 	// Actual test runs
@@ -76,12 +89,12 @@ fn test_scenario(scenario string, producers int, consumers int) PerfResult {
 	mut total_ops := 0
 
 	for _ in 0 .. test_runs {
-		duration, ops := run_test(mut rb, producers, consumers, true)
+		duration, ops := run_test(mut rb, producers, consumers, true, debug)
 		total_time += duration
 		total_ops += ops
 
 		// Reset buffer after each run
-		reset_buffer(mut rb)
+		rb.clear()
 	}
 
 	// Calculate performance metrics
@@ -98,7 +111,7 @@ fn test_scenario(scenario string, producers int, consumers int) PerfResult {
 }
 
 // Execute single test run
-fn run_test(mut rb lockfree.RingBuffer[int], producers int, consumers int, measure bool) (time.Duration, int) {
+fn run_test(mut rb lockfree.RingBuffer[int], producers int, consumers int, measure bool, debug bool) (time.Duration, int) {
 	mut wg := sync.new_waitgroup()
 	total_items := producers * items_per_thread
 
@@ -110,7 +123,7 @@ fn run_test(mut rb lockfree.RingBuffer[int], producers int, consumers int, measu
 	start_time := time.now()
 	for i in 0 .. producers {
 		wg.add(1)
-		spawn producer_thread(mut rb, i, mut wg)
+		spawn producer_thread(mut rb, i, mut wg, debug)
 	}
 
 	// Start consumers
@@ -123,12 +136,15 @@ fn run_test(mut rb lockfree.RingBuffer[int], producers int, consumers int, measu
 			count += 1
 			remaining -= 1
 		}
-		spawn consumer_thread(mut rb, i, count, mut consumed_counts, mut wg)
+		spawn consumer_thread(mut rb, i, count, mut consumed_counts, mut wg, debug)
 	}
 
 	// Wait for all threads to complete
 	wg.wait()
 	end_time := time.now()
+	if debug {
+		println(rb.stat())
+	}
 
 	// Validate results
 	mut total_consumed := 0
@@ -149,7 +165,7 @@ fn run_test(mut rb lockfree.RingBuffer[int], producers int, consumers int, measu
 }
 
 // Producer thread implementation
-fn producer_thread(mut rb lockfree.RingBuffer[int], id int, mut wg sync.WaitGroup) {
+fn producer_thread(mut rb lockfree.RingBuffer[int], id int, mut wg sync.WaitGroup, debug bool) {
 	defer {
 		wg.done()
 	}
@@ -161,6 +177,8 @@ fn producer_thread(mut rb lockfree.RingBuffer[int], id int, mut wg sync.WaitGrou
 	// Use batch pushing for better performance
 	batch_size := 32
 	mut batch := []int{cap: batch_size}
+
+	// dump('producer_thread')
 
 	for i in start .. end {
 		batch << i
@@ -177,7 +195,7 @@ fn producer_thread(mut rb lockfree.RingBuffer[int], id int, mut wg sync.WaitGrou
 }
 
 // Consumer thread with fixed consumption target
-fn consumer_thread(mut rb lockfree.RingBuffer[int], id int, items_to_consume int, mut consumed_counts []int, mut wg sync.WaitGroup) {
+fn consumer_thread(mut rb lockfree.RingBuffer[int], id int, items_to_consume int, mut consumed_counts []int, mut wg sync.WaitGroup, debug bool) {
 	defer {
 		wg.done()
 	}
@@ -194,6 +212,9 @@ fn consumer_thread(mut rb lockfree.RingBuffer[int], id int, items_to_consume int
 		// Consume batch and update count
 		items := rb.pop_many(u32(current_batch))
 		count += items.len
+		if count % 1000000 == 0 && debug {
+			println('consume item count = ${count}')
+		}
 
 		// Validate sequence integrity
 		if items.len > 0 {
@@ -206,22 +227,6 @@ fn consumer_thread(mut rb lockfree.RingBuffer[int], id int, items_to_consume int
 	}
 
 	consumed_counts[id] = count
-}
-
-// Reset buffer to initial state
-fn reset_buffer(mut rb lockfree.RingBuffer[int]) {
-	// Clear all items from buffer
-	for {
-		rb.try_pop() or { break }
-	}
-
-	// Reset internal pointers
-	unsafe {
-		rb.prod_head = 0
-		rb.prod_tail = 0
-		rb.cons_head = 0
-		rb.cons_tail = 0
-	}
 }
 
 // Print formatted performance results
