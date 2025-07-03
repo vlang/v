@@ -38,5 +38,5 @@ fn test_counter() {
 	assert counter.get() == u64(0)
 
 	mut counter_init := lockfree.new_counter(u64(100))
-	assert counter.get() == u64(100)
+	assert counter_init.get() == u64(100)
 }
