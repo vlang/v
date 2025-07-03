@@ -323,9 +323,18 @@ pub fn (u Uint128) lsh(n u32) Uint128 {
 // rsh returns u >> n
 pub fn (u Uint128) rsh(n u32) Uint128 {
 	mut s := Uint128{}
-	if n > 64 {
+	if n == 0 {
+		s.lo = u.lo
+		s.hi = u.hi
+	} else if n >= 128 {
+		s.lo = 0
 		s.hi = 0
-		s.lo = u.hi << (n - 64)
+	} else if n == 64 {
+		s.hi = 0
+		s.lo = u.hi
+	} else if n > 64 {
+		s.hi = 0
+		s.lo = u.hi >> (n - 64)
 	} else {
 		s.lo = u.lo >> n | u.hi << (64 - n)
 		s.hi = u.hi >> n

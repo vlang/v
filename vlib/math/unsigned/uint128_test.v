@@ -183,3 +183,13 @@ fn test_lsh() {
 	assert '302984417681386893975453667670529933312' == a.lsh(100).str()
 	assert unsigned.uint128_zero == a.lsh(200)
 }
+
+fn test_rsh() {
+	a := unsigned.uint128_from_dec_str('279625844435276397900870454226348864638')!
+	assert a.str() == a.rsh(0).str()
+	assert '139812922217638198950435227113174432319' == a.rsh(1).str()
+	assert '15158547400991018568' == a.rsh(64).str()
+	assert '220585896' == a.rsh(100).str()
+	assert '1' == a.rsh(127).str()
+	assert unsigned.uint128_zero == a.rsh(200)
+}
