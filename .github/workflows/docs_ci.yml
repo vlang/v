@@ -56,3 +56,13 @@ jobs:
         run: |
           # shellcheck disable=SC2086
           ./v missdoc $MOPTIONS pv/vlib vlib
+
+  report-missing-dots-in-doc-comments:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make
+      - name: Check doc comment dots for some key modules
+        run: ./v run cmd/tools/find_doc_comments_with_no_dots.v vlib/builtin/ vlib/arrays/ vlib/flag/ vlib/bitfield/
