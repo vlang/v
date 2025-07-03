@@ -2166,10 +2166,13 @@ pub fn (str string) is_hex() bool {
 	}
 
 	for i < str.len {
-		if (str[i] < `0` || str[i] > `9`) && ((str[i] < `a` || str[i] > `f`)
-			&& (str[i] < `A` || str[i] > `F`)) {
+		// TODO: remove this workaround for v2's parser
+		// vfmt off
+		if (str[i] < `0` || str[i] > `9`) && 
+		    ((str[i] < `a` || str[i] > `f`) && (str[i] < `A` || str[i] > `F`)) {
 			return false
 		}
+		// vfmt on
 		i++
 	}
 
@@ -2885,8 +2888,11 @@ pub fn (s string) camel_to_snake() string {
 		c := s[i]
 		c_is_upper := c.is_capital()
 		// Cases: `aBcd == a_bcd` || `ABcd == ab_cd`
-		if ((c_is_upper && !prev_is_upper)
-			|| (!c_is_upper && prev_is_upper && s[i - 2].is_capital())) && c != `_` {
+		// TODO: remove this workaround for v2's parser
+		// vfmt off
+		if ((c_is_upper && !prev_is_upper) ||
+			(!c_is_upper && prev_is_upper && s[i - 2].is_capital())) && 
+			c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
 					b[pos] = `_`
@@ -2894,6 +2900,7 @@ pub fn (s string) camel_to_snake() string {
 				}
 			}
 		}
+		// vfmt on
 		lower_c := if c_is_upper { c + 32 } else { c }
 		unsafe {
 			b[pos] = lower_c

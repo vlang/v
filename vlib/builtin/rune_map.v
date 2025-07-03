@@ -25,8 +25,7 @@ const rune_maps_utl = -2 // NOTE: this should *NOT* be used anywhere in rune_map
 // It is represented that way, instead of the more natural array of structs, to save on the .c encoding used for the initialisation.
 // The overhead for representing it as an array of structs was ~28KB in .c, while with the flat array of ints, it is ~7.5KB.
 // Given that xz can compress it to ~1.8KB, it could be probably represented in an even more compact way...
-const rune_maps = [
-	i32(0xB5), 0xB5, 743, 0,
+const rune_maps = [ i32(0xB5), 0xB5, 743, 0, // this being on the same line, is needed as a workaround for a bug in v2's parser
 	0xC0, 0xD6, 0, 32,
 	0xD8, 0xDE, 0, 32,
 	0xE0, 0xF6, -32, 0,

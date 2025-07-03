@@ -8,7 +8,7 @@ import sync
 // TODO: finish fileset / file / base pos etc
 
 // compact encoding of a source position within a file set
-type Pos = int
+pub type Pos = int
 
 pub struct Position {
 pub:
