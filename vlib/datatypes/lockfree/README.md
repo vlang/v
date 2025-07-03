@@ -1,7 +1,7 @@
 # Lockfree Library for V
 
 A high-performance, thread-safe collection of lock-free data structures for 
-the V programming language.Designed for concurrent applications requiring 
+the V programming language. Designed for concurrent applications requiring 
 low-latency and high-throughput data processing.
 
 ## Features
