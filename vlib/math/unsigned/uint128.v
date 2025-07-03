@@ -300,7 +300,16 @@ pub fn (u Uint128) quo_rem(v Uint128) (Uint128, Uint128) {
 // lsh returns u << n
 pub fn (u Uint128) lsh(n u32) Uint128 {
 	mut s := Uint128{}
-	if n > 64 {
+	if n == 0 {
+		s.lo = u.lo
+		s.hi = u.hi
+	} else if n >= 128 {
+		s.lo = 0
+		s.hi = 0
+	} else if n == 64 {
+		s.lo = 0
+		s.hi = u.lo
+	} else if n > 64 {
 		s.lo = 0
 		s.hi = u.lo << (n - 64)
 	} else {

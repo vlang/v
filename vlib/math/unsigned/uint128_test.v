@@ -174,3 +174,12 @@ fn test_separators() {
 fn test_new() {
 	assert unsigned.uint128_new(max_u64, max_u64) == unsigned.uint128_max
 }
+
+fn test_lsh() {
+	a := unsigned.uint128_from_dec_str('123456789012345678901234567890')!
+	assert a.str() == a.lsh(0).str()
+	assert '246913578024691357802469135780' == a.lsh(1).str()
+	assert '259801135457060040952792416454273138688' == a.lsh(64).str()
+	assert '302984417681386893975453667670529933312' == a.lsh(100).str()
+	assert unsigned.uint128_zero == a.lsh(200)
+}
