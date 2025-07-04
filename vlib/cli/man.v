@@ -19,8 +19,7 @@ fn man_cmd() Command {
 	}
 }
 
-// print_manpage_for_command prints the manpage for the
-// command or subcommand in `man_cmd` to stdout
+// print_manpage_for_command prints the manpage for the command or subcommand in `man_cmd` to stdout.
 pub fn print_manpage_for_command(cmd Command) ! {
 	if cmd.args.len > 0 {
 		for sub_cmd in cmd.commands {
@@ -36,8 +35,7 @@ pub fn print_manpage_for_command(cmd Command) ! {
 	}
 }
 
-// manpage returns a `string` containing the mdoc(7) manpage for
-// this `Command`
+// manpage returns a `string` containing the mdoc(7) manpage for this `Command`.
 pub fn (cmd &Command) manpage() string {
 	mut mdoc := '.Dd ${time.now().strftime('%B %d, %Y')}\n'
 	mdoc += '.Dt ${cmd.full_name().replace(' ', '-').to_upper()} 1\n'

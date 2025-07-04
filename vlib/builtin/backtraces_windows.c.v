@@ -3,7 +3,7 @@ module builtin
 // dbghelp.h is already included in cheaders.v
 #flag windows -l dbghelp
 
-// SymbolInfo is used by print_backtrace_skipping_top_frames_msvc
+// SymbolInfo is used by print_backtrace_skipping_top_frames_msvc.
 pub struct SymbolInfo {
 pub mut:
 	f_size_of_struct u32 // must be 88 to be recognised by SymFromAddr
@@ -61,7 +61,7 @@ const symopt_include_32bit_modules = 0x00002000
 const symopt_allow_zero_address = 0x01000000
 const symopt_debug = u32(0x80000000)
 
-// print_backtrace_skipping_top_frames prints the backtrace skipping N top frames
+// print_backtrace_skipping_top_frames prints the backtrace skipping N top frames.
 pub fn print_backtrace_skipping_top_frames(skipframes int) bool {
 	$if msvc {
 		return print_backtrace_skipping_top_frames_msvc(skipframes)

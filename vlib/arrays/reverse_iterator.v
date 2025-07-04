@@ -1,15 +1,15 @@
 module arrays
 
-// ReverseIterator provides a convenient way to iterate in reverse over all elements of an array,
-// without making allocations, using this syntax: `for elem in arrays.reverse_iterator(a) {` .
+// ReverseIterator provides a convenient way to iterate in reverse over all elements of an array without allocations.
+// I.e. it allows you to use this syntax: `for elem in arrays.reverse_iterator(a) {` .
 pub struct ReverseIterator[T] {
 mut:
 	a []T
 	i int
 }
 
-// reverse_iterator can be used to iterate over the elements in an array using this syntax:
-// `for elem in arrays.reverse_iterator(a) {` .
+// reverse_iterator can be used to iterate over the elements in an array.
+// i.e. you can use this syntax: `for elem in arrays.reverse_iterator(a) {` .
 pub fn reverse_iterator[T](a []T) ReverseIterator[T] {
 	return ReverseIterator[T]{
 		a: a

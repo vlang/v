@@ -37,7 +37,7 @@ pub struct Token {
 	col  int       // the column in the source where the token occurred
 }
 
-// full_col returns the full column information which includes the length
+// full_col returns the full column information which includes the length.
 pub fn (t Token) full_col() int {
 	return t.col + t.lit.len
 }

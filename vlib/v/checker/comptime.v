@@ -402,7 +402,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			}
 		}
 		ast.SizeOf {
-			s, _ := c.table.type_size(expr.typ)
+			s, _ := c.table.type_size(c.unwrap_generic(expr.typ))
 			return i64(s)
 		}
 		ast.FloatLiteral {
@@ -891,6 +891,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 								ComptimeBranchSkipState.skip
 							}
 						}
+					} else if cond.left is ast.SizeOf {
 					} else {
 						c.error('invalid `\$if` condition: ${cond.left.type_name()}',
 							cond.pos)
@@ -919,6 +920,8 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 					}
 					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral
 						&& c.comptime.is_comptime_selector_field_name(cond.left, 'indirections') {
+						return .unknown
+					} else if cond.left is ast.SizeOf {
 						return .unknown
 					}
 					c.error('invalid `\$if` condition', cond.pos)

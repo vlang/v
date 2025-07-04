@@ -22,13 +22,13 @@ pub fn panic_n(s string, n i64) {
 	exit(1)
 }
 
-// IError holds information about an error instance
+// IError holds information about an error instance.
 pub interface IError {
 	msg() string
 	code() int
 }
 
-// str returns the message of IError
+// str returns the message of IError.
 pub fn (err IError) str() string {
 	return match err {
 		None__ {
@@ -49,34 +49,34 @@ pub fn (err IError) str() string {
 // Error is the empty default implementation of `IError`.
 pub struct Error {}
 
-// msg returns the message of Error
+// msg returns the message of Error.
 pub fn (err Error) msg() string {
 	return ''
 }
 
-// code returns the code of Error
+// code returns the code of Error.
 pub fn (err Error) code() int {
 	return 0
 }
 
-// MessageError is the default implementation of the `IError` interface that is returned by the `error()` function
+// MessageError is the default implementation of the `IError` interface that is returned by the `error()` function.
 struct MessageError {
 pub:
 	msg  string
 	code int
 }
 
-// str returns the message and code of the MessageError
+// str returns the message and code of the MessageError.
 pub fn (err MessageError) str() string {
 	return err.msg
 }
 
-// msg returns the message of the MessageError
+// msg returns the message of the MessageError.
 pub fn (err MessageError) msg() string {
 	return err.msg
 }
 
-// code returns the code of MessageError
+// code returns the code of MessageError.
 pub fn (err MessageError) code() int {
 	return err.code
 }
@@ -96,7 +96,7 @@ pub struct Option {
 	err   IError = none__
 }
 
-// str returns the Option type: ok, none, or error
+// str returns the Option type: ok, none, or error.
 pub fn (o Option) str() string {
 	if o.state == 0 {
 		return 'Option{ ok }'
@@ -112,7 +112,7 @@ pub struct _option {
 	err   IError = none__
 }
 
-// str returns the Option type: ok, none, or error
+// str returns the Option type: ok, none, or error.
 pub fn (o _option) str() string {
 	if o.state == 0 {
 		return 'Option{ ok }'
@@ -123,7 +123,7 @@ pub fn (o _option) str() string {
 	return 'Option{ error: "${o.err}" }'
 }
 
-// trace_error prints to stderr a string and a backtrace of the error
+// trace_error prints to stderr a string and a backtrace of the error.
 fn trace_error(x string) {
 	eprintln('> ${@FN} | ${x}')
 }

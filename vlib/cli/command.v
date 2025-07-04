@@ -9,8 +9,7 @@ pub fn (f FnCommandCallback) str() string {
 	return 'FnCommandCallback=>' + ptr_str(f)
 }
 
-// Command is a structured representation of a single command
-// or chain of commands.
+// Command is a structured representation of a single command or chain of commands.
 pub struct Command {
 pub mut:
 	name            string
@@ -147,8 +146,7 @@ pub fn (mut cmd Command) add_command(command Command) {
 	cmd.commands << subcmd
 }
 
-// setup ensures that all sub-commands of this `Command`
-// is linked as a chain.
+// setup ensures that all sub-commands of this `Command` is linked as a chain.
 pub fn (mut cmd Command) setup() {
 	for mut subcmd in cmd.commands {
 		subcmd.parent = unsafe { cmd }
@@ -361,8 +359,7 @@ fn (cmd &Command) check_required_flags() {
 	}
 }
 
-// execute_help executes the callback registered
-// for the `-h`/`--help` flag option.
+// execute_help executes the callback registered for the `-h`/`--help` flag option.
 pub fn (cmd &Command) execute_help() {
 	if cmd.commands.contains('help') {
 		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
@@ -374,8 +371,7 @@ pub fn (cmd &Command) execute_help() {
 	print(cmd.help_message())
 }
 
-// execute_man executes the callback registered
-// for the `-man` flag option.
+// execute_man executes the callback registered for the `-man` flag option.
 pub fn (cmd &Command) execute_man() {
 	if cmd.commands.contains('man') {
 		man_cmd := cmd.commands.get('man') or { return }

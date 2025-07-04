@@ -170,3 +170,26 @@ fn test_separators() {
 		assert with == without
 	}
 }
+
+fn test_new() {
+	assert unsigned.uint128_new(max_u64, max_u64) == unsigned.uint128_max
+}
+
+fn test_lsh() {
+	a := unsigned.uint128_from_dec_str('123456789012345678901234567890')!
+	assert a.str() == a.lsh(0).str()
+	assert '246913578024691357802469135780' == a.lsh(1).str()
+	assert '259801135457060040952792416454273138688' == a.lsh(64).str()
+	assert '302984417681386893975453667670529933312' == a.lsh(100).str()
+	assert unsigned.uint128_zero == a.lsh(200)
+}
+
+fn test_rsh() {
+	a := unsigned.uint128_from_dec_str('279625844435276397900870454226348864638')!
+	assert a.str() == a.rsh(0).str()
+	assert '139812922217638198950435227113174432319' == a.rsh(1).str()
+	assert '15158547400991018568' == a.rsh(64).str()
+	assert '220585896' == a.rsh(100).str()
+	assert '1' == a.rsh(127).str()
+	assert unsigned.uint128_zero == a.rsh(200)
+}

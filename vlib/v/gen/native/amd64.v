@@ -1459,7 +1459,7 @@ fn (mut c Amd64) gen_print(s string, fd i32) {
 	c.g.println('; print }')
 }
 
-// gen_print_reg writes a string of size n stored in r to fd
+// gen_print_reg writes a string of size n stored in r to fd.
 pub fn (mut c Amd64) gen_print_reg(r Register, n i32, fd i32) {
 	c.g.println('; print_reg: (reg:${r} fd:${fd} len:${n}) {')
 	str_reg := if c.g.pref.os == .windows { Amd64Register.rdx } else { Amd64Register.rsi }

@@ -1,6 +1,6 @@
 module builtin
 
-// print_backtrace shows a backtrace of the current call stack on stdout
+// print_backtrace shows a backtrace of the current call stack on stdout.
 pub fn print_backtrace() {
 	// At the time of backtrace_symbols_fd call, the C stack would look something like this:
 	// * print_backtrace_skipping_top_frames

@@ -436,8 +436,8 @@ pub fn (f []Any) str() string {
 	return Any(f).json_str()
 }
 
-// str returns the string representation of the `Any` type. Use the `json_str` method
-// if you want to use the escaped str() version of the `Any` type.
+// str returns the string representation of the `Any` type. Use the `json_str` method.
+// If you want to use the escaped str() version of the `Any` type.
 pub fn (f Any) str() string {
 	if f is string {
 		return f

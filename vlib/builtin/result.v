@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module builtin
 
-// IError holds information about an error instance
+// IError holds information about an error instance.
 pub interface IError {
 	msg() string
 	code() int
@@ -26,7 +26,7 @@ fn _result_ok(data voidptr, mut res _result, size int) {
 	}
 }
 
-// str returns the message of IError
+// str returns the message of IError.
 pub fn (err IError) str() string {
 	return match err {
 		None__ {
@@ -55,14 +55,14 @@ pub fn (err Error) code() int {
 	return 0
 }
 
-// MessageError is the default implementation of the `IError` interface that is returned by the `error()` function
+// MessageError is the default implementation of the `IError` interface that is returned by the `error()` function.
 struct MessageError {
 pub:
 	msg  string
 	code int
 }
 
-// str returns both the .msg and .code of MessageError, when .code is != 0
+// str returns both the .msg and .code of MessageError, when .code is != 0 .
 pub fn (err MessageError) str() string {
 	if err.code > 0 {
 		return '${err.msg}; code: ${err.code}'
@@ -70,12 +70,12 @@ pub fn (err MessageError) str() string {
 	return err.msg
 }
 
-// msg returns only the message of MessageError
+// msg returns only the message of MessageError.
 pub fn (err MessageError) msg() string {
 	return err.msg
 }
 
-// code returns only the code of MessageError
+// code returns only the code of MessageError.
 pub fn (err MessageError) code() int {
 	return err.code
 }

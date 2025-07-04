@@ -44,8 +44,7 @@ fn (c &Crc32) sum32(b []u8) u32 {
 	return ~crc
 }
 
-// checksum returns the CRC-32 checksum of data `b` by using the polynomial represented by
-// `c`'s table.
+// checksum returns the CRC-32 checksum of data `b` by using the polynomial represented by `c`'s table.
 pub fn (c &Crc32) checksum(b []u8) u32 {
 	return c.sum32(b)
 }

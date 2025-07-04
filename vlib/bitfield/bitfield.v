@@ -57,8 +57,8 @@ pub fn from_bytes(input []u8) BitField {
 	return output
 }
 
-// from_bytes_lowest_bits_first converts a byte array into a bitfield
-// [0x0F, 0x01] => 1111 0000 1000 0000
+// from_bytes_lowest_bits_first converts a byte array into a bitfield.
+// For example: [0x0F, 0x01] => 1111 0000 1000 0000
 pub fn from_bytes_lowest_bits_first(input []u8) BitField {
 	mut output := new(input.len * 8)
 	for i, b in input {
@@ -67,8 +67,8 @@ pub fn from_bytes_lowest_bits_first(input []u8) BitField {
 	return output
 }
 
-// from_str converts a string of characters ('0' and '1') to a bit
-// array. Any character different from '0' is treated as '1'.
+// from_str converts a string of characters ('0' and '1') to a bitfield.
+// Any character different from '0' is treated as '1'.
 pub fn from_str(input string) BitField {
 	mut output := new(input.len)
 	for i in 0 .. input.len {
@@ -79,8 +79,7 @@ pub fn from_str(input string) BitField {
 	return output
 }
 
-// str converts the bit array to a string of characters ('0' and '1') and
-// return the string
+// str converts the bit array to a string of characters ('0' and '1').
 pub fn (input BitField) str() string {
 	mut output := ''
 	for i in 0 .. input.size {
@@ -103,7 +102,7 @@ pub fn new(size int) BitField {
 	return output
 }
 
-// frees the memory allocated for the bitfield instance
+// frees the memory allocated for the bitfield instance.
 @[unsafe]
 pub fn (instance &BitField) free() {
 	unsafe {
@@ -138,9 +137,8 @@ pub fn (mut instance BitField) clear_bit(bitnr int) {
 	instance.field[bitslot(bitnr)] &= ~bitmask(bitnr)
 }
 
-// extract returns the value converted from a slice of bit numbers
-// from 'start' by the length of 'len'.
-// 0101 (1, 2) => 0b10
+// extract returns the value converted from a slice of bit numbers from 'start' by the length of 'len'.
+// For example 0101 . extract(1, 2) => 0b10
 pub fn (instance BitField) extract(start int, len int) u64 {
 	// panic?
 	if start < 0 {
@@ -153,9 +151,8 @@ pub fn (instance BitField) extract(start int, len int) u64 {
 	return output
 }
 
-// insert sets bit numbers from 'start' to 'len' length with
-// the value converted from the number 'value'.
-// 0000 (1, 2, 0b10) => 0100
+// insert sets bit numbers from 'start' to 'len' length with the value converted from the number 'value'.
+// For example 0000.insert(1, 2, 0b10) => 0100
 pub fn (mut instance BitField) insert[T](start int, len int, _value T) {
 	// panic?
 	if start < 0 {
@@ -173,9 +170,8 @@ pub fn (mut instance BitField) insert[T](start int, len int, _value T) {
 	}
 }
 
-// extract returns the value converted from a slice of bit numbers
-// from 'start' by the length of 'len'.
-// 0101 (1, 2) => 0b01
+// extract returns the value converted from a slice of bit numbers from 'start' by the length of 'len'.
+// For example 0101.extract_lowest_bits_first(1, 2) => 0b01
 pub fn (instance BitField) extract_lowest_bits_first(start int, len int) u64 {
 	// panic?
 	if start < 0 {
@@ -188,9 +184,8 @@ pub fn (instance BitField) extract_lowest_bits_first(start int, len int) u64 {
 	return output
 }
 
-// insert sets bit numbers from 'start' to 'len' length with
-// the value converted from the number 'value'.
-// 0000 (1, 2, 0b10) => 0010
+// insert sets bit numbers from 'start' to 'len' length with the value converted from the number 'value'.
+// For example 0000.insert_lowest_bits_first(1, 2, 0b10) => 0010
 pub fn (mut instance BitField) insert_lowest_bits_first[T](start int, len int, _value T) {
 	// panic?
 	if start < 0 {
@@ -222,8 +217,7 @@ pub fn (mut instance BitField) clear_all() {
 	}
 }
 
-// toggle_bit changes the value (from 0 to 1 or from 1 to 0) of bit
-// number 'bit_nr'.
+// toggle_bit changes the value (from 0 to 1 or from 1 to 0) of bit number 'bit_nr'.
 @[inline]
 pub fn (mut instance BitField) toggle_bit(bitnr int) {
 	if bitnr >= instance.size {
@@ -245,7 +239,7 @@ pub fn (mut instance BitField) set_if(cond bool, bitnr int) {
 	}
 }
 
-// toggle_bits changes the value (from 0 to 1 or from 1 to 0) of bits
+// toggle_bits changes the value (from 0 to 1 or from 1 to 0) of bits.
 // Example: toggle_bits(1,3,5,7)
 @[inline]
 pub fn (mut instance BitField) toggle_bits(a ...int) {
@@ -281,7 +275,7 @@ pub fn (mut instance BitField) clear_bits(a ...int) {
 	}
 }
 
-// has test if *at least one* of the bits is set
+// has test if *at least one* of the bits is set.
 // Example: has(1,3,5,7)
 @[inline]
 pub fn (mut instance BitField) has(a ...int) bool {
@@ -296,7 +290,7 @@ pub fn (mut instance BitField) has(a ...int) bool {
 	return false
 }
 
-// all test if *all* of the bits are set
+// all test if *all* of the bits are set.
 // Example: all(1,3,5,7)
 @[inline]
 pub fn (mut instance BitField) all(a ...int) bool {
@@ -311,9 +305,8 @@ pub fn (mut instance BitField) all(a ...int) bool {
 	return true
 }
 
-// bf_and performs logical AND operation on every pair of bits from 'input1' and
-// 'input2' and returns the result as a new array. If inputs differ in size,
-// the tail of the longer one is ignored.
+// bf_and performs logical AND operation on every pair of bits from 'input1' and 'input2'.
+// It returns the result as a new array. If inputs differ in size, the tail of the longer one is ignored.
 pub fn bf_and(input1 BitField, input2 BitField) BitField {
 	size := min(input1.size, input2.size)
 	bitnslots := zbitnslots(size)
@@ -337,9 +330,8 @@ pub fn bf_not(input BitField) BitField {
 	return output
 }
 
-// bf_or performs logical OR operation on every pair of bits from 'input1' and
-// 'input2' and returns the result as a new array. If inputs differ in size,
-// the tail of the longer one is ignored.
+// bf_or performs logical OR operation on every pair of bits from 'input1' and 'input2'.
+// It returns the result as a new array. If inputs differ in size, the tail of the longer one is ignored.
 pub fn bf_or(input1 BitField, input2 BitField) BitField {
 	size := min(input1.size, input2.size)
 	bitnslots := zbitnslots(size)
@@ -351,9 +343,8 @@ pub fn bf_or(input1 BitField, input2 BitField) BitField {
 	return output
 }
 
-// bf_xor perform logical XOR operation on every pair of bits from 'input1' and
-// 'input2' and returns the result as a new array. If inputs differ in size,
-// the tail of the longer one is ignored.
+// bf_xor perform logical XOR operation on every pair of bits from 'input1' and 'input2'.
+// It returns the result as a new array. If inputs differ in size, the tail of the longer one is ignored.
 pub fn bf_xor(input1 BitField, input2 BitField) BitField {
 	size := min(input1.size, input2.size)
 	bitnslots := zbitnslots(size)
@@ -420,7 +411,7 @@ pub fn (instance BitField) clone() BitField {
 	return output
 }
 
-// == compares 2 bitfields, and returns true when they are equal
+// == compares 2 bitfields, and returns true when they are equal.
 pub fn (a BitField) == (b BitField) bool {
 	if a.size != b.size {
 		return false
@@ -461,8 +452,8 @@ pub fn hamming(input1 BitField, input2 BitField) int {
 	return input_xored.pop_count()
 }
 
-// pos checks if the array contains a sub-array 'needle' and returns its
-// position if it does, -1 if it does not, and -2 on error.
+// pos checks if the array contains a sub-array 'needle'.
+// It returns its position if it does, -1 if it does not, and -2 on error.
 pub fn (haystack BitField) pos(needle BitField) int {
 	heystack_size := haystack.size
 	needle_size := needle.size
@@ -482,8 +473,7 @@ pub fn (haystack BitField) pos(needle BitField) int {
 	return -1
 }
 
-// slice returns a sub-array of bits between 'start_bit_nr' (included) and
-// 'end_bit_nr' (excluded).
+// slice returns a sub-array of bits between 'start_bit_nr' (included) and 'end_bit_nr' (excluded).
 pub fn (input BitField) slice(_start int, _end int) BitField {
 	// boundary checks
 	mut start := _start
@@ -536,8 +526,7 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 	return output
 }
 
-// reverse reverses the order of bits in the array (swap the first with the
-// last, the second with the last but one and so on).
+// reverse reverses the order of bits in the array (swap the first with the last, the second with the last but one and so on).
 pub fn (instance BitField) reverse() BitField {
 	size := instance.size
 	bitnslots := zbitnslots(size)
@@ -574,8 +563,7 @@ pub fn (mut instance BitField) resize(new_size int) {
 	}
 }
 
-// rotate circular-shifts the bits by 'offset' positions (move
-// 'offset' bit to 0, 'offset+1' bit to 1, and so on).
+// rotate circular-shifts the bits by 'offset' positions (move 'offset' bit to 0, 'offset+1' bit to 1, and so on).
 pub fn (instance BitField) rotate(offset int) BitField {
 	/*
 	*

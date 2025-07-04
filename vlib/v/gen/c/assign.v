@@ -179,9 +179,15 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	mut node := unsafe { node_ }
 	if node.is_static {
-		g.write('static ')
+		is_defer_var := node.left[0] is ast.Ident && node.left[0].name in g.defer_vars
+		if is_defer_var && node.op == .decl_assign {
+			return
+		}
+		if !is_defer_var {
+			g.write('static ')
+		}
 	}
-	if node.is_volatile {
+	if node.is_volatile && node.left[0] is ast.Ident && node.left[0].name !in g.defer_vars {
 		g.write('volatile ')
 	}
 	mut return_type := ast.void_type
@@ -1077,8 +1083,11 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 				'${mr_var_name}.arg${i}'
 			}
 			if mr_types[i].has_flag(.option) {
+				old_left_is_opt := g.left_is_opt
+				g.left_is_opt = true
 				g.expr(lx)
-				g.write(' = ${tmp_var};')
+				g.writeln(' = ${tmp_var};')
+				g.left_is_opt = old_left_is_opt
 			} else {
 				g.write('_option_ok(&(${base_typ}[]) { ${tmp_var} }, (${option_name}*)(&')
 				tmp_left_is_opt := g.left_is_opt

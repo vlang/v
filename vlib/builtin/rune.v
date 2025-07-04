@@ -9,7 +9,7 @@ import strings
 // updated. if you uncomment it you will see the issue
 // type rune = int
 
-// str converts a rune to string
+// str converts a rune to string.
 pub fn (c rune) str() string {
 	return utf32_to_str(u32(c))
 	/*
@@ -31,7 +31,7 @@ pub fn (c rune) str() string {
 	*/
 }
 
-// string converts a rune array to a string
+// string converts a rune array to a string.
 @[manualfree]
 pub fn (ra []rune) string() string {
 	mut sb := strings.new_builder(ra.len)
@@ -53,7 +53,7 @@ pub fn (c rune) repeat(count int) string {
 	return res.repeat(count)
 }
 
-// bytes converts a rune to an array of bytes
+// bytes converts a rune to an array of bytes.
 @[manualfree]
 pub fn (c rune) bytes() []u8 {
 	mut res := []u8{cap: 5}

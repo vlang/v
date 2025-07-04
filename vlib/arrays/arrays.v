@@ -13,7 +13,7 @@ import strings
 // - flatten - reduce dimensionality of array by one. e.g. arrays.flatten([[1,2],[3,4],[5,6]]) => [1,2,3,4,5,6]
 // - each - call a callback fn, for each element of the array, similar to a.map(), but unlike it, the callback should not return anything
 
-// min returns the minimum value in the array
+// min returns the minimum value in the array.
 // Example: arrays.min([1, 2, 3, 0, 9])! // => 0
 pub fn min[T](array []T) !T {
 	if array.len == 0 {
@@ -28,7 +28,7 @@ pub fn min[T](array []T) !T {
 	return val
 }
 
-// max returns the maximum value in the array
+// max returns the maximum value in the array.
 // Example: arrays.max([1, 2, 3, 0, 9])! // => 9
 pub fn max[T](array []T) !T {
 	if array.len == 0 {
@@ -43,7 +43,7 @@ pub fn max[T](array []T) !T {
 	return val
 }
 
-// idx_min returns the index of the minimum value in the array
+// idx_min returns the index of the minimum value in the array.
 // Example: arrays.idx_min([1, 2, 3, 0, 9])! // => 3
 pub fn idx_min[T](array []T) !int {
 	if array.len == 0 {
@@ -60,7 +60,7 @@ pub fn idx_min[T](array []T) !int {
 	return idx
 }
 
-// idx_max returns the index of the maximum value in the array
+// idx_max returns the index of the maximum value in the array.
 // Example: arrays.idx_max([1, 2, 3, 0, 9])! // => 4
 pub fn idx_max[T](array []T) !int {
 	if array.len == 0 {
@@ -77,7 +77,7 @@ pub fn idx_max[T](array []T) !int {
 	return idx
 }
 
-// merge two sorted arrays (ascending) and maintain sorted order
+// merge two sorted arrays (ascending) and maintain sorted order.
 // Example: arrays.merge([1, 3, 5, 7], [2, 4, 6, 8]) // => [1, 2, 3, 4, 5, 6, 7, 8]
 @[direct_array_access]
 pub fn merge[T](a []T, b []T) []T {
@@ -122,11 +122,9 @@ pub fn append[T](a []T, b []T) []T {
 	return m
 }
 
-// group n arrays into a single array of arrays with n elements
-//
+// group n arrays into a single array of arrays with n elements.
 // This function is analogous to the "zip" function of other languages.
 // To fully interleave two arrays, follow this function with a call to `flatten`.
-//
 // NOTE: An error will be generated if the type annotation is omitted.
 // Example: arrays.group[int]([1, 2, 3], [4, 5, 6]) // => [[1, 4], [2, 5], [3, 6]]
 pub fn group[T](arrs ...[]T) [][]T {
@@ -155,7 +153,7 @@ pub fn group[T](arrs ...[]T) [][]T {
 	return [][]T{}
 }
 
-// chunk array into a single array of arrays where each element is the next `size` elements of the original
+// chunk array into a single array of arrays where each element is the next `size` elements of the original.
 // Example: arrays.chunk([1, 2, 3, 4, 5, 6, 7, 8, 9], 2)) // => [[1, 2], [3, 4], [5, 6], [7, 8], [9]]
 pub fn chunk[T](array []T, size int) [][]T {
 	// allocate chunk array
@@ -181,8 +179,7 @@ pub fn chunk[T](array []T, size int) [][]T {
 	return chunks
 }
 
-// chunk_while splits the input array `a` into chunks of varying length,
-// using the `predicate`, passing to it pairs of adjacent elements `before` and `after`.
+// chunk_while splits the input array `a` into chunks of varying length, using the `predicate`, passing to it pairs of adjacent elements `before` and `after`.
 // Each chunk, will contain all ajdacent elements, for which the `predicate` returned true.
 // The chunks are split *between* the `before` and `after` elements, for which the `predicate` returned false.
 // Example: assert arrays.chunk_while([0,9,2,2,3,2,7,5,9,5],fn(x int,y int)bool{return x<=y})==[[0,9],[2,2,3],[2,7],[5,9],[5]]
@@ -244,7 +241,7 @@ pub fn window[T](array []T, attr WindowAttribute) [][]T {
 	return windows
 }
 
-// sum up array, return an error, when the array has no elements
+// sum up array, return an error, when the array has no elements.
 // Example: arrays.sum([1, 2, 3, 4, 5])! // => 15
 pub fn sum[T](array []T) !T {
 	if array.len == 0 {
@@ -301,8 +298,7 @@ pub fn reduce_indexed[T](array []T, reduce_op fn (idx int, acc T, elem T) T) !T 
 	}
 }
 
-// filter_indexed filters elements based on `predicate` function
-// being invoked on each element with its index in the original array.
+// filter_indexed filters elements based on `predicate` function being invoked on each element with its index in the original array.
 pub fn filter_indexed[T](array []T, predicate fn (idx int, elem T) bool) []T {
 	mut result := []T{cap: array.len}
 
@@ -352,7 +348,7 @@ pub fn fold_indexed[T, R](array []T, init R, fold_op fn (idx int, acc R, elem T)
 	return value
 }
 
-// flatten flattens n + 1 dimensional array into n dimensional array
+// flatten flattens n + 1 dimensional array into n dimensional array.
 // Example: arrays.flatten[int]([[1, 2, 3], [4, 5]]) // => [1, 2, 3, 4, 5]
 pub fn flatten[T](array [][]T) []T {
 	// calculate required capacity
@@ -376,8 +372,7 @@ pub fn flatten[T](array [][]T) []T {
 	return result
 }
 
-// flat_map creates a new array populated with the flattened result of calling transform function
-// being invoked on each element of `list`.
+// flat_map creates a new array populated with the flattened result of calling transform function being invoked on each element of `list`.
 pub fn flat_map[T, R](array []T, transform fn (elem T) []R) []R {
 	mut result := [][]R{cap: array.len}
 
@@ -388,8 +383,7 @@ pub fn flat_map[T, R](array []T, transform fn (elem T) []R) []R {
 	return flatten(result)
 }
 
-// flat_map_indexed creates a new array populated with the flattened result of calling the `transform` function
-// being invoked on each element with its index in the original array.
+// flat_map_indexed creates a new array with the flattened result of calling the `transform` fn, invoked on each idx,elem pair from the original.
 pub fn flat_map_indexed[T, R](array []T, transform fn (idx int, elem T) []R) []R {
 	mut result := [][]R{cap: array.len}
 
@@ -400,8 +394,7 @@ pub fn flat_map_indexed[T, R](array []T, transform fn (idx int, elem T) []R) []R
 	return flatten(result)
 }
 
-// map_indexed creates a new array populated with the result of calling the `transform` function
-// being invoked on each element with its index in the original array.
+// map_indexed creates a new array with the result of calling the `transform` fn, invoked on each idx,elem pair from the original.
 pub fn map_indexed[T, R](array []T, transform fn (idx int, elem T) R) []R {
 	mut result := []R{cap: array.len}
 
@@ -431,7 +424,7 @@ pub fn group_by[K, V](array []V, grouping_op fn (val V) K) map[K][]V {
 	return result
 }
 
-// concatenate an array with an arbitrary number of additional values
+// concatenate an array with an arbitrary number of additional values.
 //
 // NOTE: if you have two arrays, you should simply use the `<<` operator directly
 // Example: arrays.concat([1, 2, 3], 4, 5, 6) == [1, 2, 3, 4, 5, 6] // => true
@@ -446,7 +439,7 @@ pub fn concat[T](a []T, b ...T) []T {
 	return m
 }
 
-// returns the smallest element >= val, requires `array` to be sorted
+// returns the smallest element >= val, requires `array` to be sorted.
 // Example: arrays.lower_bound([2, 4, 6, 8], 3)! // => 4
 pub fn lower_bound[T](array []T, val T) !T {
 	if array.len == 0 {
@@ -469,7 +462,7 @@ pub fn lower_bound[T](array []T, val T) !T {
 	}
 }
 
-// returns the largest element <= val, requires `array` to be sorted
+// returns the largest element <= val, requires `array` to be sorted.
 // Example: arrays.upper_bound([2, 4, 6, 8], 3)! // => 2
 pub fn upper_bound[T](array []T, val T) !T {
 	if array.len == 0 {
@@ -492,7 +485,7 @@ pub fn upper_bound[T](array []T, val T) !T {
 	}
 }
 
-// binary search, requires `array` to be sorted, returns index of found item or error.
+// binary_search, requires `array` to be sorted, returns index of found item or error.
 // Binary searches on sorted lists can be faster than other array searches because at maximum
 // the algorithm only has to traverse log N elements
 // Example: arrays.binary_search([1, 2, 3, 4], 4)! // => 3
@@ -514,9 +507,10 @@ pub fn binary_search[T](array []T, target T) !int {
 	return error('')
 }
 
-// rotate_left rotates the array in-place such that the first `mid` elements of the array move to the end
-// while the last `array.len - mid` elements move to the front. After calling `rotate_left`, the element
-// previously at index `mid` will become the first element in the array.
+// rotate_left rotates the array in-place.
+// It does it in such a way, that the first `mid` elements of the array, move to the end,
+// while the last `array.len - mid` elements move to the front.
+// After calling `rotate_left`, the element previously at index `mid` will become the first element in the array.
 // Example:
 // ```v
 // mut x := [1,2,3,4,5,6]
@@ -532,9 +526,10 @@ pub fn rotate_left[T](mut array []T, mid int) {
 	}
 }
 
-// rotate_right rotates the array in-place such that the first `array.len - k` elements of the array move to the end
-// while the last `k` elements move to the front. After calling `rotate_right`, the element previously at index `array.len - k`
-// will become the first element in the array.
+// rotate_right rotates the array in-place.
+// It does it in such a way, that the first `array.len - k` elements of the array, move to the end,
+// while the last `k` elements move to the front.
+// After calling `rotate_right`, the element previously at index `array.len - k` will become the first element in the array.
 // Example:
 // ```v
 // mut x := [1,2,3,4,5,6]
@@ -687,7 +682,7 @@ pub fn copy[T](mut dst []T, src []T) int {
 	return min
 }
 
-// determines if T can be copied using `memcpy`
+// can_copy_bits determines if T can be copied using `memcpy`.
 // false if autofree needs to intervene
 // false if type is not copyable e.g. map
 fn can_copy_bits[T]() bool {
@@ -758,9 +753,9 @@ pub fn join_to_string[T](array []T, separator string, transform fn (elem T) stri
 	return sb.str()
 }
 
-// partition splits the original array into pair of lists,
-// where first list contains elements for which predicate yielded true,
-// while second list contains elements for which predicate yielded false
+// partition splits the original array into pair of lists.
+// The first list contains elements for which the predicate fn returned true,
+// while the second list contains elements for which the predicate fn returned false.
 pub fn partition[T](array []T, predicate fn (elem T) bool) ([]T, []T) {
 	mut matching, mut non_matching := []T{}, []T{}
 	for item in array {
@@ -773,15 +768,15 @@ pub fn partition[T](array []T, predicate fn (elem T) bool) ([]T, []T) {
 	return matching, non_matching
 }
 
-// each calls the callback fn `cb`, for each element of the given array `a`
+// each calls the callback fn `cb`, for each element of the given array `a`.
 pub fn each[T](a []T, cb fn (elem T)) {
 	for item in a {
 		cb(item)
 	}
 }
 
-// each_indexed calls the callback fn `cb`, for each element of the given array `a`,
-// passing it both the index of the current element, and the element itself
+// each_indexed calls the callback fn `cb`, for each element of the given array `a`.
+// It passes the callback both the index of the current element, and the element itself.
 pub fn each_indexed[T](a []T, cb fn (i int, e T)) {
 	for idx, item in a {
 		cb(idx, item)

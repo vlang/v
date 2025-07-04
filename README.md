@@ -233,7 +233,7 @@ type:
 v symlink
 ```
 
-(or `./v symlink` in PowerShell)
+(or `.\v symlink` in PowerShell)
 
 That will make V available everywhere, by adding it to your PATH. Please restart your
 shell/editor after that, so that it can pick up the new PATH variable.

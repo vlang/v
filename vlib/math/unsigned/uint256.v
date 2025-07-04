@@ -22,6 +22,11 @@ pub fn uint256_from_64(v u64) Uint256 {
 	return uint256_from_128(uint128_from_64(v))
 }
 
+// uint256_new creates new Uint256 with given `lo` and `hi`
+pub fn uint256_new(lo Uint128, hi Uint128) Uint256 {
+	return Uint256{lo, hi}
+}
+
 // is_zero checks if specified Uint256 is zero
 pub fn (u Uint256) is_zero() bool {
 	return u.lo.is_zero() && u.hi.is_zero()

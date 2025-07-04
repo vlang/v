@@ -1,6 +1,7 @@
 module sync
 
 import time
+import sync.stdatomic
 
 fn test_waitgroup_reuse() {
 	mut wg := new_waitgroup()
@@ -41,14 +42,13 @@ fn test_waitgroup_no_use() {
 }
 
 fn test_waitgroup_go() {
-	mut counter := 0
-	p := unsafe { &counter }
+	mut counter := stdatomic.new_atomic(0)
 	mut wg := new_waitgroup()
 	for i in 0 .. 10 {
-		wg.go(fn [p] () {
-			unsafe { (*p)++ }
+		wg.go(fn [mut counter] () {
+			counter.add(1)
 		})
 	}
 	wg.wait()
-	assert counter == 10
+	assert counter.load() == 10
 }

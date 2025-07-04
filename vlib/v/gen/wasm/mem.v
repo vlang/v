@@ -428,9 +428,9 @@ pub fn (mut g Gen) set_set(v Var) {
 	g.mov(v, from)
 }
 
-// set structures with pointer, memcpy
-// set pointers with value, get local, store value
-// set value, set local
+// set structures with pointer, memcpy.
+// set pointers with value, get local, store value.
+// set value, set local.
 // -- set works with a single value present on the stack beforehand
 // -- not optimal for copying stack memory or shuffling structs
 // -- use mov instead

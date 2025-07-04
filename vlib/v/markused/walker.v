@@ -16,6 +16,7 @@ pub mut:
 	used_globals map[string]bool
 	used_structs map[string]bool
 	used_fields  map[string]bool
+	used_ifaces  map[string]bool
 	used_none    int
 	n_asserts    int
 	pref         &pref.Preferences = unsafe { nil }
@@ -358,6 +359,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.is_vweb {
 				w.stmts(node.veb_tmpl.stmts)
 			}
+			if node.is_embed {
+				w.features.used_maps++
+			}
 		}
 		ast.DumpExpr {
 			w.expr(node.expr)
@@ -515,6 +519,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.SelectorExpr {
 			w.expr(node.expr)
 			if node.expr_type != 0 {
+				esym := w.table.sym(node.expr_type)
+				if esym.kind == .interface {
+					w.mark_interface_by_symbol(esym)
+				}
 				if method := w.table.find_method(w.table.sym(node.expr_type), node.field_name) {
 					w.fn_by_name(method.fkey())
 				}
@@ -683,6 +691,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				}
 			}
 		} else if left_sym.info is ast.Interface {
+			w.mark_interface_by_symbol(left_sym)
 			for typ in left_sym.info.types {
 				sym := w.table.sym(typ)
 				_, embed_types := w.table.find_method_from_embeds(sym, node.name) or {
@@ -775,5 +784,20 @@ pub fn (mut w Walker) const_fields(cfields []ast.ConstField) {
 pub fn (mut w Walker) or_block(node ast.OrExpr) {
 	if node.kind == .block {
 		w.stmts(node.stmts)
+	}
+}
+
+pub fn (mut w Walker) mark_interface_by_symbol(isym ast.TypeSymbol) {
+	if isym.name in w.used_ifaces {
+		return
+	}
+	w.used_ifaces[isym.name] = true
+	if isym.info is ast.Interface {
+		for typ in isym.info.types {
+			if typ == ast.map_type {
+				w.features.used_maps++
+			}
+			// sym := w.table.sym(typ); eprintln('>>>>>>>>> typ: ${typ.str():-30} | sym.name: ${sym.name}')
+		}
 	}
 }

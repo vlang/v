@@ -36,7 +36,7 @@ mut:
 	value []string = []
 }
 
-// get_all_found returns an array of all `Flag`s found in the command parameters
+// get_all_found returns an array of all `Flag`s found in the command parameters.
 pub fn (flags []Flag) get_all_found() []Flag {
 	return flags.filter(it.found)
 }
@@ -210,8 +210,7 @@ pub fn (flags []Flag) get_strings(name string) ![]string {
 	return flag.get_strings()
 }
 
-// parse parses flag values from arguments and return
-// an array of arguments with all consumed elements removed.
+// parse parses flag values from arguments and return an array of arguments with all consumed elements removed.
 pub fn (mut flag Flag) parse(args []string, posix_mode bool) ![]string {
 	return match true {
 		!flag.matches(args[0], posix_mode) {

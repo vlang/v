@@ -332,8 +332,7 @@ pub fn using[T](defaults T, input []string, config ParseConfig) !(T, []string) {
 	return st, fm.no_matches()
 }
 
-// to_doc returns a "usage" style documentation `string` generated from
-// attributes on `T` or via the `dc` argument.
+// to_doc returns a "usage" style documentation `string` generated from attributes on `T` or via the `dc` argument.
 pub fn to_doc[T](dc DocConfig) !string {
 	mut fm := FlagMapper{
 		config: ParseConfig{
@@ -346,9 +345,8 @@ pub fn to_doc[T](dc DocConfig) !string {
 	return fm.to_doc(dc)!
 }
 
-// no_matches returns any flags from the `input` array, in order of appearance,
-// that could *not* be matched against any fields.
-// no_matches should be called *after* `to_struct[T]()`.
+// no_matches returns any flags from the `input` array, in order of appearance, that could *not* be matched against any fields.
+// This method should be called *after* `to_struct[T]()`.
 pub fn (fm FlagMapper) no_matches() []string {
 	mut non_matching := []string{}
 	for i in fm.no_match {
@@ -619,8 +617,7 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 	}
 }
 
-// to_doc returns a "usage" style documentation `string` generated from
-// the internal data structures generated via the `parse()` function.
+// to_doc returns a "usage" style documentation `string` generated from the internal data structures generated via the `parse()` function.
 pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 	mut docs := []string{}
 

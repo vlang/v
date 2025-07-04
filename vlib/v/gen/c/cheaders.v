@@ -780,7 +780,9 @@ typedef struct sync__Channel* chan;
 		#endif
 	#endif
 #endif
+'
 
+const c_mapfn_callback_types = '
 typedef u64 (*MapHashFn)(voidptr);
 typedef bool (*MapEqFn)(voidptr, voidptr);
 typedef void (*MapCloneFn)(voidptr, voidptr);
