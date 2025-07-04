@@ -123,8 +123,8 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 	}
 
 	// Check if clear operation is in progress or too many producers are waiting
-	if C.atomic_load_u32(&rb.clear_flag) != 0
-		|| C.atomic_load_u32(&rb.push_waiting_count) > rb.max_waiting_prod_cons {
+	if C.atomic_load_u32(&rb.clear_flag) != 0 || (!is_single_producer(rb.mode)
+		&& C.atomic_load_u32(&rb.push_waiting_count) > rb.max_waiting_prod_cons) {
 		return 0
 	}
 
@@ -194,12 +194,12 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 		}
 	}
 
-	// Increment waiting producer count
-	C.atomic_fetch_add_u32(&rb.push_waiting_count, 1)
-
 	mut add_once := true
 	mut backoff := 1
 	if !is_single_producer(rb.mode) {
+		// Increment waiting producer count
+		C.atomic_fetch_add_u32(&rb.push_waiting_count, 1)
+
 		mut attempts_wait := 1
 		// Wait for previous producers to complete their writes
 		for C.atomic_load_u32(&rb.prod_tail) != old_head {
@@ -216,10 +216,10 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 				}
 			}
 		}
-	}
 
-	// Decrement waiting producer count
-	C.atomic_fetch_sub_u32(&rb.push_waiting_count, 1)
+		// Decrement waiting producer count
+		C.atomic_fetch_sub_u32(&rb.push_waiting_count, 1)
+	}
 
 	// Make data visible to consumers
 	$if valgrind ? {
@@ -251,8 +251,8 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 	}
 
 	// Check if clear operation is in progress or too many consumers are waiting
-	if C.atomic_load_u32(&rb.clear_flag) != 0
-		|| C.atomic_load_u32(&rb.pop_waiting_count) > rb.max_waiting_prod_cons {
+	if C.atomic_load_u32(&rb.clear_flag) != 0 || (!is_single_consumer(rb.mode)
+		&& C.atomic_load_u32(&rb.pop_waiting_count) > rb.max_waiting_prod_cons) {
 		return 0
 	}
 
@@ -317,13 +317,13 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 		}
 	}
 
-	// Increment waiting consumer count
-	C.atomic_fetch_add_u32(&rb.pop_waiting_count, 1)
-
 	mut add_once := true
 	mut backoff := 1
 	// For multiple consumers: wait for previous consumers to complete
 	if !is_single_consumer(rb.mode) {
+		// Increment waiting consumer count
+		C.atomic_fetch_add_u32(&rb.pop_waiting_count, 1)
+
 		mut attempts_wait := 1
 		// Wait for previous consumers to complete their reads
 		for C.atomic_load_u32(&rb.cons_tail) != old_head {
@@ -340,10 +340,10 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 				}
 			}
 		}
-	}
 
-	// Decrement waiting consumer count
-	C.atomic_fetch_sub_u32(&rb.pop_waiting_count, 1)
+		// Decrement waiting consumer count
+		C.atomic_fetch_sub_u32(&rb.pop_waiting_count, 1)
+	}
 
 	// Free up buffer space
 	$if valgrind ? {
