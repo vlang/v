@@ -1,5 +1,8 @@
 module lockfree
 
+// This design is ported from the DPDK rte_ring library.
+// Source: https://doc.dpdk.org/guides/prog_guide/ring_lib.html
+
 // RingBufferMode Operation modes for the ring buffer
 pub enum RingBufferMode {
 	spsc = 0 // Single Producer, Single Consumer (optimized for single-threaded access)

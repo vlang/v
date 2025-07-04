@@ -1,21 +1,6 @@
 module lockfree
 
-// copy from vlib/sync/stdatomic/1.declarations.c.v, as we don't import `sync`
-fn C.atomic_load_u32(voidptr) u32
-fn C.atomic_store_u32(voidptr, u32)
-fn C.atomic_compare_exchange_weak_u32(voidptr, voidptr, u32) bool
-fn C.atomic_thread_fence(int)
-fn C.cpu_relax()
-
-fn C.ANNOTATE_RWLOCK_CREATE(voidptr)
-fn C.ANNOTATE_RWLOCK_ACQUIRED(voidptr, int)
-fn C.ANNOTATE_RWLOCK_RELEASED(voidptr, int)
-fn C.ANNOTATE_RWLOCK_DESTROY(voidptr)
-
-$if valgrind ? {
-	#flag -I/usr/include/valgrind
-	#include <valgrind/helgrind.h>
-}
+import sync.stdatomic as _
 
 // Define cache line size to prevent false sharing between CPU cores
 const cache_line_size = 64

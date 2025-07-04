@@ -66,7 +66,8 @@ fn test_push_and_pop_many() {
 
 	assert r.is_full() == true
 
-	b := r.pop_many(4)
+	mut b := []int{len: 4}
+	r.pop_many(mut b)
 
 	assert a == b
 }
@@ -354,7 +355,7 @@ fn test_batch_operations() {
 	mut rb := lockfree.new_ringbuffer[int](1024, mode: .mpmc)
 
 	// Batch push operation
-	items := []int{len: 100, init: it}
+	items := []int{len: 100, init: index}
 	pushed := rb.try_push_many(items)
 	assert pushed == 100
 	assert rb.occupied() == 100
