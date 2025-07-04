@@ -73,6 +73,9 @@ mut:
 }
 
 // new_ringbuffer creates a new lock-free ring buffer.
+// Note: The buffer capacity will be expanded to the next power of two
+//       for efficient modulo operations using bitwise AND.
+//       The actual capacity may be larger than the requested `size`.
 pub fn new_ringbuffer[T](size u32, param RingBufferParam) &RingBuffer[T] {
 	// Ensure capacity is power of two for efficient modulo operations
 	capacity := next_power_of_two(size)
