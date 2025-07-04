@@ -96,16 +96,16 @@ pub fn new_ringbuffer[T](size u32, param RingBufferParam) &RingBuffer[T] {
 	return rb
 }
 
-// is_single_producer checks if current mode is single producer.
+// is_multiple_producer checks if current mode is multiple producer.
 @[inline]
-fn is_single_producer(mode u32) bool {
-	return mode & 0x02 == 0
+fn is_multiple_producer(mode u32) bool {
+	return mode & 0x02 != 0
 }
 
-// is_single_consumer checks if current mode is single consumer.
+// is_multiple_consumer checks if current mode is multiple consumer.
 @[inline]
-fn is_single_consumer(mode u32) bool {
-	return mode & 0x01 == 0
+fn is_multiple_consumer(mode u32) bool {
+	return mode & 0x01 != 0
 }
 
 // try_push tries to push a single item non-blocking.
@@ -123,7 +123,7 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 	}
 
 	// Check if clear operation is in progress or too many producers are waiting
-	if C.atomic_load_u32(&rb.clear_flag) != 0 || (!is_single_producer(rb.mode)
+	if C.atomic_load_u32(&rb.clear_flag) != 0 || (is_multiple_producer(rb.mode)
 		&& C.atomic_load_u32(&rb.push_waiting_count) > rb.max_waiting_prod_cons) {
 		return 0
 	}
@@ -156,11 +156,7 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 
 		// Calculate new head position after adding items
 		new_head = old_head + n
-		if is_single_producer(rb.mode) {
-			// Direct update for single producer
-			rb.prod_head = new_head
-			success = true
-		} else {
+		if is_multiple_producer(rb.mode) {
 			// Atomic compare-and-swap for multiple producers
 			$if valgrind ? {
 				C.ANNOTATE_HAPPENS_BEFORE(&rb.prod_head)
@@ -169,6 +165,10 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 			$if valgrind ? {
 				C.ANNOTATE_HAPPENS_AFTER(&rb.prod_head)
 			}
+		} else {
+			// Direct update for single producer
+			rb.prod_head = new_head
+			success = true
 		}
 		attempts++
 	}
@@ -196,7 +196,7 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 
 	mut add_once := true
 	mut backoff := 1
-	if !is_single_producer(rb.mode) {
+	if is_multiple_producer(rb.mode) {
 		// Increment waiting producer count
 		C.atomic_fetch_add_u32(&rb.push_waiting_count, 1)
 
@@ -251,7 +251,7 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 	}
 
 	// Check if clear operation is in progress or too many consumers are waiting
-	if C.atomic_load_u32(&rb.clear_flag) != 0 || (!is_single_consumer(rb.mode)
+	if C.atomic_load_u32(&rb.clear_flag) != 0 || (is_multiple_consumer(rb.mode)
 		&& C.atomic_load_u32(&rb.pop_waiting_count) > rb.max_waiting_prod_cons) {
 		return 0
 	}
@@ -282,11 +282,7 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 
 		// Calculate new head position after reading
 		new_head = old_head + n
-		if is_single_consumer(rb.mode) {
-			// Direct update for single consumer
-			rb.cons_head = new_head
-			success = true
-		} else {
+		if is_multiple_consumer(rb.mode) {
 			// Atomic compare-and-swap for multiple consumers
 			$if valgrind ? {
 				C.ANNOTATE_HAPPENS_BEFORE(&rb.cons_head)
@@ -295,6 +291,10 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 			$if valgrind ? {
 				C.ANNOTATE_HAPPENS_AFTER(&rb.cons_head)
 			}
+		} else {
+			// Direct update for single consumer
+			rb.cons_head = new_head
+			success = true
 		}
 		attempts++
 	}
@@ -320,7 +320,7 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 	mut add_once := true
 	mut backoff := 1
 	// For multiple consumers: wait for previous consumers to complete
-	if !is_single_consumer(rb.mode) {
+	if is_multiple_consumer(rb.mode) {
 		// Increment waiting consumer count
 		C.atomic_fetch_add_u32(&rb.pop_waiting_count, 1)
 
