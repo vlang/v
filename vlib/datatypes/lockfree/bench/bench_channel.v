@@ -18,7 +18,7 @@ const test_runs = 5 // Number of test runs
 const max_threads = runtime.nr_cpus() // Maximum number of threads
 
 // Performance test results
-struct PerfResult {
+struct ChannelPerfResult {
 	scenario   string // Test scenario identifier
 	throughput f64    // Throughput in million operations per second
 	latency    f64    // Average latency in nanoseconds
@@ -39,7 +39,7 @@ fn main() {
 	}
 
 	// Test different scenarios
-	mut results := []PerfResult{}
+	mut results := []ChannelPerfResult{}
 
 	// Single Producer Single Consumer
 	results << test_scenario('SPSC', 1, 1, debug)
@@ -70,7 +70,7 @@ fn main() {
 }
 
 // Test specific scenario with given producers/consumers
-fn test_scenario(scenario string, producers int, consumers int, debug bool) PerfResult {
+fn test_scenario(scenario string, producers int, consumers int, debug bool) ChannelPerfResult {
 	println('\nTesting scenario: ${scenario}')
 
 	// Create channel
@@ -99,7 +99,7 @@ fn test_scenario(scenario string, producers int, consumers int, debug bool) Perf
 	throughput := f64(total_ops) / avg_time.seconds() / 1_000_000 // MOPS
 	latency := avg_time.nanoseconds() / f64(total_ops / test_runs) // ns/op
 
-	return PerfResult{
+	return ChannelPerfResult{
 		scenario:   scenario
 		throughput: throughput
 		latency:    latency
@@ -192,7 +192,7 @@ fn consumer_thread(ch chan int, id int, items_to_consume int, mut consumed_count
 }
 
 // Print formatted performance results
-fn print_results(results []PerfResult) {
+fn print_results(results []ChannelPerfResult) {
 	println('\nPerformance Results')
 	println('====================================================================')
 	println('Scenario\t\tThroughput (M ops/s)\tAvg Latency (ns)\tCPU Usage (%)')

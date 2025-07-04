@@ -19,7 +19,7 @@ const test_runs = 5 // Number of test runs
 const max_threads = runtime.nr_cpus() // Maximum number of threads
 
 // Performance test results
-struct PerfResult {
+struct RingBufferPerfResult {
 	scenario   string // Test scenario identifier
 	throughput f64    // Throughput in million operations per second
 	latency    f64    // Average latency in nanoseconds
@@ -41,7 +41,7 @@ fn main() {
 	}
 
 	// Test different scenarios
-	mut results := []PerfResult{}
+	mut results := []RingBufferPerfResult{}
 
 	// Single Producer Single Consumer
 	results << test_scenario('SPSC', 1, 1, batch, debug)
@@ -72,7 +72,7 @@ fn main() {
 }
 
 // Test specific scenario with given producers/consumers
-fn test_scenario(scenario string, producers int, consumers int, batch bool, debug bool) PerfResult {
+fn test_scenario(scenario string, producers int, consumers int, batch bool, debug bool) RingBufferPerfResult {
 	println('\nTesting scenario: ${scenario}')
 
 	// Create ring buffer
@@ -102,7 +102,7 @@ fn test_scenario(scenario string, producers int, consumers int, batch bool, debu
 	throughput := f64(total_ops) / avg_time.seconds() / 1_000_000 // MOPS
 	latency := avg_time.nanoseconds() / f64(total_ops / test_runs) // ns/op
 
-	return PerfResult{
+	return RingBufferPerfResult{
 		scenario:   scenario
 		throughput: throughput
 		latency:    latency
@@ -266,7 +266,7 @@ fn validate_batch_detailed(id int, batch []int, prev_last int) bool {
 }
 
 // Print formatted performance results
-fn print_results(results []PerfResult) {
+fn print_results(results []RingBufferPerfResult) {
 	println('\nPerformance Results')
 	println('====================================================================')
 	println('Scenario\t\tThroughput (M ops/s)\tAvg Latency (ns)\tCPU Usage (%)')
