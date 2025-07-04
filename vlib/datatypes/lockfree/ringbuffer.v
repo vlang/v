@@ -31,7 +31,7 @@ pub mut:
 pub struct RingBufferParam {
 pub:
 	mode                  RingBufferMode = .mpmc // Default to most concurrent mode
-	max_waiting_prod_cons int            = 2     // Max allowed waiting producers/consumers before rejecting operations
+	max_waiting_prod_cons int            = 1     // Max allowed waiting producers/consumers before rejecting operations
 }
 
 // RingBuffer Lock-free multiple producer/multiple consumer ring buffer.
