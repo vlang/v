@@ -15,7 +15,7 @@ const warmup_runs = 3 // Number of warmup runs
 
 const test_runs = 5 // Number of test runs
 
-const max_threads = runtime.nr_cpus() // Maximum number of threads
+const max_threads = runtime.nr_jobs() // Maximum number of threads
 
 // Performance test results
 struct ChannelPerfResult {
@@ -28,7 +28,7 @@ struct ChannelPerfResult {
 fn main() {
 	println('Channel Performance Test')
 	println('======================================')
-	println('Maximum number of threads set to nr_cpus = ${max_threads}')
+	println('Maximum number of threads set to nr_jobs = ${max_threads}')
 	mut fp := flag.new_flag_parser(os.args.clone())
 	fp.skip_executable()
 	show_help := fp.bool('help', 0, false, 'Show this help screen\n')

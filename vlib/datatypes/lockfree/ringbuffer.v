@@ -82,10 +82,11 @@ pub fn new_ringbuffer[T](size u32, param RingBufferParam) &RingBuffer[T] {
 	mut slots := []T{len: int(capacity)}
 
 	rb := &RingBuffer[T]{
-		mode:     u32(param.mode)
-		capacity: capacity
-		mask:     mask
-		slots:    slots
+		mode:                  u32(param.mode)
+		max_waiting_prod_cons: u32(param.max_waiting_prod_cons)
+		capacity:              capacity
+		mask:                  mask
+		slots:                 slots
 	}
 
 	// Disable Valgrind checking for performance
@@ -147,7 +148,9 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 
 		// Check if there's enough space
 		if n > free_entries {
-			C.atomic_fetch_add_u32(&rb.push_full_count, 1)
+			$if debug_ringbuffer ? {
+				C.atomic_fetch_add_u32(&rb.push_full_count, 1)
+			}
 			return 0
 		}
 
@@ -172,7 +175,9 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 
 	// Exit if space reservation failed
 	if !success {
-		C.atomic_fetch_add_u32(&rb.push_fail_count, 1)
+		$if debug_ringbuffer ? {
+			C.atomic_fetch_add_u32(&rb.push_fail_count, 1)
+		}
 		return 0
 	}
 
@@ -204,9 +209,11 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 			}
 			backoff = int_min(backoff * 2, 1024)
 			attempts_wait++
-			if attempts_wait > 100 && add_once {
-				C.atomic_fetch_add_u32(&rb.push_wait_prev_count, 1)
-				add_once = false
+			$if debug_ringbuffer ? {
+				if attempts_wait > 100 && add_once {
+					C.atomic_fetch_add_u32(&rb.push_wait_prev_count, 1)
+					add_once = false
+				}
 			}
 		}
 	}
@@ -267,7 +274,9 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 
 		// Check if enough data is available
 		if n > entries {
-			C.atomic_fetch_add_u32(&rb.pop_empty_count, 1)
+			$if debug_ringbuffer ? {
+				C.atomic_fetch_add_u32(&rb.pop_empty_count, 1)
+			}
 			return 0
 		}
 
@@ -324,9 +333,11 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 			}
 			backoff = int_min(backoff * 2, 1024)
 			attempts_wait++
-			if attempts_wait > 100 && add_once {
-				C.atomic_fetch_add_u32(&rb.pop_wait_prev_count, 1)
-				add_once = false
+			$if debug_ringbuffer ? {
+				if attempts_wait > 100 && add_once {
+					C.atomic_fetch_add_u32(&rb.pop_wait_prev_count, 1)
+					add_once = false
+				}
 			}
 		}
 	}
@@ -563,14 +574,17 @@ pub fn (mut rb RingBuffer[T]) clear() bool {
 // - pop_wait_prev_count:  Times consumers waited for predecessors
 // - pop_waiting_count:    Current number of consumers in waiting state
 pub fn (rb RingBuffer[T]) stat() RingBufferStat {
-	return RingBufferStat{
-		push_full_count:      C.atomic_load_u32(&rb.push_full_count)
-		push_fail_count:      C.atomic_load_u32(&rb.push_fail_count)
-		push_wait_prev_count: C.atomic_load_u32(&rb.push_wait_prev_count)
-		push_waiting_count:   C.atomic_load_u32(&rb.push_waiting_count)
-		pop_empty_count:      C.atomic_load_u32(&rb.pop_empty_count)
-		pop_fail_count:       C.atomic_load_u32(&rb.pop_fail_count)
-		pop_wait_prev_count:  C.atomic_load_u32(&rb.pop_wait_prev_count)
-		pop_waiting_count:    C.atomic_load_u32(&rb.pop_waiting_count)
+	$if debug_ringbuffer ? {
+		return RingBufferStat{
+			push_full_count:      C.atomic_load_u32(&rb.push_full_count)
+			push_fail_count:      C.atomic_load_u32(&rb.push_fail_count)
+			push_wait_prev_count: C.atomic_load_u32(&rb.push_wait_prev_count)
+			push_waiting_count:   C.atomic_load_u32(&rb.push_waiting_count)
+			pop_empty_count:      C.atomic_load_u32(&rb.pop_empty_count)
+			pop_fail_count:       C.atomic_load_u32(&rb.pop_fail_count)
+			pop_wait_prev_count:  C.atomic_load_u32(&rb.pop_wait_prev_count)
+			pop_waiting_count:    C.atomic_load_u32(&rb.pop_waiting_count)
+		}
 	}
+	return RingBufferStat{}
 }
