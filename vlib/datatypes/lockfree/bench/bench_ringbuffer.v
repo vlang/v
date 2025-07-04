@@ -47,21 +47,21 @@ fn main() {
 	results << test_scenario('SPSC', 1, 1, batch, debug)
 
 	// Multiple Producers Single Consumer
-	for i in [2, 4, 8] {
+	for i in [2, 4, 8, 16] {
 		if i <= max_threads {
 			results << test_scenario('MPSC (${i}P1C)', i, 1, batch, debug)
 		}
 	}
 
 	// Single Producer Multiple Consumers
-	for i in [2, 4] {
+	for i in [2, 4, 8, 16] {
 		if i <= max_threads {
 			results << test_scenario('SPMC (1P${i}C)', 1, i, batch, debug)
 		}
 	}
 
 	// Multiple Producers Multiple Consumers
-	for i in [2, 4, 8] {
+	for i in [2, 4, 8, 16] {
 		if i * 2 <= max_threads {
 			results << test_scenario('MPMC (${i}P${i}C)', i, i, batch, debug)
 		}

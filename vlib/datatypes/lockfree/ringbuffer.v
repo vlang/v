@@ -3,7 +3,7 @@ module lockfree
 // This design is ported from the DPDK rte_ring library.
 // Source: https://doc.dpdk.org/guides/prog_guide/ring_lib.html
 
-// RingBufferMode Operation modes for the ring buffer
+// RingBufferMode Operation modes for the ring buffer.
 pub enum RingBufferMode {
 	spsc = 0 // Single Producer, Single Consumer (optimized for single-threaded access)
 	spmc = 1 // Single Producer, Multiple Consumers (one writer, multiple readers)
@@ -11,33 +11,40 @@ pub enum RingBufferMode {
 	mpmc = 3 // Multiple Producers, Multiple Consumers (default, fully concurrent)
 }
 
+// RingBufferStat holds performance counters for ring buffer operations.
 pub struct RingBufferStat {
 pub mut:
-	push_full_count      u32
-	push_fail_count      u32
-	push_wait_prev_count u32
-	pop_empty_count      u32
-	pop_fail_count       u32
-	pop_wait_prev_count  u32
+	push_full_count      u32 // Times producers encountered full buffer
+	push_fail_count      u32 // Times producers failed to reserve space
+	push_wait_prev_count u32 // Times producers waited for predecessors
+	push_waiting_count   u32 // Current number of producers in waiting state
+	pop_empty_count      u32 // Times consumers found empty buffer
+	pop_fail_count       u32 // Times consumers failed to reserve items
+	pop_wait_prev_count  u32 // Times consumers waited for predecessors
+	pop_waiting_count    u32 // Current number of consumers in waiting state
 }
 
-// RingBufferParam Configuration parameters for ring buffer creation
+// RingBufferParam Configuration parameters for ring buffer creation.
+// - max_waiting_prod_cons: Setting this to a larger value may improve performance,
+//   but in scenarios with many producers/consumers, it could lead to severe contention issues.
 @[params]
 pub struct RingBufferParam {
 pub:
-	mode RingBufferMode = .mpmc // Default to most concurrent mode
+	mode                  RingBufferMode = .mpmc // Default to most concurrent mode
+	max_waiting_prod_cons int            = 2     // Max allowed waiting producers/consumers before rejecting operations
 }
 
-// RingBuffer Lock-free multiple producer/multiple consumer ring buffer
+// RingBuffer Lock-free multiple producer/multiple consumer ring buffer.
 // Requires explicit initialization
 @[noinit]
 pub struct RingBuffer[T] {
 mut:
-	mode       u32                      // Current operation mode (from RingBufferMode)
-	capacity   u32                      // Total capacity (always power of two)
-	mask       u32                      // Bitmask for index calculation (capacity - 1)
-	clear_flag u32                      // Flag indicating clear operation in progress
-	pad0       [cache_line_size - 16]u8 // Padding to align to cache line boundary
+	mode                  u32                      // Current operation mode (from RingBufferMode)
+	capacity              u32                      // Total capacity (always power of two)
+	mask                  u32                      // Bitmask for index calculation (capacity - 1)
+	clear_flag            u32                      // Flag indicating clear operation in progress
+	max_waiting_prod_cons u32                      // Max allowed waiting producers/consumers
+	pad0                  [cache_line_size - 20]u8 // Padding to align to cache line boundary
 
 	// Producer state (isolated to prevent false sharing)
 	prod_head u32                     // Producer head (next write position)
@@ -52,16 +59,20 @@ mut:
 	pad4      [cache_line_size - 4]u8 // Cache line padding
 
 	// Data storage area
-	slots                []T // Array holding actual data elements
-	push_full_count      u32
-	push_fail_count      u32
-	push_wait_prev_count u32
-	pop_empty_count      u32
-	pop_fail_count       u32
-	pop_wait_prev_count  u32
+	slots []T // Array holding actual data elements
+
+	// Performance counters
+	push_full_count      u32 // Count of full buffer encounters
+	push_fail_count      u32 // Count of failed push attempts
+	push_wait_prev_count u32 // Count of waits for previous producers
+	push_waiting_count   u32 // Current number of waiting producers
+	pop_empty_count      u32 // Count of empty buffer encounters
+	pop_fail_count       u32 // Count of failed pop attempts
+	pop_wait_prev_count  u32 // Count of waits for previous consumers
+	pop_waiting_count    u32 // Current number of waiting consumers
 }
 
-// new_ringbuffer creates a new lock-free ring buffer
+// new_ringbuffer creates a new lock-free ring buffer.
 pub fn new_ringbuffer[T](size u32, param RingBufferParam) &RingBuffer[T] {
 	// Ensure capacity is power of two for efficient modulo operations
 	capacity := next_power_of_two(size)
@@ -84,13 +95,13 @@ pub fn new_ringbuffer[T](size u32, param RingBufferParam) &RingBuffer[T] {
 	return rb
 }
 
-// is_single_producer checks if current mode is single producer
+// is_single_producer checks if current mode is single producer.
 @[inline]
 fn is_single_producer(mode u32) bool {
 	return mode & 0x02 == 0
 }
 
-// is_single_consumer checks if current mode is single consumer
+// is_single_consumer checks if current mode is single consumer.
 @[inline]
 fn is_single_consumer(mode u32) bool {
 	return mode & 0x01 == 0
@@ -110,8 +121,9 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 		return 0
 	}
 
-	// Check if clear operation is in progress
-	if C.atomic_load_u32(&rb.clear_flag) != 0 {
+	// Check if clear operation is in progress or too many producers are waiting
+	if C.atomic_load_u32(&rb.clear_flag) != 0
+		|| C.atomic_load_u32(&rb.push_waiting_count) > rb.max_waiting_prod_cons {
 		return 0
 	}
 
@@ -177,12 +189,16 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 		}
 	}
 
-	// For multiple producers: wait for previous producers to complete
+	// Increment waiting producer count
+	C.atomic_fetch_add_u32(&rb.push_waiting_count, 1)
+
 	mut add_once := true
 	mut backoff := 1
 	if !is_single_producer(rb.mode) {
 		mut attempts_wait := 1
+		// Wait for previous producers to complete their writes
 		for C.atomic_load_u32(&rb.prod_tail) != old_head {
+			// Exponential backoff to reduce CPU contention
 			for _ in 0 .. backoff {
 				C.cpu_relax() // Low-latency pause instruction
 			}
@@ -194,6 +210,9 @@ pub fn (mut rb RingBuffer[T]) try_push_many(items []T) u32 {
 			}
 		}
 	}
+
+	// Decrement waiting producer count
+	C.atomic_fetch_sub_u32(&rb.push_waiting_count, 1)
 
 	// Make data visible to consumers
 	$if valgrind ? {
@@ -224,8 +243,9 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 		return 0
 	}
 
-	// Check if clear operation is in progress
-	if C.atomic_load_u32(&rb.clear_flag) != 0 {
+	// Check if clear operation is in progress or too many consumers are waiting
+	if C.atomic_load_u32(&rb.clear_flag) != 0
+		|| C.atomic_load_u32(&rb.pop_waiting_count) > rb.max_waiting_prod_cons {
 		return 0
 	}
 
@@ -288,12 +308,17 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 		}
 	}
 
+	// Increment waiting consumer count
+	C.atomic_fetch_add_u32(&rb.pop_waiting_count, 1)
+
 	mut add_once := true
 	mut backoff := 1
 	// For multiple consumers: wait for previous consumers to complete
 	if !is_single_consumer(rb.mode) {
 		mut attempts_wait := 1
+		// Wait for previous consumers to complete their reads
 		for C.atomic_load_u32(&rb.cons_tail) != old_head {
+			// Exponential backoff to reduce CPU contention
 			for _ in 0 .. backoff {
 				C.cpu_relax() // Low-latency pause instruction
 			}
@@ -305,6 +330,9 @@ pub fn (mut rb RingBuffer[T]) try_pop_many(mut items []T) u32 {
 			}
 		}
 	}
+
+	// Decrement waiting consumer count
+	C.atomic_fetch_sub_u32(&rb.pop_waiting_count, 1)
 
 	// Free up buffer space
 	$if valgrind ? {
@@ -326,6 +354,7 @@ pub fn (mut rb RingBuffer[T]) push(item T) {
 		if rb.try_push(item) {
 			return
 		}
+		// Exponential backoff to reduce contention
 		for _ in 0 .. backoff {
 			C.cpu_relax() // Pause before retry
 		}
@@ -342,6 +371,7 @@ pub fn (mut rb RingBuffer[T]) pop() T {
 		if item := rb.try_pop() {
 			return item
 		}
+		// Exponential backoff to reduce contention
 		for _ in 0 .. backoff {
 			C.cpu_relax() // Pause before retry
 		}
@@ -359,6 +389,7 @@ pub fn (mut rb RingBuffer[T]) push_many(items []T) {
 		if n == items.len {
 			break
 		} else {
+			// Exponential backoff when buffer is full
 			for _ in 0 .. backoff {
 				C.cpu_relax() // Pause when buffer is full
 			}
@@ -380,7 +411,7 @@ pub fn (mut rb RingBuffer[T]) pop_many(mut result []T) {
 		if ret == n {
 			break
 		} else {
-			// Exponential backoff wait
+			// Exponential backoff when buffer is empty
 			for _ in 0 .. backoff {
 				C.cpu_relax() // Pause when buffer is empty
 			}
@@ -510,9 +541,11 @@ pub fn (mut rb RingBuffer[T]) clear() bool {
 	C.atomic_store_u32(&rb.push_full_count, 0)
 	C.atomic_store_u32(&rb.push_fail_count, 0)
 	C.atomic_store_u32(&rb.push_wait_prev_count, 0)
+	C.atomic_store_u32(&rb.push_waiting_count, 0)
 	C.atomic_store_u32(&rb.pop_empty_count, 0)
 	C.atomic_store_u32(&rb.pop_fail_count, 0)
 	C.atomic_store_u32(&rb.pop_wait_prev_count, 0)
+	C.atomic_store_u32(&rb.pop_waiting_count, 0)
 	// Release clear flag
 	C.atomic_store_u32(&rb.clear_flag, 0)
 	return true // Clear operation successful
@@ -520,20 +553,24 @@ pub fn (mut rb RingBuffer[T]) clear() bool {
 
 // stat retrieves current performance statistics of the ring buffer.
 //
-// This method atomically fetches all recorded operation counters:
-// - push_full_count:   Times producers encountered full buffer
-// - push_fail_count:   Times producers failed to reserve space
+// This method fetches all recorded operation counters:
+// - push_full_count:      Times producers encountered full buffer
+// - push_fail_count:      Times producers failed to reserve space
 // - push_wait_prev_count: Times producers waited for predecessors
-// - pop_empty_count:   Times consumers found empty buffer
-// - pop_fail_count:    Times consumers failed to reserve items
+// - push_waiting_count:   Current number of producers in waiting state
+// - pop_empty_count:      Times consumers found empty buffer
+// - pop_fail_count:       Times consumers failed to reserve items
 // - pop_wait_prev_count:  Times consumers waited for predecessors
+// - pop_waiting_count:    Current number of consumers in waiting state
 pub fn (rb RingBuffer[T]) stat() RingBufferStat {
 	return RingBufferStat{
 		push_full_count:      C.atomic_load_u32(&rb.push_full_count)
 		push_fail_count:      C.atomic_load_u32(&rb.push_fail_count)
 		push_wait_prev_count: C.atomic_load_u32(&rb.push_wait_prev_count)
+		push_waiting_count:   C.atomic_load_u32(&rb.push_waiting_count)
 		pop_empty_count:      C.atomic_load_u32(&rb.pop_empty_count)
 		pop_fail_count:       C.atomic_load_u32(&rb.pop_fail_count)
 		pop_wait_prev_count:  C.atomic_load_u32(&rb.pop_wait_prev_count)
+		pop_waiting_count:    C.atomic_load_u32(&rb.pop_waiting_count)
 	}
 }
