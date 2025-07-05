@@ -2767,7 +2767,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.expr_with_cast(arg.expr, arg_typ, expected_type)
 		g.write('.data')
 		return
-	} else if arg.expr is ast.Ident && arg_sym.info is ast.Struct && arg_sym.info.is_anon {
+	} else if arg.expr is ast.Ident && arg_sym.info is ast.Struct && arg_sym.info.is_anon
+		&& !expected_type.has_flag(.generic) {
 		// make anon struct struct compatible with another anon struct declaration
 		g.write('*(${g.cc_type(expected_type, false)}*)&')
 	}
