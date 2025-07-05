@@ -502,7 +502,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	global_g.gen_array_index_methods()
 	global_g.gen_equality_fns()
 	global_g.gen_free_methods()
-	global_g.interface_return_types()
 	global_g.write_results()
 	global_g.write_options()
 	global_g.sort_globals_consts()
@@ -7715,30 +7714,6 @@ fn (g &Gen) has_been_referenced(fn_name string) bool {
 		referenced = g.referenced_fns[fn_name]
 	}
 	return referenced
-}
-
-fn (mut g Gen) interface_return_types() {
-	interfaces := g.table.type_symbols.filter(it.kind == .interface && it.info is ast.Interface)
-	for isym in interfaces {
-		inter_info := isym.info as ast.Interface
-		if inter_info.is_generic {
-			continue
-		}
-
-		mut inter_methods := inter_info.get_methods()
-		inter_methods.sort(a < b)
-		mut methodidx := map[string]int{}
-		for k, method_name in inter_methods {
-			method := isym.find_method_with_generic_parent(method_name) or { continue }
-			if method.return_type.has_flag(.result) {
-				sym := g.table.sym(method.return_type)
-				if sym.info is ast.MultiReturn {
-					// g.table.find_or_register_multi_return(sym.info.types)
-					// g.register_result(method.return_type)
-				}
-			}
-		}
-	}
 }
 
 // Generates interface table and interface indexes
