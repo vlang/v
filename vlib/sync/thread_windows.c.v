@@ -40,6 +40,7 @@ pub fn new_tls[T](value T) !&ThreadLocalStorage[T] {
 }
 
 // set updates the `value` in TLS storage.
+@[inline]
 pub fn (mut t ThreadLocalStorage[T]) set(value T) ! {
 	if t.in_use {
 		if !C.TlsSetValue(t.key, voidptr(value)) {
@@ -51,6 +52,7 @@ pub fn (mut t ThreadLocalStorage[T]) set(value T) ! {
 }
 
 // get retrieves the current value from TLS storage.
+@[inline]
 pub fn (mut t ThreadLocalStorage[T]) get() !T {
 	if t.in_use {
 		return T(C.TlsGetValue(t.key))
@@ -59,6 +61,7 @@ pub fn (mut t ThreadLocalStorage[T]) get() !T {
 }
 
 // destroy releases TLS resources (must be called manually).
+@[inline]
 pub fn (mut t ThreadLocalStorage[T]) destroy() ! {
 	if C.TlsFree(t.key) {
 		t.in_use = false

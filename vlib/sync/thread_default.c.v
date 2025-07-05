@@ -45,6 +45,7 @@ pub fn new_tls[T](value T) !&ThreadLocalStorage[T] {
 }
 
 // set updates the `value` in TLS storage.
+@[inline]
 pub fn (mut t ThreadLocalStorage[T]) set(value T) ! {
 	if t.in_use {
 		if C.pthread_setspecific(t.key, voidptr(value)) != 0 {
@@ -56,6 +57,7 @@ pub fn (mut t ThreadLocalStorage[T]) set(value T) ! {
 }
 
 // get retrieves the current value from TLS storage.
+@[inline]
 pub fn (mut t ThreadLocalStorage[T]) get() !T {
 	if t.in_use {
 		return T(C.pthread_getspecific(t.key))
@@ -64,6 +66,7 @@ pub fn (mut t ThreadLocalStorage[T]) get() !T {
 }
 
 // destroy releases TLS resources (must be called manually).
+@[inline]
 pub fn (mut t ThreadLocalStorage[T]) destroy() ! {
 	if C.pthread_key_delete(t.key) == 0 {
 		t.in_use = false
