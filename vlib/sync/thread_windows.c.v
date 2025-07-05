@@ -29,7 +29,7 @@ pub fn new_tls[T](value T) !&ThreadLocalStorage[T] {
 	// Validate key allocation
 	if t.key != C.TLS_OUT_OF_INDEXES {
 		// Initialize storage and verify success
-		if C.TlsSetValue(t.key, voidptr(value)) {
+		if C.TlsSetValue(t.key, voidptr(u64(value))) {
 			return &t
 		} else {
 			return error('new_tls: Failed to initialize TLS value: ${value}')
@@ -43,7 +43,7 @@ pub fn new_tls[T](value T) !&ThreadLocalStorage[T] {
 @[inline]
 pub fn (mut t ThreadLocalStorage[T]) set(value T) ! {
 	if t.in_use {
-		if !C.TlsSetValue(t.key, voidptr(value)) {
+		if !C.TlsSetValue(t.key, voidptr(u64(value))) {
 			return error('set: Failed to update TLS value: ${value}')
 		}
 	} else {
@@ -55,7 +55,7 @@ pub fn (mut t ThreadLocalStorage[T]) set(value T) ! {
 @[inline]
 pub fn (mut t ThreadLocalStorage[T]) get() !T {
 	if t.in_use {
-		return T(C.TlsGetValue(t.key))
+		return T(u64(C.TlsGetValue(t.key)))
 	}
 	return error('get: TLS storage is already destroyed')
 }
