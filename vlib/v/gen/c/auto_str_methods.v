@@ -627,7 +627,7 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 	if sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}();')
 	} else {
-		if sym.kind == .array_fixed {
+		if !typ.has_flag(.option) && sym.kind == .array_fixed {
 			g.auto_str_funcs.writeln('\t\t${field_styp} it;')
 			g.auto_str_funcs.writeln('\t\tmemcpy(*(${field_styp}*)it, (byte*)array_get(a, i), sizeof(${field_styp}));')
 		} else {

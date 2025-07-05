@@ -253,12 +253,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				tcc_bug := c_name(node.val_var)
 				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
 				g.writeln(' = ((voidptr*)${cond_var}${op_field}data)[${i}];')
-			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
+			} else if !node.val_type.has_flag(.option) && val_sym.kind == .array_fixed
+				&& !node.val_is_mut {
 				right := '((${styp}*)${cond_var}${op_field}data)[${i}]'
 				g.writeln('\t${styp} ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${right}, sizeof(${styp}));')
 			} else {
-				needs_memcpy := !node.val_type.is_ptr()
+				needs_memcpy := !node.val_type.is_ptr() && !node.val_type.has_flag(.option)
 					&& g.table.final_sym(node.val_type).kind == .array_fixed
 				// If val is mutable (pointer behind the scenes), we need to generate
 				// `int* val = ((int*)arr.data) + i;`
@@ -311,6 +312,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
 			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
+				&& !node.val_type.has_flag(.option)
 			if val_sym.info is ast.FnType {
 				g.write('\t')
 				tcc_bug := c_name(node.val_var)
