@@ -991,10 +991,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		tmp_var := g.new_tmp_var()
 		array_info := left.unaliased_sym.info as ast.Array
 		noscan := g.check_noscan(array_info.elem_type)
+		elem_is_option := array_info.elem_type.has_flag(.option)
 		if (right.unaliased_sym.kind == .array
 			|| (right.unaliased_sym.kind == .struct && right.unaliased_sym.name == 'array'))
 			&& left.sym.nr_dims() == right.sym.nr_dims() && array_info.elem_type != right.typ
-			&& !(right.sym.kind == .alias
+			&& !elem_is_option && !(right.sym.kind == .alias
 			&& g.table.sumtype_has_variant(array_info.elem_type, node.right_type, false)) {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY${noscan}(')
@@ -1028,7 +1029,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			// push a single element
 			elem_type_str := g.styp(array_info.elem_type)
 			elem_sym := g.table.final_sym(array_info.elem_type)
-			elem_is_array_var := elem_sym.kind in [.array, .array_fixed] && node.right is ast.Ident
+			elem_is_array_var := !elem_is_option && elem_sym.kind in [.array, .array_fixed]
+				&& node.right is ast.Ident
 			g.write('array_push${noscan}((array*)')
 			mut needs_addr := false
 			if !left.typ.is_ptr()
