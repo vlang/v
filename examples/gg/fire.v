@@ -60,7 +60,7 @@ fn main() {
 	mut app := &App{
 		buf: [][]int{len: height - 1, init: []int{len: width}}
 	}
-	app.buf << []int{len: width, init: 36} // white fire base
+	app.buf << [[]int{len: width, init: 36}] // white fire base
 
 	app.gg = gg.new_context(
 		event_fn:     event
