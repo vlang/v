@@ -2557,6 +2557,9 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 				names << util.no_dots(expr.name)
 			}
 		}
+		IndexExpr {
+			names << t.dependent_names_in_expr(expr.left)
+		}
 		IfExpr {
 			for branch in expr.branches {
 				names << t.dependent_names_in_expr(branch.cond)
