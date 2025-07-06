@@ -15,10 +15,10 @@ pub fn thread_id() u64 {
 }
 
 // Pthread TLS API functions (via C interface)
-fn C.pthread_key_create(key &u32, voidptr) int
-fn C.pthread_key_delete(key u32) int
-fn C.pthread_setspecific(key u32, const_ptr voidptr) int
-fn C.pthread_getspecific(key u32) voidptr
+fn C.pthread_key_create(key voidptr, voidptr) int
+fn C.pthread_key_delete(key u64) int
+fn C.pthread_setspecific(key u64, const_ptr voidptr) int
+fn C.pthread_getspecific(key u64) voidptr
 
 // new_tls creates new TLS storage initialized with the given `value`
 pub fn new_tls[T](value T) !&ThreadLocalStorage[T] {
@@ -27,9 +27,9 @@ pub fn new_tls[T](value T) !&ThreadLocalStorage[T] {
 		$compile_error('new_tls: Type size exceeds maximum TLS capacity (64 bits)')
 	}
 
-	mut key := u32(0)
+	mut key := u64(0)
 	// Validate key allocation
-	if C.pthread_key_create(&key, 0) == 0 {
+	if C.pthread_key_create(voidptr(&key), 0) == 0 {
 		// Initialize storage and verify success
 		if C.pthread_setspecific(key, voidptr(u64(value))) == 0 {
 			return &ThreadLocalStorage[T]{
