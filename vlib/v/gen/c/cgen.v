@@ -502,6 +502,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	global_g.gen_array_index_methods()
 	global_g.gen_equality_fns()
 	global_g.gen_free_methods()
+	global_g.register_iface_return_types()
 	global_g.write_results()
 	global_g.write_options()
 	global_g.sort_globals_consts()
@@ -6169,7 +6170,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.fixed_array_var_init(g.expr_string(expr0), expr0.is_auto_deref_var(),
 						info.elem_type, info.size)
 				} else {
-					g.expr_with_cast(expr0, type0, fn_ret_type.clear_flag(.result))
+					g.expr_with_cast(expr0, type0, g.unwrap_generic(fn_ret_type.clear_flag(.result)))
 				}
 				g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
 			}
@@ -7715,6 +7716,22 @@ fn (g &Gen) has_been_referenced(fn_name string) bool {
 		referenced = g.referenced_fns[fn_name]
 	}
 	return referenced
+}
+
+fn (mut g Gen) register_iface_return_types() {
+	interfaces := g.table.type_symbols.filter(it.kind == .interface && it.info is ast.Interface)
+	for isym in interfaces {
+		inter_info := isym.info as ast.Interface
+		if inter_info.is_generic {
+			continue
+		}
+		for _, method_name in inter_info.get_methods() {
+			method := isym.find_method_with_generic_parent(method_name) or { continue }
+			if method.return_type.has_flag(.result) {
+				g.register_result(method.return_type)
+			}
+		}
+	}
 }
 
 // Generates interface table and interface indexes
