@@ -107,5 +107,5 @@ fn convert_voidptr_to_t[T](value voidptr) !T {
 	} $else $if T is rune {
 		return unsafe { f.f_rune }
 	}
-	return error('Unsupport data type from voidptr')
+	return error('Unsupported data type `${T}` from voidptr')
 }
