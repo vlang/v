@@ -7364,9 +7364,10 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 			if sym.language in [.c, .v] {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
-					if field.has_default_expr
+					is_option := field.typ.has_flag(.option)
+					if is_option || field.has_default_expr
 						|| field_sym.kind in [.enum, .array_fixed, .array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct, .chan, .sum_type] {
-						if sym.language == .c && !field.has_default_expr {
+						if sym.language == .c && !field.has_default_expr && !is_option {
 							continue
 						}
 						field_name := c_name(field.name)
