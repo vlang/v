@@ -26,15 +26,16 @@ pub fn new_tls[T](value T) !&ThreadLocalStorage[T] {
 	$if sizeof(T) > 8 {
 		$compile_error('new_tls: Type size exceeds maximum TLS capacity (64 bits)')
 	}
-	mut t := ThreadLocalStorage[T]{
-		in_use: true
-	}
 
+	mut key := u32(0)
 	// Validate key allocation
-	if C.pthread_key_create(&t.key, 0) == 0 {
+	if C.pthread_key_create(&key, 0) == 0 {
 		// Initialize storage and verify success
-		if C.pthread_setspecific(t.key, voidptr(u64(value))) == 0 {
-			return &t
+		if C.pthread_setspecific(key, voidptr(u64(value))) == 0 {
+			return &ThreadLocalStorage[T]{
+				key:    key
+				in_use: true
+			}
 		} else {
 			return error('new_tls: Failed to initialize TLS value: ${value}')
 		}
