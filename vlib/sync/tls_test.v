@@ -5,6 +5,9 @@ import time
 fn test_basic_tls() {
 	println('--- Testing basic datatypes TLS ---')
 
+	// invalid type
+	sync.new_tls[string]('hello world') or { assert err.msg().contains('invalid type') }
+
 	mut tls_i8 := sync.new_tls[i8](-3)!
 	assert tls_i8.get()! == -3
 	tls_i8.set(-4)!

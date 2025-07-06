@@ -10,7 +10,7 @@ fn C.pthread_getspecific(key u64) voidptr
 pub fn new_tls[T](value T) !ThreadLocalStorage[T] {
 	$if T !in [i8, i16, i32, i64, u8, u16, u32, u64, isize, usize, f32, f64, rune, int, voidptr,
 		$pointer] {
-		return error('invalid type ${T}')
+		return error('new_tls: invalid type ${T.name}')
 	}
 	mut key := u64(0)
 	// Validate key allocation
