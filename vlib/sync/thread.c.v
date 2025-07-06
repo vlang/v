@@ -4,6 +4,6 @@ module sync
 @[noinit]
 struct ThreadLocalStorage[T] {
 mut:
-	key    u32  // TLS index/key
+	key    u32 = u32(0xDEADBEEF) // TLS index/key
 	in_use bool // Allocation state flag
 }
