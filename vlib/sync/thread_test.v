@@ -24,6 +24,7 @@ fn test_sync_thread_id() {
 fn test_sync_thread_local_storage() {
 	// test int
 	mut tls_int := sync.new_tls(100)!
+	dump(tls_int)
 
 	mut x := tls_int.get()!
 	assert x == 100
@@ -42,6 +43,7 @@ fn test_sync_thread_local_storage() {
 	mut a := 100
 	mut b := 200
 	mut tls_ptr := sync.new_tls(&a)!
+	dump(tls_ptr)
 
 	mut p := tls_ptr.get()!
 	assert p == &a
