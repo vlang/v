@@ -61,7 +61,12 @@ pub fn (mut t ThreadLocalStorage[T]) set(value T) ! {
 @[inline]
 pub fn (mut t ThreadLocalStorage[T]) get() !T {
 	if t.in_use {
-		return T(u64(C.pthread_getspecific(t.key)))
+		$if T is $pointer {
+			// avoid v compile warning
+			return T(voidptr(C.pthread_getspecific(t.key)))
+		} $else {
+			return T(u64(C.pthread_getspecific(t.key)))
+		}
 	}
 	return error('get: TLS storage is already destroyed')
 }

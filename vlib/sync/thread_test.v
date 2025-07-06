@@ -22,6 +22,20 @@ fn test_sync_thread_id() {
 }
 
 fn test_sync_thread_local_storage() {
+	// test create/destroy
+	mut tls_1 := sync.new_tls(1.1)!
+	mut tls_2 := sync.new_tls(333)!
+	mut tls_3 := sync.new_tls(`d`)!
+	dump(tls_1)
+	dump(tls_2)
+	dump(tls_3)
+	tls_1.destroy()!
+	tls_2.destroy()!
+	tls_3.destroy()!
+	dump(tls_1)
+	dump(tls_2)
+	dump(tls_3)
+
 	// test int
 	mut tls_int := sync.new_tls(100)!
 	dump(tls_int)
