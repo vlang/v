@@ -5808,7 +5808,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 
 	exprs_len := node.exprs.len
 	expr0 := if exprs_len > 0 { node.exprs[0] } else { ast.empty_expr }
-	type0 := if exprs_len > 0 { node.types[0] } else { ast.void_type }
+	type0 := if exprs_len > 0 { g.unwrap_generic(node.types[0]) } else { ast.void_type }
 
 	if exprs_len > 0 {
 		// skip `return $vweb.html()`
@@ -5820,15 +5820,15 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			return
 		}
 	}
-	ret_type := g.fn_decl.return_type
+	ret_type := g.unwrap_generic(g.fn_decl.return_type)
 
 	// got to do a correct check for multireturn
-	sym := g.table.sym(g.unwrap_generic(ret_type))
+	sym := g.table.sym(ret_type)
 	mut fn_ret_type := ret_type
 	if sym.kind == .alias {
 		unaliased_type := g.table.unaliased_type(fn_ret_type)
 		if unaliased_type.has_option_or_result() {
-			fn_ret_type = unaliased_type
+			fn_ret_type = g.unwrap_generic(unaliased_type)
 		}
 	}
 	fn_return_is_multi := sym.kind == .multi_return
@@ -5858,7 +5858,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 	tmpvar := g.new_tmp_var()
 	g.defer_return_tmp_var = tmpvar
-	ret_typ := g.ret_styp(g.unwrap_generic(fn_ret_type))
+	ret_typ := g.ret_styp(fn_ret_type)
 
 	// `return fn_call_opt()`
 	if exprs_len == 1 && (fn_return_is_option || fn_return_is_result) && expr0 is ast.CallExpr
@@ -6078,7 +6078,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.pos)
 		}
 		// normal return
-		return_sym := g.table.final_sym(g.unwrap_generic(type0))
+		return_sym := g.table.final_sym(type0)
 		// `return opt_ok(expr)` for functions that expect an option
 		expr_type_is_opt := match expr0 {
 			ast.CallExpr {
@@ -6115,7 +6115,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.writeln('${ret_typ} ${tmpvar};')
 				styp := g.base_type(fn_ret_type)
 				g.write('_option_ok(&(${styp}[]) { ')
-				if !g.unwrap_generic(fn_ret_type).is_ptr() && type0.is_ptr() {
+				if !fn_ret_type.is_ptr() && type0.is_ptr() {
 					if !(expr0 is ast.Ident && !g.is_amp) {
 						g.write('*')
 					}
