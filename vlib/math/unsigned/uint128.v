@@ -267,34 +267,32 @@ pub fn (u Uint128) quo_rem_64(v u64) (Uint128, u64) {
 }
 
 // quo_rem returns q = u/v and r = u%v
-pub fn (u Uint128) quo_rem(v Uint128) (Uint128, Uint128) {
-	mut q := Uint128{}
-	mut r := Uint128{}
-	if v.hi == 0 {
-		mut r64 := u64(0)
-		q, r64 = u.quo_rem_64(v.lo)
-		r = Uint128{r64, 0}
-	} else {
-		n := bits.leading_zeros_64(v.hi)
-		v1 := v.lsh(u32(n))
-		u1 := v.rsh(1)
-
-		mut tq, _ := bits.div_64(u1.hi, u1.lo, v1.hi)
-		tq >>= u64(64 - n)
-		if tq != 0 {
-			tq -= 1
-		}
-
-		q = Uint128{tq, 0}
-		r = u - v.mul_64(tq)
-
-		if r.cmp(v) >= 0 {
-			q = q.add_64(1)
-			r = r - v
-		}
+pub fn (a Uint128) quo_rem(b Uint128) (Uint128, Uint128) {
+	if a < b {
+		return uint128_zero, a
 	}
+	if b.is_zero() {
+		panic('Division by zero')
+	}
+	if b.hi == 0 {
+		quotient, remainder := a.quo_rem_64(b.lo)
+		return quotient, uint128_from_64(remainder)
+	}
+	shift := u32(b.leading_zeros() - a.leading_zeros())
+	mut af := a
+	mut bf := b.lsh(shift)
+	mut quotient := uint128_zero
 
-	return q, r
+	for _ in 0 .. shift + 1 {
+		quotient = quotient.lsh(1)
+		diff_result := bf.add(af.not())
+		s := u64(i64(diff_result.hi) >> 63)
+		quotient.lo |= s & 1
+		mask := uint128_new(s, s)
+		af = af.sub(bf.and(mask))
+		bf = bf.rsh(1)
+	}
+	return quotient, af
 }
 
 // lsh returns u << n
