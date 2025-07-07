@@ -6170,7 +6170,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.fixed_array_var_init(g.expr_string(expr0), expr0.is_auto_deref_var(),
 						info.elem_type, info.size)
 				} else {
-					g.expr_with_cast(expr0, type0, g.unwrap_generic(fn_ret_type.clear_flag(.result)))
+					g.expr_with_cast(expr0, type0, fn_ret_type.clear_flag(.result))
 				}
 				g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
 			}
