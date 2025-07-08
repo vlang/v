@@ -4190,6 +4190,18 @@ user := repo.find_user_by_id(7) or {
 }
 ```
 
+Use `err is ...` to compare errors:
+```v oksyntax
+import io
+
+x := read() or {
+	if err is io.Eof {
+		println('end of file')
+	}
+	return
+}
+```
+
 #### Options/results when returning multiple values
 
 Only one `Option` or `Result` is allowed to be returned from a function. It is
