@@ -213,7 +213,7 @@ pub fn (u Uint128) mul_64(v u64) Uint128 {
 	return Uint128{lo, hi}
 }
 
-// overflowing_mul_64 returns u x v even if result size > 64
+// overflowing_mul_64 returns u x v even if result size > 128
 pub fn (u Uint128) overflowing_mul_64(v u64) (Uint128, bool) {
 	hi, lo := bits.mul_64(u.lo, v)
 	p0, p1 := bits.mul_64(u.hi, v)
@@ -222,7 +222,7 @@ pub fn (u Uint128) overflowing_mul_64(v u64) (Uint128, bool) {
 	return Uint128{lo, hi2}, p0 != 0 || c0 != 0
 }
 
-// overflowing_add_64 returns u = v even if result size > 64
+// overflowing_add_64 returns u + v even if result size > 128
 pub fn (u Uint128) overflowing_add_64(v u64) (Uint128, u64) {
 	lo, carry := bits.add_64(u.lo, v, 0)
 	hi, carry2 := bits.add_64(u.hi, 0, carry)
