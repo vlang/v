@@ -291,3 +291,15 @@ fn test_rsh() {
 	assert '170141183460469231731687303715884105727' == a.rsh(129).str()
 	assert unsigned.uint256_zero == a.rsh(256)
 }
+
+fn test_lsh() {
+	a := unsigned.uint256_from_dec_str('123')!
+	assert a.lsh(0).str() == a.str()
+	assert a.lsh(1).str() == '246'
+	assert a.lsh(63).str() == '1134474760533137424384'
+	assert a.lsh(64).str() == '2268949521066274848768'
+	assert a.lsh(100).str() == '155921023828072216384094494261248'
+	assert a.lsh(128).str() == '41854731131275431005995076714107490009088'
+	assert a.lsh(200).str() == '197653379443855803891661337357963000110230968235283518742069248'
+	assert a.lsh(300) == unsigned.uint256_zero
+}
