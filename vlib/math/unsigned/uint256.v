@@ -259,18 +259,32 @@ pub fn (u Uint256) rsh(n u32) Uint256 {
 }
 
 // lsh returns a new Uint256 that has been left bit shifted
-pub fn (u Uint256) lsh(n_ u32) Uint256 {
-	mut n := n_
-	if n > 128 {
-		return Uint256{u.lo.lsh(n - 128), uint128_zero}
+pub fn (u Uint256) lsh(n u32) Uint256 {
+	mut s := Uint256{}
+	if n == 0 {
+		s.lo = u.lo
+		s.hi = u.hi
+	} else if n >= 256 {
+		s.lo = uint128_zero
+		s.hi = uint128_zero
+	} else if n == 128 {
+		s.lo = uint128_zero
+		s.hi = u.lo
+	} else if n > 128 {
+		s.lo = uint128_zero
+		s.hi = u.lo.lsh(n - 128)
+	} else if n == 64 {
+		s.lo = Uint128{0, u.lo.lo}
+		s.hi = Uint128{u.lo.hi, u.hi.lo}
+	} else if n > 64 {
+		shift := n - 64
+		s.lo = Uint128{0, u.lo.lo << shift}
+		s.hi = Uint128{u.lo.lo >> (64 - shift) | u.lo.hi << shift, u.lo.hi >> (64 - shift) | u.hi.lo << shift}
+	} else {
+		s.lo = Uint128{u.lo.lo << n, u.lo.hi << n | u.lo.lo >> (64 - n)}
+		s.hi = Uint128{u.hi.lo << n | u.lo.hi >> (64 - n), u.hi.hi << n | u.hi.lo >> (64 - n)}
 	}
-
-	if n > 64 {
-		n -= 64
-		return Uint256{Uint128{u.lo.lo << n, 0}, Uint128{u.lo.hi << n | u.lo.lo >> (64 - n), u.hi.lo << n | u.lo.hi >> (64 - n)}}
-	}
-
-	return Uint256{Uint128{u.lo.lo << n, u.lo.hi << n | u.lo.lo >> (64 - n)}, Uint128{u.hi.lo << n | u.lo.hi >> (64 - n), u.hi.hi << n | u.hi.lo >> (64 - n)}}
+	return s
 }
 
 // div - untested
