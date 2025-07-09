@@ -137,45 +137,33 @@ pub fn mul_128(x Uint128, y Uint128) (Uint128, Uint128) {
 }
 
 // div_128 returns u / v
-pub fn div_128(hi Uint128, lo Uint128, y_ Uint128) (Uint128, Uint128) {
-	mut y := y_
-	if y.is_zero() {
-		panic('integer divide by zero')
+pub fn div_128(a_hi Uint128, a_lo Uint128, b Uint128) (Uint128, Uint128) {
+	a := uint256_new(a_lo, a_hi)
+	b_256 := uint256_new(b, uint128_zero)
+	if a < b_256 {
+		return uint128_zero, a_lo
 	}
-
-	if y.cmp(hi) <= 0 {
-		panic('integer overflow')
+	if b.is_zero() {
+		panic('Division by zero')
 	}
-
-	s := u32(y.leading_zeros())
-	y = y.lsh(s)
-
-	un32 := hi.lsh(s).or_(lo.rsh(128 - s))
-	un10 := lo.lsh(s)
-	mut q1, rhat := un32.quo_rem_64(y.hi)
-	mut r1 := uint128_from_64(rhat)
-	tmp := Uint128{r1.lo, un10.hi}
-	for q1.hi != 0 || q1.mul_64(y.lo).cmp(tmp) > 0 {
-		q1 = q1.sub_64(1)
-		r1 = r1.add_64(y.hi)
-		if r1.hi != 0 {
-			break
-		}
+	if a.hi.is_zero() {
+		return a.lo.quo_rem(b)
 	}
+	shift := u32(b_256.leading_zeros() - a.leading_zeros())
+	mut af := a
+	mut bf := b_256.lsh(shift)
+	mut quotient := uint128_zero
 
-	un21 := Uint128{un32.lo, un10.hi}.sub(q1.mul(y))
-	mut q0, rhat2 := un21.quo_rem_64(y.hi)
-	mut r0 := uint128_from_64(rhat2)
-	tmp2 := Uint128{r0.lo, un10.lo}
-	for q0.hi != 0 || q0.mul_64(y.lo).cmp(tmp2) > 0 {
-		q0 = q0.sub_64(1)
-		r0 = r0.add_64(y.hi)
-		if r0.hi != 0 {
-			break
-		}
+	for _ in 0 .. shift + 1 {
+		quotient = quotient.lsh(1)
+		diff_result := bf.add(af.not())
+		s := u64(i64(diff_result.hi.hi) >> 63)
+		quotient.lo |= s & 1
+		mask := uint256_new(uint128_new(s, s), uint128_new(s, s))
+		af = af.sub(bf.and(mask))
+		bf = bf.rsh(1)
 	}
-
-	return Uint128{q1.lo, q0.lo}, Uint128{un21.lo, un10.lo}.sub(q0.mul(y)).rsh(s)
+	return quotient, af.lo
 }
 
 // add_64 returns u + v with wraparound semantics
