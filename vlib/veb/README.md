@@ -165,15 +165,13 @@ After it is defined in the attribute, you have to add it as a function parameter
 
 ```v ignore
 // V will pass the parameter 'user' as a string
-           vvvv
-@['/hello/:user']                             vvvv
+@['/hello/:user']
 pub fn (app &App) hello_user(mut ctx Context, user string) veb.Result {
 	return ctx.text('Hello ${user}')
 }
 
 // V will pass the parameter 'id' as an int
-              vv
-@['/document/:id']                              vv
+@['/document/:id']
 pub fn (app &App) get_document(mut ctx Context, id int) veb.Result {
 	return ctx.text('Document ${id}')
 }
@@ -191,8 +189,7 @@ This will match all routes after `'/'`. For example, the url `/path/to/test` wou
 `path = '/path/to/test'`.
 
 ```v ignore
-         vvv
-@['/:path...']                              vvvv
+@['/:path...']
 pub fn (app &App) wildcard(mut ctx Context, path string) veb.Result {
 	return ctx.text('URL path = "${path}"')
 }
@@ -233,7 +230,7 @@ by adding a host to the "hosts" file of your device.
 ```v ignore
 @['/'; host: 'example.com']
 pub fn (app &App) hello_web(mut ctx Context) veb.Result {
-	return app.text('Hello World')
+	return ctx.text('Hello World')
 }
 
 @['/'; host: 'api.example.org']
