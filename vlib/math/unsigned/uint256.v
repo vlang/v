@@ -348,7 +348,7 @@ pub fn (u Uint256) rotate_left(k int) Uint256 {
 			return Uint256{u.hi, u.lo}
 		}
 
-		return Uint256{Uint128{u.hi.lo << n | u.lo.hi >> (64 - n), u.hi.hi << n | u.hi.lo >> (64 - n)}, Uint128{}}
+		return Uint256{Uint128{u.hi.lo << n | u.lo.hi >> (64 - n), u.hi.hi << n | u.hi.lo >> (64 - n)}, Uint128{u.lo.lo << n | u.hi.hi >> (64 - n), u.lo.hi << n | u.lo.lo >> (64 - n)}}
 	}
 	n -= 64
 	if n == 0 {
