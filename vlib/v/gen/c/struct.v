@@ -48,6 +48,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write(g.type_default_sumtype(unwrapped_typ, sym))
 		}
 		return
+	} else if sym.kind == .map {
+		g.write(g.type_default(unwrapped_typ))
+		return
 	}
 	is_amp := g.is_amp
 	is_multiline := node.init_fields.len > 5
