@@ -797,7 +797,9 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 											}
 										} else {
 											$if field.typ is $option {
-												mut unwrapped_val := create_value_from_optional(val.$(field.name))
+												mut unwrapped_val := create_value_from_optional(val.$(field.name)) or {
+													return
+												}
 												decoder.decode_value(mut unwrapped_val)!
 												val.$(field.name) = unwrapped_val
 											} $else {
@@ -961,7 +963,7 @@ fn get_value_kind(value u8) ValueKind {
 	return .unknown
 }
 
-fn create_value_from_optional[T](val ?T) T {
+fn create_value_from_optional[T](val ?T) ?T {
 	return T{}
 }
 
