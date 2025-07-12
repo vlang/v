@@ -61,6 +61,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'main.main',
 			'init_global_allocator', // needed for linux_bare and wasm_bare
 			'memdup',
+			'memdup_align',
 			'tos',
 			'tos2',
 			'error',

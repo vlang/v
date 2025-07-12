@@ -140,6 +140,8 @@ fn C.GC_REALLOC(ptr voidptr, n usize) voidptr
 
 fn C.GC_FREE(ptr voidptr)
 
+fn C.GC_memalign(align isize, size isize) voidptr
+
 // explicitly perform garbage collection now! Garbage collections
 // are done automatically when needed, so this function is hardly needed
 fn C.GC_gcollect()

@@ -757,6 +757,55 @@ pub fn memdup_uncollectable(src voidptr, sz isize) voidptr {
 	}
 }
 
+// memdup_align dynamically allocates a memory block of `sz` bytes on the heap,
+// copies the contents from `src` into the allocated space, and returns a pointer
+// to the newly allocated memory. The returned pointer is aligned to the specified `align` boundary.
+//   - `align` must be a power of two and at least 1
+//   - `sz` must be non-negative
+//   - The memory regions should not overlap
+@[unsafe]
+pub fn memdup_align(src voidptr, align isize, sz isize) voidptr {
+	$if trace_memdup ? {
+		C.fprintf(C.stderr, c'memdup_align align: %10d size: %10d\n', align, sz)
+	}
+	if sz == 0 {
+		return vcalloc(1)
+	}
+	n := sz
+	$if trace_malloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'_v_memdup_align %6d total %10d\n', n, total_m)
+		// print_backtrace()
+	}
+	if n < 0 {
+		_memory_panic(@FN, n)
+	}
+	mut res := &u8(unsafe { nil })
+	$if prealloc {
+		// todo: make memory align here
+		res = prealloc_malloc(n)
+	} $else $if gcboehm ? {
+		unsafe {
+			res = C.GC_memalign(align, n)
+		}
+	} $else $if freestanding {
+		// todo: is this safe to call malloc there? We export __malloc as malloc and it uses dlmalloc behind the scenes
+		// so theoretically it is safe
+		res = unsafe { __malloc(usize(n)) }
+	} $else {
+		res = unsafe { C.malloc(n) }
+	}
+	if res == 0 {
+		_memory_panic(@FN, n)
+	}
+	$if debug_malloc ? {
+		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
+		// when the calling code wrongly relies on it being zeroed.
+		unsafe { C.memset(res, 0x4D, n) }
+	}
+	return C.memcpy(res, src, sz)
+}
+
 // GCHeapUsage contains stats about the current heap usage of your program.
 pub struct GCHeapUsage {
 pub:
