@@ -643,6 +643,7 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 			info := parent_typ_sym.info as ast.Map
 			c.check_alias_vs_element_type_of_parent(node, info.key_type, 'map key')
 			c.check_alias_vs_element_type_of_parent(node, info.value_type, 'map value')
+			c.markused_used_maps(c.table.used_features.used_maps == 0)
 		}
 		.sum_type {
 			// TODO: decide whether the following should be allowed. Note that it currently works,

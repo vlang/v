@@ -523,16 +523,6 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			c.error('union `${struct_sym.name}` can have only one field initialised',
 				node.pos)
 		}
-	} else if struct_sym.info is ast.Alias {
-		parent_sym := c.table.sym(struct_sym.info.parent_type)
-		// e.g. ´x := MyMapAlias{}´, should be a cast to alias type ´x := MyMapAlias(map[...]...)´
-		if parent_sym.kind == .map {
-			alias_str := c.table.type_to_str(node.typ)
-			map_str := c.table.type_to_str(struct_sym.info.parent_type)
-			c.error('direct map alias init is not possible, use `${alias_str}(${map_str}{})` instead',
-				node.pos)
-			return ast.void_type
-		}
 	} else if struct_sym.info is ast.FnType {
 		c.error('functions must be defined, not instantiated like structs', node.pos)
 	}
@@ -649,7 +639,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					.struct {
 						info = sym.info as ast.Struct
 					}
-					.array, .array_fixed {
+					.array, .array_fixed, .map {
 						// we do allow []int{}, [10]int{}
 					}
 					else {
