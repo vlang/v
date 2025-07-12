@@ -3118,7 +3118,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	if (exp_sym.kind == .function && !expected_type.has_option_or_result())
 		|| (g.inside_struct_init && expected_type == ast.voidptr_type
-		&& expected_type != got_type_raw) {
+		&& expected_type != got_type_raw && expr !is ast.StructInit) {
 		g.write('(voidptr)')
 	}
 	// no cast
