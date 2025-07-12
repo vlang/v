@@ -783,6 +783,7 @@ pub fn memdup_align(src voidptr, align isize, sz isize) voidptr {
 	mut res := &u8(unsafe { nil })
 	$if prealloc {
 		// todo: make memory align here
+		panic('memdup_align is not implemented with -prealloc')
 		res = prealloc_malloc(n)
 	} $else $if gcboehm ? {
 		unsafe {
@@ -791,8 +792,10 @@ pub fn memdup_align(src voidptr, align isize, sz isize) voidptr {
 	} $else $if freestanding {
 		// todo: is this safe to call malloc there? We export __malloc as malloc and it uses dlmalloc behind the scenes
 		// so theoretically it is safe
+		panic('memdup_align is not implemented with -freestanding')
 		res = unsafe { __malloc(usize(n)) }
 	} $else {
+		panic('memdup_align is not implemented')
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
