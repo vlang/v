@@ -720,6 +720,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			final_left_sym := g.table.final_sym(g.unwrap_generic(var_type))
 			final_right_sym := g.table.final_sym(unwrapped_val_type)
+			mut aligned := 0
+			if final_left_sym.info is ast.Struct {
+				if attr := final_left_sym.info.attrs.find_first('aligned') {
+					aligned = if attr.arg == '' { 0 } else { attr.arg.int() }
+				}
+			}
+
 			if final_left_sym.kind == .bool && final_right_sym.kind == .bool
 				&& node.op in [.boolean_or_assign, .boolean_and_assign] {
 				extracted_op := match node.op {
@@ -947,7 +954,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						is_option_unwrapped := val is ast.Ident && val.or_expr.kind != .absent
 						is_option_auto_heap := is_auto_heap && is_option_unwrapped
 						if is_auto_heap {
-							g.write('HEAP(${styp}, (')
+							if aligned != 0 {
+								g.write('HEAP_align(${styp}, (')
+							} else {
+								g.write('HEAP(${styp}, (')
+							}
 						}
 						if val.is_auto_deref_var() && !is_option_unwrapped {
 							g.write('*')
@@ -978,7 +989,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.expr(val)
 						}
 						if is_auto_heap && !is_option_auto_heap {
-							g.write('))')
+							if aligned != 0 {
+								g.write('), ${aligned})')
+							} else {
+								g.write('))')
+							}
 						}
 					}
 				} else {
@@ -1073,10 +1088,21 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			g.write('*')
 		}
 		noscan := if is_auto_heap { g.check_noscan(return_type) } else { '' }
+		mut aligned := 0
+		sym := g.table.final_sym(node.left_types[i])
+		if sym.info is ast.Struct {
+			if attr := sym.info.attrs.find_first('aligned') {
+				aligned = if attr.arg == '' { 0 } else { attr.arg.int() }
+			}
+		}
 		if node.left_types[i].has_flag(.option) {
 			base_typ := g.base_type(node.left_types[i])
 			tmp_var := if is_auto_heap {
-				'HEAP${noscan}(${styp}, ${mr_var_name}.arg${i})'
+				if aligned != 0 {
+					'HEAP_align(${styp}, ${mr_var_name}.arg${i}, ${aligned})'
+				} else {
+					'HEAP${noscan}(${styp}, ${mr_var_name}.arg${i})'
+				}
 			} else if is_option {
 				'(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i}'
 			} else {
@@ -1098,13 +1124,16 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			}
 		} else {
 			g.expr(lx)
-			sym := g.table.final_sym(node.left_types[i])
 			if sym.kind == .array_fixed {
 				g.writeln2(';', 'memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
 			} else {
 				if cur_indexexpr != -1 {
 					if is_auto_heap {
-						g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
+						if aligned != 0 {
+							g.writeln('HEAP_align(${styp}, ${mr_var_name}.arg${i}, ${aligned}) });')
+						} else {
+							g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
+						}
 					} else if is_option {
 						g.writeln('(*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i} });')
 					} else {
@@ -1113,7 +1142,11 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 					g.cur_indexexpr.delete(cur_indexexpr)
 				} else {
 					if is_auto_heap {
-						g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
+						if aligned != 0 {
+							g.writeln(' = HEAP_align(${styp}, ${mr_var_name}.arg${i}, ${aligned});')
+						} else {
+							g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
+						}
 					} else if is_option {
 						g.writeln(' = (*((${g.base_type(return_type)}*)${mr_var_name}.data)).arg${i};')
 					} else {

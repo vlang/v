@@ -58,9 +58,13 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if is_amp {
 		g.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
+	mut aligned := 0
 	mut is_anon := false
 	mut is_array_fixed_struct_init := false // return T{} where T is fixed array
 	if mut sym.info is ast.Struct {
+		if attr := sym.info.attrs.find_first('aligned') {
+			aligned = if attr.arg == '' { 0 } else { attr.arg.int() }
+		}
 		is_anon = sym.info.is_anon
 	}
 	is_generic_default := sym.kind !in [.struct, .array_fixed] && node.typ.has_flag(.generic) // T{}
@@ -92,9 +96,17 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	} else if is_amp || g.inside_cast_in_heap > 0 {
 		if node.typ.has_flag(.option) {
 			basetyp := g.base_type(node.typ)
-			g.write('(${basetyp}*)memdup(&(${basetyp}){')
+			if aligned != 0 {
+				g.write('(${basetyp}*)memdup_align(&(${basetyp}){')
+			} else {
+				g.write('(${basetyp}*)memdup(&(${basetyp}){')
+			}
 		} else {
-			g.write('(${styp}*)memdup(&(${styp}){')
+			if aligned != 0 {
+				g.write('(${styp}*)memdup_align(&(${styp}){')
+			} else {
+				g.write('(${styp}*)memdup(&(${styp}){')
+			}
 		}
 	} else if node.typ.is_ptr() {
 		basetyp := g.styp(node.typ.set_nr_muls(0))
@@ -389,13 +401,25 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.write('}')
 	}
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
-		g.write('}, sizeof(${shared_styp}))')
+		if aligned != 0 {
+			g.write('}, sizeof(${shared_styp}), ${aligned})')
+		} else {
+			g.write('}, sizeof(${shared_styp}))')
+		}
 	} else if is_amp || g.inside_cast_in_heap > 0 {
 		if node.typ.has_flag(.option) {
 			basetyp := g.base_type(node.typ)
-			g.write(', sizeof(${basetyp}))')
+			if aligned != 0 {
+				g.write(', sizeof(${basetyp}), ${aligned})')
+			} else {
+				g.write(', sizeof(${basetyp}))')
+			}
 		} else {
-			g.write(', sizeof(${styp}))')
+			if aligned != 0 {
+				g.write(', sizeof(${styp}), ${aligned})')
+			} else {
+				g.write(', sizeof(${styp}))')
+			}
 		}
 	}
 }

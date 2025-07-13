@@ -37,7 +37,7 @@ fn vmemory_abort_on_nil(p voidptr, bytes isize) {
 }
 
 @[unsafe]
-fn vmemory_block_new(prev &VMemoryBlock, at_least isize) &VMemoryBlock {
+fn vmemory_block_new(prev &VMemoryBlock, at_least isize, align isize) &VMemoryBlock {
 	vmem_block_size := sizeof(VMemoryBlock)
 	mut v := unsafe { &VMemoryBlock(C.calloc(1, vmem_block_size)) }
 	vmemory_abort_on_nil(v, vmem_block_size)
@@ -49,16 +49,35 @@ fn vmemory_block_new(prev &VMemoryBlock, at_least isize) &VMemoryBlock {
 	if unsafe { prev != 0 } {
 		prev.next = v
 	}
-	block_size := if at_least < isize(prealloc_block_size) {
+	base_block_size := if at_least < isize(prealloc_block_size) {
 		isize(prealloc_block_size)
 	} else {
 		at_least
 	}
-	$if prealloc_trace_malloc ? {
-		C.fprintf(C.stderr, c'vmemory_block_new id: %d, block_size: %lld, at_least: %lld\n',
-			v.id, block_size, at_least)
+	block_size := if align > 0 {
+		if base_block_size % align == 0 {
+			base_block_size
+		} else {
+			base_block_size + align - (base_block_size % align)
+		}
+	} else {
+		base_block_size
 	}
-	v.start = unsafe { C.malloc(block_size) }
+	$if prealloc_trace_malloc ? {
+		C.fprintf(C.stderr, c'vmemory_block_new id: %d, block_size: %lld, at_least: %lld, align: %lld\n',
+			v.id, block_size, at_least, align)
+	}
+
+	fixed_align := if align <= 1 { 1 } else { align }
+	$if windows {
+		v.start = unsafe { C._aligned_malloc(block_size, fixed_align) }
+	} $else {
+		if fixed_align == 1 {
+			v.start = unsafe { C.malloc(block_size) }
+		} else {
+			v.start = unsafe { C.aligned_alloc(fixed_align, block_size) }
+		}
+	}
 	vmemory_abort_on_nil(v.start, block_size)
 	$if prealloc_memset ? {
 		unsafe { C.memset(v.start, int($d('prealloc_memset_value', 0)), block_size) }
@@ -69,15 +88,15 @@ fn vmemory_block_new(prev &VMemoryBlock, at_least isize) &VMemoryBlock {
 }
 
 @[unsafe]
-fn vmemory_block_malloc(n isize) &u8 {
+fn vmemory_block_malloc(n isize, align isize) &u8 {
 	$if prealloc_trace_malloc ? {
-		C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, n: %lld\n',
-			g_memory_block.id, n)
+		C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, n: %lld align: %d\n',
+			g_memory_block.id, n, align)
 	}
 	unsafe {
 		remaining := i64(g_memory_block.stop) - i64(g_memory_block.current)
 		if _unlikely_(remaining < n) {
-			g_memory_block = vmemory_block_new(g_memory_block, n)
+			g_memory_block = vmemory_block_new(g_memory_block, n, align)
 		}
 		res := &u8(g_memory_block.current)
 		g_memory_block.current += n
@@ -96,7 +115,7 @@ fn prealloc_vinit() {
 		C.fprintf(C.stderr, c'prealloc_vinit started\n')
 	}
 	unsafe {
-		g_memory_block = vmemory_block_new(nil, isize(prealloc_block_size))
+		g_memory_block = vmemory_block_new(nil, isize(prealloc_block_size), 0)
 		at_exit(prealloc_vcleanup) or {}
 	}
 }
@@ -170,20 +189,28 @@ fn prealloc_vcleanup() {
 	}
 	unsafe {
 		for g_memory_block != 0 {
-			C.free(g_memory_block.start)
+			$if windows {
+				// Warning! On windows, we always use _aligned_free to free memory.
+				C._aligned_free(g_memory_block.start)
+			} $else {
+				C.free(g_memory_block.start)
+			}
+			tmp := g_memory_block
 			g_memory_block = g_memory_block.previous
+			// free the link node
+			C.free(tmp)
 		}
 	}
 }
 
 @[unsafe]
 fn prealloc_malloc(n isize) &u8 {
-	return unsafe { vmemory_block_malloc(n) }
+	return unsafe { vmemory_block_malloc(n, 0) }
 }
 
 @[unsafe]
 fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
-	new_ptr := unsafe { vmemory_block_malloc(new_size) }
+	new_ptr := unsafe { vmemory_block_malloc(new_size, 0) }
 	min_size := if old_size < new_size { old_size } else { new_size }
 	unsafe { C.memcpy(new_ptr, old_data, min_size) }
 	return new_ptr
@@ -191,7 +218,12 @@ fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
 
 @[unsafe]
 fn prealloc_calloc(n isize) &u8 {
-	new_ptr := unsafe { vmemory_block_malloc(n) }
+	new_ptr := unsafe { vmemory_block_malloc(n, 0) }
 	unsafe { C.memset(new_ptr, 0, n) }
 	return new_ptr
+}
+
+@[unsafe]
+fn prealloc_malloc_align(n isize, align isize) &u8 {
+	return unsafe { vmemory_block_malloc(n, align) }
 }

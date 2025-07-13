@@ -5,8 +5,17 @@ module builtin
 @[unsafe]
 pub fn __malloc(size usize) voidptr {
 	unsafe {
-		return C.malloc(int(size))
+		$if windows {
+			// Warning! On windows, we always use _aligned_malloc to allocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc.
+			return C._aligned_malloc(size, 1)
+		} $else {
+			return C.malloc(int(size))
+		}
 	}
+	return unsafe { nil }
 }
 
 @[unsafe]

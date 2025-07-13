@@ -219,6 +219,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.type_name {
 			core_fns << charptr_idx_str + '.vstring_literal'
 		}
+		if table.used_features.memory_align {
+			core_fns << 'memdup_align'
+		}
 		if pref_.trace_calls || pref_.trace_fns.len > 0 {
 			include_panic_deps = true
 			core_fns << 'vgettid'
