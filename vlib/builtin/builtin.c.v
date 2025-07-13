@@ -821,9 +821,9 @@ pub fn memdup_uncollectable(src voidptr, sz isize) voidptr {
 //   - `sz` must be non-negative
 //   - The memory regions should not overlap
 @[unsafe]
-pub fn memdup_align(src voidptr, align isize, sz isize) voidptr {
+pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
 	$if trace_memdup ? {
-		C.fprintf(C.stderr, c'memdup_align align: %10d size: %10d\n', align, sz)
+		C.fprintf(C.stderr, c'memdup_align size: %10d align: %10d\n', sz, align)
 	}
 	if sz == 0 {
 		return vcalloc(1)
@@ -839,7 +839,7 @@ pub fn memdup_align(src voidptr, align isize, sz isize) voidptr {
 	}
 	mut res := &u8(unsafe { nil })
 	$if prealloc {
-		res = prealloc_malloc_align(align, n)
+		res = prealloc_malloc_align(n, align)
 	} $else $if gcboehm ? {
 		unsafe {
 			res = C.GC_memalign(align, n)

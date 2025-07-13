@@ -399,7 +399,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		if aligned != 0 {
-			g.write('}, ${aligned}, sizeof(${shared_styp}))')
+			g.write('}, sizeof(${shared_styp}), ${aligned})')
 		} else {
 			g.write('}, sizeof(${shared_styp}))')
 		}
@@ -407,13 +407,13 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		if node.typ.has_flag(.option) {
 			basetyp := g.base_type(node.typ)
 			if aligned != 0 {
-				g.write(', ${aligned}, sizeof(${basetyp}))')
+				g.write(', sizeof(${basetyp}), ${aligned})')
 			} else {
 				g.write(', sizeof(${basetyp}))')
 			}
 		} else {
 			if aligned != 0 {
-				g.write(', ${aligned}, sizeof(${styp}))')
+				g.write(', sizeof(${styp}), ${aligned})')
 			} else {
 				g.write(', sizeof(${styp}))')
 			}

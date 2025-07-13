@@ -955,7 +955,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						is_option_auto_heap := is_auto_heap && is_option_unwrapped
 						if is_auto_heap {
 							if aligned != 0 {
-								g.write('HEAP_align(${styp}, ${aligned}, (')
+								g.write('HEAP_align(${styp}, (')
 							} else {
 								g.write('HEAP(${styp}, (')
 							}
@@ -989,7 +989,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.expr(val)
 						}
 						if is_auto_heap && !is_option_auto_heap {
-							g.write('))')
+							if aligned != 0 {
+								g.write('), ${aligned})')
+							} else {
+								g.write('))')
+							}
 						}
 					}
 				} else {
@@ -1095,7 +1099,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			base_typ := g.base_type(node.left_types[i])
 			tmp_var := if is_auto_heap {
 				if aligned != 0 {
-					'HEAP_align(${styp}, ${aligned}, ${mr_var_name}.arg${i})'
+					'HEAP_align(${styp}, ${mr_var_name}.arg${i}, ${aligned})'
 				} else {
 					'HEAP${noscan}(${styp}, ${mr_var_name}.arg${i})'
 				}
@@ -1126,7 +1130,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 				if cur_indexexpr != -1 {
 					if is_auto_heap {
 						if aligned != 0 {
-							g.writeln('HEAP_align(${styp}, ${aligned}, ${mr_var_name}.arg${i}) });')
+							g.writeln('HEAP_align(${styp}, ${mr_var_name}.arg${i}, ${aligned}) });')
 						} else {
 							g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
 						}
@@ -1139,7 +1143,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 				} else {
 					if is_auto_heap {
 						if aligned != 0 {
-							g.writeln(' = HEAP_align(${styp}, ${aligned}, ${mr_var_name}.arg${i});')
+							g.writeln(' = HEAP_align(${styp}, ${mr_var_name}.arg${i}, ${aligned});')
 						} else {
 							g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
 						}

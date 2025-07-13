@@ -67,6 +67,10 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if node.language != .c && attr.name == 'typedef' {
 				c.error('`typedef` attribute can only be used with C structs', node.pos)
 			}
+			aligned := if attr.arg == '' { 0 } else { attr.arg.int() }
+			if aligned > 1 {
+				c.table.used_features.memory_align = true
+			}
 		}
 
 		// Evaluate the size of the unresolved fixed array

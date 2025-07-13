@@ -37,9 +37,9 @@ fn vmemory_abort_on_nil(p voidptr, bytes isize) {
 }
 
 @[unsafe]
-fn vmemory_block_new(prev &VMemoryBlock, align isize, at_least isize) &VMemoryBlock {
+fn vmemory_block_new(prev &VMemoryBlock, at_least isize, align isize) &VMemoryBlock {
 	vmem_block_size := sizeof(VMemoryBlock)
-	mut v := unsafe { &VMemoryBlock(vcalloc(vmem_block_size)) }
+	mut v := unsafe { &VMemoryBlock(C.calloc(1, vmem_block_size)) }
 	vmemory_abort_on_nil(v, vmem_block_size)
 	if unsafe { prev != 0 } {
 		v.id = prev.id + 1
@@ -64,8 +64,8 @@ fn vmemory_block_new(prev &VMemoryBlock, align isize, at_least isize) &VMemoryBl
 		base_block_size
 	}
 	$if prealloc_trace_malloc ? {
-		C.fprintf(C.stderr, c'vmemory_block_new id: %d, block_size: %lld, at_least: %lld\n',
-			v.id, block_size, at_least)
+		C.fprintf(C.stderr, c'vmemory_block_new id: %d, block_size: %lld, at_least: %lld, align: %lld\n',
+			v.id, block_size, at_least, align)
 	}
 
 	fixed_align := if align <= 1 { 1 } else { align }
@@ -88,15 +88,15 @@ fn vmemory_block_new(prev &VMemoryBlock, align isize, at_least isize) &VMemoryBl
 }
 
 @[unsafe]
-fn vmemory_block_malloc(align isize, n isize) &u8 {
+fn vmemory_block_malloc(n isize, align isize) &u8 {
 	$if prealloc_trace_malloc ? {
-		C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, align: %d, n: %lld\n',
-			g_memory_block.id, align, n)
+		C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, n: %lld align: %d\n',
+			g_memory_block.id, n, align)
 	}
 	unsafe {
 		remaining := i64(g_memory_block.stop) - i64(g_memory_block.current)
 		if _unlikely_(remaining < n) {
-			g_memory_block = vmemory_block_new(g_memory_block, align, n)
+			g_memory_block = vmemory_block_new(g_memory_block, n, align)
 		}
 		res := &u8(g_memory_block.current)
 		g_memory_block.current += n
@@ -115,7 +115,7 @@ fn prealloc_vinit() {
 		C.fprintf(C.stderr, c'prealloc_vinit started\n')
 	}
 	unsafe {
-		g_memory_block = vmemory_block_new(nil, 0, isize(prealloc_block_size))
+		g_memory_block = vmemory_block_new(nil, isize(prealloc_block_size), 0)
 		at_exit(prealloc_vcleanup) or {}
 	}
 }
@@ -195,19 +195,22 @@ fn prealloc_vcleanup() {
 			} $else {
 				C.free(g_memory_block.start)
 			}
+			tmp := g_memory_block
 			g_memory_block = g_memory_block.previous
+			// free the link node
+			C.free(tmp)
 		}
 	}
 }
 
 @[unsafe]
 fn prealloc_malloc(n isize) &u8 {
-	return unsafe { vmemory_block_malloc(0, n) }
+	return unsafe { vmemory_block_malloc(n, 0) }
 }
 
 @[unsafe]
 fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
-	new_ptr := unsafe { vmemory_block_malloc(0, new_size) }
+	new_ptr := unsafe { vmemory_block_malloc(new_size, 0) }
 	min_size := if old_size < new_size { old_size } else { new_size }
 	unsafe { C.memcpy(new_ptr, old_data, min_size) }
 	return new_ptr
@@ -215,27 +218,12 @@ fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
 
 @[unsafe]
 fn prealloc_calloc(n isize) &u8 {
-	new_ptr := unsafe { vmemory_block_malloc(0, n) }
+	new_ptr := unsafe { vmemory_block_malloc(n, 0) }
 	unsafe { C.memset(new_ptr, 0, n) }
 	return new_ptr
 }
 
 @[unsafe]
-fn prealloc_malloc_align(align isize, n isize) &u8 {
-	return unsafe { vmemory_block_malloc(align, n) }
-}
-
-@[unsafe]
-fn prealloc_realloc_align(align isize, old_data &u8, old_size isize, new_size isize) &u8 {
-	new_ptr := unsafe { vmemory_block_malloc(align, new_size) }
-	min_size := if old_size < new_size { old_size } else { new_size }
-	unsafe { C.memcpy(new_ptr, old_data, min_size) }
-	return new_ptr
-}
-
-@[unsafe]
-fn prealloc_calloc_align(align isize, n isize) &u8 {
-	new_ptr := unsafe { vmemory_block_malloc(align, n) }
-	unsafe { C.memset(new_ptr, 0, n) }
-	return new_ptr
+fn prealloc_malloc_align(n isize, align isize) &u8 {
+	return unsafe { vmemory_block_malloc(n, align) }
 }
