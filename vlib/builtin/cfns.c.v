@@ -23,6 +23,8 @@ fn C.realloc(a &u8, b int) &u8
 
 fn C.free(ptr voidptr)
 
+fn C.aligned_alloc(align isize, size isize) voidptr
+
 @[noreturn; trusted]
 fn C.exit(code int)
 
