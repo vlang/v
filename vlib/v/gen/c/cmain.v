@@ -208,6 +208,10 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 	(void)argc; (void)argv;')
 	g.gen_c_main_trace_calls_hook()
 
+	if g.nr_closures > 0 {
+		g.writeln('\t__closure_init(); // main()')
+	}
+
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.writeln('#if defined(_VGCBOEHM)')
 		if g.pref.gc_mode == .boehm_leak {
