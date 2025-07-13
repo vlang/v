@@ -41,15 +41,18 @@ fn v_doctor() {
 	exec('v doctor')
 }
 
+fn build_v_with_prealloc() {
+	exec('v -cg -cstrict -o vstrict1 cmd/v')
+	exec('./vstrict1 -o vprealloc -prealloc cmd/v')
+	exec('./vprealloc run examples/hello_world.v')
+	exec('./vprealloc -o v3 cmd/v')
+	exec('./v3 -o v4 cmd/v')
+	exec('./v4 -d debug_malloc -d debug_realloc -o vdebug1 cmd/v')
+}
+
 //
 // TCC job tasks
 //
-
-fn build_v_with_prealloc() {
-	exec('v -d debug_malloc -d debug_realloc -o vdebug1 cmd/v')
-	exec('v -cg -cstrict -o vstrict1 cmd/v')
-	exec('v -o vrealloc -prealloc cmd/v && ./vrealloc -o v3 cmd/v && ./v3 -o v4 cmd/v')
-}
 
 fn install_dependencies_for_examples_and_tools_tcc() {
 	exec('v retry -- sudo apt update')
@@ -373,8 +376,8 @@ fn native_cross_compilation_to_macos() {
 // Collect all tasks
 //
 const all_tasks = {
-	// tcc tasks
 	'build_v_with_prealloc':                             Task{build_v_with_prealloc, 'Build V with prealloc'}
+	// tcc tasks
 	'all_code_is_formatted_tcc':                         Task{all_code_is_formatted, 'All code is formatted (tcc)'}
 	'install_dependencies_for_examples_and_tools_tcc':   Task{install_dependencies_for_examples_and_tools_tcc, 'Install deps for examples/tools (tcc)'}
 	'test_v_to_c_tcc':                                   Task{test_v_to_c_tcc, 'Test v->c with tcc'}

@@ -87,9 +87,19 @@ fn v_doctor() {
 	exec('v doctor')
 }
 
+fn build_v_with_prealloc() {
+	exec('v -cg -cstrict -o vstrict1 cmd/v')
+	exec('./vstrict1 -o vprealloc -prealloc cmd/v')
+	exec('./vprealloc run examples/hello_world.v')
+	exec('./vprealloc -o v3 cmd/v')
+	exec('./v3 -o v4 cmd/v')
+	exec('./v4 -d debug_malloc -d debug_realloc -o vdebug1 cmd/v')
+}
+
 fn v_self_compilation_usecache() {
 	exec('unset VFLAGS')
-	exec('v -usecache examples/hello_world.v && examples/hello_world')
+	exec('v -usecache examples/hello_world.v')
+	exec('./examples/hello_world')
 	exec('v -o v2 -usecache cmd/v')
 	exec('./v2 -o v3 -usecache cmd/v')
 	exec('./v3 version')
@@ -128,6 +138,7 @@ const all_tasks = {
 	'build_examples_prod':                Task{build_examples_prod, 'Build examples with -prod'}
 	'build_examples_v_compiled_with_tcc': Task{build_examples_v_compiled_with_tcc, 'Build examples with V build with tcc'}
 	'v_doctor':                           Task{v_doctor, 'v doctor'}
+	'build_v_with_prealloc':              Task{build_v_with_prealloc, 'Build V with prealloc'}
 	'v_self_compilation_usecache':        Task{v_self_compilation_usecache, 'V self compilation with -usecache'}
 	'v_self_compilation_parallel_cc':     Task{v_self_compilation_parallel_cc, 'V self compilation with -parallel-cc'}
 	'test_password_input':                Task{test_password_input, 'Test password input'}
