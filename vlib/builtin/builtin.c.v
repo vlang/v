@@ -453,7 +453,15 @@ pub fn malloc(n isize) &u8 {
 		// so theoretically it is safe
 		res = unsafe { __malloc(usize(n)) }
 	} $else {
-		res = unsafe { C.malloc(n) }
+		$if windows {
+			// Warning! On Windows, we always use _aligned_malloc to allocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc.
+			res = unsafe { C._aligned_malloc(n, 1) }
+		} $else {
+			res = unsafe { C.malloc(n) }
+		}
 	}
 	if res == 0 {
 		_memory_panic(@FN, n)
@@ -492,7 +500,15 @@ pub fn malloc_noscan(n isize) &u8 {
 	} $else $if freestanding {
 		res = unsafe { __malloc(usize(n)) }
 	} $else {
-		res = unsafe { C.malloc(n) }
+		$if windows {
+			// Warning! On Windows, we always use _aligned_malloc to allocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc.
+			res = unsafe { C._aligned_malloc(n, 1) }
+		} $else {
+			res = unsafe { C.malloc(n) }
+		}
 	}
 	if res == 0 {
 		_memory_panic(@FN, n)
@@ -538,7 +554,15 @@ pub fn malloc_uncollectable(n isize) &u8 {
 	} $else $if freestanding {
 		res = unsafe { __malloc(usize(n)) }
 	} $else {
-		res = unsafe { C.malloc(n) }
+		$if windows {
+			// Warning! On Windows, we always use _aligned_malloc to allocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc.
+			res = unsafe { C._aligned_malloc(n, 1) }
+		} $else {
+			res = unsafe { C.malloc(n) }
+		}
 	}
 	if res == 0 {
 		_memory_panic(@FN, n)
@@ -570,7 +594,15 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 	} $else $if gcboehm ? {
 		new_ptr = unsafe { C.GC_REALLOC(b, n) }
 	} $else {
-		new_ptr = unsafe { C.realloc(b, n) }
+		$if windows {
+			// Warning! On Windows, we always use _aligned_realloc to reallocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc/_aligned_realloc.
+			new_ptr = unsafe { C._aligned_realloc(b, n, 1) }
+		} $else {
+			new_ptr = unsafe { C.realloc(b, n) }
+		}
 	}
 	if new_ptr == 0 {
 		_memory_panic(@FN, n)
@@ -616,7 +648,15 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 	$if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
 	} $else {
-		nptr = unsafe { C.realloc(old_data, new_size) }
+		$if windows {
+			// Warning! On Windows, we always use _aligned_realloc to reallocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc/_aligned_realloc.
+			nptr = unsafe { C._aligned_realloc(old_data, new_size, 1) }
+		} $else {
+			nptr = unsafe { C.realloc(old_data, new_size) }
+		}
 	}
 	if nptr == 0 {
 		_memory_panic(@FN, isize(new_size))
@@ -642,7 +682,18 @@ pub fn vcalloc(n isize) &u8 {
 	} $else $if gcboehm ? {
 		return unsafe { &u8(C.GC_MALLOC(n)) }
 	} $else {
-		return unsafe { C.calloc(1, n) }
+		$if windows {
+			// Warning! On Windows, we always use _aligned_malloc to allocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc/_aligned_realloc/_aligned_recalloc.
+			ptr := unsafe { C._aligned_malloc(n, 1) }
+			if ptr != &u8(unsafe { nil }) {
+				C.memset(ptr, 0, n)
+			}
+		} $else {
+			return unsafe { C.calloc(1, n) }
+		}
 	}
 	return &u8(unsafe { nil }) // not reached, TODO: remove when V's checker is improved
 }
@@ -704,7 +755,12 @@ pub fn free(ptr voidptr) {
 			unsafe { C.GC_FREE(ptr) }
 		}
 	} $else {
-		C.free(ptr)
+		$if windows {
+			// Warning! On Windows, we always use _aligned_free to free memory.
+			unsafe { C._aligned_free(ptr) }
+		} $else {
+			C.free(ptr)
+		}
 	}
 }
 
@@ -782,9 +838,7 @@ pub fn memdup_align(src voidptr, align isize, sz isize) voidptr {
 	}
 	mut res := &u8(unsafe { nil })
 	$if prealloc {
-		// todo: make memory align here
-		panic('memdup_align is not implemented with -prealloc')
-		res = prealloc_malloc(n)
+		res = prealloc_malloc_align(align, n)
 	} $else $if gcboehm ? {
 		unsafe {
 			res = C.GC_memalign(align, n)
@@ -795,8 +849,15 @@ pub fn memdup_align(src voidptr, align isize, sz isize) voidptr {
 		panic('memdup_align is not implemented with -freestanding')
 		res = unsafe { __malloc(usize(n)) }
 	} $else {
-		panic('memdup_align is not implemented')
-		res = unsafe { C.malloc(n) }
+		$if windows {
+			// Warning! On Windows, we always use _aligned_malloc to allocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc.
+			res = unsafe { C._aligned_malloc(n, align) }
+		} $else {
+			res = unsafe { C.aligned_alloc(align, n) }
+		}
 	}
 	if res == 0 {
 		_memory_panic(@FN, n)
