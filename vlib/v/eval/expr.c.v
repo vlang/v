@@ -55,12 +55,12 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						}
 						'malloc' {
 							return Ptr{
-								val: unsafe { malloc(args[0].int_val()) }
+								val: unsafe { malloc(isize(args[0].int_val())) }
 							}
 						}
 						'calloc' {
 							return Ptr{
-								val: unsafe { vcalloc(args[0].int_val() * args[1].int_val()) }
+								val: unsafe { vcalloc(isize(args[0].int_val() * args[1].int_val())) }
 							}
 						}
 						'getcwd' {
