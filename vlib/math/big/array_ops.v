@@ -108,9 +108,9 @@ fn subtract_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	shrink_tail_zeros(mut storage)
 }
 
-const karatsuba_multiplication_limit = 240
+const karatsuba_multiplication_limit = 70
 
-const toom3_multiplication_limit = 10_000
+const toom3_multiplication_limit = 360
 
 @[inline]
 fn multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {

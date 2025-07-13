@@ -948,3 +948,9 @@ fn test_integer_from_bytes_ignores_potential_leading_zero_bytes() {
 		}
 	}
 }
+
+fn test_pow2_is_power_of_2() {
+	for n in 22000 .. 22010 {
+		assert big.two_int.pow(n).is_power_of_2(), 'pow2: ${n}'
+	}
+}
