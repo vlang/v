@@ -453,8 +453,8 @@ pub fn malloc(n isize) &u8 {
 		// so theoretically it is safe
 		res = unsafe { __malloc(usize(n)) }
 	} $else {
-		$if msvc {
-			// Warning! On msvc, we always use _aligned_malloc to allocate memory.
+		$if windows {
+			// Warning! On windows, we always use _aligned_malloc to allocate memory.
 			// This ensures that we can later free the memory with _aligned_free
 			// without needing to track whether the memory was originally allocated
 			// by malloc or _aligned_malloc.
@@ -500,8 +500,8 @@ pub fn malloc_noscan(n isize) &u8 {
 	} $else $if freestanding {
 		res = unsafe { __malloc(usize(n)) }
 	} $else {
-		$if msvc {
-			// Warning! On msvc, we always use _aligned_malloc to allocate memory.
+		$if windows {
+			// Warning! On windows, we always use _aligned_malloc to allocate memory.
 			// This ensures that we can later free the memory with _aligned_free
 			// without needing to track whether the memory was originally allocated
 			// by malloc or _aligned_malloc.
@@ -554,8 +554,8 @@ pub fn malloc_uncollectable(n isize) &u8 {
 	} $else $if freestanding {
 		res = unsafe { __malloc(usize(n)) }
 	} $else {
-		$if msvc {
-			// Warning! On msvc, we always use _aligned_malloc to allocate memory.
+		$if windows {
+			// Warning! On windows, we always use _aligned_malloc to allocate memory.
 			// This ensures that we can later free the memory with _aligned_free
 			// without needing to track whether the memory was originally allocated
 			// by malloc or _aligned_malloc.
@@ -594,8 +594,8 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 	} $else $if gcboehm ? {
 		new_ptr = unsafe { C.GC_REALLOC(b, n) }
 	} $else {
-		$if msvc {
-			// Warning! On msvc, we always use _aligned_realloc to reallocate memory.
+		$if windows {
+			// Warning! On windows, we always use _aligned_realloc to reallocate memory.
 			// This ensures that we can later free the memory with _aligned_free
 			// without needing to track whether the memory was originally allocated
 			// by malloc or _aligned_malloc/_aligned_realloc.
@@ -648,8 +648,8 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 	$if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
 	} $else {
-		$if msvc {
-			// Warning! On msvc, we always use _aligned_realloc to reallocate memory.
+		$if windows {
+			// Warning! On windows, we always use _aligned_realloc to reallocate memory.
 			// This ensures that we can later free the memory with _aligned_free
 			// without needing to track whether the memory was originally allocated
 			// by malloc or _aligned_malloc/_aligned_realloc.
@@ -682,8 +682,8 @@ pub fn vcalloc(n isize) &u8 {
 	} $else $if gcboehm ? {
 		return unsafe { &u8(C.GC_MALLOC(n)) }
 	} $else {
-		$if msvc {
-			// Warning! On msvc, we always use _aligned_malloc to allocate memory.
+		$if windows {
+			// Warning! On windows, we always use _aligned_malloc to allocate memory.
 			// This ensures that we can later free the memory with _aligned_free
 			// without needing to track whether the memory was originally allocated
 			// by malloc or _aligned_malloc/_aligned_realloc/_aligned_recalloc.
@@ -755,8 +755,8 @@ pub fn free(ptr voidptr) {
 			unsafe { C.GC_FREE(ptr) }
 		}
 	} $else {
-		$if msvc {
-			// Warning! On msvc, we always use _aligned_free to free memory.
+		$if windows {
+			// Warning! On windows, we always use _aligned_free to free memory.
 			unsafe { C._aligned_free(ptr) }
 		} $else {
 			C.free(ptr)
@@ -849,8 +849,8 @@ pub fn memdup_align(src voidptr, align isize, sz isize) voidptr {
 		panic('memdup_align is not implemented with -freestanding')
 		res = unsafe { __malloc(usize(n)) }
 	} $else {
-		$if msvc {
-			// Warning! On msvc, we always use _aligned_malloc to allocate memory.
+		$if windows {
+			// Warning! On windows, we always use _aligned_malloc to allocate memory.
 			// This ensures that we can later free the memory with _aligned_free
 			// without needing to track whether the memory was originally allocated
 			// by malloc or _aligned_malloc.

@@ -69,7 +69,7 @@ fn vmemory_block_new(prev &VMemoryBlock, align isize, at_least isize) &VMemoryBl
 	}
 
 	fixed_align := if align <= 1 { 1 } else { align }
-	$if msvc {
+	$if windows {
 		v.start = unsafe { C._aligned_malloc(block_size, fixed_align) }
 	} $else {
 		if fixed_align == 1 {
@@ -189,8 +189,8 @@ fn prealloc_vcleanup() {
 	}
 	unsafe {
 		for g_memory_block != 0 {
-			$if msvc {
-				// Warning! On msvc, we always use _aligned_free to free memory.
+			$if windows {
+				// Warning! On windows, we always use _aligned_free to free memory.
 				C._aligned_free(g_memory_block.start)
 			} $else {
 				C.free(g_memory_block.start)

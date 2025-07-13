@@ -5,8 +5,8 @@ module builtin
 @[unsafe]
 pub fn __malloc(size usize) voidptr {
 	unsafe {
-		$if msvc {
-			// Warning! On msvc, we always use _aligned_malloc to allocate memory.
+		$if windows {
+			// Warning! On windows, we always use _aligned_malloc to allocate memory.
 			// This ensures that we can later free the memory with _aligned_free
 			// without needing to track whether the memory was originally allocated
 			// by malloc or _aligned_malloc.
