@@ -640,7 +640,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						info = sym.info as ast.Struct
 					}
 					.array, .array_fixed, .map {
-						// we do allow []int{}, [10]int{}
+						// we do allow []int{}, [10]int{}, map[string]int{}
 					}
 					else {
 						c.error('alias type name: ${sym.name} is not struct type', node.pos)
