@@ -691,6 +691,7 @@ pub fn vcalloc(n isize) &u8 {
 			if ptr != &u8(unsafe { nil }) {
 				unsafe { C.memset(ptr, 0, n) }
 			}
+			return ptr
 		} $else {
 			return unsafe { C.calloc(1, n) }
 		}

@@ -39,7 +39,7 @@ fn vmemory_abort_on_nil(p voidptr, bytes isize) {
 @[unsafe]
 fn vmemory_block_new(prev &VMemoryBlock, align isize, at_least isize) &VMemoryBlock {
 	vmem_block_size := sizeof(VMemoryBlock)
-	mut v := unsafe { &VMemoryBlock(C.calloc(1, vmem_block_size)) }
+	mut v := unsafe { &VMemoryBlock(vcalloc(vmem_block_size)) }
 	vmemory_abort_on_nil(v, vmem_block_size)
 	if unsafe { prev != 0 } {
 		v.id = prev.id + 1
