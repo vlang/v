@@ -767,6 +767,11 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
 			w.stmts(stmt.stmts)
 		}
+		if node.return_type.has_flag(.option) {
+			w.used_option++
+		} else if node.return_type.has_flag(.result) {
+			w.used_result++
+		}
 	}
 }
 
