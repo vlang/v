@@ -536,10 +536,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 	if walker.used_none > 0 || table.used_features.auto_str {
 		walker.mark_fn_as_used('_option_none')
+		walker.mark_const_as_used('none__')
 	}
 	if walker.used_option > 0 {
 		walker.mark_fn_as_used('_option_clone')
 		walker.mark_fn_as_used('_option_ok')
+		walker.mark_const_as_used('none__')
 	}
 	if walker.used_result > 0 {
 		walker.mark_fn_as_used('_result_ok')
