@@ -272,7 +272,9 @@ pub fn get_error_msg(code int) string {
 	if ptr_text == 0 { // compare with null
 		return ''
 	}
-	return unsafe { string_from_wide(ptr_text) }
+	msg := unsafe { string_from_wide(ptr_text) }
+	C.LocalFree(ptr_text)
+	return msg
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
