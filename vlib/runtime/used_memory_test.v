@@ -2,18 +2,18 @@ import runtime
 
 fn test_used_memory() {
 	used1 := runtime.used_memory()!
-	println('used memory : ${used1}')
-	assert used1 > 0
+	println('used memory 1 : ${used1}')
 
-	_ := []int{len: 100000}
+	_ := unsafe { malloc(4096 * 1024) }
 
 	used2 := runtime.used_memory()!
-	println('used memory : ${used2}')
-	assert used2 > used1
+	println('used memory 2 : ${used2}')
 
-	_ := []int{len: 400000}
+	_ := unsafe { malloc(8192 * 1024) }
 
 	used3 := runtime.used_memory()!
-	println('used memory : ${used3}')
+	println('used memory 3 : ${used3}')
+	assert used1 > 0
+	assert used2 > used1
 	assert used3 > used2
 }
