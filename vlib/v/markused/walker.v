@@ -17,7 +17,9 @@ pub mut:
 	used_structs map[string]bool
 	used_fields  map[string]bool
 	used_ifaces  map[string]bool
-	used_none    int
+	used_none    int // _option_none
+	used_option  int // _option_ok
+	used_result  int // _result_ok
 	n_asserts    int
 	pref         &pref.Preferences = unsafe { nil }
 mut:
@@ -609,6 +611,12 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 		}
 		if ifield.typ != 0 {
 			fsym := w.table.sym(ifield.typ)
+			if ifield.typ.has_flag(.option) {
+				w.used_option++
+				if !ifield.has_default_expr {
+					w.used_none++
+				}
+			}
 			match fsym.info {
 				ast.Struct {
 					w.a_struct_info(fsym.name, fsym.info)
@@ -659,6 +667,11 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.no_body {
 		return
+	}
+	if node.return_type.has_flag(.option) {
+		w.used_option++
+	} else if node.return_type.has_flag(.result) {
+		w.used_result++
 	}
 	w.mark_fn_as_used(fkey)
 	w.stmts(node.stmts)

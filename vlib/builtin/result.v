@@ -17,7 +17,6 @@ struct _result {
 	// derived Result_xxx types
 }
 
-@[markused]
 fn _result_ok(data voidptr, mut res _result, size int) {
 	unsafe {
 		*res = _result{}
