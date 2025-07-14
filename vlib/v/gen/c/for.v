@@ -429,6 +429,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			next_fn = cond_type_sym.find_method_with_generic_parent('next') or {
 				g.table.final_sym(node.cond_type).find_method_with_generic_parent('next') or {
 					verror('`next` method not found')
+					return
 				}
 			}
 		} else {
