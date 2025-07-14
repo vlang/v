@@ -367,7 +367,7 @@ fn C.GetFullPathName(voidptr, u32, voidptr, voidptr) u32
 @[trusted]
 fn C.GetCommandLine() voidptr
 
-fn C.LocalFree()
+fn C.LocalFree(voidptr)
 
 fn C.FindFirstFileW(lpFileName &u16, lpFindFileData voidptr) voidptr
 
