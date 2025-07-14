@@ -70,7 +70,9 @@ fn test_v_to_c_tcc() {
 }
 
 fn v_self_compilation_tcc() {
-	exec('v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v')
+	exec('v -o v2 cmd/v')
+	exec('./v2 -o v3 cmd/v')
+	exec('./v3 -o v4 cmd/v')
 }
 
 fn v_doctor_tcc() {
@@ -123,12 +125,14 @@ fn test_v_tutorials_tcc() {
 }
 
 fn build_fast_tcc() {
-	exec('cd cmd/tools/fast && v fast.v && ./fast')
+	exec('cd cmd/tools/fast && v fast.v')
+	exec('cd cmd/tools/fast && ./fast')
 }
 
 fn v_self_compilation_usecache_tcc() {
 	exec('unset VFLAGS')
-	exec('v -usecache examples/hello_world.v && examples/hello_world')
+	exec('v -usecache examples/hello_world.v')
+	exec('./examples/hello_world')
 	exec('v -o v2 -usecache cmd/v')
 	exec('./v2 -o v3 -usecache cmd/v')
 	exec('./v3 version')
@@ -146,7 +150,8 @@ fn test_readline_tcc() {
 fn test_leak_detector_tcc() {
 	exec('v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.vv')
 	exec('./testcase_leak 2>leaks.txt')
-	exec('grep "Found 1 leaked object" leaks.txt && grep -P ", sz=\\s?1000," leaks.txt')
+	exec('grep "Found 1 leaked object" leaks.txt')
+	exec('grep -P ", sz=\\s?1000," leaks.txt')
 }
 
 fn test_leak_detector_not_active_tcc() {
@@ -229,10 +234,12 @@ fn build_examples_gcc() {
 
 fn build_tetris_autofree_gcc() {
 	exec('v -autofree -o tetris examples/tetris/tetris.v')
+	exec('rm -f tetris')
 }
 
 fn build_blog_autofree_gcc() {
 	exec('v -autofree -o blog tutorials/building_a_simple_web_blog_with_veb/code/blog')
+	exec('rm -f blog')
 }
 
 fn build_option_test_autofree_gcc() {
@@ -241,6 +248,7 @@ fn build_option_test_autofree_gcc() {
 
 fn v_self_compilation_parallel_cc_gcc() {
 	exec('v -o v2 -parallel-cc cmd/v')
+	exec('rm -f v2')
 }
 
 fn build_modules_gcc() {
@@ -284,10 +292,12 @@ fn install_dependencies_for_examples_and_tools_clang() {
 
 fn recompile_v_with_cstrict_clang() {
 	exec('v -cc clang -cg -cstrict -o vstrict cmd/v')
+	exec('rm -f vstrict')
 }
 
 fn valgrind_clang() {
 	exec('valgrind --error-exitcode=1 v -o v.c cmd/v')
+	exec('rm -f v.c')
 }
 
 fn run_sanitizers_clang() {
@@ -295,16 +305,20 @@ fn run_sanitizers_clang() {
 }
 
 fn v_self_compilation_clang() {
-	exec('v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v')
+	exec('v -o v2 cmd/v')
+	exec('./v2 -o v3 cmd/v')
+	exec('./v3 -o v4 cmd/v')
 }
 
 fn v_self_compilation_usecache_clang() {
 	exec('unset VFLAGS')
-	exec('v -usecache examples/hello_world.v && examples/hello_world')
+	exec('v -usecache examples/hello_world.v')
+	exec('./examples/hello_world')
 	exec('v -o v2 -usecache cmd/v')
 	exec('./v2 -o v3 -usecache cmd/v')
 	exec('./v3 version')
 	exec('./v3 -o tetris -usecache examples/tetris/tetris.v')
+	exec('rm -f ./examples/hello_world v2 v3 tetris')
 }
 
 fn verify_v_test_works_clang() {
@@ -334,6 +348,7 @@ fn build_examples_clang() {
 
 fn build_examples_autofree_clang() {
 	exec('v -autofree -experimental -o tetris examples/tetris/tetris.v')
+	exec('rm -f tetris')
 }
 
 fn build_modules_clang() {
@@ -353,9 +368,11 @@ fn build_modules_clang() {
 }
 
 fn native_machine_code_generation_common() {
-	exec('v -o vprod -prod cmd/v')
-	exec('cd cmd/tools && ../../vprod gen1m.v && ./gen1m > 1m.v')
-	exec('cd cmd/tools && ../../vprod -backend native -o 1m 1m.v && ./1m && ls -larS 1m*')
+	exec('cd cmd/tools && v gen1m.v')
+	exec('cd cmd/tools && ./gen1m > 1m.v')
+	exec('cd cmd/tools && v -backend native -o 1m 1m.v')
+	exec('cd cmd/tools && ./1m && ls -larS 1m*')
+	exec('cd cmd/tools && rm -f ./1m ./1m.v')
 }
 
 fn native_machine_code_generation_gcc() {
