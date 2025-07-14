@@ -1,3 +1,5 @@
+// vtest build: !musl?
+// test fail for Docker CI / docker-ubuntu-musl
 import runtime
 
 fn test_used_memory() {
