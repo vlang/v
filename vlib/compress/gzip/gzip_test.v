@@ -132,3 +132,17 @@ fn test_gzip_with_invalid_flags() {
 	compressed[3] |= 0b1000_0000
 	assert_decompress_error(compressed, 'reserved flags are set, unsupported field detected')!
 }
+
+fn test_gzip_decompress_callback() {
+	uncompressed := '321323'.repeat(10_000)
+	gz := compress(uncompressed.bytes())!
+	mut size := 0
+	mut ref := &size
+	decompress_callback(gz, fn [mut ref] (chunk []u8) int {
+		unsafe {
+			*ref += chunk.len
+		}
+		return chunk.len
+	})!
+	assert size == 6 * 10_000
+}
