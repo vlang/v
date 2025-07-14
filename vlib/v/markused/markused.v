@@ -545,6 +545,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 	if walker.used_result > 0 {
 		walker.mark_fn_as_used('_result_ok')
+		walker.mark_const_as_used('none__')
 	}
 
 	if trace_skip_unused_fn_names {
