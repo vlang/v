@@ -156,6 +156,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.arr_insert {
 			core_fns << ref_array_idx_str + '.insert_many'
 		}
+		if table.used_features.interpolation {
+			include_panic_deps = true
+		}
 		if table.used_features.dump {
 			include_panic_deps = true
 			builderptr_idx := int(table.find_type('strings.Builder').ref()).str()

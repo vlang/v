@@ -179,6 +179,7 @@ fn (mut c Checker) markused_string_inter_lit(mut node ast.StringInterLiteral, ft
 	if ftyp.has_option_or_result() {
 		c.table.used_features.print_options = true
 	}
+	c.table.used_features.interpolation = true
 }
 
 fn (mut c Checker) markused_infiexpr(check bool) {
