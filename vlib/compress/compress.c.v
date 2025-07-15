@@ -71,9 +71,9 @@ pub fn decompress_callback(data []u8, flags int, cb ChunkCallback) !int {
 // the decompressor to send more chunks, otherwise the decompression stops.
 pub type ChunkCallback = fn (chunk []u8) int
 
-type DecompressCallback = fn (buf voidptr, len int, user voidptr) int
+type DecompressCallback = fn (const_buffer voidptr, len int, userdata voidptr) int
 
-fn C.tinfl_decompress_mem_to_callback(buf voidptr, size &usize, cb DecompressCallback, user voidptr, flags int) voidptr
+fn C.tinfl_decompress_mem_to_callback(const_input_buffer voidptr, psize &usize, put_buf_cb DecompressCallback, userdata voidptr, flags int) int
 
 // Chunks is a helper to connect decompress' C and V callbacks
 @[heap]
