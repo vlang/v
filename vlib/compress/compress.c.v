@@ -51,3 +51,51 @@ pub fn decompress(data []u8, flags int) ![]u8 {
 		return ret
 	}
 }
+
+// ChunkCallback is used to receive decompressed chunks of maximum 32768 bytes.
+// After processing the chunk this function should return the chunk's length to indicate
+// the decompressor to send more chunks, otherwise the decompression stops.
+// The userdata parameter comes from the call to decompress_with_callback/4, and can be used
+// to pass arbitrary data, without having to create a closure.
+pub type ChunkCallback = fn (chunk []u8, userdata voidptr) int
+
+// decompress_with_callback decompresses an array of bytes based on the provided flags,
+// and a V fn callback to receive decompressed chunks, of at most 32 kilobytes each.
+// It returns the total decompressed length, or a decompression error.
+// NB: this is a low level api, a high level implementation like zlib/gzip should be preferred.
+pub fn decompress_with_callback(data []u8, cb ChunkCallback, userdata voidptr, flags int) !u64 {
+	cbdata := DecompressionCallBackData{
+		data:     data.data
+		size:     usize(data.len)
+		cb:       cb
+		userdata: userdata
+	}
+	status := C.tinfl_decompress_mem_to_callback(cbdata.data, &cbdata.size, c_cb_for_decompress_mem,
+		&cbdata, flags)
+	if status == 0 {
+		return error('decompression error')
+	}
+	return cbdata.decompressed_size
+}
+
+struct DecompressionCallBackData {
+mut:
+	data              voidptr
+	size              usize
+	decompressed_size u64
+	userdata          voidptr
+	cb                ChunkCallback = unsafe { nil }
+}
+
+fn c_cb_for_decompress_mem(buf &char, len int, pdcbd voidptr) int {
+	mut cbdata := unsafe { &DecompressionCallBackData(pdcbd) }
+	if cbdata.cb(unsafe { voidptr(buf).vbytes(len) }, cbdata.userdata) == len {
+		cbdata.decompressed_size += u64(len)
+		return 1 // continue decompressing
+	}
+	return 0 // stop decompressing
+}
+
+type DecompressCallback = fn (const_buffer voidptr, len int, userdata voidptr) int
+
+fn C.tinfl_decompress_mem_to_callback(const_input_buffer voidptr, psize &usize, put_buf_cb DecompressCallback, userdata voidptr, flags int) int
