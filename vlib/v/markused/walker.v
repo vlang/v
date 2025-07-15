@@ -20,6 +20,7 @@ pub mut:
 	used_none    int // _option_none
 	used_option  int // _option_ok
 	used_result  int // _result_ok
+	used_panic   int // option/result propagation
 	n_asserts    int
 	pref         &pref.Preferences = unsafe { nil }
 mut:
@@ -345,6 +346,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.CastExpr {
 			w.expr(node.expr)
 			w.expr(node.arg)
+			if node.typ.has_flag(.option) {
+				w.used_option++
+			}
 		}
 		ast.ChanInit {
 			w.expr(node.cap_expr)
@@ -802,6 +806,12 @@ pub fn (mut w Walker) const_fields(cfields []ast.ConstField) {
 pub fn (mut w Walker) or_block(node ast.OrExpr) {
 	if node.kind == .block {
 		w.stmts(node.stmts)
+	} else if node.kind == .propagate_option {
+		w.used_option++
+		w.used_panic++
+	} else if node.kind == .propagate_result {
+		w.used_result++
+		w.used_panic++
 	}
 }
 
