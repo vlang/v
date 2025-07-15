@@ -224,11 +224,12 @@ pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 
 // decompress_callback decompress an array of bytes using zlib and receives the decompressed bytes
 // as 32 kilobytes chunks in given callback cb.
-pub fn decompress_callback(data []u8, cb compr.ChunkCallback, params DecompressParams) !int {
+pub fn decompress_with_callback(data []u8, cb compr.ChunkCallback, userdata voidptr, params DecompressParams) !int {
 	gzip_header := validate(data, params)!
 	header_len := gzip_header.length
 	expected_len := (u32(data[data.len - 1]) << 24) | (u32(data[data.len - 2]) << 16) | (u32(data[data.len - 3]) << 8) | data[data.len - 4]
-	chunks_len := compr.decompress_callback(data[header_len..data.len - 8], 0, cb)!
+	body := data[header_len..data.len - 8]
+	chunks_len := compr.decompress_with_callback(body, cb, userdata, 0)!
 	if expected_len != chunks_len {
 		return error('Decompress error: expected length:${expected_len}, got:${chunks_len}')
 	}

@@ -138,11 +138,12 @@ fn test_gzip_decompress_callback() {
 	gz := compress(uncompressed.bytes())!
 	mut size := 0
 	mut ref := &size
-	decompress_callback(gz, fn [mut ref] (chunk []u8) int {
+	decoded := decompress_with_callback(gz, fn (chunk []u8, ref &int) int {
 		unsafe {
 			*ref += chunk.len
 		}
 		return chunk.len
-	})!
-	assert size == 6 * 10_000
+	}, ref)!
+	assert decoded == size
+	assert decoded == uncompressed.len
 }
