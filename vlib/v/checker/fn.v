@@ -771,8 +771,6 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		c.inside_or_block_value = true
 		c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
 		c.inside_or_block_value = old_inside_or_block_value
-	} else if node.or_block.kind == .propagate_option || node.or_block.kind == .propagate_result {
-		c.markused_option_or_result(!c.is_builtin_mod && c.mod != 'strings')
 	}
 	c.expected_or_type = old_expected_or_type
 	c.markused_call_expr(left_type, mut node)

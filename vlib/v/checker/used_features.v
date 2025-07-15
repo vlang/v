@@ -1,13 +1,8 @@
+// Copyright (c) 2019-2024 Felipe Pena. All rights reserved.
+// Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
 import v.ast
-
-@[inline]
-fn (mut c Checker) markused_option_or_result(check bool) {
-	if check {
-		c.table.used_features.option_or_result = true
-	}
-}
 
 @[inline]
 fn (mut c Checker) markused_comptime_call(check bool, key string) {
@@ -135,7 +130,7 @@ fn (mut c Checker) markused_fn_call(mut node ast.CallExpr) {
 			c.table.used_features.auto_str = true
 		} else {
 			if node.args[0].typ.has_option_or_result() {
-				c.table.used_features.option_or_result = true
+				c.table.used_features.print_options = true
 			}
 			c.table.used_features.print_types[node.args[0].typ.idx()] = true
 			if !c.table.used_features.auto_str_ptr && node.args[0].expr is ast.Ident {
@@ -180,6 +175,9 @@ fn (mut c Checker) markused_string_inter_lit(mut node ast.StringInterLiteral, ft
 	}
 	if ftyp.is_ptr() {
 		c.table.used_features.auto_str_ptr = true
+	}
+	if ftyp.has_option_or_result() {
+		c.table.used_features.print_options = true
 	}
 	c.table.used_features.interpolation = true
 }

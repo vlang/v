@@ -17,7 +17,10 @@ pub mut:
 	used_structs map[string]bool
 	used_fields  map[string]bool
 	used_ifaces  map[string]bool
-	used_none    int
+	used_none    int // _option_none
+	used_option  int // _option_ok
+	used_result  int // _result_ok
+	used_panic   int // option/result propagation
 	n_asserts    int
 	pref         &pref.Preferences = unsafe { nil }
 mut:
@@ -343,6 +346,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.CastExpr {
 			w.expr(node.expr)
 			w.expr(node.arg)
+			if node.typ.has_flag(.option) {
+				w.used_option++
+			}
 		}
 		ast.ChanInit {
 			w.expr(node.cap_expr)
@@ -609,6 +615,12 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 		}
 		if ifield.typ != 0 {
 			fsym := w.table.sym(ifield.typ)
+			if ifield.typ.has_flag(.option) {
+				w.used_option++
+				if !ifield.has_default_expr {
+					w.used_none++
+				}
+			}
 			match fsym.info {
 				ast.Struct {
 					w.a_struct_info(fsym.name, fsym.info)
@@ -659,6 +671,11 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.no_body {
 		return
+	}
+	if node.return_type.has_flag(.option) {
+		w.used_option++
+	} else if node.return_type.has_flag(.result) {
+		w.used_result++
 	}
 	w.mark_fn_as_used(fkey)
 	w.stmts(node.stmts)
@@ -754,6 +771,11 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
 			w.stmts(stmt.stmts)
 		}
+		if node.return_type.has_flag(.option) {
+			w.used_option++
+		} else if node.return_type.has_flag(.result) {
+			w.used_result++
+		}
 	}
 }
 
@@ -784,6 +806,12 @@ pub fn (mut w Walker) const_fields(cfields []ast.ConstField) {
 pub fn (mut w Walker) or_block(node ast.OrExpr) {
 	if node.kind == .block {
 		w.stmts(node.stmts)
+	} else if node.kind == .propagate_option {
+		w.used_option++
+		w.used_panic++
+	} else if node.kind == .propagate_result {
+		w.used_result++
+		w.used_panic++
 	}
 }
 
