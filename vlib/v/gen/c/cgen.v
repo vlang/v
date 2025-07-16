@@ -661,17 +661,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	if g.channel_definitions.len > 0 {
 		b.write_string2('\n// V channel code:\n', g.channel_definitions.str())
 	}
-	if g.anon_fn_definitions.len > 0 {
-		if g.nr_closures > 0 {
-			b.writeln2('\n// V closure helpers', c_closure_helpers(g.pref))
-		}
-		/*
-		b.writeln('\n// V anon functions:')
-		for fn_def in g.anon_fn_definitions {
-			b.writeln(fn_def)
-		}
-		*/
-	}
 	if g.pref.is_coverage {
 		b.write_string2('\n// V coverage:\n', g.cov_declarations.str())
 	}
@@ -686,21 +675,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	// to compile for the C compiler
 	if g.embedded_data.len > 0 {
 		helpers.write_string2('\n// V embedded data:\n', g.embedded_data.str())
-	}
-	if g.anon_fn_definitions.len > 0 {
-		if g.nr_closures > 0 {
-			helpers.writeln2('\n// V closure helpers', c_closure_fn_helpers(g.pref))
-		}
-		/*
-		b.writeln('\n// V anon functions:')
-		for fn_def in g.anon_fn_definitions {
-			b.writeln(fn_def)
-		}
-		*/
-		if g.pref.parallel_cc {
-			g.extern_out.writeln('extern void* __closure_create(void* fn, void* data);')
-			g.extern_out.writeln('extern void __closure_init();')
-		}
 	}
 	if g.pref.parallel_cc {
 		helpers.writeln('\n// V global/const non-precomputed definitions:')
@@ -4310,7 +4284,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					g.gen_closure_fn(expr_styp, m, name)
 				}
 			}
-			g.write('__closure_create(${name}, ')
+			g.write('closure_create(${name}, ')
 			if !receiver.typ.is_ptr() {
 				g.write('memdup_uncollectable(')
 			}
@@ -4466,7 +4440,7 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 		g.extern_out.writeln(';')
 	}
 	sb.writeln(' {')
-	sb.writeln('\t${data_styp}* a0 = __CLOSURE_GET_DATA();')
+	sb.writeln('\t${data_styp}* a0 = g_closure.closure_get_data();')
 	if m.return_type != ast.void_type {
 		sb.write_string('\treturn ')
 	} else {
@@ -6470,10 +6444,6 @@ fn (mut g Gen) write_init_function() {
 		}
 	}
 
-	if g.nr_closures > 0 {
-		g.writeln('\t_closure_mtx_init();')
-	}
-
 	// reflection bootstrapping
 	if g.has_reflection {
 		if var := g.global_const_defs['g_reflection'] {
@@ -6532,6 +6502,10 @@ fn (mut g Gen) write_init_function() {
 		}
 	}
 
+	if g.nr_closures > 0 {
+		g.writeln('\tclosure_init();')
+	}
+
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
 		println(g.out.after(fn_vinit_start_pos))
@@ -6579,7 +6553,7 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		if g.nr_closures > 0 {
-			g.writeln('\t__closure_init(); // vinit_caller()')
+			g.writeln('\tclosure_init(); // vinit_caller()')
 		}
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
