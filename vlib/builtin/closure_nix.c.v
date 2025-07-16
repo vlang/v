@@ -4,6 +4,9 @@ $if !freestanding {
 	#include <sys/mman.h>
 }
 
+@[typedef]
+pub struct C.pthread_mutex_t {}
+
 struct ClosureMutex {
 	closure_mtx C.pthread_mutex_t
 }
