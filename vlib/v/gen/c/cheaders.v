@@ -1,8 +1,5 @@
 module c
 
-import strings
-import v.pref
-
 // Note: @@@ here serve as placeholders.
 // They will be replaced with correct strings
 // for each constant, during C code generation.
