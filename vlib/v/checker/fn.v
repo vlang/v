@@ -2720,9 +2720,6 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 		c.error('option handling cannot be done in `spawn` call. Do it when calling `.wait()`',
 			node.call_expr.or_block.pos)
 	}
-	if node.is_expr {
-		c.table.used_features.waiter = true
-	}
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
@@ -2757,9 +2754,6 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 	if node.call_expr.or_block.kind != .absent {
 		c.error('option handling cannot be done in `go` call. Do it when calling `.wait()`',
 			node.call_expr.or_block.pos)
-	}
-	if node.is_expr {
-		c.table.used_features.waiter = true
 	}
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {

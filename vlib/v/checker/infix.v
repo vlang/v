@@ -60,7 +60,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		if left_type.has_flag(.option) {
 			c.error('cannot push to Option array that was not unwrapped first', node.left.pos())
 		}
-		c.markused_infiexpr(!c.is_builtin_mod && c.mod != 'strings')
+		c.markused_infixexpr(!c.is_builtin_mod && c.mod != 'strings')
 		if mut node.right is ast.IfExpr {
 			if node.right.is_expr && node.right.branches.len > 0 {
 				mut last_stmt := node.right.branches[0].stmts.last()

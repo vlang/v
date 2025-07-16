@@ -21,6 +21,7 @@ pub mut:
 	used_option  int // _option_ok
 	used_result  int // _result_ok
 	used_panic   int // option/result propagation
+	used_interp  int // str interpolation
 	n_asserts    int
 	pref         &pref.Preferences = unsafe { nil }
 mut:
@@ -375,6 +376,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.fn_by_name('eprintln')
 		}
 		ast.SpawnExpr {
+			if node.is_expr {
+				w.fn_by_name('free')
+			}
 			w.expr(node.call_expr)
 			w.fn_by_name('tos3')
 			if w.pref.os == .windows {
@@ -386,6 +390,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 		}
 		ast.GoExpr {
+			if node.is_expr {
+				w.fn_by_name('free')
+			}
 			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
@@ -520,6 +527,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 		}
 		ast.StringInterLiteral {
+			w.used_interp++
 			w.exprs(node.exprs)
 		}
 		ast.SelectorExpr {
@@ -564,6 +572,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		///
 		ast.AsCast {
 			w.expr(node.expr)
+			w.fn_by_name('__as_cast')
+			w.fn_by_name('new_array_from_c_array')
 		}
 		ast.AtExpr {}
 		ast.BoolLiteral {}
@@ -813,6 +823,24 @@ pub fn (mut w Walker) or_block(node ast.OrExpr) {
 		w.used_result++
 		w.used_panic++
 	}
+}
+
+pub fn (mut w Walker) mark_panic_deps() {
+	ref_array_idx_str := int(ast.array_type.ref()).str()
+	string_idx_str := ast.string_type_idx.str()
+	array_idx_str := ast.array_type_idx.str()
+	charptr_idx_str := ast.charptr_type_idx.str()
+
+	w.fn_by_name('__new_array_with_default')
+	w.fn_by_name('__new_array_with_default_noscan')
+	w.fn_by_name('str_intp')
+	w.fn_by_name(ref_array_idx_str + '.push')
+	w.fn_by_name(ref_array_idx_str + '.push_noscan')
+	w.fn_by_name(string_idx_str + '.substr')
+	w.fn_by_name(array_idx_str + '.slice')
+	w.fn_by_name(array_idx_str + '.get')
+	w.fn_by_name('v_fixed_index')
+	w.fn_by_name(charptr_idx_str + '.vstring_literal')
 }
 
 pub fn (mut w Walker) mark_interface_by_symbol(isym ast.TypeSymbol) {
