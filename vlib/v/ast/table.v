@@ -15,7 +15,6 @@ pub mut:
 	range_index    bool            // string[0..1]
 	cast_ptr       bool            // &u8(...)
 	asserts        bool            // assert expr
-	as_cast        bool            // expr as Type
 	anon_fn        bool            // fn () { }
 	auto_str       bool            // auto str fns
 	auto_str_ptr   bool            // auto str fns for ptr type
@@ -30,9 +29,7 @@ pub mut:
 	arr_map        bool            // []map[key]value
 	type_name      bool            // var.type_name()
 	map_update     bool            // {...foo}
-	interpolation  bool            // '${foo} ${bar}'
 	print_options  bool            // print option type
-	waiter         bool            // has thread waiter
 	print_types    map[int]bool    // print() idx types
 	used_fns       map[string]bool // filled in by markused
 	used_consts    map[string]bool // filled in by markused
