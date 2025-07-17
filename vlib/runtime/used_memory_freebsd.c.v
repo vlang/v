@@ -7,7 +7,7 @@ $if tinyc {
 }
 struct C.rusage {
 	ru_maxrss int
-	ru_idrss int
+	ru_idrss  int
 }
 
 fn C.getrusage(who int, usage &C.rusage) int

@@ -17,8 +17,8 @@ fn test_used_memory() {
 	assert used1 > 0
 	assert used2 >= used1
 	assert used3 > used2
-	unsafe { 
-		println(*&u8(mem1+1024))
-		println(*&u8(mem2+1024))
+	unsafe {
+		println(*&u8(mem1 + 1024))
+		println(*&u8(mem2 + 1024))
 	}
 }
