@@ -217,11 +217,7 @@ pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
 				}
 				return ident_result
 			} else if cname in ast.valid_comptime_if_compilers {
-				return if pref.cc_from_string(cname) == e.pref.ccompiler_type {
-					true
-				} else {
-					false
-				}
+				return pref.cc_from_string(cname) == e.pref.ccompiler_type
 			} else if cname in ast.valid_comptime_if_platforms {
 				match cname {
 					'amd64' { return e.pref.arch == .amd64 }
@@ -238,8 +234,8 @@ pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
 				}
 			} else if cname in ast.valid_comptime_if_cpu_features {
 				match cname {
-					'x64' { return if e.pref.m64 { true } else { false } }
-					'x32' { return if !e.pref.m64 { true } else { false } }
+					'x64' { e.pref.m64 }
+					'x32' { !e.pref.m64 }
 					else { e.error('unknown comptime cpu features \$if ${cname}') }
 				}
 			} else if cname in ast.valid_comptime_if_other {
