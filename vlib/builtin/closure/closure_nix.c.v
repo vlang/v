@@ -1,4 +1,4 @@
-module builtin
+module closure
 
 $if !freestanding {
 	#include <sys/mman.h>

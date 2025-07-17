@@ -4284,7 +4284,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					g.gen_closure_fn(expr_styp, m, name)
 				}
 			}
-			g.write('closure_create(${name}, ')
+			g.write('builtin__closure__closure_create(${name}, ')
 			if !receiver.typ.is_ptr() {
 				g.write('memdup_uncollectable(')
 			}
@@ -6503,7 +6503,7 @@ fn (mut g Gen) write_init_function() {
 	}
 
 	if g.nr_closures > 0 {
-		g.writeln('\tclosure_init();')
+		g.writeln('\tbuiltin__closure__closure_init();')
 	}
 
 	g.writeln('}')
@@ -6553,7 +6553,7 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		if g.nr_closures > 0 {
-			g.writeln('\tclosure_init(); // vinit_caller()')
+			g.writeln('\tbuiltin__closure__closure_init(); // vinit_caller()')
 		}
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')

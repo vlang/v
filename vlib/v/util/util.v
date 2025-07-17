@@ -15,7 +15,7 @@ import runtime
 
 // math.bits is needed by strconv.ftoa
 pub const builtin_module_parts = ['math.bits', 'strconv', 'dlmalloc', 'strconv.ftoa', 'strings',
-	'builtin']
+	'builtin', 'builtin.closure']
 pub const bundle_modules = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']!
 
 pub const external_module_dependencies_for_tool = {

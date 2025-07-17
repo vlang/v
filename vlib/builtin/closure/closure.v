@@ -1,19 +1,17 @@
 @[has_globals]
-module builtin
+module closure
 
 // Inspired from Chris Wellons's work
 // https://nullprogram.com/blog/2017/01/08/
 
 const assumed_page_size = int(0x4000)
-// equal to `max(2*sizeof(void*), sizeof(__closure_thunk))`, rounded up to the next multiple of `sizeof(void*)`
-const closure_size = get_closure_size()
 
 @[heap]
 struct Closure {
 	ClosureMutex
 mut:
 	closure_ptr      voidptr
-	closure_get_data fn () voidptr
+	closure_get_data fn () voidptr = unsafe { nil }
 	closure_cap      int
 	v_page_size      int = int(0x4000)
 }
@@ -96,7 +94,7 @@ pub const closure_thunk = $if amd64 {
         0x20, 0x02, 0x00, 0x4C,  // jr        t5
     ]
 } $else {
-    []
+    []u8{}
 }
 
 const closure_get_data_bytes = $if amd64 {
@@ -147,17 +145,17 @@ const closure_get_data_bytes = $if amd64 {
         0x20, 0x00, 0x00, 0x4C,  // ret
     ]
 } $else {
-    []
+    []u8{}
 }
 // vfmt on
 fn get_closure_size() int {
-	mut closure_size := if 2 * sizeof(voidptr) > u32(closure_thunk.len) {
+	mut new_closure_size := if 2 * sizeof(voidptr) > u32(closure_thunk.len) {
 		2 * sizeof(voidptr)
 	} else {
 		u32(closure_thunk.len) + sizeof(voidptr) - 1
 	}
-	closure_size = closure_size & ~(sizeof(voidptr) - 1)
-	return int(closure_size)
+	new_closure_size = new_closure_size & ~(sizeof(voidptr) - 1)
+	return int(new_closure_size)
 }
 
 // closure_alloc allocates executable memory pages for closures(INTERNAL COMPILER USE ONLY).
@@ -226,18 +224,21 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 	g_closure.closure_cap-- // Decrement slot counter
 
 	// Claim current closure slot
-	mut closure := g_closure.closure_ptr
+	mut curr_closure := g_closure.closure_ptr
 	unsafe {
 		// Move to next available slot
 		g_closure.closure_ptr = &u8(g_closure.closure_ptr) + closure_size
 
 		// Write closure metadata (data + function pointer)
-		mut p := &voidptr(&u8(closure) - assumed_page_size)
+		mut p := &voidptr(&u8(curr_closure) - assumed_page_size)
 		p[0] = data // Stored closure context
 		p[1] = func // Target function to execute
 	}
 	closure_mtx_unlock_platform()
 
 	// Return executable closure object
-	return closure
+	return curr_closure
 }
+
+// equal to `max(2*sizeof(void*), sizeof(__closure_thunk))`, rounded up to the next multiple of `sizeof(void*)`
+const closure_size = get_closure_size()

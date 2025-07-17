@@ -184,11 +184,11 @@ fn benchmark_memory_usage(count int) MemoryResult {
 	start_mem := runtime.used_memory() or { panic(err) }
 
 	for i in 0 .. count {
-		closure := create_closure_medium()
-		closures << closure
+		the_closure := create_closure_medium()
+		closures << the_closure
 
 		if i % 1000 == 0 {
-			_ = closure()
+			_ = the_closure()
 		}
 	}
 

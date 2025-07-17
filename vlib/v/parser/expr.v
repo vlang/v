@@ -473,6 +473,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			} else {
 				// Anonymous function
 				node = p.anon_fn()
+				if p.file_backend_mode == .v || p.file_backend_mode == .c {
+					p.register_auto_import('builtin.closure')
+				}
 				// its a call
 				// NOTE: this could be moved to just before the pratt loop
 				// then anything can be a call, eg. `index[2]()` or `struct.field()`
