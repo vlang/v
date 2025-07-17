@@ -267,9 +267,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			continue
 		}
 		if mfn.is_method {
-			mut method_receiver_typename := ''
-			method_receiver_typename = table.type_to_str(mfn.receiver.typ)
-
+			method_receiver_typename := table.type_to_str(mfn.receiver.typ)
 			if method_receiver_typename == '&wyrand.WyRandRNG' {
 				// WyRandRNG is the default rand pseudo random generator
 				all_fn_root_names << k
@@ -281,12 +279,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				continue
 			}
 			if method_receiver_typename == '&sync.Channel' {
-				all_fn_root_names << k
-				continue
-			}
-			if mfn.receiver.typ != ast.void_type && mfn.generic_names.len > 0 {
-				// generic methods may be used in cgen after specialisation :-|
-				// TODO: move generic method specialisation from cgen to before markused
 				all_fn_root_names << k
 				continue
 			}
@@ -352,6 +344,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				all_fn_root_names << k
 				continue
 			}
+		}
+		if mfn.receiver.typ != ast.void_type && mfn.generic_names.len > 0 {
+			// generic methods may be used in cgen after specialisation :-|
+			// TODO: move generic method specialisation from cgen to before markused
+			all_fn_root_names << k
+			continue
 		}
 		if pref_.prealloc && k.starts_with('prealloc_') {
 			all_fn_root_names << k
