@@ -714,6 +714,9 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	} else if node.return_type.has_flag(.result) {
 		w.used_result++
 	}
+	if node.params.len > 0 {
+		w.mark_fn_params(node.params)
+	}
 	w.mark_fn_as_used(fkey)
 	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)
@@ -806,6 +809,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	stmt := w.all_fns[fn_name] or { return }
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
+			w.mark_fn_params(stmt.params)
 			w.stmts(stmt.stmts)
 		}
 		if node.return_type.has_flag(.option) {
@@ -881,6 +885,15 @@ pub fn (mut w Walker) mark_interface_by_symbol(isym ast.TypeSymbol) {
 				w.features.used_maps++
 			}
 			// sym := w.table.sym(typ); eprintln('>>>>>>>>> typ: ${typ.str():-30} | sym.name: ${sym.name}')
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_fn_params(params []ast.Param) {
+	for param in params {
+		psym := w.table.final_sym(param.typ)
+		if psym.kind == .sum_type {
+			w.mark_by_symbol(psym)
 		}
 	}
 }
