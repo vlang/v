@@ -2867,12 +2867,12 @@ automatically modifies all the rest. The largest union member defines the size o
 
 One reason, as stated above, is to use less memory for storing things.  Since the size of a union
 is the size of the largest field in it, and the size of a struct is the size of all the fields in
-struct added together, a union is definitely better for lower memory usage.  As long as you only
-need one of the fields to be valid at any time, the union wins.
+the struct added together, a union is definitely better for lower memory usage.  As long as you
+only need one of the fields to be valid at any time, the union wins.
 
 Another reason is to allow easier access to parts of a field.  For example, without using a union,
 if you want to look at each of the bytes of a 32-bit integer separately, you'll need bitwise
-RIGHT-SHIFTs and AND operations.  With a union, you can access the individual bytes directly.
+`RIGHT-SHIFT`s and `AND` operations.  With a union, you can access the individual bytes directly.
 ```v
 union ThirtyTwo {
 	a u32
