@@ -546,18 +546,7 @@ pub fn decode[T](val string) !T {
 // decode_value decodes a value from the JSON nodes.
 @[manualfree]
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
-	$if T is $option {
-		value_info := decoder.current_node.value
-
-		if value_info.value_kind == .null {
-			decoder.current_node = decoder.current_node.next
-			// val = none // Is this line needed?
-			return
-		}
-		mut unwrapped_val := create_value_from_optional(val.$(field.name))
-		decoder.decode_value(mut unwrapped_val)!
-		val.$(field.name) = unwrapped_val
-	} $else $if T.unaliased_typ is string {
+	$if T.unaliased_typ is string {
 		string_info := decoder.current_node.value
 
 		if string_info.value_kind == .string_ {
@@ -815,11 +804,18 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 											}
 										} else {
 											$if field.typ is $option {
-												mut unwrapped_val := create_value_from_optional(val.$(field.name)) or {
-													return
+												// it would be nicer to do this at the start of the function
+												// but options cant be passed to generic functions
+												if decoder.current_node.value.length == 4
+													&& decoder.json[decoder.current_node.value.position..decoder.current_node.value.position + 4] == 'null' {
+													val.$(field.name) = none
+												} else {
+													mut unwrapped_val := create_value_from_optional(val.$(field.name)) or {
+														return
+													}
+													decoder.decode_value(mut unwrapped_val)!
+													val.$(field.name) = unwrapped_val
 												}
-												decoder.decode_value(mut unwrapped_val)!
-												val.$(field.name) = unwrapped_val
 											} $else {
 												decoder.decode_value(mut val.$(field.name))!
 											}
