@@ -709,14 +709,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.no_body {
 		return
 	}
-	if node.return_type.has_flag(.option) {
-		w.used_option++
-	} else if node.return_type.has_flag(.result) {
-		w.used_result++
-	}
-	if node.params.len > 0 {
-		w.mark_fn_params(node.params)
-	}
+	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
 	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)
@@ -809,7 +802,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	stmt := w.all_fns[fn_name] or { return }
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
-			w.mark_fn_params(stmt.params)
+			w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
 			w.stmts(stmt.stmts)
 		}
 		if node.return_type.has_flag(.option) {
@@ -889,7 +882,18 @@ pub fn (mut w Walker) mark_interface_by_symbol(isym ast.TypeSymbol) {
 	}
 }
 
-pub fn (mut w Walker) mark_fn_params(params []ast.Param) {
+pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.Param) {
+	if return_type != 0 {
+		if return_type.has_flag(.option) {
+			w.used_option++
+		} else if return_type.has_flag(.result) {
+			w.used_result++
+		}
+		rsym := w.table.final_sym(return_type)
+		if rsym.kind == .sum_type {
+			w.mark_by_symbol(rsym)
+		}
+	}
 	for param in params {
 		psym := w.table.final_sym(param.typ)
 		if psym.kind == .sum_type {
