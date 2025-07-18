@@ -1195,6 +1195,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
 					continue
 				}
+				if g.pref.skip_unused && sub_sym.kind == .struct && sub_sym.idx !in g.table.used_features.used_syms {
+					continue
+				}
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
@@ -1206,6 +1209,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
+					continue
+				}
+				if g.pref.skip_unused && sub_sym.kind == .struct && sub_sym.idx !in g.table.used_features.used_syms {
 					continue
 				}
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${int(t.set_nr_muls(0))};')
@@ -1966,6 +1972,9 @@ pub fn (mut g Gen) write_multi_return_types() {
 	for sym in multi_rets {
 		info := sym.mr_info()
 		if info.types.any(it.has_flag(.generic)) {
+			continue
+		}
+		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 			continue
 		}
 		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
@@ -6680,6 +6689,9 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							}
 						}
 					}
+					if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+						continue
+					} 
 					g.struct_decl(sym.info, name, false, false)
 					struct_names[name] = true
 				}
@@ -7801,6 +7813,9 @@ fn (mut g Gen) interface_table() string {
 		for st in inter_info.types {
 			st_sym_info := g.table.sym(st)
 			if st_sym_info.info is ast.Struct && st_sym_info.info.is_unresolved_generic() {
+				continue
+			}
+			if g.pref.skip_unused && st_sym_info.kind == .struct && st_sym_info.idx !in g.table.used_features.used_syms {
 				continue
 			}
 			st_sym := g.table.sym(ast.mktyp(st))

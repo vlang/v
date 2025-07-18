@@ -95,6 +95,7 @@ pub fn (mut w Walker) mark_global_as_used(ckey string) {
 		sym := w.table.sym(gfield.typ)
 		if sym.info is ast.Struct {
 			w.a_struct_info(sym.name, sym.info)
+			w.mark_by_sym(sym)
 		}
 	}
 }
@@ -202,6 +203,13 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			w.stmts(node.stmts)
 		}
 		ast.ComptimeFor {
+			fsym := w.table.final_sym(node.typ)
+			if fsym.kind == .sum_type {
+				w.mark_by_sym(fsym)
+			} else if fsym.info is ast.Struct {
+				w.a_struct_info(fsym.name, fsym.info)
+				w.mark_by_sym(fsym)
+			}
 			w.stmts(node.stmts)
 		}
 		ast.ConstDecl {
@@ -329,8 +337,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			sym := w.table.final_sym(node.elem_type)
 			if sym.info is ast.Struct {
 				w.a_struct_info(sym.name, sym.info)
+				w.mark_by_sym(sym)
 			} else if sym.info is ast.SumType {
-				w.mark_by_symbol(sym)
+				w.mark_by_sym(sym)
 			}
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
@@ -352,7 +361,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.arg)
 			esym := w.table.final_sym(node.typ)
 			if esym.kind == .sum_type {
-				w.mark_by_symbol(esym)
+				w.mark_by_sym(esym)
 			}
 			if node.typ.has_flag(.option) {
 				w.used_option++
@@ -363,6 +372,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.ConcatExpr {
 			w.exprs(node.vals)
+			w.mark_by_sym(w.table.sym(node.return_type))
 		}
 		ast.ComptimeSelector {
 			w.expr(node.left)
@@ -460,7 +470,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				}
 			} else if node.op in [.key_is, .not_is] {
 				if right_sym.kind == .sum_type {
-					w.mark_by_symbol(right_sym)
+					w.mark_by_sym(right_sym)
 				}
 			}
 		}
@@ -507,11 +517,18 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			mapinfo := w.table.final_sym(node.typ).map_info()
 			ksym := w.table.final_sym(mapinfo.key_type)
 			vsym := w.table.final_sym(mapinfo.value_type)
+			if node.typ.has_flag(.shared_f) {
+				println('achou shared')
+				if sym := w.table.find_sym('sync.RwMutex') {
+					println('achou rxmutex')
+					w.mark_by_sym(sym)
+				}
+			}
 			if ksym.kind == .sum_type {
-				w.mark_by_symbol(ksym)
+				w.mark_by_sym(ksym)
 			}
 			if vsym.kind == .sum_type {
-				w.mark_by_symbol(vsym)
+				w.mark_by_sym(vsym)
 			}
 			w.features.used_maps++
 		}
@@ -557,7 +574,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				if esym.kind == .interface {
 					w.mark_interface_by_symbol(esym)
 				} else if esym.kind == .sum_type {
-					w.mark_by_symbol(esym)
+					w.mark_by_sym(esym)
 				}
 				if method := w.table.find_method(w.table.sym(node.expr_type), node.field_name) {
 					w.fn_by_name(method.fkey())
@@ -580,8 +597,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			sym := w.table.sym(node.typ)
 			if sym.info is ast.Struct {
 				w.a_struct_info(sym.name, sym.info)
+				w.mark_by_sym(sym)
 			} else if sym.info is ast.SumType {
-				w.mark_by_symbol(sym)
+				w.mark_by_sym(sym)
 			}
 			if node.has_update_expr {
 				w.expr(node.update_expr)
@@ -598,6 +616,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 			w.fn_by_name('__as_cast')
 			w.fn_by_name('new_array_from_c_array')
+			w.mark_by_sym_name('VCastTypeIndexName')
 		}
 		ast.AtExpr {}
 		ast.BoolLiteral {}
@@ -618,6 +637,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 		}
 		ast.LockExpr {
+			if sym := w.table.find_sym('sync.RwMutex') {
+				w.mark_by_sym(sym)
+			}
 			w.stmts(node.stmts)
 		}
 		ast.OffsetOf {}
@@ -658,6 +680,7 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 			match fsym.info {
 				ast.Struct {
 					w.a_struct_info(fsym.name, fsym.info)
+					w.mark_by_sym(fsym)
 				}
 				ast.Alias {
 					value_sym := w.table.final_sym(ifield.typ)
@@ -670,6 +693,9 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 					value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
 					if value_sym.info is ast.Struct {
 						w.a_struct_info(value_sym.name, value_sym.info)
+						w.mark_by_sym(value_sym)
+					} else if value_sym.info is ast.SumType {
+						w.mark_by_sym(value_sym)
 					}
 				}
 				ast.Map {
@@ -677,10 +703,11 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 					value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
 					if value_sym.info is ast.Struct {
 						w.a_struct_info(value_sym.name, value_sym.info)
+						w.mark_by_sym(value_sym)
 					}
 				}
 				ast.SumType {
-					w.mark_by_symbol(fsym)
+					w.mark_by_sym(fsym)
 				}
 				else {}
 			}
@@ -690,6 +717,7 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 		sym := w.table.final_sym(embed)
 		if sym.info is ast.Struct {
 			w.a_struct_info(sym.name, sym.info)
+			w.mark_by_sym(sym)
 		}
 	}
 }
@@ -708,6 +736,15 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.no_body {
 		return
+	}
+	if node.is_method {
+		rsym := w.table.final_sym(node.receiver.typ.idx())
+		if rsym.info is ast.Struct {
+			w.a_struct_info(rsym.name, rsym.info)
+			w.mark_by_sym(rsym)
+		} else if rsym.kind == .sum_type {
+			w.mark_by_sym(rsym)
+		}
 	}
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
@@ -865,6 +902,9 @@ pub fn (mut w Walker) mark_panic_deps() {
 	w.fn_by_name(array_idx_str + '.get')
 	w.fn_by_name('v_fixed_index')
 	w.fn_by_name(charptr_idx_str + '.vstring_literal')
+
+	w.mark_by_sym_name('StrIntpData')
+	w.mark_by_sym_name('StrIntpMem')
 }
 
 pub fn (mut w Walker) mark_interface_by_symbol(isym ast.TypeSymbol) {
@@ -891,18 +931,35 @@ pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.
 		}
 		rsym := w.table.final_sym(return_type)
 		if rsym.kind == .sum_type {
-			w.mark_by_symbol(rsym)
+			w.mark_by_sym(rsym)
+		} else if rsym.info is ast.MultiReturn {
+			w.mark_by_sym(rsym)
+			for typ in rsym.info.types {
+				tsym := w.table.final_sym(typ)
+				if tsym.info is ast.Struct {
+					w.a_struct_info(tsym.name, tsym.info)
+					w.mark_by_sym(tsym)
+				} else if tsym.kind == .sum_type {
+					w.mark_by_sym(tsym)
+				}
+			}
 		}
 	}
 	for param in params {
 		psym := w.table.final_sym(param.typ)
 		if psym.kind == .sum_type {
-			w.mark_by_symbol(psym)
+			w.mark_by_sym(psym)
 		}
 	}
 }
 
-pub fn (mut w Walker) mark_by_symbol(isym ast.TypeSymbol) {
+pub fn (mut w Walker) mark_by_sym_name(name string) {
+	if sym := w.table.find_sym(name) {
+		w.mark_by_sym(sym)
+	}
+}
+ 
+pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 	if isym.idx in w.used_syms {
 		return
 	}
@@ -915,7 +972,10 @@ pub fn (mut w Walker) mark_by_symbol(isym ast.TypeSymbol) {
 			}
 			vsym := w.table.final_sym(typ)
 			if vsym.kind == .sum_type {
-				w.mark_by_symbol(vsym)
+				w.mark_by_sym(vsym)
+			} else if vsym.info is ast.Struct {
+				w.a_struct_info(vsym.name, vsym.info)
+				w.mark_by_sym(vsym)
 			}
 		}
 	}
