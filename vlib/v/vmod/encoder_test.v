@@ -50,6 +50,7 @@ const mf_with_extra_fields = "Module {
 	version: '0.4.10'
 	license: 'MIT'
 	repo_url: 'https://github.com/vlang/v'
+	author: 'Bilbo Baggins'
 	dependencies: ['hello', 'world']
 	extra_a: ['a', 'b', 'c']
 	extra_b: [
