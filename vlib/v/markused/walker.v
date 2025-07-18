@@ -17,6 +17,7 @@ pub mut:
 	used_structs map[string]bool
 	used_fields  map[string]bool
 	used_ifaces  map[string]bool
+	used_syms map[int]bool
 	used_none    int // _option_none
 	used_option  int // _option_ok
 	used_result  int // _result_ok
@@ -328,6 +329,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			sym := w.table.final_sym(node.elem_type)
 			if sym.info is ast.Struct {
 				w.a_struct_info(sym.name, sym.info)
+			} else if sym.info is ast.SumType {
+				w.mark_by_symbol(sym)
 			}
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
@@ -347,6 +350,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.CastExpr {
 			w.expr(node.expr)
 			w.expr(node.arg)
+			esym := w.table.final_sym(node.typ)
+			if esym.kind == .sum_type {
+				w.mark_by_symbol(esym)
+			}
 			if node.typ.has_flag(.option) {
 				w.used_option++
 			}
@@ -493,6 +500,15 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.has_update_expr {
 				w.expr(node.update_expr)
 			}
+			mapinfo := w.table.final_sym(node.typ).map_info()
+			ksym := w.table.final_sym(mapinfo.key_type)
+			vsym := w.table.final_sym(mapinfo.value_type)
+			if ksym.kind == .sum_type {
+				w.mark_by_symbol(ksym)
+			}
+			if vsym.kind == .sum_type {
+				w.mark_by_symbol(vsym)
+			}
 			w.features.used_maps++
 		}
 		ast.MatchExpr {
@@ -536,6 +552,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				esym := w.table.sym(node.expr_type)
 				if esym.kind == .interface {
 					w.mark_interface_by_symbol(esym)
+				} else if esym.kind == .sum_type {
+					w.mark_by_symbol(esym)
 				}
 				if method := w.table.find_method(w.table.sym(node.expr_type), node.field_name) {
 					w.fn_by_name(method.fkey())
@@ -558,6 +576,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			sym := w.table.sym(node.typ)
 			if sym.info is ast.Struct {
 				w.a_struct_info(sym.name, sym.info)
+			} else if sym.info is ast.SumType {
+				w.mark_by_symbol(sym)
 			}
 			if node.has_update_expr {
 				w.expr(node.update_expr)
@@ -654,6 +674,9 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 					if value_sym.info is ast.Struct {
 						w.a_struct_info(value_sym.name, value_sym.info)
 					}
+				}
+				ast.SumType {
+					w.mark_by_symbol(fsym)
 				}
 				else {}
 			}
@@ -854,6 +877,20 @@ pub fn (mut w Walker) mark_interface_by_symbol(isym ast.TypeSymbol) {
 				w.features.used_maps++
 			}
 			// sym := w.table.sym(typ); eprintln('>>>>>>>>> typ: ${typ.str():-30} | sym.name: ${sym.name}')
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_by_symbol(isym ast.TypeSymbol) {
+	if isym.idx in w.used_syms {
+		return
+	}
+	w.used_syms[isym.idx] = true
+	if isym.info is ast.SumType {
+		for typ in isym.info.variants {
+			if typ == ast.map_type {
+				w.features.used_maps++
+			}
 		}
 	}
 }

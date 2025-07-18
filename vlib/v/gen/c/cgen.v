@@ -1120,6 +1120,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('// >> typeof() support for sum types / interfaces')
 	for ityp, sym in g.table.type_symbols {
 		if sym.kind == .sum_type {
+			if sym.idx !in g.table.used_features.used_syms {
+				continue
+			}
 			static_prefix := if g.pref.build_mode == .build_module { 'static ' } else { '' }
 			sum_info := sym.info as ast.SumType
 			if sum_info.is_generic {
@@ -6700,7 +6703,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				}
 			}
 			ast.SumType {
-				if sym.info.is_generic || struct_names[name] {
+				if sym.info.is_generic || struct_names[name] || sym.idx !in g.table.used_features.used_syms {
 					continue
 				}
 				struct_names[name] = true
