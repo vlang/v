@@ -17,7 +17,7 @@ pub mut:
 	used_structs map[string]bool
 	used_fields  map[string]bool
 	used_ifaces  map[string]bool
-	used_syms map[int]bool
+	used_syms    map[int]bool
 	used_none    int // _option_none
 	used_option  int // _option_ok
 	used_result  int // _result_ok
@@ -457,6 +457,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.features.used_maps++
 				} else if right_sym.kind == .array {
 					w.features.used_arrays++
+				}
+			} else if node.op in [.key_is, .not_is] {
+				if right_sym.kind == .sum_type {
+					w.mark_by_symbol(right_sym)
 				}
 			}
 		}

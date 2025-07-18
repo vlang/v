@@ -6703,7 +6703,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				}
 			}
 			ast.SumType {
-				if sym.info.is_generic || struct_names[name] || sym.idx !in g.table.used_features.used_syms {
+				if sym.info.is_generic || struct_names[name]
+					|| sym.idx !in g.table.used_features.used_syms {
 					continue
 				}
 				struct_names[name] = true
