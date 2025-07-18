@@ -2875,8 +2875,8 @@ if you want to look at each of the bytes of a 32-bit integer separately, you'll 
 RIGHT-SHIFTs and AND operations.  With a union, you can access the individual bytes directly.
 ```v
 union ThirtyTwo {
-    a u32
-    b [4]u8
+	a u32
+	b [4]u8
 }
 ```
 Since `ThirtyTwo.a` and `ThirtyTwo.b` share the same memory locations, you can directly access
