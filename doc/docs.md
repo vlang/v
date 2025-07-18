@@ -112,6 +112,8 @@ by using any of the following commands in a terminal:
     * [Methods](#methods)
     * [Embedded structs](#embedded-structs)
 * [Unions](#unions)
+    * [Why use unions?](#why-use-unions)
+    * [Embedding](#embedding)
 
 </td><td valign=top>
 
@@ -2853,7 +2855,36 @@ targeted.
 
 ## Unions
 
-Just like structs, unions support embedding.
+A union is a special type of struct that allows storing different data types in the same memory
+location. You can define a union with many members, but only one member may contain a valid value
+at any time, depending on the data types of the members. Unions provide an efficient way of using
+the same memory location for multiple purposes.
+
+All the members of a union share the same memory location. This means that modifying one member
+automatically modifies all the rest. The largest union member defines the size of the union.
+
+### Why use unions?
+
+One reason, as stated above, is to use less memory for storing things.  Since the size of a union
+is the size of the largest field in it, and the size of a struct is the size of all the fields in
+struct added together, a union is definitely better for lower memory usage.  As long as you only
+need one of the fields to be valid at any time, the union wins.
+
+Another reason is to allow easier access to parts of a field.  For example, without using a union,
+if you want to look at each of the bytes of a 32-bit integer separately, you'll need bitwise
+RIGHT-SHIFTs and AND operations.  With a union, you can access the individual bytes directly.
+```v
+union ThirtyTwo {
+	a u32
+	b [4]u8
+}
+```
+Since `ThirtyTwo.a` and `ThirtyTwo.b` share the same memory locations, you can directly access
+each byte of `a` by referencing `b[byte_offset]`.
+
+### Embedding
+
+Unions also support embedding, the same as structs.
 
 ```v
 struct Rgba32_Component {
