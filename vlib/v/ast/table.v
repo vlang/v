@@ -43,6 +43,7 @@ pub mut:
 	// json             bool            // json is imported
 	debugger       bool            // debugger is used
 	comptime_calls map[string]bool // resolved name to call on comptime
+	comptime_syms  map[int]bool    // resolved syms (generic)
 	comptime_for   bool            // uses $for
 	memory_align   bool            // @[aligned] for struct
 }

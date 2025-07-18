@@ -8079,6 +8079,10 @@ return ${cast_shared_struct_str};
 				conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}(${interface_name} x) {\n\treturn ')
 				for i, variant in variants {
 					variant_sym := g.table.sym(variant)
+					if g.pref.skip_unused && variant_sym.kind == .struct
+						&& variant_sym.idx !in g.table.used_features.used_syms {
+						continue
+					}
 					if i > 0 {
 						conversion_functions.write_string(' || ')
 					}

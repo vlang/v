@@ -267,6 +267,9 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			w.expr(node.db_expr)
 			w.expr(node.or_expr)
 			for line in node.lines {
+				if line.table_expr.typ != 0 {
+					w.mark_by_sym(w.table.sym(line.table_expr.typ))
+				}
 				w.expr(line.where_expr)
 				w.exprs(line.update_exprs)
 			}
@@ -536,6 +539,11 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.cond)
 			for b in node.branches {
 				w.exprs(b.exprs)
+				for expr in b.exprs {
+					if expr is ast.TypeNode {
+						w.mark_by_sym(w.table.sym(expr.typ))
+					}
+				}
 				w.stmts(b.stmts)
 			}
 		}
@@ -978,5 +986,26 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 				w.mark_by_sym(vsym)
 			}
 		}
+	}
+}
+
+pub fn (mut w Walker) mark_by_sym_and_fields(isym ast.TypeSymbol) {
+	if isym.idx in w.used_syms {
+		return
+	}
+	w.used_syms[isym.idx] = true
+	if isym.info is ast.Struct {
+		for field in isym.info.fields {
+			fsym := w.table.final_sym(field.typ)
+			if fsym.info is ast.Array {
+				w.mark_by_sym_and_fields(w.table.sym(fsym.info.elem_type))
+			} else if fsym.info is ast.Struct {
+				w.mark_by_sym_and_fields(fsym)
+			} else if fsym.info is ast.SumType {
+				w.mark_by_sym_and_fields(fsym)
+			}
+		}
+	} else if isym.info is ast.Array {
+		w.mark_by_sym_and_fields(w.table.sym(isym.info.elem_type))
 	}
 }

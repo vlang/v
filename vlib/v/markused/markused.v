@@ -458,7 +458,13 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		walker.fn_by_name(k)
 	}
 
+	for k, _ in table.used_features.comptime_syms {
+		walker.mark_by_sym_and_fields(table.type_symbols[k])
+	}
+
 	walker.mark_root_fns(all_fn_root_names)
+
+	walker.mark_by_sym_name('vweb.RedirectParams')
 
 	if table.used_features.used_maps > 0 {
 		for k, mut mfn in all_fns {
@@ -516,6 +522,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 	if walker.used_none > 0 || table.used_features.auto_str {
 		walker.mark_fn_as_used('_option_none')
+		walker.mark_by_sym_name('_option')
 	}
 	if walker.used_option > 0 {
 		walker.mark_fn_as_used('_option_clone')
@@ -530,7 +537,15 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		walker.mark_const_as_used('none__')
 	}
 	walker.mark_by_sym_name('EnumData')
+	walker.mark_by_sym_name('FieldData')
+	walker.mark_by_sym_name('FunctionData')
+	walker.mark_by_sym_name('MethodParam')
+	walker.mark_by_sym_name('VariantData')
 	walker.mark_by_sym_name('array')
+
+	if table.used_features.asserts {
+		walker.mark_by_sym_name('VAssertMetaInfo')
+	}
 
 	if trace_skip_unused_fn_names {
 		for key, _ in walker.used_fns {
