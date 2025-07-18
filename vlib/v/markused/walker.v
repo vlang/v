@@ -958,7 +958,7 @@ pub fn (mut w Walker) mark_by_sym_name(name string) {
 		w.mark_by_sym(sym)
 	}
 }
- 
+
 pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 	if isym.idx in w.used_syms {
 		return
