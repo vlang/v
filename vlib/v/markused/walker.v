@@ -894,6 +894,11 @@ pub fn (mut w Walker) mark_by_symbol(isym ast.TypeSymbol) {
 		for typ in isym.info.variants {
 			if typ == ast.map_type {
 				w.features.used_maps++
+				continue
+			}
+			vsym := w.table.final_sym(typ)
+			if vsym.kind == .sum_type {
+				w.mark_by_symbol(vsym)
 			}
 		}
 	}
