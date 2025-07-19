@@ -914,7 +914,7 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 						}
 					}
 					match fsym.info {
-						ast.Struct, ast.FnType, ast.SumType {
+						ast.Struct, ast.SumType, ast.FnType {
 							w.mark_by_sym(fsym)
 						}
 						ast.Alias {
@@ -925,13 +925,11 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 						}
 						ast.Array, ast.ArrayFixed {
 							w.features.used_arrays++
-							value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
-							w.mark_by_sym(value_sym)
+							w.mark_by_type(ifield.typ)
 						}
 						ast.Map {
 							w.features.used_maps++
-							value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
-							w.mark_by_sym(value_sym)
+							w.mark_by_type(ifield.typ)
 						}
 						else {}
 					}
@@ -961,6 +959,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 		ast.FnType {
 			for param in isym.info.func.params {
 				w.mark_by_type(param.typ)
+			}
+			if isym.info.func.return_type != 0 {
+				w.mark_by_type(isym.info.func.return_type)
 			}
 		}
 		ast.MultiReturn {

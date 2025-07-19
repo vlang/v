@@ -1977,6 +1977,7 @@ pub fn (mut g Gen) write_multi_return_types() {
 			continue
 		}
 		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+			println('>>>> skip ${sym.name}')
 			continue
 		}
 		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
@@ -6810,6 +6811,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 								}
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							} else if !(elem_sym.info is ast.ArrayFixed && elem_sym.info.is_fn_ret) {
+								if g.pref.skip_unused
+									&& elem_sym.idx !in g.table.used_features.used_syms {
+									continue
+								}
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							}
 						}
