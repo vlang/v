@@ -881,7 +881,6 @@ pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.
 		w.mark_by_type(return_type)
 	}
 	for param in params {
-		println('>>> ${param.name} | ${w.table.type_to_str(param.typ)}')
 		w.mark_by_type(param.typ)
 	}
 }
