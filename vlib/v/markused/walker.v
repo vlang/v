@@ -707,8 +707,8 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 					value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
 					if value_sym.info is ast.Struct {
 						w.a_struct_info(value_sym.name, value_sym.info)
-						w.mark_by_sym(value_sym)
 					}
+					w.mark_by_sym(value_sym)
 				}
 				ast.SumType {
 					w.mark_by_sym(fsym)
