@@ -34,6 +34,8 @@ mut:
 	sin_zero   [8]char
 }
 
+const C.AF_INET u8
+
 pub struct C.sockaddr_un {
 mut:
 	sun_len    u8

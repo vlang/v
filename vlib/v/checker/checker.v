@@ -4297,8 +4297,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		if node.name == 'C.NULL' {
 			return ast.voidptr_type
 		}
-		// TODO remove main. to avoid extra concats
-		if x := c.table.global_scope.find_const('main.' + node.name) {
+		if x := c.table.global_scope.find_const(node.name) {
 			return x.typ
 		}
 		return ast.int_type

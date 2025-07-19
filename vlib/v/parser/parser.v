@@ -2384,7 +2384,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			p.error_with_pos('const names cannot contain uppercase letters, use snake_case instead',
 				pos)
 		}
-		full_name := p.prepend_mod(name)
+		full_name := if is_virtual_c_const { name } else { p.prepend_mod(name) }
 		if p.tok.kind == .comma {
 			p.error_with_pos('const declaration do not support multiple assign yet', p.tok.pos())
 		}
