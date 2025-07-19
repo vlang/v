@@ -14,7 +14,6 @@ pub mut:
 	used_fns     map[string]bool // used_fns['println'] == true
 	used_consts  map[string]bool // used_consts['os.args'] == true
 	used_globals map[string]bool
-	used_structs map[string]bool
 	used_fields  map[string]bool
 	used_ifaces  map[string]bool
 	used_syms    map[int]bool
@@ -94,7 +93,6 @@ pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	if !gfield.has_expr && gfield.typ != 0 {
 		sym := w.table.sym(gfield.typ)
 		if sym.info is ast.Struct {
-			w.a_struct_info(sym.name, sym.info)
 			w.mark_by_sym(sym)
 		}
 	}
@@ -439,7 +437,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.features.range_index = true
 				}
 			} else if sym.info is ast.Struct {
-				w.a_struct_info(sym.name, sym.info)
 				w.mark_by_sym(sym)
 			} else if sym.info is ast.SumType {
 				w.mark_by_sym(sym)
@@ -602,7 +599,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			sym := w.table.sym(node.typ)
 			if sym.info is ast.Struct {
-				w.a_struct_info(sym.name, sym.info)
 				w.mark_by_sym(sym)
 			} else {
 				w.mark_by_sym(sym)
@@ -666,66 +662,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 	}
 }
 
-pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
-	if sname in w.used_structs {
-		return
-	}
-	w.used_structs[sname] = true
-	for ifield in info.fields {
-		if ifield.has_default_expr {
-			w.expr(ifield.default_expr)
-		}
-		if ifield.typ != 0 {
-			fsym := w.table.sym(ifield.typ)
-			if ifield.typ.has_flag(.option) {
-				w.used_option++
-				if !ifield.has_default_expr {
-					w.used_none++
-				}
-			}
-			match fsym.info {
-				ast.Struct {
-					w.a_struct_info(fsym.name, fsym.info)
-					w.mark_by_sym(fsym)
-				}
-				ast.Alias {
-					value_sym := w.table.final_sym(ifield.typ)
-					if value_sym.info is ast.Struct {
-						w.a_struct_info(value_sym.name, value_sym.info)
-					}
-				}
-				ast.Array, ast.ArrayFixed {
-					w.features.used_arrays++
-					value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
-					if value_sym.info is ast.Struct {
-						w.a_struct_info(value_sym.name, value_sym.info)
-					}
-					w.mark_by_sym(value_sym)
-				}
-				ast.Map {
-					w.features.used_maps++
-					value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
-					if value_sym.info is ast.Struct {
-						w.a_struct_info(value_sym.name, value_sym.info)
-					}
-					w.mark_by_sym(value_sym)
-				}
-				ast.SumType {
-					w.mark_by_sym(fsym)
-				}
-				else {}
-			}
-		}
-	}
-	for embed in info.embeds {
-		sym := w.table.final_sym(embed)
-		if sym.info is ast.Struct {
-			w.a_struct_info(sym.name, sym.info)
-		}
-		w.mark_by_sym(sym)
-	}
-}
-
 pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node == unsafe { nil } {
 		return
@@ -743,9 +679,6 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.is_method {
 		rsym := w.table.final_sym(node.receiver.typ.idx())
-		if rsym.info is ast.Struct {
-			w.a_struct_info(rsym.name, rsym.info)
-		}
 		w.mark_by_sym(rsym)
 	}
 	w.mark_fn_ret_and_params(node.return_type, node.params)
@@ -938,9 +871,6 @@ pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.
 			w.mark_by_sym(rsym)
 			for typ in rsym.info.types {
 				tsym := w.table.final_sym(typ)
-				if tsym.info is ast.Struct {
-					w.a_struct_info(tsym.name, tsym.info)
-				}
 				w.mark_by_sym(tsym)
 			}
 		}
@@ -964,9 +894,6 @@ pub fn (mut w Walker) mark_by_type(typ ast.Type) {
 		return
 	}
 	sym := w.table.final_sym(typ)
-	if sym.info is ast.Struct {
-		w.a_struct_info(sym.name, sym.info)
-	}
 	w.mark_by_sym(sym)
 }
 
@@ -977,18 +904,44 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 	w.used_syms[isym.idx] = true
 	match isym.info {
 		ast.Struct {
-			for field in isym.info.fields {
-				fsym := w.table.final_sym(field.typ)
-				if field.typ.has_flag(.generic) {
-					continue
+			for ifield in isym.info.fields {
+				if ifield.has_default_expr {
+					w.expr(ifield.default_expr)
 				}
-				if fsym.info is ast.Array {
-					w.mark_by_sym(w.table.sym(fsym.info.elem_type))
-				} else if fsym.info is ast.Struct {
-					w.mark_by_sym(fsym)
-				} else if fsym.info is ast.SumType {
-					w.mark_by_sym(fsym)
+				if ifield.typ != 0 {
+					fsym := w.table.sym(ifield.typ)
+					if ifield.typ.has_flag(.option) {
+						w.used_option++
+						if !ifield.has_default_expr {
+							w.used_none++
+						}
+					}
+					match fsym.info {
+						ast.Struct, ast.FnType, ast.SumType {
+							w.mark_by_sym(fsym)
+						}
+						ast.Alias {
+							value_sym := w.table.final_sym(ifield.typ)
+							if value_sym.info is ast.Struct {
+								w.mark_by_sym(value_sym)
+							}
+						}
+						ast.Array, ast.ArrayFixed {
+							w.features.used_arrays++
+							value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
+							w.mark_by_sym(value_sym)
+						}
+						ast.Map {
+							w.features.used_maps++
+							value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
+							w.mark_by_sym(value_sym)
+						}
+						else {}
+					}
 				}
+			}
+			for embed in isym.info.embeds {
+				w.mark_by_sym(w.table.final_sym(embed))
 			}
 		}
 		ast.ArrayFixed, ast.Array {
