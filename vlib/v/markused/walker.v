@@ -14,9 +14,9 @@ pub mut:
 	used_fns     map[string]bool // used_fns['println'] == true
 	used_consts  map[string]bool // used_consts['os.args'] == true
 	used_globals map[string]bool
-	used_structs map[string]bool
 	used_fields  map[string]bool
 	used_ifaces  map[string]bool
+	used_syms    map[int]bool
 	used_none    int // _option_none
 	used_option  int // _option_ok
 	used_result  int // _result_ok
@@ -93,7 +93,7 @@ pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	if !gfield.has_expr && gfield.typ != 0 {
 		sym := w.table.sym(gfield.typ)
 		if sym.info is ast.Struct {
-			w.a_struct_info(sym.name, sym.info)
+			w.mark_by_sym(sym)
 		}
 	}
 }
@@ -201,7 +201,13 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			w.stmts(node.stmts)
 		}
 		ast.ComptimeFor {
+			w.mark_by_type(node.typ)
 			w.stmts(node.stmts)
+			w.mark_by_sym_name('EnumData')
+			w.mark_by_sym_name('FieldData')
+			w.mark_by_sym_name('FunctionData')
+			w.mark_by_sym_name('MethodParam')
+			w.mark_by_sym_name('VariantData')
 		}
 		ast.ConstDecl {
 			w.const_fields(node.fields)
@@ -258,6 +264,9 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			w.expr(node.db_expr)
 			w.expr(node.or_expr)
 			for line in node.lines {
+				if line.table_expr.typ != 0 {
+					w.mark_by_sym(w.table.sym(line.table_expr.typ))
+				}
 				w.expr(line.where_expr)
 				w.exprs(line.update_exprs)
 			}
@@ -325,10 +334,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.fn_decl(mut node.decl)
 		}
 		ast.ArrayInit {
-			sym := w.table.final_sym(node.elem_type)
-			if sym.info is ast.Struct {
-				w.a_struct_info(sym.name, sym.info)
-			}
+			w.mark_by_type(node.elem_type)
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
@@ -343,10 +349,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.CallExpr {
 			w.call_expr(mut node)
+			if node.name == 'json.decode' {
+				w.mark_by_type((node.args[0].expr as ast.TypeNode).typ)
+			}
 		}
 		ast.CastExpr {
 			w.expr(node.expr)
 			w.expr(node.arg)
+			w.mark_by_type(node.typ)
 			if node.typ.has_flag(.option) {
 				w.used_option++
 			}
@@ -356,6 +366,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.ConcatExpr {
 			w.exprs(node.vals)
+			w.mark_by_sym(w.table.sym(node.return_type))
 		}
 		ast.ComptimeSelector {
 			w.expr(node.left)
@@ -403,27 +414,32 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				return
 			}
 			sym := w.table.final_sym(node.left_type)
-			if sym.kind == .map {
+			if sym.info is ast.Map {
 				if node.is_setter {
 					w.mark_builtin_map_method_as_used('set')
 				} else {
 					w.mark_builtin_map_method_as_used('get')
 				}
-
+				w.mark_by_sym(w.table.sym(sym.info.key_type))
+				w.mark_by_sym(w.table.sym(sym.info.value_type))
 				w.features.used_maps++
-			} else if sym.kind == .array {
+			} else if sym.info is ast.Array {
 				if node.is_setter {
 					w.mark_builtin_array_method_as_used('set')
 				} else {
 					w.mark_builtin_array_method_as_used('get')
 				}
-
+				w.mark_by_sym(w.table.sym(sym.info.elem_type))
 				w.features.used_arrays++
 			} else if sym.kind == .string {
 				if node.index is ast.RangeExpr {
 					w.mark_builtin_array_method_as_used('slice')
 					w.features.range_index = true
 				}
+			} else if sym.info is ast.Struct {
+				w.mark_by_sym(sym)
+			} else if sym.info is ast.SumType {
+				w.mark_by_sym(sym)
 			}
 		}
 		ast.InfixExpr {
@@ -451,10 +467,15 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				} else if right_sym.kind == .array {
 					w.features.used_arrays++
 				}
+			} else if node.op in [.key_is, .not_is] {
+				w.mark_by_sym(right_sym)
 			}
 		}
 		ast.IfGuardExpr {
 			w.expr(node.expr)
+			if node.expr_type != 0 {
+				w.mark_by_type(node.expr_type)
+			}
 		}
 		ast.IfExpr {
 			w.expr(node.left)
@@ -493,12 +514,31 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.has_update_expr {
 				w.expr(node.update_expr)
 			}
+			mapinfo := w.table.final_sym(node.typ).map_info()
+			ksym := w.table.final_sym(mapinfo.key_type)
+			vsym := w.table.final_sym(mapinfo.value_type)
+			if node.typ.has_flag(.shared_f) {
+				if sym := w.table.find_sym('sync.RwMutex') {
+					w.mark_by_sym(sym)
+				}
+			}
+			if ksym.kind == .sum_type {
+				w.mark_by_sym(ksym)
+			}
+			if vsym.kind == .sum_type {
+				w.mark_by_sym(vsym)
+			}
 			w.features.used_maps++
 		}
 		ast.MatchExpr {
 			w.expr(node.cond)
 			for b in node.branches {
 				w.exprs(b.exprs)
+				for expr in b.exprs {
+					if expr is ast.TypeNode {
+						w.mark_by_sym(w.table.sym(expr.typ))
+					}
+				}
 				w.stmts(b.stmts)
 			}
 		}
@@ -536,6 +576,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				esym := w.table.sym(node.expr_type)
 				if esym.kind == .interface {
 					w.mark_interface_by_symbol(esym)
+				} else {
+					w.mark_by_sym(esym)
 				}
 				if method := w.table.find_method(w.table.sym(node.expr_type), node.field_name) {
 					w.fn_by_name(method.fkey())
@@ -550,15 +592,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.order_expr)
 			w.expr(node.limit_expr)
 			w.expr(node.where_expr)
+			w.mark_by_type(node.typ)
 		}
 		ast.StructInit {
 			if node.typ == 0 {
 				return
 			}
 			sym := w.table.sym(node.typ)
-			if sym.info is ast.Struct {
-				w.a_struct_info(sym.name, sym.info)
-			}
+			w.mark_by_sym(sym)
 			if node.has_update_expr {
 				w.expr(node.update_expr)
 			}
@@ -574,6 +615,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 			w.fn_by_name('__as_cast')
 			w.fn_by_name('new_array_from_c_array')
+			w.mark_by_sym_name('VCastTypeIndexName')
 		}
 		ast.AtExpr {}
 		ast.BoolLiteral {}
@@ -594,6 +636,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 		}
 		ast.LockExpr {
+			if sym := w.table.find_sym('sync.RwMutex') {
+				w.mark_by_sym(sym)
+			}
 			w.stmts(node.stmts)
 		}
 		ast.OffsetOf {}
@@ -614,59 +659,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 	}
 }
 
-pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
-	if sname in w.used_structs {
-		return
-	}
-	w.used_structs[sname] = true
-	for ifield in info.fields {
-		if ifield.has_default_expr {
-			w.expr(ifield.default_expr)
-		}
-		if ifield.typ != 0 {
-			fsym := w.table.sym(ifield.typ)
-			if ifield.typ.has_flag(.option) {
-				w.used_option++
-				if !ifield.has_default_expr {
-					w.used_none++
-				}
-			}
-			match fsym.info {
-				ast.Struct {
-					w.a_struct_info(fsym.name, fsym.info)
-				}
-				ast.Alias {
-					value_sym := w.table.final_sym(ifield.typ)
-					if value_sym.info is ast.Struct {
-						w.a_struct_info(value_sym.name, value_sym.info)
-					}
-				}
-				ast.Array, ast.ArrayFixed {
-					w.features.used_arrays++
-					value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
-					if value_sym.info is ast.Struct {
-						w.a_struct_info(value_sym.name, value_sym.info)
-					}
-				}
-				ast.Map {
-					w.features.used_maps++
-					value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
-					if value_sym.info is ast.Struct {
-						w.a_struct_info(value_sym.name, value_sym.info)
-					}
-				}
-				else {}
-			}
-		}
-	}
-	for embed in info.embeds {
-		sym := w.table.final_sym(embed)
-		if sym.info is ast.Struct {
-			w.a_struct_info(sym.name, sym.info)
-		}
-	}
-}
-
 pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node == unsafe { nil } {
 		return
@@ -682,11 +674,11 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.no_body {
 		return
 	}
-	if node.return_type.has_flag(.option) {
-		w.used_option++
-	} else if node.return_type.has_flag(.result) {
-		w.used_result++
+	if node.is_method {
+		rsym := w.table.final_sym(node.receiver.typ.idx())
+		w.mark_by_sym(rsym)
 	}
+	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
 	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)
@@ -698,6 +690,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 	for arg in node.args {
 		w.expr(arg.expr)
+	}
+	for concrete_type in node.concrete_types {
+		w.mark_by_type(concrete_type)
 	}
 	if node.language == .c {
 		if node.name in ['C.wyhash', 'C.wyhash64'] {
@@ -779,6 +774,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	stmt := w.all_fns[fn_name] or { return }
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
+			w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
 			w.stmts(stmt.stmts)
 		}
 		if node.return_type.has_flag(.option) {
@@ -841,6 +837,9 @@ pub fn (mut w Walker) mark_panic_deps() {
 	w.fn_by_name(array_idx_str + '.get')
 	w.fn_by_name('v_fixed_index')
 	w.fn_by_name(charptr_idx_str + '.vstring_literal')
+
+	w.mark_by_sym_name('StrIntpData')
+	w.mark_by_sym_name('StrIntpMem')
 }
 
 pub fn (mut w Walker) mark_interface_by_symbol(isym ast.TypeSymbol) {
@@ -855,5 +854,109 @@ pub fn (mut w Walker) mark_interface_by_symbol(isym ast.TypeSymbol) {
 			}
 			// sym := w.table.sym(typ); eprintln('>>>>>>>>> typ: ${typ.str():-30} | sym.name: ${sym.name}')
 		}
+	}
+}
+
+pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.Param) {
+	if return_type != 0 {
+		if return_type.has_flag(.option) {
+			w.used_option++
+		} else if return_type.has_flag(.result) {
+			w.used_result++
+		}
+		w.mark_by_type(return_type)
+	}
+	for param in params {
+		w.mark_by_type(param.typ)
+	}
+}
+
+pub fn (mut w Walker) mark_by_sym_name(name string) {
+	if sym := w.table.find_sym(name) {
+		w.mark_by_sym(sym)
+	}
+}
+
+pub fn (mut w Walker) mark_by_type(typ ast.Type) {
+	if typ.has_flag(.generic) {
+		return
+	}
+	sym := w.table.final_sym(typ)
+	w.mark_by_sym(sym)
+}
+
+pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
+	if isym.idx in w.used_syms {
+		return
+	}
+	w.used_syms[isym.idx] = true
+	match isym.info {
+		ast.Struct {
+			for ifield in isym.info.fields {
+				if ifield.has_default_expr {
+					w.expr(ifield.default_expr)
+				}
+				if ifield.typ != 0 {
+					fsym := w.table.sym(ifield.typ)
+					if ifield.typ.has_flag(.option) {
+						w.used_option++
+						if !ifield.has_default_expr {
+							w.used_none++
+						}
+					}
+					match fsym.info {
+						ast.Struct, ast.SumType, ast.FnType, ast.Alias {
+							w.mark_by_sym(fsym)
+						}
+						ast.Array, ast.ArrayFixed {
+							w.features.used_arrays++
+							w.mark_by_type(ifield.typ)
+						}
+						ast.Map {
+							w.features.used_maps++
+							w.mark_by_type(ifield.typ)
+						}
+						else {}
+					}
+				}
+			}
+			for embed in isym.info.embeds {
+				w.mark_by_sym(w.table.final_sym(embed))
+			}
+		}
+		ast.ArrayFixed, ast.Array {
+			w.mark_by_sym(w.table.sym(isym.info.elem_type))
+		}
+		ast.SumType {
+			for typ in isym.info.variants {
+				if typ == ast.map_type {
+					w.features.used_maps++
+					continue
+				}
+				w.mark_by_type(typ)
+			}
+		}
+		ast.Map {
+			w.mark_by_type(isym.info.key_type)
+			w.mark_by_type(isym.info.value_type)
+			w.features.used_maps++
+		}
+		ast.Alias {
+			w.mark_by_type(isym.info.parent_type)
+		}
+		ast.FnType {
+			for param in isym.info.func.params {
+				w.mark_by_type(param.typ)
+			}
+			if isym.info.func.return_type != 0 {
+				w.mark_by_type(isym.info.func.return_type)
+			}
+		}
+		ast.MultiReturn {
+			for typ in isym.info.types {
+				w.mark_by_type(typ)
+			}
+		}
+		else {}
 	}
 }

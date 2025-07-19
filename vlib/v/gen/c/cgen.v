@@ -1120,6 +1120,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('// >> typeof() support for sum types / interfaces')
 	for ityp, sym in g.table.type_symbols {
 		if sym.kind == .sum_type {
+			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+				continue
+			}
 			static_prefix := if g.pref.build_mode == .build_module { 'static ' } else { '' }
 			sum_info := sym.info as ast.SumType
 			if sum_info.is_generic {
@@ -1192,6 +1195,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
 					continue
 				}
+				if g.pref.skip_unused && sub_sym.kind == .struct
+					&& sub_sym.idx !in g.table.used_features.used_syms {
+					continue
+				}
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
@@ -1203,6 +1210,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
+					continue
+				}
+				if g.pref.skip_unused && sub_sym.kind == .struct
+					&& sub_sym.idx !in g.table.used_features.used_syms {
 					continue
 				}
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${int(t.set_nr_muls(0))};')
@@ -1963,6 +1974,9 @@ pub fn (mut g Gen) write_multi_return_types() {
 	for sym in multi_rets {
 		info := sym.mr_info()
 		if info.types.any(it.has_flag(.generic)) {
+			continue
+		}
+		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 			continue
 		}
 		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
@@ -6395,6 +6409,9 @@ fn (mut g Gen) write_debug_calls_typeof_functions() {
 			if sum_info.is_generic {
 				continue
 			}
+			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+				continue
+			}
 			g.writeln('\tv_typeof_sumtype_${sym.cname}(0);')
 		}
 		if sym.kind == .interface {
@@ -6677,6 +6694,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							}
 						}
 					}
+					if sym.info.generic_types.len == 0 && g.pref.skip_unused
+						&& sym.idx !in g.table.used_features.used_syms {
+						continue
+					}
 					g.struct_decl(sym.info, name, false, false)
 					struct_names[name] = true
 				}
@@ -6700,7 +6721,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				}
 			}
 			ast.SumType {
-				if sym.info.is_generic || struct_names[name] {
+				if sym.info.is_generic || struct_names[name]
+					|| (g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms) {
 					continue
 				}
 				struct_names[name] = true
@@ -6788,6 +6810,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 								}
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							} else if !(elem_sym.info is ast.ArrayFixed && elem_sym.info.is_fn_ret) {
+								if g.pref.skip_unused
+									&& elem_sym.idx !in g.table.used_features.used_syms {
+									continue
+								}
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							}
 						}
@@ -7799,6 +7825,10 @@ fn (mut g Gen) interface_table() string {
 			if st_sym_info.info is ast.Struct && st_sym_info.info.is_unresolved_generic() {
 				continue
 			}
+			if g.pref.skip_unused && st_sym_info.kind == .struct
+				&& st_sym_info.idx !in g.table.used_features.used_syms {
+				continue
+			}
 			st_sym := g.table.sym(ast.mktyp(st))
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
@@ -8056,6 +8086,10 @@ return ${cast_shared_struct_str};
 				conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}(${interface_name} x) {\n\treturn ')
 				for i, variant in variants {
 					variant_sym := g.table.sym(variant)
+					if g.pref.skip_unused && variant_sym.kind == .struct
+						&& variant_sym.idx !in g.table.used_features.used_syms {
+						continue
+					}
 					if i > 0 {
 						conversion_functions.write_string(' || ')
 					}
