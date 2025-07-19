@@ -1,9 +1,7 @@
 module os
 
-// stat returns a platform-agnostic Stat struct comparable to what is
-// available in other programming languages and fails with the POSIX
-// error if the stat call fails. In Windows, there is no lstat so
-// information on a link cannot be provided.
+// stat returns metadata for the given file/folder.
+// It will return a POSIX error message, if it can not do so.
 // C._wstat64() can be used on 32- and 64-bit Windows per
 // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/stat-functions?view=msvc-170
 pub fn stat(path string) !Stat {
@@ -29,13 +27,13 @@ pub fn stat(path string) !Stat {
 	}
 }
 
-// lstat is the same as stat() for Windows
+// lstat is the same as stat() for Windows.
 @[inline]
 pub fn lstat(path string) !Stat {
 	return stat(path)
 }
 
-// get_filetype returns the FileType from the Stat struct
+// get_filetype returns the FileType from the Stat struct.
 pub fn (st Stat) get_filetype() FileType {
 	match st.mode & u32(C.S_IFMT) {
 		u32(C.S_IFDIR) {
@@ -47,8 +45,8 @@ pub fn (st Stat) get_filetype() FileType {
 	}
 }
 
-// get_mode returns the file type and permissions (readable, writable, executable)
-// in owner/group/others format, however, they will all be the same for Windows
+// get_mode returns the file type and permissions (readable, writable, executable) in owner/group/others format.
+// Note: they will all be the same for Windows.
 pub fn (st Stat) get_mode() FileMode {
 	return FileMode{
 		typ:    st.get_filetype()
@@ -92,7 +90,7 @@ pub fn is_link(path string) bool {
 	return int(attr) != int(C.INVALID_FILE_ATTRIBUTES) && (attr & 0x400) != 0
 }
 
-// kind_of_existing_path identifies whether path is a file, directory, or link
+// kind_of_existing_path identifies whether path is a file, directory, or link.
 fn kind_of_existing_path(path string) PathKind {
 	mut res := PathKind{}
 	attr := C.GetFileAttributesW(path.to_wide())

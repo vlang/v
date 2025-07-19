@@ -27,9 +27,7 @@ pub fn is_abs_path(path string) bool {
 	return path[0] == fslash
 }
 
-// abs_path joins the current working directory
-// with the given `path` (if the `path` is relative)
-// and returns the absolute path representation.
+// abs_path joins the current working directory with the given `path` (if the `path` is relative), and returns the absolute path representation.
 pub fn abs_path(path string) string {
 	wd := getwd()
 	if path == '' {
@@ -218,8 +216,7 @@ fn clean_path(path string) string {
 	return res
 }
 
-// to_slash returns the result of replacing each separator character
-// in path with a slash (`/`).
+// to_slash returns the result of replacing each separator character in path with a slash (`/`).
 pub fn to_slash(path string) string {
 	if path_separator == '/' {
 		return path
@@ -227,8 +224,7 @@ pub fn to_slash(path string) string {
 	return path.replace(path_separator, '/')
 }
 
-// from_slash returns the result of replacing each slash (`/`) character
-// is path with a separator character.
+// from_slash returns the result of replacing each slash (`/`) character is path with a separator character.
 pub fn from_slash(path string) string {
 	if path_separator == '/' {
 		return path

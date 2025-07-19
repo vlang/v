@@ -12,7 +12,7 @@ fn rotl(x u64, k int) u64 {
 	return (x << k) | (x >> (64 - k))
 }
 
-// XOROS128PPRNG ported from https://prng.di.unimi.it/xoroshiro128plusplus.c
+// XOROS128PPRNG is ported from https://prng.di.unimi.it/xoroshiro128plusplus.c .
 pub struct XOROS128PPRNG {
 	buffer.PRNGBuffer
 mut:

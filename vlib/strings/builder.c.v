@@ -9,7 +9,7 @@ module strings
 // constantly string concatenation.
 pub type Builder = []u8
 
-// new_builder returns a new string builder, with an initial capacity of `initial_size`
+// new_builder returns a new string builder, with an initial capacity of `initial_size`.
 pub fn new_builder(initial_size int) Builder {
 	mut res := Builder([]u8{cap: initial_size})
 	unsafe { res.flags.set(.noslices) }
@@ -47,7 +47,7 @@ pub fn (mut b Builder) write_rune(r rune) {
 	unsafe { b.push_many(res.str, res.len) }
 }
 
-// write_runes appends all the given runes to the accumulated buffer
+// write_runes appends all the given runes to the accumulated buffer.
 pub fn (mut b Builder) write_runes(runes []rune) {
 	mut buffer := [5]u8{}
 	for r in runes {
@@ -97,8 +97,7 @@ pub fn (mut b Builder) write_decimal(n i64) {
 	unsafe { b.write_ptr(&buf[i + 1], 24 - i) }
 }
 
-// write implements the io.Writer interface, that is why it
-// it returns how many bytes were written to the string builder.
+// write implements the io.Writer interface, that is why it returns how many bytes were written to the string builder.
 pub fn (mut b Builder) write(data []u8) !int {
 	if data.len == 0 {
 		return 0
@@ -138,7 +137,7 @@ pub fn (mut b Builder) write_string(s string) {
 	// b.buf << []u8(s)  // TODO
 }
 
-// write_string2 appends the strings `s1` and `s2` to the buffer
+// write_string2 appends the strings `s1` and `s2` to the buffer.
 @[inline]
 pub fn (mut b Builder) write_string2(s1 string, s2 string) {
 	if s1.len != 0 {
@@ -149,7 +148,7 @@ pub fn (mut b Builder) write_string2(s1 string, s2 string) {
 	}
 }
 
-// go_back discards the last `n` bytes from the buffer
+// go_back discards the last `n` bytes from the buffer.
 pub fn (mut b Builder) go_back(n int) {
 	b.trim(b.len - n)
 }
@@ -165,7 +164,7 @@ pub fn (b &Builder) spart(start_pos int, n int) string {
 	}
 }
 
-// cut_last cuts the last `n` bytes from the buffer and returns them
+// cut_last cuts the last `n` bytes from the buffer and returns them.
 pub fn (mut b Builder) cut_last(n int) string {
 	cut_pos := b.len - n
 	res := b.spart(cut_pos, n)
@@ -183,7 +182,7 @@ pub fn (mut b Builder) cut_to(pos int) string {
 	return b.cut_last(b.len - pos)
 }
 
-// go_back_to resets the buffer to the given position `pos`
+// go_back_to resets the buffer to the given position `pos`.
 // Note: pos should be < than the existing buffer length.
 pub fn (mut b Builder) go_back_to(pos int) {
 	b.trim(pos)
@@ -245,7 +244,7 @@ pub fn (mut b Builder) str() string {
 	return s
 }
 
-// ensure_cap ensures that the buffer has enough space for at least `n` bytes by growing the buffer if necessary
+// ensure_cap ensures that the buffer has enough space for at least `n` bytes by growing the buffer if necessary.
 pub fn (mut b Builder) ensure_cap(n int) {
 	// code adapted from vlib/builtin/array.v
 	if n <= b.cap {

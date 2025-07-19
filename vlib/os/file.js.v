@@ -126,7 +126,7 @@ pub fn (mut f File) write_to(pos u64, buf []u8) !int {
 	return nbytes
 }
 
-// write_string writes the string `s` into the file
+// write_string writes the string `s` into the file.
 // It returns how many bytes were actually written.
 pub fn (mut f File) write_string(s string) !int {
 	nbytes := f.write(s.bytes())!

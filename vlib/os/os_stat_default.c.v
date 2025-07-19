@@ -1,9 +1,9 @@
 module os
 
-// stat returns a platform-agnostic Stat struct comparable to what is
-// available in other programming languages and fails with the POSIX
-// error if the stat call fails. Symlinks are followed and the resulting
-// Stat provided. (If this is not desired, use lstat().)
+// stat returns a platform-agnostic Stat struct, containing metadata about the given file/folder path.
+// It returns a POSIX error, if it can not do so.
+// Note: symlinks are followed, and the resulting Stat for their target will be returned.
+// If this is not desired, call lstat/1 instead.
 pub fn stat(path string) !Stat {
 	mut s := C.stat{}
 	unsafe {
@@ -27,10 +27,8 @@ pub fn stat(path string) !Stat {
 	}
 }
 
-// lstat returns a platform-agnostic Stat struct comparable to what is
-// available in other programming languages and fails with the POSIX
-// error if the stat call fails. If a link is stat'd, the stat info
-// for the link is provided.
+// lstat is similar to stat/1 for normal files/folders.
+// Unlike stat/1, however, it will return the stat info for a symlink, instead of its target.
 pub fn lstat(path string) !Stat {
 	mut s := C.stat{}
 	unsafe {
@@ -54,7 +52,7 @@ pub fn lstat(path string) !Stat {
 	}
 }
 
-// get_filetype returns the FileType from the Stat struct
+// get_filetype returns the FileType from the Stat struct.
 pub fn (st Stat) get_filetype() FileType {
 	match st.mode & u32(C.S_IFMT) {
 		u32(C.S_IFREG) {
@@ -84,8 +82,7 @@ pub fn (st Stat) get_filetype() FileType {
 	}
 }
 
-// get_mode returns the file type and permissions (readable, writable, executable)
-// in owner/group/others format.
+// get_mode returns the file type and permissions (readable, writable, executable) in owner/group/others format.
 pub fn (st Stat) get_mode() FileMode {
 	return FileMode{
 		typ:    st.get_filetype()

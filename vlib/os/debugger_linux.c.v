@@ -4,7 +4,7 @@ module os
 
 fn C.ptrace(u32, u32, voidptr, voidptr) u64
 
-// debugger_present returns a bool indicating if the process is being debugged
+// debugger_present returns a bool indicating if the process is being debugged.
 pub fn debugger_present() bool {
 	$if cross ? {
 		return false

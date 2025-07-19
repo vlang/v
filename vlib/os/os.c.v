@@ -1047,8 +1047,7 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	}
 }
 
-// is_atty returns 1 if the `fd` file descriptor is open and refers to a
-// terminal.
+// is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal.
 pub fn is_atty(fd int) int {
 	$if windows {
 		mut mode := u32(0)

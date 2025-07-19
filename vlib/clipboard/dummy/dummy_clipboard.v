@@ -32,8 +32,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	return true
 }
 
-// get_text retrieves the contents of the system clipboard
-// as a `string`.
+// get_text retrieves the contents of the system clipboard.
 // This is often associated with a *paste* action (`Ctrl` + `V`).
 pub fn (mut cb Clipboard) get_text() string {
 	return cb.text
@@ -45,13 +44,11 @@ pub fn (mut cb Clipboard) clear() {
 	cb.is_owner = false
 }
 
-// free releases all memory associated with the clipboard
-// instance.
+// free releases all memory associated with the clipboard instance.
 pub fn (mut cb Clipboard) free() {
 }
 
-// has_ownership returns true if the contents of
-// the clipboard were created by this clipboard instance.
+// has_ownership returns true if the contents of the clipboard were created by this clipboard instance.
 pub fn (cb &Clipboard) has_ownership() bool {
 	return cb.is_owner
 }

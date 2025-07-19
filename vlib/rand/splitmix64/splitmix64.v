@@ -8,7 +8,7 @@ import rand.buffer
 
 pub const seed_len = 2
 
-// SplitMix64RNG ported from http://xoshiro.di.unimi.it/splitmix64.c
+// SplitMix64RNG is ported from http://xoshiro.di.unimi.it/splitmix64.c .
 pub struct SplitMix64RNG {
 	buffer.PRNGBuffer
 mut:
@@ -17,8 +17,7 @@ mut:
 	buffer     u64
 }
 
-// seed sets the seed of the accepting SplitMix64RNG to the given data
-// in little-endian format (i.e. lower 32 bits are in [0] and higher 32 bits in [1]).
+// seed sets the seed of the accepting SplitMix64RNG to the given data in little-endian format (i.e. lower 32 bits are in [0] and higher 32 bits in [1]).
 pub fn (mut rng SplitMix64RNG) seed(seed_data []u32) {
 	if seed_data.len != 2 {
 		eprintln('SplitMix64RNG needs 2 32-bit unsigned integers as the seed.')

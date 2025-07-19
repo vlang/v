@@ -145,8 +145,8 @@ pub fn (mut p Process) stdin_write(s string) {
 	p._write_to(.stdin, s)
 }
 
-// stdout_slurp will read from the stdout pipe, and will block until it either
-// reads all the data, or until the pipe is closed (end of file).
+// stdout_slurp will read from the stdout pipe.
+// It will block until it either reads all the data, or until the pipe is closed (end of file).
 pub fn (mut p Process) stdout_slurp() string {
 	p._check_redirection_call(@METHOD)
 	res := p._slurp_from(.stdout)
@@ -156,8 +156,8 @@ pub fn (mut p Process) stdout_slurp() string {
 	return res
 }
 
-// stderr_slurp will read from the stderr pipe, and will block until it either
-// reads all the data, or until the pipe is closed (end of file).
+// stderr_slurp will read from the stderr pipe.
+// It will block until it either reads all the data, or until the pipe is closed (end of file).
 pub fn (mut p Process) stderr_slurp() string {
 	p._check_redirection_call(@METHOD)
 	res := p._slurp_from(.stderr)
