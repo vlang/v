@@ -713,11 +713,6 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 				ast.SumType {
 					w.mark_by_sym(fsym)
 				}
-				ast.FnType {
-					for param in fsym.info.func.params {
-						w.mark_by_type(param.typ)
-					}
-				}
 				else {}
 			}
 		}
@@ -1011,6 +1006,11 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 		ast.Map {
 			w.mark_by_type(isym.info.key_type)
 			w.mark_by_type(isym.info.value_type)
+		}
+		ast.FnType {
+			for param in isym.info.func.params {
+				w.mark_by_type(param.typ)
+			}
 		}
 		else {}
 	}
