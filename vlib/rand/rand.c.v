@@ -2,7 +2,7 @@ module rand
 
 import time
 
-// uuid_v4 generates a random (v4) UUID
+// uuid_v4 generates a random (v4) UUID.
 // See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 // See https://datatracker.ietf.org/doc/html/rfc9562#name-uuid-version-4
 pub fn uuid_v4() string {
@@ -59,7 +59,7 @@ fn internal_uuid(version u8, rand_1 u64, rand_2 u64) string {
 	}
 }
 
-// uuid_v7 generates a time-ordered (v7) UUID
+// uuid_v7 generates a time-ordered (v7) UUID.
 // See https://datatracker.ietf.org/doc/html/rfc9562#name-uuid-version-7
 pub fn uuid_v7() string {
 	timestamp_48 := u64(time.now().unix_milli()) << 16

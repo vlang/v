@@ -33,7 +33,7 @@ pub:
 	kind FdEventType
 }
 
-// new creates a new KqueueNotifier
+// new creates a new KqueueNotifier.
 // The FdNotifier interface is returned to allow OS specific
 // implementations without exposing the concrete type
 pub fn new() !FdNotifier {

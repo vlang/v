@@ -6,12 +6,10 @@ import strings
 #include <process.h>
 #include <sys/utime.h>
 
-// path_separator is the platform specific separator string, used between the folders
-// and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
+// path_separator is the platform specific separator string, used between the folders, and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '\\'
 
-// path_delimiter is the platform specific delimiter string, used between the paths
-// in environment variables like PATH. It is ':' on POSIX, and ';' on Windows.
+// path_delimiter is the platform specific delimiter string, used between the paths in environment variables like PATH. It is ':' on POSIX, and ';' on Windows.
 pub const path_delimiter = ';'
 
 // path_devnull is a platform-specific file path of the null device.
@@ -502,8 +500,7 @@ pub fn loginname() !string {
 	return unsafe { string_from_wide(&loginname[0]) }
 }
 
-// ensure_folder_is_writable checks that `folder` exists, and is writable to the process
-// by creating an empty file in it, then deleting it.
+// ensure_folder_is_writable checks that `folder` exists, and is writable to the process, by creating an empty file in it, then deleting it.
 pub fn ensure_folder_is_writable(folder string) ! {
 	if !exists(folder) {
 		return error_with_code('`${folder}` does not exist', 1)
@@ -604,7 +601,7 @@ pub fn page_size() int {
 	return int(sinfo.dwPageSize)
 }
 
-// disk_usage returns disk usage of `path`
+// disk_usage returns disk usage of `path`.
 pub fn disk_usage(path string) !DiskUsage {
 	mut free_bytes_available_to_caller := u64(0)
 	mut total := u64(0)

@@ -203,7 +203,7 @@ pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 	return header
 }
 
-// decompress an array of bytes using zlib and returns the decompressed bytes in a new array
+// decompress an array of bytes using zlib and returns the decompressed bytes in a new array.
 // Example: decompressed := gzip.decompress(b)!
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	gzip_header := validate(data, params)!

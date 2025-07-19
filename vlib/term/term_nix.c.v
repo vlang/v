@@ -26,7 +26,7 @@ pub fn get_terminal_size() (int, int) {
 	return int(w.ws_col), int(w.ws_row)
 }
 
-// get_cursor_position returns a Coord containing the current cursor position
+// get_cursor_position returns a Coord containing the current cursor position.
 pub fn get_cursor_position() !Coord {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return Coord{0, 0}
@@ -78,7 +78,7 @@ pub fn get_cursor_position() !Coord {
 	return Coord{x, y}
 }
 
-// set_terminal_title change the terminal title (usually that is the containing terminal window title)
+// set_terminal_title change the terminal title (usually that is the containing terminal window title).
 pub fn set_terminal_title(title string) bool {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return false
@@ -90,7 +90,7 @@ pub fn set_terminal_title(title string) bool {
 	return true
 }
 
-// set_tab_title changes the terminal *tab title*, for terminal emulators like Konsole, that support several tabs
+// set_tab_title changes the terminal *tab title*, for terminal emulators like Konsole, that support several tabs.
 pub fn set_tab_title(title string) bool {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return false
@@ -217,7 +217,7 @@ pub fn graphics_num_colors() u16 {
 	return buf.bytestr().u16()
 }
 
-// enable_echo enable/disable echo input characters
+// enable_echo enable/disable echo input characters.
 pub fn enable_echo(enable bool) {
 	mut state := termios.Termios{}
 	termios.tcgetattr(0, mut state)

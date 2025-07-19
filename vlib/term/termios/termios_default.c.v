@@ -8,7 +8,7 @@ type TcFlag = int
 type Speed = int
 type Cc = u8
 
-// Termios definitions
+// Termios represents platform dependent flags representing the terminal state.
 // Linux      https://github.com/lattera/glibc/blob/master/sysdeps/unix/sysv/linux/bits/termios.h
 // OpenBSD    https://github.com/openbsd/src/blob/master/sys/sys/termios.h
 // FreeBSD    https://web.mit.edu/freebsd/head/sys/sys/_termios.h
@@ -27,20 +27,18 @@ pub mut:
 	c_ospeed Speed
 }
 
-// flag provides a termios flag of the correct size
-// for the underlying C.termios structure
+// flag provides a termios flag of the correct size for the underlying C.termios structure.
 pub fn flag(value int) TcFlag {
 	return TcFlag(value)
 }
 
-// invert is a platform dependant way to bitwise NOT (~) TcFlag
-// as its length varies across platforms
-// It is only implemented for Unix like OSes
+// invert is a platform dependant way to bitwise NOT (~) TcFlag as its length varies across platforms.
+// It is only implemented for Unix like OSes.
 pub fn invert(value TcFlag) TcFlag {
 	return TcFlag(~int(value))
 }
 
-// tcgetattr is an unsafe wrapper around C.termios and keeps its semantic
+// tcgetattr is an unsafe wrapper around C.termios and keeps its semantic.
 // It is only implemented for Unix like OSes
 pub fn tcgetattr(fd int, mut t Termios) int {
 	$if wasm32_emscripten {
@@ -51,14 +49,14 @@ pub fn tcgetattr(fd int, mut t Termios) int {
 	return 0
 }
 
-// tcsetattr is an unsafe wrapper around C.termios and keeps its semantic
-// It is only implemented for Unix like OSes
+// tcsetattr is an unsafe wrapper around C.termios and keeps its semantic.
+// It is only implemented for Unix like OSes.
 pub fn tcsetattr(fd int, optional_actions int, mut t Termios) int {
 	eprintln('tcsetattr, fd: ${fd}, optional_actions: ${optional_actions}, t: ${t}')
 	return 0
 }
 
-// ioctl is an unsafe wrapper around C.ioctl and keeps its semantic
+// ioctl is an unsafe wrapper around C.ioctl and keeps its semantic.
 // It is only implemented for Unix like OSes
 pub fn ioctl(fd int, request u64, arg voidptr) int {
 	eprintln('ioctl, fd: ${fd}, request: ${request}, arg: ${arg}')
@@ -71,8 +69,7 @@ pub fn set_state(fd int, new_state Termios) int {
 	return 0
 }
 
-// disable_echo disables echoing characters as they are typed
-// when that Termios state is later set with termios.set_state(fd,t)
+// disable_echo disables echoing characters as they are typed, when that Termios state is later set with termios.set_state(fd,t).
 pub fn (mut t Termios) disable_echo() {
 	t.c_lflag &= invert(8)
 }

@@ -38,7 +38,7 @@ pub:
 	kind FdEventType
 }
 
-// new creates a new EpollNotifier
+// new creates a new EpollNotifier.
 // The FdNotifier interface is returned to allow OS specific
 // implementations without exposing the concrete type
 pub fn new() !FdNotifier {

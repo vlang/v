@@ -5,16 +5,15 @@ module term
 
 import strings
 
-// format_esc produces an ANSI escape code, for selecting the graphics rendition of the following
-// text. Each of the attributes that can be passed in `code`, separated by `;`, will be in effect,
+// format_esc produces an ANSI escape code, for selecting the graphics rendition of the following text.
+// Each of the attributes that can be passed in `code`, separated by `;`, will be in effect,
 // until the terminal encounters another SGR ANSI escape code. For more details about the different
 // codes, and their meaning, see: https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_(Select_Graphic_Rendition)_parameters
 pub fn format_esc(code string) string {
 	return '\x1b[${code}m'
 }
 
-// format returns ANSI escape coded `msg` formatted with a preceding
-// `open` and a succeeding `close`.
+// format returns ANSI escape coded `msg` formatted with a preceding `open` and a succeeding `close`.
 // For instance, `format('hi', '9', '29')` returns `'\x1b[9mhi\x1b[29m'`,
 // or 'hi' with strikethrough, where `'\x1b[9m'` represents
 // crossed out/strikethrough text and `'\x1b[29m'` turns off strikethrough.
@@ -22,8 +21,7 @@ pub fn format(msg string, open string, close string) string {
 	return '\x1b[${open}m${msg}\x1b[${close}m'
 }
 
-// format_rgb returns ANSI escape coded `msg` formatted with a preceding
-// `open`, a succeeding `close` and the provided RGB colors `r`, `g`, and `b`.
+// format_rgb returns ANSI escape coded `msg` formatted with a preceding `open`, a succeeding `close` and the provided RGB colors `r`, `g`, and `b`.
 pub fn format_rgb(r int, g int, b int, msg string, open string, close string) string {
 	return '\x1b[${open};2;${r};${g};${b}m${msg}\x1b[${close}m'
 }
@@ -42,14 +40,14 @@ pub fn bg_rgb(r int, g int, b int, msg string) string {
 	return format_rgb(r, g, b, msg, '48', '49')
 }
 
-// hex returns the `msg` with the foreground in the specified `hex` color
+// hex returns the `msg` with the foreground in the specified `hex` color.
 // For example, `rgb(255, 'hi')` returns the `'hi'` string in
 // blue color, which is `(0, 0, 255)` in RGB.
 pub fn hex(hex int, msg string) string {
 	return format_rgb(hex >> 16, (hex >> 8) & 0xFF, hex & 0xFF, msg, '38', '39')
 }
 
-// hex returns the `msg` with the background in the specified `hex` color
+// hex returns the `msg` with the background in the specified `hex` color.
 // For example, `bg_rgb(255, 'hi')` returns the `'hi'` string in
 // a background of blue color, which is `(0, 0, 255)` in RGB.
 pub fn bg_hex(hex int, msg string) string {
@@ -272,8 +270,7 @@ pub fn bright_bg_white(msg string) string {
 	return format(msg, '107', '49')
 }
 
-// highlight_command highlights the command with an on-brand background
-// to make CLI commands immediately recognizable.
+// highlight_command highlights the command with an on-brand background to make CLI commands immediately recognizable.
 pub fn highlight_command(command string) string {
 	return bright_white(bg_cyan(' ${command} '))
 }

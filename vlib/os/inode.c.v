@@ -36,8 +36,7 @@ pub:
 	execute bool
 }
 
-// bitmask returns a 3 bit sequence in the order RWE where
-// the bit is set to 1 if the value is true or 0 otherwise.
+// bitmask returns a 3 bit sequence in the order RWE, where the bit is set to 1 if the value is true or 0 otherwise.
 pub fn (p FilePermission) bitmask() u32 {
 	mut mask := u32(0)
 	if p.read {

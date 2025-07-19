@@ -59,8 +59,7 @@ pub fn decompress(data []u8, flags int) ![]u8 {
 // to pass arbitrary data, without having to create a closure.
 pub type ChunkCallback = fn (chunk []u8, userdata voidptr) int
 
-// decompress_with_callback decompresses an array of bytes based on the provided flags,
-// and a V fn callback to receive decompressed chunks, of at most 32 kilobytes each.
+// decompress_with_callback decompresses an array of bytes, based on the provided flags, and a V fn callback to receive decompressed chunks, of at most 32 kilobytes each.
 // It returns the total decompressed length, or a decompression error.
 // NB: this is a low level api, a high level implementation like zlib/gzip should be preferred.
 pub fn decompress_with_callback(data []u8, cb ChunkCallback, userdata voidptr, flags int) !u64 {

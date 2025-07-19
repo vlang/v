@@ -8,7 +8,7 @@ import rand.buffer
 
 pub const seed_len = 1
 
-// MuslRNG ported from https://git.musl-libc.org/cgit/musl/tree/src/prng/rand_r.c
+// MuslRNG ported from https://git.musl-libc.org/cgit/musl/tree/src/prng/rand_r.c .
 pub struct MuslRNG {
 	buffer.PRNGBuffer
 mut:

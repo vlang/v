@@ -66,8 +66,7 @@ pub fn levenshtein_distance(a string, b string) int {
 	return row[a.len]
 }
 
-// levenshtein_distance_percentage uses the Levenshtein Distance algorithm to calculate
-// how similar two strings are as a percentage (higher is closer).
+// levenshtein_distance_percentage uses the Levenshtein Distance algorithm to calculate how similar two strings are as a percentage (higher is closer).
 pub fn levenshtein_distance_percentage(a string, b string) f32 {
 	d := levenshtein_distance(a, b)
 	l := if a.len >= b.len { a.len } else { b.len }
@@ -124,8 +123,7 @@ pub fn hamming_distance(a string, b string) int {
 	return diff_count
 }
 
-// hamming_similarity uses the Hamming Distance algorithm to calculate
-// the distance between two strings `a` and `b`.
+// hamming_similarity uses the Hamming Distance algorithm to calculate the distance between two strings `a` and `b`.
 // It returns a coefficient between 0.0 (not similar) and 1.0 (exact match).
 pub fn hamming_similarity(a string, b string) f32 {
 	l := max2(a.len, b.len)

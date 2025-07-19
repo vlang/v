@@ -458,7 +458,7 @@ mut:
 	ctx &C.ZSTD_CCtx
 }
 
-// new_cctx create a compression context
+// new_cctx create a compression context.
 // extra compression parameters can be set by `params`
 pub fn new_cctx(params CompressParams) !&CCtx {
 	mut ctx := C.ZSTD_createCCtx()
@@ -492,7 +492,7 @@ pub fn (mut c CCtx) compress_stream2(output &OutBuffer, input &InBuffer, mode En
 	return res
 }
 
-// free_cctx free a compression context
+// free_cctx free a compression context.
 pub fn (mut c CCtx) free_cctx() usize {
 	return C.ZSTD_freeCCtx(c.ctx)
 }
@@ -506,7 +506,7 @@ mut:
 	ctx &C.ZSTD_DCtx
 }
 
-// new_dctx creates a decompression context
+// new_dctx creates a decompression context.
 // extra decompression parameters can be set by `params`
 pub fn new_dctx(params DecompressParams) !&DCtx {
 	mut ctx := C.ZSTD_createDCtx()

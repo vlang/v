@@ -34,7 +34,7 @@ pub mut:
 	create_no_window bool     // sets a value indicating whether to start the process in a new window, The default is false; used only by the windows implementation
 }
 
-// new_process - create a new process descriptor
+// new_process - create a new process descriptor.
 // Note: new does NOT start the new process.
 // That is done because you may want to customize it first,
 // by calling different set_ methods on it.
@@ -46,7 +46,7 @@ pub fn new_process(filename string) &Process {
 	}
 }
 
-// set_args - set the arguments for the new process
+// set_args - set the arguments for the new process.
 pub fn (mut p Process) set_args(pargs []string) {
 	if p.status != .not_started {
 		return
@@ -55,7 +55,7 @@ pub fn (mut p Process) set_args(pargs []string) {
 	return
 }
 
-// set_work_folder - set the initial working folder for the new process
+// set_work_folder - set the initial working folder for the new process.
 // If you do not set it, it will reuse the current working folder of the parent process.
 pub fn (mut p Process) set_work_folder(path string) {
 	if p.status != .not_started {
@@ -65,7 +65,7 @@ pub fn (mut p Process) set_work_folder(path string) {
 	return
 }
 
-// set_environment - set a custom environment variable mapping for the new process
+// set_environment - set a custom environment variable mapping for the new process.
 pub fn (mut p Process) set_environment(envs map[string]string) {
 	if p.status != .not_started {
 		return

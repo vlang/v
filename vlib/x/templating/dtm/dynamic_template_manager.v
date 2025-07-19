@@ -38,7 +38,6 @@ const message_signature_info = '[Dynamic Template Manager] Info :'
 const message_signature_error = '[Dynamic Template Manager] Error :'
 const message_signature_warn = '[Dynamic Template Manager] Warning :'
 
-// CacheStorageMode
 pub enum CacheStorageMode {
 	memory
 	disk
@@ -57,7 +56,6 @@ enum TemplateType {
 	text
 }
 
-// DynamicTemplateManager
 @[heap]
 pub struct DynamicTemplateManager {
 mut:
@@ -180,14 +178,12 @@ pub:
 // A cache directory can be created by the user for storage. If it is not defined or encounters issues such as permission problems,
 // the DTM will attempt to create it in the OS's temporary area. If this proves impossible, the cache system will be deactivated and the user will be informed if cache system was required.
 // Initialisation params are :
-//
 // - def_cache_path 'type string' User can define the path of cache folder.
 // - max_size_data_in_mem 'type int' Maximum size of data allowed in memory for caching. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB)	
 // - compress_html: 'type bool' Light compress of the HTML output. ( default is true )
 // - active_cache_server: 'type bool' Activate or not the template cache system. ( default is true )
 // - test_cache_dir: 'type string' Used only for DTM internal test file, parameter is ignored otherwise.
 // - test_template_dir: 'type string' Used only for DTM internal test file, parameter is ignored otherwise.
-//
 pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &DynamicTemplateManager {
 	mut dir_path := ''
 	mut dir_html_path := ''
@@ -354,9 +350,10 @@ pub fn (mut tm DynamicTemplateManager) expand(tmpl_path string, tmpl_var Templat
 	}
 }
 
-// stop_cache_handler signals the termination of the cache handler by setting 'close_cache_handler' to true and sending a signal through the channel
-// which will trigger a cascading effect to close the cache handler thread as well as the DTM clock thread.
-//
+// stop_cache_handler signals the termination of the cache handler.
+// It does so by setting 'close_cache_handler' to true, and sending a signal
+// through the channel which will trigger a cascading effect to close the cache
+// handler thread as well as the DTM clock thread.
 pub fn (mut tm DynamicTemplateManager) stop_cache_handler() {
 	if tm.active_cache_server {
 		tm.active_cache_server = false
@@ -368,19 +365,15 @@ pub fn (mut tm DynamicTemplateManager) stop_cache_handler() {
 	}
 }
 
-// fn check_and_clear_cache_files()
-//
-// Used exclusively during the initialization of the DTM (Dynamic Template Manager).
+// check_and_clear_cache_files is used exclusively during the initialization of the DTM (Dynamic Template Manager).
 // Its primary purpose is to ensure a clean starting environment by clearing all files
 // within the designated cache directory. It iterates through the directory, listing all files,
 // and systematically removes each file found, ensuring that no residual cache data persists
 // from previous executions. Additionally, this function also tests the read and write permissions
 // of the cache directory to ensure that the application has the necessary access to properly manage the cache files.
-//
 // WARNING: When setting the directory for caching files and for testing purposes,
 // this function will delete all "*.cache" or "*.tmp" files inside the cache directory in the project root's. Ensure that
 // directory used for the cache does not contain any important files.
-//
 fn check_and_clear_cache_files(c_folder string) ! {
 	//	println('${message_signature} WARNING! DTM needs to perform some file tests in the cache directory. This operation will erase all "*.cache" or "*.tmp" files content in the folder : "${tm.template_cache_folder}"')
 	//	println('Do you want to continue the operation? (yes/no)')
@@ -416,14 +409,11 @@ fn check_and_clear_cache_files(c_folder string) ! {
 	//	}
 }
 
-// fn (mut DynamicTemplateManager) check_tmpl_and_placeholders_size(string, &map[string]DtmMultiTypeMap) return !(string, string, string, TemplateType)
-//
-// Used exclusively in the 'expand' function, this check verifies if the template file exists.
+// check_tmpl_and_placeholders_size is used exclusively in the 'expand' function, this check verifies if the template file exists.
 // It also ensures the file extension is correct ( like HTML or TXT ) and controls the size of placeholder keys and values in the provided map,
 // offering a basic validation and security measure against excessively long and potentially harmful inputs.
 // Size limits are defined by the 'max_placeholders_key_size' and 'max_placeholders_value_size' constants.
 // Monitor dynamic content for updates by generating a checksum that is compared against the cached version to verify any changes.
-//
 fn (mut tm DynamicTemplateManager) check_tmpl_and_placeholders_size(f_path string, tmpl_var &map[string]DtmMultiTypeMap) !(string, string, string, TemplateType) {
 	mut html_file := ''
 	mut file_name := ''
@@ -510,10 +500,8 @@ fn (mut tm DynamicTemplateManager) check_tmpl_and_placeholders_size(f_path strin
 	return html_file, file_name, res_checksum_content, define_file_type
 }
 
-// fn (mut DynamicTemplateManager) create_template_cache_and_display(CacheRequest, i64, i64, string, string, i64, &map[string]DtmMultiTypeMap, string, TemplateType) return string
-//
-// Exclusively invoked from `expand`.
-// It role is generate the template rendering and relaying information
+// create_template_cache_and_display is exclusively invoked from `expand`.
+// It generates the template rendering and relaying information
 // to the cache manager for either the creation or updating of the template cache.
 // It begin to starts by ensuring that the cache delay expiration is correctly set by user.
 // It then parses the template file, replacing placeholders with actual dynamics/statics values.
@@ -521,7 +509,6 @@ fn (mut tm DynamicTemplateManager) check_tmpl_and_placeholders_size(f_path strin
 // the function constructs a `TemplateCache` request with all the necessary details.
 // This request is then sent to the cache handler channel, signaling either the need for a new cache or an update to an existing one.
 // The function returns the rendered immediately, without waiting for the cache to be created or updated.
-//
 fn (mut tm DynamicTemplateManager) create_template_cache_and_display(tcs CacheRequest, last_template_mod i64,
 	unique_time i64, file_path string, tmpl_name string, cache_delay_expiration i64, placeholders &map[string]DtmMultiTypeMap,
 	current_content_checksum string, tmpl_type TemplateType) string {
@@ -567,13 +554,10 @@ fn (mut tm DynamicTemplateManager) create_template_cache_and_display(tcs CacheRe
 	return html
 }
 
-// fn (DynamicTemplateManager) create_temp_cache(&string, string, i64) return (bool, string)
-//
-// This function is responsible for creating a temporary cache file, which is subsequently used exclusively by the cache manager.
+// create_temp_cache is responsible for creating a temporary cache file, which is subsequently used exclusively by the cache manager.
 // It generates a temporary file name using a checksum based on the timestamp and the file path.
 // The content is then written to this file, located in the designated cache folder.
 // If the operation is successful, a boolean is returned to allow for the sending of a create or modify request to the cache manager.
-//
 fn (tm DynamicTemplateManager) create_temp_cache(html &string, f_path string, ts i64) (bool, string) {
 	// Extracts the base file name with extension from the given file path.
 	file_name_with_ext := os.base(f_path)
@@ -602,10 +586,7 @@ fn (tm DynamicTemplateManager) create_temp_cache(html &string, f_path string, ts
 	return true, tmp_name
 }
 
-// fn (mut DynamicTemplateManager) get_cache(string, string, &map[string]DtmMultiTypeMap) return string
-//
-// Exclusively invoked from `expand', retrieves the rendered HTML from the cache.
-//
+// get_cache is exclusively invoked from `expand', retrieves the rendered HTML from the cache.
 fn (mut tm DynamicTemplateManager) get_cache(name string, path string, placeholders &map[string]DtmMultiTypeMap) string {
 	mut html := ''
 	// Lock the cache database for writing.
@@ -636,11 +617,8 @@ fn (mut tm DynamicTemplateManager) get_cache(name string, path string, placehold
 	return html
 }
 
-// fn (mut DynamicTemplateManager) return_cache_info_isexistent(string) return (bool, int, string, i64, i64, i64, string)
-//
-// Exclusively used in 'expand' to determine whether a cache exists for the provided HTML template.
+// return_cache_info_isexistent is exclusively used in 'expand' to determine whether a cache exists for the provided HTML template.
 // If a cache exists, it returns the necessary information for its transformation. If not, it indicates the need to create a new cache.
-//
 fn (mut tm DynamicTemplateManager) return_cache_info_isexistent(tmpl_path string) (bool, int, string, i64, i64, i64, string) {
 	// Lock the cache database for writing.
 	rlock tm.template_caches {
@@ -687,13 +665,9 @@ fn (mut tm DynamicTemplateManager) return_cache_info_isexistent(tmpl_path string
 	return false, 0, '', 0, 0, 0, ''
 }
 
-// fn (mut DynamicTemplateManager) remaining_template_request(bool, int)
-//
-// This function manages the counter in 'nbr_of_remaining_template_request', which tracks the number of requests that have started or finished for a specific cache.
-// It updates this information accordingly.
+// remaining_template_request manages the counter in 'nbr_of_remaining_template_request', which tracks the number of requests that have started or finished for a specific cache.
 // Moreover, this function sends a cache deletion callback request when the cache manager had previously been instructed to delete the cache but was unable to do because,
 // it was still in use.
-//
 fn (mut tm DynamicTemplateManager) remaining_template_request(b bool, v int) {
 	// Lock the remaining template request process for reading and writing.
 	lock tm.nbr_of_remaining_template_request {
