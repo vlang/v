@@ -371,6 +371,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.ChanInit {
 			w.expr(node.cap_expr)
+			w.mark_by_type(node.typ)
 		}
 		ast.ConcatExpr {
 			w.exprs(node.vals)
@@ -665,7 +666,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.stmts(branch.stmts)
 			}
 		}
-		ast.TypeNode {}
+		ast.TypeNode {
+			w.mark_by_type(node.typ)
+		}
 		ast.UnsafeExpr {
 			w.expr(node.expr)
 		}
@@ -895,7 +898,7 @@ pub fn (mut w Walker) mark_by_type(typ ast.Type) {
 	if typ.has_flag(.generic) {
 		return
 	}
-	sym := w.table.final_sym(typ)
+	sym := w.table.sym(typ)
 	w.mark_by_sym(sym)
 }
 
@@ -919,7 +922,7 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 						}
 					}
 					match fsym.info {
-						ast.Struct, ast.SumType, ast.FnType, ast.Alias {
+						ast.Struct, ast.SumType, ast.FnType, ast.Alias, ast.Chan {
 							w.mark_by_sym(fsym)
 						}
 						ast.Array, ast.ArrayFixed {
@@ -970,6 +973,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			for typ in isym.info.types {
 				w.mark_by_type(typ)
 			}
+		}
+		ast.Chan {
+			w.mark_by_type(isym.info.elem_type)
 		}
 		else {}
 	}

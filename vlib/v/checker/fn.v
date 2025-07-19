@@ -1881,7 +1881,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.return_type = typ
 			c.register_trace_call(node, func)
 			if func.return_type.has_flag(.generic) && c.table.sym(typ).kind == .multi_return {
-				c.table.used_features.comptime_syms[typ] = true
+				c.table.used_features.comptime_syms[typ.clear_option_and_result()] = true
 			}
 			return typ
 		}

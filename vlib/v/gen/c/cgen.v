@@ -7829,14 +7829,16 @@ fn (mut g Gen) interface_table() string {
 			if st_sym_info.info is ast.Struct && st_sym_info.info.is_unresolved_generic() {
 				continue
 			}
-			if g.pref.skip_unused && st_sym_info.kind == .struct
-				&& st_sym_info.idx !in g.table.used_features.used_syms {
-				continue
-			}
 			st_sym := g.table.sym(ast.mktyp(st))
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(ast.mktyp(st), true)
+			cctype2 := if g.pref.skip_unused && st_sym_info.kind == .struct
+				&& st_sym_info.idx !in g.table.used_features.used_syms {
+				'void'
+			} else {
+				cctype
+			}
 			$if debug_interface_table ? {
 				eprintln('>> interface name: ${isym.name} | concrete type: ${st.debug()} | st symname: ${st_sym.name}')
 			}
@@ -7847,7 +7849,7 @@ fn (mut g Gen) interface_table() string {
 			}
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
-			sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype}* x);')
+			sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype2}* x);')
 			mut cast_struct := strings.new_builder(100)
 			cast_struct.writeln('(${interface_name}) {')
 			cast_struct.writeln('\t\t._${cctype} = x,')
@@ -7895,7 +7897,7 @@ fn (mut g Gen) interface_table() string {
 			}
 
 			cast_functions.writeln('
-static inline ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype}* x) {
+static inline ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype2}* x) {
 return ${cast_struct_str};
 }')
 
@@ -8007,7 +8009,7 @@ return ${cast_shared_struct_str};
 				}
 				styp := g.cc_type(method.params[0].typ, true)
 				mut method_call := '${styp}_${name}'
-				if !method.params[0].typ.is_ptr() {
+				if cctype == cctype2 && !method.params[0].typ.is_ptr() {
 					if method.name !in aliased_method_names {
 						method_call = '${cctype}_${name}'
 					} else {
