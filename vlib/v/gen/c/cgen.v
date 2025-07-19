@@ -7854,38 +7854,42 @@ fn (mut g Gen) interface_table() string {
 			cast_struct.writeln('(${interface_name}) {')
 			cast_struct.writeln('\t\t._${cctype2} = x,')
 			cast_struct.writeln('\t\t._typ = ${interface_index_name},')
-			for field in inter_info.fields {
-				cname := c_name(field.name)
-				field_styp := g.styp(field.typ)
-				if _ := st_sym.find_field(field.name) {
-					cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype2}, ${cname})),')
-				} else if st_sym.kind == .array
-					&& field.name in ['element_size', 'data', 'offset', 'len', 'cap', 'flags'] {
-					// Manually checking, we already knows array contains above fields
-					cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype2}, ${cname})),')
-				} else {
-					// the field is embedded in another struct
-					cast_struct.write_string('\t\t.${cname} = (${field_styp}*)((char*)x')
-					if st != ast.voidptr_type && st != ast.nil_type {
-						if st_sym.kind == .struct {
-							if _, embeds := g.table.find_field_from_embeds(st_sym, field.name) {
-								mut typ_name := ''
-								for i, embed in embeds {
-									esym := g.table.sym(embed)
-									if i == 0 {
-										cast_struct.write_string(' + __offsetof_ptr(x, ${cctype}, ${esym.embed_name()})')
-									} else {
-										cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${esym.embed_name()})')
+			if cctype == cctype2 {
+				for field in inter_info.fields {
+					cname := c_name(field.name)
+					field_styp := g.styp(field.typ)
+					if _ := st_sym.find_field(field.name) {
+						cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype2}, ${cname})),')
+					} else if st_sym.kind == .array
+						&& field.name in ['element_size', 'data', 'offset', 'len', 'cap', 'flags'] {
+						// Manually checking, we already knows array contains above fields
+						cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype2}, ${cname})),')
+					} else {
+						// the field is embedded in another struct
+						cast_struct.write_string('\t\t.${cname} = (${field_styp}*)((char*)x')
+						if st != ast.voidptr_type && st != ast.nil_type {
+							if st_sym.kind == .struct {
+								if _, embeds := g.table.find_field_from_embeds(st_sym,
+									field.name)
+								{
+									mut typ_name := ''
+									for i, embed in embeds {
+										esym := g.table.sym(embed)
+										if i == 0 {
+											cast_struct.write_string(' + __offsetof_ptr(x, ${cctype}, ${esym.embed_name()})')
+										} else {
+											cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${esym.embed_name()})')
+										}
+										typ_name = esym.cname
 									}
-									typ_name = esym.cname
-								}
-								if embeds.len > 0 {
-									cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${cname})')
+									if embeds.len > 0 {
+										cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${cname})')
+									}
 								}
 							}
 						}
+						cast_struct.writeln('),')
 					}
-					cast_struct.writeln('),')
 				}
 			}
 			cast_struct.write_string('\t}')
