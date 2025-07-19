@@ -726,8 +726,8 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 		sym := w.table.final_sym(embed)
 		if sym.info is ast.Struct {
 			w.a_struct_info(sym.name, sym.info)
-			w.mark_by_sym(sym)
 		}
+		w.mark_by_sym(sym)
 	}
 }
 
