@@ -227,6 +227,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				}
 			} else {
 				if exp_type_sym.kind == .interface {
+					if c.pref.skip_unused && got_types[i].has_flag(.generic) {
+						c.table.used_features.comptime_syms[got_type] = true
+					}
 					if c.type_implements(got_type, exp_type, node.pos) {
 						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface
 							&& !c.inside_unsafe {

@@ -167,6 +167,14 @@ pub fn (mut w Walker) mark_markused_globals() {
 	}
 }
 
+pub fn (mut w Walker) mark_markused_syms() {
+	for sym in w.table.type_symbols {
+		if sym.info is ast.Struct && sym.info.is_markused {
+			w.mark_by_sym(sym)
+		}
+	}
+}
+
 pub fn (mut w Walker) mark_struct_field_default_expr() {
 	for sfkey, mut structfield in w.all_fields {
 		if structfield.has_default_expr {
@@ -446,29 +454,32 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.left)
 			w.expr(node.right)
 			w.or_block(node.or_block)
-			if node.left_type == 0 {
-				return
-			}
-			sym := w.table.sym(node.left_type)
-			if sym.kind == .struct {
-				if opmethod := sym.find_method(node.op.str()) {
-					unsafe {
-						w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
+			if node.left_type != 0 {
+				sym := w.table.sym(node.left_type)
+				if sym.kind == .struct {
+					if opmethod := sym.find_method(node.op.str()) {
+						unsafe {
+							w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
+						}
 					}
 				}
 			}
-			if node.right_type == 0 {
-				return
+			right_type := if node.right_type == 0 && mut node.right is ast.TypeNode {
+				node.right.typ
+			} else {
+				node.right_type
 			}
-			right_sym := w.table.sym(node.right_type)
-			if node.op in [.not_in, .key_in] {
-				if right_sym.kind == .map {
-					w.features.used_maps++
-				} else if right_sym.kind == .array {
-					w.features.used_arrays++
+			if right_type != 0 {
+				right_sym := w.table.sym(right_type)
+				if node.op in [.not_in, .key_in] {
+					if right_sym.kind == .map {
+						w.features.used_maps++
+					} else if right_sym.kind == .array {
+						w.features.used_arrays++
+					}
+				} else if node.op in [.key_is, .not_is] {
+					w.mark_by_sym(right_sym)
 				}
-			} else if node.op in [.key_is, .not_is] {
-				w.mark_by_sym(right_sym)
 			}
 		}
 		ast.IfGuardExpr {
@@ -565,6 +576,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.SizeOf, ast.IsRefType {
 			w.expr(node.expr)
+			if node.typ != 0 {
+				w.mark_by_type(node.typ)
+			}
 		}
 		ast.StringInterLiteral {
 			w.used_interp++
@@ -867,6 +881,7 @@ pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.
 		w.mark_by_type(return_type)
 	}
 	for param in params {
+		println('>>> ${param.name} | ${w.table.type_to_str(param.typ)}')
 		w.mark_by_type(param.typ)
 	}
 }

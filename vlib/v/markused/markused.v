@@ -451,6 +451,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	)
 	walker.mark_markused_consts() // tagged with `@[markused]`
 	walker.mark_markused_globals() // tagged with `@[markused]`
+	walker.mark_markused_syms() // tagged with `@[markused]`
 	walker.mark_markused_fns() // tagged with `@[markused]`, `@[export]` and veb actions
 	walker.mark_struct_field_default_expr()
 

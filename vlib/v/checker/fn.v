@@ -1880,6 +1880,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if typ := c.table.convert_generic_type(func.return_type, func.generic_names, concrete_types) {
 			node.return_type = typ
 			c.register_trace_call(node, func)
+			if func.return_type.has_flag(.generic) && c.table.sym(typ).kind == .multi_return {
+				c.table.used_features.comptime_syms[typ] = true
+			}
 			return typ
 		}
 	}
@@ -1892,8 +1895,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		ret_type := c.resolve_fn_return_type(func, node, concrete_types)
 		c.register_trace_call(node, func)
 		node.return_type = ret_type
-		if c.table.sym(ret_type).kind == .multi_return {
-			c.table.used_features.comptime_syms[c.unwrap_generic(ret_type)] = true
+		if ret_type.has_flag(.generic) {
+			unwrapped_ret := c.unwrap_generic(ret_type)
+			if c.table.sym(unwrapped_ret).kind == .multi_return {
+				c.table.used_features.comptime_syms[unwrapped_ret] = true
+			}
 		}
 		return ret_type
 	}

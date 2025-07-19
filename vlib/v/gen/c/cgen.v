@@ -1875,7 +1875,11 @@ pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 		if mk_typ != variant && mk_typ in info.types {
 			continue
 		}
-		vcname := g.table.sym(mk_typ).cname
+		vsym := g.table.sym(mk_typ)
+		if g.pref.skip_unused && vsym.idx !in g.table.used_features.used_syms {
+			continue
+		}
+		vcname := vsym.cname
 		g.type_definitions.writeln('\t\t${vcname}* _${vcname};')
 	}
 	g.type_definitions.writeln('\t};')
