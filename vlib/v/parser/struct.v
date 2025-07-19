@@ -284,6 +284,22 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					// error is set in parse_type
 					return ast.StructDecl{}
 				}
+
+				// for field_name []fn, cgen will generate closure, so detect here
+				if p.file_backend_mode == .v || p.file_backend_mode == .c {
+					sym := p.table.sym(typ)
+					mut elem_kind := ast.Kind.placeholder
+					if sym.kind == .array && (sym.info is ast.Array || sym.info is ast.Alias) {
+						elem_kind = p.table.sym(sym.array_info().elem_type).kind
+					} else if sym.kind == .array_fixed
+						&& (sym.info is ast.ArrayFixed || sym.info is ast.Alias) {
+						elem_kind = p.table.sym(sym.array_fixed_info().elem_type).kind
+					}
+					if elem_kind == .function {
+						p.register_auto_import('builtin.closure')
+					}
+				}
+
 				field_pos = field_start_pos.extend(p.prev_tok.pos())
 				if typ.has_option_or_result() {
 					option_pos = p.peek_token(-2).pos()
