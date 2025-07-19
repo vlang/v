@@ -691,6 +691,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	for arg in node.args {
 		w.expr(arg.expr)
 	}
+	for concrete_type in node.concrete_types {
+		w.mark_by_type(concrete_type)
+	}
 	if node.language == .c {
 		if node.name in ['C.wyhash', 'C.wyhash64'] {
 			w.features.used_maps++
@@ -914,14 +917,8 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 						}
 					}
 					match fsym.info {
-						ast.Struct, ast.SumType, ast.FnType {
+						ast.Struct, ast.SumType, ast.FnType, ast.Alias {
 							w.mark_by_sym(fsym)
-						}
-						ast.Alias {
-							value_sym := w.table.final_sym(ifield.typ)
-							if value_sym.info is ast.Struct {
-								w.mark_by_sym(value_sym)
-							}
 						}
 						ast.Array, ast.ArrayFixed {
 							w.features.used_arrays++
@@ -955,6 +952,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			w.mark_by_type(isym.info.key_type)
 			w.mark_by_type(isym.info.value_type)
 			w.features.used_maps++
+		}
+		ast.Alias {
+			w.mark_by_type(isym.info.parent_type)
 		}
 		ast.FnType {
 			for param in isym.info.func.params {
