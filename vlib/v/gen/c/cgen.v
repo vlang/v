@@ -7852,8 +7852,13 @@ fn (mut g Gen) interface_table() string {
 			sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype2}* x);')
 			mut cast_struct := strings.new_builder(100)
 			cast_struct.writeln('(${interface_name}) {')
-			cast_struct.writeln('\t\t._${cctype} = x,')
-			cast_struct.writeln('\t\t._typ = ${interface_index_name},')
+			if cctype == cctype2 {
+				cast_struct.writeln('\t\t._${cctype} = x,')
+				cast_struct.writeln('\t\t._typ = ${interface_index_name},')
+			} else {
+				cast_struct.writeln('\t\t._voidptr = x,')
+				cast_struct.writeln('\t\t._typ = _${interface_name}_voidptr_index,')
+			}
 			for field in inter_info.fields {
 				cname := c_name(field.name)
 				field_styp := g.styp(field.typ)
