@@ -203,14 +203,13 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			w.stmts(node.stmts)
 		}
 		ast.ComptimeFor {
-			fsym := w.table.final_sym(node.typ)
-			if fsym.kind == .sum_type {
-				w.mark_by_sym(fsym)
-			} else if fsym.info is ast.Struct {
-				w.a_struct_info(fsym.name, fsym.info)
-				w.mark_by_sym(fsym)
-			}
+			w.mark_by_type(node.typ)
 			w.stmts(node.stmts)
+			w.mark_by_sym_name('EnumData')
+			w.mark_by_sym_name('FieldData')
+			w.mark_by_sym_name('FunctionData')
+			w.mark_by_sym_name('MethodParam')
+			w.mark_by_sym_name('VariantData')
 		}
 		ast.ConstDecl {
 			w.const_fields(node.fields)
@@ -337,13 +336,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.fn_decl(mut node.decl)
 		}
 		ast.ArrayInit {
-			sym := w.table.final_sym(node.elem_type)
-			if sym.info is ast.Struct {
-				w.a_struct_info(sym.name, sym.info)
-				w.mark_by_sym(sym)
-			} else if sym.info is ast.SumType {
-				w.mark_by_sym(sym)
-			}
+			w.mark_by_type(node.elem_type)
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
@@ -358,14 +351,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.CallExpr {
 			w.call_expr(mut node)
+			if node.name == 'json.decode' {
+				w.mark_by_type((node.args[0].expr as ast.TypeNode).typ)
+			}
 		}
 		ast.CastExpr {
 			w.expr(node.expr)
 			w.expr(node.arg)
-			esym := w.table.final_sym(node.typ)
-			if esym.kind == .sum_type {
-				w.mark_by_sym(esym)
-			}
+			w.mark_by_type(node.typ)
 			if node.typ.has_flag(.option) {
 				w.used_option++
 			}
@@ -423,27 +416,33 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				return
 			}
 			sym := w.table.final_sym(node.left_type)
-			if sym.kind == .map {
+			if sym.info is ast.Map {
 				if node.is_setter {
 					w.mark_builtin_map_method_as_used('set')
 				} else {
 					w.mark_builtin_map_method_as_used('get')
 				}
-
+				w.mark_by_sym(w.table.sym(sym.info.key_type))
+				w.mark_by_sym(w.table.sym(sym.info.value_type))
 				w.features.used_maps++
-			} else if sym.kind == .array {
+			} else if sym.info is ast.Array {
 				if node.is_setter {
 					w.mark_builtin_array_method_as_used('set')
 				} else {
 					w.mark_builtin_array_method_as_used('get')
 				}
-
+				w.mark_by_sym(w.table.sym(sym.info.elem_type))
 				w.features.used_arrays++
 			} else if sym.kind == .string {
 				if node.index is ast.RangeExpr {
 					w.mark_builtin_array_method_as_used('slice')
 					w.features.range_index = true
 				}
+			} else if sym.info is ast.Struct {
+				w.a_struct_info(sym.name, sym.info)
+				w.mark_by_sym(sym)
+			} else if sym.info is ast.SumType {
+				w.mark_by_sym(sym)
 			}
 		}
 		ast.InfixExpr {
@@ -472,13 +471,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.features.used_arrays++
 				}
 			} else if node.op in [.key_is, .not_is] {
-				if right_sym.kind == .sum_type {
-					w.mark_by_sym(right_sym)
-				}
+				w.mark_by_sym(right_sym)
 			}
 		}
 		ast.IfGuardExpr {
 			w.expr(node.expr)
+			if node.expr_type != 0 {
+				w.mark_by_type(node.expr_type)
+			}
 		}
 		ast.IfExpr {
 			w.expr(node.left)
@@ -521,9 +521,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			ksym := w.table.final_sym(mapinfo.key_type)
 			vsym := w.table.final_sym(mapinfo.value_type)
 			if node.typ.has_flag(.shared_f) {
-				println('achou shared')
 				if sym := w.table.find_sym('sync.RwMutex') {
-					println('achou rxmutex')
 					w.mark_by_sym(sym)
 				}
 			}
@@ -581,7 +579,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				esym := w.table.sym(node.expr_type)
 				if esym.kind == .interface {
 					w.mark_interface_by_symbol(esym)
-				} else if esym.kind == .sum_type {
+				} else {
 					w.mark_by_sym(esym)
 				}
 				if method := w.table.find_method(w.table.sym(node.expr_type), node.field_name) {
@@ -606,7 +604,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if sym.info is ast.Struct {
 				w.a_struct_info(sym.name, sym.info)
 				w.mark_by_sym(sym)
-			} else if sym.info is ast.SumType {
+			} else {
 				w.mark_by_sym(sym)
 			}
 			if node.has_update_expr {
@@ -749,10 +747,8 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 		rsym := w.table.final_sym(node.receiver.typ.idx())
 		if rsym.info is ast.Struct {
 			w.a_struct_info(rsym.name, rsym.info)
-			w.mark_by_sym(rsym)
-		} else if rsym.kind == .sum_type {
-			w.mark_by_sym(rsym)
 		}
+		w.mark_by_sym(rsym)
 	}
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
@@ -946,10 +942,8 @@ pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.
 				tsym := w.table.final_sym(typ)
 				if tsym.info is ast.Struct {
 					w.a_struct_info(tsym.name, tsym.info)
-					w.mark_by_sym(tsym)
-				} else if tsym.kind == .sum_type {
-					w.mark_by_sym(tsym)
 				}
+				w.mark_by_sym(tsym)
 			}
 		}
 	}
@@ -967,29 +961,15 @@ pub fn (mut w Walker) mark_by_sym_name(name string) {
 	}
 }
 
-pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
-	if isym.idx in w.used_syms {
-		return
+pub fn (mut w Walker) mark_by_type(typ ast.Type) {
+	sym := w.table.final_sym(typ)
+	if sym.info is ast.Struct {
+		w.a_struct_info(sym.name, sym.info)
 	}
-	w.used_syms[isym.idx] = true
-	if isym.info is ast.SumType {
-		for typ in isym.info.variants {
-			if typ == ast.map_type {
-				w.features.used_maps++
-				continue
-			}
-			vsym := w.table.final_sym(typ)
-			if vsym.kind == .sum_type {
-				w.mark_by_sym(vsym)
-			} else if vsym.info is ast.Struct {
-				w.a_struct_info(vsym.name, vsym.info)
-				w.mark_by_sym(vsym)
-			}
-		}
-	}
+	w.mark_by_sym(sym)
 }
 
-pub fn (mut w Walker) mark_by_sym_and_fields(isym ast.TypeSymbol) {
+pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 	if isym.idx in w.used_syms {
 		return
 	}
@@ -998,14 +978,22 @@ pub fn (mut w Walker) mark_by_sym_and_fields(isym ast.TypeSymbol) {
 		for field in isym.info.fields {
 			fsym := w.table.final_sym(field.typ)
 			if fsym.info is ast.Array {
-				w.mark_by_sym_and_fields(w.table.sym(fsym.info.elem_type))
+				w.mark_by_sym(w.table.sym(fsym.info.elem_type))
 			} else if fsym.info is ast.Struct {
-				w.mark_by_sym_and_fields(fsym)
+				w.mark_by_sym(fsym)
 			} else if fsym.info is ast.SumType {
-				w.mark_by_sym_and_fields(fsym)
+				w.mark_by_sym(fsym)
 			}
 		}
 	} else if isym.info is ast.Array {
-		w.mark_by_sym_and_fields(w.table.sym(isym.info.elem_type))
+		w.mark_by_sym(w.table.sym(isym.info.elem_type))
+	} else if isym.info is ast.SumType {
+		for typ in isym.info.variants {
+			if typ == ast.map_type {
+				w.features.used_maps++
+				continue
+			}
+			w.mark_by_type(typ)
+		}
 	}
 }

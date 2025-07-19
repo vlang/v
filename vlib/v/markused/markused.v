@@ -459,7 +459,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 
 	for k, _ in table.used_features.comptime_syms {
-		walker.mark_by_sym_and_fields(table.type_symbols[k])
+		walker.mark_by_sym(table.type_symbols[k])
 	}
 
 	walker.mark_root_fns(all_fn_root_names)
@@ -536,11 +536,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	if (walker.used_option + walker.used_result + walker.used_none) > 0 {
 		walker.mark_const_as_used('none__')
 	}
-	walker.mark_by_sym_name('EnumData')
-	walker.mark_by_sym_name('FieldData')
-	walker.mark_by_sym_name('FunctionData')
-	walker.mark_by_sym_name('MethodParam')
-	walker.mark_by_sym_name('VariantData')
 	walker.mark_by_sym_name('array')
 
 	if table.used_features.asserts {
