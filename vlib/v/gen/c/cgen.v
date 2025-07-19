@@ -6409,6 +6409,9 @@ fn (mut g Gen) write_debug_calls_typeof_functions() {
 			if sum_info.is_generic {
 				continue
 			}
+			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+				continue
+			}
 			g.writeln('\tv_typeof_sumtype_${sym.cname}(0);')
 		}
 		if sym.kind == .interface {
