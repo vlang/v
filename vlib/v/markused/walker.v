@@ -592,17 +592,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.order_expr)
 			w.expr(node.limit_expr)
 			w.expr(node.where_expr)
+			w.mark_by_type(node.typ)
 		}
 		ast.StructInit {
 			if node.typ == 0 {
 				return
 			}
 			sym := w.table.sym(node.typ)
-			if sym.info is ast.Struct {
-				w.mark_by_sym(sym)
-			} else {
-				w.mark_by_sym(sym)
-			}
+			w.mark_by_sym(sym)
 			if node.has_update_expr {
 				w.expr(node.update_expr)
 			}
