@@ -1977,7 +1977,6 @@ pub fn (mut g Gen) write_multi_return_types() {
 			continue
 		}
 		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
-			println('>>>> skip ${sym.name}')
 			continue
 		}
 		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
