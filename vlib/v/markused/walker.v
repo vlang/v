@@ -523,7 +523,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.expr(node.high)
 			}
 		}
-		ast.SizeOf, ast.IsRefType {
+		ast.AlignOf, ast.SizeOf, ast.IsRefType {
 			w.expr(node.expr)
 		}
 		ast.StringInterLiteral {
