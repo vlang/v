@@ -7833,12 +7833,12 @@ fn (mut g Gen) interface_table() string {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(ast.mktyp(st), true)
-			cctype2 := if g.pref.skip_unused && st_sym_info.kind == .struct
-				&& st_sym_info.idx !in g.table.used_features.used_syms {
-				'void'
+			cctype2 := if g.pref.skip_unused && st_sym_info.idx !in g.table.used_features.used_syms {
+				'voidptr'
 			} else {
 				cctype
 			}
+			cctype_param := if cctype == cctype2 { cctype } else { 'void' }
 			$if debug_interface_table ? {
 				eprintln('>> interface name: ${isym.name} | concrete type: ${st.debug()} | st symname: ${st_sym.name}')
 			}
@@ -7849,25 +7849,20 @@ fn (mut g Gen) interface_table() string {
 			}
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
-			sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype2}* x);')
+			sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype_param}* x);')
 			mut cast_struct := strings.new_builder(100)
 			cast_struct.writeln('(${interface_name}) {')
-			if cctype == cctype2 {
-				cast_struct.writeln('\t\t._${cctype} = x,')
-				cast_struct.writeln('\t\t._typ = ${interface_index_name},')
-			} else {
-				cast_struct.writeln('\t\t._voidptr = x,')
-				cast_struct.writeln('\t\t._typ = _${interface_name}_voidptr_index,')
-			}
+			cast_struct.writeln('\t\t._${cctype} = x,')
+			cast_struct.writeln('\t\t._typ = ${interface_index_name},')
 			for field in inter_info.fields {
 				cname := c_name(field.name)
 				field_styp := g.styp(field.typ)
 				if _ := st_sym.find_field(field.name) {
-					cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname})),')
+					cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype2}, ${cname})),')
 				} else if st_sym.kind == .array
 					&& field.name in ['element_size', 'data', 'offset', 'len', 'cap', 'flags'] {
 					// Manually checking, we already knows array contains above fields
-					cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname})),')
+					cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype2}, ${cname})),')
 				} else {
 					// the field is embedded in another struct
 					cast_struct.write_string('\t\t.${cname} = (${field_styp}*)((char*)x')
@@ -7902,7 +7897,7 @@ fn (mut g Gen) interface_table() string {
 			}
 
 			cast_functions.writeln('
-static inline ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype2}* x) {
+static inline ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype_param}* x) {
 return ${cast_struct_str};
 }')
 
