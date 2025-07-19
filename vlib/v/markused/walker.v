@@ -864,16 +864,7 @@ pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.
 		} else if return_type.has_flag(.result) {
 			w.used_result++
 		}
-		rsym := w.table.final_sym(return_type)
-		if rsym.kind == .sum_type {
-			w.mark_by_sym(rsym)
-		} else if rsym.info is ast.MultiReturn {
-			w.mark_by_sym(rsym)
-			for typ in rsym.info.types {
-				tsym := w.table.final_sym(typ)
-				w.mark_by_sym(tsym)
-			}
-		}
+		w.mark_by_type(return_type)
 	}
 	for param in params {
 		psym := w.table.final_sym(param.typ)
