@@ -956,10 +956,16 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 		ast.Map {
 			w.mark_by_type(isym.info.key_type)
 			w.mark_by_type(isym.info.value_type)
+			w.features.used_maps++
 		}
 		ast.FnType {
 			for param in isym.info.func.params {
 				w.mark_by_type(param.typ)
+			}
+		}
+		ast.MultiReturn {
+			for typ in isym.info.types {
+				w.mark_by_type(typ)
 			}
 		}
 		else {}
