@@ -867,10 +867,7 @@ pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.
 		w.mark_by_type(return_type)
 	}
 	for param in params {
-		psym := w.table.final_sym(param.typ)
-		if psym.kind == .sum_type {
-			w.mark_by_sym(psym)
-		}
+		w.mark_by_type(param.typ)
 	}
 }
 
