@@ -398,12 +398,13 @@ pub fn (f &StructField) equals(o &StructField) bool {
 // const field in const declaration group
 pub struct ConstField {
 pub:
-	mod         string
-	name        string
-	is_pub      bool
-	is_markused bool // an explicit `@[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
-	pos         token.Pos
-	attrs       []Attr // same value as `attrs` of the ConstDecl to which it belongs
+	mod          string
+	name         string
+	is_pub       bool
+	is_markused  bool // an explicit `@[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
+	pos          token.Pos
+	attrs        []Attr // same value as `attrs` of the ConstDecl to which it belongs
+	is_virtual_c bool   // `const C.MY_CONST u8`
 pub mut:
 	expr         Expr      // the value expr of field; everything after `=`
 	typ          Type      // the type of the const field, it can be any type in V
