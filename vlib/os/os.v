@@ -542,9 +542,6 @@ pub fn home_dir() string {
 	$if windows {
 		return getenv('USERPROFILE')
 	} $else {
-		// println('home_dir() call')
-		// res:= os.getenv('HOME')
-		// println('res="$res"')
 		return getenv('HOME')
 	}
 }
