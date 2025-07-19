@@ -503,6 +503,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				}
 				.function {
 					w.fn_by_name(node.name)
+					if node.info is ast.IdentFn {
+						w.mark_by_type(node.info.typ)
+					}
 				}
 				.global {
 					w.mark_global_as_used(node.name)
@@ -598,6 +601,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.fn_by_name(method.fkey())
 				}
 			}
+			if node.typ != 0 {
+				w.mark_by_type(node.typ)
+			}
 			w.or_block(node.or_block)
 		}
 		ast.SqlExpr {
@@ -692,9 +698,9 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 		return
 	}
 	if node.is_method {
-		rsym := w.table.final_sym(node.receiver.typ.idx())
-		w.mark_by_sym(rsym)
+		w.mark_by_type(node.receiver.typ)
 	}
+
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
 	w.stmts(node.stmts)
