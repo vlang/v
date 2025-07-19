@@ -699,10 +699,8 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 					value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
 					if value_sym.info is ast.Struct {
 						w.a_struct_info(value_sym.name, value_sym.info)
-						w.mark_by_sym(value_sym)
-					} else if value_sym.info is ast.SumType {
-						w.mark_by_sym(value_sym)
 					}
+					w.mark_by_sym(value_sym)
 				}
 				ast.Map {
 					w.features.used_maps++
@@ -714,6 +712,11 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 				}
 				ast.SumType {
 					w.mark_by_sym(fsym)
+				}
+				ast.FnType {
+					for param in fsym.info.func.params {
+						w.mark_by_type(param.typ)
+					}
 				}
 				else {}
 			}
@@ -962,6 +965,9 @@ pub fn (mut w Walker) mark_by_sym_name(name string) {
 }
 
 pub fn (mut w Walker) mark_by_type(typ ast.Type) {
+	if typ.has_flag(.generic) {
+		return
+	}
 	sym := w.table.final_sym(typ)
 	if sym.info is ast.Struct {
 		w.a_struct_info(sym.name, sym.info)
@@ -974,26 +980,38 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 		return
 	}
 	w.used_syms[isym.idx] = true
-	if isym.info is ast.Struct {
-		for field in isym.info.fields {
-			fsym := w.table.final_sym(field.typ)
-			if fsym.info is ast.Array {
-				w.mark_by_sym(w.table.sym(fsym.info.elem_type))
-			} else if fsym.info is ast.Struct {
-				w.mark_by_sym(fsym)
-			} else if fsym.info is ast.SumType {
-				w.mark_by_sym(fsym)
+	match isym.info {
+		ast.Struct {
+			for field in isym.info.fields {
+				fsym := w.table.final_sym(field.typ)
+				if field.typ.has_flag(.generic) {
+					continue
+				}
+				if fsym.info is ast.Array {
+					w.mark_by_sym(w.table.sym(fsym.info.elem_type))
+				} else if fsym.info is ast.Struct {
+					w.mark_by_sym(fsym)
+				} else if fsym.info is ast.SumType {
+					w.mark_by_sym(fsym)
+				}
 			}
 		}
-	} else if isym.info is ast.Array {
-		w.mark_by_sym(w.table.sym(isym.info.elem_type))
-	} else if isym.info is ast.SumType {
-		for typ in isym.info.variants {
-			if typ == ast.map_type {
-				w.features.used_maps++
-				continue
-			}
-			w.mark_by_type(typ)
+		ast.ArrayFixed, ast.Array {
+			w.mark_by_sym(w.table.sym(isym.info.elem_type))
 		}
+		ast.SumType {
+			for typ in isym.info.variants {
+				if typ == ast.map_type {
+					w.features.used_maps++
+					continue
+				}
+				w.mark_by_type(typ)
+			}
+		}
+		ast.Map {
+			w.mark_by_type(isym.info.key_type)
+			w.mark_by_type(isym.info.value_type)
+		}
+		else {}
 	}
 }

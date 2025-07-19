@@ -992,6 +992,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 		typ := expr as ast.TypeNode
 		node.return_type = if is_json_decode { typ.typ.set_flag(.result) } else { typ.typ }
+		if typ.typ.has_flag(.generic) {
+			c.table.used_features.comptime_syms[c.unwrap_generic(typ.typ)] = true
+		}
 		return node.return_type
 	} else if fn_name == '__addr' {
 		if !c.inside_unsafe {
