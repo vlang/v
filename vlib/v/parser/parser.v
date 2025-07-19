@@ -2381,7 +2381,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		}
 		if !p.pref.translated && !p.is_translated && util.contains_capital(name)
 			&& !is_virtual_c_const {
-			p.error_with_pos('${name} const names cannot contain uppercase letters, use snake_case instead',
+			p.error_with_pos('const names cannot contain uppercase letters, use snake_case instead',
 				pos)
 		}
 		full_name := p.prepend_mod(name)
