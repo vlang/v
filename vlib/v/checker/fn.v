@@ -771,8 +771,6 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		c.inside_or_block_value = true
 		c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
 		c.inside_or_block_value = old_inside_or_block_value
-	} else if node.or_block.kind == .propagate_option || node.or_block.kind == .propagate_result {
-		c.markused_option_or_result(!c.is_builtin_mod && c.mod != 'strings')
 	}
 	c.expected_or_type = old_expected_or_type
 	c.markused_call_expr(left_type, mut node)
@@ -2722,9 +2720,6 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 		c.error('option handling cannot be done in `spawn` call. Do it when calling `.wait()`',
 			node.call_expr.or_block.pos)
 	}
-	if node.is_expr {
-		c.table.used_features.waiter = true
-	}
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
@@ -2759,9 +2754,6 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 	if node.call_expr.or_block.kind != .absent {
 		c.error('option handling cannot be done in `go` call. Do it when calling `.wait()`',
 			node.call_expr.or_block.pos)
-	}
-	if node.is_expr {
-		c.table.used_features.waiter = true
 	}
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {

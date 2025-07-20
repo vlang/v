@@ -38,6 +38,8 @@ jobs:
         run: v run ci/macos_ci.vsh test_symlink
       - name: v doctor
         run: v run ci/macos_ci.vsh v_doctor
+      - name: Build v with -prealloc
+        run: v run ci/macos_ci.vsh build_v_with_prealloc
       - name: Test cross compilation to Linux
         run: v run ci/macos_ci.vsh test_cross_compilation
       - name: Build V with -cstrict

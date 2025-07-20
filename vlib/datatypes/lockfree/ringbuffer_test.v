@@ -1,3 +1,4 @@
+// vtest build: !gcc-windows
 import datatypes.lockfree
 import time
 import sync

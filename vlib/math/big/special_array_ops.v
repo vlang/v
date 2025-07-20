@@ -164,12 +164,20 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 
 	// Slices of a and b
 	a0 := Integer{
-		digits: unsafe { operand_a[0..k] }
-		signum: 1
+		digits: unsafe { operand_a[..k] }
+		signum: if operand_a[..k].all(it == 0) {
+			0
+		} else {
+			1
+		}
 	}
 	a1 := Integer{
 		digits: unsafe { operand_a[k..k2] }
-		signum: 1
+		signum: if operand_a[k..k2].all(it == 0) {
+			0
+		} else {
+			1
+		}
 	}
 	a2 := Integer{
 		digits: unsafe { operand_a[k2..] }
@@ -187,22 +195,28 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 			signum: 1
 		}
 	} else if operand_b.len < k2 {
-		b0 = Integer{
-			digits: operand_b[0..k]
-			signum: 1
+		if !operand_b[..k].all(it == 0) {
+			b0 = Integer{
+				digits: operand_b[..k]
+				signum: 1
+			}
 		}
 		b1 = Integer{
 			digits: operand_b[k..]
 			signum: 1
 		}
 	} else {
-		b0 = Integer{
-			digits: operand_b[0..k]
-			signum: 1
+		if !operand_b[..k].all(it == 0) {
+			b0 = Integer{
+				digits: operand_b[..k]
+				signum: 1
+			}
 		}
-		b1 = Integer{
-			digits: operand_b[k..k2]
-			signum: 1
+		if !operand_b[k..k2].all(it == 0) {
+			b1 = Integer{
+				digits: operand_b[k..k2]
+				signum: 1
+			}
 		}
 		b2 = Integer{
 			digits: operand_b[k2..]

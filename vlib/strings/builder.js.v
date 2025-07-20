@@ -79,7 +79,7 @@ pub fn (mut b Builder) go_back_to(pos int) {
 	b.trim(pos)
 }
 
-// go_back discards the last `n` bytes from the buffer
+// go_back discards the last `n` bytes from the buffer.
 pub fn (mut b Builder) go_back(n int) {
 	b.trim(b.len - n)
 }

@@ -380,14 +380,16 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			checker.checker_idx++
 
 			// check if the JSON string is a valid escape sequence
-			for val[checker.checker_idx] != `"` && val[checker.checker_idx - 1] != `\\` {
+			for val[checker.checker_idx] != `"` {
 				if val[checker.checker_idx] == `\\` {
 					if checker.checker_idx + 1 >= checker_end - 1 {
 						return checker.error('invalid escape sequence')
 					}
 					escaped_char := val[checker.checker_idx + 1]
 					match escaped_char {
-						`/`, `b`, `f`, `n`, `r`, `t`, `"`, `\\` {}
+						`/`, `b`, `f`, `n`, `r`, `t`, `"`, `\\` {
+							checker.checker_idx++ // make sure escaped quotation marks are skipped
+						}
 						`u` {
 							// check if the JSON string is a valid unicode escape sequence
 							escaped_char_last_index := checker.checker_idx + 5
@@ -406,7 +408,6 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 										}
 									}
 								}
-								// REVIEW: Should we increment the index here?
 								continue
 							} else {
 								return checker.error('short unicode escape sequence ${checker.json[checker.checker_idx..
@@ -545,64 +546,70 @@ pub fn decode[T](val string) !T {
 // decode_value decodes a value from the JSON nodes.
 @[manualfree]
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
-	$if T is $option {
-		value_info := decoder.current_node.value
-
-		if value_info.value_kind == .null {
-			decoder.current_node = decoder.current_node.next
-			// val = none // Is this line needed?
-			return
-		}
-		mut unwrapped_val := create_value_from_optional(val.$(field.name))
-		decoder.decode_value(mut unwrapped_val)!
-		val.$(field.name) = unwrapped_val
-	} $else $if T.unaliased_typ is string {
+	$if T.unaliased_typ is string {
 		string_info := decoder.current_node.value
 
 		if string_info.value_kind == .string_ {
-			buffer_length, escape_positions := decoder.calculate_string_space_and_escapes()!
+			mut string_buffer := []u8{cap: string_info.length} // might be too long but most json strings don't contain many escape characters anyways
 
-			string_buffer := []u8{cap: buffer_length}
+			mut buffer_index := 1
+			mut string_index := 1
 
-			if escape_positions.len == 0 {
-				if string_info.length != 0 {
+			for string_index < string_info.length - 1 {
+				current_byte := decoder.json[string_info.position + string_index]
+
+				if current_byte == `\\` {
+					// push all characters up to this point
 					unsafe {
-						string_buffer.push_many(decoder.json.str + string_info.position + 1,
-							buffer_length)
-					}
-				}
-			} else {
-				for i := 0; i < escape_positions.len; i++ {
-					escape_position := escape_positions[i]
-					if i == 0 {
-						// Pushes a substring from the JSON string into the string buffer.
-						// The substring starts at the position of the value in the JSON string plus one,
-						// and ends at the escape position minus one.
-						// This is used to handle escaped characters within the JSON string.
-						unsafe {
-							string_buffer.push_many(decoder.json.str + string_info.position + 1,
-								escape_position - string_info.position - 1)
-						}
-					} else {
-						// Pushes a substring from the JSON string into the string buffer, starting after the previous escape position
-						// and ending just before the current escape position. This handles the characters between escape sequences.
-						unsafe {
-							string_buffer.push_many(decoder.json.str + escape_positions[i - 1] + 6,
-								escape_position - escape_positions[i - 1] - 6)
-						}
+						string_buffer.push_many(decoder.json.str + string_info.position +
+							buffer_index, string_index - buffer_index)
 					}
 
-					unescaped_buffer := generate_unicode_escape_sequence(unsafe {
-						(decoder.json.str + escape_positions[i] + 2).vbytes(4)
-					})!
+					string_index++
 
-					unsafe { string_buffer.push_many(&unescaped_buffer[0], unescaped_buffer.len) }
+					escaped_char := decoder.json[string_info.position + string_index]
+
+					string_index++
+
+					match escaped_char {
+						`/`, `"`, `\\` {
+							string_buffer << escaped_char
+						}
+						`b` {
+							string_buffer << `\b`
+						}
+						`f` {
+							string_buffer << `\f`
+						}
+						`n` {
+							string_buffer << `\n`
+						}
+						`r` {
+							string_buffer << `\r`
+						}
+						`t` {
+							string_buffer << `\t`
+						}
+						`u` {
+							string_buffer << rune(strconv.parse_uint(decoder.json[
+								string_info.position + string_index..string_info.position +
+								string_index + 4], 16, 32)!).bytes()
+
+							string_index += 4
+						}
+						else {} // has already been checked
+					}
+
+					buffer_index = string_index
+				} else {
+					string_index++
 				}
-				end_of_last_escape_position := escape_positions[escape_positions.len - 1] + 6
-				unsafe {
-					string_buffer.push_many(decoder.json.str + end_of_last_escape_position,
-						string_info.length - end_of_last_escape_position - 1)
-				}
+			}
+
+			// push the rest
+			unsafe {
+				string_buffer.push_many(decoder.json.str + string_info.position + buffer_index,
+					string_index - buffer_index)
 			}
 
 			val = string_buffer.bytestr()
@@ -797,9 +804,18 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 											}
 										} else {
 											$if field.typ is $option {
-												mut unwrapped_val := create_value_from_optional(val.$(field.name))
-												decoder.decode_value(mut unwrapped_val)!
-												val.$(field.name) = unwrapped_val
+												// it would be nicer to do this at the start of the function
+												// but options cant be passed to generic functions
+												if decoder.current_node.value.length == 4
+													&& decoder.json[decoder.current_node.value.position..decoder.current_node.value.position + 4] == 'null' {
+													val.$(field.name) = none
+												} else {
+													mut unwrapped_val := create_value_from_optional(val.$(field.name)) or {
+														return
+													}
+													decoder.decode_value(mut unwrapped_val)!
+													val.$(field.name) = unwrapped_val
+												}
 											} $else {
 												decoder.decode_value(mut val.$(field.name))!
 											}
@@ -961,7 +977,7 @@ fn get_value_kind(value u8) ValueKind {
 	return .unknown
 }
 
-fn create_value_from_optional[T](val ?T) T {
+fn create_value_from_optional[T](val ?T) ?T {
 	return T{}
 }
 
@@ -975,94 +991,6 @@ fn utf8_byte_len(unicode_value u32) int {
 	} else {
 		return 4
 	}
-}
-
-fn (mut decoder Decoder) calculate_string_space_and_escapes() !(int, []int) {
-	value_info := decoder.current_node.value
-	len := value_info.length
-
-	if len < 2 || decoder.json[value_info.position] != `"`
-		|| decoder.json[value_info.position + len - 1] != `"` {
-		return error('Invalid JSON string format')
-	}
-
-	mut space_required := 0
-	mut escape_positions := []int{}
-	mut idx := 1 // Start after the opening quote
-
-	for idx < len - 1 {
-		current_byte := decoder.json[value_info.position + idx]
-
-		if current_byte == `\\` {
-			// Escape sequence, handle accordingly
-			idx++
-			if idx >= len - 1 {
-				return error('Invalid escape sequence at the end of string')
-			}
-			escaped_char := decoder.json[value_info.position + idx]
-			match escaped_char {
-				// All simple escapes take 1 byte of space
-				`/`, `b`, `f`, `n`, `r`, `t`, `"`, `\\` {
-					space_required++
-				}
-				`u` {
-					// Unicode escape sequence \uXXXX
-					if idx + 4 >= len - 1 {
-						return error('Invalid unicode escape sequence')
-					}
-					// Extract the hex value from the \uXXXX sequence
-					hex_str := decoder.json[value_info.position + idx + 1..value_info.position +
-						idx + 5]
-					unicode_value := u32(strconv.parse_int(hex_str, 16, 32)!)
-					// Determine the number of bytes needed for this Unicode character in UTF-8
-					space_required += utf8_byte_len(unicode_value)
-					idx += 4 // Skip the next 4 hex digits
-
-					// REVIEW: If the Unicode character is a surrogate pair, we need to skip the next \uXXXX sequence?
-
-					// \\uXXXX is 6 bytes, so we need to skip 5 more bytes
-					escape_positions << value_info.position + idx - 5
-				}
-				else {
-					return error('Unknown escape sequence')
-				}
-			}
-		} else {
-			// Regular character, just increment space required by 1 byte
-			space_required++
-		}
-		idx++
-	}
-
-	return space_required, escape_positions
-}
-
-// \uXXXX to unicode with 4 hex digits
-fn generate_unicode_escape_sequence(escape_sequence_byte []u8) ![]u8 {
-	if escape_sequence_byte.len != 4 {
-		return error('Invalid unicode escape sequence')
-	}
-
-	unicode_value := u32(strconv.parse_int(escape_sequence_byte.bytestr(), 16, 32)!)
-	mut utf8_bytes := []u8{cap: utf8_byte_len(unicode_value)}
-
-	if unicode_value <= 0x7F {
-		utf8_bytes << u8(unicode_value)
-	} else if unicode_value <= 0x7FF {
-		utf8_bytes << u8(0xC0 | (unicode_value >> 6))
-		utf8_bytes << u8(0x80 | (unicode_value & 0x3F))
-	} else if unicode_value <= 0xFFFF {
-		utf8_bytes << u8(0xE0 | (unicode_value >> 12))
-		utf8_bytes << u8(0x80 | ((unicode_value >> 6) & 0x3F))
-		utf8_bytes << u8(0x80 | (unicode_value & 0x3F))
-	} else {
-		utf8_bytes << u8(0xF0 | (unicode_value >> 18))
-		utf8_bytes << u8(0x80 | ((unicode_value >> 12) & 0x3F))
-		utf8_bytes << u8(0x80 | ((unicode_value >> 6) & 0x3F))
-		utf8_bytes << u8(0x80 | (unicode_value & 0x3F))
-	}
-
-	return utf8_bytes
 }
 
 // string_buffer_to_generic_number converts a buffer of bytes (data) into a generic type T and

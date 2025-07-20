@@ -502,6 +502,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	global_g.gen_array_index_methods()
 	global_g.gen_equality_fns()
 	global_g.gen_free_methods()
+	global_g.register_iface_return_types()
 	global_g.write_results()
 	global_g.write_options()
 	global_g.sort_globals_consts()
@@ -3117,7 +3118,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	if (exp_sym.kind == .function && !expected_type.has_option_or_result())
 		|| (g.inside_struct_init && expected_type == ast.voidptr_type
-		&& expected_type != got_type_raw) {
+		&& expected_type != got_type_raw && expr !is ast.StructInit) {
 		g.write('(voidptr)')
 	}
 	// no cast
@@ -5807,7 +5808,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 
 	exprs_len := node.exprs.len
 	expr0 := if exprs_len > 0 { node.exprs[0] } else { ast.empty_expr }
-	type0 := if exprs_len > 0 { node.types[0] } else { ast.void_type }
+	type0 := if exprs_len > 0 { g.unwrap_generic(node.types[0]) } else { ast.void_type }
 
 	if exprs_len > 0 {
 		// skip `return $vweb.html()`
@@ -5819,15 +5820,15 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			return
 		}
 	}
-	ret_type := g.fn_decl.return_type
+	ret_type := g.unwrap_generic(g.fn_decl.return_type)
 
 	// got to do a correct check for multireturn
-	sym := g.table.sym(g.unwrap_generic(ret_type))
+	sym := g.table.sym(ret_type)
 	mut fn_ret_type := ret_type
 	if sym.kind == .alias {
 		unaliased_type := g.table.unaliased_type(fn_ret_type)
 		if unaliased_type.has_option_or_result() {
-			fn_ret_type = unaliased_type
+			fn_ret_type = g.unwrap_generic(unaliased_type)
 		}
 	}
 	fn_return_is_multi := sym.kind == .multi_return
@@ -5857,7 +5858,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 	tmpvar := g.new_tmp_var()
 	g.defer_return_tmp_var = tmpvar
-	ret_typ := g.ret_styp(g.unwrap_generic(fn_ret_type))
+	ret_typ := g.ret_styp(fn_ret_type)
 
 	// `return fn_call_opt()`
 	if exprs_len == 1 && (fn_return_is_option || fn_return_is_result) && expr0 is ast.CallExpr
@@ -6077,7 +6078,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.pos)
 		}
 		// normal return
-		return_sym := g.table.final_sym(g.unwrap_generic(type0))
+		return_sym := g.table.final_sym(type0)
 		// `return opt_ok(expr)` for functions that expect an option
 		expr_type_is_opt := match expr0 {
 			ast.CallExpr {
@@ -6114,7 +6115,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.writeln('${ret_typ} ${tmpvar};')
 				styp := g.base_type(fn_ret_type)
 				g.write('_option_ok(&(${styp}[]) { ')
-				if !g.unwrap_generic(fn_ret_type).is_ptr() && type0.is_ptr() {
+				if !fn_ret_type.is_ptr() && type0.is_ptr() {
 					if !(expr0 is ast.Ident && !g.is_amp) {
 						g.write('*')
 					}
@@ -7364,9 +7365,10 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 			if sym.language in [.c, .v] {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
-					if field.has_default_expr
+					is_option := field.typ.has_flag(.option)
+					if is_option || field.has_default_expr
 						|| field_sym.kind in [.enum, .array_fixed, .array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct, .chan, .sum_type] {
-						if sym.language == .c && !field.has_default_expr {
+						if sym.language == .c && !field.has_default_expr && !is_option {
 							continue
 						}
 						field_name := c_name(field.name)
@@ -7714,6 +7716,22 @@ fn (g &Gen) has_been_referenced(fn_name string) bool {
 		referenced = g.referenced_fns[fn_name]
 	}
 	return referenced
+}
+
+fn (mut g Gen) register_iface_return_types() {
+	interfaces := g.table.type_symbols.filter(it.kind == .interface && it.info is ast.Interface)
+	for isym in interfaces {
+		inter_info := isym.info as ast.Interface
+		if inter_info.is_generic {
+			continue
+		}
+		for _, method_name in inter_info.get_methods() {
+			method := isym.find_method_with_generic_parent(method_name) or { continue }
+			if method.return_type.has_flag(.result) {
+				g.register_result(method.return_type)
+			}
+		}
+	}
 }
 
 // Generates interface table and interface indexes

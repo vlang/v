@@ -1,3 +1,4 @@
+import math.big
 import math.unsigned
 
 fn test_str() {
@@ -192,4 +193,51 @@ fn test_rsh() {
 	assert '220585896' == a.rsh(100).str()
 	assert '1' == a.rsh(127).str()
 	assert unsigned.uint128_zero == a.rsh(200)
+}
+
+fn test_quo_rem() {
+	for a_lo in 0 .. 16 {
+		for a_hi in 0 .. 16 {
+			for b_lo in 0 .. 16 {
+				for b_hi in 0 .. 16 {
+					a := unsigned.uint128_new(u64(1 << a_lo), u64(1 << a_hi))
+					b := unsigned.uint128_new(u64(1 << b_lo), u64(1 << b_hi))
+					big_a := big.integer_from_string(a.str())!
+					big_b := big.integer_from_string(b.str())!
+					q, r := a.quo_rem(b)
+					big_q, big_r := big_a.div_mod(big_b)
+					assert q.str() == big_q.str()
+					assert r.str() == big_r.str()
+				}
+			}
+		}
+	}
+}
+
+fn test_div_128() {
+	for a_lo in 0 .. 4 {
+		for a_hi in 0 .. 4 {
+			for b_lo in 0 .. 4 {
+				for b_hi in 0 .. 4 {
+					for c_lo in 0 .. 4 {
+						for c_hi in 0 .. 4 {
+							a := unsigned.uint128_new(u64(1 << a_lo), u64(1 << a_hi))
+							b := unsigned.uint128_new(u64(1 << b_lo), u64(1 << b_hi))
+							c := unsigned.uint128_new(u64(1 << c_lo), u64(1 << c_hi))
+							if c.cmp(a) <= 0 {
+								continue
+							}
+							aa := unsigned.uint256_new(b, a)
+							big_a := big.integer_from_string(aa.str())!
+							big_b := big.integer_from_string(c.str())!
+							q, r := unsigned.div_128(a, b, c)
+							big_q, big_r := big_a.div_mod(big_b)
+							assert q.str() == big_q.str()
+							assert r.str() == big_r.str()
+						}
+					}
+				}
+			}
+		}
+	}
 }

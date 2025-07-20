@@ -16,8 +16,7 @@ module ttf
 import encoding.utf8
 import math
 
-// BitMap represents a bitmap image of text rendered with the font supplied via
-// the `tf` field.
+// BitMap represents a bitmap image of text rendered with the font supplied via the `tf` field.
 pub struct BitMap {
 pub mut:
 	tf       &TTF_File = unsafe { nil }
@@ -72,13 +71,13 @@ pub fn (bmp &BitMap) trf_ch(p &Point) (int, int) {
 		p.x * bmp.ch_matrix[1] + p.y * bmp.ch_matrix[4] + bmp.ch_matrix[7])
 }
 
-// set_pos sets the draw position in the buffer
+// set_pos sets the draw position in the buffer.
 pub fn (mut bmp BitMap) set_pos(x f32, y f32) {
 	bmp.tr_matrix[6] = x
 	bmp.tr_matrix[7] = y
 }
 
-// set_rotation sets the rotation angle in radians `a`
+// set_rotation sets the rotation angle in radians `a`.
 pub fn (mut bmp BitMap) set_rotation(a f32) {
 	bmp.tr_matrix[0] = f32(math.cos(a)) // 1
 	bmp.tr_matrix[1] = f32(-math.sin(a)) // 0
@@ -103,7 +102,7 @@ pub fn (mut bmp BitMap) init_filler() {
 	// dprintln("Init filler: ${bmp.filler.len} rows")
 }
 
-// clear_filler clears the internal `filler` buffer
+// clear_filler clears the internal `filler` buffer.
 pub fn (mut bmp BitMap) clear_filler() {
 	for i in 0 .. bmp.height {
 		bmp.filler[i].clear()
@@ -220,7 +219,7 @@ pub fn (mut bmp BitMap) plot(x int, y int, c u32) bool {
 * smooth draw functions
 *
 ******************************************************************************/
-// aline draws an aliased line on the bitmap
+// aline draws an aliased line on the bitmap.
 pub fn (mut bmp BitMap) aline(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32) {
 	// mut c1 := c
 	mut x0 := f32(in_x0)
@@ -642,8 +641,8 @@ fn (mut bmp BitMap) draw_notdef_glyph(in_x int, in_w int) {
 	bmp.line(int(x - in_w), int(y), int(x), int(y - y_h), bmp.color)
 }
 
-// draw_text plots the pixels of the text `in_string` to the internal buffer and
-// returns the text bounding box.
+// draw_text plots the pixels of the text `in_string` to the internal buffer.
+// It returns the text bounding box.
 pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 	mut w := 0
 
@@ -719,8 +718,8 @@ pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 	return w, int(math.abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
 }
 
-// draw_glyph plots the pixels of the glyph at `index` to the internal buffer and
-// returns the `x_max` and `x_min` values.
+// draw_glyph plots the pixels of the glyph at `index` to the internal buffer.
+// It returns the `x_max` and `x_min` values.
 pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 	glyph := bmp.tf.read_glyph(index)
 

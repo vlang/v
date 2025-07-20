@@ -115,8 +115,7 @@ pub fn (cb &Clipboard) check_availability() bool {
 	return cb.hwnd != unsafe { nil }
 }
 
-// has_ownership returns true if the contents of
-// the clipboard were created by this clipboard instance.
+// has_ownership returns true if the contents of the clipboard were created by this clipboard instance.
 pub fn (cb &Clipboard) has_ownership() bool {
 	return voidptr(C.GetClipboardOwner()) == cb.hwnd
 }
@@ -131,8 +130,7 @@ pub fn (mut cb Clipboard) clear() {
 	cb.foo = 0
 }
 
-// free releases all memory associated with the clipboard
-// instance.
+// free releases all memory associated with the clipboard instance.
 pub fn (mut cb Clipboard) free() {
 	C.DestroyWindow(cb.hwnd)
 	cb.foo = 0
@@ -180,8 +178,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	return true
 }
 
-// get_text retrieves the contents of the system clipboard
-// as a `string`.
+// get_text retrieves the contents of the system clipboard.
 // This is often associated with a *paste* action (`Ctrl` + `V`).
 pub fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0

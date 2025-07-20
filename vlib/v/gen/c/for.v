@@ -423,9 +423,20 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 	} else if node.kind in [.struct, .interface] {
 		cond_type_sym := g.table.sym(node.cond_type)
-		next_fn := cond_type_sym.find_method_with_generic_parent('next') or {
-			verror('`next` method not found')
-			return
+		mut next_fn := ast.Fn{}
+		// use alias `next` method if exists else use parent type `next` method
+		if cond_type_sym.kind == .alias {
+			next_fn = cond_type_sym.find_method_with_generic_parent('next') or {
+				g.table.final_sym(node.cond_type).find_method_with_generic_parent('next') or {
+					verror('`next` method not found')
+					return
+				}
+			}
+		} else {
+			next_fn = cond_type_sym.find_method_with_generic_parent('next') or {
+				verror('`next` method not found')
+				return
+			}
 		}
 		ret_typ := next_fn.return_type
 		t_expr := g.new_tmp_var()

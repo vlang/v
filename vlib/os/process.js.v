@@ -4,7 +4,7 @@ $if js_node {
 	#const $child_process = require('child_process')
 }
 
-// new_process - create a new process descriptor
+// new_process - create a new process descriptor.
 // Note: new does NOT start the new process.
 // That is done because you may want to customize it first,
 // by calling different set_ methods on it.

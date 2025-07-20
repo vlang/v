@@ -581,6 +581,7 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 // copy something to the heap
 #define HEAP(type, expr) ((type*)memdup((void*)&((type[]){expr}[0]), sizeof(type)))
 #define HEAP_noscan(type, expr) ((type*)memdup_noscan((void*)&((type[]){expr}[0]), sizeof(type)))
+#define HEAP_align(type, expr, align) ((type*)memdup_align((void*)&((type[]){expr}[0]), sizeof(type), align))
 
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
 #define _PUSH_MANY_noscan(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many_noscan(arr, tmp.data, tmp.len);}

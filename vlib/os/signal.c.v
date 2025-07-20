@@ -24,7 +24,7 @@ pub fn signal_opt(signum Signal, handler SignalHandler) !SignalHandler {
 fn ignore_signal_handler(_signal Signal) {
 }
 
-// signal_ignore to mask system signals, e.g.: signal_ignore(.pipe, .urg, ...)
+// signal_ignore to mask system signals, e.g.: signal_ignore(.pipe, .urg, ...).
 pub fn signal_ignore(args ...Signal) {
 	if is_main_thread() {
 		// for main thread.

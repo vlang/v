@@ -31,7 +31,6 @@ fn _option_none(data voidptr, mut option _option, size int) {
 	}
 }
 
-@[markused]
 fn _option_ok(data voidptr, mut option _option, size int) {
 	unsafe {
 		*option = _option{}
@@ -40,7 +39,6 @@ fn _option_ok(data voidptr, mut option _option, size int) {
 	}
 }
 
-@[markused]
 fn _option_clone(current &_option, mut option _option, size int) {
 	unsafe {
 		*option = _option{

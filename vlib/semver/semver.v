@@ -54,22 +54,19 @@ pub fn build(major int, minor int, patch int) Version {
 	return Version{major, minor, patch, '', ''}
 }
 
-// * Transformation.
 // increment returns a `Version` structure with incremented values.
 pub fn (ver Version) increment(typ Increment) Version {
 	return increment_version(ver, typ)
 }
 
-// * Comparison.
-// satisfies returns `true` if the `input` expression can be validated to `true`
-// when run against this `Version`.
+// satisfies returns `true` if the `input` expression can be validated to `true` when run against this `Version`.
 // Example: assert semver.build(1,0,0).satisfies('<=2.0.0') == true
 // Example: assert semver.build(1,0,0).satisfies('>=2.0.0') == false
 pub fn (ver Version) satisfies(input string) bool {
 	return version_satisfies(ver, input)
 }
 
-// == checks if `v1` is equal to `v2`
+// == checks if `v1` is equal to `v2`.
 pub fn (v1 Version) == (v2 Version) bool {
 	return compare_eq(v1, v2)
 }

@@ -1,6 +1,6 @@
 module term
 
-// utf8_getchar returns an utf8 rune from standard input
+// utf8_getchar returns an utf8 rune from standard input.
 pub fn utf8_getchar() ?rune {
 	c := input_character()
 	if c == -1 {
@@ -30,7 +30,7 @@ pub fn utf8_getchar() ?rune {
 	}
 }
 
-// utf8_len calculates the length of a utf8 rune to read, according to its first byte
+// utf8_len calculates the length of a utf8 rune to read, according to its first byte.
 pub fn utf8_len(c u8) int {
 	mut b := 0
 	mut x := c

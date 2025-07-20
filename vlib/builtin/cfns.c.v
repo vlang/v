@@ -23,6 +23,17 @@ fn C.realloc(a &u8, b int) &u8
 
 fn C.free(ptr voidptr)
 
+fn C.aligned_alloc(align isize, size isize) voidptr
+
+// windows aligned memory functions
+fn C._aligned_malloc(size isize, align isize) voidptr
+fn C._aligned_free(voidptr)
+fn C._aligned_realloc(voidptr, size isize, align isize) voidptr
+fn C._aligned_offset_malloc(size isize, align isize, offset isize) voidptr
+fn C._aligned_offset_realloc(voidptr, size isize, align isize, offset isize) voidptr
+fn C._aligned_msize(voidptr, align isize, offset isize) isize
+fn C._aligned_recalloc(voidptr, num isize, size isize, align isize) voidptr
+
 @[noreturn; trusted]
 fn C.exit(code int)
 
@@ -356,7 +367,7 @@ fn C.GetFullPathName(voidptr, u32, voidptr, voidptr) u32
 @[trusted]
 fn C.GetCommandLine() voidptr
 
-fn C.LocalFree()
+fn C.LocalFree(voidptr)
 
 fn C.FindFirstFileW(lpFileName &u16, lpFindFileData voidptr) voidptr
 

@@ -32,6 +32,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 	// Functions that must be generated and can't be skipped
 	mut all_fn_root_names := []string{}
+	mut include_panic_deps := false
 	if used_fns != '' {
 		aused_fns := used_fns.split(',')
 		all_fns_keys := all_fns.keys()
@@ -56,7 +57,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		// Note: this is temporary, until the native backend supports more features!
 		all_fn_root_names << 'main.main'
 	} else {
-		mut include_panic_deps := false
 		mut core_fns := [
 			'main.main',
 			'init_global_allocator', // needed for linux_bare and wasm_bare
@@ -156,9 +156,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.arr_insert {
 			core_fns << ref_array_idx_str + '.insert_many'
 		}
-		if table.used_features.interpolation {
-			include_panic_deps = true
-		}
 		if table.used_features.dump {
 			include_panic_deps = true
 			builderptr_idx := int(table.find_type('strings.Builder').ref()).str()
@@ -167,9 +164,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				builderptr_idx + '.free',
 				builderptr_idx + '.write_rune',
 			]
-		}
-		if table.used_features.waiter {
-			core_fns << 'free'
 		}
 		if !table.used_features.arr_init {
 			table.used_features.arr_init = table.used_features.print_types.keys().any(table.type_to_str(it).contains('[]'))
@@ -184,15 +178,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << '__new_array_with_array_default'
 			core_fns << ref_array_idx_str + '.set'
 		}
-		if table.used_features.option_or_result {
+		if table.used_features.print_options {
 			include_panic_deps = true
 			core_fns << '_option_ok'
 			core_fns << '_result_ok'
 			core_fns << charptr_idx_str + '.vstring_literal'
-		}
-		if table.used_features.as_cast {
-			core_fns << '__as_cast'
-			core_fns << 'new_array_from_c_array'
 		}
 		if table.used_features.anon_fn {
 			core_fns << 'memdup_uncollectable'
@@ -219,6 +209,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.type_name {
 			core_fns << charptr_idx_str + '.vstring_literal'
 		}
+		if table.used_features.memory_align {
+			core_fns << 'memdup_align'
+		}
 		if pref_.trace_calls || pref_.trace_fns.len > 0 {
 			include_panic_deps = true
 			core_fns << 'vgettid'
@@ -228,24 +221,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << 'v.trace_calls.on_call'
 		}
 		if 'C.cJSON_Parse' in all_fns {
+			core_fns << '_result_ok'
 			core_fns << 'tos5'
 			core_fns << 'time.unix' // used by json
 			table.used_features.used_maps++ // json needs new_map etc
 			include_panic_deps = true
-		}
-		if include_panic_deps {
-			core_fns << [
-				'__new_array_with_default',
-				'__new_array_with_default_noscan',
-				'str_intp',
-				ref_array_idx_str + '.push',
-				ref_array_idx_str + '.push_noscan',
-				string_idx_str + '.substr',
-				array_idx_str + '.slice',
-				array_idx_str + '.get',
-				'v_fixed_index',
-				charptr_idx_str + '.vstring_literal',
-			]
 		}
 		if pref_.should_use_segfault_handler() {
 			core_fns << 'v_segmentation_fault_handler'
@@ -286,19 +266,27 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		mut method_receiver_typename := ''
 		if mfn.is_method {
-			method_receiver_typename = table.type_to_str(mfn.receiver.typ)
-		}
-		if method_receiver_typename == '&wyrand.WyRandRNG' {
-			// WyRandRNG is the default rand pseudo random generator
-			all_fn_root_names << k
-			continue
-		}
-		if table.used_features.auto_str && method_receiver_typename == '&strings.Builder' {
-			// implicit string builders are generated in auto_eq_methods.v
-			all_fn_root_names << k
-			continue
+			method_receiver_typename := table.type_to_str(mfn.receiver.typ)
+			if method_receiver_typename == '&wyrand.WyRandRNG' {
+				// WyRandRNG is the default rand pseudo random generator
+				all_fn_root_names << k
+				continue
+			}
+			if table.used_features.auto_str && method_receiver_typename == '&strings.Builder' {
+				// implicit string builders are generated in auto_eq_methods.v
+				all_fn_root_names << k
+				continue
+			}
+			if method_receiver_typename == '&sync.Channel' {
+				all_fn_root_names << k
+				continue
+			}
+			if mfn.name in ['+', '-', '*', '%', '/', '<', '=='] {
+				// TODO: mark the used operators in the checker
+				all_fn_root_names << k
+				continue
+			}
 		}
 		has_dot := k.contains('.')
 		// auto generated string interpolation functions, may
@@ -333,8 +321,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				all_fn_root_names << k
 				continue
 			}
-			if has_dot && (k.ends_with('.lock') || k.ends_with('.unlock')
-				|| k.ends_with('.rlock') || k.ends_with('.runlock')) {
+			if k.ends_with('.lock') || k.ends_with('.unlock') || k.ends_with('.rlock')
+				|| k.ends_with('.runlock') {
 				all_fn_root_names << k
 				continue
 			}
@@ -342,16 +330,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 		if k.ends_with('before_request') {
 			// TODO: add a more specific check for the .before_request() method in vweb apps
-			all_fn_root_names << k
-			continue
-		}
-		if method_receiver_typename == '&sync.Channel' {
-			all_fn_root_names << k
-			continue
-		}
-		if mfn.receiver.typ != ast.void_type && mfn.generic_names.len > 0 {
-			// generic methods may be used in cgen after specialisation :-|
-			// TODO: move generic method specialisation from cgen to before markused
 			all_fn_root_names << k
 			continue
 		}
@@ -367,8 +345,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				continue
 			}
 		}
-		if mfn.name in ['+', '-', '*', '%', '/', '<', '=='] {
-			// TODO: mark the used operators in the checker
+		if mfn.receiver.typ != ast.void_type && mfn.generic_names.len > 0 {
+			// generic methods may be used in cgen after specialisation :-|
+			// TODO: move generic method specialisation from cgen to before markused
 			all_fn_root_names << k
 			continue
 		}
@@ -382,10 +361,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	if pref_.is_debug {
 		all_fn_root_names << 'panic_debug'
 		all_fn_root_names << 'tos3'
-	}
-	if table.used_features.option_or_result {
-		all_fn_root_names << 'panic_option_not_set'
-		all_fn_root_names << 'panic_result_not_set'
 	}
 	if pref_.is_test {
 		all_fn_root_names << 'main.cb_assertion_ok'
@@ -531,8 +506,26 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
+	if include_panic_deps || walker.used_interp > 0 {
+		walker.mark_panic_deps()
+	}
+
+	if walker.used_panic > 0 {
+		walker.mark_fn_as_used('panic_option_not_set')
+		walker.mark_fn_as_used('panic_result_not_set')
+	}
 	if walker.used_none > 0 || table.used_features.auto_str {
 		walker.mark_fn_as_used('_option_none')
+	}
+	if walker.used_option > 0 {
+		walker.mark_fn_as_used('_option_clone')
+		walker.mark_fn_as_used('_option_ok')
+	}
+	if walker.used_result > 0 {
+		walker.mark_fn_as_used('_result_ok')
+	}
+	if (walker.used_option + walker.used_result + walker.used_none) > 0 {
+		walker.mark_const_as_used('none__')
 	}
 
 	if trace_skip_unused_fn_names {

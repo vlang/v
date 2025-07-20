@@ -72,7 +72,7 @@ pub fn get_terminal_size() (int, int) {
 	return default_columns_size, default_rows_size
 }
 
-// get_cursor_position returns a Coord containing the current cursor position
+// get_cursor_position returns a Coord containing the current cursor position.
 pub fn get_cursor_position() !Coord {
 	mut res := Coord{}
 	if os.is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
@@ -87,13 +87,13 @@ pub fn get_cursor_position() !Coord {
 	return res
 }
 
-// set_terminal_title changes the terminal title
+// set_terminal_title changes the terminal title.
 pub fn set_terminal_title(title string) bool {
 	wide_title := title.to_wide()
 	return C.SetConsoleTitle(wide_title)
 }
 
-// set_tab_title changes the terminal *tab title*, for terminal emulators that do support several tabs
+// set_tab_title changes the terminal *tab title*, for terminal emulators that do support several tabs.
 pub fn set_tab_title(title string) bool {
 	// TODO: investigate, whether there is an API for changing just the tab title on windows yet.
 	return set_terminal_title(title)
@@ -160,7 +160,7 @@ pub fn graphics_num_colors() u16 {
 	return 0
 }
 
-// enable_echo enable/disable echo input characters
+// enable_echo enable/disable echo input characters.
 pub fn enable_echo(enable bool) {
 	// no need under windows, use key_pressed func's echo
 }

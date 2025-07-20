@@ -14,6 +14,7 @@ fn test_reopen() {
 
 	dump(lfolder)
 	mut l := log.new_thread_safe_log()
+	l.set_level(.debug)
 	l.set_full_logpath(lpath1)
 	l.warn('one warning')
 	l.error('one error')
@@ -42,6 +43,7 @@ fn test_reopen() {
 }
 
 fn test_set_always_flush() {
+	log.set_level(.debug)
 	lfolder := os.join_path(os.vtmp_dir(), rand.ulid())
 	lpath1 := os.join_path(lfolder, 'current.log')
 	os.mkdir_all(lfolder)!

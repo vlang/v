@@ -17,7 +17,10 @@ pub fn (mut e Eval) stmts(stmts []ast.Stmt) {
 pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 	match stmt {
 		ast.ExprStmt {
-			e.expr(stmt.expr, stmt.typ)
+			ret := e.expr(stmt.expr, stmt.typ)
+			if e.returning {
+				e.return_values << ret
+			}
 		}
 		ast.AssignStmt {
 			// if stmt.left.len != 1 {

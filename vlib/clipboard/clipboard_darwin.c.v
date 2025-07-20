@@ -41,15 +41,13 @@ pub fn (mut cb Clipboard) clear() {
 	//#[cb->pb clearContents];
 }
 
-// free releases all memory associated with the clipboard
-// instance.
+// free releases all memory associated with the clipboard instance.
 pub fn (mut cb Clipboard) free() {
 	cb.foo = 0
 	// nothing to free
 }
 
-// has_ownership returns true if the contents of
-// the clipboard were created by this clipboard instance.
+// has_ownership returns true if the contents of the clipboard were created by this clipboard instance.
 pub fn (cb &Clipboard) has_ownership() bool {
 	if cb.last_cb_serial == 0 {
 		return false
@@ -66,8 +64,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	return C.darwin_set_pasteboard_text(cb.pb, text)
 }
 
-// get_text retrieves the contents of the system clipboard
-// as a `string`.
+// get_text retrieves the contents of the system clipboard.
 // This is often associated with a *paste* action (`Cmd` + `V`).
 pub fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0

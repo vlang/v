@@ -206,7 +206,9 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 		sb.write_string(ua)
 		sb.write_string('\r\n')
 	}
-	if req.data.len > 0 && !req.header.contains(.content_length) {
+	if !req.header.contains(.content_length) {
+		// Write Content-Length: 0 even if there's no content, since some APIs
+		// stop working without this header.
 		sb.write_string('Content-Length: ')
 		sb.write_string(req.data.len.str())
 		sb.write_string('\r\n')

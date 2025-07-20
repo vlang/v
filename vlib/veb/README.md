@@ -233,7 +233,7 @@ by adding a host to the "hosts" file of your device.
 ```v ignore
 @['/'; host: 'example.com']
 pub fn (app &App) hello_web(mut ctx Context) veb.Result {
-	return app.text('Hello World')
+	return ctx.text('Hello WEB')
 }
 
 @['/'; host: 'api.example.org']

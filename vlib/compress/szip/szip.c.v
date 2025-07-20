@@ -65,7 +65,7 @@ pub enum CompressionLevel {
 	default_compression = C.MZ_DEFAULT_COMPRESSION
 }
 
-// OpenMode lists the opening modes
+// OpenMode lists the opening modes.
 // .write: opens a file for reading/extracting (the file must exists).
 // .read_only: creates an empty file for writing.
 // .append: appends to an existing archive.
@@ -214,7 +214,7 @@ pub fn (mut zentry Zip) read_entry() !voidptr {
 	return buf
 }
 
-// read_entry_buf extracts the current zip entry into user specified buffer
+// read_entry_buf extracts the current zip entry into user specified buffer.
 pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 	bsize := usize(in_bsize)
 	res := C.zip_entry_noallocread(zentry, buf, bsize)
@@ -232,7 +232,7 @@ pub fn (mut zentry Zip) extract_entry(path string) ! {
 	}
 }
 
-// extract zip file to directory
+// extract zip file to directory.
 pub fn extract_zip_to_dir(file string, dir string) !bool {
 	if C.access(&char(dir.str), 0) == -1 {
 		return error('szip: cannot open directory for extracting, directory not exists')
@@ -241,7 +241,7 @@ pub fn extract_zip_to_dir(file string, dir string) !bool {
 	return res == 0
 }
 
-// zip files (full path) to zip file
+// zip files (full path) to zip file.
 pub fn zip_files(path_to_file []string, path_to_export_zip string) ! {
 	// open or create new zip
 	mut zip := open(path_to_export_zip, .no_compression, .write) or { panic(err) }

@@ -12,10 +12,10 @@ mut:
 	set(sid string, val T) !
 }
 
-// get data from all sessions, optional to implement
+// get data from all sessions, optional to implement.
 pub fn (mut s Store) all[T]() ![]T {
 	return []T{}
 }
 
-// clear all session data, optional to implement
+// clear all session data, optional to implement.
 pub fn (mut s Store) clear[T]() ! {}
