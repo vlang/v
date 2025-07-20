@@ -13,5 +13,5 @@ fn xint(n int) bool {
 fn test_const() {
 	assert xint(C.EOF) == true // a random libc const is int by default
 
-	assert x16(C.AF_INET) == true // defined in V's net module
+	assert x16(u16(C.AF_INET)) == true // defined in V's net module
 }
