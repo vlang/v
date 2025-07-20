@@ -814,6 +814,7 @@ pub fn (mut w Walker) fn_by_name(fn_name string) {
 	}
 	stmt := w.all_fns[fn_name] or { return }
 	w.mark_fn_as_used(fn_name)
+	w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
 	w.stmts(stmt.stmts)
 }
 
@@ -984,5 +985,26 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			w.mark_by_type(isym.info.elem_type)
 		}
 		else {}
+	}
+}
+
+pub fn (mut w Walker) remove_unused_fn_generic_types() {
+	for _, node in w.all_fns {
+		mut count := 0
+		nkey := node.fkey()
+		if all_concrete_types := w.table.fn_generic_types[nkey] {
+			if all_concrete_types.len == 0 {
+				continue
+			}
+			for k, concrete_types in all_concrete_types {
+				if concrete_types.len != 1 {
+					continue
+				}
+				if w.table.sym(concrete_types[0]).idx !in w.used_syms {
+					w.table.fn_generic_types[nkey].delete(k - count)
+					count++
+				}
+			}
+		}
 	}
 }
