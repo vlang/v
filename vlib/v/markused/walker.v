@@ -512,10 +512,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				}
 				else {
 					// `.unresolved`, `.blank_ident`, `.variable`, `.function`
-					// println('>>> else, ast.Ident ${node.name} kind: $node.kind ')
-					w.mark_const_as_used(node.name)
-					w.mark_global_as_used(node.name)
-					w.fn_by_name(node.name)
+					// println('>>> else, ast.Ident ${node.name} kind: $node.kind ')					
+					if node.name in w.all_consts {
+						w.mark_const_as_used(node.name)
+					} else if node.name in w.all_globals {
+						w.mark_global_as_used(node.name)
+					} else {
+						w.fn_by_name(node.name)
+					}
 				}
 			}
 			w.or_block(node.or_expr)
