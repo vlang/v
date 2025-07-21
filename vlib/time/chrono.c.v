@@ -1,7 +1,6 @@
 module time
 
-// portable_timegm does the same as C._mkgmtime, but unlike it,
-// can work with dates before the Unix epoch of 1970-01-01 .
+// portable_timegm does the same as C._mkgmtime, but unlike it, can work with dates before the Unix epoch of 1970-01-01 .
 pub fn portable_timegm(t &C.tm) i64 {
 	mut year := t.tm_year + 1900
 	mut month := t.tm_mon // 0-11
