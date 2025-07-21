@@ -1898,6 +1898,11 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 	is_fn_sig := func.name == ''
 	not_anon := !info.is_anon
 	mut has_generic_arg := false
+
+	if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+		return
+	}
+
 	for param in func.params {
 		if param.typ.has_flag(.generic) {
 			has_generic_arg = true
