@@ -630,6 +630,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.TypeOf {
 			w.expr(node.expr)
+			if node.typ != 0 {
+				w.mark_by_type(node.typ)
+			}
 		}
 		///
 		ast.AsCast {
@@ -888,7 +891,7 @@ pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.
 		} else if return_type.has_flag(.result) {
 			w.used_result++
 		}
-		w.mark_by_type(return_type)
+		w.mark_by_type(return_type.clear_option_and_result())
 	}
 	for param in params {
 		w.mark_by_type(param.typ)
@@ -973,7 +976,7 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 				w.mark_by_type(param.typ)
 			}
 			if isym.info.func.return_type != 0 {
-				w.mark_by_type(isym.info.func.return_type)
+				w.mark_by_type(isym.info.func.return_type.clear_option_and_result())
 			}
 		}
 		ast.MultiReturn {
@@ -983,6 +986,28 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 		}
 		ast.Chan {
 			w.mark_by_type(isym.info.elem_type)
+		}
+		ast.Aggregate {
+			for typ in isym.info.types {
+				w.mark_by_type(typ)
+			}
+		}
+		ast.Enum {
+			w.mark_by_type(isym.info.typ)
+		}
+		ast.Interface {
+			for typ in isym.info.types {
+				w.mark_by_type(typ)
+			}
+			for embed in isym.info.embeds {
+				w.mark_by_type(embed)
+			}
+			for generic_type in isym.info.generic_types {
+				w.mark_by_type(generic_type)
+			}
+			if isym.info.parent_type != 0 {
+				w.mark_by_type(isym.info.parent_type)
+			}
 		}
 		else {}
 	}

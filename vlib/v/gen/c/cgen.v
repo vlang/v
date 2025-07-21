@@ -2600,6 +2600,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						// Register an option if it's not registered yet
 						g.register_option(method.return_type)
 					} else if method.return_type.has_flag(.result) {
+						if g.pref.skip_unused
+							&& g.table.sym(method.return_type).idx !in g.table.used_features.used_syms {
+							continue
+						}
 						// Register a result if it's not registered yet
 						g.register_result(method.return_type)
 					}
@@ -7758,6 +7762,10 @@ fn (mut g Gen) register_iface_return_types() {
 		for _, method_name in inter_info.get_methods() {
 			method := isym.find_method_with_generic_parent(method_name) or { continue }
 			if method.return_type.has_flag(.result) {
+				if g.pref.skip_unused
+					&& g.table.sym(method.return_type).idx !in g.table.used_features.used_syms {
+					continue
+				}
 				g.register_result(method.return_type)
 			}
 		}
@@ -8137,12 +8145,14 @@ return ${cast_shared_struct_str};
 		}
 		// add line return after interface index declarations
 		sb.writeln('')
-		if inter_methods.len > 0 {
-			sb.writeln2(methods_wrapper.str(), methods_struct_def.str())
-			sb.writeln(methods_struct.str())
-		}
-		if cast_functions.len > 0 {
-			sb.writeln(cast_functions.str())
+		if (current_iinidx - iinidx_minimum_base) > 0 {
+			if inter_methods.len > 0 {
+				sb.writeln2(methods_wrapper.str(), methods_struct_def.str())
+				sb.writeln(methods_struct.str())
+			}
+			if cast_functions.len > 0 {
+				sb.writeln(cast_functions.str())
+			}
 		}
 	}
 	if conversion_functions.len > 0 {
