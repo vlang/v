@@ -8,7 +8,7 @@ import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively.
 pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&ast.File) {
-	mut all_fns, all_consts, all_globals, all_fields := all_global_decl(ast_files)
+	mut all_fns, all_consts, all_globals, all_fields, all_decltypes := all_global_decl(ast_files)
 	util.timing_start('MARKUSED')
 	defer {
 		util.timing_measure('MARKUSED')
@@ -440,18 +440,20 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 
 	mut walker := Walker.new(
-		table:       table
-		files:       ast_files
-		all_fns:     all_fns
-		all_consts:  all_consts
-		all_globals: all_globals
-		all_fields:  all_fields
-		pref:        pref_
+		table:         table
+		files:         ast_files
+		all_fns:       all_fns
+		all_consts:    all_consts
+		all_globals:   all_globals
+		all_fields:    all_fields
+		all_decltypes: all_decltypes
+		pref:          pref_
 	)
 	walker.mark_markused_consts() // tagged with `@[markused]`
 	walker.mark_markused_globals() // tagged with `@[markused]`
 	walker.mark_markused_syms() // tagged with `@[markused]`
 	walker.mark_markused_fns() // tagged with `@[markused]`, `@[export]` and veb actions
+	walker.mark_markused_decltypes() // tagged with `@[markused]`
 	walker.mark_struct_field_default_expr()
 
 	for k, _ in table.used_features.comptime_calls {
@@ -583,7 +585,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 }
 
-fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField, map[string]ast.GlobalField, map[string]ast.StructField) {
+fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField, map[string]ast.GlobalField, map[string]ast.StructField, map[string]ast.Type) {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
@@ -592,6 +594,7 @@ fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast
 	mut all_consts := map[string]ast.ConstField{}
 	mut all_globals := map[string]ast.GlobalField{}
 	mut all_fields := map[string]ast.StructField{}
+	mut all_decltypes := map[string]ast.Type{}
 	for i in 0 .. ast_files.len {
 		for node in ast_files[i].stmts {
 			match node {
@@ -619,11 +622,14 @@ fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast
 						all_fields[sfkey] = sfield
 					}
 				}
+				ast.TypeDecl {
+					all_decltypes[node.name] = node.typ
+				}
 				else {}
 			}
 		}
 	}
-	return all_fns, all_consts, all_globals, all_fields
+	return all_fns, all_consts, all_globals, all_fields, all_decltypes
 }
 
 fn mark_all_methods_used(mut table ast.Table, mut all_fn_root_names []string, typ ast.Type) {

@@ -5231,6 +5231,9 @@ fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
 		if node.has_cap {
 			c.check_array_init_para_type('cap', mut node.cap_expr, node.pos)
 		}
+		if c.pref.skip_unused && node.typ.has_flag(.generic) {
+			c.table.used_features.comptime_syms[c.unwrap_generic(node.typ)] = true
+		}
 		return node.typ
 	} else {
 		c.error('`chan` of unknown type', node.pos)

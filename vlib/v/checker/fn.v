@@ -338,8 +338,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 							param.type_pos)
 					}
 				}
-				if c.pref.skip_unused {
+			}
+			if c.pref.skip_unused {
+				if param.typ.has_flag(.generic) {
 					c.table.used_features.comptime_syms[c.unwrap_generic(param.typ)] = true
+				}
+				if node.return_type.has_flag(.generic) {
+					c.table.used_features.comptime_syms[c.unwrap_generic(node.return_type)] = true
 				}
 			}
 			if param.name == node.mod && param.name != 'main' {

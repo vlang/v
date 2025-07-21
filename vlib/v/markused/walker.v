@@ -25,11 +25,12 @@ pub mut:
 	n_asserts    int
 	pref         &pref.Preferences = unsafe { nil }
 mut:
-	files       []&ast.File
-	all_fns     map[string]ast.FnDecl
-	all_consts  map[string]ast.ConstField
-	all_globals map[string]ast.GlobalField
-	all_fields  map[string]ast.StructField
+	files         []&ast.File
+	all_fns       map[string]ast.FnDecl
+	all_consts    map[string]ast.ConstField
+	all_globals   map[string]ast.GlobalField
+	all_fields    map[string]ast.StructField
+	all_decltypes map[string]ast.Type
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -170,6 +171,12 @@ pub fn (mut w Walker) mark_markused_syms() {
 		if sym.info is ast.Struct && sym.info.is_markused {
 			w.mark_by_sym(sym)
 		}
+	}
+}
+
+pub fn (mut w Walker) mark_markused_decltypes() {
+	for _, typ in w.all_decltypes {
+		w.mark_by_type(typ)
 	}
 }
 
