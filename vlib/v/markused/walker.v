@@ -78,6 +78,7 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 	w.used_consts[ckey] = true
 	cfield := w.all_consts[ckey] or { return }
 	w.expr(cfield.expr)
+	w.mark_by_type(cfield.typ)
 }
 
 pub fn (mut w Walker) mark_global_as_used(ckey string) {
@@ -91,10 +92,7 @@ pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	gfield := w.all_globals[ckey] or { return }
 	w.expr(gfield.expr)
 	if !gfield.has_expr && gfield.typ != 0 {
-		sym := w.table.sym(gfield.typ)
-		if sym.info is ast.Struct {
-			w.mark_by_sym(sym)
-		}
+		w.mark_by_type(gfield.typ)
 	}
 }
 
