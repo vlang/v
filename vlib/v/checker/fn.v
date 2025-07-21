@@ -338,6 +338,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 							param.type_pos)
 					}
 				}
+				if c.pref.skip_unused {
+					c.table.used_features.comptime_syms[c.unwrap_generic(param.typ)] = true
+				}
 			}
 			if param.name == node.mod && param.name != 'main' {
 				c.error('duplicate of a module name `${param.name}`', param.pos)
@@ -1860,6 +1863,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
 					}
 				}
+			}
+		}
+		if c.pref.skip_unused && node.concrete_types.len > 0 {
+			for concrete_type in node.concrete_types {
+				c.table.used_features.comptime_syms[c.unwrap_generic(concrete_type)] = true
 			}
 		}
 	}

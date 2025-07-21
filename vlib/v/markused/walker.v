@@ -537,19 +537,15 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.expr(node.update_expr)
 			}
 			mapinfo := w.table.final_sym(node.typ).map_info()
-			ksym := w.table.final_sym(mapinfo.key_type)
-			vsym := w.table.final_sym(mapinfo.value_type)
+			ksym := w.table.sym(mapinfo.key_type)
+			vsym := w.table.sym(mapinfo.value_type)
 			if node.typ.has_flag(.shared_f) {
 				if sym := w.table.find_sym('sync.RwMutex') {
 					w.mark_by_sym(sym)
 				}
 			}
-			if ksym.kind == .sum_type {
-				w.mark_by_sym(ksym)
-			}
-			if vsym.kind == .sum_type {
-				w.mark_by_sym(vsym)
-			}
+			w.mark_by_sym(ksym)
+			w.mark_by_sym(vsym)
 			w.features.used_maps++
 		}
 		ast.MatchExpr {
@@ -665,6 +661,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.expr(filtered[0].expr)
 				}
 			}
+			w.mark_by_sym_name(node.enum_name)
 		}
 		ast.LockExpr {
 			if sym := w.table.find_sym('sync.RwMutex') {
@@ -710,7 +707,6 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.is_method {
 		w.mark_by_type(node.receiver.typ)
 	}
-
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
 	w.stmts(node.stmts)
@@ -730,6 +726,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	if node.language == .c {
 		if node.name in ['C.wyhash', 'C.wyhash64'] {
 			w.features.used_maps++
+		}
+		if node.return_type != 0 {
+			w.mark_by_type(node.return_type)
 		}
 		return
 	}
@@ -1032,7 +1031,7 @@ pub fn (mut w Walker) remove_unused_fn_generic_types() {
 				if concrete_types.len != 1 {
 					continue
 				}
-				if w.table.sym(concrete_types[0]).idx !in w.used_syms {
+				if concrete_types[0].idx() !in w.used_syms {
 					w.table.fn_generic_types[nkey].delete(k - count)
 					count++
 				}

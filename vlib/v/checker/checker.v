@@ -3137,6 +3137,10 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			c.inside_if_guard = true
 			node.expr_type = c.expr(mut node.expr)
 			c.inside_if_guard = old_inside_if_guard
+			if c.pref.skip_unused && node.expr_type.has_flag(.generic) {
+				unwrapped_type := c.unwrap_generic(node.expr_type)
+				c.table.used_features.comptime_syms[unwrapped_type] = true
+			}
 			if !node.expr_type.has_flag(.option) && !node.expr_type.has_flag(.result) {
 				mut no_opt_or_res := true
 				match mut node.expr {

@@ -52,7 +52,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			println('> used_fn, found matching symbol: ${m}')
 		}
 	}
-
 	if pref_.backend == .native {
 		// Note: this is temporary, until the native backend supports more features!
 		all_fn_root_names << 'main.main'
@@ -457,11 +456,14 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 	for k, _ in table.used_features.comptime_calls {
 		walker.fn_by_name(k)
+		// println('>>>>> ${k}')
 	}
 
 	for k, _ in table.used_features.comptime_syms {
 		walker.mark_by_sym(table.sym(k))
+		// println('>>>>> ${k}')
 	}
+	// println(all_fn_root_names)
 
 	walker.mark_root_fns(all_fn_root_names)
 
