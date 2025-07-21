@@ -367,6 +367,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.mark_by_type(node.typ)
 			if node.typ.has_flag(.option) {
 				w.used_option++
+			} else if node.typ.has_flag(.result) {
+				w.used_result++
 			}
 		}
 		ast.ChanInit {

@@ -1779,6 +1779,9 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 	}
 	for sym in g.table.type_symbols {
 		if sym.kind == .alias && !sym.is_builtin && sym.name !in ['byte', 'i32'] {
+			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+				continue
+			}
 			g.write_alias_typesymbol_declaration(sym)
 		}
 	}

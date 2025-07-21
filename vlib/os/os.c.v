@@ -9,6 +9,7 @@ $if freebsd || openbsd {
 	#include <sys/sysctl.h>
 }
 
+@[markused]
 pub const args = arguments()
 
 fn C.readdir(voidptr) &C.dirent

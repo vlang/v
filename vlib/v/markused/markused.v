@@ -466,6 +466,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	walker.mark_root_fns(all_fn_root_names)
 
 	walker.mark_by_sym_name('vweb.RedirectParams')
+	walker.mark_by_sym_name('vweb.RequestParams')
 
 	if table.used_features.used_maps > 0 {
 		for k, mut mfn in all_fns {
