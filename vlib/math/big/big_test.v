@@ -399,6 +399,10 @@ struct PowTest {
 
 // vfmt off
 const pow_test_data = [
+	PowTest{ 0, 0, 1},
+	PowTest{ 0, 1, 0},
+	PowTest{ 1, 0, 1},
+	PowTest{ 1, 1, 1},
 	PowTest{ 2, 0, 1 },
 	PowTest{ 2, 1, 2 },
 	PowTest{ 2, 5, 32 },
@@ -422,6 +426,10 @@ struct ModPowTest {
 
 // vfmt off
 const mod_pow_test_data = [
+	ModPowTest{ 0, 0, 123, 1 },
+	ModPowTest{ 0, 1, 123, 0 },
+	ModPowTest{ 1, 0, 123, 1 },
+	ModPowTest{ 1, 1, 123, 1 },
 	ModPowTest{ 324, 315, 632, 512 },
 	ModPowTest{ 65, 17, 3233, 2790 },
 	ModPowTest{ 2790, 413, 3233, 65 },
@@ -437,6 +445,10 @@ struct BigModPowTest {
 
 // vfmt off
 const big_mod_pow_test_data = [
+	BigModPowTest{  0,  0, 4205,   1 },
+	BigModPowTest{  0,  1, 4205,   0 },
+	BigModPowTest{  1,  0, 4205,   1 },
+	BigModPowTest{  1,  1, 4205,   1 },
 	BigModPowTest{ 23, 35, 4205, 552 }, // passed to mod_pow
 	BigModPowTest{
 		'5155371529688',
