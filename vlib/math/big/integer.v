@@ -632,7 +632,7 @@ pub fn (base Integer) big_mod_pow(exponent Integer, modulus Integer) !Integer {
 
 	// 0^x == 0 (x != 0 due to previous clause)
 	if base.signum == 0 {
-		return one_int
+		return zero_int
 	}
 
 	if exponent.bit_len() == 1 {
