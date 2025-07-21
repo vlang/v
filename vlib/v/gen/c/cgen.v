@@ -7814,7 +7814,12 @@ fn (mut g Gen) interface_table() string {
 		for k, method_name in inter_methods {
 			method := isym.find_method_with_generic_parent(method_name) or { continue }
 			methodidx[method.name] = k
-			ret_styp := g.ret_styp(method.return_type)
+			ret_styp := if g.pref.skip_unused
+				&& g.table.sym(method.return_type).idx !in g.table.used_features.used_syms {
+				'void'
+			} else {
+				g.ret_styp(method.return_type)
+			}
 			methods_struct_def.write_string('\t${ret_styp} (*_method_${c_fn_name(method.name)})(void* _')
 			// the first param is the receiver, it's handled by `void*` above
 			for i in 1 .. method.params.len {
@@ -8161,14 +8166,12 @@ return ${cast_shared_struct_str};
 		}
 		// add line return after interface index declarations
 		sb.writeln('')
-		if (current_iinidx - iinidx_minimum_base) > 0 {
-			if inter_methods.len > 0 {
-				sb.writeln2(methods_wrapper.str(), methods_struct_def.str())
-				sb.writeln(methods_struct.str())
-			}
-			if cast_functions.len > 0 {
-				sb.writeln(cast_functions.str())
-			}
+		if inter_methods.len > 0 {
+			sb.writeln2(methods_wrapper.str(), methods_struct_def.str())
+			sb.writeln(methods_struct.str())
+		}
+		if cast_functions.len > 0 {
+			sb.writeln(cast_functions.str())
 		}
 	}
 	if conversion_functions.len > 0 {
