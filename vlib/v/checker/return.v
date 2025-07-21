@@ -72,8 +72,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		expected_types = expected_type_sym.info.types.clone()
 		if c.table.cur_concrete_types.len > 0 {
 			expected_types = expected_types.map(c.unwrap_generic(it))
+			c.table.used_features.comptime_syms[c.table.find_or_register_multi_return(expected_types)] = true
 		}
-		c.table.used_features.comptime_syms[c.table.find_or_register_multi_return(expected_types)] = true
 	}
 	mut got_types := []ast.Type{}
 	mut expr_idxs := []int{}

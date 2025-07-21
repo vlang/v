@@ -2632,6 +2632,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if node.language == .c {
 				return
 			}
+			if g.pref.skip_unused && node.idx !in g.table.used_features.used_syms {
+				return
+			}
 			if node.is_union {
 				g.typedefs.writeln('typedef union ${name} ${name};')
 			} else {
@@ -4727,6 +4730,9 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	if g.is_cc_msvc {
 		mut last_value := '0'
 		enum_typ_name := g.table.get_type_name(node.typ)
+		if g.pref.skip_unused && node.typ.idx() !in g.table.used_features.used_syms {
+			return
+		}
 		g.enum_typedefs.writeln('')
 		g.enum_typedefs.writeln('typedef ${enum_typ_name} ${enum_name};')
 		for i, field in node.fields {
@@ -4745,6 +4751,9 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 			}
 			g.enum_typedefs.writeln(')')
 		}
+		return
+	}
+	if g.pref.skip_unused && node.typ.idx() !in g.table.used_features.used_syms {
 		return
 	}
 	g.enum_typedefs.writeln('')
@@ -6702,8 +6711,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							}
 						}
 					}
-					if sym.info.generic_types.len == 0 && g.pref.skip_unused
-						&& sym.idx !in g.table.used_features.used_syms {
+					if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 						continue
 					}
 					g.struct_decl(sym.info, name, false, false)

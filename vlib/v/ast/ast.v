@@ -452,6 +452,7 @@ pub:
 pub mut:
 	language Language
 	fields   []StructField
+	idx      int
 }
 
 pub struct Embed {
