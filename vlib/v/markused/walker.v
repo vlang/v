@@ -209,11 +209,26 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 		ast.ComptimeFor {
 			w.mark_by_type(node.typ)
 			w.stmts(node.stmts)
-			w.mark_by_sym_name('EnumData')
-			w.mark_by_sym_name('FieldData')
-			w.mark_by_sym_name('FunctionData')
-			w.mark_by_sym_name('MethodParam')
-			w.mark_by_sym_name('VariantData')
+			match node.kind {
+				.attributes {
+					w.mark_by_sym_name('VAttribute')
+				}
+				.variants {
+					w.mark_by_sym_name('VariantData')
+				}
+				.params {
+					w.mark_by_sym_name('MethodParam')
+				}
+				.values {
+					w.mark_by_sym_name('EnumData')
+				}
+				.fields {
+					w.mark_by_sym_name('FieldData')
+				}
+				.methods {
+					w.mark_by_sym_name('FunctionData')
+				}
+			}
 		}
 		ast.ConstDecl {
 			w.const_fields(node.fields)
