@@ -15,7 +15,6 @@ pub mut:
 	used_consts  map[string]bool // used_consts['os.args'] == true
 	used_globals map[string]bool
 	used_fields  map[string]bool
-	used_ifaces  map[string]bool
 	used_syms    map[int]bool
 	used_none    int // _option_none
 	used_option  int // _option_ok
@@ -619,12 +618,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.SelectorExpr {
 			w.expr(node.expr)
 			if node.expr_type != 0 {
-				esym := w.table.sym(node.expr_type)
-				if esym.kind == .interface {
-					w.mark_interface_by_symbol(esym)
-				} else {
-					w.mark_by_sym(esym)
-				}
+				w.mark_by_type(node.expr_type)
 				if method := w.table.find_method(w.table.sym(node.expr_type), node.field_name) {
 					w.fn_by_name(method.fkey())
 				}
@@ -720,6 +714,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.language == .c {
 		w.mark_fn_as_used(node.fkey())
+		w.mark_fn_ret_and_params(node.return_type, node.params)
 		return
 	}
 	fkey := node.fkey()
@@ -770,7 +765,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				}
 			}
 		} else if left_sym.info is ast.Interface {
-			w.mark_interface_by_symbol(left_sym)
+			w.mark_by_sym(left_sym)
 			for typ in left_sym.info.types {
 				sym := w.table.sym(typ)
 				_, embed_types := w.table.find_method_from_embeds(sym, node.name) or {
@@ -900,21 +895,6 @@ pub fn (mut w Walker) mark_panic_deps() {
 	w.mark_by_sym_name('StrIntpMem')
 }
 
-pub fn (mut w Walker) mark_interface_by_symbol(isym ast.TypeSymbol) {
-	if isym.name in w.used_ifaces {
-		return
-	}
-	w.used_ifaces[isym.name] = true
-	if isym.info is ast.Interface {
-		for typ in isym.info.types {
-			if typ == ast.map_type {
-				w.features.used_maps++
-			}
-			// sym := w.table.sym(typ); eprintln('>>>>>>>>> typ: ${typ.str():-30} | sym.name: ${sym.name}')
-		}
-	}
-}
-
 pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.Param) {
 	if return_type != 0 {
 		if return_type.has_flag(.option) {
@@ -1028,6 +1008,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 		}
 		ast.Interface {
 			for typ in isym.info.types {
+				if typ == ast.map_type {
+					w.features.used_maps++
+				}
 				w.mark_by_type(typ)
 			}
 			for embed in isym.info.embeds {
