@@ -115,7 +115,7 @@ fn convert_ctime(t C.tm, nanosecond int) Time {
 	}
 }
 
-// strftime returns the formatted time using `strftime(3)`
+// strftime returns the formatted time using `strftime(3)`.
 pub fn (t Time) strftime(fmt string) string {
 	mut tm := &C.tm{}
 	$if windows {

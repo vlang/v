@@ -224,11 +224,7 @@ fn (a Integer) exp_binary(x Integer, m Integer) Integer {
 	mut r := one_int
 
 	mut start := true
-	mut wstart := if x.bit_len() - 1 > n {
-		int(n)
-	} else {
-		x.bit_len() - 1
-	}
+	mut wstart := x.bit_len() - 1
 	mut wend := 0
 	mut wvalue := 1
 

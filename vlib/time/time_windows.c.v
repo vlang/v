@@ -99,7 +99,7 @@ fn local_as_unix_time() i64 {
 	return make_unix_time(*tm)
 }
 
-// local - return the time `t`, converted to the currently active local timezone
+// local - return the time `t`, converted to the currently active local timezone.
 pub fn (t Time) local() Time {
 	if t.is_local {
 		return t

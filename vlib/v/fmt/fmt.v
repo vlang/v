@@ -1613,7 +1613,9 @@ pub fn (mut f Fmt) return_stmt(node ast.Return) {
 			}
 		}
 	}
-	f.writeln('')
+	if !f.single_line_if {
+		f.writeln('')
+	}
 }
 
 pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
