@@ -10,12 +10,10 @@ import strings
 #include <sys/statvfs.h>
 #include <utime.h>
 
-// path_separator is the platform specific separator string, used between the folders
-// and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
+// path_separator is the platform specific separator string, used between the folders and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '/'
 
-// path_delimiter is the platform specific delimiter string, used between the paths
-// in environment variables like PATH. It is ':' on POSIX, and ';' on Windows.
+// path_delimiter is the platform specific delimiter string, used between the paths in environment variables like PATH. It is ':' on POSIX, and ';' on Windows.
 pub const path_delimiter = ':'
 
 // path_devnull is a platform-specific file path of the null device.
@@ -214,9 +212,8 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 	}
 }
 
-// utime changes the access and modification times of the inode specified by
-// path to the actime and modtime fields of times respectively, or returns POSIX
-// error message if utime call fails.
+// utime changes the access and modification times of the inode specified by path.
+// It returns POSIX error message, if it can not do so.
 pub fn utime(path string, actime int, modtime int) ! {
 	u := C.utimbuf{actime, modtime}
 	if C.utime(&char(path.str), &u) != 0 {
@@ -224,7 +221,7 @@ pub fn utime(path string, actime int, modtime int) ! {
 	}
 }
 
-// uname returns information about the platform on which the program is running
+// uname returns information about the platform on which the program is running.
 // For example:
 // os.Uname{
 //    sysname: 'Linux'
@@ -256,8 +253,7 @@ pub fn uname() Uname {
 	return u
 }
 
-// hostname returns the hostname (system's DNS name) or POSIX error message if
-// the hostname call fails.
+// hostname returns the hostname (system's DNS name) or POSIX error message if the hostname call fails.
 pub fn hostname() !string {
 	mut hstnme := ''
 	size := 256
@@ -270,8 +266,8 @@ pub fn hostname() !string {
 	return error(posix_get_error_msg(C.errno))
 }
 
-// loginname returns the name of the user logged in on the controlling terminal
-// of the process or POSIX error message if the getlogin call fails.
+// loginname returns the name of the user logged in on the controlling terminal of the process.
+// It returns a POSIX error message, if the getlogin call fails.
 pub fn loginname() !string {
 	x := C.getlogin()
 	if !isnil(x) {
@@ -427,8 +423,8 @@ pub fn (mut c Command) close() ! {
 	}
 }
 
-// symlink creates a symbolic link named target, which points to origin
-// or returns POSIX error message if symlink call fails.
+// symlink creates a symbolic link named target, which points to origin.
+// It returns a POSIX error message, if it can not do so.
 pub fn symlink(origin string, target string) ! {
 	res := C.symlink(&char(origin.str), &char(target.str))
 	if res == 0 {
@@ -437,8 +433,8 @@ pub fn symlink(origin string, target string) ! {
 	return error(posix_get_error_msg(C.errno))
 }
 
-// link creates a new link (also known as a hard link) to an existing file or
-// returns POSIX error message if link call fails.
+// link creates a new link (also known as a hard link) to an existing file.
+// It returns a POSIX error message, if it can not do so.
 pub fn link(origin string, target string) ! {
 	res := C.link(&char(origin.str), &char(target.str))
 	if res == 0 {

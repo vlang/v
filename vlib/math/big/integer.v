@@ -605,9 +605,9 @@ pub fn (base Integer) mod_pow(exponent u32, modulus Integer) Integer {
 	mut y := one_int
 	for n > 1 {
 		if n & 1 == 1 {
-			y *= x % modulus
+			y = (y * x) % modulus
 		}
-		x *= x % modulus
+		x = (x * x) % modulus
 		n >>= 1
 	}
 	return x * y % modulus
@@ -632,7 +632,7 @@ pub fn (base Integer) big_mod_pow(exponent Integer, modulus Integer) !Integer {
 
 	// 0^x == 0 (x != 0 due to previous clause)
 	if base.signum == 0 {
-		return one_int
+		return zero_int
 	}
 
 	if exponent.bit_len() == 1 {

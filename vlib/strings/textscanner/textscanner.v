@@ -1,8 +1,7 @@
 module textscanner
 
-// TextScanner simplifies writing small scanners/parsers
-// by providing safe methods to scan texts character by
-// character, peek for the next characters, go back, etc.
+// TextScanner simplifies writing small scanners/parsers.
+// It helps by providing safe methods to scan texts character by character, peek for the next characters, go back, etc.
 pub struct TextScanner {
 pub:
 	input string
@@ -164,14 +163,14 @@ pub fn (mut ss TextScanner) current() int {
 	return -1
 }
 
-// reset resets the internal state of the scanner
+// reset resets the internal state of the scanner.
 // After calling .reset(), .next() will start reading
 // again from the start of the input text.
 pub fn (mut ss TextScanner) reset() {
 	ss.pos = 0
 }
 
-// goto_end has the same effect as `for ts.next() != -1 {}`
+// goto_end has the same effect as `for ts.next() != -1 {}`.
 // i.e. after calling .goto_end(), the scanner will be at
 // the end of the input text. Further .next() calls will
 // return -1, unless you go back.

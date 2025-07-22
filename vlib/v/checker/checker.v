@@ -1420,8 +1420,6 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 }
 
 fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type, expr ast.Expr) {
-	c.markused_option_or_result(!c.is_builtin_mod && node.kind != .absent && c.mod != 'strings')
-
 	if node.kind == .propagate_option {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.option)
 			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
@@ -1823,8 +1821,6 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.check_or_expr(node.or_block, unwrapped_typ, c.expected_or_type, node)
 			c.expected_or_type = ast.void_type
 		}
-		c.markused_option_or_result(node.or_block.kind != .absent
-			&& !c.table.used_features.option_or_result)
 		return field.typ
 	}
 	if mut method := c.table.sym(c.unwrap_generic(typ)).find_method_with_generic_parent(field_name) {
@@ -2983,9 +2979,6 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			node.expr_type = c.expr(mut node.expr)
 			expr_type_sym := c.table.sym(node.expr_type)
 			type_sym := c.table.sym(c.unwrap_generic(node.typ))
-			if !c.is_builtin_mod {
-				c.table.used_features.as_cast = true
-			}
 			if mut node.expr is ast.Ident {
 				if mut node.expr.obj is ast.Var {
 					ident_typ := if node.expr.obj.smartcasts.len > 0 {
@@ -4303,6 +4296,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	if node.language == .c {
 		if node.name == 'C.NULL' {
 			return ast.voidptr_type
+		}
+		if x := c.table.global_scope.find_const(node.name) {
+			return x.typ
 		}
 		return ast.int_type
 	}

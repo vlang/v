@@ -38,16 +38,10 @@ mut:
 	arr      []int
 }
 
-/******************************************************************************
-*
-* TTF_File structs
-*
-******************************************************************************/
 // TTF_File represents the data contents of a complete `*.ttf` file.
 // The struct is usually initialized by reading raw TTF data into the `buf` member field
 // for example by doing: `ttf_font.buf = os.read_bytes("arial.ttf") or { panic(err) }`,
 // and then run the `init/0` method, for example: `ttf_font.init()`
-
 pub struct TTF_File {
 pub mut:
 	buf                     []u8
@@ -118,12 +112,7 @@ pub fn (mut tf TTF_File) init() {
 	dprintln('advance_width_max: ${tf.advance_width_max}')
 }
 
-/******************************************************************************
-*
-* TTF_File Glyph Structs
-*
-******************************************************************************/
-// Point represents a 2D point
+// Point represents a 2D point.
 pub struct Point {
 pub mut:
 	x        int
@@ -156,13 +145,9 @@ pub mut:
 	components         []Component
 }
 
-/******************************************************************************
-*
-* TTF_File metrics and glyph
-*
-******************************************************************************/
-// get_horizontal_metrics returns the horizontal metrics `advance_width` and `left_side_bearing`
-// for the glyph at index `glyph_index`.
+// TTF_File metrics and glyph
+
+// get_horizontal_metrics returns the horizontal metrics `advance_width` and `left_side_bearing` for the glyph at index `glyph_index`.
 pub fn (mut tf TTF_File) get_horizontal_metrics(glyph_index u16) (int, int) {
 	assert 'hmtx' in tf.tables
 	old_pos := tf.pos

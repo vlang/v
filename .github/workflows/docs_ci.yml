@@ -65,4 +65,9 @@ jobs:
       - name: Build V
         run: make
       - name: Check doc comment dots for some key modules
-        run: ./v run cmd/tools/find_doc_comments_with_no_dots.v vlib/builtin/ vlib/arrays/ vlib/flag/ vlib/bitfield/
+        run: ./v run cmd/tools/find_doc_comments_with_no_dots.v \
+          vlib/builtin/ vlib/arrays/ vlib/flag/ \
+          vlib/bitfield/ vlib/term/ vlib/strings/ \
+          vlib/rand/ vlib/compress/ vlib/clipboard/ \
+          vlib/time/ \
+          vlib/os

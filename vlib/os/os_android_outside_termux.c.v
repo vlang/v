@@ -36,7 +36,7 @@ pub type AssetManager = C.AAssetManager
 
 fn C.AAssetManager_open(&C.AAssetManager, &char, int) &C.AAsset
 
-// open opens an Android `Asset`
+// open opens an Android `Asset`.
 pub fn (am &AssetManager) open(filename string, mode AssetMode) !&Asset {
 	asset := C.AAssetManager_open(am, filename.str, int(mode))
 	if isnil(asset) {
@@ -66,8 +66,7 @@ pub fn (a &Asset) get_length() int {
 
 fn C.AAsset_getLength64(&C.AAsset) i64
 
-// get_length_64 returns the total size of the asset data using
-// a 64-bit number instead of 32-bit as `get_length`.
+// get_length_64 returns the total size of the asset data using a 64-bit number instead of 32-bit as `get_length`.
 pub fn (a &Asset) get_length_64() i64 {
 	return C.AAsset_getLength64(a)
 }

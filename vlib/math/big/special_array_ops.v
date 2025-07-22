@@ -13,6 +13,17 @@ fn shrink_tail_zeros(mut a []u32) {
 	}
 }
 
+@[direct_array_access; inline]
+fn (i &Integer) shrink_tail_zeros() {
+	mut alen := i.digits.len
+	for alen > 0 && i.digits[alen - 1] == 0 {
+		alen--
+	}
+	unsafe {
+		i.digits.len = alen
+	}
+}
+
 // suppose operand_a bigger than operand_b and both not null.
 // Both quotient and remaider are already allocated but of length 0
 // TODO: the manualfree tag here is a workaround for compilation with -autofree. Remove it, when the -autofree bug is fixed.
@@ -108,8 +119,8 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 
 	// thanks to the base cases we can pass zero-length arrays to the mult func
 	half := imax(operand_a.len, operand_b.len) / 2
-	a_l := unsafe { operand_a[0..half] }
-	a_h := unsafe { operand_a[half..] }
+	mut a_l := unsafe { operand_a[0..half] }
+	mut a_h := unsafe { operand_a[half..] }
 	mut b_l := []u32{}
 	mut b_h := []u32{}
 	if half <= operand_b.len {
@@ -119,6 +130,10 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 		b_l = unsafe { operand_b }
 		// b_h = []u32{}
 	}
+	shrink_tail_zeros(mut a_l)
+	shrink_tail_zeros(mut a_h)
+	shrink_tail_zeros(mut b_l)
+	shrink_tail_zeros(mut b_h)
 
 	// use storage for p_1 to avoid allocation and copy later
 	multiply_digit_array(a_h, b_h, mut storage)
@@ -171,6 +186,7 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 			1
 		}
 	}
+	a0.shrink_tail_zeros()
 	a1 := Integer{
 		digits: unsafe { operand_a[k..k2] }
 		signum: if operand_a[k..k2].all(it == 0) {
@@ -179,6 +195,7 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 			1
 		}
 	}
+	a1.shrink_tail_zeros()
 	a2 := Integer{
 		digits: unsafe { operand_a[k2..] }
 		signum: 1
@@ -201,6 +218,7 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 				signum: 1
 			}
 		}
+		b0.shrink_tail_zeros()
 		b1 = Integer{
 			digits: operand_b[k..]
 			signum: 1
@@ -212,12 +230,14 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 				signum: 1
 			}
 		}
+		b0.shrink_tail_zeros()
 		if !operand_b[k..k2].all(it == 0) {
 			b1 = Integer{
 				digits: operand_b[k..k2]
 				signum: 1
 			}
 		}
+		b1.shrink_tail_zeros()
 		b2 = Integer{
 			digits: operand_b[k2..]
 			signum: 1

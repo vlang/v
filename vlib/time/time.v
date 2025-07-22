@@ -279,8 +279,7 @@ pub fn (t Time) relative_short() string {
 	return '${prefix}${y}y${suffix}'
 }
 
-// day_of_week returns the current day of a given year, month, and day,
-// as an integer.
+// day_of_week returns the current day of a given year, month, and day, as an integer.
 pub fn day_of_week(y int, m int, d int) int {
 	// Sakomotho's algorithm is explained here:
 	// https://stackoverflow.com/a/6385934
@@ -365,7 +364,7 @@ pub fn days_in_month(month int, year int) !int {
 	return res
 }
 
-// debug returns detailed breakdown of time (`Time{ year: YYYY month: MM day: dd hour: HH: minute: mm second: ss nanosecond: nanos unix: unix }`)
+// debug returns detailed breakdown of time (`Time{ year: YYYY month: MM day: dd hour: HH: minute: mm second: ss nanosecond: nanos unix: unix }`).
 pub fn (t Time) debug() string {
 	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} nanosecond: ${t.nanosecond:09} unix: ${t.unix:07} }'
 }

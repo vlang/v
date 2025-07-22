@@ -203,7 +203,7 @@ pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 	return header
 }
 
-// decompresses an array of bytes using zlib and returns the decompressed bytes in a new array
+// decompress an array of bytes using zlib and returns the decompressed bytes in a new array.
 // Example: decompressed := gzip.decompress(b)!
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	gzip_header := validate(data, params)!
@@ -220,4 +220,21 @@ pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 		return error('checksum verification failed')
 	}
 	return decompressed
+}
+
+// decompress_with_callback decompresses the given `data`, using zlib. It calls `cb` with each chunk of decompressed bytes.
+// A chunk is usually 32 KB or less. Note: the chunk data received by `cb` should be cloned, if you need to store it for later,
+// and not process it right away.
+// The callback function should return the chunk length, if it wants to continue decompressing, or 0, if it wants to abort the decompression early.
+// See also compress.ChunkCallback for more details.
+pub fn decompress_with_callback(data []u8, cb compr.ChunkCallback, userdata voidptr, params DecompressParams) !int {
+	gzip_header := validate(data, params)!
+	header_len := gzip_header.length
+	expected_len := int((u32(data[data.len - 1]) << 24) | (u32(data[data.len - 2]) << 16) | (u32(data[data.len - 3]) << 8) | data[data.len - 4])
+	body := data[header_len..data.len - 8]
+	chunks_len := int(compr.decompress_with_callback(body, cb, userdata, 0)!)
+	if params.verify_length && expected_len != chunks_len {
+		return error('Decompress error: expected length:${expected_len}, got:${chunks_len}')
+	}
+	return chunks_len
 }

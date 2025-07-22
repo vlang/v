@@ -45,7 +45,7 @@ pub fn encode(manifest Manifest) string {
 		b.writeln(quote(manifest.repo_url))
 	}
 	if manifest.author != '' {
-		b.write_string('\author: ')
+		b.write_string('\tauthor: ')
 		b.writeln(quote(manifest.author))
 	}
 	b.write_string('\tdependencies: ')

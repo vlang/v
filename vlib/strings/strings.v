@@ -47,8 +47,7 @@ pub fn find_between_pair_u8(input string, start u8, end u8) string {
 	return ''
 }
 
-// find_between_pair_rune returns the string found between the pair of marks defined
-// by `start` and `end`.
+// find_between_pair_rune returns the string found between the pair of marks defined by `start` and `end`.
 // As opposed to the `find_between`, `all_after*`, `all_before*` methods defined on the
 // `string` type, this function can extract content between *nested* marks in `input`.
 // If `start` and `end` marks are nested in `input`, the characters
@@ -83,8 +82,7 @@ pub fn find_between_pair_rune(input string, start rune, end rune) string {
 	return ''
 }
 
-// find_between_pair_string returns the string found between the pair of marks defined
-// by `start` and `end`.
+// find_between_pair_string returns the string found between the pair of marks defined by `start` and `end`.
 // As opposed to the `find_between`, `all_after*`, `all_before*` methods defined on the
 // `string` type, this function can extract content between *nested* marks in `input`.
 // If `start` and `end` marks are nested in `input`, the characters

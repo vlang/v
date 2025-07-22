@@ -1,6 +1,5 @@
 module eval
 
-import v.pref
 import v.ast
 import v.util
 import math
@@ -145,36 +144,13 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			return Object(res)
 		}
 		ast.IfExpr {
-			if expr.is_expr {
-				e.error('`if` expressions not supported')
-			}
-
 			if expr.is_comptime {
 				for i, branch in expr.branches {
-					mut do_if := false
-					if expr.has_else && i + 1 == expr.branches.len { // else branch
-						do_if = true
-					} else {
-						if branch.cond is ast.Ident {
-							if known_os := pref.os_from_string(branch.cond.name) {
-								do_if = e.pref.os == known_os
-							} else {
-								match branch.cond.name {
-									'prealloc' {
-										do_if = e.pref.prealloc
-									}
-									else {
-										e.error('unknown compile time if: ${branch.cond.name}')
-									}
-								}
-							}
-						} else if branch.cond is ast.PostfixExpr {
-							do_if = (branch.cond.expr as ast.Ident).name in e.pref.compile_defines
-						}
-					}
-					if do_if {
+					if e.comptime_cond(branch.cond) || expr.branches.len == i + 1 {
+						e.returning = true
+						e.return_values = []
 						e.stmts(branch.stmts)
-						break
+						return e.return_values[0]
 					}
 				}
 				return empty

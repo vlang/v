@@ -562,7 +562,8 @@ pub fn (t Time) custom_format(s string) string {
 	return sb.str()
 }
 
-// clean returns a date string in a following format:
+// clean returns a date string in a clean form.
+// It has the following format:
 // - a date string in "HH:mm" format (24h) for current day
 // - a date string in "MMM D HH:mm" format (24h) for date of current year
 // - a date string formatted with format function for other dates
@@ -579,7 +580,8 @@ pub fn (t Time) clean() string {
 	return t.format()
 }
 
-// clean12 returns a date string in a following format:
+// clean12 returns a date string in a clean form.
+// It has the following format:
 // - a date string in "hh:mm" format (12h) for current day
 // - a date string in "MMM D hh:mm" format (12h) for date of current year
 // - a date string formatted with format function for other dates
@@ -653,8 +655,7 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 	return res
 }
 
-// get_fmt_str returns a date string with specified FormatDelimiter,
-// FormatTime type, and FormatDate type.
+// get_fmt_str returns a date string with specified FormatDelimiter, FormatTime type, and FormatDate type.
 pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_date FormatDate) string {
 	if fmt_date == .no_date {
 		if fmt_time == .no_time {

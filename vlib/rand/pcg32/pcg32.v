@@ -8,7 +8,7 @@ import rand.buffer
 
 pub const seed_len = 4
 
-// PCG32RNG ported from http://www.pcg-random.org/download.html,
+// PCG32RNG is ported from http://www.pcg-random.org/download.html .
 // https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.c, and
 // https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.h
 pub struct PCG32RNG {

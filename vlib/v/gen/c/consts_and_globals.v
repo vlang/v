@@ -309,6 +309,9 @@ fn (mut g Gen) c_const_name(name string) string {
 }
 
 fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, surround_cbr bool) {
+	if name.starts_with('C__') {
+		return
+	}
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.styp(typ)

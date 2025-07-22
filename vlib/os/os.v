@@ -71,8 +71,7 @@ fn executable_fallback() string {
 	return exepath
 }
 
-// cp_all will recursively copy `src` to `dst`,
-// optionally overwriting files or dirs in `dst`.
+// cp_all will recursively copy `src` to `dst`, optionally overwriting files or dirs in `dst`.
 pub fn cp_all(src string, dst string, overwrite bool) ! {
 	source_path := real_path(src)
 	dest_path := real_path(dst)
@@ -543,9 +542,6 @@ pub fn home_dir() string {
 	$if windows {
 		return getenv('USERPROFILE')
 	} $else {
-		// println('home_dir() call')
-		// res:= os.getenv('HOME')
-		// println('res="$res"')
 		return getenv('HOME')
 	}
 }
@@ -588,8 +584,7 @@ fn error_failed_to_find_executable() IError {
 	return &ExecutableNotFoundError{}
 }
 
-// find_abs_path_of_executable searches the environment PATH for the
-// absolute path of the given executable name.
+// find_abs_path_of_executable searches the environment PATH for the absolute path of the given executable name.
 pub fn find_abs_path_of_executable(exe_name string) !string {
 	if exe_name == '' {
 		return error('expected non empty `exe_name`')
@@ -792,7 +787,7 @@ pub fn walk(path string, f fn (string)) {
 	}
 }
 
-// FnWalkContextCB is used to define the callback functions, passed to os.walk_context
+// FnWalkContextCB is used to define the callback functions, passed to os.walk_context.
 pub type FnWalkContextCB = fn (voidptr, string)
 
 // walk_with_context traverses the given directory `path`.
@@ -927,9 +922,9 @@ pub fn data_dir() string {
 	return xdg_home_folder('XDG_DATA_HOME', '.local/share')
 }
 
-// state_dir returns a *writable* folder user-specific folder, suitable for storing state data,
-// that should persist between (application) restarts, but that is not important or portable
-// enough to the user that it should be stored in os.data_dir().
+// state_dir returns a *writable* folder user-specific folder.
+// It is suitable for storing state data, that should persist between (application) restarts,
+// but that is not important or portable enough to the user that it should be stored in os.data_dir().
 // See: https://specifications.freedesktop.org/basedir-spec/latest/ .
 // `$XDG_STATE_HOME` defines the base directory relative to which user-specific state files should be stored.
 // If `$XDG_STATE_HOME` is either not set or empty, a default equal to
@@ -941,8 +936,8 @@ pub fn state_dir() string {
 	return xdg_home_folder('XDG_STATE_HOME', '.local/state')
 }
 
-// local_bin_dir returns `$HOME/.local/bin`, which is *guaranteed* to be in the PATH of the current user, for
-// distributions, following the XDG spec from https://specifications.freedesktop.org/basedir-spec/latest/ :
+// local_bin_dir returns `$HOME/.local/bin`, which is *guaranteed* to be in the PATH of the current user.
+// It is compatible with stributions, following the XDG spec from https://specifications.freedesktop.org/basedir-spec/latest/ :
 // > User-specific executable files may be stored in `$HOME/.local/bin`.
 // > Distributions should ensure this directory shows up in the UNIX $PATH environment variable, at an appropriate place.
 pub fn local_bin_dir() string {
@@ -986,8 +981,8 @@ pub fn temp_dir() string {
 	return path
 }
 
-// vtmp_dir returns the path to a folder, that is writable to V programs, *and* specific
-// to the OS user. It can be overridden by setting the env variable `VTMP`.
+// vtmp_dir returns the path to a folder, that is writable to V programs, *and* specific to the OS user.
+// It can be overridden by setting the env variable `VTMP`.
 pub fn vtmp_dir() string {
 	mut vtmp := getenv('VTMP')
 	if vtmp.len > 0 {
@@ -1078,8 +1073,7 @@ pub mut:
 	machine  string
 }
 
-// execute_or_panic returns the os.Result of executing `cmd`, or panic with its
-// output on failure.
+// execute_or_panic returns the os.Result of executing `cmd`, or panic with its output on failure.
 pub fn execute_or_panic(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
@@ -1090,8 +1084,7 @@ pub fn execute_or_panic(cmd string) Result {
 	return res
 }
 
-// execute_or_exit returns the os.Result of executing `cmd`, or exit with its
-// output on failure.
+// execute_or_exit returns the os.Result of executing `cmd`, or exit with its output on failure.
 pub fn execute_or_exit(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
@@ -1155,7 +1148,7 @@ pub fn config_dir() !string {
 	return error('Cannot find config directory')
 }
 
-// Stat struct modeled on POSIX
+// Stat struct modeled on POSIX.
 pub struct Stat {
 pub:
 	dev   u64 // ID of device containing file

@@ -641,8 +641,7 @@ pub fn (mut f File) read_raw[T]() !T {
 	return t
 }
 
-// read_raw_at reads and returns a single instance of type `T` starting at file
-// byte offset `pos`.
+// read_raw_at reads and returns a single instance of type `T` starting at file byte offset `pos`.
 pub fn (mut f File) read_raw_at[T](pos u64) !T {
 	if !f.is_opened {
 		return error_file_not_opened()
@@ -823,9 +822,8 @@ pub enum SeekMode {
 	end
 }
 
-// seek moves the file cursor (if any) associated with a file
-// to a new location, offset `pos` bytes from the origin. The origin
-// is dependent on the `mode` and can be:
+// seek moves the file cursor (if any) associated with a file to a new location, offset `pos` bytes from the origin.
+// The origin is dependent on the `mode` and can be:
 //   .start   -> the origin is the start of the file
 //   .current -> the current position/cursor in the file
 //   .end     -> the end of the file
@@ -854,9 +852,8 @@ pub fn (mut f File) seek(pos i64, mode SeekMode) ! {
 	}
 }
 
-// tell will return the current offset of the file cursor measured from
-// the start of the file, in bytes. It is complementary to seek, i.e.
-// you can use the return value as the `pos` parameter to .seek( pos, .start ),
+// tell will return the current offset of the file cursor measured from the start of the file, in bytes.
+// It is complementary to seek, i.e. you can use the return value as the `pos` parameter to .seek( pos, .start ),
 // so that your next read will happen from the same place.
 pub fn (f &File) tell() !i64 {
 	if !f.is_opened {

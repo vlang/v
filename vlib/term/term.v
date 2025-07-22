@@ -7,7 +7,7 @@ import strings.textscanner
 const default_columns_size = 80
 const default_rows_size = 25
 
-// Coord - used by term.get_cursor_position and term.set_cursor_position
+// Coord - used by term.get_cursor_position and term.set_cursor_position.
 pub struct Coord {
 pub mut:
 	x int
@@ -17,8 +17,8 @@ pub mut:
 __global can_show_color_on_stdout_cache = ?bool(none)
 __global can_show_color_on_stderr_cache = ?bool(none)
 
-// can_show_color_on_stdout returns true if colors are allowed in stdout;
-// returns false otherwise.
+// can_show_color_on_stdout returns true, if colors are allowed in stdout.
+// It returns false otherwise.
 pub fn can_show_color_on_stdout() bool {
 	if status := can_show_color_on_stdout_cache {
 		return status
@@ -28,8 +28,8 @@ pub fn can_show_color_on_stdout() bool {
 	return status
 }
 
-// can_show_color_on_stderr returns true if colors are allowed in stderr;
-// returns false otherwise.
+// can_show_color_on_stderr returns true, if colors are allowed in stderr.
+// It returns false otherwise.
 pub fn can_show_color_on_stderr() bool {
 	if status := can_show_color_on_stderr_cache {
 		return status
@@ -39,7 +39,7 @@ pub fn can_show_color_on_stderr() bool {
 	return status
 }
 
-// failed returns a bold white on red version of the string `s`
+// failed returns a bold white on red version of the string `s`.
 // If colors are not allowed, returns the string `s`
 pub fn failed(s string) string {
 	if can_show_color_on_stdout() {
@@ -72,8 +72,7 @@ pub fn warn_message(s string) string {
 	return s
 }
 
-// colorize returns a colored string by running the specified `cfn` over
-// the message `s`, only if colored stdout is supported by the terminal.
+// colorize returns a colored string by running the specified `cfn` over the message `s`, but only if colored stdout is supported by the terminal.
 // Example: term.colorize(term.yellow, 'the message')
 pub fn colorize(cfn fn (string) string, s string) string {
 	if can_show_color_on_stdout() {
@@ -82,8 +81,7 @@ pub fn colorize(cfn fn (string) string, s string) string {
 	return s
 }
 
-// ecolorize returns a colored string by running the specified `cfn` over
-// the message `s`, only if colored stderr is supported by the terminal.
+// ecolorize returns a colored string by running the specified `cfn` over the message `s`, but only if colored stderr is supported by the terminal.
 // Example: term.ecolorize(term.bright_red, 'the message')
 pub fn ecolorize(cfn fn (string) string, s string) string {
 	if can_show_color_on_stderr() {
@@ -92,7 +90,7 @@ pub fn ecolorize(cfn fn (string) string, s string) string {
 	return s
 }
 
-// strip_ansi removes any ANSI sequences in the `text`
+// strip_ansi removes any ANSI sequences in the `text`.
 pub fn strip_ansi(text string) string {
 	// This is a port of https://github.com/kilobyte/colorized-logs/blob/master/ansi2txt.c
 	// \e, [, 1, m, a, b, c, \e, [, 2, 2, m => abc
@@ -135,9 +133,8 @@ pub fn strip_ansi(text string) string {
 	return output.bytestr()
 }
 
-// h_divider returns a horizontal divider line with a dynamic width,
-// that depends on the current terminal settings.
-// If an empty string is passed in, print enough spaces to make a new line
+// h_divider returns a horizontal divider line with a dynamic width, that depends on the current terminal settings.
+// If an empty string is passed in, print enough spaces to make a new line.
 pub fn h_divider(divider string) string {
 	cols, _ := get_terminal_size()
 	mut result := ''

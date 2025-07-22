@@ -17,7 +17,11 @@ pub mut:
 	used_structs map[string]bool
 	used_fields  map[string]bool
 	used_ifaces  map[string]bool
-	used_none    int
+	used_none    int // _option_none
+	used_option  int // _option_ok
+	used_result  int // _result_ok
+	used_panic   int // option/result propagation
+	used_interp  int // str interpolation
 	n_asserts    int
 	pref         &pref.Preferences = unsafe { nil }
 mut:
@@ -343,6 +347,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.CastExpr {
 			w.expr(node.expr)
 			w.expr(node.arg)
+			if node.typ.has_flag(.option) {
+				w.used_option++
+			}
 		}
 		ast.ChanInit {
 			w.expr(node.cap_expr)
@@ -369,6 +376,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.fn_by_name('eprintln')
 		}
 		ast.SpawnExpr {
+			if node.is_expr {
+				w.fn_by_name('free')
+			}
 			w.expr(node.call_expr)
 			w.fn_by_name('tos3')
 			if w.pref.os == .windows {
@@ -380,6 +390,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 		}
 		ast.GoExpr {
+			if node.is_expr {
+				w.fn_by_name('free')
+			}
 			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
@@ -514,6 +527,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 		}
 		ast.StringInterLiteral {
+			w.used_interp++
 			w.exprs(node.exprs)
 		}
 		ast.SelectorExpr {
@@ -558,6 +572,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		///
 		ast.AsCast {
 			w.expr(node.expr)
+			w.fn_by_name('__as_cast')
+			w.fn_by_name('new_array_from_c_array')
 		}
 		ast.AtExpr {}
 		ast.BoolLiteral {}
@@ -609,6 +625,12 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 		}
 		if ifield.typ != 0 {
 			fsym := w.table.sym(ifield.typ)
+			if ifield.typ.has_flag(.option) {
+				w.used_option++
+				if !ifield.has_default_expr {
+					w.used_none++
+				}
+			}
 			match fsym.info {
 				ast.Struct {
 					w.a_struct_info(fsym.name, fsym.info)
@@ -659,6 +681,11 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.no_body {
 		return
+	}
+	if node.return_type.has_flag(.option) {
+		w.used_option++
+	} else if node.return_type.has_flag(.result) {
+		w.used_result++
 	}
 	w.mark_fn_as_used(fkey)
 	w.stmts(node.stmts)
@@ -750,9 +777,14 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		w.mark_fn_as_used(fn_name)
 	}
 	stmt := w.all_fns[fn_name] or { return }
-	if stmt.name == node.name {
+	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
 			w.stmts(stmt.stmts)
+		}
+		if node.return_type.has_flag(.option) {
+			w.used_option++
+		} else if node.return_type.has_flag(.result) {
+			w.used_result++
 		}
 	}
 }
@@ -784,7 +816,31 @@ pub fn (mut w Walker) const_fields(cfields []ast.ConstField) {
 pub fn (mut w Walker) or_block(node ast.OrExpr) {
 	if node.kind == .block {
 		w.stmts(node.stmts)
+	} else if node.kind == .propagate_option {
+		w.used_option++
+		w.used_panic++
+	} else if node.kind == .propagate_result {
+		w.used_result++
+		w.used_panic++
 	}
+}
+
+pub fn (mut w Walker) mark_panic_deps() {
+	ref_array_idx_str := int(ast.array_type.ref()).str()
+	string_idx_str := ast.string_type_idx.str()
+	array_idx_str := ast.array_type_idx.str()
+	charptr_idx_str := ast.charptr_type_idx.str()
+
+	w.fn_by_name('__new_array_with_default')
+	w.fn_by_name('__new_array_with_default_noscan')
+	w.fn_by_name('str_intp')
+	w.fn_by_name(ref_array_idx_str + '.push')
+	w.fn_by_name(ref_array_idx_str + '.push_noscan')
+	w.fn_by_name(string_idx_str + '.substr')
+	w.fn_by_name(array_idx_str + '.slice')
+	w.fn_by_name(array_idx_str + '.get')
+	w.fn_by_name('v_fixed_index')
+	w.fn_by_name(charptr_idx_str + '.vstring_literal')
 }
 
 pub fn (mut w Walker) mark_interface_by_symbol(isym ast.TypeSymbol) {

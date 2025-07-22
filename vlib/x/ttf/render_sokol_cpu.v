@@ -17,8 +17,7 @@ import gg
 import sokol.sgl
 import sokol.gfx
 
-// TTF_render_Sokol is a structure containing data for rendering a TTF font
-// as a sokol texture
+// TTF_render_Sokol is a structure containing data for rendering a TTF font as a sokol texture.
 pub struct TTF_render_Sokol {
 pub mut:
 	bmp &BitMap = unsafe { nil } // Base bitmap render

@@ -20,8 +20,8 @@ pub fn new_session_id(secret []u8) (string, string) {
 	return sid, '${sid}.${base64.url_encode(hashed)}'
 }
 
-// verify_session_id verifies the signed session id with `secret`. This function returns
-// the session id and if the session id is valid
+// verify_session_id verifies the signed session id with `secret`.
+// This function returns the session id and if the session id is valid.
 pub fn verify_session_id(raw_sid string, secret []u8) (string, bool) {
 	parts := raw_sid.split('.')
 	if parts.len != 2 {
@@ -36,8 +36,8 @@ pub fn verify_session_id(raw_sid string, secret []u8) (string, bool) {
 	return sid, hmac.equal(actual_hmac, new_hmac)
 }
 
-// CurrentSession contains the session data during a request. If you use x.vweb you
-// could embed it on your Context struct to have easy access to the session id and data.
+// CurrentSession contains the session data during a request.
+// If you use x.vweb you could embed it on your Context struct to have easy access to the session id and data.
 // Example:
 // ```v
 // pub struct Context {
@@ -51,8 +51,7 @@ pub mut:
 	session_data ?T
 }
 
-// CookieOptions contains the default settings for the cookie created in
-// the `Sessions` struct.
+// CookieOptions contains the default settings for the cookie created in the `Sessions` struct.
 pub struct CookieOptions {
 pub:
 	cookie_name string = 'sid'
@@ -87,7 +86,7 @@ pub mut:
 	store Store[T] @[required]
 }
 
-// set_session_id generates a new session id and set a Set-Cookie header on the response
+// set_session_id generates a new session id and set a Set-Cookie header on the response.
 pub fn (mut s Sessions[T]) set_session_id[X](mut ctx X) string {
 	sid, signed := new_session_id(s.secret)
 	ctx.CurrentSession.session_id = sid
@@ -110,20 +109,20 @@ pub fn (mut s Sessions[T]) set_session_id[X](mut ctx X) string {
 	return sid
 }
 
-// validate_session validates the current session, returns the session id and the validation status
+// validate_session validates the current session, returns the session id and the validation status.
 pub fn (mut s Sessions[T]) validate_session[X](ctx X) (string, bool) {
 	cookie := ctx.get_cookie(s.cookie_options.cookie_name) or { return '', false }
 
 	return verify_session_id(cookie, s.secret)
 }
 
-// get the data associated with the current session, if it exists
+// get the data associated with the current session, if it exists.
 pub fn (mut s Sessions[T]) get[X](ctx X) !T {
 	sid := s.get_session_id(ctx) or { return error('cannot find session id') }
 	return s.store.get(sid, s.max_age)!
 }
 
-// destroy the data for the current session
+// destroy the data for the current session.
 pub fn (mut s Sessions[T]) destroy[X](mut ctx X) ! {
 	if sid := s.get_session_id(ctx) {
 		s.store.destroy(sid)!
@@ -131,8 +130,7 @@ pub fn (mut s Sessions[T]) destroy[X](mut ctx X) ! {
 	}
 }
 
-// logout destroys the data for the current session and removes
-// the session id Cookie
+// logout destroys the data for the current session and removes the session id Cookie.
 pub fn (mut s Sessions[T]) logout[X](mut ctx X) ! {
 	s.destroy(mut ctx)!
 	ctx.set_cookie(http.Cookie{
@@ -142,7 +140,7 @@ pub fn (mut s Sessions[T]) logout[X](mut ctx X) ! {
 	})
 }
 
-// save `data` for the current session
+// save `data` for the current session.
 pub fn (mut s Sessions[T]) save[X](mut ctx X, data T) ! {
 	if sid := s.get_session_id(ctx) {
 		s.store.set(sid, data)!
@@ -171,7 +169,7 @@ pub fn (mut s Sessions[T]) resave[X](mut ctx X, data T) ! {
 	s.save(mut ctx, data)
 }
 
-// get_session_id retrieves the current session id, if it is set
+// get_session_id retrieves the current session id, if it is set.
 pub fn (s &Sessions[T]) get_session_id[X](ctx X) ?string {
 	// first check session id from `ctx`
 	sid_from_ctx := ctx.CurrentSession.session_id

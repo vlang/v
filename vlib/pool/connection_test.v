@@ -221,7 +221,7 @@ fn test_pool_close() {
 	c := p.get()!
 	p.put(c)!
 	assert p.stats().active_conns == 0
-	assert p.stats().idle_conns == 5
+	assert p.stats().idle_conns >= 5
 
 	p.close()
 

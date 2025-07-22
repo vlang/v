@@ -13,8 +13,7 @@ const max_id_length = 32
 // ~22k hosts before 50% chance of initial counter collision
 const max_session_count = 476782367
 
-// Cuid2Generator Secure, collision-resistant ids optimized for horizontal
-// scaling and performance. Next generation UUIDs.
+// Cuid2Generator can be used to get secure, collision-resistant ids optimized for horizontal scaling and performance. Next generation UUIDs.
 pub struct Cuid2Generator {
 mut:
 	// A counter that will be used to affect the entropy of
@@ -83,13 +82,13 @@ pub fn (mut g Cuid2Generator) cuid2() string {
 	return hash_digest
 }
 
-// next Generate a new cuid2 UUID.
+// next generates a new cuid2 UUID.
 // It is an alias to function `cuid2()`
 pub fn (mut g Cuid2Generator) next() ?string {
 	return g.cuid2()
 }
 
-// is_cuid Checks whether a given `cuid` has a valid form and length
+// is_cuid checks whether a given `cuid` has a valid form and length.
 pub fn is_cuid(cuid string) bool {
 	if cuid.len < min_id_length || cuid.len > max_id_length {
 		return false

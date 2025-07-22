@@ -9,8 +9,8 @@ import rand.config
 import rand.wyrand
 import time
 
-// PRNG is a common interface for all PRNGs that can be used seamlessly with the rand
-// modules's API. It defines all the methods that a PRNG (in the vlib or custom made) must
+// PRNG is a common interface for all PRNGs that can be used seamlessly with the rand modules's API.
+// It defines all the methods that a PRNG (in the vlib or custom made) must
 // implement in order to ensure that _all_ functions can be used with the generator.
 pub interface PRNG {
 mut:
@@ -36,7 +36,7 @@ pub fn (mut rng PRNG) bytes(bytes_needed int) ![]u8 {
 	return buffer
 }
 
-// read fills in `buf` with a maximum of `buf.len` random bytes
+// read fills in `buf` with a maximum of `buf.len` random bytes.
 pub fn (mut rng PRNG) read(mut buf []u8) {
 	read_internal(mut rng, mut buf)
 }
@@ -358,7 +358,7 @@ pub fn (mut rng PRNG) ulid_at_millisecond(unix_time_milli u64) string {
 	return internal_ulid_at_millisecond(mut rng, unix_time_milli)
 }
 
-// string_from_set returns a string of length `len` containing random characters sampled from the given `charset`
+// string_from_set returns a string of length `len` containing random characters sampled from the given `charset`.
 pub fn (mut rng PRNG) string_from_set(charset string, len int) string {
 	return internal_string_from_set(mut rng, charset, len)
 }
@@ -392,16 +392,16 @@ pub fn (mut rng PRNG) bernoulli(p f64) !bool {
 	return rng.f64() <= p
 }
 
-// normal returns a normally distributed pseudorandom f64 with mean `mu` and standard
-// deviation `sigma`. By default, `mu` is 0.0 and `sigma` is 1.0.
+// normal returns a normally distributed pseudorandom f64 with mean `mu` and standard deviation `sigma`.
+// By default, `mu` is 0.0 and `sigma` is 1.0.
 // NOTE: Use normal_pair() instead if you're generating a lot of normal variates.
 pub fn (mut rng PRNG) normal(conf config.NormalConfigStruct) !f64 {
 	x, _ := rng.normal_pair(conf)!
 	return x
 }
 
-// normal_pair returns a pair of normally distributed pseudorandom f64 with mean `mu` and standard
-// deviation `sigma`. By default, `mu` is 0.0 and `sigma` is 1.0.
+// normal_pair returns a pair of normally distributed pseudorandom f64 with mean `mu` and standard deviation `sigma`.
+// By default, `mu` is 0.0 and `sigma` is 1.0.
 pub fn (mut rng PRNG) normal_pair(conf config.NormalConfigStruct) !(f64, f64) {
 	if conf.sigma <= 0 {
 		return error('Standard deviation must be positive')
@@ -425,8 +425,7 @@ pub fn (mut rng PRNG) normal_pair(conf config.NormalConfigStruct) !(f64, f64) {
 	return error('Implementation error. Please file an issue.')
 }
 
-// binomial returns the number of successful trials out of n when the
-// probability of success for each trial is p.
+// binomial returns the number of successful trials out of n when the probability of success for each trial is p.
 pub fn (mut rng PRNG) binomial(n int, p f64) !int {
 	if p < 0 || p > 1 {
 		return error('${p} is not a valid probability value.')
@@ -440,8 +439,8 @@ pub fn (mut rng PRNG) binomial(n int, p f64) !int {
 	return count
 }
 
-// exponential returns an exponentially distributed random number with the rate parameter
-// lambda. It is expected that lambda is positive.
+// exponential returns an exponentially distributed random number with the rate parameter lambda.
+// It is expected that lambda is positive.
 pub fn (mut rng PRNG) exponential(lambda f64) f64 {
 	if lambda <= 0 {
 		panic('The rate (lambda) must be positive.')
@@ -530,8 +529,8 @@ pub fn get_current_rng() &PRNG {
 	return default_rng
 }
 
-// set_rng changes the default RNG from wyrand.WyRandRNG (or whatever the last RNG was) to the one
-// provided by the user. Note that this new RNG must be seeded manually with a constant seed or the
+// set_rng changes the default RNG from wyrand.WyRandRNG (or whatever the last RNG was).
+// Note that this new RNG must be seeded manually with a constant seed or the
 // `seed.time_seed_array()` method. Also, it is recommended to store the old RNG in a variable and
 // should be restored if work with the custom RNG is complete. It is not necessary to restore if the
 // program terminates soon afterwards.
@@ -539,8 +538,8 @@ pub fn set_rng(rng &PRNG) {
 	default_rng = unsafe { rng }
 }
 
-// seed sets the given array of `u32` values as the seed for the `default_rng`. The default_rng is
-// an instance of WyRandRNG which takes 2 u32 values. When using a custom RNG, make sure to use
+// seed sets the given array of `u32` values as the seed for the `default_rng`.
+// The default_rng is an instance of WyRandRNG which takes 2 u32 values. When using a custom RNG, make sure to use
 // the correct number of u32s.
 pub fn seed(seed []u32) {
 	default_rng.seed(seed)
@@ -653,8 +652,7 @@ pub fn f32() f32 {
 	return default_rng.f32()
 }
 
-// f32cp returns a uniformly distributed 32-bit floating point in range `[0, 1)`
-//  with full precision mantissa.
+// f32cp returns a uniformly distributed 32-bit floating point in range `[0, 1)` with full precision mantissa.
 pub fn f32cp() f32 {
 	return default_rng.f32cp()
 }
@@ -664,8 +662,7 @@ pub fn f64() f64 {
 	return default_rng.f64()
 }
 
-// f64 returns a uniformly distributed 64-bit floating point in range `[0, 1)`
-//  with full precision mantissa.
+// f64 returns a uniformly distributed 64-bit floating point in range `[0, 1)` with full precision mantissa.
 pub fn f64cp() f64 {
 	return default_rng.f64cp()
 }
@@ -690,12 +687,12 @@ pub fn f64_in_range(min f64, max f64) !f64 {
 	return default_rng.f64_in_range(min, max)
 }
 
-// bytes returns a buffer of `bytes_needed` random bytes
+// bytes returns a buffer of `bytes_needed` random bytes.
 pub fn bytes(bytes_needed int) ![]u8 {
 	return default_rng.bytes(bytes_needed)
 }
 
-// read fills in `buf` a maximum of `buf.len` random bytes
+// read fills in `buf` a maximum of `buf.len` random bytes.
 pub fn read(mut buf []u8) {
 	read_internal(mut default_rng, mut buf)
 }
@@ -719,7 +716,7 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	return default_rng.ulid_at_millisecond(unix_time_milli)
 }
 
-// string_from_set returns a string of length `len` containing random characters sampled from the given `charset`
+// string_from_set returns a string of length `len` containing random characters sampled from the given `charset`.
 pub fn string_from_set(charset string, len int) string {
 	return default_rng.string_from_set(charset, len)
 }
@@ -745,9 +742,9 @@ pub fn ascii(len int) string {
 	return string_from_set(ascii_chars, len)
 }
 
-// shuffle randomly permutates the elements in `a`. The range for shuffling is
-// optional and the entire array is shuffled by default. Leave the end as 0 to
-// shuffle all elements until the end.
+// shuffle randomly permutates the elements in `a`.
+// The range for shuffling is optional and the entire array is shuffled by default.
+// Leave the end as 0 to shuffle all elements until the end.
 pub fn shuffle[T](mut a []T, config_ config.ShuffleConfigStruct) ! {
 	default_rng.shuffle[T](mut a, config_)!
 }
@@ -782,27 +779,26 @@ pub fn bernoulli(p f64) !bool {
 	return default_rng.bernoulli(p)
 }
 
-// normal returns a normally distributed pseudorandom f64 with mean `mu` and standard
-// deviation `sigma`. By default, `mu` is 0.0 and `sigma` is 1.0.
+// normal returns a normally distributed pseudorandom f64 with mean `mu` and standard deviation `sigma`.
+// By default, `mu` is 0.0 and `sigma` is 1.0.
 // NOTE: Use normal_pair() instead if you're generating a lot of normal variates.
 pub fn normal(config_ config.NormalConfigStruct) !f64 {
 	return default_rng.normal(config_)
 }
 
-// normal_pair returns a pair of normally distributed pseudorandom f64 with mean `mu` and standard
-// deviation `sigma`. By default, `mu` is 0.0 and `sigma` is 1.0.
+// normal_pair returns a pair of normally distributed pseudorandom f64 with mean `mu` and standard deviation `sigma`.
+// By default, `mu` is 0.0 and `sigma` is 1.0.
 pub fn normal_pair(config_ config.NormalConfigStruct) !(f64, f64) {
 	return default_rng.normal_pair(config_)
 }
 
-// binomial returns the number of successful trials out of n when the
-// probability of success for each trial is p.
+// binomial returns the number of successful trials out of n when the probability of success for each trial is p.
 pub fn binomial(n int, p f64) !int {
 	return default_rng.binomial(n, p)
 }
 
-// exponential returns an exponentially distributed random number with the rate parameter
-// lambda. It is expected that lambda is positive.
+// exponential returns an exponentially distributed random number with the rate parameter `lambda`.
+// It is expected that lambda is positive.
 pub fn exponential(lambda f64) f64 {
 	return default_rng.exponential(lambda)
 }
