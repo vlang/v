@@ -1022,6 +1022,12 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			if isym.info.parent_type != 0 {
 				w.mark_by_type(isym.info.parent_type)
 			}
+			for method in isym.methods {
+				if method.receiver_type != 0 {
+					w.mark_by_type(method.receiver_type)
+				}
+				w.mark_fn_ret_and_params(method.return_type, method.params)
+			}
 		}
 		else {}
 	}
