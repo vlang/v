@@ -1,7 +1,17 @@
-// vtest build: !gcc-windows && !msvc-windows && !tcc-windows
-import datatypes.lockfree
+// vtest retry: 2
 import time
 import sync
+import datatypes.lockfree
+
+fn testsuite_begin() {
+	spawn fn () {
+		println('watchdog thread started...')
+		// Ensure that the whole program will finish,
+		// even in the case of a deadlock (which seems to happen on windows)
+		time.sleep(10_000 * time.millisecond)
+		exit(2)
+	}()
+}
 
 // Test basic push and pop operations
 fn test_push_and_pop() {
