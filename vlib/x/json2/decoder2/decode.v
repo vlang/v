@@ -3,6 +3,7 @@ module decoder2
 import strconv
 import time
 import strings
+import x.json2
 
 const null_in_string = 'null'
 
@@ -628,6 +629,14 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 			val = time.parse_rfc3339(string_time) or { time.Time{} }
 		}
+	} $else $if T.unaliased_typ is json2.Null {
+		value_info := decoder.current_node.value
+
+		if value_info.value_kind != .null {
+			return error('Expected null, but got ${value_info.value_kind}')
+		}
+
+		val = json2.null
 	} $else $if T.unaliased_typ is $map {
 		decoder.decode_map(mut val)!
 		return

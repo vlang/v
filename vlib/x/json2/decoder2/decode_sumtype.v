@@ -1,22 +1,20 @@
 module decoder2
 
 import time
+import x.json2
+
+fn copy_type[T](t T) T {
+	return T{}
+}
 
 fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
 	$if initialized_sumtype is $sumtype {
 		$for v in initialized_sumtype.variants {
 			if initialized_sumtype is v {
-				// workaround for auto generated function considering sumtype as array
-				unsafe {
-					$if initialized_sumtype is $map {
-						mut val := initialized_sumtype.clone()
-						decoder.decode_value(mut val)!
-						return T(val)
-					} $else {
-						mut val := initialized_sumtype
-						decoder.decode_value(mut val)!
-						return T(val)
-					}
+				$if initialized_sumtype !is $option { // only to avoid compiler errors, options wont get here
+					mut val := copy_type(initialized_sumtype)
+					decoder.decode_value(mut val)!
+					return T(val)
 				}
 			}
 		}
@@ -24,103 +22,281 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 	return initialized_sumtype
 }
 
-fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info ValueInfo) ! {
-	$for v in val.variants {
-		if value_info.value_kind == .string_ {
-			$if v.typ is string {
-				val = T(v)
-				return
-			} $else $if v.typ is time.Time {
-				val = T(v)
-				return
+fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node Node[ValueInfo]) bool {
+	$if T.unaliased_typ is json2.Any {
+		return true
+	}
+
+	match current_node.value.value_kind {
+		.string_ {
+			$if element is string {
+				return true
+			} $else $if element is time.Time {
+				return true
 			}
-		} else if value_info.value_kind == .number {
-			$if v.typ is $float {
-				val = T(v)
-				return
-			} $else $if v.typ is $int {
-				val = T(v)
-				return
-			} $else $if v.typ is $enum {
-				val = T(v)
-				return
+		}
+		.number {
+			$if element is $float {
+				return true
+			} $else $if element is $int {
+				return true
+			} $else $if element is $enum {
+				return true
 			}
-		} else if value_info.value_kind == .boolean {
-			$if v.typ is bool {
-				val = T(v)
-				return
+		}
+		.boolean {
+			$if element is bool {
+				return true
 			}
-		} else if value_info.value_kind == .object {
-			$if v.typ is $map {
-				val = T(v)
-				return
-			} $else $if v.typ is $struct {
-				// find "_type" field in json object
-				mut type_field_node := decoder.current_node.next
-				map_position := value_info.position
-				map_end := map_position + value_info.length
+		}
+		.null {
+			$if element is json2.Null {
+				return true
+			}
+		}
+		.array {
+			$if element is $array {
+				if current_node.next != unsafe { nil } {
+					return decoder.check_array_type_valid(element, current_node.next)
+				} else {
+					return false
+				}
+			}
+		}
+		.object {
+			$if element is $map {
+				if current_node.next != unsafe { nil } && current_node.next.next != unsafe { nil } {
+					return decoder.check_map_type_valid(element, current_node.next.next)
+				} else {
+					return false
+				}
+			} $else $if element is $struct {
+				return decoder.check_struct_type_valid(element, current_node)
+			}
+		}
+		else {}
+	}
 
-				type_field := '"_type"'
+	return false
+}
 
-				for {
-					if type_field_node == unsafe { nil } {
-						break
-					}
+fn get_array_element_type[T](arr []T) T {
+	return T{}
+}
 
-					key_info := type_field_node.value
+fn (mut decoder Decoder) check_array_type_valid[T](arr []T, current_node Node[ValueInfo]) bool {
+	return decoder.check_element_type_valid(get_array_element_type(arr), current_node)
+}
 
-					if key_info.position >= map_end {
-						type_field_node = unsafe { nil }
-						break
-					}
-
-					if unsafe {
-						vmemcmp(decoder.json.str + key_info.position, type_field.str,
-							type_field.len) == 0
-					} {
-						// find type field
-						type_field_node = type_field_node.next
-
-						break
+fn (mut decoder Decoder) get_array_type_workaround[T](initialized_sumtype T) bool {
+	$if initialized_sumtype is $sumtype {
+		$for v in initialized_sumtype.variants {
+			if initialized_sumtype is v {
+				$if initialized_sumtype is $array {
+					val := copy_type(initialized_sumtype)
+					if decoder.current_node.next != unsafe { nil } {
+						return decoder.check_array_type_valid(val, decoder.current_node.next)
 					} else {
-						type_field_node = type_field_node.next
-					}
-				}
-
-				if type_field_node != unsafe { nil } {
-					$for v in val.variants {
-						variant_name := typeof(v.typ).name
-						if type_field_node.value.length - 2 == variant_name.len {
-							unsafe {
-							}
-							if unsafe {
-								vmemcmp(decoder.json.str + type_field_node.value.position + 1,
-									variant_name.str, variant_name.len) == 0
-							} {
-								val = T(v)
-							}
+						$if initialized_sumtype is []json2.Any {
+							return true
 						}
+						return false
 					}
 				}
-
-				return
-			}
-		} else if value_info.value_kind == .array {
-			$if v.typ is $array {
-				val = T(v)
-				return
 			}
 		}
 	}
+	return false
+}
+
+fn get_map_element_type[U, V](m map[U]V) V {
+	return V{}
+}
+
+fn (mut decoder Decoder) check_map_type_valid[T](m T, current_node Node[ValueInfo]) bool {
+	element := get_map_element_type(m)
+	return decoder.check_element_type_valid(element, current_node)
+}
+
+fn (mut decoder Decoder) get_map_type_workaround[T](initialized_sumtype T) bool {
+	$if initialized_sumtype is $sumtype {
+		$for v in initialized_sumtype.variants {
+			if initialized_sumtype is v {
+				$if initialized_sumtype is $map {
+					val := copy_type(initialized_sumtype)
+					if decoder.current_node.next != unsafe { nil }
+						&& decoder.current_node.next.next != unsafe { nil } {
+						return decoder.check_map_type_valid(val, decoder.current_node.next.next)
+					} else {
+						$if initialized_sumtype is map[string]json2.Any { // fix for aliased types
+							return true
+						}
+						return false
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node Node[ValueInfo]) bool {
+	// find "_type" field in json object
+	mut type_field_node := decoder.current_node.next
+	map_position := current_node.value.position
+	map_end := map_position + current_node.value.length
+
+	type_field := '"_type"'
+
+	for {
+		if type_field_node == unsafe { nil } {
+			break
+		}
+
+		key_info := type_field_node.value
+
+		if key_info.position >= map_end {
+			type_field_node = unsafe { nil }
+			break
+		}
+
+		if unsafe {
+			vmemcmp(decoder.json.str + key_info.position, type_field.str, type_field.len) == 0
+		} {
+			// find type field
+			type_field_node = type_field_node.next
+
+			break
+		} else {
+			type_field_node = type_field_node.next
+		}
+	}
+
+	if type_field_node == unsafe { nil } {
+		return false
+	}
+
+	variant_name := typeof(s).name
+	if type_field_node.value.length - 2 == variant_name.len {
+		unsafe {
+		}
+		if unsafe {
+			vmemcmp(decoder.json.str + type_field_node.value.position + 1, variant_name.str,
+				variant_name.len) == 0
+		} {
+			return true
+		}
+	}
+
+	return false
+}
+
+fn (mut decoder Decoder) get_struct_type_workaround[T](initialized_sumtype T) bool {
+	$if initialized_sumtype is $sumtype {
+		$for v in initialized_sumtype.variants {
+			if initialized_sumtype is v {
+				$if initialized_sumtype is $struct {
+					val := copy_type(initialized_sumtype)
+					return decoder.check_struct_type_valid(val, decoder.current_node)
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info ValueInfo) ! {
+	mut failed_struct := false
+
+	match value_info.value_kind {
+		.string_ {
+			$for v in val.variants {
+				$if v.typ is string {
+					val = T(v)
+					return
+				} $else $if v.typ is time.Time {
+					val = T(v)
+					return
+				}
+			}
+		}
+		.number {
+			$for v in val.variants {
+				$if v.typ is $float {
+					val = T(v)
+					return
+				} $else $if v.typ is $int {
+					val = T(v)
+					return
+				} $else $if v.typ is $enum {
+					val = T(v)
+					return
+				}
+			}
+		}
+		.boolean {
+			$for v in val.variants {
+				$if v.typ is bool {
+					val = T(v)
+					return
+				}
+			}
+		}
+		.null {
+			$for v in val.variants {
+				$if v.typ is json2.Null {
+					val = T(v)
+					return
+				}
+			}
+		}
+		.array {
+			$for v in val.variants {
+				$if v.typ is $array {
+					val = T(v)
+
+					if decoder.get_array_type_workaround(val) {
+						return
+					}
+				}
+			}
+		}
+		.object {
+			$for v in val.variants {
+				$if v.typ is $map {
+					val = T(v)
+
+					if decoder.get_map_type_workaround(val) {
+						return
+					}
+				} $else $if v.typ is $struct {
+					val = T(v)
+
+					if decoder.get_struct_type_workaround(val) {
+						return
+					}
+
+					failed_struct = true
+				}
+			}
+		}
+		else {}
+	}
+
+	if failed_struct {
+		decoder.error('could not resolve sumtype `${T.name}`, missing "_type" field?')!
+	}
+
+	decoder.error('could not resolve sumtype `${T.name}`, got ${value_info.value_kind}.')!
 }
 
 fn (mut decoder Decoder) decode_sumtype[T](mut val T) ! {
+	$if T is $alias {
+		decoder.error('Type aliased sumtypes not supported.')!
+	}
 	value_info := decoder.current_node.value
 
 	decoder.init_sumtype_by_value_kind(mut val, value_info)!
 
-	decoded_sumtype := decoder.get_decoded_sumtype_workaround(val)!
-	unsafe {
-		*val = decoded_sumtype
-	}
+	val = decoder.get_decoded_sumtype_workaround(val)!
 }
