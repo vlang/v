@@ -979,11 +979,11 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 				}
 			}
 			for embed in isym.info.embeds {
-				w.mark_by_sym(w.table.final_sym(embed))
+				w.mark_by_type(embed)
 			}
 		}
 		ast.ArrayFixed, ast.Array {
-			w.mark_by_sym(w.table.sym(isym.info.elem_type))
+			w.mark_by_type(isym.info.elem_type)
 		}
 		ast.SumType {
 			for typ in isym.info.variants {
