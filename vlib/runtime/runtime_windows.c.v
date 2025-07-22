@@ -8,7 +8,6 @@ pub struct C.MEMORYSTATUS {
 	dwAvailPhys usize
 }
 
-fn C.GetSystemInfo(&C.SYSTEM_INFO)
 fn C.GlobalMemoryStatus(&C.MEMORYSTATUS)
 
 // nr_cpus returns the number of virtual CPU cores found on the system.

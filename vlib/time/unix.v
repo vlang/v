@@ -3,22 +3,22 @@
 // that can be found in the LICENSE file.
 module time
 
-// unix returns a Time calculated from the given Unix timestamp in seconds since 1970-01-01
+// unix returns a Time calculated from the given Unix timestamp in seconds since 1970-01-01 .
 pub fn unix(epoch i64) Time {
 	return unix_nanosecond(epoch, 0)
 }
 
-// unix_milli returns a Time calculated from the given Unix timestamp in milliseconds since 1970-01-01
+// unix_milli returns a Time calculated from the given Unix timestamp in milliseconds since 1970-01-01 .
 pub fn unix_milli(ms i64) Time {
 	return ts_to_time_impl(ms, 1_000, 1_000_000)
 }
 
-// unix_micro returns a Time calculated from the given Unix timestamp in microseconds since 1970-01-01
+// unix_micro returns a Time calculated from the given Unix timestamp in microseconds since 1970-01-01 .
 pub fn unix_micro(us i64) Time {
 	return ts_to_time_impl(us, 1_000_000, 1_000)
 }
 
-// unix_nano returns a Time calculated from the given Unix timestamp in nanoseconds since 1970-01-01
+// unix_nano returns a Time calculated from the given Unix timestamp in nanoseconds since 1970-01-01 .
 pub fn unix_nano(ns i64) Time {
 	return ts_to_time_impl(ns, 1_000_000_000, 1)
 }
@@ -29,12 +29,12 @@ fn ts_to_time_impl(value i64, down i64, up i64) Time {
 	return unix_nanosecond(epoch, int(remainder))
 }
 
-// unix_microsecond returns a Time struct, given an Unix timestamp in seconds, and a microsecond value
+// unix_microsecond returns a Time struct, given an Unix timestamp in seconds, and a microsecond value.
 pub fn unix_microsecond(epoch i64, microsecond int) Time {
 	return unix_nanosecond(epoch, microsecond * 1000)
 }
 
-// unix_nanosecond returns a Time struct given a Unix timestamp in seconds and a nanosecond value
+// unix_nanosecond returns a Time struct given a Unix timestamp in seconds and a nanosecond value.
 pub fn unix_nanosecond(abs_unix_timestamp i64, nanosecond int) Time {
 	// Split into day and time
 	mut day_offset := abs_unix_timestamp / seconds_per_day

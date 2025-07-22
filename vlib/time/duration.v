@@ -91,7 +91,7 @@ pub fn (d Duration) str() string {
 	}
 }
 
-// debug returns a detailed breakdown of the Duration, as: 'Duration: - 50days, 4h, 3m, 7s, 541ms, 78us, 9ns'
+// debug returns a detailed breakdown of the Duration, as: 'Duration: - 50days, 4h, 3m, 7s, 541ms, 78us, 9ns'.
 pub fn (d Duration) debug() string {
 	mut res := []string{}
 	mut x := i64(d)

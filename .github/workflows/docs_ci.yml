@@ -69,4 +69,5 @@ jobs:
           vlib/builtin/ vlib/arrays/ vlib/flag/ \
           vlib/bitfield/ vlib/term/ vlib/strings/ \
           vlib/rand/ vlib/compress/ vlib/clipboard/ \
+          vlib/time/ \
           vlib/os

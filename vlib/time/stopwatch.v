@@ -61,7 +61,7 @@ pub fn (mut t StopWatch) pause() {
 	t.start = 0
 }
 
-// elapsed returns the Duration since the last start call
+// elapsed returns the Duration since the last start call.
 pub fn (t StopWatch) elapsed() Duration {
 	if t.start > 0 {
 		if t.end == 0 {
