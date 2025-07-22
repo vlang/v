@@ -1,6 +1,10 @@
+struct C.builtin__closure__Closure {
+	closure_cap int
+}
+
 fn setup(fname string) (int, int, []int) {
 	println(fname)
-	return C._closure_cap, 42, []int{len: 5, init: index * 5}
+	return unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap }, 42, []int{len: 5, init: index * 5}
 }
 
 fn test_array_filter() {
@@ -9,7 +13,7 @@ fn test_array_filter() {
 		println('x: ${x} | i: ${i}')
 		return i < 20
 	}))
-	assert start_closure_cap - C._closure_cap == 1
+	assert start_closure_cap - unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap } == 1
 }
 
 fn test_array_map() {
@@ -18,7 +22,7 @@ fn test_array_map() {
 		println('x: ${x} | i: ${i}')
 		return x + i
 	}))
-	assert start_closure_cap - C._closure_cap == 1
+	assert start_closure_cap - unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap } == 1
 }
 
 fn test_array_any() {
@@ -27,7 +31,7 @@ fn test_array_any() {
 		println('x: ${x} | i: ${i}')
 		return i < x
 	}))
-	assert start_closure_cap - C._closure_cap == 1
+	assert start_closure_cap - unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap } == 1
 }
 
 fn test_array_all() {
@@ -36,5 +40,5 @@ fn test_array_all() {
 		println('x: ${x} | i: ${i}')
 		return i < x
 	}))
-	assert start_closure_cap - C._closure_cap == 1
+	assert start_closure_cap - unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap } == 1
 }
