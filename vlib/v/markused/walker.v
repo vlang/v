@@ -1061,3 +1061,11 @@ pub fn (mut w Walker) remove_unused_fn_generic_types() {
 		}
 	}
 }
+
+pub fn (mut w Walker) remove_unused_dump_type() {
+	for typ, _ in w.table.dumps {
+		if ast.Type(u32(typ)).set_nr_muls(0).clear_option_and_result() !in w.used_syms {
+			w.table.dumps.delete(typ)
+		}
+	}
+}

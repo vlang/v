@@ -560,6 +560,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 
 	walker.remove_unused_fn_generic_types()
+	walker.remove_unused_dump_type()
 
 	table.used_features.used_fns = walker.used_fns.move()
 	table.used_features.used_consts = walker.used_consts.move()
