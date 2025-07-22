@@ -5479,7 +5479,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node.typ)
 		} else {
-			if node.expr is ast.ArrayInit && g.assign_op != .decl_assign {
+			if node.expr is ast.ArrayInit && g.assign_op != .decl_assign && !g.inside_const {
 				g.write('(${g.styp(node.expr.typ)})')
 			}
 			g.expr(node.expr)
