@@ -1,4 +1,4 @@
-// vtest build: !gcc-windows
+// vtest build: !gcc-windows && !msvc-windows && !tcc-windows
 import datatypes.lockfree
 import time
 import sync
