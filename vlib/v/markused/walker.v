@@ -416,6 +416,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 			w.fn_by_name('eprint')
 			w.fn_by_name('eprintln')
+			w.mark_by_type(node.expr_type)
 		}
 		ast.SpawnExpr {
 			if node.is_expr {
