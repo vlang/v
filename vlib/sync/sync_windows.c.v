@@ -23,9 +23,6 @@ type MHANDLE = voidptr
 type SHANDLE = voidptr
 
 @[typedef]
-pub struct C.SRWLOCK {}
-
-@[typedef]
 pub struct C.CONDITION_VARIABLE {}
 
 //[init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
