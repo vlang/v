@@ -1,5 +1,7 @@
 module closure
 
+#include <synchapi.h>
+
 struct ClosureMutex {
 	closure_mtx C.SRWLOCK
 }

@@ -172,7 +172,7 @@ fn closure_alloc() {
 
 	// Fill page with closure templates
 	for remaining > 0 {
-		unsafe { vmemcpy(x, &closure_thunk[0], closure_thunk.len) } // Copy template
+		unsafe { vmemcpy(x, closure_thunk.data, closure_thunk.len) } // Copy template
 		remaining--
 		unsafe {
 			x += closure_size // Move to next slot
@@ -198,7 +198,7 @@ fn closure_init() {
 		// Temporarily enable write access to executable memory
 		closure_memory_protect_platform(g_closure.closure_ptr, page_size, .read_write)
 		// Copy closure entry stub code
-		vmemcpy(g_closure.closure_ptr, &closure_get_data_bytes[0], closure_get_data_bytes.len)
+		vmemcpy(g_closure.closure_ptr, closure_get_data_bytes.data, closure_get_data_bytes.len)
 		// Re-enormalize execution protection
 		closure_memory_protect_platform(g_closure.closure_ptr, page_size, .read_exec)
 	}
