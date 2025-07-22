@@ -753,6 +753,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		return
 	}
 	if node.is_method && node.left_type != 0 {
+		w.mark_by_type(node.left_type)
 		left_sym := w.table.sym(node.left_type)
 		if left_sym.info is ast.Aggregate {
 			for receiver_type in left_sym.info.types {
@@ -765,7 +766,6 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				}
 			}
 		} else if left_sym.info is ast.Interface {
-			w.mark_by_sym(left_sym)
 			for typ in left_sym.info.types {
 				sym := w.table.sym(typ)
 				_, embed_types := w.table.find_method_from_embeds(sym, node.name) or {
