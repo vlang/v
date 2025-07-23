@@ -353,7 +353,10 @@ pub fn (mut re RE) reset() {
 
 	// reset state list
 	re.state_list.clear()
-	re.group_stack.clear()
+	// restore initial state of the stack
+	for mut x in re.group_stack {
+		x = -1
+	}
 }
 
 // reset for search mode fail
