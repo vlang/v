@@ -146,9 +146,9 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.IfExpr {
 			for i, branch in expr.branches {
 				result := if expr.is_comptime {
-					result = e.comptime_cond(branch.cond)
+					e.comptime_cond(branch.cond)
 				} else if expr.branches.len != i + 1 {
-					result = e.expr(branch.cond, ast.bool_type_idx) as bool
+					e.expr(branch.cond, ast.bool_type_idx) as bool
 				} else {
 					false
 				}
