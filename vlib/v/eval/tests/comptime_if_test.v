@@ -14,8 +14,14 @@ fn test_comptime_if() {
 	\$else \$if s390x       { "s390x" } 
 	\$else \$if ppc64le     { "ppc64le" } 
 	\$else \$if loongarch64 { "loongarch64" } 
-	\$else { "unknown" }')!
+	\$else { "unknown" }
+
+	const b = 1.5
+
+	fn display() (string,f64) { println(a) println(b) return a,b } display()')!
+
 	dump(ret)
 	assert ret[0].string().len != 0
 	assert ret[0].string() != 'unknown'
+	assert ret[1].float_val() == 1.5
 }

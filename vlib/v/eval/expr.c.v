@@ -150,7 +150,12 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						e.returning = true
 						e.return_values = []
 						e.stmts(branch.stmts)
-						return e.return_values[0]
+						val := if e.return_values.len > 0 {
+							e.return_values[e.return_values.len - 1]
+						} else {
+							empty
+						}
+						return val
 					}
 				}
 				return empty
