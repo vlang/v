@@ -32,6 +32,7 @@ pub:
 	thickness f32         = 1
 }
 
+@[markused]
 pub struct Size {
 pub mut:
 	width  int

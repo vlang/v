@@ -4,7 +4,7 @@ module gx
 pub const align_left = HorizontalAlign.left
 pub const align_right = HorizontalAlign.right
 
-@[params]
+@[markused; params]
 pub struct TextCfg {
 pub:
 	color          Color           = black

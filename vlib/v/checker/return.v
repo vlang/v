@@ -72,6 +72,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		expected_types = expected_type_sym.info.types.clone()
 		if c.table.cur_concrete_types.len > 0 {
 			expected_types = expected_types.map(c.unwrap_generic(it))
+			c.table.used_features.comptime_syms[c.table.find_or_register_multi_return(expected_types)] = true
 		}
 	}
 	mut got_types := []ast.Type{}
@@ -226,6 +227,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 				}
 			} else {
+				if c.pref.skip_unused && got_types[i].has_flag(.generic) {
+					c.table.used_features.comptime_syms[got_type] = true
+				}
 				if exp_type_sym.kind == .interface {
 					if c.type_implements(got_type, exp_type, node.pos) {
 						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface

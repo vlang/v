@@ -34,6 +34,7 @@ pub mut:
 	used_fns       map[string]bool // filled in by markused
 	used_consts    map[string]bool // filled in by markused
 	used_globals   map[string]bool // filled in by markused
+	used_syms      map[int]bool    // filled in by markused
 	used_veb_types []Type          // veb context types, filled in by checker
 	used_maps      int             // how many times maps were used, filled in by markused
 	used_arrays    int             // how many times arrays were used, filled in by markused
@@ -42,6 +43,7 @@ pub mut:
 	// json             bool            // json is imported
 	debugger       bool            // debugger is used
 	comptime_calls map[string]bool // resolved name to call on comptime
+	comptime_syms  map[int]bool    // resolved syms (generic)
 	comptime_for   bool            // uses $for
 	memory_align   bool            // @[aligned] for struct
 }
