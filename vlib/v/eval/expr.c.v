@@ -145,22 +145,31 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.IfExpr {
 			for i, branch in expr.branches {
-				result := if expr.is_comptime {
-					e.comptime_cond(branch.cond)
-				} else {
-					e.expr(branch.cond, ast.bool_type_idx) as bool
+				mut result := false
+				if expr.is_comptime {
+					result = e.comptime_cond(branch.cond)
+				} else if expr.branches.len != i + 1 {
+					result = e.expr(branch.cond, ast.bool_type_idx) as bool
 				}
 
 				if result || expr.branches.len == i + 1 {
-					e.returning = true
-					e.return_values = []
-					e.stmts(branch.stmts)
-					val := if e.return_values.len > 0 {
-						e.return_values[e.return_values.len - 1]
-					} else {
-						empty
+					stmts := branch.stmts.filter(it is ast.ExprStmt)
+					if stmts.len > 0 {
+						// a := if x == 1 { 100 } else { 200 }, we need to get expr result
+						e.returning = true
+						e.return_values = []
 					}
-					return val
+					e.stmts(branch.stmts)
+					if stmts.len > 0 {
+						// a := if x == 1 { 100 } else { 200 }, we need to get expr result
+						return if e.return_values.len > 0 {
+							e.return_values[e.return_values.len - 1]
+						} else {
+							empty
+						}
+					} else {
+						return empty
+					}
 				}
 			}
 			return empty
