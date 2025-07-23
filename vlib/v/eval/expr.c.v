@@ -144,40 +144,26 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			return Object(res)
 		}
 		ast.IfExpr {
-			if expr.is_comptime {
-				for i, branch in expr.branches {
-					if e.comptime_cond(branch.cond) || expr.branches.len == i + 1 {
-						e.returning = true
-						e.return_values = []
-						e.stmts(branch.stmts)
-						val := if e.return_values.len > 0 {
-							e.return_values[e.return_values.len - 1]
-						} else {
-							empty
-						}
-						return val
-					}
+			for i, branch in expr.branches {
+				result := if expr.is_comptime {
+					e.comptime_cond(branch.cond)
+				} else {
+					e.expr(branch.cond, ast.bool_type_idx) as bool
 				}
-				return empty
-			} else {
-				for i, b in expr.branches {
-					mut result := e.expr(b.cond, ast.bool_type_idx)
 
-					if expr.has_else && i + 1 == expr.branches.len { // else block
-						e.stmts(b.stmts)
-						break
-					}
-					if result is bool {
-						if result as bool {
-							e.stmts(b.stmts)
-							break
-						}
+				if result || expr.branches.len == i + 1 {
+					e.returning = true
+					e.return_values = []
+					e.stmts(branch.stmts)
+					val := if e.return_values.len > 0 {
+						e.return_values[e.return_values.len - 1]
 					} else {
-						e.error('non-bool expression: ${b.cond}')
+						empty
 					}
+					return val
 				}
-				return empty
 			}
+			return empty
 		}
 		ast.InfixExpr {
 			left := e.expr(expr.left, expr.left_type)
