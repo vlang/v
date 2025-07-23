@@ -107,6 +107,7 @@ fn test_inline_asm() {
 		; =b (o.ebx) as ebx0
 		  =d (o.edx) as edx0
 		  =c (o.ecx) as ecx0
+		;; eax
 	}
 	assert o.str()[0].is_capital()
 }
