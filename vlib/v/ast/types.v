@@ -183,6 +183,7 @@ pub mut:
 	is_anon        bool
 	is_generic     bool
 	is_shared      bool
+	is_markused    bool
 	has_option     bool // contains any option field
 	generic_types  []Type
 	concrete_types []Type

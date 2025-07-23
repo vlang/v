@@ -1120,6 +1120,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('// >> typeof() support for sum types / interfaces')
 	for ityp, sym in g.table.type_symbols {
 		if sym.kind == .sum_type {
+			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+				continue
+			}
 			static_prefix := if g.pref.build_mode == .build_module { 'static ' } else { '' }
 			sum_info := sym.info as ast.SumType
 			if sum_info.is_generic {
@@ -1192,6 +1195,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
 					continue
 				}
+				if g.pref.skip_unused && sub_sym.kind == .struct
+					&& sub_sym.idx !in g.table.used_features.used_syms {
+					continue
+				}
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
@@ -1203,6 +1210,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
+					continue
+				}
+				if g.pref.skip_unused && sub_sym.kind == .struct
+					&& sub_sym.idx !in g.table.used_features.used_syms {
 					continue
 				}
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${int(t.set_nr_muls(0))};')
@@ -1768,6 +1779,9 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 	}
 	for sym in g.table.type_symbols {
 		if sym.kind == .alias && !sym.is_builtin && sym.name !in ['byte', 'i32'] {
+			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+				continue
+			}
 			g.write_alias_typesymbol_declaration(sym)
 		}
 	}
@@ -1864,7 +1878,11 @@ pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 		if mk_typ != variant && mk_typ in info.types {
 			continue
 		}
-		vcname := g.table.sym(mk_typ).cname
+		vsym := g.table.sym(mk_typ)
+		if g.pref.skip_unused && vsym.idx !in g.table.used_features.used_syms {
+			continue
+		}
+		vcname := vsym.cname
 		g.type_definitions.writeln('\t\t${vcname}* _${vcname};')
 	}
 	g.type_definitions.writeln('\t};')
@@ -1883,6 +1901,11 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 	is_fn_sig := func.name == ''
 	not_anon := !info.is_anon
 	mut has_generic_arg := false
+
+	if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+		return
+	}
+
 	for param in func.params {
 		if param.typ.has_flag(.generic) {
 			has_generic_arg = true
@@ -1963,6 +1986,9 @@ pub fn (mut g Gen) write_multi_return_types() {
 	for sym in multi_rets {
 		info := sym.mr_info()
 		if info.types.any(it.has_flag(.generic)) {
+			continue
+		}
+		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 			continue
 		}
 		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
@@ -2582,6 +2608,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						// Register an option if it's not registered yet
 						g.register_option(method.return_type)
 					} else if method.return_type.has_flag(.result) {
+						if g.pref.skip_unused
+							&& g.table.sym(method.return_type).idx !in g.table.used_features.used_syms {
+							continue
+						}
 						// Register a result if it's not registered yet
 						g.register_result(method.return_type)
 					}
@@ -2608,6 +2638,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// }
 			// g.writeln('} $name;')
 			if node.language == .c {
+				return
+			}
+			if g.pref.skip_unused && node.idx !in g.table.used_features.used_syms {
 				return
 			}
 			if node.is_union {
@@ -4705,6 +4738,9 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	if g.is_cc_msvc {
 		mut last_value := '0'
 		enum_typ_name := g.table.get_type_name(node.typ)
+		if g.pref.skip_unused && node.typ.idx() !in g.table.used_features.used_syms {
+			return
+		}
 		g.enum_typedefs.writeln('')
 		g.enum_typedefs.writeln('typedef ${enum_typ_name} ${enum_name};')
 		for i, field in node.fields {
@@ -4723,6 +4759,9 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 			}
 			g.enum_typedefs.writeln(')')
 		}
+		return
+	}
+	if g.pref.skip_unused && node.typ.idx() !in g.table.used_features.used_syms {
 		return
 	}
 	g.enum_typedefs.writeln('')
@@ -6395,6 +6434,9 @@ fn (mut g Gen) write_debug_calls_typeof_functions() {
 			if sum_info.is_generic {
 				continue
 			}
+			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+				continue
+			}
 			g.writeln('\tv_typeof_sumtype_${sym.cname}(0);')
 		}
 		if sym.kind == .interface {
@@ -6677,6 +6719,9 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							}
 						}
 					}
+					if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+						continue
+					}
 					g.struct_decl(sym.info, name, false, false)
 					struct_names[name] = true
 				}
@@ -6700,7 +6745,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				}
 			}
 			ast.SumType {
-				if sym.info.is_generic || struct_names[name] {
+				if sym.info.is_generic || struct_names[name]
+					|| (g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms) {
 					continue
 				}
 				struct_names[name] = true
@@ -6788,6 +6834,10 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 								}
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							} else if !(elem_sym.info is ast.ArrayFixed && elem_sym.info.is_fn_ret) {
+								if g.pref.skip_unused
+									&& elem_sym.idx !in g.table.used_features.used_syms {
+									continue
+								}
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							}
 						}
@@ -7728,6 +7778,10 @@ fn (mut g Gen) register_iface_return_types() {
 		for _, method_name in inter_info.get_methods() {
 			method := isym.find_method_with_generic_parent(method_name) or { continue }
 			if method.return_type.has_flag(.result) {
+				if g.pref.skip_unused
+					&& g.table.sym(method.return_type).idx !in g.table.used_features.used_syms {
+					continue
+				}
 				g.register_result(method.return_type)
 			}
 		}
@@ -7760,7 +7814,12 @@ fn (mut g Gen) interface_table() string {
 		for k, method_name in inter_methods {
 			method := isym.find_method_with_generic_parent(method_name) or { continue }
 			methodidx[method.name] = k
-			ret_styp := g.ret_styp(method.return_type)
+			ret_styp := if g.pref.skip_unused
+				&& g.table.sym(method.return_type).idx !in g.table.used_features.used_syms {
+				'void'
+			} else {
+				g.ret_styp(method.return_type)
+			}
 			methods_struct_def.write_string('\t${ret_styp} (*_method_${c_fn_name(method.name)})(void* _')
 			// the first param is the receiver, it's handled by `void*` above
 			for i in 1 .. method.params.len {
@@ -7803,6 +7862,12 @@ fn (mut g Gen) interface_table() string {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(ast.mktyp(st), true)
+			cctype2 := if g.pref.skip_unused && st_sym_info.idx !in g.table.used_features.used_syms {
+				'voidptr'
+			} else {
+				cctype
+			}
+			cctype_param := if cctype == cctype2 { cctype } else { 'void' }
 			$if debug_interface_table ? {
 				eprintln('>> interface name: ${isym.name} | concrete type: ${st.debug()} | st symname: ${st_sym.name}')
 			}
@@ -7813,43 +7878,47 @@ fn (mut g Gen) interface_table() string {
 			}
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
-			sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype}* x);')
+			sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype_param}* x);')
 			mut cast_struct := strings.new_builder(100)
 			cast_struct.writeln('(${interface_name}) {')
-			cast_struct.writeln('\t\t._${cctype} = x,')
+			cast_struct.writeln('\t\t._${cctype2} = x,')
 			cast_struct.writeln('\t\t._typ = ${interface_index_name},')
-			for field in inter_info.fields {
-				cname := c_name(field.name)
-				field_styp := g.styp(field.typ)
-				if _ := st_sym.find_field(field.name) {
-					cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname})),')
-				} else if st_sym.kind == .array
-					&& field.name in ['element_size', 'data', 'offset', 'len', 'cap', 'flags'] {
-					// Manually checking, we already knows array contains above fields
-					cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname})),')
-				} else {
-					// the field is embedded in another struct
-					cast_struct.write_string('\t\t.${cname} = (${field_styp}*)((char*)x')
-					if st != ast.voidptr_type && st != ast.nil_type {
-						if st_sym.kind == .struct {
-							if _, embeds := g.table.find_field_from_embeds(st_sym, field.name) {
-								mut typ_name := ''
-								for i, embed in embeds {
-									esym := g.table.sym(embed)
-									if i == 0 {
-										cast_struct.write_string(' + __offsetof_ptr(x, ${cctype}, ${esym.embed_name()})')
-									} else {
-										cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${esym.embed_name()})')
+			if cctype == cctype2 {
+				for field in inter_info.fields {
+					cname := c_name(field.name)
+					field_styp := g.styp(field.typ)
+					if _ := st_sym.find_field(field.name) {
+						cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype2}, ${cname})),')
+					} else if st_sym.kind == .array
+						&& field.name in ['element_size', 'data', 'offset', 'len', 'cap', 'flags'] {
+						// Manually checking, we already knows array contains above fields
+						cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype2}, ${cname})),')
+					} else {
+						// the field is embedded in another struct
+						cast_struct.write_string('\t\t.${cname} = (${field_styp}*)((char*)x')
+						if st != ast.voidptr_type && st != ast.nil_type {
+							if st_sym.kind == .struct {
+								if _, embeds := g.table.find_field_from_embeds(st_sym,
+									field.name)
+								{
+									mut typ_name := ''
+									for i, embed in embeds {
+										esym := g.table.sym(embed)
+										if i == 0 {
+											cast_struct.write_string(' + __offsetof_ptr(x, ${cctype}, ${esym.embed_name()})')
+										} else {
+											cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${esym.embed_name()})')
+										}
+										typ_name = esym.cname
 									}
-									typ_name = esym.cname
-								}
-								if embeds.len > 0 {
-									cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${cname})')
+									if embeds.len > 0 {
+										cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${cname})')
+									}
 								}
 							}
 						}
+						cast_struct.writeln('),')
 					}
-					cast_struct.writeln('),')
 				}
 			}
 			cast_struct.write_string('\t}')
@@ -7861,7 +7930,7 @@ fn (mut g Gen) interface_table() string {
 			}
 
 			cast_functions.writeln('
-static inline ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype}* x) {
+static inline ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype_param}* x) {
 return ${cast_struct_str};
 }')
 
@@ -7973,7 +8042,7 @@ return ${cast_shared_struct_str};
 				}
 				styp := g.cc_type(method.params[0].typ, true)
 				mut method_call := '${styp}_${name}'
-				if !method.params[0].typ.is_ptr() {
+				if cctype == cctype2 && !method.params[0].typ.is_ptr() {
 					if method.name !in aliased_method_names {
 						method_call = '${cctype}_${name}'
 					} else {
@@ -8056,6 +8125,10 @@ return ${cast_shared_struct_str};
 				conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}(${interface_name} x) {\n\treturn ')
 				for i, variant in variants {
 					variant_sym := g.table.sym(variant)
+					if g.pref.skip_unused && variant_sym.kind == .struct
+						&& variant_sym.idx !in g.table.used_features.used_syms {
+						continue
+					}
 					if i > 0 {
 						conversion_functions.write_string(' || ')
 					}

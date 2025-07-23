@@ -409,6 +409,9 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 	fn_builder.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, int indent_count) { /* gen_str_for_interface */')
 	for typ in info.types {
 		sub_sym := g.table.sym(ast.mktyp(typ))
+		if g.pref.skip_unused && sub_sym.idx !in g.table.used_features.used_syms {
+			continue
+		}
 		mut func_name := g.get_str_fn(typ)
 		sym_has_str_method, str_method_expects_ptr, _ := sub_sym.str_method_info()
 		if should_use_indent_func(sub_sym.kind) && !sym_has_str_method {

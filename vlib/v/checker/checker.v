@@ -3137,6 +3137,10 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			c.inside_if_guard = true
 			node.expr_type = c.expr(mut node.expr)
 			c.inside_if_guard = old_inside_if_guard
+			if c.pref.skip_unused && node.expr_type.has_flag(.generic) {
+				unwrapped_type := c.unwrap_generic(node.expr_type)
+				c.table.used_features.comptime_syms[unwrapped_type] = true
+			}
 			if !node.expr_type.has_flag(.option) && !node.expr_type.has_flag(.result) {
 				mut no_opt_or_res := true
 				match mut node.expr {
@@ -3435,6 +3439,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		// allow conversion from none to every option type
 	} else if to_sym.kind == .sum_type {
 		to_sym_info := to_sym.info as ast.SumType
+		if c.pref.skip_unused && to_sym_info.concrete_types.len > 0 {
+			c.table.used_features.comptime_syms[to_type] = true
+		}
 		if to_sym_info.generic_types.len > 0 && to_sym_info.concrete_types.len == 0 {
 			c.error('generic sumtype `${to_sym.name}` must specify type parameter, e.g. ${to_sym.name}[int]',
 				node.pos)
@@ -5226,6 +5233,9 @@ fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
 		}
 		if node.has_cap {
 			c.check_array_init_para_type('cap', mut node.cap_expr, node.pos)
+		}
+		if c.pref.skip_unused && node.typ.has_flag(.generic) {
+			c.table.used_features.comptime_syms[c.unwrap_generic(node.typ)] = true
 		}
 		return node.typ
 	} else {
