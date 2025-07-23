@@ -33,7 +33,7 @@ jobs:
         uses: cross-platform-actions/action@v0.29.0
         with:
           operating_system: freebsd
-          version: '14.2'
+          version: '14.3'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
@@ -59,7 +59,7 @@ jobs:
         uses: cross-platform-actions/action@v0.29.0
         with:
           operating_system: freebsd
-          version: '14.2'
+          version: '14.3'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
@@ -85,7 +85,7 @@ jobs:
         uses: cross-platform-actions/action@v0.29.0
         with:
           operating_system: freebsd
-          version: '14.2'
+          version: '14.3'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
