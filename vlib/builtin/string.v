@@ -416,16 +416,16 @@ pub fn (s string) replace(rep string, with string) string {
 		rep_pos := unsafe { pidxs[j] }
 		// copy everything up to piece being replaced
 		before_len := rep_pos - s_idx
-		unsafe { vmemcpy(&b[b_i], &s[s_idx], before_len) }
+		unsafe { vmemcpy(&b[b_i], &s.str[s_idx], before_len) }
 		b_i += before_len
 		s_idx = rep_pos + rep.len // move string index past replacement
 		// copy replacement piece
-		unsafe { vmemcpy(&b[b_i], &with[0], with.len) }
+		unsafe { vmemcpy(&b[b_i], &with.str[0], with.len) }
 		b_i += with.len
 	}
 	if s_idx < s.len {
 		// if any original after last replacement, copy it
-		unsafe { vmemcpy(&b[b_i], &s[s_idx], s.len - s_idx) }
+		unsafe { vmemcpy(&b[b_i], &s.str[s_idx], s.len - s_idx) }
 	}
 	unsafe {
 		b[new_len] = 0
@@ -2060,7 +2060,7 @@ pub fn (str string) is_oct() bool {
 	} else if str[i] == `-` || str[i] == `+` {
 		i++
 
-		if str[i] == `0` {
+		if i < str.len && str[i] == `0` {
 			i++
 		} else {
 			return false
@@ -2069,7 +2069,7 @@ pub fn (str string) is_oct() bool {
 		return false
 	}
 
-	if str[i] == `o` {
+	if i < str.len && str[i] == `o` {
 		i++
 	} else {
 		return false
@@ -2103,7 +2103,7 @@ pub fn (str string) is_bin() bool {
 	} else if str[i] == `-` || str[i] == `+` {
 		i++
 
-		if str[i] == `0` {
+		if i < str.len && str[i] == `0` {
 			i++
 		} else {
 			return false
@@ -2112,7 +2112,7 @@ pub fn (str string) is_bin() bool {
 		return false
 	}
 
-	if str[i] == `b` {
+	if i < str.len && str[i] == `b` {
 		i++
 	} else {
 		return false
@@ -2146,7 +2146,7 @@ pub fn (str string) is_hex() bool {
 	} else if str[i] == `-` || str[i] == `+` {
 		i++
 
-		if str[i] == `0` {
+		if i < str.len && str[i] == `0` {
 			i++
 		} else {
 			return false
@@ -2155,7 +2155,7 @@ pub fn (str string) is_hex() bool {
 		return false
 	}
 
-	if str[i] == `x` {
+	if i < str.len && str[i] == `x` {
 		i++
 	} else {
 		return false

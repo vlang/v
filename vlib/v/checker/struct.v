@@ -17,6 +17,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	}
 	node_name := if node.scoped_name != '' { node.scoped_name } else { node.name }
 	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node_name)
+	node.idx = struct_typ_idx
 	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
 		for mut symfield in struct_sym.info.fields {
@@ -534,6 +535,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0 {
 		c.table.unwrap_generic_type_ex(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types,
 			true)
+		if c.pref.skip_unused && node.typ.has_flag(.generic) {
+			c.table.used_features.comptime_syms[c.unwrap_generic(node.typ)] = true
+		}
 	}
 	if !is_field_zero_struct_init {
 		c.ensure_type_exists(node.typ, node.pos)

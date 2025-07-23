@@ -453,6 +453,7 @@ pub:
 pub mut:
 	language Language
 	fields   []StructField
+	idx      int
 }
 
 pub struct Embed {
@@ -1484,6 +1485,7 @@ pub:
 	comments []Comment
 pub mut:
 	parent_type Type
+	is_markused bool
 }
 
 // SumTypeDecl is the ast node for `type MySumType = string | int`
@@ -1497,7 +1499,8 @@ pub:
 	generic_types []Type
 	attrs         []Attr // attributes of type declaration
 pub mut:
-	variants []TypeNode
+	variants    []TypeNode
+	is_markused bool
 }
 
 pub struct FnTypeDecl {
@@ -1510,6 +1513,7 @@ pub:
 	comments      []Comment
 	generic_types []Type
 	attrs         []Attr // attributes of type declaration
+	is_markused   bool
 }
 
 // TODO: handle this differently
