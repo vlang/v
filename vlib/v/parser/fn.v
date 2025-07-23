@@ -217,7 +217,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				is_deprecated = true
 			}
 			'direct_array_access' {
-				is_direct_arr = true
+				if !p.pref.force_bounds_checking {
+					is_direct_arr = true
+				}
 			}
 			'keep_args_alive' {
 				is_keep_alive = true
