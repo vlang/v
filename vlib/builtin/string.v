@@ -2060,7 +2060,7 @@ pub fn (str string) is_oct() bool {
 	} else if str[i] == `-` || str[i] == `+` {
 		i++
 
-		if str[i] == `0` {
+		if i < str.len && str[i] == `0` {
 			i++
 		} else {
 			return false
@@ -2069,7 +2069,7 @@ pub fn (str string) is_oct() bool {
 		return false
 	}
 
-	if str[i] == `o` {
+	if i < str.len && str[i] == `o` {
 		i++
 	} else {
 		return false
@@ -2103,7 +2103,7 @@ pub fn (str string) is_bin() bool {
 	} else if str[i] == `-` || str[i] == `+` {
 		i++
 
-		if str[i] == `0` {
+		if i < str.len && str[i] == `0` {
 			i++
 		} else {
 			return false
@@ -2112,7 +2112,7 @@ pub fn (str string) is_bin() bool {
 		return false
 	}
 
-	if str[i] == `b` {
+	if i < str.len && str[i] == `b` {
 		i++
 	} else {
 		return false
@@ -2146,7 +2146,7 @@ pub fn (str string) is_hex() bool {
 	} else if str[i] == `-` || str[i] == `+` {
 		i++
 
-		if str[i] == `0` {
+		if i < str.len && str[i] == `0` {
 			i++
 		} else {
 			return false
@@ -2155,7 +2155,7 @@ pub fn (str string) is_hex() bool {
 		return false
 	}
 
-	if str[i] == `x` {
+	if i < str.len && str[i] == `x` {
 		i++
 	} else {
 		return false
