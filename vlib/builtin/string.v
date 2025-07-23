@@ -416,16 +416,16 @@ pub fn (s string) replace(rep string, with string) string {
 		rep_pos := unsafe { pidxs[j] }
 		// copy everything up to piece being replaced
 		before_len := rep_pos - s_idx
-		unsafe { vmemcpy(&b[b_i], &s[s_idx], before_len) }
+		unsafe { vmemcpy(&b[b_i], &s.str[s_idx], before_len) }
 		b_i += before_len
 		s_idx = rep_pos + rep.len // move string index past replacement
 		// copy replacement piece
-		unsafe { vmemcpy(&b[b_i], &with[0], with.len) }
+		unsafe { vmemcpy(&b[b_i], &with.str[0], with.len) }
 		b_i += with.len
 	}
 	if s_idx < s.len {
 		// if any original after last replacement, copy it
-		unsafe { vmemcpy(&b[b_i], &s[s_idx], s.len - s_idx) }
+		unsafe { vmemcpy(&b[b_i], &s.str[s_idx], s.len - s_idx) }
 	}
 	unsafe {
 		b[new_len] = 0
