@@ -91,7 +91,7 @@ pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	w.used_globals[ckey] = true
 	gfield := w.all_globals[ckey] or { return }
 	w.expr(gfield.expr)
-	if !gfield.has_expr && gfield.typ != 0 {
+	if !gfield.has_expr {
 		w.mark_by_type(gfield.typ)
 	}
 }
@@ -261,10 +261,9 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			w.expr(node.cond)
 			w.expr(node.high)
 			w.stmts(node.stmts)
+			w.mark_by_type(node.cond_type)
 			if node.kind == .map {
 				w.features.used_maps++
-			} else if node.kind == .array {
-				w.features.used_arrays++
 			} else if node.kind == .struct {
 				if node.cond_type == 0 {
 					return
@@ -366,7 +365,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
 			w.exprs(node.exprs)
-			w.features.used_arrays++
 		}
 		ast.Assoc {
 			w.exprs(node.exprs)
@@ -393,6 +391,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.ChanInit {
 			w.expr(node.cap_expr)
 			w.mark_by_type(node.typ)
+			w.fn_by_name('sync.new_channel_st')
+			w.fn_by_name('sync.channel_select')
 		}
 		ast.ConcatExpr {
 			w.exprs(node.vals)
@@ -415,9 +415,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 			w.fn_by_name('eprint')
 			w.fn_by_name('eprintln')
-			if node.expr_type != 0 {
-				w.mark_by_type(node.expr_type)
-			}
+			w.mark_by_type(node.expr_type)
 		}
 		ast.SpawnExpr {
 			if node.is_expr {
@@ -463,7 +461,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.mark_builtin_array_method_as_used('get')
 				}
 				w.mark_by_sym(w.table.sym(sym.info.elem_type))
-				w.features.used_arrays++
 			} else if sym.kind == .string {
 				if node.index is ast.RangeExpr {
 					w.mark_builtin_array_method_as_used('slice')
@@ -480,6 +477,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.right)
 			w.or_block(node.or_block)
 			if node.left_type != 0 {
+				w.mark_by_type(node.left_type)
 				sym := w.table.sym(node.left_type)
 				if sym.kind == .struct {
 					if opmethod := sym.find_method(node.op.str()) {
@@ -495,12 +493,11 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				node.right_type
 			}
 			if right_type != 0 {
+				w.mark_by_type(right_type)
 				right_sym := w.table.sym(right_type)
 				if node.op in [.not_in, .key_in] {
 					if right_sym.kind == .map {
 						w.features.used_maps++
-					} else if right_sym.kind == .array {
-						w.features.used_arrays++
 					}
 				} else if node.op in [.key_is, .not_is] {
 					w.mark_by_sym(right_sym)
@@ -509,9 +506,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.IfGuardExpr {
 			w.expr(node.expr)
-			if node.expr_type != 0 {
-				w.mark_by_type(node.expr_type)
-			}
+			w.mark_by_type(node.expr_type)
 		}
 		ast.IfExpr {
 			w.expr(node.left)
@@ -607,9 +602,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.SizeOf, ast.IsRefType {
 			w.expr(node.expr)
-			if node.typ != 0 {
-				w.mark_by_type(node.typ)
-			}
+			w.mark_by_type(node.typ)
 		}
 		ast.StringInterLiteral {
 			w.used_interp++
@@ -623,9 +616,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.fn_by_name(method.fkey())
 				}
 			}
-			if node.typ != 0 {
-				w.mark_by_type(node.typ)
-			}
+			w.mark_by_type(node.typ)
 			w.or_block(node.or_block)
 		}
 		ast.SqlExpr {
@@ -652,9 +643,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.TypeOf {
 			w.expr(node.expr)
-			if node.typ != 0 {
-				w.mark_by_type(node.typ)
-			}
+			w.mark_by_type(node.typ)
 		}
 		///
 		ast.AsCast {
@@ -683,9 +672,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.mark_by_sym_name(node.enum_name)
 		}
 		ast.LockExpr {
-			if sym := w.table.find_sym('sync.RwMutex') {
-				w.mark_by_sym(sym)
-			}
+			w.mark_by_sym_name('sync.RwMutex')
 			w.stmts(node.stmts)
 		}
 		ast.OffsetOf {}
@@ -915,12 +902,12 @@ pub fn (mut w Walker) mark_by_sym_name(name string) {
 	}
 }
 
+@[inline]
 pub fn (mut w Walker) mark_by_type(typ ast.Type) {
-	if typ.has_flag(.generic) {
+	if typ == 0 || typ.has_flag(.generic) {
 		return
 	}
-	sym := w.table.sym(typ)
-	w.mark_by_sym(sym)
+	w.mark_by_sym(w.table.sym(typ))
 }
 
 pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
@@ -947,7 +934,6 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 							w.mark_by_sym(fsym)
 						}
 						ast.Array, ast.ArrayFixed {
-							w.features.used_arrays++
 							w.mark_by_type(ifield.typ)
 						}
 						ast.Map {
@@ -1019,13 +1005,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			for generic_type in isym.info.generic_types {
 				w.mark_by_type(generic_type)
 			}
-			if isym.info.parent_type != 0 {
-				w.mark_by_type(isym.info.parent_type)
-			}
+			w.mark_by_type(isym.info.parent_type)
 			for method in isym.methods {
-				if method.receiver_type != 0 {
-					w.mark_by_type(method.receiver_type)
-				}
+				w.mark_by_type(method.receiver_type)
 				w.mark_fn_ret_and_params(method.return_type, method.params)
 			}
 		}

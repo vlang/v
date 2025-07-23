@@ -63,11 +63,13 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'tos',
 			'tos2',
 			'error',
-			'builtin_init',
 			'fast_string_eq',
 			'println',
 			'ptr_str',
 		]
+		if ast_files[ast_files.len - 1].imports.len > 0 {
+			core_fns << 'builtin_init'
+		}
 		if ast.float_literal_type.idx() in table.used_features.print_types
 			|| ast.f64_type_idx in table.used_features.print_types
 			|| ast.f32_type_idx in table.used_features.print_types {
@@ -79,9 +81,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if 'callstack' in pref_.compile_defines {
 			core_fns << ref_array_idx_str + '.push'
 			core_fns << ref_array_idx_str + '.pop'
-		}
-		if table.used_features.external_types {
-			include_panic_deps = true
 		}
 		if pref_.autofree {
 			core_fns << string_idx_str + '.clone_static'
@@ -193,12 +192,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << ref_map_idx_str + '.clone'
 			core_fns << ref_densearray_idx_str + '.clone'
 			core_fns << map_idx_str + '.clone'
-			table.used_features.used_maps++
 		}
 		if table.used_features.map_update {
 			include_panic_deps = true
 			core_fns << 'new_map_update_init'
-			table.used_features.used_maps++
 		}
 		if table.used_features.asserts {
 			include_panic_deps = true
@@ -223,7 +220,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << '_result_ok'
 			core_fns << 'tos5'
 			core_fns << 'time.unix' // used by json
-			table.used_features.used_maps++ // json needs new_map etc
 			include_panic_deps = true
 		}
 		if pref_.should_use_segfault_handler() {
@@ -291,7 +287,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		// auto generated string interpolation functions, may
 		// call .str or .auto_str methods for user types:
 		if table.used_features.auto_str || table.used_features.dump || table.used_features.asserts
-			|| table.used_features.debugger || table.used_features.external_types
+			|| table.used_features.debugger
 			|| table.used_features.print_types[mfn.receiver.typ.idx()] {
 			if (has_dot && (k.ends_with('.str') || k.ends_with('.auto_str')))
 				|| (k.starts_with('_Atomic_') && k.ends_with('_str')) {
@@ -304,19 +300,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				all_fn_root_names << k
 				continue
 			}
-			// sync:
-			if k in ['sync.new_channel_st', 'sync.channel_select'] {
+			if pref_.is_prof && (k.starts_with('time.vpc_now') || k.starts_with('v.profile.')) {
+				// needed for -profile
 				all_fn_root_names << k
 				continue
 			}
-			if pref_.is_prof {
-				if k.starts_with('time.vpc_now') || k.starts_with('v.profile.') {
-					// needed for -profile
-					all_fn_root_names << k
-					continue
-				}
-			}
-			if (pref_.autofree || table.used_features.external_types) && k.ends_with('.free') {
+			if pref_.autofree && k.ends_with('.free') {
 				all_fn_root_names << k
 				continue
 			}
