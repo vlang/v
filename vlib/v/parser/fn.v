@@ -141,7 +141,7 @@ fn (mut p Parser) call_args() []ast.CallArg {
 			array_decompose = true
 		}
 		mut expr := ast.empty_expr
-		if p.tok.kind in [.name, .key_type] && p.peek_tok.kind == .colon {
+		if p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
 			expr = p.struct_init('void_type', .short_syntax, false)
 		} else {
