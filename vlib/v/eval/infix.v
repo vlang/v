@@ -6,6 +6,18 @@ import v.ast
 
 fn (e &Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.Type) Object {
 	match op {
+		.and {
+			if left is bool && right is bool {
+				return left && right
+			}
+			e.error('invalid operands to &&: ${left.type_name()} and ${right.type_name()}')
+		}
+		.logical_or {
+			if left is bool && right is bool {
+				return left || right
+			}
+			e.error('invalid operands to ||: ${left.type_name()} and ${right.type_name()}')
+		}
 		.gt {
 			match left {
 				Int {
@@ -117,6 +129,120 @@ fn (e &Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.
 				}
 				else {
 					e.error('invalid operands to <: ${left.type_name()} and ${right.type_name()}')
+				}
+			}
+		}
+		.ge {
+			match left {
+				Int {
+					match right {
+						Int { return left.val >= right.val }
+						Uint { return left.val >= right.val }
+						Float { return left.val >= right.val }
+						i64 { return left.val >= right }
+						f64 { return left.val >= right }
+						else { e.error('invalid operands to >=: Int and ${right.type_name()}') }
+					}
+				}
+				Uint {
+					match right {
+						Int { return left.val >= right.val }
+						Uint { return left.val >= right.val }
+						Float { return left.val >= right.val }
+						i64 { return left.val >= right }
+						f64 { return left.val >= right }
+						else { e.error('invalid operands to >=: Uint and ${right.type_name()}') }
+					}
+				}
+				Float {
+					match right {
+						Int { return left.val >= right.val }
+						Uint { return left.val >= right.val }
+						Float { return left.val >= right.val }
+						i64 { return left.val >= right }
+						f64 { return left.val >= right }
+						else { e.error('invalid operands to >=: Float and ${right.type_name()}') }
+					}
+				}
+				i64 {
+					match right {
+						Int { return left >= right.val }
+						Uint { return left >= right.val }
+						Float { return left >= right.val }
+						i64 { return left >= right }
+						f64 { return left >= right }
+						else { e.error('invalid operands to >=: int literal and ${right.type_name()}') }
+					}
+				}
+				f64 {
+					match right {
+						Int { return left >= right.val }
+						Uint { return left >= right.val }
+						Float { return left >= right.val }
+						i64 { return left >= right }
+						f64 { return left >= right }
+						else { e.error('invalid operands to >=: float literal and ${right.type_name()}') }
+					}
+				}
+				else {
+					e.error('invalid operands to >=: ${left.type_name()} and ${right.type_name()}')
+				}
+			}
+		}
+		.le {
+			match left {
+				Int {
+					match right {
+						Int { return left.val <= right.val }
+						Uint { return left.val <= right.val }
+						Float { return left.val <= right.val }
+						i64 { return left.val <= right }
+						f64 { return left.val <= right }
+						else { e.error('invalid operands to <=: Int and ${right.type_name()}') }
+					}
+				}
+				Uint {
+					match right {
+						Int { return left.val <= right.val }
+						Uint { return left.val <= right.val }
+						Float { return left.val <= right.val }
+						i64 { return left.val <= right }
+						f64 { return left.val <= right }
+						else { e.error('invalid operands to <=: Uint and ${right.type_name()}') }
+					}
+				}
+				Float {
+					match right {
+						Int { return left.val <= right.val }
+						Uint { return left.val <= right.val }
+						Float { return left.val <= right.val }
+						i64 { return left.val <= right }
+						f64 { return left.val <= right }
+						else { e.error('invalid operands to <=: Float and ${right.type_name()}') }
+					}
+				}
+				i64 {
+					match right {
+						Int { return left <= right.val }
+						Uint { return left <= right.val }
+						Float { return left <= right.val }
+						i64 { return left <= right }
+						f64 { return left <= right }
+						else { e.error('invalid operands to <=: int literal and ${right.type_name()}') }
+					}
+				}
+				f64 {
+					match right {
+						Int { return left <= right.val }
+						Uint { return left <= right.val }
+						Float { return left <= right.val }
+						i64 { return left <= right }
+						f64 { return left <= right }
+						else { e.error('invalid operands to <=: float literal and ${right.type_name()}') }
+					}
+				}
+				else {
+					e.error('invalid operands to <=: ${left.type_name()} and ${right.type_name()}')
 				}
 			}
 		}
