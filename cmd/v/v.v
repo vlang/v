@@ -12,6 +12,7 @@ import v.util.version
 import v.builder
 import v.builder.cbuilder
 
+@[markused]
 const external_tools = [
 	'ast',
 	'bin2v',

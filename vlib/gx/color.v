@@ -112,6 +112,7 @@ pub const light_red = Color{
 }
 
 // Color represents a 32 bit color value in sRGB format
+@[markused]
 pub struct Color {
 pub mut:
 	r u8

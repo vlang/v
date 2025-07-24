@@ -8,7 +8,7 @@ import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively.
 pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&ast.File) {
-	mut all_fns, all_consts, all_globals, all_fields := all_global_decl(ast_files)
+	mut all_fns, all_consts, all_globals, all_fields, all_decltypes := all_global_decl(ast_files)
 	util.timing_start('MARKUSED')
 	defer {
 		util.timing_measure('MARKUSED')
@@ -52,7 +52,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			println('> used_fn, found matching symbol: ${m}')
 		}
 	}
-
 	if pref_.backend == .native {
 		// Note: this is temporary, until the native backend supports more features!
 		all_fn_root_names << 'main.main'
@@ -444,24 +443,37 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 
 	mut walker := Walker.new(
-		table:       table
-		files:       ast_files
-		all_fns:     all_fns
-		all_consts:  all_consts
-		all_globals: all_globals
-		all_fields:  all_fields
-		pref:        pref_
+		table:         table
+		files:         ast_files
+		all_fns:       all_fns
+		all_consts:    all_consts
+		all_globals:   all_globals
+		all_fields:    all_fields
+		all_decltypes: all_decltypes
+		pref:          pref_
 	)
 	walker.mark_markused_consts() // tagged with `@[markused]`
 	walker.mark_markused_globals() // tagged with `@[markused]`
+	walker.mark_markused_syms() // tagged with `@[markused]`
 	walker.mark_markused_fns() // tagged with `@[markused]`, `@[export]` and veb actions
+	walker.mark_markused_decltypes() // tagged with `@[markused]`
 	walker.mark_struct_field_default_expr()
 
 	for k, _ in table.used_features.comptime_calls {
 		walker.fn_by_name(k)
+		// println('>>>>> ${k}')
 	}
 
+	for k, _ in table.used_features.comptime_syms {
+		walker.mark_by_sym(table.sym(k))
+		// println('>>>>> ${k}')
+	}
+	// println(all_fn_root_names)
+
 	walker.mark_root_fns(all_fn_root_names)
+
+	walker.mark_by_sym_name('vweb.RedirectParams')
+	walker.mark_by_sym_name('vweb.RequestParams')
 
 	if table.used_features.used_maps > 0 {
 		for k, mut mfn in all_fns {
@@ -519,16 +531,24 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 	if walker.used_none > 0 || table.used_features.auto_str {
 		walker.mark_fn_as_used('_option_none')
+		walker.mark_by_sym_name('_option')
 	}
 	if walker.used_option > 0 {
 		walker.mark_fn_as_used('_option_clone')
 		walker.mark_fn_as_used('_option_ok')
+		walker.mark_by_sym_name('_option')
 	}
 	if walker.used_result > 0 {
 		walker.mark_fn_as_used('_result_ok')
+		walker.mark_by_sym_name('_result')
 	}
 	if (walker.used_option + walker.used_result + walker.used_none) > 0 {
 		walker.mark_const_as_used('none__')
+	}
+	walker.mark_by_sym_name('array')
+
+	if table.used_features.asserts {
+		walker.mark_by_sym_name('VAssertMetaInfo')
 	}
 
 	if trace_skip_unused_fn_names {
@@ -541,14 +561,20 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	if walker.used_none == 0 {
 		walker.used_fns.delete('${int(ast.none_type)}.str')
 	}
+
+	walker.remove_unused_fn_generic_types()
+	walker.remove_unused_dump_type()
+
 	table.used_features.used_fns = walker.used_fns.move()
 	table.used_features.used_consts = walker.used_consts.move()
 	table.used_features.used_globals = walker.used_globals.move()
+	table.used_features.used_syms = walker.used_syms.move()
 
 	if trace_skip_unused {
 		eprintln('>> t.used_fns: ${table.used_features.used_fns.keys()}')
 		eprintln('>> t.used_consts: ${table.used_features.used_consts.keys()}')
 		eprintln('>> t.used_globals: ${table.used_features.used_globals.keys()}')
+		eprintln('>> t.used_syms: ${table.used_features.used_syms.keys()}')
 		eprintln('>> walker.table.used_features.used_maps: ${walker.table.used_features.used_maps}')
 	}
 	if trace_skip_unused_just_unused_fns {
@@ -563,7 +589,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 }
 
-fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField, map[string]ast.GlobalField, map[string]ast.StructField) {
+fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField, map[string]ast.GlobalField, map[string]ast.StructField, map[string]ast.Type) {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
@@ -572,6 +598,7 @@ fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast
 	mut all_consts := map[string]ast.ConstField{}
 	mut all_globals := map[string]ast.GlobalField{}
 	mut all_fields := map[string]ast.StructField{}
+	mut all_decltypes := map[string]ast.Type{}
 	for i in 0 .. ast_files.len {
 		for node in ast_files[i].stmts {
 			match node {
@@ -599,11 +626,14 @@ fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast
 						all_fields[sfkey] = sfield
 					}
 				}
+				ast.TypeDecl {
+					all_decltypes[node.name] = node.typ
+				}
 				else {}
 			}
 		}
 	}
-	return all_fns, all_consts, all_globals, all_fields
+	return all_fns, all_consts, all_globals, all_fields, all_decltypes
 }
 
 fn mark_all_methods_used(mut table ast.Table, mut all_fn_root_names []string, typ ast.Type) {

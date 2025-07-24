@@ -2606,6 +2606,7 @@ fn source_name(name string) string {
 }
 
 fn (mut p Parser) type_decl() ast.TypeDecl {
+	attrs := p.attrs
 	start_pos := p.tok.pos()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -2649,7 +2650,6 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.table.sym(fn_type).is_pub = is_pub
 		type_pos = type_pos.extend(p.tok.pos())
 		comments = p.eat_comments(same_line: true)
-		attrs := p.attrs
 		p.attrs = []
 		return ast.FnTypeDecl{
 			name:          fn_name
@@ -2660,6 +2660,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			comments:      comments
 			generic_types: generic_types
 			attrs:         attrs
+			is_markused:   attrs.contains('markused')
 		}
 	}
 	sum_variants << p.parse_sum_type_variants()
@@ -2705,6 +2706,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			attrs:         p.attrs
 			pos:           decl_pos
 			name_pos:      name_pos
+			is_markused:   attrs.contains('markused')
 		}
 		p.table.register_sumtype(node)
 		return node
@@ -2756,6 +2758,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		type_pos:    type_pos.extend(type_end_pos)
 		pos:         decl_pos
 		comments:    comments
+		is_markused: attrs.contains('markused')
 	}
 }
 

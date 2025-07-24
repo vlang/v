@@ -179,7 +179,11 @@ pub fn (mut e Eval) register_symbols(mut files []&ast.File) {
 		for file, fields in const_files {
 			e.cur_file = file
 			for _, field in fields {
+				e.returning = true
+				e.return_values = []
 				e.mods[mod][field.name.all_after_last('.')] = e.expr(field.expr, field.typ)
+				e.returning = false
+				e.return_values = []
 				if mod == 'os' && field.name.all_after_last('.') == 'args' {
 					mut res := Array{}
 					res.val << e.pref.out_name.all_after_last('/')

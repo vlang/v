@@ -1,3 +1,4 @@
+@[has_globals]
 module main
 
 type Mat4 = [16]f32

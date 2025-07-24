@@ -27,7 +27,11 @@ fn (mut c Checker) markused_dumpexpr(mut node ast.DumpExpr) {
 	if c.is_builtin_mod {
 		return
 	}
-	if !c.table.sym(c.unwrap_generic(node.expr_type)).has_method('str') {
+	unwrapped_type := c.unwrap_generic(node.expr_type)
+	if node.expr_type.has_flag(.generic) {
+		c.table.used_features.comptime_syms[unwrapped_type] = true
+	}
+	if !c.table.sym(unwrapped_type).has_method('str') {
 		c.table.used_features.auto_str = true
 		if node.expr_type.is_ptr() {
 			c.table.used_features.auto_str_ptr = true

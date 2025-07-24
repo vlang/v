@@ -339,6 +339,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
+			if c.pref.skip_unused {
+				if param.typ.has_flag(.generic) {
+					c.table.used_features.comptime_syms[c.unwrap_generic(param.typ)] = true
+				}
+				if node.return_type.has_flag(.generic) {
+					c.table.used_features.comptime_syms[c.unwrap_generic(node.return_type)] = true
+				}
+			}
 			if param.name == node.mod && param.name != 'main' {
 				c.error('duplicate of a module name `${param.name}`', param.pos)
 			}
@@ -992,6 +1000,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 		typ := expr as ast.TypeNode
 		node.return_type = if is_json_decode { typ.typ.set_flag(.result) } else { typ.typ }
+		if typ.typ.has_flag(.generic) {
+			c.table.used_features.comptime_syms[c.unwrap_generic(typ.typ)] = true
+		}
 		return node.return_type
 	} else if fn_name == '__addr' {
 		if !c.inside_unsafe {
@@ -1859,6 +1870,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				}
 			}
 		}
+		if c.pref.skip_unused && node.concrete_types.len > 0 {
+			for concrete_type in node.concrete_types {
+				c.table.used_features.comptime_syms[c.unwrap_generic(concrete_type)] = true
+			}
+		}
 	}
 
 	// resolve return generics struct to concrete type
@@ -1877,6 +1893,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if typ := c.table.convert_generic_type(func.return_type, func.generic_names, concrete_types) {
 			node.return_type = typ
 			c.register_trace_call(node, func)
+			if func.return_type.has_flag(.generic) {
+				c.table.used_features.comptime_syms[typ.clear_option_and_result()] = true
+			}
 			return typ
 		}
 	}
@@ -1889,6 +1908,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		ret_type := c.resolve_fn_return_type(func, node, concrete_types)
 		c.register_trace_call(node, func)
 		node.return_type = ret_type
+		if ret_type.has_flag(.generic) {
+			unwrapped_ret := c.unwrap_generic(ret_type)
+			if c.table.sym(unwrapped_ret).kind == .multi_return {
+				c.table.used_features.comptime_syms[unwrapped_ret] = true
+			}
+		}
 		return ret_type
 	}
 	c.register_trace_call(node, func)

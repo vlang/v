@@ -869,6 +869,7 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string, is_arra
 		g.expr(node.left)
 		g.write(', ${info.size}, sizeof(${elem_styp}), (voidptr)${compare_fn});')
 	}
+	g.writeln('')
 }
 
 fn (mut g Gen) gen_fixed_array_sorted_with_compare(node ast.CallExpr) {

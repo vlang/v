@@ -422,6 +422,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			is_typedef:    attrs.contains('typedef')
 			is_union:      is_union
 			is_heap:       attrs.contains('heap')
+			is_markused:   attrs.contains('markused')
 			is_minify:     is_minify
 			is_generic:    generic_types.len > 0
 			generic_types: generic_types
@@ -655,6 +656,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		info:     ast.Interface{
 			types:         []
 			is_generic:    generic_types.len > 0
+			is_markused:   attrs.contains('markused')
 			generic_types: generic_types
 		}
 		language: language
