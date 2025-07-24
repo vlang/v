@@ -447,14 +447,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 	for k, _ in table.used_features.comptime_calls {
 		walker.fn_by_name(k)
-		// println('>>>>> ${k}')
 	}
 
 	for k, _ in table.used_features.comptime_syms {
 		walker.mark_by_sym(table.sym(k))
-		// println('>>>>> ${k}')
 	}
-	// println(all_fn_root_names)
 
 	walker.mark_root_fns(all_fn_root_names)
 
@@ -507,36 +504,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
-	if include_panic_deps || walker.used_interp > 0 {
-		walker.mark_panic_deps()
-	}
-
-	if walker.used_panic > 0 {
-		walker.mark_fn_as_used('panic_option_not_set')
-		walker.mark_fn_as_used('panic_result_not_set')
-	}
-	if walker.used_none > 0 || table.used_features.auto_str {
-		walker.mark_fn_as_used('_option_none')
-		walker.mark_by_sym_name('_option')
-	}
-	if walker.used_option > 0 {
-		walker.mark_fn_as_used('_option_clone')
-		walker.mark_fn_as_used('_option_ok')
-		walker.mark_by_sym_name('_option')
-	}
-	if walker.used_result > 0 {
-		walker.mark_fn_as_used('_result_ok')
-		walker.mark_by_sym_name('_result')
-	}
-	if (walker.used_option + walker.used_result + walker.used_none) > 0 {
-		walker.mark_const_as_used('none__')
-	}
-	walker.mark_by_sym_name('array')
-
-	if table.used_features.asserts {
-		walker.mark_by_sym_name('VAssertMetaInfo')
-	}
-
 	if trace_skip_unused_fn_names {
 		for key, _ in walker.used_fns {
 			println('> used fn key: ${key}')
@@ -548,7 +515,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		walker.used_fns.delete('${int(ast.none_type)}.str')
 	}
 
-	walker.finalize()
+	walker.finalize(include_panic_deps)
 
 	table.used_features.used_fns = walker.used_fns.move()
 	table.used_features.used_consts = walker.used_consts.move()

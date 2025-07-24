@@ -32,6 +32,7 @@ mut:
 	all_decltypes map[string]ast.Type
 
 	// dependencies finding flags
+	uses_array        bool // has array
 	uses_channel      bool // has chan dep
 	uses_lock         bool // has mutex dep
 	uses_ct_fields    bool // $for .fields
@@ -377,6 +378,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
 			w.exprs(node.exprs)
+			w.uses_array = true
 		}
 		ast.Assoc {
 			w.exprs(node.exprs)
@@ -871,7 +873,7 @@ pub fn (mut w Walker) or_block(node ast.OrExpr) {
 	}
 }
 
-pub fn (mut w Walker) mark_panic_deps() {
+fn (mut w Walker) mark_panic_deps() {
 	ref_array_idx_str := int(ast.array_type.ref()).str()
 	string_idx_str := ast.string_type_idx.str()
 	array_idx_str := ast.array_type_idx.str()
@@ -1085,8 +1087,39 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 }
 
-pub fn (mut w Walker) finalize() {
+pub fn (mut w Walker) finalize(include_panic_deps bool) {
+	if include_panic_deps || w.uses_array || w.used_interp > 0 {
+		w.mark_panic_deps()
+	}
 	w.mark_resource_dependencies()
+
+	if w.used_panic > 0 {
+		w.mark_fn_as_used('panic_option_not_set')
+		w.mark_fn_as_used('panic_result_not_set')
+	}
+	if w.used_none > 0 || w.table.used_features.auto_str {
+		w.mark_fn_as_used('_option_none')
+		w.mark_by_sym_name('_option')
+	}
+	if w.used_option > 0 {
+		w.mark_fn_as_used('_option_clone')
+		w.mark_fn_as_used('_option_ok')
+		w.mark_by_sym_name('_option')
+	}
+	if w.used_result > 0 {
+		w.mark_fn_as_used('_result_ok')
+		w.mark_by_sym_name('_result')
+	}
+	if (w.used_option + w.used_result + w.used_none) > 0 {
+		w.mark_const_as_used('none__')
+	}
+	w.mark_by_sym_name('array')
+
+	if w.table.used_features.asserts {
+		w.mark_by_sym_name('VAssertMetaInfo')
+	}
+
+	// remove unused symbols
 	w.remove_unused_fn_generic_types()
 	w.remove_unused_dump_type()
 }
