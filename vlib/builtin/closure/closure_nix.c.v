@@ -1,6 +1,6 @@
 module closure
 
-$if !freestanding {
+$if !freestanding && !vinix {
 	#include <sys/mman.h>
 }
 
@@ -64,21 +64,21 @@ fn get_page_size_platform() int {
 
 @[inline]
 fn closure_mtx_lock_init_platform() {
-	$if !freestanding {
+	$if !freestanding || vinix {
 		C.pthread_mutex_init(&g_closure.closure_mtx, 0)
 	}
 }
 
 @[inline]
 fn closure_mtx_lock_platform() {
-	$if !freestanding {
+	$if !freestanding || vinix {
 		C.pthread_mutex_lock(&g_closure.closure_mtx)
 	}
 }
 
 @[inline]
 fn closure_mtx_unlock_platform() {
-	$if !freestanding {
+	$if !freestanding || vinix {
 		C.pthread_mutex_unlock(&g_closure.closure_mtx)
 	}
 }
