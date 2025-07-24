@@ -1,6 +1,6 @@
 #include <Cocoa/Cocoa.h>
 
-NSColor* nscolor(gx__Color c) {
+NSColor* nscolor(gg__Color c) {
 	float red = (float)c.r / 255.0f;
 	float green = (float)c.g / 255.0f;
 	float blue = (float)c.b / 255.0f;
@@ -58,7 +58,7 @@ gg__Size gg_get_screen_size() {
 	return res;
 }
 
-void darwin_draw_string(int x, int y, string s, gx__TextCfg cfg) {
+void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
 	NSFont* font = [NSFont userFontOfSize:0]; // cfg.size];
 	// # NSFont*    font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];
 	if (cfg.mono) {
@@ -99,7 +99,7 @@ int darwin_text_width(string s) {
 	return (int)(ceil(size.width));
 }
 
-void darwin_draw_rect(float x, float y, float width, float height, gx__Color c) {
+void darwin_draw_rect(float x, float y, float width, float height, gg__Color c) {
 	NSColor* color = nscolor(c);
 	NSRect rect = NSMakeRect(x, y, width, height);
 	[color setFill];
@@ -142,7 +142,7 @@ void darwin_draw_image(float x, float y, float w, float h, gg__Image* img) {
 	[i drawInRect:NSMakeRect(x, y, w, h)];
 }
 
-void darwin_draw_circle(float x, float y, float d, gx__Color color) {
+void darwin_draw_circle(float x, float y, float d, gg__Color color) {
 	NSColor* c = nscolor(color);
 	NSRect rect = NSMakeRect(x, y, d * 2, d * 2);
 	NSBezierPath* circlePath = [NSBezierPath bezierPath];
@@ -153,7 +153,7 @@ void darwin_draw_circle(float x, float y, float d, gx__Color color) {
 	// NSRectFill(rect);
 }
 
-void darwin_draw_circle_empty(float x, float y, float d, gx__Color color) {
+void darwin_draw_circle_empty(float x, float y, float d, gg__Color color) {
 	NSColor* outlineColor = nscolor(color);
 	CGFloat outlineWidth = 1.0; //2.0;
 

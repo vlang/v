@@ -1,13 +1,12 @@
 module main
 
 import gg
-import gx
 import os.asset
 import math
 
 const win_width = 600
 const win_height = 700
-const bg_color = gx.white
+const bg_color = gg.white
 
 const text = '
 Once upon a midnight dreary, while I pondered, weak and weary,
@@ -84,7 +83,7 @@ fn frame(mut app App) {
 	if scale_factor <= 0 {
 		scale_factor = 1
 	}
-	text_cfg := gx.TextCfg{
+	text_cfg := gg.TextCfg{
 		size: 16 * int(scale_factor)
 	}
 	mut y := 10

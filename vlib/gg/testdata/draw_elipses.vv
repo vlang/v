@@ -1,7 +1,6 @@
 module main
 
 import gg
-import gx
 
 fn main() {
 	mut context := gg.new_context(
@@ -15,7 +14,7 @@ fn main() {
 
 fn frame(mut ctx gg.Context) {
 	ctx.begin()
-	ctx.draw_ellipse_filled(100, 100, 100, 50, gx.red)
-	ctx.draw_ellipse_empty(100, 100, 50, 25, gx.black)
+	ctx.draw_ellipse_filled(100, 100, 100, 50, gg.red)
+	ctx.draw_ellipse_empty(100, 100, 50, 25, gg.black)
 	ctx.end()
 }

@@ -1,5 +1,4 @@
 import gg
-import gx
 import os
 import rand
 import time
@@ -77,35 +76,35 @@ fn on_frame(mut app App) {
 	app.gg.begin()
 	// draw food
 	app.gg.draw_rect_filled(tile_size * app.food.x, tile_size * app.food.y + top_height,
-		tile_size, tile_size, gx.red)
+		tile_size, tile_size, gg.red)
 
 	// draw snake
 	for pos in app.snake[..app.snake.len - 1] {
 		app.gg.draw_rect_filled(tile_size * pos.x, tile_size * pos.y + top_height, tile_size,
-			tile_size, gx.blue)
+			tile_size, gg.blue)
 	}
 
 	// draw partial head
 	head := app.snake[0]
 	app.gg.draw_rect_filled(tile_size * (head.x + app.dir.x * progress), tile_size * (head.y +
-		app.dir.y * progress) + top_height, tile_size, tile_size, gx.blue)
+		app.dir.y * progress) + top_height, tile_size, tile_size, gg.blue)
 
 	// draw partial tail
 	tail := app.snake.last()
 	tail_dir := app.snake[app.snake.len - 2] - tail
 	app.gg.draw_rect_filled(tile_size * (tail.x + tail_dir.x * progress), tile_size * (tail.y +
-		tail_dir.y * progress) + top_height, tile_size, tile_size, gx.blue)
+		tail_dir.y * progress) + top_height, tile_size, tile_size, gg.blue)
 
 	// draw score bar
-	app.gg.draw_rect_filled(0, 0, canvas_size, top_height, gx.black)
-	app.gg.draw_text(150, top_height / 2, 'Score: ${app.score}', gx.TextCfg{
-		color:          gx.white
+	app.gg.draw_rect_filled(0, 0, canvas_size, top_height, gg.black)
+	app.gg.draw_text(150, top_height / 2, 'Score: ${app.score}', gg.TextCfg{
+		color:          gg.white
 		align:          .center
 		vertical_align: .middle
 		size:           65
 	})
-	app.gg.draw_text(canvas_size - 150, top_height / 2, 'Best: ${app.best}', gx.TextCfg{
-		color:          gx.white
+	app.gg.draw_text(canvas_size - 150, top_height / 2, 'Best: ${app.best}', gg.TextCfg{
+		color:          gg.white
 		align:          .center
 		vertical_align: .middle
 		size:           65
@@ -170,7 +169,7 @@ app.best.load()
 
 mut font_copy := font
 app.gg = gg.new_context(
-	bg_color:          gx.white
+	bg_color:          gg.white
 	frame_fn:          on_frame
 	keydown_fn:        on_keydown
 	user_data:         &app

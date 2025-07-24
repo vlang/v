@@ -2,7 +2,6 @@ module main
 
 import math
 import gg
-import gx
 
 fn main() {
 	mut context := gg.new_context(
@@ -16,7 +15,7 @@ fn main() {
 
 fn frame(mut ctx gg.Context) {
 	ctx.begin()
-	ctx.draw_arc_filled(100, 100, 35, 45, 0, f32(math.radians(290)), 30, gx.red)
-	ctx.draw_arc_empty(100, 100, 30, 50, 0, f32(math.radians(290)), 30, gx.white)
+	ctx.draw_arc_filled(100, 100, 35, 45, 0, f32(math.radians(290)), 30, gg.red)
+	ctx.draw_arc_empty(100, 100, 30, 50, 0, f32(math.radians(290)), 30, gg.white)
 	ctx.end()
 }

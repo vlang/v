@@ -1,7 +1,6 @@
 module main
 
 import gg
-import gx
 import sokol.sapp
 
 const max_files = 12
@@ -16,7 +15,7 @@ mut:
 fn main() {
 	mut app := &App{}
 	app.gg = gg.new_context(
-		bg_color:     gx.rgb(174, 198, 255)
+		bg_color:     gg.rgb(174, 198, 255)
 		width:        600
 		height:       400
 		window_title: 'Drag and drop'
@@ -45,8 +44,8 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 fn frame(mut app App) {
 	app.gg.begin()
 
-	mut txt_conf := gx.TextCfg{
-		color: gx.black
+	mut txt_conf := gg.TextCfg{
+		color: gg.black
 		align: .left
 		size:  int(text_size * app.gg.scale + 0.5)
 	}

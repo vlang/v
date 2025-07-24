@@ -1,5 +1,6 @@
 module gx
 
+@[deprecated_after: '2026-01-24']
 pub struct Image {
 mut:
 	obj voidptr

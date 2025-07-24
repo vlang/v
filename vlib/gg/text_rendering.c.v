@@ -5,7 +5,6 @@ module gg
 import fontstash
 import sokol.sfons
 import sokol.sgl
-import gx
 import os
 import os.font
 
@@ -19,6 +18,19 @@ pub:
 pub mut:
 	fonts_map map[string]int // for storing custom fonts, provided via cfg.family in draw_text()
 	scale     f32 = 1.0
+}
+
+pub enum HorizontalAlign {
+	left   = C.FONS_ALIGN_LEFT
+	center = C.FONS_ALIGN_CENTER
+	right  = C.FONS_ALIGN_RIGHT
+}
+
+pub enum VerticalAlign {
+	top      = C.FONS_ALIGN_TOP
+	middle   = C.FONS_ALIGN_MIDDLE
+	bottom   = C.FONS_ALIGN_BOTTOM
+	baseline = C.FONS_ALIGN_BASELINE
 }
 
 const buff_size = int($d('gg_text_buff_size', 2048))
@@ -131,7 +143,7 @@ fn new_ft(c FTConfig) ?&FT {
 }
 
 // set_text_cfg sets the current text configuration
-pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
+pub fn (ctx &Context) set_text_cfg(cfg TextCfg) {
 	if !ctx.font_inited {
 		return
 	}
@@ -181,10 +193,10 @@ pub:
 	y    int
 	text string
 
-	color          Color              = gx.black
-	size           int                = 16
-	align          gx.HorizontalAlign = .left
-	vertical_align gx.VerticalAlign   = .top
+	color          Color           = black
+	size           int             = 16
+	align          HorizontalAlign = .left
+	vertical_align VerticalAlign   = .top
 	max_width      int
 	family         string
 	bold           bool
@@ -193,7 +205,7 @@ pub:
 }
 
 pub fn (ctx &Context) draw_text2(p DrawTextParams) {
-	ctx.draw_text(p.x, p.y, p.text, gx.TextCfg{
+	ctx.draw_text(p.x, p.y, p.text, TextCfg{
 		color:          p.color
 		size:           p.size
 		align:          p.align
@@ -208,10 +220,10 @@ pub fn (ctx &Context) draw_text2(p DrawTextParams) {
 
 // draw_text draws the string in `text_` starting at top-left position `x`,`y`.
 // Text settings can be provided with `cfg`.
-pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
+pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg TextCfg) {
 	$if macos {
 		if ctx.native_rendering {
-			if cfg.align == gx.align_right {
+			if cfg.align == align_right {
 				width := ctx.text_width(text_)
 				// println('draw text ctx.height = ${ctx.height}')
 				C.darwin_draw_string(x - width, ctx.height - y, text_, cfg)

@@ -1,7 +1,6 @@
 module main
 
 import gg
-import gx
 import rand
 import os.asset
 
@@ -172,23 +171,23 @@ fn (mut g Game) draw_cell(y int, x int) {
 	rect_x, rect_y := x * g.csize, y * g.csize
 	if g.revealed[y][x] {
 		if g.grid[y][x] == .mine {
-			g.ctx.draw_rect_filled(rect_x, o + rect_y, g.csize, g.csize, gx.red)
-			g.ctx.draw_text(rect_x + 10, o + rect_y + 5, '*', color: gx.black)
+			g.ctx.draw_rect_filled(rect_x, o + rect_y, g.csize, g.csize, gg.red)
+			g.ctx.draw_text(rect_x + 10, o + rect_y + 5, '*', color: gg.black)
 		} else if int(g.grid[y][x]) > 0 {
-			g.ctx.draw_rect_filled(rect_x, o + rect_y, g.csize, g.csize, gx.light_gray)
+			g.ctx.draw_rect_filled(rect_x, o + rect_y, g.csize, g.csize, gg.light_gray)
 			n := int(g.grid[y][x]).str()
-			g.ctx.draw_text(rect_x + 10, o + rect_y + 5, n, color: gx.black)
+			g.ctx.draw_text(rect_x + 10, o + rect_y + 5, n, color: gg.black)
 		} else {
-			c := gx.rgb(240, 240, 240)
+			c := gg.rgb(240, 240, 240)
 			g.ctx.draw_rect_filled(rect_x, o + rect_y, g.csize, g.csize, c)
 		}
 	} else if g.flags[y][x] {
-		g.ctx.draw_rect_filled(rect_x, o + rect_y, g.csize, g.csize, gx.gray)
-		g.ctx.draw_text(rect_x + 10, o + rect_y + 5, 'F', color: gx.white)
+		g.ctx.draw_rect_filled(rect_x, o + rect_y, g.csize, g.csize, gg.gray)
+		g.ctx.draw_text(rect_x + 10, o + rect_y + 5, 'F', color: gg.white)
 	} else {
-		g.ctx.draw_rect_filled(rect_x, o + rect_y, g.csize, g.csize, gx.gray)
+		g.ctx.draw_rect_filled(rect_x, o + rect_y, g.csize, g.csize, gg.gray)
 	}
-	g.ctx.draw_rect_empty(rect_x, o + rect_y, g.csize, g.csize, gx.black)
+	g.ctx.draw_rect_empty(rect_x, o + rect_y, g.csize, g.csize, gg.black)
 }
 
 fn on_frame(mut g Game) {
@@ -199,7 +198,7 @@ fn on_frame(mut g Game) {
 		}
 	}
 	message := 'Flagged: ${g.mines_flagged:02}/${g.mines:02}               (r)estart (ESC)ape'
-	g.ctx.draw_text(5, 7, message, color: gx.green)
+	g.ctx.draw_text(5, 7, message, color: gg.green)
 	g.ctx.end()
 }
 
@@ -207,7 +206,7 @@ fn main() {
 	mut g := &Game{}
 	g.restart()
 	g.ctx = gg.new_context(
-		bg_color:     gx.black
+		bg_color:     gg.black
 		width:        g.size * g.csize
 		height:       header_size + g.size * g.csize
 		window_title: 'V Minesweeper'

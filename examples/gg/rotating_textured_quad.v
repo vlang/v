@@ -1,5 +1,4 @@
 import gg
-import gx
 import os.asset
 import sokol.sgl
 
@@ -45,7 +44,7 @@ fn main() {
 	mut window := &Window{}
 	window.ctx = gg.new_context(
 		window_title: 'Rotating V logo'
-		bg_color:     gx.light_green
+		bg_color:     gg.light_green
 		width:        500
 		height:       500
 		user_data:    window

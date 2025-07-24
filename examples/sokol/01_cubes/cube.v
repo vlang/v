@@ -8,7 +8,6 @@
 * - add an example with shaders
 **********************************************************************/
 import gg
-import gx
 import math
 import sokol.sapp
 import sokol.gfx
@@ -16,7 +15,7 @@ import sokol.sgl
 
 const win_width = 800
 const win_height = 800
-const bg_color = gx.white
+const bg_color = gg.white
 
 struct App {
 mut:
