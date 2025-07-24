@@ -35,6 +35,11 @@ fn test_if_infix_return_early() {
 
 	ret := e.run('
 	fn display(a int, b int) int {
+		mut k := false
+		if !k {
+			k = !k
+		}
+		println(k)
 		if a == 100 && b == 100 {
 			return 100
 		} else if a == 100 && b != 100 {
