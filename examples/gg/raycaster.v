@@ -12,7 +12,6 @@
 // learn more on how this code works. There are some silly
 // digressons in the video but the tech content is spot on.
 import gg
-import gx
 import math
 
 const player_size = 8
@@ -59,7 +58,7 @@ fn main() {
 		window_title: 'Raycaster Demo'
 		width:        1024
 		height:       512
-		bg_color:     gx.gray
+		bg_color:     gg.gray
 		frame_fn:     draw
 		event_fn:     handle_events
 	)
@@ -79,7 +78,7 @@ fn draw(mut app App) {
 fn draw_map_2d(app App) {
 	for y := 0; y < map_y_size; y++ {
 		for x := 0; x < map_x_size; x++ {
-			color := if app.map[y * map_x_size + x] == 1 { gx.white } else { gx.black }
+			color := if app.map[y * map_x_size + x] == 1 { gg.white } else { gg.black }
 			app.ctx.draw_rect_filled(x * map_square, y * map_square, map_square - 1, map_square - 1,
 				color)
 		}
@@ -87,10 +86,10 @@ fn draw_map_2d(app App) {
 }
 
 fn draw_player(app App) {
-	app.ctx.draw_rect_filled(app.player_x, app.player_y, player_size, player_size, gx.yellow)
+	app.ctx.draw_rect_filled(app.player_x, app.player_y, player_size, player_size, gg.yellow)
 	cx := app.player_x + player_size / 2
 	cy := app.player_y + player_size / 2
-	app.ctx.draw_line(cx, cy, cx + app.player_dx * 5, cy + app.player_dy * 5, gx.yellow)
+	app.ctx.draw_line(cx, cy, cx + app.player_dx * 5, cy + app.player_dy * 5, gg.yellow)
 }
 
 fn draw_rays_and_walls(app App) {
@@ -109,7 +108,7 @@ fn draw_rays_and_walls(app App) {
 	mut map_x := 0
 	mut map_y := 0
 	mut map_pos := 0
-	mut color := gx.red
+	mut color := gg.red
 	mut ray_angle := clamp_ray_angle(app.player_angle - degree_radian * field_of_view / 2)
 
 	// each step = 1/2 degree
@@ -196,17 +195,17 @@ fn draw_rays_and_walls(app App) {
 			ray_x = vx
 			ray_y = vy
 			distance = vd
-			color = gx.rgb(0, 100, 0)
+			color = gg.rgb(0, 100, 0)
 		} else if hd < vd {
 			ray_x = hx
 			ray_y = hy
 			distance = hd
-			color = gx.rgb(0, 120, 0)
+			color = gg.rgb(0, 120, 0)
 		}
 		// draw ray
 		cx := app.player_x + player_size / 2
 		cy := app.player_y + player_size / 2
-		app.ctx.draw_line(cx, cy, ray_x, ray_y, gx.green)
+		app.ctx.draw_line(cx, cy, ray_x, ray_y, gg.green)
 		// draw wall section
 		mut ca := clamp_ray_angle(app.player_angle - ray_angle)
 		distance *= math.cosf(ca) // remove fish eye

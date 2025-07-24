@@ -1,6 +1,4 @@
-module gx
-
-import gg
+module gg
 
 pub const black = Color{
 	r: 0
@@ -114,8 +112,14 @@ pub const light_red = Color{
 }
 
 // Color represents a 32 bit color value in sRGB format
-@[deprecated: 'use gg.Color instead'; deprecated_after: '2026-01-24']
-pub type Color = gg.Color
+@[markused]
+pub struct Color {
+pub mut:
+	r u8
+	g u8
+	b u8
+	a u8 = 255
+}
 
 // hex takes in a 32 bit integer and splits it into 4 byte values
 /*

@@ -1,7 +1,6 @@
 module main
 
 import gg
-import gx
 
 const points = [f32(200.0), 200.0, 200.0, 100.0, 400.0, 100.0, 400.0, 300.0]
 
@@ -14,7 +13,7 @@ mut:
 fn main() {
 	mut app := &App{}
 	app.gg = gg.new_context(
-		bg_color:     gx.rgb(174, 198, 255)
+		bg_color:     gg.rgb(174, 198, 255)
 		width:        600
 		height:       400
 		window_title: 'Cubic Bézier curve'
@@ -31,8 +30,8 @@ fn (mut app App) change(delta int) {
 
 fn frame(mut app App) {
 	app.gg.begin()
-	app.gg.draw_cubic_bezier_in_steps(points, u32(app.steps), gx.blue)
-	app.gg.draw_cubic_bezier_recursive(points, gx.rgba(255, 50, 50, 150))
+	app.gg.draw_cubic_bezier_in_steps(points, u32(app.steps), gg.blue)
+	app.gg.draw_cubic_bezier_recursive(points, gg.rgba(255, 50, 50, 150))
 	app.gg.end()
 	if app.gg.pressed_keys[int(gg.KeyCode.down)] {
 		app.change(-1)

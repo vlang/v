@@ -2,7 +2,6 @@ module main
 
 import datatypes
 import gg
-import gx
 import time
 import math
 import rand
@@ -11,12 +10,12 @@ const win_width = 1340
 const win_height = 640
 const timer_period = 40 * time.millisecond // defaulted at 25 fps
 
-const font_small = gx.TextCfg{
-	color: gx.black
+const font_small = gg.TextCfg{
+	color: gg.black
 	size:  20
 }
-const font_large = gx.TextCfg{
-	color: gx.black
+const font_large = gg.TextCfg{
+	color: gg.black
 	size:  40
 }
 
@@ -114,7 +113,7 @@ fn main() {
 		gg: unsafe { nil }
 	}
 	app.gg = gg.new_context(
-		bg_color:      gx.white
+		bg_color:      gg.white
 		width:         win_width
 		height:        win_height
 		create_window: true
@@ -159,19 +158,19 @@ fn frame(app &App) {
 fn (app &App) display() {
 	for player in app.players {
 		app.gg.draw_rect_filled(f32(player.x), f32(player.y), f32(player.width), f32(player.height),
-			gx.black)
+			gg.black)
 	}
 	for particle in app.particles {
 		app.gg.draw_rect_empty(f32(particle.pmt.x), f32(particle.pmt.y), f32(particle.pmt.width),
-			f32(particle.pmt.height), gx.blue)
+			f32(particle.pmt.height), gg.blue)
 	}
 	for node in app.nodes {
 		app.gg.draw_rect_empty(f32(node.perimeter.x), f32(node.perimeter.y), f32(node.perimeter.width),
-			f32(node.perimeter.height), gx.red)
+			f32(node.perimeter.height), gg.red)
 	}
 	for retrieved in app.retrieveds {
 		app.gg.draw_rect_filled(f32(retrieved.x + 1), f32(retrieved.y + 1), f32(retrieved.width - 2),
-			f32(retrieved.height - 2), gx.green)
+			f32(retrieved.height - 2), gg.green)
 	}
 	app.gg.draw_text(1200, 25, 'Nodes: ${app.nodes.len}', font_small)
 	app.gg.draw_text(1200, 50, 'Particles: ${app.particles.len}', font_small)

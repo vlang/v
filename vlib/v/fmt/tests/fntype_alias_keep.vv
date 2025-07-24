@@ -1,7 +1,6 @@
 module ui
 
 import gg
-import gx
 import eventbus
 
 pub type DrawFn = fn (ctx &gg.Context, state voidptr)
@@ -31,7 +30,7 @@ pub mut:
 	my            f64
 	width         int
 	height        int
-	bg_color      gx.Color
+	bg_color      gg.Color
 	click_fn      ClickFn
 	mouse_down_fn ClickFn
 	mouse_up_fn   ClickFn
@@ -51,7 +50,7 @@ pub:
 	always_on_top bool
 	state         voidptr
 	draw_fn       DrawFn
-	bg_color      gx.Color = default_window_color
+	bg_color      gg.Color = default_window_color
 	on_click      ClickFn
 	on_mouse_down ClickFn
 	on_mouse_up   ClickFn

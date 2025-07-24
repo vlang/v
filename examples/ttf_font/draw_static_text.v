@@ -1,5 +1,4 @@
 import gg
-import gx
 import sokol.sapp
 import sokol.sgl
 import x.ttf
@@ -14,7 +13,7 @@ const custom_text_start_y = 80
 
 const win_width = 400
 const win_height = 400
-const bg_color = gx.Color{50, 255, 50, 255}
+const bg_color = gg.Color{50, 255, 50, 255}
 
 const block_txt = os.read_file(custom_txt_path) or { '' }
 const font_paths = [
