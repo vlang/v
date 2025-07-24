@@ -112,6 +112,13 @@ NB: the build flags are shared with the run command too:
     cases, it is preferable to not turn it off, than disable it, and have a program that may
     do out of bounds accesses.
 
+  -force-bounds-checking
+    Programs compiled with this option, will *ALWAYS* do runtime checking of array access
+    operations, even inside functions/methods, that were tagged with `@[direct_array_access]`.
+    This allows for more convenient testing of modules that do use `@[direct_array_access]`,
+    extensively (like `math.big`), without constantly edititing their source code to remove/add
+    the tag. Note: this option overrides -no-bounds-checking .
+
   -prof, -profile <file.txt>
     Compile the executable with all functions profiled.
     The profile results will be stored in `file.txt`.

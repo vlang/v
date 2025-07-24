@@ -46,7 +46,7 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		// Look for octal, binary and hex prefix.
 		base = 10
 		if s[0] == `0` {
-			ch := s[1] | 32
+			ch := if s.len > 1 { s[1] | 32 } else { `0` }
 			if s.len >= 3 {
 				if ch == `b` {
 					base = 2

@@ -60,11 +60,13 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 			}
 		}
 		ast.Return {
+			old_returning := e.returning
 			e.returning = true
 			e.return_values = []
 			for i, expr in stmt.exprs {
 				e.return_values << e.expr(expr, stmt.types[i])
 			}
+			e.returning = old_returning
 		}
 		ast.ForInStmt {
 			if !stmt.is_range {

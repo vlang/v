@@ -200,7 +200,7 @@ pub fn integer_from_radix(all_characters string, radix u32) !Integer {
 
 @[direct_array_access]
 fn validate_string(characters string, radix u32) ! {
-	sign_present := characters[0] == `+` || characters[0] == `-`
+	sign_present := characters.len > 0 && (characters[0] == `+` || characters[0] == `-`)
 
 	start_index := if sign_present { 1 } else { 0 }
 
@@ -261,7 +261,7 @@ fn integer_from_special_string(characters string, chunk_size int) Integer {
 
 @[direct_array_access]
 fn integer_from_regular_string(characters string, radix u32) Integer {
-	sign_present := characters[0] == `+` || characters[0] == `-`
+	sign_present := characters.len > 0 && (characters[0] == `+` || characters[0] == `-`)
 
 	signum := if sign_present {
 		if characters[0] == `-` { -1 } else { 1 }

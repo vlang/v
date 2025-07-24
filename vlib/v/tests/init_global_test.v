@@ -1,3 +1,6 @@
+@[has_globals]
+module main
+
 // vtest retry: 2
 import sync
 
