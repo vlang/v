@@ -6,7 +6,6 @@ import gg
 pub const align_left = HorizontalAlign.left
 pub const align_right = HorizontalAlign.right
 
-@[markused; params; deprecated: 'use gg.TextCfg instead'; deprecated_after: '2026-01-24']
 pub type TextCfg = gg.TextCfg
 
 // to_css_string returns a CSS compatible string of the TextCfg `cfg`.

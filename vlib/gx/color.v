@@ -114,7 +114,7 @@ pub const light_red = Color{
 }
 
 // Color represents a 32 bit color value in sRGB format
-@[deprecated: 'use gg.Color instead'; deprecated_after: '2026-01-24']
+
 pub type Color = gg.Color
 
 // hex takes in a 32 bit integer and splits it into 4 byte values
