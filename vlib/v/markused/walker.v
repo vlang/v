@@ -31,16 +31,19 @@ mut:
 	all_fields    map[string]ast.StructField
 	all_decltypes map[string]ast.Type
 
+	is_builtin_mod bool
+
 	// dependencies finding flags
-	uses_array        bool // has array
-	uses_channel      bool // has chan dep
-	uses_lock         bool // has mutex dep
-	uses_ct_fields    bool // $for .fields
-	uses_ct_methods   bool // $for .methods
-	uses_ct_params    bool // $for .params
-	uses_ct_values    bool // $for .values
-	uses_ct_variants  bool // $for .variants
-	uses_ct_attribute bool // $for .attributes
+	uses_array         bool // has array
+	uses_channel       bool // has chan dep
+	uses_lock          bool // has mutex dep
+	uses_ct_fields     bool // $for .fields
+	uses_ct_methods    bool // $for .methods
+	uses_ct_params     bool // $for .params
+	uses_ct_values     bool // $for .values
+	uses_ct_variants   bool // $for .variants
+	uses_ct_attribute  bool // $for .attributes
+	uses_external_type bool
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -391,6 +394,13 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.name == 'json.decode' {
 				w.mark_by_type((node.args[0].expr as ast.TypeNode).typ)
 			}
+			if !w.is_builtin_mod && !w.uses_external_type {
+				if node.is_method {
+					w.uses_external_type = node.mod == 'builtin'
+				} else if node.name.contains('.') {
+					w.uses_external_type = true
+				}
+			}
 		}
 		ast.CastExpr {
 			w.expr(node.expr)
@@ -728,7 +738,10 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
+	last_is_builtin_mod := w.is_builtin_mod
+	w.is_builtin_mod = node.mod in ['builtin', 'os', 'strconv']
 	w.stmts(node.stmts)
+	w.is_builtin_mod = last_is_builtin_mod
 	w.defer_stmts(node.defer_stmts)
 }
 
@@ -1088,7 +1101,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 }
 
 pub fn (mut w Walker) finalize(include_panic_deps bool) {
-	if include_panic_deps || w.uses_array || w.used_interp > 0 {
+	if include_panic_deps || w.used_interp > 0 || w.uses_external_type {
 		w.mark_panic_deps()
 	}
 	w.mark_resource_dependencies()
