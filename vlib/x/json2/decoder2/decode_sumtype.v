@@ -1,7 +1,6 @@
 module decoder2
 
 import time
-import x.json2
 
 fn copy_type[T](t T) T {
 	return T{}
@@ -11,19 +10,34 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 	$if initialized_sumtype is $sumtype {
 		$for v in initialized_sumtype.variants {
 			if initialized_sumtype is v {
-				$if initialized_sumtype !is $option { // only to avoid compiler errors, options wont get here
+				$if initialized_sumtype !is $option {
 					mut val := copy_type(initialized_sumtype)
 					decoder.decode_value(mut val)!
 					return T(val)
+				} $else {
+					if decoder.current_node.value.value_kind == .null {
+						decoder.current_node = decoder.current_node.next
+						return T(initialized_sumtype)
+					} else {
+						decoder.error('sumtype option only support decoding null->none (for now)')!
+					}
 				}
 			}
 		}
 	}
-	return initialized_sumtype
+	decoder.error('could not decode resolved sumtype (should not happen)')!
+	return initialized_sumtype // suppress compiler error
 }
 
-fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node Node[ValueInfo]) bool {
-	$if T.unaliased_typ is json2.Any {
+fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &Node[ValueInfo]) bool {
+	if current_node == unsafe { nil } {
+		$if element is $array || element is $map {
+			return false
+		}
+		return true
+	}
+
+	$if element is $sumtype { // this will always match the first sumtype array/map
 		return true
 	}
 
@@ -50,25 +64,21 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node Nod
 			}
 		}
 		.null {
-			$if element is json2.Null {
+			$if element is $option {
 				return true
 			}
 		}
 		.array {
 			$if element is $array {
-				if current_node.next != unsafe { nil } {
-					return decoder.check_array_type_valid(element, current_node.next)
-				} else {
-					return false
-				}
+				return decoder.check_array_type_valid(element, current_node.next)
 			}
 		}
 		.object {
 			$if element is $map {
-				if current_node.next != unsafe { nil } && current_node.next.next != unsafe { nil } {
+				if current_node.next != unsafe { nil } {
 					return decoder.check_map_type_valid(element, current_node.next.next)
 				} else {
-					return false
+					return decoder.check_map_type_valid(element, unsafe { nil })
 				}
 			} $else $if element is $struct {
 				return decoder.check_struct_type_valid(element, current_node)
@@ -84,7 +94,7 @@ fn get_array_element_type[T](arr []T) T {
 	return T{}
 }
 
-fn (mut decoder Decoder) check_array_type_valid[T](arr []T, current_node Node[ValueInfo]) bool {
+fn (mut decoder Decoder) check_array_type_valid[T](arr []T, current_node &Node[ValueInfo]) bool {
 	return decoder.check_element_type_valid(get_array_element_type(arr), current_node)
 }
 
@@ -93,15 +103,7 @@ fn (mut decoder Decoder) get_array_type_workaround[T](initialized_sumtype T) boo
 		$for v in initialized_sumtype.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $array {
-					val := copy_type(initialized_sumtype)
-					if decoder.current_node.next != unsafe { nil } {
-						return decoder.check_array_type_valid(val, decoder.current_node.next)
-					} else {
-						$if initialized_sumtype is []json2.Any {
-							return true
-						}
-						return false
-					}
+					return decoder.check_element_type_valid(initialized_sumtype, decoder.current_node)
 				}
 			}
 		}
@@ -113,7 +115,12 @@ fn get_map_element_type[U, V](m map[U]V) V {
 	return V{}
 }
 
-fn (mut decoder Decoder) check_map_type_valid[T](m T, current_node Node[ValueInfo]) bool {
+fn (mut decoder Decoder) check_map_type_valid[T](m T, current_node &Node[ValueInfo]) bool {
+	element := get_map_element_type(m)
+	return decoder.check_element_type_valid(element, current_node)
+}
+
+fn (mut decoder Decoder) check_map_empty_valid[T](m T) bool {
 	element := get_map_element_type(m)
 	return decoder.check_element_type_valid(element, current_node)
 }
@@ -124,14 +131,10 @@ fn (mut decoder Decoder) get_map_type_workaround[T](initialized_sumtype T) bool 
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $map {
 					val := copy_type(initialized_sumtype)
-					if decoder.current_node.next != unsafe { nil }
-						&& decoder.current_node.next.next != unsafe { nil } {
+					if decoder.current_node.next != unsafe { nil } {
 						return decoder.check_map_type_valid(val, decoder.current_node.next.next)
 					} else {
-						$if initialized_sumtype is map[string]json2.Any { // fix for aliased types
-							return true
-						}
-						return false
+						return decoder.check_map_type_valid(val, unsafe { nil })
 					}
 				}
 			}
@@ -244,7 +247,7 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 		}
 		.null {
 			$for v in val.variants {
-				$if v.typ is json2.Null {
+				$if v.typ is $option {
 					val = T(v)
 					return
 				}

@@ -57,6 +57,8 @@ pub struct Stru2 {
 	steak string
 }
 
+type NewAny = int | string | bool | []NewAny | map[string]NewAny | ?int
+
 fn test_simple_sum_type() {
 	assert json.decode[Sum]('1')! == Sum(1)
 
@@ -102,9 +104,9 @@ fn test_any_sum_type() {
 		})
 	})
 
-	assert json.decode[json2.Any]('{"name": null, "value": "hi"}')! == json2.Any({
-		'name':  json2.Any(json2.null)
-		'value': json2.Any('hi')
+	assert json.decode[NewAny]('{"name": null, "value": "hi"}')! == NewAny({
+		'name':  NewAny(?int(none))
+		'value': NewAny('hi')
 	})
 
 	assert json.decode[json2.Any]('[]')! == json2.Any([]json2.Any{})
@@ -133,6 +135,7 @@ fn test_sum_type_mixed() {
 
 // to be implemented
 fn test_sum_type_options_fail() {
+	assert json.decode[Maybes]('null')! == Maybes(?int(none))
 	if x := json.decode[Maybes]('99') {
 		assert false
 	}
