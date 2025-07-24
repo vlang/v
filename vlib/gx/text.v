@@ -1,3 +1,5 @@
+@[deprecated: 'module gx is deprecated, use `import gg` instead']
+@[deprecated_after: '2026-01-24']
 module gx
 
 import gg
