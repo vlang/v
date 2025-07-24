@@ -169,6 +169,8 @@ pub fn (mut w Walker) mark_markused_syms() {
 	for sym in w.table.type_symbols {
 		if sym.info is ast.Struct && sym.info.is_markused {
 			w.mark_by_sym(sym)
+		} else if sym.info is ast.Interface && sym.info.is_markused {
+			w.mark_by_sym(sym)
 		}
 	}
 }

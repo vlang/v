@@ -1316,6 +1316,9 @@ pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool)
 	anon := f.name == '' || is_anon
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 && t.type_symbols[existing_idx].kind != .placeholder {
+		if t.type_symbols[existing_idx].info is FnType && !has_decl {
+			t.type_symbols[existing_idx].info.has_decl = has_decl
+		}
 		return existing_idx
 	}
 	return t.register_sym(

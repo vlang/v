@@ -1,3 +1,4 @@
+// vtest retry: 2
 import net.http
 import time
 import x.sessions

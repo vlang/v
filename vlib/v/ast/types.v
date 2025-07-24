@@ -208,6 +208,7 @@ pub mut:
 	conversions shared map[int][]Type
 	// generic interface support
 	is_generic     bool
+	is_markused    bool
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type

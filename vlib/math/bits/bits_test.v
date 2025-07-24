@@ -15,7 +15,7 @@ fn test_bits() {
 	i = 1
 	for x in 0 .. 8 {
 		// C.printf("x:%02x lz: %d cmp: %d\n", i << x, leading_zeros_8(i << x), 7-x)
-		assert leading_zeros_8(u8(i << x)) == 7 - x
+		assert leading_zeros_8(u8(u8(i) << x)) == 7 - x
 	}
 
 	// 16 bit
@@ -48,7 +48,7 @@ fn test_bits() {
 	for x in 0 .. 9 {
 		// C.printf("x:%02x lz: %llu cmp: %d\n", u8(i), ones_count_8(u8(i)), x)
 		assert ones_count_8(u8(i)) == x
-		i = (i << 1) + 1
+		i = int(u32(i) << 1) + 1
 	}
 
 	// 16 bit
@@ -56,7 +56,7 @@ fn test_bits() {
 	for x in 0 .. 17 {
 		// C.printf("x:%04x lz: %llu cmp: %d\n", u16(i), ones_count_16(u16(i)), x)
 		assert ones_count_16(u16(i)) == x
-		i = (i << 1) + 1
+		i = int(u32(i) << 1) + 1
 	}
 
 	// 32 bit
@@ -64,7 +64,7 @@ fn test_bits() {
 	for x in 0 .. 33 {
 		// C.printf("x:%08x lz: %llu cmp: %d\n", u32(i), ones_count_32(u32(i)), x)
 		assert ones_count_32(u32(i)) == x
-		i = (i << 1) + 1
+		i = int(u32(i) << 1) + 1
 	}
 
 	// 64 bit
@@ -100,7 +100,7 @@ fn test_bits() {
 		}
 		// C.printf("x:%02x lz: %llu cmp: %d\n", u8(i), reverse_8(u8(i)), rv)
 		assert reverse_8(u8(i)) == rv
-		i = (i << 1) + 1
+		i = int(u32(i) << 1) + 1
 	}
 
 	// 16 bit
@@ -116,7 +116,7 @@ fn test_bits() {
 		}
 		// C.printf("x:%04x lz: %llu cmp: %d\n", u16(i), reverse_16(u16(i)), rv)
 		assert reverse_16(u16(i)) == rv
-		i = (i << 1) + 1
+		i = int(u32(i) << 1) + 1
 	}
 
 	// 32 bit
@@ -132,7 +132,7 @@ fn test_bits() {
 		}
 		// C.printf("x:%08x lz: %llu cmp: %d\n", u32(i), reverse_32(u32(i)), rv)
 		assert reverse_32(u32(i)) == rv
-		i = (i << 1) + 1
+		i = int(u32(i) << 1) + 1
 	}
 
 	// 64 bit
