@@ -964,10 +964,6 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 						}
 					}
 					match fsym.info {
-						ast.Chan {
-							w.uses_channel = true
-							w.mark_by_sym(fsym)
-						}
 						ast.Array, ast.ArrayFixed {
 							w.mark_by_sym(fsym)
 						}
@@ -1024,6 +1020,7 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			}
 		}
 		ast.Chan {
+			w.uses_channel = true
 			w.mark_by_type(isym.info.elem_type)
 		}
 		ast.Aggregate {
