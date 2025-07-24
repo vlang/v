@@ -36,26 +36,34 @@ fn test_if_infix_return_early() {
 	ret := e.run('
 	fn display(a int, b int) int {
 		if a == 100 && b == 100 {
-			return 111
+			return 100
 		} else if a == 100 && b != 100 {
-			return 222
+			return 101
 		} else if a == 100 && b > 100 {
-			return 333
+			return 102
 		} else if a == 100 && b < 100 {
-			return 444
+			return 103
+		} else if a == 100 && b >= 100 {
+			return 104
+		} else if a == 100 && b <= 100 {
+			return 105
 		} else if a == 100 || b == 100 {
-			return 555
+			return 106
 		} else if a == 100 || b != 100 {
-			return 666
+			return 107
 		} else if a == 100 || b > 100 {
-			return 777
+			return 108
 		} else if a == 100 || b < 100 {
-			return 888
+			return 109
+		} else if a == 100 || b >= 100 {
+			return 110
+		} else if a == 100 || b <= 100 {
+			return 111
 		}
 		return 7171
 	}
-	display(200, 100)')!
+	display(200, 101)')!
 
 	dump(ret)
-	assert ret[0].int_val() == 555
+	assert ret[0].int_val() == 107
 }
