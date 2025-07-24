@@ -30,6 +30,7 @@ mut:
 	all_globals   map[string]ast.GlobalField
 	all_fields    map[string]ast.StructField
 	all_decltypes map[string]ast.Type
+	all_structs   map[string]ast.StructDecl
 
 	is_builtin_mod bool
 
@@ -314,6 +315,9 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			}
 		}
 		ast.StructDecl {
+			for typ in node.implements_types {
+				w.mark_by_type(typ.typ)
+			}
 			w.struct_fields(node.fields)
 		}
 		ast.DeferStmt {
@@ -975,6 +979,11 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			for embed in isym.info.embeds {
 				w.mark_by_type(embed)
 			}
+			if decl := w.all_structs[isym.name] {
+				for iface_typ in decl.implements_types {
+					w.mark_by_type(iface_typ.typ)
+				}
+			}
 		}
 		ast.ArrayFixed, ast.Array {
 			w.mark_by_type(isym.info.elem_type)
@@ -1034,6 +1043,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 				w.mark_by_type(generic_type)
 			}
 			w.mark_by_type(isym.info.parent_type)
+			for field in isym.info.fields {
+				w.mark_by_type(field.typ)
+			}
 			for method in isym.methods {
 				w.mark_by_type(method.receiver_type)
 				w.mark_fn_ret_and_params(method.return_type, method.params)

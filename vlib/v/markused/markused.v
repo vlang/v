@@ -8,7 +8,7 @@ import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively.
 pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&ast.File) {
-	mut all_fns, all_consts, all_globals, all_fields, all_decltypes := all_global_decl(ast_files)
+	mut all_fns, all_consts, all_globals, all_fields, all_decltypes, all_structs := all_global_decl(ast_files)
 	util.timing_start('MARKUSED')
 	defer {
 		util.timing_measure('MARKUSED')
@@ -436,6 +436,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		all_globals:   all_globals
 		all_fields:    all_fields
 		all_decltypes: all_decltypes
+		all_structs:   all_structs
 		pref:          pref_
 	)
 	walker.mark_markused_consts() // tagged with `@[markused]`
@@ -541,7 +542,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 }
 
-fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField, map[string]ast.GlobalField, map[string]ast.StructField, map[string]ast.Type) {
+fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField, map[string]ast.GlobalField, map[string]ast.StructField, map[string]ast.Type, map[string]ast.StructDecl) {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
@@ -551,6 +552,7 @@ fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast
 	mut all_globals := map[string]ast.GlobalField{}
 	mut all_fields := map[string]ast.StructField{}
 	mut all_decltypes := map[string]ast.Type{}
+	mut all_structs := map[string]ast.StructDecl{}
 	for i in 0 .. ast_files.len {
 		for node in ast_files[i].stmts {
 			match node {
@@ -577,6 +579,7 @@ fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast
 						sfkey := sfield.sfkey()
 						all_fields[sfkey] = sfield
 					}
+					all_structs[node.name] = node
 				}
 				ast.TypeDecl {
 					all_decltypes[node.name] = node.typ
@@ -585,7 +588,7 @@ fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast
 			}
 		}
 	}
-	return all_fns, all_consts, all_globals, all_fields, all_decltypes
+	return all_fns, all_consts, all_globals, all_fields, all_decltypes, all_structs
 }
 
 fn mark_all_methods_used(mut table ast.Table, mut all_fn_root_names []string, typ ast.Type) {

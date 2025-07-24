@@ -1185,6 +1185,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 			if inter_info.is_generic {
 				continue
 			}
+			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+				continue
+			}
 			g.definitions.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(int sidx);')
 			if g.pref.parallel_cc {
 				g.extern_out.writeln('extern char * v_typeof_interface_${sym.cname}(int sidx);')
@@ -1620,6 +1623,13 @@ fn (mut g Gen) write_chan_pop_option_fns() {
 		if opt_el_type in done {
 			continue
 		}
+		if g.pref.skip_unused {
+			if sym := g.table.find_sym(opt_el_type) {
+				if sym.idx !in g.table.used_features.used_syms {
+					continue
+				}
+			}
+		}
 		done << opt_el_type
 		g.channel_definitions.writeln('
 static inline ${opt_el_type} __Option_${styp}_popval(${styp} ch) {
@@ -1641,6 +1651,13 @@ fn (mut g Gen) write_chan_push_option_fns() {
 	for styp, el_type in g.chan_push_options {
 		if styp in done {
 			continue
+		}
+		if g.pref.skip_unused {
+			if sym := g.table.find_sym(el_type) {
+				if sym.idx !in g.table.used_features.used_syms {
+					continue
+				}
+			}
 		}
 		done << styp
 		g.register_option(ast.void_type.set_flag(.option))
@@ -1744,10 +1761,14 @@ pub fn (mut g Gen) write_typedef_types() {
 			}
 			.chan {
 				if sym.name != 'chan' {
-					g.type_definitions.writeln('typedef chan ${sym.cname};')
 					chan_inf := sym.chan_info()
 					chan_elem_type := chan_inf.elem_type
-					is_fixed_arr := g.table.sym(chan_elem_type).kind == .array_fixed
+					esym := g.table.sym(chan_elem_type)
+					if g.pref.skip_unused && esym.idx !in g.table.used_features.used_syms {
+						continue
+					}
+					g.type_definitions.writeln('typedef chan ${sym.cname};')
+					is_fixed_arr := esym.kind == .array_fixed
 					if !chan_elem_type.has_flag(.generic) {
 						el_stype := if is_fixed_arr { '_v_' } else { '' } + g.styp(chan_elem_type)
 						val_arg_pop := if is_fixed_arr { '&val.ret_arr' } else { '&val' }
@@ -1798,6 +1819,9 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 		}
 	}
 	for sym in interface_non_generic_syms {
+		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+			continue
+		}
 		g.write_interface_typesymbol_declaration(sym)
 	}
 }
@@ -6444,7 +6468,8 @@ fn (mut g Gen) write_debug_calls_typeof_functions() {
 				continue
 			}
 			inter_info := sym.info as ast.Interface
-			if inter_info.is_generic {
+			if inter_info.is_generic
+				|| (g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms) {
 				continue
 			}
 			g.writeln('\tv_typeof_interface_${sym.cname}(0);')
@@ -6644,6 +6669,9 @@ fn (mut g Gen) write_builtin_types() {
 	// everything except builtin will get sorted
 	for builtin_name in ast.builtins {
 		sym := g.table.sym_by_idx(g.table.type_idxs[builtin_name])
+		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+			continue
+		}
 		if sym.info is ast.Interface {
 			g.write_interface_typedef(sym)
 			if !sym.info.is_generic {
@@ -7798,6 +7826,9 @@ fn (mut g Gen) interface_table() string {
 	for isym in interfaces {
 		inter_info := isym.info as ast.Interface
 		if inter_info.is_generic {
+			continue
+		}
+		if g.pref.skip_unused && isym.idx !in g.table.used_features.used_syms {
 			continue
 		}
 		// interface_name is for example Speaker
