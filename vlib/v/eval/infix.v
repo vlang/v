@@ -6,6 +6,18 @@ import v.ast
 
 fn (e &Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.Type) Object {
 	match op {
+		.and {
+			if left is bool && right is bool {
+				return left && right
+			}
+			e.error('invalid operands to &&: ${left.type_name()} and ${right.type_name()}')
+		}
+		.logical_or {
+			if left is bool && right is bool {
+				return left || right
+			}
+			e.error('invalid operands to ||: ${left.type_name()} and ${right.type_name()}')
+		}
 		.gt {
 			match left {
 				Int {
