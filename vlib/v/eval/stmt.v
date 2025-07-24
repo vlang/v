@@ -4,16 +4,16 @@ import v.ast
 import v.token
 
 pub fn (mut e Eval) stmts(stmts []ast.Stmt) {
-	if e.execute_return_stmt {
+	if e.executed_return_stmt {
 		return
 	}
 	e.open_scope()
 	for stmt in stmts {
-		if !e.execute_return_stmt {
+		if !e.executed_return_stmt {
 			e.stmt(stmt)
 		}
 		if stmt is ast.Return {
-			e.execute_return_stmt = true
+			e.executed_return_stmt = true
 			break
 		}
 	}

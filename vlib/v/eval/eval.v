@@ -64,7 +64,7 @@ pub mut:
 	scope_idx              int      // this is increased when e.open_scope() is called, decreased when e.close_scope() (and all variables with that scope level deleted)
 	returning              bool
 	return_values          []Object
-	execute_return_stmt    bool // already execute a retrun stmt in func or not
+	executed_return_stmt   bool // already executed a return stmt in func
 	cur_mod                string
 	cur_file               string
 
@@ -153,7 +153,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 				scope_idx: e.scope_idx
 			}
 		}
-		e.execute_return_stmt = false
+		e.executed_return_stmt = false
 		e.stmts(func.stmts)
 		e.returning = false
 		e.close_scope()
