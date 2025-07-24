@@ -2,6 +2,9 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
+pub const align_right = HorizontalAlign.right
+pub const align_left = HorizontalAlign.left
+
 struct FTConfig {
 	font_path             string
 	custom_bold_font_path string
