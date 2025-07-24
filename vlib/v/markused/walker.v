@@ -943,7 +943,7 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 						}
 					}
 					match fsym.info {
-						ast.Struct, ast.SumType, ast.FnType, ast.Alias, ast.Chan {
+						ast.Interface, ast.Struct, ast.SumType, ast.FnType, ast.Alias, ast.Chan {
 							w.mark_by_sym(fsym)
 						}
 						ast.Array, ast.ArrayFixed {
