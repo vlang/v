@@ -640,6 +640,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		info:     ast.Interface{
 			types:         []
 			is_generic:    generic_types.len > 0
+			is_markused:   attrs.contains('markused')
 			generic_types: generic_types
 		}
 		language: language
