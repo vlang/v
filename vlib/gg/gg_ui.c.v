@@ -10,10 +10,12 @@ pub fn (ctx &Context) scissor_rect(x int, y int, w int, h int) {
 		true)
 }
 
+// empty function
 pub fn (ctx &Context) has_text_style() bool {
 	return false
 }
 
+// empty function
 pub fn (ctx &Context) set_text_style(font_name string, font_path string, size int, color Color, align int,
 	vertical_align int) {
 }
