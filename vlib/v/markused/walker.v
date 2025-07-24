@@ -30,6 +30,16 @@ mut:
 	all_globals   map[string]ast.GlobalField
 	all_fields    map[string]ast.StructField
 	all_decltypes map[string]ast.Type
+
+	// dependencies finding flags
+	uses_channel      bool // has chan dep
+	uses_lock         bool // has mutex dep
+	uses_ct_fields    bool // $for .fields
+	uses_ct_methods   bool // $for .methods
+	uses_ct_params    bool // $for .params
+	uses_ct_values    bool // $for .values
+	uses_ct_variants  bool // $for .variants
+	uses_ct_attribute bool // $for .attributes
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -219,22 +229,22 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			w.stmts(node.stmts)
 			match node.kind {
 				.attributes {
-					w.mark_by_sym_name('VAttribute')
+					w.uses_ct_attribute = true
 				}
 				.variants {
-					w.mark_by_sym_name('VariantData')
+					w.uses_ct_variants = true
 				}
 				.params {
-					w.mark_by_sym_name('MethodParam')
+					w.uses_ct_params = true
 				}
 				.values {
-					w.mark_by_sym_name('EnumData')
+					w.uses_ct_values = true
 				}
 				.fields {
-					w.mark_by_sym_name('FieldData')
+					w.uses_ct_fields = true
 				}
 				.methods {
-					w.mark_by_sym_name('FunctionData')
+					w.uses_ct_methods = true
 				}
 			}
 		}
@@ -393,8 +403,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.ChanInit {
 			w.expr(node.cap_expr)
 			w.mark_by_type(node.typ)
-			w.fn_by_name('sync.new_channel_st')
-			w.fn_by_name('sync.channel_select')
+			w.uses_channel = true
 		}
 		ast.ConcatExpr {
 			w.exprs(node.vals)
@@ -561,9 +570,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			ksym := w.table.sym(mapinfo.key_type)
 			vsym := w.table.sym(mapinfo.value_type)
 			if node.typ.has_flag(.shared_f) {
-				if sym := w.table.find_sym('sync.RwMutex') {
-					w.mark_by_sym(sym)
-				}
+				w.uses_lock = true
 			}
 			w.mark_by_sym(ksym)
 			w.mark_by_sym(vsym)
@@ -674,7 +681,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.mark_by_sym_name(node.enum_name)
 		}
 		ast.LockExpr {
-			w.mark_by_sym_name('sync.RwMutex')
+			w.uses_lock = true
 			w.stmts(node.stmts)
 		}
 		ast.OffsetOf {}
@@ -686,6 +693,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.stmt(branch.stmt)
 				w.stmts(branch.stmts)
 			}
+			w.uses_channel = true
 		}
 		ast.TypeNode {
 			w.mark_by_type(node.typ)
@@ -932,17 +940,20 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 						}
 					}
 					match fsym.info {
-						ast.Struct, ast.SumType, ast.FnType, ast.Alias, ast.Chan {
+						ast.Chan {
+							w.uses_channel = true
 							w.mark_by_sym(fsym)
 						}
 						ast.Array, ast.ArrayFixed {
-							w.mark_by_type(ifield.typ)
+							w.mark_by_sym(fsym)
 						}
 						ast.Map {
 							w.features.used_maps++
-							w.mark_by_type(ifield.typ)
+							w.mark_by_sym(fsym)
 						}
-						else {}
+						else {
+							w.mark_by_sym(fsym)
+						}
 					}
 				}
 			}
@@ -1017,7 +1028,7 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 	}
 }
 
-pub fn (mut w Walker) remove_unused_fn_generic_types() {
+fn (mut w Walker) remove_unused_fn_generic_types() {
 	for _, node in w.all_fns {
 		mut count := 0
 		nkey := node.fkey()
@@ -1038,10 +1049,44 @@ pub fn (mut w Walker) remove_unused_fn_generic_types() {
 	}
 }
 
-pub fn (mut w Walker) remove_unused_dump_type() {
+fn (mut w Walker) remove_unused_dump_type() {
 	for typ, _ in w.table.dumps {
 		if ast.Type(u32(typ)).idx() !in w.used_syms {
 			w.table.dumps.delete(typ)
 		}
 	}
+}
+
+fn (mut w Walker) mark_resource_dependencies() {
+	if w.uses_channel {
+		w.fn_by_name('sync.new_channel_st')
+		w.fn_by_name('sync.channel_select')
+	}
+	if w.uses_lock {
+		w.mark_by_sym_name('sync.RwMutex')
+	}
+	if w.uses_ct_fields {
+		w.mark_by_sym_name('FieldData')
+	}
+	if w.uses_ct_methods {
+		w.mark_by_sym_name('FunctionData')
+	}
+	if w.uses_ct_params {
+		w.mark_by_sym_name('MethodParam')
+	}
+	if w.uses_ct_values {
+		w.mark_by_sym_name('EnumData')
+	}
+	if w.uses_ct_variants {
+		w.mark_by_sym_name('VariantData')
+	}
+	if w.uses_ct_attribute {
+		w.mark_by_sym_name('VAttribute')
+	}
+}
+
+pub fn (mut w Walker) finalize() {
+	w.mark_resource_dependencies()
+	w.remove_unused_fn_generic_types()
+	w.remove_unused_dump_type()
 }

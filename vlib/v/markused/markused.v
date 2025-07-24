@@ -305,7 +305,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				all_fn_root_names << k
 				continue
 			}
-			if pref_.autofree && k.ends_with('.free') {
+			if (pref_.autofree || include_panic_deps) && k.ends_with('.free') {
 				all_fn_root_names << k
 				continue
 			}
@@ -548,8 +548,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		walker.used_fns.delete('${int(ast.none_type)}.str')
 	}
 
-	walker.remove_unused_fn_generic_types()
-	walker.remove_unused_dump_type()
+	walker.finalize()
 
 	table.used_features.used_fns = walker.used_fns.move()
 	table.used_features.used_consts = walker.used_consts.move()
