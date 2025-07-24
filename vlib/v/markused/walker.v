@@ -1022,6 +1022,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			if isym.info.parent_type != 0 {
 				w.mark_by_type(isym.info.parent_type)
 			}
+			for field in isym.info.fields {
+				w.mark_by_type(field.typ)
+			}
 			for method in isym.methods {
 				if method.receiver_type != 0 {
 					w.mark_by_type(method.receiver_type)

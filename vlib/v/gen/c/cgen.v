@@ -1620,6 +1620,11 @@ fn (mut g Gen) write_chan_pop_option_fns() {
 		if opt_el_type in done {
 			continue
 		}
+		if sym := g.table.find_sym(opt_el_type) {
+			if sym.idx !in g.table.used_features.used_syms {
+				continue
+			}
+		}
 		done << opt_el_type
 		g.channel_definitions.writeln('
 static inline ${opt_el_type} __Option_${styp}_popval(${styp} ch) {
@@ -1641,6 +1646,11 @@ fn (mut g Gen) write_chan_push_option_fns() {
 	for styp, el_type in g.chan_push_options {
 		if styp in done {
 			continue
+		}
+		if sym := g.table.find_sym(el_type) {
+			if sym.idx !in g.table.used_features.used_syms {
+				continue
+			}
 		}
 		done << styp
 		g.register_option(ast.void_type.set_flag(.option))
@@ -1744,10 +1754,14 @@ pub fn (mut g Gen) write_typedef_types() {
 			}
 			.chan {
 				if sym.name != 'chan' {
-					g.type_definitions.writeln('typedef chan ${sym.cname};')
 					chan_inf := sym.chan_info()
 					chan_elem_type := chan_inf.elem_type
-					is_fixed_arr := g.table.sym(chan_elem_type).kind == .array_fixed
+					esym := g.table.sym(chan_elem_type)
+					if esym.idx !in g.table.used_features.used_syms {
+						continue
+					}
+					g.type_definitions.writeln('typedef chan ${sym.cname};')
+					is_fixed_arr := esym.kind == .array_fixed
 					if !chan_elem_type.has_flag(.generic) {
 						el_stype := if is_fixed_arr { '_v_' } else { '' } + g.styp(chan_elem_type)
 						val_arg_pop := if is_fixed_arr { '&val.ret_arr' } else { '&val' }
