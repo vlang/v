@@ -122,16 +122,6 @@ pub mut:
 }
 
 // hex takes in a 32 bit integer and splits it into 4 byte values
-/*
-pub fn hex(color int) Color {
-	return Color{
-		r: u8((color >> 24) & 0xFF)
-		g: u8((color >> 16) & 0xFF)
-		b: u8((color >> 8) & 0xFF)
-		a: u8(color & 0xFF)
-	}
-}
-*/
 pub fn hex(color int) Color {
 	return Color{
 		r: u8((color >> 16) & 0xFF)
