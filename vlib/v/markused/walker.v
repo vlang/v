@@ -45,6 +45,7 @@ mut:
 	uses_ct_variants   bool // $for .variants
 	uses_ct_attribute  bool // $for .attributes
 	uses_external_type bool
+	uses_err           bool // err var
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -564,6 +565,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					} else if node.name in w.all_globals {
 						w.mark_global_as_used(node.name)
 					} else {
+						if !w.uses_err && !w.is_builtin_mod && node.name == 'err' {
+							w.fn_by_name('${int(ast.error_type)}.str')
+							w.uses_err = true
+						}
 						w.fn_by_name(node.name)
 					}
 				}
