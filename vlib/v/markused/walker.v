@@ -925,8 +925,7 @@ pub fn (mut w Walker) mark_by_type(typ ast.Type) {
 	if typ.has_flag(.generic) {
 		return
 	}
-	sym := w.table.sym(typ)
-	w.mark_by_sym(sym)
+	w.mark_by_sym(w.table.sym(typ))
 }
 
 pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
@@ -949,18 +948,17 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 						}
 					}
 					match fsym.info {
-						ast.Interface, ast.Struct, ast.SumType, ast.FnType, ast.Alias, ast.Chan {
-							w.mark_by_sym(fsym)
-						}
 						ast.Array, ast.ArrayFixed {
 							w.features.used_arrays++
-							w.mark_by_type(ifield.typ)
+							w.mark_by_sym(fsym)
 						}
 						ast.Map {
 							w.features.used_maps++
-							w.mark_by_type(ifield.typ)
+							w.mark_by_sym(fsym)
 						}
-						else {}
+						else {
+							w.mark_by_sym(fsym)
+						}
 					}
 				}
 			}
