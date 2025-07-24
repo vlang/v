@@ -30,6 +30,7 @@ mut:
 	all_globals   map[string]ast.GlobalField
 	all_fields    map[string]ast.StructField
 	all_decltypes map[string]ast.Type
+	all_structs   map[string]ast.StructDecl
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -301,6 +302,9 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			}
 		}
 		ast.StructDecl {
+			for typ in node.implements_types {
+				w.mark_by_type(typ.typ)
+			}
 			w.struct_fields(node.fields)
 		}
 		ast.DeferStmt {
@@ -921,8 +925,7 @@ pub fn (mut w Walker) mark_by_type(typ ast.Type) {
 	if typ.has_flag(.generic) {
 		return
 	}
-	sym := w.table.sym(typ)
-	w.mark_by_sym(sym)
+	w.mark_by_sym(w.table.sym(typ))
 }
 
 pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
@@ -945,23 +948,27 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 						}
 					}
 					match fsym.info {
-						ast.Struct, ast.SumType, ast.FnType, ast.Alias, ast.Chan {
-							w.mark_by_sym(fsym)
-						}
 						ast.Array, ast.ArrayFixed {
 							w.features.used_arrays++
-							w.mark_by_type(ifield.typ)
+							w.mark_by_sym(fsym)
 						}
 						ast.Map {
 							w.features.used_maps++
-							w.mark_by_type(ifield.typ)
+							w.mark_by_sym(fsym)
 						}
-						else {}
+						else {
+							w.mark_by_sym(fsym)
+						}
 					}
 				}
 			}
 			for embed in isym.info.embeds {
 				w.mark_by_type(embed)
+			}
+			if decl := w.all_structs[isym.name] {
+				for iface_typ in decl.implements_types {
+					w.mark_by_type(iface_typ.typ)
+				}
 			}
 		}
 		ast.ArrayFixed, ast.Array {
@@ -1023,6 +1030,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			}
 			if isym.info.parent_type != 0 {
 				w.mark_by_type(isym.info.parent_type)
+			}
+			for field in isym.info.fields {
+				w.mark_by_type(field.typ)
 			}
 			for method in isym.methods {
 				if method.receiver_type != 0 {

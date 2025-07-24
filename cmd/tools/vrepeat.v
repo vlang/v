@@ -135,11 +135,11 @@ fn bold(s string) string {
 }
 
 fn (a Aints) str() string {
-	avg := bold('${a.average / 1000:5.1f}ms')
-	tdev := c(tred, '${a.stddev / 1000:5.1f}ms')
+	avg := bold('${a.average / 1000:6.1f}ms')
+	tdev := c(tred, '${a.stddev / 1000:6.1f}ms')
 	baseline := '${avg} ± σ: ${tdev},'
-	tmin := c(tbcyan, '${f64(a.imin) / 1000:5.1f}ms')
-	tmax := c(tbblue, '${f64(a.imax) / 1000:5.1f}ms')
+	tmin := c(tbcyan, '${f64(a.imin) / 1000:6.1f}ms')
+	tmax := c(tbblue, '${f64(a.imax) / 1000:6.1f}ms')
 	return '${baseline:-46s} ${tmin}…${tmax}'
 }
 
@@ -345,9 +345,9 @@ fn (mut context Context) show_diff_summary() {
 			}
 			mut comparison := ''
 			if r.atiming.average != base {
-				comparison = '${cpercent:+6.1f}%'
+				comparison = '${cpercent:+8.1f}%'
 			}
-			mut tcomparison := 'base        '
+			mut tcomparison := '  base          '
 			if r.atiming.average != base {
 				tcomparison = readable_comparison(r.atiming.average, base, cpercent)
 			}
@@ -381,12 +381,12 @@ fn readable_comparison(tcurrent f64, tbase f64, cpercent f64) string {
 		if !is_same {
 			label = c(tgreen, 'faster')
 		}
-		return '${tbase / tcurrent:4.2f}x ${label}'
+		return '${tbase / tcurrent:6.2f}x ${label}'
 	} else {
 		if !is_same {
 			label = c(tcyan, 'slower')
 		}
-		return '${tcurrent / tbase:4.2f}x ${label}'
+		return '${tcurrent / tbase:6.2f}x ${label}'
 	}
 }
 

@@ -498,6 +498,9 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.PrefixExpr {
 			match expr.op {
+				.not {
+					return !(e.expr(expr.right, ast.bool_type) as bool)
+				}
 				.amp {
 					x := e.expr(expr.right, expr.right_type)
 					return Ptr{
