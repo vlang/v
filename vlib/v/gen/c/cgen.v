@@ -634,9 +634,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		b.write_string2('\n// V result_xxx definitions:\n', g.out_results.str())
 	}
 	b.write_string2('\n// V definitions:\n', g.definitions.str())
-	if g.sort_fn_definitions.len > 0 {
-		b.write_string2('\n// V sort fn definitions:\n', g.sort_fn_definitions.str())
-	}
 	if !pref_.parallel_cc {
 		b.writeln('\n// V global/const non-precomputed definitions:')
 		for var_name in g.sorted_global_const_names {
@@ -650,6 +647,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	interface_table := g.interface_table()
 	if interface_table.len > 0 {
 		b.write_string2('\n// V interface table:\n', interface_table)
+	}
+	if g.sort_fn_definitions.len > 0 {
+		b.write_string2('\n// V sort fn definitions:\n', g.sort_fn_definitions.str())
 	}
 	if g.hotcode_definitions.len > 0 {
 		b.write_string2('\n// V hotcode definitions:\n', g.hotcode_definitions.str())
