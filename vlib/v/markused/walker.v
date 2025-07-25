@@ -989,6 +989,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 				w.mark_by_type(embed)
 			}
 			if decl := w.all_structs[isym.name] {
+				if !w.uses_mem_align {
+					w.uses_mem_align = decl.attrs.contains('aligned')
+				}
 				for iface_typ in decl.implements_types {
 					w.mark_by_type(iface_typ.typ)
 				}
