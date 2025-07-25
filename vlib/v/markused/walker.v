@@ -1187,6 +1187,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('isnil')
 		w.mark_by_sym_name('VAssertMetaInfo')
 	}
+	// println(w.table.used_features.comptime_syms)
 	for k, func in w.all_fns {
 		if k.ends_with('.str') {
 			if func.receiver.typ.idx() in w.used_syms {
@@ -1200,7 +1201,8 @@ fn (mut w Walker) mark_resource_dependencies() {
 			}
 		} else if !func.is_static_type_method && func.receiver.typ != ast.void_type
 			&& func.generic_names.len > 0 {
-			if func.receiver.typ.set_nr_muls(0) in w.table.used_features.comptime_syms {
+			if func.receiver.typ.set_nr_muls(0) in w.table.used_features.comptime_syms
+				|| func.receiver.typ in w.table.used_features.comptime_syms {
 				w.fn_by_name(k)
 			}
 		}

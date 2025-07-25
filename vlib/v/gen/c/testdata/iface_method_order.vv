@@ -10,6 +10,7 @@ fn (b Bar) b() {}
 
 fn (b Bar) a() {}
 
+@[markused]
 struct Baz implements Foo {
 }
 

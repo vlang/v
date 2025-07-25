@@ -342,6 +342,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if c.pref.skip_unused {
 				if param.typ.has_flag(.generic) {
 					c.table.used_features.comptime_syms[c.unwrap_generic(param.typ)] = true
+					c.table.used_features.comptime_syms[param.typ] = true
 				}
 				if node.return_type.has_flag(.generic) {
 					c.table.used_features.comptime_syms[c.unwrap_generic(node.return_type)] = true
