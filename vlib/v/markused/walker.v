@@ -1214,7 +1214,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	w.mark_resource_dependencies()
 	if w.uses_asserts {
-		println('aqui')
 		w.fn_by_name('__print_assert_failure')
 		w.fn_by_name('isnil')
 		w.mark_by_sym_name('VAssertMetaInfo')
