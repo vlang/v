@@ -754,7 +754,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 		} else {
 			''
 		}
-		eprintln('>>>${' '.repeat(w.level)}${receiver_name}${node.name}')
+		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [decl]')
 	}
 	if node.language == .c {
 		w.mark_fn_as_used(node.fkey())
@@ -871,20 +871,20 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		w.mark_fn_as_used(fn_name)
 	}
 	stmt := w.all_fns[fn_name] or { return }
-	if 'trace_skip_unused_walker' in w.pref.compile_defines {
-		w.level++
-		defer {
-			w.level--
-		}
-		receiver_name := if node.receiver_type != 0 {
-			w.table.type_to_str(node.receiver_type) + '.'
-		} else {
-			''
-		}
-		eprintln('>>>${' '.repeat(w.level)}${receiver_name}${node.name}')
-	}
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
+			if 'trace_skip_unused_walker' in w.pref.compile_defines {
+				w.level++
+				defer {
+					w.level--
+				}
+				receiver_name := if node.receiver_type != 0 {
+					w.table.type_to_str(node.receiver_type) + '.'
+				} else {
+					''
+				}
+				eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [call]')
+			}
 			w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
 			w.stmts(stmt.stmts)
 		}
@@ -901,6 +901,13 @@ pub fn (mut w Walker) fn_by_name(fn_name string) {
 		return
 	}
 	stmt := w.all_fns[fn_name] or { return }
+	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+		w.level++
+		defer {
+			w.level--
+		}
+		eprintln('>>>${'  '.repeat(w.level)}${fn_name} [by_name]')
+	}
 	w.mark_fn_as_used(fn_name)
 	w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
 	w.stmts(stmt.stmts)
@@ -1182,11 +1189,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_mem_align {
 		w.fn_by_name('memdup_align')
 	}
-	if w.uses_asserts {
-		w.fn_by_name('__print_assert_failure')
-		w.fn_by_name('isnil')
-		w.mark_by_sym_name('VAssertMetaInfo')
-	}
 	// println(w.table.used_features.comptime_syms)
 	for k, func in w.all_fns {
 		if k.ends_with('.str') {
@@ -1210,12 +1212,17 @@ fn (mut w Walker) mark_resource_dependencies() {
 }
 
 pub fn (mut w Walker) finalize(include_panic_deps bool) {
+	w.mark_resource_dependencies()
+	if w.uses_asserts {
+		println('aqui')
+		w.fn_by_name('__print_assert_failure')
+		w.fn_by_name('isnil')
+		w.mark_by_sym_name('VAssertMetaInfo')
+	}
 	if include_panic_deps || w.used_interp > 0 || w.uses_external_type || w.uses_asserts
 		|| w.uses_debugger {
 		w.mark_panic_deps()
 	}
-	w.mark_resource_dependencies()
-
 	if w.used_panic > 0 {
 		w.mark_fn_as_used('panic_option_not_set')
 		w.mark_fn_as_used('panic_result_not_set')
