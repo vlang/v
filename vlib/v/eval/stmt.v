@@ -72,6 +72,10 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 			for i, expr in stmt.exprs {
 				e.return_values << e.expr(expr, stmt.types[i])
 			}
+			if e.return_values.len > stmt.exprs.len {
+				// keep only results
+				e.return_values.drop(e.return_values.len - stmt.exprs.len)
+			}
 			e.returning = old_returning
 		}
 		ast.ForInStmt {
