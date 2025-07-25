@@ -31,6 +31,7 @@ mut:
 	all_decltypes map[string]ast.Type
 	all_structs   map[string]ast.StructDecl
 
+	level          int
 	is_builtin_mod bool
 
 	// dependencies finding flags
@@ -745,6 +746,11 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node == unsafe { nil } {
 		return
 	}
+	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+		w.level++
+		defer { w.level-- }
+		eprintln('>>>${' '.repeat(w.level)}${node.fkey()}')
+	}
 	if node.language == .c {
 		w.mark_fn_as_used(node.fkey())
 		w.mark_fn_ret_and_params(node.return_type, node.params)
@@ -860,6 +866,13 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		w.mark_fn_as_used(fn_name)
 	}
 	stmt := w.all_fns[fn_name] or { return }
+	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+		w.level++
+		defer {
+			w.level--
+		}
+		eprintln('>>>${' '.repeat(w.level)}${node.fkey()}')
+	}
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
 			w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
@@ -887,6 +900,9 @@ pub fn (mut w Walker) struct_fields(sfields []ast.StructField) {
 	for sf in sfields {
 		if sf.has_default_expr {
 			w.expr(sf.default_expr)
+		}
+		if !w.uses_atomic && sf.typ.has_flag(.atomic_f) {
+			w.uses_atomic = true
 		}
 	}
 }
@@ -993,6 +1009,7 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 				w.mark_by_type(embed)
 			}
 			if decl := w.all_structs[isym.name] {
+				w.struct_fields(decl.fields)
 				if !w.uses_mem_align {
 					w.uses_mem_align = decl.attrs.contains('aligned')
 				}
@@ -1160,7 +1177,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('isnil')
 		w.mark_by_sym_name('VAssertMetaInfo')
 	}
-
 	for k, func in w.all_fns {
 		if k.ends_with('.str') {
 			if func.receiver.typ.idx() in w.used_syms {
@@ -1168,6 +1184,15 @@ fn (mut w Walker) mark_resource_dependencies() {
 			}
 		} else if w.uses_atomic && k.starts_with('_Atomic') {
 			w.fn_by_name(k)
+		} else if func.name in ['+', '-', '*', '%', '/', '<', '=='] {
+			if func.receiver.typ.idx() in w.used_syms {
+				w.fn_by_name(k)
+			}
+		} else if !func.is_static_type_method && func.receiver.typ != ast.void_type
+			&& func.generic_names.len > 0 {
+			if func.receiver.typ.set_nr_muls(0) in w.table.used_features.comptime_syms {
+				w.fn_by_name(k)
+			}
 		}
 	}
 }
@@ -1212,6 +1237,10 @@ pub fn (mut w Walker) mark_generic_types() {
 	}
 
 	for k, _ in w.table.used_features.comptime_syms {
-		w.mark_by_sym(w.table.sym(k))
+		sym := w.table.sym(k)
+		w.mark_by_sym(sym)
+		for method in sym.get_methods() {
+			w.fn_by_name('${k}.${method.name}')
+		}
 	}
 }

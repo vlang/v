@@ -529,6 +529,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			true)
 		if c.pref.skip_unused && node.typ.has_flag(.generic) {
 			c.table.used_features.comptime_syms[c.unwrap_generic(node.typ)] = true
+			c.table.used_features.comptime_syms[node.typ] = true
 		}
 	}
 	if !is_field_zero_struct_init {

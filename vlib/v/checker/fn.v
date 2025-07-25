@@ -345,6 +345,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 				if node.return_type.has_flag(.generic) {
 					c.table.used_features.comptime_syms[c.unwrap_generic(node.return_type)] = true
+					c.table.used_features.comptime_syms[node.return_type] = true
 				}
 			}
 			if param.name == node.mod && param.name != 'main' {
@@ -1895,6 +1896,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.register_trace_call(node, func)
 			if func.return_type.has_flag(.generic) {
 				c.table.used_features.comptime_syms[typ.clear_option_and_result()] = true
+				c.table.used_features.comptime_syms[func.return_type] = true
 			}
 			return typ
 		}

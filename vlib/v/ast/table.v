@@ -37,7 +37,7 @@ pub mut:
 	used_none      int             // how many times `none` was used, filled in by markused
 	// json             bool            // json is imported
 	comptime_calls map[string]bool // resolved name to call on comptime
-	comptime_syms  map[int]bool    // resolved syms (generic)
+	comptime_syms  map[Type]bool   // resolved syms (generic)
 }
 
 @[unsafe]

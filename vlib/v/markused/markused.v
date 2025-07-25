@@ -57,7 +57,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	} else {
 		mut core_fns := [
 			'main.main',
-			'init_global_allocator', // needed for linux_bare and wasm_bare
 			'memdup',
 			'tos',
 			'tos2',
@@ -66,6 +65,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'println',
 			'ptr_str',
 		]
+		if pref_.is_bare {
+			core_fns << 'init_global_allocator' // needed for linux_bare and wasm_bare
+		}
 		if ast_files[ast_files.len - 1].imports.len > 0 {
 			core_fns << 'builtin_init'
 		}
@@ -246,11 +248,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				all_fn_root_names << k
 				continue
 			}
-			if mfn.name in ['+', '-', '*', '%', '/', '<', '=='] {
-				// TODO: mark the used operators in the checker
-				all_fn_root_names << k
-				continue
-			}
 		}
 		has_dot := k.contains('.')
 		if has_dot {
@@ -291,12 +288,13 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				continue
 			}
 		}
-		if mfn.receiver.typ != ast.void_type && mfn.generic_names.len > 0 {
-			// generic methods may be used in cgen after specialisation :-|
-			// TODO: move generic method specialisation from cgen to before markused
-			all_fn_root_names << k
-			continue
-		}
+		// if mfn.receiver.typ != ast.void_type && mfn.generic_names.len > 0 {
+		// 	// generic methods may be used in cgen after specialisation :-|
+		// 	// TODO: move generic method specialisation from cgen to before markused
+		// 	all_fn_root_names << k
+		// 	eprintln('>>>> ${k}')
+		// 	continue
+		// }
 		if pref_.prealloc && k.starts_with('prealloc_') {
 			all_fn_root_names << k
 			continue
