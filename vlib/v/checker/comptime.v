@@ -277,7 +277,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				prev_inside_x_matches_type := c.inside_x_matches_type
 				c.push_new_comptime_info()
 				c.comptime.inside_comptime_for = true
-				c.table.used_features.comptime_for = true
 				if c.field_data_type == 0 {
 					c.field_data_type = c.table.find_type('FieldData')
 				}
@@ -322,7 +321,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
-			c.table.used_features.comptime_for = true
 		} else {
 			c.error('iterating over .values is supported only for enums, and ${sym.name} is not an enum',
 				node.typ_pos)
@@ -340,7 +338,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}
-		c.table.used_features.comptime_for = true
 	} else if node.kind == .params {
 		if !(sym.kind == .function || sym.name == 'FunctionData') {
 			c.error('iterating over `.params` is supported only for functions, and `${sym.name}` is not a function',

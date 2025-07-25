@@ -17,7 +17,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	trace_skip_unused := pref_.compile_values['trace_skip_unused'] == 'true'
 	trace_skip_unused_all_fns := pref_.compile_values['trace_skip_unused_all_fns'] == 'true'
 	trace_skip_unused_fn_names := pref_.compile_values['trace_skip_unused_fn_names'] == 'true'
-	trace_skip_unused_interface_methods := pref_.compile_values['trace_skip_unused_interface_methods'] == 'true'
 	trace_skip_unused_just_unused_fns := pref_.compile_values['trace_skip_unused_just_unused_fns'] == 'true'
 	used_fns := pref_.compile_values['used_fns']
 
@@ -69,11 +68,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		]
 		if ast_files[ast_files.len - 1].imports.len > 0 {
 			core_fns << 'builtin_init'
-		}
-		if ast.float_literal_type.idx() in table.used_features.print_types
-			|| ast.f64_type_idx in table.used_features.print_types
-			|| ast.f32_type_idx in table.used_features.print_types {
-			include_panic_deps = true
 		}
 		if 'use_libbacktrace' in pref_.compile_defines {
 			core_fns << 'print_libbacktrace'
@@ -166,7 +160,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if !table.used_features.arr_init {
 			table.used_features.arr_init = table.used_features.print_types.keys().any(table.type_to_str(it).contains('[]'))
 		}
-		if table.used_features.arr_init || table.used_features.comptime_for {
+		if table.used_features.arr_init {
 			include_panic_deps = true
 			core_fns << '__new_array'
 			core_fns << 'new_array_from_c_array'
@@ -193,20 +187,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << ref_densearray_idx_str + '.clone'
 			core_fns << map_idx_str + '.clone'
 		}
-		if table.used_features.map_update {
-			include_panic_deps = true
-			core_fns << 'new_map_update_init'
-		}
-		if table.used_features.asserts {
-			include_panic_deps = true
-			core_fns << '__print_assert_failure'
-			core_fns << 'isnil'
-		}
 		if table.used_features.type_name {
 			core_fns << charptr_idx_str + '.vstring_literal'
-		}
-		if table.used_features.memory_align {
-			core_fns << 'memdup_align'
 		}
 		if pref_.trace_calls || pref_.trace_fns.len > 0 {
 			include_panic_deps = true
@@ -286,8 +268,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		has_dot := k.contains('.')
 		// auto generated string interpolation functions, may
 		// call .str or .auto_str methods for user types:
-		if table.used_features.auto_str || table.used_features.dump || table.used_features.asserts
-			|| table.used_features.debugger
+		if table.used_features.auto_str || table.used_features.dump
 			|| table.used_features.print_types[mfn.receiver.typ.idx()] {
 			if (has_dot && (k.ends_with('.str') || k.ends_with('.auto_str')))
 				|| (k.starts_with('_Atomic_') && k.ends_with('_str')) {
@@ -362,44 +343,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
-	// handle interface implementation methods:
-	for isym in table.type_symbols {
-		if isym.kind != .interface {
-			continue
-		}
-		if isym.info !is ast.Interface {
-			// Do not remove this check, isym.info could be &IError.
-			continue
-		}
-		interface_info := isym.info as ast.Interface
-		if interface_info.methods.len == 0 {
-			continue
-		}
-		for itype in interface_info.types {
-			ptype := itype.set_nr_muls(1)
-			ntype := itype.set_nr_muls(0)
-			interface_types := [ptype, ntype]
-			for method in interface_info.methods {
-				for typ in interface_types {
-					interface_implementation_method_name := int(typ.clear_flags()).str() + '.' +
-						method.name
-					if trace_skip_unused_interface_methods {
-						eprintln('>> isym.name: ${isym.name} | interface_implementation_method_name: ${interface_implementation_method_name}')
-					}
-					all_fn_root_names << interface_implementation_method_name
-				}
-			}
-			for embed_method in table.get_embed_methods(table.sym(itype)) {
-				interface_implementation_method_name :=
-					int(embed_method.params[0].typ.clear_flags()).str() + '.' + embed_method.name
-				if trace_skip_unused_interface_methods {
-					eprintln('>> isym.name: ${isym.name} | interface_implementation_method_name: ${interface_implementation_method_name} (embeded)')
-				}
-				all_fn_root_names << interface_implementation_method_name
-			}
-		}
-	}
-
 	handle_vweb(mut table, mut all_fn_root_names, 'veb.Result', 'veb.filter', 'veb.Context')
 	handle_vweb(mut table, mut all_fn_root_names, 'vweb.Result', 'vweb.filter', 'vweb.Context')
 	handle_vweb(mut table, mut all_fn_root_names, 'x.vweb.Result', 'x.vweb.filter', 'x.vweb.Context')
@@ -445,14 +388,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	walker.mark_markused_fns() // tagged with `@[markused]`, `@[export]` and veb actions
 	walker.mark_markused_decltypes() // tagged with `@[markused]`
 	walker.mark_struct_field_default_expr()
-
-	for k, _ in table.used_features.comptime_calls {
-		walker.fn_by_name(k)
-	}
-
-	for k, _ in table.used_features.comptime_syms {
-		walker.mark_by_sym(table.sym(k))
-	}
+	walker.mark_generic_types()
 
 	walker.mark_root_fns(all_fn_root_names)
 

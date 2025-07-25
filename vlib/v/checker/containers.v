@@ -541,7 +541,6 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	}
 
 	if (node.keys.len > 0 && node.vals.len > 0) || node.has_update_expr {
-		c.table.used_features.map_update = true
 		mut map_type := ast.void_type
 		use_expected_type := c.expected_type != ast.void_type && !c.inside_const
 			&& c.table.sym(c.expected_type).kind == .map && !(c.inside_fn_arg

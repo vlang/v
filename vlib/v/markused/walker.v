@@ -21,7 +21,6 @@ pub mut:
 	used_result  int // _result_ok
 	used_panic   int // option/result propagation
 	used_interp  int // str interpolation
-	n_asserts    int
 	pref         &pref.Preferences = unsafe { nil }
 mut:
 	files         []&ast.File
@@ -46,6 +45,10 @@ mut:
 	uses_ct_attribute  bool // $for .attributes
 	uses_external_type bool
 	uses_err           bool // err var
+	uses_asserts       bool
+	uses_map_update    bool
+	uses_debugger      bool
+	uses_mem_align     bool // @[aligned:N] for structs
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -209,14 +212,16 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyStmt {}
-		ast.DebuggerStmt {}
+		ast.DebuggerStmt {
+			w.uses_debugger = true
+		}
 		ast.AsmStmt {
 			w.asm_io(node.output)
 			w.asm_io(node.input)
 		}
 		ast.AssertStmt {
 			if node.is_used {
-				w.n_asserts++
+				w.uses_asserts = true
 				w.expr(node.expr)
 				if node.extra !is ast.EmptyExpr {
 					w.expr(node.extra)
@@ -320,6 +325,9 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 				w.mark_by_type(typ.typ)
 			}
 			w.struct_fields(node.fields)
+			if !w.uses_mem_align {
+				w.uses_mem_align = node.attrs.contains('aligned')
+			}
 		}
 		ast.DeferStmt {
 			w.stmts(node.stmts)
@@ -586,6 +594,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.exprs(node.vals)
 			if node.has_update_expr {
 				w.expr(node.update_expr)
+			}
+			if node.vals.len > 0 && node.has_update_expr {
+				w.uses_map_update = true
 			}
 			mapinfo := w.table.final_sym(node.typ).map_info()
 			ksym := w.table.sym(mapinfo.key_type)
@@ -1037,6 +1048,17 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 					w.features.used_maps++
 				}
 				w.mark_by_type(typ)
+				for method in isym.info.methods {
+					for ityp in [typ.set_nr_muls(1), typ.set_nr_muls(0)] {
+						mname := int(ityp.clear_flags()).str() + '.' + method.name
+						w.fn_by_name(mname)
+					}
+				}
+				for embed_method in w.table.get_embed_methods(w.table.sym(typ)) {
+					mname := int(embed_method.params[0].typ.clear_flags()).str() + '.' +
+						embed_method.name
+					w.fn_by_name(mname)
+				}
 			}
 			for embed in isym.info.embeds {
 				w.mark_by_type(embed)
@@ -1112,10 +1134,22 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_ct_attribute {
 		w.mark_by_sym_name('VAttribute')
 	}
+	if w.uses_map_update {
+		w.fn_by_name('new_map_update_init')
+	}
+	if w.uses_mem_align {
+		w.fn_by_name('memdup_align')
+	}
+	if w.uses_asserts {
+		w.fn_by_name('__print_assert_failure')
+		w.fn_by_name('isnil')
+		w.mark_by_sym_name('VAssertMetaInfo')
+	}
 }
 
 pub fn (mut w Walker) finalize(include_panic_deps bool) {
-	if include_panic_deps || w.used_interp > 0 || w.uses_external_type {
+	if include_panic_deps || w.used_interp > 0 || w.uses_external_type || w.uses_asserts
+		|| w.uses_debugger {
 		w.mark_panic_deps()
 	}
 	w.mark_resource_dependencies()
@@ -1142,11 +1176,17 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	}
 	w.mark_by_sym_name('array')
 
-	if w.table.used_features.asserts {
-		w.mark_by_sym_name('VAssertMetaInfo')
-	}
-
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()
 	w.remove_unused_dump_type()
+}
+
+pub fn (mut w Walker) mark_generic_types() {
+	for k, _ in w.table.used_features.comptime_calls {
+		w.fn_by_name(k)
+	}
+
+	for k, _ in w.table.used_features.comptime_syms {
+		w.mark_by_sym(w.table.sym(k))
+	}
 }
