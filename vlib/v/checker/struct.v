@@ -861,8 +861,6 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				mut info := first_sym.info as ast.Struct
 				c.check_uninitialized_struct_fields_and_embeds(node, first_sym, mut info, mut
 					inited_fields)
-			} else if first_sym.kind == .array {
-				c.table.used_features.arr_init = true
 			}
 		}
 		.none {

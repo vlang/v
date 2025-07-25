@@ -157,19 +157,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				builderptr_idx + '.write_rune',
 			]
 		}
-		if !table.used_features.arr_init {
-			table.used_features.arr_init = table.used_features.print_types.keys().any(table.type_to_str(it).contains('[]'))
-		}
-		if table.used_features.arr_init {
-			include_panic_deps = true
-			core_fns << '__new_array'
-			core_fns << 'new_array_from_c_array'
-			core_fns << 'new_array_from_c_array_noscan'
-			core_fns << '__new_array_with_multi_default'
-			core_fns << '__new_array_with_multi_default_noscan'
-			core_fns << '__new_array_with_array_default'
-			core_fns << ref_array_idx_str + '.set'
-		}
 		if table.used_features.print_options {
 			include_panic_deps = true
 			core_fns << '_option_ok'

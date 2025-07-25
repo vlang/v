@@ -975,9 +975,6 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 						}
 					}
 					match fsym.info {
-						ast.Array, ast.ArrayFixed {
-							w.mark_by_sym(fsym)
-						}
 						ast.Map {
 							w.features.used_maps++
 							w.mark_by_sym(fsym)
@@ -998,6 +995,7 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			}
 		}
 		ast.ArrayFixed, ast.Array {
+			w.uses_array = true
 			w.mark_by_type(isym.info.elem_type)
 		}
 		ast.SumType {
@@ -1115,6 +1113,16 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	if w.uses_lock {
 		w.mark_by_sym_name('sync.RwMutex')
+	}
+	if w.uses_array {
+		w.fn_by_name('__new_array_noscan')
+		w.fn_by_name('__new_array')
+		w.fn_by_name('new_array_from_c_array')
+		w.fn_by_name('new_array_from_c_array_noscan')
+		w.fn_by_name('__new_array_with_multi_default')
+		w.fn_by_name('__new_array_with_multi_default_noscan')
+		w.fn_by_name('__new_array_with_array_default')
+		w.fn_by_name(int(ast.array_type.ref()).str() + '.set')
 	}
 	if w.uses_ct_fields {
 		w.mark_by_sym_name('FieldData')

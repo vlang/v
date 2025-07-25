@@ -24,7 +24,6 @@ pub mut:
 	arr_pop        bool            // arr.pop()
 	arr_delete     bool            // arr.delete()
 	arr_reverse    bool            // arr.reverse()
-	arr_init       bool            // [1, 2, 3]
 	arr_map        bool            // []map[key]value
 	type_name      bool            // var.type_name()
 	print_options  bool            // print option type
