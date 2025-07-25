@@ -749,7 +749,12 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
 		w.level++
 		defer { w.level-- }
-		eprintln('>>>${' '.repeat(w.level)}${node.fkey()}')
+		receiver_name := if node.receiver.typ != 0 {
+			w.table.type_to_str(node.receiver.typ) + '.'
+		} else {
+			''
+		}
+		eprintln('>>>${' '.repeat(w.level)}${receiver_name}${node.name}')
 	}
 	if node.language == .c {
 		w.mark_fn_as_used(node.fkey())
@@ -871,7 +876,12 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		defer {
 			w.level--
 		}
-		eprintln('>>>${' '.repeat(w.level)}${node.fkey()}')
+		receiver_name := if node.receiver_type != 0 {
+			w.table.type_to_str(node.receiver_type) + '.'
+		} else {
+			''
+		}
+		eprintln('>>>${' '.repeat(w.level)}${receiver_name}${node.name}')
 	}
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
