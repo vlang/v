@@ -34,6 +34,7 @@ mut:
 	is_builtin_mod bool
 
 	// dependencies finding flags
+	uses_atomic        bool // has atomic
 	uses_array         bool // has array
 	uses_channel       bool // has chan dep
 	uses_lock          bool // has mutex dep
@@ -578,6 +579,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 							w.uses_err = true
 						}
 						w.fn_by_name(node.name)
+					}
+					if !w.uses_atomic && node.info is ast.IdentVar {
+						w.uses_atomic = node.info.typ.has_flag(.atomic_f)
 					}
 				}
 			}
@@ -1162,6 +1166,8 @@ fn (mut w Walker) mark_resource_dependencies() {
 			if func.receiver.typ.idx() in w.used_syms {
 				w.fn_by_name(k)
 			}
+		} else if w.uses_atomic && k.starts_with('_Atomic') {
+			w.fn_by_name(k)
 		}
 	}
 }
