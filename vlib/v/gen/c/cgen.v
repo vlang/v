@@ -634,9 +634,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		b.write_string2('\n// V result_xxx definitions:\n', g.out_results.str())
 	}
 	b.write_string2('\n// V definitions:\n', g.definitions.str())
-	if g.sort_fn_definitions.len > 0 {
-		b.write_string2('\n// V sort fn definitions:\n', g.sort_fn_definitions.str())
-	}
 	if !pref_.parallel_cc {
 		b.writeln('\n// V global/const non-precomputed definitions:')
 		for var_name in g.sorted_global_const_names {
@@ -650,6 +647,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	interface_table := g.interface_table()
 	if interface_table.len > 0 {
 		b.write_string2('\n// V interface table:\n', interface_table)
+	}
+	if g.sort_fn_definitions.len > 0 {
+		b.write_string2('\n// V sort fn definitions:\n', g.sort_fn_definitions.str())
 	}
 	if g.hotcode_definitions.len > 0 {
 		b.write_string2('\n// V hotcode definitions:\n', g.hotcode_definitions.str())
@@ -6504,11 +6504,9 @@ fn (mut g Gen) write_init_function() {
 		g.write('\tas_cast_type_indexes = ')
 		g.writeln(g.as_cast_name_table())
 	}
-	if !g.pref.is_shared && (!g.pref.skip_unused || g.table.used_features.external_types) {
+	if !g.pref.is_shared && (!g.pref.skip_unused || g.table.used_features.used_fns['builtin_init']) {
 		// shared object does not need this
-		if _ := g.table.find_fn('builtin_init') {
-			g.writeln('\tbuiltin_init();')
-		}
+		g.writeln('\tbuiltin_init();')
 	}
 
 	// reflection bootstrapping
@@ -7215,10 +7213,10 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				g.writeln('\t${styp} ${err_obj} = {0};')
 				if g.fn_decl.return_type.has_flag(.result) {
 					g.writeln('\t${err_obj}.is_error = true;')
+					g.writeln('\t${err_obj}.err = ${cvar_name}${tmp_op}err;')
 				} else if g.fn_decl.return_type.has_flag(.option) {
 					g.writeln('\t${err_obj}.state = 2;')
 				}
-				g.writeln('\t${err_obj}.err = ${cvar_name}${tmp_op}err;')
 				g.writeln('\treturn ${err_obj};')
 			}
 		}

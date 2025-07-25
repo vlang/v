@@ -1,0 +1,32 @@
+import math
+import math.big { Integer }
+import crypto.rand
+
+struct SSS {
+mut:
+	prime Integer = big.integer_from_string('115792089237316195423570985008687907853269984665640564039457584007913129639747')!
+}
+
+// random returns a random number from the range (0, prime-1) inclusive
+fn (s SSS) random() !Integer {
+	mut result := big.zero_int + s.prime
+	result = result - big.one_int
+	return rand.int_big(result)
+}
+
+// mod_inverse computes the multiplicative inverse of the number on the field
+// prime; more specifically, number * inverse == 1; Note: number should never be
+// zero
+fn mod_inverse(number Integer) Integer {
+	s := SSS{}
+	copy := number % s.prime
+	pcopy := s.prime
+
+	_, _, y := math.egcd(pcopy.int(), copy.int())
+
+	return (s.prime + big.integer_from_i64(y)) % s.prime
+}
+
+fn main() {
+	mod_inverse(big.integer_from_string('1')!)
+}

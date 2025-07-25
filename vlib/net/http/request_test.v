@@ -1,6 +1,5 @@
 // vtest build: !windows
-module http
-
+import net.http
 import io
 
 struct StringReader {
@@ -30,13 +29,13 @@ fn reader(s string) &io.BufferedReader {
 
 fn test_parse_request_not_http() {
 	mut reader__ := reader('hello')
-	parse_request(mut reader__) or { return }
+	http.parse_request(mut reader__) or { return }
 	panic('should not have parsed')
 }
 
 fn test_parse_request_no_headers() {
 	mut reader_ := reader('GET / HTTP/1.1\r\n\r\n')
-	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
+	req := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.method == .get
 	assert req.url == '/'
 	assert req.version == .v1_1
@@ -44,26 +43,26 @@ fn test_parse_request_no_headers() {
 
 fn test_parse_request_two_headers() {
 	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2:  B\r\n\r\n')
-	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
+	req := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.header.custom_values('Test1') == ['a']
 	assert req.header.custom_values('Test2') == ['B']
 }
 
 fn test_parse_request_two_header_values() {
 	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a; b\r\nTest2: c\r\nTest2: d\r\n\r\n')
-	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
+	req := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.header.custom_values('Test1') == ['a; b']
 	assert req.header.custom_values('Test2') == ['c', 'd']
 }
 
 fn test_parse_request_body() {
 	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbodyabc')
-	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
+	req := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.data == 'body'
 }
 
 fn test_parse_request_line() {
-	method, target, version := parse_request_line('GET /target HTTP/1.1') or {
+	method, target, version := http.parse_request_line('GET /target HTTP/1.1') or {
 		panic('did not parse: ${err}')
 	}
 	assert method == .get
@@ -72,34 +71,34 @@ fn test_parse_request_line() {
 }
 
 fn test_parse_form() {
-	assert parse_form('foo=bar&bar=baz') == {
+	assert http.parse_form('foo=bar&bar=baz') == {
 		'foo': 'bar'
 		'bar': 'baz'
 	}
-	assert parse_form('foo=bar=&bar=baz') == {
+	assert http.parse_form('foo=bar=&bar=baz') == {
 		'foo': 'bar='
 		'bar': 'baz'
 	}
-	assert parse_form('foo=bar%3D&bar=baz') == {
+	assert http.parse_form('foo=bar%3D&bar=baz') == {
 		'foo': 'bar='
 		'bar': 'baz'
 	}
-	assert parse_form('foo=b%26ar&bar=baz') == {
+	assert http.parse_form('foo=b%26ar&bar=baz') == {
 		'foo': 'b&ar'
 		'bar': 'baz'
 	}
-	assert parse_form('a=b& c=d') == {
+	assert http.parse_form('a=b& c=d') == {
 		'a':  'b'
 		' c': 'd'
 	}
-	assert parse_form('a=b&c= d ') == {
+	assert http.parse_form('a=b&c= d ') == {
 		'a': 'b'
 		'c': ' d '
 	}
-	assert parse_form('{json}') == {
+	assert http.parse_form('{json}') == {
 		'json': '{json}'
 	}
-	assert parse_form('{
+	assert http.parse_form('{
     "_id": "76c",
     "friends": [
       {
@@ -139,10 +138,10 @@ Content-Disposition: form-data; name=\"${names[1]}\"\r
 ${contents[1]}\r
 --${boundary}--\r
 "
-	form, files := parse_multipart_form(data, boundary)
+	form, files := http.parse_multipart_form(data, boundary)
 	assert files == {
 		names[0]: [
-			FileData{
+			http.FileData{
 				filename:     file
 				content_type: ct
 				data:         contents[0]
@@ -167,7 +166,7 @@ Content-Disposition: form-data; name="password"\r
 admin123\r
 --${boundary}--\r
 '
-	form, files := parse_multipart_form(data, boundary)
+	form, files := http.parse_multipart_form(data, boundary)
 	for k, v in form {
 		eprintln('> k: ${k} | v: ${v}')
 		eprintln('>> k.bytes(): ${k.bytes()}')
@@ -180,7 +179,7 @@ admin123\r
 fn test_multipart_form_body() {
 	files := {
 		'foo': [
-			FileData{
+			http.FileData{
 				filename:     'bar.v'
 				content_type: 'application/octet-stream'
 				data:         'baz'
@@ -191,8 +190,8 @@ fn test_multipart_form_body() {
 		'fooz': 'buzz'
 	}
 
-	body, boundary := multipart_form_body(form, files)
-	parsed_form, parsed_files := parse_multipart_form(body, boundary)
+	body, boundary := http.multipart_form_body(form, files)
+	parsed_form, parsed_files := http.parse_multipart_form(body, boundary)
 	assert parsed_files == files
 	assert parsed_form == form
 }
@@ -201,17 +200,33 @@ fn test_parse_large_body() {
 	body := 'A'.repeat(10_001) // greater than max_bytes
 	req := 'GET / HTTP/1.1\r\nContent-Length: ${body.len}\r\n\r\n${body}'
 	mut reader_ := reader(req)
-	result := parse_request(mut reader_)!
+	result := http.parse_request(mut reader_)!
 	assert result.data.len == body.len
 	assert result.data == body
 }
 
-fn test_build_request_headers_with_empty_body_adds_content_length_zero() {
-	// Create a request with no data.
-	mut req := Request{}
-	// Build the headers for it. Ensure that Content-Length: 0 is added
-	// for requests without a body, which is required by some servers.
-	// We use a POST request, as it is most likely to be affected by this.
-	headers := req.build_request_headers(.post, 'localhost', 80, '/')
-	assert headers.contains('Content-Length: 0\r\n')
+fn test_parse_multipart_form_empty_body() {
+	body := ''
+	boundary := '----WebKitFormBoundaryQcBIkwnOACVsvR8b'
+	form, files := http.parse_multipart_form(body, boundary)
+	assert form.len == 0
+	assert files.len == 0
+}
+
+fn test_parse_multipart_form_issue_24974_raw() {
+	body := r'------WebKiormBoundaryQcBIkwnOACVsvR8b\r\nContent-Disposition: form-data; name="files"; filename="michael-sum-LEpfefQf4rU-unsplash.jpg"\r\nContent-Type: image/jpeg\r\n\r\n\r\n------WebKitFormBoundaryQcBIkwnOACVsvR8b\r\nContent-Disposition: form-data; name="files"; filename="mikhail-vasilyev-IFxjDdqK_0U-unsplash.jpg"\r\nContent-Type: image/jpeg\r\n\r\n\r\n------WebKitFormBoundaryQcBIkwnOACVsvR8b--\r\n'
+	boundary := r'----WebKitFormBoundaryQcBIkwnOACVsvR8b'
+	form, files := http.parse_multipart_form(body, boundary)
+	assert form.len == 0
+	assert files.len == 0
+}
+
+fn test_parse_multipart_form_issue_24974_cooked() {
+	body := '------WebKiormBoundaryQcBIkwnOACVsvR8b\r\nContent-Disposition: form-data; name="files"; filename="michael-sum-LEpfefQf4rU-unsplash.jpg"\r\nContent-Type: image/jpeg\r\n\r\n\r\n------WebKitFormBoundaryQcBIkwnOACVsvR8b\r\nContent-Disposition: form-data; name="files"; filename="mikhail-vasilyev-IFxjDdqK_0U-unsplash.jpg"\r\nContent-Type: image/jpeg\r\n\r\n\r\n------WebKitFormBoundaryQcBIkwnOACVsvR8b--\r\n'
+	boundary := '----WebKitFormBoundaryQcBIkwnOACVsvR8b'
+	form, files := http.parse_multipart_form(body, boundary)
+	assert form.len == 0
+	assert files.len == 1
+	assert files['files'][0].filename == 'mikhail-vasilyev-IFxjDdqK_0U-unsplash.jpg'
+	assert files['files'][0].content_type == 'image/jpeg'
 }
