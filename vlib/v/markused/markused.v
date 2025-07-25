@@ -253,16 +253,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			}
 		}
 		has_dot := k.contains('.')
-		// auto generated string interpolation functions, may
-		// call .str or .auto_str methods for user types:
-		if table.used_features.auto_str || table.used_features.dump
-			|| table.used_features.print_types[mfn.receiver.typ.idx()] {
-			if (has_dot && (k.ends_with('.str') || k.ends_with('.auto_str')))
-				|| (k.starts_with('_Atomic_') && k.ends_with('_str')) {
-				all_fn_root_names << k
-				continue
-			}
-		}
 		if has_dot {
 			if k.ends_with('.init') || k.ends_with('.cleanup') {
 				all_fn_root_names << k

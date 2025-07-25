@@ -1156,6 +1156,14 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('isnil')
 		w.mark_by_sym_name('VAssertMetaInfo')
 	}
+
+	for k, func in w.all_fns {
+		if k.ends_with('.str') {
+			if func.receiver.typ.idx() in w.used_syms {
+				w.fn_by_name(k)
+			}
+		}
+	}
 }
 
 pub fn (mut w Walker) finalize(include_panic_deps bool) {
