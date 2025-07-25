@@ -1483,6 +1483,7 @@ pub:
 	pos      token.Pos
 	type_pos token.Pos
 	comments []Comment
+	attrs    []Attr // attributes like @[deprecated] etc
 pub mut:
 	parent_type Type
 	is_markused bool

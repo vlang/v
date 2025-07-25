@@ -2749,6 +2749,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.AliasTypeDecl{}
 	}
 	comments = sum_variants[0].end_comments.clone()
+	p.attrs = []
 	return ast.AliasTypeDecl{
 		name:        name
 		is_pub:      is_pub
@@ -2758,6 +2759,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		pos:         decl_pos
 		comments:    comments
 		is_markused: attrs.contains('markused')
+		attrs:       attrs
 	}
 }
 
