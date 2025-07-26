@@ -295,8 +295,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						&& (sym.info is ast.ArrayFixed || sym.info is ast.Alias) {
 						elem_kind = p.table.sym(sym.array_fixed_info().elem_type).kind
 					}
-					if elem_kind == .function
-						&& (p.file_backend_mode == .v || p.file_backend_mode == .c) {
+					if elem_kind == .function {
 						p.register_auto_import('builtin.closure')
 					}
 				}
