@@ -2007,6 +2007,9 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	is_filter := field_name in ['filter', 'map', 'any', 'all', 'count']
 	if is_filter || field_name == 'sort' || field_name == 'sorted' {
+		if p.file_backend_mode == .v || p.file_backend_mode == .c {
+			p.register_auto_import('builtin.closure')
+		}
 		p.open_scope()
 		defer {
 			p.close_scope()
