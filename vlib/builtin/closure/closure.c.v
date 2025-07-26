@@ -148,15 +148,15 @@ const closure_get_data_bytes = $if amd64 {
     []u8{}
 }
 // vfmt on
-fn get_closure_size() int {
-	mut new_closure_size := if 2 * u32(sizeof(voidptr)) > u32(closure_thunk.len) {
-		2 * u32(sizeof(voidptr))
-	} else {
-		u32(closure_thunk.len) + u32(sizeof(voidptr)) - 1
-	}
-	new_closure_size = new_closure_size & ~(u32(sizeof(voidptr)) - 1)
-	return int(new_closure_size)
+
+// equal to `max(2*sizeof(void*), sizeof(__closure_thunk))`, rounded up to the next multiple of `sizeof(void*)`
+// NOTE: This is a workaround for `-usecache` bug, as it can't include `fn get_closure_size()` needed by `const closure_size` in `build-module` mode.
+const closure_size_1 = if 2 * u32(sizeof(voidptr)) > u32(closure_thunk.len) {
+	2 * u32(sizeof(voidptr))
+} else {
+	u32(closure_thunk.len) + u32(sizeof(voidptr)) - 1
 }
+const closure_size = int(closure_size_1 & ~(u32(sizeof(voidptr)) - 1))
 
 // closure_alloc allocates executable memory pages for closures(INTERNAL COMPILER USE ONLY).
 fn closure_alloc() {
@@ -239,6 +239,3 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 	// Return executable closure object
 	return curr_closure
 }
-
-// equal to `max(2*sizeof(void*), sizeof(__closure_thunk))`, rounded up to the next multiple of `sizeof(void*)`
-const closure_size = get_closure_size()
