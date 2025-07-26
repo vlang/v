@@ -1,0 +1,1 @@
+int c = (int)(VSAFE_DIV_int(a,z));
