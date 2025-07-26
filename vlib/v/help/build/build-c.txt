@@ -361,3 +361,9 @@ see also `v help build`.
           https://learn.microsoft.com/en-us/cpp/build/reference/fp-specify-floating-point-behavior?view=msvc-170&redirectedfrom=MSDN
           https://clang.llvm.org/docs/UsersManual.html#cmdoption-ffast-math
           https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#index-ffast-math
+
+   -div-by-zero-is-zero
+      Avoids division by zero errors, by treating `x / 0` as being equal to `0` .
+      It is mainly useful when prototyping games, and other experimental code with
+      lots of arithmetic expressions, where you do not want to check for the 0 divisor
+      all the time (which can break your flow).
