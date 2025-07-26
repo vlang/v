@@ -20,7 +20,6 @@ pub mut:
 	used_option  int // _option_ok
 	used_result  int // _result_ok
 	used_panic   int // option/result propagation
-	used_interp  int // str interpolation
 	pref         &pref.Preferences = unsafe { nil }
 mut:
 	files         []&ast.File
@@ -47,11 +46,13 @@ mut:
 	uses_ct_attribute  bool // $for .attributes
 	uses_external_type bool
 	uses_err           bool // err var
-	uses_asserts       bool
-	uses_map_update    bool
-	uses_debugger      bool
+	uses_asserts       bool // assert
+	uses_map_update    bool // has {...expr}
+	uses_debugger      bool // has debugger;
 	uses_mem_align     bool // @[aligned:N] for structs
-	uses_eq            bool
+	uses_eq            bool // has == op
+	uses_interp        bool // string interpolation
+	uses_guard         bool
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -549,6 +550,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.IfGuardExpr {
 			w.expr(node.expr)
 			w.mark_by_type(node.expr_type)
+			w.uses_guard = true
 		}
 		ast.IfExpr {
 			w.expr(node.left)
@@ -655,7 +657,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.mark_by_type(node.typ)
 		}
 		ast.StringInterLiteral {
-			w.used_interp++
+			w.uses_interp = true
 			w.exprs(node.exprs)
 		}
 		ast.SelectorExpr {
@@ -757,16 +759,6 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 			w.is_builtin_mod = last_is_builtin_mod
 		}
 	}
-	if 'trace_skip_unused_walker' in w.pref.compile_defines {
-		w.level++
-		defer { w.level-- }
-		receiver_name := if node.is_method && node.receiver.typ != 0 {
-			w.table.type_to_str(node.receiver.typ) + '.'
-		} else {
-			''
-		}
-		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [decl] [builtin=${w.is_builtin_mod}]')
-	}
 	if node.language == .c {
 		w.mark_fn_as_used(node.fkey())
 		w.mark_fn_ret_and_params(node.return_type, node.params)
@@ -778,6 +770,16 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.no_body {
 		return
+	}
+	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+		w.level++
+		defer { w.level-- }
+		receiver_name := if node.is_method && node.receiver.typ != 0 {
+			w.table.type_to_str(node.receiver.typ) + '.'
+		} else {
+			''
+		}
+		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [decl]')
 	}
 	if node.is_method {
 		w.mark_by_type(node.receiver.typ)
@@ -954,27 +956,6 @@ pub fn (mut w Walker) or_block(node ast.OrExpr) {
 		w.used_result++
 		w.used_panic++
 	}
-}
-
-fn (mut w Walker) mark_panic_deps() {
-	ref_array_idx_str := int(ast.array_type.ref()).str()
-	string_idx_str := ast.string_type_idx.str()
-	array_idx_str := ast.array_type_idx.str()
-	charptr_idx_str := ast.charptr_type_idx.str()
-
-	w.fn_by_name('__new_array_with_default')
-	w.fn_by_name('__new_array_with_default_noscan')
-	w.fn_by_name('str_intp')
-	w.fn_by_name(ref_array_idx_str + '.push')
-	w.fn_by_name(ref_array_idx_str + '.push_noscan')
-	w.fn_by_name(string_idx_str + '.substr')
-	w.fn_by_name(array_idx_str + '.slice')
-	w.fn_by_name(array_idx_str + '.get')
-	w.fn_by_name('v_fixed_index')
-	w.fn_by_name(charptr_idx_str + '.vstring_literal')
-
-	w.mark_by_sym_name('StrIntpData')
-	w.mark_by_sym_name('StrIntpMem')
 }
 
 pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.Param) {
@@ -1161,6 +1142,9 @@ fn (mut w Walker) remove_unused_dump_type() {
 }
 
 fn (mut w Walker) mark_resource_dependencies() {
+	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+		eprintln('>>>>>>>>>> DEPS USAGE')
+	}
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')
 	}
@@ -1205,6 +1189,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_mem_align {
 		w.fn_by_name('memdup_align')
 	}
+	if w.uses_guard {
+		w.fn_by_name('error')
+	}
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
 		eprintln('>>>>>>>>>> ALL_FNS')
 	}
@@ -1217,6 +1204,8 @@ fn (mut w Walker) mark_resource_dependencies() {
 				if !has_ptr_print && func.receiver.typ.is_ptr() {
 					w.fn_by_name('ptr_str')
 				}
+			} else if func.receiver.typ.idx() in w.table.used_features.print_types {
+				w.fn_by_name(k)
 			}
 		} else if w.uses_atomic && k.starts_with('_Atomic') {
 			w.fn_by_name(k)
@@ -1235,21 +1224,14 @@ fn (mut w Walker) mark_resource_dependencies() {
 }
 
 pub fn (mut w Walker) finalize(include_panic_deps bool) {
+	w.mark_resource_dependencies()
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
 		eprintln('>>>>>>>>>> FINALIZE')
 	}
-	w.mark_resource_dependencies()
 	if w.uses_asserts {
 		w.fn_by_name('__print_assert_failure')
 		w.fn_by_name('isnil')
 		w.mark_by_sym_name('VAssertMetaInfo')
-	}
-	if include_panic_deps || w.used_interp > 0 || w.uses_external_type || w.uses_asserts
-		|| w.uses_debugger {
-		if 'trace_skip_unused_walker' in w.pref.compile_defines {
-			println('>>>>> PANIC DEPS ${include_panic_deps} | ${w.used_interp} | ${w.uses_external_type} | ${w.uses_asserts} | ${w.uses_debugger}')
-		}
-		w.mark_panic_deps()
 	}
 	if w.used_panic > 0 {
 		w.mark_fn_as_used('panic_option_not_set')
@@ -1272,6 +1254,24 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 		w.mark_const_as_used('none__')
 	}
 	w.mark_by_sym_name('array')
+	if include_panic_deps || w.uses_external_type || w.uses_asserts || w.uses_debugger
+		|| w.uses_interp {
+		if 'trace_skip_unused_walker' in w.pref.compile_defines {
+			println('>>>>> PANIC DEPS ${include_panic_deps} | ${w.uses_external_type} | ${w.uses_asserts} | ${w.uses_debugger}')
+		}
+		ref_array_idx_str := int(ast.array_type.ref()).str()
+		string_idx_str := ast.string_type_idx.str()
+
+		w.fn_by_name('__new_array_with_default')
+		w.fn_by_name('__new_array_with_default_noscan')
+		w.fn_by_name('str_intp')
+		w.fn_by_name(ref_array_idx_str + '.push')
+		w.fn_by_name(ref_array_idx_str + '.push_noscan')
+		w.fn_by_name(string_idx_str + '.substr')
+		w.fn_by_name('v_fixed_index')
+		w.mark_by_sym_name('StrIntpData')
+		w.mark_by_sym_name('StrIntpMem')
+	}
 
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()
