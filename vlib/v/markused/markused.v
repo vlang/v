@@ -184,6 +184,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << '_result_ok'
 			core_fns << 'tos5'
 			core_fns << 'time.unix' // used by json
+			core_fns << 'error'
 			include_panic_deps = true
 		}
 		if pref_.should_use_segfault_handler() {

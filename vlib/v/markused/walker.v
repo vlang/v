@@ -1262,10 +1262,11 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name('new_map_init_noscan_key_value')
 		}
 	} else {
-		for map_fn_name in ['new_map', 'new_map_init', 'map_hash_string', 'new_dense_array',
-			'new_dense_array_noscan'] {
-			w.used_fns.delete(map_fn_name)
-		}
+		w.used_fns.delete('new_map')
+		w.used_fns.delete('new_map_init')
+		w.used_fns.delete('map_hash_string')
+		w.used_fns.delete('new_dense_array')
+		w.used_fns.delete('new_dense_array_noscan')
 	}
 }
 
