@@ -1145,11 +1145,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
 		eprintln('>>>>>>>>>> DEPS USAGE')
 	}
-	if w.features.used_maps > 0 {
-		w.fn_by_name('new_map')
-		w.fn_by_name('new_map_init')
-		w.fn_by_name('map_hash_string')
-	}
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')
 	}
@@ -1214,6 +1209,12 @@ fn (mut w Walker) mark_resource_dependencies() {
 			}
 			continue
 		}
+		if k.ends_with('.free') {
+			if w.pref.autofree || func.receiver.typ.idx() in w.used_syms {
+				w.fn_by_name(k)
+				continue
+			}
+		}
 		if w.uses_atomic && k.starts_with('_Atomic') {
 			w.fn_by_name(k)
 			continue
@@ -1249,6 +1250,8 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('new_map')
 		w.fn_by_name('new_map_init')
 		w.fn_by_name('map_hash_string')
+		w.mark_by_sym_name('map')
+
 		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 			w.fn_by_name('new_map_noscan_key')
 			w.fn_by_name('new_map_noscan_value')
