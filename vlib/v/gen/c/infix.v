@@ -1199,14 +1199,18 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	needs_cast := node.left_type.is_number() && node.right_type.is_number()
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)
+	is_safe_div := node.op == .div && g.pref.div_by_zero_is_zero
+	mut typ := node.promoted_type
+	mut typ_str := g.styp(typ)
 	if needs_cast {
-		typ_str := if node.left_ct_expr {
-			g.styp(g.type_resolver.get_type_or_default(node.left, node.left_type))
+		typ = if node.left_ct_expr {
+			g.type_resolver.get_type_or_default(node.left, node.left_type)
 		} else if node.left !in [ast.Ident, ast.CastExpr] && node.right_ct_expr {
-			g.styp(g.type_resolver.get_type_or_default(node.right, node.promoted_type))
+			g.type_resolver.get_type_or_default(node.right, node.promoted_type)
 		} else {
-			g.styp(node.promoted_type)
+			node.promoted_type
 		}
+		typ_str = g.styp(typ)
 		g.write('(${typ_str})(')
 	}
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {
@@ -1227,9 +1231,17 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		}
 		g.write('memcmp(')
 	}
+	mut opstr := node.op.str()
+	if is_safe_div {
+		vsafe_fn_name := 'VSAFE_DIV_${typ_str}'
+		g.write(vsafe_fn_name)
+		g.write('(')
+		g.vsafe_div_type_to_fn_name[typ] = vsafe_fn_name
+		opstr = ','
+	}
 	g.expr(node.left)
 	if !is_ctemp_fixed_ret {
-		g.write(' ${node.op.str()} ')
+		g.write(opstr)
 	} else {
 		g.write(', ')
 	}
@@ -1245,6 +1257,9 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	}
 	if is_ctemp_fixed_ret {
 		g.write(', sizeof(${g.styp(node.right_type)}))')
+	}
+	if is_safe_div {
+		g.write(')')
 	}
 	if needs_cast {
 		g.write(')')
