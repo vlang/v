@@ -483,6 +483,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.IndexExpr {
 			w.expr(node.left)
 			w.expr(node.index)
+			if node.or_expr.kind == .block {
+				w.uses_guard = true
+			}
 			w.or_block(node.or_expr)
 			if node.left_type == 0 {
 				return
