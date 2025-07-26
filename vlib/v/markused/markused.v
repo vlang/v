@@ -121,10 +121,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << string_idx_str + '.repeat'
 			core_fns << 'tos3'
 		}
-		if table.used_features.auto_str_ptr {
-			include_panic_deps = true
-			core_fns << 'isnil'
-		}
 		if table.used_features.arr_prepend {
 			core_fns << ref_array_idx_str + '.prepend_many'
 		}

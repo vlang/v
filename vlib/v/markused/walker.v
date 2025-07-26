@@ -99,6 +99,9 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 		return
 	}
 	w.used_consts[ckey] = true
+	if ckey == 'c' {
+		println(ckey)
+	}
 	cfield := w.all_consts[ckey] or { return }
 	w.expr(cfield.expr)
 	w.mark_by_type(cfield.typ)
@@ -573,8 +576,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				.global {
 					w.mark_global_as_used(node.name)
 				}
+				.blank_ident {}
 				else {
-					// `.unresolved`, `.blank_ident`, `.variable`, `.function`
+					// `.unresolved`, `.variable`
 					// println('>>> else, ast.Ident ${node.name} kind: $node.kind ')					
 					if node.name in w.all_consts {
 						w.mark_const_as_used(node.name)
@@ -998,7 +1002,7 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 					w.expr(ifield.default_expr)
 				}
 				if ifield.typ != 0 {
-					fsym := w.table.sym(ifield.typ)
+					fsym := w.table.sym(ifield.typ.idx())
 					if ifield.typ.has_flag(.option) {
 						w.used_option++
 						if !ifield.has_default_expr {
@@ -1014,6 +1018,10 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 							w.mark_by_sym(fsym)
 						}
 					}
+				}
+				if !w.features.auto_str_ptr && ifield.typ.is_ptr()
+					&& isym.idx in w.features.print_types {
+					w.features.auto_str_ptr = true
 				}
 			}
 			for embed in isym.info.embeds {
@@ -1074,6 +1082,13 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 		}
 		ast.Enum {
 			w.mark_by_type(isym.info.typ)
+			if enum_ := w.table.enum_decls[isym.name] {
+				for field in enum_.fields {
+					if field.has_expr {
+						w.expr(field.expr)
+					}
+				}
+			}
 		}
 		ast.Interface {
 			for typ in isym.info.types {
@@ -1148,6 +1163,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')
 	}
+	if w.features.auto_str_ptr {
+		w.fn_by_name('isnil')
+		w.fn_by_name('tos4')
+	}
 	if w.uses_channel {
 		w.fn_by_name('sync.new_channel_st')
 		w.fn_by_name('sync.channel_select')
@@ -1198,18 +1217,23 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('error')
 	}
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+		eprintln('>>>>>>>>>> PRINT TYPES ${w.table.used_features.print_types.keys().map(w.table.type_to_str(it))}')
+		for typ, _ in w.table.used_features.print_types {
+			w.mark_by_type(typ)
+		}
 		eprintln('>>>>>>>>>> ALL_FNS')
 	}
 	// println(w.table.used_features.comptime_syms)
 	mut has_ptr_print := false
 	for k, mut func in w.all_fns {
 		if k.ends_with('.str') {
-			if func.receiver.typ.idx() in w.used_syms {
+			idx := func.receiver.typ.idx()
+			if idx in w.used_syms {
 				w.fn_by_name(k)
 				if !has_ptr_print && func.receiver.typ.is_ptr() {
 					w.fn_by_name('ptr_str')
 				}
-			} else if func.receiver.typ.idx() in w.table.used_features.print_types {
+			} else if idx in w.table.used_features.print_types {
 				w.fn_by_name(k)
 			}
 			continue
@@ -1296,6 +1320,10 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()
 	w.remove_unused_dump_type()
+
+	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+		eprintln('>>>>>>>>>> USED SYMS ${w.used_syms.keys().map(w.table.type_to_str(it))}')
+	}
 }
 
 pub fn (mut w Walker) mark_generic_types() {
