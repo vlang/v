@@ -41,6 +41,8 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
+      - 'vlib/x/json2/**.v'
+      - 'vlib/x/json2/decoder2/**.v'
       - '**/sanitized_ci.yml'
   pull_request:
     paths:
@@ -68,6 +70,8 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
+      - 'vlib/x/json2/**.v'
+      - 'vlib/x/json2/decoder2/**.v'
       - '**/sanitized_ci.yml'
 
 concurrency:
