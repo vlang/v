@@ -838,6 +838,16 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 									.skip
 								}
 							}
+						} else if mut cond.left is ast.SelectorExpr && cond.right is ast.TypeNode {
+							if c.comptime.is_comptime_selector_type(cond.left) {
+								checked_type := c.type_resolver.get_type(cond.left)
+								return c.check_compatible_types(checked_type, cond.right as ast.TypeNode)
+							} else if cond.left.gkind_field == .unaliased_typ
+								&& cond.left.name_type != 0 {
+								// T.unaliased_typ
+								checked_type := c.unwrap_generic(cond.left.name_type)
+								return c.check_compatible_types(checked_type, cond.right as ast.TypeNode)
+							}
 						}
 						return .unknown
 					} else {
