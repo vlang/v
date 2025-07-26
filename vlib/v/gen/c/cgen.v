@@ -2626,7 +2626,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.InterfaceDecl {
 			// definitions are sorted and added in write_types
 			ts := g.table.sym(node.typ)
-			if !(ts.info as ast.Interface).is_generic {
+			if !(ts.info as ast.Interface).is_generic && ts.idx in g.table.used_features.used_syms {
 				for method in node.methods {
 					if method.return_type.has_flag(.option) {
 						// Register an option if it's not registered yet

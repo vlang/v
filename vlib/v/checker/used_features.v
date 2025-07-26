@@ -173,7 +173,6 @@ fn (mut c Checker) markused_string_inter_lit(mut node ast.StringInterLiteral, ft
 fn (mut c Checker) markused_infixexpr(check bool) {
 	if check {
 		c.table.used_features.index = true
-		c.table.used_features.arr_init = true
 	}
 }
 
@@ -183,7 +182,6 @@ fn (mut c Checker) markused_array_method(check bool, method_name string) {
 	}
 	match method_name {
 		'' { // array init
-			c.table.used_features.arr_init = true
 		}
 		'first' {
 			c.table.used_features.arr_first = true
