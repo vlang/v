@@ -1166,6 +1166,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.features.auto_str_ptr {
 		w.fn_by_name('isnil')
 		w.fn_by_name('tos4')
+		w.fn_by_name('str_intp')
 	}
 	if w.uses_channel {
 		w.fn_by_name('sync.new_channel_st')
@@ -1298,7 +1299,7 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	if include_panic_deps || w.uses_external_type || w.uses_asserts || w.uses_debugger
 		|| w.uses_interp {
 		if 'trace_skip_unused_walker' in w.pref.compile_defines {
-			println('>>>>> PANIC DEPS ${include_panic_deps} | ${w.uses_external_type} | ${w.uses_asserts} | ${w.uses_debugger}')
+			println('>>>>> PANIC DEPS ${include_panic_deps} | external_type=${w.uses_external_type} | asserts=${w.uses_asserts} | dbg=${w.uses_debugger}')
 		}
 		ref_array_idx_str := int(ast.array_type.ref()).str()
 		string_idx_str := ast.string_type_idx.str()
