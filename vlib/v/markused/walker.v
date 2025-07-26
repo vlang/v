@@ -1156,15 +1156,18 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.mark_by_sym_name('sync.RwMutex')
 	}
 	if w.uses_array {
-		w.fn_by_name('__new_array_noscan')
+		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+			w.fn_by_name('__new_array_noscan')
+			w.fn_by_name('new_array_from_c_array_noscan')
+			w.fn_by_name('__new_array_with_multi_default_noscan')
+			w.fn_by_name('__new_array_with_array_default_noscan')
+			w.fn_by_name('__new_array_with_default_noscan')
+		}
 		w.fn_by_name('__new_array')
 		w.fn_by_name('new_array_from_c_array')
-		w.fn_by_name('new_array_from_c_array_noscan')
 		w.fn_by_name('__new_array_with_multi_default')
-		w.fn_by_name('__new_array_with_multi_default_noscan')
 		w.fn_by_name('__new_array_with_array_default')
 		w.fn_by_name('__new_array_with_default')
-		w.fn_by_name('__new_array_with_default_noscan')
 		w.fn_by_name(int(ast.array_type.ref()).str() + '.set')
 	}
 	if w.uses_ct_fields {
@@ -1277,11 +1280,13 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 		ref_array_idx_str := int(ast.array_type.ref()).str()
 		string_idx_str := ast.string_type_idx.str()
 
-		w.fn_by_name('__new_array_with_default')
-		w.fn_by_name('__new_array_with_default_noscan')
+		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+			w.fn_by_name('__new_array_with_default_noscan')
+			w.fn_by_name(ref_array_idx_str + '.push_noscan')
+		}
 		w.fn_by_name('str_intp')
+		w.fn_by_name('__new_array_with_default')
 		w.fn_by_name(ref_array_idx_str + '.push')
-		w.fn_by_name(ref_array_idx_str + '.push_noscan')
 		w.fn_by_name(string_idx_str + '.substr')
 		w.fn_by_name('v_fixed_index')
 		w.mark_by_sym_name('StrIntpData')
