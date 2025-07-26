@@ -1218,23 +1218,22 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
 		eprintln('>>>>>>>>>> PRINT TYPES ${w.table.used_features.print_types.keys().map(w.table.type_to_str(it))}')
-		for typ, _ in w.table.used_features.print_types {
-			w.mark_by_type(typ)
-		}
-		eprintln('>>>>>>>>>> ALL_FNS')
+	}
+	for typ, _ in w.table.used_features.print_types {
+		w.mark_by_type(typ)
+	}
+	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+		eprintln('>>>>>>>>>> ALL_FNS LOOP')
 	}
 	// println(w.table.used_features.comptime_syms)
 	mut has_ptr_print := false
 	for k, mut func in w.all_fns {
 		if k.ends_with('.str') {
-			idx := func.receiver.typ.idx()
-			if idx in w.used_syms {
+			if func.receiver.typ.idx() in w.used_syms {
 				w.fn_by_name(k)
 				if !has_ptr_print && func.receiver.typ.is_ptr() {
 					w.fn_by_name('ptr_str')
 				}
-			} else if idx in w.table.used_features.print_types {
-				w.fn_by_name(k)
 			}
 			continue
 		}
