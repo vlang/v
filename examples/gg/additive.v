@@ -2,7 +2,6 @@ module main
 
 import os
 import gg
-import gx
 import math
 
 @[heap]
@@ -42,7 +41,7 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: myconfig.img_rect.x + f32(math.sin(f32(window.ctx.frame) / 10.0) * 60)
 			y: myconfig.img_rect.y + f32(math.cos(f32(window.ctx.frame) / 10.0) * 60)
 		}
-		color:    gx.Color{255, 0, 0, 255}
+		color:    gg.Color{255, 0, 0, 255}
 		effect:   .add
 	})
 
@@ -54,7 +53,7 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: myconfig.img_rect.x + f32(math.sin(f32(window.ctx.frame) / 10.0) * 80)
 			y: myconfig.img_rect.y + f32(math.cos(f32(window.ctx.frame) / 10.0) * 80)
 		}
-		color:    gx.Color{0, 255, 0, 255}
+		color:    gg.Color{0, 255, 0, 255}
 		effect:   .add
 	})
 
@@ -66,7 +65,7 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: myconfig.img_rect.x + f32(math.sin(f32(window.ctx.frame) / 10.0) * 100)
 			y: myconfig.img_rect.y + f32(math.cos(f32(window.ctx.frame) / 10.0) * 100)
 		}
-		color:    gx.Color{0, 0, 255, 255}
+		color:    gg.Color{0, 0, 255, 255}
 		effect:   .add
 	})
 
@@ -78,7 +77,7 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: 50
 			y: 0
 		}
-		color:    gx.Color{255, 0, 0, 255}
+		color:    gg.Color{255, 0, 0, 255}
 		effect:   .add
 	})
 
@@ -89,7 +88,7 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: 50
 			y: 50
 		}
-		color:    gx.Color{0, 255, 0, 255}
+		color:    gg.Color{0, 255, 0, 255}
 		effect:   .add
 	})
 
@@ -100,7 +99,7 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: 50
 			y: 100
 		}
-		color:    gx.Color{0, 0, 255, 255}
+		color:    gg.Color{0, 0, 255, 255}
 		effect:   .add
 	})
 
@@ -115,7 +114,7 @@ fn main() {
 		width:        800
 		height:       600
 		user_data:    window
-		bg_color:     gx.gray
+		bg_color:     gg.gray
 		// FNs
 		init_fn:  window.init
 		frame_fn: window.draw

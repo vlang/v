@@ -1,16 +1,15 @@
 module anim
 
 import gg
-import gx
 import sim
 import sim.args as simargs
 
-const bg_color = gx.white
+const bg_color = gg.white
 
 struct Pixel {
 	x     f32
 	y     f32
-	color gx.Color
+	color gg.Color
 }
 
 pub struct App {

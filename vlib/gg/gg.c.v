@@ -5,7 +5,6 @@ module gg
 
 import os
 import os.font
-import gx
 import time
 import sokol.sapp
 import sokol.sgl
@@ -93,9 +92,9 @@ pub:
 	window_title      string // the desired title of the window
 	icon              sapp.IconDesc
 	html5_canvas_name string = 'canvas'
-	borderless_window bool     // TODO: implement or deprecate
-	always_on_top     bool     // TODO: implement or deprecate
-	bg_color          gx.Color // The background color of the window. By default, the first thing gg does in ctx.begin(), is clear the whole buffer with that color.
+	borderless_window bool  // TODO: implement or deprecate
+	always_on_top     bool  // TODO: implement or deprecate
+	bg_color          Color // The background color of the window. By default, the first thing gg does in ctx.begin(), is clear the whole buffer with that color.
 	init_fn           FNCb   = unsafe { nil } // Called once, after Sokol has finished its setup. Some gg and Sokol functions have to be called *in this* callback, or after this callback, but not before
 	frame_fn          FNCb   = unsafe { nil } // Called once per frame, usually 60 times a second (depends on swap_interval). See also https://dri.freedesktop.org/wiki/ConfigurationOptions/#synchronizationwithverticalrefreshswapintervals
 	native_frame_fn   FNCb   = unsafe { nil }
@@ -581,7 +580,7 @@ pub fn (ctx &Context) quit() {
 }
 
 // set_bg_color sets the color of the window background to `c`.
-pub fn (mut ctx Context) set_bg_color(c gx.Color) {
+pub fn (mut ctx Context) set_bg_color(c Color) {
 	ctx.clear_pass = gfx.create_clear_pass_action(f32(c.r) / 255.0, f32(c.g) / 255.0,
 		f32(c.b) / 255.0, f32(c.a) / 255.0)
 }
@@ -697,13 +696,13 @@ pub mut:
 	width            int  // minimum width
 	height           int  // minimum height
 	show             bool // do not show by default, use `-d show_fps` or set it manually in your app to override with: `app.gg.fps.show = true`
-	text_config      gx.TextCfg = gx.TextCfg{
-		color:          gx.yellow
+	text_config      TextCfg = TextCfg{
+		color:          yellow
 		size:           20
 		align:          .center
 		vertical_align: .middle
 	}
-	background_color gx.Color = gx.Color{
+	background_color Color = Color{
 		r: 0
 		g: 0
 		b: 0

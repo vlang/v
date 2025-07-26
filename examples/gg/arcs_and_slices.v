@@ -1,16 +1,15 @@
 module main
 
 import gg
-import gx
 import math
 
 const win_width = 700
 const win_height = 800
-const bg_color = gx.white
+const bg_color = gg.white
 
 // A transparent color is used to aid in verifying that
 // rendering is precise on each of the arc types (e.g. no overlapping or double rendered slices)
-const colour = gx.rgba(100, 100, 0, 100)
+const colour = gg.rgba(100, 100, 0, 100)
 
 enum Selection {
 	segs = 0

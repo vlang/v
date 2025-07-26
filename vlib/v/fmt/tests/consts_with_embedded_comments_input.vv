@@ -1,8 +1,8 @@
-import gx
+import gg
 
 const (
-        color = //gx.rgb(167,236,82)
-                gx.rgb(50, 90, 110)
+        color = //gg.rgb(167,236,82)
+                gg.rgb(50, 90, 110)
 )
 
 fn main() {}

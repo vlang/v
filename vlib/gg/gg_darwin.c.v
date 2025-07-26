@@ -20,5 +20,3 @@ fn C.darwin_draw_image(f32, f32, f32, f32, &Image)
 
 fn C.darwin_draw_circle(f32, f32, f32, voidptr)
 fn C.darwin_draw_circle_empty(f32, f32, f32, voidptr)
-
-//, gx.Color c)
