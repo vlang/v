@@ -4118,7 +4118,6 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			c.error('`mut` is not allowed with `=` (use `:=` to declare a variable)',
 				node.pos)
 		}
-		c.markused_external_type(!c.is_builtin_mod && node.language == .v && node.name.contains('.'))
 		if mut obj := node.scope.find(node.name) {
 			match mut obj {
 				ast.GlobalField {

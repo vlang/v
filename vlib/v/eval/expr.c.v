@@ -111,10 +111,10 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 
 					if func is ast.FnDecl {
 						e.run_func(func as ast.FnDecl, ...args)
-						if e.return_values.len == 1 {
-							return e.return_values[0]
+						return if e.return_values.len == 1 {
+							e.return_values[0]
 						} else {
-							return e.return_values
+							e.return_values
 						}
 					}
 					e.error('unknown function: ${mod}.${name} at line ${expr.pos.line_nr}')
@@ -145,15 +145,16 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.IfExpr {
 			for i, branch in expr.branches {
+				is_else_branch := expr.has_else && expr.branches.len == i + 1
 				result := if expr.is_comptime {
 					e.comptime_cond(branch.cond)
-				} else if expr.branches.len != i + 1 {
+				} else if !is_else_branch {
 					e.expr(branch.cond, ast.bool_type_idx) as bool
 				} else {
 					false
 				}
 
-				if result || expr.branches.len == i + 1 {
+				if result || is_else_branch {
 					stmts := branch.stmts.filter(it is ast.ExprStmt)
 					if stmts.len > 0 {
 						// a := if x == 1 { 100 } else { 200 }, we need to get expr result
@@ -498,6 +499,41 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.PrefixExpr {
 			match expr.op {
+				.not {
+					return !(e.expr(expr.right, ast.bool_type) as bool)
+				}
+				.bit_not {
+					x := e.expr(expr.right, expr.right_type)
+					match x {
+						Uint {
+							return Uint{
+								val:  ~x.val
+								size: x.size
+							}
+						}
+						Int {
+							return Int{
+								val:  ~x.val
+								size: x.size
+							}
+						}
+						bool {
+							return !(x as bool)
+						}
+						i64 {
+							return ~(x as i64)
+						}
+						rune {
+							return ~(x as rune)
+						}
+						u8 {
+							return ~(x as u8)
+						}
+						else {
+							e.error('operator `~` can only be used with integer types: ${e.table.sym(expr.right_type).str()}')
+						}
+					}
+				}
 				.amp {
 					x := e.expr(expr.right, expr.right_type)
 					return Ptr{

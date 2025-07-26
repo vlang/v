@@ -64,6 +64,7 @@ pub mut:
 	scope_idx              int      // this is increased when e.open_scope() is called, decreased when e.close_scope() (and all variables with that scope level deleted)
 	returning              bool
 	return_values          []Object
+	executed_return_stmt   bool // already executed a return stmt in func
 	cur_mod                string
 	cur_file               string
 
@@ -152,9 +153,14 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 				scope_idx: e.scope_idx
 			}
 		}
+		prev_executed_return_stmt := e.executed_return_stmt
+		e.executed_return_stmt = false
+		e.returning = false
+		e.return_values = []
 		e.stmts(func.stmts)
 		e.returning = false
 		e.close_scope()
+		e.executed_return_stmt = prev_executed_return_stmt
 		e.scope_idx = old_scope
 		e.local_vars = e.local_vars_stack.pop()
 	}
@@ -181,9 +187,12 @@ pub fn (mut e Eval) register_symbols(mut files []&ast.File) {
 			for _, field in fields {
 				e.returning = true
 				e.return_values = []
+				prev_executed_return_stmt := e.executed_return_stmt
+				e.executed_return_stmt = false
 				e.mods[mod][field.name.all_after_last('.')] = e.expr(field.expr, field.typ)
 				e.returning = false
 				e.return_values = []
+				e.executed_return_stmt = prev_executed_return_stmt
 				if mod == 'os' && field.name.all_after_last('.') == 'args' {
 					mut res := Array{}
 					res.val << e.pref.out_name.all_after_last('/')
@@ -316,6 +325,11 @@ pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
 					e.error('unsupported prefix expression')
 				}
 			}
+		}
+		ast.InfixExpr {
+			left := e.comptime_cond(cond.left)
+			right := e.comptime_cond(cond.right)
+			return e.infix_expr(left, right, cond.op, ast.bool_type) as bool
 		}
 		else {
 			e.error('unsupported expression')

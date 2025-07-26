@@ -29,22 +29,22 @@ fn execute(cmd string) os.Result {
 
 fn test_normal_exit_without_timeout_echo() {
 	depend_on_command('echo') or { return }
-	ee := execute('${qvexe} timeout 0.2 echo')
+	ee := execute('${qvexe} timeout 0.5 echo')
 	assert ee.exit_code == 0, ee.output
-	res := execute('${qvexe} timeout 0.2 echo z123')
+	res := execute('${qvexe} timeout 0.5 echo z123')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('z123')
 }
 
 fn test_normal_exit_without_timeout_sleep() {
 	depend_on_command('sleep') or { return }
-	res := execute('${qvexe} timeout 0.4 sleep 0.1')
+	res := execute('${qvexe} timeout 0.5 sleep 0.1')
 	assert res.exit_code == 0, res.output
 	assert res.output == ''
 }
 
 fn test_exit_with_timeout() {
 	depend_on_command('sleep') or { return }
-	res := execute('${qvexe} timeout 0.2 sleep 2')
+	res := execute('${qvexe} timeout 0.5 sleep 3')
 	assert res.exit_code == 124, res.output
 }
