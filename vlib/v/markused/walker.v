@@ -201,9 +201,11 @@ pub fn (mut w Walker) mark_markused_syms() {
 }
 
 pub fn (mut w Walker) mark_markused_decltypes() {
-	// for _, decl in w.all_decltypes {
-	// 	w.mark_by_type(decl.typ)
-	// }
+	for _, decl in w.all_decltypes {
+		if decl.is_markused {
+			w.mark_by_type(decl.typ)
+		}
+	}
 }
 
 pub fn (mut w Walker) stmt(node_ ast.Stmt) {

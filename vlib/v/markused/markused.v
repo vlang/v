@@ -473,7 +473,9 @@ fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast
 					all_structs[node.name] = node
 				}
 				ast.TypeDecl {
-					all_decltypes[node.name] = node
+					if node.is_markused {
+						all_decltypes[node.name] = node
+					}
 				}
 				else {}
 			}
