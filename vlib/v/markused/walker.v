@@ -916,7 +916,7 @@ pub fn (mut w Walker) fn_by_name(fn_name string) {
 		defer {
 			w.level--
 		}
-		receiver_name := if fn_name.contains('.') {
+		receiver_name := if fn_name.contains('.') && fn_name.all_before_last('.').int() > 0 {
 			w.table.type_to_str(fn_name.all_before_last('.').int()) + '.'
 		} else {
 			''
@@ -1251,6 +1251,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('new_map_init')
 		w.fn_by_name('map_hash_string')
 		w.mark_by_sym_name('map')
+		w.mark_by_sym_name('DenseArray')
 
 		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 			w.fn_by_name('new_map_noscan_key')
@@ -1259,6 +1260,11 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name('new_map_init_noscan_key')
 			w.fn_by_name('new_map_init_noscan_value')
 			w.fn_by_name('new_map_init_noscan_key_value')
+		}
+	} else {
+		for map_fn_name in ['new_map', 'new_map_init', 'map_hash_string', 'new_dense_array',
+			'new_dense_array_noscan'] {
+			w.used_fns.delete(map_fn_name)
 		}
 	}
 }
