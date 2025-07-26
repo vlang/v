@@ -1163,6 +1163,8 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('__new_array_with_multi_default')
 		w.fn_by_name('__new_array_with_multi_default_noscan')
 		w.fn_by_name('__new_array_with_array_default')
+		w.fn_by_name('__new_array_with_default')
+		w.fn_by_name('__new_array_with_default_noscan')
 		w.fn_by_name(int(ast.array_type.ref()).str() + '.set')
 	}
 	if w.uses_ct_fields {
