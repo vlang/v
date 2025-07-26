@@ -348,6 +348,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					c.table.used_features.comptime_syms[c.unwrap_generic(node.return_type)] = true
 					c.table.used_features.comptime_syms[node.return_type] = true
 				}
+				if node.receiver.typ.has_flag(.generic) {
+					c.table.used_features.comptime_syms[node.receiver.typ] = true
+					c.table.used_features.comptime_syms[c.unwrap_generic(node.receiver.typ)] = true
+				}
 			}
 			if param.name == node.mod && param.name != 'main' {
 				c.error('duplicate of a module name `${param.name}`', param.pos)
@@ -2030,6 +2034,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	// or there will be hard tRo diagnose 0 type panics in cgen.
 	node.return_type = left_type
 	node.receiver_type = left_type
+
+	if is_generic {
+		c.table.used_features.comptime_syms[c.unwrap_generic(left_type)] = true
+	}
 
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0 {
 		c.table.unwrap_generic_type(left_type, c.table.cur_fn.generic_names, c.table.cur_concrete_types)

@@ -1145,6 +1145,11 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
 		eprintln('>>>>>>>>>> DEPS USAGE')
 	}
+	if w.features.used_maps > 0 {
+		w.fn_by_name('new_map')
+		w.fn_by_name('new_map_init')
+		w.fn_by_name('map_hash_string')
+	}
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')
 	}
@@ -1197,7 +1202,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	// println(w.table.used_features.comptime_syms)
 	mut has_ptr_print := false
-	for k, func in w.all_fns {
+	for k, mut func in w.all_fns {
 		if k.ends_with('.str') {
 			if func.receiver.typ.idx() in w.used_syms {
 				w.fn_by_name(k)
@@ -1207,18 +1212,50 @@ fn (mut w Walker) mark_resource_dependencies() {
 			} else if func.receiver.typ.idx() in w.table.used_features.print_types {
 				w.fn_by_name(k)
 			}
-		} else if w.uses_atomic && k.starts_with('_Atomic') {
+			continue
+		}
+		if w.uses_atomic && k.starts_with('_Atomic') {
 			w.fn_by_name(k)
-		} else if func.name in ['+', '-', '*', '%', '/', '<', '=='] {
+			continue
+		}
+		if func.name in ['+', '-', '*', '%', '/', '<', '=='] {
 			if func.receiver.typ.idx() in w.used_syms {
 				w.fn_by_name(k)
 			}
-		} else if !func.is_static_type_method && func.receiver.typ != ast.void_type
+			continue
+		}
+		if !func.is_static_type_method && func.receiver.typ != ast.void_type
 			&& func.generic_names.len > 0 {
 			if func.receiver.typ.set_nr_muls(0) in w.table.used_features.comptime_syms
 				|| func.receiver.typ in w.table.used_features.comptime_syms {
 				w.fn_by_name(k)
+				continue
 			}
+		}
+		if w.features.used_maps > 0 {
+			mut method_receiver_typename := ''
+			if func.is_method {
+				method_receiver_typename = w.table.type_to_str(func.receiver.typ)
+			}
+			if method_receiver_typename == '&map' || method_receiver_typename == '&DenseArray'
+				|| k.starts_with('map_') {
+				w.fn_decl(mut func)
+				continue
+			}
+		}
+	}
+
+	if w.features.used_maps > 0 {
+		w.fn_by_name('new_map')
+		w.fn_by_name('new_map_init')
+		w.fn_by_name('map_hash_string')
+		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+			w.fn_by_name('new_map_noscan_key')
+			w.fn_by_name('new_map_noscan_value')
+			w.fn_by_name('new_map_noscan_key_value')
+			w.fn_by_name('new_map_init_noscan_key')
+			w.fn_by_name('new_map_init_noscan_value')
+			w.fn_by_name('new_map_init_noscan_key_value')
 		}
 	}
 }
@@ -1279,6 +1316,9 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 }
 
 pub fn (mut w Walker) mark_generic_types() {
+	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+		eprintln('>>>>>>>>>> COMPTIME SYMS+CALLS')
+	}
 	for k, _ in w.table.used_features.comptime_calls {
 		w.fn_by_name(k)
 	}
