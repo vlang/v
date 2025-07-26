@@ -1,3 +1,4 @@
+// vtest build: !musl? // gx now transitively imports sokol, and that needs GL/gl.h, which is not installed on the musl CIs
 import gg
 
 fn test_hex() {
