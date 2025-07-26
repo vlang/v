@@ -70,6 +70,9 @@ jobs:
           echo "Run vsql/connection_test.v"
           v vsql/connection_test.v
 
+      - name: Test vlang/gui
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: .github/workflows/compile_vlang_gui_examples.sh
       - name: Test discord.v
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/workflows/compile_discordv.sh

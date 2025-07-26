@@ -566,9 +566,10 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 	mut files := map[string][]FileData{}
 	// TODO: do not use split, but only indexes, to reduce copying of potentially large data
 	sections := body.split(boundary)
-	fields := sections[1..sections.len - 1]
+	fields := sections#[1..sections.len - 1]
+	mut line_segments := []LineSegmentIndexes{cap: 100}
 	for field in fields {
-		mut line_segments := []LineSegmentIndexes{cap: 100}
+		line_segments.clear()
 		mut line_idx, mut line_start := 0, 0
 		for cidx, c in field {
 			if line_idx >= 6 {
@@ -582,6 +583,9 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 			}
 		}
 		line_segments << LineSegmentIndexes{line_start, field.len}
+		if line_segments.len < 2 {
+			continue
+		}
 		line1 := field[line_segments[1].start..line_segments[1].end]
 		line2 := field[line_segments[2].start..line_segments[2].end]
 		disposition := parse_disposition(line1.trim_space())

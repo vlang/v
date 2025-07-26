@@ -3,6 +3,7 @@ module time
 // A lot of these are taken from the Go library.
 pub type Duration = i64
 
+@[markused]
 pub const nanosecond = Duration(1)
 pub const microsecond = Duration(1000 * nanosecond)
 pub const millisecond = Duration(1000 * microsecond)

@@ -137,6 +137,9 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.is_verbose {
 		println('running ${run_file} with arguments ${run_args.join(' ')}')
 	}
+	if b.pref.is_shared {
+		verror('can not run shared library ${run_file}')
+	}
 	mut ret := 0
 	if b.pref.use_os_system_to_run {
 		command_to_run := os.quoted_path(run_file) + ' ' + run_args.join(' ')

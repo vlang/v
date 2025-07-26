@@ -37,9 +37,7 @@ pub mut:
 	used_syms      map[int]bool    // filled in by markused
 	used_veb_types []Type          // veb context types, filled in by checker
 	used_maps      int             // how many times maps were used, filled in by markused
-	used_arrays    int             // how many times arrays were used, filled in by markused
 	used_none      int             // how many times `none` was used, filled in by markused
-	external_types bool            // true, when external type is used
 	// json             bool            // json is imported
 	debugger       bool            // debugger is used
 	comptime_calls map[string]bool // resolved name to call on comptime

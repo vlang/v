@@ -131,12 +131,19 @@ fn build_fast_tcc() {
 
 fn v_self_compilation_usecache_tcc() {
 	exec('unset VFLAGS')
+
+	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')
 	exec('./examples/hello_world')
+
+	exec('v wipe-cache')
 	exec('v -o v2 -usecache cmd/v')
 	exec('./v2 -o v3 -usecache cmd/v')
 	exec('./v3 version')
+
+	exec('v wipe-cache')
 	exec('./v3 -o tetris -usecache examples/tetris/tetris.v')
+	exec('rm -f ./examples/hello_world v2 v3 tetris')
 }
 
 fn test_password_input_tcc() {
@@ -198,13 +205,18 @@ fn v_self_compilation_gcc() {
 fn v_self_compilation_usecache_gcc() {
 	exec('unset VFLAGS')
 
+	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')
 	exec('examples/hello_world')
 
+	exec('v wipe-cache')
 	exec('v -o v2 -usecache cmd/v')
 	exec('./v2 -o v3 -usecache cmd/v')
 	exec('./v3 version')
+
+	exec('v wipe-cache')
 	exec('./v3 -o tetris -usecache examples/tetris/tetris.v')
+	exec('rm -f ./examples/hello_world v2 v3 tetris')
 }
 
 fn verify_v_test_works_gcc() {
@@ -312,11 +324,17 @@ fn v_self_compilation_clang() {
 
 fn v_self_compilation_usecache_clang() {
 	exec('unset VFLAGS')
+
+	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')
 	exec('./examples/hello_world')
+
+	exec('v wipe-cache')
 	exec('v -o v2 -usecache cmd/v')
 	exec('./v2 -o v3 -usecache cmd/v')
 	exec('./v3 version')
+
+	exec('v wipe-cache')
 	exec('./v3 -o tetris -usecache examples/tetris/tetris.v')
 	exec('rm -f ./examples/hello_world v2 v3 tetris')
 }

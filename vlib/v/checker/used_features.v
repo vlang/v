@@ -63,12 +63,6 @@ fn (mut c Checker) markused_castexpr(mut node ast.CastExpr, to_type ast.Type, mu
 	}
 }
 
-fn (mut c Checker) markused_external_type(check bool) {
-	if check {
-		c.table.used_features.external_types = true
-	}
-}
-
 fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
 	c.markused_comptime_call(true, '${int(c.unwrap_generic(c.comptime.comptime_for_method.receiver_type))}.${c.comptime.comptime_for_method.name}')
 	if c.inside_anon_fn {
@@ -111,15 +105,6 @@ fn (mut c Checker) markused_comptimefor(mut node ast.ComptimeFor, unwrapped_expr
 }
 
 fn (mut c Checker) markused_call_expr(left_type ast.Type, mut node ast.CallExpr) {
-	if !c.is_builtin_mod && c.mod == 'main' && !c.table.used_features.external_types {
-		if node.is_method {
-			if c.table.sym(node.left_type).is_builtin() {
-				c.table.used_features.external_types = true
-			}
-		} else if node.name.contains('.') {
-			c.table.used_features.external_types = true
-		}
-	}
 	if left_type != 0 && left_type.is_ptr() && !c.table.used_features.auto_str_ptr
 		&& node.name == 'str' {
 		c.table.used_features.auto_str_ptr = true
