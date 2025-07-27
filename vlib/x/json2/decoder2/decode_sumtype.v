@@ -164,7 +164,8 @@ fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node Node[Value
 		}
 
 		if unsafe {
-			vmemcmp(decoder.json.str + key_info.position, type_field.str, type_field.len) == 0
+			key_info.position + type_field.len <= decoder.json.len
+				&& 0 == vmemcmp(decoder.json.str + key_info.position, type_field.str, type_field.len)
 		} {
 			// find type field
 			type_field_node = type_field_node.next
@@ -184,8 +185,8 @@ fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node Node[Value
 		unsafe {
 		}
 		if unsafe {
-			vmemcmp(decoder.json.str + type_field_node.value.position + 1, variant_name.str,
-				variant_name.len) == 0
+			type_field_node.value.position + 1 + variant_name.len <= decoder.json.len
+				&& 0 == vmemcmp(decoder.json.str + type_field_node.value.position + 1, variant_name.str, variant_name.len)
 		} {
 			return true
 		}
