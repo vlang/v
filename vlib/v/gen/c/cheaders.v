@@ -132,10 +132,10 @@ const c_common_macros = '
     #elif defined(__ARMEB__) || defined(__BIG_ENDIAN__)
         #define __V_little_endian 0
     #else
-        #error "Cannot determine endianness for ARM32. Please define __V_little_endian manually."
+        #error "Cannot determine endianness for ARM32. Please please raise an issue on GitHub: https://github.com/vlang/v/issues/new/choose."
     #endif
 #else
-    #error "Cannot determine endianness. Please define __V_little_endian manually."
+    #error "Cannot determine endianness. Please please raise an issue on GitHub: https://github.com/vlang/v/issues/new/choose."
 #endif
 
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
