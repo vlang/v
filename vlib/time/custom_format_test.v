@@ -36,3 +36,9 @@ fn test_hours() {
 	assert time.parse('2023-08-04 22:00:45')!.custom_format('ii A i a hh A h a') == '10 PM 10 pm 10 PM 10 pm'
 	assert time.parse('2023-08-04 23:00:45')!.custom_format('ii A i a hh A h a') == '11 PM 11 pm 11 PM 11 pm'
 }
+
+fn test_zero_date() {
+	zero_date := time.Time{}
+	res := zero_date.custom_format('M MM Mo MMM MMMM |1| D DD DDD DDDD |2| d dd ddd dddd |3| YY YYYY a A |4| H HH h hh k kk i ii e |5| m mm s ss Z ZZ ZZZ |6| Do DDDo Q Qo QQ |7| N NN w wo ww |8| M/D/YYYY N-HH:mm:ss Qo?a')
+	assert res == '0 00 0th Jan January |1| 0 00 0 000 |2| -1 Mo Mon Monday |3|  0 am AM |4| 0 00 12 12 1 01 0 00 e |5| 0 00 0 00 +3 +0300 +03:00 |6| 0th 0th 1 1st 01 |7| AD Anno Domini 49 49th 49 |8| 0/0/0 AD-00:00:00 1st?am'
+}
