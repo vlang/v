@@ -1241,7 +1241,9 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	}
 	g.expr(node.left)
 	if !is_ctemp_fixed_ret {
+		g.write(' ')
 		g.write(opstr)
+		g.write(' ')
 	} else {
 		g.write(', ')
 	}
