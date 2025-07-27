@@ -20,7 +20,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	trace_skip_unused_just_unused_fns := pref_.compile_values['trace_skip_unused_just_unused_fns'] == 'true'
 	used_fns := pref_.compile_values['used_fns']
 
-	byteptr_idx_str := ast.byteptr_type_idx.str()
 	charptr_idx_str := ast.charptr_type_idx.str()
 	string_idx_str := ast.string_type_idx.str()
 	array_idx_str := ast.array_type_idx.str()
@@ -85,13 +84,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << '__new_array_with_array_default'
 			core_fns << '__new_array_with_array_default_noscan'
 			core_fns << 'new_array_from_c_array'
-			// byteptr and charptr
-			core_fns << byteptr_idx_str + '.vstring'
-			core_fns << byteptr_idx_str + '.vstring_with_len'
-			core_fns << byteptr_idx_str + '.vstring_literal'
-			core_fns << charptr_idx_str + '.vstring'
-			core_fns << charptr_idx_str + '.vstring_with_len'
-			core_fns << charptr_idx_str + '.vstring_literal'
 		}
 		if table.used_features.index || pref_.is_shared {
 			include_panic_deps = true
@@ -152,7 +144,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			include_panic_deps = true
 			core_fns << '_option_ok'
 			core_fns << '_result_ok'
-			core_fns << charptr_idx_str + '.vstring_literal'
 		}
 		if table.used_features.anon_fn {
 			core_fns << 'memdup_uncollectable'

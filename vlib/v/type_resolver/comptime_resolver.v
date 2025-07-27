@@ -22,6 +22,7 @@ pub fn (t &ResolverInfo) has_comptime_expr(node ast.Expr) bool {
 		&& node.init_fields.any(it.expr is ast.AnonFn && it.expr.decl.generic_names.len > 0))
 		|| (node is ast.PostfixExpr && t.has_comptime_expr(node.expr))
 		|| (node is ast.SelectorExpr && t.has_comptime_expr(node.expr))
+		|| (node is ast.ArrayInit && node.elem_type.has_flag(.generic))
 		|| (node is ast.InfixExpr && (t.has_comptime_expr(node.left)
 		|| t.has_comptime_expr(node.right)))
 }

@@ -1262,12 +1262,14 @@ fn (mut w Walker) mark_resource_dependencies() {
 		eprintln('>>>>>>>>>> ALL_FNS LOOP')
 	}
 	mut has_ptr_print := false
+	has_str_call := w.uses_interp || w.uses_asserts || w.uses_str || w.features.print_types.len > 0
 	for k, mut func in w.all_fns {
-		if (w.uses_interp || w.uses_str || w.features.print_types.len > 0) && k.ends_with('.str') {
+		if has_str_call && k.ends_with('.str') {
 			if func.receiver.typ.idx() in w.used_syms {
 				w.fn_by_name(k)
 				if !has_ptr_print && func.receiver.typ.is_ptr() {
 					w.fn_by_name('ptr_str')
+					has_ptr_print = true
 				}
 			}
 			continue
