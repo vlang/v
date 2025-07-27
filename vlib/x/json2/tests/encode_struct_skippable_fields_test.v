@@ -114,25 +114,25 @@ fn test_encode_struct_skipped_fields() {
 		val:  'string_val'
 		val1: 1
 		val2: 1.0
-	}) == '{"val1":1,"val2":1,"val3":"0000-00-00T00:00:00.000Z"}'
+	}) == '{"val1":1,"val2":1,"val3":"1970-01-01T00:00:00.000Z"}'
 
 	assert json.encode(StructTypeSkippedFields5{
 		val:  'string_val'
 		val1: 1
 		val2: 1.0
-	}) == '{"val2":1,"val3":"0000-00-00T00:00:00.000Z"}'
+	}) == '{"val2":1,"val3":"1970-01-01T00:00:00.000Z"}'
 
 	assert json.encode(StructTypeSkippedFields6{
 		val:  'string_val'
 		val1: 1
 		val2: 1.0
-	}) == '{"val1":1,"val3":"0000-00-00T00:00:00.000Z"}'
+	}) == '{"val1":1,"val3":"1970-01-01T00:00:00.000Z"}'
 
 	assert json.encode(StructTypeSkippedFields7{
 		val:  'string_val'
 		val1: 1
 		val2: 1.0
-	}) == '{"val":"string_val","val3":"0000-00-00T00:00:00.000Z"}'
+	}) == '{"val":"string_val","val3":"1970-01-01T00:00:00.000Z"}'
 
 	assert json.encode(StructTypeSkippedFields8{
 		val:  'string_val'

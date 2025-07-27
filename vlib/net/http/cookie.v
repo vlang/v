@@ -121,7 +121,7 @@ pub fn (c &Cookie) str() string {
 			// TODO: Log invalid cookie domain warning
 		}
 	}
-	if c.expires.year > 1600 {
+	if c.expires.unix() > 0 {
 		time_str := c.expires.http_header_string()
 		b.write_string('; expires=')
 		b.write_string(time_str)

@@ -216,11 +216,11 @@ fn test_encode_value() {
 fn test_encode_time() {
 	assert json2.encode({
 		'bro': json2.Any(time.Time{})
-	}) == '{"bro":"0000-00-00T00:00:00.000Z"}'
+	}) == '{"bro":"1970-01-01T00:00:00.000Z"}'
 
 	assert json2.encode({
 		'bro': time.Time{}
-	}) == '{"bro":"0000-00-00T00:00:00.000Z"}'
+	}) == '{"bro":"1970-01-01T00:00:00.000Z"}'
 
-	assert json2.encode(time.Time{}) == '"0000-00-00T00:00:00.000Z"'
+	assert json2.encode(time.Time{}) == '"1970-01-01T00:00:00.000Z"'
 }
