@@ -352,12 +352,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
+	walker.finalize(include_panic_deps)
+
 	table.used_features.used_none = walker.used_none
 	if walker.used_none == 0 {
 		walker.used_fns.delete('${int(ast.none_type)}.str')
 	}
-
-	walker.finalize(include_panic_deps)
 
 	if table.used_features.used_maps > 0 {
 		for k, mut mfn in all_fns {

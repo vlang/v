@@ -499,6 +499,9 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.sym(node.typ).map_info()
+		if node.typ.has_flag(.generic) {
+			c.table.used_features.comptime_syms[c.unwrap_generic(node.typ)] = true
+		}
 		if info.value_type != 0 {
 			if info.value_type.has_flag(.result) {
 				c.error('cannot use Result type as map value type', node.pos)

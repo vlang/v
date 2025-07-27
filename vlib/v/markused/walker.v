@@ -59,6 +59,7 @@ mut:
 	uses_spawn         bool
 	uses_dump          bool
 	uses_memdup        bool // sumtype cast and &Struct{}
+	uses_arr_void      bool // auto arr methods
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -563,6 +564,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					if right_sym.kind == .map {
 						w.features.used_maps++
 					}
+					if !w.uses_arr_void && right_sym.kind in [.array, .array_fixed] {
+						w.uses_arr_void = true
+					}
 				} else if node.op in [.key_is, .not_is] {
 					w.mark_by_sym(right_sym)
 				}
@@ -867,9 +871,16 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				fn_embed := '${int(embed_types.last())}.${node.name}'
 				w.fn_by_name(fn_embed)
 			}
-		} else if left_sym.info is ast.Array && node.name == 'index' {
-			if w.table.final_sym(left_sym.info.elem_type).kind == .function {
-				w.mark_by_type(w.table.find_or_register_array(ast.voidptr_type))
+		} else {
+			match left_sym.info {
+				ast.Array, ast.ArrayFixed {
+					if !w.uses_arr_void && node.name in ['contains', 'index'] {
+						if w.table.final_sym(left_sym.info.elem_type).kind == .function {
+							w.uses_arr_void = true
+						}
+					}
+				}
+				else {}
 			}
 		}
 	}
@@ -1262,6 +1273,12 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	if w.uses_memdup {
 		w.fn_by_name('memdup')
+	}
+	if w.uses_debugger {
+		w.mark_by_type(w.table.find_or_register_map(ast.string_type, ast.string_type))
+	}
+	if w.uses_arr_void {
+		w.mark_by_type(w.table.find_or_register_array(ast.voidptr_type))
 	}
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
 		eprintln('>>>>>>>>>> PRINT TYPES ${w.table.used_features.print_types.keys().map(w.table.type_to_str(it))}')
