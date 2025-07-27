@@ -36,8 +36,8 @@ fn tag_to_console(l Level, short_tag bool) string {
 			.disabled { '' }
 			.fatal { term.red('FATAL') }
 			.error { term.red('ERROR') }
-			.warn { term.yellow('WARN ') }
-			.info { term.white('INFO ') }
+			.warn { term.yellow('WARN') }
+			.info { term.white('INFO') }
 			.debug { term.magenta('DEBUG') }
 		}
 	}
@@ -60,8 +60,8 @@ fn tag_to_file(l Level, short_tag bool) string {
 			.disabled { '     ' }
 			.fatal { 'FATAL' }
 			.error { 'ERROR' }
-			.warn { 'WARN ' }
-			.info { 'INFO ' }
+			.warn { 'WARN' }
+			.info { 'INFO' }
 			.debug { 'DEBUG' }
 		}
 	}
