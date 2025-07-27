@@ -5,6 +5,16 @@ module time
 
 import strings
 
+fn iclamp(x int, a int, b int) int {
+	if x < a {
+		return a
+	}
+	if x > b {
+		return b
+	}
+	return x
+}
+
 // int_to_byte_array_no_pad fulfill buffer by part
 // it doesn't pad with leading zeros for performance reasons
 @[direct_array_access]
@@ -401,20 +411,10 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(ordinal_suffix(t.month))
 			}
 			'MMM' {
-				m := if t.month >= 1 && t.month <= 12 {
-					long_months[t.month - 1][0..3]
-				} else {
-					long_months[0][0..3]
-				}
-				sb.write_string(m)
+				sb.write_string(long_months[iclamp(0, t.month - 1, 11)][0..3])
 			}
 			'MMMM' {
-				m := if t.month >= 1 && t.month <= 12 {
-					long_months[t.month - 1]
-				} else {
-					long_months[0]
-				}
-				sb.write_string(m)
+				sb.write_string(long_months[iclamp(0, t.month - 1, 11)])
 			}
 			'D' {
 				sb.write_string(t.day.str())
@@ -438,16 +438,16 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${t.day_of_week() % 7}')
 			}
 			'dd' {
-				sb.write_string(long_days[t.day_of_week() - 1][0..2])
+				sb.write_string(long_days[iclamp(0, t.day_of_week() - 1, 6)][0..2])
 			}
 			'ddd' {
-				sb.write_string(long_days[t.day_of_week() - 1][0..3])
+				sb.write_string(long_days[iclamp(0, t.day_of_week() - 1, 6)][0..3])
 			}
 			'dddd' {
-				sb.write_string(long_days[t.day_of_week() - 1])
+				sb.write_string(long_days[iclamp(0, t.day_of_week() - 1, 6)])
 			}
 			'YY' {
-				sb.write_string(t.year.str()[2..4])
+				sb.write_string(t.year.str()#[2..4])
 			}
 			'YYYY' {
 				sb.write_string(t.year.str())
