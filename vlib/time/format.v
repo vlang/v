@@ -5,7 +5,7 @@ module time
 
 import strings
 
-pub fn iclamp(x int, a int, b int) int {
+fn iclamp(x int, a int, b int) int {
 	if x < a {
 		return a
 	}
