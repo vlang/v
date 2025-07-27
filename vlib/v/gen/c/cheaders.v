@@ -114,6 +114,30 @@ const c_common_macros = '
 	#define __V_architecture 9
 #endif
 
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+    #define __V_little_endian 1
+#elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    #define __V_little_endian 0
+#elif defined(__LITTLE_ENDIAN__) || defined(_M_IX86) || defined(_M_AMD64) || defined(_M_ARM) || defined(_M_ARM64)
+    #define __V_little_endian 1
+#elif defined(__BIG_ENDIAN__) || defined(__s390x__) || defined(__ARMEB__)
+    #define __V_little_endian 0
+#elif defined(__V_amd64) || defined(__V_x86) || defined(__V_arm64) || defined(__V_rv64) || defined(__V_rv32) || defined(__V_ppc64le) || defined(__V_loongarch64)
+    #define __V_little_endian 1
+#elif defined(__V_s390x)
+    #define __V_little_endian 0
+#elif defined(__V_arm32)
+    #if defined(__ARMEL__) || defined(__LITTLE_ENDIAN__)
+        #define __V_little_endian 1
+    #elif defined(__ARMEB__) || defined(__BIG_ENDIAN__)
+        #define __V_little_endian 0
+    #else
+        #error "Cannot determine endianness for ARM32. Please define __V_little_endian manually."
+    #endif
+#else
+    #error "Cannot determine endianness. Please define __V_little_endian manually."
+#endif
+
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
 #ifdef __GNUC__
 	#define __V_GCC__
