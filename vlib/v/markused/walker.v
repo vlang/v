@@ -129,7 +129,6 @@ pub fn (mut w Walker) mark_struct_field_default_expr_as_used(sfkey string) {
 	}
 	w.used_fields[sfkey] = true
 	sfield := w.all_fields[sfkey] or { return }
-	println('>>>> ${sfield.default_expr}')
 	w.expr(sfield.default_expr)
 }
 
@@ -424,9 +423,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				} else if node.name.contains('.') && node.name.all_before_last('.').len > 1 {
 					w.uses_external_type = true
 				}
-				// if w.uses_external_type {
-				// 	println('>>>>> ${node.name} ${node.mod} ${w.is_builtin_mod}')
-				// }
 			}
 		}
 		ast.CastExpr {
@@ -494,6 +490,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.or_expr.kind == .block {
 				w.uses_guard = true
 			}
+			w.mark_by_type(node.typ)
 			w.or_block(node.or_expr)
 			if node.left_type == 0 {
 				return
@@ -770,7 +767,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	if w.level == 0 {
 		last_is_builtin_mod := w.is_builtin_mod
-		w.is_builtin_mod = node.mod in ['builtin', 'os', 'strconv']
+		w.is_builtin_mod = node.mod in ['builtin', 'os', 'strconv', 'builtin.closure']
 		defer {
 			w.is_builtin_mod = last_is_builtin_mod
 		}
@@ -853,6 +850,10 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			if embed_types.len != 0 {
 				fn_embed := '${int(embed_types.last())}.${node.name}'
 				w.fn_by_name(fn_embed)
+			}
+		} else if left_sym.info is ast.Array && node.name == 'index' {
+			if w.table.final_sym(left_sym.info.elem_type).kind == .function {
+				w.mark_by_type(w.table.find_or_register_array(ast.voidptr_type))
 			}
 		}
 	}

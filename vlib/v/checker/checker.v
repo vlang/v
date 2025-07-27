@@ -5135,6 +5135,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	}
 	c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
 	c.check_expr_option_or_result_call(node, typ)
+	node.typ = typ
 	return typ
 }
 
