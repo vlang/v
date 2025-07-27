@@ -58,6 +58,7 @@ mut:
 	uses_free          bool // has .free() call
 	uses_spawn         bool
 	uses_dump          bool
+	uses_sumtype_cast  bool
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -436,6 +437,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.CastExpr {
 			w.expr(node.expr)
 			w.expr(node.arg)
+			if !w.uses_sumtype_cast {
+				fsym := w.table.final_sym(node.typ)
+				w.uses_sumtype_cast = fsym.kind == .sum_type
+			}
 			w.mark_by_type(node.typ)
 			if node.typ.has_flag(.option) {
 				w.used_option++
@@ -1251,6 +1256,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_spawn {
 		w.fn_by_name('malloc')
 		w.fn_by_name('tos3')
+	}
+	if w.uses_sumtype_cast {
+		w.fn_by_name('memdup')
 	}
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
 		eprintln('>>>>>>>>>> PRINT TYPES ${w.table.used_features.print_types.keys().map(w.table.type_to_str(it))}')
