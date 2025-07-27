@@ -170,6 +170,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << '__new_array'
 			core_fns << 'new_array_from_c_array'
 			core_fns << 'new_array_from_c_array_noscan'
+			core_fns << '__new_array_with_default'
+			core_fns << '__new_array_with_default_noscan'
 			core_fns << '__new_array_with_multi_default'
 			core_fns << '__new_array_with_multi_default_noscan'
 			core_fns << '__new_array_with_array_default'
