@@ -12,7 +12,7 @@ const false_in_string = 'false'
 
 const float_zero_in_string = '0.0'
 
-const whitespace_chars = [` `, `\t`, `\n`]!
+const whitespace_chars = [` `, `\t`, `\n`, `\r`]!
 
 // Node represents a node in a linked list to store ValueInfo.
 struct Node[T] {
@@ -315,9 +315,6 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			// check if the JSON string is an empty array
 			if checker_end >= checker.checker_idx + 2 {
 				checker.checker_idx++
-				if val[checker.checker_idx] == `]` {
-					return
-				}
 			} else {
 				return checker.error('EOF error: There are not enough length for an array')
 			}
@@ -332,7 +329,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				}
 
 				if val[checker.checker_idx] == `]` {
-					return
+					break
 				}
 
 				if checker.checker_idx >= checker_end - 1 {
@@ -806,8 +803,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 											$if field.typ is $option {
 												// it would be nicer to do this at the start of the function
 												// but options cant be passed to generic functions
-												if decoder.current_node.value.length == 4
-													&& decoder.json[decoder.current_node.value.position..decoder.current_node.value.position + 4] == 'null' {
+												if decoder.current_node.value.value_kind == .null {
 													val.$(field.name) = none
 												} else {
 													mut unwrapped_val := create_value_from_optional(val.$(field.name)) or {
@@ -979,18 +975,6 @@ fn get_value_kind(value u8) ValueKind {
 
 fn create_value_from_optional[T](val ?T) ?T {
 	return T{}
-}
-
-fn utf8_byte_len(unicode_value u32) int {
-	if unicode_value <= 0x7F {
-		return 1
-	} else if unicode_value <= 0x7FF {
-		return 2
-	} else if unicode_value <= 0xFFFF {
-		return 3
-	} else {
-		return 4
-	}
 }
 
 // string_buffer_to_generic_number converts a buffer of bytes (data) into a generic type T and
