@@ -1190,6 +1190,11 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 	g.write(' ${node.op.str()} 2') // none state
 }
 
+struct VSafeArithmeticOp {
+	typ ast.Type
+	op  token.Kind
+}
+
 // gen_plain_infix_expr generates basic code for infix expressions,
 // without any overloading of any kind
 // i.e. v`a + 1` => c`a + 1`
@@ -1200,6 +1205,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)
 	is_safe_div := node.op == .div && g.pref.div_by_zero_is_zero
+	is_safe_mod := node.op == .mod && g.pref.div_by_zero_is_zero
 	mut typ := node.promoted_type
 	mut typ_str := g.styp(typ)
 	if needs_cast {
@@ -1232,11 +1238,14 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.write('memcmp(')
 	}
 	mut opstr := node.op.str()
-	if is_safe_div {
-		vsafe_fn_name := 'VSAFE_DIV_${typ_str}'
+	if is_safe_div || is_safe_mod {
+		vsafe_fn_name := if is_safe_div { 'VSAFE_DIV_${typ_str}' } else { 'VSAFE_MOD_${typ_str}' }
 		g.write(vsafe_fn_name)
 		g.write('(')
-		g.vsafe_div_type_to_fn_name[typ] = vsafe_fn_name
+		g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
+			typ: typ
+			op:  node.op
+		}
 		opstr = ','
 	}
 	g.expr(node.left)
@@ -1260,7 +1269,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	if is_ctemp_fixed_ret {
 		g.write(', sizeof(${g.styp(node.right_type)}))')
 	}
-	if is_safe_div {
+	if is_safe_div || is_safe_mod {
 		g.write(')')
 	}
 	if needs_cast {
