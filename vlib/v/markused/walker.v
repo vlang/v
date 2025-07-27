@@ -53,6 +53,7 @@ mut:
 	uses_eq            bool // has == op
 	uses_interp        bool // string interpolation
 	uses_guard         bool
+	uses_orm           bool
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -323,6 +324,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 				w.expr(line.where_expr)
 				w.exprs(line.update_exprs)
 			}
+			w.uses_orm = true
 		}
 		ast.StructDecl {
 			for typ in node.implements_types {
@@ -393,7 +395,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.fn_decl(mut node.decl)
 		}
 		ast.ArrayInit {
-			w.mark_by_type(node.elem_type)
+			sym := w.table.sym(node.elem_type)
+			w.mark_by_sym(sym)
+			if sym.info is ast.Thread {
+				w.mark_by_type(w.table.find_or_register_array(sym.info.return_type))
+			}
+			w.mark_by_type(node.typ)
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
@@ -478,6 +485,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.is_expr {
 				w.fn_by_name('free')
 			}
+			w.mark_by_type(node.call_expr.return_type)
 			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
@@ -811,9 +819,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		if node.name in ['C.wyhash', 'C.wyhash64'] {
 			w.features.used_maps++
 		}
-		if node.return_type != 0 {
-			w.mark_by_type(node.return_type)
-		}
+		w.mark_by_type(node.return_type)
 		return
 	}
 	if node.is_method && node.left_type != 0 {
@@ -887,6 +893,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		receiver_typ = node.receiver_concrete_type
 		w.mark_fn_as_used(fn_name)
 	}
+	w.mark_by_type(node.return_type)
 	stmt := w.all_fns[fn_name] or { return }
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
@@ -1126,6 +1133,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 				w.mark_fn_ret_and_params(method.return_type, method.params)
 			}
 		}
+		ast.Thread {
+			w.mark_by_type(isym.info.return_type)
+		}
 		else {}
 	}
 }
@@ -1184,6 +1194,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name('new_array_from_c_array_noscan')
 			w.fn_by_name('__new_array_with_multi_default_noscan')
 			w.fn_by_name('__new_array_with_array_default_noscan')
+			w.fn_by_name('__new_array_with_default_noscan')
+		}
+		if w.uses_orm {
 			w.fn_by_name('__new_array_with_default_noscan')
 		}
 		w.fn_by_name('__new_array')
