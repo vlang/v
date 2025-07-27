@@ -58,7 +58,7 @@ mut:
 	uses_free          bool // has .free() call
 	uses_spawn         bool
 	uses_dump          bool
-	uses_sumtype_cast  bool
+	uses_memdup        bool // sumtype cast and &Struct{}
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -437,9 +437,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.CastExpr {
 			w.expr(node.expr)
 			w.expr(node.arg)
-			if !w.uses_sumtype_cast {
+			if !w.uses_memdup {
 				fsym := w.table.final_sym(node.typ)
-				w.uses_sumtype_cast = fsym.kind == .sum_type
+				w.uses_memdup = fsym.kind == .sum_type
 			}
 			w.mark_by_type(node.typ)
 			if node.typ.has_flag(.option) {
@@ -665,6 +665,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 		}
 		ast.PrefixExpr {
+			if !w.uses_memdup && node.op == .amp {
+				w.uses_memdup = true
+			}
 			w.expr(node.right)
 		}
 		ast.PostfixExpr {
@@ -1257,7 +1260,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('malloc')
 		w.fn_by_name('tos3')
 	}
-	if w.uses_sumtype_cast {
+	if w.uses_memdup {
 		w.fn_by_name('memdup')
 	}
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
