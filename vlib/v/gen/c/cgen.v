@@ -1714,11 +1714,11 @@ pub fn (mut g Gen) write_typedef_types() {
 	type_symbols := g.table.type_symbols.filter(!it.is_builtin
 		&& it.kind in [.array, .array_fixed, .chan, .map])
 	for sym in type_symbols {
+		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+			continue
+		}
 		match sym.kind {
 			.array {
-				if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
-					continue
-				}
 				info := sym.info as ast.Array
 				elem_sym := g.table.sym(info.elem_type)
 				if elem_sym.kind != .placeholder && !info.elem_type.has_flag(.generic) {
@@ -1726,9 +1726,6 @@ pub fn (mut g Gen) write_typedef_types() {
 				}
 			}
 			.array_fixed {
-				if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
-					continue
-				}
 				info := sym.info as ast.ArrayFixed
 				elem_sym := g.table.sym(info.elem_type)
 				if elem_sym.is_builtin() {
@@ -1766,9 +1763,6 @@ pub fn (mut g Gen) write_typedef_types() {
 				}
 			}
 			.chan {
-				if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
-					continue
-				}
 				if sym.name != 'chan' {
 					chan_inf := sym.chan_info()
 					chan_elem_type := chan_inf.elem_type

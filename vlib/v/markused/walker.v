@@ -54,6 +54,7 @@ mut:
 	uses_interp        bool // string interpolation
 	uses_guard         bool
 	uses_orm           bool
+	uses_infix         bool
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -527,6 +528,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 		}
 		ast.InfixExpr {
+			w.uses_infix = true
 			w.expr(node.left)
 			w.expr(node.right)
 			w.or_block(node.or_block)
@@ -1264,7 +1266,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name(k)
 			continue
 		}
-		if func.name in ['+', '-', '*', '%', '/', '<', '=='] {
+		if w.uses_infix && func.name in ['+', '-', '*', '%', '/', '<', '=='] {
 			if func.receiver.typ.idx() in w.used_syms {
 				w.fn_by_name(k)
 			}
