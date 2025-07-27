@@ -171,9 +171,10 @@ fn (mut c Checker) markused_string_inter_lit(mut node ast.StringInterLiteral, ft
 }
 
 fn (mut c Checker) markused_infixexpr(check bool) {
-	if check {
-		c.table.used_features.index = true
+	if !check {
+		return
 	}
+	c.table.used_features.index = true
 }
 
 fn (mut c Checker) markused_array_method(check bool, method_name string) {

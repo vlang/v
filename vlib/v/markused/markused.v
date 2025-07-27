@@ -156,6 +156,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if table.used_features.anon_fn {
 			core_fns << 'memdup_uncollectable'
+			core_fns << 'builtin.closure.closure_alloc'
+			core_fns << 'builtin.closure.closure_init'
+			core_fns << 'builtin.closure.closure_create'
 		}
 		if table.used_features.arr_map {
 			include_panic_deps = true

@@ -476,3 +476,9 @@ fn test_parse_weekday() {
 	tm_s := tm.custom_format(format)
 	assert tm_s == 'Thursday Jan 01 00:00:00 1970'
 }
+
+fn test_empty_time() {
+	t := time.Time{}
+	// assert t.unix() == -62169984000
+	assert t.custom_format('MMMM YYYY') == 'January 0'
+}

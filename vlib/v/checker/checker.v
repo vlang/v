@@ -2359,7 +2359,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 		}
 		ast.Module {
 			c.mod = node.name
-			c.is_just_builtin_mod = node.name == 'builtin'
+			c.is_just_builtin_mod = node.name in ['builtin', 'builtin.closure']
 			c.is_builtin_mod = c.is_just_builtin_mod || node.name in ['os', 'strconv']
 			c.check_valid_snake_case(node.name, 'module name', node.pos)
 		}
