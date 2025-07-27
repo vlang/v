@@ -159,7 +159,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	is_html := method_name == 'html'
 	p.check(.lpar)
 	arg_pos := p.tok.pos()
-	if method_name in ['env', 'pkgconfig', 'compile_error', 'compile_warn'] {
+	if method_name in ['env', 'pkgconfig'] {
 		s := p.tok.lit
 		p.check(.string)
 		p.check(.rpar)
@@ -171,6 +171,22 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			is_pkgconfig: method_name == 'pkgconfig'
 			env_pos:      start_pos
 			pos:          start_pos.extend(p.prev_tok.pos())
+		}
+	} else if method_name in ['compile_error', 'compile_warn'] {
+		expr := p.string_expr()
+		p.check(.rpar)
+		return ast.ComptimeCall{
+			scope:       unsafe { nil }
+			method_name: method_name
+			env_pos:     start_pos
+			pos:         start_pos.extend(p.prev_tok.pos())
+			args:        [
+				ast.CallArg{
+					expr:    expr
+					typ:     ast.string_type
+					ct_expr: true
+				},
+			]
 		}
 	} else if method_name == 'res' {
 		mut has_args := false
