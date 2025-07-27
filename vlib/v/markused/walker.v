@@ -422,6 +422,11 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.call_expr(mut node)
 			if node.name == 'json.decode' {
 				w.mark_by_type((node.args[0].expr as ast.TypeNode).typ)
+			} else if node.name == 'json.encode' {
+				sym := w.table.final_sym(node.args[0].typ)
+				if sym.info is ast.Map {
+					w.mark_by_type(w.table.find_or_register_array(sym.info.key_type))
+				}
 			} else if !w.uses_str && node.is_method && node.name == 'str' {
 				w.uses_str = true
 			} else if !w.uses_free && node.is_method && node.name == 'free' {
