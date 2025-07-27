@@ -44,5 +44,5 @@ fn test_utc_to_local() {
 	}
 	sz := z.format_rfc3339()
 	dump(sz)
-	assert sz == '0000-00-00T00:00:00.000Z'
+	assert sz == '1970-01-01T00:00:00.000Z'
 }

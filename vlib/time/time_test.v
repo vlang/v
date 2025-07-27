@@ -476,3 +476,16 @@ fn test_parse_weekday() {
 	tm_s := tm.custom_format(format)
 	assert tm_s == 'Thursday Jan 01 00:00:00 1970'
 }
+
+fn test_default_time_struct() {
+	default_time := time.Time{}
+	assert default_time.unix() == 0
+	assert default_time.year == 1970
+	assert default_time.month == 1
+	assert default_time.day == 1
+	assert default_time.hour == 0
+	assert default_time.minute == 0
+	assert default_time.second == 0
+	assert default_time.nanosecond == 0
+	assert default_time.is_local == false
+}

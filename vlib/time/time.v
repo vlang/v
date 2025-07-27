@@ -38,9 +38,9 @@ pub const days_before = [
 pub struct Time {
 	unix i64
 pub:
-	year       int
-	month      int
-	day        int
+	year       int = 1970
+	month      int = 1
+	day        int = 1
 	hour       int
 	minute     int
 	second     int
