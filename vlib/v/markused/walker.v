@@ -748,7 +748,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
 	last_is_builtin_mod := w.is_builtin_mod
-	w.is_builtin_mod = node.mod in ['builtin', 'os', 'strconv']
+	w.is_builtin_mod = node.mod in ['builtin', 'os', 'strconv', 'builtin.closure']
 	w.stmts(node.stmts)
 	w.is_builtin_mod = last_is_builtin_mod
 	w.defer_stmts(node.defer_stmts)
