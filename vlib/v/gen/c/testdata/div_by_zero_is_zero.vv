@@ -1,7 +1,9 @@
 // vtest vflags: -div-by-zero-is-zero
+a := 42
 z := 0
-a := 1
 c := a / z
-println(a)
-println(z)
-println(c)
+d := a % z
+println('a == ${a}')
+println('z == ${z}')
+println('c == a / z == ${c}')
+println('d == a % z == ${d}')

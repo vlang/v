@@ -1,1 +1,2 @@
 int c = (int)(VSAFE_DIV_int(a , z));
+int d = (int)(VSAFE_MOD_int(a , z));
