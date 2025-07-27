@@ -401,10 +401,20 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(ordinal_suffix(t.month))
 			}
 			'MMM' {
-				sb.write_string(long_months[t.month - 1][0..3])
+				m := if t.month >= 1 && t.month <= 12 {
+					long_months[t.month - 1][0..3]
+				} else {
+					long_months[0][0..3]
+				}
+				sb.write_string(m)
 			}
 			'MMMM' {
-				sb.write_string(long_months[t.month - 1])
+				m := if t.month >= 1 && t.month <= 12 {
+					long_months[t.month - 1]
+				} else {
+					long_months[0]
+				}
+				sb.write_string(m)
 			}
 			'D' {
 				sb.write_string(t.day.str())
