@@ -16,12 +16,26 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.left_type = c.expr(mut node.left)
 	}
 	if node.method_name == 'compile_error' {
-		value := c.eval_comptime_const_expr(node.args[0].expr, 0) or { ast.ComptTimeConstValue('') }
-		c.error('${value.string() or { '' }}', node.pos)
+		msg := if node.args_var.len > 0 {
+			node.args_var
+		} else {
+			value := c.eval_comptime_const_expr(node.args[0].expr, -1) or {
+				ast.ComptTimeConstValue('')
+			}
+			value.string() or { '' }
+		}
+		c.error(msg, node.pos)
 		return ast.void_type
 	} else if node.method_name == 'compile_warn' {
-		value := c.eval_comptime_const_expr(node.args[0].expr, 0) or { ast.ComptTimeConstValue('') }
-		c.warn('${value.string() or { '' }}', node.pos)
+		msg := if node.args_var.len > 0 {
+			node.args_var
+		} else {
+			value := c.eval_comptime_const_expr(node.args[0].expr, -1) or {
+				ast.ComptTimeConstValue('')
+			}
+			value.string() or { '' }
+		}
+		c.warn(msg, node.pos)
 		return ast.void_type
 	}
 	if node.is_env {
@@ -423,16 +437,18 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			return util.smart_quote(expr.val, expr.is_raw)
 		}
 		ast.StringInterLiteral {
-			mut sb := strings.new_builder(20)
-			for i, val in expr.vals {
-				sb.write_string(val)
-				if e := expr.exprs[i] {
-					if value := c.eval_comptime_const_expr(e, nlevel + 1) {
-						sb.write_string(value.string() or { '' })
+			if nlevel < 0 {
+				mut sb := strings.new_builder(20)
+				for i, val in expr.vals {
+					sb.write_string(val)
+					if e := expr.exprs[i] {
+						if value := c.eval_comptime_const_expr(e, nlevel + 1) {
+							sb.write_string(value.string() or { '' })
+						}
 					}
 				}
+				return sb.str()
 			}
-			return sb.str()
 		}
 		ast.CharLiteral {
 			runes := expr.val.runes()
