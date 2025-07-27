@@ -55,7 +55,9 @@ mut:
 	uses_guard         bool
 	uses_orm           bool
 	uses_str           bool // has .str() call
+	uses_free          bool // has .free() call
 	uses_spawn         bool
+	uses_dump          bool
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -420,6 +422,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.mark_by_type((node.args[0].expr as ast.TypeNode).typ)
 			} else if !w.uses_str && node.is_method && node.name == 'str' {
 				w.uses_str = true
+			} else if !w.uses_free && node.is_method && node.name == 'free' {
+				w.uses_free = true
 			}
 			if !w.is_builtin_mod && !w.uses_external_type {
 				if node.is_method {
@@ -463,8 +467,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.DumpExpr {
 			w.expr(node.expr)
-			w.fn_by_name('eprint')
-			w.fn_by_name('eprintln')
+			w.uses_dump = true
 			w.mark_by_type(node.expr_type)
 		}
 		ast.SpawnExpr {
@@ -1241,6 +1244,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_guard {
 		w.fn_by_name('error')
 	}
+	if w.uses_dump {
+		w.fn_by_name('eprint')
+		w.fn_by_name('eprintln')
+	}
 	if w.uses_spawn {
 		w.fn_by_name('malloc')
 		w.fn_by_name('tos3')
@@ -1254,7 +1261,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
 		eprintln('>>>>>>>>>> ALL_FNS LOOP')
 	}
-	// println(w.table.used_features.comptime_syms)
 	mut has_ptr_print := false
 	for k, mut func in w.all_fns {
 		if (w.uses_interp || w.uses_str) && k.ends_with('.str') {
@@ -1266,8 +1272,8 @@ fn (mut w Walker) mark_resource_dependencies() {
 			}
 			continue
 		}
-		if k.ends_with('.free') {
-			if w.pref.autofree || func.receiver.typ.idx() in w.used_syms {
+		if (w.pref.autofree || w.uses_free) && k.ends_with('.free') {
+			if func.receiver.typ.idx() in w.used_syms {
 				w.fn_by_name(k)
 				continue
 			}
