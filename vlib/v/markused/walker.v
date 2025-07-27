@@ -531,8 +531,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.right)
 			w.or_block(node.or_block)
 			if node.left_type != 0 {
-				w.mark_by_type(node.left_type)
 				sym := w.table.sym(node.left_type)
+				w.mark_by_sym(sym)
 				if sym.kind == .struct {
 					if opmethod := sym.find_method(node.op.str()) {
 						unsafe {
@@ -986,6 +986,7 @@ pub fn (mut w Walker) mark_fn_ret_and_params(return_type ast.Type, params []ast.
 	}
 }
 
+@[inline]
 pub fn (mut w Walker) mark_by_sym_name(name string) {
 	if sym := w.table.find_sym(name) {
 		w.mark_by_sym(sym)
