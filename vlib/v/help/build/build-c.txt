@@ -367,5 +367,5 @@ see also `v help build`.
       It also treats `x % 0` as being equal to `x`, because `x%y`==`x-y*(x/y)`,
       which in turn eliminates another source of division by zero errors.
       It is mainly useful when prototyping games, and other experimental code with
-      lots of arithmetic expressions, where you do not want to check for the 0 divisor
+      lots of arithmetic expressions, where you do not want to check for the zero divisor
       all the time (which can break your flow).
