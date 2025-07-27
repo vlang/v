@@ -54,6 +54,8 @@ mut:
 	uses_interp        bool // string interpolation
 	uses_guard         bool
 	uses_orm           bool
+	uses_str           bool // has .str() call
+	uses_spawn         bool
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -416,6 +418,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.call_expr(mut node)
 			if node.name == 'json.decode' {
 				w.mark_by_type((node.args[0].expr as ast.TypeNode).typ)
+			} else if !w.uses_str && node.is_method && node.name == 'str' {
+				w.uses_str = true
 			}
 			if !w.is_builtin_mod && !w.uses_external_type {
 				if node.is_method {
@@ -468,7 +472,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.fn_by_name('free')
 			}
 			w.expr(node.call_expr)
-			w.fn_by_name('tos3')
+			w.uses_spawn = true
+
 			if w.pref.os == .windows {
 				w.fn_by_name('panic_lasterr')
 				w.fn_by_name('winapi_lasterr_str')
@@ -1236,6 +1241,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_guard {
 		w.fn_by_name('error')
 	}
+	if w.uses_spawn {
+		w.fn_by_name('malloc')
+		w.fn_by_name('tos3')
+	}
 	if 'trace_skip_unused_walker' in w.pref.compile_defines {
 		eprintln('>>>>>>>>>> PRINT TYPES ${w.table.used_features.print_types.keys().map(w.table.type_to_str(it))}')
 	}
@@ -1248,7 +1257,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	// println(w.table.used_features.comptime_syms)
 	mut has_ptr_print := false
 	for k, mut func in w.all_fns {
-		if k.ends_with('.str') {
+		if (w.uses_interp || w.uses_str) && k.ends_with('.str') {
 			if func.receiver.typ.idx() in w.used_syms {
 				w.fn_by_name(k)
 				if !has_ptr_print && func.receiver.typ.is_ptr() {
