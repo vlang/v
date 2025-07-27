@@ -318,6 +318,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		all_decltypes: all_decltypes
 		all_structs:   all_structs
 		pref:          pref_
+		trace_enabled: 'trace_skip_unused_walker' in pref_.compile_defines
 	)
 	walker.mark_markused_consts() // tagged with `@[markused]`
 	walker.mark_markused_globals() // tagged with `@[markused]`

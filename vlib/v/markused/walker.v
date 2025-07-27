@@ -9,18 +9,19 @@ import v.pref
 
 pub struct Walker {
 pub mut:
-	table        &ast.Table        = unsafe { nil }
-	features     &ast.UsedFeatures = unsafe { nil }
-	used_fns     map[string]bool // used_fns['println'] == true
-	used_consts  map[string]bool // used_consts['os.args'] == true
-	used_globals map[string]bool
-	used_fields  map[string]bool
-	used_syms    map[int]bool
-	used_none    int // _option_none
-	used_option  int // _option_ok
-	used_result  int // _result_ok
-	used_panic   int // option/result propagation
-	pref         &pref.Preferences = unsafe { nil }
+	table         &ast.Table        = unsafe { nil }
+	features      &ast.UsedFeatures = unsafe { nil }
+	used_fns      map[string]bool // used_fns['println'] == true
+	trace_enabled bool
+	used_consts   map[string]bool // used_consts['os.args'] == true
+	used_globals  map[string]bool
+	used_fields   map[string]bool
+	used_syms     map[int]bool
+	used_none     int // _option_none
+	used_option   int // _option_ok
+	used_result   int // _result_ok
+	used_panic    int // option/result propagation
+	pref          &pref.Preferences = unsafe { nil }
 mut:
 	files         []&ast.File
 	all_fns       map[string]ast.FnDecl
@@ -165,7 +166,7 @@ pub fn (mut w Walker) mark_markused_fns() {
 }
 
 pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
-	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+	if w.trace_enabled {
 		eprintln('>>>>>>> ROOT ${all_fn_root_names}')
 	}
 	for fn_name in all_fn_root_names {
@@ -422,7 +423,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.call_expr(mut node)
 			if node.name == 'json.decode' {
 				w.mark_by_type((node.args[0].expr as ast.TypeNode).typ)
-			} else if node.name == 'json.encode' {
+			} else if node.name == 'json.encode' && node.args[0].typ != 0 {
 				sym := w.table.final_sym(node.args[0].typ)
 				if sym.info is ast.Map {
 					w.mark_by_type(w.table.find_or_register_array(sym.info.key_type))
@@ -809,7 +810,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.no_body {
 		return
 	}
-	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+	if w.trace_enabled {
 		w.level++
 		defer { w.level-- }
 		receiver_name := if node.is_method && node.receiver.typ != 0 {
@@ -931,7 +932,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	stmt := w.all_fns[fn_name] or { return }
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
-			if 'trace_skip_unused_walker' in w.pref.compile_defines {
+			if w.trace_enabled {
 				w.level++
 				defer {
 					w.level--
@@ -959,7 +960,7 @@ pub fn (mut w Walker) fn_by_name(fn_name string) {
 		return
 	}
 	stmt := w.all_fns[fn_name] or { return }
-	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+	if w.trace_enabled {
 		w.level++
 		defer {
 			w.level--
@@ -1205,7 +1206,7 @@ fn (mut w Walker) remove_unused_dump_type() {
 }
 
 fn (mut w Walker) mark_resource_dependencies() {
-	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+	if w.trace_enabled {
 		eprintln('>>>>>>>>>> DEPS USAGE')
 	}
 	if w.uses_eq {
@@ -1285,13 +1286,13 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_arr_void {
 		w.mark_by_type(w.table.find_or_register_array(ast.voidptr_type))
 	}
-	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+	if w.trace_enabled {
 		eprintln('>>>>>>>>>> PRINT TYPES ${w.table.used_features.print_types.keys().map(w.table.type_to_str(it))}')
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)
 	}
-	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+	if w.trace_enabled {
 		eprintln('>>>>>>>>>> ALL_FNS LOOP')
 	}
 	mut has_ptr_print := false
@@ -1335,7 +1336,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 
 pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	w.mark_resource_dependencies()
-	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+	if w.trace_enabled {
 		eprintln('>>>>>>>>>> FINALIZE')
 	}
 	if w.uses_asserts {
@@ -1365,7 +1366,7 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	}
 	if include_panic_deps || w.uses_external_type || w.uses_asserts || w.uses_debugger
 		|| w.uses_interp {
-		if 'trace_skip_unused_walker' in w.pref.compile_defines {
+		if w.trace_enabled {
 			println('>>>>> PANIC DEPS ${include_panic_deps} | external_type=${w.uses_external_type} | asserts=${w.uses_asserts} | dbg=${w.uses_debugger}')
 		}
 		ref_array_idx_str := int(ast.array_type.ref()).str()
@@ -1388,13 +1389,13 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	w.remove_unused_fn_generic_types()
 	w.remove_unused_dump_type()
 
-	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+	if w.trace_enabled {
 		eprintln('>>>>>>>>>> USED SYMS ${w.used_syms.keys().map(w.table.type_to_str(it))}')
 	}
 }
 
 pub fn (mut w Walker) mark_generic_types() {
-	if 'trace_skip_unused_walker' in w.pref.compile_defines {
+	if w.trace_enabled {
 		eprintln('>>>>>>>>>> COMPTIME SYMS+CALLS')
 	}
 	for k, _ in w.table.used_features.comptime_calls {
