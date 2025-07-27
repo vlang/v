@@ -633,6 +633,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.mark_by_sym(ksym)
 			w.mark_by_sym(vsym)
 			w.features.used_maps++
+			w.mark_by_type(node.typ)
 		}
 		ast.MatchExpr {
 			w.expr(node.cond)
