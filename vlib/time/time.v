@@ -288,7 +288,7 @@ pub fn day_of_week(y int, m int, d int) int {
 	if m < 3 {
 		sy = sy - 1
 	}
-	return (sy + sy / 4 - sy / 100 + sy / 400 + t[m - 1] + d - 1) % 7 + 1
+	return (sy + sy / 4 - sy / 100 + sy / 400 + t[iclamp(0, m - 1, 11)] + d - 1) % 7 + 1
 }
 
 // day_of_week returns the current day as an integer.
@@ -330,7 +330,7 @@ pub fn (t Time) week_of_year() int {
 // year_day returns the current day of the year as an integer.
 // See also #Time.custom_format .
 pub fn (t Time) year_day() int {
-	yday := t.day + days_before[t.month - 1]
+	yday := t.day + days_before[iclamp(0, t.month - 1, 12)]
 	if is_leap_year(t.year) && t.month > 2 {
 		return yday + 1
 	}
@@ -340,13 +340,13 @@ pub fn (t Time) year_day() int {
 // weekday_str returns the current day as a string 3 letter abbreviation.
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
-	return long_days[i][0..3]
+	return long_days[iclamp(0, i, 6)][0..3]
 }
 
 // long_weekday_str returns the current day as a string.
 pub fn (t Time) long_weekday_str() string {
 	i := t.day_of_week() - 1
-	return long_days[i]
+	return long_days[iclamp(0, i, 6)]
 }
 
 // is_leap_year checks if a given a year is a leap year.

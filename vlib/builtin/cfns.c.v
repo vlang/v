@@ -23,6 +23,9 @@ fn C.realloc(a &u8, b int) &u8
 
 fn C.free(ptr voidptr)
 
+fn C.mmap(addr_length int, length isize, prot int, flags int, fd int, offset u64) voidptr
+fn C.mprotect(addr_length int, len isize, prot int) int
+
 fn C.aligned_alloc(align isize, size isize) voidptr
 
 // windows aligned memory functions
@@ -33,6 +36,9 @@ fn C._aligned_offset_malloc(size isize, align isize, offset isize) voidptr
 fn C._aligned_offset_realloc(voidptr, size isize, align isize, offset isize) voidptr
 fn C._aligned_msize(voidptr, align isize, offset isize) isize
 fn C._aligned_recalloc(voidptr, num isize, size isize, align isize) voidptr
+
+fn C.VirtualAlloc(voidptr, isize, u32, u32) voidptr
+fn C.VirtualProtect(voidptr, isize, u32, &u32) bool
 
 @[noreturn; trusted]
 fn C.exit(code int)
@@ -528,6 +534,10 @@ fn C.WrappedNSLog(str &u8)
 fn C.abs(number int) int
 
 fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool
+
+fn C.GetNativeSystemInfo(voidptr)
+
+fn C.sysconf(name int) int
 
 // C.SYSTEM_INFO contains information about the current computer system. This includes the architecture and type of the processor, the number of processors in the system, the page size, and other such information.
 @[typedef]
