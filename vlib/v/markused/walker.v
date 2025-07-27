@@ -1263,7 +1263,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	mut has_ptr_print := false
 	for k, mut func in w.all_fns {
-		if (w.uses_interp || w.uses_str) && k.ends_with('.str') {
+		if (w.uses_interp || w.uses_str || w.features.print_types.len > 0) && k.ends_with('.str') {
 			if func.receiver.typ.idx() in w.used_syms {
 				w.fn_by_name(k)
 				if !has_ptr_print && func.receiver.typ.is_ptr() {
@@ -1272,11 +1272,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 			}
 			continue
 		}
-		if (w.pref.autofree || w.uses_free) && k.ends_with('.free') {
-			if func.receiver.typ.idx() in w.used_syms {
-				w.fn_by_name(k)
-				continue
-			}
+		if w.pref.autofree || (w.uses_free && k.ends_with('.free')
+			&& func.receiver.typ.idx() in w.used_syms) {
+			w.fn_by_name(k)
+			continue
 		}
 		if w.uses_atomic && k.starts_with('_Atomic') {
 			w.fn_by_name(k)
@@ -1329,7 +1328,6 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	if (w.used_option + w.used_result + w.used_none) > 0 {
 		w.mark_const_as_used('none__')
 	}
-	w.mark_by_sym_name('array')
 	if include_panic_deps || w.uses_external_type || w.uses_asserts || w.uses_debugger
 		|| w.uses_interp {
 		if 'trace_skip_unused_walker' in w.pref.compile_defines {
