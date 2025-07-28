@@ -173,20 +173,26 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			pos:          start_pos.extend(p.prev_tok.pos())
 		}
 	} else if method_name in ['compile_error', 'compile_warn'] {
-		expr := p.string_expr()
+		mut s := ''
+		mut args := []ast.CallArg{}
+		if p.tok.kind == .string && p.peek_tok.kind == .rpar {
+			s = p.tok.lit
+			p.check(.string)
+		} else {
+			args << ast.CallArg{
+				expr:    p.string_expr()
+				typ:     ast.string_type
+				ct_expr: true
+			}
+		}
 		p.check(.rpar)
 		return ast.ComptimeCall{
 			scope:       unsafe { nil }
 			method_name: method_name
+			args_var:    s
 			env_pos:     start_pos
 			pos:         start_pos.extend(p.prev_tok.pos())
-			args:        [
-				ast.CallArg{
-					expr:    expr
-					typ:     ast.string_type
-					ct_expr: true
-				},
-			]
+			args:        args
 		}
 	} else if method_name == 'res' {
 		mut has_args := false
