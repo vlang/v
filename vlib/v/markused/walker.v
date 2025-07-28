@@ -440,6 +440,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.uses_external_type = true
 				}
 			}
+			if node.is_method && w.table.final_sym(node.left_type).kind in [.array_fixed, .array] {
+				w.mark_by_type(node.return_type)
+			}
 		}
 		ast.CastExpr {
 			w.expr(node.expr)
@@ -718,6 +721,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.limit_expr)
 			w.expr(node.where_expr)
 			w.mark_by_type(node.typ)
+			w.uses_orm = true
 		}
 		ast.StructInit {
 			if node.typ == 0 {
