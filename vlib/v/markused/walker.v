@@ -1232,15 +1232,19 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name('__new_array_with_array_default_noscan')
 			w.fn_by_name('__new_array_with_default_noscan')
 		}
-		if w.uses_orm {
-			w.fn_by_name('__new_array_with_default_noscan')
-		}
 		w.fn_by_name('__new_array')
 		w.fn_by_name('new_array_from_c_array')
 		w.fn_by_name('__new_array_with_multi_default')
 		w.fn_by_name('__new_array_with_array_default')
 		w.fn_by_name('__new_array_with_default')
 		w.fn_by_name(int(ast.array_type.ref()).str() + '.set')
+	}
+	if w.uses_orm {
+		w.fn_by_name('__new_array_with_default_noscan')
+		w.fn_by_name('new_array_from_c_array')
+		w.fn_by_name('__new_array')
+		w.fn_by_name('${ast.array_type_idx}.get')
+		w.fn_by_name(int(ast.array_type.ref()).str() + '.push')
 	}
 	if w.uses_ct_fields {
 		w.mark_by_sym_name('FieldData')
@@ -1287,7 +1291,8 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.mark_by_type(w.table.find_or_register_array(ast.voidptr_type))
 	}
 	if w.trace_enabled {
-		eprintln('>>>>>>>>>> PRINT TYPES ${w.table.used_features.print_types.keys().map(w.table.type_to_str(it))}')
+		types := w.table.used_features.print_types.keys().map(w.table.type_to_str(it))
+		eprintln('>>>>>>>>>> PRINT TYPES ${types}')
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)
@@ -1390,7 +1395,8 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	w.remove_unused_dump_type()
 
 	if w.trace_enabled {
-		eprintln('>>>>>>>>>> USED SYMS ${w.used_syms.keys().map(w.table.type_to_str(it))}')
+		syms := w.used_syms.keys().map(w.table.type_to_str(it))
+		eprintln('>>>>>>>>>> USED SYMS ${syms}')
 	}
 }
 
