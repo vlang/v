@@ -1,0 +1,9 @@
+// vtest vflags: -div-by-zero-is-zero
+a := 42
+z := 0
+c := a / z
+d := a % z
+println('a == ${a}')
+println('z == ${z}')
+println('c == a / z == ${c}')
+println('d == a % z == ${d}')

@@ -250,6 +250,8 @@ pub mut:
 	wasm_stack_top    int = 1024 + (16 * 1024) // stack size for webassembly backend
 	wasm_validate     bool // validate webassembly code, by calling `wasm-validate`
 	warn_about_allocs bool // -warn-about-allocs warngs about every single allocation, e.g. 'hi $name'. Mostly for low level development where manual memory management is used.
+	// game prototyping flags:
+	div_by_zero_is_zero bool // -div-by-zero-is-zero makes so `x / 0 == 0`, i.e. eliminates the division by zero panics/segfaults
 	// temp
 	// use_64_int bool
 	// forwards compatibility settings:
@@ -546,6 +548,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-warn-about-allocs' {
 				res.warn_about_allocs = true
+			}
+			'-div-by-zero-is-zero' {
+				res.div_by_zero_is_zero = true
 			}
 			'-sourcemap-src-included' {
 				res.sourcemap_src_included = true

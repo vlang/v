@@ -79,6 +79,7 @@ mut:
 	json_forward_decls        strings.Builder            // json type forward decls
 	sql_buf                   strings.Builder            // for writing exprs to args via `sqlite3_bind_int()` etc
 	global_const_defs         map[string]GlobalConstDef
+	vsafe_arithmetic_ops      map[string]VSafeArithmeticOp // 'VSAFE_DIV_u8' -> {11, /}, 'VSAFE_MOD_u8' -> {11,%}, 'VSAFE_MOD_i64' -> the same but with 9
 	sorted_global_const_names []string
 	file                      &ast.File  = unsafe { nil }
 	table                     &ast.Table = unsafe { nil }
@@ -408,6 +409,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			global_g.force_main_console = global_g.force_main_console || g.force_main_console
 
 			// merge maps
+			for k, v in g.vsafe_arithmetic_ops {
+				global_g.vsafe_arithmetic_ops[k] = v
+			}
 			for k, v in g.global_const_defs {
 				global_g.global_const_defs[k] = v
 			}
@@ -660,6 +664,16 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	}
 	if g.channel_definitions.len > 0 {
 		b.write_string2('\n// V channel code:\n', g.channel_definitions.str())
+	}
+	if g.vsafe_arithmetic_ops.len > 0 {
+		for vsafe_fn_name, val in g.vsafe_arithmetic_ops {
+			styp := g.styp(val.typ)
+			if val.op == .div {
+				b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return 0; } else { return x / y; } }')
+			} else {
+				b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return x; } else { return x % y; } }')
+			}
+		}
 	}
 	if g.pref.is_coverage {
 		b.write_string2('\n// V coverage:\n', g.cov_declarations.str())
