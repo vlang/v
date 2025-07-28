@@ -106,9 +106,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.gen_assert(node)
 		}
 		ast.GlobalDecl {
-			if !g.is_builtin_mod && !g.pref.experimental {
-				g.warning('globals are not supported yet', node.pos)
-			}
 		}
 		ast.Import {} // do nothing here
 		ast.StructDecl {}

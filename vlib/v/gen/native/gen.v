@@ -66,6 +66,7 @@ mut:
 	comptime_omitted_branches []ast.IfBranch
 	// elf specific
 	elf_text_header_addr i64 = -1
+	elf_data_header_addr i64 = -1
 	elf_rela_section     Section
 	// macho specific
 	macho_ncmds   i32
@@ -253,7 +254,9 @@ struct PreprocVar {
 	val  i64
 }
 
-struct GlobalVar {}
+struct GlobalVar {
+	name string
+}
 
 @[params]
 struct VarConfig {
@@ -300,7 +303,9 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 		return PreprocVar{ident.info.typ, ident.name, preprocessed_val}
 	}
 	mut obj := ident.obj
-	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
+	if obj is ast.GlobalField {
+		return GlobalVar{obj.name}
+	} else if obj !in [ast.Var, ast.ConstField, ast.AsmRegister] {
 		obj = ident.scope.find(ident.name) or {
 			g.n_error('${@LOCATION} unknown variable ${ident.name}')
 		}

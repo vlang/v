@@ -4,6 +4,7 @@
 module native
 
 import os
+import ast
 
 const elf_class32 = 1
 const elf_class64 = 2
@@ -300,6 +301,8 @@ mut:
 	size  i64 // Symbol size.
 }
 
+// see for more details: https://gist.github.com/x0nu11byt3/bcb35c3de461e5fb66173071a2379779
+// https://www.etherington.xyz/elfguide#symtab-section-entries
 fn (mut g Gen) create_symbol_table_section(str_name string, info u8, bind u8, other i8, value i64, size i64,
 	shndx i16) SymbolTableSection {
 	return SymbolTableSection{
@@ -710,6 +713,23 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 			elf_stv_default, 0, 0, 0),
 	]
 
+	mut sym_data_offset := 0 // offset from the beggining of the data section
+	for f in g.files {
+		for s in f.stmts {
+			if s is ast.GlobalDecl {
+				for fi in s.fields {
+					size := g.get_type_size(fi.typ)
+					if size > 0 {
+						g.symbol_table << g.create_symbol_table_section(fi.name, elf_stt_object,
+							elf_stb_global, elf_stv_default, sym_data_offset, size, i16(g.find_section_header('.data',
+							sections)))
+					}
+					sym_data_offset += size
+				}
+			}
+		}
+	}
+
 	for symbol in g.extern_symbols {
 		g.symbol_table << g.create_symbol_table_section(symbol[2..], elf_stt_notype, elf_stb_global,
 			elf_stv_default, 0, 0, 0)
@@ -741,6 +761,45 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 
 	g.elf_rela_section = sections[g.find_section_header('.rela.text', sections)]
 
+	// Init data section
+	data_pos := g.pos()
+	for f in g.files {
+		for s in f.stmts {
+			if s is ast.GlobalDecl {
+				for fi in s.fields {
+					size := g.get_type_size(fi.typ)
+					match size {
+						1 { g.write8(0) }
+						2 { g.write16(0) }
+						4 { g.write32(0) }
+						8 { g.write64(i64(0)) }
+						else { println('${@LOCATION} unsupported size ${size} for global ${fi}') }
+					}
+				}
+			}
+		}
+	}
+	if g.elf_data_header_addr != -1 {
+		g.write64_at(g.elf_data_header_addr + 32, g.pos() - data_pos)
+	}
+
+	/*
+	g.write64_at(g.elf_data_header_addr + 24, data_pos)
+	/* Do that with the global vars
+	for var_pos, symbol in g.extern_vars {
+		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos + 2, g.symtab_get_index(g.symbol_table,
+			symbol[2..]), elf_r_amd64_64, 0)
+	}
+	*/
+	g.write32(0x3)
+	g.write32(0x3)
+	g.write32(0x3)
+	g.write32(0x3)
+	g.write32(0x3)
+	g.write32(0x3)
+	g.write32(0x3)
+	*/
+
 	// user code starts here
 	if g.pref.is_verbose {
 		eprintln('code_start_pos = ${g.buf.len.hex()}')
@@ -755,6 +814,9 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	text_section := sections[g.find_section_header('.text', sections)]
 	g.elf_text_header_addr = text_section.header.offset
 	g.write64_at(g.elf_text_header_addr + 24, g.pos()) // write the code start pos to the text section
+
+	data_section := sections[g.find_section_header('.data', sections)]
+	g.elf_data_header_addr = data_section.header.offset
 
 	g.code_gen.call(placeholder)
 	g.println('; call main.main')
