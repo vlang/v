@@ -440,7 +440,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.uses_external_type = true
 				}
 			}
-			if node.is_method && w.table.final_sym(node.left_type).kind in [.array_fixed, .array] {
+			if node.is_method && node.left_type != 0
+				&& w.table.final_sym(node.left_type).kind in [.array_fixed, .array] {
 				w.mark_by_type(node.return_type)
 			}
 		}
