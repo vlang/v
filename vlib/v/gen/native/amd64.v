@@ -800,14 +800,15 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 				8 { Size._64 }
 				else { c.g.n_error('${@LOCATION} unsupported size of global var') }
 			}
-			mut data_reg := reg
-			if reg == .rax || reg == .eax {
-				c.mov_reg(Amd64Register.rbx, reg)
-				data_reg = .rbx
+			mut addr_reg := Amd64Register.rdx
+			if reg == .rdx || reg == .edx {
+				addr_reg = .rax
 			}
+			c.push(addr_reg)
 			c.g.global_vars[c.g.pos() + 2] = var.name // +2 for the mov64 instruction
-			c.mov64(Amd64Register.rax, i64(0)) // patched by the data relocations
-			c.mov_store(.rax, data_reg, size)
+			c.mov64(addr_reg, i64(0)) // patched by the data relocations
+			c.mov_store(addr_reg, reg, size)
+			c.pop(addr_reg)
 			c.g.println('; mov global:`${var.name}` ${reg}')
 		}
 		ExternVar {
@@ -1022,7 +1023,19 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			c.g.println('${instruction} ${reg}, ${size_str} PTR [rbp-${int(offset).hex2()}] ; `${var.name}`')
 		}
 		GlobalVar {
-			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+			if c.g.get_type_size(var.typ) > 8 {
+				c.g.n_error('${@LOCATION} unsupported size of global var')
+			}
+			mut addr_reg := Amd64Register.rdx
+			if reg as Amd64Register == .rdx || reg as Amd64Register == .edx {
+				addr_reg = .rax
+			}
+			c.push(addr_reg)
+			c.g.global_vars[c.g.pos() + 2] = var.name // +2 for the mov64 instruction
+			c.mov64(addr_reg, i64(0)) // patched by the data relocations
+			c.mov_deref(reg, addr_reg, var.typ)
+			c.pop(addr_reg)
+			c.g.println('; mov ${reg} global:`${var.name}`')
 		}
 		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')

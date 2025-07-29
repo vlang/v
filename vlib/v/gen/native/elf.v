@@ -787,6 +787,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 		}
 	}
 	g.write64_at(g.elf_data_header_addr + 32, g.pos() - data_pos)
+	// TODO: generate code that will generate the data
 
 	// user code starts here
 	if g.pref.is_verbose {

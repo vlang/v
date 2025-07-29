@@ -257,7 +257,7 @@ struct PreprocVar {
 
 struct GlobalVar {
 	name string
-	typ ast.Type
+	typ  ast.Type
 }
 
 @[params]
