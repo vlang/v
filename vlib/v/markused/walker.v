@@ -60,8 +60,9 @@ mut:
 	uses_dump          bool
 	uses_memdup        bool // sumtype cast and &Struct{}
 	uses_arr_void      bool // auto arr methods
-	uses_index         bool
-	uses_str_index     bool
+	uses_index         bool // var[k]
+	uses_str_index     bool // string[k]
+	uses_check_index   bool // arr[key] or { }
 	uses_append        bool // var << item
 }
 
@@ -515,7 +516,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.left)
 			w.expr(node.index)
 			if node.or_expr.kind == .block {
-				w.uses_guard = true
+				w.uses_check_index = true
 			}
 			w.mark_by_type(node.typ)
 			w.or_block(node.or_expr)
@@ -1274,7 +1275,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_mem_align {
 		w.fn_by_name('memdup_align')
 	}
-	if w.uses_guard {
+	if w.uses_guard || w.uses_check_index {
 		w.fn_by_name('error')
 	}
 	if w.features.dump {
@@ -1315,10 +1316,13 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name(string_idx_str + '.at_with_check')
 		}
 		w.fn_by_name(array_idx_str + '.slice')
+		if w.uses_check_index {
+			w.fn_by_name(array_idx_str + '.get_with_check')
+		}
 		// core_fns << string_idx_str + '.clone'
 		// core_fns << string_idx_str + '.clone_static'		
 		// core_fns << array_idx_str + '.set'
-		// core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
+		// core_fns <<  // used for `x := a[i] or {}`
 		// core_fns << ref_array_idx_str + '.set'
 		// core_fns << map_idx_str + '.get'
 		// core_fns << map_idx_str + '.set'
