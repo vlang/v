@@ -248,7 +248,6 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 		ast.ComptimeFor {
 			w.mark_by_type(node.typ)
 			w.stmts(node.stmts)
-			w.uses_dump = true
 			match node.kind {
 				.attributes {
 					w.uses_ct_attribute = true
@@ -486,7 +485,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.DumpExpr {
 			w.expr(node.expr)
-			w.uses_dump = true
+			w.features.dump = true
 			w.mark_by_type(node.expr_type)
 		}
 		ast.SpawnExpr {
@@ -1210,14 +1209,6 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 	}
 }
 
-fn (mut w Walker) remove_unused_dump_type() {
-	for typ, _ in w.table.dumps {
-		if ast.Type(u32(typ)).idx() !in w.used_syms {
-			w.table.dumps.delete(typ)
-		}
-	}
-}
-
 fn (mut w Walker) mark_resource_dependencies() {
 	if w.trace_enabled {
 		eprintln('>>>>>>>>>> DEPS USAGE')
@@ -1286,7 +1277,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_guard {
 		w.fn_by_name('error')
 	}
-	if w.uses_dump {
+	if w.features.dump {
 		w.fn_by_name('eprint')
 		w.fn_by_name('eprintln')
 		builderptr_idx := int(w.table.find_type('strings.Builder').ref()).str()
@@ -1490,7 +1481,6 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()
-	w.remove_unused_dump_type()
 
 	if w.trace_enabled {
 		syms := w.used_syms.keys().map(w.table.type_to_str(it))

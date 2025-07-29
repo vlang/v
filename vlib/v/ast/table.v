@@ -10,6 +10,7 @@ import v.util
 @[heap; minify]
 pub struct UsedFeatures {
 pub mut:
+	dump           bool            // filled in markused
 	range_index    bool            // string[0..1]
 	cast_ptr       bool            // &u8(...)
 	anon_fn        bool            // fn () { }

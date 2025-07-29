@@ -290,7 +290,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
 				tsym := c.table.sym(unwrapped_expr_type)
-				c.table.dumps[int(unwrapped_expr_type.clear_flags(.option, .result, .atomic_f))] = tsym.cname
 				c.markused_comptimefor(mut node, unwrapped_expr_type)
 				if tsym.kind == .array_fixed {
 					info := tsym.info as ast.ArrayFixed
