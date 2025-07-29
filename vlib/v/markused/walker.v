@@ -107,9 +107,6 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 		return
 	}
 	w.used_consts[ckey] = true
-	if ckey == 'c' {
-		println(ckey)
-	}
 	cfield := w.all_consts[ckey] or { return }
 	w.expr(cfield.expr)
 	w.mark_by_type(cfield.typ)
