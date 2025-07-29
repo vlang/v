@@ -1302,11 +1302,11 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name(ast.string_type_idx.str() + '.repeat')
 		w.fn_by_name('tos3')
 	}
-	// if w.uses_append {
-	// 	ref_array_idx_str := int(ast.array_type.ref()).str()
-	// 	w.fn_by_name(ref_array_idx_str + '.push')
-	// 	w.fn_by_name(ref_array_idx_str + '.push_many_noscan')
-	// }
+	if w.uses_append {
+		ref_array_idx_str := int(ast.array_type.ref()).str()
+		w.fn_by_name(ref_array_idx_str + '.push')
+		w.fn_by_name(ref_array_idx_str + '.push_many_noscan')
+	}
 	if w.uses_index || w.pref.is_shared {
 		array_idx_str := ast.array_type_idx.str()
 		if w.uses_str_index {
