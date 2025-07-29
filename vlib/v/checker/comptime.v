@@ -16,10 +16,10 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.left_type = c.expr(mut node.left)
 	}
 	if node.method_name == 'compile_error' {
-		c.error(c.comptime_call_msg(node) or { '' }, node.pos)
+		c.error(c.comptime_call_msg(node), node.pos)
 		return ast.void_type
 	} else if node.method_name == 'compile_warn' {
-		c.warn(c.comptime_call_msg(node) or { '' }, node.pos)
+		c.warn(c.comptime_call_msg(node), node.pos)
 		return ast.void_type
 	}
 	if node.is_env {
@@ -204,16 +204,13 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	return f.return_type
 }
 
-fn (mut c Checker) comptime_call_msg(node ast.ComptimeCall) ?string {
-	if node.method_name !in ['compile_error', 'compile_warn'] {
-		return none
-	}
+fn (mut c Checker) comptime_call_msg(node ast.ComptimeCall) string {
 	return if node.args_var.len > 0 {
 		node.args_var
 	} else if value := c.eval_comptime_const_expr(node.args[0].expr, -1) {
-		value.string()
+		value.string() or { '' }
 	} else {
-		none
+		''
 	}
 }
 
