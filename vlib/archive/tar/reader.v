@@ -93,10 +93,12 @@ pub fn (b Read) get_block_number() int {
 	return b.block_number
 }
 
+// get_special returns the special type of the Read.
 pub fn (b Read) get_special() BlockSpecial {
 	return b.special
 }
 
+// str returns a string representation with block number, path, special type and stop early.
 pub fn (r Read) str() string {
 	return '(block_number:${r.block_number} path:${r.get_path()} special:${r.special} stop_early:${r.stop_early})'
 }

@@ -31,6 +31,7 @@ pub fn new_untar(reader Reader) &Untar {
 	}
 }
 
+// str returns a string representation with max_blocks and last read.
 pub fn (u Untar) str() string {
 	return 'max_blocks:${u.max_blocks} last_read:${u.read}'
 }
