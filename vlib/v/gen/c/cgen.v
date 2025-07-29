@@ -1702,6 +1702,9 @@ pub fn (mut g Gen) write_typedef_types() {
 	type_symbols := g.table.type_symbols.filter(!it.is_builtin
 		&& it.kind in [.array, .array_fixed, .chan, .map])
 	for sym in type_symbols {
+		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+			continue
+		}
 		match sym.kind {
 			.array {
 				info := sym.info as ast.Array
@@ -1752,9 +1755,6 @@ pub fn (mut g Gen) write_typedef_types() {
 					chan_inf := sym.chan_info()
 					chan_elem_type := chan_inf.elem_type
 					esym := g.table.sym(chan_elem_type)
-					if g.pref.skip_unused && esym.idx !in g.table.used_features.used_syms {
-						continue
-					}
 					g.type_definitions.writeln('typedef chan ${sym.cname};')
 					is_fixed_arr := esym.kind == .array_fixed
 					if !chan_elem_type.has_flag(.generic) {
@@ -1776,9 +1776,6 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 				}
 			}
 			.map {
-				if g.pref.skip_unused && g.table.used_features.used_maps == 0 {
-					continue
-				}
 				g.type_definitions.writeln('typedef map ${sym.cname};')
 			}
 			else {
@@ -2614,7 +2611,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.InterfaceDecl {
 			// definitions are sorted and added in write_types
 			ts := g.table.sym(node.typ)
-			if !(ts.info as ast.Interface).is_generic {
+			if !(ts.info as ast.Interface).is_generic
+				&& (!g.pref.skip_unused || ts.idx in g.table.used_features.used_syms) {
 				for method in node.methods {
 					if method.return_type.has_flag(.option) {
 						// Register an option if it's not registered yet
@@ -6711,7 +6709,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		}
 		match sym.info {
 			ast.Struct {
-				if !struct_names[name] {
+				if !struct_names[name]
+					&& (!g.pref.skip_unused || sym.idx in g.table.used_features.used_syms) {
 					// generate field option types for fixed array of option struct before struct declaration
 					opt_fields := sym.info.fields.filter(g.table.final_sym(it.typ).kind == .array_fixed)
 					for opt_field in opt_fields {
@@ -6733,15 +6732,13 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							}
 						}
 					}
-					if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
-						continue
-					}
 					g.struct_decl(sym.info, name, false, false)
 					struct_names[name] = true
 				}
 			}
 			ast.Thread {
-				if !g.pref.is_bare && !g.pref.no_builtin {
+				if !g.pref.is_bare && !g.pref.no_builtin
+					&& (!g.pref.skip_unused || sym.idx in g.table.used_features.used_syms) {
 					if g.pref.os == .windows {
 						if name == '__v_thread' {
 							g.thread_definitions.writeln('typedef HANDLE ${name};')
@@ -6814,7 +6811,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			ast.ArrayFixed {
 				elem_sym := g.table.sym(sym.info.elem_type)
 				if !elem_sym.is_builtin() && !sym.info.elem_type.has_flag(.generic)
-					&& !sym.info.is_fn_ret {
+					&& (!g.pref.skip_unused || (!sym.info.is_fn_ret
+					&& sym.idx in g.table.used_features.used_syms)) {
 					// .array_fixed {
 					styp := sym.cname
 					// array_fixed_char_300 => char x[300]
@@ -6848,10 +6846,6 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 								}
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							} else if !(elem_sym.info is ast.ArrayFixed && elem_sym.info.is_fn_ret) {
-								if g.pref.skip_unused
-									&& elem_sym.idx !in g.table.used_features.used_syms {
-									continue
-								}
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							}
 						}

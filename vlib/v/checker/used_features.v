@@ -175,7 +175,6 @@ fn (mut c Checker) markused_infixexpr(check bool) {
 		return
 	}
 	c.table.used_features.index = true
-	c.table.used_features.arr_init = true
 }
 
 fn (mut c Checker) markused_array_method(check bool, method_name string) {
@@ -184,7 +183,6 @@ fn (mut c Checker) markused_array_method(check bool, method_name string) {
 	}
 	match method_name {
 		'' { // array init
-			c.table.used_features.arr_init = true
 		}
 		'first' {
 			c.table.used_features.arr_first = true

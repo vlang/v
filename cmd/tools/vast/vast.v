@@ -1468,6 +1468,7 @@ fn (t Tree) index_expr(node ast.IndexExpr) &Node {
 	obj.add_terse('is_setter', t.bool_node(node.is_setter))
 	obj.add_terse('is_direct', t.bool_node(node.is_direct))
 	obj.add_terse('or_expr', t.or_expr(node.or_expr))
+	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }

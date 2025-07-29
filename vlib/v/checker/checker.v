@@ -2385,9 +2385,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			}
 		}
 		ast.NodeError {}
-		ast.DebuggerStmt {
-			c.table.used_features.debugger = true
-		}
+		ast.DebuggerStmt {}
 		ast.AsmStmt {
 			c.asm_stmt(mut node)
 		}
@@ -2398,9 +2396,6 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 }
 
 fn (mut c Checker) assert_stmt(mut node ast.AssertStmt) {
-	if node.is_used {
-		c.table.used_features.asserts = true
-	}
 	cur_exp_typ := c.expected_type
 	c.expected_type = ast.bool_type
 	assert_type := c.check_expr_option_or_result_call(node.expr, c.expr(mut node.expr))
@@ -5140,6 +5135,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	}
 	c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
 	c.check_expr_option_or_result_call(node, typ)
+	node.typ = typ
 	return typ
 }
 

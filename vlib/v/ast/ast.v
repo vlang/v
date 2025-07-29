@@ -1207,6 +1207,7 @@ pub mut:
 	is_option bool // IfGuard
 	is_direct bool // Set if the underlying memory can be safely accessed
 	is_gated  bool // #[] gated array
+	typ       Type
 }
 
 @[minify]
