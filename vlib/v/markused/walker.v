@@ -61,6 +61,7 @@ mut:
 	uses_memdup        bool // sumtype cast and &Struct{}
 	uses_arr_void      bool // auto arr methods
 	uses_index         bool
+	uses_append        bool // var << item
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -585,6 +586,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			if !w.uses_eq && node.op in [.eq, .ne] {
 				w.uses_eq = true
+			}
+			if !w.uses_append && node.op == .left_shift {
+				w.uses_append = true
 			}
 		}
 		ast.IfGuardExpr {
@@ -1301,10 +1305,21 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_arr_void {
 		w.mark_by_type(w.table.find_or_register_array(ast.voidptr_type))
 	}
+	if w.features.auto_str || w.uses_dump {
+		w.fn_by_name(ast.string_type_idx.str() + '.repeat')
+		w.fn_by_name('tos3')
+	}
+	if w.uses_append {
+		ref_array_idx_str := int(ast.array_type.ref()).str()
+		w.fn_by_name(ref_array_idx_str + '.push')
+		w.fn_by_name(ref_array_idx_str + '.push_many_noscan')
+	}
 	if w.uses_index || w.pref.is_shared {
 		string_idx_str := ast.string_type_idx.str()
+		array_idx_str := ast.array_type_idx.str()
 		w.fn_by_name(string_idx_str + '.at')
 		w.fn_by_name(string_idx_str + '.at_with_check')
+		w.fn_by_name(array_idx_str + '.slice')
 		// core_fns << string_idx_str + '.clone'
 		// core_fns << string_idx_str + '.clone_static'		
 		// core_fns << array_idx_str + '.set'
@@ -1314,7 +1329,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		// core_fns << map_idx_str + '.set'
 		// core_fns << '__new_array_noscan'
 		// core_fns << ref_array_idx_str + '.push_noscan'
-		// core_fns << ref_array_idx_str + '.push_many_noscan'
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)
