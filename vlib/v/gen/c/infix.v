@@ -1204,8 +1204,6 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	needs_cast := node.left_type.is_number() && node.right_type.is_number()
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)
-	is_safe_div := node.op == .div && g.pref.div_by_zero_is_zero
-	is_safe_mod := node.op == .mod && g.pref.div_by_zero_is_zero
 	mut typ := node.promoted_type
 	mut typ_str := g.styp(typ)
 	if needs_cast {
@@ -1219,6 +1217,8 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		typ_str = g.styp(typ)
 		g.write('(${typ_str})(')
 	}
+	is_safe_div := node.op == .div && g.pref.div_by_zero_is_zero && typ.is_int()
+	is_safe_mod := node.op == .mod && g.pref.div_by_zero_is_zero && typ.is_int()
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {
 		g.write('*')
 	} else if !g.inside_interface_deref && node.left is ast.Ident
