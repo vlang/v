@@ -360,41 +360,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		walker.used_fns.delete('${int(ast.none_type)}.str')
 	}
 
-	if table.used_features.used_maps > 0 {
-		for k, mut mfn in all_fns {
-			mut method_receiver_typename := ''
-			if mfn.is_method {
-				method_receiver_typename = table.type_to_str(mfn.receiver.typ)
-			}
-			if k in ['new_map', 'new_map_init', 'map_hash_string']
-				|| method_receiver_typename == '&map' || method_receiver_typename == '&DenseArray'
-				|| k.starts_with('map_') {
-				walker.fn_decl(mut mfn)
-			}
-			if pref_.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-				if k in ['new_map_noscan_key', 'new_map_noscan_value', 'new_map_noscan_key_value',
-					'new_map_init_noscan_key', 'new_map_init_noscan_value',
-					'new_map_init_noscan_key_value'] {
-					walker.fn_decl(mut mfn)
-				}
-			}
-		}
-	} else {
-		for map_fn_name in ['new_map', 'new_map_init', 'map_hash_string', 'new_dense_array',
-			'new_dense_array_noscan'] {
-			walker.used_fns.delete(map_fn_name)
-		}
-		for k, mut mfn in all_fns {
-			if !mfn.is_method {
-				continue
-			}
-			method_receiver_typename := table.type_to_str(mfn.receiver.typ)
-			if method_receiver_typename in ['&map', '&mapnode', '&SortedMap', '&DenseArray'] {
-				walker.used_fns.delete(k)
-			}
-		}
-	}
-
 	table.used_features.used_fns = walker.used_fns.move()
 	table.used_features.used_consts = walker.used_consts.move()
 	table.used_features.used_globals = walker.used_globals.move()

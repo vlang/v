@@ -1307,6 +1307,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	mut has_ptr_print := false
 	has_str_call := w.uses_interp || w.uses_asserts || w.uses_str || w.features.print_types.len > 0
+	mut map_fns := map[string]ast.FnDecl{}
 	for k, mut func in w.all_fns {
 		if has_str_call && k.ends_with('.str') {
 			if func.receiver.typ.idx() in w.used_syms {
@@ -1341,6 +1342,50 @@ fn (mut w Walker) mark_resource_dependencies() {
 				continue
 			}
 		}
+		if func.is_method && !func.receiver.typ.has_flag(.generic) {
+			method_receiver_typename := w.table.type_to_str(func.receiver.typ)
+			if method_receiver_typename in ['&map', '&mapnode', '&SortedMap', '&DenseArray'] {
+				map_fns[k] = func
+			}
+		} else if k.starts_with('map_') {
+			map_fns[k] = func
+		}
+	}
+	if w.features.used_maps > 0 {
+		w.fn_by_name('new_map')
+		w.fn_by_name('new_map_init')
+		w.fn_by_name('map_hash_string')
+
+		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+			w.fn_by_name('new_map_noscan_key')
+			w.fn_by_name('new_map_noscan_value')
+			w.fn_by_name('new_map_noscan_key_value')
+			w.fn_by_name('new_map_init_noscan_key')
+			w.fn_by_name('new_map_init_noscan_value')
+			w.fn_by_name('new_map_init_noscan_key_value')
+		}
+		for _, mut func in map_fns {
+			if !func.is_method {
+				w.fn_decl(mut func)
+			} else {
+				method_receiver_typename := w.table.type_to_str(func.receiver.typ)
+				if method_receiver_typename in ['&map', '&DenseArray'] {
+					w.fn_decl(mut func)
+				}
+			}
+		}
+	} else {
+		for k, func in map_fns {
+			if !func.is_method {
+				continue
+			}
+			w.used_fns.delete(k)
+		}
+		w.used_fns.delete('new_map')
+		w.used_fns.delete('new_map_init')
+		w.used_fns.delete('map_hash_string')
+		w.used_fns.delete('new_dense_array')
+		w.used_fns.delete('new_dense_array_noscan')
 	}
 }
 
