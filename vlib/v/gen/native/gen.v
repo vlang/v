@@ -39,8 +39,9 @@ mut:
 	extern_symbols            []string
 	linker_include_paths      []string
 	linker_libs               []string
-	extern_vars               map[i64]string
-	extern_fn_calls           map[i64]string
+	global_vars               map[i64]string // used to patch
+	extern_vars               map[i64]string // used to patch
+	extern_fn_calls           map[i64]string // used to patch
 	fn_addr                   map[string]i64
 	fn_names                  []string
 	var_offset                map[string]i32 // local var stack offset
@@ -256,6 +257,7 @@ struct PreprocVar {
 
 struct GlobalVar {
 	name string
+	typ ast.Type
 }
 
 @[params]
@@ -304,7 +306,7 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 	}
 	mut obj := ident.obj
 	if obj is ast.GlobalField {
-		return GlobalVar{obj.name}
+		return GlobalVar{obj.name, obj.typ}
 	} else if obj !in [ast.Var, ast.ConstField, ast.AsmRegister] {
 		obj = ident.scope.find(ident.name) or {
 			g.n_error('${@LOCATION} unknown variable ${ident.name}')

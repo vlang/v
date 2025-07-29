@@ -196,7 +196,7 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 fn (mut g Gen) extern_var_ident(var ExternVar) {
 	if g.pref.os == .linux {
 		main_reg := g.code_gen.main_reg()
-		g.extern_vars[g.pos()] = var.name
+		g.extern_vars[g.pos() + 2] = var.name // + 2 for the mov64 instruction
 		g.code_gen.mov64(main_reg, Number(i64(0)))
 		g.code_gen.mov_deref(main_reg, main_reg, ast.u64_type_idx)
 	} else if g.pref.os == .macos {

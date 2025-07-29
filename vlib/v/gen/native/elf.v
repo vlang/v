@@ -775,10 +775,10 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 				for fi in s.fields {
 					size := g.get_type_size(fi.typ)
 					match size {
-						1 { g.write8(0xFF) }
-						2 { g.write16(0xFFFF) }
-						4 { g.write32(0xFFFFFFFF) }
-						8 { g.write64(i64(0xFFFFFFFFFFFFFFFF)) }
+						1 { g.write8(0xF) }
+						2 { g.write16(0xF) }
+						4 { g.write32(0xF) }
+						8 { g.write64(i64(0xF)) }
 						else { println('${@LOCATION} unsupported size ${size} for global ${fi}') }
 					}
 					g.println('; global ${fi.name}, size: ${size}')
@@ -894,15 +894,13 @@ pub fn (mut g Gen) gen_rela_section() {
 			g.symtab_get_index(g.symbol_table, symbol[2..]), elf_r_amd64_gotpcrelx, -4)
 	}
 	for var_pos, symbol in g.extern_vars {
-		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos + 2, g.symtab_get_index(g.symbol_table,
+		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos, g.symtab_get_index(g.symbol_table,
 			symbol[2..]), elf_r_amd64_64, 0)
 	}
-	/* WIP Do that with the global vars
-	for var_pos, symbol in g.extern_vars {
-		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos + 2, g.symtab_get_index(g.symbol_table,
-			symbol[2..]), elf_r_amd64_64, 0)
+	for var_pos, symbol in g.global_vars {
+		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos, g.symtab_get_index(g.symbol_table,
+			symbol), elf_r_amd64_64, 0)
 	}
-	*/
 	g.elf_rela_section.data = relocations
 	g.gen_section_data([g.elf_rela_section])
 }

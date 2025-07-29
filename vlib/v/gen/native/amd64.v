@@ -793,7 +793,22 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 			c.g.println('mov ${size_str} PTR [rbp-${int(offset).hex2()}],${reg} ; `${var.name}`')
 		}
 		GlobalVar {
-			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+			size := match c.g.get_type_size(var.typ) {
+				1 { Size._8 }
+				2 { Size._16 }
+				4 { Size._32 }
+				8 { Size._64 }
+				else { c.g.n_error('${@LOCATION} unsupported size of global var') }
+			}
+			mut data_reg := reg
+			if reg == .rax || reg == .eax {
+				c.mov_reg(Amd64Register.rbx, reg)
+				data_reg = .rbx
+			}
+			c.g.global_vars[c.g.pos() + 2] = var.name // +2 for the mov64 instruction
+			c.mov64(Amd64Register.rax, i64(0)) // patched by the data relocations
+			c.mov_store(.rax, data_reg, size)
+			c.g.println('; mov global:`${var.name}` ${reg}')
 		}
 		ExternVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
