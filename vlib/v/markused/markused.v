@@ -112,15 +112,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.arr_insert {
 			core_fns << ref_array_idx_str + '.insert_many'
 		}
-		// if table.used_features.dump {
-		// 	include_panic_deps = true
-		// 	builderptr_idx := int(table.find_type('strings.Builder').ref()).str()
-		// 	core_fns << [
-		// 		builderptr_idx + '.str',
-		// 		builderptr_idx + '.free',
-		// 		builderptr_idx + '.write_rune',
-		// 	]
-		// }
 		if table.used_features.print_options {
 			include_panic_deps = true
 			core_fns << '_option_ok'

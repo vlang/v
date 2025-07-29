@@ -61,6 +61,7 @@ mut:
 	uses_memdup        bool // sumtype cast and &Struct{}
 	uses_arr_void      bool // auto arr methods
 	uses_index         bool
+	uses_str_index     bool
 	uses_append        bool // var << item
 }
 
@@ -544,6 +545,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.mark_builtin_array_method_as_used('slice')
 					w.features.range_index = true
 				}
+				w.uses_str_index = true
 			} else if sym.info is ast.Struct {
 				w.mark_by_sym(sym)
 			} else if sym.info is ast.SumType {
@@ -1309,16 +1311,18 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name(ast.string_type_idx.str() + '.repeat')
 		w.fn_by_name('tos3')
 	}
-	if w.uses_append {
-		ref_array_idx_str := int(ast.array_type.ref()).str()
-		w.fn_by_name(ref_array_idx_str + '.push')
-		w.fn_by_name(ref_array_idx_str + '.push_many_noscan')
-	}
+	// if w.uses_append {
+	// 	ref_array_idx_str := int(ast.array_type.ref()).str()
+	// 	w.fn_by_name(ref_array_idx_str + '.push')
+	// 	w.fn_by_name(ref_array_idx_str + '.push_many_noscan')
+	// }
 	if w.uses_index || w.pref.is_shared {
-		string_idx_str := ast.string_type_idx.str()
 		array_idx_str := ast.array_type_idx.str()
-		w.fn_by_name(string_idx_str + '.at')
-		w.fn_by_name(string_idx_str + '.at_with_check')
+		if w.uses_str_index {
+			string_idx_str := ast.string_type_idx.str()
+			w.fn_by_name(string_idx_str + '.at')
+			w.fn_by_name(string_idx_str + '.at_with_check')
+		}
 		w.fn_by_name(array_idx_str + '.slice')
 		// core_fns << string_idx_str + '.clone'
 		// core_fns << string_idx_str + '.clone_static'		
@@ -1466,7 +1470,7 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	if include_panic_deps || w.uses_external_type || w.uses_asserts || w.uses_debugger
 		|| w.uses_interp {
 		if w.trace_enabled {
-			eprintln('>>>>> PANIC DEPS ${include_panic_deps} | external_type=${w.uses_external_type} | asserts=${w.uses_asserts} | dbg=${w.uses_debugger}')
+			eprintln('>>>>> PANIC DEPS ${include_panic_deps} | external_type=${w.uses_external_type} | asserts=${w.uses_asserts} | dbg=${w.uses_debugger} interp=${w.uses_interp}')
 		}
 		ref_array_idx_str := int(ast.array_type.ref()).str()
 		string_idx_str := ast.string_type_idx.str()
