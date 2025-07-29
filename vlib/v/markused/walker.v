@@ -1342,7 +1342,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 				continue
 			}
 		}
-		if func.is_method && !func.receiver.typ.has_flag(.generic) {
+		if func.is_method && !func.receiver.typ.has_flag(.generic) && func.receiver.typ.is_ptr() {
 			method_receiver_typename := w.table.type_to_str(func.receiver.typ)
 			if method_receiver_typename in ['&map', '&mapnode', '&SortedMap', '&DenseArray'] {
 				map_fns[k] = func
