@@ -1,5 +1,3 @@
-module main
-
 import archive.tar
 import flag
 import net.http
