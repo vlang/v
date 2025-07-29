@@ -16,26 +16,10 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.left_type = c.expr(mut node.left)
 	}
 	if node.method_name == 'compile_error' {
-		msg := if node.args_var.len > 0 {
-			node.args_var
-		} else {
-			value := c.eval_comptime_const_expr(node.args[0].expr, -1) or {
-				ast.ComptTimeConstValue('')
-			}
-			value.string() or { '' }
-		}
-		c.error(msg, node.pos)
+		c.error(c.comptime_call_msg(node) or { '' }, node.pos)
 		return ast.void_type
 	} else if node.method_name == 'compile_warn' {
-		msg := if node.args_var.len > 0 {
-			node.args_var
-		} else {
-			value := c.eval_comptime_const_expr(node.args[0].expr, -1) or {
-				ast.ComptTimeConstValue('')
-			}
-			value.string() or { '' }
-		}
-		c.warn(msg, node.pos)
+		c.warn(c.comptime_call_msg(node) or { '' }, node.pos)
 		return ast.void_type
 	}
 	if node.is_env {
@@ -218,6 +202,19 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	c.markused_comptime_call(true, '${int(left_type)}.${method_name}')
 	node.result_type = f.return_type
 	return f.return_type
+}
+
+fn (mut c Checker) comptime_call_msg(node ast.ComptimeCall) ?string {
+	if node.method_name !in ['compile_error', 'compile_warn'] {
+		return none
+	}
+	return if node.args_var.len > 0 {
+		node.args_var
+	} else if value := c.eval_comptime_const_expr(node.args[0].expr, -1) {
+		value.string()
+	} else {
+		none
+	}
 }
 
 fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
@@ -444,6 +441,8 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 					if e := expr.exprs[i] {
 						if value := c.eval_comptime_const_expr(e, nlevel + 1) {
 							sb.write_string(value.string() or { '' })
+						} else {
+							c.error('unsupport expr `${e.str()}`', e.pos())
 						}
 					}
 				}
