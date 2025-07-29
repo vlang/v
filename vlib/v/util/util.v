@@ -154,7 +154,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		mut l := filelock.new(lockfile)
 		if l.try_acquire() {
 			tlog('lockfile acquired')
-			tool_recompile_retry_max_count := 7
+			tool_recompile_retry_max_count := int_max(1, os.getenv_opt('VUTIL_RETRY_MAX_COUNT') or {
+				'7'
+			}.int())
 			for i in 0 .. tool_recompile_retry_max_count {
 				tlog('looping i: ${i} / ${tool_recompile_retry_max_count}')
 				// ensure a stable and known working folder, when compiling V's tools, to avoid module lookup problems:
