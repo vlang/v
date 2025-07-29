@@ -60,6 +60,7 @@ mut:
 	uses_dump          bool
 	uses_memdup        bool // sumtype cast and &Struct{}
 	uses_arr_void      bool // auto arr methods
+	uses_index         bool
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -245,6 +246,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 		ast.ComptimeFor {
 			w.mark_by_type(node.typ)
 			w.stmts(node.stmts)
+			w.uses_dump = true
 			match node.kind {
 				.attributes {
 					w.uses_ct_attribute = true
@@ -508,6 +510,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
+			w.uses_index = true
 			w.expr(node.left)
 			w.expr(node.index)
 			if node.or_expr.kind == .block {
@@ -1280,6 +1283,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_dump {
 		w.fn_by_name('eprint')
 		w.fn_by_name('eprintln')
+		builderptr_idx := int(w.table.find_type('strings.Builder').ref()).str()
+		w.fn_by_name(builderptr_idx + '.str')
+		w.fn_by_name(builderptr_idx + '.free')
+		w.fn_by_name(builderptr_idx + '.write_rune')
 	}
 	if w.uses_spawn {
 		w.fn_by_name('malloc')
@@ -1293,6 +1300,21 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	if w.uses_arr_void {
 		w.mark_by_type(w.table.find_or_register_array(ast.voidptr_type))
+	}
+	if w.uses_index || w.pref.is_shared {
+		string_idx_str := ast.string_type_idx.str()
+		w.fn_by_name(string_idx_str + '.at')
+		w.fn_by_name(string_idx_str + '.at_with_check')
+		// core_fns << string_idx_str + '.clone'
+		// core_fns << string_idx_str + '.clone_static'		
+		// core_fns << array_idx_str + '.set'
+		// core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
+		// core_fns << ref_array_idx_str + '.set'
+		// core_fns << map_idx_str + '.get'
+		// core_fns << map_idx_str + '.set'
+		// core_fns << '__new_array_noscan'
+		// core_fns << ref_array_idx_str + '.push_noscan'
+		// core_fns << ref_array_idx_str + '.push_many_noscan'
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)

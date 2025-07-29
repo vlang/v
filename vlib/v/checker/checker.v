@@ -3069,7 +3069,6 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			return c.concat_expr(mut node)
 		}
 		ast.DumpExpr {
-			c.table.used_features.dump = true
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(mut node.expr)
 			c.markused_dumpexpr(mut node)
@@ -5014,7 +5013,6 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		if node.index is ast.RangeExpr {
 			c.table.used_features.range_index = true
 		}
-		c.table.used_features.index = true
 	}
 	is_aggregate_arr := typ_sym.kind == .aggregate
 		&& (typ_sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0

@@ -85,21 +85,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << '__new_array_with_array_default_noscan'
 			core_fns << 'new_array_from_c_array'
 		}
-		if table.used_features.index || pref_.is_shared {
-			include_panic_deps = true
-			core_fns << string_idx_str + '.at_with_check'
-			core_fns << string_idx_str + '.clone'
-			core_fns << string_idx_str + '.clone_static'
-			core_fns << string_idx_str + '.at'
-			core_fns << array_idx_str + '.set'
-			core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
-			core_fns << ref_array_idx_str + '.set'
-			core_fns << map_idx_str + '.get'
-			core_fns << map_idx_str + '.set'
-			core_fns << '__new_array_noscan'
-			core_fns << ref_array_idx_str + '.push_noscan'
-			core_fns << ref_array_idx_str + '.push_many_noscan'
-		}
 		if table.used_features.range_index || pref_.is_shared {
 			core_fns << string_idx_str + '.substr_with_check'
 			core_fns << string_idx_str + '.substr_ni'
@@ -109,7 +94,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << array_idx_str + '.clone_static_to_depth'
 			core_fns << array_idx_str + '.clone_to_depth'
 		}
-		if table.used_features.auto_str || table.used_features.dump {
+		if table.used_features.auto_str {
 			core_fns << string_idx_str + '.repeat'
 			core_fns << 'tos3'
 		}
@@ -131,15 +116,15 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.arr_insert {
 			core_fns << ref_array_idx_str + '.insert_many'
 		}
-		if table.used_features.dump {
-			include_panic_deps = true
-			builderptr_idx := int(table.find_type('strings.Builder').ref()).str()
-			core_fns << [
-				builderptr_idx + '.str',
-				builderptr_idx + '.free',
-				builderptr_idx + '.write_rune',
-			]
-		}
+		// if table.used_features.dump {
+		// 	include_panic_deps = true
+		// 	builderptr_idx := int(table.find_type('strings.Builder').ref()).str()
+		// 	core_fns << [
+		// 		builderptr_idx + '.str',
+		// 		builderptr_idx + '.free',
+		// 		builderptr_idx + '.write_rune',
+		// 	]
+		// }
 		if table.used_features.print_options {
 			include_panic_deps = true
 			core_fns << '_option_ok'

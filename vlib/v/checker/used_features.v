@@ -91,7 +91,6 @@ fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
 }
 
 fn (mut c Checker) markused_comptimefor(mut node ast.ComptimeFor, unwrapped_expr_type ast.Type) {
-	c.table.used_features.dump = true
 	if c.table.used_features.used_maps == 0 {
 		final_sym := c.table.final_sym(unwrapped_expr_type)
 		if final_sym.info is ast.Map {
@@ -168,13 +167,6 @@ fn (mut c Checker) markused_string_inter_lit(mut node ast.StringInterLiteral, ft
 	if ftyp.has_option_or_result() {
 		c.table.used_features.print_options = true
 	}
-}
-
-fn (mut c Checker) markused_infixexpr(check bool) {
-	if !check {
-		return
-	}
-	c.table.used_features.index = true
 }
 
 fn (mut c Checker) markused_array_method(check bool, method_name string) {

@@ -10,8 +10,6 @@ import v.util
 @[heap; minify]
 pub struct UsedFeatures {
 pub mut:
-	dump           bool            // dump()
-	index          bool            // string[0]
 	range_index    bool            // string[0..1]
 	cast_ptr       bool            // &u8(...)
 	anon_fn        bool            // fn () { }
