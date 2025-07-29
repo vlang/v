@@ -1322,7 +1322,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		// core_fns << string_idx_str + '.clone'
 		// core_fns << string_idx_str + '.clone_static'		
 		// core_fns << array_idx_str + '.set'
-		// core_fns <<  // used for `x := a[i] or {}`
 		// core_fns << ref_array_idx_str + '.set'
 		// core_fns << map_idx_str + '.get'
 		// core_fns << map_idx_str + '.set'
