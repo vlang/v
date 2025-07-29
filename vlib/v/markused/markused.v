@@ -311,7 +311,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 	mut walker := Walker.new(
 		table:         table
-		files:         ast_files
 		all_fns:       all_fns
 		all_consts:    all_consts
 		all_globals:   all_globals

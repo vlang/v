@@ -1168,8 +1168,8 @@ pub fn (s string) substr(start int, _end int) string {
 	end := if _end == max_int { s.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			panic('substr(' + start.str() + ', ' + end.str() + ') out of bounds (len=' +
-				s.len.str() + ') s=' + s)
+			panic('substr(' + impl_i64_to_string(start) + ', ' + impl_i64_to_string(end) +
+				') out of bounds (len=' + impl_i64_to_string(s.len) + ') s=' + s)
 		}
 	}
 	len := end - start
@@ -1207,8 +1207,8 @@ pub fn (s string) substr_unsafe(start int, _end int) string {
 pub fn (s string) substr_with_check(start int, _end int) !string {
 	end := if _end == max_int { s.len } else { _end } // max_int
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-		return error('substr(' + start.str() + ', ' + end.str() + ') out of bounds (len=' +
-			s.len.str() + ')')
+		return error('substr(' + impl_i64_to_string(start) + ', ' + impl_i64_to_string(end) +
+			') out of bounds (len=' + impl_i64_to_string(s.len) + ')')
 	}
 	len := end - start
 	if len == s.len {
