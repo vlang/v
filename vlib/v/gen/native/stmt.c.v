@@ -106,6 +106,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.gen_assert(node)
 		}
 		ast.GlobalDecl {
+			if g.pref.os == .linux {
+				// handled in elf generator
+			} else if !g.is_builtin_mod && !g.pref.experimental {
+				g.warning('global variables are not supported', node.pos)
+			}
 		}
 		ast.Import {} // do nothing here
 		ast.StructDecl {}
