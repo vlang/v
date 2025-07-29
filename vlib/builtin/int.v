@@ -11,7 +11,7 @@ pub type byte = u8
 
 // ptr_str returns a string with the address of `ptr`.
 pub fn ptr_str(ptr voidptr) string {
-	buf1 := u64(ptr).hex()
+	buf1 := u64_to_hex_no_leading_zeros(u64(ptr), 16)
 	return buf1
 }
 
@@ -182,13 +182,18 @@ pub fn (nn u32) str() string {
 // str returns the value of the `int_literal` as a `string`.
 @[inline]
 pub fn (n int_literal) str() string {
-	return i64(n).str()
+	return impl_i64_to_string(n)
 }
 
 // str returns the value of the `i64` as a `string`.
 // Example: assert i64(-200000).str() == '-200000'
-@[direct_array_access; inline]
+@[inline]
 pub fn (nn i64) str() string {
+	return impl_i64_to_string(nn)
+}
+
+@[direct_array_access]
+fn impl_i64_to_string(nn i64) string {
 	unsafe {
 		mut n := nn
 		mut d := i64(0)
