@@ -762,43 +762,31 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	g.elf_rela_section = sections[g.find_section_header('.rela.text', sections)]
 
 	// Init data section
+	// TODO: use .bss for uninitialized data or generate the data
+	data_section := sections[g.find_section_header('.data', sections)]
+	g.elf_data_header_addr = data_section.header.offset
+
 	data_pos := g.pos()
+	g.println('\ndata_start_pos = ${data_pos.hex()}')
+	g.write64_at(g.elf_data_header_addr + 24, data_pos)
 	for f in g.files {
 		for s in f.stmts {
 			if s is ast.GlobalDecl {
 				for fi in s.fields {
 					size := g.get_type_size(fi.typ)
 					match size {
-						1 { g.write8(0) }
-						2 { g.write16(0) }
-						4 { g.write32(0) }
-						8 { g.write64(i64(0)) }
+						1 { g.write8(0xFF) }
+						2 { g.write16(0xFFFF) }
+						4 { g.write32(0xFFFFFFFF) }
+						8 { g.write64(i64(0xFFFFFFFFFFFFFFFF)) }
 						else { println('${@LOCATION} unsupported size ${size} for global ${fi}') }
 					}
+					g.println('; global ${fi.name}, size: ${size}')
 				}
 			}
 		}
 	}
-	if g.elf_data_header_addr != -1 {
-		g.write64_at(g.elf_data_header_addr + 32, g.pos() - data_pos)
-	}
-
-	/*
-	g.write64_at(g.elf_data_header_addr + 24, data_pos)
-	/* Do that with the global vars
-	for var_pos, symbol in g.extern_vars {
-		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos + 2, g.symtab_get_index(g.symbol_table,
-			symbol[2..]), elf_r_amd64_64, 0)
-	}
-	*/
-	g.write32(0x3)
-	g.write32(0x3)
-	g.write32(0x3)
-	g.write32(0x3)
-	g.write32(0x3)
-	g.write32(0x3)
-	g.write32(0x3)
-	*/
+	g.write64_at(g.elf_data_header_addr + 32, g.pos() - data_pos)
 
 	// user code starts here
 	if g.pref.is_verbose {
@@ -814,9 +802,6 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	text_section := sections[g.find_section_header('.text', sections)]
 	g.elf_text_header_addr = text_section.header.offset
 	g.write64_at(g.elf_text_header_addr + 24, g.pos()) // write the code start pos to the text section
-
-	data_section := sections[g.find_section_header('.data', sections)]
-	g.elf_data_header_addr = data_section.header.offset
 
 	g.code_gen.call(placeholder)
 	g.println('; call main.main')
@@ -912,6 +897,12 @@ pub fn (mut g Gen) gen_rela_section() {
 		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos + 2, g.symtab_get_index(g.symbol_table,
 			symbol[2..]), elf_r_amd64_64, 0)
 	}
+	/* WIP Do that with the global vars
+	for var_pos, symbol in g.extern_vars {
+		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos + 2, g.symtab_get_index(g.symbol_table,
+			symbol[2..]), elf_r_amd64_64, 0)
+	}
+	*/
 	g.elf_rela_section.data = relocations
 	g.gen_section_data([g.elf_rela_section])
 }
