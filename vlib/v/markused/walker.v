@@ -23,7 +23,6 @@ pub mut:
 	used_panic    int // option/result propagation
 	pref          &pref.Preferences = unsafe { nil }
 mut:
-	files         []&ast.File
 	all_fns       map[string]ast.FnDecl
 	all_consts    map[string]ast.ConstField
 	all_globals   map[string]ast.GlobalField
@@ -55,8 +54,8 @@ mut:
 	uses_interp        bool // string interpolation
 	uses_guard         bool
 	uses_orm           bool
-	uses_str           bool // has .str() call
-	uses_free          bool // has .free() call
+	uses_str           map[ast.Type]bool // has .str() calls, and for which types
+	uses_free          map[ast.Type]bool // has .free() calls, and for which types
 	uses_spawn         bool
 	uses_dump          bool
 	uses_memdup        bool // sumtype cast and &Struct{}
@@ -107,9 +106,6 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 		return
 	}
 	w.used_consts[ckey] = true
-	if ckey == 'c' {
-		println(ckey)
-	}
 	cfield := w.all_consts[ckey] or { return }
 	w.expr(cfield.expr)
 	w.mark_by_type(cfield.typ)
@@ -428,10 +424,13 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				if sym.info is ast.Map {
 					w.mark_by_type(w.table.find_or_register_array(sym.info.key_type))
 				}
-			} else if !w.uses_str && node.is_method && node.name == 'str' {
-				w.uses_str = true
-			} else if !w.uses_free && node.is_method && node.name == 'free' {
-				w.uses_free = true
+			} else if !node.is_method && node.args.len == 1 && node.args[0].typ != ast.string_type
+				&& node.name in ['println', 'print', 'eprint', 'eprintln'] {
+				w.uses_str[node.args[0].typ] = true
+			} else if node.is_method && node.name == 'str' {
+				w.uses_str[node.left_type] = true
+			} else if node.is_method && node.name == 'free' {
+				w.uses_free[node.left_type] = true
 			}
 			if !w.is_builtin_mod && !w.uses_external_type {
 				if node.is_method {
@@ -1295,18 +1294,27 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_arr_void {
 		w.mark_by_type(w.table.find_or_register_array(ast.voidptr_type))
 	}
+	for typ, _ in w.table.used_features.print_types {
+		w.mark_by_type(typ)
+	}
 	if w.trace_enabled {
 		types := w.table.used_features.print_types.keys().map(w.table.type_to_str(it))
 		eprintln('>>>>>>>>>> PRINT TYPES ${types}')
 	}
-	for typ, _ in w.table.used_features.print_types {
-		w.mark_by_type(typ)
+	if w.trace_enabled {
+		types := w.uses_str.keys().map(w.table.type_to_str(it))
+		eprintln('>>>>>>>>>> USES .str() CALLS ON TYPES ${types}')
+	}
+	if w.trace_enabled {
+		types := w.uses_free.keys().map(w.table.type_to_str(it))
+		eprintln('>>>>>>>>>> USES .free() CALLS ON TYPES ${types}')
 	}
 	if w.trace_enabled {
 		eprintln('>>>>>>>>>> ALL_FNS LOOP')
 	}
 	mut has_ptr_print := false
-	has_str_call := w.uses_interp || w.uses_asserts || w.uses_str || w.features.print_types.len > 0
+	has_str_call := w.uses_interp || w.uses_asserts || w.uses_str.len > 0
+		|| w.features.print_types.len > 0
 	for k, mut func in w.all_fns {
 		if has_str_call && k.ends_with('.str') {
 			if func.receiver.typ.idx() in w.used_syms {
@@ -1318,7 +1326,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 			}
 			continue
 		}
-		if w.pref.autofree || (w.uses_free && k.ends_with('.free')
+		if w.pref.autofree || (w.uses_free.len > 0 && k.ends_with('.free')
 			&& func.receiver.typ.idx() in w.used_syms) {
 			w.fn_by_name(k)
 			continue
