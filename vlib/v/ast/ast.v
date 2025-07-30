@@ -2050,21 +2050,32 @@ pub mut:
 	typ_key    string // `f.typ` cached key for type resolver
 }
 
+pub enum ComptimeCallKind {
+	unknown
+	d
+	env
+	res
+	html
+	tmpl
+	method
+	pkgconfig
+	embed_file
+	compile_warn
+	compile_error
+}
+
 @[minify]
 pub struct ComptimeCall {
 pub:
-	pos              token.Pos
-	has_parens       bool // if $() is used, for vfmt
-	method_name      string
-	method_pos       token.Pos
-	scope            &Scope = unsafe { nil }
-	is_vweb          bool
-	is_veb           bool
-	is_embed         bool // $embed_file(...)
-	is_env           bool // $env(...) // TODO: deprecate after $d() is stable
-	is_compile_value bool // $d(...)
-	env_pos          token.Pos
-	is_pkgconfig     bool
+	pos         token.Pos
+	has_parens  bool // if $() is used, for vfmt
+	method_name string
+	kind        ComptimeCallKind
+	method_pos  token.Pos
+	scope       &Scope = unsafe { nil }
+	is_vweb     bool
+	is_veb      bool
+	env_pos     token.Pos
 mut:
 	is_d_resolved bool
 pub mut:
@@ -2087,7 +2098,7 @@ pub fn (mut cc ComptimeCall) resolve_compile_value(compile_values map[string]str
 	if cc.is_d_resolved {
 		return
 	}
-	if !cc.is_compile_value {
+	if cc.kind != .d {
 		return error('ComptimeCall is not \$d()')
 	}
 	arg := cc.args[0] or {
@@ -2109,7 +2120,7 @@ pub fn (mut cc ComptimeCall) resolve_compile_value(compile_values map[string]str
 // `ast.Expr`'s `str()' method (used by e.g. vfmt).
 pub fn (cc ComptimeCall) expr_str() string {
 	mut str := 'ast.ComptimeCall'
-	if cc.is_compile_value {
+	if cc.kind == .d {
 		arg := cc.args[0] or { return str }
 		if arg.expr.is_pure_literal() {
 			str = "\$${cc.method_name}('${cc.args_var}', ${arg})"

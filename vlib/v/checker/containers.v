@@ -357,7 +357,7 @@ fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem
 				fixed_size = size_expr.val.int()
 			}
 			ast.ComptimeCall {
-				if size_expr.is_compile_value {
+				if size_expr.kind == .d {
 					size_expr.resolve_compile_value(c.pref.compile_values) or {
 						c.error(err.msg(), size_expr.pos)
 					}

@@ -15,14 +15,14 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
 		node.left_type = c.expr(mut node.left)
 	}
-	if node.method_name == 'compile_error' {
+	if node.kind == .compile_error {
 		c.error(c.comptime_call_msg(node), node.pos)
 		return ast.void_type
-	} else if node.method_name == 'compile_warn' {
+	} else if node.kind == .compile_warn {
 		c.warn(c.comptime_call_msg(node), node.pos)
 		return ast.void_type
 	}
-	if node.is_env {
+	if node.kind == .env {
 		env_value := util.resolve_env_value("\$env('${node.args_var}')", false) or {
 			c.error(err.msg(), node.env_pos)
 			return ast.string_type
@@ -30,14 +30,14 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.env_value = env_value
 		return ast.string_type
 	}
-	if node.is_compile_value {
+	if node.kind == .d {
 		node.resolve_compile_value(c.pref.compile_values) or {
 			c.error(err.msg(), node.pos)
 			return ast.void_type
 		}
 		return node.result_type
 	}
-	if node.is_embed {
+	if node.kind == .embed_file {
 		if node.args.len == 1 {
 			embed_arg := node.args[0]
 			mut raw_path := ''
@@ -111,7 +111,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 
 		c.table.cur_fn = save_cur_fn
 	}
-	if node.method_name == 'html' {
+	if node.kind == .html {
 		ret_sym := c.table.sym(c.table.cur_fn.return_type)
 		if ret_sym.cname !in ['veb__Result', 'vweb__Result', 'x__vweb__Result'] {
 			ct_call := if node.is_veb { 'veb' } else { 'vweb' }
@@ -138,7 +138,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 		return c.type_resolver.get_type(node)
 	}
-	if node.method_name == 'res' {
+	if node.kind == .res {
 		if !c.inside_defer {
 			c.error('`res` can only be used in defer blocks', node.pos)
 			return ast.void_type
@@ -1096,7 +1096,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 			}
 		}
 		ast.ComptimeCall {
-			if cond.is_pkgconfig {
+			if cond.kind == .pkgconfig {
 				mut m := pkgconfig.main([cond.args_var]) or {
 					c.error(err.msg(), cond.pos)
 					return .skip
@@ -1104,7 +1104,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 				m.run() or { return .skip }
 				return .eval
 			}
-			if cond.is_compile_value {
+			if cond.kind == .d {
 				t := c.expr(mut cond)
 				if t != ast.bool_type {
 					c.error('inside \$if, only \$d() expressions that return bool are allowed',
