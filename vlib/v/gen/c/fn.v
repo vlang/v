@@ -1335,7 +1335,7 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		g.gen_expr_to_string(left_node, rec_type)
 		return true
 	} else if left_node is ast.ComptimeCall {
-		if left_node.method_name == 'method' {
+		if left_node.kind == .method {
 			sym := g.table.sym(g.unwrap_generic(left_node.left_type))
 			if m := sym.find_method(g.comptime.comptime_for_method.name) {
 				rec_type = m.return_type
@@ -2069,7 +2069,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 						typ = g.type_resolver.get_ct_type_or_default(expr.typ_key, typ)
 					}
 				} else if expr is ast.ComptimeCall {
-					if expr.method_name == 'method' {
+					if expr.kind == .method {
 						sym := g.table.sym(g.unwrap_generic(expr.left_type))
 						if m := sym.find_method(g.comptime.comptime_for_method.name) {
 							typ = m.return_type

@@ -2247,7 +2247,7 @@ pub fn (mut f Fmt) chan_init(mut node ast.ChanInit) {
 
 pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
-		if node.method_name == 'html' {
+		if node.kind == .html {
 			if node.args.len == 1 && node.args[0].expr is ast.StringLiteral {
 				if node.is_veb {
 					f.write('\$veb.html(')
@@ -2270,7 +2270,7 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 		}
 	} else {
 		match true {
-			node.is_embed {
+			node.kind == .embed_file {
 				f.write('\$embed_file(')
 				f.expr(node.args[0].expr)
 				if node.embed_file.compression_type != 'none' {
@@ -2278,13 +2278,13 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 				}
 				f.write(')')
 			}
-			node.is_env {
+			node.kind == .env {
 				f.write("\$env('${node.args_var}')")
 			}
-			node.is_pkgconfig {
+			node.kind == .pkgconfig {
 				f.write("\$pkgconfig('${node.args_var}')")
 			}
-			node.method_name in ['compile_error', 'compile_warn'] {
+			node.kind in [.compile_error, .compile_warn] {
 				if node.args.len == 0 {
 					if node.args_var.contains("'") {
 						f.write('\$${node.method_name}("${node.args_var}")')
@@ -2297,12 +2297,12 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 					f.write(')')
 				}
 			}
-			node.method_name == 'd' {
+			node.kind == .d {
 				f.write("\$d('${node.args_var}', ")
 				f.expr(node.args[0].expr)
 				f.write(')')
 			}
-			node.method_name == 'res' {
+			node.kind == .res {
 				if node.args_var != '' {
 					f.write('\$res(${node.args_var})')
 				} else {

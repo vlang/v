@@ -15,10 +15,10 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
 		node.left_type = c.expr(mut node.left)
 	}
-	if node.method_name == 'compile_error' {
+	if node.kind == .compile_error {
 		c.error(c.comptime_call_msg(node), node.pos)
 		return ast.void_type
-	} else if node.method_name == 'compile_warn' {
+	} else if node.kind == .compile_warn {
 		c.warn(c.comptime_call_msg(node), node.pos)
 		return ast.void_type
 	}
@@ -111,7 +111,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 
 		c.table.cur_fn = save_cur_fn
 	}
-	if node.method_name == 'html' {
+	if node.kind == .html {
 		ret_sym := c.table.sym(c.table.cur_fn.return_type)
 		if ret_sym.cname !in ['veb__Result', 'vweb__Result', 'x__vweb__Result'] {
 			ct_call := if node.is_veb { 'veb' } else { 'vweb' }
@@ -126,7 +126,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.result_type = rtyp
 		return rtyp
 	}
-	if node.method_name == 'method' {
+	if node.kind == .method {
 		if c.inside_anon_fn && 'method' !in c.cur_anon_fn.inherited_vars.map(it.name) {
 			c.error('undefined ident `method` in the anonymous function', node.pos)
 		}
@@ -138,7 +138,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 		return c.type_resolver.get_type(node)
 	}
-	if node.method_name == 'res' {
+	if node.kind == .res {
 		if !c.inside_defer {
 			c.error('`res` can only be used in defer blocks', node.pos)
 			return ast.void_type

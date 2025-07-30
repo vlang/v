@@ -2050,12 +2050,27 @@ pub mut:
 	typ_key    string // `f.typ` cached key for type resolver
 }
 
+pub enum ComptimeCallKind {
+	unknown
+	d
+	env
+	res
+	html
+	tmpl
+	method
+	pkgconfig
+	embed_file
+	compile_warn
+	compile_error
+}
+
 @[minify]
 pub struct ComptimeCall {
 pub:
 	pos              token.Pos
 	has_parens       bool // if $() is used, for vfmt
 	method_name      string
+	kind             ComptimeCallKind
 	method_pos       token.Pos
 	scope            &Scope = unsafe { nil }
 	is_vweb          bool

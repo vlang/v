@@ -50,14 +50,14 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		g.gen_embed_file_init(mut node)
 		return
 	}
-	if node.method_name == 'env' {
+	if node.kind == .env {
 		// $env('ENV_VAR_NAME')
 		// TODO: deprecate after support for $d() is stable
 		val := util.cescaped_path(os.getenv(node.args_var))
 		g.write('_S("${val}")')
 		return
 	}
-	if node.method_name == 'd' {
+	if node.kind == .d {
 		// $d('some_string',<default value>), affected by `-d some_string=actual_value`
 		val := util.cescaped_path(node.compile_value)
 		if node.result_type == ast.string_type {
@@ -69,7 +69,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		}
 		return
 	}
-	if node.method_name == 'res' {
+	if node.kind == .res {
 		if node.args_var != '' {
 			g.write('${g.defer_return_tmp_var}.arg${node.args_var}')
 			return
@@ -79,7 +79,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		return
 	}
 	if node.is_vweb {
-		is_html := node.method_name == 'html'
+		is_html := node.kind == .html
 		mut cur_line := ''
 
 		if !is_html {
@@ -142,7 +142,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 	left_type := g.unwrap_generic(node.left_type)
 	sym := g.table.sym(left_type)
 	g.trace_autofree('// \$method call. sym="${sym.name}"')
-	if node.method_name == 'method' {
+	if node.kind == .method {
 		// `app.$method()`
 		m := sym.find_method(g.comptime.comptime_for_method.name) or { return }
 		/*
