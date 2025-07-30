@@ -1278,7 +1278,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('error')
 	}
 	if w.features.dump {
-		println('DUMP')
 		w.fn_by_name('eprint')
 		w.fn_by_name('eprintln')
 		builderptr_idx := int(w.table.find_type('strings.Builder').ref()).str()
