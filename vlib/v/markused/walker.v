@@ -1350,6 +1350,8 @@ fn (mut w Walker) mark_resource_dependencies() {
 	mut map_fns := map[string]ast.FnDecl{}
 	has_str_call := w.uses_interp || w.uses_asserts || w.uses_str.len > 0
 		|| w.features.print_types.len > 0
+
+	orm_impls := w.table.iface_types['orm.Connection'] or { []ast.Type{} }
 	for k, mut func in w.all_fns {
 		if has_str_call && k.ends_with('.str') {
 			if func.receiver.typ.idx() in w.used_syms {
@@ -1388,9 +1390,28 @@ fn (mut w Walker) mark_resource_dependencies() {
 			method_receiver_typename := w.table.type_to_str(func.receiver.typ)
 			if method_receiver_typename in ['&map', '&mapnode', '&SortedMap', '&DenseArray'] {
 				map_fns[k] = func
+				continue
 			}
 		} else if k.starts_with('map_') {
 			map_fns[k] = func
+			continue
+		}
+		if orm_impls.len > 0 && k.starts_with('orm.') {
+			w.fn_by_name(k)
+			continue
+		}
+	}
+	// handle ORM drivers:
+	if orm_impls.len > 0 {
+		for orm_type in orm_impls {
+			typ := int(orm_type).str()
+			w.fn_by_name(typ + '.select')
+			w.fn_by_name(typ + '.insert')
+			w.fn_by_name(typ + '.update')
+			w.fn_by_name(typ + '.delete')
+			w.fn_by_name(typ + '.create')
+			w.fn_by_name(typ + '.drop')
+			w.fn_by_name(typ + '.last_id')
 		}
 	}
 	if w.features.used_maps > 0 {

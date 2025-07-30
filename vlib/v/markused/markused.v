@@ -258,26 +258,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	handle_vweb(mut table, mut all_fn_root_names, 'vweb.Result', 'vweb.filter', 'vweb.Context')
 	handle_vweb(mut table, mut all_fn_root_names, 'x.vweb.Result', 'x.vweb.filter', 'x.vweb.Context')
 
-	// handle ORM drivers:
-	orm_connection_implementations := table.iface_types['orm.Connection'] or { []ast.Type{} }
-	if orm_connection_implementations.len > 0 {
-		for k, _ in all_fns {
-			if k.starts_with('orm.') {
-				all_fn_root_names << k
-			}
-		}
-		for orm_type in orm_connection_implementations {
-			typ := int(orm_type).str()
-			all_fn_root_names << typ + '.select'
-			all_fn_root_names << typ + '.insert'
-			all_fn_root_names << typ + '.update'
-			all_fn_root_names << typ + '.delete'
-			all_fn_root_names << typ + '.create'
-			all_fn_root_names << typ + '.drop'
-			all_fn_root_names << typ + '.last_id'
-		}
-	}
-
 	if 'debug_used_features' in pref_.compile_defines {
 		eprintln('> debug_used_features: ${table.used_features}')
 	}

@@ -58,9 +58,6 @@ fn (mut c Checker) markused_castexpr(mut node ast.CastExpr, to_type ast.Type, mu
 			c.table.used_features.used_maps++
 		}
 	}
-	if c.mod !in ['strings', 'math.bits'] && to_type.is_ptr() {
-		c.table.used_features.cast_ptr = true
-	}
 }
 
 fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
