@@ -235,8 +235,8 @@ fn (mut d ChunksReader) read_blocks(chunk []u8) ReadResult {
 	d.chunks_counter++
 	total := d.pending + chunk.len
 	if total > d.buffer.len {
-		assert false
-		'Should not occur buffer overflow ${total}'
+		assert false, 'Should not occur buffer overflow ${total}'
+		return .overflow
 	}
 
 	// append new chunk after previous incomplete block bytes not sent yet
