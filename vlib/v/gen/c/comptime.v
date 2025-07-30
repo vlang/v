@@ -142,7 +142,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 	left_type := g.unwrap_generic(node.left_type)
 	sym := g.table.sym(left_type)
 	g.trace_autofree('// \$method call. sym="${sym.name}"')
-	if node.kind == .method {
+	if node.method_name == 'method' {
 		// `app.$method()`
 		m := sym.find_method(g.comptime.comptime_for_method.name) or { return }
 		/*
