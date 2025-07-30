@@ -962,9 +962,8 @@ pub fn (mut w Walker) fn_stmts(stmt ast.FnDecl) {
 		} else {
 			''
 		}
-		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${stmt.name} [call] ${w.is_direct_array_access}')
+		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${stmt.name} [call]')
 	}
-
 	defer {
 		w.is_direct_array_access = last_is_direct_array_access
 	}
