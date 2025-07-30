@@ -2285,10 +2285,16 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 				f.write("\$pkgconfig('${node.args_var}')")
 			}
 			node.method_name in ['compile_error', 'compile_warn'] {
-				if node.args_var.contains("'") {
-					f.write('\$${node.method_name}("${node.args_var}")')
+				if node.args.len == 0 {
+					if node.args_var.contains("'") {
+						f.write('\$${node.method_name}("${node.args_var}")')
+					} else {
+						f.write("\$${node.method_name}('${node.args_var}')")
+					}
 				} else {
-					f.write("\$${node.method_name}('${node.args_var}')")
+					f.write('\$${node.method_name}(')
+					f.expr(node.args[0].expr)
+					f.write(')')
 				}
 			}
 			node.method_name == 'd' {
