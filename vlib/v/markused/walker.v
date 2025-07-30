@@ -96,10 +96,8 @@ pub fn (mut w Walker) mark_builtin_map_method_as_used(method_name string) {
 pub fn (mut w Walker) mark_builtin_type_method_as_used(k string, rk string) {
 	if mut cfn := w.all_fns[k] {
 		w.fn_decl(mut cfn)
-		w.mark_fn_as_used(k)
 	} else if mut cfn := w.all_fns[rk] {
 		w.fn_decl(mut cfn)
-		w.mark_fn_as_used(rk)
 	}
 }
 
@@ -831,8 +829,26 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.is_method {
 		w.mark_by_type(node.receiver.typ)
 	}
+	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
-	w.fn_stmts(node)
+	last_is_direct_array_access := w.is_direct_array_access
+	w.is_direct_array_access = node.is_direct_arr || w.pref.no_bounds_checking
+	defer {
+		w.is_direct_array_access = last_is_direct_array_access
+	}
+	if w.trace_enabled {
+		w.level++
+		defer {
+			w.level--
+		}
+		receiver_name := if node.is_method && node.receiver.typ != 0 {
+			w.table.type_to_str(node.receiver.typ) + '.'
+		} else {
+			''
+		}
+		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [call]')
+	}
+	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)
 }
 
@@ -926,20 +942,18 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	} else if node.is_fn_var {
 		w.mark_global_as_used(node.name)
 	}
-	w.mark_fn_as_used(fn_name)
 	if node.is_method && node.receiver_type.has_flag(.generic) && node.receiver_concrete_type != 0
 		&& !node.receiver_concrete_type.has_flag(.generic) {
 		// if receiver is generic, then cgen requires `node.receiver_type` to be T.
 		// We therefore need to get the concrete type from `node.receiver_concrete_type`.
 		fn_name = '${int(node.receiver_concrete_type)}.${node.name}'
 		receiver_typ = node.receiver_concrete_type
-		w.mark_fn_as_used(fn_name)
 	}
 	w.mark_by_type(node.return_type)
-	stmt := w.all_fns[fn_name] or { return }
+	mut stmt := w.all_fns[fn_name] or { return }
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
-			w.fn_stmts(stmt)
+			w.fn_decl(mut stmt)
 		}
 		if node.return_type.has_flag(.option) {
 			w.used_option++
@@ -947,37 +961,15 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			w.used_result++
 		}
 	}
-}
-
-pub fn (mut w Walker) fn_stmts(stmt ast.FnDecl) {
-	last_is_direct_array_access := w.is_direct_array_access
-	w.is_direct_array_access = stmt.is_direct_arr || w.pref.no_bounds_checking
-	if w.trace_enabled {
-		w.level++
-		defer {
-			w.level--
-		}
-		receiver_name := if stmt.is_method && stmt.receiver.typ != 0 {
-			w.table.type_to_str(stmt.receiver.typ) + '.'
-		} else {
-			''
-		}
-		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${stmt.name} [call]')
-	}
-	defer {
-		w.is_direct_array_access = last_is_direct_array_access
-	}
-	w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
-	w.stmts(stmt.stmts)
+	w.mark_fn_as_used(fn_name)
 }
 
 pub fn (mut w Walker) fn_by_name(fn_name string) {
 	if w.used_fns[fn_name] {
 		return
 	}
-	stmt := w.all_fns[fn_name] or { return }
-	w.mark_fn_as_used(fn_name)
-	w.fn_stmts(stmt)
+	mut stmt := w.all_fns[fn_name] or { return }
+	w.fn_decl(mut stmt)
 }
 
 pub fn (mut w Walker) struct_fields(sfields []ast.StructField) {
