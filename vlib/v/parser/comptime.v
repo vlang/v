@@ -549,6 +549,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		return ast.ComptimeCall{
 			left:        left
 			method_name: method_name
+			kind:        .method
 			method_pos:  method_pos
 			scope:       p.scope
 			args_var:    ''
