@@ -30,8 +30,9 @@ mut:
 	all_decltypes map[string]ast.TypeDecl
 	all_structs   map[string]ast.StructDecl
 
-	level          int
-	is_builtin_mod bool
+	level                  int
+	is_builtin_mod         bool
+	is_direct_array_access bool
 
 	// dependencies finding flags
 	uses_atomic        bool // has atomic
@@ -512,7 +513,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
-			w.uses_index = true
+			if !w.uses_index && !w.is_direct_array_access {
+				w.uses_index = true
+			}
 			w.expr(node.left)
 			w.expr(node.index)
 			if node.or_expr.kind == .block {
@@ -534,10 +537,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.mark_by_sym(w.table.sym(sym.info.value_type))
 				w.features.used_maps++
 			} else if sym.info is ast.Array {
-				if node.is_setter {
-					w.mark_builtin_array_method_as_used('set')
-				} else {
-					w.mark_builtin_array_method_as_used('get')
+				if !w.is_direct_array_access {
+					if node.is_setter {
+						w.mark_builtin_array_method_as_used('set')
+					} else {
+						w.mark_builtin_array_method_as_used('get')
+					}
 				}
 				w.mark_by_sym(w.table.sym(sym.info.elem_type))
 			} else if sym.kind == .string {
@@ -823,22 +828,11 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.no_body {
 		return
 	}
-	if w.trace_enabled {
-		w.level++
-		defer { w.level-- }
-		receiver_name := if node.is_method && node.receiver.typ != 0 {
-			w.table.type_to_str(node.receiver.typ) + '.'
-		} else {
-			''
-		}
-		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [decl]')
-	}
 	if node.is_method {
 		w.mark_by_type(node.receiver.typ)
 	}
-	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
-	w.stmts(node.stmts)
+	w.fn_stmts(node)
 	w.defer_stmts(node.defer_stmts)
 }
 
@@ -945,20 +939,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	stmt := w.all_fns[fn_name] or { return }
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
-			if w.trace_enabled {
-				w.level++
-				defer {
-					w.level--
-				}
-				receiver_name := if node.receiver_type != 0 {
-					w.table.type_to_str(node.receiver_type) + '.'
-				} else {
-					''
-				}
-				eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [call]')
-			}
-			w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
-			w.stmts(stmt.stmts)
+			w.fn_stmts(stmt)
 		}
 		if node.return_type.has_flag(.option) {
 			w.used_option++
@@ -968,26 +949,36 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 }
 
-pub fn (mut w Walker) fn_by_name(fn_name string) {
-	if w.used_fns[fn_name] {
-		return
-	}
-	stmt := w.all_fns[fn_name] or { return }
+pub fn (mut w Walker) fn_stmts(stmt ast.FnDecl) {
+	last_is_direct_array_access := w.is_direct_array_access
+	w.is_direct_array_access = stmt.is_direct_arr || w.pref.no_bounds_checking
 	if w.trace_enabled {
 		w.level++
 		defer {
 			w.level--
 		}
-		receiver_name := if fn_name.contains('.') && fn_name.all_before_last('.').int() > 0 {
-			w.table.type_to_str(fn_name.all_before_last('.').int()) + '.'
+		receiver_name := if stmt.is_method && stmt.receiver.typ != 0 {
+			w.table.type_to_str(stmt.receiver.typ) + '.'
 		} else {
 			''
 		}
-		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${fn_name.all_after_last('.')} [by_name]')
+		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${stmt.name} [call] ${w.is_direct_array_access}')
 	}
-	w.mark_fn_as_used(fn_name)
+
+	defer {
+		w.is_direct_array_access = last_is_direct_array_access
+	}
 	w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
 	w.stmts(stmt.stmts)
+}
+
+pub fn (mut w Walker) fn_by_name(fn_name string) {
+	if w.used_fns[fn_name] {
+		return
+	}
+	stmt := w.all_fns[fn_name] or { return }
+	w.mark_fn_as_used(fn_name)
+	w.fn_stmts(stmt)
 }
 
 pub fn (mut w Walker) struct_fields(sfields []ast.StructField) {
