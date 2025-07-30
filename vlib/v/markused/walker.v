@@ -537,7 +537,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.mark_by_sym(w.table.sym(sym.info.value_type))
 				w.features.used_maps++
 			} else if sym.info is ast.Array {
-				if !w.is_direct_array_access {
+				if !w.is_direct_array_access || w.features.auto_str_arr {
 					if node.is_setter {
 						w.mark_builtin_array_method_as_used('set')
 					} else {

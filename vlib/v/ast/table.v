@@ -15,6 +15,7 @@ pub mut:
 	anon_fn        bool            // fn () { }
 	auto_str       bool            // auto str fns
 	auto_str_ptr   bool            // auto str fns for ptr type
+	auto_str_arr   bool            // auto str fns for array
 	arr_prepend    bool            // arr.prepend()
 	arr_insert     bool            // arr.insert()
 	arr_first      bool            // arr.first()
