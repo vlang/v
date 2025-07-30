@@ -6,8 +6,8 @@ import os
 // read_tar_gz_file decompresses a given local file and reads all the blocks
 // with a given reader.
 pub fn read_tar_gz_file(path string, reader Reader) ! {
-	tar_gz := os.read_bytes(path) or { return error('read bytes error: ${err}') }
-	all_blocks := gzip.decompress(tar_gz) or { return error('gzip decompress error: ${err}') }
+	tar_gz := os.read_bytes(path)!
+	all_blocks := gzip.decompress(tar_gz)!
 	mut untar := Untar{
 		reader: reader
 	}
@@ -187,7 +187,7 @@ pub fn new_decompresor(untar &Untar) &Decompressor {
 // Then calls untar method `read_all` to read all the blocks at once.
 // A read result is returned which can be of the type stop early or an error.
 pub fn (mut d Decompressor) read_all(tar_gz []u8) !ReadResult {
-	all_blocks := gzip.decompress(tar_gz) or { return error('gzip decompress error: ${err}') }
+	all_blocks := gzip.decompress(tar_gz)!
 	return d.untar.read_all_blocks(all_blocks)!
 }
 
@@ -208,7 +208,7 @@ pub fn (mut d Decompressor) read_chunks(tar_gz []u8) !ReadResult {
 	}
 	gzip.decompress_with_callback(tar_gz, callback, reader) or {
 		if reader.result == .continue {
-			return error('${err}')
+			return err
 		}
 		return reader.result
 	}
@@ -235,8 +235,8 @@ fn (mut d ChunksReader) read_blocks(chunk []u8) ReadResult {
 	d.chunks_counter++
 	total := d.pending + chunk.len
 	if total > d.buffer.len {
-		eprintln('Should not occur buffer overflow ${total}')
-		return .overflow
+		assert false
+		'Should not occur buffer overflow ${total}'
 	}
 
 	// append new chunk after previous incomplete block bytes not sent yet
@@ -261,7 +261,7 @@ fn (mut d ChunksReader) read_blocks(chunk []u8) ReadResult {
 		block := d.buffer[cut..cut + 512]
 		cut += 512
 		d.result = d.read_block_fn(block) or {
-			eprintln('Should not occur buffer overflow')
+			assert false, 'Should not occur buffer overflow'
 			return .overflow
 		}
 		match d.result {
