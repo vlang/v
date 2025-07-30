@@ -177,7 +177,7 @@ mut:
 
 // new_decompressor returns a Decompressor to decompress a tar.gz file
 // A given Untar with a registered Reader will read the blocks.
-pub fn new_decompresor(untar &Untar) &Decompressor {
+pub fn new_decompressor(untar &Untar) &Decompressor {
 	return &Decompressor{
 		untar: untar
 	}

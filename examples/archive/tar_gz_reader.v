@@ -149,7 +149,7 @@ fn main() {
 		ctx: ctx
 	}
 	mut untar := tar.new_untar(reader)
-	mut decompressor := tar.new_decompresor(untar)
+	mut decompressor := tar.new_decompressor(untar)
 	downloader := new_downloader(ctx.url)!
 	if ctx.chunks {
 		decompressor.read_chunks(downloader.data)!
