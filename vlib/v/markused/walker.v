@@ -955,9 +955,14 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		w.mark_fn_as_used(fn_name)
 	}
 	w.mark_by_type(node.return_type)
-	mut stmt := w.all_fns[fn_name] or { return }
+	stmt := w.all_fns[fn_name] or { return }
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
+			last_is_direct_array_access := w.is_direct_array_access
+			w.is_direct_array_access = stmt.is_direct_arr || w.pref.no_bounds_checking
+			defer {
+				w.is_direct_array_access = last_is_direct_array_access
+			}
 			if w.trace_enabled {
 				w.level++
 				defer {
@@ -968,7 +973,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				} else {
 					''
 				}
-				eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${stmt.name} [${@FN}]')
+				eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [${@FN}]')
 			}
 			w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
 			w.stmts(stmt.stmts)
@@ -985,7 +990,12 @@ pub fn (mut w Walker) fn_by_name(fn_name string) {
 	if w.used_fns[fn_name] {
 		return
 	}
-	mut stmt := w.all_fns[fn_name] or { return }
+	stmt := w.all_fns[fn_name] or { return }
+	last_is_direct_array_access := w.is_direct_array_access
+	w.is_direct_array_access = stmt.is_direct_arr || w.pref.no_bounds_checking
+	defer {
+		w.is_direct_array_access = last_is_direct_array_access
+	}
 	if w.trace_enabled {
 		w.level++
 		defer {
@@ -1325,6 +1335,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_index || w.pref.is_shared {
 		array_idx_str := ast.array_type_idx.str()
 		w.fn_by_name(array_idx_str + '.slice')
+		w.fn_by_name(array_idx_str + '.get')
 		if w.uses_guard || w.uses_check_index {
 			w.fn_by_name(array_idx_str + '.get_with_check')
 		}
