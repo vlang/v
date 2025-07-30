@@ -63,6 +63,7 @@ mut:
 	uses_arr_void      bool // auto arr methods
 	uses_index         bool // var[k]
 	uses_str_index     bool // string[k]
+	uses_fixed_arr_int bool // fixed_arr[k]
 	uses_check_index   bool // arr[key] or { }
 	uses_append        bool // var << item
 }
@@ -76,7 +77,7 @@ pub fn Walker.new(params Walker) &Walker {
 }
 
 @[inline]
-pub fn (mut w Walker) mark_fn_as_used(fkey string) {
+fn (mut w Walker) mark_fn_as_used(fkey string) {
 	$if trace_skip_unused_marked ? {
 		eprintln('    fn > |${fkey}|')
 	}
@@ -543,6 +544,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					}
 				}
 				w.mark_by_sym(w.table.sym(sym.info.elem_type))
+			} else if sym.info is ast.ArrayFixed {
+				w.uses_fixed_arr_int = true
 			} else if sym.kind == .string {
 				if node.index is ast.RangeExpr {
 					w.mark_builtin_array_method_as_used('slice')
@@ -829,8 +832,6 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.is_method {
 		w.mark_by_type(node.receiver.typ)
 	}
-	w.mark_fn_ret_and_params(node.return_type, node.params)
-	w.mark_fn_as_used(fkey)
 	last_is_direct_array_access := w.is_direct_array_access
 	w.is_direct_array_access = node.is_direct_arr || w.pref.no_bounds_checking
 	defer {
@@ -848,6 +849,8 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 		}
 		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [call]')
 	}
+	w.mark_fn_ret_and_params(node.return_type, node.params)
+	w.mark_fn_as_used(fkey)
 	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)
 }
@@ -969,7 +972,21 @@ pub fn (mut w Walker) fn_by_name(fn_name string) {
 		return
 	}
 	mut stmt := w.all_fns[fn_name] or { return }
-	w.fn_decl(mut stmt)
+	if w.trace_enabled {
+		w.level++
+		defer {
+			w.level--
+		}
+		receiver_name := if stmt.is_method && stmt.receiver.typ != 0 {
+			w.table.type_to_str(stmt.receiver.typ) + '.'
+		} else {
+			''
+		}
+		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${stmt.name} [call]')
+	}
+	w.mark_fn_as_used(fn_name)
+	w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
+	w.stmts(stmt.stmts)
 }
 
 pub fn (mut w Walker) struct_fields(sfields []ast.StructField) {
@@ -1261,6 +1278,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('error')
 	}
 	if w.features.dump {
+		println('DUMP')
 		w.fn_by_name('eprint')
 		w.fn_by_name('eprintln')
 		builderptr_idx := int(w.table.find_type('strings.Builder').ref()).str()
@@ -1289,18 +1307,23 @@ fn (mut w Walker) mark_resource_dependencies() {
 		ref_array_idx_str := int(ast.array_type.ref()).str()
 		w.fn_by_name(ref_array_idx_str + '.push')
 		w.fn_by_name(ref_array_idx_str + '.push_many_noscan')
+		w.fn_by_name(ref_array_idx_str + '.push_noscan')
 	}
 	if w.uses_index || w.pref.is_shared {
 		array_idx_str := ast.array_type_idx.str()
-		if w.uses_str_index {
-			string_idx_str := ast.string_type_idx.str()
-			w.fn_by_name(string_idx_str + '.at')
-			w.fn_by_name(string_idx_str + '.at_with_check')
-		}
 		w.fn_by_name(array_idx_str + '.slice')
 		if w.uses_guard || w.uses_check_index {
 			w.fn_by_name(array_idx_str + '.get_with_check')
 		}
+	}
+	if w.uses_str_index {
+		string_idx_str := ast.string_type_idx.str()
+		w.fn_by_name(string_idx_str + '.at')
+		w.fn_by_name(string_idx_str + '.at_with_check')
+		w.fn_by_name(string_idx_str + '.substr')
+	}
+	if w.uses_fixed_arr_int {
+		w.fn_by_name('v_fixed_index')
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)
@@ -1437,20 +1460,20 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 		w.mark_by_sym_name('VAssertMetaInfo')
 	}
 	if w.used_panic > 0 {
-		w.mark_fn_as_used('panic_option_not_set')
-		w.mark_fn_as_used('panic_result_not_set')
+		w.fn_by_name('panic_option_not_set')
+		w.fn_by_name('panic_result_not_set')
 	}
 	if w.used_none > 0 || w.table.used_features.auto_str {
-		w.mark_fn_as_used('_option_none')
+		w.fn_by_name('_option_none')
 		w.mark_by_sym_name('_option')
 	}
 	if w.used_option > 0 {
-		w.mark_fn_as_used('_option_clone')
-		w.mark_fn_as_used('_option_ok')
+		w.fn_by_name('_option_clone')
+		w.fn_by_name('_option_ok')
 		w.mark_by_sym_name('_option')
 	}
 	if w.used_result > 0 {
-		w.mark_fn_as_used('_result_ok')
+		w.fn_by_name('_result_ok')
 		w.mark_by_sym_name('_result')
 	}
 	if (w.used_option + w.used_result + w.used_none) > 0 {
