@@ -30,14 +30,14 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.env_value = env_value
 		return ast.string_type
 	}
-	if node.is_compile_value {
+	if node.kind == .d {
 		node.resolve_compile_value(c.pref.compile_values) or {
 			c.error(err.msg(), node.pos)
 			return ast.void_type
 		}
 		return node.result_type
 	}
-	if node.is_embed {
+	if node.kind == .embed_file {
 		if node.args.len == 1 {
 			embed_arg := node.args[0]
 			mut raw_path := ''
@@ -1096,7 +1096,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 			}
 		}
 		ast.ComptimeCall {
-			if cond.is_pkgconfig {
+			if cond.kind == .pkgconfig {
 				mut m := pkgconfig.main([cond.args_var]) or {
 					c.error(err.msg(), cond.pos)
 					return .skip
@@ -1104,7 +1104,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 				m.run() or { return .skip }
 				return .eval
 			}
-			if cond.is_compile_value {
+			if cond.kind == .d {
 				t := c.expr(mut cond)
 				if t != ast.bool_type {
 					c.error('inside \$if, only \$d() expressions that return bool are allowed',

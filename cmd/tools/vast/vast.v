@@ -1079,7 +1079,6 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	obj.add_terse('veb_tmpl', t.string_node(node.veb_tmpl.path))
 	obj.add_terse('args_var', t.string_node(node.args_var))
 	obj.add_terse('has_parens', t.bool_node(node.has_parens))
-	obj.add_terse('is_embed', t.bool_node(node.is_embed))
 	obj.add_terse('embed_file', t.embed_file(node.embed_file))
 	obj.add('method_pos', t.pos(node.method_pos))
 	obj.add_terse('left_type', t.type_node(node.left_type))

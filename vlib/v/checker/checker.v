@@ -4669,7 +4669,7 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) !ast.Expr {
 	if mut expr is ast.Ident {
 		return c.find_definition(expr)
 	}
-	if mut expr is ast.ComptimeCall && expr.is_compile_value {
+	if mut expr is ast.ComptimeCall && expr.kind == .d {
 		if expr.result_type == ast.bool_type {
 			return ast.BoolLiteral{
 				val: expr.compile_value.bool()

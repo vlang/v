@@ -165,16 +165,13 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		p.check(.string)
 		p.check(.rpar)
 		is_env := method_name == 'env'
-		is_pkgconfig := method_name == 'pkgconfig'
 		return ast.ComptimeCall{
-			scope:        unsafe { nil }
-			method_name:  method_name
-			kind:         if is_env { .env } else { .pkgconfig }
-			args_var:     s
-			is_env:       is_env
-			is_pkgconfig: is_pkgconfig
-			env_pos:      start_pos
-			pos:          start_pos.extend(p.prev_tok.pos())
+			scope:       unsafe { nil }
+			method_name: method_name
+			kind:        if is_env { .env } else { .pkgconfig }
+			args_var:    s
+			env_pos:     start_pos
+			pos:         start_pos.extend(p.prev_tok.pos())
 		}
 	} else if method_name in ['compile_error', 'compile_warn'] {
 		mut s := ''
@@ -237,13 +234,12 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		]
 		p.check(.rpar)
 		return ast.ComptimeCall{
-			scope:            unsafe { nil }
-			is_compile_value: true
-			method_name:      method_name
-			kind:             .d
-			args_var:         const_string
-			args:             args
-			pos:              start_pos.extend(p.prev_tok.pos())
+			scope:       unsafe { nil }
+			method_name: method_name
+			kind:        .d
+			args_var:    const_string
+			args:        args
+			pos:         start_pos.extend(p.prev_tok.pos())
 		}
 	}
 	has_string_arg := p.tok.kind == .string
@@ -291,7 +287,6 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			scope:       unsafe { nil }
 			method_name: method_name
 			kind:        .embed_file
-			is_embed:    true
 			embed_file:  ast.EmbeddedFile{
 				compression_type: embed_compression_type
 			}
