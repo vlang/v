@@ -1316,7 +1316,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name(string_idx_str + '.at_with_check')
 		}
 		w.fn_by_name(array_idx_str + '.slice')
-		if w.uses_check_index {
+		if w.uses_guard || w.uses_check_index {
 			w.fn_by_name(array_idx_str + '.get_with_check')
 		}
 		// core_fns << string_idx_str + '.clone'
