@@ -847,7 +847,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 		} else {
 			''
 		}
-		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [call]')
+		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [${@FN}]')
 	}
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
@@ -982,7 +982,7 @@ pub fn (mut w Walker) fn_by_name(fn_name string) {
 		} else {
 			''
 		}
-		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${stmt.name} [call]')
+		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${stmt.name} [${@FN}]')
 	}
 	w.mark_fn_as_used(fn_name)
 	w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
