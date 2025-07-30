@@ -108,7 +108,7 @@ fn new_test_reader_gz(tar_gz_file string, debug bool) !&TestReader {
 	mut untar := Untar{
 		reader: reader
 	}
-	mut decompressor := new_decompresor(untar)
+	mut decompressor := new_decompressor(untar)
 	tar_gz := os.read_bytes('${testdata}/${tar_gz_file}')!
 	decompressor.read_all(tar_gz)!
 
