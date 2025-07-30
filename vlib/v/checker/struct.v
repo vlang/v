@@ -244,7 +244,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				if sym.info is ast.ArrayFixed && field.typ == field.default_expr_typ {
 					if sym.info.size_expr is ast.ComptimeCall {
 						// field [$d('x' ,2)]int = [1 ,2]!
-						if sym.info.size_expr.method_name == 'd' {
+						if sym.info.size_expr.kind == .d {
 							c.error('cannot initialize a fixed size array field that uses `\$d()` as size quantifier since the size may change via -d',
 								field.default_expr.pos())
 						}

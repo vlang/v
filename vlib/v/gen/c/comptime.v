@@ -799,11 +799,11 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 			return true, false
 		}
 		ast.ComptimeCall {
-			if cond.method_name == 'pkgconfig' {
+			if cond.kind == .pkgconfig {
 				g.write('${pkg_exist}')
 				return true, false
 			}
-			if cond.method_name == 'd' {
+			if cond.kind == .d {
 				if cond.result_type == ast.bool_type {
 					if cond.compile_value == 'true' {
 						g.write('1')

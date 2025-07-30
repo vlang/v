@@ -22,7 +22,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		c.warn(c.comptime_call_msg(node), node.pos)
 		return ast.void_type
 	}
-	if node.is_env {
+	if node.kind == .env {
 		env_value := util.resolve_env_value("\$env('${node.args_var}')", false) or {
 			c.error(err.msg(), node.env_pos)
 			return ast.string_type
@@ -126,7 +126,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.result_type = rtyp
 		return rtyp
 	}
-	if node.kind == .method {
+	if node.method_name == 'method' {
 		if c.inside_anon_fn && 'method' !in c.cur_anon_fn.inherited_vars.map(it.name) {
 			c.error('undefined ident `method` in the anonymous function', node.pos)
 		}
