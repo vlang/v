@@ -112,6 +112,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if table.used_features.arr_insert {
 			core_fns << ref_array_idx_str + '.insert_many'
+			core_fns << ref_array_idx_str + '.insert_noscan'
 		}
 		if table.used_features.print_options {
 			include_panic_deps = true
