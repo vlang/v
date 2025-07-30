@@ -1319,14 +1319,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		if w.uses_guard || w.uses_check_index {
 			w.fn_by_name(array_idx_str + '.get_with_check')
 		}
-		// core_fns << string_idx_str + '.clone'
-		// core_fns << string_idx_str + '.clone_static'		
-		// core_fns << array_idx_str + '.set'
-		// core_fns << ref_array_idx_str + '.set'
-		// core_fns << map_idx_str + '.get'
-		// core_fns << map_idx_str + '.set'
-		// core_fns << '__new_array_noscan'
-		// core_fns << ref_array_idx_str + '.push_noscan'
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)
