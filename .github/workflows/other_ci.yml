@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 30
+          fetch-depth: 0
       - name: Environment info
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
       - name: Build local v
