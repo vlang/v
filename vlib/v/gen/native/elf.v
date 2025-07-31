@@ -787,7 +787,10 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 		}
 	}
 	g.write64_at(g.elf_data_header_addr + 32, g.pos() - data_pos)
-	// TODO: generate code that will generate the data
+	// TODO: pre-calculate .data instead of genetating it at runtime
+
+	// It is wierd, the init section has something in it but I did not find
+	// where does it come from
 
 	// user code starts here
 	if g.pref.is_verbose {
@@ -799,11 +802,29 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	// if g.start_symbol_addr > 0 {
 	//	g.write64_at(g.start_symbol_addr + native.elf_symtab_size - 16, g.code_start_pos)
 	//}
-
 	text_section := sections[g.find_section_header('.text', sections)]
 	g.elf_text_header_addr = text_section.header.offset
 	g.write64_at(g.elf_text_header_addr + 24, g.pos()) // write the code start pos to the text section
 
+	g.println('; fill .data')
+	for f in g.files {
+		for s in f.stmts {
+			if s is ast.GlobalDecl {
+				for fi in s.fields {
+					size := g.get_type_size(fi.typ)
+					if size > 8 || size <= 0 {
+						println('${@LOCATION} unsupported size ${size} for global ${fi}')
+					} else if fi.expr !is ast.EmptyExpr {
+						g.expr(fi.expr)
+						g.code_gen.mov_reg_to_var(GlobalVar{fi.name, fi.typ}, g.code_gen.main_reg())
+						g.println('; global ${fi.name}, size: ${size}')
+					}
+				}
+			}
+		}
+	}
+
+	g.elf_main_call_pos = g.pos()
 	g.code_gen.call(placeholder)
 	g.println('; call main.main')
 	g.code_gen.mov64(g.code_gen.main_reg(), i64(0))
@@ -923,7 +944,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 	g.write64_at(g.file_size_pos + 8, file_size)
 	if g.pref.arch == .arm64 {
 		bl_next := u32(0x94000001)
-		g.write32_at(g.code_start_pos, i32(bl_next))
+		g.write32_at(g.elf_main_call_pos, i32(bl_next))
 	} else {
 		// amd64
 		// call main function, it's not guaranteed to be the first
@@ -931,7 +952,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 		// now need to replace "0" with a relative address of the main function
 		// +1 is for "e8"
 		// -5 is for "e8 00 00 00 00"
-		g.write32_at(g.code_start_pos + 1, i32(g.main_fn_addr - g.code_start_pos) - 5)
+		g.write32_at(g.elf_main_call_pos + 1, i32(g.main_fn_addr - g.elf_main_call_pos) - 5)
 	}
 	g.create_executable()
 }

@@ -806,7 +806,8 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 			}
 			c.push(addr_reg)
 			c.g.global_vars[c.g.pos() + 2] = var.name // +2 for the mov64 instruction
-			c.mov64(addr_reg, i64(0)) // patched by the data relocations
+			c.mov64(addr_reg, i64(0))
+			c.g.println('; will get patched by relocs')
 			c.mov_store(addr_reg, reg, size)
 			c.pop(addr_reg)
 			c.g.println('; mov global:`${var.name}` ${reg}')
@@ -1032,7 +1033,8 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			}
 			c.push(addr_reg)
 			c.g.global_vars[c.g.pos() + 2] = var.name // +2 for the mov64 instruction
-			c.mov64(addr_reg, i64(0)) // patched by the data relocations
+			c.mov64(addr_reg, i64(0))
+			c.g.println('; will get patched by relocs')
 			c.mov_deref(reg, addr_reg, var.typ)
 			c.pop(addr_reg)
 			c.g.println('; mov ${reg} global:`${var.name}`')

@@ -66,6 +66,7 @@ mut:
 	return_type               ast.Type
 	comptime_omitted_branches []ast.IfBranch
 	// elf specific
+	elf_main_call_pos    i64
 	elf_text_header_addr i64 = -1
 	elf_data_header_addr i64 = -1
 	elf_rela_section     Section
