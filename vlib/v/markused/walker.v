@@ -65,6 +65,7 @@ mut:
 	uses_index           bool // var[k]
 	uses_str_index       bool // string[k]
 	uses_str_index_check bool // string[k] or { }
+	uses_str_range       bool // string[a..b]
 	uses_fixed_arr_int   bool // fixed_arr[k]
 	uses_check_index     bool // arr[key] or { }
 	uses_append          bool // var << item
@@ -563,6 +564,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.uses_str_index = true
 				if !w.uses_str_index_check {
 					w.uses_str_index_check = node.or_expr.kind == .block
+				}
+				if !w.uses_str_range {
+					w.uses_str_range = node.index is ast.RangeExpr
 				}
 			} else if sym.info is ast.Struct {
 				w.mark_by_sym(sym)
@@ -1322,7 +1326,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 		if w.uses_str_index_check {
 			w.fn_by_name(string_idx_str + '.at_with_check')
 		}
-		// w.fn_by_name(string_idx_str + '.substr')
+		if w.uses_str_range {
+			w.fn_by_name(string_idx_str + '.substr')
+		}
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)
