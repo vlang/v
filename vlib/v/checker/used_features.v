@@ -144,7 +144,12 @@ fn (mut c Checker) markused_print_call(mut node ast.CallExpr) {
 			c.table.used_features.auto_str_ptr = true
 		}
 		if !c.table.used_features.auto_str_arr {
-			c.table.used_features.auto_str_arr = c.table.final_sym(arg_typ).kind == .array
+			sym := c.table.final_sym(arg_typ)
+			if sym.kind == .array {
+				c.table.used_features.auto_str_arr = true
+			} else if sym.info is ast.Struct {
+				c.table.used_features.auto_str_arr = sym.info.fields.any(c.table.final_sym(it.typ).kind == .array)
+			}
 		}
 	}
 }
