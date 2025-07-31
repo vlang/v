@@ -1461,7 +1461,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 			}
 		}
 	} else {
-		eprintln('REMOVER')
 		for k, func in map_fns {
 			if !func.is_method {
 				continue
