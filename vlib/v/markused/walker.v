@@ -512,9 +512,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
-			if !w.uses_index && !w.is_direct_array_access {
-				w.uses_index = true
-			}
 			w.expr(node.left)
 			w.expr(node.index)
 			if node.or_expr.kind == .block {
@@ -544,6 +541,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					}
 				}
 				w.mark_by_sym(w.table.sym(sym.info.elem_type))
+				if !w.uses_index && !w.is_direct_array_access {
+					w.uses_index = true
+				}
 			} else if sym.info is ast.ArrayFixed {
 				w.uses_fixed_arr_int = true
 			} else if sym.kind == .string {
@@ -743,6 +743,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			sym := w.table.sym(node.typ)
 			w.mark_by_sym(sym)
+			if !w.uses_memdup && sym.kind == .sum_type {
+				w.uses_memdup = true
+			}
 			if node.has_update_expr {
 				w.expr(node.update_expr)
 			}
@@ -821,11 +824,13 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 		w.mark_fn_ret_and_params(node.return_type, node.params)
 		return
 	}
+
 	fkey := node.fkey()
 	if w.used_fns[fkey] {
 		return
 	}
 	if node.no_body {
+		w.mark_fn_as_used(fkey)
 		return
 	}
 	if node.is_method {
@@ -1278,12 +1283,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name(ast.string_type_idx.str() + '.repeat')
 		w.fn_by_name('tos3')
 	}
-	if w.uses_append {
-		ref_array_idx_str := int(ast.array_type.ref()).str()
-		w.fn_by_name(ref_array_idx_str + '.push')
-		w.fn_by_name(ref_array_idx_str + '.push_many_noscan')
-		w.fn_by_name(ref_array_idx_str + '.push_noscan')
-	}
+
 	if w.uses_index || w.pref.is_shared {
 		array_idx_str := ast.array_type_idx.str()
 		w.fn_by_name(array_idx_str + '.slice')
@@ -1370,6 +1370,12 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name(k)
 			continue
 		}
+	}
+	if w.uses_append {
+		ref_array_idx_str := int(ast.array_type.ref()).str()
+		w.fn_by_name(ref_array_idx_str + '.push')
+		w.fn_by_name(ref_array_idx_str + '.push_many_noscan')
+		w.fn_by_name(ref_array_idx_str + '.push_noscan')
 	}
 	if w.uses_array {
 		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
