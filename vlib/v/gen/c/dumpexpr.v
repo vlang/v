@@ -107,10 +107,6 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
 		typ := ast.idx_to_type(dump_type)
-		if g.pref.skip_unused
-			&& (!g.table.used_features.dump || typ.idx() !in g.table.used_features.used_syms) {
-			continue
-		}
 		is_ptr := typ.is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, typ)
 		to_string_fn_name := g.get_str_fn(typ.clear_flags(.shared_f, .result))

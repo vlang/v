@@ -30,9 +30,8 @@ mut:
 	all_decltypes map[string]ast.TypeDecl
 	all_structs   map[string]ast.StructDecl
 
-	level                  int
-	is_builtin_mod         bool
-	is_direct_array_access bool
+	level          int
+	is_builtin_mod bool
 
 	// dependencies finding flags
 	uses_atomic        bool // has atomic
@@ -61,11 +60,6 @@ mut:
 	uses_dump          bool
 	uses_memdup        bool // sumtype cast and &Struct{}
 	uses_arr_void      bool // auto arr methods
-	uses_index         bool // var[k]
-	uses_str_index     bool // string[k]
-	uses_fixed_arr_int bool // fixed_arr[k]
-	uses_check_index   bool // arr[key] or { }
-	uses_append        bool // var << item
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -77,7 +71,7 @@ pub fn Walker.new(params Walker) &Walker {
 }
 
 @[inline]
-fn (mut w Walker) mark_fn_as_used(fkey string) {
+pub fn (mut w Walker) mark_fn_as_used(fkey string) {
 	$if trace_skip_unused_marked ? {
 		eprintln('    fn > |${fkey}|')
 	}
@@ -97,8 +91,10 @@ pub fn (mut w Walker) mark_builtin_map_method_as_used(method_name string) {
 pub fn (mut w Walker) mark_builtin_type_method_as_used(k string, rk string) {
 	if mut cfn := w.all_fns[k] {
 		w.fn_decl(mut cfn)
+		w.mark_fn_as_used(k)
 	} else if mut cfn := w.all_fns[rk] {
 		w.fn_decl(mut cfn)
+		w.mark_fn_as_used(rk)
 	}
 }
 
@@ -486,7 +482,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.DumpExpr {
 			w.expr(node.expr)
-			w.features.dump = true
+			w.uses_dump = true
 			w.mark_by_type(node.expr_type)
 		}
 		ast.SpawnExpr {
@@ -512,13 +508,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
-			if !w.uses_index && !w.is_direct_array_access {
-				w.uses_index = true
-			}
 			w.expr(node.left)
 			w.expr(node.index)
 			if node.or_expr.kind == .block {
-				w.uses_check_index = true
+				w.uses_guard = true
 			}
 			w.mark_by_type(node.typ)
 			w.or_block(node.or_expr)
@@ -536,22 +529,17 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.mark_by_sym(w.table.sym(sym.info.value_type))
 				w.features.used_maps++
 			} else if sym.info is ast.Array {
-				if !w.is_direct_array_access || w.features.auto_str_arr {
-					if node.is_setter {
-						w.mark_builtin_array_method_as_used('set')
-					} else {
-						w.mark_builtin_array_method_as_used('get')
-					}
+				if node.is_setter {
+					w.mark_builtin_array_method_as_used('set')
+				} else {
+					w.mark_builtin_array_method_as_used('get')
 				}
 				w.mark_by_sym(w.table.sym(sym.info.elem_type))
-			} else if sym.info is ast.ArrayFixed {
-				w.uses_fixed_arr_int = true
 			} else if sym.kind == .string {
 				if node.index is ast.RangeExpr {
 					w.mark_builtin_array_method_as_used('slice')
 					w.features.range_index = true
 				}
-				w.uses_str_index = true
 			} else if sym.info is ast.Struct {
 				w.mark_by_sym(sym)
 			} else if sym.info is ast.SumType {
@@ -594,9 +582,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			if !w.uses_eq && node.op in [.eq, .ne] {
 				w.uses_eq = true
-			}
-			if !w.uses_append && node.op == .left_shift {
-				w.uses_append = true
 			}
 		}
 		ast.IfGuardExpr {
@@ -829,25 +814,18 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.no_body {
 		return
 	}
-	if node.is_method {
-		w.mark_by_type(node.receiver.typ)
-	}
-	last_is_direct_array_access := w.is_direct_array_access
-	w.is_direct_array_access = node.is_direct_arr || w.pref.no_bounds_checking
-	defer {
-		w.is_direct_array_access = last_is_direct_array_access
-	}
 	if w.trace_enabled {
 		w.level++
-		defer {
-			w.level--
-		}
+		defer { w.level-- }
 		receiver_name := if node.is_method && node.receiver.typ != 0 {
 			w.table.type_to_str(node.receiver.typ) + '.'
 		} else {
 			''
 		}
-		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [${@FN}]')
+		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [decl]')
+	}
+	if node.is_method {
+		w.mark_by_type(node.receiver.typ)
 	}
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
@@ -958,22 +936,17 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	stmt := w.all_fns[fn_name] or { return }
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
-			last_is_direct_array_access := w.is_direct_array_access
-			w.is_direct_array_access = stmt.is_direct_arr || w.pref.no_bounds_checking
-			defer {
-				w.is_direct_array_access = last_is_direct_array_access
-			}
 			if w.trace_enabled {
 				w.level++
 				defer {
 					w.level--
 				}
-				receiver_name := if stmt.is_method && stmt.receiver.typ != 0 {
-					w.table.type_to_str(stmt.receiver.typ) + '.'
+				receiver_name := if node.receiver_type != 0 {
+					w.table.type_to_str(node.receiver_type) + '.'
 				} else {
 					''
 				}
-				eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [${@FN}]')
+				eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [call]')
 			}
 			w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
 			w.stmts(stmt.stmts)
@@ -991,22 +964,17 @@ pub fn (mut w Walker) fn_by_name(fn_name string) {
 		return
 	}
 	stmt := w.all_fns[fn_name] or { return }
-	last_is_direct_array_access := w.is_direct_array_access
-	w.is_direct_array_access = stmt.is_direct_arr || w.pref.no_bounds_checking
-	defer {
-		w.is_direct_array_access = last_is_direct_array_access
-	}
 	if w.trace_enabled {
 		w.level++
 		defer {
 			w.level--
 		}
-		receiver_name := if stmt.is_method && stmt.receiver.typ != 0 {
-			w.table.type_to_str(stmt.receiver.typ) + '.'
+		receiver_name := if fn_name.contains('.') && fn_name.all_before_last('.').int() > 0 {
+			w.table.type_to_str(fn_name.all_before_last('.').int()) + '.'
 		} else {
 			''
 		}
-		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${stmt.name} [${@FN}]')
+		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${fn_name.all_after_last('.')} [by_name]')
 	}
 	w.mark_fn_as_used(fn_name)
 	w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
@@ -1233,6 +1201,14 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 	}
 }
 
+fn (mut w Walker) remove_unused_dump_type() {
+	for typ, _ in w.table.dumps {
+		if ast.Type(u32(typ)).idx() !in w.used_syms {
+			w.table.dumps.delete(typ)
+		}
+	}
+}
+
 fn (mut w Walker) mark_resource_dependencies() {
 	if w.trace_enabled {
 		eprintln('>>>>>>>>>> DEPS USAGE')
@@ -1298,16 +1274,12 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_mem_align {
 		w.fn_by_name('memdup_align')
 	}
-	if w.uses_guard || w.uses_check_index {
+	if w.uses_guard {
 		w.fn_by_name('error')
 	}
-	if w.features.dump {
+	if w.uses_dump {
 		w.fn_by_name('eprint')
 		w.fn_by_name('eprintln')
-		builderptr_idx := int(w.table.find_type('strings.Builder').ref()).str()
-		w.fn_by_name(builderptr_idx + '.str')
-		w.fn_by_name(builderptr_idx + '.free')
-		w.fn_by_name(builderptr_idx + '.write_rune')
 	}
 	if w.uses_spawn {
 		w.fn_by_name('malloc')
@@ -1321,33 +1293,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	if w.uses_arr_void {
 		w.mark_by_type(w.table.find_or_register_array(ast.voidptr_type))
-	}
-	if w.features.auto_str || w.uses_dump {
-		w.fn_by_name(ast.string_type_idx.str() + '.repeat')
-		w.fn_by_name('tos3')
-	}
-	if w.uses_append {
-		ref_array_idx_str := int(ast.array_type.ref()).str()
-		w.fn_by_name(ref_array_idx_str + '.push')
-		w.fn_by_name(ref_array_idx_str + '.push_many_noscan')
-		w.fn_by_name(ref_array_idx_str + '.push_noscan')
-	}
-	if w.uses_index || w.pref.is_shared {
-		array_idx_str := ast.array_type_idx.str()
-		w.fn_by_name(array_idx_str + '.slice')
-		w.fn_by_name(array_idx_str + '.get')
-		if w.uses_guard || w.uses_check_index {
-			w.fn_by_name(array_idx_str + '.get_with_check')
-		}
-	}
-	if w.uses_str_index {
-		string_idx_str := ast.string_type_idx.str()
-		w.fn_by_name(string_idx_str + '.at')
-		w.fn_by_name(string_idx_str + '.at_with_check')
-		w.fn_by_name(string_idx_str + '.substr')
-	}
-	if w.uses_fixed_arr_int {
-		w.fn_by_name('v_fixed_index')
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)
@@ -1371,8 +1316,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 	mut map_fns := map[string]ast.FnDecl{}
 	has_str_call := w.uses_interp || w.uses_asserts || w.uses_str.len > 0
 		|| w.features.print_types.len > 0
-
-	orm_impls := w.table.iface_types['orm.Connection'] or { []ast.Type{} }
 	for k, mut func in w.all_fns {
 		if has_str_call && k.ends_with('.str') {
 			if func.receiver.typ.idx() in w.used_syms {
@@ -1411,28 +1354,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 			method_receiver_typename := w.table.type_to_str(func.receiver.typ)
 			if method_receiver_typename in ['&map', '&mapnode', '&SortedMap', '&DenseArray'] {
 				map_fns[k] = func
-				continue
 			}
 		} else if k.starts_with('map_') {
 			map_fns[k] = func
-			continue
-		}
-		if orm_impls.len > 0 && k.starts_with('orm.') {
-			w.fn_by_name(k)
-			continue
-		}
-	}
-	// handle ORM drivers:
-	if orm_impls.len > 0 {
-		for orm_type in orm_impls {
-			typ := int(orm_type).str()
-			w.fn_by_name(typ + '.select')
-			w.fn_by_name(typ + '.insert')
-			w.fn_by_name(typ + '.update')
-			w.fn_by_name(typ + '.delete')
-			w.fn_by_name(typ + '.create')
-			w.fn_by_name(typ + '.drop')
-			w.fn_by_name(typ + '.last_id')
 		}
 	}
 	if w.features.used_maps > 0 {
@@ -1484,20 +1408,20 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 		w.mark_by_sym_name('VAssertMetaInfo')
 	}
 	if w.used_panic > 0 {
-		w.fn_by_name('panic_option_not_set')
-		w.fn_by_name('panic_result_not_set')
+		w.mark_fn_as_used('panic_option_not_set')
+		w.mark_fn_as_used('panic_result_not_set')
 	}
 	if w.used_none > 0 || w.table.used_features.auto_str {
-		w.fn_by_name('_option_none')
+		w.mark_fn_as_used('_option_none')
 		w.mark_by_sym_name('_option')
 	}
 	if w.used_option > 0 {
-		w.fn_by_name('_option_clone')
-		w.fn_by_name('_option_ok')
+		w.mark_fn_as_used('_option_clone')
+		w.mark_fn_as_used('_option_ok')
 		w.mark_by_sym_name('_option')
 	}
 	if w.used_result > 0 {
-		w.fn_by_name('_result_ok')
+		w.mark_fn_as_used('_result_ok')
 		w.mark_by_sym_name('_result')
 	}
 	if (w.used_option + w.used_result + w.used_none) > 0 {
@@ -1506,7 +1430,7 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	if include_panic_deps || w.uses_external_type || w.uses_asserts || w.uses_debugger
 		|| w.uses_interp {
 		if w.trace_enabled {
-			eprintln('>>>>> PANIC DEPS ${include_panic_deps} | external_type=${w.uses_external_type} | asserts=${w.uses_asserts} | dbg=${w.uses_debugger} interp=${w.uses_interp}')
+			eprintln('>>>>> PANIC DEPS ${include_panic_deps} | external_type=${w.uses_external_type} | asserts=${w.uses_asserts} | dbg=${w.uses_debugger}')
 		}
 		ref_array_idx_str := int(ast.array_type.ref()).str()
 		string_idx_str := ast.string_type_idx.str()
@@ -1526,6 +1450,7 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()
+	w.remove_unused_dump_type()
 
 	if w.trace_enabled {
 		syms := w.used_syms.keys().map(w.table.type_to_str(it))

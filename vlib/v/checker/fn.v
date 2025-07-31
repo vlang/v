@@ -1441,7 +1441,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if args_len > 0 && fn_name in print_everything_fns {
 		node.args[0].ct_expr = c.comptime.is_comptime(node.args[0].expr)
 		c.builtin_args(mut node, fn_name, func)
-		c.markused_print_call(mut node)
+		c.markused_fn_call(mut node)
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`
