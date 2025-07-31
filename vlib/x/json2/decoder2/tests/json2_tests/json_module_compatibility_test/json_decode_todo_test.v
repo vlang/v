@@ -43,7 +43,11 @@ struct DbConfig {
 
 fn test_decode_error_message_should_have_enough_context_empty() {
 	json.decode[DbConfig]('') or {
-		assert err.msg() == 'empty string'
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'empty string'
+		}
 		return
 	}
 	assert false
@@ -51,9 +55,11 @@ fn test_decode_error_message_should_have_enough_context_empty() {
 
 fn test_decode_error_message_should_have_enough_context_just_brace() {
 	json.decode[DbConfig]('{') or {
-		assert err.msg() == '
-{
-^ EOF error: expecting a complete object after `{`'
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'Syntax: EOF error: expecting a complete object after `{`'
+		}
 		return
 	}
 	assert false
@@ -67,7 +73,11 @@ fn test_decode_error_message_should_have_enough_context_trailing_comma_at_end() 
 }'
 
 	json.decode[DbConfig](txt) or {
-		assert err.msg() == '\n\n}\n ^ Expecting object key after `,`'
+		if err is json.JsonDecodeError {
+			assert err.line == 5
+			assert err.character == 1
+			assert err.message == 'Syntax: Expecting object key after `,`'
+		}
 
 		return
 	}
@@ -77,7 +87,11 @@ fn test_decode_error_message_should_have_enough_context_trailing_comma_at_end() 
 fn test_decode_error_message_should_have_enough_context_in_the_middle() {
 	txt := '{"host": "localhost", "dbname": "alex" "user": "alex", "port": "1234"}'
 	json.decode[DbConfig](txt) or {
-		assert err.msg() == '\n{"host": "localhost", "dbname": "alex" "\n                                       ^ invalid value. Unexpected character after string_ end'
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 40
+			assert err.message == 'Syntax: invalid value. Unexpected character after string_ end'
+		}
 		return
 	}
 	assert false

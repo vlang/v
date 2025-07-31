@@ -6,16 +6,10 @@ fn test_number() {
 	assert json.decode[u8]('1')! == 1
 	assert json.decode[u8]('201')! == 201
 
-	assert json.decode[u8]('-1')! == u8(-1)
-	assert json.decode[u8]('-127')! == u8(-127)
-
 	// Test u16
 	assert json.decode[u16]('0')! == 0
 	assert json.decode[u16]('1')! == 1
 	assert json.decode[u16]('201')! == 201
-
-	assert json.decode[u16]('-1')! == u16(-1)
-	assert json.decode[u16]('-201')! == u16(-201)
 
 	// Test u32
 	assert json.decode[u32]('0')! == 0
@@ -90,6 +84,38 @@ fn test_number() {
 
 	assert json.decode[f64]('1234567890')! == 1234567890.0
 	assert json.decode[f64]('-1234567890')! == -1234567890.0
+
+	assert json.decode[f64]('1e10')! == 10000000000
+	assert json.decode[f64]('1E10')! == 10000000000
+	assert json.decode[f64]('1e+10')! == 10000000000
+	assert json.decode[f64]('1e-10')! == 0.0000000001
+	assert json.decode[f64]('-1e10')! == -10000000000
+	assert json.decode[f64]('-1E-10')! == -0.0000000001
+	assert json.decode[f64]('0.123e3')! - 123 < 0.0000001
+	assert json.decode[f64]('10.5E+3')! == 10500
+
+	// Test Over/Underflow
+	assert json.decode[i8]('127')! == 127
+	assert json.decode[i8]('-128')! == -128
+
+	if x := json.decode[i8]('128') {
+		assert false
+	}
+	if x := json.decode[i8]('130') {
+		assert false
+	}
+	if x := json.decode[i8]('1000') {
+		assert false
+	}
+	if x := json.decode[i8]('-129') {
+		assert false
+	}
+	if x := json.decode[i8]('-130') {
+		assert false
+	}
+	if x := json.decode[i8]('-1000') {
+		assert false
+	}
 }
 
 fn test_boolean() {
