@@ -532,7 +532,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.mark_by_sym(w.table.sym(sym.info.key_type))
 				w.mark_by_sym(w.table.sym(sym.info.value_type))
 				w.features.used_maps++
-			} else if sym.kind in [.array, .any] {
+			} else if sym.kind in [.array, .array_fixed, .any] {
 				if !w.is_direct_array_access || w.features.auto_str_arr {
 					if node.is_setter {
 						w.mark_builtin_array_method_as_used('set')
@@ -542,12 +542,15 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				}
 				if sym.info is ast.Array {
 					w.mark_by_sym(w.table.sym(sym.info.elem_type))
+				} else if sym.info is ast.ArrayFixed {
+					w.mark_by_sym(w.table.sym(sym.info.elem_type))
+				}
+				if !w.uses_fixed_arr_int && sym.kind == .array_fixed {
+					w.uses_fixed_arr_int = true
 				}
 				if !w.uses_index && !w.is_direct_array_access {
 					w.uses_index = true
 				}
-			} else if sym.info is ast.ArrayFixed {
-				w.uses_fixed_arr_int = true
 			} else if sym.kind == .string {
 				if node.index is ast.RangeExpr {
 					w.mark_builtin_array_method_as_used('slice')
