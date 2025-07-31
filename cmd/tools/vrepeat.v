@@ -64,6 +64,7 @@ mut:
 	warmup                  int
 	show_help               bool
 	show_output             bool
+	is_silent               bool // do not print progress lines
 	use_newline             bool // use \n instead of \r, so the last line is not overwritten
 	fail_on_regress_percent int
 	fail_on_maxtime         int // in ms
@@ -149,7 +150,17 @@ fn flushed_print(s string) {
 }
 
 fn (mut context Context) clear_line() {
+	if context.is_silent {
+		return
+	}
 	flushed_print(context.cline)
+}
+
+fn (mut context Context) flushed_print(s string) {
+	if context.is_silent {
+		return
+	}
+	flushed_print(s)
 }
 
 fn (mut context Context) expand_all_commands(commands []string) []string {
@@ -165,14 +176,10 @@ fn (mut context Context) expand_all_commands(commands []string) []string {
 					scmd := cscmd.replace('{${paramk}}', paramv)
 					new_substituted_commands << scmd
 				}
-				for sc in new_substituted_commands {
-					substituted_commands << sc
-				}
+				substituted_commands << new_substituted_commands
 			}
 		}
-		for sc in substituted_commands {
-			all_commands << sc
-		}
+		all_commands << substituted_commands
 	}
 	mut unique := map[string]int{}
 	for x in all_commands {
@@ -195,11 +202,11 @@ fn (mut context Context) run() {
 			series_label := '${icmd + 1}/${context.commands.len}, ${si + 1}/${context.series}'
 			line_prefix := '${context.cgoback}Command: ${c(tgray, cmd)}, ${series_label:9}'
 			if context.series != 1 || context.commands.len != 1 {
-				flushed_print(line_prefix)
+				context.flushed_print(line_prefix)
 			}
 			if context.warmup > 0 {
 				for i in 0 .. context.warmup {
-					flushed_print('${line_prefix}, warm up run: ${i + 1:4}/${context.warmup:-4}, took: ${f64(duration) / 1000:6.1f}ms ...')
+					context.flushed_print('${line_prefix}, warm up run: ${i + 1:4}/${context.warmup:-4}, took: ${f64(duration) / 1000:6.1f}ms ...')
 					mut sw := time.new_stopwatch()
 					res := os.execute(cmd)
 					duration = i64(sw.elapsed().microseconds())
@@ -234,16 +241,15 @@ fn (mut context Context) run() {
 				runs++
 				avg = (f64(sum) / f64(i + 1))
 				cavg := '${avg / 1000:9.3f}ms'
-				flushed_print('${line_prefix}, current average: ${c(tgreen, cavg)}, run ${i + 1:4}/${context.run_count:-4}, took: ${f64(duration) / 1000:6} ms')
+				context.flushed_print('${line_prefix}, current average: ${c(tgreen, cavg)}, run ${
+					i + 1:4}/${context.run_count:-4}, took: ${f64(duration) / 1000:6} ms')
 				if context.show_output {
-					flushed_print(' | result: ${oldres:s}')
+					context.flushed_print(' | result: ${oldres:s}')
 				}
 				trimmed_output := res.output.trim_right('\r\n')
 				trimmed_normalized := trimmed_output.replace('\r\n', '\n')
 				lines := trimmed_normalized.split('\n')
-				for line in lines {
-					context.results[icmd].outputs << line
-				}
+				context.results[icmd].outputs << lines
 				context.results[icmd].timings << duration
 				oldres = res.output.replace('\n', ' ')
 				if should_show_fail_output {
@@ -257,7 +263,7 @@ fn (mut context Context) run() {
 			context.results[icmd].atiming = new_aints(context.results[icmd].timings, context.nmins,
 				context.nmaxs)
 			context.clear_line()
-			flushed_print(context.cgoback)
+			context.flushed_print(context.cgoback)
 			context.show_timings_details(si, icmd, cmd)
 		}
 	}
@@ -421,6 +427,10 @@ fn (mut context Context) parse_options() ! {
 	context.ignore_failed = fp.bool('ignore', `e`, false, 'Ignore failed commands (returning a non 0 exit code).')
 	context.no_vexe_setenv = fp.bool('no_vexe_reset', `N`, false, 'Do not reset the VEXE env variable at the start. \n                            By default, VEXE will be set to "", to allow for measuring different V executables. Use this option to override it')
 	context.use_newline = fp.bool('newline', `n`, false, 'Use \\n, do not overwrite the last line. Produces more output, but easier to diagnose.')
+	context.is_silent = fp.bool('silent', `S`, false, 'Do not show progress lines, print only the final summary. Suitable for CIs.')
+	if os.getenv('VREPEAT_SILENT') != '' {
+		context.is_silent = true
+	}
 	context.show_output = fp.bool('output', `O`, false, 'Show command stdout/stderr in the progress indicator for each command. Note: slower, for verbose commands.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.fail_on_maxtime = fp.int('max_time', `m`, max_time, 'Fail with exit code 2, when first cmd takes above M milliseconds (regression). Default: ${max_time}')

@@ -38,7 +38,7 @@ jobs:
       - name: Build the repeat tool
         run: ./v cmd/tools/vrepeat.v
       - name: Run compare_pr_to_master.v
-        run: ./v run .github/workflows/compare_pr_to_master.v
+        run: VREPEAT_SILENT=1 ./v run .github/workflows/compare_pr_to_master.v
 
   prevent-gpl-licenses:
     runs-on: ubuntu-24.04
