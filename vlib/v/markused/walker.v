@@ -35,37 +35,38 @@ mut:
 	is_direct_array_access bool
 
 	// dependencies finding flags
-	uses_atomic        bool // has atomic
-	uses_array         bool // has array
-	uses_channel       bool // has chan dep
-	uses_lock          bool // has mutex dep
-	uses_ct_fields     bool // $for .fields
-	uses_ct_methods    bool // $for .methods
-	uses_ct_params     bool // $for .params
-	uses_ct_values     bool // $for .values
-	uses_ct_variants   bool // $for .variants
-	uses_ct_attribute  bool // $for .attributes
-	uses_external_type bool
-	uses_err           bool // err var
-	uses_asserts       bool // assert
-	uses_map_update    bool // has {...expr}
-	uses_debugger      bool // has debugger;
-	uses_mem_align     bool // @[aligned:N] for structs
-	uses_eq            bool // has == op
-	uses_interp        bool // string interpolation
-	uses_guard         bool
-	uses_orm           bool
-	uses_str           map[ast.Type]bool // has .str() calls, and for which types
-	uses_free          map[ast.Type]bool // has .free() calls, and for which types
-	uses_spawn         bool
-	uses_dump          bool
-	uses_memdup        bool // sumtype cast and &Struct{}
-	uses_arr_void      bool // auto arr methods
-	uses_index         bool // var[k]
-	uses_str_index     bool // string[k]
-	uses_fixed_arr_int bool // fixed_arr[k]
-	uses_check_index   bool // arr[key] or { }
-	uses_append        bool // var << item
+	uses_atomic          bool // has atomic
+	uses_array           bool // has array
+	uses_channel         bool // has chan dep
+	uses_lock            bool // has mutex dep
+	uses_ct_fields       bool // $for .fields
+	uses_ct_methods      bool // $for .methods
+	uses_ct_params       bool // $for .params
+	uses_ct_values       bool // $for .values
+	uses_ct_variants     bool // $for .variants
+	uses_ct_attribute    bool // $for .attributes
+	uses_external_type   bool
+	uses_err             bool // err var
+	uses_asserts         bool // assert
+	uses_map_update      bool // has {...expr}
+	uses_debugger        bool // has debugger;
+	uses_mem_align       bool // @[aligned:N] for structs
+	uses_eq              bool // has == op
+	uses_interp          bool // string interpolation
+	uses_guard           bool
+	uses_orm             bool
+	uses_str             map[ast.Type]bool // has .str() calls, and for which types
+	uses_free            map[ast.Type]bool // has .free() calls, and for which types
+	uses_spawn           bool
+	uses_dump            bool
+	uses_memdup          bool // sumtype cast and &Struct{}
+	uses_arr_void        bool // auto arr methods
+	uses_index           bool // var[k]
+	uses_str_index       bool // string[k]
+	uses_str_index_check bool // string[k] or { }
+	uses_fixed_arr_int   bool // fixed_arr[k]
+	uses_check_index     bool // arr[key] or { }
+	uses_append          bool // var << item
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -557,6 +558,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.features.range_index = true
 				}
 				w.uses_str_index = true
+				if !w.uses_str_index_check {
+					w.uses_str_index_check = node.or_expr.kind == .block
+				}
 			} else if sym.info is ast.Struct {
 				w.mark_by_sym(sym)
 			} else if sym.info is ast.SumType {
@@ -1305,9 +1309,11 @@ fn (mut w Walker) mark_resource_dependencies() {
 		}
 	}
 	if w.uses_str_index {
-		// string_idx_str := ast.string_type_idx.str()
-		// w.fn_by_name(string_idx_str + '.at')
-		// w.fn_by_name(string_idx_str + '.at_with_check')
+		string_idx_str := ast.string_type_idx.str()
+		w.fn_by_name(string_idx_str + '.at')
+		if w.uses_str_index_check {
+			w.fn_by_name(string_idx_str + '.at_with_check')
+		}
 		// w.fn_by_name(string_idx_str + '.substr')
 	}
 	for typ, _ in w.table.used_features.print_types {
