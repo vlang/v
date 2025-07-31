@@ -21,6 +21,7 @@ pub mut:
 	used_option   int // _option_ok
 	used_result   int // _result_ok
 	used_panic    int // option/result propagation
+	used_closures int // fn [x] (){}, and `instance.method` used in an expression
 	pref          &pref.Preferences = unsafe { nil }
 mut:
 	all_fns       map[string]ast.FnDecl
@@ -746,6 +747,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			w.mark_by_type(node.typ)
 			w.or_block(node.or_block)
+			if node.has_hidden_receiver {
+				w.used_closures++
+			}
 		}
 		ast.SqlExpr {
 			w.expr(node.db_expr)
@@ -849,29 +853,27 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if w.used_fns[fkey] {
 		return
 	}
-	if node.no_body {
-		w.mark_fn_as_used(fkey)
-		return
-	}
-	if node.is_method {
-		w.mark_by_type(node.receiver.typ)
-	}
 	last_is_direct_array_access := w.is_direct_array_access
 	w.is_direct_array_access = node.is_direct_arr || w.pref.no_bounds_checking
-	defer {
-		w.is_direct_array_access = last_is_direct_array_access
-	}
+	defer { w.is_direct_array_access = last_is_direct_array_access }
 	if w.trace_enabled {
 		w.level++
-		defer {
-			w.level--
-		}
+		defer { w.level-- }
 		receiver_name := if node.is_method && node.receiver.typ != 0 {
 			w.table.type_to_str(node.receiver.typ) + '.'
 		} else {
 			''
 		}
 		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name}')
+	}
+	if node.is_closure {
+		w.used_closures++
+	}
+	if node.no_body {
+		return
+	}
+	if node.is_method {
+		w.mark_by_type(node.receiver.typ)
 	}
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)

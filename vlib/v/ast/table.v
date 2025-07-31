@@ -34,6 +34,7 @@ pub mut:
 	used_veb_types []Type          // veb context types, filled in by checker
 	used_maps      int             // how many times maps were used, filled in by markused
 	used_none      int             // how many times `none` was used, filled in by markused
+	used_closures  int             // number of used closures, either directly with `fn [state] () {}`, or indirectly (though `instance.method` promotions)
 	// json             bool            // json is imported
 	comptime_calls map[string]bool // resolved name to call on comptime
 	comptime_syms  map[Type]bool   // resolved syms (generic)

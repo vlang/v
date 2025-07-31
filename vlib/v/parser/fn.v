@@ -914,6 +914,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			return_type_pos: return_type_pos
 			params:          params
 			is_variadic:     is_variadic
+			is_closure:      inherited_vars.len > 0
 			is_method:       false
 			generic_names:   generic_names
 			is_anon:         true

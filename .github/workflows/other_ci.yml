@@ -28,9 +28,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 30
+          fetch-depth: 0
       - name: Environment info
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
+      - name: Name the local git branch
+        run: git checkout -b the_v_pr_branch
       - name: Build local v
         run: make && ./v symlink
       - name: V version

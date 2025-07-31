@@ -317,13 +317,15 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	table.used_features.used_consts = walker.used_consts.move()
 	table.used_features.used_globals = walker.used_globals.move()
 	table.used_features.used_syms = walker.used_syms.move()
+	table.used_features.used_closures = walker.used_closures
 
 	if trace_skip_unused {
 		eprintln('>> t.used_fns: ${table.used_features.used_fns.keys()}')
 		eprintln('>> t.used_consts: ${table.used_features.used_consts.keys()}')
 		eprintln('>> t.used_globals: ${table.used_features.used_globals.keys()}')
 		eprintln('>> t.used_syms: ${table.used_features.used_syms.keys()}')
-		eprintln('>> walker.table.used_features.used_maps: ${walker.table.used_features.used_maps}')
+		eprintln('>> t.used_maps: ${table.used_features.used_maps}')
+		eprintln('>> t.used_closures: ${table.used_features.used_closures}')
 	}
 	if trace_skip_unused_just_unused_fns {
 		all_fns_keys := all_fns.keys()
