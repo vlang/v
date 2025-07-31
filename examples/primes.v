@@ -1,24 +1,24 @@
-fn is_prime(n int) bool {
-	if n <= 1 {
-		return false
-	}
-	for i := 2; i * i <= n; i++ {
-		if n % i == 0 {
-			return false
-		}
-	}
-	return true
-}
+import math { log }
 
-fn main() {
-	how_many := arguments()[1] or { '10' }.int()
-	mut count := 0
-	mut num := 2
-	for count < how_many {
-		if is_prime(num) {
-			println(num)
-			count++
+n := arguments()[1] or { '10' }.int()
+sz := if n < 15 {
+	50
+} else {
+	ln := log(f64(n))
+	int(f64(n) * (ln + log(ln))) + 1
+}
+mut sieve := []bool{len: sz}
+for i := 2; i * i < sz; i++ {
+	if !sieve[i] {
+		for j := i * i; j < sz; j += i {
+			sieve[j] = true
 		}
-		num++
+	}
+}
+mut c := 0
+for i := 2; c < n && i < sz; i++ {
+	if !sieve[i] {
+		println(i)
+		c++
 	}
 }

@@ -22,6 +22,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  performance-compare-with-master:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 30
+      - name: Environment info
+        run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
+      - name: Build local v
+        run: make && ./v symlink
+      - name: V version
+        run: ./v version
+      - name: Build the repeat tool
+        run: ./v cmd/tools/vrepeat.v
+      - name: Run compare_pr_to_master.v
+        run: VREPEAT_SILENT=1 ./v run .github/workflows/compare_pr_to_master.v
+
   prevent-gpl-licenses:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

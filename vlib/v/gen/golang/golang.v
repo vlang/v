@@ -1542,21 +1542,21 @@ pub fn (mut f Gen) chan_init(mut node ast.ChanInit) {
 
 pub fn (mut f Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
-		if node.method_name == 'html' {
+		if node.kind == .html {
 			f.write('\$vweb.html()')
 		} else {
 			f.write("\$tmpl('${node.args_var}')")
 		}
 	} else {
-		if node.is_embed {
+		if node.kind == .embed_file {
 			if node.embed_file.compression_type == 'none' {
 				f.write("\$embed_file('${node.embed_file.rpath}')")
 			} else {
 				f.write("\$embed_file('${node.embed_file.rpath}', .${node.embed_file.compression_type})")
 			}
-		} else if node.is_env {
+		} else if node.kind == .env {
 			f.write("\$env('${node.args_var}')")
-		} else if node.is_pkgconfig {
+		} else if node.kind == .pkgconfig {
 			f.write("\$pkgconfig('${node.args_var}')")
 		} else {
 			inner_args := if node.args_var != '' {

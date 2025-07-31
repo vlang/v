@@ -480,7 +480,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.is_vweb {
 				w.stmts(node.veb_tmpl.stmts)
 			}
-			if node.is_embed {
+			if node.kind == .embed_file {
 				w.features.used_maps++
 			}
 		}
