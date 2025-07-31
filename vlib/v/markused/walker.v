@@ -1283,7 +1283,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name(ast.string_type_idx.str() + '.repeat')
 		w.fn_by_name('tos3')
 	}
-
 	if w.uses_index || w.pref.is_shared {
 		array_idx_str := ast.array_type_idx.str()
 		w.fn_by_name(array_idx_str + '.slice')
