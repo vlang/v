@@ -1305,10 +1305,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 		}
 	}
 	if w.uses_str_index {
-		string_idx_str := ast.string_type_idx.str()
-		w.fn_by_name(string_idx_str + '.at')
-		w.fn_by_name(string_idx_str + '.at_with_check')
-		w.fn_by_name(string_idx_str + '.substr')
+		// string_idx_str := ast.string_type_idx.str()
+		// w.fn_by_name(string_idx_str + '.at')
+		// w.fn_by_name(string_idx_str + '.at_with_check')
+		// w.fn_by_name(string_idx_str + '.substr')
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)
