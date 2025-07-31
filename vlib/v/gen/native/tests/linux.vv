@@ -24,10 +24,19 @@ fn test_prints() {
 	print_character(`a`)
 }
 
+__global foo = 3
+
+fn test_globals() {
+	assert foo == 3
+	foo = 5
+	assert foo == 5
+}
+
 fn main() {
 	test_for_c_in_string()
 	test_c_extern_vars()
 	test_prints()
+	test_globals()
 	flush_stderr()
 	flush_stdout()
 }
