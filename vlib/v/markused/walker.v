@@ -412,7 +412,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
 			w.exprs(node.exprs)
-			w.uses_array = true
+			if !w.uses_array && !w.is_direct_array_access {
+				w.uses_array = true
+			}
 		}
 		ast.Assoc {
 			w.exprs(node.exprs)
@@ -602,7 +604,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					if right_sym.kind == .map {
 						w.features.used_maps++
 					}
-					if !w.uses_arr_void && right_sym.kind in [.array, .array_fixed] {
+					if !w.uses_arr_void && !w.is_direct_array_access
+						&& right_sym.kind in [.array, .array_fixed] {
 						w.uses_arr_void = true
 					}
 				} else if node.op in [.key_is, .not_is] {
@@ -612,7 +615,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if !w.uses_eq && node.op in [.eq, .ne] {
 				w.uses_eq = true
 			}
-			if !w.uses_append && node.op == .left_shift {
+			if !w.uses_append && node.op == .left_shift && !w.is_direct_array_access {
 				w.uses_append = true
 			}
 		}
@@ -1103,7 +1106,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			}
 		}
 		ast.ArrayFixed, ast.Array {
-			w.uses_array = true
+			if !w.uses_array && !w.is_direct_array_access {
+				w.uses_array = true
+			}
 			w.mark_by_type(isym.info.elem_type)
 		}
 		ast.SumType {
@@ -1351,8 +1356,8 @@ fn (mut w Walker) mark_resource_dependencies() {
 			}
 			continue
 		}
-		if w.pref.autofree || (w.uses_free.len > 0 && k.ends_with('.free')
-			&& func.receiver.typ.idx() in w.used_syms) {
+		if (w.pref.autofree || (w.uses_free.len > 0 && func.receiver.typ.idx() in w.used_syms))
+			&& k.ends_with('.free') {
 			w.fn_by_name(k)
 			continue
 		}
