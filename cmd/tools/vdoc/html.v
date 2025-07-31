@@ -384,6 +384,7 @@ fn write_token(tok token.Token, typ HighlightTokenTyp, mut buf strings.Builder) 
 fn html_highlight(code string, tb &ast.Table) string {
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{ output_mode: .silent })
 	mut tok := s.scan()
+	mut prev_tok := tok
 	mut next_tok := s.scan()
 	mut buf := strings.new_builder(200)
 	mut i := 0
@@ -490,6 +491,9 @@ fn html_highlight(code string, tb &ast.Table) string {
 				// html documentation outputs / its style rules will affect the readme.
 				buf.write_string("'${html.escape(tok.lit.str())}'")
 			} else {
+				if final_tok_typ == .string && prev_tok.lit == 'return' {
+					buf.write_string(' ')
+				}
 				write_token(tok, tok_typ, mut buf)
 			}
 			buf.write_string('</span>')
@@ -506,7 +510,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 		if i - 1 == next_tok.pos {
 			i--
 		}
-
+		prev_tok = tok
 		tok = next_tok
 		next_tok = s.scan()
 	}
