@@ -634,8 +634,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					} else if node.name in w.all_globals {
 						w.mark_global_as_used(node.name)
 					} else {
-						if !w.uses_err && !w.is_builtin_mod && node.name == 'err' {
-							w.fn_by_name('${int(ast.error_type)}.str')
+						if !w.uses_err && node.name == 'err' {
 							w.uses_err = true
 						}
 						w.fn_by_name(node.name)
@@ -945,38 +944,18 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	} else if node.is_fn_var {
 		w.mark_global_as_used(node.name)
 	}
-	w.mark_fn_as_used(fn_name)
 	if node.is_method && node.receiver_type.has_flag(.generic) && node.receiver_concrete_type != 0
 		&& !node.receiver_concrete_type.has_flag(.generic) {
 		// if receiver is generic, then cgen requires `node.receiver_type` to be T.
 		// We therefore need to get the concrete type from `node.receiver_concrete_type`.
 		fn_name = '${int(node.receiver_concrete_type)}.${node.name}'
 		receiver_typ = node.receiver_concrete_type
-		w.mark_fn_as_used(fn_name)
 	}
 	w.mark_by_type(node.return_type)
-	stmt := w.all_fns[fn_name] or { return }
+	mut stmt := w.all_fns[fn_name] or { return }
 	if !stmt.should_be_skipped && stmt.name == node.name {
 		if !node.is_method || receiver_typ == stmt.receiver.typ {
-			last_is_direct_array_access := w.is_direct_array_access
-			w.is_direct_array_access = stmt.is_direct_arr || w.pref.no_bounds_checking
-			defer {
-				w.is_direct_array_access = last_is_direct_array_access
-			}
-			if w.trace_enabled {
-				w.level++
-				defer {
-					w.level--
-				}
-				receiver_name := if stmt.is_method && stmt.receiver.typ != 0 {
-					w.table.type_to_str(stmt.receiver.typ) + '.'
-				} else {
-					''
-				}
-				eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [${@FN}]')
-			}
-			w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
-			w.stmts(stmt.stmts)
+			w.fn_decl(mut stmt)
 		}
 		if node.return_type.has_flag(.option) {
 			w.used_option++
@@ -990,27 +969,9 @@ pub fn (mut w Walker) fn_by_name(fn_name string) {
 	if w.used_fns[fn_name] {
 		return
 	}
-	stmt := w.all_fns[fn_name] or { return }
-	last_is_direct_array_access := w.is_direct_array_access
-	w.is_direct_array_access = stmt.is_direct_arr || w.pref.no_bounds_checking
-	defer {
-		w.is_direct_array_access = last_is_direct_array_access
-	}
-	if w.trace_enabled {
-		w.level++
-		defer {
-			w.level--
-		}
-		receiver_name := if stmt.is_method && stmt.receiver.typ != 0 {
-			w.table.type_to_str(stmt.receiver.typ) + '.'
-		} else {
-			''
-		}
-		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${stmt.name} [${@FN}]')
-	}
-	w.mark_fn_as_used(fn_name)
-	w.mark_fn_ret_and_params(stmt.return_type, stmt.params)
-	w.stmts(stmt.stmts)
+	mut stmt := w.all_fns[fn_name] or { return }
+	w.fn_decl(mut stmt)
+	// w.stmts(stmt.stmts)
 }
 
 pub fn (mut w Walker) struct_fields(sfields []ast.StructField) {
@@ -1237,6 +1198,20 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.trace_enabled {
 		eprintln('>>>>>>>>>> DEPS USAGE')
 	}
+	if w.features.dump {
+		w.fn_by_name('eprint')
+		w.fn_by_name('eprintln')
+		builderptr_idx := int(w.table.find_type('strings.Builder').ref()).str()
+		w.fn_by_name(builderptr_idx + '.str')
+		w.fn_by_name(builderptr_idx + '.free')
+		w.fn_by_name(builderptr_idx + '.write_rune')
+		w.fn_by_name(builderptr_idx + '.write_string')
+		w.fn_by_name('strings.new_builder')
+		w.uses_free[ast.string_type] = true
+	}
+	// if w.uses_err {
+	// 	w.fn_by_name('${int(ast.error_type)}.str')
+	// }
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')
 	}
@@ -1251,21 +1226,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	if w.uses_lock {
 		w.mark_by_sym_name('sync.RwMutex')
-	}
-	if w.uses_array {
-		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-			w.fn_by_name('__new_array_noscan')
-			w.fn_by_name('new_array_from_c_array_noscan')
-			w.fn_by_name('__new_array_with_multi_default_noscan')
-			w.fn_by_name('__new_array_with_array_default_noscan')
-			w.fn_by_name('__new_array_with_default_noscan')
-		}
-		w.fn_by_name('__new_array')
-		w.fn_by_name('new_array_from_c_array')
-		w.fn_by_name('__new_array_with_multi_default')
-		w.fn_by_name('__new_array_with_array_default')
-		w.fn_by_name('__new_array_with_default')
-		w.fn_by_name(int(ast.array_type.ref()).str() + '.set')
 	}
 	if w.uses_orm {
 		w.fn_by_name('__new_array_with_default_noscan')
@@ -1300,14 +1260,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	if w.uses_guard || w.uses_check_index {
 		w.fn_by_name('error')
-	}
-	if w.features.dump {
-		w.fn_by_name('eprint')
-		w.fn_by_name('eprintln')
-		builderptr_idx := int(w.table.find_type('strings.Builder').ref()).str()
-		w.fn_by_name(builderptr_idx + '.str')
-		w.fn_by_name(builderptr_idx + '.free')
-		w.fn_by_name(builderptr_idx + '.write_rune')
 	}
 	if w.uses_spawn {
 		w.fn_by_name('malloc')
@@ -1345,9 +1297,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name(string_idx_str + '.at')
 		w.fn_by_name(string_idx_str + '.at_with_check')
 		w.fn_by_name(string_idx_str + '.substr')
-	}
-	if w.uses_fixed_arr_int {
-		w.fn_by_name('v_fixed_index')
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)
@@ -1421,6 +1370,25 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name(k)
 			continue
 		}
+	}
+	if w.uses_array {
+		if w.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+			w.fn_by_name('__new_array_noscan')
+			w.fn_by_name('new_array_from_c_array_noscan')
+			w.fn_by_name('__new_array_with_multi_default_noscan')
+			w.fn_by_name('__new_array_with_array_default_noscan')
+			w.fn_by_name('__new_array_with_default_noscan')
+		}
+		w.fn_by_name('__new_array')
+		w.fn_by_name('new_array_from_c_array')
+		w.fn_by_name('__new_array_with_multi_default')
+		w.fn_by_name('__new_array_with_array_default')
+		w.fn_by_name('__new_array_with_default')
+		w.fn_by_name('__new_array_with_default_noscan')
+		w.fn_by_name(int(ast.array_type.ref()).str() + '.set')
+	}
+	if w.uses_fixed_arr_int {
+		w.fn_by_name('v_fixed_index')
 	}
 	// handle ORM drivers:
 	if orm_impls.len > 0 {
