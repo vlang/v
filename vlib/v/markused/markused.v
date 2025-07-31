@@ -372,7 +372,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		eprintln('>> t.used_syms: ${table.used_features.used_syms.keys()}')
 		eprintln('>> t.used_maps: ${table.used_features.used_maps}')
 		eprintln('>> t.used_closures: ${table.used_features.used_closures}')
-		eprintln('>> t.imports: ${table.imports}')
 	}
 	if trace_skip_unused_just_unused_fns {
 		all_fns_keys := all_fns.keys()
