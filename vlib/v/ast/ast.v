@@ -573,7 +573,7 @@ pub:
 pub struct AnonFn {
 pub mut:
 	decl           FnDecl
-	inherited_vars []Param
+	inherited_vars []Param         // note: closures have inherited_vars.len > 0
 	typ            Type            // the type of anonymous fn. Both .typ and .decl.name are auto generated
 	has_gen        map[string]bool // a map of the names of all generic anon functions, generated from it
 }
@@ -602,6 +602,7 @@ pub:
 	is_must_use           bool        // true, when @[must_use] is used on a fn. Calls to such functions, that ignore the return value, will cause warnings.
 	is_markused           bool        // true, when an explicit `@[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
 	is_file_translated    bool        // true, when the file it resides in is `@[translated]`
+	is_closure            bool        // true, for actual closures like `fn [inherited] () {}` . It is false for normal anonymous functions, and for named functions/methods too.
 	receiver              StructField // TODO: this is not a struct field
 	receiver_pos          token.Pos   // `(u User)` in `fn (u User) name()` position
 	is_method             bool

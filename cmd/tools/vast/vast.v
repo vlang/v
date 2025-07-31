@@ -605,6 +605,7 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add_terse('is_unsafe', t.bool_node(node.is_unsafe))
 	obj.add_terse('is_markused', t.bool_node(node.is_markused))
 	obj.add_terse('is_file_translated', t.bool_node(node.is_file_translated))
+	obj.add_terse('is_closure', t.bool_node(node.is_closure))
 	obj.add_terse('receiver', t.struct_field(node.receiver))
 	obj.add('receiver_pos', t.pos(node.receiver_pos))
 	obj.add_terse('is_method', t.bool_node(node.is_method))

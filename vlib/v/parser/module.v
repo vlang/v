@@ -50,7 +50,9 @@ fn (mut p Parser) register_auto_import(alias string) {
 	}
 	if alias !in p.imports {
 		p.imports[alias] = alias
-		p.table.imports << alias
+		if alias !in p.table.imports {
+			p.table.imports << alias
+		}
 		node := ast.Import{
 			source_name: alias
 			pos:         p.tok.pos()
@@ -287,10 +289,10 @@ fn (mut p Parser) import_stmt() ast.Import {
 	if p.tok.kind == .semicolon {
 		p.check(.semicolon)
 	}
-	// if mod_name !in p.table.imports {
-	p.table.imports << mod_name
+	if mod_name !in p.table.imports {
+		p.table.imports << mod_name
+	}
 	p.ast_imports << import_node
-	// }
 	return import_node
 }
 

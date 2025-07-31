@@ -21,6 +21,7 @@ pub mut:
 	used_option   int // _option_ok
 	used_result   int // _result_ok
 	used_panic    int // option/result propagation
+	used_closures int // fn [x] (){}, and `instance.method` used in an expression
 	pref          &pref.Preferences = unsafe { nil }
 mut:
 	all_fns       map[string]ast.FnDecl
@@ -712,6 +713,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			w.mark_by_type(node.typ)
 			w.or_block(node.or_block)
+			if node.has_hidden_receiver {
+				w.used_closures++
+			}
 		}
 		ast.SqlExpr {
 			w.expr(node.db_expr)
@@ -811,9 +815,6 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if w.used_fns[fkey] {
 		return
 	}
-	if node.no_body {
-		return
-	}
 	if w.trace_enabled {
 		w.level++
 		defer { w.level-- }
@@ -823,6 +824,12 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 			''
 		}
 		eprintln('>>>${'  '.repeat(w.level)}${receiver_name}${node.name} [decl]')
+	}
+	if node.is_closure {
+		w.used_closures++
+	}
+	if node.no_body {
+		return
 	}
 	if node.is_method {
 		w.mark_by_type(node.receiver.typ)
