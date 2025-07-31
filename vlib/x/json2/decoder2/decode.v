@@ -1216,7 +1216,7 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 
 		// doing it like this means the minimum of signed numbers does not overflow before being inverted
 		if !is_negative {
-			digit_amount := get_number_digits(val)
+			digit_amount := get_number_digits(*val)
 
 			if number_info.length > digit_amount {
 				decoder.decode_error('overflows ${typeof(val).name}')!
@@ -1252,7 +1252,7 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 				*val = *val * 10 + digit
 			}
 		} else {
-			digit_amount := get_number_digits(val) + 1
+			digit_amount := get_number_digits(*val) + 1
 
 			if number_info.length > digit_amount {
 				decoder.decode_error('underflows ${typeof(val).name}')!
