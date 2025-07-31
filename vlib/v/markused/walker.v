@@ -870,6 +870,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 		w.used_closures++
 	}
 	if node.no_body {
+		w.mark_fn_as_used(fkey)
 		return
 	}
 	if node.is_method {
