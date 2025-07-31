@@ -532,7 +532,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.mark_by_sym(w.table.sym(sym.info.key_type))
 				w.mark_by_sym(w.table.sym(sym.info.value_type))
 				w.features.used_maps++
-			} else if sym.info is ast.Array {
+			} else if sym.kind in [.array, .any] {
 				if !w.is_direct_array_access || w.features.auto_str_arr {
 					if node.is_setter {
 						w.mark_builtin_array_method_as_used('set')
@@ -540,7 +540,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 						w.mark_builtin_array_method_as_used('get')
 					}
 				}
-				w.mark_by_sym(w.table.sym(sym.info.elem_type))
+				if sym.info is ast.Array {
+					w.mark_by_sym(w.table.sym(sym.info.elem_type))
+				}
 				if !w.uses_index && !w.is_direct_array_access {
 					w.uses_index = true
 				}
@@ -556,6 +558,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.mark_by_sym(sym)
 			} else if sym.info is ast.SumType {
 				w.mark_by_sym(sym)
+			} else if sym.kind == .any {
+				if !w.is_direct_array_access {
+					if node.is_setter {
+						w.mark_builtin_array_method_as_used('set')
+					} else {
+						w.mark_builtin_array_method_as_used('get')
+					}
+				}
 			}
 		}
 		ast.InfixExpr {
