@@ -1434,6 +1434,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name(typ + '.last_id')
 		}
 	}
+	if w.features.used_maps == 0 && w.pref.autofree {
+		w.features.used_maps++
+	}
 	if w.features.used_maps > 0 {
 		w.fn_by_name('new_map')
 		w.fn_by_name('new_map_init')
@@ -1458,6 +1461,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 			}
 		}
 	} else {
+		eprintln('REMOVER')
 		for k, func in map_fns {
 			if !func.is_method {
 				continue
