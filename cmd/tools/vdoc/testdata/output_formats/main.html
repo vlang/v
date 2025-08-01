@@ -1,15 +1,29 @@
 <section id="readme_main" class="doc-node">
 			<div class="title"><h1> main <a href="#readme_main">#</a></h1></div>
-<h2>Description</h2><p>This is an example of a an .md file, used for adding more rich text documentation in a project or module.</p><p>This is a <a href="https://vlang.io/">link</a> to the main V site.</p><p>This is a <b>bold text</b>.</p><p>This is a script <code>&lt;script&gt;console.log('hi from README.md');&lt;/script&gt;</code> .</p><h2>Examples</h2><h3>Functions that return different literals:</h3><p>Example of a function returning boolean:</p><pre><code class="language-v"><span class="token keyword">fn</span> <span class="token function">is_odd</span><span class="token punctuation">(</span>x <span class="token builtin">int</span><span class="token punctuation">)</span> <span class="token builtin">bool</span> <span class="token punctuation">{</span>
+<h2 id="description">Description</h2>
+<p>This is an example of a an .md file, used for adding more rich text documentation in a project or module.</p>
+<p>This is a <a href="https://vlang.io/">link</a> to the main V site.</p>
+<p>This is a <b>bold text</b>.</p>
+<p>This is a script <code>&lt;script&gt;console.log('hi from README.md');&lt;/script&gt;</code> .</p>
+<h2 id="examples">Examples</h2>
+<h3 id="functions-that-return-different-literals">Functions that return different literals:</h3>
+<p>Example of a function returning boolean:</p>
+<pre><code class="language-v"><span class="token keyword">fn</span> <span class="token function">is_odd</span><span class="token punctuation">(</span>x <span class="token builtin">int</span><span class="token punctuation">)</span> <span class="token builtin">bool</span> <span class="token punctuation">{</span>
     <span class="token keyword">if</span> x <span class="token operator">%</span> <span class="token number">2</span> <span class="token operator">==</span> <span class="token number">0</span> <span class="token punctuation">{</span>
         <span class="token keyword">return</span> <span class="token boolean">false</span>
     <span class="token punctuation">}</span>
     <span class="token keyword">return</span> <span class="token boolean">true</span>
-<span class="token punctuation">}</span></code></pre><p>Another example of a function returning a string:</p><pre><code class="language-v"><span class="token keyword">fn</span> <span class="token function">answer</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token builtin">string</span> <span class="token punctuation">{</span>
+<span class="token punctuation">}</span></code></pre>
+<p>Another example of a function returning a string:</p>
+<pre><code class="language-v"><span class="token keyword">fn</span> <span class="token function">answer</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token builtin">string</span> <span class="token punctuation">{</span>
     <span class="token keyword">return</span> <span class="token string">'42'</span>
-<span class="token punctuation">}</span></code></pre><p>This example shows a function returning a string with interpolation:</p><pre><code class="language-v"><span class="token keyword">fn</span> <span class="token function">str_with_interplation</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token builtin">string</span> <span class="token punctuation">{</span>
+<span class="token punctuation">}</span></code></pre>
+<p>This example shows a function returning a string with interpolation:</p>
+<pre><code class="language-v"><span class="token keyword">fn</span> <span class="token function">str_with_interplation</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token builtin">string</span> <span class="token punctuation">{</span>
     <span class="token keyword">return</span><span class="token string"> 'this string has </span><span class="token string_interp">$</span>{<span class="token number">42</span><span class="token punctuation">:</span><span class="token number">6</span>}<span class="token string"> interpolation in it.'</span>
-<span class="token punctuation">}</span></code></pre><h3>Processing command line args</h3><pre><code class="language-v"><span class="token keyword">import</span> os
+<span class="token punctuation">}</span></code></pre>
+<h3 id="processing-command-line-args">Processing command line args</h3>
+<pre><code class="language-v"><span class="token keyword">import</span> os
 
 <span class="token keyword">fn</span> <span class="token function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
     <span class="token keyword">dump</span><span class="token punctuation">(</span>os<span class="token punctuation">.</span>args<span class="token punctuation">)</span>
@@ -23,7 +37,9 @@
 
     ch <span class="token operator">:=</span> <span class="token builtin">chan</span> <span class="token builtin">bool</span><span class="token punctuation">{</span>cap<span class="token punctuation">:</span> <span class="token number">1</span><span class="token punctuation">}</span>
     ch <span class="token operator"><-</span> <span class="token boolean">true</span>
-<span class="token punctuation">}</span></code></pre><h3>A JWT example (test syntax highlighting)</h3><pre><code class="language-v"><span class="token keyword">import</span> crypto<span class="token punctuation">.</span>hmac
+<span class="token punctuation">}</span></code></pre>
+<h3 id="a-jwt-example-test-syntax-highlighting">A JWT example (test syntax highlighting)</h3>
+<pre><code class="language-v"><span class="token keyword">import</span> crypto<span class="token punctuation">.</span>hmac
 <span class="token keyword">import</span> crypto<span class="token punctuation">.</span>sha256
 <span class="token keyword">import</span> encoding<span class="token punctuation">.</span>base64
 <span class="token keyword">import</span> json
@@ -66,7 +82,9 @@
         sha256<span class="token punctuation">.</span>sum<span class="token punctuation">,</span> sha256<span class="token punctuation">.</span>block_size<span class="token punctuation">)</span>
     signature_from_token <span class="token operator">:=</span> base64<span class="token punctuation">.</span><span class="token function">url_decode</span><span class="token punctuation">(</span>token_split<span class="token punctuation">[</span><span class="token number">2</span><span class="token punctuation">]</span><span class="token punctuation">)</span>
     <span class="token keyword">return</span> hmac<span class="token punctuation">.</span><span class="token function">equal</span><span class="token punctuation">(</span>signature_from_token<span class="token punctuation">,</span> signature_mirror<span class="token punctuation">)</span>
-<span class="token punctuation">}</span></code></pre><h3>Other language specifiers</h3><pre><code class="language-cpp">##
+<span class="token punctuation">}</span></code></pre>
+<h3 id="other-language-specifiers">Other language specifiers</h3>
+<pre><code class="language-cpp">##
 std<span class="token punctuation">:</span><span class="token punctuation">:</span><span class="token builtin">map</span><span class="token operator"><</span>std<span class="token punctuation">:</span><span class="token punctuation">:</span><span class="token builtin">string</span><span class="token punctuation">,</span> <span class="token builtin">int</span><span class="token operator">></span> <span class="token symbol">my_map</span> <span class="token punctuation">{</span>
     <span class="token punctuation">{</span><span class="token string">'KEY_1'</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">}</span><span class="token punctuation">,</span>
     <span class="token punctuation">{</span><span class="token string">'KEY_2'</span><span class="token punctuation">,</span> <span class="token number">10</span><span class="token punctuation">}</span><span class="token punctuation">,</span>
@@ -75,8 +93,11 @@ std<span class="token punctuation">:</span><span class="token punctuation">:</sp
 <span class="token keyword">for</span> <span class="token punctuation">(</span><span class="token keyword">const</span> auto <span class="token operator">&</span><span class="token punctuation">[</span>key<span class="token punctuation">,</span> value<span class="token punctuation">]</span> <span class="token punctuation">:</span> my_map<span class="token punctuation">)</span> <span class="token punctuation">{</span>
     std<span class="token punctuation">:</span><span class="token punctuation">:</span>cout <span class="token operator"><<</span> key <span class="token operator"><<</span> <span class="token string">': '</span> <span class="token operator"><<</span> value <span class="token operator"><<</span> <span class="token string">', '</span><span class="token punctuation">;</span>
 <span class="token punctuation">}</span>
-std<span class="token punctuation">:</span><span class="token punctuation">:</span>cout <span class="token operator"><<</span> <span class="token string">'\n'</span><span class="token punctuation">;</span></code></pre><pre><code class="language-v">doc1 <span class="token operator">:=</span> toml<span class="token punctuation">.</span><span class="token function">parse_text</span><span class="token punctuation">(</span><span class="token operator"><</span><span class="token builtin">string</span> content<span class="token operator">></span><span class="token punctuation">)</span> <span class="token keyword">or</span> <span class="token punctuation">{</span> <span class="token function">panic</span><span class="token punctuation">(</span>err<span class="token punctuation">)</span> <span class="token punctuation">}</span>
-doc2 <span class="token operator">:=</span> toml<span class="token punctuation">.</span><span class="token function">parse_file</span><span class="token punctuation">(</span><span class="token operator"><</span>file path<span class="token operator">></span><span class="token punctuation">)</span> <span class="token keyword">or</span> <span class="token punctuation">{</span> <span class="token function">panic</span><span class="token punctuation">(</span>err<span class="token punctuation">)</span> <span class="token punctuation">}</span></code></pre><h3>Escape html in strings</h3><pre><code class="language-v"><span class="token keyword">const</span> html <span class="token operator">=</span> <span class="token string">'&lt;!DOCTYPE html&gt;
+std<span class="token punctuation">:</span><span class="token punctuation">:</span>cout <span class="token operator"><<</span> <span class="token string">'\n'</span><span class="token punctuation">;</span></code></pre>
+<pre><code class="language-v">doc1 <span class="token operator">:=</span> toml<span class="token punctuation">.</span><span class="token function">parse_text</span><span class="token punctuation">(</span><span class="token operator"><</span><span class="token builtin">string</span> content<span class="token operator">></span><span class="token punctuation">)</span> <span class="token keyword">or</span> <span class="token punctuation">{</span> <span class="token function">panic</span><span class="token punctuation">(</span>err<span class="token punctuation">)</span> <span class="token punctuation">}</span>
+doc2 <span class="token operator">:=</span> toml<span class="token punctuation">.</span><span class="token function">parse_file</span><span class="token punctuation">(</span><span class="token operator"><</span>file path<span class="token operator">></span><span class="token punctuation">)</span> <span class="token keyword">or</span> <span class="token punctuation">{</span> <span class="token function">panic</span><span class="token punctuation">(</span>err<span class="token punctuation">)</span> <span class="token punctuation">}</span></code></pre>
+<h3 id="escape-html-in-strings">Escape html in strings</h3>
+<pre><code class="language-v"><span class="token keyword">const</span> html <span class="token operator">=</span> <span class="token string">'&lt;!DOCTYPE html&gt;
 &lt;html lang=&#34;en&#34;&gt;
   &lt;head&gt;
     &lt;style&gt;
@@ -99,20 +120,33 @@ doc2 <span class="token operator">:=</span> toml<span class="token punctuation">
       console.log(res);
     }
   &lt;/script&gt;
-&lt;/html&gt;'</span></code></pre><ul><li>Regular markdown list point 1</li><li>List point 2</li><li>List point 3</li></ul><ol><li>Numbered markdown list point 1</li><li>List point 2</li><li>List point 3</li></ol><p>A code block without a specific language should be rendered verbatim:</p><pre><code>.
+&lt;/html&gt;'</span></code></pre>
+<ul>
+<li>Regular markdown list point 1</li>
+<li>List point 2</li>
+<li>List point 3</li></ul>
+<ol>
+<li>Numbered markdown list point 1</li>
+<li>List point 2</li>
+<li>List point 3</li></ol>
+<p>A code block without a specific language should be rendered verbatim:</p>
+<pre><code>.
 ├── static/
 │   ├── css/
 │   │   └── main.css
 │   └── js/
 │       └── main.js
 └── main.v
-</code></pre><p>The s tags here in the code block, should be rendered verbatim, not interpreted as HTML ones:</p><pre><code>h:m:s      // 5:02:33
+</code></pre>
+<p>The s tags here in the code block, should be rendered verbatim, not interpreted as HTML ones:</p>
+<pre><code>h:m:s      // 5:02:33
 m:s.mi&lt;s&gt;  // 2:33.015
 s.mi&lt;s&gt;    // 33.015s
 mi.mc&lt;ms&gt;  // 15.007ms
 mc.ns&lt;ns&gt;  // 7.234us
 ns&lt;ns&gt;     // 234ns
-</code></pre><p>The End.</p>
+</code></pre>
+<p>The End.</p>
 
 </section>
 
