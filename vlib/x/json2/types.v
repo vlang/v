@@ -41,6 +41,8 @@ pub struct Null {
 // null is an instance of the Null type, to ease comparisons with it.
 pub const null = Null{}
 
+pub fn (mut n Null) from_json_null() {}
+
 // ValueKind enumerates the kinds of possible values of the Any sumtype.
 pub enum ValueKind {
 	unknown

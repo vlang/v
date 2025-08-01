@@ -533,8 +533,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 		}
 		.number {
 			// check if the JSON string is a valid float or integer
-
-			if val[0] == `-` {
+			if val[checker.checker_idx] == `-` {
 				checker.checker_idx++
 			}
 
@@ -786,15 +785,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
 		return
-	} $else $if T.unaliased_typ is time.Time {
-		time_info := decoder.current_node.value
-
-		if time_info.value_kind == .string_ {
-			string_time := decoder.json.substr_unsafe(time_info.position + 1, time_info.position +
-				time_info.length - 1)
-
-			val = time.parse_rfc3339(string_time) or { time.Time{} }
-		}
 	} $else $if T.unaliased_typ is $map {
 		decoder.decode_map(mut val)!
 		return
@@ -810,6 +800,50 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		return
 	} $else $if T.unaliased_typ is $struct {
 		struct_info := decoder.current_node.value
+
+		// Custom Decoders
+		$if val is StringDecoder {
+			if struct_info.value_kind == .string_ {
+				val.from_json_string(decoder.json[struct_info.position + 1..struct_info.position +
+					struct_info.length - 1])!
+				if decoder.current_node != unsafe { nil } {
+					decoder.current_node = decoder.current_node.next
+				}
+
+				return
+			}
+		}
+		$if val is NumberDecoder {
+			if struct_info.value_kind == .number {
+				val.from_json_number(decoder.json[struct_info.position..struct_info.position +
+					struct_info.length])!
+				if decoder.current_node != unsafe { nil } {
+					decoder.current_node = decoder.current_node.next
+				}
+
+				return
+			}
+		}
+		$if val is BooleanDecoder {
+			if struct_info.value_kind == .boolean {
+				val.from_json_boolean(decoder.json[struct_info.position] == `t`)
+				if decoder.current_node != unsafe { nil } {
+					decoder.current_node = decoder.current_node.next
+				}
+
+				return
+			}
+		}
+		$if val is NullDecoder {
+			if struct_info.value_kind == .null {
+				val.from_json_null()
+				if decoder.current_node != unsafe { nil } {
+					decoder.current_node = decoder.current_node.next
+				}
+
+				return
+			}
+		}
 
 		// struct field info linked list
 		mut struct_fields_info := LinkedList[StructFieldInfo]{}
