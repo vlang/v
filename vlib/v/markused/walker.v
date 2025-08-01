@@ -628,7 +628,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 			w.mark_by_type(node.expr_type)
 			w.uses_guard = true
-			if !w.uses_str_index_check && w.table.final_sym(node.expr_type).kind in [.u8, .string] {
+			if node.expr_type != 0 && !w.uses_str_index_check
+				&& w.table.final_sym(node.expr_type).kind in [.u8, .string] {
 				w.uses_str_index_check = true
 			}
 		}
