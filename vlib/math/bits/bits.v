@@ -391,7 +391,7 @@ pub fn mul_32(x u32, y u32) (u32, u32) {
 pub fn mul_64(x u64, y u64) (u64, u64) {
 	mut hi := u64(0)
 	mut lo := u64(0)
-	$if amd64 && !msvc {
+	$if amd64 && !msvc && !js {
 		asm amd64 {
 			mov rax, x
 			mov rdx, y
@@ -406,7 +406,7 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 			  rdx
 			  cc
 		}
-	} $else $if arm64 {
+	} $else $if arm64 && !js {
 		asm arm64 {
 			mov x, x0
 			mov y, x1
@@ -445,7 +445,7 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
 	mut hi := u64(0)
 	mut lo := u64(0)
-	$if amd64 && !msvc && !windows {
+	$if amd64 && !msvc && !windows && !js {
 		// TCC on windows error "asm constraint 3 ('r') could not be satisfied"
 		asm amd64 {
 			mov rax, x
@@ -466,7 +466,7 @@ pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
 			  rsi
 			  cc
 		}
-	} $else $if arm64 {
+	} $else $if arm64 && !js {
 		asm arm64 {
 			mov x, x0
 			mov y, x1
@@ -526,7 +526,7 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 		panic(overflow_error)
 	}
 
-	$if amd64 && !msvc && !windows {
+	$if amd64 && !msvc && !windows && !js {
 		// TCC on windows error "asm constraint 4 ('r') could not be satisfied"
 		mut quo := u64(0)
 		mut rem := u64(0)
