@@ -747,6 +747,9 @@ button.copy {
 		padding: 0 1rem;
 		justify-content: space-between;
 	}
+	.doc-content > .doc-node > .title {
+		margin-top: 3.5em;
+	}
 }
 
 @media (min-width: 1024px) {
