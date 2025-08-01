@@ -53,7 +53,7 @@ fn newton_divide_array_by_array(operand_a []u64, operand_b []u64, mut quotient [
 	mut lastx := integer_from_int(0)
 	pow2_k_plus_1 := pow2(k + 1) // outside of the loop to optimize allocatio
 	for lastx != x { // main loop
-		lastx = x // 13
+		lastx = x
 		x = (x * (pow2_k_plus_1 - (x * b))).right_shift(u32(k))
 	}
 	if x * b < pow2(k) {
@@ -77,7 +77,7 @@ fn newton_divide_array_by_array(operand_a []u64, operand_b []u64, mut quotient [
 
 // debug_u64_str output a `[]u64`
 @[direct_array_access]
-pub fn debug_u64_str(a []u64) string {
+fn debug_u64_str(a []u64) string {
 	mut sb := strings.new_builder(30)
 	sb.write_string('[')
 	mut first := true
@@ -94,7 +94,7 @@ pub fn debug_u64_str(a []u64) string {
 
 // debug_u32_str for 32bit bignum test only, convert a `[]u64` to `[]u32`.
 @[direct_array_access]
-pub fn debug_u32_str(a []u64) string {
+fn debug_u32_str(a []u64) string {
 	mut b := []u32{cap: a.len * 2}
 	mut curr_u32 := u32(0)
 	mut bits_collected := 0
@@ -184,11 +184,9 @@ fn karatsuba_multiply_digit_array(operand_a []u64, operand_b []u64, mut storage 
 
 	// use storage for p_1 to avoid allocation and copy later
 	multiply_digit_array(a_h, b_h, mut storage)
-	// z2 = storage
 
 	mut p_3 := []u64{len: a_l.len + b_l.len + 1}
 	multiply_digit_array(a_l, b_l, mut p_3)
-	// z0 = p_3
 
 	mut tmp_1 := []u64{len: imax(a_h.len, a_l.len) + 1}
 	mut tmp_2 := []u64{len: imax(b_h.len, b_l.len) + 1}
@@ -199,7 +197,6 @@ fn karatsuba_multiply_digit_array(operand_a []u64, operand_b []u64, mut storage 
 	multiply_digit_array(tmp_1, tmp_2, mut p_2)
 	subtract_in_place(mut p_2, storage) // p_1
 	subtract_in_place(mut p_2, p_3)
-	// z1 = p_2
 
 	// return p_1.left_shift(2 * u32(half * 32)) + p_2.left_shift(u32(half * 32)) + p_3
 	left_shift_digits_in_place(mut storage, 2 * half)
