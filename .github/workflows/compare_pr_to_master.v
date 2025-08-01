@@ -94,7 +94,12 @@ fn main() {
 	}
 	r('rm -rf vnew1 vnew2')
 
-	r('git checkout master')
+	// make sure to always compare against the main V repo's master branch:
+	os.execute('git -C . remote add V_REPO https://github.com/vlang/v.git')
+	os.execute('git -C . fetch V_REPO')
+	os.execute('git branch -D v_repo_master')
+	os.execute('git branch -f --track v_repo_master V_REPO/master')
+	r('git checkout v_repo_master')
 	master_branch := gbranch()
 	hline('    Compiling old V executables from branch: ${master_branch}, commit: ${gcommit()} ...')
 	xtime('./v     -o vold1 cmd/v')
