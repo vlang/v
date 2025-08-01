@@ -46,7 +46,7 @@ fn compare_size(fpath1 string, fpath2 string) {
 	size1 := os.file_size(fpath1)
 	size2 := os.file_size(fpath2)
 	diff_ := i64(size2) - i64(size1)
-	println('>>>>>> size("${fpath2:15}") - size("${fpath1:15}") = ${size2:10} - ${size1:10} = ${diff_:10}')
+	println('>>>>>> size("${fpath2:17}") - size("${fpath1:17}") = ${size2:10} - ${size1:10} = ${diff_:10}')
 }
 
 fn vcompare(vold string, vnew string) {
