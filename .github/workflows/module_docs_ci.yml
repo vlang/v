@@ -6,12 +6,20 @@ on:
       - 'vlib/**.v'
       - 'vlib/**.md'
       - 'cmd/tools/vdoc/**.v'
+      - 'cmd/tools/vdoc/theme/**.js'
+      - 'cmd/tools/vdoc/theme/**.css'
+      - 'cmd/tools/vdoc/theme/**.svg'
+      - 'cmd/tools/vdoc/theme/**.html'
       - '**/module_docs_ci.yml'
   push:
     paths:
       - 'vlib/**.v'
       - 'vlib/**.md'
       - 'cmd/tools/vdoc/**.v'
+      - 'cmd/tools/vdoc/theme/**.js'
+      - 'cmd/tools/vdoc/theme/**.css'
+      - 'cmd/tools/vdoc/theme/**.svg'
+      - 'cmd/tools/vdoc/theme/**.html'
       - '**/module_docs_ci.yml'
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
