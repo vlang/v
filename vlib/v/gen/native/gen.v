@@ -39,8 +39,9 @@ mut:
 	extern_symbols            []string
 	linker_include_paths      []string
 	linker_libs               []string
-	extern_vars               map[i64]string
-	extern_fn_calls           map[i64]string
+	global_vars               map[i64]string // used to patch
+	extern_vars               map[i64]string // used to patch
+	extern_fn_calls           map[i64]string // used to patch
 	fn_addr                   map[string]i64
 	fn_names                  []string
 	var_offset                map[string]i32 // local var stack offset
@@ -65,7 +66,9 @@ mut:
 	return_type               ast.Type
 	comptime_omitted_branches []ast.IfBranch
 	// elf specific
+	elf_main_call_pos    i64
 	elf_text_header_addr i64 = -1
+	elf_data_header_addr i64 = -1
 	elf_rela_section     Section
 	// macho specific
 	macho_ncmds   i32
@@ -253,7 +256,10 @@ struct PreprocVar {
 	val  i64
 }
 
-struct GlobalVar {}
+struct GlobalVar {
+	name string
+	typ  ast.Type
+}
 
 @[params]
 struct VarConfig {
@@ -300,7 +306,9 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 		return PreprocVar{ident.info.typ, ident.name, preprocessed_val}
 	}
 	mut obj := ident.obj
-	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
+	if obj is ast.GlobalField {
+		return GlobalVar{obj.name, obj.typ}
+	} else if obj !in [ast.Var, ast.ConstField, ast.AsmRegister] {
 		obj = ident.scope.find(ident.name) or {
 			g.n_error('${@LOCATION} unknown variable ${ident.name}')
 		}
@@ -389,6 +397,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 	g.init_builtins()
 	g.calculate_all_size_align()
 	g.calculate_enum_fields()
+	g.fn_names = g.table.fns.keys()
 	for file in g.files {
 		/*
 		if file.warnings.len > 0 {
@@ -1175,7 +1184,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.stack_var_pos = 0
 	g.stack_depth = 0
 	g.register_function_address(name)
-	g.fn_names << name
 	g.labels = &LabelTable{}
 	g.defer_stmts.clear()
 	g.return_type = node.return_type
@@ -1225,6 +1233,7 @@ fn (mut g Gen) println(comment string) {
 @[noreturn]
 pub fn (mut g Gen) n_error(s string) {
 	print_backtrace()
+	flush_stdout()
 	util.verror('native error', s)
 }
 
