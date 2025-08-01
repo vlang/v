@@ -19,13 +19,13 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 						decoder.current_node = decoder.current_node.next
 						return T(initialized_sumtype)
 					} else {
-						decoder.error('sumtype option only support decoding null->none (for now)')!
+						decoder.decode_error('sumtype option only support decoding null->none (for now)')!
 					}
 				}
 			}
 		}
 	}
-	decoder.error('could not decode resolved sumtype (should not happen)')!
+	decoder.decode_error('could not decode resolved sumtype (should not happen)')!
 	return initialized_sumtype // suppress compiler error
 }
 
@@ -288,15 +288,15 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 	}
 
 	if failed_struct {
-		decoder.error('could not resolve sumtype `${T.name}`, missing "_type" field?')!
+		decoder.decode_error('could not resolve sumtype `${T.name}`, missing "_type" field?')!
 	}
 
-	decoder.error('could not resolve sumtype `${T.name}`, got ${value_info.value_kind}.')!
+	decoder.decode_error('could not resolve sumtype `${T.name}`, got ${value_info.value_kind}.')!
 }
 
 fn (mut decoder Decoder) decode_sumtype[T](mut val T) ! {
 	$if T is $alias {
-		decoder.error('Type aliased sumtypes not supported.')!
+		decoder.decode_error('Type aliased sumtypes not supported.')!
 	} $else {
 		value_info := decoder.current_node.value
 

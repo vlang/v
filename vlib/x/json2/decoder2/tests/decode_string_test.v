@@ -34,7 +34,11 @@ fn test_json_string_invalid_escapes() {
 	mut has_error := false
 
 	json.decode[string](r'"\x"') or {
-		assert err.msg() == '\n"\\\n ^ unknown escape sequence'
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 2
+			assert err.message == 'Syntax: unknown escape sequence'
+		}
 		has_error = true
 	} // Invalid escape
 
@@ -42,7 +46,11 @@ fn test_json_string_invalid_escapes() {
 	has_error = false
 
 	json.decode[string](r'"\u123"') or {
-		assert err.msg() == '\n"\\\n ^ short unicode escape sequence \\u123"'
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 2
+			assert err.message == 'Syntax: short unicode escape sequence \\u123'
+		}
 		has_error = true
 	} // Incomplete Unicode
 

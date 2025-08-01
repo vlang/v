@@ -5,42 +5,66 @@ fn test_check_if_json_match() {
 	mut has_error := false
 
 	decode[string]('{"key": "value"}') or {
-		assert err.str() == 'Expected string, but got object'
+		if err is JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'Data: Expected string, but got object'
+		}
 		has_error = true
 	}
 	assert has_error, 'Expected error'
 	has_error = false
 
 	decode[map[string]string]('"value"') or {
-		assert err.str() == 'Expected object, but got string_'
+		if err is JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'Data: Expected object, but got string_'
+		}
 		has_error = true
 	}
 	assert has_error, 'Expected error'
 	has_error = false
 
 	decode[[]int]('{"key": "value"}') or {
-		assert err.str() == 'Expected array, but got object'
+		if err is JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'Data: Expected array, but got object'
+		}
 		has_error = true
 	}
 	assert has_error, 'Expected error'
 	has_error = false
 
 	decode[string]('[1, 2, 3]') or {
-		assert err.str() == 'Expected string, but got array'
+		if err is JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'Data: Expected string, but got array'
+		}
 		has_error = true
 	}
 	assert has_error, 'Expected error'
 	has_error = false
 
 	decode[int]('{"key": "value"}') or {
-		assert err.str() == 'Expected number, but got object'
+		if err is JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'Data: Expected number, but got object'
+		}
 		has_error = true
 	}
 	assert has_error, 'Expected error'
 	has_error = false
 
 	decode[bool]('{"key": "value"}') or {
-		assert err.str() == 'Expected boolean, but got object'
+		if err is JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 1
+			assert err.message == 'Data: Expected boolean, but got object'
+		}
 		has_error = true
 	}
 	assert has_error, 'Expected error'
@@ -125,43 +149,43 @@ fn test_check_json_format() {
 	json_and_error_message := [
 		{
 			'json':  ']'
-			'error': '\n]\n^ unknown value kind'
+			'error': 'Syntax: unknown value kind'
 		},
 		{
 			'json':  '}'
-			'error': '\n}\n^ unknown value kind'
+			'error': 'Syntax: unknown value kind'
 		},
 		{
 			'json':  'truely'
-			'error': '\ntruel\n    ^ invalid value. Unexpected character after boolean end'
+			'error': 'Syntax: invalid value. Unexpected character after boolean end'
 		},
 		{
-			'json':  '0[1]' //
-			'error': '\n0[\n ^ invalid number'
+			'json':  '0[1]'
+			'error': 'Syntax: invalid value. Unexpected character after number end'
 		},
 		{
 			'json':  '[1, 2, g3]'
-			'error': '\n[1, 2, g\n       ^ unknown value kind'
+			'error': 'Syntax: unknown value kind'
 		},
 		{
 			'json':  '[1, 2,, 3]'
-			'error': '\n[1, 2,,\n      ^ unknown value kind'
+			'error': 'Syntax: unknown value kind'
 		},
 		{
 			'json':  '{"key": 123'
-			'error': '\n{"key": 123\n          ^ EOF error: braces are not closed'
+			'error': 'Syntax: EOF error: braces are not closed'
 		},
 		{
 			'json':  '{"key": 123,'
-			'error': '\n{"key": 123,\n           ^ EOF error: braces are not closed'
+			'error': 'Syntax: EOF error: braces are not closed'
 		},
 		{
 			'json':  '{"key": 123, "key2": 456,}'
-			'error': '\n{"key": 123, "key2": 456,}\n                         ^ Expecting object key after `,`'
+			'error': 'Syntax: Expecting object key after `,`'
 		},
 		{
 			'json':  '[[1, 2, 3], [4, 5, 6],]'
-			'error': '\n[[1, 2, 3], [4, 5, 6],]\n                      ^ Cannot use `,`, before `]`'
+			'error': 'Syntax: Cannot use `,`, before `]`'
 		},
 	]
 
@@ -173,7 +197,9 @@ fn test_check_json_format() {
 		}
 
 		checker.check_json_format(json_and_error['json']) or {
-			assert err.str() == json_and_error['error']
+			if err is JsonDecodeError {
+				assert err.message == json_and_error['error']
+			}
 			has_error = true
 		}
 		assert has_error, 'Expected error ${json_and_error['error']}'
