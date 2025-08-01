@@ -82,11 +82,13 @@ fn main() {
 	xtime('./vnew1 -o vnew2 cmd/v')
 	xtime('./vnew2 -no-parallel -o vnew cmd/v')
 	xtime('./vnew -no-parallel -o nhw_current.c examples/hello_world.v')
+	xtime('./vnew -no-parallel -o nhw_current_gcc.c -cc gcc examples/hello_world.v')
 	xtime('./vnew -no-parallel -o nv_current.c cmd/v')
 	if compare_prod {
 		xtime('./vnew -no-parallel -prod -o vnew_prod cmd/v')
 	}
 	show_size('nhw_current.c')
+	show_size('nhw_current_gcc.c')
 	show_size('nv_current.c')
 	show_size('vnew')
 	if compare_prod {
@@ -106,12 +108,14 @@ fn main() {
 	xtime('./vold1 -o vold2 cmd/v')
 	xtime('./vold2 -no-parallel -o vold cmd/v')
 	xtime('./vold -no-parallel -o ohw_master.c examples/hello_world.v')
+	xtime('./vold -no-parallel -o ohw_master_gcc.c -cc gcc examples/hello_world.v')
 	xtime('./vold -no-parallel -o ov_master.c  cmd/v')
 	if compare_prod {
 		xtime('./vold -no-parallel -prod -o vold_prod cmd/v')
 		show_size('vold_prod')
 	}
 	show_size('ohw_master.c')
+	show_size('ohw_master_gcc.c')
 	show_size('ov_master.c')
 	show_size('vold')
 	if compare_prod {
@@ -121,6 +125,7 @@ fn main() {
 
 	hline('File sizes so far ...')
 	compare_size('ohw_master.c', 'nhw_current.c')
+	compare_size('ohw_master_gcc.c', 'nhw_current_gcc.c')
 	compare_size('ov_master.c', 'nv_current.c')
 	compare_size('vold', 'vnew')
 
@@ -136,6 +141,7 @@ fn main() {
 
 	hline('Final summary for file diff sizes on their own branches:')
 	compare_size('ohw_master.c', 'nhw_current.c')
+	compare_size('ohw_master_gcc.c', 'nhw_current_gcc.c')
 	compare_size('ov_master.c', 'nv_current.c')
 	compare_size('vold', 'vnew')
 	if compare_prod {
