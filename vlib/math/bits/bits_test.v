@@ -252,6 +252,12 @@ fn test_bits() {
 		// C.printf("v0: %llu v1: %llu [%llu,%llu] tt: %llu\n", v0, v1, hi, lo, (v0 >> 32) * (v1 >> 32))
 		assert (hi & 0xFFFF_FFFF_0000_0000) == (((v0 >> 32) * (v1 >> 32)) & 0xFFFF_FFFF_0000_0000)
 		assert (lo & 0x0000_0000_FFFF_FFFF) == (((v0 & 0x0000_0000_FFFF_FFFF) * (v1 & 0x0000_0000_FFFF_FFFF)) & 0x0000_0000_FFFF_FFFF)
+
+		v2 := u64(x)
+		h, l := mul_add_64(v0, v1, v2)
+		assert (h & 0xFFFF_FFFF_0000_0000) == (((v0 >> 32) * (v1 >> 32)) & 0xFFFF_FFFF_0000_0000)
+		assert (l & 0x0000_0000_FFFF_FFFF) == ((
+			(v0 & 0x0000_0000_FFFF_FFFF) * (v1 & 0x0000_0000_FFFF_FFFF) + v2) & 0x0000_0000_FFFF_FFFF)
 	}
 
 	//
