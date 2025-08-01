@@ -117,7 +117,7 @@ fn (vd &VDoc) get_resource(name string, out Output) string {
 	} else {
 		output_path := os.join_path(out.path, name)
 		if !os.exists(output_path) {
-			println('Generating ${res.len:8} bytes of static resources in `${output_path}` ...')
+			println('Copying ${res.len:8} bytes from `${path}` to `${output_path}` ...')
 			os.write_file(output_path, res) or { panic(err) }
 		}
 		return name
