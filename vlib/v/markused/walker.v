@@ -36,46 +36,49 @@ mut:
 	is_direct_array_access bool
 
 	// dependencies finding flags
-	uses_atomic            bool // has atomic
-	uses_array             bool // has array
-	uses_channel           bool // has chan dep
-	uses_lock              bool // has mutex dep
-	uses_ct_fields         bool // $for .fields
-	uses_ct_methods        bool // $for .methods
-	uses_ct_params         bool // $for .params
-	uses_ct_values         bool // $for .values
-	uses_ct_variants       bool // $for .variants
-	uses_ct_attribute      bool // $for .attributes
-	uses_external_type     bool
-	uses_err               bool // err var
-	uses_asserts           bool // assert
-	uses_map_update        bool // has {...expr}
-	uses_debugger          bool // has debugger;
-	uses_mem_align         bool // @[aligned:N] for structs
-	uses_eq                bool // has == op
-	uses_interp            bool // string interpolation
-	uses_guard             bool
-	uses_orm               bool
-	uses_str               map[ast.Type]bool // has .str() calls, and for which types
-	uses_free              map[ast.Type]bool // has .free() calls, and for which types
-	uses_spawn             bool
-	uses_dump              bool
-	uses_memdup            bool // sumtype cast and &Struct{}
-	uses_arr_void          bool // auto arr methods
-	uses_index             bool // var[k]
-	uses_range_index       bool // var[i..j]
-	uses_range_index_check bool // var[i..j] or { }
-	uses_range_index_gated bool
-	uses_str_index         bool // string[k]
-	uses_str_index_check   bool // string[k] or { }
-	uses_str_range         bool // string[a..b]
-	uses_fixed_arr_int     bool // fixed_arr[k]
-	uses_check_index       bool // arr[key] or { }
-	uses_append            bool // var << item
-	uses_map_setter        bool
-	uses_map_getter        bool
-	uses_arr_setter        bool
-	uses_arr_getter        bool
+	uses_atomic                bool // has atomic
+	uses_array                 bool // has array
+	uses_channel               bool // has chan dep
+	uses_lock                  bool // has mutex dep
+	uses_ct_fields             bool // $for .fields
+	uses_ct_methods            bool // $for .methods
+	uses_ct_params             bool // $for .params
+	uses_ct_values             bool // $for .values
+	uses_ct_variants           bool // $for .variants
+	uses_ct_attribute          bool // $for .attributes
+	uses_external_type         bool
+	uses_err                   bool // err var
+	uses_asserts               bool // assert
+	uses_map_update            bool // has {...expr}
+	uses_debugger              bool // has debugger;
+	uses_mem_align             bool // @[aligned:N] for structs
+	uses_eq                    bool // has == op
+	uses_interp                bool // string interpolation
+	uses_guard                 bool
+	uses_orm                   bool
+	uses_str                   map[ast.Type]bool // has .str() calls, and for which types
+	uses_free                  map[ast.Type]bool // has .free() calls, and for which types
+	uses_spawn                 bool
+	uses_dump                  bool
+	uses_memdup                bool // sumtype cast and &Struct{}
+	uses_arr_void              bool // auto arr methods
+	uses_index                 bool // var[k]
+	uses_range_index           bool // var[i..j]
+	uses_range_index_check     bool // var[i..j] or { }
+	uses_arr_range_index_gated bool
+	uses_str_range_index_gated bool
+	uses_str_index             bool // string[k]
+	uses_str_index_check       bool // string[k] or { }
+	uses_str_range             bool // string[a..b]
+	uses_fixed_arr_int         bool // fixed_arr[k]
+	uses_check_index           bool // arr[key] or { }
+	uses_append                bool // var << item
+	uses_map_setter            bool
+	uses_map_getter            bool
+	uses_arr_setter            bool
+	uses_arr_getter            bool
+	uses_arr_clone             bool
+	uses_arr_sorted            bool
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -447,6 +450,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.uses_str[node.left_type] = true
 			} else if node.is_method && node.name == 'free' {
 				w.uses_free[node.left_type] = true
+			} else if node.is_method && node.name == 'clone' && !w.uses_arr_clone
+				&& w.table.final_sym(node.left_type).kind == .array {
+				w.uses_arr_clone = true
+			} else if node.is_method && node.name == 'sorted' && !w.uses_arr_sorted
+				&& w.table.final_sym(node.left_type).kind == .array {
+				w.uses_arr_sorted = true
 			}
 			if !w.is_builtin_mod && !w.uses_external_type {
 				if node.is_method {
@@ -565,6 +574,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				if !w.uses_index && !w.is_direct_array_access {
 					w.uses_index = true
 				}
+				if !w.uses_arr_range_index_gated {
+					w.uses_arr_range_index_gated = node.is_gated
+				}
 			} else if sym.kind == .string {
 				w.uses_str_index = true
 				if node.index is ast.RangeExpr {
@@ -575,8 +587,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					if !w.uses_range_index_check {
 						w.uses_range_index_check = node.or_expr.kind == .block
 					}
-					if !w.uses_range_index_gated {
-						w.uses_range_index_gated = node.is_gated
+					if !w.uses_str_range_index_gated {
+						w.uses_str_range_index_gated = node.is_gated
 					}
 				} else {
 					if !w.uses_str_index_check {
@@ -1457,14 +1469,19 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name(string_idx_str + '.substr_with_check')
 			w.fn_by_name(array_idx_str + '.get_with_check')
 		}
-		if w.uses_range_index_gated {
+		if w.uses_str_range_index_gated {
 			w.fn_by_name(string_idx_str + '.substr_ni')
+		}
+		if w.uses_arr_range_index_gated {
 			w.fn_by_name(array_idx_str + '.slice_ni')
 		}
-		w.fn_by_name(array_idx_str + '.clone_static_to_depth')
 		w.fn_by_name(array_idx_str + '.clone_to_depth')
 		w.fn_by_name(string_idx_str + '.substr')
 		w.fn_by_name(array_idx_str + '.slice')
+	}
+	if w.uses_arr_clone || w.uses_arr_sorted {
+		array_idx_str := ast.array_type_idx.str()
+		w.fn_by_name(array_idx_str + '.clone_static_to_depth')
 	}
 	// handle ORM drivers:
 	if orm_impls.len > 0 {
