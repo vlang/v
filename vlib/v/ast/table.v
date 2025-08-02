@@ -11,7 +11,6 @@ import v.util
 pub struct UsedFeatures {
 pub mut:
 	dump           bool            // filled in by markused
-	range_index    bool            // string[0..1]
 	anon_fn        bool            // fn () { }
 	auto_str       bool            // auto str fns
 	auto_str_ptr   bool            // auto str fns for ptr type

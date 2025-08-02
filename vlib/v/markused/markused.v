@@ -85,15 +85,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << '__new_array_with_array_default_noscan'
 			core_fns << 'new_array_from_c_array'
 		}
-		if table.used_features.range_index || pref_.is_shared {
-			core_fns << string_idx_str + '.substr_with_check'
-			core_fns << string_idx_str + '.substr_ni'
-			core_fns << string_idx_str + '.substr'
-			core_fns << array_idx_str + '.slice_ni'
-			core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
-			core_fns << array_idx_str + '.clone_static_to_depth'
-			core_fns << array_idx_str + '.clone_to_depth'
-		}
 		if table.used_features.arr_prepend {
 			core_fns << ref_array_idx_str + '.prepend_many'
 		}
