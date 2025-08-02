@@ -62,8 +62,9 @@ mut:
 	uses_dump                  bool
 	uses_memdup                bool // sumtype cast and &Struct{}
 	uses_arr_void              bool // auto arr methods
-	uses_index                 bool // var[k]
-	uses_range_index           bool // var[i..j]
+	uses_index                 bool // var[k],
+	uses_arr_range_index       bool // arr[i..j]
+	uses_str_range_index       bool // str[i..j]
 	uses_range_index_check     bool // var[i..j] or { }
 	uses_arr_range_index_gated bool
 	uses_str_range_index_gated bool
@@ -568,6 +569,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				} else if sym.info is ast.ArrayFixed {
 					w.mark_by_sym(w.table.sym(sym.info.elem_type))
 				}
+				if !w.uses_arr_range_index {
+					w.uses_arr_range_index = true
+				}
 				if !w.uses_fixed_arr_int && sym.kind == .array_fixed {
 					w.uses_fixed_arr_int = true
 				}
@@ -580,9 +584,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			} else if sym.kind == .string {
 				w.uses_str_index = true
 				if node.index is ast.RangeExpr {
-					if !w.uses_range_index {
-						w.mark_builtin_array_method_as_used('slice')
-						w.uses_range_index = true
+					if !w.uses_str_range_index {
+						w.uses_str_range_index = true
 					}
 					if !w.uses_range_index_check {
 						w.uses_range_index_check = node.or_expr.kind == .block
@@ -1263,6 +1266,9 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 }
 
 fn (mut w Walker) mark_resource_dependencies() {
+	string_idx_str := ast.string_type_idx.str()
+	array_idx_str := ast.array_type_idx.str()
+
 	if w.trace_enabled {
 		eprintln('>>>>>>>>>> DEPS USAGE')
 	}
@@ -1277,9 +1283,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('strings.new_builder')
 		w.uses_free[ast.string_type] = true
 	}
-	// if w.uses_err {
-	// 	w.fn_by_name('${int(ast.error_type)}.str')
-	// }
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')
 	}
@@ -1347,7 +1350,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('tos3')
 	}
 	if w.uses_index || w.pref.is_shared {
-		array_idx_str := ast.array_type_idx.str()
 		w.fn_by_name(array_idx_str + '.slice')
 		w.fn_by_name(array_idx_str + '.get')
 		if w.uses_guard || w.uses_check_index {
@@ -1355,7 +1357,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		}
 	}
 	if w.uses_str_index {
-		string_idx_str := ast.string_type_idx.str()
 		w.fn_by_name(string_idx_str + '.at')
 		if w.uses_str_index_check {
 			w.fn_by_name(string_idx_str + '.at_with_check')
@@ -1462,25 +1463,23 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_fixed_arr_int {
 		w.fn_by_name('v_fixed_index')
 	}
-	if w.uses_range_index {
-		string_idx_str := ast.string_type_idx.str()
-		array_idx_str := ast.array_type_idx.str()
-		if w.uses_range_index_check {
-			w.fn_by_name(string_idx_str + '.substr_with_check')
-			w.fn_by_name(array_idx_str + '.get_with_check')
-		}
-		if w.uses_str_range_index_gated {
-			w.fn_by_name(string_idx_str + '.substr_ni')
-		}
-		if w.uses_arr_range_index_gated {
-			w.fn_by_name(array_idx_str + '.slice_ni')
-		}
-		w.fn_by_name(array_idx_str + '.clone_to_depth')
+	if w.uses_str_range_index {
 		w.fn_by_name(string_idx_str + '.substr')
+	}
+	if w.uses_arr_range_index {
 		w.fn_by_name(array_idx_str + '.slice')
 	}
+	if w.uses_range_index_check {
+		w.fn_by_name(string_idx_str + '.substr_with_check')
+		w.fn_by_name(array_idx_str + '.get_with_check')
+	}
+	if w.uses_str_range_index_gated {
+		w.fn_by_name(string_idx_str + '.substr_ni')
+	}
+	if w.uses_arr_range_index_gated {
+		w.fn_by_name(array_idx_str + '.slice_ni')
+	}
 	if w.uses_arr_clone || w.uses_arr_sorted {
-		array_idx_str := ast.array_type_idx.str()
 		w.fn_by_name(array_idx_str + '.clone_static_to_depth')
 	}
 	// handle ORM drivers:
