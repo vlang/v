@@ -1363,16 +1363,12 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.mark_by_type(typ)
 	}
 	if w.trace_enabled {
-		types := w.table.used_features.print_types.keys().map(w.table.type_to_str(it))
-		eprintln('>>>>>>>>>> PRINT TYPES ${types}')
-	}
-	if w.trace_enabled {
-		types := w.uses_str.keys().map(w.table.type_to_str(it))
-		eprintln('>>>>>>>>>> USES .str() CALLS ON TYPES ${types}')
-	}
-	if w.trace_enabled {
-		types := w.uses_free.keys().map(w.table.type_to_str(it))
-		eprintln('>>>>>>>>>> USES .free() CALLS ON TYPES ${types}')
+		ptypes := w.table.used_features.print_types.keys().map(w.table.type_to_str(it))
+		eprintln('>>>>>>>>>> PRINT TYPES ${ptypes}')
+		stypes := w.uses_str.keys().map(w.table.type_to_str(it))
+		eprintln('>>>>>>>>>> USES .str() CALLS ON TYPES ${stypes}')
+		ftypes := w.uses_free.keys().map(w.table.type_to_str(it))
+		eprintln('>>>>>>>>>> USES .free() CALLS ON TYPES ${ftypes}')
 	}
 	if w.trace_enabled {
 		eprintln('>>>>>>>>>> ALL_FNS LOOP')
