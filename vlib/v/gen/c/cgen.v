@@ -7783,13 +7783,12 @@ fn (mut g Gen) register_iface_return_types() {
 		if inter_info.is_generic {
 			continue
 		}
+		if g.pref.skip_unused && isym.idx !in g.table.used_features.used_syms {
+			continue
+		}
 		for _, method_name in inter_info.get_methods() {
 			method := isym.find_method_with_generic_parent(method_name) or { continue }
 			if method.return_type.has_flag(.result) {
-				if g.pref.skip_unused
-					&& g.table.sym(method.return_type).idx !in g.table.used_features.used_syms {
-					continue
-				}
 				g.register_result(method.return_type)
 			}
 		}
