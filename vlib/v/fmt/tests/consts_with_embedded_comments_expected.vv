@@ -1,5 +1,5 @@
-import gx
+import gg
 
-const color = gx.rgb(50, 90, 110) // gx.rgb(167,236,82)
+const color = gg.rgb(50, 90, 110) // gg.rgb(167,236,82)
 
 fn main() {}

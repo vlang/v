@@ -3,8 +3,6 @@
 
 module gg
 
-import gx
-
 pub type FNCb = fn (data voidptr)
 
 pub type FNEvent = fn (e &Event, data voidptr)
@@ -27,7 +25,7 @@ pub type FNChar = fn (c u32, data voidptr)
 
 pub struct PenConfig {
 pub:
-	color     gx.Color
+	color     Color
 	line_type PenLineType = .solid
 	thickness f32         = 1
 }

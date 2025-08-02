@@ -240,7 +240,6 @@ Here a simple example of the usage:
 
 ```v oksyntax
 import gg
-import gx
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
@@ -249,7 +248,7 @@ import os
 
 const win_width = 600
 const win_height = 700
-const bg_color = gx.white
+const bg_color = gg.white
 const font_paths = [
 	'arial.ttf',
 ]
