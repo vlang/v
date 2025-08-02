@@ -97,7 +97,7 @@ fn test_check_json_format() {
 		}
 
 		checker.check_json_format(variable) or { assert false, err.str() }
-		assert checker.checker_idx == checker.json.len - 1, 'Expected to reach the end of the json string ${checker.json}'
+		assert checker.checker_idx == checker.json.len, 'Expected to reach the end of the json string ${checker.json}'
 	}
 
 	// simple objects
@@ -108,7 +108,7 @@ fn test_check_json_format() {
 		}
 
 		checker.check_json_format(variable) or { assert false, err.str() }
-		assert checker.checker_idx == checker.json.len - 1, 'Expected to reach the end of the json string ${checker.json}'
+		assert checker.checker_idx == checker.json.len, 'Expected to reach the end of the json string ${checker.json}'
 	}
 
 	// Nested objects
@@ -119,7 +119,7 @@ fn test_check_json_format() {
 		}
 
 		checker.check_json_format(variable) or { assert false, err.str() }
-		assert checker.checker_idx == checker.json.len - 1, 'Expected to reach the end of the json string ${checker.json}'
+		assert checker.checker_idx == checker.json.len, 'Expected to reach the end of the json string ${checker.json}'
 	}
 
 	// simple arrays
@@ -130,7 +130,7 @@ fn test_check_json_format() {
 		}
 
 		checker.check_json_format(variable) or { assert false, err.str() }
-		assert checker.checker_idx == checker.json.len - 1, 'Expected to reach the end of the json string ${checker.json}'
+		assert checker.checker_idx == checker.json.len, 'Expected to reach the end of the json string ${checker.json}'
 	}
 
 	// Nested arrays
@@ -177,7 +177,7 @@ fn test_check_json_format() {
 		},
 		{
 			'json':  '{"key": 123,'
-			'error': 'Syntax: EOF error: braces are not closed'
+			'error': 'Syntax: EOF error: Expecting object key after `,`'
 		},
 		{
 			'json':  '{"key": 123, "key2": 456,}'

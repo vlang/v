@@ -306,7 +306,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 	// skip whitespace
 	for val[checker.checker_idx] in whitespace_chars {
-		if checker.checker_idx >= checker_end - 1 {
+		if checker.checker_idx == checker_end {
 			break
 		}
 		checker.checker_idx++
@@ -349,7 +349,8 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			for val[checker.checker_idx] != `}` {
 				// skip whitespace
 				for val[checker.checker_idx] in whitespace_chars {
-					if checker.checker_idx >= checker_end - 1 {
+					if checker.checker_idx == checker_end {
+						checker.checker_idx--
 						break
 					}
 					checker.checker_idx++
@@ -367,7 +368,8 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				checker.check_json_format(val)!
 
 				for val[checker.checker_idx] != `:` {
-					if checker.checker_idx >= checker_end - 1 {
+					if checker.checker_idx == checker_end {
+						checker.checker_idx--
 						return checker.checker_error('EOF error: key colon not found')
 					}
 					if val[checker.checker_idx] !in whitespace_chars {
@@ -390,6 +392,12 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				match val[checker.checker_idx] {
 					`"`, `[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
 						checker.check_json_format(val)!
+
+						if checker.checker_idx == checker_end {
+							checker.checker_idx--
+							return checker.checker_error('EOF error: braces are not closed')
+						}
+
 						// whitespace
 						for val[checker.checker_idx] in whitespace_chars {
 							checker.checker_idx++
@@ -397,12 +405,20 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 						if val[checker.checker_idx] == `}` {
 							break
 						}
-						if checker.checker_idx >= checker_end - 1 {
+
+						if checker.checker_idx == checker_end {
+							checker.checker_idx--
 							return checker.checker_error('EOF error: braces are not closed')
 						}
 
 						if val[checker.checker_idx] == `,` {
 							checker.checker_idx++
+
+							if checker.checker_idx == checker_end {
+								checker.checker_idx--
+								return checker.checker_error('EOF error: Expecting object key after `,`')
+							}
+
 							for val[checker.checker_idx] in whitespace_chars {
 								checker.checker_idx++
 							}
@@ -434,7 +450,8 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			for val[checker.checker_idx] != `]` {
 				// skip whitespace
 				for val[checker.checker_idx] in whitespace_chars {
-					if checker.checker_idx >= checker_end - 1 {
+					if checker.checker_idx == checker_end {
+						checker.checker_idx--
 						break
 					}
 					checker.checker_idx++
@@ -444,7 +461,8 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					break
 				}
 
-				if checker.checker_idx >= checker_end - 1 {
+				if checker.checker_idx == checker_end {
+					checker.checker_idx--
 					return checker.checker_error('EOF error: array not closed')
 				}
 
@@ -457,7 +475,8 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				if val[checker.checker_idx] == `]` {
 					break
 				}
-				if checker.checker_idx >= checker_end - 1 {
+				if checker.checker_idx == checker_end {
+					checker.checker_idx--
 					return checker.checker_error('EOF error: braces are not closed')
 				}
 
@@ -482,7 +501,8 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 		.string_ {
 			// check if the JSON string is a valid string
 
-			if checker.checker_idx >= checker_end - 1 {
+			if checker.checker_idx == checker_end {
+				checker.checker_idx--
 				return checker.checker_error('EOF error: string not closed')
 			}
 
@@ -503,7 +523,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 							// check if the JSON string is a valid unicode escape sequence
 							escaped_char_last_index := checker.checker_idx + 5
 
-							if escaped_char_last_index < checker_end - 1 {
+							if escaped_char_last_index < checker_end {
 								// 2 bytes for the unicode escape sequence `\u`
 								checker.checker_idx += 2
 
@@ -650,11 +670,11 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 	actual_value_info_pointer.length = checker.checker_idx + 1 - start_idx_position
 
-	if checker.checker_idx < checker_end - 1 {
+	if checker.checker_idx < checker_end {
 		checker.checker_idx++
 	}
 
-	for checker.checker_idx < checker_end - 1 && val[checker.checker_idx] !in [`,`, `:`, `}`, `]`] {
+	for checker.checker_idx < checker_end && val[checker.checker_idx] !in [`,`, `:`, `}`, `]`] {
 		// get trash characters after the value
 		if val[checker.checker_idx] !in whitespace_chars {
 			checker.checker_error('invalid value. Unexpected character after ${value_kind} end')!
@@ -711,6 +731,61 @@ pub fn decode[T](val string) !T {
 // decode_value decodes a value from the JSON nodes.
 @[manualfree]
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
+	// Custom Decoders
+	$if val is StringDecoder {
+		struct_info := decoder.current_node.value
+
+		if struct_info.value_kind == .string_ {
+			val.from_json_string(decoder.json[struct_info.position + 1..struct_info.position +
+				struct_info.length - 1]) or {
+				decoder.decode_error('${typeof(*val).name}: ${err.msg()}')!
+			}
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+
+			return
+		}
+	}
+	$if val is NumberDecoder {
+		struct_info := decoder.current_node.value
+
+		if struct_info.value_kind == .number {
+			val.from_json_number(decoder.json[struct_info.position..struct_info.position +
+				struct_info.length]) or {
+				decoder.decode_error('${typeof(*val).name}: ${err.msg()}')!
+			}
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+
+			return
+		}
+	}
+	$if val is BooleanDecoder {
+		struct_info := decoder.current_node.value
+
+		if struct_info.value_kind == .boolean {
+			val.from_json_boolean(decoder.json[struct_info.position] == `t`)
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+
+			return
+		}
+	}
+	$if val is NullDecoder {
+		struct_info := decoder.current_node.value
+
+		if struct_info.value_kind == .null {
+			val.from_json_null()
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+
+			return
+		}
+	}
 	$if T.unaliased_typ is string {
 		string_info := decoder.current_node.value
 
@@ -800,50 +875,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	} $else $if T.unaliased_typ is $struct {
 		struct_info := decoder.current_node.value
 
-		// Custom Decoders
-		$if val is StringDecoder {
-			if struct_info.value_kind == .string_ {
-				val.from_json_string(decoder.json[struct_info.position + 1..struct_info.position +
-					struct_info.length - 1])!
-				if decoder.current_node != unsafe { nil } {
-					decoder.current_node = decoder.current_node.next
-				}
-
-				return
-			}
-		}
-		$if val is NumberDecoder {
-			if struct_info.value_kind == .number {
-				val.from_json_number(decoder.json[struct_info.position..struct_info.position +
-					struct_info.length])!
-				if decoder.current_node != unsafe { nil } {
-					decoder.current_node = decoder.current_node.next
-				}
-
-				return
-			}
-		}
-		$if val is BooleanDecoder {
-			if struct_info.value_kind == .boolean {
-				val.from_json_boolean(decoder.json[struct_info.position] == `t`)
-				if decoder.current_node != unsafe { nil } {
-					decoder.current_node = decoder.current_node.next
-				}
-
-				return
-			}
-		}
-		$if val is NullDecoder {
-			if struct_info.value_kind == .null {
-				val.from_json_null()
-				if decoder.current_node != unsafe { nil } {
-					decoder.current_node = decoder.current_node.next
-				}
-
-				return
-			}
-		}
-
 		// struct field info linked list
 		mut struct_fields_info := LinkedList[StructFieldInfo]{}
 
@@ -896,15 +927,19 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 				current_field_info = struct_fields_info.head
 
+				mut field_used := false
+
 				// field loop
 				for {
 					if current_field_info == unsafe { nil } {
-						decoder.current_node = decoder.current_node.next
+						decoder.current_node = decoder.current_node.next.next // skip value
+
 						break
 					}
 
 					if current_field_info.value.is_skip {
 						if current_field_info.value.is_required == false {
+							field_used = true
 							current_field_info = current_field_info.next
 							continue
 						}
@@ -913,11 +948,13 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					if current_field_info.value.is_omitempty {
 						match decoder.current_node.next.value.value_kind {
 							.null {
+								field_used = true
 								current_field_info = current_field_info.next
 								continue
 							}
 							.string_ {
 								if decoder.current_node.next.value.length == 2 {
+									field_used = true
 									current_field_info = current_field_info.next
 									continue
 								}
@@ -925,6 +962,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 							.number {
 								if decoder.json[decoder.current_node.next.value.position] == `0` {
 									if decoder.current_node.next.value.length == 1 {
+										field_used = true
 										current_field_info = current_field_info.next
 										continue
 									} else if decoder.current_node.next.value.length == 3 {
@@ -933,6 +971,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 												decoder.current_node.next.value.position,
 												float_zero_in_string.str, float_zero_in_string.len) == 0
 										} {
+											field_used = true
 											current_field_info = current_field_info.next
 											continue
 										}
@@ -949,6 +988,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 							vmemcmp(decoder.json.str + key_info.position + 1, current_field_info.value.json_name_ptr,
 								current_field_info.value.json_name_len) == 0
 						} {
+							field_used = true
+
 							$for field in T.fields {
 								if field.name.len == current_field_info.value.field_name_len {
 									if unsafe {
@@ -962,6 +1003,9 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 												return decoder.decode_error('This should not happen. Please, file a bug. `skip` field should not be processed here without a `required` attribute')
 											}
 											current_field_info.value.decoded_with_value_info_node = decoder.current_node
+											if decoder.current_node != unsafe { nil } {
+												decoder.current_node = decoder.current_node.next
+											}
 											break
 										}
 
@@ -1008,6 +1052,10 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 												// but options cant be passed to generic functions
 												if decoder.current_node.value.value_kind == .null {
 													val.$(field.name) = none
+
+													if decoder.current_node != unsafe { nil } {
+														decoder.current_node = decoder.current_node.next
+													}
 												} else {
 													mut unwrapped_val := create_value_from_optional(val.$(field.name)) or {
 														return
@@ -1027,6 +1075,12 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 						}
 					}
 					current_field_info = current_field_info.next
+				}
+
+				if !field_used
+					&& decoder.json[key_info.position + 1..key_info.position + key_info.length - 1] != '_type' {
+					decoder.decode_error('unknown field `${decoder.json[key_info.position..
+						key_info.position + key_info.length]}`')!
 				}
 			}
 
