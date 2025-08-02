@@ -628,7 +628,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 			w.mark_by_type(node.expr_type)
 			w.uses_guard = true
-			if node.expr_type != 0 && !w.uses_str_index_check
+			if node.expr_type != 0 && !w.uses_str_index_check && node.expr is ast.IndexExpr
 				&& w.table.final_sym(node.expr_type).kind in [.u8, .string] {
 				w.uses_str_index_check = true
 			}
@@ -1296,9 +1296,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_mem_align {
 		w.fn_by_name('memdup_align')
 	}
-	if w.uses_guard || w.uses_check_index {
-		w.fn_by_name('error')
-	}
 	if w.uses_spawn {
 		w.fn_by_name('malloc')
 		w.fn_by_name('tos3')
@@ -1406,6 +1403,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name(k)
 			continue
 		}
+	}
+	if w.uses_guard || w.uses_check_index {
+		w.fn_by_name('error')
 	}
 	if w.uses_append {
 		ref_array_idx_str := int(ast.array_type.ref()).str()
