@@ -1,5 +1,6 @@
 module big
 
+// from_json_number implements a custom decoder for json2
 pub fn (mut result Integer) from_json_number(raw_number string) ! {
 	mut index := 0
 	mut is_negative := false
