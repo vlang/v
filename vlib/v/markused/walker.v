@@ -62,7 +62,8 @@ mut:
 	uses_dump                  bool
 	uses_memdup                bool // sumtype cast and &Struct{}
 	uses_arr_void              bool // auto arr methods
-	uses_index                 bool // var[k],
+	uses_index                 bool // var[k]
+	uses_index_check           bool // var[k] or { }
 	uses_arr_range_index       bool // arr[i..j]
 	uses_str_range_index       bool // str[i..j]
 	uses_range_index_check     bool // var[i..j] or { }
@@ -72,7 +73,6 @@ mut:
 	uses_str_index_check       bool // string[k] or { }
 	uses_str_range             bool // string[a..b]
 	uses_fixed_arr_int         bool // fixed_arr[k]
-	uses_check_index           bool // arr[key] or { }
 	uses_append                bool // var << item
 	uses_map_setter            bool
 	uses_map_getter            bool
@@ -537,7 +537,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.left)
 			w.expr(node.index)
 			if node.or_expr.kind == .block {
-				w.uses_check_index = true
+				w.uses_index_check = true
 			}
 			w.mark_by_type(node.typ)
 			w.or_block(node.or_expr)
@@ -1329,9 +1329,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_mem_align {
 		w.fn_by_name('memdup_align')
 	}
-	if w.uses_guard || w.uses_check_index {
-		w.fn_by_name('error')
-	}
 	if w.uses_spawn {
 		w.fn_by_name('malloc')
 		w.fn_by_name('tos3')
@@ -1352,9 +1349,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_index || w.pref.is_shared {
 		w.fn_by_name(array_idx_str + '.slice')
 		w.fn_by_name(array_idx_str + '.get')
-		if w.uses_guard || w.uses_check_index {
-			w.fn_by_name(array_idx_str + '.get_with_check')
-		}
 	}
 	if w.uses_str_index {
 		w.fn_by_name(string_idx_str + '.at')
@@ -1438,6 +1432,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 			continue
 		}
 	}
+	if w.uses_guard || w.uses_index_check {
+		w.fn_by_name('error')
+		w.fn_by_name(array_idx_str + '.get_with_check')
+	}
 	if w.uses_append {
 		ref_array_idx_str := int(ast.array_type.ref()).str()
 		w.fn_by_name(ref_array_idx_str + '.push')
@@ -1459,6 +1457,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('__new_array_with_default')
 		w.fn_by_name('__new_array_with_default_noscan')
 		w.fn_by_name(int(ast.array_type.ref()).str() + '.set')
+		w.fn_by_name('clone_static_to_depth')
 	}
 	if w.uses_fixed_arr_int {
 		w.fn_by_name('v_fixed_index')
@@ -1479,7 +1478,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_arr_range_index_gated {
 		w.fn_by_name(array_idx_str + '.slice_ni')
 	}
-	if w.uses_arr_clone || w.uses_arr_sorted {
+	if w.uses_array || w.uses_arr_clone || w.uses_arr_sorted {
 		w.fn_by_name(array_idx_str + '.clone_static_to_depth')
 	}
 	// handle ORM drivers:
