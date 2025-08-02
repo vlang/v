@@ -1410,7 +1410,6 @@ fn (mut g Gen) register_option(t ast.Type) string {
 fn (mut g Gen) register_result(t ast.Type) string {
 	styp, base := g.result_type_name(t)
 	g.results[base] = styp
-	print_backtrace()
 	return styp
 }
 
