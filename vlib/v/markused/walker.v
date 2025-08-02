@@ -452,10 +452,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			} else if node.is_method && node.name == 'free' {
 				w.uses_free[node.left_type] = true
 			} else if node.is_method && node.name == 'clone' && !w.uses_arr_clone
-				&& w.table.final_sym(node.left_type).kind == .array {
+				&& node.left_type != 0 && w.table.final_sym(node.left_type).kind == .array {
 				w.uses_arr_clone = true
 			} else if node.is_method && node.name == 'sorted' && !w.uses_arr_sorted
-				&& w.table.final_sym(node.left_type).kind == .array {
+				&& node.left_type != 0 && w.table.final_sym(node.left_type).kind == .array {
 				w.uses_arr_sorted = true
 			}
 			if !w.is_builtin_mod && !w.uses_external_type {
