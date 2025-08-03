@@ -36,39 +36,50 @@ mut:
 	is_direct_array_access bool
 
 	// dependencies finding flags
-	uses_atomic          bool // has atomic
-	uses_array           bool // has array
-	uses_channel         bool // has chan dep
-	uses_lock            bool // has mutex dep
-	uses_ct_fields       bool // $for .fields
-	uses_ct_methods      bool // $for .methods
-	uses_ct_params       bool // $for .params
-	uses_ct_values       bool // $for .values
-	uses_ct_variants     bool // $for .variants
-	uses_ct_attribute    bool // $for .attributes
-	uses_external_type   bool
-	uses_err             bool // err var
-	uses_asserts         bool // assert
-	uses_map_update      bool // has {...expr}
-	uses_debugger        bool // has debugger;
-	uses_mem_align       bool // @[aligned:N] for structs
-	uses_eq              bool // has == op
-	uses_interp          bool // string interpolation
-	uses_guard           bool
-	uses_orm             bool
-	uses_str             map[ast.Type]bool // has .str() calls, and for which types
-	uses_free            map[ast.Type]bool // has .free() calls, and for which types
-	uses_spawn           bool
-	uses_dump            bool
-	uses_memdup          bool // sumtype cast and &Struct{}
-	uses_arr_void        bool // auto arr methods
-	uses_index           bool // var[k]
-	uses_str_index       bool // string[k]
-	uses_str_index_check bool // string[k] or { }
-	uses_str_range       bool // string[a..b]
-	uses_fixed_arr_int   bool // fixed_arr[k]
-	uses_check_index     bool // arr[key] or { }
-	uses_append          bool // var << item
+	uses_atomic                bool // has atomic
+	uses_array                 bool // has array
+	uses_channel               bool // has chan dep
+	uses_lock                  bool // has mutex dep
+	uses_ct_fields             bool // $for .fields
+	uses_ct_methods            bool // $for .methods
+	uses_ct_params             bool // $for .params
+	uses_ct_values             bool // $for .values
+	uses_ct_variants           bool // $for .variants
+	uses_ct_attribute          bool // $for .attributes
+	uses_external_type         bool
+	uses_err                   bool // err var
+	uses_asserts               bool // assert
+	uses_map_update            bool // has {...expr}
+	uses_debugger              bool // has debugger;
+	uses_mem_align             bool // @[aligned:N] for structs
+	uses_eq                    bool // has == op
+	uses_interp                bool // string interpolation
+	uses_guard                 bool
+	uses_orm                   bool
+	uses_str                   map[ast.Type]bool // has .str() calls, and for which types
+	uses_free                  map[ast.Type]bool // has .free() calls, and for which types
+	uses_spawn                 bool
+	uses_dump                  bool
+	uses_memdup                bool // sumtype cast and &Struct{}
+	uses_arr_void              bool // auto arr methods
+	uses_index                 bool // var[k]
+	uses_index_check           bool // var[k] or { }
+	uses_arr_range_index       bool // arr[i..j]
+	uses_str_range_index       bool // str[i..j]
+	uses_range_index_check     bool // var[i..j] or { }
+	uses_arr_range_index_gated bool
+	uses_str_range_index_gated bool
+	uses_str_index             bool // string[k]
+	uses_str_index_check       bool // string[k] or { }
+	uses_str_range             bool // string[a..b]
+	uses_fixed_arr_int         bool // fixed_arr[k]
+	uses_append                bool // var << item
+	uses_map_setter            bool
+	uses_map_getter            bool
+	uses_arr_setter            bool
+	uses_arr_getter            bool
+	uses_arr_clone             bool
+	uses_arr_sorted            bool
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -440,6 +451,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.uses_str[node.left_type] = true
 			} else if node.is_method && node.name == 'free' {
 				w.uses_free[node.left_type] = true
+			} else if node.is_method && node.name == 'clone' && !w.uses_arr_clone
+				&& node.left_type != 0 && w.table.final_sym(node.left_type).kind == .array {
+				w.uses_arr_clone = true
+			} else if node.is_method && node.name == 'sorted' && !w.uses_arr_sorted
+				&& node.left_type != 0 && w.table.final_sym(node.left_type).kind == .array {
+				w.uses_arr_sorted = true
 			}
 			if !w.is_builtin_mod && !w.uses_external_type {
 				if node.is_method {
@@ -520,7 +537,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.left)
 			w.expr(node.index)
 			if node.or_expr.kind == .block {
-				w.uses_check_index = true
+				w.uses_index_check = true
 			}
 			w.mark_by_type(node.typ)
 			w.or_block(node.or_expr)
@@ -529,9 +546,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			sym := w.table.final_sym(node.left_type)
 			if sym.info is ast.Map {
-				if node.is_setter {
+				if node.is_setter && !w.uses_map_setter {
 					w.mark_builtin_map_method_as_used('set')
-				} else {
+				} else if !node.is_setter && !w.uses_map_getter {
 					w.mark_builtin_map_method_as_used('get')
 				}
 				w.mark_by_sym(w.table.sym(sym.info.key_type))
@@ -539,10 +556,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.features.used_maps++
 			} else if sym.kind in [.array, .array_fixed, .any] {
 				if !w.is_direct_array_access || w.features.auto_str_arr {
-					if node.is_setter {
+					if node.is_setter && !w.uses_arr_setter {
 						w.mark_builtin_array_method_as_used('set')
-					} else {
+						w.uses_arr_setter = true
+					} else if !node.is_setter && !w.uses_arr_getter {
 						w.mark_builtin_array_method_as_used('get')
+						w.uses_arr_getter = true
 					}
 				}
 				if sym.info is ast.Array {
@@ -550,23 +569,37 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				} else if sym.info is ast.ArrayFixed {
 					w.mark_by_sym(w.table.sym(sym.info.elem_type))
 				}
+				if !w.uses_arr_range_index {
+					w.uses_arr_range_index = true
+				}
 				if !w.uses_fixed_arr_int && sym.kind == .array_fixed {
 					w.uses_fixed_arr_int = true
 				}
 				if !w.uses_index && !w.is_direct_array_access {
 					w.uses_index = true
 				}
+				if !w.uses_arr_range_index_gated {
+					w.uses_arr_range_index_gated = node.is_gated
+				}
 			} else if sym.kind == .string {
-				if node.index is ast.RangeExpr {
-					w.mark_builtin_array_method_as_used('slice')
-					w.features.range_index = true
-				}
 				w.uses_str_index = true
-				if !w.uses_str_index_check {
-					w.uses_str_index_check = node.or_expr.kind == .block
-				}
-				if !w.uses_str_range {
-					w.uses_str_range = node.index is ast.RangeExpr
+				if node.index is ast.RangeExpr {
+					if !w.uses_str_range_index {
+						w.uses_str_range_index = true
+					}
+					if !w.uses_range_index_check {
+						w.uses_range_index_check = node.or_expr.kind == .block
+					}
+					if !w.uses_str_range_index_gated {
+						w.uses_str_range_index_gated = node.is_gated
+					}
+				} else {
+					if !w.uses_str_index_check {
+						w.uses_str_index_check = node.or_expr.kind == .block
+					}
+					if !w.uses_str_range {
+						w.uses_str_range = node.index is ast.RangeExpr
+					}
 				}
 			} else if sym.info is ast.Struct {
 				w.mark_by_sym(sym)
@@ -574,9 +607,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.mark_by_sym(sym)
 			} else if sym.kind == .any {
 				if !w.is_direct_array_access {
-					if node.is_setter {
+					if node.is_setter && !w.uses_arr_setter {
 						w.mark_builtin_array_method_as_used('set')
-					} else {
+					} else if !node.is_setter && !w.uses_arr_getter {
 						w.mark_builtin_array_method_as_used('get')
 					}
 				}
@@ -628,7 +661,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 			w.mark_by_type(node.expr_type)
 			w.uses_guard = true
-			if node.expr_type != 0 && !w.uses_str_index_check && node.expr is ast.IndexExpr
+			if !w.uses_str_index_check && node.expr is ast.IndexExpr && node.expr_type != 0
 				&& w.table.final_sym(node.expr_type).kind in [.u8, .string] {
 				w.uses_str_index_check = true
 			}
@@ -1233,6 +1266,9 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 }
 
 fn (mut w Walker) mark_resource_dependencies() {
+	string_idx_str := ast.string_type_idx.str()
+	array_idx_str := ast.array_type_idx.str()
+
 	if w.trace_enabled {
 		eprintln('>>>>>>>>>> DEPS USAGE')
 	}
@@ -1247,9 +1283,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('strings.new_builder')
 		w.uses_free[ast.string_type] = true
 	}
-	// if w.uses_err {
-	// 	w.fn_by_name('${int(ast.error_type)}.str')
-	// }
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')
 	}
@@ -1314,15 +1347,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('tos3')
 	}
 	if w.uses_index || w.pref.is_shared {
-		array_idx_str := ast.array_type_idx.str()
 		w.fn_by_name(array_idx_str + '.slice')
 		w.fn_by_name(array_idx_str + '.get')
-		if w.uses_guard || w.uses_check_index {
-			w.fn_by_name(array_idx_str + '.get_with_check')
-		}
 	}
 	if w.uses_str_index {
-		string_idx_str := ast.string_type_idx.str()
 		w.fn_by_name(string_idx_str + '.at')
 		if w.uses_str_index_check {
 			w.fn_by_name(string_idx_str + '.at_with_check')
@@ -1335,16 +1363,12 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.mark_by_type(typ)
 	}
 	if w.trace_enabled {
-		types := w.table.used_features.print_types.keys().map(w.table.type_to_str(it))
-		eprintln('>>>>>>>>>> PRINT TYPES ${types}')
-	}
-	if w.trace_enabled {
-		types := w.uses_str.keys().map(w.table.type_to_str(it))
-		eprintln('>>>>>>>>>> USES .str() CALLS ON TYPES ${types}')
-	}
-	if w.trace_enabled {
-		types := w.uses_free.keys().map(w.table.type_to_str(it))
-		eprintln('>>>>>>>>>> USES .free() CALLS ON TYPES ${types}')
+		ptypes := w.table.used_features.print_types.keys().map(w.table.type_to_str(it))
+		eprintln('>>>>>>>>>> PRINT TYPES ${ptypes}')
+		stypes := w.uses_str.keys().map(w.table.type_to_str(it))
+		eprintln('>>>>>>>>>> USES .str() CALLS ON TYPES ${stypes}')
+		ftypes := w.uses_free.keys().map(w.table.type_to_str(it))
+		eprintln('>>>>>>>>>> USES .free() CALLS ON TYPES ${ftypes}')
 	}
 	if w.trace_enabled {
 		eprintln('>>>>>>>>>> ALL_FNS LOOP')
@@ -1386,15 +1410,15 @@ fn (mut w Walker) mark_resource_dependencies() {
 			if func.receiver.typ.set_nr_muls(0) in w.table.used_features.comptime_syms
 				|| func.receiver.typ in w.table.used_features.comptime_syms {
 				w.fn_by_name(k)
-				continue
 			}
+			continue
 		}
 		if func.is_method && !func.receiver.typ.has_flag(.generic) && func.receiver.typ.is_ptr() {
 			method_receiver_typename := w.table.type_to_str(func.receiver.typ)
 			if method_receiver_typename in ['&map', '&mapnode', '&SortedMap', '&DenseArray'] {
 				map_fns[k] = func
-				continue
 			}
+			continue
 		} else if k.starts_with('map_') {
 			map_fns[k] = func
 			continue
@@ -1404,8 +1428,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 			continue
 		}
 	}
-	if w.uses_guard || w.uses_check_index {
+	if w.uses_guard || w.uses_index_check {
 		w.fn_by_name('error')
+		w.fn_by_name(array_idx_str + '.get_with_check')
 	}
 	if w.uses_append {
 		ref_array_idx_str := int(ast.array_type.ref()).str()
@@ -1428,9 +1453,29 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('__new_array_with_default')
 		w.fn_by_name('__new_array_with_default_noscan')
 		w.fn_by_name(int(ast.array_type.ref()).str() + '.set')
+		w.fn_by_name('clone_static_to_depth')
 	}
 	if w.uses_fixed_arr_int {
 		w.fn_by_name('v_fixed_index')
+	}
+	if w.uses_str_range_index {
+		w.fn_by_name(string_idx_str + '.substr')
+	}
+	if w.uses_arr_range_index {
+		w.fn_by_name(array_idx_str + '.slice')
+	}
+	if w.uses_range_index_check {
+		w.fn_by_name(string_idx_str + '.substr_with_check')
+		w.fn_by_name(array_idx_str + '.get_with_check')
+	}
+	if w.uses_str_range_index_gated {
+		w.fn_by_name(string_idx_str + '.substr_ni')
+	}
+	if w.uses_arr_range_index_gated {
+		w.fn_by_name(array_idx_str + '.slice_ni')
+	}
+	if w.uses_array || w.uses_arr_clone || w.uses_arr_sorted {
+		w.fn_by_name(array_idx_str + '.clone_static_to_depth')
 	}
 	// handle ORM drivers:
 	if orm_impls.len > 0 {
