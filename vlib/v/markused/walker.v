@@ -846,7 +846,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.expr(filtered[0].expr)
 				}
 			}
-			w.mark_by_sym_name(node.enum_name)
+			w.mark_by_type(node.typ)
 		}
 		ast.LockExpr {
 			w.uses_lock = true
