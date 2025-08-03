@@ -1161,6 +1161,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 					w.features.used_maps++
 					continue
 				}
+				if typ.has_flag(.option) {
+					w.used_option++
+				}
 				w.mark_by_type(typ)
 			}
 		}
