@@ -308,7 +308,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 									c.note('unused parameter: `${obj.name}`', obj.pos)
 								}
 							} else {
-								c.warn('unused variable: -- `${obj.name}`', obj.pos)
+								c.warn('unused variable: `${obj.name}`', obj.pos)
 							}
 						}
 					}
