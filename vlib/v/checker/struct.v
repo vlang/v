@@ -168,7 +168,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		c.expected_type = old_expected_type
 		util.timing_measure_cumulative('Checker.struct setting default_expr_typ')
 
-		for i, field in node.fields {
+		for i, mut field in node.fields {
 			if field.typ.has_flag(.result) {
 				c.error('struct field does not support storing Result', field.option_pos)
 			}
@@ -239,7 +239,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				if !field.typ.has_option_or_result() {
-					c.check_expr_option_or_result_call(field.default_expr, field.default_expr_typ)
+					c.check_expr_option_or_result_call(mut field.default_expr, field.default_expr_typ)
 				}
 				if sym.info is ast.ArrayFixed && field.typ == field.default_expr_typ {
 					if sym.info.size_expr is ast.ComptimeCall {
@@ -283,7 +283,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 				// Check for unnecessary inits like ` = 0` and ` = ''`
 				if field.typ.is_ptr() {
-					if field.default_expr is ast.IntegerLiteral {
+					if mut field.default_expr is ast.IntegerLiteral {
 						if !c.inside_unsafe && !c.is_builtin_mod && field.default_expr.val == '0' {
 							c.error('default value of `0` for references can only be used inside `unsafe`',
 								field.default_expr.pos)
@@ -291,7 +291,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 					field_is_option := field.typ.has_flag(.option)
 					if field_is_option {
-						if field.default_expr is ast.None {
+						if mut field.default_expr is ast.None {
 							c.warn('unnecessary default value of `none`: struct fields are zeroed by default',
 								field.default_expr.pos)
 						} else if field.default_expr.is_nil() {
@@ -301,7 +301,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					continue
 				}
 				if field.typ in ast.unsigned_integer_type_idxs {
-					if field.default_expr is ast.IntegerLiteral {
+					if mut field.default_expr is ast.IntegerLiteral {
 						if field.default_expr.val[0] == `-` {
 							c.error('cannot assign negative value to unsigned integer type',
 								field.default_expr.pos)
@@ -309,14 +309,14 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 				}
 				if field.typ.has_flag(.option) {
-					if field.default_expr is ast.None {
+					if mut field.default_expr is ast.None {
 						c.warn('unnecessary default value of `none`: struct fields are zeroed by default',
 							field.default_expr.pos)
 					}
 				} else if field.typ.has_flag(.result) {
 					// struct field does not support result. Nothing to do
 				} else {
-					match field.default_expr {
+					match mut field.default_expr {
 						ast.IntegerLiteral {
 							if field.default_expr.val == '0' {
 								c.warn('unnecessary default value of `0`: struct fields are zeroed by default',
@@ -709,7 +709,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				exp_type_is_option := exp_type.has_flag(.option)
 				if !exp_type_is_option {
-					got_type = c.check_expr_option_or_result_call(init_field.expr, got_type)
+					got_type = c.check_expr_option_or_result_call(mut init_field.expr,
+						got_type)
 					if got_type.has_flag(.option) {
 						c.error('cannot assign an Option value to a non-option struct field',
 							init_field.pos)
@@ -719,7 +720,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					}
 				}
 				if got_type.has_flag(.result) {
-					c.check_expr_option_or_result_call(init_field.expr, init_field.typ)
+					c.check_expr_option_or_result_call(mut init_field.expr, init_field.typ)
 				}
 				if exp_type_is_option && got_type.is_ptr() && !exp_type.is_ptr() {
 					c.error('cannot assign a pointer to option struct field', init_field.pos)

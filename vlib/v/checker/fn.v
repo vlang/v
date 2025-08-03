@@ -717,7 +717,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	}
 	// If the left expr has an or_block, it needs to be checked for legal or_block statement.
 	left_type := c.expr(mut node.left)
-	c.check_expr_option_or_result_call(node.left, left_type)
+	c.check_expr_option_or_result_call(mut node.left, left_type)
 	// TODO: merge logic from method_call and fn_call
 	// First check everything that applies to both fns and methods
 	old_inside_fn_arg := c.inside_fn_arg
@@ -783,7 +783,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	if node.or_block.kind == .block {
 		old_inside_or_block_value := c.inside_or_block_value
 		c.inside_or_block_value = true
-		c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
+		c.check_or_expr(mut node.or_block, typ, c.expected_or_type, node)
 		c.inside_or_block_value = old_inside_or_block_value
 	}
 	c.expected_or_type = old_expected_or_type
@@ -812,8 +812,8 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func &ast
 	if !(node.language != .js && node.args[0].expr is ast.CallExpr) {
 		node.args[0].typ = c.expr(mut node.args[0].expr)
 	}
-	arg := node.args[0]
-	c.check_expr_option_or_result_call(arg.expr, arg.typ)
+	mut arg := node.args[0]
+	c.check_expr_option_or_result_call(mut arg.expr, arg.typ)
 	if arg.typ.is_void() {
 		c.error('`${fn_name}` can not print void expressions', node.pos)
 	} else if arg.typ == ast.char_type && arg.typ.nr_muls() == 0 {
@@ -1525,7 +1525,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('cannot initialize a map with a struct', call_arg.pos)
 			continue
 		}
-		mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, if already_checked {
+		mut arg_typ := c.check_expr_option_or_result_call(mut call_arg.expr, if already_checked {
 			node.args[i].typ
 		} else {
 			c.expr(mut call_arg.expr)
@@ -1834,7 +1834,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.expected_type = param.typ
 			}
 			already_checked := node.language != .js && call_arg.expr is ast.CallExpr
-			typ := c.check_expr_option_or_result_call(call_arg.expr, if already_checked
+			typ := c.check_expr_option_or_result_call(mut call_arg.expr, if already_checked
 				&& mut call_arg.expr is ast.CallExpr {
 				call_arg.expr.return_type
 			} else {
@@ -2229,7 +2229,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				mut earg_types := []ast.Type{}
 
 				for i, mut arg in node.args {
-					targ := c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
+					targ := c.check_expr_option_or_result_call(mut arg.expr, c.expr(mut arg.expr))
 					arg.typ = targ
 
 					param := if info.func.is_variadic && i >= info.func.params.len - 1 {
@@ -2468,7 +2468,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		exp_arg_sym := c.table.sym(exp_arg_typ)
 		c.expected_type = exp_arg_typ
 
-		mut got_arg_typ := c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
+		mut got_arg_typ := c.check_expr_option_or_result_call(mut arg.expr, c.expr(mut arg.expr))
 		node.args[i].typ = got_arg_typ
 		if no_type_promotion {
 			if got_arg_typ != exp_arg_typ {
@@ -3402,7 +3402,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	// map/filter are supposed to have 1 arg only
 	mut arg_type := unaliased_left_type
 	for mut arg in node.args {
-		arg_type = c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
+		arg_type = c.check_expr_option_or_result_call(mut arg.expr, c.expr(mut arg.expr))
 	}
 	if method_name == 'map' {
 		// eprintln('>>>>>>> map node.args[0].expr: ${node.args[0].expr}, left_type: ${left_type} | elem_typ: ${elem_typ} | arg_type: ${arg_type}')
@@ -3662,7 +3662,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		}
 
 		c.check_predicate_param(true, elem_typ, node)
-		arg_type := c.check_expr_option_or_result_call(arg0.expr, c.expr(mut arg0.expr))
+		arg_type := c.check_expr_option_or_result_call(mut arg0.expr, c.expr(mut arg0.expr))
 		arg_sym := c.table.sym(arg_type)
 		ret_type := match arg_sym.info {
 			ast.FnType {
@@ -3731,7 +3731,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 				node.pos)
 		}
 		for mut arg in node.args {
-			c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
+			c.check_expr_option_or_result_call(mut arg.expr, c.expr(mut arg.expr))
 		}
 		if method_name == 'sort' {
 			node.return_type = ast.void_type
@@ -3774,7 +3774,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 				}
 			}
 			for mut arg in node.args {
-				c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
+				c.check_expr_option_or_result_call(mut arg.expr, c.expr(mut arg.expr))
 			}
 			if method_name == 'sort_with_compare' {
 				c.check_for_mut_receiver(mut node.left)
@@ -3819,10 +3819,11 @@ fn scope_register_a_b(mut s ast.Scope, pos token.Pos, typ ast.Type) {
 
 fn scope_register_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name string) {
 	s.register(ast.Var{
-		name:    name
-		pos:     pos
-		typ:     typ
-		is_used: true
+		name:       name
+		pos:        pos
+		typ:        typ
+		is_used:    false
+		is_special: true
 	})
 }
 

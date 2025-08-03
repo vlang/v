@@ -301,22 +301,22 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 		for _, obj in sc.objects {
 			match obj {
 				ast.Var {
-					if !obj.is_used && obj.name[0] != `_` {
+					if !obj.is_special && !obj.is_used && obj.name[0] != `_` {
 						if !c.pref.translated && !c.file.is_translated {
 							if obj.is_arg {
 								if c.pref.show_unused_params {
 									c.note('unused parameter: `${obj.name}`', obj.pos)
 								}
 							} else {
-								c.warn('unused variable: `${obj.name}`', obj.pos)
+								c.warn('unused variable: -- `${obj.name}`', obj.pos)
 							}
 						}
 					}
-					if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
-						// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
-						// c.warn('`$obj.name` is declared as mutable, but it was never changed',
-						// obj.pos)
-					}
+					// if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
+					// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
+					// c.warn('`$obj.name` is declared as mutable, but it was never changed',
+					// obj.pos)
+					// }
 				}
 				else {}
 			}
@@ -1303,8 +1303,8 @@ fn (mut c Checker) expr_or_block_err(kind ast.OrKind, expr_name string, pos toke
 }
 
 // return the actual type of the expression, once the result or option type is handled
-fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.Type) ast.Type {
-	match expr {
+fn (mut c Checker) check_expr_option_or_result_call(mut expr ast.Expr, ret_type ast.Type) ast.Type {
+	match mut expr {
 		ast.CallExpr {
 			mut expr_ret_type := expr.return_type
 			if expr_ret_type != 0 && c.table.sym(expr_ret_type).kind == .alias {
@@ -1340,7 +1340,7 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 						}
 					}
 				} else {
-					c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
+					c.check_or_expr(mut expr.or_block, ret_type, expr_ret_type, expr)
 				}
 				return ret_type.clear_flag(.result)
 			} else {
@@ -1367,7 +1367,7 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 						}
 					} else {
 						if expr.or_block.kind != .absent {
-							c.check_or_expr(expr.or_block, ret_type, expr.typ, expr)
+							c.check_or_expr(mut expr.or_block, ret_type, expr.typ, expr)
 						}
 					}
 					return ret_type.clear_flag(.result)
@@ -1389,12 +1389,12 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 					}
 				}
 				if return_none_or_error {
-					c.check_expr_option_or_result_call(expr.or_expr, c.table.cur_fn.return_type)
+					c.check_expr_option_or_result_call(mut expr.or_expr, c.table.cur_fn.return_type)
 				} else {
-					c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result),
+					c.check_or_expr(mut expr.or_expr, ret_type, ret_type.set_flag(.result),
 						expr)
 				}
-			} else if expr.left is ast.SelectorExpr && expr.left_type.has_option_or_result() {
+			} else if mut expr.left is ast.SelectorExpr && expr.left_type.has_option_or_result() {
 				with_modifier_kind := if expr.left_type.has_flag(.option) {
 					'an Option'
 				} else {
@@ -1406,20 +1406,20 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 			}
 		}
 		ast.CastExpr {
-			c.check_expr_option_or_result_call(expr.expr, ret_type)
+			c.check_expr_option_or_result_call(mut expr.expr, ret_type)
 		}
 		ast.AsCast {
-			c.check_expr_option_or_result_call(expr.expr, ret_type)
+			c.check_expr_option_or_result_call(mut expr.expr, ret_type)
 		}
 		ast.ParExpr {
-			c.check_expr_option_or_result_call(expr.expr, ret_type)
+			c.check_expr_option_or_result_call(mut expr.expr, ret_type)
 		}
 		else {}
 	}
 	return ret_type
 }
 
-fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type, expr ast.Expr) {
+fn (mut c Checker) check_or_expr(mut node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type, expr ast.Expr) {
 	if node.kind == .propagate_option {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.option)
 			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
@@ -1466,6 +1466,10 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		}
 		// allow `f() or {}`
 		return
+	} else if !node.err_used {
+		if err_var := node.scope.find_var('err') {
+			node.err_used = err_var.is_used
+		}
 	}
 	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
 	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
@@ -1818,7 +1822,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			unwrapped_typ := c.unwrap_generic(node.typ)
 			c.expected_or_type = unwrapped_typ.clear_option_and_result()
 			c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
-			c.check_or_expr(node.or_block, unwrapped_typ, c.expected_or_type, node)
+			c.check_or_expr(mut node.or_block, unwrapped_typ, c.expected_or_type, node)
 			c.expected_or_type = ast.void_type
 		}
 		return field.typ
@@ -1914,7 +1918,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			c.error('duplicate const `${field.name}`', name_pos)
 		}
 		if field.expr is ast.CallExpr {
-			sym := c.table.sym(c.check_expr_option_or_result_call(field.expr, c.expr(mut field.expr)))
+			sym := c.table.sym(c.check_expr_option_or_result_call(mut field.expr, c.expr(mut field.expr)))
 			if sym.kind == .multi_return {
 				c.error('const declarations do not support multiple return values yet',
 					field.expr.pos())
@@ -1942,7 +1946,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		c.const_deps << field.name
 		prev_const_var := c.const_var
 		c.const_var = unsafe { field }
-		mut typ := c.check_expr_option_or_result_call(field.expr, c.expr(mut field.expr))
+		mut typ := c.check_expr_option_or_result_call(mut field.expr, c.expr(mut field.expr))
 		typ = c.cast_fixed_array_ret(typ, c.table.sym(typ))
 		if ct_value := c.eval_comptime_const_expr(field.expr, 0) {
 			field.comptime_expr_value = ct_value
@@ -2271,7 +2275,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 				}
 			}
 			if !c.inside_return {
-				c.check_expr_option_or_result_call(node.expr, or_typ)
+				c.check_expr_option_or_result_call(mut node.expr, or_typ)
 			}
 			// TODO: This should work, even if it's prolly useless .-.
 			// node.typ = c.check_expr_option_or_result_call(node.expr, ast.void_type)
@@ -2398,7 +2402,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 fn (mut c Checker) assert_stmt(mut node ast.AssertStmt) {
 	cur_exp_typ := c.expected_type
 	c.expected_type = ast.bool_type
-	assert_type := c.check_expr_option_or_result_call(node.expr, c.expr(mut node.expr))
+	assert_type := c.check_expr_option_or_result_call(mut node.expr, c.expr(mut node.expr))
 	c.markused_assertstmt_auto_str(mut node)
 	if assert_type != ast.bool_type_idx {
 		atype_name := c.table.sym(assert_type).name
@@ -3080,7 +3084,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 						node.expr_type)
 				}
 			}
-			c.check_expr_option_or_result_call(node.expr, node.expr_type)
+			c.check_expr_option_or_result_call(mut node.expr, node.expr_type)
 			etidx := node.expr_type.idx()
 			if etidx == ast.void_type_idx {
 				c.error('dump expression can not be void', node.expr.pos())
@@ -4087,7 +4091,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			unwrapped_typ := typ.clear_option_and_result()
 			c.expected_or_type = unwrapped_typ
 			c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
-			c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+			c.check_or_expr(mut node.or_expr, typ, c.expected_or_type, node)
 			return unwrapped_typ
 		}
 		return typ
@@ -4202,7 +4206,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						unwrapped_typ := typ.clear_option_and_result()
 						c.expected_or_type = unwrapped_typ
 						c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
-						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+						c.check_or_expr(mut node.or_expr, typ, c.expected_or_type, node)
 						return unwrapped_typ
 					}
 					return typ
@@ -4264,7 +4268,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						unwrapped_typ := typ.clear_option_and_result()
 						c.expected_or_type = unwrapped_typ
 						c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
-						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+						c.check_or_expr(mut node.or_expr, typ, c.expected_or_type, node)
 					}
 					return typ
 				}
@@ -5132,7 +5136,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		c.expected_or_type = typ
 	}
 	c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
-	c.check_expr_option_or_result_call(node, typ)
+	c.check_expr_option_or_result_call(mut node, typ)
 	node.typ = typ
 	return typ
 }

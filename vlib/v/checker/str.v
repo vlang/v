@@ -49,7 +49,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 		c.expected_type = ast.string_type
 		mut ftyp := c.expr(mut expr)
 		c.expected_type = expected_type
-		ftyp = c.type_resolver.get_type_or_default(expr, c.check_expr_option_or_result_call(expr,
+		ftyp = c.type_resolver.get_type_or_default(expr, c.check_expr_option_or_result_call(mut expr,
 			ftyp))
 		if ftyp == ast.void_type || ftyp == 0 {
 			c.error('expression does not return a value', expr.pos())

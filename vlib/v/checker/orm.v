@@ -621,7 +621,8 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
 				expr.pos)
 		}
 	} else {
-		c.check_or_expr(expr.or_expr, return_type.clear_flag(.result), return_type, if mut expr is ast.SqlExpr {
+		c.check_or_expr(mut expr.or_expr, return_type.clear_flag(.result), return_type,
+			if mut expr is ast.SqlExpr {
 			expr
 		} else {
 			ast.empty_expr
