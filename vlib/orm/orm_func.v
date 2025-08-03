@@ -93,18 +93,18 @@ fn (mut ss MyTextScanner) next_tok() string {
 	mut ret := ''
 	ss.skip_whitespace()
 	ss.last_tok_start = ss.pos
+	ss_upper := ss.input.to_upper()
 
 	// check for longest token first
-	if ss.input[ss.pos..].starts_with('IS NOT NULL')
-		|| ss.input[ss.pos..].starts_with('is not null') {
+	if ss_upper[ss.pos..].starts_with('IS NOT NULL') {
 		ss.pos += 11
 		return 'IS NOT NULL'
 	}
-	if ss.input[ss.pos..].starts_with('IS NULL') || ss.input[ss.pos..].starts_with('is null') {
+	if ss_upper[ss.pos..].starts_with('IS NULL') {
 		ss.pos += 7
 		return 'IS NULL'
 	}
-	if ss.input[ss.pos..].starts_with('NOT IN') || ss.input[ss.pos..].starts_with('not in') {
+	if ss_upper[ss.pos..].starts_with('NOT IN') {
 		ss.pos += 6
 		return 'NOT IN'
 	}
@@ -187,7 +187,7 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 				}
 			}
 			.op {
-				current_op = match tok {
+				current_op = match tok.to_upper() {
 					'=' {
 						OperationKind.eq
 					}
@@ -209,22 +209,22 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 					'<=' {
 						OperationKind.le
 					}
-					'LIKE', 'like' {
+					'LIKE' {
 						OperationKind.orm_like
 					}
-					'ILIKE', 'ilike' {
+					'ILIKE' {
 						OperationKind.orm_ilike
 					}
-					'IS NULL', 'is null' {
+					'IS NULL' {
 						OperationKind.is_null
 					}
-					'IS NOT NULL', 'is not null' {
+					'IS NOT NULL' {
 						OperationKind.is_not_null
 					}
-					'IN', 'in' {
+					'IN' {
 						OperationKind.in
 					}
-					'NOT IN', 'not in' {
+					'NOT IN' {
 						OperationKind.not_in
 					}
 					else {
