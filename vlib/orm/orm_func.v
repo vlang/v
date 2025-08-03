@@ -95,15 +95,16 @@ fn (mut ss MyTextScanner) next_tok() string {
 	ss.last_tok_start = ss.pos
 
 	// check for longest token first
-	if ss.input[ss.pos..].starts_with('IS NOT NULL') {
+	if ss.input[ss.pos..].starts_with('IS NOT NULL')
+		|| ss.input[ss.pos..].starts_with('is not null') {
 		ss.pos += 11
 		return 'IS NOT NULL'
 	}
-	if ss.input[ss.pos..].starts_with('IS NULL') {
+	if ss.input[ss.pos..].starts_with('IS NULL') || ss.input[ss.pos..].starts_with('is null') {
 		ss.pos += 7
 		return 'IS NULL'
 	}
-	if ss.input[ss.pos..].starts_with('NOT IN') {
+	if ss.input[ss.pos..].starts_with('NOT IN') || ss.input[ss.pos..].starts_with('not in') {
 		ss.pos += 6
 		return 'NOT IN'
 	}
@@ -208,22 +209,22 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 					'<=' {
 						OperationKind.le
 					}
-					'LIKE' {
+					'LIKE', 'like' {
 						OperationKind.orm_like
 					}
-					'ILIKE' {
+					'ILIKE', 'ilike' {
 						OperationKind.orm_ilike
 					}
-					'IS NULL' {
+					'IS NULL', 'is null' {
 						OperationKind.is_null
 					}
-					'IS NOT NULL' {
+					'IS NOT NULL', 'is not null' {
 						OperationKind.is_not_null
 					}
-					'IN' {
+					'IN', 'in' {
 						OperationKind.in
 					}
-					'NOT IN' {
+					'NOT IN', 'not in' {
 						OperationKind.not_in
 					}
 					else {
