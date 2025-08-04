@@ -192,7 +192,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	if node.is_insert {
 		node.typ = ast.int_type
 	}
-	node.or_expr.err_used = c.check_orm_or_expr(mut node)
+	c.check_orm_or_expr(mut node)
 
 	if node.is_insert {
 		return ast.int_type
@@ -210,7 +210,7 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 	for mut line in node.lines {
 		c.sql_stmt_line(mut line)
 	}
-	node.or_expr.err_used = c.check_orm_or_expr(mut node)
+	c.check_orm_or_expr(mut node)
 
 	return ast.void_type
 }
@@ -597,13 +597,12 @@ fn (_ &Checker) fn_return_type_flag_to_string(typ ast.Type) string {
 	}
 }
 
-fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) bool {
+fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
 	if mut expr is ast.SqlExpr {
 		if expr.is_generated {
-			return false
+			return
 		}
 	}
-	mut err_used := false
 	return_type := if mut expr is ast.SqlExpr {
 		expr.typ
 	} else {
@@ -632,7 +631,6 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) bool {
 		c.stmts_ending_with_expression(mut expr.or_expr.stmts, c.expected_or_type)
 		c.expected_or_type = ast.void_type
 	}
-	return err_used
 }
 
 // check_db_expr checks the `db_expr` implements `orm.Connection` and has no `option` flag.
