@@ -192,8 +192,10 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	if node.is_insert {
 		node.typ = ast.int_type
 	}
+	last_cur_or_expr := c.cur_or_expr
 	c.cur_or_expr = &node.or_expr
 	c.check_orm_or_expr(mut node)
+	c.cur_or_expr = last_cur_or_expr
 
 	if node.is_insert {
 		return ast.int_type
@@ -211,8 +213,10 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 	for mut line in node.lines {
 		c.sql_stmt_line(mut line)
 	}
+	last_cur_or_expr := c.cur_or_expr
 	c.cur_or_expr = &node.or_expr
 	c.check_orm_or_expr(mut node)
+	c.cur_or_expr = last_cur_or_expr
 
 	return ast.void_type
 }

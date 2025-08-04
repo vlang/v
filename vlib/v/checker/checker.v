@@ -1341,8 +1341,10 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 						}
 					}
 				} else {
+					last_cur_or_expr := c.cur_or_expr
 					c.cur_or_expr = &expr.or_block
 					c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
+					c.cur_or_expr = last_cur_or_expr
 				}
 				return ret_type.clear_flag(.result)
 			} else {
@@ -1369,8 +1371,10 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 						}
 					} else {
 						if expr.or_block.kind != .absent {
+							last_cur_or_expr := c.cur_or_expr
 							c.cur_or_expr = &expr.or_block
 							c.check_or_expr(expr.or_block, ret_type, expr.typ, expr)
+							c.cur_or_expr = last_cur_or_expr
 						}
 					}
 					return ret_type.clear_flag(.result)
@@ -1394,9 +1398,11 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 				if return_none_or_error {
 					c.check_expr_option_or_result_call(expr.or_expr, c.table.cur_fn.return_type)
 				} else {
+					last_cur_or_expr := c.cur_or_expr
 					c.cur_or_expr = &expr.or_expr
 					c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result),
 						expr)
+					c.cur_or_expr = last_cur_or_expr
 				}
 			} else if expr.left is ast.SelectorExpr && expr.left_type.has_option_or_result() {
 				with_modifier_kind := if expr.left_type.has_flag(.option) {
@@ -1826,8 +1832,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			unwrapped_typ := c.unwrap_generic(node.typ)
 			c.expected_or_type = unwrapped_typ.clear_option_and_result()
 			c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
+			last_cur_or_expr := c.cur_or_expr
 			c.cur_or_expr = &node.or_block
 			c.check_or_expr(node.or_block, unwrapped_typ, c.expected_or_type, node)
+			c.cur_or_expr = last_cur_or_expr
 			c.expected_or_type = ast.void_type
 		}
 		return field.typ
@@ -4096,8 +4104,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			unwrapped_typ := typ.clear_option_and_result()
 			c.expected_or_type = unwrapped_typ
 			c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
+			last_cur_or_expr := c.cur_or_expr
 			c.cur_or_expr = &node.or_expr
 			c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+			c.cur_or_expr = last_cur_or_expr
 			return unwrapped_typ
 		}
 		return typ
@@ -4212,8 +4222,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						unwrapped_typ := typ.clear_option_and_result()
 						c.expected_or_type = unwrapped_typ
 						c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
+						last_cur_or_expr := c.cur_or_expr
 						c.cur_or_expr = &node.or_expr
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+						c.cur_or_expr = last_cur_or_expr
 						return unwrapped_typ
 					}
 					return typ
@@ -4275,8 +4287,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						unwrapped_typ := typ.clear_option_and_result()
 						c.expected_or_type = unwrapped_typ
 						c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
+						last_cur_or_expr := c.cur_or_expr
 						c.cur_or_expr = &node.or_expr
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+						c.cur_or_expr = last_cur_or_expr
 					}
 					return typ
 				}
