@@ -729,6 +729,7 @@ fn (t Tree) enum_decl(node ast.EnumDecl) &Node {
 	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add_terse('attrs', t.array_node_attr(node.attrs))
 	obj.add_terse('typ', t.type_node(node.typ))
+	obj.add_terse('enum_typ', t.type_node(node.enum_typ))
 	return obj
 }
 
