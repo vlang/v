@@ -92,7 +92,6 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &No
 				return decoder.check_struct_type_valid(element, current_node)
 			}
 		}
-		else {}
 	}
 
 	return false
@@ -304,7 +303,6 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 				}
 			}
 		}
-		else {}
 	}
 
 	if failed_struct {
