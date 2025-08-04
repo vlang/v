@@ -158,6 +158,8 @@ jobs:
         run: |
           v retry -- v setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
+      - name: v -g self
+        run: v -g self
       - name: v doctor
         run: |
           v doctor
