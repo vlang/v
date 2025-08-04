@@ -1476,6 +1476,8 @@ pub:
 	typ              Type        // the default is `int`; can be changed by `enum Big as u64 { a = 5 }`
 	typ_pos          token.Pos
 	pos              token.Pos
+pub mut:
+	enum_typ Type
 }
 
 pub struct AliasTypeDecl {

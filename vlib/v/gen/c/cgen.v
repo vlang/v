@@ -4771,7 +4771,7 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		}
 		return
 	}
-	if g.pref.skip_unused && node.typ.idx() !in g.table.used_features.used_syms {
+	if g.pref.skip_unused && node.enum_typ !in g.table.used_features.used_syms {
 		return
 	}
 	g.enum_typedefs.writeln('')

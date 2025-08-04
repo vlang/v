@@ -125,8 +125,7 @@ mut:
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	is_last_stmt                     bool
-	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
-	using_new_err_struct             bool
+	prevent_sum_type_unwrapping_once bool            // needed for assign new values to sum type, stopping unwrapping then
 	need_recheck_generic_fns         bool            // need recheck generic fns because there are cascaded nested generic fn
 	generic_fns                      map[string]bool // register generic fns that needs recheck once
 	inside_sql                       bool            // to handle sql table fields pseudo variables
@@ -206,7 +205,6 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.cur_orm_ts = ast.TypeSymbol{}
 	c.prevent_sum_type_unwrapping_once = false
 	c.loop_labels = []
-	c.using_new_err_struct = false
 	c.inside_selector_expr = false
 	c.inside_interface_deref = false
 	c.inside_decl_rhs = false
@@ -1624,12 +1622,6 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	prevent_sum_type_unwrapping_once := c.prevent_sum_type_unwrapping_once
 	c.prevent_sum_type_unwrapping_once = false
 
-	using_new_err_struct_save := c.using_new_err_struct
-	// TODO: remove; this avoids a breaking change in syntax
-	if node.expr is ast.Ident && node.expr.name == 'err' {
-		c.using_new_err_struct = true
-	}
-
 	// T.name, typeof(expr).name
 	mut name_type := 0
 	mut node_expr := node.expr
@@ -1697,7 +1689,6 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	}
 	c.inside_selector_expr = old_selector_expr
-	c.using_new_err_struct = using_new_err_struct_save
 	if typ == ast.void_type_idx {
 		// This means that the field has an undefined type.
 		// This error was handled before.
@@ -2187,6 +2178,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			}
 		}
 	}
+	node.enum_typ = c.table.find_type_idx(node.name)
 }
 
 fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_signed bool, is_multi_allowed bool,
