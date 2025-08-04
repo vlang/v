@@ -168,7 +168,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		c.expected_type = old_expected_type
 		util.timing_measure_cumulative('Checker.struct setting default_expr_typ')
 
-		for i, mut field in node.fields {
+		for i, field in node.fields {
 			if field.typ.has_flag(.result) {
 				c.error('struct field does not support storing Result', field.option_pos)
 			}
@@ -283,7 +283,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 				// Check for unnecessary inits like ` = 0` and ` = ''`
 				if field.typ.is_ptr() {
-					if mut field.default_expr is ast.IntegerLiteral {
+					if field.default_expr is ast.IntegerLiteral {
 						if !c.inside_unsafe && !c.is_builtin_mod && field.default_expr.val == '0' {
 							c.error('default value of `0` for references can only be used inside `unsafe`',
 								field.default_expr.pos)
@@ -291,7 +291,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 					field_is_option := field.typ.has_flag(.option)
 					if field_is_option {
-						if mut field.default_expr is ast.None {
+						if field.default_expr is ast.None {
 							c.warn('unnecessary default value of `none`: struct fields are zeroed by default',
 								field.default_expr.pos)
 						} else if field.default_expr.is_nil() {
@@ -301,7 +301,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					continue
 				}
 				if field.typ in ast.unsigned_integer_type_idxs {
-					if mut field.default_expr is ast.IntegerLiteral {
+					if field.default_expr is ast.IntegerLiteral {
 						if field.default_expr.val[0] == `-` {
 							c.error('cannot assign negative value to unsigned integer type',
 								field.default_expr.pos)
@@ -309,14 +309,14 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 				}
 				if field.typ.has_flag(.option) {
-					if mut field.default_expr is ast.None {
+					if field.default_expr is ast.None {
 						c.warn('unnecessary default value of `none`: struct fields are zeroed by default',
 							field.default_expr.pos)
 					}
 				} else if field.typ.has_flag(.result) {
 					// struct field does not support result. Nothing to do
 				} else {
-					match mut field.default_expr {
+					match field.default_expr {
 						ast.IntegerLiteral {
 							if field.default_expr.val == '0' {
 								c.warn('unnecessary default value of `0`: struct fields are zeroed by default',
