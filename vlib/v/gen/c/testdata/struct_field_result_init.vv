@@ -4,14 +4,15 @@ import crypto.rand
 
 struct SSS {
 mut:
-	prime Integer = big.integer_from_string('115792089237316195423570985008687907853269984665640564039457584007913129639747')!
+	prime Integer = big.integer_from_string('123')!
 }
 
 // random returns a random number from the range (0, prime-1) inclusive
 fn (s SSS) random() !Integer {
 	mut result := big.zero_int + s.prime
 	result = result - big.one_int
-	return rand.int_big(result)
+	ires :=	rand.int_big(result)!
+	return ires 
 }
 
 // mod_inverse computes the multiplicative inverse of the number on the field
@@ -28,5 +29,7 @@ fn mod_inverse(number Integer) Integer {
 }
 
 fn main() {
-	mod_inverse(big.integer_from_string('1')!)
+	one :=	big.integer_from_string('1')!
+	res := mod_inverse(one)
+	println(res)
 }

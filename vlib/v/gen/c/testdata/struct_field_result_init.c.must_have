@@ -1,4 +1,4 @@
-_result_math__big__Integer _t1 = math__big__integer_from_string(_S("115792089237316195423570985008687907853269984665640564039457584007913129639747"));
+_result_math__big__Integer _t1 = math__big__integer_from_string(_S("123"));
 if (_t1.is_error) {
 math__big__Integer _t2 = {0};
 return _t2;
