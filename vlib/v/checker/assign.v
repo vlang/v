@@ -210,14 +210,18 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.inside_decl_rhs = false
 			c.inside_ref_lit = old_inside_ref_lit
 			if node.right_types.len == i {
-				node.right_types << c.check_expr_option_or_result_call(mut expr, right_type)
+				mut right_expr := node.right[i]
+				node.right_types << c.check_expr_option_or_result_call(mut right_expr,
+					right_type)
 			}
 		} else if c.inside_recheck {
 			// on generic recheck phase it might be needed to resolve the rhs again
 			if i < node.right.len && c.comptime.has_comptime_expr(node.right[i]) {
 				mut expr := mut node.right[i]
 				right_type := c.expr(mut expr)
-				node.right_types[i] = c.check_expr_option_or_result_call(mut expr, right_type)
+				mut right_expr := mut node.right[i]
+				node.right_types[i] = c.check_expr_option_or_result_call(mut right_expr,
+					right_type)
 			}
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
