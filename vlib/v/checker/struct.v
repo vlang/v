@@ -239,7 +239,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				if !field.typ.has_option_or_result() {
-					c.check_expr_option_or_result_call(mut field.default_expr, field.default_expr_typ)
+					c.check_expr_option_or_result_call(field.default_expr, field.default_expr_typ)
 				}
 				if sym.info is ast.ArrayFixed && field.typ == field.default_expr_typ {
 					if sym.info.size_expr is ast.ComptimeCall {
@@ -709,8 +709,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				exp_type_is_option := exp_type.has_flag(.option)
 				if !exp_type_is_option {
-					got_type = c.check_expr_option_or_result_call(mut init_field.expr,
-						got_type)
+					got_type = c.check_expr_option_or_result_call(init_field.expr, got_type)
 					if got_type.has_flag(.option) {
 						c.error('cannot assign an Option value to a non-option struct field',
 							init_field.pos)
@@ -720,7 +719,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					}
 				}
 				if got_type.has_flag(.result) {
-					c.check_expr_option_or_result_call(mut init_field.expr, init_field.typ)
+					c.check_expr_option_or_result_call(init_field.expr, init_field.typ)
 				}
 				if exp_type_is_option && got_type.is_ptr() && !exp_type.is_ptr() {
 					c.error('cannot assign a pointer to option struct field', init_field.pos)

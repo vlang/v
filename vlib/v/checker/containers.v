@@ -82,7 +82,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.check_array_init_default_expr(mut node)
 		}
 		if node.has_len {
-			len_typ := c.check_expr_option_or_result_call(mut node.len_expr, c.expr(mut node.len_expr))
+			len_typ := c.check_expr_option_or_result_call(node.len_expr, c.expr(mut node.len_expr))
 			if len_typ.has_flag(.option) {
 				c.error('cannot use unwrapped Option as length', node.len_expr.pos())
 			}
@@ -95,7 +95,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		if node.has_cap {
-			cap_typ := c.check_expr_option_or_result_call(mut node.cap_expr, c.expr(mut node.cap_expr))
+			cap_typ := c.check_expr_option_or_result_call(node.cap_expr, c.expr(mut node.cap_expr))
 			if cap_typ.has_flag(.option) {
 				c.error('cannot use unwrapped Option as capacity', node.cap_expr.pos())
 			}
@@ -178,7 +178,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			if expr is ast.ArrayInit {
 				old_expected_type := c.expected_type
 				c.expected_type = c.table.value_type(c.expected_type)
-				typ = c.check_expr_option_or_result_call(mut expr, c.expr(mut expr))
+				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
 				c.expected_type = old_expected_type
 			} else {
 				// [none]
@@ -187,7 +187,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 						expr.pos())
 					continue
 				}
-				typ = c.check_expr_option_or_result_call(mut expr, c.expr(mut expr))
+				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
 			}
 			if expr is ast.CallExpr {
 				ret_sym := c.table.sym(typ)
@@ -311,7 +311,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	mut init_expr := node.init_expr
 	c.expected_type = node.elem_type
-	init_typ := c.check_expr_option_or_result_call(mut init_expr, c.expr(mut init_expr))
+	init_typ := c.check_expr_option_or_result_call(init_expr, c.expr(mut init_expr))
 	node.init_type = init_typ
 	if !node.elem_type.has_flag(.option) && init_typ.has_flag(.option) {
 		c.error('cannot use unwrapped Option as initializer', init_expr.pos())
@@ -585,8 +585,8 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			if node.keys.len == 1 && map_val_type == ast.none_type {
 				c.error('map value cannot be only `none`', node.vals[0].pos())
 			}
-			c.check_expr_option_or_result_call(mut key_, map_key_type)
-			c.check_expr_option_or_result_call(mut val_, map_val_type)
+			c.check_expr_option_or_result_call(key_, map_key_type)
+			c.check_expr_option_or_result_call(val_, map_val_type)
 		}
 		map_key_type = c.unwrap_generic(map_key_type)
 		map_val_type = c.unwrap_generic(map_val_type)
@@ -609,8 +609,8 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			val_type := c.expr(mut val)
 			node.val_types << val_type
 			val_type_sym := c.table.sym(val_type)
-			c.check_expr_option_or_result_call(mut key, key_type)
-			c.check_expr_option_or_result_call(mut val, val_type)
+			c.check_expr_option_or_result_call(key, key_type)
+			c.check_expr_option_or_result_call(val, val_type)
 			if !c.check_types(key_type, map_key_type)
 				|| (i == 0 && key_type.is_number() && map_key_type.is_number()
 				&& map_key_type != ast.mktyp(key_type)) {
@@ -787,7 +787,7 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 	mut right_sym := c.table.sym(right_type)
 	mut left_sym := c.table.sym(left_type)
 	// `array << elm`
-	c.check_expr_option_or_result_call(mut node.right, right_type)
+	c.check_expr_option_or_result_call(node.right, right_type)
 	node.auto_locked, _ = c.fail_if_immutable(mut node.left)
 	left_value_type := c.table.value_type(c.unwrap_generic(left_type))
 	left_value_sym := c.table.sym(c.unwrap_generic(left_value_type))
