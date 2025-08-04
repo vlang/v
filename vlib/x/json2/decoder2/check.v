@@ -12,7 +12,73 @@ fn (mut checker Decoder) check_json_format() ! {
 
 	start_idx_position := checker.checker_idx
 
-	mut actual_value_info_pointer := checker.get_value_kind()!
+	mut actual_value_info_pointer := unsafe { &ValueInfo(nil) }
+
+	match checker.json[checker.checker_idx] {
+		`"` {
+			checker.values_info.push(ValueInfo{
+				position:   checker.checker_idx
+				value_kind: .string_
+			})
+
+			actual_value_info_pointer = checker.values_info.last()
+
+			checker.check_string()!
+		}
+		`-`, `0`...`9` {
+			checker.values_info.push(ValueInfo{
+				position:   checker.checker_idx
+				value_kind: .number
+			})
+
+			actual_value_info_pointer = checker.values_info.last()
+
+			checker.check_number()!
+		}
+		`t`, `f` {
+			checker.values_info.push(ValueInfo{
+				position:   checker.checker_idx
+				value_kind: .boolean
+			})
+
+			actual_value_info_pointer = checker.values_info.last()
+
+			checker.check_boolean()!
+		}
+		`n` {
+			checker.values_info.push(ValueInfo{
+				position:   checker.checker_idx
+				value_kind: .null
+			})
+
+			actual_value_info_pointer = checker.values_info.last()
+
+			checker.check_null()!
+		}
+		`[` {
+			checker.values_info.push(ValueInfo{
+				position:   checker.checker_idx
+				value_kind: .array
+			})
+
+			actual_value_info_pointer = checker.values_info.last()
+
+			checker.check_array()!
+		}
+		`{` {
+			checker.values_info.push(ValueInfo{
+				position:   checker.checker_idx
+				value_kind: .object
+			})
+
+			actual_value_info_pointer = checker.values_info.last()
+
+			checker.check_object()!
+		}
+		else {
+			checker.checker_error('unknown value kind')!
+		}
+	}
 
 	actual_value_info_pointer.length = checker.checker_idx + 1 - start_idx_position
 
@@ -30,79 +96,6 @@ fn (mut checker Decoder) check_json_format() ! {
 		}
 		checker.checker_idx++
 	}
-}
-
-// get_value_kind returns the kind of a JSON value.
-fn (mut checker Decoder) get_value_kind() !&ValueInfo {
-	mut result := unsafe { nil }
-
-	match checker.json[checker.checker_idx] {
-		`"` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .string_
-			})
-
-			result = checker.values_info.last()
-
-			checker.check_string()!
-		}
-		`-`, `0`...`9` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .number
-			})
-
-			result = checker.values_info.last()
-
-			checker.check_number()!
-		}
-		`t`, `f` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .boolean
-			})
-
-			result = checker.values_info.last()
-
-			checker.check_boolean()!
-		}
-		`n` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .null
-			})
-
-			result = checker.values_info.last()
-
-			checker.check_null()!
-		}
-		`[` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .array
-			})
-
-			result = checker.values_info.last()
-
-			checker.check_array()!
-		}
-		`{` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .object
-			})
-
-			result = checker.values_info.last()
-
-			checker.check_object()!
-		}
-		else {
-			checker.checker_error('unknown value kind')!
-		}
-	}
-
-	return result
 }
 
 fn (mut checker Decoder) check_string() ! {
