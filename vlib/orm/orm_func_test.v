@@ -86,6 +86,12 @@ fn test_orm_func_where() {
 	qb.where('(salary >= ? AND (age <= ? OR title LIKE ?))', 50000, 35, '%Manager%')!
 	assert qb.where.parentheses == [[1, 2], [0, 2]]
 
+	// test lowercase `like`
+	qb.reset()
+	qb.where('(salary >= ? AND (age <= ? OR title like ?))', 50000, 35, '%Manager%')!
+	assert qb.where.parentheses == [[1, 2], [0, 2]]
+	assert qb.where.kinds == [.ge, .le, .orm_like]
+
 	// complex_nesting
 	qb.reset()
 	qb.where('((age = ? OR (salary > ? AND id < ?)) AND (name LIKE ?))', 1, 2, 3, '%test%')!
@@ -94,6 +100,12 @@ fn test_orm_func_where() {
 	// in and not in
 	qb.reset()
 	qb.where('name IN ? AND age NOT IN ?', ['Tom'], [2])!
+	assert qb.where.fields == ['name', 'age']
+	assert qb.where.kinds == [.in, .not_in]
+
+	// lowercase in and not in
+	qb.reset()
+	qb.where('name in ? AND age not in ?', ['Tom'], [2])!
 	assert qb.where.fields == ['name', 'age']
 	assert qb.where.kinds == [.in, .not_in]
 }
@@ -502,6 +514,12 @@ fn test_orm_func_stmts() {
 		2000, 30, '%employee%')!.query()!
 	assert selected_users[0].name == 'Silly'
 	assert selected_users.len == 1
+
+	// complex select with lowercase `is null` and `like`
+	selected_users1 := qb.where('created_at is null && ((salary > ? && age < ?) || (role like ?))',
+		2000, 30, '%employee%')!.query()!
+	assert selected_users1[0].name == 'Silly'
+	assert selected_users1.len == 1
 
 	// chain where
 	and_where := qb.where('salary > ?', 2000)!.where('age > ?', 40)!.query()!
