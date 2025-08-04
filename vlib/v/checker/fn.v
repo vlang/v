@@ -815,7 +815,7 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func &ast
 	if !(node.language != .js && node.args[0].expr is ast.CallExpr) {
 		node.args[0].typ = c.expr(mut node.args[0].expr)
 	}
-	mut arg := node.args[0]
+	arg := node.args[0]
 	c.check_expr_option_or_result_call(arg.expr, arg.typ)
 	if arg.typ.is_void() {
 		c.error('`${fn_name}` can not print void expressions', node.pos)
