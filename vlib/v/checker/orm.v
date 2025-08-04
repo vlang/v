@@ -625,9 +625,6 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) bool {
 		} else {
 			ast.empty_expr
 		})
-		if expr.or_expr.kind == .block {
-			err_used = expr.or_expr.err_used
-		}
 	}
 
 	if expr.or_expr.kind == .block {
