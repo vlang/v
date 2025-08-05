@@ -60,9 +60,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if pref_.is_bare {
 			core_fns << 'init_global_allocator' // needed for linux_bare and wasm_bare
 		}
-		if ast_files[ast_files.len - 1].imports.len > 0 {
-			core_fns << 'builtin_init'
-		}
 		if 'use_libbacktrace' in pref_.compile_defines {
 			core_fns << 'print_libbacktrace'
 		}

@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module builtin
 
+@[markused]
 fn builtin_init() {
 	$if gcboehm ? {
 		$if !gc_warn_on_stderr ? {
