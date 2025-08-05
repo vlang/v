@@ -9,20 +9,24 @@ import v.pref
 
 pub struct Walker {
 pub mut:
-	table         &ast.Table        = unsafe { nil }
-	features      &ast.UsedFeatures = unsafe { nil }
-	used_fns      map[string]bool // used_fns['println'] == true
-	trace_enabled bool
-	used_consts   map[string]bool // used_consts['os.args'] == true
-	used_globals  map[string]bool
-	used_fields   map[string]bool
-	used_syms     map[int]bool
-	used_none     int // _option_none
-	used_option   int // _option_ok
-	used_result   int // _result_ok
-	used_panic    int // option/result propagation
-	used_closures int // fn [x] (){}, and `instance.method` used in an expression
-	pref          &pref.Preferences = unsafe { nil }
+	table           &ast.Table        = unsafe { nil }
+	features        &ast.UsedFeatures = unsafe { nil }
+	used_fns        map[string]bool // used_fns['println'] == true
+	trace_enabled   bool
+	used_consts     map[string]bool // used_consts['os.args'] == true
+	used_globals    map[string]bool
+	used_fields     map[string]bool
+	used_structs    map[string]bool
+	used_types      map[ast.Type]bool
+	used_syms       map[int]bool
+	used_arr_method map[string]bool
+	used_map_method map[string]bool
+	used_none       int // _option_none
+	used_option     int // _option_ok
+	used_result     int // _result_ok
+	used_panic      int // option/result propagation
+	used_closures   int // fn [x] (){}, and `instance.method` used in an expression
+	pref            &pref.Preferences = unsafe { nil }
 mut:
 	all_fns       map[string]ast.FnDecl
 	all_consts    map[string]ast.ConstField
@@ -551,8 +555,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				} else if !node.is_setter && !w.uses_map_getter {
 					w.mark_builtin_map_method_as_used('get')
 				}
-				w.mark_by_sym(w.table.sym(sym.info.key_type))
-				w.mark_by_sym(w.table.sym(sym.info.value_type))
+				w.mark_by_type(sym.info.key_type)
+				w.mark_by_type(sym.info.value_type)
 				w.features.used_maps++
 			} else if sym.kind in [.array, .array_fixed, .any] {
 				if !w.is_direct_array_access || w.features.auto_str_arr {
@@ -565,9 +569,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					}
 				}
 				if sym.info is ast.Array {
-					w.mark_by_sym(w.table.sym(sym.info.elem_type))
+					w.mark_by_type(sym.info.elem_type)
 				} else if sym.info is ast.ArrayFixed {
-					w.mark_by_sym(w.table.sym(sym.info.elem_type))
+					w.mark_by_type(sym.info.elem_type)
 				}
 				if !w.uses_arr_range_index {
 					w.uses_arr_range_index = true
@@ -1000,8 +1004,18 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			// All []Type or map[Type]Another types are typedefs to those `map` and `array` types, and all map and array methods
 			// are actually methods on the `builtin` concrete types.
 			match lsym.kind {
-				.array { w.mark_builtin_array_method_as_used(node.name) }
-				.map { w.mark_builtin_map_method_as_used(node.name) }
+				.array {
+					if !w.used_arr_method[node.name] {
+						w.mark_builtin_array_method_as_used(node.name)
+						w.used_arr_method[node.name] = true
+					}
+				}
+				.map {
+					if !w.used_map_method[node.name] {
+						w.mark_builtin_map_method_as_used(node.name)
+						w.used_map_method[node.name] = true
+					}
+				}
 				else {}
 			}
 		}
@@ -1040,7 +1054,6 @@ pub fn (mut w Walker) fn_by_name(fn_name string) {
 	}
 	mut stmt := w.all_fns[fn_name] or { return }
 	w.fn_decl(mut stmt)
-	// w.stmts(stmt.stmts)
 }
 
 pub fn (mut w Walker) struct_fields(sfields []ast.StructField) {
@@ -1096,10 +1109,11 @@ pub fn (mut w Walker) mark_by_sym_name(name string) {
 
 @[inline]
 pub fn (mut w Walker) mark_by_type(typ ast.Type) {
-	if typ == 0 || typ.has_flag(.generic) {
+	if typ == 0 || typ.has_flag(.generic) || typ in w.used_types {
 		return
 	}
 	w.mark_by_sym(w.table.sym(typ))
+	w.used_types[typ] = true
 }
 
 pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
@@ -1121,15 +1135,7 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 							w.used_none++
 						}
 					}
-					match fsym.info {
-						ast.Map {
-							w.features.used_maps++
-							w.mark_by_sym(fsym)
-						}
-						else {
-							w.mark_by_sym(fsym)
-						}
-					}
+					w.mark_by_sym(fsym)
 				}
 				if !w.features.auto_str_ptr && ifield.typ.is_ptr()
 					&& isym.idx in w.features.print_types {
