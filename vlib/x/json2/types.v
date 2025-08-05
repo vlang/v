@@ -23,11 +23,6 @@ pub type Any = []Any
 	| u8
 	| Null
 
-// Decodable is an interface, that allows custom implementations for decoding structs from JSON encoded values.
-pub interface Decodable {
-	from_json(f Any)
-}
-
 // Encodable is an interface, that allows custom implementations for encoding structs to their string based JSON representations.
 pub interface Encodable {
 	json_str() string
@@ -45,21 +40,25 @@ pub const null = Null{}
 pub fn (mut n Null) from_json_null() {}
 
 // ValueKind enumerates the kinds of possible values of the Any sumtype.
-pub enum ValueKind {
+enum ValueKind {
 	unknown
 	array
 	object
 	string_
 	number
+	boolean
+	null
 }
 
 // str returns the string representation of the specific ValueKind.
-pub fn (k ValueKind) str() string {
+fn (k ValueKind) str() string {
 	return match k {
 		.unknown { 'unknown' }
 		.array { 'array' }
 		.object { 'object' }
 		.string_ { 'string' }
 		.number { 'number' }
+		.boolean { 'boolean' }
+		.null { 'null' }
 	}
 }
