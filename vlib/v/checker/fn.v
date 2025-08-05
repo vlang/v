@@ -3812,15 +3812,15 @@ fn (mut c Checker) check_for_mut_receiver(mut expr ast.Expr) (string, token.Pos)
 }
 
 fn scope_register_it(mut s ast.Scope, pos token.Pos, typ ast.Type) {
-	scope_register_var_name(mut s, pos, typ, 'it')
+	scope_register_special_var_name(mut s, pos, typ, 'it')
 }
 
 fn scope_register_a_b(mut s ast.Scope, pos token.Pos, typ ast.Type) {
-	scope_register_var_name(mut s, pos, typ.ref(), 'a')
-	scope_register_var_name(mut s, pos, typ.ref(), 'b')
+	scope_register_special_var_name(mut s, pos, typ.ref(), 'a')
+	scope_register_special_var_name(mut s, pos, typ.ref(), 'b')
 }
 
-fn scope_register_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name string) {
+fn scope_register_special_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name string) {
 	s.register(ast.Var{
 		name:       name
 		pos:        pos
