@@ -7177,7 +7177,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 	}
 	if or_block.kind == .block {
 		g.or_expr_return_type = return_type.clear_option_and_result()
-		if or_block.err_used
+		if !g.pref.skip_unused || or_block.err_used
 			|| (g.fn_decl != unsafe { nil } && (g.fn_decl.is_main || g.fn_decl.is_test)) {
 			g.writeln('\tIError err = ${cvar_name}${tmp_op}err;')
 		}

@@ -311,7 +311,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			// define `err` for the last branch after a `if val := opt {...}' guard
 			if is_guard && guard_idx == i - 1 {
 				if err_var := branch.scope.find_var('err') {
-					if err_var.is_used {
+					if !g.pref.skip_unused || err_var.is_used {
 						cvar_name := guard_vars[guard_idx]
 						g.writeln('\tIError err = ${cvar_name}.err;')
 					}
