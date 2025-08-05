@@ -6483,6 +6483,10 @@ fn (mut g Gen) write_init_function() {
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
 
+	if g.pref.gc_mode in [.boehm_full, .boehm_full_opt, .boehm_incr, .boehm_incr_opt, .boehm_leak] {
+		g.writeln('\tGC_enable();')
+	}
+
 	g.write_debug_calls_typeof_functions()
 
 	if g.pref.trace_calls && g.pref.should_trace_fn_name('_vinit') {
