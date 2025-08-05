@@ -113,6 +113,7 @@ mut:
 	type_level                       int // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 	ensure_generic_type_level        int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
 	cur_orm_ts                       ast.TypeSymbol
+	cur_or_expr                      &ast.OrExpr = unsafe { nil }
 	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
 	vmod_file_content                string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	loop_labels                      []string   // filled, when inside labelled for loops: `a_label: for x in 0..10 {`
@@ -299,7 +300,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 		for _, obj in sc.objects {
 			match obj {
 				ast.Var {
-					if !obj.is_used && obj.name[0] != `_` {
+					if !obj.is_special && !obj.is_used && obj.name[0] != `_` {
 						if !c.pref.translated && !c.file.is_translated {
 							if obj.is_arg {
 								if c.pref.show_unused_params {
@@ -310,11 +311,11 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 							}
 						}
 					}
-					if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
-						// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
-						// c.warn('`$obj.name` is declared as mutable, but it was never changed',
-						// obj.pos)
-					}
+					// if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
+					// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
+					// c.warn('`$obj.name` is declared as mutable, but it was never changed',
+					// obj.pos)
+					// }
 				}
 				else {}
 			}
@@ -1338,7 +1339,10 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 						}
 					}
 				} else {
+					last_cur_or_expr := c.cur_or_expr
+					c.cur_or_expr = &expr.or_block
 					c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
+					c.cur_or_expr = last_cur_or_expr
 				}
 				return ret_type.clear_flag(.result)
 			} else {
@@ -1365,7 +1369,10 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 						}
 					} else {
 						if expr.or_block.kind != .absent {
+							last_cur_or_expr := c.cur_or_expr
+							c.cur_or_expr = &expr.or_block
 							c.check_or_expr(expr.or_block, ret_type, expr.typ, expr)
+							c.cur_or_expr = last_cur_or_expr
 						}
 					}
 					return ret_type.clear_flag(.result)
@@ -1389,8 +1396,11 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 				if return_none_or_error {
 					c.check_expr_option_or_result_call(expr.or_expr, c.table.cur_fn.return_type)
 				} else {
+					last_cur_or_expr := c.cur_or_expr
+					c.cur_or_expr = &expr.or_expr
 					c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result),
 						expr)
+					c.cur_or_expr = last_cur_or_expr
 				}
 			} else if expr.left is ast.SelectorExpr && expr.left_type.has_option_or_result() {
 				with_modifier_kind := if expr.left_type.has_flag(.option) {
@@ -1464,6 +1474,10 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		}
 		// allow `f() or {}`
 		return
+	} else if !node.err_used {
+		if err_var := node.scope.find_var('err') {
+			c.cur_or_expr.err_used = err_var.is_used
+		}
 	}
 	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
 	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
@@ -1809,7 +1823,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			unwrapped_typ := c.unwrap_generic(node.typ)
 			c.expected_or_type = unwrapped_typ.clear_option_and_result()
 			c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
+			last_cur_or_expr := c.cur_or_expr
+			c.cur_or_expr = &node.or_block
 			c.check_or_expr(node.or_block, unwrapped_typ, c.expected_or_type, node)
+			c.cur_or_expr = last_cur_or_expr
 			c.expected_or_type = ast.void_type
 		}
 		return field.typ
@@ -4079,7 +4096,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			unwrapped_typ := typ.clear_option_and_result()
 			c.expected_or_type = unwrapped_typ
 			c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
+			last_cur_or_expr := c.cur_or_expr
+			c.cur_or_expr = &node.or_expr
 			c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+			c.cur_or_expr = last_cur_or_expr
 			return unwrapped_typ
 		}
 		return typ
@@ -4194,7 +4214,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						unwrapped_typ := typ.clear_option_and_result()
 						c.expected_or_type = unwrapped_typ
 						c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
+						last_cur_or_expr := c.cur_or_expr
+						c.cur_or_expr = &node.or_expr
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+						c.cur_or_expr = last_cur_or_expr
 						return unwrapped_typ
 					}
 					return typ
@@ -4256,7 +4279,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						unwrapped_typ := typ.clear_option_and_result()
 						c.expected_or_type = unwrapped_typ
 						c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
+						last_cur_or_expr := c.cur_or_expr
+						c.cur_or_expr = &node.or_expr
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+						c.cur_or_expr = last_cur_or_expr
 					}
 					return typ
 				}

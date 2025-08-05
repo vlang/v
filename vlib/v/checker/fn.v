@@ -783,7 +783,10 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	if node.or_block.kind == .block {
 		old_inside_or_block_value := c.inside_or_block_value
 		c.inside_or_block_value = true
+		last_cur_or_expr := c.cur_or_expr
+		c.cur_or_expr = &node.or_block
 		c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
+		c.cur_or_expr = last_cur_or_expr
 		c.inside_or_block_value = old_inside_or_block_value
 	}
 	c.expected_or_type = old_expected_or_type
@@ -3819,10 +3822,11 @@ fn scope_register_a_b(mut s ast.Scope, pos token.Pos, typ ast.Type) {
 
 fn scope_register_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name string) {
 	s.register(ast.Var{
-		name:    name
-		pos:     pos
-		typ:     typ
-		is_used: true
+		name:       name
+		pos:        pos
+		typ:        typ
+		is_used:    false
+		is_special: true
 	})
 }
 

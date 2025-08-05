@@ -1646,6 +1646,7 @@ fn (t Tree) or_expr(node ast.OrExpr) &Node {
 	obj.add_terse('stmts', t.array_node_stmt(node.stmts))
 	obj.add_terse('kind', t.enum_node(node.kind))
 	obj.add('pos', t.pos(node.pos))
+	obj.add('scope', t.number_node(int(node.scope)))
 	return obj
 }
 

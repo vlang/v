@@ -74,10 +74,11 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	mut pos := first_pos.extend(last_pos)
 	mut or_stmts := []ast.Stmt{} // TODO: remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.pos()
+	mut or_scope := &ast.Scope(unsafe { nil })
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
 		or_kind = .block
-		or_stmts, or_pos = p.or_block(.with_err_var)
+		or_stmts, or_pos, or_scope = p.or_block(.with_err_var)
 	}
 	if p.tok.kind in [.question, .not] {
 		is_not := p.tok.kind == .not
@@ -108,6 +109,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 			stmts: or_stmts
 			kind:  or_kind
 			pos:   or_pos
+			scope: or_scope
 		}
 		scope:              p.scope
 		comments:           comments

@@ -1124,7 +1124,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			field_var := '${tmp}.${c_name(field.name)}'
 			field_c_typ := g.styp(final_field_typ)
 			if sym.kind == .struct && sym.name != 'time.Time' {
-				mut sub := node.sub_structs[int(final_field_typ)]
+				mut sub := node.sub_structs[int(final_field_typ)] or { continue }
 				mut where_expr := sub.where_expr as ast.InfixExpr
 				mut ident := where_expr.right as ast.Ident
 				primitive_type_index := g.table.find_type('orm.Primitive')
@@ -1161,7 +1161,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				} else {
 					verror('missing fkey attribute')
 				}
-				sub := node.sub_structs[final_field_typ]
+				sub := node.sub_structs[final_field_typ] or { continue }
 				if sub.has_where {
 					mut where_expr := sub.where_expr as ast.InfixExpr
 					mut left_where_expr := where_expr.left as ast.Ident
