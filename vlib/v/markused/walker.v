@@ -634,14 +634,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 						}
 					}
 				} else {
-					if !w.uses_append && node.op == .left_shift {
-						fsym := w.table.final_sym(node.left_type)
-						if fsym.info is ast.Array {
-							esym := w.table.final_sym(fsym.info.elem_type)
-							if esym.kind !in [.u8, .char, .string] || !w.is_direct_array_access {
-								w.uses_append = true
-							}
-						}
+					if !w.uses_append && node.op == .left_shift
+						&& w.table.final_sym(node.left_type).kind == .array {
+						w.uses_append = true
 					}
 				}
 			}
