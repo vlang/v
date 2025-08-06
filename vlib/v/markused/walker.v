@@ -519,6 +519,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.is_expr {
 				w.fn_by_name('free')
 			}
+			w.mark_by_type(w.table.find_or_register_thread(node.call_expr.return_type))
 			w.expr(node.call_expr)
 			w.uses_spawn = true
 
