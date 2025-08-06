@@ -797,9 +797,6 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				s.str_helper_tokens << c
 				start_line := s.line_nr
 				ident_string := s.ident_string()
-				// if s.str_helper_tokens.last() in [`'`, `"`] {
-				// 	s.str_helper_tokens.delete_last()
-				// }
 				return s.new_multiline_token(.string, ident_string, ident_string.len + 2,
 					start_line) // + two quotes
 			}
