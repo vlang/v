@@ -633,6 +633,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 							w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
 						}
 					}
+				} else if sym.kind == .array {
+					if sym.info is ast.Array {
+						esym := w.table.final_sym(sym.info.elem_type)
+						if !w.uses_append && node.op == .left_shift
+							&& (esym.kind !in [.u8, .char, .string] || !w.is_direct_array_access) {
+							w.uses_append = true
+						}
+					}
 				}
 			}
 			right_type := if node.right_type == 0 && mut node.right is ast.TypeNode {
@@ -657,9 +665,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			if !w.uses_eq && node.op in [.eq, .ne] {
 				w.uses_eq = true
-			}
-			if !w.uses_append && node.op == .left_shift && !w.is_direct_array_access {
-				w.uses_append = true
 			}
 		}
 		ast.IfGuardExpr {
