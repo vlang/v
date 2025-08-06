@@ -218,6 +218,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				the_type := syms.map(it.name).join(', ')
 				println('gen fn `${node.name}` for type `${the_type}`')
 			}
+			if concrete_types.any(it.has_flag(.generic)) {
+				continue
+			}
 			g.cur_concrete_types = concrete_types
 			g.gen_fn_decl(node, skip)
 		}
