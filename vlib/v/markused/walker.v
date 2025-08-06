@@ -633,11 +633,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 							w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
 						}
 					}
-				} else if !w.uses_append && node.op == .left_shift && sym.kind == .array {
-					if sym.info is ast.Array {
-						esym := w.table.final_sym(sym.info.elem_type)
-						if esym.kind !in [.u8, .char, .string] || !w.is_direct_array_access {
-							w.uses_append = true
+				} else {
+					if !w.uses_append && node.op == .left_shift {
+						fsym := w.table.final_sym(node.left_type)
+						if fsym.info is ast.Array {
+							esym := w.table.final_sym(fsym.info.elem_type)
+							if esym.kind !in [.u8, .char, .string] || !w.is_direct_array_access {
+								w.uses_append = true
+							}
 						}
 					}
 				}
