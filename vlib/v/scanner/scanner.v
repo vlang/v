@@ -1187,11 +1187,6 @@ fn (s &Scanner) count_symbol_before(p int, sym u8) int {
 // escapes in them (except in the r'strings' where the content is returned verbatim)
 @[direct_array_access]
 pub fn (mut s Scanner) ident_string() string {
-	// if s.all_tokens.len >= 78 {
-	// 	iii := 1
-	// 	jjj := 1
-	// 	kkk := 1
-	// }
 	quote := s.str_quote() or { return '' }
 	s.quote = quote
 	// determines if it is a nested string
