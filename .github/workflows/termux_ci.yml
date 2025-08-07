@@ -26,11 +26,13 @@ jobs:
       - name: Build and test in Termux
         run: |
           docker run --rm -v "$PWD:/src" -w /src termux/termux-docker:latest bash -c '
+            cd /src
             pkg update -y
             pkg install -y clang libexecinfo libgc libgc-static make git
             git clone --depth=1 https://github.com/vlang/v
             cd v
             make
-            v symlink
+            ./v symlink
+            v -showcc run examples/hello_world.v
             VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -cc clang -cstrict -silent test-self vlib
           '
