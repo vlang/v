@@ -20,17 +20,24 @@ on:
 jobs:
   termux-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-
       - name: Build and test in Termux
         run: |
-          docker run --rm -v "$PWD:/src" -w /src termux/termux-docker:latest bash -c '
+          echo "$PWD";
+          touch outside_docker.txt
+          ls -la
+          git log -n4
+          echo "running docker ..."
+          docker run --rm -v "$PWD" -w /src termux/termux-docker:latest bash -c '
             cd /src
+            ls -la
+            touch inside_docker.txt
+            ls -la
             pkg update -y
             pkg install -y clang libexecinfo libgc libgc-static make git
-            git clone --depth=1 https://github.com/vlang/v
-            cd v
+            git log -n4
             make
             ./v symlink
             v -showcc run examples/hello_world.v
