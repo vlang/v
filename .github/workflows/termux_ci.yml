@@ -30,7 +30,7 @@ jobs:
           ls -la
           git log -n4
           echo "running docker ..."
-          docker run --rm -v "$PWD" -w /src termux/termux-docker:latest bash -c '
+          docker run --rm --mount type=bind,source=/home/runner/work/v/v,destination=/src -w /src termux/termux-docker:latest bash -c '
             cd /src
             ls -la
             touch inside_docker.txt
