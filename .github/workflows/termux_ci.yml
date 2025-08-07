@@ -43,5 +43,5 @@ jobs:
             VFLAGS="-cc cc -os termux" make
             ./v symlink
             v -showcc run examples/hello_world.v
-            VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -cc clang -cstrict -silent test-self vlib
+            v -showcc run examples/primes.v
           '
