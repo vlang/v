@@ -31,7 +31,9 @@ jobs:
           git log -n4
           echo "running docker ..."
           docker run --rm --mount type=bind,source=/home/runner/work/v/v,destination=/src -w /src termux/termux-docker:latest bash -c '
-            cd /src
+            echo "running inside docker"
+            whoami
+            cp -r /src ~/vproject; cd ~/vproject
             ls -la
             touch inside_docker.txt
             ls -la
