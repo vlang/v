@@ -4256,9 +4256,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					if typ == 0 {
 						old_c_mod := c.mod
 						c.mod = obj.mod
+						inside_const := c.inside_const
 						c.inside_const = true
 						typ = c.expr(mut obj.expr)
-						c.inside_const = false
+						c.inside_const = inside_const
 						c.mod = old_c_mod
 
 						if mut obj.expr is ast.CallExpr {
