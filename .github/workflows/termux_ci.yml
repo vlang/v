@@ -1,0 +1,48 @@
+name: CI Termux
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/termux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/termux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+jobs:
+  termux-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test in Termux
+        run: |
+          set -o xtrace		
+          echo "$PWD"
+          whoami
+          touch outside_docker.txt
+          git log -n4
+          echo "running docker ..."
+          docker run --rm --mount type=bind,source=/home/runner/work/v/v,destination=/src -w /src termux/termux-docker:latest bash -c '
+            set -o xtrace
+            echo "running inside docker"
+            whoami
+            cp -r /src ~/vproject; cd ~/vproject
+            touch inside_docker.txt
+            ls -la
+            pkg update -y
+            pkg install -y clang libexecinfo libgc libgc-static make git
+            git log -n4
+            VFLAGS="-cc cc -os termux" make
+            ./v symlink
+            v run examples/hello_world.v
+            v run examples/primes.v
+          '
