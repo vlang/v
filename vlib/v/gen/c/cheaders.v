@@ -337,7 +337,7 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdarg.h> // for va_list
 
 #ifdef __TERMUX__
-#if __BIONIC_AVAILABILITY_GUARD(28)
+#if defined __BIONIC_AVAILABILITY_GUARD && __BIONIC_AVAILABILITY_GUARD(28)
 #else
 void * aligned_alloc(size_t alignment, size_t size) { return malloc(size); }
 #endif
