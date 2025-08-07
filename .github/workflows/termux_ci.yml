@@ -42,6 +42,6 @@ jobs:
             git log -n4
             VFLAGS="-cc cc -os termux" make
             ./v symlink
-            v -showcc run examples/hello_world.v
-            v -showcc run examples/primes.v
+            v run examples/hello_world.v
+            v run examples/primes.v
           '
