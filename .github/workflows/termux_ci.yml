@@ -1,0 +1,36 @@
+name: CI Termux
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/termux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/termux_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and test in Termux
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src termux/termux-docker:latest bash -c '
+            pkg update -y
+            pkg install -y clang libexecinfo libgc libgc-static make git
+            git clone --depth=1 https://github.com/vlang/v
+            cd v
+            make
+            v symlink
+            VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -cc clang -cstrict -silent test-self vlib
+          '
