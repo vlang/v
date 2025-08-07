@@ -584,7 +584,7 @@ run them via `v file.v` instead',
 			.wasm { 'WASM.${name}' }
 			else { p.prepend_mod(name) }
 		}
-		if !p.pref.translated && language == .v {
+		if language == .v {
 			if existing := p.table.fns[name] {
 				if existing.name != '' {
 					if file_mode == .v && existing.file_mode != .v {
@@ -592,7 +592,7 @@ run them via `v file.v` instead',
 						if !p.pref.is_fmt {
 							name = p.prepend_mod('pure_v_but_overridden_by_${existing.file_mode}_${short_fn_name}')
 						}
-					} else {
+					} else if !p.pref.translated {
 						p.table.redefined_fns << name
 					}
 				}
