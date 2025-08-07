@@ -25,16 +25,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and test in Termux
         run: |
-          echo "$PWD";
+          set -o xtrace		
+          echo "$PWD"
+          whoami
           touch outside_docker.txt
-          ls -la
           git log -n4
           echo "running docker ..."
           docker run --rm --mount type=bind,source=/home/runner/work/v/v,destination=/src -w /src termux/termux-docker:latest bash -c '
+            set -o xtrace
             echo "running inside docker"
             whoami
             cp -r /src ~/vproject; cd ~/vproject
-            ls -la
             touch inside_docker.txt
             ls -la
             pkg update -y
