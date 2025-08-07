@@ -40,6 +40,7 @@ jobs:
             pkg update -y
             pkg install -y clang libexecinfo libgc libgc-static make git
             git log -n4
+            export VFLAGS='-cc cc -os termux'
             make
             ./v symlink
             v -showcc run examples/hello_world.v
