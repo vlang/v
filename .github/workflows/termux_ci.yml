@@ -18,7 +18,7 @@ on:
       - '!cmd/tools/builders/**.v'
 
 jobs:
-  build:
+  termux-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
