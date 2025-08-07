@@ -584,7 +584,7 @@ run them via `v file.v` instead',
 			.wasm { 'WASM.${name}' }
 			else { p.prepend_mod(name) }
 		}
-		if !p.pref.translated && language == .v {
+		if language == .v {
 			if existing := p.table.fns[name] {
 				if existing.name != '' {
 					if file_mode == .v && existing.file_mode != .v {
