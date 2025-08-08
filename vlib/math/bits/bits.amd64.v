@@ -14,16 +14,24 @@ fn C._udiv128(hi u64, lo u64, y u64, rem &u64) u64
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn mul_64(x u64, y u64) (u64, u64) {
-	mut hi := y
-	mut lo := x
+	mut hi := u64(0)
+	mut lo := u64(0)
 	$if msvc {
 		lo = C._umul128(x, y, &hi)
 	} $else {
 		asm amd64 {
+			mov rax, x
+			mov rdx, y
 			mulq rdx
-			; +a (lo)
-			  +d (hi)
-			; ; cc
+			mov lo, rax
+			mov hi, rdx
+			; +r (lo)
+			  +r (hi)
+			; r (x)
+			  r (y)
+			; rax
+			  rdx
+			  cc
 		}
 	}
 	return hi, lo
@@ -34,21 +42,29 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 // half returned in lo.
 @[inline]
 pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
-	mut hi := y
-	mut lo := x
+	mut hi := u64(0)
+	mut lo := u64(0)
 	$if msvc {
 		lo = C._umul128(x, y, &hi)
 		carry := C._addcarry_u64(0, lo, z, &lo)
 		hi += carry
 	} $else {
 		asm amd64 {
+			mov rax, x
+			mov rdx, y
 			mulq rdx
 			addq rax, z
 			adcq rdx, 0
-			; +a (lo)
-			  +d (hi)
-			; r (z)
-			; cc
+			mov lo, rax
+			mov hi, rdx
+			; +r (lo)
+			  +r (hi)
+			; r (x)
+			  r (y)
+			  r (z)
+			; rax
+			  rdx
+			  cc
 		}
 	}
 	return hi, lo
@@ -68,17 +84,25 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 		panic(overflow_error)
 	}
 
-	mut quo := lo
-	mut rem := hi
+	mut quo := u64(0)
+	mut rem := u64(0)
 	$if msvc {
 		quo = C._udiv128(hi, lo, y, &rem)
 	} $else {
 		asm amd64 {
+			mov rax, lo
+			mov rdx, hi
 			div y
-			; +a (quo)
-			  +d (rem)
-			; r (y)
-			; cc
+			mov quo, rax
+			mov rem, rdx
+			; +r (quo)
+			  +r (rem)
+			; r (hi)
+			  r (lo)
+			  r (y)
+			; rax
+			  rdx
+			  cc
 		}
 	}
 	return quo, rem
