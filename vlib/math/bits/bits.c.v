@@ -154,6 +154,8 @@ fn C.__popcnt64(x u64) int
 pub fn ones_count_8(x u8) int {
 	$if msvc {
 		return C.__popcnt(x)
+	} $else $if tinyc && windows {
+		return ones_count_8_default(x)
 	} $else {
 		return C.__builtin_popcount(x)
 	}
@@ -164,6 +166,8 @@ pub fn ones_count_8(x u8) int {
 pub fn ones_count_16(x u16) int {
 	$if msvc {
 		return C.__popcnt(x)
+	} $else $if tinyc && windows {
+		return ones_count_16_default(x)
 	} $else {
 		return C.__builtin_popcount(x)
 	}
@@ -174,6 +178,8 @@ pub fn ones_count_16(x u16) int {
 pub fn ones_count_32(x u32) int {
 	$if msvc {
 		return C.__popcnt(x)
+	} $else $if tinyc && windows {
+		return ones_count_32_default(x)
 	} $else {
 		return C.__builtin_popcount(x)
 	}
@@ -184,6 +190,8 @@ pub fn ones_count_32(x u32) int {
 pub fn ones_count_64(x u64) int {
 	$if msvc {
 		return C.__popcnt64(x)
+	} $else $if tinyc && windows {
+		return ones_count_64_default(x)
 	} $else {
 		return C.__builtin_popcountll(x)
 	}
