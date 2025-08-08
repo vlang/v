@@ -536,10 +536,11 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		mut or_kind := ast.OrKind.absent
 		mut or_pos := p.tok.pos()
 		mut or_stmts := []ast.Stmt{}
+		mut or_scope := &ast.Scope(unsafe { nil })
 		if p.tok.kind == .key_orelse {
 			// `$method() or {}``
 			or_kind = .block
-			or_stmts, or_pos = p.or_block(.with_err_var)
+			or_stmts, or_pos, or_scope = p.or_block(.with_err_var)
 		}
 		return ast.ComptimeCall{
 			left:        left
@@ -554,6 +555,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 				stmts: or_stmts
 				kind:  or_kind
 				pos:   or_pos
+				scope: or_scope
 			}
 		}
 	}

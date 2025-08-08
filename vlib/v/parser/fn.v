@@ -74,10 +74,11 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	mut pos := first_pos.extend(last_pos)
 	mut or_stmts := []ast.Stmt{} // TODO: remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.pos()
+	mut or_scope := &ast.Scope(unsafe { nil })
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
 		or_kind = .block
-		or_stmts, or_pos = p.or_block(.with_err_var)
+		or_stmts, or_pos, or_scope = p.or_block(.with_err_var)
 	}
 	if p.tok.kind in [.question, .not] {
 		is_not := p.tok.kind == .not
@@ -108,6 +109,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 			stmts: or_stmts
 			kind:  or_kind
 			pos:   or_pos
+			scope: or_scope
 		}
 		scope:              p.scope
 		comments:           comments
@@ -347,8 +349,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			check_name = if language == .js { p.check_js_name() } else { p.check_name() }
 			name = check_name
 		}
-		if language == .v && !p.pref.translated && !p.is_translated
-			&& util.contains_capital(check_name) && !p.builtin_mod {
+		if language == .v && !p.pref.translated && !p.is_translated && !p.builtin_mod
+			&& util.contains_capital(check_name) {
 			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
 				name_pos)
 			return ast.FnDecl{
@@ -582,7 +584,7 @@ run them via `v file.v` instead',
 			.wasm { 'WASM.${name}' }
 			else { p.prepend_mod(name) }
 		}
-		if !p.pref.translated && language == .v {
+		if language == .v {
 			if existing := p.table.fns[name] {
 				if existing.name != '' {
 					if file_mode == .v && existing.file_mode != .v {
@@ -590,7 +592,7 @@ run them via `v file.v` instead',
 						if !p.pref.is_fmt {
 							name = p.prepend_mod('pure_v_but_overridden_by_${existing.file_mode}_${short_fn_name}')
 						}
-					} else {
+					} else if !p.pref.translated {
 						p.table.redefined_fns << name
 					}
 				}

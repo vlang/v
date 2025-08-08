@@ -729,6 +729,7 @@ fn (t Tree) enum_decl(node ast.EnumDecl) &Node {
 	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add_terse('attrs', t.array_node_attr(node.attrs))
 	obj.add_terse('typ', t.type_node(node.typ))
+	obj.add_terse('enum_typ', t.type_node(node.enum_typ))
 	return obj
 }
 
@@ -1645,6 +1646,7 @@ fn (t Tree) or_expr(node ast.OrExpr) &Node {
 	obj.add_terse('stmts', t.array_node_stmt(node.stmts))
 	obj.add_terse('kind', t.enum_node(node.kind))
 	obj.add('pos', t.pos(node.pos))
+	obj.add('scope', t.number_node(int(node.scope)))
 	return obj
 }
 

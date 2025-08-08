@@ -1012,6 +1012,9 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 					'arm32' { return if c.pref.arch == .arm32 { .eval } else { .skip } }
 					'rv64' { return if c.pref.arch == .rv64 { .eval } else { .skip } }
 					'rv32' { return if c.pref.arch == .rv32 { .eval } else { .skip } }
+					's390x' { return if c.pref.arch == .s390x { .eval } else { .skip } }
+					'ppc64le' { return if c.pref.arch == .ppc64le { .eval } else { .skip } }
+					'loongarch64' { return if c.pref.arch == .loongarch64 { .eval } else { .skip } }
 					else { return .unknown }
 				}
 			} else if cname in ast.valid_comptime_if_cpu_features {

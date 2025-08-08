@@ -1702,13 +1702,14 @@ pub fn (s string) capitalize() string {
 	if s.len == 0 {
 		return ''
 	}
-	s0 := s[0]
-	letter := s0.ascii_str()
-	uletter := letter.to_upper()
 	if s.len == 1 {
-		return uletter
+		return s[0].ascii_str().to_upper()
 	}
-	srest := s[1..]
+	r := s.runes()
+	letter := r[0].str()
+	uletter := letter.to_upper()
+	rrest := r[1..]
+	srest := rrest.string()
 	res := uletter + srest
 	return res
 }
@@ -1720,14 +1721,15 @@ pub fn (s string) uncapitalize() string {
 	if s.len == 0 {
 		return ''
 	}
-	s0 := s[0]
-	letter := s0.ascii_str()
-	uletter := letter.to_lower()
 	if s.len == 1 {
-		return uletter
+		return s[0].ascii_str().to_lower()
 	}
-	srest := s[1..]
-	res := uletter + srest
+	r := s.runes()
+	letter := r[0].str()
+	lletter := letter.to_lower()
+	rrest := r[1..]
+	srest := rrest.string()
+	res := lletter + srest
 	return res
 }
 

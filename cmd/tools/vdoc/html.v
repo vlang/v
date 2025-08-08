@@ -79,8 +79,10 @@ fn (vd &VDoc) render_search_index(out Output) {
 	}
 	js_search_index.writeln('];\n')
 	js_search_data.writeln('];\n')
+	final := js_search_index.str() + js_search_data.str()
 	out_file_path := os.join_path(out.path, 'search_index.js')
-	os.write_file(out_file_path, js_search_index.str() + js_search_data.str()) or { panic(err) }
+	println('Generating search_index.js of ${final.len:8} bytes in `${out_file_path} ...')
+	os.write_file(out_file_path, final) or { panic(err) }
 }
 
 fn (mut vd VDoc) render_static_html(out Output) {
@@ -115,7 +117,7 @@ fn (vd &VDoc) get_resource(name string, out Output) string {
 	} else {
 		output_path := os.join_path(out.path, name)
 		if !os.exists(output_path) {
-			println('Generating ${out.typ} in "${output_path}"')
+			println('Copying ${res.len:8} bytes from `${path}` to `${output_path}` ...')
 			os.write_file(output_path, res) or { panic(err) }
 		}
 		return name

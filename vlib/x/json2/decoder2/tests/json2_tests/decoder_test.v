@@ -73,7 +73,7 @@ fn test_raw_decode_array_invalid() {
 		if err is json.JsonDecodeError {
 			assert err.line == 1
 			assert err.character == 11
-			assert err.message == 'Syntax: EOF error: array not closed'
+			assert err.message == 'Syntax: unknown value kind'
 		}
 
 		return

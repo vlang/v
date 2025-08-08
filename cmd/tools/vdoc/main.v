@@ -42,6 +42,7 @@ mut:
 }
 
 fn main() {
+	unbuffer_stdout() // avoid the need for flush_stdout() calls
 	if os.args.len < 2 || '-h' in os.args || '-help' in os.args || '--help' in os.args
 		|| os.args[1..] == ['doc', 'help'] {
 		os.system('${os.quoted_path(vexe)} help doc')

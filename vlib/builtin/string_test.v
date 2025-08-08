@@ -1153,6 +1153,9 @@ fn test_runes_to_lower() {
 }
 
 fn test_capitalize() {
+	assert ''.capitalize() == ''
+	assert 'a'.capitalize() == 'A'
+	assert 'A'.capitalize() == 'A'
 	mut s := 'hello'
 	assert !s.is_capital()
 	assert s.capitalize() == 'Hello'
@@ -1172,6 +1175,20 @@ fn test_capitalize() {
 	assert s.is_capital()
 	assert s.capitalize() == 'Test it'
 	assert 'GameMission_t'.capitalize() == 'GameMission_t'
+	assert 'чорба'.capitalize() == 'Чорба'
+	assert 'ä ö å æ ã ø ô é ë'.title() == 'Ä Ö Å Æ Ã Ø Ô É Ë'
+}
+
+fn test_uncapitalize() {
+	assert ''.uncapitalize() == ''
+	assert 'a'.uncapitalize() == 'a'
+	assert 'A'.uncapitalize() == 'a'
+	assert 'hello'.uncapitalize() == 'hello'
+	assert 'Hello'.uncapitalize() == 'hello'
+	assert 'HELLO'.uncapitalize() == 'hELLO'
+	assert 'чорба'.uncapitalize() == 'чорба'
+	assert 'Чорба'.uncapitalize() == 'чорба'
+	assert 'ЧОРБА'.uncapitalize() == 'чОРБА'
 }
 
 fn test_title() {
@@ -1184,6 +1201,7 @@ fn test_title() {
 	s = 'Hello World'
 	assert s.is_title()
 	assert s.title() == 'Hello World'
+	assert 'пет корита ябълки'.title() == 'Пет Корита Ябълки'
 }
 
 fn test_for_loop() {
