@@ -492,7 +492,7 @@ fn (mut m map) cached_rehash(old_cap u32) {
 	old_metas := m.metas
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	if metasize < 0 {
-		dump(m)
+		eprintln(m)
 	}
 	m.metas = unsafe { &u32(vcalloc(metasize)) }
 	old_extra_metas := m.extra_metas
