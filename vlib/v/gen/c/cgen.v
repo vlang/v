@@ -3255,7 +3255,7 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		}
 
 		if !template.is_label {
-			g.write(';')
+			g.write('\\n\\t')
 		}
 		g.writeln('"')
 	}
