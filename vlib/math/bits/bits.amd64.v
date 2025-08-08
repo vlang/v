@@ -18,21 +18,18 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 	mut lo := u64(0)
 	$if msvc {
 		lo = C._umul128(x, y, &hi)
-	} $else {
+	} $else $if amd64 {
 		asm amd64 {
-			mov rax, x
-			mov rdx, y
 			mulq rdx
-			mov lo, rax
-			mov hi, rdx
-			; +r (lo)
-			  +r (hi)
-			; r (x)
-			  r (y)
-			; rax
-			  rdx
-			  cc
+			; =a (lo)
+			  =d (hi)
+			; a (x)
+			  d (y)
+			; cc
 		}
+	} $else {
+		// cross compile
+		hi, lo = mul_64_default(x, y)
 	}
 	return hi, lo
 }
@@ -48,24 +45,21 @@ pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
 		lo = C._umul128(x, y, &hi)
 		carry := C._addcarry_u64(0, lo, z, &lo)
 		hi += carry
-	} $else {
+	} $else $if amd64 {
 		asm amd64 {
-			mov rax, x
-			mov rdx, y
 			mulq rdx
 			addq rax, z
 			adcq rdx, 0
-			mov lo, rax
-			mov hi, rdx
-			; +r (lo)
-			  +r (hi)
-			; r (x)
-			  r (y)
+			; =a (lo)
+			  =d (hi)
+			; a (x)
+			  d (y)
 			  r (z)
-			; rax
-			  rdx
-			  cc
+			; cc
 		}
+	} $else {
+		// cross compile
+		hi, lo = mul_add_64_default(x, y, z)
 	}
 	return hi, lo
 }
@@ -88,22 +82,19 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	mut rem := u64(0)
 	$if msvc {
 		quo = C._udiv128(hi, lo, y, &rem)
-	} $else {
+	} $else $if amd64 {
 		asm amd64 {
-			mov rax, lo
-			mov rdx, hi
 			div y
-			mov quo, rax
-			mov rem, rdx
-			; +r (quo)
-			  +r (rem)
-			; r (hi)
-			  r (lo)
+			; =a (quo)
+			  =d (rem)
+			; d (hi)
+			  a (lo)
 			  r (y)
-			; rax
-			  rdx
-			  cc
+			; cc
 		}
+	} $else {
+		// cross compile
+		quo, rem = div_64_default(hi, lo, y1)
 	}
 	return quo, rem
 }
