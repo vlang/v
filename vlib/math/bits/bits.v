@@ -24,35 +24,69 @@ const m4 = u64(0x0000ffff0000ffff)
 
 // --- LeadingZeros ---
 // leading_zeros_8 returns the number of leading zero bits in x; the result is 8 for x == 0.
+@[inline]
 pub fn leading_zeros_8(x u8) int {
+	return leading_zeros_8_default(x)
+}
+
+@[inline]
+fn leading_zeros_8_default(x u8) int {
 	return 8 - len_8(x)
 }
 
 // leading_zeros_16 returns the number of leading zero bits in x; the result is 16 for x == 0.
+@[inline]
 pub fn leading_zeros_16(x u16) int {
+	return leading_zeros_16_default(x)
+}
+
+@[inline]
+fn leading_zeros_16_default(x u16) int {
 	return 16 - len_16(x)
 }
 
 // leading_zeros_32 returns the number of leading zero bits in x; the result is 32 for x == 0.
+@[inline]
 pub fn leading_zeros_32(x u32) int {
+	return leading_zeros_32_default(x)
+}
+
+@[inline]
+fn leading_zeros_32_default(x u32) int {
 	return 32 - len_32(x)
 }
 
 // leading_zeros_64 returns the number of leading zero bits in x; the result is 64 for x == 0.
+@[inline]
 pub fn leading_zeros_64(x u64) int {
+	return leading_zeros_64_default(x)
+}
+
+@[inline]
+fn leading_zeros_64_default(x u64) int {
 	return 64 - len_64(x)
 }
 
 // --- TrailingZeros ---
 // trailing_zeros_8 returns the number of trailing zero bits in x; the result is 8 for x == 0.
-@[direct_array_access]
+@[inline]
 pub fn trailing_zeros_8(x u8) int {
+	return trailing_zeros_8_default(x)
+}
+
+@[direct_array_access; inline]
+fn trailing_zeros_8_default(x u8) int {
 	return int(ntz_8_tab[x])
 }
 
 // trailing_zeros_16 returns the number of trailing zero bits in x; the result is 16 for x == 0.
-@[direct_array_access]
+@[inline]
 pub fn trailing_zeros_16(x u16) int {
+	return trailing_zeros_16_default(x)
+}
+
+@[direct_array_access; inline]
+fn trailing_zeros_16_default(x u16) int {
 	if x == 0 {
 		return 16
 	}
@@ -61,8 +95,13 @@ pub fn trailing_zeros_16(x u16) int {
 }
 
 // trailing_zeros_32 returns the number of trailing zero bits in x; the result is 32 for x == 0.
-@[direct_array_access]
+@[inline]
 pub fn trailing_zeros_32(x u32) int {
+	return trailing_zeros_32_default(x)
+}
+
+@[direct_array_access; inline]
+fn trailing_zeros_32_default(x u32) int {
 	if x == 0 {
 		return 32
 	}
@@ -71,8 +110,13 @@ pub fn trailing_zeros_32(x u32) int {
 }
 
 // trailing_zeros_64 returns the number of trailing zero bits in x; the result is 64 for x == 0.
-@[direct_array_access]
+@[inline]
 pub fn trailing_zeros_64(x u64) int {
+	return trailing_zeros_64_default(x)
+}
+
+@[direct_array_access; inline]
+fn trailing_zeros_64_default(x u64) int {
 	if x == 0 {
 		return 64
 	}
@@ -92,26 +136,46 @@ pub fn trailing_zeros_64(x u64) int {
 
 // --- OnesCount ---
 // ones_count_8 returns the number of one bits ("population count") in x.
-@[direct_array_access]
+@[inline]
 pub fn ones_count_8(x u8) int {
+	return ones_count_8_default(x)
+}
+
+@[direct_array_access; inline]
+fn ones_count_8_default(x u8) int {
 	return int(pop_8_tab[x])
 }
 
 // ones_count_16 returns the number of one bits ("population count") in x.
-@[direct_array_access]
+@[inline]
 pub fn ones_count_16(x u16) int {
+	return ones_count_16_default(x)
+}
+
+@[direct_array_access; inline]
+fn ones_count_16_default(x u16) int {
 	return int(pop_8_tab[x >> 8] + pop_8_tab[x & u16(0xff)])
 }
 
 // ones_count_32 returns the number of one bits ("population count") in x.
-@[direct_array_access]
+@[inline]
 pub fn ones_count_32(x u32) int {
+	return ones_count_32_default(x)
+}
+
+@[direct_array_access; inline]
+fn ones_count_32_default(x u32) int {
 	return int(pop_8_tab[x >> 24] + pop_8_tab[(x >> 16) & 0xff] + pop_8_tab[(x >> 8) & 0xff] +
 		pop_8_tab[x & u32(0xff)])
 }
 
 // ones_count_64 returns the number of one bits ("population count") in x.
+@[inline]
 pub fn ones_count_64(x u64) int {
+	return ones_count_64_default(x)
+}
+
+fn ones_count_64_default(x u64) int {
 	// Implementation: Parallel summing of adjacent bits.
 	// See "Hacker's Delight", Chap. 5: Counting Bits.
 	// The following pattern shows the general approach:
@@ -376,7 +440,13 @@ const divide_error = 'Divide Error'
 // half returned in lo.
 //
 // This function's execution time does not depend on the inputs.
+@[inline]
 pub fn mul_32(x u32, y u32) (u32, u32) {
+	return mul_32_default(x, y)
+}
+
+@[inline]
+fn mul_32_default(x u32, y u32) (u32, u32) {
 	tmp := u64(x) * u64(y)
 	hi := u32(tmp >> 32)
 	lo := u32(tmp)
@@ -388,7 +458,12 @@ pub fn mul_32(x u32, y u32) (u32, u32) {
 // half returned in lo.
 //
 // This function's execution time does not depend on the inputs.
+@[inline]
 pub fn mul_64(x u64, y u64) (u64, u64) {
+	return mul_64_default(x, y)
+}
+
+fn mul_64_default(x u64, y u64) (u64, u64) {
 	x0 := x & mask32
 	x1 := x >> 32
 	y0 := y & mask32
@@ -408,6 +483,11 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 // half returned in lo.
 @[inline]
 pub fn mul_add_32(x u32, y u32, z u32) (u32, u32) {
+	return mul_add_32_default(x, y, z)
+}
+
+@[inline]
+fn mul_add_32_default(x u32, y u32, z u32) (u32, u32) {
 	tmp := u64(x) * u64(y) + u64(z)
 	hi := u32(tmp >> 32)
 	lo := u32(tmp)
@@ -419,6 +499,11 @@ pub fn mul_add_32(x u32, y u32, z u32) (u32, u32) {
 // half returned in lo.
 @[inline]
 pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
+	return mul_add_64_default(x, y, z)
+}
+
+@[inline]
+fn mul_add_64_default(x u64, y u64, z u64) (u64, u64) {
 	h, l := mul_64(x, y)
 	lo := l + z
 	hi := h + u64(lo < l)
@@ -430,7 +515,12 @@ pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
 // quo = (hi, lo)/y, rem = (hi, lo)%y with the dividend bits' upper
 // half in parameter hi and the lower half in parameter lo.
 // div_32 panics for y == 0 (division by zero) or y <= hi (quotient overflow).
+@[inline]
 pub fn div_32(hi u32, lo u32, y u32) (u32, u32) {
+	return div_32_default(hi, lo, y)
+}
+
+fn div_32_default(hi u32, lo u32, y u32) (u32, u32) {
 	if y != 0 && y <= hi {
 		panic(overflow_error)
 	}
@@ -444,7 +534,12 @@ pub fn div_32(hi u32, lo u32, y u32) (u32, u32) {
 // quo = (hi, lo)/y, rem = (hi, lo)%y with the dividend bits' upper
 // half in parameter hi and the lower half in parameter lo.
 // div_64 panics for y == 0 (division by zero) or y <= hi (quotient overflow).
+@[inline]
 pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
+	return div_64_default(hi, lo, y1)
+}
+
+fn div_64_default(hi u64, lo u64, y1 u64) (u64, u64) {
 	mut y := y1
 	if y == 0 {
 		panic(overflow_error)
