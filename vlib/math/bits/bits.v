@@ -389,112 +389,39 @@ pub fn mul_32(x u32, y u32) (u32, u32) {
 //
 // This function's execution time does not depend on the inputs.
 pub fn mul_64(x u64, y u64) (u64, u64) {
-	mut hi := u64(0)
-	mut lo := u64(0)
-	$if amd64 && !msvc && !js {
-		asm amd64 {
-			mov rax, x
-			mov rdx, y
-			mulq rdx
-			mov hi, rdx
-			mov lo, rax
-			; +r (hi)
-			  +r (lo)
-			; r (x)
-			  r (y)
-			; rax
-			  rdx
-			  cc
-		}
-	} $else $if arm64 && !js {
-		asm arm64 {
-			mov x, x0
-			mov y, x1
-			mul x0, x1, x2
-			umulh x0, x1, x3
-			mov x3, hi
-			mov x2, lo
-			; +r (hi)
-			  +r (lo)
-			; r (x)
-			  r (y)
-			; x0
-			  x1
-			  x2
-			  x3
-		}
-	} $else {
-		// fallback to default
-		x0 := x & mask32
-		x1 := x >> 32
-		y0 := y & mask32
-		y1 := y >> 32
-		w0 := x0 * y0
-		t := x1 * y0 + (w0 >> 32)
-		mut w1 := t & mask32
-		w2 := t >> 32
-		w1 += x0 * y1
-		hi = x1 * y1 + w2 + (w1 >> 32)
-		lo = x * y
-	}
+	x0 := x & mask32
+	x1 := x >> 32
+	y0 := y & mask32
+	y1 := y >> 32
+	w0 := x0 * y0
+	t := x1 * y0 + (w0 >> 32)
+	mut w1 := t & mask32
+	w2 := t >> 32
+	w1 += x0 * y1
+	hi := x1 * y1 + w2 + (w1 >> 32)
+	lo := x * y
 	return hi, lo
 }
 
-// mul_add_64 caculate x*y+z
+// mul_add_32 returns the 64-bit result of x * y + z: (hi, lo) = x * y + z
+// with the result bits' upper half returned in hi and the lower
+// half returned in lo.
+@[inline]
+pub fn mul_add_32(x u32, y u32, z u32) (u32, u32) {
+	tmp := u64(x) * u64(y) + u64(z)
+	hi := u32(tmp >> 32)
+	lo := u32(tmp)
+	return hi, lo
+}
+
+// mul_add_64 returns the 128-bit result of x * y + z: (hi, lo) = x * y + z
+// with the result bits' upper half returned in hi and the lower
+// half returned in lo.
 @[inline]
 pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
-	mut hi := u64(0)
-	mut lo := u64(0)
-	$if amd64 && !msvc && !windows && !js {
-		// TCC on windows error "asm constraint 3 ('r') could not be satisfied"
-		asm amd64 {
-			mov rax, x
-			mov rdx, y
-			mov rsi, z
-			mulq rdx
-			addq rax, rsi
-			adcq rdx, 0
-			mov hi, rdx
-			mov lo, rax
-			; +r (hi)
-			  +r (lo)
-			; r (x)
-			  r (y)
-			  r (z)
-			; rax
-			  rdx
-			  rsi
-			  cc
-		}
-	} $else $if arm64 && !js {
-		asm arm64 {
-			mov x, x0
-			mov y, x1
-			mov z, x2
-			mul x0, x1, x3
-			umulh x0, x1, x4
-			adds x3, x2, x1
-			adc xzr, x4, x0
-			mov x0, hi
-			mov x1, lo
-			; +r (hi)
-			  +r (lo)
-			; r (x)
-			  r (y)
-			  r (z)
-			; x0
-			  x1
-			  x2
-			  x3
-			  x4
-		}
-	} $else {
-		// fallback to default
-		// use mul_64()
-		h, l := mul_64(x, y)
-		lo = l + z
-		hi = h + u64(lo < l)
-	}
+	h, l := mul_64(x, y)
+	lo := l + z
+	hi := h + u64(lo < l)
 	return hi, lo
 }
 
@@ -525,78 +452,55 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	if y <= hi {
 		panic(overflow_error)
 	}
-
-	$if amd64 && !msvc && !windows && !js {
-		// TCC on windows error "asm constraint 4 ('r') could not be satisfied"
-		mut quo := u64(0)
-		mut rem := u64(0)
-		asm amd64 {
-			mov rdx, hi
-			mov rax, lo
-			div y
-			mov quo, rax
-			mov rem, rdx
-			; +r (quo)
-			  +r (rem)
-			; r (hi)
-			  r (lo)
-			  r (y)
-			; rax
-			  rdx
-			  cc
-		}
-		return quo, rem
-	} $else {
-		s := u32(leading_zeros_64(y))
-		y <<= s
-		yn1 := y >> 32
-		yn0 := y & mask32
-		ss1 := (hi << s)
-		xxx := 64 - s
-		mut ss2 := lo >> xxx
-		if xxx == 64 {
-			// in Go, shifting right a u64 number, 64 times produces 0 *always*.
-			// See https://go.dev/ref/spec
-			// > The shift operators implement arithmetic shifts if the left operand
-			// > is a signed integer and logical shifts if it is an unsigned integer.
-			// > There is no upper limit on the shift count.
-			// > Shifts behave as if the left operand is shifted n times by 1 for a shift count of n.
-			// > As a result, x << 1 is the same as x*2 and x >> 1 is the same as x/2
-			// > but truncated towards negative infinity.
-			//
-			// In V, that is currently left to whatever C is doing, which is apparently a NOP.
-			// This function was a direct port of https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=512,
-			// so we have to use the Go behaviour.
-			// TODO: reconsider whether we need to adopt it for our shift ops, or just use function wrappers that do it.
-			ss2 = 0
-		}
-		un32 := ss1 | ss2
-		un10 := lo << s
-		un1 := un10 >> 32
-		un0 := un10 & mask32
-		mut q1 := un32 / yn1
-		mut rhat := un32 - (q1 * yn1)
-		for q1 >= two32 || (q1 * yn0) > ((two32 * rhat) + un1) {
-			q1--
-			rhat += yn1
-			if rhat >= two32 {
-				break
-			}
-		}
-		un21 := (un32 * two32) + (un1 - (q1 * y))
-		mut q0 := un21 / yn1
-		rhat = un21 - q0 * yn1
-		for q0 >= two32 || (q0 * yn0) > ((two32 * rhat) + un0) {
-			q0--
-			rhat += yn1
-			if rhat >= two32 {
-				break
-			}
-		}
-		qq := ((q1 * two32) + q0)
-		rr := ((un21 * two32) + un0 - (q0 * y)) >> s
-		return qq, rr
+	s := u32(leading_zeros_64(y))
+	y <<= s
+	yn1 := y >> 32
+	yn0 := y & mask32
+	ss1 := (hi << s)
+	xxx := 64 - s
+	mut ss2 := lo >> xxx
+	if xxx == 64 {
+		// in Go, shifting right a u64 number, 64 times produces 0 *always*.
+		// See https://go.dev/ref/spec
+		// > The shift operators implement arithmetic shifts if the left operand
+		// > is a signed integer and logical shifts if it is an unsigned integer.
+		// > There is no upper limit on the shift count.
+		// > Shifts behave as if the left operand is shifted n times by 1 for a shift count of n.
+		// > As a result, x << 1 is the same as x*2 and x >> 1 is the same as x/2
+		// > but truncated towards negative infinity.
+		//
+		// In V, that is currently left to whatever C is doing, which is apparently a NOP.
+		// This function was a direct port of https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=512,
+		// so we have to use the Go behaviour.
+		// TODO: reconsider whether we need to adopt it for our shift ops, or just use function wrappers that do it.
+		ss2 = 0
 	}
+	un32 := ss1 | ss2
+	un10 := lo << s
+	un1 := un10 >> 32
+	un0 := un10 & mask32
+	mut q1 := un32 / yn1
+	mut rhat := un32 - (q1 * yn1)
+	for q1 >= two32 || (q1 * yn0) > ((two32 * rhat) + un1) {
+		q1--
+		rhat += yn1
+		if rhat >= two32 {
+			break
+		}
+	}
+	un21 := (un32 * two32) + (un1 - (q1 * y))
+	mut q0 := un21 / yn1
+	rhat = un21 - q0 * yn1
+	for q0 >= two32 || (q0 * yn0) > ((two32 * rhat) + un0) {
+		q0--
+		rhat += yn1
+		if rhat >= two32 {
+			break
+		}
+	}
+	qq := ((q1 * two32) + q0)
+	rr := ((un21 * two32) + un0 - (q0 * y)) >> s
+	return qq, rr
 }
 
 // rem_32 returns the remainder of (hi, lo) divided by y. Rem32 panics
