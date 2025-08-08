@@ -44,5 +44,5 @@ fn test_stmt_separator() {
 	os.rm(v_file)!
 	os.rm(genexe_file)!
 	os.rm(c_file)!
-	assert content.contains('addq %[z], %%rax\\n\\t')
+	assert content.contains(r'addq %[z], %%rax\n\t')
 }
