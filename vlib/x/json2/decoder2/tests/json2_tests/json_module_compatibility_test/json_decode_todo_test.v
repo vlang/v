@@ -90,7 +90,7 @@ fn test_decode_error_message_should_have_enough_context_in_the_middle() {
 		if err is json.JsonDecodeError {
 			assert err.line == 1
 			assert err.character == 40
-			assert err.message == 'Syntax: invalid value. Unexpected character after string_ end'
+			assert err.message == 'Syntax: invalid value. Unexpected character after string end'
 		}
 		return
 	}

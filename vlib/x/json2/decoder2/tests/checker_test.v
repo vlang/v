@@ -20,7 +20,7 @@ fn test_check_if_json_match() {
 		if err is json.JsonDecodeError {
 			assert err.line == 1
 			assert err.character == 1
-			assert err.message == 'Data: Expected object, but got string_'
+			assert err.message == 'Data: Expected object, but got string'
 		}
 		has_error = true
 	}

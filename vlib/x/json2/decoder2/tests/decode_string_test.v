@@ -13,13 +13,13 @@ fn test_json_string() {
 	assert json.decode[string]('""')! == ''
 }
 
-fn test_json_string_emoji() {
+fn test_json_stringemoji() {
 	assert json.decode[string](r'"🐈"')! == '🐈'
 	assert json.decode[string](r'"💀"')! == '💀'
 	assert json.decode[string](r'"🐈💀"')! == '🐈💀'
 }
 
-fn test_json_string_non_ascii() {
+fn test_json_stringnon_ascii() {
 	assert json.decode[string](r'"\u3072\u3089\u304c\u306a"')! == 'ひらがな'
 	assert json.decode[string]('"a\\u3072b\\u3089c\\u304cd\\u306ae fgh"')! == 'aひbらcがdなe fgh'
 	assert json.decode[string]('"\\u3072\\u3089\\u304c\\u306a"')! == 'ひらがな'
@@ -30,7 +30,7 @@ fn test_utf8_strings_are_not_modified() {
 	assert json.decode[string]('"Schilddrüsenerkrankungen"')! == 'Schilddrüsenerkrankungen'
 }
 
-fn test_json_string_invalid_escapes() {
+fn test_json_stringinvalid_escapes() {
 	mut has_error := false
 
 	json.decode[string](r'"\x"') or {
@@ -57,7 +57,7 @@ fn test_json_string_invalid_escapes() {
 	assert has_error, 'Expected error'
 }
 
-fn test_json_string_whitespace() {
+fn test_json_stringwhitespace() {
 	// Test strings with whitespace
 	assert json.decode[string]('"   "')! == '   '
 	assert json.decode[string]('"\t\n\r"')! == '\t\n\r'

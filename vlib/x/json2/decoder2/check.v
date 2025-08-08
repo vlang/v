@@ -18,7 +18,7 @@ fn (mut checker Decoder) check_json_format() ! {
 		`"` {
 			checker.values_info.push(ValueInfo{
 				position:   checker.checker_idx
-				value_kind: .string_
+				value_kind: .string
 			})
 
 			actual_value_info_pointer = checker.values_info.last()

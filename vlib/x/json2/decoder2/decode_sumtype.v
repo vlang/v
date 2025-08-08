@@ -42,7 +42,7 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &No
 	}
 
 	match current_node.value.value_kind {
-		.string_ {
+		.string {
 			$if element is string {
 				return true
 			} $else $if element is time.Time {
@@ -220,7 +220,7 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 	mut failed_struct := false
 
 	match value_info.value_kind {
-		.string_ {
+		.string {
 			$for v in val.variants {
 				$if v.typ is string {
 					val = T(v)

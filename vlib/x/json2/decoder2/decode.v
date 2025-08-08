@@ -126,7 +126,7 @@ fn (list &LinkedList[T]) free() {
 enum ValueKind {
 	array
 	object
-	string_
+	string
 	number
 	boolean
 	null
@@ -316,7 +316,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if val is StringDecoder {
 		struct_info := decoder.current_node.value
 
-		if struct_info.value_kind == .string_ {
+		if struct_info.value_kind == .string {
 			val.from_json_string(decoder.json[struct_info.position + 1..struct_info.position +
 				struct_info.length - 1]) or {
 				decoder.decode_error('${typeof(*val).name}: ${err.msg()}')!
@@ -368,74 +368,74 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		}
 	}
 	$if T.unaliased_typ is string {
-		string_info := decoder.current_node.value
+		stringinfo := decoder.current_node.value
 
-		if string_info.value_kind == .string_ {
-			mut string_buffer := []u8{cap: string_info.length} // might be too long but most json strings don't contain many escape characters anyways
+		if stringinfo.value_kind == .string {
+			mut stringbuffer := []u8{cap: stringinfo.length} // might be too long but most json strings don't contain many escape characters anyways
 
 			mut buffer_index := 1
-			mut string_index := 1
+			mut stringindex := 1
 
-			for string_index < string_info.length - 1 {
-				current_byte := decoder.json[string_info.position + string_index]
+			for stringindex < stringinfo.length - 1 {
+				current_byte := decoder.json[stringinfo.position + stringindex]
 
 				if current_byte == `\\` {
 					// push all characters up to this point
 					unsafe {
-						string_buffer.push_many(decoder.json.str + string_info.position +
-							buffer_index, string_index - buffer_index)
+						stringbuffer.push_many(decoder.json.str + stringinfo.position + buffer_index,
+							stringindex - buffer_index)
 					}
 
-					string_index++
+					stringindex++
 
-					escaped_char := decoder.json[string_info.position + string_index]
+					escaped_char := decoder.json[stringinfo.position + stringindex]
 
-					string_index++
+					stringindex++
 
 					match escaped_char {
 						`/`, `"`, `\\` {
-							string_buffer << escaped_char
+							stringbuffer << escaped_char
 						}
 						`b` {
-							string_buffer << `\b`
+							stringbuffer << `\b`
 						}
 						`f` {
-							string_buffer << `\f`
+							stringbuffer << `\f`
 						}
 						`n` {
-							string_buffer << `\n`
+							stringbuffer << `\n`
 						}
 						`r` {
-							string_buffer << `\r`
+							stringbuffer << `\r`
 						}
 						`t` {
-							string_buffer << `\t`
+							stringbuffer << `\t`
 						}
 						`u` {
-							string_buffer << rune(strconv.parse_uint(decoder.json[
-								string_info.position + string_index..string_info.position +
-								string_index + 4], 16, 32)!).bytes()
+							stringbuffer << rune(strconv.parse_uint(decoder.json[
+								stringinfo.position + stringindex..stringinfo.position +
+								stringindex + 4], 16, 32)!).bytes()
 
-							string_index += 4
+							stringindex += 4
 						}
 						else {} // has already been checked
 					}
 
-					buffer_index = string_index
+					buffer_index = stringindex
 				} else {
-					string_index++
+					stringindex++
 				}
 			}
 
 			// push the rest
 			unsafe {
-				string_buffer.push_many(decoder.json.str + string_info.position + buffer_index,
-					string_index - buffer_index)
+				stringbuffer.push_many(decoder.json.str + stringinfo.position + buffer_index,
+					stringindex - buffer_index)
 			}
 
-			val = string_buffer.bytestr()
+			val = stringbuffer.bytestr()
 		} else {
-			return decoder.decode_error('Expected string, but got ${string_info.value_kind}')
+			return decoder.decode_error('Expected string, but got ${stringinfo.value_kind}')
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
@@ -542,7 +542,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 								current_field_info = current_field_info.next
 								continue
 							}
-							.string_ {
+							.string {
 								if decoder.current_node.next.value.length == 2 {
 									current_field_info = current_field_info.next
 									continue
@@ -705,7 +705,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 		if value_info.value_kind == .number {
 			unsafe { decoder.decode_number(&val)! }
-		} else if value_info.value_kind == .string_ {
+		} else if value_info.value_kind == .string {
 			// recheck if string contains number
 			decoder.checker_idx = value_info.position + 1
 			decoder.check_number()!

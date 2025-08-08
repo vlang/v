@@ -66,7 +66,7 @@ fn test_struct_with_bool_to_map() {
 	assert array_of_map.str() == '[{"val":true},{"val":false}]'
 }
 
-fn test_struct_with_string_to_map() {
+fn test_struct_with_stringto_map() {
 	array_of_struct := [StructType[string]{
 		val: 'true'
 	}, StructType[string]{

@@ -232,11 +232,11 @@ fn test_alias() {
 }
 
 fn test_pointer() {
-	mut string_initialized_with_reference := ''
+	mut stringinitialized_with_reference := ''
 	assert json.encode(StructTypePointer[string]{ val: unsafe { nil } }) == '{}'
-	assert json.encode(StructTypePointer[string]{ val: &string_initialized_with_reference }) == '{"val":""}'
-	string_initialized_with_reference = 'a'
-	assert json.encode(StructTypePointer[string]{ val: &string_initialized_with_reference }) == '{"val":"a"}'
+	assert json.encode(StructTypePointer[string]{ val: &stringinitialized_with_reference }) == '{"val":""}'
+	stringinitialized_with_reference = 'a'
+	assert json.encode(StructTypePointer[string]{ val: &stringinitialized_with_reference }) == '{"val":"a"}'
 
 	mut bool_initialized_with_reference := false
 	assert json.encode(StructTypePointer[bool]{ val: unsafe { nil } }) == '{}'

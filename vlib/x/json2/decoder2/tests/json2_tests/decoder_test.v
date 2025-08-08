@@ -6,7 +6,7 @@ fn test_raw_decode_string() {
 	assert str.str() == 'Hello!'
 }
 
-fn test_raw_decode_string_escape() {
+fn test_raw_decode_stringescape() {
 	jstr := json.decode[json2.Any]('"\u001b"')!
 	str := jstr.str()
 	assert str.len == 1
@@ -37,7 +37,7 @@ fn test_raw_decode_map() {
 	assert mp['age'] or { 0 }.int() == 20
 }
 
-fn test_raw_decode_string_with_dollarsign() {
+fn test_raw_decode_stringwith_dollarsign() {
 	str := json.decode[json2.Any](r'"Hello $world"')!
 	assert str.str() == r'Hello $world'
 }

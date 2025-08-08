@@ -5,7 +5,7 @@ fn test_raw_decode_string() {
 	assert str.str() == 'Hello!'
 }
 
-fn test_raw_decode_string_escape() {
+fn test_raw_decode_stringescape() {
 	jstr := json.raw_decode('"\\u001b"')!
 	str := jstr.str()
 	assert str.len == 1
@@ -49,7 +49,7 @@ fn test_raw_decode_invalid() {
 	assert false
 }
 
-fn test_raw_decode_string_with_dollarsign() {
+fn test_raw_decode_stringwith_dollarsign() {
 	str := json.raw_decode(r'"Hello $world"')!
 	assert str.str() == r'Hello $world'
 }
