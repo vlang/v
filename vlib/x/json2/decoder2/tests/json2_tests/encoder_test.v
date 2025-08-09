@@ -8,7 +8,7 @@ mut:
 	val T
 }
 
-fn test_json_stringcharacters() {
+fn test_json_string_characters() {
 	assert json2.encode([u8(`/`)].bytestr()).bytes() == r'"\/"'.bytes()
 	assert json2.encode([u8(`\\`)].bytestr()).bytes() == r'"\\"'.bytes()
 	assert json2.encode([u8(`"`)].bytestr()).bytes() == r'"\""'.bytes()
@@ -53,7 +53,7 @@ fn test_json_string() {
 	assert i64integer.json_str() == '-17'
 }
 
-fn test_json_stringemoji() {
+fn test_json_string_emoji() {
 	text := json2.Any('🐈')
 	assert text.json_str() == r'"🐈"'
 	assert json2.Any('💀').json_str() == r'"💀"'
@@ -63,7 +63,7 @@ fn test_json_stringemoji() {
 	assert json2.encode('🐈💀') == r'"🐈💀"'
 }
 
-fn test_json_stringnon_ascii() {
+fn test_json_string_non_ascii() {
 	text := json2.Any('ひらがな')
 	assert text.json_str() == r'"\u3072\u3089\u304c\u306a"'
 

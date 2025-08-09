@@ -368,52 +368,52 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		}
 	}
 	$if T.unaliased_typ is string {
-		stringinfo := decoder.current_node.value
+		string_info := decoder.current_node.value
 
-		if stringinfo.value_kind == .string {
-			mut stringbuffer := []u8{cap: stringinfo.length} // might be too long but most json strings don't contain many escape characters anyways
+		if string_info.value_kind == .string {
+			mut string_buffer := []u8{cap: string_info.length} // might be too long but most json strings don't contain many escape characters anyways
 
 			mut buffer_index := 1
 			mut stringindex := 1
 
-			for stringindex < stringinfo.length - 1 {
-				current_byte := decoder.json[stringinfo.position + stringindex]
+			for stringindex < string_info.length - 1 {
+				current_byte := decoder.json[string_info.position + stringindex]
 
 				if current_byte == `\\` {
 					// push all characters up to this point
 					unsafe {
-						stringbuffer.push_many(decoder.json.str + stringinfo.position + buffer_index,
-							stringindex - buffer_index)
+						string_buffer.push_many(decoder.json.str + string_info.position +
+							buffer_index, stringindex - buffer_index)
 					}
 
 					stringindex++
 
-					escaped_char := decoder.json[stringinfo.position + stringindex]
+					escaped_char := decoder.json[string_info.position + stringindex]
 
 					stringindex++
 
 					match escaped_char {
 						`/`, `"`, `\\` {
-							stringbuffer << escaped_char
+							string_buffer << escaped_char
 						}
 						`b` {
-							stringbuffer << `\b`
+							string_buffer << `\b`
 						}
 						`f` {
-							stringbuffer << `\f`
+							string_buffer << `\f`
 						}
 						`n` {
-							stringbuffer << `\n`
+							string_buffer << `\n`
 						}
 						`r` {
-							stringbuffer << `\r`
+							string_buffer << `\r`
 						}
 						`t` {
-							stringbuffer << `\t`
+							string_buffer << `\t`
 						}
 						`u` {
-							stringbuffer << rune(strconv.parse_uint(decoder.json[
-								stringinfo.position + stringindex..stringinfo.position +
+							string_buffer << rune(strconv.parse_uint(decoder.json[
+								string_info.position + stringindex..string_info.position +
 								stringindex + 4], 16, 32)!).bytes()
 
 							stringindex += 4
@@ -429,13 +429,13 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 			// push the rest
 			unsafe {
-				stringbuffer.push_many(decoder.json.str + stringinfo.position + buffer_index,
+				string_buffer.push_many(decoder.json.str + string_info.position + buffer_index,
 					stringindex - buffer_index)
 			}
 
-			val = stringbuffer.bytestr()
+			val = string_buffer.bytestr()
 		} else {
-			return decoder.decode_error('Expected string, but got ${stringinfo.value_kind}')
+			return decoder.decode_error('Expected string, but got ${string_info.value_kind}')
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
