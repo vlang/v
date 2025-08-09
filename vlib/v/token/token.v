@@ -121,6 +121,7 @@ pub enum Kind {
 	key_select
 	key_like
 	key_ilike
+	key_alignof
 	key_sizeof
 	key_isreftype
 	key_likely
@@ -300,6 +301,7 @@ fn build_token_str() []string {
 	s[Kind.key_asm] = 'asm'
 	s[Kind.key_return] = 'return'
 	s[Kind.key_module] = 'module'
+	s[Kind.key_alignof] = 'alignof'
 	s[Kind.key_sizeof] = 'sizeof'
 	s[Kind.key_isreftype] = 'isreftype'
 	s[Kind.key_likely] = '_likely_'
@@ -648,6 +650,7 @@ pub fn kind_to_string(k Kind) string {
 		.key_select { 'key_select' }
 		.key_like { 'key_like' }
 		.key_ilike { 'key_ilike' }
+		.key_alignof { 'key_alignof' }
 		.key_sizeof { 'key_sizeof' }
 		.key_isreftype { 'key_isreftype' }
 		.key_likely { 'key_likely' }
