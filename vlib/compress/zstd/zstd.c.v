@@ -419,6 +419,9 @@ pub:
 pub fn compress(data []u8, params CompressParams) ![]u8 {
 	dst_capacity := C.ZSTD_compressBound(data.len)
 	check_error(dst_capacity)!
+	if u64(int(dst_capacity)) != dst_capacity {
+		return error('dst_capacity is bigger than `int_max`, use stream mode instead.')
+	}
 	mut dst := []u8{len: int(dst_capacity)}
 	mut cctx := new_cctx(params)!
 	defer {
@@ -446,6 +449,9 @@ pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 		return error('An error occurred (e.g. invalid magic number, srcSize too small)')
 	} else if dst_capacity == 0 {
 		return error('The frame is valid but empty')
+	}
+	if u64(int(dst_capacity)) != dst_capacity {
+		return error('dst_capacity is bigger than `int_max`, use stream mode instead.')
 	}
 	mut dst := []u8{len: int(dst_capacity)}
 	decompressed_size := C.ZSTD_decompress(dst.data, dst.len, data.data, data.len)

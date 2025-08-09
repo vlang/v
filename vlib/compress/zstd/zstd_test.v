@@ -359,3 +359,12 @@ fn test_zstd_with_corruption7() {
 	compressed[compressed.len - 1] += 1
 	assert_decompress_error(compressed, "Restored data doesn't match checksum")!
 }
+
+fn test_zstd_with_superlargefile_buffer_overflow() {
+	superlargefile := os.read_bytes(s('superlargefile.txt.zst'))!
+	decompress(superlargefile) or {
+		assert err.msg() == 'dst_capacity is bigger than `int_max`, use stream mode instead.'
+		return
+	}
+	assert false
+}
