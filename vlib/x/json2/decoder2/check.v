@@ -1,14 +1,28 @@
 module decoder2
 
+// increment checks eof and increments checker by one
+@[inline]
+fn (mut checker Decoder) increment(message string) ! {
+	if checker.checker_idx + 1 == checker.json.len {
+		if message == '' {
+			return Error{}
+		}
+		checker.checker_error('EOF: ' + message)!
+	}
+	checker.checker_idx++
+}
+
+// skip_whitespace checks eof and increments checker until next non whitespace character
+@[inline]
+fn (mut checker Decoder) skip_whitespace(message string) ! {
+	for checker.json[checker.checker_idx] in whitespace_chars {
+		checker.increment(message)!
+	}
+}
+
 // check_json_format checks if the JSON string is valid and updates the decoder state.
 fn (mut checker Decoder) check_json_format() ! {
-	// skip whitespace
-	for checker.json[checker.checker_idx] in whitespace_chars {
-		if checker.checker_idx == checker.json.len {
-			break
-		}
-		checker.checker_idx++
-	}
+	checker.skip_whitespace('empty json')!
 
 	start_idx_position := checker.checker_idx
 
@@ -18,7 +32,7 @@ fn (mut checker Decoder) check_json_format() ! {
 		`"` {
 			checker.values_info.push(ValueInfo{
 				position:   checker.checker_idx
-				value_kind: .string_
+				value_kind: .string
 			})
 
 			actual_value_info_pointer = checker.values_info.last()
@@ -82,54 +96,36 @@ fn (mut checker Decoder) check_json_format() ! {
 
 	actual_value_info_pointer.length = checker.checker_idx + 1 - start_idx_position
 
-	if checker.checker_idx < checker.json.len {
-		checker.checker_idx++
-	}
+	checker.increment('') or { return }
+	checker.skip_whitespace('') or { return }
 
-	for checker.checker_idx < checker.json.len
-		&& checker.json[checker.checker_idx] !in [`,`, `:`, `}`, `]`] {
-		// get trash characters after the value
-		if checker.json[checker.checker_idx] !in whitespace_chars {
-			checker.checker_error('invalid value. Unexpected character after ${actual_value_info_pointer.value_kind} end')!
-		} else {
-			// whitespace
-		}
-		checker.checker_idx++
+	if checker.json[checker.checker_idx] !in [`,`, `:`, `}`, `]`] {
+		checker.checker_error('invalid value. Unexpected character after ${actual_value_info_pointer.value_kind} end')!
 	}
 }
 
 fn (mut checker Decoder) check_string() ! {
-	// check if the JSON string is a valid string
-	if checker.checker_idx == checker.json.len {
-		checker.checker_idx--
-		return checker.checker_error('EOF error: string not closed')
-	}
-
-	checker.checker_idx++
+	checker.increment('string not closed')!
 
 	// check if the JSON string is a valid escape sequence
 	for checker.json[checker.checker_idx] != `"` {
 		if checker.json[checker.checker_idx] == `\\` {
-			if checker.checker_idx + 1 >= checker.json.len - 1 {
-				return checker.checker_error('invalid escape sequence')
-			}
-			escaped_char := checker.json[checker.checker_idx + 1]
+			checker.increment('invalid escape sequence')!
+			escaped_char := checker.json[checker.checker_idx]
 			match escaped_char {
-				`/`, `b`, `f`, `n`, `r`, `t`, `"`, `\\` {
-					checker.checker_idx++ // make sure escaped quotation marks are skipped
-				}
+				`/`, `b`, `f`, `n`, `r`, `t`, `"`, `\\` {}
 				`u` {
 					// check if the JSON string is a valid unicode escape sequence
-					escaped_char_last_index := checker.checker_idx + 5
+					escaped_char_last_index := checker.checker_idx + 4
 
 					if escaped_char_last_index < checker.json.len {
 						// 2 bytes for the unicode escape sequence `\u`
-						checker.checker_idx += 2
+						checker.increment('invalid escape sequence')!
 
 						for checker.checker_idx < escaped_char_last_index {
 							match checker.json[checker.checker_idx] {
 								`0`...`9`, `a`...`f`, `A`...`F` {
-									checker.checker_idx++
+									checker.increment('invalid unicode escape sequence')!
 								}
 								else {
 									return checker.checker_error('invalid unicode escape sequence')
@@ -138,7 +134,7 @@ fn (mut checker Decoder) check_string() ! {
 						}
 						continue
 					} else {
-						return checker.checker_error('short unicode escape sequence ${checker.json[checker.checker_idx..escaped_char_last_index]}')
+						return checker.checker_error('short unicode escape sequence ${checker.json[checker.checker_idx - 1..checker.json.len - 1]}')
 					}
 				}
 				else {
@@ -146,80 +142,56 @@ fn (mut checker Decoder) check_string() ! {
 				}
 			}
 		}
-		checker.checker_idx++
+		checker.increment('string not closed')!
 	}
 }
 
 fn (mut checker Decoder) check_number() ! {
 	// check if the JSON string is a valid float or integer
 	if checker.json[checker.checker_idx] == `-` {
-		checker.checker_idx++
-	}
-
-	if checker.checker_idx == checker.json.len {
-		checker.checker_idx--
-		return checker.checker_error('expected digit got EOF')
+		checker.increment('expected digit')!
 	}
 
 	// integer part
 	if checker.json[checker.checker_idx] == `0` {
-		checker.checker_idx++
+		checker.increment('') or { return }
 	} else if checker.json[checker.checker_idx] >= `1` && checker.json[checker.checker_idx] <= `9` {
-		checker.checker_idx++
+		checker.increment('') or { return }
 
-		for checker.checker_idx < checker.json.len && checker.json[checker.checker_idx] >= `0`
-			&& checker.json[checker.checker_idx] <= `9` {
-			checker.checker_idx++
+		for checker.json[checker.checker_idx] >= `0` && checker.json[checker.checker_idx] <= `9` {
+			checker.increment('') or { return }
 		}
 	} else {
 		return checker.checker_error('expected digit got ${checker.json[checker.checker_idx].ascii_str()}')
 	}
 
 	// fraction part
-	if checker.checker_idx != checker.json.len && checker.json[checker.checker_idx] == `.` {
-		checker.checker_idx++
+	if checker.json[checker.checker_idx] == `.` {
+		checker.increment('expected digit')!
 
-		if checker.checker_idx == checker.json.len {
-			checker.checker_idx--
-			return checker.checker_error('expected digit got EOF')
+		if !(checker.json[checker.checker_idx] >= `0` && checker.json[checker.checker_idx] <= `9`) {
+			return checker.checker_error('expected digit got ${checker.json[checker.checker_idx].ascii_str()}')
 		}
 
-		if checker.json[checker.checker_idx] >= `0` && checker.json[checker.checker_idx] <= `9` {
-			for checker.checker_idx < checker.json.len && checker.json[checker.checker_idx] >= `0`
-				&& checker.json[checker.checker_idx] <= `9` {
-				checker.checker_idx++
-			}
-		} else {
-			return checker.checker_error('expected digit got ${checker.json[checker.checker_idx].ascii_str()}')
+		for checker.json[checker.checker_idx] >= `0` && checker.json[checker.checker_idx] <= `9` {
+			checker.increment('') or { return }
 		}
 	}
 
 	// exponent part
-	if checker.checker_idx != checker.json.len
-		&& (checker.json[checker.checker_idx] == `e` || checker.json[checker.checker_idx] == `E`) {
-		checker.checker_idx++
-
-		if checker.checker_idx == checker.json.len {
-			checker.checker_idx--
-			return checker.checker_error('expected digit got EOF')
-		}
+	if checker.json[checker.checker_idx] == `e` || checker.json[checker.checker_idx] == `E` {
+		checker.increment('expected digit')!
 
 		if checker.json[checker.checker_idx] == `-` || checker.json[checker.checker_idx] == `+` {
-			checker.checker_idx++
-
-			if checker.checker_idx == checker.json.len {
-				checker.checker_idx--
-				return checker.checker_error('expected digit got EOF')
-			}
+			checker.increment('expected digit')!
 		}
 
-		if checker.json[checker.checker_idx] >= `0` && checker.json[checker.checker_idx] <= `9` {
-			for checker.checker_idx < checker.json.len && checker.json[checker.checker_idx] >= `0`
-				&& checker.json[checker.checker_idx] <= `9` {
-				checker.checker_idx++
-			}
-		} else {
+		if !(checker.json[checker.checker_idx] >= `0` && checker.json[checker.checker_idx] <= `9`) {
 			return checker.checker_error('expected digit got ${checker.json[checker.checker_idx].ascii_str()}')
+		}
+
+		for checker.json[checker.checker_idx] >= `0` && checker.json[checker.checker_idx] <= `9` {
+			checker.increment('') or { return }
 		}
 	}
 
@@ -284,160 +256,58 @@ fn (mut checker Decoder) check_null() ! {
 }
 
 fn (mut checker Decoder) check_array() ! {
-	// check if the JSON string is an empty array
-	if checker.json.len >= checker.checker_idx + 2 {
-		checker.checker_idx++
-	} else {
-		return checker.checker_error('EOF error: There are not enough length for an array')
-	}
+	checker.increment('expected array end')!
+
+	checker.skip_whitespace('expected array end')!
 
 	for checker.json[checker.checker_idx] != `]` {
-		// skip whitespace
-		for checker.json[checker.checker_idx] in whitespace_chars {
-			if checker.checker_idx == checker.json.len {
-				checker.checker_idx--
-				break
-			}
-			checker.checker_idx++
-		}
-
-		if checker.json[checker.checker_idx] == `]` {
-			break
-		}
-
-		if checker.checker_idx == checker.json.len {
-			checker.checker_idx--
-			return checker.checker_error('EOF error: array not closed')
-		}
-
 		checker.check_json_format()!
 
-		// whitespace
-		for checker.json[checker.checker_idx] in whitespace_chars {
-			checker.checker_idx++
-		}
-		if checker.json[checker.checker_idx] == `]` {
-			break
-		}
-		if checker.checker_idx == checker.json.len {
-			checker.checker_idx--
-			return checker.checker_error('EOF error: braces are not closed')
-		}
+		checker.skip_whitespace('expected array end')!
 
 		if checker.json[checker.checker_idx] == `,` {
-			checker.checker_idx++
-			for checker.json[checker.checker_idx] in whitespace_chars {
-				checker.checker_idx++
-			}
+			checker.increment('expected array value')!
+			checker.skip_whitespace('') or {}
+
 			if checker.json[checker.checker_idx] == `]` {
 				return checker.checker_error('Cannot use `,`, before `]`')
-			}
-			continue
-		} else {
-			if checker.json[checker.checker_idx] == `]` {
-				break
-			} else {
-				return checker.checker_error('`]` after value')
 			}
 		}
 	}
 }
 
 fn (mut checker Decoder) check_object() ! {
-	if checker.json.len - checker.checker_idx < 2 {
-		return checker.checker_error('EOF error: expecting a complete object after `{`')
-	}
-	checker.checker_idx++
+	checker.increment('expected object end')!
+
+	checker.skip_whitespace('expected object end')!
+
 	for checker.json[checker.checker_idx] != `}` {
-		// skip whitespace
-		for checker.json[checker.checker_idx] in whitespace_chars {
-			if checker.checker_idx == checker.json.len {
-				checker.checker_idx--
-				break
-			}
-			checker.checker_idx++
-		}
-
-		if checker.json[checker.checker_idx] == `}` {
-			continue
-		}
-
 		if checker.json[checker.checker_idx] != `"` {
-			return checker.checker_error('Expecting object key')
+			checker.checker_error('Expecting object key')!
 		}
 
-		// Object key
 		checker.check_json_format()!
 
-		for checker.json[checker.checker_idx] != `:` {
-			if checker.checker_idx == checker.json.len {
-				checker.checker_idx--
-				return checker.checker_error('EOF error: key colon not found')
-			}
-			if checker.json[checker.checker_idx] !in whitespace_chars {
-				return checker.checker_error('invalid value after object key')
-			}
-			checker.checker_idx++
-		}
+		checker.skip_whitespace('expected `:`')!
 
 		if checker.json[checker.checker_idx] != `:` {
-			return checker.checker_error('Expecting `:` after object key')
+			checker.checker_error('expected `:`, got `${checker.json[checker.checker_idx].ascii_str()}`')!
 		}
 
-		// skip `:`
-		checker.checker_idx++
+		checker.increment('expected object value')!
 
-		// skip whitespace
-		for checker.json[checker.checker_idx] in whitespace_chars {
-			checker.checker_idx++
-		}
+		checker.skip_whitespace('expected object value')!
 
-		match checker.json[checker.checker_idx] {
-			`"`, `[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
-				checker.check_json_format()!
+		checker.check_json_format()!
 
-				if checker.checker_idx == checker.json.len {
-					checker.checker_idx--
-					return checker.checker_error('EOF error: braces are not closed')
-				}
+		checker.skip_whitespace('expected object end')!
 
-				// whitespace
-				for checker.json[checker.checker_idx] in whitespace_chars {
-					checker.checker_idx++
-				}
-				if checker.json[checker.checker_idx] == `}` {
-					break
-				}
+		if checker.json[checker.checker_idx] == `,` {
+			checker.increment('expected object key')!
+			checker.skip_whitespace('') or {}
 
-				if checker.checker_idx == checker.json.len {
-					checker.checker_idx--
-					return checker.checker_error('EOF error: braces are not closed')
-				}
-
-				if checker.json[checker.checker_idx] == `,` {
-					checker.checker_idx++
-
-					if checker.checker_idx == checker.json.len {
-						checker.checker_idx--
-						return checker.checker_error('EOF error: Expecting object key after `,`')
-					}
-
-					for checker.json[checker.checker_idx] in whitespace_chars {
-						checker.checker_idx++
-					}
-					if checker.json[checker.checker_idx] != `"` {
-						return checker.checker_error('Expecting object key after `,`')
-					}
-				} else {
-					if checker.json[checker.checker_idx] == `}` {
-						break
-					} else {
-						return checker.checker_error('invalid object value')
-					}
-				}
-			}
-			else {
-				return checker.checker_error('invalid object value')
+			if checker.json[checker.checker_idx] == `}` {
+				return checker.checker_error('Cannot use `,`, before `}`')
 			}
 		}
 	}

@@ -36,7 +36,7 @@ fn test_json_string_invalid_escapes() {
 	json.decode[string](r'"\x"') or {
 		if err is json.JsonDecodeError {
 			assert err.line == 1
-			assert err.character == 2
+			assert err.character == 3
 			assert err.message == 'Syntax: unknown escape sequence'
 		}
 		has_error = true
@@ -48,7 +48,7 @@ fn test_json_string_invalid_escapes() {
 	json.decode[string](r'"\u123"') or {
 		if err is json.JsonDecodeError {
 			assert err.line == 1
-			assert err.character == 2
+			assert err.character == 3
 			assert err.message == 'Syntax: short unicode escape sequence \\u123'
 		}
 		has_error = true

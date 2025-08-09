@@ -60,7 +60,7 @@ fn test_raw_decode_map_invalid() {
 		if err is json.JsonDecodeError {
 			assert err.line == 1
 			assert err.character == 8
-			assert err.message == 'Syntax: invalid value after object key'
+			assert err.message == 'Syntax: expected `:`, got `,`'
 		}
 
 		return

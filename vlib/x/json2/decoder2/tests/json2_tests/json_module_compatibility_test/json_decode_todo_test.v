@@ -58,7 +58,7 @@ fn test_decode_error_message_should_have_enough_context_just_brace() {
 		if err is json.JsonDecodeError {
 			assert err.line == 1
 			assert err.character == 1
-			assert err.message == 'Syntax: EOF error: expecting a complete object after `{`'
+			assert err.message == 'Syntax: EOF: expected object end'
 		}
 		return
 	}
@@ -76,7 +76,7 @@ fn test_decode_error_message_should_have_enough_context_trailing_comma_at_end() 
 		if err is json.JsonDecodeError {
 			assert err.line == 5
 			assert err.character == 1
-			assert err.message == 'Syntax: Expecting object key after `,`'
+			assert err.message == 'Syntax: Cannot use `,`, before `}`'
 		}
 
 		return
@@ -90,7 +90,7 @@ fn test_decode_error_message_should_have_enough_context_in_the_middle() {
 		if err is json.JsonDecodeError {
 			assert err.line == 1
 			assert err.character == 40
-			assert err.message == 'Syntax: invalid value. Unexpected character after string_ end'
+			assert err.message == 'Syntax: invalid value. Unexpected character after string end'
 		}
 		return
 	}

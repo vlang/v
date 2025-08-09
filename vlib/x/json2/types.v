@@ -44,7 +44,7 @@ enum ValueKind {
 	unknown
 	array
 	object
-	string_
+	string
 	number
 	boolean
 	null
@@ -56,7 +56,7 @@ fn (k ValueKind) str() string {
 		.unknown { 'unknown' }
 		.array { 'array' }
 		.object { 'object' }
-		.string_ { 'string' }
+		.string { 'string' }
 		.number { 'number' }
 		.boolean { 'boolean' }
 		.null { 'null' }
