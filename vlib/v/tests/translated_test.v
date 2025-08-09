@@ -25,3 +25,14 @@ fn test_pointer_assign_without_memcpy() {
 	str = op.constraint
 	assert !isnil(str)
 }
+
+struct StubIndex {
+pub mut:
+	data [5][5]map[string]string
+}
+
+fn test_pointer_assign_with_memcpy() {
+	mut s := StubIndex{}
+	s.data[1] = [5]map[string]string{}
+	assert true
+}

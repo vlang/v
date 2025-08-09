@@ -553,9 +553,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				g.writeln(';}')
 			}
-		} else if node.op == .assign && !(g.pref.translated || g.file.is_translated)
-			&& (is_fixed_array_init || (unaliased_right_sym.kind == .array_fixed
-			&& val in [ast.Ident, ast.CastExpr])) {
+		} else if node.op == .assign && (is_fixed_array_init
+			|| (unaliased_right_sym.kind == .array_fixed && val in [ast.Ident, ast.CastExpr])) {
 			// Fixed arrays
 			if is_fixed_array_init && var_type.has_flag(.option) {
 				g.expr(left)
