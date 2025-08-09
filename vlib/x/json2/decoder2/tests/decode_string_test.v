@@ -13,13 +13,13 @@ fn test_json_string() {
 	assert json.decode[string]('""')! == ''
 }
 
-fn test_json_stringemoji() {
+fn test_json_string_emoji() {
 	assert json.decode[string](r'"🐈"')! == '🐈'
 	assert json.decode[string](r'"💀"')! == '💀'
 	assert json.decode[string](r'"🐈💀"')! == '🐈💀'
 }
 
-fn test_json_stringnon_ascii() {
+fn test_json_string_non_ascii() {
 	assert json.decode[string](r'"\u3072\u3089\u304c\u306a"')! == 'ひらがな'
 	assert json.decode[string]('"a\\u3072b\\u3089c\\u304cd\\u306ae fgh"')! == 'aひbらcがdなe fgh'
 	assert json.decode[string]('"\\u3072\\u3089\\u304c\\u306a"')! == 'ひらがな'
@@ -30,13 +30,13 @@ fn test_utf8_strings_are_not_modified() {
 	assert json.decode[string]('"Schilddrüsenerkrankungen"')! == 'Schilddrüsenerkrankungen'
 }
 
-fn test_json_stringinvalid_escapes() {
+fn test_json_string_invalid_escapes() {
 	mut has_error := false
 
 	json.decode[string](r'"\x"') or {
 		if err is json.JsonDecodeError {
 			assert err.line == 1
-			assert err.character == 2
+			assert err.character == 3
 			assert err.message == 'Syntax: unknown escape sequence'
 		}
 		has_error = true
@@ -48,7 +48,7 @@ fn test_json_stringinvalid_escapes() {
 	json.decode[string](r'"\u123"') or {
 		if err is json.JsonDecodeError {
 			assert err.line == 1
-			assert err.character == 2
+			assert err.character == 3
 			assert err.message == 'Syntax: short unicode escape sequence \\u123'
 		}
 		has_error = true
@@ -57,7 +57,7 @@ fn test_json_stringinvalid_escapes() {
 	assert has_error, 'Expected error'
 }
 
-fn test_json_stringwhitespace() {
+fn test_json_string_whitespace() {
 	// Test strings with whitespace
 	assert json.decode[string]('"   "')! == '   '
 	assert json.decode[string]('"\t\n\r"')! == '\t\n\r'

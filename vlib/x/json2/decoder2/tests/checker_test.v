@@ -115,19 +115,59 @@ fn test_check_json_format() {
 		},
 		{
 			'json':  '{"key": 123'
-			'error': 'Syntax: EOF error: braces are not closed'
+			'error': 'Syntax: Expecting object key' // improve message
 		},
 		{
 			'json':  '{"key": 123,'
-			'error': 'Syntax: EOF error: Expecting object key after `,`'
+			'error': 'Syntax: EOF: expected object key'
 		},
 		{
 			'json':  '{"key": 123, "key2": 456,}'
-			'error': 'Syntax: Expecting object key after `,`'
+			'error': 'Syntax: Cannot use `,`, before `}`'
 		},
 		{
 			'json':  '[[1, 2, 3], [4, 5, 6],]'
 			'error': 'Syntax: Cannot use `,`, before `]`'
+		},
+		{
+			'json':  '    '
+			'error': 'Syntax: EOF: empty json'
+		},
+		{
+			'json':  '"'
+			'error': 'Syntax: EOF: string not closed'
+		},
+		{
+			'json':  '"not closed'
+			'error': 'Syntax: EOF: string not closed'
+		},
+		{
+			'json':  '"\\"'
+			'error': 'Syntax: EOF: string not closed'
+		},
+		{
+			'json':  '"\\u8"'
+			'error': 'Syntax: short unicode escape sequence \\u8'
+		},
+		{
+			'json':  '['
+			'error': 'Syntax: EOF: expected array end'
+		},
+		{
+			'json':  '[    '
+			'error': 'Syntax: EOF: expected array end'
+		},
+		{
+			'json':  '{'
+			'error': 'Syntax: EOF: expected object end'
+		},
+		{
+			'json':  '{    '
+			'error': 'Syntax: EOF: expected object end'
+		},
+		{
+			'json':  '{"key": "value"    '
+			'error': 'Syntax: EOF: expected object end'
 		},
 	]
 
