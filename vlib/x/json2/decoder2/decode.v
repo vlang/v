@@ -374,23 +374,23 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			mut string_buffer := []u8{cap: string_info.length} // might be too long but most json strings don't contain many escape characters anyways
 
 			mut buffer_index := 1
-			mut stringindex := 1
+			mut string_index := 1
 
-			for stringindex < string_info.length - 1 {
-				current_byte := decoder.json[string_info.position + stringindex]
+			for string_index < string_info.length - 1 {
+				current_byte := decoder.json[string_info.position + string_index]
 
 				if current_byte == `\\` {
 					// push all characters up to this point
 					unsafe {
 						string_buffer.push_many(decoder.json.str + string_info.position +
-							buffer_index, stringindex - buffer_index)
+							buffer_index, string_index - buffer_index)
 					}
 
-					stringindex++
+					string_index++
 
-					escaped_char := decoder.json[string_info.position + stringindex]
+					escaped_char := decoder.json[string_info.position + string_index]
 
-					stringindex++
+					string_index++
 
 					match escaped_char {
 						`/`, `"`, `\\` {
@@ -413,24 +413,24 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 						}
 						`u` {
 							string_buffer << rune(strconv.parse_uint(decoder.json[
-								string_info.position + stringindex..string_info.position +
-								stringindex + 4], 16, 32)!).bytes()
+								string_info.position + string_index..string_info.position +
+								string_index + 4], 16, 32)!).bytes()
 
-							stringindex += 4
+							string_index += 4
 						}
 						else {} // has already been checked
 					}
 
-					buffer_index = stringindex
+					buffer_index = string_index
 				} else {
-					stringindex++
+					string_index++
 				}
 			}
 
 			// push the rest
 			unsafe {
 				string_buffer.push_many(decoder.json.str + string_info.position + buffer_index,
-					stringindex - buffer_index)
+					string_index - buffer_index)
 			}
 
 			val = string_buffer.bytestr()
