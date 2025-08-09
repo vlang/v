@@ -608,6 +608,9 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 				if p.tok.kind == .amp {
 					constraint += '&'
 					p.next()
+				} else if p.tok.kind == .mul {
+					constraint += '*'
+					p.next()
 				}
 			} else {
 				// Input constraint

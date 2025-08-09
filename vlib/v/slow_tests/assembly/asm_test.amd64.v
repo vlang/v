@@ -120,9 +120,9 @@ fn test_inline_asm() {
 		mulq y
 		mov lo, rax
 		mov hi, rdx
-		; =&r (lo)
+		; =*m (lo)
 		  =&r (hi)
-		; r (x)
+		; rm (x)
 		  r (y)
 		; rax
 		  rdx
