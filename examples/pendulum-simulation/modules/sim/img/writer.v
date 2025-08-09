@@ -1,10 +1,10 @@
 module img
 
-import gx
+import gg
 import sim
 
 pub struct ValidColor {
-	gx.Color
+	gg.Color
 pub mut:
 	valid bool
 }
@@ -52,17 +52,17 @@ pub fn (mut iw ImageWriter) handle(result sim.SimResult) !int {
 	return iw.current_index
 }
 
-pub fn compute_pixel(result sim.SimResult) gx.Color {
+pub fn compute_pixel(result sim.SimResult) gg.Color {
 	closest_to_m1 := result.magnet1_distance < result.magnet2_distance
 		&& result.magnet1_distance < result.magnet3_distance
 	closest_to_m2 := result.magnet2_distance < result.magnet1_distance
 		&& result.magnet2_distance < result.magnet3_distance
 
 	if closest_to_m1 {
-		return gx.red
+		return gg.red
 	} else if closest_to_m2 {
-		return gx.green
+		return gg.green
 	} else {
-		return gx.blue
+		return gg.blue
 	}
 }

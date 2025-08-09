@@ -1,7 +1,6 @@
 module main
 
 import gg
-import gx
 import math.easing
 
 const all = {
@@ -60,8 +59,8 @@ mut:
 fn (mut app App) draw_circle(label string, f easing.EasingFN) {
 	offset := 30
 	app.gg.draw_text_def(int(app.x) - 30, 5, label)
-	app.gg.draw_line(f32(app.x), offset, f32(app.x), f32(app.h + offset), gx.gray)
-	app.gg.draw_circle_filled(f32(app.x), f32(offset + f(app.t) * app.h), 10, gx.rgb(0,
+	app.gg.draw_line(f32(app.x), offset, f32(app.x), f32(app.h + offset), gg.gray)
+	app.gg.draw_circle_filled(f32(app.x), f32(offset + f(app.t) * app.h), 10, gg.rgb(0,
 		0, 255))
 	app.x += 120
 }
@@ -73,7 +72,7 @@ fn (mut app App) frame() {
 	app.x = 80
 	app.h = size.height - 100
 	app.gg.begin()
-	app.gg.draw_line(0, f32(app.h + 30), size.width, f32(app.h + 30), gx.gray)
+	app.gg.draw_line(0, f32(app.h + 30), size.width, f32(app.h + 30), gg.gray)
 	current_map := unsafe { all[app.kind].clone() }
 	for k, e in current_map {
 		app.draw_circle(k, e)
@@ -100,7 +99,7 @@ fn (mut app App) on_event(ev &gg.Event, x voidptr) {
 
 mut app := &App{}
 app.gg = gg.new_context(
-	bg_color:     gx.rgb(174, 198, 255)
+	bg_color:     gg.rgb(174, 198, 255)
 	width:        1350
 	height:       800
 	window_title: 'Easing functions'

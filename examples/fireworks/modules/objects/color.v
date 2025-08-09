@@ -1,10 +1,10 @@
 module objects
 
-import gx
+import gg
 import rand
 
-pub fn random_color() gx.Color {
-	return gx.Color{
+pub fn random_color() gg.Color {
+	return gg.Color{
 		r: rand.u8()
 		g: rand.u8()
 		b: rand.u8()

@@ -5,14 +5,13 @@ module main
 // Example of how to send a value through a channel from a worker thread to the main/rendering thread.
 // This can be useful to do long running computations while keeping your framerate high (60 fps in this example).
 import gg
-import gx
 import math
 import time
 
 const win_width = 600
 const win_height = 700
-const bg_color = gx.white
-const count_color = gx.black
+const bg_color = gg.white
+const count_color = gg.black
 
 struct App {
 mut:
@@ -62,7 +61,7 @@ fn frame(mut app App) {
 	if scale_factor <= 0 {
 		scale_factor = 1
 	}
-	text_cfg := gx.TextCfg{
+	text_cfg := gg.TextCfg{
 		size: 64 * int(scale_factor)
 	}
 

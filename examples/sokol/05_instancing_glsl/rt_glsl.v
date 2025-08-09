@@ -16,7 +16,6 @@
 **********************************************************************/
 import gg
 import gg.m4
-import gx
 import math
 import sokol.gfx
 // import sokol.sgl
@@ -24,7 +23,7 @@ import time
 
 const win_width = 800
 const win_height = 800
-const bg_color = gx.white
+const bg_color = gg.white
 const num_inst = 16384
 
 struct App {

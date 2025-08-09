@@ -1,5 +1,4 @@
 import gg
-import gx
 import math
 import rand
 import sokol.audio
@@ -11,8 +10,8 @@ const designed_height = 800
 const brick_width = 53
 const brick_height = 20
 const bevel_size = int(brick_height * 0.18)
-const highlight_color = gx.rgba(255, 255, 255, 65)
-const shade_color = gx.rgba(0, 0, 0, 65)
+const highlight_color = gg.rgba(255, 255, 255, 65)
+const shade_color = gg.rgba(0, 0, 0, 65)
 
 struct Brick {
 mut:
@@ -108,7 +107,7 @@ fn (mut g Game) init_bricks() {
 			g.bricks << Brick{
 				x:     col * (brick_width + 1) + xoffset
 				y:     row * (brick_height + 1) + yoffset
-				c:     gx.rgb(0x40 | rand.u8(), 0x40 | rand.u8(), 0x40 | rand.u8())
+				c:     gg.rgb(0x40 | rand.u8(), 0x40 | rand.u8(), 0x40 | rand.u8())
 				value: 10 - row
 			}
 			g.nbricks++
@@ -139,15 +138,15 @@ fn (mut g Game) draw() {
 	}
 	label1 := 'Level: ${g.nlevels:02}  Points: ${g.npoints:06}'
 	label2 := 'Bricks: ${g.nbricks:03}  Paddles: ${g.npaddles:02}'
-	g.ctx.draw_text(5, 3, label1, size: 24, color: gx.rgb(255, 255, 255))
-	g.ctx.draw_text(320, 3, label2, size: 24, color: gx.rgb(255, 255, 255))
+	g.ctx.draw_text(5, 3, label1, size: 24, color: gg.rgb(255, 255, 255))
+	g.ctx.draw_text(320, 3, label2, size: 24, color: gg.rgb(255, 255, 255))
 
 	sgl.pop_matrix()
 	g.ctx.end()
 }
 
 fn (g &Game) draw_ball() {
-	g.ctx.draw_circle_filled(g.ball_x, g.ball_y, g.ball_r, gx.red)
+	g.ctx.draw_circle_filled(g.ball_x, g.ball_y, g.ball_r, gg.red)
 	mut ball_r_less := g.ball_r
 	for _ in 0 .. 3 {
 		ball_r_less *= 0.8
@@ -158,10 +157,10 @@ fn (g &Game) draw_ball() {
 
 fn (g &Game) draw_paddle() {
 	roffset, rradius := -5, 18
-	g.ctx.draw_circle_filled(g.paddle_x - roffset, g.height, rradius, gx.blue)
-	g.ctx.draw_circle_filled(g.paddle_x + g.paddle_w + roffset, g.height, rradius, gx.blue)
+	g.ctx.draw_circle_filled(g.paddle_x - roffset, g.height, rradius, gg.blue)
+	g.ctx.draw_circle_filled(g.paddle_x + g.paddle_w + roffset, g.height, rradius, gg.blue)
 	g.ctx.draw_rect_filled(g.paddle_x, g.height - g.paddle_h + 2, g.paddle_w, g.paddle_h,
-		gx.blue)
+		gg.blue)
 	g.ctx.draw_rect_filled(g.paddle_x, g.height - g.paddle_h + 2, g.paddle_w, bevel_size,
 		highlight_color)
 }

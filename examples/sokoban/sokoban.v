@@ -1,7 +1,6 @@
 import os
 import os.asset
 import gg
-import gx
 
 const csize = 32
 
@@ -204,7 +203,7 @@ fn (mut g Game) key_down(key gg.KeyCode, _ gg.Modifier, _ voidptr) {
 	g.win = g.boxes.all(g.warehouse[it.y][it.x] == `@`)
 }
 
-fn (g &Game) ctext(ws gg.Size, oy int, message string, size int, color gx.Color) {
+fn (g &Game) ctext(ws gg.Size, oy int, message string, size int, color gg.Color) {
 	g.ctx.draw_text(ws.width / 2, ws.height + oy, message,
 		color:          color
 		size:           size
@@ -229,20 +228,20 @@ fn (g &Game) draw_frame(_ voidptr) {
 			g.ctx.draw_image_by_id(ox + x * csize, oy + y * csize, 32, 32, iid)
 		}
 	}
-	g.ctx.draw_rect_filled(0, ws.height - 70, ws.width, 70, gx.black)
+	g.ctx.draw_rect_filled(0, ws.height - 70, ws.width, 70, gg.black)
 	if g.win {
-		g.ctext(ws, -50, 'You win!!!', 60, gx.yellow)
-		g.ctext(ws, -15, 'Press `space` to continue.', 20, gx.gray)
+		g.ctext(ws, -50, 'You win!!!', 60, gg.yellow)
+		g.ctext(ws, -15, 'Press `space` to continue.', 20, gg.gray)
 	} else {
 		for idx, title in g.titles {
-			g.ctext(ws, -65 + (idx * 20), title, 22, gx.white)
+			g.ctext(ws, -65 + (idx * 20), title, 22, gg.white)
 		}
-		g.ctext(ws, -65 + (g.titles.len * 20), 'Boxes: ${g.boxes.len:04}', 16, gx.gray)
+		g.ctext(ws, -65 + (g.titles.len * 20), 'Boxes: ${g.boxes.len:04}', 16, gg.gray)
 	}
-	g.ctx.draw_rect_filled(0, 0, ws.width, 40, gx.black)
-	g.ctx.draw_text(30, 0, 'Level: ${g.level + 1:02}', color: gx.green, size: 40)
-	g.ctx.draw_text(ws.width - 225, 0, 'Moves: ${g.moves:04}', color: gx.green, size: 40)
-	g.ctx.draw_text(ws.width / 2 - 110, 0, 'Pushes: ${g.pushes:04}', color: gx.green, size: 40)
+	g.ctx.draw_rect_filled(0, 0, ws.width, 40, gg.black)
+	g.ctx.draw_text(30, 0, 'Level: ${g.level + 1:02}', color: gg.green, size: 40)
+	g.ctx.draw_text(ws.width - 225, 0, 'Moves: ${g.moves:04}', color: gg.green, size: 40)
+	g.ctx.draw_text(ws.width / 2 - 110, 0, 'Pushes: ${g.pushes:04}', color: gg.green, size: 40)
 	g.ctx.end()
 }
 
