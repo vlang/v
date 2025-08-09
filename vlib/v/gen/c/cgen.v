@@ -7106,7 +7106,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								g.writeln(' }, (${option_name}*)&${cvar_name}, sizeof(${cast_typ}));')
 								g.indent--
 								return
-							} else {
+							} else if return_type.clear_option_and_result() != ast.void_type {
 								g.write('*(${cast_typ}*) ${cvar_name}${tmp_op}data = ')
 							}
 						}
