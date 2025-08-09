@@ -188,6 +188,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					continue
 				}
 				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+				sym := c.table.sym(expected_value_type)
+				if sym.kind == .interface {
+					c.type_implements(typ, expected_value_type, expr.pos())
+				}
 			}
 			if expr is ast.CallExpr {
 				ret_sym := c.table.sym(typ)
