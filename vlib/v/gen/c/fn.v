@@ -2707,6 +2707,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 						}
 						if arg.expr.is_as_cast() {
 							g.inside_smartcast = true
+						} else if arg_typ_sym.is_int() {
+							g.write('(voidptr)&')
 						} else {
 							g.write('ADDR(${g.styp(atype)}, ')
 							needs_closing = true
