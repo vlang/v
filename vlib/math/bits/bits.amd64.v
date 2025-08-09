@@ -18,6 +18,7 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 	mut lo := u64(0)
 	$if msvc {
 		lo = C._umul128(x, y, &hi)
+		return hi, lo
 	} $else $if amd64 {
 		asm amd64 {
 			mulq rdx
@@ -27,11 +28,10 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 			  d (y)
 			; cc
 		}
-	} $else {
-		// cross compile
-		hi, lo = mul_64_default(x, y)
+		return hi, lo
 	}
-	return hi, lo
+	// cross compile
+	return mul_64_default(x, y)
 }
 
 // mul_add_64 returns the 128-bit result of x * y + z: (hi, lo) = x * y + z
@@ -45,6 +45,7 @@ pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
 		lo = C._umul128(x, y, &hi)
 		carry := C._addcarry_u64(0, lo, z, &lo)
 		hi += carry
+		return hi, lo
 	} $else $if amd64 {
 		asm amd64 {
 			mulq rdx
@@ -57,11 +58,10 @@ pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
 			  r (z)
 			; cc
 		}
-	} $else {
-		// cross compile
-		hi, lo = mul_add_64_default(x, y, z)
+		return hi, lo
 	}
-	return hi, lo
+	// cross compile
+	return mul_add_64_default(x, y, z)
 }
 
 // div_64 returns the quotient and remainder of (hi, lo) divided by y:
@@ -82,6 +82,7 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	mut rem := u64(0)
 	$if msvc {
 		quo = C._udiv128(hi, lo, y, &rem)
+		return quo, rem
 	} $else $if amd64 {
 		asm amd64 {
 			div y
@@ -92,9 +93,8 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 			  r (y)
 			; cc
 		}
-	} $else {
-		// cross compile
-		quo, rem = div_64_default(hi, lo, y1)
+		return quo, rem
 	}
-	return quo, rem
+	// cross compile
+	return div_64_default(hi, lo, y1)
 }

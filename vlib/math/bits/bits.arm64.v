@@ -12,21 +12,20 @@ module bits
 pub fn mul_64(x u64, y u64) (u64, u64) {
 	mut hi := u64(0)
 	mut lo := u64(0)
-	$if arm64 {
+	$if arm64 && !tinyc {
 		asm arm64 {
 			mul lo, x, y
 			umulh hi, x, y
-			; +r (hi)
-			  +r (lo)
+			; =&r (hi)
+			  =&r (lo)
 			; r (x)
 			  r (y)
 			; cc
 		}
-	} $else {
-		// cross compile
-		hi, lo = mul_64_default(x, y)
+		return hi, lo
 	}
-	return hi, lo
+	// cross compile
+	return mul_64_default(x, y)
 }
 
 // mul_add_64 returns the 128-bit result of x * y + z: (hi, lo) = x * y + z
@@ -36,22 +35,21 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
 	mut hi := u64(0)
 	mut lo := u64(0)
-	$if arm64 {
+	$if arm64 && !tinyc {
 		asm arm64 {
 			mul lo, x, y
 			umulh hi, x, y
 			adds lo, lo, z
 			adc hi, hi, xzr
-			; +r (hi)
-			  +r (lo)
+			; =&r (hi)
+			  =&r (lo)
 			; r (x)
 			  r (y)
 			  r (z)
 			; cc
 		}
-	} $else {
-		// cross compile
-		hi, lo = mul_add_64_default(x, y, z)
+		return hi, lo
 	}
-	return hi, lo
+	// cross compile
+	return mul_add_64_default(x, y, z)
 }
