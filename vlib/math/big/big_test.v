@@ -913,7 +913,7 @@ fn test_isqrt() {
 }
 
 fn test_bitwise_ops() {
-	a := big.integer_from_int(1).left_shift(512)
+	a := big.integer_from_int(1).left_shift(big.digit_bits * 10)
 	b := a - big.one_int
 	assert a.bitwise_and(b) == big.zero_int
 	assert b.bitwise_xor(b) == big.zero_int
