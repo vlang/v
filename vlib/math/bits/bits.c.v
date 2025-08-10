@@ -17,7 +17,7 @@ pub fn leading_zeros_8(x u8) int {
 	}
 	$if msvc {
 		return C.__lzcnt(x) - 24
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_clz(x) - 24
 	}
 	return leading_zeros_8_default(x)
@@ -31,7 +31,7 @@ pub fn leading_zeros_16(x u16) int {
 	}
 	$if msvc {
 		return C.__lzcnt(x) - 16
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_clz(x) - 16
 	}
 	return leading_zeros_16_default(x)
@@ -45,7 +45,7 @@ pub fn leading_zeros_32(x u32) int {
 	}
 	$if msvc {
 		return C.__lzcnt(x)
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_clz(x)
 	}
 	return leading_zeros_32_default(x)
@@ -59,7 +59,7 @@ pub fn leading_zeros_64(x u64) int {
 	}
 	$if msvc {
 		return C.__lzcnt64(x)
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_clzll(x)
 	}
 	return leading_zeros_64_default(x)
@@ -81,7 +81,7 @@ pub fn trailing_zeros_8(x u8) int {
 		mut pos := 0
 		_ := C._BitScanForward(&pos, x)
 		return pos
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_ctz(x)
 	}
 	return trailing_zeros_8_default(x)
@@ -97,7 +97,7 @@ pub fn trailing_zeros_16(x u16) int {
 		mut pos := 0
 		_ := C._BitScanForward(&pos, x)
 		return pos
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_ctz(x)
 	}
 	return trailing_zeros_16_default(x)
@@ -113,7 +113,7 @@ pub fn trailing_zeros_32(x u32) int {
 		mut pos := 0
 		_ := C._BitScanForward(&pos, x)
 		return pos
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_ctz(x)
 	}
 	return trailing_zeros_32_default(x)
@@ -129,7 +129,7 @@ pub fn trailing_zeros_64(x u64) int {
 		mut pos := 0
 		_ := C._BitScanForward64(&pos, x)
 		return pos
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_ctzll(x)
 	}
 	return trailing_zeros_64_default(x)
@@ -146,7 +146,7 @@ fn C.__popcnt64(x u64) int
 pub fn ones_count_8(x u8) int {
 	$if msvc {
 		return C.__popcnt(x)
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_popcount(x)
 	}
 	return ones_count_8_default(x)
@@ -157,7 +157,7 @@ pub fn ones_count_8(x u8) int {
 pub fn ones_count_16(x u16) int {
 	$if msvc {
 		return C.__popcnt(x)
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_popcount(x)
 	}
 	return ones_count_16_default(x)
@@ -168,7 +168,7 @@ pub fn ones_count_16(x u16) int {
 pub fn ones_count_32(x u32) int {
 	$if msvc {
 		return C.__popcnt(x)
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_popcount(x)
 	}
 	return ones_count_32_default(x)
@@ -179,7 +179,7 @@ pub fn ones_count_32(x u32) int {
 pub fn ones_count_64(x u64) int {
 	$if msvc {
 		return C.__popcnt64(x)
-	} $else $if !(tinyc && (windows || arm64)) {
+	} $else $if !tinyc {
 		return C.__builtin_popcountll(x)
 	}
 	return ones_count_64_default(x)
