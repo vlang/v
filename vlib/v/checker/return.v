@@ -208,7 +208,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
 				exprv.pos())
 		}
-		if exprv is ast.ComptimeCall && exprv.method_name == 'tmpl'
+		if exprv is ast.ComptimeCall && exprv.kind == .tmpl
 			&& c.table.final_sym(exp_type).kind != .string {
 			c.error('cannot use `string` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				exprv.pos)
@@ -351,7 +351,7 @@ fn has_top_return(stmts []ast.Stmt) bool {
 						return true
 					}
 				} else if stmt.expr is ast.ComptimeCall {
-					if stmt.expr.method_name == 'compile_error' {
+					if stmt.expr.kind == .compile_error {
 						return true
 					}
 				} else if stmt.expr is ast.LockExpr {

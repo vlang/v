@@ -79,8 +79,10 @@ fn (vd &VDoc) render_search_index(out Output) {
 	}
 	js_search_index.writeln('];\n')
 	js_search_data.writeln('];\n')
+	final := js_search_index.str() + js_search_data.str()
 	out_file_path := os.join_path(out.path, 'search_index.js')
-	os.write_file(out_file_path, js_search_index.str() + js_search_data.str()) or { panic(err) }
+	println('Generating search_index.js of ${final.len:8} bytes in `${out_file_path} ...')
+	os.write_file(out_file_path, final) or { panic(err) }
 }
 
 fn (mut vd VDoc) render_static_html(out Output) {
@@ -115,7 +117,7 @@ fn (vd &VDoc) get_resource(name string, out Output) string {
 	} else {
 		output_path := os.join_path(out.path, name)
 		if !os.exists(output_path) {
-			println('Generating ${out.typ} in "${output_path}"')
+			println('Copying ${res.len:8} bytes from `${path}` to `${output_path}` ...')
 			os.write_file(output_path, res) or { panic(err) }
 		}
 		return name
@@ -384,6 +386,7 @@ fn write_token(tok token.Token, typ HighlightTokenTyp, mut buf strings.Builder) 
 fn html_highlight(code string, tb &ast.Table) string {
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{ output_mode: .silent })
 	mut tok := s.scan()
+	mut prev_tok := tok
 	mut next_tok := s.scan()
 	mut buf := strings.new_builder(200)
 	mut i := 0
@@ -490,6 +493,9 @@ fn html_highlight(code string, tb &ast.Table) string {
 				// html documentation outputs / its style rules will affect the readme.
 				buf.write_string("'${html.escape(tok.lit.str())}'")
 			} else {
+				if final_tok_typ == .string && prev_tok.lit == 'return' {
+					buf.write_string(' ')
+				}
 				write_token(tok, tok_typ, mut buf)
 			}
 			buf.write_string('</span>')
@@ -506,7 +512,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 		if i - 1 == next_tok.pos {
 			i--
 		}
-
+		prev_tok = tok
 		tok = next_tok
 		next_tok = s.scan()
 	}

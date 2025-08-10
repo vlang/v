@@ -63,6 +63,7 @@ const enable_processed_output = 1
 const enable_wrap_at_eol_output = 2
 const evable_virtual_terminal_processing = 4
 
+@[markused]
 fn builtin_init() {
 	$if gcboehm ? {
 		$if !gc_warn_on_stderr ? {

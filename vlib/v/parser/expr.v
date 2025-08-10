@@ -476,6 +476,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			} else {
 				// Anonymous function
 				node = p.anon_fn()
+				if p.file_backend_mode == .v || p.file_backend_mode == .c {
+					p.register_auto_import('builtin.closure')
+				}
 				// its a call
 				// NOTE: this could be moved to just before the pratt loop
 				// then anything can be a call, eg. `index[2]()` or `struct.field()`
@@ -724,11 +727,12 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 fn (mut p Parser) gen_or_block() ast.OrExpr {
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
-		or_stmts, or_pos := p.or_block(.with_err_var)
+		or_stmts, or_pos, or_scope := p.or_block(.with_err_var)
 		return ast.OrExpr{
 			kind:  ast.OrKind.block
 			stmts: or_stmts
 			pos:   or_pos
+			scope: or_scope
 		}
 	} else if p.tok.kind in [.question, .not] {
 		or_pos := p.tok.pos()
@@ -817,11 +821,12 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
 	mut or_pos := p.tok.pos()
+	mut or_scope := &ast.Scope(unsafe { nil })
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
 		if p.tok.kind == .key_orelse {
 			or_kind = .block
-			or_stmts, or_pos = p.or_block(.with_err_var)
+			or_stmts, or_pos, or_scope = p.or_block(.with_err_var)
 		}
 		if p.tok.kind == .question {
 			p.next()
@@ -842,6 +847,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 			stmts: or_stmts
 			kind:  or_kind
 			pos:   or_pos
+			scope: or_scope
 		}
 	}
 }
@@ -908,6 +914,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
 	mut or_pos := p.tok.pos()
+	mut or_scope := &ast.Scope(unsafe { nil })
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
 		if mut right is ast.SelectorExpr {
@@ -916,7 +923,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 			right.or_block = ast.OrExpr{}
 		} else if p.tok.kind == .key_orelse {
 			or_kind = .block
-			or_stmts, or_pos = p.or_block(.with_err_var)
+			or_stmts, or_pos, or_scope = p.or_block(.with_err_var)
 		} else if p.tok.kind == .question {
 			p.next()
 			or_kind = .propagate_option
@@ -932,6 +939,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 			stmts: or_stmts
 			kind:  or_kind
 			pos:   or_pos
+			scope: or_scope
 		}
 	}
 }

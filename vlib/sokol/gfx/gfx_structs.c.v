@@ -224,6 +224,7 @@ pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_ind
 	array_count int) &ShaderDesc {
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].type = typ
+	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].array_count = array_count
 	return desc
 }
 
@@ -231,6 +232,7 @@ pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_ind
 	array_count int) &ShaderDesc {
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].type = typ
+	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].array_count = array_count
 	return desc
 }
 

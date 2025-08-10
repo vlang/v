@@ -15,8 +15,9 @@ import runtime
 
 // math.bits is needed by strconv.ftoa
 pub const builtin_module_parts = ['math.bits', 'strconv', 'dlmalloc', 'strconv.ftoa', 'strings',
-	'builtin']
-pub const bundle_modules = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']!
+	'builtin', 'builtin.closure']
+pub const bundle_modules = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui',
+	'builtin.closure']!
 
 pub const external_module_dependencies_for_tool = {
 	'vdoc': ['markdown']
@@ -153,7 +154,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		mut l := filelock.new(lockfile)
 		if l.try_acquire() {
 			tlog('lockfile acquired')
-			tool_recompile_retry_max_count := 7
+			tool_recompile_retry_max_count := int_max(1, os.getenv_opt('VUTIL_RETRY_MAX_COUNT') or {
+				'7'
+			}.int())
 			for i in 0 .. tool_recompile_retry_max_count {
 				tlog('looping i: ${i} / ${tool_recompile_retry_max_count}')
 				// ensure a stable and known working folder, when compiling V's tools, to avoid module lookup problems:

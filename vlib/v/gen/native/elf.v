@@ -4,6 +4,7 @@
 module native
 
 import os
+import ast
 
 const elf_class32 = 1
 const elf_class64 = 2
@@ -300,6 +301,8 @@ mut:
 	size  i64 // Symbol size.
 }
 
+// see for more details: https://gist.github.com/x0nu11byt3/bcb35c3de461e5fb66173071a2379779
+// https://www.etherington.xyz/elfguide#symtab-section-entries
 fn (mut g Gen) create_symbol_table_section(str_name string, info u8, bind u8, other i8, value i64, size i64,
 	shndx i16) SymbolTableSection {
 	return SymbolTableSection{
@@ -615,7 +618,6 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 				for rela in data {
 					g.write64(rela.offset)
 					g.fn_addr[rela.name] = rela.offset // that's wierd it's the call offset, not the fn
-					g.fn_names << rela.name
 					g.write64(rela.info)
 					g.write64(rela.addend)
 					g.println('; SHT_RELA `${rela.name}` (${rela.offset}, ${rela.info}, ${rela.addend})')
@@ -711,6 +713,23 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 			elf_stv_default, 0, 0, 0),
 	]
 
+	mut sym_data_offset := 0 // offset from the beggining of the data section
+	for f in g.files {
+		for s in f.stmts {
+			if s is ast.GlobalDecl {
+				for fi in s.fields {
+					size := g.get_type_size(fi.typ)
+					if size > 0 {
+						g.symbol_table << g.create_symbol_table_section(fi.name, elf_stt_object,
+							elf_stb_global, elf_stv_default, sym_data_offset, size, i16(g.find_section_header('.data',
+							sections)))
+					}
+					sym_data_offset += size
+				}
+			}
+		}
+	}
+
 	for symbol in g.extern_symbols {
 		g.symbol_table << g.create_symbol_table_section(symbol[2..], elf_stt_notype, elf_stb_global,
 			elf_stv_default, 0, 0, 0)
@@ -742,6 +761,37 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 
 	g.elf_rela_section = sections[g.find_section_header('.rela.text', sections)]
 
+	// Init data section
+	// TODO: use .bss for uninitialized data or generate the data
+	data_section := sections[g.find_section_header('.data', sections)]
+	g.elf_data_header_addr = data_section.header.offset
+
+	data_pos := g.pos()
+	g.println('\ndata_start_pos = ${data_pos.hex()}')
+	g.write64_at(g.elf_data_header_addr + 24, data_pos)
+	for f in g.files {
+		for s in f.stmts {
+			if s is ast.GlobalDecl {
+				for fi in s.fields {
+					size := g.get_type_size(fi.typ)
+					match size {
+						1 { g.write8(0xF) }
+						2 { g.write16(0xF) }
+						4 { g.write32(0xF) }
+						8 { g.write64(i64(0xF)) }
+						else { println('${@LOCATION} unsupported size ${size} for global ${fi}') }
+					}
+					g.println('; global ${fi.name}, size: ${size}')
+				}
+			}
+		}
+	}
+	g.write64_at(g.elf_data_header_addr + 32, g.pos() - data_pos)
+	// TODO: pre-calculate .data instead of genetating it at runtime
+
+	// It is wierd, the init section has something in it but I did not find
+	// where does it come from
+
 	// user code starts here
 	if g.pref.is_verbose {
 		eprintln('code_start_pos = ${g.buf.len.hex()}')
@@ -752,11 +802,29 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	// if g.start_symbol_addr > 0 {
 	//	g.write64_at(g.start_symbol_addr + native.elf_symtab_size - 16, g.code_start_pos)
 	//}
-
 	text_section := sections[g.find_section_header('.text', sections)]
 	g.elf_text_header_addr = text_section.header.offset
 	g.write64_at(g.elf_text_header_addr + 24, g.pos()) // write the code start pos to the text section
 
+	g.println('; fill .data')
+	for f in g.files {
+		for s in f.stmts {
+			if s is ast.GlobalDecl {
+				for fi in s.fields {
+					size := g.get_type_size(fi.typ)
+					if size > 8 || size <= 0 {
+						println('${@LOCATION} unsupported size ${size} for global ${fi}')
+					} else if fi.expr !is ast.EmptyExpr {
+						g.expr(fi.expr)
+						g.code_gen.mov_reg_to_var(GlobalVar{fi.name, fi.typ}, g.code_gen.main_reg())
+						g.println('; global ${fi.name}, size: ${size}')
+					}
+				}
+			}
+		}
+	}
+
+	g.elf_main_call_pos = g.pos()
 	g.code_gen.call(placeholder)
 	g.println('; call main.main')
 	g.code_gen.mov64(g.code_gen.main_reg(), i64(0))
@@ -848,8 +916,12 @@ pub fn (mut g Gen) gen_rela_section() {
 			g.symtab_get_index(g.symbol_table, symbol[2..]), elf_r_amd64_gotpcrelx, -4)
 	}
 	for var_pos, symbol in g.extern_vars {
-		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos + 2, g.symtab_get_index(g.symbol_table,
+		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos, g.symtab_get_index(g.symbol_table,
 			symbol[2..]), elf_r_amd64_64, 0)
+	}
+	for var_pos, symbol in g.global_vars {
+		relocations << g.create_rela_section(symbol, var_pos - g.code_start_pos, g.symtab_get_index(g.symbol_table,
+			symbol), elf_r_amd64_64, 0)
 	}
 	g.elf_rela_section.data = relocations
 	g.gen_section_data([g.elf_rela_section])
@@ -872,7 +944,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 	g.write64_at(g.file_size_pos + 8, file_size)
 	if g.pref.arch == .arm64 {
 		bl_next := u32(0x94000001)
-		g.write32_at(g.code_start_pos, i32(bl_next))
+		g.write32_at(g.elf_main_call_pos, i32(bl_next))
 	} else {
 		// amd64
 		// call main function, it's not guaranteed to be the first
@@ -880,7 +952,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 		// now need to replace "0" with a relative address of the main function
 		// +1 is for "e8"
 		// -5 is for "e8 00 00 00 00"
-		g.write32_at(g.code_start_pos + 1, i32(g.main_fn_addr - g.code_start_pos) - 5)
+		g.write32_at(g.elf_main_call_pos + 1, i32(g.main_fn_addr - g.elf_main_call_pos) - 5)
 	}
 	g.create_executable()
 }

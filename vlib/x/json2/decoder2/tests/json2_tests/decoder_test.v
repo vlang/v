@@ -57,7 +57,11 @@ fn test_nested_array_object() {
 
 fn test_raw_decode_map_invalid() {
 	json.decode[json2.Any]('{"name","Bob","age":20}') or {
-		assert err.msg() == '\n{"name",\n       ^ invalid value after object key'
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 8
+			assert err.message == 'Syntax: expected `:`, got `,`'
+		}
 
 		return
 	}
@@ -66,7 +70,11 @@ fn test_raw_decode_map_invalid() {
 
 fn test_raw_decode_array_invalid() {
 	json.decode[json2.Any]('["Foo", 1,}') or {
-		assert err.msg() == '\n["Foo", 1,}\n          ^ EOF error: array not closed'
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 11
+			assert err.message == 'Syntax: unknown value kind'
+		}
 
 		return
 	}

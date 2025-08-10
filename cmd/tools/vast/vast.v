@@ -605,6 +605,7 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add_terse('is_unsafe', t.bool_node(node.is_unsafe))
 	obj.add_terse('is_markused', t.bool_node(node.is_markused))
 	obj.add_terse('is_file_translated', t.bool_node(node.is_file_translated))
+	obj.add_terse('is_closure', t.bool_node(node.is_closure))
 	obj.add_terse('receiver', t.struct_field(node.receiver))
 	obj.add('receiver_pos', t.pos(node.receiver_pos))
 	obj.add_terse('is_method', t.bool_node(node.is_method))
@@ -728,6 +729,7 @@ fn (t Tree) enum_decl(node ast.EnumDecl) &Node {
 	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add_terse('attrs', t.array_node_attr(node.attrs))
 	obj.add_terse('typ', t.type_node(node.typ))
+	obj.add_terse('enum_typ', t.type_node(node.enum_typ))
 	return obj
 }
 
@@ -1072,13 +1074,13 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	mut obj := create_object()
 	obj.add_terse('ast_type', t.string_node('ComptimeCall'))
 	obj.add_terse('method_name', t.string_node(node.method_name))
+	obj.add_terse('kind', t.enum_node(node.kind))
 	obj.add_terse('left', t.expr(node.left))
 	obj.add_terse('is_vweb', t.bool_node(node.is_vweb))
 	obj.add_terse('is_veb', t.bool_node(node.is_veb))
 	obj.add_terse('veb_tmpl', t.string_node(node.veb_tmpl.path))
 	obj.add_terse('args_var', t.string_node(node.args_var))
 	obj.add_terse('has_parens', t.bool_node(node.has_parens))
-	obj.add_terse('is_embed', t.bool_node(node.is_embed))
 	obj.add_terse('embed_file', t.embed_file(node.embed_file))
 	obj.add('method_pos', t.pos(node.method_pos))
 	obj.add_terse('left_type', t.type_node(node.left_type))
@@ -1468,6 +1470,7 @@ fn (t Tree) index_expr(node ast.IndexExpr) &Node {
 	obj.add_terse('is_setter', t.bool_node(node.is_setter))
 	obj.add_terse('is_direct', t.bool_node(node.is_direct))
 	obj.add_terse('or_expr', t.or_expr(node.or_expr))
+	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }
@@ -1643,6 +1646,7 @@ fn (t Tree) or_expr(node ast.OrExpr) &Node {
 	obj.add_terse('stmts', t.array_node_stmt(node.stmts))
 	obj.add_terse('kind', t.enum_node(node.kind))
 	obj.add('pos', t.pos(node.pos))
+	obj.add('scope', t.number_node(int(node.scope)))
 	return obj
 }
 

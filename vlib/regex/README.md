@@ -531,7 +531,7 @@ pub fn new() RE
 After an initializer is used, the regex expression must be compiled with:
 
 ```v ignore
-// compile_opt compile RE pattern string,  returning an error if the compilation fails
+// compile_opt compile RE pattern string, returning an error if the compilation fails
 pub fn (mut re RE) compile_opt(pattern string) !
 ```
 

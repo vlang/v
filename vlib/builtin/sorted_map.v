@@ -14,6 +14,10 @@ module builtin
 // The number for `degree` has been picked through vigor-
 // ous benchmarking but can be changed to any number > 1.
 // `degree` determines the maximum length of each node.
+// TODO: the @[markused] tag here is needed as a workaround for
+// compilation with `-cc clang -usecache`; added in https://github.com/vlang/v/pull/25034
+
+@[markused]
 const degree = 6
 const mid_index = degree - 1
 const max_len = 2 * degree - 1

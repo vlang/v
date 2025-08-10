@@ -290,89 +290,84 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
 	mut new_radius := radius
+	if radius < 1 {
+		new_radius = 0
+	}
 	if w >= h && radius > h / 2 {
 		new_radius = h / 2
 	} else if radius > w / 2 {
 		new_radius = w / 2
 	}
+
 	r := new_radius * ctx.scale
 	sx := x * ctx.scale // start point x
 	sy := y * ctx.scale
 	width := w * ctx.scale
 	height := h * ctx.scale
+
+	align_pixel := fn (v f32) f32 {
+		return math.floorf(v) + 0.5
+	}
 	// circle center coordinates
-	ltx := sx + r
-	lty := sy + r
-	rtx := sx + width - r
-	rty := lty
-	rbx := rtx
-	rby := sy + height - r
-	lbx := ltx
-	lby := rby
+	ltx := align_pixel(sx + r)
+	lty := align_pixel(sy + r)
+	rtx := align_pixel(sx + width - r)
+	rty := align_pixel(sy + r)
+	rbx := align_pixel(sx + width - r)
+	rby := align_pixel(sy + height - r)
+	lbx := align_pixel(sx + r)
+	lby := align_pixel(sy + height - r)
 
 	mut rad := f32(0)
 	mut dx := f32(0)
 	mut dy := f32(0)
 
-	if r != 0 {
-		// left top quarter
+	if r == 0 {
 		sgl.begin_line_strip()
-		for i in 0 .. 31 {
-			rad = f32(math.radians(i * 3))
-			dx = r * math.cosf(rad)
-			dy = r * math.sinf(rad)
-			sgl.v2f(ltx - dx, lty - dy)
-		}
+		// top
+		sgl.v2f(ltx, lty)
+		sgl.v2f(rtx, rty)
+		// right
+		sgl.v2f(rbx, rby)
+		// bottom
+		sgl.v2f(lbx, lby)
+		// left
+		sgl.v2f(ltx, lty)
 		sgl.end()
-
-		// right top quarter
-		sgl.begin_line_strip()
-		for i in 0 .. 31 {
-			rad = f32(math.radians(i * 3))
-			dx = r * math.cosf(rad)
-			dy = r * math.sinf(rad)
-			sgl.v2f(rtx + dx, rty - dy)
-		}
-		sgl.end()
-
-		// right bottom quarter
-		sgl.begin_line_strip()
-		for i in 0 .. 31 {
-			rad = f32(math.radians(i * 3))
-			dx = r * math.cosf(rad)
-			dy = r * math.sinf(rad)
-			sgl.v2f(rbx + dx, rby + dy)
-		}
-		sgl.end()
-
-		// left bottom quarter
-		sgl.begin_line_strip()
-		for i in 0 .. 31 {
-			rad = f32(math.radians(i * 3))
-			dx = r * math.cosf(rad)
-			dy = r * math.sinf(rad)
-			sgl.v2f(lbx - dx, lby + dy)
-		}
-		sgl.end()
+		return
 	}
 
-	// Currently don't use 'gg.draw_line()' directly, it will repeatedly execute '*ctx.scale'.
-	sgl.begin_lines()
-	// top
-	sgl.v2f(ltx, sy)
-	sgl.v2f(rtx, sy)
-	// right
-	sgl.v2f(rtx + r, rty)
-	sgl.v2f(rtx + r, rby)
-	// bottom
-	// Note: test on native windows, macos, and linux if you need to change the offset literal here,
-	// with `v run vlib/gg/testdata/draw_rounded_rect_empty.vv` . Using 1 here, looks good on windows,
-	// and on linux with LIBGL_ALWAYS_SOFTWARE=true, but misaligned on native macos and linux.
-	sgl.v2f(lbx, lby + r - 0.5)
-	sgl.v2f(rbx, rby + r - 0.5)
-	// left
-	sgl.v2f(sx + 1, lty)
-	sgl.v2f(sx + 1, lby)
+	sgl.begin_line_strip()
+	// left top quarter
+	for i in 0 .. 31 {
+		rad = f32(math.radians(i * 3))
+		dx = r * math.cosf(rad)
+		dy = r * math.sinf(rad)
+		sgl.v2f(ltx - dx, lty - dy)
+	}
+	// right top quarter
+	for i in 0 .. 31 {
+		rad = f32(math.radians(i * 3))
+		dx = r * math.sinf(rad)
+		dy = r * math.cosf(rad)
+		sgl.v2f(rtx + dx, rty - dy)
+	}
+	// right bottom quarter
+	for i in 0 .. 31 {
+		rad = f32(math.radians(i * 3))
+		dx = r * math.cosf(rad)
+		dy = r * math.sinf(rad)
+		sgl.v2f(rbx + dx, rby + dy)
+	}
+	// left bottom quarter
+	for i in 0 .. 31 {
+		rad = f32(math.radians(i * 3))
+		dx = r * math.sinf(rad)
+		dy = r * math.cosf(rad)
+		sgl.v2f(lbx - dx, lby + dy)
+	}
+	// close
+	sgl.v2f(ltx - r, lty)
 	sgl.end()
 }
 

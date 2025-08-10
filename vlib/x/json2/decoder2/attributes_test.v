@@ -90,8 +90,12 @@ fn test_required_attribute() {
 	mut has_error := false
 
 	json.decode[StruWithRequiredAttribute]('{"name": "hola", "a": 2, "b": 3}') or {
+		if err is json.JsonDecodeError {
+			assert err.line == 1
+			assert err.character == 31
+			assert err.message == 'Data: missing required field `skip_and_required`'
+		}
 		has_error = true
-		assert err.msg() == 'missing required field `skip_and_required`'
 	}
 
 	assert has_error, '`required` attribute not working. It should have failed'

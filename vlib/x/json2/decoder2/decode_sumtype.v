@@ -19,13 +19,13 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 						decoder.current_node = decoder.current_node.next
 						return T(initialized_sumtype)
 					} else {
-						decoder.error('sumtype option only support decoding null->none (for now)')!
+						decoder.decode_error('sumtype option only support decoding null->none (for now)')!
 					}
 				}
 			}
 		}
 	}
-	decoder.error('could not decode resolved sumtype (should not happen)')!
+	decoder.decode_error('could not decode resolved sumtype (should not happen)')!
 	return initialized_sumtype // suppress compiler error
 }
 
@@ -42,10 +42,12 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &No
 	}
 
 	match current_node.value.value_kind {
-		.string_ {
+		.string {
 			$if element is string {
 				return true
 			} $else $if element is time.Time {
+				return true
+			} $else $if element is StringDecoder {
 				return true
 			}
 		}
@@ -56,15 +58,21 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &No
 				return true
 			} $else $if element is $enum {
 				return true
+			} $else $if element is NumberDecoder {
+				return true
 			}
 		}
 		.boolean {
 			$if element is bool {
 				return true
+			} $else $if element is BooleanDecoder {
+				return true
 			}
 		}
 		.null {
 			$if element is $option {
+				return true
+			} $else $if element is NullDecoder {
 				return true
 			}
 		}
@@ -84,7 +92,6 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &No
 				return decoder.check_struct_type_valid(element, current_node)
 			}
 		}
-		else {}
 	}
 
 	return false
@@ -164,7 +171,8 @@ fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node Node[Value
 		}
 
 		if unsafe {
-			vmemcmp(decoder.json.str + key_info.position, type_field.str, type_field.len) == 0
+			key_info.position + type_field.len <= decoder.json.len
+				&& 0 == vmemcmp(decoder.json.str + key_info.position, type_field.str, type_field.len)
 		} {
 			// find type field
 			type_field_node = type_field_node.next
@@ -184,8 +192,8 @@ fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node Node[Value
 		unsafe {
 		}
 		if unsafe {
-			vmemcmp(decoder.json.str + type_field_node.value.position + 1, variant_name.str,
-				variant_name.len) == 0
+			type_field_node.value.position + 1 + variant_name.len <= decoder.json.len
+				&& 0 == vmemcmp(decoder.json.str + type_field_node.value.position + 1, variant_name.str, variant_name.len)
 		} {
 			return true
 		}
@@ -212,12 +220,15 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 	mut failed_struct := false
 
 	match value_info.value_kind {
-		.string_ {
+		.string {
 			$for v in val.variants {
 				$if v.typ is string {
 					val = T(v)
 					return
 				} $else $if v.typ is time.Time {
+					val = T(v)
+					return
+				} $else $if v.typ is StringDecoder {
 					val = T(v)
 					return
 				}
@@ -234,6 +245,9 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 				} $else $if v.typ is $enum {
 					val = T(v)
 					return
+				} $else $if v.typ is NumberDecoder {
+					val = T(v)
+					return
 				}
 			}
 		}
@@ -242,12 +256,18 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 				$if v.typ is bool {
 					val = T(v)
 					return
+				} $else $if v.typ is BooleanDecoder {
+					val = T(v)
+					return
 				}
 			}
 		}
 		.null {
 			$for v in val.variants {
 				$if v.typ is $option {
+					val = T(v)
+					return
+				} $else $if v.typ is NullDecoder {
 					val = T(v)
 					return
 				}
@@ -283,19 +303,18 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 				}
 			}
 		}
-		else {}
 	}
 
 	if failed_struct {
-		decoder.error('could not resolve sumtype `${T.name}`, missing "_type" field?')!
+		decoder.decode_error('could not resolve sumtype `${T.name}`, missing "_type" field?')!
 	}
 
-	decoder.error('could not resolve sumtype `${T.name}`, got ${value_info.value_kind}.')!
+	decoder.decode_error('could not resolve sumtype `${T.name}`, got ${value_info.value_kind}.')!
 }
 
 fn (mut decoder Decoder) decode_sumtype[T](mut val T) ! {
 	$if T is $alias {
-		decoder.error('Type aliased sumtypes not supported.')!
+		decoder.decode_error('Type aliased sumtypes not supported.')!
 	} $else {
 		value_info := decoder.current_node.value
 

@@ -9,19 +9,20 @@ import v.token
 import v.util
 import v.pkgconfig
 import v.type_resolver
+import strings
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
 		node.left_type = c.expr(mut node.left)
 	}
-	if node.method_name == 'compile_error' {
-		c.error(node.args_var, node.pos)
+	if node.kind == .compile_error {
+		c.error(c.comptime_call_msg(node), node.pos)
 		return ast.void_type
-	} else if node.method_name == 'compile_warn' {
-		c.warn(node.args_var, node.pos)
+	} else if node.kind == .compile_warn {
+		c.warn(c.comptime_call_msg(node), node.pos)
 		return ast.void_type
 	}
-	if node.is_env {
+	if node.kind == .env {
 		env_value := util.resolve_env_value("\$env('${node.args_var}')", false) or {
 			c.error(err.msg(), node.env_pos)
 			return ast.string_type
@@ -29,14 +30,14 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.env_value = env_value
 		return ast.string_type
 	}
-	if node.is_compile_value {
+	if node.kind == .d {
 		node.resolve_compile_value(c.pref.compile_values) or {
 			c.error(err.msg(), node.pos)
 			return ast.void_type
 		}
 		return node.result_type
 	}
-	if node.is_embed {
+	if node.kind == .embed_file {
 		if node.args.len == 1 {
 			embed_arg := node.args[0]
 			mut raw_path := ''
@@ -110,7 +111,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 
 		c.table.cur_fn = save_cur_fn
 	}
-	if node.method_name == 'html' {
+	if node.kind == .html {
 		ret_sym := c.table.sym(c.table.cur_fn.return_type)
 		if ret_sym.cname !in ['veb__Result', 'vweb__Result', 'x__vweb__Result'] {
 			ct_call := if node.is_veb { 'veb' } else { 'vweb' }
@@ -137,7 +138,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 		return c.type_resolver.get_type(node)
 	}
-	if node.method_name == 'res' {
+	if node.kind == .res {
 		if !c.inside_defer {
 			c.error('`res` can only be used in defer blocks', node.pos)
 			return ast.void_type
@@ -201,6 +202,16 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	c.markused_comptime_call(true, '${int(left_type)}.${method_name}')
 	node.result_type = f.return_type
 	return f.return_type
+}
+
+fn (mut c Checker) comptime_call_msg(node ast.ComptimeCall) string {
+	return if node.args_var.len > 0 {
+		node.args_var
+	} else if value := c.eval_comptime_const_expr(node.args[0].expr, -1) {
+		value.string() or { '' }
+	} else {
+		''
+	}
 }
 
 fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
@@ -277,7 +288,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				prev_inside_x_matches_type := c.inside_x_matches_type
 				c.push_new_comptime_info()
 				c.comptime.inside_comptime_for = true
-				c.table.used_features.comptime_for = true
 				if c.field_data_type == 0 {
 					c.field_data_type = c.table.find_type('FieldData')
 				}
@@ -291,7 +301,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
 				tsym := c.table.sym(unwrapped_expr_type)
-				c.table.dumps[int(unwrapped_expr_type.clear_flags(.option, .result, .atomic_f))] = tsym.cname
 				c.markused_comptimefor(mut node, unwrapped_expr_type)
 				if tsym.kind == .array_fixed {
 					info := tsym.info as ast.ArrayFixed
@@ -322,7 +331,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
-			c.table.used_features.comptime_for = true
 		} else {
 			c.error('iterating over .values is supported only for enums, and ${sym.name} is not an enum',
 				node.typ_pos)
@@ -340,7 +348,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}
-		c.table.used_features.comptime_for = true
 	} else if node.kind == .params {
 		if !(sym.kind == .function || sym.name == 'FunctionData') {
 			c.error('iterating over `.params` is supported only for functions, and `${sym.name}` is not a function',
@@ -419,6 +426,22 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 		ast.StringLiteral {
 			return util.smart_quote(expr.val, expr.is_raw)
 		}
+		ast.StringInterLiteral {
+			if nlevel < 0 {
+				mut sb := strings.new_builder(20)
+				for i, val in expr.vals {
+					sb.write_string(val)
+					if e := expr.exprs[i] {
+						if value := c.eval_comptime_const_expr(e, nlevel + 1) {
+							sb.write_string(value.string() or { '' })
+						} else {
+							c.error('unsupport expr `${e.str()}`', e.pos())
+						}
+					}
+				}
+				return sb.str()
+			}
+		}
 		ast.CharLiteral {
 			runes := expr.val.runes()
 			if runes.len > 0 {
@@ -430,6 +453,28 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			if expr.obj is ast.ConstField {
 				// an existing constant?
 				return c.eval_comptime_const_expr(expr.obj.expr, nlevel + 1)
+			}
+			idx := c.table.cur_fn.generic_names.index(expr.name)
+			if typ := c.table.cur_concrete_types[idx] {
+				sym := c.table.sym(typ)
+				return sym.str()
+			}
+		}
+		ast.SelectorExpr {
+			if expr.expr is ast.Ident {
+				idx := c.table.cur_fn.generic_names.index(expr.expr.name)
+				if typ := c.table.cur_concrete_types[idx] {
+					sym := c.table.sym(typ)
+					match expr.field_name {
+						'name' {
+							return sym.name
+						}
+						'idx' {
+							return i32(sym.idx)
+						}
+						else {}
+					}
+				}
 			}
 		}
 		ast.CastExpr {
@@ -977,6 +1022,9 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 					'arm32' { return if c.pref.arch == .arm32 { .eval } else { .skip } }
 					'rv64' { return if c.pref.arch == .rv64 { .eval } else { .skip } }
 					'rv32' { return if c.pref.arch == .rv32 { .eval } else { .skip } }
+					's390x' { return if c.pref.arch == .s390x { .eval } else { .skip } }
+					'ppc64le' { return if c.pref.arch == .ppc64le { .eval } else { .skip } }
+					'loongarch64' { return if c.pref.arch == .loongarch64 { .eval } else { .skip } }
 					else { return .unknown }
 				}
 			} else if cname in ast.valid_comptime_if_cpu_features {
@@ -1061,7 +1109,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 			}
 		}
 		ast.ComptimeCall {
-			if cond.is_pkgconfig {
+			if cond.kind == .pkgconfig {
 				mut m := pkgconfig.main([cond.args_var]) or {
 					c.error(err.msg(), cond.pos)
 					return .skip
@@ -1069,7 +1117,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 				m.run() or { return .skip }
 				return .eval
 			}
-			if cond.is_compile_value {
+			if cond.kind == .d {
 				t := c.expr(mut cond)
 				if t != ast.bool_type {
 					c.error('inside \$if, only \$d() expressions that return bool are allowed',

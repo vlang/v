@@ -184,19 +184,20 @@ pub fn c_error_number_str(errnum int) string {
 // panic_n prints an error message, followed by the given number, then exits the process with exit code of 1.
 @[noreturn]
 pub fn panic_n(s string, number1 i64) {
-	panic(s + number1.str())
+	panic(s + impl_i64_to_string(number1))
 }
 
 // panic_n2 prints an error message, followed by the given numbers, then exits the process with exit code of 1.
 @[noreturn]
 pub fn panic_n2(s string, number1 i64, number2 i64) {
-	panic(s + number1.str() + ', ' + number2.str())
+	panic(s + impl_i64_to_string(number1) + ', ' + impl_i64_to_string(number2))
 }
 
 // panic_n3 prints an error message, followed by the given numbers, then exits the process with exit code of 1.
 @[noreturn]
 fn panic_n3(s string, number1 i64, number2 i64, number3 i64) {
-	panic(s + number1.str() + ', ' + number2.str() + ', ' + number2.str())
+	panic(s + impl_i64_to_string(number1) + ', ' + impl_i64_to_string(number2) + ', ' +
+		impl_i64_to_string(number2))
 }
 
 // panic with a C-API error message matching `errnum`

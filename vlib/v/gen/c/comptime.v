@@ -45,19 +45,19 @@ fn (mut g Gen) gen_comptime_selector(expr ast.ComptimeSelector) string {
 }
 
 fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
-	if node.is_embed {
+	if node.kind == .embed_file {
 		// $embed_file('/path/to/file')
 		g.gen_embed_file_init(mut node)
 		return
 	}
-	if node.method_name == 'env' {
+	if node.kind == .env {
 		// $env('ENV_VAR_NAME')
 		// TODO: deprecate after support for $d() is stable
 		val := util.cescaped_path(os.getenv(node.args_var))
 		g.write('_S("${val}")')
 		return
 	}
-	if node.method_name == 'd' {
+	if node.kind == .d {
 		// $d('some_string',<default value>), affected by `-d some_string=actual_value`
 		val := util.cescaped_path(node.compile_value)
 		if node.result_type == ast.string_type {
@@ -69,7 +69,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		}
 		return
 	}
-	if node.method_name == 'res' {
+	if node.kind == .res {
 		if node.args_var != '' {
 			g.write('${g.defer_return_tmp_var}.arg${node.args_var}')
 			return
@@ -79,7 +79,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		return
 	}
 	if node.is_vweb {
-		is_html := node.method_name == 'html'
+		is_html := node.kind == .html
 		mut cur_line := ''
 
 		if !is_html {
@@ -799,11 +799,11 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 			return true, false
 		}
 		ast.ComptimeCall {
-			if cond.method_name == 'pkgconfig' {
+			if cond.kind == .pkgconfig {
 				g.write('${pkg_exist}')
 				return true, false
 			}
-			if cond.method_name == 'd' {
+			if cond.kind == .d {
 				if cond.result_type == ast.bool_type {
 					if cond.compile_value == 'true' {
 						g.write('1')
@@ -1358,6 +1358,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		}
 		'rv64', 'riscv64' {
 			return '__V_rv64'
+		}
+		'rv32', 'riscv32' {
+			return '__V_rv32'
 		}
 		's390x' {
 			return '__V_s390x'

@@ -123,6 +123,7 @@ const error_msg = 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`
 fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
 		scope: unsafe { nil }
+		kind:  .unknown
 	}
 	start_pos := p.tok.pos()
 	p.check(.dollar)
@@ -159,18 +160,41 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	is_html := method_name == 'html'
 	p.check(.lpar)
 	arg_pos := p.tok.pos()
-	if method_name in ['env', 'pkgconfig', 'compile_error', 'compile_warn'] {
+	if method_name in ['env', 'pkgconfig'] {
 		s := p.tok.lit
 		p.check(.string)
 		p.check(.rpar)
+		is_env := method_name == 'env'
 		return ast.ComptimeCall{
-			scope:        unsafe { nil }
-			method_name:  method_name
-			args_var:     s
-			is_env:       method_name == 'env'
-			is_pkgconfig: method_name == 'pkgconfig'
-			env_pos:      start_pos
-			pos:          start_pos.extend(p.prev_tok.pos())
+			scope:       unsafe { nil }
+			method_name: method_name
+			kind:        if is_env { .env } else { .pkgconfig }
+			args_var:    s
+			env_pos:     start_pos
+			pos:         start_pos.extend(p.prev_tok.pos())
+		}
+	} else if method_name in ['compile_error', 'compile_warn'] {
+		mut s := ''
+		mut args := []ast.CallArg{}
+		if p.tok.kind == .string && p.peek_tok.kind == .rpar {
+			s = p.tok.lit
+			p.check(.string)
+		} else {
+			args << ast.CallArg{
+				expr:    p.string_expr()
+				typ:     ast.string_type
+				ct_expr: true
+			}
+		}
+		p.check(.rpar)
+		return ast.ComptimeCall{
+			scope:       unsafe { nil }
+			method_name: method_name
+			kind:        if method_name == 'compile_error' { .compile_error } else { .compile_warn }
+			args_var:    s
+			env_pos:     start_pos
+			pos:         start_pos.extend(p.prev_tok.pos())
+			args:        args
 		}
 	} else if method_name == 'res' {
 		mut has_args := false
@@ -185,6 +209,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			return ast.ComptimeCall{
 				scope:       unsafe { nil }
 				method_name: method_name
+				kind:        .res
 				args_var:    type_index
 				pos:         start_pos.extend(p.prev_tok.pos())
 			}
@@ -192,6 +217,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		return ast.ComptimeCall{
 			scope:       unsafe { nil }
 			method_name: method_name
+			kind:        .res
 			pos:         start_pos.extend(p.prev_tok.pos())
 		}
 	} else if method_name == 'd' {
@@ -208,12 +234,12 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		]
 		p.check(.rpar)
 		return ast.ComptimeCall{
-			scope:            unsafe { nil }
-			is_compile_value: true
-			method_name:      method_name
-			args_var:         const_string
-			args:             args
-			pos:              start_pos.extend(p.prev_tok.pos())
+			scope:       unsafe { nil }
+			method_name: method_name
+			kind:        .d
+			args_var:    const_string
+			args:        args
+			pos:         start_pos.extend(p.prev_tok.pos())
 		}
 	}
 	has_string_arg := p.tok.kind == .string
@@ -258,13 +284,14 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			p.register_auto_import('v.preludes.embed_file.zlib')
 		}
 		return ast.ComptimeCall{
-			scope:      unsafe { nil }
-			is_embed:   true
-			embed_file: ast.EmbeddedFile{
+			scope:       unsafe { nil }
+			method_name: method_name
+			kind:        .embed_file
+			embed_file:  ast.EmbeddedFile{
 				compression_type: embed_compression_type
 			}
-			args:       [arg]
-			pos:        start_pos.extend(p.prev_tok.pos())
+			args:        [arg]
+			pos:         start_pos.extend(p.prev_tok.pos())
 		}
 	}
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
@@ -302,6 +329,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 					is_vweb:     true
 					is_veb:      is_veb
 					method_name: method_name
+					kind:        if is_html { .html } else { .tmpl }
 					args_var:    literal_string_param
 					args:        [arg]
 					pos:         start_pos.extend(p.prev_tok.pos())
@@ -349,6 +377,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		is_veb:      is_veb
 		veb_tmpl:    file
 		method_name: method_name
+		kind:        if is_html { .html } else { .tmpl }
 		args_var:    literal_string_param
 		args:        [arg]
 		pos:         start_pos.extend(p.prev_tok.pos())
@@ -507,14 +536,16 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		mut or_kind := ast.OrKind.absent
 		mut or_pos := p.tok.pos()
 		mut or_stmts := []ast.Stmt{}
+		mut or_scope := &ast.Scope(unsafe { nil })
 		if p.tok.kind == .key_orelse {
 			// `$method() or {}``
 			or_kind = .block
-			or_stmts, or_pos = p.or_block(.with_err_var)
+			or_stmts, or_pos, or_scope = p.or_block(.with_err_var)
 		}
 		return ast.ComptimeCall{
 			left:        left
 			method_name: method_name
+			kind:        .method
 			method_pos:  method_pos
 			scope:       p.scope
 			args_var:    ''
@@ -524,6 +555,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 				stmts: or_stmts
 				kind:  or_kind
 				pos:   or_pos
+				scope: or_scope
 			}
 		}
 	}

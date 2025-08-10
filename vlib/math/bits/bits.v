@@ -364,7 +364,9 @@ pub fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
 }
 
 // --- Full-width multiply ---
-const two32 = u64(0x100000000)
+
+@[markused]
+pub const two32 = u64(0x100000000)
 const mask32 = two32 - 1
 const overflow_error = 'Overflow Error'
 const divide_error = 'Divide Error'

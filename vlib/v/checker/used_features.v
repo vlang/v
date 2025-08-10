@@ -36,6 +36,9 @@ fn (mut c Checker) markused_dumpexpr(mut node ast.DumpExpr) {
 		if node.expr_type.is_ptr() {
 			c.table.used_features.auto_str_ptr = true
 		}
+		if !c.table.used_features.auto_str_arr {
+			c.table.used_features.auto_str_arr = c.table.final_sym(unwrapped_type).kind == .array
+		}
 	} else {
 		c.table.used_features.print_types[node.expr_type.idx()] = true
 	}
@@ -57,9 +60,6 @@ fn (mut c Checker) markused_castexpr(mut node ast.CastExpr, to_type ast.Type, mu
 		if final_to_sym.info.variants.any(c.table.final_sym(it).kind == .map) {
 			c.table.used_features.used_maps++
 		}
-	}
-	if c.mod !in ['strings', 'math.bits'] && to_type.is_ptr() {
-		c.table.used_features.cast_ptr = true
 	}
 }
 
@@ -91,7 +91,6 @@ fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
 }
 
 fn (mut c Checker) markused_comptimefor(mut node ast.ComptimeFor, unwrapped_expr_type ast.Type) {
-	c.table.used_features.dump = true
 	if c.table.used_features.used_maps == 0 {
 		final_sym := c.table.final_sym(unwrapped_expr_type)
 		if final_sym.info is ast.Map {
@@ -108,33 +107,49 @@ fn (mut c Checker) markused_call_expr(left_type ast.Type, mut node ast.CallExpr)
 	if left_type != 0 && left_type.is_ptr() && !c.table.used_features.auto_str_ptr
 		&& node.name == 'str' {
 		c.table.used_features.auto_str_ptr = true
+		if !c.table.used_features.auto_str_arr {
+			c.table.used_features.auto_str_arr = c.table.final_sym(left_type).kind == .array
+		}
 	}
 }
 
-fn (mut c Checker) markused_fn_call(mut node ast.CallExpr) {
+fn (mut c Checker) markused_print_call(mut node ast.CallExpr) {
 	if !c.is_builtin_mod && c.mod != 'math.bits' && node.args[0].expr !is ast.StringLiteral {
+		arg_typ := c.unwrap_generic(node.args[0].typ)
 		if (node.args[0].expr is ast.CallExpr && node.args[0].expr.is_method
 			&& node.args[0].expr.name == 'str')
-			|| !c.table.sym(c.unwrap_generic(node.args[0].typ)).has_method('str') {
+			|| !c.table.sym(arg_typ).has_method('str') {
 			c.table.used_features.auto_str = true
 		} else {
-			if node.args[0].typ.has_option_or_result() {
+			if arg_typ.has_option_or_result() {
 				c.table.used_features.print_options = true
 			}
-			c.table.used_features.print_types[node.args[0].typ.idx()] = true
+			c.table.used_features.print_types[arg_typ.idx()] = true
 			if !c.table.used_features.auto_str_ptr && node.args[0].expr is ast.Ident {
 				var_obj := node.args[0].expr.obj
 				if var_obj is ast.Var {
-					if var_obj.orig_type != 0
-						&& c.table.final_sym(var_obj.orig_type).kind == .interface {
-						c.table.used_features.auto_str_ptr = true
+					if var_obj.orig_type != 0 {
+						fsym := c.table.final_sym(var_obj.orig_type)
+						if fsym.kind == .interface {
+							c.table.used_features.auto_str_ptr = true
+						} else if fsym.kind == .array {
+							c.table.used_features.auto_str_arr = true
+						}
 						return
 					}
 				}
 			}
 		}
-		if node.args[0].typ.is_ptr() {
+		if arg_typ.is_ptr() {
 			c.table.used_features.auto_str_ptr = true
+		}
+		if !c.table.used_features.auto_str_arr {
+			sym := c.table.final_sym(arg_typ)
+			if sym.kind == .array {
+				c.table.used_features.auto_str_arr = true
+			} else if sym.info is ast.Struct {
+				c.table.used_features.auto_str_arr = sym.info.fields.any(c.table.final_sym(it.typ).kind == .array)
+			}
 		}
 	}
 }
@@ -165,15 +180,11 @@ fn (mut c Checker) markused_string_inter_lit(mut node ast.StringInterLiteral, ft
 	if ftyp.is_ptr() {
 		c.table.used_features.auto_str_ptr = true
 	}
+	if !c.table.used_features.auto_str_arr {
+		c.table.used_features.auto_str_arr = c.table.final_sym(ftyp).kind == .array
+	}
 	if ftyp.has_option_or_result() {
 		c.table.used_features.print_options = true
-	}
-}
-
-fn (mut c Checker) markused_infixexpr(check bool) {
-	if check {
-		c.table.used_features.index = true
-		c.table.used_features.arr_init = true
 	}
 }
 
@@ -183,7 +194,6 @@ fn (mut c Checker) markused_array_method(check bool, method_name string) {
 	}
 	match method_name {
 		'' { // array init
-			c.table.used_features.arr_init = true
 		}
 		'first' {
 			c.table.used_features.arr_first = true

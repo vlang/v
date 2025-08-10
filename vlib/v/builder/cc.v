@@ -592,7 +592,7 @@ fn (mut v Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []s
 
 fn (mut v Builder) setup_output_name() {
 	if !v.pref.is_shared && v.pref.build_mode != .build_module && v.pref.os == .windows
-		&& !v.pref.out_name.ends_with('.exe') {
+		&& !v.pref.is_o && !v.pref.out_name.ends_with('.exe') {
 		v.pref.out_name += '.exe'
 	}
 	// Output executable name

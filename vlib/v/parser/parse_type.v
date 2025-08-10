@@ -27,7 +27,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 					size_unresolved = false
 				}
 				ast.ComptimeCall {
-					if size_expr.is_compile_value {
+					if size_expr.kind == .d {
 						size_expr.resolve_compile_value(p.pref.compile_values) or {
 							p.error_with_pos(err.msg(), size_expr.pos)
 						}

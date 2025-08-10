@@ -614,7 +614,15 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 	} else if right.unaliased_sym.kind == .map {
 		g.write('_IN_MAP(')
 		if !left.typ.is_ptr() {
-			styp := g.styp(node.left_type)
+			mut sym_map := g.table.sym(node.right_type)
+			if sym_map.info is ast.Alias {
+				sym_map = g.table.sym((sym_map.info as ast.Alias).parent_type)
+			}
+			styp := g.styp(if sym_map.info is ast.Map {
+				(sym_map.info as ast.Map).key_type
+			} else {
+				node.left_type
+			})
 			g.write('ADDR(${styp}, ')
 			g.expr(node.left)
 			g.write(')')
@@ -1190,6 +1198,11 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 	g.write(' ${node.op.str()} 2') // none state
 }
 
+struct VSafeArithmeticOp {
+	typ ast.Type
+	op  token.Kind
+}
+
 // gen_plain_infix_expr generates basic code for infix expressions,
 // without any overloading of any kind
 // i.e. v`a + 1` => c`a + 1`
@@ -1199,16 +1212,21 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	needs_cast := node.left_type.is_number() && node.right_type.is_number()
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)
+	mut typ := node.promoted_type
+	mut typ_str := g.styp(typ)
 	if needs_cast {
-		typ_str := if node.left_ct_expr {
-			g.styp(g.type_resolver.get_type_or_default(node.left, node.left_type))
+		typ = if node.left_ct_expr {
+			g.type_resolver.get_type_or_default(node.left, node.left_type)
 		} else if node.left !in [ast.Ident, ast.CastExpr] && node.right_ct_expr {
-			g.styp(g.type_resolver.get_type_or_default(node.right, node.promoted_type))
+			g.type_resolver.get_type_or_default(node.right, node.promoted_type)
 		} else {
-			g.styp(node.promoted_type)
+			node.promoted_type
 		}
+		typ_str = g.styp(typ)
 		g.write('(${typ_str})(')
 	}
+	is_safe_div := node.op == .div && g.pref.div_by_zero_is_zero && typ.is_int()
+	is_safe_mod := node.op == .mod && g.pref.div_by_zero_is_zero && typ.is_int()
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {
 		g.write('*')
 	} else if !g.inside_interface_deref && node.left is ast.Ident
@@ -1227,9 +1245,22 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		}
 		g.write('memcmp(')
 	}
+	mut opstr := node.op.str()
+	if is_safe_div || is_safe_mod {
+		vsafe_fn_name := if is_safe_div { 'VSAFE_DIV_${typ_str}' } else { 'VSAFE_MOD_${typ_str}' }
+		g.write(vsafe_fn_name)
+		g.write('(')
+		g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
+			typ: typ
+			op:  node.op
+		}
+		opstr = ','
+	}
 	g.expr(node.left)
 	if !is_ctemp_fixed_ret {
-		g.write(' ${node.op.str()} ')
+		g.write(' ')
+		g.write(opstr)
+		g.write(' ')
 	} else {
 		g.write(', ')
 	}
@@ -1245,6 +1276,9 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	}
 	if is_ctemp_fixed_ret {
 		g.write(', sizeof(${g.styp(node.right_type)}))')
+	}
+	if is_safe_div || is_safe_mod {
+		g.write(')')
 	}
 	if needs_cast {
 		g.write(')')

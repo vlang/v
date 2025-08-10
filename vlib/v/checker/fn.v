@@ -342,9 +342,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if c.pref.skip_unused {
 				if param.typ.has_flag(.generic) {
 					c.table.used_features.comptime_syms[c.unwrap_generic(param.typ)] = true
+					c.table.used_features.comptime_syms[param.typ] = true
 				}
 				if node.return_type.has_flag(.generic) {
 					c.table.used_features.comptime_syms[c.unwrap_generic(node.return_type)] = true
+					c.table.used_features.comptime_syms[node.return_type] = true
+				}
+				if node.receiver.typ.has_flag(.generic) {
+					c.table.used_features.comptime_syms[node.receiver.typ] = true
+					c.table.used_features.comptime_syms[c.unwrap_generic(node.receiver.typ)] = true
 				}
 			}
 			if param.name == node.mod && param.name != 'main' {
@@ -777,7 +783,10 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	if node.or_block.kind == .block {
 		old_inside_or_block_value := c.inside_or_block_value
 		c.inside_or_block_value = true
+		last_cur_or_expr := c.cur_or_expr
+		c.cur_or_expr = &node.or_block
 		c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
+		c.cur_or_expr = last_cur_or_expr
 		c.inside_or_block_value = old_inside_or_block_value
 	}
 	c.expected_or_type = old_expected_or_type
@@ -1435,7 +1444,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if args_len > 0 && fn_name in print_everything_fns {
 		node.args[0].ct_expr = c.comptime.is_comptime(node.args[0].expr)
 		c.builtin_args(mut node, fn_name, func)
-		c.markused_fn_call(mut node)
+		c.markused_print_call(mut node)
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`
@@ -1895,6 +1904,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.register_trace_call(node, func)
 			if func.return_type.has_flag(.generic) {
 				c.table.used_features.comptime_syms[typ.clear_option_and_result()] = true
+				c.table.used_features.comptime_syms[func.return_type] = true
 			}
 			return typ
 		}
@@ -2027,6 +2037,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	// or there will be hard tRo diagnose 0 type panics in cgen.
 	node.return_type = left_type
 	node.receiver_type = left_type
+
+	if is_generic {
+		c.table.used_features.comptime_syms[c.unwrap_generic(left_type)] = true
+	}
 
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0 {
 		c.table.unwrap_generic_type(left_type, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
@@ -3798,20 +3812,21 @@ fn (mut c Checker) check_for_mut_receiver(mut expr ast.Expr) (string, token.Pos)
 }
 
 fn scope_register_it(mut s ast.Scope, pos token.Pos, typ ast.Type) {
-	scope_register_var_name(mut s, pos, typ, 'it')
+	scope_register_special_var_name(mut s, pos, typ, 'it')
 }
 
 fn scope_register_a_b(mut s ast.Scope, pos token.Pos, typ ast.Type) {
-	scope_register_var_name(mut s, pos, typ.ref(), 'a')
-	scope_register_var_name(mut s, pos, typ.ref(), 'b')
+	scope_register_special_var_name(mut s, pos, typ.ref(), 'a')
+	scope_register_special_var_name(mut s, pos, typ.ref(), 'b')
 }
 
-fn scope_register_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name string) {
+fn scope_register_special_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name string) {
 	s.register(ast.Var{
-		name:    name
-		pos:     pos
-		typ:     typ
-		is_used: true
+		name:       name
+		pos:        pos
+		typ:        typ
+		is_used:    false
+		is_special: true
 	})
 }
 

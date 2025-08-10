@@ -249,9 +249,12 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path}')
 	}
 	mut p := Parser{
-		scanner:  scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
-		table:    table
-		pref:     pref_
+		scanner: scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
+		table:   table
+		pref:    pref_
+		// Only set vls mode if it's the file the user requested via `v -vls-mode file.v`
+		// Otherwise we'd be parsing entire stdlib in vls mode
+		is_vls:   pref_.is_vls && path == pref_.path
 		scope:    &ast.Scope{
 			start_pos: 0
 			parent:    table.global_scope
@@ -1232,13 +1235,14 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	mut or_kind := ast.OrKind.absent
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
+	mut or_scope := &ast.Scope(unsafe { nil })
 
 	if allowed_cases && p.tok.kind == .question && p.peek_tok.kind != .lpar { // var?, not var?(
 		or_kind = ast.OrKind.propagate_option
 		p.check(.question)
 	} else if allowed_cases && p.tok.kind == .key_orelse {
 		or_kind = ast.OrKind.block
-		or_stmts, or_pos = p.or_block(.no_err_var)
+		or_stmts, or_pos, or_scope = p.or_block(.no_err_var)
 	} else if is_following_concrete_types {
 		// `generic_fn[int]`
 		concrete_types = p.parse_concrete_types()
@@ -1281,6 +1285,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 			kind:  or_kind
 			stmts: or_stmts
 			pos:   or_pos
+			scope: or_scope
 		}
 		concrete_types: concrete_types
 	}
@@ -1752,7 +1757,7 @@ enum OrBlockErrVarMode {
 	with_err_var
 }
 
-fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Pos) {
+fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Pos, &ast.Scope) {
 	was_inside_or_expr := p.inside_or_expr
 	defer {
 		p.inside_or_expr = was_inside_or_expr
@@ -1762,6 +1767,7 @@ fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Po
 	mut pos := p.tok.pos()
 	p.next()
 	p.open_scope()
+	or_scope := p.scope
 	defer {
 		p.close_scope()
 	}
@@ -1771,14 +1777,15 @@ fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Po
 			name:         'err'
 			typ:          ast.error_type
 			pos:          p.tok.pos()
-			is_used:      true
+			is_used:      false
 			is_stack_obj: true
+			is_special:   true
 		})
 	}
 
 	stmts := p.parse_block_no_scope(false)
 	pos = pos.extend(p.prev_tok.pos())
-	return stmts, pos
+	return stmts, pos, or_scope
 }
 
 fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
@@ -1802,11 +1809,12 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		mut or_kind_high := ast.OrKind.absent
 		mut or_stmts_high := []ast.Stmt{}
 		mut or_pos_high := token.Pos{}
+		mut or_scope := &ast.Scope(unsafe { nil })
 
 		if !p.or_is_handled {
 			// a[..end] or {...}
 			if p.tok.kind == .key_orelse {
-				or_stmts_high, or_pos_high = p.or_block(.no_err_var)
+				or_stmts_high, or_pos_high, or_scope = p.or_block(.no_err_var)
 				return ast.IndexExpr{
 					left:     left
 					pos:      pos_high
@@ -1821,6 +1829,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 						kind:  .block
 						stmts: or_stmts_high
 						pos:   or_pos_high
+						scope: or_scope
 					}
 					is_gated: is_gated
 				}
@@ -1870,11 +1879,11 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		mut or_kind_low := ast.OrKind.absent
 		mut or_stmts_low := []ast.Stmt{}
 		mut or_pos_low := token.Pos{}
-
+		mut or_scope := &ast.Scope(unsafe { nil })
 		if !p.or_is_handled {
 			// a[start..end] or {...}
 			if p.tok.kind == .key_orelse {
-				or_stmts_low, or_pos_low = p.or_block(.no_err_var)
+				or_stmts_low, or_pos_low, or_scope = p.or_block(.no_err_var)
 				return ast.IndexExpr{
 					left:     left
 					pos:      pos_low
@@ -1890,6 +1899,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 						kind:  .block
 						stmts: or_stmts_low
 						pos:   or_pos_low
+						scope: or_scope
 					}
 					is_gated: is_gated
 				}
@@ -1930,10 +1940,11 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	mut or_kind := ast.OrKind.absent
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
+	mut or_scope := &ast.Scope(unsafe { nil })
 	if !p.or_is_handled {
 		// a[i] or { ... }
 		if p.tok.kind == .key_orelse {
-			or_stmts, or_pos = p.or_block(.no_err_var)
+			or_stmts, or_pos, or_scope = p.or_block(.no_err_var)
 			return ast.IndexExpr{
 				left:     left
 				index:    expr
@@ -1942,6 +1953,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 					kind:  .block
 					stmts: or_stmts
 					pos:   or_pos
+					scope: or_scope
 				}
 				is_gated: is_gated
 			}
@@ -2007,6 +2019,9 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	is_filter := field_name in ['filter', 'map', 'any', 'all', 'count']
 	if is_filter || field_name == 'sort' || field_name == 'sorted' {
+		if p.file_backend_mode == .v || p.file_backend_mode == .c {
+			p.register_auto_import('builtin.closure')
+		}
 		p.open_scope()
 		defer {
 			p.close_scope()
@@ -2076,9 +2091,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	mut or_kind := ast.OrKind.absent
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
+	mut or_scope := &ast.Scope(unsafe { nil })
 	if p.tok.kind == .key_orelse {
 		or_kind = .block
-		or_stmts, or_pos = p.or_block(.with_err_var)
+		or_stmts, or_pos, or_scope = p.or_block(.with_err_var)
 	} else if p.tok.kind == .not {
 		or_kind = .propagate_result
 		or_pos = p.tok.pos()
@@ -2098,6 +2114,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			kind:  or_kind
 			stmts: or_stmts
 			pos:   or_pos
+			scope: or_scope
 		}
 		scope:      p.scope
 		next_token: p.tok.kind
@@ -2379,8 +2396,8 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			typ = p.parse_type()
 			is_virtual_c_const = true
 		}
-		if !p.pref.translated && !p.is_translated && util.contains_capital(name)
-			&& !is_virtual_c_const {
+		if !p.pref.translated && !p.is_translated && !is_virtual_c_const
+			&& util.contains_capital(name) {
 			p.error_with_pos('const names cannot contain uppercase letters, use snake_case instead',
 				pos)
 		}

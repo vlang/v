@@ -11,6 +11,32 @@ module main
     
     ## Examples
     
+    ### Functions that return different literals:
+    
+    Example of a function returning boolean:
+    ```v
+    fn is_odd(x int) bool {
+    	if x % 2 == 0 {
+    		return false
+    	}
+    	return true
+    }
+    ```
+    
+    Another example of a function returning a string:
+    ```v
+    fn answer() string {
+    	return '42'
+    }
+    ```
+    
+    This example shows a function returning a string with interpolation:
+    ```v
+    fn str_with_interplation() string {
+    	return 'this string has ${42:6} interpolation in it.'
+    }
+    ```
+    
     ### Processing command line args
     
     ```v

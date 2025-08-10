@@ -573,7 +573,7 @@ pub:
 pub struct AnonFn {
 pub mut:
 	decl           FnDecl
-	inherited_vars []Param
+	inherited_vars []Param         // note: closures have inherited_vars.len > 0
 	typ            Type            // the type of anonymous fn. Both .typ and .decl.name are auto generated
 	has_gen        map[string]bool // a map of the names of all generic anon functions, generated from it
 }
@@ -602,6 +602,7 @@ pub:
 	is_must_use           bool        // true, when @[must_use] is used on a fn. Calls to such functions, that ignore the return value, will cause warnings.
 	is_markused           bool        // true, when an explicit `@[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
 	is_file_translated    bool        // true, when the file it resides in is `@[translated]`
+	is_closure            bool        // true, for actual closures like `fn [inherited] () {}` . It is false for normal anonymous functions, and for named functions/methods too.
 	receiver              StructField // TODO: this is not a struct field
 	receiver_pos          token.Pos   // `(u User)` in `fn (u User) name()` position
 	is_method             bool
@@ -934,6 +935,7 @@ pub mut:
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
 	is_auto_heap bool // value whose address goes out of scope
 	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not @[heap] struct)
+	is_special   bool // err, it, a, b vars (ignore not useds)
 }
 
 // used for smartcasting only
@@ -1207,6 +1209,7 @@ pub mut:
 	is_option bool // IfGuard
 	is_direct bool // Set if the underlying memory can be safely accessed
 	is_gated  bool // #[] gated array
+	typ       Type
 }
 
 @[minify]
@@ -1473,6 +1476,8 @@ pub:
 	typ              Type        // the default is `int`; can be changed by `enum Big as u64 { a = 5 }`
 	typ_pos          token.Pos
 	pos              token.Pos
+pub mut:
+	enum_typ Type
 }
 
 pub struct AliasTypeDecl {
@@ -1908,10 +1913,12 @@ pub enum OrKind {
 // `or { ... }`
 pub struct OrExpr {
 pub:
-	kind OrKind
-	pos  token.Pos
+	kind  OrKind
+	pos   token.Pos
+	scope &Scope = unsafe { nil }
 pub mut:
-	stmts []Stmt
+	err_used bool
+	stmts    []Stmt
 }
 
 /*
@@ -2049,21 +2056,32 @@ pub mut:
 	typ_key    string // `f.typ` cached key for type resolver
 }
 
+pub enum ComptimeCallKind {
+	unknown
+	d
+	env
+	res
+	html
+	tmpl
+	method
+	pkgconfig
+	embed_file
+	compile_warn
+	compile_error
+}
+
 @[minify]
 pub struct ComptimeCall {
 pub:
-	pos              token.Pos
-	has_parens       bool // if $() is used, for vfmt
-	method_name      string
-	method_pos       token.Pos
-	scope            &Scope = unsafe { nil }
-	is_vweb          bool
-	is_veb           bool
-	is_embed         bool // $embed_file(...)
-	is_env           bool // $env(...) // TODO: deprecate after $d() is stable
-	is_compile_value bool // $d(...)
-	env_pos          token.Pos
-	is_pkgconfig     bool
+	pos         token.Pos
+	has_parens  bool // if $() is used, for vfmt
+	method_name string
+	kind        ComptimeCallKind
+	method_pos  token.Pos
+	scope       &Scope = unsafe { nil }
+	is_vweb     bool
+	is_veb      bool
+	env_pos     token.Pos
 mut:
 	is_d_resolved bool
 pub mut:
@@ -2086,7 +2104,7 @@ pub fn (mut cc ComptimeCall) resolve_compile_value(compile_values map[string]str
 	if cc.is_d_resolved {
 		return
 	}
-	if !cc.is_compile_value {
+	if cc.kind != .d {
 		return error('ComptimeCall is not \$d()')
 	}
 	arg := cc.args[0] or {
@@ -2108,7 +2126,7 @@ pub fn (mut cc ComptimeCall) resolve_compile_value(compile_values map[string]str
 // `ast.Expr`'s `str()' method (used by e.g. vfmt).
 pub fn (cc ComptimeCall) expr_str() string {
 	mut str := 'ast.ComptimeCall'
-	if cc.is_compile_value {
+	if cc.kind == .d {
 		arg := cc.args[0] or { return str }
 		if arg.expr.is_pure_literal() {
 			str = "\$${cc.method_name}('${cc.args_var}', ${arg})"
