@@ -1881,6 +1881,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	} else {
 		if unknown_field_msg == '' {
+			if field_name == '' && c.pref.is_vls {
+				// VLS will often have `foo.`, skip the no field error
+				return ast.void_type
+			}
 			unknown_field_msg = 'type `${sym.name}` has no field named `${field_name}`'
 		}
 		if sym.info is ast.Struct {

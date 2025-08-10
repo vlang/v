@@ -249,9 +249,12 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path}')
 	}
 	mut p := Parser{
-		scanner:  scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
-		table:    table
-		pref:     pref_
+		scanner: scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
+		table:   table
+		pref:    pref_
+		// Only set vls mode if it's the file the user requested via `v -vls-mode file.v`
+		// Otherwise we'd be parsing entire stdlib in vls mode
+		is_vls:   pref_.is_vls && path == pref_.path
 		scope:    &ast.Scope{
 			start_pos: 0
 			parent:    table.global_scope

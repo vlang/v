@@ -210,3 +210,44 @@ pub fn show_compiler_message(kind string, err errors.CompilerMessage) {
 		eprintln(bold('Details: ') + color('details', err.details))
 	}
 }
+
+pub struct JsonError {
+pub:
+	path    string
+	message string
+	line_nr int
+	col     int
+	len     int
+}
+
+pub fn print_json_errors(errs []JsonError) {
+	// Can't import x.json2 or json, so have to manually generate json
+	eprintln('[')
+	for i, e in errs {
+		msg := e.message.replace('"', '\\"').replace('\n', '\\n')
+		eprintln('{
+"path":"${e.path}",
+"message":"${msg}",
+"line_nr":${e.line_nr},
+"col":${e.col},
+"len":${e.len}
+}')
+		if i < errs.len - 1 {
+			eprintln(',')
+		}
+	}
+	eprintln(']')
+}
+
+/*
+pub fn print_json_error(kind string, err errors.CompilerMessage) {
+	e := JsonError{
+		message: err.message
+		path:    err.file_path
+		line_nr: err.pos.line_nr + 1
+		col:     err.pos.col + 1
+		len:     err.pos.len
+	}
+	eprintln(json2.encode_pretty(e))
+}
+*/
