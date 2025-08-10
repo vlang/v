@@ -24,6 +24,11 @@ fn test_pointer_assign_without_memcpy() {
 	str := &i8(0)
 	str = op.constraint
 	assert !isnil(str)
+
+	ops := [3]ASMOperand{}
+	pop := &ASMOperand(0)
+	pop = ops
+	assert pop[1].constraint[0] == 0
 }
 
 struct StubIndex {
