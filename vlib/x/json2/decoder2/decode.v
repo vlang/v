@@ -126,7 +126,7 @@ fn (list &LinkedList[T]) free() {
 enum ValueKind {
 	array
 	object
-	string_
+	string
 	number
 	boolean
 	null
@@ -316,7 +316,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if val is StringDecoder {
 		struct_info := decoder.current_node.value
 
-		if struct_info.value_kind == .string_ {
+		if struct_info.value_kind == .string {
 			val.from_json_string(decoder.json[struct_info.position + 1..struct_info.position +
 				struct_info.length - 1]) or {
 				decoder.decode_error('${typeof(*val).name}: ${err.msg()}')!
@@ -370,7 +370,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T.unaliased_typ is string {
 		string_info := decoder.current_node.value
 
-		if string_info.value_kind == .string_ {
+		if string_info.value_kind == .string {
 			mut string_buffer := []u8{cap: string_info.length} // might be too long but most json strings don't contain many escape characters anyways
 
 			mut buffer_index := 1
@@ -542,7 +542,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 								current_field_info = current_field_info.next
 								continue
 							}
-							.string_ {
+							.string {
 								if decoder.current_node.next.value.length == 2 {
 									current_field_info = current_field_info.next
 									continue
@@ -705,7 +705,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 		if value_info.value_kind == .number {
 			unsafe { decoder.decode_number(&val)! }
-		} else if value_info.value_kind == .string_ {
+		} else if value_info.value_kind == .string {
 			// recheck if string contains number
 			decoder.checker_idx = value_info.position + 1
 			decoder.check_number()!

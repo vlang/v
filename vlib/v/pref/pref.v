@@ -257,8 +257,9 @@ pub mut:
 	// forwards compatibility settings:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 	//
-	subsystem Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
-	is_vls    bool
+	subsystem   Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
+	is_vls      bool
+	json_errors bool // -json-errors, for VLS and other tools
 }
 
 pub struct LineInfo {
@@ -405,6 +406,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-check' {
 				res.check_only = true
+			}
+			'-vls-mode' {
+				res.is_vls = true
 			}
 			'-?', '-h', '-help', '--help' {
 				// Note: help is *very important*, just respond to all variations:
@@ -560,6 +564,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-repl' {
 				res.is_repl = true
+			}
+			'-json-errors' {
+				res.json_errors = true
 			}
 			'-live' {
 				res.is_livemain = true

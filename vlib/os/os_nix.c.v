@@ -29,35 +29,20 @@ const stderr_value = 2
 // (Must be realized in Syscall) (Must be specified)
 // ref: http://www.ccfit.nsu.ru/~deviv/courses/unix/unix/ng7c229.html
 pub const s_ifmt = 0xF000 // type of file
-
 pub const s_ifdir = 0x4000 // directory
-
 pub const s_ifreg = 0x8000 // regular file
-
 pub const s_iflnk = 0xa000 // link
-
 pub const s_isuid = 0o4000 // SUID
-
 pub const s_isgid = 0o2000 // SGID
-
 pub const s_isvtx = 0o1000 // Sticky
-
 pub const s_irusr = 0o0400 // Read by owner
-
 pub const s_iwusr = 0o0200 // Write by owner
-
 pub const s_ixusr = 0o0100 // Execute by owner
-
 pub const s_irgrp = 0o0040 // Read by group
-
 pub const s_iwgrp = 0o0020 // Write by group
-
 pub const s_ixgrp = 0o0010 // Execute by group
-
 pub const s_iroth = 0o0004 // Read by others
-
 pub const s_iwoth = 0o0002 // Write by others
-
 pub const s_ixoth = 0o0001
 
 fn C.utime(&char, &C.utimbuf) int
