@@ -34,5 +34,9 @@ pub mut:
 fn test_pointer_assign_with_memcpy() {
 	mut s := StubIndex{}
 	s.data[1] = [5]map[string]string{}
-	assert true
+
+	mut data := s.data[1]
+	data[0]['abc'] = '123'
+	k := data[0]['abc']
+	assert k == '123'
 }
