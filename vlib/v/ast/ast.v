@@ -1094,6 +1094,7 @@ pub mut:
 	mod            string
 	name           string
 	full_name      string
+	cached_name    string
 	kind           IdentKind
 	info           IdentInfo
 	is_mut         bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable

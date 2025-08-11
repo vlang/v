@@ -400,7 +400,7 @@ __global nested_expr_str_calls = i64(0)
 const max_nested_expr_str_calls = 300
 
 // string representation of expr
-pub fn (x &Expr) str() string {
+pub fn (x Expr) str() string {
 	str_calls := stdatomic.add_i64(&nested_expr_str_calls, 1)
 	if str_calls > max_nested_expr_str_calls {
 		$if panic_on_deeply_nested_expr_str_calls ? {
