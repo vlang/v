@@ -525,7 +525,8 @@ pub fn (x &Expr) str() string {
 			return 'spawn ${x.call_expr}'
 		}
 		Ident {
-			return x.name.clone()
+			// `util.strip_main_name` will clone `x.name`
+			return util.strip_main_name(x.name)
 		}
 		IfExpr {
 			mut parts := []string{}
