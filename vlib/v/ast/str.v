@@ -525,8 +525,13 @@ pub fn (x Expr) str() string {
 			return 'spawn ${x.call_expr}'
 		}
 		Ident {
-			// `util.strip_main_name` will clone `x.name`
-			return util.strip_main_name(x.name)
+			if x.cached_name == '' {
+				unsafe {
+					x.cached_name = util.strip_main_name(x.name)
+				}
+			}
+			// This clone may freed by auto str()
+			return x.cached_name.clone()
 		}
 		IfExpr {
 			mut parts := []string{}
