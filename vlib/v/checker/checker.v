@@ -430,12 +430,13 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// After the main checker run, run the line info check, print line info, and exit (if it's present)
 	if !c.pref.linfo.is_running && c.pref.line_info != '' { //'' && c.pref.linfo.line_nr == 0 {
 		// c.do_line_info(c.pref.line_info, ast_files)
-		println('setting is_running=true,  pref.path=${c.pref.linfo.path} curdir' + os.getwd())
+		// println('setting is_running=true,  pref.path=${c.pref.linfo.path} curdir' + os.getwd())
 		c.pref.linfo.is_running = true
+		// println('linfo path=${c.pref.linfo.path}')
 		for i, file in ast_files {
 			// println(file.path)
 			if file.path == c.pref.linfo.path {
-				println('running c.check_files')
+				// println('running c.check_files')
 				c.check_files([ast_files[i]])
 				exit(0)
 			} else if file.path.starts_with('./') {

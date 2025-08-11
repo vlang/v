@@ -264,9 +264,10 @@ pub mut:
 
 pub struct LineInfo {
 pub mut:
-	line_nr      int             // a quick single file run when called with v -line-info (contains line nr to inspect)
-	path         string          // same, but stores the path being parsed
-	expr         string          // "foo" or "foo.bar" V code (expression) which needs autocomplete
+	line_nr int    // a quick single file run when called with v -line-info (contains line nr to inspect)
+	path    string // same, but stores the path being parsed
+	// expr         string          // "foo" or "foo.bar" V code (expression) which needs autocomplete
+	col          int
 	is_running   bool            // so that line info is fetched only on the second checker run
 	vars_printed map[string]bool // to avoid dups
 }

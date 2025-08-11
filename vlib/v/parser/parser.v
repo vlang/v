@@ -2635,6 +2635,13 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	if p.disallow_declarations_in_script_mode() {
 		return ast.SumTypeDecl{}
 	}
+	if p.is_vls && p.tok.is_key() {
+		// End parsing after `type ` in vls mode to avoid lots of junk errors
+		// If next token is a key, the type wasn't finished
+		p.error('expecting type name')
+		p.should_abort = true
+		return ast.AliasTypeDecl{}
+	}
 	mut name := p.check_name()
 	mut language := ast.Language.v
 	if name.len == 1 && name[0].is_capital() {

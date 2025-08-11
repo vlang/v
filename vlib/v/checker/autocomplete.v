@@ -11,19 +11,31 @@ struct ACFieldMethod {
 	typ  string
 }
 
+fn abs(a int) int {
+	if a < 0 {
+		return -a
+	}
+	return a
+}
+
 fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	// Mini LS hack (v -line-info "a.v:16")
-	println(
-		'checker.ident() info.line_nr=${c.pref.linfo.line_nr} node.line_nr=${node.pos.line_nr} ' +
-		' pwd="${os.getwd()}" file="${c.file.path}", ' +
-		' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" expr="${c.pref.linfo.expr}"')
+	if c.pref.is_verbose {
+		println(
+			'checker.ident_autocomplete() info.line_nr=${c.pref.linfo.line_nr} node.line_nr=${node.pos.line_nr} ' +
+			' node.col=${node.pos.col} pwd="${os.getwd()}" file="${c.file.path}", ' +
+			//' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" expr="${c.pref.linfo.expr}"')
+		 ' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" col="${c.pref.linfo.col}"')
+	}
 	// Make sure this ident is on the same line as requeste, in the same file, and has the same name
 	same_line := node.pos.line_nr in [c.pref.linfo.line_nr - 1, c.pref.linfo.line_nr + 1, c.pref.linfo.line_nr]
 	if !same_line {
 		return
 	}
-	same_name := c.pref.linfo.expr == node.name
-	if !same_name {
+	// same_name := c.pref.linfo.expr == node.name
+	same_col := abs(c.pref.linfo.col - node.pos.col) < 3
+	// if !same_name {
+	if !same_col {
 		return
 	}
 	abs_path := os.join_path(os.getwd(), c.file.path)
@@ -39,9 +51,14 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	sym := c.table.sym(c.unwrap_generic(node.obj.typ))
 	// sb.writeln('VAR ${node.name}:${sym.name} ${node.pos.line_nr}')
 	nt := '${node.name}:${sym.name}'
+	sb.writeln('{')
 	if !c.pref.linfo.vars_printed[nt] { // avoid dups
-		sb.writeln('===')
-		sb.writeln('VAR ${nt}') //${node.name}:${sym.name}')
+		// sb.writeln('===')
+		// sb.writeln('VAR ${nt}') //${node.name}:${sym.name}')
+		sb.writeln('\t"name":"${node.name}",')
+		sb.writeln('\t"type":"${sym.name}",')
+		sb.writeln('\t"fields":[')
+
 		// print_backtrace()
 		/*
 		if sym.kind == .alias {
@@ -75,9 +92,14 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 			fields << ACFieldMethod{build_method_summary(method), method_ret_type.name}
 		}
 		fields.sort(a.name < b.name)
-		for field in fields {
-			sb.writeln('${field.name}:${field.typ}')
+		for i, field in fields {
+			// sb.writeln('${field.name}:${field.typ}')
+			sb.write_string('\t\t"${field.name}:${field.typ}"')
+			if i < fields.len - 1 {
+				sb.writeln(', ')
+			}
 		}
+		sb.writeln('\n\t]\n}')
 		res := sb.str().trim_space()
 		if res != '' {
 			println(res)

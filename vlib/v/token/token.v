@@ -390,6 +390,10 @@ pub fn (t Token) is_next_to(pre_token Token) bool {
 	return t.pos - pre_token.pos == pre_token.len
 }
 
+pub fn (t Token) is_key() bool {
+	return int(t.kind) > int(Kind.keyword_beg) && int(t.kind) < int(Kind.keyword_end)
+}
+
 pub fn (t Token) str() string {
 	mut s := t.kind.str()
 	if s.len == 0 {
