@@ -1,5 +1,7 @@
 module big
 
+import math.bits
+
 // Compares the magnitude of the two unsigned integers represented the given
 // digit arrays. Returns -1 if a < b, 0 if a == b and +1 if a > b. Here
 // a is operand_a and b is operand_b (for brevity).
@@ -137,8 +139,8 @@ fn simple_multiply_digit_array(operand_a []u64, operand_b []u64, mut storage []u
 		mut hi := u64(0)
 		mut lo := u64(0)
 		for a_index in 0 .. operand_a.len {
-			hi, lo = mul_add_64(operand_a[a_index], operand_b[b_index], storage[a_index + b_index] +
-				hi)
+			hi, lo = bits.mul_add_64(operand_a[a_index], operand_b[b_index], storage[a_index +
+				b_index] + hi)
 			storage[a_index + b_index] = lo & max_digit
 			hi = (hi << (64 - digit_bits)) | (lo >> digit_bits)
 		}
@@ -167,7 +169,7 @@ fn multiply_array_by_digit(operand_a []u64, value u64, mut storage []u64) {
 	mut hi := u64(0)
 	mut lo := u64(0)
 	for index in 0 .. operand_a.len {
-		hi, lo = mul_add_64(operand_a[index], value, hi)
+		hi, lo = bits.mul_add_64(operand_a[index], value, hi)
 		storage[index] = lo & max_digit
 		hi = hi << (64 - digit_bits) + (lo >> digit_bits)
 	}
@@ -235,7 +237,7 @@ fn divide_array_by_digit(operand_a []u64, divisor u64, mut quotient []u64, mut r
 	for index := operand_a.len - 1; index >= 0; index-- {
 		hi := rem >> (64 - digit_bits)
 		lo := rem << digit_bits | operand_a[index]
-		quo, rem = div_64(hi, lo, divisor64)
+		quo, rem = bits.div_64(hi, lo, divisor64)
 		qtemp[index] = quo & max_digit
 	}
 	// Remove leading zeros from quotient
@@ -336,209 +338,4 @@ fn bitwise_not_digit_array(original []u64, mut storage []u64) {
 		storage[index] = (~original[index]) & max_digit
 	}
 	shrink_tail_zeros(mut storage)
-}
-
-const two32 = u64(0x100000000)
-const mask32 = two32 - 1
-// mul_64 returns the 128-bit product of x and y: (hi, lo) = x * y
-// with the product bits' upper half returned in hi and the lower
-// half returned in lo.
-@[inline]
-pub fn mul_64(x u64, y u64) (u64, u64) {
-	mut hi := u64(0)
-	mut lo := u64(0)
-	$if amd64 && !msvc {
-		asm amd64 {
-			// caculate x*y
-			mov rax, x // rax <= x
-			mov rdx, y // rdx <= y
-			mulq rdx // [rdx:rax] = x*y
-			mov hi, rdx // hi <= rdx
-			mov lo, rax // lo <= rax
-			; +r (hi)
-			  +r (lo)
-			; r (x) // input
-			  r (y)
-			; rax
-			  rdx // used
-		}
-	} $else $if arm64 {
-		asm arm64 {
-			// caculate x*y
-			mov x, x0 // x0 <= x
-			mov y, x1 // x1 <= y
-			mul x0, x1, x2 // x2 <= lo(x*y)
-			umulh x0, x1, x3 // x3 <= hi(x*y)
-			mov x3, hi // hi <= x3
-			mov x2, lo // lo <= x2
-			; +r (hi)
-			  +r (lo)
-			; r (x)
-			  r (y)
-			; x0
-			  x1
-			  x2
-			  x3
-		}
-	} $else {
-		// fallback to default
-		x0 := x & mask32
-		x1 := x >> 32
-		y0 := y & mask32
-		y1 := y >> 32
-		w0 := x0 * y0
-		t := x1 * y0 + (w0 >> 32)
-		mut w1 := t & mask32
-		w2 := t >> 32
-		w1 += x0 * y1
-		hi = x1 * y1 + w2 + (w1 >> 32)
-		lo = x * y
-	}
-	return hi, lo
-}
-
-// mul_add_64 caculate x*y+z
-@[inline]
-pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
-	mut hi := u64(0)
-	mut lo := u64(0)
-	$if amd64 && !msvc {
-		asm amd64 {
-			// caculate x*y + z
-			mov rax, x // rax <= x
-			mov rdx, y // rdx <= y
-			mov rsi, z // rsi <= z
-			mulq rdx // [rdx:rax] = x*y
-			addq rax, rsi // rax <= rax + z
-			adcq rdx, 0 // rdx <= rdx + carry
-			mov hi, rdx // hi <= rdx
-			mov lo, rax // lo <= rax
-			; +r (hi)
-			  +r (lo)
-			; r (x) // input
-			  r (y)
-			  r (z)
-			; rax
-			  rdx
-			  rsi // used
-		}
-	} $else $if arm64 {
-		asm arm64 {
-			// caculate x*y + z
-			mov x, x0 // x0 <= x
-			mov y, x1 // x1 <= y
-			mov z, x2 // x2 <= z
-			mul x0, x1, x3 // x3 <= lo(x*y)
-			umulh x0, x1, x4 // x4 <= hi(x*y)
-			adds x3, x2, x1 // x1 <= lo(x*y) + z
-			adc xzr, x4, x0 // x0 <= hi + carry
-			mov x0, hi // hi <= x0
-			mov x1, lo // lo <= x1
-			; +r (hi)
-			  +r (lo)
-			; r (x)
-			  r (y)
-			  r (z)
-			; x0
-			  x1
-			  x2
-			  x3
-			  x4
-		}
-	} $else {
-		// fallback to default
-		// use mul_64()
-		h, l := mul_64(x, y)
-		lo = l // output
-		 + z
-		hi = h + u64(lo < l)
-	}
-	return hi, lo
-}
-
-// div_64 returns the quotient and remainder of (hi, lo) divided by y:
-// quo = (hi, lo)/y, rem = (hi, lo)%y with the dividend bits' upper
-// half in parameter hi and the lower half in parameter lo.
-// div_64 panics for y == 0 (division by zero) or y <= hi (quotient overflow).
-@[inline]
-pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
-	mut y := y1
-	if y == 0 {
-		panic('div_by_zero_error')
-	}
-	if y <= hi {
-		panic('overflow_error')
-	}
-
-	$if amd64 && !msvc {
-		mut quo := u64(0)
-		mut rem := u64(0)
-		asm amd64 {
-			// caculate quo:rem = hi:lo / y
-			mov rdx, hi
-			mov rax, lo
-			div y
-			mov quo, rax
-			mov rem, rdx
-			; +r (quo)
-			  +r (rem)
-			; r (hi) // input
-			  r (lo)
-			  r (y)
-			; rax
-			  rdx // used
-		}
-		return quo, rem
-	} $else {
-		s := u32(leading_zeros_64(y))
-		y <<= s
-		yn1 := y // output
-		 >> 32
-		yn0 := y & mask32
-		ss1 := (hi << s)
-		xxx := 64 - s
-		mut ss2 := lo >> xxx
-		if xxx == 64 {
-			// in Go, shifting right a u64 number, 64 times produces 0 *always*.
-			// See https://go.dev/ref/spec
-			// > The shift operators implement arithmetic shifts if the left operand
-			// > is a signed integer and logical shifts if it is an unsigned integer.
-			// > There is no upper limit on the shift count.
-			// > Shifts behave as if the left operand is shifted n times by 1 for a shift count of n.
-			// > As a result, x << 1 is the same as x*2 and x >> 1 is the same as x/2
-			// > but truncated towards negative infinity.
-			//
-			// In V, that is currently left to whatever C is doing, which is apparently a NOP.
-			// This function was a direct port of https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=512,
-			// so we have to use the Go behaviour.
-			// TODO: reconsider whether we need to adopt it for our shift ops, or just use function wrappers that do it.
-			ss2 = 0
-		}
-		un32 := ss1 | ss2
-		un10 := lo << s
-		un1 := un10 >> 32
-		un0 := un10 & mask32
-		mut q1 := un32 / yn1
-		mut rhat := un32 - (q1 * yn1)
-		for q1 >= two32 || (q1 * yn0) > ((two32 * rhat) + un1) {
-			q1--
-			rhat += yn1
-			if rhat >= two32 {
-				break
-			}
-		}
-		un21 := (un32 * two32) + (un1 - (q1 * y))
-		mut q0 := un21 / yn1
-		rhat = un21 - q0 * yn1
-		for q0 >= two32 || (q0 * yn0) > ((two32 * rhat) + un0) {
-			q0--
-			rhat += yn1
-			if rhat >= two32 {
-				break
-			}
-		}
-		qq := ((q1 * two32) + q0)
-		rr := ((un21 * two32) + un0 - (q0 * y)) >> s
-		return qq, rr
-	}
 }
