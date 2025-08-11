@@ -110,6 +110,26 @@ fn test_inline_asm() {
 		; ; eax
 	}
 	assert o.str()[0].is_capital()
+
+	x := u64(100)
+	y := u64(200)
+	mut hi := u64(0)
+	mut lo := u64(0)
+	asm amd64 {
+		mov rax, x
+		mulq y
+		mov lo, rax
+		mov hi, rdx
+		; =*m (lo)
+		  =&r (hi)
+		; rm (x)
+		  r (y)
+		; rax
+		  rdx
+		  cc
+	}
+	assert hi == 0
+	assert lo == 20000
 }
 
 @[packed]

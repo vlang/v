@@ -3255,7 +3255,7 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		}
 
 		if !template.is_label {
-			g.write(';')
+			g.write('\\n\\t')
 		}
 		g.writeln('"')
 	}
@@ -4771,7 +4771,7 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		}
 		return
 	}
-	if g.pref.skip_unused && node.typ.idx() !in g.table.used_features.used_syms {
+	if g.pref.skip_unused && node.enum_typ !in g.table.used_features.used_syms {
 		return
 	}
 	g.enum_typedefs.writeln('')
@@ -7106,7 +7106,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								g.writeln(' }, (${option_name}*)&${cvar_name}, sizeof(${cast_typ}));')
 								g.indent--
 								return
-							} else {
+							} else if return_type.clear_option_and_result() != ast.void_type {
 								g.write('*(${cast_typ}*) ${cvar_name}${tmp_op}data = ')
 							}
 						}
@@ -7177,7 +7177,10 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 	}
 	if or_block.kind == .block {
 		g.or_expr_return_type = return_type.clear_option_and_result()
-		g.writeln('\tIError err = ${cvar_name}${tmp_op}err;')
+		if or_block.err_used
+			|| (g.fn_decl != unsafe { nil } && (g.fn_decl.is_main || g.fn_decl.is_test)) {
+			g.writeln('\tIError err = ${cvar_name}${tmp_op}err;')
+		}
 
 		g.inside_or_block = true
 		defer {
@@ -7783,13 +7786,12 @@ fn (mut g Gen) register_iface_return_types() {
 		if inter_info.is_generic {
 			continue
 		}
+		if g.pref.skip_unused && isym.idx !in g.table.used_features.used_syms {
+			continue
+		}
 		for _, method_name in inter_info.get_methods() {
 			method := isym.find_method_with_generic_parent(method_name) or { continue }
 			if method.return_type.has_flag(.result) {
-				if g.pref.skip_unused
-					&& g.table.sym(method.return_type).idx !in g.table.used_features.used_syms {
-					continue
-				}
 				g.register_result(method.return_type)
 			}
 		}

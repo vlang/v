@@ -1359,6 +1359,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		'rv64', 'riscv64' {
 			return '__V_rv64'
 		}
+		'rv32', 'riscv32' {
+			return '__V_rv32'
+		}
 		's390x' {
 			return '__V_s390x'
 		}

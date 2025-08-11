@@ -592,40 +592,51 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		if p.tok.kind == .lpar {
 			constraint = if output { '+r' } else { 'r' } // default constraint, though vfmt fmts to `+r` and `r`
 		} else {
-			constraint += match p.tok.kind {
-				.assign {
-					'='
-				}
-				.plus {
-					'+'
-				}
-				.mod {
-					'%'
-				}
-				.amp {
-					'&'
-				}
-				else {
-					''
-				}
-			}
-			if constraint != '' {
-				p.next()
-			}
-			constraint += p.tok.lit
-			if p.tok.kind == .at {
-				p.next()
-			} else {
-				if p.tok.kind == .number {
-					// Numbered constraints - https://gcc.gnu.org/onlinedocs/gcc/Simple-Constraints.html
-					if p.tok.lit.int() >= 10 {
-						p.error_with_pos('The digit must be between 0 and 9 only', pos)
-						return []
-					}
-					p.check(.number)
+			// https://gcc.gnu.org/onlinedocs/gcc/Modifiers.html
+			if output {
+				// Output constraint
+				if p.tok.kind == .assign {
+					constraint += '='
+				} else if p.tok.kind == .plus {
+					constraint += '+'
 				} else {
-					p.check(.name)
+					p.error_with_pos('Output constraint must starts with `=` or `+`',
+						pos)
+					return []
 				}
+				p.next()
+				if p.tok.kind == .amp {
+					constraint += '&'
+					p.next()
+				} else if p.tok.kind == .mul {
+					constraint += '*'
+					p.next()
+				}
+			} else {
+				// Input constraint
+				if p.tok.kind == .mod {
+					constraint += '%'
+					p.next()
+				} else if p.tok.kind == .mul {
+					constraint += '*'
+					p.next()
+				}
+			}
+			if p.tok.kind == .at {
+				// hack: `@ccl` is a single token .at, not .at + .name
+				constraint += p.tok.lit
+				p.next()
+			} else if p.tok.kind == .number && !output {
+				// Numbered constraints - https://gcc.gnu.org/onlinedocs/gcc/Simple-Constraints.html
+				if p.tok.lit.int() >= 10 {
+					p.error_with_pos('The digit must be between 0 and 9 only', pos)
+					return []
+				}
+				constraint += p.tok.lit
+				p.check(.number)
+			} else {
+				constraint += p.tok.lit
+				p.check(.name)
 			}
 		}
 		mut expr := p.expr(0)

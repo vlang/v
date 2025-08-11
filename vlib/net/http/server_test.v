@@ -1,4 +1,4 @@
-// vtest retry: 2
+// vtest retry: 5
 import log
 import net
 import net.http

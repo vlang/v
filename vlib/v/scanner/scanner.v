@@ -33,18 +33,13 @@ pub mut:
 	is_nested_string            bool // '${'abc':-12s}'
 	is_inter_start              bool // for hacky string interpolation TODO simplify
 	is_inter_end                bool
-	is_enclosed_inter           bool
-	is_nested_enclosed_inter    bool
-	string_count                int
-	str_dollar_needs_rcbr       []bool = []
+	str_helper_tokens           []u8 // ', ", 0 (string interpolation with lcbr), { (block)
 	line_comment                string
 	last_lt                     int = -1 // position of latest <
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
-	quote                       u8 // which quote is used to denote current string: ' or "
-	inter_quote                 u8
-	just_closed_inter           bool // if is_enclosed_inter was set to false on the previous character: `}`
+	quote                       u8   // which quote is used to denote current string: ' or "
 	nr_lines                    int  // total number of lines in the source file that were scanned
 	is_vh                       bool // Keep newlines
 	is_fmt                      bool // Used for v fmt.
@@ -54,7 +49,6 @@ pub mut:
 	tidx                        int
 	eofs                        int
 	max_eofs                    int = 50
-	inter_cbr_count             int
 	pref                        &pref.Preferences
 	error_details               []string
 	errors                      []errors.Error
@@ -671,8 +665,9 @@ pub fn (mut s Scanner) text_scan() token.Token {
 		}
 		// End of $var, start next string
 		if s.is_inter_end {
-			if s.text[s.pos] == s.quote || (s.text[s.pos] == s.inter_quote && s.is_enclosed_inter) {
+			if s.text[s.pos] == s.quote {
 				s.is_inter_end = false
+				s.str_helper_tokens.delete_last()
 				return s.new_token(.string, '', 1)
 			}
 			s.is_inter_end = false
@@ -799,12 +794,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.question, '?', 1)
 			}
 			single_quote, double_quote {
-				if s.string_count == 1 && s.str_dollar_needs_rcbr.len == 0 {
-					s.string_count = 0
-					return s.new_token(.string, '', 1)
-				} else {
-					s.string_count++
-				}
+				s.str_helper_tokens << c
 				start_line := s.line_nr
 				ident_string := s.ident_string()
 				return s.new_multiline_token(.string, ident_string, ident_string.len + 2,
@@ -829,21 +819,18 @@ pub fn (mut s Scanner) text_scan() token.Token {
 			}
 			`{` {
 				// Skip { in `${` in strings
-				if s.is_inside_string || s.is_enclosed_inter {
-					if s.text[s.pos - 1] == `$` {
-						s.str_dollar_needs_rcbr << true
-						continue
-					} else {
-						s.str_dollar_needs_rcbr << false
-						s.inter_cbr_count++
-					}
+				if _ := s.str_quote() {
+					s.str_helper_tokens << 0
 				} else {
-					s.str_dollar_needs_rcbr << false
+					s.str_helper_tokens << c
+				}
+				if s.is_inside_string && s.text[s.pos - 1] == `$` {
+					continue
 				}
 				return s.new_token(.lcbr, '', 1)
 			}
 			`$` {
-				if s.is_inside_string || s.is_enclosed_inter {
+				if s.is_inside_string {
 					return s.new_token(.str_dollar, '', 1)
 				} else {
 					return s.new_token(.dollar, '', 1)
@@ -852,48 +839,23 @@ pub fn (mut s Scanner) text_scan() token.Token {
 			`}` {
 				// s = `hello $name !`
 				// s = `hello ${name} !`
-				if ((s.is_enclosed_inter || s.is_nested_enclosed_inter) && s.inter_cbr_count == 0)
-					|| (s.all_tokens.last().kind != .string && s.str_dollar_needs_rcbr.len > 0
-					&& s.str_dollar_needs_rcbr.last()) {
-					if s.str_dollar_needs_rcbr.len > 0 {
-						s.str_dollar_needs_rcbr.delete_last()
-					}
+				if s.str_helper_tokens.len > 0 {
+					s.str_helper_tokens.delete_last()
+				}
+				if quote := s.str_quote() {
 					if s.pos < s.text.len - 1 {
 						s.pos++
 					} else {
 						s.error('unfinished string literal')
 					}
-					if s.text[s.pos] == s.quote
-						|| (s.text[s.pos] == s.inter_quote && s.is_nested_enclosed_inter) {
+					if s.text[s.pos] == quote {
 						s.is_inside_string = false
-						if s.is_nested_enclosed_inter {
-							s.is_nested_enclosed_inter = false
-						} else {
-							s.is_enclosed_inter = false
-						}
-						s.string_count--
+						s.str_helper_tokens.delete_last()
 						return s.new_token(.string, '', 1)
 					}
-					if s.is_nested_enclosed_inter {
-						s.is_nested_enclosed_inter = false
-					} else {
-						s.is_enclosed_inter = false
-					}
-					s.just_closed_inter = true
 					ident_string := s.ident_string()
 					return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
 				} else {
-					if s.str_dollar_needs_rcbr.len > 0 {
-						if s.str_dollar_needs_rcbr.last() {
-							s.str_dollar_needs_rcbr.delete_last()
-							s.pos++
-							return s.new_token(.string, '', 1)
-						}
-						s.str_dollar_needs_rcbr.delete_last()
-					}
-					if s.inter_cbr_count > 0 {
-						s.inter_cbr_count--
-					}
 					return s.new_token(.rcbr, '', 1)
 				}
 			}
@@ -1225,6 +1187,8 @@ fn (s &Scanner) count_symbol_before(p int, sym u8) int {
 // escapes in them (except in the r'strings' where the content is returned verbatim)
 @[direct_array_access]
 pub fn (mut s Scanner) ident_string() string {
+	quote := s.str_quote() or { return '' }
+	s.quote = quote
 	// determines if it is a nested string
 	if s.is_inside_string {
 		s.is_nested_string = true
@@ -1240,21 +1204,10 @@ pub fn (mut s Scanner) ident_string() string {
 	is_quote := q in [single_quote, double_quote]
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r` && !s.is_inside_string
 	is_cstr := is_quote && s.pos > 0 && s.text[s.pos - 1] == `c` && !s.is_inside_string
-	// don't interpret quote as "start of string" quote when a string interpolation has
-	// just ended on the previous character meaning it's not the start of a new string
-	if is_quote && !s.just_closed_inter {
-		if s.is_inside_string || s.is_enclosed_inter || s.is_inter_start {
-			s.inter_quote = q
-		} else {
-			s.quote = q
-		}
-	}
-	s.just_closed_inter = false
 	mut n_cr_chars := 0
 	mut start := s.pos
 	start_char := s.text[start]
-	if start_char == s.quote
-		|| (start_char == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter)) {
+	if start_char == s.quote {
 		start++
 	} else if start_char == b_lf {
 		s.inc_line_number()
@@ -1281,14 +1234,6 @@ pub fn (mut s Scanner) ident_string() string {
 		// end of string
 		if c == s.quote && (is_raw || backslash_count & 1 == 0) {
 			// handle '123\\' backslash at the end
-			s.string_count--
-			break
-		}
-		if c == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter) {
-			s.string_count--
-			break
-		}
-		if c == s.quote && s.string_count == 0 {
 			break
 		}
 		if c == b_cr {
@@ -1340,11 +1285,6 @@ pub fn (mut s Scanner) ident_string() string {
 		if prevc == `$` && c == `{` && !is_raw
 			&& s.count_symbol_before(s.pos - 2, backslash) & 1 == 0 {
 			s.is_inside_string = true
-			if s.is_enclosed_inter {
-				s.is_nested_enclosed_inter = true
-			} else {
-				s.is_enclosed_inter = true
-			}
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
@@ -1415,6 +1355,9 @@ pub fn (mut s Scanner) ident_string() string {
 		} else {
 			lit = string_so_far
 		}
+	}
+	if s.text[end] == quote {
+		s.str_helper_tokens.delete_last()
 	}
 	return lit
 }
@@ -1863,11 +1806,8 @@ pub fn (mut s Scanner) prepare_for_new_text(text string) {
 	s.is_nested_string = false
 	s.is_inter_start = false
 	s.is_inter_end = false
-	s.is_enclosed_inter = false
-	s.is_nested_enclosed_inter = false
 	s.last_lt = 0
 	s.quote = 0
-	s.inter_quote = 0
 }
 
 // new_silent_scanner returns a new scanner instance, setup to just set internal flags and append errors
@@ -1879,4 +1819,15 @@ pub fn new_silent_scanner() &Scanner {
 	return &Scanner{
 		pref: p
 	}
+}
+
+pub fn (s Scanner) str_quote() ?u8 {
+	if s.str_helper_tokens.len == 0 {
+		return none
+	}
+	c := s.str_helper_tokens.last()
+	if c in [`'`, `"`] {
+		return c
+	}
+	return none
 }

@@ -46,7 +46,7 @@ fn compare_size(fpath1 string, fpath2 string) {
 	size1 := os.file_size(fpath1)
 	size2 := os.file_size(fpath2)
 	diff_ := i64(size2) - i64(size1)
-	println('>>>>>> size("${fpath2:15}") - size("${fpath1:15}") = ${size2:10} - ${size1:10} = ${diff_:10}')
+	println('>>>>>> size("${fpath2:17}") - size("${fpath1:17}") = ${size2:10} - ${size1:10} = ${diff_:10}')
 }
 
 fn vcompare(vold string, vnew string) {
@@ -82,11 +82,13 @@ fn main() {
 	xtime('./vnew1 -o vnew2 cmd/v')
 	xtime('./vnew2 -no-parallel -o vnew cmd/v')
 	xtime('./vnew -no-parallel -o nhw_current.c examples/hello_world.v')
+	xtime('./vnew -no-parallel -o nhw_current_gcc.c -cc gcc examples/hello_world.v')
 	xtime('./vnew -no-parallel -o nv_current.c cmd/v')
 	if compare_prod {
 		xtime('./vnew -no-parallel -prod -o vnew_prod cmd/v')
 	}
 	show_size('nhw_current.c')
+	show_size('nhw_current_gcc.c')
 	show_size('nv_current.c')
 	show_size('vnew')
 	if compare_prod {
@@ -94,19 +96,26 @@ fn main() {
 	}
 	r('rm -rf vnew1 vnew2')
 
-	r('git checkout master')
+	// make sure to always compare against the main V repo's master branch:
+	os.execute('git -C . remote add V_REPO https://github.com/vlang/v.git')
+	os.execute('git -C . fetch V_REPO')
+	os.execute('git branch -D v_repo_master')
+	os.execute('git branch -f --track v_repo_master V_REPO/master')
+	r('git checkout v_repo_master')
 	master_branch := gbranch()
 	hline('    Compiling old V executables from branch: ${master_branch}, commit: ${gcommit()} ...')
 	xtime('./v     -o vold1 cmd/v')
 	xtime('./vold1 -o vold2 cmd/v')
 	xtime('./vold2 -no-parallel -o vold cmd/v')
 	xtime('./vold -no-parallel -o ohw_master.c examples/hello_world.v')
+	xtime('./vold -no-parallel -o ohw_master_gcc.c -cc gcc examples/hello_world.v')
 	xtime('./vold -no-parallel -o ov_master.c  cmd/v')
 	if compare_prod {
 		xtime('./vold -no-parallel -prod -o vold_prod cmd/v')
 		show_size('vold_prod')
 	}
 	show_size('ohw_master.c')
+	show_size('ohw_master_gcc.c')
 	show_size('ov_master.c')
 	show_size('vold')
 	if compare_prod {
@@ -116,6 +125,7 @@ fn main() {
 
 	hline('File sizes so far ...')
 	compare_size('ohw_master.c', 'nhw_current.c')
+	compare_size('ohw_master_gcc.c', 'nhw_current_gcc.c')
 	compare_size('ov_master.c', 'nv_current.c')
 	compare_size('vold', 'vnew')
 
@@ -131,6 +141,7 @@ fn main() {
 
 	hline('Final summary for file diff sizes on their own branches:')
 	compare_size('ohw_master.c', 'nhw_current.c')
+	compare_size('ohw_master_gcc.c', 'nhw_current_gcc.c')
 	compare_size('ov_master.c', 'nv_current.c')
 	compare_size('vold', 'vnew')
 	if compare_prod {

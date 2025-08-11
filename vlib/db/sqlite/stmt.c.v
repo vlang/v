@@ -74,7 +74,8 @@ fn (stmt &Stmt) get_text(idx int) ?string {
 		if b == &char(unsafe { nil }) {
 			return ''
 		}
-		return unsafe { b.vstring() }
+		l := C.sqlite3_column_bytes(stmt.stmt, idx)
+		return unsafe { b.vstring_with_len(l) }
 	}
 }
 

@@ -113,6 +113,7 @@ mut:
 	type_level                       int // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 	ensure_generic_type_level        int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
 	cur_orm_ts                       ast.TypeSymbol
+	cur_or_expr                      &ast.OrExpr = unsafe { nil }
 	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
 	vmod_file_content                string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	loop_labels                      []string   // filled, when inside labelled for loops: `a_label: for x in 0..10 {`
@@ -124,8 +125,7 @@ mut:
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	is_last_stmt                     bool
-	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
-	using_new_err_struct             bool
+	prevent_sum_type_unwrapping_once bool            // needed for assign new values to sum type, stopping unwrapping then
 	need_recheck_generic_fns         bool            // need recheck generic fns because there are cascaded nested generic fn
 	generic_fns                      map[string]bool // register generic fns that needs recheck once
 	inside_sql                       bool            // to handle sql table fields pseudo variables
@@ -205,7 +205,6 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.cur_orm_ts = ast.TypeSymbol{}
 	c.prevent_sum_type_unwrapping_once = false
 	c.loop_labels = []
-	c.using_new_err_struct = false
 	c.inside_selector_expr = false
 	c.inside_interface_deref = false
 	c.inside_decl_rhs = false
@@ -301,7 +300,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 		for _, obj in sc.objects {
 			match obj {
 				ast.Var {
-					if !obj.is_used && obj.name[0] != `_` {
+					if !obj.is_special && !obj.is_used && obj.name[0] != `_` {
 						if !c.pref.translated && !c.file.is_translated {
 							if obj.is_arg {
 								if c.pref.show_unused_params {
@@ -312,11 +311,11 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 							}
 						}
 					}
-					if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
-						// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
-						// c.warn('`$obj.name` is declared as mutable, but it was never changed',
-						// obj.pos)
-					}
+					// if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
+					// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
+					// c.warn('`$obj.name` is declared as mutable, but it was never changed',
+					// obj.pos)
+					// }
 				}
 				else {}
 			}
@@ -457,6 +456,10 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	}
 	if c.pref.is_shared {
 		// shared libs do not need to have a main
+		return
+	}
+	if c.pref.is_o {
+		// .o files also do not need main
 		return
 	}
 	if c.pref.no_builtin {
@@ -1340,7 +1343,10 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 						}
 					}
 				} else {
+					last_cur_or_expr := c.cur_or_expr
+					c.cur_or_expr = &expr.or_block
 					c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
+					c.cur_or_expr = last_cur_or_expr
 				}
 				return ret_type.clear_flag(.result)
 			} else {
@@ -1367,7 +1373,10 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 						}
 					} else {
 						if expr.or_block.kind != .absent {
+							last_cur_or_expr := c.cur_or_expr
+							c.cur_or_expr = &expr.or_block
 							c.check_or_expr(expr.or_block, ret_type, expr.typ, expr)
+							c.cur_or_expr = last_cur_or_expr
 						}
 					}
 					return ret_type.clear_flag(.result)
@@ -1391,8 +1400,11 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 				if return_none_or_error {
 					c.check_expr_option_or_result_call(expr.or_expr, c.table.cur_fn.return_type)
 				} else {
+					last_cur_or_expr := c.cur_or_expr
+					c.cur_or_expr = &expr.or_expr
 					c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result),
 						expr)
+					c.cur_or_expr = last_cur_or_expr
 				}
 			} else if expr.left is ast.SelectorExpr && expr.left_type.has_option_or_result() {
 				with_modifier_kind := if expr.left_type.has_flag(.option) {
@@ -1466,6 +1478,10 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		}
 		// allow `f() or {}`
 		return
+	} else if !node.err_used {
+		if err_var := node.scope.find_var('err') {
+			c.cur_or_expr.err_used = err_var.is_used
+		}
 	}
 	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
 	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
@@ -1610,12 +1626,6 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	prevent_sum_type_unwrapping_once := c.prevent_sum_type_unwrapping_once
 	c.prevent_sum_type_unwrapping_once = false
 
-	using_new_err_struct_save := c.using_new_err_struct
-	// TODO: remove; this avoids a breaking change in syntax
-	if node.expr is ast.Ident && node.expr.name == 'err' {
-		c.using_new_err_struct = true
-	}
-
 	// T.name, typeof(expr).name
 	mut name_type := 0
 	mut node_expr := node.expr
@@ -1683,7 +1693,6 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	}
 	c.inside_selector_expr = old_selector_expr
-	c.using_new_err_struct = using_new_err_struct_save
 	if typ == ast.void_type_idx {
 		// This means that the field has an undefined type.
 		// This error was handled before.
@@ -1818,7 +1827,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			unwrapped_typ := c.unwrap_generic(node.typ)
 			c.expected_or_type = unwrapped_typ.clear_option_and_result()
 			c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
+			last_cur_or_expr := c.cur_or_expr
+			c.cur_or_expr = &node.or_block
 			c.check_or_expr(node.or_block, unwrapped_typ, c.expected_or_type, node)
+			c.cur_or_expr = last_cur_or_expr
 			c.expected_or_type = ast.void_type
 		}
 		return field.typ
@@ -1869,6 +1881,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	} else {
 		if unknown_field_msg == '' {
+			if field_name == '' && c.pref.is_vls {
+				// VLS will often have `foo.`, skip the no field error
+				return ast.void_type
+			}
 			unknown_field_msg = 'type `${sym.name}` has no field named `${field_name}`'
 		}
 		if sym.info is ast.Struct {
@@ -2170,6 +2186,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			}
 		}
 	}
+	node.enum_typ = c.table.find_type_idx(node.name)
 }
 
 fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_signed bool, is_multi_allowed bool,
@@ -3069,7 +3086,6 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			return c.concat_expr(mut node)
 		}
 		ast.DumpExpr {
-			c.table.used_features.dump = true
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(mut node.expr)
 			c.markused_dumpexpr(mut node)
@@ -4088,7 +4104,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			unwrapped_typ := typ.clear_option_and_result()
 			c.expected_or_type = unwrapped_typ
 			c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
+			last_cur_or_expr := c.cur_or_expr
+			c.cur_or_expr = &node.or_expr
 			c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+			c.cur_or_expr = last_cur_or_expr
 			return unwrapped_typ
 		}
 		return typ
@@ -4203,7 +4222,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						unwrapped_typ := typ.clear_option_and_result()
 						c.expected_or_type = unwrapped_typ
 						c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
+						last_cur_or_expr := c.cur_or_expr
+						c.cur_or_expr = &node.or_expr
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+						c.cur_or_expr = last_cur_or_expr
 						return unwrapped_typ
 					}
 					return typ
@@ -4238,9 +4260,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					if typ == 0 {
 						old_c_mod := c.mod
 						c.mod = obj.mod
+						inside_const := c.inside_const
 						c.inside_const = true
 						typ = c.expr(mut obj.expr)
-						c.inside_const = false
+						c.inside_const = inside_const
 						c.mod = old_c_mod
 
 						if mut obj.expr is ast.CallExpr {
@@ -4265,7 +4288,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						unwrapped_typ := typ.clear_option_and_result()
 						c.expected_or_type = unwrapped_typ
 						c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
+						last_cur_or_expr := c.cur_or_expr
+						c.cur_or_expr = &node.or_expr
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+						c.cur_or_expr = last_cur_or_expr
 					}
 					return typ
 				}
@@ -5003,18 +5029,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 				typ_sym = unsafe { unwrapped_sym }
 			}
 		}
-		.string {
-			if node.is_gated && c.mod != 'strings' {
-				c.table.used_features.range_index = true
-			}
-		}
 		else {}
-	}
-	if !c.is_builtin_mod && c.mod !in ['strings', 'math.bits'] {
-		if node.index is ast.RangeExpr {
-			c.table.used_features.range_index = true
-		}
-		c.table.used_features.index = true
 	}
 	is_aggregate_arr := typ_sym.kind == .aggregate
 		&& (typ_sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0

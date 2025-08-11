@@ -30,7 +30,7 @@ fn test_v_profile_works() {
 		res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(folder_path)}')
 		delta := time.ticks() - t
 		// eprintln('res: $res')
-		assert res.exit_code == 0
+		assert res.exit_code == 0, 'failing res: ${res}'
 		assert res.output.len > 0
 		assert res.output.contains('OK')
 		term.clear_previous_line()

@@ -102,11 +102,13 @@ pub fn i64_tos(buf &u8, len int, n0 i64, base int) string {
 		n = -n
 	}
 
-	b[i--] = 0
+	b[i] = 0
+	i--
 
 	for {
 		c := (n % base) + 48
-		b[i--] = if c > 57 { c + 7 } else { c }
+		b[i] = if c > 57 { c + 7 } else { c }
+		i--
 		if i < 0 {
 			panic('buffer to small')
 		}
@@ -119,7 +121,8 @@ pub fn i64_tos(buf &u8, len int, n0 i64, base int) string {
 		if i < 0 {
 			panic('buffer to small')
 		}
-		b[i--] = 45
+		b[i] = 45
+		i--
 	}
 	offset := i + 1
 	b.str = b.str + offset

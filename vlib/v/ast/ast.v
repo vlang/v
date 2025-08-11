@@ -935,6 +935,7 @@ pub mut:
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
 	is_auto_heap bool // value whose address goes out of scope
 	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not @[heap] struct)
+	is_special   bool // err, it, a, b vars (ignore not useds)
 }
 
 // used for smartcasting only
@@ -1475,6 +1476,8 @@ pub:
 	typ              Type        // the default is `int`; can be changed by `enum Big as u64 { a = 5 }`
 	typ_pos          token.Pos
 	pos              token.Pos
+pub mut:
+	enum_typ Type
 }
 
 pub struct AliasTypeDecl {
@@ -1910,10 +1913,12 @@ pub enum OrKind {
 // `or { ... }`
 pub struct OrExpr {
 pub:
-	kind OrKind
-	pos  token.Pos
+	kind  OrKind
+	pos   token.Pos
+	scope &Scope = unsafe { nil }
 pub mut:
-	stmts []Stmt
+	err_used bool
+	stmts    []Stmt
 }
 
 /*
