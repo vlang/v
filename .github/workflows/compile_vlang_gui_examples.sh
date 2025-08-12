@@ -12,7 +12,7 @@ export VJOBS=1
 show "Clone https://github.com/vlang/gui"
 v retry -- git clone --filter=blob:none --quiet https://github.com/vlang/gui ~/.vmodules/gui/
 show "Checkout last known good commit"
-git -C ~/.vmodules/gui/ checkout 7970eefacddea726f07ff2051f195805f75b0382
+git -C ~/.vmodules/gui/ checkout e5cc33fe816fef33d718cb1b91f66d6bd38fb4a4
 show "Check module for syntax and semantic errors"
 v -shared -check ~/.vmodules/gui
 show "Execute Tests"
