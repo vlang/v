@@ -5587,28 +5587,39 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		} else if sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {
 			g.expr_with_opt(node.expr, expr_type, sym.info.parent_type)
 		} else {
-			g.write('(${cast_label}(')
-			if node.expr is ast.Ident {
-				if !node.typ.is_ptr() && node.expr_type.is_ptr() && node.expr.obj is ast.Var
-					&& node.expr.obj.smartcasts.len > 0 {
-					g.write('*'.repeat(node.expr_type.nr_muls()))
-				}
-			}
-			if sym.kind == .alias && g.table.final_sym(node.typ).kind == .string {
-				ptr_cnt := node.typ.nr_muls() - expr_type.nr_muls()
-				if ptr_cnt > 0 {
-					g.write('&'.repeat(ptr_cnt))
-				}
-			}
-			g.expr(node.expr)
-			if node.expr is ast.IntegerLiteral {
-				if node_typ in [ast.u64_type, ast.u32_type, ast.u16_type] {
-					if !node.expr.val.starts_with('-') {
-						g.write('U')
+			g.write('(${cast_label}')
+			expr_typ := ast.mktyp(node.expr_type)
+			alias_to_sumtype := sym.info is ast.Alias
+				&& g.table.sumtype_has_variant(sym.info.parent_type, expr_typ, false)
+			if alias_to_sumtype {
+				expr_styp := g.styp(expr_typ)
+				g.write('{._${g.table.sym(expr_typ).cname}=memdup(ADDR(${expr_styp}, ')
+				g.expr(node.expr)
+				g.write('), sizeof(${expr_styp})),._typ=${int(expr_typ)}})')
+			} else {
+				g.write('(')
+				if node.expr is ast.Ident {
+					if !node.typ.is_ptr() && node.expr_type.is_ptr() && node.expr.obj is ast.Var
+						&& node.expr.obj.smartcasts.len > 0 {
+						g.write('*'.repeat(node.expr_type.nr_muls()))
 					}
 				}
+				if sym.kind == .alias && g.table.final_sym(node.typ).kind == .string {
+					ptr_cnt := node.typ.nr_muls() - expr_type.nr_muls()
+					if ptr_cnt > 0 {
+						g.write('&'.repeat(ptr_cnt))
+					}
+				}
+				g.expr(node.expr)
+				if node.expr is ast.IntegerLiteral {
+					if node_typ in [ast.u64_type, ast.u32_type, ast.u16_type] {
+						if !node.expr.val.starts_with('-') {
+							g.write('U')
+						}
+					}
+				}
+				g.write('))')
 			}
-			g.write('))')
 		}
 	}
 }
