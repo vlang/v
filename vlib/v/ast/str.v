@@ -400,7 +400,7 @@ __global nested_expr_str_calls = i64(0)
 const max_nested_expr_str_calls = 300
 
 // string representation of expr
-pub fn (x &Expr) str() string {
+pub fn (x Expr) str() string {
 	str_calls := stdatomic.add_i64(&nested_expr_str_calls, 1)
 	if str_calls > max_nested_expr_str_calls {
 		$if panic_on_deeply_nested_expr_str_calls ? {
@@ -525,13 +525,13 @@ pub fn (x &Expr) str() string {
 			return 'spawn ${x.call_expr}'
 		}
 		Ident {
-			if x.cached_name != '' {
-				return x.cached_name
+			if x.cached_name == '' {
+				unsafe {
+					x.cached_name = util.strip_main_name(x.name)
+				}
 			}
-			unsafe {
-				x.cached_name = util.strip_main_name(x.name.clone())
-			}
-			return x.cached_name
+			// This clone may freed by auto str()
+			return x.cached_name.clone()
 		}
 		IfExpr {
 			mut parts := []string{}
