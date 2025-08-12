@@ -5502,11 +5502,12 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
+	final_sym := g.table.final_sym(node_typ)
 	if g.comptime.is_comptime(node.expr) {
 		expr_type = g.unwrap_generic(g.type_resolver.get_type(node.expr))
 	}
 	node_typ_is_option := node.typ.has_flag(.option)
-	if sym.kind in [.sum_type, .interface] {
+	if final_sym.kind in [.sum_type, .interface] {
 		if node_typ_is_option && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.expr is ast.Ident && g.comptime.is_comptime_variant_var(node.expr) {

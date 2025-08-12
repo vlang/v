@@ -707,6 +707,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 				right_sym := c.table.sym(right_type)
 				mut expr_type := c.unwrap_generic(node.left_type)
 				left_sym := c.table.sym(expr_type)
+				left_final_sym := c.table.final_sym(expr_type)
 				if left_sym.kind == .aggregate {
 					expr_type = (left_sym.info as ast.Aggregate).sum_type
 				}
@@ -714,7 +715,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 					if right_sym.kind != .interface {
 						c.type_implements(right_type, expr_type, node.pos)
 					}
-				} else if !c.check_types(right_type, expr_type) && left_sym.kind != .sum_type {
+				} else if !c.check_types(right_type, expr_type) && left_final_sym.kind != .sum_type {
 					expect_str := c.table.type_to_str(right_type)
 					expr_str := c.table.type_to_str(expr_type)
 					c.error('cannot use type `${expect_str}` as type `${expr_str}`', node.pos)
