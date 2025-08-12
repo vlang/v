@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and test in Termux
         run: |
-          set -o xtrace		
+          set -o xtrace
           echo "$PWD"
           whoami
           touch outside_docker.txt
@@ -38,8 +38,8 @@ jobs:
             cp -r /src ~/vproject; cd ~/vproject
             touch inside_docker.txt
             ls -la
-            pkg update -y
-            pkg install -y clang libexecinfo libgc libgc-static make git
+            .github/workflows/retry.sh pkg update -y
+            .github/workflows/retry.sh pkg install -y clang libexecinfo libgc libgc-static make git
             git log -n4
             VFLAGS="-cc cc -os termux" make
             ./v symlink
