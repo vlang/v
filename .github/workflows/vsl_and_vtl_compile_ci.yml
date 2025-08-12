@@ -31,7 +31,7 @@ jobs:
     env:
       VFLAGS: -no-parallel
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build V
         id: build
         run: make && sudo ./v symlink
@@ -65,7 +65,7 @@ jobs:
       # (a warning on Linux, but an error on macOS).
       TERM: xterm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build V
         id: build
         run: make && sudo ./v symlink
