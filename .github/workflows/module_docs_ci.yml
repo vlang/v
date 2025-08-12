@@ -32,7 +32,7 @@ jobs:
   build-module-docs:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Install markdown from vpm
