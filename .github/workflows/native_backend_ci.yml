@@ -54,7 +54,7 @@ jobs:
     env:
       VJOBS: 1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build V
         run: make && ./v symlink
       - name: Install linker
@@ -69,7 +69,7 @@ jobs:
     env:
       VJOBS: 1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build V (Windows)
         run: ./make.bat && ./v symlink
       - name: Rebuild V with -g, for better stacktraces on compiler panics

@@ -53,7 +53,7 @@ jobs:
     env:
       VTEST_ONLY: wasm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build V
         if: runner.os != 'Windows'
         run: make -j4

@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     name: Build on ubuntu-24.04 riscv64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: uraimo/run-on-arch-action@v3
         name: Run commands
         id: runcmd

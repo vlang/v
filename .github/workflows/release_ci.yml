@@ -54,7 +54,7 @@ jobs:
             artifact: v_windows.zip
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Compile release binaries
         if: runner.os != 'Windows'
         run: |

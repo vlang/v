@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build V
         run: make
       - name: Install dependencies (some examples show how to use sqlite and the x11 clipboard)
@@ -41,12 +41,12 @@ jobs:
     env:
       MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build V
         run: make
 
       - name: Checkout previous v
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: vlang/v
           ref: master # important
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build V
         run: make
       - name: Check doc comment dots for some key modules
