@@ -886,8 +886,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if node.right is ast.None && left_is_option {
 				return ast.bool_type
 			}
-			c.error('infix expr: cannot use `${right_sym.name}` (right expression) as `${left_sym.name}`',
-				left_right_pos)
+			if node.left !is ast.ComptimeSelector {
+				c.error('infix expr: cannot use `${right_sym.name}` (right expression) as `${left_sym.name}`',
+					left_right_pos)
+			}
 		} else if left_type.is_ptr() {
 			for_ptr_op := c.table.type_is_for_pointer_arithmetic(left_type)
 			if left_sym.language == .v && !c.pref.translated && !c.inside_unsafe && !for_ptr_op
