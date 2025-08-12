@@ -5341,7 +5341,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 			is_option = is_option || node.obj.orig_type.has_flag(.option)
 			if node.obj.smartcasts.len > 0 {
-				obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
+				obj_sym := g.table.final_sym(g.unwrap_generic(node.obj.typ))
 				if !prevent_sum_type_unwrapping_once {
 					nested_unwrap := node.obj.smartcasts.len > 1
 					unwrap_sumtype := is_option && nested_unwrap && obj_sym.kind == .sum_type
@@ -5502,12 +5502,11 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
-	final_sym := g.table.final_sym(node_typ)
 	if g.comptime.is_comptime(node.expr) {
 		expr_type = g.unwrap_generic(g.type_resolver.get_type(node.expr))
 	}
 	node_typ_is_option := node.typ.has_flag(.option)
-	if final_sym.kind in [.sum_type, .interface] {
+	if sym.kind in [.sum_type, .interface] {
 		if node_typ_is_option && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.expr is ast.Ident && g.comptime.is_comptime_variant_var(node.expr) {

@@ -741,7 +741,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 									node.left.pos)
 							}
 						}
-						if left_sym.kind in [.interface, .sum_type] {
+						if left_final_sym.kind in [.interface, .sum_type] {
 							c.smartcast(mut node.left, node.left_type, right_type, mut
 								scope, is_comptime, false)
 						}
