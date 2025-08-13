@@ -19,6 +19,7 @@ struct Readme {
 
 enum OutputType {
 	unset
+	none
 	html
 	markdown
 	json
@@ -151,6 +152,7 @@ fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.
 fn (mut vd VDoc) render_doc(d doc.Doc, out Output) (string, string) {
 	name := vd.get_file_name(d.head.name, out)
 	output := match out.typ {
+		.none { '' }
 		.html { vd.gen_html(d) }
 		.markdown { vd.gen_markdown(d, true) }
 		.json { vd.gen_json(d) }
@@ -190,9 +192,11 @@ fn (mut vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 		}
 		vd.vprintln('> start processing ${pdoc.d.base_path} ...')
 		file_name, content := vd.render_doc(pdoc.d, pdoc.out)
-		output_path := os.join_path(pdoc.out.path, file_name)
-		println('Generating ${content.len:8} bytes of ${pdoc.out.typ} in `${output_path}` ...')
-		os.write_file(output_path, content) or { panic(err) }
+		if vd.cfg.output_type != .none {
+			output_path := os.join_path(pdoc.out.path, file_name)
+			println('Generating ${content.len:8} bytes of ${pdoc.out.typ} in `${output_path}` ...')
+			os.write_file(output_path, content) or { panic(err) }
+		}
 	}
 	wg.done()
 }
@@ -301,7 +305,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		ext := os.file_ext(out.path)
 		out.typ = set_output_type_from_str(ext.all_after('.'))
 	}
-	if cfg.include_readme && out.typ !in [.html, .ansi, .plaintext] {
+	if cfg.include_readme && out.typ !in [.html, .ansi, .plaintext, .none] {
 		eprintln('vdoc: Including README.md for doc generation is supported on HTML output, or when running directly in the terminal.')
 		exit(1)
 	}

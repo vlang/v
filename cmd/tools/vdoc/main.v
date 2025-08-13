@@ -10,7 +10,7 @@ const vexe = os.getenv_opt('VEXE') or { @VEXE }
 
 const vroot = os.dir(vexe)
 
-const allowed_formats = ['md', 'markdown', 'json', 'text', 'ansi', 'html', 'htm']
+const allowed_formats = ['md', 'markdown', 'json', 'text', 'ansi', 'html', 'htm', 'none']
 
 enum RunExampleMode {
 	skip

@@ -20,7 +20,8 @@ Options:
   -no-color       Forces plain text output, without ANSI colors.
                   Note: -color is on for -f ansi .
   -f              Specifies the output format to be used.
-                  Available formats are: md/markdown, json, text, ansi and html/htm.
+                  Available formats are: none, md/markdown, json, text, ansi and html/htm.
+                  Note: the format `none` is mostly useful in combination with -check-examples .
   -h, -help       Prints this help text.
   -m              Generate docs for modules listed in that folder.
   -o              The output file/folder path where to store the docs. Use `-o stdout`
