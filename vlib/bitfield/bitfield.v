@@ -240,7 +240,7 @@ pub fn (mut instance BitField) set_if(cond bool, bitnr int) {
 }
 
 // toggle_bits changes the value (from 0 to 1 or from 1 to 0) of bits.
-// Example: toggle_bits(1,3,5,7)
+// Example: mut bf := bitfield.new(10); bf.toggle_bits(1,3,5,7); assert bf.str() == '0101010100'
 @[inline]
 pub fn (mut instance BitField) toggle_bits(a ...int) {
 	for bitnr in a {
@@ -252,7 +252,7 @@ pub fn (mut instance BitField) toggle_bits(a ...int) {
 }
 
 // set_bits sets multiple bits in the array to 1.
-// Example: set_bits(1,3,5,7)
+// Example: mut bf := bitfield.new(10); bf.set_bits(1,3,5,7); assert bf.str() == '0101010100'
 @[inline]
 pub fn (mut instance BitField) set_bits(a ...int) {
 	for bitnr in a {
@@ -264,7 +264,7 @@ pub fn (mut instance BitField) set_bits(a ...int) {
 }
 
 // clear_bits clear multiple bits in the array to 0.
-// Example: clear_bits(1,3,5,7)
+// Example: mut bf := bitfield.from_str('1111111111111'); bf.clear_bits(1,2,5,6,7); assert bf.str() == '1001100011111'
 @[inline]
 pub fn (mut instance BitField) clear_bits(a ...int) {
 	for bitnr in a {
@@ -276,7 +276,7 @@ pub fn (mut instance BitField) clear_bits(a ...int) {
 }
 
 // has test if *at least one* of the bits is set.
-// Example: has(1,3,5,7)
+// Example: mut bf := bitfield.from_str('111111100000000'); assert bf.has(1,3,5,7)
 @[inline]
 pub fn (mut instance BitField) has(a ...int) bool {
 	for bitnr in a {
@@ -291,7 +291,7 @@ pub fn (mut instance BitField) has(a ...int) bool {
 }
 
 // all test if *all* of the bits are set.
-// Example: all(1,3,5,7)
+// Example: mut bf := bitfield.from_str('111111100000000'); assert !bf.all(1,3,5,7)
 @[inline]
 pub fn (mut instance BitField) all(a ...int) bool {
 	for bitnr in a {
