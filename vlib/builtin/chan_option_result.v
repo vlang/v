@@ -118,7 +118,7 @@ fn trace_error(x string) {
 }
 
 // error returns a default error instance containing the error given in `message`.
-// Example: if ouch { return error('an error occurred') }
+// Example: f := fn (ouch bool) ! { if ouch { return error('an error occurred') } }; f(false)!
 @[inline]
 pub fn error(message string) IError {
 	trace_error(message)
@@ -128,7 +128,7 @@ pub fn error(message string) IError {
 }
 
 // error_with_code returns a default error instance containing the given `message` and error `code`.
-// Example: if ouch { return error_with_code('an error occurred', 1) }
+// Example: f := fn (ouch bool) ! { if ouch { return error_with_code('an error occurred', 1) } }; f(false)!
 @[inline]
 pub fn error_with_code(message string, code int) IError {
 	trace_error('${message} | code: ${code}')

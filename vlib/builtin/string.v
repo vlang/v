@@ -872,7 +872,7 @@ fn (s string) plus_two(a string, b string) string {
 
 // split_any splits the string to an array by any of the `delim` chars.
 // If the delimiter string is empty then `.split()` is used.
-// Example: "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
+// Example: assert "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
 @[direct_array_access]
 pub fn (s string) split_any(delim string) []string {
 	mut res := []string{}
@@ -903,7 +903,7 @@ pub fn (s string) split_any(delim string) []string {
 
 // rsplit_any splits the string to an array by any of the `delim` chars in reverse order.
 // If the delimiter string is empty then `.rsplit()` is used.
-// Example: "first row\nsecond row".rsplit_any(" \n") == ['row', 'second', 'row', 'first']
+// Example: assert "first row\nsecond row".rsplit_any(" \n") == ['row', 'second', 'row', 'first']
 @[direct_array_access]
 pub fn (s string) rsplit_any(delim string) []string {
 	mut res := []string{}
@@ -1837,7 +1837,7 @@ pub fn (s string) trim(cutset string) string {
 }
 
 // trim_indexes gets the new start and end indices of a string when any of the characters given in `cutset` were stripped from the start and end of the string. Should be used as an input to `substr()`. If the string contains only the characters in `cutset`, both values returned are zero.
-// Example: left, right := '-hi-'.trim_indexes('-')
+// Example: left, right := '-hi-'.trim_indexes('-'); assert left == 1; assert right == 3
 @[direct_array_access]
 pub fn (s string) trim_indexes(cutset string) (int, int) {
 	mut pos_left := 0
@@ -2965,7 +2965,7 @@ pub:
 
 // wrap wraps the string `s` when each line exceeds the width specified in `width` .
 // (default value is 80), and will use `end` (default value is '\n') as a line break.
-// Example: `assert 'Hello, my name is Carl and I am a delivery'.wrap(width: 20) == 'Hello, my name is\nCarl and I am a\ndelivery'`
+// Example: assert 'Hello, my name is Carl and I am a delivery'.wrap(width: 20) == 'Hello, my name is\nCarl and I am a\ndelivery'
 pub fn (s string) wrap(config WrapConfig) string {
 	if config.width <= 0 {
 		return ''

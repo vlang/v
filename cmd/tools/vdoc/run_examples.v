@@ -16,6 +16,7 @@ fn (mut vd VDoc) process_all_examples(contents []doc.DocNode) {
 }
 
 const normalised_default_vmodules_path = os.vmodules_dir().replace('\\', '/')
+const vdoc_max_fails = os.getenv_opt('VDOC_MAX_FAILS') or { '999' }.int()
 
 fn get_mod_name_by_file_path(file_path string) string {
 	mut mcache := vmod.get_cache()
@@ -51,9 +52,11 @@ fn (mut vd VDoc) run_examples(dn doc.DocNode) {
 			os.rm(sfile) or {}
 		}
 	}
-	mut failures := 0
-	mut oks := 0
 	for example in examples {
+		if vd.example_failures >= vdoc_max_fails {
+			eprintln('> vdoc: too many examples failed in ${vd.cfg.run_examples} mode')
+			exit(1)
+		}
 		code := example.all_after('Example:').all_after('example:').trim_space()
 		mod_name := get_mod_name_by_file_path(dn.file_path)
 		vsource_path := os.join_path(efolder, 'example_${rand.ulid()}.v')
@@ -61,6 +64,7 @@ fn (mut vd VDoc) run_examples(dn doc.DocNode) {
 		import_clause := if mod_name in ['builtin', ''] { '' } else { 'import ${mod_name}\n' }
 		source := '${import_clause}fn main() {\n\t${code}\n}\n'
 		os.write_file(vsource_path, source) or { continue }
+		vd.vprintln('>>> vd.example_oks: ${vd.example_oks:5} | vd.example_failures: ${vd.example_failures:5} | examples.len: ${examples.len} | source.len: ${source.len:5} | dn.name: ${dn.name}')
 		cmd := '${os.quoted_path(vexe)} ${voptions} ${os.quoted_path(vsource_path)}'
 		res := os.execute(cmd)
 		if res.exit_code != 0 {
@@ -68,12 +72,10 @@ fn (mut vd VDoc) run_examples(dn doc.DocNode) {
 			eprintln('     cmd: ${cmd}')
 			eprintln('  result:')
 			eprintln(res.output)
-			failures++
+			vd.example_failures++
 			continue
 		}
 		example_program_source_files << vsource_path
-		oks++
+		vd.example_oks++
 	}
-	vd.example_failures += failures
-	vd.example_oks += oks
 }

@@ -324,7 +324,7 @@ pub fn (mut m map) move() map {
 
 // clear clears the map without deallocating the allocated data.
 // It does it by setting the map length to `0`
-// Example: a.clear() // `a.len` and `a.key_values.len` is now 0
+// Example: mut m := {'abc': 'xyz', 'def': 'aaa'}; m.clear(); assert m.len == 0
 pub fn (mut m map) clear() {
 	unsafe {
 		if m.key_values.all_deleted != 0 {

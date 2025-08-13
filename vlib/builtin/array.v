@@ -369,7 +369,7 @@ pub fn (mut a array) delete(i int) {
 // Example:
 // ```v
 // mut a := [1, 2, 3, 4, 5, 6, 7, 8, 9]
-// b := a[..9] // creates a `slice` of `a`, not a clone
+// b := unsafe { a[..9] } // creates a `slice` of `a`, not a clone
 // a.delete_many(4, 3) // replaces `a` with a modified clone
 // dump(a) // a: [1, 2, 3, 4, 8, 9] // `a` is now different
 // dump(b) // b: [1, 2, 3, 4, 5, 6, 7, 8, 9] // `b` is still the same
@@ -413,7 +413,7 @@ pub fn (mut a array) delete_many(i int, size int) {
 
 // clear clears the array without deallocating the allocated data.
 // It does it by setting the array length to `0`
-// Example: a.clear() // `a.len` is now 0
+// Example: mut a := [1,2]; a.clear(); assert a.len == 0
 pub fn (mut a array) clear() {
 	a.len = 0
 }
@@ -430,7 +430,7 @@ pub fn (mut a array) reset() {
 
 // trim trims the array length to `index` without modifying the allocated data.
 // If `index` is greater than `len` nothing will be changed.
-// Example: a.trim(3) // `a.len` is now <= 3
+// Example: mut a := [1,2,3,4]; a.trim(3); assert a.len == 10
 pub fn (mut a array) trim(index int) {
 	if index < a.len {
 		a.len = index
@@ -520,11 +520,14 @@ pub fn (a array) last() voidptr {
 // Example:
 // ```v
 // mut a := [1, 2, 3, 4, 5, 6, 7, 8, 9]
-// b := a[..9] // creates a "view" into the same memory
-// c := a.pop() // c == 9
+// b := unsafe{ a[..9] } // creates a "view" (also called a slice) into the same memory
+// c := a.pop()
+// assert c == 9
 // a[1] = 5
 // dump(a) // a: [1, 5, 3, 4, 5, 6, 7, 8]
 // dump(b) // b: [1, 5, 3, 4, 5, 6, 7, 8, 9]
+// assert a.len == 8
+// assert b.len == 9
 // ```
 pub fn (mut a array) pop() voidptr {
 	// in a sense, this is the opposite of `a << x`
@@ -816,9 +819,9 @@ pub fn (a &array) free() {
 // Each function takes a boolean test expression as its single argument.
 // These test expressions may use `it` as a pointer to a single element at a time.
 //
-// Example: array.filter(it < 5) // create an array of elements less than 5
-// Example: array.filter(it % 2 == 1) // create an array of only odd elements
-// Example: array.filter(it.name[0] == `A`) // create an array of elements whose `name` field starts with 'A'
+// Example: a := [10,20,30,3,5,99]; assert a.filter(it < 5) == [3,5] // create an array of elements less than 5
+// Example: a := [10,20,30,3,5,99]; assert a.filter(it % 2 == 1) == [3,5,99] // create an array of only odd elements
+// Example: struct Named { name string }; a := [Named{'Abc'}, Named{'Bcd'}, Named{'Az'}]; assert a.filter(it.name[0] == `A`).len == 2
 pub fn (a array) filter(predicate fn (voidptr) bool) array
 
 // any tests whether at least one element in the array passes the test.
@@ -827,15 +830,15 @@ pub fn (a array) filter(predicate fn (voidptr) bool) array
 // It returns `true` if it finds an element passing the test. Otherwise,
 // it returns `false`. It doesn't modify the array.
 //
-// Example: array.any(it % 2 == 1) // will return true if any element is odd
-// Example: array.any(it.name == 'Bob') // will yield `true` if any element has `.name == 'Bob'`
+// Example: a := [2,3,4]; assert a.any(it % 2 == 1) // 3 is odd, so this will pass
+// Example: struct Named { name string }; a := [Named{'Bob'}, Named{'Bilbo'}]; assert a.any(it.name == 'Bob') // the first element will match
 pub fn (a array) any(predicate fn (voidptr) bool) bool
 
 // count counts how many elements in array pass the test.
 // Ignore the function signature. `count` does not take an actual callback. Rather, it
 // takes an `it` expression.
 //
-// Example: array.count(it % 2 == 1) // will return how many elements are odd
+// Example: a := [10,3,5,7]; assert a.count(it % 2 == 1) == 3 // will return how many elements are odd
 pub fn (a array) count(predicate fn (voidptr) bool) int
 
 // all tests whether all elements in the array pass the test.
@@ -844,7 +847,7 @@ pub fn (a array) count(predicate fn (voidptr) bool) int
 // It returns `false` if any element fails the test. Otherwise,
 // it returns `true`. It doesn't modify the array.
 //
-// Example: array.all(it % 2 == 1) // will return true if every element is odd
+// Example: a := [3,5,7,9]; assert a.all(it % 2 == 1) // will return true if every element is odd
 pub fn (a array) all(predicate fn (voidptr) bool) bool
 
 // map creates a new array populated with the results of calling a provided function
@@ -873,9 +876,9 @@ pub fn (a array) map(callback fn (voidptr) voidptr) array
 // The expression uses 2 'magic' variables `a` and `b` as pointers to the two elements
 // being compared.
 //
-// Example: array.sort() // will sort the array in ascending order
-// Example: array.sort(b < a) // will sort the array in descending order
-// Example: array.sort(b.name < a.name) // will sort descending by the .name field
+// Example: mut aa := [5,2,1,10]; aa.sort(); assert aa == [1,2,5,10] // will sort the array in ascending order
+// Example: mut aa := [5,2,1,10]; aa.sort(b < a); assert aa == [10,5,2,1] // will sort the array in descending order
+// Example: struct Named { name string }; mut aa := [Named{'Abc'}, Named{'Xyz'}]; aa.sort(b.name < a.name); assert aa.map(it.name) == ['Abc', 'Xyz'] // will sort descending by the .name field
 pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 
 // sorted returns a sorted copy of the original array. The original array is *NOT* modified.
@@ -894,9 +897,8 @@ pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array
 //
 // Example:
 // ```v
-// fn main() {
-// 	mut a := ['hi', '1', '5', '3']
-// 	a.sort_with_compare(fn (a &string, b &string) int {
+// mut a := ['hi', '1', '5', '3']
+// a.sort_with_compare(fn (a &string, b &string) int {
 // 		if a < b {
 // 			return -1
 // 		}
@@ -904,9 +906,8 @@ pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array
 // 			return 1
 // 		}
 // 		return 0
-// 	})
-// 	assert a == ['1', '3', '5', 'hi']
-// }
+// })
+// assert a == ['1', '3', '5', 'hi']
 // ```
 pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 	$if freestanding {
@@ -934,7 +935,7 @@ pub fn (a &array) sorted_with_compare(callback fn (voidptr, voidptr) int) array 
 // It will return `true` if the array contains an element with this value.
 // It is similar to `.any` but does not take an `it` expression.
 //
-// Example: [1, 2, 3].contains(4) == false
+// Example: assert [1, 2, 3].contains(4) == false
 pub fn (a array) contains(value voidptr) bool
 
 // index returns the first index at which a given element can be found in the array or `-1` if the value is not found.
@@ -955,7 +956,7 @@ pub fn (mut a []string) free() {
 // to arrays of different types in different ways.
 
 // str returns a string representation of an array of strings.
-// Example: ['a', 'b', 'c'].str() // => "['a', 'b', 'c']".
+// Example: assert ['a', 'b', 'c'].str() == "['a', 'b', 'c']"
 @[direct_array_access; manualfree]
 pub fn (a []string) str() string {
 	mut sb_len := 4 // 2x" + 1x, + 1xspace
