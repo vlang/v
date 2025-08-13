@@ -36,7 +36,7 @@ pub fn clip[T](x T, min_value T, max_value T) T {
 }
 
 // remap the input `x`, from the range [`a`,`b`] to [`c`,`d`] .
-// Example: math.remap(20, 1, 100, 50, 5000) == 1000
+// Example: assert math.remap(20, 1, 100, 50, 5000) == 1000
 // Note: `a` should be != `b`.
 @[inline]
 pub fn remap[T](x T, a T, b T, c T, d T) T {
