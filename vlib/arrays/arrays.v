@@ -154,7 +154,7 @@ pub fn group[T](arrs ...[]T) [][]T {
 }
 
 // chunk array into a single array of arrays where each element is the next `size` elements of the original.
-// Example: arrays.chunk([1, 2, 3, 4, 5, 6, 7, 8, 9], 2)) // => [[1, 2], [3, 4], [5, 6], [7, 8], [9]]
+// Example: arrays.chunk([1, 2, 3, 4, 5, 6, 7, 8, 9], 2) // => [[1, 2], [3, 4], [5, 6], [7, 8], [9]]
 pub fn chunk[T](array []T, size int) [][]T {
 	// allocate chunk array
 	mut chunks := [][]T{cap: array.len / size + if array.len % size == 0 { 0 } else { 1 }}
@@ -425,11 +425,10 @@ pub fn group_by[K, V](array []V, grouping_op fn (val V) K) map[K][]V {
 }
 
 // concatenate an array with an arbitrary number of additional values.
-//
-// NOTE: if you have two arrays, you should simply use the `<<` operator directly
-// Example: arrays.concat([1, 2, 3], 4, 5, 6) == [1, 2, 3, 4, 5, 6] // => true
-// Example: arrays.concat([1, 2, 3], ...[4, 5, 6]) == [1, 2, 3, 4, 5, 6] // => true
-// Example: arr << [4, 5, 6] // does what you need if arr is mutable
+// NOTE: if you have two arrays, you should simply use the `<<` operator directly.
+// Example: assert arrays.concat([1, 2, 3], 4, 5, 6) == [1, 2, 3, 4, 5, 6]
+// Example: assert arrays.concat([1, 2, 3], ...[4, 5, 6]) == [1, 2, 3, 4, 5, 6]
+// Example: mut arr := arrays.concat([1, 2, 3], 4); arr << [10,20]; assert arr == [1,2,3,4,10,20] // note: arr is mutable
 pub fn concat[T](a []T, b ...T) []T {
 	mut m := []T{cap: a.len + b.len}
 
