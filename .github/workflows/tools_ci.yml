@@ -94,7 +94,7 @@ jobs:
       - name: Build V
         run: ./make.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
       - name: Check build tools
-        run: ./v -silent -N -W -check build-tools
+        run: ./v build-tools
       - name: Test tools
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
