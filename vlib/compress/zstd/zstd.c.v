@@ -415,7 +415,7 @@ pub:
 
 // compresses an array of bytes using zstd and returns the compressed bytes in a new array
 // extra compression parameters can be set by `params`
-// Example: compressed := zstd.compress(b)!
+// Example: b := 'abcdef'.repeat(1000).bytes(); cmpr := zstd.compress(b, compression_level: 10)!; assert cmpr.len < b.len; dc := zstd.decompress(cmpr)!; assert b == dc
 pub fn compress(data []u8, params CompressParams) ![]u8 {
 	dst_capacity := C.ZSTD_compressBound(data.len)
 	check_error(dst_capacity)!
@@ -437,7 +437,7 @@ pub:
 
 // decompresses an array of bytes using zstd and returns the decompressed bytes in a new array
 // extra decompression parameters can be set by `params`
-// Example: decompressed := zstd.decompress(b)!
+// Example: b := 'abcdef'.repeat(1000).bytes(); cmpr := zstd.compress(b, compression_level: 10)!; assert cmpr.len < b.len; dc := zstd.decompress(cmpr)!; assert b == dc
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	dst_capacity := C.ZSTD_getFrameContentSize(data.data, frame_header_size_max)
 	if dst_capacity == content_size_unknown {

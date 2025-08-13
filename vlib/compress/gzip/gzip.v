@@ -55,7 +55,7 @@ pub:
 }
 
 // compresses an array of bytes using gzip and returns the compressed bytes in a new array
-// Example: compressed := gzip.compress(b, compression_level:4095)!
+// Example: b := 'abcde'.repeat(1000).bytes(); cmprsd := gzip.compress(b, compression_level:4095)!; assert cmprsd.len == 47
 // Note: compression_level 0~4095
 pub fn compress(data []u8, params CompressParams) ![]u8 {
 	if params.compression_level !in 0..4096 {
@@ -204,7 +204,7 @@ pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 }
 
 // decompress an array of bytes using zlib and returns the decompressed bytes in a new array.
-// Example: decompressed := gzip.decompress(b)!
+// Example: b := 'abcdef'.repeat(1000).bytes(); cmpr := gzip.compress(b)!; decmpr := gzip.decompress(cmpr)!; assert cmpr.len < b.len; assert b == decmpr
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	gzip_header := validate(data, params)!
 	header_length := gzip_header.length
