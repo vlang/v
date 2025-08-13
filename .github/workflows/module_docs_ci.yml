@@ -39,8 +39,8 @@ jobs:
         run: v retry -- v install markdown
       - name: Test v doc
         run: ./v test cmd/tools/vdoc/
-      - name: Build module documentation
-        run: ./v doc -m -f html vlib/
+      - name: Build module documentation and check the examples in the comments
+        run: ./v doc -m -f html -unsafe-run-examples -time vlib/
       - name: Deploy docs to vercel
         if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
         run: npx vercel --confirm --prod --name vmodules --token ${{ secrets.VERCEL_TOKEN }} vlib/_docs/ || true
