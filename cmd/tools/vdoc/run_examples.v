@@ -69,8 +69,9 @@ fn (mut vd VDoc) run_examples(dn doc.DocNode) {
 		res := os.execute(cmd)
 		if res.exit_code != 0 {
 			eprintln('${dn_to_location(dn)}:${term.ecolorize(term.red, 'error in documentation example')}')
-			eprintln('     cmd: ${cmd}')
-			eprintln('  result:')
+			eprintln('          cmd: ${cmd}')
+			eprintln(' example line: ${term.colorize(term.bright_yellow, example)}')
+			eprintln('       result:')
 			eprintln(res.output)
 			vd.example_failures++
 			continue
