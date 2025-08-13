@@ -35,6 +35,8 @@ jobs:
       - uses: actions/checkout@v5
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: Update packages, before running apt install
+        run: v retry -- sudo apt update -y -qq
       - name: Install dependencies (some modules wrap C libs)
         run: v retry -- sudo apt install --quiet -y libpq-dev
           libsodium-dev libasound2-dev libssl-dev \
