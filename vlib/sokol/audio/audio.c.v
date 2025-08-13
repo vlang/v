@@ -37,21 +37,16 @@ $if linux {
 //
 // Do not write more data to the buffer than it is requesting, but you may write less. The buffer is initialized with
 // zeroes, so unwritten data will result in audio silence.
-// Example: unsafe { C.memcpy(buffer, &samples, samples.len * int(sizeof(f32))) }
-// Example: unsafe { mut b := buffer; for i, sample in samples { b[i] = sample } }
+// Example body: unsafe { C.memcpy(buffer, &samples, samples.len * int(sizeof(f32))) }
+// Example body: unsafe { mut b := buffer; for i, sample in samples { b[i] = sample } }
 pub type FNStreamingCB = fn (buffer &f32, num_frames int, num_channels int)
 
 // callback function for `stream_userdata_cb` to use in `C.saudio_desc` when calling [audio.setup()](#setup)
-//
-// sokol callback functions run in a separate thread
-//
 // This function operates the same way as [[FNStreamingCB](#FNStreamingCB)] but it passes customizable `user_data` to the
 // callback. This is the method to use if your audio data is stored in a struct or array. Identify the
 // `user_data` when you call `audio.setup()` and that object will be passed to the callback as the last arg.
-// Example: mut soundbuffer := []f32
-// Example: soundbuffer << previously_parsed_wavfile_bytes
-// Example: audio.setup(stream_userdata_cb: mycallback, user_data: soundbuffer)
-// Example: fn mycallback(buffer &f32, num_frames int, num_channels int, mut sb []f32) { ... }
+// Note: Sokol's callback functions run in a separate thread.
+// Example: previously_parsed_wavfile_bytes := [f32(0),0,0,0]; mycallback := fn (buffer &f32, num_frames int, num_channels int, mut sb []f32) {}; mut soundbuffer := []f32{}; soundbuffer << previously_parsed_wavfile_bytes; audio.setup(stream_userdata_cb: mycallback, user_data: soundbuffer.data);
 pub type FnStreamingCBWithUserData = fn (buffer &f32, num_frames int, num_channels int, user_data voidptr)
 
 pub fn (x FNStreamingCB) str() string {
@@ -195,7 +190,7 @@ pub fn push(frames &f32, num_frames int) int {
 }
 
 // fclamp - helper function to 'clamp' a number to a certain range
-// Example: realsample := audio.fclamp(sample, -1.0, 1.0)
+// Example: sample := f32(3.14); realsample := audio.fclamp(sample, -1.0, 1.0); assert realsample == 1.0
 @[inline]
 pub fn fclamp(x f32, flo f32, fhi f32) f32 {
 	if x > fhi {
