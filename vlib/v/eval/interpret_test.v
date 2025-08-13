@@ -1,8 +1,10 @@
 import os
 import benchmark
 import term
+import v.util.diff
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
+const is_autofix = os.getenv('VAUTOFIX') != ''
 
 fn test_interpret() {
 	mut bench := benchmark.new_benchmark()
@@ -18,6 +20,7 @@ fn test_interpret() {
 		assert false
 	}
 	bench.set_total_expected_steps(tests.len)
+	mut failcmds := []string{}
 	for test in tests {
 		test_name_without_postfix := test.replace('.vv', '')
 		bench.step()
@@ -31,21 +34,32 @@ fn test_interpret() {
 		res := os.execute(cmd)
 		if res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('${full_test_path} failed to run'))
+			eprintln(bench.step_message_fail('${cmd} failed to run'))
 			eprintln(res.output)
 			continue
 		}
-		mut expected := os.read_file('${dir}/${test_name_without_postfix}.out')!
+		expected_file_path := '${dir}/${test_name_without_postfix}.out'
+		mut expected := os.read_file(expected_file_path)!
 		expected = normalise_line_endings(expected)
 		mut found := normalise_line_endings(res.output)
 		found = found.trim_space()
 		if expected != found {
-			println(term.red('FAIL'))
-			println('========================================================\n')
-			println('============ expected len=${expected.len}: "${expected}"')
-			println('============ found    len=${found.len}: "${found}"')
-			println('========================================================\n')
+			failcmds << cmd
 			bench.fail()
+			eprintln(bench.step_message_fail('difference found, when running ${cmd}'))
+			eprintln('='.repeat(80))
+			eprintln('============    .out file: ${expected_file_path}')
+			eprintln('============ expected len: ${expected.len}:\n${expected}')
+			eprintln('============    found len: ${found.len}:\n${found}')
+			if tdiff := diff.compare_text(expected, found) {
+				eprintln('-'.repeat(80))
+				eprintln('=== diff:')
+				eprint(tdiff)
+			}
+			eprintln('='.repeat(80))
+			if is_autofix {
+				os.write_file(expected_file_path, found)!
+			}
 			continue
 		}
 		bench.ok()
@@ -55,6 +69,10 @@ fn test_interpret() {
 	eprintln(term.h_divider('-'))
 	eprintln(bench.total_message('native'))
 	if bench.nfail > 0 {
+		println('You can reproduce the discovered failure cases with:')
+		for fcmd in failcmds {
+			println('   > ${fcmd}')
+		}
 		exit(1)
 	}
 }
