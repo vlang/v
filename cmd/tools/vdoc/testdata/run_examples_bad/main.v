@@ -1,5 +1,5 @@
 // abc just prints 'xyz'. The important thing however is the next line, that does an assertion,
-// that should FAIL to be executed with `v doc -run-examples good.v`:
+// that should FAIL to be executed with `v doc -unsafe-run-examples main.v`, and should compile with -check-examples:
 // Example: assert 5 * 5 == 77
 pub fn abc() {
 	println('xyz')

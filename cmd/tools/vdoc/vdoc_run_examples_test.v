@@ -4,10 +4,34 @@ const vexe_path = @VEXE
 const vexe = os.quoted_path(vexe_path)
 const vroot = os.dir(vexe_path)
 
-fn test_run_examples_good() {
+fn testsuite_begin() {
 	os.setenv('VCOLORS', 'never', true)
 	os.chdir(vroot)!
-	cmd := '${vexe} doc -comments -run-examples cmd/tools/vdoc/testdata/run_examples_good/main.v'
+}
+
+fn test_check_examples_good() {
+	cmd := '${vexe} doc -comments -check-examples cmd/tools/vdoc/testdata/run_examples_good/main.v'
+	println('${@METHOD:30} running ${cmd} ...')
+	res := os.execute(cmd)
+	assert res.exit_code == 0
+	assert res.output.contains('module main'), res.output
+	assert res.output.contains('fn abc()'), res.output
+	assert res.output.contains("abc just prints 'xyz'"), res.output
+	assert res.output.contains('and should succeed'), res.output
+	assert res.output.contains('Example: assert 5 * 5 == 25'), res.output
+}
+
+fn test_check_examples_bad() {
+	cmd := '${vexe} doc -comments -check-examples cmd/tools/vdoc/testdata/run_examples_bad/main.v'
+	println('${@METHOD:30} running ${cmd} ...')
+	res := os.execute(cmd)
+	assert res.exit_code == 0
+	assert res.output.contains('module main'), res.output
+	assert res.output.contains('Example: assert 5 * 5 == 77'), res.output
+}
+
+fn test_run_examples_good() {
+	cmd := '${vexe} doc -comments -unsafe-run-examples cmd/tools/vdoc/testdata/run_examples_good/main.v'
 	println('${@METHOD:30} running ${cmd} ...')
 	res := os.execute(cmd)
 	assert res.exit_code == 0
@@ -19,9 +43,7 @@ fn test_run_examples_good() {
 }
 
 fn test_run_examples_bad() {
-	os.setenv('VCOLORS', 'never', true)
-	os.chdir(vroot)!
-	cmd := '${vexe} doc -comments -run-examples cmd/tools/vdoc/testdata/run_examples_bad/main.v'
+	cmd := '${vexe} doc -comments -unsafe-run-examples cmd/tools/vdoc/testdata/run_examples_bad/main.v'
 	println('${@METHOD:30} running ${cmd} ...')
 	res := os.execute(cmd)
 	assert res.exit_code != 0

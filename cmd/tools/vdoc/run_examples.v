@@ -32,8 +32,13 @@ fn get_mod_name_by_file_path(file_path string) string {
 }
 
 fn (mut vd VDoc) run_examples(dn doc.DocNode) {
-	if dn.comments.len == 0 || !vd.cfg.run_examples {
+	if dn.comments.len == 0 || vd.cfg.run_examples == .skip {
 		return
+	}
+	voptions := match vd.cfg.run_examples {
+		.run { ' -g run ' }
+		.check { '-N -W -check' }
+		.skip { '' }
 	}
 	examples := dn.examples()
 	if examples.len == 0 {
@@ -56,12 +61,13 @@ fn (mut vd VDoc) run_examples(dn doc.DocNode) {
 		import_clause := if mod_name in ['builtin', ''] { '' } else { 'import ${mod_name}\n' }
 		source := '${import_clause}fn main() {\n\t${code}\n}\n'
 		os.write_file(vsource_path, source) or { continue }
-		cmd := '${os.quoted_path(vexe)} -g run ${os.quoted_path(vsource_path)}'
+		cmd := '${os.quoted_path(vexe)} ${voptions} ${os.quoted_path(vsource_path)}'
 		res := os.execute(cmd)
 		if res.exit_code != 0 {
 			eprintln('${dn_to_location(dn)}:${term.ecolorize(term.red, 'error in documentation example')}')
-			eprintln('cmd: ${cmd}')
-			eprintln('result: ${res.output}')
+			eprintln('     cmd: ${cmd}')
+			eprintln('  result:')
+			eprintln(res.output)
 			failures++
 			continue
 		}

@@ -277,6 +277,13 @@ fn (vd &VDoc) emit_generate_err(err IError) {
 }
 
 fn (mut vd VDoc) generate_docs_from_file() {
+	sw := time.new_stopwatch()
+	defer {
+		if vd.cfg.show_time {
+			println('Generation took: ${sw.elapsed().milliseconds()} ms.')
+		}
+	}
+
 	cfg := vd.cfg
 	mut out := Output{
 		path: cfg.output_path

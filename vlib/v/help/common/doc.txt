@@ -29,6 +29,11 @@ Options:
   -v              Enables verbose logging. For debugging purposes.
   -no-timestamp   Omits the timestamp in the output file.
 
+  -check-examples       Find and check that all example comments are compilable,
+                        but * without * running them.
+  -unsafe-run-examples  Find and run all `// Example: assert 1 + 1 == 2` lines
+                        in the comments.
+
 For HTML mode:
   -inline-assets  Embeds the contents of the CSS and JS assets into the
                   webpage directly.

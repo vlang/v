@@ -12,10 +12,17 @@ const vroot = os.dir(vexe)
 
 const allowed_formats = ['md', 'markdown', 'json', 'text', 'ansi', 'html', 'htm']
 
+enum RunExampleMode {
+	skip
+	run
+	check
+}
+
 struct Config {
 mut:
 	pub_only         bool = true
 	show_loc         bool // for plaintext
+	show_time        bool // show the total time spend generating content
 	is_color         bool
 	is_multi         bool
 	is_vlib          bool
@@ -31,7 +38,8 @@ mut:
 	input_path       string
 	symbol_name      string
 	platform         doc.Platform
-	run_examples     bool // `-run-examples` will run all `// Example: assert mod.abc() == y` comments in the processed modules
+	run_examples     RunExampleMode // `-unsafe-run-examples` will run all `// Example: assert mod.abc() == y` comments in the processed modules.
+	// -check-examples will only check/validate that they compile, but without running any code.
 	// The options below are useful for generating a more stable HTML, that is easier to regression test:
 	html_only_contents bool // `-html-only-contents` will produce only the content of any given page, without styling tags etc.
 	html_no_vhash      bool // `-html-no-vhash` will remove the version hash from the generated html
@@ -61,7 +69,7 @@ fn main() {
 	}
 	vd.vprintln('Setting output type to "${cfg.output_type}"')
 	vd.generate_docs_from_file()
-	if cfg.run_examples {
+	if cfg.run_examples != .skip {
 		println('')
 		if vd.example_oks == 0 && vd.example_failures == 0 {
 			println(term.colorize(term.bright_yellow, 'Found NO examples.'))
@@ -137,8 +145,19 @@ fn parse_arguments(args []string) Config {
 				cfg.platform = selected_platform
 				i++
 			}
+			'-time' {
+				cfg.show_time = true
+			}
+			'-check-examples' {
+				cfg.run_examples = .check
+			}
+			'-unsafe-run-examples' {
+				cfg.run_examples = .run
+			}
 			'-run-examples' {
-				cfg.run_examples = true
+				eprintln('WARNING: the `-run-examples` option is deprecated, and will be removed after 2025-11-13.')
+				eprintln('  Use `-unsafe-run-examples` instead of `-run-examples` .')
+				cfg.run_examples = .run
 			}
 			'-no-timestamp' {
 				cfg.no_timestamp = true
