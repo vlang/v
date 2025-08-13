@@ -18,7 +18,6 @@ struct Winsize {
 }
 
 // Readline is the key struct for reading and holding user input via a terminal.
-// Example: import readline { Readline }
 pub struct Readline {
 pub mut:
 	is_raw                 bool
