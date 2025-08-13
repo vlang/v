@@ -2846,7 +2846,7 @@ pub fn (s string) is_identifier() bool {
 // camel_to_snake convert string from camelCase to snake_case
 // Example: assert 'Abcd'.camel_to_snake() == 'abcd'
 // Example: assert 'aaBB'.camel_to_snake() == 'aa_bb'
-// Example: assert 'BBaa'.camel_to_snake() == 'b_baa'
+// Example: assert 'BBaa'.camel_to_snake() == 'bb_aa'
 // Example: assert 'aa_BB'.camel_to_snake() == 'aa_bb'
 @[direct_array_access]
 pub fn (s string) camel_to_snake() string {

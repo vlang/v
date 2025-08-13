@@ -70,7 +70,6 @@ fn main() {
 	vd.vprintln('Setting output type to "${cfg.output_type}"')
 	vd.generate_docs_from_file()
 	if cfg.run_examples != .skip {
-		println('')
 		if vd.example_oks == 0 && vd.example_failures == 0 {
 			println(term.colorize(term.bright_yellow, 'Found NO examples.'))
 		} else {

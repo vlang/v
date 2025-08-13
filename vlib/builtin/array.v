@@ -430,7 +430,7 @@ pub fn (mut a array) reset() {
 
 // trim trims the array length to `index` without modifying the allocated data.
 // If `index` is greater than `len` nothing will be changed.
-// Example: mut a := [1,2,3,4]; a.trim(3); assert a.len == 10
+// Example: mut a := [1,2,3,4]; a.trim(3); assert a.len == 3
 pub fn (mut a array) trim(index int) {
 	if index < a.len {
 		a.len = index
@@ -819,7 +819,7 @@ pub fn (a &array) free() {
 // Each function takes a boolean test expression as its single argument.
 // These test expressions may use `it` as a pointer to a single element at a time.
 //
-// Example: a := [10,20,30,3,5,99]; assert a.filter(it < 5) == [3,5] // create an array of elements less than 5
+// Example: a := [10,20,30,3,5,99]; assert a.filter(it < 5) == [3] // create an array of elements less than 5
 // Example: a := [10,20,30,3,5,99]; assert a.filter(it % 2 == 1) == [3,5,99] // create an array of only odd elements
 // Example: struct Named { name string }; a := [Named{'Abc'}, Named{'Bcd'}, Named{'Az'}]; assert a.filter(it.name[0] == `A`).len == 2
 pub fn (a array) filter(predicate fn (voidptr) bool) array
@@ -878,7 +878,7 @@ pub fn (a array) map(callback fn (voidptr) voidptr) array
 //
 // Example: mut aa := [5,2,1,10]; aa.sort(); assert aa == [1,2,5,10] // will sort the array in ascending order
 // Example: mut aa := [5,2,1,10]; aa.sort(b < a); assert aa == [10,5,2,1] // will sort the array in descending order
-// Example: struct Named { name string }; mut aa := [Named{'Abc'}, Named{'Xyz'}]; aa.sort(b.name < a.name); assert aa.map(it.name) == ['Abc', 'Xyz'] // will sort descending by the .name field
+// Example: struct Named { name string }; mut aa := [Named{'Abc'}, Named{'Xyz'}]; aa.sort(b.name < a.name); assert aa.map(it.name) == ['Xyz','Abc'] // will sort descending by the .name field
 pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 
 // sorted returns a sorted copy of the original array. The original array is *NOT* modified.
