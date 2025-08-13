@@ -120,7 +120,7 @@ fn validate_middleware[T](mut ctx T, raw_handlers []voidptr) bool {
 // encode_gzip adds gzip encoding to the HTTP Response body.
 // This middleware does not encode files, if you return `ctx.file()`.
 // Register this middleware as last!
-// Example: app.use(veb.encode_gzip[Context]())
+// Usage example: app.use(veb.encode_gzip[Context]())
 pub fn encode_gzip[T]() MiddlewareOptions[T] {
 	return MiddlewareOptions[T]{
 		after:   true
@@ -155,7 +155,7 @@ pub fn encode_gzip[T]() MiddlewareOptions[T] {
 
 // decode_gzip decodes the body of a gzip'ed HTTP request.
 // Register this middleware before you do anything with the request body!
-// Example: app.use(veb.decode_gzip[Context]())
+// Usage example: app.use(veb.decode_gzip[Context]())
 pub fn decode_gzip[T]() MiddlewareOptions[T] {
 	return MiddlewareOptions[T]{
 		handler: fn [T](mut ctx T) bool {
@@ -299,7 +299,7 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 
 // cors handles cross-origin requests by adding Access-Control-* headers to a
 // preflight request and validating the headers of a cross-origin request.
-// Example:
+// Usage example:
 // ```v
 // app.use(veb.cors[Context](veb.CorsOptions{
 //     origins: ['*']

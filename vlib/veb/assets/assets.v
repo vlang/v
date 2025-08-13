@@ -206,7 +206,7 @@ pub fn (am AssetManager) exists(asset_type AssetType, include_name string) bool 
 }
 
 // include css/js files in your veb app from templates
-// Example:
+// Usage example:
 // ```html
 // @{app.am.include(.css, 'main.css')}
 // ```

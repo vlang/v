@@ -6,8 +6,7 @@ import veb
 // middleware can be used to add session middleware to your vweb app to ensure
 // a valid session always exists. If a valid session exists the session data will
 // be loaded into `session_data`, else a new session id will be generated.
-// You have to pass the Context type as the generic type
-// Example: app.use(app.sessions.middleware[Context]())
+// You have to pass the Context type as the generic type.
 pub fn create[T, X](mut s sessions.Sessions[T]) veb.MiddlewareOptions[X] {
 	return veb.MiddlewareOptions[X]{
 		handler: fn [mut s] [T, X](mut ctx X) bool {

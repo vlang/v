@@ -200,8 +200,8 @@ struct Route {
 	host       string
 }
 
-// Defining this method is optional.
-// This method called at server start.
+// init_server is called at the server start.
+// Note: defining this method is optional.
 // You can use it for initializing globals.
 pub fn (ctx &Context) init_server() {
 	eprintln('init_server() has been deprecated, please init your web app in `fn main()`')
@@ -223,7 +223,7 @@ pub fn (ctx &Context) before_accept_loop() {
 pub fn (ctx &Context) before_request() {}
 
 // TODO: test
-// vweb intern function
+// send_response_to_client sends back a custom response to the client, with the given `mimetype` and content in `res`.
 @[manualfree]
 pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done {
@@ -253,26 +253,26 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	return true
 }
 
-// Response with payload and content-type `text/html`
+// html responds with payload and content-type `text/html`
 pub fn (mut ctx Context) html(payload string) Result {
 	ctx.send_response_to_client('text/html', payload)
 	return Result{}
 }
 
-// Response with s as payload and content-type `text/plain`
+// text responds with s as payload and content-type `text/plain`
 pub fn (mut ctx Context) text(s string) Result {
 	ctx.send_response_to_client('text/plain', s)
 	return Result{}
 }
 
-// Response with json_s as payload and content-type `application/json`
+// json responds with json_s as payload and content-type `application/json`
 pub fn (mut ctx Context) json[T](j T) Result {
 	json_s := json.encode(j)
 	ctx.send_response_to_client('application/json', json_s)
 	return Result{}
 }
 
-// Response with a pretty-printed JSON result
+// json_pretty responds with a pretty-printed JSON result
 pub fn (mut ctx Context) json_pretty[T](j T) Result {
 	json_s := json.encode_pretty(j)
 	ctx.send_response_to_client('application/json', json_s)
@@ -280,7 +280,7 @@ pub fn (mut ctx Context) json_pretty[T](j T) Result {
 }
 
 // TODO: test
-// Response with file as payload
+// file responds with the content of the given file as payload.
 pub fn (mut ctx Context) file(f_path string) Result {
 	if !os.exists(f_path) {
 		eprintln('[vweb] file ${f_path} does not exist')
@@ -302,7 +302,7 @@ pub fn (mut ctx Context) file(f_path string) Result {
 	return Result{}
 }
 
-// Response with s as payload and sets the status code to HTTP_OK
+// ok responds with s as payload and sets the status code to HTTP_OK
 pub fn (mut ctx Context) ok(s string) Result {
 	ctx.set_status(200, 'OK')
 	ctx.send_response_to_client(ctx.content_type, s)
@@ -310,7 +310,7 @@ pub fn (mut ctx Context) ok(s string) Result {
 }
 
 // TODO: test
-// Response a server error
+// server_error will send back an error response to the client.
 pub fn (mut ctx Context) server_error(ecode int) Result {
 	$if debug {
 		eprintln('> ctx.server_error ecode: ${ecode}')
@@ -322,13 +322,14 @@ pub fn (mut ctx Context) server_error(ecode int) Result {
 	return Result{}
 }
 
+// RedirectParams represent the optional parameters to redirect/2 .
 @[params]
 pub struct RedirectParams {
 pub:
 	status_code int = 302
 }
 
-// Redirect to an url
+// redirect to an url.
 pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 	if ctx.done {
 		return Result{}
@@ -344,7 +345,7 @@ pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 	return Result{}
 }
 
-// Send an not_found response
+// not_found send an not_found response.
 pub fn (mut ctx Context) not_found() Result {
 	// TODO: add a [must_be_returned] attribute, so that the caller is forced to use `return app.not_found()`
 	if ctx.done {
@@ -356,7 +357,7 @@ pub fn (mut ctx Context) not_found() Result {
 }
 
 // TODO: test
-// Sets a cookie
+// set_cookie sets a cookie.
 pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	cookie_raw := cookie.str()
 	if cookie_raw == '' {
@@ -366,13 +367,13 @@ pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	ctx.add_header('Set-Cookie', cookie_raw)
 }
 
-// Sets the response content type
+// set_content_type sets the response content type.
 pub fn (mut ctx Context) set_content_type(typ string) {
 	ctx.content_type = typ
 }
 
 // TODO: test
-// Sets a cookie with a `expire_date`
+// set_cookie_with_expire_date sets a cookie with an `expire_date`.
 pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
 	cookie := http.Cookie{
 		name:    key
@@ -382,7 +383,7 @@ pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, exp
 	ctx.set_cookie(cookie)
 }
 
-// Gets a cookie by a key
+// get_cookie get the value of a cookie, given its key.
 pub fn (ctx &Context) get_cookie(key string) !string {
 	c := ctx.req.cookie(key) or { return error('Cookie not found') }
 	return c.value
@@ -413,12 +414,12 @@ pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.header.get_custom(key) or { '' }
 }
 
-// set_value sets a value on the context
+// set_value sets a value on the context.
 pub fn (mut ctx Context) set_value(key context.Key, value context.Any) {
 	ctx.ctx = context.with_value(ctx.ctx, key, value)
 }
 
-// get_value gets a value from the context
+// get_value gets a value from the context.
 pub fn (ctx &Context) get_value[T](key context.Key) ?T {
 	if val := ctx.ctx.value(key) {
 		match val {
@@ -495,7 +496,7 @@ pub mut:
 	controllers []&ControllerPath
 }
 
-// controller generates a new Controller for the main app
+// controller generates a new Controller for the main app.
 pub fn controller[T](path string, global_app &T) &ControllerPath {
 	routes := generate_routes(global_app) or { panic(err.msg()) }
 
@@ -513,14 +514,14 @@ pub fn controller[T](path string, global_app &T) &ControllerPath {
 	}
 }
 
-// controller_host generates a controller which only handles incoming requests from the `host` domain
+// controller_host generates a controller which only handles incoming requests from the `host` domain.
 pub fn controller_host[T](host string, path string, global_app &T) &ControllerPath {
 	mut ctrl := controller(path, global_app)
 	ctrl.host = host
 	return ctrl
 }
 
-// run - start a new VWeb server, listening to all available addresses, at the specified `port`
+// run - start a new VWeb server, listening to all available addresses, at the specified `port`.
 pub fn run[T](global_app &T, port int) {
 	run_at[T](global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
 }
@@ -537,8 +538,8 @@ pub:
 	startup_message      string
 }
 
-// run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
-// Example: vweb.run_at(new_app(), vweb.RunParams{ host: 'localhost' port: 8099 family: .ip }) or { panic(err) }
+// run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`.
+// Usage example: vweb.run_at(new_app(), host: 'localhost' port: 8099 family: .ip)!
 @[manualfree]
 pub fn run_at[T](global_app &T, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {

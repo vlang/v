@@ -142,7 +142,7 @@ mut:
 }
 
 // run_at - start a new veb server, listening only on a specific address `host`, at the specified `port`
-// Example: veb.run_at(new_app(), veb.RunParams{ host: 'localhost' port: 8099 family: .ip }) or { panic(err) }
+// Usage example: veb.run_at(new_app(), host: 'localhost' port: 8099 family: .ip)!
 @[direct_array_access; manualfree]
 pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {

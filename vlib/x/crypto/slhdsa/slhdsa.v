@@ -13,10 +13,10 @@ pub struct PrivateKey {
 // See `enum Kind` for all of availables choice's type (kind) of key.
 // Its also support to generate keys based on the seed or private bytes through
 // provided options. See available options in `KeyOpts`.
-// Example:
-// ```
-// PrivateKey.new()!
-// PrivateKey.new(kind: .sha2_128s)
+// Usage example:
+// ```v
+// pk1 := slhdsa.PrivateKey.new()!; println(pk1)
+// pk2 := slhdsa.PrivateKey.new(kind: .sha2_128s)!; println(pk2)
 // ```
 pub fn PrivateKey.new(opt KeyOpts) !PrivateKey {
 	match opt.flag {

@@ -63,7 +63,8 @@ pub fn (bs BitString) payload() ![]u8 {
 	return out
 }
 
-fn (bs BitString) str() string {
+// str returns a string representation of the current state of bs.
+pub fn (bs BitString) str() string {
 	return 'BitString: ${bs.data.hex()} (${bs.pad})'
 }
 
@@ -115,10 +116,9 @@ fn BitString.decode_with_rule(bytes []u8, rule EncodingRule) !(BitString, int) {
 // seven bits of the last octet are not used and is interpreted as a pad value.
 // Example:
 // ```v
-// import x.encoding.asn1
-//
+//  import x.encoding.asn1
 //	bs := asn1.BitString.from_binary_string('011010001')!
-// 	assert (bs.pad == 7 && bs.data == [u8(0x68), 0x80]) == true
+// 	assert bs.str() == 'BitString: 6880 (7)'
 // ```
 pub fn BitString.from_binary_string(s string) !BitString {
 	res, pad := parse_bits_string(s)!
