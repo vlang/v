@@ -143,7 +143,6 @@ fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.
 					}
 				}
 			}
-			vd.run_examples(cn, mut pw)
 		}
 		vd.write_plaintext_content(cn.children, mut pw)
 	}
@@ -157,6 +156,8 @@ fn (mut vd VDoc) render_doc(d doc.Doc, out Output) (string, string) {
 		.json { vd.gen_json(d) }
 		else { vd.gen_plaintext(d) }
 	}
+	contents := d.contents.arr()
+	vd.process_all_examples(contents)
 	return name, output
 }
 

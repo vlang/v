@@ -182,14 +182,14 @@ fn (vd &VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder)
 	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name,
 		cn.pos.line_nr + 1)
 	if cn.content.len != 0 || cn.name == 'Constants' {
-		hw.write_string(doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
+		hw.write_string(vd.doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
 		hw.write_string('\n')
 	}
 	for child in cn.children {
 		child_file_path_name := child.file_path.replace('${base_dir}/', '')
 		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch,
 			child_file_path_name, child.pos.line_nr + 1)
-		hw.write_string(doc_node_html(child, child_src_link, false, cfg.include_examples,
+		hw.write_string(vd.doc_node_html(child, child_src_link, false, cfg.include_examples,
 			d.table))
 		hw.write_string('\n')
 	}
@@ -202,7 +202,7 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	mut contents := strings.new_builder(200)
 	dcs_contents := d.contents.arr()
 	// generate toc first
-	contents.writeln(doc_node_html(d.head, '', true, cfg.include_examples, d.table))
+	contents.writeln(vd.doc_node_html(d.head, '', true, cfg.include_examples, d.table))
 	if is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
@@ -519,7 +519,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 	return buf.str()
 }
 
-fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &ast.Table) string {
+fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &ast.Table) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
 	mut renderer := markdown.HtmlRenderer{

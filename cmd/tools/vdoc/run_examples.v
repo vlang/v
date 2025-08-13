@@ -2,10 +2,18 @@ module main
 
 import document as doc
 import v.vmod
-import strings
 import os
 import rand
 import term
+
+fn (mut vd VDoc) process_all_examples(contents []doc.DocNode) {
+	for cn in contents {
+		if cn.content.len > 0 {
+			vd.run_examples(cn)
+		}
+		vd.process_all_examples(cn.children)
+	}
+}
 
 const normalised_default_vmodules_path = os.vmodules_dir().replace('\\', '/')
 
@@ -23,7 +31,7 @@ fn get_mod_name_by_file_path(file_path string) string {
 	return mod_name
 }
 
-fn (mut vd VDoc) run_examples(dn doc.DocNode, mut pw strings.Builder) {
+fn (mut vd VDoc) run_examples(dn doc.DocNode) {
 	if dn.comments.len == 0 || !vd.cfg.run_examples {
 		return
 	}
