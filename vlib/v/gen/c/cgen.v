@@ -5444,7 +5444,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 						if i == 0 && node.obj.ct_type_var != .smartcast && node.obj.is_unwrapped {
 							dot := if (!node.obj.ct_type_unwrapped && !node.obj.orig_type.is_ptr()
-								&& obj_sym.is_heap())
+								&& !node.obj.orig_type.has_flag(.generic) && obj_sym.is_heap())
 								|| node.obj.orig_type.has_flag(.option_mut_param_t) {
 								'->'
 							} else {
@@ -6727,7 +6727,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					for opt_field in opt_fields {
 						field_sym := g.table.final_sym(opt_field.typ)
 						arr := field_sym.info as ast.ArrayFixed
-						if !arr.elem_type.has_flag(.option) {
+						if !arr.elem_type.has_flag(.option) || arr.elem_type.has_flag(.generic) {
 							continue
 						}
 						styp := field_sym.cname
