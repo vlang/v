@@ -60,7 +60,7 @@ pub fn (ver Version) increment(typ Increment) Version {
 }
 
 // satisfies returns `true` if the `input` expression can be validated to `true` when run against this `Version`.
-// Example: assert semver.build(1,0,0).satisfies('<=2.0.0') == true
+// Example: assert semver.build(1,0,0).satisfies('<=2.0.0')
 // Example: assert semver.build(1,0,0).satisfies('>=2.0.0') == false
 pub fn (ver Version) satisfies(input string) bool {
 	return version_satisfies(ver, input)
