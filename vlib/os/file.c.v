@@ -335,14 +335,14 @@ pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ! {
 		unsafe {
 			C.errno = 0
 			x := i64(C.fwrite(ptr, 1, remaining_bytes, f.cfile))
-			cerror := C.errno
+			cerror := int(C.errno)
 			ptr += x
 			remaining_bytes -= x
 			if cerror != 0 {
 				if cerror == C.EINTR {
 					continue
 				}
-				if x != buffer_len {
+				if i64(x) != i64(buffer_len) {
 					return error(posix_get_error_msg(cerror))
 				}
 			}
