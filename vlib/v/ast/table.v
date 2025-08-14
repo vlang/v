@@ -218,7 +218,8 @@ pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 
 	for i in 0 .. f.params.len {
 		// don't check receiver for `.typ`
-		has_unexpected_type := i > 0 && f.params[i].typ != func.params[i].typ
+		has_unexpected_type := i > 0
+			&& t.unaliased_type(f.params[i].typ) != t.unaliased_type(func.params[i].typ)
 		// temporary hack for JS ifaces
 		lsym := t.sym(f.params[i].typ)
 		rsym := t.sym(func.params[i].typ)

@@ -239,7 +239,7 @@ pub mut:
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
-	message_limit       int = 150 // the maximum amount of warnings/errors/notices that will be accumulated
+	message_limit       int = 200 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	use_coroutines      bool // experimental coroutines
 	fast_math           bool // -fast-math will pass either -ffast-math or /fp:fast (for msvc) to the C backend
