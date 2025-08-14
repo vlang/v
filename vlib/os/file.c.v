@@ -342,7 +342,9 @@ pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ! {
 				if cerror == C.EINTR {
 					continue
 				}
-				return error(posix_get_error_msg(cerror))
+				if x != buffer_len {
+					return error(posix_get_error_msg(cerror))
+				}
 			}
 			if x <= 0 {
 				return error('C.fwrite returned 0')
