@@ -1,0 +1,52 @@
+name: CI Ubuntu 25 GCC 14.2
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/build_on_ubuntu_25_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/build_on_ubuntu_25_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+jobs:
+  ubuntu-25-gcc-14-2-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and test in Ubuntu 25.04 with GCC 14.2
+        run: |
+          set -o xtrace
+          echo "$PWD"
+          whoami
+          touch outside_docker.txt
+          git log -n4
+          echo "running docker ..."
+          docker run --rm \
+            --mount type=bind,source=/home/runner/work/v/v,destination=/src \
+            -w /src ubuntu:25.04 bash -c '
+            set -o xtrace
+            echo "running inside docker"
+            whoami
+            cp -r /src ~/vproject; cd ~/vproject
+            touch inside_docker.txt
+            ls -la
+            git log -n4
+            apt update -y -qq
+            apt install -y -qq git build-essential make
+            git config --global --add safe.directory /src/vc
+            git config --global --add safe.directory /src/thirdparty/tcc
+            make
+            ./v symlink
+            v run examples/hello_world.v
+            v run examples/primes.v
+          '
