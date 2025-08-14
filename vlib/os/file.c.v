@@ -455,9 +455,6 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []u8) !int {
 	// Note: fseek errors if pos == os.file_size, which we accept
 	unsafe { f.seek(pos, .start) or {} }
 	nbytes := fread(buf.data, 1, buf.len, f.cfile)!
-	$if debug {
-		unsafe { f.seek(0, end) or {} }
-	}
 	return nbytes
 }
 
