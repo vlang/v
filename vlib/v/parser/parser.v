@@ -1490,8 +1490,25 @@ fn (mut p Parser) name_expr() ast.Expr {
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
 		}
+		if p.pref.linfo.is_running {
+			// VLS autocomplete for module fns: `os...`
+			// TODO perf $if
+			// p.module_autocomplete(node)
+		}
+		line_nr := p.tok.line_nr
 		p.next()
 		p.check(.dot)
+		if p.is_vls && p.tok.line_nr != line_nr {
+			// The user typed `os.`, we have to display all possible `os` functions.
+			// Turn this name expression into an Ident, since that is what expected
+			// by `Checker.ident_autocomplete()`
+			return ast.Ident{
+				name: ''
+				mod:  mod
+				pos:  p.prev_tok.pos()
+			}
+		}
+
 		p.expr_mod = mod
 	}
 	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {

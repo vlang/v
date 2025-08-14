@@ -18,6 +18,9 @@ fn abs(a int) int {
 	return a
 }
 
+pub fn (mut c Checker) run_ac(ast_file &ast.File) {
+}
+
 fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	// Mini LS hack (v -line-info "a.v:16")
 	if c.pref.is_verbose {
@@ -25,21 +28,27 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 			'checker.ident_autocomplete() info.line_nr=${c.pref.linfo.line_nr} node.line_nr=${node.pos.line_nr} ' +
 			' node.col=${node.pos.col} pwd="${os.getwd()}" file="${c.file.path}", ' +
 			//' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" expr="${c.pref.linfo.expr}"')
-		 ' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" col="${c.pref.linfo.col}"')
+		 ' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" node.mod="${node.mod}" col="${c.pref.linfo.col}"')
 	}
 	// Make sure this ident is on the same line as requeste, in the same file, and has the same name
 	same_line := node.pos.line_nr in [c.pref.linfo.line_nr - 1, c.pref.linfo.line_nr + 1, c.pref.linfo.line_nr]
 	if !same_line {
 		return
 	}
-	// same_name := c.pref.linfo.expr == node.name
 	same_col := abs(c.pref.linfo.col - node.pos.col) < 3
-	// if !same_name {
 	if !same_col {
 		return
 	}
 	abs_path := os.join_path(os.getwd(), c.file.path)
 	if c.pref.linfo.path !in [c.file.path, abs_path] {
+		return
+	}
+	// Module autocomplete
+	// `os. ...`
+	if node.name == '' && node.mod != 'builtin' {
+		c.module_autocomplete(node)
+		return
+	} else if node.name == '' && node.mod == 'builtin' {
 		return
 	}
 	mut sb := strings.new_builder(10)
@@ -67,6 +76,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 		*/
 
 		mut fields := []ACFieldMethod{cap: 10}
+		mut methods := []ACFieldMethod{cap: 10}
 		if sym.kind == .struct {
 			// Add fields, but only if it's a struct.
 			struct_info := sym.info as ast.Struct
@@ -85,17 +95,27 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 				fields << ACFieldMethod{'cap', 'int'}
 			}
 			// array_info := sym.info as ast.Array
+		} else if sym.kind == .string {
+			fields << ACFieldMethod{'len', 'int'}
 		}
 		// Aliases and other types can have methods, add them
 		for method in sym.methods {
 			method_ret_type := c.table.sym(method.return_type)
-			fields << ACFieldMethod{build_method_summary(method), method_ret_type.name}
+			methods << ACFieldMethod{build_method_summary(method), method_ret_type.name}
 		}
 		fields.sort(a.name < b.name)
 		for i, field in fields {
 			// sb.writeln('${field.name}:${field.typ}')
 			sb.write_string('\t\t"${field.name}:${field.typ}"')
 			if i < fields.len - 1 {
+				sb.writeln(', ')
+			}
+		}
+		sb.writeln('\n\t], "methods":[')
+
+		for i, method in methods {
+			sb.write_string('\t\t"${method.name}:${method.typ}"')
+			if i < methods.len - 1 {
 				sb.writeln(', ')
 			}
 		}
@@ -108,12 +128,39 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	}
 }
 
+fn (mut c Checker) module_autocomplete(node ast.Ident) {
+	mut sb := strings.new_builder(10)
+	// println(c.table.fns)
+	sb.writeln('{"methods":[')
+	prefix := node.mod + '.'
+	mut empty := true
+	for _, f in c.table.fns {
+		mut name := f.name
+		if name.starts_with(prefix) {
+			empty = false
+			if name.contains('__static__') {
+				name = name.replace('__static__', '.')
+			}
+			name = name.after('.') // The user already typed `mod.`, so suggest the name without module
+			sb.writeln('"${name}:int" ,')
+		}
+	}
+	if !empty {
+		sb.go_back(2) // remove final ,
+	}
+	sb.writeln(']}')
+	println(sb.str().trim_space())
+}
+
 fn build_method_summary(method ast.Fn) string {
 	mut s := method.name + '('
 	for i, param in method.params {
+		if i == 0 {
+			continue
+		}
 		s += param.name
 		if i < method.params.len - 1 {
-			s += ','
+			s += ', '
 		}
 	}
 	return s + ')'
