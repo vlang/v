@@ -490,8 +490,8 @@ fn test_path_devnull() {
 	// dump(content)
 	// dump(content.len)
 
-	// writing to /dev/null can fail on macos/bsd:
-	os.write_file(os.path_devnull, 'something') or {}
+	os.write_file(os.path_devnull, 'something')!
+
 	content_after := os.read_file(os.path_devnull)!
 	// dump(content_after)
 	// dump(content_after.len)
