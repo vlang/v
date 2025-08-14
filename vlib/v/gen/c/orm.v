@@ -360,7 +360,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		final_field_typ := g.table.final_type(field.typ)
 		sym := g.table.sym(final_field_typ)
 		if sym.kind == .struct && sym.name != 'time.Time' {
-			subs << unsafe { node.sub_structs[int(final_field_typ)] }
+			if node.sub_structs.len > 0 {
+				subs << unsafe { node.sub_structs[int(final_field_typ)] }
+			}
 			unwrapped_c_typ := g.styp(final_field_typ.clear_flag(.option))
 			subs_unwrapped_c_typ << if final_field_typ.has_flag(.option) {
 				unwrapped_c_typ
