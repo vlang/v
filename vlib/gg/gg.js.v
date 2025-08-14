@@ -1,6 +1,5 @@
 module gg
 
-import gx
 import js.dom
 
 pub enum DOMEventType {
@@ -210,7 +209,7 @@ pub:
 	window_title      string
 	borderless_window bool
 	always_on_top     bool
-	bg_color          gx.Color
+	bg_color          Color
 	init_fn           FNCb   = unsafe { nil }
 	frame_fn          FNCb   = unsafe { nil }
 	native_frame_fn   FNCb   = unsafe { nil }
@@ -465,7 +464,7 @@ pub fn (mut ctx Context) end() {
 	// ctx.context.closePath()
 }
 
-pub fn (mut ctx Context) draw_line(x1 f32, y1 f32, x2 f32, y2 f32, c gx.Color) {
+pub fn (mut ctx Context) draw_line(x1 f32, y1 f32, x2 f32, y2 f32, c Color) {
 	ctx.context.beginPath()
 	ctx.context.strokeStyle = c.to_css_string().str
 	ctx.context.moveTo(x1, y1)
@@ -477,7 +476,7 @@ pub fn (mut ctx Context) draw_line(x1 f32, y1 f32, x2 f32, y2 f32, c gx.Color) {
 pub fn (mut ctx Context) quit() {
 }
 
-pub fn (mut ctx Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
+pub fn (mut ctx Context) draw_rect(x f32, y f32, w f32, h f32, c Color) {
 	ctx.context.beginPath()
 	ctx.context.fillStyle = c.to_css_string().str
 	ctx.context.fillRect(x, y, w, h)

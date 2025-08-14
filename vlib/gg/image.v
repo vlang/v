@@ -2,8 +2,6 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
-import gx
-
 // DrawImageConfig struct defines the various options
 // that can be used to draw an image onto the screen
 pub struct DrawImageConfig {
@@ -15,7 +13,7 @@ pub mut:
 	img_rect  Rect // defines the size and position on image when rendering to the screen
 	part_rect Rect // defines the size and position of part of the image to use when rendering
 	z         f32
-	color     gx.Color    = gx.white
+	color     Color       = white
 	effect    ImageEffect = .alpha
 
 	rotation f32 // the amount to rotate the image in degrees, counterclockwise. Use a negative value, to rotate it clockwise.

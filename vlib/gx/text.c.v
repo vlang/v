@@ -1,16 +1,10 @@
+@[deprecated: 'module gx is deprecated, use import gg instead']
+@[deprecated_after: '2026-01-24']
 module gx
 
 import fontstash as _
+import gg
 
-pub enum HorizontalAlign {
-	left   = C.FONS_ALIGN_LEFT
-	center = C.FONS_ALIGN_CENTER
-	right  = C.FONS_ALIGN_RIGHT
-}
+pub type HorizontalAlign = gg.HorizontalAlign
 
-pub enum VerticalAlign {
-	top      = C.FONS_ALIGN_TOP
-	middle   = C.FONS_ALIGN_MIDDLE
-	bottom   = C.FONS_ALIGN_BOTTOM
-	baseline = C.FONS_ALIGN_BASELINE
-}
+pub type VerticalAlign = gg.VerticalAlign

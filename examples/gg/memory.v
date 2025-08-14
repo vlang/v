@@ -1,11 +1,10 @@
 module main
 
 import gg
-import gx
 import rand
 import time
 
-const cover = gx.rgba(85, 200, 85, 255)
+const cover = gg.rgba(85, 200, 85, 255)
 const csize = 120 // cell size in pixels
 const letters = 'AABBOOCCVVXXYYZZMMKKHHTT'.split('')
 const header_size = 30
@@ -45,9 +44,9 @@ fn (mut g Game) draw_cell(i int, cell Cell) {
 	rect_x, rect_y := x * csize, header_size + y * csize
 	if g.cells[i].is_open || g.sw.elapsed().milliseconds() <= 1000 {
 		lsize := 96
-		g.ctx.draw_rect_empty(rect_x + 6, rect_y + 6, csize - 10, csize - 10, gx.light_gray)
+		g.ctx.draw_rect_empty(rect_x + 6, rect_y + 6, csize - 10, csize - 10, gg.light_gray)
 		g.ctx.draw_text(rect_x + csize / 2 - lsize / 3, rect_y + csize / 2 - lsize / 2,
-			g.cells[i].letter, color: gx.yellow, size: lsize)
+			g.cells[i].letter, color: gg.yellow, size: lsize)
 	} else {
 		g.ctx.draw_rect_filled(rect_x + 6, rect_y + 6, csize - 10, csize - 10, cover)
 	}
@@ -57,7 +56,7 @@ fn on_frame(mut g Game) {
 	ws := gg.window_size()
 	g.ctx.begin()
 	message := '(r)estart (esc)ape | remaining: ${g.remaining:02} | time: ${f64(g.sw.elapsed().milliseconds()) / 1000.0:06.1f}s'
-	g.ctx.draw_text(ws.width / 2, 7, message, color: gx.light_gray, size: 22, align: .center)
+	g.ctx.draw_text(ws.width / 2, 7, message, color: gg.light_gray, size: 22, align: .center)
 	for i, cell in g.cells {
 		g.draw_cell(i, cell)
 	}
@@ -123,7 +122,7 @@ mut g := &Game{
 }
 g.restart()
 g.ctx = gg.new_context(
-	bg_color:     gx.black
+	bg_color:     gg.black
 	width:        g.size * csize
 	height:       header_size + g.size * csize
 	window_title: 'V Memory ${g.size} x ${g.size}'

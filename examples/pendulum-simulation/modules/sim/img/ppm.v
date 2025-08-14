@@ -1,6 +1,6 @@
 module img
 
-import gx
+import gg
 import os
 import sim
 
@@ -53,7 +53,7 @@ pub fn (mut writer PPMWriter) start_for_file(fname string, settings ImageSetting
 	writer.file.writeln('P6 ${settings.width} ${settings.height} 255')!
 }
 
-pub fn (mut writer PPMWriter) handle_pixel(p gx.Color) ! {
+pub fn (mut writer PPMWriter) handle_pixel(p gg.Color) ! {
 	if writer.cache.len >= writer.cache_size {
 		writer.write()!
 		writer.flush()!

@@ -1,6 +1,5 @@
 import objects
 import gg
-import gx
 import rand
 
 struct App {
@@ -99,7 +98,7 @@ fn main() {
 		width:        app.ui.width
 		height:       app.ui.height
 		window_title: 'Fireworks!'
-		bg_color:     gx.black
+		bg_color:     gg.black
 		user_data:    app
 		frame_fn:     on_frame
 		event_fn:     on_event

@@ -1,13 +1,12 @@
 module main
 
 import gg
-import gx
 import rand
 
 const max_circles_per_pass = 1000
 
 // prepare some random colors ahead of time
-const colors = []gx.Color{len: max_circles_per_pass, init: gx.Color{
+const colors = []gg.Color{len: max_circles_per_pass, init: gg.Color{
 	r: u8(index * 0 + rand.u8())
 	g: u8(index * 0 + rand.u8())
 	b: u8(index * 0 + rand.u8())
@@ -47,7 +46,7 @@ fn frame(mut ctx gg.Context) {
 fn main() {
 	mut ctx := gg.new_context(
 		window_title: 'Many Thousands of Circles'
-		bg_color:     gx.black
+		bg_color:     gg.black
 		width:        600
 		height:       400
 		frame_fn:     frame

@@ -1,5 +1,4 @@
 import gg
-import gx
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
@@ -9,7 +8,7 @@ import os
 // import math
 const win_width = 600
 const win_height = 700
-const bg_color = gx.white
+const bg_color = gg.white
 const font_paths = [
 	os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Imprima-Regular.ttf')),
 	os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Graduate-Regular.ttf')),

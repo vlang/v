@@ -1,11 +1,10 @@
 module objects
 
 import gg
-import gx
 
 pub struct Particle {
 pub mut:
-	color    gx.Color
+	color    gg.Color
 	pos      Vector
 	vel      Vector
 	accel    Vector

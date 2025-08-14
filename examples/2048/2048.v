@@ -1,5 +1,4 @@
 import gg
-import gx
 import math
 import math.easing
 import os.asset
@@ -52,76 +51,76 @@ mut:
 }
 
 struct Theme {
-	bg_color        gx.Color
-	padding_color   gx.Color
-	text_color      gx.Color
-	game_over_color gx.Color
-	victory_color   gx.Color
-	tile_colors     []gx.Color
+	bg_color        gg.Color
+	padding_color   gg.Color
+	text_color      gg.Color
+	game_over_color gg.Color
+	victory_color   gg.Color
+	tile_colors     []gg.Color
 }
 
 const themes = [
 	&Theme{
-		bg_color:        gx.rgb(250, 248, 239)
-		padding_color:   gx.rgb(143, 130, 119)
-		victory_color:   gx.rgb(100, 160, 100)
-		game_over_color: gx.rgb(190, 50, 50)
-		text_color:      gx.black
+		bg_color:        gg.rgb(250, 248, 239)
+		padding_color:   gg.rgb(143, 130, 119)
+		victory_color:   gg.rgb(100, 160, 100)
+		game_over_color: gg.rgb(190, 50, 50)
+		text_color:      gg.black
 		tile_colors:     [
-			gx.rgb(205, 193, 180), // Empty / 0 tile
-			gx.rgb(238, 228, 218), // 2
-			gx.rgb(237, 224, 200), // 4
-			gx.rgb(242, 177, 121), // 8
-			gx.rgb(245, 149, 99), // 16
-			gx.rgb(246, 124, 95), // 32
-			gx.rgb(246, 94, 59), // 64
-			gx.rgb(237, 207, 114), // 128
-			gx.rgb(237, 204, 97), // 256
-			gx.rgb(237, 200, 80), // 512
-			gx.rgb(237, 197, 63), // 1024
-			gx.rgb(237, 194, 46),
+			gg.rgb(205, 193, 180), // Empty / 0 tile
+			gg.rgb(238, 228, 218), // 2
+			gg.rgb(237, 224, 200), // 4
+			gg.rgb(242, 177, 121), // 8
+			gg.rgb(245, 149, 99), // 16
+			gg.rgb(246, 124, 95), // 32
+			gg.rgb(246, 94, 59), // 64
+			gg.rgb(237, 207, 114), // 128
+			gg.rgb(237, 204, 97), // 256
+			gg.rgb(237, 200, 80), // 512
+			gg.rgb(237, 197, 63), // 1024
+			gg.rgb(237, 194, 46),
 		]
 	},
 	&Theme{
-		bg_color:        gx.rgb(55, 55, 55)
-		padding_color:   gx.rgb(68, 60, 59)
-		victory_color:   gx.rgb(100, 160, 100)
-		game_over_color: gx.rgb(190, 50, 50)
-		text_color:      gx.white
+		bg_color:        gg.rgb(55, 55, 55)
+		padding_color:   gg.rgb(68, 60, 59)
+		victory_color:   gg.rgb(100, 160, 100)
+		game_over_color: gg.rgb(190, 50, 50)
+		text_color:      gg.white
 		tile_colors:     [
-			gx.rgb(123, 115, 108),
-			gx.rgb(142, 136, 130),
-			gx.rgb(142, 134, 120),
-			gx.rgb(145, 106, 72),
-			gx.rgb(147, 89, 59),
-			gx.rgb(147, 74, 57),
-			gx.rgb(147, 56, 35),
-			gx.rgb(142, 124, 68),
-			gx.rgb(142, 122, 58),
-			gx.rgb(142, 120, 48),
-			gx.rgb(142, 118, 37),
-			gx.rgb(142, 116, 27),
+			gg.rgb(123, 115, 108),
+			gg.rgb(142, 136, 130),
+			gg.rgb(142, 134, 120),
+			gg.rgb(145, 106, 72),
+			gg.rgb(147, 89, 59),
+			gg.rgb(147, 74, 57),
+			gg.rgb(147, 56, 35),
+			gg.rgb(142, 124, 68),
+			gg.rgb(142, 122, 58),
+			gg.rgb(142, 120, 48),
+			gg.rgb(142, 118, 37),
+			gg.rgb(142, 116, 27),
 		]
 	},
 	&Theme{
-		bg_color:        gx.rgb(38, 38, 66)
-		padding_color:   gx.rgb(58, 50, 74)
-		victory_color:   gx.rgb(100, 160, 100)
-		game_over_color: gx.rgb(190, 50, 50)
-		text_color:      gx.white
+		bg_color:        gg.rgb(38, 38, 66)
+		padding_color:   gg.rgb(58, 50, 74)
+		victory_color:   gg.rgb(100, 160, 100)
+		game_over_color: gg.rgb(190, 50, 50)
+		text_color:      gg.white
 		tile_colors:     [
-			gx.rgb(92, 86, 140),
-			gx.rgb(106, 99, 169),
-			gx.rgb(106, 97, 156),
-			gx.rgb(108, 79, 93),
-			gx.rgb(110, 66, 76),
-			gx.rgb(110, 55, 74),
-			gx.rgb(110, 42, 45),
-			gx.rgb(106, 93, 88),
-			gx.rgb(106, 91, 75),
-			gx.rgb(106, 90, 62),
-			gx.rgb(106, 88, 48),
-			gx.rgb(106, 87, 35),
+			gg.rgb(92, 86, 140),
+			gg.rgb(106, 99, 169),
+			gg.rgb(106, 97, 156),
+			gg.rgb(108, 79, 93),
+			gg.rgb(110, 66, 76),
+			gg.rgb(110, 55, 74),
+			gg.rgb(110, 42, 45),
+			gg.rgb(106, 93, 88),
+			gg.rgb(106, 91, 75),
+			gg.rgb(106, 90, 62),
+			gg.rgb(106, 88, 48),
+			gg.rgb(106, 87, 35),
 		]
 	},
 ]
@@ -518,32 +517,32 @@ fn (mut app App) ai_move() {
 	app.move(bestprediction.move)
 }
 
-fn (app &App) label_format(kind LabelKind) gx.TextCfg {
+fn (app &App) label_format(kind LabelKind) gg.TextCfg {
 	match kind {
 		.keys {
-			return gx.TextCfg{
-				color:          gx.Color{150, 150, 255, 200}
+			return gg.TextCfg{
+				color:          gg.Color{150, 150, 255, 200}
 				align:          .center
 				vertical_align: .bottom
 				size:           app.ui.font_size / 4
 			}
 		}
 		.points {
-			return gx.TextCfg{
-				color: if app.state in [.over, .victory] { gx.white } else { app.theme.text_color }
+			return gg.TextCfg{
+				color: if app.state in [.over, .victory] { gg.white } else { app.theme.text_color }
 				align: .left
 				size:  app.ui.font_size / 2
 			}
 		}
 		.moves {
-			return gx.TextCfg{
-				color: if app.state in [.over, .victory] { gx.white } else { app.theme.text_color }
+			return gg.TextCfg{
+				color: if app.state in [.over, .victory] { gg.white } else { app.theme.text_color }
 				align: .right
 				size:  app.ui.font_size / 2
 			}
 		}
 		.tile {
-			return gx.TextCfg{
+			return gg.TextCfg{
 				color:          app.theme.text_color
 				align:          .center
 				vertical_align: .middle
@@ -551,7 +550,7 @@ fn (app &App) label_format(kind LabelKind) gx.TextCfg {
 			}
 		}
 		.victory {
-			return gx.TextCfg{
+			return gg.TextCfg{
 				color:          app.theme.victory_color
 				align:          .center
 				vertical_align: .middle
@@ -559,7 +558,7 @@ fn (app &App) label_format(kind LabelKind) gx.TextCfg {
 			}
 		}
 		.game_over {
-			return gx.TextCfg{
+			return gg.TextCfg{
 				color:          app.theme.game_over_color
 				align:          .center
 				vertical_align: .middle
@@ -567,8 +566,8 @@ fn (app &App) label_format(kind LabelKind) gx.TextCfg {
 			}
 		}
 		.score_end {
-			return gx.TextCfg{
-				color:          gx.white
+			return gg.TextCfg{
+				color:          gg.white
 				align:          .center
 				vertical_align: .middle
 				size:           app.ui.font_size * 3 / 4
@@ -623,18 +622,18 @@ fn (app &App) draw() {
 	app.draw_tiles()
 	// TODO: Make transparency work in `gg`
 	if app.state == .over {
-		app.gg.draw_rect_filled(0, 0, ww, wh, gx.rgba(10, 0, 0, 180))
+		app.gg.draw_rect_filled(0, 0, ww, wh, gg.rgba(10, 0, 0, 180))
 		app.gg.draw_text(ww / 2, (m * 4 / 10) + ypad, 'Game Over', app.label_format(.game_over))
 		f := app.label_format(.tile)
 		msg := $if android { 'Tap to restart' } $else { 'Press `r` to restart' }
-		app.gg.draw_text(ww / 2, (m * 6 / 10) + ypad, msg, gx.TextCfg{
+		app.gg.draw_text(ww / 2, (m * 6 / 10) + ypad, msg, gg.TextCfg{
 			...f
-			color: gx.white
+			color: gg.white
 			size:  f.size * 3 / 4
 		})
 	}
 	if app.state == .victory {
-		app.gg.draw_rect_filled(0, 0, ww, wh, gx.rgba(0, 10, 0, 180))
+		app.gg.draw_rect_filled(0, 0, ww, wh, gg.rgba(0, 10, 0, 180))
 		app.gg.draw_text(ww / 2, (m * 4 / 10) + ypad, 'Victory!', app.label_format(.victory))
 		// f := app.label_format(.tile)
 		msg1 := $if android { 'Tap to continue' } $else { 'Press `space` to continue' }
@@ -726,7 +725,7 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 		xpos := xoffset + tw / 2
 		ypos := yoffset + th / 2
 		mut fmt := app.label_format(.tile)
-		fmt = gx.TextCfg{
+		fmt = gg.TextCfg{
 			...fmt
 			size: int(anim_size * (fmt.size - 1))
 		}
@@ -741,15 +740,15 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 				app.gg.draw_text(xpos, ypos, '2', fmt)
 				fs2 := int(f32(fmt.size) * 0.67)
 				app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
-					'${tidx}', gx.TextCfg{
+					'${tidx}', gg.TextCfg{
 					...fmt
 					size:  fs2
-					align: gx.HorizontalAlign.left
+					align: gg.HorizontalAlign.left
 				})
 			}
 			.shifts {
 				fs2 := int(f32(fmt.size) * 0.6)
-				app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gx.TextCfg{
+				app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gg.TextCfg{
 					...fmt
 					size: fs2
 				})
@@ -757,7 +756,7 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 			.none {} // Don't draw any text here, colors only
 			.end {} // Should never get here
 		}
-		// oidx_fmt := gx.TextCfg{...fmt,size: 14}
+		// oidx_fmt := gg.TextCfg{...fmt,size: 14}
 		// app.gg.draw_text(xoffset + 50, yoffset + 15, 'y:${oidx >> 16}|x:${oidx & 0xFFFF}|m:${app.mtickers[y][x]:5.3f}',	oidx_fmt)
 		// app.gg.draw_text(xoffset + 52, yoffset + 30, 'ox:${ox}|oy:${oy}', oidx_fmt)
 		// app.gg.draw_text(xoffset + 52, yoffset + 85, 'dx:${dx}|dy:${dy}', oidx_fmt)

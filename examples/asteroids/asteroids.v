@@ -4,7 +4,6 @@
 module main
 
 import gg
-import gx
 import math
 import rand
 import os.asset
@@ -86,8 +85,8 @@ mut:
 	frames int
 	text   string
 	size   int = 40
-	color  gx.Color
-	align  gx.HorizontalAlign = .center
+	color  gg.Color
+	align  gg.HorizontalAlign = .center
 }
 
 fn (mut a Asteroid) setup() {
@@ -172,7 +171,7 @@ fn (mut game Game) update() {
 			game.split_asteroid(a, p.vel.mul_scalar(0.5))
 			game.player.reset(game.screen)
 			game.score += 50
-			game.show_message(text: 'Your ship was destroyed.', color: gx.red, frames: 90)
+			game.show_message(text: 'Your ship was destroyed.', color: gg.red, frames: 90)
 			game.ships--
 			if game.ships <= 0 {
 				game.ships = 5
@@ -210,7 +209,7 @@ fn (mut game Game) update() {
 		game.ships++
 		game.player.reset(game.screen)
 		game.add_asteroids(10)
-		game.show_message(text: 'YOU WIN', color: gx.green, frames: 90)
+		game.show_message(text: 'YOU WIN', color: gg.green, frames: 90)
 	}
 	game.highscore = int_max(game.score, game.highscore)
 }
@@ -247,21 +246,21 @@ fn (mut game Game) split_asteroid(a &Asteroid, vel V2) {
 fn (mut game Game) draw() {
 	ws := gg.window_size()
 	game.screen = V2{ws.width, ws.height}
-	game.gg.draw_rect_filled(0, 0, game.screen.x, game.screen.y, gx.rgba(20, 20, 20, 255))
+	game.gg.draw_rect_filled(0, 0, game.screen.x, game.screen.y, gg.rgba(20, 20, 20, 255))
 	game.draw_ship()
 	for b in game.bullets {
-		game.gg.draw_circle_filled(b.pos.x, b.pos.y, 3, gx.yellow)
+		game.gg.draw_circle_filled(b.pos.x, b.pos.y, 3, gg.yellow)
 	}
 	for mut a in game.asteroids {
 		game.draw_asteroid(mut a)
 	}
 	scenter := game.screen.div_scalar(2)
 	label1 := 'Level: ${game.level} Ships: ${game.ships}'
-	game.gg.draw_text(5, 10, label1, size: 20, color: gx.white, align: .left)
+	game.gg.draw_text(5, 10, label1, size: 20, color: gg.white, align: .left)
 	label2 := 'B: ${game.player.bullets:02} F: ${game.player.fuel:04}'
-	game.gg.draw_text(int(scenter.x), 10, label2, size: 20, color: gx.green, align: .center)
+	game.gg.draw_text(int(scenter.x), 10, label2, size: 20, color: gg.green, align: .center)
 	label3 := 'Score: ${game.score} Highscore: ${game.highscore}'
-	game.gg.draw_text(int(game.screen.x) - 5, 10, label3, size: 20, color: gx.white, align: .right)
+	game.gg.draw_text(int(game.screen.x) - 5, 10, label3, size: 20, color: gg.white, align: .right)
 	if game.msg.frames > 0 {
 		game.gg.draw_text(int(scenter.x), int(scenter.y / 2), game.msg.text,
 			size:  game.msg.size
@@ -272,7 +271,7 @@ fn (mut game Game) draw() {
 	label4 := 'Use arrows + space to control your ship. Use Escape to end the game.'
 	game.gg.draw_text(int(game.screen.x - 5), int(game.screen.y - 20), label4,
 		size:  16
-		color: gx.gray
+		color: gg.gray
 		align: .right
 	)
 }
@@ -295,10 +294,10 @@ fn (game &Game) draw_ship() {
 	p.points[5] = p3.y
 	p.points[6] = p4.x
 	p.points[7] = p4.y
-	game.gg.draw_convex_poly(p.points, gx.white)
+	game.gg.draw_convex_poly(p.points, gg.white)
 	if p.is_engine_on {
 		engine := p.pos.offset(angle + math.pi, 0.7 * p.radius)
-		game.gg.draw_circle_filled(engine.x, engine.y, 6, gx.yellow)
+		game.gg.draw_circle_filled(engine.x, engine.y, 6, gg.yellow)
 	}
 }
 
@@ -306,13 +305,13 @@ fn (mut game Game) draw_asteroid(mut a Asteroid) {
 	if !a.active {
 		return
 	}
-	game.gg.draw_circle_filled(a.pos.x, a.pos.y, a.radius, gx.rgba(235, 235, 255, 215))
+	game.gg.draw_circle_filled(a.pos.x, a.pos.y, a.radius, gg.rgba(235, 235, 255, 215))
 	for i in 0 .. a.segments {
 		angle := rads(a.rotation + f32(i) * 360 / a.segments)
 		p := a.pos.offset(angle, a.offsets[i])
 		a.points[i * 2], a.points[i * 2 + 1] = p.x, p.y
 	}
-	game.gg.draw_convex_poly(a.points, gx.rgba(155, 155, 148, 245))
+	game.gg.draw_convex_poly(a.points, gg.rgba(155, 155, 148, 245))
 }
 
 fn (mut game Game) add_bullet() {

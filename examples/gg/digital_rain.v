@@ -2,7 +2,6 @@
 module main
 
 import gg
-import gx
 import rand
 import time
 
@@ -37,7 +36,7 @@ fn main() {
 
 fn rain(mut app App) {
 	app.ctx = gg.new_context(
-		bg_color:     gx.rgb(0, 0, 0)
+		bg_color:     gg.rgb(0, 0, 0)
 		width:        app.screen_size.width
 		height:       app.screen_size.height
 		user_data:    app
@@ -84,7 +83,7 @@ fn frame(mut app App) {
 		draw_rain_column(rc, app)
 	}
 	app.ctx.draw_text(app.screen_size.width / 2 - 190, app.screen_size.height - 15, 'press `f` to toggle fullscreen, Up/Down arrows to change speed',
-		color: gx.gray
+		color: gg.gray
 	)
 	app.ctx.end()
 	vprintln('frame: ${app.ctx.frame} | app.cols: ${app.cols} | app.rows: ${app.rows} | app.rain_columns.len: ${app.rain_columns.len} | app.delay: ${app.delay}')
@@ -98,9 +97,9 @@ fn vprintln(msg string) {
 
 fn calc_sizes(mut app App) {
 	app.screen_size = gg.window_size()
-	app.ctx.set_text_cfg(gx.TextCfg{
+	app.ctx.set_text_cfg(gg.TextCfg{
 		size:  font_size
-		color: gx.green
+		color: gg.green
 		mono:  true
 	})
 	// figure out how big character is in pixels
@@ -138,7 +137,7 @@ fn draw_rain_column(rc RainColumn, app App) {
 				else { u8(255) }
 			}
 			at_head := i == rc.head - 1
-			cfg := gx.TextCfg{
+			cfg := gg.TextCfg{
 				size:  font_size
 				color: gg.Color{
 					r: if at_head { u8(255) } else { 0 }

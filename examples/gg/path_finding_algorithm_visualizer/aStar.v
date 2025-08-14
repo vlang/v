@@ -1,7 +1,6 @@
 module main
 
 import gg // actual graphics lib
-import gx // lib have some constants like colors 
 import math // for math related function
 
 const window_width = 800
@@ -48,7 +47,7 @@ mut:
 	col       int
 	width     int
 	pos       Point
-	color     gx.Color
+	color     gg.Color
 	flag      int // 0->empty, 1-> closed, 2-> open, 3-> barrier, 4-> start, 5-> end, 6-> path
 	neighbors []Point
 }
@@ -76,7 +75,7 @@ fn main() {
 
 	// setting values of app
 	app.gg = gg.new_context(
-		bg_color:      gx.black      // background color
+		bg_color:      gg.black      // background color
 		width:         window_width  // window width
 		height:        window_height // window height
 		create_window: true          // this will create a different window
@@ -217,9 +216,9 @@ fn draw_gridlines(mut app App) {
 	dy := window_height / nrows
 	for i := 0; i < nrows; i++ {
 		// horizontal lines
-		app.gg.draw_line(0, i * dy, window_width, i * dy, gx.black)
+		app.gg.draw_line(0, i * dy, window_width, i * dy, gg.black)
 		// vertical lines
-		app.gg.draw_line(i * dx, 0, dx * i, window_height, gx.black)
+		app.gg.draw_line(i * dx, 0, dx * i, window_height, gg.black)
 	}
 }
 
@@ -251,7 +250,7 @@ fn initialise_grid() [][]Cell {
 					x: j * gap
 					y: i * gap
 				}
-				color: gx.white
+				color: gg.white
 				flag:  0
 			}
 		}
@@ -378,31 +377,31 @@ fn astar_path_finding(mut app App, mut grid [][]Cell, start Point, end Point) {
 fn set_cell_type(mut grid [][]Cell, row int, col int, typ string) {
 	match typ {
 		'reset' {
-			grid[row][col].color = gx.white
+			grid[row][col].color = gg.white
 			grid[row][col].flag = 0
 		}
 		'close' {
-			grid[row][col].color = gx.red
+			grid[row][col].color = gg.red
 			grid[row][col].flag = 1
 		}
 		'open' {
-			grid[row][col].color = gx.green
+			grid[row][col].color = gg.green
 			grid[row][col].flag = 2
 		}
 		'barrier' {
-			grid[row][col].color = gx.black
+			grid[row][col].color = gg.black
 			grid[row][col].flag = 3
 		}
 		'start' {
-			grid[row][col].color = gx.orange
+			grid[row][col].color = gg.orange
 			grid[row][col].flag = 4
 		}
 		'end' {
-			grid[row][col].color = gx.blue
+			grid[row][col].color = gg.blue
 			grid[row][col].flag = 5
 		}
 		'path' {
-			grid[row][col].color = gx.pink
+			grid[row][col].color = gg.pink
 			grid[row][col].flag = 6
 		}
 		else {}

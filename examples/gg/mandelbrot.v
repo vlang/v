@@ -1,5 +1,4 @@
 import gg
-import gx
 import runtime
 import time
 
@@ -40,8 +39,8 @@ mut:
 	ntasks  int      = runtime.nr_jobs()
 }
 
-const colors = [gx.black, gx.blue, gx.red, gx.green, gx.yellow, gx.orange, gx.purple, gx.white,
-	gx.indigo, gx.violet, gx.black, gx.blue, gx.orange, gx.yellow, gx.green].map(u32(it.abgr8()))
+const colors = [gg.black, gg.blue, gg.red, gg.green, gg.yellow, gg.orange, gg.purple, gg.white,
+	gg.indigo, gg.violet, gg.black, gg.blue, gg.orange, gg.yellow, gg.green].map(u32(it.abgr8()))
 
 struct MandelChunk {
 	cview ViewRect
