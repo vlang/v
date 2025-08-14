@@ -64,12 +64,12 @@ fn (a Integer) mont_odd(x Integer, m Integer) Integer {
 			table[i] = table[i - 1].mont_mul(d, ctx)
 		}
 	}
-	mut r := if m.digits.last() & (1 << (32 - 1)) != 0 {
-		mut rdigits := []u32{len: m.digits.len}
+	mut r := if m.digits.last() & (u64(1) << (digit_bits - 1)) != 0 {
+		mut rdigits := []u64{len: m.digits.len}
 
-		rdigits[0] = -m.digits[0]
+		rdigits[0] = (-m.digits[0]) & max_digit
 		for i := 1; i < m.digits.len; i++ {
-			rdigits[i] = ~m.digits[i]
+			rdigits[i] = (~m.digits[i]) & max_digit
 		}
 
 		Integer{
