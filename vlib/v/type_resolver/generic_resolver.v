@@ -342,6 +342,9 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 			} else {
 				comptime_args[k] = ctyp
 			}
+		} else if mut call_arg.expr is ast.SelectorExpr
+			&& call_arg.expr.expr_type.has_flag(.generic) {
+			comptime_args[k] = t.typeof_type(call_arg.expr, call_arg.expr.typ)
 		}
 	}
 	return comptime_args
