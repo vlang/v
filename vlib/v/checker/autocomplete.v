@@ -21,6 +21,17 @@ fn abs(a int) int {
 pub fn (mut c Checker) run_ac(ast_file &ast.File) {
 }
 
+pub fn (mut c Checker) autocomplete_for_fn_call_expr() {
+	// println(c.pref.linfo.expr)
+	fn_name := c.pref.linfo.expr.replace('()', '').trim_space()
+	f := c.table.find_fn(fn_name) or {
+		println('failed to find fn "${fn_name}"')
+		return
+	}
+	res := c.build_fn_summary(f)
+	println(res)
+}
+
 fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	// Mini LS hack (v -line-info "a.v:16")
 	if c.pref.is_verbose {
@@ -45,6 +56,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	}
 	// Module autocomplete
 	// `os. ...`
+	// println(node)
 	if node.name == '' && node.mod != 'builtin' {
 		c.module_autocomplete(node)
 		return
@@ -159,6 +171,17 @@ fn build_method_summary(method ast.Fn) string {
 			continue
 		}
 		s += param.name
+		if i < method.params.len - 1 {
+			s += ', '
+		}
+	}
+	return s + ')'
+}
+
+fn (c &Checker) build_fn_summary(method ast.Fn) string {
+	mut s := method.name + '('
+	for i, param in method.params {
+		s += param.name + ' ' + c.table.type_to_str(param.typ)
 		if i < method.params.len - 1 {
 			s += ', '
 		}

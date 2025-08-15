@@ -262,16 +262,6 @@ pub mut:
 	json_errors bool // -json-errors, for VLS and other tools
 }
 
-pub struct LineInfo {
-pub mut:
-	line_nr int    // a quick single file run when called with v -line-info (contains line nr to inspect)
-	path    string // same, but stores the path being parsed
-	// expr         string          // "foo" or "foo.bar" V code (expression) which needs autocomplete
-	col          int
-	is_running   bool            // so that line info is fetched only on the second checker run
-	vars_printed map[string]bool // to avoid dups
-}
-
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
 	return parse_args_and_show_errors(known_external_commands, args, false)
 }
