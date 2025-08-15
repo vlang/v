@@ -2847,7 +2847,7 @@ fn (mut g Gen) write_sumtype_casting_fn_common_fields(mut sb strings.Builder, ex
 		field_styp := g.styp(field.typ)
 		if got_sym.kind in [.sum_type, .interface] {
 			// the field is already a wrapped pointer; we shouldn't wrap it once again
-			sb.write_string(', .${c_name(field.name)} = ptr->${field.name}')
+			sb.write_string(', .${c_name(field.name)} = ${ptr}->${field.name}')
 		} else {
 			sb.write_string(', .${c_name(field.name)} = (${field_styp}*)((char*)${ptr} + __offsetof_ptr(${ptr}, ${type_cname}, ${c_name(field.name)}))')
 		}
@@ -2858,13 +2858,14 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
 	mut mutable_idx := 0
+	mut mutable_sumtype_ptr := ''
 
 	is_not_ptr_and_fn := !got_is_ptr && !got_is_fn
 	is_sumtype_cast := !got_is_fn && fname.contains('_to_sumtype_')
 	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
 		&& g.comptime.is_comptime_variant_var(expr)
 	if exp.is_ptr() {
-		if is_sumtype_cast && g.expected_arg_mut && expr is ast.Ident {
+		if is_sumtype_cast && g.expected_arg_mut && expr in [ast.Ident, ast.SelectorExpr] {
 			g.write('&(${exp_styp.trim_right('*')}){._${got_styp.trim_right('*')}=')
 			rparen_n = 0
 			mutable_idx = got.idx()
@@ -2915,7 +2916,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	} else {
 		old_left_is_opt := g.left_is_opt
 		g.left_is_opt = !exp.has_flag(.option)
-		g.expr(expr)
+		mutable_sumtype_ptr = g.expr_string(expr)
+		g.write(mutable_sumtype_ptr)
 		g.left_is_opt = old_left_is_opt
 	}
 	if mutable_idx != 0 {
@@ -2923,9 +2925,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		mut sb := strings.new_builder(256)
 		got_sym, exp_sym := g.table.sym(got), g.table.sym(exp)
 		got_cname := g.get_sumtype_variant_type_name(got, got_sym)
-		ptr_name := (expr as ast.Ident).name
 		g.write_sumtype_casting_fn_common_fields(mut sb, exp_sym, got_cname, got_sym,
-			ptr_name)
+			'&${mutable_sumtype_ptr}')
 		g.write(sb.str())
 		g.write('}')
 	}
