@@ -697,7 +697,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				.blank_ident {}
 				else {
 					// `.unresolved`, `.variable`
-					// println('>>> else, ast.Ident ${node.name} kind: $node.kind ')					
+					// println('>>> else, ast.Ident ${node.name} kind: $node.kind ')
 					if node.name in w.all_consts {
 						w.mark_const_as_used(node.name)
 					} else if node.name in w.all_globals {
@@ -1447,6 +1447,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_append {
 		ref_array_idx_str := int(ast.array_type.ref()).str()
 		w.fn_by_name(ref_array_idx_str + '.push')
+		w.fn_by_name(ref_array_idx_str + '.push_many')
 		w.fn_by_name(ref_array_idx_str + '.push_many_noscan')
 		w.fn_by_name(ref_array_idx_str + '.push_noscan')
 	}
