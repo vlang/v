@@ -2827,8 +2827,14 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		sb.writeln('\t${embed_cname}* ${embed_name}_ptr = memdup(${accessor}, sizeof(${embed_cname}));')
 	}
 	sb.write_string('\treturn (${exp_cname}){ ._${variant_name} = ptr, ._typ = ${type_idx}')
+	g.write_sumtype_casting_fn_common_fields(mut sb, exp_sym, got_cname, got_sym, 'ptr')
+	sb.writeln('};\n}')
+	g.auto_fn_definitions << sb.str()
+}
+
+fn (mut g Gen) write_sumtype_casting_fn_common_fields(mut sb strings.Builder, exp_sym ast.TypeSymbol, got_cname string, got_sym ast.TypeSymbol, ptr_name string) {
 	for field in (exp_sym.info as ast.SumType).fields {
-		mut ptr := 'ptr'
+		mut ptr := ptr_name
 		mut type_cname := got_cname
 		_, embed_types := g.table.find_field_from_embeds(got_sym, field.name) or {
 			ast.StructField{}, []ast.Type{}
@@ -2846,8 +2852,6 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 			sb.write_string(', .${c_name(field.name)} = (${field_styp}*)((char*)${ptr} + __offsetof_ptr(${ptr}, ${type_cname}, ${c_name(field.name)}))')
 		}
 	}
-	sb.writeln('};\n}')
-	g.auto_fn_definitions << sb.str()
 }
 
 fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, got ast.Type, exp_styp string,
@@ -2915,7 +2919,15 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		g.left_is_opt = old_left_is_opt
 	}
 	if mutable_idx != 0 {
-		g.write(', ._typ=${mutable_idx}}')
+		g.write(', ._typ=${mutable_idx}')
+		mut sb := strings.new_builder(256)
+		got_sym, exp_sym := g.table.sym(got), g.table.sym(exp)
+		got_cname := g.get_sumtype_variant_type_name(got, got_sym)
+		ptr_name := (expr as ast.Ident).name
+		g.write_sumtype_casting_fn_common_fields(mut sb, exp_sym, got_cname, got_sym,
+			ptr_name)
+		g.write(sb.str())
+		g.write('}')
 	}
 	g.write(')'.repeat(rparen_n))
 }
