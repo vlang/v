@@ -2805,9 +2805,10 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	} else {
 		// g.definitions.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x);')
 		// sb.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x) {')
-		g.definitions.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x);')
-		sb.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x) {')
-		sb.writeln('\t${got_cname}* ptr = memdup(x, sizeof(${got_cname}));')
+		g.definitions.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut);')
+		sb.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut) {')
+		sb.writeln('\t${got_cname}* ptr = x;')
+		sb.writeln('\tif (!is_mut) { ptr = memdup(x, sizeof(${got_cname})); }')
 	}
 	for embed_hierarchy in g.table.get_embeds(got_sym) {
 		// last embed in the hierarchy
@@ -2853,19 +2854,14 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, got ast.Type, exp_styp string,
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
-	mut mutable_idx := 0
+	mut mutable_is_mut_arg_pos := 0
 
 	is_not_ptr_and_fn := !got_is_ptr && !got_is_fn
 	is_sumtype_cast := !got_is_fn && fname.contains('_to_sumtype_')
 	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
 		&& g.comptime.is_comptime_variant_var(expr)
 	if exp.is_ptr() {
-		if $d('mutable_sumtype', false) && is_sumtype_cast && g.expected_arg_mut
-			&& expr is ast.Ident {
-			g.write('&(${exp_styp.trim_right('*')}){._${got_styp.trim_right('*')}=')
-			rparen_n = 0
-			mutable_idx = got.idx()
-		} else if (expr is ast.UnsafeExpr && expr.expr is ast.Nil) || got == ast.nil_type {
+		if (expr is ast.UnsafeExpr && expr.expr is ast.Nil) || got == ast.nil_type {
 			g.write('(void*)0')
 			return
 		} else {
@@ -2875,6 +2871,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	} else {
 		g.write('${fname}(')
 	}
+	mutable_is_mut_arg_pos = rparen_n
 	if is_not_ptr_and_fn {
 		is_cast_fixed_array_init := expr is ast.CastExpr
 			&& (expr.expr is ast.ArrayInit && expr.expr.is_fixed)
@@ -2915,10 +2912,14 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		g.expr(expr)
 		g.left_is_opt = old_left_is_opt
 	}
-	if mutable_idx != 0 {
-		g.write(', ._typ=${mutable_idx}}')
+	if is_sumtype_cast {
+		// the `_to_sumtype_` family of functions last `is_mut` param
+		g.write(')'.repeat(rparen_n - mutable_is_mut_arg_pos))
+		g.write(', ${exp.is_ptr()}')
+		g.write(')'.repeat(mutable_is_mut_arg_pos))
+	} else {
+		g.write(')'.repeat(rparen_n))
 	}
-	g.write(')'.repeat(rparen_n))
 }
 
 // use instead of expr() when you need a var to use as reference
@@ -3100,7 +3101,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					g.expr(expr)
 					g.writeln(';')
 					g.write2(stmt_str, ' ')
-					g.write('${fname}(&${tmp_var})')
+					g.write('${fname}(&${tmp_var}, ${unwrapped_expected_type.is_ptr()})')
 					return
 				} else {
 					g.call_cfn_for_casting_expr(fname, expr, expected_type, got_type,
@@ -3505,7 +3506,7 @@ fn (mut g Gen) gen_clone_assignment(var_type ast.Type, val ast.Expr, typ ast.Typ
 				g.write('}, sizeof(${shared_styp}))')
 			}
 			if is_sumtype {
-				g.write('))')
+				g.write('), false)')
 			}
 		} else if right_sym.kind == .string {
 			// `str1 = str2` => `str1 = str2.clone()`
