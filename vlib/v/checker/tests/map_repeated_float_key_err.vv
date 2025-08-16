@@ -1,9 +1,4 @@
 fn main() {
-	mi := {
-		1: 'one'
-		// 1: 'one' duplicated key "1" in map literal
-	}
-	dump(mi)
 	m64 := {
 		0.000001: 'small-1'
 		0.00001:  'small-2'

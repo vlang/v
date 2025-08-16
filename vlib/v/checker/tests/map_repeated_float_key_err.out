@@ -1,14 +1,14 @@
-vlib/v/checker/tests/map_repeated_float_key_err.vv:10:3: error: duplicate key "1.e-06" in map literal
-    8 |         0.000001: 'small-1'
-    9 |         0.00001:  'small-2'
-   10 |         1.e-06:   'small-3'
+vlib/v/checker/tests/map_repeated_float_key_err.vv:5:3: error: duplicate key "1.e-06" in map literal
+    3 |         0.000001: 'small-1'
+    4 |         0.00001:  'small-2'
+    5 |         1.e-06:   'small-3'
       |         ~~~~~~
-   11 |         0.00001:  'small-4'
-   12 |     }
-vlib/v/checker/tests/map_repeated_float_key_err.vv:11:3: error: duplicate key "0.00001" in map literal
-    9 |         0.00001:  'small-2'
-   10 |         1.e-06:   'small-3'
-   11 |         0.00001:  'small-4'
+    6 |         0.00001:  'small-4'
+    7 |     }
+vlib/v/checker/tests/map_repeated_float_key_err.vv:6:3: error: duplicate key "0.00001" in map literal
+    4 |         0.00001:  'small-2'
+    5 |         1.e-06:   'small-3'
+    6 |         0.00001:  'small-4'
       |         ~~~~~~~
-   12 |     }
-   13 |     dump(m64)
+    7 |     }
+    8 |     dump(m64)
