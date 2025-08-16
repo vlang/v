@@ -2576,6 +2576,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 		}
 		if exp_arg_typ.has_flag(.generic) {
+			if arg.expr is ast.ArrayInit && arg.expr.exprs.len == 0 {
+				c.error('cannot use empty array as generic argument', arg.pos)
+			}
 			method_concrete_types := if method_generic_names_len == rec_concrete_types.len {
 				rec_concrete_types
 			} else {
