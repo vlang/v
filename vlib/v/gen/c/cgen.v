@@ -2858,7 +2858,6 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
 	mut mutable_idx := 0
-	mut mutable_sumtype_ptr_name := ''
 
 	is_not_ptr_and_fn := !got_is_ptr && !got_is_fn
 	is_sumtype_cast := !got_is_fn && fname.contains('_to_sumtype_')
@@ -2916,11 +2915,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	} else {
 		old_left_is_opt := g.left_is_opt
 		g.left_is_opt = !exp.has_flag(.option)
-		// Do not use `g.expr_string()` here, as it trim space, we need keep space here
-		pos := g.out.len
 		g.expr(expr)
-		mutable_sumtype_ptr_name = g.out.cut_to(pos)
-		g.write(mutable_sumtype_ptr_name)
 		g.left_is_opt = old_left_is_opt
 	}
 	if mutable_idx != 0 {
@@ -2928,7 +2923,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		mut sb := strings.new_builder(256)
 		got_sym, exp_sym := g.table.sym(got), g.table.sym(exp)
 		got_cname := g.get_sumtype_variant_type_name(got, got_sym)
-		mutable_sumtype_ptr_name = mutable_sumtype_ptr_name.trim_space()
+		mutable_sumtype_ptr_name := g.expr_string(expr)
 		ptr_name := if got_is_ptr {
 			'(${mutable_sumtype_ptr_name})'
 		} else {
