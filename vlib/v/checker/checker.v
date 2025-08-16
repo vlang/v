@@ -5293,6 +5293,15 @@ fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
 				}
 			}
 		}
+	} else if key_i is ast.FloatLiteral {
+		for j in 0 .. i {
+			key_j := node.keys[j]
+			if key_j is ast.FloatLiteral {
+				if key_i.val.f64() == key_j.val.f64() {
+					c.error('duplicate key "${key_i.val}" in map literal', key_i.pos)
+				}
+			}
+		}
 	}
 }
 
