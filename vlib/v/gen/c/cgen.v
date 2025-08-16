@@ -2926,7 +2926,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		got_sym, exp_sym := g.table.sym(got), g.table.sym(exp)
 		got_cname := g.get_sumtype_variant_type_name(got, got_sym)
 		g.write_sumtype_casting_fn_common_fields(mut sb, exp_sym, got_cname, got_sym,
-			'&${mutable_sumtype_ptr}')
+			if got_is_ptr { mutable_sumtype_ptr } else { '&${mutable_sumtype_ptr}' })
 		g.write(sb.str())
 		g.write('}')
 	}
