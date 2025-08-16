@@ -1545,10 +1545,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		arg_typ_sym := c.table.sym(arg_typ)
 		if arg_typ_sym.kind == .none && param.typ.has_flag(.generic) && !param.typ.has_flag(.option) {
 			c.error('cannot use `none` as generic argument', call_arg.pos)
-		} else if node.raw_concrete_types.len == 0 && param.typ.has_flag(.generic)
-			&& call_arg.expr is ast.ArrayInit && call_arg.expr.typ == ast.void_type {
-			c.error('cannot use empty array as generic argument', call_arg.pos)
 		}
+		c.check_unresolved_generic_param(node, call_arg)
 		param_typ_sym := c.table.sym(param.typ)
 		if func.is_variadic && arg_typ.has_flag(.variadic) && args_len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument',
@@ -2576,10 +2574,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 		}
 		if exp_arg_typ.has_flag(.generic) {
-			if node.raw_concrete_types.len == 0 && arg.expr is ast.ArrayInit
-				&& arg.expr.typ == ast.void_type {
-				c.error('cannot use empty array as generic argument', arg.pos)
-			}
+			c.check_unresolved_generic_param(node, arg)
 			method_concrete_types := if method_generic_names_len == rec_concrete_types.len {
 				rec_concrete_types
 			} else {
@@ -2757,6 +2752,13 @@ fn (mut c Checker) handle_generic_lambda_arg(node &ast.CallExpr, mut lambda ast.
 		if c.table.register_fn_concrete_types(lambda.func.decl.fkey(), node.concrete_types) {
 			lambda.func.decl.ninstances++
 		}
+	}
+}
+
+fn (mut c Checker) check_unresolved_generic_param(node &ast.CallExpr, arg ast.CallArg) {
+	if node.raw_concrete_types.len == 0 && arg.expr is ast.ArrayInit
+		&& arg.expr.typ == ast.void_type {
+		c.error('cannot use empty array as generic argument', arg.pos)
 	}
 }
 
