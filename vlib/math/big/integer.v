@@ -51,9 +51,16 @@ pub fn integer_from_int(value int) Integer {
 	if value == 0 {
 		return zero_int
 	}
-	return Integer{
-		digits: [u64(iabs(value))]
-		signum: int_signum(value)
+	if value == min_int {
+		return Integer{
+			digits: [u64(0x80000000)]
+			signum: -1
+		}
+	} else {
+		return Integer{
+			digits: [u64(iabs(value))]
+			signum: int_signum(value)
+		}
 	}
 }
 

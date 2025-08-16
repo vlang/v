@@ -52,6 +52,8 @@ const integer_from_int_test_data = [
 	IntegerFromTest{ 127, '127' },
 	IntegerFromTest{ 1024, '1024' },
 	IntegerFromTest{ 2147483647, '0x7fffffff' },
+	IntegerFromTest{ -2147483647, '-2147483647' },
+	IntegerFromTest{ -2147483648, '-2147483648' },
 ]
 
 const integer_from_u64_test_data = [
