@@ -22,7 +22,7 @@ pub fn (o Maybe[T]) get() ?T {
 	}
 }
 
-fn test_generics_struct_init_with_inconsistent_generic_types() {
+fn main() {
 	m := some[int](12)
 	ret := m.map[int, string](fn (i int) string {
 		return i.str()
