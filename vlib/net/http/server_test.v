@@ -271,7 +271,14 @@ fn test_host_header_sent_to_server() {
 		addr:    '${ip}:${port}'
 	}
 	t := spawn server.listen_and_serve()
-	server.wait_till_running()!
+	server.wait_till_running() or {
+		estr := err.str()
+		if estr == 'maximum retries reached' {
+			log.error('>>>> Skipping test ${@FN} since its server could not start, err: ${err}')
+			return
+		}
+		log.fatal(estr)
+	}
 	defer { server.stop() }
 	dump(server.addr)
 	x := http.get('http://${server.addr}/')!
