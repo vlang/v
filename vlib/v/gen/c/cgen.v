@@ -2920,6 +2920,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	}
 	if mutable_idx != 0 {
 		g.write(', ._typ=${mutable_idx}')
+
+		// setup other common fields in sumtype
 		mut sb := strings.new_builder(256)
 		got_sym, exp_sym := g.table.sym(got), g.table.sym(exp)
 		got_cname := g.get_sumtype_variant_type_name(got, got_sym)
