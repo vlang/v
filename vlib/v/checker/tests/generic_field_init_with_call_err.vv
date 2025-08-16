@@ -1,0 +1,18 @@
+module main
+
+import maps { from_array, invert, to_map }
+
+struct CustomSet[T] {
+mut:
+	items map[T]u8
+}
+
+pub fn CustomSet.new[T](elements []T) CustomSet[T] {
+	return CustomSet[T]{
+		items: to_map[T, int, T, int](invert[T, int](from_array[T](elements)), fn [T](key T, _ int) (T, int) {
+			return key, 10000
+		})
+	}
+}
+
+dump(CustomSet.new([1]))
