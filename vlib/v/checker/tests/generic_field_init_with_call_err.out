@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_field_init_with_call_err.vv:12:10: error: cannot assign `map[int]int` to struct field `items` with type `map[int]u8`
+   10 | pub fn CustomSet.new[T](elements []T) CustomSet[T] {
+   11 |     return CustomSet[T]{
+   12 |         items: to_map[T, int, T, int](invert[T, int](from_array[T](elements)), fn [T](key T, _ int) (T, int) {
+      |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   13 |             return key, 10000
+   14 |         })

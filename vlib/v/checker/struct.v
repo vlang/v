@@ -848,6 +848,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					c.error('cannot assign `nil` to struct field `${init_field.name}` with type `${expected_type_sym.name}`',
 						init_field.expr.pos.extend(init_field.expr.expr.pos()))
 				}
+				if mut init_field.expr is ast.CallExpr
+					&& init_field.expr.return_type.has_flag(.generic) {
+					expected_type := c.unwrap_generic(init_field.expected_type)
+					got_type_ret := c.unwrap_generic(init_field.expr.return_type)
+					if expected_type != got_type_ret {
+						c.error('cannot assign `${c.table.type_to_str(got_type_ret)}` to struct field `${init_field.name}` with type `${c.table.type_to_str(expected_type)}`',
+							init_field.expr.pos)
+					}
+				}
 			}
 			if !node.has_update_expr {
 				c.check_uninitialized_struct_fields_and_embeds(node, type_sym, mut info, mut
