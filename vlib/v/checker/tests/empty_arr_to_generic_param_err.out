@@ -1,0 +1,13 @@
+vlib/v/checker/tests/empty_arr_to_generic_param_err.vv:8:4: error: cannot use empty array as generic argument
+    6 | 
+    7 | fn main() {
+    8 |     t([])
+      |       ~~
+    9 |     Foo{}.t([])
+   10 | }
+vlib/v/checker/tests/empty_arr_to_generic_param_err.vv:9:10: error: cannot use empty array as generic argument
+    7 | fn main() {
+    8 |     t([])
+    9 |     Foo{}.t([])
+      |             ~~
+   10 | }
