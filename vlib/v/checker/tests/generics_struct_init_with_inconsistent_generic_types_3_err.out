@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_struct_init_with_inconsistent_generic_types_3_err.vv:12:25: error: cannot assign `string` to struct field `val` with type `int`
+   10 | pub fn (me Maybe[T]) map[T, U](f fn (T) U) Maybe[U] {
+   11 |     if me.present {
+   12 |         return Maybe[U]{true, f(me.val)}
+      |                               ~~~~~~~~~
+   13 |     }
+   14 |     return Maybe[U]{}
