@@ -1545,6 +1545,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		arg_typ_sym := c.table.sym(arg_typ)
 		if arg_typ_sym.kind == .none && param.typ.has_flag(.generic) && !param.typ.has_flag(.option) {
 			c.error('cannot use `none` as generic argument', call_arg.pos)
+		} else if param.typ.has_flag(.generic) && call_arg.expr is ast.ArrayInit
+			&& call_arg.expr.exprs.len == 0 {
+			c.error('cannot use empty array as generic argument', call_arg.pos)
 		}
 		param_typ_sym := c.table.sym(param.typ)
 		if func.is_variadic && arg_typ.has_flag(.variadic) && args_len - 1 > i {
