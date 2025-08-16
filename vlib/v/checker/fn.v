@@ -1543,10 +1543,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		arg_typ_sym := c.table.sym(arg_typ)
-		if arg_typ_sym.kind == .none && param.typ.has_flag(.generic) && !param.typ.has_flag(.option) {
-			c.error('cannot use `none` as generic argument', call_arg.pos)
+		if param.typ.has_flag(.generic) {
+			if arg_typ_sym.kind == .none && !param.typ.has_flag(.option) {
+				c.error('cannot use `none` as generic argument', call_arg.pos)
+			}
+			c.check_unresolved_generic_param(node, call_arg)
 		}
-		c.check_unresolved_generic_param(node, call_arg)
 		param_typ_sym := c.table.sym(param.typ)
 		if func.is_variadic && arg_typ.has_flag(.variadic) && args_len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument',
