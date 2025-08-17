@@ -205,7 +205,7 @@ pub fn (o OS) str() string {
 }
 
 pub fn get_host_os() OS {
-	if os.getenv('TERMUX_VERSION') != '' {
+	$if termux {
 		return .termux
 	}
 	$if android {
