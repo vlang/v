@@ -41,7 +41,10 @@ jobs:
             .github/workflows/retry.sh pkg update -y
             .github/workflows/retry.sh pkg install -y clang libexecinfo libgc libgc-static make git
             git log -n4
-            VFLAGS="-cc cc -os termux" make
+            echo "previous TERMUX_VERSION: $TERMUX_VERSION"
+            export TERMUX_VERSION=0.118.3
+            echo "explicit TERMUX_VERSION: $TERMUX_VERSION"
+            VFLAGS="-cc cc" make
             ./v symlink
             v run examples/hello_world.v
             v run examples/primes.v
