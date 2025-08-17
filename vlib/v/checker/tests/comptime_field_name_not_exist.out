@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_field_name_not_exist.vv:9:23: error: unknown field `has_xdargfdsafsdfx` from f
+    7 |         mut c := 0
+    8 |         $for f in abc.attributes {
+    9 |                 $if f.has_xdargfdsafsdfx {
+      |                       ~~~~~~~~~~~~~~~~~~
+   10 |                         c++
+   11 |                         println('has_arg')

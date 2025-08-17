@@ -27,7 +27,8 @@ pub mut:
 	// .values
 	comptime_for_enum_var string
 	// .attributes
-	comptime_for_attr_var string
+	comptime_for_attr_var   string
+	comptime_for_attr_value ast.Attr
 	// .methods
 	comptime_for_method_var      string
 	comptime_for_method          &ast.Fn = unsafe { nil }
