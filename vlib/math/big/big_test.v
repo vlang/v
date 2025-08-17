@@ -991,3 +991,14 @@ fn test_pow2_is_power_of_2() {
 		assert big.two_int.pow(n).is_power_of_2(), 'pow2: ${n}'
 	}
 }
+
+fn test_bytes_from_bytes() {
+	input := ['0', '9999999999999999999999999999999999999', '783086277830859384',
+		'890810171456467012368983335296321559']
+	for n in input {
+		a := big.integer_from_string(n)!
+		b, _ := a.bytes()
+		c := big.integer_from_bytes(b)
+		assert a.str() == c.str()
+	}
+}
