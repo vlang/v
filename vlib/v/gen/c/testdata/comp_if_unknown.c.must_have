@@ -1,4 +1,0 @@
-#if defined(__GLIBC__)
-x = 2;
-#else
-#endif
