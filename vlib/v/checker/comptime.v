@@ -5,7 +5,6 @@ module checker
 import os
 import v.ast
 import v.pref
-import v.token
 import v.util
 import v.pkgconfig
 import v.type_resolver
@@ -284,9 +283,9 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			}
 			has_different_types := fields.len > 1
 				&& !fields.all(c.check_basic(it.typ, fields[0].typ))
+			c.push_new_comptime_info()
 			for field in fields {
 				prev_inside_x_matches_type := c.inside_x_matches_type
-				c.push_new_comptime_info()
 				c.comptime.inside_comptime_for = true
 				if c.field_data_type == 0 {
 					c.field_data_type = c.table.find_type('FieldData')
@@ -310,9 +309,9 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 							info.size_expr, true)
 					}
 				}
-				c.pop_comptime_info()
 				c.inside_x_matches_type = prev_inside_x_matches_type
 			}
+			c.pop_comptime_info()
 		} else if node.typ != ast.void_type && c.table.generic_type_names(node.typ).len == 0
 			&& sym.kind != .placeholder {
 			c.error('iterating over .fields is supported only for structs and interfaces, and ${sym.name} is neither',
@@ -321,16 +320,22 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		}
 	} else if node.kind == .values {
 		if sym.kind == .enum {
-			c.push_new_comptime_info()
-			c.comptime.inside_comptime_for = true
-			if c.enum_data_type == 0 {
-				c.enum_data_type = c.table.find_type('EnumData')
+			if sym.info is ast.Enum {
+				if sym.info.vals.len > 0 {
+					c.push_new_comptime_info()
+					for _ in sym.info.vals {
+						c.comptime.inside_comptime_for = true
+						if c.enum_data_type == 0 {
+							c.enum_data_type = c.table.find_type('EnumData')
+						}
+						c.comptime.comptime_for_enum_var = node.val_var
+						c.type_resolver.update_ct_type(node.val_var, c.enum_data_type)
+						c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
+						c.stmts(mut node.stmts)
+					}
+					c.pop_comptime_info()
+				}
 			}
-			c.comptime.comptime_for_enum_var = node.val_var
-			c.type_resolver.update_ct_type(node.val_var, c.enum_data_type)
-			c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
-			c.stmts(mut node.stmts)
-			c.pop_comptime_info()
 		} else {
 			c.error('iterating over .values is supported only for enums, and ${sym.name} is not an enum',
 				node.typ_pos)
@@ -338,14 +343,19 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		}
 	} else if node.kind == .methods {
 		methods := sym.get_methods()
-		for method in methods {
+		if methods.len > 0 {
 			c.push_new_comptime_info()
-			c.comptime.inside_comptime_for = true
-			c.comptime.comptime_for_method = unsafe { &method }
-			c.comptime.comptime_for_method_var = node.val_var
-			c.comptime.comptime_for_method_ret_type = method.return_type
-			c.type_resolver.update_ct_type('${node.val_var}.return_type', method.return_type)
-			c.stmts(mut node.stmts)
+			for method in methods {
+				c.comptime.inside_comptime_for = true
+				c.comptime.comptime_for_method = unsafe { &method }
+				c.comptime.comptime_for_method_var = node.val_var
+				c.comptime.comptime_for_method_ret_type = method.return_type
+				c.type_resolver.update_ct_type('${node.val_var}.return_type', method.return_type)
+				for j, arg in method.params[1..] {
+					c.type_resolver.update_ct_type('${node.val_var}.args[${j}].typ', arg.typ.idx())
+				}
+				c.stmts(mut node.stmts)
+			}
 			c.pop_comptime_info()
 		}
 	} else if node.kind == .params {
@@ -354,11 +364,29 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				node.typ_pos)
 			return
 		}
-		c.push_new_comptime_info()
-		c.comptime.inside_comptime_for = true
-		c.comptime.comptime_for_method_param_var = node.val_var
-		c.stmts(mut node.stmts)
-		c.pop_comptime_info()
+		method := c.comptime.comptime_for_method
+		if method.params.len > 0 {
+			c.push_new_comptime_info()
+			for param in method.params[1..] {
+				c.comptime.inside_comptime_for = true
+				c.comptime.comptime_for_method_param_var = node.val_var
+				c.type_resolver.update_ct_type('${node.val_var}.typ', param.typ)
+				c.stmts(mut node.stmts)
+			}
+			c.pop_comptime_info()
+		}
+	} else if node.kind == .attributes {
+		attrs := c.table.get_attrs(sym)
+		if attrs.len > 0 {
+			c.push_new_comptime_info()
+			for attr in attrs {
+				c.comptime.inside_comptime_for = true
+				c.comptime.comptime_for_attr_var = node.val_var
+				c.comptime.comptime_for_attr_value = attr
+				c.stmts(mut node.stmts)
+			}
+			c.pop_comptime_info()
+		}
 	} else if node.kind == .variants {
 		if c.variant_data_type == 0 {
 			c.variant_data_type = c.table.find_type('VariantData')
@@ -374,13 +402,15 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		} else {
 			variants = (sym.info as ast.SumType).variants.clone()
 		}
-		for variant in variants {
+		if variants.len > 0 {
 			c.push_new_comptime_info()
-			c.comptime.inside_comptime_for = true
-			c.comptime.comptime_for_variant_var = node.val_var
-			c.type_resolver.update_ct_type(node.val_var, c.variant_data_type)
-			c.type_resolver.update_ct_type('${node.val_var}.typ', variant)
-			c.stmts(mut node.stmts)
+			for variant in variants {
+				c.comptime.inside_comptime_for = true
+				c.comptime.comptime_for_variant_var = node.val_var
+				c.type_resolver.update_ct_type(node.val_var, c.variant_data_type)
+				c.type_resolver.update_ct_type('${node.val_var}.typ', variant)
+				c.stmts(mut node.stmts)
+			}
 			c.pop_comptime_info()
 		}
 	} else {
@@ -632,7 +662,8 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			for i in 0 .. expr.branches.len {
 				mut branch := expr.branches[i]
 				if !expr.has_else || i < expr.branches.len - 1 {
-					if c.comptime_if_cond(mut branch.cond, branch.pos) == .eval {
+					is_true, _ := c.comptime_if_cond(mut branch.cond)
+					if is_true {
 						last_stmt := branch.stmts.last()
 						if last_stmt is ast.ExprStmt {
 							return c.eval_comptime_const_expr(last_stmt.expr, nlevel + 1)
@@ -747,393 +778,759 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 		}
 	}
 	c.inside_ct_attr = true
-	node.ct_skip = if c.comptime_if_cond(mut node.ct_expr, node.pos) == .skip {
-		true
-	} else {
-		false
-	}
+	is_true, _ := c.comptime_if_cond(mut node.ct_expr)
+	node.ct_skip = !is_true
 	c.inside_ct_attr = false
 	node.ct_evaled = true
 	return node.ct_skip
 }
 
-enum ComptimeBranchSkipState {
-	eval
-	skip
-	unknown
+fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
+	match cond {
+		ast.Ident {
+			mut checked_type := ast.void_type
+			if c.comptime.inside_comptime_for && (cond.name == c.comptime.comptime_for_variant_var
+				|| cond.name == c.comptime.comptime_for_method_param_var
+				|| cond.name == c.comptime.comptime_for_field_var) {
+				// struct field
+				return c.type_resolver.get_type_from_comptime_var(cond)
+			} else if var := cond.scope.find_var(cond.name) {
+				// var
+				checked_type = c.unwrap_generic(var.typ)
+				if var.smartcasts.len > 0 {
+					checked_type = c.unwrap_generic(var.smartcasts.last())
+				}
+			}
+			return checked_type
+		}
+		ast.TypeNode {
+			return c.unwrap_generic(cond.typ)
+		}
+		ast.SelectorExpr {
+			if c.comptime.inside_comptime_for
+				&& cond.field_name in ['typ', 'unaliased_typ', 'indirections']
+				&& cond.expr is ast.Ident && (cond.expr.name == c.comptime.comptime_for_variant_var
+				|| cond.expr.name == c.comptime.comptime_for_method_param_var
+				|| cond.expr.name == c.comptime.comptime_for_field_var) {
+				typ := c.type_resolver.get_type_from_comptime_var(cond.expr as ast.Ident)
+				if cond.field_name == 'unaliased_typ' {
+					return c.table.unaliased_type(typ)
+				}
+				// for `indirections` we also return the `typ`
+				return typ
+			}
+			if cond.gkind_field in [.typ, .indirections] {
+				// for `indirections` we also return the `typ`
+				return c.unwrap_generic(cond.name_type)
+			} else if cond.gkind_field == .unaliased_typ {
+				return c.table.unaliased_type(c.unwrap_generic(cond.name_type))
+			} else {
+				if cond.expr is ast.TypeOf {
+					return c.type_resolver.typeof_field_type(c.type_resolver.typeof_type(cond.expr.expr,
+						cond.name_type), cond.field_name)
+				}
+				name := '${cond.expr}.${cond.field_name}'
+				if name in c.type_resolver.type_map {
+					return c.type_resolver.get_ct_type_or_default(name, ast.void_type)
+				} else {
+					return c.unwrap_generic(cond.typ)
+				}
+			}
+		}
+		ast.IntegerLiteral {
+			return ast.int_type
+		}
+		ast.BoolLiteral {
+			return ast.bool_type
+		}
+		ast.StringLiteral {
+			return ast.string_type
+		}
+		ast.CharLiteral {
+			return ast.char_type
+		}
+		ast.FloatLiteral {
+			return ast.f64_type
+		}
+		else {
+			return ast.void_type
+		}
+	}
 }
 
-// comptime_if_cond checks the condition of a compile-time `if` branch. It returns `true`
-// if that branch's contents should be skipped (targets a different os for example)
-fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBranchSkipState {
+// comptime_if_cond evaluate the `cond` and return (`is_true`, `keep_stmts`)
+// `is_true` is the evaluate result of `cond`;
+// `keep_stmts` meaning the branch is a `multi pass branch`, we should keep the branch stmts even `is_true` is false, such as `$if T is int {`
+fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 	mut should_record_ident := false
 	mut is_user_ident := false
 	mut ident_name := ''
 	defer {
 		if should_record_ident {
+			// record current cond result for debugging
 			if is_user_ident {
-				c.ct_user_defines[ident_name] = $res()
+				c.ct_user_defines[ident_name] = $res(0)
 			} else {
-				c.ct_system_defines[ident_name] = $res()
+				c.ct_system_defines[ident_name] = $res(0)
 			}
 		}
 	}
-	// TODO: better error messages here
+	mut is_true := false
+
 	match mut cond {
 		ast.BoolLiteral {
-			return if cond.val { .eval } else { .skip }
+			c.expr(mut cond)
+			return cond.val, false
 		}
 		ast.ParExpr {
-			return c.comptime_if_cond(mut cond.expr, pos)
+			return c.comptime_if_cond(mut cond.expr)
 		}
 		ast.PrefixExpr {
 			if cond.op != .not {
-				c.error('invalid `\$if` condition', cond.pos)
+				c.error('invalid \$if prefix operator, only allow `!`.', cond.pos)
+				return false, false
 			}
-			reversed := c.comptime_if_cond(mut cond.right, cond.pos)
-			return if reversed == .eval {
-				.skip
-			} else if reversed == .skip {
-				.eval
-			} else {
-				reversed
-			}
+			is_true_result, multi_pass_stmts := c.comptime_if_cond(mut cond.right)
+			return !is_true_result, multi_pass_stmts
 		}
 		ast.PostfixExpr {
 			if cond.op != .question {
-				c.error('invalid \$if postfix operator', cond.pos)
-			} else if mut cond.expr is ast.Ident {
-				should_record_ident = true
-				is_user_ident = true
-				ident_name = cond.expr.name
-				return if cond.expr.name in c.pref.compile_defines {
-					.eval
-				} else {
-					if cond.expr.name in c.pref.compile_defines_all {
-						ComptimeBranchSkipState.unknown
-					} else {
-						ComptimeBranchSkipState.skip
-					}
-				}
-			} else {
-				c.error('invalid `\$if` condition', cond.pos)
+				c.error('invalid \$if postfix operator, only allow `?`.', cond.pos)
+				return false, false
 			}
+			if cond.expr !is ast.Ident {
+				c.error('invalid \$if postfix condition, only allow `Indent`.', cond.expr.pos())
+				return false, false
+			}
+			cname := (cond.expr as ast.Ident).name
+			// record current cond result for debugging
+			should_record_ident = true
+			is_user_ident = true
+			ident_name = cname
+			if cname in c.pref.compile_defines {
+				return true, false
+			}
+			return false, false
 		}
 		ast.InfixExpr {
 			match cond.op {
-				.and {
-					l := c.comptime_if_cond(mut cond.left, cond.pos)
-					r := c.comptime_if_cond(mut cond.right, cond.pos)
-					if l == .unknown || r == .unknown {
-						return .unknown
-					}
-					return if l == .eval && r == .eval { .eval } else { .skip }
+				.and, .logical_or {
+					l, d1 := c.comptime_if_cond(mut cond.left)
+					r, d2 := c.comptime_if_cond(mut cond.right)
+					// if at least one of the cond has `keep_stmts`, we should keep stmts
+					return if cond.op == .and { l && r } else { l || r }, d1 || d2
 				}
-				.logical_or {
-					l := c.comptime_if_cond(mut cond.left, cond.pos)
-					r := c.comptime_if_cond(mut cond.right, cond.pos)
-					if l == .unknown || r == .unknown {
-						return .unknown
-					}
-					return if l == .eval || r == .eval { .eval } else { .skip }
-				}
-				.key_is, .not_is {
-					if cond.left is ast.TypeNode && mut cond.right is ast.TypeNode {
-						// `$if Foo is Interface {`
-						sym := c.table.sym(cond.right.typ)
-						if sym.kind != .interface {
-							c.expr(mut cond.left)
-						} else {
-							return c.check_compatible_types((cond.left as ast.TypeNode).typ,
-								cond.right)
-						}
-						return .unknown
-					} else if cond.left is ast.TypeNode && mut cond.right is ast.ComptimeType {
-						left := cond.left as ast.TypeNode
-						checked_type := c.unwrap_generic(left.typ)
-						return if c.type_resolver.is_comptime_type(checked_type, cond.right) {
-							.eval
-						} else {
-							.skip
-						}
-					} else if cond.left in [ast.Ident, ast.SelectorExpr, ast.TypeNode] {
-						// `$if method.type is string`
+				.key_is, .not_is, .key_in, .not_in {
+					// $if T is Type
+					// $if T in [Type1, Type2]
+					if cond.left in [ast.TypeNode, ast.Ident, ast.SelectorExpr]
+						&& ((cond.right in [ast.ComptimeType, ast.TypeNode]
+						&& cond.op in [.key_is, .not_is])
+						|| (cond.right is ast.ArrayInit && cond.op in [.key_in, .not_in])) {
 						c.expr(mut cond.left)
-						c.comptime.inside_comptime_if = true
-						if mut cond.left is ast.SelectorExpr && cond.right is ast.ComptimeType {
-							comptime_type := cond.right as ast.ComptimeType
-							if c.comptime.is_comptime_selector_type(cond.left) {
-								checked_type := c.type_resolver.get_type(cond.left)
-								return if c.type_resolver.is_comptime_type(checked_type,
-									comptime_type)
-								{
-									.eval
-								} else {
-									.skip
+
+						// resolve left type
+						mut left_name := ''
+						if mut cond.left is ast.Ident {
+							left_name = cond.left.name
+						} else if mut cond.left is ast.SelectorExpr {
+							left_name = '${cond.left.expr}'.all_before('.')
+						}
+						left_type := c.get_expr_type(cond.left)
+						type_array := if cond.op in [.key_is, .not_is] {
+							// construct a type array for a single `is`, `!is`
+							[cond.right]
+						} else {
+							(cond.right as ast.ArrayInit).exprs
+						}
+						// iter the `type_array`, for `is` and `!is`, it has only one element
+						for expr in type_array {
+							if expr is ast.ComptimeType {
+								is_true = c.type_resolver.is_comptime_type(left_type,
+									expr as ast.ComptimeType)
+								if is_true {
+									break
 								}
-							} else if cond.left.gkind_field == .unaliased_typ
-								&& cond.left.name_type != 0 {
-								// T.unaliased_typ
-								checked_type := c.unwrap_generic(cond.left.name_type)
-								return if c.type_resolver.is_comptime_type(c.table.unaliased_type(checked_type),
-									comptime_type)
-								{
-									.eval
+							} else if expr is ast.TypeNode {
+								typ := c.get_expr_type(expr)
+								right_type := c.unwrap_generic(typ)
+								right_sym := c.table.sym(right_type)
+								if right_sym.kind == .placeholder || right_type.has_flag(.generic) {
+									c.error('unknown type `${right_sym.name}`', expr.pos)
+								}
+								if right_sym.kind == .interface && right_sym.info is ast.Interface {
+									is_true =
+										left_type.has_flag(.option) == right_type.has_flag(.option)
+										&& c.table.does_type_implement_interface(left_type, right_type)
+									if is_true {
+										break
+									}
+								}
+								if right_sym.info is ast.FnType
+									&& c.comptime.comptime_for_method_var == left_name {
+									is_true = c.table.fn_signature(right_sym.info.func,
+										skip_receiver: true
+										type_only:     true
+									) == c.table.fn_signature(c.comptime.comptime_for_method,
+										skip_receiver: true
+										type_only:     true
+									)
+									if is_true {
+										break
+									}
 								} else {
-									.skip
+									is_true = left_type == right_type
+									if is_true {
+										break
+									}
 								}
 							}
 						}
-						return .unknown
-					} else {
-						c.error('invalid `\$if` condition: expected a type or a selector expression or an interface check',
+						return if cond.op in [.key_in, .key_is] {
+							is_true, true
+						} else {
+							!is_true, true
+						}
+					}
+
+					if cond.left !in [ast.TypeNode, ast.Ident, ast.SelectorExpr] {
+						c.error('invalid \$if left expr: expected a Type/Ident/SelectorExpr',
 							cond.left.pos())
+						return false, false
 					}
+					if cond.right !in [ast.ComptimeType, ast.TypeNode] {
+						c.error('invalid \$if right expr: expected a type', cond.right.pos())
+						return false, false
+					}
+					c.error('invalid \$if condition: is/!is/in/!in', cond.pos)
+					return false, false
 				}
-				.eq, .ne {
-					if mut cond.left is ast.SelectorExpr
-						&& cond.right in [ast.IntegerLiteral, ast.StringLiteral] {
-						// $if field.indirections == 1
-						// $if method.args.len == 1
-						if cond.left.typ == 0 && cond.left.name_type == 0
-							&& (cond.left.expr is ast.Ident && cond.left.expr.name.len == 1) {
+				.eq, .ne, .gt, .lt, .ge, .le {
+					match mut cond.left {
+						ast.Ident {
+							// $if version == 2
+							left_type := c.expr(mut cond.left)
+							right_type := c.expr(mut cond.right)
+							expr := c.find_definition(cond.left) or {
+								c.error(err.msg(), cond.left.pos)
+								return false, false
+							}
+							if !c.check_types(right_type, left_type) {
+								left_name := c.table.type_to_str(left_type)
+								right_name := c.table.type_to_str(right_type)
+								c.error('mismatched types `${left_name}` and `${right_name}`',
+									cond.pos)
+							}
+							match mut cond.right {
+								ast.StringLiteral {
+									match cond.op {
+										.eq {
+											is_true = expr.str() == cond.right.str()
+										}
+										.ne {
+											is_true = expr.str() != cond.right.str()
+										}
+										else {
+											c.error('string type only support `==` and `!=` operator',
+												cond.pos)
+											return false, false
+										}
+									}
+								}
+								ast.IntegerLiteral {
+									match cond.op {
+										.eq {
+											is_true = expr.str().i64() == cond.right.val.i64()
+										}
+										.ne {
+											is_true = expr.str().i64() != cond.right.val.i64()
+										}
+										.gt {
+											is_true = expr.str().i64() > cond.right.val.i64()
+										}
+										.lt {
+											is_true = expr.str().i64() < cond.right.val.i64()
+										}
+										.ge {
+											is_true = expr.str().i64() >= cond.right.val.i64()
+										}
+										.le {
+											is_true = expr.str().i64() <= cond.right.val.i64()
+										}
+										else {
+											c.error('int type only support `==` `!=` `>` `<` `>=` and `<=` operator',
+												cond.pos)
+											return false, false
+										}
+									}
+								}
+								ast.BoolLiteral {
+									match cond.op {
+										.eq {
+											is_true = expr.str().bool() == cond.right.val
+										}
+										.ne {
+											is_true = expr.str().bool() != cond.right.val
+										}
+										else {
+											c.error('bool type only support `==` and `!=` operator',
+												cond.pos)
+											return false, false
+										}
+									}
+								}
+								else {
+									c.error('compare only support string int and bool type',
+										cond.pos)
+									return false, false
+								}
+							}
+							return is_true, false
+						}
+						ast.SelectorExpr {
+							// $if field.name == 'abc'
 							c.expr(mut cond.left)
-						}
-						return .unknown
-					} else if cond.left is ast.SelectorExpr
-						&& c.comptime.check_comptime_is_field_selector_bool(cond.left) {
-						// field.is_public (from T.fields)
-					} else if cond.right is ast.SelectorExpr
-						&& c.comptime.check_comptime_is_field_selector_bool(cond.right) {
-						// field.is_public (from T.fields)
-					} else if cond.left is ast.Ident {
-						// $if version == 2
-						left_type := c.expr(mut cond.left)
-						right_type := c.expr(mut cond.right)
-						expr := c.find_definition(cond.left as ast.Ident) or {
-							c.error(err.msg(), cond.left.pos())
-							return .unknown
-						}
-						if !c.check_types(right_type, left_type) {
-							left_name := c.table.type_to_str(left_type)
-							right_name := c.table.type_to_str(right_type)
-							c.error('mismatched types `${left_name}` and `${right_name}`',
-								cond.pos)
-						}
-						// :)
-						// until `v.eval` is stable, I can't think of a better way to do this
-						different := expr.str() != cond.right.str()
-						return if cond.op == .eq {
-							if different {
-								ComptimeBranchSkipState.skip
-							} else {
-								ComptimeBranchSkipState.eval
+							match mut cond.right {
+								ast.StringLiteral {
+									if cond.left.field_name == 'name'
+										&& c.comptime.inside_comptime_for {
+										left_name := (cond.left.expr as ast.Ident).name
+										match left_name {
+											c.comptime.comptime_for_method_var {
+												is_true = c.comptime.comptime_for_method.name == cond.right.val
+											}
+											c.comptime.comptime_for_field_var {
+												is_true = c.comptime.comptime_for_field_value.name == cond.right.val
+											}
+											c.comptime.comptime_for_attr_var {
+												is_true = c.comptime.comptime_for_attr_value.name == cond.right.val
+											}
+											else {
+												c.error('.name compare only support for \$for vars',
+													cond.pos)
+												return false, false
+											}
+										}
+										match cond.op {
+											.eq {
+												return is_true, true
+											}
+											.ne {
+												return !is_true, true
+											}
+											else {
+												c.error('.name compare only support for `==` and `!=`',
+													cond.pos)
+												return false, false
+											}
+										}
+									} else {
+										c.error('only support .name compare for \$for vars',
+											cond.pos)
+										return false, false
+									}
+								}
+								ast.IntegerLiteral {
+									if cond.left.field_name == 'indirections' {
+										// field.indirections, T.indirections
+										left_type := c.get_expr_type(cond.left)
+										left_muls := left_type.nr_muls()
+										match cond.op {
+											.eq {
+												is_true = left_muls == cond.right.val.i64()
+											}
+											.ne {
+												is_true = left_muls != cond.right.val.i64()
+											}
+											.gt {
+												is_true = left_muls > cond.right.val.i64()
+											}
+											.lt {
+												is_true = left_muls < cond.right.val.i64()
+											}
+											.ge {
+												is_true = left_muls >= cond.right.val.i64()
+											}
+											.le {
+												is_true = left_muls <= cond.right.val.i64()
+											}
+											else {
+												c.error('.indirections only support `==` `!=` `>` `<` `>=` and `<=` operator',
+													cond.pos)
+												return false, false
+											}
+										}
+										return is_true, true
+									} else if cond.left.field_name == 'return_type' {
+										// method.return_type
+										left_name := (cond.left.expr as ast.Ident).name
+										if c.comptime.inside_comptime_for
+											&& left_name == c.comptime.comptime_for_method_var {
+											left_type_idx := c.comptime.comptime_for_method_ret_type.idx()
+											match cond.op {
+												.eq {
+													is_true = left_type_idx == cond.right.val.i64()
+												}
+												.gt {
+													is_true = left_type_idx > cond.right.val.i64()
+												}
+												.lt {
+													is_true = left_type_idx < cond.right.val.i64()
+												}
+												.ge {
+													is_true = left_type_idx >= cond.right.val.i64()
+												}
+												.le {
+													is_true = left_type_idx <= cond.right.val.i64()
+												}
+												else {
+													c.error('.return_type only support `==` `!=` `>` `<` `>=` and `<=` operator',
+														cond.pos)
+													return false, false
+												}
+											}
+											return is_true, false
+										} else {
+											c.error('only support .return_type compare for \$for method',
+												cond.pos)
+											return false, false
+										}
+									} else {
+										c.error('only support .indirections/.return_type compare for \$for vars and generic',
+											cond.pos)
+										return false, false
+									}
+								}
+								ast.BoolLiteral {
+									// field.is_pub == true
+									l, _ := c.comptime_if_cond(mut cond.left)
+									r := (cond.right as ast.BoolLiteral).val
+									is_true = if cond.op == .eq { l == r } else { l != r }
+									return is_true, true
+								}
+								else {
+									c.error('definition of `${cond.left}` is unknown at compile time',
+										cond.pos)
+									return false, false
+								}
 							}
-						} else {
-							if different {
-								ComptimeBranchSkipState.eval
-							} else {
-								ComptimeBranchSkipState.skip
+							c.error('invalid \$if condition: SelectorExpr', cond.pos)
+							return false, false
+						}
+						ast.SizeOf {
+							match mut cond.right {
+								ast.IntegerLiteral {
+									s, _ := c.table.type_size(c.unwrap_generic(cond.left.typ))
+									match cond.op {
+										.eq {
+											is_true = s == cond.right.val.i64()
+										}
+										.ne {
+											is_true = s != cond.right.val.i64()
+										}
+										.gt {
+											is_true = s > cond.right.val.i64()
+										}
+										.lt {
+											is_true = s < cond.right.val.i64()
+										}
+										.ge {
+											is_true = s >= cond.right.val.i64()
+										}
+										.le {
+											is_true = s <= cond.right.val.i64()
+										}
+										else {
+											c.error('sizeof() only support `==` `!=` `>` `<` `>=` and `<=` operator',
+												cond.pos)
+											return false, false
+										}
+									}
+									return is_true, true
+								}
+								else {
+									c.error('sizeof() can only compare with int type',
+										cond.pos)
+									return false, false
+								}
 							}
 						}
-					} else if cond.left is ast.SizeOf {
-					} else {
-						c.error('invalid `\$if` condition: ${cond.left.type_name()}',
-							cond.pos)
-					}
-				}
-				.key_in, .not_in {
-					if mut cond.right is ast.ArrayInit
-						&& cond.left in [ast.TypeNode, ast.SelectorExpr, ast.Ident] {
-						c.expr(mut cond.left)
-						for expr in cond.right.exprs {
-							if expr !in [ast.ComptimeType, ast.TypeNode] {
-								c.error('invalid `\$if` condition, only types are allowed',
-									expr.pos())
-							}
+						else {
+							c.error('invalid \$if condition', cond.pos)
+							return false, false
 						}
-						return .unknown
-					} else {
-						c.error('invalid `\$if` condition', cond.pos)
 					}
-				}
-				.gt, .lt, .ge, .le {
-					if cond.left is ast.SelectorExpr && cond.left.typ == 0
-						&& cond.left.name_type == 0
-						&& (cond.left.expr is ast.Ident && cond.left.expr.name.len == 1) {
-						c.expr(mut cond.left)
-					}
-					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral
-						&& c.comptime.is_comptime_selector_field_name(cond.left, 'indirections') {
-						return .unknown
-					} else if cond.left is ast.SizeOf {
-						return .unknown
-					}
-					c.error('invalid `\$if` condition', cond.pos)
+					c.error('invalid \$if condition', cond.pos)
+					return false, false
 				}
 				else {
-					c.error('invalid `\$if` condition', cond.pos)
+					c.error('invalid \$if operator: ${cond.op}', cond.pos)
+					return false, false
 				}
 			}
 		}
 		ast.Ident {
 			cname := cond.name
+			// record current cond result for debugging
 			should_record_ident = true
 			is_user_ident = false
 			ident_name = cname
 			if cname in ast.valid_comptime_if_os {
-				mut ident_result := ComptimeBranchSkipState.skip
 				if !c.pref.output_cross_c {
 					if cname_enum_val := pref.os_from_string(cname) {
 						if cname_enum_val == c.pref.os {
-							ident_result = .eval
+							is_true = true
 						}
 					}
 				}
-				$if trace_comptime_os_checks ? {
-					eprintln('>>> ident_name: ${ident_name} | c.pref.os: ${c.pref.os} | ident_result: ${ident_result}')
-				}
-				return ident_result
+				return is_true, false
 			} else if cname in ast.valid_comptime_if_compilers {
-				return if pref.cc_from_string(cname) == c.pref.ccompiler_type {
-					.eval
-				} else {
-					.skip
-				}
+				is_true = pref.cc_from_string(cname) == c.pref.ccompiler_type
+				return is_true, false
 			} else if cname in ast.valid_comptime_if_platforms {
 				if cname == 'aarch64' {
-					c.note('use `arm64` instead of `aarch64`', pos)
+					c.note('use `arm64` instead of `aarch64`', cond.pos)
 				}
 				match cname {
-					'amd64' { return if c.pref.arch == .amd64 { .eval } else { .skip } }
-					'i386' { return if c.pref.arch == .i386 { .eval } else { .skip } }
-					'aarch64' { return if c.pref.arch == .arm64 { .eval } else { .skip } }
-					'arm64' { return if c.pref.arch == .arm64 { .eval } else { .skip } }
-					'arm32' { return if c.pref.arch == .arm32 { .eval } else { .skip } }
-					'rv64' { return if c.pref.arch == .rv64 { .eval } else { .skip } }
-					'rv32' { return if c.pref.arch == .rv32 { .eval } else { .skip } }
-					's390x' { return if c.pref.arch == .s390x { .eval } else { .skip } }
-					'ppc64le' { return if c.pref.arch == .ppc64le { .eval } else { .skip } }
-					'loongarch64' { return if c.pref.arch == .loongarch64 { .eval } else { .skip } }
-					else { return .unknown }
+					'amd64' {
+						is_true = c.pref.arch == .amd64
+					}
+					'i386' {
+						is_true = c.pref.arch == .i386
+					}
+					'aarch64' {
+						is_true = c.pref.arch == .arm64
+					}
+					'arm64' {
+						is_true = c.pref.arch == .arm64
+					}
+					'arm32' {
+						is_true = c.pref.arch == .arm32
+					}
+					'rv64' {
+						is_true = c.pref.arch == .rv64
+					}
+					'rv32' {
+						is_true = c.pref.arch == .rv32
+					}
+					's390x' {
+						is_true = c.pref.arch == .s390x
+					}
+					'ppc64le' {
+						is_true = c.pref.arch == .ppc64le
+					}
+					'loongarch64' {
+						is_true = c.pref.arch == .loongarch64
+					}
+					else {
+						c.error('invalid \$if condition: unknown platforms `${cname}`',
+							cond.pos)
+						return false, false
+					}
 				}
+				return is_true, false
 			} else if cname in ast.valid_comptime_if_cpu_features {
 				match cname {
-					'x64' { return if c.pref.m64 { .eval } else { .skip } }
-					'x32' { return if !c.pref.m64 { .eval } else { .skip } }
-					else { return .unknown }
+					'x64' {
+						is_true = c.pref.m64
+					}
+					'x32' {
+						is_true = !c.pref.m64
+					}
+					'little_endian' {
+						is_true = $if little_endian { true } $else { false }
+					}
+					'big_endian' {
+						is_true = $if big_endian { true } $else { false }
+					}
+					else {
+						c.error('invalid \$if condition: unknown cpu_features `${cname}`',
+							cond.pos)
+						return false, false
+					}
 				}
+				return is_true, false
 			} else if cname in ast.valid_comptime_if_other {
 				match cname {
 					'apk' {
-						return if c.pref.is_apk { .eval } else { .skip }
+						is_true = c.pref.is_apk
 					}
 					'js' {
-						return if c.pref.backend.is_js() { .eval } else { .skip }
+						is_true = c.pref.backend.is_js()
 					}
 					'debug' {
-						return if c.pref.is_debug { .eval } else { .skip }
+						is_true = c.pref.is_debug
 					}
 					'prod' {
-						return if c.pref.is_prod { .eval } else { .skip }
-					}
-					'profile' {
-						return if c.pref.is_prof { .eval } else { .skip }
+						is_true = c.pref.is_prod
 					}
 					'test' {
-						return if c.pref.is_test { .eval } else { .skip }
-					}
-					'musl' {
-						return .unknown
+						is_true = c.pref.is_test
 					}
 					'glibc' {
-						return .unknown
-					}
-					'threads' {
-						return if c.table.gostmts > 0 { .eval } else { .skip }
+						is_true = c.pref.is_glibc
 					}
 					'prealloc' {
-						return if c.pref.prealloc { .eval } else { .skip }
+						is_true = c.pref.prealloc
 					}
 					'no_bounds_checking' {
-						return if cname in c.pref.compile_defines_all { .eval } else { .skip }
-					}
-					'autofree' {
-						return if c.pref.autofree { .eval } else { .skip }
+						is_true = c.pref.no_bounds_checking
 					}
 					'freestanding' {
-						return if c.pref.is_bare && !c.pref.output_cross_c { .eval } else { .skip }
+						is_true = c.pref.is_bare && !c.pref.output_cross_c
+					}
+					'threads' {
+						is_true = c.table.gostmts > 0
+					}
+					'js_node' {
+						is_true = c.pref.backend == .js_node
+					}
+					'js_browser' {
+						is_true = c.pref.backend == .js_browser
+					}
+					'js_freestanding' {
+						is_true = c.pref.backend == .js_freestanding
 					}
 					'interpreter' {
-						return if c.pref.backend == .interpret { .eval } else { .skip }
+						is_true = c.pref.backend == .interpret
+					}
+					'es5' {
+						is_true = c.pref.output_es5
+					}
+					'profile' {
+						is_true = c.pref.is_prof
+					}
+					'wasm32' {
+						is_true = c.pref.arch == .wasm32
+					}
+					'wasm32_wasi' {
+						is_true = c.pref.os == .wasm32_wasi
+					}
+					'fast_math' {
+						is_true = c.pref.fast_math
+					}
+					'native' {
+						is_true = c.pref.backend == .native
+					}
+					'autofree' {
+						is_true = c.pref.autofree
 					}
 					else {
-						return .unknown
+						c.error('invalid \$if condition: unknown other indent `${cname}`',
+							cond.pos)
+						return false, false
 					}
 				}
+				return is_true, false
 			} else if cname !in c.pref.compile_defines_all {
 				if cname == 'linux_or_macos' {
 					c.error('linux_or_macos is deprecated, use `\$if linux || macos {` instead',
 						cond.pos)
-					return .unknown
+					return false, false
 				}
 				// `$if some_var {}`, or `[if user_defined_tag] fn abc(){}`
 				typ := c.unwrap_generic(c.expr(mut cond))
 				if cond.obj !in [ast.Var, ast.ConstField, ast.GlobalField] {
 					if !c.inside_ct_attr {
-						c.error('unknown var: `${cname}`', pos)
+						c.error('unknown var: `${cname}`', cond.pos)
+						return false, false
 					}
-					return .unknown
+					c.error('invalid \$if condition: unknown indent `${cname}`', cond.pos)
+					return false, false
 				}
 				expr := c.find_obj_definition(cond.obj) or {
 					c.error(err.msg(), cond.pos)
-					return .unknown
+					return false, false
 				}
 				if !c.check_types(typ, ast.bool_type) {
 					type_name := c.table.type_to_str(typ)
 					c.error('non-bool type `${type_name}` used as \$if condition', cond.pos)
+					return false, false
 				}
-				// :)
-				// until `v.eval` is stable, I can't think of a better way to do this
-				return if (expr as ast.BoolLiteral).val { .eval } else { .skip }
+				is_true = (expr as ast.BoolLiteral).val
+				return is_true, false
+			} else if cname in c.pref.compile_defines {
+				return true, false
 			}
+			c.error('invalid \$if condition: unknown indent `${cname}`', cond.pos)
+			return false, false
 		}
 		ast.ComptimeCall {
 			if cond.kind == .pkgconfig {
 				mut m := pkgconfig.main([cond.args_var]) or {
 					c.error(err.msg(), cond.pos)
-					return .skip
+					return false, true
 				}
-				m.run() or { return .skip }
-				return .eval
+				m.run() or { return false, true }
+				return true, true
 			}
 			if cond.kind == .d {
 				t := c.expr(mut cond)
 				if t != ast.bool_type {
 					c.error('inside \$if, only \$d() expressions that return bool are allowed',
 						cond.pos)
-					return .skip
+					return false, false
 				}
-				return .unknown // always fully generate the code for that branch
+				return cond.compile_value.bool(), false
 			}
-			return .eval
+			c.error('invalid \$if condition: unknown ComptimeCall', cond.pos)
+			return false, false
 		}
 		ast.SelectorExpr {
-			if c.comptime.check_comptime_is_field_selector(cond) {
-				if c.comptime.check_comptime_is_field_selector_bool(cond) {
-					ret_bool := c.type_resolver.get_comptime_selector_bool_field(cond.field_name)
-					return if ret_bool { .eval } else { .skip }
+			if c.comptime.comptime_for_field_var != '' && cond.expr is ast.Ident {
+				if (cond.expr as ast.Ident).name == c.comptime.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum'] {
+					is_true = c.type_resolver.get_comptime_selector_bool_field(cond.field_name)
+					return is_true, true
 				}
 				c.error('unknown field `${cond.field_name}` from ${c.comptime.comptime_for_field_var}',
 					cond.pos)
 			}
-			return .unknown
+			if c.comptime.comptime_for_attr_var != '' && cond.expr is ast.Ident {
+				if (cond.expr as ast.Ident).name == c.comptime.comptime_for_attr_var && cond.field_name == 'has_arg' {
+					is_true = c.comptime.comptime_for_attr_value.has_arg
+					return is_true, true
+				}
+				c.error('unknown field `${cond.field_name}` from ${c.comptime.comptime_for_attr_var}',
+					cond.pos)
+			}
+			if c.comptime.comptime_for_method_var != '' && cond.expr is ast.Ident {
+				if (cond.expr as ast.Ident).name == c.comptime.comptime_for_method_var && cond.field_name in ['is_variadic', 'is_c_variadic', 'is_pub', 'is_ctor_new', 'is_deprecated', 'is_noreturn', 'is_unsafe', 'is_must_use', 'is_placeholder', 'is_main', 'is_test', 'is_keep_alive', 'is_method', 'is_static_type_method', 'no_body', 'is_file_translated', 'is_conditional', 'is_expand_simple_interpolation'] {
+					method := c.comptime.comptime_for_method
+					is_true = match cond.field_name {
+						'is_variadic' { method.is_variadic }
+						'is_c_variadic' { method.is_c_variadic }
+						'is_pub' { method.is_pub }
+						'is_ctor_new' { method.is_ctor_new }
+						'is_deprecated' { method.is_deprecated }
+						'is_noreturn' { method.is_noreturn }
+						'is_unsafe' { method.is_unsafe }
+						'is_must_use' { method.is_must_use }
+						'is_placeholder' { method.is_placeholder }
+						'is_main' { method.is_main }
+						'is_test' { method.is_test }
+						'is_keep_alive' { method.is_keep_alive }
+						'is_method' { method.is_method }
+						'is_static_type_method' { method.is_static_type_method }
+						'no_body' { method.no_body }
+						'is_file_translated' { method.is_file_translated }
+						'is_conditional' { method.is_conditional }
+						'is_expand_simple_interpolation' { method.is_expand_simple_interpolation }
+						else { false }
+					}
+					return is_true, true
+				}
+				c.error('unknown field `${cond.field_name}` from ${c.comptime.comptime_for_method_var}',
+					cond.pos)
+			}
+			return false, false
 		}
 		else {
-			c.error('invalid `\$if` condition', pos)
+			c.error('invalid \$if condition ${cond}', cond.pos())
+			return false, false
 		}
 	}
-	return .unknown
+	c.error('invalid \$if condition ${cond}', cond.pos())
+	return false, false
 }
 
 // push_new_comptime_info saves the current comptime information
@@ -1148,6 +1545,8 @@ fn (mut c Checker) push_new_comptime_info() {
 		comptime_for_field_type:      c.comptime.comptime_for_field_type
 		comptime_for_field_value:     c.comptime.comptime_for_field_value
 		comptime_for_enum_var:        c.comptime.comptime_for_enum_var
+		comptime_for_attr_var:        c.comptime.comptime_for_attr_var
+		comptime_for_attr_value:      c.comptime.comptime_for_attr_value
 		comptime_for_method_var:      c.comptime.comptime_for_method_var
 		comptime_for_method:          c.comptime.comptime_for_method
 		comptime_for_method_ret_type: c.comptime.comptime_for_method_ret_type
@@ -1166,6 +1565,8 @@ fn (mut c Checker) pop_comptime_info() {
 	c.comptime.comptime_for_field_type = old.comptime_for_field_type
 	c.comptime.comptime_for_field_value = old.comptime_for_field_value
 	c.comptime.comptime_for_enum_var = old.comptime_for_enum_var
+	c.comptime.comptime_for_attr_var = old.comptime_for_attr_var
+	c.comptime.comptime_for_attr_value = old.comptime_for_attr_value
 	c.comptime.comptime_for_method_var = old.comptime_for_method_var
 	c.comptime.comptime_for_method = old.comptime_for_method
 	c.comptime.comptime_for_method_ret_type = old.comptime_for_method_ret_type

@@ -5,26 +5,6 @@ module checker
 import v.ast
 import v.token
 
-fn (mut c Checker) check_compatible_types(left_type ast.Type, right ast.TypeNode) ComptimeBranchSkipState {
-	right_type := c.unwrap_generic(right.typ)
-	sym := c.table.sym(right_type)
-
-	if right_type.has_flag(.option) != left_type.has_flag(.option) {
-		return .skip
-	}
-
-	if sym.kind == .interface {
-		checked_type := c.unwrap_generic(left_type)
-		return if c.table.does_type_implement_interface(checked_type, right_type) {
-			.eval
-		} else {
-			.skip
-		}
-	} else {
-		return if left_type == right_type { .eval } else { .skip }
-	}
-}
-
 fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
 	mut node_is_expr := false
@@ -50,13 +30,16 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	node.typ = ast.void_type
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
-	mut skip_state := ComptimeBranchSkipState.unknown
-	mut found_branch := false // Whether a matching branch was found- skip the rest
-	mut is_comptime_type_is_expr := false // if `$if T is string`
+	mut comptime_if_result := false
+	mut comptime_if_multi_pass_branch := false
+	mut comptime_if_found_branch := false
+	mut comptime_if_has_multi_pass_branch := false
+
 	last_in_comptime_if := c.comptime.inside_comptime_if
 	defer {
 		c.comptime.inside_comptime_if = last_in_comptime_if
 	}
+
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
@@ -64,9 +47,14 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				branch.pos)
 		}
 		if !node.has_else || i < node.branches.len - 1 {
+			// if branch
 			if node.is_comptime {
-				skip_state = c.comptime_if_cond(mut branch.cond, branch.pos)
-				node.branches[i].pkg_exist = if skip_state == .eval { true } else { false }
+				c.comptime.inside_comptime_if = true
+				comptime_if_result, comptime_if_multi_pass_branch = c.comptime_if_cond(mut branch.cond)
+				node.branches[i].pkg_exist = comptime_if_result
+				if comptime_if_multi_pass_branch {
+					comptime_if_has_multi_pass_branch = true
+				}
 			} else {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
@@ -77,6 +65,14 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
 						branch.cond.pos())
 				}
+			}
+		} else {
+			// else branch
+			if node.is_comptime {
+				c.comptime.inside_comptime_if = true
+				comptime_if_result = !comptime_if_found_branch
+				// if all other branchs has at least one multi pass branch, we should keep this else branch
+				comptime_if_multi_pass_branch = comptime_if_has_multi_pass_branch
 			}
 		}
 		if mut branch.cond is ast.IfGuardExpr {
@@ -112,315 +108,12 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 		}
 		if node.is_comptime { // Skip checking if needed
-			// smartcast field type on comptime if
-			mut comptime_field_name := ''
-			if branch.cond is ast.SelectorExpr && skip_state != .unknown {
-				is_comptime_type_is_expr = true
-			} else if mut branch.cond is ast.PrefixExpr {
-				if branch.cond.right is ast.SelectorExpr && skip_state != .unknown {
-					is_comptime_type_is_expr = true
-				}
-			} else if mut branch.cond is ast.InfixExpr {
-				if branch.cond.op in [.not_is, .key_is] {
-					left := branch.cond.left
-					right := branch.cond.right
-					if right !in [ast.TypeNode, ast.ComptimeType] {
-						c.error('invalid `\$if` condition: expected a type', branch.cond.right.pos())
-						return 0
-					}
-					if right is ast.ComptimeType {
-						mut checked_type := ast.void_type
-						if left is ast.TypeNode {
-							is_comptime_type_is_expr = true
-							checked_type = c.unwrap_generic(left.typ)
-							skip_state = if c.type_resolver.is_comptime_type(checked_type,
-								right as ast.ComptimeType)
-							{
-								.eval
-							} else {
-								.skip
-							}
-						} else if left is ast.Ident && left.info is ast.IdentVar {
-							is_comptime_type_is_expr = true
-							if var := left.scope.find_var(left.name) {
-								checked_type = c.unwrap_generic(var.typ)
-								if var.smartcasts.len > 0 {
-									checked_type = c.unwrap_generic(var.smartcasts.last())
-								}
-							}
-							skip_state = if c.type_resolver.is_comptime_type(checked_type,
-								right as ast.ComptimeType)
-							{
-								.eval
-							} else {
-								.skip
-							}
-						} else if left is ast.SelectorExpr {
-							comptime_field_name = left.expr.str()
-							is_comptime_type_is_expr = true
-						}
-					} else {
-						got_type := c.unwrap_generic((right as ast.TypeNode).typ)
-						sym := c.table.sym(got_type)
-						if sym.kind == .placeholder || got_type.has_flag(.generic) {
-							c.error('unknown type `${sym.name}`', branch.cond.right.pos())
-						}
-						if left is ast.SelectorExpr {
-							comptime_field_name = left.expr.str()
-							is_comptime_type_is_expr = true
-							if comptime_field_name == c.comptime.comptime_for_field_var {
-								left_type := c.unwrap_generic(c.comptime.comptime_for_field_type)
-								if left.field_name == 'typ' {
-									skip_state = c.check_compatible_types(left_type, right as ast.TypeNode)
-								} else if left.field_name == 'unaliased_typ' {
-									skip_state = c.check_compatible_types(c.table.unaliased_type(left_type),
-										right as ast.TypeNode)
-								}
-							} else if c.comptime.check_comptime_is_field_selector_bool(left) {
-								skip_state = if c.type_resolver.get_comptime_selector_bool_field(left.field_name) {
-									.eval
-								} else {
-									.skip
-								}
-							} else if comptime_field_name == c.comptime.comptime_for_method_var
-								&& left.field_name == 'return_type' {
-								skip_state = c.check_compatible_types(c.unwrap_generic(c.comptime.comptime_for_method_ret_type),
-									right as ast.TypeNode)
-							} else if comptime_field_name in [
-								c.comptime.comptime_for_variant_var,
-								c.comptime.comptime_for_enum_var,
-							] {
-								if left.field_name == 'typ' {
-									skip_state = c.check_compatible_types(c.type_resolver.get_ct_type_or_default('${comptime_field_name}.typ',
-										ast.void_type), right as ast.TypeNode)
-								}
-							}
-						} else if left is ast.TypeNode {
-							is_comptime_type_is_expr = true
-							left_type := c.unwrap_generic(left.typ)
-							skip_state = c.check_compatible_types(left_type, right as ast.TypeNode)
-						} else if left is ast.Ident {
-							mut checked_type := ast.void_type
-							is_comptime_type_is_expr = true
-							if var := left.scope.find_var(left.name) {
-								checked_type = c.unwrap_generic(var.typ)
-								if var.smartcasts.len > 0 {
-									checked_type = c.unwrap_generic(var.smartcasts.last())
-								}
-							}
-							if sym.info is ast.FnType
-								&& c.comptime.comptime_for_method_var == left.name {
-								skip_state = if c.table.fn_signature(sym.info.func,
-									skip_receiver: true
-									type_only:     true
-								) == c.table.fn_signature(c.comptime.comptime_for_method,
-									skip_receiver: true
-									type_only:     true
-								) {
-									.eval
-								} else {
-									.skip
-								}
-							} else {
-								skip_state = c.check_compatible_types(checked_type, right as ast.TypeNode)
-							}
-						}
-					}
-					if branch.cond.op == .not_is && skip_state != .unknown {
-						skip_state = if skip_state == .eval { .skip } else { .eval }
-					}
-				} else if branch.cond.op in [.eq, .ne, .gt, .lt, .ge, .le] {
-					left := branch.cond.left
-					right := branch.cond.right
-					if left is ast.SelectorExpr && right is ast.IntegerLiteral {
-						comptime_field_name = left.expr.str()
-						is_comptime_type_is_expr = true
-						if comptime_field_name == c.comptime.comptime_for_field_var {
-							if left.field_name == 'indirections' {
-								skip_state = match branch.cond.op {
-									.gt {
-										if c.comptime.comptime_for_field_type.nr_muls() > right.val.i64() {
-											ComptimeBranchSkipState.eval
-										} else {
-											ComptimeBranchSkipState.skip
-										}
-									}
-									.lt {
-										if c.comptime.comptime_for_field_type.nr_muls() < right.val.i64() {
-											ComptimeBranchSkipState.eval
-										} else {
-											ComptimeBranchSkipState.skip
-										}
-									}
-									.ge {
-										if c.comptime.comptime_for_field_type.nr_muls() >= right.val.i64() {
-											ComptimeBranchSkipState.eval
-										} else {
-											ComptimeBranchSkipState.skip
-										}
-									}
-									.le {
-										if c.comptime.comptime_for_field_type.nr_muls() <= right.val.i64() {
-											ComptimeBranchSkipState.eval
-										} else {
-											ComptimeBranchSkipState.skip
-										}
-									}
-									.ne {
-										if c.comptime.comptime_for_field_type.nr_muls() != right.val.i64() {
-											ComptimeBranchSkipState.eval
-										} else {
-											ComptimeBranchSkipState.skip
-										}
-									}
-									.eq {
-										if c.comptime.comptime_for_field_type.nr_muls() == right.val.i64() {
-											ComptimeBranchSkipState.eval
-										} else {
-											ComptimeBranchSkipState.skip
-										}
-									}
-									else {
-										ComptimeBranchSkipState.skip
-									}
-								}
-							}
-						} else if comptime_field_name == c.comptime.comptime_for_method_var {
-							if left.field_name == 'return_type' {
-								skip_state = if c.unwrap_generic(c.comptime.comptime_for_method_ret_type).idx() == right.val.i64() {
-									ComptimeBranchSkipState.eval
-								} else {
-									ComptimeBranchSkipState.skip
-								}
-							}
-						} else if left.expr is ast.TypeOf {
-							skip_state = if left.expr.typ.nr_muls() == right.val.i64() {
-								ComptimeBranchSkipState.eval
-							} else {
-								ComptimeBranchSkipState.skip
-							}
-						}
-					} else if branch.cond.op in [.eq, .ne] && left is ast.SelectorExpr
-						&& right is ast.StringLiteral {
-						match left.expr.str() {
-							c.comptime.comptime_for_field_var {
-								if left.field_name == 'name' {
-									is_comptime_type_is_expr = true
-									match branch.cond.op {
-										.eq {
-											skip_state = if c.comptime.comptime_for_field_value.name == right.val.str() {
-												ComptimeBranchSkipState.eval
-											} else {
-												ComptimeBranchSkipState.skip
-											}
-										}
-										.ne {
-											skip_state = if c.comptime.comptime_for_field_value.name == right.val.str() {
-												ComptimeBranchSkipState.skip
-											} else {
-												ComptimeBranchSkipState.eval
-											}
-										}
-										else {}
-									}
-								}
-							}
-							c.comptime.comptime_for_method_var {
-								if left.field_name == 'name' {
-									is_comptime_type_is_expr = true
-									match branch.cond.op {
-										.eq {
-											skip_state = if c.comptime.comptime_for_method.name == right.val.str() {
-												ComptimeBranchSkipState.eval
-											} else {
-												ComptimeBranchSkipState.skip
-											}
-										}
-										.ne {
-											skip_state = if c.comptime.comptime_for_method.name == right.val.str() {
-												ComptimeBranchSkipState.skip
-											} else {
-												ComptimeBranchSkipState.eval
-											}
-										}
-										else {}
-									}
-								}
-							}
-							else {}
-						}
-					} else if left is ast.SizeOf && right is ast.IntegerLiteral {
-						// TODO: support struct.fieldname
-						typ := c.unwrap_generic(left.typ)
-						if typ == 0 {
-							c.error('invalid `\$if` condition: expected a type', branch.cond.left.pos())
-						} else {
-							s, _ := c.table.type_size(c.unwrap_generic(typ))
-							skip_state = match branch.cond.op {
-								.gt {
-									if s > right.val.i64() {
-										ComptimeBranchSkipState.eval
-									} else {
-										ComptimeBranchSkipState.skip
-									}
-								}
-								.lt {
-									if s < right.val.i64() {
-										ComptimeBranchSkipState.eval
-									} else {
-										ComptimeBranchSkipState.skip
-									}
-								}
-								.ge {
-									if s >= right.val.i64() {
-										ComptimeBranchSkipState.eval
-									} else {
-										ComptimeBranchSkipState.skip
-									}
-								}
-								.le {
-									if s <= right.val.i64() {
-										ComptimeBranchSkipState.eval
-									} else {
-										ComptimeBranchSkipState.skip
-									}
-								}
-								.ne {
-									if s != right.val.i64() {
-										ComptimeBranchSkipState.eval
-									} else {
-										ComptimeBranchSkipState.skip
-									}
-								}
-								.eq {
-									if s == right.val.i64() {
-										ComptimeBranchSkipState.eval
-									} else {
-										ComptimeBranchSkipState.skip
-									}
-								}
-								else {
-									ComptimeBranchSkipState.skip
-								}
-							}
-						}
-					}
-				}
-			}
 			cur_skip_flags := c.skip_flags
-			if found_branch {
-				c.skip_flags = true
-			} else if skip_state == .skip {
-				c.skip_flags = true
-				skip_state = .unknown // Reset the value of `skip_state` for the next branch
-			} else if skip_state == .eval {
-				found_branch = true // If a branch wasn't skipped, the rest must be
-				c.skip_flags = skip_state == .skip
-			}
+			// if current cond result is false, or we already found a branch, we should skip current branch
+			c.skip_flags = !comptime_if_result || comptime_if_found_branch
 			if c.fn_level == 0 && c.pref.output_cross_c {
 				// do not skip any of the branches for top level `$if OS {`
 				// statements, in `-cross` mode
-				found_branch = false
 				c.skip_flags = false
 				c.ct_cond_stack << branch.cond
 			}
@@ -448,19 +141,16 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					c.stmts(mut branch.stmts)
 					c.check_non_expr_branch_last_stmt(branch.stmts)
 				}
-			} else if !is_comptime_type_is_expr {
+			} else if !comptime_if_multi_pass_branch && !comptime_if_result {
+				// this branch is not a multi pass branch, and current cond result is false, remove branch stmts
 				node.branches[i].stmts = []
-			}
-			if comptime_field_name.len > 0 {
-				if comptime_field_name == c.comptime.comptime_for_method_var {
-					c.type_resolver.update_ct_type(comptime_field_name, c.comptime.comptime_for_method_ret_type)
-				} else if comptime_field_name == c.comptime.comptime_for_field_var {
-					c.type_resolver.update_ct_type(comptime_field_name, c.comptime.comptime_for_field_type)
-				}
 			}
 			c.skip_flags = cur_skip_flags
 			if c.fn_level == 0 && c.pref.output_cross_c && c.ct_cond_stack.len > 0 {
 				c.ct_cond_stack.delete_last()
+			}
+			if comptime_if_result {
+				comptime_if_found_branch = true
 			}
 		} else {
 			// smartcast sumtypes and interfaces when using `is`

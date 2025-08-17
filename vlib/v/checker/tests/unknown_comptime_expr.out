@@ -33,7 +33,7 @@ vlib/v/checker/tests/unknown_comptime_expr.vv:17:17: error: unknown type `T`
       |                    ^
    18 |     }
    19 |     $if s is int {
-vlib/v/checker/tests/unknown_comptime_expr.vv:21:13: error: invalid `$if` condition: expected a type
+vlib/v/checker/tests/unknown_comptime_expr.vv:21:13: error: invalid $if right expr: expected a type
    19 |     $if s is int {
    20 |     }
    21 |     $if s.i is 5 {
