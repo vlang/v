@@ -891,7 +891,11 @@ pub fn (a Integer) bytes() ([]u8, int) {
 		bits_in_byte = 0
 	}
 	// MSB digit
-	for i := bit_len % digit_bits - 1; i >= 0; i-- {
+	mut msb_bits := bit_len % digit_bits
+	if msb_bits == 0 {
+		msb_bits = digit_bits
+	}
+	for i := msb_bits - 1; i >= 0; i-- {
 		bit = u8((digit >> i) & 1)
 		current_byte = (current_byte << 1) | u8(bit)
 		bits_in_byte++
