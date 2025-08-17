@@ -27,7 +27,7 @@ jobs:
         os: [ubuntu-latest, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 121
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -236,6 +236,7 @@ jobs:
         os: [ubuntu-24.04, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - name: Build V

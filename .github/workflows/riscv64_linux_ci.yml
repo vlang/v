@@ -21,6 +21,7 @@ jobs:
   riscv64_linux:
     # The host should always be Linux
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     name: Build on ubuntu-24.04 riscv64
     steps:
       - uses: actions/checkout@v5

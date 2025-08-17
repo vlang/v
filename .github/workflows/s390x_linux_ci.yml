@@ -21,6 +21,7 @@ jobs:
   s390x_linux:
     # The host should always be Linux
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     name: Build on ubuntu-22.04 s390x
     steps:
       - uses: actions/checkout@v5
