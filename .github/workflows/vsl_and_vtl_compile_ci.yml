@@ -27,7 +27,7 @@ jobs:
         os: [ubuntu-24.04, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       VFLAGS: -no-parallel
     steps:
@@ -58,7 +58,7 @@ jobs:
         os: [ubuntu-24.04, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       VFLAGS: -no-parallel
       # Fixes complaints about $TERM not being set when running the vtl test script

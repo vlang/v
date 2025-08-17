@@ -25,6 +25,7 @@ concurrency:
 jobs:
   tools-linux:
     runs-on: ubuntu-22.04
+    timeout-minutes: 20
     strategy:
       matrix:
         cc: [tcc, gcc, clang]
@@ -64,6 +65,7 @@ jobs:
 
   tools-macos:
     runs-on: macos-14
+    timeout-minutes: 10
     strategy:
       matrix:
         cc: [clang]
@@ -83,6 +85,7 @@ jobs:
 
   tools-windows:
     runs-on: windows-2025
+    timeout-minutes: 20
     strategy:
       matrix:
         cc: [tcc, gcc, msvc]
@@ -103,7 +106,7 @@ jobs:
 
   tools-docker-ubuntu-musl:
     runs-on: ubuntu-24.04
-    timeout-minutes: 121
+    timeout-minutes: 15
     container:
       image: thevlang/vlang:ubuntu-build
       env:

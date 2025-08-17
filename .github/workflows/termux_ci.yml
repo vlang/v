@@ -20,7 +20,7 @@ on:
 jobs:
   termux-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - name: Build and test in Termux

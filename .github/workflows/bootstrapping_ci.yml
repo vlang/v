@@ -34,7 +34,7 @@ jobs:
         os: [ubuntu-latest, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 10
     env:
       VFLAGS: -no-parallel
       B_LFLAGS: -lm -lpthread
