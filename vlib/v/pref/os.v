@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module pref
 
-import os
-
 pub enum OS {
 	_auto // Reserved so .macos cannot be misunderstood as auto
 	ios
