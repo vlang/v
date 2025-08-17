@@ -321,19 +321,17 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	} else if node.kind == .values {
 		if sym.kind == .enum {
 			if sym.info is ast.Enum {
-				if sym.info.vals.len > 0 {
-					for _ in sym.info.vals {
-						c.push_new_comptime_info()
-						c.comptime.inside_comptime_for = true
-						if c.enum_data_type == 0 {
-							c.enum_data_type = c.table.find_type('EnumData')
-						}
-						c.comptime.comptime_for_enum_var = node.val_var
-						c.type_resolver.update_ct_type(node.val_var, c.enum_data_type)
-						c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
-						c.stmts(mut node.stmts)
-						c.pop_comptime_info()
+				for _ in sym.info.vals {
+					c.push_new_comptime_info()
+					c.comptime.inside_comptime_for = true
+					if c.enum_data_type == 0 {
+						c.enum_data_type = c.table.find_type('EnumData')
 					}
+					c.comptime.comptime_for_enum_var = node.val_var
+					c.type_resolver.update_ct_type(node.val_var, c.enum_data_type)
+					c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
+					c.stmts(mut node.stmts)
+					c.pop_comptime_info()
 				}
 			}
 		} else {
@@ -343,20 +341,18 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		}
 	} else if node.kind == .methods {
 		methods := sym.get_methods()
-		if methods.len > 0 {
-			for method in methods {
-				c.push_new_comptime_info()
-				c.comptime.inside_comptime_for = true
-				c.comptime.comptime_for_method = unsafe { &method }
-				c.comptime.comptime_for_method_var = node.val_var
-				c.comptime.comptime_for_method_ret_type = method.return_type
-				c.type_resolver.update_ct_type('${node.val_var}.return_type', method.return_type)
-				for j, arg in method.params[1..] {
-					c.type_resolver.update_ct_type('${node.val_var}.args[${j}].typ', arg.typ.idx())
-				}
-				c.stmts(mut node.stmts)
-				c.pop_comptime_info()
+		for method in methods {
+			c.push_new_comptime_info()
+			c.comptime.inside_comptime_for = true
+			c.comptime.comptime_for_method = unsafe { &method }
+			c.comptime.comptime_for_method_var = node.val_var
+			c.comptime.comptime_for_method_ret_type = method.return_type
+			c.type_resolver.update_ct_type('${node.val_var}.return_type', method.return_type)
+			for j, arg in method.params[1..] {
+				c.type_resolver.update_ct_type('${node.val_var}.args[${j}].typ', arg.typ.idx())
 			}
+			c.stmts(mut node.stmts)
+			c.pop_comptime_info()
 		}
 	} else if node.kind == .params {
 		if !(sym.kind == .function || sym.name == 'FunctionData') {
@@ -365,6 +361,9 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			return
 		}
 		method := c.comptime.comptime_for_method
+		// example: fn (mut d MyStruct) add(x int, y int) string
+		// `d` is params[0], `x` is params[1], `y` is params[2]
+		// so we at least has one param (`d`) for method
 		for param in method.params[1..] {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
