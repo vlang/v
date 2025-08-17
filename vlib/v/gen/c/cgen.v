@@ -3937,6 +3937,25 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if g.is_option_auto_heap {
 					g.write('(${g.base_type(node.right_type)}*)')
 				}
+				mut tmp_var := ''
+				if node.op == .amp {
+					if node.right is ast.ParExpr && node.right.expr is ast.AsCast
+						&& (node.right.expr as ast.AsCast).expr is ast.CallExpr {
+						str := g.go_before_last_stmt()
+						g.empty_line = true
+						typ := g.styp(((node.right as ast.ParExpr).expr as ast.AsCast).typ)
+						tmp_var = g.new_tmp_var()
+						g.writeln('${typ} ${tmp_var};')
+						g.stmts_with_tmp_var([
+							ast.ExprStmt{
+								pos:  node.right.pos()
+								expr: node.right
+							},
+						], tmp_var)
+						g.set_current_pos_as_last_stmt_pos()
+						g.write(str)
+					}
+				}
 				mut has_slice_call := false
 				if !g.is_option_auto_heap && !(g.is_amp && node.right.is_auto_deref_var()) {
 					has_slice_call = node.op == .amp && node.right is ast.IndexExpr
@@ -3947,7 +3966,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 						g.write(node.op.str())
 					}
 				}
-				g.expr(node.right)
+				if tmp_var == '' {
+					g.expr(node.right)
+				} else {
+					g.write(tmp_var)
+				}
 				if has_slice_call {
 					g.write(')')
 				}
