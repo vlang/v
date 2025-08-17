@@ -360,12 +360,15 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		final_field_typ := g.table.final_type(field.typ)
 		sym := g.table.sym(final_field_typ)
 		if sym.kind == .struct && sym.name != 'time.Time' {
-			subs << unsafe { node.sub_structs[int(final_field_typ)] }
-			unwrapped_c_typ := g.styp(final_field_typ.clear_flag(.option))
-			subs_unwrapped_c_typ << if final_field_typ.has_flag(.option) {
-				unwrapped_c_typ
-			} else {
-				''
+			if final_field_typ in node.sub_structs {
+				subs << unsafe { node.sub_structs[int(final_field_typ)] }
+
+				unwrapped_c_typ := g.styp(final_field_typ.clear_flag(.option))
+				subs_unwrapped_c_typ << if final_field_typ.has_flag(.option) {
+					unwrapped_c_typ
+				} else {
+					''
+				}
 			}
 		} else if sym.kind == .array {
 			// Handle foreign keys
@@ -377,7 +380,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if final_field_typ.has_flag(.option) {
 				opt_fields << arrs.len
 			}
-			if node.sub_structs.len > 0 {
+			if final_field_typ in node.sub_structs {
 				arrs << unsafe { node.sub_structs[int(final_field_typ)] }
 			}
 			field_names << field.name
