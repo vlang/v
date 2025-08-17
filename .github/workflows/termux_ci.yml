@@ -48,4 +48,5 @@ jobs:
             ./v symlink
             v run examples/hello_world.v
             v run examples/primes.v
+            v -e "import os; dump( os.user_os() )"
           '
