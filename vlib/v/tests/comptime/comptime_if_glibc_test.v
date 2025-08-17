@@ -10,12 +10,12 @@ fn test_comptime_if_glibc() {
 	}
 
 	$if !glibc {
-		result += '!glibc'
+		result += '+!glibc'
 	} $else {
-		result += '!!glibc'
+		result += '-!glibc'
 	}
 
 	println(result)
-	assert result == '+glibc!!glibc' || result == '-glibc!glibc'
+	assert result == '+glibc-!glibc' || result == '-glibc+!glibc'
 	println('done')
 }

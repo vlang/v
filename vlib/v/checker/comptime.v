@@ -283,8 +283,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			}
 			has_different_types := fields.len > 1
 				&& !fields.all(c.check_basic(it.typ, fields[0].typ))
-			c.push_new_comptime_info()
 			for field in fields {
+				c.push_new_comptime_info()
 				prev_inside_x_matches_type := c.inside_x_matches_type
 				c.comptime.inside_comptime_for = true
 				if c.field_data_type == 0 {
@@ -310,8 +310,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					}
 				}
 				c.inside_x_matches_type = prev_inside_x_matches_type
+				c.pop_comptime_info()
 			}
-			c.pop_comptime_info()
 		} else if node.typ != ast.void_type && c.table.generic_type_names(node.typ).len == 0
 			&& sym.kind != .placeholder {
 			c.error('iterating over .fields is supported only for structs and interfaces, and ${sym.name} is neither',
@@ -322,8 +322,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		if sym.kind == .enum {
 			if sym.info is ast.Enum {
 				if sym.info.vals.len > 0 {
-					c.push_new_comptime_info()
 					for _ in sym.info.vals {
+						c.push_new_comptime_info()
 						c.comptime.inside_comptime_for = true
 						if c.enum_data_type == 0 {
 							c.enum_data_type = c.table.find_type('EnumData')
@@ -332,8 +332,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 						c.type_resolver.update_ct_type(node.val_var, c.enum_data_type)
 						c.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
 						c.stmts(mut node.stmts)
+						c.pop_comptime_info()
 					}
-					c.pop_comptime_info()
 				}
 			}
 		} else {
@@ -344,8 +344,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	} else if node.kind == .methods {
 		methods := sym.get_methods()
 		if methods.len > 0 {
-			c.push_new_comptime_info()
 			for method in methods {
+				c.push_new_comptime_info()
 				c.comptime.inside_comptime_for = true
 				c.comptime.comptime_for_method = unsafe { &method }
 				c.comptime.comptime_for_method_var = node.val_var
@@ -355,8 +355,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					c.type_resolver.update_ct_type('${node.val_var}.args[${j}].typ', arg.typ.idx())
 				}
 				c.stmts(mut node.stmts)
+				c.pop_comptime_info()
 			}
-			c.pop_comptime_info()
 		}
 	} else if node.kind == .params {
 		if !(sym.kind == .function || sym.name == 'FunctionData') {
@@ -365,26 +365,22 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			return
 		}
 		method := c.comptime.comptime_for_method
-		if method.params.len > 0 {
+		for param in method.params[1..] {
 			c.push_new_comptime_info()
-			for param in method.params[1..] {
-				c.comptime.inside_comptime_for = true
-				c.comptime.comptime_for_method_param_var = node.val_var
-				c.type_resolver.update_ct_type('${node.val_var}.typ', param.typ)
-				c.stmts(mut node.stmts)
-			}
+			c.comptime.inside_comptime_for = true
+			c.comptime.comptime_for_method_param_var = node.val_var
+			c.type_resolver.update_ct_type('${node.val_var}.typ', param.typ)
+			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}
 	} else if node.kind == .attributes {
 		attrs := c.table.get_attrs(sym)
-		if attrs.len > 0 {
+		for attr in attrs {
 			c.push_new_comptime_info()
-			for attr in attrs {
-				c.comptime.inside_comptime_for = true
-				c.comptime.comptime_for_attr_var = node.val_var
-				c.comptime.comptime_for_attr_value = attr
-				c.stmts(mut node.stmts)
-			}
+			c.comptime.inside_comptime_for = true
+			c.comptime.comptime_for_attr_var = node.val_var
+			c.comptime.comptime_for_attr_value = attr
+			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}
 	} else if node.kind == .variants {
@@ -402,15 +398,13 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		} else {
 			variants = (sym.info as ast.SumType).variants.clone()
 		}
-		if variants.len > 0 {
+		for variant in variants {
 			c.push_new_comptime_info()
-			for variant in variants {
-				c.comptime.inside_comptime_for = true
-				c.comptime.comptime_for_variant_var = node.val_var
-				c.type_resolver.update_ct_type(node.val_var, c.variant_data_type)
-				c.type_resolver.update_ct_type('${node.val_var}.typ', variant)
-				c.stmts(mut node.stmts)
-			}
+			c.comptime.inside_comptime_for = true
+			c.comptime.comptime_for_variant_var = node.val_var
+			c.type_resolver.update_ct_type(node.val_var, c.variant_data_type)
+			c.type_resolver.update_ct_type('${node.val_var}.typ', variant)
+			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}
 	} else {
