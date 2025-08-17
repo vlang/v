@@ -55,11 +55,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				if comptime_if_multi_pass_branch {
 					comptime_if_has_multi_pass_branch = true
 				}
-				if !comptime_if_result && !comptime_if_has_multi_pass_branch
-					&& comptime_if_found_branch {
-					// when curr cond is false, single pass branchs, and already has a true branch:
-					// remove following branchs' stmts
-					comptime_if_multi_pass_branch = false
+				if !comptime_if_has_multi_pass_branch && comptime_if_found_branch {
+					// when all prev branchs are single pass branchs, and already has a true branch:
+					// remove following branchs' stmts by overwrite `comptime_if_result`
+					comptime_if_result = false
 				}
 			} else {
 				// check condition type is boolean
