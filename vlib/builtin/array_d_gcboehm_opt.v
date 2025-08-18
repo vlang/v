@@ -125,6 +125,7 @@ fn (mut a array) ensure_cap_noscan(required int) {
 		unsafe { vmemcpy(new_data, a.data, u64(a.len) * u64(a.element_size)) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 	}
+	a.offset += a.element_size
 	a.data = new_data
 	a.offset = 0
 	a.cap = int(cap)

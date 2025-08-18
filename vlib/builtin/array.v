@@ -549,6 +549,7 @@ pub fn (mut a array) shift() voidptr {
 	unsafe {
 		a.data = &u8(a.data) + u64(a.element_size)
 	}
+	a.offset += a.element_size
 	a.len--
 	a.cap--
 	return first_elem
