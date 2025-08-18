@@ -535,7 +535,6 @@ pub fn (a array) last() voidptr {
 // dump(b) // b: [1, 2, 3, 4, 5]
 // assert b.len == 5
 //
-// // Detached element still accessible via pointer
 // assert first == 1
 //
 // // Modifications affect both array and slice views
