@@ -221,14 +221,11 @@ fn (mut a array) shift_noscan() voidptr {
 	if a.len == 0 {
 		panic('array.shift: array is empty')
 	}
-	new_len := a.len - 1
 	first_elem := a.data
-	if new_len > 0 {
-		unsafe {
-			a.data = &u8(a.data) + u64(a.element_size)
-		}
+	unsafe {
+		a.data = &u8(a.data) + u64(a.element_size)
 	}
-	a.len = new_len
+	a.len--
 	a.cap--
 	return unsafe { memdup_noscan(first_elem, a.element_size) }
 }

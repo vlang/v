@@ -1211,6 +1211,12 @@ fn test_array_int_shift() {
 	a[0] = 100
 	// NOTE: update a[0] also update b[2]
 	assert b == [1, 2, 100, 4, 5]
+
+	mut one_elem := [1]
+	one := one_elem.shift()
+	assert one_elem.len == 0
+	assert one_elem.cap == 0
+	assert one == 1
 }
 
 fn test_array_string_shift() {
