@@ -1,0 +1,21 @@
+vlib/v/checker/tests/struct_not_init_err.vv:11:7: error: `Data` must be initialized
+    9 |
+   10 | fn main() {
+   11 |     _ := Data
+      |          ~~~~
+   12 |     _ := DataCollection
+   13 |     _ := ast.Type
+vlib/v/checker/tests/struct_not_init_err.vv:12:7: error: `DataCollection` must be initialized
+   10 | fn main() {
+   11 |     _ := Data
+   12 |     _ := DataCollection
+      |          ~~~~~~~~~~~~~~
+   13 |     _ := ast.Type
+   14 |     // _ := gui.Animate // for vpm mod
+vlib/v/checker/tests/struct_not_init_err.vv:13:11: error: `v.ast.Type` must be initialized
+   11 |     _ := Data
+   12 |     _ := DataCollection
+   13 |     _ := ast.Type
+      |              ~~~~
+   14 |     // _ := gui.Animate // for vpm mod
+   15 | }

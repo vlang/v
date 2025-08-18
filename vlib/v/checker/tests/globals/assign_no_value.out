@@ -1,5 +1,5 @@
-vlib/v/checker/tests/globals/assign_no_value.vv:2:9: error: undefined ident: `int`
+vlib/v/checker/tests/globals/assign_no_value.vv:2:9: error: undefined ident: `int_i`
     1 | __global (
-    2 |     test = int
-      |            ~~~
+    2 |     test = int_i
+      |            ~~~~~
     3 | )
