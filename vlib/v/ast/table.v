@@ -19,6 +19,7 @@ pub mut:
 	arr_insert     bool            // arr.insert()
 	arr_first      bool            // arr.first()
 	arr_last       bool            // arr.last()
+	arr_shift      bool            // arr.shift()
 	arr_pop        bool            // arr.pop()
 	arr_delete     bool            // arr.delete()
 	arr_reverse    bool            // arr.reverse()
