@@ -442,8 +442,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if val.typ_key != '' {
 					val_type = g.type_resolver.get_ct_type_or_default(val.typ_key, var_type)
 				}
-			} else if val is ast.CallExpr {
+			} else if val is ast.CallExpr && val.return_type_generic.has_flag(.generic) {
 				g.assign_ct_type = g.comptime.comptime_for_field_type
+				val_type = var_type
 			}
 		} else if mut left is ast.IndexExpr && val is ast.ComptimeSelector {
 			if val.typ_key != '' {
