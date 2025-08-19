@@ -34,11 +34,15 @@ fn add_digit_array(operand_a []u64, operand_b []u64, mut sum []u64) {
 		for index in 0 .. operand_b.len {
 			sum[index] = operand_b[index]
 		}
+		shrink_tail_zeros(mut sum)
+		return
 	}
 	if operand_b.len == 0 {
 		for index in 0 .. operand_a.len {
 			sum[index] = operand_a[index]
 		}
+		shrink_tail_zeros(mut sum)
+		return
 	}
 
 	// First pass intersects with both operands
@@ -62,11 +66,8 @@ fn add_digit_array(operand_a []u64, operand_b []u64, mut sum []u64) {
 		carry = u64(partial >> digit_bits)
 	}
 
-	if carry == 0 {
-		sum.delete_last()
-	} else {
-		sum[larger_limit] = carry
-	}
+	sum[larger_limit] = carry
+	shrink_tail_zeros(mut sum)
 }
 
 // Subtracts operand_b from operand_a and stores the difference in storage.
