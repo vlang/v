@@ -1,21 +1,20 @@
-vlib/v/checker/tests/match_undefined_cond.vv:4:15: error: undefined ident: `Asd`
-    2 | 
-    3 | fn main() {
-    4 |     res := match Asd {
+vlib/v/checker/tests/match_undefined_cond.vv:2:15: error: undefined ident: `asd`
+    1 | fn main() {
+    2 |     res := match asd {
       |                  ~~~
-    5 |         1 { 'foo' }
-    6 |         2 { 'test' }
-vlib/v/checker/tests/match_undefined_cond.vv:5:3: error: cannot match `void` with `int literal`
-    3 | fn main() {
-    4 |     res := match Asd {
-    5 |         1 { 'foo' }
+    3 |         1 { 'foo' }
+    4 |         2 { 'test' }
+vlib/v/checker/tests/match_undefined_cond.vv:3:3: error: cannot match `void` with `int literal`
+    1 | fn main() {
+    2 |     res := match asd {
+    3 |         1 { 'foo' }
       |         ^
-    6 |         2 { 'test' }
-    7 |         else { '' }
-vlib/v/checker/tests/match_undefined_cond.vv:6:3: error: cannot match `void` with `int literal`
-    4 |     res := match Asd {
-    5 |         1 { 'foo' }
-    6 |         2 { 'test' }
+    4 |         2 { 'test' }
+    5 |         else { '' }
+vlib/v/checker/tests/match_undefined_cond.vv:4:3: error: cannot match `void` with `int literal`
+    2 |     res := match asd {
+    3 |         1 { 'foo' }
+    4 |         2 { 'test' }
       |         ^
-    7 |         else { '' }
-    8 |     }
+    5 |         else { '' }
+    6 |     }
