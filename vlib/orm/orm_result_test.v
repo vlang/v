@@ -61,6 +61,12 @@ fn test_print_results() {
 		insert account into Account
 	}!
 
+	i := sql db {
+		insert account into Account
+	}!
+
+	println(i)
+
 	count := sql db {
 		select count from Account
 	}!
