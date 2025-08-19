@@ -45,28 +45,25 @@ fn add_digit_array(operand_a []u64, operand_b []u64, mut sum []u64) {
 		return
 	}
 
-	// First pass intersects with both operands
-	smaller_limit := imin(operand_a.len, operand_b.len)
-	larger_limit := imax(operand_a.len, operand_b.len)
 	mut a, mut b := if operand_a.len >= operand_b.len {
 		operand_a, operand_b
 	} else {
 		operand_b, operand_a
 	}
 	mut carry := u64(0)
-	for index in 0 .. smaller_limit {
+	for index in 0 .. b.len {
 		partial := carry + a[index] + b[index]
-		sum[index] = u64(partial) & max_digit
-		carry = u64(partial >> digit_bits)
+		sum[index] = partial & max_digit
+		carry = partial >> digit_bits
 	}
 
-	for index in smaller_limit .. larger_limit {
+	for index in b.len .. a.len {
 		partial := carry + a[index]
-		sum[index] = u64(partial) & max_digit
-		carry = u64(partial >> digit_bits)
+		sum[index] = partial & max_digit
+		carry = partial >> digit_bits
 	}
 
-	sum[larger_limit] = carry
+	sum[a.len] = carry
 	shrink_tail_zeros(mut sum)
 }
 
