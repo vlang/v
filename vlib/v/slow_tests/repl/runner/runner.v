@@ -3,6 +3,8 @@ module runner
 import os
 import v.util.diff
 
+const is_vautofix = os.getenv('VAUTOFIX') != ''
+
 pub struct RunnerOptions {
 pub:
 	wd    string
@@ -62,6 +64,11 @@ pub fn run_repl_file(wd string, vexec string, file string) !string {
 	}
 	os.rm(input_temporary_filename)!
 	if result != output {
+		if is_vautofix {
+			new_content := input + '===output===\n' + r.output.trim_right('\n\r') + '\n'
+			os.write_file(file, new_content)!
+			eprintln('>>> fixed file: `${file}`, new_content.len: ${new_content.len}')
+		}
 		return diff_error(file, output, result)
 	}
 	return file.replace('./', '')

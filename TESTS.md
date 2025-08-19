@@ -80,6 +80,21 @@ Each `.c.must_have` file, consists of multiple lines. Each of these
 lines, *should* be present *at least once* in the output, when the .vv
 file is compiled with `-o -` .
 
+## REPL tests
+
+The test runner for these is `vlib/v/slow_tests/repl/repl_test.v`.
+
+The test cases for the V REPL, are stored in .repl files, in the folder
+`vlib/v/slow_tests/repl/`. Each .repl file in this folder, contains several
+lines of input to the V repl, followed by a single line of `===output===`,
+and then the output lines, that the repl would normally show for the input
+lines.
+
+If you change the compiler or the REPL source, and you have breaks in those
+.repl files, you can replace the current output in them, by running several
+times `VAUTOFIX=1 ./vlib/v/slow_tests/repl/repl_test.v`, until all the
+files are fixed and the test pass.
+
 ## `v vlib/v/slow_tests/run_project_folders_test.v`
 
 This *test runner*, checks whether whole project folders, can be compiled, and run.
