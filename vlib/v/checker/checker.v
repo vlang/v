@@ -4377,7 +4377,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						}
 					}
 				}
-				if !c.check_is_struct_name(node) {
+				c.check_known_struct_name(node) or {
 					c.error(util.new_suggestion(node.name, const_names_in_mod).say('undefined ident: `${node.name}`'),
 						node.pos)
 				}
@@ -4400,7 +4400,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					}
 				}
 
-				if !c.check_is_struct_name(node) {
+				c.check_known_struct_name(node) or {
 					c.error('undefined ident: `${node.name}`', node.pos)
 				}
 			}
@@ -4409,7 +4409,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	return ast.void_type
 }
 
-fn (mut c Checker) check_is_struct_name(ident ast.Ident) bool {
+fn (mut c Checker) check_known_struct_name(ident ast.Ident) ? {
 	mut is_struct := false
 	if ident.mod == 'builtin' || ident.mod == 'main' {
 		is_struct = c.table.find_type(ident.name) != 0
@@ -4421,9 +4421,9 @@ fn (mut c Checker) check_is_struct_name(ident ast.Ident) bool {
 	}
 	if is_struct {
 		c.error('`${ident.name}` must be initialized', ident.pos)
-		return true
+		return
 	}
-	return false
+	return none
 }
 
 fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
