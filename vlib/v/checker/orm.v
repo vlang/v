@@ -190,16 +190,12 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	}
 	c.expr(mut node.db_expr)
 	if node.is_insert {
-		node.typ = ast.int_type
+		node.typ = ast.int_type.set_flag(.result)
 	}
 	last_cur_or_expr := c.cur_or_expr
 	c.cur_or_expr = &node.or_expr
 	c.check_orm_or_expr(mut node)
 	c.cur_or_expr = last_cur_or_expr
-
-	if node.is_insert {
-		return ast.int_type
-	}
 
 	return node.typ.clear_flag(.result)
 }
