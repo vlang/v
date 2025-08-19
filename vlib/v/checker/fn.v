@@ -3506,13 +3506,13 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		node.return_type = ast.int_type
-	} else if method_name in ['first', 'last', 'pop'] {
+	} else if method_name in ['first', 'last', 'pop_left', 'pop'] {
 		c.markused_array_method(!c.is_builtin_mod, method_name)
 		if node_args_len != 0 {
 			c.error('`.${method_name}()` does not have any arguments', arg0.pos)
 		}
 		node.return_type = array_info.elem_type
-		if method_name == 'pop' {
+		if method_name in ['pop_left', 'pop'] {
 			c.check_for_mut_receiver(mut node.left)
 			node.receiver_type = node.left_type.ref()
 		} else {

@@ -511,6 +511,50 @@ pub fn (a array) last() voidptr {
 	}
 }
 
+// pop_left returns the first element of the array and removes it by advancing the data pointer.
+// If the `array` is empty, this will panic.
+// NOTE: This function:
+//   - Reduces both length and capacity by 1
+//   - Advances the underlying data pointer by one element
+//   - Leaves subsequent elements in-place (no memory copying)
+// Sliced views will retain access to the original first element position,
+// which is now detached from the array's active memory range.
+//
+// Example:
+// ```v
+// mut a := [1, 2, 3, 4, 5]
+// b := unsafe { a[..5] } // full slice view
+// first := a.pop_left()
+//
+// // Array now starts from second element
+// dump(a) // a: [2, 3, 4, 5]
+// assert a.len == 4
+// assert a.cap == 4
+//
+// // Slice retains original memory layout
+// dump(b) // b: [1, 2, 3, 4, 5]
+// assert b.len == 5
+//
+// assert first == 1
+//
+// // Modifications affect both array and slice views
+// a[0] = 99
+// assert b[1] == 99  // changed in both
+// ```
+pub fn (mut a array) pop_left() voidptr {
+	if a.len == 0 {
+		panic('array.pop_left: array is empty')
+	}
+	first_elem := a.data
+	unsafe {
+		a.data = &u8(a.data) + u64(a.element_size)
+	}
+	a.offset += a.element_size
+	a.len--
+	a.cap--
+	return first_elem
+}
+
 // pop returns the last element of the array, and removes it.
 // If the `array` is empty, this will panic.
 // NOTE: this function reduces the length of the given array,

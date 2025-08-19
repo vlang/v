@@ -319,7 +319,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		}
 
 		if node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last',
-			'pop', 'clone', 'reverse', 'slice', 'pointers'] {
+			'pop_left', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
 			if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
 				// `array_Xyz_clone` => `array_clone`
 				receiver_type_name = 'array'

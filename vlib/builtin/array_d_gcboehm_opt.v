@@ -216,6 +216,21 @@ fn (mut a array) prepend_many_noscan(val voidptr, size int) {
 	unsafe { a.insert_many_noscan(0, val, size) }
 }
 
+// pop_left returns the first element of the array and removes it by advancing the data pointer.
+fn (mut a array) pop_left_noscan() voidptr {
+	if a.len == 0 {
+		panic('array.pop_left: array is empty')
+	}
+	first_elem := a.data
+	unsafe {
+		a.data = &u8(a.data) + u64(a.element_size)
+	}
+	a.offset += a.element_size
+	a.len--
+	a.cap--
+	return unsafe { memdup_noscan(first_elem, a.element_size) }
+}
+
 // pop returns the last element of the array, and removes it.
 fn (mut a array) pop_noscan() voidptr {
 	// in a sense, this is the opposite of `a << x`

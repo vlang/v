@@ -201,6 +201,9 @@ fn (mut c Checker) markused_array_method(check bool, method_name string) {
 		'last' {
 			c.table.used_features.arr_last = true
 		}
+		'pop_left' {
+			c.table.used_features.arr_pop_left = true
+		}
 		'pop' {
 			c.table.used_features.arr_pop = true
 		}
