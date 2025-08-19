@@ -511,7 +511,7 @@ pub fn (a array) last() voidptr {
 	}
 }
 
-// shift returns the first element of the array and removes it by advancing the data pointer.
+// pop_left returns the first element of the array and removes it by advancing the data pointer.
 // If the `array` is empty, this will panic.
 // NOTE: This function:
 //   - Reduces both length and capacity by 1
@@ -524,7 +524,7 @@ pub fn (a array) last() voidptr {
 // ```v
 // mut a := [1, 2, 3, 4, 5]
 // b := unsafe { a[..5] } // full slice view
-// first := a.shift()
+// first := a.pop_left()
 //
 // // Array now starts from second element
 // dump(a) // a: [2, 3, 4, 5]
@@ -541,9 +541,9 @@ pub fn (a array) last() voidptr {
 // a[0] = 99
 // assert b[1] == 99  // changed in both
 // ```
-pub fn (mut a array) shift() voidptr {
+pub fn (mut a array) pop_left() voidptr {
 	if a.len == 0 {
-		panic('array.shift: array is empty')
+		panic('array.pop_left: array is empty')
 	}
 	first_elem := a.data
 	unsafe {

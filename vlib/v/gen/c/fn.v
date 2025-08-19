@@ -1207,15 +1207,15 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			g.expr(node.args[0].expr)
 			g.write(')')
 		}
-		'first', 'last', 'shift', 'pop' {
+		'first', 'last', 'pop_left', 'pop' {
 			mut noscan := ''
 			array_info := left_sym.info as ast.Array
-			if node.name in ['shift', 'pop'] {
+			if node.name in ['pop_left', 'pop'] {
 				noscan = g.check_noscan(array_info.elem_type)
 			}
 			return_type_str := g.styp(node.return_type)
 			g.write('(*(${return_type_str}*)array_${node.name}${noscan}(')
-			if node.name in ['shift', 'pop'] {
+			if node.name in ['pop_left', 'pop'] {
 				g.gen_arg_from_type(left_type, node.left)
 			} else {
 				if node.left_type.is_ptr() {
@@ -1475,7 +1475,7 @@ fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.T
 		receiver_type_name = 'map'
 	}
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
-		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'push_many', 'trim', 'first', 'last', 'shift', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
+		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'push_many', 'trim', 'first', 'last', 'pop_left', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
 		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
 			// `array_Xyz_clone` => `array_clone`
 			receiver_type_name = 'array'

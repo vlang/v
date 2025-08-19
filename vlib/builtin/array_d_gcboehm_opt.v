@@ -216,10 +216,10 @@ fn (mut a array) prepend_many_noscan(val voidptr, size int) {
 	unsafe { a.insert_many_noscan(0, val, size) }
 }
 
-// shift returns the first element of the array and removes it by advancing the data pointer.
-fn (mut a array) shift_noscan() voidptr {
+// pop_left returns the first element of the array and removes it by advancing the data pointer.
+fn (mut a array) pop_left_noscan() voidptr {
 	if a.len == 0 {
-		panic('array.shift: array is empty')
+		panic('array.pop_left: array is empty')
 	}
 	first_elem := a.data
 	unsafe {

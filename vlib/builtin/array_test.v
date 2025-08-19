@@ -1197,36 +1197,36 @@ fn test_reverse_in_place() {
 	assert c == [[5, 6], [3, 4], [1, 2]]
 }
 
-fn test_array_int_shift() {
+fn test_array_int_pop_left() {
 	mut a := [1, 2, 3, 4, 5]
 	b := unsafe { a[..5] } // full slice view
 	assert a.len == 5
 	first := a[0]
-	x := a.shift()
+	x := a.pop_left()
 	assert first == x
 	assert a.len == 4
 	assert a.cap == 4
-	y := a.shift()
+	y := a.pop_left()
 	assert y == 2
 	a[0] = 100
 	// NOTE: update a[0] also update b[2]
 	assert b == [1, 2, 100, 4, 5]
 
 	mut one_elem := [1]
-	one := one_elem.shift()
+	one := one_elem.pop_left()
 	assert one_elem.len == 0
 	assert one_elem.cap == 0
 	assert one == 1
 }
 
-fn test_array_string_shift() {
+fn test_array_string_pop_left() {
 	mut a := ['abc', 'def', 'xyz']
 	assert a.len == 3
 	x := a.first()
-	y := a.shift()
+	y := a.pop_left()
 	assert x == y
-	assert a.shift() == 'def'
-	assert a.shift() == 'xyz'
+	assert a.pop_left() == 'def'
+	assert a.pop_left() == 'xyz'
 	assert a.len == 0
 	assert a.cap == 0
 }
