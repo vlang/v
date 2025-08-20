@@ -33,6 +33,12 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	defer {
 		c.inside_return = prev_inside_return
 	}
+
+	// check `defer_stmts` in return, to ensure the same behavior with `cgen`
+	for i := c.table.cur_fn.defer_stmts.len - 1; i >= 0; i-- {
+		c.stmts(mut c.table.cur_fn.defer_stmts[i].stmts)
+	}
+
 	c.expected_type = c.table.cur_fn.return_type
 	mut expected_type := c.unwrap_generic(c.expected_type)
 	if expected_type != 0 && c.table.sym(expected_type).kind == .alias {
