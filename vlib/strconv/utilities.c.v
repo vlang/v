@@ -23,24 +23,24 @@ f64 to string with string format
 */
 
 // TODO: Investigate precision issues
-// f32_to_str_l returns `f` as a `string` in decimal notation with a maximum of 6 digits after the dot.
-//
-// Example: assert strconv.f32_to_str_l(34.1234567) == '34.12346'
+// f32_to_str_l returns `f` as a `string` in decimal notation with a maximum of 8 digits after the dot.
+// Example: assert strconv.f32_to_str_l(0.1234567891) == '0.12345679'
+// Example: assert strconv.f32_to_str_l(34.1234567891) == '34.123455'
 @[manualfree]
 pub fn f32_to_str_l(f f32) string {
-	s := f32_to_str(f, 6)
+	s := f32_to_str(f, 8)
 	res := fxx_to_str_l_parse(s)
 	unsafe { s.free() }
 	return res
 }
 
-// f32_to_str_l_with_dot returns `f` as a `string` in decimal notation with a maximum of 6 digits after the dot.
+// f32_to_str_l_with_dot returns `f` as a `string` in decimal notation with a maximum of 8 digits after the dot.
 // If the decimal digits after the dot are zero, a '.0' is appended for clarity.
 //
 // Example: assert strconv.f32_to_str_l_with_dot(34.) == '34.0'
 @[manualfree]
 pub fn f32_to_str_l_with_dot(f f32) string {
-	s := f32_to_str(f, 6)
+	s := f32_to_str(f, 8)
 	res := fxx_to_str_l_parse_with_dot(s)
 	unsafe { s.free() }
 	return res

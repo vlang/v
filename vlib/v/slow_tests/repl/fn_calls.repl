@@ -4,7 +4,7 @@ fn test() { println('foo') } fn test2(a int) { println(a) }
 test()
 test2(123)
 ===output===
--0.2623749
+-0.26237485
 0.7376251
 foo
 123
