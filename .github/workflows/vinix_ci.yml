@@ -32,6 +32,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          .github/workflows/disable_azure_mirror.sh
           v retry -- sudo apt update
           v retry -- sudo apt install build-essential -y
 
