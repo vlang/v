@@ -851,7 +851,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				if mut init_field.expr is ast.CallExpr
 					&& init_field.expr.return_type.has_flag(.generic) {
 					expected_type := c.unwrap_generic(init_field.expected_type)
-					got_type_ret := c.unwrap_generic(init_field.expr.return_type)
+					mut got_type_ret := c.unwrap_generic(init_field.expr.return_type)
+					if init_field.expr.or_block.kind != .absent {
+						got_type_ret = got_type_ret.clear_option_and_result()
+					}
 					if expected_type != got_type_ret {
 						c.error('cannot assign `${c.table.type_to_str(got_type_ret)}` to struct field `${init_field.name}` with type `${c.table.type_to_str(expected_type)}`',
 							init_field.expr.pos)
