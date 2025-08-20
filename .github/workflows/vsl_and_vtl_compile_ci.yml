@@ -38,6 +38,7 @@ jobs:
       - name: Install dependencies
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
+          .github/workflows/disable_azure_mirror.sh
           v retry -- sudo apt -qq update
           v retry -- sudo apt -qq install \
             libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev \
@@ -72,6 +73,7 @@ jobs:
       - name: Install dependencies
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
+            .github/workflows/disable_azure_mirror.sh
             v retry -- sudo apt -qq update
             v retry -- sudo apt -qq install \
               libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev

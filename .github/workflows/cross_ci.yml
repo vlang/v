@@ -65,6 +65,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update -y -qq
           ./v retry -- sudo apt install --quiet -y mingw-w64 wine wine64 winetricks libssl-dev sqlite3 libsqlite3-dev
 

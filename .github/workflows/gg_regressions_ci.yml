@@ -44,6 +44,7 @@ jobs:
           # libxcursor-dev libxi-dev : V gfx deps
           # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install imagemagick openimageio-tools libgl1-mesa-dri xvfb libxcursor-dev libxi-dev libxrandr-dev freeglut3-dev xsel xclip
           ./v retry -- ./v download https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh

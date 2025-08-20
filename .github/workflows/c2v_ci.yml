@@ -50,6 +50,7 @@ jobs:
       - name: Install dependencies
         run: |
           if [ "${{ runner.os }}" == "Linux" ]; then
+            .github/workflows/disable_azure_mirror.sh
             v retry -- sudo apt update -y -qq
             v retry -- sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
           else
@@ -93,6 +94,7 @@ jobs:
           v -g ~/.vmodules/c2v/ || true
       - name: Install dependencies
         run: |
+          .github/workflows/disable_azure_mirror.sh		  
           v retry -- sudo apt update -y -qq
           v retry -- sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
           # c2v / DOOM dependencies

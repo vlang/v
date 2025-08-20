@@ -95,6 +95,7 @@ jobs:
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
+          .github/workflows/disable_azure_mirror.sh		
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -124,6 +125,7 @@ jobs:
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
+          .github/workflows/disable_azure_mirror.sh		
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -153,6 +155,7 @@ jobs:
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
+          .github/workflows/disable_azure_mirror.sh		
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -209,6 +212,7 @@ jobs:
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
+          .github/workflows/disable_azure_mirror.sh		
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -239,6 +243,7 @@ jobs:
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
+          .github/workflows/disable_azure_mirror.sh		
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev

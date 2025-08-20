@@ -36,6 +36,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          .github/workflows/disable_azure_mirror.sh		
           v retry 'sudo apt update'
           v retry 'sudo apt install -y libsdl2-dev libsdl2-ttf-dev'
           v retry 'sudo apt install -y libsdl2-mixer-dev libsdl2-image-dev'
