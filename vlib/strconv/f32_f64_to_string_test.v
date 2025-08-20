@@ -192,3 +192,15 @@ fn test_issue_25141_4() {
 fn test_issue_25141_5() {
 	assert strconv.f32_to_str_l(math.f32_from_bits(1055100475)) == '0.4444445'
 }
+
+fn test_issue_25141_0001() {
+	assert strconv.f32_to_str_l(math.f32_from_bits(953267991)) == '0.0001'
+	assert strconv.f32_to_str_l(math.f32_from_bits(953267992)) == '0.000100000005'
+	assert strconv.f32_to_str_l(math.f32_from_bits(953267993)) == '0.00010000001'
+	assert strconv.f32_to_str_l(math.f32_from_bits(953267994)) == '0.00010000002'
+	assert strconv.f32_to_str_l(math.f32_from_bits(953267995)) == '0.00010000003'
+	assert strconv.f32_to_str_l(math.f32_from_bits(953267996)) == '0.000100000034'
+	assert strconv.f32_to_str_l(math.f32_from_bits(953267997)) == '0.00010000004'
+	assert strconv.f32_to_str_l(math.f32_from_bits(953267998)) == '0.00010000005'
+	assert strconv.f32_to_str_l(math.f32_from_bits(953267999)) == '0.000100000056'
+}
