@@ -82,27 +82,21 @@ fn subtract_digit_array(operand_a []u64, operand_b []u64, mut storage []u64) {
 		for index in 0 .. operand_a.len {
 			storage[index] = operand_a[index]
 		}
+		return
 	}
 
-	mut carry := false
+	mut borrow := u64(0)
 	for index in 0 .. operand_b.len {
-		mut a_digit := operand_a[index]
-		b_digit := operand_b[index] + if carry { u64(1) } else { u64(0) }
-		carry = a_digit < b_digit
-		if carry {
-			a_digit = a_digit | (u64(1) << digit_bits)
-		}
-		storage[index] = a_digit - b_digit
+		a := operand_a[index]
+		b := operand_b[index] + borrow
+		diff := a - b
+		borrow = (diff >> digit_bits) & 1
+		storage[index] = diff + (borrow << digit_bits)
 	}
-
 	for index in operand_b.len .. operand_a.len {
-		mut a_digit := operand_a[index]
-		b_digit := if carry { u64(1) } else { u64(0) }
-		carry = a_digit < b_digit
-		if carry {
-			a_digit = a_digit | (u64(1) << digit_bits)
-		}
-		storage[index] = a_digit - b_digit
+		diff := operand_a[index] - borrow
+		borrow = (diff >> digit_bits) & 1
+		storage[index] = diff + (borrow << digit_bits)
 	}
 
 	shrink_tail_zeros(mut storage)
