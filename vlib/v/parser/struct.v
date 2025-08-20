@@ -799,7 +799,10 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 			if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 				method.return_type_pos = p.tok.pos()
+				last_inside_return := p.inside_fn_return
+				p.inside_fn_return = true
 				method.return_type = p.parse_type()
+				p.inside_fn_return = last_inside_return
 				method.return_type_pos = method.return_type_pos.extend(p.tok.pos())
 				method.pos = method.pos.extend(method.return_type_pos)
 			}
