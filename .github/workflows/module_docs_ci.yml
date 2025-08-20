@@ -37,8 +37,7 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Update packages, before running apt install
-        .github/workflows/disable_azure_mirror.sh
-        run: v retry -- sudo apt update -y -qq
+        run: .github/workflows/disable_azure_mirror.sh && v retry -- sudo apt update -y -qq
       - name: Install dependencies (some modules wrap C libs)
         run: v retry -- sudo apt install --quiet -y libpq-dev
           libsodium-dev libasound2-dev libssl-dev \
