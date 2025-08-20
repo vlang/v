@@ -172,3 +172,23 @@ fn test_float_to_str() {
 	// assert ftoa.f64_to_str(0.3456789123456, 4)=="3.4568e-01"
 	// assert ftoa.f32_to_str(0.345678, 3)=="3.457e-01"
 }
+
+fn test_issue_25141_1() {
+	assert strconv.ftoa_long_32(0.1234567901) == '0.12345679'
+}
+
+fn test_issue_25141_2() {
+	assert strconv.f32_to_str_l(math.f32_from_bits(1055100472)) == '0.44444442'
+}
+
+fn test_issue_25141_3() {
+	assert strconv.f32_to_str_l(math.f32_from_bits(1055100473)) == '0.44444445'
+}
+
+fn test_issue_25141_4() {
+	assert strconv.f32_to_str_l(math.f32_from_bits(1055100474)) == '0.44444448'
+}
+
+fn test_issue_25141_5() {
+	assert strconv.f32_to_str_l(math.f32_from_bits(1055100475)) == '0.4444445'
+}
