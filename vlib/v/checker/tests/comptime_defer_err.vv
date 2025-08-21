@@ -1,0 +1,23 @@
+module main
+
+struct Struct {
+	s string
+	i int
+}
+
+fn main() {
+	tst := Struct{
+		s: 'tst-s'
+		i: 42
+	}
+
+	$for field in Struct.fields {
+		$if field.typ is string {
+			defer {
+				if tst.$(field.name) == 'tst-s' {
+					println('found tst-s')
+				}
+			}
+		}
+	}
+}
