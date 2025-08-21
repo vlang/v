@@ -94,6 +94,7 @@ pub mut:
 	anon_struct_counter int
 	anon_union_names    map[string]int // anon union name -> union sym idx
 	anon_union_counter  int
+	comptime_is_true    map[string]bool // The evaluate cond results for different generic types combination, such as `comptime_is_true['T=int,X=string|main.v|pos ...'] = true`
 }
 
 // used by vls to avoid leaks

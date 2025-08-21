@@ -256,7 +256,11 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		node.typ = c.expr(mut node.expr)
 		c.unwrap_generic(node.typ)
 	}
-	sym := c.table.final_sym(typ)
+	sym := if node.typ != c.field_data_type {
+		c.table.final_sym(typ)
+	} else {
+		c.table.final_sym(c.comptime.comptime_for_field_type)
+	}
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
 		c.error('\$for expects a type name or variable name to be used here, but ${sym.name} is not a type or variable name',
 			node.typ_pos)

@@ -313,6 +313,59 @@ fn (mut g Gen) comptime_at(node ast.AtExpr) {
 	}
 }
 
+// gen_branch_context_string generate current branches context string.
+// context include generic types, `$for`.
+fn (mut g Gen) gen_branch_context_string() string {
+	mut arr := []string{}
+
+	// gen `T=int,X=string`
+	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
+		&& g.cur_fn.generic_names.len == g.cur_concrete_types.len {
+		for i in 0 .. g.cur_fn.generic_names.len {
+			arr << g.cur_fn.generic_names[i] + '=' +
+				util.strip_main_name(g.table.type_to_str(g.cur_concrete_types[i]))
+		}
+	}
+
+	// gen comptime `$for`
+	if g.comptime.inside_comptime_for {
+		// variants
+		if g.comptime.comptime_for_variant_var.len > 0 {
+			variant := g.table.type_to_str(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
+				ast.no_type))
+			arr << g.comptime.comptime_for_variant_var + '.typ=' + variant
+		}
+		// fields
+		if g.comptime.comptime_for_field_var.len > 0 {
+			arr << g.comptime.comptime_for_field_var + '.name=' +
+				g.comptime.comptime_for_field_value.name
+		}
+		// values
+		if g.comptime.comptime_for_enum_var.len > 0 {
+			enum_var := g.table.type_to_str(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_enum_var}.typ',
+				ast.void_type))
+			arr << g.comptime.comptime_for_enum_var + '.typ=' + enum_var
+		}
+		// attributes
+		if g.comptime.comptime_for_attr_var.len > 0 {
+			arr << g.comptime.comptime_for_attr_var + '.name=' +
+				g.comptime.comptime_for_attr_value.name
+		}
+		// methods
+		if g.comptime.comptime_for_method_var.len > 0 {
+			arr << g.comptime.comptime_for_method_var + '.name=' +
+				g.comptime.comptime_for_method.name
+		}
+		// args
+		if g.comptime.comptime_for_method_param_var.len > 0 {
+			arg_var := g.table.type_to_str(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_method_param_var}.typ',
+				ast.void_type))
+			arr << g.comptime.comptime_for_method_param_var + '.typ=' + arg_var
+		}
+	}
+	return arr.join(',')
+}
+
 fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	if !node.is_expr && !node.has_else && node.branches.len == 1 {
 		if node.branches[0].stmts.len == 0 {
@@ -346,32 +399,46 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	} else {
 		''
 	}
-	mut comptime_if_stmts_skip := false // don't write any statements if the condition is false
-	// (so that for example windows calls don't get generated inside `$if macos` which
-	// will lead to compilation errors)
-	mut comptime_may_skip_else := false
 
+	mut comptime_branch_context_str := g.gen_branch_context_string()
+	mut is_true := false
 	for i, branch in node.branches {
 		start_pos := g.out.len
-		if comptime_may_skip_else {
-			continue // if we already have a known true, ignore other branches
-		}
-		if i == node.branches.len - 1 && node.has_else {
-			g.writeln('#else')
-			comptime_if_stmts_skip = comptime_may_skip_else
+		// `idx_str` is composed of two parts:
+		// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
+		// The second part indicates the branch's location in the source file.
+		// This format must match what is in `checker`.
+		idx_str := comptime_branch_context_str + '|${g.file.path}|${branch.pos}|'
+		if comptime_is_true := g.table.comptime_is_true[idx_str] {
+			// `g.table.comptime_is_true` are the branch condition results set by `checker`
+			is_true = comptime_is_true
 		} else {
+			g.error('checker error: condition result idx string not found => [${idx_str}]',
+				node.branches[i].cond.pos())
+			return
+		}
+		if !node.has_else || i < node.branches.len - 1 {
 			if i == 0 {
 				g.write('#if ')
 			} else {
 				g.write('#elif ')
 			}
-			comptime_if_stmts_skip, comptime_may_skip_else = g.comptime_if_cond(branch.cond,
-				branch.pkg_exist)
-			if !comptime_if_stmts_skip && comptime_may_skip_else {
-				comptime_may_skip_else = false // if the cond is false, not skip else branch
+			if g.pref.output_cross_c {
+				// generate full `if defined` in cross mode
+				pos := g.out.len
+				g.comptime_if_cond(branch.cond, true)
+				cond_str := g.out.cut_to(pos).trim_space()
+				g.writeln(cond_str)
+			} else {
+				// directly use `checker` evaluate results
+				if is_true {
+					g.writeln('1\t/* ${node.branches[i].cond} | generic=[${comptime_branch_context_str}] */')
+				} else {
+					g.writeln('0\t/* ${node.branches[i].cond} | generic=[${comptime_branch_context_str}] */')
+				}
 			}
-			comptime_if_stmts_skip = !comptime_if_stmts_skip
-			g.writeln('')
+		} else {
+			g.writeln('#else')
 		}
 		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
 		if expr_str != '' {
@@ -430,7 +497,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			if should_create_scope {
 				g.writeln('{')
 			}
-			if !comptime_if_stmts_skip {
+			if is_true {
 				g.stmts(branch.stmts)
 			}
 			if should_create_scope {
@@ -847,6 +914,8 @@ fn (mut g Gen) push_new_comptime_info() {
 		comptime_for_field_type:      g.comptime.comptime_for_field_type
 		comptime_for_field_value:     g.comptime.comptime_for_field_value
 		comptime_for_enum_var:        g.comptime.comptime_for_enum_var
+		comptime_for_attr_var:        g.comptime.comptime_for_attr_var
+		comptime_for_attr_value:      g.comptime.comptime_for_attr_value
 		comptime_for_method_var:      g.comptime.comptime_for_method_var
 		comptime_for_method:          g.comptime.comptime_for_method
 		comptime_for_method_ret_type: g.comptime.comptime_for_method_ret_type
@@ -864,6 +933,8 @@ fn (mut g Gen) pop_comptime_info() {
 	g.comptime.comptime_for_field_type = old.comptime_for_field_type
 	g.comptime.comptime_for_field_value = old.comptime_for_field_value
 	g.comptime.comptime_for_enum_var = old.comptime_for_enum_var
+	g.comptime.comptime_for_attr_var = old.comptime_for_attr_var
+	g.comptime.comptime_for_attr_value = old.comptime_for_attr_value
 	g.comptime.comptime_for_method_var = old.comptime_for_method_var
 	g.comptime.comptime_for_method = old.comptime_for_method
 	g.comptime.comptime_for_method_ret_type = old.comptime_for_method_ret_type
@@ -887,6 +958,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		typ_vweb_result := g.table.find_type('vweb.Result')
 		for method in methods {
 			g.push_new_comptime_info()
+			g.comptime.inside_comptime_for = true
 			// filter vweb route methods (non-generic method)
 			if method.receiver_type != 0 && method.return_type == typ_vweb_result {
 				rec_sym := g.table.sym(method.receiver_type)
@@ -902,7 +974,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			}
 			g.comptime.comptime_for_method = unsafe { &method }
 			g.comptime.comptime_for_method_var = node.val_var
-			g.writeln('/* method ${i} */ {')
+			g.writeln('/* method ${i} : ${method.name} */ {')
 			g.writeln('\t${node.val_var}.name = _S("${method.name}");')
 			if method.attrs.len == 0 {
 				g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
@@ -976,13 +1048,13 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			if fields.len > 0 {
 				g.writeln('\tFieldData ${node.val_var} = {0};')
 			}
-			g.push_new_comptime_info()
 			for field in fields {
+				g.push_new_comptime_info()
 				g.comptime.inside_comptime_for = true
 				g.comptime.comptime_for_field_var = node.val_var
 				g.comptime.comptime_for_field_value = field
 				g.comptime.comptime_for_field_type = field.typ
-				g.writeln('/* field ${i} */ {')
+				g.writeln('/* field ${i} : ${field.name} */ {')
 				g.writeln('\t${node.val_var}.name = _S("${field.name}");')
 				if field.attrs.len == 0 {
 					g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
@@ -1019,8 +1091,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.stmts(node.stmts)
 				i++
 				g.writeln('}')
+				g.pop_comptime_info()
 			}
-			g.pop_comptime_info()
 		}
 	} else if node.kind == .values {
 		if sym.kind == .enum {
@@ -1028,8 +1100,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				if sym.info.vals.len > 0 {
 					g.writeln('\tEnumData ${node.val_var} = {0};')
 				}
-				g.push_new_comptime_info()
 				for val in sym.info.vals {
+					g.push_new_comptime_info()
+					g.comptime.inside_comptime_for = true
 					g.comptime.comptime_for_enum_var = node.val_var
 					g.type_resolver.update_ct_type('${node.val_var}.typ', node.typ)
 
@@ -1053,8 +1126,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					g.stmts(node.stmts)
 					g.writeln('}')
 					i++
+					g.pop_comptime_info()
 				}
-				g.pop_comptime_info()
 			}
 		}
 	} else if node.kind == .attributes {
@@ -1063,7 +1136,11 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.writeln('\tVAttribute ${node.val_var} = {0};')
 
 			for attr in attrs {
-				g.writeln('/* attribute ${i} */ {')
+				g.push_new_comptime_info()
+				g.comptime.inside_comptime_for = true
+				g.comptime.comptime_for_attr_var = node.val_var
+				g.comptime.comptime_for_attr_value = attr
+				g.writeln('/* attribute ${i} : ${attr.name} */ {')
 				g.writeln('\t${node.val_var}.name = _S("${attr.name}");')
 				g.writeln('\t${node.val_var}.has_arg = ${attr.has_arg};')
 				g.writeln('\t${node.val_var}.arg = _S("${util.smart_quote(attr.arg, false)}");')
@@ -1071,6 +1148,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.stmts(node.stmts)
 				g.writeln('}')
 				i++
+				g.pop_comptime_info()
 			}
 		}
 	} else if node.kind == .variants {
@@ -1079,18 +1157,19 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\tVariantData ${node.val_var} = {0};')
 			}
 			g.comptime.inside_comptime_for = true
-			g.push_new_comptime_info()
 			for variant in sym.info.variants {
+				g.push_new_comptime_info()
+				g.comptime.inside_comptime_for = true
 				g.comptime.comptime_for_variant_var = node.val_var
 				g.type_resolver.update_ct_type('${node.val_var}.typ', variant)
 
-				g.writeln('/* variant ${i} */ {')
+				g.writeln('/* variant ${i} : ${g.table.type_to_str(variant)} */ {')
 				g.writeln('\t${node.val_var}.typ = ${int(variant)};')
 				g.stmts(node.stmts)
 				g.writeln('}')
 				i++
+				g.pop_comptime_info()
 			}
-			g.pop_comptime_info()
 		}
 	} else if node.kind == .params {
 		method := g.comptime.comptime_for_method
@@ -1098,20 +1177,20 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		if method.params.len > 0 {
 			g.writeln('\tMethodParam ${node.val_var} = {0};')
 		}
-		g.push_new_comptime_info()
-		g.comptime.inside_comptime_for = true
-		g.comptime.comptime_for_method_param_var = node.val_var
 		for param in method.params[1..] {
+			g.push_new_comptime_info()
+			g.comptime.inside_comptime_for = true
+			g.comptime.comptime_for_method_param_var = node.val_var
 			g.type_resolver.update_ct_type('${node.val_var}.typ', param.typ)
 
-			g.writeln('/* method param ${i} */ {')
+			g.writeln('/* method param ${i} : ${param.name} */ {')
 			g.writeln('\t${node.val_var}.typ = ${int(param.typ)};')
 			g.writeln('\t${node.val_var}.name = _S("${param.name}");')
 			g.stmts(node.stmts)
 			g.writeln('}')
 			i++
+			g.pop_comptime_info()
 		}
-		g.pop_comptime_info()
 	}
 	g.indent--
 	g.writeln('}// \$for')

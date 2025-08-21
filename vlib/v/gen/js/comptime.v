@@ -2,6 +2,22 @@ module js
 
 import v.ast
 
+fn (mut g JsGen) gen_cond_generic_string() string {
+	mut arr := []string{}
+
+	// gen `T=int,X=string`
+	if g.fn_decl != unsafe { nil } && g.fn_decl.generic_names.len > 0
+		&& g.fn_decl.generic_names.len == g.cur_concrete_types.len {
+		for i in 0 .. g.fn_decl.generic_names.len {
+			arr << g.fn_decl.generic_names[i] + '=' +
+				g.table.type_to_str(g.cur_concrete_types[i]).replace('main.', '')
+		}
+	}
+
+	// TODO: support comptime `$for`
+	return arr.join(',')
+}
+
 fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 	if !node.is_expr && !node.has_else && node.branches.len == 1 {
 		if node.branches[0].stmts.len == 0 {
@@ -10,7 +26,16 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 		}
 	}
 
+	mut comptime_generic_str := g.gen_cond_generic_string()
+	mut is_true := false
 	for i, branch in node.branches {
+		idx_str := comptime_generic_str + '|${g.file.path}|${branch.pos}|'
+		if comptime_is_true := g.table.comptime_is_true[idx_str] {
+			is_true = comptime_is_true
+		} else {
+			panic('checker error: cond result idx string not found => [${idx_str}]')
+			return
+		}
 		if i == node.branches.len - 1 && node.has_else {
 			g.writeln('else')
 		} else {
@@ -19,8 +44,11 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 			} else {
 				g.write('else if (')
 			}
-			g.comptime_if_cond(branch.cond, branch.pkg_exist)
-			g.writeln(')')
+			if is_true {
+				g.writeln('1)\t// ${node.branches[i].cond} generic=[${comptime_generic_str}]')
+			} else {
+				g.writeln('0)\t// ${node.branches[i].cond} generic=[${comptime_generic_str}]')
+			}
 		}
 
 		if node.is_expr {
@@ -45,7 +73,9 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 			}
 		} else {
 			g.writeln('{')
-			g.stmts(branch.stmts)
+			if is_true {
+				g.stmts(branch.stmts)
+			}
 			g.writeln('}')
 		}
 	}

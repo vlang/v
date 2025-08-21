@@ -1234,10 +1234,9 @@ pub:
 	body_pos token.Pos
 	comments []Comment
 pub mut:
-	cond      Expr
-	pkg_exist bool
-	stmts     []Stmt
-	scope     &Scope = unsafe { nil }
+	cond  Expr
+	stmts []Stmt
+	scope &Scope = unsafe { nil }
 }
 
 pub struct UnsafeExpr {
