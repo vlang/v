@@ -558,6 +558,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('missing return at end of function `${node.name}`', node.pos)
 		}
 	}
+	if !node.has_return {
+		// for `node.has_return`, checking in `return.v` `return_stmt`
+		old_inside_defer := c.inside_defer
+		c.inside_defer = true
+		for i := c.table.cur_fn.defer_stmts.len - 1; i >= 0; i-- {
+			c.stmts(mut c.table.cur_fn.defer_stmts[i].stmts)
+		}
+		c.inside_defer = old_inside_defer
+	}
+
 	node.source_file = c.file
 
 	if node.name in c.table.fns {
