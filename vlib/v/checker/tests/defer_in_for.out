@@ -5,3 +5,10 @@ vlib/v/checker/tests/defer_in_for.vv:4:4: error: `break` is not allowed in defer
       |             ~~~~~
     5 |         }
     6 |     }
+vlib/v/checker/tests/defer_in_for.vv:4:4: error: break statement not within a loop
+    2 |     for true {
+    3 |         defer {
+    4 |             break
+      |             ~~~~~
+    5 |         }
+    6 |     }
