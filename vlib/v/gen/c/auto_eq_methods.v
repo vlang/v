@@ -235,7 +235,14 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 				fn_builder.write_string('${eq_fn}_sumtype_eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .struct && !field.typ.is_ptr() {
 				eq_fn := g.gen_struct_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_struct_eq(${left_arg}, ${right_arg})')
+				if field_type.sym.struct_info().is_anon && !field.typ.has_flag(.option)
+					&& !field.typ.has_flag(.shared_f) {
+					styp := g.styp(field.typ)
+					fn_name_ := styp.replace('struct ', '')
+					fn_builder.write_string('${eq_fn}_struct_eq(*(${fn_name_}*)&(${left_arg}), *(${fn_name_}*)&(${right_arg}))')
+				} else {
+					fn_builder.write_string('${eq_fn}_struct_eq(${left_arg}, ${right_arg})')
+				}
 			} else if field_type.sym.kind == .array && !field.typ.is_ptr() {
 				eq_fn := g.gen_array_equality_fn(field.typ)
 				fn_builder.write_string('${eq_fn}_arr_eq(${left_arg}, ${right_arg})')

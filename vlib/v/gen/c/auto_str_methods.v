@@ -1194,6 +1194,13 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 			}
 			return '${fn_name}(${obj})', true
 		}
+		if sym.kind == .struct {
+			if sym.info is ast.Struct && sym.info.is_anon && !_field_type.has_flag(.option)
+				&& !_field_type.has_flag(.shared_f) {
+				typed_obj := '*(${sym.cname}*)&(${obj})'
+				return '${fn_name}(${typed_obj})', true
+			}
+		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
 	} else if sym.kind in [.array, .array_fixed, .map, .sum_type] {
 		obj := '${prefix}it${op}${final_field_name}${sufix}'
