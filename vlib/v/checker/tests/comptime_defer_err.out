@@ -1,0 +1,21 @@
+vlib/v/checker/tests/comptime_defer_err.vv:17:14: error: compile time field access can only be used when iterating over `T.fields`
+   15 |         $if field.typ is string {
+   16 |             defer {
+   17 |                 if tst.$(field.name) == 'tst-s' {
+      |                          ~~~~~
+   18 |                     println('found tst-s')
+   19 |                 }
+vlib/v/checker/tests/comptime_defer_err.vv:17:14: error: unknown `$for` variable `field`
+   15 |         $if field.typ is string {
+   16 |             defer {
+   17 |                 if tst.$(field.name) == 'tst-s' {
+      |                          ~~~~~
+   18 |                     println('found tst-s')
+   19 |                 }
+vlib/v/checker/tests/comptime_defer_err.vv:17:12: error: non-bool type `void` used as if condition
+   15 |         $if field.typ is string {
+   16 |             defer {
+   17 |                 if tst.$(field.name) == 'tst-s' {
+      |                        ~~~~~~~~~~~~~~~~~~~~~~~~
+   18 |                     println('found tst-s')
+   19 |                 }
