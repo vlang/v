@@ -188,6 +188,7 @@ Linux/macos:
 
 ```bash
 pkg install clang libexecinfo libgc libgc-static make git
+pkg update
 git clone --depth=1 https://github.com/vlang/v
 cd v
 make
