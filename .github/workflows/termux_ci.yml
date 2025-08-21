@@ -20,7 +20,7 @@ on:
 jobs:
   termux-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - name: Build and test in Termux
@@ -38,12 +38,12 @@ jobs:
             cp -r /src ~/vproject; cd ~/vproject
             touch inside_docker.txt
             ls -la
-            git log -n4
             echo "previous TERMUX_VERSION: $TERMUX_VERSION"
             export TERMUX_VERSION=0.118.3
             echo "explicit TERMUX_VERSION: $TERMUX_VERSION"
             .github/workflows/retry.sh pkg update -y
             .github/workflows/retry.sh pkg install -y clang libexecinfo libgc libgc-static make git
+            git log -n4
             VFLAGS="-cc cc" make
             ./v symlink
             v run examples/hello_world.v
