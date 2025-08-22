@@ -3388,7 +3388,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	//        node.expr_type: `Inside`
 	//        node.typ: `Outside`
 	mut to_type := c.unwrap_generic(node.typ)
-
+	if node.typ.has_flag(.generic) {
+		c.table.used_features.comptime_syms[to_type] = true
+	}
 	old_inside_integer_literal_cast := c.inside_integer_literal_cast
 	c.inside_integer_literal_cast = to_type.is_int() && node.expr is ast.IntegerLiteral
 	node.expr_type = c.expr(mut node.expr) // type to be casted
