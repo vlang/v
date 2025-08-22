@@ -1662,13 +1662,19 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 		}
 		ast.ComptimeCall {
 			if cond.kind == .pkgconfig {
-				mut m := pkgconfig.main([cond.args_var]) or {
+				if mut m := pkgconfig.main([cond.args_var]) {
+					if _ := m.run() {
+						is_true = true
+					} else {
+						// pkgconfig not found, do not issue error, just set false
+						is_true = false
+					}
+				} else {
 					c.error(err.msg(), cond.pos)
-					return false, true
+					is_true = false
 				}
-				m.run() or { return false, true }
-				sb.write_string('true')
-				return true, true
+				sb.write_string('${is_true}')
+				return is_true, true
 			}
 			if cond.kind == .d {
 				t := c.expr(mut cond)

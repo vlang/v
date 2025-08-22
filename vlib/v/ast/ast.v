@@ -2130,6 +2130,8 @@ pub fn (cc ComptimeCall) expr_str() string {
 		if arg.expr.is_pure_literal() {
 			str = "\$${cc.method_name}('${cc.args_var}', ${arg})"
 		}
+	} else if cc.kind == .pkgconfig {
+		str = "\$${cc.method_name}('${cc.args_var}')"
 	}
 	return str
 }
