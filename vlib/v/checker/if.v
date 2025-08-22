@@ -214,7 +214,15 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				// statements, in `-cross` mode
 				comptime_remove_curr_branch_stmts = false
 				c.skip_flags = false
-				c.ct_cond_stack << branch.cond
+				// hack: because `else` branch has no `cond`, so create an Ident, set the `pos`, for `hash_stmt()` work.
+				if branch.cond is ast.NodeError {
+					c.ct_cond_stack << ast.Ident{
+						name: '__else_branch__'
+						pos:  branch.pos
+					}
+				} else {
+					c.ct_cond_stack << branch.cond
+				}
 			}
 			if !c.skip_flags {
 				if node_is_expr {
