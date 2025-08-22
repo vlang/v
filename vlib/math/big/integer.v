@@ -1,8 +1,19 @@
 module big
 
+import math
 import math.bits
+import strings
 
 const digit_array = '0123456789abcdefghijklmnopqrstuvwxyz'.bytes()
+// vfmt off
+const radix_options = {
+	2: 59, 3: 37, 4: 29, 5: 25, 6: 23, 7: 21, 8: 19, 9: 18, 10: 18,
+	11: 17, 12: 16, 13: 16, 14: 15, 15: 15, 16: 14, 17: 14, 18: 14,
+	19: 14, 20: 13, 21: 13, 22: 13, 23: 13, 24: 13, 25: 12, 26: 12,
+	27: 12, 28: 12, 29: 12, 30: 12, 31: 12, 32: 11, 33: 11, 34: 11,
+	35: 11, 36: 11
+}
+// vfmt on
 pub const digit_bits = 60 // 60bits
 const max_digit = (u64(1) << digit_bits) - u64(1)
 // big.Integer
@@ -240,19 +251,32 @@ fn integer_from_regular_string(characters string, radix u32) Integer {
 
 	mut result := zero_int
 	radix_int := integer_from_u32(radix)
-
-	for index := start_index; index < characters.len; index++ {
-		digit := characters[index]
-		value := digit_array.index(digit)
-
-		result *= radix_int
-		result += integer_from_int(value)
+	pow := radix_options[int(radix)]
+	radix_pow := radix_int.pow(u32(pow))
+	for i := start_index; i < characters.len; i += pow {
+		end := math.min(i + pow, characters.len)
+		num_str := characters[i..end]
+		if num_str.len == pow {
+			result *= radix_pow
+		} else {
+			result *= radix_int.pow(u32(num_str.len))
+		}
+		result += integer_from_u64(regular_string_to_radix(num_str, radix))
 	}
 
 	return Integer{
 		digits: result.digits.clone()
 		signum: result.signum * signum
 	}
+}
+
+fn regular_string_to_radix(characters string, radix u32) u64 {
+	mut result := u64(0)
+
+	for c in characters {
+		result = result * radix + u64(digit_array.index(c))
+	}
+	return result
 }
 
 // abs returns the absolute value of the integer `a`.
@@ -822,37 +846,58 @@ pub fn (integer Integer) radix_str(radix u32) string {
 	if integer.signum == 0 || radix == 0 {
 		return '0'
 	}
-	return integer.general_radix_str(radix)
+	return integer.general_radix_str(int(radix))
 }
 
-fn (integer Integer) general_radix_str(radix u32) string {
+fn (integer Integer) general_radix_str(radix int) string {
 	$if debug {
 		assert radix != 0
 	}
-	divisor := integer_from_u32(radix)
+	divisor := integer_from_int(radix).pow(u32(radix_options[radix]))
 
 	mut current := integer.abs()
-	mut new_current := zero_int
 	mut digit := zero_int
-	mut rune_array := []rune{cap: current.digits.len * 4}
+	mut sb := strings.new_builder(integer.digits.len * radix_options[radix]) // XXX
+	mut st := []string{cap: integer.digits.len * radix_options[radix]}
 	for current.signum > 0 {
-		new_current, digit = current.div_mod_internal(divisor)
-		rune_array << digit_array[digit.int()]
-		unsafe { digit.free() }
-		unsafe { current.free() }
-		current = new_current
+		current, digit = current.div_mod_internal(divisor)
+		st << general_str(current, digit, radix)
 	}
 	if integer.signum == -1 {
-		rune_array << `-`
+		sb.write_string('-')
 	}
+	for st.len > 0 {
+		sb.write_string(st.pop())
+	}
+	return sb.str()
+}
 
-	rune_array.reverse_in_place()
-	return rune_array.string()
+fn general_str(quotient Integer, remainder Integer, radix int) string {
+	if quotient.signum == 0 && remainder.signum == 0 {
+		return '0'
+	}
+	divisor := integer_from_int(radix)
+
+	mut current := remainder.abs()
+	mut digit := zero_int
+	mut sb := strings.new_builder(radix_options[radix])
+	mut st := []u8{cap: radix_options[radix]}
+	for current.signum > 0 {
+		current, digit = current.div_mod_internal(divisor)
+		st << digit_array[digit.int()]
+	}
+	if quotient.signum > 0 {
+		sb.write_string(strings.repeat(48, radix_options[radix] - st.len))
+	}
+	for st.len > 0 {
+		sb.write_u8(st.pop())
+	}
+	return sb.str()
 }
 
 // str returns the decimal string representation of the integer `a`.
 pub fn (integer Integer) str() string {
-	return integer.radix_str(10)
+	return integer.radix_str(u32(10))
 }
 
 // int returns the integer value of the integer `a`.
