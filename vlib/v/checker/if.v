@@ -5,6 +5,7 @@ module checker
 import v.ast
 import v.token
 import v.util
+import strings
 
 // gen_branch_context_string generate current branches context string.
 // context include generic types, `$for`.
@@ -111,7 +112,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				// This format must match what is in `cgen`.
 				idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.pos}|'
 				c.comptime.inside_comptime_if = true
-				comptime_if_result, comptime_if_multi_pass_branch = c.comptime_if_cond(mut branch.cond)
+				mut sb := strings.new_builder(256)
+				comptime_if_result, comptime_if_multi_pass_branch = c.comptime_if_cond(mut branch.cond, mut
+					sb)
 				if comptime_if_multi_pass_branch {
 					comptime_if_has_multi_pass_branch = true
 				}
@@ -129,13 +132,16 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					comptime_remove_curr_branch_stmts = true
 				}
 				if old_val := c.table.comptime_is_true[idx_str] {
-					if old_val != comptime_if_result {
+					if old_val.val != comptime_if_result {
 						c.error('checker error : branch eval wrong', branch.pos)
 					}
 				}
 
 				// set `comptime_is_true` which can be used by `cgen`
-				c.table.comptime_is_true[idx_str] = comptime_if_result
+				c.table.comptime_is_true[idx_str] = ast.ComptTimeCondResult{
+					val:   comptime_if_result
+					c_str: sb.str()
+				}
 			} else {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
@@ -160,7 +166,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					comptime_remove_curr_branch_stmts = true
 				}
 				idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.pos}|'
-				c.table.comptime_is_true[idx_str] = comptime_if_result
+				c.table.comptime_is_true[idx_str] = ast.ComptTimeCondResult{
+					val:   comptime_if_result
+					c_str: ''
+				}
 			}
 		}
 		if mut branch.cond is ast.IfGuardExpr {

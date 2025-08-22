@@ -401,7 +401,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	}
 
 	mut comptime_branch_context_str := g.gen_branch_context_string()
-	mut is_true := false
+	mut is_true := ast.ComptTimeCondResult{}
 	for i, branch in node.branches {
 		start_pos := g.out.len
 		// `idx_str` is composed of two parts:
@@ -423,20 +423,9 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			} else {
 				g.write('#elif ')
 			}
-			if g.pref.output_cross_c {
-				// generate full `if defined` in cross mode
-				pos := g.out.len
-				g.comptime_if_cond(branch.cond, true)
-				cond_str := g.out.cut_to(pos).trim_space()
-				g.writeln(cond_str)
-			} else {
-				// directly use `checker` evaluate results
-				if is_true {
-					g.writeln('1\t/* ${node.branches[i].cond} | generic=[${comptime_branch_context_str}] */')
-				} else {
-					g.writeln('0\t/* ${node.branches[i].cond} | generic=[${comptime_branch_context_str}] */')
-				}
-			}
+			// directly use `checker` evaluate results
+			// for `cgen`, we can use `is_true.c_str` or `is_true.value` here
+			g.writeln('${is_true.c_str}\t/* ${node.branches[i].cond} | generic=[${comptime_branch_context_str}] */')
 		} else {
 			g.writeln('#else')
 		}
@@ -497,7 +486,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			if should_create_scope {
 				g.writeln('{')
 			}
-			if is_true {
+			if is_true.val {
 				g.stmts(branch.stmts)
 			}
 			if should_create_scope {
@@ -1068,8 +1057,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				styp := field.typ
 				unaliased_styp := g.table.unaliased_type(styp)
 
-				g.writeln('\t${node.val_var}.typ = ${int(styp.idx())};')
-				g.writeln('\t${node.val_var}.unaliased_typ = ${int(unaliased_styp.idx())};')
+				g.writeln('\t${node.val_var}.typ = ${int(styp.idx())};\t// ${g.table.type_to_str(styp)}')
+				g.writeln('\t${node.val_var}.unaliased_typ = ${int(unaliased_styp.idx())};\t// ${g.table.type_to_str(unaliased_styp)}')
 				g.writeln('\t${node.val_var}.is_pub = ${field.is_pub};')
 				g.writeln('\t${node.val_var}.is_mut = ${field.is_mut};')
 
@@ -1164,7 +1153,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.type_resolver.update_ct_type('${node.val_var}.typ', variant)
 
 				g.writeln('/* variant ${i} : ${g.table.type_to_str(variant)} */ {')
-				g.writeln('\t${node.val_var}.typ = ${int(variant)};')
+				g.writeln('\t${node.val_var}.typ = ${int(variant)};\t// ')
 				g.stmts(node.stmts)
 				g.writeln('}')
 				i++
@@ -1184,7 +1173,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.type_resolver.update_ct_type('${node.val_var}.typ', param.typ)
 
 			g.writeln('/* method param ${i} : ${param.name} */ {')
-			g.writeln('\t${node.val_var}.typ = ${int(param.typ)};')
+			g.writeln('\t${node.val_var}.typ = ${int(param.typ)};\t// ${g.table.type_to_str(param.typ)}')
 			g.writeln('\t${node.val_var}.name = _S("${param.name}");')
 			g.stmts(node.stmts)
 			g.writeln('}')

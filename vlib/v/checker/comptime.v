@@ -659,7 +659,8 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			for i in 0 .. expr.branches.len {
 				mut branch := expr.branches[i]
 				if !expr.has_else || i < expr.branches.len - 1 {
-					is_true, _ := c.comptime_if_cond(mut branch.cond)
+					mut sb := strings.new_builder(256)
+					is_true, _ := c.comptime_if_cond(mut branch.cond, mut sb)
 					if is_true {
 						last_stmt := branch.stmts.last()
 						if last_stmt is ast.ExprStmt {
@@ -775,11 +776,201 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 		}
 	}
 	c.inside_ct_attr = true
-	is_true, _ := c.comptime_if_cond(mut node.ct_expr)
+	mut sb := strings.new_builder(256)
+	is_true, _ := c.comptime_if_cond(mut node.ct_expr, mut sb)
 	node.ct_skip = !is_true
 	c.inside_ct_attr = false
 	node.ct_evaled = true
 	return node.ct_skip
+}
+
+fn (mut c Checker) comptime_if_to_ifdef(name string) !string {
+	match name {
+		// platforms/os-es:
+		'windows' {
+			return '_WIN32'
+		}
+		'ios' {
+			return '__TARGET_IOS__'
+		}
+		'macos' {
+			return '__APPLE__'
+		}
+		'mach' {
+			return '__MACH__'
+		}
+		'darwin' {
+			return '__DARWIN__'
+		}
+		'hpux' {
+			return '__HPUX__'
+		}
+		'gnu' {
+			return '__GNU__'
+		}
+		'qnx' {
+			return '__QNX__'
+		}
+		'linux' {
+			return '__linux__'
+		}
+		'serenity' {
+			return '__serenity__'
+		}
+		'plan9' {
+			return '__plan9__'
+		}
+		'vinix' {
+			return '__vinix__'
+		}
+		'freebsd' {
+			return '__FreeBSD__'
+		}
+		'openbsd' {
+			return '__OpenBSD__'
+		}
+		'netbsd' {
+			return '__NetBSD__'
+		}
+		'bsd' {
+			return '__BSD__'
+		}
+		'dragonfly' {
+			return '__DragonFly__'
+		}
+		'android' {
+			return '__ANDROID__'
+		}
+		'termux' {
+			// Note: termux is running on Android natively so __ANDROID__ will also be defined
+			return '__TERMUX__'
+		}
+		'solaris' {
+			return '__sun'
+		}
+		'haiku' {
+			return '__HAIKU__'
+		}
+		//
+		'js' {
+			return '_VJS'
+		}
+		'wasm32_emscripten' {
+			return '__EMSCRIPTEN__'
+		}
+		'native' {
+			return '_VNATIVE' // when using the native backend, cgen is inactive
+		}
+		// compilers:
+		'gcc' {
+			return '__V_GCC__'
+		}
+		'tinyc' {
+			return '__TINYC__'
+		}
+		'clang' {
+			return '__clang__'
+		}
+		'mingw' {
+			return '__MINGW32__'
+		}
+		'msvc' {
+			return '_MSC_VER'
+		}
+		'cplusplus' {
+			return '__cplusplus'
+		}
+		// other:
+		'threads' {
+			return '__VTHREADS__'
+		}
+		'gcboehm' {
+			return '_VGCBOEHM'
+		}
+		'debug' {
+			return '_VDEBUG'
+		}
+		'prod' {
+			return '_VPROD'
+		}
+		'profile' {
+			return '_VPROFILE'
+		}
+		'test' {
+			return '_VTEST'
+		}
+		'glibc' {
+			return '__GLIBC__'
+		}
+		'prealloc' {
+			return '_VPREALLOC'
+		}
+		'no_bounds_checking' {
+			return 'CUSTOM_DEFINE_no_bounds_checking'
+		}
+		'freestanding' {
+			return '_VFREESTANDING'
+		}
+		'autofree' {
+			return '_VAUTOFREE'
+		}
+		// architectures:
+		'amd64' {
+			return '__V_amd64'
+		}
+		'aarch64', 'arm64' {
+			return '__V_arm64'
+		}
+		'arm32' {
+			return '__V_arm32'
+		}
+		'i386' {
+			return '__V_x86'
+		}
+		'rv64', 'riscv64' {
+			return '__V_rv64'
+		}
+		'rv32', 'riscv32' {
+			return '__V_rv32'
+		}
+		's390x' {
+			return '__V_s390x'
+		}
+		'ppc64le' {
+			return '__V_ppc64le'
+		}
+		'loongarch64' {
+			return '__V_loongarch64'
+		}
+		// bitness:
+		'x64' {
+			return 'TARGET_IS_64BIT'
+		}
+		'x32' {
+			return 'TARGET_IS_32BIT'
+		}
+		// endianness:
+		'little_endian' {
+			return 'TARGET_ORDER_IS_LITTLE'
+		}
+		'big_endian' {
+			return 'TARGET_ORDER_IS_BIG'
+		}
+		'fast_math' {
+			if c.pref.ccompiler_type == .msvc {
+				// turned on by: `-cflags /fp:fast`
+				return '_M_FP_FAST'
+			}
+			// turned on by: `-cflags -ffast-math`
+			return '__FAST_MATH__'
+		}
+		else {
+			if name in c.pref.compile_defines_all {
+				return 'CUSTOM_DEFINE_${name}'
+			}
+		}
+	}
+	return error('none')
 }
 
 fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
@@ -858,7 +1049,7 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 // comptime_if_cond evaluate the `cond` and return (`is_true`, `keep_stmts`)
 // `is_true` is the evaluate result of `cond`;
 // `keep_stmts` meaning the branch is a `multi pass branch`, we should keep the branch stmts even `is_true` is false, such as `$if T is int {`
-fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
+fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (bool, bool) {
 	mut should_record_ident := false
 	mut is_user_ident := false
 	mut ident_name := ''
@@ -877,17 +1068,25 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 	match mut cond {
 		ast.BoolLiteral {
 			c.expr(mut cond)
-			return cond.val, false
+			is_true = cond.val
+			sb.write_string('${is_true}')
+			return is_true, false
 		}
 		ast.ParExpr {
-			return c.comptime_if_cond(mut cond.expr)
+			sb.write_string('(')
+			is_true_result, multi_pass_stmts := c.comptime_if_cond(mut cond.expr, mut
+				sb)
+			sb.write_string(')')
+			return is_true_result, multi_pass_stmts
 		}
 		ast.PrefixExpr {
 			if cond.op != .not {
 				c.error('invalid \$if prefix operator, only allow `!`.', cond.pos)
 				return false, false
 			}
-			is_true_result, multi_pass_stmts := c.comptime_if_cond(mut cond.right)
+			sb.write_string(cond.op.str())
+			is_true_result, multi_pass_stmts := c.comptime_if_cond(mut cond.right, mut
+				sb)
 			return !is_true_result, multi_pass_stmts
 		}
 		ast.PostfixExpr {
@@ -904,6 +1103,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 			should_record_ident = true
 			is_user_ident = true
 			ident_name = cname
+			sb.write_string('defined(CUSTOM_DEFINE_${cname})')
 			if cname in c.pref.compile_defines {
 				return true, false
 			}
@@ -912,8 +1112,9 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 		ast.InfixExpr {
 			match cond.op {
 				.and, .logical_or {
-					l, d1 := c.comptime_if_cond(mut cond.left)
-					r, d2 := c.comptime_if_cond(mut cond.right)
+					l, d1 := c.comptime_if_cond(mut cond.left, mut sb)
+					sb.write_string(' ${cond.op} ')
+					r, d2 := c.comptime_if_cond(mut cond.right, mut sb)
 					// if at least one of the cond has `keep_stmts`, we should keep stmts
 					return if cond.op == .and { l && r } else { l || r }, d1 || d2
 				}
@@ -983,11 +1184,9 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 								}
 							}
 						}
-						return if cond.op in [.key_in, .key_is] {
-							is_true, true
-						} else {
-							!is_true, true
-						}
+						is_true = if cond.op in [.key_in, .key_is] { is_true } else { !is_true }
+						sb.write_string('${is_true}')
+						return is_true, true
 					}
 
 					if cond.left !in [ast.TypeNode, ast.Ident, ast.SelectorExpr] {
@@ -1082,6 +1281,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 									return false, false
 								}
 							}
+							sb.write_string('${is_true}')
 							return is_true, false
 						}
 						ast.SelectorExpr {
@@ -1110,9 +1310,11 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 										}
 										match cond.op {
 											.eq {
+												sb.write_string('${is_true}')
 												return is_true, true
 											}
 											.ne {
+												sb.write_string('${!is_true}')
 												return !is_true, true
 											}
 											else {
@@ -1157,6 +1359,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 												return false, false
 											}
 										}
+										sb.write_string('${is_true}')
 										return is_true, true
 									} else if cond.left.field_name == 'return_type' {
 										// method.return_type
@@ -1186,6 +1389,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 													return false, false
 												}
 											}
+											sb.write_string('${is_true}')
 											return is_true, false
 										} else {
 											c.error('only support .return_type compare for \$for method',
@@ -1200,8 +1404,10 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 								}
 								ast.BoolLiteral {
 									// field.is_pub == true
-									l, _ := c.comptime_if_cond(mut cond.left)
+									l, _ := c.comptime_if_cond(mut cond.left, mut sb)
+									sb.write_string(' ${cond.op} ')
 									r := (cond.right as ast.BoolLiteral).val
+									sb.write_string('${r}')
 									is_true = if cond.op == .eq { l == r } else { l != r }
 									return is_true, true
 								}
@@ -1243,6 +1449,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 											return false, false
 										}
 									}
+									sb.write_string('${is_true}')
 									return is_true, true
 								}
 								else {
@@ -1280,10 +1487,8 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 						}
 					}
 				}
-				return is_true, false
 			} else if cname in ast.valid_comptime_if_compilers {
 				is_true = pref.cc_from_string(cname) == c.pref.ccompiler_type
-				return is_true, false
 			} else if cname in ast.valid_comptime_if_platforms {
 				if cname == 'aarch64' {
 					c.note('use `arm64` instead of `aarch64`', cond.pos)
@@ -1325,7 +1530,6 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 						return false, false
 					}
 				}
-				return is_true, false
 			} else if cname in ast.valid_comptime_if_cpu_features {
 				match cname {
 					'x64' {
@@ -1346,7 +1550,6 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 						return false, false
 					}
 				}
-				return is_true, false
 			} else if cname in ast.valid_comptime_if_other {
 				match cname {
 					'apk' {
@@ -1418,7 +1621,6 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 						return false, false
 					}
 				}
-				return is_true, false
 			} else if cname !in c.pref.compile_defines_all {
 				if cname == 'linux_or_macos' {
 					c.error('linux_or_macos is deprecated, use `\$if linux || macos {` instead',
@@ -1445,12 +1647,18 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 					return false, false
 				}
 				is_true = (expr as ast.BoolLiteral).val
-				return is_true, false
 			} else if cname in c.pref.compile_defines {
-				return true, false
+				is_true = true
+			} else {
+				c.error('invalid \$if condition: unknown indent `${cname}`', cond.pos)
+				return false, false
 			}
-			c.error('invalid \$if condition: unknown indent `${cname}`', cond.pos)
-			return false, false
+			if ifdef := c.comptime_if_to_ifdef(cname) {
+				sb.write_string('defined(${ifdef})')
+			} else {
+				sb.write_string('${is_true}')
+			}
+			return is_true, false
 		}
 		ast.ComptimeCall {
 			if cond.kind == .pkgconfig {
@@ -1459,6 +1667,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 					return false, true
 				}
 				m.run() or { return false, true }
+				sb.write_string('true')
 				return true, true
 			}
 			if cond.kind == .d {
@@ -1468,7 +1677,9 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 						cond.pos)
 					return false, false
 				}
-				return cond.compile_value.bool(), false
+				is_true = cond.compile_value.bool()
+				sb.write_string('${is_true}')
+				return is_true, false
 			}
 			c.error('invalid \$if condition: unknown ComptimeCall', cond.pos)
 			return false, false
@@ -1477,6 +1688,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 			if c.comptime.comptime_for_field_var != '' && cond.expr is ast.Ident {
 				if (cond.expr as ast.Ident).name == c.comptime.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum'] {
 					is_true = c.type_resolver.get_comptime_selector_bool_field(cond.field_name)
+					sb.write_string('${is_true}')
 					return is_true, true
 				}
 				c.error('unknown field `${cond.field_name}` from ${c.comptime.comptime_for_field_var}',
@@ -1485,6 +1697,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 			if c.comptime.comptime_for_attr_var != '' && cond.expr is ast.Ident {
 				if (cond.expr as ast.Ident).name == c.comptime.comptime_for_attr_var && cond.field_name == 'has_arg' {
 					is_true = c.comptime.comptime_for_attr_value.has_arg
+					sb.write_string('${is_true}')
 					return is_true, true
 				}
 				c.error('unknown field `${cond.field_name}` from ${c.comptime.comptime_for_attr_var}',
@@ -1514,6 +1727,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr) (bool, bool) {
 						'is_expand_simple_interpolation' { method.is_expand_simple_interpolation }
 						else { false }
 					}
+					sb.write_string('${is_true}')
 					return is_true, true
 				}
 				c.error('unknown field `${cond.field_name}` from ${c.comptime.comptime_for_method_var}',

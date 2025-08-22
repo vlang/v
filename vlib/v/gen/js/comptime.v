@@ -27,7 +27,7 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 	}
 
 	mut comptime_generic_str := g.gen_cond_generic_string()
-	mut is_true := false
+	mut is_true := ast.ComptTimeCondResult{}
 	for i, branch in node.branches {
 		idx_str := comptime_generic_str + '|${g.file.path}|${branch.pos}|'
 		if comptime_is_true := g.table.comptime_is_true[idx_str] {
@@ -44,7 +44,7 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 			} else {
 				g.write('else if (')
 			}
-			if is_true {
+			if is_true.val {
 				g.writeln('1)\t// ${node.branches[i].cond} generic=[${comptime_generic_str}]')
 			} else {
 				g.writeln('0)\t// ${node.branches[i].cond} generic=[${comptime_generic_str}]')
@@ -73,7 +73,7 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 			}
 		} else {
 			g.writeln('{')
-			if is_true {
+			if is_true.val {
 				g.stmts(branch.stmts)
 			}
 			g.writeln('}')
