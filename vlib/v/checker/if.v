@@ -110,7 +110,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
 				// The second part indicates the branch's location in the source file.
 				// This format must match what is in `cgen`.
-				idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.pos}|'
+				idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.cond.pos()}|'
 				c.comptime.inside_comptime_if = true
 				mut sb := strings.new_builder(256)
 				comptime_if_result, comptime_if_multi_pass_branch = c.comptime_if_cond(mut branch.cond, mut
@@ -118,11 +118,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				if comptime_if_multi_pass_branch {
 					comptime_if_has_multi_pass_branch = true
 				}
-				comptime_if_result = if comptime_if_found_branch {
-					false
-				} else {
-					comptime_if_result
+
+				if comptime_if_found_branch {
+					comptime_if_result = false
 				}
+
 				if !comptime_if_has_multi_pass_branch
 					&& (comptime_if_found_branch || !comptime_if_result) {
 					// when all prev branchs are single pass branchs,
@@ -133,7 +133,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				}
 				if old_val := c.table.comptime_is_true[idx_str] {
 					if old_val.val != comptime_if_result {
-						c.error('checker error : branch eval wrong', branch.pos)
+						c.error('checker erro1r : branch eval wrong', branch.cond.pos())
 					}
 				}
 
@@ -165,6 +165,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					// remove current branchs' stmts
 					comptime_remove_curr_branch_stmts = true
 				}
+				// hack: as a `else` has no `cond`, so we use `branch.pos` here
 				idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.pos}|'
 				c.table.comptime_is_true[idx_str] = ast.ComptTimeCondResult{
 					val:   comptime_if_result

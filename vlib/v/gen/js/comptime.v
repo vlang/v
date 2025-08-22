@@ -1,8 +1,9 @@
 module js
 
+import v.token
 import v.ast
 
-fn (mut g JsGen) gen_cond_generic_string() string {
+fn (mut g JsGen) gen_branch_context_string() string {
 	mut arr := []string{}
 
 	// gen `T=int,X=string`
@@ -26,10 +27,14 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 		}
 	}
 
-	mut comptime_generic_str := g.gen_cond_generic_string()
+	mut comptime_branch_context_str := g.gen_branch_context_string()
 	mut is_true := ast.ComptTimeCondResult{}
 	for i, branch in node.branches {
-		idx_str := comptime_generic_str + '|${g.file.path}|${branch.pos}|'
+		idx_str := if branch.cond.pos() == token.Pos{} {
+			comptime_branch_context_str + '|${g.file.path}|${branch.pos}|'
+		} else {
+			comptime_branch_context_str + '|${g.file.path}|${branch.cond.pos()}|'
+		}
 		if comptime_is_true := g.table.comptime_is_true[idx_str] {
 			is_true = comptime_is_true
 		} else {
@@ -45,9 +50,9 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 				g.write('else if (')
 			}
 			if is_true.val {
-				g.writeln('1)\t// ${node.branches[i].cond} generic=[${comptime_generic_str}]')
+				g.writeln('1)\t// ${node.branches[i].cond} generic=[${comptime_branch_context_str}]')
 			} else {
-				g.writeln('0)\t// ${node.branches[i].cond} generic=[${comptime_generic_str}]')
+				g.writeln('0)\t// ${node.branches[i].cond} generic=[${comptime_branch_context_str}]')
 			}
 		}
 

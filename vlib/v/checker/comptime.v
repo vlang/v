@@ -1480,11 +1480,9 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 			is_user_ident = false
 			ident_name = cname
 			if cname in ast.valid_comptime_if_os {
-				if !c.pref.output_cross_c {
-					if cname_enum_val := pref.os_from_string(cname) {
-						if cname_enum_val == c.pref.os {
-							is_true = true
-						}
+				if cname_enum_val := pref.os_from_string(cname) {
+					if cname_enum_val == c.pref.os {
+						is_true = true
 					}
 				}
 			} else if cname in ast.valid_comptime_if_compilers {
