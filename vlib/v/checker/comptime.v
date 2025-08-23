@@ -784,7 +784,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 	return node.ct_skip
 }
 
-fn (mut c Checker) comptime_if_to_ifdef(name string) !string {
+fn (mut c Checker) comptime_if_to_ifdef(name string, is_comptime_option bool) !string {
 	match name {
 		// platforms/os-es:
 		'windows' {
@@ -965,9 +965,11 @@ fn (mut c Checker) comptime_if_to_ifdef(name string) !string {
 			return '__FAST_MATH__'
 		}
 		else {
-			if name in c.pref.compile_defines_all {
+			if is_comptime_option
+				|| (c.pref.compile_defines_all.len > 0 && name in c.pref.compile_defines_all) {
 				return 'CUSTOM_DEFINE_${name}'
 			}
+			return error('bad os ifdef name "${name}"') // should never happen, caught in the checker
 		}
 	}
 	return error('none')
@@ -1103,11 +1105,13 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 			should_record_ident = true
 			is_user_ident = true
 			ident_name = cname
-			sb.write_string('defined(CUSTOM_DEFINE_${cname})')
-			if cname in c.pref.compile_defines {
-				return true, false
+			ifdef := c.comptime_if_to_ifdef(cname, true) or {
+				c.error(err.msg(), cond.pos)
+				return false, false
 			}
-			return false, false
+			sb.write_string('defined(${ifdef})')
+			is_true = cname in c.pref.compile_defines
+			return is_true, false
 		}
 		ast.InfixExpr {
 			match cond.op {
@@ -1651,7 +1655,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 				c.error('invalid \$if condition: unknown indent `${cname}`', cond.pos)
 				return false, false
 			}
-			if ifdef := c.comptime_if_to_ifdef(cname) {
+			if ifdef := c.comptime_if_to_ifdef(cname, false) {
 				sb.write_string('defined(${ifdef})')
 			} else {
 				sb.write_string('${is_true}')
