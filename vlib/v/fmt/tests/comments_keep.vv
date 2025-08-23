@@ -99,3 +99,10 @@ fn ifs_comments_and_empty_lines() {
 	// thereore keep the empty line
 	something_else()
 }
+
+fn call_expr_with_single_line_comment_in_or_expr(arr []int) int {
+	i := arr[0] or {
+		arr.count() // 1
+	}
+	return i
+}

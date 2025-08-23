@@ -2926,6 +2926,18 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 			} else if node.stmts.len == 1 && stmt_is_single_line(node.stmts[0]) {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
+				stmt := node.stmts[0]
+				if stmt is ast.ExprStmt && stmt.expr is ast.CallExpr
+					&& (stmt.expr as ast.CallExpr).comments.len > 0 {
+					if comment := stmt.expr.comments[0] {
+						if !comment.is_multi {
+							f.writeln(' or {')
+							f.stmts(node.stmts)
+							f.write('}')
+							return
+						}
+					}
+				}
 				str := f.node_str(node.stmts[0]).trim_space()
 				single_line := ' or { ${str} }'
 				if single_line.len + f.line_len <= max_len {
