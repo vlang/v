@@ -51,3 +51,16 @@ pub fn call_with_array_param(arr []Vtype) {
 pub fn destroy_vtype(t Vtype) {
 	C.destroy_atype(t.p)
 }
+
+pub enum MyEnum {
+	unknown      = C.UNKNOWN
+	name1        = C.NAME1
+	name2        = C.NAME2
+	name3        = C.NAME3
+	name4        = C.NAME4
+	name5        = C.NAME5
+	name6        = C.NAME6
+	common_name1 = C.COMMON_NAME1
+	common_name2 = C.COMMON_NAME2
+	common_name3 = C.COMMON_NAME3
+}
