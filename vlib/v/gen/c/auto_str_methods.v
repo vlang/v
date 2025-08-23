@@ -379,7 +379,7 @@ fn (mut g Gen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string) 
 		g.auto_str_funcs.writeln('\tret = string__plus(ret, _S("}"));')
 		g.auto_str_funcs.writeln('\treturn ret;')
 	} else if info.uses_exprs {
-		// This enum values could be C macros, that are expanded later to duplicate values, so we can not use a switch here.
+		// The enum values could be C macros, expanded later to duplicate values, and we do not know if that is the case, so we can not use a switch here.
 		// Instead we generate multiple if statements, which is slower, but is guaranteed to work in the presence of duplicates.
 		for val in info.vals {
 			g.auto_str_funcs.writeln('\t\tif(it == ${s}__${val}){ return _S("${val}"); }')
