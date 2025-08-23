@@ -163,6 +163,7 @@ mut:
 	inside_cinit              bool
 	inside_global_decl        bool
 	inside_interface_deref    bool
+	inside_assign_fn_var      bool
 	last_tmp_call_var         []string
 	last_if_option_type       ast.Type // stores the expected if type on nested if expr
 	loop_depth                int
@@ -5360,7 +5361,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if node.obj is ast.Var {
 			is_auto_heap = node.obj.is_auto_heap
 				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
-			if is_auto_heap {
+			if is_auto_heap && !g.inside_assign_fn_var {
 				g.write('(*(')
 			}
 			is_option = is_option || node.obj.orig_type.has_flag(.option)
@@ -5478,7 +5479,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 						g.write(')')
 					}
-					if is_auto_heap {
+					if is_auto_heap && !g.inside_assign_fn_var {
 						g.write('))')
 					}
 					return
@@ -5502,7 +5503,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(g.get_ternary_name(name))
-	if is_auto_heap {
+	if is_auto_heap && !g.inside_assign_fn_var {
 		g.write('))')
 		if is_option && node.or_expr.kind != .absent {
 			g.write('.data')
