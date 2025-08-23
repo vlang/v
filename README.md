@@ -192,7 +192,9 @@ pkg update
 git clone --depth=1 https://github.com/vlang/v
 cd v
 make
+./v symlink
 ```
+Note: there is *no* need for `sudo ./v symlink` on Termux (and sudo is not installed by default).
 
 ### C compiler
 
