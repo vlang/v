@@ -846,6 +846,21 @@ fn expr_is_single_line(expr ast.Expr) bool {
 		ast.StringLiteral {
 			return expr.pos.line_nr == expr.pos.last_line
 		}
+		ast.OrExpr {
+			if expr.stmts.len == 1 && stmt_is_single_line(expr.stmts[0]) {
+				stmt := expr.stmts[0]
+				if stmt is ast.ExprStmt && stmt.expr is ast.CallExpr
+					&& (stmt.expr as ast.CallExpr).comments.len > 0 {
+					if comment := stmt.expr.comments[0] {
+						if !comment.is_multi {
+							return false
+						}
+					}
+				}
+				return true
+			}
+			return false
+		}
 		else {}
 	}
 	return true
@@ -2923,7 +2938,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 				}
 				f.write('}')
 				return
-			} else if node.stmts.len == 1 && stmt_is_single_line(node.stmts[0]) {
+			} else if expr_is_single_line(node) {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
 				str := f.node_str(node.stmts[0]).trim_space()
