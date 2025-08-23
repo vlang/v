@@ -44,15 +44,14 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 		if i == node.branches.len - 1 && node.has_else {
 			g.writeln('else')
 		} else {
+			result := if is_true.val { '1' } else { '0' }
 			if i == 0 {
-				g.write('if (')
+				g.writeln('if (${result})')
 			} else {
-				g.write('else if (')
+				g.writeln('else if (${result})')
 			}
-			if is_true.val {
-				g.writeln('1)\t// ${node.branches[i].cond} generic=[${comptime_branch_context_str}]')
-			} else {
-				g.writeln('0)\t// ${node.branches[i].cond} generic=[${comptime_branch_context_str}]')
+			$if debug_comptime_branch_context ? {
+				g.writeln('// ${node.branches[i].cond} generic=[${comptime_branch_context_str}]')
 			}
 		}
 

@@ -30,6 +30,5 @@ fn test_test_ident() {
 		result += '0'
 	}
 
-	// TODO: correct result should be '13689', it may fix for vtest or builder
-	assert result == '3689'
+	assert result == '23689'
 }

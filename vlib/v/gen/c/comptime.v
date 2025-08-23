@@ -430,7 +430,10 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			}
 			// directly use `checker` evaluate results
 			// for `cgen`, we can use `is_true.c_str` or `is_true.value` here
-			g.writeln('${is_true.c_str}\t/* ${node.branches[i].cond} | generic=[${comptime_branch_context_str}] */')
+			g.writeln('${is_true.c_str}')
+			$if debug_comptime_branch_context ? {
+				g.writeln('/* ${node.branches[i].cond} | generic=[${comptime_branch_context_str}] */')
+			}
 		} else {
 			g.writeln('#else')
 		}

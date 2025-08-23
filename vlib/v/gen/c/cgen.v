@@ -1029,16 +1029,16 @@ pub fn (mut g Gen) init() {
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.comptime_definitions.writeln('#define _VGCBOEHM (1)')
 	}
-	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
+	if g.pref.is_debug {
 		g.comptime_definitions.writeln('#define _VDEBUG (1)')
 	}
-	if g.pref.is_prod || 'prod' in g.pref.compile_defines {
+	if g.pref.is_prod {
 		g.comptime_definitions.writeln('#define _VPROD (1)')
 	}
-	if g.pref.is_test || 'test' in g.pref.compile_defines {
+	if g.pref.is_test {
 		g.comptime_definitions.writeln('#define _VTEST (1)')
 	}
-	if g.pref.is_prof || 'profile' in g.pref.compile_defines {
+	if g.pref.is_prof {
 		g.comptime_definitions.writeln('#define _VPROFILE (1)')
 	}
 	if g.pref.autofree {
