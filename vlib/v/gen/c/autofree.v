@@ -133,7 +133,7 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 		// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
 	}
 	// }
-	free_fn := g.styp(v.typ.set_nr_muls(0)) + '_free'
+	free_fn := g.styp(v.typ.set_nr_muls(0).clear_option_and_result()) + '_free'
 	if sym.kind == .array {
 		if sym.has_method('free') {
 			g.autofree_var_call(free_fn, v)
