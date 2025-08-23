@@ -1030,16 +1030,16 @@ pub fn (mut g Gen) init() {
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.comptime_definitions.writeln('#define _VGCBOEHM (1)')
 	}
-	if g.pref.is_debug {
+	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
 		g.comptime_definitions.writeln('#define _VDEBUG (1)')
 	}
-	if g.pref.is_prod {
+	if g.pref.is_prod || 'prod' in g.pref.compile_defines {
 		g.comptime_definitions.writeln('#define _VPROD (1)')
 	}
-	if g.pref.is_test {
+	if g.pref.is_test || 'test' in g.pref.compile_defines {
 		g.comptime_definitions.writeln('#define _VTEST (1)')
 	}
-	if g.pref.is_prof {
+	if g.pref.is_prof || 'profile' in g.pref.compile_defines {
 		g.comptime_definitions.writeln('#define _VPROFILE (1)')
 	}
 	if g.pref.autofree {
@@ -5728,27 +5728,15 @@ fn (mut g Gen) hash_stmt_guarded_include(node ast.HashStmt) string {
 fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 	line_nr := node.pos.line_nr + 1
 	mut ct_condition := ''
-
 	if node.ct_conds.len > 0 {
-		mut comptime_branch_context_str := g.gen_branch_context_string()
-		mut is_true := ast.ComptTimeCondResult{}
-		mut sb := strings.new_builder(256)
+		ct_condition_start := g.out.len
 		for idx, ct_expr in node.ct_conds {
-			idx_str := comptime_branch_context_str + '|${g.file.path}|${ct_expr.pos()}|'
-			if comptime_is_true := g.table.comptime_is_true[idx_str] {
-				// `g.table.comptime_is_true` are the branch condition results set by `checker`
-				is_true = comptime_is_true
-			} else {
-				g.error('checker error: condition result idx string not found => [${idx_str}]',
-					ct_expr.pos())
-				return
-			}
-			sb.write_string(is_true.c_str)
+			g.comptime_if_cond(ct_expr, false)
 			if idx < node.ct_conds.len - 1 {
-				sb.write_string(' && ')
+				g.write(' && ')
 			}
 		}
-		ct_condition = sb.str()
+		ct_condition = g.out.cut_to(ct_condition_start).trim_space()
 	}
 	// #include etc
 	if node.kind == 'include' {

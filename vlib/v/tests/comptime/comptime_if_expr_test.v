@@ -4,11 +4,9 @@ const disable_opt_features = true
 // Note: the `unknown_fn()` calls are here on purpose, to make sure that anything
 // that doesn't match a compile-time condition is not even parsed.
 fn test_ct_expressions() {
-	mut result := ''
 	foo := version
 	bar := foo
 	$if bar == 123 {
-		result += 'a'
 		assert true
 	} $else {
 		unknown_fn()
@@ -17,7 +15,6 @@ fn test_ct_expressions() {
 	$if bar != 123 {
 		unknown_fn()
 	} $else $if bar != 124 {
-		result += 'b'
 		assert true
 	} $else {
 		unknown_fn()
@@ -26,10 +23,8 @@ fn test_ct_expressions() {
 	$if !disable_opt_features {
 		unknown_fn()
 	} $else {
-		result += 'c'
 		assert true
 	}
-	assert result == 'abc'
 }
 
 fn generic_t_is[O]() O {

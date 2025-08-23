@@ -1,23 +1,6 @@
 module js
 
-import v.token
 import v.ast
-
-fn (mut g JsGen) gen_branch_context_string() string {
-	mut arr := []string{}
-
-	// gen `T=int,X=string`
-	if g.fn_decl != unsafe { nil } && g.fn_decl.generic_names.len > 0
-		&& g.fn_decl.generic_names.len == g.cur_concrete_types.len {
-		for i in 0 .. g.fn_decl.generic_names.len {
-			arr << g.fn_decl.generic_names[i] + '=' +
-				g.table.type_to_str(g.cur_concrete_types[i]).replace('main.', '')
-		}
-	}
-
-	// TODO: support comptime `$for`
-	return arr.join(',')
-}
 
 fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 	if !node.is_expr && !node.has_else && node.branches.len == 1 {
@@ -27,32 +10,17 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 		}
 	}
 
-	mut comptime_branch_context_str := g.gen_branch_context_string()
-	mut is_true := ast.ComptTimeCondResult{}
 	for i, branch in node.branches {
-		idx_str := if branch.cond.pos() == token.Pos{} {
-			comptime_branch_context_str + '|${g.file.path}|${branch.pos}|'
-		} else {
-			comptime_branch_context_str + '|${g.file.path}|${branch.cond.pos()}|'
-		}
-		if comptime_is_true := g.table.comptime_is_true[idx_str] {
-			is_true = comptime_is_true
-		} else {
-			panic('checker error: cond result idx string not found => [${idx_str}]')
-			return
-		}
 		if i == node.branches.len - 1 && node.has_else {
 			g.writeln('else')
 		} else {
-			result := if is_true.val { '1' } else { '0' }
 			if i == 0 {
-				g.writeln('if (${result})')
+				g.write('if (')
 			} else {
-				g.writeln('else if (${result})')
+				g.write('else if (')
 			}
-			$if debug_comptime_branch_context ? {
-				g.writeln('// ${node.branches[i].cond} generic=[${comptime_branch_context_str}]')
-			}
+			g.comptime_if_cond(branch.cond, branch.pkg_exist)
+			g.writeln(')')
 		}
 
 		if node.is_expr {
@@ -77,9 +45,7 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 			}
 		} else {
 			g.writeln('{')
-			if is_true.val {
-				g.stmts(branch.stmts)
-			}
+			g.stmts(branch.stmts)
 			g.writeln('}')
 		}
 	}

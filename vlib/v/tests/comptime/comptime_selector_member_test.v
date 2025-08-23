@@ -30,7 +30,7 @@ fn test[T](val T) string {
 
 fn test_main() {
 	assert test(u32(7)) == 'else block'
-	assert test(OtherStruct{'7'}) == 'not u32 or i32 struct field, got type: string'
+	assert test(OtherStruct{'7'}) == 'struct field string'
 	assert test(I32Struct{-7}) == 'struct field i32'
 	assert test(U32Struct{7}) == 'struct field u32'
 }
