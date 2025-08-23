@@ -1377,7 +1377,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.trace_enabled {
 		ptypes := w.table.used_features.print_types.keys().map(w.table.type_to_str(it))
 		eprintln('>>>>>>>>>> PRINT TYPES ${ptypes}')
-		stypes := w.uses_str.keys().map(w.table.type_to_str(it))
+		stypes := w.uses_str.keys().filter(it != 0).map(w.table.type_to_str(it))
 		eprintln('>>>>>>>>>> USES .str() CALLS ON TYPES ${stypes}')
 		ftypes := w.uses_free.keys().map(w.table.type_to_str(it))
 		eprintln('>>>>>>>>>> USES .free() CALLS ON TYPES ${ftypes}')

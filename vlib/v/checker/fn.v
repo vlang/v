@@ -3936,7 +3936,7 @@ fn (mut c Checker) check_must_use_call_result(node &ast.CallExpr, f &ast.Fn, lab
 }
 
 fn (mut c Checker) has_veb_context(typ ast.Type) bool {
-	sym := c.table.sym(typ)
+	sym := c.table.final_sym(typ)
 	if sym.name == 'veb.Context' {
 		return true
 	} else if sym.info is ast.Struct {
