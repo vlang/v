@@ -1,0 +1,2 @@
+string (*cb2) (void) = &cb1;
+string (*cb3) (void) = &cb2;

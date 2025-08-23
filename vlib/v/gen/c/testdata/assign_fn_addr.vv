@@ -1,0 +1,12 @@
+const hello = 'hello world!'
+
+fn main() {
+	cb1 := fn () string {
+		return hello
+	}
+	cb2 := &cb1
+	cb3 := &cb2
+	println(voidptr(cb1) != voidptr(cb2))
+	println(voidptr(cb2) != voidptr(cb3))
+	println(voidptr(cb1) != voidptr(cb3))
+}

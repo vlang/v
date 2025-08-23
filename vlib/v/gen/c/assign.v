@@ -289,6 +289,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 
 	for i, mut left in node.left {
 		mut is_auto_heap := false
+		mut is_fn_var := false
 		mut var_type := node.left_types[i]
 		mut val_type := node.right_types[i]
 		val := node.right[i]
@@ -432,6 +433,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
+				if left.obj.typ != 0 && val is ast.PrefixExpr {
+					is_fn_var = g.table.final_sym(left.obj.typ).kind == .function
+				}
 			}
 		} else if mut left is ast.ComptimeSelector {
 			if left.typ_key != '' {
@@ -964,14 +968,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else {
 						is_option_unwrapped := val is ast.Ident && val.or_expr.kind != .absent
 						is_option_auto_heap := is_auto_heap && is_option_unwrapped
-						if is_auto_heap {
+						if is_auto_heap && !is_fn_var {
 							if aligned != 0 {
 								g.write('HEAP_align(${styp}, (')
 							} else {
 								g.write('HEAP(${styp}, (')
 							}
 						}
-						if val.is_auto_deref_var() && !is_option_unwrapped {
+						if !is_fn_var && val.is_auto_deref_var() && !is_option_unwrapped {
 							g.write('*')
 						}
 						if (var_type.has_flag(.option) && val !in [ast.Ident, ast.SelectorExpr])
@@ -997,9 +1001,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.fixed_array_var_init(tmp_var, false, unaliased_right_sym.info.elem_type,
 								unaliased_right_sym.info.size)
 						} else {
+							old_inside_assign_fn_var := g.inside_assign_fn_var
+							g.inside_assign_fn_var = val is ast.PrefixExpr && val.op == .amp
+								&& is_fn_var
 							g.expr(val)
+							g.inside_assign_fn_var = old_inside_assign_fn_var
 						}
-						if is_auto_heap && !is_option_auto_heap {
+						if !is_fn_var && is_auto_heap && !is_option_auto_heap {
 							if aligned != 0 {
 								g.write('), ${aligned})')
 							} else {
