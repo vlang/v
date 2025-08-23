@@ -4,6 +4,61 @@ module checker
 
 import v.ast
 import v.token
+import v.util
+import strings
+
+// gen_branch_context_string generate current branches context string.
+// context include generic types, `$for`.
+fn (mut c Checker) gen_branch_context_string() string {
+	mut arr := []string{}
+
+	// gen `T=int,X=string`
+	if c.table.cur_fn.generic_names.len > 0
+		&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+		for i in 0 .. c.table.cur_fn.generic_names.len {
+			arr << c.table.cur_fn.generic_names[i] + '=' +
+				util.strip_main_name(c.table.type_to_str(c.table.cur_concrete_types[i]))
+		}
+	}
+
+	// gen comptime `$for`
+	if c.comptime.inside_comptime_for {
+		// variants
+		if c.comptime.comptime_for_variant_var.len > 0 {
+			variant := c.table.type_to_str(c.type_resolver.get_ct_type_or_default('${c.comptime.comptime_for_variant_var}.typ',
+				ast.no_type))
+			arr << c.comptime.comptime_for_variant_var + '.typ=' + variant
+		}
+		// fields
+		if c.comptime.comptime_for_field_var.len > 0 {
+			arr << c.comptime.comptime_for_field_var + '.name=' +
+				c.comptime.comptime_for_field_value.name
+		}
+		// values
+		if c.comptime.comptime_for_enum_var.len > 0 {
+			enum_var := c.table.type_to_str(c.type_resolver.get_ct_type_or_default('${c.comptime.comptime_for_enum_var}.typ',
+				ast.void_type))
+			arr << c.comptime.comptime_for_enum_var + '.typ=' + enum_var
+		}
+		// attributes
+		if c.comptime.comptime_for_attr_var.len > 0 {
+			arr << c.comptime.comptime_for_attr_var + '.name=' +
+				c.comptime.comptime_for_attr_value.name
+		}
+		// methods
+		if c.comptime.comptime_for_method_var.len > 0 {
+			arr << c.comptime.comptime_for_method_var + '.name=' +
+				c.comptime.comptime_for_method.name
+		}
+		// args
+		if c.comptime.comptime_for_method_param_var.len > 0 {
+			arg_var := c.table.type_to_str(c.type_resolver.get_ct_type_or_default('${c.comptime.comptime_for_method_param_var}.typ',
+				ast.void_type))
+			arr << c.comptime.comptime_for_method_param_var + '.typ=' + arg_var
+		}
+	}
+	return arr.join(',')
+}
 
 fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
@@ -40,8 +95,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		c.comptime.inside_comptime_if = last_in_comptime_if
 	}
 
-	for i in 0 .. node.branches.len {
-		mut branch := node.branches[i]
+	comptime_branch_context_str := if node.is_comptime { c.gen_branch_context_string() } else { '' }
+
+	for i, mut branch in node.branches {
+		mut comptime_remove_curr_branch_stmts := false
 		if branch.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
 			c.warn('unnecessary `()` in `${if_kind}` condition, use `${if_kind} expr {` instead of `${if_kind} (expr) {`.',
 				branch.pos)
@@ -49,16 +106,41 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		if !node.has_else || i < node.branches.len - 1 {
 			// if branch
 			if node.is_comptime {
+				// `idx_str` is composed of two parts:
+				// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
+				// The second part indicates the branch's location in the source file.
+				// This format must match what is in `cgen`.
+				idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.cond.pos()}|'
 				c.comptime.inside_comptime_if = true
-				comptime_if_result, comptime_if_multi_pass_branch = c.comptime_if_cond(mut branch.cond)
-				node.branches[i].pkg_exist = comptime_if_result
+				mut sb := strings.new_builder(256)
+				comptime_if_result, comptime_if_multi_pass_branch = c.comptime_if_cond(mut branch.cond, mut
+					sb)
 				if comptime_if_multi_pass_branch {
 					comptime_if_has_multi_pass_branch = true
 				}
-				if !comptime_if_has_multi_pass_branch && comptime_if_found_branch {
-					// when all prev branchs are single pass branchs, and already has a true branch:
-					// remove following branchs' stmts by overwrite `comptime_if_result`
+
+				if comptime_if_found_branch {
 					comptime_if_result = false
+				}
+
+				if !comptime_if_has_multi_pass_branch
+					&& (comptime_if_found_branch || !comptime_if_result) {
+					// when all prev branchs are single pass branchs,
+					// 1. already has a true branch or
+					// 2. `comptime_if_result is` false
+					// remove current branchs' stmts
+					comptime_remove_curr_branch_stmts = true
+				}
+				if old_val := c.table.comptime_is_true[idx_str] {
+					if old_val.val != comptime_if_result {
+						c.error('checker erro1r : branch eval wrong', branch.cond.pos())
+					}
+				}
+
+				// set `comptime_is_true` which can be used by `cgen`
+				c.table.comptime_is_true[idx_str] = ast.ComptTimeCondResult{
+					val:   comptime_if_result
+					c_str: sb.str()
 				}
 			} else {
 				// check condition type is boolean
@@ -78,6 +160,17 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				comptime_if_result = !comptime_if_found_branch
 				// if all other branchs has at least one multi pass branch, we should keep this else branch
 				comptime_if_multi_pass_branch = comptime_if_has_multi_pass_branch
+				if !comptime_if_has_multi_pass_branch && comptime_if_found_branch {
+					// when all prev branchs are single pass branchs, already has a true branch
+					// remove current branchs' stmts
+					comptime_remove_curr_branch_stmts = true
+				}
+				// hack: as a `else` has no `cond`, so we use `branch.pos` here
+				idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.pos}|'
+				c.table.comptime_is_true[idx_str] = ast.ComptTimeCondResult{
+					val:   comptime_if_result
+					c_str: ''
+				}
 			}
 		}
 		if mut branch.cond is ast.IfGuardExpr {
@@ -119,9 +212,17 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			if c.fn_level == 0 && c.pref.output_cross_c {
 				// do not skip any of the branches for top level `$if OS {`
 				// statements, in `-cross` mode
-				comptime_if_multi_pass_branch = true
+				comptime_remove_curr_branch_stmts = false
 				c.skip_flags = false
-				c.ct_cond_stack << branch.cond
+				// hack: because `else` branch has no `cond`, so create an Ident, set the `pos`, for `hash_stmt()` work.
+				if branch.cond is ast.NodeError {
+					c.ct_cond_stack << ast.Ident{
+						name: '__else_branch__'
+						pos:  branch.pos
+					}
+				} else {
+					c.ct_cond_stack << branch.cond
+				}
 			}
 			if !c.skip_flags {
 				if node_is_expr {
@@ -147,9 +248,6 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					c.stmts(mut branch.stmts)
 					c.check_non_expr_branch_last_stmt(branch.stmts)
 				}
-			} else if !comptime_if_multi_pass_branch && !comptime_if_result {
-				// this branch is not a multi pass branch, and current cond result is false, remove branch stmts
-				node.branches[i].stmts = []
 			}
 			c.skip_flags = cur_skip_flags
 			if c.fn_level == 0 && c.pref.output_cross_c && c.ct_cond_stack.len > 0 {
@@ -321,6 +419,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else {
 				nbranches_without_return++
 			}
+		}
+
+		if comptime_remove_curr_branch_stmts {
+			// remove the branch statements since they may contain OS-specific code.
+			branch.stmts = []
 		}
 	}
 	if nbranches_with_return > 0 {

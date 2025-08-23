@@ -5,36 +5,32 @@ module wasm
 
 import v.ast
 
-pub fn (mut g Gen) comptime_cond(cond ast.Expr, pkg_exists bool) bool {
+pub fn (mut g Gen) comptime_cond(cond ast.Expr) bool {
 	match cond {
 		ast.BoolLiteral {
 			return cond.val
 		}
 		ast.ParExpr {
-			g.comptime_cond(cond.expr, pkg_exists)
+			g.comptime_cond(cond.expr)
 		}
 		ast.PrefixExpr {
 			if cond.op == .not {
-				return !g.comptime_cond(cond.right, pkg_exists)
+				return !g.comptime_cond(cond.right)
 			}
 		}
 		ast.InfixExpr {
 			match cond.op {
 				.and {
-					return g.comptime_cond(cond.left, pkg_exists)
-						&& g.comptime_cond(cond.right, pkg_exists)
+					return g.comptime_cond(cond.left) && g.comptime_cond(cond.right)
 				}
 				.logical_or {
-					return g.comptime_cond(cond.left, pkg_exists)
-						|| g.comptime_cond(cond.right, pkg_exists)
+					return g.comptime_cond(cond.left) || g.comptime_cond(cond.right)
 				}
 				.eq {
-					return g.comptime_cond(cond.left, pkg_exists) == g.comptime_cond(cond.right,
-						pkg_exists)
+					return g.comptime_cond(cond.left) == g.comptime_cond(cond.right)
 				}
 				.ne {
-					return g.comptime_cond(cond.left, pkg_exists) != g.comptime_cond(cond.right,
-						pkg_exists)
+					return g.comptime_cond(cond.left) != g.comptime_cond(cond.right)
 				}
 				// wasm doesn't support generics
 				// .key_is, .not_is
@@ -45,7 +41,7 @@ pub fn (mut g Gen) comptime_cond(cond ast.Expr, pkg_exists bool) bool {
 			return g.comptime_if_to_ifdef(cond.name, false)
 		}
 		ast.ComptimeCall {
-			return pkg_exists // more documentation needed here...
+			return false // pkg_exists, more documentation needed here...
 		}
 		ast.PostfixExpr {
 			return g.comptime_if_to_ifdef((cond.expr as ast.Ident).name, true)
@@ -66,7 +62,7 @@ pub fn (mut g Gen) comptime_if_expr(node ast.IfExpr, expected ast.Type, existing
 	for i, branch in node.branches {
 		has_expr := !(node.has_else && i + 1 >= node.branches.len)
 
-		if has_expr && !g.comptime_cond(branch.cond, branch.pkg_exist) {
+		if has_expr && !g.comptime_cond(branch.cond) {
 			continue
 		}
 		// !node.is_expr || cond

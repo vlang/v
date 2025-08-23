@@ -1538,7 +1538,6 @@ fn (t Tree) if_branch(node ast.IfBranch) &Node {
 	obj.add_terse('cond', t.expr(node.cond))
 	obj.add('pos', t.pos(node.pos))
 	obj.add('body_pos', t.pos(node.body_pos))
-	obj.add_terse('pkg_exist', t.bool_node(node.pkg_exist))
 	obj.add_terse('stmts', t.array_node_stmt(node.stmts))
 	obj.add('scope', t.number_node(int(node.scope)))
 	obj.add('comments', t.array_node_comment(node.comments))
