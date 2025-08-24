@@ -2667,7 +2667,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('goto ${c_name(node.name)};')
 		}
 		ast.AsmStmt {
-			if g.is_cc_msvc {
+			if g.is_cc_msvc && !g.pref.output_cross_c {
 				g.error('msvc does not support inline assembly', node.pos)
 			}
 			g.write_v_source_line_info_stmt(node)
