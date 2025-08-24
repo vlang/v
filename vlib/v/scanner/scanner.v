@@ -1068,15 +1068,11 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					mut comment_line_end := s.pos
 					if s.text[s.pos - 1] == b_cr {
 						comment_line_end--
-						if s.text[s.pos] == b_lf {
-							s.pos = s.pos - 2
-							s.line_nr--
-						}
-					} else {
-						// fix line_nr, \n was read; the comment is marked on the next line
 						s.pos--
-						s.line_nr--
 					}
+					// fix line_nr, \n was read; the comment is marked on the next line
+					s.pos--
+					s.line_nr--
 					if s.should_parse_comment() {
 						s.line_comment = s.text[start + 1..comment_line_end]
 						mut comment := s.line_comment
