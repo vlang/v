@@ -494,7 +494,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			if should_create_scope {
 				g.writeln('{')
 			}
-			if is_true.val {
+			if is_true.val || g.pref.output_cross_c {
 				g.stmts(branch.stmts)
 			}
 			if should_create_scope {
