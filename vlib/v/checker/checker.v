@@ -433,6 +433,11 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 		// println('setting is_running=true,  pref.path=${c.pref.linfo.path} curdir' + os.getwd())
 		c.pref.linfo.is_running = true
 		// println('linfo path=${c.pref.linfo.path}')
+		// Go to definition
+		if c.pref.linfo.expr.starts_with('gd^') {
+			c.ident_gotodef()
+			exit(0)
+		}
 		if c.pref.linfo.expr.contains('()') {
 			c.autocomplete_for_fn_call_expr()
 			exit(0)

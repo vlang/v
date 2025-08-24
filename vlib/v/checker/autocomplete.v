@@ -21,6 +21,7 @@ fn abs(a int) int {
 pub fn (mut c Checker) run_ac(ast_file &ast.File) {
 }
 
+// Autocomplete for function parameters `os.write_bytes(**path string, bytes []u8***)` etc
 pub fn (mut c Checker) autocomplete_for_fn_call_expr() {
 	// println(c.pref.linfo.expr)
 	fn_name := c.pref.linfo.expr.replace('()', '').trim_space()
@@ -32,6 +33,16 @@ pub fn (mut c Checker) autocomplete_for_fn_call_expr() {
 	println(res)
 }
 
+fn (mut c Checker) ident_gotodef() {
+	name := c.pref.linfo.expr.after('gd^').trim_space()
+	f := c.table.find_fn(name) or {
+		println('failed to find fn "${name}"')
+		return
+	}
+	println('${f.file}:${f.pos.line_nr}:${f.pos.col}')
+}
+
+// Autocomplete for `myvar. ...`, `os. ...`
 fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	// Mini LS hack (v -line-info "a.v:16")
 	if c.pref.is_verbose {
