@@ -2842,7 +2842,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	f.write('}')
 }
 
-fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
+fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool, is_comptime bool) {
 	if !branch.is_else {
 		// normal branch
 		f.is_mbranch_expr = true
@@ -2864,7 +2864,11 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		f.is_mbranch_expr = false
 	} else {
 		// else branch
-		f.write('else')
+		if is_comptime {
+			f.write('\$else')
+		} else {
+			f.write('else')
+		}
 	}
 	if branch.stmts.len == 0 {
 		f.writeln(' {}')
@@ -2888,7 +2892,8 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 }
 
 pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
-	f.write('match ')
+	dollar := if node.is_comptime { '$' } else { '' }
+	f.write('${dollar}match ')
 	f.expr(node.cond)
 	f.writeln(' {')
 	f.indent++
@@ -2913,10 +2918,10 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 			else_idx = i
 			continue
 		}
-		f.match_branch(branch, single_line)
+		f.match_branch(branch, single_line, node.is_comptime)
 	}
 	if else_idx >= 0 {
-		f.match_branch(node.branches[else_idx], single_line)
+		f.match_branch(node.branches[else_idx], single_line, node.is_comptime)
 	}
 	f.indent--
 	f.write('}')

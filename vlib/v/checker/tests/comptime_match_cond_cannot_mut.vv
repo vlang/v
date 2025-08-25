@@ -1,0 +1,18 @@
+fn main() {
+	mut x := 1
+	$match x {
+		1 {
+			println('1')
+		}
+		2 {
+			println('2')
+		}
+	}
+
+	y := 100
+	$match mut y {
+		100 {
+			println('100')
+		}
+	}
+}

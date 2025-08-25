@@ -1262,9 +1262,10 @@ pub mut:
 @[minify]
 pub struct MatchExpr {
 pub:
-	tok_kind token.Kind
-	pos      token.Pos
-	comments []Comment // comments before the first branch
+	is_comptime bool
+	tok_kind    token.Kind
+	pos         token.Pos
+	comments    []Comment // comments before the first branch
 pub mut:
 	cond          Expr
 	branches      []MatchBranch

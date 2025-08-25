@@ -1,0 +1,14 @@
+vlib/v/checker/tests/comptime_match_value_type_mix_check.vv:9:3: error: can not matching a type in a value `$match`
+    7 |             println('value check')
+    8 |         }
+    9 |         int {
+      |         ~~~
+   10 |             println('type check')
+   11 |         }
+vlib/v/checker/tests/comptime_match_value_type_mix_check.vv:21:3: error: can not matching a value in a type `$match`
+   19 |             println('type check')
+   20 |         }
+   21 |         100 {
+      |         ~~~
+   22 |             println('value check')
+   23 |         }

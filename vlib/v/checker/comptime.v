@@ -969,6 +969,15 @@ fn (mut c Checker) comptime_if_to_ifdef(name string) !string {
 	return error('bad os ifdef name "${name}"')
 }
 
+// check if `ident` is a function generic, such as `T`
+fn (mut c Checker) is_generic_ident(ident string) bool {
+	if !isnil(c.table.cur_fn) && ident in c.table.cur_fn.generic_names
+		&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+		return true
+	}
+	return false
+}
+
 fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 	match cond {
 		ast.Ident {
@@ -978,6 +987,10 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 				|| cond.name == c.comptime.comptime_for_field_var) {
 				// struct field
 				return c.type_resolver.get_type_from_comptime_var(cond)
+			} else if c.is_generic_ident(cond.name) {
+				// generic type `T`
+				idx := c.table.cur_fn.generic_names.index(cond.name)
+				return c.table.cur_concrete_types[idx]
 			} else if var := cond.scope.find_var(cond.name) {
 				// var
 				checked_type = c.unwrap_generic(var.typ)
@@ -1040,6 +1053,35 @@ fn (mut c Checker) get_expr_type(cond ast.Expr) ast.Type {
 			return ast.void_type
 		}
 	}
+}
+
+fn (mut c Checker) check_compatible_types(left_type ast.Type, left_name string, expr ast.Expr) bool {
+	if expr is ast.ComptimeType {
+		return c.type_resolver.is_comptime_type(left_type, expr as ast.ComptimeType)
+	} else if expr is ast.TypeNode {
+		typ := c.get_expr_type(expr)
+		right_type := c.unwrap_generic(typ)
+		right_sym := c.table.sym(right_type)
+		if right_sym.kind == .placeholder || right_type.has_flag(.generic) {
+			c.error('unknown type `${right_sym.name}`', expr.pos)
+		}
+		if right_sym.kind == .interface && right_sym.info is ast.Interface {
+			return left_type.has_flag(.option) == right_type.has_flag(.option)
+				&& c.table.does_type_implement_interface(left_type, right_type)
+		}
+		if right_sym.info is ast.FnType && c.comptime.comptime_for_method_var == left_name {
+			return c.table.fn_signature(right_sym.info.func,
+				skip_receiver: true
+				type_only:     true
+			) == c.table.fn_signature(c.comptime.comptime_for_method,
+				skip_receiver: true
+				type_only:     true
+			)
+		} else {
+			return left_type == right_type
+		}
+	}
+	return false
 }
 
 // comptime_if_cond evaluate the `cond` and return (`is_true`, `keep_stmts`)
@@ -1141,45 +1183,9 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 						}
 						// iter the `type_array`, for `is` and `!is`, it has only one element
 						for expr in type_array {
-							if expr is ast.ComptimeType {
-								is_true = c.type_resolver.is_comptime_type(left_type,
-									expr as ast.ComptimeType)
-								if is_true {
-									break
-								}
-							} else if expr is ast.TypeNode {
-								typ := c.get_expr_type(expr)
-								right_type := c.unwrap_generic(typ)
-								right_sym := c.table.sym(right_type)
-								if right_sym.kind == .placeholder || right_type.has_flag(.generic) {
-									c.error('unknown type `${right_sym.name}`', expr.pos)
-								}
-								if right_sym.kind == .interface && right_sym.info is ast.Interface {
-									is_true =
-										left_type.has_flag(.option) == right_type.has_flag(.option)
-										&& c.table.does_type_implement_interface(left_type, right_type)
-									if is_true {
-										break
-									}
-								}
-								if right_sym.info is ast.FnType
-									&& c.comptime.comptime_for_method_var == left_name {
-									is_true = c.table.fn_signature(right_sym.info.func,
-										skip_receiver: true
-										type_only:     true
-									) == c.table.fn_signature(c.comptime.comptime_for_method,
-										skip_receiver: true
-										type_only:     true
-									)
-									if is_true {
-										break
-									}
-								} else {
-									is_true = left_type == right_type
-									if is_true {
-										break
-									}
-								}
+							is_true = c.check_compatible_types(left_type, left_name, expr)
+							if is_true {
+								break
 							}
 						}
 						is_true = if cond.op in [.key_in, .key_is] { is_true } else { !is_true }

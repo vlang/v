@@ -3824,7 +3824,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.map_init(node)
 		}
 		ast.MatchExpr {
-			g.match_expr(node)
+			if node.is_comptime {
+				g.comptime_match(node)
+			} else {
+				g.match_expr(node)
+			}
 		}
 		ast.NodeError {}
 		ast.Nil {
