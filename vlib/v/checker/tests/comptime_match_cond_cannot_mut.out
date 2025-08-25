@@ -1,0 +1,14 @@
+vlib/v/checker/tests/comptime_match_cond_cannot_mut.vv:3:9: error: `x` is mut and may have changed since its definition
+    1 | fn main() {
+    2 |     mut x := 1
+    3 |     $match x {
+      |            ^
+    4 |         1 {
+    5 |             println('1')
+vlib/v/checker/tests/comptime_match_cond_cannot_mut.vv:13:13: error: `$match` condition `y` can not be mutable
+   11 | 
+   12 |     y := 100
+   13 |     $match mut y {
+      |                ^
+   14 |         100 {
+   15 |             println('100')

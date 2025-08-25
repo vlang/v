@@ -957,6 +957,15 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				.key_for {
 					return p.comptime_for()
 				}
+				.key_match {
+					mut pos := p.tok.pos()
+					expr := p.match_expr(true)
+					pos.update_last_line(p.prev_tok.line_nr)
+					return ast.ExprStmt{
+						expr: expr
+						pos:  pos
+					}
+				}
 				.name {
 					// handles $dbg directly without registering token
 					if p.peek_tok.lit == 'dbg' {

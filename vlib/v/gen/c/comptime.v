@@ -946,193 +946,102 @@ fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
 	return node.expr_type
 }
 
-fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !string {
-	match name {
-		// platforms/os-es:
-		'windows' {
-			return '_WIN32'
+fn (mut g Gen) comptime_match(node ast.MatchExpr) {
+	tmp_var := g.new_tmp_var()
+	is_opt_or_result := node.return_type.has_option_or_result()
+	line := if node.is_expr {
+		stmt_str := g.go_before_last_stmt()
+		g.write(util.tabs(g.indent))
+		styp := g.styp(node.return_type)
+		g.writeln('${styp} ${tmp_var};')
+		stmt_str
+	} else {
+		''
+	}
+
+	mut comptime_branch_context_str := g.gen_branch_context_string()
+	mut is_true := ast.ComptTimeCondResult{}
+	for i, branch in node.branches {
+		// `idx_str` is composed of two parts:
+		// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
+		// The second part indicates the branch's location in the source file.
+		// This format must match what is in `checker`.
+		idx_str := comptime_branch_context_str + '|${g.file.path}|${branch.pos}|'
+		if comptime_is_true := g.table.comptime_is_true[idx_str] {
+			// `g.table.comptime_is_true` are the branch condition results set by `checker`
+			is_true = comptime_is_true
+		} else {
+			g.error('checker error: match branch result idx string not found => [${idx_str}]',
+				branch.pos)
+			return
 		}
-		'ios' {
-			return '__TARGET_IOS__'
-		}
-		'macos' {
-			return '__APPLE__'
-		}
-		'mach' {
-			return '__MACH__'
-		}
-		'darwin' {
-			return '__DARWIN__'
-		}
-		'hpux' {
-			return '__HPUX__'
-		}
-		'gnu' {
-			return '__GNU__'
-		}
-		'qnx' {
-			return '__QNX__'
-		}
-		'linux' {
-			return '__linux__'
-		}
-		'serenity' {
-			return '__serenity__'
-		}
-		'plan9' {
-			return '__plan9__'
-		}
-		'vinix' {
-			return '__vinix__'
-		}
-		'freebsd' {
-			return '__FreeBSD__'
-		}
-		'openbsd' {
-			return '__OpenBSD__'
-		}
-		'netbsd' {
-			return '__NetBSD__'
-		}
-		'bsd' {
-			return '__BSD__'
-		}
-		'dragonfly' {
-			return '__DragonFly__'
-		}
-		'android' {
-			return '__ANDROID__'
-		}
-		'termux' {
-			// Note: termux is running on Android natively so __ANDROID__ will also be defined
-			return '__TERMUX__'
-		}
-		'solaris' {
-			return '__sun'
-		}
-		'haiku' {
-			return '__HAIKU__'
-		}
-		//
-		'js' {
-			return '_VJS'
-		}
-		'wasm32_emscripten' {
-			return '__EMSCRIPTEN__'
-		}
-		'native' {
-			return '_VNATIVE' // when using the native backend, cgen is inactive
-		}
-		// compilers:
-		'gcc' {
-			return '__V_GCC__'
-		}
-		'tinyc' {
-			return '__TINYC__'
-		}
-		'clang' {
-			return '__clang__'
-		}
-		'mingw' {
-			return '__MINGW32__'
-		}
-		'msvc' {
-			return '_MSC_VER'
-		}
-		'cplusplus' {
-			return '__cplusplus'
-		}
-		// other:
-		'threads' {
-			return '__VTHREADS__'
-		}
-		'gcboehm' {
-			return '_VGCBOEHM'
-		}
-		'debug' {
-			return '_VDEBUG'
-		}
-		'prod' {
-			return '_VPROD'
-		}
-		'profile' {
-			return '_VPROFILE'
-		}
-		'test' {
-			return '_VTEST'
-		}
-		'glibc' {
-			return '__GLIBC__'
-		}
-		'prealloc' {
-			return '_VPREALLOC'
-		}
-		'no_bounds_checking' {
-			return 'CUSTOM_DEFINE_no_bounds_checking'
-		}
-		'freestanding' {
-			return '_VFREESTANDING'
-		}
-		'autofree' {
-			return '_VAUTOFREE'
-		}
-		// architectures:
-		'amd64' {
-			return '__V_amd64'
-		}
-		'aarch64', 'arm64' {
-			return '__V_arm64'
-		}
-		'arm32' {
-			return '__V_arm32'
-		}
-		'i386' {
-			return '__V_x86'
-		}
-		'rv64', 'riscv64' {
-			return '__V_rv64'
-		}
-		'rv32', 'riscv32' {
-			return '__V_rv32'
-		}
-		's390x' {
-			return '__V_s390x'
-		}
-		'ppc64le' {
-			return '__V_ppc64le'
-		}
-		'loongarch64' {
-			return '__V_loongarch64'
-		}
-		// bitness:
-		'x64' {
-			return 'TARGET_IS_64BIT'
-		}
-		'x32' {
-			return 'TARGET_IS_32BIT'
-		}
-		// endianness:
-		'little_endian' {
-			return 'TARGET_ORDER_IS_LITTLE'
-		}
-		'big_endian' {
-			return 'TARGET_ORDER_IS_BIG'
-		}
-		'fast_math' {
-			if g.pref.ccompiler_type == .msvc {
-				// turned on by: `-cflags /fp:fast`
-				return '_M_FP_FAST'
+		if !branch.is_else {
+			if i == 0 {
+				g.write('#if ')
+			} else {
+				g.write('#elif ')
 			}
-			// turned on by: `-cflags -ffast-math`
-			return '__FAST_MATH__'
-		}
-		else {
-			if is_comptime_option
-				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
-				return 'CUSTOM_DEFINE_${name}'
+			// directly use `checker` evaluate results
+			g.writeln('${is_true.val}')
+			$if debug_comptime_branch_context ? {
+				g.writeln('/* | generic=[${comptime_branch_context_str}] */')
 			}
-			return error('bad os ifdef name "${name}"') // should never happen, caught in the checker
+		} else {
+			g.writeln('#else')
+		}
+
+		if node.is_expr {
+			len := branch.stmts.len
+			if len > 0 {
+				last := branch.stmts.last() as ast.ExprStmt
+				if len > 1 {
+					g.indent++
+					g.writeln('{')
+					g.stmts(branch.stmts[..len - 1])
+					g.set_current_pos_as_last_stmt_pos()
+					prev_skip_stmt_pos := g.skip_stmt_pos
+					g.skip_stmt_pos = true
+					if is_opt_or_result {
+						tmp_var2 := g.new_tmp_var()
+						g.write('{ ${g.base_type(node.return_type)} ${tmp_var2} = ')
+						g.stmt(last)
+						g.writeln('_result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
+						g.writeln('}')
+					} else {
+						g.write('\t${tmp_var} = ')
+						g.stmt(last)
+					}
+					g.skip_stmt_pos = prev_skip_stmt_pos
+					g.writeln2(';', '}')
+					g.indent--
+				} else {
+					g.indent++
+					g.set_current_pos_as_last_stmt_pos()
+					prev_skip_stmt_pos := g.skip_stmt_pos
+					g.skip_stmt_pos = true
+					if is_opt_or_result {
+						tmp_var2 := g.new_tmp_var()
+						g.write('{ ${g.base_type(node.return_type)} ${tmp_var2} = ')
+						g.stmt(last)
+						g.writeln('_result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
+						g.writeln('}')
+					} else {
+						g.write('${tmp_var} = ')
+						g.stmt(last)
+					}
+					g.skip_stmt_pos = prev_skip_stmt_pos
+					g.writeln(';')
+					g.indent--
+				}
+			}
+		} else {
+			if is_true.val || g.pref.output_cross_c {
+				g.stmts(branch.stmts)
+			}
 		}
 	}
-	return error('none')
+	g.writeln('#endif')
+	if node.is_expr {
+		g.write('${line}${tmp_var}')
+	}
 }

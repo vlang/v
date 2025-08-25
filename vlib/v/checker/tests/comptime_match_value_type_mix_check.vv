@@ -1,0 +1,25 @@
+module main
+
+fn type_check_in_a_value_match() {
+	x := 100
+	$match x {
+		100 {
+			println('value check')
+		}
+		int {
+			println('type check')
+		}
+	}
+}
+
+fn value_check_in_a_type_match() {
+	x := 100
+	$match x {
+		int {
+			println('type check')
+		}
+		100 {
+			println('value check')
+		}
+	}
+}

@@ -18,13 +18,26 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.expected_expr_type = ast.void_type
 		}
 	}
-	cond_type := c.expr(mut node.cond)
+	mut cond_type := ast.void_type
+	if node.is_comptime {
+		// for field.name and generic type `T`
+		if node.cond is ast.SelectorExpr {
+			c.expr(mut node.cond)
+		}
+		cond_type = c.get_expr_type(node.cond)
+	} else {
+		cond_type = c.expr(mut node.cond)
+	}
 	// we setting this here rather than at the end of the method
 	// since it is used in c.match_exprs() it saves checking twice
 	node.cond_type = ast.mktyp(cond_type)
 	if (node.cond is ast.Ident && node.cond.is_mut)
 		|| (node.cond is ast.SelectorExpr && node.cond.is_mut) {
-		c.fail_if_immutable(mut node.cond)
+		if node.is_comptime {
+			c.error('`\$match` condition `${node.cond}` can not be mutable', node.cond.pos())
+		} else {
+			c.fail_if_immutable(mut node.cond)
+		}
 	}
 	if !c.ensure_type_exists(node.cond_type, node.pos) {
 		return ast.void_type
@@ -42,7 +55,164 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
 	mut must_be_option := false
+	comptime_branch_context_str := if node.is_comptime { c.gen_branch_context_string() } else { '' }
+	mut comptime_match_branch_result := false
+	mut comptime_match_found_branch := false
+	mut comptime_match_cond_value := ''
+	if node.is_comptime {
+		if node.cond in [ast.ComptimeType, ast.TypeNode]
+			|| (node.cond is ast.Ident && (c.is_generic_ident(node.cond.name))) {
+			// must be a type `$match`
+			c.inside_x_matches_type = true
+		} else {
+			// a value `$match`, eval the `node.cond` first
+			c.expr(mut node.cond)
+			if !c.type_resolver.is_generic_param_var(node.cond) {
+				match mut node.cond {
+					ast.StringLiteral {
+						comptime_match_cond_value = node.cond.val
+					}
+					ast.IntegerLiteral {
+						comptime_match_cond_value = node.cond.val.str()
+					}
+					ast.BoolLiteral {
+						comptime_match_cond_value = node.cond.val.str()
+					}
+					ast.Ident {
+						mut cond_expr := c.find_definition(node.cond) or {
+							c.error(err.msg(), node.cond.pos)
+							return ast.void_type
+						}
+						match mut cond_expr {
+							ast.StringLiteral {
+								comptime_match_cond_value = cond_expr.val
+							}
+							ast.IntegerLiteral {
+								comptime_match_cond_value = cond_expr.val.str()
+							}
+							ast.BoolLiteral {
+								comptime_match_cond_value = cond_expr.val.str()
+							}
+							else {
+								c.error('`${node.cond}` is not a string/int/bool literal.',
+									node.cond.pos)
+								return ast.void_type
+							}
+						}
+					}
+					ast.SelectorExpr {
+						if c.comptime.inside_comptime_for && node.cond.field_name in ['name', 'typ'] {
+							// hack: `typ` is just for bypass the error test, because we don't know it is a type match or a value match righ now
+							comptime_match_cond_value = c.comptime.comptime_for_field_value.name
+						} else {
+							c.error('`${node.cond}` is not `\$for` field.name.', node.cond.pos)
+							return ast.void_type
+						}
+					}
+					else {
+						c.error('`\$match` cond only support string/int/bool/ident.',
+							node.cond.pos())
+						return ast.void_type
+					}
+				}
+			}
+		}
+	}
 	for mut branch in node.branches {
+		if node.is_comptime {
+			// `idx_str` is composed of two parts:
+			// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
+			// The second part indicates the branch's location in the source file.
+			// This format must match what is in `cgen`.
+			idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.pos}|'
+			mut c_str := ''
+			if !branch.is_else {
+				if c.inside_x_matches_type {
+					// type $match
+					for expr in branch.exprs {
+						if mut node.cond is ast.ComptimeType {
+							// $match $int { a {}
+							branch_type := c.get_expr_type(expr)
+							comptime_match_branch_result = c.type_resolver.is_comptime_type(branch_type,
+								node.cond)
+							c_str = '${expr} == ${c.table.type_to_str(branch_type)}'
+						} else {
+							// $match a { $int {}
+							comptime_match_branch_result = c.check_compatible_types(node.cond_type,
+								'${node.cond}', expr)
+							c_str = '${c.table.type_to_str(node.cond_type)} == ${expr}'
+						}
+						if comptime_match_branch_result {
+							break
+						}
+					}
+				} else {
+					// value $match
+					for mut expr in branch.exprs {
+						match mut expr {
+							ast.Ident {
+								mut branch_expr := c.find_definition(expr) or {
+									c.error(err.msg(), expr.pos)
+									return ast.void_type
+								}
+								match mut branch_expr {
+									ast.StringLiteral {
+										comptime_match_branch_result = branch_expr.val == comptime_match_cond_value
+									}
+									ast.IntegerLiteral {
+										comptime_match_branch_result = branch_expr.val.str() == comptime_match_cond_value
+									}
+									ast.BoolLiteral {
+										comptime_match_branch_result = branch_expr.val.str() == comptime_match_cond_value
+									}
+									else {
+										c.error('`${expr}` is not a string/int/bool literal.',
+											expr.pos)
+										return ast.void_type
+									}
+								}
+								c_str = '${node.cond} == ${expr.name}'
+							}
+							ast.SelectorExpr {}
+							ast.StringLiteral {
+								c_str = '${node.cond} == ${expr}'
+								comptime_match_branch_result = comptime_match_cond_value == expr.val
+							}
+							ast.IntegerLiteral {
+								c_str = '${node.cond} == ${expr.val}'
+								comptime_match_branch_result = comptime_match_cond_value == expr.val.str()
+							}
+							ast.BoolLiteral {
+								c_str = '${node.cond} == ${expr.val}'
+								comptime_match_branch_result = comptime_match_cond_value == expr.val.str()
+							}
+							else {
+								c.error('`\$match` branch only support string/int/bool types',
+									node.cond.pos())
+								return ast.void_type
+							}
+						}
+						if comptime_match_branch_result {
+							break
+						}
+					}
+				}
+				if comptime_match_branch_result {
+					comptime_match_found_branch = true
+				}
+				// set `comptime_is_true` which can be used by `cgen`
+				c.table.comptime_is_true[idx_str] = ast.ComptTimeCondResult{
+					val:   comptime_match_branch_result
+					c_str: c_str
+				}
+			} else {
+				comptime_match_branch_result = !comptime_match_found_branch
+				c.table.comptime_is_true[idx_str] = ast.ComptTimeCondResult{
+					val:   comptime_match_branch_result
+					c_str: ''
+				}
+			}
+		}
 		if node.is_expr {
 			c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
 		} else {
@@ -326,6 +496,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	c.expected_type = node.expected_type
 	cond_sym := c.table.sym(node.cond_type)
 	mut enum_ref_checked := false
+	mut is_comptime_value_match := false
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
@@ -335,7 +506,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		for k, mut expr in branch.exprs {
 			mut key := ''
 			// TODO: investigate why enums are different here:
-			if expr !is ast.EnumVal {
+			if expr !is ast.EnumVal && !(node.is_comptime && expr is ast.ComptimeType) {
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
 				_ := c.expr(mut expr)
 			}
@@ -351,7 +522,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						&& node.cond.field_name == 'typ'
 				}
 			}
-			if mut expr is ast.TypeNode && cond_sym.is_primitive() && !is_comptime {
+			if mut expr is ast.TypeNode && cond_sym.is_primitive() && !is_comptime
+				&& !node.is_comptime {
 				c.error('matching by type can only be done for sum types, generics, interfaces, `${node.cond}` is none of those',
 					branch.pos)
 			}
@@ -412,7 +584,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				}
 				continue
 			}
-			is_type_node := expr is ast.TypeNode
+			is_type_node := expr is ast.TypeNode || expr is ast.ComptimeType
 			match mut expr {
 				ast.TypeNode {
 					key = c.table.type_to_str(expr.typ)
@@ -439,46 +611,98 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			c.expected_type = node.cond_type
 			if is_type_node {
 				c.inside_x_matches_type = true
+			} else {
+				if node.is_comptime {
+					is_comptime_value_match = true
+				}
 			}
-			expr_type := c.expr(mut expr)
-			if expr_type.idx() == 0 {
-				// parser failed, stop checking
-				return
-			}
-			expr_type_sym := c.table.sym(expr_type)
-			if cond_type_sym.kind == .interface {
-				// TODO
-				// This generates a memory issue with TCC
-				// Needs to be checked later when TCC errors are fixed
-				// Current solution is to move expr.pos() to its own statement
-				// c.type_implements(expr_type, c.expected_type, expr.pos())
-				expr_pos := expr.pos()
-				if c.type_implements(expr_type, c.expected_type, expr_pos) {
-					if !expr_type.is_any_kind_of_pointer() && !c.inside_unsafe {
-						if expr_type_sym.kind != .interface {
-							c.mark_as_referenced(mut &branch.exprs[k], true)
+			if node.is_comptime {
+				if is_type_node {
+					if is_comptime_value_match {
+						// type branch in a value match
+						c.error('can not matching a type in a value `\$match`', expr.pos())
+						return
+					}
+				} else if c.inside_x_matches_type {
+					// value branch in a type match
+					if expr in [ast.IntegerLiteral, ast.BoolLiteral, ast.StringLiteral] {
+						c.error('can not matching a value in a type `\$match`', expr.pos())
+						return
+					}
+				}
+				if !is_type_node {
+					// value check should match cond's type
+					if expr is ast.IntegerLiteral {
+						if mut node.cond is ast.ComptimeType {
+							if node.cond.kind != .int {
+								c.error('can not matching a int value(`${expr}`) in a non int type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
+									expr.pos())
+								return
+							}
+						} else if node.cond_type !in ast.integer_type_idxs {
+							c.error('can not matching a int value(`${expr}`) in a non int type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
+								expr.pos())
+							return
+						}
+					} else if expr is ast.BoolLiteral && node.cond_type != ast.bool_type {
+						c.error('can not matching a bool value(`${expr}`) in a non bool type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
+							expr.pos())
+						return
+					} else if expr is ast.StringLiteral {
+						if mut node.cond is ast.ComptimeType {
+							if node.cond.kind != .string {
+								c.error('can not matching a string value(`${expr}`) in a non string type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
+									expr.pos())
+								return
+							}
+						} else if node.cond_type != ast.string_type {
+							c.error('can not matching a string value(`${expr}`) in a non string type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
+								expr.pos())
+							return
 						}
 					}
 				}
-			} else if cond_type_sym.info is ast.SumType {
-				if expr_type !in cond_type_sym.info.variants {
+			} else {
+				expr_type := c.expr(mut expr)
+				if expr_type.idx() == 0 {
+					// parser failed, stop checking
+					return
+				}
+				expr_type_sym := c.table.sym(expr_type)
+				if cond_type_sym.kind == .interface {
+					// TODO
+					// This generates a memory issue with TCC
+					// Needs to be checked later when TCC errors are fixed
+					// Current solution is to move expr.pos() to its own statement
+					// c.type_implements(expr_type, c.expected_type, expr.pos())
+					expr_pos := expr.pos()
+					if c.type_implements(expr_type, c.expected_type, expr_pos) {
+						if !expr_type.is_any_kind_of_pointer() && !c.inside_unsafe {
+							if expr_type_sym.kind != .interface {
+								c.mark_as_referenced(mut &branch.exprs[k], true)
+							}
+						}
+					}
+				} else if cond_type_sym.info is ast.SumType {
+					if expr_type !in cond_type_sym.info.variants {
+						expr_str := c.table.type_to_str(expr_type)
+						expect_str := c.table.type_to_str(node.cond_type)
+						sumtype_variant_names := cond_type_sym.info.variants.map(c.table.type_to_str_using_aliases(it,
+							{}))
+						suggestion := util.new_suggestion(expr_str, sumtype_variant_names)
+						c.error(suggestion.say('`${expect_str}` has no variant `${expr_str}`'),
+							expr.pos())
+					}
+				} else if cond_type_sym.info is ast.Alias && expr_type_sym.info is ast.Struct {
 					expr_str := c.table.type_to_str(expr_type)
 					expect_str := c.table.type_to_str(node.cond_type)
-					sumtype_variant_names := cond_type_sym.info.variants.map(c.table.type_to_str_using_aliases(it,
-						{}))
-					suggestion := util.new_suggestion(expr_str, sumtype_variant_names)
-					c.error(suggestion.say('`${expect_str}` has no variant `${expr_str}`'),
+					c.error('cannot match alias type `${expect_str}` with `${expr_str}`',
 						expr.pos())
+				} else if !c.check_types(expr_type, node.cond_type) && !is_comptime {
+					expr_str := c.table.type_to_str(expr_type)
+					expect_str := c.table.type_to_str(node.cond_type)
+					c.error('cannot match `${expect_str}` with `${expr_str}`', expr.pos())
 				}
-			} else if cond_type_sym.info is ast.Alias && expr_type_sym.info is ast.Struct {
-				expr_str := c.table.type_to_str(expr_type)
-				expect_str := c.table.type_to_str(node.cond_type)
-				c.error('cannot match alias type `${expect_str}` with `${expr_str}`',
-					expr.pos())
-			} else if !c.check_types(expr_type, node.cond_type) && !is_comptime {
-				expr_str := c.table.type_to_str(expr_type)
-				expect_str := c.table.type_to_str(node.cond_type)
-				c.error('cannot match `${expect_str}` with `${expr_str}`', expr.pos())
 			}
 			branch_exprs[key] = val + 1
 		}
@@ -596,7 +820,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		}
 		return
 	}
-	if has_else {
+	if has_else || node.is_comptime {
 		return
 	}
 	mut err_details := 'match must be exhaustive'

@@ -128,6 +128,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				.key_if {
 					return p.if_expr(true, false)
 				}
+				.key_match {
+					return p.match_expr(true)
+				}
 				else {
 					return p.unexpected_with_pos(p.peek_tok.pos(),
 						got: '`$`'
@@ -184,7 +187,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
 				node = p.call_expr(p.language, p.mod)
 			} else {
-				node = p.match_expr()
+				node = p.match_expr(false)
 			}
 		}
 		.key_select {

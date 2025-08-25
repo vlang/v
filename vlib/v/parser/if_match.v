@@ -244,8 +244,12 @@ fn (mut p Parser) is_match_sumtype_type() bool {
 		&& next_next_tok.lit.len > 0 && next_next_tok.lit[0].is_capital()))
 }
 
-fn (mut p Parser) match_expr() ast.MatchExpr {
-	match_first_pos := p.tok.pos()
+fn (mut p Parser) match_expr(is_comptime bool) ast.MatchExpr {
+	mut match_first_pos := p.tok.pos()
+	if is_comptime {
+		p.next() // `$`
+		match_first_pos = p.prev_tok.pos().extend(p.tok.pos())
+	}
 	old_inside_match := p.inside_match
 	p.inside_match = true
 	p.check(.key_match)
@@ -265,6 +269,15 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.open_scope()
 		// final else
 		mut is_else := false
+		if is_comptime {
+			if p.tok.kind == .key_else {
+				p.error('use `\$else` instead of `else` in compile-time `match` branches')
+				return ast.MatchExpr{}
+			}
+			if p.tok.kind != .rcbr && p.peek_tok.kind == .key_else {
+				p.check(.dollar)
+			}
+		}
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
@@ -382,6 +395,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	// return ast.StructInit{}
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.MatchExpr{
+		is_comptime: is_comptime
 		branches:    branches
 		cond:        cond
 		is_sum_type: is_sum_type
