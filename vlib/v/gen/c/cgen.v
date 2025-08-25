@@ -1271,7 +1271,8 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string) string {
 	// `foo[int]()` => `foo_T_int()`
 	mut name := before + '_T'
 	for typ in types {
-		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.styp(typ.set_nr_muls(0))
+		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) +
+			g.styp(typ.set_nr_muls(0)).replace(' ', '_')
 	}
 	return name
 }
