@@ -24,57 +24,6 @@ fn (i &Integer) shrink_tail_zeros() {
 	}
 }
 
-// suppose operand_a bigger than operand_b and both not null.
-// Both quotient and remaider are already allocated but of length 0
-// TODO: the manualfree tag here is a workaround for compilation with -autofree. Remove it, when the -autofree bug is fixed.
-@[manualfree]
-fn newton_divide_array_by_array(operand_a []u64, operand_b []u64, mut quotient []u64, mut remainder []u64) {
-	// transform back to Integers (on the stack without allocation)
-	a := Integer{
-		signum: 1
-		digits: operand_a
-	}
-	b := Integer{
-		signum: 1
-		digits: operand_b
-	}
-
-	k := a.bit_len() + b.bit_len() // a*b < 2**k
-	mut x := integer_from_int(2) //  0 < x < 2**(k+1)/b  // initial guess for convergence
-	// https://en.wikipedia.org/wiki/Division_algorithm#Newton%E2%80%93Raphson_division
-	// use 48/17 - (32/17)*D (divisor)
-	// where D - Divisor B adjusted to fit 0.5-1 range by replacing the exponent field with 8'd126
-	// 0x0f0f0f0f0f0f0f0f * 0x11 == 0xffffffff_ffffffff = -1
-	// 0x0f0f0f0f0f0f0f0f = -1/17
-	initial_guess := (((integer_from_int(48) - (integer_from_int(32) * b)) * integer_from_i64(0x0f0f0f0f0f0f0f0f)).right_shift(64)).neg() // / 17 == 0x11
-	if initial_guess > zero_int {
-		x = initial_guess
-	}
-	mut lastx := integer_from_int(0)
-	pow2_k_plus_1 := pow2(k + 1) // outside of the loop to optimize allocatio
-	for lastx != x { // main loop
-		lastx = x
-		x = (x * (pow2_k_plus_1 - (x * b))).right_shift(u32(k))
-	}
-	if x * b < pow2(k) {
-		x.inc()
-	}
-	mut q := (a * x).right_shift(u32(k))
-	// possible adjustments. see literature
-	if q * b > a {
-		q.dec()
-	}
-	mut r := a - (q * b)
-	if r >= b {
-		q.inc()
-		r -= b
-	}
-	quotient = q.digits.clone()
-	remainder = r.digits.clone()
-
-	shrink_tail_zeros(mut remainder)
-}
-
 // debug_u64_str output a `[]u64`
 @[direct_array_access]
 fn debug_u64_str(a []u64) string {
