@@ -4030,6 +4030,15 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 		.build_timestamp {
 			node.val = util.stable_build_time.unix().str()
 		}
+		.os {
+			node.val = pref.get_host_os().lower()
+		}
+		.compiler {
+			node.val = c.pref.ccompiler_type.str()
+		}
+		.platform {
+			node.val = c.pref.arch.str()
+		}
 		.unknown {
 			c.error('unknown @ identifier: ${node.name}. Available identifiers: ${token.valid_at_tokens}',
 				node.pos)
