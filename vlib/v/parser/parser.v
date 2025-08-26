@@ -2903,7 +2903,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		return p.error_with_pos('please use `unsafe {`', p.tok.pos())
 	}
 	p.next()
-	if p.inside_unsafe {
+	if p.inside_unsafe && !p.inside_defer {
 		return p.error_with_pos('already inside `unsafe` block', pos)
 	}
 	if p.tok.kind == .rcbr {
