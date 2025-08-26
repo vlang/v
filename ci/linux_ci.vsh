@@ -55,6 +55,9 @@ fn build_v_with_prealloc() {
 //
 
 fn install_dependencies_for_examples_and_tools_tcc() {
+	if common.is_github_job {
+		exec('.github/workflows/disable_azure_mirror.sh')
+	}
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind')
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
@@ -176,6 +179,9 @@ fn all_code_is_formatted_gcc() {
 }
 
 fn install_dependencies_for_examples_and_tools_gcc() {
+	if common.is_github_job {
+		exec('.github/workflows/disable_azure_mirror.sh')
+	}
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
@@ -296,6 +302,9 @@ fn all_code_is_formatted_clang() {
 }
 
 fn install_dependencies_for_examples_and_tools_clang() {
+	if common.is_github_job {
+		exec('.github/workflows/disable_azure_mirror.sh')
+	}
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
