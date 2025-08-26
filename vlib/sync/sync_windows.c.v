@@ -13,6 +13,9 @@ fn C.InitializeConditionVariable(voidptr)
 fn C.WakeConditionVariable(voidptr)
 fn C.SleepConditionVariableSRW(voidptr, voidptr, u32, u32) int
 
+fn C.TryAcquireSRWLockExclusive(h voidptr) int
+fn C.TryAcquireSRWLockShared(h voidptr) int
+
 // TODO: The suggestion of using CriticalSection instead of mutex
 // was discussed. Needs consideration.
 
