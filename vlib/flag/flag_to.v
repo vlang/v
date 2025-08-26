@@ -934,7 +934,9 @@ pub fn (fm FlagMapper) to_struct[T](defaults ?T) !T {
 						.f64()
 				} $else $if field.typ is bool {
 					if arg := f.arg {
-						return error('can not assign `${arg}` to bool field `${field.name}`')
+						if arg != '' {
+							return error('can not assign `${arg}` to bool field `${field.name}`')
+						}
 					}
 					result.$(field.name) = !the_default.$(field.name)
 				} $else $if field.typ is string {
