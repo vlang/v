@@ -328,7 +328,7 @@ fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []ast.
 		if stmt is ast.ExprStmt {
 			if stmt.expr is ast.CallExpr {
 				if prev_stmt_was_noreturn_call {
-					c.error('unreachable code after a @[noreturn] call', stmt.pos)
+					c.warn('unreachable code after a @[noreturn] call', stmt.pos)
 					return
 				}
 				prev_stmt_was_noreturn_call = stmt.expr.is_noreturn

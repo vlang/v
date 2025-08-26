@@ -13,8 +13,7 @@ fn (mut c Checker) gen_branch_context_string() string {
 	mut arr := []string{}
 
 	// gen `T=int,X=string`
-	if c.table.cur_fn.generic_names.len > 0
-		&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+	if !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
 		for i in 0 .. c.table.cur_fn.generic_names.len {
 			arr << c.table.cur_fn.generic_names[i] + '=' +
 				util.strip_main_name(c.table.type_to_str(c.table.cur_concrete_types[i]))
