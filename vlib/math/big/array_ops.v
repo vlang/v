@@ -239,15 +239,9 @@ fn divide_array_by_digit(operand_a []u64, divisor u64, mut quotient []u64, mut r
 	shrink_tail_zeros(mut remainder)
 }
 
-const newton_division_limit = 1_000_000
-
 @[inline]
 fn divide_array_by_array(operand_a []u64, operand_b []u64, mut quotient []u64, mut remainder []u64) {
-	if operand_a.len >= newton_division_limit {
-		newton_divide_array_by_array(operand_a, operand_b, mut quotient, mut remainder)
-	} else {
-		binary_divide_array_by_array(operand_a, operand_b, mut quotient, mut remainder)
-	}
+	binary_divide_array_by_array(operand_a, operand_b, mut quotient, mut remainder)
 }
 
 // Shifts the contents of the original array by the given amount of bits to the left.
