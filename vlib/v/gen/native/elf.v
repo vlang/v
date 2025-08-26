@@ -779,7 +779,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 						2 { g.write16(0xF) }
 						4 { g.write32(0xF) }
 						8 { g.write64(i64(0xF)) }
-						else { println('${@LOCATION} unsupported size ${size} for global ${fi}') }
+						else { eprintln('${@LOCATION} unsupported size ${size} for global `${fi.name}`') }
 					}
 					g.println('; global ${fi.name}, size: ${size}')
 				}
@@ -813,7 +813,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 				for fi in s.fields {
 					size := g.get_type_size(fi.typ)
 					if size > 8 || size <= 0 {
-						println('${@LOCATION} unsupported size ${size} for global ${fi}')
+						eprintln('${@LOCATION} unsupported size ${size} for global `${fi.name}`')
 					} else if fi.expr !is ast.EmptyExpr {
 						g.expr(fi.expr)
 						g.code_gen.mov_reg_to_var(GlobalVar{fi.name, fi.typ}, g.code_gen.main_reg())
