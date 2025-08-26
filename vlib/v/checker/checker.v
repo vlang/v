@@ -4033,8 +4033,11 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 		.os {
 			node.val = pref.get_host_os().lower()
 		}
-		.compiler {
+		.ccompiler {
 			node.val = c.pref.ccompiler_type.str()
+		}
+		.backend {
+			node.val = c.pref.backend.str()
 		}
 		.platform {
 			node.val = c.pref.arch.str()

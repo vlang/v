@@ -6139,7 +6139,8 @@ that are substituted at compile time:
 - `@BUILD_TIME` => replaced with the build time, for example '12:32:07' .
 - `@BUILD_TIMESTAMP` => replaced with the build timestamp, for example '1726219885' .
 - `@OS` => replaced with the OS type, for example 'linux' .
-- `@COMPILER` => replaced with the C compiler type, for example 'gcc' .
+- `@CCOMPILER` => replaced with the C compiler type, for example 'gcc' .
+- `@BACKEND` => replaced with current language backend, for example 'c' or 'golang' .
 - `@PLATFORM` => replaced with the platform type, for example 'amd64' .
 Note: `@BUILD_DATE`, `@BUILD_TIME`, `@BUILD_TIMESTAMP` represent times in the UTC timezone.
 By default, they are based on the current time of the compilation/build. They can be overridden

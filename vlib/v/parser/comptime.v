@@ -512,7 +512,8 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@BUILD_TIME' { token.AtKind.build_time }
 		'@BUILD_TIMESTAMP' { token.AtKind.build_timestamp }
 		'@OS' { token.AtKind.os }
-		'@COMPILER' { token.AtKind.compiler }
+		'@CCOMPILER' { token.AtKind.ccompiler }
+		'@BACKEND' { token.AtKind.backend }
 		'@PLATFORM' { token.AtKind.platform }
 		else { token.AtKind.unknown }
 	}

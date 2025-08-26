@@ -206,9 +206,15 @@ fn test_at_os() {
 		'js_node', 'js_freestanding', 'js_browser']
 }
 
-fn test_at_compiler() {
-	println('Current Compiler is ${@COMPILER}')
-	assert @COMPILER in ['gcc', 'tinyc', 'clang', 'emcc', 'mingw', 'msvc', 'cplusplus']
+fn test_at_ccompiler() {
+	println('Current C Compiler is ${@CCOMPILER}')
+	assert @CCOMPILER in ['gcc', 'tinyc', 'clang', 'emcc', 'mingw', 'msvc', 'cplusplus']
+}
+
+fn test_at_backend() {
+	println('Current language backend is ${@BACKEND}')
+	assert @BACKEND in ['c', 'golang', 'interpret', 'js_node', 'js_browser', 'js_freestanding',
+		'native', 'wasm']
 }
 
 fn test_at_platform() {
