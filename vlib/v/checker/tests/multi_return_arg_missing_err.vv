@@ -1,0 +1,10 @@
+fn t(a int, b int) {
+}
+
+fn g() (int, int) {
+	return 1, 1
+}
+
+fn main() {
+	t(1, g())
+}
