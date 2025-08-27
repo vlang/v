@@ -6,6 +6,6 @@ fn returning_2() (int, int) {
 }
 
 fn main() {
-	expect_2(1, ret_2())
+	expect_2(1, returning_2())
 	expect_2(returning_2(), 1)
 }

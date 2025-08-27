@@ -1684,16 +1684,15 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					}
 				}
 				out: for n in 0 .. arg_typ_sym.info.types.len {
-					num_arg := n + 1
 					curr_arg := arg_typs[n]
 					multi_param := if func.is_variadic && i >= func.params.len - 1 {
 						func.params.last()
 					} else {
-						func.params[i + n]
+						func.params[n + i]
 					}
 					c.check_expected_call_arg(curr_arg, c.unwrap_generic(multi_param.typ),
 						node.language, call_arg) or {
-						c.error('${err.msg()} in argument ${i + num_arg} to `${fn_name}` from ${c.table.type_to_str(arg_typ)}',
+						c.error('${err.msg()} in argument ${i + n + 1} to `${fn_name}` from ${c.table.type_to_str(arg_typ)}',
 							call_arg.pos)
 						continue out
 					}
