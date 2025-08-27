@@ -1692,7 +1692,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						if i + n > func.params.len - 1 {
 							c.error('missing argument ${i + num_arg} on `${fn_name}` to receive ${c.table.type_to_str(arg_typ)}',
 								call_arg.pos)
-							continue out
+							break
 						}
 						func.params[i + n]
 					}
