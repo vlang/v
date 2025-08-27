@@ -2924,7 +2924,8 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 				return error('')
 			}
 		}
-	} else if node.args.any(it.expr is ast.CallExpr && it.expr.nr_ret_values > 1) {
+	} else if node.args.len > 1 && node.args.any(it.expr is ast.CallExpr
+		&& it.expr.nr_ret_values > 1) {
 		mut check_args := 0
 		for arg in node.args {
 			if arg.expr is ast.CallExpr && arg.expr.nr_ret_values > 0 {
