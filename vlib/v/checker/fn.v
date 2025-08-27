@@ -1689,12 +1689,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					multi_param := if func.is_variadic && i >= func.params.len - 1 {
 						func.params.last()
 					} else {
-						if func.params.len - 1 < num_arg {
+						if i + n > func.params.len - 1 {
 							c.error('missing argument ${i + num_arg} on `${fn_name}` to receive ${c.table.type_to_str(arg_typ)}',
 								call_arg.pos)
 							continue out
 						}
-						func.params[num_arg]
+						func.params[i + n]
 					}
 					c.check_expected_call_arg(curr_arg, c.unwrap_generic(multi_param.typ),
 						node.language, call_arg) or {
