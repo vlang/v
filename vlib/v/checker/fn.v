@@ -1689,11 +1689,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					multi_param := if func.is_variadic && i >= func.params.len - 1 {
 						func.params.last()
 					} else {
-						if i + n > func.params.len - 1 {
-							c.error('missing argument ${i + num_arg} on `${fn_name}` to receive ${c.table.type_to_str(arg_typ)}',
-								call_arg.pos)
-							break
-						}
 						func.params[i + n]
 					}
 					c.check_expected_call_arg(curr_arg, c.unwrap_generic(multi_param.typ),
@@ -2930,6 +2925,16 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 				return error('')
 			}
 		}
+	} else if node.args.any(it.expr is ast.CallExpr && it.expr.nr_ret_values > 1) {
+		mut check_args := 0
+		for arg in node.args {
+			if arg.expr is ast.CallExpr && arg.expr.nr_ret_values > 0 {
+				check_args += arg.expr.nr_ret_values
+			} else {
+				check_args += 1
+			}
+		}
+		nr_args = check_args
 	}
 	if min_required_params < 0 {
 		min_required_params = 0
@@ -2972,7 +2977,7 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 		)
 		return error('')
 	} else if !f.is_variadic && nr_args > nr_params {
-		unexpected_args_pos := node.args[min_required_params].pos.extend(node.args.last().pos)
+		unexpected_args_pos := node.args[int_min(min_required_params, node.args.len - 1)].pos.extend(node.args.last().pos)
 		// c.error('3expected ${min_required_params} arguments, but got ${nr_args}', unexpected_args_pos)
 		c.fn_call_error_have_want(
 			nr_params: min_required_params

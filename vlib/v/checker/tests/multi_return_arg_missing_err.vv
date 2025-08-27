@@ -1,10 +1,11 @@
-fn t(a int, b int) {
+fn expect_2(a int, b int) {
 }
 
-fn g() (int, int) {
+fn returning_2() (int, int) {
 	return 1, 1
 }
 
 fn main() {
-	t(1, g())
+	expect_2(1, ret_2())
+	expect_2(returning_2(), 1)
 }

@@ -5,24 +5,27 @@ vlib/v/checker/tests/multi_return_err.vv:18:10: error: cannot use `f64` as `int`
       |             ~~~~~~~~~~
    19 |     my_func3(my_func2(), 'foo')
    20 |     my_func4('foo', my_func2())
-vlib/v/checker/tests/multi_return_err.vv:19:2: error: expected 3 arguments, but got 2
+vlib/v/checker/tests/multi_return_err.vv:19:11: error: cannot use `f64` as `int` in argument 2 to `my_func3` from (int, f64)
    17 | fn main() {
    18 |     my_func(my_func2())
    19 |     my_func3(my_func2(), 'foo')
-      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |              ~~~~~~~~~~
    20 |     my_func4('foo', my_func2())
    21 |     my_func(my_func5())
-Details: have ((int, f64), string)
-         want (int, int, string)
-vlib/v/checker/tests/multi_return_err.vv:20:2: error: expected 3 arguments, but got 2
+vlib/v/checker/tests/multi_return_err.vv:19:23: error: cannot use `string` as `int` in argument 2 to `my_func3`
+   17 | fn main() {
+   18 |     my_func(my_func2())
+   19 |     my_func3(my_func2(), 'foo')
+      |                          ~~~~~
+   20 |     my_func4('foo', my_func2())
+   21 |     my_func(my_func5())
+vlib/v/checker/tests/multi_return_err.vv:20:18: error: cannot use `f64` as `int` in argument 3 to `my_func4` from (int, f64)
    18 |     my_func(my_func2())
    19 |     my_func3(my_func2(), 'foo')
    20 |     my_func4('foo', my_func2())
-      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                     ~~~~~~~~~~
    21 |     my_func(my_func5())
    22 |     my_func(my_func6())
-Details: have (string, (int, f64))
-         want (string, int, int)
 vlib/v/checker/tests/multi_return_err.vv:21:2: error: expected 2 arguments, but got 1
    19 |     my_func3(my_func2(), 'foo')
    20 |     my_func4('foo', my_func2())
