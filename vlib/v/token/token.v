@@ -189,6 +189,10 @@ pub enum AtKind {
 	build_date
 	build_time
 	build_timestamp
+	os
+	ccompiler
+	backend
+	platform
 }
 
 pub const assign_tokens = [Kind.assign, .decl_assign, .plus_assign, .minus_assign, .mult_assign,
@@ -197,7 +201,8 @@ pub const assign_tokens = [Kind.assign, .decl_assign, .plus_assign, .minus_assig
 
 pub const valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
 	'@VEXE', '@FILE', '@DIR', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE',
-	'@VMODHASH', '@FILE_LINE', '@LOCATION', '@BUILD_DATE', '@BUILD_TIME', '@BUILD_TIMESTAMP']
+	'@VMODHASH', '@FILE_LINE', '@LOCATION', '@BUILD_DATE', '@BUILD_TIME', '@BUILD_TIMESTAMP', '@OS',
+	'@CCOMPILER', '@BACKEND', '@PLATFORM']
 
 pub const token_str = build_token_str()
 

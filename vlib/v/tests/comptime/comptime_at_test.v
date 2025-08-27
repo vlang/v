@@ -198,3 +198,27 @@ fn test_at_build_date_time_timestamp() {
 	now_utc := dump(time.utc().unix())
 	assert now_utc >= bts.i64()
 }
+
+fn test_at_os() {
+	println('Current OS is ${@OS}')
+	assert @OS in ['termux', 'android', 'wasm32_emscripten', 'linux', 'ios', 'macos', 'windows',
+		'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'serenity', 'plan9', 'vinix', 'solaris', 'haiku',
+		'js_node', 'js_freestanding', 'js_browser']
+}
+
+fn test_at_ccompiler() {
+	println('Current C Compiler is ${@CCOMPILER}')
+	assert @CCOMPILER in ['gcc', 'tinyc', 'clang', 'emcc', 'mingw', 'msvc', 'cplusplus']
+}
+
+fn test_at_backend() {
+	println('Current language backend is ${@BACKEND}')
+	assert @BACKEND in ['c', 'golang', 'interpret', 'js_node', 'js_browser', 'js_freestanding',
+		'native', 'wasm']
+}
+
+fn test_at_platform() {
+	println('Current Platform is ${@PLATFORM}')
+	assert @PLATFORM in ['amd64', 'arm64', 'arm32', 'rv64', 'rv32', 'i386', 's390x', 'ppc64le',
+		'loongarch64', 'js_node', 'js_browser', 'js_freestanding', 'wasm32']
+}
