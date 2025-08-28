@@ -1,6 +1,9 @@
 fn expect_2(a int, b int) {
 }
 
+fn expect_4(a int, b int, c int, d int) {
+}
+
 fn returning_2() (int, int) {
 	return 1, 1
 }
@@ -8,4 +11,5 @@ fn returning_2() (int, int) {
 fn main() {
 	expect_2(1, returning_2())
 	expect_2(returning_2(), 1)
+	expect_4(returning_2(), returning_2())
 }

@@ -1472,6 +1472,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.pos)
 	}
 	mut has_decompose := false
+	mut nr_multi_values := 0
 	for i, mut call_arg in node.args {
 		if func.params.len == 0 {
 			continue
@@ -1482,21 +1483,22 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if !func.is_variadic && has_decompose {
 			c.error('cannot have parameter after array decompose', node.pos)
 		}
+		param_i := i + nr_multi_values
 		param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params.last()
 		} else {
-			func.params[i]
+			func.params[param_i]
 		}
 		// registers if the arg must be passed by ref to disable auto deref args
 		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
 		if func.is_variadic && call_arg.expr is ast.ArrayDecompose {
-			if i > func.params.len - 1 {
+			if param_i > func.params.len - 1 {
 				c.error('too many arguments in call to `${func.name}`', node.pos)
 			}
 		}
 		has_decompose = call_arg.expr is ast.ArrayDecompose
 		already_checked := node.language != .js && call_arg.expr is ast.CallExpr
-		if func.is_variadic && i >= func.params.len - 1 {
+		if func.is_variadic && param_i >= func.params.len - 1 {
 			param_sym := c.table.sym(param.typ)
 			mut expected_type := param.typ
 			if param_sym.info is ast.Array {
@@ -1688,15 +1690,16 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					multi_param := if func.is_variadic && i >= func.params.len - 1 {
 						func.params.last()
 					} else {
-						func.params[n + i]
+						func.params[n + param_i]
 					}
 					c.check_expected_call_arg(curr_arg, c.unwrap_generic(multi_param.typ),
 						node.language, call_arg) or {
-						c.error('${err.msg()} in argument ${i + n + 1} to `${fn_name}` from ${c.table.type_to_str(arg_typ)}',
+						c.error('${err.msg()} in argument ${param_i + n + 1} to `${fn_name}` from ${c.table.type_to_str(arg_typ)}',
 							call_arg.pos)
 						continue out
 					}
 				}
+				nr_multi_values += arg_typ_sym.info.types.len - 1
 				continue
 			} else if param_typ_sym.info is ast.Struct && arg_typ_sym.info is ast.Struct
 				&& param_typ_sym.info.is_anon {
@@ -1788,13 +1791,14 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				continue
 			}
 			*/
-			c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
+			c.error('${err.msg()} in argument ${i + nr_multi_values + 1} to `${fn_name}`',
+				call_arg.pos)
 		}
 		if final_param_sym.kind == .struct && arg_typ !in [ast.voidptr_type, ast.nil_type]
 			&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
-			c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
-				call_arg.pos)
+			c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i +
+				nr_multi_values + 1} to `${fn_name}`', call_arg.pos)
 		}
 		// Warn about automatic (de)referencing, which will be removed soon.
 		if func.language != .c && !c.inside_unsafe && !(call_arg.is_mut && param.is_mut) {

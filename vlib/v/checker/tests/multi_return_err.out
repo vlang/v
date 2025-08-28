@@ -12,13 +12,6 @@ vlib/v/checker/tests/multi_return_err.vv:19:11: error: cannot use `f64` as `int`
       |              ~~~~~~~~~~
    20 |     my_func4('foo', my_func2())
    21 |     my_func(my_func5())
-vlib/v/checker/tests/multi_return_err.vv:19:23: error: cannot use `string` as `int` in argument 2 to `my_func3`
-   17 | fn main() {
-   18 |     my_func(my_func2())
-   19 |     my_func3(my_func2(), 'foo')
-      |                          ~~~~~
-   20 |     my_func4('foo', my_func2())
-   21 |     my_func(my_func5())
 vlib/v/checker/tests/multi_return_err.vv:20:18: error: cannot use `f64` as `int` in argument 3 to `my_func4` from (int, f64)
    18 |     my_func(my_func2())
    19 |     my_func3(my_func2(), 'foo')

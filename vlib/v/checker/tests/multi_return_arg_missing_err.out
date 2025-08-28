@@ -1,17 +1,18 @@
-vlib/v/checker/tests/multi_return_arg_missing_err.vv:9:14: error: expected 2 arguments, but got 3
-    7 | 
-    8 | fn main() {
-    9 |     expect_2(1, returning_2())
+vlib/v/checker/tests/multi_return_arg_missing_err.vv:12:14: error: expected 2 arguments, but got 3
+   10 | 
+   11 | fn main() {
+   12 |     expect_2(1, returning_2())
       |                 ~~~~~~~~~~~~~
-   10 |     expect_2(returning_2(), 1)
-   11 | }
+   13 |     expect_2(returning_2(), 1)
+   14 |     expect_4(returning_2(), returning_2())
 Details: have (int literal, (int, int))
          want (int, int)
-vlib/v/checker/tests/multi_return_arg_missing_err.vv:10:26: error: expected 2 arguments, but got 3
-    8 | fn main() {
-    9 |     expect_2(1, returning_2())
-   10 |     expect_2(returning_2(), 1)
+vlib/v/checker/tests/multi_return_arg_missing_err.vv:13:26: error: expected 2 arguments, but got 3
+   11 | fn main() {
+   12 |     expect_2(1, returning_2())
+   13 |     expect_2(returning_2(), 1)
       |                             ^
-   11 | }
+   14 |     expect_4(returning_2(), returning_2())
+   15 | }
 Details: have ((int, int), int literal)
          want (int, int)
