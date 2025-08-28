@@ -1295,9 +1295,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('strings.new_builder')
 		w.uses_free[ast.string_type] = true
 	}
-	if w.uses_eq {
-		w.fn_by_name('fast_string_eq')
-	}
 	if w.features.auto_str_ptr {
 		w.fn_by_name('isnil')
 		w.fn_by_name('tos4')
@@ -1573,7 +1570,6 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	}
 	if (w.used_option + w.used_result + w.used_none) > 0 {
 		w.mark_const_as_used('none__')
-		w.fn_by_name('memdup')
 	}
 	if include_panic_deps || w.uses_external_type || w.uses_asserts || w.uses_debugger
 		|| w.uses_interp {
@@ -1592,9 +1588,11 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 		w.fn_by_name(ref_array_idx_str + '.push')
 		w.fn_by_name(string_idx_str + '.substr')
 		w.fn_by_name('v_fixed_index')
-		w.fn_by_name('fast_string_eq')
 		w.mark_by_sym_name('StrIntpData')
 		w.mark_by_sym_name('StrIntpMem')
+	}
+	if w.uses_eq {
+		w.fn_by_name('fast_string_eq')
 	}
 
 	// remove unused symbols
