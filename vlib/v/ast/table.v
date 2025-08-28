@@ -2190,16 +2190,15 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 		Interface {
 			// resolve generic types inside methods
 			mut imethods := ts.info.methods.clone()
+			gn_names := t.get_real_generic_names(typ, generic_names)
 			for mut method in imethods {
-				if unwrap_typ := t.convert_generic_type(method.return_type, generic_names,
-					concrete_types)
+				if unwrap_typ := t.convert_generic_type(method.return_type, gn_names,
+					concrete_types[..gn_names.len])
 				{
 					method.return_type = unwrap_typ
 				}
 				for mut param in method.params {
-					if unwrap_typ := t.convert_generic_type(param.typ, generic_names,
-						concrete_types)
-					{
+					if unwrap_typ := t.convert_generic_type(param.typ, gn_names, concrete_types) {
 						param.typ = unwrap_typ
 					}
 				}
@@ -2289,6 +2288,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 									fields[i].typ = t.unwrap_generic_type(fields[i].typ,
 										generic_names, info.concrete_types)
 								}
+
 								if t_typ := t.convert_generic_type(fields[i].typ, generic_names,
 									info.concrete_types)
 								{
@@ -2462,6 +2462,18 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 			}
 		}
 	}
+}
+
+// Extracts all generic names from Type<A>[B] => B when <A>[B] is present
+// otherwise generic_names is returned
+pub fn (t &Table) get_real_generic_names(typ Type, generic_names []string) []string {
+	if typ.has_flag(.generic) {
+		typ_name := t.type_to_str(typ)
+		if typ_name.contains('>[') {
+			return typ_name.split('>[')[1].all_before_last(']').split(',')
+		}
+	}
+	return generic_names
 }
 
 // Extracts all type names from given types, notice that MultiReturn will be decompose
