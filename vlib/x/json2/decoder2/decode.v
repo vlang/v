@@ -412,11 +412,41 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 							string_buffer << `\t`
 						}
 						`u` {
-							string_buffer << rune(strconv.parse_uint(decoder.json[
+							unicode_point := rune(strconv.parse_uint(decoder.json[
 								string_info.position + string_index..string_info.position +
-								string_index + 4], 16, 32)!).bytes()
+								string_index + 4], 16, 32)!)
 
 							string_index += 4
+
+							if unicode_point < 0xD800 { // normal utf-8
+								string_buffer << unicode_point.bytes()
+							} else if unicode_point >= 0xDC00 { // trail surrogate -> invalid
+								decoder.decode_error('Got trail surrogate: ${u32(unicode_point):04X} before head surrogate.')!
+							} else { // head surrogate -> treat as utf-16
+								if string_index > string_info.length - 6 {
+									decoder.decode_error('Expected a trail surrogate after a head surrogate, but got no valid escape sequence.')!
+								}
+								if decoder.json[string_info.position + string_index..
+									string_info.position + string_index + 2] != '\\u' {
+									decoder.decode_error('Expected a trail surrogate after a head surrogate, but got no valid escape sequence.')!
+								}
+
+								string_index += 2
+
+								unicode_point2 := rune(strconv.parse_uint(decoder.json[
+									string_info.position + string_index..string_info.position +
+									string_index + 4], 16, 32)!)
+
+								string_index += 4
+
+								if unicode_point2 < 0xDC00 {
+									decoder.decode_error('Expected a trail surrogate after a head surrogate, but got ${u32(unicode_point):04X}.')!
+								}
+
+								final_unicode_point := (unicode_point2 & 0x3FF) +
+									((unicode_point & 0x3FF) << 10) + 0x10000
+								string_buffer << final_unicode_point.bytes()
+							}
 						}
 						else {} // has already been checked
 					}
