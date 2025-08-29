@@ -1298,9 +1298,6 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('strings.new_builder')
 		w.uses_free[ast.string_type] = true
 	}
-	if w.uses_eq {
-		w.fn_by_name('fast_string_eq')
-	}
 	if w.features.auto_str_ptr {
 		w.fn_by_name('isnil')
 		w.fn_by_name('tos4')
@@ -1596,6 +1593,9 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 		w.fn_by_name('v_fixed_index')
 		w.mark_by_sym_name('StrIntpData')
 		w.mark_by_sym_name('StrIntpMem')
+	}
+	if w.uses_eq {
+		w.fn_by_name('fast_string_eq')
 	}
 
 	// remove unused symbols
