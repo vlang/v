@@ -1,11 +1,5 @@
 import flag
 
-const args_bool_short_tail = ['some.exe', '-h']
-const args_bool_long_tail = ['some.exe', '-help']
-
-const args_bool_short_mixed = ['some.exe', '-h', '-long', 'val']
-const args_bool_long_mixed = ['some.exe', '-help', '-long', 'val']
-
 struct CliOptions {
 	show_help bool @[long: 'help'; short: h]
 }
@@ -16,7 +10,7 @@ struct CliOptions2 {
 }
 
 fn test_v_style_short_tail_bool() {
-	cli_options, unmatched := flag.to_struct[CliOptions](args_bool_short_tail,
+	cli_options, unmatched := flag.to_struct[CliOptions](['some.exe', '-h'],
 		skip:  1
 		style: .v
 		mode:  .relaxed
@@ -33,7 +27,7 @@ fn test_v_style_short_tail_bool() {
 }
 
 fn test_v_style_long_tail_bool() {
-	cli_options, unmatched := flag.to_struct[CliOptions](args_bool_long_tail,
+	cli_options, unmatched := flag.to_struct[CliOptions](['some.exe', '-help'],
 		skip:  1
 		style: .v
 		mode:  .relaxed
@@ -50,7 +44,7 @@ fn test_v_style_long_tail_bool() {
 }
 
 fn test_v_style_short_bool() {
-	cli_options, unmatched := flag.to_struct[CliOptions2](args_bool_short_mixed,
+	cli_options, unmatched := flag.to_struct[CliOptions2](['some.exe', '-h', '-long', 'val'],
 		skip:  1
 		style: .v
 		mode:  .relaxed
@@ -68,7 +62,7 @@ fn test_v_style_short_bool() {
 }
 
 fn test_v_style_long_bool() {
-	cli_options, unmatched := flag.to_struct[CliOptions2](args_bool_long_mixed,
+	cli_options, unmatched := flag.to_struct[CliOptions2](['some.exe', '-help', '-long', 'val'],
 		skip:  1
 		style: .v
 		mode:  .relaxed
