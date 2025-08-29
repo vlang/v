@@ -1183,6 +1183,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			w.mark_by_type(isym.info.key_type)
 			w.mark_by_type(isym.info.value_type)
 			w.features.used_maps++
+			if isym.info.value_type.has_flag(.option) {
+				w.used_option++
+			}
 		}
 		ast.Alias {
 			w.mark_by_type(isym.info.parent_type)
