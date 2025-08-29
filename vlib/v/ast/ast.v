@@ -1011,22 +1011,25 @@ pub:
 	is_translated bool // true for `@[translated] module xyz` files; turn off some checks
 	language      Language
 pub mut:
-	idx              int    // index in an external container; can be used to refer to the file in a more efficient way, just by its integer index
-	path             string // absolute path of the source file - '/projects/v/file.v'
-	path_base        string // file name - 'file.v' (useful for tracing)
-	scope            &Scope = unsafe { nil }
-	stmts            []Stmt            // all the statements in the source file
-	imports          []Import          // all the imports
-	auto_imports     []string          // imports that were implicitly added
-	embedded_files   []EmbeddedFile    // list of files to embed in the binary
-	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
-	errors           []errors.Error    // all the checker errors in the file
-	warnings         []errors.Warning  // all the checker warnings in the file
-	notices          []errors.Notice   // all the checker notices in the file
-	generic_fns      []&FnDecl
-	global_labels    []string // from `asm { .globl labelname }`
-	template_paths   []string // all the .html/.md files that were processed with $tmpl
-	unique_prefix    string   // a hash of the `.path` field, used for making anon fn generation unique
+	idx                   int    // index in an external container; can be used to refer to the file in a more efficient way, just by its integer index
+	path                  string // absolute path of the source file - '/projects/v/file.v'
+	path_base             string // file name - 'file.v' (useful for tracing)
+	scope                 &Scope = unsafe { nil }
+	stmts                 []Stmt   // all the statements in the source file
+	imports               []Import // all the imports
+	auto_imports          []string // imports that were implicitly added
+	used_imports          []string
+	implied_imports       []string          // ​imports that the user's code uses but omitted to import explicitly, used by `vfmt`
+	embedded_files        []EmbeddedFile    // list of files to embed in the binary
+	imported_symbols      map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
+	imported_symbols_used map[string]bool
+	errors                []errors.Error   // all the checker errors in the file
+	warnings              []errors.Warning // all the checker warnings in the file
+	notices               []errors.Notice  // all the checker notices in the file
+	generic_fns           []&FnDecl
+	global_labels         []string // from `asm { .globl labelname }`
+	template_paths        []string // all the .html/.md files that were processed with $tmpl
+	unique_prefix         string   // a hash of the `.path` field, used for making anon fn generation unique
 	//
 	is_parse_text    bool // true for files, produced by parse_text
 	is_template_text bool // true for files, produced by parse_comptime

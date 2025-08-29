@@ -35,6 +35,10 @@ fn (mut p Parser) register_used_import(alias string) {
 
 fn (mut p Parser) register_used_import_for_symbol_name(sym_name string) {
 	short_import_name := sym_name.all_before_last('.').all_after_last('.')
+	short_symbol_name := sym_name.all_after_last('.')
+	if short_symbol_name in p.imported_symbols {
+		p.imported_symbols_used[short_symbol_name] = true
+	}
 	for alias, mod in p.imports {
 		if mod == short_import_name {
 			p.register_used_import(alias)
@@ -62,7 +66,14 @@ fn (mut p Parser) register_auto_import(alias string) {
 	if alias !in p.auto_imports {
 		p.auto_imports << alias
 	}
-	p.register_used_import(alias)
+	// do not call `register_used_import()` here as it may not used by the code.
+	// for example, when using `chan`, but we has no `sync.xx()` call in the code.
+}
+
+fn (mut p Parser) register_implied_import(alias string) {
+	if alias !in p.implied_imports {
+		p.implied_imports << alias
+	}
 }
 
 fn (mut p Parser) check_unused_imports() {

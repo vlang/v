@@ -81,9 +81,11 @@ mut:
 	last_enum_mod            string            // saves the last enum mod name on an array initialization
 	imports                  map[string]string // alias => mod_name
 	ast_imports              []ast.Import      // mod_names
-	used_imports             []string          // alias
-	auto_imports             []string          // imports, the user does not need to specify
+	used_imports             []string
+	auto_imports             []string // imports, the user does not need to specify
+	implied_imports          []string // ​imports that the user's code uses but omitted to import explicitly, used by `vfmt`
 	imported_symbols         map[string]string
+	imported_symbols_used    map[string]bool
 	is_amp                   bool // for generating the right code for `&Foo{}`
 	returns                  bool
 	is_stmt_ident            bool // true while the beginning of a statement is an ident/selector
@@ -329,28 +331,31 @@ pub fn (mut p Parser) parse() &ast.File {
 	p.handle_codegen_for_file()
 
 	ast_file := &ast.File{
-		path:             p.file_path
-		path_base:        p.file_base
-		is_test:          p.inside_test_file
-		is_generated:     p.is_generated
-		is_translated:    p.is_translated
-		language:         p.file_backend_mode
-		nr_lines:         p.scanner.line_nr
-		nr_bytes:         p.scanner.text.len
-		nr_tokens:        p.scanner.all_tokens.len
-		mod:              module_decl
-		imports:          p.ast_imports
-		imported_symbols: p.imported_symbols
-		auto_imports:     p.auto_imports
-		stmts:            stmts
-		scope:            p.scope
-		global_scope:     p.table.global_scope
-		errors:           errors_
-		warnings:         warnings
-		notices:          notices
-		global_labels:    p.global_labels
-		template_paths:   p.template_paths
-		unique_prefix:    p.unique_prefix
+		path:                  p.file_path
+		path_base:             p.file_base
+		is_test:               p.inside_test_file
+		is_generated:          p.is_generated
+		is_translated:         p.is_translated
+		language:              p.file_backend_mode
+		nr_lines:              p.scanner.line_nr
+		nr_bytes:              p.scanner.text.len
+		nr_tokens:             p.scanner.all_tokens.len
+		mod:                   module_decl
+		imports:               p.ast_imports
+		imported_symbols:      p.imported_symbols
+		imported_symbols_used: p.imported_symbols_used
+		auto_imports:          p.auto_imports
+		used_imports:          p.used_imports
+		implied_imports:       p.implied_imports
+		stmts:                 stmts
+		scope:                 p.scope
+		global_scope:          p.table.global_scope
+		errors:                errors_
+		warnings:              warnings
+		notices:               notices
+		global_labels:         p.global_labels
+		template_paths:        p.template_paths
+		unique_prefix:         p.unique_prefix
 	}
 	$if trace_parse_file_path_and_mod ? {
 		eprintln('>> ast.File, tokens: ${ast_file.nr_tokens:5}, mname: ${ast_file.mod.name:20}, sname: ${ast_file.mod.short_name:11}, path: ${p.file_display_path}')
@@ -2084,6 +2089,17 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		mut left_node := unsafe { left }
 		if mut left_node is ast.CallExpr {
 			left_node.is_return_used = true
+		}
+		if p.pref.is_fmt {
+			if mut left_node is ast.Ident {
+				// `time.now()` without `time imported` is processed as a method call with `time` being
+				// a `left_node` expression. Import `time` automatically.
+				// TODO: fetch all available modules
+				if left_node.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
+					&& !left_node.scope.known_var(left_node.name) {
+					p.register_implied_import(left_node.name)
+				}
+			}
 		}
 		mcall_expr := ast.CallExpr{
 			left:              left

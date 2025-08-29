@@ -41,7 +41,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			if i < node.implements_types.len - 1 {
 				f.write(', ')
 			}
-			f.mark_types_import_as_used(t.typ)
 		}
 	}
 	// Calculate the alignments first
@@ -52,7 +51,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.comments_before_field(node.pre_comments)
 	}
 	for embed in node.embeds {
-		f.mark_types_import_as_used(embed.typ)
 		styp := f.table.type_to_str_using_aliases(embed.typ, f.mod2alias)
 
 		pre_comments := embed.comments.filter(it.pos.pos < embed.pos.pos)
@@ -101,7 +99,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		if !f.write_anon_struct_field_decl(field.typ, field.anon_struct_decl) {
 			f.write(field_types[i])
 		}
-		f.mark_types_import_as_used(field.typ)
 		attrs_len := inline_attrs_len(field.attrs)
 		if field.has_default_expr {
 			f.write(' '.repeat(default_expr_align.max_len(field.pos.line_nr) - field_types[i].len))
@@ -202,7 +199,6 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	defer {
 		f.is_struct_init = struct_init_save
 	}
-	f.mark_types_import_as_used(node.typ)
 	sym_name := f.table.sym(node.typ).name
 	// f.write('<old name: $type_sym.name>')
 	mut name := if !sym_name.starts_with('C.') && !sym_name.starts_with('JS.') {
@@ -228,11 +224,9 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			f.comments(node.pre_comments, same_line: true, has_nl: true, level: .indent)
 			f.write('}')
 		}
-		f.mark_import_as_used(name)
 	} else if node.no_keys {
 		// `Foo{1,2,3}` (short syntax, no keys)
 		f.write('${name}{')
-		f.mark_import_as_used(name)
 		if node.has_update_expr {
 			f.write('...')
 			f.expr(node.update_expr)
@@ -255,7 +249,6 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		}
 		if !use_short_args || node.is_anon {
 			f.write('${name}{')
-			f.mark_import_as_used(name)
 			if single_line_fields {
 				f.write(' ')
 			}
