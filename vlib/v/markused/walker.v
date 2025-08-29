@@ -432,6 +432,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if !w.uses_array && !w.is_direct_array_access {
 				w.uses_array = true
 			}
+			if node.elem_type.has_flag(.option) {
+				w.used_option++
+			}
 		}
 		ast.Assoc {
 			w.exprs(node.exprs)
