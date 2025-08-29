@@ -310,6 +310,11 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	for p.tok.kind == .name {
 		pos := p.tok.pos()
 		alias := p.check_name()
+		if alias in p.imported_symbols {
+			p.error_with_pos('cannot register symbol `${alias}`, it was already imported',
+				pos)
+			return
+		}
 		p.imported_symbols[alias] = parent.mod + '.' + alias
 		// so we can work with this in fmt+checker
 		parent.syms << ast.ImportSymbol{
