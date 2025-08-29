@@ -158,10 +158,13 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 			-1
 		}
 	}
-	$if trace_tcp ? {
-		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
-	}
+	ecode := error_code()
 	if res > 0 {
+		$if trace_tcp ? {
+			eprintln(
+				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} |\n' +
+				unsafe { buf_ptr.vstring_with_len(len) })
+		}
 		$if trace_tcp_data_read ? {
 			eprintln(
 				'<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
@@ -169,7 +172,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		return res
 	}
-	code := if should_ewouldblock { int(error_ewouldblock) } else { error_code() }
+	code := if should_ewouldblock { int(error_ewouldblock) } else { ecode }
 	if code in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
 		res = $if is_coroutine ? {
@@ -178,7 +181,9 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 			C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
 		}
 		$if trace_tcp ? {
-			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
+			eprintln(
+				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${code} |\n' +
+				unsafe { buf_ptr.vstring_with_len(len) })
 		}
 		$if trace_tcp_data_read ? {
 			if res > 0 {
@@ -234,11 +239,11 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 			} $else {
 				C.send(c.sock.handle, ptr, remaining, msg_nosignal)
 			}
+			code := error_code()
 			$if trace_tcp_data_write ? {
 				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
 			}
 			if sent < 0 {
-				code := error_code()
 				$if trace_tcp_send_failures ? {
 					eprintln('>>> TcpConn.write_ptr | send_failure, data.len: ${len:6}, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x}, c.write_timeout: ${c.write_timeout:3} => sent: ${sent:6}, error code: ${code:3}')
 				}
@@ -456,9 +461,8 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 	} $else {
 		C.accept(l.sock.handle, 0, 0)
 	}
-
+	code := error_code()
 	if !l.is_blocking && new_handle <= 0 {
-		code := error_code()
 		if code in [int(error_einprogress), int(error_ewouldblock), int(error_eagain), C.EINTR] {
 			l.wait_for_accept()!
 			new_handle = $if is_coroutine ? {
@@ -642,10 +646,10 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 		} $else {
 			C.connect(s.handle, voidptr(&a), a.len())
 		}
+		ecode := error_code()
 		if res == 0 {
 			return
 		}
-		ecode := error_code()
 		// On nix non-blocking sockets we expect einprogress
 		// On windows we expect res == -1 && error_code() == ewouldblock
 		if (is_windows && ecode == int(error_ewouldblock)) || (!is_windows && res == -1
