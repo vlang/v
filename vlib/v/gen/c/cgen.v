@@ -7336,6 +7336,16 @@ fn c_name(name_ string) string {
 	if c_reserved_chk.matches(name) {
 		return '__v_${name}'
 	}
+
+	if name.ends_with('_str') || name.ends_with('_hex') || name.ends_with('_bytes')
+		|| name.ends_with('_clone') {
+		prefix := name.all_before_last('_')
+		if prefix in ['string', 'bool', 'i8', 'i16', 'i32', 'i64', 'int', 'u8', 'u16', 'u32', 'u64',
+			'f32', 'f64', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr', 'rune'] {
+			return '__v_var_${name}'
+		}
+	}
+
 	return name
 }
 
