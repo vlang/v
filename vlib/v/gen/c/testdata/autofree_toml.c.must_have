@@ -1,0 +1,9 @@
+_result_toml__scanner__Scanner_ptr toml__scanner__new_scanner(toml__scanner__Config config) {
+	_result_toml__scanner__Scanner_ptr _t3 = {0};
+	_result_ok(&(toml__scanner__Scanner*[]) { s }, (_result*)(&_t3), sizeof(toml__scanner__Scanner*));
+	return _t3;
+}
+toml__ast__Quoted toml__parser__Parser_quoted(toml__parser__Parser* p) {
+	return ((toml__ast__Quoted){.text =  string_clone_static(lit),.pos = toml__token__Token_pos(&p->tok),.is_multiline = is_multiline,.quote = quote,});
+}
+

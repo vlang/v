@@ -398,6 +398,7 @@ fn advanced_options() {
 	s2 := parse_header1('foo:bar') or { return }
 	_ := s.len + s2.len // avoid warning for unused variables
 	// TODO: fix -autofree, so that it adds this free automatically:
+	unsafe { s.free() }
 	unsafe { s2.free() }
 }
 
