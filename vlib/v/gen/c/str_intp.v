@@ -50,7 +50,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	mut base := 0 // numeric base
 	mut upper_case := false // set uppercase for the result string
 	mut typ := g.unwrap_generic(node.expr_types[i])
-	if node.exprs[i].is_auto_deref_var() && !typ.has_flag(.option_mut_param_t) {
+	if node.exprs[i].is_auto_deref_var() {
 		typ = typ.deref()
 	}
 	typ = g.table.final_type(typ)
