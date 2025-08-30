@@ -231,11 +231,11 @@ mut:
 	// where an aggregate (at least two types) is generated
 	// sum type deref needs to know which index to deref because unions take care of the correct field
 	aggregate_type_idx  int
-	arg_no_auto_deref   bool     // smartcast must not be dereferenced
-	branch_parent_pos   int      // used in BranchStmt (continue/break) for autofree stop position
-	returned_var_name   string   // to detect that a var doesn't need to be freed since it's being returned
-	infix_left_var_name string   // a && if expr
-	curr_var_name       []string // curr var name on assignment
+	arg_no_auto_deref   bool            // smartcast must not be dereferenced
+	branch_parent_pos   int             // used in BranchStmt (continue/break) for autofree stop position
+	returned_var_names  map[string]bool // to detect that vars doesn't need to be freed since it's being returned
+	infix_left_var_name string          // a && if expr
+	curr_var_name       []string        // curr var name on assignment
 	called_fn_name      string
 	timers              &util.Timers = util.get_timers()
 	force_main_console  bool              // true when @[console] used on fn main()
@@ -6241,6 +6241,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.writeln(' }, (${option_name}*)(&${tmpvar}), sizeof(${styp}));')
 			}
 			g.write_defer_stmts_when_needed()
+			if g.is_autofree {
+				g.detect_used_var_on_return(expr0)
+			}
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return ${tmpvar};')
 			return
@@ -6286,6 +6289,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
 			}
 			g.write_defer_stmts_when_needed()
+			if g.is_autofree {
+				g.detect_used_var_on_return(expr0)
+			}
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return ${tmpvar};')
 			return
@@ -6294,9 +6300,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		// set free_parent_scopes to true, since all variables defined in parent
 		// scopes need to be freed before the return
 		if g.is_autofree {
-			if expr0 is ast.Ident {
-				g.returned_var_name = expr0.name
-			}
+			g.detect_used_var_on_return(expr0)
 			if !use_tmp_var && !g.is_builtin_mod {
 				use_tmp_var = expr0 is ast.CallExpr
 			}

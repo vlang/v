@@ -62,7 +62,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 		match obj {
 			ast.Var {
 				g.trace_autofree('// var "${obj.name}" var.pos=${obj.pos.pos} var.line_nr=${obj.pos.line_nr}')
-				if obj.name == g.returned_var_name {
+				if obj.name in g.returned_var_names {
 					g.print_autofree_var(obj, 'returned from function')
 					g.trace_autofree('// skipping returned var')
 					continue
@@ -246,4 +246,18 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		}
 	}
 	g.autofree_scope_stmts << af.str()
+}
+
+fn (mut g Gen) detect_used_var_on_return(expr ast.Expr) {
+	match expr {
+		ast.Ident {
+			g.returned_var_names[expr.name] = true
+		}
+		ast.StructInit {
+			for field_expr in expr.init_fields {
+				g.detect_used_var_on_return(field_expr.expr)
+			}
+		}
+		else {}
+	}
 }
