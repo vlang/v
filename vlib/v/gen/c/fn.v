@@ -196,7 +196,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	*/
 
-	g.returned_var_name = ''
+	g.returned_var_names.clear()
 	old_g_autofree := g.is_autofree
 	if node.is_manualfree {
 		g.is_autofree = false
