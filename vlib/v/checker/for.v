@@ -254,6 +254,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			}
 			if node.val_is_mut {
 				value_type = value_type.ref()
+				if value_type.has_flag(.option) {
+					value_type = value_type.set_flag(.option_mut_param_t)
+				}
 				match mut node.cond {
 					ast.Ident {
 						if mut node.cond.obj is ast.Var {
