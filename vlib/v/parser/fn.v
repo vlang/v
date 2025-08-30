@@ -90,8 +90,11 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		or_kind = if is_not { .propagate_result } else { .propagate_option }
 	}
 	if fn_name in p.imported_symbols {
+		check := !p.imported_symbols_used[fn_name]
 		fn_name = p.imported_symbols[fn_name]
-		p.register_used_import_for_symbol_name(fn_name)
+		if check {
+			p.register_used_import_for_symbol_name(fn_name)
+		}
 	}
 	comments := p.eat_comments(same_line: true)
 	pos.update_last_line(p.prev_tok.line_nr)
@@ -148,6 +151,13 @@ fn (mut p Parser) call_args() []ast.CallArg {
 			expr = p.struct_init('void_type', .short_syntax, false)
 		} else {
 			expr = p.expr(0)
+			if mut expr is ast.Ident {
+				if expr.name in p.imported_symbols && !p.imported_symbols_used[expr.name] {
+					// func call arg is another function call
+					// import term { bright_cyan, colorize } ... colorize(bright_cyan, 'hello')
+					p.register_used_import_for_symbol_name(p.imported_symbols[expr.name])
+				}
+			}
 		}
 		if array_decompose {
 			expr = ast.ArrayDecompose{

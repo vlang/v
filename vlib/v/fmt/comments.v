@@ -117,7 +117,7 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 		return
 	}
 	if options.same_line {
-		f.remove_new_line(imports_buffer: true)
+		f.remove_new_line()
 	}
 	for c in comments {
 		ctext := c.text.trim_left('\x01')
@@ -129,7 +129,7 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 			out_s += ' '
 		}
 		out_s += ctext
-		f.out_imports.writeln(out_s)
+		f.writeln(out_s)
 	}
 }
 
