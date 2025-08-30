@@ -86,7 +86,8 @@ fn (mut p Parser) check_unused_imports() {
 	for import_m in p.ast_imports {
 		alias := import_m.alias
 		mod := import_m.mod
-		if !(alias.len == 1 && alias[0] == `_`) && !p.is_used_import(alias) {
+		if !(alias.len == 1 && alias[0] == `_`) && !p.is_used_import(alias)
+			&& alias !in p.auto_imports {
 			mod_alias := if alias == mod { alias } else { '${alias} (${mod})' }
 			p.warn_with_pos("module '${mod_alias}' is imported but never used", import_m.mod_pos)
 		}

@@ -2023,19 +2023,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			f.in_lambda_depth++
 			defer { f.in_lambda_depth-- }
 		}
-		if node.left is ast.Ident {
-			// `time.now()` without `time imported` is processed as a method call with `time` being
-			// a `node.left` expression. Import `time` automatically.
-			// TODO: fetch all available modules
-			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
-				&& !node.left.scope.known_var(node.left.name) {
-				f.file.imports << ast.Import{
-					source_name: node.left.name
-					mod:         node.left.name
-					alias:       node.left.name
-				}
-			}
-		}
 		f.expr(node.left)
 		is_method_newline = node.left.pos().last_line != node.name_pos.line_nr
 		if is_method_newline {
