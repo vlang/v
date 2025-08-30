@@ -636,7 +636,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 	} else if p.expr_mod != '' && !p.inside_generic_params {
 		// p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name
-	} else if name in p.imported_symbols {
+	} else if p.is_imported_symbol(name) {
 		check := !p.imported_symbols_used[name]
 		name = p.imported_symbols[name]
 		if check {

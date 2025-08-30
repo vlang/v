@@ -89,7 +89,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		}
 		or_kind = if is_not { .propagate_result } else { .propagate_option }
 	}
-	if fn_name in p.imported_symbols {
+	if p.is_imported_symbol(fn_name) {
 		check := !p.imported_symbols_used[fn_name]
 		fn_name = p.imported_symbols[fn_name]
 		if check {
@@ -152,7 +152,7 @@ fn (mut p Parser) call_args() []ast.CallArg {
 		} else {
 			expr = p.expr(0)
 			if mut expr is ast.Ident {
-				if expr.name in p.imported_symbols && !p.imported_symbols_used[expr.name] {
+				if p.is_imported_symbol(expr.name) && !p.imported_symbols_used[expr.name] {
 					// func call arg is another function call
 					// import term { bright_cyan, colorize } ... colorize(bright_cyan, 'hello')
 					p.register_used_import_for_symbol_name(p.imported_symbols[expr.name])
@@ -393,7 +393,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 		if !p.pref.is_fmt {
-			if name in p.imported_symbols {
+			if p.is_imported_symbol(name) {
 				p.error_with_pos('cannot redefine imported function `${name}`', name_pos)
 				return ast.FnDecl{
 					scope: unsafe { nil }
