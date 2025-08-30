@@ -120,7 +120,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
-		mut str_fn_name := g.get_str_fn(exp_typ)
+		str_fn_name := g.get_str_fn(exp_typ)
 		temp_var_needed := expr is ast.CallExpr
 			&& (expr.return_type.is_ptr() || g.table.sym(expr.return_type).is_c_struct())
 		mut tmp_var := ''
@@ -171,7 +171,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			}
 		} else if is_ptr && typ.has_flag(.option) {
 			if typ.has_flag(.option_mut_param_t) {
-				g.write('/**/*')
+				g.write('*')
 			} else {
 				g.write('*(${g.styp(typ)}*)&')
 			}
