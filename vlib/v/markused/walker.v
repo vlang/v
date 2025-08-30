@@ -1301,7 +1301,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('strings.new_builder')
 		w.uses_free[ast.string_type] = true
 
-		if w.table.dumps.keys().any(ast.Type(u32(it)).clear_flags(.shared_f).has_flag(.option)) {
+		if w.table.dumps.keys().any(ast.Type(u32(it)).has_flag(.option)) {
 			w.fn_by_name('str_intp')
 		}
 	}
