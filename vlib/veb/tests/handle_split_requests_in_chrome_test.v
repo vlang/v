@@ -73,7 +73,7 @@ Priority: u=4\r
 	mut res := []u8{}
 	mut buf := []u8{len: 512}
 	for {
-		read_len := client.read(mut buf)!
+		read_len := client.read(mut buf) or { break }
 		if read_len == 0 {
 			break
 		}
