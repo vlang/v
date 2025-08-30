@@ -592,7 +592,7 @@ fn (mut p Parser) check_name() string {
 	name := p.tok.lit
 	if p.tok.kind != .name && p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
-	} else if p.tok.kind == .name && name in p.imported_symbols {
+	} else if p.tok.kind == .name && name in p.imported_symbols && !p.imported_symbols_used[name] {
 		// symbols
 		p.register_used_import_for_symbol_name(p.imported_symbols[name])
 	}
