@@ -344,6 +344,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		mod:                   module_decl
 		imports:               p.ast_imports
 		imported_symbols:      p.imported_symbols
+		imported_symbols_trie: token.new_keywords_matcher_from_array_trie(p.imported_symbols.keys())
 		imported_symbols_used: p.imported_symbols_used
 		auto_imports:          p.auto_imports
 		used_imports:          p.used_imports

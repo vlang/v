@@ -4261,7 +4261,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		mut name := node.name
 		// check for imported symbol
-		if name in c.file.imported_symbols {
+		if c.file.imported_symbols_trie.matches(name) {
 			name = c.file.imported_symbols[name]
 		}
 		// prepend mod to look for fn call or const

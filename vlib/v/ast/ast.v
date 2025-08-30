@@ -1022,6 +1022,7 @@ pub mut:
 	implied_imports       []string          // ​imports that the user's code uses but omitted to import explicitly, used by `vfmt`
 	embedded_files        []EmbeddedFile    // list of files to embed in the binary
 	imported_symbols      map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
+	imported_symbols_trie token.KeywordsMatcherTrie // constructed from imported_symbols, to accelerate presense checks
 	imported_symbols_used map[string]bool
 	errors                []errors.Error   // all the checker errors in the file
 	warnings              []errors.Warning // all the checker warnings in the file
