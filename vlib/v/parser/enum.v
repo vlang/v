@@ -61,7 +61,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			end_pos)
 		return ast.EnumDecl{}
 	}
-	if enum_name in p.imported_symbols {
+	if p.is_imported_symbol(enum_name) {
 		p.error_with_pos('cannot register enum `${enum_name}`, this type was already imported',
 			end_pos)
 		return ast.EnumDecl{}

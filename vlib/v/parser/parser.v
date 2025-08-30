@@ -86,6 +86,7 @@ mut:
 	implied_imports          []string // ​imports that the user's code uses but omitted to import explicitly, used by `vfmt`
 	imported_symbols         map[string]string
 	imported_symbols_used    map[string]bool
+	imported_symbols_trie    token.KeywordsMatcherTrie
 	is_amp                   bool // for generating the right code for `&Foo{}`
 	returns                  bool
 	is_stmt_ident            bool // true while the beginning of a statement is an ident/selector
@@ -592,8 +593,7 @@ fn (mut p Parser) check_name() string {
 	name := p.tok.lit
 	if p.tok.kind != .name && p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
-	} else if p.tok.kind == .name && p.peek_tok.kind == .dot && name in p.imported_symbols
-		&& !p.imported_symbols_used[name] {
+	} else if p.tok.kind == .name && p.is_imported_symbol(name) && !p.imported_symbols_used[name] {
 		// symbols like Enum.field_name
 		p.register_used_import_for_symbol_name(p.imported_symbols[name])
 	}
@@ -2698,7 +2698,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			return ast.FnTypeDecl{}
 		}
 	}
-	if name in p.imported_symbols {
+	if p.is_imported_symbol(name) {
 		p.error_with_pos('cannot register alias `${name}`, this type was already imported',
 			end_pos)
 		return ast.AliasTypeDecl{}
