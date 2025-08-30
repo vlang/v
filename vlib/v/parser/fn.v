@@ -90,8 +90,9 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		or_kind = if is_not { .propagate_result } else { .propagate_option }
 	}
 	if fn_name in p.imported_symbols {
+		check := !p.imported_symbols_used[fn_name]
 		fn_name = p.imported_symbols[fn_name]
-		if !p.imported_symbols_used[fn_name] {
+		if check {
 			p.register_used_import_for_symbol_name(fn_name)
 		}
 	}

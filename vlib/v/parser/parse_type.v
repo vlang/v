@@ -637,8 +637,9 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 		// p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name
 	} else if name in p.imported_symbols {
+		check := !p.imported_symbols_used[name]
 		name = p.imported_symbols[name]
-		if !p.imported_symbols_used[name] {
+		if check {
 			p.register_used_import_for_symbol_name(name)
 		}
 	} else if !p.builtin_mod && name.len > 1 && name !in p.table.type_idxs {
