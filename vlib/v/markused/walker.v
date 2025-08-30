@@ -1300,6 +1300,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name(builderptr_idx + '.write_string')
 		w.fn_by_name('strings.new_builder')
 		w.uses_free[ast.string_type] = true
+
+		if w.table.dumps.keys().any(ast.Type(u32(it)).clear_flags(.shared_f).has_flag(.option)) {
+			w.fn_by_name('str_intp')
+		}
 	}
 	if w.features.auto_str_ptr {
 		w.fn_by_name('isnil')
