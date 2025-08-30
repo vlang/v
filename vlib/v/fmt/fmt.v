@@ -121,11 +121,11 @@ pub fn (f &Fmt) type_to_str(typ ast.Type) string {
 */
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
-	mut implied_imports := ''
+	mut sb := strings.new_builder(128)
 	for imp in file.implied_imports {
-		implied_imports = implied_imports + 'import ${imp}\n'
+		sb.writeln('import ${imp}')
 	}
-	f.implied_import_str = implied_imports
+	f.implied_import_str = sb.str()
 
 	for imp in file.imports {
 		f.mod2alias[imp.mod] = imp.alias
@@ -392,11 +392,7 @@ fn (f &Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node)
 			}
 			// Force a newline after imports
 			ast.Import {
-				if node is ast.Import {
-					return false
-				} else {
-					return true
-				}
+				return node !is ast.Import
 			}
 			ast.ConstDecl {
 				if node !is ast.ConstDecl && !(node is ast.ExprStmt && node.expr is ast.Comment) {
