@@ -1,0 +1,6 @@
+fn main() {
+	mut a := []?u32{len: 0xFF}
+	if c := a[0] {
+		println('c:  ${c} not none!')
+	}
+}

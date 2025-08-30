@@ -1107,6 +1107,7 @@ pub fn (mut g Gen) get_sumtype_variant_name(typ ast.Type, sym ast.TypeSymbol) st
 pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
 	g.writeln('// >> typeof() support for sum types / interfaces')
+	mut already_generated_ifaces := map[string]bool{}
 	for ityp, sym in g.table.type_symbols {
 		if sym.kind == .sum_type {
 			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
@@ -1177,6 +1178,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 				continue
 			}
+			if sym.cname in already_generated_ifaces {
+				continue
+			}
+			already_generated_ifaces[sym.cname] = true
 			g.definitions.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(int sidx);')
 			if g.pref.parallel_cc {
 				g.extern_out.writeln('extern char * v_typeof_interface_${sym.cname}(int sidx);')
@@ -1805,11 +1810,15 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 			interface_non_generic_syms << sym
 		}
 	}
+	mut already_generated_ifaces := map[string]bool{}
 	for sym in interface_non_generic_syms {
 		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 			continue
 		}
-		g.write_interface_typesymbol_declaration(sym)
+		if sym.cname !in already_generated_ifaces {
+			g.write_interface_typesymbol_declaration(sym)
+			already_generated_ifaces[sym.cname] = true
+		}
 	}
 }
 
@@ -7859,6 +7868,7 @@ fn (mut g Gen) interface_table() string {
 	}
 	mut sb := strings.new_builder(100)
 	mut conversion_functions := strings.new_builder(100)
+	mut already_generated_ifaces := map[string]bool{}
 	interfaces := g.table.type_symbols.filter(it.kind == .interface && it.info is ast.Interface)
 	for isym in interfaces {
 		inter_info := isym.info as ast.Interface
@@ -7868,6 +7878,10 @@ fn (mut g Gen) interface_table() string {
 		if g.pref.skip_unused && isym.idx !in g.table.used_features.used_syms {
 			continue
 		}
+		if isym.cname in already_generated_ifaces {
+			continue
+		}
+		already_generated_ifaces[isym.cname] = true
 		// interface_name is for example Speaker
 		interface_name := isym.cname
 		// generate a struct that references interface methods
