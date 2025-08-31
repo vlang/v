@@ -117,6 +117,8 @@ pub type Stmt = AsmStmt
 	| StructDecl
 	| TypeDecl
 
+pub type HashStmtNode = IfExpr | HashStmt
+
 pub struct EmptyScopeObject {
 pub mut:
 	name string
