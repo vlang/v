@@ -5751,11 +5751,11 @@ fn (mut g Gen) hash_stmt_guarded_include(node ast.HashStmt) string {
 
 fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 	// we only record the hash stmt's node here, send it to corresponding `_nodes`, let `gen_hash_stmts_in_top()` gen the code.
-	mut the_node := &ast.HashStmtNode{}
-	the_node = if g.comptime.inside_comptime_if && !isnil(g.curr_comptime_node) {
-		g.curr_comptime_node
+	the_node := if g.comptime.inside_comptime_if && !isnil(g.curr_comptime_node)
+		&& g.curr_comptime_node is ast.IfExpr {
+		&ast.HashStmtNode(g.curr_comptime_node as ast.IfExpr)
 	} else {
-		&node
+		&ast.HashStmtNode(&node)
 	}
 
 	match node.kind {
