@@ -25,14 +25,14 @@ vlib/v/checker/tests/static_init_err.vv:6:9: warning: unused variable: `cc`
       |            ~~
     7 | }
     8 |
-vlib/v/checker/tests/static_init_err.vv:4:9: error: cannot initialized static variable with non-literal value
+vlib/v/checker/tests/static_init_err.vv:4:9: error: cannot initialized static variable with non-constant value
     2 | fn foo() {
     3 |     b := 23
     4 |     static aa := b
       |            ~~
     5 |     static bb := 1 + 1
     6 |     static cc := ''.str()
-vlib/v/checker/tests/static_init_err.vv:6:9: error: cannot initialized static variable with non-literal value
+vlib/v/checker/tests/static_init_err.vv:6:9: error: cannot initialized static variable with non-constant value
     4 |     static aa := b
     5 |     static bb := 1 + 1
     6 |     static cc := ''.str()
