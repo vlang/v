@@ -401,9 +401,20 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		''
 	}
 
+	// save node for processing hash stmts
+	// we only save the first node, when there is embedded $if
+	old_curr_comptime_node := g.curr_comptime_node
+	if !g.comptime.inside_comptime_if {
+		g.curr_comptime_node = &node
+	}
+	defer {
+		g.curr_comptime_node = old_curr_comptime_node
+	}
 	mut comptime_branch_context_str := g.gen_branch_context_string()
 	mut is_true := ast.ComptTimeCondResult{}
 	for i, branch in node.branches {
+		g.push_new_comptime_info()
+		g.comptime.inside_comptime_if = true
 		start_pos := g.out.len
 		// `idx_str` is composed of two parts:
 		// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
@@ -501,6 +512,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 				g.writeln('}')
 			}
 		}
+		g.pop_comptime_info()
 	}
 	g.defer_ifdef = ''
 	g.writeln('#endif')
@@ -563,6 +575,7 @@ fn (mut g Gen) push_new_comptime_info() {
 	g.type_resolver.info_stack << type_resolver.ResolverInfo{
 		saved_type_map:               g.type_resolver.type_map.clone()
 		inside_comptime_for:          g.comptime.inside_comptime_for
+		inside_comptime_if:           g.comptime.inside_comptime_if
 		comptime_for_variant_var:     g.comptime.comptime_for_variant_var
 		comptime_for_field_var:       g.comptime.comptime_for_field_var
 		comptime_for_field_type:      g.comptime.comptime_for_field_type
@@ -582,6 +595,7 @@ fn (mut g Gen) pop_comptime_info() {
 	old := g.type_resolver.info_stack.pop()
 	g.type_resolver.type_map = old.saved_type_map.clone()
 	g.comptime.inside_comptime_for = old.inside_comptime_for
+	g.comptime.inside_comptime_if = old.inside_comptime_if
 	g.comptime.comptime_for_variant_var = old.comptime_for_variant_var
 	g.comptime.comptime_for_field_var = old.comptime_for_field_var
 	g.comptime.comptime_for_field_type = old.comptime_for_field_type

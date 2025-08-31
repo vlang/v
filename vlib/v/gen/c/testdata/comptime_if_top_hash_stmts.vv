@@ -1,0 +1,40 @@
+// vtest vflags: -os cross
+module main
+
+$if windows {
+	$if user_d1 ? {
+		#include "w1.h"
+		#define user_d1
+	} $else $if user_d2 ? {
+		#include "w2.h"
+		#define user_d2
+		#preinclude "pre1.h"
+	} $else {
+		#include "w3.h"
+		#define user_not_d1_d2
+		#include "macos1.m"
+		#postinclude "post1.h"
+	}
+	#define user_all_windows
+	#include "windows.h"
+} $else $if linux {
+	$if user_d3 ? {
+		#include "l1.h"
+		#include "macos2.m"
+		#define user_d3
+		#preinclude "pre2.h"
+	} $else $if user_d4 ? {
+		#include "l2.h"
+		#define user_d4
+		#postinclude "post2.h"
+	}
+	#define user_all_linux
+	#include "stdio.h"
+} $else {
+	#define user_all_other
+	#include "other.h"
+	#postinclude "post3.h"
+}
+
+fn main() {
+}
