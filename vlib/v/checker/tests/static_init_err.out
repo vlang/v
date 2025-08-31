@@ -1,0 +1,41 @@
+vlib/v/checker/tests/static_init_err.vv:10:2: warning: function `foo` must be called from an `unsafe` block
+    8 | 
+    9 | fn main() {
+   10 |     foo()
+      |     ~~~~~
+   11 | }
+vlib/v/checker/tests/static_init_err.vv:4:9: warning: unused variable: `aa`
+    2 | fn foo() {
+    3 |     b := 23
+    4 |     static aa := b
+      |            ~~
+    5 |     static bb := 1 + 1
+    6 |     static cc := ''.str()
+vlib/v/checker/tests/static_init_err.vv:5:9: warning: unused variable: `bb`
+    3 |     b := 23
+    4 |     static aa := b
+    5 |     static bb := 1 + 1
+      |            ~~
+    6 |     static cc := ''.str()
+    7 | }
+vlib/v/checker/tests/static_init_err.vv:6:9: warning: unused variable: `cc`
+    4 |     static aa := b
+    5 |     static bb := 1 + 1
+    6 |     static cc := ''.str()
+      |            ~~
+    7 | }
+    8 |
+vlib/v/checker/tests/static_init_err.vv:4:9: error: cannot initialized static variable with non-literal value
+    2 | fn foo() {
+    3 |     b := 23
+    4 |     static aa := b
+      |            ~~
+    5 |     static bb := 1 + 1
+    6 |     static cc := ''.str()
+vlib/v/checker/tests/static_init_err.vv:6:9: error: cannot initialized static variable with non-literal value
+    4 |     static aa := b
+    5 |     static bb := 1 + 1
+    6 |     static cc := ''.str()
+      |            ~~
+    7 | }
+    8 |
