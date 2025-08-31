@@ -104,6 +104,10 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						if c.comptime.inside_comptime_for && node.cond.field_name in ['name', 'typ'] {
 							// hack: `typ` is just for bypass the error test, because we don't know it is a type match or a value match righ now
 							comptime_match_cond_value = c.comptime.comptime_for_field_value.name
+						} else if mut node.cond.expr is ast.Ident
+							&& node.cond.gkind_field in [.typ, .unaliased_typ] {
+							left_type := c.get_expr_type(node.cond.expr)
+							comptime_match_cond_value = c.table.type_to_str(left_type)
 						} else {
 							c.error('`${node.cond}` is not `\$for` field.name.', node.cond.pos)
 							return ast.void_type
