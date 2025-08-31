@@ -780,7 +780,12 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					if g.pref.translated && node.typ.is_number() {
 						g.writeln('_const_main__${val};')
 					} else {
-						g.writeln('${g.styp(node.typ)}__${val};')
+						node_sym := g.table.sym(node.typ)
+						if node_sym.info is ast.Alias {
+							g.writeln('${g.styp(node_sym.info.parent_type)}__${val};')
+						} else {
+							g.writeln('${g.styp(node.typ)}__${val};')
+						}
 					}
 					enum_attrs := sym.info.attrs[val]
 					if enum_attrs.len == 0 {

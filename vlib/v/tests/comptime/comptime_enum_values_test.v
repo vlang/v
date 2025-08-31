@@ -5,6 +5,8 @@ enum CharacterGroup {
 	special
 }
 
+type AnotherCharGroup = CharacterGroup
+
 fn (self CharacterGroup) value() string {
 	return match self {
 		.chars { 'first' }
@@ -32,4 +34,15 @@ fn test_main() {
 
 	assert values == [CharacterGroup.chars, CharacterGroup.alphanumerics, CharacterGroup.numeric,
 		CharacterGroup.special]
+}
+
+fn test_alias_enum() {
+	mut values := []AnotherCharGroup{}
+	for entry in AnotherCharGroup.values() {
+		println('Value: ${entry}  ${entry.value()}')
+		values << entry
+	}
+
+	assert values == [AnotherCharGroup.chars, AnotherCharGroup.alphanumerics,
+		AnotherCharGroup.numeric, AnotherCharGroup.special]
 }
