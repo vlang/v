@@ -38,6 +38,10 @@ pub mut:
 	// json             bool            // json is imported
 	comptime_calls map[string]bool // resolved name to call on comptime
 	comptime_syms  map[Type]bool   // resolved syms (generic)
+	//
+	uses_attr_noreturn bool // @[noreturn]
+	uses_attr_hidden   bool // @[hidden]
+	uses_attr_weak     bool // @[weak]
 }
 
 @[unsafe]

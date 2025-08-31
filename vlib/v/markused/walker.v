@@ -367,6 +367,9 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 				if gf.has_expr {
 					w.expr(gf.expr)
 				}
+				if !w.table.used_features.uses_attr_hidden && node.attrs.contains('hidden') {
+					w.table.used_features.uses_attr_hidden = true
+				}
 			}
 		}
 		ast.BranchStmt {}
@@ -898,6 +901,13 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 		w.mark_fn_as_used(node.fkey())
 		w.mark_fn_ret_and_params(node.return_type, node.params)
 		return
+	}
+
+	if node.is_noreturn {
+		w.table.used_features.uses_attr_noreturn = true
+	}
+	if !w.table.used_features.uses_attr_weak && node.attrs.contains('weak') {
+		w.table.used_features.uses_attr_weak = true
 	}
 
 	fkey := node.fkey()

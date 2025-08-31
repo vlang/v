@@ -180,8 +180,6 @@ const c_common_macros = '
 #endif
 #endif
 
-#define OPTION_CAST(x) (x)
-
 #if defined(_WIN32) || defined(__CYGWIN__)
 	#define VV_EXP extern __declspec(dllexport)
 	#define VV_LOC static
@@ -220,7 +218,17 @@ const c_common_macros = '
 #undef __has_include
 #endif
 
+//likely and unlikely macros
+#if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
+	#define _likely_(x)  __builtin_expect(x,1)
+	#define _unlikely_(x)  __builtin_expect(x,0)
+#else
+	#define _likely_(x) (x)
+	#define _unlikely_(x) (x)
+#endif
+'
 
+const c_common_weak_attr = '
 #if !defined(VWEAK)
 	#define VWEAK __attribute__((weak))
 	#ifdef _MSC_VER
@@ -232,7 +240,9 @@ const c_common_macros = '
 		#define VWEAK
 	#endif
 #endif
+'
 
+const c_common_hidden_attr = '
 #if !defined(VHIDDEN)
 	#define VHIDDEN __attribute__((visibility("hidden")))
 	#ifdef _MSC_VER
@@ -244,7 +254,9 @@ const c_common_macros = '
 		#define VHIDDEN
 	#endif
 #endif
+'
 
+const c_common_noreturn_attr = '
 #if !defined(VNORETURN)
 	#if defined(__TINYC__)
 		#include <stdnoreturn.h>
@@ -259,7 +271,9 @@ const c_common_macros = '
 		#define VNORETURN
 	#endif
 #endif
+'
 
+const c_common_unreachable_attr = '
 #if !defined(VUNREACHABLE)
 	#if defined(__GNUC__) && !defined(__clang__)
 		#define V_GCC_VERSION  (__GNUC__ * 10000L + __GNUC_MINOR__ * 100L + __GNUC_PATCHLEVEL__)
@@ -276,16 +290,6 @@ const c_common_macros = '
 		#define VUNREACHABLE() do { } while (0)
 	#endif
 #endif
-
-//likely and unlikely macros
-#if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
-	#define _likely_(x)  __builtin_expect(x,1)
-	#define _unlikely_(x)  __builtin_expect(x,0)
-#else
-	#define _likely_(x) (x)
-	#define _unlikely_(x) (x)
-#endif
-
 '
 
 const c_unsigned_comparison_functions = '
@@ -433,8 +437,6 @@ void v_free(voidptr ptr);
 		#define _Atomic volatile
 
 		// MSVC cannot parse some things properly
-		#undef OPTION_CAST
-		#define OPTION_CAST(x)
 		#undef __NOINLINE
 		#undef __IRQHANDLER
 		#define __NOINLINE __declspec(noinline)
@@ -450,9 +452,6 @@ void v_free(voidptr ptr);
 		#define pthread_rwlockattr_setkind_np(a, b)
 	#endif
 #endif
-
-// g_live_info is used by live.info()
-static void* g_live_info = NULL;
 
 #if defined(__MINGW32__) || defined(__MINGW64__) || (defined(_WIN32) && defined(__TINYC__))
 	#undef PRId64
@@ -711,5 +710,4 @@ static inline uint64_t wy2u0k(uint64_t r, uint64_t k){ _wymum(&r,&k); return k; 
 #endif
 
 #define _IN_MAP(val, m) map_exists(m, val)
-
 '
