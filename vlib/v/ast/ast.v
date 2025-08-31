@@ -2309,7 +2309,7 @@ pub fn (expr Expr) is_constant() bool {
 		IntegerLiteral, FloatLiteral, BoolLiteral, StringLiteral {
 			true
 		}
-		InfixExpr, CastExpr {
+		InfixExpr, CastExpr, ArrayInit {
 			true
 		}
 		UnsafeExpr {
