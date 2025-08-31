@@ -2304,6 +2304,23 @@ pub fn (expr Expr) pos() token.Pos {
 	}
 }
 
+pub fn (expr Expr) is_constant() bool {
+	return match expr {
+		IntegerLiteral, FloatLiteral, BoolLiteral, StringLiteral {
+			true
+		}
+		InfixExpr, CastExpr {
+			true
+		}
+		UnsafeExpr {
+			expr.expr.is_constant()
+		}
+		else {
+			return false
+		}
+	}
+}
+
 pub fn (expr Expr) is_lvalue() bool {
 	return match expr {
 		Ident, CTempVar { true }
