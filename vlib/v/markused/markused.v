@@ -331,6 +331,65 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 }
 
+fn all_global_decl_in_stmts(stmts []ast.Stmt, mut all_fns map[string]ast.FnDecl, mut all_consts map[string]ast.ConstField, mut all_globals map[string]ast.GlobalField, mut all_decltypes map[string]ast.TypeDecl, mut all_structs map[string]ast.StructDecl) {
+	for node in stmts {
+		match node {
+			ast.FnDecl {
+				fkey := node.fkey()
+				if fkey !in all_fns || !node.no_body {
+					all_fns[fkey] = node
+				}
+			}
+			ast.ConstDecl {
+				for cfield in node.fields {
+					ckey := cfield.name
+					all_consts[ckey] = cfield
+				}
+			}
+			ast.GlobalDecl {
+				for gfield in node.fields {
+					gkey := gfield.name
+					all_globals[gkey] = gfield
+				}
+			}
+			ast.StructDecl {
+				all_structs[node.name] = node
+			}
+			ast.TypeDecl {
+				if node.is_markused {
+					all_decltypes[node.name] = node
+				}
+			}
+			ast.ExprStmt {
+				match node.expr {
+					ast.IfExpr {
+						if node.expr.is_comptime {
+							// top level comptime $if
+							for branch in node.expr.branches {
+								all_global_decl_in_stmts(branch.stmts, mut all_fns, mut
+									all_consts, mut all_globals, mut all_decltypes, mut
+									all_structs)
+							}
+						}
+					}
+					ast.MatchExpr {
+						if node.expr.is_comptime {
+							// top level comptime $match
+							for branch in node.expr.branches {
+								all_global_decl_in_stmts(branch.stmts, mut all_fns, mut
+									all_consts, mut all_globals, mut all_decltypes, mut
+									all_structs)
+							}
+						}
+					}
+					else {}
+				}
+			}
+			else {}
+		}
+	}
+}
+
 fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField, map[string]ast.GlobalField, map[string]ast.TypeDecl, map[string]ast.StructDecl) {
 	util.timing_start(@METHOD)
 	defer {
@@ -342,37 +401,8 @@ fn all_global_decl(ast_files []&ast.File) (map[string]ast.FnDecl, map[string]ast
 	mut all_decltypes := map[string]ast.TypeDecl{}
 	mut all_structs := map[string]ast.StructDecl{}
 	for i in 0 .. ast_files.len {
-		for node in ast_files[i].stmts {
-			match node {
-				ast.FnDecl {
-					fkey := node.fkey()
-					if fkey !in all_fns || !node.no_body {
-						all_fns[fkey] = node
-					}
-				}
-				ast.ConstDecl {
-					for cfield in node.fields {
-						ckey := cfield.name
-						all_consts[ckey] = cfield
-					}
-				}
-				ast.GlobalDecl {
-					for gfield in node.fields {
-						gkey := gfield.name
-						all_globals[gkey] = gfield
-					}
-				}
-				ast.StructDecl {
-					all_structs[node.name] = node
-				}
-				ast.TypeDecl {
-					if node.is_markused {
-						all_decltypes[node.name] = node
-					}
-				}
-				else {}
-			}
-		}
+		all_global_decl_in_stmts(ast_files[i].stmts, mut all_fns, mut all_consts, mut
+			all_globals, mut all_decltypes, mut all_structs)
 	}
 	return all_fns, all_consts, all_globals, all_decltypes, all_structs
 }
