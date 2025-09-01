@@ -370,6 +370,9 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 				if !w.table.used_features.uses_attr_hidden && node.attrs.contains('hidden') {
 					w.table.used_features.uses_attr_hidden = true
 				}
+				if !w.table.used_features.uses_attr_weak && node.attrs.contains('weak') {
+					w.table.used_features.uses_attr_weak = true
+				}
 			}
 		}
 		ast.BranchStmt {}
