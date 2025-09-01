@@ -477,6 +477,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		language:         language
 		is_union:         is_union
 		is_option:        is_option
+		is_aligned:       attrs.contains('aligned')
 		attrs:            if is_anon { []ast.Attr{} } else { attrs } // anon structs can't have attributes
 		pre_comments:     pre_comments
 		end_comments:     end_comments
