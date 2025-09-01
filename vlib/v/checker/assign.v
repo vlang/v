@@ -661,8 +661,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 		}
 		if mut left is ast.Ident && left.info is ast.IdentVar {
-			if left.info.is_static && right_sym.kind == .map {
-				c.error('maps cannot be static', left.pos)
+			if left.info.is_static {
+				if right_sym.kind == .map {
+					c.error('maps cannot be static', left.pos)
+				} else if !right.is_constant() {
+					c.error('cannot initialized static variable with non-constant value',
+						left.pos)
+				}
 			}
 		}
 		// Single side check
