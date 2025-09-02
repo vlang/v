@@ -1077,7 +1077,7 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		f.writeln('')
 		f.comments(field.next_comments, has_nl: true, level: .indent)
 	}
-	f.writeln('}\n')
+	f.writeln('}')
 }
 
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
