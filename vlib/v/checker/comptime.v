@@ -1018,6 +1018,30 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 				}
 				.eq, .ne, .gt, .lt, .ge, .le {
 					match mut cond.left {
+						ast.AtExpr {
+							// @OS == 'linux'
+							left_type := c.expr(mut cond.left)
+							right_type := c.expr(mut cond.right)
+							if !c.check_types(right_type, left_type) {
+								left_name := c.table.type_to_str(left_type)
+								right_name := c.table.type_to_str(right_type)
+								c.error('mismatched types `${left_name}` and `${right_name}`',
+									cond.pos)
+							}
+							left_str := cond.left.val
+							right_str := (cond.right as ast.StringLiteral).val
+							if cond.op == .eq {
+								is_true = left_str == right_str
+							} else if cond.op == .ne {
+								is_true = left_str != right_str
+							} else {
+								c.error('string type only support `==` and `!=` operator',
+									cond.pos)
+								return false, false
+							}
+							sb.write_string('${is_true}')
+							return is_true, false
+						}
 						ast.Ident {
 							// $if version == 2
 							left_type := c.expr(mut cond.left)

@@ -53,6 +53,9 @@ mut:
 	inside_select            bool // to allow `ch <- Struct{} {` inside `select`
 	inside_match_case        bool // to separate `match_expr { }` from `Struct{}`
 	inside_match_body        bool // to fix eval not used TODO
+	inside_ct_match          bool
+	inside_ct_match_case     bool
+	inside_ct_match_body     bool
 	inside_unsafe            bool
 	inside_sum_type          bool // to prevent parsing inline sum type again
 	inside_asm_template      bool
@@ -455,8 +458,9 @@ fn (mut p Parser) parse_block() []ast.Stmt {
 
 fn (mut p Parser) is_in_top_level_comptime(inside_assign_rhs bool) bool {
 	// TODO: find out a better way detect we are in top level.
-	return p.cur_fn_name.len == 0 && p.inside_ct_if_expr && !inside_assign_rhs && !p.script_mode
-		&& p.tok.kind != .name
+	return p.cur_fn_name.len == 0
+		&& (p.inside_ct_if_expr || p.inside_ct_match || p.inside_ct_match_body)
+		&& !inside_assign_rhs && !p.script_mode && p.tok.kind != .name
 }
 
 fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {

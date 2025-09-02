@@ -6,6 +6,7 @@ module parser
 import v.ast
 import v.token
 import v.pkgconfig
+import v.pref
 
 fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 	was_inside_if_expr := p.inside_if_expr
@@ -193,7 +194,9 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 			return ast.IfExpr{}
 		}
 		p.open_scope()
-		if is_comptime && comptime_skip_curr_stmts && !p.pref.is_fmt && !p.pref.output_cross_c {
+		if is_comptime && comptime_skip_curr_stmts
+			&& p.is_in_top_level_comptime(p.inside_assign_rhs) && !p.pref.is_fmt
+			&& !p.pref.output_cross_c {
 			p.skip_scope()
 			branches << ast.IfBranch{
 				cond:     cond
@@ -278,29 +281,64 @@ fn (mut p Parser) is_match_sumtype_type() bool {
 		&& next_next_tok.lit.len > 0 && next_next_tok.lit[0].is_capital()))
 }
 
+fn (mut p Parser) resolve_at_expr(expr ast.AtExpr) !string {
+	match expr.kind {
+		.mod_name {
+			return p.mod
+		}
+		.os {
+			return pref.get_host_os().lower()
+		}
+		.ccompiler {
+			return p.pref.ccompiler_type.str()
+		}
+		.backend {
+			return p.pref.backend.str()
+		}
+		.platform {
+			return p.pref.arch.str()
+		}
+		else {
+			return error('top level comptime only support `@MOD` `@OS` `@CCOMPILER` `@BACKEND` or `@PLATFORM`')
+		}
+	}
+	return ''
+}
+
 fn (mut p Parser) match_expr(is_comptime bool) ast.MatchExpr {
 	mut match_first_pos := p.tok.pos()
+	old_inside_ct_match := p.inside_ct_match
 	if is_comptime {
 		p.next() // `$`
 		match_first_pos = p.prev_tok.pos().extend(p.tok.pos())
+		p.inside_ct_match = true
 	}
 	old_inside_match := p.inside_match
 	p.inside_match = true
 	p.check(.key_match)
 	mut is_sum_type := false
 	cond := p.expr(0)
+	mut cond_str := ''
+	if is_comptime && cond is ast.AtExpr && p.is_in_top_level_comptime(p.inside_assign_rhs) {
+		cond_str = p.resolve_at_expr(cond) or {
+			p.error(err.msg())
+			return ast.MatchExpr{}
+		}
+	}
 	p.inside_match = old_inside_match
+	p.inside_ct_match = old_inside_ct_match
 	no_lcbr := p.tok.kind != .lcbr
 	if !no_lcbr {
 		p.check(.lcbr)
 	}
 	comments := p.eat_comments() // comments before the first branch
 	mut branches := []ast.MatchBranch{}
+	mut comptime_skip_curr_stmts := false
+	mut comptime_has_true_branch := false
 	for p.tok.kind != .eof {
 		branch_first_pos := p.tok.pos()
 		mut exprs := []ast.Expr{}
 		mut ecmnts := [][]ast.Comment{}
-		p.open_scope()
 		// final else
 		mut is_else := false
 		if is_comptime {
@@ -352,19 +390,44 @@ fn (mut p Parser) match_expr(is_comptime bool) ast.MatchExpr {
 			}
 			// Expression match
 			for {
+				if is_comptime {
+					p.inside_ct_match_case = true
+				}
 				p.inside_match_case = true
 				mut range_pos := p.tok.pos()
-				expr := p.expr(0)
+				mut case_str := ''
+				mut expr := p.expr(0)
 				p.inside_match_case = false
+				p.inside_ct_match_case = false
+				match mut expr {
+					ast.StringLiteral {
+						case_str = expr.val
+					}
+					ast.IntegerLiteral {
+						case_str = expr.val.str()
+					}
+					ast.BoolLiteral {
+						case_str = expr.val.str()
+					}
+					else {}
+				}
+				comptime_skip_curr_stmts = cond_str != case_str
+				if !comptime_skip_curr_stmts {
+					comptime_has_true_branch = true
+				}
 				if p.tok.kind == .dotdot {
 					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)',
 						p.tok.pos())
 					return ast.MatchExpr{}
 				} else if p.tok.kind == .ellipsis {
 					p.next()
+					if is_comptime {
+						p.inside_ct_match_case = true
+					}
 					p.inside_match_case = true
 					expr2 := p.expr(0)
 					p.inside_match_case = false
+					p.inside_ct_match_case = false
 					exprs << ast.RangeExpr{
 						low:      expr
 						high:     expr2
@@ -394,11 +457,24 @@ fn (mut p Parser) match_expr(is_comptime bool) ast.MatchExpr {
 		}
 		branch_last_pos := p.prev_tok.pos()
 		// p.warn('match block')
+		if is_comptime {
+			p.inside_ct_match_body = true
+		}
 		p.inside_match_body = true
-		stmts := p.parse_block_no_scope(false)
+		p.open_scope()
+		mut stmts := []ast.Stmt{}
+		if is_comptime && ((!is_else && comptime_skip_curr_stmts)
+			|| (is_else && comptime_has_true_branch))
+			&& p.is_in_top_level_comptime(p.inside_assign_rhs) && !p.pref.is_fmt
+			&& !p.pref.output_cross_c {
+			p.skip_scope()
+		} else {
+			stmts = p.parse_block_no_scope(false)
+		}
 		branch_scope := p.scope
 		p.close_scope()
 		p.inside_match_body = false
+		p.inside_ct_match_body = false
 		pos := branch_first_pos.extend_with_last_line(branch_last_pos, p.prev_tok.line_nr)
 		branch_pos := branch_first_pos.extend_with_last_line(p.tok.pos(), p.tok.line_nr)
 		post_comments := p.eat_comments()
@@ -643,6 +719,27 @@ fn (mut p Parser) comptime_if_cond(mut cond ast.Expr) bool {
 				}
 				.eq, .ne, .gt, .lt, .ge, .le {
 					match mut cond.left {
+						ast.AtExpr {
+							// @OS == 'linux'
+							left_str := p.resolve_at_expr(cond.left) or {
+								p.error(err.msg())
+								return false
+							}
+							if cond.right !is ast.StringLiteral {
+								p.error('`${cond.left} can only compare with string type')
+								return false
+							}
+							right_str := (cond.right as ast.StringLiteral).val
+							if cond.op == .eq {
+								is_true = left_str == right_str
+							} else if cond.op == .ne {
+								is_true = left_str != right_str
+							} else {
+								p.error('string type only support `==` and `!=` operator')
+								return false
+							}
+							return is_true
+						}
 						ast.Ident {
 							// $if version == 2
 							match mut cond.right {
