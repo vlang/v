@@ -5,7 +5,6 @@ module parser
 
 import v.ast
 import v.token
-import v.pref
 import v.pkgconfig
 
 fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
@@ -724,140 +723,12 @@ fn (mut p Parser) comptime_if_cond(mut cond ast.Expr) bool {
 		}
 		ast.Ident {
 			cname := cond.name
-			if cname in ast.valid_comptime_if_os {
-				if cname_enum_val := pref.os_from_string(cname) {
-					if cname_enum_val == p.pref.os {
-						is_true = true
-					}
-				}
-			} else if cname in ast.valid_comptime_if_compilers {
-				is_true = pref.cc_from_string(cname) == p.pref.ccompiler_type
-			} else if cname in ast.valid_comptime_if_platforms {
-				if cname == 'aarch64' {
-					p.note('use `arm64` instead of `aarch64`')
-				}
-				match cname {
-					'amd64' {
-						is_true = p.pref.arch == .amd64
-					}
-					'i386' {
-						is_true = p.pref.arch == .i386
-					}
-					'aarch64' {
-						is_true = p.pref.arch == .arm64
-					}
-					'arm64' {
-						is_true = p.pref.arch == .arm64
-					}
-					'arm32' {
-						is_true = p.pref.arch == .arm32
-					}
-					'rv64' {
-						is_true = p.pref.arch == .rv64
-					}
-					'rv32' {
-						is_true = p.pref.arch == .rv32
-					}
-					's390x' {
-						is_true = p.pref.arch == .s390x
-					}
-					'ppc64le' {
-						is_true = p.pref.arch == .ppc64le
-					}
-					'loongarch64' {
-						is_true = p.pref.arch == .loongarch64
-					}
-					else {
-						p.error('invalid \$if condition: unknown platforms `${cname}`')
-						return false
-					}
-				}
-			} else if cname in ast.valid_comptime_if_cpu_features {
-				match cname {
-					'x64' {
-						is_true = p.pref.m64
-					}
-					'x32' {
-						is_true = !p.pref.m64
-					}
-					'little_endian' {
-						is_true = $if little_endian { true } $else { false }
-					}
-					'big_endian' {
-						is_true = $if big_endian { true } $else { false }
-					}
-					else {
-						p.error('invalid \$if condition: unknown cpu_features `${cname}`')
-						return false
-					}
-				}
-			} else if cname in ast.valid_comptime_if_other {
-				match cname {
-					'apk' {
-						is_true = p.pref.is_apk
-					}
-					'js' {
-						is_true = p.pref.backend.is_js()
-					}
-					'debug' {
-						is_true = p.pref.is_debug
-					}
-					'prod' {
-						is_true = p.pref.is_prod
-					}
-					'test' {
-						is_true = p.pref.is_test
-					}
-					'glibc' {
-						is_true = p.pref.is_glibc
-					}
-					'prealloc' {
-						is_true = p.pref.prealloc
-					}
-					'no_bounds_checking' {
-						is_true = p.pref.no_bounds_checking
-					}
-					'freestanding' {
-						is_true = p.pref.is_bare && !p.pref.output_cross_c
-					}
-					'threads' {
-						is_true = p.table.gostmts > 0
-					}
-					'js_node' {
-						is_true = p.pref.backend == .js_node
-					}
-					'js_browser' {
-						is_true = p.pref.backend == .js_browser
-					}
-					'js_freestanding' {
-						is_true = p.pref.backend == .js_freestanding
-					}
-					'interpreter' {
-						is_true = p.pref.backend == .interpret
-					}
-					'es5' {
-						is_true = p.pref.output_es5
-					}
-					'profile' {
-						is_true = p.pref.is_prof
-					}
-					'wasm32' {
-						is_true = p.pref.arch == .wasm32
-					}
-					'wasm32_wasi' {
-						is_true = p.pref.os == .wasm32_wasi
-					}
-					'fast_math' {
-						is_true = p.pref.fast_math
-					}
-					'native' {
-						is_true = p.pref.backend == .native
-					}
-					'autofree' {
-						is_true = p.pref.autofree
-					}
-					else {
-						p.error('invalid \$if condition: unknown other indent `${cname}`')
+			if cname in ast.valid_comptime_not_user_defined {
+				if cname == 'threads' {
+					is_true = p.table.gostmts > 0
+				} else {
+					is_true = ast.eval_comptime_not_user_defined_ident(cname, p.pref) or {
+						p.error(err.msg())
 						return false
 					}
 				}
