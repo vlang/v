@@ -18,39 +18,41 @@ pub struct Fmt {
 pub:
 	pref &pref.Preferences = unsafe { nil }
 pub mut:
-	file               ast.File
-	table              &ast.Table = unsafe { nil }
-	is_debug           bool
-	out                strings.Builder
-	indent             int
-	empty_line         bool
-	line_len           int    // the current line length, Note: it counts \t as 4 spaces, and starts at 0 after f.writeln
-	buffering          bool   // disables line wrapping for exprs that will be analyzed later
-	par_level          int    // how many parentheses are put around the current expression
-	array_init_break   []bool // line breaks after elements in hierarchy level of multi dimensional array
-	array_init_depth   int    // current level of hierarchy in array init
-	single_line_if     bool
-	cur_mod            string
-	import_pos         int               // position of the last import in the resulting string
-	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
-	mod2syms           map[string]string // import time { now } 'time.now'=>'now'
-	implied_import_str string            // ​imports that the user's code uses but omitted to import explicitly
-	processed_imports  []string
-	has_import_stmt    bool
-	use_short_fn_args  bool
-	single_line_fields bool // should struct fields be on a single line
-	in_lambda_depth    int
-	inside_const       bool
-	inside_unsafe      bool
-	inside_comptime_if bool
-	is_assign          bool
-	is_index_expr      bool
-	is_mbranch_expr    bool // match a { x...y { } }
-	is_struct_init     bool
-	fn_scope           &ast.Scope = unsafe { nil }
-	wsinfix_depth      int
-	format_state       FormatState
-	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
+	file                     ast.File
+	table                    &ast.Table = unsafe { nil }
+	is_debug                 bool
+	out                      strings.Builder
+	indent                   int
+	empty_line               bool
+	line_len                 int    // the current line length, Note: it counts \t as 4 spaces, and starts at 0 after f.writeln
+	buffering                bool   // disables line wrapping for exprs that will be analyzed later
+	par_level                int    // how many parentheses are put around the current expression
+	array_init_break         []bool // line breaks after elements in hierarchy level of multi dimensional array
+	array_init_depth         int    // current level of hierarchy in array init
+	single_line_if           bool
+	cur_mod                  string
+	import_pos               int               // position of the last import in the resulting string
+	mod2alias                map[string]string // for `import time as t`, will contain: 'time'=>'t'
+	mod2syms                 map[string]string // import time { now } 'time.now'=>'now'
+	implied_import_str       string            // ​imports that the user's code uses but omitted to import explicitly
+	processed_imports        []string
+	has_import_stmt          bool
+	use_short_fn_args        bool
+	single_line_fields       bool // should struct fields be on a single line
+	in_lambda_depth          int
+	inside_const             bool
+	inside_unsafe            bool
+	inside_comptime_if       bool
+	is_assign                bool
+	is_index_expr            bool
+	is_mbranch_expr          bool // match a { x...y { } }
+	is_struct_init           bool
+	fn_scope                 &ast.Scope = unsafe { nil }
+	wsinfix_depth            int
+	format_state             FormatState
+	source_text              string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
+	global_processed_imports []string
+	branch_processed_imports []string
 }
 
 @[params]
@@ -317,12 +319,17 @@ pub fn (mut f Fmt) import_stmt(imp ast.Import) {
 		return
 	}
 	imp_stmt := f.imp_stmt_str(imp)
-	if imp_stmt in f.processed_imports {
+	if imp_stmt in f.global_processed_imports
+		|| (f.inside_comptime_if && imp_stmt in f.branch_processed_imports) {
 		// Skip duplicates.
 		f.import_comments(imp.next_comments)
 		return
 	}
-	f.processed_imports << imp_stmt
+	if f.inside_comptime_if {
+		f.branch_processed_imports << imp_stmt
+	} else {
+		f.global_processed_imports << imp_stmt
+	}
 	if !f.format_state.is_vfmt_on {
 		original_imp_line := f.get_source_lines()#[imp.pos.line_nr..imp.pos.last_line + 1].join('\n')
 		// Same line comments(`imp.comments`) are included in the `original_imp_line`.
@@ -1070,7 +1077,7 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		f.writeln('')
 		f.comments(field.next_comments, has_nl: true, level: .indent)
 	}
-	f.writeln('}\n')
+	f.writeln('}')
 }
 
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
@@ -2354,6 +2361,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	start_len := f.line_len
 	for {
 		for i, branch in node.branches {
+			f.branch_processed_imports.clear()
 			mut sum_len := 0
 			if i > 0 {
 				// `else`, close previous branch

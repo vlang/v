@@ -111,6 +111,7 @@ mut:
 	generic_type_level       int  // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 	main_already_defined     bool // TODO move to checker
 	is_vls                   bool
+	inside_import_section    bool
 pub mut:
 	scanner &scanner.Scanner = unsafe { nil }
 	table   &ast.Table       = unsafe { nil }
@@ -290,6 +291,7 @@ pub fn (mut p Parser) parse() &ast.File {
 	} else {
 		stmts << module_decl
 	}
+	p.inside_import_section = true
 	// imports
 	for {
 		if p.tok.kind == .key_import {
@@ -451,6 +453,12 @@ fn (mut p Parser) parse_block() []ast.Stmt {
 	return stmts
 }
 
+fn (mut p Parser) is_in_top_level_comptime(inside_assign_rhs bool) bool {
+	// TODO: find out a better way detect we are in top level.
+	return p.cur_fn_name.len == 0 && p.inside_ct_if_expr && !inside_assign_rhs && !p.script_mode
+		&& p.tok.kind != .name
+}
+
 fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt{cap: 20}
@@ -459,7 +467,12 @@ fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	if p.tok.kind != .rcbr {
 		mut count := 0
 		for p.tok.kind !in [.eof, .rcbr] {
-			stmts << p.stmt(is_top_level)
+			if p.is_in_top_level_comptime(old_assign_rhs) {
+				// top level `$if cond { println() }` should goto `p.stmt()`
+				stmts << p.top_stmt()
+			} else {
+				stmts << p.stmt(is_top_level)
+			}
 			count++
 			if count % 100000 == 0 {
 				if p.is_vls {
@@ -617,6 +630,10 @@ fn (p &Parser) trace_parser(label string) {
 fn (mut p Parser) top_stmt() ast.Stmt {
 	p.trace_parser('top_stmt')
 	for {
+		if p.tok.kind !in [.key_import, .comment, .dollar] {
+			// import section should only prepend by `import`, `comment` or `$if`.
+			p.inside_import_section = false
+		}
 		match p.tok.kind {
 			.key_pub {
 				match p.peek_tok.kind {
@@ -660,8 +677,10 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.interface_decl()
 			}
 			.key_import {
-				p.error_with_pos('`import x` can only be declared at the beginning of the file',
-					p.tok.pos())
+				if !p.inside_import_section {
+					p.error_with_pos('`import x` can only be declared at the beginning of the file',
+						p.tok.pos())
+				}
 				return p.import_stmt()
 			}
 			.key_global {
@@ -677,25 +696,52 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.struct_decl(false)
 			}
 			.dollar {
-				if p.peek_tok.kind == .eof {
-					return p.unexpected(got: 'eof')
-				}
-				if p.peek_tok.kind == .key_for {
-					comptime_for_stmt := p.comptime_for()
-					return p.other_stmts(comptime_for_stmt)
-				} else if p.peek_tok.kind == .key_if {
-					if_expr := p.if_expr(true, false)
-					cur_stmt := ast.ExprStmt{
-						expr: if_expr
-						pos:  if_expr.pos
+				match p.peek_tok.kind {
+					.eof {
+						return p.unexpected(got: 'eof')
 					}
-					if p.pref.is_fmt || comptime_if_expr_contains_top_stmt(if_expr) {
-						return cur_stmt
-					} else {
-						return p.other_stmts(cur_stmt)
+					.key_for {
+						comptime_for_stmt := p.comptime_for()
+						return p.other_stmts(comptime_for_stmt)
 					}
-				} else {
-					return p.unexpected()
+					.key_if {
+						if_expr := p.if_expr(true, false)
+						cur_stmt := ast.ExprStmt{
+							expr: if_expr
+							pos:  if_expr.pos
+						}
+						if p.pref.is_fmt || comptime_if_expr_contains_top_stmt(if_expr) {
+							return cur_stmt
+						} else {
+							return p.other_stmts(cur_stmt)
+						}
+					}
+					.key_match {
+						mut pos := p.tok.pos()
+						expr := p.match_expr(true)
+						pos.update_last_line(p.prev_tok.line_nr)
+						return ast.ExprStmt{
+							expr: expr
+							pos:  pos
+						}
+					}
+					.name {
+						// handles $dbg directly without registering token
+						if p.peek_tok.lit == 'dbg' {
+							return p.dbg_stmt()
+						} else {
+							mut pos := p.tok.pos()
+							expr := p.expr(0)
+							pos.update_last_line(p.prev_tok.line_nr)
+							return ast.ExprStmt{
+								expr: expr
+								pos:  pos
+							}
+						}
+					}
+					else {
+						return p.unexpected()
+					}
 				}
 			}
 			.hash {
@@ -2470,7 +2516,10 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		}
 		mut expr := ast.Expr{}
 		if !is_virtual_c_const {
+			old_inside_assign_rhs := p.inside_assign_rhs
+			p.inside_assign_rhs = true
 			expr = p.expr(0)
+			p.inside_assign_rhs = old_inside_assign_rhs
 		}
 		if is_block {
 			end_comments << p.eat_comments(same_line: true)
@@ -2596,7 +2645,10 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		mut typ_pos := token.Pos{}
 		if has_expr {
 			p.next() // =
+			old_assign_rhs := p.inside_assign_rhs
+			p.inside_assign_rhs = true
 			expr = p.expr(0)
+			p.inside_assign_rhs = old_assign_rhs
 			match mut expr {
 				ast.CastExpr, ast.StructInit, ast.ArrayInit, ast.ChanInit {
 					typ = expr.typ
@@ -2759,7 +2811,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			is_pub: is_pub
 		})
-		if typ in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
+		if typ in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx]
+			&& !p.pref.is_fmt {
 			p.error_with_pos('cannot register sum type `${name}`, another type with this name exists',
 				name_pos)
 			return ast.SumTypeDecl{}
@@ -2806,7 +2859,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_pub:     is_pub
 	})
 	type_end_pos := p.prev_tok.pos()
-	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
+	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx]
+		&& !p.pref.is_fmt {
 		p.error_with_pos('cannot register alias `${name}`, another type with this name exists',
 			name_pos)
 		return ast.AliasTypeDecl{}
@@ -3015,5 +3069,25 @@ fn (mut p Parser) add_defer_var(ident ast.Ident) {
 			&& ident.name !in ['err', 'it'] {
 			p.defer_vars << ident
 		}
+	}
+}
+
+// skip `{...}`
+fn (mut p Parser) skip_scope() {
+	mut br_cnt := 0
+	for {
+		match p.tok.kind {
+			.lcbr { br_cnt++ }
+			.rcbr { br_cnt-- }
+			.eof { break }
+			else {}
+		}
+		if br_cnt == 0 {
+			break
+		}
+		p.next()
+	}
+	if p.tok.kind == .rcbr {
+		p.next()
 	}
 }
