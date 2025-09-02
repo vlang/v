@@ -111,7 +111,7 @@ fn (upd VlsUpdater) update_manifest(new_path string, from_source bool, timestamp
 
 	mut buffer := []u8{}
 
-	json_enc.encode_value(manifest, mut buffer)!
+	json2.encode(manifest, mut buffer)!
 
 	manifest_file.write(buffer)!
 
