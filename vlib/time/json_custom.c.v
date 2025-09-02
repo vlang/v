@@ -34,3 +34,8 @@ pub fn (mut t Time) from_json_string(raw_string string) ! {
 
 	return error('Expected iso8601/rfc3339/unix time but got: ${raw_string}')
 }
+
+// to_json implements a custom encoder for json2 (rfc3339)
+pub fn (t Time) to_json() string {
+	return '"' + t.format_rfc3339() + '"'
+}

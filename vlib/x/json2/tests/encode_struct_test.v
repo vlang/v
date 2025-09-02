@@ -65,30 +65,38 @@ fn test_types() {
 		}
 	}) == '{"val":{"val":1}}'
 
-	assert json.encode(StructType[Enumerates]{}) == '{"val":0}'
-	assert json.encode(StructType[Enumerates]{ val: Enumerates.a }) == '{"val":0}'
-	assert json.encode(StructType[Enumerates]{ val: Enumerates.d }) == '{"val":3}'
-	assert json.encode(StructType[Enumerates]{ val: Enumerates.e }) == '{"val":99}'
-	assert json.encode(StructType[Enumerates]{ val: Enumerates.f }) == '{"val":100}'
+	assert json.encode(StructType[Enumerates]{}, enum_as_int: true) == '{"val":0}'
+	assert json.encode(StructType[Enumerates]{ val: Enumerates.a },
+		enum_as_int: true
+	) == '{"val":0}'
+	assert json.encode(StructType[Enumerates]{ val: Enumerates.d },
+		enum_as_int: true
+	) == '{"val":3}'
+	assert json.encode(StructType[Enumerates]{ val: Enumerates.e },
+		enum_as_int: true
+	) == '{"val":99}'
+	assert json.encode(StructType[Enumerates]{ val: Enumerates.f },
+		enum_as_int: true
+	) == '{"val":100}'
 }
 
 fn test_option_types() {
-	assert json.encode(StructTypeOption[string]{ val: none }) == '{}'
-	assert json.encode(StructTypeOption[string]{}) == '{}'
+	assert json.encode(StructTypeOption[string]{ val: none }) == '{"val":null}'
+	assert json.encode(StructTypeOption[string]{}) == '{"val":null}'
 	assert json.encode(StructTypeOption[string]{ val: '' }) == '{"val":""}'
 	assert json.encode(StructTypeOption[string]{ val: 'a' }) == '{"val":"a"}'
 
-	assert json.encode(StructTypeOption[bool]{ val: none }) == '{}'
-	assert json.encode(StructTypeOption[bool]{}) == '{}'
+	assert json.encode(StructTypeOption[bool]{ val: none }) == '{"val":null}'
+	assert json.encode(StructTypeOption[bool]{}) == '{"val":null}'
 	assert json.encode(StructTypeOption[bool]{ val: false }) == '{"val":false}'
 	assert json.encode(StructTypeOption[bool]{ val: true }) == '{"val":true}'
 
-	assert json.encode(StructTypeOption[int]{ val: none }) == '{}'
-	assert json.encode(StructTypeOption[int]{}) == '{}'
+	assert json.encode(StructTypeOption[int]{ val: none }) == '{"val":null}'
+	assert json.encode(StructTypeOption[int]{}) == '{"val":null}'
 	assert json.encode(StructTypeOption[int]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructTypeOption[int]{ val: 1 }) == '{"val":1}'
 
-	assert json.encode(StructTypeOption[time.Time]{}) == '{}'
+	assert json.encode(StructTypeOption[time.Time]{}) == '{"val":null}'
 	assert json.encode(StructTypeOption[time.Time]{ val: time.Time{} }) == '{"val":"0000-00-00T00:00:00.000Z"}'
 	assert json.encode(StructTypeOption[time.Time]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
 
@@ -98,7 +106,7 @@ fn test_option_types() {
 		}
 	}) == '{"val":{"val":1}}'
 
-	assert json.encode(StructTypeOption[Enumerates]{}) == '{}'
+	assert json.encode(StructTypeOption[Enumerates]{}) == '{"val":null}'
 }
 
 fn test_array() {
@@ -157,42 +165,42 @@ fn test_array() {
 }
 
 fn test_option_array() {
-	assert json.encode(StructTypeOption[[]string]{}) == '{}'
+	assert json.encode(StructTypeOption[[]string]{}) == '{"val":null}'
 	assert json.encode(StructTypeOption[[]string]{ val: [] }) == '{"val":[]}'
 	assert json.encode(StructTypeOption[[]string]{ val: ['0'] }) == '{"val":["0"]}'
 	assert json.encode(StructTypeOption[[]string]{ val: ['1'] }) == '{"val":["1"]}'
 
-	assert json.encode(StructTypeOption[[]int]{}) == '{}'
+	assert json.encode(StructTypeOption[[]int]{}) == '{"val":null}'
 	assert json.encode(StructTypeOption[[]int]{ val: [] }) == '{"val":[]}'
 	assert json.encode(StructTypeOption[[]int]{ val: [0] }) == '{"val":[0]}'
 	assert json.encode(StructTypeOption[[]int]{ val: [1] }) == '{"val":[1]}'
 	assert json.encode(StructTypeOption[[]int]{ val: [0, 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
-	assert json.encode(StructTypeOption[[]u8]{}) == '{}'
+	assert json.encode(StructTypeOption[[]u8]{}) == '{"val":null}'
 	assert json.encode(StructTypeOption[[]u8]{ val: [] }) == '{"val":[]}'
 	assert json.encode(StructTypeOption[[]u8]{ val: [u8(0)] }) == '{"val":[0]}'
 	assert json.encode(StructTypeOption[[]u8]{ val: [u8(1)] }) == '{"val":[1]}'
 	assert json.encode(StructTypeOption[[]u8]{ val: [u8(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
-	assert json.encode(StructTypeOption[[]i64]{}) == '{}'
+	assert json.encode(StructTypeOption[[]i64]{}) == '{"val":null}'
 	assert json.encode(StructTypeOption[[]i64]{ val: [] }) == '{"val":[]}'
 	assert json.encode(StructTypeOption[[]i64]{ val: [i64(0)] }) == '{"val":[0]}'
 	assert json.encode(StructTypeOption[[]i64]{ val: [i64(1)] }) == '{"val":[1]}'
 	assert json.encode(StructTypeOption[[]i64]{ val: [i64(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
-	assert json.encode(StructTypeOption[[]u64]{}) == '{}'
+	assert json.encode(StructTypeOption[[]u64]{}) == '{"val":null}'
 	assert json.encode(StructTypeOption[[]u64]{ val: [] }) == '{"val":[]}'
 	assert json.encode(StructTypeOption[[]u64]{ val: [u64(0)] }) == '{"val":[0]}'
 	assert json.encode(StructTypeOption[[]u64]{ val: [u64(1)] }) == '{"val":[1]}'
 	assert json.encode(StructTypeOption[[]u64]{ val: [u64(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
-	assert json.encode(StructTypeOption[[]f64]{}) == '{}'
+	assert json.encode(StructTypeOption[[]f64]{}) == '{"val":null}'
 	assert json.encode(StructTypeOption[[]f64]{ val: [] }) == '{"val":[]}'
 	assert json.encode(StructTypeOption[[]f64]{ val: [f64(0)] }) == '{"val":[0]}'
 	assert json.encode(StructTypeOption[[]f64]{ val: [f64(1)] }) == '{"val":[1]}'
 	assert json.encode(StructTypeOption[[]f64]{ val: [f64(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
-	assert json.encode(StructTypeOption[[]bool]{}) == '{}'
+	assert json.encode(StructTypeOption[[]bool]{}) == '{"val":null}'
 	assert json.encode(StructTypeOption[[]bool]{ val: [] }) == '{"val":[]}'
 	assert json.encode(StructTypeOption[[]bool]{ val: [true] }) == '{"val":[true]}'
 	assert json.encode(StructTypeOption[[]bool]{ val: [false] }) == '{"val":[false]}'

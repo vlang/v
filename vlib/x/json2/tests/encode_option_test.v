@@ -9,5 +9,5 @@ pub mut:
 
 fn test_main() {
 	res := json2.encode(JoseHeader{ alg: 'HS256' })
-	assert res == '{"alg":"HS256","typ":"JWT"}'
+	assert res == '{"cty":null,"alg":"HS256","typ":"JWT"}'
 }
