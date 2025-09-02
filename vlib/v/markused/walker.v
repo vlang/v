@@ -142,9 +142,9 @@ pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	}
 	w.used_globals[ckey] = true
 	gfield := w.all_globals[ckey] or { return }
-	w.table.used_features.uses_attr_weak = w.table.used_features.uses_attr_weak || gfield.is_weak
-	w.table.used_features.uses_attr_hidden = w.table.used_features.uses_attr_hidden
-		|| gfield.is_hidden
+	w.table.used_features.used_attr_weak = w.table.used_features.used_attr_weak || gfield.is_weak
+	w.table.used_features.used_attr_hidden = w.table.used_features.used_attr_hidden
+		|| gfield.is_hidden || gfield.is_hidden
 	w.expr(gfield.expr)
 	if !gfield.has_expr {
 		w.mark_by_type(gfield.typ)
@@ -895,8 +895,8 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 			w.is_builtin_mod = last_is_builtin_mod
 		}
 	}
-	w.table.used_features.uses_attr_weak = w.table.used_features.uses_attr_weak || node.is_weak
-	w.table.used_features.uses_attr_noreturn = w.table.used_features.uses_attr_noreturn
+	w.table.used_features.used_attr_weak = w.table.used_features.used_attr_weak || node.is_weak
+	w.table.used_features.used_attr_noreturn = w.table.used_features.used_attr_noreturn
 		|| node.is_noreturn
 	if node.language == .c {
 		w.mark_fn_as_used(node.fkey())

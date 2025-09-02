@@ -991,13 +991,13 @@ pub fn (mut g Gen) init() {
 		} else {
 			g.cheaders.writeln(c_headers)
 		}
-		if !g.pref.skip_unused || g.table.used_features.uses_attr_weak {
+		if !g.pref.skip_unused || g.table.used_features.used_attr_weak {
 			g.cheaders.writeln(c_common_weak_attr)
 		}
-		if !g.pref.skip_unused || g.table.used_features.uses_attr_hidden {
+		if !g.pref.skip_unused || g.table.used_features.used_attr_hidden {
 			g.cheaders.writeln(c_common_hidden_attr)
 		}
-		if !g.pref.skip_unused || g.table.used_features.uses_attr_noreturn {
+		if !g.pref.skip_unused || g.table.used_features.used_attr_noreturn {
 			g.cheaders.writeln(c_common_noreturn_attr)
 			g.cheaders.writeln(c_common_unreachable_attr)
 		}
