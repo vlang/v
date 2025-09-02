@@ -1,5 +1,6 @@
 module json2
 
+// EncoderOptions provides a list of options for encoding
 @[params]
 pub struct EncoderOptions {
 pub:
@@ -26,6 +27,7 @@ fn workaround_cast[T](val voidptr) T {
 	return *(&T(val))
 }
 
+// encode is a generic function that encodes a type into a JSON string.
 pub fn encode[T](val T, config EncoderOptions) string {
 	mut encoder := Encoder{
 		EncoderOptions: config
