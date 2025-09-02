@@ -20,11 +20,15 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	}
 	mut cond_type := ast.void_type
 	if node.is_comptime {
-		// for field.name and generic type `T`
-		if node.cond is ast.SelectorExpr {
-			c.expr(mut node.cond)
+		if node.cond is ast.AtExpr {
+			cond_type = c.expr(mut node.cond)
+		} else {
+			// for field.name and generic type `T`
+			if node.cond is ast.SelectorExpr {
+				c.expr(mut node.cond)
+			}
+			cond_type = c.get_expr_type(node.cond)
 		}
-		cond_type = c.get_expr_type(node.cond)
 	} else {
 		cond_type = c.expr(mut node.cond)
 	}
@@ -69,7 +73,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.expr(mut node.cond)
 			if !c.type_resolver.is_generic_param_var(node.cond) {
 				match mut node.cond {
-					ast.StringLiteral {
+					ast.StringLiteral, ast.AtExpr {
 						comptime_match_cond_value = node.cond.val
 					}
 					ast.IntegerLiteral {
