@@ -100,22 +100,11 @@ fn (upd VlsUpdater) update_manifest(new_path string, from_source bool, timestamp
 		}
 	}
 
-	mut manifest_file := os.open_file(vls_manifest_path, 'w+')!
-	defer {
-		manifest_file.close()
-	}
-
 	manifest['server_path'] = json2.Any(new_path)
 	manifest['last_updated'] = json2.Any(timestamp.format_ss())
 	manifest['from_source'] = json2.Any(from_source)
 
-	mut buffer := []u8{}
-
-	json2.encode(manifest, mut buffer)!
-
-	manifest_file.write(buffer)!
-
-	unsafe { buffer.free() }
+	os.write_file(vls_manifest_path, json2.encode(manifest))!
 }
 
 fn (upd VlsUpdater) init_download_prebuilt() ! {
