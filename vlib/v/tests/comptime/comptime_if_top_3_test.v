@@ -1,4 +1,4 @@
-// vtest vflags: -d new_1 -d new_a_2 -d new_b_3 -d new_c_1 -d new_d_2 -d new_e_3
+// vtest vflags: -d new_3 -d new_a_3 -d new_b_3 -d new_c_3 -d new_d_3 -d new_e_3
 module main
 
 // this is comment, should skip
@@ -9,11 +9,11 @@ $if new_1 ? {
 	// this is comment, should skip
 } $else $if new_2 ? {
 	// this is comment, should skip
-	import os
+	import math
 	// this is comment, should skip
 } $else {
 	// this is comment, should skip
-	import os
+	import time
 	// this is comment, should skip
 }
 // this is comment, should skip
@@ -41,19 +41,16 @@ $if new_c_1 ? {
 		enum1_a
 		enum1_b
 	}
-
 } $else $if new_c_2 ? {
 	pub enum Enum1 {
 		enum1_c
 		enum1_d
 	}
-
 } $else {
 	pub enum Enum1 {
 		enum1_e
 		enum1_f
 	}
-
 }
 
 $if new_d_1 ? {
@@ -85,13 +82,13 @@ $if new_e_1 ? {
 }
 
 fn test_main() {
-	assert os.user_os().len > 0
+	assert time.days_in_year == 365
 	assert t in [1, 2]
-	assert sizeof(Digits) == 4 // Digits == u32
+	assert sizeof(Digits) == 1 // Digits == u8
 	assert const1 == 1.1
-	_ := Enum1.enum1_a // should compile
+	_ := Enum1.enum1_e // should compile
 	_ := Struct1{
-		b: 123
+		c: 123
 	} // should compile
 	assert ret() == 'new_e_3'
 }
