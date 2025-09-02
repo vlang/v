@@ -1001,6 +1001,16 @@ pub fn (mut g Gen) init() {
 		} else {
 			g.cheaders.writeln(c_headers)
 		}
+		if !g.pref.skip_unused || g.table.used_features.used_attr_weak {
+			g.cheaders.writeln(c_common_weak_attr)
+		}
+		if !g.pref.skip_unused || g.table.used_features.used_attr_hidden {
+			g.cheaders.writeln(c_common_hidden_attr)
+		}
+		if !g.pref.skip_unused || g.table.used_features.used_attr_noreturn {
+			g.cheaders.writeln(c_common_noreturn_attr)
+			g.cheaders.writeln(c_common_unreachable_attr)
+		}
 		if !g.pref.skip_unused || g.table.used_features.used_maps > 0 {
 			g.cheaders.writeln(c_wyhash_headers)
 		}

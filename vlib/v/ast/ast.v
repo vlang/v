@@ -446,6 +446,7 @@ pub:
 	module_pos       int = -1 // module:
 	is_union         bool
 	is_option        bool
+	is_aligned       bool
 	attrs            []Attr
 	pre_comments     []Comment
 	end_comments     []Comment
@@ -593,6 +594,7 @@ pub:
 	is_c_extern           bool
 	is_variadic           bool
 	is_anon               bool
+	is_weak               bool
 	is_noreturn           bool        // true, when @[noreturn] is used on a fn
 	is_manualfree         bool        // true, when @[manualfree] is used on a fn
 	is_main               bool        // true for `fn main()`
@@ -967,6 +969,8 @@ pub:
 	is_markused bool // an explicit `@[markused]` tag; the global will NOT be removed by `-skip-unused`
 	is_volatile bool
 	is_exported bool // an explicit `@[export]` tag; the global will NOT be removed by `-skip-unused`
+	is_weak     bool
+	is_hidden   bool
 pub mut:
 	expr     Expr
 	typ      Type

@@ -2599,10 +2599,14 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 
 	mut is_markused := false
 	mut is_exported := false
+	mut is_weak := false
+	mut is_hidden := false
 	for ga in attrs {
 		match ga.name {
 			'export' { is_exported = true }
 			'markused' { is_markused = true }
+			'weak' { is_weak = true }
+			'hidden' { is_hidden = true }
 			else {}
 		}
 	}
@@ -2687,6 +2691,8 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			is_markused: is_markused
 			is_volatile: is_volatile
 			is_exported: is_exported
+			is_weak:     is_weak
+			is_hidden:   is_hidden
 		}
 		fields << field
 		if name !in ast.global_reserved_type_names {
