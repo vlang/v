@@ -37,12 +37,19 @@ fn test_main() {
 }
 
 fn test_alias_enum() {
-	mut values := []AnotherCharGroup{}
-	for entry in AnotherCharGroup.values() {
-		println('Value: ${entry}  ${entry.value()}')
+	mut values := []EnumData{}
+	$for entry in AnotherCharGroup.values {
 		values << entry
 	}
+	assert values[0].value == int(CharacterGroup.chars)
+	assert values[0].name == CharacterGroup.chars.str()
 
-	assert values == [AnotherCharGroup.chars, AnotherCharGroup.alphanumerics,
-		AnotherCharGroup.numeric, AnotherCharGroup.special]
+	assert values[1].value == int(CharacterGroup.alphanumerics)
+	assert values[1].name == CharacterGroup.alphanumerics.str()
+
+	assert values[2].value == int(CharacterGroup.numeric)
+	assert values[2].name == CharacterGroup.numeric.str()
+
+	assert values[3].value == int(CharacterGroup.special)
+	assert values[3].name == CharacterGroup.special.str()
 }
