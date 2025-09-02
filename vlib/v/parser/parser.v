@@ -111,7 +111,7 @@ mut:
 	generic_type_level       int  // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 	main_already_defined     bool // TODO move to checker
 	is_vls                   bool
-	is_begining_of_file      bool
+	inside_import_section    bool
 pub mut:
 	scanner &scanner.Scanner = unsafe { nil }
 	table   &ast.Table       = unsafe { nil }
@@ -291,7 +291,7 @@ pub fn (mut p Parser) parse() &ast.File {
 	} else {
 		stmts << module_decl
 	}
-	p.is_begining_of_file = true
+	p.inside_import_section = true
 	// imports
 	for {
 		if p.tok.kind == .key_import {
@@ -455,7 +455,7 @@ fn (mut p Parser) parse_block() []ast.Stmt {
 
 fn (mut p Parser) is_in_top_level_comptime(inside_assign_rhs bool) bool {
 	// TODO: find out a better way detect we are in top level.
-	return p.cur_fn_name == '' && p.inside_ct_if_expr && !inside_assign_rhs && !p.script_mode
+	return p.cur_fn_name.len == 0 && p.inside_ct_if_expr && !inside_assign_rhs && !p.script_mode
 		&& p.tok.kind != .name
 }
 
@@ -631,8 +631,8 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 	p.trace_parser('top_stmt')
 	for {
 		if p.tok.kind !in [.key_import, .comment, .dollar] {
-			// beginning of the file should only prepend by `import`, `comment` or `$if`.
-			p.is_begining_of_file = false
+			// import section should only prepend by `import`, `comment` or `$if`.
+			p.inside_import_section = false
 		}
 		match p.tok.kind {
 			.key_pub {
@@ -677,7 +677,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.interface_decl()
 			}
 			.key_import {
-				if !p.is_begining_of_file {
+				if !p.inside_import_section {
 					p.error_with_pos('`import x` can only be declared at the beginning of the file',
 						p.tok.pos())
 				}
