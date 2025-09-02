@@ -64,12 +64,6 @@ const vls_src_folder = os.join_path(vls_folder, 'src')
 const server_not_found_err = error_with_code('Language server is not installed nor found.',
 	101)
 
-const json_enc = json2.Encoder{
-	newline:              `\n`
-	newline_spaces_count: 2
-	escape_unicode:       false
-}
-
 fn (upd VlsUpdater) check_or_create_vls_folder() ! {
 	if !os.exists(vls_folder) {
 		upd.log('Creating .vls folder...')
