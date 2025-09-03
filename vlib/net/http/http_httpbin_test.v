@@ -15,7 +15,7 @@ struct HttpbinResponseBody {
 	url     string
 }
 
-fn http_fetch_mock(_methods []string, _config FetchConfig) ![]Response {
+fn http_fetch_mock(_methods []string, _config Request) ![]Response {
 	url := 'https://url4e.com/httpbin/'
 	methods := if _methods.len == 0 { ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] } else { _methods }
 	mut config := _config
@@ -24,7 +24,7 @@ fn http_fetch_mock(_methods []string, _config FetchConfig) ![]Response {
 	for method in methods {
 		lmethod := method.to_lower()
 		config.method = method_from_str(method)
-		res := fetch(FetchConfig{ ...config, url: url + lmethod })!
+		res := fetch(Request{ ...config, url: url + lmethod })!
 		// TODO
 		// body := json.decode(HttpbinResponseBody,res.body)!
 		result << res
@@ -36,7 +36,7 @@ fn test_http_fetch_bare() {
 	$if !network ? {
 		return
 	}
-	responses := http_fetch_mock([], FetchConfig{}) or { panic(err) }
+	responses := http_fetch_mock([], Request{}) or { panic(err) }
 	for response in responses {
 		assert response.status() == .ok
 	}

@@ -29,7 +29,7 @@ pub mut:
 	header     Header
 	host       string
 	data       string
-	url        string
+	url        urllib.URL
 	user_agent string = 'v.http'
 	verbose    bool
 	user_ptr   voidptr
