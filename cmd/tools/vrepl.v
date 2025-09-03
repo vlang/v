@@ -109,8 +109,9 @@ fn endline_if_missed(line string) string {
 	return line + '\n'
 }
 
+@[direct_array_access]
 fn remove_comment(s string) string {
-	mut result := []rune{}
+	mut result := []rune{cap: s.len}
 	mut in_double_quote := false
 	mut in_single_quote := false
 	mut escaped := false
