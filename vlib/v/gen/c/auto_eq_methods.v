@@ -226,9 +226,9 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 					right_arg_opt := g.read_opt_field(left_type, field_name, 'b', field.typ)
 					fn_builder.write_string('(((${left_arg_opt}).len == (${right_arg_opt}).len && (${left_arg_opt}).len == 0) || fast_string_eq(${left_arg_opt}, ${right_arg_opt}))')
 				} else if field.typ.is_ptr() {
-					fn_builder.write_string('((${left_arg}->len == ${right_arg}->len && ${left_arg}->len == 0) || fast_string_eq(*(${left_arg}), *(${right_arg})))')
+					fn_builder.write_string('((${left_arg}->len == ${right_arg}->len && ${left_arg}->len != 0) || fast_string_eq(*(${left_arg}), *(${right_arg})))')
 				} else {
-					fn_builder.write_string('((${left_arg}.len == ${right_arg}.len && ${left_arg}.len == 0) || fast_string_eq(${left_arg}, ${right_arg}))')
+					fn_builder.write_string('((${left_arg}.len == ${right_arg}.len && ${left_arg}.len != 0) || fast_string_eq(${left_arg}, ${right_arg}))')
 				}
 			} else if field_type.sym.kind == .sum_type && !field.typ.is_ptr() {
 				eq_fn := g.gen_sumtype_equality_fn(field.typ)
