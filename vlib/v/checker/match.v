@@ -20,11 +20,15 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	}
 	mut cond_type := ast.void_type
 	if node.is_comptime {
-		// for field.name and generic type `T`
-		if node.cond is ast.SelectorExpr {
-			c.expr(mut node.cond)
+		if node.cond is ast.AtExpr {
+			cond_type = c.expr(mut node.cond)
+		} else {
+			// for field.name and generic type `T`
+			if node.cond is ast.SelectorExpr {
+				c.expr(mut node.cond)
+			}
+			cond_type = c.get_expr_type(node.cond)
 		}
-		cond_type = c.get_expr_type(node.cond)
 	} else {
 		cond_type = c.expr(mut node.cond)
 	}
@@ -69,7 +73,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.expr(mut node.cond)
 			if !c.type_resolver.is_generic_param_var(node.cond) {
 				match mut node.cond {
-					ast.StringLiteral {
+					ast.StringLiteral, ast.AtExpr {
 						comptime_match_cond_value = node.cond.val
 					}
 					ast.IntegerLiteral {
@@ -104,6 +108,10 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						if c.comptime.inside_comptime_for && node.cond.field_name in ['name', 'typ'] {
 							// hack: `typ` is just for bypass the error test, because we don't know it is a type match or a value match righ now
 							comptime_match_cond_value = c.comptime.comptime_for_field_value.name
+						} else if mut node.cond.expr is ast.Ident
+							&& node.cond.gkind_field in [.typ, .unaliased_typ] {
+							left_type := c.get_expr_type(node.cond.expr)
+							comptime_match_cond_value = c.table.type_to_str(left_type)
 						} else {
 							c.error('`${node.cond}` is not `\$for` field.name.', node.cond.pos)
 							return ast.void_type

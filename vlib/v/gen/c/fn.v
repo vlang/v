@@ -196,7 +196,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	*/
 
-	g.returned_var_name = ''
+	g.returned_var_names.clear()
 	old_g_autofree := g.is_autofree
 	if node.is_manualfree {
 		g.is_autofree = false
@@ -532,9 +532,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
 		println(g.out.after(fn_start_pos))
 	}
+	weak := if node.is_weak { 'VWEAK ' } else { '' }
 	for attr in node.attrs {
 		if attr.name == 'export' {
-			weak := if node.attrs.any(it.name == 'weak') { 'VWEAK ' } else { '' }
 			g.writeln('// export alias: ${attr.arg} -> ${name}')
 			g.export_funcs << attr.arg
 			export_alias := '${weak}${type_name} ${fn_attrs}${attr.arg}(${arg_str})'

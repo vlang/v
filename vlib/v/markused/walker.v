@@ -142,6 +142,9 @@ pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	}
 	w.used_globals[ckey] = true
 	gfield := w.all_globals[ckey] or { return }
+	w.table.used_features.used_attr_weak = w.table.used_features.used_attr_weak || gfield.is_weak
+	w.table.used_features.used_attr_hidden = w.table.used_features.used_attr_hidden
+		|| gfield.is_hidden || gfield.is_hidden
 	w.expr(gfield.expr)
 	if !gfield.has_expr {
 		w.mark_by_type(gfield.typ)
@@ -355,9 +358,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 				w.mark_by_type(typ.typ)
 			}
 			w.struct_fields(node.fields)
-			if !w.uses_mem_align {
-				w.uses_mem_align = node.attrs.contains('aligned')
-			}
+			w.uses_mem_align = w.uses_mem_align || node.is_aligned
 		}
 		ast.DeferStmt {
 			w.stmts(node.stmts)
@@ -431,6 +432,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.exprs(node.exprs)
 			if !w.uses_array && !w.is_direct_array_access {
 				w.uses_array = true
+			}
+			if node.elem_type.has_flag(.option) {
+				w.used_option++
 			}
 		}
 		ast.Assoc {
@@ -891,6 +895,9 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 			w.is_builtin_mod = last_is_builtin_mod
 		}
 	}
+	w.table.used_features.used_attr_weak = w.table.used_features.used_attr_weak || node.is_weak
+	w.table.used_features.used_attr_noreturn = w.table.used_features.used_attr_noreturn
+		|| node.is_noreturn
 	if node.language == .c {
 		w.mark_fn_as_used(node.fkey())
 		w.mark_fn_ret_and_params(node.return_type, node.params)
@@ -1150,9 +1157,7 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			}
 			if decl := w.all_structs[isym.name] {
 				w.struct_fields(decl.fields)
-				if !w.uses_mem_align {
-					w.uses_mem_align = decl.attrs.contains('aligned')
-				}
+				w.uses_mem_align = w.uses_mem_align || decl.is_aligned
 				for iface_typ in decl.implements_types {
 					w.mark_by_type(iface_typ.typ)
 				}
@@ -1180,6 +1185,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			w.mark_by_type(isym.info.key_type)
 			w.mark_by_type(isym.info.value_type)
 			w.features.used_maps++
+			if isym.info.value_type.has_flag(.option) {
+				w.used_option++
+			}
 		}
 		ast.Alias {
 			w.mark_by_type(isym.info.parent_type)
@@ -1294,9 +1302,10 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name(builderptr_idx + '.write_string')
 		w.fn_by_name('strings.new_builder')
 		w.uses_free[ast.string_type] = true
-	}
-	if w.uses_eq {
-		w.fn_by_name('fast_string_eq')
+
+		if w.table.dumps.keys().any(ast.Type(u32(it)).has_flag(.option)) {
+			w.fn_by_name('str_intp')
+		}
 	}
 	if w.features.auto_str_ptr {
 		w.fn_by_name('isnil')
@@ -1593,6 +1602,9 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 		w.fn_by_name('v_fixed_index')
 		w.mark_by_sym_name('StrIntpData')
 		w.mark_by_sym_name('StrIntpMem')
+	}
+	if w.uses_eq {
+		w.fn_by_name('fast_string_eq')
 	}
 
 	// remove unused symbols

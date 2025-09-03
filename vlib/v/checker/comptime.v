@@ -784,191 +784,6 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 	return node.ct_skip
 }
 
-fn (mut c Checker) comptime_if_to_ifdef(name string) !string {
-	match name {
-		// platforms/os-es:
-		'windows' {
-			return '_WIN32'
-		}
-		'ios' {
-			return '__TARGET_IOS__'
-		}
-		'macos' {
-			return '__APPLE__'
-		}
-		'mach' {
-			return '__MACH__'
-		}
-		'darwin' {
-			return '__DARWIN__'
-		}
-		'hpux' {
-			return '__HPUX__'
-		}
-		'gnu' {
-			return '__GNU__'
-		}
-		'qnx' {
-			return '__QNX__'
-		}
-		'linux' {
-			return '__linux__'
-		}
-		'serenity' {
-			return '__serenity__'
-		}
-		'plan9' {
-			return '__plan9__'
-		}
-		'vinix' {
-			return '__vinix__'
-		}
-		'freebsd' {
-			return '__FreeBSD__'
-		}
-		'openbsd' {
-			return '__OpenBSD__'
-		}
-		'netbsd' {
-			return '__NetBSD__'
-		}
-		'bsd' {
-			return '__BSD__'
-		}
-		'dragonfly' {
-			return '__DragonFly__'
-		}
-		'android' {
-			return '__ANDROID__'
-		}
-		'termux' {
-			// Note: termux is running on Android natively so __ANDROID__ will also be defined
-			return '__TERMUX__'
-		}
-		'solaris' {
-			return '__sun'
-		}
-		'haiku' {
-			return '__HAIKU__'
-		}
-		//
-		'js' {
-			return '_VJS'
-		}
-		'wasm32_emscripten' {
-			return '__EMSCRIPTEN__'
-		}
-		'native' {
-			return '_VNATIVE' // when using the native backend, cgen is inactive
-		}
-		// compilers:
-		'gcc' {
-			return '__V_GCC__'
-		}
-		'tinyc' {
-			return '__TINYC__'
-		}
-		'clang' {
-			return '__clang__'
-		}
-		'mingw' {
-			return '__MINGW32__'
-		}
-		'msvc' {
-			return '_MSC_VER'
-		}
-		'cplusplus' {
-			return '__cplusplus'
-		}
-		// other:
-		'threads' {
-			return '__VTHREADS__'
-		}
-		'gcboehm' {
-			return '_VGCBOEHM'
-		}
-		'debug' {
-			return '_VDEBUG'
-		}
-		'prod' {
-			return '_VPROD'
-		}
-		'profile' {
-			return '_VPROFILE'
-		}
-		'test' {
-			return '_VTEST'
-		}
-		'glibc' {
-			return '__GLIBC__'
-		}
-		'prealloc' {
-			return '_VPREALLOC'
-		}
-		'no_bounds_checking' {
-			return 'CUSTOM_DEFINE_no_bounds_checking'
-		}
-		'freestanding' {
-			return '_VFREESTANDING'
-		}
-		'autofree' {
-			return '_VAUTOFREE'
-		}
-		// architectures:
-		'amd64' {
-			return '__V_amd64'
-		}
-		'aarch64', 'arm64' {
-			return '__V_arm64'
-		}
-		'arm32' {
-			return '__V_arm32'
-		}
-		'i386' {
-			return '__V_x86'
-		}
-		'rv64', 'riscv64' {
-			return '__V_rv64'
-		}
-		'rv32', 'riscv32' {
-			return '__V_rv32'
-		}
-		's390x' {
-			return '__V_s390x'
-		}
-		'ppc64le' {
-			return '__V_ppc64le'
-		}
-		'loongarch64' {
-			return '__V_loongarch64'
-		}
-		// bitness:
-		'x64' {
-			return 'TARGET_IS_64BIT'
-		}
-		'x32' {
-			return 'TARGET_IS_32BIT'
-		}
-		// endianness:
-		'little_endian' {
-			return 'TARGET_ORDER_IS_LITTLE'
-		}
-		'big_endian' {
-			return 'TARGET_ORDER_IS_BIG'
-		}
-		'fast_math' {
-			if c.pref.ccompiler_type == .msvc {
-				// turned on by: `-cflags /fp:fast`
-				return '_M_FP_FAST'
-			}
-			// turned on by: `-cflags -ffast-math`
-			return '__FAST_MATH__'
-		}
-		else {}
-	}
-	return error('bad os ifdef name "${name}"')
-}
-
 // check if `ident` is a function generic, such as `T`
 fn (mut c Checker) is_generic_ident(ident string) bool {
 	if !isnil(c.table.cur_fn) && ident in c.table.cur_fn.generic_names
@@ -1141,10 +956,6 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 			should_record_ident = true
 			is_user_ident = true
 			ident_name = cname
-			// ifdef := c.comptime_if_to_ifdef(cname, true) or {
-			//	c.error(err.msg(), cond.pos)
-			//	return false, false
-			//}
 			sb.write_string('defined(CUSTOM_DEFINE_${cname})')
 			is_true = cname in c.pref.compile_defines
 			return is_true, false
@@ -1207,6 +1018,30 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 				}
 				.eq, .ne, .gt, .lt, .ge, .le {
 					match mut cond.left {
+						ast.AtExpr {
+							// @OS == 'linux'
+							left_type := c.expr(mut cond.left)
+							right_type := c.expr(mut cond.right)
+							if !c.check_types(right_type, left_type) {
+								left_name := c.table.type_to_str(left_type)
+								right_name := c.table.type_to_str(right_type)
+								c.error('mismatched types `${left_name}` and `${right_name}`',
+									cond.pos)
+							}
+							left_str := cond.left.val
+							right_str := (cond.right as ast.StringLiteral).val
+							if cond.op == .eq {
+								is_true = left_str == right_str
+							} else if cond.op == .ne {
+								is_true = left_str != right_str
+							} else {
+								c.error('string type only support `==` and `!=` operator',
+									cond.pos)
+								return false, false
+							}
+							sb.write_string('${is_true}')
+							return is_true, false
+						}
 						ast.Ident {
 							// $if version == 2
 							left_type := c.expr(mut cond.left)
@@ -1483,143 +1318,12 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 			should_record_ident = true
 			is_user_ident = false
 			ident_name = cname
-			if cname in ast.valid_comptime_if_os {
-				if cname_enum_val := pref.os_from_string(cname) {
-					if cname_enum_val == c.pref.os {
-						is_true = true
-					}
-				}
-			} else if cname in ast.valid_comptime_if_compilers {
-				is_true = pref.cc_from_string(cname) == c.pref.ccompiler_type
-			} else if cname in ast.valid_comptime_if_platforms {
-				if cname == 'aarch64' {
-					c.note('use `arm64` instead of `aarch64`', cond.pos)
-				}
-				match cname {
-					'amd64' {
-						is_true = c.pref.arch == .amd64
-					}
-					'i386' {
-						is_true = c.pref.arch == .i386
-					}
-					'aarch64' {
-						is_true = c.pref.arch == .arm64
-					}
-					'arm64' {
-						is_true = c.pref.arch == .arm64
-					}
-					'arm32' {
-						is_true = c.pref.arch == .arm32
-					}
-					'rv64' {
-						is_true = c.pref.arch == .rv64
-					}
-					'rv32' {
-						is_true = c.pref.arch == .rv32
-					}
-					's390x' {
-						is_true = c.pref.arch == .s390x
-					}
-					'ppc64le' {
-						is_true = c.pref.arch == .ppc64le
-					}
-					'loongarch64' {
-						is_true = c.pref.arch == .loongarch64
-					}
-					else {
-						c.error('invalid \$if condition: unknown platforms `${cname}`',
-							cond.pos)
-						return false, false
-					}
-				}
-			} else if cname in ast.valid_comptime_if_cpu_features {
-				match cname {
-					'x64' {
-						is_true = c.pref.m64
-					}
-					'x32' {
-						is_true = !c.pref.m64
-					}
-					'little_endian' {
-						is_true = $if little_endian { true } $else { false }
-					}
-					'big_endian' {
-						is_true = $if big_endian { true } $else { false }
-					}
-					else {
-						c.error('invalid \$if condition: unknown cpu_features `${cname}`',
-							cond.pos)
-						return false, false
-					}
-				}
-			} else if cname in ast.valid_comptime_if_other {
-				match cname {
-					'apk' {
-						is_true = c.pref.is_apk
-					}
-					'js' {
-						is_true = c.pref.backend.is_js()
-					}
-					'debug' {
-						is_true = c.pref.is_debug
-					}
-					'prod' {
-						is_true = c.pref.is_prod
-					}
-					'test' {
-						is_true = c.pref.is_test
-					}
-					'glibc' {
-						is_true = c.pref.is_glibc
-					}
-					'prealloc' {
-						is_true = c.pref.prealloc
-					}
-					'no_bounds_checking' {
-						is_true = c.pref.no_bounds_checking
-					}
-					'freestanding' {
-						is_true = c.pref.is_bare && !c.pref.output_cross_c
-					}
-					'threads' {
-						is_true = c.table.gostmts > 0
-					}
-					'js_node' {
-						is_true = c.pref.backend == .js_node
-					}
-					'js_browser' {
-						is_true = c.pref.backend == .js_browser
-					}
-					'js_freestanding' {
-						is_true = c.pref.backend == .js_freestanding
-					}
-					'interpreter' {
-						is_true = c.pref.backend == .interpret
-					}
-					'es5' {
-						is_true = c.pref.output_es5
-					}
-					'profile' {
-						is_true = c.pref.is_prof
-					}
-					'wasm32' {
-						is_true = c.pref.arch == .wasm32
-					}
-					'wasm32_wasi' {
-						is_true = c.pref.os == .wasm32_wasi
-					}
-					'fast_math' {
-						is_true = c.pref.fast_math
-					}
-					'native' {
-						is_true = c.pref.backend == .native
-					}
-					'autofree' {
-						is_true = c.pref.autofree
-					}
-					else {
-						c.error('invalid \$if condition: unknown other indent `${cname}`',
-							cond.pos)
+			if cname in ast.valid_comptime_not_user_defined {
+				if cname == 'threads' {
+					is_true = c.table.gostmts > 0
+				} else {
+					is_true = ast.eval_comptime_not_user_defined_ident(cname, c.pref) or {
+						c.error(err.msg(), cond.pos)
 						return false, false
 					}
 				}
@@ -1655,7 +1359,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 				c.error('invalid \$if condition: unknown indent `${cname}`', cond.pos)
 				return false, false
 			}
-			if ifdef := c.comptime_if_to_ifdef(cname) {
+			if ifdef := ast.comptime_if_to_ifdef(cname, c.pref) {
 				sb.write_string('defined(${ifdef})')
 			} else {
 				sb.write_string('${is_true}')

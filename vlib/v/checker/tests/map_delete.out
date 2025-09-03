@@ -12,16 +12,29 @@ vlib/v/checker/tests/map_delete.vv:6:4: error: expected 1 argument, but got 2
       |       ~~~~~~~~~~~~
     7 |     m2 := {
     8 |         '1': 1
-vlib/v/checker/tests/map_delete.vv:6:11: error: cannot use `int literal` as `string` in argument 1 to `Map.delete`
-    4 |     }
-    5 |     m.delete(1)
-    6 |     m.delete(1, 2)
-      |              ^
-    7 |     m2 := {
-    8 |         '1': 1
 vlib/v/checker/tests/map_delete.vv:10:2: error: `m2` is immutable, declare it with `mut` to make it mutable
     8 |         '1': 1
     9 |     }
    10 |     m2.delete('1')
       |     ~~
-   11 | }
+   11 |     m.delete()
+   12 |     _ := m.delete()
+vlib/v/checker/tests/map_delete.vv:11:4: error: expected 1 argument, but got 0
+    9 |     }
+   10 |     m2.delete('1')
+   11 |     m.delete()
+      |       ~~~~~~~~
+   12 |     _ := m.delete()
+   13 | }
+vlib/v/checker/tests/map_delete.vv:12:9: error: expected 1 argument, but got 0
+   10 |     m2.delete('1')
+   11 |     m.delete()
+   12 |     _ := m.delete()
+      |            ~~~~~~~~
+   13 | }
+vlib/v/checker/tests/map_delete.vv:12:4: error: assignment mismatch: 1 variable but `delete()` returns 0 values
+   10 |     m2.delete('1')
+   11 |     m.delete()
+   12 |     _ := m.delete()
+      |       ~~
+   13 | }

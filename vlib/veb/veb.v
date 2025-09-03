@@ -134,6 +134,9 @@ mut:
 pub fn (mut params RequestParams) request_done(fd int) {
 	params.incomplete_requests[fd] = http.Request{}
 	params.idx[fd] = 0
+	$if trace_handle_read ? {
+		eprintln('>>>>> fd: ${fd} | request_done.')
+	}
 }
 
 interface BeforeAcceptApp {
@@ -240,10 +243,8 @@ fn handle_timeout(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		handle:      fd
 		is_blocking: false
 	}
-
 	fast_send_resp(mut conn, http_408) or {}
 	pv.close_conn(fd)
-
 	params.request_done(fd)
 }
 
@@ -263,19 +264,16 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		if bytes_to_write > max_write {
 			bytes_to_write = max_write
 		}
-
 		data := unsafe { malloc(bytes_to_write) }
 		defer {
 			unsafe { free(data) }
 		}
-
 		mut conn := &net.TcpConn{
 			sock:          net.tcp_socket_from_handle_raw(fd)
 			handle:        fd
 			is_blocking:   false
 			write_timeout: params.timeout_in_seconds * time.second
 		}
-
 		params.file_responses[fd].file.read_into_ptr(data, bytes_to_write) or {
 			params.file_responses[fd].done()
 			pv.close_conn(fd)
@@ -301,17 +299,14 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 @[direct_array_access]
 fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	mut bytes_to_write := int(params.string_responses[fd].str.len - params.string_responses[fd].pos)
-
 	if bytes_to_write > max_write {
 		bytes_to_write = max_write
 	}
-
 	mut conn := &net.TcpConn{
 		sock:        net.tcp_socket_from_handle_raw(fd)
 		handle:      fd
 		is_blocking: false
 	}
-
 	// pointer magic to start at the correct position in the buffer
 	data := unsafe { params.string_responses[fd].str.str + params.string_responses[fd].pos }
 	actual_written := send_string_ptr(mut conn, data, bytes_to_write) or {
@@ -342,7 +337,6 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		handle:      fd
 		is_blocking: false
 	}
-
 	// cap the max_read to 8KB
 	mut reader := io.new_buffered_reader(reader: conn, cap: max_read)
 	defer {
@@ -350,12 +344,14 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			reader.free()
 		}
 	}
-
 	// take the previous incomplete request
 	mut req := params.incomplete_requests[fd]
-
 	// check if there is an incomplete request for this file descriptor
 	if params.idx[fd] == 0 {
+		$if trace_handle_read ? {
+			eprintln('>>>>> fd: ${fd} | start of request parsing')
+		}
+		// this is the start of a new request, setup the connection, and read the headers:
 		// set the read and write timeout according to picoev settings when the
 		// connection is first encountered
 		conn.set_read_timeout(params.timeout_in_seconds)
@@ -370,7 +366,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			// the buffered reader was empty meaning that the client probably
 			// closed the connection.
 			pv.close_conn(fd)
-			params.incomplete_requests[fd] = http.Request{}
+			params.request_done(fd)
 			return
 		}
 		if reader.total_read >= max_read {
@@ -379,37 +375,45 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			eprintln('[veb] error parsing request: too large')
 			fast_send_resp(mut conn, http_413) or {}
 			pv.close_conn(fd)
-			params.incomplete_requests[fd] = http.Request{}
+			params.request_done(fd)
 			return
 		}
 	}
-
+	if params.idx[fd] == -1 {
+		// this is for sure a continuation of a previous request, where the first part contained only headers;
+		// make sure that we are ready to accept the body and account for every byte in it, by setting the counter to 0:
+		params.idx[fd] = 0
+		$if trace_handle_read ? {
+			eprintln('>>>>> fd: ${fd} | continuation of request, where the first part contained headers')
+		}
+	}
 	// check if the request has a body
 	content_length := req.header.get(.content_length) or { '0' }
-	if content_length.int() > 0 {
+	content_length_i := content_length.int()
+	if content_length_i > 0 {
 		mut max_bytes_to_read := max_read - reader.total_read
-		mut bytes_to_read := content_length.int() - params.idx[fd]
+		mut bytes_to_read := content_length_i - params.idx[fd]
 		// cap the bytes to read to 8KB for the body, including the request headers if any
 		if bytes_to_read > max_read - reader.total_read {
 			bytes_to_read = max_read - reader.total_read
 		}
-
 		mut buf_ptr := params.buf
 		unsafe {
 			buf_ptr += fd * max_read // pointer magic
 		}
 		// convert to []u8 for BufferedReader
 		mut buf := unsafe { buf_ptr.vbytes(max_bytes_to_read) }
-
 		n := reader.read(mut buf) or {
 			if reader.total_read > 0 {
-				// the headers were parsed in this cycle, but the body has not been
-				// sent yet. No need to error
+				// The headers were parsed in this cycle, but the body has not been sent yet. No need to error.
+				params.idx[fd] = -1 // avoid reparsing the headers on the next call.
+				params.incomplete_requests[fd] = req
+				$if trace_handle_read ? {
+					eprintln('>>>>> fd: ${fd} | request headers were parsed, but the body has not been parsed yet | params.idx[fd]: ${params.idx[fd]} | content_length_i: ${content_length_i}')
+				}
 				return
 			}
-
 			eprintln('[veb] error reading request body: ${err}')
-
 			if err is io.Eof {
 				// we expect more data to be send, but an Eof error occurred, meaning
 				// that there is no more data to be read from the socket.
@@ -423,17 +427,14 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 					).join(headers_close)
 				)) or {}
 			}
-
 			pv.close_conn(fd)
-			params.incomplete_requests[fd] = http.Request{}
-			params.idx[fd] = 0
+			params.request_done(fd)
 			return
 		}
-
 		// there is no more data to be sent, but it is less than the Content-Length header
 		// so it is a mismatch of body length and content length.
 		// Or if there is more data received then the Content-Length header specified
-		if (n == 0 && params.idx[fd] != 0) || params.idx[fd] + n > content_length.int() {
+		if (n == 0 && params.idx[fd] != 0) || params.idx[fd] + n > content_length_i {
 			fast_send_resp(mut conn, http.new_response(
 				status: .bad_request
 				body:   'Mismatch of body length and Content-Length header'
@@ -442,29 +443,31 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 					value: 'text/plain'
 				).join(headers_close)
 			)) or {}
-
 			pv.close_conn(fd)
-			params.incomplete_requests[fd] = http.Request{}
-			params.idx[fd] = 0
+			params.request_done(fd)
 			return
-		} else if n < bytes_to_read || params.idx[fd] + n < content_length.int() {
+		} else if n < bytes_to_read || params.idx[fd] + n < content_length_i {
 			// request is incomplete wait until the socket becomes ready to read again
-			params.idx[fd] += n
 			// TODO: change this to a memcpy function?
 			req.data += buf[0..n].bytestr()
 			params.incomplete_requests[fd] = req
+			params.idx[fd] += n
+			$if trace_handle_read ? {
+				eprintln('>>>>> request is NOT complete, fd: ${fd} | n: ${n} | req.data.len: ${req.data.len} | params.idx[fd]: ${params.idx[fd]}')
+			}
 			return
 		} else {
 			// request is complete: n = bytes_to_read
-			params.idx[fd] += n
 			req.data += buf[0..n].bytestr()
+			params.idx[fd] += n
+			$if trace_handle_read ? {
+				eprintln('>>>>> request is NOW COMPLETE, fd: ${fd} | n: ${n} | req.data.len: ${req.data.len}')
+			}
 		}
 	}
-
 	defer {
 		params.request_done(fd)
 	}
-
 	if completed_context := handle_request[A, X](mut conn, req, params) {
 		if completed_context.takeover {
 			// the connection should be kept open, but removed from the picoev loop.
@@ -473,13 +476,11 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			pv.delete(fd)
 			return
 		}
-
 		// TODO: At this point the Context can safely be freed when this function returns.
 		// The user will have to clone the context if the context object should be kept.
 		// defer {
 		// 	completed_context.free()
 		// }
-
 		match completed_context.return_type {
 			.normal {
 				// small optimization: if the response is small write it immediately

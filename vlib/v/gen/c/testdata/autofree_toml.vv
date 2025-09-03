@@ -1,0 +1,15 @@
+// vtest vflags: -autofree
+import toml
+import os
+
+fn main() {
+	config_fname := 'config.toml'
+	tab_title := 'test tab title'
+	if !os.exists(config_fname) {
+		mut f := os.create(config_fname) or { panic(err) }
+		f.writeln('tab_title = "${tab_title}"') or { panic(err) }
+		f.close()
+	}
+	doc := toml.parse_file(config_fname) or { panic(err) }
+	assert doc.value('tab_title').string() == tab_title
+}

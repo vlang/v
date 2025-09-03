@@ -437,13 +437,14 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
 		|| (g.pref.build_mode == .build_module && g.module_built == node.mod)
 	mut attributes := ''
-	if node.attrs.contains('weak') {
+	first_field := node.fields[0]
+	if first_field.is_weak {
 		attributes += 'VWEAK '
 	}
-	if node.attrs.contains('hidden') {
+	if first_field.is_hidden {
 		attributes += 'VHIDDEN '
 	}
-	if node.attrs.contains('export') {
+	if first_field.is_exported {
 		attributes += 'VV_EXP '
 	}
 	if attr := node.attrs.find_first('_linker_section') {

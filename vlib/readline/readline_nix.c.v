@@ -10,6 +10,7 @@ module readline
 import term.termios
 import term
 import os
+import encoding.utf8.east_asian
 
 fn C.raise(sig int)
 
@@ -379,12 +380,16 @@ fn (mut r Readline) refresh_line() {
 	} else {
 		r.prompt
 	}
-	end_of_input = calculate_screen_position(last_prompt_line.len, 0, get_screen_columns(),
-		r.current.len, end_of_input)
+	last_prompt_width := east_asian.display_width(last_prompt_line, 1)
+	current_width := east_asian.display_width(r.current.string(), 1)
+	cursor_prefix_width := east_asian.display_width(r.current[..r.cursor].string(), 1)
+
+	end_of_input = calculate_screen_position(last_prompt_width, 0, get_screen_columns(),
+		current_width, end_of_input)
 	end_of_input[1] += r.current.filter(it == `\n`).len
 	mut cursor_pos := [0, 0]
-	cursor_pos = calculate_screen_position(last_prompt_line.len, 0, get_screen_columns(),
-		r.cursor, cursor_pos)
+	cursor_pos = calculate_screen_position(last_prompt_width, 0, get_screen_columns(),
+		cursor_prefix_width, cursor_pos)
 	shift_cursor(0, -r.cursor_row_offset)
 	term.erase_toend()
 	print(last_prompt_line)
@@ -392,7 +397,7 @@ fn (mut r Readline) refresh_line() {
 	if end_of_input[0] == 0 && end_of_input[1] > 0 {
 		print('\n')
 	}
-	shift_cursor(cursor_pos[0] - r.prompt_offset, -(end_of_input[1] - cursor_pos[1]))
+	shift_cursor(cursor_pos[0], -(end_of_input[1] - cursor_pos[1]))
 	r.cursor_row_offset = cursor_pos[1]
 }
 

@@ -184,6 +184,8 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c Color) {
 // draw_rect_empty draws the outline of a rectangle.
 // `x`,`y` is the top-left corner of the rectangle.
 // `w` is the width, `h` is the height and `c` is the color of the outline.
+// Note: it is much more efficient to draw lots of empty rectangles one after the other,
+// without filled rectangles between them, than to draw a mix.
 pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.pipeline.alpha)
@@ -215,9 +217,48 @@ pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c Color) {
 	sgl.end()
 }
 
+// draw_rect_empty_no_context draws the outline of a rectangle, but without saving/restoring the context.
+// It is intended to be used in loops, where you do manually: `sgl.begin_lines()` *before* the loop,
+// then draw many rectangles, then call manually `sgl.end()` *after* the loop.
+// `x`,`y` is the top-left corner of the rectangle.
+// `w` is the width, `h` is the height and `c` is the color of the outline.
+// Note: it is much more efficient to draw lots of empty rectangles one after the other,
+// without filled rectangles between them, than to draw a mix.
+pub fn (ctx &Context) draw_rect_empty_no_context(x f32, y f32, w f32, h f32, c Color) {
+	// The small offsets here, are to make sure, that the start and end points will be
+	// inside pixels, and not on their borders. That in turn, makes it much more likely
+	// that different OpenGL implementations will render them identically, for example
+	// Mesa, with `LIBGL_ALWAYS_SOFTWARE=1` renders the same as HD4000.
+	mut toffset := f32(0.1)
+	mut boffset := f32(-0.1)
+	tleft_x := toffset + x * ctx.scale
+	tleft_y := toffset + y * ctx.scale
+	bright_x := boffset + (x + w) * ctx.scale
+	bright_y := boffset + (y + h) * ctx.scale
+	// Note: the following line is deliberately commented, compare to draw_rect_empty/5;
+	// sgl.begin_lines() // more predictable, compared to sgl.begin_line_strip, at the price of more vertexes send
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	// top:
+	sgl.v2f(tleft_x, tleft_y)
+	sgl.v2f(bright_x, tleft_y)
+	// left:
+	sgl.v2f(tleft_x, tleft_y)
+	sgl.v2f(tleft_x, bright_y)
+	// right:
+	sgl.v2f(bright_x, tleft_y)
+	sgl.v2f(bright_x, bright_y)
+	// bottom:
+	sgl.v2f(tleft_x, bright_y)
+	sgl.v2f(bright_x, bright_y)
+	// Note: the following line is deliberately commented, compare to draw_rect_empty/5;
+	// sgl.end()
+}
+
 // draw_rect_filled draws a filled rectangle.
 // `x`,`y` is the top-left corner of the rectangle.
 // `w` is the width, `h` is the height and `c` is the color of the fill.
+// Note: it is much more efficient to draw lots of filled rectangles one after the other,
+// without empty rectangles between them, than to draw a mix.
 pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
@@ -237,6 +278,25 @@ pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c Color) {
 	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
 	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
 	sgl.end()
+}
+
+// draw_rect_filled_no_context draws a filled rectangle, but without saving/restoring the context.
+// It is intended to be used in loops, where you do manually: `sgl.begin_quads()` *before* the loop,
+// then draw many rectangles, then call manually `sgl.end()` *after* the loop.
+// `x`,`y` is the top-left corner of the rectangle.
+// `w` is the width, `h` is the height and `c` is the color of the fill.
+// Note: it is much more efficient to draw lots of filled rectangles one after the other,
+// without empty rectangles between them, than to draw a mix.
+pub fn (ctx &Context) draw_rect_filled_no_context(x f32, y f32, w f32, h f32, c Color) {
+	// Note: the following line is deliberately commented, compare to draw_rect_empty/5;
+	// sgl.begin_quads()
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
+	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
+	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
+	// Note: the following line is deliberately commented, compare to draw_rect_filled/5;
+	// sgl.end()
 }
 
 pub enum PaintStyle {

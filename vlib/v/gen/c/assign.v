@@ -866,9 +866,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.write('*')
 						}
 						if node_.op == .assign && var_type.has_flag(.option_mut_param_t) {
+							if val is ast.CastExpr {
+								g.expr(left)
+								g.write('->state = ')
+								g.expr(val)
+								g.writeln('.state;')
+							}
 							g.write('memcpy(&')
 							g.expr(left)
-							g.write('->data, *(${g.styp(val_type)}**)&')
+							if val is ast.CastExpr {
+								g.write('->data, ')
+							} else {
+								g.write('->data, *(${g.styp(val_type)}**)&')
+							}
 						} else if var_type.has_flag(.option_mut_param_t) {
 							g.expr(left)
 							g.write(' = ')

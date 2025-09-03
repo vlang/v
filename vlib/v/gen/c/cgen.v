@@ -231,11 +231,11 @@ mut:
 	// where an aggregate (at least two types) is generated
 	// sum type deref needs to know which index to deref because unions take care of the correct field
 	aggregate_type_idx  int
-	arg_no_auto_deref   bool     // smartcast must not be dereferenced
-	branch_parent_pos   int      // used in BranchStmt (continue/break) for autofree stop position
-	returned_var_name   string   // to detect that a var doesn't need to be freed since it's being returned
-	infix_left_var_name string   // a && if expr
-	curr_var_name       []string // curr var name on assignment
+	arg_no_auto_deref   bool            // smartcast must not be dereferenced
+	branch_parent_pos   int             // used in BranchStmt (continue/break) for autofree stop position
+	returned_var_names  map[string]bool // to detect that vars doesn't need to be freed since it's being returned
+	infix_left_var_name string          // a && if expr
+	curr_var_name       []string        // curr var name on assignment
 	called_fn_name      string
 	timers              &util.Timers = util.get_timers()
 	force_main_console  bool              // true when @[console] used on fn main()
@@ -274,6 +274,11 @@ mut:
 	export_funcs         []string // for .dll export function names
 	//
 	type_default_impl_level int
+	preinclude_nodes        []&ast.HashStmtNode // allows hash stmts to go before `includes`
+	include_nodes           []&ast.HashStmtNode // all hash stmts to go `includes`
+	definition_nodes        []&ast.HashStmtNode // allows hash stmts to go `definitions`
+	postinclude_nodes       []&ast.HashStmtNode // allows hash stmts to go after all the rest of the code generation
+	curr_comptime_node      &ast.Expr = unsafe { nil } // current `$if` expr
 }
 
 @[heap]
@@ -920,6 +925,11 @@ pub fn (mut g Gen) gen_file() {
 		g.inside_ternary = 0
 	}
 	g.stmts(g.file.stmts)
+
+	// after all other stmts executed, we got info about hash stmts in top,
+	// write them to corresponding sections
+	g.gen_hash_stmts_in_top()
+
 	// Transfer embedded files
 	for path in g.file.embedded_files {
 		if path !in g.embedded_files {
@@ -990,6 +1000,16 @@ pub fn (mut g Gen) init() {
 			g.cheaders.writeln(c_bare_headers)
 		} else {
 			g.cheaders.writeln(c_headers)
+		}
+		if !g.pref.skip_unused || g.table.used_features.used_attr_weak {
+			g.cheaders.writeln(c_common_weak_attr)
+		}
+		if !g.pref.skip_unused || g.table.used_features.used_attr_hidden {
+			g.cheaders.writeln(c_common_hidden_attr)
+		}
+		if !g.pref.skip_unused || g.table.used_features.used_attr_noreturn {
+			g.cheaders.writeln(c_common_noreturn_attr)
+			g.cheaders.writeln(c_common_unreachable_attr)
 		}
 		if !g.pref.skip_unused || g.table.used_features.used_maps > 0 {
 			g.cheaders.writeln(c_wyhash_headers)
@@ -1107,6 +1127,7 @@ pub fn (mut g Gen) get_sumtype_variant_name(typ ast.Type, sym ast.TypeSymbol) st
 pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
 	g.writeln('// >> typeof() support for sum types / interfaces')
+	mut already_generated_ifaces := map[string]bool{}
 	for ityp, sym in g.table.type_symbols {
 		if sym.kind == .sum_type {
 			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
@@ -1177,6 +1198,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 				continue
 			}
+			if sym.cname in already_generated_ifaces {
+				continue
+			}
+			already_generated_ifaces[sym.cname] = true
 			g.definitions.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(int sidx);')
 			if g.pref.parallel_cc {
 				g.extern_out.writeln('extern char * v_typeof_interface_${sym.cname}(int sidx);')
@@ -1805,11 +1830,15 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 			interface_non_generic_syms << sym
 		}
 	}
+	mut already_generated_ifaces := map[string]bool{}
 	for sym in interface_non_generic_syms {
 		if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 			continue
 		}
-		g.write_interface_typesymbol_declaration(sym)
+		if sym.cname !in already_generated_ifaces {
+			g.write_interface_typesymbol_declaration(sym)
+			already_generated_ifaces[sym.cname] = true
+		}
 	}
 }
 
@@ -5731,113 +5760,178 @@ fn (mut g Gen) hash_stmt_guarded_include(node ast.HashStmt) string {
 }
 
 fn (mut g Gen) hash_stmt(node ast.HashStmt) {
-	line_nr := node.pos.line_nr + 1
-	mut ct_condition := ''
+	// we only record the hash stmt's node here, send it to corresponding `_nodes`, let `gen_hash_stmts_in_top()` gen the code.
+	the_node := if g.comptime.inside_comptime_if && !isnil(g.curr_comptime_node)
+		&& g.curr_comptime_node is ast.IfExpr {
+		&ast.HashStmtNode(g.curr_comptime_node as ast.IfExpr)
+	} else {
+		&ast.HashStmtNode(&node)
+	}
 
-	if node.ct_conds.len > 0 {
-		mut comptime_branch_context_str := g.gen_branch_context_string()
-		mut is_true := ast.ComptTimeCondResult{}
-		mut sb := strings.new_builder(256)
-		for idx, ct_expr in node.ct_conds {
-			idx_str := comptime_branch_context_str + '|${g.file.path}|${ct_expr.pos()}|'
-			if comptime_is_true := g.table.comptime_is_true[idx_str] {
-				// `g.table.comptime_is_true` are the branch condition results set by `checker`
-				is_true = comptime_is_true
+	match node.kind {
+		'include', 'insert', 'define' {
+			if node.main.contains('.m') {
+				// Objective C code import, include it after V types, so that e.g. `string` is
+				// available there
+				if the_node !in g.definition_nodes {
+					g.definition_nodes << the_node
+				}
 			} else {
-				g.error('checker error: condition result idx string not found => [${idx_str}]',
-					ct_expr.pos())
+				if the_node !in g.include_nodes {
+					g.include_nodes << the_node
+				}
+			}
+		}
+		'preinclude' {
+			if node.main.contains('.m') {
+				// Objective C code import, include it after V types, so that e.g. `string` is
+				// available there
+				if the_node !in g.definition_nodes {
+					g.definition_nodes << the_node
+				}
+			} else {
+				if the_node !in g.preinclude_nodes {
+					g.preinclude_nodes << the_node
+				}
+			}
+		}
+		'postinclude' {
+			if the_node !in g.postinclude_nodes {
+				g.postinclude_nodes << the_node
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, section string) {
+	match node {
+		ast.IfExpr {
+			mut comptime_branch_context_str := g.gen_branch_context_string()
+			mut is_true := ast.ComptTimeCondResult{}
+			for i, branch in node.branches {
+				idx_str := if branch.cond.pos() == token.Pos{} {
+					comptime_branch_context_str + '|${g.file.path}|${branch.pos}|'
+				} else {
+					comptime_branch_context_str + '|${g.file.path}|${branch.cond.pos()}|'
+				}
+				if comptime_is_true := g.table.comptime_is_true[idx_str] {
+					// `g.table.comptime_is_true` are the branch condition results set by `checker`
+					is_true = comptime_is_true
+				} else {
+					g.error('checker error: condition result idx string not found => [${idx_str}]',
+						node.branches[i].cond.pos())
+					return
+				}
+				if !node.has_else || i < node.branches.len - 1 {
+					if i == 0 {
+						sb.write_string('\n#if ')
+					} else {
+						sb.write_string('\n#elif ')
+					}
+					// directly use `checker` evaluate results
+					// for `cgen`, we can use `is_true.c_str` or `is_true.value` here
+					sb.writeln('${is_true.c_str}')
+					$if debug_comptime_branch_context ? {
+						sb.writeln('/* ${node.branches[i].cond} | generic=[${comptime_branch_context_str}] */')
+					}
+				} else {
+					sb.writeln('#else')
+					$if debug_comptime_branch_context ? {
+						sb.writeln('/* else | generic=[${comptime_branch_context_str}] */')
+					}
+				}
+				if is_true.val || g.pref.output_cross_c {
+					// check only `IfExpr` and `HashStmt`
+					for stmt in branch.stmts {
+						if stmt is ast.ExprStmt {
+							if stmt.expr is ast.IfExpr && (stmt.expr as ast.IfExpr).is_comptime {
+								g.gen_hash_stmts(mut sb, stmt.expr, section)
+							}
+						} else if stmt is ast.HashStmt {
+							g.gen_hash_stmts(mut sb, stmt, section)
+						}
+					}
+				}
+			}
+			sb.writeln('#endif')
+		}
+		ast.HashStmt {
+			// #preinclude                      => `preincludes` section
+			// #inlude,#define,#insert          => `includes` section
+			// #postinclude                     => `postincludes` section
+			// '*.m' in #include or #preinclude => `definitions` section
+			need_gen_stmt := match section {
+				'preincludes' {
+					if node.kind == 'preinclude' && !node.main.contains('.m') { true } else { false }
+				}
+				'includes' {
+					if node.kind in ['include', 'define', 'insert'] && !node.main.contains('.m') {
+						true
+					} else {
+						false
+					}
+				}
+				'definitions' {
+					// Objective C code import, include it after V types, so that e.g. `string` is
+					// available there
+					if node.kind in ['include', 'preinclude'] && node.main.contains('.m') {
+						true
+					} else {
+						false
+					}
+				}
+				'postincludes' {
+					if node.kind == 'postinclude' { true } else { false }
+				}
+				else {
+					false
+				}
+			}
+			if !need_gen_stmt {
 				return
 			}
-			sb.write_string(is_true.c_str)
-			if idx < node.ct_conds.len - 1 {
-				sb.write_string(' && ')
+			line_nr := node.pos.line_nr + 1
+			match node.kind {
+				'include', 'preinclude', 'postinclude' {
+					guarded_include := g.hash_stmt_guarded_include(node)
+					sb.writeln('')
+					sb.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+					sb.writeln(guarded_include)
+				}
+				'insert' {
+					sb.writeln('')
+					sb.writeln('// inserted by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+					sb.writeln(node.val)
+				}
+				'define' {
+					sb.writeln('// defined by module `${node.mod}`')
+					sb.writeln('#define ${node.main}')
+				}
+				else {}
 			}
 		}
-		ct_condition = sb.str()
+		// TODO: support $match
 	}
-	// #include etc
-	if node.kind == 'include' {
-		guarded_include := g.hash_stmt_guarded_include(node)
-		if node.main.contains('.m') {
-			g.definitions.writeln('')
-			if ct_condition != '' {
-				g.definitions.writeln('#if ${ct_condition}')
-			}
-			// Objective C code import, include it after V types, so that e.g. `string` is
-			// available there
-			g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-			g.definitions.writeln(guarded_include)
-			if ct_condition != '' {
-				g.definitions.writeln('#endif // \$if ${ct_condition}')
-			}
-		} else {
-			g.includes.writeln('')
-			if ct_condition != '' {
-				g.includes.writeln('#if ${ct_condition}')
-			}
-			g.includes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-			g.includes.writeln(guarded_include)
-			if ct_condition != '' {
-				g.includes.writeln('#endif // \$if ${ct_condition}')
-			}
-		}
-	} else if node.kind == 'preinclude' {
-		guarded_include := g.hash_stmt_guarded_include(node)
-		if node.main.contains('.m') {
-			// Might need to support '#preinclude' for .m files as well but for the moment
-			// this does the same as '#include' for them
-			g.definitions.writeln('')
-			if ct_condition != '' {
-				g.definitions.writeln('#if ${ct_condition}')
-			}
-			// Objective C code import, include it after V types, so that e.g. `string` is
-			// available there
-			g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-			g.definitions.writeln(guarded_include)
-			if ct_condition != '' {
-				g.definitions.writeln('#endif // \$if ${ct_condition}')
-			}
-		} else {
-			g.preincludes.writeln('')
-			if ct_condition != '' {
-				g.preincludes.writeln('#if ${ct_condition}')
-			}
-			g.preincludes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-			g.preincludes.writeln(guarded_include)
-			if ct_condition != '' {
-				g.preincludes.writeln('#endif // \$if ${ct_condition}')
-			}
-		}
-	} else if node.kind == 'postinclude' {
-		guarded_include := g.hash_stmt_guarded_include(node)
-		g.postincludes.writeln('')
-		if ct_condition != '' {
-			g.postincludes.writeln('#if ${ct_condition}')
-		}
-		g.postincludes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-		g.postincludes.writeln(guarded_include)
-		if ct_condition != '' {
-			g.postincludes.writeln('#endif // \$if ${ct_condition}')
-		}
-	} else if node.kind == 'insert' {
-		if ct_condition != '' {
-			g.includes.writeln('#if ${ct_condition}')
-		}
-		g.includes.writeln('// inserted by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-		g.includes.writeln(node.val)
-		if ct_condition != '' {
-			g.includes.writeln('#endif // \$if ${ct_condition}')
-		}
-	} else if node.kind == 'define' {
-		if ct_condition != '' {
-			g.includes.writeln('#if ${ct_condition}')
-		}
-		g.includes.writeln('// defined by module `${node.mod}`')
-		g.includes.writeln('#define ${node.main}')
-		if ct_condition != '' {
-			g.includes.writeln('#endif // \$if ${ct_condition}')
-		}
+}
+
+fn (mut g Gen) gen_hash_stmts_in_top() {
+	for node in g.preinclude_nodes {
+		g.gen_hash_stmts(mut g.preincludes, node, 'preincludes')
 	}
+	for node in g.include_nodes {
+		g.gen_hash_stmts(mut g.includes, node, 'includes')
+	}
+	for node in g.definition_nodes {
+		g.gen_hash_stmts(mut g.definitions, node, 'definitions')
+	}
+	for node in g.postinclude_nodes {
+		g.gen_hash_stmts(mut g.postincludes, node, 'postincludes')
+	}
+	g.preinclude_nodes.clear()
+	g.include_nodes.clear()
+	g.definition_nodes.clear()
+	g.postinclude_nodes.clear()
 }
 
 fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
@@ -6232,6 +6326,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.writeln(' }, (${option_name}*)(&${tmpvar}), sizeof(${styp}));')
 			}
 			g.write_defer_stmts_when_needed()
+			if g.is_autofree {
+				g.detect_used_var_on_return(expr0)
+			}
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return ${tmpvar};')
 			return
@@ -6277,6 +6374,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
 			}
 			g.write_defer_stmts_when_needed()
+			if g.is_autofree {
+				g.detect_used_var_on_return(expr0)
+			}
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return ${tmpvar};')
 			return
@@ -6285,9 +6385,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		// set free_parent_scopes to true, since all variables defined in parent
 		// scopes need to be freed before the return
 		if g.is_autofree {
-			if expr0 is ast.Ident {
-				g.returned_var_name = expr0.name
-			}
+			g.detect_used_var_on_return(expr0)
 			if !use_tmp_var && !g.is_builtin_mod {
 				use_tmp_var = expr0 is ast.CallExpr
 			}
@@ -7859,6 +7957,7 @@ fn (mut g Gen) interface_table() string {
 	}
 	mut sb := strings.new_builder(100)
 	mut conversion_functions := strings.new_builder(100)
+	mut already_generated_ifaces := map[string]bool{}
 	interfaces := g.table.type_symbols.filter(it.kind == .interface && it.info is ast.Interface)
 	for isym in interfaces {
 		inter_info := isym.info as ast.Interface
@@ -7868,6 +7967,10 @@ fn (mut g Gen) interface_table() string {
 		if g.pref.skip_unused && isym.idx !in g.table.used_features.used_syms {
 			continue
 		}
+		if isym.cname in already_generated_ifaces {
+			continue
+		}
+		already_generated_ifaces[isym.cname] = true
 		// interface_name is for example Speaker
 		interface_name := isym.cname
 		// generate a struct that references interface methods

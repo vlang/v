@@ -8,4 +8,6 @@ fn main() {
 		'1': 1
 	}
 	m2.delete('1')
+	m.delete()
+	_ := m.delete()
 }

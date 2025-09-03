@@ -511,6 +511,10 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@BUILD_DATE' { token.AtKind.build_date }
 		'@BUILD_TIME' { token.AtKind.build_time }
 		'@BUILD_TIMESTAMP' { token.AtKind.build_timestamp }
+		'@OS' { token.AtKind.os }
+		'@CCOMPILER' { token.AtKind.ccompiler }
+		'@BACKEND' { token.AtKind.backend }
+		'@PLATFORM' { token.AtKind.platform }
 		else { token.AtKind.unknown }
 	}
 	expr := ast.AtExpr{

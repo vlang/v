@@ -53,6 +53,9 @@ mut:
 	inside_select            bool // to allow `ch <- Struct{} {` inside `select`
 	inside_match_case        bool // to separate `match_expr { }` from `Struct{}`
 	inside_match_body        bool // to fix eval not used TODO
+	inside_ct_match          bool
+	inside_ct_match_case     bool
+	inside_ct_match_body     bool
 	inside_unsafe            bool
 	inside_sum_type          bool // to prevent parsing inline sum type again
 	inside_asm_template      bool
@@ -81,9 +84,12 @@ mut:
 	last_enum_mod            string            // saves the last enum mod name on an array initialization
 	imports                  map[string]string // alias => mod_name
 	ast_imports              []ast.Import      // mod_names
-	used_imports             []string          // alias
-	auto_imports             []string          // imports, the user does not need to specify
+	used_imports             []string
+	auto_imports             []string // imports, the user does not need to specify
+	implied_imports          []string // ​imports that the user's code uses but omitted to import explicitly, used by `vfmt`
 	imported_symbols         map[string]string
+	imported_symbols_used    map[string]bool
+	imported_symbols_trie    token.KeywordsMatcherTrie
 	is_amp                   bool // for generating the right code for `&Foo{}`
 	returns                  bool
 	is_stmt_ident            bool // true while the beginning of a statement is an ident/selector
@@ -108,6 +114,7 @@ mut:
 	generic_type_level       int  // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 	main_already_defined     bool // TODO move to checker
 	is_vls                   bool
+	inside_import_section    bool
 pub mut:
 	scanner &scanner.Scanner = unsafe { nil }
 	table   &ast.Table       = unsafe { nil }
@@ -287,6 +294,7 @@ pub fn (mut p Parser) parse() &ast.File {
 	} else {
 		stmts << module_decl
 	}
+	p.inside_import_section = true
 	// imports
 	for {
 		if p.tok.kind == .key_import {
@@ -329,28 +337,32 @@ pub fn (mut p Parser) parse() &ast.File {
 	p.handle_codegen_for_file()
 
 	ast_file := &ast.File{
-		path:             p.file_path
-		path_base:        p.file_base
-		is_test:          p.inside_test_file
-		is_generated:     p.is_generated
-		is_translated:    p.is_translated
-		language:         p.file_backend_mode
-		nr_lines:         p.scanner.line_nr
-		nr_bytes:         p.scanner.text.len
-		nr_tokens:        p.scanner.all_tokens.len
-		mod:              module_decl
-		imports:          p.ast_imports
-		imported_symbols: p.imported_symbols
-		auto_imports:     p.auto_imports
-		stmts:            stmts
-		scope:            p.scope
-		global_scope:     p.table.global_scope
-		errors:           errors_
-		warnings:         warnings
-		notices:          notices
-		global_labels:    p.global_labels
-		template_paths:   p.template_paths
-		unique_prefix:    p.unique_prefix
+		path:                  p.file_path
+		path_base:             p.file_base
+		is_test:               p.inside_test_file
+		is_generated:          p.is_generated
+		is_translated:         p.is_translated
+		language:              p.file_backend_mode
+		nr_lines:              p.scanner.line_nr
+		nr_bytes:              p.scanner.text.len
+		nr_tokens:             p.scanner.all_tokens.len
+		mod:                   module_decl
+		imports:               p.ast_imports
+		imported_symbols:      p.imported_symbols
+		imported_symbols_trie: token.new_keywords_matcher_from_array_trie(p.imported_symbols.keys())
+		imported_symbols_used: p.imported_symbols_used
+		auto_imports:          p.auto_imports
+		used_imports:          p.used_imports
+		implied_imports:       p.implied_imports
+		stmts:                 stmts
+		scope:                 p.scope
+		global_scope:          p.table.global_scope
+		errors:                errors_
+		warnings:              warnings
+		notices:               notices
+		global_labels:         p.global_labels
+		template_paths:        p.template_paths
+		unique_prefix:         p.unique_prefix
 	}
 	$if trace_parse_file_path_and_mod ? {
 		eprintln('>> ast.File, tokens: ${ast_file.nr_tokens:5}, mname: ${ast_file.mod.name:20}, sname: ${ast_file.mod.short_name:11}, path: ${p.file_display_path}')
@@ -444,6 +456,13 @@ fn (mut p Parser) parse_block() []ast.Stmt {
 	return stmts
 }
 
+fn (mut p Parser) is_in_top_level_comptime(inside_assign_rhs bool) bool {
+	// TODO: find out a better way detect we are in top level.
+	return p.cur_fn_name.len == 0
+		&& (p.inside_ct_if_expr || p.inside_ct_match || p.inside_ct_match_body)
+		&& !inside_assign_rhs && !p.script_mode && p.tok.kind != .name
+}
+
 fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt{cap: 20}
@@ -452,7 +471,12 @@ fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	if p.tok.kind != .rcbr {
 		mut count := 0
 		for p.tok.kind !in [.eof, .rcbr] {
-			stmts << p.stmt(is_top_level)
+			if p.is_in_top_level_comptime(old_assign_rhs) {
+				// top level `$if cond { println() }` should goto `p.stmt()`
+				stmts << p.top_stmt()
+			} else {
+				stmts << p.stmt(is_top_level)
+			}
 			count++
 			if count % 100000 == 0 {
 				if p.is_vls {
@@ -587,7 +611,7 @@ fn (mut p Parser) check_name() string {
 	name := p.tok.lit
 	if p.tok.kind != .name && p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
-	} else if p.tok.kind == .name && p.peek_tok.kind == .dot && name in p.imported_symbols {
+	} else if p.tok.kind == .name && p.is_imported_symbol(name) && !p.imported_symbols_used[name] {
 		// symbols like Enum.field_name
 		p.register_used_import_for_symbol_name(p.imported_symbols[name])
 	}
@@ -610,6 +634,10 @@ fn (p &Parser) trace_parser(label string) {
 fn (mut p Parser) top_stmt() ast.Stmt {
 	p.trace_parser('top_stmt')
 	for {
+		if p.tok.kind !in [.key_import, .comment, .dollar] {
+			// import section should only prepend by `import`, `comment` or `$if`.
+			p.inside_import_section = false
+		}
 		match p.tok.kind {
 			.key_pub {
 				match p.peek_tok.kind {
@@ -653,8 +681,10 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.interface_decl()
 			}
 			.key_import {
-				p.error_with_pos('`import x` can only be declared at the beginning of the file',
-					p.tok.pos())
+				if !p.inside_import_section {
+					p.error_with_pos('`import x` can only be declared at the beginning of the file',
+						p.tok.pos())
+				}
 				return p.import_stmt()
 			}
 			.key_global {
@@ -670,25 +700,52 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.struct_decl(false)
 			}
 			.dollar {
-				if p.peek_tok.kind == .eof {
-					return p.unexpected(got: 'eof')
-				}
-				if p.peek_tok.kind == .key_for {
-					comptime_for_stmt := p.comptime_for()
-					return p.other_stmts(comptime_for_stmt)
-				} else if p.peek_tok.kind == .key_if {
-					if_expr := p.if_expr(true, false)
-					cur_stmt := ast.ExprStmt{
-						expr: if_expr
-						pos:  if_expr.pos
+				match p.peek_tok.kind {
+					.eof {
+						return p.unexpected(got: 'eof')
 					}
-					if p.pref.is_fmt || comptime_if_expr_contains_top_stmt(if_expr) {
-						return cur_stmt
-					} else {
-						return p.other_stmts(cur_stmt)
+					.key_for {
+						comptime_for_stmt := p.comptime_for()
+						return p.other_stmts(comptime_for_stmt)
 					}
-				} else {
-					return p.unexpected()
+					.key_if {
+						if_expr := p.if_expr(true, false)
+						cur_stmt := ast.ExprStmt{
+							expr: if_expr
+							pos:  if_expr.pos
+						}
+						if p.pref.is_fmt || comptime_if_expr_contains_top_stmt(if_expr) {
+							return cur_stmt
+						} else {
+							return p.other_stmts(cur_stmt)
+						}
+					}
+					.key_match {
+						mut pos := p.tok.pos()
+						expr := p.match_expr(true)
+						pos.update_last_line(p.prev_tok.line_nr)
+						return ast.ExprStmt{
+							expr: expr
+							pos:  pos
+						}
+					}
+					.name {
+						// handles $dbg directly without registering token
+						if p.peek_tok.lit == 'dbg' {
+							return p.dbg_stmt()
+						} else {
+							mut pos := p.tok.pos()
+							expr := p.expr(0)
+							pos.update_last_line(p.prev_tok.line_nr)
+							return ast.ExprStmt{
+								expr: expr
+								pos:  pos
+							}
+						}
+					}
+					else {
+						return p.unexpected()
+					}
 				}
 			}
 			.hash {
@@ -2085,6 +2142,17 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		if mut left_node is ast.CallExpr {
 			left_node.is_return_used = true
 		}
+		if p.pref.is_fmt {
+			if mut left_node is ast.Ident {
+				// `time.now()` without `time imported` is processed as a method call with `time` being
+				// a `left_node` expression. Import `time` automatically.
+				// TODO: fetch all available modules
+				if left_node.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
+					&& !left_node.scope.known_var(left_node.name) {
+					p.register_implied_import(left_node.name)
+				}
+			}
+		}
 		mcall_expr := ast.CallExpr{
 			left:              left
 			name:              field_name
@@ -2452,7 +2520,10 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		}
 		mut expr := ast.Expr{}
 		if !is_virtual_c_const {
+			old_inside_assign_rhs := p.inside_assign_rhs
+			p.inside_assign_rhs = true
 			expr = p.expr(0)
+			p.inside_assign_rhs = old_inside_assign_rhs
 		}
 		if is_block {
 			end_comments << p.eat_comments(same_line: true)
@@ -2532,10 +2603,14 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 
 	mut is_markused := false
 	mut is_exported := false
+	mut is_weak := false
+	mut is_hidden := false
 	for ga in attrs {
 		match ga.name {
 			'export' { is_exported = true }
 			'markused' { is_markused = true }
+			'weak' { is_weak = true }
+			'hidden' { is_hidden = true }
 			else {}
 		}
 	}
@@ -2578,7 +2653,10 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		mut typ_pos := token.Pos{}
 		if has_expr {
 			p.next() // =
+			old_assign_rhs := p.inside_assign_rhs
+			p.inside_assign_rhs = true
 			expr = p.expr(0)
+			p.inside_assign_rhs = old_assign_rhs
 			match mut expr {
 				ast.CastExpr, ast.StructInit, ast.ArrayInit, ast.ChanInit {
 					typ = expr.typ
@@ -2617,6 +2695,8 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			is_markused: is_markused
 			is_volatile: is_volatile
 			is_exported: is_exported
+			is_weak:     is_weak
+			is_hidden:   is_hidden
 		}
 		fields << field
 		if name !in ast.global_reserved_type_names {
@@ -2681,7 +2761,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			return ast.FnTypeDecl{}
 		}
 	}
-	if name in p.imported_symbols {
+	if p.is_imported_symbol(name) {
 		p.error_with_pos('cannot register alias `${name}`, this type was already imported',
 			end_pos)
 		return ast.AliasTypeDecl{}
@@ -2741,7 +2821,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			is_pub: is_pub
 		})
-		if typ in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
+		if typ in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx]
+			&& !p.pref.is_fmt {
 			p.error_with_pos('cannot register sum type `${name}`, another type with this name exists',
 				name_pos)
 			return ast.SumTypeDecl{}
@@ -2788,7 +2869,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_pub:     is_pub
 	})
 	type_end_pos := p.prev_tok.pos()
-	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
+	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx]
+		&& !p.pref.is_fmt {
 		p.error_with_pos('cannot register alias `${name}`, another type with this name exists',
 			name_pos)
 		return ast.AliasTypeDecl{}
@@ -2903,7 +2985,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		return p.error_with_pos('please use `unsafe {`', p.tok.pos())
 	}
 	p.next()
-	if p.inside_unsafe {
+	if p.inside_unsafe && !p.inside_defer {
 		return p.error_with_pos('already inside `unsafe` block', pos)
 	}
 	if p.tok.kind == .rcbr {
@@ -2997,5 +3079,25 @@ fn (mut p Parser) add_defer_var(ident ast.Ident) {
 			&& ident.name !in ['err', 'it'] {
 			p.defer_vars << ident
 		}
+	}
+}
+
+// skip `{...}`
+fn (mut p Parser) skip_scope() {
+	mut br_cnt := 0
+	for {
+		match p.tok.kind {
+			.lcbr { br_cnt++ }
+			.rcbr { br_cnt-- }
+			.eof { break }
+			else {}
+		}
+		if br_cnt == 0 {
+			break
+		}
+		p.next()
+	}
+	if p.tok.kind == .rcbr {
+		p.next()
 	}
 }

@@ -1035,7 +1035,7 @@ fn (mut fm FlagMapper) map_v(flag_ctx FlagContext, field StructField) !bool {
 	next := flag_ctx.next
 
 	if field.hints.has(.is_bool) {
-		if flag_name == field.match_name {
+		if flag_name == field.match_name || flag_name == field.short {
 			arg := if flag_raw.contains('=') { flag_raw.all_after('=') } else { '' }
 			if arg != '' {
 				return error('flag `${flag_raw}` can not be assigned to bool field "${field.name}"')

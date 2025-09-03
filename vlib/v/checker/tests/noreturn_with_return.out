@@ -1,3 +1,9 @@
+vlib/v/checker/tests/noreturn_with_return.vv:18:2: warning: unreachable code after a @[noreturn] call
+   16 |     eprintln('start')
+   17 |     abc()
+   18 |     eprintln('done')
+      |     ~~~~~~~~~~~~~~~~
+   19 | }
 vlib/v/checker/tests/noreturn_with_return.vv:2:1: error: [noreturn] functions cannot use return statements
     1 | @[noreturn]
     2 | fn another() {
@@ -11,9 +17,3 @@ vlib/v/checker/tests/noreturn_with_return.vv:6:2: error: @[noreturn] functions s
       |     ~~~~~~
     7 | }
     8 |
-vlib/v/checker/tests/noreturn_with_return.vv:18:2: error: unreachable code after a @[noreturn] call
-   16 |     eprintln('start')
-   17 |     abc()
-   18 |     eprintln('done')
-      |     ~~~~~~~~~~~~~~~~
-   19 | }

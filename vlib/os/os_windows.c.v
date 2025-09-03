@@ -26,6 +26,24 @@ fn C._getpid() int
 
 const executable_suffixes = ['.exe', '.bat', '.cmd', '']
 
+// these consts are declared for parity with the nix version, their values are not used, except for -cross
+const s_ifmt = 0xF000 // type of file
+const s_ifdir = 0x4000 // directory
+const s_ifreg = 0x8000 // regular file
+const s_iflnk = 0xa000 // link
+const s_isuid = 0o4000 // SUID
+const s_isgid = 0o2000 // SGID
+const s_isvtx = 0o1000 // Sticky
+const s_irusr = 0o0400 // Read by owner
+const s_iwusr = 0o0200 // Write by owner
+const s_ixusr = 0o0100 // Execute by owner
+const s_irgrp = 0o0040 // Read by group
+const s_iwgrp = 0o0020 // Write by group
+const s_ixgrp = 0o0010 // Execute by group
+const s_iroth = 0o0004 // Read by others
+const s_iwoth = 0o0002 // Write by others
+const s_ixoth = 0o0001
+
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
 pub type HANDLE = voidptr

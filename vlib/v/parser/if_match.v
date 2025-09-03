@@ -5,6 +5,8 @@ module parser
 
 import v.ast
 import v.token
+import v.pkgconfig
+import v.pref
 
 fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 	was_inside_if_expr := p.inside_if_expr
@@ -25,6 +27,8 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 	mut has_else := false
 	mut comments := []ast.Comment{}
 	mut prev_guard := false
+	mut comptime_skip_curr_stmts := false
+	mut comptime_has_true_branch := false
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
 		if is_comptime {
@@ -58,12 +62,23 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 						is_special:   true
 					})
 				}
-				branches << ast.IfBranch{
-					stmts:    p.parse_block_no_scope(false)
-					pos:      start_pos.extend(end_pos)
-					body_pos: body_pos.extend(p.tok.pos())
-					comments: comments
-					scope:    p.scope
+				if is_comptime && comptime_has_true_branch && !p.pref.is_fmt
+					&& !p.pref.output_cross_c {
+					p.skip_scope()
+					branches << ast.IfBranch{
+						pos:      start_pos.extend(end_pos)
+						body_pos: body_pos.extend(p.tok.pos())
+						comments: comments
+						scope:    p.scope
+					}
+				} else {
+					branches << ast.IfBranch{
+						stmts:    p.parse_block_no_scope(false)
+						pos:      start_pos.extend(end_pos)
+						body_pos: body_pos.extend(p.tok.pos())
+						comments: comments
+						scope:    p.scope
+					}
 				}
 				p.close_scope()
 				comments = []
@@ -114,7 +129,10 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 			comments << p.eat_comments()
 			p.check(.decl_assign)
 			comments << p.eat_comments()
+			old_assign_rhs := p.inside_assign_rhs
+			p.inside_assign_rhs = true
 			expr := p.expr(0)
+			p.inside_assign_rhs = old_assign_rhs
 			if expr !in [ast.CallExpr, ast.IndexExpr, ast.PrefixExpr, ast.SelectorExpr, ast.Ident] {
 				p.error_with_pos('if guard condition expression is illegal, it should return an Option',
 					expr.pos())
@@ -141,6 +159,12 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 			p.comptime_if_cond = true
 			p.inside_if_cond = true
 			cond = p.expr(0)
+			if is_comptime && p.is_in_top_level_comptime(p.inside_assign_rhs) {
+				comptime_skip_curr_stmts = !p.comptime_if_cond(mut cond)
+				if !comptime_skip_curr_stmts {
+					comptime_has_true_branch = true
+				}
+			}
 			if mut cond is ast.InfixExpr && !is_comptime {
 				if cond.op in [.key_is, .not_is] {
 					if mut cond.left is ast.Ident {
@@ -170,14 +194,27 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 			return ast.IfExpr{}
 		}
 		p.open_scope()
-		stmts := p.parse_block_no_scope(false)
-		branches << ast.IfBranch{
-			cond:     cond
-			stmts:    stmts
-			pos:      start_pos.extend(end_pos)
-			body_pos: body_pos.extend(p.prev_tok.pos())
-			comments: comments
-			scope:    p.scope
+		if is_comptime && comptime_skip_curr_stmts
+			&& p.is_in_top_level_comptime(p.inside_assign_rhs) && !p.pref.is_fmt
+			&& !p.pref.output_cross_c {
+			p.skip_scope()
+			branches << ast.IfBranch{
+				cond:     cond
+				pos:      start_pos.extend(end_pos)
+				body_pos: body_pos.extend(p.prev_tok.pos())
+				comments: comments
+				scope:    p.scope
+			}
+		} else {
+			stmts := p.parse_block_no_scope(false)
+			branches << ast.IfBranch{
+				cond:     cond
+				stmts:    stmts
+				pos:      start_pos.extend(end_pos)
+				body_pos: body_pos.extend(p.prev_tok.pos())
+				comments: comments
+				scope:    p.scope
+			}
 		}
 		p.close_scope()
 		if is_guard {
@@ -244,29 +281,64 @@ fn (mut p Parser) is_match_sumtype_type() bool {
 		&& next_next_tok.lit.len > 0 && next_next_tok.lit[0].is_capital()))
 }
 
+fn (mut p Parser) resolve_at_expr(expr ast.AtExpr) !string {
+	match expr.kind {
+		.mod_name {
+			return p.mod
+		}
+		.os {
+			return pref.get_host_os().lower()
+		}
+		.ccompiler {
+			return p.pref.ccompiler_type.str()
+		}
+		.backend {
+			return p.pref.backend.str()
+		}
+		.platform {
+			return p.pref.arch.str()
+		}
+		else {
+			return error('top level comptime only support `@MOD` `@OS` `@CCOMPILER` `@BACKEND` or `@PLATFORM`')
+		}
+	}
+	return ''
+}
+
 fn (mut p Parser) match_expr(is_comptime bool) ast.MatchExpr {
 	mut match_first_pos := p.tok.pos()
+	old_inside_ct_match := p.inside_ct_match
 	if is_comptime {
 		p.next() // `$`
 		match_first_pos = p.prev_tok.pos().extend(p.tok.pos())
+		p.inside_ct_match = true
 	}
 	old_inside_match := p.inside_match
 	p.inside_match = true
 	p.check(.key_match)
 	mut is_sum_type := false
 	cond := p.expr(0)
+	mut cond_str := ''
+	if is_comptime && cond is ast.AtExpr && p.is_in_top_level_comptime(p.inside_assign_rhs) {
+		cond_str = p.resolve_at_expr(cond) or {
+			p.error(err.msg())
+			return ast.MatchExpr{}
+		}
+	}
 	p.inside_match = old_inside_match
+	p.inside_ct_match = old_inside_ct_match
 	no_lcbr := p.tok.kind != .lcbr
 	if !no_lcbr {
 		p.check(.lcbr)
 	}
 	comments := p.eat_comments() // comments before the first branch
 	mut branches := []ast.MatchBranch{}
+	mut comptime_skip_curr_stmts := false
+	mut comptime_has_true_branch := false
 	for p.tok.kind != .eof {
 		branch_first_pos := p.tok.pos()
 		mut exprs := []ast.Expr{}
 		mut ecmnts := [][]ast.Comment{}
-		p.open_scope()
 		// final else
 		mut is_else := false
 		if is_comptime {
@@ -318,19 +390,44 @@ fn (mut p Parser) match_expr(is_comptime bool) ast.MatchExpr {
 			}
 			// Expression match
 			for {
+				if is_comptime {
+					p.inside_ct_match_case = true
+				}
 				p.inside_match_case = true
 				mut range_pos := p.tok.pos()
-				expr := p.expr(0)
+				mut case_str := ''
+				mut expr := p.expr(0)
 				p.inside_match_case = false
+				p.inside_ct_match_case = false
+				match mut expr {
+					ast.StringLiteral {
+						case_str = expr.val
+					}
+					ast.IntegerLiteral {
+						case_str = expr.val.str()
+					}
+					ast.BoolLiteral {
+						case_str = expr.val.str()
+					}
+					else {}
+				}
+				comptime_skip_curr_stmts = cond_str != case_str
+				if !comptime_skip_curr_stmts {
+					comptime_has_true_branch = true
+				}
 				if p.tok.kind == .dotdot {
 					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)',
 						p.tok.pos())
 					return ast.MatchExpr{}
 				} else if p.tok.kind == .ellipsis {
 					p.next()
+					if is_comptime {
+						p.inside_ct_match_case = true
+					}
 					p.inside_match_case = true
 					expr2 := p.expr(0)
 					p.inside_match_case = false
+					p.inside_ct_match_case = false
 					exprs << ast.RangeExpr{
 						low:      expr
 						high:     expr2
@@ -360,11 +457,24 @@ fn (mut p Parser) match_expr(is_comptime bool) ast.MatchExpr {
 		}
 		branch_last_pos := p.prev_tok.pos()
 		// p.warn('match block')
+		if is_comptime {
+			p.inside_ct_match_body = true
+		}
 		p.inside_match_body = true
-		stmts := p.parse_block_no_scope(false)
+		p.open_scope()
+		mut stmts := []ast.Stmt{}
+		if is_comptime && ((!is_else && comptime_skip_curr_stmts)
+			|| (is_else && comptime_has_true_branch))
+			&& p.is_in_top_level_comptime(p.inside_assign_rhs) && !p.pref.is_fmt
+			&& !p.pref.output_cross_c {
+			p.skip_scope()
+		} else {
+			stmts = p.parse_block_no_scope(false)
+		}
 		branch_scope := p.scope
 		p.close_scope()
 		p.inside_match_body = false
+		p.inside_ct_match_body = false
 		pos := branch_first_pos.extend_with_last_line(branch_last_pos, p.prev_tok.line_nr)
 		branch_pos := branch_first_pos.extend_with_last_line(p.tok.pos(), p.tok.line_nr)
 		post_comments := p.eat_comments()
@@ -569,4 +679,189 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		pos:           pos.extend_with_last_line(p.prev_tok.pos(), p.prev_tok.line_nr)
 		has_exception: has_else || has_timeout
 	}
+}
+
+fn (mut p Parser) comptime_if_cond(mut cond ast.Expr) bool {
+	mut is_true := false
+	match mut cond {
+		ast.BoolLiteral {
+			return cond.val
+		}
+		ast.ParExpr {
+			return p.comptime_if_cond(mut cond.expr)
+		}
+		ast.PrefixExpr {
+			if cond.op != .not {
+				p.error('invalid \$if prefix operator, only allow `!`.')
+				return false
+			}
+			return !p.comptime_if_cond(mut cond.right)
+		}
+		ast.PostfixExpr {
+			if cond.op != .question {
+				p.error('invalid \$if postfix operator, only allow `?`.')
+				return false
+			}
+			if cond.expr !is ast.Ident {
+				p.error('invalid \$if postfix condition, only allow `Indent`.')
+				return false
+			}
+			cname := (cond.expr as ast.Ident).name
+			return cname in p.pref.compile_defines
+		}
+		ast.InfixExpr {
+			match cond.op {
+				.and, .logical_or {
+					l := p.comptime_if_cond(mut cond.left)
+					r := p.comptime_if_cond(mut cond.right)
+					// if at least one of the cond has `keep_stmts`, we should keep stmts
+					return if cond.op == .and { l && r } else { l || r }
+				}
+				.eq, .ne, .gt, .lt, .ge, .le {
+					match mut cond.left {
+						ast.AtExpr {
+							// @OS == 'linux'
+							left_str := p.resolve_at_expr(cond.left) or {
+								p.error(err.msg())
+								return false
+							}
+							if cond.right !is ast.StringLiteral {
+								p.error('`${cond.left} can only compare with string type')
+								return false
+							}
+							right_str := (cond.right as ast.StringLiteral).val
+							if cond.op == .eq {
+								is_true = left_str == right_str
+							} else if cond.op == .ne {
+								is_true = left_str != right_str
+							} else {
+								p.error('string type only support `==` and `!=` operator')
+								return false
+							}
+							return is_true
+						}
+						ast.Ident {
+							// $if version == 2
+							match mut cond.right {
+								ast.StringLiteral {
+									match cond.op {
+										.eq {
+											is_true = cond.left.str() == cond.right.str()
+										}
+										.ne {
+											is_true = cond.left.str() != cond.right.str()
+										}
+										else {
+											p.error('string type only support `==` and `!=` operator')
+											return false
+										}
+									}
+								}
+								ast.IntegerLiteral {
+									match cond.op {
+										.eq {
+											is_true = cond.left.str().i64() == cond.right.val.i64()
+										}
+										.ne {
+											is_true = cond.left.str().i64() != cond.right.val.i64()
+										}
+										.gt {
+											is_true = cond.left.str().i64() > cond.right.val.i64()
+										}
+										.lt {
+											is_true = cond.left.str().i64() < cond.right.val.i64()
+										}
+										.ge {
+											is_true = cond.left.str().i64() >= cond.right.val.i64()
+										}
+										.le {
+											is_true = cond.left.str().i64() <= cond.right.val.i64()
+										}
+										else {
+											p.error('int type only support `==` `!=` `>` `<` `>=` and `<=` operator')
+											return false
+										}
+									}
+								}
+								ast.BoolLiteral {
+									match cond.op {
+										.eq {
+											is_true = cond.left.str().bool() == cond.right.val
+										}
+										.ne {
+											is_true = cond.left.str().bool() != cond.right.val
+										}
+										else {
+											p.error('bool type only support `==` and `!=` operator')
+											return false
+										}
+									}
+								}
+								else {
+									p.error('compare only support string int and bool type')
+									return false
+								}
+							}
+							return is_true
+						}
+						else {
+							p.error('invalid \$if condition')
+							return false
+						}
+					}
+					p.error('invalid \$if condition')
+					return false
+				}
+				else {
+					p.error('invalid \$if operator: ${cond.op}')
+					return false
+				}
+			}
+		}
+		ast.Ident {
+			cname := cond.name
+			if cname in ast.valid_comptime_not_user_defined {
+				if cname == 'threads' {
+					is_true = p.table.gostmts > 0
+				} else {
+					is_true = ast.eval_comptime_not_user_defined_ident(cname, p.pref) or {
+						p.error(err.msg())
+						return false
+					}
+				}
+			} else {
+				p.error('invalid \$if condition: unknown indent `${cname}`')
+				return false
+			}
+			return is_true
+		}
+		ast.ComptimeCall {
+			if cond.kind == .pkgconfig {
+				if mut m := pkgconfig.main([cond.args_var]) {
+					if _ := m.run() {
+						is_true = true
+					} else {
+						// pkgconfig not found, do not issue error, just set false
+						is_true = false
+					}
+				} else {
+					p.error(err.msg())
+					is_true = false
+				}
+				return is_true
+			}
+			if cond.kind == .d {
+				is_true = cond.compile_value.bool()
+				return is_true
+			}
+			p.error('invalid \$if condition: unknown ComptimeCall')
+			return false
+		}
+		else {
+			p.error('invalid \$if condition ${cond}')
+			return false
+		}
+	}
+
+	return is_true
 }

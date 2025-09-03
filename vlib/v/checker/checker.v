@@ -4030,6 +4030,18 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 		.build_timestamp {
 			node.val = util.stable_build_time.unix().str()
 		}
+		.os {
+			node.val = pref.get_host_os().lower()
+		}
+		.ccompiler {
+			node.val = c.pref.ccompiler_type.str()
+		}
+		.backend {
+			node.val = c.pref.backend.str()
+		}
+		.platform {
+			node.val = c.pref.arch.str()
+		}
 		.unknown {
 			c.error('unknown @ identifier: ${node.name}. Available identifiers: ${token.valid_at_tokens}',
 				node.pos)
@@ -4249,7 +4261,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		mut name := node.name
 		// check for imported symbol
-		if name in c.file.imported_symbols {
+		if c.file.imported_symbols_trie.matches(name) {
 			name = c.file.imported_symbols[name]
 		}
 		// prepend mod to look for fn call or const

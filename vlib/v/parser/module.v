@@ -35,6 +35,10 @@ fn (mut p Parser) register_used_import(alias string) {
 
 fn (mut p Parser) register_used_import_for_symbol_name(sym_name string) {
 	short_import_name := sym_name.all_before_last('.').all_after_last('.')
+	short_symbol_name := sym_name.all_after_last('.')
+	if p.is_imported_symbol(short_symbol_name) {
+		p.imported_symbols_used[short_symbol_name] = true
+	}
 	for alias, mod in p.imports {
 		if mod == short_import_name {
 			p.register_used_import(alias)
@@ -62,7 +66,14 @@ fn (mut p Parser) register_auto_import(alias string) {
 	if alias !in p.auto_imports {
 		p.auto_imports << alias
 	}
-	p.register_used_import(alias)
+	// do not call `register_used_import()` here as it may not used by the code.
+	// for example, when using `chan`, but we has no `sync.xx()` call in the code.
+}
+
+fn (mut p Parser) register_implied_import(alias string) {
+	if alias !in p.implied_imports {
+		p.implied_imports << alias
+	}
 }
 
 fn (mut p Parser) check_unused_imports() {
@@ -75,7 +86,8 @@ fn (mut p Parser) check_unused_imports() {
 	for import_m in p.ast_imports {
 		alias := import_m.alias
 		mod := import_m.mod
-		if !(alias.len == 1 && alias[0] == `_`) && !p.is_used_import(alias) {
+		if !(alias.len == 1 && alias[0] == `_`) && !p.is_used_import(alias)
+			&& alias !in p.auto_imports {
 			mod_alias := if alias == mod { alias } else { '${alias} (${mod})' }
 			p.warn_with_pos("module '${mod_alias}' is imported but never used", import_m.mod_pos)
 		}
@@ -310,7 +322,13 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	for p.tok.kind == .name {
 		pos := p.tok.pos()
 		alias := p.check_name()
+		if p.is_imported_symbol(alias) {
+			p.error_with_pos('cannot register symbol `${alias}`, it was already imported',
+				pos)
+			return
+		}
 		p.imported_symbols[alias] = parent.mod + '.' + alias
+		p.rebuild_imported_symbols_matcher(alias)
 		// so we can work with this in fmt+checker
 		parent.syms << ast.ImportSymbol{
 			pos:  pos
@@ -329,4 +347,13 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 		return
 	}
 	p.next()
+}
+
+fn (mut p Parser) rebuild_imported_symbols_matcher(name string) {
+	p.imported_symbols_trie = token.new_keywords_matcher_from_array_trie(p.imported_symbols.keys())
+}
+
+@[inline]
+fn (mut p Parser) is_imported_symbol(name string) bool {
+	return p.imported_symbols_trie.matches(name)
 }
