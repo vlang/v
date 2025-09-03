@@ -217,7 +217,7 @@ fn test_nested() {
 }
 
 fn test_string_escapes() {
-	assert json.encode('normal escapes: ", \\ special control escapes: \b, \n, \f, \t, \r, other control escapes: \0, \e') == r'"normal escapes: \", \\ special control escapes: \b, \n, \f, \t, \r, other control escapes: \u0000, \u001b"'
+	assert json.encode('normal escapes: ", \\ special control escapes: \b, \n, \f, \t, \r, other control escapes: \0, \u001b') == r'"normal escapes: \", \\ special control escapes: \b, \n, \f, \t, \r, other control escapes: \u0000, \u001b"'
 	assert json.encode('ascii, é, 한, 😀, ascii') == r'"ascii, é, 한, 😀, ascii"'
 	assert json.encode('ascii, é, 한, 😀, ascii', escape_unicode: true) == r'"ascii, \u00e9, \ud55c, \uD83D\ude00, ascii"'
 }
