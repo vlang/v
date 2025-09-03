@@ -109,6 +109,40 @@ fn endline_if_missed(line string) string {
 	return line + '\n'
 }
 
+fn remove_comment(s string) string {
+	mut result := []rune{}
+	mut in_double_quote := false
+	mut in_single_quote := false
+	mut escaped := false
+
+	for i := 0; i < s.len; {
+		c := s[i]
+
+		if c == `\\` && (in_double_quote || in_single_quote) {
+			escaped = !escaped
+			result << c
+			i++
+			continue
+		} else if escaped {
+			escaped = false
+		}
+
+		if c == `"` && !escaped && !in_single_quote {
+			in_double_quote = !in_double_quote
+		} else if c == `'` && !escaped && !in_double_quote {
+			in_single_quote = !in_single_quote
+		}
+
+		if i + 1 < s.len && c == `/` && s[i + 1] == `/` && !in_double_quote && !in_single_quote {
+			return result.string()
+		}
+
+		result << c
+		i++
+	}
+	return result.string()
+}
+
 fn starts_with_type_decl(line string, type_name string) bool {
 	if line.starts_with(type_name + ' ') || line.starts_with(type_name + '\t') {
 		return true
@@ -441,7 +475,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			prompt = '... '
 		}
 		oline := r.get_one_line(prompt) or { break }
-		line := oline.trim_space()
+		line := remove_comment(oline).trim_space()
 		if line == '' {
 			continue
 		}
