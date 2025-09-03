@@ -740,6 +740,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.unaliased_typ = ${int(unaliased_styp.idx())};\t// ${g.table.type_to_str(unaliased_styp)}')
 				g.writeln('\t${node.val_var}.is_pub = ${field.is_pub};')
 				g.writeln('\t${node.val_var}.is_mut = ${field.is_mut};')
+				g.writeln('\t${node.val_var}.is_embed = ${field.is_embed};')
 
 				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
 				g.writeln('\t${node.val_var}.is_atomic = ${field.typ.has_flag(.atomic_f)};')
