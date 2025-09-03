@@ -320,6 +320,7 @@ struct EncoderFieldInfo {
 
 	is_skip      bool
 	is_omitempty bool
+	is_required  bool
 }
 
 @[unsafe]
@@ -335,6 +336,7 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 			mut is_skip := false
 			mut key_name := ''
 			mut is_omitempty := false
+			mut is_required := false
 
 			for attr in field.attrs {
 				match attr {
@@ -344,6 +346,9 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 					}
 					'omitempty' {
 						is_omitempty = true
+					}
+					'required' {
+						is_required = true
 					}
 					else {}
 				}
@@ -361,6 +366,7 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 				key_name:     if key_name == '' { field.name } else { key_name }
 				is_skip:      is_skip
 				is_omitempty: is_omitempty
+				is_required:  is_required
 			}
 		}
 	}
@@ -375,19 +381,26 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 
 		if field_info.is_skip {
 			write_field = false
-		} else if field_info.is_omitempty {
+		} else {
 			value := val.$(field.name)
-			$if value is $option {
-				if value == none {
-					write_field = false
+
+			if !field_info.is_required {
+				$if value is $option {
+					if value == none {
+						write_field = false
+					}
 				}
-			} $else $if value is string {
-				if value == '' {
-					write_field = false
-				}
-			} $else $if value is $int || value is $float {
-				if value == 0 {
-					write_field = false
+			}
+
+			if field_info.is_omitempty {
+				$if value is string {
+					if value == '' {
+						write_field = false
+					}
+				} $else $if value is $int || value is $float {
+					if value == 0 {
+						write_field = false
+					}
 				}
 			}
 		}

@@ -415,8 +415,7 @@ fn test_option_instead_of_omit_empty() {
 		name: 'Bob'
 	}
 	assert json.encode(foo, prettify: true, indent_string: '  ') == '{
-  "name": "Bob",
-  "age": null
+  "name": "Bob"
 }'
 }
 

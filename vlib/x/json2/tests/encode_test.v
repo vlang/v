@@ -32,6 +32,12 @@ struct Opt {
 
 type OptAlias = Opt
 
+struct OptRequiered {
+	a ?int @[required]
+}
+
+type OptRequieredAlias = OptRequiered
+
 struct CustomString {
 	data string
 }
@@ -217,10 +223,15 @@ fn test_string_escapes() {
 }
 
 fn test_options() {
-	assert json.encode(Opt{none}) == '{"a":null}'
+	assert json.encode(Opt{none}) == '{}'
 	assert json.encode(Opt{99}) == '{"a":99}'
-	assert json.encode(OptAlias{none}) == '{"a":null}'
+	assert json.encode(OptAlias{none}) == '{}'
 	assert json.encode(OptAlias{99}) == '{"a":99}'
+
+	assert json.encode(OptRequiered{none}) == '{"a":null}'
+	assert json.encode(OptRequiered{99}) == '{"a":99}'
+	assert json.encode(OptRequieredAlias{none}) == '{"a":null}'
+	assert json.encode(OptRequieredAlias{99}) == '{"a":99}'
 }
 
 fn test_custom_encoders() {

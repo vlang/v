@@ -20,5 +20,5 @@ fn test_main() {
 fn test_none() {
 	disk := Disk{}
 	disk_str := json2.encode[Disk](disk)
-	assert disk_str == '{"dev":"","size":null}'
+	assert disk_str == '{"dev":""}'
 }
