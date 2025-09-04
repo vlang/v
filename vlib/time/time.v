@@ -109,7 +109,7 @@ pub fn (t Time) unix() i64 {
 	return time_with_unix(t.local_to_utc()).unix
 }
 
-// unix returns the UNIX local time with second resolution.
+// local_unix returns the UNIX local time with second resolution.
 @[inline]
 pub fn (t Time) local_unix() i64 {
 	return time_with_unix(t).unix
