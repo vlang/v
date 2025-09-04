@@ -323,6 +323,19 @@ struct EncoderFieldInfo {
 	is_required  bool
 }
 
+fn check_not_empty[T](val T) bool {
+	$if val is string {
+		if val == '' {
+			return false
+		}
+	} $else $if val is $int || val is $float {
+		if val == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 @[unsafe]
 fn (mut encoder Encoder) encode_struct[T](val T) {
 	encoder.output << `{`
@@ -384,21 +397,17 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 		} else {
 			value := val.$(field.name)
 
-			if !field_info.is_required {
+			if field_info.is_omitempty {
 				$if value is $option {
-					if value == none {
-						write_field = false
-					}
+					write_field = check_not_empty(value)
+				} $else {
+					write_field = check_not_empty(value)
 				}
 			}
 
-			if field_info.is_omitempty {
-				$if value is string {
-					if value == '' {
-						write_field = false
-					}
-				} $else $if value is $int || value is $float {
-					if value == 0 {
+			if !field_info.is_required {
+				$if value is $option {
+					if value == none {
 						write_field = false
 					}
 				}
