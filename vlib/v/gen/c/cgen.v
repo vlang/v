@@ -1165,7 +1165,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t}')
 			}
 			g.writeln2('}', '')
-			g.writeln('${static_prefix}int v_typeof_sumtype_idx_${sym.cname}(int sidx) {')
+			g.writeln('${static_prefix}${ast.int_type_name} v_typeof_sumtype_idx_${sym.cname}(int sidx) {')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return ${int(ityp)};')
 				for v in sum_info.variants {
@@ -1219,10 +1219,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
-			g.definitions.writeln('int v_typeof_interface_idx_${sym.cname}(int sidx);')
-			g.writeln2('', 'int v_typeof_interface_idx_${sym.cname}(int sidx) {')
+			g.definitions.writeln('${ast.int_type_name} v_typeof_interface_idx_${sym.cname}(int sidx);')
+			g.writeln2('', '${ast.int_type_name} v_typeof_interface_idx_${sym.cname}(int sidx) {')
 			if g.pref.parallel_cc {
-				g.extern_out.writeln('extern int v_typeof_interface_idx_${sym.cname}(int sidx);')
+				g.extern_out.writeln('extern ${ast.int_type_name} v_typeof_interface_idx_${sym.cname}(int sidx);')
 			}
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
@@ -1267,14 +1267,6 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 			return 'u64'
 		}
 	}
-	/*
-	// On 64 bit systems int is an i64
-	$if amd64 || arm64 {
-		if g.pref.use_64_int && t == ast.int_type {
-			return 'i64'
-		}
-	}
-	*/
 	share := t.share()
 	mut styp := if share == .atomic_t { t.atomic_typename() } else { g.cc_type(t, true) }
 	if t.has_flag(.shared_f) {
@@ -1504,7 +1496,7 @@ fn (mut g Gen) write_shareds() {
 		g.shared_types.writeln('\t${mtx_typ} mtx;')
 		g.shared_types.writeln('\t${base} val;')
 		g.shared_types.writeln('};')
-		g.shared_functions.writeln('static inline voidptr __dup${sh_typ}(voidptr src, int sz) {')
+		g.shared_functions.writeln('static inline voidptr __dup${sh_typ}(voidptr src, ${ast.int_type_name} sz) {')
 		g.shared_functions.writeln('\t${sh_typ}* dest = memdup(src, sz);')
 		g.shared_functions.writeln('\tsync__RwMutex_init(&dest->mtx);')
 		g.shared_functions.writeln('\treturn dest;')
@@ -1553,7 +1545,7 @@ fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
 			g.waiter_fn_definitions.writeln('void ${fn_name}(${thread_arr_typ} a);')
 			g.gowrappers.writeln('
 void ${fn_name}(${thread_arr_typ} a) {
-	for (int i = 0; i < a.len; ++i) {
+	for (${ast.int_type_name} i = 0; i < a.len; ++i) {
 		${thread_typ} t = ((${thread_typ}*)a.data)[i];
 		if (t == 0) continue;
 		__v_thread_wait(t);
@@ -1564,7 +1556,7 @@ void ${fn_name}(${thread_arr_typ} a) {
 			g.gowrappers.writeln('
 ${ret_typ} ${fn_name}(${thread_arr_typ} a) {
 	${ret_typ} res = __new_array_with_default(a.len, a.len, sizeof(${eltyp}), 0);
-	for (int i = 0; i < a.len; ++i) {
+	for (${ast.int_type_name} i = 0; i < a.len; ++i) {
 		${thread_typ} t = ((${thread_typ}*)a.data)[i];')
 			if g.pref.os == .windows {
 				g.gowrappers.writeln('\t\tif (t.handle == 0) continue;')
@@ -1601,7 +1593,7 @@ fn (mut g Gen) register_thread_fixed_array_wait_call(node ast.CallExpr, eltyp st
 			g.waiter_fn_definitions.writeln('void ${fn_name}(${thread_arr_typ} a);')
 			g.gowrappers.writeln('
 void ${fn_name}(${thread_arr_typ} a) {
-	for (int i = 0; i < ${len}; ++i) {
+	for (${ast.int_type_name} i = 0; i < ${len}; ++i) {
 		${thread_typ} t = ((${thread_typ}*)a)[i];
 		if (t == 0) continue;
 		__v_thread_wait(t);
@@ -1612,7 +1604,7 @@ void ${fn_name}(${thread_arr_typ} a) {
 			g.gowrappers.writeln('
 ${ret_typ} ${fn_name}(${thread_arr_typ} a) {
 	${ret_typ} res = __new_array_with_default(${len}, ${len}, sizeof(${eltyp}), 0);
-	for (int i = 0; i < ${len}; ++i) {
+	for (${ast.int_type_name} i = 0; i < ${len}; ++i) {
 		${thread_typ} t = ((${thread_typ}*)a)[i];')
 			if g.pref.os == .windows {
 				g.gowrappers.writeln('\t\tif (t.handle == 0) continue;')
@@ -2152,7 +2144,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						mut styp := g.base_type(stmt.typ)
 						$if tinyc && x32 && windows {
 							if stmt.typ == ast.int_literal_type {
-								styp = 'int'
+								styp = ast.int_type_name
 							} else if stmt.typ == ast.float_literal_type {
 								styp = 'f64'
 							}
@@ -2210,7 +2202,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						mut styp := g.base_type(stmt.typ)
 						$if tinyc && x32 && windows {
 							if stmt.typ == ast.int_literal_type {
-								styp = 'int'
+								styp = ast.int_type_name
 							} else if stmt.typ == ast.float_literal_type {
 								styp = 'f64'
 							}
@@ -4953,7 +4945,8 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		} else {
 			g.writeln('__sort_ptr(_arr_${mtxs}, _isrlck_${mtxs}, ${node.lockeds.len});')
 		}
-		g.writeln2('for (int ${mtxs}=0; ${mtxs}<${node.lockeds.len}; ${mtxs}++) {', '\tif (${mtxs} && _arr_${mtxs}[${mtxs}] == _arr_${mtxs}[${mtxs}-1]) continue;')
+		g.writeln2('for (${ast.int_type_name} ${mtxs}=0; ${mtxs}<${node.lockeds.len}; ${mtxs}++) {',
+			'\tif (${mtxs} && _arr_${mtxs}[${mtxs}] == _arr_${mtxs}[${mtxs}-1]) continue;')
 		g.writeln2('\tif (_isrlck_${mtxs}[${mtxs}])', '\t\tsync__RwMutex_rlock((sync__RwMutex*)_arr_${mtxs}[${mtxs}]);')
 		g.writeln2('\telse', '\t\tsync__RwMutex_lock((sync__RwMutex*)_arr_${mtxs}[${mtxs}]);')
 		g.writeln('}')
@@ -4983,7 +4976,7 @@ fn (mut g Gen) unlock_locks() {
 		g.expr(g.cur_lock.lockeds[0])
 		g.write('->mtx);')
 	} else {
-		g.writeln('for (int ${g.mtxs}=${g.cur_lock.lockeds.len - 1}; ${g.mtxs}>=0; ${g.mtxs}--) {')
+		g.writeln('for (${ast.int_type_name} ${g.mtxs}=${g.cur_lock.lockeds.len - 1}; ${g.mtxs}>=0; ${g.mtxs}--) {')
 		g.writeln('\tif (${g.mtxs} && _arr_${g.mtxs}[${g.mtxs}] == _arr_${g.mtxs}[${g.mtxs}-1]) continue;')
 		g.writeln('\tif (_isrlck_${g.mtxs}[${g.mtxs}])')
 		g.writeln('\t\tsync__RwMutex_runlock((sync__RwMutex*)_arr_${g.mtxs}[${g.mtxs}]);')
@@ -8518,4 +8511,12 @@ fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 		}
 	}
 	return ''
+}
+
+// vint2int rename `_vint_t` to `int`
+fn vint2int(name string) string {
+	if name == ast.int_type_name {
+		return 'int'
+	}
+	return name
 }

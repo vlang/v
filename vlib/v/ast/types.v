@@ -1233,7 +1233,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 		}
 		.int {
 			$if new_int ? {
-				$if arm64 || amd64 {
+				$if arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64 {
 					size = 8
 					align = 8
 				} $else {

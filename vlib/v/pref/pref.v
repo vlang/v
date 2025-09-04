@@ -252,8 +252,6 @@ pub mut:
 	warn_about_allocs bool // -warn-about-allocs warngs about every single allocation, e.g. 'hi $name'. Mostly for low level development where manual memory management is used.
 	// game prototyping flags:
 	div_by_zero_is_zero bool // -div-by-zero-is-zero makes so `x / 0 == 0`, i.e. eliminates the division by zero panics/segfaults
-	// temp
-	// use_64_int bool
 	// forwards compatibility settings:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 	//
@@ -424,9 +422,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
 			}
-			//'-i64' {
-			// res.use_64_int = true
-			//}
 			'-Wimpure-v' {
 				res.warn_impure_v = true
 			}

@@ -1,5 +1,7 @@
 module c
 
+import v.ast
+
 // Note: @@@ here serve as placeholders.
 // They will be replaced with correct strings
 // for each constant, during C code generation.
@@ -17,7 +19,7 @@ struct __shared_map {
 	sync__RwMutex mtx;
 	map val;
 };
-static inline voidptr __dup_shared_map(voidptr src, int sz) {
+static inline voidptr __dup_shared_map(voidptr src, ${ast.int_type_name} sz) {
 	__shared_map* dest = memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
 	return dest;
@@ -27,16 +29,16 @@ struct __shared_array {
 	sync__RwMutex mtx;
 	array val;
 };
-static inline voidptr __dup_shared_array(voidptr src, int sz) {
+static inline voidptr __dup_shared_array(voidptr src, ${ast.int_type_name} sz) {
 	__shared_array* dest = memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
 	return dest;
 }
-static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
-	for (int i=1; i<l; i++) {
+static inline void __sort_ptr(uintptr_t a[], bool b[], ${ast.int_type_name} l) {
+	for (${ast.int_type_name} i=1; i<l; i++) {
 		uintptr_t ins = a[i];
 		bool insb = b[i];
-		int j = i;
+		${ast.int_type_name} j = i;
 		while(j>0 && a[j-1] > ins) {
 			a[j] = a[j-1];
 			b[j] = b[j-1];
@@ -476,9 +478,9 @@ void v_free(voidptr ptr);
 const c_builtin_types = '
 //================================== builtin types ================================*/
 #if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64) || defined(__s390x__) || (defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)) || defined(__loongarch64)
-typedef int64_t vint_t;
+typedef int64_t _vint_t;
 #else
-typedef int32_t vint_t;
+typedef int32_t _vint_t;
 #endif
 typedef int64_t i64;
 typedef int16_t i16;

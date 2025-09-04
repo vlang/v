@@ -292,7 +292,7 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
-	g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
+	g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
 
 	if node.updated_columns.len > 0 {
 		g.writeln('.fields = new_array_from_c_array(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string),')
@@ -481,6 +481,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			} else if sym.kind == .enum {
 				typ = g.table.sym(final_field_typ).cname
 			}
+			typ = vint2int(typ)
 			var := '${node.object_var}${member_access_type}${c_name(field.name)}'
 			if final_field_typ.has_flag(.option) {
 				g.writeln('${var}.state == 2? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${var}.data)),')
@@ -499,11 +500,11 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	}
 	g.indent--
 	g.writeln('),')
-	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
 	if auto_fields.len > 0 {
 		g.writeln('.auto_fields = new_array_from_c_array(${auto_fields.len}, ${auto_fields.len}, sizeof(${ast.int_type_name}),')
 		g.indent++
-		g.write('_MOV((int[${auto_fields.len}]){')
+		g.write('_MOV((${ast.int_type_name}[${auto_fields.len}]){')
 		for i in auto_fields {
 			g.write(' ${i},')
 		}
@@ -533,6 +534,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if typ == 'time__Time' {
 				typ = 'time'
 			}
+			typ = vint2int(typ)
 			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var}${member_access_type}${c_name(primary_field.name)});')
 		}
 		for i, mut arr in arrs {
@@ -540,9 +542,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			ctyp := g.styp(arr.table_expr.typ)
 			is_option := opt_fields.contains(i)
 			if is_option {
-				g.writeln('for (int ${idx} = 0; ${node.object_var}${member_access_type}${arr.object_var}.state != 2 && ${idx} < (*(Array_${ctyp}*)${node.object_var}${member_access_type}${arr.object_var}.data).len; ${idx}++) {')
+				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${node.object_var}${member_access_type}${arr.object_var}.state != 2 && ${idx} < (*(Array_${ctyp}*)${node.object_var}${member_access_type}${arr.object_var}.data).len; ${idx}++) {')
 			} else {
-				g.writeln('for (int ${idx} = 0; ${idx} < ${node.object_var}${member_access_type}${arr.object_var}.len; ${idx}++) {')
+				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${node.object_var}${member_access_type}${arr.object_var}.len; ${idx}++) {')
 			}
 			g.indent++
 			last_ids := g.new_tmp_var()
@@ -680,6 +682,7 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 		} else if g.table.final_sym(t).kind == .array {
 			typ = g.table.sym(g.table.final_type(t)).cname.to_lower()
 		}
+		typ = vint2int(typ)
 		g.write('orm__${typ}_to_primitive(')
 		if expr is ast.CallExpr {
 			g.call_expr(expr)
@@ -741,10 +744,10 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 
 	g.write('.parentheses = ')
 	if parentheses.len > 0 {
-		g.write('new_array_from_c_array(${parentheses.len}, ${parentheses.len}, sizeof(Array_int), _MOV((Array_int[${parentheses.len}]){')
+		g.write('new_array_from_c_array(${parentheses.len}, ${parentheses.len}, sizeof(Array_${ast.int_type_name}), _MOV((Array_${ast.int_type_name}[${parentheses.len}]){')
 		for par in parentheses {
 			if par.len > 0 {
-				g.write('new_array_from_c_array(${par.len}, ${par.len}, sizeof(${ast.int_type_name}), _MOV((int[${par.len}]){')
+				g.write('new_array_from_c_array(${par.len}, ${par.len}, sizeof(${ast.int_type_name}), _MOV((${ast.int_type_name}[${par.len}]){')
 				for val in par {
 					g.write('${val},')
 				}
@@ -755,7 +758,7 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 		}
 		g.write('}))')
 	} else {
-		g.write('__new_array_with_default_noscan(0, 0, sizeof(Array_int), 0)')
+		g.write('__new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0)')
 	}
 	g.writeln(',')
 
@@ -1006,7 +1009,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.indent++
 
 	if types.len > 0 {
-		g.write('_MOV((int[${types.len}]){')
+		g.write('_MOV((${ast.int_type_name}[${types.len}]){')
 		for typ in types {
 			g.write(' ${typ},')
 		}
@@ -1032,7 +1035,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
-	g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
+	g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
 	if exprs.len > 0 {
 		g.write('.data = new_array_from_c_array(${exprs.len}, ${exprs.len}, sizeof(orm__Primitive),')
 		g.write(' _MOV((orm__Primitive[${exprs.len}]){')
@@ -1054,7 +1057,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 		g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 		g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
-		g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
+		g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
 		g.writeln('.data = __new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0)')
 		g.indent--
 		g.writeln('}')
@@ -1077,11 +1080,11 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln('Array_Array_orm__Primitive ${select_unwrapped_result_var_name} = (*(Array_Array_orm__Primitive*)${select_result_var_name}.data);')
 
 	if node.is_count {
-		g.writeln('*(${unwrapped_c_typ}*) ${result_var}.data = *((*(orm__Primitive*) array_get((*(Array_orm__Primitive*)array_get(${select_unwrapped_result_var_name}, 0)), 0))._int);')
+		g.writeln('*(${unwrapped_c_typ}*) ${result_var}.data = *((*(orm__Primitive*) array_get((*(Array_orm__Primitive*)array_get(${select_unwrapped_result_var_name}, 0)), 0))._${ast.int_type_name});')
 	} else {
 		tmp := g.new_tmp_var()
 		idx := g.new_tmp_var()
-		g.writeln('int ${idx} = 0;')
+		g.writeln('${ast.int_type_name} ${idx} = 0;')
 		mut typ_str := ''
 		if node.is_array {
 			info := g.table.sym(node.typ).array_info()

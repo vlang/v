@@ -292,7 +292,7 @@ fn (mut g Gen) const_decl_simple_define(mod string, name string, val string) {
 	if g.pref.translated {
 		g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 			mod:   mod
-			def:   'const int ${x} = ${val};'
+			def:   'const ${ast.int_type_name} ${x} = ${val};'
 			order: -1
 		}
 	} else {

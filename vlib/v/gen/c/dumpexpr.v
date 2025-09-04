@@ -177,14 +177,15 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		dump_already_generated_fns[dump_fn_name] = true
 
-		dump_fn_defs.writeln('${str_dumparg_ret_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg);')
-		if g.writeln_fn_header('${str_dumparg_ret_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg)', mut
+		dump_fn_defs.writeln('${str_dumparg_ret_type} ${dump_fn_name}(string fpath, ${ast.int_type_name} line, string sexpr, ${str_dumparg_type} dump_arg);')
+		if g.writeln_fn_header('${str_dumparg_ret_type} ${dump_fn_name}(string fpath, ${ast.int_type_name} line, string sexpr, ${str_dumparg_type} dump_arg)', mut
 			dump_fns)
 		{
 			continue
 		}
 		mut surrounder := util.new_surrounder(3)
-		surrounder.add('\tstring sline = int_str(line);', '\tstring_free(&sline);')
+		int_str := g.get_str_fn(ast.int_type)
+		surrounder.add('\tstring sline = ${int_str}(line);', '\tstring_free(&sline);')
 		if dump_sym.kind == .function && !is_option {
 			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tstring_free(&value);')
 		} else if dump_sym.kind == .none {

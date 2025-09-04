@@ -331,8 +331,16 @@ pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
 			right := e.comptime_cond(cond.right)
 			return e.infix_expr(left, right, cond.op, ast.bool_type) as bool
 		}
+		ast.PostfixExpr {
+			// unsupport
+			return false
+		}
+		ast.NodeError {
+			// unsupport
+			return false
+		}
 		else {
-			e.error('unsupported expression')
+			e.error('unsupported expression ${cond}')
 		}
 	}
 	return false

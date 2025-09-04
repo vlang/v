@@ -16,23 +16,9 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 	}
 	mut convertor := ''
 	mut typename_ := ''
-	mut got_int_str := false
 	if sym.parent_idx in ast.integer_type_idxs {
 		convertor = 'int'
 		typename_ = 'int'
-		$if new_int ? {
-			if str_fn_name == 'i64_str' {
-				if got_int_str {
-					return
-				} else {
-					got_int_str = true
-				}
-			}
-
-			// if sym.parent_idx == ast.int_type_idx {
-			// return
-			//}
-		}
 	} else if sym.parent_idx == ast.f32_type_idx {
 		convertor = 'float'
 		typename_ = 'f32'
@@ -199,8 +185,8 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 
 	g.definitions.writeln('string ${str_fn_name}(${styp} it);')
 	g.auto_str_funcs.writeln('string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0); }')
-	g.definitions.writeln('string indent_${str_fn_name}(${styp} it, int indent_count);')
-	g.auto_str_funcs.writeln('string indent_${str_fn_name}(${styp} it, int indent_count) {')
+	g.definitions.writeln('string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count);')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
 	deref := if typ.is_ptr() && !typ.has_flag(.option_mut_param_t) {
@@ -252,8 +238,8 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 
 	g.definitions.writeln('string ${str_fn_name}(${styp} it);')
 	g.auto_str_funcs.writeln('string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0); }')
-	g.definitions.writeln('string indent_${str_fn_name}(${styp} it, int indent_count);')
-	g.auto_str_funcs.writeln('string indent_${str_fn_name}(${styp} it, int indent_count) {')
+	g.definitions.writeln('string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count);')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (!it.is_error) {')
 	if sym.kind == .string {
@@ -289,8 +275,8 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 
 	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${arg_def});')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0); }')
-	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${arg_def}, int indent_count);')
-	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${arg_def}, int indent_count) {')
+	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${arg_def}, ${ast.int_type_name} indent_count);')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${arg_def}, ${ast.int_type_name} indent_count) {')
 	old := g.reset_tmp_count()
 	defer { g.tmp_count = old }
 	g.auto_str_funcs.writeln('\tstring indents = string_repeat(_S("    "), indent_count);')
@@ -370,7 +356,7 @@ fn (mut g Gen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string) 
 	if info.is_flag {
 		clean_name := util.strip_main_name(styp.replace('__', '.'))
 		g.auto_str_funcs.writeln('\tstring ret = _S("${clean_name}{");')
-		g.auto_str_funcs.writeln('\tint first = 1;')
+		g.auto_str_funcs.writeln('\t${ast.int_type_name} first = 1;')
 		g.auto_str_funcs.writeln('\tu64 zit = (u64)it;')
 		for i, val in info.vals {
 			mask := u64(1) << i
@@ -410,10 +396,10 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 	// _str() functions should have a single argument, the indenting ones take 2:
 	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} x);')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} x) { return indent_${str_fn_name}(x, 0); }')
-	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, int indent_count);')
+	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, ${ast.int_type_name} indent_count);')
 	mut fn_builder := strings.new_builder(512)
 	clean_interface_v_type_name := util.strip_main_name(typ_str)
-	fn_builder.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, int indent_count) { /* gen_str_for_interface */')
+	fn_builder.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, ${ast.int_type_name} indent_count) { /* gen_str_for_interface */')
 	for typ in info.types {
 		sub_sym := g.table.sym(ast.mktyp(typ))
 		if g.pref.skip_unused && sub_sym.idx !in g.table.used_features.used_syms {
@@ -470,9 +456,9 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, typ_str
 	// _str() functions should have a single argument, the indenting ones take 2:
 	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} x);')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} x) { return indent_${str_fn_name}(x, 0); }')
-	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, int indent_count);')
+	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, ${ast.int_type_name} indent_count);')
 	mut fn_builder := strings.new_builder(512)
-	fn_builder.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, int indent_count) {')
+	fn_builder.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, ${ast.int_type_name} indent_count) {')
 	mut clean_sum_type_v_type_name := ''
 	if info.is_anon {
 		variant_names := info.variants.map(util.strip_main_name(g.table.sym(it).name))
@@ -629,11 +615,11 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 
 	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} a);')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} a) { return indent_${str_fn_name}(a, 0);}')
-	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} a, int indent_count);')
-	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} a, int indent_count) {')
+	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} a, ${ast.int_type_name} indent_count);')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} a, ${ast.int_type_name} indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(2 + a.len * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("["));')
-	g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; ++i) {')
+	g.auto_str_funcs.writeln('\tfor (${ast.int_type_name} i = 0; i < a.len; ++i) {')
 	if sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}();')
 	} else {
@@ -736,11 +722,11 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 
 	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${def_arg});')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${def_arg}) { return indent_${str_fn_name}(a, 0);}')
-	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${def_arg}, int indent_count);')
-	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${def_arg}, int indent_count) {')
+	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${def_arg}, ${ast.int_type_name} indent_count);')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${def_arg}, ${ast.int_type_name} indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(2 + ${info.size} * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("["));')
-	g.auto_str_funcs.writeln('\tfor (int i = 0; i < ${info.size}; ++i) {')
+	g.auto_str_funcs.writeln('\tfor (${ast.int_type_name} i = 0; i < ${info.size}; ++i) {')
 	if sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}();')
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, x);')
@@ -832,12 +818,12 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 
 	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} m);')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} m) { return indent_${str_fn_name}(m, 0);}')
-	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} m, int indent_count);')
-	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} m, int indent_count) { /* gen_str_for_map */')
+	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} m, ${ast.int_type_name} indent_count);')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} m, ${ast.int_type_name} indent_count) { /* gen_str_for_map */')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(2 + m.key_values.len * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("{"));')
 	g.auto_str_funcs.writeln('\tbool is_first = true;')
-	g.auto_str_funcs.writeln('\tfor (int i = 0; i < m.key_values.len; ++i) {')
+	g.auto_str_funcs.writeln('\tfor (${ast.int_type_name} i = 0; i < m.key_values.len; ++i) {')
 	g.auto_str_funcs.writeln('\t\tif (!DenseArray_has_index(&m.key_values, i)) { continue; }')
 	g.auto_str_funcs.writeln('\t\telse if (!is_first) { strings__Builder_write_string(&sb, _S(", ")); }')
 
@@ -967,12 +953,12 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 	arg_def := if is_c_struct { '${styp}* it' } else { '${styp} it' }
 	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${arg_def});')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0);}')
-	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${arg_def}, int indent_count);')
+	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${arg_def}, ${ast.int_type_name} indent_count);')
 	mut fn_builder := strings.new_builder(512)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('string indent_${str_fn_name}(${arg_def}, int indent_count) {')
+	fn_builder.writeln('string indent_${str_fn_name}(${arg_def}, ${ast.int_type_name} indent_count) {')
 	old := g.reset_tmp_count()
 	defer { g.tmp_count = old }
 	clean_struct_v_type_name := if info.is_anon { 'struct ' } else { util.strip_main_name(typ_str) }
@@ -1327,7 +1313,7 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string, mod_enum_name string,
 	for field_val in enum_field_vals {
 		fn_builder.writeln('\tarray_push((array*)&field_vals, _MOV((i64[]){ ${field_val} }));')
 	}
-	fn_builder.writeln('\tfor (int i = 0; i < ${enum_field_names.len}; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${enum_field_names.len}; ++i) {')
 	fn_builder.writeln('\t\tif (fast_string_eq(name, (*(string*)array_get(field_names, i)))) {')
 	fn_builder.writeln('\t\t\texists = true;')
 	fn_builder.writeln('\t\t\tinx = i;')

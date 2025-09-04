@@ -42,8 +42,8 @@ pub const max_i16 = i16(32767)
 pub const min_i32 = i32(-2147483648)
 pub const max_i32 = i32(2147483647)
 
-pub const min_int = int(-2147483648)
-pub const max_int = int(2147483647)
+pub const min_int = $if new_int ? { min_i64 } $else { min_i32 }
+pub const max_int = $if new_int ? { max_i64 } $else { max_i32 }
 
 // -9223372036854775808 is wrong, because C compilers parse literal values
 // without sign first, and 9223372036854775808 overflows i64, hence the
