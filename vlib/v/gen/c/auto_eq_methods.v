@@ -214,21 +214,22 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 			field_type := g.unwrap(field.typ)
 			field_name := c_name(field.name)
 
-			left_arg := g.read_field(left_type, field_name, 'a')
-			right_arg := g.read_field(left_type, field_name, 'b')
+			mut left_arg := g.read_field(left_type, field_name, 'a')
+			mut right_arg := g.read_field(left_type, field_name, 'b')
 
 			if field.typ.has_flag(.option) {
-				fn_builder.write_string('((${left_arg}.state == ${right_arg}.state && ${right_arg}.state == 2) || ')
+				fn_builder.write_string('((${left_arg}.state == ${right_arg}.state && ${right_arg}.state == 2) || (${left_arg}.state != 2 && ${right_arg}.state != 2 && (')
 			}
 			if field_type.sym.kind == .string {
 				if field.typ.has_flag(.option) {
-					left_arg_opt := g.read_opt_field(left_type, field_name, 'a', field.typ)
-					right_arg_opt := g.read_opt_field(left_type, field_name, 'b', field.typ)
-					fn_builder.write_string('(((${left_arg_opt}).len == (${right_arg_opt}).len && (${left_arg_opt}).len == 0) || fast_string_eq(${left_arg_opt}, ${right_arg_opt}))')
-				} else if field.typ.is_ptr() {
-					fn_builder.write_string('((${left_arg}->len == ${right_arg}->len && ${left_arg}->len != 0) || fast_string_eq(*(${left_arg}), *(${right_arg})))')
+					left_arg = g.read_opt_field(left_type, field_name, 'a', field.typ)
+					right_arg = g.read_opt_field(left_type, field_name, 'b', field.typ)
+				}
+
+				if field.typ.is_ptr() {
+					fn_builder.write_string('(${left_arg} == ${right_arg} || (${left_arg} != 0 &&  ${right_arg} != 0 && ((${left_arg})->len == (${right_arg})->len && (${left_arg})->len == 0) || fast_string_eq(*(${left_arg}), *(${right_arg}))))')
 				} else {
-					fn_builder.write_string('((${left_arg}.len == ${right_arg}.len && ${left_arg}.len != 0) || fast_string_eq(${left_arg}, ${right_arg}))')
+					fn_builder.write_string('((${left_arg}.len == ${right_arg}.len && ${left_arg}.len == 0) || fast_string_eq(${left_arg}, ${right_arg}))')
 				}
 			} else if field_type.sym.kind == .sum_type && !field.typ.is_ptr() {
 				eq_fn := g.gen_sumtype_equality_fn(field.typ)
@@ -260,7 +261,7 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 					fn_builder.write_string('${eq_fn}_alias_eq(${left_arg}, ${right_arg})')
 				}
 			} else if field_type.sym.kind == .function && !field.typ.has_flag(.option) {
-				fn_builder.write_string('*((voidptr*)(${left_arg})) == *((voidptr*)(${right_arg}))')
+				fn_builder.write_string('((voidptr*)(${left_arg})) == ((voidptr*)(${right_arg}))')
 			} else if field_type.sym.kind == .interface
 				&& (!field.typ.has_flag(.option) || !field.typ.is_ptr()) {
 				ptr := if field.typ.is_ptr() { '*'.repeat(field.typ.nr_muls()) } else { '' }
@@ -278,7 +279,7 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 				fn_builder.write_string('${left_arg} == ${right_arg}')
 			}
 			if field.typ.has_flag(.option) {
-				fn_builder.write_string(')')
+				fn_builder.write_string(')))')
 			}
 		}
 	} else {
