@@ -156,7 +156,7 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 		return Time{
 			...res
 			is_local: true
-			unix: 0
+			unix:     0
 		}
 	}
 

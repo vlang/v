@@ -417,7 +417,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 			if variant_sym.kind == .enum {
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name('u64')}(*${var_data}${field_op}_${variant_typ}));')
 			} else if variant_sym.name == 'time.Time' {
-				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name('i64')}(${var_data}${field_op}_${variant_typ}->__v_unix));')
+				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name('i64')}(time__Time_unix(*${var_data}${field_op}_${variant_typ})));')
 			} else {
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ}));')
 			}
@@ -442,7 +442,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				}
 			} else if variant_sym.name == 'time.Time' {
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
-				enc.writeln('\t\tcJSON_AddItemToObject(o, "value", ${js_enc_name('i64')}(${var_data}${field_op}_${variant_typ}->__v_unix));')
+				enc.writeln('\t\tcJSON_AddItemToObject(o, "value", ${js_enc_name('i64')}(time__Time_unix(*${var_data}${field_op}_${variant_typ})));')
 			} else {
 				enc.writeln('\t\tcJSON_free(o);')
 				enc.writeln('\t\to = ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ});')
@@ -954,9 +954,9 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				// time struct requires special treatment
 				// it has to be encoded as a unix timestamp number
 				if is_option {
-					enc.writeln('${indent}cJSON_AddItemToObject(o, "${name}", json__encode_u64((*(${g.base_type(field.typ)}*)(${prefix_enc}${op}${c_name(field.name)}.data)).__v_unix));')
+					enc.writeln('${indent}cJSON_AddItemToObject(o, "${name}", json__encode_u64(time__Time_unix(*(${g.base_type(field.typ)}*)(${prefix_enc}${op}${c_name(field.name)}.data))));')
 				} else {
-					enc.writeln('${indent}cJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}.__v_unix));')
+					enc.writeln('${indent}cJSON_AddItemToObject(o, "${name}", json__encode_u64(time__Time_unix(${prefix_enc}${op}${c_name(field.name)})));')
 				}
 			} else {
 				if !field.typ.is_any_kind_of_pointer() {
