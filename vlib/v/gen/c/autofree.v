@@ -242,8 +242,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 			af.writeln('\t\t${free_fn_name}((${base_type}*)${c_name(v.name)}.data); // autofreed option var ${g.cur_mod.name} ${g.is_builtin_mod}')
 			af.writeln('\t}')
 		} else if v.typ.idx() != ast.u8_type_idx {
-			var_name := g.transformed_var_names[v.name] or { v.name }
-			af.writeln('\t${free_fn_name}(&${c_name(var_name)}); // autofreed var ${g.cur_mod.name} ${g.is_builtin_mod}')
+			af.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var ${g.cur_mod.name} ${g.is_builtin_mod}')
 		}
 	}
 	g.autofree_scope_stmts << af.str()
