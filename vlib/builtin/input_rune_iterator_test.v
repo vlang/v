@@ -23,7 +23,7 @@ const expected = '> i: 0000 | r: `П`
 
 fn test_input_rune_iterator() {
 	os.chdir(@VROOT)!
-	cmd := '${os.quoted_path(vexe)} -e \'for i, r in input_rune_iterator() { println("> i: \${i:04} | r: `\${r}`") }\' < vlib/v/tests/runes.txt'
+	cmd := '${os.quoted_path(vexe)} -e \'for i, r in input_rune_iterator() { println("> i: \${i:04} | r: `\${r}`") }\' < ${os.quoted_path('vlib/v/tests/runes.txt')}'
 	eprintln('cmd: ${cmd}')
 	res := os.execute(cmd)
 	dump(res)
