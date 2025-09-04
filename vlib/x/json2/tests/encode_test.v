@@ -84,10 +84,10 @@ struct PointerFields {
 type PointerFieldsAlias = PointerFields
 
 struct OmitFields {
-	a ?bool   = none   @[omitempty]
-	b string  = ''  @[omitempty]
-	c int     = 0     @[omitempty]
-	d f64     = 0.0     @[omitempty]
+	a ?bool   @[omitempty]
+	b string  @[omitempty]
+	c int     @[omitempty]
+	d f64     @[omitempty]
 	e ?string = '' @[omitempty]
 	f ?int    = 0    @[omitempty]
 	g ?f64    = 0.0    @[omitempty]
