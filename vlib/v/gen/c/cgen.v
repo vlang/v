@@ -258,6 +258,7 @@ mut:
 	autofree_methods       map[ast.Type]string
 	generated_free_methods map[ast.Type]bool
 	autofree_scope_stmts   []string
+	transformed_var_names  map[string]string
 	use_segfault_handler   bool = true
 	test_function_names    []string
 	/////////
@@ -5261,6 +5262,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		return
 	}
 	mut name := if node.kind == .function { c_fn_name(node.name) } else { c_name(node.name) }
+	name = g.transformed_var_names[node.name] or { name }
 	if node.kind == .constant {
 		if g.pref.translated && !g.is_builtin_mod
 			&& !util.module_is_builtin(node.name.all_before_last('.')) {
