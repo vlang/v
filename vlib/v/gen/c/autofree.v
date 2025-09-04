@@ -98,6 +98,21 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 				if obj.expr is ast.IfGuardExpr {
 					continue
 				}
+				if obj.expr is ast.UnsafeExpr && obj.expr.expr is ast.CallExpr
+					&& (obj.expr.expr as ast.CallExpr).is_method {
+					if left_var := scope.objects[obj.expr.expr.left.str()] {
+						if func := g.table.find_method(g.table.final_sym(left_var.typ),
+							obj.expr.expr.name)
+						{
+							if func.attrs.contains('reused') && left_var is ast.Var
+								&& left_var.expr is ast.CastExpr {
+								if left_var.expr.expr.is_literal() {
+									continue
+								}
+							}
+						}
+					}
+				}
 				g.autofree_variable(obj)
 			}
 			else {}
