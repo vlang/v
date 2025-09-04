@@ -124,9 +124,10 @@ pub:
 	typ           int    // the internal TypeID of the field f,
 	unaliased_typ int    // if f's type was an alias of int, this will be TypeID(int)
 
-	attrs  []string // the attributes of the field f
-	is_pub bool     // f is in a `pub:` section
-	is_mut bool     // f is in a `mut:` section
+	attrs    []string // the attributes of the field f
+	is_pub   bool     // f is in a `pub:` section
+	is_mut   bool     // f is in a `mut:` section
+	is_embed bool     // f is a embedded struct
 
 	is_shared bool // `f shared Abc`
 	is_atomic bool // `f atomic int` , TODO

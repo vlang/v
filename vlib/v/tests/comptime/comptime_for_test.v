@@ -1,4 +1,5 @@
 struct App {
+	Inner
 	a string
 	b string
 mut:
@@ -11,6 +12,8 @@ pub mut:
 	g string
 	h u8
 }
+
+struct Inner {}
 
 @['foo/bar/three']
 fn (mut app App) run() {
@@ -85,13 +88,16 @@ fn test_comptime_for_fields() {
 			assert field.name in ['d', 'e']
 		}
 		if field.is_mut {
-			assert field.name in ['c', 'd', 'g', 'h']
+			assert field.name in ['c', 'd', 'g', 'h', 'Inner']
 		}
 		if field.is_pub {
-			assert field.name in ['e', 'f', 'g', 'h']
+			assert field.name in ['e', 'f', 'g', 'h', 'Inner']
 		}
 		if field.is_pub && field.is_mut {
-			assert field.name in ['g', 'h']
+			assert field.name in ['g', 'h', 'Inner']
+		}
+		if field.is_embed {
+			assert field.name == 'Inner'
 		}
 		if field.name == 'f' {
 			assert sizeof(field) == 8

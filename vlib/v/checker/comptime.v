@@ -1398,7 +1398,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, mut sb strings.Builder) (
 		}
 		ast.SelectorExpr {
 			if c.comptime.comptime_for_field_var != '' && cond.expr is ast.Ident {
-				if (cond.expr as ast.Ident).name == c.comptime.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum'] {
+				if (cond.expr as ast.Ident).name == c.comptime.comptime_for_field_var && cond.field_name in ['is_mut', 'is_pub', 'is_embed', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum'] {
 					is_true = c.type_resolver.get_comptime_selector_bool_field(cond.field_name)
 					sb.write_string('${is_true}')
 					return is_true, true
