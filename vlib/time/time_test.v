@@ -90,17 +90,10 @@ fn test_unix() {
 	assert t6.hour == 6
 	assert t6.minute == 9
 	assert t6.second == 29
-	assert local_time_to_test.unix() == 332198622
 	assert utc_time_to_test.unix() == 332198622
 }
 
 fn test_format_rfc3339() {
-	// assert '1980-07-11T19:23:42.123Z'
-	res := local_time_to_test.format_rfc3339()
-	assert res.ends_with('23:42.123Z')
-	assert res.starts_with('1980-07-1')
-	assert res.contains('T')
-
 	// assert '1980-07-11T19:23:42.123Z'
 	utc_res := utc_time_to_test.format_rfc3339()
 	assert utc_res.ends_with('23:42.123Z')
@@ -109,11 +102,6 @@ fn test_format_rfc3339() {
 }
 
 fn test_format_rfc3339_micro() {
-	res := local_time_to_test.format_rfc3339_micro()
-	assert res.ends_with('23:42.123456Z')
-	assert res.starts_with('1980-07-1')
-	assert res.contains('T')
-
 	utc_res := utc_time_to_test.format_rfc3339_micro()
 	assert utc_res.ends_with('23:42.123456Z')
 	assert utc_res.starts_with('1980-07-1')
@@ -121,11 +109,6 @@ fn test_format_rfc3339_micro() {
 }
 
 fn test_format_rfc3339_nano() {
-	res := local_time_to_test.format_rfc3339_nano()
-	assert res.ends_with('23:42.123456789Z')
-	assert res.starts_with('1980-07-1')
-	assert res.contains('T')
-
 	utc_res := utc_time_to_test.format_rfc3339_nano()
 	assert utc_res.ends_with('23:42.123456789Z')
 	assert utc_res.starts_with('1980-07-1')

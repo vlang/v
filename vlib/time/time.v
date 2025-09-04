@@ -106,6 +106,12 @@ pub fn (t Time) smonth() string {
 // unix returns the UNIX time with second resolution.
 @[inline]
 pub fn (t Time) unix() i64 {
+	return time_with_unix(t.local_to_utc()).unix
+}
+
+// local_unix returns the UNIX local time with second resolution.
+@[inline]
+pub fn (t Time) local_unix() i64 {
 	return time_with_unix(t).unix
 }
 
@@ -135,14 +141,26 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
 	mut increased_time_nanosecond := i64(t.nanosecond) + duration_in_nanosecond.nanoseconds()
 	// increased_time_second
-	mut increased_time_second := t.unix() + (increased_time_nanosecond / second)
+	mut increased_time_second := t.local_unix() + (increased_time_nanosecond / second)
 	increased_time_nanosecond = increased_time_nanosecond % second
 	if increased_time_nanosecond < 0 {
 		increased_time_second--
 		increased_time_nanosecond += second
 	}
 	res := unix_nanosecond(increased_time_second, int(increased_time_nanosecond))
-	return if t.is_local { res.as_local() } else { res }
+
+	if t.is_local {
+		// we need to reset unix to 0, because we don't know the offset
+		// and we can't calculate it without it without causing infinite recursion
+		// so unfortunately we need to recalculate unix next time it is needed
+		return Time{
+			...res
+			is_local: true
+			unix:     0
+		}
+	}
+
+	return res
 }
 
 // add_seconds returns a new time struct with an added number of seconds.
@@ -177,7 +195,7 @@ pub fn since(t Time) Duration {
 // ```
 pub fn (t Time) relative() string {
 	znow := now()
-	mut secs := znow.unix - t.unix()
+	mut secs := znow.unix() - t.unix()
 	mut prefix := ''
 	mut suffix := ''
 	if secs < 0 {
@@ -239,7 +257,7 @@ pub fn (t Time) relative() string {
 // ```
 pub fn (t Time) relative_short() string {
 	znow := now()
-	mut secs := znow.unix - t.unix()
+	mut secs := znow.unix() - t.unix()
 	mut prefix := ''
 	mut suffix := ''
 	if secs < 0 {
@@ -364,9 +382,9 @@ pub fn days_in_month(month int, year int) !int {
 	return res
 }
 
-// debug returns detailed breakdown of time (`Time{ year: YYYY month: MM day: dd hour: HH: minute: mm second: ss nanosecond: nanos unix: unix }`).
+// debug returns detailed breakdown of time (`Time{ year: YYYY month: MM day: dd hour: HH: minute: mm second: ss nanosecond: nanos unix: unix is_local: false }`).
 pub fn (t Time) debug() string {
-	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} nanosecond: ${t.nanosecond:09} unix: ${t.unix:07} }'
+	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} nanosecond: ${t.nanosecond:09} unix: ${t.unix:07} is_local: ${t.is_local} }'
 }
 
 // offset returns time zone UTC offset in seconds.
