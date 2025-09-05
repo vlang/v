@@ -715,7 +715,7 @@ pub fn executable() string {
 	}
 	$if macos {
 		pid := C.getpid()
-		ret := proc_pidpath(pid, &result[0], max_path_len)
+		ret := C.proc_pidpath(pid, &result[0], max_path_len)
 		if ret <= 0 {
 			eprintln('os.executable() failed at calling proc_pidpath with pid: ${pid} . proc_pidpath returned ${ret} ')
 			return executable_fallback()

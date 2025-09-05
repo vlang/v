@@ -54,7 +54,7 @@ fn C.isdigit(c int) bool
 fn C.popen(c &char, t &char) voidptr
 
 // <libproc.h>
-pub fn proc_pidpath(int, voidptr, int) int
+fn C.proc_pidpath(int, voidptr, int) int
 
 fn C.realpath(const_path &char, resolved_path &char) &char
 
