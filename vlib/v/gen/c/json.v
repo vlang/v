@@ -119,6 +119,20 @@ ${dec_fn_dec} {
 		}
 	}
 ')
+
+		if utyp.has_flag(.option) {
+			none_str := g.expr_string(ast.None{})
+			dec.writeln('\tif (cJSON_IsNull(root)) {')
+			dec.writeln('\t${result_name}_${ret_styp} ret;')
+			dec.writeln('\t_result_ok(&res, (${result_name}*)&ret, sizeof(res));')
+			dec.writeln('\treturn ret;')
+			dec.writeln('\t}')
+
+			base_type := utyp.clear_flag(.option)
+			base_type_str := g.styp(base_type)
+			dec.writeln('\t_option_ok(&(${base_type_str}[]){ ${g.type_default(base_type)} }, (${styp}*)&res, sizeof(${base_type_str}));\n')
+		}
+
 		extern_str := if g.pref.parallel_cc { 'extern ' } else { '' }
 		g.json_forward_decls.writeln('${extern_str}${dec_fn_dec};')
 		// Codegen encoder
