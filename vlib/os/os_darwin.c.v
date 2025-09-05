@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module os
 
-#include <libproc.h>
-
 pub const sys_write = 4
 pub const sys_open = 5
 pub const sys_close = 6

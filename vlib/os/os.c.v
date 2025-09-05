@@ -5,6 +5,10 @@ import strings
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
+$if macos {
+	#include <libproc.h>
+}
+
 $if freebsd || openbsd {
 	#include <sys/sysctl.h>
 }
