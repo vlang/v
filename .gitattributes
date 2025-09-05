@@ -8,3 +8,4 @@ v.mod linguist-language=V
 .vdocignore linguist-language=ignore
 
 Dockerfile.* linguist-language=Dockerfile
+vlib/v/tests/runes.txt binary
