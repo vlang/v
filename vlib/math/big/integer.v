@@ -393,8 +393,8 @@ pub fn (multiplicand Integer) * (multiplier Integer) Integer {
 //
 // DO NOT use this method if the divisor has any chance of being 0.
 fn (dividend Integer) div_mod_internal(divisor Integer) (Integer, Integer) {
-	mut q := []u64{cap: int_max(1, dividend.digits.len - divisor.digits.len + 1)}
-	mut r := []u64{cap: dividend.digits.len}
+	mut q := []u64{len: int_max(1, dividend.digits.len - divisor.digits.len + 1)}
+	mut r := []u64{len: dividend.digits.len}
 	mut q_signum := 0
 	mut r_signum := 0
 
