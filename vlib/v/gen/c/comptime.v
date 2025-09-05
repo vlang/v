@@ -740,6 +740,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.unaliased_typ = ${int(unaliased_styp.idx())};\t// ${g.table.type_to_str(unaliased_styp)}')
 				g.writeln('\t${node.val_var}.is_pub = ${field.is_pub};')
 				g.writeln('\t${node.val_var}.is_mut = ${field.is_mut};')
+				g.writeln('\t${node.val_var}.is_embed = ${field.is_embed};')
 
 				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
 				g.writeln('\t${node.val_var}.is_atomic = ${field.typ.has_flag(.atomic_f)};')
@@ -780,7 +781,12 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					if g.pref.translated && node.typ.is_number() {
 						g.writeln('_const_main__${val};')
 					} else {
-						g.writeln('${g.styp(node.typ)}__${val};')
+						node_sym := g.table.sym(node.typ)
+						if node_sym.info is ast.Alias {
+							g.writeln('${g.styp(node_sym.info.parent_type)}__${val};')
+						} else {
+							g.writeln('${g.styp(node.typ)}__${val};')
+						}
 					}
 					enum_attrs := sym.info.attrs[val]
 					if enum_attrs.len == 0 {

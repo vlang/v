@@ -393,7 +393,9 @@ fn test_orm() {
 	// Note: usually updated_time_mod.created != t, because t has
 	// its microseconds set, while the value retrieved from the DB
 	// has them zeroed, because the db field resolution is seconds.
-	assert modules.first().created.format_ss() == t.format_ss()
+	// Note: the database also stores the time in UTC, so the
+	// comparison must be done on the unix timestamp.
+	assert modules.first().created.unix() == t.unix()
 
 	users = sql db {
 		select from User where (name == 'Sam' && is_customer == true) || id == 1
