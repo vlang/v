@@ -337,11 +337,11 @@ fn test_str() {
 	assert sample_data['i32'] or { 0 }.str() == '7'
 	assert sample_data['int'] or { 0 }.str() == '8'
 	assert sample_data['i64'] or { 0 }.str() == '9'
-	assert sample_data['f32'] or { 0 }.str() == '2.299999952316284'
+	assert sample_data['f32'] or { 0 }.str() == '2.3'
 	assert sample_data['f64'] or { 0 }.str() == '1.283'
 	assert sample_data['bool'] or { 0 }.str() == 'false'
 	assert sample_data['str'] or { 0 }.str() == 'test'
 	assert sample_data['null'] or { 0 }.str() == 'null'
 	assert sample_data['arr'] or { 'not lol' }.str() == '["lol"]'
-	assert sample_data.str() == '{"u8":1,"u16":2,"u32":3,"u64":4,"i8":5,"i16":6,"i32":7,"int":8,"i64":9,"f32":2.299999952316284,"f64":1.283,"bool":false,"str":"test","null":null,"arr":["lol"],"obj":{"foo":10}}'
+	assert sample_data.str() == '{"u8":1,"u16":2,"u32":3,"u64":4,"i8":5,"i16":6,"i32":7,"int":8,"i64":9,"f32":2.3,"f64":1.283,"bool":false,"str":"test","null":null,"arr":["lol"],"obj":{"foo":10}}'
 }

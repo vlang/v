@@ -16,6 +16,7 @@ struct OptAnyStruct[T] {
 fn test_values() {
 	assert json.decode[AnyStruct[json2.Any]]('{"val":5}')!.val.int() == 5
 	assert json.decode[OptAnyStruct[json2.Any]]('{}')!.val == none
+	assert json.decode[OptAnyStruct[json2.Any]]('{"val":null}')!.val == none
 	assert json.decode[AnyStruct[[]json2.Any]]('{"val":[5,10]}')!.val.map(it.int()) == [
 		5,
 		10,

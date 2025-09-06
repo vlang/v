@@ -64,12 +64,6 @@ const vls_src_folder = os.join_path(vls_folder, 'src')
 const server_not_found_err = error_with_code('Language server is not installed nor found.',
 	101)
 
-const json_enc = json2.Encoder{
-	newline:              `\n`
-	newline_spaces_count: 2
-	escape_unicode:       false
-}
-
 fn (upd VlsUpdater) check_or_create_vls_folder() ! {
 	if !os.exists(vls_folder) {
 		upd.log('Creating .vls folder...')
@@ -106,22 +100,11 @@ fn (upd VlsUpdater) update_manifest(new_path string, from_source bool, timestamp
 		}
 	}
 
-	mut manifest_file := os.open_file(vls_manifest_path, 'w+')!
-	defer {
-		manifest_file.close()
-	}
-
 	manifest['server_path'] = json2.Any(new_path)
 	manifest['last_updated'] = json2.Any(timestamp.format_ss())
 	manifest['from_source'] = json2.Any(from_source)
 
-	mut buffer := []u8{}
-
-	json_enc.encode_value(manifest, mut buffer)!
-
-	manifest_file.write(buffer)!
-
-	unsafe { buffer.free() }
+	os.write_file(vls_manifest_path, json2.encode(manifest))!
 }
 
 fn (upd VlsUpdater) init_download_prebuilt() ! {
