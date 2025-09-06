@@ -36,7 +36,6 @@ struct User {
 }
 
 fn main() {
-
 	mut app := &App{
 		db: pg.connect(host: 'localhost', user: 'postgres', password: '', dbname: 'postgres')!
 	}
@@ -54,7 +53,7 @@ pub fn (mut app App) register_user(mut ctx Context, name string, password string
 	}
 	user_id := sql app.db {
 		insert new_user into User
-	}!
+	} or { 0 }
 
 	// Generate and insert the token using user ID
 	token := app.auth.add_token(user_id) or { '' }
