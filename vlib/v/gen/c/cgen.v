@@ -4206,11 +4206,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 
 	unwrapped_expr_type := g.unwrap_generic(node.expr_type)
-	sym := if node.expr is ast.Ident {
-		g.table.final_sym(unwrapped_expr_type)
-	} else {
-		g.table.sym(unwrapped_expr_type)
-	}
+	sym := g.table.sym(unwrapped_expr_type)
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 	is_as_cast := node.expr is ast.AsCast
 	if is_as_cast {
@@ -4483,7 +4479,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	// struct embedding
 	mut has_embed := false
-	if sym.info in [ast.Struct, ast.Aggregate] {
+	if sym.info in [ast.Alias, ast.Struct, ast.Aggregate] {
 		if node.generic_from_embed_types.len > 0 && sym.info is ast.Struct {
 			if sym.info.embeds.len > 0 {
 				mut is_find := false
