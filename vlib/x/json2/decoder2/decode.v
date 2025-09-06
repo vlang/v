@@ -38,7 +38,7 @@ struct StructFieldInfo {
 	is_required    bool
 	is_raw         bool
 mut:
-	decoded_with_value_info_node &Node[ValueInfo] = unsafe { nil }
+	is_decoded bool
 }
 
 // Decoder represents a JSON decoder.
@@ -617,7 +617,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 											if current_field_info.value.is_required == false {
 												return decoder.decode_error('This should not happen. Please, file a bug. `skip` field should not be processed here without a `required` attribute')
 											}
-											current_field_info.value.decoded_with_value_info_node = decoder.current_node
+											current_field_info.value.is_decoded = true
 											if decoder.current_node != unsafe { nil } {
 												decoder.current_node = decoder.current_node.next
 											}
@@ -682,7 +682,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 												decoder.decode_value(mut val.$(field.name))!
 											}
 										}
-										current_field_info.value.decoded_with_value_info_node = decoder.current_node
+										current_field_info.value.is_decoded = true
 										break
 									}
 								}
@@ -705,7 +705,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					current_field_info = current_field_info.next
 					continue
 				}
-				if current_field_info.value.decoded_with_value_info_node == unsafe { nil } {
+				if !current_field_info.value.is_decoded {
 					return decoder.decode_error('missing required field `${unsafe {
 						tos(current_field_info.value.field_name_str, current_field_info.value.field_name_len)
 					}}`')
