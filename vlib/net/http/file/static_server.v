@@ -74,7 +74,7 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 	defer {
 		log.info('took: ${sw.elapsed().microseconds():6}µs, status: ${res.status_code}, size: ${res.body.len:9}, url: ${url}')
 	}
-	mut uri_path := url.all_after_first('/').trim_right('/')
+	mut uri_path := url.all_after_first('/').all_before('?').trim_right('/')
 	requested_file_path := os.norm_path(os.real_path(os.join_path_single(h.params.folder,
 		uri_path)))
 	if !requested_file_path.starts_with(h.params.folder) {
