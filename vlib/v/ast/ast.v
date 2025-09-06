@@ -24,13 +24,7 @@ pub const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError',
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-// pub const int_type_name = $if amd64 || arm64 {
-pub const int_type_name = $if new_int ? {
-	//'int'
-	'i64'
-} $else {
-	'int'
-}
+pub const int_type_name = $if new_int ? { '_vint_t' } $else { 'int' }
 
 pub type Expr = NodeError
 	| AnonFn

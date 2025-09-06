@@ -383,7 +383,7 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tfor (int i = 0; i < ${left_len}; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${left_len}; ++i) {')
 	// compare every pair of elements of the two arrays
 	if elem.sym.kind == .string {
 		fn_builder.writeln('\t\tif (!string__eq(*((${ptr_elem_styp}*)((byte*)${left_data}+(i*${left_elem}))), *((${ptr_elem_styp}*)((byte*)${right_data}+(i*${right_elem}))))) {')
@@ -472,7 +472,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 		fn_builder.writeln('\t\treturn true;')
 		fn_builder.writeln('\t}')
 	}
-	fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${size}; ++i) {')
 	// compare every pair of elements of the two fixed arrays
 	if elem.sym.kind == .string {
 		fn_builder.writeln('\t\tif (!string__eq(((string*)${left})[i], ((string*)${right})[i])) {')
@@ -537,7 +537,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tfor (int i = 0; i < ${key_values}.len; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${key_values}.len; ++i) {')
 	fn_builder.writeln('\t\tif (!DenseArray_has_index(&${key_values}, i)) continue;')
 	fn_builder.writeln('\t\tvoidptr k = DenseArray_key(&${key_values}, i);')
 	fn_builder.writeln('\t\tif (!map_exists(${b}, k)) return false;')

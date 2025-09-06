@@ -31,10 +31,7 @@ pub fn maxof[T]() T {
 	} $else $if T is f64 {
 		return max_f64
 	} $else $if T is int {
-		$if new_int ? {
-			return int(max_i64)
-		}
-		return int(max_i32)
+		return max_int
 	} $else {
 		panic('A maximum value of the type `' + typeof[T]().name + '` is not defined.')
 	}
@@ -68,10 +65,7 @@ pub fn minof[T]() T {
 	} $else $if T is f64 {
 		return -max_f64
 	} $else $if T is int {
-		$if new_int ? {
-			return int(min_i64)
-		}
-		return int(min_i32)
+		return min_int
 	} $else {
 		panic('A minimum value of the type `' + typeof[T]().name + '` is not defined.')
 	}
