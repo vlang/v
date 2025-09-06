@@ -1685,6 +1685,16 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						return ast.void_type
 					}
 				}
+				if !func.is_variadic && func.params.len < (param_i + arg_typ_sym.info.types.len) {
+					c.fn_call_error_have_want(
+						nr_params: func.params.len
+						nr_args:   param_i + arg_typ_sym.info.types.len
+						params:    func.params
+						args:      node.args
+						pos:       node.pos
+					)
+					return ast.void_type
+				}
 				out: for n in 0 .. arg_typ_sym.info.types.len {
 					curr_arg := arg_typs[n]
 					multi_param := if func.is_variadic && i >= func.params.len - 1 {
