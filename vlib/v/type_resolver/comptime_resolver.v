@@ -224,6 +224,7 @@ pub fn (mut t TypeResolver) get_comptime_selector_bool_field(field_name string) 
 	match field_name {
 		'is_pub' { return field.is_pub }
 		'is_mut' { return field.is_mut }
+		'is_embed' { return field.is_embed }
 		'is_shared' { return field_typ.has_flag(.shared_f) }
 		'is_atomic' { return field_typ.has_flag(.atomic_f) }
 		'is_option' { return field.typ.has_flag(.option) }

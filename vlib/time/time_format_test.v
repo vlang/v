@@ -12,7 +12,7 @@ const time_to_test = time.Time{
 fn test_now_format() {
 	t := time.now()
 	u := t.unix()
-	assert t.format() == time.unix(int(u)).format()
+	assert t.format() == time.unix(int(u)).utc_to_local().format()
 }
 
 fn test_format() {

@@ -136,8 +136,8 @@ fn test_compare_digit_array_02() {
 fn test_divide_digit_array_01() {
 	a := [u64(14)]
 	b := [u64(2)]
-	mut q := []u64{cap: 1}
-	mut r := []u64{cap: 1}
+	mut q := []u64{len: 1}
+	mut r := []u64{len: 1}
 
 	divide_digit_array(a, b, mut q, mut r)
 	assert q == [u64(7)]
@@ -147,8 +147,8 @@ fn test_divide_digit_array_01() {
 fn test_divide_digit_array_02() {
 	a := [u64(14)]
 	b := [u64(15)]
-	mut q := []u64{cap: 1}
-	mut r := []u64{cap: 1}
+	mut q := []u64{len: 1}
+	mut r := []u64{len: 1}
 
 	divide_digit_array(a, b, mut q, mut r)
 	assert q == []u64{len: 0}
@@ -158,8 +158,8 @@ fn test_divide_digit_array_02() {
 fn test_divide_digit_array_03() {
 	a := [u64(0), 4]
 	b := [u64(0), 1]
-	mut q := []u64{cap: a.len - b.len + 1}
-	mut r := []u64{cap: a.len}
+	mut q := []u64{len: a.len - b.len + 1}
+	mut r := []u64{len: a.len}
 
 	divide_digit_array(a, b, mut q, mut r)
 	assert q == [u64(4)]
@@ -169,8 +169,8 @@ fn test_divide_digit_array_03() {
 fn test_divide_digit_array_04() {
 	a := [u64(2), 4]
 	b := [u64(0), 1]
-	mut q := []u64{cap: a.len - b.len + 1}
-	mut r := []u64{cap: a.len}
+	mut q := []u64{len: a.len - b.len + 1}
+	mut r := []u64{len: a.len}
 
 	divide_digit_array(a, b, mut q, mut r)
 	assert q == [u64(4)]
@@ -180,8 +180,8 @@ fn test_divide_digit_array_04() {
 fn test_divide_digit_array_05() {
 	a := [u64(3)]
 	b := [u64(2)]
-	mut q := []u64{cap: a.len - b.len + 1}
-	mut r := []u64{cap: a.len}
+	mut q := []u64{len: a.len - b.len + 1}
+	mut r := []u64{len: a.len}
 
 	divide_digit_array(a, b, mut q, mut r)
 	assert q == [u64(1)]

@@ -441,7 +441,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			prompt = '... '
 		}
 		oline := r.get_one_line(prompt) or { break }
-		line := oline.trim_space()
+		line := oline.all_before('//').trim_space()
 		if line == '' {
 			continue
 		}

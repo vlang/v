@@ -221,10 +221,13 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				}
 			}
 		}
-		if node.is_expr {
-			c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
-		} else {
-			c.stmts(mut branch.stmts)
+
+		if !node.is_comptime || (node.is_comptime && comptime_match_branch_result) {
+			if node.is_expr {
+				c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
+			} else {
+				c.stmts(mut branch.stmts)
+			}
 		}
 		c.smartcast_mut_pos = token.Pos{}
 		c.smartcast_cond_pos = token.Pos{}
