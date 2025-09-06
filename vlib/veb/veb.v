@@ -602,7 +602,7 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 	}
 
 	$if A is StaticApp {
-		ctx.custom_mime_types = StaticApp(global_app).static_mime_types.clone()
+		ctx.custom_mime_types = global_app.static_mime_types.clone()
 	}
 
 	// match controller paths
