@@ -418,7 +418,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 							string_index += 4
 
-							if unicode_point < 0xD800 { // normal utf-8
+							if unicode_point < 0xD800 || unicode_point > 0xDFFF { // normal utf-8
 								string_buffer << unicode_point.bytes()
 							} else if unicode_point >= 0xDC00 { // trail surrogate -> invalid
 								decoder.decode_error('Got trail surrogate: ${u32(unicode_point):04X} before head surrogate.')!
