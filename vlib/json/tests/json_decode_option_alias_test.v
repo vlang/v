@@ -15,6 +15,6 @@ fn test_main() {
 	assert data.str() == 'Alias(SomeStruct{
     random_field_a: Option(none)
     random_field_b: Option(none)
-    empty_field: Option(none)
+    empty_field: Option(Empty{})
 })'
 }
