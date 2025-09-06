@@ -121,7 +121,6 @@ ${dec_fn_dec} {
 ')
 
 		if utyp.has_flag(.option) {
-			none_str := g.expr_string(ast.None{})
 			dec.writeln('\tif (cJSON_IsNull(root)) {')
 			dec.writeln('\t${result_name}_${ret_styp} ret;')
 			dec.writeln('\t_result_ok(&res, (${result_name}*)&ret, sizeof(res));')
