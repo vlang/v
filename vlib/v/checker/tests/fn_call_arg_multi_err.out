@@ -1,0 +1,15 @@
+vlib/v/checker/tests/fn_call_arg_multi_err.vv:9:7: error: assignment mismatch: 1 variable but `a()` returns 2 values
+    7 | 
+    8 | fn main() {
+    9 |     rets := a()
+      |          ~~
+   10 |     b(1, rets)
+   11 | }
+vlib/v/checker/tests/fn_call_arg_multi_err.vv:10:2: error: expected 2 arguments, but got 3
+    8 | fn main() {
+    9 |     rets := a()
+   10 |     b(1, rets)
+      |     ~~~~~~~~~~
+   11 | }
+Details: have (int literal, (int, int))
+         want (int, []int)
