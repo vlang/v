@@ -4206,7 +4206,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 
 	unwrapped_expr_type := g.unwrap_generic(node.expr_type)
-	sym := g.table.sym(unwrapped_expr_type)
+	sym := g.table.final_sym(unwrapped_expr_type)
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 	is_as_cast := node.expr is ast.AsCast
 	if is_as_cast {

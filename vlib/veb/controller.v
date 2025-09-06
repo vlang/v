@@ -75,7 +75,7 @@ fn check_duplicate_routes_in_controllers[T](global_app &T, routes map[string]Rou
 	mut controllers_sorted := []&ControllerPath{}
 	$if T is ControllerInterface {
 		mut paths := []string{}
-		controllers_sorted = ControllerInterface(global_app).controllers.clone()
+		controllers_sorted = global_app.controllers.clone()
 		controllers_sorted.sort(a.path.len > b.path.len)
 		for controller in controllers_sorted {
 			if controller.host == '' {
