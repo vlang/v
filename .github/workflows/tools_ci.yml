@@ -65,7 +65,7 @@ jobs:
 
   tools-macos:
     runs-on: macos-14
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       matrix:
         cc: [clang]

@@ -291,6 +291,7 @@ pub fn (mut v Builder) cc_msvc() {
 	} else {
 		a << '/MD'
 		a << '/DNDEBUG'
+		a << '/DNO_DEBUGGING'
 		if !v.ccoptions.debug_mode {
 			v.pref.cleanup_files << out_name_pdb
 			v.pref.cleanup_files << app_dir_out_name + '.pdb'
@@ -458,6 +459,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 			oargs << '/O2'
 			oargs << '/MD'
 			oargs << '/DNDEBUG'
+			oargs << '/DNO_DEBUGGING'
 		}
 	} else {
 		oargs << '/MDd'

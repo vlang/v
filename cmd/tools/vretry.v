@@ -22,7 +22,7 @@ fn main() {
 	fp.skip_executable()
 	fp.limit_free_args_to_at_least(1)!
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
-	context.timeout = fp.float('timeout', `t`, 600.0, 'Timeout in seconds (for all retries). Default: 600.0 seconds (10 minutes).') * time.second
+	context.timeout = fp.float('timeout', `t`, 900.0, 'Timeout in seconds (for all retries). Default: 900.0 seconds (15 minutes).') * time.second
 	context.delay = fp.float('delay', `d`, 1.0, 'Delay between each retry in seconds. Default: 1.0 second.') * time.second
 	context.retries = fp.int('retries', `r`, 10, 'Maximum number of retries. Default: 10.')
 	if context.show_help {

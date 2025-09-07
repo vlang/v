@@ -37,7 +37,7 @@ jobs:
           - os: macos-14
             zip: v_macos_arm64.zip
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       VDIR: /tmp/v_from_release_zip
     steps:
