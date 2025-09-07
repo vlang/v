@@ -51,17 +51,14 @@ pub fn (mut app App) register_user(mut ctx Context, name string, password string
 		password_hash: auth.hash_password_with_salt(password, salt)
 		salt:          salt
 	}
-	sql app.db {
+	user_id := sql app.db {
 		insert new_user into User
-	} or {}
+	} or { 0 }
 
-	// Get new user ID (until RETURNING is supported by ORM)
-	if x := app.find_user_by_name(name) {
-		// Generate and insert the token using user ID
-		token := app.auth.add_token(x.id) or { '' }
-		// Authenticate the user by adding the token to the cookies
-		ctx.set_cookie(name: 'token', value: token)
-	}
+	// Generate and insert the token using user ID
+	token := app.auth.add_token(user_id) or { '' }
+	// Authenticate the user by adding the token to the cookies
+	ctx.set_cookie(name: 'token', value: token)
 
 	return ctx.redirect('/')
 }
