@@ -38,6 +38,9 @@ extern "C" {
 #define FONTSTASH_MALLOC malloc
 #define FONTSTASH_REALLOC realloc
 #define FONTSTASH_FREE free
+// __v_ start
+#define FONTSTASH_MALLOC_ATOMIC malloc
+// __v_ end
 #endif
 
 enum FONSflags {
@@ -563,7 +566,7 @@ static FONSatlas* fons__allocAtlas(int w, int h, int nnodes)
 	atlas->height = h;
 
 	// Allocate space for skyline nodes
-	atlas->nodes = (FONSatlasNode*)FONTSTASH_MALLOC(sizeof(FONSatlasNode) * nnodes);
+	atlas->nodes = (FONSatlasNode*)FONTSTASH_MALLOC_ATOMIC(sizeof(FONSatlasNode) * nnodes);
 	if (atlas->nodes == NULL) goto error;
 	memset(atlas->nodes, 0, sizeof(FONSatlasNode) * nnodes);
 	atlas->nnodes = 0;
@@ -780,7 +783,7 @@ FONScontext* fonsCreateInternal(FONSparams* params)
 	// Create texture for the cache.
 	stash->itw = 1.0f/stash->params.width;
 	stash->ith = 1.0f/stash->params.height;
-	stash->texData = (unsigned char*)FONTSTASH_MALLOC(stash->params.width * stash->params.height);
+	stash->texData = (unsigned char*)FONTSTASH_MALLOC_ATOMIC(stash->params.width * stash->params.height);
 	if (stash->texData == NULL) goto error;
 	memset(stash->texData, 0, stash->params.width * stash->params.height);
 
@@ -901,7 +904,7 @@ static int fons__allocFont(FONScontext* stash)
 	if (font == NULL) goto error;
 	memset(font, 0, sizeof(FONSfont));
 
-	font->glyphs = (FONSglyph*)FONTSTASH_MALLOC(sizeof(FONSglyph) * FONS_INIT_GLYPHS);
+	font->glyphs = (FONSglyph*)FONTSTASH_MALLOC_ATOMIC(sizeof(FONSglyph) * FONS_INIT_GLYPHS);
 	if (font->glyphs == NULL) goto error;
 	font->cglyphs = FONS_INIT_GLYPHS;
 	font->nglyphs = 0;
@@ -1657,7 +1660,7 @@ FONS_DEF int fonsExpandAtlas(FONScontext* stash, int width, int height)
 			return 0;
 	}
 	// Copy old texture data over.
-	data = (unsigned char*)FONTSTASH_MALLOC(width * height);
+	data = (unsigned char*)FONTSTASH_MALLOC_ATOMIC(width * height);
 	if (data == NULL)
 		return 0;
 	for (i = 0; i < stash->params.height; i++) {
