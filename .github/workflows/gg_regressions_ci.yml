@@ -23,7 +23,7 @@ concurrency:
 jobs:
   gg-regressions:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       VFLAGS: -cc tcc
       DISPLAY: :99

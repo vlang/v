@@ -23,7 +23,7 @@ concurrency:
 jobs:
   check-markdown:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - name: Build V
@@ -59,7 +59,7 @@ jobs:
 
   report-missing-dots-in-doc-comments:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - name: Build V

@@ -67,7 +67,7 @@ jobs:
 
   code-formatting:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       VFLAGS: -cc gcc
     steps:
@@ -107,7 +107,7 @@ jobs:
 
   misc-tooling:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
