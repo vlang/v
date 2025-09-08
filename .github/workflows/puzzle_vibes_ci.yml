@@ -43,7 +43,11 @@ jobs:
       - name: Build V
         run: make && ./v symlink
 
-      - name: Install & Setup SDL
+      - name: Install SDL2 on macOS
+        if: runner.os == 'macOS'
+        run: v retry -- brew install sdl2
+
+      - name: Install & Setup the V SDL wrapper
         run: v retry -- v install sdl && v ~/.vmodules/sdl/setup.vsh
 
       - name: Install Shy
