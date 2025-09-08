@@ -9,7 +9,6 @@ on:
       - '!**/linux_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-      - '.github/actions/cache-apt-packages-action/action.yml'
   pull_request:
     paths-ignore:
       - '**.md'
@@ -17,7 +16,6 @@ on:
       - '!**/linux_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-      - '.github/actions/cache-apt-packages-action/action.yml'
 
 concurrency:
   group: linux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
