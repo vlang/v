@@ -29,6 +29,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+
       - name: Install SDL2 dependencies
       - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
         with:
