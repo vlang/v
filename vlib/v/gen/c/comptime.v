@@ -159,8 +159,12 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		expand_strs := if node.args.len > 0 && m.params.len - 1 >= node.args.len {
 			arg := node.args.last()
 			param := m.params[node.args.len]
+			sym_arg := g.table.final_sym(arg.typ)
+			mut is_arr_interface := sym_arg.info is ast.Array
+				&& g.table.final_sym(sym_arg.info.elem_type).kind == .interface
 
-			arg.expr in [ast.IndexExpr, ast.Ident] && g.table.type_to_str(arg.typ) == '[]string'
+			arg.expr in [ast.IndexExpr, ast.Ident]
+				&& (g.table.type_to_str(arg.typ) == '[]string' || is_arr_interface)
 				&& g.table.type_to_str(param.typ) != '[]string'
 		} else {
 			false
@@ -242,7 +246,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 					type_name := g.table.type_symbols[int(m.params[i].typ)].str()
 					g.write('string_${type_name}(((string*)${last_arg}.data) [${idx}])')
 				} else {
-					g.write('((string*)${last_arg}.data) [${idx}] ')
+					sym_name := g.table.sym(m.params[i].typ).cname
+					g.write('((${sym_name}*)${last_arg}.data) [${idx}] ')
 				}
 				if i < m.params.len - 1 {
 					g.write(', ')
