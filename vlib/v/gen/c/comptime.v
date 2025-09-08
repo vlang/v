@@ -162,8 +162,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			sym_arg := g.table.final_sym(arg.typ)
 
 			arg.expr in [ast.IndexExpr, ast.Ident] && (g.table.type_to_str(arg.typ) == '[]string'
-				|| sym_arg.info is ast.Array
-				&& g.table.final_sym(sym_arg.info.elem_type).kind == .interface)
+				|| (sym_arg.info is ast.Array
+				&& g.table.final_sym(sym_arg.info.elem_type).kind == .interface))
 				&& g.table.type_to_str(param.typ) != '[]string'
 		} else {
 			false
