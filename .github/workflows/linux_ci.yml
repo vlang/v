@@ -29,10 +29,7 @@ jobs:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v5
-      - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
-        with:
-          packages: expect valgrind postgresql sqlite3 libpq-dev libssl-dev libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base clang
-          version: 1.0
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: make -j4 && ./v symlink
       - name: Build v with -prealloc
@@ -87,10 +84,7 @@ jobs:
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v5
-      - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
-        with:
-          packages: expect valgrind postgresql sqlite3 libpq-dev libssl-dev libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base clang
-          version: 1.0
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: All code is formatted
@@ -145,10 +139,7 @@ jobs:
       VFLAGS: -cc clang
     steps:
       - uses: actions/checkout@v5
-      - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
-        with:
-          packages: expect valgrind postgresql sqlite3 libpq-dev libssl-dev libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base clang
-          version: 1.0
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: All code is formatted
