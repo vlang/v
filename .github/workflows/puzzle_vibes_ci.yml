@@ -12,6 +12,7 @@ on:
       - '**/puzzle_vibes_ci.yml'
       - '!**_test.v'
       - '!**.md'
+      - '.github/actions/cache-apt-packages-action/action.yml'
   pull_request:
     paths:
       - 'vlib/v/checker/**'
@@ -22,6 +23,7 @@ on:
       - '**/puzzle_vibes_ci.yml'
       - '!**_test.v'
       - '!**.md'
+      - '.github/actions/cache-apt-packages-action/action.yml'
 
 concurrency:
   group: puzzle_vibes-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
