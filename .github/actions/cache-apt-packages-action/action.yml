@@ -16,7 +16,7 @@ runs:
     - name: Install common packages on Ubuntu
       if: runner.os == 'Linux'
       run: echo "Installing packages on Ubuntu"
-      uses: awalsh128/cache-apt-pkgs-action@v1.5.3
+    - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
       with:
         version: 1.0
         packages: expect binutils postgresql sqlite3 clang valgrind \
