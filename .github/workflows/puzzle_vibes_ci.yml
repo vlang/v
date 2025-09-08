@@ -57,7 +57,7 @@ jobs:
         run: cd puzzle_vibes && v -g .
 
       - name: Check PV compiles with -prod
-        run: cd puzzle_vibes && v -prod .
+        run: cd puzzle_vibes && v -prod    -no-prod-options .
 
       - name: Check PV compiles with -prod and -g
-        run: cd puzzle_vibes && v -prod -g .
+        run: cd puzzle_vibes && v -prod -g -no-prod-options .
