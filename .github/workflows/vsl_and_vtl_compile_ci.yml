@@ -32,17 +32,17 @@ jobs:
       VFLAGS: -no-parallel
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         id: build
         run: make && sudo ./v symlink
       - name: Install dependencies
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
-          .github/workflows/disable_azure_mirror.sh
-          v retry -- sudo apt -qq update
-          v retry -- sudo apt -qq install \
-            libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev \
-            opencl-headers libxcursor-dev libxi-dev libxrandr-dev libhdf5-cpp-103-1t64 libhdf5-dev libhdf5-mpi-dev hdf5-tools
+            .github/workflows/disable_azure_mirror.sh
+            v retry -- sudo apt -qq update
+            v retry -- sudo apt -qq install liblapacke-dev libopenblas-dev libopenmpi-dev \
+              opencl-headers libhdf5-cpp-103-1t64 libhdf5-dev libhdf5-mpi-dev hdf5-tools
           else
             v retry brew install coreutils hdf5 open-mpi openblas lapack opencl-headers
           fi
@@ -67,6 +67,7 @@ jobs:
       TERM: xterm
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         id: build
         run: make && sudo ./v symlink
@@ -75,8 +76,7 @@ jobs:
           if [ "$RUNNER_OS" == 'Linux' ]; then
             .github/workflows/disable_azure_mirror.sh
             v retry -- sudo apt -qq update
-            v retry -- sudo apt -qq install \
-              libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev
+            v retry -- sudo apt -qq install liblapacke-dev libopenblas-dev libopenmpi-dev
           else
             v retry brew install coreutils hdf5 open-mpi openblas lapack opencl-headers
           fi

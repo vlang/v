@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Build V
-        run: make -j4
+        run: make
       - name: Symlink
         run: |
           ./v symlink

@@ -29,7 +29,7 @@ jobs:
         run: git version
       - name: Build V
         if: runner.os != 'Windows'
-        run: cd vlang && make -j4 && ./v doctor
+        run: cd vlang && make && ./v doctor
       - name: Build V (Windows)
         if: runner.os == 'Windows'
         run: cd vlang && ./make.bat && ./v doctor

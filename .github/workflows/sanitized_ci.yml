@@ -89,17 +89,11 @@ jobs:
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
-          ./v retry -- sudo apt install clang
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
@@ -119,16 +113,11 @@ jobs:
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
@@ -149,17 +138,11 @@ jobs:
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
-          ./v retry -- sudo apt install clang
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
@@ -206,17 +189,11 @@ jobs:
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
-          ./v retry -- sudo apt install clang
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
@@ -237,17 +214,11 @@ jobs:
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
       - name: Ensure code is well formatted
         run: ./v -silent test-cleancode
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
-          ./v retry -- sudo apt install clang
       - name: Recompile V with clang and -cstrict
         run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=memory)

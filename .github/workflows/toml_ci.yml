@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
       - name: Install dependencies
         run: |
           v retry -- v download https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64

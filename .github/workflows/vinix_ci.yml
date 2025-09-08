@@ -28,13 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Build V
-        run: make -j4 && ./v symlink
-
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          v retry -- sudo apt update
-          v retry -- sudo apt install build-essential -y
+        run: make && ./v symlink
 
       - name: Clone current Vinix
         run: v retry -- git clone --depth=1 https://github.com/vlang/vinix.git

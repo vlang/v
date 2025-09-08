@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
 
       - name: Run V benchmark and save output
         run: (echo '```sh'; v -prod crun vlib/v/tests/bench/bench_json_vs_json2.v; echo '```') > vlib/v/tests/bench/bench_json_vs_json2_out.md

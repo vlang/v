@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Build V
-        run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
+        run: make && ./v -showcc -o v cmd/v && ./v doctor
       - name: Code in cmd/ is formatted
         run: ./v fmt -verify cmd/
       - name: Check build-tools
@@ -75,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Build V
-        run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
+        run: make && ./v -showcc -o v cmd/v && ./v doctor
       - name: Check build-tools
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
@@ -119,7 +119,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
       - name: Build V
-        run: make -j4 && ./v -cg -o v cmd/v
+        run: make && ./v -cg -o v cmd/v
       - name: Ensure git commands can be used with no prompts on modern Git versions
         run: git config --global --add safe.directory /__w/v/v
       - name: Verify `v test` works

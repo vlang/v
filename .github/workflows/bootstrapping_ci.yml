@@ -43,7 +43,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Build V
-        run: make -j4
+        run: make
       - name: Test bootstrapping (v.c can be compiled and run with -os cross)
         run: |
           ls -la v vc/v.c

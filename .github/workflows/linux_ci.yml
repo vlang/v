@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
       - name: Build v with -prealloc
         run: v run ci/linux_ci.vsh build_v_with_prealloc
       - name: All code is formatted
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
       - name: All code is formatted
         run: v run ci/linux_ci.vsh all_code_is_formatted_gcc
       - name: Install dependencies for examples and tools
@@ -141,7 +141,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
       - name: All code is formatted
         run: v run ci/linux_ci.vsh all_code_is_formatted_clang
       - name: Install dependencies for examples and tools

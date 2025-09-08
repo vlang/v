@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make && ./v symlink
 
@@ -47,15 +48,6 @@ jobs:
         run: |
           v retry -- v install --git https://github.com/vlang/c2v
           v -g ~/.vmodules/c2v/ || true
-      - name: Install dependencies
-        run: |
-          if [ "${{ runner.os }}" == "Linux" ]; then
-            .github/workflows/disable_azure_mirror.sh
-            v retry -- sudo apt update -y -qq
-            v retry -- sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
-          else
-            v retry -- brew install sdl2 sdl2_mixer sdl2_net libpng libsamplerate
-          fi
       - name: Build original Chocolate Doom
         run: |
           v retry -- git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
@@ -77,6 +69,7 @@ jobs:
       VTMP: /tmp
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make && ./v symlink
 
@@ -92,19 +85,6 @@ jobs:
         run: |
           v retry -- v install --git https://github.com/vlang/c2v
           v -g ~/.vmodules/c2v/ || true
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          v retry -- sudo apt update -y -qq
-          v retry -- sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
-          # c2v / DOOM dependencies
-          # vgret dependencies
-          # imagemagick              : convert, mogrify, import
-          # xvfb                     : For starting X11 Virtual FrameBuffers
-          # openimageio-tools        : idiff
-          # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
-          # freeglut3-dev            : Fixes graphic apps compilation with tcc
-          v retry -- sudo apt install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
       - name: Setup test tools
         run: |
           # Fetch the free ~4MB DOOM1.WAD from the link at https://doomwiki.org/wiki/DOOM1.WAD
