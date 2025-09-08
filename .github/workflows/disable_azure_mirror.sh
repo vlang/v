@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "APT MIRRORS BEFORE:"
 cat /etc/apt/apt-mirrors.txt
-sudo sed -i 's@http://azure.archive.ubuntu.com@https://us.archive.ubuntu.com@gm' /etc/apt/apt-mirrors.txt
+sudo sed -i 's@http://azure.archive.ubuntu.com@http://archive.ubuntu.com@gm' /etc/apt/apt-mirrors.txt
 echo "APT MIRRORS AFTER:"
 cat /etc/apt/apt-mirrors.txt
 
