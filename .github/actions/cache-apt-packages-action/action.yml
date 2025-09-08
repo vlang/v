@@ -19,7 +19,7 @@ runs:
       with:
         version: 1.0
         packages: expect binutils postgresql sqlite3 clang valgrind \
-          imagemagick openimageio-tools xvfb xsel xclip \
+          imagemagick graphicsmagick-imagemagick-compat openimageio-tools xvfb xsel xclip \
           liblapack3 libopenblas-base liblapacke-dev libopenblas-dev libopenmpi-dev \
           libsodium-dev libpq-dev libssl-dev libsqlite3-dev \
           libfreetype6-dev libxi-dev libxcursor-dev \
