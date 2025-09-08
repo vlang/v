@@ -252,13 +252,19 @@ pub fn (mut t TypeResolver) get_type(node ast.Expr) ast.Type {
 		return node.typ
 	} else if node is ast.ComptimeCall {
 		method_name := t.info.comptime_for_method.name
-		left_sym := t.table.sym(t.resolver.unwrap_generic(node.left_type))
-		f := left_sym.find_method(method_name) or {
-			t.error('could not find method `${method_name}` on compile-time resolution',
-				node.method_pos)
-			return ast.void_type
+		left_type := t.resolver.unwrap_generic(node.left_type)
+		left_sym := t.table.sym(left_type)
+		if f := left_sym.find_method(method_name) {
+			return f.return_type
+		} else if left_sym.kind == .alias {
+			f := t.table.final_sym(left_type).find_method(method_name) or {
+				t.error('could not find method `${method_name}` on compile-time resolution',
+					node.method_pos)
+				return ast.void_type
+			}
+			return f.return_type
 		}
-		return f.return_type
+		return ast.void_type
 	} else if node is ast.IndexExpr && t.info.is_comptime(node.left) {
 		nltype := t.get_type(node.left)
 		nltype_unwrapped := t.resolver.unwrap_generic(nltype)
