@@ -4,19 +4,23 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'vlib/**'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - 'cmd/tools/vshader.v'
       - '**/puzzle_vibes_ci.yml'
+      - '!**_test.v'
       - '!**.md'
   pull_request:
     paths:
-      - 'vlib/**'
+      - 'vlib/v/checker/**'
+      - 'vlib/v/gen/c/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - 'cmd/tools/vshader.v'
       - '**/puzzle_vibes_ci.yml'
+      - '!**_test.v'
       - '!**.md'
 
 concurrency:
