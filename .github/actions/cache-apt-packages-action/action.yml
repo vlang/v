@@ -12,6 +12,7 @@ description: 'Cache all commonly used apt packages to speed up CI jobs'
 
 runs:
   using: 'composite'
+  if: runner.os == 'Linux'
   steps:
     - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
       with:
@@ -27,11 +28,5 @@ runs:
           libpng-dev libsamplerate0-dev \
           xfonts-75dpi xfonts-base
     - name: Install common packages on Ubuntu
-      if: runner.os == 'Linux'
       shell: bash
       run: echo "done installing packages on Ubuntu"
-
-    - name: Install common packages on Non Linux
-      if: runner.os != 'Linux'
-      shell: bash
-      run: echo "done"
