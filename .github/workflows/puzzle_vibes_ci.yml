@@ -33,10 +33,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
-      - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
-        with:
-          packages: libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
-          version: 1.0
+      - uses: ./.github/actions/cache-apt-packages-action
 
       - name: Build V
         run: make && ./v symlink
