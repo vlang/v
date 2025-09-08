@@ -109,7 +109,7 @@ jobs:
   release-publish:
     if: github.ref_type == 'tag'
     needs: release-build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v5
       - name: Create release

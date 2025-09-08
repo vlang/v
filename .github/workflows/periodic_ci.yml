@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             cc: tcc
           - os: windows-latest
             cc: msvc

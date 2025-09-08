@@ -18,7 +18,7 @@ jobs:
   setup-vpm:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-24.04, windows-latest, macos-latest]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
@@ -44,11 +44,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             cc: tcc
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             cc: gcc
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             cc: clang
           - os: macos-latest
             cc: clang

@@ -21,7 +21,7 @@ jobs:
     strategy:
       matrix:
         os: [debian, alpine]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:

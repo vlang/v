@@ -31,7 +31,7 @@ jobs:
   bootstrap-v:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-14]
+        os: [ubuntu-24.04, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
