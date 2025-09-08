@@ -15,6 +15,7 @@ runs:
   steps:
     - name: Install common packages on Ubuntu
       if: runner.os == 'Linux'
+      run: echo "Installing packages on Ubuntu"
       uses: awalsh128/cache-apt-pkgs-action@v1.5.3
       with:
         version: 1.0
@@ -28,5 +29,3 @@ runs:
           libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-net-dev \
           libpng-dev libsamplerate0-dev \
           xfonts-75dpi xfonts-base
-      shell: bash
-      run: echo "done installing packages on Ubuntu"
