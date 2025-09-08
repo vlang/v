@@ -1165,7 +1165,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t}')
 			}
 			g.writeln2('}', '')
-			g.writeln('${static_prefix}${ast.int_type_name} v_typeof_sumtype_idx_${sym.cname}(int sidx) {')
+			g.writeln('${static_prefix}int v_typeof_sumtype_idx_${sym.cname}(int sidx) {')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return ${int(ityp)};')
 				for v in sum_info.variants {
@@ -1219,10 +1219,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
-			g.definitions.writeln('${ast.int_type_name} v_typeof_interface_idx_${sym.cname}(int sidx);')
-			g.writeln2('', '${ast.int_type_name} v_typeof_interface_idx_${sym.cname}(int sidx) {')
+			g.definitions.writeln('int v_typeof_interface_idx_${sym.cname}(int sidx);')
+			g.writeln2('', 'int v_typeof_interface_idx_${sym.cname}(int sidx) {')
 			if g.pref.parallel_cc {
-				g.extern_out.writeln('extern ${ast.int_type_name} v_typeof_interface_idx_${sym.cname}(int sidx);')
+				g.extern_out.writeln('extern int v_typeof_interface_idx_${sym.cname}(int sidx);')
 			}
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
@@ -3574,7 +3574,18 @@ fn (mut g Gen) map_fn_ptrs(key_sym ast.TypeSymbol) (string, string, string, stri
 			}
 			return g.map_fn_ptrs(g.table.sym(einfo.typ))
 		}
-		.int, .i32, .u32, .rune, .f32 {
+		.int {
+			$if new_int ? {
+				hash_fn = '&map_hash_int_8'
+				key_eq_fn = '&map_eq_int_8'
+				clone_fn = '&map_clone_int_8'
+			} $else {
+				hash_fn = '&map_hash_int_4'
+				key_eq_fn = '&map_eq_int_4'
+				clone_fn = '&map_clone_int_4'
+			}
+		}
+		.i32, .u32, .rune, .f32 {
 			hash_fn = '&map_hash_int_4'
 			key_eq_fn = '&map_eq_int_4'
 			clone_fn = '&map_clone_int_4'

@@ -382,9 +382,20 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 											needs_explicit_cast = true
 										}
 									}
-									.i32, .int {
+									.i32 {
 										if !(num >= min_i32 && num <= max_i32) {
 											needs_explicit_cast = true
+										}
+									}
+									.int {
+										$if new_int ? {
+											if !(num >= min_i64 && num <= max_i64) {
+												needs_explicit_cast = true
+											}
+										} $else {
+											if !(num >= min_i32 && num <= max_i32) {
+												needs_explicit_cast = true
+											}
 										}
 									}
 									.i64 {

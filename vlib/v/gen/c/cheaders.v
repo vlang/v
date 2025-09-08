@@ -478,9 +478,9 @@ void v_free(voidptr ptr);
 const c_builtin_types = '
 //================================== builtin types ================================*/
 #if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64) || defined(__s390x__) || (defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)) || defined(__loongarch64)
-typedef int64_t _vint_t;
+typedef int64_t vint_t;
 #else
-typedef int32_t _vint_t;
+typedef int32_t vint_t;
 #endif
 typedef int64_t i64;
 typedef int16_t i16;

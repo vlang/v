@@ -929,7 +929,11 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 		}
 		return .si_g64
 	} else if sym.kind == .int {
-		return .si_i32
+		$if new_int ? {
+			return .si_i64
+		} $else {
+			return .si_i32
+		}
 	} else if sym.kind == .u32 {
 		return .si_u32
 	} else if sym.kind == .u64 {

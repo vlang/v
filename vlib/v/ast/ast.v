@@ -24,7 +24,7 @@ pub const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError',
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub const int_type_name = $if new_int ? { '_vint_t' } $else { 'int' }
+pub const int_type_name = $if new_int ? { 'vint_t' } $else { 'int' }
 
 pub type Expr = NodeError
 	| AnonFn
