@@ -10,9 +10,9 @@ description: 'Cache all commonly used apt packages to speed up CI jobs'
 # sdl2                     : needed for Puzzle Vibes & Chocolate Doom
 # libsodium-dev            : needed for Gitly and C2V
 
+if: runner.os == 'Linux'
 runs:
   using: 'composite'
-  if: runner.os == 'Linux'
   steps:
     - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
       with:
