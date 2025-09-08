@@ -225,7 +225,9 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				break
 			} else if i - 1 < node.args.len - 1 {
 				g.expr(node.args[i - 1].expr)
-				g.write(', ')
+				if i < m.params.len - 1 {
+					g.write(', ')
+				}
 			} else if !expand_strs && i == node.args.len {
 				g.expr(node.args[i - 1].expr)
 				break

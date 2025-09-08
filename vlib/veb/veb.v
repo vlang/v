@@ -15,6 +15,8 @@ import picoev
 // A type which doesn't get filtered inside templates
 pub type RawHtml = string
 
+interface AnyParam {}
+
 // A dummy structure that returns from routes to indicate that you actually sent something to a user
 @[noinit]
 pub struct Result {}
@@ -731,7 +733,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 						if method.args.len > 1 && can_have_data_args {
 							// Populate method args with form or query values
-							mut args := []string{cap: method.args.len + 1}
+							mut args := []AnyParam{}
 							data := if user_context.Context.req.method == .get {
 								user_context.Context.query
 							} else {
@@ -743,11 +745,14 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							}
 
 							// println('m1')
-							app.$method(mut user_context, args)
-						} else {
-							// println('m2')
-							app.$method(mut user_context)
+							if args.len > 0 {
+								print(1)
+								app.$method(mut user_context, ...args)
+								return
+							}
 						}
+						// println('m2')
+						app.$method(mut user_context)
 						return
 					}
 
@@ -762,7 +767,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 						if method.args.len > 1 && can_have_data_args {
 							// Populate method args with form or query values
-							mut args := []string{cap: method.args.len + 1}
+							mut args := []AnyParam{}
 
 							data := if user_context.Context.req.method == .get {
 								user_context.Context.query
@@ -775,11 +780,13 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							}
 
 							// println('m3')
-							app.$method(mut user_context, args)
-						} else {
-							// println('m4')
-							app.$method(mut user_context)
+							if args.len > 0 {
+								app.$method(mut user_context, ...args)
+								return
+							}
 						}
+						// println('m4')
+						app.$method(mut user_context)
 						return
 					}
 
@@ -796,7 +803,11 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
 						}
 						// println('m5')
-						app.$method(mut user_context, method_args)
+						if method.args.len > 1 {
+							app.$method(mut user_context, ...method_args)
+						} else {
+							app.$method(mut user_context)
+						}
 						return
 					}
 				}
