@@ -15,8 +15,6 @@ import picoev
 // A type which doesn't get filtered inside templates
 pub type RawHtml = string
 
-interface AnyParam {}
-
 // A dummy structure that returns from routes to indicate that you actually sent something to a user
 @[noinit]
 pub struct Result {}
@@ -733,7 +731,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 						if method.args.len > 1 && can_have_data_args {
 							// Populate method args with form or query values
-							mut args := []AnyParam{cap: method.args.len + 1}
+							mut args := []string{cap: method.args.len + 1}
 							data := if user_context.Context.req.method == .get {
 								user_context.Context.query
 							} else {
@@ -764,7 +762,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 						if method.args.len > 1 && can_have_data_args {
 							// Populate method args with form or query values
-							mut args := []AnyParam{cap: method.args.len + 1}
+							mut args := []string{cap: method.args.len + 1}
 
 							data := if user_context.Context.req.method == .get {
 								user_context.Context.query
