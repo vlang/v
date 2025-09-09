@@ -317,6 +317,9 @@ fn (mut c Amd64) cmp_var_reg(var Var, reg Register, config VarConfig) {
 				PreprocVar {
 					c.cmp_var_reg(var_object as PreprocVar, reg, config)
 				}
+				ConstVar {
+					c.cmp_var_reg(var_object as ConstVar, reg, config)
+				}
 			}
 		}
 		LocalVar {
@@ -340,6 +343,9 @@ fn (mut c Amd64) cmp_var_reg(var Var, reg Register, config VarConfig) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -366,6 +372,9 @@ fn (mut c Amd64) cmp_var(var Var, val i32, config VarConfig) {
 				PreprocVar {
 					c.cmp_var(var_object as PreprocVar, val, config)
 				}
+				ConstVar {
+					c.cmp_var(var_object as ConstVar, val, config)
+				}
 			}
 		}
 		LocalVar {
@@ -389,6 +398,9 @@ fn (mut c Amd64) cmp_var(var Var, val i32, config VarConfig) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -416,6 +428,9 @@ fn (mut c Amd64) dec_var(var Var, config VarConfig) {
 				PreprocVar {
 					c.dec_var(var_object as PreprocVar, config)
 				}
+				ConstVar {
+					c.dec_var(var_object as ConstVar, config)
+				}
 			}
 		}
 		LocalVar {
@@ -439,6 +454,9 @@ fn (mut c Amd64) dec_var(var Var, config VarConfig) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -466,6 +484,9 @@ fn (mut c Amd64) inc_var(var Var, config VarConfig) {
 				}
 				PreprocVar {
 					c.inc_var(var_object as PreprocVar, config)
+				}
+				ConstVar {
+					c.inc_var(var_object as ConstVar, config)
 				}
 			}
 		}
@@ -513,6 +534,9 @@ fn (mut c Amd64) inc_var(var Var, config VarConfig) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -715,6 +739,9 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 				PreprocVar {
 					c.mov_reg_to_var(var_object as PreprocVar, reg, config)
 				}
+				ConstVar {
+					c.mov_reg_to_var(var_object as ConstVar, reg, config)
+				}
 			}
 		}
 		LocalVar {
@@ -818,6 +845,9 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 		PreprocVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
+		ConstVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
 	}
 }
 
@@ -840,6 +870,9 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 				}
 				PreprocVar {
 					c.mov_int_to_var(var_object as PreprocVar, integer, config)
+				}
+				ConstVar {
+					c.mov_int_to_var(var_object as ConstVar, integer, config)
 				}
 			}
 		}
@@ -909,6 +942,9 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 		PreprocVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
+		ConstVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
 	}
 }
 
@@ -960,6 +996,9 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 				}
 				PreprocVar {
 					c.mov_var_to_reg(reg, var_object as PreprocVar, config)
+				}
+				ConstVar {
+					c.mov_var_to_reg(reg, var_object as ConstVar, config)
 				}
 			}
 		}
@@ -1044,6 +1083,11 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 		}
 		PreprocVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
+			c.g.expr(var.expr)
+			c.mov_reg(reg, c.main_reg())
+			c.g.println('; mov ${reg} const:`${var.name}`')
 		}
 	}
 }
@@ -2220,13 +2264,17 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 			PreprocVar {
 				c.mov_reg_to_var(var as PreprocVar, Amd64Register.rax)
 			}
+			ConstVar {
+				c.mov_reg_to_var(var as ConstVar, Amd64Register.rax)
+			}
 		}
 	} else {
-		c.g.n_error('${@LOCATION} error assigning type ${typ} with size ${size}: ${info}')
+		c.g.n_error('${@LOCATION} error assigning var ${var} type ${typ} with size ${size}: ${info}')
 	}
 }
 
 // Could be nice to have left as an expr to be able to take all int assigns
+// TODO: Will have a problem if the literal is bigger than max_i64: needs u64
 fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.IntegerLiteral, left ast.Ident) {
 	match node.op {
 		.plus_assign {
@@ -2261,7 +2309,25 @@ fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.In
 			c.allocate_var(left.name, 8, i64(int_lit.val.int()))
 		}
 		.assign {
-			c.mov(Amd64Register.rax, i32(int_lit.val.int()))
+			c.mov64(Amd64Register.rax, i64(int_lit.val.int()))
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.left_shift_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.shl_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.right_shift_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.sar_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.unsigned_right_shift_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.shr_reg(.rax, .rcx)
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		else {
@@ -3847,6 +3913,9 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 				PreprocVar {
 					c.init_struct(var_object as PreprocVar, init)
 				}
+				ConstVar {
+					c.init_struct(var_object as ConstVar, init)
+				}
 			}
 		}
 		LocalVar {
@@ -3893,6 +3962,9 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -3949,6 +4021,9 @@ fn (mut c Amd64) init_array(var Var, node ast.ArrayInit) {
 				PreprocVar {
 					c.init_array(var_object as PreprocVar, node)
 				}
+				ConstVar {
+					c.init_array(var_object as ConstVar, node)
+				}
 			}
 		}
 		LocalVar {
@@ -3966,6 +4041,9 @@ fn (mut c Amd64) init_array(var Var, node ast.ArrayInit) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -4270,6 +4348,9 @@ fn (mut c Amd64) mov_ssereg_to_var(var Var, reg Amd64SSERegister, config VarConf
 				PreprocVar {
 					c.mov_ssereg_to_var(var_object as PreprocVar, reg, config)
 				}
+				ConstVar {
+					c.mov_ssereg_to_var(var_object as ConstVar, reg, config)
+				}
 			}
 		}
 		LocalVar {
@@ -4301,6 +4382,9 @@ fn (mut c Amd64) mov_ssereg_to_var(var Var, reg Amd64SSERegister, config VarConf
 		PreprocVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
+		ConstVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
 	}
 }
 
@@ -4325,6 +4409,9 @@ fn (mut c Amd64) mov_var_to_ssereg(reg Amd64SSERegister, var Var, config VarConf
 				}
 				PreprocVar {
 					c.mov_var_to_ssereg(reg, var_object as PreprocVar, config)
+				}
+				ConstVar {
+					c.mov_var_to_ssereg(reg, var_object as ConstVar, config)
 				}
 			}
 		}
@@ -4355,6 +4442,9 @@ fn (mut c Amd64) mov_var_to_ssereg(reg Amd64SSERegister, var Var, config VarConf
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}

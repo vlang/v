@@ -261,6 +261,12 @@ struct GlobalVar {
 	typ  ast.Type
 }
 
+struct ConstVar {
+	name string
+	expr ast.Expr
+	typ  ast.Type
+}
+
 @[params]
 struct VarConfig {
 pub:
@@ -268,9 +274,9 @@ pub:
 	typ    ast.Type // type of the value you want to process e.g. struct fields.
 }
 
-type Var = GlobalVar | ExternVar | LocalVar | PreprocVar | ast.Ident
+type Var = GlobalVar | ExternVar | LocalVar | PreprocVar | ConstVar | ast.Ident
 
-type IdentVar = GlobalVar | ExternVar | LocalVar | Register | PreprocVar
+type IdentVar = GlobalVar | ExternVar | LocalVar | Register | PreprocVar | ConstVar
 
 enum JumpOp {
 	je
@@ -320,6 +326,13 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 				offset: offset
 				typ:    obj.typ
 				name:   obj.name
+			}
+		}
+		ast.ConstField {
+			return ConstVar{
+				name: obj.name
+				expr: (obj as ast.ConstField).expr
+				typ:  obj.typ
 			}
 		}
 		else {
