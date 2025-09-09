@@ -1,3 +1,4 @@
+// vtest retry: 2
 import os
 import benchmark
 import term

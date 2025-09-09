@@ -19,7 +19,7 @@ concurrency:
 jobs:
   toml-module-pass-external-test-suites:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - name: Build V

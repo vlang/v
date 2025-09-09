@@ -87,7 +87,9 @@ fn (pr &HttpProxy) build_proxy_headers(host string) string {
 fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Request) !Response {
 	host_name, port := net.split_address(host.hostname())!
 
-	s := req.build_request_headers(req.method, host_name, port, path)
+	port_part := if port == 80 || port == 0 { '' } else { ':${port}' }
+
+	s := req.build_request_headers(req.method, host_name, port, '${host.scheme}://${host_name}${port_part}${path}')
 	if host.scheme == 'https' {
 		mut client := pr.ssl_dial('${host.host}:443')!
 

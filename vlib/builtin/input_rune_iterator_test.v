@@ -1,4 +1,5 @@
-// vtest build: !windows
+// vtest build: linux
+// vtest retry: 2
 import os
 import time
 

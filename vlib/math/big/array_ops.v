@@ -181,10 +181,7 @@ fn divide_digit_array(operand_a []u64, operand_b []u64, mut quotient []u64, mut 
 	cmp_result := compare_digit_array(operand_a, operand_b)
 	// a == b => q, r = 1, 0
 	if cmp_result == 0 {
-		quotient << 1
-		for quotient.len > 1 {
-			quotient.delete_last()
-		}
+		quotient[0] = 1
 		remainder.clear()
 		return
 	}
@@ -192,7 +189,9 @@ fn divide_digit_array(operand_a []u64, operand_b []u64, mut quotient []u64, mut 
 	// a < b => q, r = 0, a
 	if cmp_result < 0 {
 		quotient.clear()
-		remainder << operand_a
+		for i in 0 .. operand_a.len {
+			remainder[i] = operand_a[i]
+		}
 		return
 	}
 	if operand_b.len == 1 {
@@ -210,38 +209,36 @@ fn divide_array_by_digit(operand_a []u64, divisor u64, mut quotient []u64, mut r
 		// 1 digit for both dividend and divisor
 		dividend := operand_a[0]
 		q := dividend / divisor
-		if q != 0 {
-			quotient << q
-		}
+		quotient[0] = q
+
 		rem := dividend % divisor
-		if rem != 0 {
-			remainder << rem
-		}
+		remainder[0] = rem
+
+		shrink_tail_zeros(mut quotient)
+		shrink_tail_zeros(mut remainder)
 		return
 	}
 	// Dividend has more digits
 	mut rem := u64(0)
 	mut quo := u64(0)
-	mut qtemp := []u64{len: quotient.cap}
-	divisor64 := u64(divisor)
 
 	// Perform division step by step
 	for index := operand_a.len - 1; index >= 0; index-- {
 		hi := rem >> (64 - digit_bits)
 		lo := rem << digit_bits | operand_a[index]
-		quo, rem = bits.div_64(hi, lo, divisor64)
-		qtemp[index] = quo & max_digit
+		quo, rem = bits.div_64(hi, lo, divisor)
+		quotient[index] = quo & max_digit
 	}
+
 	// Remove leading zeros from quotient
-	shrink_tail_zeros(mut qtemp)
-	quotient << qtemp
-	remainder << rem
+	shrink_tail_zeros(mut quotient)
+	remainder[0] = rem
 	shrink_tail_zeros(mut remainder)
 }
 
 @[inline]
 fn divide_array_by_array(operand_a []u64, operand_b []u64, mut quotient []u64, mut remainder []u64) {
-	binary_divide_array_by_array(operand_a, operand_b, mut quotient, mut remainder)
+	knuth_divide_array_by_array(operand_a, operand_b, mut quotient, mut remainder)
 }
 
 // Shifts the contents of the original array by the given amount of bits to the left.

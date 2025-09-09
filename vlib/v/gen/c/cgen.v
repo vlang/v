@@ -4482,7 +4482,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	// struct embedding
 	mut has_embed := false
-	if sym.info in [ast.Struct, ast.Aggregate] {
+	if sym.info in [ast.Alias, ast.Struct, ast.Aggregate] {
 		if node.generic_from_embed_types.len > 0 && sym.info is ast.Struct {
 			if sym.info.embeds.len > 0 {
 				mut is_find := false

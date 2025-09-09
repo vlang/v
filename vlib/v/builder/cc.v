@@ -302,6 +302,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		// have much better performance when NDEBUG is defined
 		// See also http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf
 		ccoptions.args << '-DNDEBUG'
+		ccoptions.args << '-DNO_DEBUGGING' // for BDWGC
 	}
 	if v.pref.sanitize {
 		ccoptions.args << '-fsanitize=leak'

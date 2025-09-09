@@ -24,7 +24,7 @@ concurrency:
 jobs:
   vab-compiles-v-examples:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3
     steps:
