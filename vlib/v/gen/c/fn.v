@@ -2369,7 +2369,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		}
 	}
 	// only v variadic, C variadic args will be appended like normal args
-	is_variadic := node.language == .v && node.is_variadic
+	is_variadic := node.language == .v && node.is_variadic && expected_types.len > 0
+		&& expected_types.last().has_flag(.variadic)
 	mut already_decomposed := false
 	for i, arg in args {
 		if is_variadic && i == expected_types.len - 1 {
@@ -2538,14 +2539,6 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 							false)
 					} else {
 						noscan := g.check_noscan(arr_info.elem_type)
-						is_option := arr_info.elem_type.has_flag(.option)
-						tmp_var := if is_option { g.new_tmp_var() } else { '' }
-						base_type := g.base_type(varg_type)
-						tmp := if is_option { g.go_before_last_stmt() } else { '' }
-						if is_option {
-							g.writeln('${g.styp(varg_type)} ${tmp_var};')
-							g.write('_option_ok((${base_type}[]) {')
-						}
 						g.write('new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
 						for j in arg_nr .. args.len {
 							g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
@@ -2555,11 +2548,6 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 							}
 						}
 						g.write('}))')
-						if is_option {
-							g.writeln(' }, (${option_name}*)&${tmp_var}, sizeof(${base_type}));')
-							g.write(tmp)
-							g.write(tmp_var)
-						}
 					}
 				}
 			} else {
