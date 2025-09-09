@@ -944,6 +944,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	for arg in node.args {
 		w.expr(arg.expr)
 	}
+	if node.is_variadic && node.expected_arg_types.last().has_flag(.option) {
+		w.used_option++
+	}
 	for concrete_type in node.concrete_types {
 		w.mark_by_type(concrete_type)
 	}
