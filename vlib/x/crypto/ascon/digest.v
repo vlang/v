@@ -128,5 +128,8 @@ fn (mut d Digest) squeeze(mut dst []u8) int {
 	store_bytes(mut dst[pos..], d.State.e0, clen)
 	pos += clen
 
+	// for make sure, assert it here
+	assert pos == dst.len
+
 	return pos
 }

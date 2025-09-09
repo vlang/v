@@ -42,14 +42,13 @@ const hash256_initial_state = State{
 }
 
 // sum256 creates an Ascon-Hash256 checksum for bytes on msg and produces a 256-bit hash.
-@[direct_array_access]
 pub fn sum256(msg []u8) []u8 {
 	mut h := new_hash256()
 	_ := h.write(msg) or { panic(err) }
 	h.Digest.finish()
 	mut dst := []u8{len: hash256_size}
 	n := h.Digest.squeeze(mut dst)
-	return dst[..n]
+	return dst
 }
 
 // Hash256 is an opaque provides an implementation of Ascon-Hash256 from NIST.SP.800-232 standard.
@@ -60,7 +59,6 @@ pub struct Hash256 {
 }
 
 // new_hash256 creates a new Ascon-Hash256 instance.
-@[direct_array_access]
 pub fn new_hash256() &Hash256 {
 	return &Hash256{
 		Digest: Digest{
@@ -80,7 +78,6 @@ pub fn (h &Hash256) block_size() int {
 }
 
 // reset resets and reinit internal Hash256 state into default initialized state.
-@[direct_array_access]
 pub fn (mut h Hash256) reset() {
 	h.Digest.State = hash256_initial_state
 	unsafe { h.Digest.buf.reset() }
@@ -102,7 +99,6 @@ pub fn (mut h Hash256) free() {
 }
 
 // write writes out the content of message and updates internal Hash256 state.
-@[direct_array_access]
 pub fn (mut h Hash256) write(msg []u8) !int {
 	if h.Digest.done {
 		panic('Digest: writing after done ')
@@ -111,7 +107,6 @@ pub fn (mut h Hash256) write(msg []u8) !int {
 }
 
 // clone returns the clone of the current Hash256
-@[direct_array_access]
 fn (h &Hash256) clone() &Hash256 {
 	digest := Digest{
 		State:  h.Digest.State
@@ -132,5 +127,5 @@ pub fn (mut h Hash256) sum(data []u8) []u8 {
 	mut dst := []u8{len: hash256_size}
 	n := h0.Digest.squeeze(mut dst)
 	h0.reset()
-	return dst[..n]
+	return dst
 }

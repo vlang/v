@@ -2,10 +2,9 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
-module ascon
-
 import arrays
 import encoding.hex
+import x.crypto.ascon
 
 // This test for Xof128 with 512-bits outputs
 struct XofTest {
@@ -18,11 +17,11 @@ fn test_xof128() ! {
 	for item in xof128_test_data {
 		msg := hex.decode(item.msg)!
 		md := hex.decode(item.md)!
-		out := xof128_64(msg)!
+		out := ascon.xof128_64(msg)!
 		assert out == md
 
 		// With Xof128Digest opaque
-		mut x := new_xof128(default_xof_size)
+		mut x := ascon.new_xof128(ascon.default_xof_size)
 		md0 := x.sum(msg)
 		assert md0 == md
 

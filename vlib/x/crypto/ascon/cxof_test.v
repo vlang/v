@@ -2,10 +2,9 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
-module ascon
-
 import arrays
 import encoding.hex
+import x.crypto.ascon
 
 struct CxofTest {
 	count int
@@ -21,11 +20,11 @@ fn test_cxof128() ! {
 		z := hex.decode(item.z)!
 		md := hex.decode(item.md)!
 
-		out := cxof128_64(msg, z)!
+		out := ascon.cxof128_64(msg, z)!
 		assert md == out
 
 		// With Xof128Digest opaque
-		mut cx := new_cxof128(default_xof_size, z)!
+		mut cx := ascon.new_cxof128(ascon.default_xof_size, z)!
 		md0 := cx.sum(msg)
 		assert md0 == md
 

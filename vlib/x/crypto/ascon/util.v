@@ -31,7 +31,6 @@ fn pad(n int) u64 {
 }
 
 // assume input.len < 8
-@[direct_array_access]
 fn u64_from_partial_bytes(input []u8) u64 {
 	mut tmp := []u8{len: 8}
 	ct_copy_first(mut tmp, input)
@@ -39,13 +38,11 @@ fn u64_from_partial_bytes(input []u8) u64 {
 }
 
 // ct_copy_at copies of y into x start from at position in constant-time manner.
-@[direct_array_access]
 fn ct_copy_at(mut x []u8, y []u8, at int) {
 	ct_copy_internal(1, mut x, y, at)
 }
 
 // ct_copy_first copies of y into first y.len of x in constant-time manner.
-@[direct_array_access]
 fn ct_copy_first(mut x []u8, y []u8) {
 	ct_copy_internal(1, mut x, y, 0)
 }
@@ -88,6 +85,7 @@ fn set_byte(b u8, i int) u64 {
 	return u64(b) << (8 * i)
 }
 
+// load_bytes load partial bytes with length n, used internally.
 @[direct_array_access]
 fn load_bytes(bytes []u8, n int) u64 {
 	mut x := u64(0)
@@ -97,14 +95,13 @@ fn load_bytes(bytes []u8, n int) u64 {
 	return u64le(x)
 }
 
-@[direct_array_access]
 fn store_bytes(mut out []u8, x u64, n int) {
 	for i := 0; i < n; i++ {
 		out[i] = get_byte(x, i)
 	}
 }
 
-@[direct_array_access; inline]
+@[inline]
 fn ascon_rotate_right(x u64, n int) u64 {
 	return (x >> n) | x << (64 - n)
 }

@@ -13,10 +13,10 @@ import encoding.binary
 // max_hash_size is a maximum size of Ascon-XOF128 (and Ascon-CXOF128) checksum output.
 // Its very rare where checksum output bigger than 512-bits, So, we limiting it to prevent unconditional thing.
 // This limitation was only occurs on this module, wee can change it later.
-const max_hash_size = 4096 // in bytes
+pub const max_hash_size = 4096 // in bytes
 
 // default_xof_size is the size of Ascon-XOF128 (and Ascon-CXOF128) checksum that has 512-bits length.
-const default_xof_size = 64
+pub const default_xof_size = 64
 
 // xof128_initial_state is a precomputed value for Ascon-XOF128 state.
 // See the comment on `hash256_initial_state` about the values
@@ -29,7 +29,6 @@ const xof128_initial_state = State{
 }
 
 // xof128 creates an Ascon-XOF128 checksum of msg with specified desired size of output.
-@[direct_array_access]
 pub fn xof128(msg []u8, size int) ![]u8 {
 	mut x := new_xof128(size)
 	_ := x.write(msg)!
@@ -37,11 +36,10 @@ pub fn xof128(msg []u8, size int) ![]u8 {
 	mut out := []u8{len: size}
 	n := x.Digest.squeeze(mut out)
 	x.reset()
-	return out[..n]
+	return out
 }
 
 // xof128_64 creates a 64-bytes of Ascon-XOF128 checksum of msg.
-@[direct_array_access]
 pub fn xof128_64(msg []u8) ![]u8 {
 	return xof128(msg, default_xof_size)!
 }
@@ -57,7 +55,6 @@ mut:
 }
 
 // new_xof128 creates a new Ascon-XOF128 instance with provided size parameter.
-@[direct_array_access]
 pub fn new_xof128(size int) &Xof128 {
 	if size < 1 || size > max_hash_size {
 		panic('new_xof128: invalid size')
@@ -90,7 +87,6 @@ fn (x &Xof128) clone() &Xof128 {
 }
 
 // write writes out the content of message and updates internal Xof128 state.
-@[direct_array_access]
 pub fn (mut x Xof128) write(msg []u8) !int {
 	if x.Digest.done {
 		panic('Digest: writing after done ')
@@ -101,7 +97,6 @@ pub fn (mut x Xof128) write(msg []u8) !int {
 // sum returns an Ascon-XOF128 checksum of the bytes in msg.
 // Its produces `x.size` of checksum bytes. If you want to more
 // extendible output, use `.read` call instead.
-@[direct_array_access]
 pub fn (mut x Xof128) sum(msg []u8) []u8 {
 	// working on the clone of the h, so we can keep writing
 	mut x0 := x.clone()
@@ -115,7 +110,6 @@ pub fn (mut x Xof128) sum(msg []u8) []u8 {
 
 // read tries to read `dst.len` bytes of hash output from current Xof128 state and stored into dst.
 // Note: 1 ≤ dst.len ≤ max_hash_size.
-@[direct_array_access]
 pub fn (mut x Xof128) read(mut dst []u8) !int {
 	// Left unchanged
 	if dst.len == 0 {
@@ -133,7 +127,6 @@ pub fn (mut x Xof128) read(mut dst []u8) !int {
 }
 
 // reset resets internal Xof128 state into default initialized state.
-@[direct_array_access]
 pub fn (mut x Xof128) reset() {
 	// we dont reset the x.size
 	unsafe { x.Digest.buf.reset() }
@@ -176,7 +169,6 @@ const cxof128_initial_state = State{
 }
 
 // cxof128 creates an Ascon-CXOF128 checksum of msg with supplied size and custom string cs.
-@[direct_array_access]
 pub fn cxof128(msg []u8, size int, cs []u8) ![]u8 {
 	mut cx := new_cxof128(size, cs)!
 	_ := cx.write(msg)!
@@ -184,11 +176,10 @@ pub fn cxof128(msg []u8, size int, cs []u8) ![]u8 {
 	mut out := []u8{len: size}
 	n := cx.Digest.squeeze(mut out)
 	cx.reset()
-	return out[..n]
+	return out
 }
 
 // cxof128_64 creates a 64-bytes of Ascon-CXOF128 checksum of msg with supplied custom string in cs.
-@[direct_array_access]
 pub fn cxof128_64(msg []u8, cs []u8) ![]u8 {
 	return cxof128(msg, default_xof_size, cs)!
 }
@@ -207,7 +198,6 @@ mut:
 
 // new_cxof128 creates a new Ascon-CXOF128 instanace with cheksum size
 // was set to size and custom string in cs. It returns error on fails.
-@[direct_array_access]
 pub fn new_cxof128(size int, cs []u8) !&CXof128 {
 	if cs.len > max_cxof128_cstring {
 		return error('CXof128: custom string length exceed limit')
@@ -240,7 +230,6 @@ pub fn (x &CXof128) block_size() int {
 }
 
 // write writes out the content of message and updates internal CXof128 state.
-@[direct_array_access]
 pub fn (mut x CXof128) write(msg []u8) !int {
 	if x.Digest.done {
 		panic('CXof128: writing after done ')
@@ -251,7 +240,6 @@ pub fn (mut x CXof128) write(msg []u8) !int {
 // sum returns an Ascon-CXOF128 checksum of the bytes in msg.
 // Its produces `x.size` of checksum bytes. If you want to more
 // extendible output, use `.read` call instead.
-@[direct_array_access]
 pub fn (mut x CXof128) sum(msg []u8) []u8 {
 	// working on the clone of the h, so we can keep writing
 	mut x0 := x.clone()
@@ -264,7 +252,6 @@ pub fn (mut x CXof128) sum(msg []u8) []u8 {
 }
 
 // read tries to read `dst.len` bytes of hash output from current CXof128 state and stored into dst.
-@[direct_array_access]
 pub fn (mut x CXof128) read(mut dst []u8) !int {
 	// Left unchanged, nothing space to store checksum
 	if dst.len == 0 {
@@ -290,7 +277,6 @@ fn (x &CXof128) clone() &CXof128 {
 }
 
 // reset resets internal CXof128 state into default initialized state.
-@[direct_array_access]
 pub fn (mut x CXof128) reset() {
 	// we dont reset the x.size and custom string
 	unsafe { x.Digest.buf.reset() }

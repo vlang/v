@@ -34,7 +34,6 @@ const aead128_block_size = 16
 // It returns an authenticated output of Ascon-AEAD128 ciphertext where authentication tag
 // was stored within the end of ciphertext.
 // Note: The Ascon-AEAD128 key shall be kept secret,
-@[direct_array_access]
 pub fn encrypt(key []u8, nonce []u8, ad []u8, msg []u8) ![]u8 {
 	// Preliminary check
 	if key.len != key_size {
@@ -204,7 +203,7 @@ pub fn (mut c Aead128) encrypt(msg []u8, nonce []u8, ad []u8) ![]u8 {
 // decrypt decrypts the ciphertext and validates authentication tag with
 // provided nonce and additional data ad. It returns error on fails or tag unmatching.
 @[direct_array_access]
-fn (mut c Aead128) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u8 {
+pub fn (mut c Aead128) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u8 {
 	// Check for nonce
 	if nonce.len != nonce_size {
 		return error('bad nonce size')
@@ -444,7 +443,6 @@ fn aead128_partial_dec(mut out []u8, mut s State, cmsg []u8) {
 }
 
 // aead128_finalize does finalization step and generates tag value.
-@[direct_array_access]
 fn aead128_finalize(mut s State, k0 u64, k1 u64) {
 	// Load the key into state, S ← S ⊕ (0¹²⁸ ∥ 𝐾 ∥ 0⁶⁴),
 	s.e2 ^= k0
