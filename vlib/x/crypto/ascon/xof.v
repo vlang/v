@@ -117,7 +117,12 @@ pub fn (mut x Xof128) sum(msg []u8) []u8 {
 // Note: 1 ≤ dst.len ≤ max_hash_size.
 @[direct_array_access]
 pub fn (mut x Xof128) read(mut dst []u8) !int {
-	if dst.len < 1 || dst.len > max_hash_size {
+	// Left unchanged
+	if dst.len == 0 {
+		return 0
+	}
+	// Check output size
+	if dst.len > max_hash_size {
 		panic('Xof128.read: invalid size')
 	}
 	mut x0 := x.clone()
@@ -261,7 +266,11 @@ pub fn (mut x CXof128) sum(msg []u8) []u8 {
 // read tries to read `dst.len` bytes of hash output from current CXof128 state and stored into dst.
 @[direct_array_access]
 pub fn (mut x CXof128) read(mut dst []u8) !int {
-	if dst.len < 1 || dst.len > max_hash_size {
+	// Left unchanged, nothing space to store checksum
+	if dst.len == 0 {
+		return 0
+	}
+	if dst.len > max_hash_size {
 		panic('CXof128.read: invalid size')
 	}
 	mut x0 := x.clone()

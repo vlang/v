@@ -29,9 +29,8 @@ fn (mut d Digest) finish() {
 		panic('Digest.finish: internal error')
 	}
 	// Process for the last block stored on the internal buffer
-	block := unsafe { d.buf[..d.length] }
-	d.State.e0 ^= pad(block.len)
-	d.State.e0 ^= load_bytes(block, block.len)
+	d.State.e0 ^= pad(d.length)
+	d.State.e0 ^= load_bytes(d.buf[..d.length], d.length)
 
 	// Permutation step was done in squeezing-phase
 	// ascon_pnr(mut d.State, 12)
@@ -44,13 +43,20 @@ fn (mut d Digest) finish() {
 	d.done = true
 }
 
-// absorb absorbs message msg_ into Ascon-HASH256 state
+// absorb absorbs message msg_ into Digest state.
 @[direct_array_access]
 fn (mut d Digest) absorb(msg_ []u8) int {
 	// nothing to absorb, just return
 	if msg_.len == 0 {
 		return 0
 	}
+	// Absorbing messages into Digest state working in streaming-way.
+	// Its continuesly updates internal state until you call `.finish` or `.free` it.
+	// Firstly, it would checking unprocessed bytes on internal buffer, and append it
+	// with bytes from messasge to align with block_size.
+	// And then absorb this buffered message into state.
+	// The process continues until the last partial block thats maybe below the block_size.
+	// If its happens, it will be stored on the Digest internal buffer for later processing.
 	mut msg := msg_.clone()
 	unsafe {
 		// Check if internal buffer has previous unprocessed bytes.
@@ -93,18 +99,22 @@ fn (mut d Digest) absorb(msg_ []u8) int {
 	}
 }
 
-// squeeze squeezes the Digest's state and calculates checksum output for the current state.
+// squeeze squeezes the state and calculates checksum output for the current state.
 // It accepts destination buffer with desired buffer length you want to output.
 @[direct_array_access; inline]
 fn (mut d Digest) squeeze(mut dst []u8) int {
+	// nothing to store, just return unchanged
+	if dst.len == 0 {
+		return 0
+	}
 	// check
-	if dst.len < 1 || dst.len > max_hash_size {
+	if dst.len > max_hash_size {
 		panic('Digest.squeeze: invalid dst.len')
 	}
 	// The squeezing phase begins after msg is absorbed with an
 	// permutation 𝐴𝑠𝑐𝑜𝑛-𝑝[12] to the state:
 	ascon_pnr(mut d.State, 12)
-	// mut out := []u8{len: size}
+
 	mut pos := 0
 	mut clen := dst.len
 	// process for full block size
@@ -114,7 +124,7 @@ fn (mut d Digest) squeeze(mut dst []u8) int {
 		pos += block_size
 		clen -= block_size
 	}
-	// final output, the resulting 256-bit digest is the concatenation of hash blocks
+	// final output, the resulting hash is the concatenation of hash blocks
 	store_bytes(mut dst[pos..], d.State.e0, clen)
 	pos += clen
 

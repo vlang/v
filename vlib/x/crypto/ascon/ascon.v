@@ -33,7 +33,6 @@ fn ascon_pnr(mut s State, nr int) {
 	if nr < 1 || nr > 16 {
 		panic('Invalid round number')
 	}
-	// handle other number
 	for i := max_nr_perm - nr; i < max_nr_perm; i++ {
 		ascon_perm(mut s, rnc[i])
 	}
@@ -86,13 +85,7 @@ fn ascon_perm(mut s State, c u8) {
 	// 		Σ2(𝑆2) = 𝑆2 ⊕ (𝑆2 ⋙ 1) ⊕ (𝑆2 ⋙ 6)
 	// 		Σ3(𝑆3) = 𝑆3 ⊕ (𝑆3 ⋙ 10) ⊕ (𝑆3 ⋙ 17)
 	// 		Σ4(𝑆4) = 𝑆4 ⊕ (𝑆4 ⋙ 7) ⊕ (𝑆4 ⋙ 41)
-	/*
-	s.e0 ^= rotate_right_64(s.e0, 19) ^ rotate_right_64(s.e0, 28)
-	s.e1 ^= rotate_right_64(s.e1, 61) ^ rotate_right_64(s.e1, 39)
-	s.e2 ^= rotate_right_64(s.e2, 1) ^ rotate_right_64(s.e2, 6)
-	s.e3 ^= rotate_right_64(s.e3, 10) ^ rotate_right_64(s.e3, 17)
-	s.e4 ^= rotate_right_64(s.e4, 7) ^ rotate_right_64(s.e4, 41)
-	*/
+
 	s.e0 ^= ascon_rotate_right(s.e0, 19) ^ ascon_rotate_right(s.e0, 28)
 	s.e1 ^= ascon_rotate_right(s.e1, 61) ^ ascon_rotate_right(s.e1, 39)
 	s.e2 ^= ascon_rotate_right(s.e2, 1) ^ ascon_rotate_right(s.e2, 6)

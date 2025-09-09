@@ -79,7 +79,7 @@ pub fn (h &Hash256) block_size() int {
 	return block_size
 }
 
-// reset reinits internal Hash256 state into default initialized state.
+// reset resets and reinit internal Hash256 state into default initialized state.
 @[direct_array_access]
 pub fn (mut h Hash256) reset() {
 	h.Digest.State = hash256_initial_state
