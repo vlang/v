@@ -30,7 +30,7 @@ fn test_simple() {
 		name: 'João'
 	}
 	x := Employee{'Peter', 28, 95000.5, .worker, sub_employee}
-	s := json2.encode[Employee](x)
+	s := json2.encode[Employee](x, enum_as_int: true)
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2,"sub_employee":{"name":"João","age":0,"salary":0,"title":0}}'
 
 	y := json.decode[Employee](s) or {
@@ -230,7 +230,7 @@ struct Foo2 {
 
 fn test_pretty() {
 	foo := Foo2{1, 2, 3, 4, -1, -2, -3, -4, true, 'abc', 'aliens'}
-	assert json2.encode_pretty(foo) == '{
+	assert json2.encode(foo, prettify: true, indent_string: '  ') == '{
   "ux8": 1,
   "ux16": 2,
   "ux32": 3,
@@ -385,7 +385,7 @@ fn test_encode_decode_sumtype() {
 		]
 	}
 
-	enc := json2.encode(game)
+	enc := json2.encode(game, enum_as_int: true)
 
 	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke"},"other":[{"tag":"Pen"},{"tag":"Cookie"},1,"Stool","${t.format_rfc3339()}"]}'
 }
@@ -412,7 +412,7 @@ fn test_option_instead_of_omit_empty() {
 	foo := Foo31{
 		name: 'Bob'
 	}
-	assert json2.encode_pretty(foo) == '{
+	assert json2.encode(foo, prettify: true, indent_string: '  ') == '{
   "name": "Bob"
 }'
 }
