@@ -38,7 +38,8 @@ pub fn (val ComptTimeConstValue) i16() ?i16 {
 // int tries to return a `ComptTimeConstValue` as `int` type.
 pub fn (val ComptTimeConstValue) int() ?int {
 	x := val.i64()?
-	if x > -2147483649 && x < 2147483648 {
+	// workaround msvc bug: if x > -2147483649 && x < 2147483648 {
+	if (x & 0xFFFFFFFF_00000000) == 0 {
 		return int(x)
 	}
 	return none
@@ -47,7 +48,8 @@ pub fn (val ComptTimeConstValue) int() ?int {
 // i32 tries to return a `ComptTimeConstValue` as `i32` type.
 pub fn (val ComptTimeConstValue) i32() ?i32 {
 	x := val.i64()?
-	if x > -2147483649 && x < 2147483648 {
+	// workaround msvc bug: if x > -2147483649 && x < 2147483648 {
+	if (x & 0xFFFFFFFF_00000000) == 0 {
 		return i32(x)
 	}
 	return none
