@@ -139,7 +139,7 @@ fn (mut c Amd64) dec(reg Amd64Register) {
 		.rsi { c.g.write8(0xce) }
 		.rdi { c.g.write8(0xcf) }
 		.r12 { c.g.write8(0xc4) }
-		else { panic('unhandled inc ${reg}') }
+		else { c.g.n_error('unhandled inc ${reg}') }
 	}
 	c.g.println('dec ${reg}')
 }
@@ -156,7 +156,7 @@ fn (mut c Amd64) neg(reg Amd64Register) {
 	c.g.write8(0xf7)
 	match reg {
 		.rax { c.g.write8(0xd8) }
-		else { panic('unhandled neg ${reg}') }
+		else { c.g.n_error('unhandled neg ${reg}') }
 	}
 	c.g.println('neg ${reg}')
 }
@@ -172,7 +172,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 	// 	see https://www.sandpile.org/x86/opc_rm.htm for a table for modr/m byte (at the bottom of the second one)
 
 	if c.g.pref.arch != .amd64 {
-		panic('cmp')
+		c.g.n_error('cmp')
 	}
 	// Second byte depends on the size of the value
 	match size {
@@ -185,7 +185,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 			c.g.write8(0x81) // compares a 64bits register with a 32bits immediate value
 		}
 		else {
-			panic('unhandled cmp size ${size}')
+			c.g.n_error('unhandled cmp size ${size}')
 		}
 	}
 	// Third byte (modr/m byte) depends on the regiister being compared to
@@ -196,7 +196,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 		.rcx { c.g.write8(0xf9) }
 		.rdx { c.g.write8(0xfa) }
 		.rbx { c.g.write8(0xfb) }
-		else { panic('unhandled cmp reg ${reg}') }
+		else { c.g.n_error('unhandled cmp reg ${reg}') }
 	}
 	match size {
 		._8 {
@@ -206,7 +206,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 			c.g.write32(i32(val))
 		}
 		else {
-			panic('unhandled cmp size ${size}')
+			c.g.n_error('unhandled cmp size ${size}')
 		}
 	}
 	c.g.println('cmp ${reg}, ${val}')
@@ -1239,7 +1239,7 @@ fn (mut c Amd64) syscall() {
 }
 
 fn (mut c Amd64) svc() {
-	panic('the svc instruction is not available with amd64')
+	c.g.n_error('the svc instruction is not available with amd64')
 }
 
 fn (mut c Amd64) cdq() {
@@ -1755,7 +1755,7 @@ fn (mut c Amd64) mov(r Register, val i32) {
 
 fn (mut c Amd64) mul_reg(a Amd64Register, b Amd64Register) {
 	if a != .rax {
-		panic('mul always operates on rax')
+		c.g.n_error('mul always operates on rax')
 	}
 	match b {
 		.rax {
@@ -1763,18 +1763,23 @@ fn (mut c Amd64) mul_reg(a Amd64Register, b Amd64Register) {
 			c.g.write8(0xf7)
 			c.g.write8(0xe8)
 		}
+		.rcx {
+			c.g.write8(0x48)
+			c.g.write8(0xf7)
+			c.g.write8(0xe9)
+		}
+		.rdx {
+			c.g.write8(0x48)
+			c.g.write8(0xf7)
+			c.g.write8(0xea)
+		}
 		.rbx {
 			c.g.write8(0x48)
 			c.g.write8(0xf7)
 			c.g.write8(0xeb)
 		}
-		.rdx {
-			c.g.write8(0x48)
-			c.g.write8(0xf7)
-			c.g.write8(0xe2)
-		}
 		else {
-			panic('unhandled mul ${b}')
+			c.g.n_error('${@LOCATION} unhandled mul ${b}')
 		}
 	}
 	c.g.println('mul ${b}')
@@ -1789,14 +1794,14 @@ fn (mut c Amd64) imul_reg(r Amd64Register) {
 			c.g.println('imul ${r}')
 		}
 		else {
-			panic('unhandled imul ${r}')
+			c.g.n_error('unhandled imul ${r}')
 		}
 	}
 }
 
 fn (mut c Amd64) div_reg(a Amd64Register, b Amd64Register) {
 	if a != .rax {
-		panic('div always operates on rax')
+		c.g.n_error('div always operates on rax')
 	}
 	match b {
 		.rax {
@@ -1804,18 +1809,23 @@ fn (mut c Amd64) div_reg(a Amd64Register, b Amd64Register) {
 			c.g.write8(0xf7)
 			c.g.write8(0xf8)
 		}
+		.rcx {
+			c.g.write8(0x48)
+			c.g.write8(0xf7)
+			c.g.write8(0xf9)
+		}
+		.rdx {
+			c.g.write8(0x48)
+			c.g.write8(0xf7)
+			c.g.write8(0xfa)
+		}
 		.rbx {
 			c.g.write8(0x48)
 			c.g.write8(0xf7)
 			c.g.write8(0xfb)
 		}
-		.rdx {
-			c.g.write8(0x48)
-			c.g.write8(0xf7)
-			c.g.write8(0xf2)
-		}
 		else {
-			panic('unhandled div ${b}')
+			c.g.n_error('unhandled div ${b}')
 		}
 	}
 	c.g.println('div ${b}')
@@ -1923,7 +1933,7 @@ fn (mut c Amd64) sar8(r Amd64Register, val u8) {
 			c.g.write8(0xfa)
 		}
 		else {
-			panic('unhandled sar ${r}, ${val}')
+			c.g.n_error('unhandled sar ${r}, ${val}')
 		}
 	}
 	c.g.write8(val)
@@ -2274,17 +2284,19 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 }
 
 // Could be nice to have left as an expr to be able to take all int assigns
-// TODO: Will have a problem if the literal is bigger than max_i64: needs u64
+// TODO: may have a problem if the literal is bigger than max_i64: needs u64
 fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.IntegerLiteral, left ast.Ident) {
 	match node.op {
 		.plus_assign {
 			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.add(Amd64Register.rax, i32(int_lit.val.int()))
+			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
+			c.add_reg(Amd64Register.rax, Amd64Register.rdx)
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		.minus_assign {
 			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.sub(.rax, i32(int_lit.val.int()))
+			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
+			c.sub_reg(Amd64Register.rax, Amd64Register.rdx)
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		.mult_assign {
@@ -2328,6 +2340,36 @@ fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.In
 			c.mov_var_to_reg(Amd64Register.rax, left)
 			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
 			c.shr_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.xor_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.bitxor_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.or_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.bitor_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.and_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.bitand_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.boolean_and_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.bitand_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.boolean_or_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.bitor_reg(.rax, .rcx)
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		else {
@@ -2981,10 +3023,12 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 			c.assign_ident_right_expr(node, i32(i), val, left.name, left)
 		} else {
 			if c.g.is_register_type(var_type) {
-				c.g.gen_left_value(left)
-				c.push(c.main_reg()) // rax here, stores effective address of the left expr
 				c.g.expr(val)
-				c.pop(.rdx) // effective address of left expr
+				c.push(c.main_reg())
+				c.g.gen_left_value(left)
+				c.mov_reg(Amd64Register.rdx, Amd64Register.rax) // effective address of the left expr 
+				c.mov_deref(Amd64Register.rax, Amd64Register.rdx, var_type) // value of left expr
+				c.pop(.rcx) // value of right expr
 				c.gen_type_promotion(node.right_types[0], var_type)
 
 				size := match c.g.get_type_size(var_type) {
@@ -2995,26 +3039,58 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 				}
 				match node.op {
 					.decl_assign, .assign {
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rdx, .rcx, size)
 					}
 					.plus_assign {
-						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
 						c.add_reg(.rax, .rcx)
 						c.mov_store(.rdx, .rax, size)
 					}
 					.minus_assign {
-						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
 						c.sub_reg(.rax, .rcx)
 						c.mov_store(.rdx, .rax, size)
 					}
 					.and_assign {
-						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
 						c.bitand_reg(.rax, .rcx)
 						c.mov_store(.rdx, .rax, size)
 					}
 					.mod_assign {
-						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
 						c.mod_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.mult_assign {
+						c.mul_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.div_assign {
+						c.div_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.xor_assign {
+						c.bitxor_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.or_assign {
+						c.bitor_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.right_shift_assign {
+						c.shr_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.left_shift_assign {
+						c.shl_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.unsigned_right_shift_assign {
+						c.sar_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.boolean_and_assign {
+						c.bitand_reg(.rax, .rcx)
+						c.mov_store(.rdx, .rax, size)
+					}
+					.boolean_or_assign {
+						c.bitor_reg(.rax, .rcx)
 						c.mov_store(.rdx, .rax, size)
 					}
 					else {
@@ -4767,5 +4843,5 @@ fn (mut c Amd64) cmp_to_stack_top(reg Register) {
 
 // Temporary!
 fn (mut c Amd64) adr(r Arm64Register, delta i32) {
-	panic('`adr` instruction not supported with amd64')
+	c.g.n_error('`adr` instruction not supported with amd64')
 }
