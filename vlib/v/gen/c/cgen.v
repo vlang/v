@@ -3807,8 +3807,13 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.write2('-0', node.val[3..])
 			} else {
 				g.write(node.val)
-				val_i64 := node.val.i64()
-				if val_i64 > 2147483647 || val_i64 < -2147483648 {
+				val_u64 := node.val.u64()
+				if val_u64 & 0x80000000_00000000 != 0 && !node.val.starts_with('-') {
+					// a large integer with sign bit set, but without `-`, it should be a unsigned integer
+					g.write('U')
+				}
+				if val_u64 & 0xFFFFFFFF_00000000 != 0 {
+					// not in [min_i32, max_i32]
 					g.write('LL')
 				}
 			}
