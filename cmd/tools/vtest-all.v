@@ -90,6 +90,11 @@ fn get_all_commands() []Command {
 		okmsg:  'V can compile hello world.'
 		rmfile: 'examples/hello_world'
 	}
+	res << Command{
+		line:   '${vexe} -W -Wimpure-v run examples/hello_world.v'
+		okmsg:  'V can compile hello world with the stricter `-W -Wimpure-v` mode .'
+		rmfile: 'examples/hello_world'
+	}
 	$if linux {
 		if l2w_crosscc != '' {
 			res << Command{
