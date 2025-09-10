@@ -3026,8 +3026,8 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 				c.g.expr(val)
 				c.push(c.main_reg())
 				c.g.gen_left_value(left)
-				c.mov_reg(Amd64Register.rdx, Amd64Register.rax) // effective address of the left expr 
-				c.mov_deref(Amd64Register.rax, Amd64Register.rdx, var_type) // value of left expr
+				c.mov_reg(Amd64Register.rbx, Amd64Register.rax) // effective address of the left expr
+				c.mov_deref(Amd64Register.rax, Amd64Register.rbx, var_type) // value of left expr
 				c.pop(.rcx) // value of right expr
 				c.gen_type_promotion(node.right_types[0], var_type)
 
@@ -3039,59 +3039,61 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 				}
 				match node.op {
 					.decl_assign, .assign {
-						c.mov_store(.rdx, .rcx, size)
+						c.mov_store(.rbx, .rcx, size)
 					}
 					.plus_assign {
 						c.add_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.minus_assign {
 						c.sub_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.and_assign {
 						c.bitand_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.mod_assign {
+						c.mov(Amd64Register.rdx, i32(0)) // 64bits IDIV uses RDX:RAX
 						c.mod_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.mult_assign {
 						c.mul_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.div_assign {
+						c.mov(Amd64Register.rdx, i32(0)) // 64bits IDIV uses RDX:RAX
 						c.div_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.xor_assign {
 						c.bitxor_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.or_assign {
 						c.bitor_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.right_shift_assign {
 						c.shr_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.left_shift_assign {
 						c.shl_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.unsigned_right_shift_assign {
 						c.sar_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.boolean_and_assign {
 						c.bitand_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.boolean_or_assign {
 						c.bitor_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					else {
 						c.g.n_error('${@LOCATION} Unsupported assign instruction (${node.op})')
