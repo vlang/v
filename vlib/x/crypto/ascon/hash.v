@@ -47,7 +47,7 @@ pub fn sum256(msg []u8) []u8 {
 	_ := h.write(msg) or { panic(err) }
 	h.Digest.finish()
 	mut dst := []u8{len: hash256_size}
-	n := h.Digest.squeeze(mut dst)
+	_ := h.Digest.squeeze(mut dst)
 	return dst
 }
 
@@ -125,7 +125,7 @@ pub fn (mut h Hash256) sum(data []u8) []u8 {
 	_ := h0.write(data) or { panic(err) }
 	h0.Digest.finish()
 	mut dst := []u8{len: hash256_size}
-	n := h0.Digest.squeeze(mut dst)
+	_ := h0.Digest.squeeze(mut dst)
 	h0.reset()
 	return dst
 }

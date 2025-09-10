@@ -34,7 +34,7 @@ pub fn xof128(msg []u8, size int) ![]u8 {
 	_ := x.write(msg)!
 	x.Digest.finish()
 	mut out := []u8{len: size}
-	n := x.Digest.squeeze(mut out)
+	_ := x.Digest.squeeze(mut out)
 	x.reset()
 	return out
 }
@@ -174,7 +174,7 @@ pub fn cxof128(msg []u8, size int, cs []u8) ![]u8 {
 	_ := cx.write(msg)!
 	cx.Digest.finish()
 	mut out := []u8{len: size}
-	n := cx.Digest.squeeze(mut out)
+	_ := cx.Digest.squeeze(mut out)
 	cx.reset()
 	return out
 }
