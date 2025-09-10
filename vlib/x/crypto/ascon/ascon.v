@@ -43,7 +43,6 @@ fn ascon_pnr(mut s State, nr int) {
 // 1. the constant-addition layer (see Sec. 3.2),
 // 2. the substitution layer (see Sec.3.3), and,
 // 3. the linear diffusion layer
-@[direct_array_access]
 fn ascon_perm(mut s State, c u8) {
 	// 3.2 Constant-Addition Layer step
 	//
