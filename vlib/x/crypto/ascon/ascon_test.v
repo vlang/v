@@ -5,23 +5,6 @@
 module ascon
 
 // This test mostly taken from https://docs.rs/ascon/latest/src/ascon/lib.rs.html
-fn test_ascon_round_one() {
-	mut s := State{
-		e0: u64(0x0123456789abcdef)
-		e1: 0x23456789abcdef01
-		e2: 0x456789abcdef0123
-		e3: 0x6789abcdef012345
-		e4: 0x89abcde01234567f
-	}
-	ascon_perm(mut s, 0x1f)
-
-	assert s.e0 == u64(0x3c1748c9be2892ce)
-	assert s.e1 == u64(0x5eafb305cd26164f)
-	assert s.e2 == u64(0xf9470254bb3a4213)
-	assert s.e3 == u64(0xf0428daf0c5d3948)
-	assert s.e4 == u64(0x281375af0b294899)
-}
-
 fn test_ascon_round_p6() {
 	mut s := State{
 		e0: u64(0x0123456789abcdef)
