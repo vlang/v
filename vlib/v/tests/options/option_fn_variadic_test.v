@@ -3,7 +3,7 @@ struct Empty {
 
 type Elem = int | Empty
 
-fn new_elems(elems ...??int) []Elem {
+fn new_elems(elems ...?int) []Elem {
 	mut out := []Elem{}
 	for elem in elems {
 		if elem == none {
