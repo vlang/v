@@ -268,3 +268,12 @@ fn test_int_max() {
 	assert int_max(-5, 5) == 5
 	assert int_max(5, -5) == 5
 }
+
+fn test_big_int() {
+	x := i64(2147483647)
+	if x > -2147483649 && x < 2147483648 {
+		assert true
+	} else {
+		assert false
+	}
+}

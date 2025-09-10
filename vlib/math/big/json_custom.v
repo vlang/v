@@ -28,3 +28,8 @@ pub fn (mut result Integer) from_json_number(raw_number string) ! {
 		result = result * integer_from_int(-1)
 	}
 }
+
+// to_json implements a custom encoder for json2
+pub fn (result Integer) to_json() string {
+	return result.str()
+}

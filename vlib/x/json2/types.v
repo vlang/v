@@ -23,11 +23,6 @@ pub type Any = []Any
 	| u8
 	| Null
 
-// Encodable is an interface, that allows custom implementations for encoding structs to their string based JSON representations.
-pub interface Encodable {
-	json_str() string
-}
-
 // Null is a simple representation of the `null` value in JSON.
 pub struct Null {
 	is_null bool = true
@@ -39,6 +34,11 @@ pub const null = Null{}
 // from_json_null implements a custom decoder for json2
 pub fn (mut n Null) from_json_null() {}
 
+// to_json implements a custom encoder for json2
+pub fn (n Null) to_json() string {
+	return 'null'
+}
+
 // ValueKind enumerates the kinds of possible values of the Any sumtype.
 enum ValueKind {
 	unknown
@@ -48,17 +48,4 @@ enum ValueKind {
 	number
 	boolean
 	null
-}
-
-// str returns the string representation of the specific ValueKind.
-fn (k ValueKind) str() string {
-	return match k {
-		.unknown { 'unknown' }
-		.array { 'array' }
-		.object { 'object' }
-		.string { 'string' }
-		.number { 'number' }
-		.boolean { 'boolean' }
-		.null { 'null' }
-	}
 }
