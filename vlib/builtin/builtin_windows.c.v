@@ -125,7 +125,7 @@ fn unhandled_exception_handler(e &ExceptionPointers) int {
 	match e.exception_record.code {
 		// These are 'used' by the backtrace printer
 		// so we dont want to catch them...
-		0x4001000A, 0x40010006, 0xE06D7363 {
+		0x4001000A, 0x40010006, 0x406D1388, 0xE06D7363 {
 			return 0
 		}
 		else {

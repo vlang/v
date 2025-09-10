@@ -781,7 +781,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					if g.pref.translated && node.typ.is_number() {
 						g.writeln('_const_main__${val};')
 					} else {
-						node_sym := g.table.sym(node.typ)
+						node_sym := g.table.sym(g.unwrap_generic(node.typ))
 						if node_sym.info is ast.Alias {
 							g.writeln('${g.styp(node_sym.info.parent_type)}__${val};')
 						} else {
