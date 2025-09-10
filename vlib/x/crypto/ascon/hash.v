@@ -118,7 +118,6 @@ fn (h &Hash256) clone() &Hash256 {
 }
 
 // sum returns an Ascon-Hash256 checksum of the bytes in data.
-@[direct_array_access]
 pub fn (mut h Hash256) sum(data []u8) []u8 {
 	// working on the clone of the h, so we can keep writing
 	mut h0 := h.clone()
