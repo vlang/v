@@ -3184,13 +3184,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.write('*')
 		}
 	}
-	if expr is ast.IntegerLiteral {
-		if expected_type in [ast.u64_type, ast.u32_type, ast.u16_type] && expr.val[0] != `-` {
-			g.expr(expr)
-			g.write('U')
-			return
-		}
-	}
 	if (exp_sym.kind == .function && !expected_type.has_option_or_result())
 		|| (g.inside_struct_init && expected_type == ast.voidptr_type
 		&& expected_type != got_type_raw && expr !is ast.StructInit) {
@@ -3814,6 +3807,10 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.write2('-0', node.val[3..])
 			} else {
 				g.write(node.val)
+				val_i64 := node.val.i64()
+				if val_i64 > 2147483647 || val_i64 < -2147483648 {
+					g.write('LL')
+				}
 			}
 		}
 		ast.IsRefType {
@@ -5670,13 +5667,6 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 					}
 				}
 				g.expr(node.expr)
-				if node.expr is ast.IntegerLiteral {
-					if node_typ in [ast.u64_type, ast.u32_type, ast.u16_type] {
-						if !node.expr.val.starts_with('-') {
-							g.write('U')
-						}
-					}
-				}
 				g.write('))')
 			}
 		}
