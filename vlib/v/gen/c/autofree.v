@@ -148,13 +148,13 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 		// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
 	}
 	// }
-	free_fn := g.styp(v.typ.set_nr_muls(0).clear_option_and_result()) + '_free'
+	mut free_fn := g.styp(v.typ.set_nr_muls(0).clear_option_and_result()) + '_free'
 	if sym.kind == .array {
 		if sym.has_method('free') {
 			g.autofree_var_call(free_fn, v)
 			return
 		}
-		g.autofree_var_call('array_free', v)
+		g.autofree_var_call('builtin__array_free', v)
 		return
 	}
 	if sym.kind == .string {
@@ -179,8 +179,11 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 				*/
 			}
 		}
-		g.autofree_var_call('string_free', v)
+		g.autofree_var_call('builtin__string_free', v)
 		return
+	}
+	if sym.is_builtin() {
+		free_fn = 'builtin__${free_fn}'
 	}
 	// Free user reference types
 	is_user_ref := v.typ.is_ptr() && sym.name.after('.')[0].is_capital()

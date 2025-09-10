@@ -28,7 +28,7 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		dot_or_ptr := if !expr_typ.has_flag(.option_mut_param_t) { '.' } else { '-> ' }
 		g.writeln('if (${c_name(expr_var)}${dot_or_ptr}state != 0) { // assign')
 		if expr is ast.Ident && expr.or_expr.kind == .propagate_option {
-			g.writeln('\tpanic_option_not_set(_S("none"));')
+			g.writeln('\tbuiltin__panic_option_not_set(_S("none"));')
 		} else {
 			g.inside_or_block = true
 			defer {
@@ -69,9 +69,9 @@ fn (mut g Gen) expr_opt_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast
 	if expr !is ast.None {
 		is_option_expr := expr_typ.has_flag(.option)
 		if is_option_expr {
-			g.write('_option_clone((${option_name}*)')
+			g.write('builtin___option_clone((${option_name}*)')
 		} else {
-			g.write('_option_ok(&(${styp}[]){ ')
+			g.write('builtin___option_ok(&(${styp}[]){ ')
 		}
 		has_addr := is_option_expr && expr !in [ast.Ident, ast.SelectorExpr]
 		if has_addr {
@@ -119,9 +119,9 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 			g.writeln('${decl_styp} ${past.tmp_var};')
 			is_none := expr is ast.CastExpr && expr.expr is ast.None
 			if is_none {
-				g.write('_option_none(&(${styp}[]) {')
+				g.write('builtin___option_none(&(${styp}[]) {')
 			} else {
-				g.write('_option_ok(&(${styp}[]) {')
+				g.write('builtin___option_ok(&(${styp}[]) {')
 			}
 			if expr is ast.CastExpr && expr_typ.has_flag(.option) {
 				ret_sym := g.table.sym(ret_typ)
@@ -247,7 +247,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.writeln('); // free ${type_to_free} on re-assignment2')
 				defer {
 					if af {
-						g.writeln('${type_to_free}_free(&${sref_name});')
+						g.writeln('builtin__${type_to_free}_free(&${sref_name});')
 					}
 				}
 			} else {
@@ -644,22 +644,22 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
 				if mut left is ast.IndexExpr {
 					if g.table.sym(left.left_type).kind == .array_fixed {
-						// strs[0] += str2 => `strs[0] = string__plus(strs[0], str2)`
+						// strs[0] += str2 => `strs[0] = _string__plus(strs[0], str2)`
 						g.expr(left)
-						g.write(' = string__plus(')
+						g.write(' = builtin__string__plus(')
 					} else {
-						// a[0] += str => `array_set(&a, 0, &(string[]) {string__plus(...))})`
+						// a[0] += str => `builtin__array_set(&a, 0, &(string[]) {_string__plus(...))})`
 						g.expr(left)
-						g.write('string__plus(')
+						g.write('builtin__string__plus(')
 					}
 				} else {
 					// allow literal values to auto deref var (e.g.`for mut v in values { v += 1.0 }`)
 					if left.is_auto_deref_var() {
 						g.write('*')
 					}
-					// str += str2 => `str = string__plus(str, str2)`
+					// str += str2 => `str = builtin__string__plus(str, str2)`
 					g.expr(left)
-					g.write(' = string__plus(')
+					g.write(' = builtin__string__plus(')
 				}
 				g.is_assign_lhs = false
 				str_add = true
@@ -1144,7 +1144,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 				g.writeln(' = ${tmp_var};')
 				g.left_is_opt = old_left_is_opt
 			} else {
-				g.write('_option_ok(&(${base_typ}[]) { ${tmp_var} }, (${option_name}*)(&')
+				g.write('builtin___option_ok(&(${base_typ}[]) { ${tmp_var} }, (${option_name}*)(&')
 				tmp_left_is_opt := g.left_is_opt
 				g.left_is_opt = true
 				g.expr(lx)
@@ -1211,14 +1211,14 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				} else if left_is_auto_deref_var {
 					styp := g.styp(left_typ).trim('*')
 					if left_sym.kind == .array {
-						g.writeln('${styp} _var_${left.pos.pos} = array_clone(${anon_ctx}${c_name(left.name)});')
+						g.writeln('${styp} _var_${left.pos.pos} = builtin__array_clone(${anon_ctx}${c_name(left.name)});')
 					} else {
 						g.writeln('${styp} _var_${left.pos.pos} = *${anon_ctx}${c_name(left.name)};')
 					}
 				} else {
 					styp := g.styp(left_typ)
 					if left_sym.kind == .array {
-						g.writeln('${styp} _var_${left.pos.pos} = array_clone(&${anon_ctx}${c_name(left.name)});')
+						g.writeln('${styp} _var_${left.pos.pos} = builtin__array_clone(&${anon_ctx}${c_name(left.name)});')
 					} else {
 						g.writeln('${styp} _var_${left.pos.pos} = ${anon_ctx}${c_name(left.name)};')
 					}
@@ -1235,12 +1235,12 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 						left_typ := node.left_types[i]
 						left_sym := g.table.sym(left_typ)
 						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
-						g.write(' = *(voidptr*)array_get(')
+						g.write(' = *(voidptr*)builtin__array_get(')
 					} else {
 						styp := g.styp(info.elem_type)
-						string_clone := if needs_clone { 'string_clone(' } else { '' }
+						string_clone := if needs_clone { 'builtin__string_clone(' } else { '' }
 
-						g.write('${styp} _var_${left.pos.pos} = ${string_clone}*(${styp}*)array_get(')
+						g.write('${styp} _var_${left.pos.pos} = ${string_clone}*(${styp}*)builtin__array_get(')
 					}
 
 					if left.left_type.is_ptr() {
@@ -1270,7 +1270,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					}
 					needs_clone := info.elem_type == ast.string_type && g.is_autofree
 					if needs_clone {
-						g.write('string_clone(')
+						g.write('builtin__string_clone(')
 					}
 					g.expr(left)
 					if needs_clone {
@@ -1287,9 +1287,9 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 						left_type := node.left_types[i]
 						left_sym := g.table.sym(left_type)
 						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
-						g.write(' = *(voidptr*)map_get(')
+						g.write(' = *(voidptr*)builtin__map_get(')
 					} else {
-						g.write('${styp} _var_${left.pos.pos} = *(${styp}*)map_get(')
+						g.write('${styp} _var_${left.pos.pos} = *(${styp}*)builtin__map_get(')
 					}
 					if !left.left_type.is_ptr() {
 						g.write('ADDR(map, ')
@@ -1381,7 +1381,14 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 				final_left_sym := g.table.final_sym(left_type)
 				rec_typ_name := g.resolve_receiver_name(val, unwrapped_rec_type, final_left_sym,
 					left_sym, typ_sym)
-				fn_name := util.no_dots('${rec_typ_name}_${val.name}')
+				mut fn_name := util.no_dots('${rec_typ_name}_${val.name}')
+				if resolved_sym := g.table.find_sym(rec_typ_name) {
+					if resolved_sym.is_builtin() && !fn_name.starts_with('builtin__') {
+						fn_name = 'builtin__${fn_name}'
+					}
+				} else if rec_typ_name in ['int_literal', 'float_literal'] {
+					fn_name = 'builtin__${fn_name}'
+				}
 				g.write('${fn_name}(&')
 				g.gen_cross_tmp_variable(left, val.left)
 				for i, arg in val.args {

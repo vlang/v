@@ -2,7 +2,7 @@
 _option_bool _t2 = main__t1();
 if (_t2.state != 0) {
 IError err = _t2.err;
-_v_panic(IError_str(err));
+builtin___v_panic(builtin__IError_str(err));
 VUNREACHABLE();
 ;
 }

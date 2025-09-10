@@ -97,15 +97,15 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		if node.typ.has_flag(.option) {
 			basetyp := g.base_type(node.typ)
 			if aligned != 0 {
-				g.write('(${basetyp}*)memdup_align(&(${basetyp}){')
+				g.write('(${basetyp}*)builtin__memdup_align(&(${basetyp}){')
 			} else {
-				g.write('(${basetyp}*)memdup(&(${basetyp}){')
+				g.write('(${basetyp}*)builtin__memdup(&(${basetyp}){')
 			}
 		} else {
 			if aligned != 0 {
-				g.write('(${styp}*)memdup_align(&(${styp}){')
+				g.write('(${styp}*)builtin__memdup_align(&(${styp}){')
 			} else {
-				g.write('(${styp}*)memdup(&(${styp}){')
+				g.write('(${styp}*)builtin__memdup(&(${styp}){')
 			}
 		}
 	} else if node.typ.is_ptr() {
@@ -124,9 +124,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.writeln('${styp} ${tmp_var} = {0};')
 
 		if node.init_fields.len > 0 {
-			g.write('_option_ok(&(${base_styp}[]) { ')
+			g.write('builtin___option_ok(&(${base_styp}[]) { ')
 		} else {
-			g.write('_option_none(&(${base_styp}[]) { ')
+			g.write('builtin___option_none(&(${base_styp}[]) { ')
 		}
 		g.struct_init(ast.StructInit{
 			...node

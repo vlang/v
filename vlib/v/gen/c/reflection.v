@@ -26,7 +26,7 @@ fn (mut g Gen) gen_reflection_strings() {
 // gen_empty_array generates code for empty array
 @[inline]
 fn (g &Gen) gen_empty_array(type_name string) string {
-	return '__new_array_with_default(0, 0, sizeof(${type_name}), 0)'
+	return 'builtin____new_array_with_default(0, 0, sizeof(${type_name}), 0)'
 }
 
 // gen_functionarg_array generates the code for functionarg argument
@@ -35,7 +35,7 @@ fn (g &Gen) gen_functionarg_array(type_name string, node ast.Fn) string {
 	if node.params.len == 0 {
 		return g.gen_empty_array(type_name)
 	}
-	mut out := 'new_array_from_c_array(${node.params.len},${node.params.len},sizeof(${type_name}),'
+	mut out := 'builtin__new_array_from_c_array(${node.params.len},${node.params.len},sizeof(${type_name}),'
 	out += '_MOV((${type_name}[${node.params.len}]){'
 	out += node.params.map('((${type_name}){.name=_S("${it.name}"),.typ=${int(it.typ)},.is_mut=${it.is_mut}})').join(',')
 	out += '}))'
@@ -51,7 +51,7 @@ fn (mut g Gen) gen_function_array(nodes []ast.Fn) string {
 		return g.gen_empty_array(type_name)
 	}
 
-	mut out := 'new_array_from_c_array(${nodes.len},${nodes.len},sizeof(${type_name}),'
+	mut out := 'builtin__new_array_from_c_array(${nodes.len},${nodes.len},sizeof(${type_name}),'
 	out += '_MOV((${type_name}[${nodes.len}]){'
 	out += nodes.map(g.gen_reflection_fn(it)).join(',')
 	out += '}))'
@@ -93,7 +93,7 @@ fn (g &Gen) gen_attrs_array(attrs []ast.Attr) string {
 	if attrs.len == 0 {
 		return g.gen_empty_array('string')
 	}
-	mut out := 'new_array_from_c_array(${attrs.len},${attrs.len},sizeof(string),'
+	mut out := 'builtin__new_array_from_c_array(${attrs.len},${attrs.len},sizeof(string),'
 	out += '_MOV((string[${attrs.len}]){'
 	out += attrs.map(if it.has_arg {
 		'_S("${it.name}=${escape_quotes(it.arg)}")'
@@ -110,7 +110,7 @@ fn (g &Gen) gen_fields_array(fields []ast.StructField) string {
 	if fields.len == 0 {
 		return g.gen_empty_array('${cprefix}StructField')
 	}
-	mut out := 'new_array_from_c_array(${fields.len},${fields.len},sizeof(${cprefix}StructField),'
+	mut out := 'builtin__new_array_from_c_array(${fields.len},${fields.len},sizeof(${cprefix}StructField),'
 	out += '_MOV((${cprefix}StructField[${fields.len}]){'
 	out += fields.map('((${cprefix}StructField){.name=_S("${it.name}"),.typ=${int(it.typ)},.attrs=${g.gen_attrs_array(it.attrs)},.is_pub=${it.is_pub},.is_mut=${it.is_mut}})').join(',')
 	out += '}))'
@@ -123,7 +123,7 @@ fn (g &Gen) gen_type_array(types []ast.Type) string {
 	if types.len == 0 {
 		return g.gen_empty_array(ast.int_type_name)
 	}
-	return 'new_array_from_c_array(${types.len},${types.len},sizeof(${ast.int_type_name}),_MOV((int[${types.len}]){${types.map(int(it).str()).join(',')}}))'
+	return 'builtin__new_array_from_c_array(${types.len},${types.len},sizeof(${ast.int_type_name}),_MOV((int[${types.len}]){${types.map(int(it).str()).join(',')}}))'
 }
 
 // gen_string_array generates C code for []string
@@ -133,7 +133,7 @@ fn (g &Gen) gen_string_array(strs []string) string {
 		return g.gen_empty_array('string')
 	}
 	items := strs.map('_S("${it}")').join(',')
-	return 'new_array_from_c_array(${strs.len},${strs.len},sizeof(string),_MOV((string[${strs.len}]){${items}}))'
+	return 'builtin__new_array_from_c_array(${strs.len},${strs.len},sizeof(string),_MOV((string[${strs.len}]){${items}}))'
 }
 
 // gen_reflection_sym_info generates C code for TypeSymbol's info sum type
@@ -143,40 +143,40 @@ fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 		.array {
 			info := tsym.info as ast.Array
 			s := 'ADDR(${cprefix}Array,(((${cprefix}Array){.nr_dims=${info.nr_dims},.elem_type=${int(info.elem_type)}})))'
-			return '(${cprefix}TypeInfo){._${cprefix}Array = memdup(${s},sizeof(${cprefix}Array)),._typ=${g.table.find_type_idx('v.reflection.Array')}}'
+			return '(${cprefix}TypeInfo){._${cprefix}Array = builtin__memdup(${s},sizeof(${cprefix}Array)),._typ=${g.table.find_type_idx('v.reflection.Array')}}'
 		}
 		.array_fixed {
 			info := tsym.info as ast.ArrayFixed
 			s := 'ADDR(${cprefix}ArrayFixed,(((${cprefix}ArrayFixed){.size=${info.size},.elem_type=${int(info.elem_type)}})))'
-			return '(${cprefix}TypeInfo){._${cprefix}ArrayFixed=memdup(${s},sizeof(${cprefix}ArrayFixed)),._typ=${g.table.find_type_idx('v.reflection.ArrayFixed')}}'
+			return '(${cprefix}TypeInfo){._${cprefix}ArrayFixed=builtin__memdup(${s},sizeof(${cprefix}ArrayFixed)),._typ=${g.table.find_type_idx('v.reflection.ArrayFixed')}}'
 		}
 		.map {
 			info := tsym.info as ast.Map
 			s := 'ADDR(${cprefix}Map,(((${cprefix}Map){.key_type=${int(info.key_type)},.value_type=${int(info.value_type)}})))'
-			return '(${cprefix}TypeInfo){._${cprefix}Map=memdup(${s},sizeof(${cprefix}Map)),._typ=${g.table.find_type_idx('v.reflection.Map')}}'
+			return '(${cprefix}TypeInfo){._${cprefix}Map=builtin__memdup(${s},sizeof(${cprefix}Map)),._typ=${g.table.find_type_idx('v.reflection.Map')}}'
 		}
 		.sum_type {
 			info := tsym.info as ast.SumType
 			s := 'ADDR(${cprefix}SumType,(((${cprefix}SumType){.parent_idx=${info.parent_type.idx()},.variants=${g.gen_type_array(info.variants)}})))'
-			return '(${cprefix}TypeInfo){._${cprefix}SumType=memdup(${s},sizeof(${cprefix}SumType)),._typ=${g.table.find_type_idx('v.reflection.SumType')}}'
+			return '(${cprefix}TypeInfo){._${cprefix}SumType=builtin__memdup(${s},sizeof(${cprefix}SumType)),._typ=${g.table.find_type_idx('v.reflection.SumType')}}'
 		}
 		.struct {
 			info := tsym.info as ast.Struct
 			attrs := g.gen_attrs_array(info.attrs)
 			fields := g.gen_fields_array(info.fields)
 			s := 'ADDR(${cprefix}Struct,(((${cprefix}Struct){.parent_idx=${(tsym.info as ast.Struct).parent_type.idx()},.attrs=${attrs},.fields=${fields}})))'
-			return '(${cprefix}TypeInfo){._${cprefix}Struct=memdup(${s},sizeof(${cprefix}Struct)),._typ=${g.table.find_type_idx('v.reflection.Struct')}}'
+			return '(${cprefix}TypeInfo){._${cprefix}Struct=builtin__memdup(${s},sizeof(${cprefix}Struct)),._typ=${g.table.find_type_idx('v.reflection.Struct')}}'
 		}
 		.enum {
 			info := tsym.info as ast.Enum
 			vals := g.gen_string_array(info.vals)
 			s := 'ADDR(${cprefix}Enum,(((${cprefix}Enum){.vals=${vals},.is_flag=${info.is_flag}})))'
-			return '(${cprefix}TypeInfo){._${cprefix}Enum=memdup(${s},sizeof(${cprefix}Enum)),._typ=${g.table.find_type_idx('v.reflection.Enum')}}'
+			return '(${cprefix}TypeInfo){._${cprefix}Enum=builtin__memdup(${s},sizeof(${cprefix}Enum)),._typ=${g.table.find_type_idx('v.reflection.Enum')}}'
 		}
 		.function {
 			info := tsym.info as ast.FnType
 			s := 'ADDR(${cprefix}Function,${g.gen_reflection_fn(info.func)})'
-			return '(${cprefix}TypeInfo){._${cprefix}Function=memdup(${s},sizeof(${cprefix}Function)),._typ=${g.table.find_type_idx('v.reflection.Function')}}'
+			return '(${cprefix}TypeInfo){._${cprefix}Function=builtin__memdup(${s},sizeof(${cprefix}Function)),._typ=${g.table.find_type_idx('v.reflection.Function')}}'
 		}
 		.interface {
 			name := tsym.name.all_after_last('.')
@@ -184,21 +184,21 @@ fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 			methods := g.gen_function_array(info.methods)
 			fields := g.gen_fields_array(info.fields)
 			s := 'ADDR(${cprefix}Interface,(((${cprefix}Interface){.name=_S("${name}"),.methods=${methods},.fields=${fields},.is_generic=${info.is_generic}})))'
-			return '(${cprefix}TypeInfo){._${cprefix}Interface=memdup(${s},sizeof(${cprefix}Interface)),._typ=${g.table.find_type_idx('v.reflection.Interface')}}'
+			return '(${cprefix}TypeInfo){._${cprefix}Interface=builtin__memdup(${s},sizeof(${cprefix}Interface)),._typ=${g.table.find_type_idx('v.reflection.Interface')}}'
 		}
 		.alias {
 			info := tsym.info as ast.Alias
 			s := 'ADDR(${cprefix}Alias,(((${cprefix}Alias){.parent_idx=${info.parent_type.idx()},.language=${cprefix}VLanguage__${info.language.str()}})))'
-			return '(${cprefix}TypeInfo){._${cprefix}Alias=memdup(${s},sizeof(${cprefix}Alias)),._typ=${g.table.find_type_idx('v.reflection.Alias')}}'
+			return '(${cprefix}TypeInfo){._${cprefix}Alias=builtin__memdup(${s},sizeof(${cprefix}Alias)),._typ=${g.table.find_type_idx('v.reflection.Alias')}}'
 		}
 		.multi_return {
 			info := tsym.info as ast.MultiReturn
 			s := 'ADDR(${cprefix}MultiReturn,(((${cprefix}MultiReturn){.types=${g.gen_type_array(info.types)}})))'
-			return '(${cprefix}TypeInfo){._${cprefix}MultiReturn=memdup(${s},sizeof(${cprefix}MultiReturn)),._typ=${g.table.find_type_idx('v.reflection.MultiReturn')}}'
+			return '(${cprefix}TypeInfo){._${cprefix}MultiReturn=builtin__memdup(${s},sizeof(${cprefix}MultiReturn)),._typ=${g.table.find_type_idx('v.reflection.MultiReturn')}}'
 		}
 		else {
 			s := 'ADDR(${cprefix}None,(((${cprefix}None){.parent_idx=${tsym.parent_idx},})))'
-			return '(${cprefix}TypeInfo){._${cprefix}None=memdup(${s},sizeof(${cprefix}None)),._typ=${g.table.find_type_idx('v.reflection.None')}}'
+			return '(${cprefix}TypeInfo){._${cprefix}None=builtin__memdup(${s},sizeof(${cprefix}None)),._typ=${g.table.find_type_idx('v.reflection.None')}}'
 		}
 	}
 }

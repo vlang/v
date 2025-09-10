@@ -1,6 +1,6 @@
 total_m += n;
 fprintf(stderr, "_v_malloc %6d total %10d\n", n, total_m);
-return prealloc_malloc(n);
+return builtin__prealloc_malloc(n);
 res = GC_MALLOC(n);
 res = _aligned_malloc(n, 1);
 res = malloc(n);

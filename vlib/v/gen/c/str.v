@@ -136,7 +136,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		if is_ptr && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
-			g.write('str_intp(1, _MOV((StrIntpData[]){{_S("${ref_str}"), ${si_s_code} ,{.d_s = isnil(')
+			g.write('builtin__str_intp(1, _MOV((StrIntpData[]){{_S("${ref_str}"), ${si_s_code} ,{.d_s = builtin__isnil(')
 			if typ.has_flag(.option) {
 				g.write('*(${g.base_type(exp_typ)}*)&')
 				if temp_var_needed {
