@@ -241,7 +241,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 				order: -1
 			}
 			if g.is_autofree {
-				g.cleanups[mod].writeln('\tstring_free(&${cname});')
+				g.cleanups[mod].writeln('\tbuiltin__string_free(&${cname});')
 			}
 		}
 		voidptr {
@@ -360,14 +360,14 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 			if sym.has_method_with_generic_parent('free') {
 				g.cleanup.writeln('\t${styp}_free(&${cname});')
 			} else {
-				g.cleanup.writeln('\tarray_free(&${cname});')
+				g.cleanup.writeln('\tbuiltin__array_free(&${cname});')
 			}
 		} else if styp == 'string' {
-			g.cleanup.writeln('\tstring_free(&${cname});')
+			g.cleanup.writeln('\tbuiltin__string_free(&${cname});')
 		} else if sym.kind == .map {
-			g.cleanup.writeln('\tmap_free(&${cname});')
+			g.cleanup.writeln('\tbuiltin__map_free(&${cname});')
 		} else if styp == 'IError' {
-			g.cleanup.writeln('\tIError_free(&${cname});')
+			g.cleanup.writeln('\tbuiltin__IError_free(&${cname});')
 		}
 	}
 }
@@ -406,9 +406,13 @@ fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name st
 	if g.is_autofree {
 		sym := g.table.sym(typ)
 		if sym.has_method_with_generic_parent('free') {
-			g.cleanup.writeln('\t${styp}_free(&${cname});')
+			if sym.is_builtin() {
+				g.cleanup.writeln('\tbuiltin__${styp}_free(&${cname});')
+			} else {
+				g.cleanup.writeln('\t${styp}_free(&${cname});')
+			}
 		} else {
-			g.cleanup.writeln('\tarray_free(&${cname});')
+			g.cleanup.writeln('\tbuiltin__array_free(&${cname});')
 		}
 	}
 }

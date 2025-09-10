@@ -8,6 +8,6 @@ VV_EXP int abcd(void); // exported fn main.my_fn
 int abcd(void) {
 VV_LOC int main__my_fn(void) {
 
-	println(int_str(main__my_fn()));
-	println(int_str(main__my_other_fn()));
+	builtin__println(builtin__int_str(main__my_fn()));
+	builtin__println(builtin__int_str(main__my_other_fn()));
 

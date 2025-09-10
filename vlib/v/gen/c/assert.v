@@ -58,7 +58,7 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.decrement_inside_ternary()
 		g.writeln(' {')
 		metaname_panic := g.gen_assert_metainfo(node, .panic)
-		g.writeln('\t__print_assert_failure(&${metaname_panic});')
+		g.writeln('\tbuiltin____print_assert_failure(&${metaname_panic});')
 		g.gen_assert_postfailure_mode(node)
 		g.writeln('}')
 	}
@@ -125,7 +125,7 @@ fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
 	}
 	g.writeln2('\t// TODO', '\t// Maybe print all vars in a test function if it fails?')
 	if g.pref.assert_failure_mode != .continues {
-		g.writeln('\t_v_panic(_S("Assertion failed..."));')
+		g.writeln('\tbuiltin___v_panic(_S("Assertion failed..."));')
 	}
 }
 
@@ -241,7 +241,7 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 				}
 			}
 			if should_clone {
-				g.write('string_clone(')
+				g.write('builtin__string_clone(')
 			}
 			g.gen_expr_to_string(expr, typ)
 			if should_clone {
