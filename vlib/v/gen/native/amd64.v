@@ -139,7 +139,7 @@ fn (mut c Amd64) dec(reg Amd64Register) {
 		.rsi { c.g.write8(0xce) }
 		.rdi { c.g.write8(0xcf) }
 		.r12 { c.g.write8(0xc4) }
-		else { panic('unhandled inc ${reg}') }
+		else { c.g.n_error('unhandled inc ${reg}') }
 	}
 	c.g.println('dec ${reg}')
 }
@@ -156,7 +156,7 @@ fn (mut c Amd64) neg(reg Amd64Register) {
 	c.g.write8(0xf7)
 	match reg {
 		.rax { c.g.write8(0xd8) }
-		else { panic('unhandled neg ${reg}') }
+		else { c.g.n_error('unhandled neg ${reg}') }
 	}
 	c.g.println('neg ${reg}')
 }
@@ -172,7 +172,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 	// 	see https://www.sandpile.org/x86/opc_rm.htm for a table for modr/m byte (at the bottom of the second one)
 
 	if c.g.pref.arch != .amd64 {
-		panic('cmp')
+		c.g.n_error('cmp')
 	}
 	// Second byte depends on the size of the value
 	match size {
@@ -185,7 +185,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 			c.g.write8(0x81) // compares a 64bits register with a 32bits immediate value
 		}
 		else {
-			panic('unhandled cmp size ${size}')
+			c.g.n_error('unhandled cmp size ${size}')
 		}
 	}
 	// Third byte (modr/m byte) depends on the regiister being compared to
@@ -196,7 +196,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 		.rcx { c.g.write8(0xf9) }
 		.rdx { c.g.write8(0xfa) }
 		.rbx { c.g.write8(0xfb) }
-		else { panic('unhandled cmp reg ${reg}') }
+		else { c.g.n_error('unhandled cmp reg ${reg}') }
 	}
 	match size {
 		._8 {
@@ -206,7 +206,7 @@ fn (mut c Amd64) cmp(reg Amd64Register, size Size, val i64) {
 			c.g.write32(i32(val))
 		}
 		else {
-			panic('unhandled cmp size ${size}')
+			c.g.n_error('unhandled cmp size ${size}')
 		}
 	}
 	c.g.println('cmp ${reg}, ${val}')
@@ -317,6 +317,9 @@ fn (mut c Amd64) cmp_var_reg(var Var, reg Register, config VarConfig) {
 				PreprocVar {
 					c.cmp_var_reg(var_object as PreprocVar, reg, config)
 				}
+				ConstVar {
+					c.cmp_var_reg(var_object as ConstVar, reg, config)
+				}
 			}
 		}
 		LocalVar {
@@ -340,6 +343,9 @@ fn (mut c Amd64) cmp_var_reg(var Var, reg Register, config VarConfig) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -366,6 +372,9 @@ fn (mut c Amd64) cmp_var(var Var, val i32, config VarConfig) {
 				PreprocVar {
 					c.cmp_var(var_object as PreprocVar, val, config)
 				}
+				ConstVar {
+					c.cmp_var(var_object as ConstVar, val, config)
+				}
 			}
 		}
 		LocalVar {
@@ -389,6 +398,9 @@ fn (mut c Amd64) cmp_var(var Var, val i32, config VarConfig) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -416,6 +428,9 @@ fn (mut c Amd64) dec_var(var Var, config VarConfig) {
 				PreprocVar {
 					c.dec_var(var_object as PreprocVar, config)
 				}
+				ConstVar {
+					c.dec_var(var_object as ConstVar, config)
+				}
 			}
 		}
 		LocalVar {
@@ -439,6 +454,9 @@ fn (mut c Amd64) dec_var(var Var, config VarConfig) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -466,6 +484,9 @@ fn (mut c Amd64) inc_var(var Var, config VarConfig) {
 				}
 				PreprocVar {
 					c.inc_var(var_object as PreprocVar, config)
+				}
+				ConstVar {
+					c.inc_var(var_object as ConstVar, config)
 				}
 			}
 		}
@@ -513,6 +534,9 @@ fn (mut c Amd64) inc_var(var Var, config VarConfig) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -715,6 +739,9 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 				PreprocVar {
 					c.mov_reg_to_var(var_object as PreprocVar, reg, config)
 				}
+				ConstVar {
+					c.mov_reg_to_var(var_object as ConstVar, reg, config)
+				}
 			}
 		}
 		LocalVar {
@@ -818,6 +845,9 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 		PreprocVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
+		ConstVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
 	}
 }
 
@@ -840,6 +870,9 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 				}
 				PreprocVar {
 					c.mov_int_to_var(var_object as PreprocVar, integer, config)
+				}
+				ConstVar {
+					c.mov_int_to_var(var_object as ConstVar, integer, config)
 				}
 			}
 		}
@@ -909,6 +942,9 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 		PreprocVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
+		ConstVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
 	}
 }
 
@@ -960,6 +996,9 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 				}
 				PreprocVar {
 					c.mov_var_to_reg(reg, var_object as PreprocVar, config)
+				}
+				ConstVar {
+					c.mov_var_to_reg(reg, var_object as ConstVar, config)
 				}
 			}
 		}
@@ -1044,6 +1083,11 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 		}
 		PreprocVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
+			c.g.expr(var.expr)
+			c.mov_reg(reg, c.main_reg())
+			c.g.println('; mov ${reg} const:`${var.name}`')
 		}
 	}
 }
@@ -1195,7 +1239,7 @@ fn (mut c Amd64) syscall() {
 }
 
 fn (mut c Amd64) svc() {
-	panic('the svc instruction is not available with amd64')
+	c.g.n_error('the svc instruction is not available with amd64')
 }
 
 fn (mut c Amd64) cdq() {
@@ -1711,7 +1755,7 @@ fn (mut c Amd64) mov(r Register, val i32) {
 
 fn (mut c Amd64) mul_reg(a Amd64Register, b Amd64Register) {
 	if a != .rax {
-		panic('mul always operates on rax')
+		c.g.n_error('mul always operates on rax')
 	}
 	match b {
 		.rax {
@@ -1719,18 +1763,23 @@ fn (mut c Amd64) mul_reg(a Amd64Register, b Amd64Register) {
 			c.g.write8(0xf7)
 			c.g.write8(0xe8)
 		}
+		.rcx {
+			c.g.write8(0x48)
+			c.g.write8(0xf7)
+			c.g.write8(0xe9)
+		}
+		.rdx {
+			c.g.write8(0x48)
+			c.g.write8(0xf7)
+			c.g.write8(0xea)
+		}
 		.rbx {
 			c.g.write8(0x48)
 			c.g.write8(0xf7)
 			c.g.write8(0xeb)
 		}
-		.rdx {
-			c.g.write8(0x48)
-			c.g.write8(0xf7)
-			c.g.write8(0xe2)
-		}
 		else {
-			panic('unhandled mul ${b}')
+			c.g.n_error('${@LOCATION} unhandled mul ${b}')
 		}
 	}
 	c.g.println('mul ${b}')
@@ -1745,14 +1794,14 @@ fn (mut c Amd64) imul_reg(r Amd64Register) {
 			c.g.println('imul ${r}')
 		}
 		else {
-			panic('unhandled imul ${r}')
+			c.g.n_error('unhandled imul ${r}')
 		}
 	}
 }
 
 fn (mut c Amd64) div_reg(a Amd64Register, b Amd64Register) {
 	if a != .rax {
-		panic('div always operates on rax')
+		c.g.n_error('div always operates on rax')
 	}
 	match b {
 		.rax {
@@ -1760,18 +1809,23 @@ fn (mut c Amd64) div_reg(a Amd64Register, b Amd64Register) {
 			c.g.write8(0xf7)
 			c.g.write8(0xf8)
 		}
+		.rcx {
+			c.g.write8(0x48)
+			c.g.write8(0xf7)
+			c.g.write8(0xf9)
+		}
+		.rdx {
+			c.g.write8(0x48)
+			c.g.write8(0xf7)
+			c.g.write8(0xfa)
+		}
 		.rbx {
 			c.g.write8(0x48)
 			c.g.write8(0xf7)
 			c.g.write8(0xfb)
 		}
-		.rdx {
-			c.g.write8(0x48)
-			c.g.write8(0xf7)
-			c.g.write8(0xf2)
-		}
 		else {
-			panic('unhandled div ${b}')
+			c.g.n_error('unhandled div ${b}')
 		}
 	}
 	c.g.println('div ${b}')
@@ -1879,7 +1933,7 @@ fn (mut c Amd64) sar8(r Amd64Register, val u8) {
 			c.g.write8(0xfa)
 		}
 		else {
-			panic('unhandled sar ${r}, ${val}')
+			c.g.n_error('unhandled sar ${r}, ${val}')
 		}
 	}
 	c.g.write8(val)
@@ -2220,23 +2274,29 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 			PreprocVar {
 				c.mov_reg_to_var(var as PreprocVar, Amd64Register.rax)
 			}
+			ConstVar {
+				c.mov_reg_to_var(var as ConstVar, Amd64Register.rax)
+			}
 		}
 	} else {
-		c.g.n_error('${@LOCATION} error assigning type ${typ} with size ${size}: ${info}')
+		c.g.n_error('${@LOCATION} error assigning var ${var} type ${typ} with size ${size}: ${info}')
 	}
 }
 
 // Could be nice to have left as an expr to be able to take all int assigns
+// TODO: may have a problem if the literal is bigger than max_i64: needs u64
 fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.IntegerLiteral, left ast.Ident) {
 	match node.op {
 		.plus_assign {
 			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.add(Amd64Register.rax, i32(int_lit.val.int()))
+			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
+			c.add_reg(Amd64Register.rax, Amd64Register.rdx)
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		.minus_assign {
 			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.sub(.rax, i32(int_lit.val.int()))
+			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
+			c.sub_reg(Amd64Register.rax, Amd64Register.rdx)
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		.mult_assign {
@@ -2261,7 +2321,55 @@ fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.In
 			c.allocate_var(left.name, 8, i64(int_lit.val.int()))
 		}
 		.assign {
-			c.mov(Amd64Register.rax, i32(int_lit.val.int()))
+			c.mov64(Amd64Register.rax, i64(int_lit.val.int()))
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.left_shift_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.shl_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.right_shift_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.sar_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.unsigned_right_shift_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.shr_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.xor_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.bitxor_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.or_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.bitor_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.and_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.bitand_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.boolean_and_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.bitand_reg(.rax, .rcx)
+			c.mov_reg_to_var(left, Amd64Register.rax)
+		}
+		.boolean_or_assign {
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
+			c.bitor_reg(.rax, .rcx)
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		else {
@@ -2915,10 +3023,12 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 			c.assign_ident_right_expr(node, i32(i), val, left.name, left)
 		} else {
 			if c.g.is_register_type(var_type) {
-				c.g.gen_left_value(left)
-				c.push(c.main_reg()) // rax here, stores effective address of the left expr
 				c.g.expr(val)
-				c.pop(.rdx) // effective address of left expr
+				c.push(c.main_reg())
+				c.g.gen_left_value(left)
+				c.mov_reg(Amd64Register.rbx, Amd64Register.rax) // effective address of the left expr
+				c.mov_deref(Amd64Register.rax, Amd64Register.rbx, var_type) // value of left expr
+				c.pop(.rcx) // value of right expr
 				c.gen_type_promotion(node.right_types[0], var_type)
 
 				size := match c.g.get_type_size(var_type) {
@@ -2929,27 +3039,61 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 				}
 				match node.op {
 					.decl_assign, .assign {
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rcx, size)
 					}
 					.plus_assign {
-						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
 						c.add_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.minus_assign {
-						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
 						c.sub_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.and_assign {
-						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
 						c.bitand_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
 					}
 					.mod_assign {
-						c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, var_type)
+						c.mov(Amd64Register.rdx, i32(0)) // 64bits IDIV uses RDX:RAX
 						c.mod_reg(.rax, .rcx)
-						c.mov_store(.rdx, .rax, size)
+						c.mov_store(.rbx, .rax, size)
+					}
+					.mult_assign {
+						c.mul_reg(.rax, .rcx)
+						c.mov_store(.rbx, .rax, size)
+					}
+					.div_assign {
+						c.mov(Amd64Register.rdx, i32(0)) // 64bits IDIV uses RDX:RAX
+						c.div_reg(.rax, .rcx)
+						c.mov_store(.rbx, .rax, size)
+					}
+					.xor_assign {
+						c.bitxor_reg(.rax, .rcx)
+						c.mov_store(.rbx, .rax, size)
+					}
+					.or_assign {
+						c.bitor_reg(.rax, .rcx)
+						c.mov_store(.rbx, .rax, size)
+					}
+					.right_shift_assign {
+						c.shr_reg(.rax, .rcx)
+						c.mov_store(.rbx, .rax, size)
+					}
+					.left_shift_assign {
+						c.shl_reg(.rax, .rcx)
+						c.mov_store(.rbx, .rax, size)
+					}
+					.unsigned_right_shift_assign {
+						c.sar_reg(.rax, .rcx)
+						c.mov_store(.rbx, .rax, size)
+					}
+					.boolean_and_assign {
+						c.bitand_reg(.rax, .rcx)
+						c.mov_store(.rbx, .rax, size)
+					}
+					.boolean_or_assign {
+						c.bitor_reg(.rax, .rcx)
+						c.mov_store(.rbx, .rax, size)
 					}
 					else {
 						c.g.n_error('${@LOCATION} Unsupported assign instruction (${node.op})')
@@ -3847,6 +3991,9 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 				PreprocVar {
 					c.init_struct(var_object as PreprocVar, init)
 				}
+				ConstVar {
+					c.init_struct(var_object as ConstVar, init)
+				}
 			}
 		}
 		LocalVar {
@@ -3893,6 +4040,9 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -3949,6 +4099,9 @@ fn (mut c Amd64) init_array(var Var, node ast.ArrayInit) {
 				PreprocVar {
 					c.init_array(var_object as PreprocVar, node)
 				}
+				ConstVar {
+					c.init_array(var_object as ConstVar, node)
+				}
 			}
 		}
 		LocalVar {
@@ -3966,6 +4119,9 @@ fn (mut c Amd64) init_array(var Var, node ast.ArrayInit) {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -4270,6 +4426,9 @@ fn (mut c Amd64) mov_ssereg_to_var(var Var, reg Amd64SSERegister, config VarConf
 				PreprocVar {
 					c.mov_ssereg_to_var(var_object as PreprocVar, reg, config)
 				}
+				ConstVar {
+					c.mov_ssereg_to_var(var_object as ConstVar, reg, config)
+				}
 			}
 		}
 		LocalVar {
@@ -4301,6 +4460,9 @@ fn (mut c Amd64) mov_ssereg_to_var(var Var, reg Amd64SSERegister, config VarConf
 		PreprocVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
+		ConstVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
 	}
 }
 
@@ -4325,6 +4487,9 @@ fn (mut c Amd64) mov_var_to_ssereg(reg Amd64SSERegister, var Var, config VarConf
 				}
 				PreprocVar {
 					c.mov_var_to_ssereg(reg, var_object as PreprocVar, config)
+				}
+				ConstVar {
+					c.mov_var_to_ssereg(reg, var_object as ConstVar, config)
 				}
 			}
 		}
@@ -4355,6 +4520,9 @@ fn (mut c Amd64) mov_var_to_ssereg(reg Amd64SSERegister, var Var, config VarConf
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 		PreprocVar {
+			c.g.n_error('${@LOCATION} unsupported var type ${var}')
+		}
+		ConstVar {
 			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
@@ -4677,5 +4845,5 @@ fn (mut c Amd64) cmp_to_stack_top(reg Register) {
 
 // Temporary!
 fn (mut c Amd64) adr(r Arm64Register, delta i32) {
-	panic('`adr` instruction not supported with amd64')
+	c.g.n_error('`adr` instruction not supported with amd64')
 }
