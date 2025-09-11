@@ -896,9 +896,9 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 
 	if enum_info.value_kind == .number {
 		mut result := 0
-		decoder.decode_number(&result)!
+		unsafe { decoder.decode_number(&result)! }
 
-		$for value in val.values {
+		$for value in T.values {
 			if int(value.value) == result {
 				val = value.value
 				return
