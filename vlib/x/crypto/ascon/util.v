@@ -8,12 +8,6 @@ module ascon
 import math.bits
 import encoding.binary
 
-// rotate_right_64 rotates x right by k bits
-fn rotate_right_64(x u64, k int) u64 {
-	// call rotate_left_64(x, -k).
-	return bits.rotate_left_64(x, -k)
-}
-
 // clear_bytes clears the bytes of x in n byte
 @[inline]
 fn clear_bytes(x u64, n int) u64 {
@@ -99,9 +93,4 @@ fn store_bytes(mut out []u8, x u64, n int) {
 	for i := 0; i < n; i++ {
 		out[i] = get_byte(x, i)
 	}
-}
-
-@[inline]
-fn ascon_rotate_right(x u64, n int) u64 {
-	return (x >> n) | x << (64 - n)
 }
