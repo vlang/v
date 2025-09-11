@@ -1,1 +1,1 @@
-VV_LOC void builtin_init(void) {
+VV_LOC void builtin__builtin_init(void) {

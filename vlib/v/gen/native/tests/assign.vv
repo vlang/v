@@ -1,3 +1,5 @@
+const abc = 3
+
 fn main() {
 	test_int()
 	test_fp()
@@ -26,7 +28,7 @@ fn test_plus_assign() {
 }
 
 fn test_int() {
-	a := 100
+	mut a := 100
 	mut b := a
 	b += b
 	b += 50
@@ -46,6 +48,15 @@ fn test_int() {
 	unsafe{*f = 5}
 	assert *f == 5
 	assert e == 5
+
+	mut x := abc
+	assert x == 3
+
+	a = 16
+	a >>>= 2
+	a >>= 2
+	a <<= 4
+	assert a == 16
 }
 
 fn test_fp() {

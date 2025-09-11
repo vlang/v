@@ -185,15 +185,15 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		mut surrounder := util.new_surrounder(3)
 		int_str := g.get_str_fn(ast.int_type)
-		surrounder.add('\tstring sline = ${int_str}(line);', '\tstring_free(&sline);')
+		surrounder.add('\tstring sline = ${int_str}(line);', '\tbuiltin__string_free(&sline);')
 		if dump_sym.kind == .function && !is_option {
-			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tstring_free(&value);')
+			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tbuiltin__string_free(&value);')
 		} else if dump_sym.kind == .none {
-			surrounder.add('\tstring value = _S("none");', '\tstring_free(&value);')
+			surrounder.add('\tstring value = _S("none");', '\tbuiltin__string_free(&value);')
 		} else if is_ptr {
 			if typ.has_flag(.option) {
-				surrounder.add('\tstring value = isnil(&dump_arg.data) ? _S("nil") : ${to_string_fn_name}(${deref}dump_arg);',
-					'\tstring_free(&value);')
+				surrounder.add('\tstring value = builtin__isnil(&dump_arg.data) ? _S("nil") : ${to_string_fn_name}(${deref}dump_arg);',
+					'\tbuiltin__string_free(&value);')
 			} else {
 				prefix := if dump_sym.is_c_struct() {
 					c_struct_ptr(dump_sym, typ, str_method_expects_ptr)
@@ -201,7 +201,7 @@ fn (mut g Gen) dump_expr_definitions() {
 					deref
 				}
 				surrounder.add('\tstring value = (dump_arg == NULL) ? _S("nil") : ${to_string_fn_name}(${prefix}dump_arg);',
-					'\tstring_free(&value);')
+					'\tbuiltin__string_free(&value);')
 			}
 		} else {
 			prefix := if dump_sym.is_c_struct() {
@@ -210,15 +210,15 @@ fn (mut g Gen) dump_expr_definitions() {
 				deref
 			}
 			surrounder.add('\tstring value = ${to_string_fn_name}(${prefix}dump_arg);',
-				'\tstring_free(&value);')
+				'\tbuiltin__string_free(&value);')
 		}
 		surrounder.add('
 	strings__Builder sb = strings__new_builder(64);
 ', '
 	string res;
 	res = strings__Builder_str(&sb);
-	eprint(res);
-	string_free(&res);
+	builtin__eprint(res);
+	builtin__string_free(&res);
 	strings__Builder_free(&sb);
 ')
 		surrounder.builder_write_befores(mut dump_fns)

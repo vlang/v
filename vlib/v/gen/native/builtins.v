@@ -75,7 +75,7 @@ pub fn (mut g Gen) generate_builtins() {
 }
 
 pub fn (mut g Gen) get_builtin_arg_reg(name Builtin, index i32) Register {
-	builtin := g.builtins[name] or { panic('undefined builtin function ${name}') }
+	builtin := g.builtins[name] or { panic('undefined builtin function ${name} : ${g.builtins}') }
 	if index >= builtin.arg_regs.len {
 		g.n_error('builtin ${name} does only have ${builtin.arg_regs.len} arguments, requested ${index}')
 	}

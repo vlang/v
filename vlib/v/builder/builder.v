@@ -131,6 +131,11 @@ pub fn (mut b Builder) middle_stages() ! {
 
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
+	$if trace_type_symbols_after_checker ? {
+		for t, s in b.table.type_symbols {
+			println('> t: ${t:10} | s.mod: ${s.mod:-40} | s.name: ${'${s.name#[..30]}':-30} | s.is_builtin: ${s.is_builtin:6} | s.is_pub: ${s.is_pub}')
+		}
+	}
 	if b.pref.dump_defines != '' {
 		b.dump_defines()
 	}

@@ -89,7 +89,7 @@ ${dec_fn_dec} {
 		if (error_ptr != NULL) {
 			const ${ast.int_type_name} error_pos = (${ast.int_type_name})cJSON_GetErrorPos();
 			${ast.int_type_name} maxcontext_chars = 30;
-			byte *buf = vcalloc_noscan(maxcontext_chars + 10);
+			byte *buf = builtin__vcalloc_noscan(maxcontext_chars + 10);
 			if (error_pos > 0) {
 				${ast.int_type_name} backlines = 1;
 				${ast.int_type_name} backchars = error_pos < maxcontext_chars-7 ? (${ast.int_type_name})error_pos : maxcontext_chars-7 ;
@@ -107,15 +107,15 @@ ${dec_fn_dec} {
 						break; // stop at `{` too
 					}
 				}
-				${ast.int_type_name} maxchars = vstrlen_char(prevline_ptr);
-				vmemcpy(buf, prevline_ptr, (maxchars < maxcontext_chars ? maxchars : maxcontext_chars));
+				${ast.int_type_name} maxchars = builtin__vstrlen_char(prevline_ptr);
+				builtin__vmemcpy(buf, prevline_ptr, (maxchars < maxcontext_chars ? maxchars : maxcontext_chars));
 			}
 			string msg;
 			msg = _S("failed to decode JSON string");
 			if (buf[0] != \'\\0\') {
-				msg = string__plus(msg, _S(": "));
+				msg = builtin__string__plus(msg, _S(": "));
 			}
-			return (${result_name}_${ret_styp}){.is_error = true,.err = _v_error(string__plus(msg, tos2(buf))),.data = {0}};
+			return (${result_name}_${ret_styp}){.is_error = true,.err = builtin___v_error(builtin__string__plus(msg, builtin__tos2(buf))),.data = {0}};
 		}
 	}
 ')
@@ -123,13 +123,13 @@ ${dec_fn_dec} {
 		if utyp.has_flag(.option) {
 			dec.writeln('\tif (cJSON_IsNull(root)) {')
 			dec.writeln('\t${result_name}_${ret_styp} ret;')
-			dec.writeln('\t_result_ok(&res, (${result_name}*)&ret, sizeof(res));')
+			dec.writeln('\tbuiltin___result_ok(&res, (${result_name}*)&ret, sizeof(res));')
 			dec.writeln('\treturn ret;')
 			dec.writeln('\t}')
 
 			base_type := utyp.clear_flag(.option)
 			base_type_str := g.styp(base_type)
-			dec.writeln('\t_option_ok(&(${base_type_str}[]){ ${g.type_default(base_type)} }, (${styp}*)&res, sizeof(${base_type_str}));\n')
+			dec.writeln('\tbuiltin___option_ok(&(${base_type_str}[]){ ${g.type_default(base_type)} }, (${styp}*)&res, sizeof(${base_type_str}));\n')
 		}
 
 		extern_str := if g.pref.parallel_cc { 'extern ' } else { '' }
@@ -215,7 +215,7 @@ ${enc_fn_dec} {
 		}
 		// cJSON_delete
 		dec.writeln('\t${result_name}_${ret_styp} ret;')
-		dec.writeln('\t_result_ok(&res, (${result_name}*)&ret, sizeof(res));')
+		dec.writeln('\tbuiltin___result_ok(&res, (${result_name}*)&ret, sizeof(res));')
 		dec.writeln('\treturn ret;\n}')
 		enc.writeln('\treturn o;\n}')
 		g.gowrappers.writeln(dec.str())
@@ -254,17 +254,17 @@ fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string
 			ast.Attr{}
 		}
 		if k == 0 {
-			dec.write_string('${ident}if (string__eq(_S("${val}"), ${val_var})')
+			dec.write_string('${ident}if (builtin__string__eq(_S("${val}"), ${val_var})')
 		} else {
-			dec.write_string('${ident}else if (string__eq(_S("${val}"), ${val_var})')
+			dec.write_string('${ident}else if (builtin__string__eq(_S("${val}"), ${val_var})')
 		}
 		if attr.has_arg {
-			dec.write_string(' || string__eq(_S("${attr.arg}"), ${val_var})')
+			dec.write_string(' || builtin__string__eq(_S("${attr.arg}"), ${val_var})')
 		}
 		dec.write_string(')\t')
 		if is_option {
 			base_typ := g.base_type(utyp)
-			dec.writeln('_option_ok(&(${base_typ}[]){ ${enum_prefix}${val} }, (${option_name}*)${result_var}, sizeof(${base_typ}));')
+			dec.writeln('builtin___option_ok(&(${base_typ}[]){ ${enum_prefix}${val} }, (${option_name}*)${result_var}, sizeof(${base_typ}));')
 		} else {
 			dec.writeln('${result_var} = ${enum_prefix}${val};')
 		}
@@ -289,7 +289,7 @@ fn (mut g Gen) gen_enum_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strin
 		if is_option {
 			base_typ := g.styp(utyp.clear_flag(.option))
 			enc.writeln('\to = ${js_enc_name('u64')}(*val.data);')
-			dec.writeln('\t_option_ok(&(${base_typ}[]){ ${js_dec_name('u64')}(root) }, (${option_name}*)&res, sizeof(${base_typ}));')
+			dec.writeln('\tbuiltin___option_ok(&(${base_typ}[]){ ${js_dec_name('u64')}(root) }, (${option_name}*)&res, sizeof(${base_typ}));')
 		} else {
 			dec.writeln('\tres = ${js_dec_name('u64')}(root);')
 			enc.writeln('\to = ${js_enc_name('u64')}(val);')
@@ -326,7 +326,7 @@ fn (mut g Gen) gen_prim_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec s
 			if typ.has_flag(.option) {
 				tmp_var := g.new_tmp_var()
 				dec.writeln('${type_str}* ${tmp_var} = HEAP(${type_str}, *(${type_str}*) ${dec_name}(root).data);')
-				dec.writeln('\t_option_ok(&(${type_str}*[]) { &(*(${tmp_var})) }, (${option_name}*)&res, sizeof(${type_str}*));')
+				dec.writeln('\tbuiltin___option_ok(&(${type_str}*[]) { &(*(${tmp_var})) }, (${option_name}*)&res, sizeof(${type_str}*));')
 			} else {
 				dec.writeln('\tres = HEAP(${type_str}, *(${type_str}*) ${dec_name}(root).data);')
 			}
@@ -334,7 +334,7 @@ fn (mut g Gen) gen_prim_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec s
 			if typ.has_flag(.option) {
 				tmp_var := g.new_tmp_var()
 				dec.writeln('${type_str}* ${tmp_var} = HEAP(${type_str}, ${dec_name}(root));')
-				dec.writeln('\t_option_ok(&(${type_str}*[]) { &(*(${tmp_var})) }, (${option_name}*)&res, sizeof(${type_str}*));')
+				dec.writeln('\tbuiltin___option_ok(&(${type_str}*[]) { &(*(${tmp_var})) }, (${option_name}*)&res, sizeof(${type_str}*));')
 			} else {
 				dec.writeln('\tres = HEAP(${type_str}, ${dec_name}(root));')
 			}
@@ -359,10 +359,10 @@ fn (mut g Gen) gen_option_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec
 
 	dec_name := js_dec_name(type_str)
 	dec.writeln('\tif (!cJSON_IsNull(root)) {')
-	dec.writeln('\t\t_option_ok(&(${type_str}[]){ ${dec_name}(root) }, (${option_name}*)&res, sizeof(${type_str}));')
+	dec.writeln('\t\tbuiltin___option_ok(&(${type_str}[]){ ${dec_name}(root) }, (${option_name}*)&res, sizeof(${type_str}));')
 	dec.writeln('\t} else {')
 	default_init := if typ.is_int() || typ.is_float() || typ.is_bool() { '0' } else { '{0}' }
-	dec.writeln('\t\t_option_none(&(${type_str}[]){ ${default_init} }, (${option_name}*)&res, sizeof(${type_str}));')
+	dec.writeln('\t\tbuiltin___option_none(&(${type_str}[]){ ${default_init} }, (${option_name}*)&res, sizeof(${type_str}));')
 	dec.writeln('\t}')
 }
 
@@ -498,7 +498,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				dec.writeln('\t\t${variant_typ} value = *(${variant_typ}*)(${tmp}.data);')
 			}
 			if is_option {
-				dec.writeln('\t\t\t_option_ok(&(${sym.cname}[]){ ${variant_typ}_to_sumtype_${sym.cname}(&value, false) }, (${option_name}*)&res, sizeof(${sym.cname}));')
+				dec.writeln('\t\t\tbuiltin___option_ok(&(${sym.cname}[]){ ${variant_typ}_to_sumtype_${sym.cname}(&value, false) }, (${option_name}*)&res, sizeof(${sym.cname}));')
 			} else {
 				dec.writeln('\t\tres = ${variant_typ}_to_sumtype_${ret_styp}(&value, false);')
 			}
@@ -512,7 +512,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					dec.writeln('\t\t\t\t${prefix}res.state = 0;')
 					tmp_time_var := g.new_tmp_var()
 					dec.writeln('\t\t\t\t${g.base_type(utyp)} ${tmp_time_var} = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp}, false);')
-					dec.writeln('\t\t\t\tvmemcpy(&${prefix}res.data, ${tmp_time_var}._time__Time, sizeof(${variant_typ}));')
+					dec.writeln('\t\t\t\tbuiltin__vmemcpy(&${prefix}res.data, ${tmp_time_var}._time__Time, sizeof(${variant_typ}));')
 				} else {
 					dec.writeln('\t\t\t\t${prefix}res = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp}, false);')
 				}
@@ -525,7 +525,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				dec.writeln('\t\t\t\t\treturn (${result_name}_${ret_styp}){ .is_error = true, .err = ${tmp}.err, .data = {0} };')
 				dec.writeln('\t\t\t\t}')
 				if is_option {
-					dec.writeln('\t\t\t\t_option_ok(&(${sym.cname}[]){ ${variant_typ}_to_sumtype_${sym.cname}((${variant_typ}*)${tmp}.data, false) }, (${option_name}*)&res, sizeof(${sym.cname}));')
+					dec.writeln('\t\t\t\tbuiltin___option_ok(&(${sym.cname}[]){ ${variant_typ}_to_sumtype_${sym.cname}((${variant_typ}*)${tmp}.data, false) }, (${option_name}*)&res, sizeof(${sym.cname}));')
 				} else {
 					dec.writeln('\t\t\t\t${prefix}res = ${variant_typ}_to_sumtype_${sym.cname}((${variant_typ}*)${tmp}.data, false);')
 				}
@@ -565,7 +565,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					dec.writeln('\t\tif (cJSON_IsNumber(root)) {')
 					dec.writeln('\t\t\t${var_t} value = ${js_dec_name('u64')}(root);')
 					if utyp.has_flag(.option) {
-						dec.writeln('\t\t\t_option_ok(&(${sym.cname}[]){ ${var_t}_to_sumtype_${sym.cname}(&value, false) }, (${option_name}*)&${prefix}res, sizeof(${sym.cname}));')
+						dec.writeln('\t\t\tbuiltin___option_ok(&(${sym.cname}[]){ ${var_t}_to_sumtype_${sym.cname}(&value, false) }, (${option_name}*)&${prefix}res, sizeof(${sym.cname}));')
 					} else {
 						dec.writeln('\t\t\t${prefix}res = ${var_t}_to_sumtype_${sym.cname}(&value, false);')
 					}
@@ -581,7 +581,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					dec.writeln('\t\tif (cJSON_IsString(root)) {')
 					dec.writeln('\t\t\t${var_t} value = ${js_dec_name(var_t)}(root);')
 					if utyp.has_flag(.option) {
-						dec.writeln('\t\t\t_option_ok(&(${sym.cname}[]){ ${var_t}_to_sumtype_${sym.cname}(&value, false) }, (${option_name}*)&${prefix}res, sizeof(${sym.cname}));')
+						dec.writeln('\t\t\tbuiltin___option_ok(&(${sym.cname}[]){ ${var_t}_to_sumtype_${sym.cname}(&value, false) }, (${option_name}*)&${prefix}res, sizeof(${sym.cname}));')
 					} else {
 						dec.writeln('\t\t\t${prefix}res = ${var_t}_to_sumtype_${sym.cname}(&value, false);')
 					}
@@ -605,7 +605,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					dec.writeln('\t\t\t\treturn (${result_name}_${ret_styp}){ .is_error = true, .err = ${tmp}.err, .data = {0} };')
 					dec.writeln('\t\t\t}')
 					if utyp.has_flag(.option) {
-						dec.writeln('\t\t\t_option_ok(&(${sym.cname}[]){ ${var_t}_to_sumtype_${sym.cname}((${var_t}*)${tmp}.data, false) }, (${option_name}*)&${prefix}res, sizeof(${sym.cname}));')
+						dec.writeln('\t\t\tbuiltin___option_ok(&(${sym.cname}[]){ ${var_t}_to_sumtype_${sym.cname}((${var_t}*)${tmp}.data, false) }, (${option_name}*)&${prefix}res, sizeof(${sym.cname}));')
 					} else {
 						dec.writeln('\t\t\t${prefix}res = ${var_t}_to_sumtype_${sym.cname}((${var_t}*)${tmp}.data, false);')
 					}
@@ -624,7 +624,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					dec.writeln('\t\tif (cJSON_IsNumber(root)) {')
 					dec.writeln('\t\t\t${var_t} value = ${js_dec_name(var_t)}(root);')
 					if utyp.has_flag(.option) {
-						dec.writeln('\t\t\t_option_ok(&(${sym.cname}[]){ ${var_t}_to_sumtype_${sym.cname}(&value, false) }, (${option_name}*)&${prefix}res, sizeof(${sym.cname}));')
+						dec.writeln('\t\t\tbuiltin___option_ok(&(${sym.cname}[]){ ${var_t}_to_sumtype_${sym.cname}(&value, false) }, (${option_name}*)&${prefix}res, sizeof(${sym.cname}));')
 					} else {
 						dec.writeln('\t\t\t${prefix}res = ${var_t}_to_sumtype_${sym.cname}(&value, false);')
 					}
@@ -655,7 +655,7 @@ fn (mut g Gen) gen_prim_type_validation(name string, typ ast.Type, tmp string, i
 		return
 	}
 	dec.writeln('\t\tif (!(${type_check})) {')
-	dec.writeln('\t\t\treturn (${ret_styp}){ .is_error = true, .err = _v_error(string__plus(_S("type mismatch for field \'${name}\', expecting `${g.table.type_to_str(typ)}` type, got: "), json__json_print(jsonroot_${tmp}))), .data = {0} };')
+	dec.writeln('\t\t\treturn (${ret_styp}){ .is_error = true, .err = builtin___v_error(builtin__string__plus(_S("type mismatch for field \'${name}\', expecting `${g.table.type_to_str(typ)}` type, got: "), json__json_print(jsonroot_${tmp}))), .data = {0} };')
 	dec.writeln('\t\t}')
 }
 
@@ -723,9 +723,9 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				} else {
 					'{0}'
 				}
-				dec.writeln('\t\t_option_none(&(${base_typ}[]) { ${default_init} }, (${option_name}*)&${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
+				dec.writeln('\t\tbuiltin___option_none(&(${base_typ}[]) { ${default_init} }, (${option_name}*)&${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
 				dec.writeln('\telse')
-				dec.writeln('\t\t_option_ok(&(${base_typ}[]) {  json__json_print(js_get(root, "${name}")) }, (${option_name}*)&${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
+				dec.writeln('\t\tbuiltin___option_ok(&(${base_typ}[]) {  json__json_print(js_get(root, "${name}")) }, (${option_name}*)&${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
 			} else {
 				dec.writeln('\t${prefix}${op}${c_name(field.name)} = json__json_print(js_get(root, "${name}"));')
 			}
@@ -764,14 +764,14 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				if g.is_enum_as_int(field_sym) {
 					if is_option_field {
 						base_typ := g.base_type(field.typ)
-						dec.writeln('\t\t_option_ok(&(${base_typ}[]) { ${js_dec_name('u64')}(jsonroot_${tmp}) }, (${option_name}*)&${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
+						dec.writeln('\t\tbuiltin___option_ok(&(${base_typ}[]) { ${js_dec_name('u64')}(jsonroot_${tmp}) }, (${option_name}*)&${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
 					} else {
 						dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${js_dec_name('u64')}(jsonroot_${tmp});')
 					}
 				} else {
 					if is_option_field {
 						base_typ := g.base_type(field.typ)
-						dec.writeln('\t\t_option_ok(&(${base_typ}[]) { *(${base_typ}*)((${g.styp(field.typ)}*)${tmp}.data)->data }, (${option_name}*)&${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
+						dec.writeln('\t\tbuiltin___option_ok(&(${base_typ}[]) { *(${base_typ}*)((${g.styp(field.typ)}*)${tmp}.data)->data }, (${option_name}*)&${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
 					} else {
 						tmp2 := g.new_tmp_var()
 						dec.writeln('\t\tstring ${tmp2} = json__decode_string(jsonroot_${tmp});')
@@ -796,7 +796,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 					dec.writeln('\t\t\t${prefix}${op}${c_name(field.name)}.state = 0;\n')
 					tmp_time_var := g.new_tmp_var()
 					dec.writeln('\t\t\t${g.base_type(field.typ)} ${tmp_time_var} = time__unix(json__decode_u64(jsonroot_${tmp}));\n')
-					dec.writeln('\t\t\tvmemcpy(&${prefix}${op}${c_name(field.name)}.data, &${tmp_time_var}, sizeof(${g.base_type(field.typ)}));')
+					dec.writeln('\t\t\tbuiltin__vmemcpy(&${prefix}${op}${c_name(field.name)}.data, &${tmp_time_var}, sizeof(${g.base_type(field.typ)}));')
 					dec.writeln('\t\t}\n')
 				} else {
 					dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = time__unix(json__decode_u64(jsonroot_${tmp}));')
@@ -867,10 +867,10 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 						'${result_name}_${styp}', mut dec)
 				}
 				if field.typ.has_flag(.option) {
-					dec.writeln('\t\tvmemcpy(&${prefix}${op}${c_name(field.name)}, (${field_type}*)${tmp}.data, sizeof(${field_type}));')
+					dec.writeln('\t\tbuiltin__vmemcpy(&${prefix}${op}${c_name(field.name)}, (${field_type}*)${tmp}.data, sizeof(${field_type}));')
 				} else {
 					if field_sym.kind == .array_fixed {
-						dec.writeln('\t\tvmemcpy(${prefix}${op}${c_name(field.name)},*(${field_type}*)${tmp}.data,sizeof(${field_type}));')
+						dec.writeln('\t\tbuiltin__vmemcpy(${prefix}${op}${c_name(field.name)},*(${field_type}*)${tmp}.data,sizeof(${field_type}));')
 					} else {
 						dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = *(${field_type}*) ${tmp}.data;')
 					}
@@ -1007,7 +1007,7 @@ fn gen_js_get(styp string, tmp string, name string, mut dec strings.Builder, is_
 	dec.writeln('\tcJSON *jsonroot_${tmp} = js_get(root, "${name}");')
 	if is_required {
 		dec.writeln('\tif (jsonroot_${tmp} == 0) {')
-		dec.writeln('\t\treturn (${result_name}_${styp}){ .is_error = true, .err = _v_error(_S("expected field \'${name}\' is missing")), .data = {0} };')
+		dec.writeln('\t\treturn (${result_name}_${styp}){ .is_error = true, .err = builtin___v_error(_S("expected field \'${name}\' is missing")), .data = {0} };')
 		dec.writeln('\t}')
 	}
 }
@@ -1068,9 +1068,9 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 			array_element_assign += '((${styp}*)res.data)[fixed_array_idx] = val;'
 			fixed_array_idx_increment += 'fixed_array_idx++; res.state = 0;'
 		} else {
-			array_element_assign += 'array_push${noscan}((array*)&res.data, &val);'
-			res_str += '_option_ok(&(${g.base_type(utyp)}[]) { __new_array${noscan}(0, 0, sizeof(${styp})) }, (${option_name}*)&res, sizeof(${g.base_type(utyp)}));'
-			array_free_str += 'array_free(&res.data);'
+			array_element_assign += 'builtin__array_push${noscan}((array*)&res.data, &val);'
+			res_str += 'builtin___option_ok(&(${g.base_type(utyp)}[]) { builtin____new_array${noscan}(0, 0, sizeof(${styp})) }, (${option_name}*)&res, sizeof(${g.base_type(utyp)}));'
+			array_free_str += 'builtin__array_free(&res.data);'
 		}
 	} else {
 		if is_array_fixed_val {
@@ -1082,9 +1082,9 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 			array_element_assign += 'res[fixed_array_idx] = val;'
 			fixed_array_idx_increment += 'fixed_array_idx++;'
 		} else {
-			array_element_assign += 'array_push${noscan}((array*)&res, &val);'
-			res_str += 'res = __new_array${noscan}(0, 0, sizeof(${styp}));'
-			array_free_str += 'array_free(&res);'
+			array_element_assign += 'builtin__array_push${noscan}((array*)&res, &val);'
+			res_str += 'res = builtin____new_array${noscan}(0, 0, sizeof(${styp}));'
+			array_free_str += 'builtin__array_free(&res);'
 		}
 	}
 
@@ -1113,7 +1113,7 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
-		return (${result_name}_${ret_styp}){.is_error = true, .err = _v_error(string__plus(_S("Json element is not an array: "), json__json_print(root))), .data = {0}};
+		return (${result_name}_${ret_styp}){.is_error = true, .err = builtin___v_error(builtin__string__plus(_S("Json element is not an array: "), json__json_print(root))), .data = {0}};
 	}
 	${res_str}
 	const cJSON *jsval = NULL;
@@ -1172,7 +1172,7 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 		s = '
 		${result_name}_${ret_styp} val2 = ${fn_name_v} (js_get(root, jsval->string));
 		if(val2.is_error) {
-			map_free(&res);
+			builtin__map_free(&res);
 			return *(${result_name}_${ustyp}*)&val2;
 		}
 		${styp_v} val = *(${styp_v}*)val2.data;
@@ -1182,29 +1182,29 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 	if utyp.has_flag(.option) {
 		return '
 		if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-			return (${result_name}_${ustyp}){ .is_error = true, .err = _v_error(string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0}};
+			return (${result_name}_${ustyp}){ .is_error = true, .err = builtin___v_error(builtin__string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0}};
 		}
-		_option_ok(&(${g.base_type(utyp)}[]) { new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn}) }, (${option_name}*)&res, sizeof(${g.base_type(utyp)}));
+		builtin___option_ok(&(${g.base_type(utyp)}[]) { builtin__new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn}) }, (${option_name}*)&res, sizeof(${g.base_type(utyp)}));
 		cJSON *jsval = NULL;
 		cJSON_ArrayForEach(jsval, root)
 		{
 			${s}
-			string key = tos2((byteptr)jsval->string);
-			map_set((map*)res.data, &key, &val);
+			string key = builtin__tos2((byteptr)jsval->string);
+			builtin__map_set((map*)res.data, &key, &val);
 		}
 '
 	} else {
 		return '
 		if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-			return (${result_name}_${ustyp}){ .is_error = true, .err = _v_error(string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0}};
+			return (${result_name}_${ustyp}){ .is_error = true, .err = builtin___v_error(builtin__string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0}};
 		}
-		res = new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn});
+		res = builtin__new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn});
 		cJSON *jsval = NULL;
 		cJSON_ArrayForEach(jsval, root)
 		{
 			${s}
-			string key = tos2((byteptr)jsval->string);
-			map_set(&res, &key, &val);
+			string key = builtin__tos2((byteptr)jsval->string);
+			builtin__map_set(&res, &key, &val);
 		}
 '
 	}
@@ -1226,22 +1226,22 @@ fn (mut g Gen) encode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type)
 	if utyp.has_flag(.option) {
 		return '
 		o = cJSON_CreateObject();
-		Array_${styp} ${keys_tmp} = map_keys((map*)val.data);
+		Array_${styp} ${keys_tmp} = builtin__map_keys((map*)val.data);
 		for (${ast.int_type_name} i = 0; i < ${keys_tmp}.len; ++i) {
 			${key}
-			cJSON_AddItemToObject(o, (char*) key.str, ${fn_name_v} ( *(${styp_v}*) map_get((map*)val.data, &key, &(${styp_v}[]) { ${zero} } ) ) );
+			cJSON_AddItemToObject(o, (char*) key.str, ${fn_name_v} ( *(${styp_v}*) builtin__map_get((map*)val.data, &key, &(${styp_v}[]) { ${zero} } ) ) );
 		}
-		array_free(&${keys_tmp});
+		builtin__array_free(&${keys_tmp});
 '
 	} else {
 		return '
 		o = cJSON_CreateObject();
-		Array_${styp} ${keys_tmp} = map_keys(&val);
+		Array_${styp} ${keys_tmp} = builtin__map_keys(&val);
 		for (${ast.int_type_name} i = 0; i < ${keys_tmp}.len; ++i) {
 			${key}
-			cJSON_AddItemToObject(o, (char*) key.str, ${fn_name_v} ( *(${styp_v}*) map_get(&val, &key, &(${styp_v}[]) { ${zero} } ) ) );
+			cJSON_AddItemToObject(o, (char*) key.str, ${fn_name_v} ( *(${styp_v}*) builtin__map_get(&val, &key, &(${styp_v}[]) { ${zero} } ) ) );
 		}
-		array_free(&${keys_tmp});
+		builtin__array_free(&${keys_tmp});
 '
 	}
 }

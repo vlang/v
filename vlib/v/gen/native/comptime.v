@@ -32,7 +32,7 @@ fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
 					return !g.comptime_is_truthy(cond.right)
 				}
 				else {
-					g.n_error('Compile time infix expr `${cond}` is not handled by the native backed.')
+					g.n_error('${@LOCATION} Compile time infix expr `${cond}` is not handled by the native backed.')
 				}
 			}
 		}
@@ -58,7 +58,7 @@ fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
 					return true
 				}
 				else {
-					g.n_error('Compile time infix expr `${cond}` is not handled by the native backend.')
+					g.n_error('${@LOCATION} Compile time infix expr `${cond}` is not handled by the native backend.')
 				}
 			}
 		}
@@ -66,11 +66,11 @@ fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
 			return g.comptime_ident(cond.name, false)
 		}
 		ast.ComptimeCall {
-			g.n_error('Comptime calls are not implemented')
+			g.n_error('${@LOCATION} Comptime calls are not implemented')
 		}
 		else {
 			// should be unreachable
-			g.n_error('Compile time conditional `${cond}` is not handled by the native backend.')
+			g.n_error('${@LOCATION} Compile time conditional `${cond}` is not handled by the native backend.')
 		}
 	}
 	return false
@@ -221,7 +221,7 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
 				true
 			} else {
-				g.n_error('Unhandled os ifdef name "${name}".')
+				g.n_error('${@LOCATION} Unhandled os ifdef name "${name}".')
 				false
 			}
 		}
