@@ -7,6 +7,88 @@ fn main() {
 	test_alias(100, 9)
 	test_plus_assign()
 	test_minus_assign()
+	op_assigns_test()
+	if_expr_op_assigns_test()
+}
+
+fn if_expr_op_assigns_test() {
+	mut b := 1
+	one := 1
+	two := 2
+	three := 3
+	four := 4
+	five := 5
+	ten := 10
+	b += if false {0} else {one}
+	b -= if false {0} else {one}
+	assert b == 1
+	b |= if false {0} else {two}
+	assert b == 3
+	b &= if false {0} else {one}
+	assert b == 1
+	b ^= if false {0} else {five}
+	assert b == 4
+	b %= if false {0} else {three}
+	assert b == 1
+	b *= if false {0} else {ten}
+	b /= if false {0} else {ten}
+	assert b == 1
+	b <<= if false {0} else {four}
+	b >>>= if false {0} else {two}
+	b >>= if false {0} else {two}
+	assert b == 1
+
+	mut var := true
+	t := true
+	f := false
+	var &&= if false {f} else {t}
+	assert var == true
+	var &&= if false {t} else {f}
+	assert var == false
+	var ||= if false {f} else {t}
+	assert var == true
+	var ||= if false {t} else {f}
+	assert var == true
+}
+
+fn op_assigns_test() {
+	mut b := 1
+	one := 1
+	two := 2
+	three := 3
+	four := 4
+	five := 5
+	ten := 10
+	b += one
+	b -= one
+	assert b == 1
+	b |= two
+	assert b == 3
+	b &= one
+	assert b == 1
+	b ^= five
+	assert b == 4
+	b %= three
+	assert b == 1
+	b *= ten
+	b /= ten
+	assert b == 1
+	b <<= four
+	b >>>= two
+	b >>= two
+	assert b == 1
+
+	mut var := true
+	t := true
+	f := false
+	var &&= t
+	assert var == true
+	var &&= f
+	assert var == false
+	var ||= t
+	assert var == true
+	var ||= f
+	assert var == true
 }
 
 fn test_minus_assign() {
