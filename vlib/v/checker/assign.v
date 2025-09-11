@@ -444,6 +444,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						if c.check_import_sym_conflict(left.name) {
 							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
+						c.check_module_name_conflict(left.name, left.pos)
 					}
 					if node.op == .assign && left_type.has_flag(.option) && right is ast.UnsafeExpr
 						&& right.expr.is_nil() {
