@@ -42,13 +42,13 @@ const hash256_initial_state = State{
 }
 
 // sum256 creates an Ascon-Hash256 checksum for bytes on msg and produces a 256-bit hash.
-pub fn sum256(msg []u8) []u8 {
-	mut h := new_hash256()
-	_ := h.write(msg) or { panic(err) }
-	h.Digest.finish()
-	mut dst := []u8{len: hash256_size}
-	_ := h.Digest.squeeze(mut dst)
-	return dst
+pub fn sum256(msg_ []u8) []u8 {
+	// This is single-shot function, so, no need to use Hash256 opaque that process
+	// message in streaming way. To reduce this overhead, use raw processing instead.
+	//
+	// Initialize state
+	mut s := hash256_initial_state
+	return ascon_generic_hash(mut s, msg_, hash256_size)
 }
 
 // Hash256 is an opaque provides an implementation of Ascon-Hash256 from NIST.SP.800-232 standard.

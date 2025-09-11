@@ -30,13 +30,11 @@ const xof128_initial_state = State{
 
 // xof128 creates an Ascon-XOF128 checksum of msg with specified desired size of output.
 pub fn xof128(msg []u8, size int) ![]u8 {
-	mut x := new_xof128(size)
-	_ := x.write(msg)!
-	x.Digest.finish()
-	mut out := []u8{len: size}
-	_ := x.Digest.squeeze(mut out)
-	x.reset()
-	return out
+	if size > max_hash_size {
+		return error('xof128: invalid size')
+	}
+	mut s := xof128_initial_state
+	return ascon_generic_hash(mut s, msg, size)
 }
 
 // xof128_64 creates a 64-bytes of Ascon-XOF128 checksum of msg.
@@ -170,13 +168,10 @@ const cxof128_initial_state = State{
 
 // cxof128 creates an Ascon-CXOF128 checksum of msg with supplied size and custom string cs.
 pub fn cxof128(msg []u8, size int, cs []u8) ![]u8 {
-	mut cx := new_cxof128(size, cs)!
-	_ := cx.write(msg)!
-	cx.Digest.finish()
-	mut out := []u8{len: size}
-	_ := cx.Digest.squeeze(mut out)
-	cx.reset()
-	return out
+	// Initialize CXof128 state with precomputed-value and absorb the customization string
+	mut s := cxof128_initial_state
+	cxof128_absorb_custom_string(mut s, cs)
+	return ascon_generic_hash(mut s, msg, size)
 }
 
 // cxof128_64 creates a 64-bytes of Ascon-CXOF128 checksum of msg with supplied custom string in cs.
