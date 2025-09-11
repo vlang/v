@@ -231,10 +231,47 @@ fn nested_test() {
 	assert x4.b.a == 3
 }
 
+struct Foo {
+mut:
+        mantissa u64
+        b bool
+}
+
+fn field_assign_test() {
+	mut b := Foo{1, true}
+	b.mantissa += 1
+	b.mantissa -= 1
+	assert b.mantissa == 1
+	b.mantissa |= 2
+	assert b.mantissa == 3
+	b.mantissa &= 1
+	assert b.mantissa == 1
+	b.mantissa ^= 5
+	assert b.mantissa == 4
+	b.mantissa %= 3
+	assert b.mantissa == 1
+	b.mantissa *= 10
+	b.mantissa /= 10
+	assert b.mantissa == 1
+	b.mantissa <<= 4
+	b.mantissa >>>= 2
+	b.mantissa >>= 2
+	assert b.mantissa == 1
+	b.b &&= true
+	assert b.b == true
+	b.b &&= false
+	assert b.b == false
+	b.b ||= true
+	assert b.b == true
+	b.b ||= false
+	assert b.b == true
+}
+
 fn main() {
 	struct_test()
 	return_test()
 	alias_test()
 	assign_fields()
 	nested_test()
+	field_assign_test()
 }

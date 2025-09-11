@@ -514,7 +514,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 							}
 						} else {
 							ptr_str := if node.cond_type.is_ptr() { '*' } else { '' }
-							g.write('fast_string_eq(${ptr_str}${cond_var}, ')
+							g.write('builtin__fast_string_eq(${ptr_str}${cond_var}, ')
 							g.expr(expr)
 							g.write(')')
 						}

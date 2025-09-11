@@ -145,9 +145,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		} else {
 			// fast_string_eq optimization for string selector comparison to literals
 			if node.op == .ne {
-				g.write('!fast_string_eq(')
+				g.write('!builtin__fast_string_eq(')
 			} else {
-				g.write('fast_string_eq(')
+				g.write('builtin__fast_string_eq(')
 			}
 			g.expr(node.left)
 			g.write(', ')
@@ -158,11 +158,21 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		if node.op == .ne {
 			g.write('!')
 		}
-		if has_alias_eq_op_overload {
-			g.write(g.styp(left.typ.set_nr_muls(0)))
+		mut method_name := if has_alias_eq_op_overload {
+			g.styp(left.typ.set_nr_muls(0))
 		} else {
-			g.write(g.styp(left.unaliased.set_nr_muls(0)))
+			g.styp(left.unaliased.set_nr_muls(0))
 		}
+		mut is_builtin_or_alias_to_builtin := left.sym.is_builtin()
+		if !is_builtin_or_alias_to_builtin && left.sym.info is ast.Alias {
+			alias_info := left.sym.info as ast.Alias
+			parent_sym := g.table.sym(alias_info.parent_type)
+			is_builtin_or_alias_to_builtin = parent_sym.is_builtin()
+		}
+		if is_builtin_or_alias_to_builtin {
+			method_name = 'builtin__${method_name}'
+		}
+		g.write(method_name)
 		g.write2('__eq(', '*'.repeat(left.typ.nr_muls()))
 		if eq_operator_expects_ptr {
 			g.write('&')
@@ -425,7 +435,10 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 			g.write('!')
 		}
 		concrete_types := (left.sym.info as ast.Struct).concrete_types
-		mut method_name := left.sym.cname + '__lt'
+		mut method_name := '${left.sym.cname}__lt'
+		if left.unaliased_sym.is_builtin() {
+			method_name = 'builtin__${method_name}'
+		}
 		method_name = g.generic_fn_name(concrete_types, method_name)
 		g.write(method_name)
 		if node.op in [.lt, .ge] {
@@ -457,7 +470,11 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		if node.op in [.le, .ge] {
 			g.write('!')
 		}
-		g.write2(g.styp(left.typ.set_nr_muls(0)), '__lt')
+		mut method_name := '${g.styp(left.typ.set_nr_muls(0))}__lt'
+		if left.unaliased_sym.is_builtin() {
+			method_name = 'builtin__${method_name}'
+		}
+		g.write(method_name)
 		if node.op in [.lt, .ge] {
 			g.write2('(', '*'.repeat(left.typ.nr_muls()))
 			if operator_expects_ptr {
@@ -757,9 +774,9 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 						}
 						continue
 					} else if array_expr is ast.StringLiteral {
-						g.write('fast_string_eq(')
+						g.write('builtin__fast_string_eq(')
 					} else {
-						g.write('string__eq(')
+						g.write('builtin__string__eq(')
 					}
 					if is_auto_deref_var || (left is ast.Ident && left.info is ast.IdentVar
 						&& g.table.sym(left.obj.typ).kind in [.interface, .sum_type]) {
@@ -936,6 +953,9 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	if left.sym.info is ast.Struct && left.sym.info.generic_types.len > 0 {
 		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
 		method_name = g.generic_fn_name(left.sym.info.concrete_types, method_name)
+		if left.sym.is_builtin() {
+			method_name = 'builtin__${method_name}'
+		}
 		g.write2(method_name, '(')
 		g.expr(node.left)
 		g.write(', ')
@@ -947,11 +967,17 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		if left.sym.has_method(node.op.str()) {
 			method = left.sym.find_method(node.op.str()) or { ast.Fn{} }
 			method_name = left.sym.cname + '_' + util.replace_op(node.op.str())
+			if left.sym.is_builtin() {
+				method_name = 'builtin__${method_name}'
+			}
 		} else if left.unaliased_sym.has_method_with_generic_parent(node.op.str()) {
 			method = left.unaliased_sym.find_method_with_generic_parent(node.op.str()) or {
 				ast.Fn{}
 			}
 			method_name = left.unaliased_sym.cname + '_' + util.replace_op(node.op.str())
+			if left.unaliased_sym.is_builtin() {
+				method_name = 'builtin__${method_name}'
+			}
 			if left.unaliased_sym.info is ast.Struct
 				&& left.unaliased_sym.info.generic_types.len > 0 {
 				method_name = g.generic_fn_name(left.unaliased_sym.info.concrete_types,
@@ -1039,7 +1065,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			elem_sym := g.table.final_sym(array_info.elem_type)
 			elem_is_array_var := !elem_is_option && elem_sym.kind in [.array, .array_fixed]
 				&& node.right is ast.Ident
-			g.write('array_push${noscan}((array*)')
+			g.write('builtin__array_push${noscan}((array*)')
 			mut needs_addr := false
 			if !left.typ.is_ptr()
 				|| (node.left_type.has_flag(.shared_f) && !node.left_type.deref().is_ptr()) {
@@ -1074,7 +1100,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 					&& array_info.elem_type.nr_muls() == 0
 					&& node.right !in [ast.StringLiteral, ast.StringInterLiteral, ast.CallExpr, ast.IndexExpr, ast.InfixExpr]
 				if needs_clone {
-					g.write('string_clone(')
+					g.write('builtin__string_clone(')
 				}
 				if node.right is ast.CastExpr && node.right.expr is ast.ArrayInit {
 					g.expr(node.right.expr)

@@ -95,9 +95,9 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 		g.writeln('\t\tlive_fn_mutex = CreateMutexA(0, 0, 0);')
 	}
 	g.writeln('\t\tv__live__LiveReloadInfo* live_info = v__live__executable__new_live_reload_info(')
-	g.writeln('\t\t\t\t\t tos2("${file}"),')
-	g.writeln('\t\t\t\t\t tos2("${vexe}"),')
-	g.writeln('\t\t\t\t\t tos2("${vopts}"),')
+	g.writeln('\t\t\t\t\t builtin__tos2("${file}"),')
+	g.writeln('\t\t\t\t\t builtin__tos2("${vexe}"),')
+	g.writeln('\t\t\t\t\t builtin__tos2("${vopts}"),')
 	g.writeln('\t\t\t\t\t &live_fn_mutex,')
 	g.writeln('\t\t\t\t\t v_bind_live_symbols')
 	g.writeln('\t\t);')
