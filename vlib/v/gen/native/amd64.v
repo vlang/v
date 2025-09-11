@@ -953,7 +953,7 @@ fn (mut c Amd64) lea_var_to_reg(r Register, var_offset i32) {
 
 	is_far_var := var_offset > 0x80 || var_offset < -0x7f
 	match reg {
-		.rax, .rbx, .rsi, .rdi {
+		.rax, .rbx, .rsi, .rdi, .rdx, .rcx {
 			c.g.write8(0x48)
 		}
 		else {}
@@ -2753,6 +2753,7 @@ fn (mut c Amd64) gen_type_promotion(from ast.Type, to ast.Type, option Amd64Regi
 }
 
 fn (mut c Amd64) return_stmt(node ast.Return) {
+	c.g.println('; return statement {')
 	mut s := '?' //${node.exprs[0].val.str()}'
 	if node.exprs.len == 1 {
 		match node.exprs[0] {
@@ -2812,6 +2813,8 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 								c.add(Amd64Register.rax, size % 8)
 								c.add(Amd64Register.rdx, size % 8)
 								c.mov_deref(Amd64Register.rcx, Amd64Register.rax, ast.i64_type_idx)
+								// TODO: check if it does not write too far as the size of
+								// the remaining data is not 64bits
 								c.mov_store(.rdx, .rcx, ._64)
 							}
 							c.mov_var_to_reg(c.main_reg(), LocalVar{
@@ -2841,7 +2844,14 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 			offset := c.g.structs[typ.idx()].offsets[i]
 			c.g.expr(expr)
 			// TODO: expr not on rax
-			c.mov_reg_to_var(var, Amd64Register.rax, offset: offset, typ: ts.mr_info().types[i])
+			e_typ := ts.mr_info().types[i]
+			e_ts := c.g.table.sym(e_typ)
+			if e_ts.info is ast.Struct {
+				c.lea_var_to_reg(Amd64Register.rdx, var.offset - offset)
+				c.move_struct(.rdx, .rax, c.g.get_type_size(e_typ))
+			} else {
+				c.mov_reg_to_var(var, Amd64Register.rax, offset: offset, typ: ts.mr_info().types[i])
+			}
 		}
 		// store the multi return struct value
 		c.lea_var_to_reg(Amd64Register.rax, var.offset)
@@ -2897,6 +2907,7 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 		pos: pos
 	}
 	c.g.println('; jump to label ${label}')
+	c.g.println('; return statement }')
 }
 
 fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {
@@ -2926,7 +2937,7 @@ fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {
 	} else {
 		c.g.expr(node.right[0])
 	}
-	c.mov_reg(Amd64Register.rdx, Amd64Register.rax)
+	c.mov_reg(Amd64Register.rdx, Amd64Register.rax) // value of right expr(s)
 
 	mut current_offset := i32(0)
 	for i, offset in multi_return.offsets {
@@ -2943,7 +2954,7 @@ fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {
 			c.add(Amd64Register.rdx, offset - current_offset)
 			current_offset = offset
 		}
-		c.g.gen_left_value(node.left[i])
+		c.g.gen_left_value(node.left[i]) // in rax
 		left_type := node.left_types[i]
 		right_type := node.right_types[i]
 		if c.g.is_register_type(right_type) {
@@ -3001,8 +3012,33 @@ fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {
 				c.g.println('movsd [rax], xmm0')
 			}
 		} else {
-			c.g.n_error('${@LOCATION} multi return for struct is not supported yet')
+			c.move_struct(.rax, .rdx, c.g.get_type_size(left_type))
 		}
+	}
+}
+
+// Moves a struct of size `_size` (in bytes) from the address stored in input to the address stored in output
+fn (mut c Amd64) move_struct(output Amd64Register, input Amd64Register, _size i32) {
+	mut size := _size
+	for size != 0 {
+		c.mov_deref(Amd64Register.rcx, input, ast.i64_type_idx)
+		// mov_store can only move powers of 2 bytes at once
+		// the remainder will then get handled the next iteration for simplicity
+		data_size := i32(match true {
+			size < 2 { 1 }
+			size < 4 { 2 }
+			size < 8 { 4 }
+			else { 8 }
+		})
+		c.mov_store(output, .rcx, match data_size {
+			1 { ._8 }
+			2 { ._16 }
+			4 { ._32 }
+			else { ._64 }
+		})
+		size -= data_size
+		c.add(output, data_size)
+		c.add(input, data_size)
 	}
 }
 
