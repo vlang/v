@@ -730,7 +730,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			val = vmemcmp(decoder.json.str + value_info.position, true_in_string.str,
 				true_in_string.len) == 0
 		}
-	} $else $if T.unaliased_typ is $float || T.unaliased_typ is $int || T.unaliased_typ is $enum {
+	} $else $if T.unaliased_typ is $float || T.unaliased_typ is $int {
 		value_info := decoder.current_node.value
 
 		if value_info.value_kind == .number {
@@ -744,6 +744,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		} else {
 			return decoder.decode_error('Expected number, but got ${value_info.value_kind}')
 		}
+	} $else $if T.unaliased_typ is $enum {
+		decoder.decode_enum(mut val)!
 	} $else {
 		return decoder.decode_error('cannot decode value with ${typeof(val).name} type')
 	}
@@ -889,6 +891,26 @@ fn get_number_digits[T](num T) int {
 	}
 }
 
+fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
+	enum_info := decoder.current_node.value
+
+	if enum_info.value_kind == .number {
+		mut result := 0
+		decoder.decode_number(&result)!
+
+		$for value in val.values {
+			if int(value.value) == result {
+				val = value.value
+				return
+			}
+		}
+		decoder.decode_error('Number value: ${result} does not match any field in enum: ${typeof(val).name}')!
+	} else if enum_info.value_kind == .string {
+	}
+
+	decoder.decode_error('Expected number or string value for enum, got: ${enum_info.value_kind}')!
+}
+
 // use pointer instead of mut so enum cast works
 @[unsafe]
 fn (mut decoder Decoder) decode_number[T](val &T) ! {
@@ -904,10 +926,6 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 	$if T.unaliased_typ is $float {
 		*val = T(strconv.atof_quick(decoder.json[number_info.position..number_info.position +
 			number_info.length]))
-	} $else $if T.unaliased_typ is $enum {
-		mut result := 0
-		decoder.decode_number(&result)!
-		*val = T(result)
 	} $else { // this part is a minefield
 		mut is_negative := false
 		mut index := 0
