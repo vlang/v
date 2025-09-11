@@ -5,7 +5,6 @@
 // Utility helpers used across the module
 module ascon
 
-import math.bits
 import encoding.binary
 
 // clear_bytes clears the bytes of x in n byte

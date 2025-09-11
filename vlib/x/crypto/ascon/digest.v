@@ -133,3 +133,39 @@ fn (mut d Digest) squeeze(mut dst []u8) int {
 
 	return pos
 }
+
+@[direct_array_access; inline]
+fn ascon_generic_hash(mut s State, msg_ []u8, size int) []u8 {
+	// Assumed state was correctly initialized
+	// Absorbing the message
+	mut msg := msg_.clone()
+	for msg.len >= block_size {
+		s.e0 ^= binary.little_endian_u64(msg[0..block_size])
+		unsafe {
+			msg = msg[block_size..]
+		}
+		ascon_pnr(mut s, ascon_prnd_12)
+	}
+	// Absorb the last partial message block
+	s.e0 ^= load_bytes(msg, msg.len)
+	s.e0 ^= pad(msg.len)
+
+	// Squeezing phase
+	//
+	// The squeezing phase begins after msg is absorbed with an
+	// permutation 𝐴𝑠𝑐𝑜𝑛-𝑝[12] to the state:
+	ascon_pnr(mut s, ascon_prnd_12)
+	mut out := []u8{len: size}
+	mut pos := 0
+	mut clen := out.len
+	for clen >= block_size {
+		binary.little_endian_put_u64(mut out[pos..pos + 8], s.e0)
+		ascon_pnr(mut s, ascon_prnd_12)
+		pos += block_size
+		clen -= block_size
+	}
+	// final output, the resulting 256-bit digest is the concatenation of hash blocks
+	store_bytes(mut out[pos..], s.e0, clen)
+
+	return out
+}
