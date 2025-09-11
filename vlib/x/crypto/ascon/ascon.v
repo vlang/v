@@ -41,6 +41,9 @@ fn ascon_pnr(mut s State, nr int) {
 	if nr < 1 || nr > 16 {
 		panic('Invalid round number')
 	}
+	// Allocate temporary vars to reduce allocation within loop
+	mut x0 := u64(0)
+	mut y0 := u64(0)
 	// Ascon permutation routine
 	for i := max_nr_perm - nr; i < max_nr_perm; i++ {
 		// 3.2 Constant-Addition Layer step
@@ -56,18 +59,22 @@ fn ascon_pnr(mut s State, nr int) {
 		s.e0 ^= s.e4
 		s.e4 ^= s.e3
 		s.e2 ^= s.e1
-
+		// Set temp vars to values
+		x0 = s.e0
+		y0 = s.e4 ^ (~s.e0 & s.e1)
+		/*
 		t0 := s.e4 ^ (~s.e0 & s.e1)
 		t1 := s.e0 ^ (~s.e1 & s.e2)
 		t2 := s.e1 ^ (~s.e2 & s.e3)
 		t3 := s.e2 ^ (~s.e3 & s.e4)
 		t4 := s.e3 ^ (~s.e4 & s.e0)
+		*/
 
-		s.e0 = t1
-		s.e1 = t2
-		s.e2 = t3
-		s.e3 = t4
-		s.e4 = t0
+		s.e0 = s.e0 ^ (~s.e1 & s.e2) // t1
+		s.e1 = s.e1 ^ (~s.e2 & s.e3) // t2
+		s.e2 = s.e2 ^ (~s.e3 & s.e4) // t3
+		s.e3 = s.e3 ^ (~s.e4 & x0) // t4, change s.e0 to x0
+		s.e4 = y0
 
 		s.e1 ^= s.e0
 		s.e0 ^= s.e4
