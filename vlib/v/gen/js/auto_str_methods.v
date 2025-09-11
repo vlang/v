@@ -497,10 +497,10 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 		} else if sym.kind == .rune {
 			g.definitions.writeln('\t\tlet x = new string("\`" + String.fromCharCode(it.val) + "\`");')
 			// Rune are managed at this level as strings
-			// g.definitions.writeln('\t\tstring x = str_intp(2, _MOV((StrIntpData[]){{new string("\`"), $c.si_s_code, {.d_s = ${elem_str_fn_name}(it) }}, {new string("\`"), 0, {.d_c = 0 }}}));\n')
+			// g.definitions.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{new string("\`"), $c.si_s_code, {.d_s = ${elem_str_fn_name}(it) }}, {new string("\`"), 0, {.d_c = 0 }}}));\n')
 		} else if sym.kind == .string {
 			g.definitions.writeln('\t\tlet x = new string(it);')
-			// g.definitions.writeln('\t\tstring x = str_intp(2, _MOV((StrIntpData[]){{new string("\'"), $c.si_s_code, {.d_s = it }}, {new string("\'"), 0, {.d_c = 0 }}}));\n')
+			// g.definitions.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{new string("\'"), $c.si_s_code, {.d_s = it }}, {new string("\'"), 0, {.d_c = 0 }}}));\n')
 		} else {
 			// There is a custom .str() method, so use it.
 			// Note: we need to take account of whether the user has defined
@@ -759,7 +759,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 			func = '(voidptr) it.${field.name}'
 		} else if field.typ.is_ptr() {
 			// reference types can be "nil"
-			fn_builder.write_string('isnil(it.${g.js_name(field.name)})')
+			fn_builder.write_string('builtin__isnil(it.${g.js_name(field.name)})')
 			fn_builder.write_string(' ? new string("nil") : ')
 			// struct, floats and ints have a special case through the _str function
 			if sym.kind != .struct && !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
@@ -772,7 +772,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 		} else {
 			// manage C charptr
 			if field.typ in ast.charptr_types {
-				fn_builder.write_string('tos4((byteptr)${func})')
+				fn_builder.write_string('builtin__tos4((byteptr)${func})')
 			} else {
 				if field.typ.is_ptr() && sym.kind == .struct {
 					fn_builder.write_string('(indent_count > 25)? new string("<probably circular>") : ')
@@ -819,22 +819,22 @@ fn struct_auto_str_func(mut g JsGen, sym &ast.TypeSymbol, field_type ast.Type, f
 		} else if (field_type.is_int_valptr() || field_type.is_float_valptr()) && !expects_ptr {
 			// ptr int can be "nil", so this needs to be casted to a string
 			if sym.kind == .f32 {
-				return 'str_intp(1, _MOV((StrIntpData[]){
+				return 'builtin__str_intp(1, _MOV((StrIntpData[]){
 					{_SLIT0, ${si_g32_code}, {.d_f32 = *${method_str} }}
 				}))'
 			} else if sym.kind == .f64 {
-				return 'str_intp(1, _MOV((StrIntpData[]){
+				return 'builtin__str_intp(1, _MOV((StrIntpData[]){
 					{_SLIT0, ${si_g64_code}, {.d_f64 = *${method_str} }}
 				}))'
 			} else if sym.kind in [.u64, .usize] {
 				fmt_type := StrIntpType.si_u64
-				return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *${method_str} }}}))'
+				return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *${method_str} }}}))'
 			} else if sym.kind in [.i64, .isize] {
 				fmt_type := StrIntpType.si_u64
-				return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i64 = *${method_str} }}}))'
+				return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i64 = *${method_str} }}}))'
 			}
 			fmt_type := StrIntpType.si_i32
-			return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *${method_str} }}}))'
+			return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *${method_str} }}}))'
 		}
 		return method_str
 	}

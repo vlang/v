@@ -129,7 +129,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				g.writeln('vweb__Context_html(&${app_name}->Context, _tmpl_res_${fn_name});')
 			}
 			g.writeln('strings__Builder_free(&sb_${fn_name});')
-			g.writeln('string_free(&_tmpl_res_${fn_name});')
+			g.writeln('builtin__string_free(&_tmpl_res_${fn_name});')
 		} else {
 			// return $tmpl string
 			g.write(cur_line)
@@ -213,7 +213,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				&& node.args[i - 1].expr is ast.ArrayDecompose {
 				mut d_count := 0
 				for d_i in i .. m.params.len {
-					g.write('*(${g.styp(m.params[i].typ)}*)array_get(')
+					g.write('*(${g.styp(m.params[i].typ)}*)builtin__array_get(')
 					g.expr(node.args[i - 1].expr)
 					g.write(', ${d_count})')
 
@@ -238,7 +238,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				if m.params[i].typ.is_int() || m.params[i].typ.idx() == ast.bool_type_idx {
 					// Gets the type name and cast the string to the type with the string_<type> function
 					type_name := g.table.type_symbols[int(m.params[i].typ)].str()
-					g.write('string_${type_name}(((string*)${last_arg}.data) [${idx}])')
+					g.write('builtin__string_${type_name}(((string*)${last_arg}.data) [${idx}])')
 				} else {
 					g.write('((string*)${last_arg}.data) [${idx}] ')
 				}
@@ -279,7 +279,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			if j > 0 {
 				g.write(' else ')
 			}
-			g.write('if (string__eq(${node.method_name}, _S("${method.name}"))) ')
+			g.write('if (builtin__string__eq(${node.method_name}, _S("${method.name}"))) ')
 		}
 		g.write('${g.cc_type(left_type, false)}_${method.name}(${amp} ')
 		g.expr(node.left)
@@ -470,7 +470,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 						tmp_var2 := g.new_tmp_var()
 						g.write('{ ${g.base_type(node.typ)} ${tmp_var2} = ')
 						g.stmt(last)
-						g.writeln('_result_ok(&(${g.base_type(node.typ)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.typ)}));')
+						g.writeln('builtin___result_ok(&(${g.base_type(node.typ)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.typ)}));')
 						g.writeln('}')
 					} else {
 						g.write('\t${tmp_var} = ')
@@ -488,7 +488,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 						tmp_var2 := g.new_tmp_var()
 						g.write('{ ${g.base_type(node.typ)} ${tmp_var2} = ')
 						g.stmt(last)
-						g.writeln('_result_ok(&(${g.base_type(node.typ)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.typ)}));')
+						g.writeln('builtin___result_ok(&(${g.base_type(node.typ)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.typ)}));')
 						g.writeln('}')
 					} else {
 						g.write('${tmp_var} = ')
@@ -645,19 +645,19 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.writeln('/* method ${i} : ${method.name} */ {')
 			g.writeln('\t${node.val_var}.name = _S("${method.name}");')
 			if method.attrs.len == 0 {
-				g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
+				g.writeln('\t${node.val_var}.attrs = builtin____new_array_with_default(0, 0, sizeof(string), 0);')
 			} else {
 				attrs := cgen_attrs(method.attrs)
 				g.writeln(
-					'\t${node.val_var}.attrs = new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
+					'\t${node.val_var}.attrs = builtin__new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
 					attrs.join(', ') + '}));\n')
 			}
 			if method.params.len < 2 {
 				// 0 or 1 (the receiver) args
-				g.writeln('\t${node.val_var}.args = __new_array_with_default(0, 0, sizeof(MethodParam), 0);')
+				g.writeln('\t${node.val_var}.args = builtin____new_array_with_default(0, 0, sizeof(MethodParam), 0);')
 			} else {
 				len := method.params.len - 1
-				g.write('\t${node.val_var}.args = new_array_from_c_array(${len}, ${len}, sizeof(MethodParam), _MOV((MethodParam[${len}]){')
+				g.write('\t${node.val_var}.args = builtin__new_array_from_c_array(${len}, ${len}, sizeof(MethodParam), _MOV((MethodParam[${len}]){')
 				// Skip receiver arg
 				for j, arg in method.params[1..] {
 					typ := arg.typ.idx()
@@ -725,11 +725,11 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('/* field ${i} : ${field.name} */ {')
 				g.writeln('\t${node.val_var}.name = _S("${field.name}");')
 				if field.attrs.len == 0 {
-					g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
+					g.writeln('\t${node.val_var}.attrs = builtin____new_array_with_default(0, 0, sizeof(string), 0);')
 				} else {
 					attrs := cgen_attrs(field.attrs)
 					g.writeln(
-						'\t${node.val_var}.attrs = new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
+						'\t${node.val_var}.attrs = builtin__new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
 						attrs.join(', ') + '}));\n')
 				}
 				field_sym := g.table.sym(field.typ)
@@ -781,7 +781,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					if g.pref.translated && node.typ.is_number() {
 						g.writeln('_const_main__${val};')
 					} else {
-						node_sym := g.table.sym(node.typ)
+						node_sym := g.table.sym(g.unwrap_generic(node.typ))
 						if node_sym.info is ast.Alias {
 							g.writeln('${g.styp(node_sym.info.parent_type)}__${val};')
 						} else {
@@ -790,11 +790,11 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					}
 					enum_attrs := sym.info.attrs[val]
 					if enum_attrs.len == 0 {
-						g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
+						g.writeln('\t${node.val_var}.attrs = builtin____new_array_with_default(0, 0, sizeof(string), 0);')
 					} else {
 						attrs := cgen_attrs(enum_attrs)
 						g.writeln(
-							'\t${node.val_var}.attrs = new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
+							'\t${node.val_var}.attrs = builtin__new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
 							attrs.join(', ') + '}));\n')
 					}
 					g.stmts(node.stmts)
@@ -1025,7 +1025,7 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 						tmp_var2 := g.new_tmp_var()
 						g.write('{ ${g.base_type(node.return_type)} ${tmp_var2} = ')
 						g.stmt(last)
-						g.writeln('_result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
+						g.writeln('builtin___result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
 						g.writeln('}')
 					} else {
 						g.write('\t${tmp_var} = ')
@@ -1043,7 +1043,7 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 						tmp_var2 := g.new_tmp_var()
 						g.write('{ ${g.base_type(node.return_type)} ${tmp_var2} = ')
 						g.stmt(last)
-						g.writeln('_result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
+						g.writeln('builtin___result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
 						g.writeln('}')
 					} else {
 						g.write('${tmp_var} = ')

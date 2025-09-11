@@ -1,8 +1,8 @@
 VV_LOC string main__get_two(void) {
 char* s = main__return_text_two();
-return cstring_to_vstring(s);
+return builtin__cstring_to_vstring(s);
 }
 VV_LOC string main__get_one(void) {
 main__ALcharptr s = main__return_text_one();
-return cstring_to_vstring(s);
+return builtin__cstring_to_vstring(s);
 }

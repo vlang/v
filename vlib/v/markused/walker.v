@@ -42,6 +42,7 @@ mut:
 	// dependencies finding flags
 	uses_atomic                bool // has atomic
 	uses_array                 bool // has array
+	uses_array_sumtype         bool // has array on sumtype init
 	uses_channel               bool // has chan dep
 	uses_lock                  bool // has mutex dep
 	uses_ct_fields             bool // $for .fields
@@ -1181,7 +1182,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 				if typ.has_flag(.option) {
 					w.used_option++
 				}
-				w.mark_by_type(typ)
+				sym := w.table.sym(typ)
+				w.mark_by_sym(sym)
+				w.uses_array_sumtype = w.uses_array_sumtype || sym.kind == .array
 			}
 		}
 		ast.Map {
@@ -1479,6 +1482,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('__new_array_with_default_noscan')
 		w.fn_by_name(int(ast.array_type.ref()).str() + '.set')
 		w.fn_by_name('clone_static_to_depth')
+	}
+	if w.uses_array_sumtype {
+		w.fn_by_name('__new_array')
 	}
 	if w.uses_fixed_arr_int {
 		w.fn_by_name('v_fixed_index')
