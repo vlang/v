@@ -135,20 +135,32 @@ fn (mut d Digest) squeeze(mut dst []u8) int {
 }
 
 @[direct_array_access; inline]
-fn ascon_generic_hash(mut s State, msg_ []u8, size int) []u8 {
+fn ascon_generic_hash(mut s State, msg []u8, size int) []u8 {
 	// Assumed state was correctly initialized
 	// Absorbing the message
-	mut msg := msg_.clone()
-	for msg.len >= block_size {
-		s.e0 ^= binary.little_endian_u64(msg[0..block_size])
-		unsafe {
-			msg = msg[block_size..]
+	mut pos := 0
+	// Check if msg has non-null length, if yes, absorb it.
+	// Otherwise, just pad it
+	if _likely_(msg.len > 0) {
+		mut msg_len := msg.len
+		for msg_len >= block_size {
+			s.e0 ^= binary.little_endian_u64(msg[pos..pos + block_size])
+			pos += block_size
+			msg_len -= block_size
+			ascon_pnr(mut s, ascon_prnd_12)
 		}
-		ascon_pnr(mut s, ascon_prnd_12)
+		// Absorb the last partial message block
+		last_block := unsafe { msg[pos..] }
+		s.e0 ^= u64(0x01) << (8 * last_block.len) // pad(last_block.len)
+		if last_block.len > 0 {
+			s.e0 ^= load_bytes(last_block, last_block.len)
+		}
+	} else {
+		// Otherwise, just pad it
+		s.e0 ^= u64(0x01)
 	}
-	// Absorb the last partial message block
-	s.e0 ^= load_bytes(msg, msg.len)
-	s.e0 ^= pad(msg.len)
+	// reset pos
+	pos = 0
 
 	// Squeezing phase
 	//
@@ -156,7 +168,6 @@ fn ascon_generic_hash(mut s State, msg_ []u8, size int) []u8 {
 	// permutation 𝐴𝑠𝑐𝑜𝑛-𝑝[12] to the state:
 	ascon_pnr(mut s, ascon_prnd_12)
 	mut out := []u8{len: size}
-	mut pos := 0
 	mut clen := out.len
 	for clen >= block_size {
 		binary.little_endian_put_u64(mut out[pos..pos + 8], s.e0)
