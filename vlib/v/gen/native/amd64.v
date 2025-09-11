@@ -2813,7 +2813,8 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 								c.add(Amd64Register.rax, size % 8)
 								c.add(Amd64Register.rdx, size % 8)
 								c.mov_deref(Amd64Register.rcx, Amd64Register.rax, ast.i64_type_idx)
-								// Doesn't it write too far as the size is not 64bits?
+								// TODO: check if it does not write too far as the size of
+								// the remaining data is not 64bits
 								c.mov_store(.rdx, .rcx, ._64)
 							}
 							c.mov_var_to_reg(c.main_reg(), LocalVar{
@@ -2846,32 +2847,8 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 			e_typ := ts.mr_info().types[i]
 			e_ts := c.g.table.sym(e_typ)
 			if e_ts.info is ast.Struct {
-				mut s_size := c.g.get_type_size(e_typ)
 				c.lea_var_to_reg(Amd64Register.rdx, var.offset - offset)
-				for _ in 0 .. s_size / 8 {
-					c.mov_deref(Amd64Register.rcx, Amd64Register.rax, ast.i64_type_idx)
-					c.mov_store(.rdx, .rcx, ._64)
-					c.add(Amd64Register.rax, 8)
-					c.add(Amd64Register.rdx, 8)
-				}
-				for s_size % 8 != 0 {
-					c.mov_deref(Amd64Register.rcx, Amd64Register.rax, ast.i64_type_idx)
-					data_size := i32(match s_size % 8 {
-						1 { 1 }
-						2, 3 { 2 }
-						4, 5, 6, 7 { 4 }
-						else { 8 }
-					})
-					c.mov_store(.rdx, .rcx, match data_size {
-						1 { ._8 }
-						2 { ._16 }
-						4 { ._32 }
-						else { ._64 }
-					})
-					s_size -= data_size
-					c.add(Amd64Register.rax, data_size)
-					c.add(Amd64Register.rdx, data_size)
-				}
+				c.move_struct(.rdx, .rax, c.g.get_type_size(e_typ))
 			} else {
 				c.mov_reg_to_var(var, Amd64Register.rax, offset: offset, typ: ts.mr_info().types[i])
 			}
@@ -3035,32 +3012,33 @@ fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {
 				c.g.println('movsd [rax], xmm0')
 			}
 		} else {
-			mut s_size := c.g.get_type_size(left_type)
-			for _ in 0 .. s_size / 8 {
-				c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, ast.i64_type_idx)
-				c.mov_store(.rax, .rcx, ._64)
-				c.add(Amd64Register.rax, 8)
-				c.add(Amd64Register.rdx, 8)
-			}
-			for s_size % 8 != 0 {
-				c.mov_deref(Amd64Register.rcx, Amd64Register.rdx, ast.i64_type_idx)
-				data_size := i32(match s_size % 8 {
-					1 { 1 }
-					2, 3 { 2 }
-					4, 5, 6, 7 { 4 }
-					else { 8 }
-				})
-				c.mov_store(.rax, .rcx, match data_size {
-					1 { ._8 }
-					2 { ._16 }
-					4 { ._32 }
-					else { ._64 }
-				})
-				s_size -= data_size
-				c.add(Amd64Register.rax, data_size)
-				c.add(Amd64Register.rdx, data_size)
-			}
+			c.move_struct(.rax, .rdx, c.g.get_type_size(left_type))
 		}
+	}
+}
+
+// Moves a struct of size `_size` (in bytes) from the address stored in input to the address stored in output
+fn (mut c Amd64) move_struct(output Amd64Register, input Amd64Register, _size i32) {
+	mut size := _size
+	for size != 0 {
+		c.mov_deref(Amd64Register.rcx, input, ast.i64_type_idx)
+		// mov_store can only move powers of 2 bytes at once
+		// the remainder will then get handled the next iteration for simplicity
+		data_size := i32(match true {
+			size < 2 { 1 }
+			size < 4 { 2 }
+			size < 8 { 4 }
+			else { 8 }
+		})
+		c.mov_store(output, .rcx, match data_size {
+			1 { ._8 }
+			2 { ._16 }
+			4 { ._32 }
+			else { ._64 }
+		})
+		size -= data_size
+		c.add(output, data_size)
+		c.add(input, data_size)
 	}
 }
 
