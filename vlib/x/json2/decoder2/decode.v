@@ -904,8 +904,18 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 				return
 			}
 		}
-		decoder.decode_error('Number value: ${result} does not match any field in enum: ${typeof(val).name}')!
+		decoder.decode_error('Number value: `${result}` does not match any field in enum: ${typeof(val).name}')!
 	} else if enum_info.value_kind == .string {
+		mut result := ''
+		unsafe { decoder.decode_value(mut result)! }
+
+		$for value in T.values {
+			if value.name == result {
+				val = value.value
+				return
+			}
+		}
+		decoder.decode_error('String value: `${result}` does not match any field in enum: ${typeof(val).name}')!
 	}
 
 	decoder.decode_error('Expected number or string value for enum, got: ${enum_info.value_kind}')!
