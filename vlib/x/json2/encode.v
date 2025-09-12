@@ -444,7 +444,7 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 				if val.$(field.name) == none {
 					unsafe { encoder.output.push_many(null_string.str, null_string.len) }
 				} else {
-					encoder.encode_value(val.$(field.name))
+					encoder.encode_value(val.$(field.name) ?)
 				}
 			} $else $if field.indirections == 1 {
 				encoder.encode_value(*val.$(field.name))

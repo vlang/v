@@ -355,6 +355,31 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 			} else {
 				comptime_args[k] = ctyp
 			}
+		} else if mut call_arg.expr is ast.PostfixExpr && call_arg.expr.expr is ast.ComptimeSelector {
+			comptime_args[k] = t.info.comptime_for_field_type
+			arg_sym := t.table.final_sym(call_arg.typ)
+			param_sym := t.table.sym(param_typ)
+			if arg_sym.kind == .array && param_sym.kind == .array {
+				comptime_sym := t.table.sym(comptime_args[k])
+				comptime_args[k] = t.get_generic_array_element_type(comptime_sym.info as ast.Array)
+			} else if arg_sym.info is ast.Map && param_sym.info is ast.Map {
+				comptime_sym := t.table.sym(comptime_args[k])
+				if comptime_sym.info is ast.Map {
+					if param_sym.info.key_type.has_flag(.generic) {
+						comptime_args[k] = comptime_sym.info.key_type
+						if param_sym.info.value_type.has_flag(.generic) {
+							k++
+							comptime_args[k] = comptime_sym.info.value_type
+						}
+					} else if param_sym.info.value_type.has_flag(.generic) {
+						comptime_args[k] = comptime_sym.info.value_type
+					}
+				}
+			}
+			if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
+				comptime_args[k] = comptime_args[k].set_nr_muls(0)
+			}
+			comptime_args[k] = comptime_args[k].clear_flag(.option)
 		}
 	}
 	return comptime_args

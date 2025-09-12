@@ -2767,19 +2767,23 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	} else if arg.expr is ast.ComptimeSelector && arg_typ.has_flag(.option)
 		&& !expected_type.has_flag(.option) {
 		// allow to pass val.$(filed.name) where T is expected, doing automatic unwrap in this case
-		styp := g.base_type(arg_typ)
-		g.write('*(${styp}*)')
-		g.expr_with_cast(arg.expr, arg_typ, expected_type)
-		g.write('.data')
+		// styp := g.base_type(arg_typ)
+		// g.write('*(${styp}*)')
+		g.expr_with_opt(arg.expr, arg_typ, expected_type.set_flag(.option))
+		// g.write('.data')
 		return
 	} else if arg.expr is ast.Ident && arg_sym.info is ast.Struct && arg_sym.info.is_anon
 		&& !expected_type.has_flag(.generic) {
 		// make anon struct struct compatible with another anon struct declaration
-		g.write('*(${g.cc_type(expected_type, false)}*)&')
+		// g.write('*(${g.cc_type(expected_type, false)}*)&')
 	}
 	// check if the argument must be dereferenced or not
 	g.arg_no_auto_deref = is_smartcast && !arg_is_ptr && !exp_is_ptr && arg.should_be_ptr
-	g.expr_with_cast(arg.expr, arg_typ, expected_type)
+	if arg_typ.has_flag(.option) {
+		g.expr_with_opt(arg.expr, arg_typ, expected_type.set_flag(.option))
+	} else {
+		g.expr_with_cast(arg.expr, arg_typ, expected_type)
+	}
 	g.arg_no_auto_deref = false
 	g.inside_smartcast = old_inside_smartcast
 	if needs_closing {
