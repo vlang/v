@@ -8316,9 +8316,9 @@ return ${cast_shared_struct_str};
 			}
 			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base
 			if g.pref.build_mode != .build_module {
-				sb.writeln('${g.static_modifier}const int ${interface_index_name} = ${iin_idx};')
+				sb.writeln('${g.static_modifier}const u32 ${interface_index_name} = ${iin_idx};')
 			} else {
-				sb.writeln('extern const int ${interface_index_name};')
+				sb.writeln('extern const u32 ${interface_index_name};')
 			}
 		}
 		for vtyp, variants in inter_info.conversions {
