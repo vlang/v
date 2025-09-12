@@ -356,7 +356,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 				comptime_args[k] = ctyp
 			}
 		} else if mut call_arg.expr is ast.PostfixExpr && call_arg.expr.expr is ast.ComptimeSelector {
-			comptime_args[k] = t.info.comptime_for_field_type
+			comptime_args[k] = t.info.comptime_for_field_type.clear_flag(.option)
 			arg_sym := t.table.final_sym(call_arg.typ)
 			param_sym := t.table.sym(param_typ)
 			if arg_sym.kind == .array && param_sym.kind == .array {
@@ -379,7 +379,6 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 			if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
 				comptime_args[k] = comptime_args[k].set_nr_muls(0)
 			}
-			comptime_args[k] = comptime_args[k].clear_flag(.option)
 		}
 	}
 	return comptime_args
