@@ -7574,8 +7574,9 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 			}
 		}
 		.struct {
-			mut has_none_zero := false
 			info := sym.info as ast.Struct
+			mut has_none_zero := info.fields.len == 0
+
 			mut init_str := if info.is_anon && !g.inside_global_decl {
 				'(${g.styp(typ)}){'
 			} else {
