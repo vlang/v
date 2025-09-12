@@ -197,7 +197,7 @@ mut:
 	sumtype_casting_fns       []SumtypeCastingFn
 	anon_fn_definitions       []string        // anon generated functions definition list
 	anon_fns                  shared []string // remove duplicate anon generated functions
-	sumtype_definitions       map[int]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
+	sumtype_definitions       map[u32]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	trace_fn_definitions      []string
 	json_types                []ast.Type           // to avoid json gen duplicates
 	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
@@ -532,7 +532,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 				// Temporary hack to make toml work with -usecache TODO remove
 				continue
 			}
-			g.definitions.writeln('int _v_type_idx_${sym.cname}(); // 1build module ${g.pref.path}')
+			g.definitions.writeln('u32 _v_type_idx_${sym.cname}(); // 1build module ${g.pref.path}')
 		}
 	} else if g.pref.use_cache {
 		is_toml := g.pref.path.contains('/toml')
@@ -543,7 +543,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			if is_toml && sym.cname.contains('map[string]') {
 				continue
 			}
-			g.definitions.writeln('int _v_type_idx_${sym.cname}() { return ${idx}; }; //lol ${g.pref.path}')
+			g.definitions.writeln('u32 _v_type_idx_${sym.cname}() { return ${idx}; }; //lol ${g.pref.path}')
 		}
 	}
 
@@ -1138,8 +1138,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 			if sum_info.is_generic {
 				continue
 			}
-			g.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(int sidx) {')
-			g.definitions.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(int);')
+			g.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(u32 sidx) {')
+			g.definitions.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(u32);')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return "${util.strip_main_name(sym.name)}";')
 				for v in sum_info.variants {
@@ -1152,39 +1152,39 @@ pub fn (mut g Gen) write_typeof_functions() {
 				tidx := g.table.find_type_idx(sym.name)
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase ${tidx}: return "${util.strip_main_name(sym.name)}";')
-				mut idxs := []int{}
+				mut idxs := []ast.Type{}
 				for v in sum_info.variants {
 					if v in idxs {
 						continue
 					}
 					subtype := g.table.sym(v)
-					g.writeln('\t\tcase ${int(v)}: return "${util.strip_main_name(subtype.name)}";')
+					g.writeln('\t\tcase ${u32(v)}: return "${util.strip_main_name(subtype.name)}";')
 					idxs << v
 				}
 				g.writeln('\t\tdefault: return "unknown ${util.strip_main_name(sym.name)}";')
 				g.writeln('\t}')
 			}
 			g.writeln2('}', '')
-			g.writeln('${static_prefix}int v_typeof_sumtype_idx_${sym.cname}(int sidx) {')
+			g.writeln('${static_prefix}u32 v_typeof_sumtype_idx_${sym.cname}(u32 sidx) {')
 			if g.pref.build_mode == .build_module {
-				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return ${int(ityp)};')
+				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return ${u32(ityp)};')
 				for v in sum_info.variants {
 					subtype := g.table.sym(v)
-					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return ${int(v)};')
+					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return ${u32(v)};')
 				}
-				g.writeln('\treturn ${int(ityp)};')
+				g.writeln('\treturn ${u32(ityp)};')
 			} else {
 				tidx := g.table.find_type_idx(sym.name)
-				g.writeln2('\tswitch(sidx) {', '\t\tcase ${tidx}: return ${int(ityp)};')
-				mut idxs := []int{}
+				g.writeln2('\tswitch(sidx) {', '\t\tcase ${tidx}: return ${u32(ityp)};')
+				mut idxs := []ast.Type{}
 				for v in sum_info.variants {
 					if v in idxs {
 						continue
 					}
-					g.writeln('\t\tcase ${int(v)}: return ${int(v)};')
+					g.writeln('\t\tcase ${u32(v)}: return ${u32(v)};')
 					idxs << v
 				}
-				g.writeln2('\t\tdefault: return ${int(ityp)};', '\t}')
+				g.writeln2('\t\tdefault: return ${u32(ityp)};', '\t}')
 			}
 			g.writeln('}')
 		} else if sym.kind == .interface {
@@ -1202,11 +1202,11 @@ pub fn (mut g Gen) write_typeof_functions() {
 				continue
 			}
 			already_generated_ifaces[sym.cname] = true
-			g.definitions.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(int sidx);')
+			g.definitions.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(u32 sidx);')
 			if g.pref.parallel_cc {
-				g.extern_out.writeln('extern char * v_typeof_interface_${sym.cname}(int sidx);')
+				g.extern_out.writeln('extern char * v_typeof_interface_${sym.cname}(u32 sidx);')
 			}
-			g.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(int sidx) {')
+			g.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(u32 sidx) {')
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
@@ -1219,10 +1219,10 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
-			g.definitions.writeln('int v_typeof_interface_idx_${sym.cname}(int sidx);')
-			g.writeln2('', 'int v_typeof_interface_idx_${sym.cname}(int sidx) {')
+			g.definitions.writeln('u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
+			g.writeln2('', 'u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
 			if g.pref.parallel_cc {
-				g.extern_out.writeln('extern int v_typeof_interface_idx_${sym.cname}(int sidx);')
+				g.extern_out.writeln('extern u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
 			}
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
@@ -1233,9 +1233,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 					&& sub_sym.idx !in g.table.used_features.used_syms {
 					continue
 				}
-				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${int(t.set_nr_muls(0))};')
+				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${u32(t.set_nr_muls(0))};')
 			}
-			g.writeln2('\treturn ${int(ityp)};', '}')
+			g.writeln2('\treturn ${u32(ityp)};', '}')
 		}
 	}
 	g.writeln2('// << typeof() support for sum types', '')
@@ -1714,7 +1714,7 @@ fn (g &Gen) type_sidx(t ast.Type) string {
 		sym := g.table.sym(t)
 		return '_v_type_idx_${sym.cname}()'
 	}
-	return int(t).str()
+	return u32(t).str()
 }
 
 pub fn (mut g Gen) write_typedef_types() {
@@ -2759,7 +2759,7 @@ struct SumtypeCastingFn {
 
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	mut got, exp := got_.idx_type(), exp_.idx_type()
-	i := int(got) | int(u32(exp) << 18) | int(u32(exp_.has_flag(.option)) << 17) | int(u32(got_.has_flag(.option)) << 16)
+	i := u32(got) | u32(u32(exp) << 18) | u32(u32(exp_.has_flag(.option)) << 17) | u32(u32(got_.has_flag(.option)) << 16)
 	exp_sym := g.table.sym(exp)
 	mut got_sym := g.table.sym(got)
 	cname := if exp == ast.int_type_idx {
@@ -2818,7 +2818,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 				if g.table.fn_type_source_signature(variant_sym.info.func) == g.table.fn_type_source_signature(got_sym.info.func) {
 					variant_name = g.get_sumtype_variant_name(variant, variant_sym)
 					got_cname = g.get_sumtype_variant_type_name(variant, variant_sym)
-					type_idx = int(variant).str()
+					type_idx = u32(variant).str()
 					break
 				}
 			}
@@ -4161,11 +4161,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				return
 			}
 			.typ {
-				g.write(int(g.unwrap_generic(node.name_type)).str())
+				g.write(u32(g.unwrap_generic(node.name_type)).str())
 				return
 			}
 			.unaliased_typ {
-				g.write(int(g.table.unaliased_type(g.unwrap_generic(node.name_type))).str())
+				g.write(u32(g.table.unaliased_type(g.unwrap_generic(node.name_type))).str())
 				return
 			}
 			.indirections {
@@ -5686,7 +5686,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 				expr_styp := g.styp(expr_typ)
 				g.write('{._${g.table.sym(expr_typ).cname}=builtin__memdup(ADDR(${expr_styp}, ')
 				g.expr(node.expr)
-				g.write('), sizeof(${expr_styp})),._typ=${int(expr_typ)}})')
+				g.write('), sizeof(${expr_styp})),._typ=${u32(expr_typ)}})')
 			} else {
 				g.write('(')
 				if node.expr is ast.Ident {
@@ -6938,7 +6938,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				}
 				struct_names[name] = true
 				g.typedefs.writeln('typedef struct ${name} ${name};')
-				mut idxs := []int{}
+				mut idxs := []ast.Type{}
 				if !g.pref.is_prod {
 					// Do not print union sum type coment in prod mode
 					g.type_definitions.writeln('')
@@ -7478,9 +7478,9 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 		g.type_default_no_sumtype(first_typ)
 	}
 	if default_str[0] == `{` {
-		return '(${g.styp(typ_)}){._${first_field}=HEAP(${first_styp}, ((${first_styp})${default_str})),._typ=${int(first_typ)}}'
+		return '(${g.styp(typ_)}){._${first_field}=HEAP(${first_styp}, ((${first_styp})${default_str})),._typ=${u32(first_typ)}}'
 	} else {
-		return '(${g.styp(typ_)}){._${first_field}=HEAP(${first_styp}, (${default_str})),._typ=${int(first_typ)}}'
+		return '(${g.styp(typ_)}){._${first_field}=HEAP(${first_styp}, (${default_str})),._typ=${u32(first_typ)}}'
 	}
 }
 
@@ -7604,7 +7604,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 					field_sym := g.table.sym(field.typ)
 					is_option := field.typ.has_flag(.option)
 					if is_option || field.has_default_expr
-						|| field_sym.kind in [.enum, .array_fixed, .array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct, .chan, .sum_type] {
+						|| field_sym.kind in [.enum, .array_fixed, .array, .map, .string, .bool, .alias, .i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct, .chan, .sum_type] {
 						if sym.language == .c && !field.has_default_expr && !is_option {
 							continue
 						}
@@ -8498,7 +8498,7 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 		return true
 	}
 	match sym.kind {
-		.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .rune, .bool, .enum {
+		.i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .rune, .bool, .enum {
 			g.contains_ptr_cache[typ] = false
 			return false
 		}

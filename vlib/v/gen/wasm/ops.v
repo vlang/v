@@ -37,8 +37,15 @@ pub fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 		return match typ {
 			ast.isize_type_idx, ast.usize_type_idx, ast.i8_type_idx, ast.u8_type_idx,
 			ast.char_type_idx, ast.rune_type_idx, ast.i16_type_idx, ast.u16_type_idx,
-			ast.int_type_idx, ast.u32_type_idx {
+			ast.i32_type_idx, ast.u32_type_idx {
 				wasm.ValType.i32_t
+			}
+			ast.int_type_idx {
+				$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+					wasm.ValType.i64_t
+				} $else {
+					wasm.ValType.i32_t
+				}
 			}
 			ast.i64_type_idx, ast.u64_type_idx {
 				wasm.ValType.i64_t

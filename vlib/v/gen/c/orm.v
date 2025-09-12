@@ -1340,8 +1340,8 @@ fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string 
 	mut name := field.name
 
 	if attr := field.attrs.find_first('sql') {
-		if attr.arg !in ['serial', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-			'f64', 'bool', 'string'] {
+		if attr.arg !in ['serial', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64',
+			'f32', 'f64', 'bool', 'string'] {
 			name = attr.arg
 		}
 	}

@@ -1591,7 +1591,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 			return i16_type
 		}
 		32 {
-			return int_type
+			return i32_type
 		}
 		64 {
 			return i64_type

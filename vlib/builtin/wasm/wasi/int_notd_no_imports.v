@@ -16,14 +16,14 @@ pub const max_i16 = i16(32767)
 pub const min_i32 = i32(-2147483648)
 pub const max_i32 = i32(2147483647)
 
-pub const min_int = min_i32
-pub const max_int = max_i32
-
 // -9223372036854775808 is wrong, because C compilers parse literal values
 // without sign first, and 9223372036854775808 overflows i64, hence the
 // consecutive subtraction by 1
 pub const min_i64 = i64(-9223372036854775807 - 1)
 pub const max_i64 = i64(9223372036854775807)
+
+pub const min_int = int(min_i32)
+pub const max_int = int(max_i32)
 
 pub const min_u8 = u8(0)
 pub const max_u8 = u8(255)

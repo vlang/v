@@ -702,6 +702,9 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 					'i16' {
 						ret = ast.i16_type
 					}
+					'i32' {
+						ret = ast.i32_type
+					}
 					'int' {
 						ret = ast.int_type
 					}
