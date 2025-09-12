@@ -105,3 +105,23 @@ fn test_sum_types() {
 	j := json.encode(animals[0])
 	assert j == '{"cat_name":"Whiskers","_type":"Cat"}'
 }
+
+type Value = string | i32
+
+struct Node {
+	value Value
+}
+
+fn test_sum_types_with_i32() {
+	data1 := json.encode([Node{i32(128)}, Node{'mystring'}])
+	assert data1 == '[{"value":128},{"value":"mystring"}]'
+
+	node := json.decode([]Node, data1) or {
+		println(err)
+		assert false
+		return
+	}
+	assert node.len == 2
+	assert node[0].value == Value(i32(128))
+	assert node[1].value == Value('mystring')
+}
