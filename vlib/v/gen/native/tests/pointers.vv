@@ -3,7 +3,18 @@ fn main() {
 	test_lt_gt()
 	test_ref_deref()
 	test_nil()
+	index_expr_test()
 	println("ok")
+}
+
+fn index_expr_test() {
+	mut buf := C.malloc(2)
+	unsafe {
+		buf[0] = 1
+		buf[1] = 2
+		assert buf[0] == 1
+		assert buf[1] == 2
+	}
 }
 
 fn test_eq_ne() {

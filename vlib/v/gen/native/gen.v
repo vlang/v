@@ -139,6 +139,7 @@ mut:
 	mov(r Register, val i32)
 	mov64(r Register, val Number)
 	movabs(reg Register, val i64)
+	mul_reg_main(b Register)
 	patch_relative_jmp(pos i32, addr i64)
 	pop2(r Register)
 	prefix_expr(node ast.PrefixExpr)
@@ -891,7 +892,7 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 		return 1
 	}
 	ts := g.table.sym(typ)
-	if ts.size != -1 {
+	if ts.size != -1 && ts.size != 0 {
 		return i32(ts.size)
 	}
 	mut size := i32(0)
@@ -927,6 +928,22 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 					align = t_align
 				}
 			}
+			g.structs[typ.idx()] = strc
+		}
+		ast.Array {
+			// TODO: replace u32 by the enum ArrayFlags size
+			for f_typ in [ast.voidptr_type, ast.int_type, ast.int_type, ast.int_type, ast.u32_type,
+				ast.int_type] {
+				f_size := g.get_type_size(f_typ)
+				f_align := g.get_type_align(f_typ)
+				padding := (f_align - size % f_align) % f_align
+				strc.offsets << size + padding
+				size += f_size + padding
+				if f_align > align {
+					align = f_align
+				}
+			}
+			size = (size + align - 1) / align * align
 			g.structs[typ.idx()] = strc
 		}
 		else {}

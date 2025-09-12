@@ -1798,6 +1798,10 @@ fn (mut c Amd64) mov(r Register, val i32) {
 	}
 }
 
+fn (mut c Amd64) mul_reg_main(b Register) {
+	c.mul_reg_rax(b as Amd64Register)
+}
+
 // rax times b
 fn (mut c Amd64) mul_reg_rax(b Amd64Register) {
 	match b {
@@ -3109,7 +3113,6 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 				c.push(c.main_reg())
 				c.g.gen_left_value(left)
 				c.mov_reg(Amd64Register.rbx, Amd64Register.rax) // effective address of the left expr
-				c.mov_deref(Amd64Register.rax, Amd64Register.rbx, var_type) // value of left expr
 				c.pop(.rcx) // value of right expr
 				c.gen_type_promotion(node.right_types[0], var_type)
 
@@ -3124,10 +3127,12 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 						c.mov_store(.rbx, .rcx, size)
 					}
 					.boolean_and_assign {
+						c.mov_deref(Amd64Register.rax, Amd64Register.rbx, var_type) // value of left expr
 						c.bitand_reg(.rax, .rcx)
 						c.mov_store(.rbx, .rax, size)
 					}
 					.boolean_or_assign {
+						c.mov_deref(Amd64Register.rax, Amd64Register.rbx, var_type) // value of left expr
 						c.bitor_reg(.rax, .rcx)
 						c.mov_store(.rbx, .rax, size)
 					}

@@ -160,9 +160,16 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.code_gen.pop2(Amd64Register.rdx) // index
 				g.code_gen.add_reg2(Amd64Register.rax, Amd64Register.rdx) // add the offset to the address
 				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u8_type_idx)
-			} else if node.left_type.is_pointer() {
-				dump(node)
-				g.n_error('${@LOCATION} expr: unhandled node type: Index expr is not applied on string')
+			} else if node.left_type.is_any_kind_of_pointer() {
+				// load the pointer
+				g.expr(node.left)
+				g.code_gen.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+				// add the index times the size (bytes) of the type
+				g.expr(node.index)
+				g.code_gen.mov(Amd64Register.rbx, i32(g.get_type_size(node.typ)))
+				g.code_gen.mul_reg_main(Amd64Register.rbx)
+				g.code_gen.add_reg2(Amd64Register.rax, Amd64Register.rcx)
+				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, node.typ)
 			} else {
 				g.n_error('${@LOCATION} expr: unhandled node type: Index expr is not applied on string')
 			}
@@ -557,7 +564,18 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 			g.expr(node) // TODO: add a test that uses this
 		}
 		ast.IndexExpr { // TODO
-			g.n_error('${@LOCATION} Unsupported IndexExpr left value')
+			if node.left_type.is_any_kind_of_pointer() {
+				// load the pointer
+				g.expr(node.left)
+				g.code_gen.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+				// add the index times the size (bytes) of the type
+				g.expr(node.index)
+				g.code_gen.mov(Amd64Register.rbx, i32(g.get_type_size(node.typ)))
+				g.code_gen.mul_reg_main(Amd64Register.rbx)
+				g.code_gen.add_reg2(Amd64Register.rax, Amd64Register.rcx)
+			} else {
+				g.n_error('${@LOCATION} Unsupported IndexExpr left value')
+			}
 		}
 		ast.PrefixExpr {
 			if node.op != .mul {
