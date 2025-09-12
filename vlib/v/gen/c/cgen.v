@@ -1918,7 +1918,7 @@ pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 		g.type_definitions.writeln('\t\t${vcname}* _${vcname};')
 	}
 	g.type_definitions.writeln('\t};')
-	g.type_definitions.writeln('\tint _typ;')
+	g.type_definitions.writeln('\tu32 _typ;')
 	for field in info.fields {
 		styp := g.styp(field.typ)
 		cname := c_name(field.name)
@@ -6975,7 +6975,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					g.type_definitions.writeln('\t\t${var_type} _${variant_name};')
 				}
 				g.type_definitions.writeln('\t};')
-				g.type_definitions.writeln('\tint _typ;')
+				g.type_definitions.writeln('\tu32 _typ;')
 				if sym.info.fields.len > 0 {
 					g.writeln('\t// pointers to common sumtype fields')
 					for field in sym.info.fields {
