@@ -137,14 +137,15 @@ mut:
 	inside_assign                    bool
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	// doing_line_path                  string // same, but stores the path being parsed
-	is_index_assign   bool
-	comptime_call_pos int                      // needed for correctly checking use before decl for templates
-	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
-	enum_data_type    ast.Type
-	field_data_type   ast.Type
-	variant_data_type ast.Type
-	fn_return_type    ast.Type
-	orm_table_fields  map[string][]ast.StructField // known table structs
+	is_index_assign    bool
+	comptime_call_pos  int                      // needed for correctly checking use before decl for templates
+	goto_labels        map[string]ast.GotoLabel // to check for unused goto labels
+	enum_data_type     ast.Type
+	field_data_type    ast.Type
+	variant_data_type  ast.Type
+	fn_return_type     ast.Type
+	orm_table_fields   map[string][]ast.StructField // known table structs
+	short_module_names []string                     // to check for function names colliding with module functions
 
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
@@ -331,6 +332,14 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 	c.vmod_file_content = ''
 	c.mod = file.mod.name
 	c.is_generated = file.is_generated
+	c.short_module_names = ['builtin']
+	for import_sym in c.file.imports {
+		c.short_module_names << if import_sym.alias == '' {
+			import_sym.mod.all_after_last('.')
+		} else {
+			import_sym.alias
+		}
+	}
 }
 
 pub fn (mut c Checker) check_files(ast_files []&ast.File) {
@@ -5802,6 +5811,16 @@ fn (c &Checker) check_import_sym_conflict(ident string) bool {
 		}
 	}
 	return false
+}
+
+fn (mut c Checker) check_module_name_conflict(ident string, pos token.Pos) {
+	if ident.contains('__') {
+		prefix := ident.all_before('__')
+		if prefix in c.short_module_names {
+			c.error('identifier cannot use prefix `${prefix}__` of imported module `${prefix}`',
+				pos)
+		}
+	}
 }
 
 // update_unresolved_fixed_sizes updates the unresolved type symbols for array fixed return type and alias type.

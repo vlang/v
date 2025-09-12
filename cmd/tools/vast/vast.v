@@ -897,6 +897,7 @@ fn (t Tree) fn_type_decl(node ast.FnTypeDecl) &Node {
 	mut obj := create_object()
 	obj.add_terse('ast_type', t.string_node('FnTypeDecl'))
 	obj.add_terse('name', t.string_node(node.name))
+	obj.add_terse('mod', t.string_node(node.mod))
 	obj.add_terse('is_pub', t.bool_node(node.is_pub))
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add('pos', t.pos(node.pos))

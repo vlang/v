@@ -1521,6 +1521,7 @@ pub mut:
 pub struct FnTypeDecl {
 pub:
 	name          string
+	mod           string
 	is_pub        bool
 	typ           Type
 	pos           token.Pos

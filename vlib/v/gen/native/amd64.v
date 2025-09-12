@@ -1798,10 +1798,8 @@ fn (mut c Amd64) mov(r Register, val i32) {
 	}
 }
 
-fn (mut c Amd64) mul_reg(a Amd64Register, b Amd64Register) {
-	if a != .rax {
-		c.g.n_error('mul always operates on rax')
-	}
+// rax times b
+fn (mut c Amd64) mul_reg_rax(b Amd64Register) {
 	match b {
 		.rax {
 			c.g.write8(0x48)
@@ -1844,10 +1842,8 @@ fn (mut c Amd64) imul_reg(r Amd64Register) {
 	}
 }
 
-fn (mut c Amd64) div_reg(a Amd64Register, b Amd64Register) {
-	if a != .rax {
-		c.g.n_error('div always operates on rax')
-	}
+// rax divided by b
+fn (mut c Amd64) div_reg_rax(b Amd64Register) {
 	match b {
 		.rax {
 			c.g.write8(0x48)
@@ -1876,8 +1872,9 @@ fn (mut c Amd64) div_reg(a Amd64Register, b Amd64Register) {
 	c.g.println('div ${b}')
 }
 
-fn (mut c Amd64) mod_reg(a Amd64Register, b Amd64Register) {
-	c.div_reg(a, b)
+// rax % b
+fn (mut c Amd64) mod_reg_rax(b Amd64Register) {
+	c.div_reg_rax(b)
 	c.mov_reg(Amd64Register.rdx, Amd64Register.rax)
 }
 
@@ -2332,36 +2329,6 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 // TODO: may have a problem if the literal is bigger than max_i64: needs u64
 fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.IntegerLiteral, left ast.Ident) {
 	match node.op {
-		.plus_assign {
-			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
-			c.add_reg(Amd64Register.rax, Amd64Register.rdx)
-			c.mov_reg_to_var(left, Amd64Register.rax)
-		}
-		.minus_assign {
-			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
-			c.sub_reg(Amd64Register.rax, Amd64Register.rdx)
-			c.mov_reg_to_var(left, Amd64Register.rax)
-		}
-		.mult_assign {
-			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
-			c.mul_reg(.rax, .rdx)
-			c.mov_reg_to_var(left, Amd64Register.rax)
-		}
-		.div_assign {
-			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
-			c.div_reg(.rax, .rdx)
-			c.mov_reg_to_var(left, Amd64Register.rax)
-		}
-		.mod_assign {
-			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
-			c.mod_reg(.rax, .rdx)
-			c.mov_reg_to_var(left, Amd64Register.rax)
-		}
 		.decl_assign {
 			c.allocate_var(left.name, 8, i64(int_lit.val.int()))
 		}
@@ -2369,56 +2336,23 @@ fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.In
 			c.mov64(Amd64Register.rax, i64(int_lit.val.int()))
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
-		.left_shift_assign {
-			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
-			c.shl_reg(.rax, .rcx)
-			c.mov_reg_to_var(left, Amd64Register.rax)
-		}
-		.right_shift_assign {
-			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
-			c.sar_reg(.rax, .rcx)
-			c.mov_reg_to_var(left, Amd64Register.rax)
-		}
-		.unsigned_right_shift_assign {
-			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
-			c.shr_reg(.rax, .rcx)
-			c.mov_reg_to_var(left, Amd64Register.rax)
-		}
-		.xor_assign {
-			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
-			c.bitxor_reg(.rax, .rcx)
-			c.mov_reg_to_var(left, Amd64Register.rax)
-		}
-		.or_assign {
-			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
-			c.bitor_reg(.rax, .rcx)
-			c.mov_reg_to_var(left, Amd64Register.rax)
-		}
-		.and_assign {
-			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
-			c.bitand_reg(.rax, .rcx)
-			c.mov_reg_to_var(left, Amd64Register.rax)
-		}
 		.boolean_and_assign {
 			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
-			c.bitand_reg(.rax, .rcx)
+			c.mov64(Amd64Register.rbx, i64(int_lit.val.int()))
+			c.bitand_reg(.rax, .rbx)
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		.boolean_or_assign {
 			c.mov_var_to_reg(Amd64Register.rax, left)
-			c.mov64(Amd64Register.rcx, i64(int_lit.val.int()))
-			c.bitor_reg(.rax, .rcx)
+			c.mov64(Amd64Register.rbx, i64(int_lit.val.int()))
+			c.bitor_reg(.rax, .rbx)
 			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 		else {
-			c.g.n_error('${@LOCATION} unexpected assignment op ${node.op}')
+			c.mov_var_to_reg(Amd64Register.rax, left)
+			c.mov64(Amd64Register.rbx, i64(int_lit.val.int()))
+			c.apply_op_int(.rax, .rbx, node.op)
+			c.mov_reg_to_var(left, Amd64Register.rax)
 		}
 	}
 }
@@ -2636,19 +2570,26 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 
 					c.mov_ssereg_to_var(ident, .xmm1)
 				} else if left_type.is_int() {
-					c.mov_var_to_reg(Amd64Register.rbx, ident)
-
-					match node.op {
-						.plus_assign { c.add_reg(.rbx, .rax) }
-						.minus_assign { c.sub_reg(.rbx, .rax) }
-						.div_assign { c.div_reg(.rbx, .rax) }
-						.mult_assign { c.mul_reg(.rbx, .rax) }
-						else { c.g.n_error('${@LOCATION} unexpected assignment operator ${node.op} for i32') }
-					}
-
-					c.mov_reg_to_var(ident, Amd64Register.rbx)
+					c.mov_reg(Amd64Register.rbx, Amd64Register.rax)
+					c.mov_var_to_reg(Amd64Register.rax, ident)
+					c.apply_op_int(.rax, .rbx, node.op)
+					c.mov_reg_to_var(ident, Amd64Register.rax)
 				} else {
-					c.g.n_error('${@LOCATION} assignment arithmetic not implemented for type ${node.left_types[i]}')
+					match node.op {
+						.boolean_and_assign {
+							c.mov_var_to_reg(Amd64Register.rbx, ident)
+							c.bitand_reg(.rbx, .rax)
+							c.mov_reg_to_var(ident, Amd64Register.rbx)
+						}
+						.boolean_or_assign {
+							c.mov_var_to_reg(Amd64Register.rbx, ident)
+							c.bitor_reg(.rbx, .rax)
+							c.mov_reg_to_var(ident, Amd64Register.rbx)
+						}
+						else {
+							c.g.n_error('${@LOCATION} assignment arithmetic not implemented for type ${node.left_types[i]}')
+						}
+					}
 				}
 			}
 		}
@@ -2676,19 +2617,26 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 
 				c.mov_ssereg_to_var(ident, .xmm1)
 			} else if left_type.is_int() {
-				c.mov_var_to_reg(Amd64Register.rbx, ident)
-
-				match node.op {
-					.plus_assign { c.add_reg(.rbx, .rax) }
-					.minus_assign { c.sub_reg(.rbx, .rax) }
-					.div_assign { c.div_reg(.rbx, .rax) }
-					.mult_assign { c.mul_reg(.rbx, .rax) }
-					else { c.g.n_error('${@LOCATION} unexpected assignment operator ${node.op} for i32') }
-				}
-
-				c.mov_reg_to_var(ident, Amd64Register.rbx)
+				c.mov_reg(Amd64Register.rbx, Amd64Register.rax)
+				c.mov_var_to_reg(Amd64Register.rax, ident)
+				c.apply_op_int(.rax, .rbx, node.op)
+				c.mov_reg_to_var(ident, Amd64Register.rax)
 			} else {
-				c.g.n_error('${@LOCATION} assignment arithmetic not implemented for type ${node.left_types[i]}')
+				match node.op {
+					.boolean_and_assign {
+						c.mov_var_to_reg(Amd64Register.rbx, ident)
+						c.bitand_reg(.rbx, .rax)
+						c.mov_reg_to_var(ident, Amd64Register.rbx)
+					}
+					.boolean_or_assign {
+						c.mov_var_to_reg(Amd64Register.rbx, ident)
+						c.bitor_reg(.rbx, .rax)
+						c.mov_reg_to_var(ident, Amd64Register.rbx)
+					}
+					else {
+						c.g.n_error('${@LOCATION} assignment arithmetic not implemented for type ${node.left_types[i]}')
+					}
+				}
 			}
 		}
 	}
@@ -2723,6 +2671,59 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 			c.mov_reg_to_var(ident, Amd64Register.eax)
 		}
 	}*/
+}
+
+// /!\ for div, mul, mod the left value should always be .rax
+fn (mut c Amd64) apply_op_int(left_value Amd64Register, right_value Amd64Register, op token.Kind) {
+	match op {
+		.plus_assign {
+			c.add_reg(left_value, right_value)
+		}
+		.minus_assign {
+			c.sub_reg(left_value, right_value)
+		}
+		.div_assign {
+			if left_value != .rax {
+				c.g.n_error('@{LOCATION} div always operates on rax')
+			}
+			c.mov(Amd64Register.rdx, i32(0)) // 64bits IDIV uses RDX:RAX
+			c.div_reg_rax(right_value)
+		}
+		.mult_assign {
+			if left_value != .rax {
+				c.g.n_error('@{LOCATION} mul always operates on rax')
+			}
+			c.mul_reg_rax(right_value)
+		}
+		.xor_assign {
+			c.bitxor_reg(left_value, right_value)
+		}
+		.mod_assign {
+			if left_value != .rax {
+				c.g.n_error('@{LOCATION} mod always operates on rax')
+			}
+			c.mov(Amd64Register.rdx, i32(0)) // 64bits IDIV uses RDX:RAX
+			c.mod_reg_rax(right_value)
+		}
+		.or_assign {
+			c.bitor_reg(left_value, right_value)
+		}
+		.and_assign {
+			c.bitand_reg(left_value, right_value)
+		}
+		.right_shift_assign {
+			c.shr_reg(left_value, right_value)
+		}
+		.left_shift_assign {
+			c.shl_reg(left_value, right_value)
+		}
+		.unsigned_right_shift_assign {
+			c.sar_reg(left_value, right_value)
+		}
+		else {
+			c.g.n_error('${@LOCATION} unexpected operator ${op} for int')
+		}
+	}
 }
 
 fn (mut c Amd64) gen_type_promotion(from ast.Type, to ast.Type, option Amd64RegisterOption) {
@@ -3122,52 +3123,6 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 					.decl_assign, .assign {
 						c.mov_store(.rbx, .rcx, size)
 					}
-					.plus_assign {
-						c.add_reg(.rax, .rcx)
-						c.mov_store(.rbx, .rax, size)
-					}
-					.minus_assign {
-						c.sub_reg(.rax, .rcx)
-						c.mov_store(.rbx, .rax, size)
-					}
-					.and_assign {
-						c.bitand_reg(.rax, .rcx)
-						c.mov_store(.rbx, .rax, size)
-					}
-					.mod_assign {
-						c.mov(Amd64Register.rdx, i32(0)) // 64bits IDIV uses RDX:RAX
-						c.mod_reg(.rax, .rcx)
-						c.mov_store(.rbx, .rax, size)
-					}
-					.mult_assign {
-						c.mul_reg(.rax, .rcx)
-						c.mov_store(.rbx, .rax, size)
-					}
-					.div_assign {
-						c.mov(Amd64Register.rdx, i32(0)) // 64bits IDIV uses RDX:RAX
-						c.div_reg(.rax, .rcx)
-						c.mov_store(.rbx, .rax, size)
-					}
-					.xor_assign {
-						c.bitxor_reg(.rax, .rcx)
-						c.mov_store(.rbx, .rax, size)
-					}
-					.or_assign {
-						c.bitor_reg(.rax, .rcx)
-						c.mov_store(.rbx, .rax, size)
-					}
-					.right_shift_assign {
-						c.shr_reg(.rax, .rcx)
-						c.mov_store(.rbx, .rax, size)
-					}
-					.left_shift_assign {
-						c.shl_reg(.rax, .rcx)
-						c.mov_store(.rbx, .rax, size)
-					}
-					.unsigned_right_shift_assign {
-						c.sar_reg(.rax, .rcx)
-						c.mov_store(.rbx, .rax, size)
-					}
 					.boolean_and_assign {
 						c.bitand_reg(.rax, .rcx)
 						c.mov_store(.rbx, .rax, size)
@@ -3177,7 +3132,8 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 						c.mov_store(.rbx, .rax, size)
 					}
 					else {
-						c.g.n_error('${@LOCATION} Unsupported assign instruction (${node.op})')
+						c.apply_op_int(.rax, .rcx, node.op)
+						c.mov_store(.rbx, .rax, size)
 					}
 				}
 			} else if var_type.is_pure_float() {
@@ -4334,7 +4290,7 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 
 	c.mov(Amd64Register.rdx, 0) // upperhalf of the dividend
 	c.mov(Amd64Register.rbx, 10)
-	c.div_reg(.rax, .rbx) // rax will be the result of the division
+	c.div_reg_rax(.rbx) // rax will be the result of the division
 	c.add8(.rdx, i32(`0`)) // rdx is the remainder, add 48 to convert it into it's ascii representation
 
 	c.mov_store(.rdi, .rdx, ._8)
