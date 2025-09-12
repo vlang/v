@@ -400,6 +400,13 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 			if field_info.is_omitempty {
 				$if value is $option {
 					write_field = check_not_empty(value)
+					$if value is ?string {
+						write_field = value ? != ''
+					} $else $if value is ?int {
+						write_field = value ? != 0
+					} $else $if value is ?f64 || value is ?f32 {
+						write_field = value ? != 0.0
+					}
 				} $else {
 					write_field = check_not_empty(value)
 				}

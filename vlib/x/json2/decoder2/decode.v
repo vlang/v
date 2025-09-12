@@ -824,7 +824,7 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 }
 
 fn create_value_from_optional[T](val ?T) ?T {
-	return T{}
+	return ?T{}
 }
 
 fn get_number_max[T](num T) T {
