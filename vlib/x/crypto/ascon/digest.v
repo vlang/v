@@ -144,7 +144,8 @@ fn ascon_generic_hash(mut s State, msg []u8, size int) []u8 {
 	if _likely_(msg.len > 0) {
 		mut msg_len := msg.len
 		for msg_len >= block_size {
-			s.e0 ^= binary.little_endian_u64(msg[pos..pos + block_size])
+			block := unsafe { msg[pos..pos + block_size] }
+			s.e0 ^= binary.little_endian_u64(block)
 			pos += block_size
 			msg_len -= block_size
 			ascon_pnr(mut s, ascon_prnd_12)

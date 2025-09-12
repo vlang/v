@@ -43,7 +43,6 @@ fn ascon_pnr(mut s State, nr int) {
 	}
 	// Allocate temporary vars to reduce allocation within loop
 	mut x0 := u64(0)
-	mut y0 := u64(0)
 	// Ascon permutation routine
 	for i := max_nr_perm - nr; i < max_nr_perm; i++ {
 		// 3.2 Constant-Addition Layer step
@@ -59,22 +58,15 @@ fn ascon_pnr(mut s State, nr int) {
 		s.e0 ^= s.e4
 		s.e4 ^= s.e3
 		s.e2 ^= s.e1
-		// Set temp vars to values
-		x0 = s.e0
-		y0 = s.e4 ^ (~s.e0 & s.e1)
-		/*
-		t0 := s.e4 ^ (~s.e0 & s.e1)
-		t1 := s.e0 ^ (~s.e1 & s.e2)
-		t2 := s.e1 ^ (~s.e2 & s.e3)
-		t3 := s.e2 ^ (~s.e3 & s.e4)
-		t4 := s.e3 ^ (~s.e4 & s.e0)
-		*/
 
-		s.e0 = s.e0 ^ (~s.e1 & s.e2) // t1
-		s.e1 = s.e1 ^ (~s.e2 & s.e3) // t2
-		s.e2 = s.e2 ^ (~s.e3 & s.e4) // t3
-		s.e3 = s.e3 ^ (~s.e4 & x0) // t4, change s.e0 to x0
-		s.e4 = y0
+		// Set temp var to value
+		x0 = s.e0 & ~s.e4
+
+		s.e0 ^= s.e2 & ~s.e1
+		s.e2 ^= s.e4 & ~s.e3
+		s.e4 ^= s.e1 & ~s.e0
+		s.e1 ^= s.e3 & ~s.e2
+		s.e3 ^= x0
 
 		s.e1 ^= s.e0
 		s.e0 ^= s.e4
@@ -97,11 +89,11 @@ fn ascon_pnr(mut s State, nr int) {
 		// Bits right rotation, basically can be defined as:
 		// 		ror = (x >> n) | x << (64 - n) for some u64 x
 		//
-		s.e0 ^= (s.e0 >> 19 | (s.e0 << (64 - 19))) ^ (s.e0 >> 28 | (s.e0 << (64 - 28)))
-		s.e1 ^= (s.e1 >> 61 | (s.e1 << (64 - 61))) ^ (s.e1 >> 39 | (s.e1 << (64 - 39)))
-		s.e2 ^= (s.e2 >> 1 | (s.e2 << (64 - 1))) ^ (s.e2 >> 6 | (s.e2 << (64 - 6))) // 	
-		s.e3 ^= (s.e3 >> 10 | (s.e3 << (64 - 10))) ^ (s.e3 >> 17 | (s.e3 << (64 - 17)))
-		s.e4 ^= (s.e4 >> 7 | (s.e4 << (64 - 7))) ^ (s.e4 >> 41 | (s.e4 << (64 - 41)))
+		s.e0 ^= (s.e0 >> 19 | s.e0 << 45) ^ (s.e0 >> 28 | s.e0 << 36)
+		s.e1 ^= (s.e1 >> 61 | s.e1 << 3) ^ (s.e1 >> 39 | s.e1 << 25)
+		s.e2 ^= (s.e2 >> 1 | s.e2 << 63) ^ (s.e2 >> 6 | s.e2 << 58)
+		s.e3 ^= (s.e3 >> 10 | s.e3 << 54) ^ (s.e3 >> 17 | s.e3 << 47)
+		s.e4 ^= (s.e4 >> 7 | s.e4 << 57) ^ (s.e4 >> 41 | s.e4 << 23)
 	}
 }
 
