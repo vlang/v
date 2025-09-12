@@ -104,6 +104,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if !node.is_method && node.mod == 'main' && node.short_name in c.table.builtin_pub_fns {
 			c.error('cannot redefine builtin public function `${node.short_name}`', node.pos)
 		}
+		c.check_module_name_conflict(node.short_name, node.pos)
 	}
 	if node.name == 'main.main' {
 		c.main_fn_decl_node = *node

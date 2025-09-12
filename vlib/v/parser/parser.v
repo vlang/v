@@ -2782,6 +2782,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.attrs = []
 		return ast.FnTypeDecl{
 			name:          fn_name
+			mod:           p.mod
 			is_pub:        is_pub
 			typ:           fn_type
 			pos:           decl_pos
