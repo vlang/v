@@ -612,8 +612,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					dec.writeln('\t\t}')
 				}
 
-				if var_t in ['i64', ast.int_type_name, 'int', 'i8', 'u64', 'u32', 'u16', 'byte',
-					'u8', 'rune', 'f64', 'f32'] {
+				if var_t in ['i8', 'i16', 'i32', 'i64', ast.int_type_name, 'int', 'u8', 'u16',
+					'u32', 'u64', 'byte', 'rune', 'f64', 'f32'] {
 					if number_is_met {
 						var_num := var_t.replace('__', '.')
 						last_num := last_number_type.replace('__', '.')
