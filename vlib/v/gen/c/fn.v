@@ -2574,7 +2574,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 						tmp := if is_option { g.go_before_last_stmt() } else { '' }
 						if is_option {
 							g.writeln('${g.styp(varg_type)} ${tmp_var};')
-							g.write('_option_ok((${base_type}[]) {')
+							g.write('builtin___option_ok((${base_type}[]) {')
 						}
 						g.write('builtin__new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
 						for j in arg_nr .. args.len {
