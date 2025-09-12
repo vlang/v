@@ -38,6 +38,16 @@ struct StruWithRequiredAttribute {
 	b                 int
 }
 
+struct Foo {
+	a int @[required]
+}
+
+fn test_last_field_requiered() {
+	assert json.decode[Foo]('{"a":0}')! == Foo{
+		a: 0
+	}
+}
+
 fn test_skip_and_rename_attributes() {
 	assert json.decode[StruWithJsonAttribute]('{"name": "hola1", "a": 2, "b": 3}')! == StruWithJsonAttribute{
 		a:     2
