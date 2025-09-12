@@ -7591,7 +7591,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 					field_sym := g.table.sym(field.typ)
 					is_option := field.typ.has_flag(.option)
 					if is_option || field.has_default_expr
-						|| field_sym.kind in [.enum, .array_fixed, .array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct, .chan, .sum_type] {
+						|| field_sym.kind in [.enum, .array_fixed, .array, .map, .string, .bool, .alias, .i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct, .chan, .sum_type] {
 						if sym.language == .c && !field.has_default_expr && !is_option {
 							continue
 						}
@@ -7668,7 +7668,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 			if has_none_zero {
 				init_str += '}'
 				if !typ_is_shared_f {
-					type_name := if info.is_anon || g.inside_global_decl {
+					type_name := if info.is_anon || g.inside_global_decl || g.inside_const {
 						// No name needed for anon structs, C figures it out on its own.
 						''
 					} else {
