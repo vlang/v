@@ -85,6 +85,13 @@ fn test_runes() {
 	println(`\xe2\x98\x85`)
 }
 
+const a = 'my string'
+
+fn const_test() {
+	b := a
+	println(b)
+}
+
 fn main() {
 	test_unicode_characters()
 	test_string_len()
@@ -93,4 +100,5 @@ fn main() {
 	test_escape_codes()
 	test_raw_string()
 	test_runes()
+	const_test()
 }

@@ -486,7 +486,9 @@ pub fn malloc_noscan(n isize) &u8 {
 		_memory_panic(@FN, n)
 	}
 	mut res := &u8(unsafe { nil })
-	$if prealloc {
+	$if native {
+		res = unsafe { C.malloc(n) }
+	} $else $if prealloc {
 		return unsafe { prealloc_malloc(n) }
 	} $else $if gcboehm ? {
 		$if gcboehm_opt ? {
