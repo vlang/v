@@ -8,17 +8,17 @@ fn main() {
 }
 
 fn index_expr_test() {
-	mut buf := C.malloc(2)
 	unsafe {
+		mut buf := C.malloc(2)
 		buf[0] = 1
 		buf[1] = 2
 		assert buf[0] == 1
 		assert buf[1] == 2
-		buf = malloc_noscan(2)
-		buf[0] = 3
-		buf[1] = 4
-		assert buf[0] == 3
-		assert buf[1] == 4
+		mut buf2 := malloc_noscan(2)
+		buf2[0] = 3
+		buf2[1] = 4
+		assert buf2[0] == 3
+		assert buf2[1] == 4
 	}
 }
 

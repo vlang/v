@@ -2514,42 +2514,46 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 		ast.ArrayInit {
 			match node.op {
 				.decl_assign {
-					c.g.allocate_by_type(ident.name, ast.array_type)
-					len := ast.CallArg{
-						expr: if right.has_len {
-							right.len_expr
-						} else {
-							ast.IntegerLiteral{'0', right.pos}
+					if right.is_fixed {
+						c.g.n_error('${@LOCATION} Unexpected operator `${node.op}`')
+					} else {
+						c.g.allocate_by_type(ident.name, ast.array_type)
+						len := ast.CallArg{
+							expr: if right.has_len {
+								right.len_expr
+							} else {
+								ast.IntegerLiteral{'0', right.pos}
+							}
+							typ:  ast.int_type
+							pos:  right.pos
 						}
-						typ:  ast.int_type
-						pos:  right.pos
-					}
-					cap := ast.CallArg{
-						expr: if right.has_cap {
-							right.cap_expr
-						} else {
-							ast.IntegerLiteral{'0', right.pos}
+						cap := ast.CallArg{
+							expr: if right.has_cap {
+								right.cap_expr
+							} else {
+								ast.IntegerLiteral{'0', right.pos}
+							}
+							typ:  ast.int_type
+							pos:  right.pos
 						}
-						typ:  ast.int_type
-						pos:  right.pos
+						size := ast.CallArg{
+							expr: ast.IntegerLiteral{c.g.get_type_size(right.elem_type).str(), right.pos}
+							typ:  ast.int_type
+							pos:  right.pos
+						}
+						c.call_fn(ast.CallExpr{
+							pos:                right.pos
+							name:               '__new_array'
+							args:               [len, cap, size]
+							expected_arg_types: [ast.int_type, ast.int_type, ast.int_type]
+							language:           .v
+							return_type:        ast.array_type
+							nr_ret_values:      1
+							is_return_used:     true
+						})
+						c.lea_var_to_reg(Amd64Register.rdx, c.g.get_var_offset(ident.name))
+						c.move_struct(.rax, .rdx, c.g.get_type_size(ast.array_type))
 					}
-					size := ast.CallArg{
-						expr: ast.IntegerLiteral{c.g.get_type_size(right.elem_type).str(), right.pos}
-						typ:  ast.int_type
-						pos:  right.pos
-					}
-					c.call_fn(ast.CallExpr{
-						pos:                right.pos
-						name:               '__new_array'
-						args:               [len, cap, size]
-						expected_arg_types: [ast.int_type, ast.int_type, ast.int_type]
-						language:           .v
-						return_type:        ast.array_type
-						nr_ret_values:      1
-						is_return_used:     true
-					})
-					c.lea_var_to_reg(Amd64Register.rdx, c.g.get_var_offset(ident.name))
-					c.move_struct(.rax, .rdx, c.g.get_type_size(ast.array_type))
 				}
 				else {
 					c.g.n_error('${@LOCATION} Unexpected operator `${node.op}`')
