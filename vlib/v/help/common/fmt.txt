@@ -37,6 +37,9 @@ Options:
                  more memory, but it is faster for thousands of files, since
                  it avoids the interprocess communication overhead.
 
+  -new_int       Forcefully cast the `int` type in @[translated] modules or
+                 in the definition of `C.func` to the `i32` type.
+
 Environment Variables:
   VDIFF_CMD      A custom tool and options that will be used for viewing the
                  differences between the original and the temporarily formatted

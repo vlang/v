@@ -27,6 +27,7 @@ struct FormatOptions {
 	is_worker  bool // true *only* in the worker processes. Note: workers can crash.
 	is_backup  bool // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
 	in_process bool // do not fork a worker process; potentially faster, but more prone to crashes for invalid files
+	is_new_int bool // Forcefully cast the `int` type in @[translated] modules or in the definition of `C.func` to the `i32` type.
 mut:
 	diff_cmd string // filled in when -diff or -verify is passed
 }
@@ -55,6 +56,7 @@ fn main() {
 		is_verify:  '-verify' in args
 		is_backup:  '-backup' in args
 		in_process: '-inprocess' in args
+		is_new_int: '-new_int' in args
 	}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
@@ -184,6 +186,7 @@ fn (foptions &FormatOptions) vlog(msg string) {
 fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences, file string) string {
 	mut table := ast.new_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
+	table.new_int = foptions.is_new_int
 	formated_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
 	return formated_content
 }
@@ -202,6 +205,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	prefs, mut table := setup_preferences_and_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
 	// checker.new_checker(table, prefs).check(file_ast)
+	table.new_int = foptions.is_new_int
 	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
 	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
 	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
@@ -214,6 +218,7 @@ fn (foptions &FormatOptions) format_pipe() {
 	input_text := os.get_raw_lines_joined()
 	file_ast := parser.parse_text(input_text, '', mut table, .parse_comments, prefs)
 	// checker.new_checker(table, prefs).check(file_ast)
+	table.new_int = foptions.is_new_int
 	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
 		source_text: input_text
 	)
