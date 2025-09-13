@@ -123,14 +123,14 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		base_styp := g.styp(node.typ.clear_option_and_result())
 		g.writeln('${styp} ${tmp_var} = {0};')
 
-		if node.init_fields.len > 0 {
+		if node.init_fields.len > 0 || node.typ.has_flag(.generic) {
 			g.write('builtin___option_ok(&(${base_styp}[]) { ')
 		} else {
 			g.write('builtin___option_none(&(${base_styp}[]) { ')
 		}
 		g.struct_init(ast.StructInit{
 			...node
-			typ: node.typ.clear_option_and_result()
+			typ: g.unwrap_generic(node.typ).clear_option_and_result()
 		})
 		g.writeln('}, (${option_name}*)&${tmp_var}, sizeof(${base_styp}));')
 		g.empty_line = false

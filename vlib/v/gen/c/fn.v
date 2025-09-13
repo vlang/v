@@ -782,6 +782,9 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
 		param_type_sym := g.table.sym(typ)
+		if param.is_mut && param.typ.has_flag(.generic) && typ.has_flag(.option) {
+			typ = typ.set_flag(.option_mut_param_t).set_nr_muls(param.typ.nr_muls() - 1)
+		}
 		mut param_type_name := g.styp(typ)
 		if param.typ.has_flag(.generic) {
 			param_type_name = param_type_name.replace_each(c_fn_name_escape_seq)
@@ -2410,11 +2413,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			if arg.expr.obj is ast.Var {
 				if i < node.expected_arg_types.len && node.expected_arg_types[i].has_flag(.generic)
 					&& arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
-					exp_option := node.expected_arg_types[i].has_flag(.option)
 					expected_types[i] = g.unwrap_generic(g.type_resolver.get_type(arg.expr))
-					if !exp_option {
-						expected_types[i] = expected_types[i].clear_flag(.option)
-					}
 				} else if arg.expr.obj.smartcasts.len > 0 {
 					exp_sym := g.table.sym(expected_types[i])
 					orig_sym := g.table.sym(arg.expr.obj.orig_type)
@@ -2809,10 +2808,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	} else if arg.expr is ast.ComptimeSelector && arg_typ.has_flag(.option)
 		&& !expected_type.has_flag(.option) {
 		// allow to pass val.$(filed.name) where T is expected, doing automatic unwrap in this case
-		styp := g.base_type(arg_typ)
-		g.write('*(${styp}*)')
-		g.expr_with_cast(arg.expr, arg_typ, expected_type)
-		g.write('.data')
+		// styp := g.base_type(arg_typ)
+		// g.write('*(${styp}*)')
+		g.expr_with_opt(arg.expr, arg_typ, expected_type.set_flag(.option))
+		// g.write('.data')
 		return
 	} else if arg.expr is ast.Ident && arg_sym.info is ast.Struct && arg_sym.info.is_anon
 		&& !expected_type.has_flag(.generic) {
@@ -2821,7 +2820,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	}
 	// check if the argument must be dereferenced or not
 	g.arg_no_auto_deref = is_smartcast && !arg_is_ptr && !exp_is_ptr && arg.should_be_ptr
-	g.expr_with_cast(arg.expr, arg_typ, expected_type)
+	if arg_typ.has_flag(.option) {
+		g.expr_with_opt(arg.expr, arg_typ, expected_type.set_flag(.option))
+	} else {
+		g.expr_with_cast(arg.expr, arg_typ, expected_type)
+	}
 	g.arg_no_auto_deref = false
 	g.inside_smartcast = old_inside_smartcast
 	if needs_closing {

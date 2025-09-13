@@ -1002,6 +1002,9 @@ fn (mut c Checker) change_flags_if_comptime_expr(mut left ast.Ident, right ast.E
 				if ctyp != ast.void_type {
 					left.obj.ct_type_var = right_obj_var.ct_type_var
 					left.obj.typ = ctyp
+					if ctyp.has_flag(.generic) && c.unwrap_generic(ctyp).has_flag(.option) {
+						left.obj.typ = left.obj.typ.set_flag(.option)
+					}
 				}
 			}
 		} else if right is ast.DumpExpr && right.expr is ast.ComptimeSelector {
