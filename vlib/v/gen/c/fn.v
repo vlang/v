@@ -782,6 +782,9 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
 		param_type_sym := g.table.sym(typ)
+		if param.is_mut && param.typ.has_flag(.generic) && typ.has_flag(.option) {
+			typ = typ.set_flag(.option_mut_param_t).set_nr_muls(param.typ.nr_muls() - 1)
+		}
 		mut param_type_name := g.styp(typ)
 		if param.typ.has_flag(.generic) {
 			param_type_name = param_type_name.replace_each(c_fn_name_escape_seq)
