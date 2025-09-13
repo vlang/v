@@ -1032,7 +1032,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 		ast.SelectorExpr {
 			g.gen_selector_expr(node)
 		}
-		ast.SizeOf, ast.IsRefType {
+		ast.AlignOf, ast.SizeOf, ast.IsRefType {
 			// TODO
 		}
 		ast.OffsetOf {
