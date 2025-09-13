@@ -24,9 +24,7 @@ pub type Any = []Any
 	| Null
 
 // Null is a simple representation of the `null` value in JSON.
-pub struct Null {
-	is_null bool = true
-}
+pub struct Null {}
 
 // null is an instance of the Null type, to ease comparisons with it.
 pub const null = Null{}
