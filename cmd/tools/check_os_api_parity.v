@@ -99,7 +99,7 @@ fn gen_api_for_module_in_os(mod_name string, os_ pref.OS) string {
 				fn_mod := s.modname()
 				if fn_mod == mod_name {
 					fn_signature := b.table.stringify_fn_decl(&s, mod_name, map[string]string{},
-						false, false)
+						false)
 					fline := '${fn_mod}: ${fn_signature}'
 					res << fline
 				}

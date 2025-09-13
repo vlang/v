@@ -186,9 +186,8 @@ fn (foptions &FormatOptions) vlog(msg string) {
 fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences, file string) string {
 	mut table := ast.new_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
-	formated_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
-		new_int: foptions.is_new_int
-	)
+	table.new_int = foptions.is_new_int
+	formated_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
 	return formated_content
 }
 
@@ -206,9 +205,8 @@ fn (foptions &FormatOptions) format_file(file string) {
 	prefs, mut table := setup_preferences_and_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
 	// checker.new_checker(table, prefs).check(file_ast)
-	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
-		new_int: foptions.is_new_int
-	)
+	table.new_int = foptions.is_new_int
+	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
 	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
 	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
 	eprintln('${formatted_file_token}${vfmt_output_path}')
@@ -220,9 +218,9 @@ fn (foptions &FormatOptions) format_pipe() {
 	input_text := os.get_raw_lines_joined()
 	file_ast := parser.parse_text(input_text, '', mut table, .parse_comments, prefs)
 	// checker.new_checker(table, prefs).check(file_ast)
+	table.new_int = foptions.is_new_int
 	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
 		source_text: input_text
-		new_int:     foptions.is_new_int
 	)
 	print(formatted_content)
 	flush_stdout()

@@ -625,7 +625,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 					if stmt is ast.FnDecl {
 						if stmt.name == fn_name {
 							fheader := b.table.stringify_fn_decl(&stmt, 'main', map[string]string{},
-								false, false)
+								false)
 							redefines << FunctionRedefinition{
 								fpath:   file.path
 								fline:   stmt.pos.line_nr

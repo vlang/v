@@ -53,7 +53,6 @@ pub mut:
 	source_text              string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 	global_processed_imports []string
 	branch_processed_imports []string
-	new_int                  bool // Forcefully cast the `int` type in @[translated] modules or in the definition of `C.func` to the `i32` type.
 	is_translated_module     bool // @[translated]
 	is_c_function            bool // C.func(...)
 }
@@ -62,7 +61,6 @@ pub mut:
 pub struct FmtOptions {
 pub:
 	source_text string
-	new_int     bool
 }
 
 pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
@@ -74,7 +72,6 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		out:      strings.new_builder(1000)
 	}
 	f.source_text = options.source_text
-	f.new_int = options.new_int
 	f.process_file_imports(file)
 	// Compensate for indent increase of toplevel stmts done in `f.stmts()`.
 	f.indent--
@@ -127,14 +124,14 @@ pub fn (f &Fmt) type_to_str(typ ast.Type) string {
 }
 */
 fn (f &Fmt) type_to_str_using_aliases(typ ast.Type, import_aliases map[string]string) string {
-	if f.new_int && typ == ast.int_type && (f.is_translated_module || f.is_c_function) {
+	if f.table.new_int && typ == ast.int_type && (f.is_translated_module || f.is_c_function) {
 		return f.type_to_str_using_aliases(ast.i32_type, import_aliases)
 	}
 	return f.table.type_to_str_using_aliases(typ, import_aliases)
 }
 
 fn (f &Fmt) type_to_str(typ ast.Type) string {
-	if f.new_int && typ == ast.int_type && (f.is_translated_module || f.is_c_function) {
+	if f.table.new_int && typ == ast.int_type && (f.is_translated_module || f.is_c_function) {
 		return 'i32'
 	}
 	return f.table.type_to_str(typ)
@@ -1103,8 +1100,9 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	if node.name.starts_with('C.') {
 		f.is_c_function = true
 	}
-	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias, true, f.new_int
-		&& (f.is_translated_module || f.is_c_function)))
+	f.table.new_int_fmt_fix = f.table.new_int && (f.is_translated_module || f.is_c_function)
+	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias, true))
+	f.table.new_int_fmt_fix = false
 	f.is_c_function = false
 	// Handle trailing comments after fn header declarations
 	if node.no_body && node.end_comments.len > 0 {
@@ -1130,8 +1128,9 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 }
 
 pub fn (mut f Fmt) anon_fn(node ast.AnonFn) {
-	f.write(f.table.stringify_anon_decl(&node, f.cur_mod, f.mod2alias, f.new_int
-		&& (f.is_translated_module || f.is_c_function))) // `Expr` instead of `ast.Expr` in mod ast
+	f.table.new_int_fmt_fix = f.table.new_int && (f.is_translated_module || f.is_c_function)
+	f.write(f.table.stringify_anon_decl(&node, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.table.new_int_fmt_fix = false
 	f.fn_body(node.decl)
 }
 
@@ -1406,8 +1405,9 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	for method in node.methods {
 		end_comments := method.comments.filter(it.pos.pos > method.pos.pos)
 		if end_comments.len > 0 {
-			method_str := f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false,
-				f.new_int && (f.is_translated_module || f.is_c_function)).all_after_first('fn ')
+			f.table.new_int_fmt_fix = f.table.new_int && (f.is_translated_module || f.is_c_function)
+			method_str := f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn ')
+			f.table.new_int_fmt_fix = false
 			method_comment_align.add_info(method_str.len, method.pos.line_nr, method.has_break_line)
 		}
 	}
@@ -1548,8 +1548,9 @@ pub fn (mut f Fmt) interface_method(method ast.FnDecl, mut comment_align FieldAl
 		f.comments(before_comments, level: .indent)
 	}
 	f.write('\t')
-	method_str := f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false, f.new_int
-		&& (f.is_translated_module || f.is_c_function)).all_after_first('fn ')
+	f.table.new_int_fmt_fix = f.table.new_int && (f.is_translated_module || f.is_c_function)
+	method_str := f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn ')
+	f.table.new_int_fmt_fix = false
 	f.write(method_str)
 	if end_comments.len > 0 {
 		f.write(' '.repeat(comment_align.max_len(method.pos.line_nr) - method_str.len + 1))

@@ -72,7 +72,7 @@ pub fn (node &CallExpr) fkey() string {
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
-pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[string]string, new_int bool) string {
+pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	f.write_string('fn ')
 	if node.inherited_vars.len > 0 {
@@ -92,11 +92,11 @@ pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[stri
 		}
 		f.write_string('] ')
 	}
-	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a, new_int)
+	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a)
 	return f.str()
 }
 
-pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string, needs_wrap bool, new_int bool) string {
+pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string, needs_wrap bool) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write_string('pub ')
@@ -119,7 +119,7 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 		}
 		f.write_string(node.receiver.name + ' ')
 		styp = util.no_cur_mod(styp, cur_mod)
-		if new_int && styp == 'int' {
+		if t.new_int_fmt_fix && styp == 'int' {
 			styp = 'i32'
 		}
 		f.write_string(styp + ') ')
@@ -140,11 +140,11 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write_string(' ')
 	}
-	t.stringify_fn_after_name(node, mut f, cur_mod, m2a, new_int)
+	t.stringify_fn_after_name(node, mut f, cur_mod, m2a)
 	return f.str()
 }
 
-fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string, new_int bool) {
+fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string) {
 	mut add_para_types := true
 	if node.generic_names.len > 0 {
 		if node.is_method {
@@ -179,7 +179,7 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		if param.is_hidden {
 			continue
 		}
-		param_typ := if new_int && param.typ == int_type { i32_type } else { param.typ }
+		param_typ := if t.new_int_fmt_fix && param.typ == int_type { i32_type } else { param.typ }
 		is_last_param := i == node.params.len - 1
 		is_type_only := param.name == ''
 		if param.on_newline {
@@ -203,7 +203,11 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			}
 			f.write_string('struct {')
 			for field in param_sym.info.fields {
-				field_typ := if new_int && field.typ == int_type { i32_type } else { field.typ }
+				field_typ := if t.new_int_fmt_fix && field.typ == int_type {
+					i32_type
+				} else {
+					field.typ
+				}
 				f.write_string(' ${field.name} ${t.type_to_str(field_typ)}')
 				if field.has_default_expr {
 					f.write_string(' = ${field.default_expr}')
@@ -244,7 +248,7 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 	}
 	f.write_string(')')
 	if node.return_type != void_type {
-		return_type := if new_int && node.return_type == int_type {
+		return_type := if t.new_int_fmt_fix && node.return_type == int_type {
 			i32_type
 		} else {
 			node.return_type
