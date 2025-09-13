@@ -2413,11 +2413,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			if arg.expr.obj is ast.Var {
 				if i < node.expected_arg_types.len && node.expected_arg_types[i].has_flag(.generic)
 					&& arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
-					exp_option := node.expected_arg_types[i].has_flag(.option)
 					expected_types[i] = g.unwrap_generic(g.type_resolver.get_type(arg.expr))
-					if !exp_option {
-						expected_types[i] = expected_types[i].clear_flag(.option)
-					}
 				} else if arg.expr.obj.smartcasts.len > 0 {
 					exp_sym := g.table.sym(expected_types[i])
 					orig_sym := g.table.sym(arg.expr.obj.orig_type)
