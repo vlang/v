@@ -1617,7 +1617,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	if nr_muls > 0 && !typ.has_flag(.variadic) {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
-	if typ.has_flag(.option) {
+	if typ.has_flag(.option) && res[0] != `?` {
 		res = '?${res}'
 	}
 	if typ.has_flag(.result) {

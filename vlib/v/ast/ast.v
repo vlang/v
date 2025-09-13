@@ -830,6 +830,7 @@ pub mut:
 	is_ctor_new            bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
 	is_file_translated     bool // true, when the file it resides in is `@[translated]`
 	is_static_method       bool // it is a static method call
+	is_variadic            bool
 	args                   []CallArg
 	expected_arg_types     []Type
 	comptime_ret_val       bool

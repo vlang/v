@@ -2907,6 +2907,7 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 		min_required_params--
 	}
 	if f.is_variadic {
+		node.is_variadic = f.is_variadic
 		min_required_params--
 		c.markused_array_method(!c.is_builtin_mod, '')
 	} else {
