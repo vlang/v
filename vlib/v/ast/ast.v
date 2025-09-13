@@ -11,9 +11,9 @@ import v.pref
 import sync.stdatomic
 
 // V type names that cannot be used as global var name
-pub const global_reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8',
-	'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread',
-	'array']
+pub const global_reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64',
+	'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr',
+	'thread', 'array']
 
 pub const result_name = '_result'
 pub const option_name = '_option'
@@ -24,10 +24,9 @@ pub const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError',
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-// pub const int_type_name = $if amd64 || arm64 {
-pub const int_type_name = $if new_int ? {
-	//'int'
-	'i64'
+pub const int_type_name = $if new_int ?
+	&& (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+	'vint_t'
 } $else {
 	'int'
 }
@@ -830,6 +829,7 @@ pub mut:
 	is_ctor_new            bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
 	is_file_translated     bool // true, when the file it resides in is `@[translated]`
 	is_static_method       bool // it is a static method call
+	is_variadic            bool
 	args                   []CallArg
 	expected_arg_types     []Type
 	comptime_ret_val       bool
@@ -1522,6 +1522,7 @@ pub mut:
 pub struct FnTypeDecl {
 pub:
 	name          string
+	mod           string
 	is_pub        bool
 	typ           Type
 	pos           token.Pos
@@ -2814,7 +2815,7 @@ pub fn (expr Expr) is_literal() bool {
 		}
 		CastExpr {
 			!expr.has_arg && expr.expr.is_literal() && (expr.typ.is_any_kind_of_pointer()
-				|| expr.typ in [i8_type, i16_type, int_type, i64_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
+				|| expr.typ in [i8_type, i16_type, i32_type, int_type, i64_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
 		}
 		SizeOf, IsRefType {
 			expr.is_type || expr.expr.is_literal()

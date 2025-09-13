@@ -152,7 +152,7 @@ fn (mut g Gen) write_orm_table_struct(typ ast.Type) {
 	g.writeln('((orm__Table){')
 	g.indent++
 	g.writeln('.name = _S("${table_name}"),')
-	g.writeln('.attrs = new_array_from_c_array(${table_attrs.len}, ${table_attrs.len}, sizeof(VAttribute),')
+	g.writeln('.attrs = builtin__new_array_from_c_array(${table_attrs.len}, ${table_attrs.len}, sizeof(VAttribute),')
 	g.indent++
 
 	if table_attrs.len > 0 {
@@ -192,7 +192,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.write_orm_table_struct(node.table_expr.typ)
 	g.writeln(',')
-	g.writeln('new_array_from_c_array(${node.fields.len}, ${node.fields.len}, sizeof(orm__TableField),')
+	g.writeln('builtin__new_array_from_c_array(${node.fields.len}, ${node.fields.len}, sizeof(orm__TableField),')
 	g.indent++
 
 	if node.fields.len > 0 {
@@ -215,7 +215,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 			g.writeln('.is_arr = ${sym.kind == .array}, ')
 			g.writeln('.nullable = ${final_field_typ.has_flag(.option)},')
 			g.writeln('.default_val = (string){ .str = (byteptr) "${field.default_val}", .is_lit = 1 },')
-			g.writeln('.attrs = new_array_from_c_array(${field.attrs.len}, ${field.attrs.len}, sizeof(VAttribute),')
+			g.writeln('.attrs = builtin__new_array_from_c_array(${field.attrs.len}, ${field.attrs.len}, sizeof(VAttribute),')
 			g.indent++
 
 			if field.attrs.len > 0 {
@@ -274,7 +274,7 @@ fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connec
 	or_expr &ast.OrExpr, table_attrs []ast.Attr) {
 	last_ids_variable_name := g.new_tmp_var()
 
-	g.writeln('Array_orm__Primitive ${last_ids_variable_name} = __new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
+	g.writeln('Array_orm__Primitive ${last_ids_variable_name} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
 	g.write_orm_insert_with_last_ids(node, connection_var_name, table_name, last_ids_variable_name,
 		result_var_name, '', '', or_expr)
 }
@@ -289,13 +289,13 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 	g.writeln(',')
 	g.writeln('(orm__QueryData){')
 	g.indent++
-	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
-	g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
-	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
-	g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
+	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
 
 	if node.updated_columns.len > 0 {
-		g.writeln('.fields = new_array_from_c_array(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string),')
+		g.writeln('.fields = builtin__new_array_from_c_array(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string),')
 		g.indent++
 		g.writeln('_MOV((string[${node.updated_columns.len}]){')
 		g.indent++
@@ -306,10 +306,10 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 		g.writeln('})')
 		g.indent--
 	} else {
-		g.writeln('.fields = __new_array_with_default_noscan(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string), 0')
+		g.writeln('.fields = builtin____new_array_with_default_noscan(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string), 0')
 	}
 
-	g.writeln2('),', '.data = new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
+	g.writeln2('),', '.data = builtin__new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
 
 	if node.update_exprs.len > 0 {
 		g.indent++
@@ -418,12 +418,12 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			sub.object_var = '${node.object_var}${member_access_type}${sub.object_var}'
 		}
 		g.sql_stmt_line(sub, connection_var_name, or_expr)
-		g.writeln('array_push(&${last_ids_arr}, _MOV((orm__Primitive[1]){')
+		g.writeln('builtin__array_push(&${last_ids_arr}, _MOV((orm__Primitive[1]){')
 		g.writeln('\torm__int_to_primitive(orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object))}));')
 		if subs_unwrapped_c_typ[i].len > 0 {
 			g.indent--
 			g.writeln('} else {')
-			g.writeln('\tarray_push(&${last_ids_arr}, _MOV((orm__Primitive[1]){ _const_orm__null_primitive }));')
+			g.writeln('\tbuiltin__array_push(&${last_ids_arr}, _MOV((orm__Primitive[1]){ _const_orm__null_primitive }));')
 			g.writeln('}')
 		}
 	}
@@ -436,7 +436,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.writeln(',')
 	g.writeln('(orm__QueryData){')
 	g.indent++
-	g.writeln('.fields = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
+	g.writeln('.fields = builtin__new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
 	g.indent++
 
 	if fields.len > 0 {
@@ -453,7 +453,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.indent--
 	g.writeln('),')
 
-	g.writeln('.data = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(orm__Primitive),')
+	g.writeln('.data = builtin__new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(orm__Primitive),')
 	g.indent++
 
 	if fields.len > 0 {
@@ -470,7 +470,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			mut typ := sym.cname
 			mut ctyp := sym.cname
 			if sym.kind == .struct && typ != 'time__Time' {
-				g.writeln('(*(orm__Primitive*) array_get(${last_ids_arr}, ${structs})),')
+				g.writeln('(*(orm__Primitive*) builtin__array_get(${last_ids_arr}, ${structs})),')
 				structs++
 				continue
 			}
@@ -481,6 +481,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			} else if sym.kind == .enum {
 				typ = g.table.sym(final_field_typ).cname
 			}
+			typ = vint2int(typ)
 			var := '${node.object_var}${member_access_type}${c_name(field.name)}'
 			if final_field_typ.has_flag(.option) {
 				g.writeln('${var}.state == 2? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${var}.data)),')
@@ -499,21 +500,21 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	}
 	g.indent--
 	g.writeln('),')
-	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	if auto_fields.len > 0 {
-		g.writeln('.auto_fields = new_array_from_c_array(${auto_fields.len}, ${auto_fields.len}, sizeof(${ast.int_type_name}),')
+		g.writeln('.auto_fields = builtin__new_array_from_c_array(${auto_fields.len}, ${auto_fields.len}, sizeof(${ast.int_type_name}),')
 		g.indent++
-		g.write('_MOV((int[${auto_fields.len}]){')
+		g.write('_MOV((${ast.int_type_name}[${auto_fields.len}]){')
 		for i in auto_fields {
 			g.write(' ${i},')
 		}
 		g.writeln(' })),')
 		g.indent--
 	} else {
-		g.writeln('.auto_fields = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+		g.writeln('.auto_fields = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	}
-	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
-	g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	g.indent--
 	g.writeln('}')
 	g.indent--
@@ -533,6 +534,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if typ == 'time__Time' {
 				typ = 'time'
 			}
+			typ = vint2int(typ)
 			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var}${member_access_type}${c_name(primary_field.name)});')
 		}
 		for i, mut arr in arrs {
@@ -540,18 +542,18 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			ctyp := g.styp(arr.table_expr.typ)
 			is_option := opt_fields.contains(i)
 			if is_option {
-				g.writeln('for (int ${idx} = 0; ${node.object_var}${member_access_type}${arr.object_var}.state != 2 && ${idx} < (*(Array_${ctyp}*)${node.object_var}${member_access_type}${arr.object_var}.data).len; ${idx}++) {')
+				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${node.object_var}${member_access_type}${arr.object_var}.state != 2 && ${idx} < (*(Array_${ctyp}*)${node.object_var}${member_access_type}${arr.object_var}.data).len; ${idx}++) {')
 			} else {
-				g.writeln('for (int ${idx} = 0; ${idx} < ${node.object_var}${member_access_type}${arr.object_var}.len; ${idx}++) {')
+				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${node.object_var}${member_access_type}${arr.object_var}.len; ${idx}++) {')
 			}
 			g.indent++
 			last_ids := g.new_tmp_var()
 			res_ := g.new_tmp_var()
 			tmp_var := g.new_tmp_var()
 			if is_option {
-				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(*(Array_${ctyp}*)${node.object_var}${member_access_type}${arr.object_var}.data, ${idx}));')
+				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)builtin__array_get(*(Array_${ctyp}*)${node.object_var}${member_access_type}${arr.object_var}.data, ${idx}));')
 			} else {
-				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(${node.object_var}${member_access_type}${arr.object_var}, ${idx}));')
+				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)builtin__array_get(${node.object_var}${member_access_type}${arr.object_var}, ${idx}));')
 			}
 			arr.object_var = tmp_var
 			mut fff := []ast.StructField{}
@@ -680,6 +682,7 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 		} else if g.table.final_sym(t).kind == .array {
 			typ = g.table.sym(g.table.final_type(t)).cname.to_lower()
 		}
+		typ = vint2int(typ)
 		g.write('orm__${typ}_to_primitive(')
 		if expr is ast.CallExpr {
 			g.call_expr(expr)
@@ -706,9 +709,9 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 	g.indent++
 	g.write_orm_where_expr(where_expr, mut fields, mut parentheses, mut kinds, mut data, mut
 		is_ands)
-	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	if fields.len > 0 {
-		g.writeln('.fields = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
+		g.writeln('.fields = builtin__new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
 		g.indent++
 		g.writeln('_MOV((string[${fields.len}]){')
 		g.indent++
@@ -719,11 +722,11 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 		g.writeln('})')
 		g.indent--
 	} else {
-		g.writeln('.fields = __new_array_with_default_noscan(${fields.len}, ${fields.len}, sizeof(string), 0')
+		g.writeln('.fields = builtin____new_array_with_default_noscan(${fields.len}, ${fields.len}, sizeof(string), 0')
 	}
 	g.writeln('),')
 
-	g.writeln('.data = new_array_from_c_array(${data.len}, ${data.len}, sizeof(orm__Primitive),')
+	g.writeln('.data = builtin__new_array_from_c_array(${data.len}, ${data.len}, sizeof(orm__Primitive),')
 	g.indent++
 	if data.len > 0 {
 		g.writeln('_MOV((orm__Primitive[${data.len}]){')
@@ -741,26 +744,26 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 
 	g.write('.parentheses = ')
 	if parentheses.len > 0 {
-		g.write('new_array_from_c_array(${parentheses.len}, ${parentheses.len}, sizeof(Array_int), _MOV((Array_int[${parentheses.len}]){')
+		g.write('builtin__new_array_from_c_array(${parentheses.len}, ${parentheses.len}, sizeof(Array_${ast.int_type_name}), _MOV((Array_${ast.int_type_name}[${parentheses.len}]){')
 		for par in parentheses {
 			if par.len > 0 {
-				g.write('new_array_from_c_array(${par.len}, ${par.len}, sizeof(${ast.int_type_name}), _MOV((int[${par.len}]){')
+				g.write('builtin__new_array_from_c_array(${par.len}, ${par.len}, sizeof(${ast.int_type_name}), _MOV((${ast.int_type_name}[${par.len}]){')
 				for val in par {
 					g.write('${val},')
 				}
 				g.write('})),')
 			} else {
-				g.write('__new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+				g.write('builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 			}
 		}
 		g.write('}))')
 	} else {
-		g.write('__new_array_with_default_noscan(0, 0, sizeof(Array_int), 0)')
+		g.write('builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0)')
 	}
 	g.writeln(',')
 
 	if kinds.len > 0 {
-		g.writeln('.kinds = new_array_from_c_array(${kinds.len}, ${kinds.len}, sizeof(orm__OperationKind),')
+		g.writeln('.kinds = builtin__new_array_from_c_array(${kinds.len}, ${kinds.len}, sizeof(orm__OperationKind),')
 		g.indent++
 		g.writeln('_MOV((orm__OperationKind[${kinds.len}]){')
 		g.indent++
@@ -771,12 +774,12 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 		g.writeln('})')
 		g.indent--
 	} else {
-		g.write('.kinds = __new_array_with_default_noscan(${kinds.len}, ${kinds.len}, sizeof(orm__OperationKind), 0')
+		g.write('.kinds = builtin____new_array_with_default_noscan(${kinds.len}, ${kinds.len}, sizeof(orm__OperationKind), 0')
 	}
 	g.writeln('),')
 
 	if is_ands.len > 0 {
-		g.write('.is_and = new_array_from_c_array(${is_ands.len}, ${is_ands.len}, sizeof(bool),')
+		g.write('.is_and = builtin__new_array_from_c_array(${is_ands.len}, ${is_ands.len}, sizeof(bool),')
 		g.indent++
 		g.writeln('_MOV((bool[${is_ands.len}]){')
 		g.indent++
@@ -787,7 +790,7 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 		g.write('})')
 		g.indent--
 	} else {
-		g.write('.is_and = __new_array_with_default_noscan(${is_ands.len}, ${is_ands.len}, sizeof(bool), 0')
+		g.write('.is_and = builtin____new_array_with_default_noscan(${is_ands.len}, ${is_ands.len}, sizeof(bool), 0')
 	}
 	g.indent--
 	g.writeln2('),', '}')
@@ -973,7 +976,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	}
 
 	select_fields := fields.filter(g.table.sym(it.typ).kind != .array)
-	g.writeln('.fields = new_array_from_c_array(${select_fields.len}, ${select_fields.len}, sizeof(string),')
+	g.writeln('.fields = builtin__new_array_from_c_array(${select_fields.len}, ${select_fields.len}, sizeof(string),')
 	g.indent++
 	mut types := []string{}
 	if select_fields.len > 0 {
@@ -1002,11 +1005,11 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('NULL')
 	}
 	g.indent--
-	g.writeln2('),', '.types = new_array_from_c_array(${types.len}, ${types.len}, sizeof(${ast.int_type_name}),')
+	g.writeln2('),', '.types = builtin__new_array_from_c_array(${types.len}, ${types.len}, sizeof(${ast.int_type_name}),')
 	g.indent++
 
 	if types.len > 0 {
-		g.write('_MOV((int[${types.len}]){')
+		g.write('_MOV((${ast.int_type_name}[${types.len}]){')
 		for typ in types {
 			g.write(' ${typ},')
 		}
@@ -1029,19 +1032,19 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 	g.writeln('(orm__QueryData) {')
 	g.indent++
-	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
-	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
-	g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
-	g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
+	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
 	if exprs.len > 0 {
-		g.write('.data = new_array_from_c_array(${exprs.len}, ${exprs.len}, sizeof(orm__Primitive),')
+		g.write('.data = builtin__new_array_from_c_array(${exprs.len}, ${exprs.len}, sizeof(orm__Primitive),')
 		g.write(' _MOV((orm__Primitive[${exprs.len}]){')
 		for e in exprs {
 			g.write_orm_expr_to_primitive(e)
 		}
 		g.writeln('})')
 	} else {
-		g.writeln('.data = __new_array_with_default_noscan(${exprs.len}, ${exprs.len}, sizeof(orm__Primitive), 0')
+		g.writeln('.data = builtin____new_array_with_default_noscan(${exprs.len}, ${exprs.len}, sizeof(orm__Primitive), 0')
 	}
 	g.indent--
 	g.writeln(')},')
@@ -1051,11 +1054,11 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	} else {
 		g.writeln('(orm__QueryData) {')
 		g.indent++
-		g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
-		g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
-		g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
-		g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
-		g.writeln('.data = __new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0)')
+		g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+		g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+		g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+		g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+		g.writeln('.data = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0)')
 		g.indent--
 		g.writeln('}')
 	}
@@ -1077,11 +1080,11 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln('Array_Array_orm__Primitive ${select_unwrapped_result_var_name} = (*(Array_Array_orm__Primitive*)${select_result_var_name}.data);')
 
 	if node.is_count {
-		g.writeln('*(${unwrapped_c_typ}*) ${result_var}.data = *((*(orm__Primitive*) array_get((*(Array_orm__Primitive*)array_get(${select_unwrapped_result_var_name}, 0)), 0))._int);')
+		g.writeln('*(${unwrapped_c_typ}*) ${result_var}.data = *((*(orm__Primitive*) builtin__array_get((*(Array_orm__Primitive*) builtin__array_get(${select_unwrapped_result_var_name}, 0)), 0))._${ast.int_type_name});')
 	} else {
 		tmp := g.new_tmp_var()
 		idx := g.new_tmp_var()
-		g.writeln('int ${idx} = 0;')
+		g.writeln('${ast.int_type_name} ${idx} = 0;')
 		mut typ_str := ''
 		if node.is_array {
 			info := g.table.sym(node.typ).array_info()
@@ -1089,9 +1092,9 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			base_typ := g.base_type(node.typ)
 			if node.typ.has_flag(.option) {
 				g.writeln('${unwrapped_c_typ} ${tmp}_array = { .state = 2, .err = _const_none__, .data = {E_STRUCT} };')
-				g.writeln('_option_ok(&(${base_typ}[]) { __new_array(0, ${select_unwrapped_result_var_name}.len, sizeof(${typ_str})) }, (_option *)&${tmp}_array, sizeof(${base_typ}));')
+				g.writeln('builtin___option_ok(&(${base_typ}[]) { builtin____new_array(0, ${select_unwrapped_result_var_name}.len, sizeof(${typ_str})) }, (_option *)&${tmp}_array, sizeof(${base_typ}));')
 			} else {
-				g.writeln('${unwrapped_c_typ} ${tmp}_array = __new_array(0, ${select_unwrapped_result_var_name}.len, sizeof(${typ_str}));')
+				g.writeln('${unwrapped_c_typ} ${tmp}_array = builtin____new_array(0, ${select_unwrapped_result_var_name}.len, sizeof(${typ_str}));')
 			}
 			g.writeln('for (; ${idx} < ${select_unwrapped_result_var_name}.len; ${idx}++) {')
 			g.indent++
@@ -1121,7 +1124,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 		mut fields_idx := 0
 		for field in fields {
-			array_get_call_code := '(*(orm__Primitive*) array_get((*(Array_orm__Primitive*) array_get(${select_unwrapped_result_var_name}, ${idx})), ${fields_idx}))'
+			array_get_call_code := '(*(orm__Primitive*) builtin__array_get((*(Array_orm__Primitive*) builtin__array_get(${select_unwrapped_result_var_name}, ${idx})), ${fields_idx}))'
 			final_field_typ := g.table.final_type(field.typ)
 			sym := g.table.sym(final_field_typ)
 			field_var := '${tmp}.${c_name(field.name)}'
@@ -1149,7 +1152,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				if final_field_typ.has_flag(.option) {
 					unwrapped_field_c_typ := g.styp(final_field_typ.clear_flag(.option))
 					g.writeln('if (!${sub_result_var}.is_error)')
-					g.writeln('\t_option_ok(${sub_result_var}.data, (_option *)&${field_var}, sizeof(${unwrapped_field_c_typ}));')
+					g.writeln('\tbuiltin___option_ok(${sub_result_var}.data, (_option *)&${field_var}, sizeof(${unwrapped_field_c_typ}));')
 					g.writeln('else')
 					g.writeln('\t${field_var} = (${field_c_typ}){ .state = 2, .err = _const_none__, .data = {E_STRUCT} };')
 				} else {
@@ -1222,7 +1225,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				g.writeln('\t${field_var} = (${field_c_typ}){ .state = 2, .err = _const_none__, .data = {E_STRUCT} };')
 
 				g.writeln('else')
-				g.writeln('\t_option_ok(${prim_var}->_${sym.cname}, (_option *)&${field_var}, sizeof(${sym.cname}));')
+				g.writeln('\tbuiltin___option_ok(${prim_var}->_${sym.cname}, (_option *)&${field_var}, sizeof(${sym.cname}));')
 				fields_idx++
 			} else if sym.kind == .enum {
 				mut typ := sym.cname
@@ -1237,9 +1240,9 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		if node.is_array {
 			if node.typ.has_flag(.option) {
 				g.writeln('${tmp}_array.state = 0;')
-				g.writeln('array_push((${g.base_type(node.typ)}*)&${tmp}_array.data, _MOV((${typ_str}[]){ ${tmp} }));')
+				g.writeln('builtin__array_push((${g.base_type(node.typ)}*)&${tmp}_array.data, _MOV((${typ_str}[]){ ${tmp} }));')
 			} else {
-				g.writeln('array_push(&${tmp}_array, _MOV((${typ_str}[]){ ${tmp} }));')
+				g.writeln('builtin__array_push(&${tmp}_array, _MOV((${typ_str}[]){ ${tmp} }));')
 			}
 			g.indent--
 			g.writeln('}')
@@ -1337,8 +1340,8 @@ fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string 
 	mut name := field.name
 
 	if attr := field.attrs.find_first('sql') {
-		if attr.arg !in ['serial', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-			'f64', 'bool', 'string'] {
+		if attr.arg !in ['serial', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64',
+			'f32', 'f64', 'bool', 'string'] {
 			name = attr.arg
 		}
 	}

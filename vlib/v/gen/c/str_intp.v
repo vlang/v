@@ -119,16 +119,46 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 			fmt_type = .si_c
 		} else {
 			match typ {
-				ast.i8_type { fmt_type = .si_i8 }
-				ast.u8_type { fmt_type = .si_u8 }
-				ast.i16_type { fmt_type = .si_i16 }
-				ast.u16_type { fmt_type = .si_u16 }
-				ast.i64_type { fmt_type = .si_i64 }
-				ast.u64_type { fmt_type = .si_u64 }
-				ast.u32_type { fmt_type = .si_u32 }
-				ast.usize_type { fmt_type = .si_u64 }
-				ast.isize_type { fmt_type = .si_i64 }
-				else { fmt_type = .si_i32 }
+				ast.i8_type {
+					fmt_type = .si_i8
+				}
+				ast.u8_type {
+					fmt_type = .si_u8
+				}
+				ast.i16_type {
+					fmt_type = .si_i16
+				}
+				ast.u16_type {
+					fmt_type = .si_u16
+				}
+				ast.i64_type {
+					fmt_type = .si_i64
+				}
+				ast.u64_type {
+					fmt_type = .si_u64
+				}
+				ast.i32_type {
+					fmt_type = .si_i32
+				}
+				ast.u32_type {
+					fmt_type = .si_u32
+				}
+				ast.int_type {
+					$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+						fmt_type = .si_i64
+					} $else {
+						fmt_type = .si_i32
+					}
+				}
+				ast.usize_type {
+					fmt_type = .si_u64
+				}
+				ast.isize_type {
+					fmt_type = .si_i64
+				}
+				else {
+					fmt_type = .si_i32
+				}
 			}
 		}
 	} else {
@@ -206,8 +236,14 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 				g.write('(byte)(')
 			} else if typ == ast.i16_type {
 				g.write('(u16)(')
-			} else if typ == ast.int_type {
+			} else if typ == ast.i32_type {
 				g.write('(u32)(')
+			} else if typ == ast.int_type {
+				$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+					g.write('(u64)(')
+				} $else {
+					g.write('(u32)(')
+				}
 			} else {
 				g.write('(u64)(')
 			}
@@ -255,7 +291,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		}
 	}
-	g.write2('str_intp(', node.vals.len.str())
+	g.write2('builtin__str_intp(', node.vals.len.str())
 	g.write(', _MOV((StrIntpData[]){')
 	for i, val in node.vals {
 		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))

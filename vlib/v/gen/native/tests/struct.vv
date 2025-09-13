@@ -116,22 +116,22 @@ fn return_test() {
 
 struct Tree {
 mut:
-        leaf Leaf
-        sp Species
-        h f32
-        age int
-	big_leaf BigLeaf
+	leaf        Leaf
+	sp          Species
+	h           f32
+	age         int
+	big_leaf    BigLeaf
 	medium_leaf MediumLeaf
-	small_leaf SmallLeaf
+	small_leaf  SmallLeaf
 }
 
 enum Species {
-        oak
-        willow
+	oak
+	willow
 }
 
 struct Leaf {
-        a int
+	a int
 }
 
 struct BigLeaf {
@@ -157,11 +157,13 @@ fn assign_fields() {
 	assert a.h == 0.0
 	assert a.age == 0
 
-	a = Tree{age: 3}
+	a = Tree{
+		age: 3
+	}
 	assert a.age == 3
 
-//	a = Tree{h: 2.0}
-//	assert a.h == 2.0
+	//	a = Tree{h: 2.0}
+	//	assert a.h == 2.0
 
 	a.h = 1.1
 	assert a.h == 1.1
@@ -183,7 +185,7 @@ fn assign_fields() {
 
 	a.small_leaf = SmallLeaf{5}
 	assert a.small_leaf.a == 5
-	
+
 	a.medium_leaf = MediumLeaf{23}
 	assert a.medium_leaf.a == 23
 
@@ -191,13 +193,15 @@ fn assign_fields() {
 	assert f.a == 1
 	mut f2 := &f
 	assert f2.a == 1
-	unsafe{*f2 = Leaf{2}}
+	unsafe {
+		*f2 = Leaf{2}
+	}
 	assert f2.a == 2
 	assert f.a == 2
 }
 
 struct Nest {
-        a string
+	a string
 }
 
 struct Nest2 {
@@ -209,12 +213,12 @@ struct Nest3 {
 }
 
 struct Int {
-        a int
+	a int
 }
 
 struct NestMixed {
-        s string
-        b Int
+	s string
+	b Int
 }
 
 fn nested_test() {
@@ -231,10 +235,47 @@ fn nested_test() {
 	assert x4.b.a == 3
 }
 
+struct Foo {
+mut:
+	mantissa u64
+	b        bool
+}
+
+fn field_assign_test() {
+	mut b := Foo{1, true}
+	b.mantissa += 1
+	b.mantissa -= 1
+	assert b.mantissa == 1
+	b.mantissa |= 2
+	assert b.mantissa == 3
+	b.mantissa &= 1
+	assert b.mantissa == 1
+	b.mantissa ^= 5
+	assert b.mantissa == 4
+	b.mantissa %= 3
+	assert b.mantissa == 1
+	b.mantissa *= 10
+	b.mantissa /= 10
+	assert b.mantissa == 1
+	b.mantissa <<= 4
+	b.mantissa >>>= 2
+	b.mantissa >>= 2
+	assert b.mantissa == 1
+	b.b &&= true
+	assert b.b == true
+	b.b &&= false
+	assert b.b == false
+	b.b ||= true
+	assert b.b == true
+	b.b ||= false
+	assert b.b == true
+}
+
 fn main() {
 	struct_test()
 	return_test()
 	alias_test()
 	assign_fields()
 	nested_test()
+	field_assign_test()
 }

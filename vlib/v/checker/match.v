@@ -145,10 +145,18 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 								node.cond)
 							c_str = '${expr} == ${c.table.type_to_str(branch_type)}'
 						} else {
-							// $match a { $int {}
-							comptime_match_branch_result = c.check_compatible_types(node.cond_type,
-								'${node.cond}', expr)
-							c_str = '${c.table.type_to_str(node.cond_type)} == ${expr}'
+							is_function := c.table.final_sym(node.cond_type).kind == .function
+							if !is_function {
+								// $match a { $int {}
+								comptime_match_branch_result = c.check_compatible_types(node.cond_type,
+									'${node.cond}', expr)
+								c_str = '${c.table.type_to_str(node.cond_type)} == ${expr}'
+							} else {
+								// $match T { FnType {} }
+								branch_type := c.get_expr_type(expr)
+								comptime_match_branch_result = c.table.type_to_str(node.cond_type) == c.table.type_to_str(branch_type)
+								c_str = '${comptime_match_branch_result} == true'
+							}
 						}
 						if comptime_match_branch_result {
 							break
@@ -382,9 +390,21 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 											needs_explicit_cast = true
 										}
 									}
-									.i32, .int {
+									.i32 {
 										if !(num >= min_i32 && num <= max_i32) {
 											needs_explicit_cast = true
+										}
+									}
+									.int {
+										$if new_int ? && (arm64 || amd64 || rv64
+											|| s390x || ppc64le || loongarch64) {
+											if !(num >= min_i64 && num <= max_i64) {
+												needs_explicit_cast = true
+											}
+										} $else {
+											if !(num >= min_i32 && num <= max_i32) {
+												needs_explicit_cast = true
+											}
 										}
 									}
 									.i64 {

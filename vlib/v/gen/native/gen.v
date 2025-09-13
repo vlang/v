@@ -261,6 +261,12 @@ struct GlobalVar {
 	typ  ast.Type
 }
 
+struct ConstVar {
+	name string
+	expr ast.Expr
+	typ  ast.Type
+}
+
 @[params]
 struct VarConfig {
 pub:
@@ -268,9 +274,9 @@ pub:
 	typ    ast.Type // type of the value you want to process e.g. struct fields.
 }
 
-type Var = GlobalVar | ExternVar | LocalVar | PreprocVar | ast.Ident
+type Var = GlobalVar | ExternVar | LocalVar | PreprocVar | ConstVar | ast.Ident
 
-type IdentVar = GlobalVar | ExternVar | LocalVar | Register | PreprocVar
+type IdentVar = GlobalVar | ExternVar | LocalVar | Register | PreprocVar | ConstVar
 
 enum JumpOp {
 	je
@@ -320,6 +326,13 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 				offset: offset
 				typ:    obj.typ
 				name:   obj.name
+			}
+		}
+		ast.ConstField {
+			return ConstVar{
+				name: obj.name
+				expr: (obj as ast.ConstField).expr
+				typ:  obj.typ
 			}
 		}
 		else {
@@ -814,24 +827,64 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 	}
 	if typ in ast.number_type_idxs {
 		return match typ {
-			ast.i8_type_idx { 1 }
-			ast.u8_type_idx { 1 }
-			ast.i16_type_idx { 2 }
-			ast.u16_type_idx { 2 }
-			ast.int_type_idx { 4 } // TODO: change when V will have changed
-			ast.i32_type_idx { 4 }
-			ast.u32_type_idx { 4 }
-			ast.i64_type_idx { 8 }
-			ast.u64_type_idx { 8 }
-			ast.isize_type_idx { 8 }
-			ast.usize_type_idx { 8 }
-			ast.int_literal_type_idx { 8 }
-			ast.f32_type_idx { 4 }
-			ast.f64_type_idx { 8 }
-			ast.float_literal_type_idx { 8 }
-			ast.char_type_idx { 1 }
-			ast.rune_type_idx { 4 }
-			else { g.n_error('${@LOCATION} unknown type size ${typ}') }
+			ast.i8_type_idx {
+				1
+			}
+			ast.u8_type_idx {
+				1
+			}
+			ast.i16_type_idx {
+				2
+			}
+			ast.u16_type_idx {
+				2
+			}
+			ast.int_type_idx {
+				$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+					8
+				} $else {
+					4
+				}
+			}
+			ast.i32_type_idx {
+				4
+			}
+			ast.u32_type_idx {
+				4
+			}
+			ast.i64_type_idx {
+				8
+			}
+			ast.u64_type_idx {
+				8
+			}
+			ast.isize_type_idx {
+				8
+			}
+			ast.usize_type_idx {
+				8
+			}
+			ast.int_literal_type_idx {
+				8
+			}
+			ast.f32_type_idx {
+				4
+			}
+			ast.f64_type_idx {
+				8
+			}
+			ast.float_literal_type_idx {
+				8
+			}
+			ast.char_type_idx {
+				1
+			}
+			ast.rune_type_idx {
+				4
+			}
+			else {
+				g.n_error('${@LOCATION} unknown type size ${typ}')
+			}
 		}
 	}
 	if typ.is_bool() {

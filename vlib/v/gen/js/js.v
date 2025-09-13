@@ -17,9 +17,9 @@ const js_reserved = ['await', 'break', 'case', 'catch', 'class', 'const', 'conti
 	'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean', 'Array', 'Map',
 	'document', 'Promise']
 // used to generate type structs
-const v_types = ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'int_literal',
-	'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
-const shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
+const v_types = ['i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
+	'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
+const shallow_equatables = [ast.Kind.i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
 	.int_literal, .float_literal, .bool, .string]
 const option_name = '_option'
 
@@ -3186,8 +3186,15 @@ fn (mut g JsGen) greater_typ(left ast.Type, right ast.Type) ast.Type {
 		if ast.u32_type_idx in lr {
 			return ast.Type(ast.u32_type_idx)
 		}
+		if ast.i32_type_idx in lr {
+			return ast.Type(ast.i32_type_idx)
+		}
 		if ast.int_type_idx in lr {
-			return ast.Type(ast.int_type_idx)
+			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+				return ast.Type(ast.i64_type_idx)
+			} $else {
+				return ast.Type(ast.i32_type_idx)
+			}
 		}
 		if ast.u16_type_idx in lr {
 			return ast.Type(ast.u16_type_idx)

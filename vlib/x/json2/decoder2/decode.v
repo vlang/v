@@ -38,7 +38,7 @@ struct StructFieldInfo {
 	is_required    bool
 	is_raw         bool
 mut:
-	decoded_with_value_info_node &Node[ValueInfo] = unsafe { nil }
+	is_decoded bool
 }
 
 // Decoder represents a JSON decoder.
@@ -368,105 +368,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		}
 	}
 	$if T.unaliased_typ is string {
-		string_info := decoder.current_node.value
-
-		if string_info.value_kind == .string {
-			mut string_buffer := []u8{cap: string_info.length} // might be too long but most json strings don't contain many escape characters anyways
-
-			mut buffer_index := 1
-			mut string_index := 1
-
-			for string_index < string_info.length - 1 {
-				current_byte := decoder.json[string_info.position + string_index]
-
-				if current_byte == `\\` {
-					// push all characters up to this point
-					unsafe {
-						string_buffer.push_many(decoder.json.str + string_info.position +
-							buffer_index, string_index - buffer_index)
-					}
-
-					string_index++
-
-					escaped_char := decoder.json[string_info.position + string_index]
-
-					string_index++
-
-					match escaped_char {
-						`/`, `"`, `\\` {
-							string_buffer << escaped_char
-						}
-						`b` {
-							string_buffer << `\b`
-						}
-						`f` {
-							string_buffer << `\f`
-						}
-						`n` {
-							string_buffer << `\n`
-						}
-						`r` {
-							string_buffer << `\r`
-						}
-						`t` {
-							string_buffer << `\t`
-						}
-						`u` {
-							unicode_point := rune(strconv.parse_uint(decoder.json[
-								string_info.position + string_index..string_info.position +
-								string_index + 4], 16, 32)!)
-
-							string_index += 4
-
-							if unicode_point < 0xD800 { // normal utf-8
-								string_buffer << unicode_point.bytes()
-							} else if unicode_point >= 0xDC00 { // trail surrogate -> invalid
-								decoder.decode_error('Got trail surrogate: ${u32(unicode_point):04X} before head surrogate.')!
-							} else { // head surrogate -> treat as utf-16
-								if string_index > string_info.length - 6 {
-									decoder.decode_error('Expected a trail surrogate after a head surrogate, but got no valid escape sequence.')!
-								}
-								if decoder.json[string_info.position + string_index..
-									string_info.position + string_index + 2] != '\\u' {
-									decoder.decode_error('Expected a trail surrogate after a head surrogate, but got no valid escape sequence.')!
-								}
-
-								string_index += 2
-
-								unicode_point2 := rune(strconv.parse_uint(decoder.json[
-									string_info.position + string_index..string_info.position +
-									string_index + 4], 16, 32)!)
-
-								string_index += 4
-
-								if unicode_point2 < 0xDC00 {
-									decoder.decode_error('Expected a trail surrogate after a head surrogate, but got ${u32(unicode_point):04X}.')!
-								}
-
-								final_unicode_point := (unicode_point2 & 0x3FF) +
-									((unicode_point & 0x3FF) << 10) + 0x10000
-								string_buffer << final_unicode_point.bytes()
-							}
-						}
-						else {} // has already been checked
-					}
-
-					buffer_index = string_index
-				} else {
-					string_index++
-				}
-			}
-
-			// push the rest
-			unsafe {
-				string_buffer.push_many(decoder.json.str + string_info.position + buffer_index,
-					string_index - buffer_index)
-			}
-
-			val = string_buffer.bytestr()
-		} else {
-			return decoder.decode_error('Expected string, but got ${string_info.value_kind}')
-		}
+		decoder.decode_string(mut val)!
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
 		return
@@ -509,7 +411,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			for attr in field.attrs {
 				if attr.starts_with('json:') {
 					if attr.len <= 6 {
-						return decoder.decode_error('`json` attribute must have an argument')
+						decoder.decode_error('`json` attribute must have an argument')!
 					}
 					json_name_str = unsafe { attr.str + 6 }
 					json_name_len = attr.len - 6
@@ -615,9 +517,9 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 										if current_field_info.value.is_skip {
 											if current_field_info.value.is_required == false {
-												return decoder.decode_error('This should not happen. Please, file a bug. `skip` field should not be processed here without a `required` attribute')
+												decoder.decode_error('This should not happen. Please, file a bug. `skip` field should not be processed here without a `required` attribute')!
 											}
-											current_field_info.value.decoded_with_value_info_node = decoder.current_node
+											current_field_info.value.is_decoded = true
 											if decoder.current_node != unsafe { nil } {
 												decoder.current_node = decoder.current_node.next
 											}
@@ -627,7 +529,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										if current_field_info.value.is_raw {
 											$if field.unaliased_typ is $enum {
 												// workaround to avoid the error: enums can only be assigned `int` values
-												return decoder.decode_error('`raw` attribute cannot be used with enum fields')
+												decoder.decode_error('`raw` attribute cannot be used with enum fields')!
 											} $else $if field.typ is ?string {
 												position := decoder.current_node.value.position
 												end := position + decoder.current_node.value.length
@@ -659,7 +561,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 													decoder.current_node = decoder.current_node.next
 												}
 											} $else {
-												return decoder.decode_error('`raw` attribute can only be used with string fields')
+												decoder.decode_error('`raw` attribute can only be used with string fields')!
 											}
 										} else {
 											$if field.typ is $option {
@@ -682,7 +584,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 												decoder.decode_value(mut val.$(field.name))!
 											}
 										}
-										current_field_info.value.decoded_with_value_info_node = decoder.current_node
+										current_field_info.value.is_decoded = true
 										break
 									}
 								}
@@ -705,15 +607,15 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					current_field_info = current_field_info.next
 					continue
 				}
-				if current_field_info.value.decoded_with_value_info_node == unsafe { nil } {
-					return decoder.decode_error('missing required field `${unsafe {
+				if !current_field_info.value.is_decoded {
+					decoder.decode_error('missing required field `${unsafe {
 						tos(current_field_info.value.field_name_str, current_field_info.value.field_name_len)
-					}}`')
+					}}`')!
 				}
 				current_field_info = current_field_info.next
 			}
 		} else {
-			return decoder.decode_error('Expected object, but got ${struct_info.value_kind}')
+			decoder.decode_error('Expected object, but got ${struct_info.value_kind}')!
 		}
 		unsafe {
 			struct_fields_info.free()
@@ -723,14 +625,14 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		value_info := decoder.current_node.value
 
 		if value_info.value_kind != .boolean {
-			return decoder.decode_error('Expected boolean, but got ${value_info.value_kind}')
+			decoder.decode_error('Expected boolean, but got ${value_info.value_kind}')!
 		}
 
 		unsafe {
 			val = vmemcmp(decoder.json.str + value_info.position, true_in_string.str,
 				true_in_string.len) == 0
 		}
-	} $else $if T.unaliased_typ is $float || T.unaliased_typ is $int || T.unaliased_typ is $enum {
+	} $else $if T.unaliased_typ is $float || T.unaliased_typ is $int {
 		value_info := decoder.current_node.value
 
 		if value_info.value_kind == .number {
@@ -742,14 +644,118 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 			unsafe { decoder.decode_number(&val)! }
 		} else {
-			return decoder.decode_error('Expected number, but got ${value_info.value_kind}')
+			decoder.decode_error('Expected number, but got ${value_info.value_kind}')!
 		}
+	} $else $if T.unaliased_typ is $enum {
+		decoder.decode_enum(mut val)!
 	} $else {
-		return decoder.decode_error('cannot decode value with ${typeof(val).name} type')
+		decoder.decode_error('cannot decode value with ${typeof(val).name} type')!
 	}
 
 	if decoder.current_node != unsafe { nil } {
 		decoder.current_node = decoder.current_node.next
+	}
+}
+
+fn (mut decoder Decoder) decode_string[T](mut val T) ! {
+	string_info := decoder.current_node.value
+
+	if string_info.value_kind == .string {
+		mut string_buffer := []u8{cap: string_info.length} // might be too long but most json strings don't contain many escape characters anyways
+
+		mut buffer_index := 1
+		mut string_index := 1
+
+		for string_index < string_info.length - 1 {
+			current_byte := decoder.json[string_info.position + string_index]
+
+			if current_byte == `\\` {
+				// push all characters up to this point
+				unsafe {
+					string_buffer.push_many(decoder.json.str + string_info.position + buffer_index,
+						string_index - buffer_index)
+				}
+
+				string_index++
+
+				escaped_char := decoder.json[string_info.position + string_index]
+
+				string_index++
+
+				match escaped_char {
+					`/`, `"`, `\\` {
+						string_buffer << escaped_char
+					}
+					`b` {
+						string_buffer << `\b`
+					}
+					`f` {
+						string_buffer << `\f`
+					}
+					`n` {
+						string_buffer << `\n`
+					}
+					`r` {
+						string_buffer << `\r`
+					}
+					`t` {
+						string_buffer << `\t`
+					}
+					`u` {
+						unicode_point := rune(strconv.parse_uint(decoder.json[
+							string_info.position + string_index..string_info.position +
+							string_index + 4], 16, 32)!)
+
+						string_index += 4
+
+						if unicode_point < 0xD800 || unicode_point > 0xDFFF { // normal utf-8
+							string_buffer << unicode_point.bytes()
+						} else if unicode_point >= 0xDC00 { // trail surrogate -> invalid
+							decoder.decode_error('Got trail surrogate: ${u32(unicode_point):04X} before head surrogate.')!
+						} else { // head surrogate -> treat as utf-16
+							if string_index > string_info.length - 6 {
+								decoder.decode_error('Expected a trail surrogate after a head surrogate, but got no valid escape sequence.')!
+							}
+							if decoder.json[string_info.position + string_index..
+								string_info.position + string_index + 2] != '\\u' {
+								decoder.decode_error('Expected a trail surrogate after a head surrogate, but got no valid escape sequence.')!
+							}
+
+							string_index += 2
+
+							unicode_point2 := rune(strconv.parse_uint(decoder.json[
+								string_info.position + string_index..string_info.position +
+								string_index + 4], 16, 32)!)
+
+							string_index += 4
+
+							if unicode_point2 < 0xDC00 {
+								decoder.decode_error('Expected a trail surrogate after a head surrogate, but got ${u32(unicode_point):04X}.')!
+							}
+
+							final_unicode_point := (unicode_point2 & 0x3FF) +
+								((unicode_point & 0x3FF) << 10) + 0x10000
+							string_buffer << final_unicode_point.bytes()
+						}
+					}
+					else {} // has already been checked
+				}
+
+				buffer_index = string_index
+			} else {
+				string_index++
+			}
+		}
+
+		// push the rest
+		unsafe {
+			string_buffer.push_many(decoder.json.str + string_info.position + buffer_index,
+				string_index - buffer_index)
+		}
+
+		val = string_buffer.bytestr()
+	} else {
+		decoder.decode_error('Expected string, but got ${string_info.value_kind}')!
 	}
 }
 
@@ -775,7 +781,7 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 			val << array_element
 		}
 	} else {
-		return decoder.decode_error('Expected array, but got ${array_info.value_kind}')
+		decoder.decode_error('Expected array, but got ${array_info.value_kind}')!
 	}
 }
 
@@ -819,7 +825,7 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 			decoder.decode_value(mut val[key])!
 		}
 	} else {
-		return decoder.decode_error('Expected object, but got ${map_info.value_kind}')
+		decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
 	}
 }
 
@@ -889,6 +895,36 @@ fn get_number_digits[T](num T) int {
 	}
 }
 
+fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
+	enum_info := decoder.current_node.value
+
+	if enum_info.value_kind == .number {
+		mut result := 0
+		unsafe { decoder.decode_number(&result)! }
+
+		$for value in T.values {
+			if int(value.value) == result {
+				val = value.value
+				return
+			}
+		}
+		decoder.decode_error('Number value: `${result}` does not match any field in enum: ${typeof(val).name}')!
+	} else if enum_info.value_kind == .string {
+		mut result := ''
+		unsafe { decoder.decode_value(mut result)! }
+
+		$for value in T.values {
+			if value.name == result {
+				val = value.value
+				return
+			}
+		}
+		decoder.decode_error('String value: `${result}` does not match any field in enum: ${typeof(val).name}')!
+	}
+
+	decoder.decode_error('Expected number or string value for enum, got: ${enum_info.value_kind}')!
+}
+
 // use pointer instead of mut so enum cast works
 @[unsafe]
 fn (mut decoder Decoder) decode_number[T](val &T) ! {
@@ -904,10 +940,6 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 	$if T.unaliased_typ is $float {
 		*val = T(strconv.atof_quick(decoder.json[number_info.position..number_info.position +
 			number_info.length]))
-	} $else $if T.unaliased_typ is $enum {
-		mut result := 0
-		decoder.decode_number(&result)!
-		*val = T(result)
 	} $else { // this part is a minefield
 		mut is_negative := false
 		mut index := 0

@@ -80,7 +80,7 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 		if variant.typ.has_flag(.option) {
 			fn_builder.writeln('\t\treturn ((*${left_arg}).state == 2 && (*${right_arg}).state == 2) || !memcmp(&(*${left_arg}).data, &(*${right_arg}).data, sizeof(${g.base_type(variant.typ)}));')
 		} else if variant.sym.kind == .string {
-			fn_builder.writeln('\t\treturn string__eq(*${left_arg}, *${right_arg});')
+			fn_builder.writeln('\t\treturn builtin__string__eq(*${left_arg}, *${right_arg});')
 		} else if variant.sym.kind == .sum_type && !typ.is_ptr() {
 			eq_fn := g.gen_sumtype_equality_fn(typ)
 			fn_builder.writeln('\t\treturn ${eq_fn}_sumtype_eq(*${left_arg}, *${right_arg});')
@@ -227,9 +227,9 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 				}
 
 				if field.typ.is_ptr() {
-					fn_builder.write_string('(${left_arg} == ${right_arg} || (${left_arg} != 0 &&  ${right_arg} != 0 && ((${left_arg})->len == (${right_arg})->len && (${left_arg})->len == 0) || fast_string_eq(*(${left_arg}), *(${right_arg}))))')
+					fn_builder.write_string('(${left_arg} == ${right_arg} || (${left_arg} != 0 &&  ${right_arg} != 0 && ((${left_arg})->len == (${right_arg})->len && (${left_arg})->len == 0) || builtin__fast_string_eq(*(${left_arg}), *(${right_arg}))))')
 				} else {
-					fn_builder.write_string('(((${left_arg}).len == (${right_arg}).len && (${left_arg}).len == 0) || fast_string_eq(${left_arg}, ${right_arg}))')
+					fn_builder.write_string('(((${left_arg}).len == (${right_arg}).len && (${left_arg}).len == 0) || builtin__fast_string_eq(${left_arg}, ${right_arg}))')
 				}
 			} else if field_type.sym.kind == .sum_type && !field.typ.is_ptr() {
 				eq_fn := g.gen_sumtype_equality_fn(field.typ)
@@ -316,9 +316,9 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 		if info.parent_type.has_flag(.option) {
 			left_var = '*' + g.read_opt(info.parent_type, 'a')
 			right_var = '*' + g.read_opt(info.parent_type, 'b')
-			fn_builder.writeln('\treturn ((${left_var}).len == (${right_var}).len && (${left_var}).len == 0) || fast_string_eq(${left_var}, ${right_var});')
+			fn_builder.writeln('\treturn ((${left_var}).len == (${right_var}).len && (${left_var}).len == 0) || builtin__fast_string_eq(${left_var}, ${right_var});')
 		} else {
-			fn_builder.writeln('\treturn string__eq(a, b);')
+			fn_builder.writeln('\treturn builtin__string__eq(a, b);')
 		}
 	} else if sym.kind == .sum_type && !left.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(info.parent_type)
@@ -384,10 +384,10 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tfor (int i = 0; i < ${left_len}; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${left_len}; ++i) {')
 	// compare every pair of elements of the two arrays
 	if elem.sym.kind == .string {
-		fn_builder.writeln('\t\tif (!string__eq(*((${ptr_elem_styp}*)((byte*)${left_data}+(i*${left_elem}))), *((${ptr_elem_styp}*)((byte*)${right_data}+(i*${right_elem}))))) {')
+		fn_builder.writeln('\t\tif (!builtin__string__eq(*((${ptr_elem_styp}*)((byte*)${left_data}+(i*${left_elem}))), *((${ptr_elem_styp}*)((byte*)${right_data}+(i*${right_elem}))))) {')
 	} else if elem.sym.kind == .sum_type && !elem.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i])) {')
@@ -473,10 +473,10 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 		fn_builder.writeln('\t\treturn true;')
 		fn_builder.writeln('\t}')
 	}
-	fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${size}; ++i) {')
 	// compare every pair of elements of the two fixed arrays
 	if elem.sym.kind == .string {
-		fn_builder.writeln('\t\tif (!string__eq(((string*)${left})[i], ((string*)${right})[i])) {')
+		fn_builder.writeln('\t\tif (!builtin__string__eq(((string*)${left})[i], ((string*)${right})[i])) {')
 	} else if elem.sym.kind == .sum_type && !elem.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(${left}[i], ${right}[i])) {')
@@ -538,59 +538,59 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tfor (int i = 0; i < ${key_values}.len; ++i) {')
-	fn_builder.writeln('\t\tif (!DenseArray_has_index(&${key_values}, i)) continue;')
-	fn_builder.writeln('\t\tvoidptr k = DenseArray_key(&${key_values}, i);')
-	fn_builder.writeln('\t\tif (!map_exists(${b}, k)) return false;')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${key_values}.len; ++i) {')
+	fn_builder.writeln('\t\tif (!builtin__DenseArray_has_index(&${key_values}, i)) continue;')
+	fn_builder.writeln('\t\tvoidptr k = builtin__DenseArray_key(&${key_values}, i);')
+	fn_builder.writeln('\t\tif (!builtin__map_exists(${b}, k)) return false;')
 	kind := g.table.type_kind(value.typ)
 	if kind == .function {
 		info := value.sym.info as ast.FnType
 		sig := g.fn_var_signature(info.func.return_type, info.func.params.map(it.typ),
 			'v')
-		fn_builder.writeln('\t\t${sig} = *(voidptr*)map_get(${a}, k, &(voidptr[]){ 0 });')
+		fn_builder.writeln('\t\t${sig} = *(voidptr*)builtin__map_get(${a}, k, &(voidptr[]){ 0 });')
 	} else {
-		fn_builder.writeln('\t\t${ptr_value_styp} v = *(${ptr_value_styp}*)map_get(${a}, k, &(${ptr_value_styp}[]){ 0 });')
+		fn_builder.writeln('\t\t${ptr_value_styp} v = *(${ptr_value_styp}*)builtin__map_get(${a}, k, &(${ptr_value_styp}[]){ 0 });')
 	}
 	match kind {
 		.string {
-			fn_builder.writeln('\t\tif (!fast_string_eq(*(string*)map_get(${b}, k, &(string[]){_S("")}), v)) {')
+			fn_builder.writeln('\t\tif (!builtin__fast_string_eq(*(string*)builtin__map_get(${b}, k, &(string[]){_S("")}), v)) {')
 		}
 		.sum_type {
 			eq_fn := g.gen_sumtype_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.struct {
 			eq_fn := g.gen_struct_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.interface {
 			eq_fn := g.gen_interface_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq(*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.array {
 			eq_fn := g.gen_array_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.array_fixed {
 			eq_fn := g.gen_fixed_array_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.map {
 			eq_fn := g.gen_map_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.alias {
 			eq_fn := g.gen_alias_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.function {
-			fn_builder.writeln('\t\tif (*(voidptr*)map_get(${b}, k, &(voidptr[]){ 0 }) != v) {')
+			fn_builder.writeln('\t\tif (*(voidptr*)builtin__map_get(${b}, k, &(voidptr[]){ 0 }) != v) {')
 		}
 		else {
 			if value.typ.has_flag(.option) {
-				fn_builder.writeln('\t\tif (memcmp(v.data, ((${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }))->data, sizeof(${g.base_type(value.typ)})) != 0) {')
+				fn_builder.writeln('\t\tif (memcmp(v.data, ((${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }))->data, sizeof(${g.base_type(value.typ)})) != 0) {')
 			} else {
-				fn_builder.writeln('\t\tif (*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }) != v) {')
+				fn_builder.writeln('\t\tif (*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }) != v) {')
 			}
 		}
 	}
@@ -628,7 +628,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 
 	fn_builder.writeln('${g.static_non_parallel}inline bool ${fn_name}_interface_eq(${ptr_styp} a, ${ptr_styp} b) {')
 	fn_builder.writeln('\tif (${left_arg} == ${right_arg}) {')
-	fn_builder.writeln('\t\tint idx = v_typeof_interface_idx_${idx_fn}(${left_arg});')
+	fn_builder.writeln('\t\tu32 idx = v_typeof_interface_idx_${idx_fn}(${left_arg});')
 	if info is ast.Interface {
 		for typ in info.types {
 			sym := g.table.sym(typ.set_nr_muls(0))
@@ -647,7 +647,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 				.string {
 					l_str := g.read_field(left_type, '_string', 'a')
 					r_str := g.read_field(left_type, '_string', 'b')
-					fn_builder.write_string('string__eq(*(${l_str}), *(${r_str}))')
+					fn_builder.write_string('builtin__string__eq(*(${l_str}), *(${r_str}))')
 				}
 				.sum_type {
 					eq_fn := g.gen_sumtype_equality_fn(typ)

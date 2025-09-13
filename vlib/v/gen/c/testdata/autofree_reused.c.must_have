@@ -1,10 +1,9 @@
 VV_LOC void main__main(void) {
 	byteptr b = ((byteptr)("a"));
-	Array_u8 s = byteptr_vbytes(b, 1);
-	string _t1 = Array_u8_str(s); println(_t1); string_free(&_t1);
+	Array_u8 s = builtin__byteptr_vbytes(b, 1);
+	string _t1 = Array_u8_str(s); builtin__println(_t1); builtin__string_free(&_t1);
 	;
 	byteptr bb = ((byteptr)("a"));
-	string ss = byteptr_vstring(bb);
-	println(ss);
+	string ss = builtin__byteptr_vstring(bb);
+	builtin__println(ss);
 }
-

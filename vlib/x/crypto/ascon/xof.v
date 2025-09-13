@@ -30,13 +30,11 @@ const xof128_initial_state = State{
 
 // xof128 creates an Ascon-XOF128 checksum of msg with specified desired size of output.
 pub fn xof128(msg []u8, size int) ![]u8 {
-	mut x := new_xof128(size)
-	_ := x.write(msg)!
-	x.Digest.finish()
-	mut out := []u8{len: size}
-	_ := x.Digest.squeeze(mut out)
-	x.reset()
-	return out
+	if size > max_hash_size {
+		return error('xof128: invalid size')
+	}
+	mut s := xof128_initial_state
+	return ascon_generic_hash(mut s, msg, size)
 }
 
 // xof128_64 creates a 64-bytes of Ascon-XOF128 checksum of msg.
@@ -170,13 +168,10 @@ const cxof128_initial_state = State{
 
 // cxof128 creates an Ascon-CXOF128 checksum of msg with supplied size and custom string cs.
 pub fn cxof128(msg []u8, size int, cs []u8) ![]u8 {
-	mut cx := new_cxof128(size, cs)!
-	_ := cx.write(msg)!
-	cx.Digest.finish()
-	mut out := []u8{len: size}
-	_ := cx.Digest.squeeze(mut out)
-	cx.reset()
-	return out
+	// Initialize CXof128 state with precomputed-value and absorb the customization string
+	mut s := cxof128_initial_state
+	cxof128_absorb_custom_string(mut s, cs)
+	return ascon_generic_hash(mut s, msg, size)
 }
 
 // cxof128_64 creates a 64-bytes of Ascon-CXOF128 checksum of msg with supplied custom string in cs.
@@ -305,7 +300,7 @@ pub fn (mut x CXof128) free() {
 fn cxof128_absorb_custom_string(mut s State, cs []u8) {
 	// absorb Z0, the length of the customization string (in bits) encoded as a u64
 	s.e0 ^= u64(cs.len) << 3
-	ascon_pnr(mut s, 12)
+	ascon_pnr(mut s, .ascon_prnd_12)
 
 	// absorb the customization string
 	mut zlen := cs.len
@@ -313,7 +308,7 @@ fn cxof128_absorb_custom_string(mut s State, cs []u8) {
 	for zlen >= block_size {
 		block := unsafe { cs[zidx..zidx + block_size] }
 		s.e0 ^= binary.little_endian_u64(block)
-		ascon_pnr(mut s, 12)
+		ascon_pnr(mut s, .ascon_prnd_12)
 
 		// updates a index
 		zlen -= block_size
@@ -323,5 +318,5 @@ fn cxof128_absorb_custom_string(mut s State, cs []u8) {
 	last_block := unsafe { cs[zidx..] }
 	s.e0 ^= load_bytes(last_block, last_block.len)
 	s.e0 ^= pad(last_block.len)
-	ascon_pnr(mut s, 12)
+	ascon_pnr(mut s, .ascon_prnd_12)
 }

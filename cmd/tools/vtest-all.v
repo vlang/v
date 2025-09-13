@@ -91,7 +91,7 @@ fn get_all_commands() []Command {
 		rmfile: 'examples/hello_world'
 	}
 	res << Command{
-		line:   '${vexe} -W -Wimpure-v run examples/hello_world.v'
+		line:   '${vexe} -W -Wimpure-v examples/hello_world.v'
 		okmsg:  'V can compile hello world with the stricter `-W -Wimpure-v` mode .'
 		rmfile: 'examples/hello_world'
 	}

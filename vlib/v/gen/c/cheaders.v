@@ -1,5 +1,7 @@
 module c
 
+import v.ast
+
 // Note: @@@ here serve as placeholders.
 // They will be replaced with correct strings
 // for each constant, during C code generation.
@@ -17,8 +19,8 @@ struct __shared_map {
 	sync__RwMutex mtx;
 	map val;
 };
-static inline voidptr __dup_shared_map(voidptr src, int sz) {
-	__shared_map* dest = memdup(src, sz);
+static inline voidptr __dup_shared_map(voidptr src, ${ast.int_type_name} sz) {
+	__shared_map* dest = builtin__memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
 	return dest;
 }
@@ -27,16 +29,16 @@ struct __shared_array {
 	sync__RwMutex mtx;
 	array val;
 };
-static inline voidptr __dup_shared_array(voidptr src, int sz) {
-	__shared_array* dest = memdup(src, sz);
+static inline voidptr __dup_shared_array(voidptr src, ${ast.int_type_name} sz) {
+	__shared_array* dest = builtin__memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
 	return dest;
 }
-static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
-	for (int i=1; i<l; i++) {
+static inline void __sort_ptr(uintptr_t a[], bool b[], ${ast.int_type_name} l) {
+	for (${ast.int_type_name} i=1; i<l; i++) {
 		uintptr_t ins = a[i];
 		bool insb = b[i];
-		int j = i;
+		${ast.int_type_name} j = i;
 		while(j>0 && a[j-1] > ins) {
 			a[j] = a[j-1];
 			b[j] = b[j-1];
@@ -315,19 +317,19 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 #define _S(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
 #define _SLEN(s, n) ((string){.str=(byteptr)("" s), .len=n, .is_lit=1})
 // optimized way to compare literal strings
-#define _SLIT_EQ(sptr, slen, lit) (slen == sizeof("" lit)-1 && !vmemcmp(sptr, "" lit, slen))
-#define _SLIT_NE(sptr, slen, lit) (slen != sizeof("" lit)-1 || vmemcmp(sptr, "" lit, slen))
+#define _SLIT_EQ(sptr, slen, lit) (slen == sizeof("" lit)-1 && !builtin__vmemcmp(sptr, "" lit, slen))
+#define _SLIT_NE(sptr, slen, lit) (slen != sizeof("" lit)-1 || builtin__vmemcmp(sptr, "" lit, slen))
 
 // take the address of an rvalue
 #define ADDR(type, expr) (&((type[]){expr}[0]))
 
 // copy something to the heap
-#define HEAP(type, expr) ((type*)memdup((void*)&((type[]){expr}[0]), sizeof(type)))
-#define HEAP_noscan(type, expr) ((type*)memdup_noscan((void*)&((type[]){expr}[0]), sizeof(type)))
-#define HEAP_align(type, expr, align) ((type*)memdup_align((void*)&((type[]){expr}[0]), sizeof(type), align))
+#define HEAP(type, expr) ((type*)builtin__memdup((void*)&((type[]){expr}[0]), sizeof(type)))
+#define HEAP_noscan(type, expr) ((type*)builtin__memdup_noscan((void*)&((type[]){expr}[0]), sizeof(type)))
+#define HEAP_align(type, expr, align) ((type*)builtin__memdup_align((void*)&((type[]){expr}[0]), sizeof(type), align))
 
-#define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
-#define _PUSH_MANY_noscan(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many_noscan(arr, tmp.data, tmp.len);}
+#define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); builtin__array_push_many(arr, tmp.data, tmp.len);}
+#define _PUSH_MANY_noscan(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); builtin__array_push_many_noscan(arr, tmp.data, tmp.len);}
 '
 
 const c_headers = c_helper_macros + c_unsigned_comparison_functions + c_common_macros +
@@ -563,7 +565,7 @@ void _vcleanup();
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 
 void v_free(voidptr ptr);
-voidptr memdup(voidptr src, isize size);
+voidptr builtin__memdup(voidptr src, isize size);
 
 '
 
@@ -709,5 +711,5 @@ static inline uint64_t wy2u0k(uint64_t r, uint64_t k){ _wymum(&r,&k); return k; 
 #endif
 #endif
 
-#define _IN_MAP(val, m) map_exists(m, val)
+#define _IN_MAP(val, m) builtin__map_exists(m, val)
 '

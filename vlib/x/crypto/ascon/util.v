@@ -5,14 +5,7 @@
 // Utility helpers used across the module
 module ascon
 
-import math.bits
 import encoding.binary
-
-// rotate_right_64 rotates x right by k bits
-fn rotate_right_64(x u64, k int) u64 {
-	// call rotate_left_64(x, -k).
-	return bits.rotate_left_64(x, -k)
-}
 
 // clear_bytes clears the bytes of x in n byte
 @[inline]
@@ -90,18 +83,23 @@ fn set_byte(b u8, i int) u64 {
 fn load_bytes(bytes []u8, n int) u64 {
 	mut x := u64(0)
 	for i := 0; i < n; i++ {
-		x |= set_byte(bytes[i], i)
+		// This is the same way to store bytes in little-endian way
+		//		x |= u64(bytes[0]) << 8*0  // LSB at lowest index
+		//		x |= u64(bytes[1]) << 8*1
+		// 		x |= u64(bytes[2]) << 8*2
+		//		x |= u64(bytes[3]) << 8*3
+		//		...etc
+		// 		x |= u64(bytes[7]) << 8*7  // MSB at highest index
+		x |= u64(bytes[i]) << (8 * i)
 	}
-	return u64le(x)
+	// No need to cast with u64le, its alread le
+	return x
 }
 
+@[direct_array_access]
 fn store_bytes(mut out []u8, x u64, n int) {
 	for i := 0; i < n; i++ {
-		out[i] = get_byte(x, i)
+		// use underlying get_byte directly
+		out[i] = u8(x >> (8 * i))
 	}
-}
-
-@[inline]
-fn ascon_rotate_right(x u64, n int) u64 {
-	return (x >> n) | x << (64 - n)
 }

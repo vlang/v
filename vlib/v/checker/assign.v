@@ -444,6 +444,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						if c.check_import_sym_conflict(left.name) {
 							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
+						c.check_module_name_conflict(left.name, left.pos)
 					}
 					if node.op == .assign && left_type.has_flag(.option) && right is ast.UnsafeExpr
 						&& right.expr.is_nil() {
@@ -745,14 +746,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				} else if left_type.is_unsigned() {
 					left_type
 				} else {
-					// signed types' idx adds with 5 will get correct relative unsigned type
-					// i8 		=> byte
-					// i16 		=> u16
-					// int  	=> u32
-					// i64  	=> u64
-					// isize	=> usize
-					// i128 	=> u128 NOT IMPLEMENTED YET
-					ast.idx_to_type(left_type.idx() + ast.u32_type_idx - ast.int_type_idx)
+					// signed types => unsigned types
+					unsigned_type := left_type.flip_signedness()
+					if unsigned_type == ast.void_type {
+						c.error('invalid operation: shift on type `${c.table.sym(left_type).name}`',
+							node.pos)
+						ast.void_type
+					}
+					unsigned_type
 				}
 
 				node = ast.AssignStmt{

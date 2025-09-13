@@ -45,6 +45,9 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	if expr.is_method {
 		receiver_sym := g.table.sym(g.unwrap_generic(expr.receiver_type))
 		name = receiver_sym.cname + '_' + name
+		if receiver_sym.is_builtin() && !name.starts_with('_') {
+			name = 'builtin__${name}'
+		}
 	} else if mut expr.left is ast.AnonFn {
 		if expr.left.inherited_vars.len > 0 {
 			fn_var := g.fn_var_signature(expr.left.decl.return_type, expr.left.decl.params.map(it.typ),
@@ -77,7 +80,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	wrapper_fn_name := name + '_thread_wrapper'
 	arg_tmp_var := 'arg_' + tmp
 	if is_spawn {
-		g.writeln('${wrapper_struct_name} *${arg_tmp_var} = (${wrapper_struct_name} *) _v_malloc(sizeof(thread_arg_${name}));')
+		g.writeln('${wrapper_struct_name} *${arg_tmp_var} = (${wrapper_struct_name} *) builtin___v_malloc(sizeof(thread_arg_${name}));')
 	} else if is_go {
 		g.writeln('${wrapper_struct_name} ${arg_tmp_var};')
 	}
@@ -87,7 +90,15 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	} else if expr.is_fn_var {
 		expr.name
 	} else {
-		name
+		if func := g.table.find_fn(expr.name) {
+			if func.mod == 'builtin' && !name.starts_with('builtin__') && func.language != .c {
+				'builtin__${name}'
+			} else {
+				name
+			}
+		} else {
+			name
+		}
 	}
 	if !(expr.is_method && (g.table.sym(expr.receiver_type).kind == .interface
 		|| (g.table.sym(expr.receiver_type).kind == .struct && expr.is_field))) {
@@ -110,7 +121,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	call_ret_type := node.call_expr.return_type
 	s_ret_typ := g.styp(call_ret_type)
 	if g.pref.os == .windows && call_ret_type != ast.void_type {
-		g.writeln('${arg_tmp_var}->ret_ptr = (void *) _v_malloc(sizeof(${s_ret_typ}));')
+		g.writeln('${arg_tmp_var}->ret_ptr = (void *) builtin___v_malloc(sizeof(${s_ret_typ}));')
 	}
 	gohandle_name := g.gen_gohandle_name(call_ret_type)
 	if is_spawn {
@@ -122,7 +133,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 			stack_size := g.get_cur_thread_stack_size(expr.name)
 			g.writeln('HANDLE ${simple_handle} = CreateThread(0, ${stack_size}, (LPTHREAD_START_ROUTINE)${wrapper_fn_name}, ${arg_tmp_var}, 0, 0); // fn: ${expr.name}')
-			g.writeln('if (!${simple_handle}) panic_lasterr(tos3("`go ${name}()`: "));')
+			g.writeln('if (!${simple_handle}) builtin__panic_lasterr(builtin__tos3("`go ${name}()`: "));')
 			if node.is_expr && call_ret_type != ast.void_type {
 				g.writeln('${gohandle_name} thread_${tmp} = {')
 				g.writeln('\t.ret_ptr = ${arg_tmp_var}->ret_ptr,')
@@ -142,7 +153,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				sthread_attributes = '&thread_${tmp}_attributes'
 			}
 			g.writeln('int ${tmp}_thr_res = pthread_create(&thread_${tmp}, ${sthread_attributes}, (void*)${wrapper_fn_name}, ${arg_tmp_var});')
-			g.writeln('if (${tmp}_thr_res) panic_error_number(tos3("`go ${name}()`: "), ${tmp}_thr_res);')
+			g.writeln('if (${tmp}_thr_res) builtin__panic_error_number(builtin__tos3("`go ${name}()`: "), ${tmp}_thr_res);')
 			if !node.is_expr {
 				g.writeln('pthread_detach(thread_${tmp});')
 			}
@@ -245,7 +256,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			if g.pref.os == .windows {
 				g.gowrappers.write_string('\t*((${s_ret_typ}*)(arg->ret_ptr)) = ')
 			} else {
-				g.gowrappers.writeln('\t${s_ret_typ}* ret_ptr = (${s_ret_typ}*) _v_malloc(sizeof(${s_ret_typ}));')
+				g.gowrappers.writeln('\t${s_ret_typ}* ret_ptr = (${s_ret_typ}*) builtin___v_malloc(sizeof(${s_ret_typ}));')
 				$if tinyc && arm64 {
 					g.gowrappers.write_string('\t${s_ret_typ} tcc_bug_tmp_var = ')
 				} $else {
@@ -345,7 +356,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 		}
 		if is_spawn {
-			g.gowrappers.writeln('\t_v_free(arg);')
+			g.gowrappers.writeln('\tbuiltin___v_free(arg);')
 		}
 		if g.pref.os != .windows && call_ret_type != ast.void_type {
 			g.gowrappers.writeln('\treturn ret_ptr;')
@@ -421,10 +432,10 @@ fn (mut g Gen) create_waiter_handler(call_ret_type ast.Type, s_ret_typ string, g
 			g.gowrappers.writeln('\tret_ptr = thread.ret_ptr;')
 		}
 	} else {
-		g.gowrappers.writeln('\tif ((unsigned long int)thread == 0) { _v_panic(_S("unable to join thread")); }')
+		g.gowrappers.writeln('\tif ((unsigned long int)thread == 0) { builtin___v_panic(_S("unable to join thread")); }')
 		g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)${c_ret_ptr_ptr});')
 	}
-	g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_S("unable to join thread")); }')
+	g.gowrappers.writeln('\tif (stat != 0) { builtin___v_panic(_S("unable to join thread")); }')
 	if g.pref.os == .windows {
 		if call_ret_type == ast.void_type {
 			g.gowrappers.writeln('\tCloseHandle(thread);')
@@ -434,7 +445,7 @@ fn (mut g Gen) create_waiter_handler(call_ret_type ast.Type, s_ret_typ string, g
 	}
 	if call_ret_type != ast.void_type {
 		g.gowrappers.writeln('\t${s_ret_typ} ret = *ret_ptr;')
-		g.gowrappers.writeln('\t_v_free(ret_ptr);')
+		g.gowrappers.writeln('\tbuiltin___v_free(ret_ptr);')
 		g.gowrappers.writeln('\treturn ret;')
 	}
 	g.gowrappers.writeln('}')

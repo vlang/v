@@ -36,8 +36,8 @@ pub const fixed_array_builtin_methods = ['contains', 'index', 'any', 'all', 'wai
 	'sorted', 'sort_with_compare', 'sorted_with_compare', 'reverse', 'reverse_in_place', 'count']
 pub const fixed_array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(fixed_array_builtin_methods)
 // TODO: remove `byte` from this list when it is no longer supported
-pub const reserved_type_names = ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32',
-	'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread']
+pub const reserved_type_names = ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16',
+	'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread']
 pub const reserved_type_names_chk = token.new_keywords_matcher_from_array_trie(reserved_type_names)
 pub const vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 
@@ -137,14 +137,15 @@ mut:
 	inside_assign                    bool
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	// doing_line_path                  string // same, but stores the path being parsed
-	is_index_assign   bool
-	comptime_call_pos int                      // needed for correctly checking use before decl for templates
-	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
-	enum_data_type    ast.Type
-	field_data_type   ast.Type
-	variant_data_type ast.Type
-	fn_return_type    ast.Type
-	orm_table_fields  map[string][]ast.StructField // known table structs
+	is_index_assign    bool
+	comptime_call_pos  int                      // needed for correctly checking use before decl for templates
+	goto_labels        map[string]ast.GotoLabel // to check for unused goto labels
+	enum_data_type     ast.Type
+	field_data_type    ast.Type
+	variant_data_type  ast.Type
+	fn_return_type     ast.Type
+	orm_table_fields   map[string][]ast.StructField // known table structs
+	short_module_names []string                     // to check for function names colliding with module functions
 
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
@@ -331,6 +332,14 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 	c.vmod_file_content = ''
 	c.mod = file.mod.name
 	c.is_generated = file.is_generated
+	c.short_module_names = ['builtin']
+	for import_sym in c.file.imports {
+		c.short_module_names << if import_sym.alias == '' {
+			import_sym.mod.all_after_last('.')
+		} else {
+			import_sym.alias
+		}
+	}
 }
 
 pub fn (mut c Checker) check_files(ast_files []&ast.File) {
@@ -677,7 +686,7 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 		.voidptr, .byteptr, .charptr {}
 		.char, .rune, .bool {}
 		.string, .enum, .none, .any {}
-		.i8, .i16, .int, .i64, .isize {}
+		.i8, .i16, .i32, .int, .i64, .isize {}
 		.u8, .u16, .u32, .u64, .usize {}
 		.f32, .f64 {}
 		.interface {}
@@ -2039,8 +2048,15 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		ast.i16_type {
 			signed, enum_imin, enum_imax = true, min_i16, max_i16
 		}
-		ast.int_type {
+		ast.i32_type {
 			signed, enum_imin, enum_imax = true, min_i32, max_i32
+		}
+		ast.int_type {
+			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+				signed, enum_imin, enum_imax = true, min_i32, max_i32
+			} $else {
+				signed, enum_imin, enum_imax = true, min_i64, max_i64
+			}
 		}
 		ast.i64_type {
 			signed, enum_imin, enum_imax = true, min_i64, max_i64
@@ -3786,8 +3802,15 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				ast.i16_type_idx {
 					u64(0xffff)
 				}
-				ast.int_type_idx, ast.i32_type_idx {
+				ast.i32_type_idx {
 					u64(0xffffffff)
+				}
+				ast.int_type_idx {
+					$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+						u64(0xffffffffffffffff)
+					} $else {
+						u64(0xffffffff)
+					}
 				}
 				ast.i64_type_idx {
 					u64(0xffffffffffffffff)
@@ -5788,6 +5811,16 @@ fn (c &Checker) check_import_sym_conflict(ident string) bool {
 		}
 	}
 	return false
+}
+
+fn (mut c Checker) check_module_name_conflict(ident string, pos token.Pos) {
+	if ident.contains('__') {
+		prefix := ident.all_before('__')
+		if prefix in c.short_module_names {
+			c.error('identifier cannot use prefix `${prefix}__` of imported module `${prefix}`',
+				pos)
+		}
+	}
 }
 
 // update_unresolved_fixed_sizes updates the unresolved type symbols for array fixed return type and alias type.

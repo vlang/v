@@ -54,8 +54,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 				PreprocVar {
 					g.preproc_var_ident(var)
 				}
-				else {
-					g.n_error('${@LOCATION} Unsupported variable kind')
+				GlobalVar {
+					g.global_var_ident(node, var)
+				}
+				Register {
+					g.n_error('${@LOCATION} Unsupported variable kind ${var}')
+				}
+				ConstVar {
+					g.const_var_ident(node, var)
 				}
 			}
 		}
@@ -190,6 +196,22 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 				g.n_error('${@LOCATION} Unsupported variable type')
 			}
 		}
+	}
+}
+
+fn (mut g Gen) global_var_ident(ident ast.Ident, var GlobalVar) {
+	if g.is_register_type(var.typ) {
+		g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
+	} else {
+		g.n_error('${@LOCATION} Unsupported variable type ${ident} ${var}')
+	}
+}
+
+fn (mut g Gen) const_var_ident(ident ast.Ident, var ConstVar) {
+	if g.is_register_type(var.typ) {
+		g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
+	} else {
+		g.n_error('${@LOCATION} Unsupported variable type ${ident} ${var}')
 	}
 }
 

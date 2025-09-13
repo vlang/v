@@ -2,8 +2,9 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
+module ascon
+
 import encoding.hex
-import x.crypto.ascon
 
 // This test materials was taken and adapted into v from references implementation of Ascon-aead128
 // especially for the known answer test data, but, its not all fully-taken, just randomly choosen item.
@@ -26,14 +27,14 @@ fn test_ascon_aead128_enc_dec() ! {
 		ad := hex.decode(item.ad)!
 		ct := hex.decode(item.ct)!
 
-		out := ascon.encrypt(key, nonce, ad, pt)!
+		out := encrypt(key, nonce, ad, pt)!
 		assert out == ct
 
-		msg := ascon.decrypt(key, nonce, ad, ct)!
+		msg := decrypt(key, nonce, ad, ct)!
 		assert msg == pt
 
 		// Work with object-based Cipher
-		mut c := ascon.new_aead128(key)!
+		mut c := new_aead128(key)!
 		// Lets encrypt the message
 		exp_ct := c.encrypt(msg, nonce, ad)!
 		assert exp_ct == ct

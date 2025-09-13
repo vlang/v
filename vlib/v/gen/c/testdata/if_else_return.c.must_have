@@ -3,7 +3,7 @@ _result_string _t2; /* if prepend */
 if ((s).len != 0) {
 _result_ok(&(string[]) { s }, (_result*)(&_t2), sizeof(string));
 } else {
-return (_result_string){ .is_error=true, .err=_v_error(_S("empty")), .data={E_STRUCT} };
+return (_result_string){ .is_error=true, .err=builtin___v_error(_S("empty")), .data={E_STRUCT} };
 }
 return _t2;
 }

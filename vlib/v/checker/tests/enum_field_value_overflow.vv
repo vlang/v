@@ -1,4 +1,4 @@
-enum Color {
+enum Color as i32 {
 	red
 	green = 2147483648
 	blue
@@ -22,7 +22,7 @@ enum ColorI16 as i16 {
 	blue
 }
 
-enum ColorI32 {
+enum ColorI32 as i32 {
 	red
 	green = 2147483648
 	blue

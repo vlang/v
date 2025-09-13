@@ -215,105 +215,9 @@ pub fn (mut e Eval) register_symbol_stmts(stmts []ast.Stmt, mod string, file str
 pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
 	match cond {
 		ast.Ident {
-			cname := cond.name
-			if cname in ast.valid_comptime_if_os {
-				mut ident_result := false
-				if !e.pref.output_cross_c {
-					if cname_enum_val := pref.os_from_string(cname) {
-						if cname_enum_val == e.pref.os {
-							ident_result = true
-						}
-					}
-				}
-				$if trace_comptime_os_checks ? {
-					eprintln('>>> ident_name: ${ident_name} | e.pref.os: ${e.pref.os} | ident_result: ${ident_result}')
-				}
-				return ident_result
-			} else if cname in ast.valid_comptime_if_compilers {
-				return pref.cc_from_string(cname) == e.pref.ccompiler_type
-			} else if cname in ast.valid_comptime_if_platforms {
-				match cname {
-					'amd64' { return e.pref.arch == .amd64 }
-					'i386' { return e.pref.arch == .i386 }
-					'aarch64' { return e.pref.arch == .arm64 }
-					'arm64' { return e.pref.arch == .arm64 }
-					'arm32' { return e.pref.arch == .arm32 }
-					'rv64' { return e.pref.arch == .rv64 }
-					'rv32' { return e.pref.arch == .rv32 }
-					's390x' { return e.pref.arch == .s390x }
-					'ppc64le' { return e.pref.arch == .ppc64le }
-					'loongarch64' { return e.pref.arch == .loongarch64 }
-					else { e.error('unknown comptime platforms \$if ${cname}') }
-				}
-			} else if cname in ast.valid_comptime_if_cpu_features {
-				match cname {
-					'x64' { e.pref.m64 }
-					'x32' { !e.pref.m64 }
-					else { e.error('unknown comptime cpu features \$if ${cname}') }
-				}
-			} else if cname in ast.valid_comptime_if_other {
-				match cname {
-					'apk' {
-						return e.pref.is_apk
-					}
-					'js' {
-						return e.pref.backend.is_js()
-					}
-					'debug' {
-						return e.pref.is_debug
-					}
-					'prod' {
-						return e.pref.is_prod
-					}
-					'profile' {
-						return e.pref.is_prof
-					}
-					'test' {
-						return e.pref.is_test
-					}
-					'musl' {
-						e.error('unknown comptime other \$if ${cname}')
-					}
-					'glibc' {
-						e.error('unknown comptime other \$if ${cname}')
-					}
-					'threads' {
-						return e.table.gostmts > 0
-					}
-					'prealloc' {
-						return e.pref.prealloc
-					}
-					'no_bounds_checking' {
-						return cname in e.pref.compile_defines_all
-					}
-					'autofree' {
-						return e.pref.autofree
-					}
-					'freestanding' {
-						return e.pref.is_bare && !e.pref.output_cross_c
-					}
-					'interpreter' {
-						return e.pref.backend == .interpret
-					}
-					'es5' {
-						return e.pref.output_es5
-					}
-					'wasm32' {
-						return e.pref.os == .wasm32
-					}
-					'wasm32_wasi' {
-						return e.pref.os == .wasm32_wasi
-					}
-					'fast_math' {
-						return e.pref.fast_math
-					}
-					'native' {
-						return e.pref.backend == .native
-					}
-					else {
-						e.error('unknown comptime other \$if ${cname}')
-					}
-				}
+			return ast.eval_comptime_not_user_defined_ident(cond.name, e.pref) or {
+				e.error(err.msg())
+				return false
 			}
 		}
 		ast.PrefixExpr {
@@ -322,7 +226,7 @@ pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
 					return !e.comptime_cond(cond.right)
 				}
 				else {
-					e.error('unsupported prefix expression')
+					e.error('unsupported prefix expression `${cond.op}`')
 				}
 			}
 		}
@@ -331,8 +235,27 @@ pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
 			right := e.comptime_cond(cond.right)
 			return e.infix_expr(left, right, cond.op, ast.bool_type) as bool
 		}
+		ast.PostfixExpr {
+			if cond.op != .question {
+				e.error('invalid \$if postfix operator, only allow `?`.')
+				return false
+			}
+			if cond.expr !is ast.Ident {
+				e.error('invalid \$if postfix condition, only allow `Indent`.')
+				return false
+			}
+			cname := (cond.expr as ast.Ident).name
+			return cname in e.pref.compile_defines
+		}
+		ast.ParExpr {
+			return e.comptime_cond(cond.expr)
+		}
+		ast.NodeError {
+			// unsupport
+			return false
+		}
 		else {
-			e.error('unsupported expression')
+			e.error('unsupported expression ${cond}')
 		}
 	}
 	return false

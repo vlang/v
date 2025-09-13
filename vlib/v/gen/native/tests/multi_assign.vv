@@ -61,7 +61,44 @@ fn cross_assign_of_struct_test() { // from cross_assign_test.v
 	assert x.b == 1
 }
 
+struct MyStruct {
+	a int
+	b u64
+	c u16
+	d u8
+}
+
+struct MyStruct2 {
+	a u8
+	b u8
+	c u8
+}
+
+fn struct_multi_return() (int, MyStruct) {
+	return 3, MyStruct{4, 5, 6, 7}
+}
+
+fn struct_multi_return2() (int, MyStruct2) {
+	return 3, MyStruct2{4, 5, 6}
+}
+
+fn struct_multi_return_test() {
+	a, b := struct_multi_return()
+	assert a == 3
+	assert b.a == 4
+	assert b.b == 5
+	assert b.c == 6
+	assert b.d == 7
+
+	c, d := struct_multi_return2()
+	assert c == 3
+	assert d.a == 4
+	assert d.b == 5
+	assert d.c == 6
+}
+
 fn main() {
 	fn_multi_return_test()
 	cross_assign_of_struct_test()
+	struct_multi_return_test()
 }
