@@ -433,7 +433,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else if var_type.has_flag(.generic) && val is ast.StructInit
 						&& val_type.has_flag(.generic) {
 						val_type = g.unwrap_generic(val_type)
-						var_type = var_type
+						var_type = val_type
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap

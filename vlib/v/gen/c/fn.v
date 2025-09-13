@@ -2820,7 +2820,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	} else if arg.expr is ast.Ident && arg_sym.info is ast.Struct && arg_sym.info.is_anon
 		&& !expected_type.has_flag(.generic) {
 		// make anon struct struct compatible with another anon struct declaration
-		// g.write('*(${g.cc_type(expected_type, false)}*)&')
+		g.write('*(${g.cc_type(expected_type, false)}*)&')
 	}
 	// check if the argument must be dereferenced or not
 	g.arg_no_auto_deref = is_smartcast && !arg_is_ptr && !exp_is_ptr && arg.should_be_ptr
