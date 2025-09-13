@@ -217,8 +217,18 @@ fn (mut g Gen) global_var_ident(ident ast.Ident, var GlobalVar) {
 fn (mut g Gen) const_var_ident(ident ast.Ident, var ConstVar) {
 	if g.is_register_type(var.typ) {
 		g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
-	} else {
+	} else if g.is_fp_type(var.typ) {
 		g.n_error('${@LOCATION} Unsupported variable type ${ident} ${var}')
+	} else {
+		ts := g.table.sym(g.unwrap(var.typ))
+		match ts.info {
+			ast.Struct {
+				g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
+			}
+			else {
+				g.n_error('${@LOCATION} Unsupported variable type ${ident} ${var} ${ts.info}')
+			}
+		}
 	}
 }
 

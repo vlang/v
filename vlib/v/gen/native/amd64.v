@@ -3137,6 +3137,7 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 						c.mov_store(.rbx, .rax, size)
 					}
 					else {
+						c.mov_deref(Amd64Register.rax, Amd64Register.rbx, var_type) // value of left expr
 						c.apply_op_int(.rax, .rcx, node.op)
 						c.mov_store(.rbx, .rax, size)
 					}
