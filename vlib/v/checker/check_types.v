@@ -625,18 +625,46 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 						return left_type
 					}
 					moffset := match left_type_final {
-						ast.char_type { 7 }
-						ast.i8_type { 7 }
-						ast.i16_type { 15 }
-						ast.int_type { 31 }
-						ast.i64_type { 63 }
+						ast.char_type {
+							7
+						}
+						ast.i8_type {
+							7
+						}
+						ast.i16_type {
+							15
+						}
+						ast.i32_type {
+							31
+						}
+						ast.int_type {
+							$if new_int ?
+								&& (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+								63
+							} $else {
+								31
+							}
+						}
+						ast.i64_type {
+							63
+						}
 						//
-						ast.u8_type { 7 }
+						ast.u8_type {
+							7
+						}
 						// ast.u8_type { 7 }
-						ast.u16_type { 15 }
-						ast.u32_type { 31 }
-						ast.u64_type { 63 }
-						else { 64 }
+						ast.u16_type {
+							15
+						}
+						ast.u32_type {
+							31
+						}
+						ast.u64_type {
+							63
+						}
+						else {
+							64
+						}
 					}
 					if ival > moffset && !c.pref.translated && !c.file.is_translated {
 						c.error('shift count for type `${left_sym_final.name}` too large (maximum: ${moffset} bits)',

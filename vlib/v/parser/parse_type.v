@@ -702,6 +702,9 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 					'i16' {
 						ret = ast.i16_type
 					}
+					'i32' {
+						ret = ast.i32_type
+					}
 					'int' {
 						ret = ast.int_type
 					}
@@ -856,7 +859,7 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 		return typ
 	}
 	// not found - add placeholder
-	idx = p.table.add_placeholder_type(name, language)
+	idx = p.table.add_placeholder_type(name, name, language)
 	return ast.new_type(idx)
 }
 
@@ -936,10 +939,10 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		if gt_idx > 0 {
 			return ast.new_type(gt_idx)
 		}
-		gt_idx = p.table.add_placeholder_type(bs_name, .v)
+		gt_idx = p.table.add_placeholder_type(bs_name, bs_cname, .v)
 		mut parent_idx := p.table.type_idxs[name]
 		if parent_idx == 0 {
-			parent_idx = p.table.add_placeholder_type(name, .v)
+			parent_idx = p.table.add_placeholder_type(name, name, .v)
 		}
 		parent_sym := p.table.sym(ast.new_type(parent_idx))
 		match parent_sym.info {

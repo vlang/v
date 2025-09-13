@@ -1686,7 +1686,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if resolved_sym.is_builtin() && !receiver_type_name.starts_with('_') {
 			name = 'builtin__${name}'
 		}
-	} else if receiver_type_name in ['int_literal', 'float_literal'] {
+	} else if receiver_type_name in ['int_literal', 'float_literal', 'vint_t'] {
 		name = 'builtin__${name}'
 	}
 	if left_sym.kind == .chan && node.name in ['close', 'try_pop', 'try_push'] {

@@ -1,4 +1,4 @@
-enum Color {
+enum Color as i32 {
 	red
 	green = 2147483647
 	blue

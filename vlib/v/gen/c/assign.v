@@ -1386,7 +1386,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 					if resolved_sym.is_builtin() && !fn_name.starts_with('builtin__') {
 						fn_name = 'builtin__${fn_name}'
 					}
-				} else if rec_typ_name in ['int_literal', 'float_literal'] {
+				} else if rec_typ_name in ['int_literal', 'float_literal', 'vint_t'] {
 					fn_name = 'builtin__${fn_name}'
 				}
 				g.write('${fn_name}(&')

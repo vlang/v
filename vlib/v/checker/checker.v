@@ -36,8 +36,8 @@ pub const fixed_array_builtin_methods = ['contains', 'index', 'any', 'all', 'wai
 	'sorted', 'sort_with_compare', 'sorted_with_compare', 'reverse', 'reverse_in_place', 'count']
 pub const fixed_array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(fixed_array_builtin_methods)
 // TODO: remove `byte` from this list when it is no longer supported
-pub const reserved_type_names = ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32',
-	'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread']
+pub const reserved_type_names = ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16',
+	'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread']
 pub const reserved_type_names_chk = token.new_keywords_matcher_from_array_trie(reserved_type_names)
 pub const vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 
@@ -686,7 +686,7 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 		.voidptr, .byteptr, .charptr {}
 		.char, .rune, .bool {}
 		.string, .enum, .none, .any {}
-		.i8, .i16, .int, .i64, .isize {}
+		.i8, .i16, .i32, .int, .i64, .isize {}
 		.u8, .u16, .u32, .u64, .usize {}
 		.f32, .f64 {}
 		.interface {}
@@ -2048,8 +2048,15 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		ast.i16_type {
 			signed, enum_imin, enum_imax = true, min_i16, max_i16
 		}
-		ast.int_type {
+		ast.i32_type {
 			signed, enum_imin, enum_imax = true, min_i32, max_i32
+		}
+		ast.int_type {
+			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+				signed, enum_imin, enum_imax = true, min_i32, max_i32
+			} $else {
+				signed, enum_imin, enum_imax = true, min_i64, max_i64
+			}
 		}
 		ast.i64_type {
 			signed, enum_imin, enum_imax = true, min_i64, max_i64
@@ -3795,8 +3802,15 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				ast.i16_type_idx {
 					u64(0xffff)
 				}
-				ast.int_type_idx, ast.i32_type_idx {
+				ast.i32_type_idx {
 					u64(0xffffffff)
+				}
+				ast.int_type_idx {
+					$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+						u64(0xffffffffffffffff)
+					} $else {
+						u64(0xffffffff)
+					}
 				}
 				ast.i64_type_idx {
 					u64(0xffffffffffffffff)

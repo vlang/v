@@ -246,7 +246,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		} else {
 			'${cond_var}${op_field}len'
 		}
-		g.writeln('for (int ${i} = 0; ${i} < ${cond_expr}; ++${i}) {')
+		g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${cond_expr}; ++${i}) {')
 		if node.val_var != '_' {
 			if mut val_sym.info is ast.FnType {
 				g.write('\t')
@@ -308,7 +308,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		cond_sym := g.table.final_sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
-		g.writeln('for (int ${idx} = 0; ${idx} != ${info.size}; ++${idx}) {')
+		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} != ${info.size}; ++${idx}) {')
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
 			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
@@ -357,12 +357,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		idx := g.new_tmp_var()
 		map_len := g.new_tmp_var()
 		g.empty_line = true
-		g.writeln('int ${map_len} = ${cond_var}${dot_or_ptr}key_values.len;')
-		g.writeln('for (int ${idx} = 0; ${idx} < ${map_len}; ++${idx} ) {')
+		g.writeln('${ast.int_type_name} ${map_len} = ${cond_var}${dot_or_ptr}key_values.len;')
+		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${map_len}; ++${idx} ) {')
 		// TODO: don't have this check when the map has no deleted elements
 		g.indent++
 		diff := g.new_tmp_var()
-		g.writeln('int ${diff} = ${cond_var}${dot_or_ptr}key_values.len - ${map_len};')
+		g.writeln('${ast.int_type_name} ${diff} = ${cond_var}${dot_or_ptr}key_values.len - ${map_len};')
 		g.writeln('${map_len} = ${cond_var}${dot_or_ptr}key_values.len;')
 		// TODO: optimize this
 		g.writeln('if (${diff} < 0) {')
@@ -413,7 +413,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		g.write('for (int ${i} = 0; ${i} < ')
+		g.write('for (${ast.int_type_name} ${i} = 0; ${i} < ')
 		g.expr(cond)
 		g.writeln('${field_accessor}len; ++${i}) {')
 		if node.val_var != '_' {
@@ -522,7 +522,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 
 	if node.kind == .map {
 		// diff := g.new_tmp_var()
-		// g.writeln('int $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
+		// g.writeln('${ast.int_type_name} $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
 		// g.writeln('if ($diff < 0) {')
 		// g.writeln('\t$idx = -1;')
 		// g.writeln('\t$map_len = $cond_var${arw_or_pt}key_values.len;')

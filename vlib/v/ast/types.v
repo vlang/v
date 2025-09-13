@@ -625,18 +625,46 @@ pub fn (typ Type) is_unsigned() bool {
 
 pub fn (typ Type) flip_signedness() Type {
 	return match typ {
-		i8_type { u8_type }
-		i16_type { u16_type }
-		int_type { u32_type }
-		i32_type { u32_type }
-		isize_type { usize_type }
-		i64_type { u64_type }
-		u8_type { i8_type }
-		u16_type { i16_type }
-		u32_type { int_type }
-		usize_type { isize_type }
-		u64_type { i64_type }
-		else { typ }
+		i8_type {
+			u8_type
+		}
+		i16_type {
+			u16_type
+		}
+		i32_type {
+			u32_type
+		}
+		i64_type {
+			u64_type
+		}
+		int_type {
+			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+				u64_type
+			} $else {
+				u32_type
+			}
+		}
+		isize_type {
+			usize_type
+		}
+		u8_type {
+			i8_type
+		}
+		u16_type {
+			i16_type
+		}
+		u32_type {
+			i32_type
+		}
+		u64_type {
+			i64_type
+		}
+		usize_type {
+			isize_type
+		}
+		else {
+			void_type
+		}
 	}
 }
 
@@ -699,18 +727,18 @@ pub const error_type_idx = 30
 pub const nil_type_idx = 31
 
 // Note: builtin_type_names must be in the same order as the idx consts above
-pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64',
-	'isize', 'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
-	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'nil',
-	'i32']
+pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'i32', 'int',
+	'i64', 'isize', 'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none',
+	'string', 'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread',
+	'Error', 'nil']
 
 pub const builtin_type_names_matcher = token.new_keywords_matcher_from_array_trie(builtin_type_names)
 
-pub const integer_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
-	u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx, int_literal_type_idx,
-	rune_type_idx, i32_type_idx]
-pub const signed_integer_type_idxs = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
-	i64_type_idx, i32_type_idx, isize_type_idx]
+pub const integer_type_idxs = [i8_type_idx, i16_type_idx, i32_type_idx, int_type_idx, i64_type_idx,
+	u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
+	int_literal_type_idx, rune_type_idx]
+pub const signed_integer_type_idxs = [char_type_idx, i8_type_idx, i16_type_idx, i32_type_idx,
+	int_type_idx, i64_type_idx, isize_type_idx]
 pub const unsigned_integer_type_idxs = [u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
 	usize_type_idx]
 // C will promote any type smaller than int to int in an expression
@@ -1161,7 +1189,7 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 @[inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	res := t.kind in [.i8, .i16, .int, .i64, .i32, .isize, .u8, .u16, .u32, .u64, .usize,
+	res := t.kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize,
 		.int_literal, .rune]
 	if !res && t.kind == .alias {
 		return (t.info as Alias).parent_type.is_int()
@@ -1232,14 +1260,9 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 			align = 4
 		}
 		.int {
-			$if new_int ? {
-				$if arm64 || amd64 {
-					size = 8
-					align = 8
-				} $else {
-					size = 4
-					align = 4
-				}
+			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+				size = 8
+				align = 8
 			} $else {
 				size = 4
 				align = 4

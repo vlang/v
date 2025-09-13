@@ -501,9 +501,18 @@ fn (mut c Amd64) inc_var(var Var, config VarConfig) {
 					c.g.write16(0xFF48)
 					size_str = 'QWORD'
 				}
-				ast.i32_type_idx, ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
+				ast.i32_type_idx, ast.u32_type_idx, ast.rune_type_idx {
 					c.g.write8(0xFF)
 					size_str = 'DWORD'
+				}
+				ast.int_type_idx {
+					$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+						c.g.write16(0xFF48)
+						size_str = 'QWORD'
+					} $else {
+						c.g.write8(0xFF)
+						size_str = 'DWORD'
+					}
 				}
 				ast.i16_type_idx, ast.u16_type_idx {
 					c.g.write8(0xFF)
@@ -764,12 +773,24 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 						c.g.write16(0x8948 + if is_extended_register { i32(4) } else { i32(0) })
 						size_str = 'QWORD'
 					}
-					ast.i32_type_idx, ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
+					ast.i32_type_idx, ast.u32_type_idx, ast.rune_type_idx {
 						if is_extended_register {
 							c.g.write8(0x44)
 						}
 						c.g.write8(0x89)
 						size_str = 'DWORD'
+					}
+					ast.int_type_idx {
+						$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+							c.g.write16(0x8948 + if is_extended_register { i32(4) } else { i32(0) })
+							size_str = 'QWORD'
+						} $else {
+							if is_extended_register {
+								c.g.write8(0x44)
+							}
+							c.g.write8(0x89)
+							size_str = 'DWORD'
+						}
 					}
 					ast.i16_type_idx, ast.u16_type_idx {
 						c.g.write8(0x66)
@@ -904,7 +925,7 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 					c.g.write16(u16(integer))
 					c.g.println('mov WORD PTR[rbp-${int(offset).hex2()}], ${integer}')
 				}
-				ast.i32_type_idx, ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
+				ast.i32_type_idx, ast.u32_type_idx, ast.rune_type_idx {
 					c.g.write8(0xc7)
 					c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
 					if is_far_var {
@@ -914,6 +935,30 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 					}
 					c.g.write32(integer)
 					c.g.println('mov DWORD PTR[rbp-${int(offset).hex2()}], ${integer}')
+				}
+				ast.int_type_idx {
+					$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+						c.g.write8(0x48)
+						c.g.write8(0xc7)
+						c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
+						if is_far_var {
+							c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
+						} else {
+							c.g.write8((0xff - offset + 1) % 0x100)
+						}
+						c.g.write32(integer)
+						c.g.println('mov QWORD PTR[rbp-${int(offset).hex2()}], ${integer}')
+					} $else {
+						c.g.write8(0xc7)
+						c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
+						if is_far_var {
+							c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
+						} else {
+							c.g.write8((0xff - offset + 1) % 0x100)
+						}
+						c.g.write32(integer)
+						c.g.println('mov DWORD PTR[rbp-${int(offset).hex2()}], ${integer}')
+					}
 				}
 				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
 				ast.int_literal_type_idx {
@@ -3950,7 +3995,7 @@ fn (mut c Amd64) zero_fill(size i32, var LocalVar) {
 		left -= 8
 	}
 	if left >= 4 {
-		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.int_type_idx)
+		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i32_type_idx)
 		left -= 4
 	}
 	if left >= 2 {

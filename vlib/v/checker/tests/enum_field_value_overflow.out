@@ -1,5 +1,5 @@
-vlib/v/checker/tests/enum_field_value_overflow.vv:3:10: error: enum value `2147483648` overflows the enum type `int`, values of which have to be in [-2147483648, 2147483647]
-    1 | enum Color {
+vlib/v/checker/tests/enum_field_value_overflow.vv:3:10: error: enum value `2147483648` overflows the enum type `i32`, values of which have to be in [-2147483648, 2147483647]
+    1 | enum Color as i32 {
     2 |     red
     3 |     green = 2147483648
       |             ~~~~~~~~~~
@@ -40,8 +40,8 @@ vlib/v/checker/tests/enum_field_value_overflow.vv:21:10: error: enum value `3276
       |             ~~~~~
    22 |     blue
    23 | }
-vlib/v/checker/tests/enum_field_value_overflow.vv:27:10: error: enum value `2147483648` overflows the enum type `int`, values of which have to be in [-2147483648, 2147483647]
-   25 | enum ColorI32 {
+vlib/v/checker/tests/enum_field_value_overflow.vv:27:10: error: enum value `2147483648` overflows the enum type `i32`, values of which have to be in [-2147483648, 2147483647]
+   25 | enum ColorI32 as i32 {
    26 |     red
    27 |     green = 2147483648
       |             ~~~~~~~~~~

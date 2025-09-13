@@ -384,7 +384,7 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tfor (int i = 0; i < ${left_len}; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${left_len}; ++i) {')
 	// compare every pair of elements of the two arrays
 	if elem.sym.kind == .string {
 		fn_builder.writeln('\t\tif (!builtin__string__eq(*((${ptr_elem_styp}*)((byte*)${left_data}+(i*${left_elem}))), *((${ptr_elem_styp}*)((byte*)${right_data}+(i*${right_elem}))))) {')
@@ -473,7 +473,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 		fn_builder.writeln('\t\treturn true;')
 		fn_builder.writeln('\t}')
 	}
-	fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${size}; ++i) {')
 	// compare every pair of elements of the two fixed arrays
 	if elem.sym.kind == .string {
 		fn_builder.writeln('\t\tif (!builtin__string__eq(((string*)${left})[i], ((string*)${right})[i])) {')
@@ -538,7 +538,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tfor (int i = 0; i < ${key_values}.len; ++i) {')
+	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${key_values}.len; ++i) {')
 	fn_builder.writeln('\t\tif (!builtin__DenseArray_has_index(&${key_values}, i)) continue;')
 	fn_builder.writeln('\t\tvoidptr k = builtin__DenseArray_key(&${key_values}, i);')
 	fn_builder.writeln('\t\tif (!builtin__map_exists(${b}, k)) return false;')
@@ -628,7 +628,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 
 	fn_builder.writeln('${g.static_non_parallel}inline bool ${fn_name}_interface_eq(${ptr_styp} a, ${ptr_styp} b) {')
 	fn_builder.writeln('\tif (${left_arg} == ${right_arg}) {')
-	fn_builder.writeln('\t\tint idx = v_typeof_interface_idx_${idx_fn}(${left_arg});')
+	fn_builder.writeln('\t\tu32 idx = v_typeof_interface_idx_${idx_fn}(${left_arg});')
 	if info is ast.Interface {
 		for typ in info.types {
 			sym := g.table.sym(typ.set_nr_muls(0))

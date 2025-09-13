@@ -188,7 +188,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 
 	sym := g.table.sym(g.unwrap_generic(info.elem_type))
 	if sym.kind in [.string, .array, .map, .struct] {
-		fn_builder.writeln('\tfor (int i = 0; i < it->len; i++) {')
+		fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < it->len; i++) {')
 
 		mut elem_styp := g.styp(info.elem_type).replace('*', '')
 		mut elem_styp_fn_name := if sym.has_method('free') {

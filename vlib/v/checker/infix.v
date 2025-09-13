@@ -651,22 +651,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else if left_type.is_unsigned() {
 				left_type
 			} else {
-				// signed types' idx adds with 5 will get correct relative unsigned type
-				// i8 	=> byte
-				// i16 	=> u16
-				// int  	=> u32
-				// i64  	=> u64
-				// isize	=> usize
-				// i128 	=> u128 NOT IMPLEMENTED YET
-				ast.idx_to_type(match left_type.idx() {
-					ast.i8_type_idx { ast.u8_type_idx }
-					ast.i16_type_idx { ast.u16_type_idx }
-					ast.i32_type_idx { ast.u32_type_idx }
-					ast.int_type_idx { ast.u32_type_idx }
-					ast.i64_type_idx { ast.u64_type_idx }
-					ast.isize_type_idx { ast.usize_type_idx }
-					else { 0 }
-				})
+				unsigned_type := left_type.flip_signedness()
+				if unsigned_type == ast.void_type {
+					// signed type can't convert to an unsigned type
+					0
+				}
+				unsigned_type
 			}
 
 			if modified_left_type == 0 {

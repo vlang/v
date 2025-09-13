@@ -152,7 +152,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	} else if sym.info is ast.ArrayFixed {
 		g.write('${sym.info.size}')
 	} else {
-		g.write('2147483647') // max_int
+		g.write('${max_int}')
 	}
 	g.write(')')
 

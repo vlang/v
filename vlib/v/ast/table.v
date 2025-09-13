@@ -1340,7 +1340,7 @@ pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool)
 	)
 }
 
-pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
+pub fn (mut t Table) add_placeholder_type(name string, cname string, language Language) int {
 	mut modname := ''
 	if name.contains('.') {
 		modname = name.all_before_last('.')
@@ -1348,7 +1348,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 	ph_type := TypeSymbol{
 		kind:       .placeholder
 		name:       name
-		cname:      util.no_dots(name).replace_each(['&', ''])
+		cname:      util.no_dots(cname).replace_each(['&', ''])
 		language:   language
 		mod:        modname
 		is_pub:     true
@@ -1591,7 +1591,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 			return i16_type
 		}
 		32 {
-			return int_type
+			return i32_type
 		}
 		64 {
 			return i64_type
@@ -1854,6 +1854,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 			if sym.info.is_generic {
 				mut nrt := '${sym.name}['
 				mut rnrt := '${sym.rname}['
+				mut cnrt := '${sym.cname}['
 				mut t_generic_names := generic_names.clone()
 				mut t_to_types := to_types.clone()
 				if sym.generic_types.len > 0 && sym.generic_types.len == sym.info.generic_types.len
@@ -1886,9 +1887,11 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 						}
 						nrt += gts.name
 						rnrt += gts.name
+						cnrt += gts.cname
 						if i != sym.info.generic_types.len - 1 {
 							nrt += ', '
 							rnrt += ', '
+							cnrt += ', '
 						}
 					} else {
 						return none
@@ -1896,11 +1899,12 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 				}
 				nrt += ']'
 				rnrt += ']'
+				cnrt += ']'
 				mut idx := t.type_idxs[nrt]
 				if idx == 0 {
 					idx = t.type_idxs[rnrt]
 					if idx == 0 {
-						idx = t.add_placeholder_type(nrt, .v)
+						idx = t.add_placeholder_type(nrt, cnrt, .v)
 					}
 				}
 				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)

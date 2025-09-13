@@ -20,3 +20,8 @@ fn test_abs() {
 	assert math.abs(1.2345) == 1.2345
 	assert math.abs(-5.5) == 5.5
 }
+
+fn test_max_min_int_has_type_of_int() {
+	assert math.max(int(100), min_int) == 100
+	assert math.min(int(100), max_int) == 100
+}
