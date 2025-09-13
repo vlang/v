@@ -114,6 +114,7 @@ mut:
 	gen_asm_stmt(asm_node ast.AsmStmt)
 	gen_cast_expr(expr ast.CastExpr)
 	gen_exit(expr ast.Expr)
+	gen_index_expr(ast.IndexExpr)
 	gen_match_expr(expr ast.MatchExpr)
 	gen_print_reg(r Register, n i32, fd i32)
 	gen_print(s string, fd i32)

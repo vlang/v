@@ -150,28 +150,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.gen_sizeof_expr(node)
 		}
 		ast.IndexExpr {
+			g.code_gen.gen_index_expr(node)
 			if node.left_type.is_string() {
-				g.expr(node.index)
-				g.code_gen.push(Amd64Register.rax)
-
-				g.expr(node.left) // load address of string struct
-				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u64_type_idx) // load value of the str pointer
-
-				g.code_gen.pop2(Amd64Register.rdx) // index
-				g.code_gen.add_reg2(Amd64Register.rax, Amd64Register.rdx) // add the offset to the address
 				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u8_type_idx)
-			} else if node.left_type.is_any_kind_of_pointer() {
-				// load the pointer
-				g.expr(node.left)
-				g.code_gen.mov_reg(Amd64Register.rcx, Amd64Register.rax)
-				// add the index times the size (bytes) of the type
-				g.expr(node.index)
-				g.code_gen.mov(Amd64Register.rbx, i32(g.get_type_size(node.typ)))
-				g.code_gen.mul_reg_main(Amd64Register.rbx)
-				g.code_gen.add_reg2(Amd64Register.rax, Amd64Register.rcx)
-				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, node.typ)
 			} else {
-				g.n_error('${@LOCATION} expr: unhandled node type: Index expr is not applied on string')
+				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, node.typ)
 			}
 		}
 		else {
@@ -199,8 +182,11 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 			ast.Enum {
 				g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
 			}
+			ast.Array {
+				g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), g.get_var_offset(ident.name))
+			}
 			else {
-				g.n_error('${@LOCATION} Unsupported variable type')
+				g.n_error('${@LOCATION} Unsupported variable type ${ts.info}')
 			}
 		}
 	}
@@ -573,19 +559,8 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 		ast.ArrayInit {
 			g.expr(node) // TODO: add a test that uses this
 		}
-		ast.IndexExpr { // TODO
-			if node.left_type.is_any_kind_of_pointer() {
-				// load the pointer
-				g.expr(node.left)
-				g.code_gen.mov_reg(Amd64Register.rcx, Amd64Register.rax)
-				// add the index times the size (bytes) of the type
-				g.expr(node.index)
-				g.code_gen.mov(Amd64Register.rbx, i32(g.get_type_size(node.typ)))
-				g.code_gen.mul_reg_main(Amd64Register.rbx)
-				g.code_gen.add_reg2(Amd64Register.rax, Amd64Register.rcx)
-			} else {
-				g.n_error('${@LOCATION} Unsupported IndexExpr left value')
-			}
+		ast.IndexExpr {
+			g.code_gen.gen_index_expr(node)
 		}
 		ast.PrefixExpr {
 			if node.op != .mul {

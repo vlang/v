@@ -558,3 +558,7 @@ fn (mut c Arm64) patch_relative_jmp(pos i32, addr i64) {
 fn (mut c Arm64) mul_reg_main(b Register) {
 	panic('Arm64.mul_reg_main() not implemented')
 }
+
+fn (mut c Arm64) gen_index_expr(node ast.IndexExpr) {
+	panic('Arm64.gen_index_expr{) not implemented')
+}
