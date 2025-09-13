@@ -18,12 +18,12 @@ concurrency:
 
 jobs:
   toml-module-pass-external-test-suites:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
       - name: Install dependencies
         run: |
           v retry -- v download https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64

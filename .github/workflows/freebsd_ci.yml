@@ -24,7 +24,7 @@ on:
 
 jobs:
   tcc-freebsd:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -50,7 +50,7 @@ jobs:
             ./v run ci/freebsd_ci.vsh all
 
   clang-freebsd:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -76,7 +76,7 @@ jobs:
             ./v run ci/freebsd_ci.vsh all
 
   gcc-freebsd:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5

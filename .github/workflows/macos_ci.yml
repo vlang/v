@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
       - name: Test symlink
         run: v run ci/macos_ci.vsh test_symlink
       - name: v doctor

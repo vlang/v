@@ -13,11 +13,14 @@ description: 'Cache all commonly used apt packages to speed up CI jobs'
 runs:
   using: 'composite'
   steps:
-    - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
+    - id: check-for-linux
+      if: runner.os == 'Linux'
+      uses: awalsh128/cache-apt-pkgs-action@v1.5.3
       with:
         version: 1.0
         packages: expect binutils postgresql sqlite3 clang valgrind \
-          imagemagick openimageio-tools xvfb xsel xclip \
+          imagemagick graphicsmagick-imagemagick-compat openimageio-tools xvfb xsel xclip \
+          liblapack3 libopenblas-base liblapacke-dev libopenblas-dev libopenmpi-dev \
           libsodium-dev libpq-dev libssl-dev libsqlite3-dev \
           libfreetype6-dev libxi-dev libxcursor-dev \
           libgl-dev libxrandr-dev libasound2-dev \
@@ -25,6 +28,3 @@ runs:
           libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-net-dev \
           libpng-dev libsamplerate0-dev \
           xfonts-75dpi xfonts-base
-    - name: Install common packages
-      run: echo "done installing packages"
-      shell: bash
