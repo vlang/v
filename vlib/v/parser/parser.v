@@ -2446,9 +2446,11 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		p.attrs = []
 	}
 	mut is_markused := false
+	mut is_exported := false
 	for ga in attrs {
 		match ga.name {
 			'markused' { is_markused = true }
+			'export' { is_exported = true }
 			else {}
 		}
 	}
@@ -2538,6 +2540,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			comments:     comments
 			end_comments: end_comments
 			is_markused:  is_markused
+			is_exported:  is_exported
 			is_virtual_c: is_virtual_c_const
 		}
 		if is_virtual_c_const {

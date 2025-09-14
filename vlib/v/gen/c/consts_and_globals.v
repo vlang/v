@@ -33,18 +33,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			}
 		}
 		name := c_name(field.name)
-		mut const_name := '_const_' + name
-		if g.pref.translated && !g.is_builtin_mod
-			&& !util.module_is_builtin(field.name.all_before_last('.')) {
-			if name.starts_with('main__') {
-				const_name = name.all_after_first('main__')
-			}
-		}
-		if !g.is_builtin_mod {
-			if cattr := node.attrs.find_first('export') {
-				const_name = cattr.arg
-			}
-		}
+		const_name := g.c_const_name(field.name)
 		field_expr := field.expr
 		match field.expr {
 			ast.ArrayInit {
@@ -63,10 +52,11 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				} else if field.expr.is_fixed && !field.expr.has_index
 					&& ((g.is_cc_msvc && field.expr.elem_type == ast.string_type)
 					|| !elems_are_const) {
-					g.const_decl_init_later_msvc_string_fixed_array(field.mod, name, field.expr,
-						field.typ)
+					g.const_decl_init_later_msvc_string_fixed_array(field.mod, name, const_name,
+						field.expr, field.typ)
 				} else {
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
+					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,
+						false)
 				}
 			}
 			ast.StringLiteral {
@@ -85,10 +75,12 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					old_inside_const_opt_or_res := g.inside_const_opt_or_res
 					g.inside_const_opt_or_res = true
 					unwrap_opt_res := field.expr.or_block.kind != .absent
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, unwrap_opt_res)
+					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,
+						unwrap_opt_res)
 					g.inside_const_opt_or_res = old_inside_const_opt_or_res
 				} else {
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
+					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,
+						false)
 				}
 			}
 			else {
@@ -105,8 +97,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				use_cache_mode := g.pref.build_mode == .build_module || g.pref.use_cache
 				if !use_cache_mode {
 					if ct_value := field.comptime_expr_value() {
-						if g.const_decl_precomputed(field.mod, name, field.name, ct_value,
-							field.typ)
+						if g.const_decl_precomputed(field.mod, name, const_name, field.name,
+							ct_value, field.typ)
 						{
 							continue
 						}
@@ -115,7 +107,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				if field.is_simple_define_const() {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
-					g.const_decl_simple_define(field.mod, field.name, g.expr_string(field_expr))
+					g.const_decl_simple_define(field.mod, field.name, const_name, g.expr_string(field_expr))
 				} else if field.expr is ast.CastExpr {
 					if field.expr.expr is ast.ArrayInit {
 						if field.expr.expr.is_fixed && g.pref.build_mode != .build_module {
@@ -131,7 +123,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					}
 					should_surround := field.expr.expr is ast.CallExpr
 						&& field.expr.expr.or_block.kind != .absent
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, should_surround)
+					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,
+						should_surround)
 				} else if field.expr is ast.InfixExpr {
 					mut has_unwrap_opt_res := false
 					if field.expr.left is ast.CallExpr {
@@ -139,19 +132,20 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					} else if field.expr.right is ast.CallExpr {
 						has_unwrap_opt_res = field.expr.right.or_block.kind != .absent
 					}
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, has_unwrap_opt_res)
+					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,
+						has_unwrap_opt_res)
 				} else {
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, true)
+					g.const_decl_init_later(field.mod, name, const_name, field.expr, field.typ,
+						true)
 				}
 			}
 		}
 	}
 }
 
-fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string, ct_value ast.ComptTimeConstValue,
+fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, field_name string, ct_value ast.ComptTimeConstValue,
 	typ ast.Type) bool {
 	mut styp := g.styp(typ)
-	cname := if g.pref.translated && !g.is_builtin_mod { name } else { '_const_${name}' }
 	$if trace_const_precomputed ? {
 		eprintln('> styp: ${styp} | cname: ${cname} | ct_value: ${ct_value} | ${ct_value.type_name()}')
 	}
@@ -179,7 +173,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 				// with -cstrict. Add checker errors for overflows instead,
 				// so V can catch them earlier, instead of relying on the
 				// C compiler for that.
-				g.const_decl_simple_define(mod, name, ct_value.str())
+				g.const_decl_simple_define(mod, name, cname, ct_value.str())
 				return true
 			}
 			if typ == ast.u64_type {
@@ -274,48 +268,52 @@ fn (mut g Gen) const_decl_write_precomputed(mod string, styp string, cname strin
 	}
 }
 
-fn (mut g Gen) const_decl_simple_define(mod string, name string, val string) {
+fn (mut g Gen) const_decl_simple_define(mod string, name string, cname string, val string) {
 	// Simple expressions should use a #define
 	// so that we don't pollute the binary with unnecessary global vars
 	// Do not do this when building a module, otherwise the consts
 	// will not be accessible.
-	mut x := util.no_dots(name)
-	if g.pref.translated && !g.is_builtin_mod && !util.module_is_builtin(name.all_before_last('.')) {
-		// Don't prepend "_const" to translated C consts,
-		// but only in user code, continue prepending "_const" to builtin consts.
-		if x.starts_with('main__') {
-			x = x['main__'.len..]
-		}
-	} else {
-		x = '_const_${x}'
-	}
 	if g.pref.translated {
 		g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 			mod:   mod
-			def:   'const ${ast.int_type_name} ${x} = ${val};'
+			def:   'const ${ast.int_type_name} ${cname} = ${val};'
 			order: -1
 		}
 	} else {
 		g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 			mod:   mod
-			def:   '#define ${x} ${val}'
+			def:   '#define ${cname} ${val}'
 			order: -1
 		}
 	}
 }
 
 fn (mut g Gen) c_const_name(name string) string {
-	return if g.pref.translated && !g.is_builtin_mod { name } else { '_const_${name}' }
+	if name in g.table.export_names {
+		// `@[export] name
+		return g.table.export_names[name]
+	}
+	mut const_name := util.no_dots(name)
+	if g.pref.translated && !g.is_builtin_mod && !util.module_is_builtin(name.all_before_last('.')) {
+		if name.starts_with('main.') {
+			const_name = util.no_dots(name.all_after_first('main.'))
+		}
+	}
+
+	return if g.pref.translated && !g.is_builtin_mod {
+		const_name
+	} else {
+		'_const_' + g.get_ternary_name(c_name(name))
+	}
 }
 
-fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, surround_cbr bool) {
+fn (mut g Gen) const_decl_init_later(mod string, name string, cname string, expr ast.Expr, typ ast.Type, surround_cbr bool) {
 	if name.starts_with('C__') {
 		return
 	}
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.styp(typ)
-	cname := g.c_const_name(name)
 	mut init := strings.new_builder(100)
 
 	if surround_cbr {
@@ -372,10 +370,9 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 	}
 }
 
-fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name string, expr ast.ArrayInit,
+fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name string, cname string, expr ast.ArrayInit,
 	typ ast.Type) {
 	mut styp := g.styp(typ)
-	cname := g.c_const_name(name)
 	mut init := strings.new_builder(100)
 	for i, elem_expr in expr.exprs {
 		if elem_expr is ast.ArrayInit && elem_expr.is_fixed {
