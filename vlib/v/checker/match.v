@@ -130,9 +130,14 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		if node.is_comptime {
 			// `idx_str` is composed of two parts:
 			// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
-			// The second part indicates the branch's location in the source file.
+			// The second part is the branch's id.
 			// This format must match what is in `cgen`.
-			idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.pos}|'
+			if branch.id == 0 {
+				// this is a new branch, alloc a new id for it
+				c.cur_ct_id++
+				branch.id = c.cur_ct_id
+			}
+			idx_str := comptime_branch_context_str + '|id=${branch.id}|'
 			mut c_str := ''
 			if !branch.is_else {
 				if c.inside_x_matches_type {
