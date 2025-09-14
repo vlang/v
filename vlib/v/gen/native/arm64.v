@@ -554,3 +554,11 @@ fn (mut c Arm64) mov_deref(reg Register, regptr Register, typ ast.Type) {
 fn (mut c Arm64) patch_relative_jmp(pos i32, addr i64) {
 	panic('Arm64.patch_relative_jmp() not implemented')
 }
+
+fn (mut c Arm64) mul_reg_main(b Register) {
+	panic('Arm64.mul_reg_main() not implemented')
+}
+
+fn (mut c Arm64) gen_index_expr(node ast.IndexExpr) {
+	panic('Arm64.gen_index_expr{) not implemented')
+}

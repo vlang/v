@@ -1798,6 +1798,10 @@ fn (mut c Amd64) mov(r Register, val i32) {
 	}
 }
 
+fn (mut c Amd64) mul_reg_main(b Register) {
+	c.mul_reg_rax(b as Amd64Register)
+}
+
 // rax times b
 fn (mut c Amd64) mul_reg_rax(b Amd64Register) {
 	match b {
@@ -2510,8 +2514,46 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 		ast.ArrayInit {
 			match node.op {
 				.decl_assign {
-					c.g.allocate_by_type(name, right.typ)
-					c.init_array(ident, right)
+					if right.is_fixed {
+						c.g.n_error('${@LOCATION} Unexpected operator `${node.op}`')
+					} else {
+						c.g.allocate_by_type(ident.name, ast.array_type)
+						len := ast.CallArg{
+							expr: if right.has_len {
+								right.len_expr
+							} else {
+								ast.IntegerLiteral{'0', right.pos}
+							}
+							typ:  ast.int_type
+							pos:  right.pos
+						}
+						cap := ast.CallArg{
+							expr: if right.has_cap {
+								right.cap_expr
+							} else {
+								ast.IntegerLiteral{'0', right.pos}
+							}
+							typ:  ast.int_type
+							pos:  right.pos
+						}
+						size := ast.CallArg{
+							expr: ast.IntegerLiteral{c.g.get_type_size(right.elem_type).str(), right.pos}
+							typ:  ast.int_type
+							pos:  right.pos
+						}
+						c.call_fn(ast.CallExpr{
+							pos:                right.pos
+							name:               '__new_array'
+							args:               [len, cap, size]
+							expected_arg_types: [ast.int_type, ast.int_type, ast.int_type]
+							language:           .v
+							return_type:        ast.array_type
+							nr_ret_values:      1
+							is_return_used:     true
+						})
+						c.lea_var_to_reg(Amd64Register.rdx, c.g.get_var_offset(ident.name))
+						c.move_struct(.rax, .rdx, c.g.get_type_size(ast.array_type))
+					}
 				}
 				else {
 					c.g.n_error('${@LOCATION} Unexpected operator `${node.op}`')
@@ -2671,6 +2713,42 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 			c.mov_reg_to_var(ident, Amd64Register.eax)
 		}
 	}*/
+}
+
+fn (mut c Amd64) gen_index_expr(node ast.IndexExpr) {
+	if node.left_type.is_string() {
+		c.g.expr(node.index)
+		c.push(Amd64Register.rax)
+
+		c.g.expr(node.left) // load address of string struct
+		c.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u64_type_idx) // load value of the str pointer
+
+		c.pop2(Amd64Register.rdx) // index
+		c.add_reg2(Amd64Register.rax, Amd64Register.rdx) // add the offset to the address
+	} else if node.left_type.is_any_kind_of_pointer() {
+		// load the pointer
+		c.g.expr(node.left)
+		c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+		// add the index times the size (bytes) of the type
+		c.g.expr(node.index)
+		c.mov(Amd64Register.rbx, i32(c.g.get_type_size(node.typ)))
+		c.mul_reg_main(Amd64Register.rbx)
+		c.add_reg2(Amd64Register.rax, Amd64Register.rcx)
+	} else if node.is_array {
+		c.g.expr(node.left)
+		offset := c.g.get_field_offset(ast.array_type, 'data')
+		if offset != 0 {
+			c.add(Amd64Register.rax, offset)
+		}
+		c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+		// add the index times the size (bytes) of the type
+		c.g.expr(node.index)
+		c.mov(Amd64Register.rbx, i32(c.g.get_type_size(node.typ)))
+		c.mul_reg_main(Amd64Register.rbx)
+		c.add_reg2(Amd64Register.rax, Amd64Register.rcx)
+	} else {
+		c.g.n_error('${@LOCATION} index expr: unhandled node type {node}')
+	}
 }
 
 // /!\ for div, mul, mod the left value should always be .rax
@@ -3109,7 +3187,6 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 				c.push(c.main_reg())
 				c.g.gen_left_value(left)
 				c.mov_reg(Amd64Register.rbx, Amd64Register.rax) // effective address of the left expr
-				c.mov_deref(Amd64Register.rax, Amd64Register.rbx, var_type) // value of left expr
 				c.pop(.rcx) // value of right expr
 				c.gen_type_promotion(node.right_types[0], var_type)
 
@@ -3124,14 +3201,17 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 						c.mov_store(.rbx, .rcx, size)
 					}
 					.boolean_and_assign {
+						c.mov_deref(Amd64Register.rax, Amd64Register.rbx, var_type) // value of left expr
 						c.bitand_reg(.rax, .rcx)
 						c.mov_store(.rbx, .rax, size)
 					}
 					.boolean_or_assign {
+						c.mov_deref(Amd64Register.rax, Amd64Register.rbx, var_type) // value of left expr
 						c.bitor_reg(.rax, .rcx)
 						c.mov_store(.rbx, .rax, size)
 					}
 					else {
+						c.mov_deref(Amd64Register.rax, Amd64Register.rbx, var_type) // value of left expr
 						c.apply_op_int(.rax, .rcx, node.op)
 						c.mov_store(.rbx, .rax, size)
 					}

@@ -1,3 +1,13 @@
 fn main() {
 	assert [1, 2, 3] != []
+	mut my_array := []int{len:3}
+	my_array[0] = 4
+	my_array[1] = 5
+	my_array[2] = 6
+	println(my_array[0])
+	println(my_array[1])
+	println(my_array[2])
+	assert my_array[0] == 4
+	assert my_array[1] == 5
+	assert my_array[2] == 6
 }
