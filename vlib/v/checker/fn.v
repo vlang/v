@@ -119,7 +119,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					// export fn name
 					fn_name := attr.arg
 					if attr.kind != .string {
-						c.error("export name `'${fn_name}'` should be a string", node.pos)
+						c.error("export name `${fn_name}` should be a string `'${fn_name}'` ",
+							node.pos)
 					}
 					if !fn_name.is_identifier() {
 						c.error('export name `${fn_name}` should be a valid identifier',

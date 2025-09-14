@@ -25,3 +25,10 @@ vlib/v/checker/tests/redfine_global_const_fn_names.vv:21:1: error: export name `
    21 | fn fn_abc3() {
       | ~~~~~~~~~~~~
    22 | }
+   23 |
+vlib/v/checker/tests/redfine_global_const_fn_names.vv:25:1: error: export name `xyz` should be a string `'xyz'` 
+   23 | 
+   24 | @[export: xyz]
+   25 | fn fn_xyz() {
+      | ~~~~~~~~~~~
+   26 | }

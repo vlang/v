@@ -20,3 +20,7 @@ fn fn_abc2() {
 @[export: 'abc.dd']
 fn fn_abc3() {
 }
+
+@[export: xyz]
+fn fn_xyz() {
+}
