@@ -114,6 +114,10 @@ pub fn smart_quote(str string, raw bool) string {
 			skip_next = true
 			continue
 		}
+		// protect against '\u005c${...}'
+		if next == 0 && current == backslash {
+			continue
+		}
 		if !raw {
 			if current == `$` {
 				if last == backslash {
