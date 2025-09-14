@@ -2717,7 +2717,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				if arg.expr.is_lvalue() {
 					if expected_type.has_flag(.option) {
 						if expected_type.has_flag(.option_mut_param_t) {
-							g.write('(${g.styp(expected_type)})&')
+							g.write('&')
 						}
 						g.expr_with_opt(arg.expr, arg_typ, expected_type)
 						return
