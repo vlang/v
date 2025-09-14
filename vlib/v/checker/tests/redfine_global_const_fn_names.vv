@@ -3,17 +3,20 @@ module main
 
 __global abc = 1
 
-@[export: abc]
+@[export: 'abc']
 const abc1 = 2
 
-@[export: abc]
+@[export: 'abc']
 const abc2 = 3
 
-@[export: fn1]
+@[export: 'fn1']
 fn fn_abc1() {
 }
 
-@[export: fn1]
+@[export: 'fn1']
 fn fn_abc2() {
 }
 
+@[export: 'abc.dd']
+fn fn_abc3() {
+}

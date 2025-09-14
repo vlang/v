@@ -101,8 +101,7 @@ pub mut:
 	comptime_is_true    map[string]ComptTimeCondResult // The evaluate cond results for different generic types combination, such as `comptime_is_true['T=int,X=string|main.v|pos ...'] = {true, '!DEFINED(WINDOWS)'}`
 	new_int             bool              // use 64bit/32bit platform dependent `int`
 	new_int_fmt_fix     bool              // vfmt will fix `int` to `i32`
-	export_const        map[string]string // @[export] const name
-	export_fn           map[string]string // @[export] func name
+	export_names        map[string]string // @[export] names
 }
 
 pub struct ComptTimeCondResult {

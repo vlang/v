@@ -1943,6 +1943,9 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	if export_attr := node.attrs.find_first('export') {
 		is_export = true
 		export_name = export_attr.arg
+		if export_name.len > 0 && export_attr.kind != .string {
+			c.error("export name `'${export_name}'` should be a string", node.pos)
+		}
 	}
 	for mut field in node.fields {
 		if reserved_type_names_chk.matches(util.no_cur_mod(field.name, c.mod)) {
@@ -1958,14 +1961,17 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		}
 		if is_export {
 			check_name := if export_name.len == 0 { field.name } else { export_name }
-			if check_name in c.table.export_const.values() {
+			if !check_name.is_identifier() {
+				c.error('export name `${check_name}` should be a valid identifier', node.pos)
+			}
+			if check_name in c.table.export_names.values() {
 				name_pos := token.Pos{
 					...field.pos
 					len: util.no_cur_mod(field.name, c.mod).len
 				}
-				c.error('duplicate export const `${check_name}`', name_pos)
+				c.error('duplicate export name `${check_name}`', name_pos)
 			} else {
-				c.table.export_const[field.name] = check_name
+				c.table.export_names[field.name] = check_name
 			}
 		}
 		if field.expr is ast.CallExpr {
@@ -2541,8 +2547,11 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 		if '${c.mod}.${field.name}' in c.const_names {
 			c.error('duplicate global and const `${field.name}`', field.pos)
 		}
-		if field.name in c.table.export_const.values() {
-			c.error('duplicate global and export const `${field.name}`', field.pos)
+		if field.name in c.table.export_names.values() {
+			c.error('duplicate export name `${field.name}`', field.pos)
+		} else {
+			// add global to exports for duplicate check
+			c.table.export_names[field.name] = field.name
 		}
 		sym := c.table.sym(field.typ)
 		if sym.kind == .placeholder {
