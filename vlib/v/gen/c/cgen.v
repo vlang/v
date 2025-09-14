@@ -5260,10 +5260,6 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
-fn (mut g Gen) get_const_name(node ast.Ident) string {
-	return g.c_const_name(node.name)
-}
-
 fn (mut g Gen) ident(node ast.Ident) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
@@ -5293,7 +5289,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				g.write('.data)')
 			}
 		}
-		g.write(g.get_const_name(node))
+		g.write(g.c_const_name(node.name))
 		return
 	}
 	mut is_auto_heap := node.is_auto_heap()
