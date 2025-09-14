@@ -1943,10 +1943,6 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	if export_attr := node.attrs.find_first('export') {
 		is_export = true
 		export_name = export_attr.arg
-		if export_name.len > 0 && export_attr.kind != .string {
-			c.error("export name `${export_name}` should be a string `'${export_name}'` ",
-				node.pos)
-		}
 	}
 	for mut field in node.fields {
 		if reserved_type_names_chk.matches(util.no_cur_mod(field.name, c.mod)) {
