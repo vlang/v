@@ -203,7 +203,7 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 
 pub fn (mut w Walker) mark_markused_consts() {
 	for ckey, mut constfield in w.all_consts {
-		if constfield.is_markused {
+		if constfield.is_markused || constfield.is_exported {
 			$if trace_skip_unused_markused_consts ? {
 				println('>>>> walking markused const: ${ckey}')
 			}

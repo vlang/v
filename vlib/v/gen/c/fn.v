@@ -2056,7 +2056,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	if node.is_fn_a_const {
-		name = g.c_const_name(node.const_name.replace('.', '__'))
+		name = g.c_const_name(node.const_name)
 	}
 	// TODO2
 	// cgen shouldn't modify ast nodes, this should be moved
