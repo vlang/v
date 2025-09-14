@@ -1937,6 +1937,13 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		c.warn('const () groups will be an error after 2025-01-01 (`v fmt -w source.v` will fix that for you)',
 			node.pos)
 	}
+
+	mut is_export := false
+	mut export_name := ''
+	if export_attr := node.attrs.find_first('export') {
+		is_export = true
+		export_name = export_attr.arg
+	}
 	for mut field in node.fields {
 		if reserved_type_names_chk.matches(util.no_cur_mod(field.name, c.mod)) {
 			c.error('invalid use of reserved type `${field.name}` as a const name', field.pos)
@@ -1948,6 +1955,18 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 				len: util.no_cur_mod(field.name, c.mod).len
 			}
 			c.error('duplicate const `${field.name}`', name_pos)
+		}
+		if is_export {
+			check_name := if export_name.len == 0 { field.name } else { export_name }
+			if check_name in c.table.export_const.values() {
+				name_pos := token.Pos{
+					...field.pos
+					len: util.no_cur_mod(field.name, c.mod).len
+				}
+				c.error('duplicate export const `${check_name}`', name_pos)
+			} else {
+				c.table.export_const[field.name] = check_name
+			}
 		}
 		if field.expr is ast.CallExpr {
 			sym := c.table.sym(c.check_expr_option_or_result_call(field.expr, c.expr(mut field.expr)))
@@ -2521,6 +2540,9 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 		}
 		if '${c.mod}.${field.name}' in c.const_names {
 			c.error('duplicate global and const `${field.name}`', field.pos)
+		}
+		if field.name in c.table.export_const.values() {
+			c.error('duplicate global and export const `${field.name}`', field.pos)
 		}
 		sym := c.table.sym(field.typ)
 		if sym.kind == .placeholder {

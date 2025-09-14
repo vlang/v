@@ -1,0 +1,21 @@
+vlib/v/checker/tests/redfine_global_const_fn_names.vv:10:7: error: duplicate export const `abc`
+    8 | 
+    9 | @[export: abc]
+   10 | const abc2 = 3
+      |       ~~~~
+   11 | 
+   12 | @[export: fn1]
+vlib/v/checker/tests/redfine_global_const_fn_names.vv:4:10: error: duplicate global and export const `abc`
+    2 | module main
+    3 | 
+    4 | __global abc = 1
+      |          ~~~
+    5 | 
+    6 | @[export: abc]
+vlib/v/checker/tests/redfine_global_const_fn_names.vv:17:1: error: redefine export function `fn1`
+   15 | 
+   16 | @[export: fn1]
+   17 | fn fn_abc2() {
+      | ~~~~~~~~~~~~
+   18 | }
+   19 |

@@ -1,0 +1,19 @@
+@[has_globals]
+module main
+
+__global abc = 1
+
+@[export: abc]
+const abc1 = 2
+
+@[export: abc]
+const abc2 = 3
+
+@[export: fn1]
+fn fn_abc1() {
+}
+
+@[export: fn1]
+fn fn_abc2() {
+}
+

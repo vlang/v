@@ -115,6 +115,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if attr := node.attrs.find_first(attr_name) {
 				if attr.arg == '' {
 					c.error('missing argument for @[${attr_name}] attribute', attr.pos)
+				} else if attr_name == 'export' {
+					// export fn name
+					if attr.arg in c.table.export_fn.values() {
+						c.error('redefine export function `${attr.arg}`', node.pos)
+					} else {
+						c.table.export_fn[node.name] = attr.arg
+					}
 				}
 			}
 		}
