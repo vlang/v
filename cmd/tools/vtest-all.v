@@ -4,6 +4,10 @@ import os
 import term
 import time
 
+type FnCheck = fn () !
+
+type OneOrManyStrings = string | []string
+
 const vexe_path = os.getenv('VEXE')
 
 const vroot = os.dir(vexe_path)
@@ -27,7 +31,7 @@ fn main() {
 	// summary
 	sw := time.new_stopwatch()
 	for mut cmd in commands {
-		cmd.run()
+		cmd.run()?
 	}
 	spent := sw.elapsed().milliseconds()
 	oks := commands.filter(it.ecode == 0)
@@ -55,16 +59,6 @@ enum RunCommandKind {
 	execute
 }
 
-const expect_nothing = '<nothing>'
-
-const starts_with_nothing = '<nothing>'
-
-const ends_with_nothing = '<nothing>'
-
-const contains_nothing = '<nothing>'
-
-type FnCheck = fn () !
-
 struct Command {
 mut:
 	line        string
@@ -72,12 +66,12 @@ mut:
 	ecode       int
 	okmsg       string
 	errmsg      string
-	rmfile      string
+	rmfile      ?OneOrManyStrings
 	runcmd      RunCommandKind = .system
-	expect      string         = expect_nothing
-	starts_with string         = starts_with_nothing
-	ends_with   string         = ends_with_nothing
-	contains    string         = contains_nothing
+	expect      ?string
+	starts_with ?string
+	ends_with   ?string
+	contains    ?string
 	output      string
 	before_cb   FnCheck = unsafe { nil }
 	after_cb    FnCheck = unsafe { nil }
@@ -228,18 +222,18 @@ fn get_all_commands() []Command {
 		res << Command{
 			line:   '${vexe} -os linux -experimental -b native -o hw.linux examples/hello_world.v'
 			okmsg:  'V compiles hello_world.v on the native backend for linux'
-			rmfile: 'hw.linux'
+			rmfile: ['hw.linux', 'hw.linux.o']
 		}
 		res << Command{
 			line:   '${vexe} -os macos -experimental -b native -o hw.macos examples/hello_world.v'
 			okmsg:  'V compiles hello_world.v on the native backend for macos'
-			rmfile: 'hw.macos'
+			rmfile: ['hw.macos', 'hw.macos.o']
 		}
 		$if windows {
 			res << Command{
 				line:   '${vexe} -os windows -experimental -b native -o hw.exe examples/hello_world.v'
 				okmsg:  'V compiles hello_world.v on the native backend for windows'
-				rmfile: 'hw.exe'
+				rmfile: ['hw.exe', 'hw.o']
 			}
 		}
 		//
@@ -447,7 +441,7 @@ fn get_all_commands() []Command {
 	return res
 }
 
-fn (mut cmd Command) run() {
+fn (mut cmd Command) run() ? {
 	// Changing the current directory is needed for some of the compiler tests,
 	// vlib/v/tests/local_test.v and vlib/v/tests/repl/repl_test.v
 	os.chdir(vroot) or {}
@@ -490,25 +484,25 @@ fn (mut cmd Command) run() {
 	if cmd.ecode != 0 {
 		is_failed = true
 	}
-	if cmd.expect != expect_nothing {
+	if cmd.expect != none {
 		if cmd.output != cmd.expect {
 			is_failed = true
 			is_failed_expected = true
 		}
 	}
-	if cmd.starts_with != starts_with_nothing {
+	if cmd.starts_with != none {
 		if !cmd.output.starts_with(cmd.starts_with) {
 			is_failed = true
 			is_failed_starts_with = true
 		}
 	}
-	if cmd.ends_with != ends_with_nothing {
+	if cmd.ends_with != none {
 		if !cmd.output.ends_with(cmd.ends_with) {
 			is_failed = true
 			is_failed_ends_with = true
 		}
 	}
-	if cmd.contains != contains_nothing {
+	if cmd.contains != none {
 		if !cmd.output.contains(cmd.contains) {
 			is_failed = true
 			is_failed_contains = true
@@ -523,25 +517,22 @@ fn (mut cmd Command) run() {
 		eprintln('>   output:\n${cmd.output}')
 	}
 	if is_failed && is_failed_starts_with {
-		eprintln('> expected to start with:\n${cmd.starts_with}')
-		eprintln('>                 output:\n${cmd.output#[..cmd.starts_with.len]}')
+		eprintln('> expected to start with:\n${cmd.starts_with?}')
+		eprintln('>                 output:\n${cmd.output#[..cmd.starts_with?.len]}')
 	}
 	if is_failed && is_failed_ends_with {
-		eprintln('> expected to end with:\n${cmd.ends_with}')
-		eprintln('>               output:\n${cmd.output#[-cmd.starts_with.len..]}')
+		eprintln('> expected to end with:\n${cmd.ends_with?}')
+		eprintln('>               output:\n${cmd.output#[-cmd.starts_with?.len..]}')
 	}
 	if is_failed && is_failed_contains {
-		eprintln('> expected to contain:\n${cmd.contains}')
+		eprintln('> expected to contain:\n${cmd.contains?}')
 		eprintln('>              output:\n${cmd.output}')
 	}
 	if vtest_nocleanup {
 		return
 	}
-	if cmd.rmfile != '' {
+	if cmd.rmfile != none {
 		mut file_existed := rm_existing(cmd.rmfile)
-		if os.user_os() == 'windows' {
-			file_existed = file_existed || rm_existing(cmd.rmfile + '.exe')
-		}
 		if !file_existed {
 			eprintln('Expected file did not exist: ${cmd.rmfile}')
 			cmd.ecode = 999
@@ -549,10 +540,33 @@ fn (mut cmd Command) run() {
 	}
 }
 
+fn rm_existing(paths OneOrManyStrings) bool {
+	match paths {
+		string {
+			return rm_existing_file(paths)
+		}
+		[]string {
+			mut existing := false
+			for path in paths {
+				existing ||= rm_existing_file(path)
+			}
+			return existing
+		}
+	}
+	return false
+}
+
 // try to remove a file, return if it existed before the removal attempt
-fn rm_existing(path string) bool {
-	existed := os.exists(path)
+fn rm_existing_file(path string) bool {
+	mut existed := os.exists(path)
 	os.rm(path) or {}
+
+	win_path := path + '.exe'
+	if os.exists(win_path) {
+		existed = true
+		os.rm(win_path) or {}
+	}
+
 	return existed
 }
 

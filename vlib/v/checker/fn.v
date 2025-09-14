@@ -115,6 +115,22 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if attr := node.attrs.find_first(attr_name) {
 				if attr.arg == '' {
 					c.error('missing argument for @[${attr_name}] attribute', attr.pos)
+				} else if attr_name == 'export' {
+					// export fn name
+					fn_name := attr.arg
+					if !fn_name.is_identifier() {
+						c.error('export name `${fn_name}` should be a valid identifier',
+							node.pos)
+					}
+					if fn_name in c.table.export_names.values() {
+						c.error('duplicate export name `${fn_name}`', node.pos)
+					} else {
+						mut node_name := node.name
+						if node.is_method {
+							node_name = c.table.type_to_str(node.receiver.typ) + '.' + node_name
+						}
+						c.table.export_names[node_name] = fn_name
+					}
 				}
 			}
 		}

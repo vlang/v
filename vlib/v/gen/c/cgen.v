@@ -5274,19 +5274,6 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
-fn (mut g Gen) get_const_name(node ast.Ident) string {
-	if g.pref.translated && !g.is_builtin_mod
-		&& !util.module_is_builtin(node.name.all_before_last('.')) {
-		mut x := util.no_dots(node.name)
-		if x.starts_with('main__') {
-			x = x['main__'.len..]
-		}
-		return x
-	} else {
-		return '_const_' + g.get_ternary_name(c_name(node.name))
-	}
-}
-
 fn (mut g Gen) ident(node ast.Ident) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
@@ -5308,28 +5295,16 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	if node.kind == .constant {
-		if g.pref.translated && !g.is_builtin_mod
-			&& !util.module_is_builtin(node.name.all_before_last('.')) {
-			// Don't prepend "_const" to translated C consts,
-			// but only in user code, continue prepending "_const" to builtin consts.
-			mut x := util.no_dots(node.name)
-			if x.starts_with('main__') {
-				x = x['main__'.len..]
-			}
-			g.write(x)
-			return
-		} else {
-			if g.inside_opt_or_res && node.or_expr.kind != .absent && node.obj.typ.has_flag(.option) {
-				styp := g.base_type(node.obj.typ)
-				g.write('(*(${styp}*)')
+		if g.inside_opt_or_res && node.or_expr.kind != .absent && node.obj.typ.has_flag(.option) {
+			styp := g.base_type(node.obj.typ)
+			g.write('(*(${styp}*)')
 
-				defer {
-					g.write('.data)')
-				}
+			defer {
+				g.write('.data)')
 			}
-			// TODO: globals hack
-			g.write('_const_')
 		}
+		g.write(g.c_const_name(node.name))
+		return
 	}
 	mut is_auto_heap := node.is_auto_heap()
 	mut is_option := false
