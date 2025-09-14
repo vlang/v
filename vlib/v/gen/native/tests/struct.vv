@@ -116,22 +116,22 @@ fn return_test() {
 
 struct Tree {
 mut:
-	leaf        Leaf
-	sp          Species
-	h           f32
-	age         int
-	big_leaf    BigLeaf
+        leaf Leaf
+        sp Species
+        h f32
+        age int
+	big_leaf BigLeaf
 	medium_leaf MediumLeaf
-	small_leaf  SmallLeaf
+	small_leaf SmallLeaf
 }
 
 enum Species {
-	oak
-	willow
+        oak
+        willow
 }
 
 struct Leaf {
-	a int
+        a int
 }
 
 struct BigLeaf {
@@ -157,13 +157,11 @@ fn assign_fields() {
 	assert a.h == 0.0
 	assert a.age == 0
 
-	a = Tree{
-		age: 3
-	}
+	a = Tree{age: 3}
 	assert a.age == 3
 
-	//	a = Tree{h: 2.0}
-	//	assert a.h == 2.0
+//	a = Tree{h: 2.0}
+//	assert a.h == 2.0
 
 	a.h = 1.1
 	assert a.h == 1.1
@@ -185,7 +183,7 @@ fn assign_fields() {
 
 	a.small_leaf = SmallLeaf{5}
 	assert a.small_leaf.a == 5
-
+	
 	a.medium_leaf = MediumLeaf{23}
 	assert a.medium_leaf.a == 23
 
@@ -193,15 +191,13 @@ fn assign_fields() {
 	assert f.a == 1
 	mut f2 := &f
 	assert f2.a == 1
-	unsafe {
-		*f2 = Leaf{2}
-	}
+	unsafe{*f2 = Leaf{2}}
 	assert f2.a == 2
 	assert f.a == 2
 }
 
 struct Nest {
-	a string
+        a string
 }
 
 struct Nest2 {
@@ -213,12 +209,12 @@ struct Nest3 {
 }
 
 struct Int {
-	a int
+        a int
 }
 
 struct NestMixed {
-	s string
-	b Int
+        s string
+        b Int
 }
 
 fn nested_test() {
@@ -237,8 +233,8 @@ fn nested_test() {
 
 struct Foo {
 mut:
-	mantissa u64
-	b        bool
+        mantissa u64
+        b bool
 }
 
 fn field_assign_test() {
