@@ -307,6 +307,9 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 			if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
 				comptime_args[k] = comptime_args[k].set_nr_muls(0)
 			}
+			if !param_typ.has_flag(.option) {
+				comptime_args[k] = comptime_args[k].clear_flag(.option)
+			}
 		} else if mut call_arg.expr is ast.ComptimeCall {
 			if call_arg.expr.method_name == 'method' {
 				sym := t.table.sym(t.resolver.unwrap_generic(call_arg.expr.left_type))

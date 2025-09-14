@@ -2808,10 +2808,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	} else if arg.expr is ast.ComptimeSelector && arg_typ.has_flag(.option)
 		&& !expected_type.has_flag(.option) {
 		// allow to pass val.$(filed.name) where T is expected, doing automatic unwrap in this case
-		// styp := g.base_type(arg_typ)
-		// g.write('*(${styp}*)')
-		g.expr_with_opt(arg.expr, arg_typ, expected_type.set_flag(.option))
-		// g.write('.data')
+		styp := g.base_type(arg_typ)
+		g.write('*(${styp}*)')
+		g.expr_with_cast(arg.expr, arg_typ, expected_type)
+		g.write('.data')
 		return
 	} else if arg.expr is ast.Ident && arg_sym.info is ast.Struct && arg_sym.info.is_anon
 		&& !expected_type.has_flag(.generic) {
