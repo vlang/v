@@ -2376,13 +2376,16 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				if simple_assign {
 					g.write('${tmp_var} = ')
 				} else {
-					g.write('builtin___option_ok(&(${styp}[]) { ')
 					if expr is ast.StructInit && expr.typ.has_flag(.generic) {
+						// T{}
+						g.write('builtin___option_ok(&(${styp}[]) { ')
 						already_generated = true
 						g.expr(ast.StructInit{
 							...expr
 							typ: g.unwrap_generic(expr.typ).clear_flag(.option)
 						})
+					} else {
+						g.write('builtin___option_none(&(${styp}[]) { ')
 					}
 				}
 			} else {
