@@ -35,6 +35,7 @@ mut:
 	all_decltypes map[string]ast.TypeDecl
 	all_structs   map[string]ast.StructDecl
 
+	cur_fn                 string
 	level                  int
 	is_builtin_mod         bool
 	is_direct_array_access bool
@@ -934,6 +935,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	w.mark_fn_ret_and_params(node.return_type, node.params)
 	w.mark_fn_as_used(fkey)
+	w.cur_fn = fkey
 	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)
 }
@@ -988,6 +990,19 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			if embed_types.len != 0 {
 				fn_embed := '${int(embed_types.last())}.${node.name}'
 				w.fn_by_name(fn_embed)
+			}
+		} else if node.left_type.has_flag(.generic) {
+			if w.cur_fn != '' {
+				if concrete_types_list := w.table.fn_generic_types[w.cur_fn] {
+					for concrete_types in concrete_types_list {
+						for concrete_type in concrete_types {
+							method_name := '${int(concrete_type)}.${node.name}'
+							if !w.used_fns[method_name] {
+								w.fn_by_name(method_name)
+							}
+						}
+					}
+				}
 			}
 		} else {
 			match left_sym.info {
