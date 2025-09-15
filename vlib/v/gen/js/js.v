@@ -2722,10 +2722,6 @@ fn (mut g JsGen) need_tmp_var_in_if(node ast.IfExpr) bool {
 }
 
 fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
-	if node.is_comptime {
-		g.comptime_if(node)
-		return
-	}
 	// For simpe if expressions we can use C's `?:`
 	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
 	// For if expressions with multiple statements or another if expression inside, it's much
@@ -2734,6 +2730,8 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
 	needs_tmp_var := g.need_tmp_var_in_if(node)
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
+	mut is_true := false
+	mut comptime_has_true_branch := false
 
 	if needs_tmp_var {
 		if node.typ.has_flag(.option) {
@@ -2746,14 +2744,32 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 		prev := g.inside_ternary
 		g.inside_ternary = true
 		for i, branch in node.branches {
-			if i > 0 {
-				g.write(' : ')
-			}
-			if i < node.branches.len - 1 || !node.has_else {
-				g.write('(')
-				g.expr(branch.cond)
-				g.write(').valueOf()')
-				g.write(' ? ')
+			if node.is_comptime {
+				$if debug_comptime_branch_context ? {
+					g.write('/* ${branch.cond} */')
+				}
+				// comptime $if, only generate the true branch
+				if i < node.branches.len - 1 || !node.has_else {
+					if !g.comptime_if_result(branch) {
+						continue
+					}
+					comptime_has_true_branch = true
+				} else {
+					// else branch
+					if comptime_has_true_branch {
+						continue
+					}
+				}
+			} else {
+				if i > 0 {
+					g.write(' : ')
+				}
+				if i < node.branches.len - 1 || !node.has_else {
+					g.write('(')
+					g.expr(branch.cond)
+					g.write(').valueOf()')
+					g.write(' ? ')
+				}
 			}
 			g.stmts(branch.stmts)
 		}
@@ -2784,6 +2800,8 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 		}
 	}
 
+	is_true = false
+	comptime_has_true_branch = false
 	for i, branch in node.branches {
 		if i > 0 {
 			g.write('} else ')
@@ -2795,6 +2813,9 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			if is_guard && guard_idx == i - 1 {
 				cvar_name := guard_vars[guard_idx]
 				g.writeln('\tlet err = ${cvar_name}.err;')
+			}
+			if node.is_comptime && !comptime_has_true_branch {
+				is_true = true
 			}
 		} else {
 			match branch.cond {
@@ -2809,7 +2830,20 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 						g.writeln('if (${var_name}.state == 0) {')
 					} else {
 						g.write('if (${var_name} = ')
-						g.expr(branch.cond.expr)
+						if node.is_comptime {
+							$if debug_comptime_branch_context ? {
+								g.write('/* ${branch.cond} */')
+							}
+							is_true = g.comptime_if_result(branch)
+							if is_true {
+								g.write('1')
+								comptime_has_true_branch = true
+							} else {
+								g.write('0')
+							}
+						} else {
+							g.expr(branch.cond.expr)
+						}
 						g.writeln(', ${var_name}.state == 0) {')
 					}
 					if short_opt || branch.cond.vars[0].name != '_' {
@@ -2820,7 +2854,17 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 								branch.cond.vars[0].name
 							}
 							g.write('\tlet ${cond_var_name} = ')
-							g.expr(branch.cond.expr)
+							if node.is_comptime {
+								is_true = g.comptime_if_result(branch)
+								if is_true {
+									g.write('1')
+									comptime_has_true_branch = true
+								} else {
+									g.write('0')
+								}
+							} else {
+								g.expr(branch.cond.expr)
+							}
 							g.writeln(';')
 						} else {
 							g.writeln('\tlet ${branch.cond.vars}[0].name = ${var_name}.data;')
@@ -2828,16 +2872,31 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 					}
 				}
 				else {
-					g.write('if ((')
-					g.expr(branch.cond)
-					g.writeln(').valueOf()) {')
+					if node.is_comptime {
+						g.write('if (')
+						$if debug_comptime_branch_context ? {
+							g.write('/* ${branch.cond} */')
+						}
+						is_true = g.comptime_if_result(branch)
+						if is_true {
+							g.write('1')
+							comptime_has_true_branch = true
+						} else {
+							g.write('0')
+						}
+						g.writeln(') {')
+					} else {
+						g.write('if ((')
+						g.expr(branch.cond)
+						g.writeln(').valueOf()) {')
+					}
 				}
 			}
 		}
 		g.inc_indent()
 		if needs_tmp_var {
 			g.stmts_with_tmp_var(branch.stmts, tmp)
-		} else {
+		} else if (node.is_comptime && is_true) || !node.is_comptime {
 			g.stmts(branch.stmts)
 		}
 		g.dec_indent()
