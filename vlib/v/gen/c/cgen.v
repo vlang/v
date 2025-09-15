@@ -3559,22 +3559,9 @@ fn (mut g Gen) map_fn_ptrs(key_sym ast.TypeSymbol) (string, string, string, stri
 			clone_fn = '&builtin__map_clone_int_2'
 		}
 		.enum {
-			einfo := (key_sym.info) as ast.Enum
-			if g.pref.ccompiler_type == .tinyc
-				&& einfo.typ in [ast.u8_type, ast.u16_type, ast.i8_type, ast.i16_type] {
-				// workaround for tcc, since we can not generate a packed Enum with size < 4 bytes
-				return g.map_fn_ptrs(g.table.sym(ast.i32_type))
-			}
-			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
-				// enum type alway use 32bit `int`
-				if einfo.typ == ast.int_type {
-					return g.map_fn_ptrs(g.table.sym(ast.i32_type))
-				} else {
-					return g.map_fn_ptrs(g.table.sym(einfo.typ))
-				}
-			} $else {
-				return g.map_fn_ptrs(g.table.sym(einfo.typ))
-			}
+			hash_fn = 'builtin__map_enum_fn(1,sizeof(${key_sym.cname}))'
+			key_eq_fn = 'builtin__map_enum_fn(2,sizeof(${key_sym.cname}))'
+			clone_fn = 'builtin__map_enum_fn(3,sizeof(${key_sym.cname}))'
 		}
 		.int {
 			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
