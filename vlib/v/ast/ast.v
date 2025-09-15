@@ -1248,6 +1248,7 @@ pub mut:
 	cond  Expr
 	stmts []Stmt
 	scope &Scope = unsafe { nil }
+	id    int
 }
 
 pub struct UnsafeExpr {
@@ -1298,6 +1299,7 @@ pub mut:
 	stmts []Stmt // right side
 	exprs []Expr // left side
 	scope &Scope = unsafe { nil }
+	id    int
 }
 
 pub struct SelectExpr {

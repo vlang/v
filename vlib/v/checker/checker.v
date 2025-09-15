@@ -102,6 +102,7 @@ pub mut:
 	ct_cond_stack               []ast.Expr
 	ct_user_defines             map[string]bool
 	ct_system_defines           map[string]bool
+	cur_ct_id                   int // id counter for $if $match branches
 mut:
 	stmt_level int // the nesting level inside each stmts list;
 	// .stmt_level is used to check for `evaluated but not used` ExprStmts like `1 << 1`

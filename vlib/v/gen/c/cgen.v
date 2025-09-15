@@ -5810,11 +5810,7 @@ fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, se
 			mut comptime_branch_context_str := g.gen_branch_context_string()
 			mut is_true := ast.ComptTimeCondResult{}
 			for i, branch in node.branches {
-				idx_str := if branch.cond.pos() == token.Pos{} {
-					comptime_branch_context_str + '|${g.file.path}|${branch.pos}|'
-				} else {
-					comptime_branch_context_str + '|${g.file.path}|${branch.cond.pos()}|'
-				}
+				idx_str := comptime_branch_context_str + '|id=${branch.id}|'
 				if comptime_is_true := g.table.comptime_is_true[idx_str] {
 					// `g.table.comptime_is_true` are the branch condition results set by `checker`
 					is_true = comptime_is_true

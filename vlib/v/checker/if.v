@@ -107,9 +107,14 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			if node.is_comptime {
 				// `idx_str` is composed of two parts:
 				// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
-				// The second part indicates the branch's location in the source file.
+				// The second part is the branch's id.
 				// This format must match what is in `cgen`.
-				idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.cond.pos()}|'
+				if branch.id == 0 {
+					// this is a new branch, alloc a new id for it
+					c.cur_ct_id++
+					branch.id = c.cur_ct_id
+				}
+				idx_str := comptime_branch_context_str + '|id=${branch.id}|'
 				c.comptime.inside_comptime_if = true
 				mut sb := strings.new_builder(256)
 				comptime_if_result, comptime_if_multi_pass_branch = c.comptime_if_cond(mut branch.cond, mut
@@ -165,7 +170,12 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					comptime_remove_curr_branch_stmts = true
 				}
 				// hack: as a `else` has no `cond`, so we use `branch.pos` here
-				idx_str := comptime_branch_context_str + '|${c.file.path}|${branch.pos}|'
+				if branch.id == 0 {
+					// this is a new branch, alloc a new id for it
+					c.cur_ct_id++
+					branch.id = c.cur_ct_id
+				}
+				idx_str := comptime_branch_context_str + '|id=${branch.id}|'
 				c.table.comptime_is_true[idx_str] = ast.ComptTimeCondResult{
 					val:   comptime_if_result
 					c_str: ''

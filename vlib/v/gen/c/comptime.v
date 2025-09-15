@@ -5,7 +5,6 @@ module c
 
 import os
 import v.ast
-import v.token
 import v.util
 import v.pref
 import v.type_resolver
@@ -418,13 +417,9 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		start_pos := g.out.len
 		// `idx_str` is composed of two parts:
 		// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
-		// The second part indicates the branch's location in the source file.
+		// The second part is the branch's id.
 		// This format must match what is in `checker`.
-		idx_str := if branch.cond.pos() == token.Pos{} {
-			comptime_branch_context_str + '|${g.file.path}|${branch.pos}|'
-		} else {
-			comptime_branch_context_str + '|${g.file.path}|${branch.cond.pos()}|'
-		}
+		idx_str := comptime_branch_context_str + '|id=${branch.id}|'
 		if comptime_is_true := g.table.comptime_is_true[idx_str] {
 			// `g.table.comptime_is_true` are the branch condition results set by `checker`
 			is_true = comptime_is_true
@@ -984,9 +979,9 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 	for i, branch in node.branches {
 		// `idx_str` is composed of two parts:
 		// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
-		// The second part indicates the branch's location in the source file.
+		// The second part is the branch's id.
 		// This format must match what is in `checker`.
-		idx_str := comptime_branch_context_str + '|${g.file.path}|${branch.pos}|'
+		idx_str := comptime_branch_context_str + '|id=${branch.id}|'
 		if comptime_is_true := g.table.comptime_is_true[idx_str] {
 			// `g.table.comptime_is_true` are the branch condition results set by `checker`
 			is_true = comptime_is_true
