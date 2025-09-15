@@ -31,8 +31,8 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 
 fn test_main() {
 	assert decode[[]int]('')! == [1, 0]
-	x := decode[[]?int]('')! 
+	x := decode[[]?int]('')!
 	assert x[0] == ?int(none)
 	assert x[1] == ?int(1)
-	assert x[2] ==  none
+	assert x[2] == none
 }
