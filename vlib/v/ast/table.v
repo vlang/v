@@ -1739,7 +1739,7 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 		} else {
 			rtyp = rtyp.clear_flag(.generic)
 		}
-		if typ.has_flag(.option) {
+		if !generic_type.has_flag(.result) && typ.has_flag(.option) {
 			rtyp = rtyp.set_flag(.option)
 			if generic_type.is_ptr() {
 				rtyp = rtyp.set_flag(.option_mut_param_t)
