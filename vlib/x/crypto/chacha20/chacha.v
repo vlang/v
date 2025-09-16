@@ -40,6 +40,7 @@ pub fn encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
 	mut stream := new_stream(key, nonce)!
 	mut dst := []u8{len: plaintext.len}
 	stream.keystream_full(mut dst, plaintext)
+	unsafe { stream.reset() }
 	return dst
 }
 
@@ -49,6 +50,7 @@ pub fn decrypt(key []u8, nonce []u8, ciphertext []u8) ![]u8 {
 	mut stream := new_stream(key, nonce)!
 	mut dst := []u8{len: ciphertext.len}
 	stream.keystream_full(mut dst, ciphertext)
+	unsafe { stream.reset() }
 	return dst
 }
 

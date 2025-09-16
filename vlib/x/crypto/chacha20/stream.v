@@ -9,7 +9,7 @@ import encoding.binary
 
 // max_64bit_counter is a 64-bit maximum internal counter of original ChaCha20 variant.
 const max_64bit_counter = max_u64
-// max_64bit_counter is a 32-bit maximum internal counter of standard IETF ChaCha20 variant.
+// max_32bit_counter is a 32-bit maximum internal counter of standard IETF ChaCha20 variant.
 const max_32bit_counter = u64(max_u32)
 
 // default chacha20 quarter round number
@@ -107,11 +107,16 @@ fn new_stream(key []u8, nonce []u8) !Stream {
 // reset resets internal stream
 @[unsafe]
 fn (mut s Stream) reset() {
+	s.mode = .standard
 	s.extended = false
 	unsafe {
 		_ := vmemset(&s.key, 0, 32)
 		_ := vmemset(&s.nonce, 0, 16)
 	}
+	s.precomp = false
+	s.p1, s.p5, s.p9, s.p13 = u32(0), u32(0), u32(0), u32(0)
+	s.p2, s.p6, s.p10, s.p14 = u32(0), u32(0), u32(0), u32(0)
+	s.p3, s.p7, s.p11, s.p15 = u32(0), u32(0), u32(0), u32(0)
 }
 
 // new_curr_state creates a new State from current stream
@@ -372,6 +377,8 @@ fn clone_state(s State) State {
 	return sc
 }
 
+// qround_on_state_with_quartet run qround_on_state by previously set up state values in offset
+// (a,b,c,d) with values from quartet (q0, q1, q2, q3)
 @[direct_array_access]
 fn qround_on_state_with_quartet(mut s State, q0 u32, q1 u32, q2 u32, q3 u32, a int, b int, c int, d int) {
 	s[a] = q0
@@ -414,7 +421,7 @@ mut:
 	e3 u32
 }
 
-// chacha20 quarter round run on Quartet and stored into res
+// qround_on_quartet runs chacha20 quarter round run on Quartet q.
 fn qround_on_quartet(mut q Quartet) {
 	// a += b;  d ^= a;  d <<<= 16;
 	q.e0 += q.e1
