@@ -436,6 +436,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								g.type_resolver.update_ct_type(left.name, ctyp)
 							}
 						}
+					} else if var_type.has_flag(.generic) && val is ast.StructInit
+						&& val_type.has_flag(.generic) {
+						val_type = g.unwrap_generic(val_type)
+						var_type = val_type
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
@@ -1048,6 +1052,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.expr_with_opt_or_block(val, val_type, left, var_type, false)
 					} else if node.has_cross_var {
 						g.gen_cross_tmp_variable(node.left, val)
+					} else if val is ast.None {
+						if var_type.has_flag(.generic)
+							&& g.unwrap_generic(var_type).has_flag(.option)
+							&& var_type.nr_muls() > 0 {
+							g.gen_option_error(var_type.set_nr_muls(0), ast.None{})
+						} else {
+							g.gen_option_error(var_type, ast.None{})
+						}
 					} else {
 						if op_overloaded {
 							g.op_arg(val, op_expected_right, val_type)

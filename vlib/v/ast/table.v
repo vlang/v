@@ -1733,11 +1733,19 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 		if typ == 0 {
 			return none
 		}
+		mut rtyp := typ.derive_add_muls(generic_type)
 		if typ.has_flag(.generic) {
-			return typ.derive_add_muls(generic_type).set_flag(.generic)
+			rtyp = rtyp.set_flag(.generic)
 		} else {
-			return typ.derive_add_muls(generic_type).clear_flag(.generic)
+			rtyp = rtyp.clear_flag(.generic)
 		}
+		if !generic_type.has_flag(.result) && typ.has_flag(.option) {
+			rtyp = rtyp.set_flag(.option)
+			if generic_type.is_ptr() {
+				rtyp = rtyp.set_flag(.option_mut_param_t)
+			}
+		}
+		return rtyp
 	}
 	match mut sym.info {
 		Array {
