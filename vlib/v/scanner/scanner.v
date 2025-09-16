@@ -812,7 +812,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 			}
 			`{` {
 				// Skip { in `${` in strings
-				if _ := s.str_quote() {
+				if 255 != s.str_quote() {
 					s.str_helper_tokens << 0
 				} else {
 					s.str_helper_tokens << c
@@ -835,7 +835,8 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				if s.str_helper_tokens.len > 0 {
 					s.str_helper_tokens.delete_last()
 				}
-				if quote := s.str_quote() {
+				quote := s.str_quote()
+				if 255 != quote {
 					if s.pos < s.text.len - 1 {
 						s.pos++
 					} else {
@@ -1180,7 +1181,10 @@ fn (s &Scanner) count_symbol_before(p int, sym u8) int {
 // escapes in them (except in the r'strings' where the content is returned verbatim)
 @[direct_array_access]
 pub fn (mut s Scanner) ident_string() string {
-	quote := s.str_quote() or { return '' }
+	quote := s.str_quote()
+	if 255 == quote {
+		return ''
+	}
 	s.quote = quote
 	// determines if it is a nested string
 	if s.is_inside_string {
@@ -1791,15 +1795,31 @@ fn (mut s Scanner) trace[T](fbase string, x &T) {
 // using a subsequent s.scan_text() call, to get the token corresponding to the text.
 pub fn (mut s Scanner) prepare_for_new_text(text string) {
 	s.text = text
-	s.pos = 0
+	s.pos = -1
+	s.tidx = 0
+	s.all_tokens.clear()
+	s.errors.clear()
+	s.error_details.clear()
+	s.warnings.clear()
+	s.notices.clear()
+	s.str_helper_tokens.clear()
+	s.str_segments.clear()
+	s.all_pos.clear()
+	s.u16_escapes_pos.clear()
+	s.u32_escapes_pos.clear()
+	s.h_escapes_pos.clear()
+	s.should_abort = false
+	s.eofs = 0
+	s.nr_lines = 0
 	s.line_nr = 0
-	s.last_nl_pos = 0
+	s.last_nl_pos = -1
 	s.is_crlf = false
+	s.is_inside_toplvl_statement = false
 	s.is_inside_string = false
 	s.is_nested_string = false
 	s.is_inter_start = false
 	s.is_inter_end = false
-	s.last_lt = 0
+	s.last_lt = -1
 	s.quote = 0
 }
 
@@ -1814,13 +1834,14 @@ pub fn new_silent_scanner() &Scanner {
 	}
 }
 
-pub fn (s Scanner) str_quote() ?u8 {
+@[direct_array_access]
+fn (s Scanner) str_quote() u8 {
 	if s.str_helper_tokens.len == 0 {
-		return none
+		return 255
 	}
-	c := s.str_helper_tokens.last()
+	c := s.str_helper_tokens[s.str_helper_tokens.len - 1]
 	if c in [`'`, `"`] {
 		return c
 	}
-	return none
+	return 255
 }

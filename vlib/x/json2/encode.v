@@ -323,7 +323,7 @@ struct EncoderFieldInfo {
 	is_required  bool
 }
 
-fn check_not_empty[T](val T) bool {
+fn check_not_empty[T](val T) ?bool {
 	$if val is string {
 		if val == '' {
 			return false
@@ -332,6 +332,12 @@ fn check_not_empty[T](val T) bool {
 		if val == 0 {
 			return false
 		}
+	} $else $if val is ?string {
+		return val ? != ''
+	} $else $if val is ?int {
+		return val ? != 0
+	} $else $if val is ?f64 || val is ?f32 {
+		return val ? != 0.0
 	}
 	return true
 }
@@ -399,9 +405,9 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 
 			if field_info.is_omitempty {
 				$if value is $option {
-					write_field = check_not_empty(value)
+					write_field = check_not_empty(value) or { false }
 				} $else {
-					write_field = check_not_empty(value)
+					write_field = check_not_empty(value) or { false }
 				}
 			}
 
