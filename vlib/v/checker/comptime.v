@@ -364,11 +364,13 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				node.typ_pos)
 			return
 		}
-		method := c.comptime.comptime_for_method
+
+		func := if sym.info is ast.FnType { &sym.info.func } else { c.comptime.comptime_for_method }
+		params := if func.is_method { func.params[1..] } else { func.params }
 		// example: fn (mut d MyStruct) add(x int, y int) string
 		// `d` is params[0], `x` is params[1], `y` is params[2]
 		// so we at least has one param (`d`) for method
-		for param in method.params[1..] {
+		for param in params {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
 			c.comptime.comptime_for_method_param_var = node.val_var

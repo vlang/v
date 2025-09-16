@@ -423,7 +423,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		'params' {
 			p.scope.register(ast.Var{
 				name: val_var
-				typ:  p.table.find_type('MethodParam')
+				typ:  p.table.find_type('FunctionParam')
 				pos:  var_pos
 			})
 			kind = .params

@@ -88,8 +88,8 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 	}
 }
 
-// MethodParam holds type information for function and/or method arguments.
-pub struct MethodParam {
+// FunctionParam holds type information for function and/or method arguments.
+pub struct FunctionParam {
 pub:
 	typ  int
 	name string
@@ -100,7 +100,7 @@ pub struct FunctionData {
 pub:
 	name        string
 	attrs       []string
-	args        []MethodParam
+	args        []FunctionParam
 	return_type int
 	typ         int
 }
