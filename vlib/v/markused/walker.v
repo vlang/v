@@ -1354,7 +1354,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.mark_by_sym_name('FunctionData')
 	}
 	if w.uses_ct_params {
-		w.mark_by_sym_name('MethodParam')
+		w.mark_by_sym_name('FunctionParam')
 	}
 	if w.uses_ct_values {
 		w.mark_by_sym_name('EnumData')

@@ -649,10 +649,10 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			}
 			if method.params.len < 2 {
 				// 0 or 1 (the receiver) args
-				g.writeln('\t${node.val_var}.args = builtin____new_array_with_default(0, 0, sizeof(MethodParam), 0);')
+				g.writeln('\t${node.val_var}.args = builtin____new_array_with_default(0, 0, sizeof(FunctionParam), 0);')
 			} else {
 				len := method.params.len - 1
-				g.write('\t${node.val_var}.args = builtin__new_array_from_c_array(${len}, ${len}, sizeof(MethodParam), _MOV((MethodParam[${len}]){')
+				g.write('\t${node.val_var}.args = builtin__new_array_from_c_array(${len}, ${len}, sizeof(FunctionParam), _MOV((FunctionParam[${len}]){')
 				// Skip receiver arg
 				for j, arg in method.params[1..] {
 					typ := arg.typ.idx()
@@ -841,12 +841,12 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			}
 		}
 	} else if node.kind == .params {
-		method := g.comptime.comptime_for_method
-
-		if method.params.len > 0 {
-			g.writeln('\tMethodParam ${node.val_var} = {0};')
+		func := if sym.info is ast.FnType { &sym.info.func } else { g.comptime.comptime_for_method }
+		if func.params.len > 0 {
+			g.writeln('\tFunctionParam ${node.val_var} = {0};')
 		}
-		for param in method.params[1..] {
+		params := if func.is_method { func.params[1..] } else { func.params }
+		for param in params {
 			g.push_new_comptime_info()
 			g.comptime.inside_comptime_for = true
 			g.comptime.comptime_for_method_param_var = node.val_var
