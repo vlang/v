@@ -2345,7 +2345,20 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			})
 			s = 'string ${t} = '
 		}
-		s += g.expr_string(arg.expr)
+		g.is_autofree_tmp = true
+		pos_before := g.out.len
+
+		old_is_autofree := g.is_autofree
+		if arg.expr is ast.CallExpr && arg.expr.is_method && arg.expr.left is ast.CallExpr {
+			g.is_autofree = false
+		}
+
+		g.expr(arg.expr)
+		expr_code := g.out.cut_to(pos_before).trim_space()
+
+		g.is_autofree = old_is_autofree
+		g.is_autofree_tmp = false
+		s += expr_code
 		s += ';// new af2 pre'
 		g.strs_to_free0 << s
 		// This tmp arg var will be freed with the rest of the vars at the end of the scope.

@@ -1,0 +1,11 @@
+void main__Test_set_tags(main__Test* t, string tags) {
+string _arg_expr_split_0_169 = builtin__string_trim_space(builtin__string_replace(builtin__string_to_lower(tags), _S(","), _S(" ")));// new af2 pre/* inserted before */
+		t->tags = builtin__string_split(/*af receiver arg*/_arg_expr_split_0_169, _S(" "));
+	builtin__string_free(&_arg_expr_split_0_169); // autofreed var main false
+}
+VV_LOC void main__main(void) {
+	main__Test test = ((main__Test){.tags = builtin____new_array(0, 0, sizeof(string)),});
+	main__Test_set_tags(&test, _S("Hello, World"));
+	string _t1 = Array_string_str(test.tags); builtin__println(_t1); builtin__string_free(&_t1);
+	;
+}

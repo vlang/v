@@ -219,8 +219,14 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	}
 	// Free the old value assigned to this string var (only if it's `str = [new value]`
 	// or `x.str = [new value]` )
-	mut af := g.is_autofree && !g.is_builtin_mod && node.op == .assign && node.left_types.len == 1
-		&& node.left[0] in [ast.Ident, ast.SelectorExpr]
+	mut af := g.is_autofree && !g.is_builtin_mod && !g.is_autofree_tmp && node.op == .assign
+		&& node.left_types.len == 1 && node.left[0] in [ast.Ident, ast.SelectorExpr]
+	if af && node.right.len == 1 && node.right[0] is ast.CallExpr {
+		call_expr := node.right[0] as ast.CallExpr
+		if call_expr.is_method && call_expr.left is ast.CallExpr {
+			af = false
+		}
+	}
 	mut sref_name := ''
 	mut type_to_free := ''
 	if af {
