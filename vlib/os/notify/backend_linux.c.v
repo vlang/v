@@ -104,7 +104,7 @@ fn (mut en EpollNotifier) wait(timeout time.Duration) []FdEvent {
 	events := [512]C.epoll_event{}
 	// populate events with the new events
 	to := timeout.sys_milliseconds()
-	count := C.epoll_wait(en.epoll_fd, &events[0], events.len, to)
+	count := int(C.epoll_wait(en.epoll_fd, &events[0], events.len, to))
 
 	if count > 0 {
 		mut arr := []FdEvent{cap: count}

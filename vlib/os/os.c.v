@@ -636,7 +636,7 @@ pub fn get_raw_stdin() []u8 {
 	} $else {
 		max := usize(0)
 		buf := &u8(unsafe { nil })
-		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
+		nr_chars := unsafe { int(C.getline(voidptr(&buf), &max, C.stdin)) }
 		return array{
 			element_size: 1
 			data:         voidptr(buf)

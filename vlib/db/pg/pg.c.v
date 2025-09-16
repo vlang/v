@@ -400,7 +400,7 @@ pub fn (db &DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 	} else if status == .copy_out {
 		for {
 			address := &char(unsafe { nil })
-			n_bytes := C.PQgetCopyData(db.conn, &address, 0)
+			n_bytes := int(C.PQgetCopyData(db.conn, &address, 0))
 			if n_bytes > 0 {
 				mut local_buf := []u8{len: n_bytes}
 				unsafe { C.memcpy(&u8(local_buf.data), address, n_bytes) }

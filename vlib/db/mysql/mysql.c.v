@@ -545,7 +545,7 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 	if query_metadata == unsafe { nil } {
 		return []Row{}
 	}
-	num_cols := C.mysql_num_fields(query_metadata)
+	num_cols := int(C.mysql_num_fields(query_metadata))
 	mut length := []u32{len: num_cols}
 	mut is_null := []bool{len: num_cols}
 
