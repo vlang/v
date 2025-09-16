@@ -13,7 +13,7 @@ fn test_ascon_round_p6() {
 		e3: 0xabcdef0123456789
 		e4: 0x89abcdef01234567
 	}
-	ascon_pnr(mut s, .ascon_prnd_6)
+	ascon_pnr(mut s, 6)
 	assert s.e0 == u64(0xc27b505c635eb07f)
 	assert s.e1 == u64(0xd388f5d2a72046fa)
 	assert s.e2 == u64(0x9e415c204d7b15e7)
@@ -29,7 +29,7 @@ fn test_ascon_round_p8() {
 		e3: 0xabcdef0123456789
 		e4: 0x89abcdef01234567
 	}
-	ascon_pnr(mut s, .ascon_prnd_8)
+	ascon_pnr(mut s, 8)
 	assert s.e0 == u64(0x67ed228272f46eee)
 	assert s.e1 == u64(0x80bc0b097aad7944)
 	assert s.e2 == u64(0x2fa599382c6db215)
@@ -45,7 +45,7 @@ fn test_ascon_round_p12() {
 		e3: 0xabcdef0123456789
 		e4: 0x89abcdef01234567
 	}
-	ascon_pnr(mut s, .ascon_prnd_12)
+	ascon_pnr(mut s, 12)
 	assert s.e0 == u64(0x206416dfc624bb14)
 	assert s.e1 == u64(0x1b0c47a601058aab)
 	assert s.e2 == u64(0x8934cfc93814cddd)

@@ -300,7 +300,7 @@ pub fn (mut x CXof128) free() {
 fn cxof128_absorb_custom_string(mut s State, cs []u8) {
 	// absorb Z0, the length of the customization string (in bits) encoded as a u64
 	s.e0 ^= u64(cs.len) << 3
-	ascon_pnr(mut s, .ascon_prnd_12)
+	ascon_pnr(mut s, ascon_prnd_12)
 
 	// absorb the customization string
 	mut zlen := cs.len
@@ -308,7 +308,7 @@ fn cxof128_absorb_custom_string(mut s State, cs []u8) {
 	for zlen >= block_size {
 		block := unsafe { cs[zidx..zidx + block_size] }
 		s.e0 ^= binary.little_endian_u64(block)
-		ascon_pnr(mut s, .ascon_prnd_12)
+		ascon_pnr(mut s, ascon_prnd_12)
 
 		// updates a index
 		zlen -= block_size
@@ -318,5 +318,5 @@ fn cxof128_absorb_custom_string(mut s State, cs []u8) {
 	last_block := unsafe { cs[zidx..] }
 	s.e0 ^= load_bytes(last_block, last_block.len)
 	s.e0 ^= pad(last_block.len)
-	ascon_pnr(mut s, .ascon_prnd_12)
+	ascon_pnr(mut s, ascon_prnd_12)
 }
