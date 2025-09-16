@@ -19,6 +19,15 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
 
+	$if !new_int ? {
+		// allow int & i32 to be used interchangeably for C functions
+		// mut flags := C.fcntl(handle, C.F_GETFL, 0)
+		// flags &= ~C.O_NONBLOCK
+		if (got in [ast.int_type_idx, ast.int_literal_type_idx] && expected == ast.i32_type_idx)
+			|| (expected in [ast.int_type_idx, ast.int_literal_type_idx] && got == ast.i32_type_idx) {
+			return true
+		}
+	}
 	// allow int literals where any kind of real integers are expected:
 	if (got == ast.int_literal_type && expected.is_pure_int())
 		|| (expected == ast.int_literal_type && got.is_pure_int()) {
@@ -41,8 +50,10 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.voidptr_type || expected == ast.nil_type {
 			return true
 		}
-		if (expected == ast.bool_type && (got_is_int || got_is_any_kind_of_pointer))
-			|| ((exp_is_int || exp_is_any_kind_of_pointer) && got == ast.bool_type) {
+		if (expected == ast.bool_type && (got_is_int || got_is_any_kind_of_pointer
+			|| got == ast.i32_type))
+			|| ((exp_is_int || exp_is_any_kind_of_pointer || expected == ast.i32_type)
+			&& got == ast.bool_type) {
 			return true
 		}
 
@@ -229,9 +240,9 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		}
 		// allow bool & int to be used interchangeably for C functions
 		if (got.idx() == ast.bool_type_idx
-			&& expected.idx() in [ast.int_type_idx, ast.int_literal_type_idx])
+			&& expected.idx() in [ast.int_type_idx, ast.int_literal_type_idx, ast.i32_type_idx])
 			|| (expected.idx() == ast.bool_type_idx
-			&& got.idx() in [ast.int_type_idx, ast.int_literal_type_idx]) {
+			&& got.idx() in [ast.int_type_idx, ast.int_literal_type_idx, ast.i32_type_idx]) {
 			return
 		}
 		exp_sym := c.table.sym(expected)
