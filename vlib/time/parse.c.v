@@ -160,7 +160,7 @@ pub fn parse_rfc3339(s string) !Time {
 		year, month, day = check_and_extract_date(s)!
 	}
 	if s.len <= date_format_buffer.len {
-		return error('date too short to parse')
+		return error('date-time too short to parse')
 	}
 	if s[10] !in [u8(`T`), `t`, ` `] {
 		return error('invalid date-time separator:${s[10].ascii_str()}')
