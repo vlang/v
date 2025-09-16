@@ -193,6 +193,7 @@ pub fn (mut c Cipher) reset() {
 
 // set_counter sets Cipher's counter
 pub fn (mut c Cipher) set_counter(ctr u64) {
+	// TODO: checking whether the counter has rolled back like the go one.
 	c.Stream.set_ctr(ctr)
 }
 

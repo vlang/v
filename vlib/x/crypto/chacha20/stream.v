@@ -200,7 +200,6 @@ fn (mut s Stream) keystream_with_blocksize(mut dst []u8, src []u8) {
 	// cache counter-independent precomputed values
 	if s.mode == .standard {
 		// first column round
-		mut fcr := Quartet{st[0], st[4], st[8], st[12]}
 		// precomputes three first column rounds that do not depend on counter
 		if !s.precomp {
 			mut pcr1 := Quartet{st[1], st[5], st[9], st[13]}
@@ -228,21 +227,26 @@ fn (mut s Stream) keystream_with_blocksize(mut dst []u8, src []u8) {
 
 			s.precomp = true
 		}
-		// remaining first column round
-		qround_on_quartet(mut fcr)
-
-		// First diagonal round.
-		qround_on_state_with_quartet(mut st_c, fcr.e0, s.p5, s.p10, s.p15, 0, 5, 10, 15)
-		qround_on_state_with_quartet(mut st_c, s.p1, s.p6, s.p11, fcr.e3, 1, 6, 11, 12)
-		qround_on_state_with_quartet(mut st_c, s.p2, s.p7, fcr.e2, s.p13, 2, 7, 8, 13)
-		qround_on_state_with_quartet(mut st_c, s.p3, fcr.e1, s.p9, s.p14, 3, 4, 9, 14)
 	}
 
 	mut idx := 0
 	mut src_len := src.len
 	for src_len >= block_size {
-		// The remaining rounds
-		//
+		if s.mode == .standard {
+			// remaining first column round
+			mut fcr := Quartet{st[0], st[4], st[8], st[12]}
+			qround_on_quartet(mut fcr)
+
+			// First diagonal round.
+			qround_on_state_with_quartet(mut st_c, fcr.e0, s.p5, s.p10, s.p15, 0, 5, 10,
+				15)
+			qround_on_state_with_quartet(mut st_c, s.p1, s.p6, s.p11, fcr.e3, 1, 6, 11,
+				12)
+			qround_on_state_with_quartet(mut st_c, s.p2, s.p7, fcr.e2, s.p13, 2, 7, 8,
+				13)
+			qround_on_state_with_quartet(mut st_c, s.p3, fcr.e1, s.p9, s.p14, 3, 4, 9,
+				14)
+		}
 		// For standard variant, the first column-round was already precomputed,
 		// For original variant, its use full quarter round number.
 		n := if s.mode == .standard { 9 } else { default_qround_nr }
@@ -307,11 +311,6 @@ fn (b Stream) ctr() u64 {
 // set_ctr sets Stream's counter
 @[direct_array_access; inline]
 fn (mut b Stream) set_ctr(ctr u64) {
-	// if this set counter would overflow internal counter
-	// we do panic instead
-	if b.check_ctr(ctr) {
-		panic('set_ctr: invalid check, maybe would overflow')
-	}
 	match b.mode {
 		.original {
 			b.nonce[0] = u32(ctr)

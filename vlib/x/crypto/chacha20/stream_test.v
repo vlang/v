@@ -1,5 +1,6 @@
 module chacha20
 
+import rand
 import encoding.hex
 
 fn test_qround_on_state() {
@@ -14,6 +15,24 @@ fn test_qround_on_state() {
 	assert s[1] == 0xcb1cf8ce
 	assert s[2] == 0x4581472e
 	assert s[3] == 0x5881c4bb
+}
+
+fn test_stream_counter_handling() {
+	// See the issue at [here](https://discord.com/channels/592103645835821068/592320321995014154/1417519455193399337)
+	mut ctx := new_cipher(rand.bytes(32)!, rand.bytes(12)!)!
+	// by setting counter with this value, we need 63*block_size bytes of message
+	// to reach maximum 32-bit counter.
+	a := max_u32 - 63
+	ctx.set_counter(a)
+
+	// build sample message with 63*block_size size, ie, 63-block
+	msg := []u8{len: 63 * block_size, init: 0xff}
+	assert (msg.len + block_size - 1) / block_size == 63
+	mut dst := []u8{len: msg.len}
+	ctx.xor_key_stream(mut dst, msg)
+
+	ctr := ctx.ctr()
+	assert ctr == max_u32
 }
 
 fn test_state_of_chacha20_block_simple() ! {
