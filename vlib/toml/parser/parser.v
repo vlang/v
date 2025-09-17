@@ -1420,6 +1420,14 @@ pub fn (mut p Parser) date_time() !ast.DateTimeType {
 			if p.tok.lit.starts_with('T') || p.tok.lit.starts_with('t') {
 				lit += p.tok.lit[0].ascii_str() //'T' or 't'
 			} else {
+				peek := p.peek(0)!
+				if peek.kind != .number {
+					// return early as date for strings yyyy-mm-dd_X... (_ is space, X is not numeric)
+					return ast.Date{
+						text: lit
+						pos:  pos
+					}
+				}
 				lit += p.tok.lit
 				p.next()!
 			}
