@@ -330,11 +330,6 @@ fn (b Stream) ctr() u64 {
 // set_ctr sets Stream's counter
 @[direct_array_access; inline]
 fn (mut b Stream) set_ctr(ctr u64) {
-	// if this set counter would overflow internal counter
-	// we do panic instead
-	if b.check_ctr(ctr) {
-		panic('set_ctr: invalid check, maybe would overflow')
-	}
 	match b.mode {
 		.original {
 			b.nonce[0] = u32(ctr)
@@ -374,13 +369,6 @@ fn (b Stream) max_ctr() u64 {
 
 // State represents the running 64-bytes of chacha20 stream,
 type State = [16]u32
-
-@[direct_array_access; inline; unsafe]
-fn reset_state(mut s State) {
-	unsafe {
-		_ := vmemset(&s, 0, 64)
-	}
-}
 
 @[direct_array_access; inline]
 fn clone_state(s State) State {
