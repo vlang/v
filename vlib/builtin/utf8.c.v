@@ -97,7 +97,7 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 // NOTE: It return a vstring(encoded in UTF-8) []u8 under Linux.
 pub fn wide_to_ansi(_wstr &u16) []u8 {
 	$if windows {
-		num_bytes := int(C.WideCharToMultiByte(cp_acp, 0, _wstr, -1, 0, 0, 0, 0))
+		num_bytes := C.WideCharToMultiByte(cp_acp, 0, _wstr, -1, 0, 0, 0, 0)
 		if num_bytes != 0 {
 			mut str_to := []u8{len: num_bytes}
 			C.WideCharToMultiByte(cp_acp, 0, _wstr, -1, &char(str_to.data), str_to.len,
