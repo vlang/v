@@ -477,7 +477,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		mut init := ''
 		extern := if cextern { 'extern ' } else { '' }
 		modifier := if field.is_volatile { ' volatile ' } else { '' }
-		def_builder.write_string('${extern}${visibility_kw}${modifier}${styp} ${attributes}${field.name}')
+		final_c_name := field.name.all_after('C.')
+		def_builder.write_string('${extern}${visibility_kw}${modifier}${styp} ${attributes}${final_c_name}')
 		if cextern {
 			def_builder.writeln('; // global 2')
 			g.global_const_defs[name] = GlobalConstDef{
@@ -510,9 +511,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 				// More complex expressions need to be moved to `_vinit()`
 				// e.g. `__global ( mygblobal = 'hello ' + world' )`
 				if field.name in ['g_main_argc', 'g_main_argv'] {
-					init = '\t// skipping ${field.name}, it was initialised in main'
+					init = '\t// skipping ${final_c_name}, it was initialised in main'
 				} else {
-					init = '\t${field.name} = ${g.expr_string(field.expr)}; // global 3'
+					init = '\t${final_c_name} = ${g.expr_string(field.expr)}; // global 3'
 				}
 			}
 		} else if !g.pref.translated { // don't zero globals from C code
@@ -521,14 +522,14 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			if default_initializer == '{0}' && should_init {
 				def_builder.write_string(' = {0}')
 			} else if default_initializer == '{E_STRUCT}' && should_init {
-				init = '\tmemcpy(${field.name}, (${styp}){${default_initializer}}, sizeof(${styp})); // global 4'
+				init = '\tmemcpy(${final_c_name}, (${styp}){${default_initializer}}, sizeof(${styp})); // global 4'
 			} else {
 				if field.name !in ['as_cast_type_indexes', 'g_memory_block', 'global_allocator'] {
 					decls := g.type_default_vars.str()
 					if decls != '' {
 						init = '\t${decls}'
 					}
-					init += '\t${field.name} = *(${styp}*)&((${styp}[]){${default_initializer}}[0]); // global 5'
+					init += '\t${final_c_name} = *(${styp}*)&((${styp}[]){${default_initializer}}[0]); // global 5'
 				}
 			}
 		}

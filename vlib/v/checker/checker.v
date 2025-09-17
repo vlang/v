@@ -2529,7 +2529,9 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 		}
 	}
 	for mut field in node.fields {
-		c.check_valid_snake_case(field.name, 'global name', field.pos)
+		if field.language != .c {
+			c.check_valid_snake_case(field.name, 'global name', field.pos)
+		}
 
 		if field.name in ast.global_reserved_type_names {
 			c.error('invalid use of reserved type `${field.name}` as a global name', field.pos)

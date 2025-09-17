@@ -967,6 +967,8 @@ pub:
 	is_exported bool // an explicit `@[export]` tag; the global will NOT be removed by `-skip-unused`
 	is_weak     bool
 	is_hidden   bool
+	is_extern   bool // an explicit `@[c_extern]` tag; to be used for globals, that are not initialised by V, but come from the external linked objects/libs, like C.stdout etc
+	language    Language
 pub mut:
 	expr     Expr
 	typ      Type
