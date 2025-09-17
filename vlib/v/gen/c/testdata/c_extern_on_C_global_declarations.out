@@ -1,0 +1,8 @@
+types:
+&C.FILE
+&C.FILE
+values:
+&C.FILE{}
+&C.FILE{}
+Hello world on stdout.
+This should be on stderr.

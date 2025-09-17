@@ -1,0 +1,19 @@
+@[has_globals]
+module main
+
+@[c_extern]
+__global C.stdout &C.FILE
+@[c_extern]
+__global C.stderr &C.FILE
+
+unbuffer_stdout()
+println('types:')
+println(typeof(C.stdout).name)
+println(typeof(C.stderr).name)
+println('values:')
+println(C.stdout)
+println(C.stderr)
+// println(voidptr(C.stdout))
+// println(voidptr(C.stderr))
+C.fprintf(C.stdout, c'Hello world on stdout.\n')
+C.fprintf(C.stderr, c'This should be on stderr.\n')

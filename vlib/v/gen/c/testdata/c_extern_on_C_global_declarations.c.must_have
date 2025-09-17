@@ -1,0 +1,7 @@
+extern FILE* stdout;
+extern FILE* stderr;
+builtin__println(_S("&C.FILE"));
+builtin__FILE_str(stdout)
+builtin__FILE_str(stderr)
+fprintf(stdout, "Hello world on stdout.\n");
+fprintf(stderr, "This should be on stderr.\n");
