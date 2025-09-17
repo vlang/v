@@ -225,7 +225,7 @@ fn test_parse_rfc3339() {
 	assert invalid_rfc3339('2006-01-01T23:59:99Z') == 'invalid second: 99'
 	assert invalid_rfc3339('1979-05-27X07:32:00Z') == 'invalid date-time separator:X'
 	assert invalid_rfc3339('1979-05-27T07:32:00') == 'timezone error: datetime string is too short'
-	assert invalid_rfc3339('1979-05-27') == 'date too short to parse'
+	assert invalid_rfc3339('1979-05-27') == 'date-time too short to parse'
 	assert invalid_rfc3339('1979-05-27T00:32:00.999999') == 'timezone error: expected "Z" or "z" or "+" or "-" in position 26, not "9"'
 	assert invalid_rfc3339('1979-05-27T00:32:00.') == 'timezone error: expected "Z" or "z" at the end of the string'
 }
