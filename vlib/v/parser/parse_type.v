@@ -111,15 +111,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	if elem_type.idx() == ast.thread_type_idx {
 		p.register_auto_import('sync.threads')
 	}
-	mut nr_dims := 1
-	// detect attr
-	not_attr := p.peek_tok.kind != .name && p.peek_token(2).kind !in [.semicolon, .rsbr]
-	for p.tok.kind == expecting && not_attr {
-		p.next()
-		p.check(.rsbr)
-		nr_dims++
-	}
-	idx := p.table.find_or_register_array_with_dims(elem_type, nr_dims)
+	idx := p.table.find_or_register_array_with_dims(elem_type, 1)
 	if elem_type.has_flag(.generic) {
 		return ast.new_type(idx).set_flag(.generic)
 	}
