@@ -189,7 +189,7 @@ mut:
 pub:
 	native_rendering bool
 pub mut:
-	image_cache   []Image
+	image_cache []Image
 	scale       f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
 	width       int
 	height      int
