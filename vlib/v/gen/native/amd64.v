@@ -506,7 +506,7 @@ fn (mut c Amd64) inc_var(var Var, config VarConfig) {
 					size_str = 'DWORD'
 				}
 				ast.int_type_idx {
-					$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+					$if new_int ? && x64 {
 						c.g.write16(0xFF48)
 						size_str = 'QWORD'
 					} $else {
@@ -781,7 +781,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 						size_str = 'DWORD'
 					}
 					ast.int_type_idx {
-						$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+						$if new_int ? && x64 {
 							c.g.write16(0x8948 + if is_extended_register { i32(4) } else { i32(0) })
 							size_str = 'QWORD'
 						} $else {
@@ -937,7 +937,7 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 					c.g.println('mov DWORD PTR[rbp-${int(offset).hex2()}], ${integer}')
 				}
 				ast.int_type_idx {
-					$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+					$if new_int ? && x64 {
 						c.g.write8(0x48)
 						c.g.write8(0xc7)
 						c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })

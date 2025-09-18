@@ -328,7 +328,7 @@ fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 
 fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, pos token.Pos) {
 	sym := c.table.final_sym(c.unwrap_generic(c.expr(mut expr)))
-	$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+	$if new_int ? && x64 {
 		if sym.kind !in [.int, .int_literal, .i64, .i32, .i16, .i8] {
 			c.error('array ${para} needs to be an int/i64/i32/i16/i8', pos)
 		}
