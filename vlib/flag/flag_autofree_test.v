@@ -1,3 +1,4 @@
+// vtest build: !sanitize-memory-gcc && !tests-sanitize-address-clang
 // vtest vflags: -autofree
 import flag
 import os
