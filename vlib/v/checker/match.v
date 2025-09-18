@@ -401,8 +401,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 										}
 									}
 									.int {
-										$if new_int ? && (arm64 || amd64 || rv64
-											|| s390x || ppc64le || loongarch64) {
+										$if new_int ? && x64 {
 											if !(num >= min_i64 && num <= max_i64) {
 												needs_explicit_cast = true
 											}

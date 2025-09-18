@@ -638,7 +638,7 @@ pub fn (typ Type) flip_signedness() Type {
 			u64_type
 		}
 		int_type {
-			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+			$if new_int ? && x64 {
 				u64_type
 			} $else {
 				u32_type
@@ -1260,7 +1260,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 			align = 4
 		}
 		.int {
-			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+			$if new_int ? && x64 {
 				size = 8
 				align = 8
 			} $else {

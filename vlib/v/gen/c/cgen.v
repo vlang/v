@@ -3579,7 +3579,7 @@ fn (mut g Gen) map_fn_ptrs(key_sym ast.TypeSymbol) (string, string, string, stri
 			clone_fn = 'builtin__map_enum_fn(3,sizeof(${key_sym.cname}))'
 		}
 		.int {
-			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+			$if new_int ? && x64 {
 				hash_fn = '&builtin__map_hash_int_8'
 				key_eq_fn = '&builtin__map_eq_int_8'
 				clone_fn = '&builtin__map_clone_int_8'
@@ -8530,7 +8530,7 @@ fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 
 // vint2int rename `_vint_t` to `int`
 fn vint2int(name string) string {
-	$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+	$if new_int ? && x64 {
 		if name == ast.int_type_name {
 			return 'int'
 		}
