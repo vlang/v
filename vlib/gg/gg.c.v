@@ -184,12 +184,12 @@ mut:
 	render_text bool = true
 	// a cache with all images created by the user. used for sokol image init and to save space
 	// (so that the user can store image ids, not entire Image objects)
+	image_cache   []Image
 	needs_refresh bool = true
 	ticks         int // for ui mode only
 pub:
 	native_rendering bool
 pub mut:
-	image_cache []Image
 	scale       f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
 	width       int
 	height      int
