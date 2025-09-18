@@ -39,7 +39,7 @@ enum CipherMode {
 pub fn encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
 	mut stream := new_stream(key, nonce)!
 	mut dst := []u8{len: plaintext.len}
-	stream.keystream_full(mut dst, plaintext)
+	stream.keystream_full(mut dst, plaintext)!
 	unsafe { stream.reset() }
 	return dst
 }
@@ -49,7 +49,7 @@ pub fn encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
 pub fn decrypt(key []u8, nonce []u8, ciphertext []u8) ![]u8 {
 	mut stream := new_stream(key, nonce)!
 	mut dst := []u8{len: ciphertext.len}
-	stream.keystream_full(mut dst, ciphertext)
+	stream.keystream_full(mut dst, ciphertext)!
 	unsafe { stream.reset() }
 	return dst
 }
@@ -94,11 +94,6 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 
 	mut idx := 0
 	mut src_len := src.len
-	// check for counter overflow
-	num_blocks := (u64(src_len) + block_size - 1) / block_size
-	if c.Stream.check_ctr(num_blocks) {
-		panic('chacha20: internal counter overflow')
-	}
 
 	dst = unsafe { dst[..src_len] }
 
@@ -129,21 +124,27 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	full := src_len - src_len % block_size
 	if full > 0 {
 		src_block := unsafe { src[idx..idx + full] }
-		c.Stream.keystream_with_blocksize(mut dst[idx..idx + full], src_block)
+		c.Stream.keystream_with_blocksize(mut dst[idx..idx + full], src_block) or {
+			c.Stream.overflow = true
+			panic('chacha20: xor_key_stream leads to counter overflow')
+		}
 	}
 	idx += full
 	src_len -= full
 
-	// If we have a partial block, pad it for chacha20_block_generic, and
+	// If we have a partial block, pad it for keystream_with_blocksize, and
 	// keep the leftover keystream for the next invocation.
 	if src_len > 0 {
 		// Make sure, internal buffer cleared or the old garbaged data from previous call still there
 		// See the issue at https://github.com/vlang/v/issues/24043
 		unsafe { c.block.reset() } //  = []u8{len: block_size}
 		// copy the last src block to internal buffer, and performs
-		// chacha20_block_generic on this buffer, and stores into remaining dst
+		// keystream_with_blocksize on this buffer, and stores into remaining dst
 		_ := copy(mut c.block, src[idx..])
-		c.Stream.keystream_with_blocksize(mut c.block, c.block)
+		c.Stream.keystream_with_blocksize(mut c.block, c.block) or {
+			c.Stream.overflow = true
+			panic('chacha20: xor_key_stream leads to counter overflow')
+		}
 		n := copy(mut dst[idx..], c.block)
 		// the length of remaining bytes of unprocessed keystream
 		c.length = block_size - n
@@ -156,7 +157,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 // Its added to allow `chacha20poly1305` modules to work without key stream fashion.
 // TODO: integrates it with the rest
 @[direct_array_access]
-pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) {
+pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) ! {
 	if src.len == 0 {
 		return
 	}
@@ -167,7 +168,7 @@ pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) {
 		panic('chacha20: invalid buffer overlap')
 	}
 
-	c.Stream.keystream_full(mut dst, src)
+	c.Stream.keystream_full(mut dst, src)!
 }
 
 // free the resources taken by the Cipher `c`. Dont use cipher after .free call

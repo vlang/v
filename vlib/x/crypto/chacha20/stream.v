@@ -30,6 +30,8 @@ mut:
 	// Flag that tells whether this stream was an extended XChaCha20 standard variant.
 	// only make sense when mode == .standard
 	extended bool
+	// Flag tells whether this stream has reached the counter limit
+	overflow bool
 
 	// counter-independent precomputed values
 	precomp bool
@@ -65,7 +67,7 @@ fn new_stream(key []u8, nonce []u8) !Stream {
 		}
 	}
 	// if this an extended chacha20 construct, derives a new key and nonce
-	new_key, new_nonce := if extended {
+	new_key, new_nonce := if mode == .standard && extended {
 		xkey, xnonce := derive_xchacha20_key_nonce(key, nonce)!
 		xkey, xnonce
 	} else {
@@ -108,8 +110,6 @@ fn new_stream(key []u8, nonce []u8) !Stream {
 // reset resets internal stream
 @[unsafe]
 fn (mut s Stream) reset() {
-	s.mode = .standard
-	s.extended = false
 	unsafe {
 		_ := vmemset(&s.key, 0, 32)
 		_ := vmemset(&s.nonce, 0, 16)
@@ -149,18 +149,22 @@ fn (s Stream) new_curr_state() State {
 
 // keystream_full process with full size of src being processed
 @[direct_array_access]
-fn (mut s Stream) keystream_full(mut dst []u8, src []u8) {
+fn (mut s Stream) keystream_full(mut dst []u8, src []u8) ! {
+	if s.overflow {
+		return error('chacha20: keystream_full counter has reached the limit')
+	}
 	// number of block to be processed
 	nr_blocks := src.len / block_size
 	// check for counter overflow
 	if s.check_ctr(u64(nr_blocks)) {
-		panic('chacha20: internal counter overflow')
+		s.overflow = true
+		return error('chacha20: internal counter overflow')
 	}
 	// process for full block_size-d msg
 	for i := 0; i < nr_blocks; i++ {
 		block := unsafe { src[i * block_size..(i + 1) * block_size] }
 		// process with block_size keystream
-		s.keystream_with_blocksize(mut dst[i * block_size..(i + 1) * block_size], block)
+		s.keystream_with_blocksize(mut dst[i * block_size..(i + 1) * block_size], block)!
 	}
 
 	// process for remaining partial block
@@ -171,7 +175,7 @@ fn (mut s Stream) keystream_full(mut dst []u8, src []u8) {
 		_ := copy(mut last_bytes, last_block)
 
 		// process the padded last block
-		s.keystream_with_blocksize(mut last_bytes, last_bytes)
+		s.keystream_with_blocksize(mut last_bytes, last_bytes)!
 		_ := copy(mut dst[nr_blocks * block_size..], last_bytes)
 	}
 }
@@ -179,7 +183,7 @@ fn (mut s Stream) keystream_full(mut dst []u8, src []u8) {
 // keystream_with_blocksize produces stream from src bytes that aligns with block_size,
 // serialized in little-endian form and stored into dst buffer.
 @[direct_array_access]
-fn (mut s Stream) keystream_with_blocksize(mut dst []u8, src []u8) {
+fn (mut s Stream) keystream_with_blocksize(mut dst []u8, src []u8) ! {
 	// ChaCha20 keystream generator was relatively easy to understand.
 	// Its contains steps:
 	// - loads current ChaCha20 into temporary state, used for later.
@@ -190,7 +194,17 @@ fn (mut s Stream) keystream_with_blocksize(mut dst []u8, src []u8) {
 	//
 	// Makes sure its works for size of multiple of block_size
 	if dst.len != src.len || dst.len % block_size != 0 {
-		panic('chacha20: internal error: wrong dst and/or src length')
+		return error('chacha20: internal error: wrong dst and/or src length')
+	}
+	// check if this stream has reached the counter limit
+	if s.overflow {
+		return error('chacha20: internal counter has reached the limit, please rekey')
+	}
+	// check for counter overflow when processing number of blocks
+	num_blocks := (u64(src.len) + block_size - 1) / block_size
+	if s.check_ctr(num_blocks) {
+		s.overflow = true
+		return error('chacha20.check_ctr: internal counter overflow')
 	}
 
 	// load state from current stream
@@ -259,17 +273,25 @@ fn (mut s Stream) keystream_with_blocksize(mut dst []u8, src []u8) {
 
 		// increases Stream's internal counter
 		if s.mode == .original {
-			mut curr_ctr := u64(st[13]) << 32 | u64(st[12])
-			curr_ctr += 1
-			// TODO: check for counter overflow
-			// stores back the counter
-			s.nonce[0] = u32(curr_ctr)
-			s.nonce[1] = u32(curr_ctr >> 32)
-		} else {
-			if u64(st[12]) + 1 > max_32bit_counter {
-				panic('overflow 32-bit counter')
-			}
 			st[12] += 1
+			// first counter reset ?
+			if st[12] == 0 {
+				// increase second counter, if reset, mark as an overflow and return error
+				st[13] += 1
+				if st[13] == 0 {
+					s.overflow = true
+					return error('chacha20.keystream_with_blocksize: 64-bit counter reached')
+				}
+			}
+			// store the counter
+			s.nonce[0] = st[12]
+			s.nonce[1] = st[13]
+		} else {
+			st[12] += 1
+			if st[12] == 0 {
+				s.overflow = true
+				return error('chacha20.keystream_with_blocksize: overflow 32-bit counter')
+			}
 			s.nonce[0] = st[12]
 		}
 
