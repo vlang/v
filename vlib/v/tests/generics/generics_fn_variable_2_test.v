@@ -19,7 +19,11 @@ fn test_generic_fn_variable() {
 	r2 := f[string]()
 	println(r2)
 	assert r2 == $if x64 {
-		16
+		$if new_int ? {
+			24
+		} $else {
+			16
+		}
 	} $else {
 		12
 	}
