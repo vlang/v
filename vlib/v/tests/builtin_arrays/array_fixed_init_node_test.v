@@ -46,5 +46,9 @@ fn test_main() {
 	path.add(b1)
 	path.add(b2)
 
-	assert sizeof(path) == 32772
+	assert sizeof(path) == $if new_int ? && x64 {
+		32776
+	} $else {
+		32772
+	}
 }

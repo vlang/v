@@ -17,9 +17,17 @@ fn d(val Value) string {
 }
 
 fn test_main() {
-	assert d(Value(0)) == 'Value is number or byte array, size=4 0'
+	assert d(Value(0)) == $if new_int ? && x64 {
+		'Value is number or byte array, size=8 0'
+	} $else {
+		'Value is number or byte array, size=4 0'
+	}
 	assert d(Value(i64(1))) == 'Value is number or byte array, size=8 1'
 	assert d(Value(u64(2))) == 'Value is number or byte array, size=8 2'
-	assert d(Value([u8(1), 2])) == 'Value is number or byte array, size=32 [1, 2]'
+	assert d(Value([u8(1), 2])) == $if new_int ? && x64 {
+		'Value is number or byte array, size=48 [1, 2]'
+	} $else {
+		'Value is number or byte array, size=32 [1, 2]'
+	}
 	assert d(Value('')) == 'Value is string: '
 }

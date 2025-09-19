@@ -4,5 +4,9 @@ fn getsize[P]() u32 {
 
 fn test_sizeof_2() {
 	assert getsize[f64]() == 8
-	assert 4 == getsize[int]()
+	$if new_int ? && x64 {
+		assert 8 == getsize[int]()
+	} $else {
+		assert 4 == getsize[int]()
+	}
 }
