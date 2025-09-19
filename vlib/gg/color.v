@@ -298,7 +298,7 @@ const string_colors = {
 pub fn color_from_string(s string) Color {
 	if s.starts_with('#') {
 		mut hex_str := '0x' + s[1..]
-		return hex(i32(hex_str.int()))
+		return hex(hex_str.i32())
 	} else {
 		return string_colors[s]
 	}
