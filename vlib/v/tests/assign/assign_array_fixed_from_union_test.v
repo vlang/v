@@ -1,6 +1,6 @@
 union Convertor {
 	su8_array_p  [20]u8
-	sint_array_p [5]int
+	sint_array_p [5]i32
 }
 
 fn test_main() {
