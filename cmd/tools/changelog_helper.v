@@ -590,8 +590,6 @@ fn print_category_hint() {
 	}
 }
 
-
-
 // For 0.4.12 returns 0.4.11 etc
 fn get_prev_version(version string) string {
 	parts := version.split('.')
@@ -601,5 +599,5 @@ fn get_prev_version(version string) string {
 	major := parts[0]
 	minor := parts[1]
 	patch := parts[2].int()
-	return '${major}.${minor}.${patch-1}'
+	return '${major}.${minor}.${patch - 1}'
 }
