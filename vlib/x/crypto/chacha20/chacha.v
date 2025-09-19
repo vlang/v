@@ -96,7 +96,6 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	mut src_len := src.len
 
 	dst = unsafe { dst[..src_len] }
-
 	if subtle.inexact_overlap(dst, src) {
 		panic('chacha20: invalid buffer overlap')
 	}
@@ -162,10 +161,10 @@ pub fn (mut c Cipher) encrypt(mut dst []u8, src []u8) ! {
 		return
 	}
 	if dst.len < src.len {
-		panic('chacha20: dst buffer is to small')
+		return error('chacha20: dst buffer is to small')
 	}
 	if subtle.inexact_overlap(dst, src) {
-		panic('chacha20: invalid buffer overlap')
+		return error('chacha20: invalid buffer overlap')
 	}
 
 	c.Stream.keystream_full(mut dst, src)!
