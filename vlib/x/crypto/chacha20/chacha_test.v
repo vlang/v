@@ -129,7 +129,7 @@ fn test_chacha20_cipher_encrypt_with_xor_keystream() ! {
 		cs.set_counter(c.counter)
 
 		mut output := []u8{len: plaintext_bytes.len}
-		cs.encrypt(mut output, plaintext_bytes)
+		cs.encrypt(mut output, plaintext_bytes)!
 
 		expected := hex.decode(c.output)!
 		assert output == expected
@@ -146,7 +146,7 @@ fn test_chacha20_cipher_decrypt_with_xor_keystream() ! {
 		cs.set_counter(c.counter)
 
 		mut output := []u8{len: ciphertext.len}
-		cs.encrypt(mut output, ciphertext)
+		cs.encrypt(mut output, ciphertext)!
 
 		expected_decrypted_message := hex.decode(c.plaintext)!
 		assert output == expected_decrypted_message
