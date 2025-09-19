@@ -122,7 +122,7 @@ pub mut:
 }
 
 // hex takes in a 32 bit integer and splits it into 4 byte values
-pub fn hex(color int) Color {
+pub fn hex(color i32) Color {
 	return Color{
 		r: u8((color >> 16) & 0xFF)
 		g: u8((color >> 8) & 0xFF)
@@ -151,10 +151,10 @@ pub fn rgba(r u8, g u8, b u8, a u8) Color {
 
 // + adds `b` to `a`, with a maximum value of 255 for each channel
 pub fn (a Color) + (b Color) Color {
-	mut na := int(a.a) + b.a
-	mut nr := int(a.r) + b.r
-	mut ng := int(a.g) + b.g
-	mut nb := int(a.b) + b.b
+	mut na := i32(a.a) + b.a
+	mut nr := i32(a.r) + b.r
+	mut ng := i32(a.g) + b.g
+	mut nb := i32(a.b) + b.b
 	if na > 255 {
 		na = 255
 	}
@@ -178,9 +178,9 @@ pub fn (a Color) + (b Color) Color {
 // - subtracts `b` from `a`, with a minimum value of 0 for each channel
 pub fn (a Color) - (b Color) Color {
 	mut na := if a.a > b.a { a.a } else { b.a }
-	mut nr := int(a.r) - b.r
-	mut ng := int(a.g) - b.g
-	mut nb := int(a.b) - b.b
+	mut nr := i32(a.r) - b.r
+	mut ng := i32(a.g) - b.g
+	mut nb := i32(a.b) - b.b
 	if na < 0 {
 		na = 0
 	}
@@ -249,25 +249,25 @@ pub fn (c Color) str() string {
 	return 'Color{${c.r}, ${c.g}, ${c.b}, ${c.a}}'
 }
 
-// rgba8 converts a color value to an int in the RGBA8 order.
+// rgba8 converts a color value to an 32bit int in the RGBA8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
 @[inline]
-pub fn (c Color) rgba8() int {
-	return int(u32(c.r) << 24 | u32(c.g) << 16 | u32(c.b) << 8 | u32(c.a))
+pub fn (c Color) rgba8() i32 {
+	return i32(u32(c.r) << 24 | u32(c.g) << 16 | u32(c.b) << 8 | u32(c.a))
 }
 
-// bgra8 converts a color value to an int in the BGRA8 order.
+// bgra8 converts a color value to an 32bit int in the BGRA8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
 @[inline]
-pub fn (c Color) bgra8() int {
-	return int(u32(c.b) << 24 | u32(c.g) << 16 | u32(c.r) << 8 | u32(c.a))
+pub fn (c Color) bgra8() i32 {
+	return i32(u32(c.b) << 24 | u32(c.g) << 16 | u32(c.r) << 8 | u32(c.a))
 }
 
-// abgr8 converts a color value to an int in the ABGR8 order.
+// abgr8 converts a color value to an 32bit int in the ABGR8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
 @[inline]
-pub fn (c Color) abgr8() int {
-	return int(u32(c.a) << 24 | u32(c.b) << 16 | u32(c.g) << 8 | u32(c.r))
+pub fn (c Color) abgr8() i32 {
+	return i32(u32(c.a) << 24 | u32(c.b) << 16 | u32(c.g) << 8 | u32(c.r))
 }
 
 const string_colors = {
@@ -298,7 +298,7 @@ const string_colors = {
 pub fn color_from_string(s string) Color {
 	if s.starts_with('#') {
 		mut hex_str := '0x' + s[1..]
-		return hex(hex_str.int())
+		return hex(i32(hex_str.int()))
 	} else {
 		return string_colors[s]
 	}
