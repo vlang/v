@@ -456,7 +456,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				// field loop
 				for {
 					if current_field_info == unsafe { nil } {
-						decoder.current_node = decoder.current_node.next.next // skip value
+						decoder.current_node = decoder.current_node.next // skip value
 
 						break
 					}
