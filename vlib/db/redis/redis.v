@@ -33,25 +33,46 @@ mut:
 @[params]
 pub struct Config {
 pub mut:
-	host    string = '127.0.0.1' // Redis server host
-	port    u16    = 6379        // Redis server port
-	version int    = 2           // RESP protocol version (default: v2)
+	host     string = '127.0.0.1' // Redis server host
+	port     u16    = 6379        // Redis server port
+	password string // Redis server password (optional)
+	version  int = 2 // RESP protocol version (default: v2)
 }
 
 // connect establishes a connection to a Redis server
 pub fn connect(config Config) !DB {
-	conn := net.dial_tcp('${config.host}:${config.port}')!
-	return DB{
-		conn:     conn
+	mut db := DB{
+		conn:     net.dial_tcp('${config.host}:${config.port}')!
 		version:  config.version
 		cmd_buf:  []u8{cap: cmd_buf_pre_allocate_len}
 		resp_buf: []u8{cap: resp_buf_pre_allocate_len}
 	}
+
+	// Authenticate if password is provided
+	if config.password.len > 0 {
+		db.auth(config.password)!
+	}
+
+	return db
 }
 
 // close terminates the connection to Redis server
 pub fn (mut db DB) close() ! {
 	db.conn.close()!
+}
+
+pub fn (mut db DB) auth(password string) ! {
+	resp := db.cmd('AUTH', password)!
+	match resp {
+		string {
+			if resp != 'OK' {
+				return error('Authentication failed: ${resp}')
+			}
+		}
+		else {
+			return error('Authentication failed: unexpected response type')
+		}
+	}
 }
 
 // ping sends a PING command to verify server responsiveness
