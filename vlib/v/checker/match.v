@@ -440,7 +440,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					c.error('`match` expression requires an expression as the last statement of every branch',
 						stmt.pos)
 				}
-			} else if mut stmt is ast.Return {
+			} else if mut stmt is ast.Return && ret_type == ast.void_type {
 				ret_type = if stmt.types.len > 0 { stmt.types[0] } else { c.expected_type }
 			}
 		}
