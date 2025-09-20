@@ -342,21 +342,17 @@ fn check_not_empty[T](val T) ?bool {
 	return true
 }
 
-@[unsafe]
-fn (mut encoder Encoder) encode_struct[T](val T) {
-	encoder.output << `{`
-
+// TODO: fix compilation with -autofree, and remove the tag @[manualfree] here:
+@[manualfree; unsafe]
+fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 	static field_infos := &[]EncoderFieldInfo(nil)
-
 	if field_infos == nil {
 		field_infos = &[]EncoderFieldInfo{}
-
 		$for field in T.fields {
 			mut is_skip := false
 			mut key_name := ''
 			mut is_omitempty := false
 			mut is_required := false
-
 			for attr in field.attrs {
 				match attr {
 					'skip' {
@@ -371,13 +367,11 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 					}
 					else {}
 				}
-
 				if attr.starts_with('json:') {
 					if attr == 'json: -' {
 						is_skip = true
 						break
 					}
-
 					key_name = attr[6..]
 				}
 			}
@@ -389,7 +383,13 @@ fn (mut encoder Encoder) encode_struct[T](val T) {
 			}
 		}
 	}
+	return *field_infos
+}
 
+@[unsafe]
+fn (mut encoder Encoder) encode_struct[T](val T) {
+	encoder.output << `{`
+	field_infos := encoder.cached_field_infos[T]()
 	mut i := 0
 	mut is_first := true
 	$for field in T.fields {
