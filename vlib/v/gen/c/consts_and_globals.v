@@ -434,7 +434,6 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		g.inside_cinit = false
 		g.inside_global_decl = false
 	}
-	cextern := node.attrs.contains('c_extern')
 	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
 		|| (g.pref.build_mode == .build_module && g.module_built == node.mod)
 	mut attributes := ''
@@ -475,18 +474,22 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		mut def_builder := strings.new_builder(100)
 		mut init := ''
-		extern := if cextern { 'extern ' } else { '' }
+		extern := if field.is_extern { 'extern ' } else { '' }
 		modifier := if field.is_volatile { ' volatile ' } else { '' }
 		final_c_name := field.name.all_after('C.')
-		def_builder.write_string('${extern}${visibility_kw}${modifier}${styp} ${attributes}${final_c_name}')
-		if cextern {
-			def_builder.writeln('; // global 2')
+		if field.is_extern {
+			def_builder.writeln('${extern}${visibility_kw}${modifier}${styp} ${attributes}${final_c_name}; // global 2')
 			g.global_const_defs[name] = GlobalConstDef{
 				mod:   node.mod
 				def:   def_builder.str()
 				order: -1
 			}
 			continue
+		}
+		mut needs_ending_semicolon := false
+		if field.language != .c || field.has_expr {
+			def_builder.write_string('${extern}${visibility_kw}${modifier}${styp} ${attributes}${final_c_name}')
+			needs_ending_semicolon = true
 		}
 		if field.has_expr || cinit {
 			// `__global x = unsafe { nil }` should still use the simple direct initialisation, `g_main_argv` needs it.
@@ -516,7 +519,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 					init = '\t${final_c_name} = ${g.expr_string(field.expr)}; // global 3'
 				}
 			}
-		} else if !g.pref.translated { // don't zero globals from C code
+		} else if !g.pref.translated && field.language == .v {
+			// don't zero globals from C code
 			g.type_default_vars.clear()
 			default_initializer := g.type_default(field.typ)
 			if default_initializer == '{0}' && should_init {
@@ -532,8 +536,12 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 					init += '\t${final_c_name} = *(${styp}*)&((${styp}[]){${default_initializer}}[0]); // global 5'
 				}
 			}
+		} else {
+			def_builder.writeln('/* skip C global: ${final_c_name} */')
 		}
-		def_builder.writeln('; // global 6')
+		if needs_ending_semicolon {
+			def_builder.writeln('; // global 6')
+		}
 		g.global_const_defs[name] = GlobalConstDef{
 			mod:       node.mod
 			def:       def_builder.str()
