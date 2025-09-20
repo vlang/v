@@ -134,10 +134,12 @@ fn (mut g Gen) gen_c_main_function_only_header() {
 fn (mut g Gen) gen_c_main_function_header() {
 	g.gen_c_main_function_only_header()
 
-	g.writeln('\tif (fileno(stdout) < 0) {')
-	g.writeln('\t\tfreopen("NUL", "w", stdout);')
-	g.writeln('\t\tfreopen("NUL", "w", stderr);')
-	g.writeln('\t}')
+	$if !freestanding {
+		g.writeln('\tif (fileno(stdout) < 0) {')
+		g.writeln('\t\tfreopen("NUL", "w", stdout);')
+		g.writeln('\t\tfreopen("NUL", "w", stderr);')
+		g.writeln('\t}')
+	}
 
 	g.gen_c_main_trace_calls_hook()
 	if !g.pref.no_builtin {
