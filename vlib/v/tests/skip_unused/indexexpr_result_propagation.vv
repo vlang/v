@@ -1,0 +1,12 @@
+pub struct Row {
+pub mut:
+	vals []?string
+}
+
+mut set := map[string]bool{}
+rows := []Row{}
+for row in rows {
+	val := row.vals[0]!
+	set[val] = true
+}
+dump(set.len)

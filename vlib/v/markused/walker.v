@@ -53,7 +53,7 @@ mut:
 	uses_ct_variants           bool // $for .variants
 	uses_ct_attribute          bool // $for .attributes
 	uses_external_type         bool
-	uses_err                   bool // err var
+	uses_err_block             bool // or { err var }
 	uses_asserts               bool // assert
 	uses_map_update            bool // has {...expr}
 	uses_debugger              bool // has debugger;
@@ -547,7 +547,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.IndexExpr {
 			w.expr(node.left)
 			w.expr(node.index)
-			if node.or_expr.kind == .block {
+			if node.or_expr.kind != .absent {
 				w.uses_index_check = true
 			}
 			w.mark_by_type(node.typ)
@@ -709,9 +709,6 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					} else if node.name in w.all_globals {
 						w.mark_global_as_used(node.name)
 					} else {
-						if !w.uses_err && node.name == 'err' {
-							w.uses_err = true
-						}
 						w.fn_by_name(node.name)
 					}
 					if !w.uses_atomic && node.info is ast.IdentVar {
@@ -1105,6 +1102,7 @@ pub fn (mut w Walker) const_fields(cfields []ast.ConstField) {
 @[inline]
 pub fn (mut w Walker) or_block(node ast.OrExpr) {
 	if node.kind == .block {
+		w.uses_err_block = true
 		w.stmts(node.stmts)
 	} else if node.kind == .propagate_option {
 		w.used_option++
@@ -1469,6 +1467,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name(k)
 			continue
 		}
+	}
+	if w.uses_err_block {
+		w.fn_by_name('error')
 	}
 	if w.uses_guard || w.uses_index_check {
 		w.fn_by_name('error')
