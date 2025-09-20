@@ -85,3 +85,12 @@ fn test_option_types() {
 		assert false, 'Should not return none'
 	}
 }
+
+struct Story {
+}
+
+fn test_issue_25347() {
+	t := '{"k":[1,2,3,4,5,6,7,8,9]}'
+	json.decode[Story](t) or { assert false }
+	assert true
+}

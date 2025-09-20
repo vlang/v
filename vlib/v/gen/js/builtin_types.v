@@ -72,7 +72,7 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 			styp = 'int'
 		}
 		.int {
-			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+			$if new_int ? && x64 {
 				styp = 'i64'
 			} $else {
 				styp = 'int'

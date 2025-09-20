@@ -2608,12 +2608,14 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut is_exported := false
 	mut is_weak := false
 	mut is_hidden := false
+	mut is_extern := false
 	for ga in attrs {
 		match ga.name {
 			'export' { is_exported = true }
 			'markused' { is_markused = true }
 			'weak' { is_weak = true }
 			'hidden' { is_hidden = true }
+			'c_extern' { is_extern = true }
 			else {}
 		}
 	}
@@ -2648,8 +2650,10 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		if p.tok.kind == .rpar {
 			break
 		}
+		language := p.parse_language()
+
 		pos := p.tok.pos()
-		name := p.check_name()
+		mut name := p.check_name()
 		has_expr := p.tok.kind == .assign
 		mut expr := ast.empty_expr
 		mut typ := ast.void_type
@@ -2687,6 +2691,9 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			typ_pos = p.tok.pos()
 			typ = p.parse_type()
 		}
+		if language == .c {
+			name = 'C.' + name
+		}
 		field := ast.GlobalField{
 			name:        name
 			has_expr:    has_expr
@@ -2700,6 +2707,8 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			is_exported: is_exported
 			is_weak:     is_weak
 			is_hidden:   is_hidden
+			is_extern:   is_extern
+			language:    language
 		}
 		fields << field
 		if name !in ast.global_reserved_type_names {

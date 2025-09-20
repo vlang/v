@@ -41,7 +41,7 @@ pub fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 				wasm.ValType.i32_t
 			}
 			ast.int_type_idx {
-				$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+				$if new_int ? && x64 {
 					wasm.ValType.i64_t
 				} $else {
 					wasm.ValType.i32_t

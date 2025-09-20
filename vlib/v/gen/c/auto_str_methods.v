@@ -923,7 +923,7 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 		}
 		return .si_g64
 	} else if sym.kind == .int {
-		$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+		$if new_int ? && x64 {
 			return .si_i64
 		} $else {
 			return .si_i32

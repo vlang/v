@@ -2075,7 +2075,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			signed, enum_imin, enum_imax = true, min_i32, max_i32
 		}
 		ast.int_type {
-			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+			$if new_int ? && x64 {
 				signed, enum_imin, enum_imax = true, min_i32, max_i32
 			} $else {
 				signed, enum_imin, enum_imax = true, min_i64, max_i64
@@ -2529,7 +2529,9 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 		}
 	}
 	for mut field in node.fields {
-		c.check_valid_snake_case(field.name, 'global name', field.pos)
+		if field.language != .c {
+			c.check_valid_snake_case(field.name, 'global name', field.pos)
+		}
 
 		if field.name in ast.global_reserved_type_names {
 			c.error('invalid use of reserved type `${field.name}` as a global name', field.pos)
@@ -3835,7 +3837,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 					u64(0xffffffff)
 				}
 				ast.int_type_idx {
-					$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+					$if new_int ? && x64 {
 						u64(0xffffffffffffffff)
 					} $else {
 						u64(0xffffffff)

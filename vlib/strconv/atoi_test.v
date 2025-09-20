@@ -83,8 +83,8 @@ fn test_atoi() {
 		StrInt{'123_456_789', 123456789},
 		StrInt{'00000006', 6},
 		StrInt{'0_0_0_0_0_0_0_6', 6},
-		StrInt{'2147483647', max_int},
-		StrInt{'-2147483648', min_int},
+		StrInt{'2147483647', max_i32},
+		StrInt{'-2147483648', min_i32},
 	]
 
 	// Check that extracted int value matches its string.

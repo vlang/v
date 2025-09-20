@@ -24,12 +24,7 @@ pub const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError',
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub const int_type_name = $if new_int ?
-	&& (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
-	'vint_t'
-} $else {
-	'int'
-}
+pub const int_type_name = $if new_int ? && x64 { 'vint_t' } $else { 'int' }
 
 pub type Expr = NodeError
 	| AnonFn
@@ -972,6 +967,12 @@ pub:
 	is_exported bool // an explicit `@[export]` tag; the global will NOT be removed by `-skip-unused`
 	is_weak     bool
 	is_hidden   bool
+	// The following fields, are relevant for non V globals, for example `__global C.stdout &C.FILE`:
+	language  Language // for C.stdout, it will be .c .
+	is_extern bool     // true, if an explicit `@[c_extern]` tag was used. It is suitable for globals, that are not initialised by V,
+	// but come from the external linked objects/libs, like C.stdout etc, and that *are not* declared in included .h files .
+	// Without an explicit `@[c_extern]` tag, V will avoid emiting `extern CType CName;` lines.
+	// V will still know, that the type of C.stdout, is not the default `int`, but &C.FILE, and thus will do more checks on it.
 pub mut:
 	expr     Expr
 	typ      Type

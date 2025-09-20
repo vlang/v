@@ -3249,7 +3249,7 @@ fn (mut g JsGen) greater_typ(left ast.Type, right ast.Type) ast.Type {
 			return ast.Type(ast.i32_type_idx)
 		}
 		if ast.int_type_idx in lr {
-			$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+			$if new_int ? && x64 {
 				return ast.Type(ast.i64_type_idx)
 			} $else {
 				return ast.Type(ast.i32_type_idx)

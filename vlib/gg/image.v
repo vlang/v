@@ -27,7 +27,7 @@ pub enum ImageEffect {
 
 // Rect represents a rectangular shape in `gg`.
 pub struct Rect {
-pub:
+pub mut:
 	x      f32
 	y      f32
 	width  f32

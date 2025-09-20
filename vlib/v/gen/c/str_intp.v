@@ -144,7 +144,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 					fmt_type = .si_u32
 				}
 				ast.int_type {
-					$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+					$if new_int ? && x64 {
 						fmt_type = .si_i64
 					} $else {
 						fmt_type = .si_i32
@@ -239,7 +239,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			} else if typ == ast.i32_type {
 				g.write('(u32)(')
 			} else if typ == ast.int_type {
-				$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+				$if new_int ? && x64 {
 					g.write('(u64)(')
 				} $else {
 					g.write('(u32)(')

@@ -326,3 +326,14 @@ fn test_unsupported_type() {
 		assert err.msg() == 'Doc.decode: expected struct, found string'
 	}
 }
+
+fn test_date_array_decode_with_spaces() {
+	// test space after yyyy-mm-dd is not date-time separator but white to consume. issue # 25279
+	s := '
+dates = [ 1979-05-27    , 2022-12-31    ]
+'
+	a := Arrs{
+		dates: [toml.Date{'1979-05-27'}, toml.Date{'2022-12-31'}]
+	}
+	assert toml.decode[Arrs](s)! == a
+}

@@ -158,18 +158,16 @@ pub fn parse_rfc3339(s string) !Time {
 
 	if is_date {
 		year, month, day = check_and_extract_date(s)!
-		if s.len == date_format_buffer.len {
-			return new(Time{
-				year:     year
-				month:    month
-				day:      day
-				is_local: false
-			})
-		}
+	}
+	if s.len <= date_format_buffer.len {
+		return error('date-time too short to parse')
+	}
+	if s[10] !in [u8(`T`), `t`, ` `] {
+		return error('invalid date-time separator:${s[10].ascii_str()}')
 	}
 
 	is_datetime := if s.len >= date_format_buffer.len + 1 + time_format_buffer.len + 1 {
-		is_date && s[10] == u8(`T`)
+		is_date
 	} else {
 		false
 	}
@@ -189,7 +187,7 @@ pub fn parse_rfc3339(s string) !Time {
 				timezone_start_position++
 				if timezone_start_position == s.len {
 					return error('timezone error: expected "Z" or "z" or "+" or "-" in position ${timezone_start_position}, not "${[
-						s[timezone_start_position],
+						s[s.len - 1],
 					].bytestr()}"')
 				}
 			}

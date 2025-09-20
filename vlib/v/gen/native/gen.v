@@ -842,7 +842,7 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 				2
 			}
 			ast.int_type_idx {
-				$if new_int ? && (arm64 || amd64 || rv64 || s390x || ppc64le || loongarch64) {
+				$if new_int ? && x64 {
 					8
 				} $else {
 					4
