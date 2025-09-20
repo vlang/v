@@ -99,7 +99,7 @@ pub const light_red = gg.light_red
 // hex takes in a 32 bit integer and splits it into 4 byte values
 @[deprecated: 'use gg.hex instead']
 @[deprecated_after: '2026-01-24']
-pub fn hex(color int) Color {
+pub fn hex(color i32) Color {
 	return gg.hex(color)
 }
 
