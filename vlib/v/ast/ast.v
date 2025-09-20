@@ -1291,10 +1291,11 @@ pub:
 	post_comments []Comment // comments below ´... }´
 	branch_pos    token.Pos // for checker errors about invalid branches
 pub mut:
-	stmts []Stmt // right side
-	exprs []Expr // left side
-	scope &Scope = unsafe { nil }
-	id    int
+	stmts           []Stmt // right side
+	exprs           []Expr // left side
+	scope           &Scope = unsafe { nil }
+	id              int
+	is_comptime_err bool // $compile_warn(), $compile_error()
 }
 
 pub struct SelectExpr {
