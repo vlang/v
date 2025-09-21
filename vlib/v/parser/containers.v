@@ -38,7 +38,8 @@ fn (mut p Parser) parse_array_lit(mut exprs []ast.Expr, mut pre_cmnts []ast.Comm
 	p.inside_array_lit = true
 	p.last_enum_name = ''
 	p.last_enum_mod = ''
-	pre_cmnts = p.eat_comments()
+	pre_cmnts.clear()
+	pre_cmnts << p.eat_comments()
 	for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 		exprs << p.expr(0)
 		ecmnts << p.eat_comments()
