@@ -1041,7 +1041,6 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 							g.writeln('builtin___result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
 							g.writeln('}')
 						} else {
-							println(last)
 							g.write('${tmp_var} = ')
 							g.stmt(last)
 						}
