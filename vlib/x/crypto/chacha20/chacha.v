@@ -91,62 +91,60 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	if dst.len < src.len {
 		panic('chacha20/chacha: dst buffer is to small')
 	}
-
-	mut idx := 0
-	mut src_len := src.len
-
-	dst = unsafe { dst[..src_len] }
+	dst = unsafe { dst[..src.len] }
 	if subtle.inexact_overlap(dst, src) {
 		panic('chacha20: invalid buffer overlap')
 	}
+	// index of position within src bytes
+	mut idx := 0
 
-	// We adapt and ports the go version here
-	// First, drain any remaining key stream
+	// First, try to drain any remaining key stream from internal buffer
 	if c.length != 0 {
 		// remaining keystream on internal buffer
 		mut kstream := c.block[block_size - c.length..]
-		if src_len < kstream.len {
-			kstream = unsafe { kstream[..src_len] }
+		if src.len < kstream.len {
+			kstream = unsafe { kstream[..src.len] }
 		}
+		// xors every bytes in src with bytes from key stream and stored into dst
 		for i, b in kstream {
 			dst[idx + i] = src[idx + i] ^ b
 		}
-		// updates the idx for dst and src
+		// updates position and internal buffer length.
+		// when c.length reaches the block_size, we reset it for future use.
 		c.length -= kstream.len
 		idx += kstream.len
-		src_len -= kstream.len
-	}
-
-	// take the most full bytes of multiples block_size from the src,
-	// build the keystream from the cipher's state and stores the result
-	// into dst
-	full := src_len - src_len % block_size
-	if full > 0 {
-		src_block := unsafe { src[idx..idx + full] }
-		c.Stream.keystream_with_blocksize(mut dst[idx..idx + full], src_block) or {
-			c.Stream.overflow = true
-			panic('chacha20: xor_key_stream leads to counter overflow')
+		if c.length == block_size {
+			unsafe { c.block.reset() }
+			c.length = 0
 		}
 	}
-	idx += full
-	src_len -= full
+	// process for remaining unprocessed src bytes
+	mut remains := unsafe { src[idx..] }
+	nr_blocks := remains.len / block_size
 
-	// If we have a partial block, pad it for keystream_with_blocksize, and
-	// keep the leftover keystream for the next invocation.
-	if src_len > 0 {
-		// Make sure, internal buffer cleared or the old garbaged data from previous call still there
-		// See the issue at https://github.com/vlang/v/issues/24043
-		unsafe { c.block.reset() } //  = []u8{len: block_size}
-		// copy the last src block to internal buffer, and performs
-		// keystream_with_blocksize on this buffer, and stores into remaining dst
-		_ := copy(mut c.block, src[idx..])
-		c.Stream.keystream_with_blocksize(mut c.block, c.block) or {
-			c.Stream.overflow = true
-			panic('chacha20: xor_key_stream leads to counter overflow')
+	// process for full block_size-d message
+	for i := 0; i < nr_blocks; i++ {
+		// for every block_sized message, we generates 64-bytes block key stream
+		// and then xor-ing this block with generated key stream
+		block := unsafe { remains[i * block_size..(i + 1) * block_size] }
+		ks := c.keystream() or { panic(err) }
+		for j, b in ks {
+			dst[idx + j] = block[j] ^ b
 		}
-		n := copy(mut dst[idx..], c.block)
-		// the length of remaining bytes of unprocessed keystream
-		c.length = block_size - n
+		// updates position
+		idx += block_size
+	}
+
+	// process for remaining partial block
+	if remains.len % block_size != 0 {
+		last_block := unsafe { remains[nr_blocks * block_size..] }
+		// generates one 64-bytes keystream block
+		c.block = c.keystream() or { panic(err) }
+		for i, b in last_block {
+			dst[idx + i] = b ^ c.block[i]
+		}
+		c.length = block_size - last_block.len
+		idx += last_block.len
 	}
 }
 
@@ -181,7 +179,9 @@ pub fn (mut c Cipher) free() {
 	}
 }
 
-// reset quickly sets all Cipher's fields to default value
+// reset quickly sets all Cipher's fields to default value.
+// This method will be deprecated.
+@[deprecated_after: '2025-11-30']
 @[unsafe]
 pub fn (mut c Cipher) reset() {
 	c.Stream.reset()
