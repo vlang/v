@@ -266,11 +266,17 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				} else {
 					node.expected_type
 				}
-				expr_type := c.unwrap_generic(if stmt.expr is ast.CallExpr {
-					stmt.typ
+				branch.is_comptime_err = stmt.expr is ast.ComptimeCall
+					&& stmt.expr.kind in [.compile_error, .compile_warn]
+				expr_type := if branch.is_comptime_err {
+					c.expected_type
 				} else {
-					c.expr(mut stmt.expr)
-				})
+					c.unwrap_generic(if stmt.expr is ast.CallExpr {
+						stmt.typ
+					} else {
+						c.expr(mut stmt.expr)
+					})
+				}
 				unwrapped_expected_type := c.unwrap_generic(node.expected_type)
 				must_be_option = must_be_option || expr_type == ast.none_type
 				stmt.typ = expr_type
@@ -434,6 +440,8 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					c.error('`match` expression requires an expression as the last statement of every branch',
 						stmt.pos)
 				}
+			} else if c.inside_return && mut stmt is ast.Return && ret_type == ast.void_type {
+				ret_type = if stmt.types.len > 0 { stmt.types[0] } else { c.expected_type }
 			}
 		}
 		first_iteration = false

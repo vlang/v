@@ -1004,49 +1004,56 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 		} else {
 			g.writeln('#else')
 		}
-
-		if node.is_expr {
+		if node.is_expr && !branch.is_comptime_err {
 			len := branch.stmts.len
 			if len > 0 {
-				last := branch.stmts.last() as ast.ExprStmt
-				if len > 1 {
-					g.indent++
-					g.writeln('{')
-					g.stmts(branch.stmts[..len - 1])
-					g.set_current_pos_as_last_stmt_pos()
-					prev_skip_stmt_pos := g.skip_stmt_pos
-					g.skip_stmt_pos = true
-					if is_opt_or_result {
-						tmp_var2 := g.new_tmp_var()
-						g.write('{ ${g.base_type(node.return_type)} ${tmp_var2} = ')
-						g.stmt(last)
-						g.writeln('builtin___result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
-						g.writeln('}')
+				last := branch.stmts.last()
+				if last is ast.ExprStmt {
+					if len > 1 {
+						g.indent++
+						g.writeln('{')
+						g.stmts(branch.stmts[..len - 1])
+						g.set_current_pos_as_last_stmt_pos()
+						prev_skip_stmt_pos := g.skip_stmt_pos
+						g.skip_stmt_pos = true
+						if is_opt_or_result {
+							tmp_var2 := g.new_tmp_var()
+							g.write('{ ${g.base_type(node.return_type)} ${tmp_var2} = ')
+							g.stmt(last)
+							g.writeln('builtin___result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
+							g.writeln('}')
+						} else {
+							g.write('\t${tmp_var} = ')
+							g.stmt(last)
+						}
+						g.skip_stmt_pos = prev_skip_stmt_pos
+						g.writeln2(';', '}')
+						g.indent--
 					} else {
-						g.write('\t${tmp_var} = ')
-						g.stmt(last)
+						g.indent++
+						g.set_current_pos_as_last_stmt_pos()
+						prev_skip_stmt_pos := g.skip_stmt_pos
+						g.skip_stmt_pos = true
+						if is_opt_or_result {
+							tmp_var2 := g.new_tmp_var()
+							g.write('{ ${g.base_type(node.return_type)} ${tmp_var2} = ')
+							g.stmt(last)
+							g.writeln('builtin___result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
+							g.writeln('}')
+						} else {
+							g.write('${tmp_var} = ')
+							g.stmt(last)
+						}
+						g.skip_stmt_pos = prev_skip_stmt_pos
+						g.writeln(';')
+						g.indent--
 					}
-					g.skip_stmt_pos = prev_skip_stmt_pos
-					g.writeln2(';', '}')
-					g.indent--
-				} else {
-					g.indent++
-					g.set_current_pos_as_last_stmt_pos()
-					prev_skip_stmt_pos := g.skip_stmt_pos
-					g.skip_stmt_pos = true
-					if is_opt_or_result {
-						tmp_var2 := g.new_tmp_var()
-						g.write('{ ${g.base_type(node.return_type)} ${tmp_var2} = ')
-						g.stmt(last)
-						g.writeln('builtin___result_ok(&(${g.base_type(node.return_type)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.return_type)}));')
-						g.writeln('}')
-					} else {
+				} else if last is ast.Return {
+					if last.exprs.len > 0 {
 						g.write('${tmp_var} = ')
-						g.stmt(last)
+						g.expr(last.exprs[0])
+						g.writeln(';')
 					}
-					g.skip_stmt_pos = prev_skip_stmt_pos
-					g.writeln(';')
-					g.indent--
 				}
 			}
 		} else {
