@@ -39,10 +39,11 @@ fn play_sounds(files []string) ! {
 
 //
 fn audio_player_callback(mut buffer &f32, num_frames int, num_channels int, mut p Player) {
+	ntotal := num_channels * num_frames
+	unsafe { vmemset(buffer, 0, ntotal * 4) }
 	if p.finished {
 		return
 	}
-	ntotal := num_channels * num_frames
 	nremaining := p.samples.len - p.pos
 	nsamples := if nremaining < ntotal { nremaining } else { ntotal }
 	if nsamples <= 0 {
