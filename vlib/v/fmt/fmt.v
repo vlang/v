@@ -1882,7 +1882,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	mut set_comma := false
 	if node.is_fixed && node.exprs.len == 0 {
 		// [4]int{}
-		f.write('${node.len_expr}')
+		f.expr(node.len_expr)
 	}
 	for i, expr in node.exprs {
 		pos := expr.pos()
