@@ -133,7 +133,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		c.check_elements_ref_fields_initialized(unwrap_elem_type, node.pos)
 	}
 	// `a = []`
-	if node.exprs.len == 0 {
+	if node.exprs.len == 0 && !node.is_fixed {
 		// `a := fn_returning_opt_array() or { [] }`
 		if c.expected_type == ast.void_type {
 			if c.expected_or_type != ast.void_type {
@@ -293,12 +293,12 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		node.elem_type = elem_type
-	} else if node.is_fixed && node.exprs.len == 1 && node.elem_type != ast.void_type {
+	} else if node.is_fixed && node.elem_type != ast.void_type {
 		// `[50]u8`
 		sym := c.table.sym(node.typ)
 		if sym.info !is ast.ArrayFixed
 			|| c.array_fixed_has_unresolved_size(sym.info as ast.ArrayFixed) {
-			mut size_expr := node.exprs[0]
+			mut size_expr := node.len_expr
 			node.typ = c.eval_array_fixed_sizes(mut size_expr, 0, node.elem_type)
 			if node.is_option {
 				node.typ = node.typ.set_flag(.option)

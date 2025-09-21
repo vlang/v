@@ -1607,9 +1607,11 @@ pub:
 	has_cap       bool
 	has_init      bool
 	has_index     bool // true if temp variable index is used
+	auto_length   bool // [..]
+	is_deprecated bool // is deprecated syntax
 pub mut:
 	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
-	len_expr     Expr   // len: expr
+	len_expr     Expr   // len: expr, NOTE: for fixed-array, we set the size in `len_expr`
 	cap_expr     Expr   // cap: expr
 	init_expr    Expr   // init: expr
 	expr_types   []Type // [Dog, Cat] // also used for interface_types
