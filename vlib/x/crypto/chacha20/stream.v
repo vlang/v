@@ -160,148 +160,104 @@ fn (mut s Stream) keystream_full(mut dst []u8, src []u8) ! {
 		s.overflow = true
 		return error('chacha20: internal counter overflow')
 	}
+	mut idx := 0
 	// process for full block_size-d msg
 	for i := 0; i < nr_blocks; i++ {
+		// for every block_sized message, we generates 64-bytes block key stream
+		// and then xor-ing this block with generated key stream
 		block := unsafe { src[i * block_size..(i + 1) * block_size] }
-		// process with block_size keystream
-		s.keystream_with_blocksize(mut dst[i * block_size..(i + 1) * block_size], block)!
+		ks := s.keystream()!
+		for j, b in ks {
+			dst[idx + j] = block[j] ^ b
+		}
+		// updates position
+		idx += block_size
 	}
 
 	// process for remaining partial block
 	if src.len % block_size != 0 {
 		last_block := unsafe { src[nr_blocks * block_size..] }
-		// pad to align with block_size
-		mut last_bytes := []u8{len: block_size}
-		_ := copy(mut last_bytes, last_block)
-
-		// process the padded last block
-		s.keystream_with_blocksize(mut last_bytes, last_bytes)!
-		_ := copy(mut dst[nr_blocks * block_size..], last_bytes)
+		// generates one 64-bytes keystream block, and xor-ing bytes
+		// in last_block with the key stream
+		ks := s.keystream()!
+		for i, b in last_block {
+			dst[idx + i] = b ^ ks[i]
+		}
+		idx += last_block.len
 	}
 }
 
-// keystream_with_blocksize produces stream from src bytes that aligns with block_size,
-// serialized in little-endian form and stored into dst buffer.
+// keystream generates and retursns a 64-bytes block of key stream and increases internal counter.
 @[direct_array_access]
-fn (mut s Stream) keystream_with_blocksize(mut dst []u8, src []u8) ! {
-	// ChaCha20 keystream generator was relatively easy to understand.
-	// Its contains steps:
-	// - loads current ChaCha20 into temporary state, used for later.
-	// - performs quarter_round function on this state and returns some new state.
-	// - adding back the new state with the old state.
-	// - performs xor-ing between src bytes (loaded as little endian number) with result from previous step.
-	// - serializes, in little endian form, this xor-ed state into destination buffer.
-	//
-	// Makes sure its works for size of multiple of block_size
-	if dst.len != src.len || dst.len % block_size != 0 {
-		return error('chacha20: internal error: wrong dst and/or src length')
-	}
-	// check if this stream has reached the counter limit
-	if s.overflow {
-		return error('chacha20: internal counter has reached the limit, please rekey')
-	}
-	// check for counter overflow when processing number of blocks
-	num_blocks := (u64(src.len) + block_size - 1) / block_size
-	if s.check_ctr(num_blocks) {
-		s.overflow = true
-		return error('chacha20.check_ctr: internal counter overflow')
-	}
-
-	// load state from current stream
-	mut st := s.new_curr_state()
-	// clone the state
-	mut st_c := clone_state(st)
+fn (mut s Stream) keystream() ![]u8 {
+	// initializes current state and working state
+	mut awal := s.new_curr_state()
+	mut ws := clone_state(awal)
 
 	// precomputes cache counter-independent  values
 	if s.mode == .standard && !s.precomp {
-		s.precomp(st)
+		s.precomp(awal)
+	}
+	// remaining first column round
+	if s.mode == .standard {
+		mut fcr := Quartet{awal[0], awal[4], awal[8], awal[12]}
+		qround_on_quartet(mut fcr)
+
+		// First diagonal round.
+		qround_on_state_with_quartet(mut ws, fcr.e0, s.p5, s.p10, s.p15, 0, 5, 10, 15)
+		qround_on_state_with_quartet(mut ws, s.p1, s.p6, s.p11, fcr.e3, 1, 6, 11, 12)
+		qround_on_state_with_quartet(mut ws, s.p2, s.p7, fcr.e2, s.p13, 2, 7, 8, 13)
+		qround_on_state_with_quartet(mut ws, s.p3, fcr.e1, s.p9, s.p14, 3, 4, 9, 14)
 	}
 
-	mut idx := 0
-	mut src_len := src.len
-	for src_len >= block_size {
-		if s.mode == .standard {
-			// remaining first column round
-			mut fcr := Quartet{st[0], st[4], st[8], st[12]}
-			qround_on_quartet(mut fcr)
+	// The remaining quarter rounds
+	//
+	// For standard variant, the first column-round was already precomputed,
+	// For original variant, its use full quarter round number.
+	//
+	// perform chacha20 quarter round n-times
+	n := if s.mode == .standard { 9 } else { default_qround_nr }
+	for i := 0; i < n; i++ {
+		// Column-round
+		//  0 |  1 |  2 |  3
+		//  4 |  5 |  6 |  7
+		//  8 |  9 | 10 | 11
+		// 12 | 13 | 14 | 15
+		qround_on_state(mut ws, 0, 4, 8, 12) // 0
+		qround_on_state(mut ws, 1, 5, 9, 13) // 1
+		qround_on_state(mut ws, 2, 6, 10, 14) // 2
+		qround_on_state(mut ws, 3, 7, 11, 15) // 3
 
-			// First diagonal round.
-			qround_on_state_with_quartet(mut st_c, fcr.e0, s.p5, s.p10, s.p15, 0, 5, 10,
-				15)
-			qround_on_state_with_quartet(mut st_c, s.p1, s.p6, s.p11, fcr.e3, 1, 6, 11,
-				12)
-			qround_on_state_with_quartet(mut st_c, s.p2, s.p7, fcr.e2, s.p13, 2, 7, 8,
-				13)
-			qround_on_state_with_quartet(mut st_c, s.p3, fcr.e1, s.p9, s.p14, 3, 4, 9,
-				14)
-		}
-		// The remaining rounds
-		//
-		// For standard variant, the first column-round was already precomputed,
-		// For original variant, its use full quarter round number.
-
-		// perform chacha20 quarter round n-times
-		n := if s.mode == .standard { 9 } else { default_qround_nr }
-		for i := 0; i < n; i++ {
-			// Column-round
-			//  0 |  1 |  2 |  3
-			//  4 |  5 |  6 |  7
-			//  8 |  9 | 10 | 11
-			// 12 | 13 | 14 | 15
-			qround_on_state(mut st_c, 0, 4, 8, 12) // 0
-			qround_on_state(mut st_c, 1, 5, 9, 13) // 1
-			qround_on_state(mut st_c, 2, 6, 10, 14) // 2
-			qround_on_state(mut st_c, 3, 7, 11, 15) // 3
-
-			// Diagonal round.
-			//   0 \  1 \  2 \  3
-			//   5 \  6 \  7 \  4
-			//  10 \ 11 \  8 \  9
-			//  15 \ 12 \ 13 \ 14
-			qround_on_state(mut st_c, 0, 5, 10, 15)
-			qround_on_state(mut st_c, 1, 6, 11, 12)
-			qround_on_state(mut st_c, 2, 7, 8, 13)
-			qround_on_state(mut st_c, 3, 4, 9, 14)
-		}
-
-		// add back keystream result to initial state, xor-ing with the src and stores into dst
-		for i := 0; i < 16; i++ {
-			src_block := unsafe { src[idx + (i * 4)..idx + (i + 1) * 4] }
-			add_xored := binary.little_endian_u32(src_block) ^ (st_c[i] + st[i])
-			binary.little_endian_put_u32(mut dst[idx + (i * 4)..idx + (i + 1) * 4], add_xored)
-		}
-
-		// increases Stream's internal counter
-		if s.mode == .original {
-			st[12] += 1
-			// first counter reset ?
-			if st[12] == 0 {
-				// increase second counter, if reset, mark as an overflow and return error
-				st[13] += 1
-				if st[13] == 0 {
-					s.overflow = true
-					return error('chacha20.keystream_with_blocksize: 64-bit counter reached')
-				}
-			}
-			// store the counter
-			s.nonce[0] = st[12]
-			s.nonce[1] = st[13]
-		} else {
-			st[12] += 1
-			if st[12] == 0 {
-				s.overflow = true
-				return error('chacha20.keystream_with_blocksize: overflow 32-bit counter')
-			}
-			s.nonce[0] = st[12]
-		}
-
-		// updates index
-		idx += block_size
-		src_len -= block_size
+		// Diagonal round.
+		//   0 \  1 \  2 \  3
+		//   5 \  6 \  7 \  4
+		//  10 \ 11 \  8 \  9
+		//  15 \ 12 \ 13 \ 14
+		qround_on_state(mut ws, 0, 5, 10, 15)
+		qround_on_state(mut ws, 1, 6, 11, 12)
+		qround_on_state(mut ws, 2, 7, 8, 13)
+		qround_on_state(mut ws, 3, 4, 9, 14)
 	}
+	// Adding the working state values with inital state values.
+	// We dont performs xor-ing here, its done on xor_key_stream and or keystream_full.
+	for i, _ in ws {
+		ws[i] += awal[i]
+	}
+	// increases stream internal counter
+	s.inc_ctr(mut awal)!
+
+	// serializes current working state in little-endian form
+	mut block := []u8{len: block_size}
+	for i, v in ws {
+		block[i * 4] = u8(v)
+		block[i * 4 + 1] = u8(v >> 8)
+		block[i * 4 + 2] = u8(v >> 16)
+		block[i * 4 + 3] = u8(v >> 24)
+	}
+	return block
 }
 
-// precomp does quarter round on counter-independent quartet values on running state st.
+// precomp performs quarter round on counter-independent quartet values on running state st.
 @[direct_array_access; inline]
 fn (mut s Stream) precomp(st State) {
 	mut pcr1 := Quartet{st[1], st[5], st[9], st[13]}
@@ -349,7 +305,7 @@ fn (b Stream) ctr() u64 {
 	}
 }
 
-// set_ctr sets Stream's counter
+// set_ctr sets stream internal counter
 @[direct_array_access; inline]
 fn (mut b Stream) set_ctr(ctr u64) {
 	match b.mode {
@@ -378,6 +334,34 @@ fn (b Stream) check_ctr(value u64) bool {
 		return true
 	}
 	return false
+}
+
+// inc_ctr increases stream counter by one from the current state st
+@[direct_array_access]
+fn (mut s Stream) inc_ctr(mut st State) ! {
+	// updates internal counter
+	if s.mode == .original {
+		st[12] += 1
+		// first counter reset ?
+		if st[12] == 0 {
+			// increase second counter, if reset, mark as an overflow and return error
+			st[13] += 1
+			if st[13] == 0 {
+				s.overflow = true
+				return error('chacha20.keystream: 64-bit counter reached')
+			}
+		}
+		// store the counter
+		s.nonce[0] = st[12]
+		s.nonce[1] = st[13]
+	} else {
+		st[12] += 1
+		if st[12] == 0 {
+			s.overflow = true
+			return error('chacha20.keystream: overflow 32-bit counter')
+		}
+		s.nonce[0] = st[12]
+	}
 }
 
 // max_ctr returns maximum counter value of this stream variant

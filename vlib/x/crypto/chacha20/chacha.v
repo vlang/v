@@ -84,69 +84,67 @@ pub fn new_cipher(key []u8, nonce []u8) !&Cipher {
 // You must never use the same (key, nonce) pair more than once for encryption.
 // This would void any confidentiality guarantees for the messages encrypted with the same nonce and key.
 @[direct_array_access]
-pub fn (mut c Cipher) xor_key_stream_backup(mut dst []u8, src []u8) {
+pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	if src.len == 0 {
 		return
 	}
 	if dst.len < src.len {
 		panic('chacha20/chacha: dst buffer is to small')
 	}
-
-	mut idx := 0
-	mut src_len := src.len
-
-	dst = unsafe { dst[..src_len] }
+	dst = unsafe { dst[..src.len] }
 	if subtle.inexact_overlap(dst, src) {
 		panic('chacha20: invalid buffer overlap')
 	}
+	// index of position within src bytes
+	mut idx := 0
 
-	// We adapt and ports the go version here
-	// First, drain any remaining key stream
+	// First, try to drain any remaining key stream from internal buffer
 	if c.length != 0 {
 		// remaining keystream on internal buffer
 		mut kstream := c.block[block_size - c.length..]
-		if src_len < kstream.len {
-			kstream = unsafe { kstream[..src_len] }
+		if src.len < kstream.len {
+			kstream = unsafe { kstream[..src.len] }
 		}
+		// xors every bytes in src with bytes from key stream and stored into dst
 		for i, b in kstream {
 			dst[idx + i] = src[idx + i] ^ b
 		}
-		// updates the idx for dst and src
+		// updates position and internal buffer length.
+		// when c.length reaches the block_size, we reset it for future use.
 		c.length -= kstream.len
 		idx += kstream.len
-		src_len -= kstream.len
-	}
-
-	// take the most full bytes of multiples block_size from the src,
-	// build the keystream from the cipher's state and stores the result
-	// into dst
-	full := src_len - src_len % block_size
-	if full > 0 {
-		src_block := unsafe { src[idx..idx + full] }
-		c.Stream.keystream_with_blocksize(mut dst[idx..idx + full], src_block) or {
-			c.Stream.overflow = true
-			panic('chacha20: xor_key_stream leads to counter overflow')
+		if c.length == block_size {
+			unsafe { c.block.reset() }
+			c.length = 0
 		}
 	}
-	idx += full
-	src_len -= full
+	// process for remaining unprocessed src bytes
+	mut remains := unsafe { src[idx..] }
+	nr_blocks := remains.len / block_size
 
-	// If we have a partial block, pad it for keystream_with_blocksize, and
-	// keep the leftover keystream for the next invocation.
-	if src_len > 0 {
-		// Make sure, internal buffer cleared or the old garbaged data from previous call still there
-		// See the issue at https://github.com/vlang/v/issues/24043
-		unsafe { c.block.reset() } //  = []u8{len: block_size}
-		// copy the last src block to internal buffer, and performs
-		// keystream_with_blocksize on this buffer, and stores into remaining dst
-		_ := copy(mut c.block, src[idx..])
-		c.Stream.keystream_with_blocksize(mut c.block, c.block) or {
-			c.Stream.overflow = true
-			panic('chacha20: xor_key_stream leads to counter overflow')
+	// process for full block_size-d message
+	for i := 0; i < nr_blocks; i++ {
+		// for every block_sized message, we generates 64-bytes block key stream
+		// and then xor-ing this block with generated key stream
+		block := unsafe { remains[i * block_size..(i + 1) * block_size] }
+		ks := c.keystream() or { panic(err) }
+		for j, b in ks {
+			dst[idx + j] = block[j] ^ b
 		}
-		n := copy(mut dst[idx..], c.block)
-		// the length of remaining bytes of unprocessed keystream
-		c.length = block_size - n
+		// updates position
+		idx += block_size
+	}
+
+	// process for remaining partial block
+	if remains.len % block_size != 0 {
+		last_block := unsafe { remains[nr_blocks * block_size..] }
+		// generates one 64-bytes keystream block
+		c.block = c.keystream() or { panic(err) }
+		for i, b in last_block {
+			dst[idx + i] = b ^ c.block[i]
+		}
+		c.length = block_size - last_block.len
+		idx += last_block.len
 	}
 }
 
@@ -181,7 +179,9 @@ pub fn (mut c Cipher) free() {
 	}
 }
 
-// reset quickly sets all Cipher's fields to default value
+// reset quickly sets all Cipher's fields to default value.
+// This method will be deprecated.
+@[deprecated_after: '2025-11-30']
 @[unsafe]
 pub fn (mut c Cipher) reset() {
 	c.Stream.reset()
@@ -223,124 +223,4 @@ fn derive_xchacha20_key_nonce(key []u8, nonce []u8) !([]u8, []u8) {
 	_ := copy(mut new_nonce[4..12], nonce[16..24])
 
 	return new_key, new_nonce
-}
-
-// keystream produces keystream and increases internal counter
-// returns 64-bytes block
-@[direct_array_access]
-fn (mut c Cipher) keystream() ![]u8 {
-	mut awal := c.Stream.new_curr_state()
-	mut x := clone_state(awal)
-	for i := 0; i < 10; i++ {
-		// Column-round
-		//  0 |  1 |  2 |  3
-		//  4 |  5 |  6 |  7
-		//  8 |  9 | 10 | 11
-		// 12 | 13 | 14 | 15
-		qround_on_state(mut x, 0, 4, 8, 12) // 0
-		qround_on_state(mut x, 1, 5, 9, 13) // 1
-		qround_on_state(mut x, 2, 6, 10, 14) // 2
-		qround_on_state(mut x, 3, 7, 11, 15) // 3
-
-		// Diagonal round.
-		//   0 \  1 \  2 \  3
-		//   5 \  6 \  7 \  4
-		//  10 \ 11 \  8 \  9
-		//  15 \ 12 \ 13 \ 14
-		qround_on_state(mut x, 0, 5, 10, 15)
-		qround_on_state(mut x, 1, 6, 11, 12)
-		qround_on_state(mut x, 2, 7, 8, 13)
-		qround_on_state(mut x, 3, 4, 9, 14)
-	}
-	// Add the x with inital state, xor-ed on xor_key_stream
-	for i, _ in x {
-		x[i] += awal[i]
-	}
-	// updates internal counter
-	if c.Stream.mode == .original {
-		awal[12] += 1
-		// first counter reset ?
-		if awal[12] == 0 {
-			// increase second counter, if reset, mark as an overflow and return error
-			awal[13] += 1
-			if awal[13] == 0 {
-				c.Stream.overflow = true
-				return error('chacha20.keystream: 64-bit counter reached')
-			}
-		}
-		// store the counter
-		c.Stream.nonce[0] = awal[12]
-		c.Stream.nonce[1] = awal[13]
-	} else {
-		awal[12] += 1
-		if awal[12] == 0 {
-			c.Stream.overflow = true
-			return error('chacha20.keystream: overflow 32-bit counter')
-		}
-		c.Stream.nonce[0] = awal[12]
-	}
-	// serializes in little-endian
-	mut block := []u8{len: block_size}
-	for i, v in x {
-		block[i * 4] = u8(v)
-		block[i * 4 + 1] = u8(v >> 8)
-		block[i * 4 + 2] = u8(v >> 16)
-		block[i * 4 + 3] = u8(v >> 24)
-	}
-	return block
-}
-
-@[direct_array_access]
-pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
-	if src.len == 0 {
-		return
-	}
-	if dst.len < src.len {
-		panic('chacha20/chacha: dst buffer is to small')
-	}
-	dst = unsafe { dst[..src.len] }
-	if subtle.inexact_overlap(dst, src) {
-		panic('chacha20: invalid buffer overlap')
-	}
-	mut idx := 0
-
-	// try to drain internal buffer
-	if c.length != 0 {
-		// remaining keystream on internal buffer
-		mut kstream := c.block[block_size - c.length..]
-		if src.len < kstream.len {
-			kstream = unsafe { kstream[..src.len] }
-		}
-		for i, b in kstream {
-			dst[idx + i] = src[idx + i] ^ b
-		}
-		// updates the idx for dst and src
-		c.length -= kstream.len
-		idx += kstream.len
-	}
-	// process for remaining src bytes
-	mut remains := unsafe { src[idx..] }
-	nr_blocks := remains.len / block_size
-
-	// process for full block_size-d msg
-	for i := 0; i < nr_blocks; i++ {
-		block := unsafe { remains[i * block_size..(i + 1) * block_size] }
-		ks := c.keystream() or { panic(err) } // generates 64-bytes block
-		for j, b in ks {
-			dst[idx + j] = block[j] ^ b
-		}
-		idx += block_size
-	}
-
-	// process for remaining partial block
-	if remains.len % block_size != 0 {
-		last_block := unsafe { remains[nr_blocks * block_size..] }
-		// generates one 64-bytes keystream block
-		c.block = c.keystream() or { panic(err) }
-		for i, b in last_block {
-			dst[idx + i] = b ^ c.block[i]
-		}
-		c.length = block_size - last_block.len
-		idx += last_block.len
-	}
 }

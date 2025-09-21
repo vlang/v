@@ -22,13 +22,13 @@ fn test_stream_counter_handling() ! {
 	assert ctx.Stream.overflow == false
 	assert ctx.Stream.ctr() == max_64bit_counter
 
-	// after above process the counter should have at the maximum limit
-	// we use keystream_with_blocksize to test this counter handling, because
+	// after above process, the counter should reach the maximum limit
+	// we use keystream_full to test this counter handling, because
 	// xor_key_stream would panic on counter reset
 	msg1 := []u8{len: block_size}
-	ctx.Stream.keystream_with_blocksize(mut dst[..block_size], msg1) or {
+	ctx.Stream.keystream_full(mut dst[..block_size], msg1) or {
 		assert ctx.Stream.overflow == true
-		assert err == error('chacha20.check_ctr: internal counter overflow')
+		assert err == error('chacha20: internal counter overflow')
 		return
 	}
 }
@@ -58,7 +58,7 @@ fn test_state_of_chacha20_block_simple() ! {
 
 	mut block := []u8{len: block_size}
 	stream.set_ctr(1)
-	stream.keystream_with_blocksize(mut block, block)!
+	stream.keystream_full(mut block, block)!
 
 	expected_raw_bytes := '10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e'
 	exp_bytes := hex.decode(expected_raw_bytes)!
@@ -66,7 +66,7 @@ fn test_state_of_chacha20_block_simple() ! {
 	assert block == exp_bytes
 }
 
-fn test_keystream_with_blocksize() ! {
+fn test_keystream_encryption() ! {
 	for val in blocks_testcases {
 		key := hex.decode(val.key)!
 		nonce := hex.decode(val.nonce)!
@@ -75,7 +75,7 @@ fn test_keystream_with_blocksize() ! {
 		stream.set_ctr(val.counter)
 
 		mut block := []u8{len: block_size}
-		stream.keystream_with_blocksize(mut block, block)!
+		stream.keystream_full(mut block, block)!
 		exp_bytes := hex.decode(val.output)!
 
 		assert block == exp_bytes
