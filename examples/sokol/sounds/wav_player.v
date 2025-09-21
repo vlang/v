@@ -4,9 +4,10 @@ import sokol.audio
 
 struct Player {
 mut:
-	samples  []f32
-	pos      int
-	finished bool
+	sample_rate int
+	samples     []f32
+	pos         int
+	finished    bool
 }
 
 fn main() {
@@ -48,16 +49,18 @@ fn audio_player_callback(mut buffer &f32, num_frames int, num_channels int, mut 
 		p.finished = true
 		return
 	}
-	unsafe { vmemcpy(buffer, &p.samples[p.pos], nsamples * int(sizeof(f32))) }
+	unsafe { vmemcpy(buffer, &p.samples[p.pos], nsamples * 4) }
 	p.pos += nsamples
 }
 
 fn (mut p Player) init() {
 	audio.setup(
-		num_channels:       2
+		num_channels:       1
 		stream_userdata_cb: audio_player_callback
 		user_data:          p
+		sample_rate:        44100
 	)
+	p.sample_rate = audio.sample_rate()
 }
 
 fn (mut p Player) stop() {
@@ -194,10 +197,7 @@ fn read_wav_file_samples(fpath string) ![]f32 {
 					}
 					doffset += step
 					if doffset < ch.chunk_size {
-						res << x
-						if rf.nchannels == 1 {
-							// Duplicating single channel mono sounds,
-							// produces a stereo sound, simplifying further processing:
+						for _ in 0 .. (44100 / rf.sample_rate) {
 							res << x
 						}
 					}
