@@ -148,24 +148,21 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 			for p.tok.kind != .rcbr {
 				attr_pos = p.tok.pos()
 				key := p.check_name()
-				p.check(.colon)
 				if is_option && !is_fixed {
 					p.error('Option array cannot have initializers')
 				}
+				if is_fixed && key in ['len', 'cap'] {
+					p.error_with_pos('`len` and `cap` are invalid attributes for fixed array dimension',
+						attr_pos)
+					return ast.ArrayInit{}
+				}
+				p.check(.colon)
 				match key {
 					'len' {
-						if is_fixed {
-							p.error_with_pos('`len` and `cap` are invalid attributes for fixed array dimension',
-								attr_pos)
-						}
 						has_len = true
 						len_expr = p.expr(0)
 					}
 					'cap' {
-						if is_fixed {
-							p.error_with_pos('`len` and `cap` are invalid attributes for fixed array dimension',
-								attr_pos)
-						}
 						has_cap = true
 						cap_expr = p.expr(0)
 					}

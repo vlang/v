@@ -1,14 +1,7 @@
-vlib/v/checker/tests/wrong_muti_dim_arr_declare_err.vv:4:15: warning: use `x := []Type{}` instead of `x := []Type`
+vlib/v/checker/tests/wrong_muti_dim_arr_declare_err.vv:4:27: error: invalid expression: unexpected token `]`
     2 | 
     3 | fn main() {
     4 |         a2 := [][][]f32[][]{}
-      |               ~~~~~~~~~~
-    5 |         dump(typeof(a2).name)
-    6 |
-vlib/v/checker/tests/wrong_muti_dim_arr_declare_err.vv:4:25: error: invalid expression: unexpected token `]`
-    2 | 
-    3 | fn main() {
-    4 |         a2 := [][][]f32[][]{}
-      |                         ^
+      |                           ^
     5 |         dump(typeof(a2).name)
     6 |
