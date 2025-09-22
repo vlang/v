@@ -904,6 +904,9 @@ pub const is_started_mysqld = find_started_process('mysqld') or { '' }
 // is_started_postgres is true, when the test runner determines that there is a running postgres server
 pub const is_started_postgres = find_started_process('postgres') or { '' }
 
+// is_started_redis is true, when the test runner determines that there is a running redis server
+pub const is_started_redis = find_started_process('redis-server') or { '' }
+
 pub fn (mut ts TestSession) setup_build_environment() {
 	facts, mut defines := pref.get_build_facts_and_defines()
 	// add the runtime information, that the test runner has already determined by checking once:
@@ -912,6 +915,9 @@ pub fn (mut ts TestSession) setup_build_environment() {
 	}
 	if is_started_postgres != '' {
 		defines << 'started_postgres'
+	}
+	if is_started_redis != '' {
+		defines << 'started_redis'
 	}
 	if is_node_present {
 		defines << 'present_node'
