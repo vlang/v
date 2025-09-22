@@ -585,6 +585,9 @@ fn (mut g Gen) match_must_reset_if(node ast.Expr) bool {
 		ast.CallExpr {
 			node.or_block.kind != .absent
 		}
+		ast.CastExpr {
+			node.typ.has_flag(.option)
+		}
 		ast.InfixExpr {
 			g.match_must_reset_if(node.left) || g.match_must_reset_if(node.right)
 		}
