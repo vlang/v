@@ -61,6 +61,7 @@ pub fn (mut db DB) close() ! {
 	db.conn.close()!
 }
 
+// auth sends an AUTH command to the server with the given password.
 pub fn (mut db DB) auth(password string) ! {
 	resp := db.cmd('AUTH', password)!
 	match resp {
