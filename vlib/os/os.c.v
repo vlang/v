@@ -531,7 +531,7 @@ pub fn get_raw_line() string {
 		unsafe {
 			initial_size := 256 * wide_char_size
 			mut buf := malloc_noscan(initial_size)
-			defer { unsafe { buf.free() } }
+			defer { buf.free() }
 			mut capacity := initial_size
 			mut offset := 0
 
