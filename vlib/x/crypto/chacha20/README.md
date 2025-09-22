@@ -9,9 +9,10 @@ and inspired by Go version of the same library.
 ## Status
 This module already supports a 32-bit counter mode, and recently expanded 
 to support a 64-bit counter mode. 
-The implemented features at the time of writing (2025/03/27) are:
-- Support for standard IETF ChaCha20 with 32-bit counter, and 12 bytes nonce
-- Support for extended ChaCha20 (XChaCha20) constructions with 24 bytes nonce  
+The implemented features at the time of writing (2025/09/22) are:
+- Support for standard IETF ChaCha20 with 32-bit counter and 12 bytes nonce
+- Support for eXtended ChaCha20 (XChaCha20) constructions with 24 bytes nonce, 
+  with 32 or 64-bit counter. 
 - Support for original ChaCha20 with 8 bytes nonce and 64-bit counter.
 
 Example

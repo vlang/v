@@ -5,13 +5,13 @@ import encoding.hex
 // Test Vector for the HChaCha20 Block Function
 // https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03#section-2.2.1
 
-fn test_xchacha20_function() ! {
+fn test_hchacha20_function() ! {
 	key := '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'
 	key_bytes := hex.decode(key)!
 	nonce := '000000090000004a0000000031415927'
 	nonce_bytes := hex.decode(nonce)!
 
-	subkey := xchacha20(key_bytes, nonce_bytes)!
+	subkey := hchacha20(key_bytes, nonce_bytes)!
 
 	assert subkey[0..4].hex() == '82413b42'
 	assert subkey[4..8].hex() == '27b27bfe'
@@ -26,7 +26,7 @@ fn test_xchacha20_function() ! {
 // A.3.2.  XChaCha20 - Developer-Friendly Test Vectors
 // A.3.2.1.  Block Counter = 0
 // https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03#appendix-A.3.2.1
-fn test_xchacha20_encrypt_vector_test_a321() ! {
+fn test_hchacha20_encrypt_vector_test_a321() ! {
 	plaintext := 'The dhole (pronounced "dole") is also known as the Asiatic wild dog, red dog, and whistling dog. It is about the size of a German shepherd but looks more like a long-legged fox. This highly elusive and skilled jumper is classified with wolves, coyotes, jackals, and foxes in the taxonomic family Canidae.'
 	key := '808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f'
 	nonce := '404142434445464748494a4b4c4d4e4f5051525354555658'
@@ -75,7 +75,7 @@ struct XChachaTestCases {
 	output string
 }
 
-fn test_xchacha20_encrypt_vector_test() ! {
+fn test_hchacha20_encrypt_vector_test() ! {
 	for c in xchacha_vector_test {
 		plaintext_bytes := hex.decode(c.input)!
 		key_bytes := hex.decode(c.key)!
