@@ -840,6 +840,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 	$if trace_rewrite_already_registered_symbol ? {
 		eprintln('>> rewrite_already_registered_symbol sym: ${typ.name} | existing_idx: ${existing_idx} | existing_symbol: ${existing_symbol.name}')
 	}
+	t.delete_cached_type_to_str(idx_to_type(existing_idx), map[string]string{})
 	if existing_symbol.kind == .placeholder {
 		// override placeholder
 		t.type_symbols[existing_idx] = &TypeSymbol{
