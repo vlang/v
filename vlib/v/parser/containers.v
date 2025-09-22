@@ -12,6 +12,7 @@ fn (mut p Parser) parse_array_elem_type(is_option bool, is_fixed bool) (ast.Type
 
 	elem_type_pos := p.tok.pos()
 	elem_type = p.parse_type()
+	p.cur_array_elem_type = elem_type
 	// this is set here because it's a known type, others could be the
 	// result of expr so we do those in checker
 	if elem_type != 0 && !is_fixed {
@@ -80,6 +81,18 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 	mut auto_length := false
 	mut line_nr := p.tok.line_nr
 	mut is_deprecated := false // deprecated fixed-array syntax
+	mut fixed_size := 0
+	mut size_unresolved := true
+	save_array_elem_type := p.cur_array_elem_type
+	defer {
+		p.cur_array_elem_type = save_array_elem_type
+	}
+
+	if p.inside_array_lit {
+		if p.cur_array_elem_type !in [ast.no_type, ast.void_type] {
+			p.cur_array_elem_type = p.table.value_type(p.cur_array_elem_type)
+		}
+	}
 	if alias_array_type == ast.void_type {
 		p.check(.lsbr)
 		if p.tok.kind == .rsbr {
@@ -102,9 +115,9 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 		// Parse type declaration if present
 		// []typ => `[]` and `typ` must be on the same line
 		if exprs.len <= 1 && p.tok.line_nr == line_nr
-			&& (p.tok.kind in [.name, .amp, .question, .key_shared]
-			|| (p.tok.kind == .lsbr && p.is_array_type())
-			|| (p.tok.kind == .not && exprs.len == 0)) // only `[]` can has a `!` type: []!int
+			&& (p.tok.kind in [.name, .amp, .lsbr, .question, .key_shared]
+			|| (p.tok.kind == .not && exprs.len == 0)) //|| (p.tok.kind == .lsbr && p.is_array_type())
+		// only `[]` can has a `!` type: []!int
 		  {
 			if exprs.len == 1 {
 				// [100]u8
@@ -114,6 +127,10 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 				ecmnts.clear()
 				is_fixed = true
 				has_val = false
+				_, fixed_size, size_unresolved = p.eval_fixed_array_size_expr()
+				if fixed_size <= 0 && !size_unresolved {
+					p.error_with_pos('fixed size cannot be zero or negative', len_expr.pos())
+				}
 			}
 			elem_type_pos = p.tok.pos()
 			elem_type, array_type = p.parse_array_elem_type(is_option, is_fixed)
@@ -221,7 +238,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 		is_fixed:      is_fixed
 		has_val:       has_val
 		mod:           p.mod
-		elem_type:     elem_type
+		elem_type:     p.cur_array_elem_type
 		typ:           array_type
 		alias_type:    alias_array_type
 		exprs:         exprs

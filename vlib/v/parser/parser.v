@@ -115,6 +115,7 @@ mut:
 	main_already_defined     bool // TODO move to checker
 	is_vls                   bool
 	inside_import_section    bool
+	cur_array_elem_type      ast.Type = ast.void_type
 pub mut:
 	scanner &scanner.Scanner = unsafe { nil }
 	table   &ast.Table       = unsafe { nil }

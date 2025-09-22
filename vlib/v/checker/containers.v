@@ -158,7 +158,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}.clear_option_and_result()
 	}
 	// `[1,2,3]`
-	if node.exprs.len > 0 && node.elem_type == ast.void_type {
+	if node.exprs.len > 0 { //&& node.elem_type == ast.void_type {
 		mut expected_value_type := ast.void_type
 		mut expecting_interface_array := false
 		mut expecting_sumtype_array := false
