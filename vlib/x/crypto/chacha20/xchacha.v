@@ -87,7 +87,7 @@ fn hchacha20(key []u8, nonce []u8) ![]u8 {
 	return out
 }
 
-// derive_xchacha20_key_nonce derives a new key and nonce for eXtended ChaCha20 construction. 
+// derive_xchacha20_key_nonce derives a new key and nonce for eXtended ChaCha20 construction.
 // It accepts boolean `flag64` flag as the last parameters.
 // When its set into true, it would be used as an indicator of a 64-bit counter construction.
 @[direct_array_access; inline]
