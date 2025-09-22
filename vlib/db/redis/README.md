@@ -20,8 +20,10 @@ import db.redis
 
 fn main() {
 	// Connect to Redis
+	// Uncomment passwod line if authentication is needed
 	mut db := redis.connect(redis.Config{
 		host: 'localhost'
+		// password: 'your_password'
 		port: 6379
 	})!
 
