@@ -1,23 +1,31 @@
 # get_weather
-get_weather is a very simple web crawler.
-Its goal is to get a weather forecast from caiyunapp.com.  
 
-# Compile and Run
+get_weather is a web crawler. Its goal is to get a weather forecast from
+`https://api.caiyunapp.com` in chinese and translated to another selected language.
 
-Use this to generate an executable and then launch the web crawler.
+We use `http.fetch()` to get a forecast `http.Response`, with a custom user-agent
+and then we decode the json into a struct with only relevant fields `lang`,
+`result` and `forecast_keypoint`.
+
+The chinese texts are translated with another `http.fetch()` to
+`https://translate.googleapis.com` and then decoding the `http.Response` as `json2.Any` arrays.
+
+## running
+
+By default texts are translated to English. Another language can be indicated
+with first argument as an [ISO 639](https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes) code:
+
 ```bash
-v get_weather.v
-./get_weather
+$ v run examples/get_weather/get_weather.v
+   zh_CN: 未来两小时天气
+      en: Weather in the next two hours
+   zh_CN: 最近的降雨带在西北66公里外呢
+      en: The nearest rainfall zone is 66 kilometers northwest
+$
+$ v run examples/get_weather/get_weather.v es
+   zh_CN: 未来两小时天气
+      es: Clima en las próximas dos horas
+   zh_CN: 最近的降雨带在西北66公里外呢
+      es: La zona de lluvia más cercana está a 66 kilómetros al noroeste
 ```
 
-As a convenience, you can also compile and launch the web crawler directly.
-```bash
-v run get_weather.v
-```
-
-In this project we use http.fetch() to get a http.Response, with a
-custom user-agent and then we use json.decode() to decode the json 
-response to struct.
-We also use a `[skip]` attribute to skip certain fields in the response,
-that we don't need and use a `[json: result]` attribute to specify that
-our struct field is named differently from the incoming json response.
