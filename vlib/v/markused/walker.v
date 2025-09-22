@@ -716,6 +716,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					}
 				}
 			}
+			if node.obj is ast.Var && node.obj.is_unwrapped {
+				w.used_option++
+			}
 			w.or_block(node.or_expr)
 		}
 		ast.LambdaExpr {

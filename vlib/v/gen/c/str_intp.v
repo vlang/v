@@ -225,6 +225,9 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 					if cast_sym.info is ast.Aggregate {
 						exp_typ = cast_sym.info.types[g.aggregate_type_idx]
 					}
+					if exp_typ.has_flag(.option) && expr.obj.is_unwrapped {
+						exp_typ = exp_typ.clear_flag(.option)
+					}
 				}
 			}
 		}
