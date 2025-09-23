@@ -5,7 +5,7 @@ import v.ast
 
 type T001 = [47]int
 
-fn test_rewrite_already_registered_symbol() {
+fn test_update_sym() {
 	// we will update the `size` & `size_expr` in sym.info for `T001`
 	mut pref_ := pref.new_preferences()
 	$if x64 {
@@ -29,7 +29,7 @@ fn test_rewrite_already_registered_symbol() {
 	old_info := old_sym.info as ast.ArrayFixed
 	dump(old_info)
 
-	// update the existing sym by calling `register_sym()` again
+	// update the existing sym
 	new_info := ast.ArrayFixed{
 		...old_info
 		size:      100
@@ -40,7 +40,7 @@ fn test_rewrite_already_registered_symbol() {
 		...old_sym
 		info: new_info
 	}
-	t.register_sym(new_sym) // call `rewrite_already_registered_symbol()` internally
+	t.update_sym(new_sym, typ)
 	new_str := t.type_to_str(typ)
 	dump(new_str)
 	assert new_str == '[100]int'
