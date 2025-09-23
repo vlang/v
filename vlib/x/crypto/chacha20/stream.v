@@ -53,13 +53,13 @@ fn new_stream_with_options(key []u8, nonce []u8, opt Options) !Stream {
 	mut mode := CipherMode.standard
 	mut extended := false
 
-	// Based on the nonce.len supplied, it determines the variant (mode) and extended form of
-	// the new chacha20 stream intended to create.
+	// Based on the nonce.len and option supplied, it determines the variant (mode) and
+	// extended form of the new chacha20 stream intended to create.
 	match nonce.len {
 		nonce_size {}
 		x_nonce_size {
 			extended = true
-			if opt.with_64bit_ctr {
+			if opt.use_64bit_counter {
 				mode = .original
 			}
 		}
@@ -72,7 +72,7 @@ fn new_stream_with_options(key []u8, nonce []u8, opt Options) !Stream {
 	}
 	// if this an extended chacha20 construct, derives a new key and nonce
 	new_key, new_nonce := if extended {
-		xkey, xnonce := derive_xchacha20_key_nonce(key, nonce, opt.with_64bit_ctr)!
+		xkey, xnonce := derive_xchacha20_key_nonce(key, nonce, opt.use_64bit_counter)!
 		xkey, xnonce
 	} else {
 		// otherwise, use provided key and nonce

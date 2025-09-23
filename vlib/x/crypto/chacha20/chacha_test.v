@@ -7,7 +7,7 @@ fn test_xchacha20_cipher_with_64_counter() ! {
 	key := rand.bytes(32)!
 	// create 24-bytes nonce
 	xnonce := rand.bytes(24)!
-	mut c := chacha20.new_cipher(key, xnonce, with_64bit_ctr: true)!
+	mut c := chacha20.new_cipher(key, xnonce, use_64bit_counter: true)!
 
 	// set counter value above 32-bit limit, to mark it support for 64-bit
 	c.set_counter(max_u32 + 1)

@@ -37,7 +37,7 @@ enum CipherMode {
 pub struct Options {
 pub mut:
 	// currently, used for XChaCha20 construct
-	with_64bit_ctr bool
+	use_64bit_counter bool
 }
 
 // encrypt encrypts plaintext bytes with ChaCha20 cipher instance with provided key and nonce.
@@ -79,26 +79,6 @@ mut:
 // with support for 64-bit counter, use 8 bytes length nonce's instead
 // If 24 bytes of nonce was provided, the XChaCha20 construction will be used.
 // It returns new ChaCha20 cipher instance or an error if key or nonce have any other length.
-// Examples:
-// ---------
-// ```v
-// import crypto.rand
-// import x.crypto.chacha20
-//
-// // 1. creates a Standard IETF cipher variant
-// key := rand.bytes(32)!
-// nonce := rand.bytes(12)!
-//
-// mut c := chacha20.new_cipher(key, nonce)!
-// // Do what you want with c
-//
-// // 2. creates an eXtended ChaCha20 with 64-bit counter
-// key2 := rand.bytes(32)!
-// nonce2 := rand.bytes(24)!
-//
-// mut c2 := chacha20.new_cipher(key2, nonce2, with_64bit_ctr: true)!
-//
-// ```
 pub fn new_cipher(key []u8, nonce []u8, opt Options) !&Cipher {
 	stream := new_stream_with_options(key, nonce, opt)!
 	return &Cipher{
@@ -235,7 +215,7 @@ pub fn (mut c Cipher) rekey(key []u8, nonce []u8) ! {
 	// we use c.Stream.mode info to get 64-bit counter capability
 	w64 := if c.mode == .original { true } else { false }
 	opt := Options{
-		with_64bit_ctr: w64
+		use_64bit_counter: w64
 	}
 	stream := new_stream_with_options(key, nonce, opt)!
 	c.Stream = stream
