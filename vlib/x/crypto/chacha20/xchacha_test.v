@@ -5,13 +5,13 @@ import encoding.hex
 // Test Vector for the HChaCha20 Block Function
 // https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03#section-2.2.1
 
-fn test_xchacha20_function() ! {
+fn test_hchacha20_function() ! {
 	key := '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'
 	key_bytes := hex.decode(key)!
 	nonce := '000000090000004a0000000031415927'
 	nonce_bytes := hex.decode(nonce)!
 
-	subkey := xchacha20(key_bytes, nonce_bytes)!
+	subkey := hchacha20(key_bytes, nonce_bytes)!
 
 	assert subkey[0..4].hex() == '82413b42'
 	assert subkey[4..8].hex() == '27b27bfe'

@@ -54,7 +54,7 @@ fn test_state_of_chacha20_block_simple() ! {
 	nonce := '000000090000004a00000000'
 	nonce_bytes := hex.decode(nonce)!
 
-	mut stream := new_stream(key_bytes, nonce_bytes)!
+	mut stream := new_stream_with_options(key_bytes, nonce_bytes)!
 
 	mut block := []u8{len: block_size}
 	stream.set_ctr(1)
@@ -71,7 +71,7 @@ fn test_keystream_encryption() ! {
 		key := hex.decode(val.key)!
 		nonce := hex.decode(val.nonce)!
 
-		mut stream := new_stream(key, nonce)!
+		mut stream := new_stream_with_options(key, nonce)!
 		stream.set_ctr(val.counter)
 
 		mut block := []u8{len: block_size}

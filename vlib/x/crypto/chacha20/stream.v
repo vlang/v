@@ -42,9 +42,10 @@ mut:
 	// vfmt on
 }
 
-// new_stream creates a new chacha20 stream. The supported nonce size is 8, 12 or 24 bytes.
+// new_stream_with_options creates a new chacha20 stream with provided options.
+// The supported nonce size is 8, 12 or 24 bytes.
 @[direct_array_access; inline]
-fn new_stream(key []u8, nonce []u8) !Stream {
+fn new_stream_with_options(key []u8, nonce []u8, opt Options) !Stream {
 	if key.len != key_size {
 		return error('Bad key size provided')
 	}
@@ -52,23 +53,26 @@ fn new_stream(key []u8, nonce []u8) !Stream {
 	mut mode := CipherMode.standard
 	mut extended := false
 
-	// Based on the nonce.len supplied, it determines the variant (mode) and extended form of
-	// the new chacha20 stream intended to create.
+	// Based on the nonce.len and option supplied, it determines the variant (mode) and
+	// extended form of the new chacha20 stream intended to create.
 	match nonce.len {
 		nonce_size {}
 		x_nonce_size {
 			extended = true
+			if opt.use_64bit_counter {
+				mode = .original
+			}
 		}
 		orig_nonce_size {
 			mode = .original
 		}
 		else {
-			return error('new_stream: unsupported nonce size')
+			return error('new_stream_with_options: unsupported nonce size')
 		}
 	}
 	// if this an extended chacha20 construct, derives a new key and nonce
-	new_key, new_nonce := if mode == .standard && extended {
-		xkey, xnonce := derive_xchacha20_key_nonce(key, nonce)!
+	new_key, new_nonce := if extended {
+		xkey, xnonce := derive_xchacha20_key_nonce(key, nonce, opt.use_64bit_counter)!
 		xkey, xnonce
 	} else {
 		// otherwise, use provided key and nonce
@@ -110,6 +114,7 @@ fn new_stream(key []u8, nonce []u8) !Stream {
 // reset resets internal stream
 @[unsafe]
 fn (mut s Stream) reset() {
+	// we dont reset s.mode and s.extended
 	unsafe {
 		_ := vmemset(&s.key, 0, 32)
 		_ := vmemset(&s.nonce, 0, 16)

@@ -32,12 +32,20 @@ enum CipherMode {
 	original
 }
 
+// Configuration options
+@[params]
+pub struct Options {
+pub mut:
+	// currently, used for XChaCha20 construct
+	use_64bit_counter bool
+}
+
 // encrypt encrypts plaintext bytes with ChaCha20 cipher instance with provided key and nonce.
 // It was a thin wrapper around two supported nonce size, ChaCha20 with 96 bits
 // and XChaCha20 with 192 bits nonce. Internally, encrypt start with 0's counter value.
 // If you want more control, use Cipher instance and setup the counter by your self.
-pub fn encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
-	mut stream := new_stream(key, nonce)!
+pub fn encrypt(key []u8, nonce []u8, plaintext []u8, opt Options) ![]u8 {
+	mut stream := new_stream_with_options(key, nonce, opt)!
 	mut dst := []u8{len: plaintext.len}
 	stream.keystream_full(mut dst, plaintext)!
 	unsafe { stream.reset() }
@@ -46,8 +54,8 @@ pub fn encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
 
 // decrypt does reverse of encrypt operation by decrypting ciphertext with ChaCha20 cipher
 // instance with provided key and nonce.
-pub fn decrypt(key []u8, nonce []u8, ciphertext []u8) ![]u8 {
-	mut stream := new_stream(key, nonce)!
+pub fn decrypt(key []u8, nonce []u8, ciphertext []u8, opt Options) ![]u8 {
+	mut stream := new_stream_with_options(key, nonce)!
 	mut dst := []u8{len: ciphertext.len}
 	stream.keystream_full(mut dst, ciphertext)!
 	unsafe { stream.reset() }
@@ -71,8 +79,8 @@ mut:
 // with support for 64-bit counter, use 8 bytes length nonce's instead
 // If 24 bytes of nonce was provided, the XChaCha20 construction will be used.
 // It returns new ChaCha20 cipher instance or an error if key or nonce have any other length.
-pub fn new_cipher(key []u8, nonce []u8) !&Cipher {
-	stream := new_stream(key, nonce)!
+pub fn new_cipher(key []u8, nonce []u8, opt Options) !&Cipher {
+	stream := new_stream_with_options(key, nonce, opt)!
 	return &Cipher{
 		Stream: stream
 	}
@@ -196,31 +204,19 @@ pub fn (mut c Cipher) set_counter(ctr u64) {
 	c.Stream.set_ctr(ctr)
 }
 
+// counter returns a current underlying counter value, as u64.
+pub fn (c Cipher) counter() u64 {
+	return c.Stream.ctr()
+}
+
 // rekey resets internal Cipher's state and reinitializes state with the provided key and nonce
 pub fn (mut c Cipher) rekey(key []u8, nonce []u8) ! {
 	unsafe { c.reset() }
-	stream := new_stream(key, nonce)!
-	c.Stream = stream
-}
-
-// Helpers
-//
-
-// derive_xchacha20_key_nonce derives a new key and nonces for extended
-// variant of Standard IETF ChaCha20 variant. Its separated for simplify the access.
-@[direct_array_access; inline]
-fn derive_xchacha20_key_nonce(key []u8, nonce []u8) !([]u8, []u8) {
-	// Its only for x_nonce_size
-	if nonce.len != x_nonce_size {
-		return error('Bad nonce size for derive_xchacha20_key_nonce')
+	// we use c.Stream.mode info to get 64-bit counter capability
+	w64 := if c.mode == .original { true } else { false }
+	opt := Options{
+		use_64bit_counter: w64
 	}
-	// derives a new key based on xchacha20 construction
-	// first 16 bytes of nonce used to derive the key
-	new_key := xchacha20(key, nonce[0..16])!
-	mut new_nonce := []u8{len: nonce_size}
-	// and the last of 8 bytes of nonce copied into new_nonce to build
-	// nonce_size length of new_nonce
-	_ := copy(mut new_nonce[4..12], nonce[16..24])
-
-	return new_key, new_nonce
+	stream := new_stream_with_options(key, nonce, opt)!
+	c.Stream = stream
 }

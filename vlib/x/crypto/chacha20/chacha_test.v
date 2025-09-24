@@ -1,5 +1,21 @@
+import rand
 import encoding.hex
 import x.crypto.chacha20
+
+// test for extended chacha20 construct with 64-bit counter support
+fn test_xchacha20_cipher_with_64_counter() ! {
+	key := rand.bytes(32)!
+	// create 24-bytes nonce
+	xnonce := rand.bytes(24)!
+	mut c := chacha20.new_cipher(key, xnonce, use_64bit_counter: true)!
+
+	// set counter value above 32-bit limit, to mark it support for 64-bit
+	c.set_counter(max_u32 + 1)
+	assert c.counter() == max_u32 + 1
+
+	c.set_counter(max_u64 - 2)
+	assert c.counter() == max_u64 - 2
+}
 
 fn test_chacha20_block_function() ! {
 	for val in blocks_testcases {
