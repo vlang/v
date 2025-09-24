@@ -431,7 +431,7 @@ fn aead128_partial_dec(mut out []u8, mut s State, cmsg []u8) {
 		s.e0 = c0
 		s.e1 = clear_bytes(s.e1, last_block.len)
 		s.e1 |= c1
-		s.e0 ^= pad(last_block.len)
+		s.e1 ^= pad(last_block.len)
 	} else {
 		last_block := unsafe { cmsg[pos..] }
 		c0 := load_bytes(last_block, last_block.len)
