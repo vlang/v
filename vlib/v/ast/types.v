@@ -1459,6 +1459,15 @@ fn strip_extra_struct_types(name string) string {
 	}
 }
 
+// delete_cached_type_to_str remove a `type_to_str` from the cache
+pub fn (t &Table) delete_cached_type_to_str(typ Type, import_aliases_len int) {
+	cache_key := (u64(import_aliases_len) << 32) | u64(typ)
+	mut mt := unsafe { &Table(t) }
+	lock mt.cached_type_to_str {
+		mt.cached_type_to_str.delete(cache_key)
+	}
+}
+
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
 	cache_key := (u64(import_aliases.len) << 32) | u64(typ)
