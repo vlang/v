@@ -4212,7 +4212,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			c.error('`mut` is not allowed with `=` (use `:=` to declare a variable)',
 				node.pos)
 		}
-		if mut obj := node.scope.find(node.name) {
+		mut pobj := node.scope.find_ptr(node.name)
+		if pobj != unsafe { nil } {
+			mut obj := *pobj
 			match mut obj {
 				ast.GlobalField {
 					if node.mod == '' {
@@ -4322,7 +4324,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		else if !name.contains('.') && node.mod != 'builtin' {
 			name = '${node.mod}.${node.name}'
 		}
-		if mut obj := c.file.global_scope.find(name) {
+		pobj = c.file.global_scope.find_ptr(name)
+		if pobj != unsafe { nil } {
+			mut obj := *pobj
 			match mut obj {
 				ast.GlobalField {
 					node.kind = .global
