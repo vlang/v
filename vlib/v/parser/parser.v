@@ -1165,7 +1165,7 @@ fn (mut p Parser) semicolon_stmt() ast.SemicolonStmt {
 }
 
 fn (mut p Parser) expr_list(expect_value bool) []ast.Expr {
-	mut exprs := []ast.Expr{}
+	mut exprs := []ast.Expr{cap: 1}
 	for {
 		expr := if expect_value { p.expr(0) } else { p.expr_no_value(0) }
 		if expr !is ast.Comment {
