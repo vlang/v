@@ -5,6 +5,7 @@
 module ascon
 
 import encoding.hex
+import rand
 
 // This test materials was taken and adapted into v from references implementation of Ascon-aead128
 // especially for the known answer test data, but, its not all fully-taken, just randomly choosen item.
@@ -246,3 +247,15 @@ const aead128_kat_tests_data = [
 		ct:    'fabe2cb1e7eba6329a30080f26e7dc72503dfc57f4de06a334b7ebadca03b44b73e9'
 	},
 ]
+
+fn test_ascon_aead128_loop() {
+	for n in 0 .. 256 {
+		key := []u8{len: 16, init: rand.u8()}
+		nonce := []u8{len: 16, init: rand.u8()}
+		ad := []u8{len: int(rand.u8()), init: rand.u8()}
+		txt := []u8{len: n, init: rand.u8()}
+		e := encrypt(key, nonce, ad, txt)!
+		d := decrypt(key, nonce, ad, e)!
+		assert txt == d
+	}
+}

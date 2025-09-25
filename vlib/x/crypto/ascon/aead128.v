@@ -370,18 +370,12 @@ fn aead128_process_msg(mut out []u8, mut s State, msg []u8) int {
 	}
 	// process partial block if it exists
 	if mlen >= 8 {
-		mut first_block := unsafe { msg[midx..] }
-		s.e0 ^= load_bytes(first_block[0..8], 8)
-		binary.little_endian_put_u64(mut out[pos..pos + 8], s.e0)
-
-		// Is there are reminder bytes to process on?
-		last_block := unsafe { msg[midx + 8..] }
-		if last_block.len > 0 {
-			// We use `load_bytes` to handle length < 8
-			s.e1 ^= load_bytes(last_block, last_block.len)
-			store_bytes(mut out[pos + 8..], s.e1, last_block.len)
-			s.e1 ^= pad(last_block.len)
-		}
+		mut block := unsafe { msg[midx..] }
+		s.e0 ^= load_bytes(block[0..8], 8)
+		s.e1 ^= load_bytes(block[8..], mlen - 8)
+		store_bytes(mut out[pos..], s.e0, 8)
+		store_bytes(mut out[pos + 8..], s.e1, mlen - 8)
+		s.e1 ^= pad(mlen - 8)
 	} else {
 		last_block := unsafe { msg[midx..] }
 		s.e0 ^= load_bytes(last_block, last_block.len)
