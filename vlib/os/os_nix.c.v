@@ -282,11 +282,9 @@ pub fn ls(path string) ![]string {
 	mut res := []string{cap: 50}
 	dir := unsafe { C.opendir(&char(path.str)) }
 	if isnil(dir) {
-		// return error_with_code('ls() couldnt open dir "${path}"', C.errno)
 		return error_posix(msg: 'ls() couldnt open dir "${path}"')
 	}
 	mut ent := &C.dirent(unsafe { nil })
-	// mut ent := &C.dirent{!}
 	for {
 		ent = C.readdir(dir)
 		if isnil(ent) {
