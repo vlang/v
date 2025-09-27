@@ -24,7 +24,7 @@ fn (mut ws Client) handshake() ! {
 	sb.write_string('\r\nSec-WebSocket-Version: 13')
 	for key in ws.header.keys() {
 		val := ws.header.custom_values(key).join(',')
-		sb.write_string('\r\n${key}:${val}')
+		sb.write_string('\r\n${key}: ${val}')
 	}
 	sb.write_string('\r\n\r\n')
 	handshake := sb.str()
