@@ -671,8 +671,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					left := w.table.unaliased_type(node.left_type)
 					right := w.table.unaliased_type(node.right_type)
 					if left != 0 && right != 0 {
-						w.table.used_features.safe_int = w.table.used_features.safe_int
-							|| ((left.idx() in [ast.u32_type_idx, ast.u64_type_idx]
+						w.table.used_features.safe_int = (
+							(left.idx() in [ast.u32_type_idx, ast.u64_type_idx]
 							&& right.is_signed())
 							|| (right.idx() in [ast.u32_type_idx, ast.u64_type_idx]
 							&& left.is_signed()))
