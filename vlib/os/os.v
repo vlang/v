@@ -226,19 +226,29 @@ pub fn sigint_to_signal_name(si int) string {
 
 // rmdir_all recursively removes the specified directory.
 pub fn rmdir_all(path string) ! {
-	mut ret_err := ''
+	mut err_msg := ''
+	mut err_code := -1
 	items := ls(path)!
 	for item in items {
 		fullpath := join_path_single(path, item)
 		if is_dir(fullpath) && !is_link(fullpath) {
-			rmdir_all(fullpath) or { ret_err = err.msg() }
+			rmdir_all(fullpath) or {
+				err_msg = err.msg()
+				err_code = err.code()
+			}
 		} else {
-			rm(fullpath) or { ret_err = err.msg() }
+			rm(fullpath) or {
+				err_msg = err.msg()
+				err_code = err.code()
+			}
 		}
 	}
-	rmdir(path) or { ret_err = err.msg() }
-	if ret_err.len > 0 {
-		return error(ret_err)
+	rmdir(path) or {
+		err_msg = err.msg()
+		err_code = err.code()
+	}
+	if err_msg != '' {
+		return error_with_code(err_msg, err_code)
 	}
 }
 
