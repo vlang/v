@@ -666,7 +666,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.mark_by_sym(right_sym)
 				}
 			}
-			if node.op in [.eq, .ne] {
+			if node.op in [.eq, .ne, .gt, .ge, .lt, .le] {
 				if !w.table.used_features.safe_int {
 					left := w.table.unaliased_type(node.left_type)
 					right := w.table.unaliased_type(node.right_type)
@@ -678,7 +678,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 							&& left.is_signed()))
 					}
 				}
-				w.uses_eq = true
+				w.uses_eq = w.uses_eq || node.op in [.eq, .ne]
 			}
 		}
 		ast.IfGuardExpr {
