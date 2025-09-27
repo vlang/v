@@ -6,7 +6,60 @@ module parser
 import v.ast
 import v.token
 
+fn (mut p Parser) parse_array_elem_type(is_option bool, is_fixed bool) (ast.Type, ast.Type) {
+	mut elem_type := ast.no_type
+	mut array_type := ast.void_type
+
+	elem_type_pos := p.tok.pos()
+	elem_type = p.parse_type()
+	p.cur_array_elem_type = elem_type
+	// this is set here because it's a known type, others could be the
+	// result of expr so we do those in checker
+	if elem_type != 0 && !is_fixed {
+		if elem_type.has_flag(.result) {
+			p.error_with_pos('arrays do not support storing Result values', elem_type_pos)
+		}
+		idx := p.table.find_or_register_array(elem_type)
+		if elem_type.has_flag(.generic) {
+			array_type = ast.new_type(idx).set_flag(.generic)
+		} else {
+			array_type = ast.new_type(idx)
+		}
+		if is_option {
+			array_type = array_type.set_flag(.option)
+		}
+	}
+	return elem_type, array_type
+}
+
+fn (mut p Parser) parse_array_lit(mut exprs []ast.Expr, mut pre_cmnts []ast.Comment, mut ecmnts [][]ast.Comment) (int, token.Pos) {
+	old_inside_array_lit := p.inside_array_lit
+	old_last_enum_name := p.last_enum_name
+	old_last_enum_mod := p.last_enum_mod
+	p.inside_array_lit = true
+	p.last_enum_name = ''
+	p.last_enum_mod = ''
+	pre_cmnts.clear()
+	pre_cmnts << p.eat_comments()
+	for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
+		exprs << p.expr(0)
+		ecmnts << p.eat_comments()
+		if p.tok.kind == .comma {
+			p.next()
+		}
+		ecmnts.last() << p.eat_comments()
+	}
+	p.inside_array_lit = old_inside_array_lit
+	p.last_enum_name = old_last_enum_name
+	p.last_enum_mod = old_last_enum_mod
+	line_nr := p.tok.line_nr
+	last_pos := p.tok.pos()
+	p.check(.rsbr)
+	return line_nr, last_pos
+}
+
 fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.ArrayInit {
+	// NOTE: for fixed-array, we set the size in `len_expr`
 	first_pos := p.tok.pos()
 	mut last_pos := p.tok.pos()
 	mut array_type := ast.void_type
@@ -19,178 +72,173 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 	mut has_val := false
 	mut has_type := false
 	mut has_init := false
+	mut has_len := false
+	mut has_cap := false
 	mut has_index := false
 	mut init_expr := ast.empty_expr
+	mut len_expr := ast.empty_expr
+	mut cap_expr := ast.empty_expr
+	mut auto_length := false
+	mut line_nr := p.tok.line_nr
+	mut is_deprecated := false // deprecated fixed-array syntax
+	mut fixed_size := 0
+	mut size_unresolved := true
+	save_array_elem_type := p.cur_array_elem_type
+	defer {
+		p.cur_array_elem_type = save_array_elem_type
+	}
+
+	if p.inside_array_lit {
+		if p.cur_array_elem_type !in [ast.no_type, ast.void_type] {
+			p.cur_array_elem_type = p.table.value_type(p.cur_array_elem_type)
+		}
+	}
 	if alias_array_type == ast.void_type {
 		p.check(.lsbr)
 		if p.tok.kind == .rsbr {
+			// empty array: []
 			last_pos = p.tok.pos()
-			// []typ => `[]` and `typ` must be on the same line
-			line_nr := p.tok.line_nr
 			p.next()
-			// []string
-			if p.tok.kind in [.name, .amp, .lsbr, .question, .key_shared, .not]
-				&& p.tok.line_nr == line_nr {
-				elem_type_pos = p.tok.pos()
-				elem_type = p.parse_type()
-				// this is set here because it's a known type, others could be the
-				// result of expr so we do those in checker
-				if elem_type != 0 {
-					if elem_type.has_flag(.result) {
-						p.error_with_pos('arrays do not support storing Result values',
-							elem_type_pos)
-					}
-					idx := p.table.find_or_register_array(elem_type)
-					if elem_type.has_flag(.generic) {
-						array_type = ast.new_type(idx).set_flag(.generic)
-					} else {
-						array_type = ast.new_type(idx)
-					}
-					if is_option {
-						array_type = array_type.set_flag(.option)
-					}
-					has_type = true
-				}
-			}
-			last_pos = p.tok.pos()
-		} else {
-			// [1,2,3] or [const]u8
-			old_inside_array_lit := p.inside_array_lit
-			old_last_enum_name := p.last_enum_name
-			old_last_enum_mod := p.last_enum_mod
-			p.inside_array_lit = true
-			p.last_enum_name = ''
-			p.last_enum_mod = ''
-			pre_cmnts = p.eat_comments()
-			for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
-				exprs << p.expr(0)
-				ecmnts << p.eat_comments()
-				if p.tok.kind == .comma {
-					p.next()
-				}
-				ecmnts.last() << p.eat_comments()
-			}
-			p.inside_array_lit = old_inside_array_lit
-			p.last_enum_name = old_last_enum_name
-			p.last_enum_mod = old_last_enum_mod
-			line_nr := p.tok.line_nr
+		} else if p.tok.kind == .dotdot {
+			// auto length fixed array: [..]
+			is_fixed = true
+			auto_length = true
+			p.next()
 			last_pos = p.tok.pos()
 			p.check(.rsbr)
-			if exprs.len == 1 && p.tok.line_nr == line_nr
-				&& (p.tok.kind in [.name, .amp, .question, .key_shared]
-				|| (p.tok.kind == .lsbr && p.is_array_type())) {
-				// [100]u8
-				elem_type = p.parse_type()
-				if elem_type != 0 {
-					s := p.table.sym(elem_type)
-					if s.name == 'byte' {
-						p.error('`byte` has been deprecated in favor of `u8`: use `[10]u8{}` instead of `[10]byte{}`')
-					}
-				}
-				last_pos = p.tok.pos()
-				is_fixed = true
-				if p.tok.kind == .lcbr {
-					p.next()
-					if p.tok.kind != .rcbr {
-						pos := p.tok.pos()
-						n := p.check_name()
-						if n != 'init' {
-							if is_fixed {
-								p.error_with_pos('`len` and `cap` are invalid attributes for fixed array dimension',
-									pos)
-							} else {
-								p.error_with_pos('expected `init:`, not `${n}`', pos)
-							}
-							return ast.ArrayInit{}
-						}
-						p.check(.colon)
-						has_init = true
-						has_index = p.handle_index_variable(mut init_expr)
-					}
-					last_pos = p.tok.pos()
-					p.check(.rcbr)
-				} else {
-					modifier := if is_option { '?' } else { '' }
-					p.warn_with_pos('use e.g. `x := ${modifier}[1]Type{}` instead of `x := ${modifier}[1]Type`',
-						first_pos.extend(last_pos))
-				}
-			} else {
-				if p.tok.kind == .not {
-					last_pos = p.tok.pos()
-					is_fixed = true
-					has_val = true
-					p.next()
-				}
-				if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
-					last_pos = p.tok.pos()
-					p.error_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`',
-						last_pos)
-					p.next()
-				}
-			}
+		} else {
+			// Parse length expression or first element
+			line_nr, last_pos = p.parse_array_lit(mut exprs, mut pre_cmnts, mut ecmnts)
+			has_val = true
 		}
-		if exprs.len == 0 && p.tok.kind != .lcbr && has_type {
-			if !p.pref.is_fmt {
-				modifier := if is_option { '?' } else { '' }
-				p.warn_with_pos('use `x := ${modifier}[]Type{}` instead of `x := ${modifier}[]Type`',
-					first_pos.extend(last_pos))
+
+		// Parse type declaration if present
+		// []typ => `[]` and `typ` must be on the same line
+		if exprs.len <= 1 && p.tok.line_nr == line_nr
+			&& (p.tok.kind in [.name, .amp, .lsbr, .question, .key_shared]
+			|| (p.tok.kind == .not && exprs.len == 0)) //|| (p.tok.kind == .lsbr && p.is_array_type())
+		// only `[]` can has a `!` type: []!int
+		  {
+			if exprs.len == 1 {
+				// [100]u8
+				// fixed-array move `exprs[0]` to `len_expr`
+				len_expr = exprs[0]
+				exprs.clear()
+				ecmnts.clear()
+				is_fixed = true
+				has_val = false
+				_, fixed_size, size_unresolved = p.eval_fixed_array_size_expr()
+				if fixed_size <= 0 && !size_unresolved {
+					p.error_with_pos('fixed size cannot be zero or negative', len_expr.pos())
+				}
 			}
+			elem_type_pos = p.tok.pos()
+			elem_type, array_type = p.parse_array_elem_type(is_option, is_fixed)
+			if elem_type != 0 {
+				has_type = true
+			}
+			last_pos = p.tok.pos()
 		}
 	} else {
 		array_type = (p.table.sym(alias_array_type).info as ast.Alias).parent_type
 		elem_type = p.table.sym(array_type).array_info().elem_type
+		last_pos = p.tok.pos()
 		p.next()
+		has_type = true
 	}
-	mut has_len := false
-	mut has_cap := false
-	mut len_expr := ast.empty_expr
-	mut cap_expr := ast.empty_expr
-	mut attr_pos := token.Pos{}
-	if p.tok.kind == .lcbr && exprs.len == 0 && array_type != ast.void_type {
-		// `[]int{ len: 10, cap: 100}` syntax
-		p.next()
-		for p.tok.kind != .rcbr {
-			attr_pos = p.tok.pos()
-			key := p.check_name()
-			p.check(.colon)
-			if is_option {
-				p.error('Option array cannot have initializers')
+
+	if has_type {
+		if p.tok.kind == .lsbr {
+			// Parse array lit if present
+			p.next()
+			line_nr, last_pos = p.parse_array_lit(mut exprs, mut pre_cmnts, mut ecmnts)
+			if auto_length {
+				// auto length fixed-array set `len_expr`
+				len_expr = ast.IntegerLiteral{
+					val: exprs.len.str()
+				}
 			}
-			match key {
-				'len' {
-					has_len = true
-					len_expr = p.expr(0)
+			has_val = true
+		} else if p.tok.kind == .lcbr {
+			// Parse array attribute initialization if present
+			p.next()
+			mut attr_pos := token.Pos{}
+			for p.tok.kind != .rcbr {
+				attr_pos = p.tok.pos()
+				key := p.check_name()
+				if is_option && !is_fixed {
+					p.error('Option array cannot have initializers')
 				}
-				'cap' {
-					has_cap = true
-					cap_expr = p.expr(0)
-				}
-				'init' {
-					has_init = true
-					has_index = p.handle_index_variable(mut init_expr)
-				}
-				else {
-					p.error_with_pos('wrong field `${key}`, expecting `len`, `cap`, or `init`',
+				if is_fixed && key in ['len', 'cap'] {
+					p.error_with_pos('`len` and `cap` are invalid attributes for fixed array dimension',
 						attr_pos)
 					return ast.ArrayInit{}
 				}
+				p.check(.colon)
+				match key {
+					'len' {
+						has_len = true
+						len_expr = p.expr(0)
+					}
+					'cap' {
+						has_cap = true
+						cap_expr = p.expr(0)
+					}
+					'init' {
+						has_init = true
+						has_index = p.handle_index_variable(mut init_expr)
+					}
+					else {
+						if is_fixed {
+							p.error_with_pos('wrong field `${key}`, expecting `init`',
+								attr_pos)
+						} else {
+							p.error_with_pos('wrong field `${key}`, expecting `len`, `cap`, or `init`',
+								attr_pos)
+						}
+						return ast.ArrayInit{}
+					}
+				}
+				if p.tok.kind != .rcbr {
+					p.check(.comma)
+				}
 			}
-			if p.tok.kind != .rcbr {
-				p.check(.comma)
+			p.check(.rcbr)
+			if has_init && !has_len && !is_fixed {
+				p.error_with_pos('cannot use `init` attribute unless `len` attribute is also provided',
+					attr_pos)
 			}
+		} else if !p.pref.is_fmt {
+			modifier := if is_option { '?' } else { '' }
+			fixed_modifier := if is_fixed { '1' } else { '' }
+			p.warn_with_pos('use `x := ${modifier}[${fixed_modifier}]Type{}` instead of `x := ${modifier}[${fixed_modifier}]Type`',
+				first_pos.extend(last_pos))
 		}
-		p.check(.rcbr)
-		if has_init && !has_len {
-			p.error_with_pos('cannot use `init` attribute unless `len` attribute is also provided',
-				attr_pos)
+	} else {
+		if p.tok.kind == .not {
+			last_pos = p.tok.pos()
+			is_fixed = true
+			has_val = true
+			p.next()
+			// deprecated fixed-array set `len_expr`
+			len_expr = ast.IntegerLiteral{
+				val: exprs.len.str()
+			}
+			is_deprecated = true
+		}
+		if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
+			last_pos = p.tok.pos()
+			p.error_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`', last_pos)
+			p.next()
 		}
 	}
+
 	pos := first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
 	return ast.ArrayInit{
 		is_fixed:      is_fixed
 		has_val:       has_val
 		mod:           p.mod
-		elem_type:     elem_type
+		elem_type:     p.cur_array_elem_type
 		typ:           array_type
 		alias_type:    alias_array_type
 		exprs:         exprs
@@ -206,6 +254,8 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 		cap_expr:      cap_expr
 		init_expr:     init_expr
 		is_option:     is_option
+		auto_length:   auto_length
+		is_deprecated: is_deprecated
 	}
 }
 

@@ -458,7 +458,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					e.error('unknown array init combination; len: ${expr.has_len}, cap: ${expr.has_cap}, init: ${expr.has_init}')
 				}
 			}
-			if expr.is_fixed || expr.has_val {
+			if expr.is_fixed {
 				mut res := FixedArray{
 					val: []Object{cap: expr.exprs.len}
 				}

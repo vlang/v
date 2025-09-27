@@ -1880,6 +1880,10 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		last_line_nr = c.pos.last_line
 	}
 	mut set_comma := false
+	if node.is_fixed && node.exprs.len == 0 {
+		// [4]int{}
+		f.expr(node.len_expr)
+	}
 	for i, expr in node.exprs {
 		pos := expr.pos()
 		if i == 0 {
