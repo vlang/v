@@ -344,6 +344,8 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				if node.op == .ne {
 					g.write('!')
 				}
+				tmp_left_is_opt := g.left_is_opt
+				g.left_is_opt = true
 				g.write('${ptr_typ}_sumtype_eq(')
 				if left.typ.is_ptr() {
 					g.write('*'.repeat(left.typ.nr_muls()))
@@ -355,6 +357,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.expr(node.right)
 				g.write(')')
+				g.left_is_opt = tmp_left_is_opt
 			}
 			.interface {
 				ptr_typ := g.equality_fn(left.unaliased)
