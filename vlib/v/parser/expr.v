@@ -332,8 +332,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				}
 			}
 		}
-		.key_sizeof, .key_isreftype {
+		.key_alignof, .key_sizeof, .key_isreftype {
 			is_reftype := p.tok.kind == .key_isreftype
+			is_alignof := p.tok.kind == .key_alignof
 			p.next() // sizeof
 
 			if p.tok.kind == .lsbr {
@@ -347,6 +348,12 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				p.check(.rpar)
 				if is_reftype {
 					node = ast.IsRefType{
+						is_type: true
+						typ:     typ
+						pos:     type_pos
+					}
+				} else if is_alignof {
+					node = ast.AlignOf{
 						is_type: true
 						typ:     typ
 						pos:     type_pos
@@ -381,6 +388,12 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 							expr:    expr
 							pos:     pos
 						}
+					} else if is_alignof {
+						node = ast.AlignOf{
+							is_type: false
+							expr:    expr
+							pos:     pos
+						}
 					} else {
 						node = ast.SizeOf{
 							is_type: false
@@ -398,6 +411,13 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					p.expr_mod = save_expr_mod
 					if is_reftype {
 						node = ast.IsRefType{
+							guessed_type: true
+							is_type:      true
+							typ:          arg_type
+							pos:          pos
+						}
+					} else if is_alignof {
+						node = ast.AlignOf{
 							guessed_type: true
 							is_type:      true
 							typ:          arg_type
