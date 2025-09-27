@@ -666,8 +666,19 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.mark_by_sym(right_sym)
 				}
 			}
-			if !w.uses_eq && node.op in [.eq, .ne] {
-				w.uses_eq = true
+			if node.op in [.eq, .ne] {
+				if !w.table.used_features.safe_int {
+					left := w.table.unaliased_type(node.left_type)
+					right := w.table.unaliased_type(node.right_type)
+					if left != 0 && right != 0 {
+						w.table.used_features.safe_int = w.table.used_features.safe_int
+							|| ((left.idx() in [ast.u32_type_idx, ast.u64_type_idx]
+							&& right.is_signed())
+							|| (right.idx() in [ast.u32_type_idx, ast.u64_type_idx]
+							&& left.is_signed()))
+					}
+				}
+				w.uses_eq = w.uses_eq || !w.uses_eq
 			}
 		}
 		ast.IfGuardExpr {

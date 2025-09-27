@@ -1002,6 +1002,9 @@ pub fn (mut g Gen) init() {
 		} else {
 			g.cheaders.writeln(c_headers)
 		}
+		if g.table.used_features.safe_int {
+			g.cheaders.writeln(c_unsigned_comparison_functions)
+		}
 		if !g.pref.skip_unused || g.table.used_features.used_attr_weak {
 			g.cheaders.writeln(c_common_weak_attr)
 		}

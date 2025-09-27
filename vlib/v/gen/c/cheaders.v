@@ -332,7 +332,7 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 #define _PUSH_MANY_noscan(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); builtin__array_push_many_noscan(arr, tmp.data, tmp.len);}
 '
 
-const c_headers = c_helper_macros + c_unsigned_comparison_functions + c_common_macros +
+const c_headers = c_helper_macros + c_common_macros +
 	r'
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
@@ -536,7 +536,7 @@ typedef void (*MapCloneFn)(voidptr, voidptr);
 typedef void (*MapFreeFn)(voidptr);
 '
 
-const c_bare_headers = c_helper_macros + c_unsigned_comparison_functions + c_common_macros +
+const c_bare_headers = c_helper_macros + c_common_macros +
 	'
 #define _VFREESTANDING
 
