@@ -52,8 +52,8 @@ pub fn new_http_proxy(raw_url string) !&HttpProxy {
 
 	return &HttpProxy{
 		scheme:   scheme
-		username: url.user.username
-		password: url.user.password
+		username: url.user or { urllib.UserInfo{} }.username
+		password: url.user or { urllib.UserInfo{} }.password
 		host:     host
 		hostname: url.hostname()
 		port:     port
