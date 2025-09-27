@@ -678,7 +678,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 							&& left.is_signed()))
 					}
 				}
-				w.uses_eq = w.uses_eq || !w.uses_eq
+				w.uses_eq = true
 			}
 		}
 		ast.IfGuardExpr {
