@@ -75,7 +75,7 @@ fn test_parse_empty_query_one() {
 	assert query_str == query_encode
 }
 
-// testing the case where the query as empity value
+// testing the case where the query as empty value
 // e.g https://www.vlang.dev?
 fn test_parse_empty_query_two() {
 	query_str := ''
@@ -88,7 +88,7 @@ fn test_parse_empty_query_two() {
 	assert query_str == query_encode
 }
 
-fn test_parse() ? {
+fn test_parse() {
 	urls := [
 		'jdbc:mysql://test_user:ouupppssss@localhost:3306/sakila?profileSQL=true',
 		'ftp://ftp.is.co.za/rfc/rfc1808.txt',
@@ -112,15 +112,17 @@ fn test_parse() ? {
 
 	test_url := 'https://joe:pass@www.mydomain.com:8080/som/url?param1=test1&param2=test2&foo=bar#testfragment'
 	u := urllib.parse(test_url)!
-	assert u.scheme == 'https' && u.hostname() == 'www.mydomain.com' && u.port() == '8080'
-		&& u.path == '/som/url' && u.fragment == 'testfragment' && u.user?.username == 'joe'
-		&& u.user?.password == 'pass'
+	if user := u.user {
+		assert u.scheme == 'https' && u.hostname() == 'www.mydomain.com' && u.port() == '8080'
+			&& u.path == '/som/url' && u.fragment == 'testfragment' && user.username == 'joe'
+			&& user.password == 'pass'
+	}
 
 	v := urllib.parse('https://vip.ffzy-online4.com/20230205/6094_d2720761/index.m3u8')!.resolve_reference(urllib.parse('2000k/hls/mixed.m3u8')!)!
 	assert v.str() == 'https://vip.ffzy-online4.com/20230205/6094_d2720761/2000k/hls/mixed.m3u8'
 }
 
-fn test_parse_authority() ? {
+fn test_parse_authority() {
 	test_urls := {
 		'ftp://webmaster@www.google.com/':            ['webmaster', '']
 		'http://j@ne:password@google.com':            ['j@ne', 'password']
@@ -129,8 +131,10 @@ fn test_parse_authority() ? {
 
 	for url, expected in test_urls {
 		u := urllib.parse(url)!
-		assert u.user?.username == expected[0]
-		assert u.user?.password == expected[1]
+		if user := u.user {
+			assert user.username == expected[0]
+			assert user.password == expected[1]
+		}
 	}
 }
 
