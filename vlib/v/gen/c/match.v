@@ -435,6 +435,11 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 	mut has_goto := false
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1
+		reset_if = branch.exprs.any(g.match_must_reset_if(it))
+		if reset_if {
+			g.writeln('')
+			g.set_current_pos_as_last_stmt_pos()
+		}
 		if branch.is_else || (use_ternary && is_last) {
 			if node.branches.len > 1 {
 				if use_ternary {
@@ -469,7 +474,6 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				g.write_v_source_line_info(branch)
 				g.write('if (')
 			}
-			reset_if = branch.exprs.any(g.match_must_reset_if(it))
 			for i, expr in branch.exprs {
 				if i > 0 {
 					g.write(' || ')
