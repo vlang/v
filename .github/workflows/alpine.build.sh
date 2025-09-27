@@ -6,7 +6,7 @@ pwd
 
 uname -a
 
-make -j4
+make
 
 ./v version
 
