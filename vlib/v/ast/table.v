@@ -26,6 +26,7 @@ pub mut:
 	arr_map        bool            // []map[key]value
 	type_name      bool            // var.type_name()
 	print_options  bool            // print option type
+	safe_int       bool            // needs safe int comparison
 	print_types    map[int]bool    // print() idx types
 	used_fns       map[string]bool // filled in by markused
 	used_consts    map[string]bool // filled in by markused
