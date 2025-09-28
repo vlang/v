@@ -62,7 +62,8 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if expr.is_method {
 				left_sym := g.table.sym(expr.receiver_type)
 				if left_sym.kind in [.array, .array_fixed, .map] {
-					return true
+					return expr.name !in ['contains', 'exists', 'len', 'cap', 'first', 'last',
+						'index', 'get']
 				}
 			}
 			if expr.or_block.kind != .absent {
