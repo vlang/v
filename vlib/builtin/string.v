@@ -455,9 +455,7 @@ pub fn (s string) replace_each(vals []string) string {
 	// of the new string to do just one allocation.
 	mut new_len := s.len
 	mut idxs := []RepIndex{cap: 6}
-	defer {
-		unsafe { idxs.free() }
-	}
+	defer { unsafe { idxs.free() } }
 	mut idx := 0
 	s_ := s.clone()
 	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
@@ -531,7 +529,7 @@ pub fn (s string) replace_each(vals []string) string {
 	}
 }
 
-// replace_char replaces all occurrences of the character `rep` multiple occurrences of the character passed in `with` with respect to `repeat`.
+// replace_char replaces all occurrences of the character `rep`, with `repeat` x the character passed in `with`.
 // Example: assert '\tHello!'.replace_char(`\t`,` `,8) == '        Hello!'
 @[direct_array_access]
 pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
@@ -545,10 +543,8 @@ pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
 	}
 	// TODO: Allocating ints is expensive. Should be a stack array
 	// - string.replace()
-	mut idxs := []int{cap: s.len}
-	defer {
-		unsafe { idxs.free() }
-	}
+	mut idxs := []int{cap: s.len >> 2}
+	defer { unsafe { idxs.free() } }
 	// No need to do a contains(), it already traverses the entire string
 	for i, ch in s {
 		if ch == rep { // Found char? Mark its location
@@ -1001,7 +997,6 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
 	unsafe { res.flags.set(.noslices) } // allow freeing of old data during <<
 	defer { unsafe { res.flags.clear(.noslices) } }
-
 	match delim.len {
 		0 {
 			for i, ch in s {
@@ -1062,7 +1057,6 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	mut res := []string{}
 	unsafe { res.flags.set(.noslices) } // allow freeing of old data during <<
 	defer { unsafe { res.flags.clear(.noslices) } }
-
 	match delim.len {
 		0 {
 			for i := s.len - 1; i >= 0; i-- {
