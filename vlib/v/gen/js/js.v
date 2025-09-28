@@ -2082,7 +2082,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.write(', cap: new int(')
 		g.expr(it.len_expr)
 		g.write(')')
-	} else if it.is_fixed && it.exprs.len == 1 {
+	} else if it.is_fixed && it.exprs.len == 0 {
 		// [100]u8 codegen
 		t1 := g.new_tmp_var()
 		t2 := g.new_tmp_var()
@@ -2090,7 +2090,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.inc_indent()
 		g.writeln('const ${t1} = [];')
 		g.write('for (let ${t2} = 0; ${t2} < ')
-		g.expr(it.exprs[0])
+		g.expr(it.len_expr)
 		g.writeln('; ${t2}++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
@@ -2107,9 +2107,9 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('return ${t1};')
 		g.dec_indent()
 		g.write('})(), len: new int(')
-		g.expr(it.exprs[0])
+		g.expr(it.len_expr)
 		g.write('), cap: new int(')
-		g.expr(it.exprs[0])
+		g.expr(it.len_expr)
 		g.write(')')
 	} else {
 		styp := g.styp(it.elem_type)

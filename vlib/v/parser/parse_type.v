@@ -11,75 +11,79 @@ import v.token
 const maximum_inline_sum_type_variants = 3
 const generic_type_level_cutoff_limit = 10 // it is very rarely deeper than 4
 
+fn (mut p Parser) eval_fixed_array_size_expr() (ast.Expr, int, bool) {
+	mut fixed_size := 0
+	mut size_expr := p.expr(0)
+	mut size_unresolved := true
+	if p.pref.is_fmt {
+		fixed_size = 987654321
+	} else {
+		match mut size_expr {
+			ast.IntegerLiteral {
+				fixed_size = size_expr.val.int()
+				size_unresolved = false
+			}
+			ast.ComptimeCall {
+				if size_expr.kind == .d {
+					size_expr.resolve_compile_value(p.pref.compile_values) or {
+						p.error_with_pos(err.msg(), size_expr.pos)
+					}
+					if size_expr.result_type != ast.i64_type {
+						p.error_with_pos('value from \$d() can only be positive integers when used as fixed size',
+							size_expr.pos)
+					}
+					fixed_size = size_expr.compile_value.int()
+					size_unresolved = false
+				} else {
+					p.error_with_pos('only \$d() is supported as fixed array size quantifier at compile time',
+						size_expr.pos)
+				}
+			}
+			ast.Ident {
+				if mut const_field := p.table.global_scope.find_const(size_expr.full_name()) {
+					if mut const_field.expr is ast.IntegerLiteral {
+						fixed_size = const_field.expr.val.int()
+						size_unresolved = false
+					} else if mut const_field.expr is ast.InfixExpr {
+						mut t := transformer.new_transformer_with_table(p.table, p.pref)
+						folded_expr := t.infix_expr(mut const_field.expr)
+
+						if folded_expr is ast.IntegerLiteral {
+							fixed_size = folded_expr.val.int()
+							size_unresolved = false
+						}
+					}
+				} else {
+					if p.pref.is_fmt {
+						// for vfmt purposes, pretend the constant does exist
+						// it may have been defined in another .v file:
+						fixed_size = 1
+						size_unresolved = false
+					}
+				}
+			}
+			ast.InfixExpr {
+				mut t := transformer.new_transformer_with_table(p.table, p.pref)
+				folded_expr := t.infix_expr(mut size_expr)
+
+				if folded_expr is ast.IntegerLiteral {
+					fixed_size = folded_expr.val.int()
+					size_unresolved = false
+				}
+			}
+			else {
+				p.error_with_pos('fixed array size cannot use non-constant value', size_expr.pos())
+			}
+		}
+	}
+	return size_expr, fixed_size, size_unresolved
+}
+
 fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Type {
 	p.check(expecting)
 	// fixed array
 	if p.tok.kind in [.number, .name, .dollar] {
-		mut fixed_size := 0
-		mut size_expr := p.expr(0)
-		mut size_unresolved := true
-		if p.pref.is_fmt {
-			fixed_size = 987654321
-		} else {
-			match mut size_expr {
-				ast.IntegerLiteral {
-					fixed_size = size_expr.val.int()
-					size_unresolved = false
-				}
-				ast.ComptimeCall {
-					if size_expr.kind == .d {
-						size_expr.resolve_compile_value(p.pref.compile_values) or {
-							p.error_with_pos(err.msg(), size_expr.pos)
-						}
-						if size_expr.result_type != ast.i64_type {
-							p.error_with_pos('value from \$d() can only be positive integers when used as fixed size',
-								size_expr.pos)
-						}
-						fixed_size = size_expr.compile_value.int()
-						size_unresolved = false
-					} else {
-						p.error_with_pos('only \$d() is supported as fixed array size quantifier at compile time',
-							size_expr.pos)
-					}
-				}
-				ast.Ident {
-					if mut const_field := p.table.global_scope.find_const(size_expr.full_name()) {
-						if mut const_field.expr is ast.IntegerLiteral {
-							fixed_size = const_field.expr.val.int()
-							size_unresolved = false
-						} else if mut const_field.expr is ast.InfixExpr {
-							mut t := transformer.new_transformer_with_table(p.table, p.pref)
-							folded_expr := t.infix_expr(mut const_field.expr)
-
-							if folded_expr is ast.IntegerLiteral {
-								fixed_size = folded_expr.val.int()
-								size_unresolved = false
-							}
-						}
-					} else {
-						if p.pref.is_fmt {
-							// for vfmt purposes, pretend the constant does exist
-							// it may have been defined in another .v file:
-							fixed_size = 1
-							size_unresolved = false
-						}
-					}
-				}
-				ast.InfixExpr {
-					mut t := transformer.new_transformer_with_table(p.table, p.pref)
-					folded_expr := t.infix_expr(mut size_expr)
-
-					if folded_expr is ast.IntegerLiteral {
-						fixed_size = folded_expr.val.int()
-						size_unresolved = false
-					}
-				}
-				else {
-					p.error_with_pos('fixed array size cannot use non-constant value',
-						size_expr.pos())
-				}
-			}
-		}
+		size_expr, fixed_size, size_unresolved := p.eval_fixed_array_size_expr()
 		p.check(.rsbr)
 		p.fixed_array_dim++
 		defer {

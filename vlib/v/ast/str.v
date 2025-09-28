@@ -450,13 +450,13 @@ pub fn (x Expr) str() string {
 			typ_str := global_table.type_to_str(x.elem_type)
 			if fields.len > 0 {
 				if x.is_fixed {
-					return '${x.exprs.str()}${typ_str}{${fields.join(', ')}}'
+					return '[${x.len_expr.str()}]${typ_str}{${fields.join(', ')}}'
 				} else {
 					return '[]${typ_str}{${fields.join(', ')}}'
 				}
 			} else {
 				if x.is_fixed {
-					return '${x.exprs.str()}${typ_str}{}'
+					return '[${x.len_expr.str()}]${typ_str}{}'
 				} else {
 					return x.exprs.str()
 				}
