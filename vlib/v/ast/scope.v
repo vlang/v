@@ -65,8 +65,9 @@ pub fn (s &Scope) find_ptr(name string) &ScopeObject {
 		return 0
 	}
 	for sc := unsafe { s }; true; sc = sc.parent {
-		if name in sc.objects {
-			return unsafe { &sc.objects[name] }
+		pobj := unsafe { &sc.objects[name] or { nil } }
+		if pobj != unsafe { nil } {
+			return pobj
 		}
 		if sc.dont_lookup_parent() {
 			break
