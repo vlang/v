@@ -388,6 +388,9 @@ fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem
 					ast.IntegerLiteral {
 						fixed_size = size_expr.expr.val.int()
 					}
+					ast.FloatLiteral {
+						fixed_size = int(size_expr.expr.val.f64())
+					}
 					ast.EnumVal {
 						if val := c.table.find_enum_field_val(size_expr.expr.enum_name,
 							size_expr.expr.val)
