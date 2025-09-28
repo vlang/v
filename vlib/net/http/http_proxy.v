@@ -31,6 +31,8 @@ pub fn new_http_proxy(raw_url string) !&HttpProxy {
 	url.raw_path = ''
 	url.raw_query = ''
 	url.fragment = ''
+	mut username := ''
+	mut password := ''
 
 	str_url := url.str()
 
@@ -50,10 +52,15 @@ pub fn new_http_proxy(raw_url string) !&HttpProxy {
 		return error('Unknown port')
 	}
 
+	if u := url.user {
+		username = u.username
+		password = u.password
+	}
+
 	return &HttpProxy{
 		scheme:   scheme
-		username: url.user.username
-		password: url.user.password
+		username: username
+		password: password
 		host:     host
 		hostname: url.hostname()
 		port:     port
