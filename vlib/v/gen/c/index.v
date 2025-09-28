@@ -543,6 +543,18 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 		if gen_or {
 			g.writeln(';')
+			if g.unsafe_level > 0 && !node.is_option && !node.is_setter
+				&& node.or_expr.kind == .block && node.or_expr.stmts.len == 1 {
+				last_stmt := node.or_expr.stmts[0]
+				if last_stmt is ast.ExprStmt && last_stmt.typ.is_any_kind_of_pointer() {
+					// handle the case of `p := unsafe{ &m[key] or { nil } }` directly, without an intermediate option + copies etc:
+					g.write('if (!${tmp_opt_ptr}) { ${tmp_opt_ptr} = ')
+					g.expr(last_stmt.expr)
+					g.write('; }')
+					g.write('\n${cur_line}(*${tmp_opt_ptr})')
+					return
+				}
+			}
 			opt_val_type := g.styp(val_type.set_flag(.option))
 			g.writeln('${opt_val_type} ${tmp_opt} = {0};')
 			g.writeln('if (${tmp_opt_ptr}) {')

@@ -168,6 +168,7 @@ mut:
 	last_tmp_call_var         []string
 	last_if_option_type       ast.Type // stores the expected if type on nested if expr
 	loop_depth                int
+	unsafe_level              int
 	ternary_names             map[string]string
 	ternary_level_names       map[string][]string
 	arraymap_set_pos          int      // map or array set value position
@@ -2523,6 +2524,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Block {
 			g.write_v_source_line_info_stmt(node)
+			if node.is_unsafe {
+				g.unsafe_level++
+			}
+
 			if !node.is_unsafe {
 				g.writeln('{')
 			} else {
@@ -2534,6 +2539,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 			g.stmts(node.stmts)
 			g.writeln('}')
+			if node.is_unsafe {
+				g.unsafe_level--
+			}
 		}
 		ast.AssignStmt {
 			g.write_v_source_line_info_stmt(node)
@@ -4084,7 +4092,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.typeof_expr(node)
 		}
 		ast.UnsafeExpr {
+			g.unsafe_level++
 			g.expr(node.expr)
+			g.unsafe_level--
 		}
 	}
 	g.discard_or_result = old_discard_or_result
