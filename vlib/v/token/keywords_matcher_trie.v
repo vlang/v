@@ -137,10 +137,11 @@ pub fn (node &TrieNode) show(level int) {
 // `word_idx` is just used as an accumulator, and starts from 0 at the root of the tree.
 @[direct_array_access]
 pub fn (mut node TrieNode) add_word(word string, value int, word_idx int) {
-	first := u8(word[word_idx] or {
+	if word_idx < 0 || word_idx >= word.len {
 		node.value = value
 		return
-	})
+	}
+	first := u8(word[word_idx])
 	// eprintln('>> node: ${ptr_str(node)} | first: $first | word_idx: $word_idx')
 	mut child_node := node.children[first]
 	if child_node == unsafe { nil } {

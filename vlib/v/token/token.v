@@ -212,6 +212,7 @@ pub const scanner_matcher = new_keywords_matcher_trie[Kind](keywords)
 
 // build_keys generates a map with keywords' string values:
 // Keywords['return'] == .key_return
+@[direct_array_access]
 fn build_keys() map[string]Kind {
 	mut res := map[string]Kind{}
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
@@ -228,6 +229,7 @@ fn build_keys() map[string]Kind {
 }
 
 // TODO: remove once we have `enum Kind { name('name') if('if') ... }`
+@[direct_array_access]
 fn build_token_str() []string {
 	mut s := []string{len: int(Kind._end_)}
 	s[Kind.unknown] = 'unknown'
@@ -381,7 +383,7 @@ pub fn (t Kind) is_assign() bool {
 }
 
 // note: used for some code generation, so no quoting
-@[inline]
+@[direct_array_access; inline]
 pub fn (t Kind) str() string {
 	idx := int(t)
 	if idx < 0 || token_str.len <= idx {
@@ -395,10 +397,12 @@ pub fn (t Token) is_next_to(pre_token Token) bool {
 	return t.pos - pre_token.pos == pre_token.len
 }
 
+@[inline]
 pub fn (t Token) is_key() bool {
 	return int(t.kind) > int(Kind.keyword_beg) && int(t.kind) < int(Kind.keyword_end)
 }
 
+@[direct_array_access]
 pub fn (t Token) str() string {
 	mut s := t.kind.str()
 	if s.len == 0 {
@@ -441,6 +445,7 @@ pub enum Precedence {
 	highest
 }
 
+@[direct_array_access]
 pub fn build_precedences() []Precedence {
 	mut p := []Precedence{len: int(Kind._end_), init: Precedence.lowest}
 	p[Kind.lsbr] = .index
