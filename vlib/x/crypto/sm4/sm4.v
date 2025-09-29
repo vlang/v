@@ -399,6 +399,9 @@ pub fn (c &SM4Cipher) crypt_ecb(input []u8, mut output []u8) ! {
 // `iv` is a 16 bytes Initialization Vector.
 // `input` must be padded to multiple of 16 bytes.
 // `output` must be exactly the same length as `input`.
+// returns:
+//   Updated IV ([]u8): The last ciphertext block for subsequent operations
+//   Error: If input length is invalid, IV length incorrect, or buffer mismatch
 @[direct_array_access]
 pub fn (c &SM4Cipher) crypt_cbc(iv []u8, input []u8, mut output []u8) ![]u8 {
 	mut idx := 0
