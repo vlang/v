@@ -946,16 +946,3 @@ pub fn arguments() []string {
 	}
 	return res
 }
-
-// ctovstring_impl is a temporary API, to enable clean CI runs for https://github.com/vlang/v/pull/25264 .
-// It will be deleted after the migration to the new `builtin` naming scheme is finished.
-@[export: 'builtin__ctovstring']
-pub fn ctovstring_impl(s &u8) string {
-	unsafe {
-		len := C.strlen(voidptr(s))
-		return string{
-			str: memdup(voidptr(s), isize(len))
-			len: len
-		}
-	}
-}
