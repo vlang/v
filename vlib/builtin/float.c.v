@@ -2,19 +2,15 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module builtin
 
-// TODO: implement compile time conditional include
-// [if !nofloat]
-import strconv
+$if !nofloat ? {
+	import strconv
+}
 
 $if !native {
 	#include <float.h>
 }
 
-/*
------------------------------------
------ f64 to string functions -----
-*/
-// str return a `f64` as `string` in suitable notation.
+// str returns a string representation of the given `f64` in a suitable notation.
 @[inline]
 pub fn (x f64) str() string {
 	unsafe {
@@ -36,7 +32,7 @@ pub fn (x f64) str() string {
 	}
 }
 
-// strg return a `f64` as `string` in "g" printf format
+// strg return a `f64` as `string` in "g" printf format.
 @[inline]
 pub fn (x f64) strg() string {
 	if x == 0 {
