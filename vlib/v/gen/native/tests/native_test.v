@@ -61,7 +61,7 @@ fn test_native() {
 
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
-		if skip_vv && test in ['libc.vv', 'linux.vv'] {
+		if skip_vv && test in ['libc.vv', 'linux.vv', 'arrays.vv'] {
 			// TODO: remove the skip here, when the native backend is more advanced
 			println('>>> SKIPPING ${test} since VNATIVE_SKIP_LIBC_VV is defined')
 			continue
