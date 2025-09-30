@@ -1224,23 +1224,26 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
-			g.definitions.writeln('u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
-			g.writeln2('', 'u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
-			if g.pref.parallel_cc {
-				g.extern_out.writeln('extern u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
-			}
-			for t in inter_info.types {
-				sub_sym := g.table.sym(ast.mktyp(t))
-				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
-					continue
+			// Avoid duplicate symbol '_v_typeof_interface_idx_IError' when using -usecache
+			if g.pref.build_mode != .build_module {
+				g.definitions.writeln('u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
+				g.writeln2('', 'u32 v_typeof_interface_idx_${sym.cname}(u32 sidx) {')
+				if g.pref.parallel_cc {
+					g.extern_out.writeln('extern u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
 				}
-				if g.pref.skip_unused && sub_sym.kind == .struct
-					&& sub_sym.idx !in g.table.used_features.used_syms {
-					continue
+				for t in inter_info.types {
+					sub_sym := g.table.sym(ast.mktyp(t))
+					if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
+						continue
+					}
+					if g.pref.skip_unused && sub_sym.kind == .struct
+						&& sub_sym.idx !in g.table.used_features.used_syms {
+						continue
+					}
+					g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${u32(t.set_nr_muls(0))};')
 				}
-				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${u32(t.set_nr_muls(0))};')
+				g.writeln2('\treturn ${u32(ityp)};', '}')
 			}
-			g.writeln2('\treturn ${u32(ityp)};', '}')
 		}
 	}
 	g.writeln2('// << typeof() support for sum types', '')

@@ -5475,7 +5475,7 @@ println('number of all customers: ${nr_customers}')
 
 // V's syntax can be used to build queries:
 uk_customers := sql db {
-	select from Customer where country == 'uk' && nr_orders > 0
+	select from Customer where country == 'uk' && nr_orders > 0 order by id desc limit 10
 }!
 println('We found a total of ${uk_customers.len} customers matching the query.')
 for c in uk_customers {

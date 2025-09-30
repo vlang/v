@@ -25,6 +25,7 @@ pub:
 }
 
 pub fn new[T](db T) Auth[T] {
+	println('creating table Token')
 	set_rand_crypto_safe_seed()
 	sql db {
 		create table Token
