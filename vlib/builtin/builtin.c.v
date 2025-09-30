@@ -682,6 +682,8 @@ pub fn vcalloc(n isize) &u8 {
 	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
+	} $else $if native {
+		return unsafe { C.calloc(1, n) }
 	} $else $if gcboehm ? {
 		return unsafe { &u8(C.GC_MALLOC(n)) }
 	} $else {

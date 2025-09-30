@@ -1,6 +1,13 @@
 fn main() {
 	assert [1, 2, 3] != []
-	mut my_array := []int{len:3}
+	len := 20
+	mut my_array := []int{len:20}
+	for i in 0 .. len {
+		assert my_array[i] == 0	
+		unsafe {
+			assert &int(my_array.data)[i] == 0
+		}
+	}
 	my_array[0] = 4
 	my_array[1] = 5
 	my_array[2] = 6
@@ -10,4 +17,11 @@ fn main() {
 	assert my_array[0] == 4
 	assert my_array[1] == 5
 	assert my_array[2] == 6
+	unsafe {
+		assert &int(my_array.data)[0] == 4
+		assert &int(my_array.data)[1] == 5
+		assert &int(my_array.data)[2] == 6
+	}
+	assert my_array.len == len
+	assert my_array.cap == len
 }

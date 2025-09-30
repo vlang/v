@@ -809,8 +809,14 @@ fn (mut g Gen) get_var_offset(var_name string) i32 {
 fn (mut g Gen) get_field_offset(in_type ast.Type, name string) i32 {
 	typ := g.unwrap(in_type)
 	ts := g.table.sym(typ)
-	field := ts.find_field(name) or {
-		g.n_error('${@LOCATION} Could not find field `${name}` on init')
+	field := if ts.kind == .array {
+		g.table.sym(ast.array_type).find_field(name) or {
+			g.n_error('${@LOCATION} Could not find field `${name}` on init ${g.table.sym(ast.array_type)}')
+		}
+	} else {
+		ts.find_field(name) or {
+			g.n_error('${@LOCATION} Could not find field `${name}` on init')
+		}
 	}
 	return g.structs[typ.idx()].offsets[field.i]
 }

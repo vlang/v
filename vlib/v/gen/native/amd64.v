@@ -2515,8 +2515,9 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 			match node.op {
 				.decl_assign {
 					if right.is_fixed {
-						c.g.n_error('${@LOCATION} Unexpected operator `${node.op}`')
-					} else {
+						c.g.n_error('${@LOCATION} Unsupported ${node} ${right}')
+					} else if right.exprs.len == 0 {
+						// `[]int{len: 6, cap:10, init:22}`
 						c.g.allocate_by_type(ident.name, ast.array_type)
 						len := ast.CallArg{
 							expr: if right.has_len {
@@ -2550,9 +2551,13 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 							return_type:        ast.array_type
 							nr_ret_values:      1
 							is_return_used:     true
-						})
+						}) // rax: address of returned array struct
 						c.lea_var_to_reg(Amd64Register.rdx, c.g.get_var_offset(ident.name))
-						c.move_struct(.rax, .rdx, c.g.get_type_size(ast.array_type))
+						c.move_struct(.rdx, .rax, c.g.get_type_size(ast.array_type))
+					} else {
+/*
+						// `[1, 2, 3]`
+						c.g.n_error('${@LOCATION} Unsupported ${node} ${right}')
 					}
 				}
 				else {
@@ -2740,7 +2745,7 @@ fn (mut c Amd64) gen_index_expr(node ast.IndexExpr) {
 		if offset != 0 {
 			c.add(Amd64Register.rax, offset)
 		}
-		c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+		c.mov_deref(Amd64Register.rcx, Amd64Register.rax, ast.u64_type)
 		// add the index times the size (bytes) of the type
 		c.g.expr(node.index)
 		c.mov(Amd64Register.rbx, i32(c.g.get_type_size(node.typ)))
