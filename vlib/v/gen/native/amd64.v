@@ -1879,7 +1879,7 @@ fn (mut c Amd64) div_reg_rax(b Amd64Register) {
 // rax % b
 fn (mut c Amd64) mod_reg_rax(b Amd64Register) {
 	c.div_reg_rax(b)
-	c.mov_reg(Amd64Register.rdx, Amd64Register.rax)
+	c.mov_reg(Amd64Register.rax, Amd64Register.rdx)
 }
 
 fn (mut c Amd64) sub_reg(a Amd64Register, b Amd64Register) {
@@ -2555,9 +2555,57 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 						c.lea_var_to_reg(Amd64Register.rdx, c.g.get_var_offset(ident.name))
 						c.move_struct(.rdx, .rax, c.g.get_type_size(ast.array_type))
 					} else {
-/*
 						// `[1, 2, 3]`
-						c.g.n_error('${@LOCATION} Unsupported ${node} ${right}')
+
+						// array struct
+						c.g.allocate_by_type(ident.name, ast.array_type)
+						len := ast.CallArg{
+							expr: ast.IntegerLiteral{right.exprs.len.str(), right.pos}
+							typ:  ast.int_type
+							pos:  right.pos
+						}
+						cap := len
+						elem_size := c.g.get_type_size(right.elem_type)
+						size := ast.CallArg{
+							expr: ast.IntegerLiteral{elem_size.str(), right.pos}
+							typ:  ast.int_type
+							pos:  right.pos
+						}
+						c.call_fn(ast.CallExpr{
+							pos:                right.pos
+							name:               '__new_array'
+							args:               [len, cap, size]
+							expected_arg_types: [ast.int_type, ast.int_type, ast.int_type]
+							language:           .v
+							return_type:        ast.array_type
+							nr_ret_values:      1
+							is_return_used:     true
+						}) // rax: address of returned array struct
+						c.lea_var_to_reg(Amd64Register.rdx, c.g.get_var_offset(ident.name))
+						c.move_struct(.rdx, .rax, c.g.get_type_size(ast.array_type))
+
+						// init array
+						e_ts := c.g.table.sym(right.elem_type)
+						c.g.expr(node.left[i])
+						offset := c.g.get_field_offset(ast.array_type, 'data')
+						if offset != 0 {
+							c.add(Amd64Register.rax, offset)
+						}
+						c.mov_deref(Amd64Register.rdx, Amd64Register.rax, ast.u64_type) // address of the data
+						for e in right.exprs {
+							c.g.expr(e) // rax
+							if e_ts.info is ast.Struct {
+								c.move_struct(.rdx, .rax, elem_size)
+							} else {
+								c.mov_store(.rdx, .rax, match elem_size {
+									1 { ._8 }
+									2 { ._16 }
+									4 { ._32 }
+									else { ._64 }
+								})
+							}
+							c.add(Amd64Register.rdx, elem_size)
+						}
 					}
 				}
 				else {
@@ -2740,6 +2788,7 @@ fn (mut c Amd64) gen_index_expr(node ast.IndexExpr) {
 		c.mul_reg_main(Amd64Register.rbx)
 		c.add_reg2(Amd64Register.rax, Amd64Register.rcx)
 	} else if node.is_array {
+		// TODO: use functions from builtin instead (array.set, array.get...)
 		c.g.expr(node.left)
 		offset := c.g.get_field_offset(ast.array_type, 'data')
 		if offset != 0 {
