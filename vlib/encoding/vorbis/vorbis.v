@@ -12,8 +12,12 @@ pub mut:
 }
 
 pub fn (mut vd VorbisData) free() {
-	unsafe { free(vd.free) }
-	unsafe { vd.path.free() }
+	unsafe {
+		C.free(vd.data)
+		vd.data = nil
+		vd.path.free()
+		vd.path.str = nil
+	}
 }
 
 pub fn decode_file(path string) !VorbisData {
