@@ -8,7 +8,7 @@ fn test_compilation() {
 fn test_decode_file() {
 	x := vorbis.decode_file(os.join_path(@DIR, 'pickup.ogg'))!
 	assert x.path.ends_with('pickup.ogg')
-	assert x.len == 5478
 	assert x.channels == 1
 	assert x.sample_rate == 44100
+	assert x.sample_len == 5478
 }

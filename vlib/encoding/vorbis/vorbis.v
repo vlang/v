@@ -7,7 +7,7 @@ pub mut:
 	path        string
 	channels    i32
 	sample_rate i32
-	len         i32
+	sample_len  i32
 	data        &i16 = unsafe { nil }
 }
 
@@ -30,7 +30,7 @@ pub fn decode_file(path string) !VorbisData {
 		if size == -1 {
 			return error('could not decode ogg file')
 		}
-		res.len = size
+		res.sample_len = size
 	}
 	return res
 }
@@ -45,7 +45,7 @@ pub fn decode_memory(ptr &u8, len i32) !VorbisData {
 		if size == -1 {
 			return error('could not decode ogg/vorbis memory block')
 		}
-		res.len = size
+		res.sample_len = size
 	}
 	return res
 }
