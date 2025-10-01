@@ -22,6 +22,7 @@ mut:
 pub const inline_builtins = ['print', 'eprint', 'println', 'eprintln', 'C.syscall'] // classic V builtin functions accessible to the user get inlined
 
 pub fn (mut g Gen) init_builtins() {
+	trace_gen(@LOCATION)
 	g.builtins = {
 		// longer algorithms and internal functions inaccessible to the user
 		// used to keep executable size small and the bytecode distraction-free
@@ -48,6 +49,7 @@ pub fn (mut g Gen) init_builtins() {
 }
 
 pub fn (mut g Gen) generate_builtins() {
+	trace_gen(@LOCATION)
 	for name, builtin in g.builtins {
 		if builtin.calls.len == 0 { // if a builtin does not get called, do not emit it
 			continue

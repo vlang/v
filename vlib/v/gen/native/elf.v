@@ -715,6 +715,8 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 
 	mut sym_data_offset := 0 // offset from the beggining of the data section
 	for f in g.files {
+		g.current_file = f
+		trace_gen('${@LOCATION}, file: ${f.path}')
 		for s in f.stmts {
 			if s is ast.GlobalDecl {
 				for fi in s.fields {
@@ -770,6 +772,8 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	g.println('\ndata_start_pos = ${data_pos.hex()}')
 	g.write64_at(g.elf_data_header_addr + 24, data_pos)
 	for f in g.files {
+		g.current_file = f
+		trace_gen('${@LOCATION}, file: ${f.path}')
 		for s in f.stmts {
 			if s is ast.GlobalDecl {
 				for fi in s.fields {
@@ -808,6 +812,8 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 
 	g.println('; fill .data')
 	for f in g.files {
+		g.current_file = f
+		trace_gen('${@LOCATION}, file: ${f.path}')
 		for s in f.stmts {
 			if s is ast.GlobalDecl {
 				for fi in s.fields {

@@ -19,6 +19,11 @@ const c_preprocessed = {
 	'C.EOF': -1
 }
 
+@[if trace_gen ?]
+fn trace_gen(msg string) {
+	eprintln('> native gen, ${msg}')
+}
+
 @[heap; minify]
 pub struct Gen {
 	out_name string
@@ -420,6 +425,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 		}
 		*/
 		g.current_file = file
+		trace_gen('${@LOCATION}, processing file: ${file.path}')
 		if file.errors.len > 0 {
 			g.n_error(file.errors[0].str())
 		}
@@ -488,15 +494,15 @@ pub fn (mut g Gen) has_external_deps() bool {
 pub fn (mut g Gen) ast_fetch_external_deps() {
 	for file in g.files {
 		g.current_file = file
+		trace_gen('${@LOCATION}, file: ${file.path}')
 		walker.inspect(file, unsafe { &mut g }, node_fetch_external_deps)
 	}
-
 	g.requires_linking = g.has_external_deps()
 }
 
 pub fn (mut g Gen) generate_header() {
+	trace_gen(@LOCATION)
 	g.ast_fetch_external_deps()
-
 	match g.pref.os {
 		.macos {
 			g.generate_macho_header()
@@ -523,6 +529,7 @@ pub fn (mut g Gen) generate_header() {
 }
 
 pub fn (mut g Gen) create_executable() {
+	trace_gen(@LOCATION)
 	obj_name := match g.pref.os {
 		.linux {
 			if g.requires_linking {
@@ -549,6 +556,7 @@ pub fn (mut g Gen) create_executable() {
 }
 
 pub fn (mut g Gen) generate_footer() {
+	trace_gen(@LOCATION)
 	g.patch_calls()
 	match g.pref.os {
 		.macos {
@@ -571,6 +579,7 @@ pub fn (mut g Gen) generate_footer() {
 }
 
 pub fn (mut g Gen) link(obj_name string) {
+	trace_gen(@LOCATION)
 	match g.pref.os {
 		.linux {
 			g.link_elf_file(obj_name)
@@ -588,6 +597,7 @@ pub fn (mut g Gen) link(obj_name string) {
 }
 
 pub fn (mut g Gen) calculate_all_size_align() {
+	trace_gen(@LOCATION)
 	for mut ts in g.table.type_symbols {
 		if ts.idx == 0 {
 			continue
