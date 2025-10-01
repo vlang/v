@@ -173,19 +173,25 @@ fn (c Chacha20Poly1305) generic_crypt(msg []u8, nonce []u8, ad []u8, mode Mode) 
 	mut s := chacha20.new_cipher(c.key, nonce, c.opt)!
 	s.encrypt(mut otkey, otkey)!
 
-	// destination buffer
-	mut dst := []u8{len: src.len}
+	// destination buffer, with overhead spaces for generated tag without reallocating
+	mut dst := []u8{len: src.len + c.overhead()}
 
 	// Next, the ChaCha20 encryption function is called to encrypt (decrypt) message input,
 	// using the same key and nonce, and with the initial counter set to 1.
 	s.set_counter(1)
-	s.encrypt(mut dst, src)!
+	s.encrypt(mut dst[..src.len], src)!
 
 	// Finally, the Poly1305 function is called with the Poly1305 key calculated above
 	// to build message authentication code (tag).
-	mut constructed_msg := []u8{}
+	// length of constructed message
+	cm_length := if mode == .encrypt {
+		length_constructed_msg(ad, dst[..src.len])
+	} else {
+		length_constructed_msg(ad, src)
+	}
+	mut constructed_msg := []u8{len: cm_length}
 	if mode == .encrypt {
-		construct_msg(mut constructed_msg, ad, dst)
+		construct_msg(mut constructed_msg, ad, dst[..src.len])
 	} else {
 		construct_msg(mut constructed_msg, ad, src)
 	}
@@ -209,11 +215,11 @@ fn (c Chacha20Poly1305) generic_crypt(msg []u8, nonce []u8, ad []u8, mode Mode) 
 			return error('chacha20poly1305: unmatching tag')
 		} else {
 			// return the decrypted message (plaintext) when the tag was matching
-			return dst
+			return dst[..src.len]
 		}
 	}
-	// In the encryption mode, appends the tag into ciphertext buffer
-	dst << tag
+	// In the encryption mode, copies the tag into end of destination buffer
+	_ := copy(mut dst[src.len..], tag)
 	return dst
 }
 
@@ -228,6 +234,26 @@ fn pad_to_16(x []u8) []u8 {
 	return out
 }
 
+// The length of padded x
+@[inline]
+fn length_pad_to_16(x []u8) int {
+	if x.len % 16 == 0 {
+		return x.len
+	}
+	//
+	return x.len + (16 - x.len % 16)
+}
+
+// The length of constructed message
+@[inline]
+fn length_constructed_msg(ad []u8, bytes []u8) int {
+	mut n := 0
+	n += length_pad_to_16(ad)
+	n += length_pad_to_16(bytes)
+	n += 16 // 2 * 8 bytes
+	return n
+}
+
 // construct_msg builds a message for later usage and stored into out.
 // The last step on the AEAD Construction on the how the message was constructed.
 // See the details on the [2.8](https://datatracker.ietf.org/doc/html/rfc8439#section-2.8)
@@ -236,13 +262,11 @@ fn pad_to_16(x []u8) []u8 {
 // 	*  padded to multiple of 16 bytes block of the ciphertext (or plaintext) bytes
 // 	*  The length of the additional data in octets (as a 64-bit little-endian integer).
 // 	*  The length of the ciphertext (or plaintext) in octets (as a 64-bit little-endian integer).
+// Assumed the output buffer length was correctly initialized.
 @[direct_array_access; inline]
 fn construct_msg(mut out []u8, ad []u8, bytes []u8) {
-	mut b8 := []u8{len: 8}
-	out << pad_to_16(ad)
-	out << pad_to_16(bytes)
-	binary.little_endian_put_u64(mut b8, u64(ad.len))
-	out << b8
-	binary.little_endian_put_u64(mut b8, u64(bytes.len))
-	out << b8
+	n0 := copy(mut out, pad_to_16(ad))
+	n1 := copy(mut out[n0..], pad_to_16(bytes))
+	binary.little_endian_put_u64(mut out[n0 + n1..], u64(ad.len))
+	binary.little_endian_put_u64(mut out[n0 + n1 + 8..], u64(bytes.len))
 }
