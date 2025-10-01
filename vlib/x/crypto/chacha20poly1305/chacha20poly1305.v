@@ -174,24 +174,24 @@ fn (c Chacha20Poly1305) generic_crypt(msg []u8, nonce []u8, ad []u8, mode Mode) 
 	s.encrypt(mut otkey, otkey)!
 
 	// destination buffer, with overhead spaces for generated tag without reallocating
-	mut dst := []u8{len: src.len + c.overhead()}
+	mut dst := []u8{len: src.len, cap: src.len + c.overhead()}
 
 	// Next, the ChaCha20 encryption function is called to encrypt (decrypt) message input,
 	// using the same key and nonce, and with the initial counter set to 1.
 	s.set_counter(1)
-	s.encrypt(mut dst[..src.len], src)!
+	s.encrypt(mut dst, src)!
 
 	// Finally, the Poly1305 function is called with the Poly1305 key calculated above
 	// to build message authentication code (tag).
 	// length of constructed message
 	cm_length := if mode == .encrypt {
-		length_constructed_msg(ad, dst[..src.len])
+		length_constructed_msg(ad, dst)
 	} else {
 		length_constructed_msg(ad, src)
 	}
 	mut constructed_msg := []u8{len: cm_length}
 	if mode == .encrypt {
-		construct_msg(mut constructed_msg, ad, dst[..src.len])
+		construct_msg(mut constructed_msg, ad, dst)
 	} else {
 		construct_msg(mut constructed_msg, ad, src)
 	}
@@ -215,11 +215,11 @@ fn (c Chacha20Poly1305) generic_crypt(msg []u8, nonce []u8, ad []u8, mode Mode) 
 			return error('chacha20poly1305: unmatching tag')
 		} else {
 			// return the decrypted message (plaintext) when the tag was matching
-			return dst[..src.len]
+			return dst
 		}
 	}
-	// In the encryption mode, copies the tag into end of destination buffer
-	_ := copy(mut dst[src.len..], tag)
+	// In the encryption mode, appends the tag into end of destination buffer
+	dst << tag
 	return dst
 }
 
