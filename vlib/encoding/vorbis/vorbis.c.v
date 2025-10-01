@@ -87,7 +87,6 @@ pub fn C.stb_vorbis_get_file_offset(f &C.stb_vorbis) u32
 // on failure, returns NULL on error and sets *error, does not change *datablock_memory_consumed
 // if returns NULL and *error is VORBIS_need_more_data, then the input block was
 // incomplete and you need to pass in a larger block from the start of the file
-
 pub fn C.stb_vorbis_open_pushdata(const_datablock &u8, datablock_length_in_bytes i32, datablock_memory_consumed_in_bytes &i32, xerror &VorbisErrorCode, const_alloc_buffer &C.stb_vorbis_alloc) &C.stb_vorbis
 
 // stb_vorbis_decode_frame_pushdata decode a frame of audio sample data if possible from the passed-in data block
