@@ -12,6 +12,7 @@ on:
       - '**/puzzle_vibes_ci.yml'
       - '!**_test.v'
       - '!**.md'
+      - '.github/actions/cache-apt-packages-action/action.yml'
   pull_request:
     paths:
       - 'vlib/v/checker/**'
@@ -22,6 +23,7 @@ on:
       - '**/puzzle_vibes_ci.yml'
       - '!**_test.v'
       - '!**.md'
+      - '.github/actions/cache-apt-packages-action/action.yml'
 
 concurrency:
   group: puzzle_vibes-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -29,7 +31,10 @@ concurrency:
 
 jobs:
   v-compiles-puzzle-vibes:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-13]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -38,7 +43,11 @@ jobs:
       - name: Build V
         run: make && ./v symlink
 
-      - name: Install & Setup SDL
+      - name: Install SDL2 on macOS
+        if: runner.os == 'macOS'
+        run: v retry -- brew install sdl2
+
+      - name: Install & Setup the V SDL wrapper
         run: v retry -- v install sdl && v ~/.vmodules/sdl/setup.vsh
 
       - name: Install Shy
