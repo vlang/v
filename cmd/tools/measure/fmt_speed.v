@@ -89,7 +89,7 @@ fn process_files(files []string) ! {
 
 fn new_parser(path string, comments_mode scanner.CommentsMode, table &ast.Table, pref_ &pref.Preferences) &parser.Parser {
 	mut p := &parser.Parser{
-		scanner:  scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
+		scanner:  scanner.new_scanner_file(path, -1, comments_mode, pref_) or { panic(err) }
 		table:    table
 		pref:     pref_
 		scope:    &ast.Scope{
