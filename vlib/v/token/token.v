@@ -13,10 +13,9 @@ pub:
 	line_nr int    // the line number in the source where the token occurred
 	col     int    // the column in the source where the token occurred
 	// name_idx int // name table index for O(1) lookup
-	pos      int // the position of the token in scanner text
-	len      int // length of the literal
-	tidx     int // the index of the token
-	file_idx int // file idx in the global table `filelist`
+	pos  int // the position of the token in scanner text
+	len  int // length of the literal
+	tidx int // the index of the token
 }
 
 pub enum Kind {
