@@ -14,7 +14,8 @@ fn (mut c Checker) add_error_detail(s string) {
 }
 
 fn (mut c Checker) add_error_detail_with_pos(msg string, pos token.Pos) {
-	c.add_error_detail(util.formatted_error('details:', msg, c.file.path, pos))
+	file_path := if pos.file_idx < 0 { c.file.path } else { c.table.filelist[pos.file_idx] }
+	c.add_error_detail(util.formatted_error('details:', msg, file_path, pos))
 }
 
 fn (mut c Checker) add_instruction_for_option_type() {
@@ -90,13 +91,14 @@ fn (mut c Checker) note(message string, pos token.Pos) {
 		c.error_details = []
 	}
 	// deduplicate notices for the same line
-	kpos := '${c.file.path}:${pos.line_nr}:${message}'
+	file_path := if pos.file_idx < 0 { c.file.path } else { c.table.filelist[pos.file_idx] }
+	kpos := '${file_path}:${pos.line_nr}:${message}'
 	if kpos !in c.notice_lines {
 		c.notice_lines[kpos] = true
 		note := errors.Notice{
 			reporter:  errors.Reporter.checker
 			pos:       pos
-			file_path: c.file.path
+			file_path: file_path
 			message:   message
 			details:   details
 		}
@@ -122,6 +124,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 		details = c.error_details.join('\n')
 		c.error_details = []
 	}
+	file_path := if pos.file_idx < 0 { c.file.path } else { c.table.filelist[pos.file_idx] }
 	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
 		if c.pref.message_limit >= 0 && c.nr_warnings >= c.pref.message_limit {
@@ -129,13 +132,13 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 			return
 		}
 		// deduplicate warnings for the same line
-		kpos := '${c.file.path}:${pos.line_nr}:${message}'
+		kpos := '${file_path}:${pos.line_nr}:${message}'
 		if kpos !in c.warning_lines {
 			c.warning_lines[kpos] = true
 			wrn := errors.Warning{
 				reporter:  errors.Reporter.checker
 				pos:       pos
-				file_path: c.file.path
+				file_path: file_path
 				message:   message
 				details:   details
 			}
@@ -148,7 +151,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 		if c.pref.fatal_errors {
 			util.show_compiler_message('error:', errors.CompilerMessage{
 				pos:       pos
-				file_path: c.file.path
+				file_path: file_path
 				message:   message
 				details:   details
 			})
@@ -160,13 +163,13 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 			return
 		}
 		// deduplicate errors for the same line
-		kpos := '${c.file.path}:${pos.line_nr}:${message}'
+		kpos := '${file_path}:${pos.line_nr}:${message}'
 		if kpos !in c.error_lines {
 			c.error_lines[kpos] = true
 			err := errors.Error{
 				reporter:  errors.Reporter.checker
 				pos:       pos
-				file_path: c.file.path
+				file_path: file_path
 				message:   message
 				details:   details
 			}
