@@ -1,0 +1,6 @@
+struct Foo {
+}
+
+struct Bar {
+        __global foos []Foo
+}

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/wrong_struct_declare2_err.vv:5:16: error: unexpected name `foos`, expecting `:`
+    3 | 
+    4 | struct Bar {
+    5 |         module foos []Foo
+      |                ~~~~
+    6 | }

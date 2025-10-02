@@ -1,0 +1,6 @@
+vlib/v/checker/tests/wrong_struct_declare3_err.vv:5:18: error: unexpected name `foos`, expecting `:`
+    3 | 
+    4 | struct Bar {
+    5 |         __global foos []Foo
+      |                  ~~~~
+    6 | }
