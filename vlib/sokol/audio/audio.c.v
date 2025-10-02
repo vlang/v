@@ -83,7 +83,7 @@ pub mut:
 // | buffer_frames | 2048     | buffer size in frames, larger is more latency, smaller means higher CPU |
 // | packet_frames | 128      | push model only, number of frames that will be pushed in each packet |
 // | num_packets   | 64       | for push model only, number of packets in the backend ringbuffer |
-@[typedef]
+@[params; typedef]
 pub struct C.saudio_desc {
 pub:
 	sample_rate        int
