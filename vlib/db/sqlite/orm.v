@@ -100,7 +100,6 @@ fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryDa
 	$if trace_sqlite ? {
 		eprintln('> sqlite_stmt_worker query: "${query}"')
 	}
-
 	stmt := db.new_init_stmt(query)!
 	defer {
 		stmt.finalize()
