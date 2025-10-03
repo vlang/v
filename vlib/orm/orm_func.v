@@ -482,6 +482,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							u32 { i8(value) }
 							u64 { i8(value) }
 							bool { i8(value) }
+							f32 { i8(value) }
+							f64 { i8(value) }
 							else { 0 }
 						}
 					} $else $if field.typ is i16 || field.typ is ?i16 {
@@ -495,6 +497,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							u32 { i16(value) }
 							u64 { i16(value) }
 							bool { i16(value) }
+							f32 { i16(value) }
+							f64 { i16(value) }
 							else { 0 }
 						}
 					} $else $if field.typ is int || field.typ is ?int {
@@ -508,6 +512,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							u32 { int(value) }
 							u64 { int(value) }
 							bool { int(value) }
+							f32 { int(value) }
+							f64 { int(value) }
 							else { 0 }
 						}
 					} $else $if field.typ is i64 || field.typ is ?i64 {
@@ -521,6 +527,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							u32 { i64(value) }
 							u64 { i64(value) }
 							bool { i64(value) }
+							f32 { i64(value) }
+							f64 { i64(value) }
 							else { 0 }
 						}
 					} $else $if field.typ is u8 || field.typ is ?u8 {
@@ -534,6 +542,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							u32 { u8(value) }
 							u64 { u8(value) }
 							bool { u8(value) }
+							f32 { u8(value) }
+							f64 { u8(value) }
 							else { 0 }
 						}
 					} $else $if field.typ is u16 || field.typ is ?u16 {
@@ -547,6 +557,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							u32 { u16(value) }
 							u64 { u16(value) }
 							bool { u16(value) }
+							f32 { u16(value) }
+							f64 { u16(value) }
 							else { 0 }
 						}
 					} $else $if field.typ is u32 || field.typ is ?u32 {
@@ -560,6 +572,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							u32 { u32(value) }
 							u64 { u32(value) }
 							bool { u32(value) }
+							f32 { u32(value) }
+							f64 { u32(value) }
 							else { 0 }
 						}
 					} $else $if field.typ is u64 || field.typ is ?u64 {
@@ -573,6 +587,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							u32 { u64(value) }
 							u64 { u64(value) }
 							bool { u64(value) }
+							f32 { u64(value) }
+							f64 { u64(value) }
 							else { 0 }
 						}
 					} $else $if field.typ is f32 || field.typ is ?f32 {
@@ -586,6 +602,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							u32 { f32(value) }
 							u64 { f32(value) }
 							bool { f32(value) }
+							f32 { value }
+							f64 { f32(value) }
 							else { 0 }
 						}
 					} $else $if field.typ is f64 || field.typ is ?f64 {
@@ -599,6 +617,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							u32 { f64(value) }
 							u64 { f64(value) }
 							bool { f64(value) }
+							f32 { f64(value) }
+							f64 { value }
 							else { 0 }
 						}
 					} $else $if field.typ is bool || field.typ is ?bool {
@@ -612,6 +632,8 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							u32 { value != 0 }
 							u64 { value != 0 }
 							bool { value }
+							f32 { value != 0 }
+							f64 { value != 0 }
 							else { false }
 						}
 					} $else $if field.typ is string || field.typ is ?string {

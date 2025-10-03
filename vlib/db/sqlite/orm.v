@@ -100,6 +100,7 @@ fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryDa
 	$if trace_sqlite ? {
 		eprintln('> sqlite_stmt_worker query: "${query}"')
 	}
+
 	stmt := db.new_init_stmt(query)!
 	defer {
 		stmt.finalize()
@@ -133,7 +134,7 @@ fn bind(stmt Stmt, mut c &int, data orm.Primitive) int {
 			err = stmt.bind_i64(c, i64(data))
 		}
 		f32, f64 {
-			err = stmt.bind_f64(c, unsafe { *(&f64(&data)) })
+			err = stmt.bind_f64(c, f64(data))
 		}
 		string {
 			err = stmt.bind_text(c, data)
