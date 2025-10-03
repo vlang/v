@@ -1,6 +1,0 @@
-struct Foo {
-}
-
-struct Bar {
-        module foos []Foo
-}

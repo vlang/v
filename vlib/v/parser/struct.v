@@ -177,7 +177,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_field_pub = false
 				is_field_mut = true
 				is_field_global = false
-			} else if p.tok.kind == .key_global {
+			} else if p.tok.kind == .key_global && p.peek_tok.kind == .colon {
 				if global_pos != -1 {
 					p.error('redefinition of `global` section')
 					return ast.StructDecl{}
@@ -188,7 +188,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_field_pub = true
 				is_field_mut = true
 				is_field_global = true
-			} else if p.tok.kind == .key_module {
+			} else if p.tok.kind == .key_module && p.peek_tok.kind == .colon {
 				if module_pos != -1 {
 					p.error('redefinition of `module` section')
 					return ast.StructDecl{}
