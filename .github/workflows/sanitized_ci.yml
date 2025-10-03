@@ -138,7 +138,7 @@ jobs:
       - name: Build examples (V compiled with -fsanitize=undefined)
         run: ./v2 -silent build-examples
 
-  tests-sanitize-address-clang:
+  sanitize-address-clang:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:

@@ -1,4 +1,4 @@
-// vtest build: !sanitize-address-gcc && !tests-sanitize-address-clang
+// vtest build: !sanitize-address-gcc && !sanitize-address-clang
 import encoding.vorbis
 import os
 
