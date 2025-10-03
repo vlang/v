@@ -56,6 +56,8 @@ Another approach to that problem, is to draw everything yourself in a streaming
 texture, then upload that streaming texture as a single draw command to the GPU.
 You can see an example of that done in:
 https://github.com/vlang/v/blob/master/examples/gg/random.v
+and in:
+https://github.com/vlang/v/blob/master/examples/gg/random_stars.v
 
 A third approach, is to only upload your changing inputs to the GPU, and do all
 the calculations and drawing there in shaders.
