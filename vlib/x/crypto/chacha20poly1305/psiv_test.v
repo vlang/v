@@ -1,8 +1,54 @@
 module chacha20poly1305
 
+import rand
 // ChaCha20-Poly1305-PSIV test
 
-fn test_psiv_encryption() ! {
+fn test_psiv_insternal_encryption_of_encrypted_text_is_plaintext() ! {
+	for i := 0; i < 1024; i++ {
+		input := rand.bytes(i)!
+		key := rand.bytes(36)!
+		tag := rand.bytes(16)!
+		nonce := rand.bytes(12)!
+
+		out := psiv_encrypt_internal(input, key, tag, nonce)!
+
+		// encrypting this output with the same params was input
+		awal := psiv_encrypt_internal(out, key, tag, nonce)!
+		assert awal == input
+	}
+}
+
+fn test_psiv_aead_encryption_of_encrypted_text_is_plaintext() ! {
+	for i := 0; i < 1024; i++ {
+		input := rand.bytes(i)!
+		key := rand.bytes(32)!
+		nonce := rand.bytes(12)!
+		ad := rand.bytes(i)!
+
+		out := psiv_encrypt(input, key, nonce, ad)!
+
+		// encrypting this output with the same params was input
+		awal := psiv_decrypt(out, key, nonce, ad)!
+		assert awal == input
+	}
+}
+
+fn test_for_wrong_tag() ! {
+	for i := 0; i < 1024; i++ {
+		input := rand.bytes(i)!
+		key := rand.bytes(32)!
+		nonce := rand.bytes(12)!
+		ad := rand.bytes(i)!
+
+		mut out := psiv_encrypt(input, key, nonce, ad)!
+		out[out.len - tag_size] ^= 1
+
+		// decrypting would fails
+		_ := psiv_decrypt(out, key, nonce, ad) or {
+			assert err == error('unmatching tag')
+			continue
+		}
+	}
 }
 
 // The test was adapted from Rust reference implementation of ChaCha20-Poly1305-PSIV
