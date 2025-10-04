@@ -6863,7 +6863,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		}
 		if sym.kind == .none && (!g.pref.skip_unused || g.table.used_features.used_none > 0) {
 			g.type_definitions.writeln('struct none {')
-			g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
+			g.type_definitions.writeln('\tE_STRUCT_DECL;')
 			g.type_definitions.writeln('};')
 			g.typedefs.writeln('typedef struct none none;')
 		}

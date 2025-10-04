@@ -1512,9 +1512,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_array_sumtype {
 		w.fn_by_name('__new_array')
 	}
-	if w.uses_fixed_arr_int {
-		w.fn_by_name('v_fixed_index')
-	}
+	// if w.uses_fixed_arr_int {
+	// 	w.fn_by_name('v_fixed_index')
+	// }
 	if w.uses_str_range_index {
 		w.fn_by_name(string_idx_str + '.substr')
 	}
