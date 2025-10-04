@@ -86,6 +86,7 @@ mut:
 	uses_arr_getter            bool
 	uses_arr_clone             bool
 	uses_arr_sorted            bool
+	uses_type_name             bool // sum_type.type_name()
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -970,6 +971,8 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	if node.is_method && node.left_type != 0 {
 		w.mark_by_type(node.left_type)
 		left_sym := w.table.sym(node.left_type)
+		w.uses_type_name = w.uses_type_name
+			|| (left_sym.kind in [.sum_type, .interface] && node.name == 'type_name')
 		if left_sym.info is ast.Aggregate {
 			for receiver_type in left_sym.info.types {
 				receiver_sym := w.table.sym(receiver_type)
@@ -1641,7 +1644,10 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')
 	}
-
+	if w.uses_type_name {
+		charptr_idx_str := ast.charptr_type_idx.str()
+		w.fn_by_name(charptr_idx_str + '.vstring_literal')
+	}
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()
 
