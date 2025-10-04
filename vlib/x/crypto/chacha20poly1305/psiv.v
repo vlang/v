@@ -405,6 +405,6 @@ fn length_to_block(len1 usize, len2 usize) []u8 {
 	min := if size < 8 { size } else { 8 }
 	_ := copy(mut length_block[0..min], b1)
 	_ := copy(mut length_block[8..min + 8], b2)
-	
+
 	return length_block
 }
