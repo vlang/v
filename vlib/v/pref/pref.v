@@ -130,6 +130,7 @@ pub mut:
 	is_trace           bool     // turn on possibility to trace fn call where v.debug is imported
 	is_coverage        bool     // turn on code coverage stats
 	is_check_return    bool     // -check-return, will make V produce notices about *all* call expressions with unused results. NOTE: experimental!
+	is_check_overflow  bool     // -check-overflow, will panic on integer overflow
 	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
@@ -971,6 +972,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-check-return' {
 				res.is_check_return = true
 			}
+			'-check-overflow' {
+				res.is_check_overflow = true
+			}
 			'-use-coroutines' {
 				res.use_coroutines = true
 				$if macos || linux {
@@ -1089,6 +1093,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 	if res.backend == .wasm && res.os !in [.browser, .wasi, ._auto] {
 		eprintln_exit('Native WebAssembly backend OS must be `browser` or `wasi`')
+	}
+
+	if res.is_check_overflow && res.ccompiler !in ['gcc', 'clang', 'msvc'] {
+		eprintln_exit('Integer overflow check is only avaliable on `gcc`, `clang` or `msvc`')
 	}
 
 	if command != 'doc' && res.out_name.ends_with('.v') {
