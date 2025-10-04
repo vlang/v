@@ -1521,9 +1521,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_str_range_index {
 		w.fn_by_name(string_idx_str + '.substr')
 	}
-	if w.uses_arr_range_index {
-		w.fn_by_name(array_idx_str + '.slice')
-	}
+	// if w.uses_arr_range_index {
+	// 	w.fn_by_name(array_idx_str + '.slice')
+	// }
 	if w.uses_range_index_check {
 		w.fn_by_name(string_idx_str + '.substr_with_check')
 		w.fn_by_name(array_idx_str + '.get_with_check')
