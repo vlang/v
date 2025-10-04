@@ -568,20 +568,6 @@ pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 	// windows has no concept of a permission mask, so do nothing
 }
 
-//
-
-pub fn (mut c Command) start() ! {
-	panic('not implemented')
-}
-
-pub fn (mut c Command) read_line() string {
-	panic('not implemented')
-}
-
-pub fn (mut c Command) close() ! {
-	panic('not implemented')
-}
-
 fn C.GetLongPathName(short_path &u16, long_path &u16, long_path_bufsize u32) u32
 
 // get_long_path has no meaning for *nix, but has for windows, where `c:\folder\some~1` for example
