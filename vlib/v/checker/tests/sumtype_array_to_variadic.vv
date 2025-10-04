@@ -1,0 +1,38 @@
+type Nil = u8
+
+const c_nil = Nil(`\0`)
+
+pub type Value = Nil | int | string | []Value | Map
+
+pub fn (v Value) string() string {
+	return '${v.str()}'
+}
+
+pub struct Map {
+mut:
+	m map[string]Value
+}
+
+pub fn Map.create(values ...Value) Map {
+	assert values.len > 1
+	assert values.len % 2 == 0
+	mut m := Map{}
+	for i := 0; i < values.len; i += 2 {
+		m.m[values[i].string()] = values[i + 1]
+	}
+	return m
+}
+
+pub fn build_map(index_from int, index_to int) Map {
+	mut kv_pairs := []Value{len: index_to - index_from, init: Value(c_nil)}
+	for i := index_from; i < index_to; i++ {
+		kv_pairs[i - index_from] = Value(i)
+	}
+	assert kv_pairs.len % 2 == 0
+	return Map.create(kv_pairs)
+}
+
+fn main() {
+	m := build_map(2, 4)
+	_ = m
+}

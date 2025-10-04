@@ -20,5 +20,5 @@ fn test_main() {
 	}
 	mut animals := []Animal{}
 	animals << cat
-	print_names(animals)
+	print_names(...animals)
 }
