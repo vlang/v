@@ -378,3 +378,9 @@ see also `v help build`.
       It is mainly useful when prototyping games, and other experimental code with
       lots of arithmetic expressions, where you do not want to check for the zero divisor
       all the time (which can break your flow).
+
+   -check-overflow
+      Enable runtime overflow checking for integer arithmetic operations (+, -, *).
+      Triggers a panic when integer overflow is detected.
+      Note: Overflow checking is currently only supported with `gcc`, `clang`, or `msvc` compilers.
+      Use with `-cc gcc`, `-cc clang`, or `-cc msvc` to ensure proper functionality.
