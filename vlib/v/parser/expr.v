@@ -835,6 +835,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		if mut right is ast.CallExpr {
 			or_kind = right.or_block.kind
 			or_stmts = right.or_block.stmts.clone()
+			or_scope = right.or_block.scope
 			right.or_block = ast.OrExpr{}
 		}
 		if p.tok.kind == .key_orelse {
