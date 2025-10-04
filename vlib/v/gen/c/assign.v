@@ -307,6 +307,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			scope: unsafe { nil }
 		}
 		mut cur_indexexpr := -1
+		is_safe_add_assign := node.op == .plus_assign && g.pref.is_check_overflow
+			&& var_type.is_int()
+		is_safe_sub_assign := node.op == .minus_assign && g.pref.is_check_overflow
+			&& var_type.is_int()
+		is_safe_mul_assign := node.op == .mult_assign && g.pref.is_check_overflow
+			&& var_type.is_int()
+
 		left_sym := g.table.sym(g.unwrap_generic(var_type))
 		is_va_list = left_sym.language == .c && left_sym.name == 'C.va_list'
 		if mut left is ast.Ident {
@@ -918,10 +925,26 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 				}
 			} else if !var_type.has_flag(.option_mut_param_t) && cur_indexexpr == -1 && !str_add
-				&& !op_overloaded {
+				&& !op_overloaded && !is_safe_add_assign && !is_safe_sub_assign
+				&& !is_safe_mul_assign {
 				g.write(' ${op} ')
-			} else if str_add || op_overloaded {
+			} else if (str_add || op_overloaded) && !is_safe_add_assign && !is_safe_sub_assign
+				&& !is_safe_mul_assign {
 				g.write(', ')
+			} else if is_safe_add_assign || is_safe_sub_assign || is_safe_mul_assign {
+				vsafe_fn_name := match true {
+					is_safe_add_assign { 'VSAFE_ADD_${styp}' }
+					is_safe_sub_assign { 'VSAFE_SUB_${styp}' }
+					is_safe_mul_assign { 'VSAFE_MUL_${styp}' }
+					else { '' }
+				}
+				g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
+					typ: var_type
+					op:  node.op
+				}
+				g.write('=${vsafe_fn_name}(')
+				g.expr(left)
+				g.write(',')
 			}
 			mut cloned := false
 			if g.is_autofree {
@@ -1075,7 +1098,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 				}
 			}
-			if str_add || op_overloaded {
+			if str_add || op_overloaded || is_safe_add_assign || is_safe_sub_assign
+				|| is_safe_mul_assign {
 				g.write(')')
 			}
 			if node_.op == .assign && var_type.has_flag(.option_mut_param_t) {

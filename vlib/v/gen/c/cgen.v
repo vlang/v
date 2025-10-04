@@ -676,10 +676,54 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	if g.vsafe_arithmetic_ops.len > 0 {
 		for vsafe_fn_name, val in g.vsafe_arithmetic_ops {
 			styp := g.styp(val.typ)
-			if val.op == .div {
-				b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return 0; } else { return x / y; } }')
-			} else {
-				b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return x; } else { return x % y; } }')
+			match val.op {
+				.plus, .plus_assign {
+					compiler_safe_fn_name := match g.pref.ccompiler {
+						'msvc' { '_add_overflow' }
+						'gcc', 'clang' { '__builtin_add_overflow' }
+						else { 'unsupport' }
+					}
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { ${styp} result; if (_unlikely_(0 == ${compiler_safe_fn_name}(x,y,&result))) { return result; } else { builtin__panic_result_not_set(_S("attempt to add with overflow")); return 0; } }')
+				}
+				.minus, .minus_assign {
+					compiler_safe_fn_name := match g.pref.ccompiler {
+						'msvc' { '_sub_overflow' }
+						'gcc', 'clang' { '__builtin_sub_overflow' }
+						else { 'unsupport' }
+					}
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { ${styp} result; if (_unlikely_(0 == ${compiler_safe_fn_name}(x,y,&result))) { return result; } else { builtin__panic_result_not_set(_S("attempt to sub with overflow"));return 0; } }')
+				}
+				.mul, .mult_assign {
+					compiler_safe_fn_name := match g.pref.ccompiler {
+						'msvc' { '_mul_overflow' }
+						'gcc', 'clang' { '__builtin_mul_overflow' }
+						else { 'unsupport' }
+					}
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { ${styp} result; if (_unlikely_(0 == ${compiler_safe_fn_name}(x,y,&result))) { return result; } else { builtin__panic_result_not_set(_S("attempt to mul with overflow"));return 0; } }')
+				}
+				.div {
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return 0; } else { return x / y; } }')
+				}
+				.mod {
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return x; } else { return x % y; } }')
+				}
+				.inc {
+					compiler_safe_fn_name := match g.pref.ccompiler {
+						'msvc' { '_add_overflow' }
+						'gcc', 'clang' { '__builtin_add_overflow' }
+						else { 'unsupport' }
+					}
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x) { ${styp} result; if (_unlikely_(0 == ${compiler_safe_fn_name}(x,1,&result))) { return result; } else { builtin__panic_result_not_set(_S("attempt to inc with overflow")); return 0; } }')
+				}
+				.dec {
+					compiler_safe_fn_name := match g.pref.ccompiler {
+						'msvc' { '_sub_overflow' }
+						'gcc', 'clang' { '__builtin_sub_overflow' }
+						else { 'unsupport' }
+					}
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x) { ${styp} result; if (_unlikely_(0 == ${compiler_safe_fn_name}(x,1,&result))) { return result; } else { builtin__panic_result_not_set(_S("attempt to dec with overflow")); return 0; } }')
+				}
+				else {}
 			}
 		}
 	}
@@ -3914,6 +3958,8 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			if node.auto_locked != '' {
 				g.writeln('sync__RwMutex_lock(&${node.auto_locked}->mtx);')
 			}
+			is_safe_inc := node.op == .inc && g.pref.is_check_overflow
+			is_safe_dec := node.op == .dec && g.pref.is_check_overflow
 			g.inside_map_postfix = true
 			if node.is_c2v_prefix {
 				g.write(node.op.str())
@@ -3955,8 +4001,22 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.expr(node.expr)
 			}
 			g.inside_map_postfix = false
-			if !node.is_c2v_prefix && node.op != .question {
+			if !node.is_c2v_prefix && node.op != .question && !is_safe_inc && !is_safe_dec {
 				g.write(node.op.str())
+			} else if is_safe_inc && mut node.expr is ast.Ident {
+				vsafe_fn_name := 'VSAFE_INC_${g.styp(node.typ)}'
+				g.write('=${vsafe_fn_name}(${node.expr.name})')
+				g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
+					typ: node.typ
+					op:  node.op
+				}
+			} else if is_safe_dec && mut node.expr is ast.Ident {
+				vsafe_fn_name := 'VSAFE_DEC_${g.styp(node.typ)}'
+				g.write('=${vsafe_fn_name}(${node.expr.name})')
+				g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
+					typ: node.typ
+					op:  node.op
+				}
 			}
 			if node.auto_locked != '' {
 				g.writeln(';')

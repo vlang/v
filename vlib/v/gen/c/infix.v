@@ -1254,6 +1254,9 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		typ_str = g.styp(typ)
 		g.write('(${typ_str})(')
 	}
+	is_safe_add := node.op == .plus && g.pref.is_check_overflow && typ.is_int()
+	is_safe_sub := node.op == .minus && g.pref.is_check_overflow && typ.is_int()
+	is_safe_mul := node.op == .mul && g.pref.is_check_overflow && typ.is_int()
 	is_safe_div := node.op == .div && g.pref.div_by_zero_is_zero && typ.is_int()
 	is_safe_mod := node.op == .mod && g.pref.div_by_zero_is_zero && typ.is_int()
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {
@@ -1275,8 +1278,15 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.write('memcmp(')
 	}
 	mut opstr := node.op.str()
-	if is_safe_div || is_safe_mod {
-		vsafe_fn_name := if is_safe_div { 'VSAFE_DIV_${typ_str}' } else { 'VSAFE_MOD_${typ_str}' }
+	if true in [is_safe_add, is_safe_sub, is_safe_mul, is_safe_div, is_safe_mod] {
+		vsafe_fn_name := match true {
+			is_safe_add { 'VSAFE_ADD_${typ_str}' }
+			is_safe_sub { 'VSAFE_SUB_${typ_str}' }
+			is_safe_mul { 'VSAFE_MUL_${typ_str}' }
+			is_safe_div { 'VSAFE_DIV_${typ_str}' }
+			is_safe_mod { 'VSAFE_MOD_${typ_str}' }
+			else { '' }
+		}
 		g.write(vsafe_fn_name)
 		g.write('(')
 		g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
@@ -1306,7 +1316,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	if is_ctemp_fixed_ret {
 		g.write(', sizeof(${g.styp(node.right_type)}))')
 	}
-	if is_safe_div || is_safe_mod {
+	if true in [is_safe_add, is_safe_sub, is_safe_mul, is_safe_div, is_safe_mod] {
 		g.write(')')
 	}
 	if needs_cast {

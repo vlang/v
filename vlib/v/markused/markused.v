@@ -146,6 +146,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if pref_.should_use_segfault_handler() {
 			core_fns << 'v_segmentation_fault_handler'
 		}
+		if pref_.is_check_overflow {
+			core_fns << 'panic_result_not_set'
+		}
 		all_fn_root_names << core_fns
 	}
 	if pref_.is_bare {
