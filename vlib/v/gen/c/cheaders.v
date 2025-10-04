@@ -51,12 +51,8 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], ${ast.int_type_name} l) {
 '
 
 const c_common_macros = '
-#define EMPTY_VARG_INITIALIZATION 0
-#define EMPTY_STRUCT_DECLARATION
+#define E_STRUCT_DECL
 #define E_STRUCT
-// Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
-#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
-#define TCCSKIP(x) x
 #define __NOINLINE __attribute__((noinline))
 #define __IRQHANDLER __attribute__((interrupt))
 #define __V_architecture 0
@@ -120,9 +116,9 @@ const c_common_macros = '
 #endif
 #ifdef _MSC_VER
 	#undef __V_GCC__
-	#undef EMPTY_STRUCT_DECLARATION
+	#undef E_STRUCT_DECL
 	#undef E_STRUCT
-	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
+	#define E_STRUCT_DECL unsigned char _dummy_pad
 	#define E_STRUCT 0
 #endif
 #ifndef _WIN32
@@ -137,19 +133,15 @@ const c_common_macros = '
 #endif
 #ifdef __TINYC__
 	#define _Atomic volatile
-	#undef EMPTY_STRUCT_DECLARATION
+	#undef E_STRUCT_DECL
 	#undef E_STRUCT
-	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
+	#define E_STRUCT_DECL unsigned char _dummy_pad
 	#define E_STRUCT 0
-	#undef EMPTY_ARRAY_OF_ELEMS
-	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 	#undef __NOINLINE
 	#undef __IRQHANDLER
 	// tcc does not support inlining at all
 	#define __NOINLINE
 	#define __IRQHANDLER
-	#undef TCCSKIP
-	#define TCCSKIP(x)
 	// #include <byteswap.h>
 	int tcc_backtrace(const char *fmt, ...);
 #endif

@@ -20,7 +20,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	trace_skip_unused_just_unused_fns := pref_.compile_values['trace_skip_unused_just_unused_fns'] == 'true'
 	used_fns := pref_.compile_values['used_fns']
 
-	charptr_idx_str := ast.charptr_type_idx.str()
 	string_idx_str := ast.string_type_idx.str()
 	array_idx_str := ast.array_type_idx.str()
 	map_idx_str := ast.map_type_idx.str()
@@ -124,9 +123,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << ref_map_idx_str + '.clone'
 			core_fns << ref_densearray_idx_str + '.clone'
 			core_fns << map_idx_str + '.clone'
-		}
-		if table.used_features.type_name {
-			core_fns << charptr_idx_str + '.vstring_literal'
 		}
 		if pref_.trace_calls || pref_.trace_fns.len > 0 {
 			include_panic_deps = true

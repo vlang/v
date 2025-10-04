@@ -2103,7 +2103,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	if left_sym.kind in [.sum_type, .interface] {
 		if method_name == 'type_name' {
-			c.table.used_features.type_name = true
 			return ast.string_type
 		}
 		if method_name == 'type_idx' {
