@@ -650,7 +650,18 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			}
 		}
 		ast.ParExpr {
-			node.expr = t.expr(mut node.expr)
+			mut inner_expr := t.expr(mut node.expr)
+			if inner_expr in [
+				ast.IntegerLiteral,
+				ast.FloatLiteral,
+				ast.BoolLiteral,
+				ast.StringLiteral,
+				ast.StringInterLiteral,
+				ast.CharLiteral,
+				ast.Ident,
+			] {
+				return inner_expr
+			}
 		}
 		ast.PostfixExpr {
 			node.expr = t.expr(mut node.expr)
