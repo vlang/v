@@ -42,7 +42,8 @@ const p = Uint192{
 }
 
 // Poly1305 mac instance
-struct Poly1305 {
+@[noinit]
+pub struct Poly1305 {
 mut:
 	// Poly1305 mac accepts 32 bytes (256 bits) of key input.
 	// This key is partitioned into two's 128 bits parts, r and s
@@ -116,6 +117,19 @@ pub fn new(key []u8) !&Poly1305 {
 	return ctx
 }
 
+// clone returns the clone of the current Poly1305 state
+pub fn (po &Poly1305) clone() &Poly1305 {
+	poc := &Poly1305{
+		r:        po.r
+		s:        po.s
+		h:        po.h
+		buffer:   po.buffer
+		leftover: po.leftover
+		done:     po.done
+	}
+	return poc
+}
+
 // update updates internal of Poly1305 state by message.
 pub fn (mut po Poly1305) update(msg []u8) {
 	poly1305_update_block(mut po, msg)
@@ -170,7 +184,7 @@ pub fn (mut po Poly1305) reinit(key []u8) {
 	po.done = false
 }
 
-// poly1305_update_block updates the internals of Poly105 state instance by block of message.
+// poly1305_update_block updates the internals of Poly1305 state instance by block of message.
 fn poly1305_update_block(mut po Poly1305, msg []u8) {
 	if msg.len == 0 {
 		return
