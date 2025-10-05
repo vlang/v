@@ -869,6 +869,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.StringLiteral {
 			if !w.uses_str_literal && !node.is_raw {
 				w.mark_by_sym_name('string')
+				w.uses_str_literal = true
 			}
 		}
 		ast.CTempVar {
