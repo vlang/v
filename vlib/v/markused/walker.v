@@ -79,6 +79,7 @@ mut:
 	uses_str_index             bool // string[k]
 	uses_str_index_check       bool // string[k] or { }
 	uses_str_range             bool // string[a..b]
+	uses_str_literal           bool
 	uses_fixed_arr_int         bool // fixed_arr[k]
 	uses_append                bool // var << item
 	uses_map_setter            bool
@@ -865,7 +866,11 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.FloatLiteral {}
 		ast.CharLiteral {}
 		ast.IntegerLiteral {}
-		ast.StringLiteral {}
+		ast.StringLiteral {
+			if !w.uses_str_literal && !node.is_raw {
+				w.mark_by_sym_name('string')
+			}
+		}
 		ast.CTempVar {
 			w.expr(node.orig)
 		}
