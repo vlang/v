@@ -428,13 +428,17 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if sym.info is ast.Thread {
 				w.mark_by_type(w.table.find_or_register_array(sym.info.return_type))
 			}
-			w.mark_by_type(node.typ)
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
 			w.exprs(node.exprs)
-			if !w.uses_array && !w.is_direct_array_access {
-				w.uses_array = true
+			if w.table.final_sym(node.typ).kind == .array {
+				if !w.is_direct_array_access {
+					w.uses_array = true
+					w.mark_by_type(node.typ)
+				}
+			} else {
+				w.mark_by_type(node.typ)
 			}
 			if node.elem_type.has_flag(.option) {
 				w.used_option++
@@ -581,7 +585,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				} else if sym.info is ast.ArrayFixed {
 					w.mark_by_type(sym.info.elem_type)
 				}
-				if !w.uses_arr_range_index {
+				if !node.is_gated && node.index is ast.RangeExpr && !w.uses_arr_range_index {
 					w.uses_arr_range_index = true
 				}
 				if !w.uses_fixed_arr_int && sym.kind == .array_fixed {
@@ -590,7 +594,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				if !w.uses_index && !w.is_direct_array_access {
 					w.uses_index = true
 				}
-				if !w.uses_arr_range_index_gated {
+				if node.is_gated && node.index is ast.RangeExpr && !w.uses_arr_range_index_gated {
 					w.uses_arr_range_index_gated = node.is_gated
 				}
 			} else if sym.kind == .string {
@@ -653,8 +657,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				node.right_type
 			}
 			if right_type != 0 {
-				w.mark_by_type(right_type)
 				right_sym := w.table.sym(right_type)
+				if !(w.is_direct_array_access && right_sym.kind == .array) {
+					w.mark_by_type(right_type)
+				}
 				if node.op in [.not_in, .key_in] {
 					if right_sym.kind == .map {
 						w.features.used_maps++
@@ -1521,9 +1527,9 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_str_range_index {
 		w.fn_by_name(string_idx_str + '.substr')
 	}
-	// if w.uses_arr_range_index {
-	// 	w.fn_by_name(array_idx_str + '.slice')
-	// }
+	if w.uses_arr_range_index {
+		w.fn_by_name(array_idx_str + '.slice')
+	}
 	if w.uses_range_index_check {
 		w.fn_by_name(string_idx_str + '.substr_with_check')
 		w.fn_by_name(array_idx_str + '.get_with_check')
