@@ -145,11 +145,6 @@ fn (mut ctx Context) should_test(path string, backend string) ShouldTestStatus {
 	if path.ends_with('onecontext_test.v') {
 		return .skip
 	}
-	$if tinyc {
-		if path.ends_with('naked_attr_test.amd64.v') {
-			return .skip
-		}
-	}
 	if path.ends_with('_test.v') {
 		return ctx.should_test_when_it_contains_matching_fns(path, backend)
 	}
