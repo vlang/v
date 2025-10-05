@@ -130,21 +130,6 @@ enum ShouldTestStatus {
 }
 
 fn (mut ctx Context) should_test(path string, backend string) ShouldTestStatus {
-	if path.ends_with('mysql_orm_test.v') {
-		testing.find_started_process('mysqld') or { return .skip }
-	}
-	if path.ends_with('mysql_test.v') {
-		testing.find_started_process('mysqld') or { return .skip }
-	}
-	if path.ends_with('pg_orm_test.v') {
-		testing.find_started_process('postgres') or { return .skip }
-	}
-	if path.ends_with('pg_double_test.v') {
-		testing.find_started_process('postgres') or { return .skip }
-	}
-	if path.ends_with('onecontext_test.v') {
-		return .skip
-	}
 	if path.ends_with('_test.v') {
 		return ctx.should_test_when_it_contains_matching_fns(path, backend)
 	}
