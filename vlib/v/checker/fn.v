@@ -1528,20 +1528,39 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.expr(mut call_arg.expr)
 			}
 			if i == args_len - 1 {
-				if c.table.sym(typ).kind == .array && call_arg.expr !is ast.ArrayDecompose
-					&& c.table.sym(expected_type).kind !in [.sum_type, .interface]
-					&& !param.typ.has_flag(.generic) && expected_type != typ {
-					styp := c.table.type_to_str(typ)
-					elem_styp := c.table.type_to_str(expected_type)
+				kind := c.table.sym(typ).kind
+				is_decompose := call_arg.expr is ast.ArrayDecompose
+				mut allow_variadic_pass := false
+				if call_arg.expr is ast.Ident && !func.is_method {
+					ident := call_arg.expr as ast.Ident
+					if ident.obj is ast.Var {
+						var_obj := ident.obj as ast.Var
+						if var_obj.is_arg && c.table.cur_fn != unsafe { nil }
+							&& c.table.cur_fn.is_variadic && c.table.cur_fn.params.len > 0
+							&& ident.name == c.table.cur_fn.params.last().name && func.is_variadic {
+							cur_fn_param_sym := c.table.sym(c.table.cur_fn.params.last().typ)
+							if cur_fn_param_sym.info is ast.Array {
+								allow_variadic_pass = cur_fn_param_sym.info.elem_type == expected_type
+							}
+						}
+					}
+				}
+				styp := c.table.type_to_str(typ)
+				elem_styp := c.table.type_to_str(expected_type)
+				is_single_array_arg := args_len == 1 && i == 0
+				sum_type_needs_spread := c.table.sym(expected_type).kind == .sum_type
+					&& is_single_array_arg
+				if kind == .array && !is_decompose && !allow_variadic_pass
+					&& (c.table.sym(expected_type).kind !in [.sum_type, .interface]
+					|| sum_type_needs_spread) && !param.typ.has_flag(.generic)
+					&& expected_type != typ {
 					c.error('to pass `${call_arg.expr}` (${styp}) to `${func.name}` (which accepts type `...${elem_styp}`), use `...${call_arg.expr}`',
 						node.pos)
-				} else if call_arg.expr is ast.ArrayDecompose
-					&& c.table.sym(expected_type).kind == .sum_type
-					&& expected_type.idx() != typ.idx() {
-					expected_type_str := c.table.type_to_str(expected_type)
-					got_type_str := c.table.type_to_str(typ)
-					c.error('cannot use `...${got_type_str}` as `...${expected_type_str}` in argument ${
-						i + 1} to `${fn_name}`', call_arg.pos)
+				} else if is_decompose && !param.typ.has_flag(.generic)
+					&& c.table.sym(expected_type).kind != .interface
+					&& expected_type.idx() != typ.idx() && typ != ast.void_type {
+					c.error('cannot use `...${styp}` as `...${elem_styp}` in argument ${i + 1} to `${fn_name}`',
+						call_arg.pos)
 				}
 			}
 		} else {
@@ -2554,20 +2573,24 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 			typ := c.expr(mut arg.expr)
 			if i == node.args.len - 1 {
-				if c.table.sym(typ).kind == .array && arg.expr !is ast.ArrayDecompose
-					&& c.table.sym(expected_type).kind !in [.sum_type, .interface]
-					&& !param.typ.has_flag(.generic) && expected_type != typ {
-					styp := c.table.type_to_str(typ)
-					elem_styp := c.table.type_to_str(expected_type)
+				is_decompose := arg.expr is ast.ArrayDecompose
+				styp := c.table.type_to_str(typ)
+				elem_styp := c.table.type_to_str(expected_type)
+				is_single_array_arg := node.args.len == 1 && i == 0
+				sum_type_needs_spread := c.table.sym(expected_type).kind == .sum_type
+					&& is_single_array_arg
+				if c.table.sym(typ).kind == .array && !is_decompose
+					&& (c.table.sym(expected_type).kind !in [.sum_type, .interface]
+					|| sum_type_needs_spread) && !param.typ.has_flag(.generic)
+					&& expected_type != typ {
 					c.error('to pass `${arg.expr}` (${styp}) to `${method.name}` (which accepts type `...${elem_styp}`), use `...${arg.expr}`',
 						node.pos)
-				} else if arg.expr is ast.ArrayDecompose
-					&& c.table.sym(expected_type).kind == .sum_type
-					&& expected_type.idx() != typ.idx() {
+				} else if is_decompose && !param.typ.has_flag(.generic)
+					&& c.table.sym(expected_type).kind != .interface
+					&& expected_type.idx() != typ.idx() && typ != ast.void_type {
 					expected_type_str := c.table.type_to_str(expected_type)
-					got_type_str := c.table.type_to_str(typ)
-					c.error('cannot use `...${got_type_str}` as `...${expected_type_str}` in argument ${
-						i + 1} to `${method_name}`', arg.pos)
+					c.error('cannot use `...${styp}` as `...${expected_type_str}` in argument ${i +
+						1} to `${method.name}`', arg.pos)
 				}
 			}
 		} else {
