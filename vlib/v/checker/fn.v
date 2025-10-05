@@ -1528,40 +1528,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.expr(mut call_arg.expr)
 			}
 			if i == args_len - 1 {
-				kind := c.table.sym(typ).kind
-				is_decompose := call_arg.expr is ast.ArrayDecompose
-				mut allow_variadic_pass := false
-				if call_arg.expr is ast.Ident && !func.is_method {
-					ident := call_arg.expr as ast.Ident
-					if ident.obj is ast.Var {
-						var_obj := ident.obj as ast.Var
-						if var_obj.is_arg && c.table.cur_fn != unsafe { nil }
-							&& c.table.cur_fn.is_variadic && c.table.cur_fn.params.len > 0
-							&& ident.name == c.table.cur_fn.params.last().name && func.is_variadic {
-							cur_fn_param_sym := c.table.sym(c.table.cur_fn.params.last().typ)
-							if cur_fn_param_sym.info is ast.Array {
-								allow_variadic_pass = cur_fn_param_sym.info.elem_type == expected_type
-							}
-						}
-					}
-				}
-				styp := c.table.type_to_str(typ)
-				elem_styp := c.table.type_to_str(expected_type)
-				is_single_array_arg := args_len == 1 && i == 0
-				sum_type_needs_spread := c.table.sym(expected_type).kind == .sum_type
-					&& is_single_array_arg
-				if kind == .array && !is_decompose && !allow_variadic_pass
-					&& (c.table.sym(expected_type).kind !in [.sum_type, .interface]
-					|| sum_type_needs_spread) && !param.typ.has_flag(.generic)
-					&& expected_type != typ {
-					c.error('to pass `${call_arg.expr}` (${styp}) to `${func.name}` (which accepts type `...${elem_styp}`), use `...${call_arg.expr}`',
-						node.pos)
-				} else if is_decompose && !param.typ.has_flag(.generic)
-					&& c.table.sym(expected_type).kind != .interface
-					&& expected_type.idx() != typ.idx() && typ != ast.void_type {
-					c.error('cannot use `...${styp}` as `...${elem_styp}` in argument ${i + 1} to `${fn_name}`',
-						call_arg.pos)
-				}
+				c.check_variadic_arg(call_arg.expr, typ, expected_type, param.typ, i + 1,
+					func.name, func.is_method, func.is_variadic, args_len == 1 && i == 0,
+					node.pos, call_arg.pos)
 			}
 		} else {
 			c.expected_type = param.typ
@@ -2573,25 +2542,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 			typ := c.expr(mut arg.expr)
 			if i == node.args.len - 1 {
-				is_decompose := arg.expr is ast.ArrayDecompose
-				styp := c.table.type_to_str(typ)
-				elem_styp := c.table.type_to_str(expected_type)
-				is_single_array_arg := node.args.len == 1 && i == 0
-				sum_type_needs_spread := c.table.sym(expected_type).kind == .sum_type
-					&& is_single_array_arg
-				if c.table.sym(typ).kind == .array && !is_decompose
-					&& (c.table.sym(expected_type).kind !in [.sum_type, .interface]
-					|| sum_type_needs_spread) && !param.typ.has_flag(.generic)
-					&& expected_type != typ {
-					c.error('to pass `${arg.expr}` (${styp}) to `${method.name}` (which accepts type `...${elem_styp}`), use `...${arg.expr}`',
-						node.pos)
-				} else if is_decompose && !param.typ.has_flag(.generic)
-					&& c.table.sym(expected_type).kind != .interface
-					&& expected_type.idx() != typ.idx() && typ != ast.void_type {
-					expected_type_str := c.table.type_to_str(expected_type)
-					c.error('cannot use `...${styp}` as `...${expected_type_str}` in argument ${i +
-						1} to `${method.name}`', arg.pos)
-				}
+				c.check_variadic_arg(arg.expr, typ, expected_type, param.typ, i + 1, method.name,
+					true, method.is_variadic, node.args.len == 1 && i == 0, node.pos,
+					arg.pos)
 			}
 		} else {
 			c.expected_type = param.typ
@@ -4014,4 +3967,40 @@ fn (mut c Checker) has_veb_context(typ ast.Type) bool {
 		}
 	}
 	return false
+}
+
+fn (mut c Checker) check_variadic_arg(arg_expr ast.Expr, typ ast.Type, expected_type ast.Type, param_typ ast.Type,
+	arg_num int, fn_name string, is_method bool, fn_is_variadic bool, is_single_array_arg bool,
+	call_pos token.Pos, arg_pos token.Pos) {
+	kind := c.table.sym(typ).kind
+	is_decompose := arg_expr is ast.ArrayDecompose
+	mut allow_variadic_pass := false
+	if arg_expr is ast.Ident && !is_method {
+		ident := arg_expr as ast.Ident
+		if ident.obj is ast.Var {
+			var_obj := ident.obj as ast.Var
+			if var_obj.is_arg && c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_variadic
+				&& c.table.cur_fn.params.len > 0 && ident.name == c.table.cur_fn.params.last().name
+				&& fn_is_variadic {
+				cur_fn_param_sym := c.table.sym(c.table.cur_fn.params.last().typ)
+				if cur_fn_param_sym.info is ast.Array {
+					allow_variadic_pass = cur_fn_param_sym.info.elem_type == expected_type
+				}
+			}
+		}
+	}
+	styp := c.table.type_to_str(typ)
+	elem_styp := c.table.type_to_str(expected_type)
+	expected_kind := c.table.sym(expected_type).kind
+	sum_type_needs_spread := expected_kind == .sum_type && is_single_array_arg
+	if kind == .array && !is_decompose && !allow_variadic_pass
+		&& (expected_kind !in [.sum_type, .interface] || sum_type_needs_spread)
+		&& !param_typ.has_flag(.generic) && expected_type != typ {
+		c.error('to pass `${arg_expr}` (${styp}) to `${fn_name}` (which accepts type `...${elem_styp}`), use `...${arg_expr}`',
+			call_pos)
+	} else if is_decompose && !param_typ.has_flag(.generic) && expected_kind != .interface
+		&& expected_type.idx() != typ.idx() && typ != ast.void_type {
+		c.error('cannot use `...${styp}` as `...${elem_styp}` in argument ${arg_num} to `${fn_name}`',
+			arg_pos)
+	}
 }
