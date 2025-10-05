@@ -2,43 +2,94 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
-// This file contains a port of a Rust reference implementation of nonce-misuse resistant
-// and key-committing authenticated encryption scheme called ChaCha20-Poly1305-PSIV
+// This file contains an experimental port of a Rust reference implementation of nonce-misuse
+// resistant and key-committing authenticated encryption scheme called ChaCha20-Poly1305-PSIV.
 // Its originally described by Michiel Verbauwhede and the teams on his papers.
-// See [A Robust Variant of ChaCha20-Poly1305](https://eprint.iacr.org/2025/222)
+// See the detail on the [A Robust Variant of ChaCha20-Poly1305](https://eprint.iacr.org/2025/222).
 module chacha20poly1305
 
 import arrays
 import math.bits
 import encoding.binary
+import crypto.internal.subtle
 import x.crypto.poly1305
 
-enum ReMode {
-	psiv
-	daence
+// new_psiv creates a new Chacha20Poly1305 with psiv construct to operate on.
+@[direct_array_access]
+pub fn new_psiv(key []u8) !&AEAD {
+	if key.len != key_size {
+		return error('new_psiv: bad key size')
+	}
+	// derives and initializes the new key for later purposes
+	mac_key, enc_key, po := psiv_init(key)!
+	// set the values
+	c := &Chacha20Poly1305RE{
+		key:     key
+		precomp: true
+		mac_key: mac_key
+		enc_key: enc_key
+		po:      po
+	}
+	return c
 }
 
+// Chacha20Poly1305RE was a Chacha20Poly1305 opaque with nonce-misuse resistent
+// and key-commiting AEAD scheme with PSIV construct.
 @[noinit]
 struct Chacha20Poly1305RE {
 mut:
-	mode ReMode
-	key  [32]u8
+	// An underlying 32-bytes of key
+	key []u8
+	// flags that tells derivation keys has been precomputed
+	precomp bool
+	mac_key []u8
+	enc_key []u8
+	po      &poly1305.Poly1305 = unsafe { nil }
 }
 
-@[direct_array_access]
-fn psiv_encrypt(plaintext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
-	if nonce.len != nonce_size {
-		return error('Chacha20Poly1305RE.encrypt: unsupported nonce size, only standard 12 size')
+// free releases resources taken by c. Dont use c after `.free` call.
+@[unsafe]
+pub fn (mut c Chacha20Poly1305RE) free() {
+	unsafe {
+		c.key.free()
+		c.mac_key.free()
+		c.enc_key.free()
+		c.po = nil
 	}
-	mac_key, enc_key, po := psiv_init(key)!
+	c.precomp = false
+}
+
+// nonce_size return the size of the nonce of underlying c.
+// Currently, it only support for standard 12-bytes nonce.
+pub fn (c &Chacha20Poly1305RE) nonce_size() int {
+	return nonce_size
+}
+
+// overhead returns difference between the lengths of a plaintext and its ciphertext.
+// Its normally returns a tag size produced by this scheme.
+fn (c &Chacha20Poly1305RE) overhead() int {
+	return tag_size
+}
+
+// encrypt encrypts and authenticates the provided plaintext along with a nonce, and
+// to be authenticated additional data in `ad`. It returns a ciphertext with message authenticated
+// code stored within the end of ciphertext.
+@[direct_array_access]
+pub fn (c Chacha20Poly1305RE) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8 {
+	if nonce.len != nonce_size {
+		return error('Chacha20Poly1305RE.encrypt: bad nonce length, only support 12-bytes nonce')
+	}
+
 	// clone the initial poly1305
-	mut po_ad := po.clone()
+	mut po_ad := c.po.clone()
 	po_ad.update(ad)
 
 	mut po_ad_clone := po_ad.clone()
-	tag := psiv_gen_tag(mut po_ad_clone, plaintext, ad.len, mac_key, nonce)!
-	enc := psiv_encrypt_internal(plaintext, enc_key, tag, nonce)!
+	// build the tag
+	tag := psiv_gen_tag(mut po_ad_clone, plaintext, ad.len, c.mac_key, nonce)
+	enc := psiv_encrypt_internal(plaintext, c.enc_key, tag, nonce)!
 
+	// setup destination buffer
 	mut out := []u8{cap: plaintext.len + tag_size}
 	out << enc
 	out << tag
@@ -46,41 +97,74 @@ fn psiv_encrypt(plaintext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
 	return out
 }
 
+// decrypt decrypts the ciphertext with provided key, nonce and additional data in ad.
+// It also tries to validate message authenticated code within ciphertext compared with
+// calculated tag. It returns successfully decrypted message or error on fails.
 @[direct_array_access]
-fn psiv_decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
-	assert key.len == 32
-	assert nonce.len == 12
-	assert ciphertext.len >= 16
+pub fn (c Chacha20Poly1305RE) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u8 {
+	if ciphertext.len < tag_size {
+		return error('Chacha20Poly1305RE.decrypt: insufficient ciphertext length')
+	}
+	if nonce.len != nonce_size {
+		return error('Chacha20Poly1305RE.decrypt: invalid nonce length provided')
+	}
+	enc := ciphertext[0..ciphertext.len - c.overhead()]
+	tag := ciphertext[ciphertext.len - c.overhead()..]
 
-	enc := ciphertext[0..ciphertext.len - tag_size]
-	tag := ciphertext[ciphertext.len - tag_size..]
-
-	mac_key, enc_key, po := psiv_init(key)!
-	mut po_with_ad := po.clone()
+	mut po_with_ad := c.po.clone()
 	po_with_ad.update(ad)
 
-	out := psiv_encrypt_internal(enc, enc_key, tag, nonce)!
+	out := psiv_encrypt_internal(enc, c.enc_key, tag, nonce)!
 	mut poad_clone := po_with_ad.clone()
-	mac := psiv_gen_tag(mut poad_clone, out, ad.len, mac_key, nonce)!
-	if mac != tag {
+	mac := psiv_gen_tag(mut poad_clone, out, ad.len, c.mac_key, nonce)
+	if subtle.constant_time_compare(mac, tag) != 1 {
+		unsafe {
+			out.free()
+			mac.free()
+		}
 		return error('unmatching tag')
 	}
 	return out
 }
 
+// psiv_encrypt encrypts plaintext with provided key, nonce and additional data ad.
+// It returns a ciphertext that contains message authentication code (mac) stored
+// within the end of ciphertext
+@[direct_array_access]
+pub fn psiv_encrypt(plaintext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
+	c := new_psiv(key)!
+	out := c.encrypt(plaintext, nonce, ad)!
+	unsafe { c.free() }
+	return out
+}
+
+// psiv_decrypt decrypts the ciphertext with provided key, nonce and additional data in ad.
+// It also tries to validate message authenticated code within ciphertext compared with
+// calculated tag. It returns successfully decrypted message or error on fails.
+@[direct_array_access]
+pub fn psiv_decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
+	c := new_psiv(key)!
+	out := c.decrypt(ciphertext, nonce, ad)!
+	unsafe { c.free() }
+	return out
+}
+
+// PSIV Helpers
+//
+
 // returns 16-bytes of tag
 @[direct_array_access]
-fn psiv_gen_tag(mut po poly1305.Poly1305, input []u8, ad_len int, mac_key []u8, nonce []u8) ![]u8 {
+fn psiv_gen_tag(mut po poly1305.Poly1305, input []u8, ad_len int, mac_key []u8, nonce []u8) []u8 {
 	assert mac_key.len == 36
 	assert nonce.len == 12
 
 	po.update(input)
-	po.update(length_to_block(usize(ad_len), usize(input.len)))
+	po.update(length_to_block(ad_len, input.len))
 
 	mut digest := []u8{len: tag_size}
 	po.finish(mut digest)
 
-	out := key_merge(mac_key, nonce, digest[0..8], digest[8..16])
+	out := merge_drv_key(mac_key, nonce, digest[0..8], digest[8..16])
 	tag := out[0..16].clone()
 	unsafe { out.reset() }
 	return tag
@@ -100,7 +184,7 @@ fn psiv_encrypt_internal(plaintext []u8, key []u8, tag []u8, nonce []u8) ![]u8 {
 	mut o32 := [16]u32{}
 	for chunk in chunks {
 		binary.big_endian_put_u64(mut tc, ctr)
-		convert_64u8_into_16u32(mut o32, key_merge(key, nonce, tc, tb))
+		convert_64u8_into_16u32(mut o32, merge_drv_key(key, nonce, tc, tb))
 		buf32 := chacha20_core(o32)
 		mut b64 := []u8{len: 64}
 		serialize(mut b64, buf32)
@@ -119,11 +203,10 @@ fn psiv_encrypt_internal(plaintext []u8, key []u8, tag []u8, nonce []u8) ![]u8 {
 @[direct_array_access; inline]
 fn split_tag(tag []u8) ([]u8, []u8) {
 	assert tag.len == 16
-	a, b := tag[0..8].clone(), tag[8..16].clone()
-	return a, b
+	return tag[0..8].clone(), tag[8..16].clone()
 }
 
-@[direct_array_access]
+@[direct_array_access; inline]
 fn psiv_init(key []u8) !([]u8, []u8, &poly1305.Poly1305) {
 	assert key.len == 32
 	// derives some keys
@@ -132,7 +215,7 @@ fn psiv_init(key []u8) !([]u8, []u8, &poly1305.Poly1305) {
 	enc_key := fe_k(key)
 
 	mut x := [16]u32{}
-	convert_64u8_into_16u32(mut x, key_merge_with_zeros(pol_key))
+	convert_64u8_into_16u32(mut x, merge_drvk_zeros(pol_key))
 	buf := chacha20_core(x)
 
 	mut kc := []u8{len: 64}
@@ -221,10 +304,10 @@ fn qround_on_state(mut s [16]u32, a int, b int, c int, d int) {
 	s[b] = bits.rotate_left_32(s[b], 7)
 }
 
-// merge into 64-bytes key
-@[direct_array_access]
-fn key_merge(key []u8, nonce []u8, tag_ctr []u8, tag_rest []u8) []u8 {
-	assert key.len == 36
+// merge_drv_key merges provided bytes into 64-bytes key
+@[direct_array_access; inline]
+fn merge_drv_key(dkey []u8, nonce []u8, tag_ctr []u8, tag_rest []u8) []u8 {
+	assert dkey.len == 36
 	assert nonce.len == 12
 	assert tag_ctr.len == 8
 	assert tag_rest.len == 8
@@ -232,8 +315,8 @@ fn key_merge(key []u8, nonce []u8, tag_ctr []u8, tag_rest []u8) []u8 {
 	mut x := []u8{len: 64}
 
 	// 0..36
-	for i := 0; i < key.len; i++ {
-		x[i] = key[i]
+	for i := 0; i < dkey.len; i++ {
+		x[i] = dkey[i]
 	}
 	// 36..48
 	for i := 0; i < nonce.len; i++ {
@@ -251,17 +334,19 @@ fn key_merge(key []u8, nonce []u8, tag_ctr []u8, tag_rest []u8) []u8 {
 	return x
 }
 
-@[direct_array_access]
-fn key_merge_with_zeros(pkey []u8) []u8 {
-	assert pkey.len == 36
-	zero_nonce := []u8{len: 12}
-	zero_tctr := []u8{len: 8}
-	zero_tres := []u8{len: 8}
-	return key_merge(pkey, zero_nonce, zero_tctr, zero_tres)
+// merge_drvk_zeros merges derived key in dkey with zeros nonce and zeros tag into 64-bytes of key.
+@[direct_array_access; inline]
+fn merge_drvk_zeros(dkey []u8) []u8 {
+	assert dkey.len == 36
+	mut x := []u8{len: 64}
+	_ := copy(mut x, dkey)
+	// the others was null bytes
+	return x
 }
 
+// fk_k maps and transforms 32-bytes of key into 36-bytes of new key used to
+// derive a poly1305 construction.
 // See the papers doc on the 3.3 Additional Details part, on page 12-13
-// derives new key
 @[direct_array_access; inline]
 fn fk_k(k []u8) []u8 {
 	assert k.len == 32
@@ -303,7 +388,8 @@ fn fk_k(k []u8) []u8 {
 	return x
 }
 
-// derives mac key
+// fm_k maps and transforms 32-bytes of key into 36-bytes of message authentication key.
+// It later used for psiv tag generation.
 @[direct_array_access; inline]
 fn fm_k(k []u8) []u8 {
 	assert k.len == 32
@@ -345,7 +431,7 @@ fn fm_k(k []u8) []u8 {
 	return x
 }
 
-// derives encryption key
+// fe_k maps and transforms 32-bytes of key into 36-bytes of new encryption key
 @[direct_array_access; inline]
 fn fe_k(k []u8) []u8 {
 	assert k.len == 32
@@ -387,24 +473,12 @@ fn fe_k(k []u8) []u8 {
 	return x
 }
 
+// length_to_block transforms two's length in len1 and len2 into 16-bytes block
 @[inline]
-fn length_to_block(len1 usize, len2 usize) []u8 {
-	mut length_block := []u8{len: 16}
-	// precautions, usize is not the same size on every machine
-	size := int(sizeof(len1)) // its also for len2
-	mut b1 := []u8{len: size}
-	mut b2 := []u8{len: size}
-	if size == 8 {
-		binary.little_endian_put_u64(mut b1, u64(len1))
-		binary.little_endian_put_u64(mut b2, u64(len2))
-	}
-	if size == 4 {
-		binary.little_endian_put_u32(mut b1, u32(len1))
-		binary.little_endian_put_u32(mut b2, u32(len2))
-	}
-	min := if size < 8 { size } else { 8 }
-	_ := copy(mut length_block[0..min], b1)
-	_ := copy(mut length_block[8..min + 8], b2)
+fn length_to_block(len1 int, len2 int) []u8 {
+	mut block := []u8{len: 16}
+	binary.little_endian_put_u64(mut block[0..8], u64(len1))
+	binary.little_endian_put_u64(mut block[8..16], u64(len2))
 
-	return length_block
+	return block
 }
