@@ -433,10 +433,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.init_expr)
 			w.exprs(node.exprs)
 			if w.table.final_sym(node.typ).kind == .array {
-				if !w.is_direct_array_access {
-					w.uses_array = true
-					w.mark_by_type(node.typ)
-				}
+				w.uses_array = true
+				w.mark_by_type(node.typ)
 			} else {
 				w.mark_by_type(node.typ)
 			}
