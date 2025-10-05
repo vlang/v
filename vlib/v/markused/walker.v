@@ -39,6 +39,7 @@ mut:
 	level                  int
 	is_builtin_mod         bool
 	is_direct_array_access bool
+	inside_in_op           bool
 
 	// dependencies finding flags
 	uses_atomic                bool // has atomic
@@ -433,8 +434,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.init_expr)
 			w.exprs(node.exprs)
 			if w.table.final_sym(node.typ).kind == .array {
-				w.uses_array = true
-				w.mark_by_type(node.typ)
+				if !w.inside_in_op {
+					w.uses_array = true
+					w.mark_by_type(node.typ)
+				}
 			} else {
 				w.mark_by_type(node.typ)
 			}
@@ -631,7 +634,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.InfixExpr {
 			w.expr(node.left)
+			tmp_inside_in_op := w.inside_in_op
+			w.inside_in_op = node.op in [.key_in, .not_in]
 			w.expr(node.right)
+			w.inside_in_op = tmp_inside_in_op
 			w.or_block(node.or_block)
 			if node.left_type != 0 {
 				sym := w.table.sym(node.left_type)
