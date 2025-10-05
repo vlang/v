@@ -197,7 +197,7 @@ fn (mut s Stream) keystream_full(mut dst []u8, src []u8) ! {
 fn (mut s Stream) keystream() ![]u8 {
 	// initializes current state and working state
 	mut awal := s.new_curr_state()
-	mut ws := clone_state(awal)
+	mut ws := awal.clone()
 
 	// precomputes cache counter-independent  values
 	if s.mode == .standard && !s.precomp {
@@ -217,32 +217,10 @@ fn (mut s Stream) keystream() ![]u8 {
 
 	// The remaining quarter rounds
 	//
-	// For standard variant, the first column-round was already precomputed,
-	// For original variant, its use full quarter round number.
-	//
-	// perform chacha20 quarter round n-times
-	n := if s.mode == .standard { 9 } else { default_qround_nr }
-	for i := 0; i < n; i++ {
-		// Column-round
-		//  0 |  1 |  2 |  3
-		//  4 |  5 |  6 |  7
-		//  8 |  9 | 10 | 11
-		// 12 | 13 | 14 | 15
-		qround_on_state(mut ws, 0, 4, 8, 12) // 0
-		qround_on_state(mut ws, 1, 5, 9, 13) // 1
-		qround_on_state(mut ws, 2, 6, 10, 14) // 2
-		qround_on_state(mut ws, 3, 7, 11, 15) // 3
+	// For standard and original variant, the first column-round was already precomputed,
+	// so, quarter-round number reduced by one, becomes 9
+	ws.qround(9)
 
-		// Diagonal round.
-		//   0 \  1 \  2 \  3
-		//   5 \  6 \  7 \  4
-		//  10 \ 11 \  8 \  9
-		//  15 \ 12 \ 13 \ 14
-		qround_on_state(mut ws, 0, 5, 10, 15)
-		qround_on_state(mut ws, 1, 6, 11, 12)
-		qround_on_state(mut ws, 2, 7, 8, 13)
-		qround_on_state(mut ws, 3, 4, 9, 14)
-	}
 	// Adding the working state values with inital state values.
 	// We dont performs xor-ing here, its done on xor_key_stream and or keystream_full.
 	for i, _ in ws {
@@ -379,15 +357,51 @@ fn (b Stream) max_ctr() u64 {
 }
 
 // State represents the running 64-bytes of chacha20 stream,
-type State = [16]u32
+pub type State = [16]u32
 
+// clone returns a new copy of this state.
 @[direct_array_access; inline]
-fn clone_state(s State) State {
+pub fn (s State) clone() State {
 	mut sc := State{}
 	for i, v in s {
 		sc[i] = v
 	}
 	return sc
+}
+
+// reset resets internal values of this state.
+@[direct_array_access; inline]
+pub fn (mut s State) reset() {
+	for i, _ in s {
+		s[i] = u32(0)
+	}
+}
+
+// qround performs quarter round on the working state ws with round number specified in nr.
+// Its responsibility the user to provide the correct round number.
+@[direct_array_access]
+pub fn (mut ws State) qround(nr int) {
+	for i := 0; i < nr; i++ {
+		// Column-round
+		//  0 |  1 |  2 |  3
+		//  4 |  5 |  6 |  7
+		//  8 |  9 | 10 | 11
+		// 12 | 13 | 14 | 15
+		qround_on_state(mut ws, 0, 4, 8, 12) // 0
+		qround_on_state(mut ws, 1, 5, 9, 13) // 1
+		qround_on_state(mut ws, 2, 6, 10, 14) // 2
+		qround_on_state(mut ws, 3, 7, 11, 15) // 3
+
+		// Diagonal round.
+		//   0 \  1 \  2 \  3
+		//   5 \  6 \  7 \  4
+		//  10 \ 11 \  8 \  9
+		//  15 \ 12 \ 13 \ 14
+		qround_on_state(mut ws, 0, 5, 10, 15)
+		qround_on_state(mut ws, 1, 6, 11, 12)
+		qround_on_state(mut ws, 2, 7, 8, 13)
+		qround_on_state(mut ws, 3, 4, 9, 14)
+	}
 }
 
 // qround_on_state_with_quartet run qround_on_state by previously set up state values in offset
