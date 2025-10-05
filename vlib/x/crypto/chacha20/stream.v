@@ -217,9 +217,12 @@ fn (mut s Stream) keystream() ![]u8 {
 
 	// The remaining quarter rounds
 	//
-	// For standard and original variant, the first column-round was already precomputed,
-	// so, quarter-round number reduced by one, becomes 9
-	ws.qround(9)
+	// For standard variant, the first column-round was already precomputed,
+	// For original variant, its use full quarter round number.
+	//
+	// perform chacha20 quarter round n-times
+	n := if s.mode == .standard { 9 } else { default_qround_nr }
+	ws.qround(n)
 
 	// Adding the working state values with inital state values.
 	// We dont performs xor-ing here, its done on xor_key_stream and or keystream_full.
