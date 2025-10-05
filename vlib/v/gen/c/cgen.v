@@ -1088,9 +1088,9 @@ pub fn (mut g Gen) init() {
 	if g.use_segfault_handler {
 		muttable.used_features.used_fns['v_segmentation_fault_handler'] = true
 	}
-	muttable.used_features.used_fns['eprintln'] = true
-	muttable.used_features.used_fns['print_backtrace'] = true
-	muttable.used_features.used_fns['exit'] = true
+	// muttable.used_features.used_fns['eprintln'] = true
+	// muttable.used_features.used_fns['print_backtrace'] = true
+	// muttable.used_features.used_fns['exit'] = true
 }
 
 pub fn (mut g Gen) finish() {
