@@ -382,5 +382,3 @@ see also `v help build`.
    -check-overflow
       Enable runtime overflow checking for integer arithmetic operations (+, -, *).
       Triggers a panic when integer overflow is detected.
-      Note: Overflow checking is currently only supported with `gcc`, `clang`, or `msvc` compilers.
-      Use with `-cc gcc`, `-cc clang`, or `-cc msvc` to ensure proper functionality.
