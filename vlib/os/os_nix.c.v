@@ -362,51 +362,6 @@ pub fn raw_execute(cmd string) Result {
 	return execute(cmd)
 }
 
-@[manualfree]
-pub fn (mut c Command) start() ! {
-	pcmd := c.path + ' 2>&1'
-	defer {
-		unsafe { pcmd.free() }
-	}
-	c.f = vpopen(pcmd)
-	if isnil(c.f) {
-		return error('exec("${c.path}") failed')
-	}
-}
-
-@[manualfree]
-pub fn (mut c Command) read_line() string {
-	buf := [4096]u8{}
-	mut res := strings.new_builder(1024)
-	defer {
-		unsafe { res.free() }
-	}
-	unsafe {
-		bufbp := &buf[0]
-		for C.fgets(&char(bufbp), 4096, c.f) != 0 {
-			len := vstrlen(bufbp)
-			for i in 0 .. len {
-				if bufbp[i] == `\n` {
-					res.write_ptr(bufbp, i)
-					final := res.str()
-					return final
-				}
-			}
-			res.write_ptr(bufbp, len)
-		}
-	}
-	c.eof = true
-	final := res.str()
-	return final
-}
-
-pub fn (mut c Command) close() ! {
-	c.exit_code = vpclose(c.f)
-	if c.exit_code == 127 {
-		return error_with_code('error', 127)
-	}
-}
-
 // symlink creates a symbolic link named target, which points to origin.
 // It returns a POSIX error message, if it can not do so.
 pub fn symlink(origin string, target string) ! {
