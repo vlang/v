@@ -683,7 +683,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 						'gcc', 'clang' { '__builtin_add_overflow' }
 						else { 'unsupport' }
 					}
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { ${styp} result; if (_likely_(0 == ${compiler_safe_fn_name}(x,y,&result))) { return result; } else { builtin__panic_result_not_set(_S("attempt to add with overflow")); return 0; } }')
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
+	${styp} result;
+	if (_likely_(0 == ${compiler_safe_fn_name}(x,y,&result))) {
+		return result;
+	} else {
+		builtin__panic_result_not_set(_S("attempt to add with overflow(${styp}(x) + ${styp}(y))"));
+		return 0;
+	}
+}')
 				}
 				.minus, .minus_assign {
 					compiler_safe_fn_name := match g.pref.ccompiler {
@@ -691,7 +699,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 						'gcc', 'clang' { '__builtin_sub_overflow' }
 						else { 'unsupport' }
 					}
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { ${styp} result; if (_likely_(0 == ${compiler_safe_fn_name}(x,y,&result))) { return result; } else { builtin__panic_result_not_set(_S("attempt to sub with overflow"));return 0; } }')
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
+	${styp} result;
+	if (_likely_(0 == ${compiler_safe_fn_name}(x,y,&result))) {
+		return result;
+	} else {
+		builtin__panic_result_not_set(_S("attempt to sub with overflow(${styp}(x) - ${styp}(y))"));
+		return 0;
+	}
+}')
 				}
 				.mul, .mult_assign {
 					compiler_safe_fn_name := match g.pref.ccompiler {
@@ -699,13 +715,33 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 						'gcc', 'clang' { '__builtin_mul_overflow' }
 						else { 'unsupport' }
 					}
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { ${styp} result; if (_likely_(0 == ${compiler_safe_fn_name}(x,y,&result))) { return result; } else { builtin__panic_result_not_set(_S("attempt to mul with overflow"));return 0; } }')
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
+	${styp} result;
+	if (_likely_(0 == ${compiler_safe_fn_name}(x,y,&result))) {
+		return result;
+	} else {
+		builtin__panic_result_not_set(_S("attempt to mul with overflow(${styp}(x) * ${styp}(y))"));
+		return 0;
+	}
+}')
 				}
 				.div {
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return 0; } else { return x / y; } }')
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
+	if (_unlikely_(0 == y)) {
+		return 0;
+	} else {
+		return x / y;
+	}
+}')
 				}
 				.mod {
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return x; } else { return x % y; } }')
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
+	if (_unlikely_(0 == y)) {
+		return x;
+	} else {
+		return x % y;
+	}
+}')
 				}
 				.inc {
 					compiler_safe_fn_name := match g.pref.ccompiler {
@@ -713,7 +749,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 						'gcc', 'clang' { '__builtin_add_overflow' }
 						else { 'unsupport' }
 					}
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x) { ${styp} result; if (_likely_(0 == ${compiler_safe_fn_name}(x,1,&result))) { return result; } else { builtin__panic_result_not_set(_S("attempt to inc with overflow")); return 0; } }')
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x) {
+	${styp} result;
+	if (_likely_(0 == ${compiler_safe_fn_name}(x,1,&result))) {
+		return result;
+	} else {
+		builtin__panic_result_not_set(_S("attempt to inc with overflow(${styp}(x++))"));
+		return 0;
+	}
+}')
 				}
 				.dec {
 					compiler_safe_fn_name := match g.pref.ccompiler {
@@ -721,7 +765,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 						'gcc', 'clang' { '__builtin_sub_overflow' }
 						else { 'unsupport' }
 					}
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x) { ${styp} result; if (_likely_(0 == ${compiler_safe_fn_name}(x,1,&result))) { return result; } else { builtin__panic_result_not_set(_S("attempt to dec with overflow")); return 0; } }')
+					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x) {
+	${styp} result;
+	if (_likely_(0 == ${compiler_safe_fn_name}(x,1,&result))) {
+		return result;
+	} else {
+		builtin__panic_result_not_set(_S("attempt to dec with overflow(${styp}(x--))"));
+		return 0;
+	}
+}')
 				}
 				else {}
 			}

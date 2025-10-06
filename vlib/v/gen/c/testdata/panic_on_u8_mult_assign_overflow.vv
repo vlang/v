@@ -1,0 +1,8 @@
+// vtest vflags: -cc gcc -g -check-overflow
+
+mut x := u8(10)
+println(x)
+x *= 10
+println(x)
+x *= 10
+println(x)

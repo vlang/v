@@ -1,0 +1,8 @@
+254
+255
+================ V panic ================
+   module: builtin
+ function: panic_result_not_set()
+  message: result not set (attempt to inc with overflow(u8(x++)))
+     file: vlib/builtin/builtin.c.v
+
