@@ -1095,10 +1095,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln_exit('Native WebAssembly backend OS must be `browser` or `wasi`')
 	}
 
-	if res.is_check_overflow && res.ccompiler !in ['gcc', 'clang', 'msvc'] {
-		eprintln_exit('Integer overflow check is only avaliable on `gcc`, `clang` or `msvc`')
-	}
-
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln_exit('Cannot save output binary in a .v file.')
 	}

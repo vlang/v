@@ -647,3 +647,53 @@ static inline uint64_t wy2u0k(uint64_t r, uint64_t k){ _wymum(&r,&k); return k; 
 #endif
 #define _IN_MAP(val, m) builtin__map_exists(m, val)
 '
+
+const c_tcc_builtin_integer_overflow = r"
+// TODO: remove this after tcc support `__builtin_add_overflow`, `__builtin_sub_overflow` and `__builtin_mul_overflow`
+#ifdef __TINYC__
+#define TCC_BUILTIN_OP_OVERFLOW(op, x, y, res, type, utype, max_val, min_val) do { utype ux = (utype)(x); utype uy = (utype)(y); utype ures; bool overflow = false; /* unsigned detection */ if ((min_val) == 0) { if (op == '+') { ures = ux + uy; overflow = (ures < ux); } else if (op == '-') { overflow = (ux < uy); ures = ux - uy; } else if (op == '*') { overflow = (uy != 0) && (ux > (max_val) / uy); ures = ux * uy; } } else { /* signed detection */ if (op == '+') { if ((y) > 0 && (x) > (max_val) - (y)) overflow = true; else if ((y) < 0 && (x) < (min_val) - (y)) overflow = true; ures = ux + uy; } else if (op == '-') { if ((y) == (min_val)) { if ((x) >= 0) overflow = true; } else { if ((y) > 0 && (x) < (min_val) + (y)) overflow = true; else if ((y) < 0 && (x) > (max_val) + (y)) overflow = true; } ures = ux - uy; } else if (op == '*') { if ((y) != 0) { if ((x) == (min_val) || (y) == (min_val)) { overflow = true; } else if ((x) > (max_val) / (y)) { overflow = true; } else if ((x) < (min_val) / (y)) { overflow = true; } } ures = ux * uy; } } if (res) *(type*)(res) = (type)ures; return overflow; } while(0)
+
+#define DEFINE_TCC_OVERFLOW_FUNCTIONS(type, utype, max_val, min_val) static inline bool __tcc_add_overflow_##type(type x, type y, type *res) { TCC_BUILTIN_OP_OVERFLOW('+', x, y, res, type, utype, max_val, min_val); } static inline bool __tcc_sub_overflow_##type(type x, type y, type *res) { TCC_BUILTIN_OP_OVERFLOW('-', x, y, res, type, utype, max_val, min_val); } static inline bool __tcc_mul_overflow_##type(type x, type y, type *res) { TCC_BUILTIN_OP_OVERFLOW('*', x, y, res, type, utype, max_val, min_val); }
+
+DEFINE_TCC_OVERFLOW_FUNCTIONS(int8_t, uint8_t, INT8_MAX, INT8_MIN);
+DEFINE_TCC_OVERFLOW_FUNCTIONS(uint8_t, uint8_t, UINT8_MAX, 0);
+DEFINE_TCC_OVERFLOW_FUNCTIONS(int16_t, uint16_t, INT16_MAX, INT16_MIN);
+DEFINE_TCC_OVERFLOW_FUNCTIONS(uint16_t, uint16_t, UINT16_MAX, 0);
+DEFINE_TCC_OVERFLOW_FUNCTIONS(int32_t, uint32_t, INT32_MAX, INT32_MIN);
+DEFINE_TCC_OVERFLOW_FUNCTIONS(uint32_t, uint32_t, UINT32_MAX, 0);
+DEFINE_TCC_OVERFLOW_FUNCTIONS(int64_t, uint64_t, INT64_MAX, INT64_MIN);
+DEFINE_TCC_OVERFLOW_FUNCTIONS(uint64_t, uint64_t, UINT64_MAX, 0);
+
+#if INTPTR_MAX == INT64_MAX
+    DEFINE_TCC_OVERFLOW_FUNCTIONS(intptr_t, uintptr_t, INT64_MAX, INT64_MIN);
+    DEFINE_TCC_OVERFLOW_FUNCTIONS(uintptr_t, uintptr_t, UINT64_MAX, 0);
+    DEFINE_TCC_OVERFLOW_FUNCTIONS(size_t, size_t, UINT64_MAX, 0);
+#else
+    DEFINE_TCC_OVERFLOW_FUNCTIONS(intptr_t, uintptr_t, INT32_MAX, INT32_MIN);
+    DEFINE_TCC_OVERFLOW_FUNCTIONS(uintptr_t, uintptr_t, UINT32_MAX, 0);
+    DEFINE_TCC_OVERFLOW_FUNCTIONS(size_t, size_t, UINT32_MAX, 0);
+#endif
+
+#define __builtin_add_overflow(x, y, res) _Generic((x), int8_t: __tcc_add_overflow_int8_t, uint8_t: __tcc_add_overflow_uint8_t, int16_t: __tcc_add_overflow_int16_t, uint16_t: __tcc_add_overflow_uint16_t, int32_t: __tcc_add_overflow_int32_t, uint32_t: __tcc_add_overflow_uint32_t, int64_t: __tcc_add_overflow_int64_t, uint64_t: __tcc_add_overflow_uint64_t, size_t: __tcc_add_overflow_size_t, intptr_t: __tcc_add_overflow_intptr_t, uintptr_t: __tcc_add_overflow_uintptr_t )(x, y, res)
+
+#define __builtin_sub_overflow(x, y, res) _Generic((x), int8_t: __tcc_sub_overflow_int8_t, uint8_t: __tcc_sub_overflow_uint8_t, int16_t: __tcc_sub_overflow_int16_t, uint16_t: __tcc_sub_overflow_uint16_t, int32_t: __tcc_sub_overflow_int32_t, uint32_t: __tcc_sub_overflow_uint32_t, int64_t: __tcc_sub_overflow_int64_t, uint64_t: __tcc_sub_overflow_uint64_t, size_t: __tcc_sub_overflow_size_t, intptr_t: __tcc_sub_overflow_intptr_t, uintptr_t: __tcc_sub_overflow_uintptr_t )(x, y, res)
+
+#define __builtin_mul_overflow(x, y, res) _Generic((x), int8_t: __tcc_mul_overflow_int8_t, uint8_t: __tcc_mul_overflow_uint8_t, int16_t: __tcc_mul_overflow_int16_t, uint16_t: __tcc_mul_overflow_uint16_t, int32_t: __tcc_mul_overflow_int32_t, uint32_t: __tcc_mul_overflow_uint32_t, int64_t: __tcc_mul_overflow_int64_t, uint64_t: __tcc_mul_overflow_uint64_t, size_t: __tcc_mul_overflow_size_t, intptr_t: __tcc_mul_overflow_intptr_t, uintptr_t: __tcc_mul_overflow_uintptr_t )(x, y, res)
+
+typedef intptr_t isize;
+#define ISIZE_MAX INTPTR_MAX
+#define ISIZE_MIN INTPTR_MIN
+
+static inline bool __tcc_add_overflow_isize(isize x, isize y, isize *res) {
+    return __tcc_add_overflow_intptr_t(x, y, res);
+}
+
+static inline bool __tcc_sub_overflow_isize(isize x, isize y, isize *res) {
+    return __tcc_sub_overflow_intptr_t(x, y, res);
+}
+
+static inline bool __tcc_mul_overflow_isize(isize x, isize y, isize *res) {
+    return __tcc_mul_overflow_intptr_t(x, y, res);
+}
+#endif // __TINYC__
+"

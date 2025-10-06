@@ -1,4 +1,4 @@
-// vtest vflags: -cc gcc -g -check-overflow
+// vtest vflags: -g -check-overflow
 
 mut x := u8(1)
 println(x)
