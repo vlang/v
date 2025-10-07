@@ -1,8 +1,8 @@
 // vtest vflags: -g -check-overflow
 
-mut x := u8(25)
+mut x := i32(2147483646)
 println(x)
-x *= 10
+x ++
 println(x)
-x *= 10
+x ++
 println(x)

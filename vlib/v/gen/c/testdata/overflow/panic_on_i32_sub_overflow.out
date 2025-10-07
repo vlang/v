@@ -1,8 +1,8 @@
-25
-250
+-2147483647
+-2147483648
 ================ V panic ================
    module: builtin
  function: panic_result_not_set()
-  message: result not set (attempt to mul with overflow(u8(x) * u8(y)))
+  message: result not set (attempt to sub with overflow(i32(x) - i32(y)))
      file: vlib/builtin/builtin.c.v
 

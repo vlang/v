@@ -1,5 +1,5 @@
-10
-100
+25
+250
 ================ V panic ================
    module: builtin
  function: panic_result_not_set()

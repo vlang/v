@@ -678,9 +678,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			styp := g.styp(val.typ)
 			match val.op {
 				.plus, .plus_assign {
-					compiler_safe_fn_name := match g.pref.ccompiler_type {
-						.msvc { '_add_overflow' }
-						else { '__builtin_add_overflow' }
+					compiler_safe_fn_name := if g.pref.ccompiler_type in [.tinyc, .msvc] {
+						'__builtin_add_overflow_${styp}'
+					} else {
+						'__builtin_add_overflow'
 					}
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
 	${styp} result;
@@ -693,9 +694,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 }')
 				}
 				.minus, .minus_assign {
-					compiler_safe_fn_name := match g.pref.ccompiler_type {
-						.msvc { '_sub_overflow' }
-						else { '__builtin_sub_overflow' }
+					compiler_safe_fn_name := if g.pref.ccompiler_type in [.tinyc, .msvc] {
+						'__builtin_sub_overflow_${styp}'
+					} else {
+						'__builtin_sub_overflow'
 					}
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
 	${styp} result;
@@ -708,9 +710,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 }')
 				}
 				.mul, .mult_assign {
-					compiler_safe_fn_name := match g.pref.ccompiler_type {
-						.msvc { '_mul_overflow' }
-						else { '__builtin_mul_overflow' }
+					compiler_safe_fn_name := if g.pref.ccompiler_type in [.tinyc, .msvc] {
+						'__builtin_mul_overflow_${styp}'
+					} else {
+						'__builtin_mul_overflow'
 					}
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
 	${styp} result;
@@ -741,9 +744,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 }')
 				}
 				.inc {
-					compiler_safe_fn_name := match g.pref.ccompiler_type {
-						.msvc { '_add_overflow' }
-						else { '__builtin_add_overflow' }
+					compiler_safe_fn_name := if g.pref.ccompiler_type in [.tinyc, .msvc] {
+						'__builtin_add_overflow_${styp}'
+					} else {
+						'__builtin_add_overflow'
 					}
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x) {
 	${styp} result;
@@ -756,9 +760,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 }')
 				}
 				.dec {
-					compiler_safe_fn_name := match g.pref.ccompiler_type {
-						.msvc { '_sub_overflow' }
-						else { '__builtin_sub_overflow' }
+					compiler_safe_fn_name := if g.pref.ccompiler_type in [.tinyc, .msvc] {
+						'__builtin_sub_overflow_${styp}'
+					} else {
+						'__builtin_sub_overflow'
 					}
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x) {
 	${styp} result;
@@ -1111,7 +1116,9 @@ pub fn (mut g Gen) init() {
 			g.cheaders.writeln(c_wyhash_headers)
 		}
 		if g.pref.is_check_overflow {
-			g.cheaders.writeln(c_tcc_builtin_integer_overflow)
+			if g.pref.ccompiler_type in [.tinyc, .msvc] {
+				g.cheaders.writeln(c_builtin_integer_overflow)
+			}
 		}
 	}
 	if g.pref.os == .ios {

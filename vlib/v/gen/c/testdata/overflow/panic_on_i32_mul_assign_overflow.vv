@@ -1,6 +1,6 @@
 // vtest vflags: -g -check-overflow
 
-mut x := u8(25)
+mut x := i32(214748364)
 println(x)
 x *= 10
 println(x)
