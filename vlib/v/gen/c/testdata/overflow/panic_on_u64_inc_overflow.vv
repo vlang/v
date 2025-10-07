@@ -1,0 +1,8 @@
+// vtest vflags: -g -check-overflow
+
+mut x := u64(18446744073709551614)
+println(x)
+x ++
+println(x)
+x ++
+println(x)

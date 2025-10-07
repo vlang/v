@@ -1,0 +1,8 @@
+1844674407370955161
+18446744073709551610
+================ V panic ================
+   module: builtin
+ function: panic_result_not_set()
+  message: result not set (attempt to mul with overflow(u64(x) * u64(y)))
+     file: vlib/builtin/builtin.c.v
+

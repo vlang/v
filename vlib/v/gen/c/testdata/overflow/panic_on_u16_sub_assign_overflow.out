@@ -1,0 +1,8 @@
+1
+0
+================ V panic ================
+   module: builtin
+ function: panic_result_not_set()
+  message: result not set (attempt to sub with overflow(u16(x) - u16(y)))
+     file: vlib/builtin/builtin.c.v
+

@@ -1,0 +1,8 @@
+9223372036854775806
+9223372036854775807
+================ V panic ================
+   module: builtin
+ function: panic_result_not_set()
+  message: result not set (attempt to add with overflow(i64(x) + i64(y)))
+     file: vlib/builtin/builtin.c.v
+

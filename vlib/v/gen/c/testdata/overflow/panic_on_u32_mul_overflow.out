@@ -1,0 +1,8 @@
+429496729
+4294967290
+================ V panic ================
+   module: builtin
+ function: panic_result_not_set()
+  message: result not set (attempt to mul with overflow(u32(x) * u32(y)))
+     file: vlib/builtin/builtin.c.v
+

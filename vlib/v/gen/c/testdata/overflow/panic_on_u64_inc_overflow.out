@@ -1,0 +1,8 @@
+18446744073709551614
+18446744073709551615
+================ V panic ================
+   module: builtin
+ function: panic_result_not_set()
+  message: result not set (attempt to inc with overflow(u64(x++)))
+     file: vlib/builtin/builtin.c.v
+

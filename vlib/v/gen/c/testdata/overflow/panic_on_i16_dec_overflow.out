@@ -1,0 +1,8 @@
+-32767
+-32768
+================ V panic ================
+   module: builtin
+ function: panic_result_not_set()
+  message: result not set (attempt to dec with overflow(i16(x--)))
+     file: vlib/builtin/builtin.c.v
+

@@ -1,0 +1,8 @@
+126
+127
+================ V panic ================
+   module: builtin
+ function: panic_result_not_set()
+  message: result not set (attempt to add with overflow(i8(x) + i8(y)))
+     file: vlib/builtin/builtin.c.v
+

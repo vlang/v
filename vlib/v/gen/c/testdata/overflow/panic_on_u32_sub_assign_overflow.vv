@@ -1,0 +1,8 @@
+// vtest vflags: -g -check-overflow
+
+mut x := u32(1)
+println(x)
+x -= 1
+println(x)
+x -= 1
+println(x)

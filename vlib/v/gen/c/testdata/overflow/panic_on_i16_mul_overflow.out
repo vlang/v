@@ -1,0 +1,8 @@
+3276
+32760
+================ V panic ================
+   module: builtin
+ function: panic_result_not_set()
+  message: result not set (attempt to mul with overflow(i16(x) * i16(y)))
+     file: vlib/builtin/builtin.c.v
+

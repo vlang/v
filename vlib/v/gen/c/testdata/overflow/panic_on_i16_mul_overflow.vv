@@ -1,0 +1,8 @@
+// vtest vflags: -g -check-overflow
+
+mut x := i16(3276)
+println(x)
+x = x * 10
+println(x)
+x = x * 10
+println(x)
