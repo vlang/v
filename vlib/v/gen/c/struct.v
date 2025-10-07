@@ -710,7 +710,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool, is_option bo
 			}
 		}
 	} else {
-		g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
+		g.type_definitions.writeln('\tE_STRUCT_DECL;')
 	}
 	ti_attrs := if !g.is_cc_msvc && s.attrs.contains('packed') {
 		'__attribute__((__packed__))'

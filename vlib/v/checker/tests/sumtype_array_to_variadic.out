@@ -1,0 +1,7 @@
+vlib/v/checker/tests/sumtype_array_to_variadic.vv:32:9: error: to pass `kv_pairs` ([]Value) to `Map__static__create` (which accepts type `...Value`), use `...kv_pairs`
+   30 |     }
+   31 |     assert kv_pairs.len % 2 == 0
+   32 |     return Map.create(kv_pairs)
+      |            ~~~~~~~~~~~~~~~~~~~~
+   33 | }
+   34 |
