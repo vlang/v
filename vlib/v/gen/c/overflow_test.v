@@ -28,7 +28,7 @@ fn mj(input ...string) string {
 fn test_out_files() {
 	println(term.colorize(term.green, '> testing whether .out files match:'))
 	os.chdir(vroot) or {}
-	output_path := os.join_path(os.vtmp_dir(), 'coutput_outs')
+	output_path := os.join_path(os.vtmp_dir(), 'overflow_outs')
 	os.mkdir_all(output_path)!
 	defer {
 		os.rmdir_all(output_path) or {}
