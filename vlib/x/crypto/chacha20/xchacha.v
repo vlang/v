@@ -52,23 +52,7 @@ fn hchacha20(key []u8, nonce []u8) ![]u8 {
 	x[15] = binary.little_endian_u32(nonce[12..16])
 
 	// After initialization, proceed through the ChaCha20 rounds as usual.
-	for i := 0; i < 10; i++ {
-		// Column round.
-		qround_on_state(mut x, 0, 4, 8, 12) // 0
-		qround_on_state(mut x, 1, 5, 9, 13) // 1
-		qround_on_state(mut x, 2, 6, 10, 14) // 2
-		qround_on_state(mut x, 3, 7, 11, 15) // 3
-
-		// Diagonal round.
-		//   0 \  1 \  2 \  3
-		//   5 \  6 \  7 \  4
-		//  10 \ 11 \  8 \  9
-		//  15 \ 12 \ 13 \ 14
-		qround_on_state(mut x, 0, 5, 10, 15)
-		qround_on_state(mut x, 1, 6, 11, 12)
-		qround_on_state(mut x, 2, 7, 8, 13)
-		qround_on_state(mut x, 3, 4, 9, 14)
-	}
+	x.qround(10)
 
 	// Once the 20 ChaCh20 rounds have been completed, the first 128 bits (16 bytes) and
 	// last 128 bits (16 bytes) of the ChaCha state (both little-endian) are
