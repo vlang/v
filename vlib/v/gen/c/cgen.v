@@ -1182,9 +1182,9 @@ pub fn (mut g Gen) init() {
 	if g.use_segfault_handler {
 		muttable.used_features.used_fns['v_segmentation_fault_handler'] = true
 	}
-	muttable.used_features.used_fns['eprintln'] = true
-	muttable.used_features.used_fns['print_backtrace'] = true
-	muttable.used_features.used_fns['exit'] = true
+	// muttable.used_features.used_fns['eprintln'] = true
+	// muttable.used_features.used_fns['print_backtrace'] = true
+	// muttable.used_features.used_fns['exit'] = true
 }
 
 pub fn (mut g Gen) finish() {
@@ -5705,6 +5705,10 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	}
 	node_typ_is_option := node.typ.has_flag(.option)
 	if sym.kind in [.sum_type, .interface] {
+		if g.table.unaliased_type(expr_type) == node_typ {
+			g.expr(node.expr)
+			return
+		}
 		if node_typ_is_option && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.expr is ast.Ident && g.comptime.is_comptime_variant_var(node.expr) {
@@ -6973,7 +6977,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		}
 		if sym.kind == .none && (!g.pref.skip_unused || g.table.used_features.used_none > 0) {
 			g.type_definitions.writeln('struct none {')
-			g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
+			g.type_definitions.writeln('\tE_STRUCT_DECL;')
 			g.type_definitions.writeln('};')
 			g.typedefs.writeln('typedef struct none none;')
 		}
