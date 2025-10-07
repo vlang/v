@@ -74,6 +74,7 @@ fn (nn int) str_l(max int) string {
 			return '0'
 		}
 
+		// overflow protect
 		$if new_int ? && x64 {
 			if n == min_i64 {
 				return '-9223372036854775808'
