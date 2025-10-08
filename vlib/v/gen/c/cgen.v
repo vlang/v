@@ -1117,7 +1117,8 @@ pub fn (mut g Gen) init() {
 		}
 		if g.pref.is_check_overflow {
 			if g.pref.ccompiler_type in [.tinyc, .msvc] {
-				g.cheaders.writeln(c_builtin_integer_overflow)
+				g.cheaders.writeln('// for tcc/msvc integer overflow')
+				g.cheaders.writeln('#include "${@VROOT}/vlib/builtin/overflow.h"\n')
 			}
 		}
 	}
