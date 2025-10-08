@@ -1,8 +1,0 @@
-25
-250
-================ V panic ================
-   module: builtin
- function: panic_result_not_set()
-  message: result not set (attempt to mul with overflow(u8(250) * u8(10)))
-     file: vlib/builtin/builtin.c.v
-

@@ -1,0 +1,8 @@
+18446744073709551614
+18446744073709551615
+================ V panic ================
+   module: builtin.overflow
+ function: add_u64()
+  message: attempt to add with overflow(u64(18446744073709551615) + u64(1))
+     file: vlib/builtin/overflow/overflow.v
+

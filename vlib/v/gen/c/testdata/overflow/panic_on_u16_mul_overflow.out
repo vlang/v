@@ -1,8 +1,0 @@
-6553
-65530
-================ V panic ================
-   module: builtin
- function: panic_result_not_set()
-  message: result not set (attempt to mul with overflow(u16(65530) * u16(10)))
-     file: vlib/builtin/builtin.c.v
-

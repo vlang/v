@@ -1,0 +1,8 @@
+3276
+32760
+================ V panic ================
+   module: builtin.overflow
+ function: mul_i16()
+  message: attempt to mul with overflow(i16(32760) * i16(10))
+     file: vlib/builtin/overflow/overflow.v
+

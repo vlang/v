@@ -35,33 +35,6 @@ const cmp_rev = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
 const result_name = ast.result_name
 const option_name = ast.option_name
 
-const builtin_overflow_fns = [
-	'add_overflow_i8',
-	'add_overflow_u8',
-	'sub_overflow_i8',
-	'sub_overflow_u8',
-	'mul_overflow_i8',
-	'mul_overflow_u8',
-	'add_overflow_i16',
-	'add_overflow_u16',
-	'sub_overflow_i16',
-	'sub_overflow_u16',
-	'mul_overflow_i16',
-	'mul_overflow_u16',
-	'add_overflow_i32',
-	'add_overflow_u32',
-	'sub_overflow_i32',
-	'sub_overflow_u32',
-	'mul_overflow_i32',
-	'mul_overflow_u32',
-	'add_overflow_i64',
-	'add_overflow_u64',
-	'sub_overflow_i64',
-	'sub_overflow_u64',
-	'mul_overflow_i64',
-	'mul_overflow_u64',
-]
-
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
@@ -308,6 +281,7 @@ mut:
 	definition_nodes        []&ast.HashStmtNode // allows hash stmts to go `definitions`
 	postinclude_nodes       []&ast.HashStmtNode // allows hash stmts to go after all the rest of the code generation
 	curr_comptime_node      &ast.Expr = unsafe { nil } // current `$if` expr
+	is_builtin_overflow_mod bool
 }
 
 @[heap]
@@ -2768,6 +2742,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			g.is_builtin_mod = util.module_is_builtin(node.name)
+			g.is_builtin_overflow_mod = node.name == 'builtin.overflow'
 			g.cur_mod = node
 		}
 		ast.EmptyStmt {}
@@ -3941,10 +3916,8 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			if node.auto_locked != '' {
 				g.writeln('sync__RwMutex_lock(&${node.auto_locked}->mtx);')
 			}
-			is_safe_inc := node.op == .inc && g.pref.is_check_overflow
-				&& g.not_in_builtin_overflow_fns()
-			is_safe_dec := node.op == .dec && g.pref.is_check_overflow
-				&& g.not_in_builtin_overflow_fns()
+			is_safe_inc := node.op == .inc && g.pref.is_check_overflow && !g.is_builtin_overflow_mod
+			is_safe_dec := node.op == .dec && g.pref.is_check_overflow && !g.is_builtin_overflow_mod
 			g.inside_map_postfix = true
 			if node.is_c2v_prefix {
 				g.write(node.op.str())
@@ -3991,9 +3964,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			} else if is_safe_inc || is_safe_dec {
 				overflow_styp := g.styp(get_overflow_fn_type(node.typ))
 				vsafe_fn_name := if is_safe_inc {
-					'builtin__add_overflow_${overflow_styp}'
+					'builtin__overflow__add_${overflow_styp}'
 				} else {
-					'builtin__sub_overflow_${overflow_styp}'
+					'builtin__overflow__sub_${overflow_styp}'
 				}
 				g.write('=${vsafe_fn_name}(')
 				g.expr(node.expr)
@@ -8638,13 +8611,6 @@ fn determine_integer_literal_type(node ast.IntegerLiteral) ast.Type {
 			return if sign_bit_clear { ast.i64_type } else { ast.u64_type }
 		}
 	}
-}
-
-fn (g Gen) not_in_builtin_overflow_fns() bool {
-	if !isnil(g.cur_fn) && g.file.mod.name == 'builtin' && g.cur_fn.name in builtin_overflow_fns {
-		return false
-	}
-	return true
 }
 
 fn get_overflow_fn_type(typ ast.Type) ast.Type {

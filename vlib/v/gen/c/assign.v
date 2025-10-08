@@ -308,11 +308,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		}
 		mut cur_indexexpr := -1
 		is_safe_add_assign := node.op == .plus_assign && g.pref.is_check_overflow
-			&& var_type.is_int() && g.not_in_builtin_overflow_fns()
+			&& var_type.is_int() && !g.is_builtin_overflow_mod
 		is_safe_sub_assign := node.op == .minus_assign && g.pref.is_check_overflow
-			&& var_type.is_int() && g.not_in_builtin_overflow_fns()
+			&& var_type.is_int() && !g.is_builtin_overflow_mod
 		is_safe_mul_assign := node.op == .mult_assign && g.pref.is_check_overflow
-			&& var_type.is_int() && g.not_in_builtin_overflow_fns()
+			&& var_type.is_int() && !g.is_builtin_overflow_mod
 
 		left_sym := g.table.sym(g.unwrap_generic(var_type))
 		is_va_list = left_sym.language == .c && left_sym.name == 'C.va_list'
@@ -934,9 +934,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			} else if is_safe_add_assign || is_safe_sub_assign || is_safe_mul_assign {
 				overflow_styp := g.styp(get_overflow_fn_type(var_type))
 				vsafe_fn_name := match true {
-					is_safe_add_assign { 'builtin__add_overflow_${overflow_styp}' }
-					is_safe_sub_assign { 'builtin__sub_overflow_${overflow_styp}' }
-					is_safe_mul_assign { 'builtin__mul_overflow_${overflow_styp}' }
+					is_safe_add_assign { 'builtin__overflow__add_${overflow_styp}' }
+					is_safe_sub_assign { 'builtin__overflow__sub_${overflow_styp}' }
+					is_safe_mul_assign { 'builtin__overflow__mul_${overflow_styp}' }
 					else { '' }
 				}
 				g.write('=${vsafe_fn_name}(')

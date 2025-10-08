@@ -1,8 +1,0 @@
--127
--128
-================ V panic ================
-   module: builtin
- function: panic_result_not_set()
-  message: result not set (attempt to sub with overflow(i8(-128) - i8(1)))
-     file: vlib/builtin/builtin.c.v
-

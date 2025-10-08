@@ -334,6 +334,9 @@ pub fn (mut p Parser) parse() &ast.File {
 		notices << p.scanner.notices
 	}
 
+	if p.pref.is_check_overflow {
+		p.register_auto_import('builtin.overflow')
+	}
 	p.handle_codegen_for_file()
 
 	ast_file := &ast.File{

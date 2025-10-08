@@ -1,8 +1,0 @@
--32767
--32768
-================ V panic ================
-   module: builtin
- function: panic_result_not_set()
-  message: result not set (attempt to sub with overflow(i16(-32768) - i16(1)))
-     file: vlib/builtin/builtin.c.v
-
