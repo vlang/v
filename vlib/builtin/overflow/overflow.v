@@ -15,7 +15,7 @@ fn add_i8(x i8, y i8) i8 {
 	} $else {
 		res64 := i64(x) + i64(y)
 		res = i8(res64)
-		is_overflow = (res64 > max_i8) || (res64 < min_i8)
+		is_overflow = res64 > max_i8 || res64 < min_i8
 	}
 	if is_overflow {
 		panic('attempt to add with overflow(i8(${x}) + i8(${y}))')
@@ -50,7 +50,7 @@ fn sub_i8(x i8, y i8) i8 {
 	} $else {
 		res64 := i64(x) - i64(y)
 		res = i8(res64)
-		is_overflow = (res64 > max_i8) || (res64 < min_i8)
+		is_overflow = res64 > max_i8 || res64 < min_i8
 	}
 	if is_overflow {
 		panic('attempt to sub with overflow(i8(${x}) - i8(${y}))')
@@ -85,7 +85,7 @@ fn mul_i8(x i8, y i8) i8 {
 	} $else {
 		res64 := i64(x) * i64(y)
 		res = i8(res64)
-		is_overflow = (res64 > max_i8) || (res64 < min_i8)
+		is_overflow = res64 > max_i8 || res64 < min_i8
 	}
 	if is_overflow {
 		panic('attempt to mul with overflow(i8(${x}) * i8(${y}))')
@@ -121,7 +121,7 @@ fn add_i16(x i16, y i16) i16 {
 	} $else {
 		res64 := i64(x) + i64(y)
 		res = i16(res64)
-		is_overflow = (res64 > max_i16) || (res64 < min_i16)
+		is_overflow = res64 > max_i16 || res64 < min_i16
 	}
 	if is_overflow {
 		panic('attempt to add with overflow(i16(${x}) + i16(${y}))')
@@ -156,7 +156,7 @@ fn sub_i16(x i16, y i16) i16 {
 	} $else {
 		res64 := i64(x) - i64(y)
 		res = i16(res64)
-		is_overflow = (res64 > max_i16) || (res64 < min_i16)
+		is_overflow = res64 > max_i16 || res64 < min_i16
 	}
 	if is_overflow {
 		panic('attempt to sub with overflow(i16(${x}) - i16(${y}))')
@@ -191,7 +191,7 @@ fn mul_i16(x i16, y i16) i16 {
 	} $else {
 		res64 := i64(x) * i64(y)
 		res = i16(res64)
-		is_overflow = (res64 > max_i16) || (res64 < min_i16)
+		is_overflow = res64 > max_i16 || res64 < min_i16
 	}
 	if is_overflow {
 		panic('attempt to mul with overflow(i16(${x}) * i16(${y}))')
@@ -227,7 +227,7 @@ fn add_i32(x i32, y i32) i32 {
 	} $else {
 		res64 := i64(x) + i64(y)
 		res = i32(res64)
-		is_overflow = (res64 > max_i32) || (res64 < min_i32)
+		is_overflow = res64 > max_i32 || res64 < min_i32
 	}
 	if is_overflow {
 		panic('attempt to add with overflow(i32(${x}) + i32(${y}))')
@@ -262,7 +262,7 @@ fn sub_i32(x i32, y i32) i32 {
 	} $else {
 		res64 := i64(x) - i64(y)
 		res = i32(res64)
-		is_overflow = (res64 > max_i32) || (res64 < min_i32)
+		is_overflow = res64 > max_i32 || res64 < min_i32
 	}
 	if is_overflow {
 		panic('attempt to sub with overflow(i32(${x}) - i32(${y}))')
@@ -297,7 +297,7 @@ fn mul_i32(x i32, y i32) i32 {
 	} $else {
 		res64 := i64(x) * i64(y)
 		res = i32(res64)
-		is_overflow = (res64 > max_i32) || (res64 < min_i32)
+		is_overflow = res64 > max_i32 || res64 < min_i32
 	}
 	if is_overflow {
 		panic('attempt to mul with overflow(i32(${x}) * i32(${y}))')
@@ -403,16 +403,22 @@ fn mul_i64(x i64, y i64) i64 {
 		if x == 0 || y == 0 {
 			is_overflow = false
 		} else if x == min_i64 {
-				is_overflow = y != 1
+			is_overflow = y != 1
 		} else if y == min_i64 {
-				is_overflow = x != 1
+			is_overflow = x != 1
 		} else {
 			if x > 0 {
-				if y > 0 { is_overflow = x > max_i64 / y }
-				else     { is_overflow = y < min_i64 / x }
+				if y > 0 {
+					is_overflow = x > max_i64 / y
+				} else {
+					is_overflow = y < min_i64 / x
+				}
 			} else if x < 0 {
-				if y > 0 { is_overflow = x < min_i64 / y }
-				else     { is_overflow = y < max_i64 / x }
+				if y > 0 {
+					is_overflow = x < min_i64 / y
+				} else {
+					is_overflow = y < max_i64 / x
+				}
 			}
 		}
 	}
