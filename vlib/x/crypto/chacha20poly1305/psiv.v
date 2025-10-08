@@ -15,9 +15,9 @@ import crypto.internal.subtle
 import x.crypto.chacha20
 import x.crypto.poly1305
 
-// new_psiv creates a new Chacha20Poly1305RE with psiv construct to operate on.
+// new_psiv creates a new Chacha20Poly1305RE with PSIV construct to operate on.
 @[direct_array_access]
-pub fn new_psiv(key []u8) !&AEAD {
+pub fn new_psiv(key []u8) !&Chacha20Poly1305RE {
 	if key.len != key_size {
 		return error('new_psiv: bad key size')
 	}
@@ -34,10 +34,32 @@ pub fn new_psiv(key []u8) !&AEAD {
 	return c
 }
 
+// psiv_encrypt encrypts plaintext with provided key, nonce and additional data ad.
+// It returns a ciphertext plus message authentication code (mac) contained
+// within the end of ciphertext
+@[direct_array_access]
+pub fn psiv_encrypt(plaintext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
+	c := new_psiv(key)!
+	out := c.encrypt(plaintext, nonce, ad)!
+	unsafe { c.free() }
+	return out
+}
+
+// psiv_decrypt decrypts the ciphertext with provided key, nonce and additional data in ad.
+// It also tries to validate message authenticated code within ciphertext compared with
+// calculated tag. It returns successfully decrypted message or error on fails.
+@[direct_array_access]
+pub fn psiv_decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
+	c := new_psiv(key)!
+	out := c.decrypt(ciphertext, nonce, ad)!
+	unsafe { c.free() }
+	return out
+}
+
 // Chacha20Poly1305RE is a Chacha20Poly1305 opaque with nonce-misuse resistent
 // and key-commiting AEAD scheme with PSIV construct.
 @[noinit]
-struct Chacha20Poly1305RE {
+pub struct Chacha20Poly1305RE implements AEAD {
 mut:
 	// An underlying 32-bytes of key
 	key []u8
@@ -128,30 +150,52 @@ pub fn (c Chacha20Poly1305RE) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u
 	return out
 }
 
-// psiv_encrypt encrypts plaintext with provided key, nonce and additional data ad.
-// It returns a ciphertext plus message authentication code (mac) contained
-// within the end of ciphertext
-@[direct_array_access]
-pub fn psiv_encrypt(plaintext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
-	c := new_psiv(key)!
-	out := c.encrypt(plaintext, nonce, ad)!
-	unsafe { c.free() }
-	return out
-}
-
-// psiv_decrypt decrypts the ciphertext with provided key, nonce and additional data in ad.
-// It also tries to validate message authenticated code within ciphertext compared with
-// calculated tag. It returns successfully decrypted message or error on fails.
-@[direct_array_access]
-pub fn psiv_decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
-	c := new_psiv(key)!
-	out := c.decrypt(ciphertext, nonce, ad)!
-	unsafe { c.free() }
-	return out
-}
-
-// PSIV helpers
+// The AEAD_CHACHA20_POLY1305 PSIV construct helpers
 //
+
+// psiv_encrypt_internal is an internal encryption routine used by the core of psiv construct
+// for encrypting (or decrypting) message.
+@[direct_array_access]
+fn psiv_encrypt_internal(plaintext []u8, key []u8, tag []u8, nonce []u8) ![]u8 {
+	tctr, trest := split_tag(tag)
+	mut ctr := binary.little_endian_u64(tctr)
+
+	mut dst := []u8{cap: plaintext.len}
+	mut tc := []u8{len: 8} // counter buffer
+	mut s := chacha20.State{}
+	mut b64 := []u8{len: 64} // state buffer
+
+	// split out plaintext messages into 64-bytes chunk, and process them
+	// chunk by chunk.
+	chunks := arrays.chunk[u8](plaintext, 64)
+	for chunk in chunks {
+		// loads current counter
+		binary.little_endian_put_u64(mut tc, ctr)
+
+		// loads 64-bytes of merged key into state s and then perform chacha20 qround.
+		// then xor-ing every bytes of result with the bytes in chunk and appended into
+		// destination output buffer.
+		unpack_into_state(mut s, merge_drv_key(key, nonce, tc, trest))
+		buf := chacha20_core(s)
+		pack64_from_state(mut b64, buf)
+		for i, v in chunk {
+			o := v ^ b64[i]
+			dst << o
+		}
+		// updates current counter and returns error on overflow.
+		ctr += 1
+		if ctr == 0 {
+			return error('counter overflowing')
+		}
+	}
+	// reset (release) temporary allocated resources
+	unsafe {
+		tc.free()
+		s.reset()
+		b64.free()
+	}
+	return dst
+}
 
 // psiv_gen_tag computes a tag from the key, nonce, and Poly1305 tag of the associated data
 // and plaintext using the ChaCha20 permutation with the feed-forward, truncating the output.
@@ -168,53 +212,14 @@ fn psiv_gen_tag(mut po poly1305.Poly1305, input []u8, ad_len int, mac_key []u8, 
 	out := merge_drv_key(mac_key, nonce, digest[0..8], digest[8..16])
 	// truncating output and return it.
 	tag := out[0..tag_size].clone()
-	unsafe { out.reset() }
+	unsafe {
+		out.free()
+		digest.free()
+	}
 	return tag
 }
 
-// psiv_encrypt_internal is an internal encryption routine used by the core of psiv construct
-// for encrypting (or decrypting) message.
-@[direct_array_access]
-fn psiv_encrypt_internal(plaintext []u8, key []u8, tag []u8, nonce []u8) ![]u8 {
-	tctr, trest := split_tag(tag)
-	mut ctr := binary.little_endian_u64(tctr)
-
-	mut dst := []u8{cap: plaintext.len}
-	mut tc := []u8{len: 8}
-	mut s := chacha20.State{}
-
-	// split plaintext input into 64-bytes chunk and process them.
-	chunks := arrays.chunk[u8](plaintext, 64)
-	for chunk in chunks {
-		// loads current counter
-		binary.little_endian_put_u64(mut tc, ctr)
-
-		// loads 64-bytes of merged key into state s and then perform chacha20 qround.
-		// then xor-ing every bytes of result with the bytes in chunk and appended into
-		// destination output buffer.
-		unpack_state(mut s, merge_drv_key(key, nonce, tc, trest))
-		buf := chacha20_core(s)
-		mut b64 := []u8{len: 64}
-		pack_state(mut b64, buf)
-		for i, v in chunk {
-			o := v ^ b64[i]
-			dst << o
-		}
-		// updates current counter and returns error on overflow.
-		ctr += 1
-		if ctr == 0 {
-			return error('counter overflowing')
-		}
-	}
-	return dst
-}
-
-// split_tag splits 16-bytes of tag into two's 8-bytes block.
-@[direct_array_access; inline]
-fn split_tag(tag []u8) ([]u8, []u8) {
-	return tag[0..8].clone(), tag[8..16].clone()
-}
-
+// psiv_init initializes and expands master key into desired psiv needed construct.
 @[direct_array_access; inline]
 fn psiv_init(key []u8) !([]u8, []u8, &poly1305.Poly1305) {
 	// derives some keys
@@ -223,43 +228,20 @@ fn psiv_init(key []u8) !([]u8, []u8, &poly1305.Poly1305) {
 	enc_key := fe_k(key)
 
 	mut x := chacha20.State{}
-	unpack_state(mut x, merge_drvk_zeros(pol_key))
-	buf := chacha20_core(x)
+	unpack_into_state(mut x, merge_drvk_zeros(pol_key))
+	ws := chacha20_core(x)
 
-	mut kc := []u8{len: 64}
-	pack_state(mut kc, buf)
-	poly1305_key := kc[0..key_size].clone()
+	// For poly1305 mac, we only take a first 32-bytes of the state as a key
+	mut poly1305_key := []u8{len: 32}
+	pack32_from_state(mut poly1305_key, ws)
 	po := poly1305.new(poly1305_key)!
 
+	// reset
+	unsafe {
+		x.reset()
+		poly1305_key.free()
+	}
 	return mac_key, enc_key, po
-}
-
-// unpack_state deserializes (in little-endian form) 64-bytes of data in x into state s.
-@[direct_array_access; inline]
-fn unpack_state(mut s chacha20.State, x []u8) {
-	for i := 0; i < 16; i++ {
-		s[i] = binary.little_endian_u32(x[i * 4..(i + 1) * 4])
-	}
-}
-
-// pack_state serializes state s into 64-bytes output in little-endian form.
-@[direct_array_access; inline]
-fn pack_state(mut out []u8, s chacha20.State) {
-	for i, v in s {
-		binary.little_endian_put_u32(mut out[i * 4..(i + 1) * 4], v)
-	}
-}
-
-// chacha20_core performs chacha20 quarter round on the state s.
-// It returns a copy of updated state after quarter round.
-@[direct_array_access; inline]
-fn chacha20_core(s chacha20.State) chacha20.State {
-	mut ws := s.clone()
-	ws.qround(10)
-	for i := 0; i < 16; i++ {
-		ws[i] += s[i]
-	}
-	return ws
 }
 
 // merge_drv_key merges provided bytes into 64-bytes key
@@ -420,6 +402,48 @@ fn fe_k(k []u8) []u8 {
 	}
 
 	return x
+}
+
+// unpack_into_state deserializes (in little-endian form) 64-bytes of data in x into state s.
+@[direct_array_access; inline]
+fn unpack_into_state(mut s chacha20.State, x []u8) {
+	for i := 0; i < 16; i++ {
+		s[i] = binary.little_endian_u32(x[i * 4..(i + 1) * 4])
+	}
+}
+
+// pack64_from_state serializes state s into 64-bytes output in little-endian form.
+@[direct_array_access; inline]
+fn pack64_from_state(mut out []u8, s chacha20.State) {
+	for i, v in s {
+		binary.little_endian_put_u32(mut out[i * 4..(i + 1) * 4], v)
+	}
+}
+
+// pack32_from_state serializes only a half of state s into 32-bytes output in little-endian form.
+@[direct_array_access; inline]
+fn pack32_from_state(mut out []u8, s chacha20.State) {
+	for i := 0; i < 8; i++ {
+		binary.little_endian_put_u32(mut out[i * 4..(i + 1) * 4], s[i])
+	}
+}
+
+// chacha20_core performs chacha20 quarter round on the state s.
+// It returns a copy of updated state after quarter round.
+@[direct_array_access; inline]
+fn chacha20_core(s chacha20.State) chacha20.State {
+	mut ws := s.clone()
+	ws.qround(10)
+	for i := 0; i < 16; i++ {
+		ws[i] += s[i]
+	}
+	return ws
+}
+
+// split_tag splits 16-bytes of tag into two's 8-bytes block.
+@[direct_array_access; inline]
+fn split_tag(tag []u8) ([]u8, []u8) {
+	return tag[0..8].clone(), tag[8..16].clone()
 }
 
 // length_to_block transforms two's length in len1 and len2 into 16-bytes block
