@@ -4060,16 +4060,15 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.inside_map_postfix = false
 			if !node.is_c2v_prefix && node.op != .question && !is_safe_inc && !is_safe_dec {
 				g.write(node.op.str())
-			} else if is_safe_inc && mut node.expr is ast.Ident {
-				vsafe_fn_name := 'VSAFE_INC_${g.styp(node.typ)}'
-				g.write('=${vsafe_fn_name}(${node.expr.name})')
-				g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
-					typ: node.typ
-					op:  node.op
+			} else if is_safe_inc || is_safe_dec {
+				vsafe_fn_name := if is_safe_inc {
+					'VSAFE_INC_${g.styp(node.typ)}'
+				} else {
+					'VSAFE_DEC_${g.styp(node.typ)}'
 				}
-			} else if is_safe_dec && mut node.expr is ast.Ident {
-				vsafe_fn_name := 'VSAFE_DEC_${g.styp(node.typ)}'
-				g.write('=${vsafe_fn_name}(${node.expr.name})')
+				g.write('=${vsafe_fn_name}(')
+				g.expr(node.expr)
+				g.write(')')
 				g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
 					typ: node.typ
 					op:  node.op
