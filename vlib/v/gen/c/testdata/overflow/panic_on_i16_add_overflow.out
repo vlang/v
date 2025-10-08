@@ -3,6 +3,6 @@
 ================ V panic ================
    module: builtin
  function: panic_result_not_set()
-  message: result not set (attempt to add with overflow(i16(x) + i16(y)))
+  message: result not set (attempt to add with overflow(i16(32767) + i16(1)))
      file: vlib/builtin/builtin.c.v
 

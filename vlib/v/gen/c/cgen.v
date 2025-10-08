@@ -35,6 +35,33 @@ const cmp_rev = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
 const result_name = ast.result_name
 const option_name = ast.option_name
 
+const builtin_overflow_fns = [
+	'add_overflow_i8',
+	'add_overflow_u8',
+	'sub_overflow_i8',
+	'sub_overflow_u8',
+	'mul_overflow_i8',
+	'mul_overflow_u8',
+	'add_overflow_i16',
+	'add_overflow_u16',
+	'sub_overflow_i16',
+	'sub_overflow_u16',
+	'mul_overflow_i16',
+	'mul_overflow_u16',
+	'add_overflow_i32',
+	'add_overflow_u32',
+	'sub_overflow_i32',
+	'sub_overflow_u32',
+	'mul_overflow_i32',
+	'mul_overflow_u32',
+	'add_overflow_i64',
+	'add_overflow_u64',
+	'sub_overflow_i64',
+	'sub_overflow_u64',
+	'mul_overflow_i64',
+	'mul_overflow_u64',
+]
+
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
@@ -676,106 +703,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	if g.vsafe_arithmetic_ops.len > 0 {
 		for vsafe_fn_name, val in g.vsafe_arithmetic_ops {
 			styp := g.styp(val.typ)
-			match val.op {
-				.plus, .plus_assign {
-					compiler_safe_fn_name := if g.pref.ccompiler_type in [.tinyc, .msvc] {
-						'__builtin_add_overflow_${styp}'
-					} else {
-						'__builtin_add_overflow'
-					}
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
-	${styp} result;
-	if (_likely_(0 == ${compiler_safe_fn_name}(x,y,&result))) {
-		return result;
-	} else {
-		builtin__panic_result_not_set(_S("attempt to add with overflow(${styp}(x) + ${styp}(y))"));
-		return 0;
-	}
-}')
-				}
-				.minus, .minus_assign {
-					compiler_safe_fn_name := if g.pref.ccompiler_type in [.tinyc, .msvc] {
-						'__builtin_sub_overflow_${styp}'
-					} else {
-						'__builtin_sub_overflow'
-					}
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
-	${styp} result;
-	if (_likely_(0 == ${compiler_safe_fn_name}(x,y,&result))) {
-		return result;
-	} else {
-		builtin__panic_result_not_set(_S("attempt to sub with overflow(${styp}(x) - ${styp}(y))"));
-		return 0;
-	}
-}')
-				}
-				.mul, .mult_assign {
-					compiler_safe_fn_name := if g.pref.ccompiler_type in [.tinyc, .msvc] {
-						'__builtin_mul_overflow_${styp}'
-					} else {
-						'__builtin_mul_overflow'
-					}
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
-	${styp} result;
-	if (_likely_(0 == ${compiler_safe_fn_name}(x,y,&result))) {
-		return result;
-	} else {
-		builtin__panic_result_not_set(_S("attempt to mul with overflow(${styp}(x) * ${styp}(y))"));
-		return 0;
-	}
-}')
-				}
-				.div {
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
-	if (_unlikely_(0 == y)) {
-		return 0;
-	} else {
-		return x / y;
-	}
-}')
-				}
-				.mod {
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) {
-	if (_unlikely_(0 == y)) {
-		return x;
-	} else {
-		return x % y;
-	}
-}')
-				}
-				.inc {
-					compiler_safe_fn_name := if g.pref.ccompiler_type in [.tinyc, .msvc] {
-						'__builtin_add_overflow_${styp}'
-					} else {
-						'__builtin_add_overflow'
-					}
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x) {
-	${styp} result;
-	if (_likely_(0 == ${compiler_safe_fn_name}(x,1,&result))) {
-		return result;
-	} else {
-		builtin__panic_result_not_set(_S("attempt to inc with overflow(${styp}(x++))"));
-		return 0;
-	}
-}')
-				}
-				.dec {
-					compiler_safe_fn_name := if g.pref.ccompiler_type in [.tinyc, .msvc] {
-						'__builtin_sub_overflow_${styp}'
-					} else {
-						'__builtin_sub_overflow'
-					}
-					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x) {
-	${styp} result;
-	if (_likely_(0 == ${compiler_safe_fn_name}(x,1,&result))) {
-		return result;
-	} else {
-		builtin__panic_result_not_set(_S("attempt to dec with overflow(${styp}(x--))"));
-		return 0;
-	}
-}')
-				}
-				else {}
+			if val.op == .div {
+				b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return 0; } else { return x / y; } }')
+			} else {
+				b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return x; } else { return x % y; } }')
 			}
 		}
 	}
@@ -1114,12 +1045,6 @@ pub fn (mut g Gen) init() {
 		}
 		if !g.pref.skip_unused || g.table.used_features.used_maps > 0 {
 			g.cheaders.writeln(c_wyhash_headers)
-		}
-		if g.pref.is_check_overflow {
-			if g.pref.ccompiler_type in [.tinyc, .msvc] {
-				g.cheaders.writeln('// for tcc/msvc integer overflow')
-				g.cheaders.writeln('#include "${@VROOT}/vlib/builtin/overflow.h"\n')
-			}
 		}
 	}
 	if g.pref.os == .ios {
@@ -4017,7 +3942,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.writeln('sync__RwMutex_lock(&${node.auto_locked}->mtx);')
 			}
 			is_safe_inc := node.op == .inc && g.pref.is_check_overflow
+				&& g.not_in_builtin_overflow_fns()
 			is_safe_dec := node.op == .dec && g.pref.is_check_overflow
+				&& g.not_in_builtin_overflow_fns()
 			g.inside_map_postfix = true
 			if node.is_c2v_prefix {
 				g.write(node.op.str())
@@ -4062,18 +3989,15 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			if !node.is_c2v_prefix && node.op != .question && !is_safe_inc && !is_safe_dec {
 				g.write(node.op.str())
 			} else if is_safe_inc || is_safe_dec {
+				overflow_styp := g.styp(get_overflow_fn_type(node.typ))
 				vsafe_fn_name := if is_safe_inc {
-					'VSAFE_INC_${g.styp(node.typ)}'
+					'builtin__add_overflow_${overflow_styp}'
 				} else {
-					'VSAFE_DEC_${g.styp(node.typ)}'
+					'builtin__sub_overflow_${overflow_styp}'
 				}
 				g.write('=${vsafe_fn_name}(')
 				g.expr(node.expr)
-				g.write(')')
-				g.vsafe_arithmetic_ops[vsafe_fn_name] = VSafeArithmeticOp{
-					typ: node.typ
-					op:  node.op
-				}
+				g.write(',1)')
 			}
 			if node.auto_locked != '' {
 				g.writeln(';')
@@ -8712,6 +8636,48 @@ fn determine_integer_literal_type(node ast.IntegerLiteral) ast.Type {
 			// If sign bit is clear, it's a signed 64-bit integer (i64)
 			// Otherwise, it's an unsigned 64-bit integer (u64)
 			return if sign_bit_clear { ast.i64_type } else { ast.u64_type }
+		}
+	}
+}
+
+fn (g Gen) not_in_builtin_overflow_fns() bool {
+	if !isnil(g.cur_fn) && g.file.mod.name == 'builtin' && g.cur_fn.name in builtin_overflow_fns {
+		return false
+	}
+	return true
+}
+
+fn get_overflow_fn_type(typ ast.Type) ast.Type {
+	return match typ {
+		ast.int_type {
+			$if new_int ? && x64 {
+				ast.i64_type
+			} $else {
+				ast.i32_type
+			}
+		}
+		ast.int_literal_type {
+			ast.i64_type
+		}
+		ast.rune_type {
+			ast.u32_type
+		}
+		ast.isize_type {
+			$if x64 {
+				ast.i64_type
+			} $else {
+				ast.i32_type
+			}
+		}
+		ast.usize_type {
+			$if x64 {
+				ast.u64_type
+			} $else {
+				ast.u32_type
+			}
+		}
+		else {
+			typ
 		}
 	}
 }

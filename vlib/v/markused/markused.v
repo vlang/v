@@ -143,7 +143,30 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << 'v_segmentation_fault_handler'
 		}
 		if pref_.is_check_overflow {
-			core_fns << 'panic_result_not_set'
+			core_fns << 'add_overflow_i8'
+			core_fns << 'add_overflow_u8'
+			core_fns << 'sub_overflow_i8'
+			core_fns << 'sub_overflow_u8'
+			core_fns << 'mul_overflow_i8'
+			core_fns << 'mul_overflow_u8'
+			core_fns << 'add_overflow_i16'
+			core_fns << 'add_overflow_u16'
+			core_fns << 'sub_overflow_i16'
+			core_fns << 'sub_overflow_u16'
+			core_fns << 'mul_overflow_i16'
+			core_fns << 'mul_overflow_u16'
+			core_fns << 'add_overflow_i32'
+			core_fns << 'add_overflow_u32'
+			core_fns << 'sub_overflow_i32'
+			core_fns << 'sub_overflow_u32'
+			core_fns << 'mul_overflow_i32'
+			core_fns << 'mul_overflow_u32'
+			core_fns << 'add_overflow_i64'
+			core_fns << 'add_overflow_u64'
+			core_fns << 'sub_overflow_i64'
+			core_fns << 'sub_overflow_u64'
+			core_fns << 'mul_overflow_i64'
+			core_fns << 'mul_overflow_u64'
 		}
 		all_fn_root_names << core_fns
 	}

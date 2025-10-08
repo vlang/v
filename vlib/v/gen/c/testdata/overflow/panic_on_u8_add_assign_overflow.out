@@ -3,6 +3,6 @@
 ================ V panic ================
    module: builtin
  function: panic_result_not_set()
-  message: result not set (attempt to add with overflow(u8(x) + u8(y)))
+  message: result not set (attempt to add with overflow(u8(255) + u8(1)))
      file: vlib/builtin/builtin.c.v
 

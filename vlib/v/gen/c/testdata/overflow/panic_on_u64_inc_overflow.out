@@ -3,6 +3,6 @@
 ================ V panic ================
    module: builtin
  function: panic_result_not_set()
-  message: result not set (attempt to inc with overflow(u64(x++)))
+  message: result not set (attempt to add with overflow(u64(18446744073709551615) + u64(1)))
      file: vlib/builtin/builtin.c.v
 

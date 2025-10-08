@@ -3,6 +3,6 @@
 ================ V panic ================
    module: builtin
  function: panic_result_not_set()
-  message: result not set (attempt to mul with overflow(i64(x) * i64(y)))
+  message: result not set (attempt to mul with overflow(i64(9223372036854775800) * i64(10)))
      file: vlib/builtin/builtin.c.v
 

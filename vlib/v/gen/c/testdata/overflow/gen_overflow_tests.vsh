@@ -86,7 +86,7 @@ fn main() {
 					sb.writeln('================ V panic ================')
 					sb.writeln('   module: builtin')
 					sb.writeln(' function: panic_result_not_set()')
-					sb.writeln('  message: result not set (attempt to add with overflow(${o.name}(x) + ${o.name}(y)))')
+					sb.writeln('  message: result not set (attempt to add with overflow(${o.name}(${o.max[1]}) + ${o.name}(1)))')
 					sb.writeln('     file: vlib/builtin/builtin.c.v\n')
 					os.write_file('panic_on_${o.name}_${op}_overflow.out', sb.str())!
 				}
@@ -107,7 +107,7 @@ fn main() {
 					sb.writeln('================ V panic ================')
 					sb.writeln('   module: builtin')
 					sb.writeln(' function: panic_result_not_set()')
-					sb.writeln('  message: result not set (attempt to add with overflow(${o.name}(x) + ${o.name}(y)))')
+					sb.writeln('  message: result not set (attempt to add with overflow(${o.name}(${o.max[1]}) + ${o.name}(1)))')
 					sb.writeln('     file: vlib/builtin/builtin.c.v\n')
 					os.write_file('panic_on_${o.name}_${op}_overflow.out', sb.str())!
 				}
@@ -128,7 +128,7 @@ fn main() {
 					sb.writeln('================ V panic ================')
 					sb.writeln('   module: builtin')
 					sb.writeln(' function: panic_result_not_set()')
-					sb.writeln('  message: result not set (attempt to inc with overflow(${o.name}(x++)))')
+					sb.writeln('  message: result not set (attempt to add with overflow(${o.name}(${o.max[1]}) + ${o.name}(1)))')
 					sb.writeln('     file: vlib/builtin/builtin.c.v\n')
 					os.write_file('panic_on_${o.name}_${op}_overflow.out', sb.str())!
 				}
@@ -149,7 +149,7 @@ fn main() {
 					sb.writeln('================ V panic ================')
 					sb.writeln('   module: builtin')
 					sb.writeln(' function: panic_result_not_set()')
-					sb.writeln('  message: result not set (attempt to sub with overflow(${o.name}(x) - ${o.name}(y)))')
+					sb.writeln('  message: result not set (attempt to sub with overflow(${o.name}(${o.min[1]}) - ${o.name}(1)))')
 					sb.writeln('     file: vlib/builtin/builtin.c.v\n')
 					os.write_file('panic_on_${o.name}_${op}_overflow.out', sb.str())!
 				}
@@ -170,7 +170,7 @@ fn main() {
 					sb.writeln('================ V panic ================')
 					sb.writeln('   module: builtin')
 					sb.writeln(' function: panic_result_not_set()')
-					sb.writeln('  message: result not set (attempt to sub with overflow(${o.name}(x) - ${o.name}(y)))')
+					sb.writeln('  message: result not set (attempt to sub with overflow(${o.name}(${o.min[1]}) - ${o.name}(1)))')
 					sb.writeln('     file: vlib/builtin/builtin.c.v\n')
 					os.write_file('panic_on_${o.name}_${op}_overflow.out', sb.str())!
 				}
@@ -191,7 +191,7 @@ fn main() {
 					sb.writeln('================ V panic ================')
 					sb.writeln('   module: builtin')
 					sb.writeln(' function: panic_result_not_set()')
-					sb.writeln('  message: result not set (attempt to dec with overflow(${o.name}(x--)))')
+					sb.writeln('  message: result not set (attempt to sub with overflow(${o.name}(${o.min[1]}) - ${o.name}(1)))')
 					sb.writeln('     file: vlib/builtin/builtin.c.v\n')
 					os.write_file('panic_on_${o.name}_${op}_overflow.out', sb.str())!
 				}
@@ -212,7 +212,7 @@ fn main() {
 					sb.writeln('================ V panic ================')
 					sb.writeln('   module: builtin')
 					sb.writeln(' function: panic_result_not_set()')
-					sb.writeln('  message: result not set (attempt to mul with overflow(${o.name}(x) * ${o.name}(y)))')
+					sb.writeln('  message: result not set (attempt to mul with overflow(${o.name}(${o.mid[1]}) * ${o.name}(10)))')
 					sb.writeln('     file: vlib/builtin/builtin.c.v\n')
 					os.write_file('panic_on_${o.name}_${op}_overflow.out', sb.str())!
 				}
@@ -233,7 +233,7 @@ fn main() {
 					sb.writeln('================ V panic ================')
 					sb.writeln('   module: builtin')
 					sb.writeln(' function: panic_result_not_set()')
-					sb.writeln('  message: result not set (attempt to mul with overflow(${o.name}(x) * ${o.name}(y)))')
+					sb.writeln('  message: result not set (attempt to mul with overflow(${o.name}(${o.mid[1]}) * ${o.name}(10)))')
 					sb.writeln('     file: vlib/builtin/builtin.c.v\n')
 					os.write_file('panic_on_${o.name}_${op}_overflow.out', sb.str())!
 				}
