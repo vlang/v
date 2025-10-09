@@ -260,19 +260,11 @@ fn psiv_init(key []u8) !([]u8, []u8, &poly1305.Poly1305) {
 // update_with_padding updates poly1305 mac with data, padding the tail block if necessary.
 @[direct_array_access; inline]
 fn update_with_padding(mut po poly1305.Poly1305, data []u8) {
-	nr_blocks := data.len / tag_size
-
-	// update poly1305 state with block that aligns with tag_size-d block
-	if nr_blocks > 0 {
-		block := unsafe { data[0..nr_blocks * tag_size] }
-		po.update(block)
-	}
-	// for partial non-aligned block, pad it with zeros to align with tag_size
-	if data.len % tag_size != 0 {
-		last_block := unsafe { data[nr_blocks * tag_size..] }
-		mut padded_block := []u8{len: tag_size}
-		_ := copy(mut padded_block, last_block)
-		po.update(padded_block)
+	po.update(data)
+	rem := data.len % tag_size
+	if rem != 0 {
+		block := []u8{len: tag_size}
+		po.update(block[..tag_size - rem])
 	}
 }
 
