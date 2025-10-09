@@ -30,7 +30,7 @@ pub struct Gen {
 	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 	files    []&ast.File
 mut:
-	code_gen                  CodeGen
+	cg                        CodeGen
 	table                     &ast.Table = unsafe { nil }
 	buf                       []u8
 	sect_header_name_pos      i32
@@ -90,86 +90,78 @@ mut:
 	is_builtin_mod   bool // true for .v files inside `builtin`
 }
 
-interface CodeGen {
+interface CodeGen { // TODO: clean up interface & move more code from amd's Codegen to Gen
+	// TODO: interface functions should translate the regs and call the true function
 mut:
 	g &Gen
-	add(r Register, val i32)
-	add_reg2(r Register, r2 Register)
-	address_size() i32
-	adr(r Arm64Register, delta i32) // Note: Temporary!
-	allocate_var(name string, size i32, initial_val Number) i32
-	assign_stmt(node ast.AssignStmt) // TODO: make platform-independent
-	builtin_decl(builtin BuiltinFn)
-	call_addr_at(addr i32, at i64) i64
-	call_builtin(name Builtin) i64
-	call_fn(node ast.CallExpr)
-	call(addr i32) i64
-	cjmp(op JumpOp) i32
-	cmp_to_stack_top(r Register)
-	cmp_var_reg(var Var, reg Register, config VarConfig)
-	cmp_var(var Var, val i32, config VarConfig)
-	cmp_reg2(reg Register, reg2 Register)
-	cmp_zero(reg Register)
-	convert_bool_to_string(r Register)
-	convert_int_to_string(a Register, b Register)
-	convert_rune_to_string(r Register, buffer i32, var Var, config VarConfig)
-	create_string_struct(typ ast.Type, name string, str string) i32
-	dec_var(var Var, config VarConfig)
-	fn_decl(node ast.FnDecl)
-	gen_asm_stmt(asm_node ast.AsmStmt)
-	gen_cast_expr(expr ast.CastExpr)
-	gen_exit(expr ast.Expr)
-	gen_index_expr(ast.IndexExpr)
-	gen_match_expr(expr ast.MatchExpr)
-	gen_print_reg(r Register, n i32, fd i32)
-	gen_print(s string, fd i32)
-	gen_syscall(node ast.CallExpr)
-	inc_var(var Var, config VarConfig)
-	infix_expr(node ast.InfixExpr) // TODO: make platform-independent
-	infloop()
-	init_struct(var Var, init ast.StructInit)
-	init_array(var Var, init ast.ArrayInit)
-	jmp_back(start i64)
-	jmp(addr i32) i32
-	lea_var_to_reg(r Register, var_offset i32)
-	learel(reg Register, val i32)
-	leave()
-	load_fp_var(var Var, config VarConfig)
-	load_fp(val f64)
-	main_reg() Register
-	mov_deref(reg Register, regptr Register, typ ast.Type)
-	mov_int_to_var(var Var, integer i32, config VarConfig)
-	mov_reg_to_var(var Var, reg Register, config VarConfig)
-	mov_reg(r1 Register, r2 Register)
-	mov_var_to_reg(reg Register, var Var, config VarConfig)
-	mov(r Register, val i32)
-	mov64(r Register, val Number)
-	movabs(reg Register, val i64)
-	mul_reg_main(b Register)
-	patch_relative_jmp(pos i32, addr i64)
-	pop2(r Register)
-	prefix_expr(node ast.PrefixExpr)
-	push(r Register)
-	ret()
-	return_stmt(node ast.Return)
-	reverse_string(r Register)
-	svc()
-	syscall() // unix syscalls
-	trap()
-	zero_fill(size i32, var LocalVar)
+	cg_add(r Register, val i32)
+	cg_add_reg(r Register, r2 Register)
+	cg_address_size() i32
+	cg_allocate_var(name string, size i32, initial_val Number) i32 // TODO: make platform-independent
+	cg_assign_stmt(node ast.AssignStmt) // TODO: make platform-independent
+	cg_builtin_decl(builtin BuiltinFn)
+	cg_call_addr_at(addr i32, at i64) i64
+	cg_call_builtin(name Builtin) i64
+	cg_call_fn(node ast.CallExpr)
+	cg_call(addr i32) i64
+	cg_cjmp(op JumpOp) i32
+	cg_cmp_to_stack_top(r Register) // TODO: make platform-independent
+	cg_cmp_var_reg(var Var, reg Register, config VarConfig)
+	cg_cmp_var(var Var, val i32, config VarConfig)
+	cg_cmp_reg(reg Register, reg2 Register)
+	cg_cmp_zero(reg Register)
+	cg_convert_bool_to_string(r Register)
+	cg_convert_int_to_string(a Register, b Register)
+	cg_convert_rune_to_string(r Register, buffer i32, var Var, config VarConfig)
+	cg_create_string_struct(typ ast.Type, name string, str string) i32
+	cg_dec_var(var Var, config VarConfig)
+	cg_fn_decl(node ast.FnDecl)
+	cg_gen_asm_stmt(asm_node ast.AsmStmt)
+	cg_gen_cast_expr(expr ast.CastExpr)
+	cg_gen_exit(expr ast.Expr)
+	cg_gen_index_expr(ast.IndexExpr)      // TODO: make platform-independant
+	cg_gen_match_expr(expr ast.MatchExpr) // TODO: make platform-independant
+	cg_gen_print_reg(r Register, n i32, fd i32)
+	cg_gen_print(s string, fd i32)
+	cg_gen_syscall(node ast.CallExpr)
+	cg_inc_var(var Var, config VarConfig)
+	cg_infix_expr(node ast.InfixExpr) // TODO: make platform-independent
+	cg_infloop()                      // TODO: make platform-independant
+	cg_init_struct(var Var, init ast.StructInit)
+	cg_init_array(var Var, init ast.ArrayInit)
+	cg_jmp_back(start i64)
+	cg_jmp(addr i32) i32
+	cg_lea_var_to_reg(r Register, var_offset i32)
+	cg_learel(reg Register, val i32)
+	cg_leave() // TODO: make platform-independent
+	cg_load_fp_var(var Var, config VarConfig)
+	cg_load_fp(val f64)
+	cg_mov_deref(reg Register, regptr Register, typ ast.Type)
+	cg_mov_int_to_var(var Var, integer i32, config VarConfig) // TODO: make platform-independent
+	cg_mov_reg_to_var(var Var, reg Register, config VarConfig)
+	cg_mov_reg(r1 Register, r2 Register)
+	cg_mov_var_to_reg(reg Register, var Var, config VarConfig)
+	cg_mov(r Register, val i32)
+	cg_mov64(r Register, val Number)
+	cg_movabs(reg Register, val i64)
+	cg_mul_reg(a Register, b Register)
+	cg_patch_relative_jmp(pos i32, addr i64)
+	cg_pop(r Register)
+	cg_prefix_expr(node ast.PrefixExpr) // TODO: make platform-independant
+	cg_push(r Register)
+	cg_ret()
+	cg_return_stmt(node ast.Return) // TODO: make platform-independant
+	cg_reverse_string(r Register)   // TODO: remove
+	cg_syscall()                    // unix syscalls
+	cg_trap()
+	cg_zero_fill(size i32, var LocalVar) // TODO: make platform-independant
 }
 
-type Register = Amd64Register | Arm64Register
-
-fn (r Register) str() string {
-	return match r {
-		Amd64Register {
-			'${r as Amd64Register}'
-		}
-		Arm64Register {
-			'${r as Arm64Register}'
-		}
-	}
+enum Register {
+	reg0
+	reg1
+	reg2
+	reg3
 }
 
 enum RelocType {
@@ -404,15 +396,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 		pref:                 pref_
 		files:                files
 		// TODO: workaround, needs to support recursive init
-		code_gen: get_backend(pref_.arch, pref_.os) or {
+		cg:      get_backend(pref_.arch, pref_.os) or {
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
-		structs:  []Struct{len: table.type_symbols.len}
-		eval:     eval.new_eval(table, pref_)
+		structs: []Struct{len: table.type_symbols.len}
+		eval:    eval.new_eval(table, pref_)
 	}
 
-	g.code_gen.g = g
+	g.cg.g = g
 	g.generate_header()
 	g.init_builtins()
 	g.calculate_all_size_align()
@@ -445,7 +437,7 @@ pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 		table:    ast.new_table()
 		code_gen: Amd64{}
 	}
-	g.code_gen.g = &mut g
+	g.cg.g = &mut g
 	return &mut g
 }
 
@@ -839,7 +831,7 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 	// TODO: type flags
 	typ := g.unwrap(raw_type)
 	if raw_type.is_any_kind_of_pointer() || typ.is_any_kind_of_pointer() {
-		return g.code_gen.address_size()
+		return g.cg.address_size()
 	}
 	if typ in ast.number_type_idxs {
 		return match typ {
@@ -1054,7 +1046,7 @@ fn (mut g Gen) allocate_string(s string, opsize i32, typ RelocType) i32 {
 // allocates a buffer variable: name, size of stored type (nb of bytes), nb of items
 fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 {
 	g.println('; allocate array `${name}` item-size:${size} items:${items}:')
-	pos := g.code_gen.allocate_var(name, 4, i64(items)) // store the length of the array on the stack in a 4 byte var
+	pos := g.cg.allocate_var(name, 4, i64(items)) // store the length of the array on the stack in a 4 byte var
 	g.stack_var_pos += (size * items) // reserve space on the stack for the items
 	return pos
 }
@@ -1146,24 +1138,24 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 	if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
 		end_of_buffer := buffer + 4 + 32 - 1 // 4 bytes for the size and 32 for the chars, -1 to not go out of array
-		g.code_gen.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
+		g.cg.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
 
 		arg0_reg := g.get_builtin_arg_reg(.int_to_string, 0)
 		if arg0_reg != reg {
-			g.code_gen.mov_reg(arg0_reg, reg)
+			g.cg.mov_reg(arg0_reg, reg)
 		}
 
 		g.call_builtin(.int_to_string)
-		g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), end_of_buffer) // the (int) string starts at the end of the buffer
+		g.cg.lea_var_to_reg(g.cg.main_reg(), end_of_buffer) // the (int) string starts at the end of the buffer
 	} else if typ.is_bool() {
 		arg_reg := g.get_builtin_arg_reg(.bool_to_string, 0)
 		if arg_reg != reg {
-			g.code_gen.mov_reg(arg_reg, reg)
+			g.cg.mov_reg(arg_reg, reg)
 		}
 		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
-		if reg != g.code_gen.main_reg() {
-			g.code_gen.mov_reg(g.code_gen.main_reg(), reg)
+		if reg != g.cg.main_reg() {
+			g.cg.mov_reg(g.cg.main_reg(), reg)
 		}
 	} else {
 		g.n_error('${@LOCATION} int-to-string conversion not implemented for type ${typ}')
@@ -1175,24 +1167,24 @@ fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config Va
 	g.println('; var_to_string {')
 	typ := g.get_type_from_var(var)
 	if typ == ast.rune_type_idx {
-		buffer := g.code_gen.allocate_var('rune-buffer', 8, i64(0))
-		g.code_gen.convert_rune_to_string(reg, buffer, var, config)
+		buffer := g.cg.allocate_var('rune-buffer', 8, i64(0))
+		g.cg.convert_rune_to_string(reg, buffer, var, config)
 	} else if typ.is_int() {
 		if typ.is_unsigned() {
 			g.n_error('${@LOCATION} Unsigned integer print is not supported')
 		} else {
 			buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
 			end_of_buffer := buffer + 4 + 32 - 1 // 4 bytes for the size and 32 for the chars, -1 to not go out of array
-			g.code_gen.mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
-			g.code_gen.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
+			g.cg.mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
+			g.cg.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
 			g.call_builtin(.int_to_string)
-			g.code_gen.lea_var_to_reg(reg, end_of_buffer) // the (int) string starts at the end of the buffer
+			g.cg.lea_var_to_reg(reg, end_of_buffer) // the (int) string starts at the end of the buffer
 		}
 	} else if typ.is_bool() {
-		g.code_gen.mov_var_to_reg(g.get_builtin_arg_reg(.bool_to_string, 0), var, config)
+		g.cg.mov_var_to_reg(g.get_builtin_arg_reg(.bool_to_string, 0), var, config)
 		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
-		g.code_gen.mov_var_to_reg(reg, var, config)
+		g.cg.mov_var_to_reg(reg, var, config)
 	} else {
 		g.n_error('${@LOCATION} int-to-string conversion not implemented for type ${typ}')
 	}
@@ -1216,7 +1208,7 @@ fn (mut g Gen) patch_calls() {
 			return
 		}
 		last := i32(g.buf.len)
-		g.code_gen.call(i32(i32(addr) + last - c.pos))
+		g.cg.call(i32(i32(addr) + last - c.pos))
 		mut patch := []u8{}
 		for last < g.buf.len {
 			patch << g.buf.pop()
@@ -1235,7 +1227,7 @@ fn (mut g Gen) patch_labels() {
 			return
 		}
 
-		g.code_gen.patch_relative_jmp(label.pos, addr)
+		g.cg.patch_relative_jmp(label.pos, addr)
 	}
 }
 
@@ -1272,7 +1264,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.labels = &LabelTable{}
 	g.defer_stmts.clear()
 	g.return_type = node.return_type
-	g.code_gen.fn_decl(node)
+	g.cg.fn_decl(node)
 	g.patch_labels()
 
 	if g.stack_depth != 0 {
@@ -1367,20 +1359,20 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 		typ:    typ
 	}
 
-	g.code_gen.zero_fill(size, var)
-	main_reg := g.code_gen.main_reg()
+	g.cg.zero_fill(size, var)
+	main_reg := g.cg.main_reg()
 	// store exprs to the variable
 	for i, expr in node.vals {
 		offset := g.structs[typ.idx()].offsets[i]
 		g.expr(expr)
 		// TODO: expr not on rax
-		g.code_gen.mov_reg_to_var(var, main_reg,
+		g.cg.mov_reg_to_var(var, main_reg,
 			offset: offset
 			typ:    ts.mr_info().types[i]
 		)
 	}
 	// store the multi return struct value
-	g.code_gen.lea_var_to_reg(main_reg, var.offset)
+	g.cg.lea_var_to_reg(main_reg, var.offset)
 }
 
 fn (mut g Gen) sym_string_table() i32 {
