@@ -90,7 +90,7 @@ pub fn (c &Chacha20Poly1305RE) nonce_size() int {
 
 // overhead returns difference between the lengths of a plaintext and its ciphertext.
 // Its normally returns a tag size produced by this scheme.
-fn (c &Chacha20Poly1305RE) overhead() int {
+pub fn (c &Chacha20Poly1305RE) overhead() int {
 	return tag_size
 }
 
