@@ -140,6 +140,8 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut node := unsafe { node_ }
 	mut is_comptime := false
 
+	is_safe_op := g.pref.is_check_overflow && !g.is_builtin_overflow_mod
+
 	if (node.cond is ast.Ident && node.cond.ct_expr) || node.cond is ast.ComptimeSelector {
 		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
 		ctyp := g.type_resolver.get_type(node.cond)
@@ -209,12 +211,21 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	if node.is_range {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
+		plus_plus_i := if is_safe_op {
+			$if new_int ? && x64 {
+				'${i}=builtin__overflow__add_i64(${i},1)'
+			} $else {
+				'${i}=builtin__overflow__add_i32(${i},1)'
+			}
+		} else {
+			'++${i}'
+		}
 		val_typ := ast.mktyp(node.val_type)
 		g.write('for (${g.styp(val_typ)} ${i} = ')
 		g.expr(node.cond)
 		g.write('; ${i} < ')
 		g.expr(node.high)
-		g.writeln('; ++${i}) {')
+		g.writeln('; ${plus_plus_i}) {')
 	} else if node.kind == .array {
 		// `for num in nums {`
 		// g.writeln('// FOR IN array')
@@ -239,6 +250,15 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.writeln(';')
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
+		plus_plus_i := if is_safe_op {
+			$if new_int ? && x64 {
+				'${i}=builtin__overflow__add_i64(${i},1)'
+			} $else {
+				'${i}=builtin__overflow__add_i32(${i},1)'
+			}
+		} else {
+			'++${i}'
+		}
 		g.empty_line = true
 		opt_expr := '(*(${g.styp(node.cond_type.clear_flag(.option))}*)${cond_var}${op_field}data)'
 		cond_expr := if cond_is_option {
@@ -246,7 +266,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		} else {
 			'${cond_var}${op_field}len'
 		}
-		g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${cond_expr}; ++${i}) {')
+		g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${cond_expr}; ${plus_plus_i}) {')
 		if node.val_var != '_' {
 			if mut val_sym.info is ast.FnType {
 				g.write('\t')
@@ -306,9 +326,18 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
+		plus_plus_idx := if is_safe_op {
+			$if new_int ? && x64 {
+				'${idx}=builtin__overflow__add_i64(${idx},1)'
+			} $else {
+				'${idx}=builtin__overflow__add_i32(${idx},1)'
+			}
+		} else {
+			'++${idx}'
+		}
 		cond_sym := g.table.final_sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
-		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} != ${info.size}; ++${idx}) {')
+		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} != ${info.size}; ${plus_plus_idx}) {')
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
 			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
@@ -355,10 +384,19 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		dot_or_ptr := g.dot_or_ptr(node.cond_type)
 		idx := g.new_tmp_var()
+		plus_plus_idx := if is_safe_op {
+			$if new_int ? && x64 {
+				'${idx}=builtin__overflow__add_i64(${idx},1)'
+			} $else {
+				'${idx}=builtin__overflow__add_i32(${idx},1)'
+			}
+		} else {
+			'++${idx}'
+		}
 		map_len := g.new_tmp_var()
 		g.empty_line = true
 		g.writeln('${ast.int_type_name} ${map_len} = ${cond_var}${dot_or_ptr}key_values.len;')
-		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${map_len}; ++${idx} ) {')
+		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${map_len}; ${plus_plus_idx} ) {')
 		// TODO: don't have this check when the map has no deleted elements
 		g.indent++
 		diff := g.new_tmp_var()
@@ -413,9 +451,18 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
+		plus_plus_i := if is_safe_op {
+			$if new_int ? && x64 {
+				'${i}=builtin__overflow__add_i64(${i},1)'
+			} $else {
+				'${i}=builtin__overflow__add_i32(${i},1)'
+			}
+		} else {
+			'++${i}'
+		}
 		g.write('for (${ast.int_type_name} ${i} = 0; ${i} < ')
 		g.expr(cond)
-		g.writeln('${field_accessor}len; ++${i}) {')
+		g.writeln('${field_accessor}len; ${plus_plus_i}) {')
 		if node.val_var != '_' {
 			g.write('\tu8 ${c_name(node.val_var)} = ')
 			g.expr(cond)
@@ -443,10 +490,20 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.write('${g.styp(node.cond_type)} ${t_expr} = ')
 		g.expr(node.cond)
 		g.writeln(';')
-		if node.key_var in ['', '_'] {
+		i := node.key_var
+		plus_plus_i := if is_safe_op {
+			$if new_int ? && x64 {
+				'${i}=builtin__overflow__add_i64(${i},1)'
+			} $else {
+				'${i}=builtin__overflow__add_i32(${i},1)'
+			}
+		} else {
+			'++${i}'
+		}
+		if i in ['', '_'] {
 			g.writeln('while (1) {')
 		} else {
-			g.writeln('for (size_t ${node.key_var} = 0;; ++${node.key_var}) {')
+			g.writeln('for (size_t ${i} = 0;; ${plus_plus_i}) {')
 		}
 		t_var := g.new_tmp_var()
 		receiver_typ := g.unwrap_generic(next_fn.params[0].typ)

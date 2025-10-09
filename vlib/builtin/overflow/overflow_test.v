@@ -11,12 +11,6 @@ const vroot = os.real_path(@VMODROOT)
 
 const testdata_folder = os.join_path(vroot, 'vlib', 'builtin', 'overflow', 'testdata')
 
-const show_compilation_output = os.getenv('VTEST_SHOW_COMPILATION_OUTPUT').int() == 1
-
-const user_os = os.user_os()
-
-const gcc_path = os.find_abs_path_of_executable('gcc') or { '' }
-
 fn mm(s string) string {
 	return term.colorize(term.magenta, s)
 }
@@ -43,14 +37,11 @@ fn test_out_files() {
 	mut total_errors := 0
 	for out_path in paths {
 		basename, path, relpath, out_relpath := target2paths(out_path, '.out')
-		if should_skip(relpath) {
-			continue
-		}
 		pexe := os.join_path(output_path, '${basename}.exe')
 		//
-		file_options := get_file_options(path)
-		alloptions := '-o ${os.quoted_path(pexe)} ${file_options.vflags}'
-		label := mj('v', file_options.vflags, 'run', relpath) + ' == ${mm(out_relpath)} '
+		file_options := '-g -check-overflow'
+		alloptions := '-o ${os.quoted_path(pexe)} ${file_options}'
+		label := mj('v', file_options, 'run', relpath) + ' == ${mm(out_relpath)} '
 		//
 		compile_cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
 		sw_compile := time.new_stopwatch()
@@ -106,94 +97,6 @@ fn test_out_files() {
 	assert total_errors == 0
 }
 
-fn test_c_must_have_files() {
-	println(term.colorize(term.green, '> testing whether all line patterns in `.c.must_have` files match:'))
-	os.chdir(vroot) or {}
-	output_path := os.join_path(os.vtmp_dir(), 'coutput_c_must_haves')
-	os.mkdir_all(output_path)!
-	defer {
-		os.rmdir_all(output_path) or {}
-	}
-	files := os.ls(testdata_folder) or { [] }
-	tests := files.filter(it.ends_with('.c.must_have'))
-	if tests.len == 0 {
-		eprintln('no `.c.must_have` files found in ${testdata_folder}')
-		return
-	}
-	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder).sorted()
-	mut total_errors := 0
-	mut failed_descriptions := []string{cap: paths.len}
-	for must_have_path in paths {
-		basename, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
-		if should_skip(relpath) {
-			continue
-		}
-		file_options := get_file_options(path)
-		alloptions := '-o - ${file_options.vflags}'
-		mut description := mj('v', alloptions, relpath) + ' matches ${mm(must_have_relpath)} '
-		cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
-		sw_compile := time.new_stopwatch()
-		compilation := os.execute(cmd)
-		compile_ms := sw_compile.elapsed().milliseconds()
-		ensure_compilation_succeeded(compilation, cmd)
-		expected_lines := os.read_lines(must_have_path) or { [] }
-		generated_c_lines := compilation.output.split_into_lines()
-		mut nmatches := 0
-		mut failed_patterns := []string{}
-		for idx_expected_line, eline in expected_lines {
-			if does_line_match_one_of_generated_lines(eline, generated_c_lines) {
-				nmatches++
-				// eprintln('> testing: $must_have_path has line: $eline')
-			} else {
-				failed_patterns << eline
-				description += '\n failed pattern: `${eline}`'
-				println('${term.red('FAIL')} C:${compile_ms:5}ms ${description}')
-				eprintln('${must_have_path}:${idx_expected_line + 1}: expected match error:')
-				eprintln('`${cmd}` did NOT produce expected line:')
-				eprintln(term.colorize(term.red, eline))
-				if description !in failed_descriptions {
-					failed_descriptions << description
-				}
-				total_errors++
-				continue
-			}
-		}
-		if nmatches == expected_lines.len {
-			println('${term.green('OK  ')} C:${compile_ms:5}ms ${description}')
-		} else {
-			if show_compilation_output {
-				eprintln('> ALL lines:')
-				eprintln(compilation.output)
-			}
-			eprintln('--------- failed patterns: -------------------------------------------')
-			for fpattern in failed_patterns {
-				eprintln(fpattern)
-			}
-			eprintln('----------------------------------------------------------------------')
-		}
-	}
-	if failed_descriptions.len > 0 {
-		eprintln('--------- failed commands: -------------------------------------------')
-		for fd in failed_descriptions {
-			eprintln('  > ${fd}')
-		}
-		eprintln('----------------------------------------------------------------------')
-	}
-	assert total_errors == 0
-}
-
-fn does_line_match_one_of_generated_lines(line string, generated_c_lines []string) bool {
-	for cline in generated_c_lines {
-		if line == cline {
-			return true
-		}
-		if cline.contains(line) {
-			return true
-		}
-	}
-	return false
-}
-
 fn normalize_panic_message(message string, vroot string) string {
 	mut msg := message.all_before('=========================================')
 	// change windows to nix path
@@ -227,62 +130,4 @@ fn target2paths(target_path string, postfix string) (string, string, string, str
 	relpath := vroot_relative(path)
 	target_relpath := vroot_relative(target_path)
 	return basename, path, relpath, target_relpath
-}
-
-struct FileOptions {
-mut:
-	vflags string
-}
-
-pub fn get_file_options(file string) FileOptions {
-	mut res := FileOptions{}
-	lines := os.read_lines(file) or { [] }
-	for line in lines {
-		if line.starts_with('// vtest vflags:') {
-			res.vflags = line.all_after(':').trim_space()
-		}
-	}
-	return res
-}
-
-fn should_skip(relpath string) bool {
-	if user_os == 'windows' {
-		if relpath.contains('_nix.vv') {
-			eprintln('> skipping ${relpath} on windows')
-			return true
-		}
-		$if !msvc {
-			if relpath.contains('_msvc_windows.vv') {
-				eprintln('> skipping ${relpath} on !msvc')
-				return true
-			}
-		}
-		$if !gcc {
-			if relpath.contains('_gcc_windows.vv') {
-				eprintln('> skipping ${relpath} on !gcc')
-				return true
-			}
-		}
-	} else {
-		if relpath.contains('_windows.vv') {
-			eprintln('> skipping ${relpath} on !windows')
-			return true
-		}
-	}
-	if relpath.contains('freestanding_module_import_') {
-		$if !amd64 {
-			// https://github.com/vlang/v/issues/23397
-			eprintln('> skipping ${relpath} on != amd64')
-			return true
-		}
-		if user_os != 'linux' {
-			eprintln('> skipping ${relpath} on != linux')
-			return true
-		}
-		if gcc_path == '' {
-			eprintln('> skipping ${relpath} since it needs gcc, which is not detected')
-			return true
-		}
-	}
-	return false
 }

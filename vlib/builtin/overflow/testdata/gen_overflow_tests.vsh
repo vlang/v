@@ -71,7 +71,6 @@ fn main() {
 			match op {
 				'add' {
 					// vv file
-					sb.writeln('// vtest vflags: -g -check-overflow\n')
 					sb.writeln('mut x := ${o.name}(${o.max[0]})')
 					sb.writeln('println(x)')
 					sb.writeln('x = x + 1')
@@ -92,7 +91,6 @@ fn main() {
 				}
 				'add_assign' {
 					// vv file
-					sb.writeln('// vtest vflags: -g -check-overflow\n')
 					sb.writeln('mut x := ${o.name}(${o.max[0]})')
 					sb.writeln('println(x)')
 					sb.writeln('x += 1')
@@ -113,7 +111,6 @@ fn main() {
 				}
 				'inc' {
 					// vv file
-					sb.writeln('// vtest vflags: -g -check-overflow\n')
 					sb.writeln('mut x := ${o.name}(${o.max[0]})')
 					sb.writeln('println(x)')
 					sb.writeln('x ++')
@@ -134,7 +131,6 @@ fn main() {
 				}
 				'sub' {
 					// vv file
-					sb.writeln('// vtest vflags: -g -check-overflow\n')
 					sb.writeln('mut x := ${o.name}(${o.min[0]})')
 					sb.writeln('println(x)')
 					sb.writeln('x = x - 1')
@@ -155,7 +151,6 @@ fn main() {
 				}
 				'sub_assign' {
 					// vv file
-					sb.writeln('// vtest vflags: -g -check-overflow\n')
 					sb.writeln('mut x := ${o.name}(${o.min[0]})')
 					sb.writeln('println(x)')
 					sb.writeln('x -= 1')
@@ -176,7 +171,6 @@ fn main() {
 				}
 				'dec' {
 					// vv file
-					sb.writeln('// vtest vflags: -g -check-overflow\n')
 					sb.writeln('mut x := ${o.name}(${o.min[0]})')
 					sb.writeln('println(x)')
 					sb.writeln('x --')
@@ -197,7 +191,6 @@ fn main() {
 				}
 				'mul' {
 					// vv file
-					sb.writeln('// vtest vflags: -g -check-overflow\n')
 					sb.writeln('mut x := ${o.name}(${o.mid[0]})')
 					sb.writeln('println(x)')
 					sb.writeln('x = x * 10')
@@ -218,7 +211,6 @@ fn main() {
 				}
 				'mul_assign' {
 					// vv file
-					sb.writeln('// vtest vflags: -g -check-overflow\n')
 					sb.writeln('mut x := ${o.name}(${o.mid[0]})')
 					sb.writeln('println(x)')
 					sb.writeln('x *= 10')

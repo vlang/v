@@ -1,5 +1,3 @@
-// vtest vflags: -g -check-overflow
-
 mut x := u32(429496729)
 println(x)
 x = x * 10

@@ -1,5 +1,3 @@
-// vtest vflags: -g -check-overflow
-
 mut x := i32(2147483646)
 println(x)
 x = x + 1

@@ -143,30 +143,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << 'v_segmentation_fault_handler'
 		}
 		if pref_.is_check_overflow {
-			core_fns << 'builtin.overflow.add_i8'
-			core_fns << 'builtin.overflow.add_u8'
-			core_fns << 'builtin.overflow.sub_i8'
-			core_fns << 'builtin.overflow.sub_u8'
-			core_fns << 'builtin.overflow.mul_i8'
-			core_fns << 'builtin.overflow.mul_u8'
-			core_fns << 'builtin.overflow.add_i16'
-			core_fns << 'builtin.overflow.add_u16'
-			core_fns << 'builtin.overflow.sub_i16'
-			core_fns << 'builtin.overflow.sub_u16'
-			core_fns << 'builtin.overflow.mul_i16'
-			core_fns << 'builtin.overflow.mul_u16'
-			core_fns << 'builtin.overflow.add_i32'
-			core_fns << 'builtin.overflow.add_u32'
-			core_fns << 'builtin.overflow.sub_i32'
-			core_fns << 'builtin.overflow.sub_u32'
-			core_fns << 'builtin.overflow.mul_i32'
-			core_fns << 'builtin.overflow.mul_u32'
-			core_fns << 'builtin.overflow.add_i64'
-			core_fns << 'builtin.overflow.add_u64'
-			core_fns << 'builtin.overflow.sub_i64'
-			core_fns << 'builtin.overflow.sub_u64'
-			core_fns << 'builtin.overflow.mul_i64'
-			core_fns << 'builtin.overflow.mul_u64'
+			// add all fns in `builtin/overflow/overflow.v`
+			for op in ['add', 'sub', 'mul'] {
+				for typ in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64'] {
+					core_fns << 'builtin.overflow.${op}_${typ}'
+				}
+			}
 		}
 		all_fn_root_names << core_fns
 	}

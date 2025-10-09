@@ -1,5 +1,3 @@
-// vtest vflags: -g -check-overflow
-
 mut x := u8(254)
 println(x)
 x ++

@@ -1,5 +1,3 @@
-// vtest vflags: -g -check-overflow
-
 mut x := u16(65534)
 println(x)
 x += 1
