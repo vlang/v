@@ -30,7 +30,7 @@ export LIBGC_COMMIT_FULL_HASH=$(git rev-parse HEAD)
 
 ./autogen.sh
 
-CC=$CC CFLAGS='-Os -mtune=generic -fPIC' LDFLAGS='-Os -fPIC' ./configure \
+CC=$CC CFLAGS='-Os -mtune=generic -fPIC -L/opt/homebrew/lib' LDFLAGS='-Os -fPIC' ./configure \
 	--disable-dependency-tracking \
 	--disable-docs \
 	--enable-handle-fork=yes \
