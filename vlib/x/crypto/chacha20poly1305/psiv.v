@@ -105,7 +105,7 @@ pub fn (c Chacha20Poly1305RE) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8
 
 	// clone the initial poly1305
 	mut po_ad := c.po.clone()
-	po_ad.update(ad)
+	update_with_padding(mut po_ad, ad)
 
 	mut po_ad_clone := po_ad.clone()
 	// build the tag
@@ -135,7 +135,7 @@ pub fn (c Chacha20Poly1305RE) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u
 	tag := ciphertext[ciphertext.len - c.overhead()..]
 
 	mut po_with_ad := c.po.clone()
-	po_with_ad.update(ad)
+	update_with_padding(mut po_with_ad, ad)
 
 	out := psiv_encrypt_internal(enc, c.enc_key, tag, nonce)!
 	mut poad_clone := po_with_ad.clone()
@@ -202,19 +202,30 @@ fn psiv_encrypt_internal(plaintext []u8, key []u8, tag []u8, nonce []u8) ![]u8 {
 @[direct_array_access]
 fn psiv_gen_tag(mut po poly1305.Poly1305, input []u8, ad_len int, mac_key []u8, nonce []u8) []u8 {
 	// updates poly1305 mac by input message, associated data length and input length.
-	po.update(input)
+	update_with_padding(mut po, input)
 	po.update(length_to_block(ad_len, input.len))
 
 	// produces 16-bytes of mac from current poly1305 state.
 	mut digest := []u8{len: tag_size}
 	po.finish(mut digest)
 
-	out := merge_drv_key(mac_key, nonce, digest[0..8], digest[8..16])
-	// truncating output and return it.
-	tag := out[0..tag_size].clone()
+	// The tag was produced from derived key scrambled with chacha20 quarter round routine,
+	// and then truncating the output into 16-bytes tag.
+	drv_key := merge_drv_key(mac_key, nonce, digest[0..8], digest[8..16])
+	mut x := chacha20.State{}
+	unpack_into_state(mut x, drv_key)
+	ws := chacha20_core(x)
+
+	// truncating state output into tag sized bytes
+	mut tag := []u8{len: tag_size}
+	pack16_from_state(mut tag, ws)
+
+	// releases (reset) temporary allocated resources
 	unsafe {
-		out.free()
+		drv_key.free()
 		digest.free()
+		ws.reset()
+		x.reset()
 	}
 	return tag
 }
@@ -236,12 +247,33 @@ fn psiv_init(key []u8) !([]u8, []u8, &poly1305.Poly1305) {
 	pack32_from_state(mut poly1305_key, ws)
 	po := poly1305.new(poly1305_key)!
 
-	// reset
+	// reset (release) temporary allocated resources
 	unsafe {
 		x.reset()
+		ws.reset()
+		pol_key.free()
 		poly1305_key.free()
 	}
 	return mac_key, enc_key, po
+}
+
+// update_with_padding updates poly1305 mac with data, padding the tail block if necessary.
+@[direct_array_access; inline]
+fn update_with_padding(mut po poly1305.Poly1305, data []u8) {
+	nr_blocks := data.len / tag_size
+
+	// update poly1305 state with block that aligns with tag_size-d block
+	if nr_blocks > 0 {
+		block := unsafe { data[0..nr_blocks * tag_size] }
+		po.update(block)
+	}
+	// for partial non-aligned block, pad it with zeros to align with tag_size
+	if data.len % tag_size != 0 {
+		last_block := unsafe { data[nr_blocks * tag_size..] }
+		mut padded_block := []u8{len: tag_size}
+		_ := copy(mut padded_block, last_block)
+		po.update(padded_block)
+	}
 }
 
 // merge_drv_key merges provided bytes into 64-bytes key
@@ -315,7 +347,7 @@ fn fk_k(k []u8) []u8 {
 
 	// 16 .. 36
 	for i := 16; i < 36; i++ {
-		x[i] = x[i - 4]
+		x[i] = k[i - 4]
 	}
 
 	return x
@@ -357,7 +389,7 @@ fn fm_k(k []u8) []u8 {
 
 	// 16 .. 36
 	for i := 16; i < 36; i++ {
-		x[i] = x[i - 4]
+		x[i] = k[i - 4]
 	}
 
 	return x
@@ -398,7 +430,7 @@ fn fe_k(k []u8) []u8 {
 
 	// 16 .. 36
 	for i := 16; i < 36; i++ {
-		x[i] = x[i - 4]
+		x[i] = k[i - 4]
 	}
 
 	return x
@@ -424,6 +456,14 @@ fn pack64_from_state(mut out []u8, s chacha20.State) {
 @[direct_array_access; inline]
 fn pack32_from_state(mut out []u8, s chacha20.State) {
 	for i := 0; i < 8; i++ {
+		binary.little_endian_put_u32(mut out[i * 4..(i + 1) * 4], s[i])
+	}
+}
+
+// pack16_from_state serializes the first quartet of state s into 16-bytes output in little-endian form.
+@[direct_array_access; inline]
+fn pack16_from_state(mut out []u8, s chacha20.State) {
+	for i := 0; i < 4; i++ {
 		binary.little_endian_put_u32(mut out[i * 4..(i + 1) * 4], s[i])
 	}
 }
