@@ -25,7 +25,7 @@ pub fn new_psiv(key []u8) !&Chacha20Poly1305RE {
 	mac_key, enc_key, po := psiv_init(key)!
 	// set the values
 	c := &Chacha20Poly1305RE{
-		key:     key
+		key:     key.clone()
 		precomp: true
 		mac_key: mac_key
 		enc_key: enc_key
