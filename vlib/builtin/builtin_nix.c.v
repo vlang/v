@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module builtin
 
+#include <errno.h>
+
 @[markused]
 fn builtin_init() {
 	$if gcboehm ? {
