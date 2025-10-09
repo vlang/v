@@ -36,7 +36,7 @@ export AOPS_LFLAGS=$(pkg-config atomic_ops --libs)
 echo "AOPS_CFLAGS=${AOPS_CFLAGS}"
 echo "AOPS_LFLAGS=${AOPS_LFLAGS}"
 
-CC=$CC CFLAGS='-Os -mtune=generic -fPIC -L/opt/homebrew/lib' LDFLAGS='-Os -fPIC' ./configure \
+CC=$CC CFLAGS="-Os -mtune=generic -fPIC ${AOPS_CFLAGS}" LDFLAGS="-Os -fPIC ${AOPS_LFLAGS}" ./configure \
 	--disable-dependency-tracking \
 	--disable-docs \
 	--enable-handle-fork=yes \
