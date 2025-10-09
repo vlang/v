@@ -39,14 +39,12 @@ echo "AOPS_LFLAGS=${AOPS_LFLAGS}"
 CC=$CC CFLAGS="-Os -mtune=generic -fPIC ${AOPS_CFLAGS}" LDFLAGS="-Os -fPIC ${AOPS_LFLAGS}" ./configure \
 	--disable-dependency-tracking \
 	--disable-docs \
-	--enable-handle-fork=yes \
-	--enable-rwlock \
-	--enable-threads=pthreads \
 	--enable-static \
 	--enable-shared=no \
-	--enable-parallel-mark \
 	--enable-single-obj-compilation \
 	--enable-gc-debug \
+	--enable-large-config \
+	--enable-cplusplus \
 	--with-libatomic-ops=yes \
 	--enable-sigrt-signals
 
