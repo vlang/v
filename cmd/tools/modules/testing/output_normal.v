@@ -154,4 +154,10 @@ pub fn (r NormalReporter) list_of_failed_commands(failed_cmds []string) {
 	for i, cmd in failed_cmds {
 		eprintln(term.failed('To reproduce just failure ${i + 1} run:') + '    ${cmd}')
 	}
+	if failed_cmds.len > 0 {
+		vflags := os.getenv('VFLAGS')
+		if vflags != '' {
+			eprintln(term.failed('VFLAGS was: "${vflags}"'))
+		}
+	}
 }
