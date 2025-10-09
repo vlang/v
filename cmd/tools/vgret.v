@@ -379,7 +379,12 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 				// Use ImageMagick's `import` tool to take the screenshot
 				out_file := os.join_path(out_path, os.file_name(app.path) +
 					'_screenshot_${existing_screenshots.len:02}.png')
-				result := opt.verbose_execute('import -window root "${out_file}"')
+				screenshot_command := if opt.verbose_execute('import --version').exit_code != 0 {
+					'gm import -window root'
+				} else {
+					'import -window root'
+				}
+				result := opt.verbose_execute('${screenshot_command} ${os.quoted_path(out_file)}')
 				if result.exit_code != 0 {
 					p_app.signal_kill()
 					return error('Failed taking screenshot of `${app.abs_path}` to "${out_file}":\n${result.output}')
