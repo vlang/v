@@ -21,8 +21,6 @@ fn break_if_debugger_attached() {
 
 @[noreturn]
 pub fn panic_lasterr(base string) {
-	cerrno := C.errno
-	se := unsafe { tos_clone(&u8(C.strerror(cerrno))) }
 	// TODO: use strerror_r and errno
-	panic(base + se)
+	panic(base + ' unknown')
 }
