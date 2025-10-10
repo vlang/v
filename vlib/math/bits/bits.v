@@ -115,7 +115,7 @@ pub fn trailing_zeros_64(x u64) int {
 	return trailing_zeros_64_default(x)
 }
 
-@[direct_array_access; inline]
+@[direct_array_access; ignore_overflow; inline]
 fn trailing_zeros_64_default(x u64) int {
 	if x == 0 {
 		return 64
