@@ -1108,7 +1108,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				}
 				for k, concrete_type in concrete_type_list {
 					param_typ := stmt.params[k + 1].typ
-					if param_typ.has_flag(.generic) && param_typ.idx() == ast.array_type_idx {
+					if param_typ.has_flag(.generic) && w.table.type_kind(param_typ) == .array {
 						w.mark_by_type(w.table.find_or_register_array(concrete_type))
 					}
 				}
