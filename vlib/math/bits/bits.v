@@ -85,7 +85,7 @@ pub fn trailing_zeros_16(x u16) int {
 	return trailing_zeros_16_default(x)
 }
 
-@[direct_array_access; inline]
+@[direct_array_access; ignore_overflow; inline]
 fn trailing_zeros_16_default(x u16) int {
 	if x == 0 {
 		return 16
@@ -100,7 +100,7 @@ pub fn trailing_zeros_32(x u32) int {
 	return trailing_zeros_32_default(x)
 }
 
-@[direct_array_access; inline]
+@[direct_array_access; ignore_overflow; inline]
 fn trailing_zeros_32_default(x u32) int {
 	if x == 0 {
 		return 32
@@ -317,7 +317,7 @@ pub fn len_8(x u8) int {
 }
 
 // len_16 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
-@[direct_array_access]
+@[direct_array_access; ignore_overflow]
 pub fn len_16(x u16) int {
 	mut y := x
 	mut n := 0
@@ -329,7 +329,7 @@ pub fn len_16(x u16) int {
 }
 
 // len_32 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
-@[direct_array_access]
+@[direct_array_access; ignore_overflow]
 pub fn len_32(x u32) int {
 	mut y := x
 	mut n := 0
@@ -368,12 +368,11 @@ pub fn len_64(x u64) int {
 // Add returns the sum with carry of x, y and carry: sum = x + y + carry.
 // The carry input must be 0 or 1; otherwise the behavior is undefined.
 // The carryOut output is guaranteed to be 0 or 1.
-//
 // add_32 returns the sum with carry of x, y and carry: sum = x + y + carry.
 // The carry input must be 0 or 1; otherwise the behavior is undefined.
 // The carryOut output is guaranteed to be 0 or 1.
-//
 // This function's execution time does not depend on the inputs.
+@[ignore_overflow]
 pub fn add_32(x u32, y u32, carry u32) (u32, u32) {
 	sum64 := u64(x) + u64(y) + u64(carry)
 	sum := u32(sum64)
@@ -384,8 +383,8 @@ pub fn add_32(x u32, y u32, carry u32) (u32, u32) {
 // add_64 returns the sum with carry of x, y and carry: sum = x + y + carry.
 // The carry input must be 0 or 1; otherwise the behavior is undefined.
 // The carryOut output is guaranteed to be 0 or 1.
-//
 // This function's execution time does not depend on the inputs.
+@[ignore_overflow]
 pub fn add_64(x u64, y u64, carry u64) (u64, u64) {
 	sum := x + y + carry
 	// The sum will overflow if both top bits are set (x & y) or if one of them
@@ -399,12 +398,11 @@ pub fn add_64(x u64, y u64, carry u64) (u64, u64) {
 // Sub returns the difference of x, y and borrow: diff = x - y - borrow.
 // The borrow input must be 0 or 1; otherwise the behavior is undefined.
 // The borrowOut output is guaranteed to be 0 or 1.
-//
 // sub_32 returns the difference of x, y and borrow, diff = x - y - borrow.
 // The borrow input must be 0 or 1; otherwise the behavior is undefined.
 // The borrowOut output is guaranteed to be 0 or 1.
-//
 // This function's execution time does not depend on the inputs.
+@[ignore_overflow]
 pub fn sub_32(x u32, y u32, borrow u32) (u32, u32) {
 	diff := x - y - borrow
 	// The difference will underflow if the top bit of x is not set and the top
@@ -418,8 +416,8 @@ pub fn sub_32(x u32, y u32, borrow u32) (u32, u32) {
 // sub_64 returns the difference of x, y and borrow: diff = x - y - borrow.
 // The borrow input must be 0 or 1; otherwise the behavior is undefined.
 // The borrowOut output is guaranteed to be 0 or 1.
-//
 // This function's execution time does not depend on the inputs.
+@[ignore_overflow]
 pub fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
 	diff := x - y - borrow
 	// See Sub32 for the bit logic.
