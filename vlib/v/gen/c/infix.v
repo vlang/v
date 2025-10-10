@@ -1256,12 +1256,10 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	}
 	// do not use promoted_type for overflow detect
 	left_type := g.unwrap_generic(node.left_type)
-	is_safe_add := node.op == .plus && g.pref.is_check_overflow && left_type.is_int()
-		&& !g.is_builtin_overflow_mod
-	is_safe_sub := node.op == .minus && g.pref.is_check_overflow && left_type.is_int()
-		&& !g.is_builtin_overflow_mod
-	is_safe_mul := node.op == .mul && g.pref.is_check_overflow && left_type.is_int()
-		&& !g.is_builtin_overflow_mod
+	checkoverflow_op := g.pref.is_check_overflow && !g.is_builtin_overflow_mod && left_type.is_int()
+	is_safe_add := checkoverflow_op && node.op == .plus
+	is_safe_sub := checkoverflow_op && node.op == .minus
+	is_safe_mul := checkoverflow_op && node.op == .mul
 	is_safe_div := node.op == .div && g.pref.div_by_zero_is_zero && typ.is_int()
 	is_safe_mod := node.op == .mod && g.pref.div_by_zero_is_zero && typ.is_int()
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {

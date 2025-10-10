@@ -444,3 +444,51 @@ fn mul_u64(x u64, y u64) u64 {
 	}
 	return res
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////
+// These are here to prevent cgen errors for `./v -check-overflow vlib/math/vec/vec4_test.v`
+// TODO: check for correctness and add tests. Improve markused so it keeps them, when they are used.
+@[inline; markused]
+fn add_int(x int, y int) int {
+	return add_i32(x, y)
+}
+
+@[inline; markused]
+fn sub_int(x int, y int) int {
+	return sub_i32(x, y)
+}
+
+@[inline; markused]
+fn mul_int(x int, y int) int {
+	return mul_i32(x, y)
+}
+
+@[inline; markused]
+fn add_f32(x f32, y f32) f32 {
+	return x + y
+}
+
+@[inline; markused]
+fn sub_f32(x f32, y f32) f32 {
+	return x - y
+}
+
+@[inline; markused]
+fn mul_f32(x f32, y f32) f32 {
+	return x * y
+}
+
+@[inline; markused]
+fn add_f64(x f64, y f64) f64 {
+	return x + y
+}
+
+@[inline; markused]
+fn sub_f64(x f64, y f64) f64 {
+	return x - y
+}
+
+@[inline; markused]
+fn mul_f64(x f64, y f64) f64 {
+	return x * y
+}
