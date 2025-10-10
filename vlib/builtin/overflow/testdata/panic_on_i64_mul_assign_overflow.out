@@ -1,0 +1,8 @@
+922337203685477580
+9223372036854775800
+================ V panic ================
+   module: builtin.overflow
+ function: mul_i64()
+  message: attempt to mul with overflow(i64(9223372036854775800) * i64(10))
+     file: vlib/builtin/overflow/overflow.v
+

@@ -1,0 +1,8 @@
+1
+0
+================ V panic ================
+   module: builtin.overflow
+ function: sub_u64()
+  message: attempt to sub with overflow(u64(0) - u64(1))
+     file: vlib/builtin/overflow/overflow.v
+

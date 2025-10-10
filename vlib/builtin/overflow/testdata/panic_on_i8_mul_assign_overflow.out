@@ -1,0 +1,8 @@
+12
+120
+================ V panic ================
+   module: builtin.overflow
+ function: mul_i8()
+  message: attempt to mul with overflow(i8(120) * i8(10))
+     file: vlib/builtin/overflow/overflow.v
+

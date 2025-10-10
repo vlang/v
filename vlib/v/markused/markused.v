@@ -142,6 +142,14 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if pref_.should_use_segfault_handler() {
 			core_fns << 'v_segmentation_fault_handler'
 		}
+		if pref_.is_check_overflow {
+			// add all fns in `builtin/overflow/overflow.v`
+			for op in ['add', 'sub', 'mul'] {
+				for typ in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64'] {
+					core_fns << 'builtin.overflow.${op}_${typ}'
+				}
+			}
+		}
 		all_fn_root_names << core_fns
 	}
 	if pref_.is_bare {

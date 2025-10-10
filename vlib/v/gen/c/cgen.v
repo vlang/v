@@ -281,6 +281,7 @@ mut:
 	definition_nodes        []&ast.HashStmtNode // allows hash stmts to go `definitions`
 	postinclude_nodes       []&ast.HashStmtNode // allows hash stmts to go after all the rest of the code generation
 	curr_comptime_node      &ast.Expr = unsafe { nil } // current `$if` expr
+	is_builtin_overflow_mod bool
 }
 
 @[heap]
@@ -2741,6 +2742,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			g.is_builtin_mod = util.module_is_builtin(node.name)
+			g.is_builtin_overflow_mod = node.name == 'builtin.overflow'
 			g.cur_mod = node
 		}
 		ast.EmptyStmt {}
@@ -3914,6 +3916,8 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			if node.auto_locked != '' {
 				g.writeln('sync__RwMutex_lock(&${node.auto_locked}->mtx);')
 			}
+			is_safe_inc := node.op == .inc && g.pref.is_check_overflow && !g.is_builtin_overflow_mod
+			is_safe_dec := node.op == .dec && g.pref.is_check_overflow && !g.is_builtin_overflow_mod
 			g.inside_map_postfix = true
 			if node.is_c2v_prefix {
 				g.write(node.op.str())
@@ -3955,8 +3959,18 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.expr(node.expr)
 			}
 			g.inside_map_postfix = false
-			if !node.is_c2v_prefix && node.op != .question {
+			if !node.is_c2v_prefix && node.op != .question && !is_safe_inc && !is_safe_dec {
 				g.write(node.op.str())
+			} else if is_safe_inc || is_safe_dec {
+				overflow_styp := g.styp(get_overflow_fn_type(node.typ))
+				vsafe_fn_name := if is_safe_inc {
+					'builtin__overflow__add_${overflow_styp}'
+				} else {
+					'builtin__overflow__sub_${overflow_styp}'
+				}
+				g.write('=${vsafe_fn_name}(')
+				g.expr(node.expr)
+				g.write(',1)')
 			}
 			if node.auto_locked != '' {
 				g.writeln(';')
@@ -8595,6 +8609,41 @@ fn determine_integer_literal_type(node ast.IntegerLiteral) ast.Type {
 			// If sign bit is clear, it's a signed 64-bit integer (i64)
 			// Otherwise, it's an unsigned 64-bit integer (u64)
 			return if sign_bit_clear { ast.i64_type } else { ast.u64_type }
+		}
+	}
+}
+
+fn get_overflow_fn_type(typ ast.Type) ast.Type {
+	return match typ {
+		ast.int_type {
+			$if new_int ? && x64 {
+				ast.i64_type
+			} $else {
+				ast.i32_type
+			}
+		}
+		ast.int_literal_type {
+			ast.i64_type
+		}
+		ast.rune_type {
+			ast.u32_type
+		}
+		ast.isize_type {
+			$if x64 {
+				ast.i64_type
+			} $else {
+				ast.i32_type
+			}
+		}
+		ast.usize_type {
+			$if x64 {
+				ast.u64_type
+			} $else {
+				ast.u32_type
+			}
+		}
+		else {
+			typ
 		}
 	}
 }
