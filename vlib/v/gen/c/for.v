@@ -140,8 +140,6 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut node := unsafe { node_ }
 	mut is_comptime := false
 
-	is_safe_op := g.pref.is_check_overflow && !g.is_builtin_overflow_mod
-
 	if (node.cond is ast.Ident && node.cond.ct_expr) || node.cond is ast.ComptimeSelector {
 		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
 		ctyp := g.type_resolver.get_type(node.cond)
@@ -211,7 +209,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	if node.is_range {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
-		plus_plus_i := if is_safe_op {
+		plus_plus_i := if g.do_int_overflow_checks {
 			$if new_int ? && x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {
@@ -250,7 +248,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.writeln(';')
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		plus_plus_i := if is_safe_op {
+		plus_plus_i := if g.do_int_overflow_checks {
 			$if new_int ? && x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {
@@ -326,7 +324,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		plus_plus_idx := if is_safe_op {
+		plus_plus_idx := if g.do_int_overflow_checks {
 			$if new_int ? && x64 {
 				'${idx}=builtin__overflow__add_i64(${idx},1)'
 			} $else {
@@ -384,7 +382,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		dot_or_ptr := g.dot_or_ptr(node.cond_type)
 		idx := g.new_tmp_var()
-		plus_plus_idx := if is_safe_op {
+		plus_plus_idx := if g.do_int_overflow_checks {
 			$if new_int ? && x64 {
 				'${idx}=builtin__overflow__add_i64(${idx},1)'
 			} $else {
@@ -451,7 +449,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		plus_plus_i := if is_safe_op {
+		plus_plus_i := if g.do_int_overflow_checks {
 			$if new_int ? && x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {
@@ -491,7 +489,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.expr(node.cond)
 		g.writeln(';')
 		i := node.key_var
-		plus_plus_i := if is_safe_op {
+		plus_plus_i := if g.do_int_overflow_checks {
 			$if new_int ? && x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {

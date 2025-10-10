@@ -282,6 +282,7 @@ mut:
 	postinclude_nodes       []&ast.HashStmtNode // allows hash stmts to go after all the rest of the code generation
 	curr_comptime_node      &ast.Expr = unsafe { nil } // current `$if` expr
 	is_builtin_overflow_mod bool
+	do_int_overflow_checks  bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
 }
 
 @[heap]
@@ -3916,8 +3917,8 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			if node.auto_locked != '' {
 				g.writeln('sync__RwMutex_lock(&${node.auto_locked}->mtx);')
 			}
-			is_safe_inc := node.op == .inc && g.pref.is_check_overflow && !g.is_builtin_overflow_mod
-			is_safe_dec := node.op == .dec && g.pref.is_check_overflow && !g.is_builtin_overflow_mod
+			is_safe_inc := g.do_int_overflow_checks && node.op == .inc
+			is_safe_dec := g.do_int_overflow_checks && node.op == .dec
 			g.inside_map_postfix = true
 			if node.is_c2v_prefix {
 				g.write(node.op.str())
