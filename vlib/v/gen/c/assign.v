@@ -307,13 +307,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			scope: unsafe { nil }
 		}
 		mut cur_indexexpr := -1
-		is_safe_add_assign := node.op == .plus_assign && g.pref.is_check_overflow
-			&& g.unwrap_generic(var_type).is_int() && !g.is_builtin_overflow_mod
-		is_safe_sub_assign := node.op == .minus_assign && g.pref.is_check_overflow
-			&& g.unwrap_generic(var_type).is_int() && !g.is_builtin_overflow_mod
-		is_safe_mul_assign := node.op == .mult_assign && g.pref.is_check_overflow
-			&& g.unwrap_generic(var_type).is_int() && !g.is_builtin_overflow_mod
-
+		consider_int_overflow := g.do_int_overflow_checks && g.unwrap_generic(var_type).is_int()
+		is_safe_add_assign := node.op == .plus_assign && consider_int_overflow
+		is_safe_sub_assign := node.op == .minus_assign && consider_int_overflow
+		is_safe_mul_assign := node.op == .mult_assign && consider_int_overflow
 		left_sym := g.table.sym(g.unwrap_generic(var_type))
 		is_va_list = left_sym.language == .c && left_sym.name == 'C.va_list'
 		if mut left is ast.Ident {

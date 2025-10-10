@@ -1256,7 +1256,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	}
 	// do not use promoted_type for overflow detect
 	left_type := g.unwrap_generic(node.left_type)
-	checkoverflow_op := g.pref.is_check_overflow && !g.is_builtin_overflow_mod && left_type.is_int()
+	checkoverflow_op := g.do_int_overflow_checks && left_type.is_int()
 	is_safe_add := checkoverflow_op && node.op == .plus
 	is_safe_sub := checkoverflow_op && node.op == .minus
 	is_safe_mul := checkoverflow_op && node.op == .mul

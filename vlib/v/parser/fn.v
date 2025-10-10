@@ -213,6 +213,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_c2v_variadic := false
 	mut is_c_extern := false
 	mut is_markused := false
+	mut is_ignore_overflow := false
 	mut is_weak := false
 	mut is_expand_simple_interpolation := false
 	mut comments := []ast.Comment{}
@@ -263,6 +264,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 			'markused' {
 				is_markused = true
+			}
+			'ignore_overflow' {
+				is_ignore_overflow = true
 			}
 			'c_extern' {
 				is_c_extern = true
@@ -710,6 +714,7 @@ run them via `v file.v` instead',
 		is_unsafe:          is_unsafe
 		is_must_use:        is_must_use
 		is_markused:        is_markused
+		is_ignore_overflow: is_ignore_overflow
 		is_weak:            is_weak
 		is_file_translated: p.is_translated
 		//
