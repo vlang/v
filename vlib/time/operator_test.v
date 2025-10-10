@@ -371,7 +371,7 @@ fn test_time2_copied_from_time1_should_be_equal() {
 fn test_subtract() {
 	d_seconds := 3
 	d_nanoseconds := 13
-	duration := d_seconds * second + d_nanoseconds * nanosecond
+	duration := i64(d_seconds) * second + d_nanoseconds * nanosecond
 	t1 := new(Time{
 		year:       2000
 		month:      5
