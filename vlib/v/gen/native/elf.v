@@ -873,21 +873,7 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 	g.println('; call main.main')
 
 	// generate exit syscall
-	match g.pref.arch {
-		.arm64 {
-			g.cg.cg_mov(Arm64Register.x16, 0)
-			g.cg.cg_mov(Arm64Register.x0, 0)
-			g.cg.cg_syscall()
-		}
-		.amd64 {
-			g.cg.cg_mov(Amd64Register.edi, 0)
-			g.cg.cg_mov(Amd64Register.eax, g.nsyscall(.exit))
-			g.cg.cg_syscall()
-		}
-		else {
-			g.n_error('unsupported platform ${g.pref.arch}')
-		}
-	}
+	g.cg.cg_gen_exit(ast.IntegerLiteral{val: '0'})
 }
 
 pub fn (mut g Gen) elf_string_table() {

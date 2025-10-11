@@ -17,7 +17,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.ArrayInit {
 			pos := g.allocate_array('_anonarray', 8, i32(node.exprs.len))
-			g.cg.init_array(LocalVar{ offset: pos, typ: node.typ }, node)
+			g.cg.cg_init_array(LocalVar{ offset: pos, typ: node.typ }, node)
 			g.cg.cg_lea_var_to_reg(.reg0, pos)
 		}
 		ast.BoolLiteral {
@@ -40,7 +40,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.FloatLiteral {
 			val := g.eval.expr(node, ast.float_literal_type_idx).float_val()
-			g.cg.load_fp(val)
+			g.cg.cg_load_fp(val)
 		}
 		ast.Ident {
 			var := g.get_var_from_ident(node)
@@ -115,13 +115,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.v_error('native backend doesnt support threads yet', node.pos)
 		}
 		ast.MatchExpr {
-			g.cg.gen_match_expr(node)
+			g.cg.cg_gen_match_expr(node)
 		}
 		ast.SelectorExpr {
 			g.gen_selector_expr(node)
 		}
 		ast.CastExpr {
-			g.cg.gen_cast_expr(node)
+			g.cg.cg_gen_cast_expr(node)
 		}
 		ast.EnumVal {
 			type_name := g.table.get_type_name(node.typ)
@@ -152,9 +152,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.IndexExpr {
 			g.cg.cg_gen_index_expr(node)
 			if node.left_type.is_string() {
-				g.cg.cg_mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u8_type_idx)
+				g.cg.cg_mov_deref(.reg0, .reg0, ast.u8_type_idx)
 			} else {
-				g.cg.cg_mov_deref(Amd64Register.rax, Amd64Register.rax, node.typ)
+				g.cg.cg_mov_deref(.reg0, .reg0, node.typ)
 			}
 		}
 		else {
@@ -172,7 +172,7 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 	if g.is_register_type(var.typ) {
 		g.cg.cg_mov_var_to_reg(.reg0, ident)
 	} else if g.is_fp_type(var.typ) {
-		g.cg.load_fp_var(ident)
+		g.cg.cg_load_fp_var(ident)
 	} else {
 		ts := g.table.sym(g.unwrap(var.typ))
 		match ts.info {
@@ -484,7 +484,7 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 			for i, val in expr.vals {
 				g.cg.cg_gen_print(val, fd)
 				if i < expr.exprs.len {
-					g.cg_gen_print_from_expr(expr.exprs[i], expr.expr_types[i], printer)
+					g.gen_print_from_expr(expr.exprs[i], expr.expr_types[i], printer)
 				}
 			}
 
@@ -497,7 +497,7 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 				if branch := g.comptime_conditional(expr) {
 					for i, stmt in branch.stmts {
 						if i + 1 == branch.stmts.len && stmt is ast.ExprStmt {
-							g.cg_gen_print_from_expr(stmt.expr, stmt.typ, name)
+							g.gen_print_from_expr(stmt.expr, stmt.typ, name)
 						} else {
 							g.stmt(stmt)
 						}
@@ -540,13 +540,13 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 	match node {
 		ast.Ident {
 			offset := g.get_var_offset(node.name)
-			g.cg.cg_lea_var_to_reg(Amd64Register.rax, offset)
+			g.cg.cg_lea_var_to_reg(.reg0, offset)
 		}
 		ast.SelectorExpr {
 			g.expr(node.expr)
 			offset := g.get_field_offset(node.expr_type, node.field_name)
 			if offset != 0 {
-				g.cg.cg_add(Amd64Register.rax, offset)
+				g.cg.cg_add(.reg0, offset)
 			}
 		}
 		ast.StructInit {

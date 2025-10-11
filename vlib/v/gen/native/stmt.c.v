@@ -206,7 +206,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	if node.is_inf {
 		if node.stmts.len == 0 {
-			g.cg.infloop()
+			g.cg.cg_infloop()
 			return
 		}
 		// infinite loop

@@ -1133,7 +1133,7 @@ fn (mut c Amd64) cg_mov_var_to_reg(r Register, var Var, config VarConfig) {
 				}
 			}
 			far_var_offset := if is_far_var { i32(0x40) } else { i32(0) }
-			match reg as Amd64Register {
+			match reg.amd64() {
 				.eax, .rax { c.g.write8(0x45 + far_var_offset) }
 				.edi, .rdi { c.g.write8(0x7d + far_var_offset) }
 				.rsi { c.g.write8(0x75 + far_var_offset) }
@@ -1154,7 +1154,7 @@ fn (mut c Amd64) cg_mov_var_to_reg(r Register, var Var, config VarConfig) {
 				c.g.n_error('${@LOCATION} unsupported size of global var')
 			}
 			mut addr_reg := Amd64Register.rdx
-			if reg as Amd64Register == .rdx || reg as Amd64Register == .edx {
+			if reg.amd64() == .rdx || reg.amd64() == .edx {
 				addr_reg = .rax
 			}
 			c.push(addr_reg)
@@ -1221,7 +1221,7 @@ fn (mut c Amd64) cg_call(addr i32) i64 {
 }
 
 fn (mut c Amd64) call(addr i32) i64 {
-	rel := c.call_addr_at(addr, c.g.pos())
+	rel := c.cg_call_addr_at(addr, c.g.pos())
 	c_addr := c.g.pos()
 	// println('call addr=$addr.hex2() rel_addr=$rel.hex2() pos=$g.buf.len')
 	c.g.write8(0xe8)
@@ -2854,7 +2854,7 @@ fn (mut c Amd64) cg_gen_index_expr(node ast.IndexExpr) {
 		// add the index times the size (bytes) of the type
 		c.g.expr(node.index)
 		c.mov(.rbx, i32(c.g.get_type_size(node.typ)))
-		c.mul_reg_main(.rbx)
+		c.mul_reg_rax(.rbx)
 		c.add_reg(.rax, .rcx)
 	} else if node.is_array {
 		// TODO: use functions from builtin instead (array.set, array.get...)
@@ -2867,7 +2867,7 @@ fn (mut c Amd64) cg_gen_index_expr(node ast.IndexExpr) {
 		// add the index times the size (bytes) of the type
 		c.g.expr(node.index)
 		c.mov(.rbx, i32(c.g.get_type_size(node.typ)))
-		c.mul_reg_main(.rbx)
+		c.mul_reg_rax(.rbx)
 		c.add_reg(.rax, .rcx)
 	} else {
 		c.g.n_error('${@LOCATION} index expr: unhandled node type {node}')
@@ -4052,7 +4052,7 @@ fn (mut c Amd64) cg_fn_decl(node ast.FnDecl) {
 	if is_main && c.g.pref.os != .linux {
 		// println('end of main: gen exit')
 		zero := ast.IntegerLiteral{'0', node.pos}
-		c.gen_exit(zero)
+		c.cg_gen_exit(zero)
 		c.ret()
 		return
 	}
@@ -4328,23 +4328,23 @@ fn (mut c Amd64) cg_init_array(var Var, node ast.ArrayInit) {
 			var_object := c.g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					c.init_array(var_object as LocalVar, node)
+					c.cg_init_array(var_object as LocalVar, node)
 				}
 				GlobalVar {
-					c.init_array(var_object as GlobalVar, node)
+					c.cg_init_array(var_object as GlobalVar, node)
 				}
 				Register {
 					// TODO
 					// c.g.cmp()
 				}
 				ExternVar {
-					c.init_array(var_object as ExternVar, node)
+					c.cg_init_array(var_object as ExternVar, node)
 				}
 				PreprocVar {
-					c.init_array(var_object as PreprocVar, node)
+					c.cg_init_array(var_object as PreprocVar, node)
 				}
 				ConstVar {
-					c.init_array(var_object as ConstVar, node)
+					c.cg_init_array(var_object as ConstVar, node)
 				}
 			}
 		}
@@ -5080,13 +5080,13 @@ fn (mut c Amd64) cg_gen_cast_expr(expr ast.CastExpr) {
 }
 
 fn (mut c Amd64) cg_cmp_to_stack_top(reg Register) {
-	second_reg := if reg as Amd64Register == Amd64Register.rbx {
+	second_reg := if reg.amd64() == Amd64Register.rbx {
 		Amd64Register.rax
 	} else {
 		Amd64Register.rbx
 	}
 	c.pop(second_reg)
-	c.cmp_reg(second_reg, reg as Amd64Register)
+	c.cmp_reg(second_reg, reg.amd64())
 }
 
 // Temporary!

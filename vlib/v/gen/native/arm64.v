@@ -39,19 +39,28 @@ enum Arm64Register {
 	x30 // LR - link register
 }
 
+fn (r Register) arm64() Arm64Register {
+	return match r {
+		.reg0 { .x0 }
+		.reg1 { .x1 }
+		.reg2 { .x2 }
+		.reg3 { .x3 }
+	}
+}
+
 pub struct Arm64 {
 mut:
 	g &Gen = unsafe { nil }
 	// arm64 specific stuff for code generation
 }
 
-fn (mut x Arm64) allocate_var(name string, size i32, initial_val Number) i32 {
+fn (mut x Arm64) cg_allocate_var(name string, size i32, initial_val Number) i32 {
 	eprintln('TODO: allocating var on arm64 (${name}) = ${size} = ${initial_val}')
 	return 0
 }
 
 fn (mut c Arm64) cg_mov(reg Register, val i32) {
-	c.mov_arm(reg as Arm64Register, u64(val))
+	c.mov_arm(reg.arm64(), u64(val))
 }
 
 fn (mut c Arm64) mov_arm(reg Arm64Register, val u64) {
@@ -234,7 +243,7 @@ pub fn (mut c Arm64) cg_call_fn(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_arm64_helloworld() {
-	mut c := g.code_gen
+	mut c := g.cg
 	if g.pref.os == .linux {
 		c.mov(Arm64Register.x0, 1)
 		c.adr(Arm64Register.x1, 0x10)
@@ -252,7 +261,7 @@ fn (mut g Gen) gen_arm64_helloworld() {
 		c.svc()
 	}
 	zero := ast.IntegerLiteral{}
-	g.cg.gen_exit(zero)
+	g.cg.cg_gen_exit(zero)
 	g.write_string('Hello World!\n')
 	g.write8(0) // padding?
 	g.write8(0)
@@ -284,7 +293,7 @@ fn (mut c Arm64) cg_syscall() {
 	panic('the `syscall` instruction is not available with arm64')
 }
 
-pub fn (mut c Arm64) gen_exit(expr ast.Expr) {
+pub fn (mut c Arm64) cg_gen_exit(expr ast.Expr) {
 	mut return_code := u64(0)
 	match expr {
 		ast.IntegerLiteral {
@@ -344,8 +353,8 @@ fn (mut c Arm64) cg_lea_var_to_reg(reg Register, var_offset i32) {
 	panic('Arm64.cg_lea_var_to_reg() not implemented')
 }
 
-fn (mut c Arm64) gen_match_expr(expr ast.MatchExpr) {
-	panic('Arm64.gen_match_expr() not implemented')
+fn (mut c Arm64) cg_gen_match_expr(expr ast.MatchExpr) {
+	panic('Arm64.cg_gen_match_expr() not implemented')
 }
 
 fn (mut c Arm64) cg_convert_int_to_string(a Register, b Register) {
@@ -414,15 +423,15 @@ fn (mut c Arm64) cg_prefix_expr(expr ast.PrefixExpr) {
 	panic('Arm64.cg_prefix_expr() not implemented')
 }
 
-fn (mut c Arm64) call_builtin(name Builtin) i64 {
-	panic('Arm64.call_builtin() not implemented')
+fn (mut c Arm64) cg_call_builtin(name Builtin) i64 {
+	panic('Arm64.cg_call_builtin() not implemented')
 }
 
 fn (mut c Arm64) cg_gen_asm_stmt(asm_node ast.AsmStmt) {
 	panic('Arm64.cg_gen_asm_stmt() not implemented')
 }
 
-fn (mut c Arm64) infloop() {
+fn (mut c Arm64) cg_infloop() {
 	c.g.write32(u8(0x14))
 	c.g.println('jmp $$')
 }
@@ -435,16 +444,16 @@ fn (mut c Arm64) cg_init_struct(var Var, init ast.StructInit) {
 	panic('Arm64.cg_init_struct() not implemented')
 }
 
-fn (mut c Arm64) init_array(var Var, init ast.ArrayInit) {
-	panic('Arm64.init_array() not implemented')
+fn (mut c Arm64) cg_init_array(var Var, init ast.ArrayInit) {
+	panic('Arm64.cg_init_array() not implemented')
 }
 
-fn (mut c Arm64) load_fp_var(var Var, config VarConfig) {
-	panic('Arm64.load_fp_var() not implemented')
+fn (mut c Arm64) cg_load_fp_var(var Var, config VarConfig) {
+	panic('Arm64.cg_load_fp_var() not implemented')
 }
 
-fn (mut c Arm64) load_fp(val f64) {
-	panic('Arm64.load_fp() not implemented')
+fn (mut c Arm64) cg_load_fp(val f64) {
+	panic('Arm64.cg_load_fp() not implemented')
 }
 
 fn (mut c Arm64) for_in_stmt(node ast.ForInStmt) {
@@ -467,8 +476,8 @@ fn (mut c Arm64) cg_dec_var(var Var, config VarConfig) {
 	panic('Arm64.cg_dec_var() not implemented')
 }
 
-fn (mut c Arm64) inc_var(var Var, config VarConfig) {
-	panic('Arm64.inc_var() not implemented')
+fn (mut c Arm64) cg_inc_var(var Var, config VarConfig) {
+	panic('Arm64.cg_inc_var() not implemented')
 }
 
 fn (mut c Arm64) cg_cjmp(op JumpOp) i32 {
@@ -507,8 +516,8 @@ fn (mut c Arm64) cg_zero_fill(size i32, var LocalVar) {
 	panic('Arm64.cg_zero_fill() not implemented')
 }
 
-fn (mut c Arm64) call_addr_at(addr i32, at i64) i64 {
-	panic('Arm64.call_addr_at() not implemented')
+fn (mut c Arm64) cg_call_addr_at(addr i32, at i64) i64 {
+	panic('Arm64.cg_call_addr_at() not implemented')
 }
 
 fn (mut c Arm64) cg_cmp_to_stack_top(reg Register) {
@@ -543,12 +552,12 @@ fn (mut c Arm64) cg_mov_deref(reg Register, regptr Register, typ ast.Type) {
 	panic('Arm64.cg_mov_deref() not implemented')
 }
 
-fn (mut c Arm64) patch_relative_jmp(pos i32, addr i64) {
-	panic('Arm64.patch_relative_jmp() not implemented')
+fn (mut c Arm64) cg_patch_relative_jmp(pos i32, addr i64) {
+	panic('Arm64.cg_patch_relative_jmp() not implemented')
 }
 
-fn (mut c Arm64) mul_reg_main(b Register) {
-	panic('Arm64.mul_reg_main() not implemented')
+fn (mut c Arm64) cg_mul_reg(a Register, b Register) {
+	panic('Arm64.cg_mul_reg() not implemented')
 }
 
 fn (mut c Arm64) cg_gen_index_expr(node ast.IndexExpr) {

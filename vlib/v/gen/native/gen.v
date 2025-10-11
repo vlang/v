@@ -1142,7 +1142,7 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 
 		arg0_reg := g.get_builtin_arg_reg(.int_to_string, 0)
 		if arg0_reg != reg {
-			g.cg.mov_reg(arg0_reg, reg)
+			g.cg.cg_mov_reg(arg0_reg, reg)
 		}
 
 		g.call_builtin(.int_to_string)
@@ -1150,12 +1150,12 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 	} else if typ.is_bool() {
 		arg_reg := g.get_builtin_arg_reg(.bool_to_string, 0)
 		if arg_reg != reg {
-			g.cg.mov_reg(arg_reg, reg)
+			g.cg.cg_mov_reg(arg_reg, reg)
 		}
 		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
 		if reg != .reg0 {
-			g.cg.mov_reg(.reg0, reg)
+			g.cg.cg_mov_reg(.reg0, reg)
 		}
 	} else {
 		g.n_error('${@LOCATION} int-to-string conversion not implemented for type ${typ}')
@@ -1227,7 +1227,7 @@ fn (mut g Gen) patch_labels() {
 			return
 		}
 
-		g.cg.patch_relative_jmp(label.pos, addr)
+		g.cg.cg_patch_relative_jmp(label.pos, addr)
 	}
 }
 
