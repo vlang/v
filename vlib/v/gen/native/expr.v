@@ -17,16 +17,16 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.ArrayInit {
 			pos := g.allocate_array('_anonarray', 8, i32(node.exprs.len))
-			g.code_gen.init_array(LocalVar{ offset: pos, typ: node.typ }, node)
-			g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), pos)
+			g.cg.init_array(LocalVar{ offset: pos, typ: node.typ }, node)
+			g.cg.cg_lea_var_to_reg(.reg0, pos)
 		}
 		ast.BoolLiteral {
-			g.code_gen.mov64(g.code_gen.main_reg(), i64(node.val))
+			g.cg.cg_mov64(.reg0, i64(node.val))
 		}
 		ast.CallExpr {
 			match node.name {
 				'C.syscall' {
-					g.code_gen.gen_syscall(node)
+					g.cg.cg_gen_syscall(node)
 				}
 				'println', 'print', 'eprintln', 'eprint' {
 					expr := node.args[0].expr
@@ -34,13 +34,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.gen_print_from_expr(expr, typ, node.name)
 				}
 				else {
-					g.code_gen.call_fn(node)
+					g.cg.cg_call_fn(node)
 				}
 			}
 		}
 		ast.FloatLiteral {
 			val := g.eval.expr(node, ast.float_literal_type_idx).float_val()
-			g.code_gen.load_fp(val)
+			g.cg.load_fp(val)
 		}
 		ast.Ident {
 			var := g.get_var_from_ident(node)
@@ -69,30 +69,30 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.if_expr(node)
 		}
 		ast.InfixExpr {
-			g.code_gen.infix_expr(node)
+			g.cg.cg_infix_expr(node)
 		}
 		ast.IntegerLiteral {
 			// Integer literal stores both signed and unsigned integers, some unsigned integers are too big for i64 but not for u64
 			// println(node.val)
 			if node.val.len > 0 && node.val[0] == `-` { // if the number is negative
-				g.code_gen.mov64(g.code_gen.main_reg(), node.val.i64())
+				g.cg.cg_mov64(.reg0, node.val.i64())
 			} else {
-				g.code_gen.mov64(g.code_gen.main_reg(), node.val.u64())
+				g.cg.cg_mov64(.reg0, node.val.u64())
 			}
 		}
 		ast.Nil {
-			g.code_gen.mov64(g.code_gen.main_reg(), i64(0))
+			g.cg.cg_mov64(.reg0, i64(0))
 		}
 		ast.PostfixExpr {
 			g.postfix_expr(node)
 		}
 		ast.PrefixExpr {
-			g.code_gen.prefix_expr(node)
+			g.cg.cg_prefix_expr(node)
 		}
 		ast.StringLiteral {
 			str := g.eval_str_lit_escape_codes(node)
-			pos := g.code_gen.create_string_struct(ast.string_type_idx, 'str_lit', str)
-			g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), pos)
+			pos := g.cg.cg_create_string_struct(ast.string_type_idx, 'str_lit', str)
+			g.cg.cg_lea_var_to_reg(.reg0, pos)
 		}
 		ast.CharLiteral {
 			bytes := g.eval_escape_codes(node.val)
@@ -104,24 +104,24 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.n_error('${@LOCATION} runes are only 4 bytes wide')
 				}
 			}
-			g.code_gen.movabs(g.code_gen.main_reg(), i64(val))
+			g.cg.cg_movabs(.reg0, i64(val))
 		}
 		ast.StructInit {
 			pos := g.allocate_by_type('_anonstruct', node.typ)
-			g.code_gen.init_struct(LocalVar{ offset: pos, typ: node.typ }, node)
-			g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), pos)
+			g.cg.cg_init_struct(LocalVar{ offset: pos, typ: node.typ }, node)
+			g.cg.cg_lea_var_to_reg(.reg0, pos)
 		}
 		ast.GoExpr {
 			g.v_error('native backend doesnt support threads yet', node.pos)
 		}
 		ast.MatchExpr {
-			g.code_gen.gen_match_expr(node)
+			g.cg.gen_match_expr(node)
 		}
 		ast.SelectorExpr {
 			g.gen_selector_expr(node)
 		}
 		ast.CastExpr {
-			g.code_gen.gen_cast_expr(node)
+			g.cg.gen_cast_expr(node)
 		}
 		ast.EnumVal {
 			type_name := g.table.get_type_name(node.typ)
@@ -130,7 +130,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			match val {
 				Number {
-					g.code_gen.mov64(g.code_gen.main_reg(), val)
+					g.cg.cg_mov64(.reg0, val)
 				}
 				ast.Expr {
 					g.expr(val)
@@ -150,11 +150,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.gen_sizeof_expr(node)
 		}
 		ast.IndexExpr {
-			g.code_gen.gen_index_expr(node)
+			g.cg.cg_gen_index_expr(node)
 			if node.left_type.is_string() {
-				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u8_type_idx)
+				g.cg.cg_mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u8_type_idx)
 			} else {
-				g.code_gen.mov_deref(Amd64Register.rax, Amd64Register.rax, node.typ)
+				g.cg.cg_mov_deref(Amd64Register.rax, Amd64Register.rax, node.typ)
 			}
 		}
 		else {
@@ -170,20 +170,20 @@ fn (mut g Gen) expr(node ast.Expr) {
 
 fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 	if g.is_register_type(var.typ) {
-		g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
+		g.cg.cg_mov_var_to_reg(.reg0, ident)
 	} else if g.is_fp_type(var.typ) {
-		g.code_gen.load_fp_var(ident)
+		g.cg.load_fp_var(ident)
 	} else {
 		ts := g.table.sym(g.unwrap(var.typ))
 		match ts.info {
 			ast.Struct {
-				g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), g.get_var_offset(ident.name))
+				g.cg.cg_lea_var_to_reg(.reg0, g.get_var_offset(ident.name))
 			}
 			ast.Enum {
-				g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
+				g.cg.cg_mov_var_to_reg(.reg0, ident)
 			}
 			ast.Array {
-				g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), g.get_var_offset(ident.name))
+				g.cg.cg_lea_var_to_reg(.reg0, g.get_var_offset(ident.name))
 			}
 			else {
 				g.n_error('${@LOCATION} Unsupported variable type ${ts.info}')
@@ -194,7 +194,7 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 
 fn (mut g Gen) global_var_ident(ident ast.Ident, var GlobalVar) {
 	if g.is_register_type(var.typ) {
-		g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
+		g.cg.cg_mov_var_to_reg(.reg0, ident)
 	} else {
 		g.n_error('${@LOCATION} Unsupported variable type ${ident} ${var}')
 	}
@@ -202,14 +202,14 @@ fn (mut g Gen) global_var_ident(ident ast.Ident, var GlobalVar) {
 
 fn (mut g Gen) const_var_ident(ident ast.Ident, var ConstVar) {
 	if g.is_register_type(var.typ) {
-		g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
+		g.cg.cg_mov_var_to_reg(.reg0, ident)
 	} else if g.is_fp_type(var.typ) {
 		g.n_error('${@LOCATION} Unsupported variable type ${ident} ${var}')
 	} else {
 		ts := g.table.sym(g.unwrap(var.typ))
 		match ts.info {
 			ast.Struct {
-				g.code_gen.mov_var_to_reg(g.code_gen.main_reg(), ident)
+				g.cg.cg_mov_var_to_reg(.reg0, ident)
 			}
 			else {
 				g.n_error('${@LOCATION} Unsupported variable type ${ident} ${var} ${ts.info}')
@@ -220,10 +220,9 @@ fn (mut g Gen) const_var_ident(ident ast.Ident, var ConstVar) {
 
 fn (mut g Gen) extern_var_ident(var ExternVar) {
 	if g.pref.os == .linux {
-		main_reg := g.code_gen.main_reg()
 		g.extern_vars[g.pos() + 2] = var.name // + 2 for the mov64 instruction
-		g.code_gen.mov64(main_reg, Number(i64(0)))
-		g.code_gen.mov_deref(main_reg, main_reg, ast.u64_type_idx)
+		g.cg.cg_mov64(.reg0, Number(i64(0)))
+		g.cg.cg_mov_deref(.reg0, .reg0, ast.u64_type_idx)
 	} else if g.pref.os == .macos {
 		eprintln('## TODO, macos, extern_var_ident, var: ${var}')
 	} else {
@@ -232,15 +231,14 @@ fn (mut g Gen) extern_var_ident(var ExternVar) {
 }
 
 fn (mut g Gen) preproc_var_ident(var PreprocVar) {
-	main_reg := g.code_gen.main_reg()
-	g.code_gen.mov64(main_reg, var.val)
+	g.cg.cg_mov64(.reg0, var.val)
 }
 
 fn (mut g Gen) condition(expr ast.Expr, neg bool) i32 {
 	g.println('; condition cjmp if ${neg}:')
 	g.expr(expr)
-	g.code_gen.cmp_zero(g.code_gen.main_reg()) // 0 is false
-	return g.code_gen.cjmp(if neg { .jne } else { .je })
+	g.cg.cg_cmp_zero(.reg0) // 0 is false
+	return g.cg.cg_cjmp(if neg { .jne } else { .je })
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
@@ -279,7 +277,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.println('; jump to label ${label}')
 			g.stmts(branch.stmts)
 			if has_endif {
-				jump_addr := g.code_gen.jmp(0)
+				jump_addr := g.cg.cg_jmp(0)
 				g.labels.patches << LabelPatch{
 					id:  endif_label
 					pos: jump_addr
@@ -304,10 +302,10 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
 	ident := node.expr as ast.Ident
 	match node.op {
 		.inc {
-			g.code_gen.inc_var(ident)
+			g.cg.cg_inc_var(ident)
 		}
 		.dec {
-			g.code_gen.dec_var(ident)
+			g.cg.cg_dec_var(ident)
 		}
 		else {}
 	}
@@ -375,7 +373,7 @@ fn (mut g Gen) gen_typeof_expr(node ast.TypeOf, newline bool) {
 		}
 	}
 
-	g.code_gen.learel(g.code_gen.main_reg(), g.allocate_string('${str}${nl}', 3, .rel32))
+	g.cg.cg_learel(.reg0, g.allocate_string('${str}${nl}', 3, .rel32))
 }
 
 fn (mut g Gen) gen_sizeof_expr(node ast.SizeOf) {
@@ -383,7 +381,7 @@ fn (mut g Gen) gen_sizeof_expr(node ast.SizeOf) {
 	if ts.language == .v && ts.kind in [.placeholder, .any] {
 		g.v_error('unknown type `${ts.name}`', node.pos)
 	}
-	g.code_gen.mov64(g.code_gen.main_reg(), i64(g.get_type_size(node.typ)))
+	g.cg.cg_mov64(.reg0, i64(g.get_type_size(node.typ)))
 }
 
 fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
@@ -393,46 +391,45 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 		ast.StringLiteral {
 			str := g.eval_str_lit_escape_codes(expr)
 			if newline {
-				g.code_gen.gen_print(str + '\n', fd)
+				g.cg.cg_gen_print(str + '\n', fd)
 			} else {
-				g.code_gen.gen_print(str, fd)
+				g.cg.cg_gen_print(str, fd)
 			}
 		}
 		ast.Nil {
 			str := '0x0'
 			if newline {
-				g.code_gen.gen_print(str + '\n', fd)
+				g.cg.cg_gen_print(str + '\n', fd)
 			} else {
-				g.code_gen.gen_print(str, fd)
+				g.cg.cg_gen_print(str, fd)
 			}
 		}
 		ast.CharLiteral {
 			str := g.eval_escape_codes(expr.val)
 			if newline {
-				g.code_gen.gen_print(str + '\n', fd)
+				g.cg.cg_gen_print(str + '\n', fd)
 			} else {
-				g.code_gen.gen_print(str, fd)
+				g.cg.cg_gen_print(str, fd)
 			}
 		}
 		ast.Ident {
 			vo := g.try_var_offset(expr.name)
 
-			reg := g.code_gen.main_reg()
 			if vo != -1 {
-				g.gen_var_to_string(reg, expr, expr as ast.Ident)
-				g.code_gen.gen_print_reg(reg, -1, fd)
+				g.gen_var_to_string(.reg0, expr, expr as ast.Ident)
+				g.cg.cg_gen_print_reg(.reg0, -1, fd)
 				if newline {
-					g.code_gen.gen_print('\n', fd)
+					g.cg.cg_gen_print('\n', fd)
 				}
 			} else {
-				g.code_gen.gen_print_reg(reg, -1, fd)
+				g.cg.cg_gen_print_reg(.reg0, -1, fd)
 			}
 		}
 		ast.IntegerLiteral {
 			if newline {
-				g.code_gen.gen_print('${expr.val}\n', fd)
+				g.cg.cg_gen_print('${expr.val}\n', fd)
 			} else {
-				g.code_gen.gen_print('${expr.val}', fd)
+				g.cg.cg_gen_print('${expr.val}', fd)
 			}
 		}
 		ast.BoolLiteral {
@@ -441,17 +438,17 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 			nl := if newline { '\n' } else { '' }
 
 			if expr.val {
-				g.code_gen.gen_print('true' + nl, fd)
+				g.cg.cg_gen_print('true' + nl, fd)
 			} else {
-				g.code_gen.gen_print('false' + nl, fd)
+				g.cg.cg_gen_print('false' + nl, fd)
 			}
 		}
 		ast.SizeOf {
 			size := g.get_type_size(expr.typ)
 			if newline {
-				g.code_gen.gen_print('${size}\n', fd)
+				g.cg.cg_gen_print('${size}\n', fd)
 			} else {
-				g.code_gen.gen_print('${size}', fd)
+				g.cg.cg_gen_print('${size}', fd)
 			}
 		}
 		ast.OffsetOf {
@@ -460,9 +457,9 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 			if styp.kind == .struct {
 				off := g.get_field_offset(expr.struct_type, field_name)
 				if newline {
-					g.code_gen.gen_print('${off}\n', fd)
+					g.cg.cg_gen_print('${off}\n', fd)
 				} else {
-					g.code_gen.gen_print('${off}', fd)
+					g.cg.cg_gen_print('${off}', fd)
 				}
 			} else {
 				g.v_error('_offsetof expects a struct Type as first argument', expr.pos)
@@ -470,29 +467,29 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 		}
 		ast.None {
 			if newline {
-				g.code_gen.gen_print('<none>\n', fd)
+				g.cg.cg_gen_print('<none>\n', fd)
 			} else {
-				g.code_gen.gen_print('<none>', fd)
+				g.cg.cg_gen_print('<none>', fd)
 			}
 		}
 		ast.AtExpr {
 			if newline {
-				g.code_gen.gen_print(g.comptime_at(expr) + '\n', fd)
+				g.cg.cg_gen_print(g.comptime_at(expr) + '\n', fd)
 			} else {
-				g.code_gen.gen_print(g.comptime_at(expr), fd)
+				g.cg.cg_gen_print(g.comptime_at(expr), fd)
 			}
 		}
 		ast.StringInterLiteral {
 			printer := if fd == 1 { 'print' } else { 'eprint' }
 			for i, val in expr.vals {
-				g.code_gen.gen_print(val, fd)
+				g.cg.cg_gen_print(val, fd)
 				if i < expr.exprs.len {
-					g.gen_print_from_expr(expr.exprs[i], expr.expr_types[i], printer)
+					g.cg_gen_print_from_expr(expr.exprs[i], expr.expr_types[i], printer)
 				}
 			}
 
 			if newline {
-				g.code_gen.gen_print('\n', fd)
+				g.cg.cg_gen_print('\n', fd)
 			}
 		}
 		ast.IfExpr {
@@ -500,7 +497,7 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 				if branch := g.comptime_conditional(expr) {
 					for i, stmt in branch.stmts {
 						if i + 1 == branch.stmts.len && stmt is ast.ExprStmt {
-							g.gen_print_from_expr(stmt.expr, stmt.typ, name)
+							g.cg_gen_print_from_expr(stmt.expr, stmt.typ, name)
 						} else {
 							g.stmt(stmt)
 						}
@@ -514,10 +511,10 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 		}
 		else {
 			g.expr(expr)
-			g.gen_to_string(g.code_gen.main_reg(), typ)
-			g.code_gen.gen_print_reg(g.code_gen.main_reg(), -1, fd)
+			g.gen_to_string(.reg0, typ)
+			g.cg.cg_gen_print_reg(.reg0, -1, fd)
 			if newline {
-				g.code_gen.gen_print('\n', fd)
+				g.cg.cg_gen_print('\n', fd)
 			}
 		}
 	}
@@ -525,16 +522,15 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 
 fn (mut g Gen) gen_selector_expr(expr ast.SelectorExpr) {
 	g.println('; .${expr.field_name} {')
-	main_reg := g.code_gen.main_reg()
 	g.expr(expr.expr)
 	offset := g.get_field_offset(expr.expr_type, expr.field_name)
 	if offset != 0 {
-		g.code_gen.add(main_reg, offset)
+		g.cg.cg_add(.reg0, offset)
 	}
 	if expr.next_token != .dot { // the deref needs to be on the last selector (that has no . after it)
 		ts := g.table.sym(expr.typ)
 		if ts.info !is ast.Struct {
-			g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+			g.cg.cg_mov_deref(.reg0, .reg0, expr.typ)
 		}
 	}
 	g.println('; .${expr.field_name} }')
@@ -544,13 +540,13 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 	match node {
 		ast.Ident {
 			offset := g.get_var_offset(node.name)
-			g.code_gen.lea_var_to_reg(Amd64Register.rax, offset)
+			g.cg.cg_lea_var_to_reg(Amd64Register.rax, offset)
 		}
 		ast.SelectorExpr {
 			g.expr(node.expr)
 			offset := g.get_field_offset(node.expr_type, node.field_name)
 			if offset != 0 {
-				g.code_gen.add(Amd64Register.rax, offset)
+				g.cg.cg_add(Amd64Register.rax, offset)
 			}
 		}
 		ast.StructInit {
@@ -560,7 +556,7 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 			g.expr(node) // TODO: add a test that uses this
 		}
 		ast.IndexExpr {
-			g.code_gen.gen_index_expr(node)
+			g.cg.cg_gen_index_expr(node)
 		}
 		ast.PrefixExpr {
 			if node.op != .mul {

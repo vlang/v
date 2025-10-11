@@ -102,10 +102,10 @@ const amd64_cpuregs = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
 
 fn (r Register) amd64() Amd64Register {
 	return match r {
-		reg0 { .rax }
-		reg1 { .rcx }
-		reg2 { .rdx }
-		reg3 { .rbx }
+		.reg0 { .rax }
+		.reg1 { .rcx }
+		.reg2 { .rdx }
+		.reg3 { .rbx }
 	}
 }
 
@@ -624,7 +624,7 @@ fn (mut c Amd64) jmp(addr i32) i32 {
 }
 
 fn (mut c Amd64) cg_jmp_back(start i64) {
-	return c.jmp_back(start)
+	c.jmp_back(start)
 }
 
 fn (mut c Amd64) jmp_back(start i64) {
@@ -664,7 +664,7 @@ fn (mut c Amd64) mov32(reg Amd64Register, val i32) {
 }
 
 fn (mut c Amd64) cg_mov64(reg Register, val Number) {
-	return c.mov64(reg.amd64(), val)
+	c.mov64(reg.amd64(), val)
 }
 
 fn (mut c Amd64) mov64(reg Amd64Register, val Number) {
@@ -709,7 +709,7 @@ fn (mut c Amd64) mov64(reg Amd64Register, val Number) {
 }
 
 fn (mut c Amd64) cg_movabs(r Register, val i64) {
-	return c.movabs(r.amd64(), val)
+	c.movabs(r.amd64(), val)
 }
 
 fn (mut c Amd64) movabs(reg Amd64Register, val i64) {
@@ -772,23 +772,23 @@ fn (mut c Amd64) cg_mov_reg_to_var(var Var, r Register, config VarConfig) {
 			var_object := c.g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					c.mov_reg_to_var(var_object as LocalVar, reg, config)
+					c.cg_mov_reg_to_var(var_object as LocalVar, r, config)
 				}
 				GlobalVar {
-					c.mov_reg_to_var(var_object as GlobalVar, reg, config)
+					c.cg_mov_reg_to_var(var_object as GlobalVar, r, config)
 				}
 				Register {
 					// TODO
 					c.g.n_error('${@LOCATION} unsupported Ident Register')
 				}
 				ExternVar {
-					c.mov_reg_to_var(var_object as ExternVar, reg, config)
+					c.cg_mov_reg_to_var(var_object as ExternVar, r, config)
 				}
 				PreprocVar {
-					c.mov_reg_to_var(var_object as PreprocVar, reg, config)
+					c.cg_mov_reg_to_var(var_object as PreprocVar, r, config)
 				}
 				ConstVar {
-					c.mov_reg_to_var(var_object as ConstVar, reg, config)
+					c.cg_mov_reg_to_var(var_object as ConstVar, r, config)
 				}
 			}
 		}
@@ -917,22 +917,22 @@ fn (mut c Amd64) cg_mov_int_to_var(var Var, integer i32, config VarConfig) {
 			var_object := c.g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					c.mov_int_to_var(var_object as LocalVar, integer, config)
+					c.cg_mov_int_to_var(var_object as LocalVar, integer, config)
 				}
 				GlobalVar {
-					c.mov_int_to_var(var_object as GlobalVar, integer, config)
+					c.cg_mov_int_to_var(var_object as GlobalVar, integer, config)
 				}
 				Register {
 					// TODO
 				}
 				ExternVar {
-					c.mov_int_to_var(var_object as ExternVar, integer, config)
+					c.cg_mov_int_to_var(var_object as ExternVar, integer, config)
 				}
 				PreprocVar {
-					c.mov_int_to_var(var_object as PreprocVar, integer, config)
+					c.cg_mov_int_to_var(var_object as PreprocVar, integer, config)
 				}
 				ConstVar {
-					c.mov_int_to_var(var_object as ConstVar, integer, config)
+					c.cg_mov_int_to_var(var_object as ConstVar, integer, config)
 				}
 			}
 		}
@@ -1070,22 +1070,22 @@ fn (mut c Amd64) cg_mov_var_to_reg(r Register, var Var, config VarConfig) {
 			var_object := c.g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					c.mov_var_to_reg(reg, var_object as LocalVar, config)
+					c.cg_mov_var_to_reg(r, var_object as LocalVar, config)
 				}
 				GlobalVar {
-					c.mov_var_to_reg(reg, var_object as GlobalVar, config)
+					c.cg_mov_var_to_reg(r, var_object as GlobalVar, config)
 				}
 				Register {
 					// TODO
 				}
 				ExternVar {
-					c.mov_var_to_reg(reg, var_object as ExternVar, config)
+					c.cg_mov_var_to_reg(r, var_object as ExternVar, config)
 				}
 				PreprocVar {
-					c.mov_var_to_reg(reg, var_object as PreprocVar, config)
+					c.cg_mov_var_to_reg(r, var_object as PreprocVar, config)
 				}
 				ConstVar {
-					c.mov_var_to_reg(reg, var_object as ConstVar, config)
+					c.cg_mov_var_to_reg(r, var_object as ConstVar, config)
 				}
 			}
 		}
@@ -1490,7 +1490,7 @@ fn (mut c Amd64) cg_leave() {
 		for defer_stmt in c.g.defer_stmts.reverse() {
 			name := '_defer${defer_stmt.idx_in_fn}'
 			defer_var := c.g.get_var_offset(name)
-			c.mov_var_to_reg(.rax, LocalVar{defer_var, ast.i64_type_idx, name})
+			c.cg_mov_var_to_reg(.reg0, LocalVar{defer_var, ast.i64_type_idx, name})
 			c.cmp_zero(.rax)
 			label := c.g.labels.new_label()
 			jump_addr := c.cjmp(.je)
@@ -2230,24 +2230,24 @@ pub fn (mut c Amd64) cg_call_fn(node ast.CallExpr) {
 	if ts.kind in [.struct, .multi_return] {
 		match return_size {
 			1...7 {
-				c.mov_var_to_reg(.rdx, LocalVar{
+				c.cg_mov_var_to_reg(.rdx, LocalVar{
 					offset: return_pos
 					typ:    ast.i64_type_idx
 				})
 				c.movabs(.rcx, i64(0xffffffffffffffff - (u64(1) << (return_size * 8)) + 1))
 				c.bitand_reg(.rdx, .rcx)
 				c.bitor_reg(.rdx, .rax)
-				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rdx)
 			}
 			8 {
-				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rax)
 			}
 			9...15 {
-				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rax)
-				c.mov_var_to_reg(.rax, LocalVar{
+				c.cg_mov_var_to_reg(.rax, LocalVar{
 					offset: return_pos
 					typ:    ast.i64_type_idx
 				},
@@ -2256,15 +2256,15 @@ pub fn (mut c Amd64) cg_call_fn(node ast.CallExpr) {
 				c.movabs(.rcx, i64(0xffffffffffffffff - (u64(1) << (return_size * 8)) + 1))
 				c.bitand_reg(.rax, .rcx)
 				c.bitor_reg(.rax, .rdx)
-				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rax,
 					offset: 8
 				)
 			}
 			16 {
-				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rax)
-				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rdx,
 					offset: 8
 				)
@@ -2304,7 +2304,7 @@ fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s i32) {
 	mut offset := i32(0)
 	for size >= 8 {
 		c.mov_deref(.rbx, .rax, ast.u64_type_idx)
-		c.mov_reg_to_var(var, .rbx,
+		c.cg_mov_reg_to_var(var, .rbx,
 			offset: offset
 			typ:    ast.u64_type_idx
 		)
@@ -2316,7 +2316,7 @@ fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s i32) {
 
 	if size >= 4 {
 		c.mov_deref(.rbx, .rax, ast.u32_type_idx)
-		c.mov_reg_to_var(var, .rbx,
+		c.cg_mov_reg_to_var(var, .rbx,
 			offset: offset
 			typ:    ast.u32_type_idx
 		)
@@ -2328,7 +2328,7 @@ fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s i32) {
 
 	if size >= 2 {
 		c.mov_deref(.rbx, .rax, ast.u16_type_idx)
-		c.mov_reg_to_var(var, .rbx,
+		c.cg_mov_reg_to_var(var, .rbx,
 			offset: offset
 			typ:    ast.u16_type_idx
 		)
@@ -2340,7 +2340,7 @@ fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s i32) {
 
 	if size == 1 {
 		c.mov_deref(.rbx, .rax, ast.u8_type_idx)
-		c.mov_reg_to_var(var, .rbx,
+		c.cg_mov_reg_to_var(var, .rbx,
 			offset: offset
 			typ:    ast.u8_type_idx
 		)
@@ -2376,22 +2376,22 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 	} else if int(size) in [1, 2, 4, 8] {
 		match var {
 			LocalVar {
-				c.mov_reg_to_var(var as LocalVar, .rax)
+				c.cg_mov_reg_to_var(var as LocalVar, .rax)
 			}
 			GlobalVar {
-				c.mov_reg_to_var(var as GlobalVar, .rax)
+				c.cg_mov_reg_to_var(var as GlobalVar, .rax)
 			}
 			Register {
 				c.mov_reg(var as Amd64Register, .rax)
 			}
 			ExternVar {
-				c.mov_reg_to_var(var as ExternVar, .rax)
+				c.cg_mov_reg_to_var(var as ExternVar, .rax)
 			}
 			PreprocVar {
-				c.mov_reg_to_var(var as PreprocVar, .rax)
+				c.cg_mov_reg_to_var(var as PreprocVar, .rax)
 			}
 			ConstVar {
-				c.mov_reg_to_var(var as ConstVar, .rax)
+				c.cg_mov_reg_to_var(var as ConstVar, .rax)
 			}
 		}
 	} else {
@@ -2408,25 +2408,25 @@ fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.In
 		}
 		.assign {
 			c.mov64(.rax, i64(int_lit.val.int()))
-			c.mov_reg_to_var(left, .rax)
+			c.cg_mov_reg_to_var(left, .rax)
 		}
 		.boolean_and_assign {
-			c.mov_var_to_reg(.rax, left)
+			c.cg_mov_var_to_reg(.rax, left)
 			c.mov64(.rbx, i64(int_lit.val.int()))
 			c.bitand_reg(.rax, .rbx)
-			c.mov_reg_to_var(left, .rax)
+			c.cg_mov_reg_to_var(left, .rax)
 		}
 		.boolean_or_assign {
-			c.mov_var_to_reg(.rax, left)
+			c.cg_mov_var_to_reg(.rax, left)
 			c.mov64(.rbx, i64(int_lit.val.int()))
 			c.bitor_reg(.rax, .rbx)
-			c.mov_reg_to_var(left, .rax)
+			c.cg_mov_reg_to_var(left, .rax)
 		}
 		else {
-			c.mov_var_to_reg(.rax, left)
+			c.cg_mov_var_to_reg(.rax, left)
 			c.mov64(.rbx, i64(int_lit.val.int()))
 			c.apply_op_int(.rax, .rbx, node.op)
-			c.mov_reg_to_var(left, .rax)
+			c.cg_mov_reg_to_var(left, .rax)
 		}
 	}
 }
@@ -2514,9 +2514,9 @@ fn (mut c Amd64) mov_float_xmm0_var(reg Amd64Register, var_type ast.Type) {
 fn (mut c Amd64) cg_create_string_struct(typ ast.Type, name string, str string) i32 {
 	dest := c.cg_allocate_var(name, c.g.get_type_size(typ), i64(0))
 	c.learel(.rsi, c.g.allocate_string(str, 3, .rel32))
-	c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
+	c.cg_mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
 	offset := c.g.get_field_offset(typ, 'len')
-	c.mov_int_to_var(LocalVar{dest, ast.i32_type_idx, name}, i32(str.len), offset: offset)
+	c.cg_mov_int_to_var(LocalVar{dest, ast.i32_type_idx, name}, i32(str.len), offset: offset)
 	return dest
 }
 
@@ -2544,12 +2544,12 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 						c.cg_allocate_var(ident.name, enum_info.size, val)
 					} else {
 						c.mov64(.rax, val)
-						c.mov_reg_to_var(ident, .rax)
+						c.cg_mov_reg_to_var(ident, .rax)
 					}
 				}
 				ast.Expr {
 					c.g.expr(val)
-					c.mov_reg_to_var(ident, .rax)
+					c.cg_mov_reg_to_var(ident, .rax)
 				}
 			}
 		}
@@ -2559,7 +2559,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 		ast.StringLiteral {
 			ie := right as ast.StringLiteral
 			str := c.g.eval_str_lit_escape_codes(ie)
-			c.create_string_struct(node.right_types[0], name, str)
+			c.cg_create_string_struct(node.right_types[0], name, str)
 		}
 		ast.StructInit {
 			match node.op {
@@ -2568,13 +2568,13 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 					if right.typ.is_any_kind_of_pointer()
 						|| c.g.unwrap(right.typ).is_any_kind_of_pointer() {
 						c.g.expr(right)
-						c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rax)
+						c.cg_mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rax)
 					} else {
-						c.init_struct(ident, right)
+						c.cg_init_struct(ident, right)
 					}
 				}
 				.assign {
-					c.init_struct(ident, right)
+					c.cg_init_struct(ident, right)
 				}
 				else {
 					c.g.n_error('${@LOCATION} Unexpected operator `${node.op}`')
@@ -2612,7 +2612,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 							typ:  ast.int_type
 							pos:  right.pos
 						}
-						c.call_fn(ast.CallExpr{
+						c.cg_call_fn(ast.CallExpr{
 							pos:                right.pos
 							name:               '__new_array'
 							args:               [len, cap, size]
@@ -2641,7 +2641,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 							typ:  ast.int_type
 							pos:  right.pos
 						}
-						c.call_fn(ast.CallExpr{
+						c.cg_call_fn(ast.CallExpr{
 							pos:                right.pos
 							name:               '__new_array'
 							args:               [len, cap, size]
@@ -2691,7 +2691,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 		ast.AtExpr {
 			dest := c.cg_allocate_var(name, 8, i64(0))
 			c.learel(.rsi, c.g.allocate_string(c.g.comptime_at(right), 3, .rel32))
-			c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
+			c.cg_mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
 		}
 		ast.IfExpr {
 			if right.is_comptime {
@@ -2735,20 +2735,20 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 					c.mov_ssereg_to_var(ident, .xmm1)
 				} else if left_type.is_int() {
 					c.mov_reg(.rbx, .rax)
-					c.mov_var_to_reg(.rax, ident)
+					c.cg_mov_var_to_reg(.rax, ident)
 					c.apply_op_int(.rax, .rbx, node.op)
-					c.mov_reg_to_var(ident, .rax)
+					c.cg_mov_reg_to_var(ident, .rax)
 				} else {
 					match node.op {
 						.boolean_and_assign {
-							c.mov_var_to_reg(.rbx, ident)
+							c.cg_mov_var_to_reg(.rbx, ident)
 							c.bitand_reg(.rbx, .rax)
-							c.mov_reg_to_var(ident, .rbx)
+							c.cg_mov_reg_to_var(ident, .rbx)
 						}
 						.boolean_or_assign {
-							c.mov_var_to_reg(.rbx, ident)
+							c.cg_mov_var_to_reg(.rbx, ident)
 							c.bitor_reg(.rbx, .rax)
-							c.mov_reg_to_var(ident, .rbx)
+							c.cg_mov_reg_to_var(ident, .rbx)
 						}
 						else {
 							c.g.n_error('${@LOCATION} assignment arithmetic not implemented for type ${node.left_types[i]}')
@@ -2782,20 +2782,20 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 				c.mov_ssereg_to_var(ident, .xmm1)
 			} else if left_type.is_int() {
 				c.mov_reg(.rbx, .rax)
-				c.mov_var_to_reg(.rax, ident)
+				c.cg_mov_var_to_reg(.rax, ident)
 				c.apply_op_int(.rax, .rbx, node.op)
-				c.mov_reg_to_var(ident, .rax)
+				c.cg_mov_reg_to_var(ident, .rax)
 			} else {
 				match node.op {
 					.boolean_and_assign {
-						c.mov_var_to_reg(.rbx, ident)
+						c.cg_mov_var_to_reg(.rbx, ident)
 						c.bitand_reg(.rbx, .rax)
-						c.mov_reg_to_var(ident, .rbx)
+						c.cg_mov_reg_to_var(ident, .rbx)
 					}
 					.boolean_or_assign {
-						c.mov_var_to_reg(.rbx, ident)
+						c.cg_mov_var_to_reg(.rbx, ident)
 						c.bitor_reg(.rbx, .rax)
-						c.mov_reg_to_var(ident, .rbx)
+						c.cg_mov_reg_to_var(ident, .rbx)
 					}
 					else {
 						c.g.n_error('${@LOCATION} assignment arithmetic not implemented for type ${node.left_types[i]}')
@@ -2818,21 +2818,21 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 			if ie.index is ast.IntegerLiteral {
 				index := ie.index
 				ie_offset := index.val.i32() * 8
-				c.mov_var_to_reg(.rax, var,
+				c.cg_mov_var_to_reg(.rax, var,
 					typ: ast.i64_type_idx
 					offset: ie_offset
 				)
 			} else if ie.index is ast.Ident {
 				ie_ident := ie.index
 				c.lea_var_to_reg(.rax, dest)
-				c.mov_var_to_reg(.rdi, ie_ident)
+				c.cg_mov_var_to_reg(.rdi, ie_ident)
 				c.add_reg(.rax, .rdi)
 				c.mov_deref(.rax, .rax, ast.i64_type_idx)
 			} else {
 				c.g.n_error('${@LOCATION}only integers and idents can be used as indexes')
 			}
 			// TODO: check if out of bounds access
-			c.mov_reg_to_var(ident, .eax)
+			c.cg_mov_reg_to_var(ident, .eax)
 		}
 	}*/
 }
@@ -2846,7 +2846,7 @@ fn (mut c Amd64) cg_gen_index_expr(node ast.IndexExpr) {
 		c.mov_deref(.rax, .rax, ast.u64_type_idx) // load value of the str pointer
 
 		c.pop2(.rdx) // index
-		c.add_reg2(.rax, .rdx) // add the offset to the address
+		c.add_reg(.rax, .rdx) // add the offset to the address
 	} else if node.left_type.is_any_kind_of_pointer() {
 		// load the pointer
 		c.g.expr(node.left)
@@ -2855,7 +2855,7 @@ fn (mut c Amd64) cg_gen_index_expr(node ast.IndexExpr) {
 		c.g.expr(node.index)
 		c.mov(.rbx, i32(c.g.get_type_size(node.typ)))
 		c.mul_reg_main(.rbx)
-		c.add_reg2(.rax, .rcx)
+		c.add_reg(.rax, .rcx)
 	} else if node.is_array {
 		// TODO: use functions from builtin instead (array.set, array.get...)
 		c.g.expr(node.left)
@@ -2868,7 +2868,7 @@ fn (mut c Amd64) cg_gen_index_expr(node ast.IndexExpr) {
 		c.g.expr(node.index)
 		c.mov(.rbx, i32(c.g.get_type_size(node.typ)))
 		c.mul_reg_main(.rbx)
-		c.add_reg2(.rax, .rcx)
+		c.add_reg(.rax, .rcx)
 	} else {
 		c.g.n_error('${@LOCATION} index expr: unhandled node type {node}')
 	}
@@ -3044,7 +3044,7 @@ fn (mut c Amd64) cg_return_stmt(node ast.Return) {
 							}
 						} else {
 							offset := c.g.get_var_offset('_return_val_addr')
-							c.mov_var_to_reg(.rdx, LocalVar{
+							c.cg_mov_var_to_reg(.rdx, LocalVar{
 								offset: offset
 								typ:    ast.i64_type_idx
 							})
@@ -3064,7 +3064,7 @@ fn (mut c Amd64) cg_return_stmt(node ast.Return) {
 								// the remaining data is not 64bits
 								c.mov_store(.rdx, .rcx, ._64)
 							}
-							c.mov_var_to_reg(.rax, LocalVar{
+							c.cg_mov_var_to_reg(.rax, LocalVar{
 								offset: offset
 								typ:    ast.i64_type_idx
 							})
@@ -3084,7 +3084,7 @@ fn (mut c Amd64) cg_return_stmt(node ast.Return) {
 			typ:    typ
 		}
 
-		c.zero_fill(size, var)
+		c.cg_zero_fill(size, var)
 
 		// store exprs to the variable
 		for i, expr in node.exprs {
@@ -3097,7 +3097,7 @@ fn (mut c Amd64) cg_return_stmt(node ast.Return) {
 				c.lea_var_to_reg(.rdx, var.offset - offset)
 				c.move_struct(.rdx, .rax, c.g.get_type_size(e_typ))
 			} else {
-				c.mov_reg_to_var(var, .rax, offset: offset, typ: ts.mr_info().types[i])
+				c.cg_mov_reg_to_var(var, .rax, offset: offset, typ: ts.mr_info().types[i])
 			}
 		}
 		// store the multi return struct value
@@ -3120,7 +3120,7 @@ fn (mut c Amd64) cg_return_stmt(node ast.Return) {
 				}
 			} else {
 				offset := c.g.get_var_offset('_return_val_addr')
-				c.mov_var_to_reg(.rdx, LocalVar{
+				c.cg_mov_var_to_reg(.rdx, LocalVar{
 					offset: offset
 					typ:    ast.i64_type_idx
 				})
@@ -3138,7 +3138,7 @@ fn (mut c Amd64) cg_return_stmt(node ast.Return) {
 					c.mov_deref(.rcx, .rax, ast.i64_type_idx)
 					c.mov_store(.rdx, .rcx, ._64)
 				}
-				c.mov_var_to_reg(.rax, LocalVar{
+				c.cg_mov_var_to_reg(.rax, LocalVar{
 					offset: offset
 					typ:    ast.i64_type_idx
 				})
@@ -3170,14 +3170,14 @@ fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {
 			offset: c.g.stack_var_pos
 		}
 
-		c.zero_fill(size, var)
+		c.cg_zero_fill(size, var)
 
 		// store exprs to the variable
 		for i, expr in node.right {
 			offset := multi_return.offsets[i]
 			c.g.expr(expr)
 			// TODO: expr not on rax
-			c.mov_reg_to_var(var, .rax, offset: offset, typ: node.right_types[i])
+			c.cg_mov_reg_to_var(var, .rax, offset: offset, typ: node.right_types[i])
 		}
 		// store the multi return struct value
 		c.lea_var_to_reg(.rax, var.offset)
@@ -3570,7 +3570,7 @@ fn (mut c Amd64) cg_infix_expr(node ast.InfixExpr) {
 				.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { .rcx }
 				else { .rdx }
 			}, .rax)
-			c.mov_var_to_reg(.rax, node.left as ast.Ident)
+			c.cg_mov_var_to_reg(.rax, node.left as ast.Ident)
 		}
 		else {
 			c.push(.rax)
@@ -4009,11 +4009,11 @@ fn (mut c Amd64) cg_fn_decl(node ast.FnDecl) {
 		c.g.stack_var_pos += (8 - args_size[i] % 8) % 8
 		offset := c.g.allocate_by_type(name, params[i].typ)
 		// copy
-		c.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
+		c.cg_mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
 			c.fn_arg_registers[reg_idx])
 		reg_idx++
 		if args_size[i] > 8 {
-			c.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
+			c.cg_mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
 				c.fn_arg_registers[reg_idx],
 				offset: 8
 			)
@@ -4198,19 +4198,19 @@ fn (mut c Amd64) cg_zero_fill(size i32, var LocalVar) {
 		size
 	}
 	if left >= 8 {
-		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
+		c.cg_mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
 		left -= 8
 	}
 	if left >= 4 {
-		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i32_type_idx)
+		c.cg_mov_int_to_var(var, 0, offset: size - left, typ: ast.i32_type_idx)
 		left -= 4
 	}
 	if left >= 2 {
-		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
+		c.cg_mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
 		left -= 2
 	}
 	if left == 1 {
-		c.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
+		c.cg_mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
 	}
 }
 
@@ -4220,23 +4220,23 @@ fn (mut c Amd64) cg_init_struct(var Var, init ast.StructInit) {
 			var_object := c.g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					c.init_struct(var_object as LocalVar, init)
+					c.cg_init_struct(var_object as LocalVar, init)
 				}
 				GlobalVar {
-					c.init_struct(var_object as GlobalVar, init)
+					c.cg_init_struct(var_object as GlobalVar, init)
 				}
 				Register {
 					// TODO
 					// c.g.cmp()
 				}
 				ExternVar {
-					c.init_struct(var_object as ExternVar, init)
+					c.cg_init_struct(var_object as ExternVar, init)
 				}
 				PreprocVar {
-					c.init_struct(var_object as PreprocVar, init)
+					c.cg_init_struct(var_object as PreprocVar, init)
 				}
 				ConstVar {
-					c.init_struct(var_object as ConstVar, init)
+					c.cg_init_struct(var_object as ConstVar, init)
 				}
 			}
 		}
@@ -4244,7 +4244,7 @@ fn (mut c Amd64) cg_init_struct(var Var, init ast.StructInit) {
 			typ := c.g.unwrap(var.typ)
 			size := c.g.get_type_size(typ)
 
-			c.zero_fill(size, var)
+			c.cg_zero_fill(size, var)
 
 			ts := c.g.table.sym(typ)
 			match ts.info {
@@ -4254,7 +4254,7 @@ fn (mut c Amd64) cg_init_struct(var Var, init ast.StructInit) {
 							offset := c.g.structs[typ.idx()].offsets[i]
 							c.g.expr(f.default_expr)
 							// TODO: expr not on rax
-							c.mov_reg_to_var(var, .rax, offset: offset, typ: f.typ)
+							c.cg_mov_reg_to_var(var, .rax, offset: offset, typ: f.typ)
 						}
 					}
 				}
@@ -4273,7 +4273,7 @@ fn (mut c Amd64) cg_init_struct(var Var, init ast.StructInit) {
 					c.copy_struct_to_struct(field, f_offset, 0, var)
 				} else {
 					// TODO: expr not on rax -> may be done
-					c.mov_reg_to_var(var, .rax, offset: f_offset, typ: field.typ)
+					c.cg_mov_reg_to_var(var, .rax, offset: f_offset, typ: field.typ)
 				}
 			}
 		}
@@ -4314,7 +4314,7 @@ fn (mut c Amd64) copy_struct_to_struct(field ast.StructField, f_offset i32, data
 			c.mov_reg(.rdx, .rax)
 			c.add(.rdx, data_offset + f2_offset)
 			c.mov_deref(.rdx, .rdx, field2.typ)
-			c.mov_reg_to_var(var, .rdx,
+			c.cg_mov_reg_to_var(var, .rdx,
 				offset: f_offset + f2_offset
 				typ:    field2.typ
 			)
@@ -4352,7 +4352,7 @@ fn (mut c Amd64) cg_init_array(var Var, node ast.ArrayInit) {
 			mut offset := var.offset
 			for expr in node.exprs {
 				c.g.expr(expr)
-				c.mov_reg_to_var(LocalVar{offset, ast.i64_type_idx, ''}, .rax)
+				c.cg_mov_reg_to_var(LocalVar{offset, ast.i64_type_idx, ''}, .rax)
 				offset += 8
 			}
 		}
@@ -4407,7 +4407,7 @@ fn (mut c Amd64) cg_convert_rune_to_string(reg Register, buffer i32, var Var, co
 
 	match reg.amd64() {
 		.rax {
-			c.mov_var_to_reg(.rdi, var, config)
+			c.cg_mov_var_to_reg(.rdi, var, config)
 			c.g.write8(0x48)
 			c.g.write8(0x89)
 			c.g.write8(0x38)
@@ -4441,7 +4441,7 @@ fn (mut c Amd64) cg_convert_int_to_string(a Register, b Register) {
 	c.g.println('; jump to label ${skip_zero_label}')
 
 	// handle zeros separately
-	// c.mov_int_to_var(LocalVar{buffer, ast.u8_type_idx, ''}, '0'[0])
+	// c.cg_mov_int_to_var(LocalVar{buffer, ast.u8_type_idx, ''}, '0'[0])
 
 	c.g.write8(0xc6)
 	c.g.write8(0x07)

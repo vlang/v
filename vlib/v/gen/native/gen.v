@@ -435,7 +435,7 @@ pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 		pref:     p
 		out_name: out_name
 		table:    ast.new_table()
-		code_gen: Amd64{}
+		cg: Amd64{}
 	}
 	g.cg.g = &mut g
 	return &mut g
@@ -831,7 +831,7 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 	// TODO: type flags
 	typ := g.unwrap(raw_type)
 	if raw_type.is_any_kind_of_pointer() || typ.is_any_kind_of_pointer() {
-		return g.cg.address_size()
+		return g.cg.cg_address_size()
 	}
 	if typ in ast.number_type_idxs {
 		return match typ {
@@ -1046,7 +1046,7 @@ fn (mut g Gen) allocate_string(s string, opsize i32, typ RelocType) i32 {
 // allocates a buffer variable: name, size of stored type (nb of bytes), nb of items
 fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 {
 	g.println('; allocate array `${name}` item-size:${size} items:${items}:')
-	pos := g.cg.allocate_var(name, 4, i64(items)) // store the length of the array on the stack in a 4 byte var
+	pos := g.cg.cg_allocate_var(name, 4, i64(items)) // store the length of the array on the stack in a 4 byte var
 	g.stack_var_pos += (size * items) // reserve space on the stack for the items
 	return pos
 }
@@ -1138,7 +1138,7 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 	if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
 		end_of_buffer := buffer + 4 + 32 - 1 // 4 bytes for the size and 32 for the chars, -1 to not go out of array
-		g.cg.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
+		g.cg.cg_lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
 
 		arg0_reg := g.get_builtin_arg_reg(.int_to_string, 0)
 		if arg0_reg != reg {
@@ -1146,7 +1146,7 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 		}
 
 		g.call_builtin(.int_to_string)
-		g.cg.lea_var_to_reg(g.cg.main_reg(), end_of_buffer) // the (int) string starts at the end of the buffer
+		g.cg.cg_lea_var_to_reg(.reg0, end_of_buffer) // the (int) string starts at the end of the buffer
 	} else if typ.is_bool() {
 		arg_reg := g.get_builtin_arg_reg(.bool_to_string, 0)
 		if arg_reg != reg {
@@ -1154,8 +1154,8 @@ fn (mut g Gen) gen_to_string(reg Register, typ ast.Type) {
 		}
 		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
-		if reg != g.cg.main_reg() {
-			g.cg.mov_reg(g.cg.main_reg(), reg)
+		if reg != .reg0 {
+			g.cg.mov_reg(.reg0, reg)
 		}
 	} else {
 		g.n_error('${@LOCATION} int-to-string conversion not implemented for type ${typ}')
@@ -1167,24 +1167,24 @@ fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config Va
 	g.println('; var_to_string {')
 	typ := g.get_type_from_var(var)
 	if typ == ast.rune_type_idx {
-		buffer := g.cg.allocate_var('rune-buffer', 8, i64(0))
-		g.cg.convert_rune_to_string(reg, buffer, var, config)
+		buffer := g.cg.cg_allocate_var('rune-buffer', 8, i64(0))
+		g.cg.cg_convert_rune_to_string(reg, buffer, var, config)
 	} else if typ.is_int() {
 		if typ.is_unsigned() {
 			g.n_error('${@LOCATION} Unsigned integer print is not supported')
 		} else {
 			buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
 			end_of_buffer := buffer + 4 + 32 - 1 // 4 bytes for the size and 32 for the chars, -1 to not go out of array
-			g.cg.mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
-			g.cg.lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
+			g.cg.cg_mov_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 0), var, config)
+			g.cg.cg_lea_var_to_reg(g.get_builtin_arg_reg(.int_to_string, 1), end_of_buffer)
 			g.call_builtin(.int_to_string)
-			g.cg.lea_var_to_reg(reg, end_of_buffer) // the (int) string starts at the end of the buffer
+			g.cg.cg_lea_var_to_reg(reg, end_of_buffer) // the (int) string starts at the end of the buffer
 		}
 	} else if typ.is_bool() {
-		g.cg.mov_var_to_reg(g.get_builtin_arg_reg(.bool_to_string, 0), var, config)
+		g.cg.cg_mov_var_to_reg(g.get_builtin_arg_reg(.bool_to_string, 0), var, config)
 		g.call_builtin(.bool_to_string)
 	} else if typ.is_string() {
-		g.cg.mov_var_to_reg(reg, var, config)
+		g.cg.cg_mov_var_to_reg(reg, var, config)
 	} else {
 		g.n_error('${@LOCATION} int-to-string conversion not implemented for type ${typ}')
 	}
@@ -1208,7 +1208,7 @@ fn (mut g Gen) patch_calls() {
 			return
 		}
 		last := i32(g.buf.len)
-		g.cg.call(i32(i32(addr) + last - c.pos))
+		g.cg.cg_call(i32(i32(addr) + last - c.pos))
 		mut patch := []u8{}
 		for last < g.buf.len {
 			patch << g.buf.pop()
@@ -1264,7 +1264,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.labels = &LabelTable{}
 	g.defer_stmts.clear()
 	g.return_type = node.return_type
-	g.cg.fn_decl(node)
+	g.cg.cg_fn_decl(node)
 	g.patch_labels()
 
 	if g.stack_depth != 0 {
@@ -1359,20 +1359,19 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 		typ:    typ
 	}
 
-	g.cg.zero_fill(size, var)
-	main_reg := g.cg.main_reg()
+	g.cg.cg_zero_fill(size, var)
 	// store exprs to the variable
 	for i, expr in node.vals {
 		offset := g.structs[typ.idx()].offsets[i]
 		g.expr(expr)
 		// TODO: expr not on rax
-		g.cg.mov_reg_to_var(var, main_reg,
+		g.cg.cg_mov_reg_to_var(var, .reg0,
 			offset: offset
 			typ:    ts.mr_info().types[i]
 		)
 	}
 	// store the multi return struct value
-	g.cg.lea_var_to_reg(main_reg, var.offset)
+	g.cg.cg_lea_var_to_reg(.reg0, var.offset)
 }
 
 fn (mut g Gen) sym_string_table() i32 {
