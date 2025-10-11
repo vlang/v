@@ -1104,7 +1104,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			// mark concrete []T param as used
 			for concrete_type_list in w.table.fn_generic_types[node.fkey()] {
 				for k, concrete_type in concrete_type_list {
-					if k > stmt.params.len - 1 {
+					if k >= stmt.params.len - 1 {
 						break
 					}
 					param_typ := stmt.params[k + 1].typ
