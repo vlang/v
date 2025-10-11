@@ -767,8 +767,8 @@ pub fn (mut g Gen) generate_pe_header() {
 	g.code_start_pos = g.pos()
 	text_section.set_pointer_to_raw_data(mut g, i32(g.code_start_pos))
 
-	g.code_gen.call(0)
-	g.code_gen.ret()
+	g.cg.cg_call(0)
+	g.cg.cg_ret()
 	g.main_fn_addr = g.pos()
 }
 

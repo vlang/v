@@ -822,7 +822,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 						eprintln('${@LOCATION} unsupported size ${size} for global `${fi.name}`')
 					} else if fi.expr !is ast.EmptyExpr {
 						g.expr(fi.expr)
-						g.code_gen.mov_reg_to_var(GlobalVar{fi.name, fi.typ}, g.code_gen.main_reg())
+						g.cg.cg_mov_reg_to_var(GlobalVar{fi.name, fi.typ}, .reg0)
 						g.println('; global ${fi.name}, size: ${size}')
 					}
 				}
@@ -831,10 +831,10 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	}
 
 	g.elf_main_call_pos = g.pos()
-	g.code_gen.call(placeholder)
+	g.cg.cg_call(placeholder)
 	g.println('; call main.main')
-	g.code_gen.mov64(g.code_gen.main_reg(), i64(0))
-	g.code_gen.ret()
+	g.cg.cg_mov64(.reg0, i64(0))
+	g.cg.cg_ret()
 	g.println('; return 0')
 
 	g.debug_pos = i32(g.buf.len)
@@ -869,25 +869,11 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 	g.code_start_pos = g.pos()
 	g.debug_pos = i32(g.pos())
 
-	g.code_gen.call(placeholder)
+	g.cg.cg_call(placeholder)
 	g.println('; call main.main')
 
 	// generate exit syscall
-	match g.pref.arch {
-		.arm64 {
-			g.code_gen.mov(Arm64Register.x16, 0)
-			g.code_gen.mov(Arm64Register.x0, 0)
-			g.code_gen.svc()
-		}
-		.amd64 {
-			g.code_gen.mov(Amd64Register.edi, 0)
-			g.code_gen.mov(Amd64Register.eax, g.nsyscall(.exit))
-			g.code_gen.syscall()
-		}
-		else {
-			g.n_error('unsupported platform ${g.pref.arch}')
-		}
-	}
+	g.cg.cg_gen_exit(ast.IntegerLiteral{ val: '0' })
 }
 
 pub fn (mut g Gen) elf_string_table() {
