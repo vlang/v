@@ -166,7 +166,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					is_field_global = false
 				}
 				p.check(.colon)
-			} else if p.tok.kind == .key_mut && p.peek_tok.kind == .colon {
+			} else if p.tok.kind == .key_mut {
 				if mut_pos != -1 {
 					p.error('redefinition of `mut` section')
 					return ast.StructDecl{}
