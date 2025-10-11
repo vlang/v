@@ -147,7 +147,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 							}
 							else {
 								g.expr(cond.right)
-								g.cg.cg_cmp_var_reg(cond.left as ast.Ident, Amd64Register.rax)
+								g.cg.cg_cmp_var_reg(cond.left as ast.Ident, .reg0)
 							}
 						}
 						match cond.op {
@@ -314,9 +314,9 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		c := g.cg.cg_allocate_var(node.val_var, 1, i64(0)) // char variable
 
 		g.expr(node.cond) // get the address of the string variable
-		g.cg.cg_mov_deref(Amd64Register.rdx, .reg0, ast.charptr_type)
+		g.cg.cg_mov_deref(.reg2, .reg0, ast.charptr_type)
 		g.println('; push address of the string chars')
-		g.cg.cg_push(Amd64Register.rdx) // address of the string
+		g.cg.cg_push(.reg2) // address of the string
 		g.cg.cg_add(.reg0, g.get_field_offset(ast.string_type, 'len'))
 		g.println('; push address of the len:')
 		g.cg.cg_push(.reg0) // address of the len
@@ -326,26 +326,26 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		g.println('; check iterator against upper loop bound')
 		g.cg.cg_mov_var_to_reg(.reg0, LocalVar{i, ast.i64_type_idx, key_var})
 		g.println('; pop address of the len:')
-		g.cg.cg_pop(Amd64Register.rdx)
+		g.cg.cg_pop(.reg2)
 		g.println('; push address of the len:')
-		g.cg.cg_push(Amd64Register.rdx) // len
-		g.cg.cg_mov_deref(Amd64Register.rdx, Amd64Register.rdx, ast.int_type)
-		g.cg.cg_cmp_reg(.reg0, Amd64Register.rdx)
+		g.cg.cg_push(.reg2) // len
+		g.cg.cg_mov_deref(.reg2, .reg2, ast.int_type)
+		g.cg.cg_cmp_reg(.reg0, .reg2)
 		jump_addr := g.cg.cg_cjmp(.jge) // leave loop i >= len
 
 		g.println('; pop address of the len:')
-		g.cg.cg_pop(Amd64Register.rdx) // len
+		g.cg.cg_pop(.reg2) // len
 		g.println('; pop address of the string chars')
-		g.cg.cg_pop(Amd64Register.rax) // address of the string
+		g.cg.cg_pop(.reg0) // address of the string
 		g.println('; push address of the string chars')
-		g.cg.cg_push(Amd64Register.rax)
+		g.cg.cg_push(.reg0)
 		g.println('; push address of the len:')
-		g.cg.cg_push(Amd64Register.rdx) // len
+		g.cg.cg_push(.reg2) // len
 
-		g.cg.cg_mov_var_to_reg(Amd64Register.rdx, LocalVar{i, ast.i64_type_idx, key_var})
-		g.cg.cg_add_reg(Amd64Register.rax, Amd64Register.rdx)
-		g.cg.cg_mov_deref(Amd64Register.rax, Amd64Register.rax, ast.u8_type_idx)
-		g.cg.cg_mov_reg_to_var(LocalVar{c, ast.u8_type_idx, node.val_var}, Amd64Register.rax) // store the char
+		g.cg.cg_mov_var_to_reg(.reg2, LocalVar{i, ast.i64_type_idx, key_var})
+		g.cg.cg_add_reg(.reg0, .reg2)
+		g.cg.cg_mov_deref(.reg0, .reg0, ast.u8_type_idx)
+		g.cg.cg_mov_reg_to_var(LocalVar{c, ast.u8_type_idx, node.val_var}, .reg0) // store the char
 
 		end_label := g.labels.new_label()
 		g.labels.patches << LabelPatch{
@@ -370,8 +370,8 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		g.cg.cg_jmp_back(start) // loops
 
 		g.labels.addrs[end_label] = g.pos()
-		g.cg.cg_pop(Amd64Register.rdx) // len
-		g.cg.cg_pop(Amd64Register.rax) // address of the string
+		g.cg.cg_pop(.reg2) // len
+		g.cg.cg_pop(.reg0) // address of the string
 		g.println('; label ${end_label} (end_label)')
 		g.println('; for ${node.val_var} in string }')
 		/*
