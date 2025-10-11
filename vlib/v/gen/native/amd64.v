@@ -280,6 +280,7 @@ fn (mut c Amd64) cmp_reg(reg Amd64Register, reg2 Amd64Register) {
 fn (mut c Amd64) cg_cmp_zero(reg Register) {
 	c.cmp_zero(reg.amd64())
 }
+
 // cmp $reg, 0
 fn (mut c Amd64) cmp_zero(reg Amd64Register) {
 	match reg {
@@ -1981,14 +1982,14 @@ fn (mut c Amd64) add_reg(a Amd64Register, b Amd64Register) {
 	c.g.println('add ${a}, ${b}')
 }
 
-	if i32(a) <= i32(Amd64Register.r15) && i32(b) <= i32(Amd64Register.r15) {
-		c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
-			if i32(b) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
 fn (mut c Amd64) cg_mov_reg(a_reg Register, b_reg Register) {
 	return c.mov_reg(a_reg.amd64(), b_reg.amd64())
 }
 
 fn (mut c Amd64) mov_reg(a_reg Amd64Register, b_reg Amd64Register) {
+	if i32(a) <= i32(Amd64Register.r15) && i32(b) <= i32(Amd64Register.r15) {
+		c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
+			if i32(b) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
 		c.g.write8(0x89)
 		c.g.write8(0xc0 + i32(a) % 8 + i32(b) % 8 * 8)
 	} else {
@@ -2236,13 +2237,16 @@ pub fn (mut c Amd64) cg_call_fn(node ast.CallExpr) {
 				c.movabs(.rcx, i64(0xffffffffffffffff - (u64(1) << (return_size * 8)) + 1))
 				c.bitand_reg(.rdx, .rcx)
 				c.bitor_reg(.rdx, .rax)
-				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx }, .rdx)
+				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					.rdx)
 			}
 			8 {
-				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx }, .rax)
+				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					.rax)
 			}
 			9...15 {
-				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx }, .rax)
+				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					.rax)
 				c.mov_var_to_reg(.rax, LocalVar{
 					offset: return_pos
 					typ:    ast.i64_type_idx
@@ -2252,7 +2256,8 @@ pub fn (mut c Amd64) cg_call_fn(node ast.CallExpr) {
 				c.movabs(.rcx, i64(0xffffffffffffffff - (u64(1) << (return_size * 8)) + 1))
 				c.bitand_reg(.rax, .rcx)
 				c.bitor_reg(.rax, .rdx)
-				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx }, .rax,
+				c.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					.rax,
 					offset: 8
 				)
 			}
@@ -5073,9 +5078,9 @@ fn (mut c Amd64) cg_gen_cast_expr(expr ast.CastExpr) {
 	}
 }
 
+fn (mut c Amd64) cg_cmp_to_stack_top(reg Register) {
 	second_reg := if reg as Amd64Register == Amd64Register.rbx {
 		Amd64Register.rax
-fn (mut c Amd64) cg_cmp_to_stack_top(reg Register) {
 	} else {
 		Amd64Register.rbx
 	}
