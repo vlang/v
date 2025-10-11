@@ -3665,6 +3665,20 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		c.expr(mut arg0.expr)
 		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.int_type
+	} else if method_name == 'filter' {
+		if node_args_len != 1 {
+			c.error('`.${method_name}` expected 1 argument, but got ${node_args_len}',
+				node.pos)
+		}
+		// position of `it` doesn't matter
+		scope_register_it(mut node.scope, node.pos, elem_typ)
+		c.expr(mut arg0.expr)
+		c.check_predicate_param(false, elem_typ, node)
+		if node.return_type.has_flag(.shared_f) {
+			node.return_type = node.return_type.clear_flag(.shared_f).deref()
+		} else if node.left.is_auto_deref_var() {
+			node.return_type = node.return_type.deref()
+		}
 	} else if method_name == 'wait' {
 		elem_sym := c.table.sym(elem_typ)
 		if elem_sym.kind == .thread {
