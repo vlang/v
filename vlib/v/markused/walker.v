@@ -1103,10 +1103,10 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		if stmt.params.len > 1 && stmt.generic_names.len > 0 {
 			// mark concrete []T param as used
 			for concrete_type_list in w.table.fn_generic_types[node.fkey()] {
-				if concrete_type_list.len > stmt.params.len - 1 {
-					continue
-				}
 				for k, concrete_type in concrete_type_list {
+					if k > stmt.params.len - 1 {
+						break
+					}
 					param_typ := stmt.params[k + 1].typ
 					if param_typ.has_flag(.generic) && w.table.type_kind(param_typ) == .array {
 						w.mark_by_type(w.table.find_or_register_array(concrete_type))
