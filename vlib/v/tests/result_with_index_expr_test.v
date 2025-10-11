@@ -11,7 +11,7 @@ fn test_result_with_index() {
   		"title": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit",
   		"body": "quia et suscipitsuscipit recusandae consequuntur expedita et cumreprehenderit molestiae ut ut quas totamnostrum rerum est autem sunt rem eveniet architecto"
 }'
-	raw_data := json2.raw_decode(resp)!
+	raw_data := json2.decode[json2.Any](resp)!
 
 	data := raw_data as map[string]json2.Any
 

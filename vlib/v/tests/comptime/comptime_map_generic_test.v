@@ -7,7 +7,7 @@ pub mut:
 
 fn test_main() {
 	user_json := '{"numbers":{"home":"123456","work":"987653"}}'
-	res := json2.raw_decode(user_json)!.as_map()
+	res := json2.decode[json2.Any](user_json)!.as_map()
 
 	mut numbers := map[string]string{}
 	decode_map(mut numbers, res['numbers']!.as_map())!

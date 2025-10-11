@@ -46,14 +46,13 @@ mut:
 fn main() {
 	resp := '{"name": "Bob", "age": 20, "birthday": "${time.now()}"}'
 	person := json2.decode[Person](resp)!
-	/*
-	struct Person {
-      mut:
-          name "Bob"
-          age  20
-          birthday "2022-03-11 13:54:25"
-      }
-	*/
+	// struct Person {
+  //    mut:
+  //        name "Bob"
+  //        age  20
+  //        birthday "2022-03-11 13:54:25"
+  //       deathday "2022-03-11 13:54:25"
+  // }
 }
 ```
 

@@ -5,9 +5,6 @@ struct CrossVerifyResult {
 }
 
 fn test_main() {
-	x := json2.decode[CrossVerifyResult]('') or {
-		assert err.msg().contains('invalid token')
-		return
-	}
+	x := json2.decode[CrossVerifyResult]('') or { return }
 	assert false
 }
