@@ -8,7 +8,7 @@ struct Data {
 
 fn test_alias_sumtype_method_call() {
 	a := '{"a":"a","b":1}'
-	json := json2.raw_decode(a) or { panic(err) }
+	json := json2.decode[json2.Any](a) or { panic(err) }
 	data := Data{json}
 	json_str := data.prop.str()
 	println(json_str)

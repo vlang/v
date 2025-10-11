@@ -11,7 +11,7 @@ pub struct App {
 
 @['/'; POST]
 fn (app &App) index(mut ctx Context) veb.Result {
-	j := json2.raw_decode(ctx.req.data) or { return ctx.request_error('error') }
+  j := json2.decode[json2.Any](ctx.req.data) or { return ctx.request_error('error') }
 
 	m := j.as_map()
 	myarr := m['myarr'] or { panic(error) }

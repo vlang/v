@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import net.http
-import x.json2.decoder2
+import x.json2
 import sync.pool
 
 struct Story {
@@ -16,7 +16,7 @@ fn worker_fetch(mut p pool.PoolProcessor, cursor int, worker_id int) voidptr {
 		println('failed to fetch data from /v0/item/${id}.json')
 		return pool.no_result
 	}
-	story := decoder2.decode[Story](resp.body) or {
+	story := json2.decode[Story](resp.body) or {
 		println('failed to decode a story')
 		return pool.no_result
 	}
@@ -31,7 +31,7 @@ fn main() {
 		return
 	}
 
-	ids := decoder2.decode[[]int](resp.body) or {
+	ids := json2.decode[[]int](resp.body) or {
 		println('failed to decode topstories.json ${err}')
 		return
 	}#[0..30]
