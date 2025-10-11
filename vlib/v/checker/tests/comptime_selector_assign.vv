@@ -1,4 +1,4 @@
-import x.json2 { Any, raw_decode }
+import x.json2 { Any, decode }
 
 struct Income {
 mut:
@@ -22,7 +22,7 @@ pub fn structuring[T](res Any) T {
 }
 
 fn main() {
-	res := raw_decode('{
+	res := decode[Any]('{
         "email": ["sdvsdv", "sds"],
         "code": 12
     }')!.as_map()

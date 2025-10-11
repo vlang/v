@@ -1,5 +1,4 @@
 import x.json2 as json
-import strings
 import time
 
 struct StructType[T] {
@@ -19,7 +18,7 @@ fn test_json_string_characters() {
 
 	assert json.encode(r'\n\r\b\f\t\\\"\/') == r'"\\n\\r\\b\\f\\t\\\\\\\"\\/"'
 
-	text := json.raw_decode(r'"\n\r\b\f\t\\\"\/"') or { '' }
+	text := json.decode[json.Any](r'"\n\r\b\f\t\\\"\/"') or { '' }
 	assert text.json_str() == '"\\n\\r\\b\\f\\t\\\\\\"/"'
 
 	assert json.encode("fn main(){nprintln('Hello World! Helo \$a')\n}") == '"fn main(){nprintln(\'Hello World! Helo \$a\')\\n}"'
@@ -74,7 +73,7 @@ fn test_json_string_non_ascii() {
 
 fn test_utf8_strings_are_not_modified() {
 	original := '{"s":"Schilddrüsenerkrankungen"}'
-	deresult := json.raw_decode(original)!
+	deresult := json.decode[json.Any](original)!
 	assert deresult.str() == original
 
 	assert json.encode('ü') == '"ü"'
