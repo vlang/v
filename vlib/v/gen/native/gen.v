@@ -435,7 +435,7 @@ pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 		pref:     p
 		out_name: out_name
 		table:    ast.new_table()
-		cg: Amd64{}
+		cg:       Amd64{}
 	}
 	g.cg.g = &mut g
 	return &mut g

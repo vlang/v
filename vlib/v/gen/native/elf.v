@@ -873,7 +873,7 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 	g.println('; call main.main')
 
 	// generate exit syscall
-	g.cg.cg_gen_exit(ast.IntegerLiteral{val: '0'})
+	g.cg.cg_gen_exit(ast.IntegerLiteral{ val: '0' })
 }
 
 pub fn (mut g Gen) elf_string_table() {

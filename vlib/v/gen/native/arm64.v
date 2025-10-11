@@ -60,10 +60,10 @@ fn (mut x Arm64) cg_allocate_var(name string, size i32, initial_val Number) i32 
 }
 
 fn (mut c Arm64) cg_mov(reg Register, val i32) {
-	c.mov_arm(reg.arm64(), u64(val))
+	c.mov(reg.arm64(), u64(val))
 }
 
-fn (mut c Arm64) mov_arm(reg Arm64Register, val u64) {
+fn (mut c Arm64) mov(reg Arm64Register, val u64) {
 	// m := u64(0xffff)
 	// x := u64(val)
 	// println('========')
@@ -210,13 +210,13 @@ pub fn (mut c Arm64) cg_call_fn(node ast.CallExpr) {
 		c.g.n_error('fn addr of `${name}` = 0')
 	}
 	// Copy values to registers (calling convention)
-	// c.mov_arm(.eax, 0)
+	// c.mov(.eax, 0)
 	for i in 0 .. node.args.len {
 		expr := node.args[i].expr
 		match expr {
 			ast.IntegerLiteral {
 				// `foo(2)` => `mov edi,0x2`
-				// c.mov_arm(native.fn_arg_registers[i], i32(expr.val.int()))
+				// c.mov(native.fn_arg_registers[i], i32(expr.val.int()))
 			}
 			/*
 			ast.Ident {
@@ -244,28 +244,30 @@ pub fn (mut c Arm64) cg_call_fn(node ast.CallExpr) {
 
 fn (mut g Gen) gen_arm64_helloworld() {
 	mut c := g.cg
-	if g.pref.os == .linux {
-		c.mov(Arm64Register.x0, 1)
-		c.adr(Arm64Register.x1, 0x10)
-		c.mov(Arm64Register.x2, 13)
-		c.mov(Arm64Register.x8, 64) // write (linux-arm64)
-		c.svc()
-	} else {
-		c.mov(Arm64Register.x0, 1)
-		c.adr(Arm64Register.x1, 0x10 + 4)
-		c.mov(Arm64Register.x2, 13)
-		c.mov(Arm64Register.x16, 4) // write
-		c.svc()
-		c.mov(Arm64Register.x0, 0)
-		c.mov(Arm64Register.x16, 1)
-		c.svc()
+	if mut c is Arm64 {
+		if g.pref.os == .linux {
+			c.mov(Arm64Register.x0, 1)
+			c.adr(Arm64Register.x1, 0x10)
+			c.mov(Arm64Register.x2, 13)
+			c.mov(Arm64Register.x8, 64) // write (linux-arm64)
+			c.svc()
+		} else {
+			c.mov(Arm64Register.x0, 1)
+			c.adr(Arm64Register.x1, 0x10 + 4)
+			c.mov(Arm64Register.x2, 13)
+			c.mov(Arm64Register.x16, 4) // write
+			c.svc()
+			c.mov(Arm64Register.x0, 0)
+			c.mov(Arm64Register.x16, 1)
+			c.svc()
+		}
+		zero := ast.IntegerLiteral{}
+		g.cg.cg_gen_exit(zero)
+		g.write_string('Hello World!\n')
+		g.write8(0) // padding?
+		g.write8(0)
+		g.write8(0)
 	}
-	zero := ast.IntegerLiteral{}
-	g.cg.cg_gen_exit(zero)
-	g.write_string('Hello World!\n')
-	g.write8(0) // padding?
-	g.write8(0)
-	g.write8(0)
 }
 
 fn (mut c Arm64) adr(r Arm64Register, delta i32) {
@@ -305,13 +307,13 @@ pub fn (mut c Arm64) cg_gen_exit(expr ast.Expr) {
 	}
 	match c.g.pref.os {
 		.macos {
-			c.mov_arm(.x0, return_code)
-			c.mov_arm(.x16, 1) // syscall exit
+			c.mov(.x0, return_code)
+			c.mov(.x16, 1) // syscall exit
 		}
 		.linux {
-			c.mov_arm(.x16, return_code)
-			c.mov_arm(.x8, 93)
-			c.mov_arm(.x0, 0)
+			c.mov(.x16, return_code)
+			c.mov(.x8, 93)
+			c.mov(.x0, 0)
 		}
 		else {
 			c.g.n_error('unsupported os ${c.g.pref.os}')
@@ -323,13 +325,13 @@ pub fn (mut c Arm64) cg_gen_exit(expr ast.Expr) {
 pub fn (mut c Arm64) gen_arm64_exit(expr ast.Expr) {
 	match expr {
 		ast.IntegerLiteral {
-			c.mov_arm(.x16, expr.val.u64())
+			c.mov(.x16, expr.val.u64())
 		}
 		else {
 			c.g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
-	c.mov_arm(.x0, 0)
+	c.mov(.x0, 0)
 	c.svc()
 }
 

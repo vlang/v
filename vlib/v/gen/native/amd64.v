@@ -109,6 +109,16 @@ fn (r Register) amd64() Amd64Register {
 	}
 }
 
+fn (r Amd64Register) reg() Register {
+	return match r {
+		.rax { .reg0 }
+		.rcx { .reg1 }
+		.rdx { .reg2 }
+		.rbx { .reg3 }
+		else { panic('Unsupported register ${r}') }
+	}
+}
+
 fn amd64_get_call_regs(os pref.OS) []Amd64Register {
 	return match os {
 		.windows {
@@ -336,7 +346,7 @@ fn (mut c Amd64) cmp_var_rax(var Var, config VarConfig) {
 					c.cmp_var_rax(var_object as PreprocVar, config)
 				}
 				ConstVar {
-					c.cmp_var_reg(var_object as ConstVar, config)
+					c.cmp_var_rax(var_object as ConstVar, config)
 				}
 			}
 		}
@@ -1133,7 +1143,7 @@ fn (mut c Amd64) cg_mov_var_to_reg(r Register, var Var, config VarConfig) {
 				}
 			}
 			far_var_offset := if is_far_var { i32(0x40) } else { i32(0) }
-			match reg.amd64() {
+			match reg {
 				.eax, .rax { c.g.write8(0x45 + far_var_offset) }
 				.edi, .rdi { c.g.write8(0x7d + far_var_offset) }
 				.rsi { c.g.write8(0x75 + far_var_offset) }
@@ -1154,7 +1164,7 @@ fn (mut c Amd64) cg_mov_var_to_reg(r Register, var Var, config VarConfig) {
 				c.g.n_error('${@LOCATION} unsupported size of global var')
 			}
 			mut addr_reg := Amd64Register.rdx
-			if reg.amd64() == .rdx || reg.amd64() == .edx {
+			if reg == .rdx || reg == .edx {
 				addr_reg = .rax
 			}
 			c.push(addr_reg)
@@ -1348,11 +1358,11 @@ fn (mut c Amd64) ret() {
 }
 
 fn (mut c Amd64) cg_push(r Register) {
-	return c.push(r.amd64())
+	c.push(r.amd64())
 }
 
 fn (mut c Amd64) push(reg Amd64Register) {
-	if i32(reg) < i32(r8) {
+	if i32(reg) < i32(Amd64Register.r8) {
 		c.g.write8(0x50 + i32(reg))
 	} else {
 		c.g.write8(0x41)
@@ -1407,7 +1417,7 @@ fn (mut c Amd64) add(r Amd64Register, val i32) {
 		c.g.write8(0x05)
 	} else {
 		c.g.write8(0x81)
-		c.g.write8(0xc0 + i32(reg))
+		c.g.write8(0xc0 + i32(r))
 	}
 	c.g.write32(val)
 	c.g.println('add ${r},${int(val).hex2()}')
@@ -1706,7 +1716,7 @@ fn (mut c Amd64) relpc(dst Amd64Register, src Amd64Register) {
 }
 
 fn (mut c Amd64) cg_learel(reg Register, val i32) {
-	return c.learel(reg.amd64(), val)
+	c.learel(reg.amd64(), val)
 }
 
 fn (mut c Amd64) learel(reg Amd64Register, val i32) {
@@ -1807,19 +1817,19 @@ fn (mut c Amd64) clear_reg(reg Amd64Register) {
 }
 
 fn (mut c Amd64) cg_mov(r Register, val i32) {
-	return c.mov(r.amd64(), val)
+	c.mov(r.amd64(), val)
 }
 
 fn (mut c Amd64) mov(r Amd64Register, val i32) {
 	match val {
 		-1 {
-			c.mov_neg1(reg)
+			c.mov_neg1(r)
 		}
 		0 {
-			c.clear_reg(reg)
+			c.clear_reg(r)
 		}
 		else {
-			match reg {
+			match r {
 				.eax, .rax {
 					c.g.write8(0xb8)
 				}
@@ -1853,11 +1863,11 @@ fn (mut c Amd64) mov(r Amd64Register, val i32) {
 					c.g.write8(0xbb)
 				}
 				else {
-					c.g.n_error('${@LOCATION} unhandled mov ${reg}')
+					c.g.n_error('${@LOCATION} unhandled mov ${r}')
 				}
 			}
 			c.g.write32(val)
-			c.g.println('mov ${reg}, ${val}')
+			c.g.println('mov ${r}, ${val}')
 		}
 	}
 }
@@ -1966,7 +1976,7 @@ fn (mut c Amd64) sub_reg(a Amd64Register, b Amd64Register) {
 	c.g.println('sub ${a}, ${b}')
 }
 
-fn (mut c Amd64) cg_add_reg(a_reg Register, b_reg Register) {
+fn (mut c Amd64) cg_add_reg(a Register, b Register) {
 	c.add_reg(a.amd64(), b.amd64())
 }
 
@@ -1983,10 +1993,10 @@ fn (mut c Amd64) add_reg(a Amd64Register, b Amd64Register) {
 }
 
 fn (mut c Amd64) cg_mov_reg(a_reg Register, b_reg Register) {
-	return c.mov_reg(a_reg.amd64(), b_reg.amd64())
+	c.mov_reg(a_reg.amd64(), b_reg.amd64())
 }
 
-fn (mut c Amd64) mov_reg(a_reg Amd64Register, b_reg Amd64Register) {
+fn (mut c Amd64) mov_reg(a Amd64Register, b Amd64Register) {
 	if i32(a) <= i32(Amd64Register.r15) && i32(b) <= i32(Amd64Register.r15) {
 		c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
 			if i32(b) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
@@ -2247,7 +2257,7 @@ pub fn (mut c Amd64) cg_call_fn(node ast.CallExpr) {
 			9...15 {
 				c.cg_mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.reg0)
-				c.cg_mov_var_to_reg(.rax, LocalVar{
+				c.cg_mov_var_to_reg(.reg0, LocalVar{
 					offset: return_pos
 					typ:    ast.i64_type_idx
 				},
@@ -2382,7 +2392,7 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 				c.cg_mov_reg_to_var(var as GlobalVar, .reg0)
 			}
 			Register {
-				c.mov_reg(var as Amd64Register, .rax)
+				c.mov_reg(var.amd64(), .rax)
 			}
 			ExternVar {
 				c.cg_mov_reg_to_var(var as ExternVar, .reg0)
@@ -2513,8 +2523,8 @@ fn (mut c Amd64) mov_float_xmm0_var(reg Amd64Register, var_type ast.Type) {
 
 fn (mut c Amd64) cg_create_string_struct(typ ast.Type, name string, str string) i32 {
 	dest := c.cg_allocate_var(name, c.g.get_type_size(typ), i64(0))
-	c.learel(.rbx, c.g.allocate_string(str, 3, .rel32))
-	c.cg_mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .reg3)
+	c.learel(.rax, c.g.allocate_string(str, 3, .rel32))
+	c.cg_mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .reg0)
 	offset := c.g.get_field_offset(typ, 'len')
 	c.cg_mov_int_to_var(LocalVar{dest, ast.i32_type_idx, name}, i32(str.len), offset: offset)
 	return dest
@@ -2845,7 +2855,7 @@ fn (mut c Amd64) cg_gen_index_expr(node ast.IndexExpr) {
 		c.g.expr(node.left) // load address of string struct
 		c.mov_deref(.rax, .rax, ast.u64_type_idx) // load value of the str pointer
 
-		c.pop2(.rdx) // index
+		c.pop(.rdx) // index
 		c.add_reg(.rax, .rdx) // add the offset to the address
 	} else if node.left_type.is_any_kind_of_pointer() {
 		// load the pointer
@@ -4009,12 +4019,14 @@ fn (mut c Amd64) cg_fn_decl(node ast.FnDecl) {
 		c.g.stack_var_pos += (8 - args_size[i] % 8) % 8
 		offset := c.g.allocate_by_type(name, params[i].typ)
 		// copy
+		c.mov_reg(.rax, c.fn_arg_registers[reg_idx])
 		c.cg_mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
-			c.fn_arg_registers[reg_idx])
+			.reg0)
 		reg_idx++
 		if args_size[i] > 8 {
+			c.mov_reg(.rax, c.fn_arg_registers[reg_idx])
 			c.cg_mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
-				c.fn_arg_registers[reg_idx],
+				.reg0,
 				offset: 8
 			)
 			reg_idx++
@@ -4403,15 +4415,15 @@ fn (mut c Amd64) cg_convert_bool_to_string(r Register) {
 }
 
 fn (mut c Amd64) cg_convert_rune_to_string(reg Register, buffer i32, var Var, config VarConfig) {
-	c.lea_var_to_reg(reg, buffer)
+	c.lea_var_to_reg(reg.amd64(), buffer)
 
 	match reg.amd64() {
 		.rax {
 			c.cg_mov_var_to_reg(.reg3, var, config)
 			c.mov_reg(.rax, .rbx)
-			//c.g.write8(0x48)
-			//c.g.write8(0x89)
-			//c.g.write8(0x38)
+			// c.g.write8(0x48)
+			// c.g.write8(0x89)
+			// c.g.write8(0x38)
 		}
 		else {
 			c.g.n_error('${@LOCATION} rune to string not implemented for ${reg}')
@@ -4524,7 +4536,7 @@ fn (mut c Amd64) cg_convert_int_to_string(a Register, b Register) {
 	c.g.println('mov BYTE PTR [rdi], `\0`')
 
 	// after all was converted, reverse the string
-	reg := c.g.get_builtin_arg_reg(.reverse_string, 0) as Amd64Register
+	reg := c.g.get_builtin_arg_reg(.reverse_string, 0).amd64()
 	c.mov_reg(reg, .r12)
 	c.g.call_builtin(.reverse_string)
 
@@ -4533,7 +4545,7 @@ fn (mut c Amd64) cg_convert_int_to_string(a Register, b Register) {
 }
 
 fn (mut c Amd64) cg_reverse_string(r Register) {
-	reg := r as Amd64Register
+	reg := r.amd64()
 
 	if reg != .rdi {
 		c.mov_reg(.rdi, reg)
