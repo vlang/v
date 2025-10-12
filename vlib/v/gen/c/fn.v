@@ -1305,6 +1305,9 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 
 fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type) bool {
 	match node.name {
+		'filter' {
+			g.gen_array_filter(node)
+		}
 		'index' {
 			g.gen_array_index(node)
 		}

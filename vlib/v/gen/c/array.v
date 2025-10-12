@@ -973,11 +973,12 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	}
 
 	sym := g.table.final_sym(node.return_type)
-	if sym.kind != .array {
+	if sym.kind !in [.array_fixed, .array] {
 		verror('filter() requires an array')
 	}
 	info := sym.info as ast.Array
 	styp := g.styp(node.return_type)
+	left_sym := g.table.final_sym(node.left_type)
 	elem_type_str := g.styp(info.elem_type)
 	noscan := g.check_noscan(info.elem_type)
 	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, styp, '{0}')
@@ -997,7 +998,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	g.write_prepared_var(var_name, info.elem_type, elem_type_str, past.tmp_var, i, true,
+	g.write_prepared_var(var_name, info.elem_type, elem_type_str, past.tmp_var, i, left_sym.kind == .array,
 		false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
