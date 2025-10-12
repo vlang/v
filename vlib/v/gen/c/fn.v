@@ -1033,7 +1033,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.indent++
 			g.write('${tmp_opt} = ')
 		} else if !g.inside_curry_call {
-			if g.assign_ct_type != 0 && node.or_block.kind in [.propagate_option, .propagate_result] {
+			if g.assign_ct_type != 0 && node.or_block.kind != .absent {
 				styp = g.styp(g.assign_ct_type.derive(ret_typ))
 			}
 			g.write('${styp} ${tmp_opt} = ')
@@ -1076,8 +1076,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.write('\n ${cur_line}')
 		} else if !g.inside_curry_call {
 			if !g.inside_const_opt_or_res {
-				if g.assign_ct_type != 0
-					&& node.or_block.kind in [.propagate_option, .propagate_result] {
+				if g.assign_ct_type != 0 && node.or_block.kind != .absent {
 					unwrapped_styp = g.styp(g.assign_ct_type.derive(node.return_type).clear_option_and_result())
 				}
 				if g.table.sym(node.return_type).kind == .array_fixed
