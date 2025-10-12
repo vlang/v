@@ -11,20 +11,22 @@ struct ACFieldMethod {
 	typ  string
 }
 
-fn abs(a int) int {
-	if a < 0 {
-		return -a
-	}
-	return a
-}
-
 pub fn (mut c Checker) run_ac(ast_file &ast.File) {
 }
 
 // Autocomplete for function parameters `os.write_bytes(**path string, bytes []u8***)` etc
 pub fn (mut c Checker) autocomplete_for_fn_call_expr() {
 	// println(c.pref.linfo.expr)
-	fn_name := c.pref.linfo.expr.replace('()', '').trim_space()
+	mut fn_name := if c.pref.linfo.expr.ends_with('(') {
+		c.pref.linfo.expr[..c.pref.linfo.expr.len - 1].trim_space()
+	} else {
+		c.pref.linfo.expr.replace('()', '').trim_space()
+	}
+	mod_name := fn_name.all_before_last('.')
+	resolved_mod_name := c.try_resolve_to_import_mod_name(mod_name)
+	if resolved_mod_name.len > 0 {
+		fn_name = resolved_mod_name + '.' + fn_name.all_after_last('.')
+	}
 	f := c.table.find_fn(fn_name) or {
 		println('failed to find fn "${fn_name}"')
 		return
@@ -34,12 +36,39 @@ pub fn (mut c Checker) autocomplete_for_fn_call_expr() {
 }
 
 fn (mut c Checker) ident_gotodef() {
-	name := c.pref.linfo.expr.after('gd^').trim_space()
-	f := c.table.find_fn(name) or {
-		println('failed to find fn "${name}"')
+	mut ident_name := c.pref.linfo.expr.after('gd^').trim_space()
+	mod_name := ident_name.all_before_last('.')
+	resolved_mod_name := c.try_resolve_to_import_mod_name(mod_name)
+	if resolved_mod_name.len > 0 {
+		ident_name = resolved_mod_name + '.' + ident_name.all_after_last('.')
+	}
+	if f := c.table.find_fn(ident_name) {
+		println('${f.file}:${f.pos.line_nr}:${f.pos.col}')
 		return
 	}
-	println('${f.file}:${f.pos.line_nr}:${f.pos.col}')
+	// TODO: As EnumDecl has no `file` field, we can't goto enum right now
+	// for name,val in c.table.enum_decls {
+	//	if val.is_pub && name == ident_name {
+	//		println('${val.file}:${val.pos.line_nr}:${val.pos.col}')
+	//		return
+	//	}
+	//}
+
+	// TODO: we need other TypeDecl information here
+	// for mut sym in c.table.type_symbols {
+	//	if sym.is_pub && sym.name == ident_name {
+	//		match mut sym.info {
+	//			ast.Alias {
+	//			}
+	//			ast.Interface {
+	//			}
+	//			ast.Struct {
+	//			}
+	//			else {
+	//			}
+	//		}
+	//	}
+	//}
 }
 
 // Autocomplete for `myvar. ...`, `os. ...`
@@ -53,11 +82,11 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 		 ' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" node.mod="${node.mod}" col="${c.pref.linfo.col}"')
 	}
 	// Make sure this ident is on the same line as requeste, in the same file, and has the same name
-	same_line := node.pos.line_nr in [c.pref.linfo.line_nr - 1, c.pref.linfo.line_nr + 1, c.pref.linfo.line_nr]
+	same_line := c.pref.linfo.line_nr == node.pos.line_nr
 	if !same_line {
 		return
 	}
-	same_col := abs(c.pref.linfo.col - node.pos.col) < 3
+	same_col := c.pref.linfo.col == node.pos.col + node.pos.len
 	if !same_col {
 		return
 	}
@@ -67,18 +96,21 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	}
 	// Module autocomplete
 	// `os. ...`
-	// println(node)
-	if node.name == '' && node.mod != 'builtin' {
-		c.module_autocomplete(node)
-		return
-	} else if node.name == '' && node.mod == 'builtin' {
-		return
+	mod_name := c.try_resolve_to_import_mod_name(node.name)
+	if mod_name.len > 0 {
+		if node.mod == c.file.mod.name {
+			c.module_autocomplete(mod_name)
+		}
+		exit(0)
 	}
 	mut sb := strings.new_builder(10)
 	if node.kind == .unresolved {
 		// println(node)
 		eprintln('unresolved type, maybe "${node.name}" was not defined. otherwise this is a bug, should never happen; please report')
 		exit(1)
+	}
+	if node.obj.typ == ast.no_type {
+		exit(0)
 	}
 	sym := c.table.sym(c.unwrap_generic(node.obj.typ))
 	// sb.writeln('VAR ${node.name}:${sym.name} ${node.pos.line_nr}')
@@ -151,28 +183,15 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	}
 }
 
-fn (mut c Checker) module_autocomplete(node ast.Ident) {
-	mut sb := strings.new_builder(10)
-	// println(c.table.fns)
-	sb.writeln('{"methods":[')
-	prefix := node.mod + '.'
-	mut empty := true
-	for _, f in c.table.fns {
-		mut name := f.name
-		if name.starts_with(prefix) {
-			empty = false
-			if name.contains('__static__') {
-				name = name.replace('__static__', '.')
-			}
-			name = name.after('.') // The user already typed `mod.`, so suggest the name without module
-			sb.writeln('"${name}:int" ,')
-		}
-	}
-	if !empty {
-		sb.go_back(2) // remove final ,
-	}
-	sb.writeln(']}')
-	println(sb.str().trim_space())
+fn (mut c Checker) module_autocomplete(mod string) {
+	println('{')
+	c.write_mod_funcs(mod)
+	c.write_mod_type_alias(mod)
+	c.write_mod_interfaces(mod)
+	c.write_mod_enums(mod)
+	c.write_mod_consts(mod)
+	c.write_mod_structs(mod)
+	println('}')
 }
 
 fn build_method_summary(method ast.Fn) string {
@@ -198,4 +217,137 @@ fn (c &Checker) build_fn_summary(method ast.Fn) string {
 		}
 	}
 	return s + ')'
+}
+
+fn (c &Checker) try_resolve_to_import_mod_name(name string) string {
+	if name in c.file.used_imports {
+		// resolve alias to mod name
+		mod_name := c.file.imports.filter(it.alias == name)[0].mod
+		return mod_name
+	}
+	return ''
+}
+
+fn (c &Checker) write_mod_funcs(mod string) {
+	mut sb := strings.new_builder(128)
+	sb.writeln('"functions":[')
+	mut empty := true
+	for _, f in c.table.fns {
+		mut name := f.name
+		if f.is_pub && name.all_before_last('.') == mod {
+			empty = false
+			if name.contains('__static__') {
+				name = name.replace('__static__', '.')
+			}
+			name = name.all_after_last('.') // The user already typed `mod.`, so suggest the name without module
+			type_string := if f.return_type != ast.no_type {
+				c.table.type_to_str(f.return_type)
+			} else {
+				'int'
+			}
+			sb.writeln('"${name}:${type_string}" ,')
+		}
+	}
+	if !empty {
+		sb.go_back(2) // remove final ,
+	}
+	sb.writeln('],')
+	println(sb.str().trim_space())
+}
+
+fn (c &Checker) write_mod_type_alias(mod string) {
+	mut sb := strings.new_builder(128)
+	sb.writeln('"type_alias":[')
+	mut empty := true
+	for sym in c.table.type_symbols {
+		if sym.is_pub && sym.info is ast.Alias {
+			if sym.name.all_before_last('.') == mod {
+				empty = false
+				sb.writeln('"${sym.name.all_after_last('.')}" ,')
+			}
+		}
+	}
+	if !empty {
+		sb.go_back(2) // remove final ,
+	}
+	sb.writeln('],')
+	println(sb.str().trim_space())
+}
+
+fn (c &Checker) write_mod_interfaces(mod string) {
+	mut sb := strings.new_builder(128)
+	sb.writeln('"interfaces":[')
+	mut empty := true
+	for sym in c.table.type_symbols {
+		if sym.is_pub && sym.info is ast.Interface {
+			if sym.name.all_before_last('.') == mod {
+				empty = false
+				sb.writeln('"${sym.name.all_after_last('.')}" ,')
+			}
+		}
+	}
+	if !empty {
+		sb.go_back(2) // remove final ,
+	}
+	sb.writeln('],')
+	println(sb.str().trim_space())
+}
+
+fn (c &Checker) write_mod_enums(mod string) {
+	mut sb := strings.new_builder(128)
+	sb.writeln('"enums":[')
+	mut empty := true
+	for name, val in c.table.enum_decls {
+		if val.is_pub && name.all_before_last('.') == mod {
+			empty = false
+			sb.writeln('"${name.all_after_last('.')}" ,')
+		}
+	}
+	if !empty {
+		sb.go_back(2) // remove final ,
+	}
+	sb.writeln('],')
+	println(sb.str().trim_space())
+}
+
+fn (c &Checker) write_mod_consts(mod string) {
+	mut sb := strings.new_builder(128)
+	sb.writeln('"constants":[')
+	mut empty := true
+	for _, obj in c.table.global_scope.objects {
+		if obj is ast.ConstField && obj.is_pub {
+			if obj.name.all_before_last('.') == mod {
+				empty = false
+				if obj.typ != ast.no_type {
+					sb.writeln('"${obj.name.all_after_last('.')}:${c.table.type_to_str(obj.typ)}" ,')
+				} else {
+					sb.writeln('"${obj.name.all_after_last('.')}:int" ,')
+				}
+			}
+		}
+	}
+	if !empty {
+		sb.go_back(2) // remove final ,
+	}
+	sb.writeln('],')
+	println(sb.str().trim_space())
+}
+
+fn (c &Checker) write_mod_structs(mod string) {
+	mut sb := strings.new_builder(128)
+	sb.writeln('"structs":[')
+	mut empty := true
+	for sym in c.table.type_symbols {
+		if sym.is_pub && sym.info is ast.Struct {
+			if sym.name.all_before_last('.') == mod {
+				empty = false
+				sb.writeln('"${sym.name.all_after_last('.')}" ,')
+			}
+		}
+	}
+	if !empty {
+		sb.go_back(2) // remove final ,
+	}
+	sb.writeln(']')
+	println(sb.str().trim_space())
 }
