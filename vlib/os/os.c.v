@@ -705,7 +705,7 @@ pub fn executable() string {
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 				final_len := C.GetFinalPathNameByHandleW(file, unsafe { &u16(&final_path[0]) },
 					max_path_buffer_size, 0)
-				if final_len < u32(max_path_buffer_size) {
+				if final_len < u32(max_path_buffer_size) && final_len != 0 {
 					sret := unsafe { string_from_wide2(&u16(&final_path[0]), int(final_len)) }
 					defer {
 						unsafe { sret.free() }
@@ -714,7 +714,7 @@ pub fn executable() string {
 					sret_slice := sret[4..]
 					res := sret_slice.clone()
 					return res
-				} else {
+				} else if final_len != 0 {
 					eprintln('os.executable() saw that the executable file path was too long')
 				}
 			}
@@ -862,13 +862,15 @@ pub fn real_path(fpath string) string {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, max_path_buffer_size,
 				0)
-			if final_len < u32(max_path_buffer_size) {
+			if final_len < u32(max_path_buffer_size) && final_len != 0 {
 				rt := unsafe { string_from_wide2(pu16_fullpath, int(final_len)) }
 				srt := rt[4..]
 				unsafe { res.free() }
 				res = srt.clone()
 			} else {
-				eprintln('os.real_path() saw that the file path was too long')
+				if final_len != 0 {
+					eprintln('os.real_path() saw that the file path was too long')
+				}
 				unsafe { res.free() }
 				return fpath.clone()
 			}
