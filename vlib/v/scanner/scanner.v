@@ -183,21 +183,15 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 	cidx := s.tidx
 	s.tidx++
 	line_offset := if tok_kind == .hash { 0 } else { 1 }
-	mut max_column := s.current_column() - u16(len) + 1
+	mut max_column := s.current_column() - len + 1
 	if max_column < 1 {
 		max_column = 1
-	}
-	if max_column > 10000 {
-		dump(max_column)
-		dump(s.current_column())
-		dump(len)
-		dump(lit)
 	}
 	return token.Token{
 		kind:     tok_kind
 		lit:      lit
 		line_nr:  s.line_nr + line_offset
-		col:      max_column
+		col:      u16(max_column)
 		pos:      s.pos - len + 1
 		len:      len
 		tidx:     cidx
@@ -211,7 +205,7 @@ fn (s &Scanner) new_eof_token() token.Token {
 		kind:     .eof
 		lit:      ''
 		line_nr:  s.line_nr + 1
-		col:      s.current_column()
+		col:      u16(s.current_column())
 		pos:      s.pos
 		len:      1
 		tidx:     s.tidx
@@ -223,7 +217,7 @@ fn (s &Scanner) new_eof_token() token.Token {
 fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
 	cidx := s.tidx
 	s.tidx++
-	mut max_column := s.current_column() - u16(len) + 1
+	mut max_column := s.current_column() - len + 1
 	if max_column < 1 {
 		max_column = 1
 	}
@@ -231,7 +225,7 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 		kind:     tok_kind
 		lit:      lit
 		line_nr:  start_line + 1
-		col:      max_column
+		col:      u16(max_column)
 		pos:      s.pos - len + 1
 		len:      len
 		tidx:     cidx
@@ -604,10 +598,6 @@ fn (mut s Scanner) scan_remaining_text() {
 	is_skip_comments := s.comments_mode == .skip_comments
 	for {
 		t := s.text_scan()
-		if t.col > 10000 {
-			dump(s.all_tokens)
-			panic('col too large')
-		}
 		if !(is_skip_comments && t.kind == .comment) {
 			s.all_tokens << t
 			if t.kind == .eof || s.should_abort {
@@ -959,11 +949,13 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					// treat shebang line (#!) as a comment
 					comment := s.text[start - 1..s.pos].trim_space()
 					if s.line_nr != 1 {
+						col := s.current_column() - comment.len
+						u16_col := if col < 0 { u16(1) } else { u16(col) }
 						comment_pos := token.Pos{
 							line_nr:  s.line_nr - 1
 							len:      comment.len
 							pos:      start
-							col:      s.current_column()
+							col:      u16_col
 							file_idx: s.file_idx
 						}
 						s.error_with_pos('a shebang is only valid at the top of the file',
@@ -1137,11 +1129,13 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					if s.should_parse_comment() {
 						mut comment := s.text[start..(s.pos - 1)]
 						if !comment.contains('\n') {
+							col := s.current_column() - comment.len - 4
+							u16_col := if col < 0 { u16(1) } else { u16(col) }
 							comment_pos := token.Pos{
 								line_nr:  start_line
 								len:      comment.len + 4
 								pos:      start
-								col:      s.current_column() - u16(comment.len) - 4
+								col:      u16_col
 								file_idx: s.file_idx
 							}
 							s.error_with_pos('inline comment is deprecated, please use line comment',
@@ -1177,8 +1171,8 @@ fn (mut s Scanner) invalid_character() {
 }
 
 @[inline]
-fn (s &Scanner) current_column() u16 {
-	return u16(s.pos - s.last_nl_pos)
+fn (s &Scanner) current_column() int {
+	return s.pos - s.last_nl_pos
 }
 
 @[direct_array_access]
@@ -1687,10 +1681,12 @@ fn (mut s Scanner) inc_line_number() {
 }
 
 pub fn (mut s Scanner) current_pos() token.Pos {
+	col := s.current_column() - 1
+	u16_col := if col < 0 { u16(1) } else { u16(col) }
 	return token.Pos{
 		line_nr:  s.line_nr
 		pos:      s.pos
-		col:      s.current_column() - 1
+		col:      u16_col
 		file_idx: s.file_idx
 	}
 }
