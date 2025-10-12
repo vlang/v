@@ -187,6 +187,12 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 	if max_column < 1 {
 		max_column = 1
 	}
+	if max_column > 10000 {
+		dump(max_column)
+		dump(s.current_column())
+		dump(len)
+		dump(lit)
+	}
 	return token.Token{
 		kind:     tok_kind
 		lit:      lit
@@ -598,6 +604,10 @@ fn (mut s Scanner) scan_remaining_text() {
 	is_skip_comments := s.comments_mode == .skip_comments
 	for {
 		t := s.text_scan()
+		if t.col > 10000 {
+			dump(s.all_tokens)
+			panic('col too large')
+		}
 		if !(is_skip_comments && t.kind == .comment) {
 			s.all_tokens << t
 			if t.kind == .eof || s.should_abort {
@@ -953,7 +963,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 							line_nr:  s.line_nr - 1
 							len:      comment.len
 							pos:      start
-							col:      s.current_column() - u16(comment.len)
+							col:      s.current_column()
 							file_idx: s.file_idx
 						}
 						s.error_with_pos('a shebang is only valid at the top of the file',
