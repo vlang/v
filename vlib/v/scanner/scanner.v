@@ -949,13 +949,11 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					// treat shebang line (#!) as a comment
 					comment := s.text[start - 1..s.pos].trim_space()
 					if s.line_nr != 1 {
-						col := s.current_column() - comment.len
-						u16_col := if col < 0 { u16(1) } else { u16(col) }
 						comment_pos := token.Pos{
 							line_nr:  s.line_nr - 1
 							len:      comment.len
 							pos:      start
-							col:      u16_col
+							col:      u16_col(s.current_column() - comment.len)
 							file_idx: s.file_idx
 						}
 						s.error_with_pos('a shebang is only valid at the top of the file',
@@ -1129,13 +1127,11 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					if s.should_parse_comment() {
 						mut comment := s.text[start..(s.pos - 1)]
 						if !comment.contains('\n') {
-							col := s.current_column() - comment.len - 4
-							u16_col := if col < 0 { u16(1) } else { u16(col) }
 							comment_pos := token.Pos{
 								line_nr:  start_line
 								len:      comment.len + 4
 								pos:      start
-								col:      u16_col
+								col:      u16_col(s.current_column() - comment.len - 4)
 								file_idx: s.file_idx
 							}
 							s.error_with_pos('inline comment is deprecated, please use line comment',
@@ -1681,12 +1677,10 @@ fn (mut s Scanner) inc_line_number() {
 }
 
 pub fn (mut s Scanner) current_pos() token.Pos {
-	col := s.current_column() - 1
-	u16_col := if col < 0 { u16(1) } else { u16(col) }
 	return token.Pos{
 		line_nr:  s.line_nr
 		pos:      s.pos
-		col:      u16_col
+		col:      u16_col(s.current_column() - 1)
 		file_idx: s.file_idx
 	}
 }
@@ -1861,4 +1855,9 @@ fn (s Scanner) str_quote() u8 {
 		return c
 	}
 	return 255
+}
+
+@[inline]
+fn u16_col(col int) u16 {
+	return if col < 0 { u16(0) } else { u16(col) }
 }

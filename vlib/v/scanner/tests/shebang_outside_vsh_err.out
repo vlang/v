@@ -2,6 +2,6 @@ vlib/v/scanner/tests/shebang_outside_vsh_err.vv:3:1: error: a shebang is only va
     1 | module foo
     2 | 
     3 | #!/usr/bin/env -S v
-      | ^
+      | ~~~~~~~~~~~~~~~~~~~
     4 | 
     5 | import os

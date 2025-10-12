@@ -108,8 +108,7 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos)
 	emsg := omsg.replace('main.', '')
 	path := path_styled_for_error_messages(filepath)
 	position := if filepath != '' {
-		//'${path}:${pos.line_nr + 1}:${int_max(1, pos.col + 1)}:'
-		'${path}:${pos.line_nr + 1}:${pos.col + 1}:'
+		'${path}:${pos.line_nr + 1}:${int_max(1, pos.col + 1)}:'
 	} else {
 		''
 	}
