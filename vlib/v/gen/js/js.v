@@ -2913,10 +2913,10 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 }
 
 fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
-	left_typ := g.table.sym(expr.left_type)
+	left_sym := g.table.sym(expr.left_type)
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
-		if left_typ.kind == .string {
+		if left_sym.kind == .string {
 			g.write('string_slice(')
 		} else {
 			g.write('array_slice(')
@@ -2943,7 +2943,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.write('.len')
 		}
 		g.write(')')
-	} else if left_typ.kind == .map {
+	} else if left_sym.kind == .map {
 		g.expr(expr.left)
 
 		if expr.is_setter {
@@ -2956,9 +2956,9 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		g.write('.\$toJS()')
 		if expr.is_setter {
 			// g.write(', ${g.to_js_typ_val(left_typ.)')
-			match left_typ.info {
+			match left_sym.info {
 				ast.Map {
-					g.write(', ${g.to_js_typ_val(left_typ.info.value_type)}')
+					g.write(', ${g.to_js_typ_val(left_sym.info.value_type)}')
 				}
 				else {
 					verror('unreachable')
@@ -2966,7 +2966,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			}
 		}
 		g.write(')')
-	} else if left_typ.kind == .string {
+	} else if left_sym.kind == .string {
 		if expr.is_setter {
 			// TODO: What's the best way to do this?
 			// 'string'[3] = `o`
@@ -3769,10 +3769,11 @@ fn replace_op(s string) string {
 }
 
 fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
-	left_typ := g.table.sym(expr.left_type)
+	left_sym := g.table.sym(expr.left_type)
+	left_sym_kind := left_sym.kind
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
-		if left_typ.kind == .array {
+		if left_sym_kind == .array {
 			g.write('array_slice(')
 		} else {
 			g.write('string_slice(')
@@ -3799,7 +3800,7 @@ fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
 			g.write('.len')
 		}
 		g.write(')')
-	} else if left_typ.kind == .map {
+	} else if left_sym_kind == .map {
 		g.expr(expr.left)
 
 		if expr.is_setter {
@@ -3842,7 +3843,7 @@ fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
 			}
 			g.write(')')
 		}
-	} else if left_typ.kind == .string {
+	} else if left_sym_kind == .string {
 		if expr.is_setter {
 			// TODO: What's the best way to do this?
 			// 'string'[3] = `o`

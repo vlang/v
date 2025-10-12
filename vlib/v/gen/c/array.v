@@ -1431,8 +1431,8 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 	thread_type := arr.array_info().elem_type
 	thread_sym := g.table.sym(thread_type)
 	thread_ret_type := thread_sym.thread_info().return_type
-	eltyp := g.table.sym(thread_ret_type).cname
-	fn_name := g.register_thread_array_wait_call(eltyp)
+	elsymcname := g.table.sym(thread_ret_type).cname
+	fn_name := g.register_thread_array_wait_call(elsymcname)
 	g.write('${fn_name}(')
 	if node.left_type.is_ptr() {
 		g.write('*')
@@ -1446,8 +1446,8 @@ fn (mut g Gen) gen_fixed_array_wait(node ast.CallExpr) {
 	thread_type := arr.array_fixed_info().elem_type
 	thread_sym := g.table.sym(thread_type)
 	thread_ret_type := thread_sym.thread_info().return_type
-	eltyp := g.table.sym(thread_ret_type).cname
-	fn_name := g.register_thread_fixed_array_wait_call(node, eltyp)
+	elsymcname := g.table.sym(thread_ret_type).cname
+	fn_name := g.register_thread_fixed_array_wait_call(node, elsymcname)
 	g.write('${fn_name}(')
 	g.expr(node.left)
 	g.write(')')

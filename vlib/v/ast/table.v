@@ -1164,8 +1164,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 	if existing_idx > 0 {
 		return existing_idx
 	}
-	// register
-	chan_typ := TypeSymbol{
+	chan_sym := TypeSymbol{
 		parent_idx: chan_type_idx
 		kind:       .chan
 		name:       name
@@ -1175,7 +1174,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 			is_mut:    is_mut
 		}
 	}
-	return t.register_sym(chan_typ)
+	return t.register_sym(chan_sym)
 }
 
 pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
@@ -1186,8 +1185,7 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 	if existing_idx > 0 {
 		return existing_idx
 	}
-	// register
-	map_typ := TypeSymbol{
+	map_sym := TypeSymbol{
 		parent_idx: map_type_idx
 		kind:       .map
 		name:       name
@@ -1197,7 +1195,7 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 			value_type: value_type
 		}
 	}
-	return t.register_sym(map_typ)
+	return t.register_sym(map_sym)
 }
 
 pub fn (mut t Table) find_or_register_thread(return_type Type) int {
@@ -1208,8 +1206,7 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 	if existing_idx > 0 {
 		return existing_idx
 	}
-	// register
-	thread_typ := TypeSymbol{
+	thread_sym := TypeSymbol{
 		parent_idx: thread_type_idx
 		kind:       .thread
 		name:       name
@@ -1218,7 +1215,7 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 			return_type: return_type
 		}
 	}
-	return t.register_sym(thread_typ)
+	return t.register_sym(thread_sym)
 }
 
 pub fn (mut t Table) find_or_register_promise(return_type Type) int {
@@ -1321,8 +1318,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	if existing_idx > 0 {
 		return existing_idx
 	}
-	// register
-	mr_type := TypeSymbol{
+	multireg_sym := TypeSymbol{
 		kind:  .multi_return
 		name:  name
 		cname: cname
@@ -1330,7 +1326,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 			types: mr_typs
 		}
 	}
-	return t.register_sym(mr_type)
+	return t.register_sym(multireg_sym)
 }
 
 pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool) int {
@@ -1366,7 +1362,7 @@ pub fn (mut t Table) add_placeholder_type(name string, cname string, language La
 	if name.contains('.') {
 		modname = name.all_before_last('.')
 	}
-	ph_type := TypeSymbol{
+	placeholder_sym := TypeSymbol{
 		kind:       .placeholder
 		name:       name
 		cname:      util.no_dots(cname).replace_each(['&', ''])
@@ -1375,7 +1371,7 @@ pub fn (mut t Table) add_placeholder_type(name string, cname string, language La
 		is_pub:     true
 		is_builtin: name in builtins
 	}
-	return t.register_sym(ph_type)
+	return t.register_sym(placeholder_sym)
 }
 
 @[inline]
