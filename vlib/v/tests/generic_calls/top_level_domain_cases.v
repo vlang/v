@@ -1,4 +1,4 @@
-module faker
+module main
 
 pub fn TopLevelDomain.cases() []TopLevelDomain {
 	mut cases := []TopLevelDomain{}
