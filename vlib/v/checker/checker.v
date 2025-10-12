@@ -448,7 +448,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			c.ident_gotodef()
 			exit(0)
 		}
-		if c.pref.linfo.expr.contains('()') {
+		if c.pref.linfo.expr.contains('()') || c.pref.linfo.expr.ends_with('(') {
 			c.autocomplete_for_fn_call_expr()
 			exit(0)
 		}
