@@ -914,6 +914,8 @@ fn (mut c Amd64) mov_reg_to_var(var Var, reg Amd64Register, config VarConfig) {
 	}
 }
 
+// does not support 64bits
+// TODO: remove and replace by a more general function (like mov_reg_to_var)
 fn (mut c Amd64) cg_mov_int_to_var(var Var, integer i32, config VarConfig) {
 	match var {
 		ast.Ident {
