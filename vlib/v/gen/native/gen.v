@@ -97,7 +97,7 @@ mut:
 	cg_add(r Register, val i32)
 	cg_add_reg(r Register, r2 Register)
 	cg_address_size() i32
-	cg_allocate_var(name string, size i32, initial_val Number) i32
+	cg_allocate_stack_var(name string, size i32, initial_val Number) i32
 	cg_assign_stmt(node ast.AssignStmt)
 	cg_builtin_decl(builtin BuiltinFn)
 	cg_call_addr_at(addr i32, at i64) i64
@@ -1045,7 +1045,7 @@ fn (mut g Gen) allocate_string(s string, opsize i32, typ RelocType) i32 {
 // allocates a buffer variable: name, size of stored type (nb of bytes), nb of items
 fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 {
 	g.println('; allocate array `${name}` item-size:${size} items:${items}:')
-	pos := g.cg.cg_allocate_var(name, 4, i64(items)) // store the length of the array on the stack in a 4 byte var
+	pos := g.cg.cg_allocate_stack_var(name, 4, i64(items)) // store the length of the array on the stack in a 4 byte var
 	g.stack_var_pos += (size * items) // reserve space on the stack for the items
 	return pos
 }
@@ -1166,7 +1166,7 @@ fn (mut g Gen) gen_var_to_string(reg Register, expr ast.Expr, var Var, config Va
 	g.println('; var_to_string {')
 	typ := g.get_type_from_var(var)
 	if typ == ast.rune_type_idx {
-		buffer := g.cg.cg_allocate_var('rune-buffer', 8, i64(0))
+		buffer := g.cg.cg_allocate_stack_var('rune-buffer', 8, i64(0))
 		g.cg.cg_convert_rune_to_string(reg, buffer, var, config)
 	} else if typ.is_int() {
 		if typ.is_unsigned() {

@@ -54,7 +54,7 @@ mut:
 	// arm64 specific stuff for code generation
 }
 
-fn (mut x Arm64) cg_allocate_var(name string, size i32, initial_val Number) i32 {
+fn (mut x Arm64) cg_allocate_stack_var(name string, size i32, initial_val Number) i32 {
 	eprintln('TODO: allocating var on arm64 (${name}) = ${size} = ${initial_val}')
 	return 0
 }
