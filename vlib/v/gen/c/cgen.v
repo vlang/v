@@ -6609,7 +6609,8 @@ fn verror(s string) {
 
 @[noreturn]
 fn (g &Gen) error(s string, pos token.Pos) {
-	util.show_compiler_message('cgen error:', pos: pos, file_path: g.file.path, message: s)
+	file_path := if pos.file_idx < 0 { g.file.path } else { g.table.filelist[pos.file_idx] }
+	util.show_compiler_message('cgen error:', pos: pos, file_path: file_path, message: s)
 	exit(1)
 }
 

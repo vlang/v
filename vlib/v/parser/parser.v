@@ -19,6 +19,7 @@ pub:
 mut:
 	file_base         string       // "hello.v"
 	file_path         string       // "/home/user/hello.v"
+	file_idx          i16          // file idx in the global table `filelist`
 	file_display_path string       // just "hello.v", when your current folder for the compilation is "/home/user/", otherwise the full path "/home/user/hello.v"
 	unique_prefix     string       // a hash of p.file_path, used for making anon fn generation unique
 	file_backend_mode ast.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
@@ -255,8 +256,13 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 	$if trace_parse_file ? {
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path}')
 	}
+	mut file_idx := i16(table.filelist.index(path))
+	if file_idx == -1 {
+		file_idx = i16(table.filelist.len)
+		table.filelist << path
+	}
 	mut p := Parser{
-		scanner: scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
+		scanner: scanner.new_scanner_file(path, file_idx, comments_mode, pref_) or { panic(err) }
 		table:   table
 		pref:    pref_
 		// Only set vls mode if it's the file the user requested via `v -vls-mode file.v`
@@ -268,6 +274,7 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 		}
 		errors:   []errors.Error{}
 		warnings: []errors.Warning{}
+		file_idx: file_idx
 	}
 	p.set_path(path)
 	res := p.parse()

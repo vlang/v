@@ -103,7 +103,7 @@ pub:
 	calling_file string
 	line_nr      int
 	position     int
-	col          int
+	col          u16
 	message      string
 }
 
@@ -123,7 +123,7 @@ fn (err IncludeError) calling_file() string {
 	return err.calling_file
 }
 
-fn (err IncludeError) col() int {
+fn (err IncludeError) col() u16 {
 	return err.col
 }
 
@@ -140,7 +140,7 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 			calling_file: calling_file
 			line_nr:      tline_number // line_number
 			position:     position + '@include '.len
-			col:          position + '@include '.len
+			col:          u16(position + '@include '.len)
 			message:      'path for @include must be quoted with \' or "'
 		}
 	}

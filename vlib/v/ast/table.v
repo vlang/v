@@ -102,6 +102,7 @@ pub mut:
 	new_int             bool              // use 64bit/32bit platform dependent `int`
 	new_int_fmt_fix     bool              // vfmt will fix `int` to `i32`
 	export_names        map[string]string // @[export] names
+	filelist            []string          // all files list
 }
 
 pub struct ComptTimeCondResult {
