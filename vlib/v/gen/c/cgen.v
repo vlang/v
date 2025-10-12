@@ -7573,8 +7573,8 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 		}
 		.map {
 			info := sym.map_info()
-			key_typ := g.table.sym(info.key_type)
-			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
+			key_sym := g.table.sym(info.key_type)
+			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_sym)
 			noscan_key := g.check_noscan(info.key_type)
 			noscan_value := g.check_noscan(info.value_type)
 			mut noscan := if noscan_key.len != 0 || noscan_value.len != 0 { '_noscan' } else { '' }
@@ -7588,7 +7588,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 			}
 			init_str := 'builtin__new_map${noscan}(sizeof(${g.styp(info.key_type)}), sizeof(${g.styp(info.value_type)}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn})'
 			if typ.has_flag(.shared_f) {
-				mtyp := '__shared__Map_${key_typ.cname}_${g.styp(info.value_type).replace('*',
+				mtyp := '__shared__Map_${key_sym.cname}_${g.styp(info.value_type).replace('*',
 					'_ptr')}'
 				return '(${mtyp}*)__dup_shared_map(&(${mtyp}){.mtx = {0}, .val =${init_str}}, sizeof(${mtyp}))'
 			} else {

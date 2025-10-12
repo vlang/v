@@ -37,8 +37,7 @@ pub const type_idx = {
 pub const string_max_len = 2048
 pub const null_primitive = Primitive(Null{})
 
-pub type Primitive = InfixType
-	| Null
+pub type Primitive = Null
 	| bool
 	| f32
 	| f64
@@ -52,6 +51,7 @@ pub type Primitive = InfixType
 	| u32
 	| u64
 	| u8
+	| InfixType
 	| []Primitive
 
 pub struct Null {}
