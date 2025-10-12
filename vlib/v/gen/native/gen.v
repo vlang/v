@@ -97,15 +97,15 @@ mut:
 	cg_add(r Register, val i32)
 	cg_add_reg(r Register, r2 Register)
 	cg_address_size() i32
-	cg_allocate_var(name string, size i32, initial_val Number) i32 // TODO: make platform-independent
-	cg_assign_stmt(node ast.AssignStmt) // TODO: make platform-independent
+	cg_allocate_var(name string, size i32, initial_val Number) i32
+	cg_assign_stmt(node ast.AssignStmt)
 	cg_builtin_decl(builtin BuiltinFn)
 	cg_call_addr_at(addr i32, at i64) i64
 	cg_call_builtin(name Builtin) i64
 	cg_call_fn(node ast.CallExpr)
 	cg_call(addr i32) i64
 	cg_cjmp(op JumpOp) i32
-	cg_cmp_to_stack_top(r Register) // TODO: make platform-independent
+	cg_cmp_to_stack_top(r Register)
 	cg_cmp_var_reg(var Var, reg Register, config VarConfig)
 	cg_cmp_var(var Var, val i32, config VarConfig)
 	cg_cmp_reg(reg Register, reg2 Register)
@@ -119,25 +119,25 @@ mut:
 	cg_gen_asm_stmt(asm_node ast.AsmStmt)
 	cg_gen_cast_expr(expr ast.CastExpr)
 	cg_gen_exit(expr ast.Expr)
-	cg_gen_index_expr(ast.IndexExpr)      // TODO: make platform-independant
-	cg_gen_match_expr(expr ast.MatchExpr) // TODO: make platform-independant
+	cg_gen_index_expr(ast.IndexExpr)     
+	cg_gen_match_expr(expr ast.MatchExpr)
 	cg_gen_print_reg(r Register, n i32, fd i32)
 	cg_gen_print(s string, fd i32)
 	cg_gen_syscall(node ast.CallExpr)
 	cg_inc_var(var Var, config VarConfig)
-	cg_infix_expr(node ast.InfixExpr) // TODO: make platform-independent
-	cg_infloop()                      // TODO: make platform-independant
+	cg_infix_expr(node ast.InfixExpr)
+	cg_infloop()                     
 	cg_init_struct(var Var, init ast.StructInit)
 	cg_init_array(var Var, init ast.ArrayInit)
 	cg_jmp_back(start i64)
 	cg_jmp(addr i32) i32
 	cg_lea_var_to_reg(r Register, var_offset i32)
 	cg_learel(reg Register, val i32)
-	cg_leave() // TODO: make platform-independent
+	cg_leave()
 	cg_load_fp_var(var Var, config VarConfig)
 	cg_load_fp(val f64)
 	cg_mov_deref(reg Register, regptr Register, typ ast.Type)
-	cg_mov_int_to_var(var Var, integer i32, config VarConfig) // TODO: make platform-independent
+	cg_mov_int_to_var(var Var, integer i32, config VarConfig)
 	cg_mov_reg_to_var(var Var, reg Register, config VarConfig)
 	cg_mov_reg(r1 Register, r2 Register)
 	cg_mov_var_to_reg(reg Register, var Var, config VarConfig)
@@ -147,14 +147,14 @@ mut:
 	cg_mul_reg(a Register, b Register)
 	cg_patch_relative_jmp(pos i32, addr i64)
 	cg_pop(r Register)
-	cg_prefix_expr(node ast.PrefixExpr) // TODO: make platform-independant
+	cg_prefix_expr(node ast.PrefixExpr)
 	cg_push(r Register)
 	cg_ret()
-	cg_return_stmt(node ast.Return) // TODO: make platform-independant
-	cg_reverse_string(r Register)   // TODO: remove
+	cg_return_stmt(node ast.Return)
+	cg_reverse_string(r Register)	
 	cg_syscall()                    // unix syscalls
 	cg_trap()
-	cg_zero_fill(size i32, var LocalVar) // TODO: make platform-independant
+	cg_zero_fill(size i32, var LocalVar)
 }
 
 enum Register {

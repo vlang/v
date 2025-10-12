@@ -1583,8 +1583,8 @@ pub fn (mut c Amd64) inline_strlen(r Amd64Register) {
 	c.cld_repne_scasb()
 	c.xor(.rcx, -1)
 	c.dec(.rcx)
-	c.g.println('strlen rax, ${r}')
 	c.mov_reg(.rax, .rcx)
+	c.g.println('strlen rax, ${r}')
 	c.g.println('; inline_strlen }')
 }
 
@@ -2696,8 +2696,8 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 		}
 		ast.AtExpr {
 			dest := c.cg_allocate_var(name, 8, i64(0))
-			c.learel(.rbx, c.g.allocate_string(c.g.comptime_at(right), 3, .rel32))
-			c.cg_mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .reg3)
+			c.learel(.rsi, c.g.allocate_string(c.g.comptime_at(right), 3, .rel32))
+			c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
 		}
 		ast.IfExpr {
 			if right.is_comptime {
@@ -4413,11 +4413,10 @@ fn (mut c Amd64) cg_convert_rune_to_string(reg Register, buffer i32, var Var, co
 
 	match reg.amd64() {
 		.rax {
-			c.cg_mov_var_to_reg(.reg3, var, config)
-			c.mov_reg(.rax, .rbx)
-			// c.g.write8(0x48)
-			// c.g.write8(0x89)
-			// c.g.write8(0x38)
+			c.mov_var_to_reg(.rdi, var, config)
+			c.g.write8(0x48)
+			c.g.write8(0x89)
+			c.g.write8(0x38)
 		}
 		else {
 			c.g.n_error('${@LOCATION} rune to string not implemented for ${reg}')
@@ -4503,10 +4502,10 @@ fn (mut c Amd64) cg_convert_int_to_string(a Register, b Register) {
 	loop_start := c.g.pos()
 	c.g.println('; label ${loop_label}')
 
-	c.div_reg_rax(.rbx) // rax will be the result of the division
-	c.add8(.rdx, i32(`0`)) // rdx is the remainder, add 48 to convert it into it's ascii representation
 	c.mov(.rdx, 0) // upperhalf of the dividend
 	c.mov(.rbx, 10)
+	c.div_reg_rax(.rbx) // rax will be the result of the division
+	c.add8(.rdx, i32(`0`)) // rdx is the remainder, add 48 to convert it into it's ascii representation
 
 	c.mov_store(.rdi, .rdx, ._8)
 
