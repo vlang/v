@@ -597,6 +597,12 @@ fn test_is_executable_writable_readable() {
 		assert os.is_writable(file_name)
 		assert os.is_readable(file_name)
 		assert os.is_executable(file_name)
+		for ext in ['exe', 'com', 'bat', 'cmd'] {
+			mut executable_file_name := 'executable.${ext}'
+			create_file(executable_file_name)!
+			assert os.is_executable(executable_file_name)
+			os.rm(executable_file_name) or { panic(err) }
+		}
 	}
 	// We finally delete the test file.
 	os.rm(file_name) or { panic(err) }

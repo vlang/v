@@ -433,7 +433,12 @@ pub fn is_executable(path string) bool {
 		// 04 Read-only
 		// 06 Read and write
 		p := real_path(path)
-		return exists(p) && (p.ends_with('.exe') || p.ends_with('.bat') || p.ends_with('.cmd'))
+		if !exists(p) {
+			return false
+		}
+		ext := p.to_lower().all_after_last('.')
+		// Note: Extensions like 'ps1', 'vbs', 'js', 'msi', 'scr', 'pif' require specific interpreters and are not directly executable
+		return ext in ['exe', 'com', 'bat', 'cmd']
 	}
 	$if solaris {
 		attr := stat(path) or { return false }
