@@ -109,16 +109,6 @@ fn (r Register) amd64() Amd64Register {
 	}
 }
 
-fn (r Amd64Register) reg() Register {
-	return match r {
-		.rax { .reg0 }
-		.rcx { .reg1 }
-		.rdx { .reg2 }
-		.rbx { .reg3 }
-		else { panic('Unsupported register ${r}') }
-	}
-}
-
 fn amd64_get_call_regs(os pref.OS) []Amd64Register {
 	return match os {
 		.windows {
@@ -776,29 +766,32 @@ fn (mut c Amd64) mov_store(regptr Amd64Register, reg Amd64Register, size Size) {
 }
 
 fn (mut c Amd64) cg_mov_reg_to_var(var Var, r Register, config VarConfig) {
-	reg := r.amd64()
+	c.mov_reg_to_var(var, r.amd64(), config)
+}
+
+fn (mut c Amd64) mov_reg_to_var(var Var, reg Amd64Register, config VarConfig) {
 	match var {
 		ast.Ident {
 			var_object := c.g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					c.cg_mov_reg_to_var(var_object as LocalVar, r, config)
+					c.mov_reg_to_var(var_object as LocalVar, reg, config)
 				}
 				GlobalVar {
-					c.cg_mov_reg_to_var(var_object as GlobalVar, r, config)
+					c.mov_reg_to_var(var_object as GlobalVar, reg, config)
 				}
 				Register {
 					// TODO
 					c.g.n_error('${@LOCATION} unsupported Ident Register')
 				}
 				ExternVar {
-					c.cg_mov_reg_to_var(var_object as ExternVar, r, config)
+					c.mov_reg_to_var(var_object as ExternVar, reg, config)
 				}
 				PreprocVar {
-					c.cg_mov_reg_to_var(var_object as PreprocVar, r, config)
+					c.mov_reg_to_var(var_object as PreprocVar, reg, config)
 				}
 				ConstVar {
-					c.cg_mov_reg_to_var(var_object as ConstVar, r, config)
+					c.mov_reg_to_var(var_object as ConstVar, reg, config)
 				}
 			}
 		}
@@ -1074,28 +1067,31 @@ fn (mut c Amd64) lea_var_to_reg(reg Amd64Register, var_offset i32) {
 }
 
 fn (mut c Amd64) cg_mov_var_to_reg(r Register, var Var, config VarConfig) {
-	reg := r.amd64()
+	c.mov_var_to_reg(r.amd64(), var, config)
+}
+
+fn (mut c Amd64) mov_var_to_reg(reg Amd64Register, var Var, config VarConfig) {
 	match var {
 		ast.Ident {
 			var_object := c.g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					c.cg_mov_var_to_reg(r, var_object as LocalVar, config)
+					c.mov_var_to_reg(reg, var_object as LocalVar, config)
 				}
 				GlobalVar {
-					c.cg_mov_var_to_reg(r, var_object as GlobalVar, config)
+					c.mov_var_to_reg(reg, var_object as GlobalVar, config)
 				}
 				Register {
 					// TODO
 				}
 				ExternVar {
-					c.cg_mov_var_to_reg(r, var_object as ExternVar, config)
+					c.mov_var_to_reg(reg, var_object as ExternVar, config)
 				}
 				PreprocVar {
-					c.cg_mov_var_to_reg(r, var_object as PreprocVar, config)
+					c.mov_var_to_reg(reg, var_object as PreprocVar, config)
 				}
 				ConstVar {
-					c.cg_mov_var_to_reg(r, var_object as ConstVar, config)
+					c.mov_var_to_reg(reg, var_object as ConstVar, config)
 				}
 			}
 		}
@@ -4019,14 +4015,12 @@ fn (mut c Amd64) cg_fn_decl(node ast.FnDecl) {
 		c.g.stack_var_pos += (8 - args_size[i] % 8) % 8
 		offset := c.g.allocate_by_type(name, params[i].typ)
 		// copy
-		c.mov_reg(.rax, c.fn_arg_registers[reg_idx])
-		c.cg_mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
-			.reg0)
+		c.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
+			c.fn_arg_registers[reg_idx])
 		reg_idx++
 		if args_size[i] > 8 {
-			c.mov_reg(.rax, c.fn_arg_registers[reg_idx])
-			c.cg_mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
-				.reg0,
+			c.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
+				c.fn_arg_registers[reg_idx],
 				offset: 8
 			)
 			reg_idx++
