@@ -119,14 +119,14 @@ mut:
 	cg_gen_asm_stmt(asm_node ast.AsmStmt)
 	cg_gen_cast_expr(expr ast.CastExpr)
 	cg_gen_exit(expr ast.Expr)
-	cg_gen_index_expr(ast.IndexExpr)     
+	cg_gen_index_expr(ast.IndexExpr)
 	cg_gen_match_expr(expr ast.MatchExpr)
 	cg_gen_print_reg(r Register, n i32, fd i32)
 	cg_gen_print(s string, fd i32)
 	cg_gen_syscall(node ast.CallExpr)
 	cg_inc_var(var Var, config VarConfig)
 	cg_infix_expr(node ast.InfixExpr)
-	cg_infloop()                     
+	cg_infloop()
 	cg_init_struct(var Var, init ast.StructInit)
 	cg_init_array(var Var, init ast.ArrayInit)
 	cg_jmp_back(start i64)
@@ -151,8 +151,8 @@ mut:
 	cg_push(r Register)
 	cg_ret()
 	cg_return_stmt(node ast.Return)
-	cg_reverse_string(r Register)	
-	cg_syscall()                    // unix syscalls
+	cg_reverse_string(r Register)
+	cg_syscall() // unix syscalls
 	cg_trap()
 	cg_zero_fill(size i32, var LocalVar)
 }
