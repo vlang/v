@@ -1,0 +1,6 @@
+mut x := u8(254)
+println(x)
+x ++
+println(x)
+x ++
+println(x)

@@ -21,6 +21,7 @@ mut:
 // seed seeds the PCG32RNG with 4 `u32` values.
 // The first 2 represent the 64-bit initial state as `[lower 32 bits, higher 32 bits]`
 // The last 2 represent the 64-bit stream/step of the PRNG.
+@[ignore_overflow]
 pub fn (mut rng PCG32RNG) seed(seed_data []u32) {
 	if seed_data.len != 4 {
 		eprintln('PCG32RNG needs 4 u32s to be seeded. First two the initial state and the last two the stream/step. Both in little endian format: [lower, higher].')
@@ -69,7 +70,7 @@ pub fn (mut rng PCG32RNG) u16() u16 {
 }
 
 // u32 returns a pseudorandom unsigned `u32`.
-@[inline]
+@[ignore_overflow; inline]
 pub fn (mut rng PCG32RNG) u32() u32 {
 	oldstate := rng.state
 	rng.state = oldstate * (6364136223846793005) + rng.inc

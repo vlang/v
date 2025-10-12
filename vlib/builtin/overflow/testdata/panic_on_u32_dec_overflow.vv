@@ -1,0 +1,6 @@
+mut x := u32(1)
+println(x)
+x --
+println(x)
+x --
+println(x)

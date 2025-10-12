@@ -83,6 +83,14 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.is_direct_array_access = prev_is_direct_array_access
 	}
 
+	// handle `@[ignore_overflow] fn abc() {}` and -check-overflow :
+	prev_do_int_overflow_checks := g.do_int_overflow_checks
+	g.do_int_overflow_checks = g.pref.is_check_overflow && !g.is_builtin_overflow_mod
+		&& !node.is_ignore_overflow
+	defer {
+		g.do_int_overflow_checks = prev_do_int_overflow_checks
+	}
+
 	// handle `@[c_extern] fn C.some_name() int` declarations:
 	old_inside_c_extern := g.inside_c_extern
 	defer {

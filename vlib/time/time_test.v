@@ -250,7 +250,7 @@ fn test_weekday_str() {
 fn test_add() {
 	d_seconds := 3
 	d_nanoseconds := 13
-	duration := time.Duration(d_seconds * time.second + d_nanoseconds * time.nanosecond)
+	duration := time.Duration(i64(d_seconds) * time.second + d_nanoseconds * time.nanosecond)
 	// dump(duration.debug())
 	t1 := local_time_to_test
 	// dump(t1.debug())

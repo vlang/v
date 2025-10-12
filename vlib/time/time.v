@@ -165,12 +165,12 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 
 // add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
-	return time_with_unix(t).add(seconds * second)
+	return time_with_unix(t).add(i64(seconds) * second)
 }
 
 // add_days returns a new time struct with an added number of days.
 pub fn (t Time) add_days(days int) Time {
-	return time_with_unix(t).add(days * 24 * hour)
+	return time_with_unix(t).add(i64(days) * 24 * hour)
 }
 
 // since returns the time duration elapsed since a given time.
@@ -401,7 +401,7 @@ pub fn (t Time) local_to_utc() Time {
 		return t
 	}
 	return Time{
-		...t.add(-offset() * second)
+		...t.add(i64(-offset()) * second)
 		is_local: false
 	}
 }
@@ -413,7 +413,7 @@ pub fn (u Time) utc_to_local() Time {
 		return u
 	}
 	return Time{
-		...u.add(offset() * second)
+		...u.add(i64(offset()) * second)
 		is_local: true
 	}
 }

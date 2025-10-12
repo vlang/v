@@ -1,0 +1,17 @@
+// vtest vflags: -check-overflow
+
+@[ignore_overflow]
+fn arithmetic_i32(x i32, y i32) {
+	a := x + y
+	b := x - y
+	c := x * y
+	println(a)
+	println(b)
+	println(c)
+}
+
+fn main() {
+	arithmetic_i32(2147483647, 2147483647)
+	arithmetic_i32(-2147483647, -2147483647)
+	println('hi from main')
+}

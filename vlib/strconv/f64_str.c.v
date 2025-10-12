@@ -136,6 +136,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	}
 }
 
+@[ignore_overflow]
 fn f64_to_decimal_exact_int(i_mant u64, exp u64) (Dec64, bool) {
 	mut d := Dec64{}
 	e := exp - bias64

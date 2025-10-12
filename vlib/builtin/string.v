@@ -3032,7 +3032,7 @@ pub fn (s string) runes_iterator() RunesIterator {
 
 // next is the method that will be called for each iteration in `for r in s.runes_iterator() {` .
 pub fn (mut ri RunesIterator) next() ?rune {
-	for ri.i >= ri.s.len {
+	if ri.i >= ri.s.len {
 		return none
 	}
 	char_len := utf8_char_len(unsafe { ri.s.str[ri.i] })

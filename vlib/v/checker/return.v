@@ -367,12 +367,71 @@ fn has_top_return(stmts []ast.Stmt) bool {
 					if has_top_return(stmt.expr.stmts) {
 						return true
 					}
+				} else if stmt.expr is ast.IfExpr {
+					if has_top_return_in_if_expr(stmt.expr) {
+						return true
+					}
+				} else if stmt.expr is ast.MatchExpr {
+					if has_top_return_in_match_expr(stmt.expr) {
+						return true
+					}
 				}
 			}
 			else {}
 		}
 	}
 	return false
+}
+
+fn has_top_return_in_if_expr(if_expr ast.IfExpr) bool {
+	if if_expr.branches.len < 2 || !if_expr.has_else {
+		return false
+	}
+	for branch in if_expr.branches {
+		if !has_top_return(branch.stmts) {
+			return false
+		}
+	}
+	return true
+}
+
+fn has_top_return_in_match_expr(match_expr ast.MatchExpr) bool {
+	if match_expr.branches.len == 0 {
+		return false
+	}
+	if match_expr.is_comptime {
+		mut has_else := false
+		for branch in match_expr.branches {
+			if branch.is_else {
+				has_else = true
+				break
+			}
+			for expr in branch.exprs {
+				if expr is ast.Ident && expr.name == '\$else' {
+					has_else = true
+					break
+				}
+			}
+			if has_else {
+				break
+			}
+		}
+		if has_else {
+			for branch in match_expr.branches {
+				if !has_top_return(branch.stmts) {
+					return false
+				}
+			}
+			return true
+		}
+		return false
+	}
+	for branch in match_expr.branches {
+		if !has_top_return(branch.stmts) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
