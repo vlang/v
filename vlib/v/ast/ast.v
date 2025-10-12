@@ -2478,7 +2478,7 @@ pub fn (node Node) pos() token.Pos {
 						line_nr:   -1
 						pos:       -1
 						last_line: -1
-						col:       -1
+						col:       0
 					}
 				}
 			}

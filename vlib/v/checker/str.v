@@ -145,7 +145,7 @@ fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 			`\\` {
 				mut start_pos := token.Pos{
 					...node.pos
-					col: node.pos.col + 1 + idx
+					col: u16(node.pos.col + 1 + idx)
 				}
 				start_idx := idx
 				idx++

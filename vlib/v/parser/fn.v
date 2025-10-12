@@ -61,7 +61,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 			ok_arg_pos := (args[params.len - 1] or { args[0] }).pos
 			pos := token.Pos{
 				...ok_arg_pos
-				col: ok_arg_pos.col + ok_arg_pos.len
+				col: u16(ok_arg_pos.col + ok_arg_pos.len)
 			}
 			p.unexpected_with_pos(pos.extend(p.tok.pos()), expecting: '`)`')
 		} else {

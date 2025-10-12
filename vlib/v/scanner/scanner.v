@@ -24,7 +24,7 @@ pub struct Scanner {
 pub mut:
 	file_path                   string // '/path/to/file.v'
 	file_base                   string // 'file.v'
-	file_idx                    int = -1 // file idx in the global table `filelist`
+	file_idx                    i16 = -1 // file idx in the global table `filelist`
 	text                        string // the whole text of the file
 	pos                         int = -1 // current position in the file, first character is s.text[0]
 	line_nr                     int // current line number
@@ -108,7 +108,7 @@ pub enum CommentsMode {
 }
 
 // new scanner from file.
-pub fn new_scanner_file(file_path string, file_idx int, comments_mode CommentsMode, pref_ &pref.Preferences) !&Scanner {
+pub fn new_scanner_file(file_path string, file_idx i16, comments_mode CommentsMode, pref_ &pref.Preferences) !&Scanner {
 	if !os.is_file(file_path) {
 		return error('${file_path} is not a .v file')
 	}
@@ -183,7 +183,7 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 	cidx := s.tidx
 	s.tidx++
 	line_offset := if tok_kind == .hash { 0 } else { 1 }
-	mut max_column := s.current_column() - len + 1
+	mut max_column := s.current_column() - u16(len) + 1
 	if max_column < 1 {
 		max_column = 1
 	}
@@ -217,7 +217,7 @@ fn (s &Scanner) new_eof_token() token.Token {
 fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
 	cidx := s.tidx
 	s.tidx++
-	mut max_column := s.current_column() - len + 1
+	mut max_column := s.current_column() - u16(len) + 1
 	if max_column < 1 {
 		max_column = 1
 	}
@@ -953,7 +953,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 							line_nr:  s.line_nr - 1
 							len:      comment.len
 							pos:      start
-							col:      s.current_column() - comment.len
+							col:      s.current_column() - u16(comment.len)
 							file_idx: s.file_idx
 						}
 						s.error_with_pos('a shebang is only valid at the top of the file',
@@ -1131,7 +1131,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 								line_nr:  start_line
 								len:      comment.len + 4
 								pos:      start
-								col:      s.current_column() - comment.len - 4
+								col:      s.current_column() - u16(comment.len) - 4
 								file_idx: s.file_idx
 							}
 							s.error_with_pos('inline comment is deprecated, please use line comment',
@@ -1167,8 +1167,8 @@ fn (mut s Scanner) invalid_character() {
 }
 
 @[inline]
-fn (s &Scanner) current_column() int {
-	return s.pos - s.last_nl_pos
+fn (s &Scanner) current_column() u16 {
+	return u16(s.pos - s.last_nl_pos)
 }
 
 @[direct_array_access]
@@ -1202,7 +1202,7 @@ pub fn (mut s Scanner) ident_string() string {
 	lspos := token.Pos{
 		line_nr:  s.line_nr
 		pos:      s.pos
-		col:      s.pos - s.last_nl_pos - 1
+		col:      u16(s.pos - s.last_nl_pos - 1)
 		file_idx: s.file_idx
 	}
 	q := s.text[s.pos]
@@ -1521,7 +1521,7 @@ pub fn (mut s Scanner) ident_char() string {
 	lspos := token.Pos{
 		line_nr:  s.line_nr
 		pos:      s.pos
-		col:      s.pos - s.last_nl_pos - 1
+		col:      u16(s.pos - s.last_nl_pos - 1)
 		file_idx: s.file_idx
 	}
 

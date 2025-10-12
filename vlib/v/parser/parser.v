@@ -262,7 +262,9 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 		table.filelist << path
 	}
 	mut p := Parser{
-		scanner: scanner.new_scanner_file(path, file_idx, comments_mode, pref_) or { panic(err) }
+		scanner: scanner.new_scanner_file(path, i16(file_idx), comments_mode, pref_) or {
+			panic(err)
+		}
 		table:   table
 		pref:    pref_
 		// Only set vls mode if it's the file the user requested via `v -vls-mode file.v`
