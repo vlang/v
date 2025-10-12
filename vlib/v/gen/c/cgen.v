@@ -281,6 +281,8 @@ mut:
 	definition_nodes        []&ast.HashStmtNode // allows hash stmts to go `definitions`
 	postinclude_nodes       []&ast.HashStmtNode // allows hash stmts to go after all the rest of the code generation
 	curr_comptime_node      &ast.Expr = unsafe { nil } // current `$if` expr
+	is_builtin_overflow_mod bool
+	do_int_overflow_checks  bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
 }
 
 @[heap]
@@ -1088,9 +1090,9 @@ pub fn (mut g Gen) init() {
 	if g.use_segfault_handler {
 		muttable.used_features.used_fns['v_segmentation_fault_handler'] = true
 	}
-	muttable.used_features.used_fns['eprintln'] = true
-	muttable.used_features.used_fns['print_backtrace'] = true
-	muttable.used_features.used_fns['exit'] = true
+	// muttable.used_features.used_fns['eprintln'] = true
+	// muttable.used_features.used_fns['print_backtrace'] = true
+	// muttable.used_features.used_fns['exit'] = true
 }
 
 pub fn (mut g Gen) finish() {
@@ -2741,6 +2743,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			g.is_builtin_mod = util.module_is_builtin(node.name)
+			g.is_builtin_overflow_mod = node.name == 'builtin.overflow'
 			g.cur_mod = node
 		}
 		ast.EmptyStmt {}
@@ -3914,6 +3917,8 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			if node.auto_locked != '' {
 				g.writeln('sync__RwMutex_lock(&${node.auto_locked}->mtx);')
 			}
+			is_safe_inc := g.do_int_overflow_checks && node.op == .inc
+			is_safe_dec := g.do_int_overflow_checks && node.op == .dec
 			g.inside_map_postfix = true
 			if node.is_c2v_prefix {
 				g.write(node.op.str())
@@ -3955,8 +3960,18 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.expr(node.expr)
 			}
 			g.inside_map_postfix = false
-			if !node.is_c2v_prefix && node.op != .question {
+			if !node.is_c2v_prefix && node.op != .question && !is_safe_inc && !is_safe_dec {
 				g.write(node.op.str())
+			} else if is_safe_inc || is_safe_dec {
+				overflow_styp := g.styp(get_overflow_fn_type(node.typ))
+				vsafe_fn_name := if is_safe_inc {
+					'builtin__overflow__add_${overflow_styp}'
+				} else {
+					'builtin__overflow__sub_${overflow_styp}'
+				}
+				g.write('=${vsafe_fn_name}(')
+				g.expr(node.expr)
+				g.write(',1)')
 			}
 			if node.auto_locked != '' {
 				g.writeln(';')
@@ -5595,6 +5610,10 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	}
 	node_typ_is_option := node.typ.has_flag(.option)
 	if sym.kind in [.sum_type, .interface] {
+		if g.table.unaliased_type(expr_type) == node_typ {
+			g.expr(node.expr)
+			return
+		}
 		if node_typ_is_option && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.expr is ast.Ident && g.comptime.is_comptime_variant_var(node.expr) {
@@ -6799,9 +6818,6 @@ fn (mut g Gen) write_init_function() {
 		g.export_funcs << '_vinit_caller'
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
-		if g.nr_closures > 0 {
-			g.writeln('\tbuiltin__closure__closure_init(); // vinit_caller()')
-		}
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 
@@ -6867,7 +6883,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		}
 		if sym.kind == .none && (!g.pref.skip_unused || g.table.used_features.used_none > 0) {
 			g.type_definitions.writeln('struct none {')
-			g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
+			g.type_definitions.writeln('\tE_STRUCT_DECL;')
 			g.type_definitions.writeln('};')
 			g.typedefs.writeln('typedef struct none none;')
 		}
@@ -7558,8 +7574,8 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 		}
 		.map {
 			info := sym.map_info()
-			key_typ := g.table.sym(info.key_type)
-			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
+			key_sym := g.table.sym(info.key_type)
+			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_sym)
 			noscan_key := g.check_noscan(info.key_type)
 			noscan_value := g.check_noscan(info.value_type)
 			mut noscan := if noscan_key.len != 0 || noscan_value.len != 0 { '_noscan' } else { '' }
@@ -7573,7 +7589,7 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 			}
 			init_str := 'builtin__new_map${noscan}(sizeof(${g.styp(info.key_type)}), sizeof(${g.styp(info.value_type)}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn})'
 			if typ.has_flag(.shared_f) {
-				mtyp := '__shared__Map_${key_typ.cname}_${g.styp(info.value_type).replace('*',
+				mtyp := '__shared__Map_${key_sym.cname}_${g.styp(info.value_type).replace('*',
 					'_ptr')}'
 				return '(${mtyp}*)__dup_shared_map(&(${mtyp}){.mtx = {0}, .val =${init_str}}, sizeof(${mtyp}))'
 			} else {
@@ -8595,6 +8611,41 @@ fn determine_integer_literal_type(node ast.IntegerLiteral) ast.Type {
 			// If sign bit is clear, it's a signed 64-bit integer (i64)
 			// Otherwise, it's an unsigned 64-bit integer (u64)
 			return if sign_bit_clear { ast.i64_type } else { ast.u64_type }
+		}
+	}
+}
+
+fn get_overflow_fn_type(typ ast.Type) ast.Type {
+	return match typ {
+		ast.int_type {
+			$if new_int ? && x64 {
+				ast.i64_type
+			} $else {
+				ast.i32_type
+			}
+		}
+		ast.int_literal_type {
+			ast.i64_type
+		}
+		ast.rune_type {
+			ast.u32_type
+		}
+		ast.isize_type {
+			$if x64 {
+				ast.i64_type
+			} $else {
+				ast.i32_type
+			}
+		}
+		ast.usize_type {
+			$if x64 {
+				ast.u64_type
+			} $else {
+				ast.u32_type
+			}
+		}
+		else {
+			typ
 		}
 	}
 }

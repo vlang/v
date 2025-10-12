@@ -39,6 +39,7 @@ mut:
 	level                  int
 	is_builtin_mod         bool
 	is_direct_array_access bool
+	inside_in_op           bool
 
 	// dependencies finding flags
 	uses_atomic                bool // has atomic
@@ -78,6 +79,7 @@ mut:
 	uses_str_index             bool // string[k]
 	uses_str_index_check       bool // string[k] or { }
 	uses_str_range             bool // string[a..b]
+	uses_str_literal           bool
 	uses_fixed_arr_int         bool // fixed_arr[k]
 	uses_append                bool // var << item
 	uses_map_setter            bool
@@ -86,6 +88,7 @@ mut:
 	uses_arr_getter            bool
 	uses_arr_clone             bool
 	uses_arr_sorted            bool
+	uses_type_name             bool // sum_type.type_name()
 }
 
 pub fn Walker.new(params Walker) &Walker {
@@ -427,13 +430,17 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if sym.info is ast.Thread {
 				w.mark_by_type(w.table.find_or_register_array(sym.info.return_type))
 			}
-			w.mark_by_type(node.typ)
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
 			w.exprs(node.exprs)
-			if !w.uses_array && !w.is_direct_array_access {
-				w.uses_array = true
+			if w.table.final_sym(node.typ).kind == .array {
+				if !w.inside_in_op {
+					w.uses_array = true
+					w.mark_by_type(node.typ)
+				}
+			} else {
+				w.mark_by_type(node.typ)
 			}
 			if node.elem_type.has_flag(.option) {
 				w.used_option++
@@ -580,7 +587,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				} else if sym.info is ast.ArrayFixed {
 					w.mark_by_type(sym.info.elem_type)
 				}
-				if !w.uses_arr_range_index {
+				if !node.is_gated && node.index is ast.RangeExpr && !w.uses_arr_range_index {
 					w.uses_arr_range_index = true
 				}
 				if !w.uses_fixed_arr_int && sym.kind == .array_fixed {
@@ -589,7 +596,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				if !w.uses_index && !w.is_direct_array_access {
 					w.uses_index = true
 				}
-				if !w.uses_arr_range_index_gated {
+				if node.is_gated && node.index is ast.RangeExpr && !w.uses_arr_range_index_gated {
 					w.uses_arr_range_index_gated = node.is_gated
 				}
 			} else if sym.kind == .string {
@@ -628,7 +635,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.InfixExpr {
 			w.expr(node.left)
+			tmp_inside_in_op := w.inside_in_op
+			w.inside_in_op = node.op in [.key_in, .not_in]
 			w.expr(node.right)
+			w.inside_in_op = tmp_inside_in_op
 			w.or_block(node.or_block)
 			if node.left_type != 0 {
 				sym := w.table.sym(node.left_type)
@@ -652,8 +662,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				node.right_type
 			}
 			if right_type != 0 {
-				w.mark_by_type(right_type)
 				right_sym := w.table.sym(right_type)
+				if !(w.is_direct_array_access && right_sym.kind == .array) {
+					w.mark_by_type(right_type)
+				}
 				if node.op in [.not_in, .key_in] {
 					if right_sym.kind == .map {
 						w.features.used_maps++
@@ -854,7 +866,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.FloatLiteral {}
 		ast.CharLiteral {}
 		ast.IntegerLiteral {}
-		ast.StringLiteral {}
+		ast.StringLiteral {
+			if !w.uses_str_literal && !node.is_raw {
+				w.mark_by_sym_name('string')
+				w.uses_str_literal = true
+			}
+		}
 		ast.CTempVar {
 			w.expr(node.orig)
 		}
@@ -970,6 +987,8 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	if node.is_method && node.left_type != 0 {
 		w.mark_by_type(node.left_type)
 		left_sym := w.table.sym(node.left_type)
+		w.uses_type_name = w.uses_type_name
+			|| (left_sym.kind in [.sum_type, .interface] && node.name == 'type_name')
 		if left_sym.info is ast.Aggregate {
 			for receiver_type in left_sym.info.types {
 				receiver_sym := w.table.sym(receiver_type)
@@ -1641,7 +1660,10 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')
 	}
-
+	if w.uses_type_name {
+		charptr_idx_str := ast.charptr_type_idx.str()
+		w.fn_by_name(charptr_idx_str + '.vstring_literal')
+	}
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()
 

@@ -1,0 +1,8 @@
+-9223372036854775807
+-9223372036854775808
+================ V panic ================
+   module: builtin.overflow
+ function: sub_i64()
+  message: attempt to sub with overflow(i64(-9223372036854775808) - i64(1))
+     file: vlib/builtin/overflow/overflow.v
+

@@ -1,0 +1,8 @@
+9223372036854775806
+9223372036854775807
+================ V panic ================
+   module: builtin.overflow
+ function: add_i64()
+  message: attempt to add with overflow(i64(9223372036854775807) + i64(1))
+     file: vlib/builtin/overflow/overflow.v
+

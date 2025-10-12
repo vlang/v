@@ -122,8 +122,8 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				continue
 			}
 			if is_js {
-				mtyp := c.table.sym(method.return_type)
-				if !mtyp.is_js_compatible() {
+				mrsym := c.table.sym(method.return_type)
+				if !mrsym.is_js_compatible() {
 					c.error('method ${method.name} returns non JS type', method.pos)
 				}
 			}
@@ -179,8 +179,8 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					}
 				}
 				if is_js {
-					ptyp := c.table.sym(param.typ)
-					if !ptyp.is_js_compatible() && !(j == method.params.len - 1
+					psym := c.table.sym(param.typ)
+					if !psym.is_js_compatible() && !(j == method.params.len - 1
 						&& method.is_variadic) {
 						c.error('method `${method.name}` accepts non JS type as parameter',
 							method.pos)

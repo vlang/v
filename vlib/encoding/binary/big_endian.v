@@ -49,9 +49,9 @@ pub fn big_endian_put_u16_end(mut b []u8, v u16) {
 
 // big_endian_get_u16 creates u8 array from the unsigned 16-bit integer v in big endian order.
 pub fn big_endian_get_u16(v u16) []u8 {
-	mut b := []u8{cap: 2}
-	b << u8(v >> u16(8))
-	b << u8(v)
+	mut b := []u8{len: 2}
+	b[0] = u8(v >> u16(8))
+	b[1] = u8(v)
 	return b
 }
 
@@ -105,11 +105,11 @@ pub fn big_endian_put_u32_end(mut b []u8, v u32) {
 
 // big_endian_get_u32 creates u8 array from the unsigned 32-bit integer v in big endian order.
 pub fn big_endian_get_u32(v u32) []u8 {
-	mut b := []u8{cap: 4}
-	b << u8(v >> u32(24))
-	b << u8(v >> u32(16))
-	b << u8(v >> u32(8))
-	b << u8(v)
+	mut b := []u8{len: 4}
+	b[0] = u8(v >> u32(24))
+	b[1] = u8(v >> u32(16))
+	b[2] = u8(v >> u32(8))
+	b[3] = u8(v)
 	return b
 }
 
@@ -172,14 +172,14 @@ pub fn big_endian_put_u64_end(mut b []u8, v u64) {
 
 // big_endian_get_u64 creates u8 array from the unsigned 64-bit integer v in big endian order.
 pub fn big_endian_get_u64(v u64) []u8 {
-	mut b := []u8{cap: 8}
-	b << u8(v >> u64(56))
-	b << u8(v >> u64(48))
-	b << u8(v >> u64(40))
-	b << u8(v >> u64(32))
-	b << u8(v >> u64(24))
-	b << u8(v >> u64(16))
-	b << u8(v >> u64(8))
-	b << u8(v)
+	mut b := []u8{len: 8}
+	b[0] = u8(v >> u64(56))
+	b[1] = u8(v >> u64(48))
+	b[2] = u8(v >> u64(40))
+	b[3] = u8(v >> u64(32))
+	b[4] = u8(v >> u64(24))
+	b[5] = u8(v >> u64(16))
+	b[6] = u8(v >> u64(8))
+	b[7] = u8(v)
 	return b
 }

@@ -21,13 +21,13 @@ const wyp2 = u64(0x8ebc6af09c88c6e3)
 const wyp3 = u64(0x589965cc75374cc3)
 const wyp4 = u64(0x1d8e4e27c47d124f)
 
-@[inline]
+@[ignore_overflow; inline]
 fn wyrotr(v u64, k u32) u64 {
 	return (v >> k) | (v << (64 - k))
 }
 
 // wymum returns a hash by performing multiply and mix on `a` and `b`.
-@[inline]
+@[ignore_overflow; inline]
 pub fn wymum(a u64, b u64) u64 {
 	/*
 	mut r := u128(a)

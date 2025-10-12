@@ -1,0 +1,6 @@
+mut x := i16(32766)
+println(x)
+x ++
+println(x)
+x ++
+println(x)

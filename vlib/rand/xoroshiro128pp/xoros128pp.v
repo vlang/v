@@ -83,7 +83,7 @@ pub fn (mut rng XOROS128PPRNG) u32() u32 {
 }
 
 // u64 returns a pseudorandom 64-bit unsigned `u64`.
-@[inline]
+@[ignore_overflow; inline]
 pub fn (mut rng XOROS128PPRNG) u64() u64 {
 	oldstate0 := rng.state0
 	mut oldstate1 := rng.state1

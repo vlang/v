@@ -1355,7 +1355,7 @@ pub fn (mut s Scanner) ident_string() string {
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
 		}
-		if string_so_far.contains('\\\n') {
+		if !is_raw && string_so_far.contains('\\\n') {
 			lit = trim_slash_line_break(string_so_far)
 		} else {
 			lit = string_so_far

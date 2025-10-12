@@ -14,6 +14,11 @@ fn div(params ...Either) int {
 	return tag(params)
 }
 
+fn div2(params ...Either) int {
+	return tag(...params)
+}
+
 fn test_main() {
 	assert dump(div('foo', 1, 2)) == 3
+	assert dump(div2(6, -2, 'hello', 10)) == 14
 }

@@ -1,0 +1,8 @@
+126
+127
+================ V panic ================
+   module: builtin.overflow
+ function: add_i8()
+  message: attempt to add with overflow(i8(127) + i8(1))
+     file: vlib/builtin/overflow/overflow.v
+

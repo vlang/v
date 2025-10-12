@@ -489,7 +489,7 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 			// the intended command may have been `v .` instead, so just suggest that:
 			old_cmd := util.bold('v ${b.pref.path}')
 			new_cmd := util.bold('v ${os.dir(b.pref.path)}')
-			eprintln(util.color('notice', 'If the code of your project is in multiple files, try with `${new_cmd}` instead of `${old_cmd}`'))
+			eprintln(util.color('notice', 'If the code of your project is in a folder with multiple .v files, try `${new_cmd}` instead of `${old_cmd}`'))
 		}
 	}
 }

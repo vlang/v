@@ -82,7 +82,7 @@ pub fn (mut rng WyRandRNG) u32() u32 {
 }
 
 // u64 returns a pseudorandom 64bit int in range `[0, 2⁶⁴)`.
-@[inline]
+@[ignore_overflow; inline]
 pub fn (mut rng WyRandRNG) u64() u64 {
 	unsafe {
 		mut seed1 := rng.state

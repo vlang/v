@@ -38,6 +38,7 @@ pub fn pow10(n int) f64 {
 //
 // special case:
 // powi(a, b) = -1 for a = 0 and b < 0
+@[ignore_overflow]
 pub fn powi(a i64, b i64) i64 {
 	mut b_ := b
 	mut p := a

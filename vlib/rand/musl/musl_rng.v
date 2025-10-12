@@ -70,6 +70,7 @@ fn temper(prev u32) u32 {
 }
 
 // u32 returns a pseudorandom 32-bit unsigned integer (`u32`).
+@[ignore_overflow]
 pub fn (mut rng MuslRNG) u32() u32 {
 	rng.state = rng.state * 1103515245 + 12345
 	// We are not dividing by 2 (or shifting right by 1)

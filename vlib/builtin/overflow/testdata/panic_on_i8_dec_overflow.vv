@@ -1,0 +1,6 @@
+mut x := i8(-127)
+println(x)
+x --
+println(x)
+x --
+println(x)
