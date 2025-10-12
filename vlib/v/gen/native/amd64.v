@@ -5048,16 +5048,6 @@ fn (mut c Amd64) cg_gen_cast_expr(expr ast.CastExpr) {
 	}
 }
 
-fn (mut c Amd64) cg_cmp_to_stack_top(reg Register) {
-	second_reg := if reg.amd64() == Amd64Register.rbx {
-		Amd64Register.rax
-	} else {
-		Amd64Register.rbx
-	}
-	c.pop(second_reg)
-	c.cmp_reg(second_reg, reg.amd64())
-}
-
 // Temporary!
 fn (mut c Amd64) adr(r Arm64Register, delta i32) {
 	c.g.n_error('`adr` instruction not supported with amd64')

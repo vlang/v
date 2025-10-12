@@ -278,7 +278,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		g.cg.cg_mov_var_to_reg(.reg0, LocalVar{i, ast.i64_type_idx, node.val_var})
 		g.cg.cg_push(.reg0) // put the iterator on the stack
 		g.expr(node.high) // final value (upper bound) to the main reg
-		g.cg.cg_cmp_to_stack_top(.reg0)
+		g.cmp_to_stack_top(.reg0)
 		jump_addr := g.cg.cg_cjmp(.jge) // leave loop i >= upper bound
 		end_label := g.labels.new_label()
 		g.labels.patches << LabelPatch{

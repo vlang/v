@@ -105,7 +105,6 @@ mut:
 	cg_call_fn(node ast.CallExpr)
 	cg_call(addr i32) i64
 	cg_cjmp(op JumpOp) i32
-	cg_cmp_to_stack_top(r Register)
 	cg_cmp_var_reg(var Var, reg Register, config VarConfig)
 	cg_cmp_var(var Var, val i32, config VarConfig)
 	cg_cmp_reg(reg Register, reg2 Register)
@@ -1435,4 +1434,14 @@ pub fn escape_string(s string) string {
 		}
 	}
 	return out.bytestr()
+}
+
+fn (mut g Gen) cmp_to_stack_top(reg Register) {
+	second_reg := if reg == .reg3 {
+		Register.reg0
+	} else {
+		Register.reg3
+	}
+	g.cg.cg_pop(second_reg)
+	g.cg.cg_cmp_reg(second_reg, reg)
 }

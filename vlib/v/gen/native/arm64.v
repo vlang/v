@@ -522,10 +522,6 @@ fn (mut c Arm64) cg_call_addr_at(addr i32, at i64) i64 {
 	panic('Arm64.cg_call_addr_at() not implemented')
 }
 
-fn (mut c Arm64) cg_cmp_to_stack_top(reg Register) {
-	panic('Arm64.cg_cmp_to_stack_top() not implemented')
-}
-
 fn (mut c Arm64) cg_push(r Register) {
 	panic('Arm64.cg_push() not implemented')
 }
