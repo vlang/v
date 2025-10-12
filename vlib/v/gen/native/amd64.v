@@ -2843,43 +2843,6 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 	}*/
 }
 
-fn (mut c Amd64) cg_gen_index_expr(node ast.IndexExpr) {
-	if node.left_type.is_string() {
-		c.g.expr(node.index)
-		c.push(.rax)
-
-		c.g.expr(node.left) // load address of string struct
-		c.mov_deref(.rax, .rax, ast.u64_type_idx) // load value of the str pointer
-
-		c.pop(.rdx) // index
-		c.add_reg(.rax, .rdx) // add the offset to the address
-	} else if node.left_type.is_any_kind_of_pointer() {
-		// load the pointer
-		c.g.expr(node.left)
-		c.mov_reg(.rcx, .rax)
-		// add the index times the size (bytes) of the type
-		c.g.expr(node.index)
-		c.mov(.rbx, i32(c.g.get_type_size(node.typ)))
-		c.mul_reg_rax(.rbx)
-		c.add_reg(.rax, .rcx)
-	} else if node.is_array {
-		// TODO: use functions from builtin instead (array.set, array.get...)
-		c.g.expr(node.left)
-		offset := c.g.get_field_offset(ast.array_type, 'data')
-		if offset != 0 {
-			c.add(.rax, offset)
-		}
-		c.mov_deref(.rcx, .rax, ast.u64_type)
-		// add the index times the size (bytes) of the type
-		c.g.expr(node.index)
-		c.mov(.rbx, i32(c.g.get_type_size(node.typ)))
-		c.mul_reg_rax(.rbx)
-		c.add_reg(.rax, .rcx)
-	} else {
-		c.g.n_error('${@LOCATION} index expr: unhandled node type {node}')
-	}
-}
-
 // /!\ for div, mul, mod the left value should always be .rax
 fn (mut c Amd64) apply_op_int(left_value Amd64Register, right_value Amd64Register, op token.Kind) {
 	match op {

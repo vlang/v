@@ -119,7 +119,6 @@ mut:
 	cg_gen_asm_stmt(asm_node ast.AsmStmt)
 	cg_gen_cast_expr(expr ast.CastExpr)
 	cg_gen_exit(expr ast.Expr)
-	cg_gen_index_expr(ast.IndexExpr)
 	cg_gen_match_expr(expr ast.MatchExpr)
 	cg_gen_print_reg(r Register, n i32, fd i32)
 	cg_gen_print(s string, fd i32)

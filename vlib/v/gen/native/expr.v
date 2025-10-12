@@ -150,7 +150,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.gen_sizeof_expr(node)
 		}
 		ast.IndexExpr {
-			g.cg.cg_gen_index_expr(node)
+			g.gen_index_expr(node)
 			if node.left_type.is_string() {
 				g.cg.cg_mov_deref(.reg0, .reg0, ast.u8_type_idx)
 			} else {
@@ -556,7 +556,7 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 			g.expr(node) // TODO: add a test that uses this
 		}
 		ast.IndexExpr {
-			g.cg.cg_gen_index_expr(node)
+			g.gen_index_expr(node)
 		}
 		ast.PrefixExpr {
 			if node.op != .mul {
@@ -567,5 +567,42 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 		else {
 			g.n_error('${@LOCATION} Unsupported left value')
 		}
+	}
+}
+
+fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
+	if node.left_type.is_string() {
+		g.expr(node.index)
+		g.cg.cg_push(.reg0)
+
+		g.expr(node.left) // load address of string struct
+		g.cg.cg_mov_deref(.reg0, .reg0, ast.u64_type_idx) // load value of the str pointer
+
+		g.cg.cg_pop(.reg2) // index
+		g.cg.cg_add_reg(.reg0, .reg2) // add the offset to the address
+	} else if node.left_type.is_any_kind_of_pointer() {
+		// load the pointer
+		g.expr(node.left)
+		g.cg.cg_mov_reg(.reg1, .reg0)
+		// add the index times the size (bytes) of the type
+		g.expr(node.index)
+		g.cg.cg_mov(.reg3, i32(g.get_type_size(node.typ)))
+		g.cg.cg_mul_reg(.reg0, .reg3)
+		g.cg.cg_add_reg(.reg0, .reg1)
+	} else if node.is_array {
+		// TODO: use functions from builtin instead (array.set, array.get...)
+		g.expr(node.left)
+		offset := g.get_field_offset(ast.array_type, 'data')
+		if offset != 0 {
+			g.cg.cg_add(.reg0, offset)
+		}
+		g.cg.cg_mov_deref(.reg1, .reg0, ast.u64_type)
+		// add the index times the size (bytes) of the type
+		g.expr(node.index)
+		g.cg.cg_mov(.reg3, i32(g.get_type_size(node.typ)))
+		g.cg.cg_mul_reg(.reg0, .reg3)
+		g.cg.cg_add_reg(.reg0, .reg1)
+	} else {
+		g.n_error('${@LOCATION} index expr: unhandled node type {node}')
 	}
 }
