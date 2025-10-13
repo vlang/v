@@ -753,6 +753,12 @@ run them via `v file.v` instead',
 		p.table.register_fn_generic_types(fn_decl.fkey())
 	}
 	p.label_names = []
+	type_str := if (is_method || is_static_type_method) && rec.typ != ast.no_type {
+		p.table.type_to_str(rec.typ.idx_type()).all_after_last('.')
+	} else {
+		''
+	}
+	p.table.register_fn_decl(p.mod, type_str, fn_decl)
 	return fn_decl
 }
 

@@ -2572,7 +2572,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	} else {
 		comments << p.eat_comments(same_line: true)
 	}
-	return ast.ConstDecl{
+	const_decl := ast.ConstDecl{
 		pos:          start_pos.extend_with_last_line(const_pos, p.prev_tok.line_nr)
 		fields:       fields
 		is_pub:       is_pub
@@ -2580,6 +2580,10 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		is_block:     is_block
 		attrs:        attrs
 	}
+	if fields.len > 0 {
+		p.table.register_const_decl(const_decl)
+	}
+	return const_decl
 }
 
 fn (mut p Parser) return_stmt() ast.Return {
@@ -2732,7 +2736,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if is_block {
 		p.check(.rpar)
 	}
-	return ast.GlobalDecl{
+	global_decl := ast.GlobalDecl{
 		pos:          start_pos.extend(p.prev_tok.pos())
 		mod:          p.mod
 		fields:       fields
@@ -2740,6 +2744,10 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		is_block:     is_block
 		attrs:        attrs
 	}
+	if global_decl.fields.len > 0 {
+		p.table.register_global_decl(global_decl)
+	}
+	return global_decl
 }
 
 fn source_name(name string) string {
@@ -2802,7 +2810,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		type_pos = type_pos.extend(p.tok.pos())
 		comments = p.eat_comments(same_line: true)
 		p.attrs = []
-		return ast.FnTypeDecl{
+		fn_type_decl := ast.FnTypeDecl{
 			name:          fn_name
 			mod:           p.mod
 			is_pub:        is_pub
@@ -2814,6 +2822,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			attrs:         attrs
 			is_markused:   attrs.contains('markused')
 		}
+		p.table.register_fn_type_decl(fn_type_decl)
+		return fn_type_decl
 	}
 	sum_variants << p.parse_sum_type_variants()
 	// type SumType = Aaa | Bbb | Ccc
@@ -2862,6 +2872,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			is_markused:   attrs.contains('markused')
 		}
 		p.table.register_sumtype(node)
+		p.table.register_sumtype_decl(p.mod, node)
 		return node
 	}
 	// type MyType = int
@@ -2905,7 +2916,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	comments = sum_variants[0].end_comments.clone()
 	p.attrs = []
-	return ast.AliasTypeDecl{
+	alias_type_decl := ast.AliasTypeDecl{
 		name:        name
 		is_pub:      is_pub
 		typ:         idx
@@ -2916,6 +2927,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_markused: attrs.contains('markused')
 		attrs:       attrs
 	}
+	p.table.register_alias_type_decl(p.mod, alias_type_decl)
+	return alias_type_decl
 }
 
 fn (mut p Parser) assoc() ast.Assoc {

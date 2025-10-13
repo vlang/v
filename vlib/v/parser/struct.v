@@ -466,7 +466,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	p.expr_mod = ''
-	return ast.StructDecl{
+	struct_decl := ast.StructDecl{
 		name:             name
 		scoped_name:      scoped_name
 		is_pub:           is_pub
@@ -489,6 +489,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		is_implements:    is_implements
 		implements_types: implements_types
 	}
+	p.table.register_struct_decl(struct_decl)
+	return struct_decl
 }
 
 fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option bool) ast.StructInit {
@@ -879,5 +881,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		name_pos:      name_pos
 	}
 	p.table.register_interface(res)
+	p.table.register_interface_decl(res)
 	return res
 }

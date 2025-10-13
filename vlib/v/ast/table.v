@@ -86,7 +86,15 @@ pub mut:
 	cur_concrete_types []Type // current concrete types, e.g. <int, string>
 	gostmts            int    // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
+	const_decls       map[string]ConstDecl
+	struct_decls      map[string]StructDecl
+	interface_decls   map[string]InterfaceDecl
+	fn_decls          map[string]FnDecl
+	global_decls      map[string]GlobalDecl
 	enum_decls        map[string]EnumDecl
+	alias_type_decls  map[string]AliasTypeDecl
+	sumtype_decls     map[string]SumTypeDecl
+	fn_type_decls     map[string]FnTypeDecl
 	module_deprecated map[string]bool
 	module_attrs      map[string][]Attr // module attributes
 	builtin_pub_fns   map[string]bool
@@ -2764,4 +2772,60 @@ pub fn (mut t Table) get_veb_result_type_idx() int {
 
 	t.veb_res_idx_cache = t.find_type('veb.Result')
 	return t.veb_res_idx_cache
+}
+
+@[inline]
+pub fn (mut t Table) register_const_decl(const_decl ConstDecl) {
+	// name = mod + fields[0].name
+	t.const_decls[const_decl.fields[0].name] = const_decl
+}
+
+@[inline]
+pub fn (mut t Table) register_struct_decl(struct_decl StructDecl) {
+	t.struct_decls[struct_decl.name] = struct_decl
+}
+
+@[inline]
+pub fn (mut t Table) register_interface_decl(interface_decl InterfaceDecl) {
+	t.interface_decls[interface_decl.name] = interface_decl
+}
+
+@[inline]
+pub fn (mut t Table) register_fn_decl(mod string, type_string string, fn_decl FnDecl) {
+	// name = mod + rec_type_string + fn_name
+	mut name := if mod == 'builtin' { '' } else { mod + '.' }
+	if type_string.len > 0 {
+		name += type_string + '.'
+	}
+	name += fn_decl.short_name
+	t.fn_decls[name] = fn_decl
+}
+
+@[inline]
+pub fn (mut t Table) register_global_decl(global_decl GlobalDecl) {
+	// name = mod + fields[0].name
+	t.global_decls[global_decl.fields[0].name] = global_decl
+}
+
+@[inline]
+pub fn (mut t Table) register_alias_type_decl(mod string, alias_type_decl AliasTypeDecl) {
+	if mod == 'builtin' {
+		t.alias_type_decls[alias_type_decl.name] = alias_type_decl
+	} else {
+		t.alias_type_decls[mod + '.' + alias_type_decl.name] = alias_type_decl
+	}
+}
+
+@[inline]
+pub fn (mut t Table) register_sumtype_decl(mod string, sumtype_decl SumTypeDecl) {
+	if mod == 'builtin' {
+		t.sumtype_decls[sumtype_decl.name] = sumtype_decl
+	} else {
+		t.sumtype_decls[mod + '.' + sumtype_decl.name] = sumtype_decl
+	}
+}
+
+@[inline]
+pub fn (mut t Table) register_fn_type_decl(fn_type_decl FnTypeDecl) {
+	t.fn_type_decls[fn_type_decl.name] = fn_type_decl
 }

@@ -314,3 +314,54 @@ fn test_parse_with_stdout() {
 	println(@LOCATION)
 	parse(.stdout)!
 }
+
+fn test_parse_all_decls() {
+	println(@LOCATION)
+	source_text := '
+const my_const = 123
+struct MyS {
+	a int
+}
+interface MyInterface {
+	method() string
+}
+__global my_global = 456
+type MyAlias = u8
+type MySum = u8 | u16
+type MyFnType = fn (msg &char, arg usize)
+
+fn (mut k MyS) add(val int) {
+	k.a += val
+}
+
+fn foo() int {
+	f := 23
+	return 10+4+f
+}
+fn ff(x int) {}
+
+fn main() {
+  ff(12 + 3)
+  x := 10
+  bar(5+7)
+  ff(8+x)
+}
+'
+	mut table := ast.new_table()
+	vpref := &pref.Preferences{
+		enable_globals: true
+	}
+	mut prog := parse_text(source_text, '', mut table, .skip_comments, vpref)
+	mut checker_ := checker.new_checker(table, vpref)
+	checker_.check(mut prog)
+
+	assert 'main.my_const' in table.const_decls
+	assert 'main.MyS' in table.struct_decls
+	assert 'main.MyInterface' in table.interface_decls
+	assert 'main.MyS.add' in table.fn_decls // MyS method
+	assert 'main.foo' in table.fn_decls
+	assert 'my_global' in table.global_decls
+	assert 'main.MyAlias' in table.alias_type_decls
+	assert 'main.MySum' in table.sumtype_decls
+	assert 'main.MyFnType' in table.fn_type_decls
+}
