@@ -489,12 +489,14 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		is_implements:    is_implements
 		implements_types: implements_types
 	}
-	key := 'struct_${name}'
-	val := ast.VLSInfo{
-		pos:      struct_decl.pos
-		comments: pre_comments
+	if p.pref.is_vls {
+		key := 'struct_${name}'
+		val := ast.VLSInfo{
+			pos:      struct_decl.pos
+			comments: pre_comments
+		}
+		p.table.register_vls_decl(key, val)
 	}
-	p.table.register_vls_decl(key, val)
 	return struct_decl
 }
 
@@ -885,12 +887,14 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mut_pos:       mut_pos
 		name_pos:      name_pos
 	}
-	p.table.register_interface(res)
-	key := 'interface_${interface_name}'
-	val := ast.VLSInfo{
-		pos:      pos
-		comments: pre_comments
+	if p.pref.is_vls {
+		p.table.register_interface(res)
+		key := 'interface_${interface_name}'
+		val := ast.VLSInfo{
+			pos:      pos
+			comments: pre_comments
+		}
+		p.table.register_vls_decl(key, val)
 	}
-	p.table.register_vls_decl(key, val)
 	return res
 }

@@ -758,12 +758,14 @@ run them via `v file.v` instead',
 	} else {
 		''
 	}
-	key := 'fn_${p.mod}[${type_str}]${short_fn_name}'
-	val := ast.VLSInfo{
-		pos:      fn_decl.pos
-		comments: fn_decl.comments // TODO: we need comment just before fn decl
+	if p.pref.is_vls {
+		key := 'fn_${p.mod}[${type_str}]${short_fn_name}'
+		val := ast.VLSInfo{
+			pos:      fn_decl.pos
+			comments: fn_decl.comments // TODO: we need comment just before fn decl
+		}
+		p.table.register_vls_decl(key, val)
 	}
-	p.table.register_vls_decl(key, val)
 	return fn_decl
 }
 

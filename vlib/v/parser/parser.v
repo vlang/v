@@ -2580,13 +2580,15 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		is_block:     is_block
 		attrs:        attrs
 	}
-	if fields.len > 0 {
-		key := 'const_${fields[0].name}'
-		val := ast.VLSInfo{
-			pos:      const_decl.pos
-			comments: comments
+	if p.pref.is_vls {
+		for f in fields {
+			key := 'const_${f.name}'
+			val := ast.VLSInfo{
+				pos:      f.pos
+				comments: f.comments
+			}
+			p.table.register_vls_decl(key, val)
 		}
-		p.table.register_vls_decl(key, val)
 	}
 	return const_decl
 }
@@ -2749,13 +2751,15 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		is_block:     is_block
 		attrs:        attrs
 	}
-	if global_decl.fields.len > 0 {
-		key := 'global_${p.prepend_mod(fields[0].name)}'
-		val := ast.VLSInfo{
-			pos:      global_decl.pos
-			comments: comments
+	if p.pref.is_vls {
+		for f in fields {
+			key := 'global_${p.prepend_mod(f.name)}'
+			val := ast.VLSInfo{
+				pos:      global_decl.pos
+				comments: f.comments
+			}
+			p.table.register_vls_decl(key, val)
 		}
-		p.table.register_vls_decl(key, val)
 	}
 	return global_decl
 }
@@ -2832,12 +2836,14 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			attrs:         attrs
 			is_markused:   attrs.contains('markused')
 		}
-		key := 'fntype_${fn_name}'
-		val := ast.VLSInfo{
-			pos:      decl_pos
-			comments: comments
+		if p.pref.is_vls {
+			key := 'fntype_${fn_name}'
+			val := ast.VLSInfo{
+				pos:      decl_pos
+				comments: comments
+			}
+			p.table.register_vls_decl(key, val)
 		}
-		p.table.register_vls_decl(key, val)
 		return fn_type_decl
 	}
 	sum_variants << p.parse_sum_type_variants()
@@ -2886,12 +2892,14 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			name_pos:      name_pos
 			is_markused:   attrs.contains('markused')
 		}
-		p.table.register_sumtype(node)
-		key := 'sumtype_${p.prepend_mod(name)}'
-		val := ast.VLSInfo{
-			pos: node.pos
+		if p.pref.is_vls {
+			p.table.register_sumtype(node)
+			key := 'sumtype_${p.prepend_mod(name)}'
+			val := ast.VLSInfo{
+				pos: node.pos
+			}
+			p.table.register_vls_decl(key, val)
 		}
-		p.table.register_vls_decl(key, val)
 		return node
 	}
 	// type MyType = int
@@ -2946,12 +2954,14 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_markused: attrs.contains('markused')
 		attrs:       attrs
 	}
-	key := 'aliastype_${p.prepend_mod(name)}'
-	val := ast.VLSInfo{
-		pos:      alias_type_decl.pos
-		comments: comments
+	if p.pref.is_vls {
+		key := 'aliastype_${p.prepend_mod(name)}'
+		val := ast.VLSInfo{
+			pos:      alias_type_decl.pos
+			comments: comments
+		}
+		p.table.register_vls_decl(key, val)
 	}
-	p.table.register_vls_decl(key, val)
 	return alias_type_decl
 }
 
