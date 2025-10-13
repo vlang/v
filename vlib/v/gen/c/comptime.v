@@ -182,7 +182,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 
 		mut has_unwrap := false
 		if !g.inside_call && node.or_block.kind != .block && m.return_type.has_option_or_result() {
-			if !(g.assign_ct_type != 0 && g.assign_ct_type.has_option_or_result()) {
+			if !(g.assign_ct_type[node.pos.pos] != 0
+				&& g.assign_ct_type[node.pos.pos].has_option_or_result()) {
 				g.write('(*(${g.base_type(m.return_type)}*)')
 				has_unwrap = true
 			}
