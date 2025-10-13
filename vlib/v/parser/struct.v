@@ -492,19 +492,18 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	if p.pref.is_vls {
 		key := 'struct_${name}'
 		val := ast.VLSInfo{
-			pos:      struct_decl.pos
-			comments: pre_comments
+			pos:          struct_decl.pos
+			pre_comments: pre_comments
 		}
-		p.table.register_vls_decl(key, val)
+		p.table.register_vls_info(key, val)
 		for f in ast_fields {
-			mut f_comments := f.pre_comments.clone()
-			f_comments << f.comments
 			f_key := 'struct_${name}.${f.name}'
 			f_val := ast.VLSInfo{
-				pos:      f.pos
-				comments: f_comments
+				pos:          f.pos
+				pre_comments: f.pre_comments
+				comments:     f.comments
 			}
-			p.table.register_vls_decl(f_key, f_val)
+			p.table.register_vls_info(f_key, f_val)
 		}
 	}
 	return struct_decl
@@ -901,18 +900,18 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		p.table.register_interface(res)
 		key := 'interface_${interface_name}'
 		val := ast.VLSInfo{
-			pos:      pos
-			comments: pre_comments
+			pos:          pos
+			pre_comments: pre_comments
 		}
+		p.table.register_vls_info(key, val)
 		for f in fields {
 			f_key := 'interface_${interface_name}.${f.name}'
 			f_val := ast.VLSInfo{
 				pos:      f.pos
 				comments: f.comments
 			}
-			p.table.register_vls_decl(f_key, f_val)
+			p.table.register_vls_info(f_key, f_val)
 		}
-		p.table.register_vls_decl(key, val)
 	}
 	return res
 }

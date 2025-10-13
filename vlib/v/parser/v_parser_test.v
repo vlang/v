@@ -315,7 +315,7 @@ fn test_parse_with_stdout() {
 	parse(.stdout)!
 }
 
-fn test_parse_all_decls() {
+fn test_parse_vls_info() {
 	println(@LOCATION)
 	source_text := '
 const my_const = 123
@@ -355,13 +355,13 @@ fn main() {
 	mut checker_ := checker.new_checker(table, vpref)
 	checker_.check(mut prog)
 
-	assert 'const_main.my_const' in table.vls_decls
-	assert 'struct_main.MyS' in table.vls_decls
-	assert 'interface_main.MyInterface' in table.vls_decls
-	assert 'fn_main[MyS]add' in table.vls_decls // MyS method
-	assert 'fn_main[]foo' in table.vls_decls
-	assert 'global_main.my_global' in table.vls_decls
-	assert 'aliastype_main.MyAlias' in table.vls_decls
-	assert 'sumtype_main.MySum' in table.vls_decls
-	assert 'fntype_main.MyFnType' in table.vls_decls
+	assert 'const_main.my_const' in table.vls_info
+	assert 'struct_main.MyS' in table.vls_info
+	assert 'interface_main.MyInterface' in table.vls_info
+	assert 'fn_main[MyS]add' in table.vls_info // MyS method
+	assert 'fn_main[]foo' in table.vls_info
+	assert 'global_main.my_global' in table.vls_info
+	assert 'aliastype_main.MyAlias' in table.vls_info
+	assert 'sumtype_main.MySum' in table.vls_info
+	assert 'fntype_main.MyFnType' in table.vls_info
 }

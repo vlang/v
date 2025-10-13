@@ -2583,17 +2583,16 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	if p.pref.is_vls {
 		for f in fields {
 			mut key := 'const_${f.name}'
-			mut all_comments := f.comments.clone()
-			all_comments << f.end_comments
 			val := ast.VLSInfo{
-				pos:      f.pos
-				comments: all_comments
+				pos:          f.pos
+				comments:     f.comments
+				end_comments: f.end_comments
 			}
-			p.table.register_vls_decl(key, val)
+			p.table.register_vls_info(key, val)
 
 			// register another `module specific global`
 			key = 'const_${p.prepend_mod(f.name)}'
-			p.table.register_vls_decl(key, val)
+			p.table.register_vls_info(key, val)
 		}
 	}
 	return const_decl
@@ -2764,7 +2763,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 				pos:      global_decl.pos
 				comments: f.comments
 			}
-			p.table.register_vls_decl(key, val)
+			p.table.register_vls_info(key, val)
 		}
 	}
 	return global_decl
@@ -2848,7 +2847,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 				pos:      decl_pos
 				comments: comments
 			}
-			p.table.register_vls_decl(key, val)
+			p.table.register_vls_info(key, val)
 		}
 		return fn_type_decl
 	}
@@ -2904,7 +2903,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			val := ast.VLSInfo{
 				pos: node.pos
 			}
-			p.table.register_vls_decl(key, val)
+			p.table.register_vls_info(key, val)
 		}
 		return node
 	}
@@ -2966,7 +2965,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			pos:      alias_type_decl.pos
 			comments: comments
 		}
-		p.table.register_vls_decl(key, val)
+		p.table.register_vls_info(key, val)
 	}
 	return alias_type_decl
 }

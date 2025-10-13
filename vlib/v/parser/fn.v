@@ -764,7 +764,7 @@ run them via `v file.v` instead',
 			pos:      fn_decl.pos
 			comments: fn_decl.comments // TODO: we need comment just before fn decl
 		}
-		p.table.register_vls_decl(key, val)
+		p.table.register_vls_info(key, val)
 	}
 	return fn_decl
 }
