@@ -754,7 +754,7 @@ run them via `v file.v` instead',
 	}
 	p.label_names = []
 	type_str := if (is_method || is_static_type_method) && rec.typ != ast.no_type {
-		p.table.type_to_str(rec.typ.idx_type()).all_after_last('.')
+		p.table.sym(rec.typ.idx_type()).name.all_after_last('.')
 	} else {
 		''
 	}
