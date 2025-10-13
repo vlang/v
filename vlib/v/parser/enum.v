@@ -253,6 +253,12 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 
 	if !already_exists {
 		p.table.register_enum_decl(enum_decl)
+		key := 'enum_${name}'
+		val := ast.VLSInfo{
+			pos:      typ_pos
+			comments: enum_decl_comments
+		}
+		p.table.register_vls_decl(key, val)
 	}
 	return enum_decl
 }

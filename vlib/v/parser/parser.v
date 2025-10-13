@@ -2581,7 +2581,12 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		attrs:        attrs
 	}
 	if fields.len > 0 {
-		p.table.register_const_decl(const_decl)
+		key := 'const_${fields[0].name}'
+		val := ast.VLSInfo{
+			pos:      const_decl.pos
+			comments: comments
+		}
+		p.table.register_vls_decl(key, val)
 	}
 	return const_decl
 }
@@ -2745,7 +2750,12 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		attrs:        attrs
 	}
 	if global_decl.fields.len > 0 {
-		p.table.register_global_decl(global_decl)
+		key := 'global_${p.prepend_mod(fields[0].name)}'
+		val := ast.VLSInfo{
+			pos:      global_decl.pos
+			comments: comments
+		}
+		p.table.register_vls_decl(key, val)
 	}
 	return global_decl
 }
@@ -2822,7 +2832,12 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			attrs:         attrs
 			is_markused:   attrs.contains('markused')
 		}
-		p.table.register_fn_type_decl(fn_type_decl)
+		key := 'fntype_${fn_name}'
+		val := ast.VLSInfo{
+			pos:      decl_pos
+			comments: comments
+		}
+		p.table.register_vls_decl(key, val)
 		return fn_type_decl
 	}
 	sum_variants << p.parse_sum_type_variants()
@@ -2872,7 +2887,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			is_markused:   attrs.contains('markused')
 		}
 		p.table.register_sumtype(node)
-		p.table.register_sumtype_decl(p.mod, node)
+		key := 'sumtype_${p.prepend_mod(name)}'
+		val := ast.VLSInfo{
+			pos: node.pos
+		}
+		p.table.register_vls_decl(key, val)
 		return node
 	}
 	// type MyType = int
@@ -2927,7 +2946,12 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_markused: attrs.contains('markused')
 		attrs:       attrs
 	}
-	p.table.register_alias_type_decl(p.mod, alias_type_decl)
+	key := 'aliastype_${p.prepend_mod(name)}'
+	val := ast.VLSInfo{
+		pos:      alias_type_decl.pos
+		comments: comments
+	}
+	p.table.register_vls_decl(key, val)
 	return alias_type_decl
 }
 

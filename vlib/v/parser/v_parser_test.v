@@ -355,13 +355,13 @@ fn main() {
 	mut checker_ := checker.new_checker(table, vpref)
 	checker_.check(mut prog)
 
-	assert 'main.my_const' in table.const_decls
-	assert 'main.MyS' in table.struct_decls
-	assert 'main.MyInterface' in table.interface_decls
-	assert 'main.MyS.add' in table.fn_decls // MyS method
-	assert 'main.foo' in table.fn_decls
-	assert 'my_global' in table.global_decls
-	assert 'main.MyAlias' in table.alias_type_decls
-	assert 'main.MySum' in table.sumtype_decls
-	assert 'main.MyFnType' in table.fn_type_decls
+	assert 'const_main.my_const' in table.vls_decls
+	assert 'struct_main.MyS' in table.vls_decls
+	assert 'interface_main.MyInterface' in table.vls_decls
+	assert 'fn_main[MyS]add' in table.vls_decls // MyS method
+	assert 'fn_main[]foo' in table.vls_decls
+	assert 'global_main.my_global' in table.vls_decls
+	assert 'aliastype_main.MyAlias' in table.vls_decls
+	assert 'sumtype_main.MySum' in table.vls_decls
+	assert 'fntype_main.MyFnType' in table.vls_decls
 }
