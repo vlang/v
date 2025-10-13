@@ -496,6 +496,16 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			comments: pre_comments
 		}
 		p.table.register_vls_decl(key, val)
+		for f in ast_fields {
+			mut f_comments := f.pre_comments.clone()
+			f_comments << f.comments
+			f_key := 'struct_${name}.${f.name}'
+			f_val := ast.VLSInfo{
+				pos:      f.pos
+				comments: f_comments
+			}
+			p.table.register_vls_decl(f_key, f_val)
+		}
 	}
 	return struct_decl
 }
@@ -893,6 +903,14 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		val := ast.VLSInfo{
 			pos:      pos
 			comments: pre_comments
+		}
+		for f in fields {
+			f_key := 'interface_${interface_name}.${f.name}'
+			f_val := ast.VLSInfo{
+				pos:      f.pos
+				comments: f.comments
+			}
+			p.table.register_vls_decl(f_key, f_val)
 		}
 		p.table.register_vls_decl(key, val)
 	}

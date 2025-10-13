@@ -2583,9 +2583,11 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	if p.pref.is_vls {
 		for f in fields {
 			mut key := 'const_${f.name}'
+			mut all_comments := f.comments.clone()
+			all_comments << f.end_comments
 			val := ast.VLSInfo{
 				pos:      f.pos
-				comments: f.comments
+				comments: all_comments
 			}
 			p.table.register_vls_decl(key, val)
 
