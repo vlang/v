@@ -896,8 +896,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mut_pos:       mut_pos
 		name_pos:      name_pos
 	}
+	p.table.register_interface(res)
 	if p.pref.is_vls {
-		p.table.register_interface(res)
 		key := 'interface_${interface_name}'
 		val := ast.VLSInfo{
 			pos:          pos
