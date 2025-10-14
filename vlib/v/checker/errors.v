@@ -202,10 +202,15 @@ fn (mut c Checker) deprecate(kind string, name string, attrs []ast.Attr, pos tok
 		}
 		if attr.name == 'deprecated' {
 			deprecation_message = attr.arg
-		} else if attr.name == 'deprecated_after' {
-			after_time = time.parse_iso8601(attr.arg) or {
-				c.error('invalid time format', attr.pos)
-				now
+			left_trimmed := attr.arg.trim_left(' ')
+			if left, right := left_trimmed.split_once('!!') {
+				if t := time.parse_iso8601(left.trim_right(' ')) {
+					after_time = t
+					deprecation_message = right.trim_left(' ')
+				}
+			} else if t := time.parse_iso8601(left_trimmed.trim_right(' ')) {
+				after_time = t
+				deprecation_message = ''
 			}
 		}
 	}
