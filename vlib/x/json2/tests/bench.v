@@ -3,8 +3,7 @@ import json as old_json
 import benchmark
 import time
 
-// ./v -prod crun vlib/x/json/tests/c.v
-// ./v wipe-cache && ./v -prod -cc gcc crun vlib/x/json2/decoder2/tests/bench.v
+// ./v wipe-cache && ./v -prod -cc gcc crun vlib/x/json2/tests/bench.v
 const max_iterations = 1_000_000
 // const max_iterations = 10 // trying figure out it is slower in small loop. I guess it is `fulfill_nodes` related. Any suggestion?
 

@@ -4,7 +4,6 @@ on:
   push:
     paths:
       - 'vlib/x/json2/**' # Trigger on changes in this folder
-      - '!vlib/x/json2/decoder2/**' # Ignore
       - '!vlib/x/json2/strict/**' # Ignore
       - '!vlib/x/json2/tests/**' # Ignore
 

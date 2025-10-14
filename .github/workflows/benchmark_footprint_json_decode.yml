@@ -3,7 +3,7 @@ name: json decoder benchmark CI
 on:
   push:
     paths:
-      - 'vlib/x/json2/decoder2/**' # Trigger on changes in this folder
+      - 'vlib/x/json2/**' # Trigger on changes in this folder
 
 jobs:
   json-encode-benchmark:
@@ -18,10 +18,10 @@ jobs:
         run: make -j4 && ./v symlink
 
       - name: Run V benchmark and save output
-        run: (echo '```sh'; v -prod crun vlib/x/json2/decoder2/tests/bench.v; echo '```') > vlib/x/json2/decoder2/tests/bench_out.md
+        run: (echo '```txt'; v -prod crun vlib/x/json2/tests/bench.v; echo '```') > vlib/x/json2/tests/bench_out.md
 
       - name: Upload result file
         uses: actions/upload-artifact@v4
         with:
           name: program-output
-          path: vlib/x/json2/decoder2/tests/bench_out.md
+          path: vlib/x/json2/tests/bench_out.md
