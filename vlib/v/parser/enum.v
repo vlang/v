@@ -48,6 +48,11 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	p.check(.key_enum)
 	end_pos := p.tok.pos()
+	mut comments_before_key_enum := if p.is_vls {
+		p.cur_comments.clone()
+	} else {
+		[]
+	}
 	if p.disallow_declarations_in_script_mode() {
 		return ast.EnumDecl{}
 	}
@@ -253,20 +258,39 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 
 	if !already_exists {
 		p.table.register_enum_decl(enum_decl)
-		if p.pref.is_vls {
+		if p.is_vls {
 			key := 'enum_${name}'
+			mut has_decl_end_comment := false
+			if enum_decl.comments.len > 0
+				&& enum_decl.comments[0].pos.line_nr == enum_decl.pos.line_nr {
+				// enum MyEnum { // MyEnum end_comment1
+				comments_before_key_enum << enum_decl.comments[0]
+				has_decl_end_comment = true
+			}
 			val := ast.VLSInfo{
-				pos:      typ_pos
-				comments: enum_decl_comments
+				pos: typ_pos
+				doc: p.keyword_comments_to_string(enum_name, comments_before_key_enum)
 			}
 			p.table.register_vls_info(key, val)
-			for f in fields {
+			for i, f in fields {
 				f_key := 'enum_${name}.${f.name}'
-				f_val := ast.VLSInfo{
-					pos:          f.pos
-					pre_comments: f.pre_comments
-					comments:     f.comments
-					end_comments: f.next_comments
+				f_val := if i == 0 {
+					first_field_pre_comment := if has_decl_end_comment {
+						enum_decl.comments[1..].clone()
+					} else {
+						enum_decl.comments
+					}
+					ast.VLSInfo{
+						pos: f.pos
+						doc: p.comments_to_string(first_field_pre_comment) +
+							p.comments_to_string(f.comments)
+					}
+				} else {
+					ast.VLSInfo{
+						pos: f.pos
+						doc: p.comments_to_string(fields[i - 1].next_comments) +
+							p.comments_to_string(f.comments)
+					}
 				}
 				p.table.register_vls_info(f_key, f_val)
 			}

@@ -115,10 +115,8 @@ pub mut:
 
 pub struct VLSInfo {
 pub mut:
-	pos          token.Pos
-	pre_comments []Comment
-	comments     []Comment
-	end_comments []Comment
+	pos token.Pos
+	doc string // documentation
 }
 
 // used by vls to avoid leaks

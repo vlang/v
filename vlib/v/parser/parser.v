@@ -11,6 +11,7 @@ import v.util
 import v.errors
 import os
 import hash.fnv1a
+import strings
 
 @[minify]
 pub struct Parser {
@@ -116,6 +117,7 @@ mut:
 	main_already_defined     bool // TODO move to checker
 	is_vls                   bool
 	inside_import_section    bool
+	cur_comments             []ast.Comment // comments between other stmts
 pub mut:
 	scanner &scanner.Scanner = unsafe { nil }
 	table   &ast.Table       = unsafe { nil }
@@ -644,6 +646,13 @@ fn (p &Parser) trace_parser(label string) {
 fn (mut p Parser) top_stmt() ast.Stmt {
 	p.trace_parser('top_stmt')
 	for {
+		mut keep_cur_comments := false
+		defer {
+			// clear `cur_comments` after each statement, except a comment stmt
+			if !keep_cur_comments && p.is_vls {
+				p.cur_comments.clear()
+			}
+		}
 		if p.tok.kind !in [.key_import, .comment, .dollar] {
 			// import section should only prepend by `import`, `comment` or `$if`.
 			p.inside_import_section = false
@@ -771,6 +780,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.struct_decl(false)
 			}
 			.comment {
+				keep_cur_comments = true
 				return p.comment_stmt()
 			}
 			.semicolon {
@@ -782,6 +792,10 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 			else {
 				return p.other_stmts(ast.empty_stmt)
 			}
+		}
+		// clear `cur_comments` after each statement, except a comment stmt
+		if !keep_cur_comments && p.is_vls {
+			p.cur_comments.clear()
 		}
 		if p.should_abort {
 			break
@@ -877,6 +891,9 @@ fn (mut p Parser) comment() ast.Comment {
 
 fn (mut p Parser) comment_stmt() ast.ExprStmt {
 	comment := p.comment()
+	if p.is_vls {
+		p.cur_comments << comment
+	}
 	return ast.ExprStmt{
 		expr: comment
 		pos:  comment.pos
@@ -920,6 +937,13 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		return ast.NodeError{
 			idx: 0
 			pos: abort_pos
+		}
+	}
+
+	mut keep_cur_comments := false
+	defer {
+		if !keep_cur_comments && p.is_vls {
+			p.cur_comments.clear()
 		}
 	}
 
@@ -1001,6 +1025,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.for_stmt()
 		}
 		.comment {
+			keep_cur_comments = true
 			return p.comment_stmt()
 		}
 		.key_return {
@@ -2537,7 +2562,8 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			expr = p.expr(0)
 			p.inside_assign_rhs = old_inside_assign_rhs
 		}
-		if is_block {
+		// we need `end_comments` when in `vls` mode too
+		if is_block || p.is_vls {
 			end_comments << p.eat_comments(same_line: true)
 		}
 		mut field := ast.ConstField{
@@ -2558,6 +2584,25 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		}
 		fields << field
 		p.table.global_scope.register(field)
+		if p.is_vls {
+			key := 'const_${full_name}'
+			// Fixme: because ConstDecl has no name, we can't access ConstDecl via name
+			// So the comment before the `const` keyword will be set to the first field's comment
+			// But as `vfmt` suggest every const should has a single line, no const block, this should be no problem
+			doc := if fields.len == 1 {
+				p.cur_comments << comments
+				p.keyword_comments_to_string(name, p.cur_comments) +
+					p.comments_to_string(end_comments)
+			} else {
+				p.comments_to_string(comments) + p.comments_to_string(end_comments)
+			}
+
+			val := ast.VLSInfo{
+				pos: field.pos
+				doc: doc
+			}
+			p.table.register_vls_info(key, val)
+		}
 		comments = []
 		if is_block {
 			end_comments = []
@@ -2580,17 +2625,28 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		is_block:     is_block
 		attrs:        attrs
 	}
-	if p.pref.is_vls {
-		for f in fields {
-			key := 'const_${f.name}'
-			val := ast.VLSInfo{
-				pos:          f.pos
-				comments:     f.comments
-				end_comments: f.end_comments
-			}
-			p.table.register_vls_info(key, val)
-		}
-	}
+	// if p.is_vls {
+	//	for i, f in fields {
+	//		name := f.name.all_after_last('.')
+	//		key := 'const_${f.name}'
+	//		// Fixme: because ConstDecl has no name, we can't access ConstDecl via name
+	//		// So the comment before the `const` keyword will be set to the first field's comment
+	//		// But as `vfmt` suggest every const should has a single line, no const block, this should be no problem
+	//		doc := if i == 0 {
+	//			p.cur_comments << f.comments
+	//			p.keyword_comments_to_string(name, p.cur_comments) +
+	//				p.comments_to_string(f.end_comments)
+	//		} else {
+	//			p.comments_to_string(f.comments) + p.comments_to_string(f.end_comments)
+	//		}
+	//
+	//		val := ast.VLSInfo{
+	//			pos: f.pos
+	//			doc: doc
+	//		}
+	//		p.table.register_vls_info(key, val)
+	//	}
+	//}
 	return const_decl
 }
 
@@ -2752,12 +2808,20 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		is_block:     is_block
 		attrs:        attrs
 	}
-	if p.pref.is_vls {
-		for f in fields {
+	if p.is_vls {
+		for i, f in fields {
 			mut key := 'global_${f.name}'
+			// Fixme: because GlobalDecl has no name, we can't access GlobalDecl via name
+			// So the comment before the `__global` keyword will be set to the first field's comment
+			doc := if i == 0 {
+				p.cur_comments << f.comments
+				p.keyword_comments_to_string(f.name, p.cur_comments)
+			} else {
+				p.comments_to_string(f.comments)
+			}
 			val := ast.VLSInfo{
-				pos:      global_decl.pos
-				comments: f.comments
+				pos: f.pos
+				doc: doc
 			}
 			p.table.register_vls_info(key, val)
 
@@ -2784,6 +2848,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.next()
 	}
 	p.check(.key_type)
+	mut comment_before_key_type := if p.is_vls {
+		p.cur_comments.clone()
+	} else {
+		[]
+	}
 	end_pos := p.tok.pos()
 	decl_pos := start_pos.extend(end_pos)
 	name_pos := p.tok.pos()
@@ -2841,11 +2910,12 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			attrs:         attrs
 			is_markused:   attrs.contains('markused')
 		}
-		if p.pref.is_vls {
+		if p.is_vls {
 			key := 'fntype_${fn_name}'
 			val := ast.VLSInfo{
-				pos:      decl_pos
-				comments: comments
+				pos: decl_pos
+				doc: p.keyword_comments_to_string(name, comment_before_key_type) +
+					p.comments_to_string(comments)
 			}
 			p.table.register_vls_info(key, val)
 		}
@@ -2898,10 +2968,12 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			is_markused:   attrs.contains('markused')
 		}
 		p.table.register_sumtype(node)
-		if p.pref.is_vls {
+		if p.is_vls {
 			key := 'sumtype_${p.prepend_mod(name)}'
 			val := ast.VLSInfo{
 				pos: node.pos
+				doc: p.keyword_comments_to_string(name, comment_before_key_type) +
+					p.comments_to_string(sum_variants[sum_variants.len - 1].end_comments)
 			}
 			p.table.register_vls_info(key, val)
 		}
@@ -2959,11 +3031,12 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_markused: attrs.contains('markused')
 		attrs:       attrs
 	}
-	if p.pref.is_vls {
+	if p.is_vls {
 		key := 'aliastype_${p.prepend_mod(name)}'
 		val := ast.VLSInfo{
-			pos:      alias_type_decl.pos
-			comments: comments
+			pos: alias_type_decl.pos
+			doc: p.keyword_comments_to_string(name, comment_before_key_type) +
+				p.comments_to_string(comments)
 		}
 		p.table.register_vls_info(key, val)
 	}
@@ -3175,4 +3248,54 @@ fn (mut p Parser) skip_scope() {
 	if p.tok.kind == .rcbr {
 		p.next()
 	}
+}
+
+// keyword_comments_to_string will search line by line in `comments` for which line starts with `keyword`,
+// and then construct following comments into a string.
+// If no `keyword` found in each line of comments' beginning, then return ''
+// e.g
+// keyword = 'MyS'
+//
+// this is first comment
+// this is second comment
+// this is third comment
+// MyS is a struct ...
+// Note:...
+//
+// will return a string:
+// 'MyS is a struct ...\nNote:...'
+
+fn (mut p Parser) keyword_comments_to_string(keyword string, comments []ast.Comment) string {
+	mut sb := strings.new_builder(128)
+	mut is_found_keyword := false
+	for line in comments {
+		trim_line := if line.text.len > 0 && line.text[0] == 1 {
+			// skip ´\x01´
+			line.text[1..].trim_space()
+		} else {
+			line.text.trim_space()
+		}
+		if !is_found_keyword && trim_line.starts_with(keyword) {
+			is_found_keyword = true
+		}
+		if is_found_keyword {
+			sb.writeln(trim_line)
+		}
+	}
+	return sb.str()
+}
+
+// comments_to_string will construct all in `comments` into a string.
+fn (mut p Parser) comments_to_string(comments []ast.Comment) string {
+	mut sb := strings.new_builder(128)
+	for line in comments {
+		trim_line := if line.text.len > 0 && line.text[0] == 1 {
+			// skip ´\x01´
+			line.text[1..].trim_space()
+		} else {
+			line.text.trim_space()
+		}
+		sb.writeln(trim_line)
+	}
+	return sb.str()
 }
