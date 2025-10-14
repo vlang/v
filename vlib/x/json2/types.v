@@ -39,7 +39,6 @@ pub fn (n Null) to_json() string {
 
 // ValueKind enumerates the kinds of possible values of the Any sumtype.
 enum ValueKind {
-	unknown
 	array
 	object
 	string

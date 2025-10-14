@@ -1,8 +1,7 @@
 import net.http
 import os
 import rand
-import x.json2
-import x.json2.decoder2 as json
+import x.json2 as json
 
 struct Weather {
 	lang   string
@@ -53,7 +52,7 @@ fn translate(q string, sl string, tl string) !string {
 
 	resp := http.fetch(http.FetchConfig{ ...config, url: url })!
 
-	json_resp := json.decode[json2.Any](resp.body)!
+	json_resp := json.decode[json.Any](resp.body)!
 
 	a := json_resp.arr()
 	if a.len > 0 {

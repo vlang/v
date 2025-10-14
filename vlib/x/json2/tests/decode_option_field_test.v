@@ -1,4 +1,4 @@
-import x.json2.decoder2
+import x.json2
 import time
 
 struct Person {
@@ -11,7 +11,7 @@ mut:
 
 fn test_main() {
 	resp := '{"name": "Bob", "age": 20, "birthday": "2025-10-12 10:14:52"}'
-	person := decoder2.decode[Person](resp)!
+	person := json2.decode[Person](resp)!
 	assert '${person}' == "Person{
     name: 'Bob'
     age: Option(20)
