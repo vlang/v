@@ -350,6 +350,7 @@ fn main() {
 	mut table := ast.new_table()
 	vpref := &pref.Preferences{
 		enable_globals: true
+		is_vls:         true
 	}
 	mut prog := parse_text(source_text, '', mut table, .skip_comments, vpref)
 	mut checker_ := checker.new_checker(table, vpref)
@@ -360,7 +361,8 @@ fn main() {
 	assert 'interface_main.MyInterface' in table.vls_info
 	assert 'fn_main[MyS]add' in table.vls_info // MyS method
 	assert 'fn_main[]foo' in table.vls_info
-	assert 'global_main.my_global' in table.vls_info
+	assert 'global_main.my_global' in table.vls_info // module specific global
+	assert 'global_my_global' in table.vls_info
 	assert 'aliastype_main.MyAlias' in table.vls_info
 	assert 'sumtype_main.MySum' in table.vls_info
 	assert 'fntype_main.MyFnType' in table.vls_info

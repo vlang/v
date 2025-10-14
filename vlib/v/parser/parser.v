@@ -2582,16 +2582,12 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	}
 	if p.pref.is_vls {
 		for f in fields {
-			mut key := 'const_${f.name}'
+			key := 'const_${f.name}'
 			val := ast.VLSInfo{
 				pos:          f.pos
 				comments:     f.comments
 				end_comments: f.end_comments
 			}
-			p.table.register_vls_info(key, val)
-
-			// register another `module specific global`
-			key = 'const_${p.prepend_mod(f.name)}'
 			p.table.register_vls_info(key, val)
 		}
 	}
@@ -2758,11 +2754,15 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	}
 	if p.pref.is_vls {
 		for f in fields {
-			key := 'global_${p.prepend_mod(f.name)}'
+			mut key := 'global_${f.name}'
 			val := ast.VLSInfo{
 				pos:      global_decl.pos
 				comments: f.comments
 			}
+			p.table.register_vls_info(key, val)
+
+			// register another `module specific global`
+			key = 'global_${p.prepend_mod(f.name)}'
 			p.table.register_vls_info(key, val)
 		}
 	}
