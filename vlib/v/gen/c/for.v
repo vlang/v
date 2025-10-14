@@ -201,6 +201,21 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		node.val_type = g.table.value_type(unwrapped_typ)
 		node.scope.update_var_type(node.val_var, node.val_type)
+	} else if node.kind == .alias {
+		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		mut unwrapped_sym := g.table.final_sym(unwrapped_typ)
+		node.kind = unwrapped_sym.kind
+		node.cond_type = unwrapped_typ
+		if node.key_var.len > 0 {
+			key_type := match unwrapped_sym.kind {
+				.map { unwrapped_sym.map_info().key_type }
+				else { ast.int_type }
+			}
+			node.key_type = key_type
+			node.scope.update_var_type(node.key_var, key_type)
+		}
+		node.val_type = g.table.value_type(g.table.unaliased_type(unwrapped_typ))
+		node.scope.update_var_type(node.val_var, node.val_type)
 	}
 	g.loop_depth++
 	if node.label.len > 0 {

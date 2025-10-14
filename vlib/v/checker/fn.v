@@ -2672,6 +2672,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				&& c.check_basic(c.table.value_type(got_arg_typ).clear_flag(.option), c.table.value_type(exp_arg_typ)) {
 				continue
 			}
+			if c.table.type_to_str(c.table.unaliased_type(got_arg_typ)) == c.table.type_to_str(exp_arg_typ) {
+				continue
+			}
+			println('>>> ${c.table.type_to_str(c.table.unaliased_type(got_arg_typ))} ${c.table.type_to_str(exp_arg_typ)}')
 			c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
 				arg.pos)
 		}

@@ -1878,6 +1878,11 @@ pub fn (mut t Table) convert_generic_type(generic_type Type, generic_names []str
 				type_changed = true
 			}
 			if type_changed {
+				// map[Type]T where T is an alias to map type
+				if to_types.len == 1 && sym.info.value_type.has_flag(.generic)
+					&& t.type_kind(to_types[0]) == .alias && t.final_sym(to_types[0]).kind == .map {
+					return unwrapped_value_type
+				}
 				idx := t.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
 				if unwrapped_key_type.has_flag(.generic) || unwrapped_value_type.has_flag(.generic) {
 					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
