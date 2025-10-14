@@ -2625,28 +2625,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		is_block:     is_block
 		attrs:        attrs
 	}
-	// if p.is_vls {
-	//	for i, f in fields {
-	//		name := f.name.all_after_last('.')
-	//		key := 'const_${f.name}'
-	//		// Fixme: because ConstDecl has no name, we can't access ConstDecl via name
-	//		// So the comment before the `const` keyword will be set to the first field's comment
-	//		// But as `vfmt` suggest every const should has a single line, no const block, this should be no problem
-	//		doc := if i == 0 {
-	//			p.cur_comments << f.comments
-	//			p.keyword_comments_to_string(name, p.cur_comments) +
-	//				p.comments_to_string(f.end_comments)
-	//		} else {
-	//			p.comments_to_string(f.comments) + p.comments_to_string(f.end_comments)
-	//		}
-	//
-	//		val := ast.VLSInfo{
-	//			pos: f.pos
-	//			doc: doc
-	//		}
-	//		p.table.register_vls_info(key, val)
-	//	}
-	//}
 	return const_decl
 }
 
