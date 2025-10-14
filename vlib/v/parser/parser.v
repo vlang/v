@@ -2897,8 +2897,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			name_pos:      name_pos
 			is_markused:   attrs.contains('markused')
 		}
+		p.table.register_sumtype(node)
 		if p.pref.is_vls {
-			p.table.register_sumtype(node)
 			key := 'sumtype_${p.prepend_mod(name)}'
 			val := ast.VLSInfo{
 				pos: node.pos
