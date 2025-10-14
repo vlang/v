@@ -194,7 +194,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	is_decl := node.op == .decl_assign
 	g.assign_op = node.op
 	g.inside_assign = true
-	g.assign_ct_type = map[int]ast.Type{}
 	g.arraymap_set_pos = 0
 	g.is_arraymap_set = false
 	g.is_assign_lhs = false
@@ -342,7 +341,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								var_type = val_type.clear_flag(.option)
 							}
 							left.obj.typ = var_type
-							g.assign_ct_type[val.pos.pos] = var_type
+							// g.assign_ct_type[val.pos.pos] = var_type
 						}
 					} else if val is ast.ComptimeSelector {
 						if val.typ_key != '' {
@@ -355,7 +354,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								val_type = g.type_resolver.get_ct_type_or_default(val.typ_key,
 									var_type)
 							}
-							g.assign_ct_type[val.pos.pos] = var_type
+							// g.assign_ct_type[val.pos.pos] = var_type
 						}
 					} else if val is ast.ComptimeCall {
 						key_str := '${val.method_name}.return_type'
@@ -377,7 +376,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								val_type = var_type
 								left.obj.typ = var_type
 							}
-							g.assign_ct_type[val.pos.pos] = var_type
+							// g.assign_ct_type[val.pos.pos] = var_type
 						}
 					} else if val is ast.IndexExpr && (val.left is ast.Ident && val.left.ct_expr) {
 						ctyp := g.unwrap_generic(g.type_resolver.get_type(val))
@@ -385,7 +384,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							var_type = ctyp
 							val_type = var_type
 							left.obj.typ = var_type
-							g.assign_ct_type[val.pos.pos] = var_type
+							// g.assign_ct_type[val.pos.pos] = var_type
 						}
 					} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
 						if val.return_type_generic != 0
@@ -425,7 +424,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							var_type = ctyp
 							val_type = var_type
 							left.obj.typ = var_type
-							g.assign_ct_type[val.pos.pos] = var_type
+							// g.assign_ct_type[val.pos.pos] = var_type
 						}
 					} else if val is ast.PostfixExpr && val.op == .question
 						&& (val.expr is ast.Ident && val.expr.ct_expr) {
@@ -434,7 +433,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							var_type = ctyp
 							val_type = var_type
 							left.obj.typ = var_type
-							g.assign_ct_type[val.pos.pos] = var_type
+							// g.assign_ct_type[val.pos.pos] = var_type
 
 							ct_type_var := g.comptime.get_ct_type_var(val.expr)
 							if ct_type_var == .field_var {
@@ -456,7 +455,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			if left.typ_key != '' {
 				var_type = g.type_resolver.get_ct_type_or_default(left.typ_key, var_type)
 			}
-			g.assign_ct_type[left.pos.pos] = var_type
+			// g.assign_ct_type[left.pos.pos] = var_type
 			if val is ast.ComptimeSelector {
 				if val.typ_key != '' {
 					val_type = g.type_resolver.get_ct_type_or_default(val.typ_key, var_type)
@@ -469,7 +468,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			if val.typ_key != '' {
 				val_type = g.type_resolver.get_ct_type_or_default(val.typ_key, var_type)
 			}
-			g.assign_ct_type[val.pos.pos] = val_type
+			// g.assign_ct_type[val.pos.pos] = val_type
 		}
 		mut styp := g.styp(var_type)
 		mut is_fixed_array_init := false
