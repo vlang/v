@@ -266,7 +266,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		g.println('; for ${node.val_var} in range {')
 		// for a in node.cond .. node.high {
 
-		i := g.cg.cg_allocate_var(node.val_var, 8, i64(0)) // iterator variable
+		i := g.cg.cg_allocate_stack_var(node.val_var, 8, i64(0)) // iterator variable
 		g.println('; evaluate node.cond for lower bound:')
 		g.expr(node.cond) // outputs the lower loop bound (initial value) to the main reg
 		g.println('; move the result to i')
@@ -278,7 +278,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		g.cg.cg_mov_var_to_reg(.reg0, LocalVar{i, ast.i64_type_idx, node.val_var})
 		g.cg.cg_push(.reg0) // put the iterator on the stack
 		g.expr(node.high) // final value (upper bound) to the main reg
-		g.cg.cg_cmp_to_stack_top(.reg0)
+		g.cmp_to_stack_top(.reg0)
 		jump_addr := g.cg.cg_cjmp(.jge) // leave loop i >= upper bound
 		end_label := g.labels.new_label()
 		g.labels.patches << LabelPatch{
@@ -310,8 +310,8 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 		// for c in my_string {
 
 		key_var := if node.key_var == '' { 'i' } else { node.key_var }
-		i := g.cg.cg_allocate_var(key_var, 8, i64(0)) // iterator variable
-		c := g.cg.cg_allocate_var(node.val_var, 1, i64(0)) // char variable
+		i := g.cg.cg_allocate_stack_var(key_var, 8, i64(0)) // iterator variable
+		c := g.cg.cg_allocate_stack_var(node.val_var, 1, i64(0)) // char variable
 
 		g.expr(node.cond) // get the address of the string variable
 		g.cg.cg_mov_deref(.reg2, .reg0, ast.charptr_type)

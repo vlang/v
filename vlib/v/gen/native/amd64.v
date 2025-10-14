@@ -914,6 +914,8 @@ fn (mut c Amd64) mov_reg_to_var(var Var, reg Amd64Register, config VarConfig) {
 	}
 }
 
+// does not support 64bits
+// TODO: remove and replace by a more general function (like mov_reg_to_var)
 fn (mut c Amd64) cg_mov_int_to_var(var Var, integer i32, config VarConfig) {
 	match var {
 		ast.Ident {
@@ -2410,7 +2412,7 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 fn (mut c Amd64) assign_ident_int_lit(node ast.AssignStmt, i i32, int_lit ast.IntegerLiteral, left ast.Ident) {
 	match node.op {
 		.decl_assign {
-			c.cg_allocate_var(left.name, 8, i64(int_lit.val.int()))
+			c.cg_allocate_stack_var(left.name, 8, i64(int_lit.val.int()))
 		}
 		.assign {
 			c.mov64(.rax, i64(int_lit.val.int()))
@@ -2518,7 +2520,7 @@ fn (mut c Amd64) mov_float_xmm0_var(reg Amd64Register, var_type ast.Type) {
 }
 
 fn (mut c Amd64) cg_create_string_struct(typ ast.Type, name string, str string) i32 {
-	dest := c.cg_allocate_var(name, c.g.get_type_size(typ), i64(0))
+	dest := c.cg_allocate_stack_var(name, c.g.get_type_size(typ), i64(0))
 	c.learel(.rax, c.g.allocate_string(str, 3, .rel32))
 	c.cg_mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .reg0)
 	offset := c.g.get_field_offset(typ, 'len')
@@ -2547,7 +2549,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 			match val {
 				Number {
 					if node.op == .decl_assign {
-						c.cg_allocate_var(ident.name, enum_info.size, val)
+						c.cg_allocate_stack_var(ident.name, enum_info.size, val)
 					} else {
 						c.mov64(.rax, val)
 						c.cg_mov_reg_to_var(ident, .reg0)
@@ -2695,7 +2697,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 			return
 		}
 		ast.AtExpr {
-			dest := c.cg_allocate_var(name, 8, i64(0))
+			dest := c.cg_allocate_stack_var(name, 8, i64(0))
 			c.learel(.rsi, c.g.allocate_string(c.g.comptime_at(right), 3, .rel32))
 			c.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
 		}
@@ -2814,7 +2816,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 	/*
 	ast.IndexExpr {
 			// a := arr[0]
-			offset := c.cg_allocate_var(name, c.g.get_sizeof_ident(ident), 0)
+			offset := c.cg_allocate_stack_var(name, c.g.get_sizeof_ident(ident), 0)
 			if c.g.pref.is_verbose {
 				println('infix assignment ${name} offset=${offset.hex2()}')
 			}
@@ -2841,43 +2843,6 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 			c.cg_mov_reg_to_var(ident, .eax)
 		}
 	}*/
-}
-
-fn (mut c Amd64) cg_gen_index_expr(node ast.IndexExpr) {
-	if node.left_type.is_string() {
-		c.g.expr(node.index)
-		c.push(.rax)
-
-		c.g.expr(node.left) // load address of string struct
-		c.mov_deref(.rax, .rax, ast.u64_type_idx) // load value of the str pointer
-
-		c.pop(.rdx) // index
-		c.add_reg(.rax, .rdx) // add the offset to the address
-	} else if node.left_type.is_any_kind_of_pointer() {
-		// load the pointer
-		c.g.expr(node.left)
-		c.mov_reg(.rcx, .rax)
-		// add the index times the size (bytes) of the type
-		c.g.expr(node.index)
-		c.mov(.rbx, i32(c.g.get_type_size(node.typ)))
-		c.mul_reg_rax(.rbx)
-		c.add_reg(.rax, .rcx)
-	} else if node.is_array {
-		// TODO: use functions from builtin instead (array.set, array.get...)
-		c.g.expr(node.left)
-		offset := c.g.get_field_offset(ast.array_type, 'data')
-		if offset != 0 {
-			c.add(.rax, offset)
-		}
-		c.mov_deref(.rcx, .rax, ast.u64_type)
-		// add the index times the size (bytes) of the type
-		c.g.expr(node.index)
-		c.mov(.rbx, i32(c.g.get_type_size(node.typ)))
-		c.mul_reg_rax(.rbx)
-		c.add_reg(.rax, .rcx)
-	} else {
-		c.g.n_error('${@LOCATION} index expr: unhandled node type {node}')
-	}
 }
 
 // /!\ for div, mul, mod the left value should always be .rax
@@ -4044,7 +4009,7 @@ fn (mut c Amd64) cg_fn_decl(node ast.FnDecl) {
 	// define defer vars
 	for i in 0 .. node.defer_stmts.len {
 		name := '_defer${i}'
-		c.cg_allocate_var(name, 8, i64(0))
+		c.cg_allocate_stack_var(name, 8, i64(0))
 	}
 	// body
 	c.g.stmts(node.stmts)
@@ -4084,14 +4049,14 @@ pub fn (mut c Amd64) cg_builtin_decl(builtin BuiltinFn) {
 	c.cg_leave()
 }
 
-pub fn (mut c Amd64) allocate_var_two_step(name string, size i32, initial_val Number) i32 {
-	c.cg_allocate_var(name, size - 8, i64(0))
-	return c.cg_allocate_var(name, 8, initial_val)
+pub fn (mut c Amd64) allocate_stack_var_two_step(name string, size i32, initial_val Number) i32 {
+	c.cg_allocate_stack_var(name, size - 8, i64(0))
+	return c.cg_allocate_stack_var(name, 8, initial_val)
 }
 
-pub fn (mut c Amd64) cg_allocate_var(name string, size i32, initial_val Number) i32 {
+pub fn (mut c Amd64) cg_allocate_stack_var(name string, size i32, initial_val Number) i32 {
 	if size > 8 {
-		return c.allocate_var_two_step(name, size, initial_val)
+		return c.allocate_stack_var_two_step(name, size, initial_val)
 	}
 
 	padding := (size - c.g.stack_var_pos % size) % size
@@ -4605,6 +4570,7 @@ fn (mut c Amd64) cg_gen_match_expr(expr ast.MatchExpr) {
 			for cond in branch.exprs {
 				match cond {
 					ast.RangeExpr {
+						// TODO: clean up
 						c.pop(.rdx)
 						c.g.expr(cond.low)
 						c.cmp_reg(.rax, .rdx)
@@ -5082,16 +5048,6 @@ fn (mut c Amd64) cg_gen_cast_expr(expr ast.CastExpr) {
 			c.mov_extend_reg(.rax, .rax, expr.typ)
 		}
 	}
-}
-
-fn (mut c Amd64) cg_cmp_to_stack_top(reg Register) {
-	second_reg := if reg.amd64() == Amd64Register.rbx {
-		Amd64Register.rax
-	} else {
-		Amd64Register.rbx
-	}
-	c.pop(second_reg)
-	c.cmp_reg(second_reg, reg.amd64())
 }
 
 // Temporary!

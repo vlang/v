@@ -54,7 +54,7 @@ mut:
 	// arm64 specific stuff for code generation
 }
 
-fn (mut x Arm64) cg_allocate_var(name string, size i32, initial_val Number) i32 {
+fn (mut x Arm64) cg_allocate_stack_var(name string, size i32, initial_val Number) i32 {
 	eprintln('TODO: allocating var on arm64 (${name}) = ${size} = ${initial_val}')
 	return 0
 }
@@ -522,10 +522,6 @@ fn (mut c Arm64) cg_call_addr_at(addr i32, at i64) i64 {
 	panic('Arm64.cg_call_addr_at() not implemented')
 }
 
-fn (mut c Arm64) cg_cmp_to_stack_top(reg Register) {
-	panic('Arm64.cg_cmp_to_stack_top() not implemented')
-}
-
 fn (mut c Arm64) cg_push(r Register) {
 	panic('Arm64.cg_push() not implemented')
 }
@@ -560,8 +556,4 @@ fn (mut c Arm64) cg_patch_relative_jmp(pos i32, addr i64) {
 
 fn (mut c Arm64) cg_mul_reg(a Register, b Register) {
 	panic('Arm64.cg_mul_reg() not implemented')
-}
-
-fn (mut c Arm64) cg_gen_index_expr(node ast.IndexExpr) {
-	panic('Arm64.cg_gen_index_expr{) not implemented')
 }

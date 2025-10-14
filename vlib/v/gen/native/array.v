@@ -7,7 +7,7 @@ module native
 import v.ast
 
 fn (mut g Gen) allocate_raw_array(name string, size i32, items i32) i32 {
-	pos := g.cg.cg_allocate_var(name, size, items)
+	pos := g.cg.cg_allocate_stack_var(name, size, items)
 	g.stack_var_pos += (size * items)
 	return pos
 }
