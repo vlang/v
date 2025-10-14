@@ -753,6 +753,19 @@ run them via `v file.v` instead',
 		p.table.register_fn_generic_types(fn_decl.fkey())
 	}
 	p.label_names = []
+	if p.pref.is_vls {
+		type_str := if (is_method || is_static_type_method) && rec.typ != ast.no_type {
+			p.table.sym(rec.typ.idx_type()).name.all_after_last('.')
+		} else {
+			''
+		}
+		key := 'fn_${p.mod}[${type_str}]${short_fn_name}'
+		val := ast.VLSInfo{
+			pos:      fn_decl.pos
+			comments: fn_decl.comments // TODO: we need comment just before fn decl
+		}
+		p.table.register_vls_info(key, val)
+	}
 	return fn_decl
 }
 

@@ -2572,7 +2572,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	} else {
 		comments << p.eat_comments(same_line: true)
 	}
-	return ast.ConstDecl{
+	const_decl := ast.ConstDecl{
 		pos:          start_pos.extend_with_last_line(const_pos, p.prev_tok.line_nr)
 		fields:       fields
 		is_pub:       is_pub
@@ -2580,6 +2580,18 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		is_block:     is_block
 		attrs:        attrs
 	}
+	if p.pref.is_vls {
+		for f in fields {
+			key := 'const_${f.name}'
+			val := ast.VLSInfo{
+				pos:          f.pos
+				comments:     f.comments
+				end_comments: f.end_comments
+			}
+			p.table.register_vls_info(key, val)
+		}
+	}
+	return const_decl
 }
 
 fn (mut p Parser) return_stmt() ast.Return {
@@ -2732,7 +2744,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if is_block {
 		p.check(.rpar)
 	}
-	return ast.GlobalDecl{
+	global_decl := ast.GlobalDecl{
 		pos:          start_pos.extend(p.prev_tok.pos())
 		mod:          p.mod
 		fields:       fields
@@ -2740,6 +2752,21 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		is_block:     is_block
 		attrs:        attrs
 	}
+	if p.pref.is_vls {
+		for f in fields {
+			mut key := 'global_${f.name}'
+			val := ast.VLSInfo{
+				pos:      global_decl.pos
+				comments: f.comments
+			}
+			p.table.register_vls_info(key, val)
+
+			// register another `module specific global`
+			key = 'global_${p.prepend_mod(f.name)}'
+			p.table.register_vls_info(key, val)
+		}
+	}
+	return global_decl
 }
 
 fn source_name(name string) string {
@@ -2802,7 +2829,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		type_pos = type_pos.extend(p.tok.pos())
 		comments = p.eat_comments(same_line: true)
 		p.attrs = []
-		return ast.FnTypeDecl{
+		fn_type_decl := ast.FnTypeDecl{
 			name:          fn_name
 			mod:           p.mod
 			is_pub:        is_pub
@@ -2814,6 +2841,15 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			attrs:         attrs
 			is_markused:   attrs.contains('markused')
 		}
+		if p.pref.is_vls {
+			key := 'fntype_${fn_name}'
+			val := ast.VLSInfo{
+				pos:      decl_pos
+				comments: comments
+			}
+			p.table.register_vls_info(key, val)
+		}
+		return fn_type_decl
 	}
 	sum_variants << p.parse_sum_type_variants()
 	// type SumType = Aaa | Bbb | Ccc
@@ -2862,6 +2898,13 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			is_markused:   attrs.contains('markused')
 		}
 		p.table.register_sumtype(node)
+		if p.pref.is_vls {
+			key := 'sumtype_${p.prepend_mod(name)}'
+			val := ast.VLSInfo{
+				pos: node.pos
+			}
+			p.table.register_vls_info(key, val)
+		}
 		return node
 	}
 	// type MyType = int
@@ -2905,7 +2948,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	comments = sum_variants[0].end_comments.clone()
 	p.attrs = []
-	return ast.AliasTypeDecl{
+	alias_type_decl := ast.AliasTypeDecl{
 		name:        name
 		is_pub:      is_pub
 		typ:         idx
@@ -2916,6 +2959,15 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_markused: attrs.contains('markused')
 		attrs:       attrs
 	}
+	if p.pref.is_vls {
+		key := 'aliastype_${p.prepend_mod(name)}'
+		val := ast.VLSInfo{
+			pos:      alias_type_decl.pos
+			comments: comments
+		}
+		p.table.register_vls_info(key, val)
+	}
+	return alias_type_decl
 }
 
 fn (mut p Parser) assoc() ast.Assoc {

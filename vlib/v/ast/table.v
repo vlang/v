@@ -6,6 +6,7 @@ module ast
 
 import v.cflag
 import v.util
+import v.token
 
 @[heap; minify]
 pub struct UsedFeatures {
@@ -87,6 +88,7 @@ pub mut:
 	gostmts            int    // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 	enum_decls        map[string]EnumDecl
+	vls_info          map[string]VLSInfo
 	module_deprecated map[string]bool
 	module_attrs      map[string][]Attr // module attributes
 	builtin_pub_fns   map[string]bool
@@ -109,6 +111,14 @@ pub struct ComptTimeCondResult {
 pub mut:
 	val   bool
 	c_str string
+}
+
+pub struct VLSInfo {
+pub mut:
+	pos          token.Pos
+	pre_comments []Comment
+	comments     []Comment
+	end_comments []Comment
 }
 
 // used by vls to avoid leaks
@@ -2764,4 +2774,9 @@ pub fn (mut t Table) get_veb_result_type_idx() int {
 
 	t.veb_res_idx_cache = t.find_type('veb.Result')
 	return t.veb_res_idx_cache
+}
+
+@[inline]
+pub fn (mut t Table) register_vls_info(key string, val VLSInfo) {
+	t.vls_info[key] = val
 }

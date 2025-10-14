@@ -466,7 +466,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	p.expr_mod = ''
-	return ast.StructDecl{
+	struct_decl := ast.StructDecl{
 		name:             name
 		scoped_name:      scoped_name
 		is_pub:           is_pub
@@ -489,6 +489,24 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		is_implements:    is_implements
 		implements_types: implements_types
 	}
+	if p.pref.is_vls {
+		key := 'struct_${name}'
+		val := ast.VLSInfo{
+			pos:          struct_decl.pos
+			pre_comments: pre_comments
+		}
+		p.table.register_vls_info(key, val)
+		for f in ast_fields {
+			f_key := 'struct_${name}.${f.name}'
+			f_val := ast.VLSInfo{
+				pos:          f.pos
+				pre_comments: f.pre_comments
+				comments:     f.comments
+			}
+			p.table.register_vls_info(f_key, f_val)
+		}
+	}
+	return struct_decl
 }
 
 fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option bool) ast.StructInit {
@@ -879,5 +897,21 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		name_pos:      name_pos
 	}
 	p.table.register_interface(res)
+	if p.pref.is_vls {
+		key := 'interface_${interface_name}'
+		val := ast.VLSInfo{
+			pos:          pos
+			pre_comments: pre_comments
+		}
+		p.table.register_vls_info(key, val)
+		for f in fields {
+			f_key := 'interface_${interface_name}.${f.name}'
+			f_val := ast.VLSInfo{
+				pos:      f.pos
+				comments: f.comments
+			}
+			p.table.register_vls_info(f_key, f_val)
+		}
+	}
 	return res
 }
