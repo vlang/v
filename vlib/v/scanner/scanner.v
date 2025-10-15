@@ -1134,8 +1134,10 @@ pub fn (mut s Scanner) text_scan() token.Token {
 								col:      u16_col(s.current_column() - comment.len - 4)
 								file_idx: s.file_idx
 							}
-							s.error_with_pos('inline comment is deprecated, please use line comment',
-								comment_pos)
+							if !s.pref.is_fmt {
+								s.error_with_pos('inline comment is deprecated, please use line comment',
+									comment_pos)
+							}
 							comment = '\x01' + comment.trim(' ')
 						}
 						return s.new_multiline_token(.comment, comment, comment.len + 4,
