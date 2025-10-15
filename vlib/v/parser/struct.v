@@ -64,6 +64,12 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 	generic_types, _ := p.parse_generic_types()
 	mut pre_comments := p.eat_comments()
+	mut comments_before_key_struct := if p.is_vls {
+		p.cur_comments.clone()
+	} else {
+		[]
+	}
+	p.cur_comments.clear()
 	no_body := p.tok.kind != .lcbr && p.tok.kind != .key_implements
 	if language == .v && no_body {
 		p.error_with_pos('`${p.tok.lit}` lacks body', name_pos)
@@ -489,19 +495,41 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		is_implements:    is_implements
 		implements_types: implements_types
 	}
-	if p.pref.is_vls {
+	if p.is_vls {
 		key := 'struct_${name}'
-		val := ast.VLSInfo{
-			pos:          struct_decl.pos
-			pre_comments: pre_comments
+		mut has_decl_end_comment := false
+		if struct_decl.pre_comments.len > 0
+			&& struct_decl.pre_comments[0].pos.line_nr == struct_decl.pos.line_nr {
+			// struct MyS { // MyS end_comment1
+			comments_before_key_struct << struct_decl.pre_comments[0]
+			has_decl_end_comment = true
 		}
+		val := ast.VlsInfo{
+			pos: struct_decl.pos
+			doc: p.keyword_comments_to_string(orig_name, comments_before_key_struct) +
+				p.comments_to_string(struct_decl.end_comments)
+		}
+
 		p.table.register_vls_info(key, val)
-		for f in ast_fields {
+		for i, f in ast_fields {
 			f_key := 'struct_${name}.${f.name}'
-			f_val := ast.VLSInfo{
-				pos:          f.pos
-				pre_comments: f.pre_comments
-				comments:     f.comments
+			f_val := if i == 0 {
+				first_field_pre_comment := if has_decl_end_comment {
+					struct_decl.pre_comments[1..].clone()
+				} else {
+					struct_decl.pre_comments
+				}
+				ast.VlsInfo{
+					pos: f.pos
+					doc: p.comments_to_string(first_field_pre_comment) +
+						p.comments_to_string(f.comments)
+				}
+			} else {
+				ast.VlsInfo{
+					pos: f.pos
+					doc: p.comments_to_string(ast_fields[i - 1].next_comments) +
+						p.comments_to_string(f.comments)
+				}
 			}
 			p.table.register_vls_info(f_key, f_val)
 		}
@@ -649,6 +677,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.next() // `interface`
 	language := p.parse_language()
 	name_pos := p.tok.pos()
+	mut comments_before_key_interface := if p.is_vls {
+		p.cur_comments.clone()
+	} else {
+		[]
+	}
+	mut pre_comment_string := ''
 	p.check_for_impure_v(language, name_pos)
 	if p.disallow_declarations_in_script_mode() {
 		return ast.InterfaceDecl{}
@@ -673,6 +707,14 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut pre_comments := p.eat_comments()
 	p.check(.lcbr)
 	pre_comments << p.eat_comments()
+	if p.is_vls {
+		pre_comment_string = if pre_comments.len > 0 && pre_comments[0].pos.line_nr == pos.line_nr {
+			// interface MyInterface { // end_comment
+			p.comments_to_string(pre_comments[1..])
+		} else {
+			p.comments_to_string(pre_comments)
+		}
+	}
 	if p.is_imported_symbol(modless_name) {
 		p.error_with_pos('cannot register interface `${interface_name}`, this type was already imported',
 			name_pos)
@@ -781,6 +823,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		}
 		mut comments := p.eat_comments()
 		if p.peek_tok.kind == .lpar {
+			// interface methods
 			method_start_pos := p.tok.pos()
 			has_prev_newline := p.has_prev_newline()
 			has_break_line := has_prev_newline || p.has_prev_line_comment_or_label()
@@ -846,6 +889,17 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 			ts.register_method(tmethod)
 			info.methods << tmethod
+
+			if p.is_vls {
+				f_key := 'fn_${p.mod}[${modless_name}]${name}'
+				f_val := ast.VlsInfo{
+					pos: method.pos
+					doc: pre_comment_string + p.comments_to_string(comments)
+				}
+				p.table.register_vls_info(f_key, f_val)
+				// use mnext_comments create next field/method's pre_comment
+				pre_comment_string = p.comments_to_string(mnext_comments)
+			}
 		} else {
 			// interface fields
 			field_pos := p.tok.pos()
@@ -874,6 +928,25 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				has_prev_newline: has_prev_newline
 				has_break_line:   has_break_line
 			}
+			if p.is_vls {
+				// split comments into f_end_comment and f_nxt_comment first
+				mut f_end_comment := ast.Comment{}
+				mut f_nxt_comment := []ast.Comment{}
+				if comments.len > 0 && comments[0].pos.line_nr == type_pos.line_nr {
+					f_end_comment = comments[0]
+					f_nxt_comment = comments[1..].clone()
+				} else {
+					f_nxt_comment = comments.clone()
+				}
+				f_key := 'interface_${interface_name}.${field_name}'
+				f_val := ast.VlsInfo{
+					pos: field_pos
+					doc: pre_comment_string + p.comments_to_string([f_end_comment])
+				}
+				p.table.register_vls_info(f_key, f_val)
+				// use f_nxt_comment create next field/method's pre_comment
+				pre_comment_string = p.comments_to_string(f_nxt_comment)
+			}
 		}
 	}
 	info.embeds = embeds.map(it.typ)
@@ -897,21 +970,17 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		name_pos:      name_pos
 	}
 	p.table.register_interface(res)
-	if p.pref.is_vls {
+	if p.is_vls {
 		key := 'interface_${interface_name}'
-		val := ast.VLSInfo{
-			pos:          pos
-			pre_comments: pre_comments
+		if res.pre_comments.len > 0 && res.pre_comments[0].pos.line_nr == res.pos.line_nr {
+			// interface MyInterface { // MyInterface end_comment1
+			comments_before_key_interface << res.pre_comments[0]
+		}
+		val := ast.VlsInfo{
+			pos: res.pos
+			doc: p.keyword_comments_to_string(modless_name, comments_before_key_interface)
 		}
 		p.table.register_vls_info(key, val)
-		for f in fields {
-			f_key := 'interface_${interface_name}.${f.name}'
-			f_val := ast.VLSInfo{
-				pos:      f.pos
-				comments: f.comments
-			}
-			p.table.register_vls_info(f_key, f_val)
-		}
 	}
 	return res
 }
