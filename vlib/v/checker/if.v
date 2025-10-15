@@ -201,6 +201,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					}
 				}
 			} else {
+				if branch.cond.vars.len != 1 {
+					c.error('if guard expects a single variable, but got ${branch.cond.vars.len}',
+						branch.pos)
+					continue
+				}
 				for _, var in branch.cond.vars {
 					if var.name == '_' {
 						continue
