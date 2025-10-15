@@ -267,7 +267,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 				comments_before_key_enum << enum_decl.comments[0]
 				has_decl_end_comment = true
 			}
-			val := ast.VLSInfo{
+			val := ast.VlsInfo{
 				pos: typ_pos
 				doc: p.keyword_comments_to_string(enum_name, comments_before_key_enum)
 			}
@@ -280,13 +280,13 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 					} else {
 						enum_decl.comments
 					}
-					ast.VLSInfo{
+					ast.VlsInfo{
 						pos: f.pos
 						doc: p.comments_to_string(first_field_pre_comment) +
 							p.comments_to_string(f.comments)
 					}
 				} else {
-					ast.VLSInfo{
+					ast.VlsInfo{
 						pos: f.pos
 						doc: p.comments_to_string(fields[i - 1].next_comments) +
 							p.comments_to_string(f.comments)

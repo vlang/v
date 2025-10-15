@@ -301,7 +301,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.next()
 	}
 	p.check(.key_fn)
-	mut comment_before_key_fn := if p.is_vls {
+	mut comments_before_key_fn := if p.is_vls {
 		p.cur_comments.clone()
 	} else {
 		[]
@@ -765,9 +765,9 @@ run them via `v file.v` instead',
 			''
 		}
 		key := 'fn_${p.mod}[${type_str}]${short_fn_name}'
-		val := ast.VLSInfo{
+		val := ast.VlsInfo{
 			pos: fn_decl.pos
-			doc: p.keyword_comments_to_string(short_fn_name, comment_before_key_fn) +
+			doc: p.keyword_comments_to_string(short_fn_name, comments_before_key_fn) +
 				p.comments_to_string(fn_decl.end_comments)
 		}
 		p.table.register_vls_info(key, val)

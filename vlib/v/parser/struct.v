@@ -504,7 +504,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			comments_before_key_struct << struct_decl.pre_comments[0]
 			has_decl_end_comment = true
 		}
-		val := ast.VLSInfo{
+		val := ast.VlsInfo{
 			pos: struct_decl.pos
 			doc: p.keyword_comments_to_string(orig_name, comments_before_key_struct) +
 				p.comments_to_string(struct_decl.end_comments)
@@ -519,13 +519,13 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				} else {
 					struct_decl.pre_comments
 				}
-				ast.VLSInfo{
+				ast.VlsInfo{
 					pos: f.pos
 					doc: p.comments_to_string(first_field_pre_comment) +
 						p.comments_to_string(f.comments)
 				}
 			} else {
-				ast.VLSInfo{
+				ast.VlsInfo{
 					pos: f.pos
 					doc: p.comments_to_string(ast_fields[i - 1].next_comments) +
 						p.comments_to_string(f.comments)
@@ -892,7 +892,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 
 			if p.is_vls {
 				f_key := 'fn_${p.mod}[${modless_name}]${name}'
-				f_val := ast.VLSInfo{
+				f_val := ast.VlsInfo{
 					pos: method.pos
 					doc: pre_comment_string + p.comments_to_string(comments)
 				}
@@ -939,7 +939,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 					f_nxt_comment = comments.clone()
 				}
 				f_key := 'interface_${interface_name}.${field_name}'
-				f_val := ast.VLSInfo{
+				f_val := ast.VlsInfo{
 					pos: field_pos
 					doc: pre_comment_string + p.comments_to_string([f_end_comment])
 				}
@@ -976,7 +976,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			// interface MyInterface { // MyInterface end_comment1
 			comments_before_key_interface << res.pre_comments[0]
 		}
-		val := ast.VLSInfo{
+		val := ast.VlsInfo{
 			pos: res.pos
 			doc: p.keyword_comments_to_string(modless_name, comments_before_key_interface)
 		}

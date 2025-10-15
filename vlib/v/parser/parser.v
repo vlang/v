@@ -2597,7 +2597,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 				p.comments_to_string(comments) + p.comments_to_string(end_comments)
 			}
 
-			val := ast.VLSInfo{
+			val := ast.VlsInfo{
 				pos: field.pos
 				doc: doc
 			}
@@ -2797,7 +2797,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			} else {
 				p.comments_to_string(f.comments)
 			}
-			val := ast.VLSInfo{
+			val := ast.VlsInfo{
 				pos: f.pos
 				doc: doc
 			}
@@ -2826,7 +2826,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.next()
 	}
 	p.check(.key_type)
-	mut comment_before_key_type := if p.is_vls {
+	mut comments_before_key_type := if p.is_vls {
 		p.cur_comments.clone()
 	} else {
 		[]
@@ -2890,9 +2890,9 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		if p.is_vls {
 			key := 'fntype_${fn_name}'
-			val := ast.VLSInfo{
+			val := ast.VlsInfo{
 				pos: decl_pos
-				doc: p.keyword_comments_to_string(name, comment_before_key_type) +
+				doc: p.keyword_comments_to_string(name, comments_before_key_type) +
 					p.comments_to_string(comments)
 			}
 			p.table.register_vls_info(key, val)
@@ -2948,9 +2948,9 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.table.register_sumtype(node)
 		if p.is_vls {
 			key := 'sumtype_${p.prepend_mod(name)}'
-			val := ast.VLSInfo{
+			val := ast.VlsInfo{
 				pos: node.pos
-				doc: p.keyword_comments_to_string(name, comment_before_key_type) +
+				doc: p.keyword_comments_to_string(name, comments_before_key_type) +
 					p.comments_to_string(sum_variants[sum_variants.len - 1].end_comments)
 			}
 			p.table.register_vls_info(key, val)
@@ -3011,9 +3011,9 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	if p.is_vls {
 		key := 'aliastype_${p.prepend_mod(name)}'
-		val := ast.VLSInfo{
+		val := ast.VlsInfo{
 			pos: alias_type_decl.pos
-			doc: p.keyword_comments_to_string(name, comment_before_key_type) +
+			doc: p.keyword_comments_to_string(name, comments_before_key_type) +
 				p.comments_to_string(comments)
 		}
 		p.table.register_vls_info(key, val)
