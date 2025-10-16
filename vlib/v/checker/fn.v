@@ -690,6 +690,8 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		} else {
 			parent_var.typ
 		}
+		node.has_ct_var = node.has_ct_var
+			|| var.name in [c.comptime.comptime_for_field_var, c.comptime.comptime_for_method_var]
 		if parent_var.typ != ast.no_type {
 			parent_var_sym := c.table.final_sym(ptyp)
 			if parent_var_sym.info is ast.FnType {

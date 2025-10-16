@@ -1226,7 +1226,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				left_typ := node.left_types[i]
 				left_sym := g.table.sym(left_typ)
 				mut anon_ctx := ''
-				if g.anon_fn {
+				if g.anon_fn != unsafe { nil } {
 					if obj := left.scope.find_var(left.name) {
 						if obj.is_inherited {
 							anon_ctx = '${closure_ctx}->'
