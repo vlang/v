@@ -5598,13 +5598,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 
 fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	tmp_inside_cast := g.inside_cast
-	g.inside_cast = true
 	defer {
 		g.inside_cast = tmp_inside_cast
 	}
 	node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
+	g.inside_cast = sym.kind == .struct || node.typ.is_ptr()
 	if g.comptime.is_comptime(node.expr) {
 		expr_type = g.unwrap_generic(g.type_resolver.get_type(node.expr))
 	}
