@@ -222,7 +222,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 								}
 							}
 						} else if arg_sym.kind == .any {
-							cparam_type_sym := t.table.sym(t.resolver.unwrap_generic(ctyp))
+							cparam_type_sym := t.table.final_sym(t.resolver.unwrap_generic(ctyp))
 							if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
 								comptime_args[k] = cparam_type_sym.info.elem_type
 							} else if param_typ_sym.info is ast.Map
