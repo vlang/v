@@ -630,7 +630,7 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add('return_type_pos', t.pos(node.return_type_pos))
 	obj.add('file', t.string_node(node.file))
 	obj.add('has_return', t.bool_node(node.has_return))
-	obj.add('should_be_skipped', t.bool_node(node.should_be_skipped))
+	obj.add('should_be_skipped', t.bool_node(node.should_beskipped))
 	obj.add('ninstances', t.number_node(node.ninstances))
 	obj.add_terse('has_await', t.bool_node(node.has_await))
 	obj.add_terse('return_type', t.type_node(node.return_type))
@@ -653,6 +653,7 @@ fn (t Tree) anon_fn(node ast.AnonFn) &Node {
 	obj.add_terse('decl', t.fn_decl(node.decl))
 	obj.add('inherited_vars', t.array_node_arg(node.inherited_vars))
 	obj.add_terse('typ', t.type_node(node.typ))
+	obj.add('has_ct_var', t.bool_node(node.has_ct_var))
 	mut symbol_obj := create_object()
 	for key, val in node.has_gen {
 		symbol_obj.add_terse(key.str(), t.bool_node(val))

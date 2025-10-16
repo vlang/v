@@ -248,7 +248,7 @@ mut:
 	expected_cast_type  ast.Type // for match expr of sumtypes
 	expected_arg_mut    bool     // generating a mutable fn parameter
 	or_expr_return_type ast.Type // or { 0, 1 } return type
-	anon_fn             bool
+	anon_fn             &ast.AnonFn
 	tests_inited        bool
 	has_main            bool
 	// main_fn_decl_node  ast.FnDecl
@@ -346,6 +346,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		table:                table
 		pref:                 pref_
 		fn_decl:              unsafe { nil }
+		anon_fn:              unsafe { nil }
 		is_autofree:          pref_.autofree
 		indent:               -1
 		module_built:         module_built
@@ -845,6 +846,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		table:                 global_g.table
 		pref:                  global_g.pref
 		fn_decl:               unsafe { nil }
+		anon_fn:               unsafe { nil }
 		indent:                -1
 		module_built:          global_g.module_built
 		timers:                util.new_timers(
