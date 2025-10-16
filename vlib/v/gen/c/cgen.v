@@ -157,6 +157,7 @@ mut:
 	inside_selector           bool
 	inside_selector_deref     bool // indicates if the inside selector was already dereferenced
 	inside_memset             bool
+	inside_memcpy             bool
 	inside_const              bool
 	inside_array_item         bool
 	inside_const_opt_or_res   bool
@@ -2993,7 +2994,10 @@ fn (mut g Gen) expr_with_var(expr ast.Expr, expected_type ast.Type, do_cast bool
 	if do_cast {
 		g.write('(${styp})')
 	}
+	tmp_inside_memcpy := g.inside_memcpy
+	g.inside_memcpy = true
 	g.expr(expr)
+	g.inside_memcpy = tmp_inside_memcpy
 	g.writeln(', sizeof(${styp}));')
 	g.write(stmt_str)
 	return tmp_var
