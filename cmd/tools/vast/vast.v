@@ -630,7 +630,7 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add('return_type_pos', t.pos(node.return_type_pos))
 	obj.add('file', t.string_node(node.file))
 	obj.add('has_return', t.bool_node(node.has_return))
-	obj.add('should_be_skipped', t.bool_node(node.should_beskipped))
+	obj.add('should_be_skipped', t.bool_node(node.should_be_skipped))
 	obj.add('ninstances', t.number_node(node.ninstances))
 	obj.add_terse('has_await', t.bool_node(node.has_await))
 	obj.add_terse('return_type', t.type_node(node.return_type))
