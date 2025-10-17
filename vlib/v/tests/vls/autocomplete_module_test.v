@@ -4,7 +4,7 @@ import v.util.diff
 
 const vroot = os.real_path(@VMODROOT)
 
-const text_file_orig = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vvv')
+const text_file_orig = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
 const text_file = os.join_path(os.temp_dir(), 'sample_text.v')
 
 fn testsuite_begin() {
