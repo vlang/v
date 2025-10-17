@@ -22,7 +22,7 @@ struct TestData {
 
 const test_data = [
 	TestData{
-		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:18:3" ${text_file}'
+		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:18:3" ${os.quoted_path(text_file)}'
 		output: '{"details" : [
 {"kind":3,"label":"public_fn1","detail":"string","documentation":""},
 {"kind":22,"label":"PublicStruct1","detail":"","documentation":""},
