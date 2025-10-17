@@ -2971,7 +2971,10 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	} else {
 		old_left_is_opt := g.left_is_opt
 		g.left_is_opt = !exp.has_flag(.option)
+		old_expect_cast := g.expect_cast
+		g.expect_cast = true
 		g.expr(expr)
+		g.expect_cast = old_expect_cast
 		g.left_is_opt = old_left_is_opt
 	}
 	if is_sumtype_cast {
@@ -6504,7 +6507,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 							} else {
 								g.writeln('{0};')
 								g.write('memcpy(${tmpvar}.ret_arr, ')
+								old_expect_cast := g.expect_cast
+								g.expect_cast = true
 								g.expr_with_cast(expr0, type0, ret_type)
+								g.expect_cast = old_expect_cast
 								g.write(', sizeof(${g.styp(type0)}))')
 							}
 						} else {
@@ -6518,7 +6524,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					} else {
 						g.writeln('{0};')
 						g.write('memcpy(${tmpvar}.ret_arr, ')
+						old_expect_cast := g.expect_cast
+						g.expect_cast = true
 						g.expr_with_cast(expr0, type0, ret_type)
+						g.expect_cast = old_expect_cast
 						g.write(', sizeof(${g.styp(type0)}))')
 					}
 				} else {
