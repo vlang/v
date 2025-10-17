@@ -14,8 +14,8 @@ pub mut:
 
 fn (mut p Preferences) parse_line_info(line string) {
 	// println("parse_line_info '${line}'")
-	format_err := 'wrong format, use `-line-info "file.v:24:7"'
-	vals := line.split(':')
+	format_err := 'wrong format, use `-line-info "file.v|24|7"'
+	vals := line.split('|')
 	if vals.len != 3 {
 		eprintln(format_err)
 		return

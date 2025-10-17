@@ -4136,7 +4136,7 @@ fn (mut c Checker) resolve_var_fn(func &ast.Fn, mut node ast.Ident, name string)
 
 fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	if c.pref.linfo.is_running {
-		// LS hack (v -line-info "a.v:16")
+		// LS hack (v -line-info "a.v|16")
 		// TODO perf $if
 		c.ident_autocomplete(node)
 	}
