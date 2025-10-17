@@ -48,7 +48,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	p.check(.key_enum)
 	end_pos := p.tok.pos()
-	mut comments_before_key_enum := if p.is_vls {
+	mut comments_before_key_enum := if p.pref.is_vls {
 		p.cur_comments.clone()
 	} else {
 		[]
@@ -258,7 +258,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 
 	if !already_exists {
 		p.table.register_enum_decl(enum_decl)
-		if p.is_vls {
+		if p.pref.is_vls {
 			key := 'enum_${name}'
 			mut has_decl_end_comment := false
 			if enum_decl.comments.len > 0
