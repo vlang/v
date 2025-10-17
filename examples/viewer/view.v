@@ -607,6 +607,11 @@ fn clear_modifier_params(mut app App) {
 }
 
 fn my_event_manager(mut ev gg.Event, mut app App) {
+	// Handle window closure
+	if ev.typ == .quit_requested {
+		cleanup(mut app)
+		exit(0)
+	}
 	// navigation using the mouse wheel
 	app.scroll_y = int(ev.scroll_y)
 	if app.scroll_y != 0 {
