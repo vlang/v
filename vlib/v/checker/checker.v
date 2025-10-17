@@ -464,7 +464,6 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 				abs_path := os.join_path(os.getwd(), file.path).replace('/./', '/') // TODO: join_path shouldn't have /./
 				if abs_path == c.pref.linfo.path {
 					c.check_files([ast_files[i]])
-					c.run_ac(ast_files[i])
 					exit(0)
 				}
 			}
