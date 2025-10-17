@@ -1,5 +1,5 @@
 // vtest retry: 3
-// vtest build: !windows
+// vtest build: present_sqlite3? && !windows
 // import db.mysql
 // import db.pg
 import time

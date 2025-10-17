@@ -572,6 +572,7 @@ pub struct AnonFn {
 pub mut:
 	decl           FnDecl
 	inherited_vars []Param         // note: closures have inherited_vars.len > 0
+	has_ct_var     bool            // has $for var as inherited var
 	typ            Type            // the type of anonymous fn. Both .typ and .decl.name are auto generated
 	has_gen        map[string]bool // a map of the names of all generic anon functions, generated from it
 }

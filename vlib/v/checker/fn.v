@@ -690,6 +690,8 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		} else {
 			parent_var.typ
 		}
+		node.has_ct_var = node.has_ct_var
+			|| var.name in [c.comptime.comptime_for_field_var, c.comptime.comptime_for_method_var]
 		if parent_var.typ != ast.no_type {
 			parent_var_sym := c.table.final_sym(ptyp)
 			if parent_var_sym.info is ast.FnType {
@@ -1530,7 +1532,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			if i == args_len - 1 {
 				c.check_variadic_arg(call_arg.expr, typ, expected_type, param.typ, i + 1,
 					func.name, func.is_method, func.is_variadic, args_len == 1 && i == 0,
-					node.pos, call_arg.pos)
+					func.generic_names.len > 0, node.pos, call_arg.pos)
 			}
 		} else {
 			c.expected_type = param.typ
@@ -2542,8 +2544,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			typ := c.expr(mut arg.expr)
 			if i == node.args.len - 1 {
 				c.check_variadic_arg(arg.expr, typ, expected_type, param.typ, i + 1, method.name,
-					true, method.is_variadic, node.args.len == 1 && i == 0, node.pos,
-					arg.pos)
+					true, method.is_variadic, node.args.len == 1 && i == 0, method.generic_names.len > 0,
+					node.pos, arg.pos)
 			}
 		} else {
 			c.expected_type = param.typ
@@ -3980,11 +3982,11 @@ fn (mut c Checker) has_veb_context(typ ast.Type) bool {
 
 fn (mut c Checker) check_variadic_arg(arg_expr ast.Expr, typ ast.Type, expected_type ast.Type, param_typ ast.Type,
 	arg_num int, fn_name string, is_method bool, fn_is_variadic bool, is_single_array_arg bool,
-	call_pos token.Pos, arg_pos token.Pos) {
+	is_generic_fn bool, call_pos token.Pos, arg_pos token.Pos) {
 	kind := c.table.sym(typ).kind
 	is_decompose := arg_expr is ast.ArrayDecompose
 	mut allow_variadic_pass := false
-	if arg_expr is ast.Ident && !is_method {
+	if arg_expr is ast.Ident && !(is_method && is_generic_fn) {
 		ident := arg_expr as ast.Ident
 		if ident.obj is ast.Var {
 			var_obj := ident.obj as ast.Var

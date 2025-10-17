@@ -649,7 +649,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 		mut keep_cur_comments := false
 		defer {
 			// clear `cur_comments` after each statement, except a comment stmt
-			if !keep_cur_comments && p.is_vls {
+			if !keep_cur_comments && p.pref.is_vls {
 				p.cur_comments.clear()
 			}
 		}
@@ -794,7 +794,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 		}
 		// clear `cur_comments` after each statement, except a comment stmt
-		if !keep_cur_comments && p.is_vls {
+		if !keep_cur_comments && p.pref.is_vls {
 			p.cur_comments.clear()
 		}
 		if p.should_abort {
@@ -891,7 +891,7 @@ fn (mut p Parser) comment() ast.Comment {
 
 fn (mut p Parser) comment_stmt() ast.ExprStmt {
 	comment := p.comment()
-	if p.is_vls {
+	if p.pref.is_vls {
 		p.cur_comments << comment
 	}
 	return ast.ExprStmt{
@@ -942,7 +942,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 
 	mut keep_cur_comments := false
 	defer {
-		if !keep_cur_comments && p.is_vls {
+		if !keep_cur_comments && p.pref.is_vls {
 			p.cur_comments.clear()
 		}
 	}
@@ -2563,7 +2563,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			p.inside_assign_rhs = old_inside_assign_rhs
 		}
 		// we need `end_comments` when in `vls` mode too
-		if is_block || p.is_vls {
+		if is_block || p.pref.is_vls {
 			end_comments << p.eat_comments(same_line: true)
 		}
 		mut field := ast.ConstField{
@@ -2584,7 +2584,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		}
 		fields << field
 		p.table.global_scope.register(field)
-		if p.is_vls {
+		if p.pref.is_vls {
 			key := 'const_${full_name}'
 			// Fixme: because ConstDecl has no name, we can't access ConstDecl via name
 			// So the comment before the `const` keyword will be set to the first field's comment
@@ -2786,7 +2786,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		is_block:     is_block
 		attrs:        attrs
 	}
-	if p.is_vls {
+	if p.pref.is_vls {
 		for i, f in fields {
 			mut key := 'global_${f.name}'
 			// Fixme: because GlobalDecl has no name, we can't access GlobalDecl via name
@@ -2826,7 +2826,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.next()
 	}
 	p.check(.key_type)
-	mut comments_before_key_type := if p.is_vls {
+	mut comments_before_key_type := if p.pref.is_vls {
 		p.cur_comments.clone()
 	} else {
 		[]
@@ -2888,7 +2888,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			attrs:         attrs
 			is_markused:   attrs.contains('markused')
 		}
-		if p.is_vls {
+		if p.pref.is_vls {
 			key := 'fntype_${fn_name}'
 			val := ast.VlsInfo{
 				pos: decl_pos
@@ -2946,7 +2946,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			is_markused:   attrs.contains('markused')
 		}
 		p.table.register_sumtype(node)
-		if p.is_vls {
+		if p.pref.is_vls {
 			key := 'sumtype_${p.prepend_mod(name)}'
 			val := ast.VlsInfo{
 				pos: node.pos
@@ -3009,7 +3009,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_markused: attrs.contains('markused')
 		attrs:       attrs
 	}
-	if p.is_vls {
+	if p.pref.is_vls {
 		key := 'aliastype_${p.prepend_mod(name)}'
 		val := ast.VlsInfo{
 			pos: alias_type_decl.pos

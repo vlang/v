@@ -14,14 +14,15 @@ pub mut:
 
 fn (mut p Preferences) parse_line_info(line string) {
 	// println("parse_line_info '${line}'")
+	// Note: windows C:\Users\DDT\AppData\Local\Temp\sample_text.v:18:3
 	format_err := 'wrong format, use `-line-info "file.v:24:7"'
 	vals := line.split(':')
-	if vals.len != 3 {
+	if vals.len < 3 {
 		eprintln(format_err)
 		return
 	}
-	file_name := vals[0]
-	line_nr := vals[1].int() - 1
+	file_name := vals[..vals.len - 2].join(':')
+	line_nr := vals[vals.len - 2].int() - 1
 
 	if !file_name.ends_with('.v') || line_nr == -1 {
 		eprintln(format_err)
@@ -29,16 +30,16 @@ fn (mut p Preferences) parse_line_info(line string) {
 	}
 
 	// Third value can be a column or expression for autocomplete like `os.create()`
-	third := vals[2]
+	third := vals[vals.len - 1]
 	if third[0].is_digit() {
-		col := vals[2].int() - 1
+		col := third.int() - 1
 		p.linfo = LineInfo{
 			line_nr: line_nr
 			path:    file_name
 			col:     col
 		}
 	} else {
-		expr := vals[2]
+		expr := third
 		p.linfo = LineInfo{
 			line_nr: line_nr
 			path:    file_name

@@ -181,7 +181,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 
 	tmp_defer_vars := g.defer_vars // must be here because of workflow
-	if !g.anon_fn {
+	if g.anon_fn == unsafe { nil } {
 		g.defer_vars = []string{}
 	} else {
 		if node.defer_stmts.len > 0 {
@@ -582,8 +582,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 			name = name.replace_each(c_fn_name_escape_seq)
 		}
 	}
-	if node.is_anon && g.comptime.comptime_for_method_var != ''
-		&& node.scope.is_inherited_var('method') {
+	if node.is_anon && g.anon_fn.has_ct_var {
 		name = '${name}_${g.comptime.comptime_loop_id}'
 	}
 	if node.language == .c {
@@ -621,8 +620,7 @@ fn (mut g Gen) gen_closure_fn_name(node ast.AnonFn) string {
 	if node.decl.generic_names.len > 0 {
 		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
 	}
-	if node.inherited_vars.len > 0 && g.comptime.comptime_for_method_var != ''
-		&& node.inherited_vars.any(it.name == 'method') {
+	if node.has_ct_var {
 		fn_name += '_${g.comptime.comptime_loop_id}'
 	}
 	return fn_name
@@ -742,7 +740,7 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	}
 	pos := g.out.len
 	was_anon_fn := g.anon_fn
-	g.anon_fn = true
+	g.anon_fn = node
 	g.fn_decl(node.decl)
 	g.anon_fn = was_anon_fn
 	builder.write_string(g.out.cut_to(pos))
