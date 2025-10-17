@@ -44,16 +44,21 @@ fn test_main() {
 			println('fail execute ${t.cmd}')
 			panic(res.output)
 		}
-		if t.output != res.output {
+		res_output := $if windows {
+			res.output.replace('\r\n', '\n')
+		} $else {
+			res.output
+		}
+		if t.output != res_output {
 			println('${term.red('FAIL')} ${t.cmd}')
-			if diff_ := diff.compare_text(t.output, res.output) {
+			if diff_ := diff.compare_text(t.output, res_output) {
 				println(term.header('difference:', '-'))
 				println(diff_)
 			} else {
 				println(term.header('expected:', '-'))
 				println(t.output)
 				println(term.header('found:', '-'))
-				println(res.output)
+				println(res_output)
 			}
 			println(term.h_divider('-'))
 			total_errors++
