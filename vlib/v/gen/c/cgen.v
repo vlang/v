@@ -157,7 +157,7 @@ mut:
 	inside_selector           bool
 	inside_selector_deref     bool // indicates if the inside selector was already dereferenced
 	inside_memset             bool
-	inside_memcpy             bool
+	expect_cast               bool // indicates if the array_init for fixed array requires casting (type){...}
 	inside_const              bool
 	inside_array_item         bool
 	inside_const_opt_or_res   bool
@@ -2241,8 +2241,6 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				}
 			} else {
 				mut is_array_fixed_init := false
-				mut ret_type := ast.void_type
-
 				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
 				mut is_noreturn := false
@@ -2252,17 +2250,19 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					is_noreturn = is_noreturn_callexpr(stmt.expr)
 					if stmt.expr is ast.ArrayInit && stmt.expr.is_fixed {
 						is_array_fixed_init = true
-						ret_type = stmt.expr.typ
 					}
 				}
+				old_expect_cast := g.expect_cast
 				if !is_noreturn {
 					if is_array_fixed_init {
-						g.write('memcpy(${tmp_var}, (${g.styp(ret_type)})')
+						g.write('memcpy(${tmp_var}, ')
+						g.expect_cast = true
 					} else {
 						g.write('${tmp_var} = ')
 					}
 				}
 				g.stmt(stmt)
+				g.expect_cast = old_expect_cast
 				if is_array_fixed_init {
 					lines := g.go_before_last_stmt().trim_right('; \n')
 					g.writeln('${lines}, sizeof(${tmp_var}));')
@@ -2994,10 +2994,10 @@ fn (mut g Gen) expr_with_var(expr ast.Expr, expected_type ast.Type, do_cast bool
 	if do_cast {
 		g.write('(${styp})')
 	}
-	tmp_inside_memcpy := g.inside_memcpy
-	g.inside_memcpy = true
+	old_expect_cast := g.expect_cast
+	g.expect_cast = !do_cast
 	g.expr(expr)
-	g.inside_memcpy = tmp_inside_memcpy
+	g.expect_cast = old_expect_cast
 	g.writeln(', sizeof(${styp}));')
 	g.write(stmt_str)
 	return tmp_var
@@ -5639,9 +5639,6 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node.typ)
 		} else {
-			if node.expr is ast.ArrayInit && g.assign_op != .decl_assign && !g.inside_const {
-				g.write('(${g.styp(node.expr.typ)})')
-			}
 			g.expr(node.expr)
 		}
 	} else if expr_type == ast.bool_type && node.typ.is_int() {
@@ -6343,9 +6340,12 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 							g.writeln('${tmpvar}.state = ${tmp_var}.state;')
 						}
 					} else {
+						old_expect_cast := g.expect_cast
+						g.expect_cast = true
 						g.write('memcpy(${tmpvar}.data, ')
 						g.expr(expr0)
 						g.writeln(', sizeof(${styp}));')
+						g.expect_cast = old_expect_cast
 					}
 				}
 			} else {
@@ -6392,7 +6392,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.expr_with_opt(expr0, type0, fn_ret_type)
 					g.write('.data')
 				} else {
+					old_expect_cast := g.expect_cast
+					g.expect_cast = true
 					g.expr(expr0)
+					g.expect_cast = old_expect_cast
 				}
 				g.writeln(', sizeof(${styp}));')
 			} else {

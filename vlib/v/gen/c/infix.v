@@ -223,6 +223,8 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 						g.write('!')
 					}
 					g.write('${ptr_typ}_alias_eq(')
+					old_expect_cast := g.expect_cast
+					g.expect_cast = true
 					if left.typ.is_ptr() {
 						g.write('*'.repeat(left.typ.nr_muls()))
 					}
@@ -242,6 +244,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					}
 					g.expr(node.right)
 					g.write(')')
+					g.expect_cast = old_expect_cast
 				}
 			}
 			.array {
