@@ -4,7 +4,7 @@ import v.util.diff
 
 const vroot = os.real_path(@VMODROOT)
 
-const text_file_orig = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
+const text_file_orig = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vvv')
 const text_file = os.join_path(os.temp_dir(), 'sample_text.v')
 
 fn testsuite_begin() {
@@ -22,7 +22,7 @@ struct TestData {
 
 const test_data = [
 	TestData{
-		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}|18|3" ${os.quoted_path(text_file)}'
+		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:18:3" ${os.quoted_path(text_file)}'
 		output: '{"details" : [
 {"kind":3,"label":"public_fn1","detail":"string","documentation":""},
 {"kind":22,"label":"PublicStruct1","detail":"","documentation":""},

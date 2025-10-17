@@ -199,7 +199,7 @@ pub mut:
 	out_name_c       string   // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name         string
 	path             string // Path to file/folder to compile
-	line_info        string // `-line-info="file.v|28"`: for "mini VLS" (shows information about objects on provided line)
+	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
 	linfo            LineInfo
 
 	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
