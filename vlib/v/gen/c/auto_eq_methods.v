@@ -542,16 +542,17 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\t\tif (!builtin__DenseArray_has_index(&${key_values}, i)) continue;')
 	fn_builder.writeln('\t\tvoidptr k = builtin__DenseArray_key(&${key_values}, i);')
 	fn_builder.writeln('\t\tif (!builtin__map_exists(${b}, k)) return false;')
-	kind := g.table.type_kind(value.typ)
-	if kind == .function {
+	sym := g.table.sym(value.typ)
+	initializer := if !(sym.info is ast.Struct && sym.info.is_empty_struct()) { '0' } else { '' }
+	if sym.kind == .function {
 		info := value.sym.info as ast.FnType
 		sig := g.fn_var_signature(info.func.return_type, info.func.params.map(it.typ),
 			'v')
 		fn_builder.writeln('\t\t${sig} = *(voidptr*)builtin__map_get(${a}, k, &(voidptr[]){ 0 });')
 	} else {
-		fn_builder.writeln('\t\t${ptr_value_styp} v = *(${ptr_value_styp}*)builtin__map_get(${a}, k, &(${ptr_value_styp}[]){ 0 });')
+		fn_builder.writeln('\t\t${ptr_value_styp} v = *(${ptr_value_styp}*)builtin__map_get(${a}, k, &(${ptr_value_styp}[]){ ${initializer} });')
 	}
-	match kind {
+	match sym.kind {
 		.string {
 			fn_builder.writeln('\t\tif (!builtin__fast_string_eq(*(string*)builtin__map_get(${b}, k, &(string[]){_S("")}), v)) {')
 		}
@@ -561,7 +562,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 		}
 		.struct {
 			eq_fn := g.gen_struct_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*(${ptr_value_styp}*)builtin__map_get(${b}, k, &(${ptr_value_styp}[]){ ${initializer} }), v)) {')
 		}
 		.interface {
 			eq_fn := g.gen_interface_equality_fn(value.typ)
