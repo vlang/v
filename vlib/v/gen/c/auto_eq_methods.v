@@ -543,8 +543,9 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\t\tvoidptr k = builtin__DenseArray_key(&${key_values}, i);')
 	fn_builder.writeln('\t\tif (!builtin__map_exists(${b}, k)) return false;')
 	sym := g.table.sym(value.typ)
+	kind := g.table.type_kind(value.typ)
 	initializer := if !(sym.info is ast.Struct && sym.info.is_empty_struct()) { '0' } else { '' }
-	if sym.kind == .function {
+	if kind == .function {
 		info := value.sym.info as ast.FnType
 		sig := g.fn_var_signature(info.func.return_type, info.func.params.map(it.typ),
 			'v')
@@ -552,7 +553,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	} else {
 		fn_builder.writeln('\t\t${ptr_value_styp} v = *(${ptr_value_styp}*)builtin__map_get(${a}, k, &(${ptr_value_styp}[]){ ${initializer} });')
 	}
-	match sym.kind {
+	match kind {
 		.string {
 			fn_builder.writeln('\t\tif (!builtin__fast_string_eq(*(string*)builtin__map_get(${b}, k, &(string[]){_S("")}), v)) {')
 		}
