@@ -1833,7 +1833,9 @@ fn (mut g Gen) fixed_array_init_with_cast(expr ast.ArrayInit, typ ast.Type) {
 		g.writeln(';')
 		g.write2(stmts, tmp_var)
 	} else {
-		g.write('(${g.styp(typ)})')
+		if !g.expect_cast {
+			g.write('(${g.styp(typ)})')
+		}
 		g.expr(expr)
 	}
 }

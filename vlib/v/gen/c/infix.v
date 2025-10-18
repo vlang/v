@@ -177,8 +177,11 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		if eq_operator_expects_ptr {
 			g.write('&')
 		}
+		old_expect_cast := g.expect_cast
+		g.expect_cast = true
 		if node.left is ast.ArrayInit && g.table.sym(node.left_type).kind == .array_fixed {
 			g.fixed_array_init_with_cast(node.left, node.left_type)
+			g.expect_cast = old_expect_cast
 		} else {
 			g.expr(node.left)
 		}
@@ -191,6 +194,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		} else {
 			g.expr(node.right)
 		}
+		g.expect_cast = old_expect_cast
 		g.write(')')
 	} else if left.unaliased.idx() == right.unaliased.idx()
 		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct, .sum_type, .interface] {
@@ -482,6 +486,8 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		}
 		g.write(method_name)
 		if node.op in [.lt, .ge] {
+			old_expect_cast := g.expect_cast
+			g.expect_cast = true
 			g.write2('(', '*'.repeat(left.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
@@ -501,11 +507,14 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 				g.expr(node.right)
 			}
 			g.write(')')
+			g.expect_cast = old_expect_cast
 		} else {
 			g.write2('(', '*'.repeat(right.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
 			}
+			old_expect_cast := g.expect_cast
+			g.expect_cast = true
 			g.expr(node.right)
 			g.write2(', ', '*'.repeat(left.typ.nr_muls()))
 			if operator_expects_ptr {
@@ -513,6 +522,7 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 			}
 			g.expr(node.left)
 			g.write(')')
+			g.expect_cast = old_expect_cast
 		}
 	} else if left.unaliased.idx() in [ast.u32_type_idx, ast.u64_type_idx]
 		&& right.unaliased.is_signed() {
