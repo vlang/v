@@ -990,7 +990,7 @@ pub fn (mut g Gen) init() {
 			} else {
 				install_compiler_msg := ' Please install the package `build-essential`.'
 				g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h>.${install_compiler_msg}')) // int64_t etc
-				if g.pref.os == .ios || g.pref.os == .windows {
+				if g.pref.os == .ios {
 					g.cheaders.writeln(get_guarded_include_text('<stdbool.h>', 'The C compiler can not find <stdbool.h>.${install_compiler_msg}')) // bool, true, false
 				}
 				g.cheaders.writeln(get_guarded_include_text('<stddef.h>', 'The C compiler can not find <stddef.h>.${install_compiler_msg}')) // size_t, ptrdiff_t
