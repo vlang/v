@@ -33,6 +33,43 @@ const test_data = [
 {"kind":21,"label":"public_const1","detail":"","documentation":""}
 ]}'
 	},
+	TestData{
+		cmd:    'v -w -vls-mode -check -json-errors ${os.quoted_path(text_file)}'
+		output: '[
+{
+"path":"${text_file}",
+"message":"undefined ident: `a`",
+"line_nr":14,
+"col":4,
+"len":0
+}
+,
+{
+"path":"${text_file}",
+"message":"operator `+=` not defined on left operand type `void`",
+"line_nr":14,
+"col":4,
+"len":0
+}
+,
+{
+"path":"${text_file}",
+"message":"cannot assign to `a`: expected `void`, not `int`",
+"line_nr":14,
+"col":9,
+"len":0
+}
+,
+{
+"path":"${text_file}",
+"message":"undefined ident: `s`",
+"line_nr":18,
+"col":2,
+"len":0
+}
+]
+'
+	},
 ]
 
 fn test_main() {

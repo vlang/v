@@ -354,6 +354,10 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 		mut files_from_main_module := []&ast.File{}
 		for i in 0 .. ast_files.len {
 			mut file := ast_files[i]
+			if c.pref.is_vls && file.path != c.pref.path {
+				// in `vls` mode, only check the user file
+				continue
+			}
 			c.timers.start('checker_check ${file.path}')
 			c.check(mut file)
 			if file.mod.name == 'no_main' {
