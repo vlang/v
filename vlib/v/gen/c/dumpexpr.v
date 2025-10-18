@@ -70,13 +70,10 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.write('.data)')
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else if node.expr is ast.ArrayInit {
-		if node.expr.is_fixed {
-			s := g.styp(node.expr.typ)
-			if !node.expr.has_index {
-				g.write('(${s})')
-			}
-		}
+		old_expect_cast := g.expect_cast
+		g.expect_cast = true
 		g.expr(node.expr)
+		g.expect_cast = old_expect_cast
 	} else {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true

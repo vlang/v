@@ -135,9 +135,10 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	is_none := node.is_option && !node.has_init && !node.has_val
 
 	if (g.inside_struct_init && g.inside_cast && !g.inside_memset && !g.inside_opt_or_res)
-		|| (node.is_option && !is_none) {
+		|| (node.is_option && !is_none) || (!g.inside_struct_init && g.expect_cast) {
 		ret_typ_str := g.styp(node.typ)
 		g.write('(${ret_typ_str})')
+		g.expect_cast = false
 	}
 	elem_sym := g.table.final_sym(node.elem_type)
 	is_struct := g.inside_array_fixed_struct && elem_sym.kind == .struct
@@ -1832,7 +1833,9 @@ fn (mut g Gen) fixed_array_init_with_cast(expr ast.ArrayInit, typ ast.Type) {
 		g.writeln(';')
 		g.write2(stmts, tmp_var)
 	} else {
-		g.write('(${g.styp(typ)})')
+		if !g.expect_cast {
+			g.write('(${g.styp(typ)})')
+		}
 		g.expr(expr)
 	}
 }

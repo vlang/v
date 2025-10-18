@@ -582,6 +582,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.write(' = ')
 				g.expr_with_opt(val, val_type, var_type)
 			} else if unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr {
+				old_expect_cast := g.expect_cast
+				g.expect_cast = true
 				if var_type.has_flag(.option) {
 					g.expr(left)
 					g.writeln('.state = 0;')
@@ -597,6 +599,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.expr(val)
 					g.writeln(', sizeof(${g.styp(var_type)}));')
 				}
+				g.expect_cast = old_expect_cast
 			} else {
 				mut v_var := ''
 				arr_typ := styp.trim('*')
