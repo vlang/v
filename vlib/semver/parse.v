@@ -14,7 +14,7 @@ const ver_patch = 2
 const versions = [ver_major, ver_minor, ver_patch]
 
 // TODO: Rewrite using regexps?
-// /(\d+)\.(\d+)\.(\d+)(?:\-([0-9A-Za-z-.]+))?(?:\+([0-9A-Za-z-]+))?/
+// /(\d+)\.(\d+)\.(\d+)(?:[-.]([0-9A-Za-z-.]+))?(?:\+([0-9A-Za-z-]+))?/
 fn parse(input string) RawVersion {
 	mut raw_version := input
 	mut prerelease := ''
@@ -29,7 +29,11 @@ fn parse(input string) RawVersion {
 		prerelease = raw_version[(hyphen_idx + 1)..]
 		raw_version = raw_version[0..hyphen_idx]
 	}
-	raw_ints := raw_version.split('.')
+	mut raw_ints := raw_version.split('.')
+	if prerelease == '' && raw_ints.len > 3 {
+		prerelease = raw_ints[3]
+		raw_ints = raw_ints[0..3].clone()
+	}
 	return RawVersion{
 		prerelease: prerelease
 		metadata:   metadata
