@@ -5641,11 +5641,14 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.expr(node.expr)
 		g.write('))')
 	} else if sym.kind == .alias && g.table.final_sym(node.typ).kind == .array_fixed {
+		old_expect_cast := g.expect_cast
+		g.expect_cast = !g.inside_assign
 		if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node.typ)
 		} else {
 			g.expr(node.expr)
 		}
+		g.expect_cast = old_expect_cast
 	} else if expr_type == ast.bool_type && node.typ.is_int() {
 		styp := g.styp(node_typ)
 		g.write('(${styp}[]){(')
