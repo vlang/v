@@ -461,7 +461,7 @@ typedef void* voidptr;
 typedef char* charptr;
 typedef u8 array_fixed_byte_300 [300];
 typedef struct sync__Channel* chan;
-#if defined(__GNUC__) && __GNUC__ == 15 && __GNUC_MINOR__ == 2 && __GNUC_PATCHLEVEL__ == 0
+#if defined(__GNUC__) && (__GNUC__ > 15 || (__GNUC__ == 15 && __GNUC_MINOR__ >= 2))
     #define CUSTOM_DEFINE_no_bool
 #endif
 #ifndef CUSTOM_DEFINE_no_bool
