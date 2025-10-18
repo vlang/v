@@ -26,6 +26,7 @@ const versions_to_test = [
 	TestVersion{'1.2.4+20191231', 1, 2, 4, '', '20191231'},
 	TestVersion{'1.2.4-prerelease-1+20191231', 1, 2, 4, 'prerelease-1', '20191231'},
 	TestVersion{'1.2.4+20191231-prerelease-1', 1, 2, 4, '', '20191231-prerelease-1'},
+	TestVersion{'1.2.4.vlang', 1, 2, 4, 'vlang', ''},
 ]
 const ranges_to_test = [
 	TestRange{'1.1.0', '1.1.0', '1.1.1'},
@@ -48,7 +49,6 @@ const ranges_to_test = [
 	TestRange{'2.3.4', '*', '3.x'},
 ]
 const coerce_to_test = [
-	TestCoerce{'1.2.0.4', '1.2.0'},
 	TestCoerce{'1.2.0', '1.2.0'},
 	TestCoerce{'1.2', '1.2.0'},
 	TestCoerce{'1', '1.0.0'},
@@ -60,7 +60,6 @@ const invalid_versions_to_test = [
 	'a.b.c',
 	'1.2',
 	'1.2.x',
-	'1.2.3.4',
 	'1.2.3-alpha@',
 	'1.2.3+meta%',
 ]
@@ -84,7 +83,7 @@ fn test_from() {
 		assert ver.patch == item.patch
 		assert ver.metadata == item.metadata
 		assert ver.prerelease == item.prerelease
-		assert ver.str() == item.raw
+		assert ver.str() == item.raw.replace('.vlang', '-vlang')
 	}
 	for ver in invalid_versions_to_test {
 		semver.from(ver) or {
