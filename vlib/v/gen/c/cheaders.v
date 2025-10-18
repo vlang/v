@@ -463,7 +463,7 @@ typedef u8 array_fixed_byte_300 [300];
 typedef struct sync__Channel* chan;
 #ifndef CUSTOM_DEFINE_no_bool
 	#ifndef __cplusplus
-		#ifndef bool
+		#ifndef __bool_true_false_are_defined 
 			#ifdef CUSTOM_DEFINE_4bytebool
 				typedef int bool;
 			#else
