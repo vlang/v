@@ -6,7 +6,11 @@ const vroot = os.real_path(@VMODROOT)
 
 const text_file_orig = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
 const text_file = os.join_path(os.temp_dir(), 'sample_text.v')
-const text_file_result = $if windows { text_file.replace('\\', '/') } $else { text_file }
+const text_file_result = $if windows {
+	os.real_path(text_file).replace('\\', '/')
+} $else {
+	os.real_path(text_file)
+}
 
 fn testsuite_begin() {
 	eprintln('testsuite_begin, text_file = ${text_file}')
