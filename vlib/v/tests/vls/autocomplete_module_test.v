@@ -70,6 +70,45 @@ const test_data = [
 ]
 '
 	},
+	TestData{
+		cmd:    'v -check -nocolor -vls-mode ${os.quoted_path(text_file)}'
+		output: '${text_file}:14:4: error: undefined ident: `a`
+   12 | // add add `val` to `a`
+   13 | fn (mut m MyS) add(val int) {
+   14 |     m.a += val
+      |       ^
+   15 | }
+   16 |
+${text_file}:14:4: error: operator `+=` not defined on left operand type `void`
+   12 | // add add `val` to `a`
+   13 | fn (mut m MyS) add(val int) {
+   14 |     m.a += val
+      |       ^
+   15 | }
+   16 |
+${text_file}:14:9: error: cannot assign to `a`: expected `void`, not `int`
+   12 | // add add `val` to `a`
+   13 | fn (mut m MyS) add(val int) {
+   14 |     m.a += val
+      |            ~~~
+   15 | }
+   16 |
+${text_file}:18:2: error: undefined ident: `s`
+   16 | 
+   17 | fn main() {
+   18 |     s.
+      |     ^
+   19 |     //sample_mod2.
+   20 |     //mut k := MyS{}
+${text_file}:5:8: warning: module \'sample_mod2 (v.tests.vls.sample_mod2)\' is imported but never used
+    3 | 
+    4 | import v.tests.vls.sample_mod1 as s
+    5 | import v.tests.vls.sample_mod2
+      |        ~~~~~~~~~~~~~~~~~~~~~~~
+    6 | 
+    7 | struct MyS{
+'
+	},
 ]
 
 fn test_main() {
