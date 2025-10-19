@@ -754,7 +754,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 						field_unwrap_sym.info.elem_type, field_unwrap_sym.info.size)
 				}
 				ast.CastExpr, ast.CallExpr {
-					tmp_var := g.expr_with_var(sfield.expr, sfield.expected_type, false)
+					tmp_var := g.expr_with_var(sfield.expr, sfield.expected_type, true)
 					g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
 						field_unwrap_sym.info.size)
 				}

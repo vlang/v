@@ -1093,9 +1093,6 @@ pub fn (mut g Gen) init() {
 	if g.use_segfault_handler {
 		muttable.used_features.used_fns['v_segmentation_fault_handler'] = true
 	}
-	// muttable.used_features.used_fns['eprintln'] = true
-	// muttable.used_features.used_fns['print_backtrace'] = true
-	// muttable.used_features.used_fns['exit'] = true
 }
 
 pub fn (mut g Gen) finish() {
@@ -5642,7 +5639,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.write('))')
 	} else if sym.kind == .alias && g.table.final_sym(node.typ).kind == .array_fixed {
 		old_expect_cast := g.expect_cast
-		g.expect_cast = !g.inside_assign
+		g.expect_cast = g.expect_cast || !g.inside_assign
 		if node_typ_is_option {
 			g.expr_with_opt(node.expr, expr_type, node.typ)
 		} else {
