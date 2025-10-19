@@ -297,7 +297,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				right := if cond_is_option {
 					'((${styp}*)${opt_expr}${op_field}data)[${i}]'
 				} else if node.val_is_mut || node.val_is_ref {
-					'((${styp}*)${cond_var}${op_field}data)[${i}]'
+					if g.table.value_type(node.cond_type).is_ptr() {
+						'((${styp}*)${cond_var}${op_field}data)[${i}]'
+					} else {
+						'((${styp})${cond_var}${op_field}data) + ${i}'
+					}
 				} else if val_sym.kind == .array_fixed {
 					'((${styp}*)${cond_var}${op_field}data)[${i}]'
 				} else {
