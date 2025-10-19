@@ -442,11 +442,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.writeln('memcpy(*(${val_styp}*)${c_name(node.val_var)}, (byte*)builtin__DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}), sizeof(${val_styp}));')
 			} else {
 				val_styp := g.styp(node.val_type)
-				if node.val_type.is_ptr() {
-					if node.val_is_mut || node.val_is_ref {
-						g.write('${val_styp} ${c_name(node.val_var)} = &(*(${val_styp})')
-					} else {
+				if node.val_is_mut || node.val_is_ref {
+					if g.table.value_type(node.cond_type).is_ptr() {
 						g.write('${val_styp} ${c_name(node.val_var)} = (*(${val_styp}*)')
+					} else {
+						g.write('${val_styp} ${c_name(node.val_var)} = ((${val_styp})')
 					}
 				} else {
 					g.write('${val_styp} ${c_name(node.val_var)} = (*(${val_styp}*)')
