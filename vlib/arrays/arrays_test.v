@@ -325,6 +325,24 @@ fn test_rotate_right() {
 	assert x == [5, 6, 1, 2, 3, 4]
 }
 
+fn test_rotate_right_long() {
+	mut x := []u64{len: 128, init: 255}
+	x[0] = 0
+	x[1] = 0
+	x[2] = 0
+	rotate_right(mut x, 64)
+	assert x.len == 128
+	idx := index_of_first(x, fn (idx int, x u64) bool {
+		return x == 0
+	})
+	assert idx == 64
+	assert x[idx - 1] == 255
+	assert x[idx] == 0
+	assert x[idx + 1] == 0
+	assert x[idx + 2] == 0
+	assert x[idx + 3] == 255
+}
+
 fn test_rotate_left() {
 	mut x := [1, 2, 3, 4, 5, 6]
 	rotate_left(mut x, 2)
