@@ -1,5 +1,14 @@
+// vtest retry: 2
 import sync
 import datatypes.lockfree
+import time
+
+fn testsuite_begin() {
+	spawn fn () {
+		time.sleep(5 * time.second)
+		exit(10)
+	}()
+}
 
 fn test_counter() {
 	number_threads := 10
