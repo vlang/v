@@ -431,11 +431,10 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
 	type_sym := g.table.final_sym(node.cond_type)
 	use_ternary := is_expr && tmp_var == ''
-	mut reset_if := false
+	mut reset_if := node.branches.any(it.exprs.any(g.match_must_reset_if(it)))
 	mut has_goto := false
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1
-		reset_if = branch.exprs.any(g.match_must_reset_if(it))
 		if reset_if {
 			g.writeln('')
 			g.set_current_pos_as_last_stmt_pos()
