@@ -546,14 +546,14 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('\tif (${t_var}.state != 0) break;')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
 		val_styp := g.styp(ret_typ.clear_option_and_result())
-		ret_is_fixed_array := g.table.sym(ret_typ).is_array_fixed()
 		if node.val_is_mut {
-			if ret_typ.has_flag(.option) {
-				g.writeln('\t${val_styp} ${val} = *((${val_styp}*)${t_var}.data);')
+			if ret_typ.is_any_kind_of_pointer() {
+				g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
 			} else {
-				g.writeln('\t${val_styp} ${val} = (${val_styp})${t_var}.data;')
+				g.writeln('\t${val_styp}* ${val} = (${val_styp}*)${t_var}.data;')
 			}
 		} else {
+			ret_is_fixed_array := g.table.sym(ret_typ).is_array_fixed()
 			if ret_is_fixed_array {
 				g.writeln('\t${val_styp} ${val} = {0};')
 				g.write('\tmemcpy(${val}, ${t_var}.data, sizeof(${val_styp}));')
