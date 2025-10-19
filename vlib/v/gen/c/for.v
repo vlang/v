@@ -549,7 +549,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		ret_is_fixed_array := g.table.sym(ret_typ).is_array_fixed()
 		if node.val_is_mut {
 			if ret_typ.has_flag(.option) {
-				g.writeln('\t${val_styp}* ${val} = (${val_styp}*)${t_var}.data;')
+				g.writeln('\t${val_styp} ${val} = *((${val_styp}*)${t_var}.data);')
 			} else {
 				g.writeln('\t${val_styp} ${val} = (${val_styp})${t_var}.data;')
 			}
