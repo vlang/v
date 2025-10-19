@@ -284,7 +284,7 @@ fn (c &Checker) vls_gen_type_details(mut details []Detail, sym ast.TypeSymbol) {
 		method_ret_type := c.table.sym(method.return_type)
 		details << Detail{
 			kind:   .method
-			label:  c.build_fn_summary(method)
+			label:  method.name
 			detail: method_ret_type.name
 		}
 	}
