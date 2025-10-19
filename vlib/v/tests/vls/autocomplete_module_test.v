@@ -5,7 +5,7 @@ import v.util.diff
 const vroot = os.real_path(@VMODROOT)
 
 const text_file_orig = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
-const text_file = os.join_path(os.temp_dir(), 'sample_text.v')
+const text_file = os.join_path(os.vtmp_dir(), 'sample_text.v')
 const text_file_result = $if windows {
 	os.real_path(text_file).replace('\\', '/')
 } $else {
@@ -118,6 +118,9 @@ ${text_file_result}:5:8: warning: module \'sample_mod2 (v.tests.vls.sample_mod2)
 
 fn test_main() {
 	mut total_errors := 0
+	dump(text_file)
+	dump(os.real_path(text_file))
+	dump(text_file_result)
 
 	for t in test_data {
 		res := os.execute(t.cmd)
