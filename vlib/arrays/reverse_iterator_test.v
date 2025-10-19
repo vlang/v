@@ -45,7 +45,7 @@ fn test_reverse_iterator_with_mut() {
 	mut after := []int{cap: original.len}
 	for mut x in arrays.reverse_iterator(original) {
 		before << *x
-		(**x)++
+		(*x)++
 		after << *x
 	}
 	assert before == [20, 10]
