@@ -321,7 +321,9 @@ pub fn (mut p Parser) parse() &ast.File {
 	}
 	for {
 		if p.tok.kind == .eof {
-			p.check_unused_imports()
+			if !p.is_vls_skip_file {
+				p.check_unused_imports()
+			}
 			break
 		}
 		stmt := p.top_stmt()
