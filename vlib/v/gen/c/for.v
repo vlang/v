@@ -294,15 +294,10 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			} else {
 				needs_memcpy := !node.val_type.is_ptr() && !node.val_type.has_flag(.option)
 					&& g.table.final_sym(node.val_type).kind == .array_fixed
-				// If val is mutable (pointer behind the scenes), we need to generate
-				// `int* val = ((int*)arr.data) + i;`
-				// instead of
-				// `int* val = ((int**)arr.data)[i];`
-				// right := if node.val_is_mut { styp } else { styp + '*' }
 				right := if cond_is_option {
 					'((${styp}*)${opt_expr}${op_field}data)[${i}]'
 				} else if node.val_is_mut || node.val_is_ref {
-					'((${styp})${cond_var}${op_field}data) + ${i}'
+					'((${styp}*)${cond_var}${op_field}data) + ${i}'
 				} else if val_sym.kind == .array_fixed {
 					'((${styp}*)${cond_var}${op_field}data)[${i}]'
 				} else {
