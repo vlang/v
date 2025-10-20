@@ -154,6 +154,7 @@ mut:
 	inside_for_c_stmt         bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
 	inside_cast               bool
+	inside_sumtype_cast       bool
 	inside_selector           bool
 	inside_selector_deref     bool // indicates if the inside selector was already dereferenced
 	inside_memset             bool
@@ -2968,10 +2969,13 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 			ast.void_type)
 		g.write(g.type_default(ctyp))
 	} else {
+		old_inside_sumtype_cast := g.inside_sumtype_cast
+		g.inside_sumtype_cast = true
 		old_left_is_opt := g.left_is_opt
 		g.left_is_opt = !exp.has_flag(.option)
 		g.expr(expr)
 		g.left_is_opt = old_left_is_opt
+		g.inside_sumtype_cast = old_inside_sumtype_cast
 	}
 	if is_sumtype_cast {
 		// the `_to_sumtype_` family of functions last `is_mut` param
