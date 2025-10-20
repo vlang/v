@@ -403,13 +403,25 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
 		if node.op == .eq {
-			g.write('!')
+			g.write('(')
+		} else {
+			g.write('!(')
 		}
-		g.write('memcmp(')
+		g.write('(')
 		g.expr(node.left)
-		g.write('.data, ')
+		g.write('.state == 2 && ')
 		g.expr(node.right)
-		g.write('.data, sizeof(${g.base_type(left_type)}))')
+		g.write('.state == 2) || (')
+		g.expr(node.left)
+		g.write('.state == ')
+		g.expr(node.right)
+		g.write('.state && ')
+		g.expr(node.left)
+		g.write('.state != 2 && !memcmp(&')
+		g.expr(node.left)
+		g.write('.data, &')
+		g.expr(node.right)
+		g.write('.data, sizeof(${g.base_type(left_type)}))))')
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else {
 		g.gen_plain_infix_expr(node)
