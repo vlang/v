@@ -50,6 +50,7 @@ pub fn encode_walpha(input string, alphabet Alphabet) string {
 }
 
 // encode_walpha encodes the input array to base58 with a custom aplhabet
+@[direct_array_access]
 pub fn encode_walpha_bytes(input []u8, alphabet Alphabet) []u8 {
 	if input.len == 0 {
 		return []
@@ -80,7 +81,7 @@ pub fn encode_walpha_bytes(input []u8, alphabet Alphabet) []u8 {
 			out[i] = u8(carry % 58)
 			carry /= 58
 		}
-		high = 1
+		high = i
 	}
 
 	// determine additional "zero-gap" in the buffer, aside from zcount
