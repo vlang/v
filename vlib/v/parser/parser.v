@@ -116,6 +116,7 @@ mut:
 	generic_type_level       int  // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 	main_already_defined     bool // TODO move to checker
 	is_vls                   bool
+	is_vls_skip_file         bool // in `vls` mode, skip parse and check for unrelated files, such as `vlib`
 	inside_import_section    bool
 	cur_comments             []ast.Comment // comments between other stmts
 pub mut:
@@ -177,16 +178,17 @@ pub fn parse_text(text string, path string, mut table ast.Table, comments_mode s
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: ${text}')
 	}
 	mut p := Parser{
-		scanner:  scanner.new_scanner(text, comments_mode, pref_)
-		table:    table
-		pref:     pref_
-		is_vls:   pref_.is_vls
-		scope:    &ast.Scope{
+		scanner:          scanner.new_scanner(text, comments_mode, pref_)
+		table:            table
+		pref:             pref_
+		is_vls:           pref_.is_vls
+		is_vls_skip_file: pref_.is_vls && path != pref_.path
+		scope:            &ast.Scope{
 			start_pos: 0
 			parent:    table.global_scope
 		}
-		errors:   []errors.Error{}
-		warnings: []errors.Warning{}
+		errors:           []errors.Error{}
+		warnings:         []errors.Warning{}
 	}
 	p.set_path(path)
 	mut res := p.parse()
@@ -269,14 +271,15 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 		pref:    pref_
 		// Only set vls mode if it's the file the user requested via `v -vls-mode file.v`
 		// Otherwise we'd be parsing entire stdlib in vls mode
-		is_vls:   pref_.is_vls && path == pref_.path
-		scope:    &ast.Scope{
+		is_vls:           pref_.is_vls && path == pref_.path
+		is_vls_skip_file: pref_.is_vls && path != pref_.path
+		scope:            &ast.Scope{
 			start_pos: 0
 			parent:    table.global_scope
 		}
-		errors:   []errors.Error{}
-		warnings: []errors.Warning{}
-		file_idx: file_idx
+		errors:           []errors.Error{}
+		warnings:         []errors.Warning{}
+		file_idx:         file_idx
 	}
 	p.set_path(path)
 	res := p.parse()
@@ -318,7 +321,9 @@ pub fn (mut p Parser) parse() &ast.File {
 	}
 	for {
 		if p.tok.kind == .eof {
-			p.check_unused_imports()
+			if !p.is_vls_skip_file {
+				p.check_unused_imports()
+			}
 			break
 		}
 		stmt := p.top_stmt()
