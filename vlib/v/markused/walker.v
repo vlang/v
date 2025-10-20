@@ -840,7 +840,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			sym := w.table.sym(node.typ)
 			w.mark_by_sym(sym)
-			if !w.uses_memdup && sym.kind == .sum_type {
+			if !w.uses_memdup
+				&& (sym.kind == .sum_type || (sym.info is ast.Struct && sym.info.is_heap)) {
 				w.uses_memdup = true
 			}
 			if node.has_update_expr {
