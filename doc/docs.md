@@ -2100,6 +2100,27 @@ for mut num in numbers {
 println(numbers) // [1, 2, 3]
 ```
 
+By default, array elements are taken by value, if you need elements to be taken by
+reference, use `&` on the array you want to iterate over:
+
+```v
+struct User {
+	name string
+}
+
+users := [User{
+	name: 'someuserwow99'
+}, User{
+	name: 'visgod'
+}]
+// note `&users`, this is how a reference to the elements of the array is received
+for user in &users {
+	// some operations with `user`
+}
+```
+
+The same applies to maps.
+
 When an identifier is just a single underscore, it is ignored.
 
 ##### Custom iterators
