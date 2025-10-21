@@ -71,3 +71,13 @@ jobs:
           vlib/rand/ vlib/compress/ vlib/clipboard/ \
           vlib/time/ \
           vlib/os
+
+  report-wrong-examples-in-doc-comments:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build V
+        run: make
+      - name: Check examples in the doc comments for all vlib modules
+        run: ./v doc -check-examples -f none vlib/

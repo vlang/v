@@ -263,7 +263,7 @@ pub fn loginname() !string {
 
 // ls returns ![]string of the files and dirs in the given `path` ( os.ls uses C.readdir ). Symbolic links are returned to be files. For recursive list see os.walk functions.
 // See also: `os.walk`, `os.walk_ext`, `os.is_dir`, `os.is_file`
-// Example: https://github.com/vlang/v/blob/master/examples/readdir.v
+// Example:
 // ```
 //   entries := os.ls(os.home_dir()) or { [] }
 //   for entry in entries {
