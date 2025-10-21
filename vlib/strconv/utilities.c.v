@@ -37,7 +37,7 @@ pub fn f32_to_str_l(f f32) string {
 // f32_to_str_l_with_dot returns `f` as a `string` in decimal notation with a maximum of 8 digits after the dot.
 // If the decimal digits after the dot are zero, a '.0' is appended for clarity.
 //
-// Example: assert strconv.f32_to_str_l_with_dot(34.) == '34.0'
+// Example: assert strconv.f32_to_str_l_with_dot(34.2) == '34.2'
 @[manualfree]
 pub fn f32_to_str_l_with_dot(f f32) string {
 	s := f32_to_str(f, 8)
@@ -60,7 +60,7 @@ pub fn f64_to_str_l(f f64) string {
 // f64_to_str_l_with_dot returns `f` as a `string` in decimal notation with a maximum of 18 digits after the dot.
 // If the decimal digits after the dot are zero, a '.0' is appended for clarity.
 //
-// Example: assert strconv.f64_to_str_l_with_dot (34.) == '34.0'
+// Example: assert strconv.f64_to_str_l_with_dot(34.7) == '34.7'
 @[manualfree]
 pub fn f64_to_str_l_with_dot(f f64) string {
 	s := f64_to_str(f, 18)
