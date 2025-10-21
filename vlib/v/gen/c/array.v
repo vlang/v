@@ -134,8 +134,8 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	}
 	is_none := node.is_option && !node.has_init && !node.has_val
 
-	if (g.inside_struct_init && g.inside_cast && !g.inside_memset && !g.inside_opt_or_res)
-		|| (node.is_option && !is_none) {
+	if (g.inside_struct_init && g.inside_cast && !g.inside_memset && !g.inside_opt_or_res
+		&& !g.inside_sumtype_cast) || (node.is_option && !is_none) {
 		ret_typ_str := g.styp(node.typ)
 		g.write('(${ret_typ_str})')
 	}

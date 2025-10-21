@@ -64,7 +64,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 	generic_types, _ := p.parse_generic_types()
 	mut pre_comments := p.eat_comments()
-	mut comments_before_key_struct := if p.is_vls {
+	mut comments_before_key_struct := if p.pref.is_vls {
 		p.cur_comments.clone()
 	} else {
 		[]
@@ -495,7 +495,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		is_implements:    is_implements
 		implements_types: implements_types
 	}
-	if p.is_vls {
+	if p.pref.is_vls {
 		key := 'struct_${name}'
 		mut has_decl_end_comment := false
 		if struct_decl.pre_comments.len > 0
@@ -677,7 +677,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.next() // `interface`
 	language := p.parse_language()
 	name_pos := p.tok.pos()
-	mut comments_before_key_interface := if p.is_vls {
+	mut comments_before_key_interface := if p.pref.is_vls {
 		p.cur_comments.clone()
 	} else {
 		[]
@@ -707,7 +707,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut pre_comments := p.eat_comments()
 	p.check(.lcbr)
 	pre_comments << p.eat_comments()
-	if p.is_vls {
+	if p.pref.is_vls {
 		pre_comment_string = if pre_comments.len > 0 && pre_comments[0].pos.line_nr == pos.line_nr {
 			// interface MyInterface { // end_comment
 			p.comments_to_string(pre_comments[1..])
@@ -890,7 +890,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			ts.register_method(tmethod)
 			info.methods << tmethod
 
-			if p.is_vls {
+			if p.pref.is_vls {
 				f_key := 'fn_${p.mod}[${modless_name}]${name}'
 				f_val := ast.VlsInfo{
 					pos: method.pos
@@ -928,7 +928,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				has_prev_newline: has_prev_newline
 				has_break_line:   has_break_line
 			}
-			if p.is_vls {
+			if p.pref.is_vls {
 				// split comments into f_end_comment and f_nxt_comment first
 				mut f_end_comment := ast.Comment{}
 				mut f_nxt_comment := []ast.Comment{}
@@ -970,7 +970,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		name_pos:      name_pos
 	}
 	p.table.register_interface(res)
-	if p.is_vls {
+	if p.pref.is_vls {
 		key := 'interface_${interface_name}'
 		if res.pre_comments.len > 0 && res.pre_comments[0].pos.line_nr == res.pos.line_nr {
 			// interface MyInterface { // MyInterface end_comment1

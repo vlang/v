@@ -201,6 +201,21 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		node.val_type = g.table.value_type(unwrapped_typ)
 		node.scope.update_var_type(node.val_var, node.val_type)
+	} else if node.kind == .alias {
+		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
+		mut unwrapped_sym := g.table.final_sym(unwrapped_typ)
+		node.kind = unwrapped_sym.kind
+		node.cond_type = unwrapped_typ
+		if node.key_var.len > 0 {
+			key_type := match unwrapped_sym.kind {
+				.map { unwrapped_sym.map_info().key_type }
+				else { ast.int_type }
+			}
+			node.key_type = key_type
+			node.scope.update_var_type(node.key_var, key_type)
+		}
+		node.val_type = g.table.value_type(g.table.unaliased_type(unwrapped_typ))
+		node.scope.update_var_type(node.val_var, node.val_type)
 	}
 	g.loop_depth++
 	if node.label.len > 0 {
@@ -279,15 +294,14 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			} else {
 				needs_memcpy := !node.val_type.is_ptr() && !node.val_type.has_flag(.option)
 					&& g.table.final_sym(node.val_type).kind == .array_fixed
-				// If val is mutable (pointer behind the scenes), we need to generate
-				// `int* val = ((int*)arr.data) + i;`
-				// instead of
-				// `int* val = ((int**)arr.data)[i];`
-				// right := if node.val_is_mut { styp } else { styp + '*' }
 				right := if cond_is_option {
 					'((${styp}*)${opt_expr}${op_field}data)[${i}]'
 				} else if node.val_is_mut || node.val_is_ref {
-					'((${styp})${cond_var}${op_field}data) + ${i}'
+					if g.table.value_type(node.cond_type).is_ptr() {
+						'((${styp}*)${cond_var}${op_field}data)[${i}]'
+					} else {
+						'((${styp})${cond_var}${op_field}data) + ${i}'
+					}
 				} else if val_sym.kind == .array_fixed {
 					'((${styp}*)${cond_var}${op_field}data)[${i}]'
 				} else {
@@ -428,11 +442,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.writeln('memcpy(*(${val_styp}*)${c_name(node.val_var)}, (byte*)builtin__DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}), sizeof(${val_styp}));')
 			} else {
 				val_styp := g.styp(node.val_type)
-				if node.val_type.is_ptr() {
-					if node.val_is_mut || node.val_is_ref {
-						g.write('${val_styp} ${c_name(node.val_var)} = &(*(${val_styp})')
-					} else {
+				if node.val_is_mut || node.val_is_ref {
+					if g.table.value_type(node.cond_type).is_ptr() {
 						g.write('${val_styp} ${c_name(node.val_var)} = (*(${val_styp}*)')
+					} else {
+						g.write('${val_styp} ${c_name(node.val_var)} = ((${val_styp})')
 					}
 				} else {
 					g.write('${val_styp} ${c_name(node.val_var)} = (*(${val_styp}*)')
@@ -532,14 +546,14 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('\tif (${t_var}.state != 0) break;')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
 		val_styp := g.styp(ret_typ.clear_option_and_result())
-		ret_is_fixed_array := g.table.sym(ret_typ).is_array_fixed()
 		if node.val_is_mut {
-			if ret_typ.has_flag(.option) {
-				g.writeln('\t${val_styp}* ${val} = (${val_styp}*)${t_var}.data;')
+			if ret_typ.is_any_kind_of_pointer() {
+				g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
 			} else {
-				g.writeln('\t${val_styp} ${val} = (${val_styp})${t_var}.data;')
+				g.writeln('\t${val_styp}* ${val} = (${val_styp}*)${t_var}.data;')
 			}
 		} else {
+			ret_is_fixed_array := g.table.sym(ret_typ).is_array_fixed()
 			if ret_is_fixed_array {
 				g.writeln('\t${val_styp} ${val} = {0};')
 				g.write('\tmemcpy(${val}, ${t_var}.data, sizeof(${val_styp}));')

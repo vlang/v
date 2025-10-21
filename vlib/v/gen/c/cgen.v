@@ -154,6 +154,7 @@ mut:
 	inside_for_c_stmt         bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
 	inside_cast               bool
+	inside_sumtype_cast       bool
 	inside_selector           bool
 	inside_selector_deref     bool // indicates if the inside selector was already dereferenced
 	inside_memset             bool
@@ -248,7 +249,7 @@ mut:
 	expected_cast_type  ast.Type // for match expr of sumtypes
 	expected_arg_mut    bool     // generating a mutable fn parameter
 	or_expr_return_type ast.Type // or { 0, 1 } return type
-	anon_fn             bool
+	anon_fn             &ast.AnonFn
 	tests_inited        bool
 	has_main            bool
 	// main_fn_decl_node  ast.FnDecl
@@ -346,6 +347,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		table:                table
 		pref:                 pref_
 		fn_decl:              unsafe { nil }
+		anon_fn:              unsafe { nil }
 		is_autofree:          pref_.autofree
 		indent:               -1
 		module_built:         module_built
@@ -845,6 +847,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		table:                 global_g.table
 		pref:                  global_g.pref
 		fn_decl:               unsafe { nil }
+		anon_fn:               unsafe { nil }
 		indent:                -1
 		module_built:          global_g.module_built
 		timers:                util.new_timers(
@@ -2966,10 +2969,13 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 			ast.void_type)
 		g.write(g.type_default(ctyp))
 	} else {
+		old_inside_sumtype_cast := g.inside_sumtype_cast
+		g.inside_sumtype_cast = true
 		old_left_is_opt := g.left_is_opt
 		g.left_is_opt = !exp.has_flag(.option)
 		g.expr(expr)
 		g.left_is_opt = old_left_is_opt
+		g.inside_sumtype_cast = old_inside_sumtype_cast
 	}
 	if is_sumtype_cast {
 		// the `_to_sumtype_` family of functions last `is_mut` param

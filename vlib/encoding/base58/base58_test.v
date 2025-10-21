@@ -36,6 +36,9 @@ fn test_encode_string() {
 	a := 'lorem ipsum'
 	assert encode(a) == 'TtaR6twpTGu8VpY'
 
+	aa := '0JHRktAz1yEtdGl6RnO'
+	assert encode(aa) == '9qkYDxBXPdc6nW825HkNx7oFMY'
+
 	abc := new_alphabet('abcdefghij\$lmnopqrstuvwxyz0123456789_ABCDEFGHIJLMNOPQRSTUV') or {
 		panic(@MOD + '.' + @FN + ': this should never happen')
 	}

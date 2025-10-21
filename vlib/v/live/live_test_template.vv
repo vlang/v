@@ -12,6 +12,8 @@ fn append_to_file(fname string, s string) {
 		println('>>>> could not open file ${fname} for appending, err: ${err} ')
 		return
 	}
+	f.write_string(time.now().format_rfc3339_micro()) or {}
+	f.write_string(' || ') or {}
 	f.writeln(s) or {
 		println('>>>> could not write to ${fname}, err: ${err} ')
 		return

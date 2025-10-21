@@ -1,6 +1,8 @@
 @[has_globals]
 module profile
 
+import time as _
+
 __global v__profile_enabled = true
 
 pub fn state() bool {

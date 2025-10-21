@@ -6,6 +6,24 @@ const vroot = os.dir(vexe)
 const tfolder = os.join_path(os.vtmp_dir(), 'os_process_tests')
 const test_os_process = os.join_path(tfolder, 'test_os_process.exe')
 const test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
+const echo_process_exe_filename = os.join_path(tfolder, 'echo.exe')
+const echo_process_source_filename = os.join_path(tfolder, 'echo.v')
+const echo_process_source_code = '
+module main
+import io
+import os
+
+fn main() {
+	mut reader := io.new_buffered_reader(reader: os.stdin(), cap: 1)
+	for {
+		line := reader.read_line()!
+		println(line)
+		eprintln(line)
+	}
+}
+'
+
+const echo_wait_timeout = 5 // seconds
 
 fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}
@@ -20,6 +38,10 @@ fn testsuite_begin() {
 		os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(test_os_process)} ${os.quoted_path(test_os_process_source)}')
 	}
 	assert os.exists(test_os_process)
+
+	os.write_file(echo_process_source_filename, echo_process_source_code)!
+	os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(echo_process_exe_filename)} ${os.quoted_path(echo_process_source_filename)}')
+	assert os.exists(echo_process_exe_filename)
 }
 
 fn testsuite_end() {
@@ -146,4 +168,35 @@ fn test_slurping_output() {
 	assert errors.contains('stderr, 2'), errors
 	assert errors.contains('stderr, 3'), errors
 	assert errors.contains('stderr, 4'), errors
+}
+
+fn echo(mut p os.Process, echo_string string) {
+	// append `\n`, as `echo.exe` use `read_line()`
+	p.stdin_write(echo_string + '\n')
+	mut got_echo_back := false
+	mut echo_back := ''
+	mut timeout := 0
+	for p.is_alive() && timeout < echo_wait_timeout * 1000 / 50 {
+		if p.is_pending(.stdout) {
+			echo_back = p.stdout_read()
+			got_echo_back = true
+			break
+		}
+		time.sleep(50 * time.millisecond)
+		timeout++
+	}
+	assert got_echo_back
+	assert echo_back.trim_space() == echo_string.trim_space()
+}
+
+fn test_stdin_write() {
+	eprintln(@FN)
+	mut p := os.new_process(echo_process_exe_filename)
+	p.set_redirect_stdio()
+	assert p.status != .exited
+	p.run()
+	echo(mut p, 'hello')
+	echo(mut p, 'world')
+	p.signal_kill()
+	p.close()
 }

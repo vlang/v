@@ -110,5 +110,9 @@ pub fn parse_git_version(version string) !string {
 	if !version.starts_with(git_version_start) {
 		return error('should start with `${git_version_start}`')
 	}
-	return version.all_after(git_version_start).all_before(' ').all_before('.windows').trim_space()
+	suffixed := version.all_after(git_version_start).all_before(' ').trim_space()
+	parts := suffixed.split('.')
+	pure_version_parts := parts[0..3]
+	spure := pure_version_parts.join('.')
+	return spure
 }

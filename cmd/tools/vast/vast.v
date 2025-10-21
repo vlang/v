@@ -653,6 +653,7 @@ fn (t Tree) anon_fn(node ast.AnonFn) &Node {
 	obj.add_terse('decl', t.fn_decl(node.decl))
 	obj.add('inherited_vars', t.array_node_arg(node.inherited_vars))
 	obj.add_terse('typ', t.type_node(node.typ))
+	obj.add('has_ct_var', t.bool_node(node.has_ct_var))
 	mut symbol_obj := create_object()
 	for key, val in node.has_gen {
 		symbol_obj.add_terse(key.str(), t.bool_node(val))

@@ -301,7 +301,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.next()
 	}
 	p.check(.key_fn)
-	mut comments_before_key_fn := if p.is_vls {
+	mut comments_before_key_fn := if p.pref.is_vls {
 		p.cur_comments.clone()
 	} else {
 		[]
@@ -681,7 +681,11 @@ run them via `v file.v` instead',
 		p.inside_fn = true
 		p.inside_unsafe_fn = is_unsafe
 		p.cur_fn_scope = p.scope
-		stmts = p.parse_block_no_scope(true)
+		if p.is_vls_skip_file {
+			p.skip_scope()
+		} else {
+			stmts = p.parse_block_no_scope(true)
+		}
 		p.cur_fn_scope = last_fn_scope
 		p.inside_unsafe_fn = false
 		p.inside_fn = false
@@ -758,7 +762,7 @@ run them via `v file.v` instead',
 		p.table.register_fn_generic_types(fn_decl.fkey())
 	}
 	p.label_names = []
-	if p.is_vls {
+	if p.pref.is_vls {
 		type_str := if (is_method || is_static_type_method) && rec.typ != ast.no_type {
 			p.table.sym(rec.typ.idx_type()).name.all_after_last('.')
 		} else {
