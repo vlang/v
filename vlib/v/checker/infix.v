@@ -72,7 +72,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 		} else if mut node.right is ast.ArrayInit {
-			if node.right.exprs.len == 0 && !(node.right.has_len || node.right.has_cap) {
+			if node.right.exprs.len == 0 && node.right.elem_type == ast.void_type {
 				// handle arr << [] where [] is empty
 				info := c.table.sym(left_type).array_info()
 				node.right.elem_type = info.elem_type
