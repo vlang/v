@@ -459,8 +459,6 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write_v_source_line_info(branch)
 					if !reset_if {
 						g.write('else ')
-					} else {
-						reset_if = false
 					}
 				}
 			}
