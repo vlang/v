@@ -322,6 +322,15 @@ see also `v help build`.
           user,gcboehm,eval
           user,gg_record_trace,skip
 
+   -no-closures
+      Produce a compile time error early, if V generates a closure. That happens implicitly,
+      if you try to treat methods as values, or explicitly through `fn [captures] (){}`.
+      This option is useful to prevent accidental introduction of closures for environments,
+      that do not support closures well (projects targeting wasm, or projects that have to be
+      ported for less supported platforms, that do not have implementations for the closure thunks).
+      Note: the CI for the V compiler, checks that V itself, can be compiled with `-no-closures`,
+      to ease porting.
+
    -no-rsp
       By default, V passes all C compiler options to the backend C compiler
       in so called "response files" (https://gcc.gnu.org/wiki/Response_Files).

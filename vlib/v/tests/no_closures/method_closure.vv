@@ -1,0 +1,13 @@
+type UInt = u32
+
+fn (me UInt) member() u32 {
+	println('member called')
+	return me * 10
+}
+
+fn main() {
+	x := UInt(4).member // generate an implicit closure that captures the receiver 4
+	res := x()
+	assert res == 40
+	println('ok')
+}

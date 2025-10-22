@@ -137,7 +137,10 @@ jobs:
 
       # NB: this does not mean it runs, but at least keeps it from regressing
       - name: Ensure V can be compiled with -autofree
-        run: ./v -autofree -o v2 cmd/v
+        run: ./v -autofree cmd/v
+
+      - name: Ensure V can be compiled with -no-closures
+        run: ./v -no-closures cmd/v
 
       - name: Shader examples can be built
         run: |
