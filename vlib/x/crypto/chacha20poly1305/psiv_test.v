@@ -136,13 +136,17 @@ fn test_psiv_insternal_encryption_of_encrypted_text_is_plaintext() ! {
 	for i := 0; i < 1024; i++ {
 		input := rand.bytes(i)!
 		key := rand.bytes(36)!
+		mut dkey := [36]u8{}
+		unsafe { vmemcpy(dkey, key.data, key.len) }
 		tag := rand.bytes(16)!
 		nonce := rand.bytes(12)!
 
-		out := psiv_encrypt_internal(input, key, tag, nonce)!
+		mut out := []u8{len: input.len}
+		psiv_encrypt_internal(mut out, input, dkey, tag, nonce)!
 
 		// encrypting this output with the same params was result in original input
-		awal := psiv_encrypt_internal(out, key, tag, nonce)!
+		mut awal := []u8{len: input.len}
+		psiv_encrypt_internal(mut awal, out, dkey, tag, nonce)!
 		assert awal == input
 	}
 }
