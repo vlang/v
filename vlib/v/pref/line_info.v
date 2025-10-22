@@ -24,7 +24,7 @@ fn (mut p Preferences) parse_line_info(line string) {
 	file_name := vals[..vals.len - 2].join(':')
 	line_nr := vals[vals.len - 2].int() - 1
 
-	if !file_name.ends_with('.v') || line_nr == -1 {
+	if (!file_name.ends_with('.v') && !file_name.ends_with('.vv')) || line_nr == -1 {
 		eprintln(format_err)
 		return
 	}

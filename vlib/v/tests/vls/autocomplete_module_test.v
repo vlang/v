@@ -4,28 +4,9 @@ import v.util.diff
 
 const vroot = os.real_path(@VMODROOT)
 const tmp_dir = os.real_path(os.temp_dir())
+const text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
 
-const text_file_orig = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
-const text_file = os.join_path(tmp_dir, 'sample_text.v')
-const text_file_result = $if windows { text_file.replace('\\', '/') } $else { text_file }
-
-fn testsuite_begin() {
-	eprintln('testsuite_begin, text_file = ${text_file}')
-	os.cp(text_file_orig, text_file) or { panic(err) }
-}
-
-fn testsuite_end() {
-}
-
-struct TestData {
-	cmd    string
-	output string
-}
-
-const test_data = [
-	TestData{
-		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:18:3" ${os.quoted_path(text_file)}'
-		output: '{"details" : [
+const autocomplete_info_for_mod_sample_mod1 = '{"details" : [
 {"kind":3,"label":"public_fn1","detail":"string","documentation":""},
 {"kind":22,"label":"PublicStruct1","detail":"","documentation":""},
 {"kind":13,"label":"PublicEnum1","detail":"","documentation":""},
@@ -34,81 +15,147 @@ const test_data = [
 {"kind":7,"label":"PublicAlias1_2","detail":"","documentation":""},
 {"kind":21,"label":"public_const1","detail":"","documentation":""}
 ]}'
+
+const autocomplete_info_for_mod_sample_mod2 = '{"details" : [
+{"kind":3,"label":"public_fn2","detail":"string","documentation":""},
+{"kind":22,"label":"PublicStruct2","detail":"","documentation":""},
+{"kind":13,"label":"PublicEnum2","detail":"","documentation":""},
+{"kind":8,"label":"PublicInterface2","detail":"","documentation":""},
+{"kind":7,"label":"PublicAlias2","detail":"","documentation":""},
+{"kind":21,"label":"public_const2","detail":"","documentation":""}
+]}'
+
+const autocomplete_info_for_mod_struct = '{"details" : [
+{"kind":5,"label":"a","detail":"int","documentation":""},
+{"kind":5,"label":"b","detail":"string","documentation":""},
+{"kind":2,"label":"add","detail":"void","documentation":""}
+]}'
+
+struct TestData {
+	cmd    string
+	output string
+}
+
+const test_data = [
+	TestData{
+		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:19:3" ${os.quoted_path(text_file)}'
+		output: autocomplete_info_for_mod_sample_mod1
+	},
+	TestData{
+		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:20:13" ${os.quoted_path(text_file)}'
+		output: autocomplete_info_for_mod_sample_mod2
+	},
+	TestData{
+		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:22:3" ${os.quoted_path(text_file)}'
+		output: autocomplete_info_for_mod_struct
+	},
+	TestData{
+		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:23:3" ${os.quoted_path(text_file)}'
+		output: autocomplete_info_for_mod_sample_mod1
+	},
+	TestData{
+		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:26:28" ${os.quoted_path(text_file)}'
+		output: autocomplete_info_for_mod_sample_mod1
+	},
+	TestData{
+		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:27:8" ${os.quoted_path(text_file)}'
+		output: ''
+	},
+	TestData{
+		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:28:9" ${os.quoted_path(text_file)}'
+		output: 'unresolved type, maybe "builtin" was not defined. otherwise this is a bug, should never happen; please report'
 	},
 	TestData{
 		cmd:    'v -w -vls-mode -check -json-errors ${os.quoted_path(text_file)}'
 		output: '[
 {
 "path":"${text_file}",
-"message":"undefined ident: `a`",
-"line_nr":14,
+"message":"unexpected token `:=`, expecting `)`",
+"line_nr":26,
 "col":4,
 "len":0
 }
 ,
 {
 "path":"${text_file}",
-"message":"operator `+=` not defined on left operand type `void`",
-"line_nr":14,
-"col":4,
+"message":"unexpected name `strings`, expecting `)`",
+"line_nr":27,
+"col":2,
 "len":0
 }
 ,
 {
 "path":"${text_file}",
-"message":"cannot assign to `a`: expected `void`, not `int`",
-"line_nr":14,
-"col":9,
+"message":"undefined ident: ``",
+"line_nr":19,
+"col":3,
 "len":0
 }
 ,
 {
 "path":"${text_file}",
-"message":"undefined ident: `s`",
-"line_nr":18,
+"message":"undefined ident: ``",
+"line_nr":20,
+"col":13,
+"len":0
+}
+,
+{
+"path":"${text_file}",
+"message":"undefined ident: ``",
+"line_nr":23,
+"col":3,
+"len":0
+}
+,
+{
+"path":"${text_file}",
+"message":"cannot use `main.MyS` as `string` in argument 1 to `string.all_before_last`",
+"line_nr":26,
+"col":2,
+"len":0
+}
+,
+{
+"path":"${text_file}",
+"message":"undefined ident: ``",
+"line_nr":26,
+"col":28,
+"len":0
+}
+,
+{
+"path":"${text_file}",
+"message":"`` (no value) used as value in argument 1 to `string.all_before_last`",
+"line_nr":26,
+"col":27,
+"len":0
+}
+,
+{
+"path":"${text_file}",
+"message":"`string` has no property ``",
+"line_nr":26,
+"col":11,
+"len":0
+}
+,
+{
+"path":"${text_file}",
+"message":"undefined ident: `builtin`",
+"line_nr":28,
+"col":2,
+"len":0
+}
+,
+{
+"path":"${text_file}",
+"message":"`builtin` does not return a value",
+"line_nr":28,
 "col":2,
 "len":0
 }
 ]
-'
-	},
-	TestData{
-		cmd:    'v -check -nocolor -vls-mode ${os.quoted_path(text_file)}'
-		output: '${text_file_result}:14:4: error: undefined ident: `a`
-   12 | // add add `val` to `a`
-   13 | fn (mut m MyS) add(val int) {
-   14 |     m.a += val
-      |       ^
-   15 | }
-   16 |
-${text_file_result}:14:4: error: operator `+=` not defined on left operand type `void`
-   12 | // add add `val` to `a`
-   13 | fn (mut m MyS) add(val int) {
-   14 |     m.a += val
-      |       ^
-   15 | }
-   16 |
-${text_file_result}:14:9: error: cannot assign to `a`: expected `void`, not `int`
-   12 | // add add `val` to `a`
-   13 | fn (mut m MyS) add(val int) {
-   14 |     m.a += val
-      |            ~~~
-   15 | }
-   16 |
-${text_file_result}:18:2: error: undefined ident: `s`
-   16 | 
-   17 | fn main() {
-   18 |     s.
-      |     ^
-   19 |     //sample_mod2.
-   20 |     //mut k := MyS{}
-${text_file_result}:5:8: warning: module \'sample_mod2 (v.tests.vls.sample_mod2)\' is imported but never used
-    3 | 
-    4 | import v.tests.vls.sample_mod1 as s
-    5 | import v.tests.vls.sample_mod2
-      |        ~~~~~~~~~~~~~~~~~~~~~~~
-    6 | 
-    7 | struct MyS{
 '
 	},
 ]
@@ -116,6 +163,7 @@ ${text_file_result}:5:8: warning: module \'sample_mod2 (v.tests.vls.sample_mod2)
 fn test_main() {
 	mut total_errors := 0
 
+	dump(text_file)
 	for t in test_data {
 		res := os.execute(t.cmd)
 		if res.exit_code < 0 {
@@ -123,11 +171,11 @@ fn test_main() {
 			panic(res.output)
 		}
 		res_output := $if windows {
-			res.output.replace('\r\n', '\n')
+			res.output.replace('\r\n', '\n').trim_space()
 		} $else {
-			res.output
+			res.output.trim_space()
 		}
-		if t.output != res_output {
+		if t.output.trim_space() != res_output {
 			println('${term.red('FAIL')} ${t.cmd}')
 			if diff_ := diff.compare_text(t.output, res_output) {
 				println(term.header('difference:', '-'))

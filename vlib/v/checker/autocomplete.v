@@ -86,13 +86,13 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 			//' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" expr="${c.pref.linfo.expr}"')
 		 ' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" node.mod="${node.mod}" col="${c.pref.linfo.col}"')
 	}
+	if node.mod == 'builtin' {
+		// User can't type in `builtin.func(` at all
+		return
+	}
 	// Make sure this ident is on the same line and same file as request
 	same_line := c.pref.linfo.line_nr == node.pos.line_nr
 	if !same_line {
-		return
-	}
-	same_col := c.pref.linfo.col == node.pos.col + node.pos.len
-	if !same_col {
 		return
 	}
 	if node.pos.file_idx < 0 {
@@ -101,13 +101,30 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	if c.pref.linfo.path != c.table.filelist[node.pos.file_idx] {
 		return
 	}
+	check_name := if c.pref.linfo.col == node.pos.col {
+		if node.name == '' {
+			// for `os` in middle of text, followed by something else in next line:
+			// `os.
+			//  something`
+			node.mod
+		} else {
+			''
+		}
+	} else if c.pref.linfo.col == node.pos.col + node.pos.len {
+		// for `os` at end of scope :
+		// `os. }`
+		node.name
+	} else {
+		''
+	}
+	if check_name.len == 0 {
+		return
+	}
 	// Module autocomplete
 	// `os. ...`
-	mod_name := c.try_resolve_to_import_mod_name(node.name)
+	mod_name := c.try_resolve_to_import_mod_name(check_name)
 	if mod_name.len > 0 {
-		if node.mod == c.file.mod.name {
-			c.module_autocomplete(mod_name)
-		}
+		c.module_autocomplete(mod_name)
 		exit(0)
 	}
 
@@ -150,14 +167,17 @@ fn (c &Checker) build_fn_summary(method ast.Fn) string {
 		}
 	}
 	sb.write_string(')')
+	if method.return_type != ast.void_type {
+		sb.write_string(c.table.type_to_str(method.return_type))
+	}
 	return sb.str()
 }
 
 fn (c &Checker) try_resolve_to_import_mod_name(name string) string {
-	if name in c.file.used_imports {
-		// resolve alias to mod name
-		mod_name := c.file.imports.filter(it.alias == name)[0].mod
-		return mod_name
+	for imp in c.file.imports {
+		if (imp.alias == name || imp.mod == name) && imp.alias in c.file.used_imports {
+			return imp.mod
+		}
 	}
 	return ''
 }
