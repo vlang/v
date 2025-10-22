@@ -421,6 +421,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		node.is_c_variadic)
 	if is_closure {
 		g.nr_closures++
+		if g.pref.no_closures {
+			g.error('a closure was generated for function', node.pos)
+		}
 	}
 	arg_str := g.out.after(arg_start_pos)
 	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin

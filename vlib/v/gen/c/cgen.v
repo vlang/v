@@ -4465,6 +4465,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				if name !in g.anon_fns {
 					g.anon_fns << name
 					g.gen_closure_fn(expr_styp, m, name)
+					if g.pref.no_closures {
+						g.error('a closure was generated for m.name: ${m.name}', node.pos)
+					}
 				}
 			}
 			g.write('builtin__closure__closure_create(${name}, ')
