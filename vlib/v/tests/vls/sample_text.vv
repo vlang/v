@@ -5,8 +5,9 @@ import v.tests.vls.sample_mod1 as s
 import v.tests.vls.sample_mod2
 
 struct MyS{
-	b int
-	a string
+mut:
+	a int
+	b string
 }
 
 // add add `val` to `a`
@@ -16,7 +17,14 @@ fn (mut m MyS) add(val int) {
 
 fn main() {
 	s.
-	//sample_mod2.
-	//mut k := MyS{}
-	//k.
+	sample_mod2.
+	mut k := MyS{}
+	k.
+	s.
+	mut str := 'hello'
+	x := str.all_before_last(
+	k := str.all_before_last(s.
+	strings.
+	builtin.
+	v := 1
 }
