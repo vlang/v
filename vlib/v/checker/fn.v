@@ -3321,8 +3321,15 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				node.args[i].typ = c.expr(mut arg.expr)
 				if i == val_arg_n {
 					arg_sym := c.table.sym(node.args[i].typ)
-					if !c.check_types(node.args[i].typ, info.elem_type)
-						&& !c.check_types(left_type, node.args[i].typ) {
+					base_arg_type := c.unwrap_generic(node.args[i].typ)
+					if c.check_types(base_arg_type, info.elem_type) {
+						if !base_arg_type.is_ptr() && info.elem_type.is_ptr()
+							&& info.elem_type.share() == .mut_t {
+							c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`',
+								arg.expr.pos())
+							continue
+						}
+					} else if !c.check_types(base_arg_type, c.unwrap_generic(left_type)) {
 						c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`',
 							arg.expr.pos())
 						continue
