@@ -38748,6 +38748,7 @@ GC_suspend_handler_inner(ptr_t dummy, void *context)
   GC_log_printf("Suspending %p\n", PTHREAD_TO_VPTR(pthread_self()));
 #    endif
   me = GC_lookup_self_thread_async();
+  if (NULL == me) return; // __v_, make the sanitizers and -cstrict happy
   if ((me->last_stop_count & ~(word)THREAD_RESTARTED) == my_stop_count) {
     /* Duplicate signal.  OK if we are retrying. */
     if (!GC_retry_signals) {
@@ -41005,7 +41006,10 @@ GC_INNER void
 GC_reset_finalizer_nested(void)
 {
   GC_ASSERT(I_HOLD_LOCK());
-  GC_self_thread_inner()->crtn->finalizer_nested = 0;
+  GC_thread me;
+  me = GC_self_thread_inner();
+  if (NULL == me) return; // __v_, make the sanitizers and -cstrict happy
+  me->crtn->finalizer_nested = 0;
 }
 
 GC_INNER unsigned char *
@@ -41026,6 +41030,7 @@ GC_check_finalizer_nested(void)
   if (UNLIKELY(NULL == me))
     return NULL;
 #    endif
+  if (NULL == me) return NULL; // __v_, make the sanitizers and -cstrict happy
   crtn = me->crtn;
   nesting_level = crtn->finalizer_nested;
   if (nesting_level) {
