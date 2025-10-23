@@ -44,20 +44,38 @@ struct Detail {
 }
 
 // Autocomplete for function parameters `os.write_bytes(**path string, bytes []u8***)` etc
-pub fn (mut c Checker) autocomplete_for_fn_call_expr() {
-	mut fn_name := if c.pref.linfo.expr.ends_with('(') {
-		c.pref.linfo.expr[..c.pref.linfo.expr.len - 1].trim_space()
-	} else {
-		c.pref.linfo.expr.replace('()', '').trim_space()
-	}
-	mod_name := fn_name.all_before_last('.')
-	resolved_mod_name := c.try_resolve_to_import_mod_name(mod_name)
-	if resolved_mod_name.len > 0 {
-		fn_name = resolved_mod_name + '.' + fn_name.all_after_last('.')
-	}
-	f := c.table.find_fn(fn_name) or {
-		println('failed to find fn "${fn_name}"')
+pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
+	// Make sure this ident is on the same line and same file as request
+	same_line := c.pref.linfo.line_nr + 1 == node.pos.line_nr
+	if !same_line {
 		return
+	}
+	if node.pos.file_idx < 0 {
+		return
+	}
+	if c.pref.linfo.path != c.table.filelist[node.pos.file_idx] {
+		return
+	}
+	col := c.pref.linfo.expr.all_after_last('^').int()
+	if node.name_pos.col + node.name_pos.len + 1 != col {
+		return
+	}
+	fn_name := node.name
+	if c.pref.linfo.vars_printed[fn_name] {
+		return
+	}
+	c.pref.linfo.vars_printed[fn_name] = true
+	f := if node.is_method {
+		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
+		c.table.find_method(left_sym, fn_name) or {
+			println('failed to find method "${fn_name}"')
+			return
+		}
+	} else {
+		c.table.find_fn(fn_name) or {
+			println('failed to find fn "${fn_name}"')
+			return
+		}
 	}
 	res := c.build_fn_summary(f)
 	println(res)
@@ -150,26 +168,39 @@ fn (mut c Checker) module_autocomplete(mod string) {
 	c.vls_write_details(details)
 }
 
-fn (c &Checker) build_fn_summary(method ast.Fn) string {
-	mut sb := strings.new_builder(64)
-	sb.write_string(method.name.all_after_last('.'))
-	sb.write_string('(')
-	for i, param in method.params {
-		if method.is_method && i == 0 {
+fn (c &Checker) build_fn_summary(func ast.Fn) string {
+	mut sb := strings.new_builder(128)
+	fn_name := func.name.all_after_last('.')
+	sb.writeln('{\n"signatures":[{')
+	sb.write_string('\t"label":"${fn_name}(')
+	mut params := []string{cap: func.params.len}
+	for i, param in func.params {
+		if func.is_method && i == 0 {
 			// skip receiver
 			continue
 		}
-		sb.write_string(param.name)
-		sb.write_string(' ')
-		sb.write_string(c.table.type_to_str(param.typ))
-		if i < method.params.len - 1 {
-			sb.write_string(', ')
-		}
+		params << '${param.name} ${c.table.type_to_str(param.typ)}'
 	}
+	sb.write_string(params.join(', '))
 	sb.write_string(')')
-	if method.return_type != ast.void_type {
-		sb.write_string(c.table.type_to_str(method.return_type))
+	if func.return_type != ast.void_type {
+		sb.write_string(' ')
+		sb.write_string(c.table.type_to_str(func.return_type))
 	}
+	sb.writeln('",\n\t"parameters":[{')
+	for i, p in params {
+		sb.write_string('\t\t"label":"${p}"')
+		if i < params.len - 1 {
+			sb.write_string(',')
+		}
+		sb.writeln('')
+	}
+	sb.writeln('\t}]')
+	sb.writeln('}],')
+	sb.writeln('"activeSignature":0,')
+	sb.writeln('"activeParameter":0,')
+	sb.writeln('"_type":"SignatureHelp"')
+	sb.writeln('}')
 	return sb.str()
 }
 

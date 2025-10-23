@@ -738,6 +738,13 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 }
 
 fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
+	defer {
+		if c.pref.is_vls {
+			if c.pref.linfo.expr.starts_with('fn^') {
+				c.autocomplete_for_fn_call_expr(node)
+			}
+		}
+	}
 	// Check whether the inner function definition is before the call
 	if var := node.scope.find_var(node.name) {
 		if var.expr is ast.AnonFn && var.pos.pos > node.pos.pos {

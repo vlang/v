@@ -149,8 +149,13 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	for i, mut left in node.left {
 		if mut left is ast.CallExpr {
 			// ban `foo() = 10`
-			c.error('cannot call function `${left.name}()` on the left side of an assignment',
-				left.pos)
+			if c.pref.is_vls {
+				// in `vls` mode, code is incomplete, eval left also
+				c.expr(mut left)
+			} else {
+				c.error('cannot call function `${left.name}()` on the left side of an assignment',
+					left.pos)
+			}
 		} else if mut left is ast.PrefixExpr {
 			// ban `*foo() = 10`
 			if left.right is ast.CallExpr && left.op == .mul {
@@ -504,7 +509,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.error('cannot use infix expression on the left side of `${node.op}`',
 						left.pos)
 				}
-				if is_decl {
+				if is_decl && !c.pref.is_vls {
 					c.error('non-name `${left}` on left side of `:=`', left.pos())
 				}
 
