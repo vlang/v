@@ -9,7 +9,6 @@
 // See the detail on the [A Robust Variant of ChaCha20-Poly1305](https://eprint.iacr.org/2025/222).
 module chacha20poly1305
 
-import arrays
 import encoding.binary
 import crypto.internal.subtle
 import x.crypto.chacha20
@@ -157,42 +156,51 @@ pub fn (c Chacha20Poly1305RE) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u
 // for encrypting (or decrypting) message.
 @[direct_array_access]
 fn psiv_encrypt_internal(plaintext []u8, key []u8, tag []u8, nonce []u8) ![]u8 {
-	tctr, trest := split_tag(tag)
-	mut ctr := binary.little_endian_u64(tctr)
+	// loads the counter from the first 8-bytes of the tag input
+	mut ctr := binary.little_endian_u64(tag[0..8])
 
-	mut dst := []u8{cap: plaintext.len}
+	// setup some temporary vars
+	mut dst := []u8{len: plaintext.len}
 	mut tc := []u8{len: 8} // counter buffer
 	mut s := chacha20.State{}
 	mut b64 := []u8{len: 64} // state buffer
+	mut tt := merge_drv_key(key, nonce, tag[0..8], tag[8..16])
 
-	// split out plaintext messages into 64-bytes chunk, and process them
-	// chunk by chunk.
-	chunks := arrays.chunk[u8](plaintext, 64)
-	for chunk in chunks {
+	mut j := 0
+	mut n := 0
+
+	// process for every bytes on plaintext input
+	for plaintext[n..].len > 0 {
+		// how many block of bytes available to process on
+		want_len := if plaintext[n..].len < 64 { plaintext[n..].len } else { 64 }
 		// loads current counter
 		binary.little_endian_put_u64(mut tc, ctr)
 
-		// loads 64-bytes of merged key into state s and then perform chacha20 qround.
-		// then xor-ing every bytes of result with the bytes in chunk and appended into
-		// destination output buffer.
-		unpack_into_state(mut s, merge_drv_key(key, nonce, tc, trest))
-		buf := chacha20_core(s)
-		pack64_from_state(mut b64, buf)
-		for i, v in chunk {
-			o := v ^ b64[i]
-			dst << o
+		// updates derived keys with current counter, scrambled with chacha20_core and
+		// puts state into b64 buffer
+		unsafe { vmemcpy(tt[48], tc.data, tc.len) }
+		unpack_into_state(mut s, tt)
+		ws := chacha20_core(s)
+		pack64_from_state(mut b64, ws)
+
+		// xor every bytes of plaintext with bytes on b64, stores result in dst
+		for i in 0 .. want_len {
+			dst[j] = plaintext[j] ^ b64[i]
+			j++
 		}
 		// updates current counter and returns error on overflow.
 		ctr += 1
 		if ctr == 0 {
 			return error('counter overflowing')
 		}
+		n += want_len
 	}
-	// reset (release) temporary allocated resources
+	// reset (release) temporary allocated resources and return the result.
 	unsafe {
 		tc.free()
 		s.reset()
 		b64.free()
+		tt.free()
 	}
 	return dst
 }
@@ -216,18 +224,17 @@ fn psiv_gen_tag(mut po poly1305.Poly1305, input []u8, ad_len int, mac_key []u8, 
 	unpack_into_state(mut x, drv_key)
 	ws := chacha20_core(x)
 
-	// truncating state output into tag sized bytes
-	mut tag := []u8{len: tag_size}
-	pack16_from_state(mut tag, ws)
+	// truncating state output into tag_sized bytes. As a note, we reuse digest buffer allocated
+	// on previous step to store the result.
+	pack16_from_state(mut digest, ws)
 
-	// releases (reset) temporary allocated resources
+	// releases (reset) temporary allocated resources and return the result.
 	unsafe {
 		drv_key.free()
-		digest.free()
 		ws.reset()
 		x.reset()
 	}
-	return tag
+	return digest
 }
 
 // psiv_init initializes and expands master key into desired psiv needed construct.
