@@ -61,10 +61,6 @@ pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
 		return
 	}
 	fn_name := node.name
-	if c.pref.linfo.vars_printed[fn_name] {
-		return
-	}
-	c.pref.linfo.vars_printed[fn_name] = true
 	f := if node.is_method {
 		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
 		c.table.find_method(left_sym, fn_name) or {
@@ -79,6 +75,7 @@ pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
 	}
 	res := c.build_fn_summary(f)
 	println(res)
+	exit(0)
 }
 
 fn (mut c Checker) ident_gotodef() {
@@ -157,6 +154,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	mut details := []Detail{cap: 10}
 	c.vls_gen_type_details(mut details, sym)
 	c.vls_write_details(details)
+	exit(0)
 }
 
 fn (mut c Checker) module_autocomplete(mod string) {
