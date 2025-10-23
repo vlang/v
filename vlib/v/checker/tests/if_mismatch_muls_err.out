@@ -1,0 +1,7 @@
+vlib/v/checker/tests/if_mismatch_muls_err.vv:15:11: error: mismatched types `&&Dum` and `&Dum`
+   13 | 
+   14 | fn main() {
+   15 |     dummy := if false {
+      |              ~~
+   16 |         res := &Dum{v: 2}
+   17 |         &res
