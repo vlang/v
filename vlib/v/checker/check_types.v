@@ -1032,6 +1032,9 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 
 			if param.typ.has_flag(.generic) && param_sym.name == gt_name {
 				typ = ast.mktyp(arg.typ)
+				if typ == ast.nil_type {
+					typ = ast.voidptr_type
+				}
 				sym := c.table.final_sym(arg.typ)
 				if sym.info is ast.FnType {
 					mut func_ := sym.info.func
