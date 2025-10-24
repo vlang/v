@@ -3550,7 +3550,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
 					node.pos)
 			}
-			if !c.check_struct_signature(from_sym.info, to_sym.info) {
+			if from_type != to_type && !c.check_struct_signature(from_sym.info, to_sym.info) {
 				c.error('cannot convert struct `${from_sym.name}` to struct `${to_sym.name}`',
 					node.pos)
 			}
@@ -5425,10 +5425,6 @@ fn (c &Checker) check_struct_signature_init_fields(from ast.Struct, to ast.Struc
 
 // check `to` has all fields of `from`
 fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
-	// same structs, no need to check the fields
-	if from.scoped_name == to.scoped_name {
-		return true
-	}
 	// Note: `to` can have extra fields
 	if from.fields.len == 0 {
 		return false
