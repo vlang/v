@@ -396,7 +396,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 							node.pos)
 					} else {
-						if stmt.typ.nr_muls() != node.typ.nr_muls() {
+						if !node.typ.has_option_or_result() && !node.typ.has_flag(.shared_f)
+							&& stmt.typ.nr_muls() != node.typ.nr_muls() {
 							c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 								node.pos)
 						}
