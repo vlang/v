@@ -71,6 +71,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		foreign_typ := c.get_field_foreign_table_type(field)
 
 		mut subquery_expr := ast.SqlExpr{
+			inserted_var: field.name
 			pos:          node.pos
 			has_where:    true
 			where_expr:   ast.None{}
