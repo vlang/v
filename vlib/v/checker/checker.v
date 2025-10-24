@@ -970,7 +970,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 					}
 				}
 			} else if expr.obj is ast.ConstField && expr.name in c.const_names {
-				if !c.pref.translated {
+				if !c.pref.translated && c.mod != 'veb' {
 					// TODO: fix this in c2v, do not allow modification of all consts
 					// in translated code
 					c.error('cannot modify constant `${expr.name}`', expr.pos)

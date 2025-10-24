@@ -21,6 +21,7 @@ pub fn (v Version) str() string {
 }
 
 pub fn version_from_str(v string) Version {
+	// println('VERSION FROM STR v="${v.to_lower()}"')
 	return match v.to_lower() {
 		'http/1.1' { Version.v1_1 }
 		'http/2.0' { Version.v2_0 }
