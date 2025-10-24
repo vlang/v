@@ -52,7 +52,54 @@ fn test_field_after_fkeys() {
 	persons := sql db {
 		select from Person
 	}!
-
 	assert persons[0].age == 21
 	assert persons[0].field_after_fkeys == 'eee'
+}
+
+@[table: 'foos']
+struct Foo {
+	id       int @[primary; sql: serial]
+	name     string
+	children []Child @[fkey: 'parent_id']
+}
+
+struct Child {
+	id        int @[primary; sql: serial]
+	parent_id int
+	name      string
+}
+
+fn test_fkey_insert_as_assignment_expr() {
+	db := sqlite.connect(':memory:')!
+
+	sql db {
+		create table Foo
+		create table Child
+	}!
+
+	foo := Foo{
+		name:     'abc'
+		children: [
+			Child{
+				name: 'abc'
+			},
+			Child{
+				name: 'def'
+			},
+		]
+	}
+	// use insert as an assigment expr
+	_ := sql db {
+		insert foo into Foo
+	}!
+
+	result := sql db {
+		select from Foo where id == 1
+	}!
+	assert result[0].children.len == 2
+
+	res := sql db {
+		select from Child
+	}!
+	assert res.len == 2
 }

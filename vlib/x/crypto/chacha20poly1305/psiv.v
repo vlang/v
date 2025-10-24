@@ -102,20 +102,22 @@ pub fn (c Chacha20Poly1305RE) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8
 		return error('Chacha20Poly1305RE.encrypt: bad nonce length, only support 12-bytes nonce')
 	}
 
-	// clone the initial poly1305
+	// clone the initial poly1305 state and updates it with additional data ad
 	mut po_ad := c.po.clone()
 	update_with_padding(mut po_ad, ad)
-
+	// make a clone of updated poly1305
 	mut po_ad_clone := po_ad.clone()
-	// build the tag
-	tag := psiv_gen_tag(mut po_ad_clone, plaintext, ad.len, c.mac_key, nonce)
-	enc := psiv_encrypt_internal(plaintext, c.enc_key, tag, nonce)!
 
-	// setup destination buffer
-	mut out := []u8{cap: plaintext.len + tag_size}
-	out << enc
-	out << tag
+	// setup output buffer
+	mut out := []u8{len: plaintext.len + tag_size}
+	// write out an authentication tag into the last tag_size bytes of output
+	psiv_gen_tag(mut out[plaintext.len..], mut po_ad_clone, plaintext, ad.len, c.mac_key,
+		nonce)
+	// write out authenticated encrypted plaintext into the first plaintext.len bytes of output
+	psiv_encrypt_internal(mut out[0..plaintext.len], plaintext, c.enc_key, out[plaintext.len..],
+		nonce)!
 
+	// return the result
 	return out
 }
 
@@ -133,12 +135,19 @@ pub fn (c Chacha20Poly1305RE) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u
 	enc := ciphertext[0..ciphertext.len - c.overhead()]
 	tag := ciphertext[ciphertext.len - c.overhead()..]
 
+	// updates a clone of poly1305 with additional data
 	mut po_with_ad := c.po.clone()
 	update_with_padding(mut po_with_ad, ad)
-
-	out := psiv_encrypt_internal(enc, c.enc_key, tag, nonce)!
 	mut poad_clone := po_with_ad.clone()
-	mac := psiv_gen_tag(mut poad_clone, out, ad.len, c.mac_key, nonce)
+
+	// generates authenticated encrypted plaintext with associated mac
+	mut out := []u8{len: enc.len}
+	psiv_encrypt_internal(mut out, enc, c.enc_key, tag, nonce)!
+
+	mut mac := []u8{len: tag_size}
+	psiv_gen_tag(mut mac, mut poad_clone, out, ad.len, c.mac_key, nonce)
+
+	// check if authentication tag was matching or error on fails.
 	if subtle.constant_time_compare(mac, tag) != 1 {
 		unsafe {
 			out.free()
@@ -146,6 +155,7 @@ pub fn (c Chacha20Poly1305RE) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u
 		}
 		return error('unmatching tag')
 	}
+	// return the decrypted ciphertext
 	return out
 }
 
@@ -155,12 +165,11 @@ pub fn (c Chacha20Poly1305RE) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u
 // psiv_encrypt_internal is an internal encryption routine used by the core of psiv construct
 // for encrypting (or decrypting) message.
 @[direct_array_access]
-fn psiv_encrypt_internal(plaintext []u8, key []u8, tag []u8, nonce []u8) ![]u8 {
+fn psiv_encrypt_internal(mut dst []u8, plaintext []u8, key []u8, tag []u8, nonce []u8) ! {
 	// loads the counter from the first 8-bytes of the tag input
 	mut ctr := binary.little_endian_u64(tag[0..8])
 
 	// setup some temporary vars
-	mut dst := []u8{len: plaintext.len}
 	mut tc := []u8{len: 8} // counter buffer
 	mut s := chacha20.State{}
 	mut b64 := []u8{len: 64} // state buffer
@@ -195,46 +204,43 @@ fn psiv_encrypt_internal(plaintext []u8, key []u8, tag []u8, nonce []u8) ![]u8 {
 		}
 		n += want_len
 	}
-	// reset (release) temporary allocated resources and return the result.
+	// explicitly reset (release) temporary allocated resources and return the result.
 	unsafe {
 		tc.free()
 		s.reset()
 		b64.free()
 		tt.free()
 	}
-	return dst
 }
 
 // psiv_gen_tag computes a tag from the key, nonce, and Poly1305 tag of the associated data
 // and plaintext using the ChaCha20 permutation with the feed-forward, truncating the output.
 @[direct_array_access]
-fn psiv_gen_tag(mut po poly1305.Poly1305, input []u8, ad_len int, mac_key []u8, nonce []u8) []u8 {
+fn psiv_gen_tag(mut out []u8, mut po poly1305.Poly1305, input []u8, ad_len int, mac_key []u8, nonce []u8) {
 	// updates poly1305 mac by input message, associated data length and input length.
 	update_with_padding(mut po, input)
 	po.update(length_to_block(ad_len, input.len))
 
 	// produces 16-bytes of mac from current poly1305 state.
-	mut digest := []u8{len: tag_size}
-	po.finish(mut digest)
+	po.finish(mut out)
 
 	// The tag was produced from derived key scrambled with chacha20 quarter round routine,
 	// and then truncating the output into 16-bytes tag.
-	drv_key := merge_drv_key(mac_key, nonce, digest[0..8], digest[8..16])
+	drv_key := merge_drv_key(mac_key, nonce, out[0..8], out[8..16])
 	mut x := chacha20.State{}
 	unpack_into_state(mut x, drv_key)
 	ws := chacha20_core(x)
 
-	// truncating state output into tag_sized bytes. As a note, we reuse digest buffer allocated
-	// on previous step to store the result.
-	pack16_from_state(mut digest, ws)
+	// truncating state output into tag_sized bytes. As a note, we reuse buffer previously allocated
+	// to store the result.
+	pack16_from_state(mut out, ws)
 
-	// releases (reset) temporary allocated resources and return the result.
+	// explicitly releases (reset) temporary allocated resources
 	unsafe {
 		drv_key.free()
 		ws.reset()
 		x.reset()
 	}
-	return digest
 }
 
 // psiv_init initializes and expands master key into desired psiv needed construct.
@@ -477,12 +483,6 @@ fn chacha20_core(s chacha20.State) chacha20.State {
 		ws[i] += s[i]
 	}
 	return ws
-}
-
-// split_tag splits 16-bytes of tag into two's 8-bytes block.
-@[direct_array_access; inline]
-fn split_tag(tag []u8) ([]u8, []u8) {
-	return tag[0..8].clone(), tag[8..16].clone()
 }
 
 // length_to_block transforms two's length in len1 and len2 into 16-bytes block
