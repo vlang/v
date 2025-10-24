@@ -31,6 +31,19 @@ const autocomplete_info_for_mod_struct = '{"details" : [
 {"kind":2,"label":"add","detail":"void","documentation":""}
 ]}'
 
+const fn_signature_info_for_all_before_last = '{
+"signatures":[{
+	"label":"all_before_last(sub string) string",
+	"parameters":[{
+		"label":"sub string"
+	}]
+}],
+"activeSignature":0,
+"activeParameter":0,
+"_type":"SignatureHelp"
+}
+'
+
 struct TestData {
 	cmd    string
 	output string
@@ -56,6 +69,10 @@ const test_data = [
 	TestData{
 		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:26:28" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod1
+	},
+	TestData{
+		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:24:fn^26" ${os.quoted_path(text_file)}'
+		output: fn_signature_info_for_all_before_last
 	},
 	TestData{
 		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:27:8" ${os.quoted_path(text_file)}'
@@ -163,7 +180,6 @@ const test_data = [
 fn test_main() {
 	mut total_errors := 0
 
-	dump(text_file)
 	for t in test_data {
 		res := os.execute(t.cmd)
 		if res.exit_code < 0 {
@@ -171,11 +187,11 @@ fn test_main() {
 			panic(res.output)
 		}
 		res_output := $if windows {
-			res.output.replace('\r\n', '\n').trim_space()
+			res.output.replace('\r\n', '\n')
 		} $else {
-			res.output.trim_space()
+			res.output
 		}
-		if t.output.trim_space() != res_output {
+		if t.output.trim_space() != res_output.trim_space() {
 			println('${term.red('FAIL')} ${t.cmd}')
 			if diff_ := diff.compare_text(t.output, res_output) {
 				println(term.header('difference:', '-'))
