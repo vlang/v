@@ -8,7 +8,9 @@ fn encode[T](t T) {
 	}
 }
 
+// vfmt off
 fn test_main() {
-	encode(unsafe { nil })
+	encode(unsafe { voidptr(0) })
 	encode(unsafe { nil })
 }
+// vfmt on
