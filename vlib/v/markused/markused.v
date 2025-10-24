@@ -83,6 +83,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if table.used_features.arr_prepend {
 			core_fns << ref_array_idx_str + '.prepend_many'
+			core_fns << ref_array_idx_str + '.prepend_noscan'
 		}
 		if table.used_features.arr_reverse {
 			core_fns << array_idx_str + '.reverse'
