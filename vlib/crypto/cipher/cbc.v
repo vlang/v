@@ -122,8 +122,7 @@ pub fn (mut x Cbc) decrypt_blocks(mut dst []u8, src []u8) {
 	x.b.decrypt(mut (*dst)[start..end], src_chunk)
 	xor_bytes(mut (*dst)[start..end], (*dst)[start..end], x.iv)
 	// Set the new iv to the first block we copied earlier.
-	x.iv = x.tmp
-	x.tmp = x.iv
+	x.iv, x.tmp = x.tmp, x.iv
 }
 
 fn (mut x Cbc) set_iv(iv []u8) {
