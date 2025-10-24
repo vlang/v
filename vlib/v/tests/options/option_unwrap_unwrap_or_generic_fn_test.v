@@ -19,8 +19,8 @@ fn test_unwrap() {
 	assert unwrap(s1).value == 42
 
 	// see #25566
-	// s2 := ?S2(S2{})
-	// assert unwrap(s2) == S2{}
+	s2 := ?S2(S2{})
+	assert unwrap(s2) == S2{}
 }
 
 fn test_unwrap_or() {
