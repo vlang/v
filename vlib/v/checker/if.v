@@ -137,7 +137,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				}
 				if old_val := c.table.comptime_is_true[idx_str] {
 					if old_val.val != comptime_if_result {
-						c.error('checker erro1r : branch eval wrong', branch.cond.pos())
+						c.error('checker error : branch eval wrong', branch.cond.pos())
 					}
 				}
 
