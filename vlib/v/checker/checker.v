@@ -5429,6 +5429,10 @@ fn (c &Checker) check_struct_signature_init_fields(from ast.Struct, to ast.Struc
 
 // check `to` has all fields of `from`
 fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
+	// same structs, no need to check the fields
+	if from.scoped_name == to.scoped_name {
+		return true
+	}
 	// Note: `to` can have extra fields
 	if from.fields.len == 0 {
 		return false
