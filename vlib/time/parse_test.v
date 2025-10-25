@@ -230,6 +230,19 @@ fn test_parse_rfc3339() {
 	assert invalid_rfc3339('1979-05-27T00:32:00.') == 'timezone error: expected "Z" or "z" at the end of the string'
 }
 
+fn test_parse_rfc3339_offset() {
+	pairs := [
+		['2024-01-15T14:00:00+01:35', '2024-01-15 12:25:00'],
+		['2024-01-15T14:10:00+01:40', '2024-01-15 12:30:00'],
+		['2024-01-15T14:00:00+10:55', '2024-01-15 03:05:00'],
+	]
+	for pair in pairs {
+		input, expected := pair[0], pair[1]
+		res := time.parse_rfc3339(input)!
+		assert res.str() == expected
+	}
+}
+
 fn test_ad_second_to_parse_result_in_2001() {
 	now_tm := time.parse('2001-01-01 04:00:00')!
 	future_tm := now_tm.add_seconds(60)
