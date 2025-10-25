@@ -1,0 +1,9 @@
+string _t1;
+#if defined(CUSTOM_DEFINE_some_custom_define)
+#elif defined(CUSTOM_DEFINE_some_other_define)
+		_t1 = _S("xyz");
+		;
+#else
+#endif
+		string platform = _t1;
+builtin__println(platform);
