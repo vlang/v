@@ -1,4 +1,4 @@
-platform := $if windows {
+platform := $if some_custom_define ? {
 	'abc'
 } $else $if some_other_define ? {
 	'xyz'
