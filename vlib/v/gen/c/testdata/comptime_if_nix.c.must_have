@@ -1,0 +1,11 @@
+VV_LOC void main__main(void) {
+	string _t1;
+	#if defined(_WIN32)
+	#elif defined(__linux__)
+		_t1 = _S("xyz");
+		;
+	#else
+	#endif
+		string platform = _t1;
+	builtin__println(platform);
+}

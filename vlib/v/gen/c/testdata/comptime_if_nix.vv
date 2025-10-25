@@ -1,0 +1,9 @@
+platform := $if windows {
+	'abc'
+} $else $if linux {
+	'xyz'
+} $else {
+	eprintln('oh no')
+	exit(1)
+}
+println(platform)
