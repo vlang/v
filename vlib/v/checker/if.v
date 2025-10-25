@@ -396,6 +396,12 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 							node.pos)
 					} else {
+						if !node.typ.has_option_or_result() && !node.typ.has_flag(.shared_f)
+							&& stmt.typ != ast.voidptr_type
+							&& stmt.typ.nr_muls() != node.typ.nr_muls() {
+							c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
+								node.pos)
+						}
 						if node.is_expr == false && c.type_resolver.is_generic_param_var(stmt.expr) {
 							// generic variable no yet type bounded
 							node.is_expr = true
