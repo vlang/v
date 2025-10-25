@@ -147,30 +147,8 @@ pub fn open(path string) !File {
 }
 
 // create creates or opens a file at a specified location and returns a write-only `File` object.
+@[noinline]
 pub fn create(path string) !File {
-	/*
-	// Note: android/termux/bionic is also a kind of linux,
-	// but linux syscalls there sometimes fail,
-	// while the libc version should work.
-	$if linux {
-		$if !android {
-			//$if macos {
-			//	fd = C.syscall(398, path.str, 0x601, 0x1b6)
-			//}
-			//$if linux {
-			fd = C.syscall(sys_creat, path.str, 511)
-			//}
-			if fd == -1 {
-				return error('failed to create file "$path"')
-			}
-			file = File{
-				fd: fd
-				is_opened: true
-			}
-			return file
-		}
-	}
-	*/
 	cfile := vfopen(path, 'wb')!
 	fd := fileno(cfile)
 	return File{
