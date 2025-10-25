@@ -940,8 +940,6 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			fields << field
 		}
 	}
-	conn_type := g.get_db_expr_type(node.db_expr) or { ast.void_type }
-	is_sqlite := g.table.type_to_str(conn_type) == 'sqlite.DB'
 
 	select_result_var_name := g.new_tmp_var()
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
@@ -1241,7 +1239,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				mut typ := sym.cname
 				g.writeln('${tmp}.${c_name(field.name)} = (${typ}) (*(${array_get_call_code}._i64));')
 				fields_idx++
-			} else if is_sqlite && sym.kind == .f32 {
+			} else if sym.kind == .f32 {
 				g.writeln('${field_var} = *(${array_get_call_code}._f64);')
 				fields_idx++
 			} else {
