@@ -1,6 +1,6 @@
 platform := $if windows {
 	'abc'
-} $else $if linux {
+} $else $if linux || freebsd || macos {
 	'xyz'
 } $else {
 	eprintln('oh no')

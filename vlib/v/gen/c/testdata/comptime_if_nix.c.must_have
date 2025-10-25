@@ -1,7 +1,7 @@
 VV_LOC void main__main(void) {
 	string _t1;
 	#if defined(_WIN32)
-	#elif defined(__linux__)
+	#elif defined(__linux__) || defined(__FreeBSD__) || defined(__APPLE__)
 		_t1 = _S("xyz");
 		;
 	#else
