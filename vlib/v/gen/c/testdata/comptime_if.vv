@@ -1,3 +1,4 @@
+// vtest vflags: -d some_other_define
 platform := $if some_custom_define ? {
 	'abc'
 } $else $if some_other_define ? {
