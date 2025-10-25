@@ -1239,9 +1239,6 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				mut typ := sym.cname
 				g.writeln('${tmp}.${c_name(field.name)} = (${typ}) (*(${array_get_call_code}._i64));')
 				fields_idx++
-			} else if sym.kind == .f32 {
-				g.writeln('${field_var} = *(${array_get_call_code}._f64);')
-				fields_idx++
 			} else {
 				g.writeln('${field_var} = *(${array_get_call_code}._${sym.cname});')
 				fields_idx++
