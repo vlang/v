@@ -47,10 +47,14 @@ pub fn (mut ctx Context) cache_image(img Image) int {
 }
 
 // get_cached_image_by_idx returns a cached `Image` identified by `image_idx`.
+// If image not found, returns `Image{ok: false}`
 //
 // See also: cache_image
 // See also: remove_cached_image_by_idx
 pub fn (mut ctx Context) get_cached_image_by_idx(image_idx int) &Image {
+	if image_idx < 0 || image_idx > ctx.image_cache.len - 1 {
+		return &Image{}
+	}
 	return &ctx.image_cache[image_idx]
 }
 
@@ -60,7 +64,10 @@ pub fn (mut ctx Context) get_cached_image_by_idx(image_idx int) &Image {
 // See also: cache_image
 // See also: get_cached_image_by_idx
 pub fn (mut ctx Context) remove_cached_image_by_idx(image_idx int) {
-	ctx.image_cache.delete(image_idx)
+	if image_idx < 0 || image_idx > ctx.image_cache.len - 1 {
+		return
+	}
+	ctx.image_cache[image_idx] = &Image{}
 }
 
 // Draw part of an image using uv coordinates
