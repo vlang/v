@@ -52,56 +52,56 @@ struct TestData {
 
 const test_data = [
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:18:3" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:19:3" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod1
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:19:13" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:20:13" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod2
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:21:3" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:22:3" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_struct
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:22:3" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:23:3" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod1
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:25:28" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:26:28" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod1
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:24:fn^26" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:25:fn^26" ${os.quoted_path(text_file)}'
 		output: fn_signature_info_for_all_before_last
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:26:9" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:27:9" ${os.quoted_path(text_file)}'
 		output: ''
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:27:9" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:28:9" ${os.quoted_path(text_file)}'
 		output: 'unresolved type, maybe "builtin" was not defined. otherwise this is a bug, should never happen; please report'
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:29:gd^10" ${os.quoted_path(text_file)}'
-		output: '{"uri":"${mod1_text_file}","range":{"start":{"line":49,"character":7},"end":{"line":49,"character":7}}}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:gd^10" ${os.quoted_path(text_file)}'
+		output: '${mod1_text_file}:50:7'
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:gd^12" ${os.quoted_path(text_file)}'
-		output: '{"uri":"${mod1_text_file}","range":{"start":{"line":7,"character":11},"end":{"line":7,"character":11}}}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:gd^12" ${os.quoted_path(text_file)}'
+		output: '${mod1_text_file}:8:11'
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:gd^11" ${os.quoted_path(text_file)}'
-		output: '{"uri":"${mod1_text_file}","range":{"start":{"line":40,"character":9},"end":{"line":40,"character":9}}}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:32:gd^11" ${os.quoted_path(text_file)}'
+		output: '${mod1_text_file}:41:9'
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:32:gd^15" ${os.quoted_path(text_file)}'
-		output: '{"uri":"${mod1_text_file}","range":{"start":{"line":43,"character":9},"end":{"line":43,"character":9}}}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:33:gd^15" ${os.quoted_path(text_file)}'
+		output: '${mod1_text_file}:44:9'
 	},
 	TestData{
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:33:gd^13" ${os.quoted_path(text_file)}'
-		output: '{"uri":"${mod1_text_file}","range":{"start":{"line":18,"character":10},"end":{"line":18,"character":10}}}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:34:gd^13" ${os.quoted_path(text_file)}'
+		output: '${mod1_text_file}:19:10'
 	},
 	TestData{
 		cmd:    'v -w -vls-mode -check -json-errors ${os.quoted_path(text_file)}'

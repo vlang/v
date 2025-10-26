@@ -59,7 +59,7 @@ fn (mut p Preferences) parse_line_info(line string) {
 	}
 	p.linfo = LineInfo{
 		method:  method
-		line_nr: line_nr
+		line_nr: line_nr - 1
 		path:    file_name
 		col:     col
 	}

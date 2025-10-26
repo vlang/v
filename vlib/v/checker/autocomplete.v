@@ -146,11 +146,7 @@ fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
 		else {}
 	}
 	if pos.file_idx != -1 {
-		mut sb := strings.new_builder(128)
-		sb.write_string('{"uri":"${c.table.filelist[pos.file_idx]}",')
-		sb.write_string('"range":{"start":{"line":${pos.line_nr},"character":${pos.col}},')
-		sb.write_string('"end":{"line":${pos.line_nr},"character":${pos.col}}}}')
-		println(sb.str())
+		println('${c.table.filelist[pos.file_idx]}:${pos.line_nr + 1}:${pos.col}')
 	}
 	exit(0)
 }
