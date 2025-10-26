@@ -1,3 +1,4 @@
+// vtest build: !docker-ubuntu-musl // needs GL/gl.h
 import gg
 
 fn test_get_cached_image_idx_bounds_checking() {
