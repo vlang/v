@@ -167,8 +167,6 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 		// User can't type in `builtin.func(` at all
 		return
 	}
-	// dump(node.name)
-	// dump(node.mod)
 	if !c.vls_is_the_node(node.pos) {
 		return
 	}
@@ -395,7 +393,7 @@ fn (c &Checker) vls_gen_type_details(mut details []Detail, sym ast.TypeSymbol) {
 
 fn (c &Checker) vls_write_details(details []Detail) {
 	mut sb := strings.new_builder(details.len * 32)
-	sb.writeln('[')
+	sb.writeln('{"details": [')
 	for detail in details {
 		sb.write_string('{"kind":${int(detail.kind)},')
 		sb.write_string('"label":"${detail.label}",')
@@ -413,7 +411,7 @@ fn (c &Checker) vls_write_details(details []Detail) {
 	if details.len > 0 {
 		sb.go_back(2)
 	}
-	sb.write_string('\n]')
+	sb.write_string('\n]}')
 	print(sb.str())
 }
 

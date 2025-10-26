@@ -8,7 +8,7 @@ const text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.
 const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1',
 	'sample.v')
 
-const autocomplete_info_for_mod_sample_mod1 = '[
+const autocomplete_info_for_mod_sample_mod1 = '{"details": [
 {"kind":3,"label":"public_fn1","detail":"string","documentation":""},
 {"kind":22,"label":"PublicStruct1","detail":"","documentation":""},
 {"kind":7,"label":"PublicAlias1_1","detail":"","documentation":""},
@@ -16,22 +16,22 @@ const autocomplete_info_for_mod_sample_mod1 = '[
 {"kind":13,"label":"PublicEnum1","detail":"","documentation":""},
 {"kind":8,"label":"PublicInterface1","detail":"","documentation":""},
 {"kind":21,"label":"public_const1","detail":"","documentation":""}
-]'
+]}'
 
-const autocomplete_info_for_mod_sample_mod2 = '[
+const autocomplete_info_for_mod_sample_mod2 = '{"details": [
 {"kind":3,"label":"public_fn2","detail":"string","documentation":""},
 {"kind":22,"label":"PublicStruct2","detail":"","documentation":""},
 {"kind":13,"label":"PublicEnum2","detail":"","documentation":""},
 {"kind":8,"label":"PublicInterface2","detail":"","documentation":""},
 {"kind":7,"label":"PublicAlias2","detail":"","documentation":""},
 {"kind":21,"label":"public_const2","detail":"","documentation":""}
-]'
+]}'
 
-const autocomplete_info_for_mod_struct = '[
+const autocomplete_info_for_mod_struct = '{"details": [
 {"kind":5,"label":"a","detail":"int","documentation":""},
 {"kind":5,"label":"b","detail":"string","documentation":""},
 {"kind":2,"label":"add","detail":"void","documentation":""}
-]'
+]}'
 
 const fn_signature_info_for_all_before_last = '{
 "signatures":[{
