@@ -442,35 +442,6 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			c.error('a _test.v file should have *at least* one `test_` function', token.Pos{})
 		}
 	}
-	// After the main checker run, run the line info check, print line info, and exit (if it's present)
-	if !c.pref.linfo.is_running && c.pref.line_info != '' { //'' && c.pref.linfo.line_nr == 0 {
-		// c.do_line_info(c.pref.line_info, ast_files)
-		// println('setting is_running=true,  pref.path=${c.pref.linfo.path} curdir' + os.getwd())
-		c.pref.linfo.is_running = true
-		// println('linfo path=${c.pref.linfo.path}')
-		// Go to definition
-		if c.pref.linfo.expr.starts_with('gd^') {
-			c.ident_gotodef()
-			exit(0)
-		}
-		for i, file in ast_files {
-			// println(file.path)
-			if file.path == c.pref.linfo.path {
-				// println('running c.check_files')
-				c.check_files([ast_files[i]])
-				exit(0)
-			} else if file.path.starts_with('./') {
-				// Maybe it's a "./foo.v", linfo.path has an absolute path
-				abs_path := os.join_path(os.getwd(), file.path).replace('/./', '/') // TODO: join_path shouldn't have /./
-				if abs_path == c.pref.linfo.path {
-					c.check_files([ast_files[i]])
-					exit(0)
-				}
-			}
-		}
-		println('failed to find file "${c.pref.linfo.path}"')
-		exit(0)
-	}
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
@@ -3009,6 +2980,11 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		c.error('checker: too many expr levels: ${c.expr_level} ', node.pos())
 		return ast.void_type
 	}
+	defer {
+		if c.pref.is_vls {
+			c.ident_gotodef(node)
+		}
+	}
 	match mut node {
 		ast.IfExpr {
 			return c.if_expr(mut node)
@@ -4136,10 +4112,10 @@ fn (mut c Checker) resolve_var_fn(func &ast.Fn, mut node ast.Ident, name string)
 }
 
 fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
-	if c.pref.linfo.is_running {
-		// LS hack (v -line-info "a.v:16")
-		// TODO perf $if
-		c.ident_autocomplete(node)
+	defer {
+		if c.pref.is_vls {
+			c.ident_autocomplete(node)
+		}
 	}
 	// TODO: move this
 	if c.const_deps.len > 0 {

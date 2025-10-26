@@ -549,10 +549,11 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			}
 		}
 		if b.pref.json_errors {
-			util.print_json_errors(json_errors)
+			if !b.pref.is_vls || b.pref.linfo.method !in [.definition, .completion, .signature_help] {
+				util.print_json_errors(json_errors)
+			}
 			// eprintln(json2.encode_pretty(json_errors))
 		}
-
 		if !b.pref.skip_warnings {
 			for file in b.parsed_files {
 				for err in file.warnings {

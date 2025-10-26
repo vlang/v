@@ -1596,11 +1596,6 @@ fn (mut p Parser) name_expr() ast.Expr {
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
 		}
-		if p.pref.linfo.is_running {
-			// VLS autocomplete for module fns: `os...`
-			// TODO perf $if
-			// p.module_autocomplete(node)
-		}
 		line_nr := p.tok.line_nr
 		p.next()
 		p.check(.dot)
@@ -2930,6 +2925,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 				variants:      variant_types
 				is_generic:    generic_types.len > 0
 				generic_types: generic_types
+				name_pos:      name_pos
 			}
 			is_pub: is_pub
 		})
@@ -2986,6 +2982,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		info:       ast.Alias{
 			parent_type: parent_type
 			language:    parent_language
+			name_pos:    name_pos
 		}
 		is_pub:     is_pub
 	})

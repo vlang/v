@@ -5,31 +5,33 @@ import v.util.diff
 const vroot = os.real_path(@VMODROOT)
 const tmp_dir = os.real_path(os.temp_dir())
 const text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
+const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1',
+	'sample.v')
 
-const autocomplete_info_for_mod_sample_mod1 = '{"details" : [
+const autocomplete_info_for_mod_sample_mod1 = '[
 {"kind":3,"label":"public_fn1","detail":"string","documentation":""},
 {"kind":22,"label":"PublicStruct1","detail":"","documentation":""},
-{"kind":13,"label":"PublicEnum1","detail":"","documentation":""},
-{"kind":8,"label":"PublicInterface1","detail":"","documentation":""},
 {"kind":7,"label":"PublicAlias1_1","detail":"","documentation":""},
 {"kind":7,"label":"PublicAlias1_2","detail":"","documentation":""},
+{"kind":13,"label":"PublicEnum1","detail":"","documentation":""},
+{"kind":8,"label":"PublicInterface1","detail":"","documentation":""},
 {"kind":21,"label":"public_const1","detail":"","documentation":""}
-]}'
+]'
 
-const autocomplete_info_for_mod_sample_mod2 = '{"details" : [
+const autocomplete_info_for_mod_sample_mod2 = '[
 {"kind":3,"label":"public_fn2","detail":"string","documentation":""},
 {"kind":22,"label":"PublicStruct2","detail":"","documentation":""},
 {"kind":13,"label":"PublicEnum2","detail":"","documentation":""},
 {"kind":8,"label":"PublicInterface2","detail":"","documentation":""},
 {"kind":7,"label":"PublicAlias2","detail":"","documentation":""},
 {"kind":21,"label":"public_const2","detail":"","documentation":""}
-]}'
+]'
 
-const autocomplete_info_for_mod_struct = '{"details" : [
+const autocomplete_info_for_mod_struct = '[
 {"kind":5,"label":"a","detail":"int","documentation":""},
 {"kind":5,"label":"b","detail":"string","documentation":""},
 {"kind":2,"label":"add","detail":"void","documentation":""}
-]}'
+]'
 
 const fn_signature_info_for_all_before_last = '{
 "signatures":[{
@@ -39,8 +41,7 @@ const fn_signature_info_for_all_before_last = '{
 	}]
 }],
 "activeSignature":0,
-"activeParameter":0,
-"_type":"SignatureHelp"
+"activeParameter":0
 }
 '
 
@@ -51,36 +52,56 @@ struct TestData {
 
 const test_data = [
 	TestData{
-		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:19:3" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:18:3" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod1
 	},
 	TestData{
-		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:20:13" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:19:13" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod2
 	},
 	TestData{
-		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:22:3" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:21:3" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_struct
 	},
 	TestData{
-		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:23:3" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:22:3" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod1
 	},
 	TestData{
-		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:26:28" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:25:28" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod1
 	},
 	TestData{
-		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:24:fn^26" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:24:fn^26" ${os.quoted_path(text_file)}'
 		output: fn_signature_info_for_all_before_last
 	},
 	TestData{
-		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:27:8" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:26:9" ${os.quoted_path(text_file)}'
 		output: ''
 	},
 	TestData{
-		cmd:    'v -check -json-errors -nocolor -vls-mode -line-info "${text_file}:28:9" ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:27:9" ${os.quoted_path(text_file)}'
 		output: 'unresolved type, maybe "builtin" was not defined. otherwise this is a bug, should never happen; please report'
+	},
+	TestData{
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:29:gd^10" ${os.quoted_path(text_file)}'
+		output: '{"uri":"${mod1_text_file}","range":{"start":{"line":49,"character":7},"end":{"line":49,"character":7}}}'
+	},
+	TestData{
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:gd^12" ${os.quoted_path(text_file)}'
+		output: '{"uri":"${mod1_text_file}","range":{"start":{"line":7,"character":11},"end":{"line":7,"character":11}}}'
+	},
+	TestData{
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:gd^11" ${os.quoted_path(text_file)}'
+		output: '{"uri":"${mod1_text_file}","range":{"start":{"line":40,"character":9},"end":{"line":40,"character":9}}}'
+	},
+	TestData{
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:32:gd^15" ${os.quoted_path(text_file)}'
+		output: '{"uri":"${mod1_text_file}","range":{"start":{"line":43,"character":9},"end":{"line":43,"character":9}}}'
+	},
+	TestData{
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:33:gd^13" ${os.quoted_path(text_file)}'
+		output: '{"uri":"${mod1_text_file}","range":{"start":{"line":18,"character":10},"end":{"line":18,"character":10}}}'
 	},
 	TestData{
 		cmd:    'v -w -vls-mode -check -json-errors ${os.quoted_path(text_file)}'
@@ -127,7 +148,15 @@ const test_data = [
 ,
 {
 "path":"${text_file}",
-"message":"cannot use `main.MyS` as `string` in argument 1 to `string.all_before_last`",
+"message":"undefined ident: `j`",
+"line_nr":26,
+"col":2,
+"len":0
+}
+,
+{
+"path":"${text_file}",
+"message":"`j` (no value) used as value in argument 1 to `string.all_before_last`",
 "line_nr":26,
 "col":2,
 "len":0
