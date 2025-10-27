@@ -294,6 +294,9 @@ pub fn (t &TypeResolver) is_comptime_type(x ast.Type, y ast.ComptimeType) bool {
 		.option {
 			return x.has_flag(.option)
 		}
+		.shared {
+			return x.has_flag(.shared_f)
+		}
 	}
 }
 

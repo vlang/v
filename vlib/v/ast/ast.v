@@ -163,6 +163,7 @@ pub enum ComptimeTypeKind {
 	alias
 	function
 	option
+	shared
 	string
 	pointer
 	voidptr
@@ -190,6 +191,7 @@ pub fn (cty ComptimeType) str() string {
 		.alias { '\$alias' }
 		.function { '\$function' }
 		.option { '\$option' }
+		.shared { '\$shared' }
 		.string { '\$string' }
 		.pointer { '\$pointer' }
 		.voidptr { '\$voidptr' }
