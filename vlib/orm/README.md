@@ -20,6 +20,8 @@ struct Foo {
 ### Structs
 
 - `[table: 'name']` explicitly sets the name of the table for the struct
+- `[comment: 'table_comment']` explicitly sets the comment of the table for the struct
+- `[index: 'f1, f2, f3']` explicitly sets fields of the table (`f1`, `f2`, `f3`) as indexed
 
 ### Fields
 
@@ -36,6 +38,9 @@ struct Foo {
   surround `raw_sql` with backticks (\`).
 
 - `[fkey: 'parent_id']` sets foreign key for an field which holds an array
+- `[references]` or `[references: 'tablename']` or `[references: 'tablename(field_id)']`
+- `[comment: 'field_comment']` set comment
+- `[index]` creates index
 
 ## Usage
 > [!NOTE]
