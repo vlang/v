@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_fkey_update.vv:56:10: error: ORM: `bar` is a foreign column of `Child`, it can't update here
+   54 | 
+   55 |     sql db {
+   56 |         update Child set bar = bar_one where id == 0
+      |                ~~~~~
+   57 |     }!
+   58 | }
