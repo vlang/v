@@ -180,7 +180,7 @@ fn (mut g Game) init_game() {
 	g.field = []
 	// Generate the field, fill it with 0's, add -1's on each edge
 	for _ in 0 .. field_height + 2 {
-		mut row := [0].repeat(field_width + 2)
+		mut row := []int{len: field_width + 2}
 		row[0] = -1
 		row[field_width + 1] = -1
 		g.field << row.clone()
@@ -392,10 +392,10 @@ fn (mut g Game) draw_scene() {
 
 fn parse_binary_tetro(t_ int) []Block {
 	mut t := t_
-	mut res := [Block{}].repeat(4)
+	mut res := []Block{len: 4}
 	mut cnt := 0
 	horizontal := t == 9 // special case for the horizontal line
-	ten_powers := [1000, 100, 10, 1]
+	ten_powers := [1000, 100, 10, 1]!
 	for i := 0; i <= 3; i++ {
 		// Get ith digit of t
 		p := ten_powers[i]
