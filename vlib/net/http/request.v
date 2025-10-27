@@ -433,11 +433,78 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 	}
 }
 
-fn parse_request_line(s string) !(Method, urllib.URL, Version) {
+// parse_request_head parses *only* the header of a raw HTTP request into a Request object
+pub fn parse_request_head_str(s string) !Request {
+	// TODO called by veb twice!?
+	// println('parse_request_head_str s ="${s}"')
+	println('skek=')
+	println(s)
+	println('==========================')
+	// println('FIRST')
+	// println(s[0].ascii_str())
+	// println(s.bytes())
+
+	pos0 := s.index('\n') or { 0 }
+	lines := s.split('\n')
+	println('nr lines=${lines.len}')
+	line0 := s[..pos0].trim_space()
+
+	println('line0="${line0}"')
+	method, target, version := parse_request_line(line0)!
+	println(method)
+	println(target)
+	println(version)
+
+	// headers
+	mut header := new_header()
+	for i := 1; i < lines.len; i++ {
+		line := lines[i]
+		if !line.contains(':') {
+			continue
+		}
+		// key, value := parse_header(line)!
+		mut pos := parse_header_fast(line)!
+		key := line.substr_unsafe(0, pos)
+		for pos < line.len - 1 && line[pos + 1].is_space() {
+			if line[pos + 1].is_space() {
+				// Skip space or tab in value name
+				pos++
+			}
+		}
+		value := line.substr_unsafe(pos + 1, line.len)
+		_, _ = key, value
+		// println('key,value=${key},${value}')
+		header.add_custom(key, value)!
+		// header.coerce(canonicalize: true)
+	}
+
+	mut request_cookies := map[string]string{}
+	for _, cookie in read_cookies(header, '') {
+		request_cookies[cookie.name] = cookie.value
+	}
+
+	return Request{
+		method:  method
+		url:     target.str()
+		header:  header
+		host:    header.get(.host) or { '' }
+		version: version
+		cookies: request_cookies
+	}
+}
+
+fn parse_request_line(line string) !(Method, urllib.URL, Version) {
 	// println('S=${s}')
-	// words := s.split(' ')
+	words := line.split(' ')
+	// println('words=')
 	// println(words)
-	space1, space2 := fast_request_words(s)
+	if words.len != 3 {
+		return error('bad request header')
+	}
+	method_str, target_str, version_str := words[0], words[1], words[2]
+
+	/*
+	space1, space2 := fast_request_words(line)
 	// if words.len != 3 {
 	if space1 == 0 || space2 == 0 {
 		return error('malformed request line')
@@ -445,13 +512,16 @@ fn parse_request_line(s string) !(Method, urllib.URL, Version) {
 	method_str := s.substr_unsafe(0, space1)
 	target_str := s.substr_unsafe(space1 + 1, space2)
 	version_str := s.substr_unsafe(space2 + 1, s.len)
+	*/
 	// println('${method_str}!${target_str}!${version_str}')
 	// method := method_from_str(words[0])
 	// target := urllib.parse(words[1])!
 	// version := version_from_str(words[2])
 	method := method_from_str(method_str)
 	target := urllib.parse(target_str)!
+	// println('before version_str="${version_str}"')
 	version := version_from_str(version_str)
+	// println('VERSION="${version}"')
 	if version == .unknown {
 		return error('unsupported version')
 	}

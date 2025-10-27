@@ -53,16 +53,24 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
 
 	// orm_insert needs an SqlStmtLine, build it from SqlExpr (most nodes are the same)
-	hack_stmt_line := ast.SqlStmtLine{
-		object_var: node.inserted_var
-		fields:     node.fields
-		table_expr: node.table_expr
-		// sub_structs: node.sub_structs
-	}
+	hack_stmt_line := g.build_sql_stmt_line_from_sql_expr(node)
 	g.write_orm_insert(hack_stmt_line, table_name, connection_var_name, result_var_name,
 		node.or_expr, table_attrs)
 
 	g.write2(left, 'orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object)')
+}
+
+fn (mut g Gen) build_sql_stmt_line_from_sql_expr(node ast.SqlExpr) ast.SqlStmtLine {
+	mut sub_structs := map[int]ast.SqlStmtLine{}
+	for typ, sub in node.sub_structs {
+		sub_structs[typ] = g.build_sql_stmt_line_from_sql_expr(sub)
+	}
+	return ast.SqlStmtLine{
+		object_var:  node.inserted_var
+		fields:      node.fields
+		table_expr:  node.table_expr
+		sub_structs: sub_structs
+	}
 }
 
 // sql_stmt writes C code that calls ORM functions for

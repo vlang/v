@@ -453,10 +453,6 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			c.ident_gotodef()
 			exit(0)
 		}
-		if c.pref.linfo.expr.contains('()') || c.pref.linfo.expr.ends_with('(') {
-			c.autocomplete_for_fn_call_expr()
-			exit(0)
-		}
 		for i, file in ast_files {
 			// println(file.path)
 			if file.path == c.pref.linfo.path {
@@ -974,7 +970,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 					}
 				}
 			} else if expr.obj is ast.ConstField && expr.name in c.const_names {
-				if !c.pref.translated {
+				if !c.pref.translated && c.mod != 'veb' {
 					// TODO: fix this in c2v, do not allow modification of all consts
 					// in translated code
 					c.error('cannot modify constant `${expr.name}`', expr.pos)
@@ -3554,7 +3550,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
 					node.pos)
 			}
-			if !c.check_struct_signature(from_sym.info, to_sym.info) {
+			if from_type.idx() != to_type.idx()
+				&& !c.check_struct_signature(from_sym.info, to_sym.info) {
 				c.error('cannot convert struct `${from_sym.name}` to struct `${to_sym.name}`',
 					node.pos)
 			}

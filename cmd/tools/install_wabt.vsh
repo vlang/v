@@ -3,14 +3,10 @@
 import os
 import net.http
 
-const root = @VROOT
-
 fn main() {
-	os.chdir(root)! // make sure that the workfolder is stable
-
-	tloc := os.join_path(root, 'thirdparty')
+	os.chdir(@VROOT)! // make sure that the workfolder is stable
+	tloc := os.join_path(@VROOT, 'thirdparty')
 	loc := os.join_path(tloc, 'wabt')
-
 	if os.exists(loc) {
 		eprintln('thirdparty/wabt exists, will not overwrite')
 		eprintln('delete the folder, and execute again')
@@ -18,12 +14,13 @@ fn main() {
 	}
 	tag := '1.0.32'
 	fname := 'wabt-${tag}'
-	platform := $if windows {
-		'windows'
+	mut platform := ''
+	$if windows {
+		platform = 'windows'
 	} $else $if macos {
-		'macos-14'
+		platform = 'macos-14'
 	} $else $if linux {
-		'ubuntu'
+		platform = 'ubuntu'
 	} $else {
 		eprintln('A premade binary library is not available for your system.')
 		eprintln('Build it from source, following the documentation here: https://github.com/WebAssembly/wabt/')
@@ -31,22 +28,21 @@ fn main() {
 	}
 	url := 'https://github.com/WebAssembly/wabt/releases/download/${tag}/${fname}-${platform}.tar.gz'
 	saveloc := os.join_path(tloc, '${fname}.tar.gz')
+	println('>> Url: ${url}')
+	println('>> Archive: ${saveloc}')
 	if !os.exists(saveloc) {
 		println('Downloading archive: ${saveloc}, from url: ${url} ...')
 		http.download_file(url, saveloc)!
 		// defer { os.rm(saveloc) or {}! }
 	}
-
 	println('Extracting `${tloc}/${fname}` to `${tloc}/wabt` ...')
 	cmd := 'tar -xvf ${saveloc} --directory ${tloc}'
 	if os.system(cmd) != 0 {
 		eprintln('`${cmd}` exited with a non zero exit code')
 		exit(1)
 	}
-
 	println(cmd)
 	println('Moving `${tloc}/${fname}` to `${tloc}/wabt` ...')
-
 	os.rename_dir('${tloc}/${fname}', loc)!
 	println('Done. You can now use `v test vlib/wasm` .')
 }

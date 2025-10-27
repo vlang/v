@@ -248,7 +248,7 @@ pub fn parse_rfc3339(s string) !Time {
 			mut offset_in_hours := 0
 			// offset hours
 			for i := 0; i < 2; i++ {
-				offset_in_hours = offset_in_minutes * 10 + (s[s.len - 5 + i] - u8(`0`))
+				offset_in_hours = offset_in_hours * 10 + (s[s.len - 5 + i] - u8(`0`))
 			}
 
 			// offset minutes
