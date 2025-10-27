@@ -32,7 +32,7 @@ fn check_and_extract_time(s string) !(int, int, int, int) {
 	// Check if the string start in the format "HH:MM:SS"
 	for i := 0; i < time_format_buffer.len; i++ {
 		if time_format_buffer[i] == u8(`0`) {
-			if s[i] < u8(`0`) && s[i] > u8(`9`) {
+			if s[i] < u8(`0`) || s[i] > u8(`9`) {
 				return error('`HH:MM:SS` match error: expected digit, not `${s[i]}` in position ${i}')
 			} else {
 				if i < 2 {
@@ -102,7 +102,7 @@ fn check_and_extract_date(s string) !(int, int, int) {
 	// Check if the string start in the format "YYYY-MM-DD"
 	for i := 0; i < date_format_buffer.len; i++ {
 		if date_format_buffer[i] == u8(`0`) {
-			if s[i] < u8(`0`) && s[i] > u8(`9`) {
+			if s[i] < u8(`0`) || s[i] > u8(`9`) {
 				return error('`YYYY-MM-DD` match error: expected digit, not `${s[i]}` in position ${i}')
 			} else {
 				if i < 4 {
