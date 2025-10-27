@@ -5,6 +5,7 @@ module checker
 import strings
 import v.ast
 import os
+import token
 
 enum DetailKind {
 	text           = 1
@@ -43,77 +44,130 @@ struct Detail {
 	insert_text_format ?int // 1 for PlainText, 2 for Snippet
 }
 
-// Autocomplete for function parameters `os.write_bytes(**path string, bytes []u8***)` etc
-pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
-	// Make sure this ident is on the same line and same file as request
-	same_line := c.pref.linfo.line_nr + 1 == node.pos.line_nr
-	if !same_line {
-		return
-	}
-	if node.pos.file_idx < 0 {
-		return
-	}
-	if c.pref.linfo.path != c.table.filelist[node.pos.file_idx] {
-		return
-	}
-	col := c.pref.linfo.expr.all_after_last('^').int()
-	if node.name_pos.col + node.name_pos.len + 1 != col {
-		return
-	}
+fn (mut c Checker) get_fn_from_call_expr(node ast.CallExpr) !ast.Fn {
 	fn_name := node.name
-	f := if node.is_method {
+	return if node.is_method {
 		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
 		c.table.find_method(left_sym, fn_name) or {
-			println('failed to find method "${fn_name}"')
-			return
+			return error('failed to find method "${fn_name}"')
 		}
 	} else {
-		c.table.find_fn(fn_name) or {
-			println('failed to find fn "${fn_name}"')
-			return
-		}
+		c.table.find_fn(fn_name) or { return error('failed to find fn "${fn_name}"') }
+	}
+}
+
+// Autocomplete for function parameters `os.write_bytes(**path string, bytes []u8***)` etc
+pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
+	if c.pref.linfo.method != .signature_help {
+		return
+	}
+	if !c.vls_is_the_node(node.name_pos) {
+		return
+	}
+	f := c.get_fn_from_call_expr(node) or {
+		println(err)
+		exit(1)
 	}
 	res := c.build_fn_summary(f)
 	println(res)
 	exit(0)
 }
 
-fn (mut c Checker) ident_gotodef() {
-	mut ident_name := c.pref.linfo.expr.after('gd^').trim_space()
-	mod_name := ident_name.all_before_last('.')
-	resolved_mod_name := c.try_resolve_to_import_mod_name(mod_name)
-	if resolved_mod_name.len > 0 {
-		ident_name = resolved_mod_name + '.' + ident_name.all_after_last('.')
-	}
-	if f := c.table.find_fn(ident_name) {
-		println('${f.file}:${f.pos.line_nr}:${f.pos.col}')
+fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
+	if c.pref.linfo.method != .definition {
 		return
 	}
+	if !c.vls_is_the_node(node_.pos()) {
+		return
+	}
+	mut node := unsafe { node_ }
+	mut pos := token.Pos{}
+	match mut node {
+		ast.CallExpr {
+			if !c.vls_is_the_node(node.name_pos) {
+				return
+			}
+			f := c.get_fn_from_call_expr(node) or {
+				println(err)
+				exit(1)
+			}
+			pos = f.name_pos
+		}
+		ast.Ident {
+			// global objects
+			for _, obj in c.table.global_scope.objects {
+				if obj is ast.ConstField && obj.name == node.name {
+					pos = obj.pos
+					break
+				} else if obj is ast.GlobalField && obj.name == node.name {
+					pos = obj.pos
+					break
+				} else if obj is ast.Var && obj.name == node.name {
+					pos = obj.pos
+					break
+				}
+			}
+			// local objects
+			if pos == token.Pos{} && !isnil(c.fn_scope) {
+				if obj := c.fn_scope.find_var(node.name) {
+					pos = obj.pos
+				}
+			}
+			//
+		}
+		ast.StructInit {
+			if !c.vls_is_the_node(node.name_pos) {
+				return
+			}
+			mut info := c.table.sym(node.typ).info
+			pos = match mut info {
+				ast.Struct {
+					info.name_pos
+				}
+				ast.Alias {
+					info.name_pos
+				}
+				ast.SumType {
+					info.name_pos
+				}
+				else {
+					pos
+				}
+			}
+		}
+		ast.SelectorExpr {
+			sym := c.table.sym(node.expr_type)
+			f := c.table.find_field(sym, node.field_name) or {
+				println('failed to find field "${node.field_name}"')
+				exit(1)
+			}
+			pos = f.pos
+		}
+		else {}
+	}
+	if pos.file_idx != -1 {
+		println('${c.table.filelist[pos.file_idx]}:${pos.line_nr + 1}:${pos.col}')
+	}
+	exit(0)
 }
 
 // Autocomplete for `myvar. ...`, `os. ...`
 fn (mut c Checker) ident_autocomplete(node ast.Ident) {
+	if c.pref.linfo.method != .completion {
+		return
+	}
 	// Mini LS hack (v -line-info "a.v:16")
 	if c.pref.is_verbose {
 		println(
 			'checker.ident_autocomplete() info.line_nr=${c.pref.linfo.line_nr} node.line_nr=${node.pos.line_nr} ' +
 			' node.col=${node.pos.col} pwd="${os.getwd()}" file="${c.file.path}", ' +
-			//' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" expr="${c.pref.linfo.expr}"')
-		 ' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" node.mod="${node.mod}" col="${c.pref.linfo.col}"')
+			' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" node.mod="${node.mod}" col="${c.pref.linfo.col}"')
 	}
 	if node.mod == 'builtin' {
 		// User can't type in `builtin.func(` at all
 		return
 	}
-	// Make sure this ident is on the same line and same file as request
-	same_line := c.pref.linfo.line_nr == node.pos.line_nr
-	if !same_line {
-		return
-	}
-	if node.pos.file_idx < 0 {
-		return
-	}
-	if c.pref.linfo.path != c.table.filelist[node.pos.file_idx] {
+	if !c.vls_is_the_node(node.pos) {
 		return
 	}
 	check_name := if c.pref.linfo.col == node.pos.col {
@@ -142,7 +196,6 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 		c.module_autocomplete(mod_name)
 		exit(0)
 	}
-
 	if node.kind == .unresolved {
 		eprintln('unresolved type, maybe "${node.name}" was not defined. otherwise this is a bug, should never happen; please report')
 		exit(1)
@@ -196,8 +249,7 @@ fn (c &Checker) build_fn_summary(func ast.Fn) string {
 	sb.writeln('\t}]')
 	sb.writeln('}],')
 	sb.writeln('"activeSignature":0,')
-	sb.writeln('"activeParameter":0,')
-	sb.writeln('"_type":"SignatureHelp"')
+	sb.writeln('"activeParameter":0')
 	sb.writeln('}')
 	return sb.str()
 }
@@ -341,7 +393,7 @@ fn (c &Checker) vls_gen_type_details(mut details []Detail, sym ast.TypeSymbol) {
 
 fn (c &Checker) vls_write_details(details []Detail) {
 	mut sb := strings.new_builder(details.len * 32)
-	sb.writeln('{"details" : [')
+	sb.writeln('{"details": [')
 	for detail in details {
 		sb.write_string('{"kind":${int(detail.kind)},')
 		sb.write_string('"label":"${detail.label}",')
@@ -385,4 +437,22 @@ fn (c &Checker) vls_map_v_kind_to_lsp_kind(kind ast.Kind) DetailKind {
 		}
 	}
 	return .text
+}
+
+fn (c &Checker) vls_is_the_node(pos token.Pos) bool {
+	// Make sure this ident is on the same line and same file as request
+	same_line := c.pref.linfo.line_nr == pos.line_nr
+	if !same_line {
+		return false
+	}
+	if pos.file_idx < 0 {
+		return false
+	}
+	if c.pref.linfo.path != c.table.filelist[pos.file_idx] {
+		return false
+	}
+	if c.pref.linfo.col > pos.col + pos.len || c.pref.linfo.col < pos.col {
+		return false
+	}
+	return true
 }
