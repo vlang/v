@@ -42,3 +42,19 @@ fn test_zero_date() {
 	res := zero_date.custom_format('M MM Mo MMM MMMM |1| D DD DDD DDDD |2| d dd ddd dddd |3| YY YYYY a A |4| H HH h hh k kk i ii e |5| m mm s ss |6| Do DDDo Q Qo QQ |7| N NN |8| M/D/YYYY N-HH:mm:ss Qo?a')
 	assert res == '0 00 0th Jan January |1| 0 00 0 000 |2| -1 Mo Mon Monday |3|  0 am AM |4| 0 00 12 12 1 01 0 00 e |5| 0 00 0 00 |6| 0th 0th 1 1st 01 |7| AD Anno Domini |8| 0/0/0 AD-00:00:00 1st?am'
 }
+
+fn test_quarter() {
+	pattern := '2025-xx-27t12:34:56z'
+	expect := [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4]
+	mut want := []int{len: 12}
+	for n in 0 .. 12 {
+		tt := time.parse_rfc3339(pattern.replace('xx', '${n + 1:02}'))!
+		want[n] = tt.custom_format('Q').int()
+	}
+	assert want == expect
+
+	turing := time.parse_format('1912-06-23', 'YYYY-MM-DD')! // Alan Turing was born
+	assert turing.custom_format('Qo') == '2nd'
+	mccarthy := time.parse_format('1927-09-04', 'YYYY-MM-DD')! // John McCarthy was born
+	assert mccarthy.custom_format('QQ') == '03'
+}
