@@ -19,6 +19,7 @@ pub mut:
 
 // encode_binary encode a T type data into u8 array.
 // for encoding struct, you can use `@[serialize: '-']` to skip field.
+// Note: `shared` fields in struct will be skipped.
 pub fn encode_binary[T](obj T, config EncodeConfig) ![]u8 {
 	mut s := EncodeState{
 		b:          []u8{cap: config.buffer_len}
@@ -204,6 +205,7 @@ pub mut:
 
 // decode_binary decode a u8 array into T type data.
 // for decoding struct, you can use `@[serialize: '-']` to skip field.
+// Note: `shared` fields in struct will be skipped.
 pub fn decode_binary[T](b []u8, config DecodeConfig) !T {
 	mut s := DecodeState{
 		b:          b
