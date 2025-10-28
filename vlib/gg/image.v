@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
+import sokol.gfx
+
 // DrawImageConfig struct defines the various options
 // that can be used to draw an image onto the screen
 pub struct DrawImageConfig {
@@ -69,7 +71,16 @@ pub fn (mut ctx Context) remove_cached_image_by_idx(image_idx int) {
 	if image_idx < 0 || image_idx > ctx.image_cache.len - 1 {
 		return
 	}
-	ctx.image_cache[image_idx] = &missing_image
+	image := ctx.image_cache[image_idx]
+	if image.ok {
+		if image.simg.id > 0 {
+			gfx.destroy_image(image.simg)
+		}
+		if image.ssmp.id > 0 {
+			gfx.destroy_sampler(image.ssmp)
+		}
+		ctx.image_cache[image_idx] = &missing_image
+	}
 }
 
 // Draw part of an image using uv coordinates
