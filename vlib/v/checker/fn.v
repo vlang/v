@@ -760,9 +760,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		c.fn_call(mut node, mut continue_check)
 	}
 	if c.pref.is_vls {
-		if c.pref.linfo.expr.starts_with('fn^') {
-			c.autocomplete_for_fn_call_expr(node)
-		}
+		c.autocomplete_for_fn_call_expr(node)
 	}
 	if !continue_check {
 		return ast.void_type

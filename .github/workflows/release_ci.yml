@@ -101,7 +101,7 @@ jobs:
           mv ${{ matrix.artifact }} v/
           cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.target }}
           path: ${{ matrix.artifact }}
@@ -111,7 +111,7 @@ jobs:
     needs: release-build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
       - name: Create release
         uses: ncipollo/release-action@v1
         with:

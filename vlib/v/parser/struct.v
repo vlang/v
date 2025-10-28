@@ -449,6 +449,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			is_anon:       is_anon
 			is_shared:     is_shared
 			has_option:    has_option
+			name_pos:      name_pos
 		}
 		is_pub:     is_pub
 		is_builtin: name in ast.builtins

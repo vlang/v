@@ -10,7 +10,8 @@ import v.token
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 	'compile_warn', 'd', 'res']
 const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
-	'interface', 'enum', 'sumtype', 'alias', 'function', 'option', 'string', 'pointer', 'voidptr']
+	'interface', 'enum', 'sumtype', 'alias', 'function', 'option', 'shared', 'string', 'pointer',
+	'voidptr']
 
 fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	pos := p.tok.pos()
@@ -59,6 +60,9 @@ fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 		}
 		'option' {
 			.option
+		}
+		'shared' {
+			.shared
 		}
 		'string' {
 			.string

@@ -117,7 +117,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		}
 		.dollar {
 			match p.peek_tok.kind {
-				.name, .key_struct, .key_enum, .key_interface {
+				.name, .key_struct, .key_enum, .key_interface, .key_shared {
 					if p.peek_tok.lit in comptime_types {
 						node = p.parse_comptime_type()
 					} else {
@@ -827,6 +827,17 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	mut or_scope := &ast.Scope(unsafe { nil })
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
+		if mut right is ast.SelectorExpr {
+			or_kind = right.or_block.kind
+			or_stmts = right.or_block.stmts.clone()
+			right.or_block = ast.OrExpr{}
+		}
+		if mut right is ast.CallExpr {
+			or_kind = right.or_block.kind
+			or_stmts = right.or_block.stmts.clone()
+			or_scope = right.or_block.scope
+			right.or_block = ast.OrExpr{}
+		}
 		if p.tok.kind == .key_orelse {
 			or_kind = .block
 			or_stmts, or_pos, or_scope = p.or_block(.with_err_var)

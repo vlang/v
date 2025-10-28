@@ -188,6 +188,7 @@ pub mut:
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
+	name_pos       token.Pos
 }
 
 // instantiation of a generic struct
@@ -212,6 +213,7 @@ pub mut:
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
+	name_pos       token.Pos
 }
 
 pub struct Enum {
@@ -222,6 +224,7 @@ pub:
 	uses_exprs       bool
 	typ              Type
 	attrs            map[string][]Attr
+	name_pos         token.Pos
 }
 
 @[minify]
@@ -231,6 +234,7 @@ pub mut:
 pub:
 	language  Language
 	is_import bool
+	name_pos  token.Pos
 }
 
 pub struct Aggregate {
@@ -273,6 +277,7 @@ pub struct Map {
 pub mut:
 	key_type   Type
 	value_type Type
+	name_pos   token.Pos
 }
 
 @[minify]
@@ -287,6 +292,7 @@ pub mut:
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
+	name_pos       token.Pos
 }
 
 // <atomic.h> defines special typenames

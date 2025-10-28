@@ -2,19 +2,32 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module pref
 
+// Method copy from vls/lsp.v
+pub enum Method {
+	unknown         @['unknown']
+	initialize      @['initialize']
+	initialized     @['initialized']
+	did_open        @['textDocument/didOpen']
+	did_change      @['textDocument/didChange']
+	definition      @['textDocument/definition']
+	completion      @['textDocument/completion']
+	signature_help  @['textDocument/signatureHelp']
+	set_trace       @['$/setTrace']
+	cancel_request  @['$/cancelRequest']
+	shutdown        @['shutdown']
+	exit            @['exit']
+}
+
 pub struct LineInfo {
 pub mut:
-	line_nr      int    // a quick single file run when called with v -line-info (contains line nr to inspect)
+	method       Method
 	path         string // same, but stores the path being parsed
-	expr         string // "os.foo()" V code (expression) which needs autocomplete, right only function calls
+	line_nr      int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	col          int
-	is_running   bool            // so that line info is fetched only on the second checker run
 	vars_printed map[string]bool // to avoid dups
 }
 
 fn (mut p Preferences) parse_line_info(line string) {
-	// println("parse_line_info '${line}'")
-	// Note: windows C:\Users\DDT\AppData\Local\Temp\sample_text.v:18:3
 	format_err := 'wrong format, use `-line-info "file.v:24:7"'
 	vals := line.split(':')
 	if vals.len < 3 {
@@ -22,28 +35,32 @@ fn (mut p Preferences) parse_line_info(line string) {
 		return
 	}
 	file_name := vals[..vals.len - 2].join(':')
-	line_nr := vals[vals.len - 2].int() - 1
+	line_nr := vals[vals.len - 2].int()
 
 	if (!file_name.ends_with('.v') && !file_name.ends_with('.vv')) || line_nr == -1 {
 		eprintln(format_err)
 		return
 	}
 
-	// Third value can be a column or expression for autocomplete like `os.create()`
+	// Third value is column
 	third := vals[vals.len - 1]
-	if third[0].is_digit() {
-		col := third.int() - 1
-		p.linfo = LineInfo{
-			line_nr: line_nr
-			path:    file_name
-			col:     col
-		}
+	mut col := 0
+	method := if third.starts_with('fn^') {
+		col = third[3..].int() - 1
+		Method.signature_help
+	} else if third.starts_with('gd^') {
+		col = third[3..].int() - 1
+		Method.definition
+	} else if third[0].is_digit() {
+		col = third.int() - 1
+		Method.completion
 	} else {
-		expr := third
-		p.linfo = LineInfo{
-			line_nr: line_nr
-			path:    file_name
-			expr:    expr
-		}
+		Method.unknown
+	}
+	p.linfo = LineInfo{
+		method:  method
+		line_nr: line_nr - 1
+		path:    file_name
+		col:     col
 	}
 }

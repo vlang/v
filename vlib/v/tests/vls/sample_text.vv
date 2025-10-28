@@ -23,8 +23,13 @@ fn main() {
 	s.
 	mut str := 'hello'
 	x := str.all_before_last(
-	k := str.all_before_last(s.
+	j := str.all_before_last(s.
 	strings.
 	builtin.
 	v := 1
+	s.public_fn1(1)
+	s.PublicStruct1{}
+	s.PublicAlias1_1{}
+	s.PublicAlias1_2{}
+	s.public_const1
 }

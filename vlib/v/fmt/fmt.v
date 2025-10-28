@@ -770,6 +770,7 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 				.alias { f.write('\$alias') }
 				.function { f.write('\$function') }
 				.option { f.write('\$option') }
+				.shared { f.write('\$shared') }
 				.string { f.write('\$string') }
 				.pointer { f.write('\$pointer') }
 				.voidptr { f.write('\$voidptr') }
