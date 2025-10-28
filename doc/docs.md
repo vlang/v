@@ -6646,6 +6646,7 @@ V supports the following compile time types:
 - `$interface` => matches [Interfaces](#interfaces).
 - `$map` => matches [Maps](#maps).
 - `$option` => matches [Option Types](#optionresult-types-and-error-handling).
+- `$shared` => matches [Shared Types](#shared-objects).
 - `$struct` => matches [Structs](#structs).
 - `$sumtype` => matches [Sum Types](#sum-types).
 - `$string` => matches [Strings](#strings).
