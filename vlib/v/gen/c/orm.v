@@ -558,6 +558,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			last_ids := g.new_tmp_var()
 			res_ := g.new_tmp_var()
 			tmp_var := g.new_tmp_var()
+			g.writeln('Array_orm__Primitive ${last_ids} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
 			if is_option {
 				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)builtin__array_get(*(Array_${ctyp}*)${node.object_var}${member_access_type}${arr.object_var}.data, ${idx}));')
 			} else {
@@ -583,8 +584,6 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			unsafe { fff.free() }
 			g.write_orm_insert_with_last_ids(arr, connection_var_name, g.get_table_name_by_struct_type(arr.table_expr.typ),
 				last_ids, res_, id_name, fkeys[i], or_expr)
-			// Validates sub insertion success otherwise, handled and propagated error.
-			g.or_block(res_, or_expr, ast.int_type.set_flag(.result))
 			g.indent--
 			g.writeln('}')
 		}
