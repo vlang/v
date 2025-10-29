@@ -6650,6 +6650,8 @@ V supports the following compile time types:
 - `$struct` => matches [Structs](#structs).
 - `$sumtype` => matches [Sum Types](#sum-types).
 - `$string` => matches [Strings](#strings).
+- `$pointer` => matches [Reference Types](#references).
+- `$voidptr` => matches C's `void*`.
 
 ### Environment specific files
 
