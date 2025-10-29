@@ -15,7 +15,7 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 		g.write('*(')
 	}
 	g.expr(node.left)
-	if node.left_type.is_ptr() {
+	if g.unwrap_generic(node.left_type).is_ptr() {
 		g.write('->')
 	} else {
 		g.write('.')
