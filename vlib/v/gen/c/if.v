@@ -197,7 +197,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut cur_line := ''
 	mut raw_state := false
 	tmp_if_option_type := g.last_if_option_type
+	mut exit_label := ''
 	if needs_tmp_var {
+		exit_label = g.new_tmp_var()
 		mut styp := g.styp(node.typ)
 		if g.inside_if_option || node.typ.has_flag(.option) {
 			raw_state = g.inside_if_option
@@ -303,12 +305,22 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 	mut branch_cond_var_names := []string{}
 	for i, branch in node.branches {
+		is_else := i == node.branches.len - 1 && node.has_else
 		if i > 0 {
-			g.write('} else ')
+			if needs_tmp_var {
+				g.writeln('};\n')
+				g.set_current_pos_as_last_stmt_pos()
+			} else {
+				g.write('} else ')
+			}
 		}
 		// if last branch is `else {`
-		if i == node.branches.len - 1 && node.has_else {
-			g.writeln('{')
+		if is_else {
+			if needs_tmp_var {
+				g.writeln('{ /* else branch */')
+			} else {
+				g.writeln('{')
+			}
 			// define `err` for the last branch after a `if val := opt {...}' guard
 			if is_guard && guard_idx == i - 1 {
 				if err_var := branch.scope.find_var('err') {
@@ -474,6 +486,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.expected_cast_type = node.typ
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp)
+			if !is_else {
+				g.writeln('\tgoto ${exit_label}; /* goto to exit label */')
+			}
 			g.expected_cast_type = prev_expected_cast_type
 		} else {
 			// restore if_expr stmt header pos
@@ -493,6 +508,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.set_current_pos_as_last_stmt_pos()
 		}
 		g.empty_line = false
+		g.writeln('\t${exit_label}: {}; /* exit label */')
 		g.write('${cur_line}${tmp}')
 	}
 }
