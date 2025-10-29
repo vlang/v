@@ -18,5 +18,5 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 }
 
 // destroy GPU resources associated with the image
-pub fn (img &Image) destroy() {
+fn (img &Image) destroy() {
 }
