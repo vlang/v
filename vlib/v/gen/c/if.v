@@ -237,6 +237,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write('${styp} ')
 			}
 			g.writeln('${tmp}; /* if prepend */')
+			g.set_current_pos_as_last_stmt_pos()
 		}
 		if g.infix_left_var_name.len > 0 {
 			g.writeln('if (${g.infix_left_var_name}) {')
