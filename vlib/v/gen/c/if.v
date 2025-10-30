@@ -241,6 +241,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		if g.infix_left_var_name.len > 0 {
 			g.writeln('if (${g.infix_left_var_name}) {')
+			g.set_current_pos_as_last_stmt_pos()
 			g.indent++
 		}
 	} else if node.is_expr || g.inside_ternary != 0 {
@@ -309,7 +310,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		is_else := i == node.branches.len - 1 && node.has_else
 		if i > 0 {
 			if needs_tmp_var {
-				g.writeln('};\n')
+				g.writeln('};')
 				g.set_current_pos_as_last_stmt_pos()
 			} else {
 				g.write('} else ')
@@ -487,10 +488,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.expected_cast_type = node.typ
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp)
-			if !is_else {
+			g.expected_cast_type = prev_expected_cast_type
+			if !is_else && (branch.stmts.len > 0
+				&& branch.stmts[branch.stmts.len - 1] !in [ast.Return, ast.BranchStmt]) {
 				g.writeln('\tgoto ${exit_label}; /* goto to exit label */')
 			}
-			g.expected_cast_type = prev_expected_cast_type
 		} else {
 			// restore if_expr stmt header pos
 			stmt_pos := g.nth_stmt_pos(0)
