@@ -136,16 +136,18 @@ fn test_psiv_insternal_encryption_of_encrypted_text_is_plaintext() ! {
 	for i := 0; i < 1024; i++ {
 		input := rand.bytes(i)!
 		key := rand.bytes(36)!
+		mut dkey := [36]u8{}
+		unsafe { vmemcpy(dkey, key.data, key.len) }
 		tag := rand.bytes(16)!
 		nonce := rand.bytes(12)!
 
 		mut out := []u8{len: input.len}
-		psiv_encrypt_internal(mut out, input, key, tag, nonce)!
+		psiv_encrypt_internal(mut out, input, dkey, tag, nonce)!
 
 		// encrypting this output with the same params was result in original input
 		// make a clone of ciphertext output as an input into internal encrypt routine
 		text := out.clone()
-		psiv_encrypt_internal(mut out, text, key, tag, nonce)!
+		psiv_encrypt_internal(mut out, text, dkey, tag, nonce)!
 		assert out == input
 	}
 }
