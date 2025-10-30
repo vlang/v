@@ -1649,16 +1649,17 @@ fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		is_c_pointer_cast := language == .c && prev_tok_kind == .amp // `&C.abc(x)` is *always* a cast
 		is_c_type_cast := language == .c && (original_name in ['intptr_t', 'uintptr_t']
-			|| (name in p.table.type_idxs && original_name[0].is_capital()))
-		is_js_cast := language == .js && name.all_after_last('.')[0].is_capital()
+			|| (original_name[0].is_capital() && name in p.table.type_idxs))
+		is_capital_after_last_dot := name.all_after_last('.')[0].is_capital()
+		is_js_cast := language == .js && is_capital_after_last_dot
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names_to_idx {
 		// handle the easy cases first, then check for an already known V typename, not shadowed by a local variable
 		if (is_option || p.peek_tok.kind in [.lsbr, .lt, .lpar]) && (is_mod_cast
 			|| is_c_pointer_cast || is_c_type_cast || is_js_cast || is_generic_cast
-			|| (language == .v && name != '' && (name[0].is_capital() || (!known_var
-			&& (name in p.table.type_idxs || name_w_mod in p.table.type_idxs))
-			|| name.all_after_last('.')[0].is_capital()))) {
+			|| (language == .v && name != '' && (is_capital_after_last_dot
+			|| name[0].is_capital()
+			|| (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs))))) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO: handle C.stat()
 			start_pos := p.tok.pos()
