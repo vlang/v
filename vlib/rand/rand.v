@@ -460,7 +460,7 @@ pub fn (mut rng PRNG) shuffle[T](mut a []T, config_ config.ShuffleConfigStruct) 
 	// We implement the Fisher-Yates shuffle:
 	// https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle#The_modern_algorithm
 
-	for i in config_.start .. new_end - 2 {
+	for i in config_.start .. new_end - 1 {
 		x := rng.int_in_range(i, new_end) or { i }
 		// swap
 		a_i := a[i]

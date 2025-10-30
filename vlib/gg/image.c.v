@@ -25,6 +25,18 @@ pub mut:
 	path        string
 }
 
+// destroy GPU resources associated with the image
+fn (image &Image) destroy() {
+	if image.ok {
+		if image.simg.id > 0 {
+			gfx.destroy_image(image.simg)
+		}
+		if image.ssmp.id > 0 {
+			gfx.destroy_sampler(image.ssmp)
+		}
+	}
+}
+
 // create_image creates an `Image` from `file`.
 pub fn (mut ctx Context) create_image(file string) !Image {
 	if !os.exists(file) {

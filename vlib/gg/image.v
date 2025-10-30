@@ -69,6 +69,7 @@ pub fn (mut ctx Context) remove_cached_image_by_idx(image_idx int) {
 	if image_idx < 0 || image_idx > ctx.image_cache.len - 1 {
 		return
 	}
+	ctx.image_cache[image_idx].destroy()
 	ctx.image_cache[image_idx] = &missing_image
 }
 
