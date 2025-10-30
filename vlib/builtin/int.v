@@ -588,7 +588,7 @@ pub fn (b u8) repeat(count int) string {
 	mut bytes := unsafe { malloc_noscan(count + 1) }
 	unsafe {
 		vmemset(bytes, b, count)
-		bytes[count] = `0`
+		bytes[count] = 0
 	}
 	return unsafe { bytes.vstring_with_len(count) }
 }
