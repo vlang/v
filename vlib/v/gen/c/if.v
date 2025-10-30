@@ -502,16 +502,18 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 	if node.branches.len > 0 {
 		g.writeln('}')
-		g.set_current_pos_as_last_stmt_pos()
+		if !needs_tmp_var {
+			g.set_current_pos_as_last_stmt_pos()
+		}
 	}
 	if needs_tmp_var {
 		if g.infix_left_var_name.len > 0 {
 			g.indent--
 			g.writeln('}')
-			g.set_current_pos_as_last_stmt_pos()
 		}
 		g.empty_line = false
 		g.writeln('\t${exit_label}: {}; /* exit label */')
+		g.set_current_pos_as_last_stmt_pos()
 		g.write('${cur_line}${tmp}')
 	}
 }

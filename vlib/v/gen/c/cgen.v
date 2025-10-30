@@ -2793,8 +2793,6 @@ struct SumtypeCastingFn {
 }
 
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
-	// print_backtrace()
-	// println('\n---------------------------------------')
 	mut got, exp := got_.idx_type(), exp_.idx_type()
 	i := u32(got) | u32(u32(exp) << 18) | u32(u32(exp_.has_flag(.option)) << 17) | u32(u32(got_.has_flag(.option)) << 16)
 	exp_sym := g.table.sym(exp)
