@@ -21,7 +21,21 @@ pub fn new_psiv(key []u8) !&Chacha20Poly1305RE {
 		return error('new_psiv: bad key size')
 	}
 	// derives and initializes the new key for later purposes
-	mac_key, enc_key, po := psiv_init(key)!
+	pol_key := fk_k(key)
+	mac_key := fm_k(key)
+	enc_key := fe_k(key)
+
+	mut s := chacha20.State{}
+	mut x64 := [64]u8{}
+	unsafe { vmemcpy(x64, pol_key[0], 36) }
+	unpack_into_state(mut s, x64)
+	ws := chacha20_core(s)
+
+	// For poly1305 mac, we only take a first 32-bytes of the state as a key
+	mut poly1305_key := []u8{len: 32}
+	pack32_from_state(mut poly1305_key, ws)
+	po := poly1305.new(poly1305_key)!
+
 	// set the values
 	c := &Chacha20Poly1305RE{
 		key:     key.clone()
@@ -64,8 +78,8 @@ mut:
 	key []u8
 	// flags that tells derivation keys has been precomputed
 	precomp bool
-	mac_key []u8
-	enc_key []u8
+	mac_key [36]u8
+	enc_key [36]u8
 	po      &poly1305.Poly1305 = unsafe { nil }
 }
 
@@ -74,8 +88,9 @@ mut:
 pub fn (mut c Chacha20Poly1305RE) free() {
 	unsafe {
 		c.key.free()
-		c.mac_key.free()
-		c.enc_key.free()
+		// we reset derived keys
+		vmemset(c.mac_key, 0, 36)
+		vmemset(c.enc_key, 0, 36)
 		c.po = nil
 	}
 	c.precomp = false
@@ -165,15 +180,15 @@ pub fn (c Chacha20Poly1305RE) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u
 // psiv_encrypt_internal is an internal encryption routine used by the core of psiv construct
 // for encrypting (or decrypting) message.
 @[direct_array_access]
-fn psiv_encrypt_internal(mut dst []u8, plaintext []u8, key []u8, tag []u8, nonce []u8) ! {
+fn psiv_encrypt_internal(mut dst []u8, plaintext []u8, dkey [36]u8, tag []u8, nonce []u8) ! {
 	// loads the counter from the first 8-bytes of the tag input
 	mut ctr := binary.little_endian_u64(tag[0..8])
 
 	// setup some temporary vars
 	mut tc := []u8{len: 8} // counter buffer
 	mut s := chacha20.State{}
-	mut b64 := []u8{len: 64} // state buffer
-	mut tt := merge_drv_key(key, nonce, tag[0..8], tag[8..16])
+	mut b64 := [64]u8{} // state buffer
+	mut tt := merge_drv_key(dkey, nonce, tag[0..8], tag[8..16])
 
 	mut j := 0
 	mut n := 0
@@ -208,15 +223,15 @@ fn psiv_encrypt_internal(mut dst []u8, plaintext []u8, key []u8, tag []u8, nonce
 	unsafe {
 		tc.free()
 		s.reset()
-		b64.free()
-		tt.free()
+		vmemset(b64, 0, b64.len)
+		vmemset(tt, 0, tt.len)
 	}
 }
 
 // psiv_gen_tag computes a tag from the key, nonce, and Poly1305 tag of the associated data
 // and plaintext using the ChaCha20 permutation with the feed-forward, truncating the output.
 @[direct_array_access]
-fn psiv_gen_tag(mut out []u8, mut po poly1305.Poly1305, input []u8, ad_len int, mac_key []u8, nonce []u8) {
+fn psiv_gen_tag(mut out []u8, mut po poly1305.Poly1305, input []u8, ad_len int, mac_key [36]u8, nonce []u8) {
 	// updates poly1305 mac by input message, associated data length and input length.
 	update_with_padding(mut po, input)
 	po.update(length_to_block(ad_len, input.len))
@@ -237,37 +252,10 @@ fn psiv_gen_tag(mut out []u8, mut po poly1305.Poly1305, input []u8, ad_len int, 
 
 	// explicitly releases (reset) temporary allocated resources
 	unsafe {
-		drv_key.free()
+		vmemset(drv_key, 0, 36)
 		ws.reset()
 		x.reset()
 	}
-}
-
-// psiv_init initializes and expands master key into desired psiv needed construct.
-@[direct_array_access; inline]
-fn psiv_init(key []u8) !([]u8, []u8, &poly1305.Poly1305) {
-	// derives some keys
-	pol_key := fk_k(key)
-	mac_key := fm_k(key)
-	enc_key := fe_k(key)
-
-	mut x := chacha20.State{}
-	unpack_into_state(mut x, merge_drvk_zeros(pol_key))
-	ws := chacha20_core(x)
-
-	// For poly1305 mac, we only take a first 32-bytes of the state as a key
-	mut poly1305_key := []u8{len: 32}
-	pack32_from_state(mut poly1305_key, ws)
-	po := poly1305.new(poly1305_key)!
-
-	// reset (release) temporary allocated resources
-	unsafe {
-		x.reset()
-		ws.reset()
-		pol_key.free()
-		poly1305_key.free()
-	}
-	return mac_key, enc_key, po
 }
 
 // update_with_padding updates poly1305 mac with data, padding the tail block if necessary.
@@ -283,76 +271,67 @@ fn update_with_padding(mut po poly1305.Poly1305, data []u8) {
 
 // merge_drv_key merges provided bytes into 64-bytes key
 @[direct_array_access; inline]
-fn merge_drv_key(dkey []u8, nonce []u8, tag_ctr []u8, tag_rest []u8) []u8 {
-	mut x := []u8{len: 64}
+fn merge_drv_key(dkey [36]u8, nonce []u8, tag_ctr []u8, tag_rest []u8) [64]u8 {
+	mut x64 := [64]u8{}
 
 	// 0..36
 	for i := 0; i < dkey.len; i++ {
-		x[i] = dkey[i]
+		x64[i] = dkey[i]
 	}
 	// 36..48
 	for i := 0; i < nonce.len; i++ {
-		x[36 + i] = nonce[i]
+		x64[36 + i] = nonce[i]
 	}
 	// 48..56
 	for i := 0; i < tag_ctr.len; i++ {
-		x[i + 48] = tag_ctr[i]
+		x64[i + 48] = tag_ctr[i]
 	}
 	// 56..64
 	for i := 0; i < tag_rest.len; i++ {
-		x[i + 56] = tag_rest[i]
+		x64[i + 56] = tag_rest[i]
 	}
 
-	return x
-}
-
-// merge_drvk_zeros merges derived key in dkey with zeros nonce and zeros tag into 64-bytes of key.
-@[direct_array_access; inline]
-fn merge_drvk_zeros(dkey []u8) []u8 {
-	mut x := []u8{len: 64}
-	_ := copy(mut x, dkey)
-	// the others was null bytes
-	return x
+	return x64
 }
 
 // fk_k maps and transforms 32-bytes of key into 36-bytes of new key used to
 // derive a poly1305 construction.
 // See the papers doc on the 3.3 Additional Details part, on page 12-13
 @[direct_array_access; inline]
-fn fk_k(k []u8) []u8 {
+fn fk_k(key []u8) [36]u8 {
 	// fk(K) = 	K1 ∥ K2 ∥ K3 ∥ 03 ∥ K5 ∥ K6 ∥ K7 ∥ 0c ∥ K9 ∥ K10 ∥ K11 ∥ 30
 	//			∥ K4 ∥ K8 ∥ K12 ∥ c0 ∥ K13 ∥ K14 ∥  · · ·  ∥ K32
 	// with 0-based index
 	// 			K0 ∥ K1 ∥ K2 ∥ 03 ∥ K4 ∥ K5 ∥ K6 ∥ 0c ∥ K8 ∥ K9 ∥ K10 ∥ 30
 	//			∥ K3 ∥ K7 ∥ K11 ∥ c0 ∥ K12 ∥ K13 ∥  · · ·  ∥ K31
-	mut x := []u8{len: 36}
+	mut x := [36]u8{}
 	// 0 .. 4
 	for i := 0; i < 3; i++ {
-		x[i] = k[i]
+		x[i] = key[i]
 	}
 	x[3] = u8(0x03)
 
 	// 4 .. 8
 	for i := 4; i < 7; i++ {
-		x[i] = k[i]
+		x[i] = key[i]
 	}
 	x[7] = 0x0c
 
 	// 8 .. 12
 	for i := 8; i < 11; i++ {
-		x[i] = k[i]
+		x[i] = key[i]
 	}
 	x[11] = 0x30
 
 	// 12 .. 16
-	x[12] = k[3]
-	x[13] = k[7]
-	x[14] = k[11]
+	x[12] = key[3]
+	x[13] = key[7]
+	x[14] = key[11]
 	x[15] = 0xc0
 
 	// 16 .. 36
 	for i := 16; i < 36; i++ {
-		x[i] = k[i - 4]
+		x[i] = key[i - 4]
 	}
 
 	return x
@@ -361,40 +340,40 @@ fn fk_k(k []u8) []u8 {
 // fm_k maps and transforms 32-bytes of key into 36-bytes of message authentication key.
 // It later used for psiv tag generation.
 @[direct_array_access; inline]
-fn fm_k(k []u8) []u8 {
+fn fm_k(key []u8) [36]u8 {
 	// fm(K) = 	K1 ∥ K2 ∥ K3 ∥ 05 ∥ K5 ∥ K6 ∥ K7 ∥ 0a ∥ K9 ∥ K10 ∥ K11 ∥ 50 ∥
 	//			K4 ∥ K8 ∥ K12 ∥ a0 ∥ K13 ∥ K14 ∥  · · ·  ∥ K32 ,
 	// Or, with 0-based index
 	// fm(K) = 	K0 ∥ K1 ∥ K2 ∥ 05 ∥ K4 ∥ K5 ∥ K6 ∥ 0a ∥ K8 ∥ K9 ∥ K10 ∥ 50 ∥
 	//			K3 ∥ K7 ∥ K11 ∥ a0 ∥ K12 ∥ K13 ∥  · · ·  ∥ K31
-	mut x := []u8{len: 36}
+	mut x := [36]u8{}
 	// 0 .. 4
 	for i := 0; i < 3; i++ {
-		x[i] = k[i]
+		x[i] = key[i]
 	}
 	x[3] = u8(0x05)
 
 	// 4 .. 8
 	for i := 4; i < 7; i++ {
-		x[i] = k[i]
+		x[i] = key[i]
 	}
 	x[7] = 0x0a
 
 	// 8 .. 12
 	for i := 8; i < 11; i++ {
-		x[i] = k[i]
+		x[i] = key[i]
 	}
 	x[11] = 0x50
 
 	// 12 .. 16
-	x[12] = k[3]
-	x[13] = k[7]
-	x[14] = k[11]
+	x[12] = key[3]
+	x[13] = key[7]
+	x[14] = key[11]
 	x[15] = 0xa0
 
 	// 16 .. 36
 	for i := 16; i < 36; i++ {
-		x[i] = k[i - 4]
+		x[i] = key[i - 4]
 	}
 
 	return x
@@ -402,40 +381,40 @@ fn fm_k(k []u8) []u8 {
 
 // fe_k maps and transforms 32-bytes of key into 36-bytes of new encryption key
 @[direct_array_access; inline]
-fn fe_k(k []u8) []u8 {
+fn fe_k(key []u8) [36]u8 {
 	// fe(K) = 	K1 ∥ K2 ∥ K3 ∥ 06 ∥ K5 ∥ K6 ∥ K7 ∥ 09 ∥ K9 ∥ K10 ∥ K11 ∥ 60 ∥
 	// 			K4 ∥ K8 ∥ K12 ∥ 90 ∥ K13 ∥ K14 ∥  · · ·  ∥ K32
 	// Or, with 0-based index
 	// fe(K) = 	K0 ∥ K1 ∥ K2 ∥ 06 ∥ K4 ∥ K5 ∥ K6 ∥ 09 ∥ K8 ∥ K9 ∥ K10 ∥ 60 ∥
 	// 			K3 ∥ K7 ∥ K11 ∥ 90 ∥ K12 ∥ K13 ∥  · · ·  ∥ K31
-	mut x := []u8{len: 36}
+	mut x := [36]u8{}
 	// 0 .. 4
 	for i := 0; i < 3; i++ {
-		x[i] = k[i]
+		x[i] = key[i]
 	}
 	x[3] = u8(0x06)
 
 	// 4 .. 8
 	for i := 4; i < 7; i++ {
-		x[i] = k[i]
+		x[i] = key[i]
 	}
 	x[7] = 0x09
 
 	// 8 .. 12
 	for i := 8; i < 11; i++ {
-		x[i] = k[i]
+		x[i] = key[i]
 	}
 	x[11] = 0x60
 
 	// 12 .. 16
-	x[12] = k[3]
-	x[13] = k[7]
-	x[14] = k[11]
+	x[12] = key[3]
+	x[13] = key[7]
+	x[14] = key[11]
 	x[15] = 0x90
 
 	// 16 .. 36
 	for i := 16; i < 36; i++ {
-		x[i] = k[i - 4]
+		x[i] = key[i - 4]
 	}
 
 	return x
@@ -443,33 +422,49 @@ fn fe_k(k []u8) []u8 {
 
 // unpack_into_state deserializes (in little-endian form) 64-bytes of data in x into state s.
 @[direct_array_access; inline]
-fn unpack_into_state(mut s chacha20.State, x []u8) {
+fn unpack_into_state(mut s chacha20.State, x [64]u8) {
 	for i := 0; i < 16; i++ {
-		s[i] = binary.little_endian_u32(x[i * 4..(i + 1) * 4])
+		s[i] = u32(x[i * 4]) | (u32(x[i * 4 + 1]) << u32(8)) | (u32(x[i * 4 + 2]) << u32(16)) | (u32(x[
+			i * 4 + 3]) << u32(24))
 	}
 }
 
 // pack64_from_state serializes state s into 64-bytes output in little-endian form.
 @[direct_array_access; inline]
-fn pack64_from_state(mut out []u8, s chacha20.State) {
-	for i, v in s {
-		binary.little_endian_put_u32(mut out[i * 4..(i + 1) * 4], v)
+fn pack64_from_state(mut out [64]u8, s chacha20.State) {
+	mut j := 0
+	for v in s {
+		out[j] = u8(v)
+		out[j + 1] = u8(v >> u32(8))
+		out[j + 2] = u8(v >> u32(16))
+		out[j + 3] = u8(v >> u32(24))
+		j += 4
 	}
 }
 
 // pack32_from_state serializes only a half of state s into 32-bytes output in little-endian form.
 @[direct_array_access; inline]
 fn pack32_from_state(mut out []u8, s chacha20.State) {
-	for i := 0; i < 8; i++ {
-		binary.little_endian_put_u32(mut out[i * 4..(i + 1) * 4], s[i])
+	mut j := 0
+	for i in 0 .. 8 {
+		out[j] = u8(s[i])
+		out[j + 1] = u8(s[i] >> u32(8))
+		out[j + 2] = u8(s[i] >> u32(16))
+		out[j + 3] = u8(s[i] >> u32(24))
+		j += 4
 	}
 }
 
 // pack16_from_state serializes the first quartet of state s into 16-bytes output in little-endian form.
 @[direct_array_access; inline]
 fn pack16_from_state(mut out []u8, s chacha20.State) {
-	for i := 0; i < 4; i++ {
-		binary.little_endian_put_u32(mut out[i * 4..(i + 1) * 4], s[i])
+	mut j := 0
+	for i in 0 .. 4 {
+		out[j] = u8(s[i])
+		out[j + 1] = u8(s[i] >> u32(8))
+		out[j + 2] = u8(s[i] >> u32(16))
+		out[j + 3] = u8(s[i] >> u32(24))
+		j += 4
 	}
 }
 
