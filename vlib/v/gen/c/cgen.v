@@ -6263,7 +6263,17 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if expr !is ast.ArrayInit && g.table.final_sym(node.types[i]).kind == .array_fixed {
 				line := g.go_before_last_stmt().trim_space()
 				expr_styp := g.styp(node.types[i])
-				g.write('memcpy(&${tmpvar}.arg${arg_idx}, ')
+				g.write('memcpy(&')
+				if fn_return_is_result || fn_return_is_option {
+					g.write('((${styp}*)')
+				}
+				g.write('${tmpvar}')
+				if fn_return_is_result || fn_return_is_option {
+					g.write('.data)->')
+				} else {
+					g.write('.')
+				}
+				g.write('arg${arg_idx}, ')
 				if expr is ast.StructInit {
 					g.write('(${expr_styp})')
 				}
@@ -6292,11 +6302,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		if fn_return_is_option {
 			g.writeln(' }, (${option_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
-			g.write('return ${tmpvar}')
 		} else if fn_return_is_result {
 			g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
-			g.write('return ${tmpvar}')
 		}
 		// Make sure to add our unpacks
 		if multi_unpack != '' {
@@ -6313,6 +6321,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.write_defer_stmts_when_needed()
 			g.writeln('return ${tmpvar};')
 			has_semicolon = true
+		} else if fn_return_is_option || fn_return_is_result {
+			g.write('return ${tmpvar}')
 		}
 	} else if exprs_len >= 1 {
 		if node.types.len == 0 {
