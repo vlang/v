@@ -80,8 +80,13 @@ pub fn (mut b Builder) write_decimal(n i64) {
 		b.write_u8(0x30)
 		return
 	}
+	if n == min_i64 {
+		b.write_string(n.str())
+		return
+	}
+
 	mut buf := [25]u8{}
-	mut x := if n < 0 { u64(-n) } else { u64(n) }
+	mut x := if n < 0 { -n } else { n }
 	mut i := 24
 	for x != 0 {
 		nextx := x / 10
