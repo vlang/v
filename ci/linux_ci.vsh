@@ -18,7 +18,7 @@ fn verify_v_test_works() {
 }
 
 fn test_pure_v_math_module() {
-	exec('v -silent -exclude @vlib/math/*.c.v test vlib/math/')
+	exec('v -exclude @vlib/math/*.c.v test vlib/math/')
 }
 
 fn self_tests() {
@@ -31,7 +31,7 @@ fn self_tests() {
 
 fn build_examples() {
 	if common.is_github_job {
-		exec('v -silent build-examples')
+		exec('v build-examples')
 	} else {
 		exec('v -progress build-examples')
 	}
@@ -105,7 +105,7 @@ fn run_submodule_example_tcc() {
 
 fn build_tools_tcc() {
 	if common.is_github_job {
-		exec('v -silent -N -W build-tools')
+		exec('v -N -W build-tools')
 	} else {
 		exec('v -progress -N -W build-tools')
 	}
@@ -150,11 +150,11 @@ fn v_self_compilation_usecache_tcc() {
 }
 
 fn test_password_input_tcc() {
-	exec('v -silent test examples/password/')
+	exec('v test examples/password/')
 }
 
 fn test_readline_tcc() {
-	exec('v -silent test examples/readline/')
+	exec('v test examples/readline/')
 }
 
 fn test_leak_detector_tcc() {
@@ -374,7 +374,7 @@ fn build_examples_clang() {
 }
 
 fn build_examples_autofree_clang() {
-	exec('v -autofree -experimental -o tetris examples/tetris/tetris.v')
+	exec('v -N -W -autofree -experimental -o tetris examples/tetris/tetris.v')
 	exec('rm -f tetris')
 }
 
