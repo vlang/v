@@ -1157,6 +1157,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					func = f
 					node.name = qualified_name
 					unsafe { c.table.fns[qualified_name].usages++ }
+					if !c.table.register_fn_concrete_types(f.name, concrete_types) {
+						c.need_recheck_generic_fns = true
+					}
 					break
 				}
 			}
