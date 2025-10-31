@@ -7398,7 +7398,9 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
 			// the deferred statements are generated.
-			g.write_defer_stmts(or_block.scope, true)
+			if or_block.scope != unsafe { nil } {
+				g.write_defer_stmts(or_block.scope, true)
+			}
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl == unsafe { nil } || g.fn_decl.return_type == ast.void_type {
 				g.writeln('\treturn;')
@@ -7432,7 +7434,9 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
 			// the deferred statements are generated.
-			g.write_defer_stmts(or_block.scope, true)
+			if or_block.scope != unsafe { nil } {
+				g.write_defer_stmts(or_block.scope, true)
+			}
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl == unsafe { nil } || g.fn_decl.return_type == ast.void_type {
 				g.writeln('\treturn;')
