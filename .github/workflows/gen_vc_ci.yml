@@ -29,12 +29,12 @@ concurrency:
 
 jobs:
   build-vc:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - name: Build V
-        run: make -j4
+        run: make
       - name: Regenerate v.c and v_win.c
         run: |
           git config --global user.email "vlang-bot@users.noreply.github.com"
