@@ -14,7 +14,8 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool) {
 	g.indent++
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]
-		if !((lookup && defer_stmt.scope.start_pos < scope.start_pos)
+		if !((lookup && defer_stmt.scope.start_pos < scope.start_pos
+			&& defer_stmt.scope.end_pos > scope.end_pos)
 			|| is_same_scope(defer_stmt.scope, scope)) {
 			// generate only `defer`s from the current scope
 			continue

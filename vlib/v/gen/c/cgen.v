@@ -6007,7 +6007,7 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 			}
 			else {}
 		}
-		g.write_defer_stmts(node.scope, true)
+		g.write_defer_stmts(node.scope, false)
 		// continue or break
 		if g.is_autofree && !g.is_builtin_mod {
 			g.trace_autofree('// free before continue/break')
