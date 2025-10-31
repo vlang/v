@@ -4,12 +4,13 @@ import db.sqlite
 import time
 
 @[table: 'sys_users']
+@[index: 'name, age']
 struct User {
-	id            int @[primary; serial]
-	name          string
+	id            int    @[primary; serial]
+	name          string @[index]
 	age           int
-	role          string
-	status        int
+	role          string @[index]
+	status        int    @[index]
 	salary        int
 	title         string
 	score         int
