@@ -1129,12 +1129,29 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_defer {
 			if !p.inside_defer {
 				p.next()
+				mut defer_mode := ast.DeferMode.scoped
+				if p.tok.kind == .lpar {
+					p.next()
+					mode_pos := p.tok.pos()
+					mode := p.check_name()
+					match mode {
+						'fn' {
+							defer_mode = .function
+						}
+						else {
+							return p.error_with_pos('unknown `defer` mode: `${mode}`',
+								mode_pos)
+						}
+					}
+					p.check(.rpar)
+				}
 				spos := p.tok.pos()
 				p.inside_defer = true
 				p.defer_vars = []ast.Ident{}
 				stmts := p.parse_block()
 				p.inside_defer = false
 				return ast.DeferStmt{
+					mode:       defer_mode
 					scope:      p.scope
 					stmts:      stmts
 					defer_vars: p.defer_vars.clone()

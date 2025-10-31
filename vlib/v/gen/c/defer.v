@@ -13,7 +13,8 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool) {
 	g.indent++
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]
-		if g.pref.scoped_defer {
+		is_scoped := defer_stmt.mode == .scoped && g.pref.scoped_defer
+		if is_scoped {
 			if !((lookup && defer_stmt.scope.start_pos < scope.start_pos
 				&& defer_stmt.scope.end_pos > scope.end_pos)
 				|| defer_stmt.scope == scope) {
@@ -21,25 +22,20 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool) {
 				continue
 			}
 			g.writeln('{ // defer begin')
-			if defer_stmt.ifdef.len > 0 {
-				g.writeln(defer_stmt.ifdef)
-				g.stmts(defer_stmt.stmts)
-				g.writeln2('', '#endif')
-			} else {
-				g.stmts(defer_stmt.stmts)
-			}
-			g.writeln('} // defer end')
 		} else {
-			g.writeln('if (${g.defer_flag_var(defer_stmt)}) { // defer begin')
-			if defer_stmt.ifdef.len > 0 {
-				g.writeln(defer_stmt.ifdef)
-				g.stmts(defer_stmt.stmts)
-				g.writeln2('', '#endif')
-			} else {
-				g.stmts(defer_stmt.stmts)
+			if scope != g.cur_fn.scope && !lookup {
+				continue
 			}
-			g.writeln('} // defer end')
+			g.writeln('if (${g.defer_flag_var(defer_stmt)}) { // defer begin')
 		}
+		if defer_stmt.ifdef.len > 0 {
+			g.writeln(defer_stmt.ifdef)
+			g.stmts(defer_stmt.stmts)
+			g.writeln2('', '#endif')
+		} else {
+			g.stmts(defer_stmt.stmts)
+		}
+		g.writeln('} // defer end')
 	}
 	g.indent--
 }

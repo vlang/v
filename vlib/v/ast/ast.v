@@ -1545,6 +1545,11 @@ pub:
 	is_markused   bool
 }
 
+pub enum DeferMode {
+	scoped // default
+	function
+}
+
 // TODO: handle this differently
 // v1 excludes non current os ifdefs so
 // the defer's never get added in the first place
@@ -1553,6 +1558,7 @@ pub struct DeferStmt {
 pub:
 	pos   token.Pos
 	scope &Scope
+	mode  DeferMode
 pub mut:
 	stmts      []Stmt
 	defer_vars []Ident
