@@ -767,8 +767,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-scoped-defer' {
 				// experimental, remove once defer is scoped by default
 				res.scoped_defer = true
-				res.compile_defines << 'scoped_defer'
-				res.compile_defines_all << 'scoped_defer'
 			}
 			'-usecache' {
 				res.use_cache = true

@@ -16,7 +16,7 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool) {
 		if g.pref.scoped_defer {
 			if !((lookup && defer_stmt.scope.start_pos < scope.start_pos
 				&& defer_stmt.scope.end_pos > scope.end_pos)
-				|| defer_stmt.scope.is_same(scope)) {
+				|| defer_stmt.scope == scope) {
 				// generate only `defer`s from the current scope
 				continue
 			}

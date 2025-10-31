@@ -252,7 +252,7 @@ pub fn (s &Scope) contains(pos int) bool {
 }
 
 @[inline]
-pub fn (s &Scope) is_same(o &Scope) bool {
+pub fn (s &Scope) ==(o &Scope) bool {
 	return s.start_pos == o.start_pos && s.end_pos == o.end_pos
 }
 
