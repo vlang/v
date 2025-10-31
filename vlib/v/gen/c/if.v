@@ -318,11 +318,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		// if last branch is `else {`
 		if is_else {
-			if needs_tmp_var {
-				g.writeln('{ /* else branch */')
-			} else {
-				g.writeln('{')
-			}
+			g.writeln('{')
 			// define `err` for the last branch after a `if val := opt {...}' guard
 			if is_guard && guard_idx == i - 1 {
 				if err_var := branch.scope.find_var('err') {
