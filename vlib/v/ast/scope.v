@@ -251,6 +251,11 @@ pub fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos
 }
 
+@[inline]
+pub fn (s &Scope) is_same(o &Scope) bool {
+	return s.start_pos == o.start_pos && s.end_pos == o.end_pos
+}
+
 pub fn (s &Scope) has_inherited_vars() bool {
 	for _, obj in s.objects {
 		if obj is Var {

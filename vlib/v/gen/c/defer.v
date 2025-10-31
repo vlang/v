@@ -9,11 +9,6 @@ fn (g &Gen) defer_flag_var(stmt &ast.DeferStmt) string {
 	return '${g.last_fn_c_name}_defer_${stmt.idx_in_fn}'
 }
 
-@[inline]
-fn is_same_scope(a &ast.Scope, b &ast.Scope) bool {
-	return a.start_pos == b.start_pos && a.end_pos == b.end_pos
-}
-
 fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool) {
 	g.indent++
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
@@ -21,7 +16,7 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool) {
 		if g.pref.scoped_defer {
 			if !((lookup && defer_stmt.scope.start_pos < scope.start_pos
 				&& defer_stmt.scope.end_pos > scope.end_pos)
-				|| is_same_scope(defer_stmt.scope, scope)) {
+				|| defer_stmt.scope.is_same(scope)) {
 				// generate only `defer`s from the current scope
 				continue
 			}
