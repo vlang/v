@@ -5014,6 +5014,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 	if node.is_expr {
 		g.writeln(';')
 	}
+	g.write_defer_stmts(node.scope, false)
 	g.writeln('}')
 	g.unlock_locks()
 	if node.is_expr {
