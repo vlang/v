@@ -2549,8 +2549,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			}
 			g.stmts(node.stmts)
-			if node.scope != unsafe { nil } {
-				g.write_defer_stmts_when_needed(node.scope, false)
+			if g.pref.scoped_defer {
+				if node.scope != unsafe { nil } {
+					g.write_defer_stmts_when_needed(node.scope, false)
+				}
 			}
 			g.writeln('}')
 			if node.is_unsafe {
@@ -2658,6 +2660,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.DeferStmt {
 			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
+			if !g.pref.scoped_defer {
+				g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
+			}
 			g.defer_stmts << defer_stmt
 		}
 		ast.EnumDecl {
@@ -5014,7 +5019,9 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 	if node.is_expr {
 		g.writeln(';')
 	}
-	g.write_defer_stmts(node.scope, false)
+	if g.pref.scoped_defer {
+		g.write_defer_stmts(node.scope, false)
+	}
 	g.writeln('}')
 	g.unlock_locks()
 	if node.is_expr {
@@ -6008,7 +6015,9 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 			}
 			else {}
 		}
-		g.write_defer_stmts(node.scope, false)
+		if g.pref.scoped_defer {
+			g.write_defer_stmts(node.scope, false)
+		}
 		// continue or break
 		if g.is_autofree && !g.is_builtin_mod {
 			g.trace_autofree('// free before continue/break')

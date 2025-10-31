@@ -260,6 +260,8 @@ pub mut:
 	subsystem   Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
 	is_vls      bool
 	json_errors bool // -json-errors, for VLS and other tools
+
+	scoped_defer bool // experimental support, is activated with `-scoped-defer`
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -761,6 +763,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-experimental' {
 				res.experimental = true
+			}
+			'-scoped-defer' {
+				// experimental, remove once defer is scoped by default
+				res.scoped_defer = true
+				res.compile_defines << 'scoped_defer'
+				res.compile_defines_all << 'scoped_defer'
 			}
 			'-usecache' {
 				res.use_cache = true
