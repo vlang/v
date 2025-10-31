@@ -809,6 +809,7 @@ pub struct BranchStmt {
 pub:
 	kind  token.Kind
 	label string
+	scope &Scope
 	pos   token.Pos
 }
 

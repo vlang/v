@@ -14,12 +14,12 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool) {
 	g.indent++
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]
-		if !is_same_scope(defer_stmt.scope, scope) {
+		if !((lookup && defer_stmt.scope.start_pos < scope.start_pos)
+			|| is_same_scope(defer_stmt.scope, scope)) {
 			// generate only `defer`s from the current scope
 			continue
 		}
-		g.writeln('// Defer begin')
-		g.writeln('{')
+		g.writeln('{ // defer begin')
 		if defer_stmt.ifdef.len > 0 {
 			g.writeln(defer_stmt.ifdef)
 			g.stmts(defer_stmt.stmts)
@@ -27,18 +27,17 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool) {
 		} else {
 			g.stmts(defer_stmt.stmts)
 		}
-		g.writeln('}')
-		g.writeln('// Defer end')
+		g.writeln('} // defer end')
 	}
 	g.indent--
 }
 
-fn (mut g Gen) write_defer_stmts_when_needed(scope &ast.Scope) {
+fn (mut g Gen) write_defer_stmts_when_needed(scope &ast.Scope, lookup bool) {
 	// unlock all mutexes, in case we are in a lock statement. defers are not
 	// allowed in lock statements.
 	g.unlock_locks()
 	if g.defer_stmts.len > 0 {
-		g.write_defer_stmts(scope, true)
+		g.write_defer_stmts(scope, lookup)
 	}
 	if g.defer_profile_code.len > 0 {
 		g.writeln2('', '\t// defer_profile_code')

@@ -1094,6 +1094,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return ast.BranchStmt{
 				kind:  tok.kind
 				label: label
+				scope: p.scope
 				pos:   tok.pos()
 			}
 		}
