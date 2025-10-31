@@ -165,6 +165,7 @@ fn test_write_decimal() {
 	assert sb_i64_str(-1234567890) == '-1234567890'
 	assert sb_i64_str(9223372036854775807) == '9223372036854775807'
 	assert sb_i64_str(-9223372036854775807) == '-9223372036854775807'
+	assert sb_i64_str(min_i64) == '-9223372036854775808'
 }
 
 fn test_grow_len() {
