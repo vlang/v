@@ -1133,6 +1133,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				stmts := p.parse_block()
 				p.inside_defer = false
 				return ast.DeferStmt{
+					scope:      p.scope
 					stmts:      stmts
 					defer_vars: p.defer_vars.clone()
 					pos:        spos.extend_with_last_line(p.tok.pos(), p.prev_tok.line_nr)
@@ -2636,6 +2637,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	mut comments := p.eat_comments()
 	if p.tok.kind == .rcbr || (p.tok.kind == .name && p.peek_tok.kind == .colon) {
 		return ast.Return{
+			scope:    p.scope
 			comments: comments
 			pos:      first_pos
 		}
@@ -2647,6 +2649,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	p.inside_assign_rhs = old_assign_rhs
 	end_pos := exprs.last().pos()
 	return ast.Return{
+		scope:    p.scope
 		exprs:    exprs
 		comments: comments
 		pos:      first_pos.extend(end_pos)

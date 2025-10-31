@@ -887,6 +887,7 @@ pub mut:
 // function return statement
 pub struct Return {
 pub:
+	scope    &Scope
 	pos      token.Pos
 	comments []Comment
 pub mut:
@@ -1548,7 +1549,8 @@ pub:
 @[minify]
 pub struct DeferStmt {
 pub:
-	pos token.Pos
+	pos   token.Pos
+	scope &Scope
 pub mut:
 	stmts      []Stmt
 	defer_vars []Ident
