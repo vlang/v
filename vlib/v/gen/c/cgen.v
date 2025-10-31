@@ -2549,6 +2549,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			}
 			g.stmts(node.stmts)
+			if node.scope != unsafe { nil } {
+				g.write_defer_stmts_when_needed(node.scope)
+			}
 			g.writeln('}')
 			if node.is_unsafe {
 				g.unsafe_level--
@@ -2655,7 +2658,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.DeferStmt {
 			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
-			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
 			g.defer_stmts << defer_stmt
 		}
 		ast.EnumDecl {
@@ -6057,7 +6059,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		&& !fn_ret_type.has_option_or_result()
 	mut has_semicolon := false
 	if exprs_len == 0 {
-		g.write_defer_stmts_when_needed()
+		g.write_defer_stmts_when_needed(node.scope)
 		if fn_return_is_option || fn_return_is_result {
 			styp := g.styp(fn_ret_type)
 			if g.is_autofree {
@@ -6085,10 +6087,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.write('${ret_typ} ${tmpvar} = ')
 			g.expr(expr0)
 			g.writeln(';')
-			g.write_defer_stmts_when_needed()
+			g.write_defer_stmts_when_needed(node.scope)
 			g.writeln('return ${tmpvar};')
 		} else {
-			g.write_defer_stmts_when_needed()
+			g.write_defer_stmts_when_needed(node.scope)
 			g.write('return ')
 			g.expr(expr0)
 			g.writeln(';')
@@ -6111,7 +6113,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.write('${ret_typ} ${test_error_var} = ')
 				g.gen_option_error(fn_ret_type, expr0)
 				g.writeln(';')
-				g.write_defer_stmts_when_needed()
+				g.write_defer_stmts_when_needed(node.scope)
 				g.gen_failing_return_error_for_test_fn(node, test_error_var)
 				return
 			}
@@ -6134,7 +6136,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 						}
 					}
 				}
-				g.write_defer_stmts_when_needed()
+				g.write_defer_stmts_when_needed(node.scope)
 				g.writeln('return ${tmpvar};')
 			}
 			return
@@ -6150,7 +6152,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.write('${ret_typ} ${test_error_var} = ')
 				g.gen_result_error(fn_ret_type, expr0)
 				g.writeln(';')
-				g.write_defer_stmts_when_needed()
+				g.write_defer_stmts_when_needed(node.scope)
 				g.gen_failing_return_error_for_test_fn(node, test_error_var)
 				return
 			}
@@ -6162,7 +6164,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.gen_result_error(fn_ret_type, expr0)
 			g.writeln(';')
 			if use_tmp_var {
-				g.write_defer_stmts_when_needed()
+				g.write_defer_stmts_when_needed(node.scope)
 				g.writeln('return ${tmpvar};')
 			}
 			return
@@ -6175,7 +6177,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.write('${ret_typ} ${tmpvar} = ')
 			g.expr(expr0)
 			g.writeln(';')
-			g.write_defer_stmts_when_needed()
+			g.write_defer_stmts_when_needed(node.scope)
 			g.writeln('return ${tmpvar};')
 			return
 		}
@@ -6277,10 +6279,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		g.write('}')
 		if fn_return_is_option {
 			g.writeln(' }, (${option_name}*)(&${tmpvar}), sizeof(${styp}));')
-			g.write_defer_stmts_when_needed()
+			g.write_defer_stmts_when_needed(node.scope)
 		} else if fn_return_is_result {
 			g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
-			g.write_defer_stmts_when_needed()
+			g.write_defer_stmts_when_needed(node.scope)
 		}
 		// Make sure to add our unpacks
 		if multi_unpack != '' {
@@ -6294,7 +6296,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if !has_semicolon {
 				g.writeln(';')
 			}
-			g.write_defer_stmts_when_needed()
+			g.write_defer_stmts_when_needed(node.scope)
 			g.writeln('return ${tmpvar};')
 			has_semicolon = true
 		} else if fn_return_is_option || fn_return_is_result {
@@ -6357,7 +6359,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				}
 				g.writeln(' }, (${option_name}*)(&${tmpvar}), sizeof(${styp}));')
 			}
-			g.write_defer_stmts_when_needed()
+			g.write_defer_stmts_when_needed(node.scope)
 			if g.is_autofree {
 				g.detect_used_var_on_return(expr0)
 			}
@@ -6405,7 +6407,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				}
 				g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
 			}
-			g.write_defer_stmts_when_needed()
+			g.write_defer_stmts_when_needed(node.scope)
 			if g.is_autofree {
 				g.detect_used_var_on_return(expr0)
 			}
@@ -6515,7 +6517,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		if use_tmp_var {
 			g.writeln(';')
 			has_semicolon = true
-			g.write_defer_stmts_when_needed()
+			g.write_defer_stmts_when_needed(node.scope)
 			if !g.is_builtin_mod {
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
@@ -7395,7 +7397,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
 			// the deferred statements are generated.
-			g.write_defer_stmts()
+			g.write_defer_stmts(or_block.scope, true)
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl == unsafe { nil } || g.fn_decl.return_type == ast.void_type {
 				g.writeln('\treturn;')
@@ -7429,7 +7431,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
 			// the deferred statements are generated.
-			g.write_defer_stmts()
+			g.write_defer_stmts(or_block.scope, true)
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl == unsafe { nil } || g.fn_decl.return_type == ast.void_type {
 				g.writeln('\treturn;')

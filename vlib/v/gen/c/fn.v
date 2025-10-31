@@ -452,7 +452,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.writeln('${fargtypes[i]}* ${fargs[i]} = HEAP(${fargtypes[i]}, _v_toheap_${fargs[i]});')
 		}
 	}
-	g.indent++
+	/*g.indent++
 	for defer_stmt in node.defer_stmts {
 		g.writeln('bool ${g.defer_flag_var(defer_stmt)} = false;')
 		for var in defer_stmt.defer_vars {
@@ -483,6 +483,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 	}
 	g.indent--
+	*/
 	if is_live_wrap {
 		// The live function just calls its implementation dual, while ensuring
 		// that the call is wrapped by the mutex lock & unlock calls.
@@ -534,7 +535,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// clear g.fn_mut_arg_names
 
 	if !node.has_return {
-		g.write_defer_stmts_when_needed()
+		g.write_defer_stmts_when_needed(node.scope)
 	}
 	if node.is_anon {
 		g.defer_stmts = prev_defer_stmts

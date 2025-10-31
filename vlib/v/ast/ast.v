@@ -221,6 +221,7 @@ pub struct Block {
 pub:
 	is_unsafe bool
 	pos       token.Pos
+	scope     &Scope
 pub mut:
 	stmts []Stmt
 }

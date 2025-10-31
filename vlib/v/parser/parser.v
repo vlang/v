@@ -969,6 +969,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				pos.update_last_line(p.prev_tok.line_nr)
 				return ast.Block{
 					stmts: stmts
+					scope: p.scope.children.last()
 					pos:   pos
 				}
 			}
@@ -3120,20 +3121,22 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	if p.inside_unsafe && !p.inside_defer {
 		return p.error_with_pos('already inside `unsafe` block', pos)
 	}
+	p.inside_unsafe = true
+	p.open_scope() // needed in case of `unsafe {stmt}`
+	sc := p.scope
+	defer {
+		p.inside_unsafe = false
+		p.close_scope()
+	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`
 		pos.update_last_line(p.tok.line_nr)
 		p.next()
 		return ast.Block{
+			scope:     sc
 			is_unsafe: true
 			pos:       pos
 		}
-	}
-	p.inside_unsafe = true
-	p.open_scope() // needed in case of `unsafe {stmt}`
-	defer {
-		p.inside_unsafe = false
-		p.close_scope()
 	}
 	stmt := p.stmt(false)
 	if p.tok.kind == .rcbr {
@@ -3164,6 +3167,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	pos.update_last_line(p.tok.line_nr)
 	return ast.Block{
 		stmts:     stmts
+		scope:     sc
 		is_unsafe: true
 		pos:       pos
 	}

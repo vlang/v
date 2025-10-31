@@ -5,17 +5,21 @@ module c
 
 import v.ast
 
-fn (g &Gen) defer_flag_var(stmt &ast.DeferStmt) string {
-	return '${g.last_fn_c_name}_defer_${stmt.idx_in_fn}'
+@[inline]
+fn is_same_scope(a &ast.Scope, b &ast.Scope) bool {
+	return a.start_pos == b.start_pos && a.end_pos == b.end_pos
 }
 
-fn (mut g Gen) write_defer_stmts() {
+fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool) {
+	g.indent++
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]
-		if !g.pref.is_prod {
-			g.writeln('// Defer begin')
+		if !is_same_scope(defer_stmt.scope, scope) {
+			// generate only `defer`s from the current scope
+			continue
 		}
-		g.writeln('if (${g.defer_flag_var(defer_stmt)}) {')
+		g.writeln('// Defer begin')
+		g.writeln('{')
 		if defer_stmt.ifdef.len > 0 {
 			g.writeln(defer_stmt.ifdef)
 			g.stmts(defer_stmt.stmts)
@@ -24,18 +28,17 @@ fn (mut g Gen) write_defer_stmts() {
 			g.stmts(defer_stmt.stmts)
 		}
 		g.writeln('}')
-		if !g.pref.is_prod {
-			g.writeln('// Defer end')
-		}
+		g.writeln('// Defer end')
 	}
+	g.indent--
 }
 
-fn (mut g Gen) write_defer_stmts_when_needed() {
+fn (mut g Gen) write_defer_stmts_when_needed(scope &ast.Scope) {
 	// unlock all mutexes, in case we are in a lock statement. defers are not
 	// allowed in lock statements.
 	g.unlock_locks()
 	if g.defer_stmts.len > 0 {
-		g.write_defer_stmts()
+		g.write_defer_stmts(scope, true)
 	}
 	if g.defer_profile_code.len > 0 {
 		g.writeln2('', '\t// defer_profile_code')
