@@ -55,7 +55,7 @@ const missing_image = Image{}
 // See also: remove_cached_image_by_idx
 pub fn (mut ctx Context) get_cached_image_by_idx(image_idx int) &Image {
 	if image_idx < 0 || image_idx > ctx.image_cache.len - 1 {
-		return &missing_image
+		return unsafe { &missing_image }
 	}
 	return &ctx.image_cache[image_idx]
 }
@@ -70,7 +70,7 @@ pub fn (mut ctx Context) remove_cached_image_by_idx(image_idx int) {
 		return
 	}
 	ctx.image_cache[image_idx].destroy()
-	ctx.image_cache[image_idx] = &missing_image
+	ctx.image_cache[image_idx] = unsafe { &missing_image }
 }
 
 // Draw part of an image using uv coordinates
