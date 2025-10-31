@@ -508,7 +508,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.writeln('}')
 		}
 		g.empty_line = false
-		g.writeln('\t${exit_label}: {}; /* exit label */')
+		g.writeln('\t${exit_label}: {};')
 		g.set_current_pos_as_last_stmt_pos()
 		g.write('${cur_line}${tmp}')
 	}
