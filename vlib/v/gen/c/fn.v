@@ -754,22 +754,6 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	}
 }
 
-fn (g &Gen) defer_flag_var(stmt &ast.DeferStmt) string {
-	return '${g.last_fn_c_name}_defer_${stmt.idx_in_fn}'
-}
-
-fn (mut g Gen) write_defer_stmts_when_needed() {
-	// unlock all mutexes, in case we are in a lock statement. defers are not allowed in lock statements
-	g.unlock_locks()
-	if g.defer_stmts.len > 0 {
-		g.write_defer_stmts()
-	}
-	if g.defer_profile_code.len > 0 {
-		g.writeln2('', '\t// defer_profile_code')
-		g.writeln2(g.defer_profile_code, '')
-	}
-}
-
 fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic bool, is_c_variadic bool) ([]string, []string, []bool) {
 	mut fparams := []string{}
 	mut fparamtypes := []string{}

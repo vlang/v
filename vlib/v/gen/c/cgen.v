@@ -2762,30 +2762,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
 }
 
-fn (mut g Gen) write_defer_stmts() {
-	for i := g.defer_stmts.len - 1; i >= 0; i-- {
-		defer_stmt := g.defer_stmts[i]
-		if !g.pref.is_prod {
-			g.writeln('// Defer begin')
-		}
-		g.writeln('if (${g.defer_flag_var(defer_stmt)}) {')
-
-		//		g.indent++
-		if defer_stmt.ifdef.len > 0 {
-			g.writeln(defer_stmt.ifdef)
-			g.stmts(defer_stmt.stmts)
-			g.writeln2('', '#endif')
-		} else {
-			g.stmts(defer_stmt.stmts)
-		}
-		//		g.indent--
-		g.writeln('}')
-		if !g.pref.is_prod {
-			g.writeln('// Defer end')
-		}
-	}
-}
-
 struct SumtypeCastingFn {
 	fn_name string
 	got     ast.Type
