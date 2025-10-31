@@ -81,7 +81,7 @@ pub fn (mut b Builder) write_decimal(n i64) {
 		return
 	}
 	mut buf := [25]u8{}
-	mut x := if n < 0 { -n } else { n }
+	mut x := if n < 0 { u64(-n) } else { u64(n) }
 	mut i := 24
 	for x != 0 {
 		nextx := x / 10
