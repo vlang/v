@@ -487,7 +487,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.expected_cast_type = prev_expected_cast_type
 			if !is_else && (branch.stmts.len > 0
 				&& branch.stmts[branch.stmts.len - 1] !in [ast.Return, ast.BranchStmt]) {
-				g.writeln('\tgoto ${exit_label}; /* goto to exit label */')
+				g.writeln('\tgoto ${exit_label};')
 			}
 		} else {
 			// restore if_expr stmt header pos
