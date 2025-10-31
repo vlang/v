@@ -197,7 +197,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut cur_line := ''
 	mut raw_state := false
 	tmp_if_option_type := g.last_if_option_type
+	mut exit_label := ''
 	if needs_tmp_var {
+		exit_label = g.new_tmp_var()
 		mut styp := g.styp(node.typ)
 		if g.inside_if_option || node.typ.has_flag(.option) {
 			raw_state = g.inside_if_option
@@ -235,9 +237,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write('${styp} ')
 			}
 			g.writeln('${tmp}; /* if prepend */')
+			g.set_current_pos_as_last_stmt_pos()
 		}
 		if g.infix_left_var_name.len > 0 {
 			g.writeln('if (${g.infix_left_var_name}) {')
+			g.set_current_pos_as_last_stmt_pos()
 			g.indent++
 		}
 	} else if node.is_expr || g.inside_ternary != 0 {
@@ -303,11 +307,17 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 	mut branch_cond_var_names := []string{}
 	for i, branch in node.branches {
+		is_else := i == node.branches.len - 1 && node.has_else
 		if i > 0 {
-			g.write('} else ')
+			if needs_tmp_var {
+				g.writeln('};')
+				g.set_current_pos_as_last_stmt_pos()
+			} else {
+				g.write('} else ')
+			}
 		}
 		// if last branch is `else {`
-		if i == node.branches.len - 1 && node.has_else {
+		if is_else {
 			g.writeln('{')
 			// define `err` for the last branch after a `if val := opt {...}' guard
 			if is_guard && guard_idx == i - 1 {
@@ -475,6 +485,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp)
 			g.expected_cast_type = prev_expected_cast_type
+			if !is_else && (branch.stmts.len > 0
+				&& branch.stmts[branch.stmts.len - 1] !in [ast.Return, ast.BranchStmt]) {
+				g.writeln('\tgoto ${exit_label};')
+			}
 		} else {
 			// restore if_expr stmt header pos
 			stmt_pos := g.nth_stmt_pos(0)
@@ -484,15 +498,18 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 	if node.branches.len > 0 {
 		g.writeln('}')
-		g.set_current_pos_as_last_stmt_pos()
+		if !needs_tmp_var {
+			g.set_current_pos_as_last_stmt_pos()
+		}
 	}
 	if needs_tmp_var {
 		if g.infix_left_var_name.len > 0 {
 			g.indent--
 			g.writeln('}')
-			g.set_current_pos_as_last_stmt_pos()
 		}
 		g.empty_line = false
+		g.writeln('\t${exit_label}: {};')
+		g.set_current_pos_as_last_stmt_pos()
 		g.write('${cur_line}${tmp}')
 	}
 }
