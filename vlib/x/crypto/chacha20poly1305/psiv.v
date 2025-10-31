@@ -38,8 +38,6 @@ pub fn new_psiv(key []u8) !&Chacha20Poly1305RE {
 
 	// set the values
 	c := &Chacha20Poly1305RE{
-		key:     key.clone()
-		precomp: true
 		mac_key: mac_key
 		enc_key: enc_key
 		po:      po
@@ -52,18 +50,18 @@ pub fn new_psiv(key []u8) !&Chacha20Poly1305RE {
 // within the end of ciphertext
 @[direct_array_access]
 pub fn psiv_encrypt(plaintext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
-	c := new_psiv(key)!
+	mut c := new_psiv(key)!
 	out := c.encrypt(plaintext, nonce, ad)!
 	unsafe { c.free() }
 	return out
 }
 
 // psiv_decrypt decrypts the ciphertext with provided key, nonce and additional data in ad.
-// It also tries to validate message authenticated code within ciphertext compared with
+// It also tries to validate message authentication code within ciphertext compared with
 // calculated tag. It returns successfully decrypted message or error on fails.
 @[direct_array_access]
 pub fn psiv_decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
-	c := new_psiv(key)!
+	mut c := new_psiv(key)!
 	out := c.decrypt(ciphertext, nonce, ad)!
 	unsafe { c.free() }
 	return out
@@ -74,10 +72,9 @@ pub fn psiv_decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
 @[noinit]
 pub struct Chacha20Poly1305RE implements AEAD {
 mut:
-	// An underlying 32-bytes of key
-	key []u8
-	// flags that tells derivation keys has been precomputed
-	precomp bool
+	// flag that marked this instance should not be used again, set on .free call
+	done bool
+	// underlying derived keys, set on instance creation with new_psiv.
 	mac_key [36]u8
 	enc_key [36]u8
 	po      &poly1305.Poly1305 = unsafe { nil }
@@ -86,14 +83,18 @@ mut:
 // free releases resources taken by c. Dont use c after `.free` call.
 @[unsafe]
 pub fn (mut c Chacha20Poly1305RE) free() {
+	// if it already marked as done, just return
+	if c.done {
+		return
+	}
 	unsafe {
-		c.key.free()
 		// we reset derived keys
-		vmemset(c.mac_key, 0, 36)
-		vmemset(c.enc_key, 0, 36)
+		vmemset(c.mac_key, 0, c.mac_key.len)
+		vmemset(c.enc_key, 0, c.enc_key.len)
 		c.po = nil
 	}
-	c.precomp = false
+	// mark this instance as done, no longer usable
+	c.done = true
 }
 
 // nonce_size return the size of the nonce of underlying c.
@@ -113,6 +114,9 @@ pub fn (c &Chacha20Poly1305RE) overhead() int {
 // code stored within the end of ciphertext.
 @[direct_array_access]
 pub fn (c Chacha20Poly1305RE) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8 {
+	if c.done {
+		return error('Chacha20Poly1305RE.encrypt: instance marked as done, no longer usable')
+	}
 	if nonce.len != nonce_size {
 		return error('Chacha20Poly1305RE.encrypt: bad nonce length, only support 12-bytes nonce')
 	}
@@ -141,6 +145,9 @@ pub fn (c Chacha20Poly1305RE) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8
 // calculated tag. It returns successfully decrypted message or error on fails.
 @[direct_array_access]
 pub fn (c Chacha20Poly1305RE) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u8 {
+	if c.done {
+		return error('Chacha20Poly1305RE.decrypt: instance marked as done, no longer usable')
+	}
 	if ciphertext.len < tag_size {
 		return error('Chacha20Poly1305RE.decrypt: insufficient ciphertext length')
 	}
@@ -252,7 +259,7 @@ fn psiv_gen_tag(mut out []u8, mut po poly1305.Poly1305, input []u8, ad_len int, 
 
 	// explicitly releases (reset) temporary allocated resources
 	unsafe {
-		vmemset(drv_key, 0, 36)
+		vmemset(drv_key, 0, drv_key.len)
 		ws.reset()
 		x.reset()
 	}
