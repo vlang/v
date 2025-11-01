@@ -4,7 +4,6 @@ import markdown
 import os
 import time
 import strings
-import sync
 import runtime
 import document as doc
 import v.vmod
@@ -184,12 +183,9 @@ fn (vd &VDoc) get_file_name(mod string, out Output) string {
 	return name
 }
 
-fn (mut vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
+fn (mut vd VDoc) work_processor(work chan ParallelDoc) {
 	for {
-		mut pdoc := ParallelDoc{}
-		if !work.pop(&pdoc) {
-			break
-		}
+		pdoc := <-work or { break }
 		vd.vprintln('> start processing ${pdoc.d.base_path} ...')
 		file_name, content := vd.render_doc(pdoc.d, pdoc.out)
 		if vd.cfg.output_type != .none {
@@ -198,23 +194,22 @@ fn (mut vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 			os.write_file(output_path, content) or { panic(err) }
 		}
 	}
-	wg.done()
 }
 
 fn (mut vd VDoc) render_parallel(out Output) {
-	vjobs := runtime.nr_jobs()
-	mut work := sync.new_channel[ParallelDoc](u32(vd.docs.len))
-	mut wg := sync.new_waitgroup()
+	mut work := chan ParallelDoc{cap: vd.docs.len}
 	for i in 0 .. vd.docs.len {
-		p_doc := ParallelDoc{vd.docs[i], out}
-		work.push(&p_doc)
+		work <- ParallelDoc{vd.docs[i], out}
 	}
 	work.close()
-	wg.add(vjobs)
+
+	vjobs := runtime.nr_jobs()
+	mut worker_threads := []thread{cap: vjobs}
+	sw := time.new_stopwatch()
 	for _ in 0 .. vjobs {
-		spawn vd.work_processor(mut work, mut wg)
+		worker_threads << spawn vd.work_processor(work)
 	}
-	wg.wait()
+	worker_threads.wait()
 }
 
 fn (mut vd VDoc) render(out Output) map[string]string {
