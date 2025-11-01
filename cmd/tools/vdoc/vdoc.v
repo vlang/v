@@ -205,7 +205,6 @@ fn (mut vd VDoc) render_parallel(out Output) {
 
 	vjobs := runtime.nr_jobs()
 	mut worker_threads := []thread{cap: vjobs}
-	sw := time.new_stopwatch()
 	for _ in 0 .. vjobs {
 		worker_threads << spawn vd.work_processor(work)
 	}
