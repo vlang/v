@@ -7380,12 +7380,14 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			if stmts.len > 0 && stmts.last() is ast.ExprStmt {
 				g.writeln(';')
 			}
+			g.write_defer_stmts(or_block.scope, false, or_block.pos)
 		}
 		g.or_expr_return_type = ast.void_type
 	} else if or_block.kind == .propagate_result
 		|| (or_block.kind == .propagate_option && return_type.has_flag(.result)) {
 		if g.file.mod.name == 'main' && (g.fn_decl == unsafe { nil } || g.fn_decl.is_main) {
 			// In main(), an `opt()!` call is sugar for `opt() or { panic(err) }`
+			g.write_defer_stmts(or_block.scope, true, or_block.pos)
 			err_msg := 'IError_name_table[${cvar_name}${tmp_op}err._typ]._method_msg(${cvar_name}${tmp_op}err._object)'
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
@@ -7420,6 +7422,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 	} else if or_block.kind == .propagate_option {
 		if g.file.mod.name == 'main' && (g.fn_decl == unsafe { nil } || g.fn_decl.is_main) {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
+			g.write_defer_stmts(or_block.scope, true, or_block.pos)
 			err_msg := 'IError_name_table[${cvar_name}${tmp_op}err._typ]._method_msg(${cvar_name}${tmp_op}err._object)'
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
