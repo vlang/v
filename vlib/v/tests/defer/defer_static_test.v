@@ -23,8 +23,8 @@ fn f(depth int) {
 			assert levels == 3
 		}
 		println('levels: ${levels} | depth: ${depth}')
+		f(depth - 1)
 	}
-	f(depth - 1)
 }
 
 fn test_main() {

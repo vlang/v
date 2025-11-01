@@ -70,6 +70,7 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 			}
 		} else {
 			stmts << ast.Return{
+				scope: node.scope
 				pos:   node.pos
 				exprs: [node.expr]
 			}

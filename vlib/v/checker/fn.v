@@ -502,7 +502,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				node.stmts.last().pos
 			}
 			node.stmts << ast.Return{
-				pos: return_pos // node.pos
+				scope: node.scope
+				pos:   return_pos // node.pos
 			}
 		}
 	}
@@ -512,7 +513,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		sym := c.table.sym(node.return_type)
 		if sym.kind == .void {
 			node.stmts << ast.Return{
-				pos: node.pos
+				scope: node.scope
+				pos:   node.pos
 			}
 		}
 	}

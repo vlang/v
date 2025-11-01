@@ -637,6 +637,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		p.inside_match_body = true
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
+		branch_scope := p.scope
 		p.close_scope()
 		p.inside_match_body = false
 		mut pos := token.Pos{
@@ -654,6 +655,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			stmt:          stmt
 			stmts:         stmts
 			pos:           pos
+			scope:         branch_scope
 			comment:       comment
 			is_else:       is_else
 			is_timeout:    is_timeout

@@ -185,13 +185,14 @@ fn (mut p Parser) parse_sql_or_block() ast.OrExpr {
 	mut stmts := []ast.Stmt{}
 	mut kind := ast.OrKind.absent
 	mut pos := p.tok.pos()
-	mut or_scope := &ast.Scope(unsafe { nil })
+	mut or_scope := ast.empty_scope
 
 	if p.tok.kind == .key_orelse {
 		kind = .block
 		stmts, pos, or_scope = p.or_block(.with_err_var)
 	} else if p.tok.kind == .not {
 		kind = .propagate_result
+		or_scope = p.scope
 		p.next()
 	}
 

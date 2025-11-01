@@ -746,13 +746,15 @@ fn (mut p Parser) gen_or_block() ast.OrExpr {
 			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.pos())
 		}
 		return ast.OrExpr{
-			kind: if is_not { ast.OrKind.propagate_result } else { ast.OrKind.propagate_option }
-			pos:  or_pos
+			kind:  if is_not { ast.OrKind.propagate_result } else { ast.OrKind.propagate_option }
+			scope: p.scope
+			pos:   or_pos
 		}
 	} else {
 		return ast.OrExpr{
-			kind: ast.OrKind.absent
-			pos:  p.tok.pos()
+			kind:  ast.OrKind.absent
+			scope: ast.empty_scope
+			pos:   p.tok.pos()
 		}
 	}
 }
@@ -824,7 +826,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
 	mut or_pos := p.tok.pos()
-	mut or_scope := &ast.Scope(unsafe { nil })
+	mut or_scope := ast.empty_scope
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
 		if mut right is ast.SelectorExpr {
@@ -845,6 +847,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		if p.tok.kind == .question {
 			p.next()
 			or_kind = .propagate_option
+			or_scope = p.scope
 		}
 		p.or_is_handled = false
 	}
@@ -928,7 +931,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
 	mut or_pos := p.tok.pos()
-	mut or_scope := &ast.Scope(unsafe { nil })
+	mut or_scope := ast.empty_scope
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
 		if mut right is ast.SelectorExpr {
@@ -941,6 +944,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 		} else if p.tok.kind == .question {
 			p.next()
 			or_kind = .propagate_option
+			or_scope = p.scope
 		}
 		p.or_is_handled = false
 	}
