@@ -586,6 +586,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		or_block:   ast.OrExpr{
 			stmts: []ast.Stmt{}
 			kind:  if p.tok.kind == .question { .propagate_option } else { .absent }
+			scope: p.scope
 			pos:   p.tok.pos()
 		}
 	}

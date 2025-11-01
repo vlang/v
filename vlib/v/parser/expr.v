@@ -747,7 +747,7 @@ fn (mut p Parser) gen_or_block() ast.OrExpr {
 		}
 		return ast.OrExpr{
 			kind:  if is_not { ast.OrKind.propagate_result } else { ast.OrKind.propagate_option }
-			scope: ast.empty_scope
+			scope: p.scope
 			pos:   or_pos
 		}
 	} else {
@@ -847,6 +847,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		if p.tok.kind == .question {
 			p.next()
 			or_kind = .propagate_option
+			or_scope = p.scope
 		}
 		p.or_is_handled = false
 	}
@@ -943,6 +944,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 		} else if p.tok.kind == .question {
 			p.next()
 			or_kind = .propagate_option
+			or_scope = p.scope
 		}
 		p.or_is_handled = false
 	}

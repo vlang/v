@@ -1365,6 +1365,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 
 	if allowed_cases && p.tok.kind == .question && p.peek_tok.kind != .lpar { // var?, not var?(
 		or_kind = ast.OrKind.propagate_option
+		or_scope = p.scope
 		p.check(.question)
 	} else if allowed_cases && p.tok.kind == .key_orelse {
 		or_kind = ast.OrKind.block
@@ -1977,6 +1978,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			if p.tok.kind == .not {
 				or_pos_high = p.tok.pos()
 				or_kind_high = .propagate_result
+				or_scope = p.scope
 				p.next()
 			} else if p.tok.kind == .question {
 				p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
@@ -2047,6 +2049,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			if p.tok.kind == .not {
 				or_pos_low = p.tok.pos()
 				or_kind_low = .propagate_result
+				or_scope = p.scope
 				p.next()
 			} else if p.tok.kind == .question {
 				p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
@@ -2068,6 +2071,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			or_expr:  ast.OrExpr{
 				kind:  or_kind_low
 				stmts: or_stmts_low
+				scope: or_scope
 				pos:   or_pos_low
 			}
 			is_gated: is_gated
@@ -2101,6 +2105,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		if p.tok.kind == .not {
 			or_pos = p.tok.pos()
 			or_kind = .propagate_result
+			or_scope = p.scope
 			p.next()
 		} else if p.tok.kind == .question {
 			p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
@@ -2114,6 +2119,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		or_expr:  ast.OrExpr{
 			kind:  or_kind
 			stmts: or_stmts
+			scope: or_scope
 			pos:   or_pos
 		}
 		is_gated: is_gated
@@ -2248,10 +2254,12 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	} else if p.tok.kind == .not {
 		or_kind = .propagate_result
 		or_pos = p.tok.pos()
+		or_scope = p.scope
 		p.next()
 	} else if p.tok.kind == .question {
 		or_kind = .propagate_option
 		or_pos = p.tok.pos()
+		or_scope = p.scope
 		p.next()
 	}
 	sel_expr := ast.SelectorExpr{

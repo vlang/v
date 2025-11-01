@@ -90,6 +90,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.pos())
 		}
 		or_kind = if is_not { .propagate_result } else { .propagate_option }
+		or_scope = p.scope
 	}
 	if p.is_imported_symbol(fn_name) {
 		check := !p.imported_symbols_used[fn_name]
