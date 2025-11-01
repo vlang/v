@@ -13,7 +13,7 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool) {
 	g.indent++
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]
-		is_scoped := defer_stmt.mode == .scoped && g.pref.scoped_defer
+		is_scoped := g.pref.scoped_defer && defer_stmt.mode == .scoped
 		if is_scoped {
 			if !((lookup && defer_stmt.scope.start_pos < scope.start_pos
 				&& defer_stmt.scope.end_pos > scope.end_pos)
@@ -41,9 +41,11 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool) {
 }
 
 fn (mut g Gen) write_defer_stmts_when_needed(scope &ast.Scope, lookup bool) {
-	// unlock all mutexes, in case we are in a lock statement. defers are not
-	// allowed in lock statements.
-	g.unlock_locks()
+	if scope == g.cur_fn.scope || lookup {
+		// unlock all mutexes, in case we are in a lock statement. defers are not
+		// allowed in lock statements.
+		g.unlock_locks()
+	}
 	if g.defer_stmts.len > 0 {
 		g.write_defer_stmts(scope, lookup)
 	}
