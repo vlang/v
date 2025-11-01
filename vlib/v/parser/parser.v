@@ -1999,6 +1999,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			or_expr:  ast.OrExpr{
 				kind:  or_kind_high
 				stmts: or_stmts_high
+				scope: or_scope
 				pos:   or_pos_high
 			}
 			is_gated: is_gated
