@@ -1,7 +1,7 @@
 fn test_scoped_defer() {
 	mut res := 0
 
-	defer {
+	defer(fn) {
 		res++
 		assert res == 5
 	}
