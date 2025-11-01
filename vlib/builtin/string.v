@@ -2636,12 +2636,12 @@ pub fn (s string) strip_margin_custom(del u8) string {
 pub fn (s string) trim_indent() string {
 	mut lines := s.split_into_lines()
 
-	lines_indents := lines
-		.filter(!it.is_blank())
-		.map(it.indent_width())
-
 	mut min_common_indent := int(max_int) // max int
-	for line_indent in lines_indents {
+	for line in lines {
+		if line.is_blank() {
+			continue
+		}
+		line_indent := line.indent_width()
 		if line_indent < min_common_indent {
 			min_common_indent = line_indent
 		}
