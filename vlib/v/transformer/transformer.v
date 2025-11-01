@@ -1252,9 +1252,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 	// calls << ast.node
 	unsafe {
 		*onode = ast.Stmt(ast.Block{
-			scope: &ast.Scope{
-				parent: nil
-			}
+			scope: ast.empty_scope
 			stmts: calls
 		})
 	}

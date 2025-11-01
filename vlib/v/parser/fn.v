@@ -76,7 +76,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	mut pos := first_pos.extend(last_pos)
 	mut or_stmts := []ast.Stmt{} // TODO: remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.pos()
-	mut or_scope := p.scope
+	mut or_scope := ast.empty_scope
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
 		or_kind = .block

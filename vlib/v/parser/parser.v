@@ -1361,7 +1361,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	mut or_kind := ast.OrKind.absent
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
-	mut or_scope := &ast.Scope(unsafe { nil })
+	mut or_scope := ast.empty_scope
 
 	if allowed_cases && p.tok.kind == .question && p.peek_tok.kind != .lpar { // var?, not var?(
 		or_kind = ast.OrKind.propagate_option
@@ -1948,7 +1948,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		mut or_kind_high := ast.OrKind.absent
 		mut or_stmts_high := []ast.Stmt{}
 		mut or_pos_high := token.Pos{}
-		mut or_scope := &ast.Scope(unsafe { nil })
+		mut or_scope := ast.empty_scope
 
 		if !p.or_is_handled {
 			// a[..end] or {...}
@@ -2018,7 +2018,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		mut or_kind_low := ast.OrKind.absent
 		mut or_stmts_low := []ast.Stmt{}
 		mut or_pos_low := token.Pos{}
-		mut or_scope := &ast.Scope(unsafe { nil })
+		mut or_scope := ast.empty_scope
 		if !p.or_is_handled {
 			// a[start..end] or {...}
 			if p.tok.kind == .key_orelse {
@@ -2079,7 +2079,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	mut or_kind := ast.OrKind.absent
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
-	mut or_scope := &ast.Scope(unsafe { nil })
+	mut or_scope := ast.empty_scope
 	if !p.or_is_handled {
 		// a[i] or { ... }
 		if p.tok.kind == .key_orelse {
@@ -2241,7 +2241,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	mut or_kind := ast.OrKind.absent
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
-	mut or_scope := p.scope
+	mut or_scope := ast.empty_scope
 	if p.tok.kind == .key_orelse {
 		or_kind = .block
 		or_stmts, or_pos, or_scope = p.or_block(.with_err_var)

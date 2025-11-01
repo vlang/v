@@ -3,6 +3,10 @@
 // that can be found in the LICENSE file.
 module ast
 
+pub const empty_scope = &Scope{
+	parent: unsafe { nil }
+}
+
 @[heap]
 pub struct Scope {
 pub mut:
