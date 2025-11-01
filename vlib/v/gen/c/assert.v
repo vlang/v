@@ -31,6 +31,7 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 			node.expr.right = subst_expr
 		}
 	}
+	metaname := g.gen_assert_metainfo_common(node)
 	g.inside_ternary++
 	if g.pref.is_test {
 		g.write('if (')
@@ -41,11 +42,11 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.write(')')
 		g.decrement_inside_ternary()
 		g.writeln(' {')
-		metaname_ok := g.gen_assert_metainfo(node, .pass)
-		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_pass(test_runner._object, &${metaname_ok});')
+		g.gen_assert_metainfo(node, .pass, metaname)
+		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_pass(test_runner._object, &${metaname});')
 		g.writeln('} else {')
-		metaname_fail := g.gen_assert_metainfo(node, .fail)
-		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_fail(test_runner._object, &${metaname_fail});')
+		g.gen_assert_metainfo(node, .fail, metaname)
+		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_fail(test_runner._object, &${metaname});')
 		g.gen_assert_postfailure_mode(node)
 		g.writeln('}')
 	} else {
@@ -57,8 +58,8 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.write('))')
 		g.decrement_inside_ternary()
 		g.writeln(' {')
-		metaname_panic := g.gen_assert_metainfo(node, .panic)
-		g.writeln('\tbuiltin____print_assert_failure(&${metaname_panic});')
+		g.gen_assert_metainfo(node, .panic, metaname)
+		g.writeln('\tbuiltin____print_assert_failure(&${metaname});')
 		g.gen_assert_postfailure_mode(node)
 		g.writeln('}')
 	}
@@ -126,36 +127,26 @@ fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
 	if g.pref.is_test {
 		g.writeln('\tlongjmp(g_jump_buffer, 1);')
 	}
-	g.writeln2('\t// TODO', '\t// Maybe print all vars in a test function if it fails?')
 	if g.pref.assert_failure_mode != .continues {
 		g.writeln('\tbuiltin___v_panic(_S("Assertion failed..."));')
 	}
 }
 
-fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind) string {
-	mod_path := cestring(g.file.path)
-	fn_name := g.fn_decl.name
-	line_nr := node.pos.line_nr
-	mut src := node.expr.str()
-	if node.extra !is ast.EmptyExpr {
-		src += ', ' + node.extra.str()
+fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind, metaname string) {
+	if kind == .pass {
+		return
 	}
-	src = cestring(src)
-	metaname := 'v_assert_meta_info_${g.new_tmp_var()}'
-	g.writeln('\tVAssertMetaInfo ${metaname} = {0};')
-	g.writeln('\t${metaname}.fpath = ${ctoslit(mod_path)};')
-	g.writeln('\t${metaname}.line_nr = ${line_nr};')
-	g.writeln('\t${metaname}.fn_name = ${ctoslit(fn_name)};')
-	metasrc := cnewlines(ctoslit(src))
-	g.writeln('\t${metaname}.src = ${metasrc};')
+	if node.extra is ast.EmptyExpr {
+		g.writeln('\t${metaname}.has_msg = false;')
+		g.writeln('\t${metaname}.message = _SLIT0;')
+	} else {
+		g.writeln('\t${metaname}.has_msg = true;')
+		g.write('\t${metaname}.message = ')
+		g.gen_assert_single_expr(node.extra, ast.string_type)
+		g.writeln(';')
+	}
 	match node.expr {
 		ast.InfixExpr {
-			expr_op_str := ctoslit(node.expr.op.str())
-			expr_left_str := cnewlines(ctoslit(node.expr.left.str()))
-			expr_right_str := cnewlines(ctoslit(node.expr.right.str()))
-			g.writeln('\t${metaname}.op = ${expr_op_str};')
-			g.writeln('\t${metaname}.llabel = ${expr_left_str};')
-			g.writeln('\t${metaname}.rlabel = ${expr_right_str};')
 			left_type := if node.expr.left_ct_expr {
 				g.type_resolver.get_type_or_default(node.expr.left, node.expr.left_type)
 			} else {
@@ -166,28 +157,47 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind)
 			} else {
 				node.expr.right_type
 			}
-			if kind != .pass {
-				g.write('\t${metaname}.lvalue = ')
-				g.gen_assert_single_expr(node.expr.left, left_type)
-				g.writeln(';')
-				g.write('\t${metaname}.rvalue = ')
-				g.gen_assert_single_expr(node.expr.right, right_type)
-				g.writeln(';')
-			}
-		}
-		ast.CallExpr {
-			g.writeln('\t${metaname}.op = _S("call");')
+			g.write('\t${metaname}.lvalue = ')
+			g.gen_assert_single_expr(node.expr.left, left_type)
+			g.writeln(';')
+			g.write('\t${metaname}.rvalue = ')
+			g.gen_assert_single_expr(node.expr.right, right_type)
+			g.writeln(';')
 		}
 		else {}
 	}
-	if node.extra is ast.EmptyExpr {
-		g.writeln('\t${metaname}.has_msg = false;')
-		g.writeln('\t${metaname}.message = _SLIT0;')
-	} else {
-		g.writeln('\t${metaname}.has_msg = true;')
-		g.write('\t${metaname}.message = ')
-		g.gen_assert_single_expr(node.extra, ast.string_type)
-		g.writeln(';')
+}
+
+fn (mut g Gen) gen_assert_metainfo_common(node ast.AssertStmt) string {
+	mod_path := cestring(g.file.path)
+	fn_name := g.fn_decl.name
+	line_nr := node.pos.line_nr
+	mut src := node.expr.str()
+	if node.extra !is ast.EmptyExpr {
+		src += ', ' + node.extra.str()
+	}
+	src = cestring(src)
+	metaname := 'v_assert_meta_info_${g.new_tmp_var()}'
+	g.writeln('VAssertMetaInfo ${metaname} = {0};')
+	g.writeln('${metaname}.fpath = ${ctoslit(mod_path)};')
+	g.writeln('${metaname}.line_nr = ${line_nr};')
+	g.writeln('${metaname}.fn_name = ${ctoslit(fn_name)};')
+	metasrc := cnewlines(ctoslit(src))
+	g.writeln('${metaname}.src = ${metasrc};')
+	g.writeln('${metaname}.has_msg = false;')
+	match node.expr {
+		ast.InfixExpr {
+			expr_op_str := ctoslit(node.expr.op.str())
+			expr_left_str := cnewlines(ctoslit(node.expr.left.str()))
+			expr_right_str := cnewlines(ctoslit(node.expr.right.str()))
+			g.writeln('${metaname}.op = ${expr_op_str};')
+			g.writeln('${metaname}.llabel = ${expr_left_str};')
+			g.writeln('${metaname}.rlabel = ${expr_right_str};')
+		}
+		ast.CallExpr {
+			g.writeln('${metaname}.op = _S("call");')
+		}
+		else {}
 	}
 	return metaname
 }
