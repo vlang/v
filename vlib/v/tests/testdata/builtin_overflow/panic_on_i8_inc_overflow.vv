@@ -1,6 +1,6 @@
 mut x := i8(126)
 println(x)
-x ++
+x++
 println(x)
-x ++
+x++
 println(x)

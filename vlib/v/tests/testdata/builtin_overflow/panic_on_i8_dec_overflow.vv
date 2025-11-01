@@ -1,6 +1,6 @@
-mut x := i16(-32767)
+mut x := i8(-127)
 println(x)
-x --
+x--
 println(x)
-x --
+x--
 println(x)

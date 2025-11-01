@@ -1,6 +1,0 @@
-mut x := u32(4294967294)
-println(x)
-x ++
-println(x)
-x ++
-println(x)

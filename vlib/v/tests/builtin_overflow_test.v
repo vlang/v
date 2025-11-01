@@ -9,7 +9,7 @@ const vexe = @VEXE
 
 const vroot = os.real_path(@VMODROOT)
 
-const testdata_folder = os.join_path(vroot, 'vlib', 'builtin', 'overflow', 'testdata')
+const testdata_folder = os.join_path(vroot, 'vlib/v/tests/testdata/builtin_overflow')
 
 fn mm(s string) string {
 	return term.colorize(term.magenta, s)
