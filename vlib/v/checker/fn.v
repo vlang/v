@@ -3335,7 +3335,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 								arg.expr.pos())
 							continue
 						}
-					} else if !c.check_types(base_arg_type, c.unwrap_generic(left_type)) {
+					} else if !c.check_types(base_arg_type, unwrapped_left_type)
+						&& !c.check_types(elem_typ, base_arg_type) {
 						c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`',
 							arg.expr.pos())
 						continue
