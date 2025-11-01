@@ -263,9 +263,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				}
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp_var)
-			if g.pref.scoped_defer {
-				g.write_defer_stmts_when_needed(branch.scope, false)
-			}
+			g.write_defer_stmts_when_needed(branch.scope, false)
 			g.inside_interface_deref = inside_interface_deref_old
 			g.expected_cast_type = 0
 			if g.inside_ternary == 0 {
@@ -360,9 +358,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 		}
 		ends_with_return := g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.expected_cast_type = 0
-		if g.pref.scoped_defer {
-			g.write_defer_stmts_when_needed(branch.scope, false)
-		}
+		g.write_defer_stmts_when_needed(branch.scope, false)
 		if !ends_with_return {
 			g.writeln('\tbreak;')
 		}
@@ -399,9 +395,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 			if !ends_with_return {
 				g.writeln('\tbreak;')
 			}
-			if g.pref.scoped_defer {
-				g.write_defer_stmts_when_needed(range_branch.scope, false)
-			}
+			g.write_defer_stmts_when_needed(range_branch.scope, false)
 			g.writeln('}')
 		}
 	}
@@ -572,9 +566,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 			g.expected_cast_type = node.return_type
 		}
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
-		if g.pref.scoped_defer {
-			g.write_defer_stmts_when_needed(branch.scope, false)
-		}
+		g.write_defer_stmts_when_needed(branch.scope, false)
 		g.expected_cast_type = 0
 		if g.inside_ternary == 0 && node.branches.len >= 1 {
 			if reset_if {

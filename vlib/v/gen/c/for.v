@@ -101,9 +101,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		if node.label.len > 0 {
 			g.writeln('${node.label}__continue: {}')
 		}
-		if g.pref.scoped_defer {
-			g.write_defer_stmts_when_needed(node.scope, false)
-		}
+		g.write_defer_stmts_when_needed(node.scope, false)
 		g.writeln('}')
 		if node.label.len > 0 {
 			g.writeln('${node.label}__break: {}')
@@ -132,9 +130,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__continue: {}')
 	}
-	if g.pref.scoped_defer {
-		g.write_defer_stmts_when_needed(node.scope, false)
-	}
+	g.write_defer_stmts_when_needed(node.scope, false)
 	g.writeln('}')
 	if node.label.len > 0 {
 		g.writeln('${node.label}__break: {}')
@@ -603,9 +599,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		// g.writeln('\t$map_len = $cond_var${arw_or_pt}key_values.len;')
 		// g.writeln('}')
 	}
-	if g.pref.scoped_defer {
-		g.write_defer_stmts_when_needed(node.scope, false)
-	}
+	g.write_defer_stmts_when_needed(node.scope, false)
 	g.writeln('}')
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__break: {}')
