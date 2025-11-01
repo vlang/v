@@ -495,7 +495,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.stmts(branch.stmts)
 			g.stmt_path_pos << stmt_pos
 		}
-		g.write_defer_stmts_when_needed(branch.scope, false)
+		g.write_defer_stmts(branch.scope, false, node.pos)
 	}
 	if node.branches.len > 0 {
 		g.writeln('}')

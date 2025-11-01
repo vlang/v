@@ -746,13 +746,15 @@ fn (mut p Parser) gen_or_block() ast.OrExpr {
 			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.pos())
 		}
 		return ast.OrExpr{
-			kind: if is_not { ast.OrKind.propagate_result } else { ast.OrKind.propagate_option }
-			pos:  or_pos
+			kind:  if is_not { ast.OrKind.propagate_result } else { ast.OrKind.propagate_option }
+			scope: p.scope
+			pos:   or_pos
 		}
 	} else {
 		return ast.OrExpr{
-			kind: ast.OrKind.absent
-			pos:  p.tok.pos()
+			kind:  ast.OrKind.absent
+			scope: p.scope
+			pos:   p.tok.pos()
 		}
 	}
 }

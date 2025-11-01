@@ -2241,7 +2241,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	mut or_kind := ast.OrKind.absent
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
-	mut or_scope := &ast.Scope(unsafe { nil })
+	mut or_scope := p.scope
 	if p.tok.kind == .key_orelse {
 		or_kind = .block
 		or_stmts, or_pos, or_scope = p.or_block(.with_err_var)
