@@ -5262,6 +5262,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	g.writeln('builtin__array_free(&${chan_array});')
 	mut i := 0
 	for j in 0 .. node.branches.len {
+		branch := node.branches[j]
 		if j > 0 {
 			g.write('} else ')
 		}
@@ -5277,7 +5278,8 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 			}
 			i++
 		}
-		g.stmts(node.branches[j].stmts)
+		g.stmts(branch.stmts)
+		g.write_defer_stmts(branch.scope, false, branch.pos)
 	}
 	g.writeln('}')
 	if is_expr {

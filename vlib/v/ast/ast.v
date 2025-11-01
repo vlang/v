@@ -1329,6 +1329,7 @@ pub:
 	is_else       bool
 	is_timeout    bool
 	post_comments []Comment
+	scope         &Scope
 pub mut:
 	stmt  Stmt   // `a := <-ch` or `ch <- a`
 	stmts []Stmt // right side
