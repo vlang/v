@@ -229,7 +229,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			'manualfree' {
 				is_manualfree = true
 			}
-			'deprecated' {
+			'deprecated', 'deprecated_after' {
 				is_deprecated = true
 			}
 			'direct_array_access' {
