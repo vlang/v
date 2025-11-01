@@ -30,7 +30,9 @@ fn test_main() {
 
 	defer {
 		unsafe {
-			t2?.free()
+			if t2 != none {
+				t2.free()
+			}
 		}
 	}
 }
