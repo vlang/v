@@ -80,4 +80,4 @@ jobs:
       - name: Build V
         run: make
       - name: Check examples in the doc comments for all vlib modules
-        run: ./v doc -check-examples -f none vlib/
+        run: VJOBS=1 ./v doc -check-examples -f none vlib/
