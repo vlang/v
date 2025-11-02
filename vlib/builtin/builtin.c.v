@@ -197,7 +197,7 @@ pub fn panic_n2(s string, number1 i64, number2 i64) {
 @[noreturn]
 fn panic_n3(s string, number1 i64, number2 i64, number3 i64) {
 	panic(s + impl_i64_to_string(number1) + ', ' + impl_i64_to_string(number2) + ', ' +
-		impl_i64_to_string(number2))
+		impl_i64_to_string(number3))
 }
 
 // panic with a C-API error message matching `errnum`
