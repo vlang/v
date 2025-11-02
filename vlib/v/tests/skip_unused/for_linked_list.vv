@@ -29,7 +29,7 @@ pub fn (mut l LinkedList) push(value int) {
 	}
 }
 
-fn test_main() {
+fn main() {
 	mut list := LinkedList{
 		length: 0
 		head:   none
