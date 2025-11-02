@@ -728,7 +728,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					} else if node.name in w.all_globals {
 						w.mark_global_as_used(node.name)
 					} else {
-						w.fn_by_name(node.name)
+						if node.obj is ast.Var && node.obj.is_used && node.obj.typ != 0
+							&& w.table.type_kind(node.obj.typ) == .function {
+							w.fn_by_name(node.name)
+						}
 					}
 					if !w.uses_atomic && node.info is ast.IdentVar {
 						w.uses_atomic = node.info.typ.has_flag(.atomic_f)
