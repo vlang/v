@@ -728,8 +728,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					} else if node.name in w.all_globals {
 						w.mark_global_as_used(node.name)
 					} else {
-						if node.obj is ast.Var && node.obj.is_used && node.obj.typ != 0
-							&& w.table.type_kind(node.obj.typ) == .function {
+						if (node.kind == .variable && node.obj is ast.Var && node.obj.is_used
+							&& node.obj.typ != 0 && w.table.type_kind(node.obj.typ) == .function)
+							|| (node.kind == .unresolved && node.name.contains('.')) {
 							w.fn_by_name(node.name)
 						}
 					}
