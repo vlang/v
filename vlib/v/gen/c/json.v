@@ -1165,6 +1165,7 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 	key_type_symbol := g.table.sym(key_type)
 	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_type_symbol)
 	fn_name_v := js_dec_name(styp_v)
+	ref, ptr := if utyp.is_ptr() { '', '*' } else { '&', '' }
 	mut s := ''
 	if is_js_prim(styp_v) {
 		s = '${styp_v} val = ${fn_name_v} (js_get(root, jsval->string));'
@@ -1172,7 +1173,7 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 		s = '
 		${result_name}_${ret_styp} val2 = ${fn_name_v} (js_get(root, jsval->string));
 		if(val2.is_error) {
-			builtin__map_free(&res);
+			builtin__map_free(${ref}res);
 			return *(${result_name}_${ustyp}*)&val2;
 		}
 		${styp_v} val = *(${styp_v}*)val2.data;
@@ -1198,13 +1199,13 @@ fn (mut g Gen) decode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type,
 		if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
 			return (${result_name}_${ustyp}){ .is_error = true, .err = builtin___v_error(builtin__string__plus(_S("Json element is not an object: "), json__json_print(root))), .data = {0}};
 		}
-		res = builtin__new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn});
+		${ptr}res = builtin__new_map(sizeof(${styp}), sizeof(${styp_v}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn});
 		cJSON *jsval = NULL;
 		cJSON_ArrayForEach(jsval, root)
 		{
 			${s}
 			string key = builtin__tos2((byteptr)jsval->string);
-			builtin__map_set(&res, &key, &val);
+			builtin__map_set(${ref}res, &key, &val);
 		}
 '
 	}
@@ -1234,12 +1235,13 @@ fn (mut g Gen) encode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type)
 		builtin__array_free(&${keys_tmp});
 '
 	} else {
+		ref := if utyp.is_ptr() { '' } else { '&' }
 		return '
 		o = cJSON_CreateObject();
-		Array_${styp} ${keys_tmp} = builtin__map_keys(&val);
+		Array_${styp} ${keys_tmp} = builtin__map_keys(${ref}val);
 		for (${ast.int_type_name} i = 0; i < ${keys_tmp}.len; ++i) {
 			${key}
-			cJSON_AddItemToObject(o, (char*) key.str, ${fn_name_v} ( *(${styp_v}*) builtin__map_get(&val, &key, &(${styp_v}[]) { ${zero} } ) ) );
+			cJSON_AddItemToObject(o, (char*) key.str, ${fn_name_v} ( *(${styp_v}*) builtin__map_get(${ref}val, &key, &(${styp_v}[]) { ${zero} } ) ) );
 		}
 		builtin__array_free(&${keys_tmp});
 '
