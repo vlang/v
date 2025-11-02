@@ -165,7 +165,7 @@ pub fn (mut list DoublyLinkedList[T]) insert(idx int, item T) ! {
 // when idx > list.len/2. This helper function assumes idx bounds have
 // already been checked and idx is not at the edges.
 fn (mut list DoublyLinkedList[T]) insert_back(idx int, item T) {
-	mut node := list.node(idx + 1)
+	mut node := list.node(idx)
 	mut prev := node.prev
 	//   prev       node
 	//  ------     ------
@@ -226,7 +226,7 @@ fn (list &DoublyLinkedList[T]) node(idx int) &DoublyListNode[T] {
 		return node
 	}
 	mut node := list.tail
-	for t := list.len - 1; t >= idx; t -= 1 {
+	for t := list.len - 1; t > idx; t -= 1 {
 		node = node.prev
 	}
 	return node
