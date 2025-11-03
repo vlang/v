@@ -1,0 +1,8 @@
+[/media/HD/github/kbkpbot/v/vlib/v/checker/fn.v:2725] node.receiver_type: ast.Type(0x1001006c = 268501100)
+[/media/HD/github/kbkpbot/v/vlib/v/checker/fn.v:2726] node.left_type: ast.Type(0x6c = 108)
+vlib/v/checker/tests/shared_bad_receiver.vv:16:2: error: cannot use shared method `inc` as `c` is not a shared var
+   14 | fn main() {
+   15 |     mut c := Counter{1}
+   16 |     c.inc()
+      |     ^
+   17 | }
