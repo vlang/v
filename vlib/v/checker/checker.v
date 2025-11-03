@@ -3511,9 +3511,15 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			from_type = node.expr_type
 		}
 		if !c.table.sumtype_has_variant(to_type, from_type, false) {
-			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
-			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
+			if from_type == ast.voidptr_type_idx && to_type.is_ptr() {
+				if !c.inside_unsafe {
+					c.error('cannot cast voidptr to `${tt}` outside `unsafe`', node.pos)
+				}
+			} else {
+				ft := c.table.type_to_str(from_type)
+				c.error('cannot cast `${ft}` to `${tt}`', node.pos)
+			}
 		}
 	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct && final_to_is_ptr) {
 		if (!c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()

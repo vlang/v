@@ -1,0 +1,7 @@
+vlib/v/checker/tests/sumtype_from_voidptr_err.vv:13:11: error: cannot cast voidptr to `&Event` outside `unsafe`
+   11 | fn main() {
+   12 |     some_ptr := voidptr(1234)
+   13 |     event := &Event(some_ptr)
+      |              ~~~~~~~~~~~~~~~~
+   14 |     _ = event
+   15 | }
