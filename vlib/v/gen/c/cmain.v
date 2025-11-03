@@ -245,6 +245,7 @@ pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr
 	// in test_() functions, an `opt()?` call is sugar for
 	// `or { cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg() ) }`
 	// and the test is considered failed
+	g.write_defer_stmts_when_needed(or_block.scope, true, or_block.pos)
 	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 	dot_or_ptr := if cvar_name in g.tmp_var_ptr { '->' } else { '.' }
 	err_msg := 'IError_name_table[${cvar_name}${dot_or_ptr}err._typ]._method_msg(${cvar_name}${dot_or_ptr}err._object)'
@@ -256,6 +257,7 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 	// in test_() functions, a `return error('something')` is sugar for
 	// `or { err := error('something') cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg() ) return err }`
 	// and the test is considered failed
+	g.write_defer_stmts_when_needed(return_stmt.scope, true, return_stmt.pos)
 	paline, pafile, pamod, pafn := g.panic_debug_info(return_stmt.pos)
 	dot_or_ptr := if cvar_name in g.tmp_var_ptr { '->' } else { '.' }
 	err_msg := 'IError_name_table[${cvar_name}${dot_or_ptr}err._typ]._method_msg(${cvar_name}${dot_or_ptr}err._object)'

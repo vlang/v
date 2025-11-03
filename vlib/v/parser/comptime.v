@@ -544,7 +544,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		mut or_kind := ast.OrKind.absent
 		mut or_pos := p.tok.pos()
 		mut or_stmts := []ast.Stmt{}
-		mut or_scope := &ast.Scope(unsafe { nil })
+		mut or_scope := ast.empty_scope
 		if p.tok.kind == .key_orelse {
 			// `$method() or {}``
 			or_kind = .block
@@ -586,6 +586,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		or_block:   ast.OrExpr{
 			stmts: []ast.Stmt{}
 			kind:  if p.tok.kind == .question { .propagate_option } else { .absent }
+			scope: p.scope
 			pos:   p.tok.pos()
 		}
 	}

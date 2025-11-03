@@ -3,6 +3,10 @@
 // that can be found in the LICENSE file.
 module ast
 
+pub const empty_scope = &Scope{
+	parent: unsafe { nil }
+}
+
 @[heap]
 pub struct Scope {
 pub mut:
@@ -249,6 +253,11 @@ pub fn (s &Scope) get_all_vars() []ScopeObject {
 @[inline]
 pub fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos
+}
+
+@[inline]
+pub fn (s &Scope) == (o &Scope) bool {
+	return s.start_pos == o.start_pos && s.end_pos == o.end_pos
 }
 
 pub fn (s &Scope) has_inherited_vars() bool {

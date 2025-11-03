@@ -1,0 +1,16 @@
+fn main() {
+	defer(fn) { println('${@FN} - 0 - defer') }
+	{
+		defer { println('${@FN} - 1 - defer') }
+		{
+			defer { println('${@FN} - 2 - defer') }
+			println('exit fn main().scope.2')
+		}
+		println('exit fn main().scope.1')
+	}
+
+	defer(fn) {
+		println('defer(fn)')
+	}
+	println('exit fn main().scope.0')
+}

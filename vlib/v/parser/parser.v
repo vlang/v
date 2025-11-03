@@ -969,6 +969,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				pos.update_last_line(p.prev_tok.line_nr)
 				return ast.Block{
 					stmts: stmts
+					scope: p.scope.children.last()
 					pos:   pos
 				}
 			}
@@ -1093,6 +1094,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return ast.BranchStmt{
 				kind:  tok.kind
 				label: label
+				scope: p.scope
 				pos:   tok.pos()
 			}
 		}
@@ -1127,12 +1129,30 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_defer {
 			if !p.inside_defer {
 				p.next()
+				mut defer_mode := ast.DeferMode.scoped
+				if p.tok.kind == .lpar {
+					p.next()
+					mode_pos := p.tok.pos()
+					mode := p.check_name()
+					match mode {
+						'fn' {
+							defer_mode = .function
+						}
+						else {
+							return p.error_with_pos('unknown `defer` mode: `${mode}`',
+								mode_pos)
+						}
+					}
+					p.check(.rpar)
+				}
 				spos := p.tok.pos()
 				p.inside_defer = true
 				p.defer_vars = []ast.Ident{}
 				stmts := p.parse_block()
 				p.inside_defer = false
 				return ast.DeferStmt{
+					mode:       defer_mode
+					scope:      p.scope
 					stmts:      stmts
 					defer_vars: p.defer_vars.clone()
 					pos:        spos.extend_with_last_line(p.tok.pos(), p.prev_tok.line_nr)
@@ -1341,10 +1361,11 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	mut or_kind := ast.OrKind.absent
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
-	mut or_scope := &ast.Scope(unsafe { nil })
+	mut or_scope := ast.empty_scope
 
 	if allowed_cases && p.tok.kind == .question && p.peek_tok.kind != .lpar { // var?, not var?(
 		or_kind = ast.OrKind.propagate_option
+		or_scope = p.scope
 		p.check(.question)
 	} else if allowed_cases && p.tok.kind == .key_orelse {
 		or_kind = ast.OrKind.block
@@ -1928,7 +1949,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		mut or_kind_high := ast.OrKind.absent
 		mut or_stmts_high := []ast.Stmt{}
 		mut or_pos_high := token.Pos{}
-		mut or_scope := &ast.Scope(unsafe { nil })
+		mut or_scope := ast.empty_scope
 
 		if !p.or_is_handled {
 			// a[..end] or {...}
@@ -1957,6 +1978,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			if p.tok.kind == .not {
 				or_pos_high = p.tok.pos()
 				or_kind_high = .propagate_result
+				or_scope = p.scope
 				p.next()
 			} else if p.tok.kind == .question {
 				p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
@@ -1977,6 +1999,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			or_expr:  ast.OrExpr{
 				kind:  or_kind_high
 				stmts: or_stmts_high
+				scope: or_scope
 				pos:   or_pos_high
 			}
 			is_gated: is_gated
@@ -1998,7 +2021,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		mut or_kind_low := ast.OrKind.absent
 		mut or_stmts_low := []ast.Stmt{}
 		mut or_pos_low := token.Pos{}
-		mut or_scope := &ast.Scope(unsafe { nil })
+		mut or_scope := ast.empty_scope
 		if !p.or_is_handled {
 			// a[start..end] or {...}
 			if p.tok.kind == .key_orelse {
@@ -2027,6 +2050,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			if p.tok.kind == .not {
 				or_pos_low = p.tok.pos()
 				or_kind_low = .propagate_result
+				or_scope = p.scope
 				p.next()
 			} else if p.tok.kind == .question {
 				p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
@@ -2048,6 +2072,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			or_expr:  ast.OrExpr{
 				kind:  or_kind_low
 				stmts: or_stmts_low
+				scope: or_scope
 				pos:   or_pos_low
 			}
 			is_gated: is_gated
@@ -2059,7 +2084,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	mut or_kind := ast.OrKind.absent
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
-	mut or_scope := &ast.Scope(unsafe { nil })
+	mut or_scope := ast.empty_scope
 	if !p.or_is_handled {
 		// a[i] or { ... }
 		if p.tok.kind == .key_orelse {
@@ -2081,6 +2106,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		if p.tok.kind == .not {
 			or_pos = p.tok.pos()
 			or_kind = .propagate_result
+			or_scope = p.scope
 			p.next()
 		} else if p.tok.kind == .question {
 			p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
@@ -2094,6 +2120,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		or_expr:  ast.OrExpr{
 			kind:  or_kind
 			stmts: or_stmts
+			scope: or_scope
 			pos:   or_pos
 		}
 		is_gated: is_gated
@@ -2221,17 +2248,19 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	mut or_kind := ast.OrKind.absent
 	mut or_stmts := []ast.Stmt{}
 	mut or_pos := token.Pos{}
-	mut or_scope := &ast.Scope(unsafe { nil })
+	mut or_scope := ast.empty_scope
 	if p.tok.kind == .key_orelse {
 		or_kind = .block
 		or_stmts, or_pos, or_scope = p.or_block(.with_err_var)
 	} else if p.tok.kind == .not {
 		or_kind = .propagate_result
 		or_pos = p.tok.pos()
+		or_scope = p.scope
 		p.next()
 	} else if p.tok.kind == .question {
 		or_kind = .propagate_option
 		or_pos = p.tok.pos()
+		or_scope = p.scope
 		p.next()
 	}
 	sel_expr := ast.SelectorExpr{
@@ -2636,6 +2665,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	mut comments := p.eat_comments()
 	if p.tok.kind == .rcbr || (p.tok.kind == .name && p.peek_tok.kind == .colon) {
 		return ast.Return{
+			scope:    p.scope
 			comments: comments
 			pos:      first_pos
 		}
@@ -2647,6 +2677,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	p.inside_assign_rhs = old_assign_rhs
 	end_pos := exprs.last().pos()
 	return ast.Return{
+		scope:    p.scope
 		exprs:    exprs
 		comments: comments
 		pos:      first_pos.extend(end_pos)
@@ -3117,20 +3148,22 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	if p.inside_unsafe && !p.inside_defer {
 		return p.error_with_pos('already inside `unsafe` block', pos)
 	}
+	p.inside_unsafe = true
+	p.open_scope() // needed in case of `unsafe {stmt}`
+	sc := p.scope
+	defer {
+		p.inside_unsafe = false
+		p.close_scope()
+	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`
 		pos.update_last_line(p.tok.line_nr)
 		p.next()
 		return ast.Block{
+			scope:     sc
 			is_unsafe: true
 			pos:       pos
 		}
-	}
-	p.inside_unsafe = true
-	p.open_scope() // needed in case of `unsafe {stmt}`
-	defer {
-		p.inside_unsafe = false
-		p.close_scope()
 	}
 	stmt := p.stmt(false)
 	if p.tok.kind == .rcbr {
@@ -3161,6 +3194,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	pos.update_last_line(p.tok.line_nr)
 	return ast.Block{
 		stmts:     stmts
+		scope:     sc
 		is_unsafe: true
 		pos:       pos
 	}

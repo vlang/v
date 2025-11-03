@@ -981,12 +981,15 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 }
 
 fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
-	f.write('defer ')
+	f.write('defer')
+	if node.mode == .function {
+		f.write('(fn)')
+	}
 	if node.stmts.len == 0 {
-		f.writeln('{}')
+		f.writeln(' {}')
 	} else if node.stmts.len == 1 && node.pos.line_nr == node.pos.last_line
 		&& stmt_is_single_line(node.stmts[0]) {
-		f.write('{ ')
+		f.write(' { ')
 		// the control stmts (return/break/continue...) print a newline inside them,
 		// so, since this'll all be on one line, trim any possible whitespace
 		str := f.node_str(node.stmts[0]).trim_space()
@@ -1000,7 +1003,7 @@ fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
 		// f.stmt(node.stmts[0])
 		f.writeln(' }')
 	} else {
-		f.writeln('{')
+		f.writeln(' {')
 		f.stmts(node.stmts)
 		f.writeln('}')
 	}

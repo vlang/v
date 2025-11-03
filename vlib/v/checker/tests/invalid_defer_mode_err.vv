@@ -1,0 +1,5 @@
+fn main() {
+	defer {} // ok
+	defer(fn) {} // ok
+	defer(fn1) {} // fail
+}

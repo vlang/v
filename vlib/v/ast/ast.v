@@ -221,6 +221,7 @@ pub struct Block {
 pub:
 	is_unsafe bool
 	pos       token.Pos
+	scope     &Scope
 pub mut:
 	stmts []Stmt
 }
@@ -808,6 +809,7 @@ pub struct BranchStmt {
 pub:
 	kind  token.Kind
 	label string
+	scope &Scope
 	pos   token.Pos
 }
 
@@ -887,6 +889,7 @@ pub mut:
 // function return statement
 pub struct Return {
 pub:
+	scope    &Scope
 	pos      token.Pos
 	comments []Comment
 pub mut:
@@ -1326,6 +1329,7 @@ pub:
 	is_else       bool
 	is_timeout    bool
 	post_comments []Comment
+	scope         &Scope
 pub mut:
 	stmt  Stmt   // `a := <-ch` or `ch <- a`
 	stmts []Stmt // right side
@@ -1542,13 +1546,20 @@ pub:
 	is_markused   bool
 }
 
+pub enum DeferMode {
+	scoped // default
+	function
+}
+
 // TODO: handle this differently
 // v1 excludes non current os ifdefs so
 // the defer's never get added in the first place
 @[minify]
 pub struct DeferStmt {
 pub:
-	pos token.Pos
+	pos   token.Pos
+	scope &Scope
+	mode  DeferMode
 pub mut:
 	stmts      []Stmt
 	defer_vars []Ident
