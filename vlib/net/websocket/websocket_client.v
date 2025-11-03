@@ -182,7 +182,7 @@ pub fn (mut ws Client) listen() ! {
 			}
 			.close {
 				ws.debug_log('read: close')
-				defer {
+				defer(fn) {
 					ws.manage_clean_close()
 				}
 				if msg.payload.len > 0 {

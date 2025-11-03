@@ -77,7 +77,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	former_expected_type := c.expected_type
 	if node_is_expr {
 		c.expected_expr_type = c.expected_type
-		defer {
+		defer(fn) {
 			c.expected_expr_type = ast.void_type
 		}
 	}

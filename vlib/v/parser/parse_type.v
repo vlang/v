@@ -116,7 +116,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 		}
 		p.check(.rsbr)
 		p.fixed_array_dim++
-		defer {
+		defer(fn) {
 			p.fixed_array_dim--
 		}
 		elem_type := p.parse_type()
@@ -680,7 +680,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 		.lsbr, .nilsbr {
 			// array
 			p.array_dim++
-			defer {
+			defer(fn) {
 				p.array_dim--
 			}
 			return p.parse_array_type(p.tok.kind, is_option)

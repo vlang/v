@@ -807,13 +807,13 @@ pub fn screen_size() Size {
 		if display == unsafe { nil } {
 			return Size{}
 		}
-		defer { C.XCloseDisplay(display) }
+		defer(fn) { C.XCloseDisplay(display) }
 		root := C.DefaultRootWindow(display)
 		resources := C.XRRGetScreenResources(display, root)
 		if resources == unsafe { nil } {
 			return Size{}
 		}
-		defer { C.XRRFreeScreenResources(resources) }
+		defer(fn) { C.XRRFreeScreenResources(resources) }
 		primary_output := C.XRRGetOutputPrimary(display, root)
 		if primary_output == 0 {
 			return Size{}

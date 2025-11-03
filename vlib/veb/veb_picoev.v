@@ -134,7 +134,7 @@ $if !new_veb ? {
 				bytes_to_write = max_write
 			}
 			data := unsafe { malloc(bytes_to_write) }
-			defer {
+			defer(fn) {
 				unsafe { free(data) }
 			}
 			mut conn := &net.TcpConn{

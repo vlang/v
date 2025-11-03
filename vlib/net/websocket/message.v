@@ -156,7 +156,7 @@ pub fn (mut ws Client) read_next_message() !Message {
 			unsafe { frame_payload.free() }
 			return msg
 		}
-		defer {
+		defer(fn) {
 			ws.fragments = []
 		}
 		if is_data_frame(frame.opcode) {

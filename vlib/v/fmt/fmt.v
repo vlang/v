@@ -2055,7 +2055,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	if node.is_method {
 		if node.name in ['map', 'filter', 'all', 'any', 'count'] {
 			f.in_lambda_depth++
-			defer { f.in_lambda_depth-- }
+			defer(fn) { f.in_lambda_depth-- }
 		}
 		f.expr(node.left)
 		is_method_newline = node.left.pos().last_line != node.name_pos.line_nr

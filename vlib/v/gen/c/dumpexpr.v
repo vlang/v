@@ -17,7 +17,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 
 	if node.expr is ast.CallExpr {
 		g.inside_dump_fn = true
-		defer {
+		defer(fn) {
 			g.inside_dump_fn = false
 		}
 	}

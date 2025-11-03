@@ -12,7 +12,7 @@ pub fn get_path(base_folder string, relative_path string) string {
 		return relative_path.clone()
 	} $else {
 		fpath := os.join_path_single(base_folder, relative_path)
-		defer { unsafe { fpath.free() } }
+		defer(fn) { unsafe { fpath.free() } }
 		return os.resource_abs_path(fpath)
 	}
 }

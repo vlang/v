@@ -61,7 +61,7 @@ pub fn (s &Surrounder) before() string {
 	len := s.befores.len
 	if len > 0 {
 		mut res := strings.new_builder(len * 100)
-		defer {
+		defer(fn) {
 			unsafe { res.free() }
 		}
 		for i := 0; i < len; i++ {
@@ -83,7 +83,7 @@ pub fn (s &Surrounder) after() string {
 	len := s.afters.len
 	if len > 0 {
 		mut res := strings.new_builder(len * 100)
-		defer {
+		defer(fn) {
 			unsafe { res.free() }
 		}
 		for i := len - 1; i >= 0; i-- {

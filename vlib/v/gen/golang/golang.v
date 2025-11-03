@@ -1422,7 +1422,7 @@ pub fn (mut f Gen) call_expr(node ast.CallExpr) {
 	if node.is_method {
 		if node.name in ['map', 'filter', 'all', 'any', 'count'] {
 			f.in_lambda_depth++
-			defer {
+			defer(fn) {
 				f.in_lambda_depth--
 			}
 		}

@@ -100,7 +100,7 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 		g.write(';\n')
 		prev_inside_or := g.inside_or
 		g.inside_or = true
-		defer {
+		defer(fn) {
 			g.inside_or = prev_inside_or
 		}
 		g.writeln('if (tmp === null) throw "none";')
@@ -159,7 +159,7 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 	if call_return_is_option {
 		prev_inside_or := g.inside_or
 		g.inside_or = true
-		defer {
+		defer(fn) {
 			g.inside_or = prev_inside_or
 		}
 		g.write(';\n')
@@ -354,7 +354,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		g.dec_indent()
 		prev_inside_or := g.inside_or
 		g.inside_or = true
-		defer {
+		defer(fn) {
 			g.inside_or = prev_inside_or
 		}
 		// begin catch block
@@ -452,7 +452,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		// end unwrap
 		prev_inside_or := g.inside_or
 		g.inside_or = true
-		defer {
+		defer(fn) {
 			g.inside_or = prev_inside_or
 		}
 		g.writeln(')')

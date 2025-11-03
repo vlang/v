@@ -536,7 +536,7 @@ pub fn get_raw_line() string {
 		unsafe {
 			initial_size := 256 * wide_char_size
 			mut buf := malloc_noscan(initial_size)
-			defer { unsafe { buf.free() } }
+			defer(fn) { unsafe { buf.free() } }
 			mut capacity := initial_size
 			mut offset := 0
 
@@ -698,7 +698,7 @@ pub fn executable() string {
 			// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
 			file := C.CreateFile(pu16_result, 0x80000000, 1, 0, 3, 0x80, 0)
 			if file != voidptr(-1) {
-				defer {
+				defer(fn) {
 					C.CloseHandle(file)
 				}
 				final_path := [max_path_buffer_size]u8{}
@@ -707,7 +707,7 @@ pub fn executable() string {
 					max_path_buffer_size, 0)
 				if final_len < u32(max_path_buffer_size) && final_len != 0 {
 					sret := unsafe { string_from_wide2(&u16(&final_path[0]), int(final_len)) }
-					defer {
+					defer(fn) {
 						unsafe { sret.free() }
 					}
 					// remove '\\?\' from beginning (see link above)
@@ -753,7 +753,7 @@ pub fn executable() string {
 		if unsafe { C.sysctl(&mib[0], mib.len, C.NULL, &bufsize, C.NULL, 0) } == 0 {
 			if bufsize > max_path_buffer_size {
 				pbuf = unsafe { &&u8(malloc(int(bufsize))) }
-				defer {
+				defer(fn) {
 					unsafe { free(pbuf) }
 				}
 			}
@@ -851,12 +851,12 @@ pub fn real_path(fpath string) string {
 		// use C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0) instead of  get_file_handle
 		// try to open the file to get symbolic link path
 		fpath_wide := fpath.to_wide()
-		defer {
+		defer(fn) {
 			unsafe { free(voidptr(fpath_wide)) }
 		}
 		file := C.CreateFile(fpath_wide, 0x80000000, 1, 0, 3, 0x80, 0)
 		if file != voidptr(-1) {
-			defer {
+			defer(fn) {
 				C.CloseHandle(file)
 			}
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew

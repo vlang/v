@@ -652,7 +652,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 	p.trace_parser('top_stmt')
 	for {
 		mut keep_cur_comments := false
-		defer {
+		defer(fn) {
 			// clear `cur_comments` after each statement, except a comment stmt
 			if !keep_cur_comments && p.pref.is_vls {
 				p.cur_comments.clear()
@@ -2169,7 +2169,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			p.register_auto_import('builtin.closure')
 		}
 		p.open_scope()
-		defer {
+		defer(fn) {
 			p.close_scope()
 		}
 	}

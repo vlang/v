@@ -567,7 +567,7 @@ fn ptr_rotate[T](left_ int, mid &T, right_ int) {
 	}
 	unsafe {
 		rawarray := malloc(raw_array_malloc_size[T]())
-		defer {
+		defer(fn) {
 			free(rawarray)
 		}
 		dim := &T(usize(voidptr(mid)) - left * sz + right * sz)

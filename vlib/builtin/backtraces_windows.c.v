@@ -92,7 +92,7 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 		sline64.f_size_of_struct = sizeof(Line64)
 
 		handle := C.GetCurrentProcess()
-		defer {
+		defer(fn) {
 			C.SymCleanup(handle)
 		}
 

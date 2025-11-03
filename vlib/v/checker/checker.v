@@ -3233,7 +3233,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.LambdaExpr {
 			c.inside_lambda = true
 			c.table.cur_lambda = unsafe { &node }
-			defer {
+			defer(fn) {
 				c.inside_lambda = false
 				c.table.cur_lambda = unsafe { nil }
 			}

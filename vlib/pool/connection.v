@@ -279,7 +279,7 @@ pub fn (mut p ConnectionPool) get() !&ConnectionPoolable {
 
 		// Set up notification channel
 		notify_chan := chan bool{cap: 1}
-		defer {
+		defer(fn) {
 			notify_chan.close()
 		}
 

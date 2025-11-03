@@ -1280,7 +1280,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		&& g.table.is_interface_var(node.left.obj) {
 		inside_interface_deref_old := g.inside_interface_deref
 		g.inside_interface_deref = true
-		defer {
+		defer(fn) {
 			g.inside_interface_deref = inside_interface_deref_old
 		}
 	}

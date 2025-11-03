@@ -217,7 +217,7 @@ fn supports_escape_sequences(fd int) bool {
 	}
 	$if windows {
 		env_conemu := os.getenv('ConEmuANSI')
-		defer {
+		defer(fn) {
 			unsafe { env_conemu.free() }
 		}
 		if env_conemu == 'ON' {
