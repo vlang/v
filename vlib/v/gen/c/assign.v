@@ -34,11 +34,14 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 			defer {
 				g.inside_or_block = false
 			}
-			stmts := (expr as ast.Ident).or_expr.stmts
+			or_expr := (expr as ast.Ident).or_expr
+			stmts := or_expr.stmts
+			scope := or_expr.scope
 			// handles stmt block which returns something
 			// e.g. { return none }
 			if stmts.len > 0 && stmts.last() is ast.ExprStmt && stmts.last().typ != ast.void_type {
-				g.gen_or_block_stmts(c_name(var_expr.str()), '', stmts, ret_typ, false)
+				g.gen_or_block_stmts(c_name(var_expr.str()), '', stmts, ret_typ, false,
+					scope, expr.pos())
 			} else {
 				// handles stmt block which doesn't returns value
 				// e.g. { return }
@@ -46,6 +49,7 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 				if stmts.len > 0 && stmts.last() is ast.ExprStmt {
 					g.writeln(';')
 				}
+				g.write_defer_stmts(scope, false, expr.pos())
 			}
 		}
 		g.writeln('}')

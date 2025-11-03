@@ -484,18 +484,19 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.expected_cast_type = node.typ
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp)
+			g.write_defer_stmts(branch.scope, false, node.pos)
 			g.expected_cast_type = prev_expected_cast_type
-			if !is_else && (branch.stmts.len > 0
-				&& branch.stmts[branch.stmts.len - 1] !in [ast.Return, ast.BranchStmt]) {
+			if !is_else
+				&& (branch.stmts.len > 0 && branch.stmts.last() !in [ast.Return, ast.BranchStmt]) {
 				g.writeln('\tgoto ${exit_label};')
 			}
 		} else {
 			// restore if_expr stmt header pos
 			stmt_pos := g.nth_stmt_pos(0)
 			g.stmts(branch.stmts)
+			g.write_defer_stmts(branch.scope, false, node.pos)
 			g.stmt_path_pos << stmt_pos
 		}
-		g.write_defer_stmts(branch.scope, false, node.pos)
 	}
 	if node.branches.len > 0 {
 		g.writeln('}')

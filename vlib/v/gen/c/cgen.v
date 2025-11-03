@@ -7237,7 +7237,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 }
 
 fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast.Stmt, return_type ast.Type,
-	is_option bool) {
+	is_option bool, scope &ast.Scope, pos token.Pos) {
 	g.indent++
 	for i, stmt in stmts {
 		if i == stmts.len - 1 {
@@ -7247,6 +7247,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 				|| expr_stmt.typ in [ast.none_type, ast.error_type]) {
 				// `return foo() or { error('failed') }`
 				if g.cur_fn != unsafe { nil } {
+					g.write_defer_stmts(scope, true, pos)
 					if g.cur_fn.return_type.has_flag(.result) {
 						g.write('return ')
 						g.gen_result_error(g.cur_fn.return_type, expr_stmt.expr)
@@ -7262,6 +7263,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					g.write('${cvar_name} = ')
 					g.gen_option_error(return_type, expr_stmt.expr)
 					g.writeln(';')
+					g.write_defer_stmts(scope, false, pos)
 				} else if return_type == ast.rvoid_type {
 					// fn returns !, do not fill var.data
 					old_inside_opt_data := g.inside_opt_data
@@ -7318,6 +7320,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 						g.write(', sizeof(${cast_typ}))')
 					}
 					g.writeln(';')
+					g.write_defer_stmts(scope, return_wrapped, pos)
 					g.stmt_path_pos.delete_last()
 					if return_wrapped {
 						g.writeln('return ${cvar_name};')
@@ -7376,13 +7379,19 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		}
 		stmts := or_block.stmts
 		if stmts.len > 0 && stmts.last() is ast.ExprStmt && stmts.last().typ != ast.void_type {
-			g.gen_or_block_stmts(cvar_name, mr_styp, stmts, return_type, true)
+			g.gen_or_block_stmts(cvar_name, mr_styp, stmts, return_type, true, or_block.scope,
+				or_block.pos)
 		} else {
 			g.stmts(stmts)
-			if stmts.len > 0 && stmts.last() is ast.ExprStmt {
-				g.writeln(';')
+			if stmts.len > 0 {
+				stmt_last := stmts.last()
+				if stmt_last is ast.ExprStmt {
+					g.writeln(';')
+				}
+				if stmt_last !in [ast.Return, ast.BranchStmt] {
+					g.write_defer_stmts(or_block.scope, false, or_block.pos)
+				}
 			}
-			g.write_defer_stmts(or_block.scope, false, or_block.pos)
 		}
 		g.or_expr_return_type = ast.void_type
 	} else if or_block.kind == .propagate_result
