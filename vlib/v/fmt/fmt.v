@@ -982,7 +982,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 
 fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
 	f.write('defer')
-	if node.mode == .function || (!f.file.is_test && !isnil(f.fn_scope) && f.fn_scope != node.scope) {
+	if node.mode == .function {
 		f.write('(fn)')
 	}
 	if node.stmts.len == 0 {
