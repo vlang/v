@@ -47,7 +47,7 @@ jobs:
       - name: Install markdown from vpm
         run: v retry -- v install markdown
       - name: Test v doc
-        run: ./v test cmd/tools/vdoc/
+        run: VJOBS=1 ./v test cmd/tools/vdoc/
       - name: Build module documentation and check the examples in the comments
         run: VJOBS=1 ./v doc -m -f html -unsafe-run-examples -time vlib/
       - name: Deploy docs to vercel
