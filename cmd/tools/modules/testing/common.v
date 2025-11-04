@@ -22,6 +22,8 @@ pub const github_job = os.getenv('GITHUB_JOB')
 
 pub const runner_os = os.getenv('RUNNER_OS') // GitHub runner OS
 
+pub const show_cmd = os.getenv('VTEST_SHOW_CMD') == '1'
+
 pub const show_start = os.getenv('VTEST_SHOW_START') == '1'
 
 pub const hide_skips = os.getenv('VTEST_HIDE_SKIP') == '1'
@@ -224,6 +226,20 @@ pub fn (mut ts TestSession) print_messages() {
 			continue
 		}
 	}
+}
+
+pub fn (mut ts TestSession) execute(cmd string, mtc MessageThreadContext) os.Result {
+	if show_cmd {
+		ts.append_message(.info, '> execute cmd: ${cmd}', mtc)
+	}
+	return os.execute(cmd)
+}
+
+pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
+	if show_cmd {
+		ts.append_message(.info, '> system cmd: ${cmd}', mtc)
+	}
+	return os.system(cmd)
 }
 
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
@@ -511,8 +527,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
-
-		mut res := os.execute(cmd)
+		mut res := ts.execute(cmd, mtc)
 		if res.exit_code != 0 {
 			eprintln(res.output)
 		} else {
@@ -531,10 +546,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						mtc)
 				}
 				os.setenv('VTEST_RETRY', '${retry}', true)
-
 				ts.append_message(.cmd_begin, cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				status = os.system(cmd)
+				status = ts.system(cmd, mtc)
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
@@ -570,7 +584,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		compile_d_cmd := time.new_stopwatch()
 		mut compile_r := os.Result{}
 		for cretry in 0 .. max_compilation_retries {
-			compile_r = os.execute(cmd)
+			compile_r = ts.execute(cmd, mtc)
 			compile_cmd_duration = compile_d_cmd.elapsed()
 			// eprintln('>>>> cretry: $cretry | compile_r.exit_code: $compile_r.exit_code | compile_cmd_duration: ${compile_cmd_duration:8} | file: $normalised_relative_file')
 			if compile_r.exit_code == 0 {
@@ -600,10 +614,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		//
 		mut retry := 1
-		ts.append_message(.cmd_begin, run_cmd, mtc)
 		mut failure_output := strings.new_builder(1024)
+		ts.append_message(.cmd_begin, run_cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut r := os.execute(run_cmd)
+		mut r := ts.execute(run_cmd, mtc)
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 		if ts.show_asserts && r.exit_code == 0 {
@@ -627,10 +641,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						mtc)
 				}
 				os.setenv('VTEST_RETRY', '${retry}', true)
-
 				ts.append_message(.cmd_begin, run_cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				r = os.execute(run_cmd)
+				r = ts.execute(run_cmd, mtc)
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
