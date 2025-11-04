@@ -261,7 +261,7 @@ pub mut:
 	is_vls      bool
 	json_errors bool // -json-errors, for VLS and other tools
 
-	scoped_defer bool // experimental support, is activated with `-scoped-defer`
+	scoped_defer bool = true // experimental support, is activated with `-scoped-defer`
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
