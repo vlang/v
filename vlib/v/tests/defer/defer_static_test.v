@@ -1,3 +1,5 @@
+// vtest vflags: -scoped-defer
+
 @[unsafe]
 fn g() {
 	mut static levels := 0
