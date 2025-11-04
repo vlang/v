@@ -17,3 +17,31 @@ fn test_generic_array_of_sumtype_push() {
 	assert ret2.len == 1
 	assert ret2[0] == SumType('hello')
 }
+
+struct EventA {
+	a u32
+}
+
+struct EventB {
+	b u32
+}
+
+type Event = EventA | EventB
+
+struct Queue[T] {
+mut:
+	data []T
+}
+
+fn (mut q Queue[T]) push(val T) {
+	q.data << val
+}
+
+fn test_generic_queue_sumtype_structs() {
+	mut queue := Queue[Event]{}
+	queue.push(EventA{ a: 10 })
+	assert queue.data.len == 1
+	assert queue.data[0] == Event(EventA{
+		a: 10
+	})
+}
