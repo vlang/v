@@ -140,17 +140,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// If you do decide to break it, please *at the very least*, test it
 		// extensively, and make a PR about it, instead of committing directly
 		// and breaking the CI, VC, and users doing `v up`.
-		if rpath == '${p.vroot}/cmd/v' && os.is_dir('vlib/compiler') {
-			// Building V? Use v2, since we can't overwrite a running
-			// executable on Windows + the precompiled V is more
-			// optimized.
-			println('Saving the resulting V executable in `./v2`')
-			println('Use `v -o v cmd/v` if you want to replace current ' + 'V executable.')
-			p.out_name = 'v2'
-		}
 	}
-	rpath_name := os.file_name(rpath)
-	p.building_v = !p.is_repl && (rpath_name == 'v' || rpath_name == 'vfmt.v')
+	npath := rpath.replace('\\', '/')
+	p.building_v = !p.is_repl && (npath.ends_with('cmd/v') || npath.ends_with('cmd/tools/vfmt.v'))
 	if p.os == .linux {
 		$if !linux {
 			p.parse_define('cross_compile')
