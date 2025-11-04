@@ -2716,6 +2716,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	} else {
 		node.receiver_type = method.params[0].typ
 	}
+	if node.receiver_type.has_flag(.shared_f) && !node.left_type.has_flag(.shared_f) {
+		c.error('cannot use shared method `${node.name}` as `${node.left}` is not a shared var',
+			node.left.pos())
+	}
 	// if receiver_type is T, then `receiver_concrete_type` is concrete type, otherwise it is the same as `receiver_type`.
 	node.receiver_concrete_type = if is_method_from_embed {
 		node.from_embed_types.last().derive(method.params[0].typ)
