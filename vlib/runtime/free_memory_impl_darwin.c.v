@@ -33,7 +33,7 @@ fn free_memory_impl() !usize {
 		mut vmsz := u32(C.HOST_VM_INFO64_COUNT)
 		mut hps := u32(0)
 		mut host := C.mach_host_self()
-		defer(fn) {
+		defer {
 			// Critical: Release send right for host port
 			// --------------------------------------------------
 			// Mach ports are system resources. Calling mach_host_self()

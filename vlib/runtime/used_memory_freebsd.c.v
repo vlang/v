@@ -45,7 +45,7 @@ pub fn used_memory() !u64 {
 		return u64(int_max(1, usage.ru_maxrss)) * 1024
 	} $else {
 		mut proc_status := C.procstat_open_sysctl()
-		defer(fn) {
+		defer {
 			C.procstat_close(proc_status)
 		}
 

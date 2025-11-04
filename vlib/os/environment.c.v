@@ -23,7 +23,7 @@ pub fn getenv_opt(key string) ?string {
 	unsafe {
 		$if windows {
 			kw := key.to_wide()
-			defer(fn) {
+			defer {
 				free(voidptr(kw))
 			}
 			s := C._wgetenv(kw)
@@ -46,7 +46,7 @@ pub fn getenv_opt(key string) ?string {
 pub fn setenv(name string, value string, overwrite bool) int {
 	$if windows {
 		format := '${name}=${value}'.to_wide()
-		defer(fn) {
+		defer {
 			unsafe { free(voidptr(format)) }
 		}
 		if overwrite {
@@ -72,7 +72,7 @@ pub fn setenv(name string, value string, overwrite bool) int {
 pub fn unsetenv(name string) int {
 	$if windows {
 		format := '${name}='.to_wide()
-		defer(fn) {
+		defer {
 			unsafe { free(voidptr(format)) }
 		}
 		return C._wputenv(format)

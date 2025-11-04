@@ -245,7 +245,7 @@ fn (mut s SSLConn) complete_connect() ! {
 		} $else {
 			pcert = C.SSL_get1_peer_certificate(voidptr(s.ssl))
 		}
-		defer(fn) {
+		defer {
 			if pcert != 0 {
 				C.X509_free(pcert)
 			}
