@@ -856,9 +856,7 @@ pub fn real_path(fpath string) string {
 		}
 		file := C.CreateFile(fpath_wide, 0x80000000, 1, 0, 3, 0x80, 0)
 		if file != voidptr(-1) {
-			defer(fn) {
-				C.CloseHandle(file)
-			}
+			defer { C.CloseHandle(file) }
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, max_path_buffer_size,
 				0)

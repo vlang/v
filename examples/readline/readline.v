@@ -14,9 +14,7 @@ fn run() ! {
 		// Explicit comptime block for other OSes than Windows is required to not break compilation on Windows.
 		mut r := readline.Readline{}
 		r.enable_raw_mode_nosig()
-		defer(fn) {
-			r.disable_raw_mode()
-		}
+		defer { r.disable_raw_mode() }
 
 		for {
 			entered := r.read_char()!
