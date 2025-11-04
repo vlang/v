@@ -2411,6 +2411,40 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		}
 	}
+	if node.is_method {
+		left_sym := g.table.sym(node.left_type)
+		if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0
+			&& left_sym.info.concrete_types.len > 0 {
+			base_type_idx := g.table.find_type_idx(left_sym.name.all_before('['))
+			mut func := ast.Fn{}
+			mut found := false
+			for {
+				if base_type_idx > 0 {
+					base_sym := g.table.sym(ast.idx_to_type(base_type_idx))
+					if base_func := g.table.find_method(base_sym, node.name) {
+						func = base_func
+						found = true
+						break
+					}
+				}
+				if base_func := g.table.find_method(left_sym, node.name) {
+					func = base_func
+					found = true
+				}
+				break
+			}
+			if found && func.generic_names.len > 0 {
+				for i in 0 .. expected_types.len {
+					mut muttable := unsafe { &ast.Table(g.table) }
+					if utyp := muttable.convert_generic_type(node.expected_arg_types[i],
+						func.generic_names, left_sym.info.concrete_types)
+					{
+						expected_types[i] = utyp
+					}
+				}
+			}
+		}
+	}
 	// only v variadic, C variadic args will be appended like normal args
 	is_variadic := node.language == .v && node.is_variadic && expected_types.len > 0
 		&& expected_types.last().has_flag(.variadic)
