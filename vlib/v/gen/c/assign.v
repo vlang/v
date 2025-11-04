@@ -31,7 +31,7 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 			g.writeln('\tbuiltin__panic_option_not_set(_S("none"));')
 		} else {
 			g.inside_or_block = true
-			defer(fn) {
+			defer {
 				g.inside_or_block = false
 			}
 			or_expr := (expr as ast.Ident).or_expr
@@ -115,7 +115,7 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 			return g.expr_opt_with_alias(expr, expr_typ, ret_typ)
 		} else {
 			past := g.past_tmp_var_new()
-			defer(fn) {
+			defer {
 				g.past_tmp_var_done(past)
 			}
 			styp := g.base_type(ret_typ)

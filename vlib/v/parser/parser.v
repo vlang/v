@@ -652,7 +652,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 	p.trace_parser('top_stmt')
 	for {
 		mut keep_cur_comments := false
-		defer(fn) {
+		defer {
 			// clear `cur_comments` after each statement, except a comment stmt
 			if !keep_cur_comments && p.pref.is_vls {
 				p.cur_comments.clear()
