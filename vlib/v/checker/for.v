@@ -169,7 +169,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				c.type_resolver.update_ct_type(node.val_var, val_type)
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
-				defer {
+				defer(fn) {
 					c.type_resolver.type_map.delete(node.val_var)
 				}
 			}
@@ -194,7 +194,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					c.type_resolver.update_ct_type(node.key_var, key_type)
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
 
-					defer {
+					defer(fn) {
 						c.type_resolver.type_map.delete(node.key_var)
 					}
 				}
@@ -211,7 +211,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				c.type_resolver.update_ct_type(node.val_var, value_type)
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
-				defer {
+				defer(fn) {
 					c.type_resolver.type_map.delete(node.val_var)
 				}
 			}
@@ -236,7 +236,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					c.type_resolver.update_ct_type(node.key_var, key_type)
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
 
-					defer {
+					defer(fn) {
 						c.type_resolver.type_map.delete(node.key_var)
 					}
 				}
@@ -300,7 +300,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				c.type_resolver.update_ct_type(node.val_var, value_type)
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
-				defer {
+				defer(fn) {
 					c.type_resolver.type_map.delete(node.val_var)
 				}
 			}

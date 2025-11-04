@@ -254,7 +254,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.write('->val')
 				}
 				g.writeln('); // free ${type_to_free} on re-assignment2')
-				defer {
+				defer(fn) {
 					if af {
 						g.writeln('builtin__${type_to_free}_free(&${sref_name});')
 					}
@@ -536,7 +536,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 
 		g.left_is_opt = var_type.has_option_or_result()
 		g.right_is_opt = val_type.has_option_or_result()
-		defer {
+		defer(fn) {
 			g.left_is_opt = false
 			g.right_is_opt = false
 		}
@@ -951,7 +951,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					&& ((var_type.has_flag(.option) && !val_type.has_flag(.option))
 					|| (var_type.has_flag(.result) && !val_type.has_flag(.result))) {
 					old_inside_opt_or_res := g.inside_opt_or_res
-					defer {
+					defer(fn) {
 						g.inside_opt_or_res = old_inside_opt_or_res
 					}
 					g.inside_opt_or_res = true
@@ -1051,7 +1051,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else {
 					// var = &auto_heap_var
 					old_is_auto_heap := g.is_option_auto_heap
-					defer {
+					defer(fn) {
 						g.is_option_auto_heap = old_is_auto_heap
 					}
 					if val is ast.Ident && val.is_mut() && var_type.is_ptr() {

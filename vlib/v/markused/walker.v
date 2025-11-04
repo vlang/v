@@ -922,7 +922,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if w.level == 0 {
 		last_is_builtin_mod := w.is_builtin_mod
 		w.is_builtin_mod = node.mod in ['builtin', 'os', 'strconv', 'builtin.closure']
-		defer {
+		defer(fn) {
 			w.is_builtin_mod = last_is_builtin_mod
 		}
 	}
@@ -944,7 +944,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	defer { w.is_direct_array_access = last_is_direct_array_access }
 	if w.trace_enabled {
 		w.level++
-		defer { w.level-- }
+		defer(fn) { w.level-- }
 		receiver_name := if node.is_method && node.receiver.typ != 0 {
 			w.table.type_to_str(node.receiver.typ) + '.'
 		} else {

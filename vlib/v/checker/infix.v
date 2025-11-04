@@ -95,7 +95,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		&& right_type in [ast.int_literal_type, ast.float_literal_type] {
 		node.right_type = left_type
 		if left_type in [ast.f32_type_idx, ast.f64_type_idx] && right_type == ast.float_literal_type {
-			defer {
+			defer(fn) {
 				node.right = ast.CastExpr{
 					expr:      node.right
 					typ:       left_type
@@ -110,7 +110,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		&& left_type in [ast.int_literal_type, ast.float_literal_type] {
 		node.left_type = right_type
 		if right_type in [ast.f32_type_idx, ast.f64_type_idx] && left_type == ast.float_literal_type {
-			defer {
+			defer(fn) {
 				node.left = ast.CastExpr{
 					expr:      node.left
 					typ:       right_type

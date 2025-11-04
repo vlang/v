@@ -522,7 +522,7 @@ pub fn (s &SSLConn) peer_addr() !net.Addr {
 pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
 	$if trace_ssl ? {
-		defer {
+		defer(fn) {
 			if len > 0 {
 				eprintln('${@METHOD} res: ${res}: buf_ptr: ${voidptr(buf_ptr):x}, len: ${len}, hex: ${unsafe { buf_ptr.vbytes(len).hex() }} data: `${unsafe { buf_ptr.vstring_with_len(len) }}`')
 			}
@@ -590,7 +590,7 @@ pub fn (mut s SSLConn) read(mut buffer []u8) !int {
 pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 	mut total_sent := 0
 	$if trace_ssl ? {
-		defer {
+		defer(fn) {
 			eprintln('${@METHOD} total_sent: ${total_sent}, bytes: ${voidptr(bytes):x}, len: ${len}, hex: ${unsafe { bytes.vbytes(len).hex() }}, data:-=-=-=-\n${unsafe { bytes.vstring_with_len(len) }}\n-=-=-=-')
 		}
 	}

@@ -2929,7 +2929,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 				}
 				old_inside_smartcast := g.inside_smartcast
 				g.inside_smartcast = true
-				defer {
+				defer(fn) {
 					g.inside_smartcast = old_inside_smartcast
 				}
 			} else {
@@ -5313,7 +5313,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			styp := g.base_type(node.obj.typ)
 			g.write('(*(${styp}*)')
 
-			defer {
+			defer(fn) {
 				g.write('.data)')
 			}
 		}
@@ -7374,7 +7374,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		}
 
 		g.inside_or_block = true
-		defer {
+		defer(fn) {
 			g.inside_or_block = false
 		}
 		stmts := or_block.stmts

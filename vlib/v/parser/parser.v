@@ -2169,7 +2169,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			p.register_auto_import('builtin.closure')
 		}
 		p.open_scope()
-		defer {
+		defer(fn) {
 			p.close_scope()
 		}
 	}

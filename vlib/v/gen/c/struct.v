@@ -84,7 +84,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 	if !g.inside_cinit && !is_anon && !is_generic_default && !is_array && !const_msvc_init {
 		g.write('(')
-		defer {
+		defer(fn) {
 			g.write(')')
 		}
 	}
@@ -376,7 +376,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 		save_inside_array_fixed_struct := g.inside_array_fixed_struct
 		g.inside_array_fixed_struct = is_array_fixed_struct_init
-		defer {
+		defer(fn) {
 			g.inside_array_fixed_struct = save_inside_array_fixed_struct
 		}
 

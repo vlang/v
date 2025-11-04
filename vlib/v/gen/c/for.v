@@ -164,7 +164,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.type_resolver.update_ct_type(node.val_var, node.val_type)
 			node.scope.update_ct_var_kind(node.val_var, .value_var)
 
-			defer {
+			defer(fn) {
 				g.type_resolver.type_map.delete(node.val_var)
 			}
 		}
@@ -181,7 +181,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.type_resolver.update_ct_type(node.key_var, node.key_type)
 				node.scope.update_ct_var_kind(node.key_var, .key_var)
 
-				defer {
+				defer(fn) {
 					g.type_resolver.type_map.delete(node.key_var)
 				}
 			}

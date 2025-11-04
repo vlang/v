@@ -205,25 +205,25 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			raw_state = g.inside_if_option
 			if node.typ != ast.void_type {
 				g.last_if_option_type = node.typ
-				defer {
+				defer(fn) {
 					g.last_if_option_type = tmp_if_option_type
 				}
 			}
-			defer {
+			defer(fn) {
 				g.inside_if_option = raw_state
 			}
 			g.inside_if_option = true
 			styp = styp.replace('*', '_ptr')
 		} else if node.typ.has_flag(.result) {
 			raw_state = g.inside_if_result
-			defer {
+			defer(fn) {
 				g.inside_if_result = raw_state
 			}
 			g.inside_if_result = true
 			styp = styp.replace('*', '_ptr')
 		} else {
 			g.last_if_option_type = node.typ
-			defer {
+			defer(fn) {
 				g.last_if_option_type = tmp_if_option_type
 			}
 		}

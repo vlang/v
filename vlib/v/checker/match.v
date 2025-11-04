@@ -14,7 +14,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	}
 	if node.is_expr {
 		c.expected_expr_type = c.expected_type
-		defer {
+		defer(fn) {
 			c.expected_expr_type = ast.void_type
 		}
 	}

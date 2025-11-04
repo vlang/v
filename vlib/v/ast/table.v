@@ -907,7 +907,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 	mut idx := -2
 	$if trace_register_sym ? {
-		defer {
+		defer(fn) {
 			eprintln('>> register_sym: ${sym.name:-60} | idx: ${idx}')
 		}
 	}

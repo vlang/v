@@ -207,7 +207,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			mut expr := node.right[i]
 			if left is ast.Ident && left.is_mut() && expr is ast.StructInit && expr.is_anon {
 				c.anon_struct_should_be_mut = true
-				defer {
+				defer(fn) {
 					c.anon_struct_should_be_mut = false
 				}
 			}

@@ -152,7 +152,7 @@ fn (mut p Process) win_spawn_process() int {
 		}
 		env_block << u16(0)
 		creation_flags |= C.CREATE_UNICODE_ENVIRONMENT
-		defer {
+		defer(fn) {
 			unsafe { env_block.free() }
 		}
 	}
