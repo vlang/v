@@ -20,4 +20,11 @@ pattern := r'^('
 	+ r'(-[0-9a-zA-Z.]+)?)'    // match prerelease part e.g: -beta.1
 	+ r'|(\*)$'                // match just '*'
 	// vfmt on
+
+	pattern_fmt := r'^(' + r'(\^|([<>]?=?))?' // match: ^, >, <, =, >=, <=
+	 + r'((\*)|([0-9]+))' // match: *, 1
+	 + r'((\.?\*)|(\.[0-9]+))?' // match: *, .*, .1
+	 + r'((\.?\*)|(\.[0-9]+))?' // match: *, .*, .1
+	 + r'(-[0-9a-zA-Z.]+)?)' // match prerelease part e.g: -beta.1
+	 + r'|(\*)$' // match just '*'
 }
