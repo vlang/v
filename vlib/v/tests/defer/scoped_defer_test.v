@@ -1,5 +1,3 @@
-// vtest vflags: -scoped-defer
-
 struct Data {
 mut:
 	counter int

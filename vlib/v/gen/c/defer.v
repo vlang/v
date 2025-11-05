@@ -26,8 +26,7 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool, pos token.Pos) {
 			g.error('Gen.write_defer_stmts(): defer_stmt.scope is nil', pos)
 		}
 
-		is_scoped := g.pref.scoped_defer && defer_stmt.mode == .scoped
-		if is_scoped {
+		if defer_stmt.mode == .scoped {
 			if !((lookup && defer_stmt.scope.start_pos < scope.start_pos
 				&& defer_stmt.scope.end_pos > scope.end_pos)
 				|| defer_stmt.scope == scope) {
