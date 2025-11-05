@@ -582,7 +582,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 			update_expr_pos = p.tok.pos()
 			p.check(.ellipsis)
 			update_expr = p.expr(0)
-			update_expr_comments << p.eat_comments(same_line: true)
+			update_expr_comments << p.eat_comments()
 			has_update_expr = true
 		} else {
 			prev_comments = p.eat_comments()
