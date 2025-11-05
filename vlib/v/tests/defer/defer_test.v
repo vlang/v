@@ -1,5 +1,3 @@
-// vtest vflags: -scoped-defer
-
 fn foo() string {
 	println('foo()')
 	return 'foo'

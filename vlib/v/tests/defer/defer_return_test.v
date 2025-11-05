@@ -1,5 +1,3 @@
-// vtest vflags: -scoped-defer
-
 @[heap]
 struct Hwe {
 mut:

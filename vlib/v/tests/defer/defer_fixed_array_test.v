@@ -1,5 +1,3 @@
-// vtest vflags: -scoped-defer
-
 fn foo() {
 	a := [u8(1), 2, 3]!
 	defer {

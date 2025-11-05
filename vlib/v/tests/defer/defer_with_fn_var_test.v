@@ -1,5 +1,3 @@
-// vtest vflags: -scoped-defer
-
 @[has_globals]
 module main
 

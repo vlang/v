@@ -454,7 +454,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	g.indent++
 	for defer_stmt in node.defer_stmts {
-		if defer_stmt.mode != .function && g.pref.scoped_defer {
+		if defer_stmt.mode != .function {
 			continue
 		}
 		g.writeln('bool ${g.defer_flag_var(defer_stmt)} = false;')

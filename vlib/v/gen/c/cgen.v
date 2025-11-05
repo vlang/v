@@ -2656,7 +2656,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.DeferStmt {
 			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
-			if defer_stmt.mode == .function || !g.pref.scoped_defer {
+			if defer_stmt.mode == .function {
 				g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
 			}
 			g.defer_stmts << defer_stmt
