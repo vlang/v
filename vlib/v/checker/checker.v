@@ -2928,7 +2928,11 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 			unreachable = stmt.pos
 		}
 		prev_expected_or_type := c.expected_or_type
-		c.expected_or_type = expected_or_type
+		c.expected_or_type = if c.is_last_stmt {
+			expected_or_type
+		} else {
+			ast.void_type
+		}
 		c.stmt(mut stmt)
 		c.expected_or_type = prev_expected_or_type
 		if !c.inside_anon_fn && c.in_for_count > 0 && stmt is ast.BranchStmt
