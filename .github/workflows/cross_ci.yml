@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   cross-macos:
-    runs-on: macos-13
+    runs-on: macos-latest
     timeout-minutes: 15
     env:
       VFLAGS: -cc clang

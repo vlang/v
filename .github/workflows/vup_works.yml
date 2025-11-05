@@ -30,11 +30,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             zip: v_linux.zip
-          - os: macos-13
+          - os: macos-15-intel
             zip: v_macos_x86_64.zip
-          - os: macos-14
+          - os: macos-latest
             zip: v_macos_arm64.zip
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
