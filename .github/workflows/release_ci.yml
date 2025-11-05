@@ -24,7 +24,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04, ubuntu-22.04-arm, macos-13, macos-14, windows-latest]
+        os: [ubuntu-22.04, ubuntu-22.04-arm, macos-14, macos-14, windows-latest]
         include:
           - os: ubuntu-22.04
             cc: gcc
@@ -36,9 +36,9 @@ jobs:
           - os: ubuntu-22.04-arm
             target: linux_arm64
             artifact: v_linux_arm64.zip
-          - os: macos-13
+          - os: macos-14
             cc: clang
-          - os: macos-13
+          - os: macos-14
             target: macos_x86_64
             artifact: v_macos_x86_64.zip
           - os: macos-14

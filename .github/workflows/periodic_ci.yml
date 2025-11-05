@@ -19,7 +19,7 @@ jobs:
             cc: tcc
           - os: windows-latest
             cc: msvc
-          - os: macos-13
+          - os: macos-latest
             cc: clang
       fail-fast: false
     runs-on: ${{ matrix.os }}
