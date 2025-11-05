@@ -2,8 +2,29 @@ fn main() {
 	a := 4 // comment1
 	 + 6 // comment2
 
-	b := 5 + // comment2
+	b := 5 + // comment3
 	 6
 
-	c := 4 + 6 // comment3
+	c := 4 + 6 // comment4
+
+	var := 'a' // comment5
+	 + 'b' // comment6
+	 + 'c' // comment7
+
+	// vfmt off
+pattern := r'^('
+	+ r'(\^|([<>]?=?))?'       // match: ^, >, <, =, >=, <=
+	+ r'((\*)|([0-9]+))'       // match: *, 1
+	+ r'((\.?\*)|(\.[0-9]+))?' // match: *, .*, .1
+	+ r'((\.?\*)|(\.[0-9]+))?' // match: *, .*, .1
+	+ r'(-[0-9a-zA-Z.]+)?)'    // match prerelease part e.g: -beta.1
+	+ r'|(\*)$'                // match just '*'
+	// vfmt on
+
+	pattern_fmt := r'^(' + r'(\^|([<>]?=?))?' // match: ^, >, <, =, >=, <=
+	 + r'((\*)|([0-9]+))' // match: *, 1
+	 + r'((\.?\*)|(\.[0-9]+))?' // match: *, .*, .1
+	 + r'((\.?\*)|(\.[0-9]+))?' // match: *, .*, .1
+	 + r'(-[0-9a-zA-Z.]+)?)' // match prerelease part e.g: -beta.1
+	 + r'|(\*)$' // match just '*'
 }
