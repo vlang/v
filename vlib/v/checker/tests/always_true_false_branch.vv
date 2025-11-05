@@ -1,0 +1,181 @@
+module main
+
+fn main() {
+	if_always_true := if true {
+		1
+	} else if !false {
+		1
+	} else if true == true {
+		1
+	} else if true != false {
+		1
+	} else if false == false {
+		1
+	} else if false != true {
+		1
+	} else if 'a' == 'a' {
+		1
+	} else if 'a' != 'b' {
+		1
+	} else if 1 == 1 {
+		1
+	} else if 1 != 2 {
+		1
+	} else if 1 >= 1 {
+		1
+	} else if 1 <= 1 {
+		1
+	} else if 1 < 2 {
+		1
+	} else if 2 > 1 {
+		1
+	} else if 1.5 == 1.5 {
+		1
+	} else if 1.5 != 2.5 {
+		1
+	} else if 1.5 >= 1.5 {
+		1
+	} else if 1.5 <= 1.5 {
+		1
+	} else if 1.5 < 2.5 {
+		1
+	} else if 2.5 > 1.5 {
+		1
+	} else if `1` == `1` {
+		1
+	} else if `1` != `2` {
+		1
+	} else if `1` >= `1` {
+		1
+	} else if `1` <= `1` {
+		1
+	} else if `1` < `2` {
+		1
+	} else if `2` > `1` {
+		1
+	} else {
+		0
+	}
+
+	dump(if_always_true)
+
+	if_always_false := if false {
+		1
+	} else if !true {
+		1
+	} else if true != true {
+		1
+	} else if true == false {
+		1
+	} else if false != false {
+		1
+	} else if false == true {
+		1
+	} else if 'a' != 'a' {
+		1
+	} else if 'a' == 'b' {
+		1
+	} else if 1 != 1 {
+		1
+	} else if 1 == 2 {
+		1
+	} else if 1 > 1 {
+		1
+	} else if 1 < 1 {
+		1
+	} else if 1 >= 2 {
+		1
+	} else if 2 <= 1 {
+		1
+	} else if 1.5 != 1.5 {
+		1
+	} else if 1.5 == 2.5 {
+		1
+	} else if 1.5 > 1.5 {
+		1
+	} else if 1.5 < 1.5 {
+		1
+	} else if 1.5 >= 2.5 {
+		1
+	} else if 2.5 <= 1.5 {
+		1
+	} else if `1` != `1` {
+		1
+	} else if `1` == `2` {
+		1
+	} else if `1` < `1` {
+		1
+	} else if `1` > `1` {
+		1
+	} else if `1` >= `2` {
+		1
+	} else if `2` <= `1` {
+		1
+	} else {
+		0
+	}
+
+	dump(if_always_false)
+
+	match_always_true_false_bool := match true {
+		true {
+			'haha'
+		}
+		false {
+			'cc'
+		}
+	}
+	dump(match_always_true_false_bool)
+
+	match_always_true_false_int := match 1 {
+		1 {
+			'haha'
+		}
+		2 {
+			'cc'
+		}
+		else {
+			'bb'
+		}
+	}
+	dump(match_always_true_false_int)
+
+	match_always_true_false_f64 := match 1.5 {
+		1.5 {
+			'haha'
+		}
+		2.5 {
+			'cc'
+		}
+		else {
+			'bb'
+		}
+	}
+	dump(match_always_true_false_f64)
+
+	match_always_true_false_string := match 'a' {
+		'a' {
+			'haha'
+		}
+		'b' {
+			'cc'
+		}
+		else {
+			'bb'
+		}
+	}
+	dump(match_always_true_false_string)
+
+	match_always_true_false_rune := match `a` {
+		`a` {
+			'haha'
+		}
+		`b` {
+			'cc'
+		}
+		else {
+			'bb'
+		}
+	}
+	dump(match_always_true_false_rune)
+}

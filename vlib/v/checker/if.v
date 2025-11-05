@@ -156,6 +156,15 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
 						branch.cond.pos())
 				}
+
+				result, resolved := c.is_always_true_cond(mut branch.cond)
+				if resolved {
+					if result {
+						c.warn('condition is always true', branch.cond.pos())
+					} else {
+						c.warn('condition is always false', branch.cond.pos())
+					}
+				}
 			}
 		} else {
 			// else branch
@@ -623,4 +632,125 @@ fn (mut c Checker) check_non_expr_branch_last_stmt(stmts []ast.Stmt) {
 		&& last_stmt.expr.op !in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]) {
 		c.error('expression evaluated but not used', last_stmt.pos)
 	}
+}
+
+// check for always true branch cond, e.g., `a == a`, `true`
+fn (mut c Checker) is_always_true_cond(mut cond ast.Expr) (bool, bool) {
+	mut result := false
+	mut resolved := false
+	match mut cond {
+		ast.BoolLiteral {
+			result = cond.val
+			resolved = true
+		}
+		ast.PrefixExpr {
+			if cond.op == .not {
+				result, resolved = c.is_always_true_cond(mut cond.right)
+				result = !result
+			}
+		}
+		ast.InfixExpr {
+			if mut cond.left is ast.Ident && mut cond.right is ast.Ident {
+				if cond.left.name == cond.right.name && cond.op in [.eq, .ge, .le] {
+					result = true
+					resolved = true
+				}
+			} else if mut cond.left is ast.BoolLiteral && mut cond.right is ast.BoolLiteral {
+				resolved = true
+				if cond.op == .eq {
+					result = cond.left.val == cond.right.val
+				} else if cond.op == .ne {
+					result = cond.left.val != cond.right.val
+				}
+			} else if mut cond.left is ast.IntegerLiteral && mut cond.right is ast.IntegerLiteral {
+				resolved = true
+				match cond.op {
+					.eq {
+						result = cond.left.val.i64() == cond.right.val.i64()
+					}
+					.ne {
+						result = cond.left.val.i64() != cond.right.val.i64()
+					}
+					.ge {
+						result = cond.left.val.i64() >= cond.right.val.i64()
+					}
+					.le {
+						result = cond.left.val.i64() <= cond.right.val.i64()
+					}
+					.gt {
+						result = cond.left.val.i64() > cond.right.val.i64()
+					}
+					.lt {
+						result = cond.left.val.i64() < cond.right.val.i64()
+					}
+					else {
+						resolved = false
+					}
+				}
+			} else if mut cond.left is ast.FloatLiteral && mut cond.right is ast.FloatLiteral {
+				resolved = true
+				match cond.op {
+					.eq {
+						result = cond.left.val.f64() == cond.right.val.f64()
+					}
+					.ne {
+						result = cond.left.val.f64() != cond.right.val.f64()
+					}
+					.ge {
+						result = cond.left.val.f64() >= cond.right.val.f64()
+					}
+					.le {
+						result = cond.left.val.f64() <= cond.right.val.f64()
+					}
+					.gt {
+						result = cond.left.val.f64() > cond.right.val.f64()
+					}
+					.lt {
+						result = cond.left.val.f64() < cond.right.val.f64()
+					}
+					else {
+						resolved = false
+					}
+				}
+			} else if mut cond.left is ast.StringLiteral && mut cond.right is ast.StringLiteral {
+				resolved = true
+				if cond.op == .eq {
+					result = cond.left.val == cond.right.val
+				} else if cond.op == .ne {
+					result = cond.left.val != cond.right.val
+				}
+			} else if mut cond.left is ast.CharLiteral && mut cond.right is ast.CharLiteral {
+				resolved = true
+				left := cond.left.val.runes()
+				right := cond.right.val.runes()
+				if left.len > 0 && right.len > 0 {
+					match cond.op {
+						.eq {
+							result = left[0] == right[0]
+						}
+						.ne {
+							result = left[0] != right[0]
+						}
+						.ge {
+							result = left[0] >= right[0]
+						}
+						.le {
+							result = left[0] <= right[0]
+						}
+						.gt {
+							result = left[0] > right[0]
+						}
+						.lt {
+							result = left[0] < right[0]
+						}
+						else {
+							resolved = false
+						}
+					}
+				}
+			}
+		}
+		else {}
+	}
+	return result, resolved
 }
