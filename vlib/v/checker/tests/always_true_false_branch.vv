@@ -1,7 +1,10 @@
 module main
 
 fn main() {
-	if_always_true := if true {
+	x := 1
+	if_always_true := if x == x {
+		1
+	} else if true {
 		1
 	} else if !false {
 		1
@@ -59,7 +62,9 @@ fn main() {
 
 	dump(if_always_true)
 
-	if_always_false := if false {
+	if_always_false := if x != x {
+		1
+	} else if false {
 		1
 	} else if !true {
 		1
@@ -116,6 +121,16 @@ fn main() {
 	}
 
 	dump(if_always_false)
+
+	match_always_true_var := match x {
+		x {
+			'haha'
+		}
+		else {
+			'cc'
+		}
+	}
+	dump(match_always_true_var)
 
 	match_always_true_false_bool := match true {
 		true {
