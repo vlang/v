@@ -1024,7 +1024,126 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 					else {}
 				}
 			}
-			else {}
+			ast.CharLiteral {
+				match mut node.right {
+					ast.CharLiteral {
+						left_val := node.left.val.runes()[0]
+						right_val := node.right.val.runes()[0]
+
+						match node.op {
+							.eq {
+								return ast.BoolLiteral{
+									val: left_val == right_val
+								}
+							}
+							.ne {
+								return ast.BoolLiteral{
+									val: left_val != right_val
+								}
+							}
+							.gt {
+								return ast.BoolLiteral{
+									val: left_val > right_val
+								}
+							}
+							.ge {
+								return ast.BoolLiteral{
+									val: left_val >= right_val
+								}
+							}
+							.lt {
+								return ast.BoolLiteral{
+									val: left_val < right_val
+								}
+							}
+							.le {
+								return ast.BoolLiteral{
+									val: left_val <= right_val
+								}
+							}
+							.plus {
+								return ast.CharLiteral{
+									val: (left_val + right_val).str()
+									pos: pos
+								}
+							}
+							.mul {
+								return ast.CharLiteral{
+									val: (left_val * right_val).str()
+									pos: pos
+								}
+							}
+							.minus {
+								return ast.CharLiteral{
+									val: (left_val - right_val).str()
+									pos: pos
+								}
+							}
+							.div {
+								return ast.CharLiteral{
+									val: (left_val / right_val).str()
+									pos: pos
+								}
+							}
+							.mod {
+								return ast.CharLiteral{
+									val: (left_val % right_val).str()
+									pos: pos
+								}
+							}
+							.xor {
+								return ast.CharLiteral{
+									val: (left_val ^ right_val).str()
+									pos: pos
+								}
+							}
+							.pipe {
+								return ast.CharLiteral{
+									val: (left_val | right_val).str()
+									pos: pos
+								}
+							}
+							.amp {
+								return ast.CharLiteral{
+									val: (left_val & right_val).str()
+									pos: pos
+								}
+							}
+							.left_shift {
+								return ast.CharLiteral{
+									val: (unsafe { left_val << right_val }).str()
+									pos: pos
+								}
+							}
+							.right_shift {
+								return ast.CharLiteral{
+									val: (left_val >> right_val).str()
+									pos: pos
+								}
+							}
+							.unsigned_right_shift {
+								return ast.CharLiteral{
+									val: (u64(left_val) >>> right_val).str()
+									pos: pos
+								}
+							}
+							else {}
+						}
+					}
+					else {}
+				}
+			}
+			else {
+				// for `a == a`, `a != a`, `struct.f != struct.f`
+				if node.left.type_name() == node.right.type_name()
+					&& '${node.left}' == '${node.right}' {
+					if node.op in [.eq, .ne] {
+						return ast.BoolLiteral{
+							val: '${node.left}' == '${node.right}'
+						}
+					}
+				}
+			}
 		}
 		return node
 	}
