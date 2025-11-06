@@ -946,6 +946,7 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 		}
 
 		// doing it like this means the minimum of signed numbers does not overflow before being inverted
+		*val = 0 // initialize to zero before accumulating digits
 		if !is_negative {
 			digit_amount := get_number_digits(*val)
 
