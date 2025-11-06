@@ -1350,6 +1350,7 @@ pub:
 	kind    ComptimeForKind
 	pos     token.Pos
 	typ_pos token.Pos
+	scope   &Scope = unsafe { nil }
 pub mut:
 	stmts []Stmt
 	typ   Type

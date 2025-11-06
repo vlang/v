@@ -382,8 +382,10 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 					// => skip the #if defined ... #endif wrapper
 					// and just generate the branch statements:
 					g.indent--
-					g.stmts(node.branches[0].stmts)
+					branch := node.branches[0]
+					g.stmts(branch.stmts)
 					g.indent++
+					g.write_defer_stmts(branch.scope, false, branch.pos)
 					return
 				}
 			}
@@ -475,6 +477,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 					g.skip_stmt_pos = prev_skip_stmt_pos
 					g.writeln2(';', '}')
 					g.indent--
+					g.write_defer_stmts(branch.scope, false, branch.pos)
 				} else {
 					g.indent++
 					g.set_current_pos_as_last_stmt_pos()
@@ -493,6 +496,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 					g.skip_stmt_pos = prev_skip_stmt_pos
 					g.writeln(';')
 					g.indent--
+					g.write_defer_stmts(branch.scope, false, branch.pos)
 				}
 			}
 		} else {
@@ -505,6 +509,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 				g.stmts(branch.stmts)
 			}
 			if should_create_scope {
+				g.write_defer_stmts(branch.scope, false, branch.pos)
 				g.writeln('}')
 			}
 		}
@@ -613,7 +618,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	g.writeln('/* \$for ${node.val_var} in ${sym.name}.${node.kind.str()} */ {')
 	g.indent++
 	mut i := 0
-
+	old_defer_stmts := g.defer_stmts
 	if node.kind == .methods {
 		methods := sym.get_methods()
 		if methods.len > 0 {
@@ -621,6 +626,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		}
 		typ_vweb_result := g.table.find_type('vweb.Result')
 		for method in methods {
+			g.defer_stmts = old_defer_stmts
 			g.push_new_comptime_info()
 			g.comptime.inside_comptime_for = true
 			// filter vweb route methods (non-generic method)
@@ -690,6 +696,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.type_resolver.update_ct_type('${node.val_var}.return_type', ret_typ)
 			g.type_resolver.update_ct_type('${node.val_var}.typ', typ)
 			g.stmts(node.stmts)
+			g.write_defer_stmts(node.scope, false, node.pos)
 			i++
 			g.writeln('}')
 			g.pop_comptime_info()
@@ -706,13 +713,14 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				else {
 					g.error('comptime field lookup is supported only for structs and interfaces, and ${sym.name} is neither',
 						node.pos)
-					[]ast.StructField{len: 0}
+					[]ast.StructField{}
 				}
 			}
 			if fields.len > 0 {
 				g.writeln('\tFieldData ${node.val_var} = {0};')
 			}
 			for field in fields {
+				g.defer_stmts = old_defer_stmts
 				g.push_new_comptime_info()
 				g.comptime.inside_comptime_for = true
 				g.comptime.comptime_for_field_var = node.val_var
@@ -754,6 +762,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.type_resolver.update_ct_type('${node.val_var}.typ', field.typ)
 				g.type_resolver.update_ct_type('${node.val_var}.unaliased_typ', unaliased_styp)
 				g.stmts(node.stmts)
+				g.write_defer_stmts(node.scope, false, node.pos)
 				i++
 				g.writeln('}')
 				g.pop_comptime_info()
@@ -766,6 +775,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					g.writeln('\tEnumData ${node.val_var} = {0};')
 				}
 				for val in sym.info.vals {
+					g.defer_stmts = old_defer_stmts
 					g.push_new_comptime_info()
 					g.comptime.inside_comptime_for = true
 					g.comptime.comptime_for_enum_var = node.val_var
@@ -794,6 +804,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 							attrs.join(', ') + '}));\n')
 					}
 					g.stmts(node.stmts)
+					g.write_defer_stmts(node.scope, false, node.pos)
 					g.writeln('}')
 					i++
 					g.pop_comptime_info()
@@ -806,6 +817,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.writeln('\tVAttribute ${node.val_var} = {0};')
 
 			for attr in attrs {
+				g.defer_stmts = old_defer_stmts
 				g.push_new_comptime_info()
 				g.comptime.inside_comptime_for = true
 				g.comptime.comptime_for_attr_var = node.val_var
@@ -816,6 +828,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.arg = _S("${util.smart_quote(attr.arg, false)}");')
 				g.writeln('\t${node.val_var}.kind = AttributeKind__${attr.kind};')
 				g.stmts(node.stmts)
+				g.write_defer_stmts(node.scope, false, node.pos)
 				g.writeln('}')
 				i++
 				g.pop_comptime_info()
@@ -828,6 +841,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			}
 			g.comptime.inside_comptime_for = true
 			for variant in sym.info.variants {
+				g.defer_stmts = old_defer_stmts
 				g.push_new_comptime_info()
 				g.comptime.inside_comptime_for = true
 				g.comptime.comptime_for_variant_var = node.val_var
@@ -836,6 +850,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('/* variant ${i} : ${g.table.type_to_str(variant)} */ {')
 				g.writeln('\t${node.val_var}.typ = ${int(variant)};\t// ')
 				g.stmts(node.stmts)
+				g.write_defer_stmts(node.scope, false, node.pos)
 				g.writeln('}')
 				i++
 				g.pop_comptime_info()
@@ -848,6 +863,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		}
 		params := if func.is_method { func.params[1..] } else { func.params }
 		for param in params {
+			g.defer_stmts = old_defer_stmts
 			g.push_new_comptime_info()
 			g.comptime.inside_comptime_for = true
 			g.comptime.comptime_for_method_param_var = node.val_var
@@ -857,11 +873,13 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.writeln('\t${node.val_var}.typ = ${int(param.typ)};\t// ${g.table.type_to_str(param.typ)}')
 			g.writeln('\t${node.val_var}.name = _S("${param.name}");')
 			g.stmts(node.stmts)
+			g.write_defer_stmts(node.scope, false, node.pos)
 			g.writeln('}')
 			i++
 			g.pop_comptime_info()
 		}
 	}
+	g.defer_stmts = old_defer_stmts
 	g.indent--
 	g.writeln('}// \$for')
 }
@@ -1028,7 +1046,9 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 							g.stmt(last)
 						}
 						g.skip_stmt_pos = prev_skip_stmt_pos
-						g.writeln2(';', '}')
+						g.writeln(';')
+						g.write_defer_stmts(branch.scope, false, branch.pos)
+						g.writeln('}')
 						g.indent--
 					} else {
 						g.indent++
@@ -1047,6 +1067,7 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 						}
 						g.skip_stmt_pos = prev_skip_stmt_pos
 						g.writeln(';')
+						g.write_defer_stmts(branch.scope, false, branch.pos)
 						g.indent--
 					}
 				} else if last is ast.Return {
@@ -1054,13 +1075,13 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 						g.write('${tmp_var} = ')
 						g.expr(last.exprs[0])
 						g.writeln(';')
+						g.write_defer_stmts(branch.scope, false, branch.pos)
 					}
 				}
 			}
-		} else {
-			if is_true.val || g.pref.output_cross_c {
-				g.stmts(branch.stmts)
-			}
+		} else if is_true.val || g.pref.output_cross_c {
+			g.stmts(branch.stmts)
+			g.write_defer_stmts(branch.scope, false, branch.pos)
 		}
 	}
 	g.writeln('#endif')

@@ -486,6 +486,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		typ:     typ
 		expr:    expr
 		typ_pos: typ_pos
+		scope:   p.scope
 		pos:     spos.extend(p.tok.pos())
 	}
 }

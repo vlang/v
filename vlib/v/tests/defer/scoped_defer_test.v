@@ -50,7 +50,7 @@ fn test_if_expr_with_defer() {
 fn test_scoped_defer() {
 	mut res := 0
 
-	defer(fn) {
+	defer {
 		res++
 		assert res == 5
 	}
@@ -69,3 +69,51 @@ fn test_scoped_defer() {
 		} // <- Block 2 ends. Defer 3 executes. res = 3.
 	} // <- Block 1 ends. Defer 2 executes. res = 4.
 } // <- 'test_scoped_defer' ends. Defer 1 executes. res = 5.
+
+fn test_defer_with_comptime_if() {
+	mut c := 0
+	defer { assert c == 3 }
+	defer { c++ }
+	$if tinyc || gcc || clang || msvc || mingw {
+		defer { c++ }
+		c++
+	} $else {
+		c = 0
+	}
+}
+
+fn test_defer_with_comptime_match() {
+	mut c := 0
+	defer { assert c == 3 }
+	defer { c++ }
+	$match @CCOMPILER {
+		'tinyc', 'gcc', 'clang', 'msvc', 'mingw' {
+			defer { c++ }
+			c++
+		}
+		$else {
+			c = 0
+		}
+	}
+}
+
+fn test_defer_with_comptime_for() {
+	mut c := 0
+	$for f in Data.fields {
+		defer {
+			if f.name == 'counter' {
+				c++
+			}
+		}
+	}
+	assert c == 1
+
+	$for m in Data.methods {
+		defer {
+			if m.name in ['operation', 'run_operation'] {
+				c++
+			}
+		}
+	}
+	assert c == 3
+}
