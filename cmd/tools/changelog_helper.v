@@ -111,9 +111,6 @@ fn main() {
 		}
 	}
 	os.write_file(log_txt, lines.join('\n'))!
-	if true {
-		// return
-	}
 	mut app := &App{
 		total_lines: lines.len
 	}
@@ -122,10 +119,6 @@ fn main() {
 		category_titles)
 	os.write_file('CHANGELOG.md', app.result)!
 	changelog_txt := os.read_file('CHANGELOG.md')!.to_lower()
-	if true {
-		// println(changelog_txt)
-		// return
-	}
 	// mut counter := 0 // to display how many commits are left
 	for line in lines {
 		s := line.trim_space()
