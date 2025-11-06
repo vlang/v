@@ -1,6 +1,27 @@
+vlib/v/checker/tests/return_missing_if_match.vv:4:5: warning: condition is always true
+    2 | 
+    3 | fn foo() string {
+    4 |     if true {
+      |        ~~~~
+    5 |         match 1 {
+    6 |             1 { return '' }
+vlib/v/checker/tests/return_missing_if_match.vv:6:4: warning: match is always true
+    4 |     if true {
+    5 |         match 1 {
+    6 |             1 { return '' }
+      |             ^
+    7 |             2 {}
+    8 |             else { return '' }
+vlib/v/checker/tests/return_missing_if_match.vv:7:4: warning: match is always false
+    5 |         match 1 {
+    6 |             1 { return '' }
+    7 |             2 {}
+      |             ^
+    8 |             else { return '' }
+    9 |         }
 vlib/v/checker/tests/return_missing_if_match.vv:3:1: error: missing return at end of function `foo`
     1 | fn main() {}
-    2 |
+    2 | 
     3 | fn foo() string {
       | ~~~~~~~~~~~~~~~
     4 |     if true {

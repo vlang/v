@@ -1,0 +1,14 @@
+vlib/v/checker/tests/return_working_nested.vv:4:5: warning: condition is always true
+    2 | 
+    3 | fn foo() string {
+    4 |     if true {
+      |        ~~~~
+    5 |         return ''
+    6 |     } else {
+vlib/v/checker/tests/return_working_nested.vv:7:6: warning: condition is always true
+    5 |         return ''
+    6 |     } else {
+    7 |         if true {
+      |            ~~~~
+    8 |             return ''
+    9 |         }

@@ -1,3 +1,10 @@
+vlib/v/checker/tests/struct_scope_err.vv:8:5: warning: condition is always true
+    6 |     }
+    7 | 
+    8 |     if true {
+      |        ~~~~
+    9 |         fb := Foobar{5, 6}
+   10 |         println(fb.foo)
 vlib/v/checker/tests/struct_scope_err.vv:16:8: error: unknown type `Foobar`
    14 | 
    15 | fn x() {

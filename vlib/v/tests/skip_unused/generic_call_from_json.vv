@@ -16,7 +16,9 @@ fn f() ! {
 }
 
 fn main() {
-	if false {
+	a := 5
+	b := 6
+	if a == b {
 		f()!
 	}
 	println('ok')

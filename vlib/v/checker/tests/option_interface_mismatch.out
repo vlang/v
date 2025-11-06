@@ -1,5 +1,11 @@
+vlib/v/checker/tests/option_interface_mismatch.vv:11:12: warning: condition is always true
+    9 | 
+   10 | fn give_string(line string) ?MObject {
+   11 |     return if true { 'string' } else { 'string' }
+      |               ~~~~
+   12 | }
 vlib/v/checker/tests/option_interface_mismatch.vv:11:9: error: mismatched types `?MObject` and `string`
-    9 |
+    9 | 
    10 | fn give_string(line string) ?MObject {
    11 |     return if true { 'string' } else { 'string' }
       |            ~~

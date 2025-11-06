@@ -1,0 +1,21 @@
+vlib/v/checker/tests/return_working_two_if.vv:4:5: warning: condition is always true
+    2 | 
+    3 | fn foo() string {
+    4 |     if true {
+      |        ~~~~
+    5 |         if true {
+    6 |             return ''
+vlib/v/checker/tests/return_working_two_if.vv:5:6: warning: condition is always true
+    3 | fn foo() string {
+    4 |     if true {
+    5 |         if true {
+      |            ~~~~
+    6 |             return ''
+    7 |         }
+vlib/v/checker/tests/return_working_two_if.vv:9:6: warning: condition is always true
+    7 |         }
+    8 | 
+    9 |         if true {
+      |            ~~~~
+   10 |             return ''
+   11 |         } else {

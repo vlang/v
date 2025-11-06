@@ -1,3 +1,10 @@
+vlib/v/checker/tests/cast_to_interface_err.vv:7:5: warning: condition is always true
+    5 | fn foo() !int {
+    6 |     // do something
+    7 |     if true {
+      |        ~~~~
+    8 |         return 1
+    9 |     }
 vlib/v/checker/tests/cast_to_interface_err.vv:20:9: error: `CustomError` doesn't implement method `msg` of interface `IError`
    18 | 
    19 | fn my_error() IError {

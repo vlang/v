@@ -1,3 +1,23 @@
+vlib/v/checker/tests/return_missing_if_else_simple.vv:2:5: warning: condition is always true
+    1 | fn if_no_returns() int {
+    2 |     if true {
+      |        ~~~~
+    3 |         println('no return in then')
+    4 |     } else {
+vlib/v/checker/tests/return_missing_if_else_simple.vv:11:5: warning: condition is always true
+    9 | 
+   10 | fn if_no_return_in_else() int {
+   11 |     if true {
+      |        ~~~~
+   12 |         return 123
+   13 |     } else {
+vlib/v/checker/tests/return_missing_if_else_simple.vv:22:5: warning: condition is always true
+   20 |     // The if here always returns, so the function
+   21 |     // returns too:
+   22 |     if true {
+      |        ~~~~
+   23 |         return 123
+   24 |     } else {
 vlib/v/checker/tests/return_missing_if_else_simple.vv:1:1: error: missing return at end of function `if_no_returns`
     1 | fn if_no_returns() int {
       | ~~~~~~~~~~~~~~~~~~~~~~

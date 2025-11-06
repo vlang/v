@@ -1,6 +1,13 @@
+vlib/v/checker/tests/return_missing_comp_if_nested.vv:10:6: warning: condition is always true
+    8 |         }
+    9 |     } $else {
+   10 |         if true {
+      |            ~~~~
+   11 |         } else {
+   12 |             return ''
 vlib/v/checker/tests/return_missing_comp_if_nested.vv:3:1: error: missing return at end of function `foo`
     1 | fn main() {}
-    2 |
+    2 | 
     3 | fn foo() string {
       | ~~~~~~~~~~~~~~~
     4 |     $if windows {

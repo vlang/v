@@ -12,6 +12,20 @@ vlib/v/checker/tests/immutable_to_mutable_err.vv:12:10: notice: left-side of ass
       |                ~~~
    13 |         else { [0] }
    14 |     }
+vlib/v/checker/tests/immutable_to_mutable_err.vv:10:20: warning: condition is always true
+    8 | fn main() {
+    9 |     arr := [1, 2, 3] // declared as immutable!
+   10 |     mut arr_mut := if true { arr } else { []int{} }
+      |                       ~~~~
+   11 |     mut arr_mut2 := match true {
+   12 |         true { arr }
+vlib/v/checker/tests/immutable_to_mutable_err.vv:12:3: warning: match is always true
+   10 |     mut arr_mut := if true { arr } else { []int{} }
+   11 |     mut arr_mut2 := match true {
+   12 |         true { arr }
+      |         ~~~~
+   13 |         else { [0] }
+   14 |     }
 vlib/v/checker/tests/immutable_to_mutable_err.vv:22:15: error: use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)
    20 | 
    21 |     a := Test{}

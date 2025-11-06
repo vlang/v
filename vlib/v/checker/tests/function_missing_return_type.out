@@ -1,3 +1,10 @@
+vlib/v/checker/tests/function_missing_return_type.vv:13:5: warning: condition is always true
+   11 | 
+   12 | fn (s Abc) abc() &int {
+   13 |     if true {
+      |        ~~~~
+   14 |         return &s.x
+   15 |     }
 vlib/v/checker/tests/function_missing_return_type.vv:1:1: error: missing return at end of function `h`
     1 | fn h() int {
       | ~~~~~~~~~~
