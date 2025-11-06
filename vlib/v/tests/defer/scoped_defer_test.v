@@ -50,7 +50,7 @@ fn test_if_expr_with_defer() {
 fn test_scoped_defer() {
 	mut res := 0
 
-	defer(fn) {
+	defer {
 		res++
 		assert res == 5
 	}
@@ -74,7 +74,7 @@ fn test_defer_with_comptime_if() {
 	mut c := 0
 	defer { assert c == 3 }
 	defer { c++ }
-	$if tinyc || gcc || clang {
+	$if tinyc || gcc || clang || msvc || mingw {
 		defer { c++ }
 		c++
 	} $else {
@@ -87,7 +87,7 @@ fn test_defer_with_comptime_match() {
 	defer { assert c == 3 }
 	defer { c++ }
 	$match @CCOMPILER {
-		'tinyc', 'gcc', 'clang' {
+		'tinyc', 'gcc', 'clang', 'msvc', 'mingw' {
 			defer { c++ }
 			c++
 		}
