@@ -946,65 +946,78 @@ fn (mut decoder Decoder) decode_number[T](val &T) ! {
 		}
 
 		// doing it like this means the minimum of signed numbers does not overflow before being inverted
+		*val = 0 // initialize to zero before accumulating digits
 		if !is_negative {
-			*val = 0 // Initialize to zero before accumulating digits
 			digit_amount := get_number_digits(*val)
 
 			if number_info.length > digit_amount {
 				decoder.decode_error('overflows ${typeof(val).name}')!
 			}
 
-			for index < number_info.length {
+			for index < int_min(number_info.length, digit_amount - 1) {
 				digit := T(decoder.json[number_info.position + index] - `0`)
 
 				if digit > 9 { // comma, e and E are all smaller 0 in ASCII so they underflow
 					decoder.decode_error('expected integer but got real number')!
-				}
-
-				// Check for overflow before adding the digit
-				if index >= digit_amount - 1 {
-					type_max := get_number_max(*val)
-					max_digits := type_max / 10
-					last_digit := type_max % 10
-
-					if *val > max_digits || (*val == max_digits && digit > last_digit) {
-						decoder.decode_error('overflows ${typeof(val).name}')!
-					}
 				}
 
 				*val = *val * 10 + digit
 
 				index++
 			}
-		} else {
-			*val = 0 // Initialize to zero before accumulating digits
-			digit_amount := get_number_digits(*val) + 1
 
-			if number_info.length > digit_amount {
-				decoder.decode_error('underflows ${typeof(val).name}')!
-			}
-
-			for index < number_info.length {
+			if index == digit_amount - 1 {
 				digit := T(decoder.json[number_info.position + index] - `0`)
 
 				if digit > 9 { // comma, e and E are all smaller 0 in ASCII so they underflow
 					decoder.decode_error('expected integer but got real number')!
 				}
 
-				// Check for underflow before subtracting the digit
-				if index >= digit_amount - 1 {
-					type_min := get_number_min(*val)
-					min_digits := type_min / 10
-					last_digit := type_min % 10
+				type_max := get_number_max(*val)
+				max_digits := type_max / 10
+				last_digit := type_max % 10
 
-					if *val < min_digits || (*val == min_digits && -digit < last_digit) {
-						decoder.decode_error('underflows ${typeof(val).name}')!
-					}
+				if *val > max_digits || (*val == max_digits && digit > last_digit) {
+					decoder.decode_error('overflows ${typeof(val).name}s')!
+				}
+
+				*val = *val * 10 + digit
+			}
+		} else {
+			digit_amount := get_number_digits(*val) + 1
+
+			if number_info.length > digit_amount {
+				decoder.decode_error('underflows ${typeof(val).name}')!
+			}
+
+			for index < int_min(number_info.length, digit_amount - 1) {
+				digit := T(decoder.json[number_info.position + index] - `0`)
+
+				if digit > 9 { // comma, e and E are all smaller 0 in ASCII so they underflow
+					decoder.decode_error('expected integer but got real number')!
 				}
 
 				*val = *val * 10 - digit
 
 				index++
+			}
+
+			if index == digit_amount - 1 {
+				digit := T(decoder.json[number_info.position + index] - `0`)
+
+				if digit > 9 { // comma, e and E are all smaller 0 in ASCII so they underflow
+					decoder.decode_error('expected integer but got real number')!
+				}
+
+				type_min := get_number_min(*val)
+				min_digits := type_min / 10
+				last_digit := type_min % 10
+
+				if *val < min_digits || (*val == min_digits && -digit < last_digit) {
+					decoder.decode_error('underflows ${typeof(val).name}')!
+				}
+
+				*val = *val * 10 - digit
 			}
 		}
 	}
