@@ -1,13 +1,15 @@
 fn main() {}
 
 fn foo() string {
+	a := 1
+	b := 1
 	$if windows {
-		if true {
+		if a == b {
 		} else {
 			return ''
 		}
 	} $else {
-		if true {
+		if a == b {
 		} else {
 			return ''
 		}
