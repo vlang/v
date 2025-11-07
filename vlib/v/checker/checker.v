@@ -2429,7 +2429,7 @@ fn (mut c Checker) defer_stmt(mut node ast.DeferStmt) {
 	}
 	if node.mode == .function {
 		if !isnil(c.fn_scope) && node.scope == c.fn_scope {
-			c.error('`defer` is already in function scope; just use `defer {` instead',
+			c.warn('`defer` is already in function scope; just use `defer {` instead',
 				node.pos)
 		}
 		if c.locked_names.len != 0 || c.rlocked_names.len != 0 {
