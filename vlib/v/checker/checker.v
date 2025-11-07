@@ -2344,35 +2344,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			c.inside_const = false
 		}
 		ast.DeferStmt {
-			c.inside_defer = true
-			if node.idx_in_fn < 0 && c.table.cur_fn != unsafe { nil } {
-				node.idx_in_fn = c.table.cur_fn.defer_stmts.len
-				c.table.cur_fn.defer_stmts << unsafe { &node }
-			}
-			if c.locked_names.len != 0 || c.rlocked_names.len != 0 {
-				c.error('defers are not allowed in lock statements', node.pos)
-			}
-			for i, ident in node.defer_vars {
-				mut id := ident
-				if mut id.info is ast.IdentVar {
-					if id.comptime && (id.tok_kind == .question
-						|| id.name in ast.valid_comptime_not_user_defined) {
-						node.defer_vars[i] = ast.Ident{
-							scope: unsafe { nil }
-							name:  ''
-						}
-						continue
-					}
-					typ := c.ident(mut id)
-					if typ == ast.error_type_idx {
-						continue
-					}
-					id.info.typ = typ
-					node.defer_vars[i] = id
-				}
-			}
-			c.stmts(mut node.stmts)
-			c.inside_defer = false
+			c.defer_stmt(mut node)
 		}
 		ast.EnumDecl {
 			c.enum_decl(mut node)
@@ -2443,6 +2415,38 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			c.assert_stmt(mut node)
 		}
 	}
+}
+
+fn (mut c Checker) defer_stmt(mut node ast.DeferStmt) {
+	c.inside_defer = true
+	if node.idx_in_fn < 0 && c.table.cur_fn != unsafe { nil } {
+		node.idx_in_fn = c.table.cur_fn.defer_stmts.len
+		c.table.cur_fn.defer_stmts << unsafe { &node }
+	}
+	if c.locked_names.len != 0 || c.rlocked_names.len != 0 {
+		c.error('defers are not allowed in lock statements', node.pos)
+	}
+	for i, ident in node.defer_vars {
+		mut id := ident
+		if mut id.info is ast.IdentVar {
+			if id.comptime
+				&& (id.tok_kind == .question || id.name in ast.valid_comptime_not_user_defined) {
+				node.defer_vars[i] = ast.Ident{
+					scope: unsafe { nil }
+					name:  ''
+				}
+				continue
+			}
+			typ := c.ident(mut id)
+			if typ == ast.error_type_idx {
+				continue
+			}
+			id.info.typ = typ
+			node.defer_vars[i] = id
+		}
+	}
+	c.stmts(mut node.stmts)
+	c.inside_defer = false
 }
 
 fn (mut c Checker) assert_stmt(mut node ast.AssertStmt) {
