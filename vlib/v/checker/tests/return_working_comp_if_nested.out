@@ -1,7 +1,0 @@
-vlib/v/checker/tests/return_working_comp_if_nested.vv:11:6: warning: condition is always true
-    9 |         }
-   10 |     } $else {
-   11 |         if true {
-      |            ~~~~
-   12 |             return ''
-   13 |         } else {
