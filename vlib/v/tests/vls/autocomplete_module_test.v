@@ -307,7 +307,7 @@ fn test_main() {
 			println('${term.green('OK  ')} ${t.cmd}')
 		}
 
-		// Try to deocde the response message and verify
+		// Try to decode the response message and verify
 		// TODO: remove `unresolved type, maybe`
 		if t.output.trim_space().len > 0 && !t.output.starts_with('unresolved type, maybe') {
 			dump(t.output)
