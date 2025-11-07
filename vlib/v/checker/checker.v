@@ -2426,9 +2426,6 @@ fn (mut c Checker) defer_stmt(mut node ast.DeferStmt) {
 	if node.mode == .function && !isnil(c.fn_scope) && node.scope == c.fn_scope {
 		c.error('`defer` is already in function scope; just use `defer {` instead', node.pos)
 	}
-	if c.locked_names.len != 0 || c.rlocked_names.len != 0 {
-		c.error('defers are not allowed in lock statements', node.pos)
-	}
 	for i, ident in node.defer_vars {
 		mut id := ident
 		if mut id.info is ast.IdentVar {
