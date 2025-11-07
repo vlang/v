@@ -15,6 +15,9 @@ pub fn new(key []u8, data []u8, hash_func fn ([]u8) []u8, blocksize int) []u8 {
         } else {
                 b_key = hash_func(key)
         }
+	if b_key.len > blocksize {
+		b_key = b_key[..blocksize].clone()
+	}
         for i, b in b_key {
                 inner[i] = b ^ 0x36
                 outer[i] = b ^ 0x5c
