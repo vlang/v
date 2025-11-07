@@ -1,7 +1,6 @@
 module string_reader
 
 import io
-import math
 
 struct Buf {
 pub:
