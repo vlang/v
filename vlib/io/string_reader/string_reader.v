@@ -76,13 +76,13 @@ pub fn (mut r StringReader) fill_buffer(read_till_end_of_stream bool) !int {
 	}
 
 	for {
-		read := reader.read(mut r.builder[start..]) or {
+		read := reader.read(mut r.builder[end..]) or {
 			r.end_of_stream = true
 			break
 		}
 		end += read
 
-		if !read_till_end_of_stream && read == 0 {
+		if !read_till_end_of_stream || read == 0 {
 			break
 		} else if r.builder.len == end {
 			unsafe { r.builder.grow_len(io.read_all_grow_len) }
