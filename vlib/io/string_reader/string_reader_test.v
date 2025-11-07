@@ -29,7 +29,7 @@ fn (mut r TwoByteReader) read(mut buf []u8) !int {
 	if r.pos >= r.data.len {
 		return io.Eof{}
 	}
-	min := math.min(r.data.len - r.pos, 2)
+	min := int_min(r.data.len - r.pos, 2)
 	for i in 0 .. min {
 		buf[i] = r.data[r.pos]
 		r.pos++
