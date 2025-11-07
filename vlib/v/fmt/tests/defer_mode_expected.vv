@@ -8,7 +8,6 @@ fn main() {
 		}
 		println('exit fn main().scope.1')
 	}
-
 	defer(fn) {
 		println('defer(fn)')
 	}
