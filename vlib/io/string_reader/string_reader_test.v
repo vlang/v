@@ -9,6 +9,12 @@ mut:
 	i int
 }
 
+struct TwoByteReader {
+mut:
+	data string
+	pos  int
+}
+
 fn (mut b Buf) read(mut buf []u8) !int {
 	if !(b.i < b.bytes.len) {
 		return io.Eof{}
@@ -16,6 +22,18 @@ fn (mut b Buf) read(mut buf []u8) !int {
 	n := copy(mut buf, b.bytes[b.i..])
 	b.i += n
 	return n
+}
+
+fn (mut r TwoByteReader) read(mut buf []u8) !int {
+	if r.pos >= r.data.len {
+		return io.Eof{}
+	}
+	min := int_min(r.data.len - r.pos, 2)
+	for i in 0 .. min {
+		buf[i] = r.data[r.pos]
+		r.pos++
+	}
+	return min
 }
 
 fn test_read_all() {
@@ -121,4 +139,22 @@ fn test_flush() {
 
 	assert reader.offset == 0
 	assert reader.builder.len == 0
+}
+
+fn test_fill_buffer_true() {
+	mut two := TwoByteReader{
+		data: '12345'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.fill_buffer(true)! == 5
+	assert reader.get_string() == '12345'
+}
+
+fn test_fill_buffer_false() {
+	mut two := TwoByteReader{
+		data: '12345'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.fill_buffer(false)! == 2
+	assert reader.get_string() == '12'
 }

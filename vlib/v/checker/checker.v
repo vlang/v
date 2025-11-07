@@ -391,7 +391,11 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 		}
 	}
 	c.timers.start('checker_post_process_generic_fns')
-	last_file := c.file
+	mut last_file := c.file
+	// c.file might be nil in vls mode, fall back to first file
+	if c.pref.is_vls && last_file == unsafe { nil } && ast_files.len > 0 {
+		last_file = ast_files[0]
+	}
 	// post process generic functions. must be done after all files have been
 	// checked, to ensure all generic calls are processed, as this information
 	// is needed when the generic type is auto inferred from the call argument.
