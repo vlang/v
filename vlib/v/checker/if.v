@@ -163,9 +163,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				t_expr := t.expr(mut check_expr)
 				if t_expr is ast.BoolLiteral {
 					if t_expr.val {
-						c.warn('condition is always true', branch.cond.pos())
+						c.note('condition is always true', branch.cond.pos())
 					} else {
-						c.warn('condition is always false', branch.cond.pos())
+						c.note('condition is always false', branch.cond.pos())
 					}
 				}
 			}

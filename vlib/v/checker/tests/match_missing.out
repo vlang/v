@@ -1,4 +1,4 @@
-vlib/v/checker/tests/match_missing.vv:10:2: warning: match is always false
+vlib/v/checker/tests/match_missing.vv:10:2: notice: match is always false
     8 | 
     9 | match true {
    10 |     'foo' == 'bar' {}

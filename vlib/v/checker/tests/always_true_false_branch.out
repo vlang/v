@@ -1,466 +1,466 @@
-vlib/v/checker/tests/always_true_false_branch.vv:5:23: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:5:23: notice: condition is always true
     3 | fn main() {
     4 |     x := 1
     5 |     if_always_true := if x == x {
       |                          ~~~~~~
     6 |         1
     7 |     } else if true {
-vlib/v/checker/tests/always_true_false_branch.vv:7:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:7:12: notice: condition is always true
     5 |     if_always_true := if x == x {
     6 |         1
     7 |     } else if true {
       |               ~~~~
     8 |         1
     9 |     } else if !false {
-vlib/v/checker/tests/always_true_false_branch.vv:11:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:11:12: notice: condition is always true
     9 |     } else if !false {
    10 |         1
    11 |     } else if true == true {
       |               ~~~~~~~~~~~~
    12 |         1
    13 |     } else if true != false {
-vlib/v/checker/tests/always_true_false_branch.vv:13:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:13:12: notice: condition is always true
    11 |     } else if true == true {
    12 |         1
    13 |     } else if true != false {
       |               ~~~~~~~~~~~~~
    14 |         1
    15 |     } else if false == false {
-vlib/v/checker/tests/always_true_false_branch.vv:15:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:15:12: notice: condition is always true
    13 |     } else if true != false {
    14 |         1
    15 |     } else if false == false {
       |               ~~~~~~~~~~~~~~
    16 |         1
    17 |     } else if false != true {
-vlib/v/checker/tests/always_true_false_branch.vv:17:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:17:12: notice: condition is always true
    15 |     } else if false == false {
    16 |         1
    17 |     } else if false != true {
       |               ~~~~~~~~~~~~~
    18 |         1
    19 |     } else if 'a' == 'a' {
-vlib/v/checker/tests/always_true_false_branch.vv:19:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:19:12: notice: condition is always true
    17 |     } else if false != true {
    18 |         1
    19 |     } else if 'a' == 'a' {
       |               ~~~~~~~~~~
    20 |         1
    21 |     } else if 'a' != 'b' {
-vlib/v/checker/tests/always_true_false_branch.vv:21:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:21:12: notice: condition is always true
    19 |     } else if 'a' == 'a' {
    20 |         1
    21 |     } else if 'a' != 'b' {
       |               ~~~~~~~~~~
    22 |         1
    23 |     } else if 1 == 1 {
-vlib/v/checker/tests/always_true_false_branch.vv:23:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:23:12: notice: condition is always true
    21 |     } else if 'a' != 'b' {
    22 |         1
    23 |     } else if 1 == 1 {
       |               ~~~~~~
    24 |         1
    25 |     } else if 1 != 2 {
-vlib/v/checker/tests/always_true_false_branch.vv:25:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:25:12: notice: condition is always true
    23 |     } else if 1 == 1 {
    24 |         1
    25 |     } else if 1 != 2 {
       |               ~~~~~~
    26 |         1
    27 |     } else if 1 >= 1 {
-vlib/v/checker/tests/always_true_false_branch.vv:27:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:27:12: notice: condition is always true
    25 |     } else if 1 != 2 {
    26 |         1
    27 |     } else if 1 >= 1 {
       |               ~~~~~~
    28 |         1
    29 |     } else if 1 <= 1 {
-vlib/v/checker/tests/always_true_false_branch.vv:29:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:29:12: notice: condition is always true
    27 |     } else if 1 >= 1 {
    28 |         1
    29 |     } else if 1 <= 1 {
       |               ~~~~~~
    30 |         1
    31 |     } else if 1 < 2 {
-vlib/v/checker/tests/always_true_false_branch.vv:31:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:31:12: notice: condition is always true
    29 |     } else if 1 <= 1 {
    30 |         1
    31 |     } else if 1 < 2 {
       |               ~~~~~
    32 |         1
    33 |     } else if 2 > 1 {
-vlib/v/checker/tests/always_true_false_branch.vv:33:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:33:12: notice: condition is always true
    31 |     } else if 1 < 2 {
    32 |         1
    33 |     } else if 2 > 1 {
       |               ~~~~~
    34 |         1
    35 |     } else if 1.5 == 1.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:35:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:35:12: notice: condition is always true
    33 |     } else if 2 > 1 {
    34 |         1
    35 |     } else if 1.5 == 1.5 {
       |               ~~~~~~~~~~
    36 |         1
    37 |     } else if 1.5 != 2.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:37:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:37:12: notice: condition is always true
    35 |     } else if 1.5 == 1.5 {
    36 |         1
    37 |     } else if 1.5 != 2.5 {
       |               ~~~~~~~~~~
    38 |         1
    39 |     } else if 1.5 >= 1.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:39:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:39:12: notice: condition is always true
    37 |     } else if 1.5 != 2.5 {
    38 |         1
    39 |     } else if 1.5 >= 1.5 {
       |               ~~~~~~~~~~
    40 |         1
    41 |     } else if 1.5 <= 1.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:41:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:41:12: notice: condition is always true
    39 |     } else if 1.5 >= 1.5 {
    40 |         1
    41 |     } else if 1.5 <= 1.5 {
       |               ~~~~~~~~~~
    42 |         1
    43 |     } else if 1.5 < 2.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:43:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:43:12: notice: condition is always true
    41 |     } else if 1.5 <= 1.5 {
    42 |         1
    43 |     } else if 1.5 < 2.5 {
       |               ~~~~~~~~~
    44 |         1
    45 |     } else if 2.5 > 1.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:45:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:45:12: notice: condition is always true
    43 |     } else if 1.5 < 2.5 {
    44 |         1
    45 |     } else if 2.5 > 1.5 {
       |               ~~~~~~~~~
    46 |         1
    47 |     } else if `1` == `1` {
-vlib/v/checker/tests/always_true_false_branch.vv:47:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:47:12: notice: condition is always true
    45 |     } else if 2.5 > 1.5 {
    46 |         1
    47 |     } else if `1` == `1` {
       |               ~~~~~~~~~~
    48 |         1
    49 |     } else if `1` != `2` {
-vlib/v/checker/tests/always_true_false_branch.vv:49:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:49:12: notice: condition is always true
    47 |     } else if `1` == `1` {
    48 |         1
    49 |     } else if `1` != `2` {
       |               ~~~~~~~~~~
    50 |         1
    51 |     } else if `1` >= `1` {
-vlib/v/checker/tests/always_true_false_branch.vv:51:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:51:12: notice: condition is always true
    49 |     } else if `1` != `2` {
    50 |         1
    51 |     } else if `1` >= `1` {
       |               ~~~~~~~~~~
    52 |         1
    53 |     } else if `1` <= `1` {
-vlib/v/checker/tests/always_true_false_branch.vv:53:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:53:12: notice: condition is always true
    51 |     } else if `1` >= `1` {
    52 |         1
    53 |     } else if `1` <= `1` {
       |               ~~~~~~~~~~
    54 |         1
    55 |     } else if `1` < `2` {
-vlib/v/checker/tests/always_true_false_branch.vv:55:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:55:12: notice: condition is always true
    53 |     } else if `1` <= `1` {
    54 |         1
    55 |     } else if `1` < `2` {
       |               ~~~~~~~~~
    56 |         1
    57 |     } else if `2` > `1` {
-vlib/v/checker/tests/always_true_false_branch.vv:57:12: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:57:12: notice: condition is always true
    55 |     } else if `1` < `2` {
    56 |         1
    57 |     } else if `2` > `1` {
       |               ~~~~~~~~~
    58 |         1
    59 |     } else if 1 == 1 && 2 <= 2 && 3 >= 3 && 4 != 5 {
-vlib/v/checker/tests/always_true_false_branch.vv:59:1: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:59:1: notice: condition is always true
    57 |     } else if `2` > `1` {
    58 |         1
    59 |     } else if 1 == 1 && 2 <= 2 && 3 >= 3 && 4 != 5 {
       | ^
    60 |         1
    61 |     } else if 1 == 1 || 4 > 5 || 6 < 3 || 5 != 5 {
-vlib/v/checker/tests/always_true_false_branch.vv:61:1: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:61:1: notice: condition is always true
    59 |     } else if 1 == 1 && 2 <= 2 && 3 >= 3 && 4 != 5 {
    60 |         1
    61 |     } else if 1 == 1 || 4 > 5 || 6 < 3 || 5 != 5 {
       | ^
    62 |         1
    63 |     } else {
-vlib/v/checker/tests/always_true_false_branch.vv:69:24: warning: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:69:24: notice: condition is always true
    67 |     dump(if_always_true)
    68 | 
    69 |     if_always_false := if x != x {
       |                           ~~~~~~
    70 |         1
    71 |     } else if false {
-vlib/v/checker/tests/always_true_false_branch.vv:71:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:71:12: notice: condition is always false
    69 |     if_always_false := if x != x {
    70 |         1
    71 |     } else if false {
       |               ~~~~~
    72 |         1
    73 |     } else if !true {
-vlib/v/checker/tests/always_true_false_branch.vv:75:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:75:12: notice: condition is always false
    73 |     } else if !true {
    74 |         1
    75 |     } else if true != true {
       |               ~~~~~~~~~~~~
    76 |         1
    77 |     } else if true == false {
-vlib/v/checker/tests/always_true_false_branch.vv:77:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:77:12: notice: condition is always false
    75 |     } else if true != true {
    76 |         1
    77 |     } else if true == false {
       |               ~~~~~~~~~~~~~
    78 |         1
    79 |     } else if false != false {
-vlib/v/checker/tests/always_true_false_branch.vv:79:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:79:12: notice: condition is always false
    77 |     } else if true == false {
    78 |         1
    79 |     } else if false != false {
       |               ~~~~~~~~~~~~~~
    80 |         1
    81 |     } else if false == true {
-vlib/v/checker/tests/always_true_false_branch.vv:81:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:81:12: notice: condition is always false
    79 |     } else if false != false {
    80 |         1
    81 |     } else if false == true {
       |               ~~~~~~~~~~~~~
    82 |         1
    83 |     } else if 'a' != 'a' {
-vlib/v/checker/tests/always_true_false_branch.vv:83:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:83:12: notice: condition is always false
    81 |     } else if false == true {
    82 |         1
    83 |     } else if 'a' != 'a' {
       |               ~~~~~~~~~~
    84 |         1
    85 |     } else if 'a' == 'b' {
-vlib/v/checker/tests/always_true_false_branch.vv:85:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:85:12: notice: condition is always false
    83 |     } else if 'a' != 'a' {
    84 |         1
    85 |     } else if 'a' == 'b' {
       |               ~~~~~~~~~~
    86 |         1
    87 |     } else if 1 != 1 {
-vlib/v/checker/tests/always_true_false_branch.vv:87:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:87:12: notice: condition is always false
    85 |     } else if 'a' == 'b' {
    86 |         1
    87 |     } else if 1 != 1 {
       |               ~~~~~~
    88 |         1
    89 |     } else if 1 == 2 {
-vlib/v/checker/tests/always_true_false_branch.vv:89:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:89:12: notice: condition is always false
    87 |     } else if 1 != 1 {
    88 |         1
    89 |     } else if 1 == 2 {
       |               ~~~~~~
    90 |         1
    91 |     } else if 1 > 1 {
-vlib/v/checker/tests/always_true_false_branch.vv:91:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:91:12: notice: condition is always false
    89 |     } else if 1 == 2 {
    90 |         1
    91 |     } else if 1 > 1 {
       |               ~~~~~
    92 |         1
    93 |     } else if 1 < 1 {
-vlib/v/checker/tests/always_true_false_branch.vv:93:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:93:12: notice: condition is always false
    91 |     } else if 1 > 1 {
    92 |         1
    93 |     } else if 1 < 1 {
       |               ~~~~~
    94 |         1
    95 |     } else if 1 >= 2 {
-vlib/v/checker/tests/always_true_false_branch.vv:95:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:95:12: notice: condition is always false
    93 |     } else if 1 < 1 {
    94 |         1
    95 |     } else if 1 >= 2 {
       |               ~~~~~~
    96 |         1
    97 |     } else if 2 <= 1 {
-vlib/v/checker/tests/always_true_false_branch.vv:97:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:97:12: notice: condition is always false
    95 |     } else if 1 >= 2 {
    96 |         1
    97 |     } else if 2 <= 1 {
       |               ~~~~~~
    98 |         1
    99 |     } else if 1.5 != 1.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:99:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:99:12: notice: condition is always false
    97 |     } else if 2 <= 1 {
    98 |         1
    99 |     } else if 1.5 != 1.5 {
       |               ~~~~~~~~~~
   100 |         1
   101 |     } else if 1.5 == 2.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:101:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:101:12: notice: condition is always false
    99 |     } else if 1.5 != 1.5 {
   100 |         1
   101 |     } else if 1.5 == 2.5 {
       |               ~~~~~~~~~~
   102 |         1
   103 |     } else if 1.5 > 1.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:103:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:103:12: notice: condition is always false
   101 |     } else if 1.5 == 2.5 {
   102 |         1
   103 |     } else if 1.5 > 1.5 {
       |               ~~~~~~~~~
   104 |         1
   105 |     } else if 1.5 < 1.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:105:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:105:12: notice: condition is always false
   103 |     } else if 1.5 > 1.5 {
   104 |         1
   105 |     } else if 1.5 < 1.5 {
       |               ~~~~~~~~~
   106 |         1
   107 |     } else if 1.5 >= 2.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:107:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:107:12: notice: condition is always false
   105 |     } else if 1.5 < 1.5 {
   106 |         1
   107 |     } else if 1.5 >= 2.5 {
       |               ~~~~~~~~~~
   108 |         1
   109 |     } else if 2.5 <= 1.5 {
-vlib/v/checker/tests/always_true_false_branch.vv:109:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:109:12: notice: condition is always false
   107 |     } else if 1.5 >= 2.5 {
   108 |         1
   109 |     } else if 2.5 <= 1.5 {
       |               ~~~~~~~~~~
   110 |         1
   111 |     } else if `1` != `1` {
-vlib/v/checker/tests/always_true_false_branch.vv:111:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:111:12: notice: condition is always false
   109 |     } else if 2.5 <= 1.5 {
   110 |         1
   111 |     } else if `1` != `1` {
       |               ~~~~~~~~~~
   112 |         1
   113 |     } else if `1` == `2` {
-vlib/v/checker/tests/always_true_false_branch.vv:113:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:113:12: notice: condition is always false
   111 |     } else if `1` != `1` {
   112 |         1
   113 |     } else if `1` == `2` {
       |               ~~~~~~~~~~
   114 |         1
   115 |     } else if `1` < `1` {
-vlib/v/checker/tests/always_true_false_branch.vv:115:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:115:12: notice: condition is always false
   113 |     } else if `1` == `2` {
   114 |         1
   115 |     } else if `1` < `1` {
       |               ~~~~~~~~~
   116 |         1
   117 |     } else if `1` > `1` {
-vlib/v/checker/tests/always_true_false_branch.vv:117:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:117:12: notice: condition is always false
   115 |     } else if `1` < `1` {
   116 |         1
   117 |     } else if `1` > `1` {
       |               ~~~~~~~~~
   118 |         1
   119 |     } else if `1` >= `2` {
-vlib/v/checker/tests/always_true_false_branch.vv:119:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:119:12: notice: condition is always false
   117 |     } else if `1` > `1` {
   118 |         1
   119 |     } else if `1` >= `2` {
       |               ~~~~~~~~~~
   120 |         1
   121 |     } else if `2` <= `1` {
-vlib/v/checker/tests/always_true_false_branch.vv:121:12: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:121:12: notice: condition is always false
   119 |     } else if `1` >= `2` {
   120 |         1
   121 |     } else if `2` <= `1` {
       |               ~~~~~~~~~~
   122 |         1
   123 |     } else if 1 == 2 && 3 >= 3 && 4 <= 5 && 5 != 5 {
-vlib/v/checker/tests/always_true_false_branch.vv:123:1: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:123:1: notice: condition is always false
   121 |     } else if `2` <= `1` {
   122 |         1
   123 |     } else if 1 == 2 && 3 >= 3 && 4 <= 5 && 5 != 5 {
       | ^
   124 |         1
   125 |     } else if 1 == 2 || 2 > 3 || 5 < 4 {
-vlib/v/checker/tests/always_true_false_branch.vv:125:1: warning: condition is always false
+vlib/v/checker/tests/always_true_false_branch.vv:125:1: notice: condition is always false
   123 |     } else if 1 == 2 && 3 >= 3 && 4 <= 5 && 5 != 5 {
   124 |         1
   125 |     } else if 1 == 2 || 2 > 3 || 5 < 4 {
       | ^
   126 |         0
   127 |     } else {
-vlib/v/checker/tests/always_true_false_branch.vv:134:3: warning: match is always true
+vlib/v/checker/tests/always_true_false_branch.vv:134:3: notice: match is always true
   132 | 
   133 |     match_always_true_var := match x {
   134 |         x {
       |         ^
   135 |             'haha'
   136 |         }
-vlib/v/checker/tests/always_true_false_branch.vv:144:3: warning: match is always true
+vlib/v/checker/tests/always_true_false_branch.vv:144:3: notice: match is always true
   142 | 
   143 |     match_always_true_false_bool := match true {
   144 |         true {
       |         ~~~~
   145 |             'haha'
   146 |         }
-vlib/v/checker/tests/always_true_false_branch.vv:147:3: warning: match is always false
+vlib/v/checker/tests/always_true_false_branch.vv:147:3: notice: match is always false
   145 |             'haha'
   146 |         }
   147 |         false {
       |         ~~~~~
   148 |             'cc'
   149 |         }
-vlib/v/checker/tests/always_true_false_branch.vv:154:3: warning: match is always true
+vlib/v/checker/tests/always_true_false_branch.vv:154:3: notice: match is always true
   152 | 
   153 |     match_always_true_false_int := match 1 {
   154 |         1 {
       |         ^
   155 |             'haha'
   156 |         }
-vlib/v/checker/tests/always_true_false_branch.vv:157:3: warning: match is always false
+vlib/v/checker/tests/always_true_false_branch.vv:157:3: notice: match is always false
   155 |             'haha'
   156 |         }
   157 |         2 {
       |         ^
   158 |             'cc'
   159 |         }
-vlib/v/checker/tests/always_true_false_branch.vv:167:3: warning: match is always true
+vlib/v/checker/tests/always_true_false_branch.vv:167:3: notice: match is always true
   165 | 
   166 |     match_always_true_false_f64 := match 1.5 {
   167 |         1.5 {
       |         ~~~
   168 |             'haha'
   169 |         }
-vlib/v/checker/tests/always_true_false_branch.vv:170:3: warning: match is always false
+vlib/v/checker/tests/always_true_false_branch.vv:170:3: notice: match is always false
   168 |             'haha'
   169 |         }
   170 |         2.5 {
       |         ~~~
   171 |             'cc'
   172 |         }
-vlib/v/checker/tests/always_true_false_branch.vv:180:3: warning: match is always true
+vlib/v/checker/tests/always_true_false_branch.vv:180:3: notice: match is always true
   178 | 
   179 |     match_always_true_false_string := match 'a' {
   180 |         'a' {
       |         ~~~
   181 |             'haha'
   182 |         }
-vlib/v/checker/tests/always_true_false_branch.vv:183:3: warning: match is always false
+vlib/v/checker/tests/always_true_false_branch.vv:183:3: notice: match is always false
   181 |             'haha'
   182 |         }
   183 |         'b' {
       |         ~~~
   184 |             'cc'
   185 |         }
-vlib/v/checker/tests/always_true_false_branch.vv:193:3: warning: match is always true
+vlib/v/checker/tests/always_true_false_branch.vv:193:3: notice: match is always true
   191 | 
   192 |     match_always_true_false_rune := match `a` {
   193 |         `a` {
       |         ~~~
   194 |             'haha'
   195 |         }
-vlib/v/checker/tests/always_true_false_branch.vv:196:3: warning: match is always false
+vlib/v/checker/tests/always_true_false_branch.vv:196:3: notice: match is always false
   194 |             'haha'
   195 |         }
   196 |         `b` {

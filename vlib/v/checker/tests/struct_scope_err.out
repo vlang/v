@@ -1,4 +1,4 @@
-vlib/v/checker/tests/struct_scope_err.vv:8:5: warning: condition is always true
+vlib/v/checker/tests/struct_scope_err.vv:8:5: notice: condition is always true
     6 |     }
     7 | 
     8 |     if true {

@@ -247,9 +247,9 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			t_expr := t.expr(mut check_expr)
 			if t_expr is ast.BoolLiteral {
 				if t_expr.val {
-					c.warn('match is always true', expr.pos())
+					c.note('match is always true', expr.pos())
 				} else {
-					c.warn('match is always false', expr.pos())
+					c.note('match is always false', expr.pos())
 				}
 			}
 		}

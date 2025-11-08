@@ -1,4 +1,4 @@
-vlib/v/checker/tests/none_match_cond_err.vv:2:2: warning: match is always true
+vlib/v/checker/tests/none_match_cond_err.vv:2:2: notice: match is always true
     1 | match none {
     2 |     none {}
       |     ~~~~

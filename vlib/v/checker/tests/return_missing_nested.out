@@ -1,11 +1,11 @@
-vlib/v/checker/tests/return_missing_nested.vv:4:5: warning: condition is always true
+vlib/v/checker/tests/return_missing_nested.vv:4:5: notice: condition is always true
     2 | 
     3 | fn foo() string {
     4 |     if true {
       |        ~~~~
     5 |         return ''
     6 |     } else {
-vlib/v/checker/tests/return_missing_nested.vv:7:6: warning: condition is always true
+vlib/v/checker/tests/return_missing_nested.vv:7:6: notice: condition is always true
     5 |         return ''
     6 |     } else {
     7 |         if true {

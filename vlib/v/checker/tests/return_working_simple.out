@@ -1,4 +1,4 @@
-vlib/v/checker/tests/return_working_simple.vv:4:5: warning: condition is always true
+vlib/v/checker/tests/return_working_simple.vv:4:5: notice: condition is always true
     2 | 
     3 | fn foo() string {
     4 |     if true {

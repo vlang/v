@@ -1,18 +1,18 @@
-vlib/v/checker/tests/return_missing_match_if.vv:5:3: warning: match is always true
+vlib/v/checker/tests/return_missing_match_if.vv:5:3: notice: match is always true
     3 | fn foo() string {
     4 |     match 1 {
     5 |         1 {
       |         ^
     6 |             return ''
     7 |         }
-vlib/v/checker/tests/return_missing_match_if.vv:8:3: warning: match is always false
+vlib/v/checker/tests/return_missing_match_if.vv:8:3: notice: match is always false
     6 |             return ''
     7 |         }
     8 |         2 {
       |         ^
     9 |             if true {
    10 |             } else {
-vlib/v/checker/tests/return_missing_match_if.vv:9:7: warning: condition is always true
+vlib/v/checker/tests/return_missing_match_if.vv:9:7: notice: condition is always true
     7 |         }
     8 |         2 {
     9 |             if true {

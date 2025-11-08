@@ -1,10 +1,10 @@
-vlib/v/checker/tests/match_expr_empty_branch.vv:2:2: warning: match is always true
+vlib/v/checker/tests/match_expr_empty_branch.vv:2:2: notice: match is always true
     1 | _ := match true {
     2 |     true { 0 }
       |     ~~~~
     3 |     false {}
     4 | }
-vlib/v/checker/tests/match_expr_empty_branch.vv:3:2: warning: match is always false
+vlib/v/checker/tests/match_expr_empty_branch.vv:3:2: notice: match is always false
     1 | _ := match true {
     2 |     true { 0 }
     3 |     false {}

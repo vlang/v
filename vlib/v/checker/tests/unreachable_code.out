@@ -1,4 +1,4 @@
-vlib/v/checker/tests/unreachable_code.vv:27:12: warning: condition is always true
+vlib/v/checker/tests/unreachable_code.vv:27:12: notice: condition is always true
    25 |         return 3
    26 |     }
    27 |     return if 1 == 1 { 1 } else { 2 }

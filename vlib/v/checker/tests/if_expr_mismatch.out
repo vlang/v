@@ -1,4 +1,4 @@
-vlib/v/checker/tests/if_expr_mismatch.vv:2:10: warning: condition is always true
+vlib/v/checker/tests/if_expr_mismatch.vv:2:10: notice: condition is always true
     1 | fn main() {
     2 |     s := if true { '12' } else { 12 }
       |             ~~~~

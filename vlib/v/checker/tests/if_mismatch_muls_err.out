@@ -1,4 +1,4 @@
-vlib/v/checker/tests/if_mismatch_muls_err.vv:17:14: warning: condition is always false
+vlib/v/checker/tests/if_mismatch_muls_err.vv:17:14: notice: condition is always false
    15 | 
    16 | fn main() {
    17 |     dummy := if false {

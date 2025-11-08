@@ -1,4 +1,4 @@
-vlib/v/checker/tests/if_diff_expected_type_err.vv:5:14: warning: condition is always true
+vlib/v/checker/tests/if_diff_expected_type_err.vv:5:14: notice: condition is always true
     3 | 
     4 | fn main() {
     5 |     runes := if true { &some_runes } else { some_other_runes }

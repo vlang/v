@@ -1,4 +1,4 @@
-vlib/v/checker/tests/function_missing_return_type.vv:13:5: warning: condition is always true
+vlib/v/checker/tests/function_missing_return_type.vv:13:5: notice: condition is always true
    11 | 
    12 | fn (s Abc) abc() &int {
    13 |     if true {

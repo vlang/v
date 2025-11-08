@@ -1,25 +1,25 @@
-vlib/v/checker/tests/if_match_result.vv:3:2: warning: match is always false
+vlib/v/checker/tests/if_match_result.vv:3:2: notice: match is always false
     1 | // missing results
     2 | _ = match 4 {
     3 |     1 {}
       |     ^
     4 |     else {}
     5 | }
-vlib/v/checker/tests/if_match_result.vv:6:8: warning: condition is always true
+vlib/v/checker/tests/if_match_result.vv:6:8: notice: condition is always true
     4 |     else {}
     5 | }
     6 | _ = if true {
       |        ~~~~
     7 | } else {
     8 | }
-vlib/v/checker/tests/if_match_result.vv:12:2: warning: match is always false
+vlib/v/checker/tests/if_match_result.vv:12:2: notice: match is always false
    10 | // void results
    11 | _ = match 4 {
    12 |     1 { println('') }
       |     ^
    13 |     else { exit(0) }
    14 | }
-vlib/v/checker/tests/if_match_result.vv:15:8: warning: condition is always true
+vlib/v/checker/tests/if_match_result.vv:15:8: notice: condition is always true
    13 |     else { exit(0) }
    14 | }
    15 | _ = if true {
