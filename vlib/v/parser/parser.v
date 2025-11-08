@@ -1128,6 +1128,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.key_defer {
 			if !p.inside_defer {
+				spos := p.tok.pos()
 				p.next()
 				mut defer_mode := ast.DeferMode.scoped
 				if p.tok.kind == .lpar {
@@ -1145,7 +1146,6 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					}
 					p.check(.rpar)
 				}
-				spos := p.tok.pos()
 				p.inside_defer = true
 				p.defer_vars = []ast.Ident{}
 				stmts := p.parse_block()
@@ -1155,7 +1155,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					scope:      p.scope
 					stmts:      stmts
 					defer_vars: p.defer_vars.clone()
-					pos:        spos.extend_with_last_line(p.tok.pos(), p.prev_tok.line_nr)
+					pos:        spos.extend_with_last_line(p.prev_tok.pos(), p.prev_tok.line_nr)
 				}
 			} else {
 				return p.error_with_pos('`defer` blocks cannot be nested', p.tok.pos())
