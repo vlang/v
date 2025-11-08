@@ -538,7 +538,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				if b.pref.json_errors {
 					json_errors << util.JsonError{
 						message: err.message
-						path:    err.file_path
+						path:    os.to_slash(err.file_path)
 						line_nr: err.pos.line_nr + 1
 						col:     err.pos.col + 1
 					}

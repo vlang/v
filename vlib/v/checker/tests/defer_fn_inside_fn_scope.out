@@ -1,0 +1,6 @@
+vlib/v/checker/tests/defer_fn_inside_fn_scope.vv:3:2: warning: `defer` is already in function scope; just use `defer {` instead
+    1 | fn main() {
+    2 |     defer {} // ok
+    3 |     defer(fn) {} // fail
+      |     ~~~~~~~~~~~~
+    4 | }
