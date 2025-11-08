@@ -1067,7 +1067,13 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 				}
 				// resolve &T &&T ...
 				if param.typ.nr_muls() > 0 && typ.nr_muls() > 0 {
-					typ = typ.set_nr_muls(0)
+					param_muls := param.typ.nr_muls()
+					arg_muls := typ.nr_muls()
+					typ = if arg_muls >= param_muls {
+						typ.set_nr_muls(arg_muls - param_muls)
+					} else {
+						typ.set_nr_muls(0)
+					}
 				}
 			} else if param.typ.has_flag(.generic) {
 				arg_typ := if c.table.sym(arg.typ).kind == .any {
