@@ -241,7 +241,7 @@ const test_data = [
 }
 ,
 {
-"path":"/media/HD/github/kbkpbot/v/vlib/v/tests/vls/sample_text.vv",
+"path":"${json_errors_text_file}",
 "message":"unknown type `main.NotExistStruct`",
 "line_nr":38,
 "col":11,
