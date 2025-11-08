@@ -136,6 +136,11 @@ const test_data = [
 		output: '${mod1_text_file}:19:10'
 	},
 	TestData{
+		method: .definition
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:39:gd^13" ${os.quoted_path(text_file)}'
+		output: '${mod1_text_file}:50:7'
+	},
+	TestData{
 		method: .did_change
 		cmd:    'v -w -vls-mode -check -json-errors ${os.quoted_path(text_file)}'
 		output: '[
@@ -232,6 +237,14 @@ const test_data = [
 "message":"`builtin` does not return a value",
 "line_nr":28,
 "col":2,
+"len":0
+}
+,
+{
+"path":"/media/HD/github/kbkpbot/v/vlib/v/tests/vls/sample_text.vv",
+"message":"unknown type `main.NotExistStruct`",
+"line_nr":38,
+"col":11,
 "len":0
 }
 ]
