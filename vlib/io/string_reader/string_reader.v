@@ -114,8 +114,12 @@ pub fn (mut r StringReader) fill_buffer_until(n int) !int {
 	}
 
 	mut end := start
+	defer {
+		// shrink the length of the buffer to the total of bytes read
+		r.builder.go_back(r.builder.len - end)
+	}
 	for {
-		read := reader.read(mut r.builder[start..]) or {
+		read := reader.read(mut r.builder[end..]) or {
 			r.end_of_stream = true
 			break
 		}
@@ -124,10 +128,11 @@ pub fn (mut r StringReader) fill_buffer_until(n int) !int {
 		if read == 0 || end - start == n {
 			break
 		} else if r.builder.len == end {
-			if n - end > io.read_all_grow_len {
+			remaining := n - (end - start)
+			if remaining > io.read_all_grow_len {
 				unsafe { r.builder.grow_len(io.read_all_grow_len) }
 			} else {
-				unsafe { r.builder.grow_len(n - end) }
+				unsafe { r.builder.grow_len(remaining) }
 			}
 		}
 	}
