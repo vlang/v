@@ -7,11 +7,11 @@ import v.ast
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
-	p.defer_vars = []ast.Ident{}
+	p.defer_vars = []
 
 	exprs := p.expr_list(true)
 
-	if !(p.inside_defer && p.tok.kind == .decl_assign) {
+	if !(p.inside_defer && p.defer_mode == .function && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
 	}
 	p.defer_vars = defer_vars
