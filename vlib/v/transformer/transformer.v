@@ -1137,12 +1137,9 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 				// for `a == a`, `a != a`, `struct.f != struct.f`
 				// Note: can't compare `f32` or `f64` here, as `NaN != NaN` will return true in IEEE 754
 				if node.left.type_name() == node.right.type_name()
-					&& '${node.left}' == '${node.right}'
-					&& node.left_type !in [ast.f32_type, ast.f64_type] {
-					if node.op in [.eq, .ne] {
-						return ast.BoolLiteral{
-							val: '${node.left}' == '${node.right}'
-						}
+					&& node.left_type !in [ast.f32_type, ast.f64_type] && node.op in [.eq, .ne] {
+					return ast.BoolLiteral{
+						val: '${node.left}' == '${node.right}'
 					}
 				}
 			}
