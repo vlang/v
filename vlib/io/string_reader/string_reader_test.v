@@ -204,3 +204,107 @@ fn test_fill_buffer_until_many() {
 	assert reader.builder.len == 5
 	assert reader.get_string() == '12345'
 }
+
+fn test_read_all_bytes_false() {
+	mut two := TwoByteReader{
+		data: '12345'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_all_bytes(false)! == [u8(49), 50]
+	assert reader.read_all_bytes(false)! == [u8(51), 52]
+	assert reader.read_all_bytes(false)! == [u8(53)]
+}
+
+fn test_read_all_bytes_true() {
+	mut two := TwoByteReader{
+		data: '12345'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_all_bytes(false)! == [u8(49), 50]
+	assert reader.read_all_bytes(true)! == [u8(51), 52, 53]
+}
+
+fn test_read_all_false() {
+	mut two := TwoByteReader{
+		data: '12345'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_all(false)! == '12'
+	assert reader.read_all(false)! == '34'
+	assert reader.read_all(false)! == '5'
+}
+
+fn test_read_all_true() {
+	mut two := TwoByteReader{
+		data: '12345'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_all(false)! == '12'
+	assert reader.read_all(true)! == '345'
+}
+
+fn test_read_bytes_1() {
+	mut two := TwoByteReader{
+		data: '12345'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_bytes(1)! == [u8(49)]
+	assert reader.read_bytes(2)! == [u8(50), 51]
+	assert reader.read_bytes(2)! == [u8(52), 53]
+	assert reader.read_bytes(2) or { [u8(255)] } == [u8(255)]
+}
+
+fn test_read_bytes_many() {
+	mut two := TwoByteReader{
+		data: '12345'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_bytes(1)! == [u8(49)]
+	assert reader.builder.len == 1
+	assert reader.offset == 1
+	assert reader.read_bytes(123)! == [u8(50), 51, 52, 53]
+	assert reader.builder.len == 5
+	assert reader.offset == 5
+}
+
+fn test_read_string() {
+	mut two := TwoByteReader{
+		data: '12345'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_string(1)! == '1'
+	assert reader.read_string(2)! == '23'
+	assert reader.read_string(3)! == '45'
+}
+
+fn test_read() {
+	mut two := TwoByteReader{
+		data: '12345'
+	}
+	mut reader := StringReader.new(reader: two)
+	mut o1 := []u8{len: 1}
+	mut o5 := []u8{len: 5}
+	mut res := reader.read(mut o1)!
+	assert res == 1
+	assert o1[..res] == [u8(49)]
+	res = reader.read(mut o5)!
+	assert res == 4
+	assert o5[..res] == [u8(50), 51, 52, 53]
+}
+
+fn test_read_many() {
+	mut two := TwoByteReader{
+		data: '12345'
+	}
+	mut reader := StringReader.new(reader: two)
+	mut o4 := []u8{len: 4}
+	mut res := reader.read(mut o4)!
+	assert res == 4
+	assert o4[..res] == [u8(49), 50, 51, 52]
+	res = reader.read(mut o4)!
+	assert res == 1
+	assert o4[..res] == [u8(53)]
+	res = reader.read(mut o4) or { -1 }
+	assert res == -1
+	assert o4 == [u8(53), 50, 51, 52]
+}

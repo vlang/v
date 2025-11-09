@@ -190,11 +190,11 @@ pub fn (mut r StringReader) read_string(n int) !string {
 pub fn (mut r StringReader) read(mut buf []u8) !int {
 	start := r.offset
 
-	read := r.fill_buffer_until(buf.len - start)!
+	read := r.fill_buffer_until(buf.len)!
 	r.offset += read
 
-	copy(mut buf, r.builder[start..read])
-	return r.builder.len - start
+	copy(mut buf, r.builder[start..start + read])
+	return read
 }
 
 // read_line attempts to read a line from the reader.
