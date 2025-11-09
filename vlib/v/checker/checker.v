@@ -5576,7 +5576,7 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 	if typ == 0 {
 		c.error('unknown type', pos)
-		return if c.pref.is_vls { true } else { false }
+		return c.pref.is_vls
 	}
 	c.type_level++
 	defer {
@@ -5585,7 +5585,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 	if c.type_level > type_level_cutoff_limit {
 		c.error('checker: too many levels of Checker.ensure_type_exists calls: ${c.type_level}, probably due to a self referencing type',
 			pos)
-		return if c.pref.is_vls { true } else { false }
+		return c.pref.is_vls
 	}
 	sym := c.table.sym(typ)
 	if !c.is_builtin_mod && !sym.is_pub && sym.mod != c.mod && sym.mod != 'main' {
@@ -5602,12 +5602,12 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 			if fn_mod != '' && fn_mod != c.mod && fn_info.func.name != '' && !fn_info.is_anon {
 				c.error('function type `${fn_info.func.name}` was declared as private to module `${fn_mod}`, so it can not be used inside module `${c.mod}`',
 					pos)
-				return if c.pref.is_vls { true } else { false }
+				return c.pref.is_vls
 			}
 		} else if sym.mod != '' {
 			c.error('${sym.kind} `${sym.name}` was declared as private to module `${sym.mod}`, so it can not be used inside module `${c.mod}`',
 				pos)
-			return if c.pref.is_vls { true } else { false }
+			return c.pref.is_vls
 		}
 	}
 	match sym.kind {
@@ -5621,7 +5621,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 			if sym.language == .v {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `${sym.name}`'),
 					pos)
-				return if c.pref.is_vls { true } else { false }
+				return c.pref.is_vls
 			} else if sym.language == .c {
 				if !c.pref.translated && !c.file.is_translated {
 					c.warn(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `${sym.name}` (all virtual C types must be defined, this will be an error soon)'),
@@ -5643,44 +5643,44 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 					'unknown type `${sym.name}`.\nDid you mean `f64`?'
 				}
 				c.error(msg, pos)
-				return if c.pref.is_vls { true } else { false }
+				return c.pref.is_vls
 			}
 		}
 		.function {
 			fn_info := sym.info as ast.FnType
 			if !c.ensure_type_exists(fn_info.func.return_type, fn_info.func.return_type_pos) {
-				return if c.pref.is_vls { true } else { false }
+				return c.pref.is_vls
 			}
 			for param in fn_info.func.params {
 				if !c.ensure_type_exists(param.typ, param.type_pos) {
-					return if c.pref.is_vls { true } else { false }
+					return c.pref.is_vls
 				}
 			}
 		}
 		.array {
 			if !c.ensure_type_exists((sym.info as ast.Array).elem_type, pos) {
-				return if c.pref.is_vls { true } else { false }
+				return c.pref.is_vls
 			}
 		}
 		.array_fixed {
 			if !c.ensure_type_exists((sym.info as ast.ArrayFixed).elem_type, pos) {
-				return if c.pref.is_vls { true } else { false }
+				return c.pref.is_vls
 			}
 		}
 		.map {
 			info := sym.info as ast.Map
 			if !c.ensure_type_exists(info.key_type, pos) {
-				return if c.pref.is_vls { true } else { false }
+				return c.pref.is_vls
 			}
 			if !c.ensure_type_exists(info.value_type, pos) {
-				return if c.pref.is_vls { true } else { false }
+				return c.pref.is_vls
 			}
 		}
 		.sum_type {
 			info := sym.info as ast.SumType
 			for concrete_typ in info.concrete_types {
 				if !c.ensure_type_exists(concrete_typ, pos) {
-					return if c.pref.is_vls { true } else { false }
+					return c.pref.is_vls
 				}
 			}
 		}
@@ -5690,7 +5690,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 					...pos
 					col: pos.col + 5
 				}) {
-					return if c.pref.is_vls { true } else { false }
+					return c.pref.is_vls
 				}
 			}
 		}
