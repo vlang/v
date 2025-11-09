@@ -319,7 +319,8 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, cname string, expr
 	if surround_cbr {
 		init.writeln('{')
 	}
-	if expr is ast.ArrayInit && (expr as ast.ArrayInit).has_index {
+	if (expr is ast.ArrayInit && expr.has_index)
+		|| (expr is ast.IfExpr && g.table.type_kind(expr.typ) == .array_fixed) {
 		init.writeln(g.expr_string_surround('\tmemcpy(&${cname}, &', expr, ', sizeof(${styp}));'))
 	} else if expr is ast.CallExpr
 		&& g.table.final_sym(g.unwrap_generic((expr as ast.CallExpr).return_type)).kind == .array_fixed {

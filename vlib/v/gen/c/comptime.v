@@ -393,6 +393,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	}
 	tmp_var := g.new_tmp_var()
 	is_opt_or_result := node.typ.has_option_or_result()
+	is_array_fixed := g.table.final_sym(node.typ).kind == .array_fixed
 	line := if node.is_expr {
 		stmt_str := g.go_before_last_stmt()
 		g.write(util.tabs(g.indent))
@@ -485,10 +486,19 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 					g.skip_stmt_pos = true
 					if is_opt_or_result {
 						tmp_var2 := g.new_tmp_var()
-						g.write('{ ${g.base_type(node.typ)} ${tmp_var2} = ')
+						base_styp := g.base_type(node.typ)
+						g.write('{ ${base_styp} ${tmp_var2} = ')
 						g.stmt(last)
-						g.writeln('builtin___result_ok(&(${g.base_type(node.typ)}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${g.base_type(node.typ)}));')
+						g.writeln('builtin___result_ok(&(${base_styp}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${base_styp}));')
 						g.writeln('}')
+					} else if is_array_fixed {
+						base_styp := g.base_type(node.typ)
+						g.write('memcpy(&${tmp_var}, (${base_styp})')
+						g.stmt(last)
+						if g.out.last_n(2).contains(';') {
+							g.go_back(2)
+						}
+						g.write(', sizeof(${base_styp}))')
 					} else {
 						g.write('${tmp_var} = ')
 						g.stmt(last)
