@@ -1,3 +1,10 @@
+vlib/v/checker/tests/if_mismatch_muls_err.vv:17:14: notice: condition is always false
+   15 | 
+   16 | fn main() {
+   17 |     dummy := if false {
+      |                 ~~~~~
+   18 |         res := &Dum{
+   19 |             v: 2
 vlib/v/checker/tests/if_mismatch_muls_err.vv:17:11: error: mismatched types `&&Dum` and `&Dum`
    15 | 
    16 | fn main() {

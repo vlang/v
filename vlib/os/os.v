@@ -44,7 +44,7 @@ fn executable_fallback() string {
 		}
 	}
 	if !is_abs_path(exepath) {
-		other_separator := if path_separator == '/' { '\\' } else { '/' }
+		other_separator := $if windows { '/' } $else { '\\' }
 		rexepath := exepath.replace(other_separator, path_separator)
 		if rexepath.contains(path_separator) {
 			exepath = join_path_single(wd_at_startup, exepath)
@@ -848,7 +848,7 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 		}
 		return error('path `${opath}` already exists, and is not a folder')
 	}
-	other_separator := if path_separator == '/' { '\\' } else { '/' }
+	other_separator := $if windows { '/' } $else { '\\' }
 	path := opath.replace(other_separator, path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
 	path_parts := path.trim_left(path_separator).split(path_separator)

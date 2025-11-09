@@ -1,3 +1,10 @@
+vlib/v/checker/tests/unreachable_code.vv:27:12: notice: condition is always true
+   25 |         return 3
+   26 |     }
+   27 |     return if 1 == 1 { 1 } else { 2 }
+      |               ~~~~~~
+   28 |     a := 1
+   29 |     println(a)
 vlib/v/checker/tests/unreachable_code.vv:15:3: error: unreachable code
    13 |         continue
    14 |         // ...

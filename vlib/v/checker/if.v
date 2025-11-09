@@ -156,6 +156,17 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
 						branch.cond.pos())
 				}
+				if !c.pref.translated && !c.file.is_translated {
+					mut check_expr := branch.cond
+					t_expr := c.checker_transformer.expr(mut check_expr)
+					if t_expr is ast.BoolLiteral {
+						if t_expr.val {
+							c.note('condition is always true', branch.cond.pos())
+						} else {
+							c.note('condition is always false', branch.cond.pos())
+						}
+					}
+				}
 			}
 		} else {
 			// else branch

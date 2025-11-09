@@ -24,7 +24,8 @@ fn match_vec(v Vec) {
 }
 
 fn match_classic_num() {
-	match 42 {
+	a := 42
+	match a {
 		0 {
 			assert false
 			(false)

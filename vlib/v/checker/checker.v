@@ -152,7 +152,8 @@ mut:
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
 
-	js_string ast.Type = ast.void_type // when `js"string literal"` is used, `js_string` will be equal to `JS.String`
+	js_string           ast.Type                 = ast.void_type // when `js"string literal"` is used, `js_string` will be equal to `JS.String`
+	checker_transformer &transformer.Transformer = unsafe { nil }
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
@@ -174,6 +175,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		)
 		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
 		v_current_commit_hash:         v_current_commit_hash
+		checker_transformer:           transformer.new_transformer_with_table(table, pref_)
 	}
 	checker.type_resolver = type_resolver.TypeResolver.new(table, checker)
 	checker.comptime = &checker.type_resolver.info
@@ -2109,8 +2111,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 				ast.InfixExpr {
 					// Handle `enum Foo { x = 1 + 2 }`
 					c.infix_expr(mut field.expr)
-					mut t := transformer.new_transformer_with_table(c.table, c.pref)
-					folded_expr := t.infix_expr(mut field.expr)
+					folded_expr := c.checker_transformer.infix_expr(mut field.expr)
 
 					if folded_expr is ast.IntegerLiteral {
 						c.check_enum_field_integer_literal(folded_expr, signed, node.is_multi_allowed,
@@ -2120,8 +2121,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 				}
 				ast.ParExpr {
 					c.expr(mut field.expr.expr)
-					mut t := transformer.new_transformer_with_table(c.table, c.pref)
-					folded_expr := t.expr(mut field.expr.expr)
+					folded_expr := c.checker_transformer.expr(mut field.expr.expr)
 
 					if folded_expr is ast.IntegerLiteral {
 						c.check_enum_field_integer_literal(folded_expr, signed, node.is_multi_allowed,
@@ -2160,9 +2160,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						if field.expr.kind == .constant && field.expr.obj.typ.is_int() {
 							// accepts int constants as enum value
 							if mut field.expr.obj is ast.ConstField {
-								mut t := transformer.new_transformer_with_table(c.table,
-									c.pref)
-								folded_expr := t.expr(mut field.expr.obj.expr)
+								folded_expr := c.checker_transformer.expr(mut field.expr.obj.expr)
 
 								if folded_expr is ast.IntegerLiteral {
 									c.check_enum_field_integer_literal(folded_expr, signed,

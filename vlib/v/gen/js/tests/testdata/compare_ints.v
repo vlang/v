@@ -1,15 +1,17 @@
-if 2 > 1 {
+a := 2
+b := 1
+if a > b {
 	println('2 > 1')
 }
 
-if 2 < 1 {
+if a < b {
 	println('2 < 1')
 }
 
-if 2 == 1 {
+if a == b {
 	println('2 == 1')
 }
 
-if 2 == 0 {
+if a == 0 {
 	println('2 == 0')
 }
