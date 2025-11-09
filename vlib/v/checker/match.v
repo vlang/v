@@ -237,19 +237,21 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			}
 		}
 
-		// check for always true/false match branch
-		for mut expr in branch.exprs {
-			mut check_expr := ast.InfixExpr{
-				op:    .eq
-				left:  node.cond
-				right: expr
-			}
-			t_expr := t.expr(mut check_expr)
-			if t_expr is ast.BoolLiteral {
-				if t_expr.val {
-					c.note('match is always true', expr.pos())
-				} else {
-					c.note('match is always false', expr.pos())
+		if !c.pref.translated && !c.file.is_translated {
+			// check for always true/false match branch
+			for mut expr in branch.exprs {
+				mut check_expr := ast.InfixExpr{
+					op:    .eq
+					left:  node.cond
+					right: expr
+				}
+				t_expr := t.expr(mut check_expr)
+				if t_expr is ast.BoolLiteral {
+					if t_expr.val {
+						c.note('match is always true', expr.pos())
+					} else {
+						c.note('match is always false', expr.pos())
+					}
 				}
 			}
 		}
