@@ -433,6 +433,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		language:   language
 		name:       name
 		cname:      util.no_dots(name)
+		ngname:     ast.strip_generic_params(name)
 		mod:        p.mod
 		info:       ast.Struct{
 			scoped_name:   scoped_name
@@ -727,6 +728,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		kind:     .interface
 		name:     interface_name
 		cname:    util.no_dots(interface_name)
+		ngname:   ast.strip_generic_params(interface_name)
 		mod:      p.mod
 		info:     ast.Interface{
 			types:         []

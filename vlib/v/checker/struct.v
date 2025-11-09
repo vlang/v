@@ -969,33 +969,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		&& c.table.cur_concrete_types.len == 0 {
 		if struct_sym.info.concrete_types.len == 0 {
 			concrete_types := c.infer_struct_generic_types(node.typ, node)
-			if concrete_types.len > 0 && concrete_types.len == struct_sym.info.generic_types.len {
-				mut bs_name := struct_sym.name + '['
-				mut bs_cname := struct_sym.cname + '_T_'
-				for i, ct in concrete_types {
-					ct_sym := c.table.sym(ct)
-					bs_name += ct_sym.name
-					bs_cname += ct_sym.cname
-					if i < concrete_types.len - 1 {
-						bs_name += ', '
-						bs_cname += '_'
-					}
-				}
-				bs_name += ']'
-				if existing_idx := c.table.type_idxs[bs_name] {
-					node.typ = ast.new_type(existing_idx)
-				} else {
-					idx := c.table.register_sym(ast.TypeSymbol{
-						kind:   .generic_inst
-						name:   bs_name
-						cname:  bs_cname
-						ngname: struct_sym.ngname
-						mod:    struct_sym.mod
-						info:   ast.GenericInst{
-							parent_idx:     node.typ.idx()
-							concrete_types: concrete_types
-						}
-					})
+			if concrete_types.len > 0 {
+				idx := c.table.find_or_register_generic_inst(node.typ, concrete_types)
+				if idx > 0 {
 					node.typ = ast.new_type(idx)
 					c.table.generic_insts_to_concrete()
 				}

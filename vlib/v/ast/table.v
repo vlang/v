@@ -935,9 +935,11 @@ pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 	idx = t.type_symbols.len
 	t.type_symbols << &TypeSymbol{
 		...sym
-		ngname: strip_generic_params(sym.name)
 	}
 	t.type_symbols[idx].idx = idx
+	if t.type_symbols[idx].ngname == '' {
+		t.type_symbols[idx].ngname = strip_generic_params(sym.name)
+	}
 	t.type_idxs[sym_name] = idx
 	return idx
 }
@@ -1376,6 +1378,44 @@ pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool)
 			is_anon:  anon
 			has_decl: has_decl
 			func:     f
+		}
+	)
+}
+
+pub fn (mut t Table) find_or_register_generic_inst(parent_typ Type, concrete_types []Type) int {
+	parent_sym := t.sym(parent_typ)
+	if parent_sym.info !is Struct {
+		return 0
+	}
+	struct_info := parent_sym.info as Struct
+	if struct_info.generic_types.len == 0 || concrete_types.len != struct_info.generic_types.len {
+		return 0
+	}
+	mut inst_name := parent_sym.ngname + '['
+	mut inst_cname := parent_sym.cname + '_T_'
+	for i, ct in concrete_types {
+		ct_sym := t.sym(ct)
+		inst_name += ct_sym.name
+		inst_cname += ct_sym.cname
+		if i < concrete_types.len - 1 {
+			inst_name += ', '
+			inst_cname += '_T_'
+		}
+	}
+	inst_name += ']'
+	existing_idx := t.type_idxs[inst_name]
+	if existing_idx > 0 {
+		return existing_idx
+	}
+	return t.register_sym(
+		kind:   .generic_inst
+		name:   inst_name
+		cname:  inst_cname
+		ngname: parent_sym.ngname
+		mod:    parent_sym.mod
+		info:   GenericInst{
+			parent_idx:     parent_typ.idx()
+			concrete_types: concrete_types
 		}
 	)
 }
