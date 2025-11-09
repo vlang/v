@@ -308,3 +308,70 @@ fn test_read_many() {
 	assert res == -1
 	assert o4 == [u8(53), 50, 51, 52]
 }
+
+fn test_read_line_2() {
+	mut two := TwoByteReader{
+		data: '12345\n67890'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_line()! == '12345'
+	assert reader.read_line()! == '67890'
+}
+
+fn test_read_line_3() {
+	mut two := TwoByteReader{
+		data: '12345\t67890'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_line(delim: `\t`)! == '12345'
+	assert reader.read_line()! == '67890'
+}
+
+fn test_read_line_4() {
+	mut two := TwoByteReader{
+		data: '12345\t67890'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_line(delim: `\t`)! == '12345'
+	assert reader.read_line(delim: `\t`)! == '67890'
+}
+
+fn test_read_line_5() {
+	mut two := TwoByteReader{
+		data: '\n12345\n67890'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_line()! == ''
+	assert reader.read_line()! == '12345'
+	assert reader.read_line()! == '67890'
+}
+
+fn test_read_line_6() {
+	mut two := TwoByteReader{
+		data: '\r\n12345\r\n67890'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_line()! == ''
+	assert reader.read_line()! == '12345'
+	assert reader.read_line()! == '67890'
+}
+
+fn test_read_line_7() {
+	mut two := TwoByteReader{
+		data: '1234567890'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_line(delim: `6`)! == '12345'
+	assert reader.read_line(delim: `6`)! == '7890'
+	assert reader.read_line() or { '777' } == '777'
+}
+
+fn test_read_line_8() {
+	mut two := TwoByteReader{
+		data: '12345\r\n67890'
+	}
+	mut reader := StringReader.new(reader: two)
+	assert reader.read_bytes(6)! == [u8(49), 50, 51, 52, 53, 13]
+	reader.read_line()! // \n
+	assert reader.read_line()! == '67890'
+}
