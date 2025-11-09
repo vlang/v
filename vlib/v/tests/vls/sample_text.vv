@@ -33,3 +33,8 @@ fn main() {
 	s.PublicAlias1_2{}
 	s.public_const1
 }
+
+// ensure we can jump to `public_fn1()` even in `NotExistStruct` method
+fn (mut x NotExistStruct) add(val int) {
+	s.public_fn1(1)
+}
