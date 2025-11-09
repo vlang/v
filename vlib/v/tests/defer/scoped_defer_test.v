@@ -117,3 +117,16 @@ fn test_defer_with_comptime_for() {
 	}
 	assert c == 3
 }
+
+fn test_defer_fn_with_inner_var() {
+	mut x := 0
+	defer {
+		assert x == 1
+	}
+	{
+		a := 1
+		defer(fn) {
+			x = a
+		}
+	}
+}

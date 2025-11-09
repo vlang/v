@@ -63,6 +63,7 @@ mut:
 	inside_asm_template      bool
 	inside_asm               bool
 	inside_defer             bool
+	defer_mode               ast.DeferMode
 	inside_generic_params    bool // indicates if parsing between `<` and `>` of a method/function
 	inside_receiver_param    bool // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
 	inside_struct_field_decl bool
@@ -1147,6 +1148,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					p.check(.rpar)
 				}
 				p.inside_defer = true
+				p.defer_mode = defer_mode
 				p.defer_vars = []ast.Ident{}
 				stmts := p.parse_block()
 				p.inside_defer = false
@@ -1253,10 +1255,9 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 
 	left := p.expr_list(p.inside_assign_rhs)
 
-	if !(p.inside_defer && p.tok.kind == .decl_assign) {
+	if !(p.inside_defer && p.defer_mode == .function && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
 	}
-
 	p.defer_vars = defer_vars
 
 	left0 := left[0]
@@ -3237,7 +3238,7 @@ fn (mut p Parser) show(params ParserShowParams) {
 }
 
 fn (mut p Parser) add_defer_var(ident ast.Ident) {
-	if p.inside_defer {
+	if p.inside_defer && p.defer_mode == .function {
 		if !p.defer_vars.any(it.name == ident.name && it.mod == ident.mod)
 			&& ident.name !in ['err', 'it'] {
 			p.defer_vars << ident
