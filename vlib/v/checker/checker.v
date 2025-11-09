@@ -152,8 +152,8 @@ mut:
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
 
-	js_string           ast.Type = ast.void_type // when `js"string literal"` is used, `js_string` will be equal to `JS.String`
-	checker_transformer &transformer.Transformer
+	js_string           ast.Type                 = ast.void_type // when `js"string literal"` is used, `js_string` will be equal to `JS.String`
+	checker_transformer &transformer.Transformer = unsafe { nil }
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {

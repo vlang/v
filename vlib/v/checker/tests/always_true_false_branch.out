@@ -194,7 +194,7 @@ vlib/v/checker/tests/always_true_false_branch.vv:61:1: notice: condition is alwa
       | ^
    62 |         1
    63 |     } else {
-vlib/v/checker/tests/always_true_false_branch.vv:69:24: notice: condition is always true
+vlib/v/checker/tests/always_true_false_branch.vv:69:24: notice: condition is always false
    67 |     dump(if_always_true)
    68 | 
    69 |     if_always_false := if x != x {
