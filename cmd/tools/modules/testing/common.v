@@ -490,7 +490,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		skip_running = ''
 	}
 	reproduce_cmd := '${os.quoted_path(ts.vexe)} ${reproduce_options.join(' ')} ${os.quoted_path(file)}'
-	cmd := '${os.quoted_path(ts.vexe)} ${skip_running} ${cmd_options.join(' ')} ${os.quoted_path(file)}'
+	compile_options := cmd_options.filter(it != '-silent')
+	cmd := '${os.quoted_path(ts.vexe)} ${skip_running} ${compile_options.join(' ')} ${os.quoted_path(file)}'
 	run_cmd := if run_js {
 		'node ${os.quoted_path(generated_binary_fpath)}'
 	} else {
