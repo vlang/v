@@ -373,27 +373,36 @@ pub fn (v &Builder) get_user_files() []string {
 	if !does_exist {
 		verror("${dir} doesn't exist")
 	}
-	is_real_file := does_exist && !os.is_dir(dir)
-	resolved_link := if is_real_file && os.is_link(dir) { os.real_path(dir) } else { dir }
-	if is_real_file && (dir.ends_with('.v') || resolved_link.ends_with('.vsh')
-		|| v.pref.raw_vsh_tmp_prefix != '' || dir.ends_with('.vv')) {
-		single_v_file := if resolved_link.ends_with('.vsh') { resolved_link } else { dir }
-		// Just compile one file and get parent dir
-		user_files << single_v_file
-		if v.pref.is_verbose {
-			v.log('> just compile one file: "${single_v_file}"')
-		}
-	} else if os.is_dir(dir) {
-		if v.pref.is_verbose {
-			v.log('> add all .v files from directory "${dir}" ...')
-		}
-		// Add .v files from the directory being compiled
-		user_files << v.v_files_from_dir(dir)
+	if v.pref.is_vls && v.pref.lookup_path.len > 0 {
+		// `vls` will send `v ... -vls-mode -line-info "/tmp/interop.v:8:gd^20" /tmp/interop.v -path "/home/src/vls|@vlib|@vmodules" -exclude "/home/src/vls/interop.v"`
+		// Try to include all sources from the `/home/src/` directory
+		// This will include all other files in the same module
+		// TODO: `a.v` is `module main struct MyS{}`, and `b.v` is also `module main struct MyS{}`?
+		user_files << v.v_files_from_dir(v.pref.lookup_path[0])
+		user_files << v.pref.path
 	} else {
-		println('usage: `v file.v` or `v directory`')
-		ext := os.file_ext(dir)
-		println('unknown file extension `${ext}`')
-		exit(1)
+		is_real_file := does_exist && !os.is_dir(dir)
+		resolved_link := if is_real_file && os.is_link(dir) { os.real_path(dir) } else { dir }
+		if is_real_file && (dir.ends_with('.v') || resolved_link.ends_with('.vsh')
+			|| v.pref.raw_vsh_tmp_prefix != '' || dir.ends_with('.vv')) {
+			single_v_file := if resolved_link.ends_with('.vsh') { resolved_link } else { dir }
+			// Just compile one file and get parent dir
+			user_files << single_v_file
+			if v.pref.is_verbose {
+				v.log('> just compile one file: "${single_v_file}"')
+			}
+		} else if os.is_dir(dir) {
+			if v.pref.is_verbose {
+				v.log('> add all .v files from directory "${dir}" ...')
+			}
+			// Add .v files from the directory being compiled
+			user_files << v.v_files_from_dir(dir)
+		} else {
+			println('usage: `v file.v` or `v directory`')
+			ext := os.file_ext(dir)
+			println('unknown file extension `${ext}`')
+			exit(1)
+		}
 	}
 	if user_files.len == 0 {
 		println('No input .v files')
