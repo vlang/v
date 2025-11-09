@@ -4,7 +4,6 @@ import v.ast
 import v.util
 import v.token
 import strings
-import v.transformer
 
 fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	node.is_expr = c.expected_type != ast.void_type
@@ -127,7 +126,6 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			}
 		}
 	}
-	mut t := transformer.new_transformer_with_table(c.table, c.pref)
 	for mut branch in node.branches {
 		if node.is_comptime {
 			// `idx_str` is composed of two parts:
@@ -245,7 +243,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					left:  node.cond
 					right: expr
 				}
-				t_expr := t.expr(mut check_expr)
+				t_expr := c.checker_transformer.expr(mut check_expr)
 				if t_expr is ast.BoolLiteral {
 					if t_expr.val {
 						c.note('match is always true', expr.pos())

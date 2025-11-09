@@ -6,7 +6,6 @@ import v.ast
 import v.token
 import v.util
 import strings
-import v.transformer
 
 // gen_branch_context_string generate current branches context string.
 // context include generic types, `$for`.
@@ -97,7 +96,6 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 
 	comptime_branch_context_str := if node.is_comptime { c.gen_branch_context_string() } else { '' }
 
-	mut t := transformer.new_transformer_with_table(c.table, c.pref)
 	for i, mut branch in node.branches {
 		mut comptime_remove_curr_branch_stmts := false
 		if branch.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
@@ -160,7 +158,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				}
 				if !c.pref.translated && !c.file.is_translated {
 					mut check_expr := branch.cond
-					t_expr := t.expr(mut check_expr)
+					t_expr := c.checker_transformer.expr(mut check_expr)
 					if t_expr is ast.BoolLiteral {
 						if t_expr.val {
 							c.note('condition is always true', branch.cond.pos())
