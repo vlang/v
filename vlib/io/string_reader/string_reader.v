@@ -225,7 +225,7 @@ pub fn (mut r StringReader) read_line(config io.BufferedReadLineConfig) !string 
 				// great, we hit something
 				// do some checking for whether we hit \r\n or just \n
 				mut x := i
-				if i != 0 && config.delim == `\n` && r.builder[i - 1] == `\r` {
+				if i > start && config.delim == `\n` && r.builder[i - 1] == `\r` {
 					x--
 				}
 				r.offset = i + 1
