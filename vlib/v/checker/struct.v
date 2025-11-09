@@ -700,6 +700,14 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				mut exp_type := ast.no_type
 				inited_fields << field_name
 				exp_type = field_info.typ
+				if c.inside_generic_struct_init && exp_type.has_flag(.generic) {
+					generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
+					if unwrapped := c.table.convert_generic_type(exp_type, generic_names,
+						c.cur_struct_concrete_types)
+					{
+						exp_type = unwrapped
+					}
+				}
 				exp_type_sym := c.table.sym(exp_type)
 				c.expected_type = exp_type
 				got_type = c.expr(mut init_field.expr)
@@ -783,9 +791,35 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				} else if got_type != ast.void_type && got_type_sym.kind != .placeholder
 					&& !exp_type.has_flag(.generic) {
-					c.check_expected(c.unwrap_generic(got_type), c.unwrap_generic(exp_type)) or {
-						c.error('cannot assign to field `${field_info.name}`: ${err.msg()}',
-							init_field.pos)
+					mut needs_sum_type_cast := false
+					if exp_type_sym.kind == .placeholder {
+						base_type := c.table.find_type(exp_type_sym.ngname)
+						if base_type != 0 {
+							base_sym := c.table.sym(base_type)
+							if base_sym.kind == .sum_type && base_sym.info is ast.SumType {
+								base_info := base_sym.info as ast.SumType
+								for variant in base_info.variants {
+									if c.table.sym(variant).ngname == got_type_sym.ngname {
+										needs_sum_type_cast = true
+										break
+									}
+								}
+							}
+						}
+					}
+					if needs_sum_type_cast {
+						init_field.expr = ast.CastExpr{
+							expr:    init_field.expr
+							typ:     exp_type
+							typname: c.table.type_to_str(exp_type)
+							pos:     init_field.expr.pos()
+						}
+						init_field.typ = exp_type
+					} else {
+						c.check_expected(c.unwrap_generic(got_type), c.unwrap_generic(exp_type)) or {
+							c.error('cannot assign to field `${field_info.name}`: ${err.msg()}',
+								init_field.pos)
+						}
 					}
 				}
 				if exp_type.has_flag(.shared_f) {
@@ -935,9 +969,36 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		&& c.table.cur_concrete_types.len == 0 {
 		if struct_sym.info.concrete_types.len == 0 {
 			concrete_types := c.infer_struct_generic_types(node.typ, node)
-			if concrete_types.len > 0 {
-				generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
-				node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
+			if concrete_types.len > 0 && concrete_types.len == struct_sym.info.generic_types.len {
+				mut bs_name := struct_sym.name + '['
+				mut bs_cname := struct_sym.cname + '_T_'
+				for i, ct in concrete_types {
+					ct_sym := c.table.sym(ct)
+					bs_name += ct_sym.name
+					bs_cname += ct_sym.cname
+					if i < concrete_types.len - 1 {
+						bs_name += ', '
+						bs_cname += '_'
+					}
+				}
+				bs_name += ']'
+				if existing_idx := c.table.type_idxs[bs_name] {
+					node.typ = ast.new_type(existing_idx)
+				} else {
+					idx := c.table.register_sym(ast.TypeSymbol{
+						kind:   .generic_inst
+						name:   bs_name
+						cname:  bs_cname
+						ngname: struct_sym.ngname
+						mod:    struct_sym.mod
+						info:   ast.GenericInst{
+							parent_idx:     node.typ.idx()
+							concrete_types: concrete_types
+						}
+					})
+					node.typ = ast.new_type(idx)
+					c.table.generic_insts_to_concrete()
+				}
 			}
 		} else if struct_sym.info.generic_types.len == struct_sym.info.concrete_types.len {
 			parent_type := struct_sym.info.parent_type

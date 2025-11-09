@@ -1569,6 +1569,33 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				node.args[i].typ = call_arg.expr.obj.typ
 			}
 		}
+		// sumtype coercion
+		param_type_sym := c.table.sym(param.typ)
+		if param_type_sym.kind == .placeholder {
+			base_type := c.table.find_type(param_type_sym.ngname)
+			if base_type != 0 {
+				base_sym := c.table.sym(base_type)
+				if base_sym.kind == .sum_type && base_sym.info is ast.SumType {
+					base_info := base_sym.info as ast.SumType
+					arg_typ_sym := c.table.sym(arg_typ)
+					for variant in base_info.variants {
+						variant_sym := c.table.sym(variant)
+						variant_base_name := variant_sym.ngname
+						if variant_base_name == arg_typ_sym.ngname {
+							node.args[i].expr = ast.CastExpr{
+								expr:    call_arg.expr
+								typ:     param.typ
+								typname: c.table.type_to_str(param.typ)
+								pos:     call_arg.expr.pos()
+							}
+							node.args[i].typ = param.typ
+							arg_typ = param.typ
+							break
+						}
+					}
+				}
+			}
+		}
 		arg_typ_sym := c.table.sym(arg_typ)
 		if param.typ.has_flag(.generic) {
 			if arg_typ_sym.kind == .none && !param.typ.has_flag(.option) {
