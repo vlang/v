@@ -1138,8 +1138,12 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 				// Note: can't compare `f32` or `f64` here, as `NaN != NaN` will return true in IEEE 754
 				if node.left.type_name() == node.right.type_name()
 					&& node.left_type !in [ast.f32_type, ast.f64_type] && node.op in [.eq, .ne] {
-					return ast.BoolLiteral{
-						val: '${node.left}' == '${node.right}'
+					left_name := '${node.left}'
+					right_name := '${node.right}'
+					if left_name == right_name {
+						return ast.BoolLiteral{
+							val: if node.op == .eq { true } else { false }
+						}
 					}
 				}
 			}
