@@ -617,6 +617,7 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 }
 
 fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool, is_option bool) ast.Type {
+	name_pos := p.tok.pos()
 	mut name := p.tok.lit
 	if language == .c {
 		name = 'C.${name}'
@@ -779,7 +780,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 							return p.parse_generic_type(name)
 						}
 						if p.tok.kind in [.lt, .lsbr] && p.tok.is_next_to(p.prev_tok) {
-							return p.parse_generic_inst_type(name)
+							return p.parse_generic_inst_type(name, name_pos)
 						}
 						return p.find_type_or_add_placeholder(name, language)
 					}
@@ -904,7 +905,7 @@ fn (mut p Parser) parse_generic_type(name string) ast.Type {
 	return ast.new_type(idx).set_flag(.generic)
 }
 
-fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
+fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.Type {
 	p.generic_type_level++
 	defer {
 		p.generic_type_level--
@@ -999,7 +1000,13 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 						concrete_types_pos)
 				}
 			}
-			else {}
+			else {
+				// Disallow generic function as type inside struct decl
+				if parent_sym.kind == .placeholder && p.inside_struct_field_decl
+					&& !parent_sym.name.all_after_last('.')[0].is_capital() {
+					p.error_with_pos('unknown type `${parent_sym.name}`', name_pos)
+				}
+			}
 		}
 
 		idx := p.table.register_sym(ast.TypeSymbol{
