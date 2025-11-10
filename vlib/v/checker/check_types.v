@@ -460,6 +460,21 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	if c.table.sumtype_has_variant(expected, ast.mktyp(got), false) {
 		return true
 	}
+	if exp_sym.kind == .placeholder && c.expected_type != ast.void_type {
+		base_type := c.table.find_type(exp_sym.ngname)
+		if base_type != 0 {
+			base_sym := c.table.sym(base_type)
+			if base_sym.kind == .sum_type && base_sym.info is ast.SumType {
+				base_info := base_sym.info as ast.SumType
+				for variant in base_info.variants {
+					variant_sym := c.table.sym(variant)
+					if variant_sym.ngname == got_sym.ngname {
+						return true
+					}
+				}
+			}
+		}
+	}
 	// struct
 	if exp_sym.kind == .struct && got_sym.kind == .struct {
 		if c.table.type_to_str(expected) == c.table.type_to_str(got) {
@@ -945,6 +960,37 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 										}
 										concrete_types << ast.mktyp(ret_typ)
 										continue gname
+									}
+								}
+							}
+						}
+					}
+				} else if field_sym.info is ast.SumType {
+					for t in node.init_fields {
+						if ft.name == t.name && t.typ != 0 {
+							init_sym := c.table.sym(t.typ)
+							for variant in field_sym.info.variants {
+								variant_sym := c.table.sym(variant)
+								if variant_sym.name == init_sym.name {
+									if variant_sym.info is ast.Struct
+										&& variant_sym.info.generic_types.len > 0 {
+										if init_sym.info is ast.Struct
+											&& init_sym.info.concrete_types.len > 0 {
+											concrete_types << ast.mktyp(init_sym.info.concrete_types[0])
+											continue gname
+										}
+									} else {
+										for init_field in node.init_fields {
+											if init_field.name != t.name && init_field.typ != 0 {
+												field := sym.info.fields.filter(it.name == init_field.name)
+												if field.len > 0 {
+													if c.table.sym(field[0].typ).name == gt_name {
+														concrete_types << ast.mktyp(init_field.typ)
+														continue gname
+													}
+												}
+											}
+										}
 									}
 								}
 							}
