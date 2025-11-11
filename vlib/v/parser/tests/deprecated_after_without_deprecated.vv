@@ -1,0 +1,14 @@
+@[deprecated_after: '2025-10-10']
+fn my_fn() {
+}
+
+@[deprecated_after: '2025-10-10']
+const my_const = 123
+
+@[deprecated_after: '2025-10-10']
+type MyType = u8
+
+@[deprecated_after: '2025-10-10']
+interface MyInterface {
+	x int
+}

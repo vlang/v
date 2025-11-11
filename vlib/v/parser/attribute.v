@@ -176,6 +176,6 @@ fn (mut p Parser) check_deprecation_attribs(attrs []ast.Attr) {
 		return
 	}
 	if deprecation := ast.Deprecation.check_invalid_attributes(attrs) {
-		p.error_with_pos(deprecation.message(), deprecation.pos())
+		p.warn_with_pos(deprecation.message(), deprecation.pos())
 	}
 }
