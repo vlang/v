@@ -1,6 +1,7 @@
 // import modules for use in app
 import term.ui as termui
 import rand
+import math.vec
 
 // define some global constants
 const block_size = 1
@@ -29,11 +30,7 @@ enum GameState {
 }
 
 // simple 2d vector representation
-struct Vec {
-mut:
-	x int
-	y int
-}
+type Vec = vec.Vec2[int]
 
 // determine orientation from vector (hacky way to set facing from velocity)
 fn (v Vec) facing() Orientation {
@@ -58,10 +55,7 @@ fn (mut v Vec) randomize(min_x int, min_y int, max_x int, max_y int) {
 // part of snake's body representation
 struct BodyPart {
 mut:
-	pos    Vec = Vec{
-		x: block_size
-		y: block_size
-	}
+	pos    Vec          = Vec{block_size, block_size}
 	color  termui.Color = green
 	facing Orientation  = .top
 }
@@ -72,10 +66,7 @@ mut:
 	app       &App = unsafe { nil }
 	direction Orientation
 	body      []BodyPart
-	velocity  Vec = Vec{
-		x: 0
-		y: 0
-	}
+	velocity  Vec
 }
 
 // length returns the snake's current length
@@ -85,27 +76,27 @@ fn (s Snake) length() int {
 
 // impulse provides a impulse to change the snake's direction
 fn (mut s Snake) impulse(direction Orientation) {
-	mut vec := Vec{}
+	mut vel := Vec{}
 	match direction {
 		.top {
-			vec.x = 0
-			vec.y = -1 * block_size
+			vel.x = 0
+			vel.y = -1 * block_size
 		}
 		.right {
-			vec.x = 2 * block_size
-			vec.y = 0
+			vel.x = 2 * block_size
+			vel.y = 0
 		}
 		.bottom {
-			vec.x = 0
-			vec.y = block_size
+			vel.x = 0
+			vel.y = block_size
 		}
 		.left {
-			vec.x = -2 * block_size
-			vec.y = 0
+			vel.x = -2 * block_size
+			vel.y = 0
 		}
 	}
 	s.direction = direction
-	s.velocity = vec
+	s.velocity = vel
 }
 
 // move performs the calculations for the snake's movements
@@ -239,10 +230,7 @@ fn (s Snake) draw() {
 // rat representation
 struct Rat {
 mut:
-	pos      Vec = Vec{
-		x: block_size
-		y: block_size
-	}
+	pos      Vec = Vec{block_size, block_size}
 	captured bool
 	color    termui.Color = grey
 	app      &App         = unsafe { nil }
@@ -441,10 +429,7 @@ fn (mut a App) draw_debug() {
 fn (mut a App) draw_gameover() {
 	a.termui.set_bg_color(white)
 	a.termui.set_color(red)
-	a.rat.pos = Vec{
-		x: -1
-		y: -1
-	}
+	a.rat.pos = Vec{-1, -1}
 	x_offset := '   #####                        '.len // take half of a line from the game over text and store the length
 	start_x := (a.width / 2) - x_offset
 	a.termui.draw_text(start_x, (a.height / 2) - 3 * block_size, '   #####                         #######                       ')

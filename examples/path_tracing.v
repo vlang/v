@@ -29,48 +29,13 @@ import math
 import rand
 import time
 import term
+import math.vec
 
 const inf = 1e+10
 const eps = 1e-4
 const f_0 = 0.0
 
-//**************************** 3D Vector utility struct *********************
-struct Vec {
-mut:
-	x f64 = 0.0
-	y f64 = 0.0
-	z f64 = 0.0
-}
-
-@[inline]
-fn (v Vec) + (b Vec) Vec {
-	return Vec{v.x + b.x, v.y + b.y, v.z + b.z}
-}
-
-@[inline]
-fn (v Vec) - (b Vec) Vec {
-	return Vec{v.x - b.x, v.y - b.y, v.z - b.z}
-}
-
-@[inline]
-fn (v Vec) * (b Vec) Vec {
-	return Vec{v.x * b.x, v.y * b.y, v.z * b.z}
-}
-
-@[inline]
-fn (v Vec) dot(b Vec) f64 {
-	return v.x * b.x + v.y * b.y + v.z * b.z
-}
-
-@[inline]
-fn (v Vec) mult_s(b f64) Vec {
-	return Vec{v.x * b, v.y * b, v.z * b}
-}
-
-@[inline]
-fn (v Vec) cross(b Vec) Vec {
-	return Vec{v.y * b.z - v.z * b.y, v.z * b.x - v.x * b.z, v.x * b.y - v.y * b.x}
-}
+type Vec = vec.Vec3[f64]
 
 @[inline]
 fn (v Vec) norm() Vec {
@@ -211,14 +176,14 @@ const spheres = [
 			rad:  16.5
 			p:    Vec{27, 16.5, 47}
 			e:    Vec{}
-			c:    Vec{1, 1, 1}.mult_s(.999)
+			c:    Vec{1, 1, 1}.mul_scalar(.999)
 			refl: .spec
 		}, // Mirr
 		Sphere{
 			rad:  16.5
 			p:    Vec{73, 16.5, 78}
 			e:    Vec{}
-			c:    Vec{1, 1, 1}.mult_s(.999)
+			c:    Vec{1, 1, 1}.mul_scalar(.999)
 			refl: .refr
 		}, // Glas
 		Sphere{
@@ -232,23 +197,23 @@ const spheres = [
 	[// scene 1 sunset
 		Sphere{
 			rad:  1600
-			p:    Vec{1.0, 0.0, 2.0}.mult_s(3000)
-			e:    Vec{1.0, .9, .8}.mult_s(1.2e+1 * 1.56 * 2)
+			p:    Vec{1.0, 0.0, 2.0}.mul_scalar(3000)
+			e:    Vec{1.0, .9, .8}.mul_scalar(1.2e+1 * 1.56 * 2)
 			c:    Vec{}
 			refl: .diff
 		}, // sun
 		Sphere{
 			rad:  1560
-			p:    Vec{1, 0, 2}.mult_s(3500)
-			e:    Vec{1.0, .5, .05}.mult_s(4.8e+1 * 1.56 * 2)
+			p:    Vec{1, 0, 2}.mul_scalar(3500)
+			e:    Vec{1.0, .5, .05}.mul_scalar(4.8e+1 * 1.56 * 2)
 			c:    Vec{}
 			refl: .diff
 		}, // horizon sun2
 		Sphere{
 			rad:  10000
 			p:    cen + Vec{0, 0, -200}
-			e:    Vec{0.00063842, 0.02001478, 0.28923243}.mult_s(6e-2 * 8)
-			c:    Vec{.7, .7, 1}.mult_s(.25)
+			e:    Vec{0.00063842, 0.02001478, 0.28923243}.mul_scalar(6e-2 * 8)
+			c:    Vec{.7, .7, 1}.mul_scalar(.25)
 			refl: .diff
 		}, // sky
 		Sphere{
@@ -261,7 +226,7 @@ const spheres = [
 		Sphere{
 			rad:  110000
 			p:    Vec{50, -110048.5, 0}
-			e:    Vec{.9, .5, .05}.mult_s(4)
+			e:    Vec{.9, .5, .05}.mul_scalar(4)
 			c:    Vec{}
 			refl: .diff
 		}, // horizon brightener
@@ -276,21 +241,21 @@ const spheres = [
 			rad:  26.5
 			p:    Vec{22, 26.5, 42}
 			e:    Vec{}
-			c:    Vec{1, 1, 1}.mult_s(.596)
+			c:    Vec{1, 1, 1}.mul_scalar(.596)
 			refl: .spec
 		}, // white Mirr
 		Sphere{
 			rad:  13
 			p:    Vec{75, 13, 82}
 			e:    Vec{}
-			c:    Vec{.96, .96, .96}.mult_s(.96)
+			c:    Vec{.96, .96, .96}.mul_scalar(.96)
 			refl: .refr
 		}, // Glas
 		Sphere{
 			rad:  22
 			p:    Vec{87, 22, 24}
 			e:    Vec{}
-			c:    Vec{.6, .6, .6}.mult_s(.696)
+			c:    Vec{.6, .6, .6}.mul_scalar(.696)
 			refl: .refr
 		}, // Glas2
 	],
@@ -298,22 +263,22 @@ const spheres = [
 		Sphere{
 			rad:  150
 			p:    Vec{50 + 75, 28, 62}
-			e:    Vec{1, 1, 1}.mult_s(0e-3)
-			c:    Vec{1, .9, .8}.mult_s(.93)
+			e:    Vec{1, 1, 1}.mul_scalar(0e-3)
+			c:    Vec{1, .9, .8}.mul_scalar(.93)
 			refl: .refr
 		},
 		Sphere{
 			rad:  28
 			p:    Vec{50 + 5, -28, 62}
-			e:    Vec{1, 1, 1}.mult_s(1e+1)
-			c:    Vec{1, 1, 1}.mult_s(0)
+			e:    Vec{1, 1, 1}.mul_scalar(1e+1)
+			c:    Vec{1, 1, 1}.mul_scalar(0)
 			refl: .diff
 		},
 		Sphere{
 			rad:  300
 			p:    Vec{50, 28, 62}
-			e:    Vec{1, 1, 1}.mult_s(0e-3)
-			c:    Vec{1, 1, 1}.mult_s(.93)
+			e:    Vec{1, 1, 1}.mul_scalar(0e-3)
+			c:    Vec{1, 1, 1}.mul_scalar(.93)
 			refl: .spec
 		},
 	],
@@ -406,10 +371,10 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 
 	obj := scene[id] // the hit object
 
-	x := r.o + r.d.mult_s(t)
-	n := (x - obj.p).norm()
+	x := r.o + r.d.mul_scalar(t)
+	n := Vec(x - obj.p).norm()
 
-	nl := if n.dot(r.d) < 0.0 { n } else { n.mult_s(-1) }
+	nl := if n.dot(r.d) < 0.0 { n } else { n.mul_scalar(-1) }
 
 	mut f := obj.c
 
@@ -426,7 +391,7 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 	depth++
 	if depth > 5 {
 		if rand_f64() < p {
-			f = f.mult_s(f64(1.0) / p)
+			f = f.mul_scalar(f64(1.0) / p)
 		} else {
 			return obj.e // R.R.
 		}
@@ -445,25 +410,26 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 		w := nl
 
 		mut u := if math.abs(w.x) > f64(0.1) { Vec{0, 1, 0} } else { Vec{1, 0, 0} }
-		u = u.cross(w).norm()
+		u = Vec(u.cross(w)).norm()
 
 		v := w.cross(u)
 
 		// **Full Precision**
-		// d := (u.mult_s(math.cos(r1) * r2s) + v.mult_s(math.sin(r1) * r2s) + w.mult_s(1.0 - r2)).norm()
+		// d := (u.mul_scalar(math.cos(r1) * r2s) + v.mul_scalar(math.sin(r1) * r2s) + w.mul_scalar(1.0 - r2)).norm()
 
 		// tabbed speed-up
-		d := (u.mult_s(tabs.cos_tab[r1] * r2s) + v.mult_s(tabs.sin_tab[r1] * r2s) +
-			w.mult_s(math.sqrt(f64(1.0) - r2))).norm()
+		d := Vec(u.mul_scalar(tabs.cos_tab[r1] * r2s) + v.mul_scalar(tabs.sin_tab[r1] * r2s) +
+			(w.mul_scalar(math.sqrt(f64(1.0) - r2)))).norm()
 
 		return obj.e + f * radiance(Ray{x, d}, depth, scene_id)
 	} else {
 		if obj.refl == .spec { // Ideal SPECULAR reflection
-			return obj.e + f * radiance(Ray{x, r.d - n.mult_s(2.0 * n.dot(r.d))}, depth, scene_id)
+			return obj.e +
+				f * radiance(Ray{x, r.d - n.mul_scalar(2.0 * n.dot(r.d))}, depth, scene_id)
 		}
 	}
 
-	refl_ray := Ray{x, r.d - n.mult_s(2.0 * n.dot(r.d))} // Ideal dielectric REFRACTION
+	refl_ray := Ray{x, r.d - n.mul_scalar(2.0 * n.dot(r.d))} // Ideal dielectric REFRACTION
 	into := n.dot(nl) > 0 // Ray from outside going in?
 
 	nc := f64(1.0)
@@ -478,7 +444,7 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 	}
 
 	dirc := if into { f64(1) } else { f64(-1) }
-	tdir := (r.d.mult_s(nnt) - n.mult_s(dirc * (ddn * nnt + math.sqrt(cos2t)))).norm()
+	tdir := Vec(r.d.mul_scalar(nnt) - n.mul_scalar(dirc * (ddn * nnt + math.sqrt(cos2t)))).norm()
 
 	a := nt - nc
 	b := nt + nc
@@ -495,13 +461,13 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 	if depth > 2 {
 		// Russian roulette
 		tmp = if rand_f64() < pp {
-			radiance(refl_ray, depth, scene_id).mult_s(rp)
+			radiance(refl_ray, depth, scene_id).mul_scalar(rp)
 		} else {
-			radiance(Ray{x, tdir}, depth, scene_id).mult_s(tp)
+			radiance(Ray{x, tdir}, depth, scene_id).mul_scalar(tp)
 		}
 	} else {
-		tmp = (radiance(refl_ray, depth, scene_id).mult_s(re)) +
-			(radiance(Ray{x, tdir}, depth, scene_id).mult_s(tr))
+		tmp = (radiance(refl_ray, depth, scene_id).mul_scalar(re)) +
+			(radiance(Ray{x, tdir}, depth, scene_id).mul_scalar(tr))
 	}
 	return obj.e + (f * tmp)
 }
@@ -517,7 +483,7 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 
 	cam := Ray{Vec{50, 52, 295.6}, Vec{0, -0.042612, -1}.norm()} // cam position, direction
 	cx := Vec{f64(w) * 0.5135 / f64(h), 0, 0}
-	cy := cx.cross(cam.d).norm().mult_s(0.5135)
+	cy := Vec(cx.cross(cam.d)).norm().mul_scalar(0.5135)
 	mut r := Vec{}
 
 	// speed-up constants
@@ -544,12 +510,12 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 						r2 := v_2 * rand_f64()
 						dy := if r2 < v_1 { math.sqrt(r2) - v_1 } else { v_1 - math.sqrt(v_2 - r2) }
 
-						d := cx.mult_s(((f64(sx) + 0.5 + dx) * 0.5 + f64(x)) * w1 - .5) +
-							cy.mult_s(((f64(sy) + 0.5 + dy) * 0.5 + f64(y)) * h1 - .5) + cam.d
+						d := cx.mul_scalar(((f64(sx) + 0.5 + dx) * 0.5 + f64(x)) * w1 - .5) +
+							cy.mul_scalar(((f64(sy) + 0.5 + dy) * 0.5 + f64(y)) * h1 - .5) + cam.d
 						r = r + radiance(Ray{cam.o +
-							d.mult_s(140.0), d.norm()}, 0, scene_id).mult_s(samps1)
+							d.mul_scalar(140.0), Vec(d).norm()}, 0, scene_id).mul_scalar(samps1)
 					}
-					tmp_vec := Vec{clamp(r.x), clamp(r.y), clamp(r.z)}.mult_s(.25)
+					tmp_vec := Vec{clamp(r.x), clamp(r.y), clamp(r.z)}.mul_scalar(.25)
 					unsafe {
 						(*ivec) = *ivec + tmp_vec
 					}
