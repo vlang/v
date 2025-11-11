@@ -170,3 +170,12 @@ fn (mut p Parser) attributes() {
 		return
 	}
 }
+
+fn (mut p Parser) check_deprecation_attribs(attrs []ast.Attr) {
+	if attrs.len == 0 {
+		return
+	}
+	if deprecation := ast.Deprecation.check_invalid_attributes(attrs) {
+		p.error_with_pos(deprecation.message(), deprecation.pos())
+	}
+}

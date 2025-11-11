@@ -298,6 +298,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			else {}
 		}
 	}
+	p.check_deprecation_attribs(fn_attrs)
 	conditional_ctdefine_idx := fn_attrs.find_comptime_define() or { -1 }
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {

@@ -188,6 +188,7 @@ fn (mut p Parser) module_decl() ast.Module {
 				}
 			}
 		}
+		p.check_deprecation_attribs(module_attrs)
 	}
 	return mod_node
 }

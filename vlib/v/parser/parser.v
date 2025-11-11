@@ -2520,6 +2520,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			else {}
 		}
 	}
+	p.check_deprecation_attribs(attrs)
 	start_pos := p.tok.pos()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -2708,6 +2709,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			else {}
 		}
 	}
+	p.check_deprecation_attribs(attrs)
 
 	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.is_vet
 		&& !p.pref.translated && !p.is_translated && !p.pref.is_livemain && !p.pref.building_v
@@ -2853,6 +2855,7 @@ fn source_name(name string) string {
 
 fn (mut p Parser) type_decl() ast.TypeDecl {
 	attrs := p.attrs
+	p.check_deprecation_attribs(attrs)
 	start_pos := p.tok.pos()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {

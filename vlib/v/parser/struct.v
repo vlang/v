@@ -335,6 +335,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						is_field_deprecated = true
 					}
 				}
+				p.check_deprecation_attribs(p.attrs)
 				p.inside_struct_attr_decl = false
 			}
 			comments << p.eat_comments(same_line: true)
@@ -365,6 +366,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 							is_field_deprecated = true
 						}
 					}
+					p.check_deprecation_attribs(p.attrs)
 					p.inside_struct_attr_decl = false
 					comments << p.eat_comments(same_line: true)
 				}
@@ -672,6 +674,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.top_level_statement_start()
 	mut pos := p.tok.pos()
 	attrs := p.attrs
+	p.check_deprecation_attribs(attrs)
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
