@@ -6230,20 +6230,14 @@ Another example, is if you want to embed the version/name from v.mod *inside* yo
 
 ```v ignore
 import v.vmod
-vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
-eprintln('${vm.name} ${vm.version}\n ${vm.description}')
+
+vm := vmod.decode( @VMOD_FILE )!
+eprintln('${vm.name} ${vm.version}\n${vm.description}')
 ```
 
 A program that prints its own source code (a quine):
 ```v
 print($embed_file(@FILE).to_string())
-```
-
-A program that prints the time when it was built:
-```v
-import time
-
-println('This program, was compiled at ${time.unix(@BUILD_TIMESTAMP.i64()).format_ss_milli()} .')
 ```
 
 > [!NOTE]
@@ -6252,6 +6246,12 @@ println('This program, was compiled at ${time.unix(@BUILD_TIMESTAMP.i64()).forma
 > is done with `print` and not `println`, to not add another new line, missing in the
 > source code.
 
+A program that prints the time when it was built:
+```v
+import time
+
+println('This program, was compiled at ${time.unix(@BUILD_TIMESTAMP.i64()).format_ss_milli()} .')
+```
 
 ### Compile time reflection
 
