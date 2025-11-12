@@ -296,6 +296,5 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			}
 		}
 	}
-	p.check_deprecation_attribs(enum_decl.attrs)
 	return enum_decl
 }

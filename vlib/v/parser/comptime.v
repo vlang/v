@@ -89,7 +89,6 @@ fn (mut p Parser) hash() ast.HashStmt {
 	val := p.tok.lit
 	kind := val.all_before(' ')
 	attrs := p.attrs
-	p.check_deprecation_attribs(attrs)
 	p.next()
 	mut main_str := ''
 	mut msg := ''
