@@ -2,14 +2,11 @@ module os
 
 import strings
 
-$if windows {
-	fn C._dup(fd int) int
-	fn C._dup2(fd1 int, fd2 int) int
-	fn C._pipe(fds &int, size u32, mode int) int
-	fn C._close(fd int) int
-} $else {
-	fn C.dup(fd int) int
-}
+fn C._dup(fd int) int
+fn C._dup2(fd1 int, fd2 int) int
+fn C._pipe(fds &int, size u32, mode int) int
+fn C._close(fd int) int
+fn C.dup(fd int) int
 
 // Pipe represents a bidirectional communication channel
 @[noinit]
