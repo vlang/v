@@ -1,5 +1,6 @@
 import math.big
 import math.unsigned
+import rand
 
 fn test_str() {
 	x := unsigned.uint128_from_dec_str('170141183460469231713240559642174554112') or { panic('') }
@@ -240,4 +241,14 @@ fn test_div_128() {
 			}
 		}
 	}
+}
+
+fn test_put_bytes() {
+	a := unsigned.uint128_new(rand.u64(), rand.u64())
+	b := a.reverse_bytes()
+	mut buf_a := []u8{len: 16}
+	mut buf_b := []u8{len: 16}
+	a.put_bytes(mut buf_a)
+	b.put_bytes(mut buf_b)
+	assert buf_a == buf_b.reverse()
 }
