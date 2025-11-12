@@ -97,3 +97,7 @@ fn test_wide_to_ansi() {
 fn test_string_to_ansi_not_null_terminated() {
 	assert string_to_ansi_not_null_terminated('abc') == [u8(97), 98, 99]
 }
+
+fn test_utf8_str_visible_length() {
+	assert utf8_str_visible_length('𝐀𝐁𝐂') == 3
+}
