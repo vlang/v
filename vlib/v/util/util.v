@@ -161,9 +161,10 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 				tlog('looping i: ${i} / ${tool_recompile_retry_max_count}')
 				// ensure a stable and known working folder, when compiling V's tools, to avoid module lookup problems:
 				os.chdir(vroot) or {}
+				compile_sw := time.new_stopwatch()
 				tool_compilation := os.execute(compilation_command)
 				os.chdir(current_work_dir) or {}
-				tlog('tool_compilation.exit_code: ${tool_compilation.exit_code}')
+				tlog('tool_compilation.exit_code: ${tool_compilation.exit_code}, took: ${compile_sw.elapsed().milliseconds()}ms')
 				if tool_compilation.exit_code == 0 {
 					break
 				} else {
