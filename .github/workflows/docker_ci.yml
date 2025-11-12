@@ -67,7 +67,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
       - name: Build V
-        run: echo "$VFLAGS" && make -j4 && ./v -cg -o v cmd/v
+        run: echo "$VFLAGS" && make && ./v -cg -o v cmd/v
       - name: Verify `v test` works
         run: |
           echo "$VFLAGS"

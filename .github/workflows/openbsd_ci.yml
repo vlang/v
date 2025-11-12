@@ -24,7 +24,7 @@ on:
 
 jobs:
   tcc-openbsd:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
@@ -50,7 +50,7 @@ jobs:
             ./v run ci/openbsd_ci.vsh all
 
   clang-openbsd:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
@@ -76,7 +76,7 @@ jobs:
             ./v run ci/openbsd_ci.vsh all
 
   gcc-openbsd:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5

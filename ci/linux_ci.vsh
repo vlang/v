@@ -58,11 +58,11 @@ fn install_dependencies_for_examples_and_tools_tcc() {
 	if common.is_github_job {
 		exec('.github/workflows/disable_azure_mirror.sh')
 	}
-	exec('v retry -- sudo apt update')
-	exec('v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
+	// exec('v retry -- sudo apt update')
+	// exec('v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind')
+	// exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 	// The following is needed for examples/wkhtmltopdf.v
-	exec('v retry -- sudo apt install --quiet -y xfonts-75dpi xfonts-base expect')
+	// exec('v retry -- sudo apt install --quiet -y xfonts-75dpi xfonts-base expect')
 	exec('v retry -- wget --quiet https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb')
 	exec('v retry -- sudo dpkg -i wkhtmltox_0.12.6.1-2.jammy_amd64.deb')
 }
@@ -182,9 +182,9 @@ fn install_dependencies_for_examples_and_tools_gcc() {
 	if common.is_github_job {
 		exec('.github/workflows/disable_azure_mirror.sh')
 	}
-	exec('v retry -- sudo apt update')
-	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
+	// exec('v retry -- sudo apt update')
+	// exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
+	// exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 }
 
 fn recompile_v_with_cstrict_gcc() {
@@ -305,10 +305,10 @@ fn install_dependencies_for_examples_and_tools_clang() {
 	if common.is_github_job {
 		exec('.github/workflows/disable_azure_mirror.sh')
 	}
-	exec('v retry -- sudo apt update')
-	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
-	exec('v retry -- sudo apt install --quiet -y clang')
+	// exec('v retry -- sudo apt update')
+	// exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
+	// exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
+	// exec('v retry -- sudo apt install --quiet -y clang')
 }
 
 fn recompile_v_with_cstrict_clang() {

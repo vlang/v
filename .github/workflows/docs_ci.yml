@@ -26,10 +26,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make
-      - name: Install dependencies (some examples show how to use sqlite and the x11 clipboard)
-        run: ./v retry -- sudo apt install --quiet -y libx11-dev libssl-dev sqlite3 libsqlite3-dev
       - name: Check markdown line length & code examples
         run: ./v check-md -hide-warnings .
         ## NB: -hide-warnings is used here, so that the output is less noisy,

@@ -31,7 +31,7 @@ jobs:
         with:
           fetch-depth: 10
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
 
       - name: Install dependencies
         run: |
@@ -60,14 +60,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 10
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
 
       - name: Install dependencies
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update -y -qq
-          ./v retry -- sudo apt install --quiet -y mingw-w64 wine wine64 winetricks libssl-dev sqlite3 libsqlite3-dev
+          ./v retry -- sudo apt install --quiet -y mingw-w64 wine wine64 winetricks
 
       - name: Show diagnostics for wine
         run: |
