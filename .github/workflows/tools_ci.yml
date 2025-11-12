@@ -65,7 +65,7 @@ jobs:
 
   tools-macos:
     runs-on: macos-14
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       matrix:
         cc: [clang]
@@ -106,7 +106,7 @@ jobs:
 
   tools-docker-ubuntu-musl:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     container:
       image: thevlang/vlang:ubuntu-build
       env:

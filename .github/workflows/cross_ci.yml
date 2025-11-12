@@ -23,7 +23,7 @@ concurrency:
 jobs:
   cross-macos:
     runs-on: macos-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       VFLAGS: -cc clang
     steps:
@@ -53,7 +53,7 @@ jobs:
 
   cross-linux:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
@@ -102,7 +102,7 @@ jobs:
 
   cross-windows:
     runs-on: windows-2025
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - name: Build

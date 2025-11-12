@@ -49,7 +49,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, windows-2022]
       fail-fast: false
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       VTEST_ONLY: wasm
     steps:

@@ -44,7 +44,7 @@ jobs:
 
   prevent-gpl-licenses:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout V ${{ github.head_ref }}
         uses: actions/checkout@v5
@@ -67,7 +67,7 @@ jobs:
 
   code-formatting:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       VFLAGS: -cc gcc
     steps:
@@ -107,7 +107,7 @@ jobs:
 
   misc-tooling:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
