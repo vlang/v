@@ -98,7 +98,7 @@ pub fn (mut c Capture) stdout_stderr_capture_start() ! {
 	$if windows {
 		c.original_stdout_fd = C._dup(1) // Save stdout
 		c.original_stderr_fd = C._dup(2) // Save stderr
-		if C._dup2(pipe_stdout.write_fd, C.fileno(C.stdout)) == -1 {
+		if C._dup2(pipe_stdout.write_fd, 1) == -1 {
 			pipe_stdout.close()
 			pipe_stderr.close()
 			return error('Failed to redirect stdout')
@@ -115,13 +115,13 @@ pub fn (mut c Capture) stdout_stderr_capture_start() ! {
 	} $else {
 		c.original_stdout_fd = C.dup(1) // Save stdout
 		c.original_stderr_fd = C.dup(2) // Save stderr
-		if C.dup2(pipe_stdout.write_fd, C.fileno(C.stdout)) == -1 {
+		if C.dup2(pipe_stdout.write_fd, 1) == -1 {
 			pipe_stdout.close()
 			pipe_stderr.close()
 			return error('Failed to redirect stdout')
 		}
-		if C.dup2(pipe_stderr.write_fd, C.fileno(C.stderr)) == -1 {
-			C.dup2(c.original_stdout_fd, C.fileno(C.stdout)) // Restore stdout
+		if C.dup2(pipe_stderr.write_fd, 2) == -1 {
+			C.dup2(c.original_stdout_fd, 1) // Restore stdout
 			pipe_stdout.close()
 			pipe_stderr.close()
 			return error('Failed to redirect stderr')
