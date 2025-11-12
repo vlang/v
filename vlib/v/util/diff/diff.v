@@ -43,30 +43,32 @@ pub enum DiffTool {
 @[params]
 pub struct CompareOptions {
 pub:
-	tool DiffTool @[deprecated_after: '2025-12-31']
+	tool DiffTool @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2025-12-31']
 	// Custom args used with the diff command.
-	args string @[deprecated_after: '2025-12-31']
+	args string @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2025-12-31']
 	// Sets the environment variable whose value can overwrite a diff command passed to a compare function.
 	// It also enables the use of commands that are not in the list of known diff tools.
 	// Set it to `none` to disable it.
-	env_overwrite_var ?string = 'VDIFF_CMD' @[deprecated_after: '2025-12-31']
+	env_overwrite_var ?string = 'VDIFF_CMD' @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2025-12-31']
 }
 
 @[params]
 pub struct CompareTextOptions {
 	CompareOptions
 pub:
-	base_name   string = 'base' @[deprecated_after: '2025-12-31']
-	target_name string = 'target' @[deprecated_after: '2025-12-31']
+	base_name   string = 'base' @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2025-12-31']
+	target_name string = 'target' @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2025-12-31']
 }
 
 // Allows public checking for the available tools and prevents repeated searches
 // when using compare functions with automatic diff tool detection.
+@[deprecated: 'use compare_files or compare_text']
 @[deprecated_after: '2025-12-31']
 pub fn available_tools() []DiffTool {
 	return []
 }
 
+@[deprecated: 'use compare_files or compare_text']
 @[deprecated_after: '2025-12-31']
 pub fn find_working_diff_command() !string {
 	return error('deprecated')

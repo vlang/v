@@ -189,6 +189,7 @@ pub fn (mut c Cipher) free() {
 
 // reset quickly sets all Cipher's fields to default value.
 // This method will be deprecated.
+@[deprecated: 'do not use .reset() at all, create a new Cipher instead']
 @[deprecated_after: '2025-11-30']
 @[unsafe]
 pub fn (mut c Cipher) reset() {
