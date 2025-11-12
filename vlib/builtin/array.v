@@ -845,6 +845,8 @@ pub fn (a &array) free() {
 	unsafe {
 		a.data = nil
 		a.offset = 0
+		a.len = 0
+		a.cap = 0
 	}
 }
 
