@@ -64,21 +64,17 @@ fn test_pipe_large_data() {
 fn test_capture_stdout() {
 	println('=== Testing stdout capture ===')
 
-	mut cap := os.Capture.new()
-
-	cap.stdout_stderr_capture_start() or {
-		eprintln('Failed to start capture: ${err}')
-		return
-	}
+	mut cap := os.stdio_capture()!
 
 	test_output := 'This is stdout test message'
 	println(test_output)
 	println('Another stdout line')
 
-	stdout, stderr := cap.stdout_stderr_capture_stop() or {
-		eprintln('Failed to stop capture: ${err}')
-		return
-	}
+	cap.stop()
+
+	stdout := cap.stdout.slurp().join('\n')
+	stderr := cap.stderr.slurp().join('\n')
+	cap.close()
 
 	println('Captured stdout: "${stdout}"')
 	println('Captured stderr: "${stderr}"')
@@ -93,21 +89,16 @@ fn test_capture_stdout() {
 fn test_capture_stderr() {
 	println('=== Testing stderr capture ===')
 
-	mut cap := os.Capture.new()
-
-	cap.stdout_stderr_capture_start() or {
-		eprintln('Failed to start capture: ${err}')
-		return
-	}
+	mut cap := os.stdio_capture()!
 
 	test_error := 'This is stderr test message'
 	eprintln(test_error)
 	eprintln('Another stderr line')
 
-	stdout, stderr := cap.stdout_stderr_capture_stop() or {
-		eprintln('Failed to stop capture: ${err}')
-		return
-	}
+	cap.stop()
+	stdout := cap.stdout.slurp().join('\n')
+	stderr := cap.stderr.slurp().join('\n')
+	cap.close()
 
 	println('Captured stdout: "${stdout}"')
 	println('Captured stderr: "${stderr}"')
@@ -122,12 +113,7 @@ fn test_capture_stderr() {
 fn test_capture_both() {
 	println('=== Testing both stdout and stderr capture ===')
 
-	mut cap := os.Capture.new()
-
-	cap.stdout_stderr_capture_start() or {
-		eprintln('Failed to start capture: ${err}')
-		return
-	}
+	mut cap := os.stdio_capture()!
 
 	stdout_msg := 'Standard output message'
 	stderr_msg := 'Standard error message'
@@ -137,10 +123,10 @@ fn test_capture_both() {
 	println('More stdout')
 	eprintln('More stderr')
 
-	stdout, stderr := cap.stdout_stderr_capture_stop() or {
-		eprintln('Failed to stop capture: ${err}')
-		return
-	}
+	cap.stop()
+	stdout := cap.stdout.slurp().join('\n')
+	stderr := cap.stderr.slurp().join('\n')
+	cap.close()
 
 	println('Captured stdout: "${stdout}"')
 	println('Captured stderr: "${stderr}"')
@@ -164,12 +150,7 @@ fn test_capture_restoration() {
 	println(original_stdout_msg)
 	eprintln(original_stderr_msg)
 
-	mut cap := os.Capture.new()
-
-	cap.stdout_stderr_capture_start() or {
-		eprintln('Failed to start capture: ${err}')
-		return
-	}
+	mut cap := os.stdio_capture()!
 
 	captured_stdout_msg := 'During capture - stdout'
 	captured_stderr_msg := 'During capture - stderr'
@@ -177,10 +158,10 @@ fn test_capture_restoration() {
 	println(captured_stdout_msg)
 	eprintln(captured_stderr_msg)
 
-	stdout, stderr := cap.stdout_stderr_capture_stop() or {
-		eprintln('Failed to stop capture: ${err}')
-		return
-	}
+	cap.stop()
+	stdout := cap.stdout.slurp().join('\n')
+	stderr := cap.stderr.slurp().join('\n')
+	cap.close()
 
 	after_capture_stdout_msg := 'After capture - stdout'
 	after_capture_stderr_msg := 'After capture - stderr'
