@@ -845,7 +845,12 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 				if field_sym.name == gt_name {
 					for t in node.init_fields {
 						if ft.name == t.name && t.typ != 0 {
-							concrete_types << ast.mktyp(t.typ)
+							// unwrap to get base type for T if both are options
+							mut inferred_typ := ast.mktyp(t.typ)
+							if ft.typ.has_flag(.option) && inferred_typ.has_flag(.option) {
+								inferred_typ = inferred_typ.clear_flag(.option)
+							}
+							concrete_types << inferred_typ
 							continue gname
 						}
 					}
