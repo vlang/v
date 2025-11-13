@@ -164,7 +164,8 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			g.styp(left.unaliased.set_nr_muls(0))
 		}
 		mut is_builtin_or_alias_to_builtin := left.sym.is_builtin()
-		if !is_builtin_or_alias_to_builtin && left.sym.info is ast.Alias {
+		if !has_alias_eq_op_overload && !is_builtin_or_alias_to_builtin
+			&& left.sym.info is ast.Alias {
 			alias_info := left.sym.info as ast.Alias
 			parent_sym := g.table.sym(alias_info.parent_type)
 			is_builtin_or_alias_to_builtin = parent_sym.is_builtin()
