@@ -141,6 +141,37 @@ fn test_capture_both() {
 	println('')
 }
 
+fn test_capture_both_finish() {
+	println('=== Testing both stdout and stderr capture (finish)===')
+
+	mut cap := os.stdio_capture()!
+
+	stdout_msg := 'Standard output message'
+	stderr_msg := 'Standard error message'
+
+	println(stdout_msg)
+	eprintln(stderr_msg)
+	println('More stdout')
+	eprintln('More stderr')
+
+	stdout_list, stderr_list := cap.finish()
+
+	stdout := stdout_list.join('\n')
+	stderr := stderr_list.join('\n')
+
+	println('Captured stdout: "${stdout}"')
+	println('Captured stderr: "${stderr}"')
+
+	assert stdout.contains(stdout_msg)
+	assert stdout.contains('More stdout')
+	assert stderr.contains(stderr_msg)
+	assert stderr.contains('More stderr')
+	assert !stdout.contains(stderr_msg)
+	assert !stderr.contains(stdout_msg)
+	println('✓ Both stdout and stderr capture test passed')
+	println('')
+}
+
 fn test_capture_restoration() {
 	println('=== Testing output restoration after capture ===')
 

@@ -5,6 +5,9 @@ fn C._dup2(fd1 int, fd2 int) int
 fn C._pipe(fds &int, size u32, mode int) int
 fn C.dup(fd int) int
 
+const fd_stdout = $if windows { 1 } $else { C.STDOUT_FILENO }
+const fd_stderr = $if windows { 2 } $else { C.STDERR_FILENO }
+
 // fd_dup duplicates a file descriptor
 pub fn fd_dup(fd int) int {
 	return $if windows { C._dup(fd) } $else { C.dup(fd) }
@@ -75,10 +78,13 @@ pub fn (p &Pipe) write(buffer []u8) !int {
 }
 
 // slurp reads all data from the pipe until EOF
-pub fn (p &Pipe) slurp() []string {
+pub fn (mut p Pipe) slurp() []string {
+	// Close write end to send EOF signal to the pipe
 	fd_close(p.write_fd)
+	p.write_fd = -1
 	result := fd_slurp(p.read_fd)
 	fd_close(p.read_fd)
+	p.read_fd = -1
 	return result
 }
 
@@ -100,19 +106,19 @@ pub fn stdio_capture() !IOCapture {
 	mut pipe_stderr := pipe()!
 
 	// Save original file descriptors
-	c.original_stdout_fd = fd_dup(C.STDOUT_FILENO)
-	c.original_stderr_fd = fd_dup(C.STDERR_FILENO)
+	c.original_stdout_fd = fd_dup(fd_stdout)
+	c.original_stderr_fd = fd_dup(fd_stderr)
 
 	// Redirect stdout to pipe
-	if fd_dup2(pipe_stdout.write_fd, C.STDOUT_FILENO) == -1 {
+	if fd_dup2(pipe_stdout.write_fd, fd_stdout) == -1 {
 		pipe_stdout.close()
 		pipe_stderr.close()
 		return error('Failed to redirect stdout')
 	}
 
 	// Redirect stderr to pipe
-	if fd_dup2(pipe_stderr.write_fd, C.STDERR_FILENO) == -1 {
-		fd_dup2(c.original_stdout_fd, C.STDOUT_FILENO) // Restore stdout
+	if fd_dup2(pipe_stderr.write_fd, fd_stderr) == -1 {
+		fd_dup2(c.original_stdout_fd, fd_stdout) // Restore stdout
 		pipe_stdout.close()
 		pipe_stderr.close()
 		return error('Failed to redirect stderr')
@@ -132,17 +138,18 @@ pub fn stdio_capture() !IOCapture {
 }
 
 // stop restores the original stdout and stderr streams
+// This should be called to resume normal console output
 pub fn (mut c IOCapture) stop() {
 	// Restore original stdout
 	if c.original_stdout_fd != -1 {
-		fd_dup2(c.original_stdout_fd, C.STDOUT_FILENO)
+		fd_dup2(c.original_stdout_fd, fd_stdout)
 		fd_close(c.original_stdout_fd)
 		c.original_stdout_fd = -1
 	}
 
 	// Restore original stderr
 	if c.original_stderr_fd != -1 {
-		fd_dup2(c.original_stderr_fd, C.STDERR_FILENO)
+		fd_dup2(c.original_stderr_fd, fd_stderr)
 		fd_close(c.original_stderr_fd)
 		c.original_stderr_fd = -1
 	}
@@ -152,4 +159,13 @@ pub fn (mut c IOCapture) stop() {
 pub fn (mut c IOCapture) close() {
 	c.stdout.close()
 	c.stderr.close()
+}
+
+// finish stops capturing, reads all captured data, and releases resources
+pub fn (mut c IOCapture) finish() ([]string, []string) {
+	c.stop()
+	stdout_str := c.stdout.slurp()
+	stderr_str := c.stderr.slurp()
+	c.close()
+	return stdout_str, stderr_str
 }
