@@ -1,8 +1,6 @@
 import os
 import net.unix
-import net
-
-const use_net = net.no_timeout // ensure that `net` is used, i.e. no warnings
+import net as _
 
 const tfolder = os.join_path(os.temp_dir(), 'nuut_${os.getpid()}')
 const test_port = os.join_path(tfolder, 'domain_socket')

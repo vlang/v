@@ -1,8 +1,6 @@
 module unix
 
-import net
-
-const use_net = net.no_timeout
+import net as _
 
 const max_sun_path = $if windows {
 	256
