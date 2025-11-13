@@ -100,6 +100,23 @@ mut:
 }
 
 // stdio_capture starts capturing stdout and stderr by redirecting them to pipes
+// example:
+// ```v
+//    	mut cap := os.stdio_capture()!
+//    	println('hello println')
+//    	eprintln('hello eprintln')
+//    	cap.stop()
+//    	sout := cap.stdout.slurp()
+//    	serr := cap.stderr.slurp()
+//    	cap.close()
+// ```
+// or
+// ```v
+//    	mut cap := os.stdio_capture()!
+//    	println('hello println')
+//    	eprintln('hello eprintln')
+//    	sout, serr := cap.finish()
+// ```
 pub fn stdio_capture() !IOCapture {
 	mut c := IOCapture{}
 	mut pipe_stdout := pipe()!
