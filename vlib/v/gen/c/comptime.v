@@ -492,13 +492,16 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 						g.writeln('builtin___result_ok(&(${base_styp}[]) { ${tmp_var2} }, (_result*)(&${tmp_var}), sizeof(${base_styp}));')
 						g.writeln('}')
 					} else if is_array_fixed {
+						tmp_var2 := g.new_tmp_var()
 						base_styp := g.base_type(node.typ)
-						g.write('memcpy(&${tmp_var}, (${base_styp})')
+						g.write('{ ${base_styp} ${tmp_var2} = ')
 						g.stmt(last)
 						if g.out.last_n(2).contains(';') {
 							g.go_back(2)
 						}
-						g.write(', sizeof(${base_styp}))')
+						g.writeln(';')
+						g.writeln2('memcpy(&${tmp_var}, &${tmp_var2}, sizeof(${base_styp}));',
+							'}')
 					} else {
 						g.write('${tmp_var} = ')
 						g.stmt(last)
