@@ -355,7 +355,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, cname string, expr
 	}
 	if g.is_autofree {
 		sym := g.table.sym(typ)
-		if styp.starts_with('Array_') {
+		if sym.kind == .array {
 			if sym.has_method_with_generic_parent('free') {
 				g.cleanup.writeln('\t${styp}_free(&${cname});')
 			} else {
