@@ -92,15 +92,15 @@ pub fn (mut p Pipe) slurp() []string {
 @[noinit]
 pub struct IOCapture {
 pub mut:
-	stdout &Pipe = unsafe { nil }
-	stderr &Pipe = unsafe { nil }
+	stdout Pipe
+	stderr Pipe
 mut:
 	original_stdout_fd int = -1
 	original_stderr_fd int = -1
 }
 
 // stdio_capture starts capturing stdout and stderr by redirecting them to pipes
-// example:
+// Example:
 // ```v
 //    	mut cap := os.stdio_capture()!
 //    	println('hello println')
@@ -149,8 +149,8 @@ pub fn stdio_capture() !IOCapture {
 	pipe_stderr.write_fd = -1
 
 	// Store pipes for later reading
-	c.stdout = &pipe_stdout
-	c.stderr = &pipe_stderr
+	c.stdout = pipe_stdout
+	c.stderr = pipe_stderr
 	return c
 }
 
