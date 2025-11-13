@@ -7,5 +7,6 @@ fn (i1 MyInt) == (i2 MyInt) bool {
 }
 
 fn test_main() {
-	assert (MyInt{30} == MyInt{2}) == false
+	c := MyInt{30} == MyInt{2}
+	assert !c
 }
