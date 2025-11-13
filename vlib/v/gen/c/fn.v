@@ -791,9 +791,9 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			info := param_type_sym.info as ast.FnType
 			func := info.func
 			if !g.inside_c_extern {
-				g.write('${g.styp(func.return_type)} (*${caname})(')
+				g.write('${g.ret_styp(func.return_type)} (*${caname})(')
 			}
-			g.definitions.write_string('${g.styp(func.return_type)} (*${caname})(')
+			g.definitions.write_string('${g.ret_styp(func.return_type)} (*${caname})(')
 			g.fn_decl_params(func.params, unsafe { nil }, func.is_variadic, func.is_c_variadic)
 			if !g.inside_c_extern {
 				g.write(')')
