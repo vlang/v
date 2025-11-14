@@ -1017,6 +1017,7 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 	// a) `f(||expr)` for a callback lambda expression with 0 arguments
 	// b) `f(|a_1,...,a_n| expr_with_a_1_etc_till_a_n)` for a callback with several arguments
 	if !(p.tok.kind == .logical_or
+		|| (p.peek_token(1).kind == .key_mut && p.peek_token(2).kind == .name)
 		|| (p.peek_token(1).kind == .name && p.peek_token(2).kind == .pipe)
 		|| (p.peek_token(1).kind == .name && p.peek_token(2).kind == .comma)) {
 		return none
