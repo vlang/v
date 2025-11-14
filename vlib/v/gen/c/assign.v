@@ -474,6 +474,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				is_fixed_array_init = val.is_fixed
 				has_val = val.has_val
 			}
+			ast.ParExpr {
+				if val.expr is ast.ArrayInit {
+					array_init := val.expr as ast.ArrayInit
+					is_fixed_array_init = array_init.is_fixed
+					has_val = array_init.has_val
+				}
+			}
 			ast.CallExpr {
 				is_call = true
 				if val.comptime_ret_val {
@@ -1025,6 +1032,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								g.write(', sizeof(${styp}))')
 							} else {
 								g.array_init(val, cvar_name)
+							}
+						} else if val is ast.ParExpr && val.expr is ast.ArrayInit {
+							array_init := val.expr as ast.ArrayInit
+							cvar_name := c_name(ident.name)
+							if array_init.is_fixed && ident.name in g.defer_vars {
+								g.go_before_last_stmt()
+								g.empty_line = true
+								g.write('memcpy(${cvar_name}, ')
+								g.write('(${styp})')
+								g.array_init(array_init, cvar_name)
+								g.write(', sizeof(${styp}))')
+							} else {
+								g.array_init(array_init, cvar_name)
 							}
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
