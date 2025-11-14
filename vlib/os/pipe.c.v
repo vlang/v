@@ -102,6 +102,8 @@ mut:
 // stdio_capture starts capturing stdout and stderr by redirecting them to pipes
 // Example:
 // ```v
+//    	import os
+//    	unbuffer_stdout()
 //    	mut cap := os.stdio_capture()!
 //    	println('hello println')
 //    	eprintln('hello eprintln')
@@ -109,13 +111,21 @@ mut:
 //    	sout := cap.stdout.slurp()
 //    	serr := cap.stderr.slurp()
 //    	cap.close()
+//    	assert sout == ['hello println\n']
+//    	assert serr == ['hello eprintln\n']
 // ```
 // or
 // ```v
+//    	import os
+//    	unbuffer_stdout()
 //    	mut cap := os.stdio_capture()!
 //    	println('hello println')
 //    	eprintln('hello eprintln')
+//    	eprintln('World eprintln')
+//    	println('World println')
 //    	sout, serr := cap.finish()
+//    	assert sout == ['hello println\nWorld println\n']
+//    	assert serr == ['hello eprintln\nWorld eprintln\n']
 // ```
 pub fn stdio_capture() !IOCapture {
 	mut c := IOCapture{}
