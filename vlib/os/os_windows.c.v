@@ -1,6 +1,7 @@
 module os
 
 import strings
+import encoding.utf8.validate
 
 #flag windows -l advapi32
 #include <process.h>
@@ -388,14 +389,11 @@ pub fn raw_execute(cmd string) Result {
 		}
 	}
 	// encoding: from ANSI to UTF-8
-	soutput_ansi := read_data.str()
-	// Hack: detect `soutput_ansi` is encoding in ANSI or not
-	num_chars := C.MultiByteToWideChar(0, 0, &char(soutput_ansi.str), soutput_ansi.len,
-		0, 0)
-	soutput := if num_chars > 0 {
-		string_from_wide(soutput_ansi.to_wide(from_ansi: true))
+	soutput_str := read_data.str()
+	soutput := if validate.utf8_string(soutput_str) {
+		soutput_str
 	} else {
-		soutput_ansi
+		string_from_wide(soutput_str.to_wide(from_ansi: true))
 	}
 	unsafe { read_data.free() }
 	exit_code := u32(0)
