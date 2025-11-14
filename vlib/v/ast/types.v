@@ -798,6 +798,12 @@ pub const voidptr_types = new_voidptr_types()
 pub const cptr_types = merge_types(voidptr_types, byteptr_types, charptr_types)
 pub const nil_type = new_type(nil_type_idx)
 
+pub const builtin_array_generic_methods = ['all', 'any', 'count', 'filter', 'map', 'sort', 'sorted']
+pub const builtin_array_generic_methods_matcher = token.new_keywords_matcher_from_array_trie(builtin_array_generic_methods)
+
+pub const builtin_array_generic_methods_no_sort = ['all', 'any', 'count', 'filter', 'map']
+pub const builtin_array_generic_methods_no_sort_matcher = token.new_keywords_matcher_from_array_trie(builtin_array_generic_methods_no_sort)
+
 fn new_charptr_types() []Type {
 	return [charptr_type, new_type(char_type_idx).set_nr_muls(1)]
 }

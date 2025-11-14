@@ -2053,7 +2053,7 @@ fn (mut f Fmt) write_static_method(name string, short_name string) {
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	mut is_method_newline := false
 	if node.is_method {
-		if node.name in ['map', 'filter', 'all', 'any', 'count'] {
+		if ast.builtin_array_generic_methods_no_sort_matcher.matches(node.name) {
 			f.in_lambda_depth++
 			defer(fn) { f.in_lambda_depth-- }
 		}
