@@ -1,4 +1,4 @@
-import common { Task, exec }
+import common { Task, exec, unset }
 
 //
 // Shared tasks/helpers
@@ -133,7 +133,7 @@ fn build_fast_tcc() {
 }
 
 fn v_self_compilation_usecache_tcc() {
-	exec('unset VFLAGS')
+	unset('VFLAGS')
 
 	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')
@@ -209,7 +209,7 @@ fn v_self_compilation_gcc() {
 }
 
 fn v_self_compilation_usecache_gcc() {
-	exec('unset VFLAGS')
+	unset('VFLAGS')
 
 	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')
@@ -332,7 +332,7 @@ fn v_self_compilation_clang() {
 }
 
 fn v_self_compilation_usecache_clang() {
-	exec('unset VFLAGS')
+	unset('VFLAGS')
 
 	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')

@@ -1,4 +1,4 @@
-import common { Task, exec }
+import common { Task, exec, unset }
 
 fn test_symlink() {
 	exec('v symlink')
@@ -98,7 +98,7 @@ fn build_v_with_prealloc() {
 }
 
 fn v_self_compilation_usecache() {
-	exec('unset VFLAGS')
+	unset('VFLAGS')
 	exec('v -usecache examples/hello_world.v')
 	exec('./examples/hello_world')
 	exec('v -o v2 -usecache cmd/v')

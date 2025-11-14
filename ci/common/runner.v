@@ -14,6 +14,13 @@ pub fn exec(command string) {
 	}
 }
 
+// unset is a helper function to unset a specific env variable.
+pub fn unset(evar string) {
+	log.info('unsetting env variable: ${evar}')
+	os.unsetenv(evar)
+}
+
+// file_size_greater_than asserts that the given file exists, and is at least min_fsize bytes long.
 pub fn file_size_greater_than(fpath string, min_fsize u64) {
 	log.info('path should exist `${fpath}` ...')
 	if !os.exists(fpath) {
