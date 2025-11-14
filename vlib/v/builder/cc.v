@@ -33,6 +33,9 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 		if v.pref.reuse_tmpc {
 			return
 		}
+		if os.getenv('V_NO_RM_CLEANUP_FILES') != '' {
+			return
+		}
 		for tmpfile in v.pref.cleanup_files {
 			if os.is_file(tmpfile) {
 				if v.pref.is_verbose {
