@@ -3895,7 +3895,12 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 		}
 		ast.ParExpr {
 			g.write('(')
-			g.expr(node.expr)
+			if node.expr is ast.ArrayInit && node.expr.is_fixed && !g.inside_assign {
+				array_init := node.expr as ast.ArrayInit
+				g.fixed_array_init_with_cast(array_init, array_init.typ)
+			} else {
+				g.expr(node.expr)
+			}
 			g.write(')')
 		}
 		ast.PostfixExpr {
