@@ -5,6 +5,11 @@ import strings
 const cp_acp = 0
 const cp_utf8 = 65001
 
+@[params]
+pub struct ToWideConfig {
+	from_ansi bool
+}
+
 // to_wide returns a pointer to an UTF-16 version of the string receiver.
 // In V, strings are encoded using UTF-8 internally, but on windows most APIs,
 // that accept strings, need them to be in UTF-16 encoding.
@@ -13,14 +18,16 @@ const cp_utf8 = 65001
 // See also MultiByteToWideChar ( https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar )
 // See also builtin.wchar.from_string/1, for a version, that produces a
 // platform dependant L"" C style wchar_t* wide string.
-pub fn (_str string) to_wide() &u16 {
+pub fn (_str string) to_wide(param ToWideConfig) &u16 {
 	$if windows {
 		unsafe {
-			num_chars := (C.MultiByteToWideChar(cp_utf8, 0, &char(_str.str), _str.len,
+			src_encoding := if param.from_ansi { cp_acp } else { cp_utf8 }
+			num_chars := (C.MultiByteToWideChar(src_encoding, 0, &char(_str.str), _str.len,
 				0, 0))
 			mut wstr := &u16(malloc_noscan((num_chars + 1) * 2)) // sizeof(wchar_t)
 			if wstr != 0 {
-				C.MultiByteToWideChar(cp_utf8, 0, &char(_str.str), _str.len, wstr, num_chars)
+				C.MultiByteToWideChar(src_encoding, 0, &char(_str.str), _str.len, wstr,
+					num_chars)
 				C.memset(&u8(wstr) + num_chars * 2, 0, 2)
 			}
 			return wstr
