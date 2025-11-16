@@ -5033,6 +5033,9 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if right_type.is_voidptr() {
 			c.error('cannot dereference to void', node.pos)
 		}
+		if right_type == ast.nil_type {
+			c.error('cannot deference a `nil` pointer', node.right.pos())
+		}
 		if mut expr is ast.Ident {
 			if var := expr.scope.find_var('${expr.name}') {
 				if var.expr is ast.UnsafeExpr {
