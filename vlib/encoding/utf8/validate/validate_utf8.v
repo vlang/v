@@ -24,10 +24,12 @@ const utf8d = [
 	12, 12, 12 ]!
 // vfmt on
 
+// utf8_string returns true, if the given string `s` consists only of valid UTF-8 runes
 pub fn utf8_string(s string) bool {
 	return utf8_data(s.str, s.len)
 }
 
+// utf8_data returns true, if the given `data` block, with length `len` bytes, consists only of valid UTF-8 runes
 @[direct_array_access]
 pub fn utf8_data(data &u8, len int) bool {
 	mut state := 0
