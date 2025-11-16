@@ -231,6 +231,7 @@ fn res_to_rows(res voidptr) []Row {
 	return rows
 }
 
+// res_to_result creates a `Result` struct out of a `C.PGresult` pointer
 fn res_to_result(res voidptr) Result {
 	nr_rows := C.PQntuples(res)
 	nr_cols := C.PQnfields(res)
@@ -309,6 +310,7 @@ pub fn (db &DB) exec(query string) ![]Row {
 	return db.handle_error_or_rows(res, 'exec')
 }
 
+// exec_result submits a command to the database server and wait for the result, returning an error on failure and a `Result` set on success
 pub fn (db &DB) exec_result(query string) !Result {
 	res := C.PQexec(db.conn, &char(query.str))
 	return db.handle_error_or_result(res, 'exec_result')
@@ -346,6 +348,7 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 	}
 }
 
+// exec_param_many executes a query with the parameters provided as ($1), ($2), ($n) and returns a `Result`
 pub fn (db &DB) exec_param_many_result(query string, params []string) !Result {
 	unsafe {
 		mut param_vals := []&char{len: params.len}
@@ -390,6 +393,8 @@ pub fn (db &DB) exec_prepared(name string, params []string) ![]Row {
 	}
 }
 
+// exec_prepared sends a request to execute a prepared statement with given parameters, and waits for the result. The number of parameters must match with the parameters declared in the prepared statement.
+// returns `Result`
 pub fn (db &DB) exec_prepared_result(name string, params []string) !Result {
 	unsafe {
 		mut param_vals := []&char{len: params.len}
@@ -415,6 +420,7 @@ fn (db &DB) handle_error_or_rows(res voidptr, elabel string) ![]Row {
 	return res_to_rows(res)
 }
 
+// hande_error_or_result is an internal function similar to handle_error_or_rows that returns `Result` instead of `[]Row`
 fn (db &DB) handle_error_or_result(res voidptr, elabel string) !Result {
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
@@ -599,6 +605,7 @@ pub fn (db &DB) validate() !bool {
 pub fn (db &DB) reset() ! {
 }
 
+// as_structs is a `Result` method that maps the results' rows based on the provided mapping function
 pub fn (res Result) as_structs[T](mapper fn (Result, Row) !T) ![]T {
 	mut typed := []T{}
 	for r in res.rows {
