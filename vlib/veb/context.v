@@ -31,9 +31,7 @@ mut:
 	done bool
 	// if true the response should not be sent and the connection should be closed
 	// manually.
-	takeover bool
-	// how the http response should be handled by veb's backend
-	return_type ContextReturnType = .normal
+	takeover    bool
 	return_file string
 	// If the `Connection: close` header is present the connection should always be closed
 	client_wants_to_close bool
@@ -43,6 +41,8 @@ pub:
 	// You can use it to determine how much time is spent on your request.
 	page_gen_start i64
 pub mut:
+	// how the http response should be handled by veb's backend
+	return_type       ContextReturnType = .normal
 	req               http.Request
 	custom_mime_types map[string]string
 	// TCP connection to client. Only for advanced usage!
