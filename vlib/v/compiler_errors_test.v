@@ -249,7 +249,6 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
 	}
 	$if msvc {
-		m_skip_files << 'vlib/v/checker/tests/invalid_utf8_string.vv'
 		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
 		m_skip_files << 'vlib/v/checker/tests/asm_immutable_err.vv'
 		// TODO: investigate why MSVC regressed
@@ -258,6 +257,7 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
 	}
 	$if windows {
+		m_skip_files << 'vlib/v/checker/tests/invalid_utf8_string.vv'
 		m_skip_files << 'vlib/v/checker/tests/modules/deprecated_module'
 	}
 	for i in 0 .. tasks.all.len {
