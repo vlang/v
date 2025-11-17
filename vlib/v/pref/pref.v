@@ -257,9 +257,10 @@ pub mut:
 	// forwards compatibility settings:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 	//
-	subsystem   Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
-	is_vls      bool
-	json_errors bool // -json-errors, for VLS and other tools
+	subsystem     Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
+	is_vls        bool
+	json_errors   bool // -json-errors, for VLS and other tools
+	new_transform bool // temporary for the new transformer
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -761,6 +762,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-experimental' {
 				res.experimental = true
+			}
+			'-new-transformer' {
+				res.new_transform = true
 			}
 			'-usecache' {
 				res.use_cache = true

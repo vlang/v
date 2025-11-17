@@ -2837,3 +2837,8 @@ pub fn (mut t Table) get_veb_result_type_idx() int {
 pub fn (mut t Table) register_vls_info(key string, val VlsInfo) {
 	t.vls_info[key] = val
 }
+
+pub fn (t &Table) unwrap(typ Type) Type {
+	ts := t.sym(typ)
+	return if ts.info is Alias { t.unwrap(ts.info.parent_type) } else { typ }
+}
