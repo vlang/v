@@ -49,8 +49,9 @@ fn (mut p Parser) check_undefined_variables(names []string, val ast.Expr) ! {
 		}
 		ast.CallExpr {
 			p.check_undefined_variables(names, val.left)!
-			// arr.sort(a < b) , arr.sorted(a < b)
-			if val.name in ['sort', 'sorted'] && val.args.len == 1 {
+			// arr.sort(a < b) , arr.sorted(a < b), it := [2,3,4].map(it*2), it := [2,3,4].filter(it % 2 == 0), etc.
+			if val.args.len == 1
+				&& val.name in ['sort', 'sorted', 'map', 'filter', 'any', 'all', 'count'] {
 				return
 			}
 			for arg in val.args {
