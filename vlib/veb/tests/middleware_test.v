@@ -2,6 +2,7 @@ import veb
 import net.http
 import os
 import time
+import compress.gzip
 
 const port = 13001
 
@@ -48,6 +49,16 @@ pub fn (app &App) after(mut ctx Context) veb.Result {
 	return ctx.text('from after, ${ctx.counter}')
 }
 
+@['/gzip']
+pub fn (app &App) gzip_test(mut ctx Context) veb.Result {
+	return ctx.text('gzip response, ${ctx.counter}')
+}
+
+@['/decode_gzip'; post]
+pub fn (app &App) decode_gzip_test(mut ctx Context) veb.Result {
+	return ctx.text('received: ${ctx.req.data}')
+}
+
 pub fn (app &App) app_middleware(mut ctx Context) bool {
 	ctx.counter++
 	return true
@@ -86,6 +97,10 @@ fn testsuite_begin() {
 	app.Middleware.route_use('/nested/:path...', handler: middleware_handler)
 
 	app.Middleware.route_use('/after', handler: after_middleware, after: true)
+
+	// Gzip middleware tests
+	app.Middleware.use(veb.decode_gzip[Context]())
+	app.Middleware.route_use('/gzip', veb.encode_gzip[Context]())
 
 	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	// app startup time
@@ -126,4 +141,25 @@ fn test_after_middleware() {
 	assert custom_header == '3'
 }
 
-// TODO: add test for encode and decode gzip
+// Verifies that encode_gzip compresses responses
+fn test_encode_gzip_middleware() {
+	x := http.get('${localserver}/gzip')!
+
+	encoding := x.header.get(.content_encoding) or { '' }
+	assert encoding == 'gzip', 'Expected gzip encoding, got: ${encoding}'
+
+	decompressed := gzip.decompress(x.body.bytes())!
+	assert decompressed.bytestr() == 'gzip response, 2'
+}
+
+// Verifies that decode_gzip middleware decompresses request bodies
+fn test_decode_gzip_middleware() {
+	original_text := 'Hello from gzip compressed body!'
+	compressed := gzip.compress(original_text.bytes())!
+
+	mut req := http.new_request(.post, '${localserver}/decode_gzip', compressed.bytestr())
+	req.header.add(.content_encoding, 'gzip')
+	x := req.do()!
+
+	assert x.body == 'received: ${original_text}'
+}
