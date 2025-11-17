@@ -1,5 +1,6 @@
 module veb
 
+import compress.gzip
 import json
 import net
 import net.http
@@ -29,14 +30,20 @@ mut:
 	content_type string
 	// done is set to true when a response can be sent over `conn`
 	done bool
+	// If the `Connection: close` header is present the connection should always be closed
+	client_wants_to_close bool
+	// Configuration for static file gzip compression (set by serve_if_static)
+	enable_static_gzip   bool
+	static_gzip_max_size int
 	// if true the response should not be sent and the connection should be closed
 	// manually.
 	takeover bool
 	// how the http response should be handled by veb's backend
 	return_type ContextReturnType = .normal
 	return_file string
-	// If the `Connection: close` header is present the connection should always be closed
-	client_wants_to_close bool
+	// already_compressed indicates that the response body is already gzip-compressed
+	// and the encode_gzip middleware should skip it
+	already_compressed bool
 pub:
 	// TODO: move this to `handle_request`
 	// time.ticks() from start of veb connection handle.
@@ -200,22 +207,98 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	}
 	file.close()
 
+	// Check if client accepts gzip encoding
+	accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
+	client_accepts_gzip := accept_encoding.contains('gzip')
+
+	max_size_bytes := ctx.static_gzip_max_size
+
+	// Try to serve pre-compressed .gz file if static gzip is enabled and client accepts it
+	if ctx.enable_static_gzip && client_accepts_gzip {
+		gz_path := '${file_path}.gz'
+
+		// Check if .gz file exists and is up-to-date (newer or same age as original)
+		if os.exists(gz_path) {
+			gz_mtime := os.file_last_mod_unix(gz_path)
+			orig_mtime := os.file_last_mod_unix(file_path)
+
+			if gz_mtime >= orig_mtime {
+				// Serve existing .gz file in streaming mode (zero-copy)
+				ctx.return_type = .file
+				ctx.return_file = gz_path
+				ctx.res.header.set(.content_encoding, 'gzip')
+				ctx.res.header.set(.vary, 'Accept-Encoding')
+
+				// Get .gz file size for Content-Length header
+				gz_size := os.file_size(gz_path)
+				ctx.res.header.set(.content_length, gz_size.str())
+
+				ctx.send_response_to_client(content_type, '')
+				ctx.already_compressed = true
+				return Result{}
+			}
+		}
+
+		// .gz doesn't exist or is outdated: create it if file is small enough
+		if file_size < max_size_bytes {
+			// Load, compress, save, and serve
+			data := os.read_file(file_path) or {
+				eprintln('[veb] error while trying to read file: ${err.msg()}')
+				return ctx.server_error('could not read resource')
+			}
+
+			compressed := gzip.compress(data.bytes()) or {
+				// Fallback: serve uncompressed in streaming mode
+				ctx.return_type = .file
+				ctx.return_file = file_path
+				ctx.res.header.set(.content_length, file_size.str())
+				ctx.send_response_to_client(content_type, '')
+				return Result{}
+			}
+
+			// Try to save compressed version for future requests
+			mut write_success := true
+			os.write_file(gz_path, compressed.bytestr()) or {
+				eprintln('[veb] warning: could not save .gz file (readonly filesystem?): ${err.msg()}')
+				write_success = false
+			}
+
+			if write_success {
+				// Serve the newly cached .gz file in streaming mode (zero-copy)
+				ctx.return_type = .file
+				ctx.return_file = gz_path
+				ctx.res.header.set(.content_encoding, 'gzip')
+				ctx.res.header.set(.vary, 'Accept-Encoding')
+				ctx.res.header.set(.content_length, compressed.len.str())
+				ctx.send_response_to_client(content_type, '')
+				ctx.already_compressed = true
+			} else {
+				// Fallback: serve compressed content from memory (no caching)
+				// This happens on readonly filesystems or when write permissions are missing
+				ctx.res.header.set(.content_encoding, 'gzip')
+				ctx.res.header.set(.vary, 'Accept-Encoding')
+				ctx.send_response_to_client(content_type, compressed.bytestr())
+				ctx.already_compressed = true
+			}
+			return Result{}
+		}
+	}
+
+	// Takeover mode: load file in memory (backward compatibility)
 	if ctx.takeover {
-		// it's a small file so we can send the response directly
 		data := os.read_file(file_path) or {
 			eprintln('[veb] error while trying to read file: ${err.msg()}')
 			return ctx.server_error('could not read resource')
 		}
-		// println('data=${data}')
 		return ctx.send_response_to_client(content_type, data)
-	} else {
-		ctx.return_type = .file
-		ctx.return_file = file_path
-		// set response headers
-		ctx.send_response_to_client(content_type, '')
-		ctx.res.header.set(.content_length, file_size.str())
-		return Result{}
 	}
+
+	// Default: serve uncompressed file in streaming mode (zero-copy sendfile)
+	ctx.return_type = .file
+	ctx.return_file = file_path
+	ctx.res.header.set(.content_length, file_size.str())
+	ctx.send_response_to_client(content_type, '')
+	return Result{}
 }
 
 // Response HTTP_OK with s as payload

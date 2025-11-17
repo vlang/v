@@ -118,15 +118,22 @@ fn validate_middleware[T](mut ctx T, raw_handlers []voidptr) bool {
 }
 
 // encode_gzip adds gzip encoding to the HTTP Response body.
-// This middleware does not encode files, if you return `ctx.file()`.
+// This middleware compresses dynamic routes and static files loaded in memory (takeover mode).
+// Static files in streaming mode are compressed by send_file() when enable_static_gzip is enabled,
+// and this middleware skips them to avoid double compression (via the already_compressed flag).
 // Register this middleware as last!
 // Usage example: app.use(veb.encode_gzip[Context]())
 pub fn encode_gzip[T]() MiddlewareOptions[T] {
 	return MiddlewareOptions[T]{
 		after:   true
 		handler: fn [T](mut ctx T) bool {
-			// TODO: compress file in streaming manner, or precompress them?
-			if ctx.return_type == .file {
+			// Skip if already compressed (optimization for static files compressed in send_file)
+			if ctx.Context.already_compressed {
+				return true
+			}
+			// Skip compression for files in streaming mode (takeover == false)
+			// Files in takeover mode (small files loaded in memory) are compressed
+			if ctx.Context.return_type == .file && !ctx.Context.takeover {
 				return true
 			}
 			// first try compressions, because if it fails we can still send a response
@@ -168,6 +175,7 @@ pub fn decode_gzip[T]() MiddlewareOptions[T] {
 					ctx.req.body = decompressed.bytestr()
 				}
 			}
+			return true
 		}
 	}
 }
