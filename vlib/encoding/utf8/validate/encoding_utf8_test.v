@@ -84,4 +84,5 @@ fn test_validate_invalid_str() {
 	assert validate.utf8_string('\xF1\xBF\xBF\xC0') == false
 	assert validate.utf8_string('\xF1\xBF\xC0\x80') == false
 	assert validate.utf8_string('\xF1\xC0\x80\x80') == false
+	assert validate.utf8_string('\xED\xEF\xBF\x89') == false
 }

@@ -24,7 +24,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	}
 	len := node.exprs.len
 	elem_sym := g.table.sym(g.unwrap_generic(node.elem_type))
-	if array_type.unaliased_sym.kind == .array_fixed {
+	if node.is_fixed || array_type.unaliased_sym.kind == .array_fixed {
 		g.fixed_array_init(node, array_type, var_name, is_amp)
 		if is_amp {
 			g.write(')')

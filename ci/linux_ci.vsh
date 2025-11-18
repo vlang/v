@@ -1,8 +1,6 @@
 import common { Task, exec }
 
-//
 // Shared tasks/helpers
-//
 fn all_code_is_formatted() {
 	if common.is_github_job {
 		exec('v -silent test-cleancode')
@@ -50,10 +48,7 @@ fn build_v_with_prealloc() {
 	exec('./v4 -d debug_malloc -d debug_realloc -o vdebug1 cmd/v')
 }
 
-//
 // TCC job tasks
-//
-
 fn install_dependencies_for_examples_and_tools_tcc() {
 	if common.is_github_job {
 		exec('.github/workflows/disable_azure_mirror.sh')
@@ -133,8 +128,6 @@ fn build_fast_tcc() {
 }
 
 fn v_self_compilation_usecache_tcc() {
-	exec('unset VFLAGS')
-
 	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')
 	exec('./examples/hello_world')
@@ -170,10 +163,7 @@ fn test_leak_detector_not_active_tcc() {
 	exec('[ "$(stat -c %s leaks.txt)" = "0" ]')
 }
 
-//
 // GCC job tasks
-//
-
 fn all_code_is_formatted_gcc() {
 	all_code_is_formatted()
 }
@@ -209,8 +199,6 @@ fn v_self_compilation_gcc() {
 }
 
 fn v_self_compilation_usecache_gcc() {
-	exec('unset VFLAGS')
-
 	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')
 	exec('examples/hello_world')
@@ -293,10 +281,7 @@ fn compile_vup_prod_gcc() {
 	exec('v -showcc -cc gcc -prod cmd/tools/vup.v')
 }
 
-//
 // Clang job tasks
-//
-
 fn all_code_is_formatted_clang() {
 	all_code_is_formatted()
 }
@@ -332,8 +317,6 @@ fn v_self_compilation_clang() {
 }
 
 fn v_self_compilation_usecache_clang() {
-	exec('unset VFLAGS')
-
 	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')
 	exec('./examples/hello_world')
@@ -416,9 +399,7 @@ fn native_cross_compilation_to_macos() {
 	exec('rm -f hw.macos')
 }
 
-//
 // Collect all tasks
-//
 const all_tasks = {
 	'build_v_with_prealloc':                             Task{build_v_with_prealloc, 'Build V with prealloc'}
 	// tcc tasks

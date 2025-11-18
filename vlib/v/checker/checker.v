@@ -476,11 +476,27 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	}
 }
 
-// do checks specific to files in main module
-// returns `true` if a main function is in the file
-fn (mut c Checker) file_has_main_fn(file &ast.File) bool {
+fn (mut c Checker) stmts_has_main_fn(stmts []ast.Stmt) bool {
 	mut has_main_fn := false
-	for stmt in file.stmts {
+	for stmt in stmts {
+		if stmt is ast.ExprStmt {
+			// top level comptime main fn
+			if stmt.expr is ast.IfExpr && stmt.expr.is_comptime {
+				// $if a ? { fn main(){} } $else { fn main() {} }
+				for branch in stmt.expr.branches {
+					if c.stmts_has_main_fn(branch.stmts) {
+						has_main_fn = true
+					}
+				}
+			} else if stmt.expr is ast.MatchExpr && stmt.expr.is_comptime {
+				// $match os { 'windows' { fn main() {} } ...
+				for branch in stmt.expr.branches {
+					if c.stmts_has_main_fn(branch.stmts) {
+						has_main_fn = true
+					}
+				}
+			}
+		}
 		if stmt is ast.FnDecl {
 			if stmt.name == 'main.main' {
 				if has_main_fn {
@@ -502,6 +518,12 @@ fn (mut c Checker) file_has_main_fn(file &ast.File) bool {
 		}
 	}
 	return has_main_fn
+}
+
+// do checks specific to files in main module
+// returns `true` if a main function is in the file
+fn (mut c Checker) file_has_main_fn(file &ast.File) bool {
+	return c.stmts_has_main_fn(file.stmts)
 }
 
 @[direct_array_access]
@@ -5032,6 +5054,9 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		}
 		if right_type.is_voidptr() {
 			c.error('cannot dereference to void', node.pos)
+		}
+		if right_type == ast.nil_type {
+			c.error('cannot deference a `nil` pointer', node.right.pos())
 		}
 		if mut expr is ast.Ident {
 			if var := expr.scope.find_var('${expr.name}') {

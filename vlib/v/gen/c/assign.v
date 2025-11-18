@@ -474,6 +474,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				is_fixed_array_init = val.is_fixed
 				has_val = val.has_val
 			}
+			ast.ParExpr {
+				if val.expr is ast.ArrayInit {
+					array_init := val.expr as ast.ArrayInit
+					is_fixed_array_init = array_init.is_fixed
+					has_val = array_init.has_val
+				}
+			}
 			ast.CallExpr {
 				is_call = true
 				if val.comptime_ret_val {
@@ -1026,6 +1033,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							} else {
 								g.array_init(val, cvar_name)
 							}
+						} else if val is ast.ParExpr && val.expr is ast.ArrayInit {
+							array_init := val.expr as ast.ArrayInit
+							cvar_name := c_name(ident.name)
+							if array_init.is_fixed && ident.name in g.defer_vars {
+								g.go_before_last_stmt()
+								g.empty_line = true
+								g.write('memcpy(${cvar_name}, ')
+								g.write('(${styp})')
+								g.array_init(array_init, cvar_name)
+								g.write(', sizeof(${styp}))')
+							} else {
+								g.array_init(array_init, cvar_name)
+							}
 						} else if val_type.has_flag(.shared_f) {
 							g.expr_with_cast(val, val_type, var_type)
 						} else if val in [ast.MatchExpr, ast.IfExpr]
@@ -1112,17 +1132,51 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Type, return_sym ast.TypeSymbol) {
 	// multi return
 	// TODO: Handle in if_expr
-	mr_var_name := 'mr_${node.pos.pos}'
-	mut is_option := return_type.has_flag(.option)
-	mut mr_styp := g.styp(return_type.clear_flag(.result))
+	mut ret_type := return_type
+	mut ret_sym := return_sym
+	mut suffix := ''
+	if g.comptime.inside_comptime_for && node.right[0] is ast.CallExpr {
+		call_expr := node.right[0] as ast.CallExpr
+		if call_expr.concrete_types.len > 0 && return_sym.info is ast.MultiReturn
+			&& g.comptime.comptime_for_field_var != '' {
+			field_type := g.comptime.comptime_for_field_type
+			field_sym := g.table.sym(field_type)
+			if field_sym.info is ast.Map {
+				map_info := field_sym.info as ast.Map
+				ret_type = g.table.find_or_register_multi_return([map_info.key_type, map_info.value_type])
+				ret_sym = *g.table.sym(ret_type)
+			}
+		}
+		if g.comptime.comptime_for_field_var != '' {
+			suffix = '_${g.comptime.comptime_for_field_value.name}'
+		}
+	}
+	mr_var_name := 'mr_${node.pos.pos}${suffix}'
+	mut is_option := ret_type.has_flag(.option)
+	mut mr_styp := g.styp(ret_type.clear_flag(.result))
 	if node.right[0] is ast.CallExpr && node.right[0].or_block.kind != .absent {
 		is_option = false
-		mr_styp = g.styp(return_type.clear_option_and_result())
+		mr_styp = g.styp(ret_type.clear_option_and_result())
 	}
 	g.write('${mr_styp} ${mr_var_name} = ')
 	g.expr(node.right[0])
 	g.writeln(';')
-	mr_types := (return_sym.info as ast.MultiReturn).types
+	mr_types := (ret_sym.info as ast.MultiReturn).types
+	mut recompute_types := false
+	if g.comptime.inside_comptime_for && node.right[0] is ast.CallExpr {
+		call_expr := node.right[0] as ast.CallExpr
+		if call_expr.concrete_types.len > 0 && g.comptime.comptime_for_field_var != ''
+			&& return_sym.info is ast.MultiReturn {
+			recompute_types = true
+			for i, mut lx in &node.left {
+				if mut lx is ast.Ident && lx.kind != .blank_ident {
+					if mut lx.obj is ast.Var {
+						lx.obj.typ = mr_types[i]
+					}
+				}
+			}
+		}
+	}
 	for i, lx in node.left {
 		mut cur_indexexpr := -1
 		mut is_auto_heap := false
@@ -1141,7 +1195,8 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		if lx is ast.IndexExpr && g.cur_indexexpr.len > 0 {
 			cur_indexexpr = g.cur_indexexpr.index(lx.pos.pos)
 		}
-		styp := if ident.name in g.defer_vars { '' } else { g.styp(node.left_types[i]) }
+		left_type := if recompute_types { mr_types[i] } else { node.left_types[i] }
+		styp := if ident.name in g.defer_vars { '' } else { g.styp(left_type) }
 		if node.op == .decl_assign {
 			g.write('${styp} ')
 		}
@@ -1150,14 +1205,14 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		}
 		noscan := if is_auto_heap { g.check_noscan(return_type) } else { '' }
 		mut aligned := 0
-		sym := g.table.final_sym(node.left_types[i])
+		sym := g.table.final_sym(left_type)
 		if sym.info is ast.Struct {
 			if attr := sym.info.attrs.find_first('aligned') {
 				aligned = if attr.arg == '' { 0 } else { attr.arg.int() }
 			}
 		}
-		if node.left_types[i].has_flag(.option) {
-			base_typ := g.base_type(node.left_types[i])
+		if left_type.has_flag(.option) {
+			base_typ := g.base_type(left_type)
 			tmp_var := if is_auto_heap {
 				if aligned != 0 {
 					'HEAP_align(${styp}, ${mr_var_name}.arg${i}, ${aligned})'

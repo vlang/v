@@ -530,14 +530,9 @@ fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
 				ast.CallExpr {
 					// last stmt on block is CallExpr
 					last_stmt.expr.is_return_used = true
-				}
-				ast.IfExpr {
-					// last stmt on block is: if .. { foo() } else { bar() }
-					for mut branch in last_stmt.expr.branches {
-						if branch.stmts.len > 0 {
-							mut last_if_stmt := branch.stmts.last()
-							p.mark_last_call_return_as_used(mut last_if_stmt)
-						}
+					if last_stmt.expr.or_block.stmts.len > 0 {
+						mut or_block_last_stmt := last_stmt.expr.or_block.stmts.last()
+						p.mark_last_call_return_as_used(mut or_block_last_stmt)
 					}
 				}
 				ast.ConcatExpr {
@@ -548,18 +543,45 @@ fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
 						}
 					}
 				}
+				ast.IfExpr {
+					// last stmt on block is: if .. { foo() } else { bar() }
+					for mut branch in last_stmt.expr.branches {
+						if branch.stmts.len > 0 {
+							mut last_if_stmt := branch.stmts.last()
+							p.mark_last_call_return_as_used(mut last_if_stmt)
+						}
+					}
+				}
 				ast.InfixExpr {
+					if last_stmt.expr.or_block.stmts.len > 0 {
+						mut or_block_last_stmt := last_stmt.expr.or_block.stmts.last()
+						p.mark_last_call_return_as_used(mut or_block_last_stmt)
+					}
 					// last stmt has infix expr with CallExpr: foo()? + 'a'
 					mut left_expr := last_stmt.expr.left
 					for {
 						if mut left_expr is ast.InfixExpr {
+							if left_expr.or_block.stmts.len > 0 {
+								mut or_block_last_stmt := left_expr.or_block.stmts.last()
+								p.mark_last_call_return_as_used(mut or_block_last_stmt)
+							}
 							left_expr = left_expr.left
 							continue
 						}
 						if mut left_expr is ast.CallExpr {
 							left_expr.is_return_used = true
+							if left_expr.or_block.stmts.len > 0 {
+								mut or_block_last_stmt := left_expr.or_block.stmts.last()
+								p.mark_last_call_return_as_used(mut or_block_last_stmt)
+							}
 						}
 						break
+					}
+				}
+				ast.ComptimeCall, ast.ComptimeSelector, ast.PrefixExpr, ast.SelectorExpr {
+					if last_stmt.expr.or_block.stmts.len > 0 {
+						mut or_block_last_stmt := last_stmt.expr.or_block.stmts.last()
+						p.mark_last_call_return_as_used(mut or_block_last_stmt)
 					}
 				}
 				else {}

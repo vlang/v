@@ -191,6 +191,11 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	fmt := fmts[i]
 	typ := g.unwrap_generic(node.expr_types[i])
 	typ_sym := g.table.sym(typ)
+	if g.comptime.inside_comptime_for && expr is ast.SelectorExpr && expr.field_name == 'name'
+		&& expr.expr is ast.TypeOf {
+		g.expr(expr)
+		return
+	}
 	if typ == ast.string_type && g.comptime.comptime_for_method == unsafe { nil } {
 		if g.inside_vweb_tmpl {
 			g.write('${g.vweb_filter_fn_name}(')
@@ -278,6 +283,24 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
+		mut type_to_use := node_.expr_types[i]
+		if g.comptime.inside_comptime_for && mut expr is ast.SelectorExpr {
+			if expr.expr is ast.TypeOf && expr.field_name == 'name' {
+				// This is typeof(var).name
+				typeof_expr := expr.expr as ast.TypeOf
+				if typeof_expr.expr is ast.Ident {
+					ident_name := (typeof_expr.expr as ast.Ident).name
+					// Check if this ident might be from a multi-return in the current scope
+					// For now, force re-evaluation by looking it up in the comptime context
+					if obj := typeof_expr.expr.scope.find(ident_name) {
+						if obj is ast.Var {
+							// Use the var's actual type, which might be correct in codegen context
+							type_to_use = obj.typ
+						}
+					}
+				}
+			}
+		}
 		if g.comptime.is_comptime(expr) {
 			ctyp := g.type_resolver.get_type_or_default(expr, node_.expr_types[i])
 			if ctyp != ast.void_type {
@@ -292,6 +315,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					fmts[i] = g.get_default_fmt(ctyp, typ)
 				}
 			}
+		} else {
+			node_.expr_types[i] = type_to_use
 		}
 	}
 	g.write2('builtin__str_intp(', node.vals.len.str())

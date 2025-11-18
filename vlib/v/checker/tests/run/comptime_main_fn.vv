@@ -1,0 +1,9 @@
+$if usemain1 ? {
+	fn main() {
+		println('main1')
+	}
+} $else {
+	fn main() {
+		println('main2')
+	}
+}

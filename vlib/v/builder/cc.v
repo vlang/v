@@ -33,6 +33,9 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 		if v.pref.reuse_tmpc {
 			return
 		}
+		if os.getenv('V_NO_RM_CLEANUP_FILES') != '' {
+			return
+		}
 		for tmpfile in v.pref.cleanup_files {
 			if os.is_file(tmpfile) {
 				if v.pref.is_verbose {
@@ -609,11 +612,10 @@ fn (mut v Builder) setup_output_name() {
 		if v.pref.is_verbose {
 			println('Building ${v.pref.path} to ${v.pref.out_name} ...')
 		}
-		v.pref.cache_manager.mod_save(v.pref.path, '.description.txt', v.pref.path, '${v.pref.path:-30} @ ${v.pref.cache_manager.vopts}\n') or {
+		v.pref.cache_manager.mod_save(v.pref.path, '.output.description.txt', v.pref.path,
+			get_dsc_content('PREF.PATH: ${v.pref.path}\nVOPTS: ${v.pref.cache_manager.vopts}\n')) or {
 			panic(err)
 		}
-		// println('v.ast.imports:')
-		// println(v.ast.imports)
 	}
 	if os.is_dir(v.pref.out_name) {
 		verror('${os.quoted_path(v.pref.out_name)} is a directory')
@@ -1246,11 +1248,17 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	res := os.execute(cmd)
 	os.chdir(current_folder) or {}
 	if res.exit_code != 0 {
-		eprintln('failed thirdparty object build cmd:\n${cmd}')
+		eprintln('> Failed build_thirdparty_obj_file cmd')
+		eprintln('>           mod: ${mod}')
+		eprintln('>          path: ${path}')
+		eprintln('>         cfile: ${cfile}')
+		eprintln('> wd before cmd: ${current_folder}')
+		eprintln('> getwd for cmd: ${v.pref.vroot}')
+		eprintln('>           cmd: ${cmd}')
 		verror(res.output)
 		return
 	}
-	v.pref.cache_manager.mod_save(mod, '.description.txt', obj_path, '${obj_path:-30} @ ${cmd}\n') or {
+	v.pref.cache_manager.mod_save(mod, '.thirdparty.description.txt', obj_path, get_dsc_content('OBJ_PATH: ${obj_path}\nCMD: ${cmd}\n')) or {
 		panic(err)
 	}
 	if v.pref.show_cc {
@@ -1326,4 +1334,11 @@ fn write_response_file(response_file string, response_file_content string) {
 
 fn write_response_file_error(response_file string, err IError) {
 	verror('Unable to write to C response file "${response_file}", error: ${err}')
+}
+
+fn get_dsc_content(suffix string) string {
+	vargs := os.args.join(' ')
+	vjobs := os.getenv('VJOBS')
+	vflags := os.getenv('VFLAGS')
+	return 'CLI: ${vargs}\nVFLAGS="${vflags}"\nVJOBS=${vjobs}\n${suffix}'
 }

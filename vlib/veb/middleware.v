@@ -159,15 +159,16 @@ pub fn encode_gzip[T]() MiddlewareOptions[T] {
 pub fn decode_gzip[T]() MiddlewareOptions[T] {
 	return MiddlewareOptions[T]{
 		handler: fn [T](mut ctx T) bool {
-			if encoding := ctx.res.header.get(.content_encoding) {
+			if encoding := ctx.req.header.get(.content_encoding) {
 				if encoding == 'gzip' {
-					decompressed := gzip.decompress(ctx.req.body.bytes()) or {
+					decompressed := gzip.decompress(ctx.req.data.bytes()) or {
 						ctx.request_error('invalid gzip encoding')
 						return false
 					}
-					ctx.req.body = decompressed.bytestr()
+					ctx.req.data = decompressed.bytestr()
 				}
 			}
+			return true
 		}
 	}
 }

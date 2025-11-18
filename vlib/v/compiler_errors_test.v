@@ -257,6 +257,7 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
 	}
 	$if windows {
+		m_skip_files << 'vlib/v/checker/tests/invalid_utf8_string.vv'
 		m_skip_files << 'vlib/v/checker/tests/modules/deprecated_module'
 	}
 	for i in 0 .. tasks.all.len {

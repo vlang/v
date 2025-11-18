@@ -298,6 +298,30 @@ fn converter(mut pn PrepNumber) u64 {
 			s0 = q0
 		}
 	}
+
+	// Handle subnormal (denormalized) numbers - very small numbers near zero
+	//
+	// Normal floats have an implicit leading 1 bit in their mantissa (like 1.xxxxx).
+	// When numbers get too small (binexp < -1022), we can't represent them normally.
+	// Instead, we use subnormals: set exponent to 0 and shift the mantissa right,
+	// losing precision gradually. This prevents abrupt underflow to zero.
+	//
+	// Example: 1.23e-308 is smaller than the minimum normal float, so we:
+	// 1. Keep the normalized mantissa from s2 and s1
+	// 2. Shift it right to "denormalize" it (the leading 1 moves into the mantissa)
+	// 3. Round correctly using the bits that were shifted out
+	// 4. Return with exponent = 0 (subnormal marker)
+	if binexp < -1022 && (s2 | s1) != 0 {
+		shift := -1022 - binexp
+		if shift > 60 {
+			return if pn.negative { double_minus_zero } else { double_plus_zero }
+		}
+		shifted := ((u64(s2) << 32) | u64(s1)) >> u32(shift)
+		q := (shifted >> 8) +
+			u64((shifted >> 7) & 1 != 0 && ((shifted & 0x7F) != 0 || (shifted >> 8) & 1 != 0))
+		return (q & 0x000FFFFFFFFFFFFF) | (u64(pn.negative) << 63)
+	}
+
 	// rounding if needed
 	/*
 	* "round half to even" algorithm
@@ -374,6 +398,8 @@ fn converter(mut pn PrepNumber) u64 {
 			result = double_plus_infinity
 		}
 	} else if binexp < 1 {
+		// Should not reach here for subnormals anymore (handled earlier)
+		// This is now only for true zeros
 		if pn.negative {
 			result = double_minus_zero
 		} else {

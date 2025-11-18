@@ -1,0 +1,6 @@
+vlib/v/checker/tests/unsafe_deference_nil_err.vv:1:1: warning: unused variable: `a`
+    1 | a := unsafe { *nil }
+      | ^
+vlib/v/checker/tests/unsafe_deference_nil_err.vv:1:16: error: cannot deference a `nil` pointer
+    1 | a := unsafe { *nil }
+      |                ~~~
