@@ -369,6 +369,24 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << single_test_v_file
 		dir = os.dir(single_test_v_file)
 	}
+	v.add_file_or_dir(mut user_files, dir)
+	for f in v.pref.file_list {
+		file := f.trim_space()
+		if file.len > 0 {
+			v.add_file_or_dir(mut user_files, file)
+		}
+	}
+	if user_files.len == 0 {
+		println('No input .v files')
+		exit(1)
+	}
+	if v.pref.is_verbose {
+		v.log('user_files: ${user_files}')
+	}
+	return user_files
+}
+
+fn (v &Builder) add_file_or_dir(mut user_files []string, dir string) {
 	does_exist := os.exists(dir)
 	if !does_exist {
 		verror("${dir} doesn't exist")
@@ -381,7 +399,7 @@ pub fn (v &Builder) get_user_files() []string {
 		// Just compile one file and get parent dir
 		user_files << single_v_file
 		if v.pref.is_verbose {
-			v.log('> just compile one file: "${single_v_file}"')
+			v.log('> add one file: "${single_v_file}"')
 		}
 	} else if os.is_dir(dir) {
 		if v.pref.is_verbose {
@@ -395,12 +413,4 @@ pub fn (v &Builder) get_user_files() []string {
 		println('unknown file extension `${ext}`')
 		exit(1)
 	}
-	if user_files.len == 0 {
-		println('No input .v files')
-		exit(1)
-	}
-	if v.pref.is_verbose {
-		v.log('user_files: ${user_files}')
-	}
-	return user_files
 }
