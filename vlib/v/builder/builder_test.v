@@ -75,9 +75,8 @@ pub struct BS{}
 	dump(original_file_list_)
 	assert executable !in original_file_list_
 
-	cmd := '${os.quoted_path(vexe)} -o ${executable} filelist/main.v -file-list "filelist/part_a.v;filelist/part_b.v;"'
-	// use `raw_execute` here, as it contains `;` in cmd
-	unsafe { os.raw_execute(cmd) }
+	cmd := '${os.quoted_path(vexe)} -o ${executable} filelist/main.v -file-list "filelist/part_a.v,filelist/part_b.v,"'
+	os.execute(cmd)
 	after_compile_file_list := os.ls(test_path)!.filter(os.exists(it))
 	dump(after_compile_file_list)
 	assert executable in after_compile_file_list

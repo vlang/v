@@ -741,7 +741,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				i++
 			}
 			'-file-list' {
-				res.file_list = cmdline.option(args[i..], arg, '').split_any(';')
+				res.file_list = cmdline.option(args[i..], arg, '').split_any(',')
 				i++
 			}
 			'-test-runner' {
