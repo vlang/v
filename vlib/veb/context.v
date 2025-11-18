@@ -37,9 +37,7 @@ mut:
 	static_gzip_max_size int
 	// if true the response should not be sent and the connection should be closed
 	// manually.
-	takeover bool
-	// how the http response should be handled by veb's backend
-	return_type ContextReturnType = .normal
+	takeover    bool
 	return_file string
 	// already_compressed indicates that the response body is already gzip-compressed
 	// and the encode_gzip middleware should skip it
@@ -50,6 +48,8 @@ pub:
 	// You can use it to determine how much time is spent on your request.
 	page_gen_start i64
 pub mut:
+	// how the http response should be handled by veb's backend
+	return_type       ContextReturnType = .normal
 	req               http.Request
 	custom_mime_types map[string]string
 	// TCP connection to client. Only for advanced usage!

@@ -203,8 +203,9 @@ pub mut:
 	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
 	linfo            LineInfo
 
-	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
-	exclude  []string // glob patterns for excluding .v files from the list of .v files that otherwise would have been used for a compilation, example: `-exclude @vlib/math/*.c.v`
+	run_only  []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
+	exclude   []string // glob patterns for excluding .v files from the list of .v files that otherwise would have been used for a compilation, example: `-exclude @vlib/math/*.c.v`
+	file_list []string // A list of .v files or directories. All .v files found recursively in directories will be included in the compilation.
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string          // just ['vfmt']
@@ -257,9 +258,10 @@ pub mut:
 	// forwards compatibility settings:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 	//
-	subsystem   Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
-	is_vls      bool
-	json_errors bool // -json-errors, for VLS and other tools
+	subsystem     Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
+	is_vls        bool
+	json_errors   bool // -json-errors, for VLS and other tools
+	new_transform bool // temporary for the new transformer
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -739,6 +741,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.exclude << patterns
 				i++
 			}
+			'-file-list' {
+				res.file_list = cmdline.option(args[i..], arg, '').split_any(',')
+				i++
+			}
 			'-test-runner' {
 				res.test_runner = cmdline.option(args[i..], arg, res.test_runner)
 				i++
@@ -761,6 +767,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-experimental' {
 				res.experimental = true
+			}
+			'-new-transformer' {
+				res.new_transform = true
 			}
 			'-usecache' {
 				res.use_cache = true

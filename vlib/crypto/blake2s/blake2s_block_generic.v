@@ -11,7 +11,7 @@ module blake2s
 import math.bits
 
 // mixing function g
-@[inline]
+@[direct_array_access; inline]
 fn g(mut v []u32, a u8, b u8, c u8, d u8, x u32, y u32) {
 	v[a] = v[a] + v[b] + x
 	v[d] = bits.rotate_left_32((v[d] ^ v[a]), nr1)
@@ -24,7 +24,7 @@ fn g(mut v []u32, a u8, b u8, c u8, d u8, x u32, y u32) {
 }
 
 // one complete mixing round with the function g
-@[inline]
+@[direct_array_access; inline]
 fn (d Digest) mixing_round(mut v []u32, s []u8) {
 	g(mut v, 0, 4, 8, 12, d.m[s[0]], d.m[s[1]])
 	g(mut v, 1, 5, 9, 13, d.m[s[2]], d.m[s[3]])
@@ -38,6 +38,7 @@ fn (d Digest) mixing_round(mut v []u32, s []u8) {
 }
 
 // compression function f
+@[direct_array_access]
 fn (mut d Digest) f(f bool) {
 	// initialize the working vector
 	mut v := []u32{len: 0, cap: 16}

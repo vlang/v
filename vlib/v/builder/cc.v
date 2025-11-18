@@ -1248,7 +1248,13 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	res := os.execute(cmd)
 	os.chdir(current_folder) or {}
 	if res.exit_code != 0 {
-		eprintln('failed thirdparty object build cmd:\n${cmd}')
+		eprintln('> Failed build_thirdparty_obj_file cmd')
+		eprintln('>           mod: ${mod}')
+		eprintln('>          path: ${path}')
+		eprintln('>         cfile: ${cfile}')
+		eprintln('> wd before cmd: ${current_folder}')
+		eprintln('> getwd for cmd: ${v.pref.vroot}')
+		eprintln('>           cmd: ${cmd}')
 		verror(res.output)
 		return
 	}

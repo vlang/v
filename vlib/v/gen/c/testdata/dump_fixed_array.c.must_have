@@ -1,0 +1,2 @@
+_v_Array_fixed_u8_2* _v_dump_expr_Array_fixed_u8_2__ptr(string fpath, int line, string sexpr, Array_fixed_u8_2* dump_arg) {
+return dump_arg; /* Array_fixed_u8_2* */
