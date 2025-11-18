@@ -1,3 +1,4 @@
+// vtest build: !docker-ubuntu-musl // failing assert static_gzip_test.v:224 -> `.gz cache file should not be created on readonly filesystem`, because of the Docker container
 import veb
 import net.http
 import os
