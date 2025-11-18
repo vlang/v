@@ -220,7 +220,8 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 		g.write2('${dot}_object', ')')
 	} else if fmt == `s` || typ.has_flag(.variadic) {
 		mut exp_typ := typ
-		if expr is ast.Ident {
+		is_comptime_for_var := expr is ast.Ident && g.is_comptime_for_var(expr)
+		if !is_comptime_for_var && expr is ast.Ident {
 			if g.comptime.get_ct_type_var(expr) == .smartcast {
 				exp_typ = g.type_resolver.get_type(expr)
 			} else if expr.obj is ast.Var {
@@ -236,7 +237,17 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 				}
 			}
 		}
-		g.gen_expr_to_string(expr, exp_typ)
+		if exp_typ.has_flag(.option) && expr is ast.Ident && g.is_comptime_for_var(expr) {
+			str_fn_name := g.get_str_fn(exp_typ.clear_flag(.option))
+			g.write('${str_fn_name}(*(${g.base_type(exp_typ)}*)(')
+			old_inside_opt_or_res := g.inside_opt_or_res
+			g.inside_opt_or_res = true
+			g.expr(expr)
+			g.inside_opt_or_res = old_inside_opt_or_res
+			g.write('.data))')
+		} else {
+			g.gen_expr_to_string(expr, exp_typ)
+		}
 	} else if typ.is_number() || typ.is_pointer() || fmt == `d` {
 		if typ.is_signed() && fmt in [`x`, `X`, `o`] {
 			// convert to unsigned first befors C's integer propagation strikes
@@ -283,26 +294,26 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
-		mut type_to_use := node_.expr_types[i]
+		mut field_typ := if mut expr is ast.Ident && g.is_comptime_for_var(expr) {
+			g.comptime.comptime_for_field_type
+		} else {
+			node_.expr_types[i]
+		}
 		if g.comptime.inside_comptime_for && mut expr is ast.SelectorExpr {
 			if expr.expr is ast.TypeOf && expr.field_name == 'name' {
-				// This is typeof(var).name
 				typeof_expr := expr.expr as ast.TypeOf
 				if typeof_expr.expr is ast.Ident {
 					ident_name := (typeof_expr.expr as ast.Ident).name
-					// Check if this ident might be from a multi-return in the current scope
-					// For now, force re-evaluation by looking it up in the comptime context
 					if obj := typeof_expr.expr.scope.find(ident_name) {
 						if obj is ast.Var {
-							// Use the var's actual type, which might be correct in codegen context
-							type_to_use = obj.typ
+							field_typ = obj.typ
 						}
 					}
 				}
 			}
 		}
-		if g.comptime.is_comptime(expr) {
-			ctyp := g.type_resolver.get_type_or_default(expr, node_.expr_types[i])
+		if g.comptime.is_comptime(expr) || (g.comptime.inside_comptime_for && expr is ast.Ident) {
+			ctyp := g.type_resolver.get_type_or_default(expr, field_typ)
 			if ctyp != ast.void_type {
 				node_.expr_types[i] = ctyp
 				if node_.fmts[i] == `_` {
@@ -316,7 +327,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 			}
 		} else {
-			node_.expr_types[i] = type_to_use
+			node_.expr_types[i] = field_typ
 		}
 	}
 	g.write2('builtin__str_intp(', node.vals.len.str())
