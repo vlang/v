@@ -410,6 +410,14 @@ fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string
 		return false
 	}
 
+	// Configure static file gzip compression settings
+	user_context.enable_static_gzip = app.enable_static_gzip
+	user_context.static_gzip_max_size = if app.static_gzip_max_size >= 0 {
+		app.static_gzip_max_size
+	} else {
+		1048576 // Default: 1MB
+	}
+
 	user_context.send_file(mime_type, static_file)
 	return true
 }

@@ -419,6 +419,114 @@ app.static_mime_types['.what'] = 'txt/plain'
 app.handle_static('static', true)!
 ```
 
+### Gzip compression for static files
+
+veb provides automatic gzip compression for static files with smart caching. When enabled,
+veb will serve compressed versions of your static files to clients that support gzip encoding,
+reducing bandwidth usage and improving load times.
+
+**How it works:**
+
+1. **Manual pre-compression**: If you create `.gz` files manually, veb will serve them in
+   zero-copy streaming mode for maximum performance.
+2. **Lazy compression cache**: Files smaller than the threshold are automatically compressed
+   on first request and cached as `.gz` files on disk.
+3. **Cache validation**: If the original file is modified, the `.gz` cache is automatically
+   regenerated on the next request.
+4. **Streaming for large files**: Files larger than the threshold are served uncompressed in
+   streaming mode (unless a manual `.gz` file exists).
+
+**Example:**
+
+```v
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {
+	veb.StaticHandler
+	veb.Middleware[Context]
+}
+
+pub fn (mut app App) index(mut ctx Context) veb.Result {
+	return ctx.html('<h1>Gzip compression demo</h1><p>Visit <a href="/app.js">/app.js</a> or <a href="/style.css">/style.css</a></p>')
+}
+
+fn main() {
+	mut app := &App{}
+
+	// Enable static file gzip compression (disabled by default)
+	app.enable_static_gzip = true
+	app.static_gzip_max_size = 524288 // Maximum file size for auto-compression is 512 KB (default: 1MB)
+
+	// Serve files from the 'static' directory
+	app.handle_static('static', true)!
+
+	// Add the gzip middleware to compress dynamic routes as well
+	app.use(veb.encode_gzip[Context]())
+
+	veb.run[App, Context](mut app, 8080)
+}
+```
+
+**Setup and testing:**
+
+Create test files in the `static` directory:
+```bash
+mkdir -p static
+echo "console.log('Hello from V web!');" > static/app.js
+echo "body { margin: 0; }" > static/style.css
+# Pre-compress style.css manually for zero-copy streaming
+gzip -k static/style.css
+```
+
+Run the server, it will listen on port 8080:
+```bash
+v run server.v
+```
+
+Test gzip compression with cURL:
+```bash
+# Test lazy compression cache - app.js will be compressed on first request
+curl -H "Accept-Encoding: gzip" -i http://localhost:8080/app.js
+
+# Expected headers:
+# Content-Encoding: gzip
+# Vary: Accept-Encoding
+
+# Request with automatic decompression
+curl -H "Accept-Encoding: gzip" --compressed http://localhost:8080/app.js
+
+# Request without gzip encoding - should return uncompressed content
+curl -i http://localhost:8080/app.js
+
+# Verify that .gz cache file was created
+ls -lh static/app.js.gz
+
+# Test manual pre-compression - style.css.gz is served directly (zero-copy)
+# The pre-compressed .gz file is served without loading into memory
+curl -H "Accept-Encoding: gzip" -i http://localhost:8080/style.css
+```
+
+**Performance tips:**
+
+- For production, you can pre-compress your static files (e.g., `gzip -k static/app.js`)
+  and veb will serve them directly without loading into memory.
+- The lazy cache is created on first request, so the first visitor pays a small
+  compression cost, but all subsequent requests are served at zero-copy speed.
+- Large files (> threshold) are always streamed, ensuring low memory usage even for
+  large assets.
+- The `encode_gzip` middleware compresses dynamic routes and small files loaded in
+  memory (takeover mode).
+- If `.gz` caching fails (e.g., on read-only filesystems), veb automatically falls
+  back to serving compressed content from memory. You can  set `static_gzip_max_size = 0`
+  to disable auto-compression completely. For optimal performance on read-only systems,
+  pre-compress all files with `gzip -k`.
+
 ## Middleware
 
 Middleware in web development is (loosely defined) a hidden layer that sits between
