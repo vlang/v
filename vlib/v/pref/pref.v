@@ -333,12 +333,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if coverage_dir_from_env != '' {
 		res.coverage_dir = coverage_dir_from_env
 	}
-	/* $if macos || linux {
-		res.use_cache = true
-		res.skip_unused = true
-	} */
-	mut no_skip_unused := false
 
+	mut no_skip_unused := false
 	mut command, mut command_idx := '', 0
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
@@ -773,6 +769,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-usecache' {
 				res.use_cache = true
+				res.parallel_cc = false
+				res.no_parallel = true
 			}
 			'-use-os-system-to-run' {
 				res.use_os_system_to_run = true
@@ -1166,6 +1164,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
+		res.no_parallel = true
+		res.parallel_cc = false
 		res.path = command_args[0] or { eprintln_exit('v build-module: no module specified') }
 	}
 	if res.ccompiler == 'musl-gcc' {
