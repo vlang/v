@@ -527,6 +527,84 @@ curl -H "Accept-Encoding: gzip" -i http://localhost:8080/style.css
   to disable auto-compression completely. For optimal performance on read-only systems,
   pre-compress all files with `gzip -k`.
 
+### Markdown content negotiation
+
+veb can provide automatic content negotiation for markdown files, allowing you to serve
+markdown content when the client explicitly requests it via the `Accept` header.
+This is compliant to [llms.txt](https://llmstxt.org/) proposal and useful for documentations that can serve
+the same content in multiple formats, more efficiently to AI services using it.
+
+**How it works:**
+
+When `enable_markdown_negotiation` is enabled and a client sends `Accept: text/markdown`,
+veb will try to serve markdown variants in the following priority order:
+
+1. `path.md` - Direct markdown file
+2. `path.html.md` - HTML-flavored markdown (for content that can be rendered as both)
+3. `path/index.html.md` - Directory index in markdown format
+
+Without the `Accept: text/markdown` header, files are served normally based on their
+actual extension. This ensures backward compatibility - direct access to `.md` files
+always works regardless of the setting.
+
+**Example:**
+
+```v
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {
+	veb.StaticHandler
+}
+
+fn main() {
+	mut app := &App{}
+
+	// Enable markdown content negotiation (disabled by default)
+	app.enable_markdown_negotiation = true
+
+	// Serve files from the 'docs' directory
+	app.handle_static('docs', true)!
+
+	veb.run[App, Context](mut app, 8080)
+}
+```
+
+**Setup and testing:**
+
+Create test files in the `docs` directory:
+```bash
+mkdir -p docs
+echo "# API Documentation" > docs/api.md
+echo "# User Guide" > docs/guide.html.md
+echo "<h1>HTML Version</h1>" > docs/api.html
+```
+
+Run the server:
+```bash
+v run server.v
+```
+
+Test content negotiation with cURL:
+```bash
+# Request markdown version with content negotiation - serves api.md
+curl -H "Accept: text/markdown" http://localhost:8080/api
+
+# Direct access to .md file always works, regardless of Accept header
+curl http://localhost:8080/api.md
+
+# Direct access to .html file
+curl http://localhost:8080/api.html
+
+# Without Accept: text/markdown header - returns 404 since 'api' without extension doesn't exist
+curl http://localhost:8080/api
+```
+
 ## Middleware
 
 Middleware in web development is (loosely defined) a hidden layer that sits between
