@@ -128,6 +128,10 @@ fn build_fast_tcc() {
 }
 
 fn v_self_compilation_usecache_tcc() {
+	$if !enable_usecache_test ? {
+		eprintln('> ${@LOCATION} use `-d enable_usecache_test` in VFLAGS to enable this task')
+		return
+	}
 	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')
 	exec('./examples/hello_world')
@@ -199,6 +203,10 @@ fn v_self_compilation_gcc() {
 }
 
 fn v_self_compilation_usecache_gcc() {
+	$if !enable_usecache_test ? {
+		eprintln('> ${@LOCATION} use `-d enable_usecache_test` in VFLAGS to enable this task')
+		return
+	}
 	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')
 	exec('examples/hello_world')
@@ -317,6 +325,10 @@ fn v_self_compilation_clang() {
 }
 
 fn v_self_compilation_usecache_clang() {
+	$if !enable_usecache_test ? {
+		eprintln('> ${@LOCATION} use `-d enable_usecache_test` in VFLAGS to enable this task')
+		return
+	}
 	exec('v wipe-cache')
 	exec('v -usecache examples/hello_world.v')
 	exec('./examples/hello_world')

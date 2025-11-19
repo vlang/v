@@ -98,6 +98,10 @@ fn build_v_with_prealloc() {
 }
 
 fn v_self_compilation_usecache() {
+	$if !enable_usecache_test ? {
+		eprintln('> ${@LOCATION} use `-d enable_usecache_test` in VFLAGS to enable this task')
+		return
+	}
 	exec('v -usecache examples/hello_world.v')
 	exec('./examples/hello_world')
 	exec('v -o v2 -usecache cmd/v')
