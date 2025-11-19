@@ -2186,8 +2186,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	} else {
 		p.name_error = true
 	}
-	is_filter := field_name in ['filter', 'map', 'any', 'all', 'count']
-	if is_filter || field_name == 'sort' || field_name == 'sorted' {
+	if ast.builtin_array_generic_methods_matcher.matches(field_name) {
 		if p.file_backend_mode == .v || p.file_backend_mode == .c {
 			p.register_auto_import('builtin.closure')
 		}

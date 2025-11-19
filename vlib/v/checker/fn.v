@@ -3306,7 +3306,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	elem_typ = array_info.elem_type
 	node_args_len := node.args.len
 	mut arg0 := if node_args_len > 0 { node.args[0] } else { ast.CallArg{} }
-	if method_name in ['filter', 'map', 'any', 'all', 'count'] {
+	if ast.builtin_array_generic_methods_no_sort_matcher.matches(method_name) {
 		if node_args_len > 0 && mut arg0.expr is ast.LambdaExpr {
 			if arg0.expr.params.len != 1 {
 				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
