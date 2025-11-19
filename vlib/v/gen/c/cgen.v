@@ -5293,6 +5293,27 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
+fn (mut g Gen) is_comptime_for_var(node ast.Ident) bool {
+	if !g.comptime.inside_comptime_for || g.comptime.comptime_for_field_var == '' {
+		return false
+	}
+	if node.obj is ast.Var {
+		obj_typ := node.obj.typ
+		field_typ := g.comptime.comptime_for_field_type
+		return (obj_typ.has_flag(.option) && field_typ.has_flag(.option))
+			|| (obj_typ.clear_flag(.option).idx() == field_typ.clear_flag(.option).idx()
+			&& obj_typ.has_flag(.option))
+	}
+	return false
+}
+
+fn (mut g Gen) get_comptime_for_var_type(node ast.Ident, default_typ ast.Type) ast.Type {
+	if g.is_comptime_for_var(node) {
+		return g.comptime.comptime_for_field_type
+	}
+	return default_typ
+}
+
 fn (mut g Gen) ident(node ast.Ident) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
@@ -5391,7 +5412,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 					g.write(name)
 				}
 			} else {
-				g.unwrap_option_type(node.info.typ, name, is_auto_heap)
+				unwrap_typ := g.get_comptime_for_var_type(node, node.info.typ)
+				g.unwrap_option_type(unwrap_typ, name, is_auto_heap)
 			}
 			if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign
 				&& !g.is_assign_lhs) {
@@ -5439,7 +5461,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 				g.write('(*(')
 			}
 			is_option = is_option || node.obj.orig_type.has_flag(.option)
-			if node.obj.smartcasts.len > 0 {
+			// Skip smartcasts for comptime_for variables to avoid using stale types
+			skip_smartcasts := g.is_comptime_for_var(node)
+			if node.obj.smartcasts.len > 0 && !skip_smartcasts {
 				obj_sym := g.table.final_sym(g.unwrap_generic(node.obj.typ))
 				if !prevent_sum_type_unwrapping_once {
 					nested_unwrap := node.obj.smartcasts.len > 1
@@ -5473,7 +5497,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 							&& g.table.type_kind(node.obj.typ) == .any) {
 							g.write('*')
 						} else if is_option {
-							g.write('*(${g.base_type(node.obj.typ)}*)')
+							unwrap_typ := g.get_comptime_for_var_type(node, node.obj.typ)
+							g.write('*(${g.base_type(unwrap_typ)}*)')
 						}
 					}
 					for i, typ in node.obj.smartcasts {
