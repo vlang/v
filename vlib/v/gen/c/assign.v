@@ -532,7 +532,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		unaliased_right_sym := g.table.final_sym(unwrapped_val_type)
 		unaliased_left_sym := g.table.final_sym(g.unwrap_generic(var_type))
 		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && val !is ast.ArrayInit
-			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.DumpExpr, ast.InfixExpr]
+			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.ComptimeSelector, ast.DumpExpr, ast.InfixExpr]
 			|| (val is ast.CastExpr && val.expr !is ast.ArrayInit)
 			|| (val is ast.PrefixExpr && val.op == .arrow)
 			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident, ast.CallExpr]))
@@ -568,7 +568,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else {
 					g.write('{${styp} _ = ')
 				}
-				if val in [ast.MatchExpr, ast.IfExpr] && unaliased_right_sym.info is ast.ArrayFixed {
+				if (val in [ast.MatchExpr, ast.IfExpr, ast.ComptimeSelector] || is_fixed_array_var)
+					&& unaliased_right_sym.info is ast.ArrayFixed {
 					tmp_var := g.expr_with_var(val, var_type, false)
 					g.fixed_array_var_init(tmp_var, false, unaliased_right_sym.info.elem_type,
 						unaliased_right_sym.info.size)
