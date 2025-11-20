@@ -31,8 +31,18 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	} else {
 		p.check(.key_union)
 	}
-	language := p.parse_language()
+	mut language := p.parse_language()
 	name_pos := p.tok.pos()
+	if p.inside_struct_field_decl && language == .v {
+		// embedded struct/union language should keep the same language of outside
+		language = p.struct_language
+	} else {
+		old_struct_language := p.struct_language
+		p.struct_language = language
+		defer(fn) {
+			p.struct_language = old_struct_language
+		}
+	}
 	p.check_for_impure_v(language, name_pos)
 	if p.disallow_declarations_in_script_mode() {
 		return ast.StructDecl{}
