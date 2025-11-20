@@ -1,2 +1,1 @@
-@echo off
-v install_thirdparty_sqlite.vsh
+v .github\workflows\install_thirdparty_sqlite.vsh
