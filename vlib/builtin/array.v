@@ -724,6 +724,13 @@ pub fn (a &array) clone_to_depth(depth int) array {
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
 		return arr
+	} else if depth > 0 && a.element_size == sizeof(string) && a.len >= 0 && a.cap >= a.len {
+		for i in 0 .. a.len {
+			str_ptr := unsafe { &string(a.get_unsafe(i)) }
+			str_clone := (*str_ptr).clone()
+			unsafe { arr.set_unsafe(i, &str_clone) }
+		}
+		return arr
 	} else {
 		if a.data != 0 && source_capacity_in_bytes > 0 {
 			unsafe { vmemcpy(&u8(arr.data), a.data, source_capacity_in_bytes) }
