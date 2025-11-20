@@ -5353,7 +5353,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if !g.is_assign_lhs
 				&& node.obj.ct_type_var !in [.smartcast, .generic_param, .no_comptime, .aggregate] {
 				comptime_type := g.type_resolver.get_type(node)
-				if comptime_type.has_flag(.option) {
+				orig_has_option := node.obj.typ.has_flag(.option)
+				if orig_has_option && !comptime_type.has_flag(.option) {
+					styp := g.base_type(comptime_type)
+					ptr := if is_auto_heap { '->' } else { '.' }
+					g.write('(*(${styp}*)${name}${ptr}data)')
+				} else if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
 						if !g.is_assign_lhs && is_auto_heap {
 							g.write('(*${name})')
@@ -5362,11 +5367,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 					} else {
 						styp := g.base_type(comptime_type)
-						if is_auto_heap {
-							g.write('(*(${styp}*)${name}->data)')
-						} else {
-							g.write('(*(${styp}*)${name}.data)')
-						}
+						ptr := if is_auto_heap { '->' } else { '.' }
+						g.write('(*(${styp}*)${name}${ptr}data)')
 					}
 				} else {
 					if is_auto_heap {
@@ -5872,7 +5874,10 @@ fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, se
 			mut comptime_branch_context_str := g.gen_branch_context_string()
 			mut is_true := ast.ComptTimeCondResult{}
 			for i, branch in node.branches {
-				idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+				mut idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+				if g.comptime.inside_comptime_for && g.comptime.comptime_for_field_var != '' {
+					idx_str += '|field_type=${g.comptime.comptime_for_field_type}|'
+				}
 				if comptime_is_true := g.table.comptime_is_true[idx_str] {
 					// `g.table.comptime_is_true` are the branch condition results set by `checker`
 					is_true = comptime_is_true

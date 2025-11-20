@@ -3179,6 +3179,18 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 				} else if (node.expr as ast.Ident).name in c.type_resolver.type_map {
 					node.expr_type = c.type_resolver.get_ct_type_or_default((node.expr as ast.Ident).name,
 						node.expr_type)
+				} else if node.expr.obj is ast.Var {
+					var_obj := node.expr.obj as ast.Var
+					if var_obj.smartcasts.len > 0 {
+						node.expr_type = c.unwrap_generic(var_obj.smartcasts.last())
+					}
+				}
+			} else if mut node.expr is ast.Ident {
+				if node.expr.obj is ast.Var {
+					var_obj := node.expr.obj as ast.Var
+					if var_obj.smartcasts.len > 0 {
+						node.expr_type = c.unwrap_generic(var_obj.smartcasts.last())
+					}
 				}
 			}
 			c.check_expr_option_or_result_call(node.expr, node.expr_type)

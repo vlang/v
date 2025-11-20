@@ -423,7 +423,10 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
 		// The second part is the branch's id.
 		// This format must match what is in `checker`.
-		idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+		mut idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+		if g.comptime.inside_comptime_for && g.comptime.comptime_for_field_var != '' {
+			idx_str += '|field_type=${g.comptime.comptime_for_field_type}|'
+		}
 		if comptime_is_true := g.table.comptime_is_true[idx_str] {
 			// `g.table.comptime_is_true` are the branch condition results set by `checker`
 			is_true = comptime_is_true
@@ -1013,7 +1016,10 @@ fn (mut g Gen) comptime_match(node ast.MatchExpr) {
 		// The first part represents the current context of the branch statement, `comptime_branch_context_str`, formatted like `T=int,X=string,method.name=json`
 		// The second part is the branch's id.
 		// This format must match what is in `checker`.
-		idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+		mut idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+		if g.comptime.inside_comptime_for && g.comptime.comptime_for_field_var != '' {
+			idx_str += '|field_type=${g.comptime.comptime_for_field_type}|'
+		}
 		if comptime_is_true := g.table.comptime_is_true[idx_str] {
 			// `g.table.comptime_is_true` are the branch condition results set by `checker`
 			is_true = comptime_is_true
