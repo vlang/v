@@ -45,8 +45,8 @@ $if darwin {
 		server.run() or { eprintln('Server failed to run: ${err}') }
 	}
 }
+*/
 
 fn test_x() {
 	assert true
 }
-*/

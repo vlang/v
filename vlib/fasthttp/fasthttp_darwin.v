@@ -1,4 +1,3 @@
-// fasthttp_darwin.v
 module fasthttp
 
 #include <sys/event.h>

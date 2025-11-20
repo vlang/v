@@ -6,11 +6,11 @@ module fasthttp
 const epoll_ctl_add = 1
 const epoll_ctl_del = 2
 const epoll_ctl_mod = 3
-const epoll_in      = 1
-const epoll_out     = 4
-const epoll_err     = 8
-const epoll_hup     = 16
-const epoll_rdhup   = 8192
+const epoll_in = 1
+const epoll_out = 4
+const epoll_err = 8
+const epoll_hup = 16
+const epoll_rdhup = 8192
 
 union C.epoll_data {
 mut:
@@ -69,14 +69,16 @@ fn (mut s Server) process_dones() {
 		if c.write_pos < c.write_len {
 			// Not all data sent, add WRITE event
 			// Note: The connection was removed from epoll before sending to worker, so we ADD here.
-			control_epoll(s.poll_fd, epoll_ctl_add, c.fd, u32(epoll_out | epoll_rdhup), c)
+			control_epoll(s.poll_fd, epoll_ctl_add, c.fd, u32(epoll_out | epoll_rdhup),
+				c)
 		} else {
 			// Response sent, re-enable reading for keep-alive
 			C.free(c.write_buf)
 			c.write_buf = unsafe { nil }
-			
+
 			// Note: The connection was removed from epoll before sending to worker, so we ADD here.
-			control_epoll(s.poll_fd, epoll_ctl_add, c.fd, u32(epoll_in | epoll_rdhup), c)
+			control_epoll(s.poll_fd, epoll_ctl_add, c.fd, u32(epoll_in | epoll_rdhup),
+				c)
 			c.read_len = 0
 		}
 		unsafe { C.free(d) }
@@ -135,7 +137,8 @@ pub fn (mut s Server) run() ! {
 	C.fcntl(s.worker_data.wake_pipe[1], C.F_SETFL, C.O_NONBLOCK)
 
 	// Add wake pipe to epoll
-	control_epoll(s.poll_fd, epoll_ctl_add, s.worker_data.wake_pipe[0], u32(epoll_in), voidptr(isize(s.worker_data.wake_pipe[0])))
+	control_epoll(s.poll_fd, epoll_ctl_add, s.worker_data.wake_pipe[0], u32(epoll_in),
+		voidptr(isize(s.worker_data.wake_pipe[0])))
 
 	// Create worker threads
 	for i := 0; i < num_threads; i++ {
@@ -167,10 +170,11 @@ pub fn (mut s Server) run() ! {
 				C.memset(new_c, 0, sizeof(Conn))
 				new_c.fd = client_fd
 				C.fcntl(new_c.fd, C.F_SETFL, C.O_NONBLOCK)
-				
-				control_epoll(s.poll_fd, epoll_ctl_add, new_c.fd, u32(epoll_in | epoll_rdhup), new_c)
+
+				control_epoll(s.poll_fd, epoll_ctl_add, new_c.fd, u32(epoll_in | epoll_rdhup),
+					new_c)
 				continue
-			} 
+			}
 
 			// 2. Check for Wake Pipe (Worker finished a task)
 			if ptr_val == s.worker_data.wake_pipe[0] {
@@ -255,7 +259,6 @@ pub fn (mut s Server) run() ! {
 				s.worker_data.task_tail = t
 				C.pthread_cond_signal(&s.worker_data.task_cond)
 				C.pthread_mutex_unlock(&s.worker_data.task_mutex)
-			
 			} else if (event.events & u32(epoll_out)) != 0 { // Handle Write
 				write_ptr := unsafe { &u8(c.write_buf) + c.write_pos }
 				written := C.write(c.fd, write_ptr, c.write_len - c.write_pos)
@@ -270,7 +273,8 @@ pub fn (mut s Server) run() ! {
 					C.free(c.write_buf)
 					c.write_buf = unsafe { nil }
 					// Done writing, modify epoll to stop listening for OUT and start listening for IN
-					control_epoll(s.poll_fd, epoll_ctl_mod, c.fd, u32(epoll_in | epoll_rdhup), c)
+					control_epoll(s.poll_fd, epoll_ctl_mod, c.fd, u32(epoll_in | epoll_rdhup),
+						c)
 					c.read_len = 0
 				}
 			}
