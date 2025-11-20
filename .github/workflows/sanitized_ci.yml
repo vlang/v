@@ -93,7 +93,7 @@ jobs:
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
-          .github/workflows/disable_azure_mirror.sh		
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -123,7 +123,7 @@ jobs:
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
-          .github/workflows/disable_azure_mirror.sh		
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -153,7 +153,7 @@ jobs:
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
-          .github/workflows/disable_azure_mirror.sh		
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -210,7 +210,7 @@ jobs:
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
-          .github/workflows/disable_azure_mirror.sh		
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -241,7 +241,7 @@ jobs:
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
-          .github/workflows/disable_azure_mirror.sh		
+          .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
@@ -256,3 +256,29 @@ jobs:
           ./v -cc tcc -silent test-self -msan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=memory)
         run: ./v -silent build-examples
+
+  sanitize-address-clang-without-gc:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
+      VJOBS: 1
+      LSAN_OPTIONS: detect_leaks=0
+      VNATIVE_SKIP_LIBC_VV: 1
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Ensure code is well formatted
+        run: ./v -silent test-cleancode
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=address)
+        run: ./v -cflags -fsanitize=address -silent test-self vlib
