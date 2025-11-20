@@ -35,21 +35,18 @@ $if darwin {
 	}
 
 	fn test_lol() {
-		assert true
-		$if new_veb_test ? {
-			// Create a new server instance on port 8092, passing our handler function.
-			mut server := fasthttp.new_server(8092, request_handler) or {
-				eprintln('Failed to create server: ${err}')
-				return
-			}
-
-			// Start the server's event loop. This function will block indefinitely.
-			server.run() or { eprintln('Server failed to run: ${err}') }
+		// Create a new server instance on port 8092, passing our handler function.
+		mut server := fasthttp.new_server(8092, request_handler) or {
+			eprintln('Failed to create server: ${err}')
+			return
 		}
+
+		// Start the server's event loop. This function will block indefinitely.
+		server.run() or { eprintln('Server failed to run: ${err}') }
 	}
 }
-*/
 
 fn test_x() {
 	assert true
 }
+*/
