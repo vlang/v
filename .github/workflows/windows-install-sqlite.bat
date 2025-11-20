@@ -1,2 +1,2 @@
 @echo off
-v windows-install-sqlite.vsh
+v install_sqlite_in_thirdparty.vsh
