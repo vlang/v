@@ -30,6 +30,9 @@ pub mut:
 	// Default: 1MB (1024*1024 bytes). Set to 0 to disable auto-compression completely (only pre-compressed .gz files will be served).
 	// Note: On readonly filesystems, if .gz caching fails, compressed content is served from memory as fallback.
 	static_gzip_max_size int = 1048576
+	// enable_markdown_negotiation allows the client sends Accept: text/markdown, then the server will serve .md files, if any.
+	// Default: false (for backward compatibility)
+	enable_markdown_negotiation bool
 }
 
 // scan_static_directory recursively scans `directory_path` and returns an error if

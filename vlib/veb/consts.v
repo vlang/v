@@ -95,6 +95,7 @@ pub const mime_types = {
 	'.js':     'text/javascript'
 	'.json':   'application/json'
 	'.jsonld': 'application/ld+json'
+	'.md':     'text/markdown'
 	'.mid':    'audio/midi audio/x-midi'
 	'.midi':   'audio/midi audio/x-midi'
 	'.mjs':    'text/javascript'

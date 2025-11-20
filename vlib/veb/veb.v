@@ -383,14 +383,45 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	mut asked_path := url.path
-	base_path := os.base(asked_path)
 
+	// Content negotiation for markdown files (if enabled)
+	if app.enable_markdown_negotiation {
+		accept_header := user_context.req.header.get(.accept) or { '' }
+		if accept_header.contains('text/markdown') {
+			// Try markdown variants in order of priority
+			markdown_variants := [
+				asked_path + '.md',
+				asked_path + '.html.md',
+				asked_path + '/index.html.md',
+			]
+
+			for variant in markdown_variants {
+				if app.static_files[variant] != '' {
+					asked_path = variant
+					break
+				}
+			}
+		}
+	}
+
+	base_path := os.base(asked_path)
 	if !base_path.contains('.') && !asked_path.ends_with('/') {
 		asked_path += '/'
 	}
 
 	if asked_path.ends_with('/') {
-		if app.static_files[asked_path + 'index.html'] != '' {
+		// Check for markdown index first if Accept header requests it and feature is enabled
+		if app.enable_markdown_negotiation {
+			accept_header := user_context.req.header.get(.accept) or { '' }
+			if accept_header.contains('text/markdown')
+				&& app.static_files[asked_path + 'index.html.md'] != '' {
+				asked_path += 'index.html.md'
+			} else if app.static_files[asked_path + 'index.html'] != '' {
+				asked_path += 'index.html'
+			} else if app.static_files[asked_path + 'index.htm'] != '' {
+				asked_path += 'index.htm'
+			}
+		} else if app.static_files[asked_path + 'index.html'] != '' {
 			asked_path += 'index.html'
 		} else if app.static_files[asked_path + 'index.htm'] != '' {
 			asked_path += 'index.htm'
