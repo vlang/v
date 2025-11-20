@@ -1606,19 +1606,19 @@ Modules names in .v files, must match the name of their directory.
 A .v file `./abc/source.v` must start with `module abc`. All .v files in this directory
 belong to the same module `abc`. They should also start with `module abc`.
 
-If you have `abc/def/`, and .v files in both folders, you can `import abc`, but you will have
-to `import abc.def` too, to get to the symbols in the subfolder. It is independent.
+If you have `abc/xyz/`, and .v files in both folders, you can `import abc`, but you will have
+to `import abc.xyz` too, to get to the symbols in the subfolder. It is independent.
 
 In `module name` statement, name never repeats directory's hierarchy, but only its directory.
-So in `abc/def/source.v` the first line will be `module def`, and not `module abc.def`.
+So in `abc/xyz/source.v` the first line will be `module xyz`, and not `module abc.xyz`.
 
-`import module_name` statements must respect file hierarchy, you cannot `import def`, only
-`abc.def`
+`import module_name` statements must respect file hierarchy, you cannot `import xyz`, only
+`abc.xyz`
 
 Referring to a module symbol such as a function or const, only needs module name as prefix:
 
 ```v ignore
-module def
+module xyz
 
 // func is a dummy example function.
 pub fn func() {
@@ -1631,14 +1631,14 @@ can be called like this:
 ```v ignore
 module main
 
-import def
+import xyz
 
 fn main() {
 	def.func()
 }
 ```
 
-A function, located in `abc/def/source.v`, is called with `def.func()`, not `abc.def.func()`
+A function, located in `abc/xyz/source.v`, is called with `xyz.func()`, not `abc.xyz.func()`
 
 This always implies a *single prefix*, whatever sub-module depth. This behavior flattens
 modules/sub-modules hierarchy. Should you have two modules with the same name in different
