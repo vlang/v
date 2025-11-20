@@ -8,7 +8,7 @@ $if windows {
 	#flag windows -I@VEXEROOT/thirdparty/sqlite
 	#flag windows -L@VEXEROOT/thirdparty/sqlite
 	#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
-	#include "sqlite3.h" # The SQLite header file is missing. Please run .github/workflows/windows-install-sqlite.bat to download an SQLite amalgamation.
+	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
 } $else {
 	#flag -lsqlite3
 	#include "sqlite3.h" # The SQLite header file is missing. Please install its development package first.
