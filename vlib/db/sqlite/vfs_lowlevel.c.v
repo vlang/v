@@ -143,6 +143,8 @@ pub enum OpenModeFlag {
 
 // connect_full Opens connection to sqlite database. It gives more control than `open`.
 // Flags give control over readonly and create decisions. Specific VFS can be chosen.
+// Pass '' for vfs_name, if you want to use the default VFS for the current platform,
+// (which is equivalent to 'win32' on Windows, and 'unix' on !Windows systems).
 pub fn connect_full(path string, mode_flags []OpenModeFlag, vfs_name string) !DB {
 	db := &C.sqlite3(unsafe { nil })
 
@@ -152,7 +154,11 @@ pub fn connect_full(path string, mode_flags []OpenModeFlag, vfs_name string) !DB
 		flags = flags | int(flag)
 	}
 
-	code := C.sqlite3_open_v2(&char(path.str), &db, flags, vfs_name.str)
+	mut pstr := unsafe { &char(0) }
+	if vfs_name != '' {
+		pstr = vfs_name.str
+	}
+	code := C.sqlite3_open_v2(&char(path.str), &db, flags, pstr)
 	if code != 0 {
 		return &SQLError{
 			msg:  unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
