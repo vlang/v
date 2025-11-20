@@ -137,7 +137,10 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				c.cur_ct_id++
 				branch.id = c.cur_ct_id
 			}
-			idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+			mut idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+			if c.comptime.inside_comptime_for && c.comptime.comptime_for_field_var != '' {
+				idx_str += '|field_type=${c.comptime.comptime_for_field_type}|'
+			}
 			mut c_str := ''
 			if !branch.is_else {
 				if c.inside_x_matches_type {
