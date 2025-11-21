@@ -20,7 +20,7 @@
 // Define here to be sure
 #define SP_PROT_TLS1_2_CLIENT 0x00000800
 
-typedef void* (*vschannel_allocator)(void*, DWORD);
+typedef void* (*vschannel_allocator)(void*, INT64);
 
 typedef struct TlsContext TlsContext;
 
