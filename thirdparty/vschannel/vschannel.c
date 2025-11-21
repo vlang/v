@@ -87,7 +87,7 @@ void vschannel_init(TlsContext *tls_ctx) {
 	tls_ctx->creds_initialized = TRUE;
 }
 
-INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_len, CHAR **out)
+INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_len, CHAR **out, vschannel_allocator afn)
 {
 	SecBuffer  ExtraData;
 	SECURITY_STATUS Status;
@@ -149,7 +149,7 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_le
 	tls_ctx->p_pemote_cert_context = NULL;
 
 	// Request from server
-	if(https_make_request(tls_ctx, req, req_len, out, &resp_length)) {
+	if(https_make_request(tls_ctx, req, req_len, out, &resp_length, afn)) {
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
@@ -711,7 +711,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 }
 
 
-static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, int *length) {
+static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, int *length, vschannel_allocator afn) {
 	SecPkgContext_StreamSizes Sizes;
 	SECURITY_STATUS scRet;
 	SecBufferDesc   Message;
@@ -875,7 +875,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 		// increase buffer size if we need
 		int required_length = *length+(int)pDataBuffer->cbBuffer;
 		if( required_length > buff_size ) {
-			CHAR *a = VSCHANNEL_REALLOC(*out, required_length);
+			CHAR *a = afn(*out, required_length);
 			if( a == NULL ) {
 				scRet = SEC_E_INTERNAL_ERROR;
 				return scRet;
