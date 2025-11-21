@@ -1,11 +1,3 @@
-@echo off
+REM This file should be run from the top folder of the V compiler itself.
 
-curl -L https://sqlite.org/2025/sqlite-amalgamation-3510000.zip -o sqlite-amalgamation-3510000.zip
-
-unzip sqlite-amalgamation-3510000.zip -d thirdparty\
-
-del thirdparty\sqlite-amalgamation-3510000\shell.c
-
-move /y thirdparty\sqlite-amalgamation-3510000 thirdparty\sqlite
-
-dir thirdparty\sqlite
+v vlib/db/sqlite/install_thirdparty_sqlite.vsh
