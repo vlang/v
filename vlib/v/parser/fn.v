@@ -473,6 +473,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 	}
+	if generic_names.len > 0 {
+		for fna in fn_attrs {
+			if fna.name == 'export' {
+				p.error_with_pos('generic functions cannot be exported', fna.pos)
+				break
+			}
+		}
+	}
 	// Params
 	params_t, are_params_type_only, mut is_variadic, mut is_c_variadic := p.fn_params()
 	if is_c2v_variadic {
