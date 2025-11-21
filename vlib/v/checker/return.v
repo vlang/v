@@ -278,6 +278,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				if c.inside_lambda && exp_type.has_flag(.generic) {
 					continue
 				}
+				if exp_final_sym.info is ast.ArrayFixed
+					&& c.array_fixed_has_unresolved_size(exp_final_sym.info) {
+					continue
+				}
+
 				c.error('cannot use `${got_type_name}` as ${c.error_type_name(exp_type)} in return argument',
 					exprv.pos())
 			}
