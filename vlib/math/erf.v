@@ -271,14 +271,15 @@ pub fn erf(a f64) f64 {
 	mut r := 0.0
 	mut s := 0.0
 	if x < 1.0 / 0.35 { // |x| < 1 / 0.35  ~ 2.857143
-		r = ra0 + s_ * (ra1 + s_ * (ra2 + s_ * (ra3 + s_ * (ra4 + s_ * (ra5 + s_ * (ra6 +
-			s_ * ra7))))))
-		s = 1.0 + s_ * (sa1 + s_ * (sa2 + s_ * (sa3 + s_ * (sa4 + s_ * (sa5 + s_ * (sa6 +
-			s_ * (sa7 + s_ * sa8)))))))
+		tmp41 := s_ * (ra5 + s_ * (ra6 + s_ * ra7))
+		r = ra0 + s_ * (ra1 + s_ * (ra2 + s_ * (ra3 + s_ * (ra4 + tmp41))))
+		tmp42 := s_ * (sa5 + s_ * (sa6 + s_ * (sa7 + s_ * sa8)))
+		s = 1.0 + s_ * (sa1 + s_ * (sa2 + s_ * (sa3 + s_ * (sa4 + tmp42))))
 	} else { // |x| >= 1 / 0.35  ~ 2.857143
-		r = rb0 + s_ * (rb1 + s_ * (rb2 + s_ * (rb3 + s_ * (rb4 + s_ * (rb5 + s_ * rb6)))))
-		s = 1.0 + s_ * (sb1 + s_ * (sb2 + s_ * (sb3 + s_ * (sb4 + s_ * (sb5 + s_ * (sb6 +
-			s_ * sb7))))))
+		tmp31 := rb4 + s_ * (rb5 + s_ * rb6)
+		r = rb0 + s_ * (rb1 + s_ * (rb2 + s_ * (rb3 + s_ * tmp31)))
+		tmp32 := sb4 + s_ * (sb5 + s_ * (sb6 + s_ * sb7))
+		s = 1.0 + s_ * (sb1 + s_ * (sb2 + s_ * (sb3 + s_ * tmp32)))
 	}
 	z := f64_from_bits(f64_bits(x) & 0xffffffff00000000) // pseudo-single (20-bit) precision x
 	r_ := exp(-z * z - 0.5625) * exp((z - x) * (z + x) + r / s)
@@ -346,17 +347,18 @@ pub fn erfc(a f64) f64 {
 		mut r := 0.0
 		mut s := 0.0
 		if x < 1.0 / 0.35 { // |x| < 1 / 0.35 ~ 2.857143
-			r = ra0 + s_ * (ra1 + s_ * (ra2 + s_ * (ra3 + s_ * (ra4 + s_ * (ra5 + s_ * (ra6 +
-				s_ * ra7))))))
-			s = 1.0 + s_ * (sa1 + s_ * (sa2 + s_ * (sa3 + s_ * (sa4 + s_ * (sa5 + s_ * (sa6 +
-				s_ * (sa7 + s_ * sa8)))))))
+			tmp281 := ra4 + s_ * (ra5 + s_ * (ra6 + s_ * ra7))
+			r = ra0 + s_ * (ra1 + s_ * (ra2 + s_ * (ra3 + s_ * tmp281)))
+			tmp282 := sa4 + s_ * (sa5 + s_ * (sa6 + s_ * (sa7 + s_ * sa8)))
+			s = 1.0 + s_ * (sa1 + s_ * (sa2 + s_ * (sa3 + s_ * tmp282)))
 		} else { // |x| >= 1 / 0.35 ~ 2.857143
 			if sign && x > 6 {
 				return 2.0 // x < -6
 			}
-			r = rb0 + s_ * (rb1 + s_ * (rb2 + s_ * (rb3 + s_ * (rb4 + s_ * (rb5 + s_ * rb6)))))
-			s = 1.0 + s_ * (sb1 + s_ * (sb2 + s_ * (sb3 + s_ * (sb4 + s_ * (sb5 + s_ * (sb6 +
-				s_ * sb7))))))
+			tmp291 := rb3 + s_ * (rb4 + s_ * (rb5 + s_ * rb6))
+			r = rb0 + s_ * (rb1 + s_ * (rb2 + s_ * tmp291))
+			tmp292 := sb3 + s_ * (sb4 + s_ * (sb5 + s_ * (sb6 + s_ * sb7)))
+			s = 1.0 + s_ * (sb1 + s_ * (sb2 + s_ * tmp292))
 		}
 		z := f64_from_bits(f64_bits(x) & 0xffffffff00000000) // pseudo-single (20-bit) precision x
 		r_ := exp(-z * z - 0.5625) * exp((z - x) * (z + x) + r / s)

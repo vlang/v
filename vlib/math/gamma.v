@@ -245,10 +245,12 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 	} else if x < 8 { // 2 <= x < 8
 		i := int(x)
 		y := x - f64(i)
-		p := y * (lgamma_s[0] + y * (lgamma_s[1] + y * (lgamma_s[2] + y * (lgamma_s[3] +
-			y * (lgamma_s[4] + y * (lgamma_s[5] + y * lgamma_s[6]))))))
-		q := 1.0 + y * (lgamma_r[1] + y * (lgamma_r[2] + y * (lgamma_r[3] + y * (lgamma_r[4] +
-			y * (lgamma_r[5] + y * lgamma_r[6])))))
+		tmp23456 := lgamma_s[2] + y * (lgamma_s[3] + y * (lgamma_s[4] + y * (lgamma_s[5] +
+			y * lgamma_s[6])))
+		p := y * (lgamma_s[0] + y * (lgamma_s[1] + y * tmp23456))
+		tmpr23456 := lgamma_r[2] + y * (lgamma_r[3] + y * (lgamma_r[4] + y * (lgamma_r[5] +
+			y * lgamma_r[6])))
+		q := 1.0 + y * (lgamma_r[1] + y * tmpr23456)
 		lgamma = 0.5 * y + p / q
 		mut z := 1.0 // lgamma(1+s) = log(s) + lgamma(s)
 		if i == 7 {
