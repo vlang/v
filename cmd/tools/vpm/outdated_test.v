@@ -32,6 +32,9 @@ fn test_is_outdated_git_module() {
 }
 
 fn test_is_outdated_hg_module() {
+	$if !check_mercurial_works ? {
+		return
+	}
 	os.find_abs_path_of_executable('hg') or {
 		eprintln('skipping test, since `hg` is not executable.')
 		return

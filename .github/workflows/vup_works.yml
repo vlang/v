@@ -41,7 +41,7 @@ jobs:
     env:
       VDIR: /tmp/v_from_release_zip
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build v
         run: make && ./v symlink && ./v version
 

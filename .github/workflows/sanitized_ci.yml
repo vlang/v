@@ -86,7 +86,7 @@ jobs:
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
@@ -116,7 +116,7 @@ jobs:
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
@@ -146,7 +146,7 @@ jobs:
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
@@ -177,7 +177,7 @@ jobs:
       VJOBS: 1
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build
         run: |
           echo %VFLAGS%
@@ -203,7 +203,7 @@ jobs:
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
@@ -234,7 +234,7 @@ jobs:
       VJOBS: 1
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
@@ -266,7 +266,7 @@ jobs:
       LSAN_OPTIONS: detect_leaks=0
       VNATIVE_SKIP_LIBC_VV: 1
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Ensure code is well formatted

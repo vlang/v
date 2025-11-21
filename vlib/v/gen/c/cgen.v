@@ -7033,8 +7033,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			ast.ArrayFixed {
 				elem_sym := g.table.sym(sym.info.elem_type)
 				if !elem_sym.is_builtin() && !sym.info.elem_type.has_flag(.generic)
-					&& (!g.pref.skip_unused || (!sym.info.is_fn_ret
-					&& sym.idx in g.table.used_features.used_syms)) {
+					&& !sym.info.is_fn_ret && (!g.pref.skip_unused
+					|| (!sym.info.is_fn_ret && sym.idx in g.table.used_features.used_syms)) {
 					// .array_fixed {
 					styp := sym.cname
 					// array_fixed_char_300 => char x[300]
