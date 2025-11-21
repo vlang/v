@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Tests on FreeBSD with tcc
         id: tests-freebsd-tcc
         uses: cross-platform-actions/action@v0.30.0
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Tests on FreeBSD with clang
         id: tests-freebsd-clang
         uses: cross-platform-actions/action@v0.30.0
@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Tests on FreeBSD with gcc
         id: tests-freebsd-gcc
         uses: cross-platform-actions/action@v0.30.0
