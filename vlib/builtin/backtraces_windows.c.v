@@ -117,7 +117,7 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 				if C.SymGetLineFromAddr64(handle, frame_addr, &offset, &sline64) == 1 {
 					file_name := unsafe { tos3(sline64.f_file_name) }
 					lnumber := sline64.f_line_number
-					lineinfo = file_name + i64(lnumber).str()
+					lineinfo = file_name + ':' + i64(lnumber).str()
 				} else {
 					// addr:
 					lineinfo = '?? : address = 0x' + ptr_str(frame_addr)
@@ -129,7 +129,7 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 				eprint(sfunc)
 				eprint_space_padding(sfunc, 25)
 				eprint('  ')
-				eprint(lineinfo)
+				eprintln(lineinfo)
 			} else {
 				// https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes
 				cerr := int(C.GetLastError())
