@@ -33,7 +33,7 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
       - name: Code in cmd/ is formatted
@@ -73,7 +73,7 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
       - name: Check build-tools
@@ -93,7 +93,7 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: ./make.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
       - name: Check build tools
@@ -117,7 +117,7 @@ jobs:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v -cg -o v cmd/v
       - name: Ensure git commands can be used with no prompts on modern Git versions

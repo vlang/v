@@ -27,7 +27,7 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build v
         run: |
           echo "$VFLAGS"

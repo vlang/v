@@ -22,7 +22,7 @@ jobs:
   time-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make
       - name: Test time functions in a timezone UTC-12
@@ -39,7 +39,7 @@ jobs:
   time-macos:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make
       - name: Test time functions in a timezone UTC-12
@@ -56,7 +56,7 @@ jobs:
   time-windows:
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: .\make.bat
       - name: Test time functions in a timezone UTC-12

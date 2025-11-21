@@ -30,7 +30,7 @@ jobs:
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Show tool versions
         run: |
           gcc --version
@@ -97,7 +97,7 @@ jobs:
     env:
       VFLAGS: -cc msvc
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build
         run: |
           echo %VFLAGS%
@@ -143,7 +143,7 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build with make.bat -tcc
         run: |
           .\make.bat -tcc
