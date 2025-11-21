@@ -310,6 +310,8 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <string.h>
 #include <stdarg.h> // for va_list
 #if defined(__TINYC__)
+// https://lists.nongnu.org/archive/html/tinycc-devel/2025-10/msg00007.html
+// gnu headers use to #define __attribute__ to empty for non-gcc compilers
 #undef __attribute__
 #endif
 #ifdef __TERMUX__
