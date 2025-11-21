@@ -5569,14 +5569,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 							}
 						}
 						if i == 0 && node.obj.ct_type_var != .smartcast && node.obj.is_unwrapped {
-							dot := if (!node.obj.ct_type_unwrapped && !node.obj.orig_type.is_ptr()
+							if (!node.obj.ct_type_unwrapped && !node.obj.orig_type.is_ptr()
 								&& !node.obj.orig_type.has_flag(.generic) && obj_sym.is_heap())
 								|| node.obj.orig_type.has_flag(.option_mut_param_t) {
-								'->'
+								g.write('->data')
 							} else {
-								'.'
+								g.write('.data')
 							}
-							g.write('${dot}data')
 						}
 						g.write(')')
 					}
