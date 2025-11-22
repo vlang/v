@@ -928,6 +928,9 @@ pub const is_started_redis = find_started_process('redis-server') or { '' }
 pub fn (mut ts TestSession) setup_build_environment() {
 	facts, mut defines := pref.get_build_facts_and_defines()
 	// add the runtime information, that the test runner has already determined by checking once:
+	if github_job.starts_with('sanitize-') {
+		defines << 'sanitized_job'
+	}
 	if is_started_mysqld != '' {
 		defines << 'started_mysqld'
 	}
