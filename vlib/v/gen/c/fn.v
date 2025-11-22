@@ -50,6 +50,9 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	$if trace_cgen_fn_decl ? {
+		eprintln('>   g.tid: ${g.tid:3} | g.fid: ${g.fid:3} | g.file.path: ${g.file.path} | fn_decl: ${node.name}')
+	}
 	if node.should_be_skipped {
 		return
 	}
@@ -167,6 +170,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 }
 
 fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
+	$if trace_cgen_gen_fn_decl ? {
+		eprintln('>   g.tid: ${g.tid:3} | g.fid: ${g.fid:3} | g.file.path: ${g.file.path} | gen_fn_decl: ${node.name} | skip: ${skip}')
+	}
 	// TODO: For some reason, build fails with autofree with this line
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)

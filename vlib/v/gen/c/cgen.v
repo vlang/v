@@ -284,6 +284,9 @@ mut:
 	curr_comptime_node      &ast.Expr = unsafe { nil } // current `$if` expr
 	is_builtin_overflow_mod bool
 	do_int_overflow_checks  bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
+	//
+	tid int // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
+	fid int // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
 }
 
 @[heap]
@@ -491,7 +494,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		}
 	} else {
 		util.timing_start('cgen serial processing')
-		for file in files {
+		for fid, file in files {
+			global_g.tid = 0
+			global_g.fid = fid
 			global_g.file = file
 			global_g.gen_file()
 			global_g.cleanups[file.mod.name].drain_builder(mut global_g.cleanup, 100)
@@ -815,6 +820,8 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 	}
 	mut global_g := unsafe { &Gen(p.get_shared_context()) }
 	mut g := &Gen{
+		fid:                   idx
+		tid:                   wid
 		file:                  file
 		out:                   strings.new_builder(512000)
 		cheaders:              strings.new_builder(15000)
@@ -925,7 +932,7 @@ pub fn (mut g Gen) free_builders() {
 
 pub fn (mut g Gen) gen_file() {
 	$if trace_cgen ? {
-		eprintln('> ${@FILE}:${@LINE} | g.file.path: ${g.file.path}')
+		eprintln('> ${@FILE}:${@LINE} | g.file.path: ${g.file.path} | g.tid: ${g.tid:3} | g.fid: ${g.fid:3}')
 	}
 	g.timers.start('cgen_file ${g.file.path}')
 	g.unique_file_path_hash = fnv1a.sum64_string(g.file.path)
