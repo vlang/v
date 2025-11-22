@@ -971,16 +971,8 @@ pub fn v_getpid() u32 {
 pub fn v_gettid() u32 {
 	$if windows {
 		return u32(C.GetCurrentThreadId())
-	} $else $if linux {
-		$if musl ? {
-			$if threads {
-				return u32(C.pthread_self())
-			} $else {
-				return v_getpid()
-			}
-		} $else {
-			return u32(C.gettid())
-		}
+	} $else $if linux && !musl ? {
+		return u32(C.gettid())
 	} $else $if threads {
 		return u32(C.pthread_self())
 	} $else {
