@@ -276,9 +276,22 @@ pub fn (v Vec4[T]) perpendicular(u Vec4[T]) Vec4[T] {
 }
 
 // project returns the projected vector.
+// The projection of vector `u` onto vector `v` is the orthogonal projection
+// of `u` onto a straight line parallel to `v` that passes through the origin.
+// This is equivalent to the vector projection of `u` onto the unit vector in the direction of `v`.
+// and is given by the formula: proj_v(u) = (u · v / |v|^2) * v
+// where "·" denotes the dot product and |v| is the magnitude of vector `v`.
+// If `u` is a zero vector, the result will also be a zero vector.
+// example:
+//TODO: add examples
+// ```
 pub fn (v Vec4[T]) project(u Vec4[T]) Vec4[T] {
-	percent := v.dot(u) / u.dot(v)
-	return u.mul_scalar(percent)
+	denom := v.dot(v)
+	if denom <= vec_epsilon {
+		return vec4[T](0, 0, 0)
+	}
+	scale := u.dot(v) / denom
+	return Vec4[T]{v.x * scale, v.y * scale, v.z * scale}
 }
 
 // eq returns a bool indicating if the two vectors are equal.
