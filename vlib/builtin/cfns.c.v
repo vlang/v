@@ -108,6 +108,12 @@ fn C.strchr(s &char, c int) &char
 fn C.getpid() int
 
 @[trusted]
+fn C.GetCurrentThreadId() u32
+
+@[trusted]
+fn C.gettid() u32
+
+@[trusted]
 fn C.getuid() int
 
 @[trusted]
@@ -448,6 +454,7 @@ fn C.ReleaseSRWLockShared(voidptr)
 fn C.ReleaseSRWLockExclusive(voidptr)
 
 // pthread.h
+fn C.pthread_self() usize
 fn C.pthread_mutex_init(voidptr, voidptr) int
 
 fn C.pthread_mutex_lock(voidptr) int
