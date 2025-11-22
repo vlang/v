@@ -70,8 +70,8 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		C.fprintf(C.stderr, c'  message: %s\n', s.str)
 		C.fprintf(C.stderr, c'     file: %s:%d\n', file.str, line_no)
 		C.fprintf(C.stderr, c'   v hash: %s\n', @VCURRENTHASH.str)
-		C.fprintf(C.stderr, c'      pid: %d\n', v_getpid())
-		C.fprintf(C.stderr, c'      tid: %d\n', v_gettid())
+		C.fprintf(C.stderr, c'      pid: %llu\n', v_getpid())
+		C.fprintf(C.stderr, c'      tid: %llu\n', v_gettid())
 		C.fprintf(C.stderr, c'=========================================\n')
 		flush_stdout()
 		$if native {
@@ -130,8 +130,8 @@ pub fn panic(s string) {
 		bare_panic(s)
 	} $else {
 		flush_stdout()
-		C.fprintf(C.stderr, c'V panic: %s\n v hash: %s\n    pid: %d\n    tid: %d\n', s.str,
-			@VCURRENTHASH.str, v_getpid(), v_gettid())
+		C.fprintf(C.stderr, c'V panic: %s\n v hash: %s\n    pid: %llu\n    tid: %llu\n',
+			s.str, @VCURRENTHASH.str, v_getpid(), v_gettid())
 		flush_stdout()
 		$if native {
 			C.exit(1) // TODO: native backtraces
@@ -951,11 +951,11 @@ pub fn arguments() []string {
 // v_getpid returns a process identifier. It is a number that is guaranteed to
 // remain the same while the current process is running. It may or may not be
 // equal to the value of v_gettid(). Note: it is *NOT equal on Windows*.
-pub fn v_getpid() u32 {
+pub fn v_getpid() u64 {
 	$if windows {
-		return u32(C.GetCurrentProcessId())
+		return u64(C.GetCurrentProcessId())
 	} $else {
-		return u32(C.getpid())
+		return u64(C.getpid())
 	}
 }
 
@@ -967,13 +967,13 @@ pub fn v_getpid() u32 {
 // non windows systems, when the current thread is the main one. It is best to
 // *avoid relying on this equivalence*, and use v_gettid and v_getpid only for
 // tracing and debugging multithreaded issues, but *NOT for logic decisions*.
-pub fn v_gettid() u32 {
+pub fn v_gettid() u64 {
 	$if windows {
-		return u32(C.GetCurrentThreadId())
+		return u64(C.GetCurrentThreadId())
 	} $else $if linux && !musl ? {
-		return u32(C.gettid())
+		return u64(C.gettid())
 	} $else $if threads {
-		return u32(C.pthread_self())
+		return u64(C.pthread_self())
 	} $else {
 		return v_getpid()
 	}
