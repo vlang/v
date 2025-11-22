@@ -375,3 +375,27 @@ fn test_read_line_8() {
 	reader.read_line()! // \n
 	assert reader.read_line()! == '67890'
 }
+
+fn test_write() {
+	mut two := TwoByteReader{
+		data: '1234567890'
+	}
+	mut reader := StringReader.new(reader: two)
+	reader.read_bytes(1)!
+	reader.write('a'.bytes())!
+	reader.read_bytes(1)!
+	assert reader.get_data() == [u8(49), 97, 50]
+}
+
+fn test_write_2() {
+	mut two := TwoByteReader{
+		data: '1234567890'
+	}
+	mut reader := StringReader.new(reader: two)
+	reader.write('<'.bytes())!
+	reader.read_all(false)!
+	reader.write(':'.bytes())!
+	assert reader.read_string(3)! == '345'
+	reader.write('>'.bytes())!
+	assert reader.get_string() == '<12:345>'
+}
