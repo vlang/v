@@ -127,7 +127,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if pref_.trace_calls || pref_.trace_fns.len > 0 {
 			include_panic_deps = true
-			core_fns << 'vgettid'
 			core_fns << 'C.gettid'
 			core_fns << 'v.trace_calls.on_c_main'
 			core_fns << 'v.trace_calls.current_time'
