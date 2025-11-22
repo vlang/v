@@ -948,3 +948,34 @@ pub fn arguments() []string {
 	}
 	return res
 }
+
+// v_getpid returns a process identifier. It is a number that is guaranteed to
+// remain the same while the current process is running. It may or may not be
+// equal to the value of v_gettid(). Note: it is *NOT equal on Windows*.
+pub fn v_getpid() u32 {
+	$if windows {
+		return u32(C.GetCurrentProcessId())
+	} $else {
+		return u32(C.getpid())
+	}
+}
+
+// v_gettid retuns a thread identifier. It is a number that is guaranteed to not
+// change, while the current thread is running. Different threads, running at
+// the same time in the same process, have different thread ids. There is no
+// such guarantee for threads running in different processes.
+// Important: this will be the same number returned by v_getpid(), but only on
+// non windows systems, when the current thread is the main one. It is best to
+// *avoid relying on this equivalence*, and use v_gettid and v_getpid only for
+// tracing and debugging multithreaded issues, but *NOT for logic decisions*.
+pub fn v_gettid() u32 {
+	$if windows {
+		return u32(C.GetCurrentThreadId())
+	} $else $if linux {
+		return u32(C.gettid())
+	} $else $if threads {
+		return u32(C.pthread_self())
+	} $else {
+		return v_getpid()
+	}
+}
