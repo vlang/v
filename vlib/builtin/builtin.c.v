@@ -62,17 +62,17 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	$if freestanding {
 		bare_panic(s)
 	} $else {
-		// vfmt off
 		// Note: be carefull to not allocate here, avoid string interpolation
-		eprintln('================ V panic ================')
-		eprint('   module: '); eprintln(mod)
-		eprint(' function: '); eprint(fn_name); eprintln('()')
-		eprint('  message: '); eprintln(s)
-		eprint('     file: '); eprint(file); eprint(':');
-		C.fprintf(C.stderr, c'%d\n', line_no)
-		eprint('   v hash: '); eprintln(vcurrent_hash())
-		eprintln('=========================================')
-		// vfmt on
+		flush_stdout()
+		C.fprintf(C.stderr, c'================ V panic ================\n')
+		C.fprintf(C.stderr, c'   module: %s\n', mod.str)
+		C.fprintf(C.stderr, c' function: %s()\n', fn_name.str)
+		C.fprintf(C.stderr, c'  message: %s\n', s.str)
+		C.fprintf(C.stderr, c'     file: %s:%d\n', file.str, line_no)
+		C.fprintf(C.stderr, c'   v hash: %s\n', @VCURRENTHASH.str)
+		C.fprintf(C.stderr, c'      pid: %d\n', v_getpid())
+		C.fprintf(C.stderr, c'      tid: %d\n', v_gettid())
+		C.fprintf(C.stderr, c'=========================================\n')
 		flush_stdout()
 		$if native {
 			C.exit(1) // TODO: native backtraces
@@ -129,10 +129,9 @@ pub fn panic(s string) {
 	$if freestanding {
 		bare_panic(s)
 	} $else {
-		eprint('V panic: ')
-		eprintln(s)
-		eprint('v hash: ')
-		eprintln(vcurrent_hash())
+		flush_stdout()
+		C.fprintf(C.stderr, c'V panic: %s\n v hash: %s\n    pid: %d\n    tid: %d\n', s.str,
+			@VCURRENTHASH.str, v_getpid(), v_gettid())
 		flush_stdout()
 		$if native {
 			C.exit(1) // TODO: native backtraces
