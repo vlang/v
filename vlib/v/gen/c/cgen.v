@@ -8531,6 +8531,8 @@ pub fn (mut g Gen) get_array_depth(el_typ ast.Type) int {
 	if sym.kind == .array {
 		info := sym.info as ast.Array
 		return 1 + g.get_array_depth(info.elem_type)
+	} else if sym.kind in [.string, .map] {
+		return 1
 	} else {
 		return 0
 	}
