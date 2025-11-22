@@ -70,8 +70,8 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		C.fprintf(C.stderr, c'  message: %s\n', s.str)
 		C.fprintf(C.stderr, c'     file: %s:%d\n', file.str, line_no)
 		C.fprintf(C.stderr, c'   v hash: %s\n', @VCURRENTHASH.str)
-		C.fprintf(C.stderr, c'      pid: %llu\n', v_getpid())
-		C.fprintf(C.stderr, c'      tid: %llu\n', v_gettid())
+		C.fprintf(C.stderr, c'      pid: %p\n', voidptr(v_getpid()))
+		C.fprintf(C.stderr, c'      tid: %p\n', voidptr(v_gettid()))
 		C.fprintf(C.stderr, c'=========================================\n')
 		flush_stdout()
 		$if native {
@@ -130,8 +130,8 @@ pub fn panic(s string) {
 		bare_panic(s)
 	} $else {
 		flush_stdout()
-		C.fprintf(C.stderr, c'V panic: %s\n v hash: %s\n    pid: %llu\n    tid: %llu\n',
-			s.str, @VCURRENTHASH.str, v_getpid(), v_gettid())
+		C.fprintf(C.stderr, c'V panic: %s\n v hash: %s\n    pid: %p\n    tid: %p\n', s.str,
+			@VCURRENTHASH.str, voidptr(v_getpid()), voidptr(v_gettid()))
 		flush_stdout()
 		$if native {
 			C.exit(1) // TODO: native backtraces
