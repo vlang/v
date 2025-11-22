@@ -132,6 +132,14 @@ pub mut:
 	warnings       []errors.Warning
 	notices        []errors.Notice
 	template_paths []string // record all compiled $tmpl files; needed for `v watch run webserver.v`
+	content        ParseContentKind
+}
+
+enum ParseContentKind {
+	file
+	text
+	stmt
+	comptime
 }
 
 // for tests
@@ -140,6 +148,7 @@ pub fn parse_stmt(text string, mut table ast.Table, mut scope ast.Scope) ast.Stm
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
 	mut p := Parser{
+		content:          .stmt
 		scanner:          scanner.new_scanner(text, .skip_comments, &pref.Preferences{})
 		inside_test_file: true
 		table:            table
@@ -160,6 +169,7 @@ pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ 
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
 	mut p := Parser{
+		content:   .comptime
 		file_path: tmpl_path
 		scanner:   scanner.new_scanner(text, .skip_comments, pref_)
 		table:     table
@@ -179,6 +189,7 @@ pub fn parse_text(text string, path string, mut table ast.Table, comments_mode s
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: ${text}')
 	}
 	mut p := Parser{
+		content:          .text
 		scanner:          scanner.new_scanner(text, comments_mode, pref_)
 		table:            table
 		pref:             pref_
@@ -267,6 +278,7 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 		table.filelist << path
 	}
 	mut p := Parser{
+		content: .file
 		scanner: scanner.new_scanner_file(path, file_idx, comments_mode, pref_) or { panic(err) }
 		table:   table
 		pref:    pref_
@@ -289,6 +301,9 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 }
 
 pub fn (mut p Parser) parse() &ast.File {
+	$if trace_parse ? {
+		eprintln('> ${@FILE}:${@LINE} | p.path: ${p.file_path} | content: ${p.content} | nr_tokens: ${p.scanner.all_tokens.len} | nr_lines: ${p.scanner.line_nr} | nr_bytes: ${p.scanner.text.len}')
+	}
 	util.timing_start('PARSE')
 	defer {
 		util.timing_measure_cumulative('PARSE')
