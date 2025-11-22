@@ -62,17 +62,17 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	$if freestanding {
 		bare_panic(s)
 	} $else {
-		// vfmt off
 		// Note: be carefull to not allocate here, avoid string interpolation
-		eprintln('================ V panic ================')
-		eprint('   module: '); eprintln(mod)
-		eprint(' function: '); eprint(fn_name); eprintln('()')
-		eprint('  message: '); eprintln(s)
-		eprint('     file: '); eprint(file); eprint(':');
-		C.fprintf(C.stderr, c'%d\n', line_no)
-		eprint('   v hash: '); eprintln(vcurrent_hash())
-		eprintln('=========================================')
-		// vfmt on
+		flush_stdout()
+		C.fprintf(C.stderr, c'================ V panic ================\n')
+		C.fprintf(C.stderr, c'   module: %s\n', mod.str)
+		C.fprintf(C.stderr, c' function: %s()\n', fn_name.str)
+		C.fprintf(C.stderr, c'  message: %s\n', s.str)
+		C.fprintf(C.stderr, c'     file: %s:%d\n', file.str, line_no)
+		C.fprintf(C.stderr, c'   v hash: %s\n', @VCURRENTHASH.str)
+		C.fprintf(C.stderr, c'      pid: %p\n', voidptr(v_getpid()))
+		C.fprintf(C.stderr, c'      tid: %p\n', voidptr(v_gettid()))
+		C.fprintf(C.stderr, c'=========================================\n')
 		flush_stdout()
 		$if native {
 			C.exit(1) // TODO: native backtraces
@@ -129,10 +129,9 @@ pub fn panic(s string) {
 	$if freestanding {
 		bare_panic(s)
 	} $else {
-		eprint('V panic: ')
-		eprintln(s)
-		eprint('v hash: ')
-		eprintln(vcurrent_hash())
+		flush_stdout()
+		C.fprintf(C.stderr, c'V panic: %s\n v hash: %s\n    pid: %p\n    tid: %p\n', s.str,
+			@VCURRENTHASH.str, voidptr(v_getpid()), voidptr(v_gettid()))
 		flush_stdout()
 		$if native {
 			C.exit(1) // TODO: native backtraces
@@ -947,4 +946,35 @@ pub fn arguments() []string {
 		}
 	}
 	return res
+}
+
+// v_getpid returns a process identifier. It is a number that is guaranteed to
+// remain the same while the current process is running. It may or may not be
+// equal to the value of v_gettid(). Note: it is *NOT equal on Windows*.
+pub fn v_getpid() u64 {
+	$if windows {
+		return u64(C.GetCurrentProcessId())
+	} $else {
+		return u64(C.getpid())
+	}
+}
+
+// v_gettid retuns a thread identifier. It is a number that is guaranteed to not
+// change, while the current thread is running. Different threads, running at
+// the same time in the same process, have different thread ids. There is no
+// such guarantee for threads running in different processes.
+// Important: this will be the same number returned by v_getpid(), but only on
+// non windows systems, when the current thread is the main one. It is best to
+// *avoid relying on this equivalence*, and use v_gettid and v_getpid only for
+// tracing and debugging multithreaded issues, but *NOT for logic decisions*.
+pub fn v_gettid() u64 {
+	$if windows {
+		return u64(C.GetCurrentThreadId())
+	} $else $if linux && !musl ? {
+		return u64(C.gettid())
+	} $else $if threads {
+		return u64(C.pthread_self())
+	} $else {
+		return v_getpid()
+	}
 }
