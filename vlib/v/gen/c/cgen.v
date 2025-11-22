@@ -924,6 +924,9 @@ pub fn (mut g Gen) free_builders() {
 }
 
 pub fn (mut g Gen) gen_file() {
+	$if trace_cgen ? {
+		eprintln('> ${@FILE}:${@LINE} | g.file.path: ${g.file.path}')
+	}
 	g.timers.start('cgen_file ${g.file.path}')
 	g.unique_file_path_hash = fnv1a.sum64_string(g.file.path)
 	if g.pref.is_vlines {

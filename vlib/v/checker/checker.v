@@ -218,6 +218,9 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 }
 
 pub fn (mut c Checker) check(mut ast_file ast.File) {
+	$if trace_check ? {
+		eprintln('> ${@FILE}:${@LINE} | ast_file.path: ${ast_file.path}')
+	}
 	$if trace_checker ? {
 		eprintln('start checking file: ${ast_file.path}')
 	}
