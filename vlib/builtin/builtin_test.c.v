@@ -18,3 +18,10 @@ fn test_bool_size() {
 	println(@LOCATION)
 	assert sizeof(C.BOOL) == 4
 }
+
+fn test_v_getpid__and__v_gettid() {
+	p := v_getpid()
+	dump(p)
+	t := v_gettid()
+	dump(t)
+}

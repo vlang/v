@@ -105,11 +105,14 @@ fn C.strchr(s &char, c int) &char
 
 // process execution, os.process:
 @[trusted]
+fn C.GetCurrentProcessId() u32
+@[trusted]
+fn C._getpid() int
+@[trusted]
 fn C.getpid() int
 
 @[trusted]
 fn C.GetCurrentThreadId() u32
-
 @[trusted]
 fn C.gettid() u32
 
