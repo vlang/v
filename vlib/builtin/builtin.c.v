@@ -72,7 +72,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprint('     file: '); eprint(file); eprint(':');
 	    C.fprintf(C.stderr, c'%d\n', line_no)
 		eprint('   v hash: '); eprintln(vcurrent_hash())
-		$if !vinix {
+		$if !vinix && !native {
 			eprint('      pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
 			eprint('      tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
 		}
@@ -140,7 +140,7 @@ pub fn panic(s string) {
 		eprintln(s)
 		eprint(' v hash: ')
 		eprintln(vcurrent_hash())
-		$if !vinix {
+		$if !vinix && !native {
 			eprint('    pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
 			eprint('    tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
 		}
