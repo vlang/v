@@ -1962,6 +1962,10 @@ fn (mut c Amd64) mod_reg_rax(b Amd64Register) {
 	c.mov_reg(.rax, .rdx)
 }
 
+fn (mut c Amd64) cg_sub_reg(a Register, b Register) {
+	c.sub_reg(a.amd64(), b.amd64())
+}
+
 fn (mut c Amd64) sub_reg(a Amd64Register, b Amd64Register) {
 	if i32(a) <= i32(Amd64Register.r15) && i32(b) <= i32(Amd64Register.r15) {
 		c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
@@ -2086,7 +2090,7 @@ pub fn (mut c Amd64) cg_call_fn(node ast.CallExpr) {
 	return_size := c.g.get_type_size(node.return_type)
 	mut return_pos := i32(-1)
 	mut is_struct_return := false
-	if ts.kind in [.struct, .multi_return] {
+	if ts.kind in [.struct, .multi_return, .array] {
 		return_pos = c.g.allocate_by_type('', node.return_type)
 		if return_size > 16 {
 			is_struct_return = true
@@ -2361,7 +2365,7 @@ fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s i32) {
 	assert size == 0
 }
 
-fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
+fn (mut c Amd64) cg_assign_var(var IdentVar, raw_type ast.Type) {
 	typ := c.g.unwrap(raw_type)
 	info := c.g.table.sym(typ).info
 	size := c.g.get_type_size(typ)
@@ -2379,6 +2383,9 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 			}
 		}
 	} else if info is ast.Struct && !typ.is_any_kind_of_pointer()
+		&& !raw_type.is_any_kind_of_pointer() {
+		c.assign_struct_var(var, typ, size)
+	} else if info is ast.Array && !typ.is_any_kind_of_pointer()
 		&& !raw_type.is_any_kind_of_pointer() {
 		c.assign_struct_var(var, typ, size)
 	} else if int(size) in [1, 2, 4, 8] {
@@ -2593,8 +2600,12 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 			match node.op {
 				.decl_assign {
 					if right.is_fixed {
-						c.g.n_error('${@LOCATION} Unsupported ${node} ${right}')
+						dest := c.g.allocate_by_type(name, ast.voidptr_type_idx)
+						c.g.expr(right)
+						c.cg_mov_reg_to_var(LocalVar{dest, ast.voidptr_type_idx, name},
+							.reg0)
 					} else if right.exprs.len == 0 {
+						// TODO: remove when ArrayInit for dynarrays will be solved in the transformer
 						// `[]int{len: 6, cap:10, init:22}`
 						c.g.allocate_by_type(ident.name, ast.array_type)
 						len := ast.CallArg{
@@ -2728,7 +2739,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 
 				if node.op in [.assign, .decl_assign] {
 					var := c.g.get_var_from_ident(ident)
-					c.assign_var(var, left_type)
+					c.cg_assign_var(var, left_type)
 				} else if left_type.is_pure_float() {
 					c.mov_var_to_ssereg(.xmm1, ident)
 
@@ -2775,7 +2786,7 @@ fn (mut c Amd64) assign_ident_right_expr(node ast.AssignStmt, i i32, right ast.E
 
 			if node.op in [.assign, .decl_assign] {
 				var := c.g.get_var_from_ident(ident)
-				c.assign_var(var, left_type)
+				c.cg_assign_var(var, left_type)
 			} else if left_type.is_pure_float() {
 				c.mov_var_to_ssereg(.xmm1, ident)
 
@@ -4289,55 +4300,6 @@ fn (mut c Amd64) copy_struct_to_struct(field ast.StructField, f_offset i32, data
 				offset: f_offset + f2_offset
 				typ:    field2.typ
 			)
-		}
-	}
-}
-
-fn (mut c Amd64) cg_init_array(var Var, node ast.ArrayInit) {
-	match var {
-		ast.Ident {
-			var_object := c.g.get_var_from_ident(var)
-			match var_object {
-				LocalVar {
-					c.cg_init_array(var_object as LocalVar, node)
-				}
-				GlobalVar {
-					c.cg_init_array(var_object as GlobalVar, node)
-				}
-				Register {
-					// TODO
-					// c.g.cmp()
-				}
-				ExternVar {
-					c.cg_init_array(var_object as ExternVar, node)
-				}
-				PreprocVar {
-					c.cg_init_array(var_object as PreprocVar, node)
-				}
-				ConstVar {
-					c.cg_init_array(var_object as ConstVar, node)
-				}
-			}
-		}
-		LocalVar {
-			mut offset := var.offset
-			for expr in node.exprs {
-				c.g.expr(expr)
-				c.cg_mov_reg_to_var(LocalVar{offset, ast.i64_type_idx, ''}, .reg0)
-				offset += 8
-			}
-		}
-		GlobalVar {
-			c.g.n_error('${@LOCATION} unsupported var type ${var}')
-		}
-		ExternVar {
-			c.g.n_error('${@LOCATION} unsupported var type ${var}')
-		}
-		PreprocVar {
-			c.g.n_error('${@LOCATION} unsupported var type ${var}')
-		}
-		ConstVar {
-			c.g.n_error('${@LOCATION} unsupported var type ${var}')
 		}
 	}
 }

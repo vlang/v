@@ -1205,7 +1205,7 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 			elem_type: node.elem_type
 			exprs:     node.exprs
 		}
-		typ:  ast.void_type
+		typ:  ast.voidptr_type_idx
 	}
 	// if false { // elem_type.unaliased_sym.kind == .function {
 	//} else {

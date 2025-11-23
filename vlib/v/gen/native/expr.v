@@ -16,9 +16,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.expr)
 		}
 		ast.ArrayInit {
-			pos := g.allocate_array('_anonarray', 8, i32(node.exprs.len))
-			g.cg.cg_init_array(LocalVar{ offset: pos, typ: node.typ }, node)
-			g.cg.cg_lea_var_to_reg(.reg0, pos)
+			if node.is_fixed {
+				pos := g.allocate_fixed_array(node.elem_type, i32(node.exprs.len))
+				g.init_array(LocalVar{ offset: pos, typ: node.elem_type }, node)
+				g.cg.cg_lea_var_to_reg(.reg0, pos)
+			} else { // TODO: remove, it should not be on the stack
+				pos := g.allocate_array('_anonarray', 8, i32(node.exprs.len))
+				g.init_array(LocalVar{ offset: pos, typ: node.typ }, node)
+				g.cg.cg_lea_var_to_reg(.reg0, pos)
+			}
 		}
 		ast.BoolLiteral {
 			g.cg.cg_mov64(.reg0, i64(node.val))
@@ -168,6 +174,18 @@ fn (mut g Gen) expr(node ast.Expr) {
 	}
 }
 
+fn (mut g Gen) init_array(var LocalVar, node ast.ArrayInit) {
+	mut pos := var.offset
+	size := g.get_type_size(node.elem_type)
+	align := g.get_type_align(node.elem_type)
+	padding := (align - g.stack_var_pos % align) % align
+	for expr in node.exprs {
+		g.expr(expr)
+		g.cg.cg_assign_var(LocalVar{pos, node.elem_type, ''}, node.elem_type)
+		pos -= size + padding
+	}
+}
+
 fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 	if g.is_register_type(var.typ) {
 		g.cg.cg_mov_var_to_reg(.reg0, ident)
@@ -184,6 +202,12 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 			}
 			ast.Array {
 				g.cg.cg_lea_var_to_reg(.reg0, g.get_var_offset(ident.name))
+			}
+			ast.ArrayFixed {
+				g.cg.cg_mov_var_to_reg(.reg0, LocalVar{
+					offset: g.get_var_offset(ident.name)
+					typ:    ast.voidptr_type_idx
+				})
 			}
 			else {
 				g.n_error('${@LOCATION} Unsupported variable type ${ts.info}')
@@ -597,6 +621,14 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 			g.cg.cg_add(.reg0, offset)
 		}
 		g.cg.cg_mov_deref(.reg1, .reg0, ast.u64_type)
+		// add the index times the size (bytes) of the type
+		g.expr(node.index)
+		g.cg.cg_mov(.reg3, i32(g.get_type_size(node.typ)))
+		g.cg.cg_mul_reg(.reg0, .reg3)
+		g.cg.cg_add_reg(.reg0, .reg1)
+	} else if node.is_farray {
+		g.expr(node.left)
+		g.cg.cg_mov_reg(.reg1, .reg0)
 		// add the index times the size (bytes) of the type
 		g.expr(node.index)
 		g.cg.cg_mov(.reg3, i32(g.get_type_size(node.typ)))
