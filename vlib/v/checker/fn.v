@@ -2890,6 +2890,9 @@ fn (mut c Checker) set_node_expected_arg_types(mut node ast.CallExpr, func &ast.
 			node.expected_arg_types << func.params[i].typ
 		}
 	}
+	if func.generic_names.len > 0 {
+		node.expected_arg_types.map(c.unwrap_generic(it))
+	}
 }
 
 fn (mut c Checker) post_process_generic_fns() ! {
