@@ -228,3 +228,67 @@ fn test_vec2_rotate_around_ccw_2() {
 	assert close(v.x, -1.0)
 	assert close(v.y, -1.0)
 }
+// Test for Vec2 projection
+//
+fn test_vec2_project_onto_basic() {
+	v1 := vec.vec2(3.0, 4.0)// magnitude 5 vector
+	v2 := vec.vec2(5.0, 6.0)// magnitude ~7.81 vector
+	// hand-computed:
+	// u·v = 5*3 + 6*4 = 39
+	// |v|^2 = 3^2 + 4^2 = 25
+	// scale = 39/25 = 1.56
+	// proj = scale * v = (1.56*3, 1.56*4) = (4.68, 6.24)
+	proj := v1.project(v2)
+	assert veryclose(proj.x, 4.68)
+	assert veryclose(proj.y, 6.24)
+}
+// Test for Vec2 projection onto zero vector
+//
+fn test_vec2_project_onto_zero() {
+	v1 := vec.vec2(3.0, 4.0)
+	v2 := vec.vec2(0.0, 0.0)
+	proj := v1.project(v2)
+	assert proj.x == 0.0
+	assert proj.y == 0.0
+}
+// Test for Vec2 projection of zero vector
+//
+fn test_vec2_project_zero_vector() {
+	v1 := vec.vec2(0.0, 0.0)
+	v2 := vec.vec2(5.0, 6.0)
+	proj := v1.project(v2)
+	assert proj.x == 0.0
+	assert proj.y == 0.0
+}
+// Test for Vec2 projection onto itself
+//
+fn test_vec2_project_onto_self() {
+	v1 := vec.vec2(3.0, 4.0)
+	proj := v1.project(v1)
+	assert veryclose(proj.x, v1.x)
+	assert veryclose(proj.y, v1.y)
+}
+// Test for Vec2 projection onto orthogonal vector
+//
+fn test_vec2_project_onto_orthogonal() {
+	v1 := vec.vec2(1.0, 0.0)
+	v2 := vec.vec2(0.0, 1.0)
+	proj := v1.project(v2)
+	//more sensitive to floating point errors so i think close is better here
+	assert close(proj.x, 0.0)
+	assert close(proj.y, 0.0)
+}
+// Test for Vec2 projection with negative components
+//
+fn test_vec2_project_negative_components() {
+	v1 := vec.vec2(-3.0, 4.0)
+	v2 := vec.vec2(5.0, -6.0)
+	// hand-computed:
+	// u·v = 5*-3 + -6*4 = -15 - 24 = -39
+	// |v|^2 = -3^2 + 4^2 = 9 + 16 = 25
+	// scale = -39/25 = -1.56
+	// proj = scale * v = (-1.56*-3, -1.56*4) = (4.68, -6.24)
+	proj := v1.project(v2)
+	assert close(proj.x, 4.68)
+	assert close(proj.y, -6.24)
+}
