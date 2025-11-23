@@ -3547,8 +3547,15 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if from_type == ast.void_type {
 		c.error('expression does not return a value so it cannot be cast', node.expr.pos())
 	}
+	inner_to_type := if to_type.has_flag(.option) {
+		to_type.clear_flag(.option)
+	} else {
+		ast.void_type
+	}
 	if to_type.has_flag(.option) && from_type == ast.none_type {
 		// allow conversion from none to every option type
+	} else if to_type.has_flag(.option) && from_type == inner_to_type {
+		return to_type
 	} else if to_sym.kind == .sum_type {
 		to_sym_info := to_sym.info as ast.SumType
 		if c.pref.skip_unused && to_sym_info.concrete_types.len > 0 {
