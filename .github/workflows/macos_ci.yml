@@ -30,6 +30,9 @@ jobs:
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
       - uses: actions/checkout@v6
       - name: Build V

@@ -46,6 +46,9 @@ jobs:
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=10
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=10
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=10
             export VFLAGS='-cc tcc -no-retry-compilation'
             ./v run ci/freebsd_ci.vsh all
 
@@ -72,6 +75,9 @@ jobs:
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=10
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=10
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=10
             export VFLAGS='-cc clang'
             ./v run ci/freebsd_ci.vsh all
 
@@ -98,5 +104,8 @@ jobs:
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=10
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=10
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=10
             export VFLAGS='-cc gcc'
             ./v run ci/freebsd_ci.vsh all
