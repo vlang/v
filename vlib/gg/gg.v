@@ -11,13 +11,13 @@ pub type FNEvent = fn (e &Event, data voidptr)
 // FNEvent2 same as FNEvent with inverted arguments TODO: deprecate this, in favor of event_fn
 pub type FNEvent2 = fn (data voidptr, e &Event)
 
-// FNFail sdefines the type of a function that will be called when there is a fail
+// FNFail defines the type of a function that will be called when there is a fail
 pub type FNFail = fn (msg string, data voidptr)
 
 // FNKeyDown defines the type of a function that will be called for every key pressed down
 pub type FNKeyDown = fn (c KeyCode, m Modifier, data voidptr)
 
-// FNKeyUp defines the type of a function that will be called for every key up to it original position
+// FNKeyUp defines the type of a function that will be called for every release of a pressed key
 pub type FNKeyUp = fn (c KeyCode, m Modifier, data voidptr)
 
 // FNMove defines the type of a function that will be called for every mouse move on the screen
@@ -26,7 +26,7 @@ pub type FNMove = fn (x f32, y f32, data voidptr)
 // FNClick defines the type of a function that will be called for every mouse click
 pub type FNClick = fn (x f32, y f32, button MouseButton, data voidptr)
 
-// FNUnClick defines the type of a function that will be called for every the mouse released
+// FNUnClick defines the type of a function that will be called every time a mouse button is released
 pub type FNUnClick = fn (x f32, y f32, button MouseButton, data voidptr)
 
 // FNChar defines the type of a function that will be called once per character
