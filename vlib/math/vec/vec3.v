@@ -267,7 +267,7 @@ pub fn (v Vec3[T]) perpendicular(u Vec3[T]) Vec3[T] {
 // where "·" denotes the dot product and |v| is the magnitude of vector `v`.
 // If `u` is a zero vector, the result will also be a zero vector.
 // example:
-//TODO: add examples
+// TODO: add examples
 // ```
 pub fn (v Vec3[T]) project(u Vec3[T]) Vec3[T] {
 	denom := v.dot(v)

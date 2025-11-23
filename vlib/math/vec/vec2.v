@@ -424,7 +424,7 @@ pub fn (mut v Vec2[T]) clean_tolerance[U](tolerance U) {
 
 // inv returns the inverse, or reciprocal, of the vector.
 // If a field is zero, its inverse is also set to zero to avoid division by zero.
-// the direction the vector points is generally not preserved, but 
+// the direction the vector points is generally not preserved, but
 // the magnitude of each field is inverted.
 // example:
 // ```

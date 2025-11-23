@@ -88,10 +88,11 @@ fn test_vec3_f64_utils_2() {
 	assert invv2.y == 0.5
 	assert invv2.z == 0.25
 }
+
 // sample tests for vec3 projection
 fn test_vec3_project_onto_basic() {
-	v1 := vec.vec3(3.0, 4.0, 0.0)// magnitude 5 vector
-	v2 := vec.vec3(5.0, 6.0, 0.0)// magnitude ~7.81 vector
+	v1 := vec.vec3(3.0, 4.0, 0.0) // magnitude 5 vector
+	v2 := vec.vec3(5.0, 6.0, 0.0) // magnitude ~7.81 vector
 	// hand-computed:
 	// u·v = 5*3 + 6*4 + 0*0 = 39
 	// |v|^2 = 3^2 + 4^2 +0^2 = 25
@@ -102,6 +103,7 @@ fn test_vec3_project_onto_basic() {
 	assert veryclose(proj.y, 6.24)
 	assert veryclose(proj.z, 0.0)
 }
+
 // Test for Vec3 projection onto zero vector
 //
 fn test_vec3_project_onto_zero() {
@@ -112,11 +114,12 @@ fn test_vec3_project_onto_zero() {
 	assert proj.y == 0.0
 	assert proj.z == 0.0
 }
+
 // Test for vec3 projection at an angle
 //
 fn test_vec3_project_onto_angle() {
-	v1 := vec.vec3(1.0, 1.0, 0.0)// magnitude sqrt(2) vector
-	v2 := vec.vec3(1.0, 0.0, 0.0)// magnitude 1 vector
+	v1 := vec.vec3(1.0, 1.0, 0.0) // magnitude sqrt(2) vector
+	v2 := vec.vec3(1.0, 0.0, 0.0) // magnitude 1 vector
 	// hand-computed:
 	// u·v = 1*1 + 0*1 + 0*0 = 1
 	// |v|^2 = 1^2 + 0^2 +0^2 = 1
