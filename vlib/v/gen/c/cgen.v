@@ -1713,7 +1713,9 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 		styp = styp[3..]
 		if sym.kind == .struct {
 			info := sym.info as ast.Struct
-			if !info.is_typedef {
+			if info.is_anon {
+				styp = 'C__' + styp
+			} else if !info.is_typedef {
 				styp = 'struct ${styp}'
 			}
 		}
@@ -6916,7 +6918,11 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 	mut struct_names := map[string]bool{}
 	for sym in symbols {
 		if sym.name.starts_with('C.') {
-			continue
+			if sym.info is ast.Struct && sym.info.is_anon {
+				// For `C___VAnonStruct`, we need to create a new struct to make auto_str work.
+			} else {
+				continue
+			}
 		}
 		if sym.kind == .none && (!g.pref.skip_unused || g.table.used_features.used_none > 0) {
 			g.type_definitions.writeln('struct none {')

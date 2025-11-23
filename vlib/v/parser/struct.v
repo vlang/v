@@ -34,7 +34,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut language := p.parse_language()
 	name_pos := p.tok.pos()
 	if p.inside_struct_field_decl && language == .v {
-		// embedded struct/union language should keep the same language of outside
+		// anon struct/union language should keep the same language of outside
 		language = p.struct_language
 	} else {
 		old_struct_language := p.struct_language

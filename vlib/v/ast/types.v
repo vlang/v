@@ -1091,7 +1091,8 @@ pub fn (t &TypeSymbol) is_array_fixed() bool {
 
 pub fn (t &TypeSymbol) is_c_struct() bool {
 	if t.info is Struct {
-		return t.language == .c
+		// `C___VAnonStruct` need special handle, it need to create a new struct
+		return t.language == .c && !t.info.is_anon
 	} else if t.info is Alias {
 		return global_table.final_sym(t.info.parent_type).is_c_struct()
 	}
