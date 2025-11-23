@@ -9,7 +9,7 @@ fn test_sumtype_explicit_to_option_sumtype() {
 	a := ?SumType(value)
 	assert a != none
 	assert a? == SumType(u16(0))
-} 
+}
 
 fn test_sumtype_explicit_to_option_sumtype_generic() {
 	value := SumType(u16(1))
