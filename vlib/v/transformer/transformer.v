@@ -1181,18 +1181,20 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	//} else {
 	// `[1, 2, 3]`
 	// elem_styp := g.styp(elem_type.typ)
-	noscan := '_noscan' // g.check_noscan(elem_type.typ)
+	noscan := if t.pref.backend != .native { '_noscan' } else { '' } // g.check_noscan(elem_type.typ)
 	mut fn_name := 'new_array_from_c_array'
 	len_arg := ast.CallArg{
 		expr: ast.IntegerLiteral{
 			val: len.str()
 		}
+		typ:  ast.int_type
 	}
 	sizeof_arg := ast.CallArg{
 		expr: ast.SizeOf{
 			is_type: true
 			typ:     node.elem_type
 		}
+		typ:  ast.int_type
 	}
 	fixed_array_arg := ast.CallArg{
 		expr: ast.ArrayInit{
@@ -1203,6 +1205,7 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 			elem_type: node.elem_type
 			exprs:     node.exprs
 		}
+		typ:  ast.void_type
 	}
 	// if false { // elem_type.unaliased_sym.kind == .function {
 	//} else {
