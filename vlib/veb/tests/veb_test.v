@@ -1,3 +1,4 @@
+// vtest build: !sanitized_job?
 import os
 import time
 import x.json2 as json
