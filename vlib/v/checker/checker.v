@@ -218,6 +218,9 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 }
 
 pub fn (mut c Checker) check(mut ast_file ast.File) {
+	$if trace_check ? {
+		eprintln('> ${@FILE}:${@LINE} | ast_file.path: ${ast_file.path}')
+	}
 	$if trace_checker ? {
 		eprintln('start checking file: ${ast_file.path}')
 	}
@@ -5913,7 +5916,13 @@ pub fn (mut c Checker) update_unresolved_fixed_sizes() {
 			ret_sym := c.table.sym(stmt.return_type)
 			if ret_sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(ret_sym.info) {
 				mut size_expr := ret_sym.info.size_expr
+				old_typ := c.cast_fixed_array_ret(stmt.return_type, c.table.final_sym(stmt.return_type))
 				stmt.return_type = c.eval_array_fixed_sizes(mut size_expr, 0, ret_sym.info.elem_type)
+				new_sym := c.table.sym(stmt.return_type)
+				mut typ_sym := c.table.type_symbols[old_typ.idx()]
+				typ_sym.name = new_sym.name
+				typ_sym.cname = new_sym.cname
+				typ_sym.info = new_sym.info
 			}
 		} else if mut stmt is ast.TypeDecl { // alias
 			mut alias_decl := stmt

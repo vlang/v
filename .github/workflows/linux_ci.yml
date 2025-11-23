@@ -27,8 +27,11 @@ jobs:
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build v
         run: make -j4 && ./v symlink
       - name: Build v with -prealloc
@@ -81,8 +84,12 @@ jobs:
   gcc-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 121
+    env:
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: All code is formatted
@@ -135,8 +142,11 @@ jobs:
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build V
         run: make -j4 && ./v symlink
       - name: All code is formatted

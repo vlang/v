@@ -26,6 +26,10 @@ pub const show_cmd = os.getenv('VTEST_SHOW_CMD') == '1'
 
 pub const show_start = os.getenv('VTEST_SHOW_START') == '1'
 
+pub const show_longest_by_runtime = os.getenv('VTEST_SHOW_LONGEST_BY_RUNTIME').int()
+pub const show_longest_by_comptime = os.getenv('VTEST_SHOW_LONGEST_BY_COMPTIME').int()
+pub const show_longest_by_totaltime = os.getenv('VTEST_SHOW_LONGEST_BY_TOTALTIME').int()
+
 pub const hide_skips = os.getenv('VTEST_HIDE_SKIP') == '1'
 
 pub const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
@@ -432,12 +436,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.root_relative {
 		relative_file = relative_file.replace_once(ts.vroot + os.path_separator, '')
 	}
-	file := os.real_path(relative_file)
+	normalised_relative_file := relative_file.replace('\\', '/')
+
+	file := abs_path
 	mtc := MessageThreadContext{
 		file:    file
 		flow_id: thread_id.str()
 	}
-	normalised_relative_file := relative_file.replace('\\', '/')
 
 	// Ensure that the generated binaries will be stored in an *unique*, fresh, and per test folder,
 	// inside the common session temporary folder, used for all the tests.

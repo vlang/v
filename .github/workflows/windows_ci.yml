@@ -29,8 +29,11 @@ jobs:
     timeout-minutes: 90
     env:
       VFLAGS: -cc gcc
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Show tool versions
         run: |
           gcc --version
@@ -96,8 +99,11 @@ jobs:
     timeout-minutes: 60
     env:
       VFLAGS: -cc msvc
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build
         run: |
           echo %VFLAGS%
@@ -142,8 +148,11 @@ jobs:
     timeout-minutes: 60
     env:
       VFLAGS: -cc tcc -no-retry-compilation
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 20
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 20
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build with make.bat -tcc
         run: |
           .\make.bat -tcc

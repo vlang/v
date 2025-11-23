@@ -1,0 +1,5 @@
+vlib/v/parser/tests/generic_fn_export_err.vv:1:1: error: generic functions cannot be exported
+    1 | @[export: "sort_array"]
+      | ~~~~~~~~~~~~~~~~~~~~~~~
+    2 | pub fn sort_array[T](mut arr []T) {
+    3 |     arr.sort(|a, b| a < b)

@@ -282,3 +282,38 @@ fn example_vfs_getlasterror(vfs &sqlite.Sqlite3_vfs, i int, o &char) int {
 	}
 	return sqlite.sqlite_ok
 }
+
+////////////////////////////////////////////////
+
+struct Human {
+	name string
+	age  f32
+}
+
+fn check_connect_full_default_vfs(vfs_name string) ! {
+	mut db := sqlite.connect_full(':memory:', [.readwrite, .create, .fullmutex], '')!
+	sql db {
+		create table Human
+	}!
+	h := Human{'Bilbo', 56}
+	sql db {
+		insert h into Human
+	}!
+	res := sql db {
+		select from Human
+	}!
+	db.close()!
+	assert res.len == 1
+	assert res[0] == h
+}
+
+fn test_connect_full_default_vfs() {
+	// passing '' here as vfs_name should work everywhere, and it should be equivalent
+	// to 'unix' or 'win32', depending on the current system:
+	check_connect_full_default_vfs('')!
+	$if windows {
+		check_connect_full_default_vfs('win32')!
+	} $else {
+		check_connect_full_default_vfs('unix')!
+	}
+}

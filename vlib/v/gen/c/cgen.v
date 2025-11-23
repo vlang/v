@@ -284,6 +284,9 @@ mut:
 	curr_comptime_node      &ast.Expr = unsafe { nil } // current `$if` expr
 	is_builtin_overflow_mod bool
 	do_int_overflow_checks  bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
+	//
+	tid int // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
+	fid int // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
 }
 
 @[heap]
@@ -491,7 +494,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		}
 	} else {
 		util.timing_start('cgen serial processing')
-		for file in files {
+		for fid, file in files {
+			global_g.tid = 0
+			global_g.fid = fid
 			global_g.file = file
 			global_g.gen_file()
 			global_g.cleanups[file.mod.name].drain_builder(mut global_g.cleanup, 100)
@@ -815,6 +820,8 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 	}
 	mut global_g := unsafe { &Gen(p.get_shared_context()) }
 	mut g := &Gen{
+		fid:                   idx
+		tid:                   wid
 		file:                  file
 		out:                   strings.new_builder(512000)
 		cheaders:              strings.new_builder(15000)
@@ -924,6 +931,9 @@ pub fn (mut g Gen) free_builders() {
 }
 
 pub fn (mut g Gen) gen_file() {
+	$if trace_cgen ? {
+		eprintln('> ${@FILE}:${@LINE} | g.file.path: ${g.file.path} | g.tid: ${g.tid:3} | g.fid: ${g.fid:3}')
+	}
 	g.timers.start('cgen_file ${g.file.path}')
 	g.unique_file_path_hash = fnv1a.sum64_string(g.file.path)
 	if g.pref.is_vlines {
@@ -5571,14 +5581,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 							}
 						}
 						if i == 0 && node.obj.ct_type_var != .smartcast && node.obj.is_unwrapped {
-							dot := if (!node.obj.ct_type_unwrapped && !node.obj.orig_type.is_ptr()
+							if (!node.obj.ct_type_unwrapped && !node.obj.orig_type.is_ptr()
 								&& !node.obj.orig_type.has_flag(.generic) && obj_sym.is_heap())
 								|| node.obj.orig_type.has_flag(.option_mut_param_t) {
-								'->'
+								g.write('->data')
 							} else {
-								'.'
+								g.write('.data')
 							}
-							g.write('${dot}data')
 						}
 						g.write(')')
 					}
@@ -7040,8 +7049,8 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			ast.ArrayFixed {
 				elem_sym := g.table.sym(sym.info.elem_type)
 				if !elem_sym.is_builtin() && !sym.info.elem_type.has_flag(.generic)
-					&& (!g.pref.skip_unused || (!sym.info.is_fn_ret
-					&& sym.idx in g.table.used_features.used_syms)) {
+					&& !sym.info.is_fn_ret && (!g.pref.skip_unused
+					|| (!sym.info.is_fn_ret && sym.idx in g.table.used_features.used_syms)) {
 					// .array_fixed {
 					styp := sym.cname
 					// array_fixed_char_300 => char x[300]
@@ -8538,6 +8547,8 @@ pub fn (mut g Gen) get_array_depth(el_typ ast.Type) int {
 	if sym.kind == .array {
 		info := sym.info as ast.Array
 		return 1 + g.get_array_depth(info.elem_type)
+	} else if sym.kind in [.string, .map] {
+		return 1
 	} else {
 		return 0
 	}

@@ -105,7 +105,16 @@ fn C.strchr(s &char, c int) &char
 
 // process execution, os.process:
 @[trusted]
+fn C.GetCurrentProcessId() u32
+@[trusted]
+fn C._getpid() int
+@[trusted]
 fn C.getpid() int
+
+@[trusted]
+fn C.GetCurrentThreadId() u32
+@[trusted]
+fn C.gettid() u32
 
 @[trusted]
 fn C.getuid() int
@@ -408,7 +417,7 @@ fn C.closesocket(int) int
 
 fn C.vschannel_init(&C.TlsContext)
 
-fn C.request(&C.TlsContext, int, &u16, &u8, u32, &&u8) int
+fn C.request(&C.TlsContext, int, &u16, &u8, u32, &&u8, fn (voidptr, isize) voidptr) int
 
 fn C.vschannel_cleanup(&C.TlsContext)
 
@@ -448,6 +457,7 @@ fn C.ReleaseSRWLockShared(voidptr)
 fn C.ReleaseSRWLockExclusive(voidptr)
 
 // pthread.h
+fn C.pthread_self() usize
 fn C.pthread_mutex_init(voidptr, voidptr) int
 
 fn C.pthread_mutex_lock(voidptr) int

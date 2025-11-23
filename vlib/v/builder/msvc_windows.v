@@ -434,8 +434,9 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 		// println('$obj_path already built.')
 		return
 	}
-	println('${obj_path} not found, building it (with msvc)...')
-	flush_stdout()
+	$if trace_thirdparty_obj_files ? {
+		println('${obj_path} not found, building it (with msvc)...')
+	}
 	cfile := if os.exists('${path_without_o_postfix}.c') {
 		'${path_without_o_postfix}.c'
 	} else {
@@ -481,7 +482,6 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	// Note: the quotes above ARE balanced.
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: ${cmd}')
-		flush_stdout()
 	}
 	// Note, that building object files with msvc can fail with permission denied errors,
 	// when the final .obj file, is locked by another msvc process for writing, or linker errors.
@@ -507,8 +507,9 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	if res.exit_code != 0 {
 		verror('msvc: failed to build a thirdparty object after ${i}/${thirdparty_obj_build_max_retries} retries, cmd: ${cmd}')
 	}
-	println(res.output)
-	flush_stdout()
+	$if trace_thirdparty_obj_files ? {
+		println(res.output)
+	}
 }
 
 const thirdparty_obj_build_max_retries = 5

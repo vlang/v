@@ -1428,7 +1428,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name('malloc')
 		w.fn_by_name('tos3')
 	}
-	if w.uses_memdup {
+	if w.uses_memdup || w.used_none > 0 {
 		w.fn_by_name('memdup')
 	}
 	if w.uses_debugger {

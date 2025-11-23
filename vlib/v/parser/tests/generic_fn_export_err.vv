@@ -1,0 +1,4 @@
+@[export: "sort_array"]
+pub fn sort_array[T](mut arr []T) {
+	arr.sort(|a, b| a < b)
+}

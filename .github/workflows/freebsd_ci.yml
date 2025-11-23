@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Tests on FreeBSD with tcc
         id: tests-freebsd-tcc
         uses: cross-platform-actions/action@v0.30.0
@@ -46,6 +46,9 @@ jobs:
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=10
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=10
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=10
             export VFLAGS='-cc tcc -no-retry-compilation'
             ./v run ci/freebsd_ci.vsh all
 
@@ -53,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Tests on FreeBSD with clang
         id: tests-freebsd-clang
         uses: cross-platform-actions/action@v0.30.0
@@ -72,6 +75,9 @@ jobs:
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=10
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=10
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=10
             export VFLAGS='-cc clang'
             ./v run ci/freebsd_ci.vsh all
 
@@ -79,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Tests on FreeBSD with gcc
         id: tests-freebsd-gcc
         uses: cross-platform-actions/action@v0.30.0
@@ -98,5 +104,8 @@ jobs:
             git config --global --add safe.directory .
             gmake
             sudo ./v symlink
+            export VTEST_SHOW_LONGEST_BY_RUNTIME=10
+            export VTEST_SHOW_LONGEST_BY_COMPTIME=10
+            export VTEST_SHOW_LONGEST_BY_TOTALTIME=10
             export VFLAGS='-cc gcc'
             ./v run ci/freebsd_ci.vsh all
