@@ -288,10 +288,10 @@ pub fn (v Vec4[T]) perpendicular(u Vec4[T]) Vec4[T] {
 pub fn (v Vec4[T]) project(u Vec4[T]) Vec4[T] {
 	denom := v.dot(v)
 	if denom <= vec_epsilon {
-		return vec4[T](0, 0, 0)
+		return vec4[T](0, 0, 0, 0)
 	}
 	scale := u.dot(v) / denom
-	return Vec4[T]{v.x * scale, v.y * scale, v.z * scale}
+	return Vec4[T]{v.x * scale, v.y * scale, v.z * scale, v.w * scale}
 }
 
 // eq returns a bool indicating if the two vectors are equal.
