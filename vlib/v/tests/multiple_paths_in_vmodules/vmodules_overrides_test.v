@@ -1,3 +1,4 @@
+// vtest build: !sanitize-memory-gcc && !sanitized_job?
 import os
 
 @[markused]
