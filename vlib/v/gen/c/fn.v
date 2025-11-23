@@ -2388,13 +2388,12 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	} else {
 		node.args
 	}
-	mut expected_types := node.expected_arg_types.clone()
+	mut expected_types := node.expected_arg_types.map(g.unwrap_generic(it))
 	// unwrap generics fn/method arguments to concretes
 	if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic)) {
 		if node.is_method {
 			if func := g.table.find_method(g.table.sym(node.left_type), node.name) {
 				if func.generic_names.len > 0 {
-					expected_types = expected_types.map(g.unwrap_generic(it))
 					for i in 0 .. expected_types.len {
 						mut muttable := unsafe { &ast.Table(g.table) }
 						if utyp := muttable.convert_generic_type(node.expected_arg_types[i],
@@ -2408,7 +2407,6 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		} else {
 			if func := g.table.find_fn(node.name) {
 				if func.generic_names.len > 0 {
-					expected_types = expected_types.map(g.unwrap_generic(it))
 					for i in 0 .. expected_types.len {
 						mut muttable := unsafe { &ast.Table(g.table) }
 						if utyp := muttable.convert_generic_type(node.expected_arg_types[i],
