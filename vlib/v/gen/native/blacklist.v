@@ -76,6 +76,7 @@ const blacklist = {
 	'vmemmove':              false
 	'tos':                   false
 	'strings.new_builder':   true
+	'new_array_from_c_array': false
 }
 
 const windows_blacklist = {
