@@ -426,9 +426,11 @@ pub fn (mut v Vec2[T]) clean_tolerance[U](tolerance U) {
 // If a field is zero, its inverse is also set to zero to avoid division by zero.
 // the direction the vector points is generally not preserved, but 
 // the magnitude of each field is inverted.
-// th
-// Example: Vec2{x: 2, y: 4} => Vec2{x: 0.5, y: 0.25}
-// Example: inv(inv(v)) ~ v (up to floating point precision)
+// example:
+// ```
+// v := vec2[f32](2.0, 4.0)
+// inv_v := v.inv() // inv_v == vec2[f32](0.5, 0.25)
+// ```
 pub fn (v Vec2[T]) inv() Vec2[T] {
 	return Vec2[T]{
 		x: if v.x != 0 { T(1) / v.x } else { 0 }
