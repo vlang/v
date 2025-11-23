@@ -446,10 +446,6 @@ fn (mut c Arm64) cg_init_struct(var Var, init ast.StructInit) {
 	panic('Arm64.cg_init_struct() not implemented')
 }
 
-fn (mut c Arm64) cg_init_array(var Var, init ast.ArrayInit) {
-	panic('Arm64.cg_init_array() not implemented')
-}
-
 fn (mut c Arm64) cg_load_fp_var(var Var, config VarConfig) {
 	panic('Arm64.cg_load_fp_var() not implemented')
 }
@@ -556,4 +552,12 @@ fn (mut c Arm64) cg_patch_relative_jmp(pos i32, addr i64) {
 
 fn (mut c Arm64) cg_mul_reg(a Register, b Register) {
 	panic('Arm64.cg_mul_reg() not implemented')
+}
+
+fn (mut c Arm64) cg_assign_var(var IdentVar, raw_type ast.Type) {
+	panic('Arm64.cg_assign_var() not implemented')
+}
+
+fn (mut c Arm64) cg_sub_reg(a Register, b Register) {
+	panic('Arm64.cg_sub_reg() not implemented')
 }

@@ -98,6 +98,7 @@ mut:
 	cg_add_reg(r Register, r2 Register)
 	cg_address_size() i32
 	cg_allocate_stack_var(name string, size i32, initial_val Number) i32
+	cg_assign_var(var IdentVar, raw_type ast.Type)
 	cg_assign_stmt(node ast.AssignStmt)
 	cg_builtin_decl(builtin BuiltinFn)
 	cg_call_addr_at(addr i32, at i64) i64
@@ -126,7 +127,6 @@ mut:
 	cg_infix_expr(node ast.InfixExpr)
 	cg_infloop()
 	cg_init_struct(var Var, init ast.StructInit)
-	cg_init_array(var Var, init ast.ArrayInit)
 	cg_jmp_back(start i64)
 	cg_jmp(addr i32) i32
 	cg_lea_var_to_reg(r Register, var_offset i32)
@@ -150,6 +150,7 @@ mut:
 	cg_ret()
 	cg_return_stmt(node ast.Return)
 	cg_reverse_string(r Register)
+	cg_sub_reg(a Register, b Register)
 	cg_syscall() // unix syscalls
 	cg_trap()
 	cg_zero_fill(size i32, var LocalVar)
@@ -826,6 +827,9 @@ fn (mut g Gen) unwrap(typ ast.Type) ast.Type {
 
 // get type size, and calculate size and align and store them to the cache when the type is struct
 fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
+	if raw_type == ast.no_type_idx {
+		g.n_error('${@LOCATION}: unknown type (0)')
+	}
 	// TODO: type flags
 	typ := g.unwrap(raw_type)
 	if raw_type.is_any_kind_of_pointer() || typ.is_any_kind_of_pointer() {
@@ -1042,11 +1046,20 @@ fn (mut g Gen) allocate_string(s string, opsize i32, typ RelocType) i32 {
 }
 
 // allocates a buffer variable: name, size of stored type (nb of bytes), nb of items
-fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 {
+fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 { // TODO: remove when proper strings are implemented, should not be used
 	g.println('; allocate array `${name}` item-size:${size} items:${items}:')
 	pos := g.cg.cg_allocate_stack_var(name, 4, i64(items)) // store the length of the array on the stack in a 4 byte var
 	g.stack_var_pos += (size * items) // reserve space on the stack for the items
 	return pos
+}
+
+fn (mut g Gen) allocate_fixed_array(typ ast.Type, nb_items i32) i32 {
+	g.println('; allocate fixed array type:${typ} nb_items:${nb_items}:')
+	size := g.get_type_size(typ)
+	align := g.get_type_align(typ)
+	padding := (align - g.stack_var_pos % align) % align
+	g.stack_var_pos += (size + padding) * nb_items // reserve space on the stack for the items
+	return g.stack_var_pos
 }
 
 fn (mut g Gen) eval_str_lit_escape_codes(str_lit ast.StringLiteral) string {
