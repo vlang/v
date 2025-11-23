@@ -1188,7 +1188,11 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		if sym.kind == .struct {
 			if sym.info is ast.Struct && sym.info.is_anon && !_field_type.has_flag(.option)
 				&& !_field_type.has_flag(.shared_f) {
-				typed_obj := '*(${sym.cname}*)&(${obj})'
+				typed_obj := if lang == .c {
+					'(${sym.cname}*)&(${obj})'
+				} else {
+					'*(${sym.cname}*)&(${obj})'
+				}
 				return '${fn_name}(${typed_obj})', true
 			}
 		}
