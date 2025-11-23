@@ -88,3 +88,27 @@ fn test_vec3_f64_utils_2() {
 	assert invv2.y == 0.5
 	assert invv2.z == 0.25
 }
+// sample tests for vec3 projection
+fn test_vec3_project_onto_basic() {
+	v1 := vec.vec3(3.0, 4.0, 0.0)// magnitude 5 vector
+	v2 := vec.vec2(5.0, 6.0, 0.0)// magnitude ~7.81 vector
+	// hand-computed:
+	// u·v = 5*3 + 6*4 + 0*0 = 39
+	// |v|^2 = 3^2 + 4^2 +0^2 = 25
+	// scale = 39/25 = 1.56
+	// proj = scale * v = (1.56*3, 1.56*4, 1.56*0) = (4.68, 6.24, 0)
+	proj := v1.project(v2)
+	assert veryclose(proj.x, 4.68)
+	assert veryclose(proj.y, 6.24)
+	assert veryclose(proj.z, 0.0)
+}
+// Test for Vec3 projection onto zero vector
+//
+fn test_vec2_project_onto_zero() {
+	v1 := vec.vec3(3.0, 4.0, 0.0)
+	v2 := vec.vec3(0.0, 0.0, 0.0)
+	proj := v1.project(v2)
+	assert proj.x == 0.0
+	assert proj.y == 0.0
+	assert proj.z == 0.0
+}
