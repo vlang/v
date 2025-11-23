@@ -216,6 +216,9 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		'no_main' {
 			g.pref.is_script
 		}
+		'threads' {
+			true
+		}
 		else {
 			if is_comptime_option
 				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
