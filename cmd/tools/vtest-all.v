@@ -27,6 +27,7 @@ const l2w_crosscc = os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32
 const clang_path = os.find_abs_path_of_executable('clang') or { '' }
 
 fn main() {
+	unbuffer_stdout()
 	mut commands := get_all_commands()
 	// summary
 	sw := time.new_stopwatch()
@@ -36,10 +37,8 @@ fn main() {
 	spent := sw.elapsed().milliseconds()
 	oks := commands.filter(it.ecode == 0)
 	fails := commands.filter(it.ecode != 0)
-	flush_stdout()
 	println('')
 	println(term.header_left(term_highlight('Summary of `v test-all`:'), '-'))
-	println(term_highlight('Total runtime: ${spent} ms'))
 	for ocmd in oks {
 		msg := if ocmd.okmsg != '' { ocmd.okmsg } else { ocmd.line }
 		println(term.colorize(term.green, '>          OK: ${msg} '))
@@ -48,7 +47,7 @@ fn main() {
 		msg := if fcmd.errmsg != '' { fcmd.errmsg } else { fcmd.line }
 		println(term.failed('>      Failed:') + ' ${msg}')
 	}
-	flush_stdout()
+	println(term_highlight('Total runtime: ${spent} ms'))
 	if fails.len > 0 {
 		exit(1)
 	}
