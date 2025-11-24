@@ -585,6 +585,11 @@ pub fn u64_in_range(min u64, max u64) !u64 {
 	return default_rng.u64_in_range(min, max)
 }
 
+// i8 returns a uniformly distributed pseudorandom 8-bit signed (possibly negative) `i8`.
+pub fn i8() i8 {
+	return default_rng.i8()
+}
+
 // i16 returns a uniformly distributed pseudorandom 16-bit signed (possibly negative) `i16`.
 pub fn i16() i16 {
 	return default_rng.i16()
