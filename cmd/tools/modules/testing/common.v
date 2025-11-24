@@ -320,6 +320,7 @@ pub fn (mut ts TestSession) add(file string) {
 }
 
 pub fn (mut ts TestSession) test() {
+	unbuffer_stdout()
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
 	current_wd := os.getwd()
