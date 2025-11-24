@@ -552,18 +552,18 @@ fn C.sysconf(name int) int
 // C.SYSTEM_INFO contains information about the current computer system. This includes the architecture and type of the processor, the number of processors in the system, the page size, and other such information.
 @[typedef]
 pub struct C.SYSTEM_INFO {
-	// DUMMYUNIONNAME              union {
-	//	dwOemId         u32
-	//	DUMMYSTRUCTNAME struct {
-	//	pub:
-	//		wProcessorArchitecture u16
-	//		wReserved              u16
+	// workaround: v doesn't support a truely C anon union/struct here
+	// union {
+	dwOemId u32
+	// struct {
+	wProcessorArchitecture u16
+	wReserved              u16
 	//	}
 	//}
 	dwPageSize                  u32
 	lpMinimumApplicationAddress voidptr
 	lpMaximumApplicationAddress voidptr
-	dwActiveProcessorMask       &u32 = unsafe { nil }
+	dwActiveProcessorMask       u32
 	dwNumberOfProcessors        u32
 	dwProcessorType             u32
 	dwAllocationGranularity     u32
