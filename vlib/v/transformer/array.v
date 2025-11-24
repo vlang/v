@@ -8,7 +8,7 @@ import v.ast
 pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 	// For JS and Go generate array init using their syntax
 	// if t.pref.backend !in [.c, .native] {
-	if !t.pref.new_transform || node.is_fixed {
+	if !t.pref.new_transform || node.is_fixed { // || t.file.mod.name != 'main' {
 		for mut expr in node.exprs {
 			expr = t.expr(mut expr)
 		}
@@ -125,6 +125,72 @@ pub fn (mut t Transformer) array_init(mut node ast.ArrayInit) ast.Expr {
 		}
 		*/
 	//}
+}
+
+pub fn (mut t Transformer) index_expr(mut node ast.IndexExpr) ast.Expr {
+	// if t.pref.new_transform {
+	// println(t.file.mod)
+	//}
+	t.check_safe_array(mut node)
+	node.left = t.expr(mut node.left)
+	node.index = t.expr(mut node.index)
+	node.or_expr = t.expr(mut node.or_expr) as ast.OrExpr
+	// if true { //!t.pref.new_transform { //|| t.file.mod.name != 'main' {
+	if !t.pref.new_transform { //|| t.file.mod.name != 'main' {
+		return node
+	}
+	// Recursively transform the left side (array/map) and the index
+	node.left = t.expr(mut node.left)
+	node.index = t.expr(mut node.index)
+	// Only apply transformation if	it is an array (not a fixed array, map, or option)
+	if node.is_array && !node.is_farray && !node.is_option && !node.is_map {
+		// Transformation: x[i] => (*(T*)builtin__array_get(x, i))
+		mut left_expr := node.left
+		mut left_type := node.left_type
+		// If the array is a pointer/reference (e.g. &[]int), we must dereference it
+		// because builtin__array_get expects the array struct by value.
+		if left_type.is_ptr() {
+			left_expr = ast.PrefixExpr{
+				op:    .mul
+				right: left_expr
+				pos:   node.pos
+			}
+			// The type of the argument becomes the value type (remove pointer)
+			left_type = left_type.set_nr_muls(0)
+		}
+		// Create the call: builtin__array_get(x, i)
+		call_expr := ast.CallExpr{
+			name:        'builtin__array_get'
+			mod:         'builtin'
+			args:        [
+				ast.CallArg{
+					expr: left_expr
+					typ:  left_type
+				},
+				ast.CallArg{
+					expr: node.index
+					typ:  ast.int_type
+				},
+			]
+			return_type: ast.voidptr_type
+		}
+		// Create the pointer type T* to cast the result (voidptr) to.
+		// node.typ is the element type T.
+		ptr_typ := node.typ.ref()
+		// Create the cast: (T*)builtin__array_get(...)
+		cast_expr := ast.CastExpr{
+			expr:    call_expr
+			typ:     ptr_typ
+			typname: t.table.get_type_name(ptr_typ)
+		}
+		// Dereference the result to get the element: *...
+		return ast.PrefixExpr{
+			op:    .mul
+			right: cast_expr
+			pos:   node.pos
+		}
+	}
+	return node
 }
 
 pub fn (mut t Transformer) find_new_array_len(node ast.AssignStmt) {

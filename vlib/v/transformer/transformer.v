@@ -57,7 +57,6 @@ pub fn (mut t Transformer) transform(mut ast_file ast.File) {
 	}
 }
 
-
 pub fn (mut t Transformer) find_new_range(node ast.AssignStmt) {
 	if !t.pref.is_prod {
 		return
@@ -578,10 +577,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			node.expr = t.expr(mut node.expr)
 		}
 		ast.IndexExpr {
-			t.check_safe_array(mut node)
-			node.left = t.expr(mut node.left)
-			node.index = t.expr(mut node.index)
-			node.or_expr = t.expr(mut node.or_expr) as ast.OrExpr
+			return t.index_expr(mut node)
 		}
 		ast.InfixExpr {
 			return t.infix_expr(mut node)
@@ -1119,7 +1115,6 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 		return node
 	}
 }
-
 
 pub fn (mut t Transformer) if_expr(mut node ast.IfExpr) ast.Expr {
 	for mut branch in node.branches {
