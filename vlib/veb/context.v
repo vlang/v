@@ -267,8 +267,7 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 			ctx.return_type = .file
 			ctx.return_file = file_path
 			ctx.res.header.set(.content_length, file_size.str())
-			ctx.send_response_to_client(content_type, '')
-			return Result{}
+			return ctx.send_response_to_client(content_type, '')
 		}
 	}
 
