@@ -341,14 +341,29 @@ fn test_rand_ascii() {
 }
 
 fn ensure_same_output(mut rng rand.PRNG) {
+	trng := rng.type_name()
+	println('> ensure a ${trng} instance works as a global generator, and produces the same output as a local one...')
 	for _ in 0 .. 100 {
+		assert rand.i8() == rng.i8()
+		assert rand.i16() == rng.i16()
 		assert rand.int() == rng.int()
-		assert rand.i32() == rng.i32()
 		assert rand.intn(45) or { 0 } == rng.intn(45) or { 0 }
+		assert rand.i32() == rng.i32()
 		assert rand.i32n(45) or { 0 } == rng.i32n(45) or { 0 }
+		assert rand.i64() == rng.i64()
+		assert rand.i64n(45) or { 0 } == rng.i64n(45) or { 0 }
+		//
+		assert rand.u8() == rng.u8()
+		assert rand.u16() == rng.u16()
+		assert rand.u32() == rng.u32()
+		assert rand.u32n(45) or { 0 } == rng.u32n(45) or { 0 }
 		assert rand.u64() == rng.u64()
+		assert rand.u64n(45) or { 0 } == rng.u64n(45) or { 0 }
+		//
+		assert rand.f32() == rng.f32()
+		assert rand.f32n(45) or { 0 } == rng.f32n(45) or { 0 }
 		assert rand.f64() == rng.f64()
-		assert rand.u32n(25) or { 0 } == rng.u32n(25) or { 0 }
+		assert rand.f64n(45) or { 0 } == rng.f64n(45) or { 0 }
 	}
 }
 
