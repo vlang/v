@@ -4,11 +4,14 @@ import os
 
 pub interface StaticApp {
 mut:
-	static_files         map[string]string
-	static_mime_types    map[string]string
-	static_hosts         map[string]string
-	enable_static_gzip   bool
-	static_gzip_max_size int
+	static_files                map[string]string
+	static_mime_types           map[string]string
+	static_hosts                map[string]string
+	enable_static_gzip          bool
+	enable_static_zstd          bool
+	enable_static_compression   bool
+	static_compression_max_size int
+	enable_markdown_negotiation bool
 }
 
 // StaticHandler provides methods to handle static files in your veb App
@@ -17,19 +20,24 @@ pub mut:
 	static_files      map[string]string
 	static_mime_types map[string]string
 	static_hosts      map[string]string
-	// enable_static_gzip enables automatic gzip compression for static files.
-	// When enabled, Veb will:
-	// 1. Serve existing .gz files in zero-copy streaming mode (manual pre-compression)
-	// 2. Auto-generate .gz files for files < static_gzip_max_size (lazy compression cache)
-	// 3. Validate .gz freshness (regenerate if source file is newer)
-	// Files larger than the threshold are served uncompressed in streaming mode.
-	// Default: false (for backward compatibility)
+	// enable_static_gzip enables gzip compression for static files.
+	// Use this for gzip-only compression. For automatic zstd/gzip selection, use enable_static_compression.
+	// Default: false
 	enable_static_gzip bool
-	// static_gzip_max_size sets the maximum file size in bytes for auto-compression.
-	// Files larger than this threshold will not be auto-compressed (but manual .gz files are still served).
-	// Default: 1MB (1024*1024 bytes). Set to 0 to disable auto-compression completely (only pre-compressed .gz files will be served).
-	// Note: On readonly filesystems, if .gz caching fails, compressed content is served from memory as fallback.
-	static_gzip_max_size int = 1048576
+	// enable_static_zstd enables zstd compression for static files.
+	// Use this for zstd-only compression. For automatic zstd/gzip selection, use enable_static_compression.
+	// Default: false
+	enable_static_zstd bool
+	// enable_static_compression enables automatic compression (zstd/gzip) for static files.
+	// When enabled, Veb will choose zstd over gzip when client supports both (better compression ratio).
+	// For gzip-only or zstd-only compression, use enable_static_gzip or enable_static_zstd instead.
+	// Default: false
+	enable_static_compression bool
+	// static_compression_max_size sets the maximum file size in bytes for auto-compression.
+	// Files larger than this threshold will not be auto-compressed (but manual .zst/.gz files are still served).
+	// Default: 1MB (1024*1024 bytes). Set to 0 to disable auto-compression completely.
+	// Note: On readonly filesystems, if caching fails, compressed content is served from memory as fallback.
+	static_compression_max_size int = 1048576
 	// enable_markdown_negotiation allows the client sends Accept: text/markdown, then the server will serve .md files, if any.
 	// Default: false (for backward compatibility)
 	enable_markdown_negotiation bool

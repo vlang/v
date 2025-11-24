@@ -419,22 +419,24 @@ app.static_mime_types['.what'] = 'txt/plain'
 app.handle_static('static', true)!
 ```
 
-### Gzip compression for static files
+### Compression for static files (zstd/gzip)
 
-veb provides automatic gzip compression for static files with smart caching. When enabled,
-veb will serve compressed versions of your static files to clients that support gzip encoding,
-reducing bandwidth usage and improving load times.
+veb provides automatic compression (zstd and gzip) for static files with smart caching.
+When enabled, veb will serve compressed versions of your static files to clients that
+support compression, reducing bandwidth usage and improving load times. Zstd is preferred
+over gzip when the client supports both.
 
 **How it works:**
 
-1. **Manual pre-compression**: If you create `.gz` files manually, veb will serve them in
-   zero-copy streaming mode for maximum performance.
+1. **Manual pre-compression**: If you create `.zst` or `.gz` files manually, veb will serve
+   them in zero-copy streaming mode for maximum performance.
 2. **Lazy compression cache**: Files smaller than the threshold are automatically compressed
-   on first request and cached as `.gz` files on disk.
-3. **Cache validation**: If the original file is modified, the `.gz` cache is automatically
-   regenerated on the next request.
+   on first request and cached as `.zst` or `.gz` files on disk (zstd preferred when client
+   supports it).
+3. **Cache validation**: If the original file is modified, the compressed cache is
+   automatically regenerated on the next request.
 4. **Streaming for large files**: Files larger than the threshold are served uncompressed in
-   streaming mode (unless a manual `.gz` file exists).
+   streaming mode (unless a manual `.zst` or `.gz` file exists).
 
 **Example:**
 
@@ -453,21 +455,26 @@ pub struct App {
 }
 
 pub fn (mut app App) index(mut ctx Context) veb.Result {
-	return ctx.html('<h1>Gzip compression demo</h1><p>Visit <a href="/app.js">/app.js</a> or <a href="/style.css">/style.css</a></p>')
+	return ctx.html('<h1>Compression demo</h1>
+    <p>Visit <a href="/app.js">/app.js</a> or <a href="/style.css">/style.css</a>
+    </p>')
 }
 
 fn main() {
 	mut app := &App{}
 
-	// Enable static file gzip compression (disabled by default)
-	app.enable_static_gzip = true
-	app.static_gzip_max_size = 524288 // Maximum file size for auto-compression is 512 KB (default: 1MB)
+	// Enable static file compression (zstd/gzip, disabled by default)
+	// Use enable_static_zstd and enable_static_gzip for specific compression
+	app.enable_static_compression = true
+	app.static_compression_max_size = 524288 // Maximum file size for auto-compression is 512 KB (default: 1MB)
 
 	// Serve files from the 'static' directory
 	app.handle_static('static', true)!
 
-	// Add the gzip middleware to compress dynamic routes as well
-	app.use(veb.encode_gzip[Context]())
+	// Add the content encoding middleware to compress dynamic routes as well
+	// This will use zstd if the client supports it, otherwise gzip
+	// Use encode_gzip or encode_zstd for specific compression
+	app.use(veb.encode_auto[Context]())
 
 	veb.run[App, Context](mut app, 8080)
 }
@@ -480,8 +487,9 @@ Create test files in the `static` directory:
 mkdir -p static
 echo "console.log('Hello from V web!');" > static/app.js
 echo "body { margin: 0; }" > static/style.css
-# Pre-compress style.css manually for zero-copy streaming
-gzip -k static/style.css
+# Pre-compress style.css manually for zero-copy streaming (zstd or gzip)
+zstd -k static/style.css  # creates style.css.zst
+# or: gzip -k static/style.css  # creates style.css.gz
 ```
 
 Run the server, it will listen on port 8080:
@@ -489,50 +497,58 @@ Run the server, it will listen on port 8080:
 v run server.v
 ```
 
-Test gzip compression with cURL:
+Test compression with cURL:
 ```bash
-# Test lazy compression cache - app.js will be compressed on first request
-curl -H "Accept-Encoding: gzip" -i http://localhost:8080/app.js
+# Test zstd compression (preferred when client supports it)
+curl -H "Accept-Encoding: zstd, gzip" -i http://localhost:8080/app.js
+# Expected headers:
+# Content-Encoding: zstd
+# Vary: Accept-Encoding
 
+# Test gzip fallback (when client doesn't support zstd)
+curl -H "Accept-Encoding: gzip" -i http://localhost:8080/app.js
 # Expected headers:
 # Content-Encoding: gzip
 # Vary: Accept-Encoding
 
 # Request with automatic decompression
-curl -H "Accept-Encoding: gzip" --compressed http://localhost:8080/app.js
+curl -H "Accept-Encoding: zstd, gzip" --compressed http://localhost:8080/app.js
 
-# Request without gzip encoding - should return uncompressed content
+# Request without encoding - should return uncompressed content
 curl -i http://localhost:8080/app.js
 
-# Verify that .gz cache file was created
-ls -lh static/app.js.gz
+# Verify that compressed cache file was created
+ls -lh static/app.js.zst static/app.js.gz 2>/dev/null
 
-# Test manual pre-compression - style.css.gz is served directly (zero-copy)
-# The pre-compressed .gz file is served without loading into memory
-curl -H "Accept-Encoding: gzip" -i http://localhost:8080/style.css
+# Test manual pre-compression - style.css.zst is served directly (zero-copy)
+curl -H "Accept-Encoding: zstd" -i http://localhost:8080/style.css
 ```
 
 **Performance tips:**
 
-- For production, you can pre-compress your static files (e.g., `gzip -k static/app.js`)
-  and veb will serve them directly without loading into memory.
+- For production, you can pre-compress your static files with zstd (`zstd -k static/app.js`)
+  or gzip (`gzip -k static/app.js`) and veb will serve them directly without loading into memory.
+- Zstd offers better compression ratio and speed than gzip - use it when possible.
+
+**Priority order**: When both `.zst` and `.gz` files exist for the same source file, veb will
+serve `.zst` if the client supports zstd, otherwise `.gz` if gzip is supported.
+
 - The lazy cache is created on first request, so the first visitor pays a small
   compression cost, but all subsequent requests are served at zero-copy speed.
-- Large files (> threshold) are always streamed, ensuring low memory usage even for
-  large assets.
-- The `encode_gzip` middleware compresses dynamic routes and small files loaded in
-  memory (takeover mode).
-- If `.gz` caching fails (e.g., on read-only filesystems), veb automatically falls
-  back to serving compressed content from memory. You can  set `static_gzip_max_size = 0`
+- Large files (> threshold) are always streamed, ensuring low memory usage even for large assets.
+- The `encode_auto` middleware automatically chooses zstd or gzip based on client support. You can
+  also use `encode_zstd` or `encode_gzip` for specific compression.
+- If caching fails (e.g., on read-only filesystems), veb automatically falls
+  back to serving compressed content from memory. You can set `static_compression_max_size = 0`
   to disable auto-compression completely. For optimal performance on read-only systems,
-  pre-compress all files with `gzip -k`.
+  pre-compress all files with `zstd -k` or `gzip -k`.
 
 ### Markdown content negotiation
 
 veb can provide automatic content negotiation for markdown files, allowing you to serve
 markdown content when the client explicitly requests it via the `Accept` header.
-This is compliant to [llms.txt](https://llmstxt.org/) proposal and useful for documentations that can serve
-the same content in multiple formats, more efficiently to AI services using it.
+This is compliant to [llms.txt](https://llmstxt.org/) proposal and useful for documentations that
+can serve the same content in multiple formats, more efficiently to AI services using it.
 
 **How it works:**
 

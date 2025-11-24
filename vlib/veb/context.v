@@ -1,6 +1,7 @@
 module veb
 
 import compress.gzip
+import compress.zstd
 import json
 import net
 import net.http
@@ -32,15 +33,17 @@ mut:
 	done bool
 	// If the `Connection: close` header is present the connection should always be closed
 	client_wants_to_close bool
-	// Configuration for static file gzip compression (set by serve_if_static)
-	enable_static_gzip   bool
-	static_gzip_max_size int
+	// Configuration for static file compression (set by serve_if_static)
+	enable_static_gzip          bool
+	enable_static_zstd          bool
+	enable_static_compression   bool
+	static_compression_max_size int
 	// if true the response should not be sent and the connection should be closed
 	// manually.
 	takeover    bool
 	return_file string
-	// already_compressed indicates that the response body is already gzip-compressed
-	// and the encode_gzip middleware should skip it
+	// already_compressed indicates that the response body is already compressed (zstd/gzip)
+	// and the compression middlewares should skip it
 	already_compressed bool
 pub:
 	// TODO: move this to `handle_request`
@@ -207,39 +210,36 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	}
 	file.close()
 
-	// Check if client accepts gzip encoding
+	// Check which encodings the client accepts
 	accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
+	client_accepts_zstd := accept_encoding.contains('zstd')
 	client_accepts_gzip := accept_encoding.contains('gzip')
 
-	max_size_bytes := ctx.static_gzip_max_size
+	max_size_bytes := ctx.static_compression_max_size
 
-	// Try to serve pre-compressed .gz file if static gzip is enabled and client accepts it
-	if ctx.enable_static_gzip && client_accepts_gzip {
-		gz_path := '${file_path}.gz'
+	// Determine which compression modes are enabled
+	use_zstd := (ctx.enable_static_zstd && client_accepts_zstd)
+		|| (ctx.enable_static_compression && client_accepts_zstd)
+	use_gzip := (ctx.enable_static_gzip && client_accepts_gzip)
+		|| (ctx.enable_static_compression && client_accepts_gzip)
 
-		// Check if .gz file exists and is up-to-date (newer or same age as original)
-		if os.exists(gz_path) {
-			gz_mtime := os.file_last_mod_unix(gz_path)
-			orig_mtime := os.file_last_mod_unix(file_path)
+	// Try to serve pre-compressed files if any compression is enabled
+	if use_zstd || use_gzip {
+		orig_mtime := os.file_last_mod_unix(file_path)
 
-			if gz_mtime >= orig_mtime {
-				// Serve existing .gz file in streaming mode (zero-copy)
-				ctx.return_type = .file
-				ctx.return_file = gz_path
-				ctx.res.header.set(.content_encoding, 'gzip')
-				ctx.res.header.set(.vary, 'Accept-Encoding')
-
-				// Get .gz file size for Content-Length header
-				gz_size := os.file_size(gz_path)
-				ctx.res.header.set(.content_length, gz_size.str())
-
-				ctx.send_response_to_client(content_type, '')
-				ctx.already_compressed = true
+		// Try zstd first if enabled (better compression), then gzip
+		if use_zstd {
+			if ctx.serve_precompressed_file(content_type, file_path, '.zst', 'zstd', orig_mtime) {
+				return Result{}
+			}
+		}
+		if use_gzip {
+			if ctx.serve_precompressed_file(content_type, file_path, '.gz', 'gzip', orig_mtime) {
 				return Result{}
 			}
 		}
 
-		// .gz doesn't exist or is outdated: create it if file is small enough
+		// No pre-compressed file available: create one if file is small enough
 		if file_size < max_size_bytes {
 			// Load, compress, save, and serve
 			data := os.read_file(file_path) or {
@@ -247,40 +247,27 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 				return ctx.server_error('could not read resource')
 			}
 
-			compressed := gzip.compress(data.bytes()) or {
-				// Fallback: serve uncompressed in streaming mode
-				ctx.return_type = .file
-				ctx.return_file = file_path
-				ctx.res.header.set(.content_length, file_size.str())
-				ctx.send_response_to_client(content_type, '')
-				return Result{}
+			// Try zstd first if enabled, then gzip
+			if use_zstd {
+				if result := ctx.serve_compressed_static(content_type, file_path, data,
+					.zstd)
+				{
+					return result
+				}
+			}
+			if use_gzip {
+				if result := ctx.serve_compressed_static(content_type, file_path, data,
+					.gzip)
+				{
+					return result
+				}
 			}
 
-			// Try to save compressed version for future requests
-			mut write_success := true
-			os.write_file(gz_path, compressed.bytestr()) or {
-				eprintln('[veb] warning: could not save .gz file (readonly filesystem?): ${err.msg()}')
-				write_success = false
-			}
-
-			if write_success {
-				// Serve the newly cached .gz file in streaming mode (zero-copy)
-				ctx.return_type = .file
-				ctx.return_file = gz_path
-				ctx.res.header.set(.content_encoding, 'gzip')
-				ctx.res.header.set(.vary, 'Accept-Encoding')
-				ctx.res.header.set(.content_length, compressed.len.str())
-				ctx.send_response_to_client(content_type, '')
-				ctx.already_compressed = true
-			} else {
-				// Fallback: serve compressed content from memory (no caching)
-				// This happens on readonly filesystems or when write permissions are missing
-				ctx.res.header.set(.content_encoding, 'gzip')
-				ctx.res.header.set(.vary, 'Accept-Encoding')
-				ctx.send_response_to_client(content_type, compressed.bytestr())
-				ctx.already_compressed = true
-			}
-			return Result{}
+			// Compression failed: serve uncompressed in streaming mode
+			ctx.return_type = .file
+			ctx.return_file = file_path
+			ctx.res.header.set(.content_length, file_size.str())
+			return ctx.send_response_to_client(content_type, '')
 		}
 	}
 
@@ -298,6 +285,71 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	ctx.return_file = file_path
 	ctx.res.header.set(.content_length, file_size.str())
 	ctx.send_response_to_client(content_type, '')
+	return Result{}
+}
+
+// serve_precompressed_file serves an existing pre-compressed file (.zst or .gz) if it exists and is fresh.
+// Returns true if the file was served, false otherwise.
+fn (mut ctx Context) serve_precompressed_file(content_type string, file_path string, ext string, encoding_name string, orig_mtime i64) bool {
+	compressed_path := '${file_path}${ext}'
+	if !os.exists(compressed_path) {
+		return false
+	}
+	compressed_mtime := os.file_last_mod_unix(compressed_path)
+	if compressed_mtime < orig_mtime {
+		return false
+	}
+	// Serve existing compressed file in streaming mode (zero-copy)
+	ctx.return_type = .file
+	ctx.return_file = compressed_path
+	ctx.res.header.set(.content_encoding, encoding_name)
+	ctx.res.header.set(.vary, 'Accept-Encoding')
+	compressed_size := os.file_size(compressed_path)
+	ctx.res.header.set(.content_length, compressed_size.str())
+	ctx.send_response_to_client(content_type, '')
+	ctx.already_compressed = true
+	return true
+}
+
+// serve_compressed_static compresses data and serves it, optionally caching to disk.
+// Returns Result on success, none on compression failure.
+fn (mut ctx Context) serve_compressed_static(content_type string, file_path string, data string, encoding ContentEncoding) ?Result {
+	compressed, ext, encoding_name := match encoding {
+		.zstd {
+			c := zstd.compress(data.bytes()) or { return none }
+			c, '.zst', 'zstd'
+		}
+		.gzip {
+			c := gzip.compress(data.bytes()) or { return none }
+			c, '.gz', 'gzip'
+		}
+	}
+
+	compressed_path := '${file_path}${ext}'
+
+	// Try to save compressed version for future requests
+	mut write_success := true
+	os.write_file(compressed_path, compressed.bytestr()) or {
+		eprintln('[veb] warning: could not save ${ext} file (readonly filesystem?): ${err.msg()}')
+		write_success = false
+	}
+
+	if write_success {
+		// Serve the newly cached file in streaming mode (zero-copy)
+		ctx.return_type = .file
+		ctx.return_file = compressed_path
+		ctx.res.header.set(.content_encoding, encoding_name)
+		ctx.res.header.set(.vary, 'Accept-Encoding')
+		ctx.res.header.set(.content_length, compressed.len.str())
+		ctx.send_response_to_client(content_type, '')
+		ctx.already_compressed = true
+	} else {
+		// Fallback: serve compressed content from memory (no caching)
+		ctx.res.header.set(.content_encoding, encoding_name)
+		ctx.res.header.set(.vary, 'Accept-Encoding')
+		ctx.send_response_to_client(content_type, compressed.bytestr())
+		ctx.already_compressed = true
+	}
 	return Result{}
 }
 
