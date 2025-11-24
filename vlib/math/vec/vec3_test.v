@@ -1,3 +1,4 @@
+import math { veryclose }
 import math.vec
 
 fn test_vec3_int() {
