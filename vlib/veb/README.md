@@ -421,18 +421,20 @@ app.handle_static('static', true)!
 
 ### Compression for static files (zstd/gzip)
 
-veb provides automatic compression (zstd and gzip) for static files with smart caching. When enabled,
-veb will serve compressed versions of your static files to clients that support compression,
-reducing bandwidth usage and improving load times. Zstd is preferred over gzip when the client supports both.
+veb provides automatic compression (zstd and gzip) for static files with smart caching.
+When enabled, veb will serve compressed versions of your static files to clients that
+support compression, reducing bandwidth usage and improving load times. Zstd is preferred
+over gzip when the client supports both.
 
 **How it works:**
 
-1. **Manual pre-compression**: If you create `.zst` or `.gz` files manually, veb will serve them in
-   zero-copy streaming mode for maximum performance.
+1. **Manual pre-compression**: If you create `.zst` or `.gz` files manually, veb will serve
+   them in zero-copy streaming mode for maximum performance.
 2. **Lazy compression cache**: Files smaller than the threshold are automatically compressed
-   on first request and cached as `.zst` or `.gz` files on disk (zstd preferred when client supports it).
-3. **Cache validation**: If the original file is modified, the compressed cache is automatically
-   regenerated on the next request.
+   on first request and cached as `.zst` or `.gz` files on disk (zstd preferred when client
+   supports it).
+3. **Cache validation**: If the original file is modified, the compressed cache is
+   automatically regenerated on the next request.
 4. **Streaming for large files**: Files larger than the threshold are served uncompressed in
    streaming mode (unless a manual `.zst` or `.gz` file exists).
 
@@ -453,7 +455,9 @@ pub struct App {
 }
 
 pub fn (mut app App) index(mut ctx Context) veb.Result {
-	return ctx.html('<h1>Compression demo</h1><p>Visit <a href="/app.js">/app.js</a> or <a href="/style.css">/style.css</a></p>')
+	return ctx.html('<h1>Compression demo</h1>
+    <p>Visit <a href="/app.js">/app.js</a> or <a href="/style.css">/style.css</a>
+    </p>')
 }
 
 fn main() {
@@ -526,12 +530,14 @@ curl -H "Accept-Encoding: zstd" -i http://localhost:8080/style.css
   or gzip (`gzip -k static/app.js`) and veb will serve them directly without loading into memory.
 - Zstd offers better compression ratio and speed than gzip - use it when possible.
 
-**Priority order**: When both `.zst` and `.gz` files exist for the same source file, veb will serve `.zst` if the client supports zstd, otherwise `.gz` if gzip is supported.
+**Priority order**: When both `.zst` and `.gz` files exist for the same source file, veb will
+serve `.zst` if the client supports zstd, otherwise `.gz` if gzip is supported.
 
 - The lazy cache is created on first request, so the first visitor pays a small
   compression cost, but all subsequent requests are served at zero-copy speed.
 - Large files (> threshold) are always streamed, ensuring low memory usage even for large assets.
-- The `encode_auto` middleware automatically chooses zstd or gzip based on client support. You can also use `encode_zstd` or `encode_gzip` for specific compression.
+- The `encode_auto` middleware automatically chooses zstd or gzip based on client support. You can
+  also use `encode_zstd` or `encode_gzip` for specific compression.
 - If caching fails (e.g., on read-only filesystems), veb automatically falls
   back to serving compressed content from memory. You can set `static_compression_max_size = 0`
   to disable auto-compression completely. For optimal performance on read-only systems,
@@ -541,8 +547,8 @@ curl -H "Accept-Encoding: zstd" -i http://localhost:8080/style.css
 
 veb can provide automatic content negotiation for markdown files, allowing you to serve
 markdown content when the client explicitly requests it via the `Accept` header.
-This is compliant to [llms.txt](https://llmstxt.org/) proposal and useful for documentations that can serve
-the same content in multiple formats, more efficiently to AI services using it.
+This is compliant to [llms.txt](https://llmstxt.org/) proposal and useful for documentations that
+can serve the same content in multiple formats, more efficiently to AI services using it.
 
 **How it works:**
 
