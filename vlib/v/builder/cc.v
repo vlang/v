@@ -80,10 +80,6 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 			println('(Alternatively, pass `-show-c-output`, to print the full C error message).')
 		}
 	}
-	if os.getenv('V_NO_C_ERROR_INFO') != '' {
-		eprintln('> V_NO_C_ERROR_INFO is obsoleted by either setting VQUIET to 1, or by passing `-q` on the command line')
-		exit(1)
-	}
 	if v.pref.is_quiet {
 		exit(1)
 	}

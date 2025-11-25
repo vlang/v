@@ -207,6 +207,7 @@ NB: the build flags are shared with the run command too:
     Note, this option *does not affect* errors/warnings/notices, just messages that V prints in
     order to be more user friendly, in common situations, that are error prone for new users, and
     that just needlessly take vertical space, once you are well aware of them.
+    Note: setting `VQUIET` to 1, has the same effect.
 
   -v
     Enable verbosity in the V compiler while compiling
