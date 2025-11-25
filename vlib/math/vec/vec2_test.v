@@ -251,8 +251,8 @@ fn test_vec2_project_onto_zero() {
 	v2 := vec.vec2(5.0, 6.0)
 	proj := v1.project(v2)
 	// must be nan
-	assert proj.x != proj.x
-	assert proj.y != proj.y
+	assert is_nan(proj.x)
+	assert is_nan(proj.y)
 }
 
 // Test for Vec2 projection of zero vector
@@ -261,8 +261,8 @@ fn test_vec2_project_zero_vector() {
 	v1 := vec.vec2(3.0, 4.0)
 	v2 := vec.vec2(0.0, 0.0)
 	proj := v1.project(v2)
-	assert is_nan(proj.x)
-	assert is_nan(proj.y)
+	assert proj.x == 0.0
+	assert proj.y == 0.0
 }
 
 // Test for Vec2 projection onto itself
