@@ -76,7 +76,8 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 				println('(note: the original output was ${original_elines.len} lines long; it was truncated to its first ${elines.len} lines + the last line)')
 			}
 			println('='.repeat(header.len))
-			println('(You can pass `-cg`, or `-show-c-output` as well, to print all the C error messages).')
+			println('Try passing `-g` when compiling, to see a .v file:line information, that correlates more with the C error.')
+			println('(Alternatively, pass `-show-c-output`, to print the full C error message).')
 		}
 	}
 	if os.getenv('V_NO_C_ERROR_INFO') != '' {
