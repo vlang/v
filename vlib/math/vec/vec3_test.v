@@ -1,4 +1,4 @@
-import math { veryclose }
+import math { tolerance, veryclose }
 import math.vec
 
 fn test_vec3_int() {
@@ -119,8 +119,8 @@ fn test_vec3_project_onto_zero() {
 // Test for vec3 projection at an angle
 //
 fn test_vec3_project_onto_angle() {
-	v1 := vec.vec3(1.0, 1.0, 0.0) // magnitude sqrt(2) vector
-	v2 := vec.vec3(1.0, 0.0, 0.0) // magnitude 1 vector
+	v1 := vec.vec3(1.0, 0.0, 0.0) // magnitude 1 vector
+	v2 := vec.vec3(1.0, 1.0, 0.0) // magnitude sqrt(2) vector
 	// hand-computed:
 	// u·v = 1*1 + 0*1 + 0*0 = 1
 	// |v|^2 = 1^2 + 0^2 +0^2 = 1

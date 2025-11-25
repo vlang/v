@@ -1,4 +1,4 @@
-import math { close, is_nan, radians, veryclose, tolerance }
+import math { close, is_nan, radians, tolerance, veryclose }
 import math.vec
 
 fn test_vec2_int() {
