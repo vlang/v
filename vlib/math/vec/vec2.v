@@ -230,7 +230,7 @@ pub fn (v Vec2[T]) magnitude_y() T {
 // v := vec2[f32](3, 4) //magnitude = 5
 // u := vec2[f32](5, 6) //magnitude = 7.81
 // dot := v.dot(u) // 3*5 + 4*6 = 15 + 24 = 39
-// println(dot) // Output: 39
+// 	(dot) // Output: 39
 // ```
 pub fn (v Vec2[T]) dot(u Vec2[T]) T {
 	return (v.x * u.x) + (v.y * u.y)

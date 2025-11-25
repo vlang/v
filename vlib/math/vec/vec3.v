@@ -270,7 +270,7 @@ pub fn (v Vec3[T]) perpendicular(u Vec3[T]) Vec3[T] {
 // TODO: add examples
 // ```
 pub fn (v Vec3[T]) project(u Vec3[T]) Vec3[T] {
-	scale := u.dot(v) / v.dot(v)
+	scale := T(u.dot(v) / v.dot(v))
 	return v.mul_scalar(scale)
 }
 
