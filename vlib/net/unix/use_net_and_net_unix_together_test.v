@@ -1,4 +1,6 @@
+// vtest retry: 3
 import os
+import time
 import net.unix
 import net as _
 
@@ -7,6 +9,13 @@ const test_port = os.join_path(tfolder, 'domain_socket')
 
 fn testsuite_begin() {
 	os.mkdir_all(tfolder) or {}
+	spawn fn () {
+		// Normally this entire test should take less than a second,
+		// but sometimes it hangs on windows for hours. Instead of skipping it entirely,
+		// ensure the test will die, and later the test framework can restart it.
+		time.sleep(5 * time.second)
+		exit(1)
+	}()
 }
 
 fn testsuite_end() {
