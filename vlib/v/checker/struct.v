@@ -1188,6 +1188,10 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 				// an embedded struct field
 				continue
 			}
+			if field.typ.has_flag(.option) {
+				// defaults to `none`
+				continue
+			}
 			checked_types << field.typ
 			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.${field.name}',
 				pos)
@@ -1229,6 +1233,10 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 			}
 			if field.is_embed && sym.language == .v {
 				// an embedded struct field
+				continue
+			}
+			if field.typ.has_flag(.option) {
+				// defaults to `none`
 				continue
 			}
 			checked_types << field.typ
