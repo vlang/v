@@ -1,4 +1,4 @@
-import math { close, is_nan, radians, veryclose }
+import math { close, is_nan, radians, veryclose, tolerance }
 import math.vec
 
 fn test_vec2_int() {
@@ -240,8 +240,8 @@ fn test_vec2_project_onto_basic() {
 	// scale = 39/25 = 1.56
 	// proj = scale * v = (1.56*3, 1.56*4) = (4.68, 6.24)
 	proj := v1.project(v2)
-	assert veryclose(proj.x, 4.68)
-	assert veryclose(proj.y, 6.24)
+	assert tolerance(proj.x, 4.68, vec.vec_epsilon)
+	assert tolerance(proj.y, 6.24, vec.vec_epsilon)
 }
 
 // Test for Vec2 projection onto zero vector
@@ -296,6 +296,6 @@ fn test_vec2_project_negative_components() {
 	// scale = -39/25 = -1.56
 	// proj = scale * v = (-1.56*-3, -1.56*4) = (4.68, -6.24)
 	proj := v1.project(v2)
-	assert close(proj.x, 4.68)
-	assert close(proj.y, -6.24)
+	assert tolerance(proj.x, 4.68, vec.vec_epsilon)
+	assert tolerance(proj.y, -6.24, vec.vec_epsilon)
 }
