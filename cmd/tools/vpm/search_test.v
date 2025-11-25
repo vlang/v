@@ -8,9 +8,7 @@ fn testsuite_begin() {
 		eprintln('> skipping ${@FILE}, when `-d network` is missing')
 		exit(0)
 	}
-}
-
-fn testsuite_end() {
+	unbuffer_stdout()
 }
 
 fn test_search_ui() {
