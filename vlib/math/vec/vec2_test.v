@@ -1,4 +1,4 @@
-import math { close, radians, veryclose }
+import math { close, is_nan, radians, veryclose }
 import math.vec
 
 fn test_vec2_int() {
@@ -245,23 +245,24 @@ fn test_vec2_project_onto_basic() {
 }
 
 // Test for Vec2 projection onto zero vector
-//
+// project v2 into the null vector
 fn test_vec2_project_onto_zero() {
-	v1 := vec.vec2(3.0, 4.0)
-	v2 := vec.vec2(0.0, 0.0)
-	proj := v1.project(v2)
-	assert proj.x == 0.0
-	assert proj.y == 0.0
-}
-
-// Test for Vec2 projection of zero vector
-//
-fn test_vec2_project_zero_vector() {
 	v1 := vec.vec2(0.0, 0.0)
 	v2 := vec.vec2(5.0, 6.0)
 	proj := v1.project(v2)
-	assert proj.x == 0.0
-	assert proj.y == 0.0
+	// must be nan
+	assert proj.x != proj.x
+	assert proj.y != proj.y
+}
+
+// Test for Vec2 projection of zero vector
+// project a null vector
+fn test_vec2_project_zero_vector() {
+	v1 := vec.vec2(3.0, 4.0)
+	v2 := vec.vec2(0.0, 0.0)
+	proj := v1.project(v2)
+	assert is_nan(proj.x)
+	assert is_nan(proj.y)
 }
 
 // Test for Vec2 projection onto itself
