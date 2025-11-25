@@ -270,12 +270,8 @@ pub fn (v Vec3[T]) perpendicular(u Vec3[T]) Vec3[T] {
 // TODO: add examples
 // ```
 pub fn (v Vec3[T]) project(u Vec3[T]) Vec3[T] {
-	denom := v.dot(v)
-	if denom <= vec_epsilon {
-		return vec3[T](0, 0, 0)
-	}
-	scale := u.dot(v) / denom
-	return Vec3[T]{v.x * scale, v.y * scale, v.z * scale}
+	scale := u.dot(v) / v.dot(v)
+	return v.mul_scalar(scale)
 }
 
 // eq returns a bool indicating if the two vectors are equal.

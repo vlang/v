@@ -278,12 +278,8 @@ pub fn (v Vec2[T]) perpendicular(u Vec2[T]) Vec2[T] {
 // println(proj) // Output: vec2[f32](3.61, 4.81)
 // ```
 pub fn (v Vec2[T]) project(u Vec2[T]) Vec2[T] {
-	denom := v.dot(v)
-	if denom <= vec_epsilon {
-		return vec2[T](0, 0)
-	}
-	scale := u.dot(v) / denom
-	return Vec2[T]{v.x * scale, v.y * scale}
+	scale := u.dot(v) / v.dot(v)
+	return v.mul_scalar(scale)
 }
 
 // rotate_around_cw returns the vector `v` rotated *clockwise* `radians` around an origin vector `o` in Cartesian space.
