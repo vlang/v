@@ -232,24 +232,24 @@ fn test_vec2_rotate_around_ccw_2() {
 // Test for Vec2 projection
 //
 fn test_vec2_project_onto_basic() {
-	v1 := vec.vec2(3.0, 4.0) // magnitude 5 vector
-	v2 := vec.vec2(5.0, 6.0) // magnitude ~7.81 vector
+	u := vec.vec2(3.0, 4.0) // magnitude 5 vector
+	v := vec.vec2(5.0, 6.0) // magnitude ~7.81 vector
 	// hand-computed:
 	// u·v = 5*3 + 6*4 = 39
 	// |v|^2 = 3^2 + 4^2 = 25
 	// scale = 39/25 = 1.56
 	// proj = scale * v = (1.56*3, 1.56*4) = (4.68, 6.24)
-	proj := v1.project(v2)
+	proj := u.project(v)
 	assert tolerance(proj.x, 4.68, vec.vec_epsilon)
 	assert tolerance(proj.y, 6.24, vec.vec_epsilon)
 }
 
 // Test for Vec2 projection onto zero vector
-// project v2 into the null vector
+// project v into the null vector
 fn test_vec2_project_onto_zero() {
-	v1 := vec.vec2(0.0, 0.0)
-	v2 := vec.vec2(5.0, 6.0)
-	proj := v1.project(v2)
+	u := vec.vec2(0.0, 0.0)
+	v := vec.vec2(5.0, 6.0)
+	proj := u.project(v)
 	// must be nan
 	assert is_nan(proj.x)
 	assert is_nan(proj.y)
@@ -258,9 +258,9 @@ fn test_vec2_project_onto_zero() {
 // Test for Vec2 projection of zero vector
 // project a null vector
 fn test_vec2_project_zero_vector() {
-	v1 := vec.vec2(3.0, 4.0)
-	v2 := vec.vec2(0.0, 0.0)
-	proj := v1.project(v2)
+	u := vec.vec2(3.0, 4.0)
+	v := vec.vec2(0.0, 0.0)
+	proj := u.project(v)
 	assert proj.x == 0.0
 	assert proj.y == 0.0
 }
@@ -268,18 +268,18 @@ fn test_vec2_project_zero_vector() {
 // Test for Vec2 projection onto itself
 //
 fn test_vec2_project_onto_self() {
-	v1 := vec.vec2(3.0, 4.0)
-	proj := v1.project(v1)
-	assert veryclose(proj.x, v1.x)
-	assert veryclose(proj.y, v1.y)
+	u := vec.vec2(3.0, 4.0)
+	proj := u.project(u)
+	assert veryclose(proj.x, u.x)
+	assert veryclose(proj.y, u.y)
 }
 
 // Test for Vec2 projection onto orthogonal vector
 //
 fn test_vec2_project_onto_orthogonal() {
-	v1 := vec.vec2(1.0, 0.0)
-	v2 := vec.vec2(0.0, 1.0)
-	proj := v1.project(v2)
+	u := vec.vec2(1.0, 0.0)
+	v := vec.vec2(0.0, 1.0)
+	proj := u.project(v)
 	// more sensitive to floating point errors so i think close is better here
 	assert close(proj.x, 0.0)
 	assert close(proj.y, 0.0)
@@ -288,14 +288,14 @@ fn test_vec2_project_onto_orthogonal() {
 // Test for Vec2 projection with negative components
 //
 fn test_vec2_project_negative_components() {
-	v1 := vec.vec2(-3.0, 4.0)
-	v2 := vec.vec2(5.0, -6.0)
+	u := vec.vec2(-3.0, 4.0)
+	v := vec.vec2(5.0, -6.0)
 	// hand-computed:
 	// u·v = 5*-3 + -6*4 = -15 - 24 = -39
 	// |v|^2 = -3^2 + 4^2 = 9 + 16 = 25
 	// scale = -39/25 = -1.56
 	// proj = scale * v = (-1.56*-3, -1.56*4) = (4.68, -6.24)
-	proj := v1.project(v2)
+	proj := u.project(v)
 	assert tolerance(proj.x, 4.68, vec.vec_epsilon)
 	assert tolerance(proj.y, -6.24, vec.vec_epsilon)
 }
