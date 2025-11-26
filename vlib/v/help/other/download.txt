@@ -13,8 +13,9 @@ Options:
   -o, --output <string>     Write output to the given file, instead of inferring it from the final part of the URL. All intermediate folders will be created, if they do not exist.
   -1, --sha1                Show the SHA1 hash of the downloaded file.
   -2, --sha256              Show the SHA256 hash of the downloaded file.
+  -3, --sha3-256            Show the SHA3-256 (Keccak) hash of the downloaded file.
   -c, --continue            Continue on download failures. If you download 5 URLs, and several of them fail, continue without error. False by default.
-  -r, --retries <int>       Number of retries, when an URL fails to download.
-  -d, --delay <float>       Delay in seconds, after each retry.
+  -r, --retries <int>       Number of retries, when an URL fails to download. The default is 10.
+  -d, --delay <float>       Delay in seconds, after each retry. The default is 1 second.
   -R, --run                 Run, after the script/program is completely downloaded.
   -D, --delete-after-run    Delete the downloaded script/program, after it has been run.

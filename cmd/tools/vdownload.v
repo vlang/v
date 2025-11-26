@@ -5,12 +5,14 @@ import flag
 import net.http
 import crypto.sha1
 import crypto.sha256
+import crypto.sha3
 
 struct Context {
 mut:
 	show_help           bool
 	show_sha1           bool
 	show_sha256         bool
+	show_sha3_256       bool
 	target_folder       string
 	output              string
 	continue_on_failure bool
@@ -38,9 +40,10 @@ fn main() {
 	ctx.output = fp.string('output', `o`, '', 'Write output to the given file, instead of inferring it from the final part of the URL. All intermediate folders will be created, if they do not exist.')
 	ctx.show_sha1 = fp.bool('sha1', `1`, false, 'Show the SHA1 hash of the downloaded file.')
 	ctx.show_sha256 = fp.bool('sha256', `2`, false, 'Show the SHA256 hash of the downloaded file.')
+	ctx.show_sha3_256 = fp.bool('sha3-256', `3`, false, 'Show the SHA3-256 (Keccak) hash of the downloaded file.')
 	ctx.continue_on_failure = fp.bool('continue', `c`, false, 'Continue on download failures. If you download 5 URLs, and several of them fail, continue without error. False by default.')
-	ctx.retries = fp.int('retries', `r`, 10, 'Number of retries, when an URL fails to download.')
-	ctx.delay = time.Duration(u64(fp.float('delay', `d`, 1.0, 'Delay in seconds, after each retry.') * time.second))
+	ctx.retries = fp.int('retries', `r`, 10, 'Number of retries, when an URL fails to download. The default is 10.')
+	ctx.delay = time.Duration(u64(fp.float('delay', `d`, 1.0, 'Delay in seconds, after each retry. The default is 1 second.') * time.second))
 	ctx.should_run = fp.bool('run', `R`, false, 'Run, after the script/program is completely downloaded.')
 	ctx.delete_after_run = fp.bool('delete-after-run', `D`, false, 'Delete the downloaded script/program, after it has been run.')
 	if ctx.show_help {
@@ -108,10 +111,9 @@ fn main() {
 			log.info(' Removing: ${fpath}')
 			os.rm(fpath) or {}
 		}
-		if !ctx.show_sha256 && !ctx.show_sha1 {
+		if !ctx.show_sha256 && !ctx.show_sha1 && !ctx.show_sha3_256 {
 			continue
 		}
-
 		fbytes := os.read_bytes(fname)!
 		if ctx.show_sha1 {
 			mut digest1 := sha1.new()
@@ -120,13 +122,16 @@ fn main() {
 			hash1 := sum1.hex()
 			log.info('                      SHA1: ${hash1}')
 		}
-
 		if ctx.show_sha256 {
 			mut digest256 := sha256.new()
 			digest256.write(fbytes)!
 			mut sum256 := digest256.sum([])
 			hash256 := sum256.hex()
 			log.info('                    SHA256: ${hash256}')
+		}
+		if ctx.show_sha3_256 {
+			hash3_256 := sha3.sum256(fbytes).hex()
+			log.info('                  SHA3-256: ${hash3_256}')
 		}
 	}
 	println('Downloaded: ${downloaded} file(s) . Elapsed time: ${sw.elapsed()} . Errors: ${errors} .')
