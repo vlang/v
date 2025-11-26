@@ -12,6 +12,7 @@ mut:
 	show_sha1           bool
 	show_sha256         bool
 	target_folder       string
+	output              string
 	continue_on_failure bool
 	retries             int
 	delay               time.Duration
@@ -34,6 +35,7 @@ fn main() {
 	fp.limit_free_args_to_at_least(1)!
 	ctx.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	ctx.target_folder = fp.string('target-folder', `t`, '.', 'The target folder, where the file will be stored. It will be created, if it does not exist. Default is current folder.')
+	ctx.output = fp.string('output', `o`, '', 'Write output to the given file, instead of inferring it from the final part of the URL. All intermediate folders will be created, if they do not exist.')
 	ctx.show_sha1 = fp.bool('sha1', `1`, false, 'Show the SHA1 hash of the downloaded file.')
 	ctx.show_sha256 = fp.bool('sha256', `2`, false, 'Show the SHA256 hash of the downloaded file.')
 	ctx.continue_on_failure = fp.bool('continue', `c`, false, 'Continue on download failures. If you download 5 URLs, and several of them fail, continue without error. False by default.')
@@ -57,6 +59,10 @@ fn main() {
 		}
 		os.chdir(ctx.target_folder)!
 	}
+	if ctx.output != '' {
+		odir := os.dir(ctx.output)
+		os.mkdir_all(odir) or {}
+	}
 	sw := time.new_stopwatch()
 	mut errors := 0
 	mut downloaded := 0
@@ -66,8 +72,8 @@ fn main() {
 		&http.Downloader(http.SilentStreamingDownloader{})
 	}
 	for idx, url in ctx.urls {
-		fname := url.all_after_last('/')
-		fpath := '${ctx.target_folder}/${fname}'
+		fname := if ctx.output != '' { ctx.output } else { url.all_after_last('/') }
+		fpath := if os.is_abs_path(fname) { fname } else { '${ctx.target_folder}/${fname}' }
 		mut file_errors := 0
 		log.info('Downloading [${idx + 1}/${ctx.urls.len}] from url: ${url} to ${fpath} ...')
 		for retry in 0 .. ctx.retries {

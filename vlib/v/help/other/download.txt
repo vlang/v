@@ -10,6 +10,7 @@ Options:
   -h, --help                Show this help screen.
   -t, --target-folder <string>
                             The target folder, where the file will be stored. It will be created, if it does not exist. Default is current folder.
+  -o, --output <string>     Write output to the given file, instead of inferring it from the final part of the URL. All intermediate folders will be created, if they do not exist.
   -1, --sha1                Show the SHA1 hash of the downloaded file.
   -2, --sha256              Show the SHA256 hash of the downloaded file.
   -c, --continue            Continue on download failures. If you download 5 URLs, and several of them fail, continue without error. False by default.
