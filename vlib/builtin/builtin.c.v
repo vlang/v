@@ -965,7 +965,10 @@ pub fn arguments() []string {
 // remain the same while the current process is running. It may or may not be
 // equal to the value of v_gettid(). Note: it is *NOT equal on Windows*.
 pub fn v_getpid() u64 {
-	$if windows {
+	$if no_getpid ? {
+		// support non posix/windows systems that lack process management
+		return 0
+	} $else $if windows {
 		return u64(C.GetCurrentProcessId())
 	} $else {
 		return u64(C.getpid())
@@ -981,7 +984,10 @@ pub fn v_getpid() u64 {
 // *avoid relying on this equivalence*, and use v_gettid and v_getpid only for
 // tracing and debugging multithreaded issues, but *NOT for logic decisions*.
 pub fn v_gettid() u64 {
-	$if windows {
+	$if no_gettid ? {
+		// support non posix/windows systems that lack process management
+		return 0
+	} $else $if windows {
 		return u64(C.GetCurrentThreadId())
 	} $else $if linux && !musl ? {
 		return u64(C.gettid())
